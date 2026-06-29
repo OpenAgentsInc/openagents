@@ -16,6 +16,7 @@ const settledReward = (
   createdAt: '2026-06-10T10:00:00.000Z',
   evidenceRefs: [
     'receipt.public.x_claim.1',
+    'receipt.public.x_claim_reward.settled.x_claim_reward_1',
     'settlement_evidence.public.mdk_treasury.x_claim_reward_x_claim_reward_1',
   ],
   id: 'x_claim_reward_1',
@@ -38,6 +39,9 @@ describe('X claim reward smoke receipt audit', () => {
     expect(audit.checks.every(check => check.ok)).toBe(true)
     expect(audit.transitionReceiptSummary.settlementEvidenceRefs).toEqual([
       'settlement_evidence.public.mdk_treasury.x_claim_reward_x_claim_reward_1',
+    ])
+    expect(audit.transitionReceiptSummary.settledReceiptRefs).toEqual([
+      'receipt.public.x_claim_reward.settled.x_claim_reward_1',
     ])
   })
 
@@ -74,7 +78,12 @@ describe('X claim reward smoke receipt audit', () => {
 
   test('blocks when no public settlement evidence ref is present', () => {
     const audit = auditXClaimRewardSmokeReceipt(
-      settledReward({ evidenceRefs: ['receipt.public.x_claim.1'] }),
+      settledReward({
+        evidenceRefs: [
+          'receipt.public.x_claim.1',
+          'receipt.public.x_claim_reward.settled.x_claim_reward_1',
+        ],
+      }),
     )
 
     expect(audit.violationReasonRefs).toContain(
@@ -83,10 +92,27 @@ describe('X claim reward smoke receipt audit', () => {
     expect(audit.transitionReceiptSummary.settlementEvidenceRefs).toEqual([])
   })
 
+  test('blocks when no public settled reward receipt ref is present', () => {
+    const audit = auditXClaimRewardSmokeReceipt(
+      settledReward({
+        evidenceRefs: [
+          'receipt.public.x_claim.1',
+          'settlement_evidence.public.mdk_treasury.x_claim_reward_x_claim_reward_1',
+        ],
+      }),
+    )
+
+    expect(audit.violationReasonRefs).toContain(
+      'reason.public.x_claim_reward_smoke_settled_receipt_missing',
+    )
+    expect(audit.transitionReceiptSummary.settledReceiptRefs).toEqual([])
+  })
+
   test('blocks a leaked lightning invoice in evidence refs', () => {
     const audit = auditXClaimRewardSmokeReceipt(
       settledReward({
         evidenceRefs: [
+          'receipt.public.x_claim_reward.settled.x_claim_reward_1',
           'settlement_evidence.public.mdk_treasury.x_claim_reward_x_claim_reward_1',
           'lnbc1000n1psomeinvoicepayload',
         ],
@@ -102,6 +128,7 @@ describe('X claim reward smoke receipt audit', () => {
     const offerLeak = auditXClaimRewardSmokeReceipt(
       settledReward({
         evidenceRefs: [
+          'receipt.public.x_claim_reward.settled.x_claim_reward_1',
           'settlement_evidence.public.mdk_treasury.x_claim_reward_x_claim_reward_1',
           'lno1qqqqqqqqqqqqqqqqqqqqqqqqqqqqq',
         ],
@@ -115,6 +142,7 @@ describe('X claim reward smoke receipt audit', () => {
     const preimageLeak = auditXClaimRewardSmokeReceipt(
       settledReward({
         evidenceRefs: [
+          'receipt.public.x_claim_reward.settled.x_claim_reward_1',
           'settlement_evidence.public.mdk_treasury.x_claim_reward_x_claim_reward_1',
           'a'.repeat(64),
         ],
@@ -145,6 +173,7 @@ describe('X claim reward smoke transition request', () => {
     expect(proposal.transitionRequest).toEqual({
       evidenceRefs: [
         'x_claim_reward_receipt_x_claim_reward_1',
+        'receipt.public.x_claim_reward.settled.x_claim_reward_1',
         'settlement_evidence.public.mdk_treasury.x_claim_reward_x_claim_reward_1',
       ],
       promiseId: 'agents.x_claim_reward.v1',
@@ -168,6 +197,7 @@ describe('X claim reward smoke transition request', () => {
     const proposal = buildXClaimRewardSmokeTransitionRequest(
       settledReward({
         evidenceRefs: [
+          'receipt.public.x_claim_reward.settled.x_claim_reward_1',
           'settlement_evidence.public.mdk_treasury.x_claim_reward_x_claim_reward_1',
           'lnbc1000n1psomeinvoicepayload',
         ],

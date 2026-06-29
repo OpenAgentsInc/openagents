@@ -56,6 +56,20 @@ describe('MirrorCode standing backstop burn', () => {
     ])
   })
 
+  test('skips completed and active public task refs before filling the next batch', () => {
+    const plan = buildMirrorCodeBackstopBatchPlan({
+      maxTasks: 3,
+      completedTaskRefs: ['task.public.gym.mirrorcode.s.qsv-select.python'],
+      activeTaskRefs: ['task.public.gym.mirrorcode.s.jq-simple.python'],
+    })
+
+    expect(plan.tasks.map(task => task.taskId)).toEqual([
+      'gron',
+      'bitwise',
+      'hexyl',
+    ])
+  })
+
   test('builds a ledger-ready report with pass rate and exact token evidence separated', () => {
     const passed = buildMirrorCodeRun({
       runId: 'mc-backstop-s-cal-python-0001',

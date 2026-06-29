@@ -14,6 +14,30 @@ describe("classifyQuotaSignal", () => {
     expect(signal.retryAtIso).toEqual(expect.any(String))
   })
 
+  test("parses provider retry-after seconds into a concrete reset time", () => {
+    const signal = classifyQuotaSignal(
+      "HTTP 429 rate limit exceeded\nretry-after: 120",
+      "codex",
+      { now: new Date("2026-06-28T21:41:00.000Z") },
+    )
+
+    expect(signal.exhausted).toBe(true)
+    expect(signal.retryAtRaw).toBe("120")
+    expect(signal.retryAtIso).toBe("2026-06-28T21:43:00.000Z")
+  })
+
+  test("parses relative provider cooldown prose into a concrete reset time", () => {
+    const signal = classifyQuotaSignal(
+      "rate limit exceeded, try again in 17 minutes.",
+      "claude_agent",
+      { now: new Date("2026-06-28T21:41:00.000Z") },
+    )
+
+    expect(signal.exhausted).toBe(true)
+    expect(signal.retryAtRaw).toBe("17 minutes")
+    expect(signal.retryAtIso).toBe("2026-06-28T21:58:00.000Z")
+  })
+
   test("classifies Claude-style rate limits without reset timestamps", () => {
     const signal = classifyQuotaSignal(
       "rate limit exceeded, try again later",

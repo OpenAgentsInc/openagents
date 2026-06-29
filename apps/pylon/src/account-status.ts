@@ -5,6 +5,7 @@ import {
 } from "./account-registry.js"
 import {
   isAccountAvailable,
+  loadManualQuotaResetRecord,
   loadQuotaRecord,
   type QuotaRecord,
 } from "./account-quota-ledger.js"
@@ -101,6 +102,11 @@ export async function collectPylonOperatorAccountStatus(
   for (const account of registry) {
     const accountRefHash = hashPylonAccountRef(account.provider, account.ref)
     const quotaRecord = await loadQuotaRecord(summary as BootstrapSummary, accountRefHash)
+    const resetRecord = await loadManualQuotaResetRecord(summary as BootstrapSummary, {
+      accountRefHash,
+      provider: account.provider,
+      defaultManualResetsRemaining: account.manualResetsRemaining,
+    })
     const usageEntry = usageStore.accounts[accountRefHash]
     accounts.push({
       accountRefHash,
@@ -111,7 +117,7 @@ export async function collectPylonOperatorAccountStatus(
       hourlyUsage: usageFor(usageEntry, "hourly", account.hourlyCap, now),
       weeklyCap: account.weeklyCap,
       weeklyUsage: usageFor(usageEntry, "weekly", account.weeklyCap, now),
-      manualResetsRemaining: account.manualResetsRemaining,
+      manualResetsRemaining: resetRecord.manualResetsRemaining,
     })
   }
 

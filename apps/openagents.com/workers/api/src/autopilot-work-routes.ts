@@ -4246,10 +4246,7 @@ export const makeD1AutopilotWorkStore = (
           line,
           receipt_json
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(closeout_ref) DO UPDATE SET
-          outcome = excluded.outcome,
-          receipt_refs_json = excluded.receipt_refs_json,
-          receipt_json = excluded.receipt_json`,
+        ON CONFLICT(closeout_ref) DO NOTHING`,
       )
       .bind(
         receipt.closeoutRef,

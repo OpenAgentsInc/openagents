@@ -119,6 +119,18 @@ describe('handleVoiceProgramIngestApi', () => {
       'blocker.product_promises.voice_ingestion_endpoint_missing',
     )
 
+    const approvalGate = payload.approvalGate as Record<string, unknown>
+    expect(approvalGate).toEqual({
+      approvalMutationAllowed: false,
+      approvalRequired: true,
+      approvalRequirement: 'operator_required',
+      commandExecutionAllowed: false,
+      riskLabel: 'Medium risk',
+      riskLevel: 'medium',
+      state: 'needs_approval',
+      stateLabel: 'Needs approval',
+    })
+
     const proposal = payload.proposal as Record<string, unknown>
     expect(proposal).toBeDefined()
     expect(proposal.stage).toBe('brand-story')

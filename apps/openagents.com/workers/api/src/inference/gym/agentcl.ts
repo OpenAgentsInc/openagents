@@ -35,6 +35,7 @@ export const AGENTCL_TASK_RUNNER_RESULT_SCHEMA =
   'openagents.gym.agentcl_task_runner_result.v0' as const
 export const AGENTCL_VERTEX_RUNNER_PLAN_SCHEMA =
   'openagents.gym.agentcl_vertex_runner_plan.v0' as const
+export const AGENTCL_VERTEX_STRESS_ISSUE_REF = 'public.issue.6762' as const
 
 export const AgentClStreamKind = S.Literals(['naive', 'compositional'])
 export type AgentClStreamKind = typeof AgentClStreamKind.Type
@@ -267,7 +268,7 @@ export type AgentClVertexStressCircuitBreakerReason =
 
 export const AgentClVertexRunnerPlanV0 = S.Struct({
   schemaVersion: S.Literal(AGENTCL_VERTEX_RUNNER_PLAN_SCHEMA),
-  issueRef: S.Literal('public.issue.6766'),
+  issueRef: S.Literal(AGENTCL_VERTEX_STRESS_ISSUE_REF),
   lane: S.Struct({
     laneRef: S.Literal('vertex-gemini'),
     model: S.Literal('gemini-3.5-flash'),
@@ -315,7 +316,7 @@ export type AgentClCurvePoint = typeof AgentClCurvePoint.Type
 
 export const AgentClVertexStressReportV0 = S.Struct({
   schemaVersion: S.Literal(AGENTCL_VERTEX_STRESS_REPORT_SCHEMA),
-  issueRef: S.Literal('public.issue.6767'),
+  issueRef: S.Literal(AGENTCL_VERTEX_STRESS_ISSUE_REF),
   experimentId: S.String,
   runMode: AgentClVertexStressRunMode,
   routing: S.Struct({
@@ -976,7 +977,7 @@ export const buildAgentClVertexGeminiRunnerPlan = (
 ): AgentClVertexRunnerPlanV0 =>
   decodeVertexRunnerPlan({
     schemaVersion: AGENTCL_VERTEX_RUNNER_PLAN_SCHEMA,
-    issueRef: 'public.issue.6766',
+    issueRef: AGENTCL_VERTEX_STRESS_ISSUE_REF,
     lane: {
       laneRef: 'vertex-gemini',
       model: 'gemini-3.5-flash',
@@ -1026,7 +1027,7 @@ export const assessAgentClVertexRunnerCircuitBreaker = (
     'owner.approval.agentcl.vertex_stress.required',
   )
   const reason =
-    input.estimatedSpendUsdCents > runnerPlan.budgetGuard.spendCapUsdCents
+    input.estimatedSpendUsdCents >= runnerPlan.budgetGuard.spendCapUsdCents
       ? 'spend_cap_exceeded'
       : input.consecutiveBillingOrQuotaErrors >=
           runnerPlan.budgetGuard.abortOnConsecutiveBillingOrQuotaErrors
@@ -1278,7 +1279,7 @@ export const buildAgentClVertexStressBaselineReport = (
 
   return decodeVertexStressReport({
     schemaVersion: AGENTCL_VERTEX_STRESS_REPORT_SCHEMA,
-    issueRef: 'public.issue.6767',
+    issueRef: AGENTCL_VERTEX_STRESS_ISSUE_REF,
     experimentId: stressExperiment.id,
     runMode: input.runMode ?? 'fixture_baseline',
     routing: {
@@ -1326,7 +1327,7 @@ export const buildAgentClVertexStressBaselineReport = (
         : ['blocker.gym.agentcl.fixture_baseline_not_live_stress']),
     ],
     reportRefs: [
-      'public.issue.6767',
+      AGENTCL_VERTEX_STRESS_ISSUE_REF,
       'route.gym.agentcl.vertex_gemini35_flash',
       'cap.usd.agentcl.vertex_stress.50',
     ],

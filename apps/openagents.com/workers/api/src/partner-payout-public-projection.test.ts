@@ -41,7 +41,6 @@ describe('aggregatePartnerPayoutPublicProjection', () => {
       )?.percentBps,
     ).toBe(PARTNER_PAYOUT_ROLE_POLICY.referral.percentBps)
     expect(projection.blockerRefs).toEqual([
-      'blocker.product_promises.partner_payout_settlement_not_wired',
       'blocker.product_promises.partner_first_real_payout_pending',
     ])
     expect(
@@ -52,6 +51,11 @@ describe('aggregatePartnerPayoutPublicProjection', () => {
     expect(
       projection.blockerRefs.includes(
         'blocker.product_promises.partner_attribution_policy_missing',
+      ),
+    ).toBe(false)
+    expect(
+      projection.blockerRefs.includes(
+        'blocker.product_promises.partner_payout_settlement_not_wired',
       ),
     ).toBe(false)
   })

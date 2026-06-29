@@ -18,6 +18,7 @@ import { describe, expect, it } from 'vitest'
 import {
   type BatchJobRoutesDeps,
   handleBatchJobReceiptRead,
+  handleBatchJobResultsRead,
   handleBatchJobsSubmit,
 } from './batch-job-routes'
 import {
@@ -27,6 +28,10 @@ import {
   executeBatchJob,
 } from './batch-job-consumer'
 import { makeD1BatchJobStore } from './batch-job-store'
+import type {
+  BatchJobResultRow,
+  BatchJobResultsStore,
+} from './batch-job-results-store'
 import type { MeteringContext, MeteringOutcome } from './metering-hook'
 import {
   type InferenceProviderAdapter,
@@ -231,9 +236,28 @@ const receiptRequest = (receiptRef: string): Request =>
     { method: 'GET' },
   )
 
+const resultsRequest = (jobId: string): Request =>
+  new Request(`https://openagents.com/v1/inference/batches/${jobId}/results`, {
+    headers: { authorization: 'Bearer test' },
+    method: 'GET',
+  })
+
+const makeMemoryResultsStore = (): BatchJobResultsStore => {
+  const rowsByKey = new Map<string, string>()
+  return {
+    readResults: key => Effect.succeed(rowsByKey.get(key) ?? null),
+    writeResults: (jobId, rows: ReadonlyArray<BatchJobResultRow>) => {
+      const key = `batch-results/${jobId}/results.jsonl`
+      rowsByKey.set(key, rows.map(row => JSON.stringify(row)).join('\n'))
+      return Effect.succeed(key)
+    },
+  }
+}
+
 describe('async batch-job flow (submit -> queue -> consumer -> receipt)', () => {
   it('runs a detached khala job end-to-end and makes its receipt dereferenceable', async () => {
     const db = makeStatefulDb()
+    const resultsStore = makeMemoryResultsStore()
     const captured: BatchJobQueueMessage[] = []
     const enqueue = (message: BatchJobQueueMessage) => {
       captured.push(message)
@@ -307,6 +331,7 @@ describe('async batch-job flow (submit -> queue -> consumer -> receipt)', () => 
           // the batch wait) with this clock; with the 00:00:00 enqueue the receipt
           // discloses a real batchWaitMs of 120000 (2 min in queue).
           nowIso: () => '2026-06-22T00:02:00.000Z',
+          resultsStore,
           store: makeD1BatchJobStore(db, () => '2026-06-22T00:02:00.000Z'),
         },
         message,
@@ -363,6 +388,33 @@ describe('async batch-job flow (submit -> queue -> consumer -> receipt)', () => 
     expect(receiptBody.receipt.openagents.settlementState).toBe(
       'not_applicable',
     )
+
+    // 4) RESULTS are authenticated and dereference the result artifact written
+    // by the consumer for the same submitted job.
+    const results = await run(
+      handleBatchJobResultsRead(resultsRequest(jobId), {
+        authenticate: async () => ({ accountRef: 'agent:flow' }),
+        db,
+        enabled: true,
+        nowIso: () => '2026-06-22T00:05:00.000Z',
+        resultsStore,
+      }),
+    )
+    expect(results.status).toBe(200)
+    const resultRows = (await results.text())
+      .split('\n')
+      .map(line => JSON.parse(line) as BatchJobResultRow)
+    expect(resultRows).toEqual([
+      {
+        content: 'fake completion',
+        finishReason: 'stop',
+        index: 0,
+        ok: true,
+        requestedModel: 'gemini-3.5-flash',
+        servedModel: 'served/fireworks',
+        usage: { completionTokens: 20, promptTokens: 10, totalTokens: 30 },
+      },
+    ])
   })
 
   it('re-delivering the same enqueued message is idempotent (no re-run, no re-charge)', async () => {

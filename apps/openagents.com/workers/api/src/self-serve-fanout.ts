@@ -182,9 +182,18 @@ const isNonEmpty = (value: string): boolean => value.trim().length > 0
 const isWholeNonNegative = (value: number): boolean =>
   Number.isInteger(value) && value >= 0
 
-/** Stable, public-safe plan id derived from a work order ref. */
-export const selfServeFanoutPlanId = (workOrderRef: string): string =>
-  `self_serve_fanout.${workOrderRef.replace(/[^a-z0-9._-]+/giu, '_')}`
+/** Stable, public-safe plan id derived from a work order ref and work class. */
+export const selfServeFanoutPlanId = (
+  workOrderRef: string,
+  workClass: MarketplaceWorkClassId = SELF_SERVE_FANOUT_WORK_CLASS,
+): string => {
+  const safeWorkOrderRef = workOrderRef.replace(/[^a-z0-9._-]+/giu, '_')
+  if (workClass === SELF_SERVE_FANOUT_WORK_CLASS) {
+    return `self_serve_fanout.${safeWorkOrderRef}`
+  }
+  const safeWorkClass = workClass.replace(/[^a-z0-9._-]+/giu, '_')
+  return `self_serve_fanout.${safeWorkOrderRef}.${safeWorkClass}`
+}
 
 /** Public-safe deadline ref for a self-serve fanout market job. */
 export const SELF_SERVE_FANOUT_DEADLINE_REF =
@@ -284,7 +293,7 @@ export const buildSelfServeFanoutPlan = (
     ok: true,
     plan: {
       schema: SELF_SERVE_FANOUT_SCHEMA,
-      planId: selfServeFanoutPlanId(input.workOrderRef),
+      planId: selfServeFanoutPlanId(input.workOrderRef, workClass),
       workOrderRef: input.workOrderRef,
       customerRef: input.customerRef,
       selfServe: true,

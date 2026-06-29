@@ -302,6 +302,8 @@ import { isCrmResendSendEnabled, makeCrmResendSender } from './crm-resend'
 import { makeCrmResendRoutes } from './crm-resend-routes'
 import { makeCrmRoutes } from './crm-routes'
 import { makeCrmSendRoutes } from './crm-send-routes'
+import { makeInMemoryCodingQuickWinPaidDeliveryClaimStore } from './coding-quick-win-claim-upgrade'
+import { makeCodingQuickWinReceiptPublicRoutes } from './coding-quick-win-receipt-public-routes'
 import { CustomerOneCohortEndpoint } from './customer-one-cohort-projection'
 import {
   handleOperatorCustomerOneCohortRowsApi,
@@ -412,9 +414,11 @@ import {
 } from './inference/batch-job-consumer'
 import {
   handleBatchJobReceiptRead,
+  handleBatchJobResultsRead,
   handleBatchJobStatusRead,
   handleBatchJobsSubmit,
 } from './inference/batch-job-routes'
+import { makeR2BatchJobResultsStore } from './inference/batch-job-results-store'
 import { makeD1BatchJobStore } from './inference/batch-job-store'
 import { makeD1CardCreditSpendReceiptStore } from './inference/card-credit-spend-receipt-store'
 import {
@@ -466,6 +470,7 @@ import {
   matchMirrorCodeRunByIdRequest,
 } from './inference/gym/mirrorcode-routes'
 import { makeD1MirrorCodeRunStore } from './inference/gym/mirrorcode-store'
+import { runServingRateMonitorScheduled } from './inference/serving-rate-monitor'
 import {
   handleOperatorKhalaHeadToHeadApi,
   handlePublicKhalaHeadToHeadApi,
@@ -7609,12 +7614,10 @@ const providerAccountRoutes = makeProviderAccountRoutes({
   handleProviderAccountUsageApi: (request, env, ctx) =>
     providerAccountUsageRoutes.handleProviderAccountUsageApi(request, env, ctx),
   handleProviderAccountsListApi: (request, env, ctx) =>
-    routeEffect('handle_provider_accounts_list_api', () =>
-      providerAccountBrowserHandlers.handleProviderAccountsListApi(
-        request,
-        env,
-        ctx,
-      ),
+    providerAccountBrowserHandlers.handleProviderAccountsListApi(
+      request,
+      env,
+      ctx,
     ),
   handleProviderDeviceLoginConnectedApi: (request, env, attemptId) =>
     routeEffect('handle_provider_device_login_connected_api', () =>
@@ -8418,6 +8421,11 @@ const marketingAgencyReceiptPublicRoutes =
   makeMarketingAgencyReceiptPublicRoutes<Env>({
     makeClaimStore: _env =>
       makeInMemoryMarketingAgencyPaidDeliveryClaimStore([]),
+  })
+const codingQuickWinReceiptPublicRoutes =
+  makeCodingQuickWinReceiptPublicRoutes<Env>({
+    makeClaimStore: _env =>
+      makeInMemoryCodingQuickWinPaidDeliveryClaimStore([]),
   })
 const marketingAgencySelfServePublicRoutes =
   makeMarketingAgencySelfServePublicRoutes<Env>({
@@ -9636,6 +9644,17 @@ const imageGenerationRoutes = makeImageGenerationRoutes({
 })
 
 const siteRuntimeRoutes = makeSiteRuntimeRoutes({
+  reservedHosts: new Set([
+    'auth.openagents.com',
+    'localhost',
+    'openagents-staging.openagents.workers.dev',
+    'openagents.com',
+    '127.0.0.1',
+  ]),
+  resolveCustomHostname: (hostname, env) =>
+    makeTenantCustomHostnames(openAgentsDatabase(env)).resolveTenantByHostname(
+      hostname,
+    ),
   sitesHost: 'sites.openagents.com',
 })
 
@@ -9982,7 +10001,7 @@ const setInferenceAdapterEnv = (env: OpenAgentsWorkerConfigEnv): void => {
 // passthrough/Vertex secrets) — rather than a raw Cloudflare `Env`, keeping the
 // worker off the raw-Env ratchet.
 type BatchJobConsumerEnv = OpenAgentsWorkerConfigEnv &
-  Pick<WorkerBindings, 'OPENAGENTS_DB'>
+  Pick<WorkerBindings, 'ARTIFACTS' | 'OPENAGENTS_DB'>
 const makeBatchJobConsumerDeps = (env: BatchJobConsumerEnv) => {
   registerPassthroughAdapters(inferenceProviderRegistry, env)
   registerHydraliskAdapter(inferenceProviderRegistry, env)
@@ -10000,6 +10019,7 @@ const makeBatchJobConsumerDeps = (env: BatchJobConsumerEnv) => {
     // END of the batch wait) with this clock so the closeout receipt can disclose
     // an honest `batchWaitMs`.
     nowIso: currentIsoTimestamp,
+    resultsStore: makeR2BatchJobResultsStore(env.ARTIFACTS),
     store: makeD1BatchJobStore(openAgentsDatabase(env), currentIsoTimestamp),
   }
 }
@@ -10384,7 +10404,7 @@ const dispatchFailureTelemetry = makeBoundedDispatchFailureTelemetry({
 const glmOwnCapacityFailover = makeGlmOwnCapacityFailover({
   failureThreshold: 3,
   isRecovered: () =>
-    latestHydraliskGlm52RouteAdmission?.reservedExternalHeadroomAvailable ===
+    latestHydraliskGlm52RouteAdmission?.internalStressHeadroomAvailable ===
     true,
   onAlert: event => {
     logWorkerRouteWarning('glm_own_capacity_failover_alert', {
@@ -10992,6 +11012,18 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     // aggregate over stored public-safe run rows; exact token refs are surfaced
     // where present and unproven token totals stay separated.
     path: '/api/gym/mirrorcode/token-burn',
+    handler: (request, env) =>
+      handleMirrorCodeRunsApi(request, {
+        requireAdminApiToken: adminRequest =>
+          requireAdminApiToken(adminRequest, env),
+        store: makeD1MirrorCodeRunStore(openAgentsDatabase(env)),
+      }),
+  },
+  {
+    // MirrorCode standing backstop burn (#6923). Public read-only live plan +
+    // ledger report over stored public-safe run rows. The surface never
+    // dispatches, spends, settles, or exposes task contents.
+    path: '/api/gym/mirrorcode/backstop-burn',
     handler: (request, env) =>
       handleMirrorCodeRunsApi(request, {
         requireAdminApiToken: adminRequest =>
@@ -12209,6 +12241,29 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         // AND the queue binding is provisioned (see makeBatchJobEnqueue).
         enqueueBatchJob: makeBatchJobEnqueue(env),
         nowIso: currentIsoTimestamp,
+      }),
+  },
+  {
+    path: '/v1/inference/batches/:jobId/results',
+    handler: (request, env) =>
+      handleBatchJobResultsRead(request, {
+        authenticate: async authRequest => {
+          const token = readBearerToken(authRequest)
+          if (token === undefined) {
+            return undefined
+          }
+          const session = await authenticateProgrammaticAgent(
+            makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+            token,
+          )
+          return session === undefined
+            ? undefined
+            : { accountRef: `agent:${session.user.id}` }
+        },
+        db: openAgentsDatabase(env),
+        enabled: isInferenceGatewayEnabled(env.INFERENCE_GATEWAY_ENABLED),
+        nowIso: currentIsoTimestamp,
+        resultsStore: makeR2BatchJobResultsStore(env.ARTIFACTS),
       }),
   },
   {
@@ -13450,6 +13505,8 @@ const routeRequest = makeWorkerRouteRequest({
     ecommerceCampaignReceiptOperatorRoutes.routeEcommerceCampaignReceiptOperatorRequest,
   routeEcommerceCampaignSelfServeRequest:
     ecommerceCampaignSelfServeRoutes.routeEcommerceCampaignSelfServeRequest,
+  routeCodingQuickWinReceiptRequest:
+    codingQuickWinReceiptPublicRoutes.routeCodingQuickWinReceiptRequest,
   routeMarketingAgencyReceiptRequest:
     marketingAgencyReceiptPublicRoutes.routeMarketingAgencyReceiptRequest,
   routeMarketingAgencySelfServeRequest:
@@ -13951,6 +14008,21 @@ export default {
             { scheduledTimeMs: event.scheduledTime },
             (line, fields) =>
               logWorkerRouteWarning('fleet_burn_stall_watchdog', {
+                line,
+                ...fields,
+              }),
+          ),
+        ),
+      ),
+      observedEffect(
+        'ServingRateMonitor.tick',
+        Effect.promise(() =>
+          runServingRateMonitorScheduled(
+            openAgentsDatabase(env),
+            env,
+            { scheduledTimeMs: event.scheduledTime },
+            (line, fields) =>
+              logWorkerRouteWarning('serving_rate_monitor', {
                 line,
                 ...fields,
               }),

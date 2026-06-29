@@ -52,10 +52,14 @@ const receiptPrefix = 'receipt.site_referral_payout.'
 
 const safeReceiptPattern = /^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,300}$/
 const prohibitedRefPattern =
-  /\b(lnbc|lntb|lnbcrt|lno1|mnemonic|xprv|payment_preimage|payment_secret|payment_hash|wallet_secret|private_key|webhook_secret|mdk_access_token|access_token|refresh_token|device_auth_id|code_verifier|gho_[a-z0-9_]+)/i
+  /\b(authorization|bearer|customer|email|invoice|lnbc|lntb|lnbcrt|lno1|mdk_payload|mnemonic|payment_hash|payment_id|payment_preimage|payment_secret|payout_address|payout_destination|payout_target|preimage|provider_payload|raw_payment|raw_payout|secret|wallet|xprv|private_key|webhook_secret|mdk_access_token|access_token|refresh_token|device_auth_id|code_verifier|gho_[a-z0-9_]+)/i
+const safeEventKindPattern = /^[a-z][a-z0-9_]{0,80}$/
 
 const isPublicSafeRef = (value: string): boolean =>
   safeReceiptPattern.test(value) && !prohibitedRefPattern.test(value)
+
+const isPublicSafeEventKind = (value: string): boolean =>
+  safeEventKindPattern.test(value) && !prohibitedRefPattern.test(value)
 
 const settlementRailForReceipt = (
   receiptRef: string,
@@ -70,7 +74,20 @@ const publicProjection = (
   row: SettledReceiptRow,
   receiptRef: string,
   generatedAt: string,
-): PublicSiteReferralPayoutReceiptProjection => {
+): PublicSiteReferralPayoutReceiptProjection | null => {
+  if (!isPublicSafeEventKind(row.qualifying_event_kind)) {
+    return null
+  }
+
+  const caveatRefs = parseJsonStringArray(row.caveat_refs_json)
+  const policyRefs = parseJsonStringArray(row.policy_refs_json)
+  if (
+    caveatRefs.some(ref => !isPublicSafeRef(ref)) ||
+    policyRefs.some(ref => !isPublicSafeRef(ref))
+  ) {
+    return null
+  }
+
   const evidenceRefs = parseJsonStringArray(row.evidence_refs_json).filter(ref =>
     isPublicSafeRef(ref),
   )
@@ -80,10 +97,10 @@ const publicProjection = (
     attributionLinked: true,
     authorityBoundary:
       'Public proof only. This referral payout receipt read grants no attribution, invite, checkout, spend, refund, payout, settlement, wallet, provider, or registry authority.',
-    caveatRefs: parseJsonStringArray(row.caveat_refs_json),
+    caveatRefs,
     evidenceRefs,
     generatedAt,
-    policyRefs: parseJsonStringArray(row.policy_refs_json),
+    policyRefs,
     qualifyingEventKind: row.qualifying_event_kind,
     receiptRef,
     resolution: {

@@ -1,5 +1,24 @@
 # Promise Registry
 
+> Registry `2026-06-29.3` narrows the Apple FM local-mode blockers after #7022
+> and flips NO promise state. Source evidence now covers the Pylon helper
+> supervision policy, status projection, driver, launcher, and opt-in host
+> lifecycle seam, so the broad
+> `blocker.product_promises.local_apple_fm_helper_supervision_missing` blocker is
+> replaced with
+> `blocker.product_promises.local_apple_fm_signed_from_install_supervised_smoke_missing`.
+> The promise remains yellow until a signed/notarized installer recut proves the
+> packaged or supervised helper from a clean install on admitted Apple Silicon.
+>
+> Registry `2026-06-29.3` is a fleet-state/public-board sync after #6995 and
+> #7004 and flips NO promise state. It records the owner-scoped
+> `/api/operator/fleet/state` route plus Khala fleet client wiring as linked-
+> owner status visibility, while preserving the admin-only boundary for the
+> legacy fleet status route and making no dispatch, spend, payout, settlement,
+> or cross-owner capacity claim. It also records the public Artanis fleet map
+> and active task board as public observability from Pylon stats/activity data,
+> not assignment proof, guaranteed availability, revenue, or settlement.
+>
 > Registry `2026-06-29.2` is a current-main refresh after #6997, #6999,
 > #7001, #7002, and #7006 and flips NO promise state. It records the
 > terminal-agent current-state audit and Codex tool-layer study as evidence for
@@ -66,20 +85,22 @@
 > Current machine-readable source of truth: `/api/public/product-promises` is
 > generated from
 > [`product-promises.ts`](../../apps/openagents.com/workers/api/src/product-promises.ts),
-> which currently advertises registry `2026-06-29.2` with
+> which currently advertises registry `2026-06-29.3` with
 > `lastUpdated: "2026-06-29"`. This narrative document records the same
-> top-line 2026-06-29.2 promise decisions above, plus historical reconciliation
+> top-line 2026-06-29.3 promise decisions above, plus historical reconciliation
 > context below; when in doubt, agents and reviewers should defer to the
 > machine-readable registry and include its version in mismatch reports.
 >
 > `2026-06-29` standing sweep: recent mainline accepted-outcome economics,
 > Tassadar CPU-transform, referral, small-model proxy, WASM plugin, Verse scene,
-> native email, marketplace, metrics, terminal-agent audit, supervisor
-> replenishment, GLM failover, Apple FM sidecar, and operator-safety merges were
-> checked against the current `2026-06-29.2` registry header. This pass records
-> no additional promise state flips and no new green claims beyond the already
-> source-recorded scoped transitions; red/planned/yellow records keep their
-> owner-signed, receipt-first green gates.
+> native email, marketplace, metrics, terminal-agent audit, Codex tool-layer
+> study, supervisor replenishment, GLM failover, Apple FM sidecar, owner-scoped
+> fleet state, account-reset safety, VMQ fast-forward planning, public agent
+> task-board UI, the public Artanis fleet board, Effect usage audit, and
+> operator-safety merges were checked against the current `2026-06-29.3`
+> registry header. This pass records no additional promise state flips and no
+> new green claims beyond the already source-recorded scoped transitions;
+> red/planned/yellow records keep their owner-signed, receipt-first green gates.
 >
 > `2026-06-28` standing sweep: recent mainline Khala, Artanis, Pylon, Gym, and
 > operator-safety merges were checked against the current `2026-06-28.2`

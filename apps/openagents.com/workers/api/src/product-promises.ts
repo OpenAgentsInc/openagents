@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-29.2'
+export const PublicProductPromisesVersion = '2026-06-29.3'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -65,16 +65,32 @@ const sourceRefs = [
   'apps/pylon/scripts/codex-supervisor/replenishment.test.sh',
   'apps/openagents.com/workers/api/src/inference/model-router.ts',
   'apps/openagents.com/workers/api/src/inference/model-router.test.ts',
+  'apps/openagents.com/workers/api/src/operator-fleet-status-routes.ts',
+  'apps/openagents.com/workers/api/src/operator-fleet-status-routes.test.ts',
+  'apps/openagents.com/apps/web/src/page/loggedOut/page/publicAgent.ts',
+  'apps/openagents.com/apps/web/src/page/loggedOut/page/publicAgent.story.test.ts',
   'docs/apple-fm/2026-06-29-electrobun-apple-fm-swift-sidecar-plan.md',
+  'docs/launch/vertex-fleet/autopilot.local_apple_fm_tool_chat.v1.md',
   'clients/khala-desktop/src/bun/apple-fm-sidecar.ts',
   'clients/khala-desktop/src/shared/apple-fm-packaging.ts',
   'clients/khala-desktop/src/shared/apple-fm-readiness.ts',
   'clients/khala-desktop/tests/apple-fm-packaging.test.ts',
   'clients/khala-desktop/tests/apple-fm-readiness.test.ts',
   'clients/khala-desktop/tests/apple-fm-sidecar.test.ts',
+  'apps/openagents-world/src/commands.ts',
+  'apps/openagents-world/src/commands.test.ts',
+  'apps/openagents-world/src/protocol.ts',
+  'apps/openagents-world/src/protocol.test.ts',
+  'apps/openagents-world/src/subscriptions.ts',
+  'apps/openagents-world/src/subscriptions.test.ts',
+  'packages/world-client/src/index.ts',
+  'packages/world-client/src/index.test.ts',
+  'packages/world-contract/src/index.ts',
+  'packages/world-contract/src/index.test.ts',
   'docs/promises/2026-06-14-registry-reality-reconciliation-audit.md',
   'docs/promises/2026-06-17-training-monday-simulation-settlement-policy.md',
   'docs/promises/2026-06-18-training-monday-real-settlement-gate-met.md',
+  'docs/promises/2026-06-29-world-first-claims-7027-audit.md',
   'docs/launch/2026-06-19-autostream-settlement-visibility-capture.md',
   'docs/launch/2026-06-19-autostream-settlement-clip-manifest.json',
   'docs/launch/2026-06-18-autopilot-desktop-availability-audit.md',
@@ -256,11 +272,15 @@ export const publicProductPromisesDocument = () => {
         'Registry 2026-06-28.2 corrects referral.refer_once_earn_forever.v1 evidence/copy for #6838 and flips NO promise state. The permanent referrer<->referee spine is now represented by the consume-once user/agent referral attribution tables joined to site_referral_sources, and the category-agnostic accrueCrossCategoryReferral primitive feeds receipt-first paid events from non-Sites categories such as marketplace/fine_tuning into the ONE RL-1 referral payout ledger. The promise STAYS red because no real ecosystem purchase has produced a settled Bitcoin referral payout and no purchase-to-payout dereferenceable receipt exists yet; the owner-armed payout and RL-1/RL-3 asset-boundary/no-resale gates remain required.',
         'Registry 2026-06-28.2: inference.decentralized_serving_fabric.v1 gains stricter whole-small-model Pylon proxy evidence and flips NO promise state. apps/pylon/src/psionic-vllm-proxy.ts now treats exact-greedy parity as a separate same-engine reference check: the proxy forwards a greedy serve request to the configured local engine, performs a second same-engine greedy reference call, compares output digests, refuses non-greedy requests, and keeps paid routing ineligible on reference mismatch or known-answer canary failure. This is source-level receipt plumbing only. The promise STAYS red: green still requires an owner-armed live gateway request, dereferenceable exact-greedy-parity receipt, canary/replay/payout-eligibility admission, and settled serving-node payout evidence.',
         'Registry 2026-06-28.2: marketplace.wasm_plugins.v1 gains source-level WASM-plugin package policy and install-state registry machinery plus an inert installed-plugin discovery route at GET /api/public/marketplace/wasm-plugins; NO promise state flips. The manifest schema requires version, WASM digest ref, interface declarations, bounded permissions, source refs, and policy refs; admission fails closed on malformed or over-privileged manifests; install/uninstall persists state in the injected registry store; and the public route lists only installed plugins from the injected store while reporting inert/planned. The broad package-policy/install-registry gap is narrowed, but the promise STAYS planned because there is still no public self-serve install marketplace, sandboxed execution receipt, billing, or settlement. No third-party WASM execution, code loading, marketplace mutation, billing, payout, or green claim is created.',
+        'Registry 2026-06-29.3 implements #6832 as a narrow source-level WASM execution evidence step and flips NO promise state. workers/api/src/wasm-plugin-marketplace.ts now has a digest-pinned fixture executor that validates the admitted manifest, checks module bytes against wasm.sha256, rejects undeclared/unauthorized imports before instantiation, applies bounded module/input/output/duration/memory policy checks available to JavaScript WebAssembly, and returns a metering-shaped evidence record with input/output hashes, policy refs, host-call attempts, runtime ref, and deterministic evidenceRef. Tests run a real tiny WASM add fixture, reject digest mismatch, and reject an unauthorized host import. This is NOT a production sandbox claim: the public route remains inert, no third-party plugin execution is mounted, no billing/settlement/payout authority exists, and the promise STAYS planned on self-serve marketplace, production resource-limit enforcement, billing, and settlement blockers.',
         'Registry 2026-06-28.2 clears the stale P2.5 live-wiring blocker from autopilot.agent_world_scene.v1 without flipping the promise green. The running Autopilot Desktop Verse now has the complete flag-gated live path: chat-world-subscriptions.ts polls /api/public/pylon-stats into GotChatWorldScene, update.ts stores the latest ChatWorldPylonScene without resetting the controller, view.ts composes modelChatWorldScene into the behind-chat three-effect visualization, and payment particles are both event-pruned and idle-pruned by TickedChatWorldPaymentParticles so stale beams do not imply current activity on quiet networks. Focused desktop tests cover the pylon-stats subscription, scene reducer/view wiring, and idle beam expiry. The promise STAYS yellow on blocker.product_promises.agent_world_scene_not_default_on because the public product default-on / stay-flag-gated decision still needs explicit owner sign-off and any future green flip remains receipt-first per proof.claim_upgrade_receipts.v1. No spend, payout, settlement, runtime authority, or multiplayer authority is created by this visual wiring.',
         'Registry 2026-06-28.2: autopilot_sites.native_email_sequences.v1 adds the real Cloudflare Email binding path for authored sequence sends and flips NO promise state (stays yellow). The scheduled dispatcher now routes authored sequence templates through the sequence send service when supplied, `makeCloudflareEmailSequenceSender` renders a transactional sequence email, sends via the Worker `EMAIL` binding, and records `email_messages` + `email_deliveries` receipts; disabled config still records the dry-run/skipped path and never calls the sender. Domain auth and live-smoke instructions live at apps/openagents.com/docs/sites/2026-06-28-native-email-sequence-cloudflare-send-service.md. The remaining blocker is still email_deliverability_unproven: green requires a live deliverability smoke with send-to-deliver evidence, bounce/complaint handling, customer self-serve authoring, and owner sign-off per proof.claim_upgrade_receipts.v1.',
         'Registry 2026-06-28.3 implements #6891 for models.tassadar_percepta_executor.v1 and flips NO promise state. Pylon v1.0 now has a deterministic bounded CPU computation-transform fixture in apps/pylon/src/tassadar-cpu-transform-training.ts that runs one CPU-only optimization step, self-verifies loss improvement, emits receipt.models.tassadar_percepta_executor.cpu_transform_training.cpu_transform_fixture_v1, and keeps realBitcoinMoved:false / settlementState:not_settled. GET /api/public/models/tassadar-percepta-executor/cpu-transform-training-receipts now projects that public-safe receipt alongside the architecture and Artanis distillation dataset inputs, so the old pylon_v03_cpu_transform_training_receipts_missing blocker is replaced by blocker.product_promises.tassadar_cpu_transform_real_settlement_missing and blocker.product_promises.tassadar_cpu_transform_owner_green_signoff_missing. The promise STAYS planned: this is one fixture-scale receipt, not a trained model, not a paid earning path, not model promotion, and not a green transition; any future green flip remains receipt-first and owner-signed per proof.claim_upgrade_receipts.v1.',
         'Registry 2026-06-29.1 implements #6848 for payments.accepted_outcome_economics.v1 and flips NO promise state. The accepted-outcome economics spine now has a dereferenceable contributor accrual bundle at GET /api/public/payments/contributor-accrual-bundle?economicsId=... plus the settlement bundle at GET /api/public/accepted-outcome/settlement/{economicsId}; together they compose a gross-margin receipt, contributor accrual ledger entries, and an eight-state settlement machine from one stored accepted-outcome economics row. Tests prove the ledger and receipt share the same economicsId, reconcile gross margin exactly, reconcile pending_payout to the distributable ledger pool, keep public projections free of internal cents/raw payment material, and surface missing contributor provenance honestly. The old source-level blockers contributor_ledger_missing and gross_margin_receipts_missing are replaced by real_accepted_outcome_receipt_missing and owner_signed_green_transition_missing. The promise STAYS red because source/fixture receipt machinery is not a real accepted outcome carried through a money-moving settlement path, and any future green flip remains receipt-first and owner-signed per proof.claim_upgrade_receipts.v1.',
+        'Registry 2026-06-29.3 narrows the Apple FM local-mode blockers after #7022 audit and flips NO promise state. Source evidence now covers the Pylon helper-supervision policy, status projection, driver, launcher, and opt-in host lifecycle seam, so the broad helper-supervision blocker is replaced with the narrower signed/from-install smoke blocker. Apple FM local mode remains yellow until a signed/notarized installer recut proves the packaged or supervised helper from a clean install on admitted Apple Silicon. Registry 2026-06-29.2 remains the prior current-main refresh after #6997/#6999/#7001/#7002/#7006: terminal-agent current-state and Codex tool-layer evidence, codex-supervisor LOCKOUT replenishment housekeeping, GLM own-capacity failover alerting, Khala Desktop now carries source-level Apple FM sidecar packaging/readiness, and the Khala model-mix promise remains live-at-read with maxStalenessSeconds:0; all flipped no promise state.',
         'Registry 2026-06-29.2 is a current-main refresh after #6997/#6999/#7001/#7002/#7006 and flips NO promise state. The terminal-agent current-state audit and Codex tool-layer study are now cited as evidence for the Codex/Probe/Pylon runtime direction: current production coding delegation is still Pylon plus external agent SDK lanes and OpenAgents-native terminal tools remain a consolidation task, not a new green claim. The codex-supervisor LOCKOUT replenishment helper can create or reuse three bounded standing issues so owner-capacity supervisors do not idle indefinitely, but it creates no paid labor, payout, settlement, or broad availability claim. The inference router now has GLM own-capacity failover alerting and public-safe fallback telemetry for repeated no-headroom saturation, but the paid gateway still stays red until a dereferenceable paid receipt exists. Khala Desktop now carries source-level Electrobun Apple FM sidecar packaging/readiness plus redaction tests, but Apple FM local mode remains yellow until a signed/notarized from-install smoke with helper supervision exists. The Khala model-mix promise remains live-at-read with maxStalenessSeconds:0; the stale 2-second cache wording is not applied.',
+        'Registry 2026-06-29.3 implements #7027 for the world-first / largest-force promise audit and flips NO promise state. docs/promises/2026-06-29-world-first-claims-7027-audit.md is now load-bearing evidence for claims.world_first_ai_training_paid_bitcoin.v1, claims.world_first_public_llm_computer_training_run.v1, claims.pursued_world_first_largest_agentic_sales_force.v1, and claims.pursued_world_first_largest_sales_force.v1. The audit records exact allowed wording, refuse-list wording, prior-art caveats, receipt refs, and dated blocker notes. The two world-first claims stay red; the two largest-force records stay planned pursuits; no owner-signed transition receipt, record-holder status, green claim, payout, settlement, or marketing-claim authority is created.',
+        'Registry 2026-06-29.3 is a fleet-state/public-board sync after #6995/#7004 and flips NO promise state. The owner-scoped /api/operator/fleet/state route and Khala fleet client wiring are now cited as CLI/operator evidence, but only for linked-owner status visibility; the legacy admin fleet status route remains admin-token-only and the state route creates no dispatch, spend, payout, settlement, or cross-owner capacity authority. The public Artanis page now renders a fleet map and active task board from public Pylon stats/activity timeline data, but that is a public observability surface only; it is not assignment-specific proof, guaranteed availability, or a revenue/settlement claim.',
       ],
     },
     promises: [
@@ -697,6 +717,7 @@ export const publicProductPromisesDocument = () => {
           'docs/transcripts/238.md',
           'docs/launch/2026-06-18-pylon-v1-launch-readiness-audit.md',
           'docs/launch/2026-06-18-world-firsts-verification.md',
+          'docs/promises/2026-06-29-world-first-claims-7027-audit.md',
           'promise:training.decentralized_training_launch.v1',
           'promise:promises.registry.v1',
           'promise:proof.claim_upgrade_receipts.v1',
@@ -706,7 +727,7 @@ export const publicProductPromisesDocument = () => {
           'blocker.product_promises.world_first_owner_signed_upgrade_missing',
         ],
         verification:
-          'An independent prior-art/competing-claim search now exists (docs/launch/2026-06-18-world-firsts-verification.md; prior art checked includes Spirit of Satoshi, Bittensor/Templar, Gensyn, Prime Intellect, Nous/Psyche, Salad, Percepta, Tracr) with a defensible narrowed wording. Green still requires (1) a dereferenceable evidence pack tying the qualified world-first to the live run receipts and (2) an owner-signed receipt-first upgrade per proof.claim_upgrade_receipts.v1. Until then this stays red and any public use must carry the full qualifiers.',
+          'An independent prior-art/competing-claim search now exists (docs/launch/2026-06-18-world-firsts-verification.md; prior art checked includes Spirit of Satoshi, Bittensor/Templar, Gensyn, Prime Intellect, Nous/Psyche, Salad, Percepta, Tracr) with a defensible narrowed wording. The #7027 dated audit (docs/promises/2026-06-29-world-first-claims-7027-audit.md) keeps this red because the prior-art review is not yet a single dereferenceable evidence pack tying each qualifier to live receipts, and no owner-signed transition receipt exists. Green still requires (1) a dereferenceable evidence pack tying the qualified world-first to the live run receipts and (2) an owner-signed receipt-first upgrade per proof.claim_upgrade_receipts.v1. Until then this stays red and any public use must carry the full qualifiers.',
         authorityBoundary:
           'A launch transcript does not establish a world-first. The bounded real settlements prove payment to two contributors, not a first-in-the-world claim, and grant no network-scale or comparison authority.',
       },
@@ -728,6 +749,7 @@ export const publicProductPromisesDocument = () => {
           'docs/launch/2026-06-18-world-firsts-verification.md',
           'docs/launch/2026-06-20-llm-computer-training-run-definition.md',
           'docs/launch/2026-06-20-world-first-llm-computer-evidence-pack.md',
+          'docs/promises/2026-06-29-world-first-claims-7027-audit.md',
           'apps/openagents.com/workers/api/src/world-first-llm-computer-evidence-pack.test.ts',
           'promise:compute.tassadar_executor_poc.v1',
           'promise:models.tassadar_percepta_executor.v1',
@@ -738,7 +760,7 @@ export const publicProductPromisesDocument = () => {
           'blocker.product_promises.world_first_owner_signed_upgrade_missing',
         ],
         verification:
-          'An independent prior-art/competing-claim search now exists (docs/launch/2026-06-18-world-firsts-verification.md) with a defensible narrowed wording crediting Percepta as the paradigm originator. A precise definition of "LLM-computer training run" now exists (docs/launch/2026-06-20-llm-computer-training-run-definition.md): it pins the phrase to the executor-construction / exact-trace sense (sense B), distinguishes it from gradient-descent model training (sense A), credits Percepta, and enumerates the refuse-list so the phrase cannot overclaim against the no-gradient-descent executor PoC. A focused, dereferenceable evidence pack now exists (docs/launch/2026-06-20-world-first-llm-computer-evidence-pack.md): it ties the qualified Claim-2 world-first to the live-run receipts qualifier-by-qualifier (public/open-contributor paid loop -> run summary + two contributor settlement receipts; Percepta paradigm credit -> Percepta blog/transformer-vm + prior-art search; executor/exact-trace/replay-verified -> verified+rejected replay pairs and a Verified challenge), with a skeptic-runnable verification recipe and a refuse-list. A regression guard (apps/openagents.com/workers/api/src/world-first-llm-computer-evidence-pack.test.ts) now machine-enforces that the pack and definition stay dereferenceable: every repo-relative doc they cite resolves on disk, every promise: evidence ref resolves to a real registry promiseId, the cleared definition/evidence-pack blockers stay cleared without flipping state, and the refuse-list plus Percepta credit stay in the copy. Green still requires an owner-signed receipt-first upgrade per proof.claim_upgrade_receipts.v1, and the underlying public paid loop remains bounded (two contributors, not at scale).',
+          'An independent prior-art/competing-claim search now exists (docs/launch/2026-06-18-world-firsts-verification.md) with a defensible narrowed wording crediting Percepta as the paradigm originator. A precise definition of "LLM-computer training run" now exists (docs/launch/2026-06-20-llm-computer-training-run-definition.md): it pins the phrase to the executor-construction / exact-trace sense (sense B), distinguishes it from gradient-descent model training (sense A), credits Percepta, and enumerates the refuse-list so the phrase cannot overclaim against the no-gradient-descent executor PoC. A focused, dereferenceable evidence pack now exists (docs/launch/2026-06-20-world-first-llm-computer-evidence-pack.md): it ties the qualified Claim-2 world-first to the live-run receipts qualifier-by-qualifier (public/open-contributor paid loop -> run summary + two contributor settlement receipts; Percepta paradigm credit -> Percepta blog/transformer-vm + prior-art search; executor/exact-trace/replay-verified -> verified+rejected replay pairs and a Verified challenge), with a skeptic-runnable verification recipe and a refuse-list. The #7027 dated audit (docs/promises/2026-06-29-world-first-claims-7027-audit.md) records that only the owner-signed transition blocker remains. A regression guard (apps/openagents.com/workers/api/src/world-first-llm-computer-evidence-pack.test.ts) now machine-enforces that the pack and definition stay dereferenceable: every repo-relative doc they cite resolves on disk, every promise: evidence ref resolves to a real registry promiseId, the cleared definition/evidence-pack blockers stay cleared without flipping state, and the refuse-list plus Percepta credit stay in the copy. Green still requires an owner-signed receipt-first upgrade per proof.claim_upgrade_receipts.v1, and the underlying public paid loop remains bounded (two contributors, not at scale).',
         authorityBoundary:
           'A bounded exact-trace executor proof of concept grants no general LLM-computer capability claim and no world-first claim. The Tassadar research publication gates stay closed for everything beyond the scoped compute.tassadar_executor_poc.v1 promise.',
       },
@@ -895,7 +917,7 @@ export const publicProductPromisesDocument = () => {
         safeCopy:
           'Episode 236 names a Tassadar/Percepta Executor Class direction. The public model/spec boundary is written down in docs/tassadar/2026-06-20-tassadar-percepta-executor-model-spec.md, a public-safe architecture receipt projection is live at GET /api/public/models/tassadar-percepta-executor/architecture-receipts with receipt.models.tassadar_percepta_executor.architecture.bundle.v1, and GET /api/public/models/tassadar-percepta-executor/cpu-transform-training-receipts now projects one bounded Pylon v1.0 CPU computation-transform fixture receipt: assignment.models.tassadar_percepta_executor.cpu_transform_fixture.v1 with receipt.models.tassadar_percepta_executor.cpu_transform_training.cpu_transform_fixture_v1, an accepted verifier verdict, and a fixture checkpoint digest. Real settlement and owner green sign-off remain missing, so the promise stays planned. The bounded executor proof of concept is green (compute.tassadar_executor_poc.v1) but proves exact replay only, not a model. The 2026-06-14 W3 student-program report validated the frozen-analytic-executor-plus-learned-interface research direction (baseline D reached exact-rollout pass@1 while purely-learned baselines failed) but is explicitly research/evaluation only: it creates no trained-model claim and does not make this promise green.',
         unsafeCopy:
-          'Do not claim a Tassadar trained model exists, is trained, outperforms CPUs, replaces a CPU, has run Pylon CPU-transform training, or is earning contributors Bitcoin, and do not present the architecture receipt, W3 student-program results, or executor PoC as proof of a trained Percepta model.',
+          'Do not claim a Tassadar trained model exists, is trained, outperforms CPUs, replaces a CPU, has run broad or settled Pylon CPU-transform training, or is earning contributors Bitcoin, and do not present the architecture receipt, bounded CPU-transform fixture, W3 student-program results, or executor PoC as proof of a trained Percepta model.',
         evidenceRefs: [
           'docs/transcripts/236.md',
           'docs/2026-06-12-episode-236-training-launch-gap-audit.md',
@@ -1026,9 +1048,9 @@ export const publicProductPromisesDocument = () => {
         audience: ['user', 'agent', 'contributor', 'public'],
         state: 'yellow',
         claim:
-          'Free Khala API usage is captured by default as redacted, private traces that may be used to improve and train models; pay for privacy to opt out; public sharing is opt-in only.',
+          'Free Khala API usage is captured by default when the owner-gated production capture flag is armed, as redacted, private traces that may be used to improve and train models; pay for privacy to opt out; public sharing is opt-in only.',
         safeCopy:
-          'Free tier: when you use the free Khala API without paying for privacy, your traffic is captured by default as a redacted, private-by-default (owner_only) trace and may be used to improve and train OpenAgents models. Pay for privacy, or run confidential compute, to opt out of capture (fail-closed to not-captured). A captured trace is shared publicly only if its owner explicitly opts it into public visibility. Capture grants no payout or settlement — the data-market reward marker is inert and owner-gated. The canonical terms are served at GET /api/public/free-tier-data-sharing and embedded in the POST /api/keys/free mint response.',
+          'Free tier: when you use the free Khala API without paying for privacy, your traffic is captured by default when the owner-gated production capture flag is armed, as a redacted, private-by-default (owner_only) trace and may be used to improve and train OpenAgents models. Pay for privacy, or run confidential compute, to opt out of capture (fail-closed to not-captured). A captured trace is shared publicly only if its owner explicitly opts it into public visibility. Capture grants no payout or settlement — the data-market reward marker is inert and owner-gated. The canonical terms are served at GET /api/public/free-tier-data-sharing and embedded in the POST /api/keys/free mint response with explicit blocker/gate refs.',
         unsafeCopy:
           'Do not claim free traffic is never captured, do not claim captured traces are public by default, do not claim paid-privacy callers are captured, and do not claim capture earns the user a payout, reward, or settlement.',
         evidenceRefs: [
@@ -1045,9 +1067,13 @@ export const publicProductPromisesDocument = () => {
         blockerRefs: [
           'blocker.product_promises.free_tier_capture_default_owner_gated',
           'blocker.product_promises.disclosure_copy_owner_signoff_pending',
+          'blocker.product_promises.trace_capture_public_disclosure_alignment_required',
+          'blocker.product_promises.trace_capture_reward_marker_inert',
+          'blocker.product_promises.paid_privacy_owner_signoff_pending',
+          'blocker.product_promises.paid_khala_business_loop_not_green',
         ],
         verification:
-          'GET /api/public/free-tier-data-sharing returns the canonical disclosure (version, summary, ordered terms, bounded policy facts) and the POST /api/keys/free mint response embeds the same dataSharing object. The terms must stay accurate to the capture seams: auto-capture is redacted and owner_only (khala-chat-trace-emitter.ts), paid-privacy is excluded fail-closed (inference-privacy-entitlement.ts), public is owner opt-in only, and the reward marker stays inert (#6221). Green requires the default-on capture flip armed in prod (KHALA_FREE_TIER_TRACE_CAPTURE_DEFAULT) and owner-approved public copy.',
+          'GET /api/public/free-tier-data-sharing returns the canonical disclosure (version, summary, ordered terms, bounded policy facts, blocker refs, and gate summary) and the POST /api/keys/free mint response embeds the same dataSharing object. The terms must stay accurate to the capture seams: auto-capture is redacted and owner_only (khala-chat-trace-emitter.ts), default-on production capture is owner-gated by KHALA_FREE_TIER_TRACE_CAPTURE_DEFAULT, paid-privacy is excluded fail-closed (inference-privacy-entitlement.ts), public is owner opt-in only, and the reward marker stays inert (#6221). Green requires the default-on capture flip armed in prod and owner-approved public copy.',
         authorityBoundary:
           'A disclosure grants no spend, payout, settlement, training-consent, or capture authority. It describes policy only; it does not change capture behavior or move money.',
       },
@@ -1074,11 +1100,10 @@ export const publicProductPromisesDocument = () => {
         ],
         blockerRefs: [
           'blocker.product_promises.free_tier_capture_default_owner_gated',
-          'blocker.product_promises.trace_capture_public_disclosure_alignment_required',
           'blocker.product_promises.trace_capture_reward_marker_inert',
         ],
         verification:
-          'Yellow requires the capture emitter, disclosure surface, and privacy-entitlement exclusion code to agree. Green requires production gate evidence, redaction/private-owner scoping evidence, public-copy owner sign-off, and no payout/settlement implication.',
+          'The capture emitter, disclosure surface, and privacy-entitlement exclusion code now agree: free capture is redacted and owner_only when armed, paid/privacy callers are excluded fail-closed, public sharing is opt-in only, and reward/payout markers remain inert. Green still requires production gate evidence, redaction/private-owner scoping evidence, public-copy owner sign-off, and no payout/settlement implication.',
         authorityBoundary:
           'Trace capture is data-retention behavior only. It grants no public trace publication, training-data sale, payout, settlement, billing, or confidential-compute authority.',
       },
@@ -1251,17 +1276,21 @@ export const publicProductPromisesDocument = () => {
         promiseId: 'payments.money_dev_kit.v1',
         productArea: 'payments',
         audience: ['agent', 'contributor', 'operator'],
-        state: 'yellow',
+        state: 'green',
         claim:
           'OpenAgents switched payments to Money Dev Kit: self-custodial Lightning agent wallet, single command setup, LSP/splice channels, immediate receive liquidity, and hosted checkout.',
         safeCopy:
-          'OpenAgents uses MDK hosted checkout and agent-wallet flows for scoped small-sats/L402 paths, and Forum tips can project confirmed live direct BOLT 12 MDK/provider payments as ordinary content tips. Broader payout, withdrawal, and accepted-work settlement claims remain scoped by their own route authority and wallet readiness.',
+          'OpenAgents uses MDK hosted checkout and a scoped local MDK agent-wallet bridge for small-sats/L402 paths. The MDK send-readiness claim is limited to the original funded wallet home with public-safe 1-sat settlement receipts and a capacity-sufficient preflight; Spark remains the primary agent/MPP payment rail. Broader custody, payout, withdrawal, and accepted-work settlement claims remain scoped by their own route authority and wallet readiness.',
         unsafeCopy:
-          'Do not claim MDK mnemonic restore or hosted MDK payout proves full send readiness or provider settlement.',
+          'Do not claim MDK mnemonic restore, hosted MDK checkout, or a positive wallet balance proves broad custody, full send readiness, payout, withdrawal, accepted-work settlement, or provider settlement.',
         evidenceRefs: [
           'apps/openagents.com/docs/mdk',
           'apps/pylon/docs/mdk-wallet-readiness-ledger.md',
+          'apps/openagents.com/docs/nexus/2026-06-08-mdk-agent-wallet-send-readiness-preflight.md',
           'apps/openagents.com/docs/nexus/2026-06-08-mdk-agent-wallet-outbound-capacity-restore-report.md',
+          'receipt.nexus_pylon.settlement.assignment_public_probe_gepa_paid_multi_pylon_20260608214500_1',
+          'receipt.nexus_pylon.settlement.assignment_public_probe_gepa_paid_multi_pylon_20260608214500_2',
+          'capacity.mdk_agent_wallet.send.sufficient_for_scoped_smoke',
           'docs/forum/2026-06-09-forum-mdk-webhook-reconciliation-audit.md',
           'route:/api/forum/paid-actions/mdk/webhooks',
           'script:apps/openagents.com/scripts/forum.mjs tip-post-smoke',
@@ -1270,13 +1299,11 @@ export const publicProductPromisesDocument = () => {
           'apps/openagents.com/docs/forum/2026-06-11-forum-tip-webhook-refund-live-smoke-evidence.md',
           'transition:promise_transition_c30b7327-e82b-4696-8886-97aafa454284',
         ],
-        blockerRefs: [
-          'blocker.product_promises.mdk_agent_wallet_send_readiness_insufficient_capacity',
-        ],
+        blockerRefs: [],
         verification:
-          'Run smoke:forum:mdk-readiness with a ready-recipient post, user-specified sats amount, explicit live-spend approval, public receipt lookup, and `tip-post-smoke --strict-smooth` from a funded production payer wallet. Separate wallet configured, receive-ready, positive balance, send-ready, direct payment sent, webhook-confirmed payment, timeout recovery, refund/reversal, accepted work, payout, and accepted-work settlement states.',
+          'Scoped send-readiness is proven only for the original funded MDK agent-wallet home with public-safe 1-sat settlement receipts (`receipt.nexus_pylon.settlement.assignment_public_probe_gepa_paid_multi_pylon_20260608214500_1` and `_2`) and the send-readiness preflight capacity ref `capacity.mdk_agent_wallet.send.sufficient_for_scoped_smoke`. The smoke fixture blocks send planning unless operator approval, original funded wallet-home mode, spend-cap compliance, and the capacity-sufficient ref are all present. Keep wallet configured, receive-ready, positive balance, send-ready, direct payment sent, webhook-confirmed payment, timeout recovery, refund/reversal, accepted work, payout, and accepted-work settlement states separate.',
         authorityBoundary:
-          'Payment proof does not bypass route auth, owner scope, moderation, deployment, payout, or settlement gates.',
+          'Scoped MDK send-readiness proof does not make MDK the primary agent/MPP rail and does not bypass route auth, owner scope, moderation, deployment, payout, withdrawal, custody, or settlement gates.',
       },
       {
         ...basePromiseFields,
@@ -1424,23 +1451,25 @@ export const publicProductPromisesDocument = () => {
         claim:
           '@openagentsinc/khala ships a terminal client for Khala chat and operator utilities.',
         safeCopy:
-          '@openagentsinc/khala v0.1.16 exposes the khala command: interactive scrollback chat, headless prompt/stdin mode, /info and /msginfo metadata, feedback, changelog, version, public token counter, background update checks, OpenAgents login/logout for owner/operator flows, optional local Codex workspace delegation when local credentials are connected, and the owner-authenticated Artanis operator channel. The CLI uses a normal terminal scrollback/raw-mode input, not the superseded OpenTUI single-line plan.',
+          '@openagentsinc/khala v0.1.16 exposes the khala command: interactive scrollback chat, headless prompt/stdin mode, /info and /msginfo metadata, feedback, changelog, version, public token counter, background update checks, OpenAgents login/logout for owner/operator flows, `khala fleet status` / `khala fleet list` over owner-scoped fleet state, optional local Codex workspace delegation when local credentials are connected, and the owner-authenticated Artanis operator channel. The CLI uses a normal terminal scrollback/raw-mode input, not the superseded OpenTUI single-line plan.',
         unsafeCopy:
-          'Do not claim the CLI is a full TUI, a billing/account console, a wallet, a guaranteed local-code executor, or a public Artanis access path. Do not cite old v0.1.11 sneak-peek output as the current version without the v0.1.16 source/changelog.',
+          'Do not claim the CLI is a full TUI, a billing/account console, a wallet, a guaranteed local-code executor, a cross-owner fleet browser, or a public Artanis access path. Do not cite old v0.1.11 sneak-peek output as the current version without the v0.1.16 source/changelog.',
         evidenceRefs: [
           'clients/khala-cli/package.json',
           'clients/khala-cli/README.md',
           'clients/khala-cli/src/cli.ts',
+          'clients/khala-cli/src/fleet.ts',
           'clients/khala-cli/src/input.ts',
           'clients/khala-cli/src/changelog.ts',
+          'apps/openagents.com/workers/api/src/operator-fleet-status-routes.ts',
           'docs/khala-cli/README.md',
           'docs/transcripts/244.md',
         ],
         blockerRefs: [],
         verification:
-          'khala --version reports 0.1.16; CLI source exposes the documented commands and flags; changelog.ts records v0.1.14 Artanis, v0.1.15 login/logout, and v0.1.16 identity wording; README docs carry the current scoped copy and supersede the old OpenTUI plan.',
+          'khala --version reports 0.1.16; CLI source exposes the documented commands and flags; changelog.ts records v0.1.14 Artanis, v0.1.15 login/logout, and v0.1.16 identity wording; fleet status/list read the owner-scoped /api/operator/fleet/state surface; README docs carry the current scoped copy and supersede the old OpenTUI plan.',
         authorityBoundary:
-          'The CLI is a client surface only. Authentication, trace visibility, Codex delegation, Artanis access, spend, and account authority are still enforced by their respective server/local credential gates.',
+          'The CLI is a client surface only. Authentication, fleet visibility, trace visibility, Codex delegation, Artanis access, spend, and account authority are still enforced by their respective server/local credential gates.',
       },
       {
         ...basePromiseFields,
@@ -1635,7 +1664,7 @@ export const publicProductPromisesDocument = () => {
         claim:
           'The marketplace can support WASM-plugin packages for agent and contributor workflows.',
         safeCopy:
-          'WASM-plugin package policy, fail-closed manifest admission, install/uninstall registry machinery, and an inert installed-plugin discovery route exist. Treat this as planned infrastructure only: no public self-serve WASM-plugin marketplace, execution sandbox, billing, settlement, or broad execution authority is live.',
+          'WASM-plugin package policy, fail-closed manifest admission, install/uninstall registry machinery, an inert installed-plugin discovery route, and source-level fixture execution evidence exist. Treat this as planned infrastructure only: no public self-serve WASM-plugin marketplace, production sandbox runtime, billing, settlement, or broad execution authority is live.',
         unsafeCopy:
           'Do not claim a live WASM-plugin marketplace, paid WASM-plugin installs, settled WASM-plugin revenue, or public-safe third-party WASM execution.',
         evidenceRefs: [
@@ -1652,7 +1681,7 @@ export const publicProductPromisesDocument = () => {
           'blocker.product_promises.wasm_plugin_billing_settlement_missing',
         ],
         verification:
-          'Source evidence now covers the package manifest schema, admission policy, install/uninstall state registry, malformed/over-privileged rejection tests, and inert installed-plugin discovery route. Keep this planned until there is public evidence for a self-serve install marketplace, sandboxed WASM execution receipts, metering, billing, attribution, rev-share, abuse handling, and settlement receipts.',
+          'Source evidence now covers the package manifest schema, admission policy, install/uninstall state registry, malformed/over-privileged rejection tests, inert installed-plugin discovery route, digest-pinned fixture WASM execution, deny-by-default import rejection, and metering-shaped execution evidence. Keep this planned until there is public evidence for a production self-serve install marketplace, production sandbox execution receipts with enforceable runtime resource limits, billing, attribution, rev-share, abuse handling, and settlement receipts.',
         authorityBoundary:
           'Experimental marketplace planning does not grant public plugin installation, execution, billing, settlement, code-loading, or contributor earning authority.',
       },
@@ -1995,7 +2024,7 @@ export const publicProductPromisesDocument = () => {
         claim:
           'An owner who verifies agent ownership with an X verification tweet can become eligible for a promotional 1000-sat reward.',
         safeCopy:
-          'Verified X owner claims record a 1000-sat reward eligibility row in a bounded campaign ledger with anti-Sybil dedupe (one reward per X account and per challenge) and a campaign budget cap. Eligibility, operator-approved dispatch, treasury dispatch, and settlement are separate states. The Worker-side dispatcher is implemented behind TREASURY_DISPATCH_ENABLED=false by default with BOLT12-only recipient resolution, per-run and per-day caps, pending-payment polling, public-safe status stats, and smoke gates for candidate, preflight, dispatch outcome, settlement evidence, settled receipt audit, and transition-request assembly. No owner-armed reward has completed a live dispatch smoke to a real receive code yet.',
+          'Verified X owner claims record a 1000-sat reward eligibility row in a bounded campaign ledger with anti-Sybil dedupe (one reward per X account and per challenge) and a campaign budget cap. Eligibility, operator-approved dispatch, treasury dispatch, and settlement are separate states. The Worker-side dispatcher is implemented behind TREASURY_DISPATCH_ENABLED=false by default with BOLT12-only recipient resolution, per-run and per-day caps, pending-payment polling without re-paying, public-safe status stats, and smoke gates for candidate, preflight, dispatch outcome, pre-persistence settlement evidence, settled dispatch receipt refs, settled receipt audit, and transition-request assembly. No owner-armed reward has completed a live dispatch smoke to a real receive code yet.',
         unsafeCopy:
           'Do not claim verified owners are instantly or automatically paid, do not present eligibility as spendable balance or settlement, and do not describe the promotional reward as Forum tip settlement or accepted-work payout.',
         evidenceRefs: [
@@ -2015,7 +2044,7 @@ export const publicProductPromisesDocument = () => {
           'blocker.product_promises.x_claim_reward_live_dispatch_smoke_missing',
         ],
         verification:
-          'Run the agent-owner-claim reward tests, X-claim treasury dispatcher tests, and X-claim smoke harness tests: verified X claims must create eligibility with dedupe and budget refusal, dispatch transitions must be admin-gated, the dispatcher must stay flag-off by default, resolve only registered BOLT12 recipient identity, enforce caps, poll pending payments without re-paying, redact payment material, reject unsafe settlement evidence before persistence, and emit a transition request only after both the dispatch outcome and settled receipt audits pass. Green requires one live operator-dispatched reward settled to a real owner receive code with public-safe receipt refs and owner sign-off.',
+          'Run the agent-owner-claim reward tests, X-claim treasury dispatcher tests, and X-claim smoke harness tests: verified X claims must create eligibility with dedupe and budget refusal, dispatch transitions must be admin-gated, the dispatcher must stay flag-off by default, resolve only registered BOLT12 recipient identity, enforce caps, poll pending payments without re-paying, redact payment material, reject unsafe settlement evidence before persistence, persist a public settled dispatch receipt ref, and emit a transition request only after both the dispatch outcome and settled receipt audits pass. Green requires one live operator-dispatched reward settled to a real owner receive code with public-safe receipt refs and owner sign-off.',
         authorityBoundary:
           'Reward eligibility is a promotional campaign state, not Forum tip settlement, accepted-work payout, Treasury authority, or spendable balance. Dispatch requires the operator admin gate.',
       },
@@ -2648,7 +2677,7 @@ export const publicProductPromisesDocument = () => {
         claim:
           'A Pylon user who posts a device or training question on the Forum gets a substantive reply from the cloud-resident Artanis mind within minutes - Artanis watches new Forum activity on its tick, answers device-capability and training-run questions with live platform data, and tips good contributor posts from its gated ledger budget.',
         safeCopy:
-          'The responder loop is live: each cron tick Artanis scans new Forum topics, the mind classifies Pylon device/training questions (typed semantic selection), composes replies grounded only in the asker post and the live promise registry, delivers them under the registered Artanis identity, and tips good questions from a 210-sat/day responder budget on the reliable-tips ladder. Each responder action records the asking actor and a bounded asker-provenance class; scheduled scan/compose ticks now also write public-safe tick receipts. GET /api/public/artanis/responder-support reports externalContributorFlowProven, dereferenceable reply-post refs, tickReadiness.qualifyingUnattendedResponderTickCount, tickReadiness.unattendedResponderTicksProven, and tickReadiness.externalContributorAnsweredWithinTickWindow. Demonstrated end to end on operator test articles (replies in as fast as 71 seconds, tip visible in public tipStats), which the projection correctly classifies as owner_operator; the external-contributor proof (a real non-owner contributor answered end to end) and ten qualifying unattended responder tick receipts remain the gates until live rows prove them.',
+          'The responder loop is live: each cron tick Artanis scans new Forum topics, the mind classifies Pylon device/training questions (typed semantic selection), composes replies grounded only in the asker post and the live promise registry, delivers them under the registered Artanis identity, and tips good questions from a 210-sat/day responder budget on the reliable-tips ladder. Each responder action records the asking actor and a bounded asker-provenance class; scheduled scan/compose ticks now also write public-safe tick receipts. GET /api/public/artanis/responder-support reports externalContributorFlowProven, dereferenceable reply-post refs, tickReadiness.qualifyingUnattendedResponderTickCount, tickReadiness.unattendedResponderTicksProven, tickReadiness.externalContributorAnsweredWithinTickWindow, greenGateMet, and explicit clearedBlockerRefs/unclearedBlockerRefs for the two registry blockers. Demonstrated end to end on operator test articles (replies in as fast as 71 seconds, tip visible in public tipStats), which the projection correctly classifies as owner_operator; the external-contributor proof (a real non-owner contributor answered end to end inside a recorded unattended tick window) and ten qualifying unattended responder tick receipts remain the gates until live rows prove them.',
         unsafeCopy:
           'Do not claim Artanis autonomously answers Forum posts today, promise response times before the loop is measured, or describe Artanis tips as unbounded - the per-tick budget and risky-action gates hold.',
         evidenceRefs: [
@@ -2666,7 +2695,7 @@ export const publicProductPromisesDocument = () => {
           'blocker.product_promises.ten_unattended_responder_ticks_unaccrued',
         ],
         verification:
-          'The loop is live and demonstrated end to end on 2026-06-10 with operator-authored test articles: scan classified a real Pylon device question within one cron tick, the mind composed grounded full-length replies (registered Artanis identity, in-process forum route), measured response windows as fast as 71 seconds, and a 50-sat budget-gated tip landed in the question post public tipStats. The external-contributor dimension is machine-auditable: each responder action records the asking actor and a bounded asker-provenance class (external_contributor / owner_operator / artanis_self / unknown), and GET /api/public/artanis/responder-support projects per-provenance answered counts, externalContributorFlowProven, and the dereferenceable reply-post ref of each external interaction. The same endpoint now includes tickReadiness from artanis_responder_ticks: a qualifying unattended responder tick requires scheduled scan and compose to run, at least one candidate scanned and proposed, at least one reply posted, and a dereferenceable reply-post ref inside the tick window; the target remains 10. The operator test-article runs are correctly classified owner_operator, so externalContributorFlowProven is honestly false until a real external contributor is answered end to end. Green additionally requires tickReadiness.externalContributorAnsweredWithinTickWindow true and tickReadiness.unattendedResponderTicksProven true on live rows, plus the existing owner-signed receipt-first transition.',
+          'The loop is live and demonstrated end to end on 2026-06-10 with operator-authored test articles: scan classified a real Pylon device question within one cron tick, the mind composed grounded full-length replies (registered Artanis identity, in-process forum route), measured response windows as fast as 71 seconds, and a 50-sat budget-gated tip landed in the question post public tipStats. The external-contributor dimension is machine-auditable: each responder action records the asking actor and a bounded asker-provenance class (external_contributor / owner_operator / artanis_self / unknown), and GET /api/public/artanis/responder-support projects per-provenance answered counts, externalContributorFlowProven, the dereferenceable reply-post ref of each external interaction, and explicit clearedBlockerRefs/unclearedBlockerRefs. The same endpoint includes tickReadiness from artanis_responder_ticks: a qualifying unattended responder tick requires scheduled scan and compose to run, at least one candidate scanned and proposed, at least one reply posted, and a dereferenceable reply-post ref inside the tick window; the target remains 10. The operator test-article runs are correctly classified owner_operator, so unclearedBlockerRefs must keep the external-contributor blocker until a real external contributor is answered end to end inside a recorded unattended tick window. Green additionally requires tickReadiness.unattendedResponderTicksProven true on live rows, plus the existing owner-signed receipt-first transition.',
         authorityBoundary:
           'The mind proposes; typed schemas validate; gates hold. Artanis tips spend only from its seeded ledger balance under a per-tick budget; forum publication stays inside the publication queue policy; no moderation or registry authority.',
       },
@@ -2784,7 +2813,7 @@ export const publicProductPromisesDocument = () => {
         claim:
           'Artanis can request labor: on its scheduled tick the cloud mind proposes a bounded, budgeted work request (schema-validated, escrowed from its seeded ledger balance under a per-tick labor budget), publishes it through the same Forum-and-relay path any requester uses, and accepts delivered work only when validator re-execution of the stated verification command passes.',
         safeCopy:
-          'The Artanis spine this rides is live: the minute tick, the cloud mind, the publication queue, the per-tick budget pattern proven by the tip budget, and the seeded ledger balance. The default-off request_labor action is now wired as an Artanis administrator scheduled action behind its own config gate: enabled ticks validate a bounded proposal, publish through injected work-request dependencies, reserve escrow under the per-tick labor budget and seeded-balance gates, and persist the placed receipt; disabled labor ticks seal as skipped_config_disabled without proposing, publishing, reserving, or counting. Delivered results still route through validator-pass release or validator-fail refund. Every gated labor tick is sealed into a content-addressed, public-safe receipt, persisted tamper-evidently, and served on the public feed GET /api/public/artanis/labor-receipts (each row independently content-address-verifiable). A green-readiness surface GET /api/public/artanis/labor-green-readiness folds that feed onto the two green-flip blockers: it counts PLACED unattended request receipts (requested_pending_delivery / accepted_released / rejected_refunded - states only an operator-ENABLED labor tick can reach) and reports liveEnablementProven, unattendedRequestReceiptsProven (target 10), and greenGateMet. The promise remains yellow until live placed receipts accrue and owner sign-off records the transition.',
+          'The Artanis spine this rides is live: the minute tick, the cloud mind, the publication queue, the per-tick budget pattern proven by the tip budget, and the seeded ledger balance. The default-off request_labor action is now wired as an Artanis administrator scheduled action behind its own config gate: enabled ticks validate a bounded proposal, publish through injected work-request dependencies, reserve escrow under the per-tick labor budget and seeded-balance gates, and persist the placed receipt; disabled labor ticks seal as skipped_config_disabled without proposing, publishing, reserving, or counting. Delivered results still route through validator-pass release or validator-fail refund. Every gated labor tick is sealed into a content-addressed, public-safe receipt, persisted tamper-evidently, and served on the public feed GET /api/public/artanis/labor-receipts (each row independently content-address-verifiable). A green-readiness surface GET /api/public/artanis/labor-green-readiness folds that feed onto the two green-flip blockers: it counts PLACED unattended request receipts (requested_pending_delivery / accepted_released / rejected_refunded - states only an operator-ENABLED labor tick can reach) and reports liveEnablementProven, unattendedRequestReceiptsProven (target 10), greenGateMet, and explicit clearedBlockerRefs/unclearedBlockerRefs. The promise remains yellow until live placed receipts accrue and owner sign-off records the transition.',
         unsafeCopy:
           'Do not claim Artanis hires agents today or describe its acceptance as judgment - acceptance is validator re-execution of a stated verification command, nothing else. Do not describe Artanis labor spend as unbounded; the per-tick budget and the seeded-balance ceiling bind, and risky-action gates hold. Do not present the readiness surface or a placed receipt as the green flip itself; the flip additionally requires the owner-signed promise_transition.',
         evidenceRefs: [
@@ -3010,7 +3039,7 @@ export const publicProductPromisesDocument = () => {
         claim:
           'Autopilot Sites customers can serve their sites under custom branded hostnames.',
         safeCopy:
-          'Tenant custom-hostname registration, DNS-token verification, hostname→tenant mapping, request-time resolution, and a live Cloudflare custom-hostname client shipped in wave-3 (#4988/#4989). A CUSTOMER self-serve path is now mounted and live: a signed-in team owner/admin can claim a custom hostname for their own team and any team member can list their team’s claimed hostnames with the exact DNS TXT record to publish (GET/POST /api/tenant/hostnames, browser-session + team-role gated). The self-serve path is INERT by design: a claimed hostname is stored `pending` and never resolves or serves; it touches no live DNS, no SSL issuance, no origin binding, and no spend. Driving a hostname to `active` (live serving) stays the owner-gated Cloudflare provisioning core’s job, which is itself default-OFF until CLOUDFLARE_API_TOKEN and CLOUDFLARE_ZONE_ID are set. Automated SSL issuance and the tenant-scoped rendering context switch are still not wired.',
+          'Tenant custom-hostname registration, DNS-token verification, hostname→tenant mapping, request-time resolution, and a live Cloudflare custom-hostname client shipped in wave-3 (#4988/#4989). A CUSTOMER self-serve path is now mounted and live: a signed-in team owner/admin can claim a custom hostname for their own team and any team member can list their team’s claimed hostnames with the exact DNS TXT record to publish (GET/POST /api/tenant/hostnames, browser-session + team-role gated). The self-serve path is INERT by design: a claimed hostname is stored `pending` and never resolves or serves; it touches no live DNS, no SSL issuance, no origin binding, and no spend. Request-time rendering now resolves an already-active custom hostname to the mapped tenant team’s public active Site runtime, so live serving is blocked on owner-gated provisioning to `active`, not on the rendering context switch. Driving a hostname to `active` stays the owner-gated Cloudflare provisioning core’s job, which is itself default-OFF until CLOUDFLARE_API_TOKEN and CLOUDFLARE_ZONE_ID are set. Automated SSL issuance is still not fully wired into a mounted owner-gated route.',
         unsafeCopy:
           'Do not claim that claiming a hostname makes a site live, that DNS/SSL/branding switching works end to end, or that a claimed hostname serves anything; self-serve claiming writes a pending row only, and live provisioning (Cloudflare for SaaS) stays owner-gated and default-OFF.',
         evidenceRefs: [
@@ -3019,6 +3048,8 @@ export const publicProductPromisesDocument = () => {
           'apps/openagents.com/workers/api/src/tenant-custom-hostname-self-serve.test.ts',
           'apps/openagents.com/workers/api/src/tenant-custom-hostname-self-serve-routes.ts',
           'apps/openagents.com/workers/api/src/tenant-custom-hostname-self-serve-routes.test.ts',
+          'apps/openagents.com/workers/api/src/site-runtime-routes.ts',
+          'apps/openagents.com/workers/api/src/site-runtime-routes.test.ts',
           'apps/openagents.com/workers/api/src/cloudflare-custom-hostname-client.ts',
           'route:/api/tenant/hostnames',
           'https://github.com/OpenAgentsInc/openagents/issues/4988',
@@ -3026,10 +3057,9 @@ export const publicProductPromisesDocument = () => {
         ],
         blockerRefs: [
           'blocker.product_promises.hostname_ssl_issuance_not_wired',
-          'blocker.product_promises.hostname_rendering_context_switch_not_wired',
         ],
         verification:
-          'The customer self-serve claim/list path is mounted and gated (browser session + active team membership; only owner/admin may claim) and is covered by unit tests over the core and the routes; it writes only pending tenant_custom_hostnames rows and reports servingLive=false while provisioning is unarmed. Operator registration/verification still works and passes type checks. Green requires automated DNS verification + SSL provisioning (live Cloudflare for SaaS, owner-gated, default-OFF today) and request routing to tenant-scoped rendering.',
+          'The customer self-serve claim/list path is mounted and gated (browser session + active team membership; only owner/admin may claim) and is covered by unit tests over the core and the routes; it writes only pending tenant_custom_hostnames rows and reports servingLive=false while provisioning is unarmed. Operator registration/verification still works and passes type checks. Site runtime route tests cover active custom-host request-time rendering: a custom hostname resolves to its tenant team and serves that team’s active public Site without a slug prefix while first-party hosts are not intercepted. Green still requires automated DNS verification + SSL provisioning (live Cloudflare for SaaS, owner-gated, default-OFF today) to advance claimed hostnames to active serving.',
         authorityBoundary:
           'Hostname registration is not DNS authority, SSL certificate authority, or site-content publication authority.',
       },
@@ -3131,7 +3161,7 @@ export const publicProductPromisesDocument = () => {
         claim:
           'Spoken commands and intent can be ingested into Autopilot workrooms as transcribed, approval-gated action proposals.',
         safeCopy:
-          'Voice-session evidence contracts, read-only projections, and a voice-transcript→program ingest core shipped in wave-3 (#4992): voice-session metadata, transcript segments, and command proposals with approval-required and risk labels, projected with mutation disabled. Going further is a product decision plus wiring: pick an STT vendor and capture path, the flag-gated INERT ingestion endpoint (POST /api/mobile/voice-sessions/ingest, default off) is now wired to the ingest core (#5542, clearing the endpoint blocker); remaining is an STT vendor + capture path, AI proposal generation, and the approval UI. Foundation infrastructure for mobile.voice_approval_companion.v1.',
+          'Voice-session evidence contracts, read-only projections, and a voice-transcript→program ingest core shipped in wave-3 (#4992): voice-session metadata, transcript segments, and command proposals with approval-required and risk labels, projected with mutation disabled. Going further is a product decision plus wiring: pick an STT vendor and capture path. The flag-gated INERT ingestion endpoint (POST /api/mobile/voice-sessions/ingest, default off) is wired to the ingest core (#5542, clearing the endpoint blocker), and when armed it now returns a machine-checkable approvalGate (operator_required, needs_approval, Medium risk, no approval mutation, no command execution) alongside the program-input proposal. Remaining is an STT vendor + capture path, AI proposal generation, and the approval UI. Foundation infrastructure for mobile.voice_approval_companion.v1.',
         unsafeCopy:
           'Do not claim users can speak commands that execute, or that voice transcripts are trusted for mutations (CRM, email send, code, deploy, spend) without server-side approval; the ingest core exists but no STT vendor or live capture path is chosen.',
         evidenceRefs: [
@@ -3147,7 +3177,7 @@ export const publicProductPromisesDocument = () => {
           'blocker.product_promises.voice_proposal_and_approval_ui_missing',
         ],
         verification:
-          'Voice evidence contracts and projection logic pass tests. Green requires an ingestion endpoint, a transcription service, proposal generation, and an approval UI, with every proposed action gated server-side.',
+          'Voice evidence contracts, projection logic, the flag-gated ingestion endpoint, and the explicit approvalGate response are covered by tests. Green requires a transcription service, live capture path, proposal generation, and approval UI, with every proposed action gated server-side.',
         authorityBoundary:
           'A voice transcript is evidence of user intent, not command authority; all proposed actions require server-side policy checks and explicit approval.',
       },
@@ -3256,7 +3286,7 @@ export const publicProductPromisesDocument = () => {
         claim:
           'An Apple Silicon user can run a basic Autopilot chat and tool loop entirely locally through Apple Foundation Models, without OpenAgents hosted compute or user-supplied cloud model keys.',
         safeCopy:
-          'Source support and admitted-Mac smoke evidence now exist for the basic local Apple FM mode: on supported macOS Apple Silicon machines, Autopilot Desktop can ask Pylon to start a bounded local Apple FM chat/tool session after live readiness passes, using read-only workspace tools and public-safe desktop event summaries without sending prompts to OpenAgents hosted compute. Khala Desktop now also has source-level Electrobun Apple FM sidecar packaging/readiness: it can discover or launch the packaged Foundation Models helper, read Pylon apple_fm.status over loopback, and emit public-safe readiness without leaking tokens, callback URLs, prompts, or local paths. This is yellow, not green: the current public installer still needs a signed recut with helper launch/supervision, and the claim is limited to basic local chat/tool use on admitted Apple hardware.',
+          'Source support and admitted-Mac smoke evidence now exist for the basic local Apple FM mode: on supported macOS Apple Silicon machines, Autopilot Desktop can ask Pylon to start a bounded local Apple FM chat/tool session after live readiness passes, using read-only workspace tools and public-safe desktop event summaries without sending prompts to OpenAgents hosted compute. Khala Desktop now also has source-level Electrobun Apple FM sidecar packaging/readiness: it can discover or launch the packaged Foundation Models helper, bounded-restart that helper after a crash, read Pylon apple_fm.status over loopback, and emit public-safe readiness without leaking tokens, callback URLs, prompts, or local paths. This is yellow, not green: the current public installer still needs a signed recut with from-install helper supervision smoke, and the claim is limited to basic local chat/tool use on admitted Apple hardware.',
         unsafeCopy:
           'Do not claim this works in the current installer, do not claim every Apple device is supported, do not claim offline internet-free coding beyond the local tool scope, do not claim Codex parity, and do not imply Bitcoin earning, paid compute resale, cloud fallback, or settlement authority from this local mode.',
         evidenceRefs: [
@@ -3295,6 +3325,7 @@ export const publicProductPromisesDocument = () => {
           'apps/autopilot-desktop/tests/cl-53-foldkit.test.ts',
           'apps/autopilot-desktop/tests/cl-53-sanitize.test.ts',
           'docs/apple-fm/2026-06-29-electrobun-apple-fm-swift-sidecar-plan.md',
+          'docs/launch/vertex-fleet/autopilot.local_apple_fm_tool_chat.v1.md',
           'clients/khala-desktop/electrobun.config.ts',
           'clients/khala-desktop/scripts/prepare-apple-fm-bridge.sh',
           'clients/khala-desktop/scripts/verify-packaged-apple-fm-bridge.ts',
@@ -3313,10 +3344,10 @@ export const publicProductPromisesDocument = () => {
         ],
         blockerRefs: [
           'blocker.product_promises.local_apple_fm_signed_installer_recut_missing',
-          'blocker.product_promises.local_apple_fm_helper_supervision_missing',
+          'blocker.product_promises.local_apple_fm_signed_from_install_supervised_smoke_missing',
         ],
         verification:
-          'Yellow is satisfied by focused fake-bridge tests plus an admitted-Mac source smoke showing bridge health ready, desktop/Pylon Apple FM readiness ready, one local read_file chat/tool session, local lane, read-only sandbox, network disabled, no cloud runner, no resource_usage_receipt, disabled handling, and redaction of prompts, file contents, callback tokens, callback URLs, bearer material, and local paths. Khala Desktop sidecar evidence is source-level packaging/readiness only: tests verify packaged-helper discovery, launch, Pylon status sanitation, unsupported-host handling, and redaction of loopback URLs, callback data, prompts, secrets, and local helper paths. Green requires a signed/notarized installer recut that bundles or supervises the helper and repeats the same from-install smoke.',
+          'Yellow is satisfied by focused fake-bridge tests plus an admitted-Mac source smoke showing bridge health ready, desktop/Pylon Apple FM readiness ready, one local read_file chat/tool session, local lane, read-only sandbox, network disabled, no cloud runner, no resource_usage_receipt, disabled handling, and redaction of prompts, file contents, callback tokens, callback URLs, bearer material, and local paths. Khala Desktop sidecar evidence is source-level packaging/readiness only: tests verify packaged-helper discovery, launch, bounded crash restart, stopped-restart cancellation, Pylon status sanitation, unsupported-host handling, and redaction of loopback URLs, callback data, prompts, secrets, and local helper paths. Pylon source evidence now covers helper supervision policy, status projection, driver, launcher, and opt-in host lifecycle ownership, but green still requires a signed/notarized installer recut that bundles or supervises the helper and repeats the same supervised from-install smoke on admitted Apple Silicon.',
         authorityBoundary:
           'This promise is a local user-owned model path only. It grants no cloud compute, paid assignment, payout, settlement, provider-account, deploy, spend, or public-claim authority, and local tools remain bounded by explicit workspace/tool policy.',
       },
@@ -3795,9 +3826,9 @@ export const publicProductPromisesDocument = () => {
         claim:
           'Agents and humans build their own products out of the OpenAgents Cloud primitives and open markets, then list those products for sale in the OpenAgents marketplace.',
         safeCopy:
-          'Compose-your-own-product-and-list-it-for-sale is the Episode 239 marketplace vision (docs/transcripts/239.md), and it is roadmap. A typed product-definition scaffold and public read-only listing/discovery projection exist at GET /api/public/marketplace/composed-products; the route is inert, planned-state, and empty by default unless injected/flag-armed. Adjacent planned lanes exist — the agentic-npm module registry (marketplace.agentic_npm_module_registry.v1) and WASM plugins (marketplace.wasm_plugins.v1) — but there is no live composition runtime that provisions primitives into a buyable product, no self-serve listing write/install/use lifecycle, no marketplace billing, attribution, rev-share, or settlement. Nobody has composed a product from the primitives and sold it through OpenAgents.',
+          'Compose-your-own-product-and-list-it-for-sale is the Episode 239 marketplace vision (docs/transcripts/239.md), and it is roadmap. A typed product-definition scaffold, bounded no-spend assemble/list/install-use lifecycle receipts with builder attribution, and public read-only listing/discovery projection exist at GET /api/public/marketplace/composed-products; the route is inert, planned-state, and empty by default unless injected/flag-armed. Adjacent planned lanes exist — the agentic-npm module registry (marketplace.agentic_npm_module_registry.v1) and WASM plugins (marketplace.wasm_plugins.v1) — but there is no marketplace billing, paid sale receipt, rev-share settlement, or live primitive provisioning. Nobody has sold a composed product through OpenAgents.',
         unsafeCopy:
-          'Do not claim users or agents can build a live product from the primitives and list it for sale today, that an OpenAgents product marketplace is live, or that composed products are buyable, installable, fulfillable, billable, settled, or revenue-bearing. Do not present the inert read-only listing scaffold or planned module/plugin lanes as a live compose-and-sell marketplace.',
+          'Do not claim users or agents can build a live paid product from the primitives and list it for sale today, that an OpenAgents product marketplace is live, or that composed products are buyable, billable, settled, revenue-bearing, or backed by live primitive provisioning. Do not present the no-spend lifecycle scaffold, inert read-only listing route, or planned module/plugin lanes as a live compose-and-sell marketplace.',
         evidenceRefs: [
           'docs/transcripts/239.md',
           'docs/promises/2026-06-19-episode-239-lets-make-money-registry-reconciliation.md',
@@ -3810,14 +3841,13 @@ export const publicProductPromisesDocument = () => {
           'route:/api/public/marketplace/composed-products',
         ],
         blockerRefs: [
-          'blocker.product_promises.marketplace_composition_runtime_unbuilt',
-          'blocker.product_promises.marketplace_self_serve_listing_write_install_lifecycle_unbuilt',
+          'blocker.product_promises.marketplace_paid_listing_runtime_missing',
           'blocker.product_promises.marketplace_billing_settlement_missing',
         ],
         verification:
-          'Planned until a composed product can be assembled from primitives, self-serve listed, discovered, installed/used by a buyer, and produce a dereferenceable paid receipt with attribution and rev-share to the builder. The current route proves only the inert typed definition + read-only listing/discovery scaffold. Per proof.demand_provenance.v1, an internally-built or injected listing is plumbing proof, not market proof.',
+          'Planned until a composed product can be assembled from primitives, self-serve listed, discovered, installed/used by a buyer, and produce a dereferenceable paid receipt with attribution and rev-share to the builder. The current source proves only the inert typed definition plus no-spend assemble/list/install-use lifecycle receipts, and the public route proves only read-only listing/discovery. Per proof.demand_provenance.v1, an internally-built or injected listing is plumbing proof, not market proof.',
         authorityBoundary:
-          'A compose-and-list vision and read-only listing scaffold grant no live composition runtime, self-serve listing write, install/use, fulfillment, billing, rev-share, payout, or public-marketplace-claim authority.',
+          'A compose-and-list vision plus no-spend lifecycle scaffold grant no paid listing, live primitive provisioning, fulfillment, billing, rev-share, payout, or public-marketplace-claim authority.',
       },
       {
         ...basePromiseFields,
@@ -3870,6 +3900,7 @@ export const publicProductPromisesDocument = () => {
         evidenceRefs: [
           'docs/transcripts/239.md',
           'docs/promises/2026-06-19-episode-239-lets-make-money-registry-reconciliation.md',
+          'docs/promises/2026-06-29-world-first-claims-7027-audit.md',
           'promise:referral.refer_once_earn_forever.v1',
           'promise:claims.world_first_ai_training_paid_bitcoin.v1',
         ],
@@ -3879,7 +3910,7 @@ export const publicProductPromisesDocument = () => {
           'blocker.product_promises.world_first_owner_signed_upgrade_missing',
         ],
         verification:
-          'This record is intentionally never green from aspiration. Any future non-aspirational claim would require a real, sized, independently-countable agentic sales force, an independent prior-art / record review, a dereferenceable evidence pack, and an owner-signed receipt-first upgrade per proof.claim_upgrade_receipts.v1. Until then it stays a labeled pursuit.',
+          'This record is intentionally never green from aspiration. The #7027 dated audit (docs/promises/2026-06-29-world-first-claims-7027-audit.md) keeps the blockers explicit: there is no real, sized, independently countable agentic sales force, no record review, and no owner-signed upgrade. Any future non-aspirational claim would require a real, sized, independently-countable agentic sales force, an independent prior-art / record review, a dereferenceable evidence pack, and an owner-signed receipt-first upgrade per proof.claim_upgrade_receipts.v1. Until then it stays a labeled pursuit.',
         authorityBoundary:
           'A pursued world first grants no record-holder status, no marketing-claim authority, and no sales, payout, or settlement authority. Aspiration is not achievement.',
       },
@@ -3898,6 +3929,7 @@ export const publicProductPromisesDocument = () => {
         evidenceRefs: [
           'docs/transcripts/239.md',
           'docs/promises/2026-06-19-episode-239-lets-make-money-registry-reconciliation.md',
+          'docs/promises/2026-06-29-world-first-claims-7027-audit.md',
           'promise:claims.pursued_world_first_largest_agentic_sales_force.v1',
           'promise:claims.world_first_public_llm_computer_training_run.v1',
         ],
@@ -3907,7 +3939,7 @@ export const publicProductPromisesDocument = () => {
           'blocker.product_promises.world_first_owner_signed_upgrade_missing',
         ],
         verification:
-          'This record is intentionally never green from aspiration. Any future non-aspirational claim would require independently verified counts crossing the stated bar, an independent prior-art / record review (with the comparison figure independently sourced, not ChatGPT-attributed), a dereferenceable evidence pack, and an owner-signed receipt-first upgrade per proof.claim_upgrade_receipts.v1.',
+          'This record is intentionally never green from aspiration. The #7027 dated audit (docs/promises/2026-06-29-world-first-claims-7027-audit.md) keeps the blockers explicit: no independently verified count crosses the stated bar, no independently sourced comparison pack exists, and no owner-signed upgrade exists. Any future non-aspirational claim would require independently verified counts crossing the stated bar, an independent prior-art / record review (with the comparison figure independently sourced, not ChatGPT-attributed), a dereferenceable evidence pack, and an owner-signed receipt-first upgrade per proof.claim_upgrade_receipts.v1.',
         authorityBoundary:
           'A pursued world first grants no record-holder status, no marketing-claim authority, and no sales, payout, or settlement authority. Aspiration is not achievement.',
       },
@@ -4093,13 +4125,14 @@ export const publicProductPromisesDocument = () => {
         claim:
           'Autopilot onboarding is agent character creation: your Pylon warps in and spawns your agent into the world, you customize it, and it automatically introduces itself on the Forum and starts searching for work.',
         safeCopy:
-          'Agent character creation is planned, in-progress design and build work (P3, issue #5738) that reframes onboarding as spawning and customizing your agent, with an automated Forum introduction and work search. It builds on the merged scene/payment/growth surfaces and the three-effect#10 W0 primitives (spawner/avatar/warp-in/bars). It is not a shipped onboarding flow.',
+          'Agent character creation is planned, in-progress design and build work (P3, issues #5738/#6861) that reframes onboarding as spawning and customizing your agent, with an automated Forum introduction and work search. The closure gate is receipt-first: a built spawn/customize flow, an end-to-end automated Forum introduction receipt, and a tested automated work-search receipt. It builds on the merged scene/payment/growth surfaces and the three-effect#10 W0 primitives (spawner/avatar/warp-in/bars). It is not a shipped onboarding flow.',
         unsafeCopy:
           'Do not say character-creation onboarding is live, that it spawns agents for real users today, or that it automatically posts to the Forum or searches for paid work for anyone yet.',
         evidenceRefs: [
           'docs/launch/2026-06-20-agent-mmorpg-hud-autopilot-audit-and-plan.md',
           'https://github.com/OpenAgentsInc/openagents/issues/5730',
           'https://github.com/OpenAgentsInc/openagents/issues/5738',
+          'https://github.com/OpenAgentsInc/openagents/issues/6861',
           'promise:autopilot.agent_world_scene.v1',
           'promise:autopilot.desktop_gui_client.v1',
           'promise:labor.forum_work_requests.v1',
@@ -4110,7 +4143,7 @@ export const publicProductPromisesDocument = () => {
           'blocker.product_promises.agent_character_creation_auto_work_search_unproven',
         ],
         verification:
-          'Planned: the P3 onboarding-as-character-creation flow (warp-in spawn, customize, automated Forum intro + work search) is design/build scope under issue #5738 in EPIC #5730, reusing the merged P0/P1/P2 scene surfaces and the three-effect#10 W0 primitives. Nothing is live. Green requires a built, tested onboarding flow that spawns and customizes a real user agent, a demonstrated automated Forum introduction and work-search step, and an owner-signed receipt-first upgrade per proof.claim_upgrade_receipts.v1.',
+          'Planned: the P3 onboarding-as-character-creation flow (warp-in spawn, customize, automated Forum intro + work search) is design/build scope under issues #5738/#6861 in EPIC #5730, reusing the merged P0/P1/P2 scene surfaces and the three-effect#10 W0 primitives. Nothing is live. Green requires a built, tested onboarding flow that spawns and customizes a real user agent, a demonstrated automated Forum introduction, a demonstrated automated work-search step covered by tests, and a receipt-first upgrade per proof.claim_upgrade_receipts.v1.',
         authorityBoundary:
           'Character-creation onboarding, when built, grants no spend, payout, settlement, or moderation authority. Any automated Forum posting or work search it performs stays bound to existing agent-posting, labor-market, and approval gates and asserts no new authority on its own.',
       },
@@ -4123,23 +4156,34 @@ export const publicProductPromisesDocument = () => {
         claim:
           'OpenAgents is a walkable, inhabited multiplayer world where agents and humans share one space — moving avatars, proximity chat, and focus beams — backed by a realtime multiplayer database.',
         safeCopy:
-          'The walkable multiplayer agent world is planned roadmap scope (P4, issue #5739): third-person movement over the scene with a Cloudflare world-backed openagents-world for real agents/humans, proximity chat bubbles, and focus beams. It is design/build direction only; the shipped surfaces today are the flag-gated single-view scene, payment particles, and growth tiers — not a multiplayer world.',
+          'The walkable multiplayer agent world remains planned roadmap scope (P4, issue #5739). Partial source-level plumbing now exists: packages/world-contract models agent_avatar/avatar_position rows, apps/openagents-world applies join_region/set_avatar_position commands and subscription projections, and packages/world-client mirrors snapshots/deltas into a WorldReadModel with avatar position projection tests. This is not yet a shipped walkable multiplayer world: third-person WASD navigation over the scene and live rendering of other avatars from production presence deltas remain blocked.',
         unsafeCopy:
-          'Do not say OpenAgents has a live walkable or multiplayer world, that agents and humans can move around a shared space today, or that the Cloudflare world openagents-world is shipped or inhabited.',
+          'Do not say OpenAgents has a live walkable or multiplayer world, that agents and humans can move around a shared space today, or that the Cloudflare world client is production-shipped, default-on, or inhabited by live users.',
         evidenceRefs: [
           'docs/launch/2026-06-20-agent-mmorpg-hud-autopilot-audit-and-plan.md',
           'https://github.com/OpenAgentsInc/openagents/issues/5730',
           'https://github.com/OpenAgentsInc/openagents/issues/5739',
+          'https://github.com/OpenAgentsInc/openagents/issues/6859',
+          'apps/openagents-world/src/commands.ts',
+          'apps/openagents-world/src/commands.test.ts',
+          'apps/openagents-world/src/protocol.ts',
+          'apps/openagents-world/src/protocol.test.ts',
+          'apps/openagents-world/src/subscriptions.ts',
+          'apps/openagents-world/src/subscriptions.test.ts',
+          'packages/world-client/src/index.ts',
+          'packages/world-client/src/index.test.ts',
+          'packages/world-contract/src/index.ts',
+          'packages/world-contract/src/index.test.ts',
           'promise:autopilot.agent_world_scene.v1',
           'promise:autopilot.agent_character_creation.v1',
         ],
         blockerRefs: [
           'blocker.product_promises.multiplayer_world_not_built',
-          'blocker.product_promises.multiplayer_world_worlddb_client_unshipped',
           'blocker.product_promises.multiplayer_world_walkable_navigation_unbuilt',
+          'blocker.product_promises.multiplayer_world_live_avatar_rendering_unproven',
         ],
         verification:
-          'Planned: the P4 walkable multiplayer world (WASD over the scene, Cloudflare world openagents-world client for real avatar_position/agent_avatar state, proximity chat, focus beams) is roadmap scope under issue #5739 in EPIC #5730, explicitly sequenced after P0-P3 and de-risked by shipping the HTTP/SSE single-view path first. Nothing is live. Green requires a built, tested walkable multiplayer world with a live Cloudflare world client carrying real agent/human presence, and an owner-signed receipt-first upgrade per proof.claim_upgrade_receipts.v1.',
+          'Planned: the P4 walkable multiplayer world is partially de-risked at the source/test layer by the Cloudflare openagents-world service, shared world-contract schemas, and world-client WorldReadModel snapshot/delta projection for agent_avatar/avatar_position rows. Green still requires a built and tested WASD/third-person navigation path over the shipped scene, production live-presence wiring that renders other avatars from real deltas, proximity chat/focus beam evidence where claimed, and an owner-signed receipt-first upgrade per proof.claim_upgrade_receipts.v1.',
         authorityBoundary:
           'A multiplayer world, when built, grants no spend, payout, settlement, or moderation authority. Every moving thing stays bound to a real receipt or event, and shared presence asserts no authority over the agents, humans, or balances it depicts.',
       },
@@ -4188,13 +4232,23 @@ export const publicProductPromisesDocument = () => {
         claim:
           "A business customer can buy a coding quick win: a written objective is taken into a repository, the customer's verification command is run, and a reviewable change is handed back with verification evidence.",
         safeCopy:
-          'Coding quick wins are available as an operator-assisted business offering. The coding-agent runtime (local Claude/Codex bridge, Probe/Pylon CLI/TUI background execution) and the negotiated forum labor market are live and green, so OpenAgents can take a bounded coding objective and return a diff with verification evidence. Packaging this as a priced intake -> delivery -> accepted-outcome -> receipt business product is operator-assisted today, not self-serve.',
+          'Coding quick wins have a self-serve evidence pipeline: the public route accepts scoped intake, provisioning, runtime invocation, delivery, acceptance, and payment evidence and returns a machine-checkable receipt. The coding-agent runtime and negotiated forum labor market remain the execution backing. The promise is still yellow because the first real paid customer receipt plus owner sign-off has not been substantiated.',
         unsafeCopy:
-          'Do not say coding quick wins are a one-click self-serve product, that arbitrary large projects are guaranteed, or that delivery happens without a human review gate and an accepted-outcome check.',
+          'Do not say coding quick wins have a substantiated first paid customer receipt, that arbitrary large projects are guaranteed, or that delivery happens without a human review gate and an accepted-outcome check.',
         evidenceRefs: [
           'docs/business/2026-06-20-openagents-business-intake-spec.md',
           'docs/launch/2026-06-19-coding-agent-live-verification.md',
+          'docs/launch/gemini-fleet/business.coding_quick_win.v1.md',
           'docs/labor/2026-06-14-first-negotiated-labor-job-evidence-bundle.md',
+          'apps/openagents.com/workers/api/src/coding-quick-win-pipeline.ts',
+          'apps/openagents.com/workers/api/src/coding-quick-win-pipeline.test.ts',
+          'apps/openagents.com/workers/api/src/coding-quick-win-pipeline-routes.ts',
+          'apps/openagents.com/workers/api/src/coding-quick-win-pipeline-routes.test.ts',
+          'apps/openagents.com/workers/api/src/coding-quick-win-claim-upgrade.ts',
+          'apps/openagents.com/workers/api/src/coding-quick-win-claim-upgrade.test.ts',
+          'apps/openagents.com/workers/api/src/coding-quick-win-receipt-public-routes.ts',
+          'apps/openagents.com/workers/api/src/coding-quick-win-receipt-public-routes.test.ts',
+          'route:/api/public/business/coding-quick-win-receipts?view=paid-delivery-claims',
           'promise:pylon.local_claude_agent_bridge.v1',
           'promise:autopilot.codex_probe_pylon_successor.v1',
           'promise:pylon.cli_tui_probe_background.v1',
@@ -4204,11 +4258,10 @@ export const publicProductPromisesDocument = () => {
           'promise:business.intake_quick_win_offering.v1',
         ],
         blockerRefs: [
-          'blocker.product_promises.business_coding_quick_win_self_serve_missing',
           'blocker.product_promises.business_coding_quick_win_paid_receipt_missing',
         ],
         verification:
-          'Yellow inherits its execution evidence from the green coding-agent records (local single-task exec re-verified 2026-06-19, docs/launch/2026-06-19-coding-agent-live-verification.md) and the green negotiated labor market (#4777 settled labor job). True today: OpenAgents can run a bounded coding objective and return a verified diff, operator-assisted. Green requires a packaged, repeatable coding-quick-win business product (priced intake -> delivery -> accepted outcome) with a dereferenceable first paid customer receipt and a receipt-first upgrade per proof.claim_upgrade_receipts.v1.',
+          'Yellow inherits its execution evidence from the green coding-agent records (local single-task exec re-verified 2026-06-19, docs/launch/2026-06-19-coding-agent-live-verification.md) and the green negotiated labor market (#4777 settled labor job). The self-serve evidence route POST /api/public/business/coding-quick-win-pipeline accepts scope -> provisioning -> runtime invocation -> delivery -> acceptance -> payment events and returns a machine-checkable BusinessQuickWinReceipt without moving money. True today: the route can validate a complete coding quick-win evidence chain and build the receipt shape. Green still requires a dereferenceable first real paid customer receipt plus owner sign-off projected through GET /api/public/business/coding-quick-win-receipts?view=paid-delivery-claims, per proof.claim_upgrade_receipts.v1.',
         authorityBoundary:
           "A coding quick win delivers a reviewable change with evidence under a human review gate. It grants no auto-merge, deploy, spend, payout, or settlement authority, and accepting an outcome is the customer's decision, not an automatic one.",
       },
@@ -4251,7 +4304,7 @@ export const publicProductPromisesDocument = () => {
         claim:
           'A business customer can hand OpenAgents a batch of items (summaries, classifications, extractions) and get the processed results back as a buyable, metered inference job.',
         safeCopy:
-          'Batch inference processing as a buyable business offering is planned roadmap scope. The underlying single-request gateway is live and free inference works, but there is no batch-job product surface (submit a dataset, meter it, return results with a receipt) and the paid credits loop it would bill against is not yet collectable.',
+          'Batch inference processing as a buyable business offering is planned roadmap scope. The underlying single-request gateway is live, and a receipt-first batch-job surface now has tested submit, detached processing, authenticated result retrieval, and closeout receipt plumbing. The promise is not green until a real paid batch receipt and owner-approved claim transition prove the billable offering.',
         unsafeCopy:
           'Do not say OpenAgents has a live batch-processing product, that customers can submit datasets for metered batch inference today, or that batch jobs return billed receipts.',
         evidenceRefs: [
@@ -4267,7 +4320,7 @@ export const publicProductPromisesDocument = () => {
           'blocker.product_promises.inference_batch_job_surface_unbuilt',
         ],
         verification:
-          'Planned: the per-request gateway (POST /v1/chat/completions) and free taste are live, but no batch-job offering exists — there is no dataset-submission surface, no batch metering/result-return loop, and the paid credits path it would bill against is not collectable (see inference.gateway_credits_business.v1). Green requires a built, tested batch-processing product with a dereferenceable first paid batch-job receipt and a receipt-first upgrade per proof.claim_upgrade_receipts.v1.',
+          'Planned: the per-request gateway (POST /v1/chat/completions) and free taste are live, and route tests now cover the batch job submit/status/results/receipt path. This remains planned because green requires a dereferenceable first real paid batch-job receipt, billing evidence tied to inference.gateway_credits_business.v1, and a receipt-first upgrade per proof.claim_upgrade_receipts.v1.',
         authorityBoundary:
           "A batch inference job, when built, grants no spend authority beyond the customer's funded balance, no payout, and no settlement authority, and processing results never asserts an outcome the underlying model run did not produce.",
       },
@@ -4350,6 +4403,10 @@ export const publicProductPromisesDocument = () => {
           'docs/blitz/forge/2026-06-16-marketing-agency-prefilled-workspace.md',
           'apps/openagents.com/workers/api/src/prefilled-workspace-vertical-templates.ts',
           'apps/openagents.com/workers/api/src/prefilled-workspace-vertical-templates.test.ts',
+          'apps/openagents.com/workers/api/src/marketing-agency-delivery-receipt.ts',
+          'apps/openagents.com/workers/api/src/marketing-agency-delivery-receipt.test.ts',
+          'apps/openagents.com/workers/api/src/marketing-agency-claim-upgrade.ts',
+          'apps/openagents.com/workers/api/src/marketing-agency-receipt-public-routes.ts',
           'https://github.com/OpenAgentsInc/openagents/issues/5102',
           'promise:autopilot_sites.site_build_and_host.v1',
           'promise:autopilot_sites.native_email_sequences.v1',
@@ -4357,6 +4414,7 @@ export const publicProductPromisesDocument = () => {
         ],
         blockerRefs: [
           'blocker.product_promises.marketing_agency_pack_self_serve_missing',
+          'blocker.product_promises.marketing_agency_pack_first_paid_delivery_receipt_missing',
         ],
         verification:
           'Yellow is the shipped, tested prefilled marketing-agency template (forge.template.marketing_agency.white_label_launch.v1) seeding a white-label landing-page + email workspace (prefilled-workspace-vertical-templates.ts, .test.ts), composed with the yellow Autopilot Sites records (site build/host, custom hostnames, native email sequences). True today: an operator can stand up the seeded workspace and draft pages/emails under a review gate. Green requires a self-serve vertical pack with proven send/publish deliverability and a dereferenceable first paid agency work-item delivery receipt, with a receipt-first upgrade per proof.claim_upgrade_receipts.v1.',
@@ -4366,6 +4424,7 @@ export const publicProductPromisesDocument = () => {
     ],
     notes: [
       `Include version ${PublicProductPromisesVersion} and the relevant promiseId when reporting a mismatch.`,
+      'Registry 2026-06-29.3 is a receipt-gate tightening pass for autopilot.agent_character_creation.v1 / #6861 and flips NO promise state. The planned character-creation promise now cites the active public issue and names the three concrete closure receipts: built spawn/customize onboarding, automated Forum self-introduction demonstrated end to end, and automated work-search covered by tests. The promise remains planned; no spawn flow, Forum posting authority, work-search automation, spend, payout, settlement, or green claim is created.',
       'The Pylon launch-promise inventory is represented one-for-one in the promise records above.',
       'Episode 199 is included with a heavy historical caveat: Claude Code-first mech-suit language is withdrawn as current public framing; current coding-agent runtime claims should point to Codex-oriented Autopilot/Probe/Pylon records.',
       'Pylon v1.0 has a stable source cut in the monorepo, but broad Pylon earning, paid settlement, training, data revenue, referral payout, and labor-market claims remain gated.',
@@ -4433,7 +4492,7 @@ export const publicProductPromisesDocument = () => {
       'Registry 2026-06-20.27 is a training.ablation_system.v1 eval-reproduction pass and flips NO promise state (stays planned, green count unchanged at 24). GET /api/public/training/ablation-derisking-ledger now carries evalReproductionReceipts with one retained Psion actual-pretraining checkpoint-eval decision projected as receipt.training_ablation.eval_reproduction.psion_actual_checkpoint_eval.v1, source schema psion.actual_pretraining_checkpoint_eval_decision.v1, frozen checkpoint eval pack benchmark://psion/actual_pretraining/checkpoint_eval@2026.04.02, four gates passed, aggregatePassRateBps 10000, aggregateScoreBps 8532, decisionState continue. This clears blocker.product_promises.eval_suite_reproduction_missing only. The promise remains planned on blocker.product_promises.paid_ablation_dispatch_missing: no OpenAgents ablation cell has been dispatched as paid work, no assignment settled, no ablation verdict was accepted, and no model promotion or training-decision claim is created. Evidence: docs/training/2026-06-20-ablation-eval-reproduction-receipt.md.',
       'Registry 2026-06-20.28 is a models.tassadar_percepta_executor.v1 architecture-receipt pass and flips NO promise state (stays red, green count unchanged at 24). GET /api/public/models/tassadar-percepta-executor/architecture-receipts now serves a public-safe, live-at-read architecture receipt bundle receipt.models.tassadar_percepta_executor.architecture.bundle.v1 tying the model profile to Psionic compiled-executor bundles, the W3 baseline-D frozen-executor learned-interface receipt, artifact-lineage hashes, and exact-trace verifier refs. This clears blocker.product_promises.percepta_executor_architecture_receipts_missing only. The promise remains red on blocker.product_promises.pylon_v03_cpu_transform_training_receipts_missing: no Pylon CPU-transform training assignment has run, no accepted work or verifier verdict exists for that training path, no settlement moved, and no trained-model, inference, model-promotion, or capability claim is created. Evidence: docs/tassadar/2026-06-20-tassadar-percepta-architecture-receipt.md.',
       'Registry 2026-06-20.29 is a training.post_training_arc.v1 instruct-SFT lane receipt pass and flips NO promise state (stays planned, green count unchanged at 24). GET /api/public/training/post-training-arc/instruct-sft-lane now serves a public-safe, live-at-read receipt receipt.training.post_training_arc.instruct_sft_lane.psion_fixture.v1 for the bounded Psionic lane psion_instruct_sft_v1: owned chat template, assistant-token generation mask, repo-owned example corpus, deterministic smoke run, and bit-exact resume drill from deterministic generator output. This clears blocker.product_promises.instruct_sft_lane_missing only by replacing it with sharper blockers: blocker.product_promises.instruct_sft_fixture_sync_missing for the current Psionic committed-report drift from generator output, and blocker.product_promises.instruct_sft_paid_dispatch_missing for the missing paid OpenAgents SFT assignment. The promise remains planned because no paid OpenAgents SFT assignment has run, preference/DPO pairwise rollout work is still missing, and no reviewed vibe-test closeout artifact exists. No assignment, spend, settlement, instruct model, fine-tuning service, preference optimization, model promotion, or green claim is created. Evidence: docs/training/2026-06-20-psion-instruct-sft-lane-receipt.md.',
-      'Registry 2026-06-20.30 partially advances autopilot.decision_queue.v1 on blocker.product_promises.receipt_backed_command_closeout_missing and flips NO promise state (stays planned, green count unchanged at 24). Adds DecisionCloseoutReceipt (packages/autopilot-control-protocol/src/decision-closeout-receipt.ts) — the canonical, tamper-verifiable receipt type for a resolved remote Pylon bridge decision: captures requestId (exactly-once key), actionRef, verb (approve/deny/answer), terminal outcome (applied/duplicate/expired/revoked/stale/unauthorized/unsupported/error), client surface (desktop/web/expo), actor, decidedAt, hasAnswer, and a deterministic line reconstructed by validateDecisionCloseoutReceipt for audit integrity. 20 tests across all terminal outcomes, all client surfaces, answer-verb hasAnswer, terminal-vs-transient classification, and field-tamper detection. Transient outcomes (offline/overloaded) excluded by type — the queue replays them on drain. No receipt storage layer, no HTTP surface change, no end-to-end proof: the remaining gap on receipt_backed_command_closeout_missing is a persistent store and at least one live receipt from a real paired-node resolution. decision_queue_api_missing and cross_client_exactly_once_decisions_missing remain fully open. Evidence: docs/launch/vertex-fleet/autopilot.decision_queue.v1.md.',
+      'Registry 2026-06-20.30 partially advances autopilot.decision_queue.v1 on blocker.product_promises.receipt_backed_command_closeout_missing and flips NO promise state (stays planned, green count unchanged at 24). Adds DecisionCloseoutReceipt (packages/autopilot-control-protocol/src/decision-closeout-receipt.ts) — the canonical, tamper-verifiable receipt type for a resolved remote Pylon bridge decision: captures requestId (exactly-once key), actionRef, verb (approve/deny/answer), terminal outcome (applied/duplicate/expired/revoked/stale/unauthorized/unsupported/error), client surface (desktop/web/expo), actor, decidedAt, hasAnswer, and a deterministic line reconstructed by validateDecisionCloseoutReceipt for audit integrity. 20 tests across all terminal outcomes, all client surfaces, answer-verb hasAnswer, terminal-vs-transient classification, and field-tamper detection. Transient outcomes (offline/overloaded) excluded by type — the queue replays them on drain. Follow-on evidence now includes the owner-scoped Worker projection and UI rendering path for closeout receipt refs (apps/openagents.com/workers/api/src/autopilot-decision-routes.test.ts and apps/openagents.com/apps/web/src/page/loggedIn/page/decisions.test.ts). No green flip: a live paired-node receipt and owner-accepted end-to-end proof are still required before the promise can move beyond planned. Evidence: docs/launch/vertex-fleet/autopilot.decision_queue.v1.md.',
       'Registry 2026-06-20.31 is a training.post_training_arc.v1 fixture-sync receipt pass and flips NO promise state (stays planned, green count unchanged at 24). Psionic PR #1132 synchronizes the committed fixtures/psion/instruct/psion_instruct_sft_lane_report_v1.json report with deterministic generator output, and scripts/check-psion-instruct-sft-lane.sh now verifies the committed fixture with report digest sha256:76b5524234b4dd6507560c0cda6f28e782fe097c1fb022108aaaae40794d6871. GET /api/public/training/post-training-arc/instruct-sft-lane now reports committedReportFixtureSyncAvailable=true and drops blocker.product_promises.instruct_sft_fixture_sync_missing only. The promise remains planned because no paid OpenAgents SFT assignment has run, preference/DPO pairwise rollout work is still missing, and no reviewed vibe-test closeout artifact exists. No assignment, spend, settlement, instruct model, fine-tuning service, preference optimization, model promotion, or green claim is created. Evidence: docs/training/2026-06-20-psion-instruct-sft-fixture-sync.md and https://github.com/OpenAgentsInc/psionic/pull/1132.',
       'Registry 2026-06-20.32 is a training.full_pipeline_program.v1 stage-status projection pass and flips NO promise state (stays planned, green count unchanged at 24). GET /api/public/training/full-pipeline-program now serves a public-safe, live-at-read map of DE-5 training stages to their promise state, endpoint refs, evidence refs, receipt-surface state, and blocker refs. It makes the umbrella program auditable without widening the claim: greenGateSatisfied=false, endToEndRunReceiptAvailable=false, ladderRungEndToEndReceiptAvailable=false, paidNetworkWorkloadBroadlyLive=false, and blocker.product_promises.training_pipeline_rails_incomplete remains. No training dispatch, corpus admission, public-gradient acceptance, checkpoint mutation, spend, settlement, model promotion, service claim, or green transition is created. Evidence: docs/training/2026-06-20-training-full-pipeline-program-status.md.',
       'Registry 2026-06-20.33 is a training.marathon_operations.v1 durable-checkpoint seal-boundary pass and flips NO promise state (stays planned, green count unchanged at 24). Checkpoint-backed window seals now require a matching durableCheckpointSeal descriptor that passes evaluateDurableCheckpointSeal before transitionTrainingWindowRecord can seal, and selectLastDurableSealWindow now ignores legacy digest-only rows and failed-durability descriptors before issuing bootstrap grants. This binds the durability predicate into the live seal/bootstrap authority, but blocker.product_promises.durable_checkpoint_seal_missing remains because no real remote content-addressed checkpoint store has produced a read-back-and-rehash receipt. standby_dispatch_missing and curtailment_drill_missing are untouched. No dispatch, spend, settlement, storage-backend, standby promotion, curtailment drill, energy claim, or green transition is created. Evidence: docs/launch/vertex-fleet/training.marathon_operations.v1.md.',
@@ -4462,7 +4521,9 @@ export const publicProductPromisesDocument = () => {
       'Registry 2026-06-20.56 is a marketplace.agentic_npm_module_registry.v1 de-stale pass and flips NO promise state. The inert source-level agentic-npm resolver + verification-on-compose core already exists in agentic-npm-composition-runtime.ts with tests: it resolves dependency closures, gates modules on exact-trace/composition/link verification, checks required interfaces, detects missing modules/cycles, and emits a public-safe plan digest. Therefore the broad blocker.product_promises.agentic_npm_module_composition_runtime_missing is replaced with blocker.product_promises.agentic_npm_live_registry_install_use_runtime_missing. The promise remains planned: no public registry, package discovery, install/uninstall lifecycle, execution, metering, billing, attribution, rev-share, sale receipt, or settlement exists.',
       'Registry 2026-06-28.2 is a marketplace.agentic_npm_module_registry.v1 runtime-core pass and flips NO promise state. The source-level runtime now supports public-safe module publication into a registry store, discovery, deterministic dependency-closure resolution, verification-on-install, adapter-scoped invocation, and install/use evidence rows, with tests covering success and failed verification blocking. The live paid marketplace claim remains planned because authenticated self-serve publication, arbitrary package isolation policy, metering, billing, attribution, rev-share, abuse handling, sale receipts, and settlement are still not live.',
       'Registry 2026-06-28.3 is a training.ablation_system.v1 paid-dispatch receipt pass and flips NO promise state. GET /api/public/training/ablation-derisking-ledger now records one public-safe accepted paid ablation settlement receipt for assignment.public.training_ablation.wsd_schedule.one_delta_paid.v1, so paidAblationDispatchAvailable=true, paidAblationCount=1, and acceptedVerdictCount=1. This clears blocker.product_promises.paid_ablation_dispatch_missing, but the promise stays planned on seeded_ablation_replication_missing plus owner_signed_green_transition_missing. No model promotion, checkpoint mutation, broad ablation-system green claim, future spend authority, or public capability claim is created.',
+      'Registry 2026-06-29.3 is a world.multiplayer_agent_world.v1 source-evidence pass and flips NO promise state. The stale blocker blocker.product_promises.multiplayer_world_worlddb_client_unshipped is replaced with narrower live-avatar-rendering and walkable-navigation blockers because the repository now contains tested Cloudflare world service commands/protocol/subscriptions, shared world-contract agent_avatar/avatar_position schemas, and a world-client WorldReadModel that mirrors snapshots/deltas and projects avatar positions. The promise remains planned: no production default-on walkable scene, WASD/third-person navigation, live inhabited presence rendering, proximity chat, focus beams, settlement authority, or green claim is created.',
       'Registry 2026-06-20.57 is an inference.batch_processing_jobs.v1 paid-receipt surface pass and flips NO promise state (stays planned, green count unchanged at 26). The POST /v1/inference/batches route now persists jobs to D1, and GET /api/public/inference/batch-job-receipts/{receiptRef} serves projected BatchJobCloseoutReceipts for completed jobs. This clears blocker.product_promises.inference_batch_job_paid_receipt_missing only. The promise remains planned on blocker.product_promises.inference_batch_job_surface_unbuilt: there is still no background job processing pipeline to execute workloads, store R2 results, and mark jobs completed. No batch processing workload, R2 execution payload, spend, real closeout, revenue claim, or green transition is created. Evidence: docs/launch/gemini-fleet/inference.batch_processing_jobs.v1.md.',
+      'Registry 2026-06-29.1 is an inference.batch_processing_jobs.v1 fixture result-return pass and flips NO promise state (stays planned). The async batch consumer now persists per-item JSONL outputs to the existing ARTIFACTS R2 binding when configured, stores the result key on the batch job row, and GET /v1/inference/batches/{jobId}/results returns completed results only to the submitting agent. Focused tests cover submit -> queue -> consume -> receipt -> results for a fixture dataset plus direct result-route auth/status gates. The promise remains planned: green still requires a real paid batch-job receipt, billable offering evidence, and owner-approved receipt-first transition per proof.claim_upgrade_receipts.v1. No green claim, broad revenue claim, settlement, payout, or public result disclosure is created.',
       'Registry 2026-06-20.58 is a business.ecommerce_workspace_pack.v1 de-stale pass and flips NO promise state (stays yellow, green count unchanged at 26). The POST /api/public/ecommerce-campaign/workspaces route already exists, seeding workspaces using the forge.template.ecommerce.inventory_campaign.v1 template, so blocker.product_promises.ecommerce_pack_self_serve_missing is cleared. The promise remains yellow on blocker.product_promises.ecommerce_pack_first_paid_delivery_receipt_missing: no active operator route to record receipts exists, and no real paid delivery receipt, attribution, revenue claim, or green transition is created. Evidence: docs/launch/gemini-fleet/business.ecommerce_workspace_pack.v1.md.',
       'Registry 2026-06-21.1 is a DE-2 cloud primitive blocker de-stale pass and flips NO promise state (cloud.primitives_suite.v1 stays planned; cloud.fine_tuning_service.v1 and cloud.sandbox_compute_service.v1 stay red; green count unchanged). Fine-tuning and sandbox still are not live sellable services, but their route scaffolds are no longer accurately described as simply unbuilt: /v1/fine_tuning/jobs and /v1/sandboxes exist behind default-off flags, with typed request surfaces, lifecycle reads, cross-account isolation, TTL/isolation controls where applicable, and a tested receipt-first cloud-metering seam. Stale unbuilt blocker refs are replaced with narrower live-service blockers: live fine-tuning intake disabled, real fine-tuning runtime unwired, live sandbox rent surface disabled, sandbox live metering/billing unwired, and suite-level fine-tuning/sandbox live-sellable-service missing. No flags are armed, no runtime adapter is wired, no pricing is live, no credit debit or settlement occurs, and no paid receipt or green transition is created. Evidence: docs/inference/2026-06-19-cloud-primitives-fine-tuning-sandbox-scaffold-advance.md and apps/openagents.com/workers/api/src/cloud/*.',
       'Registry 2026-06-21.2 is a DE-2 cloud primitives unified-balance blocker de-stale pass and flips NO promise state (cloud.primitives_suite.v1 stays planned; green count unchanged). The composed-run source already models the one-shared-balance shape: buildComposedRunPlan carries a single ComposedRunBalance and receipt envelope, composeRunExecution folds component charge shapes into one composed spend, and the receipt gate checks one_shared_balance plus reconciliation. Therefore the stale blocker.product_promises.cloud_primitives_unified_balance_unbuilt is replaced with blocker.product_promises.cloud_primitives_live_unified_balance_debit_receipt_missing. The remaining gap is live multi-primitive execution debiting one real balance and producing a dereferenceable unified-balance receipt. No route is armed, no D1 balance is read/debited, no receipt row is written, no customer composed-run claim is created, and no green transition is created.',

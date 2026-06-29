@@ -187,6 +187,12 @@ export type DeviceCapabilityThermalThrottleSignal = Readonly<{
     | 'device_capability.public.thermal_throttle_not_observed_sustained_ratio_at_or_above_floor'
     | 'device_capability.public.thermal_throttle_observed_sustained_ratio_below_floor'
   receiptRefs: ReadonlyArray<string>
+  sameClassReplicationBlockerRefs: ReadonlyArray<string>
+  sameClassReplicationScope: DeviceCapabilitySameClassReplicationScope
+  sameClassReplicationStatus: Exclude<
+    DeviceCapabilitySameClassReplicationStatus,
+    'missing'
+  >
   sampleCount: number
   sourceRefs: ReadonlyArray<string>
   state: DeviceCapabilityThermalThrottleState
@@ -697,6 +703,10 @@ export const buildDeviceCapabilityThermalThrottleSignals = (
         ratioFloor: Cs336A2ThermalThrottleRatioFloor,
         reasonCode,
         receiptRefs: distribution.receiptRefs,
+        sameClassReplicationBlockerRefs:
+          distribution.sameClassReplicationBlockerRefs,
+        sameClassReplicationScope: distribution.sameClassReplicationScope,
+        sameClassReplicationStatus: distribution.sameClassReplicationStatus,
         sampleCount: distribution.sampleCount,
         sourceRefs: distribution.sourceRefs,
         state,
