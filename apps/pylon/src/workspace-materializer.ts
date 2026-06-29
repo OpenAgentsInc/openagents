@@ -2,6 +2,7 @@ import { existsSync, realpathSync } from "node:fs"
 import { mkdir, readdir, readFile, rm, stat, utimes, writeFile } from "node:fs/promises"
 import { dirname, join, resolve } from "node:path"
 import { createHash } from "node:crypto"
+import { Effect, type Scope } from "effect"
 import { CLAUDE_AGENT_CAPABILITY_REF } from "./claude-agent.js"
 import { CODEX_AGENT_CAPABILITY_REF } from "./codex-agent.js"
 
@@ -206,6 +207,11 @@ export function checkoutSourceRef(checkout: GitCheckoutWorkspace): string {
 const gitCommandMaxAttempts = 6
 const gitCommandRetryBaseMs = 40
 const gitCommandRetryMaxMs = 1_500
+export const WORKSPACE_GIT_LOCK_RETRY_POLICY = {
+  maxAttempts: gitCommandMaxAttempts,
+  baseDelayMs: gitCommandRetryBaseMs,
+  maxDelayMs: gitCommandRetryMaxMs,
+} as const
 
 const transientGitLockPattern =
   /(?:index|config|shallow|packed-refs|HEAD|ORIG_HEAD|FETCH_HEAD)\.lock|unable to create '[^']*\.lock'|cannot lock ref|unable to lock|could not lock|gc is already running|another git process seems to be running|Unable to create '[^']*': File exists|fatal: Unable to create/i
@@ -1001,6 +1007,17 @@ async function writeLeaseRecord(workspaceStateRoot: string, record: WorkspaceLea
   )
 }
 
+function errorFromUnknown(error: unknown): Error {
+  return error instanceof Error ? error : new Error(String(error))
+}
+
+function promiseEffect<T>(work: () => Promise<T>): Effect.Effect<T, Error> {
+  return Effect.tryPromise({
+    try: work,
+    catch: errorFromUnknown,
+  })
+}
+
 export type MaterializeWithLeaseInput = {
   cacheRoot: string
   checkout: GitCheckoutWorkspace
@@ -1075,6 +1092,29 @@ export async function materializeGitCheckoutWorkspaceWithLease(
   }
   await writeLeaseRecord(input.workspaceStateRoot, record)
   return materialized
+}
+
+/**
+ * Effect-scoped lease materialization for long-running assignment runners.
+ *
+ * The caller runs this inside `Effect.scoped`; if the fiber is interrupted
+ * after acquisition, the release finalizer removes the workspace through the
+ * same lease cleanup path used by closeout. Legacy Promise call sites keep
+ * using `materializeGitCheckoutWorkspaceWithLease` until they are migrated.
+ */
+export function scopedMaterializedGitCheckoutWorkspace(
+  input: MaterializeWithLeaseInput,
+): Effect.Effect<MaterializedWorkspace, Error, Scope.Scope> {
+  return Effect.acquireRelease(
+    promiseEffect(() => materializeGitCheckoutWorkspaceWithLease(input)),
+    (materialized) =>
+      promiseEffect(() =>
+        releaseWorkspace({
+          workspaceStateRoot: input.workspaceStateRoot,
+          workspaceRef: materialized.workspaceRef,
+        }),
+      ).pipe(Effect.asVoid, Effect.catch(() => Effect.void)),
+  )
 }
 
 type CleanLeaseRecordResult =
