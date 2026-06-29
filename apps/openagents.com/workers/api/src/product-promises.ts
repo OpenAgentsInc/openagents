@@ -4071,7 +4071,8 @@ export const publicProductPromisesDocument = () => {
           'https://github.com/OpenAgentsInc/openagents/issues/5737',
           'https://github.com/OpenAgentsInc/openagents/issues/6868',
           'apps/autopilot-desktop/src/shared/chat-world-scene.ts',
-          'apps/autopilot-desktop/src/shared/chat-world-scene.test.ts',
+          'apps/autopilot-desktop/tests/chat-world-scene.test.ts',
+          'apps/autopilot-desktop/src/shared/chat-world-visualization.ts',
           'apps/autopilot-desktop/src/ui/pylon-network-visualization.ts',
           'promise:autopilot.agent_world_scene.v1',
           'promise:autopilot.bitcoin_payment_visualization.v1',
@@ -4080,7 +4081,7 @@ export const publicProductPromisesDocument = () => {
           'blocker.product_promises.pylon_growth_flag_default_off',
         ],
         verification:
-          'Yellow now covers the live scene wiring behind CHAT_WORLD_SCENE / CHAT_WORLD_PAYMENTS: PublicRecentPylon preserves public cumulativeSettledSats when present, projectChatWorldPylonScene computes each node growth descriptor from that value, liveChatWorldNetworkScene carries the descriptor into PylonNetworkNode, and pylonNetworkVisualizationOptions maps tiers onto the pinned three-effect renderer knobs (larger role geometry, brighter status, and facet/sats detail). Tier 0 remains the 0-sat still crystal. Green still requires an owner decision on default-on and an owner-signed receipt-first upgrade per proof.claim_upgrade_receipts.v1.',
+          'Yellow now covers the live scene wiring behind CHAT_WORLD_SCENE / CHAT_WORLD_PAYMENTS: PublicRecentPylon preserves public cumulativeSettledSats when present, projectChatWorldPylonScene computes each node growth descriptor from that value, liveChatWorldNetworkScene carries the descriptor into PylonNetworkNode, and pylonNetworkVisualizationOptions maps tiers onto the pinned three-effect renderer knobs (larger role geometry, brighter status, and facet/sats detail). apps/autopilot-desktop/tests/chat-world-scene.test.ts covers both the 0-sat still crystal and the earned-tier renderer adapter path for #6868. Green still requires an owner decision on default-on and an owner-signed receipt-first upgrade per proof.claim_upgrade_receipts.v1.',
         authorityBoundary:
           'Pylon growth visualization is a presentational projection of already-public settled-sats data. It grants no earning, spend, payout, or settlement authority, and a crystal tier never asserts earnings the underlying settlement receipts do not.',
       },

@@ -18,7 +18,9 @@ import {
   type LiveRecentPylon,
   type PaymentParticle,
 } from "../src/shared/chat-world-scene"
+import { liveChatWorldNetworkScene } from "../src/shared/chat-world-visualization"
 import type { PylonStatsSnapshot } from "../src/shared/pylon-network-scene"
+import { pylonNetworkVisualizationOptions } from "../src/ui/pylon-network-visualization"
 
 // ── P1: pylon-stats → scene ──────────────────────────────────────────────────
 
@@ -184,6 +186,77 @@ describe("projectChatWorldPylonScene", () => {
     // 1.1M total → tier ≥ the 1M threshold
     expect(scene.growth.settledSats).toBe(1_100_000)
     expect(scene.growth.tier).toBeGreaterThanOrEqual(4)
+  })
+
+  test("live renderer adapter keeps zero-earning Pylons at the still tier-0 crystal", () => {
+    const scene = projectChatWorldPylonScene(
+      snapshot({
+        pylonsOnlineNow: 1,
+        recentPylons: [
+          {
+            nodeLabel: "zero",
+            nostrPubkeyShort: "pylon.zero",
+            onlineNow: true,
+            assignmentReadyNow: false,
+            walletReadyNow: false,
+            lastHeartbeatAgeSeconds: 8,
+            cumulativeSettledSats: 0,
+          } satisfies LiveRecentPylon,
+        ] as never,
+      }),
+    )
+
+    expect(scene.growth).toEqual(pylonGrowthTier(0))
+    expect(scene.nodes[0]?.growth).toEqual(pylonGrowthTier(0))
+    expect(scene.nodes[0]?.pulseSpeed).toBeGreaterThan(0)
+
+    const network = liveChatWorldNetworkScene(scene)
+    const options = pylonNetworkVisualizationOptions(network!)
+    const node = options.nodes?.find((item) => item.id === "pylon.zero")
+
+    expect(node).toMatchObject({
+      detail: "online - tier 0 - 0 sats",
+      role: "lifecycle",
+      status: "queued",
+    })
+  })
+
+  test("live renderer adapter maps cumulative settled sats into scale, brightness, and facet cues", () => {
+    const scene = projectChatWorldPylonScene(
+      snapshot({
+        pylonsOnlineNow: 1,
+        recentPylons: [
+          {
+            nodeLabel: "earned",
+            nostrPubkeyShort: "pylon.earned",
+            onlineNow: false,
+            assignmentReadyNow: false,
+            walletReadyNow: false,
+            cumulativeSettledSats: 100_000,
+          } satisfies LiveRecentPylon,
+        ] as never,
+      }),
+    )
+
+    expect(scene.nodes[0]?.growth).toEqual(pylonGrowthTier(100_000))
+
+    const network = liveChatWorldNetworkScene(scene)
+    expect(network?.nodes[0]?.growth).toEqual({
+      brightness: 0.6,
+      facets: 12,
+      scale: 1.54,
+      settledSats: 100_000,
+      tier: 3,
+    })
+
+    const options = pylonNetworkVisualizationOptions(network!)
+    const node = options.nodes?.find((item) => item.id === "pylon.earned")
+
+    expect(node).toMatchObject({
+      detail: "seen - tier 3 - 100000 sats - 12 facets",
+      role: "rung",
+      status: "sealed",
+    })
   })
 
   test("empty recentPylons with zero online → empty zero-state", () => {
