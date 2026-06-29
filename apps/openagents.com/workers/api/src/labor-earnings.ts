@@ -1,5 +1,5 @@
 import { Schema as S } from 'effect'
-import { type D1Database } from '@cloudflare/workers-types'
+import type { D1Database } from '@cloudflare/workers-types'
 import { assertLaborEscrowPublicSafe } from './labor-escrow'
 import {
   PublicProjectionStalenessContract,
