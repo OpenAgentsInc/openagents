@@ -6,6 +6,11 @@ import {
   publicProductPromisesAnnouncementReadiness,
   publicProductPromisesDocument,
 } from './product-promises'
+import {
+  FREE_TIER_DATA_SHARING_BLOCKER_REFS,
+  FREE_TIER_DATA_SHARING_PROMISE_ID,
+  freeTierDataSharingDisclosure,
+} from './inference/free-tier-data-sharing-disclosure'
 
 const ProductPromiseState = S.Literals([
   'degraded',
@@ -1650,6 +1655,64 @@ describe('public product promises document', () => {
     )
     expect(kernelPromise?.verification).toContain(
       'Green still requires a real live market-dispatched optimized kernel',
+    )
+  })
+
+  test('keeps Khala data-sharing, capture, privacy, and reward claims distinct (#7019)', () => {
+    const decoded = S.decodeUnknownSync(ProductPromisesDocument)(
+      publicProductPromisesDocument(),
+    )
+    const disclosure = freeTierDataSharingDisclosure()
+
+    const disclosurePromise = decoded.promises.find(
+      promise => promise.promiseId === FREE_TIER_DATA_SHARING_PROMISE_ID,
+    )
+    const capturePromise = decoded.promises.find(
+      promise => promise.promiseId === 'data.khala_free_tier_trace_capture.v1',
+    )
+    const privacyPromise = decoded.promises.find(
+      promise => promise.promiseId === 'privacy.khala_paid_capture_optout.v1',
+    )
+
+    expect(disclosurePromise).toBeDefined()
+    expect(capturePromise).toBeDefined()
+    expect(privacyPromise).toBeDefined()
+
+    expect(disclosure.blockerRefs).toEqual(FREE_TIER_DATA_SHARING_BLOCKER_REFS)
+    expect(disclosurePromise?.blockerRefs).toEqual(
+      expect.arrayContaining([...FREE_TIER_DATA_SHARING_BLOCKER_REFS]),
+    )
+    expect(disclosurePromise?.safeCopy).toContain(
+      '/api/public/free-tier-data-sharing',
+    )
+    expect(disclosurePromise?.safeCopy).toContain('POST /api/keys/free')
+    expect(disclosurePromise?.safeCopy).toContain('blocker refs')
+    expect(disclosurePromise?.authorityBoundary).toContain(
+      'does not change capture behavior',
+    )
+
+    expect(capturePromise?.safeCopy).toContain(
+      'owner-gated by KHALA_FREE_TIER_TRACE_CAPTURE_DEFAULT',
+    )
+    expect(capturePromise?.blockerRefs).toEqual(
+      expect.arrayContaining([
+        'blocker.product_promises.free_tier_capture_default_owner_gated',
+        'blocker.product_promises.trace_capture_public_disclosure_alignment_required',
+        'blocker.product_promises.trace_capture_reward_marker_inert',
+      ]),
+    )
+    expect(capturePromise?.safeCopy).toContain(
+      'does not create payout or settlement eligibility',
+    )
+
+    expect(privacyPromise?.safeCopy).toContain(
+      'fails closed to not-captured',
+    )
+    expect(privacyPromise?.blockerRefs).toContain(
+      'blocker.product_promises.paid_khala_business_loop_not_green',
+    )
+    expect(privacyPromise?.unsafeCopy).toContain(
+      'Do not claim paid privacy',
     )
   })
 

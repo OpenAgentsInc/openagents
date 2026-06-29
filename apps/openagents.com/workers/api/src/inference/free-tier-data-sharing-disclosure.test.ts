@@ -2,6 +2,7 @@ import { Effect } from 'effect'
 import { describe, expect, test } from 'vitest'
 
 import {
+  FREE_TIER_DATA_SHARING_BLOCKER_REFS,
   FREE_TIER_DATA_SHARING_DISCLOSURE_VERSION,
   FREE_TIER_DATA_SHARING_PROMISE_ID,
   freeTierDataSharingDisclosure,
@@ -25,6 +26,10 @@ describe('free-tier data-sharing disclosure (#6296)', () => {
       rewardInert: true,
     })
     expect(disclosure.reportPath).toContain('forum/f/product-promises')
+    expect(disclosure.blockerRefs).toEqual(FREE_TIER_DATA_SHARING_BLOCKER_REFS)
+    expect(disclosure.blockerRefs).toContain(
+      'blocker.product_promises.free_tier_capture_default_owner_gated',
+    )
   })
 
   test('terms cover the four honest clauses without overclaiming', () => {
@@ -53,8 +58,16 @@ describe('free-tier data-sharing disclosure (#6296)', () => {
       ),
     )
     expect(ok.status).toBe(200)
-    const body = (await ok.json()) as { promiseId: string }
+    const body = (await ok.json()) as {
+      blockerRefs: ReadonlyArray<string>
+      promiseId: string
+      version: string
+    }
     expect(body.promiseId).toBe(FREE_TIER_DATA_SHARING_PROMISE_ID)
+    expect(body.version).toBe(FREE_TIER_DATA_SHARING_DISCLOSURE_VERSION)
+    expect(body.blockerRefs).toContain(
+      'blocker.product_promises.free_tier_capture_default_owner_gated',
+    )
 
     const denied = await Effect.runPromise(
       handleFreeTierDataSharingDisclosureApi(

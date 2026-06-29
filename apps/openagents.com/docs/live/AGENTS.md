@@ -78,7 +78,9 @@ in**. Capture grants **no payout or settlement** (the data-market reward marker 
 inert and owner-gated). The full canonical terms are agent-readable at
 `GET https://openagents.com/api/public/free-tier-data-sharing` (also embedded in
 the `POST /api/keys/free` mint response as `dataSharing`), and tracked as the
-`data.free_tier_capture_disclosure.v1` product promise.
+`data.free_tier_capture_disclosure.v1` product promise. That promise remains
+yellow until the owner-gated production capture flip and owner copy sign-off are
+complete; the same blocker refs are included in the `dataSharing` object.
 
 ## Your Job
 

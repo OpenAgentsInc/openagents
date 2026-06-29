@@ -34,9 +34,18 @@
 export const FREE_TIER_DATA_SHARING_PROMISE_ID =
   'data.free_tier_capture_disclosure.v1' as const
 
-// Disclosure version. Bump when the TERMS text changes (not on unrelated copy
-// edits). Surfaces echo this so a caller/agent can pin which terms they saw.
-export const FREE_TIER_DATA_SHARING_DISCLOSURE_VERSION = '2026-06-25.1' as const
+// Disclosure version. Bump when the TERMS or public disclosure shape changes
+// (not on unrelated copy edits). Surfaces echo this so a caller/agent can pin
+// which terms they saw.
+export const FREE_TIER_DATA_SHARING_DISCLOSURE_VERSION = '2026-06-29.1' as const
+
+// Public-safe blockers that keep the disclosure promise yellow. These make the
+// owner-gated production capture flip explicit anywhere the disclosure object is
+// surfaced, including the free-key mint response.
+export const FREE_TIER_DATA_SHARING_BLOCKER_REFS = [
+  'blocker.product_promises.free_tier_capture_default_owner_gated',
+  'blocker.product_promises.disclosure_copy_owner_signoff_pending',
+] as const
 
 // Public, human-readable summary line. Intentionally short and quotable; the
 // full clause list carries the precise terms.
@@ -100,6 +109,8 @@ export type FreeTierDataSharingDisclosure = Readonly<{
   optOut: string
   // How to make a captured trace public (owner opt-in only).
   publicSharing: string
+  // Public-safe blockers that keep this promise yellow.
+  blockerRefs: ReadonlyArray<string>
   // Where to report a disclosure mismatch (Forum-first, per repo policy).
   reportPath: string
   // Public references for the policy and its source.
@@ -121,6 +132,7 @@ export const freeTierDataSharingDisclosure =
       'Pay for privacy or run confidential compute to be excluded from capture entirely (fail-closed to not-captured).',
     publicSharing:
       'Auto-captured traces are private (owner_only). A trace is shared publicly only when its owner explicitly opts it into public visibility.',
+    blockerRefs: FREE_TIER_DATA_SHARING_BLOCKER_REFS,
     reportPath: FREE_TIER_DATA_SHARING_REPORT_PATH,
     references: [
       'https://openagents.com/docs/product-promises',

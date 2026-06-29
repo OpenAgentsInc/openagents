@@ -4097,6 +4097,7 @@ const requestSchemas = (): JsonSchema => ({
       'policy',
       'optOut',
       'publicSharing',
+      'blockerRefs',
       'reportPath',
       'references',
     ],
@@ -4144,6 +4145,12 @@ const requestSchemas = (): JsonSchema => ({
       },
       optOut: { type: 'string' },
       publicSharing: { type: 'string' },
+      blockerRefs: {
+        type: 'array',
+        items: { type: 'string' },
+        description:
+          'Public-safe blocker refs that keep the disclosure promise yellow, including the owner-gated production capture flip.',
+      },
       reportPath: { type: 'string' },
       references: { type: 'array', items: { type: 'string' } },
     },

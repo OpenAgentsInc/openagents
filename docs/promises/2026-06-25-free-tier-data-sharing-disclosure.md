@@ -41,7 +41,10 @@ safeCopy: >
   or run confidential compute, to opt out of capture (fail-closed to
   not-captured). A captured trace is shared publicly only if its owner explicitly
   opts it into public visibility. Capture grants no payout or settlement — the
-  data-market reward marker is inert and owner-gated.
+  data-market reward marker is inert and owner-gated. The canonical terms
+  surface includes the public-safe blocker refs that keep this disclosure yellow
+  until the owner-gated production capture flip and owner copy sign-off are
+  complete.
 unsafeCopy: >
   Do not claim free traffic is never captured, do not claim captured traces are
   public by default, do not claim paid-privacy callers are captured, and do not
@@ -113,4 +116,6 @@ The disclosure text is implemented and discoverable, but two gates remain:
 
 The terms are written to be true *whether or not* the flip is armed (they
 describe the policy that applies when it is), so they are safe to publish now and
-go green when the flip + owner sign-off land.
+go green when the flip + owner sign-off land. The public disclosure object and
+free-key mint response include those blocker refs so agents can distinguish the
+disclosure from the still-gated capture behavior.
