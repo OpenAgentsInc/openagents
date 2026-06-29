@@ -12,6 +12,7 @@ import {
 import {
   countAccountRollingWindowLocalSessionTokens,
   loadAccountUsageStore,
+  quotaStateFrom,
   type PylonAccountUsageStoreEntry,
   type PylonProviderRateLimitSnapshot,
 } from "./account-usage.js"
@@ -25,12 +26,14 @@ export type PylonOperatorAccountStatusEntry = {
   accountRefHash: string
   provider: PylonAccountProvider
   isRateLimited: boolean
+  quotaState: "available" | "cooldown" | "weekly_exhausted" | "limited"
   cooldownExpiresAt: string | null
   hourlyCap: number | null
   hourlyUsage: number | null
   weeklyCap: number | null
   weeklyUsage: number | null
   manualResetsRemaining: number | null
+  resetAllowed: boolean
 }
 
 export type PylonOperatorAccountStatusProjection = {
@@ -108,16 +111,19 @@ export async function collectPylonOperatorAccountStatus(
       defaultManualResetsRemaining: account.manualResetsRemaining,
     })
     const usageEntry = usageStore.accounts[accountRefHash]
+    const quotaState = quotaStateFrom(quotaRecord, now)
     accounts.push({
       accountRefHash,
       provider: account.provider,
-      isRateLimited: !isAccountAvailable(quotaRecord, now),
+      isRateLimited: quotaState.limited,
+      quotaState: quotaState.state,
       cooldownExpiresAt: cooldownExpiresAt(quotaRecord, now),
       hourlyCap: account.hourlyCap,
       hourlyUsage: usageFor(usageEntry, "hourly", account.hourlyCap, now),
       weeklyCap: account.weeklyCap,
       weeklyUsage: usageFor(usageEntry, "weekly", account.weeklyCap, now),
       manualResetsRemaining: resetRecord.manualResetsRemaining,
+      resetAllowed: quotaState.state === "weekly_exhausted",
     })
   }
 

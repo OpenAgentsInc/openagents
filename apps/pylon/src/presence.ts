@@ -11,7 +11,8 @@ import {
   normalizeAccountHome,
   pylonClaudeAccountHomeHasAuth,
 } from "./account-registry.js"
-import { isAccountAvailable, loadQuotaRecord } from "./account-quota-ledger.js"
+import { loadQuotaRecord } from "./account-quota-ledger.js"
+import { quotaStateFrom } from "./account-usage.js"
 import {
   codexAccountHealthBlocksReadiness,
   loadCodexAccountHealthRecord,
@@ -345,9 +346,10 @@ export async function localCodexAccountReadiness(
       reasons.set(accountRefHash, health.reason)
     }
     const quotaRecord = await loadQuotaRecord(summary, accountRefHash)
-    if (!isAccountAvailable(quotaRecord, new Date())) {
+    const quotaState = quotaStateFrom(quotaRecord, new Date())
+    if (quotaState.limited) {
       ready = false
-      reasons.set(accountRefHash, "usage_limited")
+      reasons.set(accountRefHash, quotaState.state === "cooldown" ? "rate_limited" : "usage_limited")
     }
     readiness.set(accountRefHash, ready)
   }
@@ -365,9 +367,10 @@ export async function localCodexAccountReadiness(
       reasons.set(accountRefHash, health.reason)
     }
     const quotaRecord = await loadQuotaRecord(summary, accountRefHash)
-    if (!isAccountAvailable(quotaRecord, new Date())) {
+    const quotaState = quotaStateFrom(quotaRecord, new Date())
+    if (quotaState.limited) {
       ready = false
-      reasons.set(accountRefHash, "usage_limited")
+      reasons.set(accountRefHash, quotaState.state === "cooldown" ? "rate_limited" : "usage_limited")
     }
     readiness.set(accountRefHash, ready)
   }

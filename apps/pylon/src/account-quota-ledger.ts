@@ -10,9 +10,12 @@ export type QuotaRecord = {
   provider: string
   observedAt: string
   retryAtIso: string | null
+  kind: QuotaBlockKind
   sourceDigestRef: string
   manualResetsRemaining: number | null
 }
+
+export type QuotaBlockKind = "cooldown" | "weekly_exhausted" | "unknown"
 
 export type ManualQuotaResetRecord = {
   accountRefHash: string
@@ -62,6 +65,7 @@ function quotaRecordFrom(value: unknown): QuotaRecord | null {
   if (typeof record.observedAt !== "string") return null
   if (record.retryAtIso !== null && typeof record.retryAtIso !== "string") return null
   if (typeof record.sourceDigestRef !== "string") return null
+  const kind = quotaBlockKindFrom(record.kind)
   const manualResetsRemaining = record.manualResetsRemaining === undefined || record.manualResetsRemaining === null
     ? null
     : nonNegativeInteger(record.manualResetsRemaining)
@@ -73,9 +77,16 @@ function quotaRecordFrom(value: unknown): QuotaRecord | null {
     provider: record.provider,
     observedAt: record.observedAt,
     retryAtIso: record.retryAtIso,
+    kind,
     sourceDigestRef: record.sourceDigestRef,
     manualResetsRemaining,
   }
+}
+
+function quotaBlockKindFrom(value: unknown): QuotaBlockKind {
+  return value === "cooldown" || value === "weekly_exhausted" || value === "unknown"
+    ? value
+    : "unknown"
 }
 
 function nonNegativeInteger(value: unknown): number | null {
@@ -114,6 +125,7 @@ export async function recordQuotaBlock(
     accountRefHash: string
     provider: string
     retryAtIso: string | null
+    kind?: QuotaBlockKind
     sourceDigestRef: string
     manualResetsRemaining?: number | null
     now?: Date
@@ -133,6 +145,7 @@ export async function recordQuotaBlock(
     provider: publicProviderRef(input.provider),
     observedAt: (input.now ?? new Date()).toISOString(),
     retryAtIso: input.retryAtIso,
+    kind: input.kind ?? "unknown",
     sourceDigestRef: input.sourceDigestRef,
     manualResetsRemaining: explicitManualResetsRemaining ?? resetRecord?.manualResetsRemaining ?? null,
   }

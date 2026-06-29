@@ -100,12 +100,14 @@ describe("pylon operator account status", () => {
           accountRefHash,
           provider: "codex",
           isRateLimited: true,
+          quotaState: "limited",
           cooldownExpiresAt: "2026-06-28T02:00:00.000Z",
           hourlyCap: 1_000,
           hourlyUsage: 250,
           weeklyCap: 10_000,
           weeklyUsage: 4_000,
           manualResetsRemaining: 2,
+          resetAllowed: false,
         },
       ])
       expect(JSON.stringify(projection)).not.toContain(codexHome)

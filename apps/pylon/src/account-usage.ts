@@ -29,6 +29,7 @@ import {
   isAccountAvailable,
   loadManualQuotaResetRecord,
   loadQuotaRecord,
+  type QuotaBlockKind,
   type QuotaRecord,
 } from "./account-quota-ledger.js"
 import {
@@ -155,12 +156,15 @@ export type PylonAccountsStatusProjection = {
     accountRefHash: string
     readiness: PylonAccountReadiness["readiness"]
     quota: {
-      state: "available" | "limited"
+      state: "available" | "cooldown" | "weekly_exhausted" | "limited"
+      kind: QuotaBlockKind | null
       observedAt: string | null
       cooldownExpiresAt: string | null
       cooldownSecondsRemaining: number | null
       sourceDigestRef: string | null
       manualResetsRemaining: number
+      resetAllowed: boolean
+      operatorAction: "wait_for_cooldown" | "manual_recovery_available" | "none"
     }
     capacity: {
       hourly: PylonAccountWindowStatus | null
@@ -714,7 +718,7 @@ async function readinessForTarget(
     })
     const health = await loadCodexAccountHealthRecord(summary, target.accountRefHash)
     const quotaRecord = await loadQuotaRecord(summary, target.accountRefHash)
-    const quotaLimited = !isAccountAvailable(quotaRecord, new Date())
+    const quotaState = quotaStateFrom(quotaRecord, new Date())
     if (codexAccountHealthBlocksReadiness(health)) {
       return {
         provider: "codex",
@@ -731,14 +735,15 @@ async function readinessForTarget(
         },
       }
     }
-    if (quotaLimited) {
+    if (quotaState.limited) {
+      const state = quotaState.state === "cooldown" ? "rate_limited" : "usage_limited"
       return {
         provider: "codex",
         readiness: {
           ...baseReadiness,
-          state: "usage_limited",
+          state,
           capabilityRefs: [],
-          blockerRefs: ["blocker.pylon.codex_account.usage_limited"],
+          blockerRefs: [`blocker.pylon.codex_account.${state}`],
         },
       }
     }
@@ -1174,6 +1179,43 @@ function firstWindowByLabel(windows: PylonAccountWindowStatus[], label: string):
   return windows.find((window) => window.label === label) ?? null
 }
 
+export function inferCodexQuotaBlockKindFromWindows(
+  windows: readonly PylonAccountWindowStatus[],
+): QuotaBlockKind {
+  const weekly = windows.find((window) => window.label === "weekly")
+  const shortWindow = windows.find((window) =>
+    window.label === "5h" ||
+    window.label === "hourly" ||
+    (window.windowMinutes !== null && window.windowMinutes > 0 && window.windowMinutes <= 5 * 60),
+  )
+  if (weekly && weekly.remainingPercent <= 0) return "weekly_exhausted"
+  if (shortWindow && shortWindow.remainingPercent <= 0 && (!weekly || weekly.remainingPercent > 0)) {
+    return "cooldown"
+  }
+  return "unknown"
+}
+
+export function inferCodexQuotaBlockKindFromProviderSnapshots(
+  snapshots: readonly PylonProviderRateLimitSnapshot[],
+): QuotaBlockKind {
+  const windows: PylonAccountWindowStatus[] = []
+  for (const snapshot of snapshots) {
+    if (snapshot.primary) windows.push(windowStatusFrom(snapshot.primary))
+    if (snapshot.secondary) windows.push(windowStatusFrom(snapshot.secondary))
+  }
+  return inferCodexQuotaBlockKindFromWindows(windows)
+}
+
+export function quotaStateFrom(record: QuotaRecord | null, now: Date): {
+  state: "available" | "cooldown" | "weekly_exhausted" | "limited"
+  limited: boolean
+} {
+  if (record === null || isAccountAvailable(record, now)) return { state: "available", limited: false }
+  if (record.kind === "cooldown") return { state: "cooldown", limited: true }
+  if (record.kind === "weekly_exhausted") return { state: "weekly_exhausted", limited: true }
+  return { state: "limited", limited: true }
+}
+
 export async function collectPylonAccountsStatus(
   summary: Pick<BootstrapSummary, "paths">,
   args: PylonAccountsStatusArgs,
@@ -1188,18 +1230,24 @@ export async function collectPylonAccountsStatus(
 
   for (const target of targets) {
     const readiness = (await readinessForTarget(summary, target, env)).readiness
+    const quotaRecordBeforeReset = await loadQuotaRecord(summary, target.accountRefHash)
+    const quotaStateBeforeReset = quotaStateFrom(quotaRecordBeforeReset, now)
     let resetPerformed = false
     let resetBlockerRefs: string[] = []
     if (args.reset && args.accountRef === target.accountRef) {
-      try {
-        await consumeManualQuotaReset(summary, {
-          accountRefHash: target.accountRefHash,
-          provider: target.provider,
-          now,
-        })
-        resetPerformed = true
-      } catch {
-        resetBlockerRefs = ["blocker.pylon.accounts_status.manual_resets_exhausted"]
+      if (quotaStateBeforeReset.state !== "weekly_exhausted") {
+        resetBlockerRefs = ["blocker.pylon.accounts_status.reset_requires_weekly_exhaustion"]
+      } else {
+        try {
+          await consumeManualQuotaReset(summary, {
+            accountRefHash: target.accountRefHash,
+            provider: target.provider,
+            now,
+          })
+          resetPerformed = true
+        } catch {
+          resetBlockerRefs = ["blocker.pylon.accounts_status.manual_resets_exhausted"]
+        }
       }
     }
 
@@ -1211,14 +1259,22 @@ export async function collectPylonAccountsStatus(
     const entry = store.accounts[target.accountRefHash]
     const windows = capacityWindowsFrom(entry)
     const localUsage = entry?.localSessionTruth?.usage ?? null
-    const quotaLimited = !isAccountAvailable(quotaRecord, now)
+    const quotaState = quotaStateFrom(quotaRecord, now)
+    const resetAllowed = quotaState.state === "weekly_exhausted"
     const quota = {
-      state: quotaLimited ? "limited" as const : "available" as const,
+      state: quotaState.state,
+      kind: quotaRecord?.kind ?? null,
       observedAt: quotaRecord?.observedAt ?? null,
       cooldownExpiresAt: quotaCooldownExpiresAt(quotaRecord),
       cooldownSecondsRemaining: quotaCooldownSecondsRemaining(quotaRecord, now),
       sourceDigestRef: quotaRecord?.sourceDigestRef ?? null,
       manualResetsRemaining: resetRecord.manualResetsRemaining,
+      resetAllowed,
+      operatorAction: quotaState.state === "cooldown"
+        ? "wait_for_cooldown" as const
+        : resetAllowed
+          ? "manual_recovery_available" as const
+          : "none" as const,
     }
     const manualReset = {
       performed: resetPerformed,
@@ -1248,7 +1304,7 @@ export async function collectPylonAccountsStatus(
       manualReset,
       blockerRefs: [
         ...readiness.blockerRefs,
-        ...(quotaLimited ? ["blocker.pylon.accounts_status.quota_limited"] : []),
+        ...(quotaState.limited ? [`blocker.pylon.accounts_status.${quotaState.state}`] : []),
         ...manualReset.blockerRefs,
       ],
     })

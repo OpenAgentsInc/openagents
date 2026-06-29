@@ -52,6 +52,7 @@ describe("account quota ledger", () => {
         provider: "codex",
         observedAt: now.toISOString(),
         retryAtIso: retryAt.toISOString(),
+        kind: "unknown",
         sourceDigestRef: "digest.pylon.quota.source.test",
         manualResetsRemaining: 3,
       })

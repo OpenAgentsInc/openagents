@@ -45,15 +45,15 @@ export function classifyCodexAccountFailure(value: unknown): PylonCodexAccountFa
   const reason: PylonCodexAccountHealthReason =
     /revok/.test(text)
       ? "credentials_revoked"
-      : /usage limit|quota|purchase more credits|billing limit/.test(text)
-        ? "usage_limited"
-        : /rate limit|too many requests|\b429\b/.test(text)
+      : /5\s*[- ]?\s*hour|five\s+hour|rate limit|too many requests|\b429\b/.test(text)
           ? "rate_limited"
-          : /timed? ?out|deadline|abort/.test(text)
-            ? "timeout"
-            : /network|econn|enotfound|etimedout|socket|dns|wss|websocket|fetch failed/.test(text)
-              ? "network"
-              : "other"
+          : /usage limit|quota|purchase more credits|billing limit/.test(text)
+            ? "usage_limited"
+            : /timed? ?out|deadline|abort/.test(text)
+              ? "timeout"
+              : /network|econn|enotfound|etimedout|socket|dns|wss|websocket|fetch failed/.test(text)
+                ? "network"
+                : "other"
   return {
     reason,
     publicMessage,
@@ -72,4 +72,3 @@ export function codexAccountFailureBlockerRefs(reason: PylonCodexAccountHealthRe
       : []),
   ]
 }
-
