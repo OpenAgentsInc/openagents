@@ -88,7 +88,7 @@ describe("bridge subscribe client", () => {
     expect(batch.cursor).toBe(2)
   })
 
-  test("parseBridgeEventBatch passes through unknown phases (e.g. future cloud lane events) and sorts ascending", () => {
+  test("parseBridgeEventBatch passes through cloud lane phases and sorts ascending", () => {
     const batch = parseBridgeEventBatch({
       sessionRef: "session.cloud.0001",
       state: "running",
@@ -99,6 +99,34 @@ describe("bridge subscribe client", () => {
     })
     expect(batch.events.map((e) => e.phase)).toEqual(["cloud.gce.leased", "cloud.gce.provisioned"])
     expect(batch.cursor).toBe(5)
+  })
+
+  test("parseEventBatchResponse decodes cloud GCE phases from the typed event stream", () => {
+    const decoded = parseEventBatchResponse([
+      {
+        schema: CONTROL_SCHEMA_TAG,
+        sessionRef: "session.cloud.0001",
+        eventId: "evt.gce.provisioned",
+        sequence: 1,
+        phase: "cloud.gce.provisioned",
+        projectionLevel: "public_safe",
+        observedAt: "2026-06-29T00:00:00.000Z",
+      },
+      {
+        schema: CONTROL_SCHEMA_TAG,
+        sessionRef: "session.cloud.0001",
+        eventId: "evt.gce.resource",
+        sequence: 2,
+        phase: "cloud.gce.resource_usage_receipt",
+        projectionLevel: "public_safe",
+        observedAt: "2026-06-29T00:00:01.000Z",
+        detailRef: "receipt.openagents.resource_usage_receipt.v1.fixture",
+      },
+    ])
+    expect(decoded.map((event) => event.phase)).toEqual([
+      "cloud.gce.provisioned",
+      "cloud.gce.resource_usage_receipt",
+    ])
   })
 
   test("parseBridgeEventBatch tolerates a malformed/empty projection", () => {

@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test"
 import {
   acceptEvent,
   applyExternalResolution,
+  CODEX_WORKROOM_EVENT_KINDS,
   decodeControlCommand,
   decodeSessionEvent,
   decodeSessionSummary,
@@ -76,6 +77,25 @@ describe("control schema", () => {
     expect(withLane.lane).toBe("cloud-gcp")
     const withoutLane = decodeSessionSummary(base)
     expect(withoutLane.lane).toBeUndefined()
+  })
+
+  test("codex_workroom_event.v1 kinds round-trip as session event phases", () => {
+    for (const phase of CODEX_WORKROOM_EVENT_KINDS) {
+      const decoded = decodeSessionEvent({
+        schema: "openagents.pylon.control.v0.3",
+        sessionRef: "session.cloud-gcp.fixture0001",
+        eventId: `evt.${phase.replaceAll(".", "_")}`,
+        sequence: 10,
+        phase,
+        projectionLevel: "public_safe",
+        observedAt: "2026-06-29T00:00:00.000Z",
+        detailRef:
+          phase === "cloud.gce.resource_usage_receipt"
+            ? "receipt.openagents.resource_usage_receipt.v1.fixture"
+            : "detail.fixture",
+      })
+      expect(decoded.phase).toBe(phase)
+    }
   })
 })
 

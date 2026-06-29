@@ -112,6 +112,7 @@ export type CloudWorkroomEventKind =
   | "redacted"
   | "artifact"
   | "receipt"
+  | "cleanup"
   | "completed"
   | "failed"
   | "timeout"
@@ -141,6 +142,10 @@ export type CloudWorkroomEventKind =
 
 export type CloudWorkroomEvent = {
   kind: CloudWorkroomEventKind
+  // Optional raw cloud JobEvent.type discriminator. Pylon normalizes this into
+  // `kind` when reading cloud responses; tests keep it here to model the cloud
+  // wire shape without unsafe casts.
+  type?: string
   // Bounded human-readable summary (the cloud side redacts token-like content).
   summary?: string
   // Artifact refs surfaced by `artifact` events.

@@ -72,16 +72,35 @@ export type SessionSummary = typeof SessionSummary.Type
 
 // One ordered event on a session stream. `sequence` is the resume cursor;
 // `eventId` is the duplicate-detection key.
-export const SessionEventPhase = S.Literals([
+export const CODEX_WORKROOM_EVENT_KINDS = [
+  "queued",
   "started",
+  "log",
+  "redacted",
+  "artifact",
+  "receipt",
+  "cleanup",
+  "completed",
+  "failed",
+  "timeout",
+  "cancelled",
+  "placement.bound",
+  "cloud.gce.provisioned",
+  "cloud.gce.cleanup",
+  "cloud.gce.degraded",
+  "cloud.gce.resource_usage_receipt",
+] as const
+
+export const CodexWorkroomEventKind = S.Literals(CODEX_WORKROOM_EVENT_KINDS)
+export type CodexWorkroomEventKind = typeof CodexWorkroomEventKind.Type
+
+export const SessionEventPhase = S.Literals([
+  ...CODEX_WORKROOM_EVENT_KINDS,
   "progress",
   "decision_requested",
   "decision_resolved",
   "decision_cancelled",
   "artifact_available",
-  "completed",
-  "failed",
-  "cancelled",
 ])
 export type SessionEventPhase = typeof SessionEventPhase.Type
 
