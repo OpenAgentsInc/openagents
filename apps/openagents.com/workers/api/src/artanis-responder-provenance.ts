@@ -41,6 +41,11 @@ export const ARTANIS_RESPONDER_SUPPORT_STALENESS: PublicProjectionStalenessContr
     'artanis_responder_actions.update',
   ])
 
+export const ARTANIS_RESPONDER_EXTERNAL_FLOW_BLOCKER =
+  'blocker.product_promises.external_contributor_flow_unproven'
+export const ARTANIS_RESPONDER_TEN_TICKS_BLOCKER =
+  'blocker.product_promises.ten_unattended_responder_ticks_unaccrued'
+
 // The bounded asker-provenance enum. external_contributor is the only class
 // the green gate cares about; the others exist so the classifier is total
 // and the projection can honestly say WHY a given interaction does not count.
@@ -127,6 +132,9 @@ export type ArtanisResponderSupportProjection = Readonly<{
   publicSafe: true
   authorityBoundary: string
   staleness: PublicProjectionStalenessContract
+  blockerRefs: ReadonlyArray<string>
+  clearedBlockerRefs: ReadonlyArray<string>
+  activeBlockerRefs: ReadonlyArray<string>
   // Counts over the projected window, split by provenance honesty.
   externalContributorAnsweredCount: number
   externalContributorTippedCount: number
@@ -138,6 +146,7 @@ export type ArtanisResponderSupportProjection = Readonly<{
   // dereferenceable reply-post ref.
   externalInteractions: ReadonlyArray<ArtanisExternalSupportInteraction>
   tickReadiness?: ArtanisResponderTickReadinessProjection
+  greenGateMet: boolean
   generatedAt: string
   notes: ReadonlyArray<string>
 }>
@@ -224,20 +233,50 @@ export const projectArtanisResponderSupport = (
   const externalContributorFlowProven = externalInteractions.some(
     interaction => interaction.replyPostRef !== null,
   )
+  const externalContributorTickFlowProven =
+    externalContributorFlowProven &&
+    (tickReadiness?.externalContributorAnsweredWithinTickWindow ?? false)
+  const unattendedResponderTicksProven =
+    tickReadiness?.unattendedResponderTicksProven ?? false
+  const clearedBlockerRefs = [
+    ...(externalContributorTickFlowProven
+      ? [ARTANIS_RESPONDER_EXTERNAL_FLOW_BLOCKER]
+      : []),
+    ...(unattendedResponderTicksProven
+      ? [ARTANIS_RESPONDER_TEN_TICKS_BLOCKER]
+      : []),
+  ]
+  const activeBlockerRefs = [
+    ...(externalContributorTickFlowProven
+      ? []
+      : [ARTANIS_RESPONDER_EXTERNAL_FLOW_BLOCKER]),
+    ...(unattendedResponderTicksProven
+      ? []
+      : [ARTANIS_RESPONDER_TEN_TICKS_BLOCKER]),
+  ]
 
   return {
+    activeBlockerRefs,
     authorityBoundary:
       'Read-only projection over the Artanis responder-action ledger. Grants no dispatch, spend, assignment, settlement, moderation, or registry authority and cannot create an interaction, a reply, or a tip. Asker provenance is a bounded identity-field classification (operator/owner/agent/user prefix plus known internal Artanis/admin refs); the mind still owns the question-class decision.',
+    blockerRefs: [
+      ARTANIS_RESPONDER_EXTERNAL_FLOW_BLOCKER,
+      ARTANIS_RESPONDER_TEN_TICKS_BLOCKER,
+    ],
+    clearedBlockerRefs,
     externalContributorAnsweredCount,
     externalContributorFlowProven,
     externalContributorTippedCount,
     externalInteractions,
     generatedAt: nowIso,
+    greenGateMet:
+      externalContributorTickFlowProven && unattendedResponderTicksProven,
     kind: 'artanis_pylon_support_responder_external_flow',
     notes: [
       'An external contributor is a registered non-owner, non-operator, non-Artanis identity (a user: actor or a non-internal agent: actor). Operator/owner test articles are classified owner_operator and never satisfy the external-contributor gate.',
       'externalContributorFlowProven becomes true only when at least one external contributor has been answered end to end with a dereferenceable reply post (state responded or tipped); the reply post is fetchable at the publicUrl.',
       'A tipped interaction additionally proves the budget-gated economic leg (reliable-tips ladder) on a real external post.',
+      'greenGateMet is the mechanical receipt-evidence predicate only: an external contributor must be answered inside a scheduled tick window and the ten qualifying unattended responder tick target must be met. activeBlockerRefs names any missing blocker explicitly; the yellow->green flip still requires the separate owner-signed promise transition.',
     ],
     ownerOperatorAnsweredCount,
     publicSafe: true,
