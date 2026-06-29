@@ -92,6 +92,8 @@ export type ControlCommand =
   | { type: "intent.list"; sinceCursor?: string }
   | { type: "accounts.list" }
   | { type: "accounts.status" }
+  | { type: "accounts.status.detailed" }
+  | { type: "accounts.status.manual_reset"; accountRef: string }
   // CL-16 approvals: read-only pending list + exactly-once resolve.
   | { type: "approvals.list" }
   | { type: "approvals.resolve"; approvalRef: string; decision: "approve" | "deny" | "answer"; answer?: string }

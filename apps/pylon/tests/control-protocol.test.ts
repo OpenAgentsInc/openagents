@@ -444,6 +444,50 @@ describe("control protocol", () => {
     )
   })
 
+  test("account status control commands route detailed reads and manual resets", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const calls: Array<Record<string, unknown>> = []
+          const runtime = yield* makePylonNodeRuntime
+          const server = yield* startControlServer(runtime, {
+            token: "test-token-0123456789abcdef",
+            actions: {
+              ...stubActions([]),
+              accountsStatus: async (input?: { accountRef?: string; reset?: boolean; detailed?: boolean }) => {
+                calls.push(input ?? {})
+                return {
+                  schema: "openagents.pylon.accounts_status.v0.1",
+                  observedAt: "2026-06-29T00:00:00.000Z",
+                  accounts: [],
+                  blockerRefs: [],
+                }
+              },
+            },
+            port: 0,
+          })
+
+          yield* Effect.promise(() =>
+            sendControlCommand(server.url, "test-token-0123456789abcdef", {
+              type: "accounts.status.detailed",
+            }),
+          )
+          yield* Effect.promise(() =>
+            sendControlCommand(server.url, "test-token-0123456789abcdef", {
+              type: "accounts.status.manual_reset",
+              accountRef: "codex-1",
+            }),
+          )
+
+          expect(calls).toEqual([
+            { detailed: true },
+            { accountRef: "codex-1", reset: true },
+          ])
+        }),
+      ),
+    )
+  })
+
   test("assignments commands round-trip and report unavailability", async () => {
     const calls: Array<Record<string, unknown>> = []
     await Effect.runPromise(
