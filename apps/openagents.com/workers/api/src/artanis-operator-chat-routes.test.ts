@@ -1661,6 +1661,115 @@ describe('POST /api/operator/artanis/chat — get_synthetic_load_status acceptan
 })
 
 
+// ---------------------------------------------------------------------------
+// Persistence is FAIL-SOFT. The thread-history read, owner-memory read,
+// situational-awareness build, and post-turn thread append are grounding and
+// continuity — never the reply itself. A transient D1 failure on any of them
+// used to surface as an opaque `artanis_operator_chat_storage_error` 500 that
+// took the whole endpoint down (the live `artanis.sh` outage). The route now
+// degrades each step, still returns the good Khala reply, and reports a
+// public-safe `degraded` marker so the failure stays diagnosable.
+// ---------------------------------------------------------------------------
+describe('POST /api/operator/artanis/chat — persistence is fail-soft', () => {
+  test('a healthy turn reports no degraded markers', async () => {
+    const { deps } = baseDeps()
+    const response = await runRoute(
+      deps,
+      post({ messages: [{ content: 'status?', role: 'user' }] }),
+    )
+    expect(response.status).toBe(200)
+    const json = (await response.json()) as Record<string, unknown>
+    expect(json.degraded).toEqual([])
+  })
+
+  test('a failing thread-history READ still returns the 200 reply, marked degraded', async () => {
+    const { deps } = baseDeps({
+      makeThreadStore: () => ({
+        appendTurn: async () => [],
+        loadThreadMessages: async () => {
+          throw new Error('D1_ERROR: Network connection lost')
+        },
+      }),
+    })
+    const response = await runRoute(
+      deps,
+      post({ messages: [{ content: 'status?', role: 'user' }] }),
+    )
+    expect(response.status).toBe(200)
+    const json = (await response.json()) as Record<string, unknown>
+    expect(json.reply).toBe('I dispatched two Codex assignments this morning.')
+    expect(json.servedVia).toBe('openagents_khala')
+    expect(json.degraded).toEqual(
+      expect.arrayContaining(['thread_history_unavailable']),
+    )
+  })
+
+  test('a failing post-turn thread APPEND still returns the 200 reply, marked degraded', async () => {
+    const { deps } = baseDeps({
+      makeThreadStore: () => ({
+        appendTurn: async () => {
+          throw new Error('D1_ERROR: storage write failed')
+        },
+        loadThreadMessages: async () => [],
+      }),
+    })
+    const response = await runRoute(
+      deps,
+      post({ messages: [{ content: 'status?', role: 'user' }] }),
+    )
+    expect(response.status).toBe(200)
+    const json = (await response.json()) as Record<string, unknown>
+    expect(json.reply).toBe('I dispatched two Codex assignments this morning.')
+    expect(json.degraded).toEqual(
+      expect.arrayContaining(['thread_persist_failed']),
+    )
+  })
+
+  test('a failing owner-memory READ still returns the 200 reply, marked degraded', async () => {
+    const failingMemory: ArtanisOwnerMemoryStore = {
+      append: async () => {
+        throw new Error('D1_ERROR: memory write failed')
+      },
+      load: async () => {
+        throw new Error('D1_ERROR: memory read failed')
+      },
+    }
+    const { deps } = baseDeps({ makeMemoryStore: () => failingMemory })
+    const response = await runRoute(
+      deps,
+      post({ messages: [{ content: 'status?', role: 'user' }] }),
+    )
+    expect(response.status).toBe(200)
+    const json = (await response.json()) as Record<string, unknown>
+    expect(json.reply).toBe('I dispatched two Codex assignments this morning.')
+    expect(json.degraded).toEqual(
+      expect.arrayContaining(['owner_memory_unavailable']),
+    )
+  })
+
+  test('the SSE stream still completes when persistence fails, with degraded surfaced', async () => {
+    const { deps } = baseDeps({
+      makeThreadStore: () => ({
+        appendTurn: async () => {
+          throw new Error('D1_ERROR: storage write failed')
+        },
+        loadThreadMessages: async () => [],
+      }),
+    })
+    const response = await runRoute(
+      deps,
+      postSse({ messages: [{ content: 'status?', role: 'user' }] }),
+    )
+    expect(response.status).toBe(200)
+    const text = await response.text()
+    expect(text).toContain(
+      'data: {"choices":[{"delta":{"content":"I dispatched two Codex assignments this morning."}',
+    )
+    expect(text).toContain('"degraded":["thread_persist_failed"]')
+    expect(text.trim().endsWith('data: [DONE]')).toBe(true)
+  })
+})
+
 // Regression: the route must NEVER hand the owner an empty reply, even when the
 // Khala model returns blank content every pass (epic #6359; the live recurrence
 // observed as `reply: "" / tools: []`). The operator core forces a final

@@ -28,7 +28,7 @@
 // surfaces the core's `deferredToApprovalGate` hint and adds NO execution
 // authority.
 
-import { Effect, Match as M, Schema as S } from 'effect'
+import { Effect, Match as M, Schedule, Schema as S } from 'effect'
 
 import {
   ARTANIS_OPERATOR_APPROVAL_GATE_REF,
@@ -42,16 +42,19 @@ import {
 import { makeArtanisOperatorTools } from './artanis-operator-tools'
 import {
   appendArtanisMemory,
+  type ArtanisMemoryEntry,
   type ArtanisOwnerMemoryStore,
   loadArtanisMemory,
   makeD1ArtanisOwnerMemoryStore,
 } from './artanis-owner-memory'
 import {
   type ArtanisAwarenessReaders,
+  type ArtanisSituationalAwareness,
   buildArtanisSituationalAwareness,
 } from './artanis-situational-awareness'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
 import type { InferenceMessage, InferenceResult } from './inference/provider-adapter'
+import { logWorkerRouteWarning, workerErrorName } from './observability'
 import { openAgentsDatabase } from './runtime'
 import {
   compactRandomId,
@@ -182,15 +185,9 @@ class OperatorArtanisChatSessionError extends S.TaggedErrorClass<OperatorArtanis
   { error: S.Defect },
 ) {}
 
-class OperatorArtanisChatStorageError extends S.TaggedErrorClass<OperatorArtanisChatStorageError>()(
-  'OperatorArtanisChatStorageError',
-  { error: S.Defect },
-) {}
-
 type OperatorArtanisChatError =
   | OperatorArtanisChatBadRequest
   | OperatorArtanisChatSessionError
-  | OperatorArtanisChatStorageError
   | OperatorArtanisChatUnauthorized
   | OperatorArtanisChatUnavailable
 
@@ -204,11 +201,6 @@ const routeErrorResponse = (error: OperatorArtanisChatError) =>
         ),
       OperatorArtanisChatSessionError: () =>
         noStoreJsonResponse({ error: 'session_error' }, { status: 500 }),
-      OperatorArtanisChatStorageError: () =>
-        noStoreJsonResponse(
-          { error: 'artanis_operator_chat_storage_error' },
-          { status: 500 },
-        ),
       OperatorArtanisChatUnauthorized: () =>
         noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 }),
       OperatorArtanisChatUnavailable: () =>
@@ -219,6 +211,60 @@ const routeErrorResponse = (error: OperatorArtanisChatError) =>
     }),
     M.exhaustive,
   )
+
+// Persistence around the Artanis operator chat (thread history, owner memory,
+// situational-awareness reads, and the post-turn thread append) is GROUNDING
+// and CONTINUITY, not the reply itself: the owner's answer comes from the
+// Khala-powered operator turn. A transient D1 failure on any of these must
+// therefore degrade grounding/continuity, NOT drop a good reply behind an
+// opaque 500. Each persistence step below is fail-soft: it retries briefly,
+// then on failure logs the SPECIFIC underlying error (for Cloudflare Logs/Tail
+// diagnosability) and records a public-safe `degraded` marker on the response.
+const TRANSIENT_STORE_RETRY = Schedule.recurs(2)
+
+// Markers surfaced on the response so the operator (and future debuggers) can
+// see which non-critical persistence step degraded this turn without leaking
+// the underlying error or any owner chat text.
+type ArtanisChatDegradedMarker =
+  | 'thread_history_unavailable'
+  | 'owner_memory_unavailable'
+  | 'situational_awareness_unavailable'
+  | 'thread_persist_failed'
+
+// Log the SPECIFIC underlying storage error so a future failure is diagnosable,
+// instead of swallowing it behind an opaque response. Routed through the
+// redacted Effect observability helper (never raw console): only the failing
+// step and the error's own name/message are emitted — and those field values
+// are redacted — so owner chat text, prompts, and secrets never reach logs.
+const logArtanisStorageDegrade = (step: string, error: unknown): void => {
+  logWorkerRouteWarning('artanis_operator_chat_persistence_degraded', {
+    errorMessage: error instanceof Error ? error.message : String(error),
+    errorName: workerErrorName(error),
+    step,
+  })
+}
+
+// Last-resort honest-absence awareness when even the reader-less build cannot be
+// produced. Mirrors the `ArtanisSituationalAwareness` shape with empty buckets;
+// honest absence over fabrication.
+const emptyArtanisAwareness = (
+  ownerId: string,
+  generatedAt: string,
+): ArtanisSituationalAwareness => ({
+  generatedAt,
+  goals: { epics: [], roadmapRef: '', roadmapSummary: '' },
+  kind: 'artanis_situational_awareness',
+  ongoingOps: {
+    activeAssignments: [],
+    fleetReadiness: null,
+    publicCounter: null,
+    recentDeploys: [],
+    tokenPace: null,
+  },
+  ownerId,
+  ownerOnly: true,
+  recentActions: { assignments: [], commits: [], issueChanges: [], ticks: [] },
+})
 
 const requireAuthenticatedSession = <
   Session extends OperatorArtanisChatSession,
@@ -514,6 +560,7 @@ const sseData = (value: unknown): string =>
 
 const artanisSseResponse = (turn: Readonly<{
   callerId: string
+  degraded: ReadonlyArray<string>
   deferredToApprovalGate: boolean
   iterations: number
   pendingApprovalGates: unknown
@@ -551,6 +598,7 @@ const artanisSseResponse = (turn: Readonly<{
         approvalGateRef: ARTANIS_OPERATOR_APPROVAL_GATE_REF,
         caller_id: turn.callerId,
         channelRef: ARTANIS_OPERATOR_CHANNEL_REF,
+        degraded: turn.degraded,
         deferredToApprovalGate: turn.deferredToApprovalGate,
         iterations: turn.iterations,
         pendingApprovalGates: turn.pendingApprovalGates,
@@ -621,11 +669,22 @@ export const makeOperatorArtanisChatRoutes = <
       const callerId = requestedCallerId(body.caller_id, session)
       const store = makeMemoryStore(env)
       const threadStore = makeThreadStore(env)
+      const degraded: Array<ArtanisChatDegradedMarker> = []
 
-      const historicalMessages = yield* Effect.tryPromise({
-        catch: error => new OperatorArtanisChatStorageError({ error }),
-        try: () => threadStore.loadThreadMessages(threadRef),
-      })
+      // Thread history (continuity). Fail-soft: a read failure degrades to no
+      // prior thread context rather than dropping the turn.
+      const historicalMessages = yield* Effect.tryPromise(() =>
+        threadStore.loadThreadMessages(threadRef),
+      ).pipe(
+        Effect.retry(TRANSIENT_STORE_RETRY),
+        Effect.catch(error =>
+          Effect.sync(() => {
+            logArtanisStorageDegrade('load_thread_history', error)
+            degraded.push('thread_history_unavailable')
+            return [] as ReadonlyArray<ArtanisOperatorThreadMessage>
+          }),
+        ),
+      )
       const turnMessages = [
         ...historicalMessages.map(threadMessageToOperatorMessage),
         ...body.messages,
@@ -635,16 +694,31 @@ export const makeOperatorArtanisChatRoutes = <
       // awareness (bounded, owner-scoped). Both are best-effort: a storage
       // failure degrades grounding but must not drop the conversation, so we
       // fall back to empty memory / a reader-less awareness build.
-      const memory = yield* Effect.tryPromise({
-        catch: error => new OperatorArtanisChatStorageError({ error }),
-        try: () =>
-          loadArtanisMemory(store, ownerId, ARTANIS_OPERATOR_MEMORY_TURN_LIMIT),
-      }).pipe(Effect.orElseSucceed(() => []))
+      const memory = yield* Effect.tryPromise(() =>
+        loadArtanisMemory(store, ownerId, ARTANIS_OPERATOR_MEMORY_TURN_LIMIT),
+      ).pipe(
+        Effect.retry(TRANSIENT_STORE_RETRY),
+        Effect.catch(error =>
+          Effect.sync(() => {
+            logArtanisStorageDegrade('load_owner_memory', error)
+            degraded.push('owner_memory_unavailable')
+            return [] as ReadonlyArray<ArtanisMemoryEntry>
+          }),
+        ),
+      )
 
-      const awareness = yield* Effect.tryPromise({
-        catch: error => new OperatorArtanisChatStorageError({ error }),
-        try: () => buildArtanisSituationalAwareness(ownerId, awarenessReaders),
-      })
+      const awareness = yield* Effect.tryPromise(() =>
+        buildArtanisSituationalAwareness(ownerId, awarenessReaders),
+      ).pipe(
+        Effect.retry(TRANSIENT_STORE_RETRY),
+        Effect.catch(error =>
+          Effect.sync(() => {
+            logArtanisStorageDegrade('build_situational_awareness', error)
+            degraded.push('situational_awareness_unavailable')
+            return emptyArtanisAwareness(ownerId, currentIsoTimestamp())
+          }),
+        ),
+      )
 
       const tools =
         dependencies.makeOperatorTools?.(env, session) ??
@@ -698,25 +772,34 @@ export const makeOperatorArtanisChatRoutes = <
         body: message.content,
         metadata: { source: 'operator_artanis_chat_request' },
       }))
-      yield* Effect.tryPromise({
-        catch: error => new OperatorArtanisChatStorageError({ error }),
-        try: () =>
-          threadStore.appendTurn({
-            callerId,
-            messages: [
-              ...inboundMessages,
-              {
-                authorId: 'artanis',
-                authorKind: 'agent',
-                body: turn.reply,
-                metadata: { source: 'operator_artanis_chat_reply' },
-              },
-            ],
-            nowIso,
-            threadRef,
-            title: threadTitleFromMessages(turnMessages),
+      // Persist this turn to the thread ledger (continuity). Fail-soft: this
+      // runs AFTER we already have a good reply, so a transient D1 write failure
+      // must not turn a successful turn into a 500. Retry briefly, then degrade.
+      yield* Effect.tryPromise(() =>
+        threadStore.appendTurn({
+          callerId,
+          messages: [
+            ...inboundMessages,
+            {
+              authorId: 'artanis',
+              authorKind: 'agent',
+              body: turn.reply,
+              metadata: { source: 'operator_artanis_chat_reply' },
+            },
+          ],
+          nowIso,
+          threadRef,
+          title: threadTitleFromMessages(turnMessages),
+        }),
+      ).pipe(
+        Effect.retry(TRANSIENT_STORE_RETRY),
+        Effect.catch(error =>
+          Effect.sync(() => {
+            logArtanisStorageDegrade('append_thread_turn', error)
+            degraded.push('thread_persist_failed')
           }),
-      })
+        ),
+      )
 
       if (dependencies.emitOwnerTrace !== undefined) {
         yield* Effect.tryPromise(() =>
@@ -746,7 +829,7 @@ export const makeOperatorArtanisChatRoutes = <
 
       if (wantsEventStream(request)) {
         return dependencies.appendRefreshedSessionCookies(
-          artanisSseResponse({ ...turn, callerId, threadRef }),
+          artanisSseResponse({ ...turn, callerId, degraded, threadRef }),
           session,
         )
       }
@@ -756,6 +839,9 @@ export const makeOperatorArtanisChatRoutes = <
           approvalGateRef: ARTANIS_OPERATOR_APPROVAL_GATE_REF,
           channelRef: ARTANIS_OPERATOR_CHANNEL_REF,
           caller_id: callerId,
+          // Public-safe non-fatal markers for any persistence step that degraded
+          // this turn (empty when fully healthy). The reply is unaffected.
+          degraded,
           deferredToApprovalGate: turn.deferredToApprovalGate,
           historicalMessageCount: historicalMessages.length,
           iterations: turn.iterations,
