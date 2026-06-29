@@ -64,6 +64,22 @@ const rowsForSql = (sql: string): ReadonlyArray<Record<string, unknown>> => {
     ]
   }
 
+  if (sql.includes('FROM pylon_api_events')) {
+    return [
+      {
+        assignment_ref: 'assignment.public.issue_6427',
+        created_at: '2026-06-27T18:40:30.000Z',
+        event_body_json: JSON.stringify({
+          elapsedMs: 630000,
+          lastProgressEvent: 'turn.completed',
+          message: 'Runtime phase: testing.',
+          phase: 'testing',
+          tokensSoFar: 4242,
+        }),
+      },
+    ]
+  }
+
   if (sql.includes('FROM provider_accounts')) {
     return [
       {
@@ -220,10 +236,12 @@ describe('operator fleet status route', () => {
         activeAssignments: [
           {
             assignmentRef: 'assignment.public.issue_6427',
-            elapsedMs: 660000,
-            lastProgressEvent: null,
-            phase: 'running',
-            tokensSoFar: null,
+            elapsedMs: 630000,
+            lastLog: 'Runtime phase: testing.',
+            lastProgressEvent: 'turn.completed',
+            phase: 'testing',
+            progressObservedAt: '2026-06-27T18:40:30.000Z',
+            tokensSoFar: 4242,
           },
         ],
         activeSlots: 3,
@@ -308,6 +326,7 @@ describe('operator fleet status route', () => {
     expect(body.fleet.sourceRefs).toContain('d1:pylon_api_registrations')
     expect(log.some(sql => sql.includes('owner_agent_user_id = ?'))).toBe(true)
     expect(log.some(sql => sql.includes('AND user_id = ?'))).toBe(true)
+    expect(log.some(sql => sql.includes('FROM pylon_api_events') && sql.includes('pylon_ref IN'))).toBe(true)
   })
 
   test('keeps the legacy fleet status path admin-token only', async () => {

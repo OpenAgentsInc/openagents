@@ -30,6 +30,21 @@ const PylonRef = NonEmptyTrimmedString.check(
 )
 const PylonDisplayName = NonEmptyTrimmedString.check(S.isMaxLength(120))
 const PylonEventStatus = NonEmptyTrimmedString.check(S.isMaxLength(80))
+const PylonAssignmentRuntimePhase = S.Literals([
+  'diff',
+  'installing',
+  'materializing',
+  'proof',
+  'running',
+  'testing',
+])
+const PublicSafeProgressEvent = NonEmptyTrimmedString.check(
+  S.isMaxLength(120),
+  S.isPattern(/^[A-Za-z0-9][A-Za-z0-9_.:-]*$/),
+)
+const PublicSafeProgressMessage = NonEmptyTrimmedString.check(
+  S.isMaxLength(240),
+)
 const PylonClientVersion = NonEmptyTrimmedString.check(
   S.isMaxLength(80),
   S.isPattern(
@@ -506,9 +521,14 @@ export type PylonApiAssignmentAcceptanceRequest =
 export const PylonApiAssignmentProgressRequest = S.Struct({
   artifactRefs: PublicSafeRefs,
   blockerRefs: PublicSafeRefs,
+  elapsedMs: S.optionalKey(NonNegativeInteger),
+  lastProgressEvent: S.optionalKey(PublicSafeProgressEvent),
+  message: S.optionalKey(PublicSafeProgressMessage),
+  phase: S.optionalKey(PylonAssignmentRuntimePhase),
   progressPercent: S.optionalKey(S.Number),
   progressRefs: PublicSafeRefs,
   status: S.optionalKey(PylonEventStatus),
+  tokensSoFar: S.optionalKey(NonNegativeInteger),
 })
 export type PylonApiAssignmentProgressRequest =
   typeof PylonApiAssignmentProgressRequest.Type
