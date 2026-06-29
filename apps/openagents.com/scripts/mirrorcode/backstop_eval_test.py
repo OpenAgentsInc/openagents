@@ -98,6 +98,11 @@ class EvaluateBatchTests(unittest.TestCase):
             self.assertEqual(summary["fullySolved"], 3)
             self.assertEqual(summary["passRate"], 1.0)
             self.assertEqual(summary["status"], "passed")
+            self.assertEqual(summary["demand"]["source"], "gym_mirrorcode")
+            self.assertEqual(summary["issueNumber"], 6923)
+            self.assertEqual(summary["taskRef"], be.TASK_REF)
+            self.assertEqual(summary["workflowRef"], be.WORKFLOW_REF)
+            self.assertEqual(summary["ledgerRef"], be.LEDGER_REF)
             # summary + per-problem trace files written
             self.assertTrue(os.path.isfile(os.path.join(d, "t-all.json")))
             for pid in solutions:
@@ -106,7 +111,11 @@ class EvaluateBatchTests(unittest.TestCase):
                 with open(tpath) as fh:
                     tr = json.load(fh)
                 self.assertEqual(tr["status"], "passed")
-                self.assertEqual(tr["demand"]["source"], "gym_backstop")
+                self.assertEqual(tr["demand"]["source"], "gym_mirrorcode")
+                self.assertEqual(tr["issueNumber"], 6923)
+                self.assertEqual(tr["taskRef"], be.TASK_REF)
+                self.assertEqual(tr["workflowRef"], be.WORKFLOW_REF)
+                self.assertEqual(tr["ledgerRef"], be.LEDGER_REF)
 
     def test_mixed_pass_rate(self):
         # 2 problems: one correct (3/3), one all-wrong (0/3) -> aggregate 3/6.
