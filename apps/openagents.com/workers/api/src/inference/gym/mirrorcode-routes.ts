@@ -16,6 +16,9 @@
 //   - `GET /api/gym/mirrorcode/token-burn` (no auth): automated public-safe
 //     token-burn reporter over the stored run rows. It aggregates exact
 //     token-row refs where present and keeps unproven totals separate.
+//   - `GET /api/gym/mirrorcode/backstop-burn` (no auth): public-safe standing
+//     backstop plan + ledger report for issue #6923. It reads stored public run
+//     rows only and does not dispatch, spend, settle, or expose task contents.
 //
 // The public GET is composed live from D1 at read, so it declares a
 // `live_at_read` staleness contract (epic #4751). No dispatch, spend,
@@ -25,6 +28,15 @@ import { Effect } from 'effect'
 import { methodNotAllowed, noStoreJsonResponse } from '../../http/responses'
 import { currentIsoTimestamp } from '../../runtime-primitives'
 import { liveAtReadStaleness } from '../../public-projection-staleness'
+import {
+  buildMirrorCodeBackstopBatchPlan,
+  buildMirrorCodeBackstopBurnReport,
+  type BuildMirrorCodeBackstopBatchPlanInput,
+  mirrorCodeBackstopTaskKey,
+  mirrorCodeBackstopTaskRefFor,
+  MIRRORCODE_BACKSTOP_ISSUE_NUMBER,
+  MirrorCodeBackstopBurnSchemaVersion,
+} from './mirrorcode-backstop-burn'
 import {
   buildMirrorCodeLaunchRun,
   buildMirrorCodeRun,
@@ -169,6 +181,57 @@ const tokenBurnEnvelope = (
   report: buildMirrorCodeTokenBurnReport(runs),
 })
 
+const queryValues = (url: URL, name: string): ReadonlyArray<string> =>
+  url.searchParams
+    .getAll(name)
+    .flatMap(value => value.split(','))
+    .map(value => value.trim())
+    .filter(value => value.length > 0)
+
+const backstopRefsForRun = (run: MirrorCodeRun): ReadonlyArray<string> => {
+  const language = run.language ?? 'python'
+  return [
+    mirrorCodeBackstopTaskKey(run.bucket, run.taskId, language),
+    mirrorCodeBackstopTaskRefFor(run.bucket, run.taskId, language),
+  ]
+}
+
+const backstopBurnEnvelope = (
+  request: Request,
+  input: MirrorCodeRunsRouteInput,
+  runs: ReadonlyArray<MirrorCodeRun>,
+) => {
+  const url = new URL(request.url)
+  const batchRef = url.searchParams.get('batchRef')
+  const maxTasks = url.searchParams.get('maxTasks')
+  const planInput: BuildMirrorCodeBackstopBatchPlanInput = {
+    activeTaskRefs: [
+      ...queryValues(url, 'activeTaskRef'),
+      ...runs
+        .filter(run => ['queued', 'running'].includes(run.status))
+        .flatMap(backstopRefsForRun),
+    ],
+    completedTaskRefs: [
+      ...queryValues(url, 'completedTaskRef'),
+      ...runs
+        .filter(run => ['passed', 'failed', 'error'].includes(run.status))
+        .flatMap(backstopRefsForRun),
+    ],
+    languages: queryValues(url, 'language'),
+    ...(batchRef === null ? {} : { batchRef }),
+    ...(maxTasks === null ? {} : { maxTasks: Number(maxTasks) }),
+  }
+  return {
+    schemaVersion: MirrorCodeBackstopBurnSchemaVersion,
+    scope: 'public' as const,
+    generatedAt: (input.nowIso ?? currentIsoTimestamp)(),
+    staleness: mirrorCodeStaleness(),
+    issueNumber: MIRRORCODE_BACKSTOP_ISSUE_NUMBER,
+    plan: buildMirrorCodeBackstopBatchPlan(planInput),
+    report: buildMirrorCodeBackstopBurnReport(runs),
+  }
+}
+
 // Owner-gated launch / ingest: rebuilds + upserts a run. Admin-bearer gated.
 const handleOperatorIngestRun = (
   request: Request,
@@ -217,6 +280,16 @@ export const handleMirrorCodeRunsApi = (
     }
     return listRuns(input).pipe(
       Effect.map(runs => noStoreJsonResponse(tokenBurnEnvelope(input, runs))),
+    )
+  }
+  if (new URL(request.url).pathname === '/api/gym/mirrorcode/backstop-burn') {
+    if (request.method !== 'GET') {
+      return Effect.succeed(methodNotAllowed(['GET']))
+    }
+    return listRuns(input).pipe(
+      Effect.map(runs =>
+        noStoreJsonResponse(backstopBurnEnvelope(request, input, runs)),
+      ),
     )
   }
   if (request.method === 'POST') {

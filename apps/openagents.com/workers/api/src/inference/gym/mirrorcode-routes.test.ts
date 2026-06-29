@@ -294,6 +294,90 @@ describe('handleMirrorCodeTokenBurnReportApi', () => {
   })
 })
 
+describe('handleMirrorCodeBackstopBurnApi', () => {
+  test('public GET returns the next standing batch plan and ledger report', async () => {
+    const terminalRun = buildMirrorCodeRun({
+      ...validInput,
+      runId: 'mc-backstop-qsv-select-python-0001',
+      taskId: 'qsv_select',
+      status: 'failed',
+      passRate: 0.25,
+      tokens: { total: 1_000 },
+      exactTokenUsageEventRefs: [],
+    })
+    const activeRun = buildMirrorCodeRun({
+      ...validInput,
+      runId: 'mc-backstop-jq-simple-python-0001',
+      taskId: 'jq_simple',
+      status: 'running',
+      passRate: 0.8,
+      tokens: { total: 500 },
+      exactTokenUsageEventRefs: [
+        'token_usage_event.gym_mirrorcode.jq_simple.0001',
+      ],
+    })
+    const response = await run(
+      handleMirrorCodeRunsApi(
+        new Request(
+          'https://openagents.com/api/gym/mirrorcode/backstop-burn?maxTasks=3',
+        ),
+        {
+          requireAdminApiToken: async () => false,
+          listRuns: () => [terminalRun, activeRun],
+          nowIso: () => '2026-06-28T00:00:00.000Z',
+        },
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as {
+      schemaVersion: string
+      issueNumber: number
+      plan: {
+        taskCount: number
+        tasks: ReadonlyArray<{ taskId: string }>
+      }
+      report: {
+        runCount: number
+        terminalRunCount: number
+        passRateBps: number | null
+        totalTokensBurned: number
+        exactTokenBackedTokens: number
+      }
+      staleness: { composition: string }
+    }
+    expect(body.schemaVersion).toBe(
+      'openagents.gym.mirrorcode_backstop_burn.v1',
+    )
+    expect(body.issueNumber).toBe(6923)
+    expect(body.staleness.composition).toBe('live_at_read')
+    expect(body.plan.taskCount).toBe(3)
+    expect(body.plan.tasks.map(task => task.taskId)).toEqual([
+      'gron',
+      'bitwise',
+      'hexyl',
+    ])
+    expect(body.report.runCount).toBe(2)
+    expect(body.report.terminalRunCount).toBe(1)
+    expect(body.report.passRateBps).toBe(0)
+    expect(body.report.totalTokensBurned).toBe(1_500)
+    expect(body.report.exactTokenBackedTokens).toBe(500)
+  })
+
+  test('non-GET is rejected', async () => {
+    const response = await run(
+      handleMirrorCodeRunsApi(
+        new Request('https://openagents.com/api/gym/mirrorcode/backstop-burn', {
+          method: 'POST',
+        }),
+        { requireAdminApiToken: async () => false, listRuns: () => [] },
+      ),
+    )
+
+    expect(response.status).toBe(405)
+  })
+})
+
 describe('handleMirrorCodeRunsApi POST', () => {
   const postRequest = (body: unknown) =>
     new Request('https://openagents.com/api/gym/mirrorcode/runs', {
