@@ -1372,20 +1372,20 @@ export const publicProductPromisesDocument = () => {
         claim:
           'The Khala stats surface shows model-family/provider mix and daily token volume.',
         safeCopy:
-          'The /stats direction includes public model-family/provider mix and daily token-volume views for Khala, including Pylon-Codex owner-capacity volume where exact token rows exist. Treat this as a yellow transparency surface: it is useful for reading the mix of served work, but it must preserve staleness, model-family normalization, and internal/external/unlabeled demand caveats.',
+          'The /stats surface includes public model-family/provider mix and daily token-volume views for Khala. The model-mix route is live-at-read over token_usage_events (liveAt/generatedAt, projection_staleness.v1, maxStalenessSeconds:0), uses stable public model-family normalization, and includes headline served volume across external, internal, internal-stress, unlabeled, and Pylon-Codex own-capacity token rows. Treat this as a yellow transparency surface until live receipt/sign-off evidence authorizes stronger public copy.',
         unsafeCopy:
           'Do not use model-mix percentages as proof of external customer demand, revenue, model preference, paid provider resale, or marketplace health. Do not hide internal dogfood or own-capacity provenance when making demand claims.',
         evidenceRefs: [
+          'route:/api/public/khala-tokens-served/model-mix',
           'docs/stats/2026-06-26-stats-page-audit.md',
           'docs/inference/2026-06-25-khala-inference-gtm-push.md',
           'docs/transcripts/244.md',
         ],
         blockerRefs: [
-          'blocker.product_promises.model_mix_staleness_methodology_pending',
-          'blocker.product_promises.model_mix_demand_segmentation_copy_pending',
+          'blocker.product_promises.model_mix_green_owner_signoff_pending',
         ],
         verification:
-          'Yellow until the public /stats model-mix route/page has a documented staleness contract, stable model-family normalization, and copy that distinguishes headline served volume from external demand and revenue.',
+          'Yellow after issue #6858: route/test evidence now covers liveAt/generatedAt live_at_read staleness, stable public model-family normalization, and /stats copy separating headline served volume from external demand and revenue. Green still requires a live receipt/owner sign-off under proof.claim_upgrade_receipts.v1.',
         authorityBoundary:
           'Model-mix transparency is not routing authority, provider resale authority, benchmark proof, revenue proof, or public raw-event disclosure.',
       },

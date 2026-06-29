@@ -1340,11 +1340,21 @@ const normalizeHistoryTimezone = (
   })
 }
 
-const publicModelFamilyFromProviderAndModel = (
+const normalizedModelIdentityText = (
+  provider: string | null | undefined,
+  model: string | null | undefined,
+): string =>
+  `${provider ?? ''} ${model ?? ''}`
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9/._:-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+
+export const publicModelFamilyFromProviderAndModel = (
   provider: string | null | undefined,
   model: string | null | undefined,
 ): PublicKhalaTokensServedModelFamily => {
-  const text = `${provider ?? ''} ${model ?? ''}`.trim().toLowerCase()
+  const text = normalizedModelIdentityText(provider, model)
 
   if (
     text.includes('glm') ||
@@ -1397,7 +1407,7 @@ const publicModelFamilyFromProviderAndModel = (
   return 'other'
 }
 
-const publicModelFamilyLabel = (
+export const publicModelFamilyLabel = (
   family: PublicKhalaTokensServedModelFamily,
 ): string =>
   family === 'glm'
