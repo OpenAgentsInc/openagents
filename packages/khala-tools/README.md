@@ -157,3 +157,24 @@ fails closed as unconfigured. It accepts `query`, optional `domains`,
 Results are bounded, source-attributed, timestamped, and kept out of public
 summaries except for provider/result-count metadata. Use repository-local search
 tools for code navigation.
+
+### Browser Preset
+
+`browser_navigate`, `browser_click`, `browser_type`, `browser_read_text`,
+`browser_read_dom`, `browser_wait_for`, and `browser_screenshot` are part of the
+optional `browser` preset, not the default coding or inspect profiles. They use
+the distinct `browser` authority and require explicit browser-surface approval;
+network, shell, filesystem, credential, and owner-local danger authority do not
+flow through these tool arguments.
+
+The package owns only the provider-neutral `KhalaBrowserService` contract and
+structured result shape. Desktop, CLI, or test hosts may back it with Playwright,
+Electrobun WebView control, or another local browser driver without coupling
+this package to UI code. If no browser service is configured, the default service
+fails closed with `browser_unavailable`.
+
+Browser text, URLs, titles, DOM, typed text, selectors, and screenshots are
+treated as private local state. Visible text and DOM outputs are bounded for
+model context; truncated visible text spills to a private artifact, raw DOM is
+always stored as a private `text/html` artifact, and screenshots are returned as
+private image artifacts. Public summaries contain only action/result metadata.

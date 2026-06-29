@@ -369,7 +369,76 @@ export interface KhalaWebSearchService {
   readonly search: (input: KhalaWebSearchInput) => Effect.Effect<KhalaWebSearchResult, KhalaToolRuntimeError>
 }
 
+export type KhalaBrowserActionInput = Readonly<{
+  label?: string
+  selector: string
+  timeoutMs: number
+}>
+
+export type KhalaBrowserTypeInput = KhalaBrowserActionInput & Readonly<{
+  text: string
+}>
+
+export type KhalaBrowserNavigateInput = Readonly<{
+  timeoutMs: number
+  url: string
+}>
+
+export type KhalaBrowserPageSnapshot = Readonly<{
+  timestampMs: number
+  title?: string
+  url: string
+}>
+
+export type KhalaBrowserReadInput = Readonly<{
+  selector?: string
+}>
+
+export type KhalaBrowserReadTextResult = KhalaBrowserPageSnapshot & Readonly<{
+  text: string
+}>
+
+export type KhalaBrowserReadDomResult = KhalaBrowserPageSnapshot & Readonly<{
+  html: string
+}>
+
+export type KhalaBrowserWaitKind = "selector-visible" | "text-visible" | "url-includes"
+
+export type KhalaBrowserWaitInput = Readonly<{
+  kind: KhalaBrowserWaitKind
+  selector?: string
+  timeoutMs: number
+  value?: string
+}>
+
+export type KhalaBrowserWaitResult = KhalaBrowserPageSnapshot & Readonly<{
+  met: boolean
+}>
+
+export type KhalaBrowserScreenshotInput = Readonly<{
+  label?: string
+}>
+
+export type KhalaBrowserScreenshotResult = KhalaBrowserPageSnapshot & Readonly<{
+  bytes: Uint8Array
+  height?: number
+  mediaType: string
+  width?: number
+}>
+
+export interface KhalaBrowserService {
+  readonly click: (input: KhalaBrowserActionInput) => Effect.Effect<KhalaBrowserPageSnapshot, KhalaToolRuntimeError>
+  readonly marker: "khala.browser_service"
+  readonly navigate: (input: KhalaBrowserNavigateInput) => Effect.Effect<KhalaBrowserPageSnapshot, KhalaToolRuntimeError>
+  readonly readDom: (input: KhalaBrowserReadInput) => Effect.Effect<KhalaBrowserReadDomResult, KhalaToolRuntimeError>
+  readonly readText: (input: KhalaBrowserReadInput) => Effect.Effect<KhalaBrowserReadTextResult, KhalaToolRuntimeError>
+  readonly screenshot: (input: KhalaBrowserScreenshotInput) => Effect.Effect<KhalaBrowserScreenshotResult, KhalaToolRuntimeError>
+  readonly typeText: (input: KhalaBrowserTypeInput) => Effect.Effect<KhalaBrowserPageSnapshot, KhalaToolRuntimeError>
+  readonly waitFor: (input: KhalaBrowserWaitInput) => Effect.Effect<KhalaBrowserWaitResult, KhalaToolRuntimeError>
+}
+
 export interface KhalaToolServices {
+  readonly browser: KhalaBrowserService
   readonly interaction: KhalaInteractionService
   readonly network: KhalaNetworkService
   readonly outputStore: KhalaOutputStore
@@ -714,7 +783,19 @@ export const unconfiguredKhalaWebSearchService: KhalaWebSearchService = {
     })),
 }
 
+export const unconfiguredKhalaBrowserService: KhalaBrowserService = {
+  click: () => browserUnavailable(),
+  marker: "khala.browser_service",
+  navigate: () => browserUnavailable(),
+  readDom: () => browserUnavailable(),
+  readText: () => browserUnavailable(),
+  screenshot: () => browserUnavailable(),
+  typeText: () => browserUnavailable(),
+  waitFor: () => browserUnavailable(),
+}
+
 export function makeKhalaToolServices(input: {
+  readonly browser?: KhalaBrowserService
   readonly interaction?: KhalaInteractionService
   readonly network?: KhalaNetworkService
   readonly permission?: KhalaPermissionService
@@ -724,6 +805,7 @@ export function makeKhalaToolServices(input: {
   readonly workingDirectory?: string
 } = {}): KhalaToolServices {
   return {
+    browser: input.browser ?? unconfiguredKhalaBrowserService,
     interaction: input.interaction ?? nonInteractiveKhalaInteractionService,
     network: input.network ?? createFetchKhalaNetworkService(),
     outputStore: inMemoryKhalaOutputStore(),
@@ -733,6 +815,13 @@ export function makeKhalaToolServices(input: {
     todo: input.todo ?? inMemoryKhalaTodoService(),
     workspace: { workingDirectory: input.workingDirectory ?? process.cwd() },
   }
+}
+
+function browserUnavailable(): Effect.Effect<never, KhalaToolRuntimeError> {
+  return Effect.fail(new KhalaToolRuntimeError({
+    code: "browser_unavailable",
+    reason: "No Khala browser surface is configured.",
+  }))
 }
 
 function createInteractionRequestId(invocationId: string): string {
@@ -1140,6 +1229,24 @@ export { createTodoWriteTool, todoWriteToolDefinition } from "./todo-write.js"
 export { createViewImageTool, viewImageToolDefinition } from "./view-image.js"
 export { createWebFetchTool, webFetchToolDefinition } from "./web-fetch.js"
 export { createWebSearchTool, webSearchToolDefinition } from "./web-search.js"
+export {
+  browserClickToolDefinition,
+  browserNavigateToolDefinition,
+  browserReadDomToolDefinition,
+  browserReadTextToolDefinition,
+  browserScreenshotToolDefinition,
+  browserToolDefinitions,
+  browserTypeToolDefinition,
+  browserWaitForToolDefinition,
+  createBrowserClickTool,
+  createBrowserNavigateTool,
+  createBrowserReadDomTool,
+  createBrowserReadTextTool,
+  createBrowserScreenshotTool,
+  createBrowserTools,
+  createBrowserTypeTool,
+  createBrowserWaitForTool,
+} from "./browser.js"
 
 function permissionRequestFor(
   definition: KhalaToolDefinition,
@@ -1152,7 +1259,13 @@ function permissionRequestFor(
       ? [invocation.arguments.url]
       : typeof invocation.arguments.query === "string"
         ? [invocation.arguments.query]
-        : []
+        : typeof invocation.arguments.selector === "string"
+          ? [invocation.arguments.selector]
+          : typeof invocation.arguments.label === "string"
+            ? [invocation.arguments.label]
+            : typeof invocation.arguments.value === "string"
+              ? [invocation.arguments.value]
+              : []
   return {
     action: definition.authority,
     authorityMode: definition.executionMode,
