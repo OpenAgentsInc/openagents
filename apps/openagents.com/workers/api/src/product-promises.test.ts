@@ -481,13 +481,22 @@ describe('public product promises document', () => {
             'route:/api/public/accepted-outcome/settlement/{economicsId}',
             'apps/openagents.com/workers/api/src/omni-accepted-outcome-settlement-state-machine.ts',
             'apps/openagents.com/workers/api/src/public-accepted-outcome-settlement-routes.test.ts',
+            'route:/api/public/payments/contributor-accrual-bundle',
+            'apps/openagents.com/workers/api/src/omni-contributor-accrual-bundle.ts',
+            'apps/openagents.com/workers/api/src/omni-contributor-accrual-bundle-routes.test.ts',
+            'apps/openagents.com/workers/api/src/omni-gross-margin-receipt.ts',
+            'apps/openagents.com/workers/api/src/omni-contributor-accrual-ledger.ts',
           ]),
           blockerRefs: expect.not.arrayContaining([
             'blocker.product_promises.settlement_state_machine_incomplete',
+            'blocker.product_promises.contributor_ledger_missing',
+            'blocker.product_promises.gross_margin_receipts_missing',
           ]),
-          safeCopy: expect.stringContaining('public-safe evidence ref'),
+          safeCopy: expect.stringContaining(
+            'contributor accrual ledger',
+          ),
           verification: expect.stringContaining(
-            'eight distinct public-safe evidenceRef values',
+            'pending_payout-to-ledger reconciliation',
           ),
         }),
         expect.objectContaining({

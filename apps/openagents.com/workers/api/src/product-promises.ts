@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-28.3'
+export const PublicProductPromisesVersion = '2026-06-29.1'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -152,7 +152,7 @@ export const publicProductPromisesDocument = () => {
     generatedAt: currentIsoTimestamp(),
     maxStalenessSeconds: staleness.maxStalenessSeconds,
     staleness,
-    lastUpdated: '2026-06-28',
+    lastUpdated: '2026-06-29',
     canonicalDocsUrl:
       'https://github.com/OpenAgentsInc/openagents/tree/main/docs/promises',
     sourceRefs,
@@ -246,6 +246,7 @@ export const publicProductPromisesDocument = () => {
         'Registry 2026-06-28.2 clears the stale P2.5 live-wiring blocker from autopilot.agent_world_scene.v1 without flipping the promise green. The running Autopilot Desktop Verse now has the complete flag-gated live path: chat-world-subscriptions.ts polls /api/public/pylon-stats into GotChatWorldScene, update.ts stores the latest ChatWorldPylonScene without resetting the controller, view.ts composes modelChatWorldScene into the behind-chat three-effect visualization, and payment particles are both event-pruned and idle-pruned by TickedChatWorldPaymentParticles so stale beams do not imply current activity on quiet networks. Focused desktop tests cover the pylon-stats subscription, scene reducer/view wiring, and idle beam expiry. The promise STAYS yellow on blocker.product_promises.agent_world_scene_not_default_on because the public product default-on / stay-flag-gated decision still needs explicit owner sign-off and any future green flip remains receipt-first per proof.claim_upgrade_receipts.v1. No spend, payout, settlement, runtime authority, or multiplayer authority is created by this visual wiring.',
         'Registry 2026-06-28.2: autopilot_sites.native_email_sequences.v1 adds the real Cloudflare Email binding path for authored sequence sends and flips NO promise state (stays yellow). The scheduled dispatcher now routes authored sequence templates through the sequence send service when supplied, `makeCloudflareEmailSequenceSender` renders a transactional sequence email, sends via the Worker `EMAIL` binding, and records `email_messages` + `email_deliveries` receipts; disabled config still records the dry-run/skipped path and never calls the sender. Domain auth and live-smoke instructions live at apps/openagents.com/docs/sites/2026-06-28-native-email-sequence-cloudflare-send-service.md. The remaining blocker is still email_deliverability_unproven: green requires a live deliverability smoke with send-to-deliver evidence, bounce/complaint handling, customer self-serve authoring, and owner sign-off per proof.claim_upgrade_receipts.v1.',
         'Registry 2026-06-28.3 implements #6891 for models.tassadar_percepta_executor.v1 and flips NO promise state. Pylon v1.0 now has a deterministic bounded CPU computation-transform fixture in apps/pylon/src/tassadar-cpu-transform-training.ts that runs one CPU-only optimization step, self-verifies loss improvement, emits receipt.models.tassadar_percepta_executor.cpu_transform_training.cpu_transform_fixture_v1, and keeps realBitcoinMoved:false / settlementState:not_settled. GET /api/public/models/tassadar-percepta-executor/cpu-transform-training-receipts now projects that public-safe receipt alongside the architecture and Artanis distillation dataset inputs, so the old pylon_v03_cpu_transform_training_receipts_missing blocker is replaced by blocker.product_promises.tassadar_cpu_transform_real_settlement_missing and blocker.product_promises.tassadar_cpu_transform_owner_green_signoff_missing. The promise STAYS planned: this is one fixture-scale receipt, not a trained model, not a paid earning path, not model promotion, and not a green transition; any future green flip remains receipt-first and owner-signed per proof.claim_upgrade_receipts.v1.',
+        'Registry 2026-06-29.1 implements #6848 for payments.accepted_outcome_economics.v1 and flips NO promise state. The accepted-outcome economics spine now has a dereferenceable contributor accrual bundle at GET /api/public/payments/contributor-accrual-bundle?economicsId=... plus the settlement bundle at GET /api/public/accepted-outcome/settlement/{economicsId}; together they compose a gross-margin receipt, contributor accrual ledger entries, and an eight-state settlement machine from one stored accepted-outcome economics row. Tests prove the ledger and receipt share the same economicsId, reconcile gross margin exactly, reconcile pending_payout to the distributable ledger pool, keep public projections free of internal cents/raw payment material, and surface missing contributor provenance honestly. The old source-level blockers contributor_ledger_missing and gross_margin_receipts_missing are replaced by real_accepted_outcome_receipt_missing and owner_signed_green_transition_missing. The promise STAYS red because source/fixture receipt machinery is not a real accepted outcome carried through a money-moving settlement path, and any future green flip remains receipt-first and owner-signed per proof.claim_upgrade_receipts.v1.',
       ],
     },
     promises: [
@@ -1860,7 +1861,7 @@ export const publicProductPromisesDocument = () => {
         claim:
           'Every accepted outcome should distinguish buyer payment, accepted value, pending balance adjustment, payout intent, settlement attempt, reconciliation, and gross margin.',
         safeCopy:
-          'Accepted-outcome economics now expose a receipt-first settlement state history for one accepted outcome at GET /api/public/accepted-outcome/settlement/{economicsId}: authorized, paid, accepted, pending payout, dispatched, confirmed, reconciled, and margin each carry their own public-safe evidence ref. The projection is inert by default and does not by itself prove real payout settlement or make broad marketplace-margin claims green.',
+          'Accepted-outcome economics now expose receipt-first projections for one accepted outcome: GET /api/public/accepted-outcome/settlement/{economicsId} shows authorized, paid, accepted, pending payout, dispatched, confirmed, reconciled, and margin evidence refs, while GET /api/public/payments/contributor-accrual-bundle?economicsId=... shows the matching gross-margin receipt and contributor accrual ledger. These projections reconcile by accepted-outcome id and gross margin, stay public-safe, and remain inert by default; they do not by themselves prove real payout settlement or make broad marketplace-margin claims green.',
         unsafeCopy:
           'Do not collapse paid, accepted, payable, dispatched, confirmed, reconciled, settled, and gross-margin states into one claim.',
         evidenceRefs: [
@@ -1872,13 +1873,22 @@ export const publicProductPromisesDocument = () => {
           'apps/openagents.com/workers/api/src/omni-accepted-outcome-settlement-state-machine.test.ts',
           'apps/openagents.com/workers/api/src/omni-accepted-outcome-settlement-bundle.ts',
           'apps/openagents.com/workers/api/src/public-accepted-outcome-settlement-routes.test.ts',
+          'route:/api/public/payments/contributor-accrual-bundle',
+          'apps/openagents.com/workers/api/src/omni-contributor-accrual-bundle.ts',
+          'apps/openagents.com/workers/api/src/omni-contributor-accrual-bundle.test.ts',
+          'apps/openagents.com/workers/api/src/omni-contributor-accrual-bundle-store.ts',
+          'apps/openagents.com/workers/api/src/omni-contributor-accrual-bundle-store.test.ts',
+          'apps/openagents.com/workers/api/src/omni-contributor-accrual-bundle-routes.ts',
+          'apps/openagents.com/workers/api/src/omni-contributor-accrual-bundle-routes.test.ts',
+          'apps/openagents.com/workers/api/src/omni-gross-margin-receipt.ts',
+          'apps/openagents.com/workers/api/src/omni-contributor-accrual-ledger.ts',
         ],
         blockerRefs: [
-          'blocker.product_promises.contributor_ledger_missing',
-          'blocker.product_promises.gross_margin_receipts_missing',
+          'blocker.product_promises.real_accepted_outcome_receipt_missing',
+          'blocker.product_promises.owner_signed_green_transition_missing',
         ],
         verification:
-          'State-machine verification: dereference GET /api/public/accepted-outcome/settlement/{economicsId} and confirm the ordered settlementMachine transitions are authorized, paid, accepted, pending_payout, dispatched, confirmed, reconciled, and margin, with eight distinct public-safe evidenceRef values; illegal transitions are rejected and re-recording the current state is idempotent in omni-accepted-outcome-settlement-state-machine.test.ts. Green still requires a real accepted outcome with contributor ledger and gross-margin receipts reconciled to actual settlement evidence.',
+          'Receipt-first verification: dereference GET /api/public/accepted-outcome/settlement/{economicsId} and confirm the ordered settlementMachine transitions are authorized, paid, accepted, pending_payout, dispatched, confirmed, reconciled, and margin, with eight distinct public-safe evidenceRef values. Dereference GET /api/public/payments/contributor-accrual-bundle?economicsId=... and confirm the contributorAccrualLedger and grossMarginReceipt share that accepted-outcome id, reconcile the same gross margin, and expose only public-safe lifecycle/evidence labels. Tests cover illegal settlement transitions, idempotent re-recording, exact ledger/receipt margin reconciliation, pending_payout-to-ledger reconciliation, public projection redaction, and incomplete contributor provenance. Green still requires a real accepted outcome with money-moving settlement evidence and owner-signed transition.',
         authorityBoundary:
           'The settlement state projection is read-only and inert by default. It grants no dispatch, spend, payout, settlement, withdrawal, or public-claim authority; payment/state-history evidence alone is not final payout settlement evidence.',
       },
