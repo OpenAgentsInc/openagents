@@ -1,6 +1,6 @@
 import { describe, expect, mock, test } from "bun:test"
 import { existsSync } from "node:fs"
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
+import { lstat, mkdir, mkdtemp, readdir, readFile, readlink, rm, writeFile } from "node:fs/promises"
 import { join, relative } from "node:path"
 import { tmpdir } from "node:os"
 import {
@@ -10,6 +10,7 @@ import {
   effectiveSandboxMode,
   executeCodexAgentAssignment,
   fileChangeEscapesWorkspace,
+  prepareWorkspaceDependencies,
   runWithCodexSdk,
   type CodexAgentRunner,
 } from "../src/codex-agent-executor"
@@ -992,5 +993,149 @@ describe("codex git_checkout workspace (shared B2 contract)", () => {
       assertPublicProjectionSafe(record)
       expect(JSON.stringify(record)).not.toContain(state.paths.cache)
     })
+  })
+})
+
+describe("shared node_modules cache across codex worktrees", () => {
+  // Each git worktree gets a fresh checkout but never shares node_modules, so the
+  // fleet used to run one full `bun install` per assignment and thrash concurrency.
+  // The cache lets the first task install once and later matching tasks symlink.
+  const LOCK_A = "lockfile-contents-A\n"
+  const LOCK_B = "lockfile-contents-B-different\n"
+
+  async function makeWorktree(root: string, lockContents: string): Promise<string> {
+    const dir = await mkdtemp(join(root, "worktree-"))
+    await writeFile(join(dir, "package.json"), `${JSON.stringify({ private: true, type: "module" })}\n`)
+    await writeFile(join(dir, "bun.lock"), lockContents)
+    return dir
+  }
+
+  // A real installer that materializes a node_modules tree (a marker file) so the
+  // cache populate path has something to move, unlike the public-fixture mock.
+  function countingInstaller() {
+    const commands: string[] = []
+    const installer = async (input: { args: string[]; cwd: string }) => {
+      commands.push(input.args.join(" "))
+      if (input.args[0] === "bun" && input.args[1] === "install") {
+        await mkdir(join(input.cwd, "node_modules"), { recursive: true })
+        await writeFile(join(input.cwd, "node_modules", ".installed"), "ok\n")
+      }
+      return { exitCode: 0, stderrBytes: 0, stdoutBytes: 8, timedOut: false }
+    }
+    const installCount = () => commands.filter((c) => c.startsWith("bun install")).length
+    return { commands, installCount, installer }
+  }
+
+  test("(a) a matching shared cache skips bun install and symlinks node_modules in", async () => {
+    const root = await mkdtemp(join(tmpdir(), "pylon-nm-cache-a-"))
+    try {
+      const sharedCacheRoot = join(root, "shared")
+      const first = countingInstaller()
+      const wtA = await makeWorktree(root, LOCK_A)
+      const prepA = await prepareWorkspaceDependencies({
+        installer: first.installer,
+        sharedCacheRoot,
+        verificationArgs: ["bun", "test", "sum.test.ts"],
+        workspace: wtA,
+      })
+      expect(prepA.ok).toBe(true)
+      // First task installs once, then publishes the tree into the shared cache.
+      expect(first.installCount()).toBe(1)
+      const linkedA = await lstat(join(wtA, "node_modules"))
+      expect(linkedA.isSymbolicLink()).toBe(true)
+
+      // A second, independent worktree with the SAME lockfile must reuse the cache.
+      const second = countingInstaller()
+      const wtB = await makeWorktree(root, LOCK_A)
+      const prepB = await prepareWorkspaceDependencies({
+        installer: second.installer,
+        sharedCacheRoot,
+        verificationArgs: ["bun", "test", "sum.test.ts"],
+        workspace: wtB,
+      })
+      expect(prepB.ok).toBe(true)
+      // No install, and not even the post-install git restore should run.
+      expect(second.commands).toEqual([])
+      const linkedB = await lstat(join(wtB, "node_modules"))
+      expect(linkedB.isSymbolicLink()).toBe(true)
+      const targetB = await readlink(join(wtB, "node_modules"))
+      expect(existsSync(join(targetB, ".installed"))).toBe(true)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  test("(b) a lockfile-hash mismatch falls back to a fresh install", async () => {
+    const root = await mkdtemp(join(tmpdir(), "pylon-nm-cache-b-"))
+    try {
+      const sharedCacheRoot = join(root, "shared")
+      const first = countingInstaller()
+      const wtA = await makeWorktree(root, LOCK_A)
+      await prepareWorkspaceDependencies({
+        installer: first.installer,
+        sharedCacheRoot,
+        verificationArgs: ["bun", "test", "sum.test.ts"],
+        workspace: wtA,
+      })
+      expect(first.installCount()).toBe(1)
+
+      // Different bun.lock -> different hash -> the LOCK_A cache must not be reused.
+      const second = countingInstaller()
+      const wtB = await makeWorktree(root, LOCK_B)
+      await prepareWorkspaceDependencies({
+        installer: second.installer,
+        sharedCacheRoot,
+        verificationArgs: ["bun", "test", "sum.test.ts"],
+        workspace: wtB,
+      })
+      expect(second.installCount()).toBe(1)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  test("(c) concurrent materializations do not corrupt the shared cache", async () => {
+    const root = await mkdtemp(join(tmpdir(), "pylon-nm-cache-c-"))
+    try {
+      const sharedCacheRoot = join(root, "shared")
+      const worktrees = await Promise.all(
+        Array.from({ length: 6 }, () => makeWorktree(root, LOCK_A)),
+      )
+      const installers = worktrees.map(() => countingInstaller())
+      const results = await Promise.all(
+        worktrees.map((workspace, index) =>
+          prepareWorkspaceDependencies({
+            installer: installers[index].installer,
+            sharedCacheRoot,
+            verificationArgs: ["bun", "test", "sum.test.ts"],
+            workspace,
+          }),
+        ),
+      )
+
+      // Every materialization succeeded and ended with a usable node_modules.
+      for (const result of results) expect(result.ok).toBe(true)
+      for (const workspace of worktrees) {
+        const stat = await lstat(join(workspace, "node_modules"))
+        const dir = stat.isSymbolicLink()
+          ? await readlink(join(workspace, "node_modules"))
+          : join(workspace, "node_modules")
+        expect(existsSync(join(dir, ".installed"))).toBe(true)
+      }
+
+      // Exactly one valid, uncorrupted shared cache entry exists for this lockfile,
+      // with no leftover populate locks or half-written temp directories. Layout is
+      // <sharedCacheRoot>/<lockHash>/<install-dir-key>/node_modules.
+      const lockHashDirs = await readdir(sharedCacheRoot)
+      expect(lockHashDirs).toHaveLength(1)
+      const installKeyDirs = await readdir(join(sharedCacheRoot, lockHashDirs[0]))
+      expect(installKeyDirs).toHaveLength(1)
+      const keyDir = join(sharedCacheRoot, lockHashDirs[0], installKeyDirs[0])
+      const keyEntries = await readdir(keyDir)
+      expect(keyEntries).toEqual(["node_modules"])
+      expect(existsSync(join(keyDir, "node_modules", ".installed"))).toBe(true)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
   })
 })
