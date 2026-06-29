@@ -292,6 +292,8 @@ worker_loop() {
   local slot="$1"
   local backoff="$SUP_BACKOFF_MIN"
   local iter=0
+  local last_failure_sig=""
+  local failure_repeat=0
   while true; do
     if [ -f "$PAUSE_FILE" ]; then sleep 30; continue; fi
     local desired; desired=$(cat "$DESIRED_FILE" 2>/dev/null || echo 0)
@@ -434,6 +436,8 @@ worker_loop() {
 
     if grep -qiE '"ok": ?true|"closeout"|accepted' "$out" 2>/dev/null && [ "$rc" -eq 0 ]; then
       backoff="$SUP_BACKOFF_MIN"
+      last_failure_sig=""
+      failure_repeat=0
       sup_reset_account_refusals "$acc"
       # Keep the issue claimed (refresh TTL) so no other slot re-picks it while
       # its PR/lockout state settles; the open-PR lockout then takes over and the
@@ -447,6 +451,12 @@ worker_loop() {
     # pool settles at the login's real headroom.
     local sig="other"
     sig="$(sup_dispatch_failure_signature "$out")"
+    if [ "$sig" = "$last_failure_sig" ]; then
+      failure_repeat=$(( failure_repeat + 1 ))
+    else
+      last_failure_sig="$sig"
+      failure_repeat=1
+    fi
     if [ "$sig" = "refused" ]; then
       # The gate already has an active assignment for this issue (it is busy
       # elsewhere). PARK it for the full claim TTL so the fleet stops hammering
@@ -466,8 +476,10 @@ worker_loop() {
     if [ "$sig" = "codex_agent_execution_refused" ]; then
       failure_sleep="$SUP_CLAIMED_DEEP_BACKLOG_SLEEP_SECS"
       escalate_backoff=0
+    elif ! sup_should_escalate_failure_backoff "$sig" "$failure_repeat"; then
+      escalate_backoff=0
     fi
-    log "slot=$slot acc=$acc issue=#$issue NO-DISPATCH ($sig rc=$rc); backoff ${failure_sleep}s"
+    log "slot=$slot acc=$acc issue=#$issue NO-DISPATCH ($sig rc=$rc repeated=$failure_repeat); backoff ${failure_sleep}s"
     sleep "$failure_sleep"
     if [ "$escalate_backoff" -eq 1 ]; then
       backoff=$(( backoff * 2 )); [ "$backoff" -gt "$SUP_BACKOFF_MAX" ] && backoff="$SUP_BACKOFF_MAX"
