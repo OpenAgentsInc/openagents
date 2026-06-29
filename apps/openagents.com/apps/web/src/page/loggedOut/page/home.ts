@@ -152,7 +152,7 @@ export const githubLoginButton = (): Html => {
 
 const toneClass = (tone: RowTone): string =>
   tone === 'good'
-    ? 'text-[#9ad6b7]'
+    ? 'text-[#8fb6ff]'
     : tone === 'warn'
       ? 'text-[#f3c27a]'
       : 'text-white/52'
@@ -916,7 +916,7 @@ export const khalaTokensServedCounter = (
               ),
               Ui.className<Message>(
                 `inline-block h-1.5 w-1.5 rounded-full ${
-                  live ? 'bg-[#00c853]' : 'bg-white/30'
+                  live ? 'bg-[#3a7bff] shadow-[0_0_8px_rgba(58,123,255,0.85)]' : 'bg-white/30'
                 }`,
               ),
             ],
@@ -981,14 +981,14 @@ export const khalaTokensServedHeaderCounter = (
     [
       h.DataAttribute('counter', 'khala-tokens-served'),
       Ui.className<Message>(
-        'flex min-w-[15rem] flex-col gap-2 border border-[#242424] bg-[#050505] px-3 py-2 text-left sm:items-end sm:text-right',
+        'flex min-w-[15rem] flex-col justify-center gap-2 border border-[#27406b] bg-[#040a14] px-4 py-3 text-left sm:h-full sm:items-end sm:text-right',
       ),
     ],
     [
       h.div(
         [
           Ui.className<Message>(
-            'flex items-center gap-2 text-[0.62rem] uppercase leading-none tracking-[0.08em] text-white/45 sm:justify-end',
+            'flex items-center gap-2 text-[0.62rem] uppercase leading-none tracking-[0.08em] text-[#8fb6ff] sm:justify-end',
           ),
         ],
         [
@@ -997,7 +997,9 @@ export const khalaTokensServedHeaderCounter = (
               h.DataAttribute('status', live ? 'live' : 'pending'),
               Ui.className<Message>(
                 `inline-block h-1.5 w-1.5 rounded-full ${
-                  live ? 'bg-[#00c853]' : 'bg-white/30'
+                  live
+                    ? 'bg-[#3a7bff] shadow-[0_0_8px_rgba(58,123,255,0.85)]'
+                    : 'bg-white/30'
                 }`,
               ),
             ],
@@ -1066,7 +1068,7 @@ const historyChartHeading = (live: boolean, label: string): Html => {
           h.DataAttribute('status', live ? 'live' : 'pending'),
           Ui.className<Message>(
             `inline-block h-1.5 w-1.5 rounded-full ${
-              live ? 'bg-[#00c853]' : 'bg-white/30'
+              live ? 'bg-[#3a7bff] shadow-[0_0_8px_rgba(58,123,255,0.85)]' : 'bg-white/30'
             }`,
           ),
         ],
@@ -1509,7 +1511,7 @@ const historyProjectionSegmentStyle = (
   [
     historyBarSegmentHeightStyle(tokens, maxTokens),
     'background-color: #000000;',
-    'background-image: repeating-linear-gradient(135deg, rgba(0, 200, 83, 0.95) 0px, rgba(0, 200, 83, 0.95) 2px, transparent 2px, transparent 7px);',
+    'background-image: repeating-linear-gradient(135deg, rgba(58, 123, 255, 0.9) 0px, rgba(58, 123, 255, 0.9) 2px, transparent 2px, transparent 7px);',
   ].join(' ')
 
 const historyChartBars = (
@@ -1606,7 +1608,7 @@ const historyChartBars = (
                                   ),
                                 ),
                                 Ui.className<Message>(
-                                  'w-full border-x border-t border-[#00c853]/55',
+                                  'w-full border-x border-t border-[#3a7bff]/55',
                                 ),
                               ],
                               [],
@@ -1626,7 +1628,7 @@ const historyChartBars = (
                             ),
                           ),
                           Ui.className<Message>(
-                            'w-full bg-[#00c853] opacity-90',
+                            'w-full bg-[#3a7bff] opacity-90',
                           ),
                         ],
                         [],
@@ -1640,7 +1642,7 @@ const historyChartBars = (
                   Ui.className<Message>(
                     `grid min-w-0 gap-1 border px-2 py-1.5 ${
                       isPeak
-                        ? 'border-[#00c853] bg-[#062010]'
+                        ? 'border-[#3a7bff] bg-[#0b1322]'
                         : 'border-[#1d1d1d] bg-[#050505]'
                     }`,
                   ),
@@ -1650,7 +1652,7 @@ const historyChartBars = (
                     [
                       Ui.className<Message>(
                         isPeak
-                          ? 'truncate text-[0.58rem] uppercase leading-none text-[#9ad6b7]'
+                          ? 'truncate text-[0.58rem] uppercase leading-none text-[#8fb6ff]'
                           : 'truncate text-[0.58rem] uppercase leading-none text-white/35',
                       ),
                     ],
@@ -1672,7 +1674,7 @@ const historyChartBars = (
                         h.span(
                           [
                             Ui.className<Message>(
-                              'truncate text-[0.56rem] font-medium leading-none tabular-nums text-[#75c999]',
+                              'truncate text-[0.56rem] font-medium leading-none tabular-nums text-[#7fb0ff]',
                             ),
                           ],
                           [
@@ -1812,7 +1814,7 @@ const modelMixRows = (
               h.span(
                 [
                   Ui.className<Message>(
-                    'text-right text-[0.72rem] leading-4 tabular-nums text-[#9ad6b7]',
+                    'text-right text-[0.72rem] leading-4 tabular-nums text-[#8fb6ff]',
                   ),
                 ],
                 [formatPercent(group.pct)],
@@ -1826,7 +1828,7 @@ const modelMixRows = (
             [
               h.div(
                 [
-                  Ui.className<Message>('h-full bg-[#00c853]'),
+                  Ui.className<Message>('h-full bg-[#3a7bff]'),
                   h.Attribute(
                     'style',
                     `width: ${Math.max(0, Math.min(100, group.pct)).toFixed(2)}%;`,

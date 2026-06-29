@@ -52,25 +52,21 @@ export const view = (input: HomeViewInput): Html => {
             h.div(
               [
                 Ui.className<Message>(
-                  'grid gap-3 border border-[#242424] bg-[#030303] p-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end',
+                  'khala-panel grid gap-4 border border-[#1d2733] bg-[#030712] p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-stretch',
                 ),
               ],
               [
                 h.div(
-                  [Ui.className<Message>('min-w-0')],
                   [
-                    h.p(
-                      [
-                        Ui.className<Message>(
-                          'm-0 text-[0.68rem] uppercase leading-4 text-white/45',
-                        ),
-                      ],
-                      ['openagents.com'],
+                    Ui.className<Message>(
+                      'flex min-w-0 flex-col justify-center',
                     ),
+                  ],
+                  [
                     h.h1(
                       [
                         Ui.className<Message>(
-                          'm-0 mt-1 text-[1.4rem] font-semibold leading-[1.1] text-[#f1efe8]',
+                          'm-0 text-[1.4rem] font-semibold leading-[1.1] text-[#f1efe8]',
                         ),
                       ],
                       ['Network Stats'],
@@ -78,7 +74,7 @@ export const view = (input: HomeViewInput): Html => {
                     h.p(
                       [
                         Ui.className<Message>(
-                          'm-0 mt-1 max-w-[64ch] text-[0.74rem] leading-5 text-white/55',
+                          'm-0 mt-1.5 max-w-[64ch] text-[0.74rem] leading-5 text-white/55',
                         ),
                       ],
                       [
@@ -87,16 +83,7 @@ export const view = (input: HomeViewInput): Html => {
                     ),
                   ],
                 ),
-                h.div(
-                  [
-                    Ui.className<Message>(
-                      'grid gap-2 sm:justify-items-end',
-                    ),
-                  ],
-                  [
-                    khalaTokensServedHeaderCounter(input.publicKhalaTokensServed),
-                  ],
-                ),
+                khalaTokensServedHeaderCounter(input.publicKhalaTokensServed),
               ],
             ),
             h.div(
