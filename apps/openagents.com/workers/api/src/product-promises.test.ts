@@ -791,12 +791,13 @@ describe('public product promises document', () => {
           promiseId: 'claims.world_first_ai_training_paid_bitcoin.v1',
           state: 'red',
           blockerRefs: expect.arrayContaining([
-            'blocker.product_promises.world_first_evidence_pack_missing',
             'blocker.product_promises.world_first_owner_signed_upgrade_missing',
           ]),
           evidenceRefs: expect.arrayContaining([
             'docs/transcripts/238.md',
             'docs/launch/2026-06-18-world-firsts-verification.md',
+            'docs/launch/2026-06-29-world-first-claims-qualified-evidence-bundle.md',
+            'apps/openagents.com/workers/api/src/world-first-claims-qualified-evidence-bundle.test.ts',
           ]),
         }),
         expect.objectContaining({
@@ -814,7 +815,9 @@ describe('public product promises document', () => {
             'promise:compute.tassadar_executor_poc.v1',
             'docs/launch/2026-06-20-llm-computer-training-run-definition.md',
             'docs/launch/2026-06-20-world-first-llm-computer-evidence-pack.md',
+            'docs/launch/2026-06-29-world-first-claims-qualified-evidence-bundle.md',
             'apps/openagents.com/workers/api/src/world-first-llm-computer-evidence-pack.test.ts',
+            'apps/openagents.com/workers/api/src/world-first-claims-qualified-evidence-bundle.test.ts',
           ]),
         }),
         expect.objectContaining({
@@ -936,12 +939,20 @@ describe('public product promises document', () => {
           blockerRefs: expect.arrayContaining([
             'blocker.product_promises.world_first_agentic_sales_force_not_achieved',
           ]),
+          evidenceRefs: expect.arrayContaining([
+            'docs/launch/2026-06-29-world-first-claims-qualified-evidence-bundle.md',
+            'apps/openagents.com/workers/api/src/world-first-claims-qualified-evidence-bundle.test.ts',
+          ]),
         }),
         expect.objectContaining({
           promiseId: 'claims.pursued_world_first_largest_sales_force.v1',
           state: 'planned',
           blockerRefs: expect.arrayContaining([
             'blocker.product_promises.world_first_largest_sales_force_not_achieved',
+          ]),
+          evidenceRefs: expect.arrayContaining([
+            'docs/launch/2026-06-29-world-first-claims-qualified-evidence-bundle.md',
+            'apps/openagents.com/workers/api/src/world-first-claims-qualified-evidence-bundle.test.ts',
           ]),
         }),
         expect.objectContaining({
