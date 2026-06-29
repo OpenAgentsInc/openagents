@@ -1276,6 +1276,26 @@ describe('public product promises document', () => {
     expect(externalRepoStudyPromise).toMatchObject({
       state: 'yellow',
     })
+    expect(externalRepoStudyPromise?.blockerRefs).toEqual([
+      'blocker.product_promises.external_repo_studying_marketplace_metering_missing',
+      'blocker.product_promises.external_repo_studying_pricing_package_policy_missing',
+      'blocker.product_promises.external_repo_studying_payout_settlement_gates_missing',
+    ])
+    expect(externalRepoStudyPromise?.evidenceRefs).toEqual(
+      expect.arrayContaining([
+        'packages/probe/packages/runtime/src/benchmark/external-repo-studying-privacy-policy-registry.ts',
+        'packages/probe/packages/runtime/tests/external-repo-studying-privacy-policy-registry.test.ts',
+        'packages/probe/packages/runtime/src/benchmark/external-repo-studying-review-policy-binding.ts',
+        'packages/probe/packages/runtime/tests/external-repo-studying-review-policy-binding.test.ts',
+        'packages/probe/packages/runtime/src/benchmark/external-repo-studying-scan-upload-binding.ts',
+        'packages/probe/packages/runtime/tests/external-repo-studying-scan-upload-binding.test.ts',
+        'packages/probe/packages/runtime/src/benchmark/external-repo-studying-upload-privacy-binding.ts',
+        'packages/probe/packages/runtime/tests/external-repo-studying-upload-privacy-binding.test.ts',
+        'packages/probe/packages/runtime/src/benchmark/external-repo-studying-upload-intake-binding.ts',
+        'packages/probe/packages/runtime/tests/external-repo-studying-upload-intake-binding.test.ts',
+        'docs/legal/external-repo-studying-privacy-policy.v0.md',
+      ]),
+    )
     expect(
       `${externalRepoStudyPromise?.claim} ${externalRepoStudyPromise?.safeCopy}`,
     ).not.toMatch(
