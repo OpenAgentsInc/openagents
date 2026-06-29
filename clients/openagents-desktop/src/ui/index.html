@@ -80,7 +80,7 @@
         hidden
       >
         <div id="coding-panel" class="pylons-panel coding-panel">
-          <div class="pylons-toolbar">
+          <div class="pylons-toolbar coding-topbar">
             <button id="coding-back" class="pylons-back" type="button">
               OpenAgents
             </button>
@@ -91,10 +91,13 @@
               <span id="coding-observed" class="coding-observed">Local now</span>
             </div>
           </div>
-          <div class="pylons-heading">
-            <h2 id="coding-title">Coding</h2>
+          <header class="coding-hero">
+            <div>
+              <span class="coding-kicker">Khala Code</span>
+              <h2 id="coding-title">Codex Fleet Command</h2>
+            </div>
             <span id="coding-summary">Live Codex: 0</span>
-          </div>
+          </header>
           <div class="coding-metrics" aria-label="Coding agent metrics">
             <span class="coding-metric">
               <small>Codex exec</small>
@@ -117,48 +120,19 @@
               <strong id="coding-metric-token-failures">0</strong>
             </span>
           </div>
-          <section class="coding-manager" aria-label="Manager resume checks">
-            <div class="coding-manager-heading">
-              <div>
-                <h3>Manager Resume</h3>
-                <span id="coding-manager-summary">No snapshot</span>
+          <div class="coding-command-console">
+            <section class="coding-session-column" aria-label="Codex sessions">
+              <div class="coding-section-heading">
+                <h3>Live Squadron</h3>
+                <span>Running now</span>
               </div>
-              <div class="coding-manager-actions">
-                <button id="coding-copy-status" type="button">Copy Status</button>
-                <button id="coding-copy-json" type="button">Copy JSON</button>
+              <div id="coding-active-list" class="coding-active-list"></div>
+              <div class="coding-section-heading">
+                <h3>Retained Sessions</h3>
+                <span>Recent proof and closeout</span>
               </div>
-            </div>
-            <pre id="coding-manager-status" class="coding-manager-status"></pre>
-            <div
-              id="coding-manager-warnings"
-              class="coding-manager-warnings"
-            ></div>
-          </section>
-          <section
-            class="token-accounting-panel"
-            aria-labelledby="token-accounting-title"
-          >
-            <div class="token-accounting-heading">
-              <div>
-                <h3 id="token-accounting-title">Token Accounting</h3>
-                <span id="token-accounting-summary">No failure spool</span>
-              </div>
-              <button id="token-replay" class="token-replay" type="button">
-                Replay
-              </button>
-            </div>
-            <div id="token-spool-list" class="token-spool-list"></div>
-            <div
-              id="token-replay-status"
-              class="token-replay-status"
-              aria-live="polite"
-            ></div>
-          </section>
-          <div id="coding-active-list" class="coding-active-list"></div>
-          <div class="coding-workspace">
-            <div class="coding-session-column">
               <div id="coding-list" class="coding-list"></div>
-            </div>
+            </section>
             <section
               id="coding-transcript"
               class="coding-transcript"
@@ -180,13 +154,55 @@
                 class="coding-token-verification"
               ></div>
             </section>
-          </div>
-          <div class="coding-events-block">
-            <div class="coding-events-heading">
-              <h3>Recent dispatch</h3>
-              <span id="coding-dispatch-summary">No events</span>
-            </div>
-            <div id="coding-events" class="coding-events"></div>
+            <aside class="coding-ops-rail" aria-label="Fleet operations">
+              <section class="coding-manager" aria-label="Manager resume checks">
+                <div class="coding-manager-heading">
+                  <div>
+                    <h3>Manager Resume</h3>
+                    <span id="coding-manager-summary">No snapshot</span>
+                  </div>
+                  <div class="coding-manager-actions">
+                    <button id="coding-copy-status" type="button">Copy Status</button>
+                    <button id="coding-copy-json" type="button">Copy JSON</button>
+                  </div>
+                </div>
+                <div
+                  id="coding-manager-warnings"
+                  class="coding-manager-warnings"
+                ></div>
+                <details class="coding-raw-resume">
+                  <summary>Raw Resume</summary>
+                  <pre id="coding-manager-status" class="coding-manager-status"></pre>
+                </details>
+              </section>
+              <section
+                class="token-accounting-panel"
+                aria-labelledby="token-accounting-title"
+              >
+                <div class="token-accounting-heading">
+                  <div>
+                    <h3 id="token-accounting-title">Token Accounting</h3>
+                    <span id="token-accounting-summary">No failure spool</span>
+                  </div>
+                  <button id="token-replay" class="token-replay" type="button">
+                    Replay
+                  </button>
+                </div>
+                <div id="token-spool-list" class="token-spool-list"></div>
+                <div
+                  id="token-replay-status"
+                  class="token-replay-status"
+                  aria-live="polite"
+                ></div>
+              </section>
+              <section class="coding-events-block">
+                <div class="coding-events-heading">
+                  <h3>Dispatch Feed</h3>
+                  <span id="coding-dispatch-summary">No events</span>
+                </div>
+                <div id="coding-events" class="coding-events"></div>
+              </section>
+            </aside>
           </div>
         </div>
       </section>
