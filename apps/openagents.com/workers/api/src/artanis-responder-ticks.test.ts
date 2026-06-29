@@ -1,6 +1,8 @@
 import { describe, expect, test } from 'vitest'
 
 import {
+  ARTANIS_RESPONDER_EXTERNAL_FLOW_BLOCKER,
+  ARTANIS_RESPONDER_TEN_TICKS_BLOCKER,
   artanisResponderTickRef,
   projectArtanisResponderTickReadiness,
   type ArtanisResponderTickActionRow,
@@ -64,6 +66,11 @@ describe('projectArtanisResponderTickReadiness', () => {
     expect(projection.qualifyingUnattendedResponderTickCount).toBe(10)
     expect(projection.unattendedResponderTicksProven).toBe(true)
     expect(projection.externalContributorAnsweredWithinTickWindow).toBe(true)
+    expect(projection.blockerRefs).toEqual([
+      ARTANIS_RESPONDER_EXTERNAL_FLOW_BLOCKER,
+      ARTANIS_RESPONDER_TEN_TICKS_BLOCKER,
+    ])
+    expect(projection.unmetBlockerRefs).toEqual([])
     expect(projection.tickWindows[0]?.replyPostRefs).toContain(
       'post.public.artanis.10',
     )
@@ -86,6 +93,9 @@ describe('projectArtanisResponderTickReadiness', () => {
 
     expect(projection.qualifyingUnattendedResponderTickCount).toBe(0)
     expect(projection.unattendedResponderTicksProven).toBe(false)
+    expect(projection.unmetBlockerRefs).toEqual([
+      ARTANIS_RESPONDER_TEN_TICKS_BLOCKER,
+    ])
   })
 
   test('requires the answered external contributor to land inside a tick window', () => {
@@ -102,8 +112,25 @@ describe('projectArtanisResponderTickReadiness', () => {
     )
 
     expect(projection.externalContributorAnsweredWithinTickWindow).toBe(false)
+    expect(projection.unmetBlockerRefs).toEqual([
+      ARTANIS_RESPONDER_EXTERNAL_FLOW_BLOCKER,
+      ARTANIS_RESPONDER_TEN_TICKS_BLOCKER,
+    ])
     expect(projection.tickWindows[1]?.externalContributorAnsweredInWindow).toBe(
       false,
     )
+  })
+
+  test('keeps only the ten-tick blocker open once external flow is proven', () => {
+    const projection = projectArtanisResponderTickReadiness(
+      [tickRow(1)],
+      [actionRow(1)],
+    )
+
+    expect(projection.externalContributorAnsweredWithinTickWindow).toBe(true)
+    expect(projection.unattendedResponderTicksProven).toBe(false)
+    expect(projection.unmetBlockerRefs).toEqual([
+      ARTANIS_RESPONDER_TEN_TICKS_BLOCKER,
+    ])
   })
 })

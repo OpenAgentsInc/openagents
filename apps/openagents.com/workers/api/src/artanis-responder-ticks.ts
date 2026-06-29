@@ -4,6 +4,10 @@ import {
 } from './public-projection-staleness'
 
 export const ARTANIS_RESPONDER_TICK_TARGET = 10
+export const ARTANIS_RESPONDER_EXTERNAL_FLOW_BLOCKER =
+  'blocker.product_promises.external_contributor_flow_unproven'
+export const ARTANIS_RESPONDER_TEN_TICKS_BLOCKER =
+  'blocker.product_promises.ten_unattended_responder_ticks_unaccrued'
 
 export const ARTANIS_RESPONDER_TICK_STALENESS: PublicProjectionStalenessContract =
   liveAtReadStaleness([
@@ -72,6 +76,8 @@ export type ArtanisResponderTickReadinessProjection = Readonly<{
   publicSafe: true
   authorityBoundary: string
   staleness: PublicProjectionStalenessContract
+  blockerRefs: ReadonlyArray<string>
+  unmetBlockerRefs: ReadonlyArray<string>
   tickTarget: number
   qualifyingUnattendedResponderTickCount: number
   unattendedResponderTicksProven: boolean
@@ -253,13 +259,20 @@ export const projectArtanisResponderTickReadiness = (
   const qualifyingUnattendedResponderTickCount = tickWindows.filter(
     tick => tick.qualifiesUnattendedResponderTick,
   ).length
+  const unattendedResponderTicksProven =
+    qualifyingUnattendedResponderTickCount >= ARTANIS_RESPONDER_TICK_TARGET
+  const externalContributorAnsweredWithinTickWindow = tickWindows.some(
+    tick => tick.externalContributorAnsweredInWindow,
+  )
 
   return {
     authorityBoundary:
       'Read-only projection over Artanis responder scheduled tick receipts plus answered responder-action refs. Grants no dispatch, spend, assignment, settlement, moderation, Forum-write, or registry-transition authority and cannot create a tick, classify a question, post a reply, or tip.',
-    externalContributorAnsweredWithinTickWindow: tickWindows.some(
-      tick => tick.externalContributorAnsweredInWindow,
-    ),
+    blockerRefs: [
+      ARTANIS_RESPONDER_EXTERNAL_FLOW_BLOCKER,
+      ARTANIS_RESPONDER_TEN_TICKS_BLOCKER,
+    ],
+    externalContributorAnsweredWithinTickWindow,
     kind: 'artanis_pylon_support_responder_tick_readiness',
     notes: [
       'A qualifying unattended responder tick requires the scheduled scan and compose stages to have run, at least one candidate scanned and proposed, at least one reply posted, and a dereferenceable reply-post ref inside that tick window.',
@@ -271,8 +284,15 @@ export const projectArtanisResponderTickReadiness = (
     staleness: ARTANIS_RESPONDER_TICK_STALENESS,
     tickTarget: ARTANIS_RESPONDER_TICK_TARGET,
     tickWindows: tickWindows.slice(-ARTANIS_RESPONDER_TICK_TARGET).reverse(),
-    unattendedResponderTicksProven:
-      qualifyingUnattendedResponderTickCount >= ARTANIS_RESPONDER_TICK_TARGET,
+    unattendedResponderTicksProven,
+    unmetBlockerRefs: [
+      ...(externalContributorAnsweredWithinTickWindow
+        ? []
+        : [ARTANIS_RESPONDER_EXTERNAL_FLOW_BLOCKER]),
+      ...(unattendedResponderTicksProven
+        ? []
+        : [ARTANIS_RESPONDER_TEN_TICKS_BLOCKER]),
+    ],
   }
 }
 
