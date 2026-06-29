@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import { spawnSync } from "node:child_process"
 import {
   buildTechnicalPlan,
   buildCandidateIssueSearch,
@@ -142,5 +143,25 @@ describe("github issue triage output", () => {
     expect(buildTechnicalPlan(target, decision.label, decision.relevantFiles, [])).toHaveLength(4)
     expect(renderTriageComment(decision)).toContain("Automated triage pass")
     expect(renderTriageComment(decision)).toContain("prio:2-issue-triage")
+  })
+
+  test("prints the searched queue when no candidates are found", () => {
+    const result = spawnSync(
+      process.execPath,
+      ["run", "scripts/github-issue-triage.ts", "--repo", "OpenAgentsInc/openagents", "--limit", "1"],
+      {
+        cwd: import.meta.dir + "/..",
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          PATH: `${import.meta.dir}/fixtures/github-issue-triage/bin:${process.env.PATH ?? ""}`,
+        },
+      },
+    )
+
+    expect(result.status).toBe(0)
+    expect(result.stdout).toContain(
+      "[github-issue-triage] no candidate issues found for OpenAgentsInc/openagents using search: is:issue is:open no:label sort:created-desc",
+    )
   })
 })
