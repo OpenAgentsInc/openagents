@@ -3,7 +3,10 @@ import { dirname, join } from "node:path"
 import { tmpdir } from "node:os"
 import { describe, expect, test } from "bun:test"
 
-import { createAppleFmSidecarHost } from "../src/bun/apple-fm-sidecar.js"
+import {
+  createAppleFmSidecarHost,
+  installAppleFmSidecarShutdownHandlers,
+} from "../src/bun/apple-fm-sidecar.js"
 import {
   APPLE_FM_BRIDGE_RESOURCES_SUBPATH,
 } from "../src/shared/apple-fm-packaging.js"
@@ -97,5 +100,41 @@ describe("Khala Desktop Apple FM sidecar host", () => {
       host.stop()
       rmSync(resourcesDir, { force: true, recursive: true })
     }
+  })
+
+  test("stops a launched helper on process shutdown signals", async () => {
+    const handlers = new Map<string, (...args: ReadonlyArray<unknown>) => void>()
+    const exits: number[] = []
+    let stopCount = 0
+
+    installAppleFmSidecarShutdownHandlers(
+      {
+        readiness: async () => {
+          throw new Error("not used")
+        },
+        stop() {
+          stopCount += 1
+        },
+      },
+      {
+        once(event, handler) {
+          handlers.set(event, handler)
+        },
+        exit(code) {
+          exits.push(code ?? 0)
+          throw new Error("exit")
+        },
+      },
+    )
+
+    expect([...handlers.keys()].sort()).toEqual(["SIGINT", "SIGTERM", "beforeExit", "exit"])
+
+    handlers.get("beforeExit")?.()
+    handlers.get("exit")?.()
+    expect(stopCount).toBe(1)
+
+    expect(() => handlers.get("SIGTERM")?.()).toThrow("exit")
+    expect(stopCount).toBe(1)
+    expect(exits).toEqual([143])
   })
 })

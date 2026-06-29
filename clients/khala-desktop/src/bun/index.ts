@@ -9,7 +9,10 @@ import {
   KHALA_DESKTOP_RPC_MAX_REQUEST_TIME_MS,
   type KhalaDesktopRPCSchema,
 } from "../shared/rpc.js"
-import { createAppleFmSidecarHost } from "./apple-fm-sidecar.js"
+import {
+  createAppleFmSidecarHost,
+  installAppleFmSidecarShutdownHandlers,
+} from "./apple-fm-sidecar.js"
 
 const baseUrl =
   Bun.env.PYLON_OPENAGENTS_BASE_URL ??
@@ -47,9 +50,7 @@ const rpc = BrowserView.defineRPC<KhalaDesktopRPCSchema>({
   },
 })
 
-process.on("beforeExit", () => {
-  appleFmSidecar.stop()
-})
+installAppleFmSidecarShutdownHandlers(appleFmSidecar)
 
 new BrowserWindow({
   title: "Khala Fleet",

@@ -23,6 +23,13 @@ export type AppleFmSidecarHost = {
   readonly stop: () => void
 }
 
+type AppleFmShutdownEvent = "beforeExit" | "exit" | "SIGINT" | "SIGTERM"
+
+type AppleFmShutdownProcess = {
+  readonly once: (event: AppleFmShutdownEvent, handler: (...args: ReadonlyArray<unknown>) => void) => unknown
+  readonly exit?: (code?: number) => never
+}
+
 type AppleFmSidecarHostOptions = {
   readonly env?: Readonly<Record<string, string | undefined>>
   readonly platform?: NodeJS.Platform
@@ -215,4 +222,27 @@ export function createAppleFmSidecarHost(
       }
     },
   }
+}
+
+export function installAppleFmSidecarShutdownHandlers(
+  host: AppleFmSidecarHost,
+  processLike: AppleFmShutdownProcess = process,
+): void {
+  let stopped = false
+  const stopOnce = () => {
+    if (stopped) return
+    stopped = true
+    host.stop()
+  }
+
+  processLike.once("beforeExit", stopOnce)
+  processLike.once("exit", stopOnce)
+  processLike.once("SIGINT", () => {
+    stopOnce()
+    processLike.exit?.(130)
+  })
+  processLike.once("SIGTERM", () => {
+    stopOnce()
+    processLike.exit?.(143)
+  })
 }
