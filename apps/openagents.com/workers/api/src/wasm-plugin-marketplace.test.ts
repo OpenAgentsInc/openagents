@@ -10,10 +10,23 @@ import {
   installWasmPluginPackage,
   listInstalledWasmPlugins,
   makeInMemoryWasmPluginRegistryStore,
+  runWasmPluginSandboxFixture,
   uninstallWasmPluginPackage,
 } from './wasm-plugin-marketplace'
 
 const validDigest = `wasm.sha256.${'a'.repeat(64)}`
+const fixtureWasmReturns42 = Uint8Array.from(
+  Buffer.from(
+    '0061736d010000000105016000017f030201000707010372756e00000a06010400412a0b',
+    'hex',
+  ),
+)
+const fixtureWasmRequestsUnauthorizedHostCall = Uint8Array.from(
+  Buffer.from(
+    '0061736d010000000105016000017f021b010a6f70656e6167656e74730c756e617574686f72697a65640000030201000707010372756e00010a0601040010000b',
+    'hex',
+  ),
+)
 
 const manifest = (
   overrides: Partial<WasmPluginPackageManifest> = {},
@@ -139,5 +152,86 @@ describe('WASM plugin marketplace discovery route (#6833)', () => {
     )
 
     expect(response.status).toBe(405)
+  })
+})
+
+describe('WASM plugin sandbox fixture policy (#6832)', () => {
+  test('runs a fixture WASM export under resource limits and emits metering evidence', async () => {
+    const result = await runWasmPluginSandboxFixture({
+      manifest: manifest(),
+      wasmModuleBytes: fixtureWasmReturns42,
+      exportName: 'run',
+      input: { value: 7 },
+      limits: {
+        maxExecutionMs: 1000,
+        maxMemoryPages: 1,
+        maxModuleBytes: 128,
+      },
+    })
+
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.output).toBe(42)
+      expect(result.evidence.schema).toBe(
+        'openagents.wasm_plugin_sandbox_evidence.v1',
+      )
+      expect(result.evidence.fixtureOnly).toBe(true)
+      expect(result.evidence.meteringReady).toBe(true)
+      expect(result.evidence.hostCallPolicy.mode).toBe('deny_by_default')
+      expect(result.evidence.hostCallPolicy.allowedHostCalls).toEqual([])
+      expect(result.evidence.inputHashRef).toMatch(
+        /^wasm_plugin\.input\.sha256\.[a-f0-9]{64}$/,
+      )
+      expect(result.evidence.outputHashRef).toMatch(
+        /^wasm_plugin\.output\.sha256\.[a-f0-9]{64}$/,
+      )
+      expect(result.evidence.resourceUsage.moduleBytes).toBe(
+        fixtureWasmReturns42.byteLength,
+      )
+      expect(result.evidence.resourceUsage.memoryPages).toBe(0)
+      expect(result.evidence.resourceUsage.elapsedMs).toBeLessThanOrEqual(1000)
+    }
+  })
+
+  test('rejects ambient imports and unauthorized host calls before instantiation', async () => {
+    const result = await runWasmPluginSandboxFixture({
+      manifest: manifest(),
+      wasmModuleBytes: fixtureWasmRequestsUnauthorizedHostCall,
+      exportName: 'run',
+      input: {},
+      limits: {
+        maxExecutionMs: 1000,
+        maxMemoryPages: 1,
+        maxModuleBytes: 256,
+      },
+    })
+
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.error.blockerRef).toBe(
+        'blocker.wasm_plugin_sandbox.unauthorized_host_call',
+      )
+    }
+  })
+
+  test('rejects modules larger than the configured sandbox byte limit', async () => {
+    const result = await runWasmPluginSandboxFixture({
+      manifest: manifest(),
+      wasmModuleBytes: fixtureWasmReturns42,
+      exportName: 'run',
+      input: {},
+      limits: {
+        maxExecutionMs: 1000,
+        maxMemoryPages: 1,
+        maxModuleBytes: 8,
+      },
+    })
+
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.error.blockerRef).toBe(
+        'blocker.wasm_plugin_sandbox.module_size_limit_exceeded',
+      )
+    }
   })
 })
