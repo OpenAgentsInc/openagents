@@ -16,6 +16,8 @@
 #   * sup_release_claim frees a claim immediately.
 #   * sup_gc_stale_claims removes only entries past SUP_CLAIM_TTL_SECS.
 #   * sup_gc_orphan_claims removes fresh claims whose owner process is gone.
+#   * background workers stamp claims with their own process PID, not the
+#     top-level supervisor shell PID.
 #   * sup_refresh_claim renews a claim's TTL window.
 #   * epics/standing-tasks are never claimed for dispatch.
 #   * pick_and_claim_unlocked_issue returns DISTINCT issues on repeated calls,
@@ -110,6 +112,34 @@ sup_gc_orphan_claims
 if sup_claim_is_active 704; then bad "orphan #704 should be GC'd on startup cleanup"; else ok "orphan #704 GC'd by sup_gc_orphan_claims"; fi
 if sup_claim_is_active 705; then ok "live-owner #705 survives orphan GC"; else bad "live-owner #705 should survive orphan GC"; fi
 sup_release_claim 705
+
+# --- background workers own claims by their worker PID ----------------------
+(
+  sup_try_claim_issue 706 >/dev/null
+  sup_claim_owner_pid "$(sup_claims_dir)/claim.706" > "$WORK/owner.706"
+  if [ -n "${BASHPID:-}" ]; then
+    printf '%s' "$BASHPID" > "$WORK/workerpid.706"
+  else
+    sh -c 'printf %s "$PPID"' > "$WORK/workerpid.706"
+  fi
+  sleep 1
+) &
+worker_pid=$!
+for _ in $(seq 1 20); do
+  [ -s "$WORK/owner.706" ] && [ -s "$WORK/workerpid.706" ] && break
+  sleep 0.05
+done
+owner_pid="$(cat "$WORK/owner.706" 2>/dev/null || true)"
+worker_actual_pid="$(cat "$WORK/workerpid.706" 2>/dev/null || true)"
+if [ "$owner_pid" = "$worker_actual_pid" ] && [ "$owner_pid" != "$$" ]; then
+  ok "background claim owner uses worker PID"
+else
+  bad "background claim owner should be worker PID (owner=$owner_pid worker=$worker_actual_pid parent=$$)"
+fi
+sup_gc_orphan_claims
+if sup_claim_is_active 706; then ok "live background-worker #706 survives orphan GC"; else bad "live background-worker #706 should survive orphan GC"; fi
+wait "$worker_pid"
+sup_release_claim 706
 
 # --- sup_refresh_claim renews TTL ------------------------------------------
 sup_try_claim_issue 703 >/dev/null

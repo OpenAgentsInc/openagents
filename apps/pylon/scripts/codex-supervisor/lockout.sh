@@ -303,6 +303,17 @@ sup_claim_owner_pid() {
   awk 'NR==1 {print $1; exit}' "$claim/meta" 2>/dev/null
 }
 
+sup_set_current_pid_var() {
+  local __var="$1"
+  if [ -n "${BASHPID:-}" ]; then
+    printf -v "$__var" '%s' "$BASHPID"
+  else
+    # macOS ships Bash 3.2, which has no BASHPID. A directly spawned shell sees
+    # this shell as its parent, so PPID gives us the current background worker.
+    printf -v "$__var" '%s' "$(sh -c 'printf %s "$PPID"')"
+  fi
+}
+
 sup_pid_is_alive() {
   local pid="$1"
   [ "$pid" -ge 1 ] 2>/dev/null || return 1
@@ -346,8 +357,9 @@ sup_claim_is_active() {
 #   rc 1 if another slot already holds a fresh claim. Relies on the caller (or a
 #   preceding sup_gc_stale_claims) to have cleared expired claims first.
 sup_try_claim_issue() {
-  local issue="$1"; local owner="${2:-$$}"
+  local issue="$1"; local owner="${2:-}"
   [ -n "$issue" ] || return 1
+  [ -n "$owner" ] || sup_set_current_pid_var owner
   local dir; dir="$(sup_claims_dir)"
   local claim="$dir/claim.$issue"
   if mkdir "$claim" 2>/dev/null; then
@@ -363,13 +375,15 @@ sup_try_claim_issue() {
 #   the claim does not exist.
 sup_refresh_claim() {
   local issue="$1"; [ -n "$issue" ] || return 0
+  local owner="${2:-}"
+  [ -n "$owner" ] || sup_set_current_pid_var owner
   local claim; claim="$(sup_claims_dir)/claim.$issue"
   [ -e "$claim" ] || return 0
   # Bump the claim DIRECTORY's mtime (the value sup_claim_is_active /
   # sup_gc_stale_claims read); overwriting an existing inner file does not
   # reliably update the directory mtime on all filesystems.
   touch "$claim" 2>/dev/null || true
-  printf '%s %s\n' "${2:-$$}" "$(date +%s)" > "$claim/meta" 2>/dev/null || true
+  printf '%s %s\n' "$owner" "$(date +%s)" > "$claim/meta" 2>/dev/null || true
 }
 
 # sup_release_claim <issue>
