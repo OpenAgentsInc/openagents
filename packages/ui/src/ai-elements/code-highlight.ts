@@ -1,11 +1,18 @@
-// Dependency-free, server-safe syntax tokenizer for the AI Elements code block.
+import {
+  parsePatchFiles,
+  type ChangeContent,
+  type ContextContent,
+  type FileDiffMetadata,
+  type Hunk,
+} from '@pierre/diffs'
+
+// Server-safe syntax tokenizer for the AI Elements code block.
 //
 // Why hand-rolled rather than Shiki/Prism: the kit renders typed Foldkit nodes
 // and bans raw `innerHTML` for untrusted content (user/agent code), so we cannot
 // inject a highlighter's HTML string into the vdom. Instead we tokenize source
 // into a flat list of `{ kind, text }` tokens that the component renders as
-// typed `h.span` nodes — fully escaped, deterministic, and unit-testable, with
-// no new runtime dependency.
+// typed `h.span` nodes — fully escaped, deterministic, and unit-testable.
 //
 // The token theme is the house Protoss palette (DESIGN.md): cool blue/cyan on a
 // near-black sunken surface, white-ish identifiers, muted comments. No violet
@@ -486,10 +493,108 @@ export type ParsedDiff = {
 const stripDiffPathPrefix = (path: string): string =>
   path.startsWith('a/') || path.startsWith('b/') ? path.slice(2) : path
 
-// Parse a unified diff (git patch) into render rows. Header noise
-// (`diff --git`, `index`, `---`, `+++`) is consumed for the filename but not
-// rendered, leaving a clean hunk/line view.
-export const parseUnifiedDiff = (
+const SYNTHETIC_DIFF_FILENAME = '__openagents_diff__'
+
+const cleanDiffLine = (line: string | undefined): string =>
+  (line ?? '').replace(/(?:\r\n|\n|\r)$/, '')
+
+const cleanHunkHeader = (hunk: Hunk): string =>
+  cleanDiffLine(hunk.hunkSpecs ?? '@@')
+
+const lineNumberFrom = (
+  start: number,
+  baseIndex: number,
+  currentIndex: number,
+  offset: number,
+): number => start + (currentIndex - baseIndex) + offset
+
+const pushContextRows = (
+  rows: DiffRow[],
+  file: FileDiffMetadata,
+  hunk: Hunk,
+  content: ContextContent,
+): void => {
+  for (let offset = 0; offset < content.lines; offset += 1) {
+    rows.push({
+      kind: 'context',
+      oldNo: lineNumberFrom(
+        hunk.deletionStart,
+        hunk.deletionLineIndex,
+        content.deletionLineIndex,
+        offset,
+      ),
+      newNo: lineNumberFrom(
+        hunk.additionStart,
+        hunk.additionLineIndex,
+        content.additionLineIndex,
+        offset,
+      ),
+      text: cleanDiffLine(file.deletionLines[content.deletionLineIndex + offset]),
+    })
+  }
+}
+
+const pushChangeRows = (
+  rows: DiffRow[],
+  file: FileDiffMetadata,
+  hunk: Hunk,
+  content: ChangeContent,
+): void => {
+  for (let offset = 0; offset < content.deletions; offset += 1) {
+    rows.push({
+      kind: 'remove',
+      oldNo: lineNumberFrom(
+        hunk.deletionStart,
+        hunk.deletionLineIndex,
+        content.deletionLineIndex,
+        offset,
+      ),
+      text: cleanDiffLine(file.deletionLines[content.deletionLineIndex + offset]),
+    })
+  }
+  for (let offset = 0; offset < content.additions; offset += 1) {
+    rows.push({
+      kind: 'add',
+      newNo: lineNumberFrom(
+        hunk.additionStart,
+        hunk.additionLineIndex,
+        content.additionLineIndex,
+        offset,
+      ),
+      text: cleanDiffLine(file.additionLines[content.additionLineIndex + offset]),
+    })
+  }
+}
+
+const normalizePatchForParser = (
+  patch: string,
+  filenameOverride: string | undefined,
+): { patch: string; syntheticFilename: boolean } => {
+  if (!patch.trimStart().startsWith('@@')) {
+    return { patch, syntheticFilename: false }
+  }
+
+  const filename = filenameOverride ?? SYNTHETIC_DIFF_FILENAME
+  return {
+    patch: `--- a/${filename}\n+++ b/${filename}\n${patch}`,
+    syntheticFilename: filenameOverride === undefined,
+  }
+}
+
+const parsedFilename = (
+  file: FileDiffMetadata | undefined,
+  filenameOverride: string | undefined,
+  syntheticFilename: boolean,
+): string | undefined => {
+  if (filenameOverride !== undefined) return filenameOverride
+  if (syntheticFilename) return undefined
+  const name = file?.name ?? file?.prevName
+  return name === undefined || name === '/dev/null'
+    ? undefined
+    : stripDiffPathPrefix(name)
+}
+
+const parseUnifiedDiffFallback = (
   patch: string,
   filenameOverride?: string,
 ): ParsedDiff => {
@@ -501,7 +606,9 @@ export const parseUnifiedDiff = (
   let removed = 0
   let filename = filenameOverride
 
-  lines.forEach((line, index) => {
+  lines.forEach((rawLine, index) => {
+    const line = cleanDiffLine(rawLine)
+
     // Drop a single trailing empty line produced by a trailing newline.
     if (line === '' && index === lines.length - 1) {
       return
@@ -563,6 +670,62 @@ export const parseUnifiedDiff = (
     oldNo += 1
     newNo += 1
   })
+
+  return {
+    rows,
+    added,
+    removed,
+    ...(filename === undefined ? {} : { filename }),
+  }
+}
+
+// Parse a unified diff (git patch) into render rows. The parser is backed by
+// `@pierre/diffs`, then adapted to the small synchronous row model shared by
+// the Foldkit ai-element and vanilla desktop renderers.
+export const parseUnifiedDiff = (
+  patch: string,
+  filenameOverride?: string,
+): ParsedDiff => {
+  const rows: DiffRow[] = []
+  let added = 0
+  let removed = 0
+  const normalized = normalizePatchForParser(patch, filenameOverride)
+  let files: FileDiffMetadata[]
+
+  try {
+    files = parsePatchFiles(normalized.patch)
+      .flatMap(parsedPatch => parsedPatch.files)
+      .filter(file => file.hunks.length > 0)
+  } catch {
+    return parseUnifiedDiffFallback(patch, filenameOverride)
+  }
+
+  for (const file of files) {
+    for (const hunk of file.hunks) {
+      rows.push({ kind: 'hunk', text: cleanHunkHeader(hunk) })
+
+      for (const content of hunk.hunkContent) {
+        if (content.type === 'context') {
+          pushContextRows(rows, file, hunk, content)
+        } else {
+          pushChangeRows(rows, file, hunk, content)
+        }
+      }
+
+      added += hunk.additionLines
+      removed += hunk.deletionLines
+    }
+  }
+
+  const filename = parsedFilename(
+    files[0],
+    filenameOverride,
+    normalized.syntheticFilename,
+  )
+
+  if (rows.length === 0 && patch.trim().length > 0) {
+    return parseUnifiedDiffFallback(patch, filenameOverride)
+  }
 
   return {
     rows,

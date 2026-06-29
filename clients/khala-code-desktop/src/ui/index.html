@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Khala Code</title>
+    <link rel="stylesheet" href="./main.css" />
+  </head>
+  <body>
+    <main class="khala-code-shell antialiased" aria-label="Khala Code chat">
+      <div class="khala-code-scene" aria-hidden="true"></div>
+      <section class="khala-code-thread-shell" aria-label="Khala Code transcript">
+        <div
+          id="message-list"
+          class="message-list"
+          data-khala-code-messages
+          aria-live="polite"
+        ></div>
+      </section>
+      <section class="composer-dock" aria-label="Message composer">
+        <form id="composer-form" class="composer-shell">
+          <textarea
+            id="composer-input"
+            name="khala-code-message"
+            rows="4"
+            autocomplete="off"
+            spellcheck="true"
+            placeholder="Send a message"
+            aria-label="Message Khala Code"
+          ></textarea>
+          <button id="send-button" type="submit" aria-label="Send message">
+            <span aria-hidden="true">↑</span>
+          </button>
+        </form>
+      </section>
+    </main>
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>

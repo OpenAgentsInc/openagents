@@ -23,6 +23,7 @@
   },
   "dependencies": {
     "@openagentsinc/design-tokens": "workspace:*",
+    "@pierre/diffs": "^1.2.11",
     "clsx": "^2.1.1",
     "effect": "catalog:",
     "foldkit": "^0.102.1"

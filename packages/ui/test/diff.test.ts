@@ -70,6 +70,13 @@ describe('parseUnifiedDiff', () => {
     expect(parsed.added).toBe(1)
     expect(parsed.removed).toBe(1)
   })
+
+  test('keeps bare diff snippets visible when no patch file is present', () => {
+    const parsed = parseUnifiedDiff('-old\n+new\n')
+    expect(parsed.added).toBe(1)
+    expect(parsed.removed).toBe(1)
+    expect(parsed.rows.map(row => row.kind)).toEqual(['remove', 'add'])
+  })
 })
 
 describe('ai-elements diff', () => {
