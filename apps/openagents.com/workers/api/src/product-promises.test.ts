@@ -157,6 +157,9 @@ describe('public product promises document', () => {
     expect(decoded.sourceRefs).toContain(
       'docs/tassadar/2026-06-21-tassadar-cpu-transform-training-receipt-surface.md',
     )
+    expect(decoded.sourceRefs).toContain(
+      'docs/promises/2026-06-29-world-first-claims-7027-audit.md',
+    )
     expect(decoded.promises.length).toBeGreaterThan(0)
     expect(decoded.verificationSummary.promiseCount).toBe(
       decoded.promises.length,
@@ -440,9 +443,10 @@ describe('public product promises document', () => {
       /latest stays 0\.2\.5|only published, installable Pylon|release candidate, not stable 0\.3\.0|Pylon v1\.0 is present in the monorepo as a release candidate/i,
     )
     expect(currentCopy).toContain('Pylon v1.0 has a stable source cut')
-    expect(currentCopy).toContain('Registry 2026-06-29.2')
+    expect(currentCopy).toContain('Registry 2026-06-29.3')
     expect(currentCopy).toContain('flips NO promise state')
     expect(currentCopy).toContain('Khala Desktop now carries source-level')
+    expect(currentCopy).toContain('implements #7027')
     expect(currentCopy).toContain('maxStalenessSeconds:0')
     const codexSuccessorPromise = decoded.promises.find(
       promise => promise.promiseId === 'autopilot.codex_probe_pylon_successor.v1',
@@ -797,6 +801,7 @@ describe('public product promises document', () => {
           evidenceRefs: expect.arrayContaining([
             'docs/transcripts/238.md',
             'docs/launch/2026-06-18-world-firsts-verification.md',
+            'docs/promises/2026-06-29-world-first-claims-7027-audit.md',
           ]),
         }),
         expect.objectContaining({
@@ -814,6 +819,7 @@ describe('public product promises document', () => {
             'promise:compute.tassadar_executor_poc.v1',
             'docs/launch/2026-06-20-llm-computer-training-run-definition.md',
             'docs/launch/2026-06-20-world-first-llm-computer-evidence-pack.md',
+            'docs/promises/2026-06-29-world-first-claims-7027-audit.md',
             'apps/openagents.com/workers/api/src/world-first-llm-computer-evidence-pack.test.ts',
           ]),
         }),
@@ -936,12 +942,18 @@ describe('public product promises document', () => {
           blockerRefs: expect.arrayContaining([
             'blocker.product_promises.world_first_agentic_sales_force_not_achieved',
           ]),
+          evidenceRefs: expect.arrayContaining([
+            'docs/promises/2026-06-29-world-first-claims-7027-audit.md',
+          ]),
         }),
         expect.objectContaining({
           promiseId: 'claims.pursued_world_first_largest_sales_force.v1',
           state: 'planned',
           blockerRefs: expect.arrayContaining([
             'blocker.product_promises.world_first_largest_sales_force_not_achieved',
+          ]),
+          evidenceRefs: expect.arrayContaining([
+            'docs/promises/2026-06-29-world-first-claims-7027-audit.md',
           ]),
         }),
         expect.objectContaining({
@@ -1292,6 +1304,81 @@ describe('public product promises document', () => {
     )
     expect(externalRepoStudyPromise?.authorityBoundary).toContain(
       'no private repo ingestion authority',
+    )
+  })
+
+  test('keeps world-first and largest-force claims non-green with dated copy gates', () => {
+    const decoded = S.decodeUnknownSync(ProductPromisesDocument)(
+      publicProductPromisesDocument(),
+    )
+    const byId = new Map(
+      decoded.promises.map(promise => [promise.promiseId, promise]),
+    )
+    const auditRef =
+      'docs/promises/2026-06-29-world-first-claims-7027-audit.md'
+
+    const bitcoinPaidTraining = byId.get(
+      'claims.world_first_ai_training_paid_bitcoin.v1',
+    )
+    expect(bitcoinPaidTraining?.state).toBe('red')
+    expect(bitcoinPaidTraining?.evidenceRefs).toContain(auditRef)
+    expect(bitcoinPaidTraining?.blockerRefs).toEqual(
+      expect.arrayContaining([
+        'blocker.product_promises.world_first_evidence_pack_missing',
+        'blocker.product_promises.world_first_owner_signed_upgrade_missing',
+      ]),
+    )
+    expect(bitcoinPaidTraining?.safeCopy).toContain('full qualifiers')
+    expect(bitcoinPaidTraining?.unsafeCopy).toContain('bare "world first"')
+    expect(bitcoinPaidTraining?.verification).toContain('dated #7027 audit')
+
+    const llmComputer = byId.get(
+      'claims.world_first_public_llm_computer_training_run.v1',
+    )
+    expect(llmComputer?.state).toBe('red')
+    expect(llmComputer?.evidenceRefs).toContain(auditRef)
+    expect(llmComputer?.blockerRefs).toEqual([
+      'blocker.product_promises.world_first_owner_signed_upgrade_missing',
+    ])
+    expect(llmComputer?.safeCopy).toContain('Percepta')
+    expect(llmComputer?.unsafeCopy).toContain('without the qualifiers')
+    expect(llmComputer?.verification).toContain('refuse-list')
+
+    const largestAgenticSalesForce = byId.get(
+      'claims.pursued_world_first_largest_agentic_sales_force.v1',
+    )
+    expect(largestAgenticSalesForce?.state).toBe('planned')
+    expect(largestAgenticSalesForce?.evidenceRefs).toContain(auditRef)
+    expect(largestAgenticSalesForce?.blockerRefs).toEqual(
+      expect.arrayContaining([
+        'blocker.product_promises.world_first_agentic_sales_force_not_achieved',
+        'blocker.product_promises.world_first_agentic_sales_force_no_sized_verifiable_force',
+        'blocker.product_promises.world_first_owner_signed_upgrade_missing',
+      ]),
+    )
+    expect(largestAgenticSalesForce?.safeCopy).toContain('PURSUED')
+    expect(largestAgenticSalesForce?.unsafeCopy).toContain(
+      'Do not state OpenAgents HAS the largest agentic sales force',
+    )
+
+    const largestSalesForce = byId.get(
+      'claims.pursued_world_first_largest_sales_force.v1',
+    )
+    expect(largestSalesForce?.state).toBe('planned')
+    expect(largestSalesForce?.evidenceRefs).toContain(auditRef)
+    expect(largestSalesForce?.blockerRefs).toEqual(
+      expect.arrayContaining([
+        'blocker.product_promises.world_first_largest_sales_force_not_achieved',
+        'blocker.product_promises.world_first_largest_sales_force_seven_million_bar_unmet',
+        'blocker.product_promises.world_first_owner_signed_upgrade_missing',
+      ]),
+    )
+    expect(largestSalesForce?.safeCopy).toContain('NOT achieved')
+    expect(largestSalesForce?.unsafeCopy).toContain(
+      'Do not state OpenAgents HAS the largest sales force',
+    )
+    expect(largestSalesForce?.verification).toContain(
+      'roughly seven-million-agent bar is unmet',
     )
   })
 

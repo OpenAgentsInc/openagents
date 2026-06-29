@@ -1,5 +1,18 @@
 # Promise Registry
 
+> Registry `2026-06-29.3` implements #7027 as a world-first/largest-force
+> claim audit and flips NO promise state. The four records
+> `claims.world_first_ai_training_paid_bitcoin.v1`,
+> `claims.world_first_public_llm_computer_training_run.v1`,
+> `claims.pursued_world_first_largest_agentic_sales_force.v1`, and
+> `claims.pursued_world_first_largest_sales_force.v1` now cite
+> [`docs/promises/2026-06-29-world-first-claims-7027-audit.md`](2026-06-29-world-first-claims-7027-audit.md)
+> as the dated blocker/copy-gate note. The Bitcoin-paid-training claim stays red
+> on evidence-pack plus owner-signed-upgrade blockers; the LLM-computer claim
+> stays red on owner-signed upgrade; and the largest-force claims stay planned
+> as explicit pursuits with no achieved sized force. Tests guard the qualified
+> copy and blocker language so public surfaces cannot accidentally overclaim.
+>
 > Registry `2026-06-29.2` is a current-main refresh after #6997, #6999,
 > #7001, #7002, and #7006 and flips NO promise state. It records the
 > terminal-agent current-state audit and Codex tool-layer study as evidence for
@@ -66,9 +79,9 @@
 > Current machine-readable source of truth: `/api/public/product-promises` is
 > generated from
 > [`product-promises.ts`](../../apps/openagents.com/workers/api/src/product-promises.ts),
-> which currently advertises registry `2026-06-29.2` with
+> which currently advertises registry `2026-06-29.3` with
 > `lastUpdated: "2026-06-29"`. This narrative document records the same
-> top-line 2026-06-29.2 promise decisions above, plus historical reconciliation
+> top-line 2026-06-29.3 promise decisions above, plus historical reconciliation
 > context below; when in doubt, agents and reviewers should defer to the
 > machine-readable registry and include its version in mismatch reports.
 >
@@ -76,7 +89,7 @@
 > Tassadar CPU-transform, referral, small-model proxy, WASM plugin, Verse scene,
 > native email, marketplace, metrics, terminal-agent audit, supervisor
 > replenishment, GLM failover, Apple FM sidecar, and operator-safety merges were
-> checked against the current `2026-06-29.2` registry header. This pass records
+> checked against the current `2026-06-29.3` registry header. This pass records
 > no additional promise state flips and no new green claims beyond the already
 > source-recorded scoped transitions; red/planned/yellow records keep their
 > owner-signed, receipt-first green gates.
