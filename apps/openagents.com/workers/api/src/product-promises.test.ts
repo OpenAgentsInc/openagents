@@ -440,8 +440,9 @@ describe('public product promises document', () => {
       /latest stays 0\.2\.5|only published, installable Pylon|release candidate, not stable 0\.3\.0|Pylon v1\.0 is present in the monorepo as a release candidate/i,
     )
     expect(currentCopy).toContain('Pylon v1.0 has a stable source cut')
-    expect(currentCopy).toContain('Registry 2026-06-29.2')
+    expect(currentCopy).toContain('Registry 2026-06-29.3')
     expect(currentCopy).toContain('flips NO promise state')
+    expect(currentCopy).toContain('resolves #7030')
     expect(currentCopy).toContain('Khala Desktop now carries source-level')
     expect(currentCopy).toContain('maxStalenessSeconds:0')
     const codexSuccessorPromise = decoded.promises.find(
@@ -1554,6 +1555,54 @@ describe('public product promises document', () => {
     )
     expect(postTrainingPromise?.authorityBoundary).toContain(
       'not a model-quality',
+    )
+  })
+
+  test('records intentional flag gating for Autopilot agent-world visual promises', () => {
+    const decoded = S.decodeUnknownSync(ProductPromisesDocument)(
+      publicProductPromisesDocument(),
+    )
+
+    const scenePromise = decoded.promises.find(
+      promise => promise.promiseId === 'autopilot.agent_world_scene.v1',
+    )
+    const paymentPromise = decoded.promises.find(
+      promise =>
+        promise.promiseId === 'autopilot.bitcoin_payment_visualization.v1',
+    )
+    const growthPromise = decoded.promises.find(
+      promise => promise.promiseId === 'autopilot.pylon_growth_visualization.v1',
+    )
+
+    expect(scenePromise?.state).toBe('yellow')
+    expect(scenePromise?.safeCopy).toContain('intentionally flag-gated')
+    expect(scenePromise?.blockerRefs).toEqual([
+      'blocker.product_promises.agent_world_scene_intentionally_flag_gated',
+    ])
+    expect(scenePromise?.verification).toContain(
+      'current product decision is to keep the scene flag-gated/default-off',
+    )
+
+    expect(paymentPromise?.state).toBe('yellow')
+    expect(paymentPromise?.blockerRefs).toEqual([
+      'blocker.product_promises.payment_visualization_intentionally_flag_gated',
+    ])
+    expect(paymentPromise?.verification).toContain(
+      'current product decision is to keep payment visualization flag-gated/default-off',
+    )
+    expect(paymentPromise?.authorityBoundary).toContain(
+      'grants no payment authority',
+    )
+
+    expect(growthPromise?.state).toBe('yellow')
+    expect(growthPromise?.blockerRefs).toEqual([
+      'blocker.product_promises.pylon_growth_intentionally_flag_gated',
+    ])
+    expect(growthPromise?.verification).toContain(
+      'current product decision is to keep growth visualization flag-gated/default-off',
+    )
+    expect(growthPromise?.authorityBoundary).toContain(
+      'grants no earning, spend, payout, or settlement authority',
     )
   })
 

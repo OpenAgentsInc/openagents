@@ -1,5 +1,17 @@
 # Promise Registry
 
+> Registry `2026-06-29.3` resolves #7030 by recording the product decision for
+> the Autopilot agent-world visuals and flips NO promise state.
+> `autopilot.agent_world_scene.v1`,
+> `autopilot.bitcoin_payment_visualization.v1`, and
+> `autopilot.pylon_growth_visualization.v1` intentionally stay yellow and
+> default-off behind `CHAT_WORLD_SCENE` / `CHAT_WORLD_PAYMENTS` until a later
+> staged/default-on rollout has a fresh public render/projection receipt and
+> owner-signed receipt-first transition. The blockers now describe the
+> intentional flag gate rather than stale indecision, and public copy keeps
+> visualization separate from payment, payout, settlement, runtime, earning, or
+> multiplayer authority.
+>
 > Registry `2026-06-29.2` is a current-main refresh after #6997, #6999,
 > #7001, #7002, and #7006 and flips NO promise state. It records the
 > terminal-agent current-state audit and Codex tool-layer study as evidence for
@@ -66,9 +78,9 @@
 > Current machine-readable source of truth: `/api/public/product-promises` is
 > generated from
 > [`product-promises.ts`](../../apps/openagents.com/workers/api/src/product-promises.ts),
-> which currently advertises registry `2026-06-29.2` with
+> which currently advertises registry `2026-06-29.3` with
 > `lastUpdated: "2026-06-29"`. This narrative document records the same
-> top-line 2026-06-29.2 promise decisions above, plus historical reconciliation
+> top-line 2026-06-29.3 promise decisions above, plus historical reconciliation
 > context below; when in doubt, agents and reviewers should defer to the
 > machine-readable registry and include its version in mismatch reports.
 >

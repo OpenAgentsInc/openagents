@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-29.2'
+export const PublicProductPromisesVersion = '2026-06-29.3'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -261,6 +261,7 @@ export const publicProductPromisesDocument = () => {
         'Registry 2026-06-28.3 implements #6891 for models.tassadar_percepta_executor.v1 and flips NO promise state. Pylon v1.0 now has a deterministic bounded CPU computation-transform fixture in apps/pylon/src/tassadar-cpu-transform-training.ts that runs one CPU-only optimization step, self-verifies loss improvement, emits receipt.models.tassadar_percepta_executor.cpu_transform_training.cpu_transform_fixture_v1, and keeps realBitcoinMoved:false / settlementState:not_settled. GET /api/public/models/tassadar-percepta-executor/cpu-transform-training-receipts now projects that public-safe receipt alongside the architecture and Artanis distillation dataset inputs, so the old pylon_v03_cpu_transform_training_receipts_missing blocker is replaced by blocker.product_promises.tassadar_cpu_transform_real_settlement_missing and blocker.product_promises.tassadar_cpu_transform_owner_green_signoff_missing. The promise STAYS planned: this is one fixture-scale receipt, not a trained model, not a paid earning path, not model promotion, and not a green transition; any future green flip remains receipt-first and owner-signed per proof.claim_upgrade_receipts.v1.',
         'Registry 2026-06-29.1 implements #6848 for payments.accepted_outcome_economics.v1 and flips NO promise state. The accepted-outcome economics spine now has a dereferenceable contributor accrual bundle at GET /api/public/payments/contributor-accrual-bundle?economicsId=... plus the settlement bundle at GET /api/public/accepted-outcome/settlement/{economicsId}; together they compose a gross-margin receipt, contributor accrual ledger entries, and an eight-state settlement machine from one stored accepted-outcome economics row. Tests prove the ledger and receipt share the same economicsId, reconcile gross margin exactly, reconcile pending_payout to the distributable ledger pool, keep public projections free of internal cents/raw payment material, and surface missing contributor provenance honestly. The old source-level blockers contributor_ledger_missing and gross_margin_receipts_missing are replaced by real_accepted_outcome_receipt_missing and owner_signed_green_transition_missing. The promise STAYS red because source/fixture receipt machinery is not a real accepted outcome carried through a money-moving settlement path, and any future green flip remains receipt-first and owner-signed per proof.claim_upgrade_receipts.v1.',
         'Registry 2026-06-29.2 is a current-main refresh after #6997/#6999/#7001/#7002/#7006 and flips NO promise state. The terminal-agent current-state audit and Codex tool-layer study are now cited as evidence for the Codex/Probe/Pylon runtime direction: current production coding delegation is still Pylon plus external agent SDK lanes and OpenAgents-native terminal tools remain a consolidation task, not a new green claim. The codex-supervisor LOCKOUT replenishment helper can create or reuse three bounded standing issues so owner-capacity supervisors do not idle indefinitely, but it creates no paid labor, payout, settlement, or broad availability claim. The inference router now has GLM own-capacity failover alerting and public-safe fallback telemetry for repeated no-headroom saturation, but the paid gateway still stays red until a dereferenceable paid receipt exists. Khala Desktop now carries source-level Electrobun Apple FM sidecar packaging/readiness plus redaction tests, but Apple FM local mode remains yellow until a signed/notarized from-install smoke with helper supervision exists. The Khala model-mix promise remains live-at-read with maxStalenessSeconds:0; the stale 2-second cache wording is not applied.',
+        'Registry 2026-06-29.3 resolves #7030 by recording the product decision for the flag-gated Autopilot agent-world visuals and flips NO promise state. autopilot.agent_world_scene.v1, autopilot.bitcoin_payment_visualization.v1, and autopilot.pylon_growth_visualization.v1 intentionally STAY yellow and default-off behind CHAT_WORLD_SCENE / CHAT_WORLD_PAYMENTS until a later staged rollout or default-on rollout has a fresh public render/projection receipt and owner-signed receipt-first transition. The blockers now describe the intentional flag gate rather than stale indecision. Public copy continues to distinguish visualization from payment, payout, settlement, runtime, earning, or multiplayer authority, and stale payment beams remain covered by the existing desktop scene tests.',
       ],
     },
     promises: [
@@ -3988,7 +3989,7 @@ export const publicProductPromisesDocument = () => {
         claim:
           'The Autopilot chat is set inside a living 3D Pylon world: a glass-over-canvas scene rendered behind the conversation where each live Pylon appears as a crystal, driven by real pylon-stats data.',
         safeCopy:
-          'The agent world scene exists behind the Autopilot chat as a flag-gated, glass-over-canvas 3D render. The live in-app wiring is present: pylon-stats feeds the running scene through the chat-world subscription/reducer/view path, live Pylons render as crystals, and stale payment beams age out instead of implying current activity. The product default-on / stay-flag-gated decision is still owner-gated, so this remains a yellow, receipt-bounded claim.',
+          'The agent world scene exists behind the Autopilot chat as an intentionally flag-gated, default-off glass-over-canvas 3D render. The live in-app wiring is present: pylon-stats feeds the running scene through the chat-world subscription/reducer/view path, live Pylons render as crystals, and stale payment beams age out instead of implying current activity. It stays yellow until a staged/default-on rollout has a fresh public render/projection receipt and an owner-signed receipt-first transition.',
         unsafeCopy:
           'Do not say the 3D agent world is on by default for all users, that it is a finished shipped feature, that it is a walkable or multiplayer world (see world.multiplayer_agent_world.v1), or that the scene shows anything other than evidence-bound live Pylon state.',
         evidenceRefs: [
@@ -4010,10 +4011,10 @@ export const publicProductPromisesDocument = () => {
           'promise:repo.open_source_code_map.v1',
         ],
         blockerRefs: [
-          'blocker.product_promises.agent_world_scene_not_default_on',
+          'blocker.product_promises.agent_world_scene_intentionally_flag_gated',
         ],
         verification:
-          'Yellow is limited to what is merged to main: the P0 scene mount behind CHAT_WORLD_SCENE (PR #5742), P1 live Pylon crystals fed from the public pylon-stats projection (PR #5743), and the P2.5 in-app wiring path that carries pylon-stats through chat-world-subscriptions.ts -> GotChatWorldScene -> modelChatWorldScene -> verseSceneVisualization, plus idle expiry for evidence-bound payment beams. Focused proof: bun test tests/verse-launch-checklist.test.ts tests/chat-world-subscriptions.test.ts tests/chat-world-scene.test.ts in apps/autopilot-desktop. Green still requires the owner decision that the scene is default-on or explicitly remains flag-gated as the product, plus an owner-signed receipt-first upgrade per proof.claim_upgrade_receipts.v1.',
+          'Yellow is limited to what is merged to main: the P0 scene mount behind CHAT_WORLD_SCENE (PR #5742), P1 live Pylon crystals fed from the public pylon-stats projection (PR #5743), and the P2.5 in-app wiring path that carries pylon-stats through chat-world-subscriptions.ts -> GotChatWorldScene -> modelChatWorldScene -> verseSceneVisualization, plus idle expiry for evidence-bound payment beams. Focused proof: bun test tests/verse-launch-checklist.test.ts tests/chat-world-subscriptions.test.ts tests/chat-world-scene.test.ts in apps/autopilot-desktop. The current product decision is to keep the scene flag-gated/default-off; green requires a later staged/default-on rollout decision, fresh public render/projection receipt, and owner-signed receipt-first upgrade per proof.claim_upgrade_receipts.v1.',
         authorityBoundary:
           'The agent world scene is a presentational projection of already-public Pylon state. It grants no runtime mutation, no spend, no settlement, no payout, and no authority over the data it visualizes, and it makes no separate Pylon earning, payment, multiplayer, or onboarding claim green.',
       },
@@ -4026,7 +4027,7 @@ export const publicProductPromisesDocument = () => {
         claim:
           'Real Bitcoin settlements are visualized in the agent world as gold particles flying agent-to-agent, each particle bound to a real settlement receipt and clickable to its evidence.',
         safeCopy:
-          'The Bitcoin payment visualization is wired into the live running agent-world scene behind the default-off CHAT_WORLD_PAYMENTS flag. It is evidence-bound by construction: a gold payment particle is only emitted for a real_bitcoin_moved or settlement_recorded event that proves realBitcoinMoved:true and carries at least one sourceRef, and the mappers refuse to emit a particle with no sourceRef or simulated settlement evidence.',
+          'The Bitcoin payment visualization is wired into the live running agent-world scene behind the intentionally default-off CHAT_WORLD_PAYMENTS flag. It is evidence-bound by construction: a gold payment particle is only emitted for a real_bitcoin_moved or settlement_recorded event that proves realBitcoinMoved:true and carries at least one sourceRef, and the mappers refuse to emit a particle with no sourceRef or simulated settlement evidence.',
         unsafeCopy:
           'Do not say payment particles are live for all users, that the visualization is on by default, that it shows simulated or unbacked payments, or that visualizing a settlement implies any new earning, payout, or settlement authority.',
         evidenceRefs: [
@@ -4045,10 +4046,10 @@ export const publicProductPromisesDocument = () => {
           'promise:training.decentralized_training_launch.v1',
         ],
         blockerRefs: [
-          'blocker.product_promises.payment_visualization_flag_default_off',
+          'blocker.product_promises.payment_visualization_intentionally_flag_gated',
         ],
         verification:
-          'Yellow covers the live wiring behind CHAT_WORLD_PAYMENTS: chat-world-subscriptions.ts backfills and streams public activity-timeline events into GotChatWorldPaymentParticle, update.ts stores the bounded active set, view.ts composes modelChatWorldParticles through withChatWorldPaymentLayer, and chat-world-visualization.ts turns each accepted particle into clickable beam/burst endpoint evidence. PAYMENT_EVENT_KINDS remains exactly {real_bitcoin_moved, settlement_recorded}; realBitcoinMoved:true and sourceRefs are required, so an event with no sourceRef or simulated settlement evidence returns null. Green requires an owner decision on default-on and an owner-signed receipt-first upgrade per proof.claim_upgrade_receipts.v1.',
+          'Yellow covers the live wiring behind CHAT_WORLD_PAYMENTS: chat-world-subscriptions.ts backfills and streams public activity-timeline events into GotChatWorldPaymentParticle, update.ts stores the bounded active set, view.ts composes modelChatWorldParticles through withChatWorldPaymentLayer, and chat-world-visualization.ts turns each accepted particle into clickable beam/burst endpoint evidence. PAYMENT_EVENT_KINDS remains exactly {real_bitcoin_moved, settlement_recorded}; realBitcoinMoved:true and sourceRefs are required, so an event with no sourceRef or simulated settlement evidence returns null. The current product decision is to keep payment visualization flag-gated/default-off; green requires a later staged/default-on rollout decision, fresh public render/projection receipt, and owner-signed receipt-first upgrade per proof.claim_upgrade_receipts.v1.',
         authorityBoundary:
           'Visualizing a Bitcoin settlement grants no payment authority, no spend, no payout, and no settlement authority. The particle is a clickable projection of an already-public receipt or event; it never moves money and never asserts a settlement that the underlying receipt does not.',
       },
@@ -4077,10 +4078,10 @@ export const publicProductPromisesDocument = () => {
           'promise:autopilot.bitcoin_payment_visualization.v1',
         ],
         blockerRefs: [
-          'blocker.product_promises.pylon_growth_flag_default_off',
+          'blocker.product_promises.pylon_growth_intentionally_flag_gated',
         ],
         verification:
-          'Yellow now covers the live scene wiring behind CHAT_WORLD_SCENE / CHAT_WORLD_PAYMENTS: PublicRecentPylon preserves public cumulativeSettledSats when present, projectChatWorldPylonScene computes each node growth descriptor from that value, liveChatWorldNetworkScene carries the descriptor into PylonNetworkNode, and pylonNetworkVisualizationOptions maps tiers onto the pinned three-effect renderer knobs (larger role geometry, brighter status, and facet/sats detail). Tier 0 remains the 0-sat still crystal. Green still requires an owner decision on default-on and an owner-signed receipt-first upgrade per proof.claim_upgrade_receipts.v1.',
+          'Yellow now covers the live scene wiring behind CHAT_WORLD_SCENE / CHAT_WORLD_PAYMENTS: PublicRecentPylon preserves public cumulativeSettledSats when present, projectChatWorldPylonScene computes each node growth descriptor from that value, liveChatWorldNetworkScene carries the descriptor into PylonNetworkNode, and pylonNetworkVisualizationOptions maps tiers onto the pinned three-effect renderer knobs (larger role geometry, brighter status, and facet/sats detail). Tier 0 remains the 0-sat still crystal. The current product decision is to keep growth visualization flag-gated/default-off; green requires a later staged/default-on rollout decision, fresh public render/projection receipt, and owner-signed receipt-first upgrade per proof.claim_upgrade_receipts.v1.',
         authorityBoundary:
           'Pylon growth visualization is a presentational projection of already-public settled-sats data. It grants no earning, spend, payout, or settlement authority, and a crystal tier never asserts earnings the underlying settlement receipts do not.',
       },
