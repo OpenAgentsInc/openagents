@@ -8,6 +8,7 @@ import {
   issueHasAnyLabel,
   issueHasPriorityLabel,
   renderTriageComment,
+  shouldTriageIssue,
   tokenizeIssueText,
   triageIssue,
   type GitHubIssue,
@@ -124,6 +125,13 @@ describe("github issue triage output", () => {
   test("builds the default candidate query from newly opened unlabeled issues", () => {
     expect(buildCandidateIssueSearch(false)).toBe("is:issue is:open no:label sort:created-desc")
     expect(buildCandidateIssueSearch(true)).toBe("is:issue is:open sort:created-desc")
+  })
+
+  test("selects only unlabeled issues by default and only unprioritized issues when labeled issues are included", () => {
+    expect(shouldTriageIssue(issue({ labels: [] }), false)).toBe(true)
+    expect(shouldTriageIssue(issue({ labels: [{ name: "bug" }] }), false)).toBe(false)
+    expect(shouldTriageIssue(issue({ labels: [{ name: "bug" }] }), true)).toBe(true)
+    expect(shouldTriageIssue(issue({ labels: [{ name: "prio:0-pr-burndown" }] }), true)).toBe(false)
   })
 
   test("builds a scoped execution plan and rendered comment", () => {

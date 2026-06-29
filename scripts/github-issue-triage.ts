@@ -313,6 +313,9 @@ export const listRepositoryFiles = (cwd: string): ReadonlyArray<string> => {
 export const buildCandidateIssueSearch = (includeLabeled: boolean): string =>
   includeLabeled ? "is:issue is:open sort:created-desc" : "is:issue is:open no:label sort:created-desc"
 
+export const shouldTriageIssue = (issue: GitHubIssue, includeLabeled: boolean): boolean =>
+  includeLabeled ? !issueHasPriorityLabel(issue) : !issueHasAnyLabel(issue)
+
 const listCandidateIssues = (
   repo: string,
   limit: number,
@@ -377,8 +380,8 @@ const parseArgs = (
 const main = () => {
   const options = parseArgs(Bun.argv.slice(2))
   const repositoryFiles = listRepositoryFiles(process.cwd())
-  const candidates = listCandidateIssues(options.repo, options.limit, options.includeLabeled).filter(
-    issue => options.includeLabeled || !issueHasAnyLabel(issue),
+  const candidates = listCandidateIssues(options.repo, options.limit, options.includeLabeled).filter(issue =>
+    shouldTriageIssue(issue, options.includeLabeled),
   )
   const openIssues = listOpenIssues(options.repo, Math.max(options.limit, 100))
   const decisions = candidates.map(issue =>
