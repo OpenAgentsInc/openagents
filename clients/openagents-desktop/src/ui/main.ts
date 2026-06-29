@@ -26,6 +26,7 @@ import {
   OPENAGENTS_DESKTOP_PYLON_POLL_INTERVAL_MS,
   type PylonStatusResult,
 } from "../shared/pylon-status"
+import type { OnDeviceDeciderStatus } from "../shared/on-device-decider"
 import {
   OPENAGENTS_DESKTOP_RPC_MAX_REQUEST_TIME_MS,
   type OpenAgentsDesktopRPCSchema,
@@ -80,6 +81,14 @@ const previewRpc = (): DesktopRpc => ({
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["khalaFleetSnapshot"]>>
       >("khalaFleetSnapshot"),
+    onDeviceDecide: input =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["onDeviceDecide"]>>
+      >("onDeviceDecide", [input]),
+    onDeviceDeciderStatus: () =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["onDeviceDeciderStatus"]>>
+      >("onDeviceDeciderStatus"),
     pylonStatus: () =>
       postPreviewRpc<Awaited<ReturnType<DesktopRpcRequests["pylonStatus"]>>>(
         "pylonStatus",
@@ -196,6 +205,15 @@ const tokenAccountingSummary = requireElement<HTMLElement>(
 const tokenReplay = requireElement<HTMLButtonElement>("#token-replay")
 const tokenSpoolList = requireElement<HTMLElement>("#token-spool-list")
 const tokenReplayStatus = requireElement<HTMLElement>("#token-replay-status")
+const onDeviceDeciderPanel = requireElement<HTMLElement>(
+  "#on-device-decider-panel",
+)
+const onDeviceDeciderSummary = requireElement<HTMLElement>(
+  "#on-device-decider-summary",
+)
+const onDeviceDeciderDetail = requireElement<HTMLElement>(
+  "#on-device-decider-detail",
+)
 const apmPage = requireElement<HTMLElement>("#apm-page")
 const apmBack = requireElement<HTMLButtonElement>("#apm-back")
 const apmObserved = requireElement<HTMLElement>("#apm-observed")
@@ -1314,6 +1332,22 @@ const renderPylonStatus = (result: PylonStatusResult): void => {
   renderPylonsPage(result)
 }
 
+const deciderStateLabel = (status: OnDeviceDeciderStatus): string => {
+  if (!status.enabled) return "Off"
+  if (status.available) return `${status.backendLabel}: ready`
+  return `${status.backendLabel}: ${status.state.replace(/_/g, " ")}`
+}
+
+const renderOnDeviceDeciderStatus = (
+  status: OnDeviceDeciderStatus,
+): void => {
+  onDeviceDeciderPanel.dataset.state = status.state
+  onDeviceDeciderSummary.textContent = deciderStateLabel(status)
+  onDeviceDeciderDetail.textContent = status.available
+    ? `Model ${status.model ?? "local"} · no spend`
+    : status.blockerRefs[0] ?? "No local decider selected."
+}
+
 const loadPylonStatus = async (): Promise<void> => {
   try {
     renderPylonStatus(await rpc.request.pylonStatus())
@@ -1325,6 +1359,17 @@ const loadPylonStatus = async (): Promise<void> => {
       error: error instanceof Error ? error.message : String(error),
       observedAt: new Date().toISOString(),
     })
+  }
+}
+
+const loadOnDeviceDeciderStatus = async (): Promise<void> => {
+  try {
+    renderOnDeviceDeciderStatus(await rpc.request.onDeviceDeciderStatus())
+  } catch (error) {
+    onDeviceDeciderPanel.dataset.state = "unavailable"
+    onDeviceDeciderSummary.textContent = "Unavailable"
+    onDeviceDeciderDetail.textContent =
+      error instanceof Error ? error.message : String(error)
   }
 }
 
@@ -1501,6 +1546,7 @@ void loadCodingStatus()
 void loadPylonStatus()
 void loadAccountStatus()
 void loadTokenAccounting()
+void loadOnDeviceDeciderStatus()
 globalThis.setInterval(
   () => void loadCodingStatus(),
   OPENAGENTS_DESKTOP_CODING_POLL_INTERVAL_MS,
@@ -1515,5 +1561,9 @@ globalThis.setInterval(
 )
 globalThis.setInterval(
   () => void loadTokenAccounting(),
+  OPENAGENTS_DESKTOP_CODING_POLL_INTERVAL_MS,
+)
+globalThis.setInterval(
+  () => void loadOnDeviceDeciderStatus(),
   OPENAGENTS_DESKTOP_CODING_POLL_INTERVAL_MS,
 )

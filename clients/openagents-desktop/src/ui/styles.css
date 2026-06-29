@@ -1004,7 +1004,8 @@ button {
   border-radius: 8px;
 }
 
-.token-accounting-panel {
+.token-accounting-panel,
+.on-device-decider-panel {
   display: grid;
   gap: 10px;
   margin: 0 16px 12px;
@@ -1015,6 +1016,7 @@ button {
 }
 
 .token-accounting-heading,
+.on-device-decider-heading,
 .token-verification-heading {
   display: flex;
   align-items: flex-start;
@@ -1023,13 +1025,15 @@ button {
   min-width: 0;
 }
 
-.token-accounting-heading div {
+.token-accounting-heading div,
+.on-device-decider-heading div {
   display: grid;
   min-width: 0;
   gap: 5px;
 }
 
-.token-accounting-heading h3 {
+.token-accounting-heading h3,
+.on-device-decider-heading h3 {
   margin: 0;
   color: #fff;
   font-size: 0.88rem;
@@ -1037,6 +1041,8 @@ button {
 }
 
 .token-accounting-heading span,
+.on-device-decider-heading span,
+.on-device-decider-detail,
 .token-spool-row span,
 .token-replay-status,
 .token-verification-row p,
@@ -1044,6 +1050,18 @@ button {
   color: #9bb8e8;
   font-size: 0.72rem;
   line-height: 1.45;
+}
+
+.on-device-decider-detail {
+  margin: 0;
+}
+
+.on-device-decider-panel[data-state="ready"] {
+  border-color: rgba(35, 212, 165, 0.28);
+}
+
+.on-device-decider-panel[data-state="ready"] .on-device-decider-heading span {
+  color: #dcfff7;
 }
 
 .token-replay {
@@ -2240,6 +2258,7 @@ button {
 .coding-section-heading h3,
 .coding-events-heading h3,
 .coding-manager-heading h3,
+.on-device-decider-heading h3,
 .token-accounting-heading h3 {
   margin: 0;
   color: #f4f8ff;

@@ -5,6 +5,7 @@ import type { Stats } from "node:fs"
 import { homedir } from "node:os"
 import { dirname, join, resolve } from "node:path"
 
+import { createOnDeviceDeciderService } from "./on-device-decider.js"
 import {
   accountStatusFromPayload,
   type AccountStatusResult,
@@ -68,6 +69,8 @@ const baseUrl =
   Bun.env.PYLON_OPENAGENTS_BASE_URL ??
   Bun.env.OPENAGENTS_COM_BASE_URL ??
   OPENAGENTS_DESKTOP_DEFAULT_BASE_URL
+
+const onDeviceDecider = createOnDeviceDeciderService()
 
 const khalaFleetStorePath = (): string =>
   Bun.env.OPENAGENTS_DESKTOP_KHALA_FLEET_DB ??
@@ -1442,6 +1445,12 @@ const desktopRpcRequestHandlers = {
   createPylon,
   khalaDispatchPlan,
   khalaFleetSnapshot,
+  onDeviceDecide(input) {
+    return onDeviceDecider.decide(input)
+  },
+  onDeviceDeciderStatus() {
+    return onDeviceDecider.status()
+  },
   async pylonStatus() {
     return desktopPylonStatus()
   },

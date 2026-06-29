@@ -35,6 +35,8 @@ describe("openagents desktop app shell", () => {
     expect(html).toContain('id="coding-token-verification"')
     expect(html).toContain('id="token-accounting-summary"')
     expect(html).toContain('id="token-replay"')
+    expect(html).toContain('id="on-device-decider-panel"')
+    expect(html).toContain('id="on-device-decider-summary"')
     expect(html).toContain('id="coding-metric-token-failures"')
     expect(html).toContain("Live Codex: 0")
     expect(html).toContain("Runners")

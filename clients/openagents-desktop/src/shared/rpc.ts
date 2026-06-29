@@ -5,6 +5,11 @@ import type {
   DesktopKhalaDispatchPlanResult,
 } from "./khala-dispatch"
 import type { KhalaFleetSnapshotResult } from "./khala-fleet-manager"
+import type {
+  OnDeviceDeciderRequest,
+  OnDeviceDeciderRunResult,
+  OnDeviceDeciderStatus,
+} from "./on-device-decider"
 import type { CreatePylonResult, PylonStatusResult } from "./pylon-status"
 import type {
   AssignmentTokenUsageVerification,
@@ -23,6 +28,10 @@ export type OpenAgentsDesktopRPCSchema = {
       input: DesktopKhalaDispatchPlanInput,
     ): Promise<DesktopKhalaDispatchPlanResult>
     khalaFleetSnapshot(): Promise<KhalaFleetSnapshotResult>
+    onDeviceDecide(
+      input: OnDeviceDeciderRequest,
+    ): Promise<OnDeviceDeciderRunResult>
+    onDeviceDeciderStatus(): Promise<OnDeviceDeciderStatus>
     pylonStatus(): Promise<PylonStatusResult>
     replayTokenFailures(): Promise<TokenAccountingReplayResult>
     tokenAccountingStatus(): Promise<TokenAccountingStatusResult>
