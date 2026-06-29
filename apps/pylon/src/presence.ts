@@ -11,6 +11,11 @@ import {
   normalizeAccountHome,
   pylonClaudeAccountHomeHasAuth,
 } from "./account-registry.js"
+import { isAccountAvailable, loadQuotaRecord } from "./account-quota-ledger.js"
+import {
+  codexAccountHealthBlocksReadiness,
+  loadCodexAccountHealthRecord,
+} from "./codex-account-health-ledger.js"
 import {
   PYLON_NIP90_PROVIDER_CAPABILITY_REF,
   providerNip90LaneRefs,
@@ -296,6 +301,7 @@ export async function localCodingServiceReadyCounts(
 export type PylonCodexAccountReadiness = {
   accountRefHash: string
   ready: boolean
+  reason?: "credentials_revoked" | "usage_limited" | "rate_limited" | "network" | "timeout" | "other"
 }
 
 export type PylonCodexAccountCapacity = {
@@ -327,13 +333,23 @@ export async function localCodexAccountReadiness(
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<PylonCodexAccountReadiness[]> {
   const readiness = new Map<string, boolean>()
+  const reasons = new Map<string, PylonCodexAccountReadiness["reason"]>()
   const registry = await loadPylonAccountRegistry(summary)
   const codexEntries = registry.filter(entry => entry.provider === "codex")
   for (const entry of codexEntries) {
-    readiness.set(
-      hashPylonAccountRef("codex", entry.ref),
-      await codexHomeHasAuth(entry.home),
-    )
+    const accountRefHash = hashPylonAccountRef("codex", entry.ref)
+    let ready = await codexHomeHasAuth(entry.home)
+    const health = await loadCodexAccountHealthRecord(summary, accountRefHash)
+    if (codexAccountHealthBlocksReadiness(health)) {
+      ready = false
+      reasons.set(accountRefHash, health.reason)
+    }
+    const quotaRecord = await loadQuotaRecord(summary, accountRefHash)
+    if (!isAccountAvailable(quotaRecord, new Date())) {
+      ready = false
+      reasons.set(accountRefHash, "usage_limited")
+    }
+    readiness.set(accountRefHash, ready)
   }
   if (codexEntries.length === 0) {
     const configuredCodexHome = env.CODEX_HOME?.trim()
@@ -341,14 +357,24 @@ export async function localCodexAccountReadiness(
       configuredCodexHome && configuredCodexHome.length > 0
         ? normalizeAccountHome(configuredCodexHome)
         : join(homedir(), ".codex")
-    readiness.set(
-      hashPylonAccountRef("codex", "default"),
-      await codexHomeHasAuth(defaultHome),
-    )
+    const accountRefHash = hashPylonAccountRef("codex", "default")
+    let ready = await codexHomeHasAuth(defaultHome)
+    const health = await loadCodexAccountHealthRecord(summary, accountRefHash)
+    if (codexAccountHealthBlocksReadiness(health)) {
+      ready = false
+      reasons.set(accountRefHash, health.reason)
+    }
+    const quotaRecord = await loadQuotaRecord(summary, accountRefHash)
+    if (!isAccountAvailable(quotaRecord, new Date())) {
+      ready = false
+      reasons.set(accountRefHash, "usage_limited")
+    }
+    readiness.set(accountRefHash, ready)
   }
   return [...readiness.entries()].map(([accountRefHash, ready]) => ({
     accountRefHash,
     ready,
+    ...(reasons.get(accountRefHash) === undefined ? {} : { reason: reasons.get(accountRefHash)! }),
   }))
 }
 
