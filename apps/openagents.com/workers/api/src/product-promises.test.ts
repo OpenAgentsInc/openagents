@@ -691,6 +691,21 @@ describe('public product promises document', () => {
           state: 'yellow',
         }),
         expect.objectContaining({
+          promiseId: 'identity.orange_check_forum_signal.v1',
+          state: 'yellow',
+          blockerRefs: [
+            'blocker.product_promises.orange_check_production_purchase_receipt_missing',
+            'blocker.product_promises.orange_check_buyer_badge_visibility_proof_missing',
+            'blocker.product_promises.orange_check_owner_signed_green_transition_missing',
+          ],
+          evidenceRefs: expect.arrayContaining([
+            'nostr_event:83c450c97d6ee3ed624dd6ae0b12956f50a392a396322e65d04c1173c9a6b4da@wss://relay.openagents.com',
+          ]),
+          verification: expect.stringContaining(
+            'owner-signed yellow->green transition receipt',
+          ),
+        }),
+        expect.objectContaining({
           promiseId: 'mobile.voice_approval_companion.v1',
           state: 'yellow',
           evidenceRefs: expect.arrayContaining([
