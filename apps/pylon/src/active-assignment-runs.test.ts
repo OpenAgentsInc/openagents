@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { mkdtemp, rm } from "node:fs/promises"
+import { mkdtemp, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
@@ -80,6 +80,31 @@ describe("#6354 per-account active run counts", () => {
         "account.pylon.codex.bbbb": 1,
         [UNKEYED_ACTIVE_RUN_ACCOUNT]: 1,
       })
+    } finally {
+      await rm(dir, { force: true, recursive: true })
+    }
+  })
+
+  test("prunes malformed and wrong-shape active run files", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "pylon-active-runs-malformed-"))
+    const paths = { activeAssignmentRuns: dir } as never
+    try {
+      await writeFile(join(dir, "malformed.json"), "{bad")
+      await writeFile(
+        join(dir, "wrong-shape.json"),
+        `${JSON.stringify({
+          schema: "openagents.pylon.active_assignment_run.v0.1",
+          assignmentRef: "assignment.public.khala_coding.bad",
+          leaseRef: "lease.bad",
+          refreshedAt: "2026-06-27T13:30:00.000Z",
+          runRef: "assignment_run.local.bad",
+          service: "unknown",
+          startedAt: "2026-06-27T13:30:00.000Z",
+        })}\n`,
+      )
+
+      const counts = await activeCodingRunCountsByAccount(paths)
+      expect(counts).toEqual({})
     } finally {
       await rm(dir, { force: true, recursive: true })
     }

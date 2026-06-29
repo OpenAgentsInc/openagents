@@ -2,6 +2,8 @@ import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises"
 import { existsSync } from "node:fs"
 import { createHash, randomUUID } from "node:crypto"
 import { join } from "node:path"
+import { readFileJsonEffect } from "@openagentsinc/effect-boundary"
+import { Effect, Schema as S } from "effect"
 import {
   assertPublicProjectionSafe,
   type PylonPaths,
@@ -36,6 +38,17 @@ export type PylonAssignmentLeaseLike = Readonly<{
   expiresAt?: string
 }>
 
+const PylonActiveAssignmentRunSchema = S.Struct({
+  schema: S.Literal("openagents.pylon.active_assignment_run.v0.1"),
+  accountRefHash: S.optionalKey(S.String),
+  assignmentRef: S.String,
+  leaseRef: S.String,
+  refreshedAt: S.String,
+  runRef: S.String,
+  service: S.Literals(["claude", "codex"]),
+  startedAt: S.String,
+})
+
 const DEFAULT_ACTIVE_RUN_TTL_MS = 120_000
 const CODEX_CAPABILITY_REF = "capability.pylon.local_codex"
 const CLAUDE_CAPABILITY_REF = "capability.pylon.local_claude_agent"
@@ -49,17 +62,15 @@ const activeRunFilename = (runRef: string) =>
 const activeRunPath = (paths: PylonPaths, runRef: string) =>
   join(paths.activeAssignmentRuns, activeRunFilename(runRef))
 
-const activeRunFromUnknown = (value: unknown): PylonActiveAssignmentRun | null => {
-  const record = value as PylonActiveAssignmentRun
-  return record?.schema === "openagents.pylon.active_assignment_run.v0.1" &&
-    (record.service === "codex" || record.service === "claude") &&
-    typeof record.assignmentRef === "string" &&
-    typeof record.leaseRef === "string" &&
-    typeof record.refreshedAt === "string" &&
-    typeof record.runRef === "string" &&
-    typeof record.startedAt === "string"
-    ? record
-    : null
+const readActiveRun = async (path: string): Promise<PylonActiveAssignmentRun | null> => {
+  const exit = await Effect.runPromiseExit(
+    readFileJsonEffect(
+      PylonActiveAssignmentRunSchema,
+      Effect.tryPromise(() => readFile(path, "utf8")),
+      "pylon.active_assignment_run.file",
+    ),
+  )
+  return exit._tag === "Success" ? exit.value : null
 }
 
 const activeRunIsFresh = (
@@ -105,7 +116,7 @@ export async function refreshActiveCodingRun(
 ): Promise<void> {
   const path = activeRunPath(paths, runRef)
   if (!existsSync(path)) return
-  const run = activeRunFromUnknown(JSON.parse(await readFile(path, "utf8")) as unknown)
+  const run = await readActiveRun(path)
   if (run === null) return
   const next = {
     ...run,
@@ -134,12 +145,7 @@ export async function activeCodingRunCounts(
   for (const filename of await readdir(paths.activeAssignmentRuns)) {
     if (!filename.endsWith(".json")) continue
     const path = join(paths.activeAssignmentRuns, filename)
-    let run: PylonActiveAssignmentRun | null = null
-    try {
-      run = activeRunFromUnknown(JSON.parse(await readFile(path, "utf8")) as unknown)
-    } catch {
-      run = null
-    }
+    const run = await readActiveRun(path)
     if (run === null || !activeRunIsFresh(run, now, ttlMs)) {
       await rm(path, { force: true })
       continue
@@ -165,12 +171,7 @@ export async function activeCodingRunCountsByAccount(
   for (const filename of await readdir(paths.activeAssignmentRuns)) {
     if (!filename.endsWith(".json")) continue
     const path = join(paths.activeAssignmentRuns, filename)
-    let run: PylonActiveAssignmentRun | null = null
-    try {
-      run = activeRunFromUnknown(JSON.parse(await readFile(path, "utf8")) as unknown)
-    } catch {
-      run = null
-    }
+    const run = await readActiveRun(path)
     if (run === null || !activeRunIsFresh(run, now, ttlMs)) {
       await rm(path, { force: true })
       continue

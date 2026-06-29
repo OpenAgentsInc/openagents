@@ -20,7 +20,8 @@
 // the response carries `isEstimate: true`; the real charge is still metered
 // receipt-first from the provider's actual `usage` object. PURE apart from the
 // estimator it delegates to.
-import { Effect, Schema as S } from 'effect'
+import { readRequestJsonEffect } from '@openagentsinc/effect-boundary'
+import { Cause, Effect, Schema as S } from 'effect'
 
 import { noStoreJsonResponse } from '../http/responses'
 import { type BudgetEstimate, estimateBudgetCapacity } from './budget-estimate'
@@ -73,16 +74,6 @@ const QuoteRequestBody = S.Struct({
   budgetCredits: S.optionalKey(S.Number),
 })
 
-const decodeBody = (
-  value: unknown,
-): typeof QuoteRequestBody.Type | undefined => {
-  try {
-    return S.decodeUnknownSync(QuoteRequestBody)(value)
-  } catch {
-    return undefined
-  }
-}
-
 // Serve a pre-purchase cost quote. Delegates to the SAME estimator the price
 // page / future clients reuse, which itself reuses `priceRequest` — the EXACT
 // pricing engine the metering hook charges against — so a quote cannot drift
@@ -105,21 +96,17 @@ export const handleQuote = (request: Request, deps: QuoteDeps) =>
       )
     }
 
-    const rawBody = yield* Effect.promise(async () => {
-      try {
-        return (await request.json()) as unknown
-      } catch {
-        return undefined
-      }
-    })
-    if (rawBody === undefined) {
-      return noStoreJsonResponse({ error: 'invalid_json' }, { status: 400 })
+    const bodyResult = yield* Effect.exit(
+      readRequestJsonEffect(QuoteRequestBody, request, 'inference.quote.request'),
+    )
+    if (bodyResult._tag === 'Failure') {
+      const error = bodyResult.cause.reasons.find(Cause.isFailReason)?.error
+      return noStoreJsonResponse(
+        { error: error?.reasonKind === 'malformed_json' ? 'invalid_json' : 'invalid_request' },
+        { status: 400 },
+      )
     }
-
-    const body = decodeBody(rawBody)
-    if (body === undefined) {
-      return noStoreJsonResponse({ error: 'invalid_request' }, { status: 400 })
-    }
+    const body = bodyResult.value
     const quotedModel = normalizeKhalaModelId(body.model)
 
     if (!isPublicModelId(quotedModel)) {
