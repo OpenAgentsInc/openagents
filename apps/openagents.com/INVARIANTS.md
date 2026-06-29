@@ -2460,25 +2460,26 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     (`generatedAt`, `live_at_read` contract). The surface is flag-gated
     (`SELF_SERVE_FANOUT_ENABLED`, default off => empty store) and the payload
     always reports `inert: true` / `promiseState: 'yellow'` / `selfServe: true`
-    / `workClass: 'code_task'`, surfacing the cleared self-serve blocker and the
-    still-uncleared plugin-marketplace blocker. It models a customer-initiated
-    single-action fanout plan (the lane-C gate decision plus the linked market
-    work-request the fanout would list) over the existing server-side lane-C
-    gate. The dispatch seam (`dispatchSelfServeFanout`) is flag-gated INERT and
-    is unreachable from this read-only route; the surface lists nothing on the
-    market and moves no money.
+    / `workClass: 'code_task'`, surfacing the cleared self-serve blocker. It
+    models a customer-initiated single-action fanout plan (the lane-C gate
+    decision plus the linked market work-request the fanout would list) over the
+    existing server-side lane-C gate. The planner may carry a live non-code work
+    class such as `data_labeling`, with per-class capability and verification
+    refs, but the dispatch seam (`dispatchSelfServeFanout`) is flag-gated INERT
+    and is unreachable from this read-only route; the surface lists nothing on
+    the market and moves no money.
   - `GET /api/public/autopilot/marketplace-work-classes` — live at read over the
     in-module marketplace work-class catalog (promise
     `autopilot.control_center_fanout_marketplace.v1`, yellow) — compliant
     (`generatedAt`, `live_at_read` contract). Read-only registry view: it lists
-    every registered work class with its `status`, names the single live class
-    (`code_task`), and always reports `pluginMarketplaceBeyondCodeTaskLive: false`
-    with the still-uncleared plugin-marketplace-beyond-code_task blocker in
-    `unclearedBlockerRefs`. Optional `?workClass=` narrows to one class. No flag
-    and no store: `assertCatalogInvariants` (inside the projection) throws rather
-    than let any plugin class silently flip live, so the surface can never
-    over-claim a live plugin marketplace; it lists nothing executable and moves no
-    money.
+    every registered work class with its `status`, names live classes including
+    `code_task` and the non-code `data_labeling` planner contract, and reports
+    `pluginMarketplaceBeyondCodeTaskLive: true` with no uncleared plugin-
+    marketplace-beyond-code_task blocker. Optional `?workClass=` narrows to one
+    class. No flag and no store: `assertCatalogInvariants` (inside the
+    projection) throws rather than let the catalog silently lose the non-code
+    work-class contract, and the projection remains yellow/read-only; it does
+    not list market jobs or move money.
   - `GET /api/public/markets/signature-monetization/metering` — live at read
     over the INERT signature usage-metering store (promise
     `marketplace.signature_monetization.v1`, red) — compliant (`generatedAt`,
