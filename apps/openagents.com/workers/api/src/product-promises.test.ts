@@ -472,6 +472,17 @@ describe('public product promises document', () => {
         'apps/openagents.com/workers/api/src/inference/model-router.test.ts',
       ]),
     )
+    const orangeCheckPromise = decoded.promises.find(
+      promise => promise.promiseId === 'identity.orange_check_forum_signal.v1',
+    )
+    expect(orangeCheckPromise?.state).toBe('yellow')
+    expect(orangeCheckPromise?.blockerRefs).toEqual([
+      'blocker.product_promises.orange_check_live_purchase_visibility_missing',
+      'blocker.product_promises.orange_check_owner_signed_transition_missing',
+    ])
+    expect(orangeCheckPromise?.blockerRefs).not.toContain(
+      'blocker.product_promises.orange_check_nostr_export_missing',
+    )
     expect(decoded.promises).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -989,6 +1000,17 @@ describe('public product promises document', () => {
           evidenceRefs: expect.arrayContaining([
             'receipt.nexus_pylon.settlement.assignment_public_training_validator_recheck_20260611053500',
             'promise_transition_0bfce0c5-e4dd-4d19-9221-4bc9504f2055',
+          ]),
+        }),
+        expect.objectContaining({
+          promiseId: 'identity.orange_check_forum_signal.v1',
+          state: 'yellow',
+          blockerRefs: [
+            'blocker.product_promises.orange_check_live_purchase_visibility_missing',
+            'blocker.product_promises.orange_check_owner_signed_transition_missing',
+          ],
+          evidenceRefs: expect.arrayContaining([
+            'nostr_event:83c450c97d6ee3ed624dd6ae0b12956f50a392a396322e65d04c1173c9a6b4da@wss://relay.openagents.com',
           ]),
         }),
         expect.objectContaining({
