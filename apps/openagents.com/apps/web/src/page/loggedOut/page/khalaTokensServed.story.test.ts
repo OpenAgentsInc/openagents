@@ -61,6 +61,19 @@ const sparseRecentHistory = PublicKhalaTokensServedHistory.make({
   ],
 })
 
+const statsFullRangeHistory = PublicKhalaTokensServedHistory.make({
+  window: '30d',
+  bucket: 'day',
+  timezone: 'America/Chicago',
+  generatedAt: '2026-06-29T16:00:00.000Z',
+  series: [
+    { day: '2026-06-23', tokensServed: 999 },
+    { day: '2026-06-24', tokensServed: 14_700_000 },
+    { day: '2026-06-26', tokensServed: 206_200_000 },
+    { day: '2026-06-29', tokensServed: 51_500_000 },
+  ],
+})
+
 // The counter is independent of Pylon stats, so the surrounding strip can stay
 // in its Loading state (rendered as "Unavailable") with no heavy fixture.
 const homeInputWithTokens = (tokensServed: number) => ({
@@ -241,7 +254,9 @@ describe('Khala Tokens Served history chart (#6227)', () => {
       model.publicKhalaTokensServedHistory._tag ===
       'PublicKhalaTokensServedHistoryLoaded'
     ) {
-      expect(model.publicKhalaTokensServedHistory.history.series).toHaveLength(5)
+      expect(model.publicKhalaTokensServedHistory.history.series).toHaveLength(
+        5,
+      )
     }
   })
 
@@ -267,9 +282,9 @@ describe('Khala Tokens Served history chart (#6227)', () => {
     expect(markup).toContain('"data-day":"2026-06-23"')
   })
 
-  test('starts the compact chart at the latest contiguous daily run', () => {
+  test('starts the homepage compact chart at the latest contiguous daily run', () => {
     const markup = JSON.stringify(
-      StatsPage.view(statsInputWithHistory(sparseRecentHistory)),
+      Home.view(statsInputWithHistory(sparseRecentHistory)),
     )
 
     expect(markup).not.toContain('"data-day":"2026-06-11"')
@@ -283,9 +298,9 @@ describe('Khala Tokens Served history chart (#6227)', () => {
     expect(markup).toContain('Last 3 days, peak 206.2M in a day.')
   })
 
-  test('aligns every day label directly under its bar and projects today to midnight', () => {
+  test('aligns every homepage day label directly under its bar and projects today to midnight', () => {
     const markup = JSON.stringify(
-      StatsPage.view(statsInputWithHistory(sparseRecentHistory)),
+      Home.view(statsInputWithHistory(sparseRecentHistory)),
     )
 
     expect(markup).toContain(
@@ -303,6 +318,28 @@ describe('Khala Tokens Served history chart (#6227)', () => {
     expect(markup).toContain('Current pace projects 345.3M by midnight.')
   })
 
+  test('renders every /stats day from June 24 through the generated current day', () => {
+    const markup = JSON.stringify(
+      StatsPage.view(statsInputWithHistory(statsFullRangeHistory)),
+    )
+
+    expect(markup).not.toContain('"data-day":"2026-06-23"')
+    expect(markup).not.toContain('2026-06-23: 999 tokens')
+    expect(markup).toContain('"data-day":"2026-06-24"')
+    expect(markup).toContain('"data-day":"2026-06-25"')
+    expect(markup).toContain('"data-day":"2026-06-26"')
+    expect(markup).toContain('"data-day":"2026-06-27"')
+    expect(markup).toContain('"data-day":"2026-06-28"')
+    expect(markup).toContain('"data-day":"2026-06-29"')
+    expect(markup).toContain('2026-06-25: 0 tokens')
+    expect(markup).toContain('2026-06-27: 0 tokens')
+    expect(markup).toContain('2026-06-28: 0 tokens')
+    expect(markup).toContain(
+      'grid-template-columns: repeat(6, minmax(0, 1fr));',
+    )
+    expect(markup).toContain('Last 6 days, peak 206.2M in a day.')
+  })
+
   test('renders the same per-day curve on public /stats', () => {
     Scene.scene(
       {
@@ -311,8 +348,9 @@ describe('Khala Tokens Served history chart (#6227)', () => {
       },
       Scene.with(LoggedOut.init(HomeRoute())),
       Scene.expect(Scene.text('Network Stats')).toExist(),
+      Scene.expect(Scene.text('1,250,000')).toExist(),
       Scene.expect(Scene.text('Tokens Served / Day')).toExist(),
-      Scene.expect(Scene.text('2026-06-23: 96,250 tokens')).toExist(),
+      Scene.expect(Scene.text('2026-06-24: 31,000 tokens')).toExist(),
       Scene.expect(Scene.text('Model Family Mix')).toExist(),
       Scene.expect(Scene.text('GLM family')).toExist(),
       Scene.expect(Scene.text('Pylon-Codex')).toExist(),
@@ -349,9 +387,8 @@ describe('Khala Tokens Served history chart (#6227)', () => {
             forumLaunchStatus: IdlePublicForumLaunchStatus(),
             forumTipLeaderboards: IdlePublicForumTipLeaderboards(),
             publicKhalaTokensServed: IdlePublicKhalaTokensServed(),
-            publicKhalaTokensServedHistory: LoadedPublicKhalaTokensServedHistory(
-              { history: emptyHistory },
-            ),
+            publicKhalaTokensServedHistory:
+              LoadedPublicKhalaTokensServedHistory({ history: emptyHistory }),
             publicKhalaTokensServedModelMix:
               IdlePublicKhalaTokensServedModelMix(),
             publicPylonStats: LoadingPublicPylonStats(),

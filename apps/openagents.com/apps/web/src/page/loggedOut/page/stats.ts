@@ -9,7 +9,9 @@ import {
   copyBoundaryPanel,
   endpointManifestPanel,
   forumStatsPanel,
-  khalaTokensServedPanel,
+  khalaTokensServedCompactCounter,
+  khalaTokensServedModelMixPanel,
+  khalaTokensServedStatsHistoryChart,
   nostrRelayPanel,
   pylonStatsPanel,
 } from './home'
@@ -36,7 +38,7 @@ export const view = (input: HomeViewInput): Html => {
             h.div(
               [
                 Ui.className<Message>(
-                  'flex flex-wrap items-end justify-between gap-2 border border-[#242424] bg-[#030303] p-3',
+                  'flex flex-wrap items-start justify-between gap-3 border border-[#242424] bg-[#030303] p-3',
                 ),
               ],
               [
@@ -66,26 +68,48 @@ export const view = (input: HomeViewInput): Html => {
                         ),
                       ],
                       [
-                        'Live public-safe evidence: receipt-backed counters, launch gates, and claim boundaries. No dummy values; missing evidence is marked unavailable.',
+                        'Live public-safe evidence: counters, launch gates, and claim boundaries.',
                       ],
                     ),
                   ],
                 ),
-                h.a(
+                h.div(
                   [
-                    h.Href('/'),
                     Ui.className<Message>(
-                      'border border-[#282828] bg-[#0b0b0b] px-2.5 py-2 text-[0.65rem] uppercase leading-none text-white/55 hover:border-[#444] hover:text-[#f1efe8]',
+                      'flex min-w-0 flex-col items-stretch gap-2 sm:items-end',
                     ),
                   ],
-                  ['Home'],
+                  [
+                    khalaTokensServedCompactCounter(
+                      input.publicKhalaTokensServed,
+                    ),
+                    h.a(
+                      [
+                        h.Href('/'),
+                        Ui.className<Message>(
+                          'inline-flex min-h-8 items-center justify-center border border-[#282828] bg-[#0b0b0b] px-2.5 py-2 text-[0.65rem] uppercase leading-none text-white/55 hover:border-[#444] hover:text-[#f1efe8]',
+                        ),
+                      ],
+                      ['Home'],
+                    ),
+                  ],
                 ),
               ],
             ),
-            khalaTokensServedPanel(
-              input.publicKhalaTokensServed,
-              input.publicKhalaTokensServedHistory,
-              input.publicKhalaTokensServedModelMix,
+            h.div(
+              [
+                Ui.className<Message>(
+                  'grid gap-3 xl:grid-cols-[minmax(0,1.7fr)_minmax(18rem,0.8fr)]',
+                ),
+              ],
+              [
+                khalaTokensServedStatsHistoryChart(
+                  input.publicKhalaTokensServedHistory,
+                ),
+                khalaTokensServedModelMixPanel(
+                  input.publicKhalaTokensServedModelMix,
+                ),
+              ],
             ),
             h.div(
               [

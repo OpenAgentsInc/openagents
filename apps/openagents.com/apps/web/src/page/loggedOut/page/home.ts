@@ -12,9 +12,9 @@ import type {
   PublicForumTipLeaderboardsModel,
   PublicKhalaTokensServedHistoryModel,
   PublicKhalaTokensServedHistoryPoint,
+  PublicKhalaTokensServedModel,
   PublicKhalaTokensServedModelMixFamily,
   PublicKhalaTokensServedModelMixModel,
-  PublicKhalaTokensServedModel,
   PublicPylonStats,
   PublicPylonStatsModel,
   SettledFeedModel,
@@ -910,10 +910,7 @@ export const khalaTokensServedCounter = (
         [
           h.span(
             [
-              h.DataAttribute(
-                'status',
-                live ? 'live' : 'pending',
-              ),
+              h.DataAttribute('status', live ? 'live' : 'pending'),
               Ui.className<Message>(
                 `inline-block h-1.5 w-1.5 rounded-full ${
                   live ? 'bg-[#00c853]' : 'bg-white/30'
@@ -957,13 +954,69 @@ export const khalaTokensServedCounter = (
         ],
       ),
       h.p(
+        [Ui.className<Message>('m-0 text-[0.66rem] leading-4 text-white/35')],
+        [
+          'All real input + output tokens served across the network, including internal and external demand.',
+        ],
+      ),
+    ],
+  )
+}
+
+export const khalaTokensServedCompactCounter = (
+  model: PublicKhalaTokensServedModel,
+): Html => {
+  const h = html<Message>()
+  const display = formatKhalaTokensServed(model)
+  const live = model._tag === 'PublicKhalaTokensServedLoaded'
+
+  return h.section(
+    [
+      h.DataAttribute('counter', 'khala-tokens-served'),
+      Ui.className<Message>(
+        'min-w-[15rem] border border-[#242424] bg-[#030303] px-3 py-2.5 text-left [container-type:inline-size]',
+      ),
+    ],
+    [
+      h.div(
         [
           Ui.className<Message>(
-            'm-0 text-[0.66rem] leading-4 text-white/35',
+            'flex items-center gap-2 text-[0.62rem] uppercase leading-none tracking-normal text-white/45',
           ),
         ],
         [
-          'All real input + output tokens served across the network, including internal and external demand.',
+          h.span(
+            [
+              h.DataAttribute('status', live ? 'live' : 'pending'),
+              Ui.className<Message>(
+                `inline-block h-1.5 w-1.5 rounded-full ${
+                  live ? 'bg-[#00c853]' : 'bg-white/30'
+                }`,
+              ),
+            ],
+            [],
+          ),
+          h.span([], ['Khala Tokens Served']),
+        ],
+      ),
+      h.p(
+        [
+          Ui.className<Message>(
+            'm-0 mt-2 w-full min-w-0 max-w-full font-semibold leading-none tabular-nums text-[#f1efe8]',
+          ),
+          h.Attribute('style', 'font-size: clamp(1.25rem, 10cqw, 1.85rem);'),
+        ],
+        [
+          h.span(
+            [
+              h.DataAttribute('value', display),
+              h.DataAttribute('counter-display', 'khala-tokens-served'),
+              Ui.className<Message>(
+                `${motionOdometerClass} block w-full max-w-full whitespace-nowrap`,
+              ),
+            ],
+            [display],
+          ),
         ],
       ),
     ],
@@ -982,6 +1035,7 @@ export const khalaTokensServedCounter = (
 
 const HISTORY_DAY_SECONDS = 24 * 60 * 60
 const HISTORY_CHART_MAX_DAYS = 4
+const STATS_HISTORY_START_DAY = '2026-06-24'
 
 const compactNumberFormatter = new Intl.NumberFormat('en-US', {
   notation: 'compact',
@@ -1122,8 +1176,7 @@ const historyDayNumber = (day: string): number | undefined => {
     return undefined
   }
 
-  const isLeapYear =
-    year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0)
+  const isLeapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0)
   const daysInMonth =
     month === 2
       ? isLeapYear
@@ -1141,8 +1194,7 @@ const historyDayNumber = (day: string): number | undefined => {
   const era = Math.floor(adjustedYear / 400)
   const yearOfEra = adjustedYear - era * 400
   const shiftedMonth = month > 2 ? month - 3 : month + 9
-  const dayOfYear =
-    Math.floor((153 * shiftedMonth + 2) / 5) + dayOfMonth - 1
+  const dayOfYear = Math.floor((153 * shiftedMonth + 2) / 5) + dayOfMonth - 1
   const dayOfEra =
     yearOfEra * 365 +
     Math.floor(yearOfEra / 4) -
@@ -1220,8 +1272,7 @@ const historyNumberPart = (
   type: Intl.DateTimeFormatPartTypes,
 ): number => Number(parts.find(part => part.type === type)?.value ?? '0')
 
-const historyPad2 = (value: number): string =>
-  value.toString().padStart(2, '0')
+const historyPad2 = (value: number): string => value.toString().padStart(2, '0')
 
 const isoTimestampMs = (value: string): number | undefined => {
   const match =
@@ -1256,6 +1307,18 @@ const isoTimestampMs = (value: string): number | undefined => {
   }
 
   return Date.UTC(year, month - 1, day, hour, minute, second, millisecond)
+}
+
+const historyDayAtOffset = (startDay: string, offset: number): string => {
+  const startMs = isoTimestampMs(`${startDay}T00:00:00.000Z`)
+  if (startMs === undefined) {
+    return startDay
+  }
+
+  const date = new Date(startMs + offset * HISTORY_DAY_SECONDS * 1000)
+  return `${date.getUTCFullYear()}-${historyPad2(
+    date.getUTCMonth() + 1,
+  )}-${historyPad2(date.getUTCDate())}`
 }
 
 const historyTimezoneParts = (
@@ -1300,6 +1363,51 @@ const historyTimezoneParts = (
 const historyDayFromTimezoneParts = (parts: HistoryTimezoneParts): string =>
   `${parts.year}-${historyPad2(parts.month)}-${historyPad2(parts.day)}`
 
+const historyCurrentDay = (
+  generatedAt: string | undefined,
+  timezone: string,
+): string | undefined => {
+  const parts = historyTimezoneParts(generatedAt, timezone)
+  return parts === undefined ? undefined : historyDayFromTimezoneParts(parts)
+}
+
+const historySeriesSinceDay = (
+  series: ReadonlyArray<PublicKhalaTokensServedHistoryPoint>,
+  startDay: string,
+  generatedAt: string | undefined,
+  timezone: string,
+): ReadonlyArray<PublicKhalaTokensServedHistoryPoint> => {
+  const startDayNumber = historyDayNumber(startDay)
+  const endDay =
+    historyCurrentDay(generatedAt, timezone) ?? series[series.length - 1]?.day
+  const endDayNumber =
+    endDay === undefined ? undefined : historyDayNumber(endDay)
+
+  if (
+    startDayNumber === undefined ||
+    endDayNumber === undefined ||
+    endDayNumber < startDayNumber
+  ) {
+    return series.filter(point => point.day >= startDay)
+  }
+
+  const tokensByDay = new Map(
+    series.map(point => [
+      point.day,
+      Math.max(0, Math.trunc(point.tokensServed)),
+    ]),
+  )
+  const count = endDayNumber - startDayNumber + 1
+
+  return globalThis.Array.from({ length: count }, (_, index) => {
+    const day = historyDayAtOffset(startDay, index)
+    return {
+      day,
+      tokensServed: tokensByDay.get(day) ?? 0,
+    }
+  })
+}
+
 const historyElapsedDaySeconds = (parts: HistoryTimezoneParts): number =>
   parts.hour * 60 * 60 + parts.minute * 60 + parts.second
 
@@ -1314,7 +1422,10 @@ const latestDayProjection = (
   }
 
   const parts = historyTimezoneParts(generatedAt, timezone)
-  if (parts === undefined || historyDayFromTimezoneParts(parts) !== latest.day) {
+  if (
+    parts === undefined ||
+    historyDayFromTimezoneParts(parts) !== latest.day
+  ) {
     return undefined
   }
 
@@ -1350,7 +1461,8 @@ const historyBarHeightPercent = (tokens: number, maxTokens: number): number =>
 const historyBarSegmentHeightStyle = (
   tokens: number,
   maxTokens: number,
-): string => `height: ${historyBarHeightPercent(tokens, maxTokens).toFixed(2)}%;`
+): string =>
+  `height: ${historyBarHeightPercent(tokens, maxTokens).toFixed(2)}%;`
 
 const historyProjectionSegmentStyle = (
   tokens: number,
@@ -1537,8 +1649,13 @@ const historyChartBars = (
   )
 }
 
+type KhalaTokensServedHistoryChartOptions = Readonly<{
+  startDay?: string
+}>
+
 export const khalaTokensServedHistoryChart = (
   model: PublicKhalaTokensServedHistoryModel,
+  options: KhalaTokensServedHistoryChartOptions = {},
 ): Html =>
   M.value(model).pipe(
     M.tagsExhaustive({
@@ -1569,7 +1686,15 @@ export const khalaTokensServedHistoryChart = (
               `Daily all-demand input + output tokens served across the network in ${history.timezone}.`,
             ),
           onNonEmpty: series => {
-            const chartSeries = recentContiguousHistorySeries(series)
+            const chartSeries =
+              options.startDay === undefined
+                ? recentContiguousHistorySeries(series)
+                : historySeriesSinceDay(
+                    series,
+                    options.startDay,
+                    history.generatedAt,
+                    history.timezone,
+                  )
             const peakTokens = chartSeries.reduce(
               (max, point) =>
                 point.tokensServed > max ? point.tokensServed : max,
@@ -1600,6 +1725,11 @@ export const khalaTokensServedHistoryChart = (
         }),
     }),
   )
+
+export const khalaTokensServedStatsHistoryChart = (
+  model: PublicKhalaTokensServedHistoryModel,
+): Html =>
+  khalaTokensServedHistoryChart(model, { startDay: STATS_HISTORY_START_DAY })
 
 const modelMixPlaceholder = (label: string): Html => {
   const h = html<Message>()
@@ -1656,9 +1786,7 @@ const modelMixRows = (
             ],
           ),
           h.div(
-            [
-              Ui.className<Message>('h-1.5 overflow-hidden bg-[#111]'),
-            ],
+            [Ui.className<Message>('h-1.5 overflow-hidden bg-[#111]')],
             [
               h.div(
                 [
@@ -1673,7 +1801,11 @@ const modelMixRows = (
             ],
           ),
           h.p(
-            [Ui.className<Message>('m-0 text-[0.66rem] leading-4 text-white/42')],
+            [
+              Ui.className<Message>(
+                'm-0 text-[0.66rem] leading-4 text-white/42',
+              ),
+            ],
             [
               `${formatNumber(group.tokens)} tokens across ${formatNumber(
                 group.reqs,
@@ -1788,7 +1920,11 @@ const topStatTile = (label: string, value: string, detail: string): Html => {
         [label],
       ),
       h.p(
-        [Ui.className<Message>('m-0 mt-1 text-[0.6rem] leading-4 text-white/35')],
+        [
+          Ui.className<Message>(
+            'm-0 mt-1 text-[0.6rem] leading-4 text-white/35',
+          ),
+        ],
         [detail],
       ),
     ],
@@ -1798,9 +1934,7 @@ const topStatTile = (label: string, value: string, detail: string): Html => {
 const topStatsStrip = (input: HomeViewInput): Html => {
   const h = html<Message>()
   const stats = statsFromModel(input.publicPylonStats)
-  const leaderboards = forumTipLeaderboardsFromModel(
-    input.forumTipLeaderboards,
-  )
+  const leaderboards = forumTipLeaderboardsFromModel(input.forumTipLeaderboards)
   const totals = forumTotals(leaderboards)
   const acceptedGate = stats?.nexusAcceptedWorkSettlementGate
   const acceptedPaid =
