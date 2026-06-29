@@ -1,4 +1,11 @@
-import { Option, Schema as S } from 'effect'
+import {
+  decodeRowEffect,
+  decodeUnknownEffect,
+  parseJsonEffect,
+  readRequestJsonEffect,
+  type OpenAgentsBoundaryError,
+} from '@openagentsinc/effect-boundary'
+import { Effect, Option, Schema as S } from 'effect'
 
 const JsonRecord = S.Record(S.String, S.Unknown)
 const UnknownArray = S.Array(S.Unknown)
@@ -75,12 +82,27 @@ export const parseJsonUnknown = (value: string): unknown => JSON.parse(value)
 export const parseJsonWithSchema = <A>(
   schema: S.Decoder<A>,
   value: string,
-): A => S.decodeUnknownSync(schema)(parseJsonUnknown(value))
+  operation = 'worker.parse_json_with_schema',
+): A => Effect.runSync(parseJsonEffect(schema, value, operation))
 
 export const decodeUnknownWithSchema = <A>(
   schema: S.Decoder<A>,
   value: unknown,
-): A => S.decodeUnknownSync(schema)(value)
+  operation = 'worker.decode_unknown_with_schema',
+): A => Effect.runSync(decodeUnknownEffect(schema, value, operation))
+
+export const readJsonObjectEffect = (
+  request: Request,
+  operation: string,
+): Effect.Effect<Record<string, unknown>, OpenAgentsBoundaryError> =>
+  readRequestJsonEffect(JsonRecord, request, operation)
+
+export const decodeD1RowEffect = <A>(
+  schema: S.Decoder<A>,
+  row: unknown,
+  operation: string,
+): Effect.Effect<A, OpenAgentsBoundaryError> =>
+  decodeRowEffect(schema, row, operation)
 
 export const parseJsonRecord = (
   value: string | null | undefined,

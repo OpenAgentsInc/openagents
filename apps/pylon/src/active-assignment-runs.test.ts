@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { mkdtemp, rm } from "node:fs/promises"
+import { mkdtemp, readdir, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
@@ -80,6 +80,19 @@ describe("#6354 per-account active run counts", () => {
         "account.pylon.codex.bbbb": 1,
         [UNKEYED_ACTIVE_RUN_ACCOUNT]: 1,
       })
+    } finally {
+      await rm(dir, { force: true, recursive: true })
+    }
+  })
+
+  test("prunes malformed local active-run state files", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "pylon-active-runs-"))
+    const paths = { activeAssignmentRuns: dir } as never
+    try {
+      await writeFile(join(dir, "corrupt.json"), "{bad json\n")
+
+      expect(await activeCodingRunCountsByAccount(paths)).toEqual({})
+      expect(await readdir(dir)).toEqual([])
     } finally {
       await rm(dir, { force: true, recursive: true })
     }

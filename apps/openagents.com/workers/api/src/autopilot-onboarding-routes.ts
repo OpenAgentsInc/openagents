@@ -40,6 +40,7 @@ import {
   runOnboardingTurn,
 } from './autopilot-onboarding-program'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
+import { readRequestJsonEffect } from '@openagentsinc/effect-boundary'
 import { openAgentsDatabase } from './runtime'
 import { currentIsoTimestamp } from './runtime-primitives'
 
@@ -93,23 +94,13 @@ export type OnboardingRouteDependencies<Env extends OnboardingRouteEnv> =
     nowIso?: (() => string) | undefined
   }>
 
-const decodeJsonBody = <Schema extends S.Top>(
+const decodeJsonBody = <A>(
   request: Request,
-  schema: Schema,
+  schema: S.Decoder<A>,
 ) =>
-  Effect.gen(function* () {
-    const payload = yield* Effect.tryPromise({
-      try: () => request.json(),
-      catch: error =>
-        new OnboardingBadRequest({
-          reason: error instanceof Error ? error.message : 'invalid json',
-        }),
-    })
-
-    return yield* S.decodeUnknownEffect(schema)(payload).pipe(
-      Effect.mapError(error => new OnboardingBadRequest({ reason: String(error) })),
-    )
-  })
+  readRequestJsonEffect(schema, request, 'autopilot_onboarding.turn_body').pipe(
+    Effect.mapError(error => new OnboardingBadRequest({ reason: error.reasonRef })),
+  )
 
 const routeErrorResponse = (error: OnboardingRouteError): HttpResponse =>
   M.value(error).pipe(

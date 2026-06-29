@@ -18,14 +18,20 @@
 import {
   REPLAY_CLIP_CLAIM_SCOPE,
   REPLAY_CLIP_JOB_SCHEMA_VERSION,
+  ReplayClipJobRequest as ReplayClipJobRequestSchema,
   assertReplayClipJobRecordSafe,
   assertReplayClipJobRequestSafe,
   type ReplayClipJobRecord,
   type ReplayClipJobRequest,
   type ReplayClipJobStatus,
 } from '@openagentsinc/replay-clips'
+import { Effect, Schema as S } from 'effect'
 
-import { parseJsonUnknown, stringArrayFromUnknown } from './json-boundary'
+import {
+  decodeD1RowEffect,
+  parseJsonStringArray,
+  parseJsonWithSchema,
+} from './json-boundary'
 
 export type ReplayClipJobStore = Readonly<{
   insert: (record: ReplayClipJobRecord) => Promise<void>
@@ -69,21 +75,26 @@ export const decodeReplayClipJobRequestSafe = (
   input: unknown,
 ): ReplayClipJobRequest => assertReplayClipJobRequestSafe(input)
 
-type ReplayClipJobRow = {
-  job_ref: string
-  status: string
-  request_json: string
-  source_refs_json: string
-  caveat_refs_json: string
-  blocker_refs_json: string
-  manifest_ref: string | null
-  created_at: string
-  updated_at: string
-}
+const ReplayClipJobRow = S.Struct({
+  job_ref: S.String,
+  status: S.String,
+  request_json: S.String,
+  source_refs_json: S.String,
+  caveat_refs_json: S.String,
+  blocker_refs_json: S.String,
+  manifest_ref: S.NullOr(S.String),
+  created_at: S.String,
+  updated_at: S.String,
+})
+type ReplayClipJobRow = typeof ReplayClipJobRow.Type
 
 const recordFromRow = (row: ReplayClipJobRow): ReplayClipJobRecord => {
   const request = assertReplayClipJobRequestSafe(
-    parseJsonUnknown(row.request_json),
+    parseJsonWithSchema(
+      ReplayClipJobRequestSchema,
+      row.request_json,
+      'replay_clip_jobs.request_json',
+    ),
   )
   return assertReplayClipJobRecordSafe({
     schemaVersion: REPLAY_CLIP_JOB_SCHEMA_VERSION,
@@ -93,14 +104,17 @@ const recordFromRow = (row: ReplayClipJobRow): ReplayClipJobRecord => {
     source: request.source,
     render: request.render,
     cameraPath: request.cameraPath,
-    sourceRefs: stringArrayFromUnknown(parseJsonUnknown(row.source_refs_json)),
-    caveatRefs: stringArrayFromUnknown(parseJsonUnknown(row.caveat_refs_json)),
-    blockerRefs: stringArrayFromUnknown(parseJsonUnknown(row.blocker_refs_json)),
+    sourceRefs: parseJsonStringArray(row.source_refs_json),
+    caveatRefs: parseJsonStringArray(row.caveat_refs_json),
+    blockerRefs: parseJsonStringArray(row.blocker_refs_json),
     ...(row.manifest_ref === null ? {} : { manifestRef: row.manifest_ref }),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   })
 }
+
+const decodeReplayClipJobRow = (row: unknown): ReplayClipJobRow =>
+  Effect.runSync(decodeD1RowEffect(ReplayClipJobRow, row, 'replay_clip_jobs.row'))
 
 export const makeD1ReplayClipJobStore = (
   db: D1Database,
@@ -138,7 +152,7 @@ export const makeD1ReplayClipJobStore = (
       .prepare(`SELECT * FROM replay_clip_jobs WHERE job_ref = ? LIMIT 1`)
       .bind(jobRef)
       .first<ReplayClipJobRow>()
-    return row === null ? null : recordFromRow(row)
+    return row === null ? null : recordFromRow(decodeReplayClipJobRow(row))
   },
 
   listRecent: async limit => {
@@ -148,7 +162,7 @@ export const makeD1ReplayClipJobStore = (
       )
       .bind(limit)
       .all<ReplayClipJobRow>()
-    return (result.results ?? []).map(recordFromRow)
+    return (result.results ?? []).map(row => recordFromRow(decodeReplayClipJobRow(row)))
   },
 })
 
