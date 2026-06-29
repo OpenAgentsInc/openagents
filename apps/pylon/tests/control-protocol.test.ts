@@ -317,6 +317,7 @@ describe("control protocol", () => {
           })
           expect((result as { commands: Array<{ kind: string }> }).commands.map((command) => command.kind)).toEqual([
             "git_fetch_pr_head",
+            "git_verify_fetched_pr_head",
             "git_checkout_branch",
             "git_reset_actual_head",
             "git_merge_ff_only",

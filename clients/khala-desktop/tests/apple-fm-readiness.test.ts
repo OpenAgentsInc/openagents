@@ -58,6 +58,10 @@ describe("khala desktop Apple FM readiness", () => {
       pylonStatus: {
         available: true,
         status: "ready",
+        backendKind: "apple_fm_bridge",
+        profileId: "apple-fm-local",
+        model: "apple-foundation-model",
+        capability: APPLE_FM_CAPABILITY,
         advertisedCapabilities: [APPLE_FM_CAPABILITY, "probe.blueprint.tool_menu"],
         blockerRefs: [],
       },
@@ -69,6 +73,29 @@ describe("khala desktop Apple FM readiness", () => {
     expect(readiness.provider).toBe("pylon-apple-fm-own-capacity")
     expect(readiness.demandSource).toBe("khala_apple_fm_delegation")
     expect(readiness.usageTruth).toBe("estimated")
+  })
+
+  test("fails closed when Pylon ready status is missing the Apple FM identity", () => {
+    const readiness = buildKhalaAppleFmReadiness({
+      platform: { platform: "darwin", arch: "arm64" },
+      helperFound: true,
+      helperExecutable: true,
+      helperLaunchState: "running",
+      pylonControlConfigured: true,
+      pylonStatus: {
+        available: true,
+        status: "ready",
+        advertisedCapabilities: [APPLE_FM_CAPABILITY],
+        blockerRefs: [],
+      },
+      observedAt: "2026-06-29T00:00:00.000Z",
+    })
+
+    expect(readiness.available).toBe(false)
+    expect(readiness.state).toBe("running")
+    expect(readiness.blockerRefs).toContain(
+      "blocker.khala_desktop.apple_fm.pylon_status_malformed",
+    )
   })
 
   test("keeps Pylon status public-safe and omits loopback paths and tokens", () => {

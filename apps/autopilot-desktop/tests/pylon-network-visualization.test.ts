@@ -76,4 +76,50 @@ describe("pylonNetworkVisualizationOptions (bezier graph adapter)", () => {
       .map((n) => n.position.join(","))
     expect(new Set(positions).size).toBe(positions.length) // unique
   })
+
+  test("growth tiers change pylon role, status, and detail from settled sats", () => {
+    const opts = pylonNetworkVisualizationOptions({
+      ...projectPylonNetworkScene(null),
+      dormant: false,
+      onlineNow: 2,
+      nodes: [
+        {
+          id: "zero",
+          label: "zero",
+          tone: "online",
+          flowing: false,
+          growth: {
+            tier: 0,
+            scale: 1,
+            facets: 6,
+            brightness: 0,
+            settledSats: 0,
+          },
+        },
+        {
+          id: "earned",
+          label: "earned",
+          tone: "online",
+          flowing: false,
+          growth: {
+            tier: 4,
+            scale: 1.72,
+            facets: 14,
+            brightness: 0.8,
+            settledSats: 1_000_000,
+          },
+        },
+      ],
+    })
+    const zero = opts.nodes?.find((node) => node.id === "zero")
+    const earned = opts.nodes?.find((node) => node.id === "earned")
+
+    expect(zero?.role).toBe("lifecycle")
+    expect(zero?.status).toBe("queued")
+    expect(zero?.detail).toContain("tier 0 - 0 sats")
+    expect(earned?.role).toBe("run")
+    expect(earned?.status).toBe("verified")
+    expect(earned?.detail).toContain("tier 4 - 1000000 sats")
+    expect(earned?.detail).toContain("14 facets")
+  })
 })

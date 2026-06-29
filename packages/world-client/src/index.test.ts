@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { Effect } from "effect"
+import { Effect, Fiber } from "effect"
 
 import {
   WORLD_DELTA_SCHEMA_VERSION,
@@ -14,6 +14,7 @@ import {
 
 import {
   WorldClientError,
+  createBrowserWorldTransport,
   applyDeltaToReadModel,
   applyDeltaToState,
   commandAckFromReceipt,
@@ -176,6 +177,85 @@ const positionRow = (animation: "idle" | "walk" = "walk") => decodeWorldRow({
   observedAt,
   safety,
 })
+
+class FakeBrowserWebSocket {
+  static sockets: FakeBrowserWebSocket[] = []
+  readyState = 0
+  closeCount = 0
+  sent: string[] = []
+  readonly listeners = new Map<string, Set<(event: unknown) => void>>()
+
+  constructor(readonly url: string) {
+    FakeBrowserWebSocket.sockets.push(this)
+  }
+
+  send(data: string): void {
+    this.sent.push(data)
+  }
+
+  close(): void {
+    this.closeCount += 1
+    this.readyState = 3
+  }
+
+  addEventListener(type: string, listener: (event: unknown) => void): void {
+    const listeners = this.listeners.get(type) ?? new Set()
+    listeners.add(listener)
+    this.listeners.set(type, listeners)
+  }
+
+  removeEventListener(type: string, listener: (event: unknown) => void): void {
+    this.listeners.get(type)?.delete(listener)
+  }
+
+  open(): void {
+    this.readyState = 1
+    this.dispatch("open", {})
+  }
+
+  dispatch(type: string, event: unknown): void {
+    for (const listener of [...(this.listeners.get(type) ?? [])]) {
+      listener(event)
+    }
+  }
+}
+
+const resetFakeSockets = (): void => {
+  FakeBrowserWebSocket.sockets = []
+}
+
+const browserCommand = (commandRef = "command.browser.1"): WorldCommandEnvelope =>
+  decodeWorldCommandEnvelope({
+    schemaVersion: "openagents.world_contract.v1",
+    commandRef,
+    command: "focus_pylon",
+    actorClass: "browser",
+    actorRef: "actor.alice",
+    regionRef,
+    seq: 11,
+    issuedAt: observedAt,
+    payload: { pylonRef: "pylon.alpha" },
+  })
+
+const waitForFakeSocket = async (): Promise<FakeBrowserWebSocket> => {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const socket = FakeBrowserWebSocket.sockets[0]
+    if (socket !== undefined) return socket
+    await Bun.sleep(1)
+  }
+  throw new Error("fake WebSocket was not created")
+}
+
+const browserConnectResponse = () =>
+  Response.json({
+    ok: true,
+    schemaVersion: "openagents.world_contract.v1",
+    regionRef,
+    socketUrl: "wss://world.test/regions/region.run.1/socket",
+    subscriptionPlan: plan(),
+  })
+
+const fakeBrowserConnectFetch = (async () => browserConnectResponse()) as unknown as typeof fetch
 
 describe("world-client", () => {
   test("applies deltas with absent-means-unchanged read-model semantics", () => {
@@ -418,6 +498,46 @@ describe("world-client", () => {
     expect(ack.appliedSeq).toBe(7)
     expect(state.commandAcks["command.move.1"]?.appliedSeq).toBe(7)
     expect(commandAckFromReceipt(delta.receipt!).rejectedSeq).toBeUndefined()
+  })
+
+  test("browser transport keeps WebSocket cleanup in the retained Effect scope", async () => {
+    resetFakeSockets()
+    const transport = createBrowserWorldTransport({
+      worldUrl: "https://world.test",
+      actorRef: "actor.alice",
+      fetchFn: fakeBrowserConnectFetch,
+      webSocketCtor: FakeBrowserWebSocket,
+    })
+    const connect = Effect.runPromise(transport.connect({}))
+    const socket = await waitForFakeSocket()
+    socket.open()
+    await connect
+
+    const pendingCommand = Effect.runPromise(transport.command(browserCommand()))
+    await Bun.sleep(1)
+    await Effect.runPromise(transport.disconnect())
+
+    await expect(pendingCommand).rejects.toBeInstanceOf(WorldClientError)
+    expect(socket.sent).toContain(JSON.stringify({ frameKind: "hydrate" }))
+    expect(socket.closeCount).toBe(1)
+  })
+
+  test("browser transport closes a not-yet-open socket when connect is interrupted", async () => {
+    resetFakeSockets()
+    const transport = createBrowserWorldTransport({
+      worldUrl: "https://world.test",
+      actorRef: "actor.alice",
+      fetchFn: fakeBrowserConnectFetch,
+      webSocketCtor: FakeBrowserWebSocket,
+    })
+    const fiber = Effect.runFork(transport.connect({}))
+    const socket = await waitForFakeSocket()
+
+    await Effect.runPromise(Fiber.interrupt(fiber))
+
+    expect(socket.closeCount).toBe(1)
+    expect(socket.listeners.get("open")?.size ?? 0).toBe(0)
+    expect(socket.listeners.get("error")?.size ?? 0).toBe(0)
   })
 
   test("stub read-model fixtures hydrate pylon, payment, and inference proof rows", () => {

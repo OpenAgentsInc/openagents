@@ -127,6 +127,20 @@ describe('OpenAgents OpenAPI route', () => {
       operationAt(body, '/api/training/device-capabilities/a2', 'get')
         .operationId,
     ).toBe('readTrainingA2DeviceCapabilityDashboard')
+    const a2DeviceCapabilityOperation = operationAt(
+      body,
+      '/api/training/device-capabilities/a2',
+      'get',
+    )
+    expect(a2DeviceCapabilityOperation.description).toContain(
+      'verified thermal receipt refs',
+    )
+    expect(a2DeviceCapabilityOperation.description).toContain(
+      'same-class replication labels',
+    )
+    expect(a2DeviceCapabilityOperation.description).toContain(
+      'do not imply earning estimates or device-capability guarantees',
+    )
     expect(
       operationAt(body, '/api/training/leaderboards', 'get').operationId,
     ).toBe('listTrainingLeaderboards')
@@ -518,6 +532,17 @@ describe('OpenAgents OpenAPI route', () => {
     expect(
       operationAt(body, '/api/autopilot/decisions', 'get').operationId,
     ).toBe('listAutopilotDecisions')
+    expect(
+      operationAt(body, '/api/autopilot/work/{workOrderRef}/decisions', 'get')
+        .operationId,
+    ).toBe('listAutopilotWorkOrderDecisions')
+    expect(
+      operationAt(
+        body,
+        '/api/autopilot/decision-closeouts/{closeoutRef}',
+        'get',
+      ).operationId,
+    ).toBe('getAutopilotDecisionCloseout')
     expect(
       operationAt(
         body,

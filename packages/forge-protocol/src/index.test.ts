@@ -317,13 +317,31 @@ describe("@openagentsinc/forge-protocol", () => {
       tenant_ref: "tenant.openagents",
       promotion_ref: "promotion.forge.6768",
       queue_ref: "queue.forge.main",
+      queue_position: 0,
       change_ref: verification.change_ref,
       decision: "approved",
+      target_ref: "refs/heads/main",
       base_head: verification.base_head,
       candidate_head: verification.head_head,
       promoted_head: verification.head_head,
       verification_ref: verification.verification_ref,
       gate_refs: ["gate.merge-deploy", "gate.issue-close-safe"],
+      gate_results: [
+        {
+          gate_ref: "gate.merge-deploy",
+          verdict: "passed",
+          evidence_refs: [verification.verification_ref],
+          blocker_refs: [],
+          decided_at: "2026-06-28T16:02:00.000Z",
+        },
+        {
+          gate_ref: "gate.issue-close-safe",
+          verdict: "passed",
+          evidence_refs: ["github:OpenAgentsInc/openagents#6768"],
+          blocker_refs: [],
+          decided_at: "2026-06-28T16:02:00.000Z",
+        },
+      ],
       blocker_refs: [],
       decided_by_ref: "forge.service.promotion",
       decided_at: "2026-06-28T16:02:00.000Z",
@@ -332,5 +350,10 @@ describe("@openagentsinc/forge-protocol", () => {
     });
     expect(promotion.decision).toBe("approved");
     expect(promotion.promoted_head).toBe(verification.head_head);
+    expect(promotion.queue_position).toBe(0);
+    expect(promotion.gate_results.map(result => result.gate_ref)).toEqual([
+      "gate.merge-deploy",
+      "gate.issue-close-safe",
+    ]);
   });
 });

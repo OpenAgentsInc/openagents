@@ -209,11 +209,19 @@ export function buildKhalaAppleFmReadiness(
   input: BuildKhalaAppleFmReadinessInput,
 ): KhalaAppleFmReadiness {
   const supported = appleFmSupportedOn(input.platform)
+  const pylonStatusIdentityOk =
+    input.pylonStatus !== null &&
+    input.pylonStatus !== undefined &&
+    optionalString(input.pylonStatus.backendKind) === APPLE_FM_BACKEND_KIND &&
+    optionalString(input.pylonStatus.profileId) === APPLE_FM_LOCAL_PROFILE_ID &&
+    optionalString(input.pylonStatus.model) === APPLE_FM_MODEL_ID &&
+    optionalString(input.pylonStatus.capability) === APPLE_FM_CAPABILITY
   const pylon =
     input.pylonStatus === null || input.pylonStatus === undefined
       ? null
       : sanitizePylonAppleFmStatus(input.pylonStatus)
   const pylonReady =
+    pylonStatusIdentityOk &&
     pylon !== null &&
     pylon.available &&
     pylon.status === "ready" &&
@@ -250,7 +258,9 @@ export function buildKhalaAppleFmReadiness(
   }
 
   if (supported && helperUsable && !pylonReady) {
-    if (input.pylonControlConfigured === true) {
+    if (input.pylonControlConfigured === true && pylon !== null && !pylonStatusIdentityOk) {
+      blockers.add("blocker.khala_desktop.apple_fm.pylon_status_malformed")
+    } else if (input.pylonControlConfigured === true) {
       blockers.add("blocker.khala_desktop.apple_fm.pylon_not_ready")
     } else {
       blockers.add("blocker.khala_desktop.apple_fm.pylon_control_unconfigured")

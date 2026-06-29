@@ -167,6 +167,22 @@ export const ForgePromotionDecisionState = S.Literals([
 export type ForgePromotionDecisionState =
   typeof ForgePromotionDecisionState.Type;
 
+export const ForgePromotionGateVerdict = S.Literals([
+  "passed",
+  "blocked",
+  "not_applicable",
+]);
+export type ForgePromotionGateVerdict = typeof ForgePromotionGateVerdict.Type;
+
+export const ForgePromotionGateResult = S.Struct({
+  gate_ref: S.String,
+  verdict: ForgePromotionGateVerdict,
+  evidence_refs: S.Array(S.String),
+  blocker_refs: S.Array(S.String),
+  decided_at: S.String,
+});
+export type ForgePromotionGateResult = typeof ForgePromotionGateResult.Type;
+
 export const ForgeDispatchGitAccessDelivery = S.Literals([
   "out_of_band",
   "same_response_ephemeral",
@@ -448,13 +464,16 @@ export const ForgePromotionDecisionReceipt = S.Struct({
   tenant_ref: S.String,
   promotion_ref: S.String,
   queue_ref: S.String,
+  queue_position: S.Number,
   change_ref: S.String,
   decision: ForgePromotionDecisionState,
+  target_ref: S.String,
   base_head: S.String,
   candidate_head: S.String,
   promoted_head: S.NullOr(S.String),
   verification_ref: S.NullOr(S.String),
   gate_refs: S.Array(S.String),
+  gate_results: S.Array(ForgePromotionGateResult),
   blocker_refs: S.Array(S.String),
   decided_by_ref: S.String,
   decided_at: S.String,

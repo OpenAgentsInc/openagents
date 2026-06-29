@@ -22,6 +22,12 @@ import type {
 import { createBootstrapSummary, parseBootstrapArgs } from "../src/bootstrap"
 import { ensurePylonLocalState, assertPublicProjectionSafe } from "../src/state"
 import {
+  hashPylonAccountRef,
+  type ResolvedPylonAccountSelection,
+} from "../src/account-registry"
+import { loadCodexAccountHealthRecord } from "../src/codex-account-health-ledger"
+import { loadQuotaRecord } from "../src/account-quota-ledger"
+import {
   WorkspaceCheckoutError,
   workspaceLeaseRecordFor,
 } from "../src/workspace-materializer"
@@ -195,7 +201,7 @@ describe("codex agent task recognition", () => {
           codexAgentProbe: readyProbe,
         })
         expect(record?.status).toBe("rejected")
-        expect(record?.blockerRefs).toEqual([blocker])
+        expect(record?.blockerRefs).toContain(blocker)
         assertPublicProjectionSafe(record)
       }
 
@@ -207,7 +213,58 @@ describe("codex agent task recognition", () => {
         codexAgentProbe: readyProbe,
       })
       expect(record?.status).toBe("rejected")
-      expect(record?.blockerRefs).toEqual(["blocker.assignment.codex_agent_execution_refused"])
+      expect(record?.blockerRefs).toContain("blocker.assignment.codex_agent_execution_refused")
+      expect(record?.blockerRefs).toContain("blocker.assignment.codex_agent_execution_other")
+    })
+  })
+
+  test("surfaces revoked and usage-limited Codex account refusals and records account health", async () => {
+    await withState(async (state) => {
+      const accountRefHash = hashPylonAccountRef("codex", "codex-2")
+      const account: ResolvedPylonAccountSelection = {
+        provider: "codex",
+        selector: "registry_ref",
+        accountRef: "codex-2",
+        accountRefHash,
+        home: join(state.paths.home, "accounts", "codex", "codex-2"),
+      }
+      const revokedRunner: CodexAgentRunner = async () => {
+        throw new Error("Your access token could not be refreshed because your refresh token was revoked. Please log out and sign in again.")
+      }
+
+      const revoked = await executeCodexAgentAssignment(state, lease, now, {
+        account,
+        codexAgentRunner: revokedRunner,
+        codexAgentProbe: readyProbe,
+      })
+
+      expect(revoked?.status).toBe("rejected")
+      expect(revoked?.blockerRefs).toContain("blocker.assignment.codex_agent_execution_credentials_revoked")
+      expect(revoked?.blockerRefs).toContain("blocker.assignment.codex_account_credentials_revoked_needs_owner_reauth")
+      expect(revoked?.resultRefs).toContain("result.public.pylon.codex_agent_task.execution_refused.credentials_revoked")
+      expect((await loadCodexAccountHealthRecord(state, accountRefHash))?.reason).toBe("credentials_revoked")
+      assertPublicProjectionSafe(revoked)
+
+      const limitedAccountRefHash = hashPylonAccountRef("codex", "codex-3")
+      const limitedAccount: ResolvedPylonAccountSelection = {
+        ...account,
+        accountRef: "codex-3",
+        accountRefHash: limitedAccountRefHash,
+        home: join(state.paths.home, "accounts", "codex", "codex-3"),
+      }
+      const limitedRunner: CodexAgentRunner = async () => {
+        throw new Error("You have hit your usage limit. Please try again at 2026-06-28T22:00:00Z.")
+      }
+      const limited = await executeCodexAgentAssignment(state, lease, now, {
+        account: limitedAccount,
+        codexAgentRunner: limitedRunner,
+        codexAgentProbe: readyProbe,
+      })
+
+      expect(limited?.blockerRefs).toContain("blocker.assignment.codex_agent_execution_usage_limited")
+      expect((await loadCodexAccountHealthRecord(state, limitedAccountRefHash))?.reason).toBe("usage_limited")
+      expect((await loadQuotaRecord(state, limitedAccountRefHash))?.retryAtIso).toBe("2026-06-28T22:00:00.000Z")
+      assertPublicProjectionSafe(limited)
     })
   })
 

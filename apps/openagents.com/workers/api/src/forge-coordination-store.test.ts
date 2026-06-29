@@ -70,12 +70,20 @@ const controlPlaneReceiptsMigration = readFileSync(
   new URL('../migrations/0254_forge_control_plane_receipts.sql', import.meta.url),
   'utf8',
 )
+const promotionDecisionGateResultsMigration = readFileSync(
+  new URL(
+    '../migrations/0259_forge_promotion_decision_gate_results.sql',
+    import.meta.url,
+  ),
+  'utf8',
+)
 
 const makeStore = (): ForgeCoordinationStore => {
   const db = new DatabaseSync(':memory:')
   db.exec('PRAGMA foreign_keys = ON')
   db.exec(coordinationMigration)
   db.exec(controlPlaneReceiptsMigration)
+  db.exec(promotionDecisionGateResultsMigration)
   return makeD1ForgeCoordinationStore(new SqliteD1(db) as unknown as D1Database)
 }
 
@@ -253,13 +261,24 @@ describe('forge coordination D1 store', () => {
         tenant_ref: 'tenant.openagents',
         promotion_ref: 'promotion.forge.6770',
         queue_ref: 'queue.forge.main',
+        queue_position: 0,
         change_ref: 'change.forge.6770',
         decision: 'approved',
+        target_ref: 'refs/heads/main',
         base_head: '8e0c9b2eaf84c821caf555cae233a0d27e94d4ab',
         candidate_head: '9e0c9b2eaf84c821caf555cae233a0d27e94d4ac',
         promoted_head: '9e0c9b2eaf84c821caf555cae233a0d27e94d4ac',
         verification_ref: verificationReceipt.verification_ref,
         gate_refs: ['gate.tests'],
+        gate_results: [
+          {
+            gate_ref: 'gate.tests',
+            verdict: 'passed',
+            evidence_refs: [verificationReceipt.verification_ref],
+            blocker_refs: [],
+            decided_at: '2026-06-28T16:03:00.000Z',
+          },
+        ],
         blocker_refs: [],
         decided_by_ref: 'agent.public.forge',
         decided_at: '2026-06-28T16:03:00.000Z',
@@ -269,8 +288,116 @@ describe('forge coordination D1 store', () => {
       now,
     )
     expect(promotionDecision.decision).toBe('approved')
+    expect(promotionDecision.target_ref).toBe('refs/heads/main')
+    expect(promotionDecision.gate_results[0]?.verdict).toBe('passed')
     await expect(
       store.listPromotionDecisionReceipts('tenant.openagents', 10, 'change.forge.6770'),
     ).resolves.toEqual([promotionDecision])
+  })
+
+  test('fails approved promotions closed without a matching passed verification receipt', async () => {
+    const store = makeStore()
+    const baseVerificationReceipt = {
+      schema: 'openagents.forge.verification.receipt.v0.1' as const,
+      tenant_ref: 'tenant.openagents',
+      verification_ref: 'verification.forge.6795',
+      change_ref: 'change.forge.6795',
+      repository_ref: 'repo:OpenAgentsInc/openagents',
+      base_ref: 'refs/heads/main',
+      base_head: '8e0c9b2eaf84c821caf555cae233a0d27e94d4ab',
+      head_ref: 'refs/heads/forge-6795',
+      head_head: '9e0c9b2eaf84c821caf555cae233a0d27e94d4ac',
+      packfile_ref: 'packfile.forge.6795',
+      packfile_sha256: 'sha256:verification',
+      executor_identity_ref: 'agent.public.forge',
+      command_ref: 'cmd.test',
+      command_args: ['bun', 'test'],
+      exit_code: 0,
+      verdict: 'passed' as const,
+      started_at: now,
+      completed_at: '2026-06-28T16:02:00.000Z',
+      artifact_refs: ['artifact:test-log'],
+      log_sha256: 'sha256:log',
+      source_refs: ['github:OpenAgentsInc/openagents#6795'],
+      redacted: true as const,
+    }
+    const basePromotionDecision = {
+      schema: 'openagents.forge.promotion.decision.v0.1' as const,
+      tenant_ref: 'tenant.openagents',
+      promotion_ref: 'promotion.forge.6795',
+      queue_ref: 'queue.forge.main',
+      change_ref: 'change.forge.6795',
+      decision: 'approved' as const,
+      base_head: baseVerificationReceipt.base_head,
+      candidate_head: baseVerificationReceipt.head_head,
+      promoted_head: baseVerificationReceipt.head_head,
+      verification_ref: baseVerificationReceipt.verification_ref,
+      gate_refs: ['gate.tests'],
+      blocker_refs: [],
+      decided_by_ref: 'agent.public.forge',
+      decided_at: '2026-06-28T16:03:00.000Z',
+      source_refs: ['github:OpenAgentsInc/openagents#6795'],
+      redacted: true as const,
+    }
+
+    await expect(
+      store.recordPromotionDecisionReceipt(
+        { ...basePromotionDecision, verification_ref: null },
+        now,
+      ),
+    ).rejects.toThrow('requires a verification receipt ref')
+    await expect(
+      store.recordPromotionDecisionReceipt(basePromotionDecision, now),
+    ).rejects.toThrow('verification receipt is missing')
+
+    await store.recordVerificationReceipt(
+      {
+        ...baseVerificationReceipt,
+        verification_ref: 'verification.forge.6795.failed',
+        exit_code: 1,
+        verdict: 'failed',
+      },
+      now,
+    )
+    await expect(
+      store.recordPromotionDecisionReceipt(
+        {
+          ...basePromotionDecision,
+          promotion_ref: 'promotion.forge.6795.failed',
+          verification_ref: 'verification.forge.6795.failed',
+        },
+        now,
+      ),
+    ).rejects.toThrow('does not match the promoted change')
+
+    await store.recordVerificationReceipt(baseVerificationReceipt, now)
+    await expect(
+      store.recordPromotionDecisionReceipt(
+        {
+          ...basePromotionDecision,
+          promotion_ref: 'promotion.forge.6795.stale',
+          base_head: '7e0c9b2eaf84c821caf555cae233a0d27e94d4ab',
+        },
+        now,
+      ),
+    ).rejects.toThrow('does not match the promoted change')
+    await expect(
+      store.recordPromotionDecisionReceipt(
+        {
+          ...basePromotionDecision,
+          promotion_ref: 'promotion.forge.6795.wrong-head',
+          candidate_head: 'ae0c9b2eaf84c821caf555cae233a0d27e94d4ac',
+          promoted_head: 'ae0c9b2eaf84c821caf555cae233a0d27e94d4ac',
+        },
+        now,
+      ),
+    ).rejects.toThrow('does not match the promoted change')
+
+    await expect(
+      store.recordPromotionDecisionReceipt(basePromotionDecision, now),
+    ).resolves.toMatchObject({
+      decision: 'approved',
+      verification_ref: baseVerificationReceipt.verification_ref,
+    })
   })
 })
