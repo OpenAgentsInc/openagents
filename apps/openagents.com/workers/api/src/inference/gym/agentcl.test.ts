@@ -354,6 +354,12 @@ describe('AgentCL repo-reuse gym environment', () => {
     })
     expect(
       assessAgentClVertexRunnerCircuitBreaker({
+        estimatedSpendUsdCents: 5000,
+        consecutiveBillingOrQuotaErrors: 0,
+      }),
+    ).toEqual({ tripped: true, reason: 'spend_cap_exceeded' })
+    expect(
+      assessAgentClVertexRunnerCircuitBreaker({
         estimatedSpendUsdCents: 5001,
         consecutiveBillingOrQuotaErrors: 0,
       }),
