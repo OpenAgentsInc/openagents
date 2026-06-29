@@ -2435,26 +2435,33 @@ button {
 
 @media (max-width: 760px) {
   body {
-    overflow: auto;
+    overflow: hidden;
   }
 
   .coding-page {
-    overflow: auto;
+    overflow: hidden;
     padding: 70px 12px 12px;
   }
 
   .pylons-panel.coding-panel {
-    height: auto;
-    min-height: calc(100vh - 84px);
-    min-height: calc(100dvh - 84px);
-    max-height: none;
-    overflow: visible;
+    height: calc(100vh - 84px);
+    height: calc(100dvh - 84px);
+    min-height: 0;
+    max-height: calc(100vh - 84px);
+    max-height: calc(100dvh - 84px);
+    overflow: hidden;
   }
 
-  .coding-topbar,
+  .coding-topbar {
+    align-items: center;
+    flex-direction: row;
+  }
+
   .coding-hero {
     align-items: stretch;
     flex-direction: column;
+    gap: 10px;
+    padding: 14px 16px 12px;
   }
 
   .coding-hero h2 {
@@ -2470,25 +2477,41 @@ button {
     grid-template-columns: minmax(0, 1fr);
   }
 
+  .coding-command-console {
+    grid-template-rows:
+      minmax(150px, 0.34fr)
+      minmax(260px, 0.72fr)
+      minmax(168px, 0.46fr);
+    overflow: hidden;
+  }
+
   .coding-ops-rail,
   .coding-manager {
     grid-column: auto;
     grid-row: auto;
   }
 
+  .coding-ops-rail {
+    grid-template-rows: auto auto auto;
+    overflow: auto;
+  }
+
   .coding-session-column {
-    grid-template-rows: auto auto auto auto;
+    grid-template-rows: auto minmax(56px, 0.28fr) auto minmax(0, 1fr);
+    overflow: hidden;
   }
 
   .coding-active-list,
   .coding-list,
   .token-spool-list,
   .coding-events {
+    min-height: 0;
     max-height: none;
+    overflow: auto;
   }
 
   .coding-transcript {
-    min-height: 520px;
+    min-height: 0;
   }
 
   .coding-active-session,
@@ -2500,5 +2523,12 @@ button {
     position: static;
     width: fit-content;
     max-width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  .coding-topbar {
+    align-items: stretch;
+    flex-direction: column;
   }
 }
