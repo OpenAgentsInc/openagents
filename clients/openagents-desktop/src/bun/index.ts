@@ -15,6 +15,10 @@ import {
   type CodingStatusResult,
   type CodingStatusSummary,
 } from "../shared/coding-status.js"
+import type {
+  DesktopKhalaDispatchPlanInput,
+  DesktopKhalaDispatchPlanResult,
+} from "../shared/khala-dispatch.js"
 import {
   connectedPylonCount,
   type CreatePylonResult,
@@ -482,6 +486,75 @@ const spawnText = async (cmd: readonly string[]): Promise<string> => {
   return stdout
 }
 
+const khalaDispatchPlan = async (
+  input: DesktopKhalaDispatchPlanInput,
+): Promise<DesktopKhalaDispatchPlanResult> => {
+  const observedAt = new Date().toISOString()
+  const args = [
+    "src/index.ts",
+    "khala",
+    "dispatch",
+    "--candidates",
+    input.candidateRefs.join(","),
+    "--accounts",
+    input.accounts.join(","),
+    "--concurrency",
+    String(input.concurrency),
+    "--priority-lane",
+    input.priorityLane,
+    "--repo",
+    input.repository,
+    "--commit",
+    input.commit,
+    "--verify",
+    input.verifier,
+    "--json",
+  ]
+  if (input.branch !== undefined) {
+    args.push("--branch", input.branch)
+  }
+  if (input.targetPylonRef !== undefined) {
+    args.push("--pylon-ref", input.targetPylonRef)
+  }
+
+  try {
+    const pylonAppPath = await resolvePylonAppPath()
+    const proc = Bun.spawn({
+      cmd: [resolveBunExecutable(), ...args],
+      cwd: pylonAppPath,
+      env: withExtraPath({
+        ...Bun.env,
+        PYLON_OPENAGENTS_BASE_URL: baseUrl,
+      }),
+      stderr: "pipe",
+      stdout: "pipe",
+    })
+    const [stdout, stderr, exitCode] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ])
+    if (exitCode !== 0) {
+      return {
+        ok: false,
+        error: stderr.trim() || stdout.trim() || `pylon exited ${exitCode}`,
+        observedAt,
+      }
+    }
+    return {
+      ok: true,
+      observedAt,
+      plan: JSON.parse(stdout),
+    }
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+      observedAt,
+    }
+  }
+}
+
 const codingStatus = async (): Promise<CodingStatusResult> => {
   const observedAt = new Date().toISOString()
   const home = supervisorHome()
@@ -573,6 +646,7 @@ const rpc = BrowserView.defineRPC<OpenAgentsDesktopRPCSchema>({
     requests: {
       codingStatus,
       createPylon,
+      khalaDispatchPlan,
       async pylonStatus() {
         return desktopPylonStatus()
       },
