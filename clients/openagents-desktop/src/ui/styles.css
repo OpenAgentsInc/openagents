@@ -78,6 +78,47 @@ textarea {
     linear-gradient(180deg, rgba(0, 0, 0, 0.24), rgba(0, 0, 0, 0.08));
 }
 
+.pylon-status {
+  position: absolute;
+  top: 24px;
+  right: 24px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 36px;
+  max-width: calc(100vw - 48px);
+  padding: 0 14px;
+  overflow: hidden;
+  color: #dbe8ff;
+  background: rgba(0, 7, 20, 0.72);
+  border: 1px solid rgba(58, 123, 255, 0.46);
+  border-radius: 8px;
+  box-shadow:
+    0 0 0 1px rgba(79, 208, 255, 0.08) inset,
+    0 0 30px -12px rgba(58, 123, 255, 0.72);
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.pylon-status::before {
+  content: "";
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  background: #4b5b73;
+  border-radius: 999px;
+  box-shadow: 0 0 12px -2px rgba(143, 182, 255, 0.45);
+}
+
+.pylon-status[data-state="online"]::before {
+  background: #4fd0ff;
+  box-shadow: 0 0 16px -2px rgba(79, 208, 255, 0.92);
+}
+
 .openagents-wordmark {
   position: relative;
   z-index: 1;
@@ -114,6 +155,12 @@ textarea {
 }
 
 @media (max-width: 560px) {
+  .pylon-status {
+    top: 16px;
+    right: 16px;
+    max-width: calc(100vw - 32px);
+  }
+
   .openagents-wordmark {
     padding: 28px;
   }

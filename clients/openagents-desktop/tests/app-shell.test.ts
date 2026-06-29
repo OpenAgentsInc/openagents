@@ -18,4 +18,13 @@ describe("openagents desktop app shell", () => {
       "src/ui/index.html": "views/openagents-desktop/index.html",
     })
   })
+
+  test("renders an initial pylon count indicator", async () => {
+    const html = await Bun.file(
+      new URL("../src/ui/index.html", import.meta.url),
+    ).text()
+
+    expect(html).toContain('id="pylon-status"')
+    expect(html).toContain("Pylons: 0")
+  })
 })
