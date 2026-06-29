@@ -232,8 +232,10 @@ row -> operators walk it through approve/dispatch/settle.
   feed, which is likewise checkout-only). Extending coverage to auto-top-up — and
   to any non-Stripe Bitcoin revenue event — is a follow-up, not a blocker for the
   first real partner payout.
-- `blocker.product_promises.partner_payout_settlement_not_wired` and
-  `blocker.product_promises.partner_first_real_payout_pending` are untouched.
+- `blocker.product_promises.partner_payout_settlement_not_wired` is cleared by
+  the source-level dispatch coordinator.
+  `blocker.product_promises.partner_first_real_payout_pending` remains until an
+  owner-armed production payout settles with a public-safe receipt.
 
 No promise state, registry green/yellow field, or state-transition field was
 changed by this work.
