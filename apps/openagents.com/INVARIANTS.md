@@ -2298,6 +2298,12 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
   - `GET /api/public/marketing-agency/self-serve/deliverability/{workspaceRef}` — live at read
   - `POST /api/public/business/coding-quick-win-pipeline` — live at read
     over the static mocked delivery-receipt fixture. `staleness_declared`.
+  - `GET /api/public/business/coding-quick-win-receipts?view=paid-delivery-claims`
+    and `GET /api/public/business/coding-quick-win-receipts/{receiptRef}` —
+    live at read over the coding quick-win paid-delivery claim store. Payloads
+    include `generatedAt` and the shared `projection_staleness.v1` contract;
+    the route grants no deploy, spend, payout, settlement, auto-merge, or
+    green-claim authority. `staleness_declared`.
   - `GET /api/public/artanis/report` — live at read over tick rows rebuilt on
     closeout — compliant (`generatedAtUnixMs`, report + loop contracts, stale
     and example-fallback flags with caveat refs).

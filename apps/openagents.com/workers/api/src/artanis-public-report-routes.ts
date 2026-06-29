@@ -136,7 +136,7 @@ const tickMonitorForRoute = (
   input.tickMonitor !== undefined
     ? Effect.succeed(input.tickMonitor)
     : input.OPENAGENTS_DB === undefined
-      ? Effect.succeed(undefined)
+      ? Effect.sync((): ArtanisTickMonitor | undefined => undefined)
       : Effect.promise(() =>
           readArtanisTickMonitor(input.OPENAGENTS_DB as D1Database, {
             limit: 20,

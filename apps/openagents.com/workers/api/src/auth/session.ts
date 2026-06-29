@@ -7,31 +7,31 @@ export type VerifiedSession<User> = Readonly<{
   tokens?: Tokens
 }>
 
-export type BrowserSessionBoundary<User, Env> = Readonly<{
+export type BrowserSessionBoundary<User, Bindings> = Readonly<{
   appendRefreshedSessionCookies: (
     response: Response,
     session: VerifiedSession<User>,
   ) => Response
   requireBrowserSession: (
     request: Request,
-    env: Env,
+    env: Bindings,
     ctx: ExecutionContext,
   ) => Promise<VerifiedSession<User> | undefined>
 }>
 
-export const makeBrowserSessionBoundary = <User, Env>(
+export const makeBrowserSessionBoundary = <User, Bindings>(
   dependencies: Readonly<{
-    persistUser: (env: Env, user: User) => Promise<void>
+    persistUser: (env: Bindings, user: User) => Promise<void>
     verifySession: (
       request: Request,
-      env: Env,
+      env: Bindings,
       ctx: ExecutionContext,
     ) => Promise<VerifiedSession<User> | undefined>
   }>,
-): BrowserSessionBoundary<User, Env> => {
+): BrowserSessionBoundary<User, Bindings> => {
   const requireBrowserSession = async (
     request: Request,
-    env: Env,
+    env: Bindings,
     ctx: ExecutionContext,
   ): Promise<VerifiedSession<User> | undefined> => {
     const session = await dependencies.verifySession(request, env, ctx)

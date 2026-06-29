@@ -333,7 +333,7 @@ const readActiveRouteQuarantine = <Bindings extends PylonApiRouteEnv>(
     routeStore(dependencies, env).readActiveQuarantineForPylon
 
   if (readActiveQuarantineForPylon === undefined) {
-    return Effect.succeed(undefined)
+    return Effect.sync((): PylonApiQuarantineRecord | undefined => undefined)
   }
 
   return Effect.tryPromise({

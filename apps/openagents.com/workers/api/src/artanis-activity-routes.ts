@@ -587,10 +587,11 @@ export const handlePublicArtanisActivityApi = (
 
   const nowIso = input.nowIso ?? currentIsoTimestamp
 
-  return Effect.promise(() =>
-    buildPublicArtanisActivity(store, { limit, nowIso: nowIso() }),
-  ).pipe(
+  return Effect.tryPromise({
+    catch: () => routeError(),
+    try: () => buildPublicArtanisActivity(store, { limit, nowIso: nowIso() }),
+  }).pipe(
     Effect.map(payload => noStoreJsonResponse(payload)),
-    Effect.catch(() => Effect.succeed(routeError())),
+    Effect.catch(error => Effect.succeed(error)),
   )
 }

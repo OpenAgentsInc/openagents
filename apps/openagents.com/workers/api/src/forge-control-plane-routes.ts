@@ -18,7 +18,11 @@ import type {
   ForgeGitCanonicalStore,
 } from './forge-git-canonical-store'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
-import { decodeUnknownWithSchema, readJsonObject } from './json-boundary'
+import {
+  decodeUnknownWithSchema,
+  parseJsonStringArray,
+  readJsonObject,
+} from './json-boundary'
 import { currentIsoTimestamp } from './runtime-primitives'
 
 const FORGE_GIT_TOKEN_PREFIX = 'oa_forge_git_'
@@ -316,10 +320,7 @@ type ForgeQueueBlockedEntry = Readonly<{
 }>
 
 const jsonStringArray = (value: string): ReadonlyArray<string> => {
-  const parsed = JSON.parse(value) as unknown
-  return Array.isArray(parsed)
-    ? parsed.filter((entry): entry is string => typeof entry === 'string')
-    : []
+  return parseJsonStringArray(value)
 }
 
 const issueNumberFromRef = (

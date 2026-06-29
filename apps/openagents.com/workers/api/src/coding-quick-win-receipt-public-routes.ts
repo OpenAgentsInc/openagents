@@ -6,8 +6,17 @@ import {
   projectCodingQuickWinReceiptRead,
 } from './coding-quick-win-claim-upgrade'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
+import type { PublicProjectionStalenessContract } from './public-projection-staleness'
 
 type HttpResponse = globalThis.Response
+
+type PublicProjectionPayload = Readonly<{
+  staleness: PublicProjectionStalenessContract
+}>
+
+const withDeclaredStaleness = <Payload extends PublicProjectionPayload>(
+  payload: Payload,
+): Payload => payload
 
 export const CodingQuickWinReceiptsEndpoint =
   '/api/public/business/coding-quick-win-receipts' as const
@@ -42,7 +51,9 @@ export const makeCodingQuickWinReceiptPublicRoutes = <Bindings>(
       }
       const claims = dependencies.makeClaimStore(env).list()
       return Effect.succeed(
-        noStoreJsonResponse(projectCodingQuickWinPaidDeliveryClaims(claims)),
+        noStoreJsonResponse(
+          withDeclaredStaleness(projectCodingQuickWinPaidDeliveryClaims(claims)),
+        ),
       )
     }
 
@@ -74,7 +85,9 @@ export const makeCodingQuickWinReceiptPublicRoutes = <Bindings>(
     }
 
     return Effect.succeed(
-      noStoreJsonResponse(projectCodingQuickWinReceiptRead(receipt)),
+      noStoreJsonResponse(
+        withDeclaredStaleness(projectCodingQuickWinReceiptRead(receipt)),
+      ),
     )
   },
 })

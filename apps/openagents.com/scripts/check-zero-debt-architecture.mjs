@@ -784,6 +784,11 @@ const publicProjectionSurfaces = [
     status: 'staleness_declared',
   },
   {
+    module: 'workers/api/src/coding-quick-win-receipt-public-routes.ts',
+    route: '/api/public/business/coding-quick-win-receipts',
+    status: 'staleness_declared',
+  },
+  {
     module: 'workers/api/src/artanis-public-report.ts',
     route: '/api/public/artanis/report',
     status: 'staleness_declared',
