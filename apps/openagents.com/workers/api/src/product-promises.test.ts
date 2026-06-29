@@ -440,7 +440,7 @@ describe('public product promises document', () => {
       /latest stays 0\.2\.5|only published, installable Pylon|release candidate, not stable 0\.3\.0|Pylon v1\.0 is present in the monorepo as a release candidate/i,
     )
     expect(currentCopy).toContain('Pylon v1.0 has a stable source cut')
-    expect(currentCopy).toContain('Registry 2026-06-29.2')
+    expect(currentCopy).toContain('Registry 2026-06-29.3')
     expect(currentCopy).toContain('flips NO promise state')
     expect(currentCopy).toContain('Khala Desktop now carries source-level')
     expect(currentCopy).toContain('maxStalenessSeconds:0')
@@ -1612,6 +1612,33 @@ describe('public product promises document', () => {
     expect(modelMixPromise?.verification).toContain(
       'Green still requires a live receipt/owner sign-off',
     )
+  })
+
+  test('keeps hosted Gemini yellow after negative production receipt audit', () => {
+    const decoded = S.decodeUnknownSync(ProductPromisesDocument)(
+      publicProductPromisesDocument(),
+    )
+    const hostedGeminiPromise = decoded.promises.find(
+      promise => promise.promiseId === 'api.hosted_gemini.v1',
+    )
+
+    expect(hostedGeminiPromise?.state).toBe('yellow')
+    expect(hostedGeminiPromise?.evidenceRefs).toContain(
+      'docs/promises/2026-06-29-hosted-gemini-production-receipt-audit.md',
+    )
+    expect(hostedGeminiPromise?.safeCopy).toContain(
+      'did not produce a hosted Gemini success receipt',
+    )
+    expect(hostedGeminiPromise?.verification).toContain(
+      'openagents/khala served Fireworks with no_debit billing',
+    )
+    expect(hostedGeminiPromise?.verification).toContain(
+      'gemini-3.5-flash returned model_unavailable',
+    )
+    expect(hostedGeminiPromise?.blockerRefs).toEqual([
+      'blocker.product_promises.hosted_gemini_production_receipt_pending',
+      'blocker.product_promises.hosted_gemini_owner_upgrade_signoff_pending',
+    ])
   })
 
   test('keeps kernel optimization planned while exposing code-backed dispatch and parity receipt machinery', () => {

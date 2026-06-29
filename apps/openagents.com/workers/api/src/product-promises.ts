@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-29.2'
+export const PublicProductPromisesVersion = '2026-06-29.3'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -66,6 +66,7 @@ const sourceRefs = [
   'apps/openagents.com/workers/api/src/inference/model-router.ts',
   'apps/openagents.com/workers/api/src/inference/model-router.test.ts',
   'docs/apple-fm/2026-06-29-electrobun-apple-fm-swift-sidecar-plan.md',
+  'docs/promises/2026-06-29-hosted-gemini-production-receipt-audit.md',
   'clients/khala-desktop/src/bun/apple-fm-sidecar.ts',
   'clients/khala-desktop/src/shared/apple-fm-packaging.ts',
   'clients/khala-desktop/src/shared/apple-fm-readiness.ts',
@@ -261,6 +262,7 @@ export const publicProductPromisesDocument = () => {
         'Registry 2026-06-28.3 implements #6891 for models.tassadar_percepta_executor.v1 and flips NO promise state. Pylon v1.0 now has a deterministic bounded CPU computation-transform fixture in apps/pylon/src/tassadar-cpu-transform-training.ts that runs one CPU-only optimization step, self-verifies loss improvement, emits receipt.models.tassadar_percepta_executor.cpu_transform_training.cpu_transform_fixture_v1, and keeps realBitcoinMoved:false / settlementState:not_settled. GET /api/public/models/tassadar-percepta-executor/cpu-transform-training-receipts now projects that public-safe receipt alongside the architecture and Artanis distillation dataset inputs, so the old pylon_v03_cpu_transform_training_receipts_missing blocker is replaced by blocker.product_promises.tassadar_cpu_transform_real_settlement_missing and blocker.product_promises.tassadar_cpu_transform_owner_green_signoff_missing. The promise STAYS planned: this is one fixture-scale receipt, not a trained model, not a paid earning path, not model promotion, and not a green transition; any future green flip remains receipt-first and owner-signed per proof.claim_upgrade_receipts.v1.',
         'Registry 2026-06-29.1 implements #6848 for payments.accepted_outcome_economics.v1 and flips NO promise state. The accepted-outcome economics spine now has a dereferenceable contributor accrual bundle at GET /api/public/payments/contributor-accrual-bundle?economicsId=... plus the settlement bundle at GET /api/public/accepted-outcome/settlement/{economicsId}; together they compose a gross-margin receipt, contributor accrual ledger entries, and an eight-state settlement machine from one stored accepted-outcome economics row. Tests prove the ledger and receipt share the same economicsId, reconcile gross margin exactly, reconcile pending_payout to the distributable ledger pool, keep public projections free of internal cents/raw payment material, and surface missing contributor provenance honestly. The old source-level blockers contributor_ledger_missing and gross_margin_receipts_missing are replaced by real_accepted_outcome_receipt_missing and owner_signed_green_transition_missing. The promise STAYS red because source/fixture receipt machinery is not a real accepted outcome carried through a money-moving settlement path, and any future green flip remains receipt-first and owner-signed per proof.claim_upgrade_receipts.v1.',
         'Registry 2026-06-29.2 is a current-main refresh after #6997/#6999/#7001/#7002/#7006 and flips NO promise state. The terminal-agent current-state audit and Codex tool-layer study are now cited as evidence for the Codex/Probe/Pylon runtime direction: current production coding delegation is still Pylon plus external agent SDK lanes and OpenAgents-native terminal tools remain a consolidation task, not a new green claim. The codex-supervisor LOCKOUT replenishment helper can create or reuse three bounded standing issues so owner-capacity supervisors do not idle indefinitely, but it creates no paid labor, payout, settlement, or broad availability claim. The inference router now has GLM own-capacity failover alerting and public-safe fallback telemetry for repeated no-headroom saturation, but the paid gateway still stays red until a dereferenceable paid receipt exists. Khala Desktop now carries source-level Electrobun Apple FM sidecar packaging/readiness plus redaction tests, but Apple FM local mode remains yellow until a signed/notarized from-install smoke with helper supervision exists. The Khala model-mix promise remains live-at-read with maxStalenessSeconds:0; the stale 2-second cache wording is not applied.',
+        'Registry 2026-06-29.3 records the #7017 hosted Gemini production-receipt audit and flips NO promise state. A live authenticated OpenAI-compatible gateway request succeeded with exact usage metadata, but it served the Fireworks lane with billing mode no_debit; a direct gemini-3.5-flash request returned model_unavailable. That negative production evidence is now dereferenceable in docs/promises/2026-06-29-hosted-gemini-production-receipt-audit.md, and api.hosted_gemini.v1 stays yellow with both hosted_gemini_production_receipt_pending and hosted_gemini_owner_upgrade_signoff_pending blockers intact until a real hosted Gemini success receipt and owner-signed transition exist.',
       ],
     },
     promises: [
@@ -1311,7 +1313,7 @@ export const publicProductPromisesDocument = () => {
         claim:
           'OpenAgents is API-driven and may offer hosted Gemini through an OpenAgents API surface.',
         safeCopy:
-          'OpenAgents has route-covered hosted Gemini execution through the env-gated Vertex binding and the OpenAI-compatible Khala gateway enforces account credits, entitlement/free-quota gates, metering, and served-token rows. The promise stays yellow until a real production receipt and owner-approved upgrade evidence are attached.',
+          'OpenAgents has route-covered hosted Gemini execution through the env-gated Vertex binding and the OpenAI-compatible Khala gateway enforces account credits, entitlement/free-quota gates, metering, and served-token rows. The 2026-06-29 production audit produced usage metadata on the authenticated gateway but did not produce a hosted Gemini success receipt, so the promise stays yellow until a real production receipt and owner-approved upgrade evidence are attached.',
         unsafeCopy:
           'Do not claim hosted Gemini is green, settled, broadly resale-ready, or owner-approved without a real production receipt.',
         evidenceRefs: [
@@ -1323,6 +1325,7 @@ export const publicProductPromisesDocument = () => {
           'apps/openagents.com/workers/api/src/inference/chat-completions-routes.test.ts',
           'apps/openagents.com/workers/api/src/autopilot-hosted-gemini-executor-env.ts',
           'apps/openagents.com/workers/api/src/inference/served-tokens-recorder.ts',
+          'docs/promises/2026-06-29-hosted-gemini-production-receipt-audit.md',
           'docs/autopilot-coder/2026-06-09-probe-autopilot-sites-agent-api-audit.md',
         ],
         blockerRefs: [
@@ -1330,7 +1333,7 @@ export const publicProductPromisesDocument = () => {
           'blocker.product_promises.hosted_gemini_owner_upgrade_signoff_pending',
         ],
         verification:
-          'Route tests cover the env-gated hosted Gemini executor delivering a public-safe Autopilot closeout when armed, and a registered-agent Khala gateway request reaching the armed Vertex Gemini lane with entitlement/balance admission, metered usage, and served-token recording. Green still requires a real production receipt and owner-approved claim upgrade evidence.',
+          'Route tests cover the env-gated hosted Gemini executor delivering a public-safe Autopilot closeout when armed, and a registered-agent Khala gateway request reaching the armed Vertex Gemini lane with entitlement/balance admission, metered usage, and served-token recording. The 2026-06-29 live audit is negative for the hosted Gemini production receipt: openagents/khala served Fireworks with no_debit billing, and gemini-3.5-flash returned model_unavailable. Green still requires a real production receipt and owner-approved claim upgrade evidence.',
         authorityBoundary:
           'API-driven product surfaces are not generic provider-capacity resale, settlement, or green-promise authority without receipt-backed owner sign-off.',
       },
