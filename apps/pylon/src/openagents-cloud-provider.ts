@@ -287,7 +287,12 @@ export function makeCloudControlSessionExecutor(
         composerEventIndex,
       })
       if (event.artifactRefs) artifactRefs.push(...event.artifactRefs)
-      if (event.receiptRefs && event.receiptRefs.length > 0 && receiptRef === null) {
+      if (
+        event.receiptRefs &&
+        event.receiptRefs.length > 0 &&
+        receiptRef === null &&
+        (event.kind === "receipt" || event.kind === "cloud.gce.resource_usage_receipt")
+      ) {
         receiptRef = event.receiptRefs[0]
       }
       if (isCloudTerminalEventKind(event.kind)) {

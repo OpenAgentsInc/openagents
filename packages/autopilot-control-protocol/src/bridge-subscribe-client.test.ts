@@ -101,6 +101,50 @@ describe("bridge subscribe client", () => {
     expect(batch.cursor).toBe(5)
   })
 
+  test("parseBridgeEventBatch renders cloud lane events with the same timeline row shape as local composer events", () => {
+    const local = parseBridgeEventBatch({
+      sessionRef: "session.local.0001",
+      state: "running",
+      recentEvents: [
+        {
+          eventIndex: 1,
+          phase: "composer_event",
+          state: "running",
+          observedAt: "t1",
+          messageText: "editing file",
+          artifactRef: "artifact.local.diff",
+          resultRef: "receipt.local.usage",
+        },
+      ],
+    })
+    const cloud = parseBridgeEventBatch({
+      sessionRef: "session.cloud.0001",
+      state: "running",
+      recentEvents: [
+        {
+          eventIndex: 1,
+          phase: "composer_event",
+          state: "running",
+          observedAt: "t1",
+          messageText: "cloud GCE VM provisioned",
+          artifactRef: "artifact.cloud.diff",
+          resultRef: "receipt.cloud.gce.resource_usage",
+        },
+      ],
+    })
+
+    expect(Object.keys(cloud.events[0]!).sort()).toEqual(Object.keys(local.events[0]!).sort())
+    expect(cloud.events[0]).toMatchObject({
+      sessionRef: "session.cloud.0001",
+      eventIndex: 1,
+      phase: "composer_event",
+      state: "running",
+      messageText: "cloud GCE VM provisioned",
+      artifactRef: "artifact.cloud.diff",
+      resultRef: "receipt.cloud.gce.resource_usage",
+    })
+  })
+
   test("parseBridgeEventBatch tolerates a malformed/empty projection", () => {
     expect(parseBridgeEventBatch(null)).toEqual({ sessionRef: "", state: "unknown", events: [], cursor: -1 })
     expect(parseBridgeEventBatch({ sessionRef: "s", state: "running" }, 7).cursor).toBe(7)

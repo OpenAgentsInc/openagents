@@ -104,21 +104,21 @@ export type CloudRunnerBinding = {
 export type CloudTerminalKind = "completed" | "failed" | "timeout" | "cancelled"
 
 // `openagents.codex_workroom_event.v1` event kinds emitted by the cloud control
-// plane and mirrored through its events feed.
-export type CloudWorkroomEventKind =
-  | "queued"
-  | "started"
-  | "log"
-  | "redacted"
-  | "artifact"
-  | "receipt"
-  | "completed"
-  | "failed"
-  | "timeout"
-  | "cancelled"
-  // `placement.bound` is emitted by the placement endpoint ack.
-  | "placement.bound"
-  // ---------------------------------------------------------------------------
+// plane and mirrored through its events feed. Keep this list concrete so tests
+// can prove the whole protocol vocabulary survives the cloud HTTP transport.
+export const OPENAGENTS_CODEX_WORKROOM_EVENT_KINDS = [
+  "queued",
+  "placement.bound",
+  "started",
+  "log",
+  "redacted",
+  "artifact",
+  "receipt",
+  "cleanup",
+  "completed",
+  "failed",
+  "timeout",
+  "cancelled",
   // #5005 — cloud GCE per-session lease lifecycle
   // (`openagents.gce_capacity_class.v1`, cloud commit fbd62cf).
   //
@@ -129,15 +129,22 @@ export type CloudWorkroomEventKind =
   // `cloud.gce.*` discriminator from `type` when present (and tolerates `kind`
   // carrying it directly), so VM provenance and the resource_usage_receipt ref
   // round-trip to the desktop/phone instead of being silently dropped.
-  | "cloud.gce.provisioned"
-  | "cloud.gce.cleanup"
-  | "cloud.gce.degraded"
+  "cloud.gce.provisioned",
+  "cloud.gce.cleanup",
+  "cloud.gce.degraded",
   // The resource event carries the refs-only
   // `openagents.resource_usage_receipt.v1` digest. The cloud `JobEvent.type` is
   // `cloud.gce.resource_usage_receipt`; the issue refers to it as
   // `cloud.gce.resource`. Pylon accepts either spelling and normalizes to this
   // canonical kind.
-  | "cloud.gce.resource_usage_receipt"
+  "cloud.gce.resource_usage_receipt",
+] as const
+export type CloudWorkroomEventKind =
+  typeof OPENAGENTS_CODEX_WORKROOM_EVENT_KINDS[number]
+
+const CLOUD_WORKROOM_EVENT_KIND_SET = new Set<string>(
+  OPENAGENTS_CODEX_WORKROOM_EVENT_KINDS,
+)
 
 export type CloudWorkroomEvent = {
   kind: CloudWorkroomEventKind
@@ -193,6 +200,10 @@ export function isCloudGceEventKind(kind: string): kind is CloudWorkroomEventKin
   return (CLOUD_GCE_EVENT_KINDS as readonly string[]).includes(kind)
 }
 
+export function isCloudWorkroomEventKind(kind: string): kind is CloudWorkroomEventKind {
+  return CLOUD_WORKROOM_EVENT_KIND_SET.has(kind)
+}
+
 // Normalize a raw cloud event discriminator (which may arrive on either the
 // `type` field — the cloud `JobEvent.type` — or the broad workroom `kind`
 // field) into a single canonical `CloudWorkroomEventKind`. The `cloud.gce.*`
@@ -214,7 +225,10 @@ export function resolveCloudEventKind(
     if (isCloudGceEventKind(raw)) return raw
   }
   // Fall back to the broad workroom kind when no GCE discriminator is present.
-  return typeof kindField === "string" ? (kindField as CloudWorkroomEventKind) : null
+  if (typeof kindField === "string" && isCloudWorkroomEventKind(kindField)) {
+    return kindField
+  }
+  return null
 }
 
 // Map a Pylon control-session lane to the cloud compute lane. `local` never
