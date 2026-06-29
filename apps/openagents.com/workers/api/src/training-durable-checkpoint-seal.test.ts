@@ -11,7 +11,12 @@ import {
 
 const durableSeal: DurableCheckpointSeal = {
   checkpointDigestRef: `sha256:${'a'.repeat(64)}`,
+  readbackRehashReceiptRef:
+    'receipt.training.checkpoint_readback_rehash.window.r1.w0007.v1',
   replicationFactor: 3,
+  remoteCheckpointObjectRef:
+    'r2.openagents_autopilot_artifacts.training_checkpoint.sha256_aaaaaaaa',
+  remoteCheckpointStoreRef: 'r2.openagents_autopilot_artifacts.training',
   retrievalProofRef: 'receipt.training.checkpoint_readback.window.r1.w0007.v1',
   retrievalVerified: true,
   sizeBytes: 4_294_967_296,
@@ -63,6 +68,26 @@ describe('durable checkpoint seal evaluator', () => {
     })
     expect(gate.durable).toBe(false)
     expect(gate.reasons).toContain('checkpoint_retrieval_not_verified')
+  })
+
+  test('holds when the remote read-back-and-rehash receipt is missing', () => {
+    const { readbackRehashReceiptRef: _ignored, ...withoutReceipt } =
+      durableSeal
+    const gate = evaluateDurableCheckpointSeal(withoutReceipt)
+    expect(gate.durable).toBe(false)
+    expect(gate.reasons).toContain('readback_rehash_receipt_missing')
+  })
+
+  test('holds when the remote checkpoint store/object refs are missing', () => {
+    const {
+      remoteCheckpointObjectRef: _objectRef,
+      remoteCheckpointStoreRef: _storeRef,
+      ...withoutRemoteStore
+    } = durableSeal
+    const gate = evaluateDurableCheckpointSeal(withoutRemoteStore)
+    expect(gate.durable).toBe(false)
+    expect(gate.reasons).toContain('remote_checkpoint_store_missing')
+    expect(gate.reasons).toContain('remote_checkpoint_object_ref_missing')
   })
 
   test('a malformed descriptor fails toward hold, never toward sealing', () => {

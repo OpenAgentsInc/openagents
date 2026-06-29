@@ -66,6 +66,9 @@ export type DurableCheckpointSealReceiptFeedVerificationReason =
   | 'entry_receipt_ref_mismatch'
   | 'entry_digest_not_content_addressed'
   | 'entry_replication_below_durable_minimum'
+  | 'entry_remote_checkpoint_store_ref_invalid'
+  | 'entry_remote_checkpoint_object_ref_invalid'
+  | 'entry_readback_rehash_receipt_ref_invalid'
   | 'rejection_tally_inconsistent'
 
 export type DurableCheckpointSealReceiptFeedVerificationVerdict = Readonly<{
@@ -80,7 +83,10 @@ export type DurableCheckpointSealReceiptFeedVerificationVerdict = Readonly<{
 
 const FeedEntrySchema = S.Struct({
   checkpointDigestRef: S.String,
+  readbackRehashReceiptRef: S.String,
   receiptRef: S.String,
+  remoteCheckpointObjectRef: S.String,
+  remoteCheckpointStoreRef: S.String,
   replicationFactor: S.Int,
   storageClass: S.String,
   windowRef: S.String,
@@ -106,6 +112,14 @@ type FeedValue = typeof FeedSchema.Type
 
 const verificationAuthorityBoundary =
   'Durable-checkpoint-seal receipt feed verification confirms that a published feed is internally authentic and self-consistent with the builder invariants (canonical content-addressed entry refs bound to window + digest, content-addressed digests, durable-minimum replication, accepted-count match, deterministic ref ordering, no duplicate accepted refs, consistent rejection tally). A verified verdict grants no dispatch, settlement, storage-backend, promise-state, or green-claim authority, does not assert any real remote checkpoint store was read back, and a not-verified verdict is the safe default.'
+
+const PublicSafeRefPattern = /^[A-Za-z0-9][A-Za-z0-9_.:/-]*$/
+
+const isPublicSafeRef = (value: string): boolean =>
+  value.trim() === value &&
+  value.length >= 3 &&
+  value.length <= 260 &&
+  PublicSafeRefPattern.test(value)
 
 const isAscendingByRef = (
   entries: FeedValue['acceptedEntries'],
@@ -161,6 +175,15 @@ export const verifyDurableCheckpointSealReceiptFeed = (
     }
     if (entry.replicationFactor < MinDurableReplicationFactor) {
       reasons.add('entry_replication_below_durable_minimum')
+    }
+    if (!isPublicSafeRef(entry.remoteCheckpointStoreRef)) {
+      reasons.add('entry_remote_checkpoint_store_ref_invalid')
+    }
+    if (!isPublicSafeRef(entry.remoteCheckpointObjectRef)) {
+      reasons.add('entry_remote_checkpoint_object_ref_invalid')
+    }
+    if (!isPublicSafeRef(entry.readbackRehashReceiptRef)) {
+      reasons.add('entry_readback_rehash_receipt_ref_invalid')
     }
   }
 

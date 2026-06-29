@@ -27,9 +27,10 @@ type DurableCheckpointSealValue = typeof DurableCheckpointSeal.Type
  *
  * Like those emitters, this REFUSES to fabricate a receipt: it re-runs the seal
  * predicate and throws unless the seal is durable, so a receipt can never be minted
- * for a non-content-addressed, ephemeral, under-replicated, or never-read-back
- * checkpoint. The receipt ref is derived deterministically from the window ref and
- * the checkpoint digest, so the same durable seal always maps to the same id.
+ * for a non-content-addressed, ephemeral, under-replicated, local-only, or
+ * never-read-back-and-rehashed checkpoint. The receipt ref is derived
+ * deterministically from the window ref and the checkpoint digest, so the same
+ * durable seal always maps to the same id.
  *
  * It is contract-level only. Emitting a receipt here records that a recorded seal
  * satisfied the durability conditions; it grants no dispatch, settlement,
@@ -55,6 +56,9 @@ export const DurableCheckpointSealReceipt = S.Struct({
   publicSafe: S.Literal(true),
   receiptRef: S.String,
   replicationFactor: S.Int,
+  readbackRehashReceiptRef: S.String,
+  remoteCheckpointObjectRef: S.String,
+  remoteCheckpointStoreRef: S.String,
   retrievalProofRef: S.optional(S.String),
   schemaVersion: S.Literal(DurableCheckpointSealReceiptSchemaVersion),
   sizeBytes: S.Int,
@@ -90,7 +94,7 @@ export const durableCheckpointSealReceiptRef = (
   )}.${safeSuffix(checkpointDigestRef)}`
 
 const receiptAuthorityBoundary =
-  'A durable-checkpoint-seal receipt records that one recorded window seal rested on a content-addressed checkpoint, on a durable content-addressed backend, replicated to at least the durable minimum, and read back from durable storage and re-hashed. It grants no dispatch, settlement, storage-backend, promise-state, or green-claim authority, and is emitted only for a seal the predicate scored as durable.'
+  'A durable-checkpoint-seal receipt records that one recorded window seal rested on a content-addressed checkpoint, on a remote durable content-addressed backend, replicated to at least the durable minimum, and read back from that remote store and re-hashed. It grants no dispatch, settlement, storage-backend, promise-state, or green-claim authority, and is emitted only for a seal the predicate scored as durable.'
 
 const receiptSourceRefs: ReadonlyArray<string> = [
   'apps/openagents.com/workers/api/src/training-durable-checkpoint-seal.ts',
@@ -103,8 +107,8 @@ const receiptSourceRefs: ReadonlyArray<string> = [
  *
  * Re-runs the seal predicate and throws DurableCheckpointSealReceiptUnsafe unless
  * the seal is DURABLE — a receipt is never emitted for a non-content-addressed,
- * ephemeral, under-replicated, or never-read-back checkpoint, so this cannot
- * manufacture a durability claim.
+ * ephemeral, under-replicated, local-only, or never-read-back-and-rehashed
+ * checkpoint, so this cannot manufacture a durability claim.
  */
 export const buildDurableCheckpointSealReceipt = (
   seal: DurableCheckpointSealValue,
@@ -130,6 +134,9 @@ export const buildDurableCheckpointSealReceipt = (
       seal.checkpointDigestRef,
     ),
     replicationFactor: seal.replicationFactor,
+    readbackRehashReceiptRef: seal.readbackRehashReceiptRef!,
+    remoteCheckpointObjectRef: seal.remoteCheckpointObjectRef!,
+    remoteCheckpointStoreRef: seal.remoteCheckpointStoreRef!,
     ...(seal.retrievalProofRef === undefined
       ? {}
       : { retrievalProofRef: seal.retrievalProofRef }),

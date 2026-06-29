@@ -17,7 +17,10 @@ import {
 
 const durableSeal = (windowRef: string): DurableCheckpointSeal => ({
   checkpointDigestRef: `sha256:${'a'.repeat(64)}`,
+  readbackRehashReceiptRef: `receipt.training.checkpoint_readback_rehash.${windowRef}`,
   replicationFactor: 3,
+  remoteCheckpointObjectRef: `r2.training_checkpoint.${windowRef}`,
+  remoteCheckpointStoreRef: 'r2.openagents_autopilot_artifacts.training',
   retrievalProofRef: 'receipt.training.checkpoint_readback.window.r1.w0007.v1',
   retrievalVerified: true,
   sizeBytes: 4_294_967_296,
@@ -130,6 +133,36 @@ describe('durable checkpoint seal receipt feed verifier', () => {
     const verdict = verifyDurableCheckpointSealReceiptFeed(tampered)
     expect(verdict.verified).toBe(false)
     expect(verdict.reasons).toContain('entry_replication_below_durable_minimum')
+  })
+
+  test('rejects an entry with invalid remote read-back evidence refs', () => {
+    const feed = feedFor('training.run.r1.window.0007')
+    const entry = feed.acceptedEntries[0]
+    if (entry === undefined) {
+      throw new Error('expected one accepted entry')
+    }
+    const tampered = {
+      ...feed,
+      acceptedEntries: [
+        {
+          ...entry,
+          readbackRehashReceiptRef: '',
+          remoteCheckpointObjectRef: ' raw/object ',
+          remoteCheckpointStoreRef: '../private-store',
+        },
+      ],
+    }
+    const verdict = verifyDurableCheckpointSealReceiptFeed(tampered)
+    expect(verdict.verified).toBe(false)
+    expect(verdict.reasons).toContain(
+      'entry_readback_rehash_receipt_ref_invalid',
+    )
+    expect(verdict.reasons).toContain(
+      'entry_remote_checkpoint_object_ref_invalid',
+    )
+    expect(verdict.reasons).toContain(
+      'entry_remote_checkpoint_store_ref_invalid',
+    )
   })
 
   test('rejects an inconsistent rejection tally', () => {

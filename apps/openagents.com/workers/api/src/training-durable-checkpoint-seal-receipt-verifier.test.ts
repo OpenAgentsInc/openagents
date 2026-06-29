@@ -16,7 +16,12 @@ import {
 
 const durableSeal = (): DurableCheckpointSeal => ({
   checkpointDigestRef: `sha256:${'a'.repeat(64)}`,
+  readbackRehashReceiptRef:
+    'receipt.training.checkpoint_readback_rehash.window.r1.w0007.v1',
   replicationFactor: 3,
+  remoteCheckpointObjectRef:
+    'r2.openagents_autopilot_artifacts.training_checkpoint.sha256_aaaaaaaa',
+  remoteCheckpointStoreRef: 'r2.openagents_autopilot_artifacts.training',
   retrievalProofRef: 'receipt.training.checkpoint_readback.window.r1.w0007.v1',
   retrievalVerified: true,
   sizeBytes: 4_294_967_296,
@@ -82,6 +87,19 @@ describe('durable checkpoint seal receipt verifier', () => {
     expect(verdict.reasons).toContain(
       'replication_factor_below_durable_minimum',
     )
+  })
+
+  test('rejects a receipt with invalid remote read-back evidence refs', () => {
+    const verdict = verifyDurableCheckpointSealReceipt({
+      ...genuineReceipt(),
+      readbackRehashReceiptRef: '',
+      remoteCheckpointObjectRef: ' raw/object ',
+      remoteCheckpointStoreRef: '../private-store',
+    })
+    expect(verdict.verified).toBe(false)
+    expect(verdict.reasons).toContain('readback_rehash_receipt_ref_invalid')
+    expect(verdict.reasons).toContain('remote_checkpoint_object_ref_invalid')
+    expect(verdict.reasons).toContain('remote_checkpoint_store_ref_invalid')
   })
 
   test('fails toward not-verified for a malformed untrusted receipt', () => {

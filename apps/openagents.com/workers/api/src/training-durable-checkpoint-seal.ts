@@ -81,6 +81,15 @@ export const DurableCheckpointSeal = S.Struct({
   retrievalVerified: S.Boolean,
   /** Public-safe ref to the read-back verification receipt, when present. */
   retrievalProofRef: S.optional(PublicSafeRef),
+  /** Public-safe remote content-addressed store ref, e.g. the R2-backed store. */
+  remoteCheckpointStoreRef: S.optionalKey(PublicSafeRef),
+  /** Public-safe content-addressed object ref/key inside the remote store. */
+  remoteCheckpointObjectRef: S.optionalKey(PublicSafeRef),
+  /**
+   * Public-safe receipt proving the seal pipeline read the remote object back
+   * from the content-addressed store and re-hashed it to `checkpointDigestRef`.
+   */
+  readbackRehashReceiptRef: S.optionalKey(PublicSafeRef),
   sizeBytes: S.Number.check(
     S.isInt(),
     S.isBetween({ minimum: 1, maximum: 1_099_511_627_776 }),
@@ -99,6 +108,9 @@ export type DurableCheckpointSealReason =
   | 'storage_class_not_durable_content_addressed'
   | 'replication_factor_below_durable_minimum'
   | 'checkpoint_retrieval_not_verified'
+  | 'remote_checkpoint_store_missing'
+  | 'remote_checkpoint_object_ref_missing'
+  | 'readback_rehash_receipt_missing'
   | 'seal_descriptor_malformed'
 
 export type DurableCheckpointSealGate = Readonly<{
@@ -141,6 +153,15 @@ export const evaluateDurableCheckpointSeal = (
   }
   if (!seal.retrievalVerified) {
     reasons.push('checkpoint_retrieval_not_verified')
+  }
+  if (seal.remoteCheckpointStoreRef === undefined) {
+    reasons.push('remote_checkpoint_store_missing')
+  }
+  if (seal.remoteCheckpointObjectRef === undefined) {
+    reasons.push('remote_checkpoint_object_ref_missing')
+  }
+  if (seal.readbackRehashReceiptRef === undefined) {
+    reasons.push('readback_rehash_receipt_missing')
   }
 
   const durable = reasons.length === 0
