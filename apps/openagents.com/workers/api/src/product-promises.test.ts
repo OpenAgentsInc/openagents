@@ -466,10 +466,31 @@ describe('public product promises document', () => {
     expect(inferenceGatewayPromise?.safeCopy).toContain(
       'GLM own-capacity failover alerting',
     )
+    expect(inferenceGatewayPromise?.blockerRefs).toEqual(
+      expect.arrayContaining([
+        'blocker.product_promises.inference_paid_credits_card_to_credit_not_collectable',
+        'blocker.product_promises.inference_paid_receipt_not_yet_supplied',
+        'blocker.product_promises.inference_mpp_owner_activation_pending',
+      ]),
+    )
+    expect(inferenceGatewayPromise?.blockerRefs).not.toContain(
+      'public_paid_model_gateway_missing',
+    )
     expect(inferenceGatewayPromise?.evidenceRefs).toEqual(
       expect.arrayContaining([
         'apps/openagents.com/workers/api/src/inference/model-router.ts',
         'apps/openagents.com/workers/api/src/inference/model-router.test.ts',
+      ]),
+    )
+    const autopilotCreditsPurchasePromise = decoded.promises.find(
+      promise => promise.promiseId === 'payments.autopilot_credits_purchase.v1',
+    )
+    expect(autopilotCreditsPurchasePromise?.state).toBe('red')
+    expect(autopilotCreditsPurchasePromise?.blockerRefs).toEqual(
+      expect.arrayContaining([
+        'blocker.product_promises.autopilot_credits_prod_stripe_secrets_missing',
+        'blocker.product_promises.autopilot_credits_no_real_card_purchase_receipt',
+        'blocker.product_promises.autopilot_credits_no_card_credit_spend_receipt',
       ]),
     )
     expect(decoded.promises).toEqual(

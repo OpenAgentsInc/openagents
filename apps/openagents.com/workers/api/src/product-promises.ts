@@ -3397,7 +3397,6 @@ export const publicProductPromisesDocument = () => {
           'blocker.product_promises.inference_paid_credits_card_to_credit_not_collectable',
           'blocker.product_promises.inference_paid_receipt_not_yet_supplied',
           'blocker.product_promises.inference_mpp_owner_activation_pending',
-          'public_paid_model_gateway_missing',
         ],
         verification:
           'The gateway request surface (live OpenAI-compatible /v1/chat/completions endpoint, key-auth, balance gate, cheapest-viable routing, receipt-first credit decrement from provider usage, Gemini 3.5 Flash served end-to-end) is satisfied and verified live. The code path for card-funded USD credit -> explicit USD->msat bridge -> metered inference receipt is implemented and has public receipt resolution. Focused model-router tests now cover GLM own-capacity failover activation after consecutive no-headroom saturation failures, automatic recovery clearing, and public-safe fallback telemetry. The remaining gate for GREEN as a credits business is receipt-first paid evidence: a real customer/agent or approved staging-to-prod path funds a balance with card/MPP, bridges USD credit into inference spend, and settles a metered inference request with a dereferenceable card->credit->inference-spend receipt. Stays red/non-green until that paid receipt exists; free inference being live does not green the credits business.',
