@@ -4105,13 +4105,14 @@ export const publicProductPromisesDocument = () => {
         claim:
           'Autopilot onboarding is agent character creation: your Pylon warps in and spawns your agent into the world, you customize it, and it automatically introduces itself on the Forum and starts searching for work.',
         safeCopy:
-          'Agent character creation is planned, in-progress design and build work (P3, issue #5738) that reframes onboarding as spawning and customizing your agent, with an automated Forum introduction and work search. It builds on the merged scene/payment/growth surfaces and the three-effect#10 W0 primitives (spawner/avatar/warp-in/bars). It is not a shipped onboarding flow.',
+          'Agent character creation is planned, in-progress design and build work (P3, issues #5738/#6861) that reframes onboarding as spawning and customizing your agent, with an automated Forum introduction and work search. The closure gate is receipt-first: a built spawn/customize flow, an end-to-end automated Forum introduction receipt, and a tested automated work-search receipt. It builds on the merged scene/payment/growth surfaces and the three-effect#10 W0 primitives (spawner/avatar/warp-in/bars). It is not a shipped onboarding flow.',
         unsafeCopy:
           'Do not say character-creation onboarding is live, that it spawns agents for real users today, or that it automatically posts to the Forum or searches for paid work for anyone yet.',
         evidenceRefs: [
           'docs/launch/2026-06-20-agent-mmorpg-hud-autopilot-audit-and-plan.md',
           'https://github.com/OpenAgentsInc/openagents/issues/5730',
           'https://github.com/OpenAgentsInc/openagents/issues/5738',
+          'https://github.com/OpenAgentsInc/openagents/issues/6861',
           'promise:autopilot.agent_world_scene.v1',
           'promise:autopilot.desktop_gui_client.v1',
           'promise:labor.forum_work_requests.v1',
@@ -4122,7 +4123,7 @@ export const publicProductPromisesDocument = () => {
           'blocker.product_promises.agent_character_creation_auto_work_search_unproven',
         ],
         verification:
-          'Planned: the P3 onboarding-as-character-creation flow (warp-in spawn, customize, automated Forum intro + work search) is design/build scope under issue #5738 in EPIC #5730, reusing the merged P0/P1/P2 scene surfaces and the three-effect#10 W0 primitives. Nothing is live. Green requires a built, tested onboarding flow that spawns and customizes a real user agent, a demonstrated automated Forum introduction and work-search step, and an owner-signed receipt-first upgrade per proof.claim_upgrade_receipts.v1.',
+          'Planned: the P3 onboarding-as-character-creation flow (warp-in spawn, customize, automated Forum intro + work search) is design/build scope under issues #5738/#6861 in EPIC #5730, reusing the merged P0/P1/P2 scene surfaces and the three-effect#10 W0 primitives. Nothing is live. Green requires a built, tested onboarding flow that spawns and customizes a real user agent, a demonstrated automated Forum introduction, a demonstrated automated work-search step covered by tests, and a receipt-first upgrade per proof.claim_upgrade_receipts.v1.',
         authorityBoundary:
           'Character-creation onboarding, when built, grants no spend, payout, settlement, or moderation authority. Any automated Forum posting or work search it performs stays bound to existing agent-posting, labor-market, and approval gates and asserts no new authority on its own.',
       },
@@ -4392,6 +4393,7 @@ export const publicProductPromisesDocument = () => {
     ],
     notes: [
       `Include version ${PublicProductPromisesVersion} and the relevant promiseId when reporting a mismatch.`,
+      'Registry 2026-06-29.3 is a receipt-gate tightening pass for autopilot.agent_character_creation.v1 / #6861 and flips NO promise state. The planned character-creation promise now cites the active public issue and names the three concrete closure receipts: built spawn/customize onboarding, automated Forum self-introduction demonstrated end to end, and automated work-search covered by tests. The promise remains planned; no spawn flow, Forum posting authority, work-search automation, spend, payout, settlement, or green claim is created.',
       'The Pylon launch-promise inventory is represented one-for-one in the promise records above.',
       'Episode 199 is included with a heavy historical caveat: Claude Code-first mech-suit language is withdrawn as current public framing; current coding-agent runtime claims should point to Codex-oriented Autopilot/Probe/Pylon records.',
       'Pylon v1.0 has a stable source cut in the monorepo, but broad Pylon earning, paid settlement, training, data revenue, referral payout, and labor-market claims remain gated.',

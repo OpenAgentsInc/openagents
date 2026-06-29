@@ -451,6 +451,33 @@ describe('public product promises document', () => {
     expect(
       decoded.promises.every(promise => promise.sourceRefs.length > 0),
     ).toBe(true)
+    const agentCharacterCreationPromise = decoded.promises.find(
+      promise =>
+        promise.promiseId === 'autopilot.agent_character_creation.v1',
+    )
+    expect(agentCharacterCreationPromise).toBeDefined()
+    expect(agentCharacterCreationPromise?.state).toBe('planned')
+    expect(agentCharacterCreationPromise?.evidenceRefs).toEqual(
+      expect.arrayContaining([
+        'https://github.com/OpenAgentsInc/openagents/issues/6861',
+        'promise:autopilot.agent_world_scene.v1',
+        'promise:labor.forum_work_requests.v1',
+      ]),
+    )
+    expect(agentCharacterCreationPromise?.blockerRefs).toEqual([
+      'blocker.product_promises.agent_character_creation_not_built',
+      'blocker.product_promises.agent_character_creation_auto_forum_intro_unproven',
+      'blocker.product_promises.agent_character_creation_auto_work_search_unproven',
+    ])
+    expect(agentCharacterCreationPromise?.safeCopy).toContain(
+      'The closure gate is receipt-first',
+    )
+    expect(agentCharacterCreationPromise?.verification).toContain(
+      'a demonstrated automated work-search step covered by tests',
+    )
+    expect(agentCharacterCreationPromise?.safeCopy).toContain(
+      'It is not a shipped onboarding flow',
+    )
     const openMarketsPromise = decoded.promises.find(
       promise => promise.promiseId === 'markets.open_protocol_markets.v1',
     )
