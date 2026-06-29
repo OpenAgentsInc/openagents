@@ -77,7 +77,7 @@ against exact rows before accepting counter projection movement.
 ## More Information
 
 * `AGENTS.md` ("Confirm exact downstream Codex token rows and private traces")
-* `apps/openagents.com/INVARIANTS.md` ("Khala Token Usage Truth Split")
+* `apps/openagents.com/INVARIANTS.md` ("Canonical Token Usage Ledger")
 * `apps/openagents.com/workers/api/migrations/0137_token_usage_events.sql`
 * `apps/openagents.com/workers/api/src/token-usage-ledger-routes.test.ts`
 * `apps/openagents.com/workers/api/src/public-khala-tokens-served-routes.test.ts`
