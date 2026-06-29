@@ -3,6 +3,7 @@ import { existsSync } from "node:fs"
 import { mkdir, mkdtemp, rm, utimes, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
+import { Deferred, Effect, Exit } from "effect"
 import {
   captureWorkspaceChanges,
   cleanupExpiredWorkspaces,
@@ -17,6 +18,7 @@ import {
   releaseWorkspace,
   repositoryCacheProcessLockOwnerIsLive,
   repositoryCacheKeyFor,
+  scopedMaterializedGitCheckoutWorkspace,
   stageWorkspacePaths,
   withWorkspaceMaterializerCapability,
   virtualBranchChangeFileRef,
@@ -551,6 +553,61 @@ describe("materializeGitCheckoutWorkspaceWithLease", () => {
       expect(record?.generatedAt).toBe(now.toISOString())
       expect(record?.cleanupRef).toBe(materialized.cleanupRef)
       expect(record?.local.workingDirectory).toBe(materialized.workingDirectory)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  test("scoped materialization releases the workspace when interrupted", async () => {
+    const root = await mkdtemp(join(tmpdir(), "pylon-worktree-scoped-"))
+    try {
+      const workspaceStateRoot = join(root, "workspace-leases")
+      const materialized = await Effect.runPromise(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const acquired = yield* Deferred.make<never, Awaited<ReturnType<typeof materializeGitCheckoutWorkspaceWithLease>>>()
+            yield* scopedMaterializedGitCheckoutWorkspace(
+              leaseInput(root, {
+                leaseRef: "lease.public.worktree.scoped.interrupt",
+                retentionPolicy: "remove_on_closeout",
+              }) as never,
+            ).pipe(
+              Effect.tap((workspace) => Deferred.succeed(acquired, workspace)),
+              Effect.andThen(Effect.never),
+              Effect.forkScoped,
+            )
+            return yield* Deferred.await(acquired)
+          }),
+        ),
+      )
+
+      expect(existsSync(materialized.workingDirectory)).toBe(false)
+      const record = await workspaceLeaseRecordFor({
+        workspaceStateRoot,
+        workspaceRef: materialized.workspaceRef,
+      })
+      expect(record?.state).toBe("cleaned")
+      expect(record?.cleanupReceiptRef?.startsWith("receipt.pylon.workspace_cleanup.")).toBe(true)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  test("scoped materialization reports acquisition failures through Exit", async () => {
+    const root = await mkdtemp(join(tmpdir(), "pylon-worktree-scoped-"))
+    try {
+      const exit = await Effect.runPromiseExit(
+        Effect.scoped(
+          scopedMaterializedGitCheckoutWorkspace(
+            leaseInput(root, {
+              checkoutRunner: async () => {
+                throw new Error("fixture checkout failed")
+              },
+            }) as never,
+          ),
+        ),
+      )
+      expect(Exit.isFailure(exit)).toBe(true)
     } finally {
       await rm(root, { recursive: true, force: true })
     }

@@ -915,23 +915,49 @@ const actOnDecision = <Bindings extends AutopilotDecisionRouteEnv>(
     // tamper-verifiable artifact a later audit can dereference. The closeoutRef
     // is identical across an idempotent replay, so a downstream ledger records
     // exactly one closeout per resolved decision.
-    const closeout = buildAutopilotDecisionCloseoutReceipt({
+    const storedReviewDecision = result.record.reviewDecision ?? reviewDecision
+    const nextCloseout = buildAutopilotDecisionCloseoutReceipt({
       decisionRef,
       idempotent: result.idempotent,
       decidedAt: nowIso,
-      reviewDecision,
+      reviewDecision: storedReviewDecision,
       workOrderRef,
     })
-    yield* Effect.tryPromise({
-      catch: error =>
-        new AutopilotWorkStoreError({
-          kind: 'storage_error',
-          reason: error instanceof Error ? error.message : String(error),
-        }),
-      try: () =>
-        dependencies.makeStore(env).recordDecisionCloseoutReceipt?.(closeout) ??
-        Promise.resolve(),
-    })
+    const closeout = result.idempotent
+      ? yield* Effect.tryPromise({
+          catch: error =>
+            new AutopilotWorkStoreError({
+              kind: 'storage_error',
+              reason: error instanceof Error ? error.message : String(error),
+            }),
+          try: async () =>
+            await (dependencies.makeStore(env).readDecisionCloseoutReceipt?.({
+              closeoutRef: nextCloseout.closeoutRef,
+              ownerUserId: auth.ownerUserId,
+            }) ?? Promise.resolve(undefined)),
+        }).pipe(
+          Effect.map(existing =>
+            existing !== undefined &&
+            validateAutopilotDecisionCloseoutReceipt(existing)
+              ? existing
+              : nextCloseout
+          ),
+        )
+      : nextCloseout
+
+    if (!result.idempotent || closeout === nextCloseout) {
+      yield* Effect.tryPromise({
+        catch: error =>
+          new AutopilotWorkStoreError({
+            kind: 'storage_error',
+            reason: error instanceof Error ? error.message : String(error),
+          }),
+        try: () =>
+          dependencies.makeStore(env).recordDecisionCloseoutReceipt?.(
+            closeout,
+          ) ?? Promise.resolve(),
+      })
+    }
 
     return noStoreJsonResponse(
       {

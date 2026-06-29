@@ -61,6 +61,26 @@ export const MIRRORCODE_PUBLIC_TARGETS_BY_BUCKET = {
   L: ['ruff', 'pkl', 'cprepro'],
 } as const
 
+export const MIRRORCODE_SMOKE_LAUNCH_BUCKETS: ReadonlyArray<MirrorCodeBucket> = [
+  'S',
+]
+
+export const MIRRORCODE_SMOKE_LAUNCH_POLICY = {
+  mode: 'owner_gated_smoke',
+  allowedBuckets: MIRRORCODE_SMOKE_LAUNCH_BUCKETS,
+  publicTargetsByBucket: {
+    S: MIRRORCODE_PUBLIC_TARGETS_BY_BUCKET.S,
+  },
+  maxTokensPerRun: 50_000_000,
+  maxWallClockSeconds: 6 * 60 * 60,
+  defaultLanguagePolicy: '1l',
+  caveatRefs: [
+    'caveat.public.gym.mirrorcode.launch_smoke_only',
+    'caveat.public.gym.mirrorcode.launch_s_bucket_only',
+    'caveat.public.gym.mirrorcode.scored_results_require_exact_token_rows',
+  ],
+} as const
+
 // Run lifecycle status. `queued`/`running` are in-progress; `passed`/`failed`
 // are scored terminal states; `error` is an execution/harness failure.
 export const MirrorCodeRunStatus = S.Literals([
@@ -261,6 +281,9 @@ const assertBounds = (input: MirrorCodeRunInput): void => {
   if (input.runId.length < 1 || input.runId.length > MAX_RUN_ID_LENGTH) {
     throw new MirrorCodeRunError('runId must be 1..128 characters.')
   }
+  if (!PUBLIC_REF_PATTERN.test(input.runId)) {
+    throw new MirrorCodeRunError('runId must be a public-safe ref.')
+  }
   if (input.taskId.length < 1 || input.taskId.length > MAX_TASK_ID_LENGTH) {
     throw new MirrorCodeRunError('taskId must be 1..64 characters.')
   }
@@ -305,6 +328,14 @@ export const isMirrorCodePublicTargetForBucket = (
   (MIRRORCODE_PUBLIC_TARGETS_BY_BUCKET[bucket] as ReadonlyArray<string>).includes(
     taskId,
   )
+
+const assertSmokeLaunchBucket = (bucket: MirrorCodeBucket): void => {
+  if (!MIRRORCODE_SMOKE_LAUNCH_BUCKETS.includes(bucket)) {
+    throw new MirrorCodeRunError(
+      'MirrorCode launch intents are smoke-only and currently allow S-bucket public targets only.',
+    )
+  }
+}
 
 const assertPublicTarget = (input: {
   readonly bucket: MirrorCodeBucket
@@ -426,6 +457,7 @@ export const buildMirrorCodeLaunchRun = (
   if (taskPart.length < 1) {
     throw new MirrorCodeRunError('taskId must contain a public-safe id.')
   }
+  assertSmokeLaunchBucket(launch.bucket)
   assertPublicTarget(launch)
   if (launch.grade === 'decision_grade') {
     throw new MirrorCodeRunError(

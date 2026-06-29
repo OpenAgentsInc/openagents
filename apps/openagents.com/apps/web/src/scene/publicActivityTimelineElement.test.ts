@@ -102,7 +102,7 @@ describe('public activity timeline element', () => {
     vi.restoreAllMocks()
   })
 
-  test('renders Fleet, Money Loop, Forum, Timeline, and Proof Drawer panes', async () => {
+  test('renders Fleet Map, Active Task Board, summary panes, and Proof Drawer', async () => {
     const { fetchMock, handle, root } =
       await mountWithPayload(dashboardEnvelope())
 
@@ -112,6 +112,18 @@ describe('public activity timeline element', () => {
       cache: 'no-store',
       headers: { accept: 'application/json' },
     })
+    expect(
+      root.querySelector('[data-activity-pane="fleet-map"]')?.textContent,
+    ).toContain('pylon.public.worker.7')
+    expect(
+      root.querySelector('[data-activity-pane="fleet-map"]')?.textContent,
+    ).toContain('assignment ready')
+    expect(
+      root.querySelector('[data-activity-pane="active-tasks"]')?.textContent,
+    ).toContain('work claimed')
+    expect(
+      root.querySelector('[data-activity-pane="active-tasks"]')?.textContent,
+    ).toContain('training.window.public.1')
     expect(
       root.querySelector('[data-activity-pane="fleet"]')?.textContent,
     ).toContain('Pylon heartbeat observed.')
@@ -215,6 +227,35 @@ describe('public activity timeline element', () => {
     expect(proof?.textContent).toContain('Pylon')
     expect(proof?.textContent).toContain('Boot')
     expect(proof?.textContent).toContain('/api/public/pylon-stats')
+
+    handle.dispose()
+  })
+
+  test('opens proof details from Fleet Map and Active Task Board rows', async () => {
+    const { handle, root } = await mountWithPayload(dashboardEnvelope())
+
+    await waitForState(root, 'ok')
+    const fleetSlot = root.querySelector<HTMLButtonElement>(
+      '[data-activity-pane="fleet-map"] [data-activity-event]',
+    )
+    expect(fleetSlot).not.toBeNull()
+
+    fleetSlot?.click()
+    expect(root.querySelector('[data-proof-drawer]')?.textContent).toContain(
+      'pylon.public.worker.7',
+    )
+
+    const taskButton = Array.from(
+      root.querySelectorAll<HTMLButtonElement>(
+        '[data-activity-pane="active-tasks"] [data-activity-event]',
+      ),
+    ).find(button => button.textContent?.includes('training.window.public.1'))
+    expect(taskButton).not.toBeNull()
+
+    taskButton?.click()
+    expect(root.querySelector('[data-proof-drawer]')?.textContent).toContain(
+      'training.window.public.1',
+    )
 
     handle.dispose()
   })

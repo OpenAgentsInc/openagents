@@ -19,10 +19,16 @@ This clears only:
 
 - `blocker.product_promises.percepta_executor_architecture_receipts_missing`
 
-The current registry keeps the promise planned because the remaining blocker is
-still real:
+The related CPU-transform route now clears the old missing-receipt blocker for
+one bounded fixture only:
 
 - `blocker.product_promises.pylon_v03_cpu_transform_training_receipts_missing`
+
+The current registry keeps the promise planned because the remaining blockers
+are still real:
+
+- `blocker.product_promises.tassadar_cpu_transform_real_settlement_missing`
+- `blocker.product_promises.tassadar_cpu_transform_owner_green_signoff_missing`
 
 ## Receipt Contents
 
@@ -48,11 +54,10 @@ receipt. It does not create an inference endpoint, model promotion, settlement,
 paid contributor claim, or green product-promise transition.
 
 The CPU-transform status route is also non-claiming: it cites this architecture
-receipt and the Artanis distillation dataset receipt as inputs, but reports no
-Pylon assignment, accepted work, verifier verdict, real settlement, trained
-artifact digest, or green gate.
+receipt and the Artanis distillation dataset receipt as inputs, and reports one
+bounded Pylon fixture assignment, accepted-work receipt, verifier verdict, and
+fixture checkpoint digest. It still reports no real settlement or green gate.
 
-Green still requires Pylon CPU-transform training receipts with assignment
-refs, accepted work refs, verifier verdict refs, and settlement refs where real
-money moved, followed by owner-signed receipt-first upgrade under
+Green still requires settlement refs where real money moved where applicable,
+followed by owner-signed receipt-first upgrade under
 `proof.claim_upgrade_receipts.v1`.

@@ -238,10 +238,9 @@ export const PYLON_COMMAND_CATALOG: readonly PylonCommandEntry[] = [
   },
   {
     command: "vmq",
-    summary: "Plan Pylon virtual merge queue supervisor operations through the running node.",
+    summary: "Plan Pylon virtual merge queue supervisor operations from local JSON inputs.",
     mutates: false,
     spends: false,
-    needsNode: true,
     json: true,
     args: [
       pos("pr-fast-forward-plan", "Subcommand."),

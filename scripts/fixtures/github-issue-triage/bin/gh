@@ -1,0 +1,14 @@
+#!/usr/bin/env sh
+set -eu
+
+if [ "${1:-}" = "issue" ] && [ "${2:-}" = "list" ]; then
+  printf '[]\n'
+  exit 0
+fi
+
+printf 'unexpected gh fixture args:' >&2
+for arg in "$@"; do
+  printf ' %s' "$arg" >&2
+done
+printf '\n' >&2
+exit 2

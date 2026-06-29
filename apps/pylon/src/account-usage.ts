@@ -31,6 +31,10 @@ import {
   loadQuotaRecord,
   type QuotaRecord,
 } from "./account-quota-ledger.js"
+import {
+  codexAccountHealthBlocksReadiness,
+  loadCodexAccountHealthRecord,
+} from "./codex-account-health-ledger.js"
 
 export const PYLON_ACCOUNT_USAGE_STORE_SCHEMA = "openagents.pylon.account_usage_store.v0.3"
 export const PYLON_ACCOUNTS_LIST_SCHEMA = "openagents.pylon.accounts_list.v0.3"
@@ -703,13 +707,44 @@ async function readinessForTarget(
   const effectiveEnv = target.account ? pylonAccountEnvironment(env, target.account) : env
   if (target.provider === "codex") {
     const config = await loadCodexAgentConfig(summary)
+    const baseReadiness = await probeCodexAgentReadiness({
+      config,
+      codexCliLoginPresent: await detectCodexCliLogin(effectiveEnv),
+      env: effectiveEnv,
+    })
+    const health = await loadCodexAccountHealthRecord(summary, target.accountRefHash)
+    const quotaRecord = await loadQuotaRecord(summary, target.accountRefHash)
+    const quotaLimited = !isAccountAvailable(quotaRecord, new Date())
+    if (codexAccountHealthBlocksReadiness(health)) {
+      return {
+        provider: "codex",
+        readiness: {
+          ...baseReadiness,
+          state: health.reason,
+          capabilityRefs: [],
+          blockerRefs: [
+            `blocker.pylon.codex_account.${health.reason}`,
+            ...(health.reason === "credentials_revoked"
+              ? ["blocker.pylon.codex_account.credentials_revoked_needs_owner_reauth"]
+              : []),
+          ],
+        },
+      }
+    }
+    if (quotaLimited) {
+      return {
+        provider: "codex",
+        readiness: {
+          ...baseReadiness,
+          state: "usage_limited",
+          capabilityRefs: [],
+          blockerRefs: ["blocker.pylon.codex_account.usage_limited"],
+        },
+      }
+    }
     return {
       provider: "codex",
-      readiness: await probeCodexAgentReadiness({
-        config,
-        codexCliLoginPresent: await detectCodexCliLogin(effectiveEnv),
-        env: effectiveEnv,
-      }),
+      readiness: baseReadiness,
     }
   }
   const config = await loadClaudeAgentConfig(summary)

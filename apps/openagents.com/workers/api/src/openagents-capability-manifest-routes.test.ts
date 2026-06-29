@@ -324,6 +324,16 @@ describe('OpenAgents capability manifest route', () => {
           id: 'autopilot_decisions_queue',
         }),
         expect.objectContaining({
+          auth: 'browser_session_or_registered_agent_token_with_customer_orders.read',
+          href: 'https://openagents.com/api/autopilot/work/{workOrderRef}/decisions',
+          id: 'autopilot_work_decisions',
+        }),
+        expect.objectContaining({
+          auth: 'browser_session_or_registered_agent_token_with_customer_orders.read',
+          href: 'https://openagents.com/api/autopilot/decision-closeouts/{closeoutRef}',
+          id: 'autopilot_decision_closeout_receipt',
+        }),
+        expect.objectContaining({
           auth: 'browser_session',
           href: 'https://openagents.com/api/sites/builder-sessions',
           id: 'site_builder_sessions',
@@ -489,6 +499,18 @@ describe('OpenAgents capability manifest route', () => {
           auth: 'browser_session_or_registered_agent_token_with_customer_orders.write_and_idempotency_key',
           href: 'https://openagents.com/api/autopilot/decisions/{decisionRef}/actions',
           id: 'act_on_autopilot_decision',
+          status: 'available',
+        }),
+        expect.objectContaining({
+          auth: 'browser_session_or_registered_agent_token_with_customer_orders.read',
+          href: 'https://openagents.com/api/autopilot/work/{workOrderRef}/decisions',
+          id: 'autopilot_work_decisions',
+          status: 'available',
+        }),
+        expect.objectContaining({
+          auth: 'browser_session_or_registered_agent_token_with_customer_orders.read',
+          href: 'https://openagents.com/api/autopilot/decision-closeouts/{closeoutRef}',
+          id: 'autopilot_decision_closeout_receipt',
           status: 'available',
         }),
         expect.objectContaining({

@@ -19,6 +19,7 @@ const input = (
     candidateManifestRefs: [
       'candidate_manifest.probe_gepa_standing_loop.dspy_gepa_001',
     ],
+    dspyRlmAuditRefs: ['github.pr.openagents.6704'],
     effectAuthorityGateRefs: [
       'effect_authority_gate.blueprint.candidate_admission.v1',
     ],
@@ -52,8 +53,12 @@ describe('Probe GEPA standing optimization loop projection (#6707)', () => {
     expect(projection.offlineOptimizationReady).toBe(true)
     expect(projection.candidateArtifactsAdmissibleToAuthority).toBe(true)
     expect(projection.livePromotionAllowed).toBe(false)
+    expect(projection.evalResultRefs).toEqual([
+      'eval_result.studybench.recent.low_quality_001',
+    ])
     expect(projection.evidenceRefs).toEqual([
       'eval_result.studybench.recent.low_quality_001',
+      'github.pr.openagents.6704',
       'optimizer_run.gepa_dspy.mutalisk.issue_6707.001',
       'trace.public.khala.redacted_recent_001',
     ])
@@ -78,11 +83,12 @@ describe('Probe GEPA standing optimization loop projection (#6707)', () => {
     )
   })
 
-  test('requires Mutalisk optimizer runs, candidate manifests, and authority gates before emission', () => {
+  test('requires the DSPy/RLM audit, Mutalisk optimizer runs, candidate manifests, and authority gates before emission', () => {
     const projection = projectProbeGepaStandingOptimizationLoop(
       input({
         candidateArtifactRefs: [],
         candidateManifestRefs: [],
+        dspyRlmAuditRefs: [],
         effectAuthorityGateRefs: [],
         mutaliskLaneRefs: [],
         optimizerRunRefs: [],
@@ -96,6 +102,7 @@ describe('Probe GEPA standing optimization loop projection (#6707)', () => {
     expect(projection.blockerRefs).toEqual([
       'blocker.probe_gepa_standing_loop.candidate_artifacts_missing',
       'blocker.probe_gepa_standing_loop.candidate_manifests_missing',
+      'blocker.probe_gepa_standing_loop.dspy_rlm_audit_missing',
       'blocker.probe_gepa_standing_loop.mutalisk_lane_missing',
       'blocker.probe_gepa_standing_loop.optimizer_run_refs_missing',
     ])
@@ -148,5 +155,22 @@ describe('Probe GEPA standing optimization loop projection (#6707)', () => {
         ),
       ).toThrow(ProbeGepaStandingOptimizationLoopUnsafe)
     }
+  })
+
+  test('dedupes and exposes eval result refs as first-class closure evidence', () => {
+    const projection = projectProbeGepaStandingOptimizationLoop(
+      input({
+        evalResultRefs: [
+          'eval_result.studybench.recent.low_quality_002',
+          'eval_result.studybench.recent.low_quality_001',
+          'eval_result.studybench.recent.low_quality_002',
+        ],
+      }),
+    )
+
+    expect(projection.evalResultRefs).toEqual([
+      'eval_result.studybench.recent.low_quality_001',
+      'eval_result.studybench.recent.low_quality_002',
+    ])
   })
 })

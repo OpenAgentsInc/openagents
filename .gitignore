@@ -6,7 +6,7 @@
 .openagents-agent.json
 .secrets/
 .pylon*/
-node_modules/
+node_modules
 .bun/
 .wrangler/
 .turbo/

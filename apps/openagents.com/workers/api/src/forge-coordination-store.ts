@@ -4,6 +4,7 @@ import {
   decodeForgeCoordinationStatusRow,
   decodeForgeDispatchLeaseRow,
   decodeForgeMergeQueueLedgerRow,
+  ForgePromotionGateResult,
   decodeForgePromotionDecisionReceipt,
   decodeForgeVerificationReceipt,
   forgeNip34StatusKindForState,
@@ -141,6 +142,7 @@ export type ForgeCoordinationStore = Readonly<{
 }>
 
 const StringArray = S.Array(S.String)
+const PromotionGateResultArray = S.Array(ForgePromotionGateResult)
 
 const jsonArray = (values: ReadonlyArray<string>): string =>
   JSON.stringify([...values])
@@ -176,13 +178,16 @@ type ForgePromotionDecisionReceiptRow = Readonly<{
   tenant_ref: string
   promotion_ref: string
   queue_ref: string
+  queue_position: number
   change_ref: string
   decision: string
+  target_ref: string
   base_head: string
   candidate_head: string
   promoted_head: string | null
   verification_ref: string | null
   gate_refs_json: string
+  gate_results_json: string
   blocker_refs_json: string
   decided_by_ref: string
   decided_at: string
@@ -192,6 +197,11 @@ type ForgePromotionDecisionReceiptRow = Readonly<{
 
 const stringArrayFromJson = (value: string): ReadonlyArray<string> =>
   parseJsonWithSchema(StringArray, value)
+
+const promotionGateResultsFromJson = (
+  value: string,
+): ReadonlyArray<typeof ForgePromotionGateResult.Type> =>
+  parseJsonWithSchema(PromotionGateResultArray, value)
 
 const verificationReceiptFromRow = (
   row: ForgeVerificationReceiptRow,
@@ -229,13 +239,16 @@ const promotionDecisionReceiptFromRow = (
     tenant_ref: row.tenant_ref,
     promotion_ref: row.promotion_ref,
     queue_ref: row.queue_ref,
+    queue_position: row.queue_position,
     change_ref: row.change_ref,
     decision: row.decision,
+    target_ref: row.target_ref,
     base_head: row.base_head,
     candidate_head: row.candidate_head,
     promoted_head: row.promoted_head,
     verification_ref: row.verification_ref,
     gate_refs: stringArrayFromJson(row.gate_refs_json),
+    gate_results: promotionGateResultsFromJson(row.gate_results_json),
     blocker_refs: stringArrayFromJson(row.blocker_refs_json),
     decided_by_ref: row.decided_by_ref,
     decided_at: row.decided_at,
@@ -255,6 +268,51 @@ const rowOrFail = <T>(row: T | null, label: string): T => {
     throw new ForgeCoordinationStoreInvariantError(`${label} was not persisted`)
   }
   return row
+}
+
+const assertApprovedPromotionHasPassingVerification = async (
+  db: D1Database,
+  receipt: ForgePromotionDecisionReceipt,
+): Promise<void> => {
+  if (receipt.decision !== 'approved') {
+    return
+  }
+
+  if (receipt.verification_ref === null) {
+    throw new ForgeCoordinationStoreInvariantError(
+      'approved Forge promotion requires a verification receipt ref',
+    )
+  }
+
+  const verificationRow = await db
+    .prepare(
+      `
+        SELECT *
+        FROM forge_verification_receipts
+        WHERE tenant_ref = ? AND verification_ref = ?
+      `,
+    )
+    .bind(receipt.tenant_ref, receipt.verification_ref)
+    .first<ForgeVerificationReceiptRow>()
+
+  if (verificationRow === null) {
+    throw new ForgeCoordinationStoreInvariantError(
+      'approved Forge promotion verification receipt is missing',
+    )
+  }
+
+  const verification = verificationReceiptFromRow(verificationRow)
+  if (
+    verification.change_ref !== receipt.change_ref ||
+    verification.base_head !== receipt.base_head ||
+    verification.head_head !== receipt.candidate_head ||
+    verification.verdict !== 'passed' ||
+    verification.exit_code !== 0
+  ) {
+    throw new ForgeCoordinationStoreInvariantError(
+      'approved Forge promotion verification receipt does not match the promoted change',
+    )
+  }
 }
 
 const firstIssue = async (
@@ -858,6 +916,7 @@ export const makeD1ForgeCoordinationStore = (
 
   async recordPromotionDecisionReceipt(receipt, createdAt) {
     const decoded = decodeForgePromotionDecisionReceipt(receipt)
+    await assertApprovedPromotionHasPassingVerification(db, decoded)
     await db
       .prepare(
         `
@@ -865,29 +924,35 @@ export const makeD1ForgeCoordinationStore = (
             tenant_ref,
             promotion_ref,
             queue_ref,
+            queue_position,
             change_ref,
             decision,
+            target_ref,
             base_head,
             candidate_head,
             promoted_head,
             verification_ref,
             gate_refs_json,
+            gate_results_json,
             blocker_refs_json,
             decided_by_ref,
             decided_at,
             source_refs_json,
             redacted,
             created_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
           ON CONFLICT (tenant_ref, promotion_ref) DO UPDATE SET
             queue_ref = excluded.queue_ref,
+            queue_position = excluded.queue_position,
             change_ref = excluded.change_ref,
             decision = excluded.decision,
+            target_ref = excluded.target_ref,
             base_head = excluded.base_head,
             candidate_head = excluded.candidate_head,
             promoted_head = excluded.promoted_head,
             verification_ref = excluded.verification_ref,
             gate_refs_json = excluded.gate_refs_json,
+            gate_results_json = excluded.gate_results_json,
             blocker_refs_json = excluded.blocker_refs_json,
             decided_by_ref = excluded.decided_by_ref,
             decided_at = excluded.decided_at,
@@ -898,13 +963,16 @@ export const makeD1ForgeCoordinationStore = (
         decoded.tenant_ref,
         decoded.promotion_ref,
         decoded.queue_ref,
+        decoded.queue_position,
         decoded.change_ref,
         decoded.decision,
+        decoded.target_ref,
         decoded.base_head,
         decoded.candidate_head,
         decoded.promoted_head,
         decoded.verification_ref,
         jsonArray(decoded.gate_refs),
+        JSON.stringify(decoded.gate_results),
         jsonArray(decoded.blocker_refs),
         decoded.decided_by_ref,
         decoded.decided_at,

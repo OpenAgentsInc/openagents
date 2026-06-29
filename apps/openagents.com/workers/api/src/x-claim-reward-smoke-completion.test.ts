@@ -43,6 +43,7 @@ const settledReward = (
   createdAt: '2026-06-10T10:00:00.000Z',
   evidenceRefs: [
     'receipt.public.x_claim.1',
+    'receipt.public.x_claim_reward.settled.x_claim_reward_1',
     'settlement_evidence.public.mdk_treasury.x_claim_reward_1',
   ],
   id: 'x_claim_reward_1',
@@ -70,6 +71,7 @@ describe('X claim reward smoke completion gate', () => {
     expect(report.transitionRequest).toEqual({
       evidenceRefs: [
         'x_claim_reward_receipt_x_claim_reward_1',
+        'receipt.public.x_claim_reward.settled.x_claim_reward_1',
         'settlement_evidence.public.mdk_treasury.x_claim_reward_1',
       ],
       promiseId: 'agents.x_claim_reward.v1',

@@ -1,4 +1,4 @@
-import { Data, Effect } from "effect"
+import { Data, Effect, Exit, Schedule, Scope } from "effect"
 
 import {
   WORLD_DELTA_SCHEMA_VERSION,
@@ -113,6 +113,13 @@ export type BrowserWorldTransportInput = Readonly<{
   onDiagnostic?: (diagnostic: WorldDiagnostic, frame: WorldTransportFrame) => void
 }>
 
+export const WorldClientRetrySchedules = {
+  externalHttp: Schedule.exponential(250).pipe(Schedule.either(Schedule.recurs(2))),
+  durableObject: Schedule.exponential(100).pipe(Schedule.either(Schedule.recurs(3))),
+  publicProjectionSync: Schedule.exponential(500).pipe(Schedule.either(Schedule.recurs(4))),
+  websocketReconnect: Schedule.exponential(1_000).pipe(Schedule.either(Schedule.recurs(5))),
+}
+
 export const runWorldClientEffect = <A, E>(
   effect: Effect.Effect<A, E>,
 ): Promise<A> => Effect.runPromise(effect)
@@ -135,6 +142,16 @@ export type WorldClient = Readonly<{
 }>
 
 const WEBSOCKET_OPEN = 1
+
+const scopedWorldSocketReleaseError = (
+  sourceRefs: ReadonlyArray<string>,
+): WorldClientError =>
+  new WorldClientError({
+    phase: "disconnect",
+    reason: "World socket scope closed before command acknowledgement.",
+    retryable: true,
+    sourceRefs,
+  })
 
 const socketUrlWithSession = (
   socketUrl: string,
@@ -197,6 +214,7 @@ export const createBrowserWorldTransport = (
   const WebSocketCtor = input.webSocketCtor ??
     (globalThis as unknown as { WebSocket?: BrowserWebSocketCtor }).WebSocket
   let socket: BrowserWebSocketLike | null = null
+  let socketScope: Scope.Closeable | null = null
   const pendingCommands = new Map<
     string,
     {
@@ -215,52 +233,122 @@ export const createBrowserWorldTransport = (
     }
   }
 
+  const rejectPendingCommands = (error: WorldClientError): void => {
+    for (const pending of pendingCommands.values()) {
+      pending.reject(error)
+    }
+    pendingCommands.clear()
+  }
+
+  const closeSocketScope = (): Effect.Effect<void> =>
+    Effect.gen(function* () {
+      const scope = socketScope
+      socketScope = null
+      if (scope !== null) {
+        yield* Scope.close(scope, Exit.void)
+      }
+    })
+
+  const acquireBrowserWorldSocket = (
+    socketUrl: string,
+  ): Effect.Effect<BrowserWebSocketLike, WorldClientError, Scope.Scope> =>
+    Effect.gen(function* () {
+      if (WebSocketCtor === undefined) {
+        return yield* new WorldClientError({
+          phase: "connect",
+          reason: "WebSocket is not available in this runtime.",
+          retryable: true,
+          sourceRefs: ["world-client.browser.socket"],
+        })
+      }
+
+      const next = new WebSocketCtor(socketUrl)
+      let openResolve: (() => void) | null = null
+      let openReject: ((error: Error) => void) | null = null
+      const opened = new Promise<void>((resolve, reject) => {
+        openResolve = resolve
+        openReject = reject
+      })
+      const cleanup = (): void => {
+        next.removeEventListener("open", onOpen)
+        next.removeEventListener("message", onMessage)
+        next.removeEventListener("error", onError)
+      }
+      const onOpen = (): void => {
+        next.removeEventListener("open", onOpen)
+        next.removeEventListener("error", onError)
+        next.addEventListener("message", onMessage)
+        next.send(JSON.stringify({ frameKind: "hydrate" }))
+        openResolve?.()
+      }
+      const onError = (): void => {
+        cleanup()
+        openReject?.(new Error("World WebSocket connection failed."))
+      }
+      const onMessage = (event: unknown): void => {
+        const data = (event as { data?: unknown }).data
+        if (typeof data !== "string") return
+        try {
+          applyFrame(decodeWorldTransportFrame(JSON.parse(data)))
+        } catch {
+          // Bad frames are ignored locally; the Worker emits typed diagnostics
+          // for command/schema failures that pass the transport boundary.
+        }
+      }
+      next.addEventListener("open", onOpen, { once: true })
+      next.addEventListener("error", onError, { once: true })
+
+      yield* Effect.addFinalizer(() =>
+        Effect.sync(() => {
+          cleanup()
+          if (socket === next) socket = null
+          next.close()
+          rejectPendingCommands(scopedWorldSocketReleaseError(["world-client.browser.socket.scope"]))
+        }),
+      )
+
+      yield* Effect.tryPromise({
+        try: () => opened,
+        catch: error => new WorldClientError({
+          phase: "connect",
+          reason: error instanceof Error ? error.message : "World socket connection failed.",
+          retryable: true,
+          sourceRefs: ["world-client.browser.socket"],
+        }),
+      })
+      socket = next
+      return next
+    })
+
   const connectSocket = (
     socketUrl: string,
   ): Effect.Effect<void, WorldClientError> =>
-    Effect.tryPromise({
-      try: () =>
-        new Promise<void>((resolve, reject) => {
-          if (WebSocketCtor === undefined) {
-            reject(new Error("WebSocket is not available in this runtime."))
-            return
-          }
-          const next = new WebSocketCtor(socketUrl)
-          socket = next
-          const cleanup = (): void => {
-            next.removeEventListener("open", onOpen)
-            next.removeEventListener("message", onMessage)
-            next.removeEventListener("error", onError)
-          }
-          const onOpen = (): void => {
-            cleanup()
-            next.addEventListener("message", onMessage)
-            next.send(JSON.stringify({ frameKind: "hydrate" }))
-            resolve()
-          }
-          const onError = (): void => {
-            cleanup()
-            reject(new Error("World WebSocket connection failed."))
-          }
-          const onMessage = (event: unknown): void => {
-            const data = (event as { data?: unknown }).data
-            if (typeof data !== "string") return
-            try {
-              applyFrame(decodeWorldTransportFrame(JSON.parse(data)))
-            } catch {
-              // Bad frames are ignored locally; the Worker emits typed diagnostics
-              // for command/schema failures that pass the transport boundary.
+    Effect.gen(function* () {
+      yield* closeSocketScope()
+      const scope = yield* Scope.make()
+      socketScope = scope
+      let acquired = false
+      yield* acquireBrowserWorldSocket(socketUrl).pipe(
+        Effect.provideService(Scope.Scope, scope),
+        Effect.tap(() => Effect.sync(() => {
+          acquired = true
+        })),
+        Effect.tapError(() =>
+          Effect.gen(function* () {
+            if (socketScope === scope) socketScope = null
+            yield* Scope.close(scope, Exit.void)
+          }),
+        ),
+        Effect.ensuring(
+          Effect.gen(function* () {
+            if (!acquired && socketScope === scope) {
+              socketScope = null
+              yield* Scope.close(scope, Exit.void)
             }
-          }
-          next.addEventListener("open", onOpen, { once: true })
-          next.addEventListener("error", onError, { once: true })
-        }),
-      catch: error => new WorldClientError({
-        phase: "connect",
-        reason: error instanceof Error ? error.message : "World socket connection failed.",
-        retryable: true,
-        sourceRefs: ["world-client.browser.socket"],
-      }),
+          }),
+        ),
+        Effect.asVoid,
+      )
     })
 
   const connect = (
@@ -348,18 +436,14 @@ export const createBrowserWorldTransport = (
             }),
       }),
     disconnect: () =>
-      Effect.sync(() => {
-        socket?.close()
-        socket = null
-        for (const pending of pendingCommands.values()) {
-          pending.reject(new WorldClientError({
-            phase: "disconnect",
-            reason: "World socket disconnected before command acknowledgement.",
-            retryable: true,
-            sourceRefs: ["world-client.browser.disconnect"],
-          }))
-        }
-        pendingCommands.clear()
+      Effect.gen(function* () {
+        yield* closeSocketScope()
+        rejectPendingCommands(new WorldClientError({
+          phase: "disconnect",
+          reason: "World socket disconnected before command acknowledgement.",
+          retryable: true,
+          sourceRefs: ["world-client.browser.disconnect"],
+        }))
       }),
   }
 }

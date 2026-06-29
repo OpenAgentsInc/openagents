@@ -15,7 +15,11 @@ const projection = (
   caveatRefs: ['caveat.public.pending_is_not_paid_loop_completion'],
   generatedAt: '2026-06-20T00:01:00.000Z',
   receiptRef,
-  resolution: { missing: 'spend', status: 'pending' },
+  resolution: {
+    missing: 'spend',
+    nextEvidenceRef: 'ledger.pay_ins.inference_charge.context_ref',
+    status: 'pending',
+  },
   schemaVersion: 'openagents.inference.card_credit_spend_receipt.v1',
   sourceRefs: [
     `route:/api/public/inference/card-credit-spend-receipts/${receiptRef}`,
@@ -73,7 +77,11 @@ describe('public card-credit-spend receipt routes', () => {
     expect(body.receipt).toMatchObject({
       generatedAt: '2026-06-20T00:01:00.000Z',
       receiptRef,
-      resolution: { missing: 'spend', status: 'pending' },
+      resolution: {
+        missing: 'spend',
+        nextEvidenceRef: 'ledger.pay_ins.inference_charge.context_ref',
+        status: 'pending',
+      },
       schemaVersion: 'openagents.inference.card_credit_spend_receipt.v1',
       staleness: {
         composition: 'live_at_read',

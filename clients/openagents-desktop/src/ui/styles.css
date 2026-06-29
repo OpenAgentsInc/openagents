@@ -494,6 +494,7 @@ button {
   display: grid;
   flex: 0 0 220px;
   gap: 7px;
+  padding-right: 96px;
   padding-left: 28px;
 }
 
@@ -589,10 +590,18 @@ button {
   text-transform: uppercase;
 }
 
+.coding-active-session[data-state="active"] .coding-session-status,
 .coding-session-row[data-state="active"] .coding-session-status {
   color: #dff8ff;
   background: rgba(79, 208, 255, 0.1);
   border-color: rgba(79, 208, 255, 0.35);
+}
+
+.coding-active-session[data-state="recent"] .coding-session-status,
+.coding-session-row[data-state="recent"] .coding-session-status {
+  color: #e8f0ff;
+  background: rgba(143, 182, 255, 0.09);
+  border-color: rgba(143, 182, 255, 0.28);
 }
 
 .coding-transcript {

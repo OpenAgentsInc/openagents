@@ -145,6 +145,8 @@ export const issueHasPriorityLabel = (issue: GitHubIssue): boolean =>
 
 export const issueHasAnyLabel = (issue: GitHubIssue): boolean => issue.labels.length > 0
 
+export const issueNeedsPriorityTriage = (issue: GitHubIssue): boolean => !issueHasPriorityLabel(issue)
+
 export const tokenizeIssueText = (value: string): ReadonlyArray<string> =>
   uniqueSorted(
     value
@@ -311,7 +313,9 @@ export const listRepositoryFiles = (cwd: string): ReadonlyArray<string> => {
 }
 
 export const buildCandidateIssueSearch = (includeLabeled: boolean): string =>
-  includeLabeled ? "is:issue is:open sort:created-desc" : "is:issue is:open no:label sort:created-desc"
+  includeLabeled
+    ? "is:issue is:open sort:created-desc"
+    : `is:issue is:open ${PRIORITY_LABELS.map(label => `-label:"${label}"`).join(" ")} sort:created-desc`
 
 const listCandidateIssues = (
   repo: string,
@@ -378,7 +382,7 @@ const main = () => {
   const options = parseArgs(Bun.argv.slice(2))
   const repositoryFiles = listRepositoryFiles(process.cwd())
   const candidates = listCandidateIssues(options.repo, options.limit, options.includeLabeled).filter(
-    issue => options.includeLabeled || !issueHasAnyLabel(issue),
+    issue => options.includeLabeled || issueNeedsPriorityTriage(issue),
   )
   const openIssues = listOpenIssues(options.repo, Math.max(options.limit, 100))
   const decisions = candidates.map(issue =>
@@ -387,6 +391,12 @@ const main = () => {
       repositoryFiles,
     }),
   )
+
+  if (decisions.length === 0) {
+    console.log(
+      `[github-issue-triage] no candidate issues found for ${options.repo} using search: ${buildCandidateIssueSearch(options.includeLabeled)}`,
+    )
+  }
 
   for (const decision of decisions) {
     console.log(renderTriageComment(decision))

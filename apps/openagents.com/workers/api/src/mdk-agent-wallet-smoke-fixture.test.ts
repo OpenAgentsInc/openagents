@@ -17,6 +17,7 @@ const baseInput = (
   mode: 'fake_sandbox',
   operatorApprovedPayment: false,
   routeStateRef: 'route_state.fake_sandbox.l402_available',
+  sendReadinessCapacityRef: 'capacity.mdk_agent_wallet.send.unproven',
   spendCapBitcoinSatoshis: 10_000,
   tokenCacheRef: 'token_cache.local.redacted',
   walletHomeMode: 'unknown',
@@ -56,6 +57,8 @@ describe('OpenAgents MDK agent-wallet smoke fixture', () => {
       baseInput({
         mode: 'signet',
         operatorApprovedPayment: true,
+        sendReadinessCapacityRef:
+          'capacity.mdk_agent_wallet.send.sufficient_for_scoped_smoke',
         walletHomeMode: 'original_funded_wallet_home',
       }),
     )
@@ -86,12 +89,43 @@ describe('OpenAgents MDK agent-wallet smoke fixture', () => {
     )
   })
 
+  test('requires public-safe send capacity evidence before any send step', () => {
+    const projection = planOpenAgentsMdkAgentWalletSmoke(
+      baseInput({
+        mode: 'signet',
+        operatorApprovedPayment: true,
+        sendReadinessCapacityRef: 'capacity.mdk_agent_wallet.send.unproven',
+        walletHomeMode: 'original_funded_wallet_home',
+      }),
+    )
+
+    expect(projection.status).toBe('blocked_by_send_readiness_capacity')
+    expect(projection.sendReadinessCapacityRef).toBe(
+      'capacity.mdk_agent_wallet.send.unproven',
+    )
+    expect(projection.reasonRefs).toEqual([
+      'reason.agent_wallet_smoke.blocked_by_send_readiness_capacity',
+    ])
+    expect(
+      projection.steps.find(step => step.kind === 'send_readiness_preflight')
+        ?.noteRefs,
+    ).toEqual(
+      expect.arrayContaining([
+        'note.agent_wallet.scoped_send_capacity_required',
+        'capacity.mdk_agent_wallet.send.unproven',
+      ]),
+    )
+    expect(projection.steps.some(step => step.kind === 'send')).toBe(false)
+  })
+
   test('blocks payment plans that exceed the spend cap or lack live authority', () => {
     const overCap = planOpenAgentsMdkAgentWalletSmoke(
       baseInput({
         amountBitcoinSatoshis: 20_000,
         mode: 'signet',
         operatorApprovedPayment: true,
+        sendReadinessCapacityRef:
+          'capacity.mdk_agent_wallet.send.sufficient_for_scoped_smoke',
         spendCapBitcoinSatoshis: 10_000,
         walletHomeMode: 'original_funded_wallet_home',
       }),

@@ -27,6 +27,12 @@ export type CodexAgentReadinessState =
   | "ready"
   | "sdk_missing"
   | "credentials_missing"
+  | "credentials_revoked"
+  | "usage_limited"
+  | "rate_limited"
+  | "network"
+  | "timeout"
+  | "auth_error"
   | "platform_unsupported"
   | "disabled_by_config"
 

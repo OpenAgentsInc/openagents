@@ -130,6 +130,11 @@ import {
   type PylonDevCommandSpec,
 } from "./dev-loop.js"
 import {
+  planVirtualMergeQueuePrFastForward,
+  type VirtualMergeQueuePrFastForwardRequest,
+  type VirtualMergeQueueProjection,
+} from "./blueprint-gates/virtual-merge-queue.js"
+import {
   rejectCodexLocalDangerForPublicPath,
   runCodexComposerStream,
 } from "./codex-composer.js"
@@ -2756,6 +2761,8 @@ async function main() {
 
   // #6695 VMQ supervisor API: expose the node-local PR fast-forward planner so
   // supervisors can verify the next actual promotion before any git push exists.
+  // The planner is pure, so the CLI can run it directly without requiring a
+  // live node control server.
   if (args[0] === "vmq") {
     const command = args[1]
     const options = parseCliOptions(args.slice(2))
@@ -2766,16 +2773,9 @@ async function main() {
         if (!projectionPath || !requestPath) {
           throw new Error("vmq pr-fast-forward-plan requires --projection <json> and --request <json>")
         }
-        const projection = JSON.parse(await readFile(projectionPath, "utf8"))
-        const request = JSON.parse(await readFile(requestPath, "utf8"))
-        const { result } = await runControlCommand(
-          {
-            type: "virtual_merge_queue.pr_fast_forward.plan",
-            projection,
-            request,
-          },
-          Bun.env,
-        )
+        const projection = JSON.parse(await readFile(projectionPath, "utf8")) as VirtualMergeQueueProjection
+        const request = JSON.parse(await readFile(requestPath, "utf8")) as VirtualMergeQueuePrFastForwardRequest
+        const result = planVirtualMergeQueuePrFastForward({ projection, request })
         process.stdout.write(`${JSON.stringify({ ok: true, result }, null, 2)}\n`)
         return
       }

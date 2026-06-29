@@ -576,6 +576,11 @@ describe('CS336 A2 device capability projection', () => {
       p50Ratio: 0.62,
       reasonCode:
         'device_capability.public.thermal_probe_needs_statistical_cross_check',
+      sameClassReplicationBlockerRefs: [
+        'blocker.cs336_a2.requires_cross_machine_same_class_replication',
+      ],
+      sameClassReplicationScope: 'single_observation',
+      sameClassReplicationStatus: 'single_observation',
       state: 'thermal_probe_needs_verification',
       verified: false,
     })
@@ -634,6 +639,11 @@ describe('CS336 A2 device capability projection', () => {
       reasonCode:
         'device_capability.public.thermal_throttle_observed_sustained_ratio_below_floor',
       receiptRefs: ['receipt.cs336_a2.thermal.verified_row.1'],
+      sameClassReplicationBlockerRefs: [
+        'blocker.cs336_a2.requires_cross_machine_same_class_replication',
+      ],
+      sameClassReplicationScope: 'cross_process_same_host',
+      sameClassReplicationStatus: 'same_host_only',
       state: 'thermal_throttle_observed',
       verified: true,
     })

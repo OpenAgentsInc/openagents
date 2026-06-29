@@ -50,6 +50,11 @@ export type ArtanisAskerProvenance =
   | 'artanis_self'
   | 'unknown'
 
+export const ARTANIS_RESPONDER_EXTERNAL_FLOW_BLOCKER =
+  'blocker.product_promises.external_contributor_flow_unproven'
+export const ARTANIS_RESPONDER_TEN_TICKS_BLOCKER =
+  'blocker.product_promises.ten_unattended_responder_ticks_unaccrued'
+
 // Known-internal exact actor refs. The Artanis registered identity and the
 // seeded forum-delivery agent are never external; operator/owner refs and
 // the admin user ref are the owner/operator side.
@@ -134,6 +139,18 @@ export type ArtanisResponderSupportProjection = Readonly<{
   // True once at least one external contributor has been answered end to end
   // with a dereferenceable reply post. This is the gate the blocker tracks.
   externalContributorFlowProven: boolean
+  // The blocker tokens this surface tracks for artanis.pylon_support_responder.v1.
+  blockerRefs: ReadonlyArray<string>
+  // The blocker tokens whose mechanical live-row predicates are satisfied at
+  // read time. The external-flow blocker requires a dereferenceable external
+  // answer inside a recorded unattended tick window; the ten-tick blocker
+  // requires the tick-readiness target to be met.
+  clearedBlockerRefs: ReadonlyArray<string>
+  // The blocker tokens whose mechanical live-row predicates remain unsatisfied
+  // at read time.
+  unclearedBlockerRefs: ReadonlyArray<string>
+  // True iff both mechanical blocker predicates are satisfied by live rows.
+  greenGateMet: boolean
   // The external-contributor interactions, newest first, each with the
   // dereferenceable reply-post ref.
   externalInteractions: ReadonlyArray<ArtanisExternalSupportInteraction>
@@ -224,15 +241,38 @@ export const projectArtanisResponderSupport = (
   const externalContributorFlowProven = externalInteractions.some(
     interaction => interaction.replyPostRef !== null,
   )
+  const externalContributorTickGateProven =
+    externalContributorFlowProven &&
+    (tickReadiness?.externalContributorAnsweredWithinTickWindow ?? false)
+  const tenUnattendedTicksProven =
+    tickReadiness?.unattendedResponderTicksProven ?? false
+  const clearedBlockerRefs = [
+    ...(externalContributorTickGateProven
+      ? [ARTANIS_RESPONDER_EXTERNAL_FLOW_BLOCKER]
+      : []),
+    ...(tenUnattendedTicksProven ? [ARTANIS_RESPONDER_TEN_TICKS_BLOCKER] : []),
+  ]
+  const unclearedBlockerRefs = [
+    ...(externalContributorTickGateProven
+      ? []
+      : [ARTANIS_RESPONDER_EXTERNAL_FLOW_BLOCKER]),
+    ...(tenUnattendedTicksProven ? [] : [ARTANIS_RESPONDER_TEN_TICKS_BLOCKER]),
+  ]
 
   return {
     authorityBoundary:
       'Read-only projection over the Artanis responder-action ledger. Grants no dispatch, spend, assignment, settlement, moderation, or registry authority and cannot create an interaction, a reply, or a tip. Asker provenance is a bounded identity-field classification (operator/owner/agent/user prefix plus known internal Artanis/admin refs); the mind still owns the question-class decision.',
+    blockerRefs: [
+      ARTANIS_RESPONDER_EXTERNAL_FLOW_BLOCKER,
+      ARTANIS_RESPONDER_TEN_TICKS_BLOCKER,
+    ],
+    clearedBlockerRefs,
     externalContributorAnsweredCount,
     externalContributorFlowProven,
     externalContributorTippedCount,
     externalInteractions,
     generatedAt: nowIso,
+    greenGateMet: unclearedBlockerRefs.length === 0,
     kind: 'artanis_pylon_support_responder_external_flow',
     notes: [
       'An external contributor is a registered non-owner, non-operator, non-Artanis identity (a user: actor or a non-internal agent: actor). Operator/owner test articles are classified owner_operator and never satisfy the external-contributor gate.',
@@ -242,6 +282,7 @@ export const projectArtanisResponderSupport = (
     ownerOperatorAnsweredCount,
     publicSafe: true,
     staleness: ARTANIS_RESPONDER_SUPPORT_STALENESS,
+    unclearedBlockerRefs,
     ...(tickReadiness === undefined ? {} : { tickReadiness }),
   }
 }

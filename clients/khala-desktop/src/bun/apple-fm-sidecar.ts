@@ -31,9 +31,13 @@ type AppleFmSidecarHostOptions = {
   readonly fetchFn?: typeof fetch
   readonly spawn?: typeof Bun.spawn
   readonly now?: () => string
+  readonly maxRestarts?: number
+  readonly restartDelayMs?: number
 }
 
 const APPLE_FM_BRIDGE_DEFAULT_PORT = 11435
+const APPLE_FM_BRIDGE_MAX_RESTARTS = 3
+const APPLE_FM_BRIDGE_RESTART_DELAY_MS = 1_000
 
 const trim = (value: string | undefined): string | null => {
   const trimmed = value?.trim() ?? ""
@@ -148,6 +152,8 @@ export function createAppleFmSidecarHost(
   const fetchFn = options.fetchFn ?? fetch
   const spawn = options.spawn ?? Bun.spawn
   const now = options.now ?? (() => new Date().toISOString())
+  const maxRestarts = Math.max(0, options.maxRestarts ?? APPLE_FM_BRIDGE_MAX_RESTARTS)
+  const restartDelayMs = Math.max(0, options.restartDelayMs ?? APPLE_FM_BRIDGE_RESTART_DELAY_MS)
   const discoverOptions = {
     cwd: process.cwd(),
     env,
@@ -158,13 +164,30 @@ export function createAppleFmSidecarHost(
   const executable = helper === null ? false : helperExecutable(helper.path)
   let launchState: SidecarLaunchState = "idle"
   let child: ReturnType<typeof Bun.spawn> | null = null
+  let restartAttempts = 0
+  let restartTimer: ReturnType<typeof setTimeout> | null = null
+  let stopped = false
+
+  const clearRestartTimer = () => {
+    if (restartTimer !== null) {
+      clearTimeout(restartTimer)
+      restartTimer = null
+    }
+  }
+
+  const shouldLaunchHelper = () =>
+    supported &&
+    helper !== null &&
+    executable &&
+    (helper.source === "packaged-resource" || trim(env.OPENAGENTS_APPLE_FM_BRIDGE_PATH) !== null)
 
   const start = () => {
-    if (!supported || helper === null || !executable || child !== null) return
+    if (!supported || helper === null || !executable || child !== null || stopped) return
     if (helper.source !== "packaged-resource" && trim(env.OPENAGENTS_APPLE_FM_BRIDGE_PATH) === null) {
       launchState = "adopted"
       return
     }
+    clearRestartTimer()
     try {
       launchState = "launching"
       child = spawn([helper.path, "--port", String(APPLE_FM_BRIDGE_DEFAULT_PORT)], {
@@ -175,7 +198,22 @@ export function createAppleFmSidecarHost(
       launchState = "running"
       void child.exited.then((exitCode) => {
         child = null
-        launchState = exitCode === 0 ? "stopped" : "failed"
+        if (stopped) return
+        if (exitCode === 0) {
+          restartAttempts = 0
+          launchState = "stopped"
+          return
+        }
+        if (shouldLaunchHelper() && restartAttempts < maxRestarts) {
+          restartAttempts += 1
+          launchState = "launching"
+          restartTimer = setTimeout(() => {
+            restartTimer = null
+            start()
+          }, restartDelayMs)
+          return
+        }
+        launchState = "failed"
       })
     } catch {
       launchState = "failed"
@@ -206,6 +244,8 @@ export function createAppleFmSidecarHost(
       })
     },
     stop() {
+      stopped = true
+      clearRestartTimer()
       if (child !== null) {
         child.kill()
         child = null

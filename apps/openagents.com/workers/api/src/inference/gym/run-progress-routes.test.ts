@@ -348,6 +348,25 @@ describe('operator run-progress ingest (POST, #6271)', () => {
     expect(store.snapshot()).toEqual([])
   })
 
+  test('REJECTS malformed JSON with the shared boundary reason ref', async () => {
+    const store = makeMemoryStore()
+    const response = await run(
+      handleOperatorGymRunProgressApi(
+        new Request('https://openagents.com/api/operator/gym/run-progress', {
+          method: 'POST',
+          body: '{',
+        }),
+        { requireAdminApiToken: () => Promise.resolve(true), store },
+      ),
+    )
+    const body = (await response.json()) as { error: string; reason: string }
+
+    expect(response.status).toBe(400)
+    expect(body.error).toBe('gym_run_progress_ingest_rejected')
+    expect(body.reason).toBe('boundary.json.malformed')
+    expect(store.snapshot()).toEqual([])
+  })
+
   test('REJECTS a payload smuggling an API key', async () => {
     const store = makeMemoryStore()
     const response = await run(

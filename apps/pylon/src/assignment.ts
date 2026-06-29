@@ -70,6 +70,10 @@ import {
 } from "./account-usage.js"
 import { isAccountAvailable, loadQuotaRecord } from "./account-quota-ledger.js"
 import {
+  codexAccountHealthBlocksReadiness,
+  loadCodexAccountHealthRecord,
+} from "./codex-account-health-ledger.js"
+import {
   admitPylonDelegation,
   pylonDelegationChainFrom,
   type PylonDelegationChain,
@@ -1561,6 +1565,10 @@ async function resolveAgentAccountForAssignment(
     if (pinnedAccountRefHash !== null && target.accountRefHash !== pinnedAccountRefHash) continue
     const quotaRecord = await loadQuotaRecord(summary, target.accountRefHash)
     if (!isAccountAvailable(quotaRecord, now)) continue
+    if (provider === "codex") {
+      const health = await loadCodexAccountHealthRecord(summary, target.accountRefHash)
+      if (codexAccountHealthBlocksReadiness(health)) continue
+    }
     const targetEnv = pylonAccountEnvironment(env, target.account)
     const readiness =
       provider === "claude_agent"

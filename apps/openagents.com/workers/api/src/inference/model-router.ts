@@ -300,6 +300,12 @@ const KHALA_STRONG_CODING_ADAPTER_PLAN: ReadonlyArray<string> = [
   OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
 ]
 
+const KHALA_PAID_FAILOVER_ADAPTER_PLAN: ReadonlyArray<string> = [
+  VERTEX_GEMINI_ADAPTER_ID,
+  FIREWORKS_ADAPTER_ID,
+  OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
+]
+
 const dedupeAdapterPlan = (
   adapterIds: ReadonlyArray<string>,
 ): ReadonlyArray<string> => {
@@ -444,6 +450,19 @@ export const selectAdapterPlanForKhalaMultiLaneBurnRequest = (
 ): ReadonlyArray<string> =>
   normalizeKhalaModelId(model) === KHALA_MODEL_ID
     ? rotateAdapterPlan(basePlan, rotationIndex)
+    : basePlan
+
+const selectAdapterPlanForKhalaPaidFailover = (
+  model: string,
+  basePlan: ReadonlyArray<string>,
+): ReadonlyArray<string> =>
+  normalizeKhalaModelId(model) === KHALA_MODEL_ID
+    ? dedupeAdapterPlan([
+        ...basePlan.filter(
+          adapterId => adapterId !== HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
+        ),
+        ...KHALA_PAID_FAILOVER_ADAPTER_PLAN,
+      ])
     : basePlan
 
 // Resolve a requested model to its ORDERED list of candidate adapter ids
@@ -631,6 +650,7 @@ export type DispatchLoadSheddingPolicy = Readonly<{
 
 export type DispatchRouteAdmissionPolicy = Readonly<{
   demandClass: InferenceDemandClass
+  internalStressHeadroomAvailable?: boolean | undefined
   reservedExternalHeadroomAvailable: boolean
   reason: string
 }>
@@ -907,7 +927,10 @@ const shouldRejectAdmission = (
 ): boolean =>
   admission !== undefined &&
   admission.demandClass === 'internal_stress' &&
-  !admission.reservedExternalHeadroomAvailable
+  !(
+    admission.internalStressHeadroomAvailable ??
+    admission.reservedExternalHeadroomAvailable
+  )
 
 const admissionError = (
   admission: DispatchRouteAdmissionPolicy,
@@ -1042,7 +1065,8 @@ export const makeGlmOwnCapacityFailover = (
     isRecovered: () => input.isRecovered?.() === true,
     recordFailure: error => {
       if (
-        error.adapterId !== adapterId ||
+        (error.adapterId !== adapterId &&
+          !GLM_ROUTE_HEADROOM_FAILURE_KINDS.has(error.kind ?? '')) ||
         !isGlmOwnCapacityUnavailableFailure(error)
       ) {
         return
@@ -1193,15 +1217,19 @@ export const dispatchWithOverflowWithMetadata = <A>(
     const backoff = deps.backoff ?? DEFAULT_OVERFLOW_BACKOFF
     const sleep = deps.sleep ?? Effect.sleep
     const retryCount = normalizedRetryCount(deps.retry)
+    const glmOwnCapacityFailover = deps.glmOwnCapacityFailover
 
     const admission = deps.admission
     if (shouldRejectAdmission(admission) && admission !== undefined) {
       const error = admissionError(admission)
+      glmOwnCapacityFailover?.recordFailure(error)
       recordFailureTelemetry(
         deps.failureTelemetry,
         telemetryForError(error, 'load_shed'),
       )
-      return yield* Effect.fail(error)
+      if (glmOwnCapacityFailover?.isActive() !== true) {
+        return yield* Effect.fail(error)
+      }
     }
 
     const shedding = deps.shedding
@@ -1218,15 +1246,31 @@ export const dispatchWithOverflowWithMetadata = <A>(
       ? yield* deps.preemption!.preempt()
       : undefined
 
-    const adapterIds = planFor(request.model)
-    let healthQuarantinedLaneCount = 0
-    const glmOwnCapacityFailover = deps.glmOwnCapacityFailover
     const recoveredGlmOwnCapacity =
       glmOwnCapacityFailover?.isActive() === true &&
       glmOwnCapacityFailover.isRecovered()
     if (recoveredGlmOwnCapacity) {
       glmOwnCapacityFailover?.recordSuccess(glmOwnCapacityFailover.adapterId)
     }
+
+    const glmOwnCapacityFailoverActive =
+      glmOwnCapacityFailover?.isActive() === true
+    if (glmOwnCapacityFailoverActive) {
+      recordFailureTelemetry(deps.failureTelemetry, {
+        adapterId: glmOwnCapacityFailover.adapterId,
+        classifier: 'fallback',
+        kind: 'glm_own_capacity_failover_active',
+        retryable: true,
+        stage: 'fallback',
+      })
+    }
+    const adapterIds = glmOwnCapacityFailoverActive
+      ? selectAdapterPlanForKhalaPaidFailover(
+          request.model,
+          planFor(request.model),
+        )
+      : planFor(request.model)
+    let healthQuarantinedLaneCount = 0
     // Resolve to the lanes that are actually registered (skip absent partners).
     const adapters = adapterIds.flatMap(id => {
       const adapter = deps.registry.resolve(id)

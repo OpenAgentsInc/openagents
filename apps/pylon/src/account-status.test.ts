@@ -16,6 +16,8 @@ import {
 } from "./account-usage.js"
 import { createBootstrapSummary, parseBootstrapArgs } from "./bootstrap.js"
 import { hashPylonAccountRef } from "./account-registry.js"
+import { recordCodexAccountHealthFailure } from "./codex-account-health-ledger.js"
+import { classifyCodexAccountFailure } from "./codex-account-health.js"
 
 async function withTempHome<T>(fn: (input: { home: string; summary: ReturnType<typeof createBootstrapSummary> }) => Promise<T>) {
   const home = await mkdtemp(join(tmpdir(), "pylon-account-status-"))
@@ -151,6 +153,41 @@ describe("#6637 account status observability", () => {
         quotaDeleted: true,
       })
       expect(await loadQuotaRecord(summary, accountRefHash)).toBeNull()
+    })
+  })
+
+  test("projects specific Codex account auth health reasons", async () => {
+    await withTempHome(async ({ home, summary }) => {
+      const accountHome = join(home, "accounts", "codex", "codex-revoked")
+      await mkdir(accountHome, { recursive: true })
+      await writeFile(join(accountHome, "auth.json"), "{}")
+      await writeFile(summary.paths.config, JSON.stringify({
+        dev: {
+          accounts: [
+            { provider: "codex", ref: "codex-revoked", home: accountHome },
+          ],
+        },
+      }))
+      const accountRefHash = hashPylonAccountRef("codex", "codex-revoked")
+      await recordCodexAccountHealthFailure(summary, {
+        accountRefHash,
+        failure: classifyCodexAccountFailure("refresh token was revoked"),
+        now: new Date("2026-06-28T21:30:00.000Z"),
+      })
+
+      const status = await collectPylonAccountsStatus(
+        summary,
+        parsePylonAccountsStatusArgs(["--account", "codex-revoked", "--json"]),
+        {
+          env: { PYLON_HOME: home, CODEX_HOME: accountHome, PYLON_ACCOUNT_HOME_ROOT: join(home, "empty-siblings") },
+          now: new Date("2026-06-28T21:45:00.000Z"),
+        },
+      )
+
+      expect(status.accounts[0]?.readiness.state).toBe("credentials_revoked")
+      expect(status.accounts[0]?.readiness.blockerRefs).toContain(
+        "blocker.pylon.codex_account.credentials_revoked_needs_owner_reauth",
+      )
     })
   })
 })

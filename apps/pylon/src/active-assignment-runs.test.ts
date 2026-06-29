@@ -1,9 +1,10 @@
 import { describe, expect, test } from "bun:test"
-import { mkdtemp, rm } from "node:fs/promises"
+import { mkdtemp, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
 import {
+  activeCodingRunCounts,
   activeCodingRunCountsByAccount,
   activeCodingRunCountsFromAssignmentLeases,
   maxActiveCodingRunCounts,
@@ -41,6 +42,18 @@ describe("active assignment run counts", () => {
       claude: 1,
       codex: 4,
     })
+  })
+
+  test("prunes malformed local run files through the schema-backed JSON boundary", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "pylon-active-runs-malformed-"))
+    const paths = { activeAssignmentRuns: dir } as never
+    try {
+      await writeFile(join(dir, "bad.json"), "{")
+
+      expect(await activeCodingRunCounts(paths)).toEqual({})
+    } finally {
+      await rm(dir, { force: true, recursive: true })
+    }
   })
 })
 

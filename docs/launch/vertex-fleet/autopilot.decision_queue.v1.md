@@ -2,7 +2,29 @@
 
 **Promise state:** `planned` (no state change this run — Hard Rule 1)
 
-## Latest run (2026-06-20) — worker-api closeout ledger (accumulation + audit)
+## Latest run (2026-06-29) — persistent worker-api closeout replay guard
+
+**Blocker advanced:** `blocker.product_promises.receipt_backed_command_closeout_missing`
+
+**Changed files:**
+
+| File | Purpose |
+|---|---|
+| `apps/openagents.com/workers/api/src/autopilot-decision-routes.ts` | Idempotent review-command replays now return the previously persisted `decision.closeout.*` receipt when one exists, preserving the original `applied` closeout instead of rebuilding the same ref as `duplicate` with a later timestamp. |
+| `apps/openagents.com/workers/api/src/autopilot-work-routes.ts` | The D1 `autopilot_decision_closeout_receipts` insert now treats `closeout_ref` as immutable (`ON CONFLICT DO NOTHING`), so retry/replay cannot overwrite the canonical first receipt row. |
+| `apps/openagents.com/workers/api/src/autopilot-decision-routes.test.ts` | Adds a regression test proving an idempotent replay keeps one persisted closeout row with `outcome: "applied"` and returns that canonical receipt to the caller. |
+
+**What it proves:** the live Worker review path now has a persistent,
+dereferenceable closeout row that is stable under client retry. The receipt is
+still evidence-only: it records the review command closeout and grants no
+deploy, spend, continuation, payout, settlement, or publication authority.
+
+No promise state changes; cross-client desktop/web/mobile exactly-once live
+proof remains open.
+
+---
+
+## Earlier run (2026-06-20) — worker-api closeout ledger (accumulation + audit)
 
 **Blocker advanced:** `blocker.product_promises.receipt_backed_command_closeout_missing`
 
@@ -179,17 +201,12 @@ and is shared across desktop / web / Expo (the three client surfaces).
   #5000 / #5004).
 
 - **`blocker.product_promises.receipt_backed_command_closeout_missing`** —
-  *Partially advanced* (further again 2026-06-20). Earlier runs built the
-  remote-bridge receipt type/builder/validator and the in-memory ledger
-  (`createDecisionCloseoutLedger`). This run extends the closeout coverage to the
-  **live worker-api HTTP path**: `actOnDecision` now produces and returns a
-  canonical, tamper-verifiable `AutopilotDecisionCloseoutReceipt`
-  (`autopilot-decision-closeout.ts`) for every review resolution, with an
-  exactly-once `closeoutRef` stable across idempotent replays. The worker-api
-  *in-memory* accumulation/audit layer now also exists and is tested
-  (`autopilot-decision-closeout-ledger.ts`, `createAutopilotDecisionCloseoutLedger`):
-  it converges idempotent replays and refuses conflicting closeouts keyed by
-  `closeoutRef`. The remaining gap is a *persistent* backing store (D1/KV)
-  wrapping that same contract, the `actOnDecision` call site that appends the
-  built receipt into the ledger, and a proof of at least one real receipt
-  produced by a live paired-node resolution.
+  *Advanced again 2026-06-29.* Earlier runs built the remote-bridge receipt
+  type/builder/validator, the in-memory ledger (`createDecisionCloseoutLedger`),
+  and the live worker-api review-path receipt. The Worker route now persists
+  review closeouts in D1 (`autopilot_decision_closeout_receipts`), exposes
+  owner-scoped closeout dereference/projection routes, and preserves the first
+  canonical `applied` receipt across idempotent replay. The remaining gap is a
+  proof of at least one real receipt produced by a live paired-node
+  desktop/web/mobile resolution, plus the broader cross-client exactly-once
+  evidence below.

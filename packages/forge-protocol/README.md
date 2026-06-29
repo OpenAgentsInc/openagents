@@ -29,9 +29,9 @@ verification ref, artifact/proof/result refs, and settlement status.
 
 Verification and promotion receipts are modeled as
 `ForgeVerificationReceipt` and `ForgePromotionDecisionReceipt`. They carry refs,
-hashes, command metadata, exit/verdict state, timestamps, artifact refs, and log
-digests, but not raw logs, raw source, private provider payloads, git tokens, or
-wallet material.
+hashes, command metadata, exit/verdict state, queue position, canonical target
+ref, bounded gate results, timestamps, artifact refs, and log digests, but not
+raw logs, raw source, private provider payloads, git tokens, or wallet material.
 
 The package is public-safe by default: records carry refs, bounded state,
 timestamps, and JSON-encoded ref arrays. They do not carry raw prompts, raw

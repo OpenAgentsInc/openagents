@@ -2,10 +2,12 @@ import { describe, expect, test } from "bun:test"
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
+import { Effect } from "effect"
 
 import {
   hashPylonAccountRef,
   loadPylonAccountRegistry,
+  loadPylonAccountRegistryEffect,
   publicPylonAccountSelection,
   pylonAccountEnvironment,
   resolvePylonAccountSelection,
@@ -23,6 +25,26 @@ async function withHome<T>(fn: (home: string) => Promise<T>) {
 }
 
 describe("pylon account registry", () => {
+  test("strict Effect loader distinguishes missing and malformed registry config", async () => {
+    await withHome(async (home) => {
+      const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), { PYLON_HOME: home })
+
+      await expect(Effect.runPromise(loadPylonAccountRegistryEffect(summary))).rejects.toMatchObject({
+        kind: "not_found",
+        operation: "load_account_registry",
+      })
+
+      await writeFile(summary.paths.config, "{not json")
+      await expect(Effect.runPromise(loadPylonAccountRegistryEffect(summary))).rejects.toMatchObject({
+        kind: "malformed",
+        operation: "load_account_registry",
+      })
+
+      const failSoft = await loadPylonAccountRegistry(summary)
+      expect(failSoft).toEqual([])
+    })
+  })
+
   test("loads named credential homes from dev.accounts without projecting paths", async () => {
     await withHome(async (home) => {
       const codexHome = join(home, "codex-a")
