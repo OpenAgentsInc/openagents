@@ -414,9 +414,11 @@ import {
 } from './inference/batch-job-consumer'
 import {
   handleBatchJobReceiptRead,
+  handleBatchJobResultsRead,
   handleBatchJobStatusRead,
   handleBatchJobsSubmit,
 } from './inference/batch-job-routes'
+import { makeR2BatchJobResultsStore } from './inference/batch-job-results-store'
 import { makeD1BatchJobStore } from './inference/batch-job-store'
 import { makeD1CardCreditSpendReceiptStore } from './inference/card-credit-spend-receipt-store'
 import {
@@ -9999,7 +10001,7 @@ const setInferenceAdapterEnv = (env: OpenAgentsWorkerConfigEnv): void => {
 // passthrough/Vertex secrets) — rather than a raw Cloudflare `Env`, keeping the
 // worker off the raw-Env ratchet.
 type BatchJobConsumerEnv = OpenAgentsWorkerConfigEnv &
-  Pick<WorkerBindings, 'OPENAGENTS_DB'>
+  Pick<WorkerBindings, 'ARTIFACTS' | 'OPENAGENTS_DB'>
 const makeBatchJobConsumerDeps = (env: BatchJobConsumerEnv) => {
   registerPassthroughAdapters(inferenceProviderRegistry, env)
   registerHydraliskAdapter(inferenceProviderRegistry, env)
@@ -10017,6 +10019,7 @@ const makeBatchJobConsumerDeps = (env: BatchJobConsumerEnv) => {
     // END of the batch wait) with this clock so the closeout receipt can disclose
     // an honest `batchWaitMs`.
     nowIso: currentIsoTimestamp,
+    resultsStore: makeR2BatchJobResultsStore(env.ARTIFACTS),
     store: makeD1BatchJobStore(openAgentsDatabase(env), currentIsoTimestamp),
   }
 }
@@ -12238,6 +12241,29 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         // AND the queue binding is provisioned (see makeBatchJobEnqueue).
         enqueueBatchJob: makeBatchJobEnqueue(env),
         nowIso: currentIsoTimestamp,
+      }),
+  },
+  {
+    path: '/v1/inference/batches/:jobId/results',
+    handler: (request, env) =>
+      handleBatchJobResultsRead(request, {
+        authenticate: async authRequest => {
+          const token = readBearerToken(authRequest)
+          if (token === undefined) {
+            return undefined
+          }
+          const session = await authenticateProgrammaticAgent(
+            makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+            token,
+          )
+          return session === undefined
+            ? undefined
+            : { accountRef: `agent:${session.user.id}` }
+        },
+        db: openAgentsDatabase(env),
+        enabled: isInferenceGatewayEnabled(env.INFERENCE_GATEWAY_ENABLED),
+        nowIso: currentIsoTimestamp,
+        resultsStore: makeR2BatchJobResultsStore(env.ARTIFACTS),
       }),
   },
   {

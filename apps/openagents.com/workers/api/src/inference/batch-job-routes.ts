@@ -13,6 +13,7 @@ import {
   computeBatchWaitMs,
   projectBatchJobCloseoutReceipt,
 } from './batch-job-closeout-receipts'
+import type { BatchJobResultsStore } from './batch-job-results-store'
 // public-projection-staleness
 import { estimateRequestCost } from './cost-estimate'
 
@@ -43,6 +44,7 @@ export type BatchJobRoutesDeps = Readonly<{
   // accepted + persisted but never executed, preserving the pre-producer
   // behaviour for the flag-off path.
   enqueueBatchJob?: EnqueueBatchJob | undefined
+  resultsStore?: BatchJobResultsStore | undefined
 }>
 
 // One submitted dataset row. Carries BOTH the token counts the route prices the
@@ -369,5 +371,61 @@ export const handleBatchJobStatusRead = (
       enqueuedAt: job.enqueuedAt,
       startedAt: job.startedAt,
       batchWaitMs: batchWaitMs ?? null,
+    })
+  })
+
+export const handleBatchJobResultsRead = (
+  request: Request,
+  deps: BatchJobRoutesDeps,
+) =>
+  Effect.gen(function* () {
+    if (!deps.enabled) {
+      return noStoreJsonResponse(
+        { error: 'inference_batch_jobs_disabled' },
+        { status: 404 },
+      )
+    }
+
+    if (request.method !== 'GET') {
+      return noStoreJsonResponse({ error: 'method_not_allowed' }, { status: 405 })
+    }
+
+    const session = yield* Effect.promise(() => deps.authenticate(request))
+    if (session === undefined) {
+      const headers = new Headers({ 'www-authenticate': 'Bearer' })
+      return noStoreJsonResponse({ error: 'unauthorized' }, { headers, status: 401 })
+    }
+
+    const url = new URL(request.url)
+    const match = url.pathname.match(/^\/v1\/inference\/batches\/([^/]+)\/results$/)
+    if (!match) {
+      return noStoreJsonResponse({ error: 'not_found' }, { status: 404 })
+    }
+
+    const jobId = match[1] ?? ''
+    const store = makeD1BatchJobStore(deps.db, deps.nowIso)
+    const job = yield* store.getBatchJob(jobId)
+
+    if (
+      !job ||
+      job.accountRef !== session.accountRef ||
+      job.status !== 'completed' ||
+      job.resultsR2Key === null ||
+      deps.resultsStore === undefined
+    ) {
+      return noStoreJsonResponse({ error: 'not_found' }, { status: 404 })
+    }
+
+    const jsonl = yield* deps.resultsStore.readResults(job.resultsR2Key)
+    if (jsonl === null) {
+      return noStoreJsonResponse({ error: 'not_found' }, { status: 404 })
+    }
+
+    return new Response(jsonl, {
+      headers: {
+        'cache-control': 'no-store',
+        'content-type': 'application/x-ndjson; charset=utf-8',
+      },
+      status: 200,
     })
   })

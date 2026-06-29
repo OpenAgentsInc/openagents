@@ -263,6 +263,9 @@ describe('Canonical /api gateway base alias (#6148)', () => {
     expect(gatewayLegacyPathname('/api/v1/inference/batches')).toBe(
       '/v1/inference/batches',
     )
+    expect(
+      gatewayLegacyPathname('/api/v1/inference/batches/batch_123/results'),
+    ).toBe('/v1/inference/batches/batch_123/results')
     expect(gatewayLegacyPathname('/api/mpp/v1/chat/completions')).toBe(
       '/mpp/v1/chat/completions',
     )
