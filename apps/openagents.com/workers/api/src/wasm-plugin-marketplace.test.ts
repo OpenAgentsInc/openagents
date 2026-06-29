@@ -7,6 +7,7 @@ import {
 } from './wasm-plugin-marketplace-routes'
 import {
   type WasmPluginPackageManifest,
+  executeWasmPluginFixture,
   installWasmPluginPackage,
   listInstalledWasmPlugins,
   makeInMemoryWasmPluginRegistryStore,
@@ -14,6 +15,28 @@ import {
 } from './wasm-plugin-marketplace'
 
 const validDigest = `wasm.sha256.${'a'.repeat(64)}`
+const fixtureTransformWasm = new Uint8Array([
+  0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00, 0x01, 0x06, 0x01, 0x60,
+  0x01, 0x7f, 0x01, 0x7f, 0x03, 0x02, 0x01, 0x00, 0x07, 0x0d, 0x01, 0x09,
+  0x74, 0x72, 0x61, 0x6e, 0x73, 0x66, 0x6f, 0x72, 0x6d, 0x00, 0x00, 0x0a,
+  0x09, 0x01, 0x07, 0x00, 0x20, 0x00, 0x41, 0x01, 0x6a, 0x0b,
+])
+const unauthorizedHostCallWasm = new Uint8Array([
+  0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00, 0x01, 0x06, 0x01, 0x60,
+  0x01, 0x7f, 0x01, 0x7f, 0x02, 0x21, 0x01, 0x0a, 0x6f, 0x70, 0x65, 0x6e,
+  0x61, 0x67, 0x65, 0x6e, 0x74, 0x73, 0x12, 0x68, 0x74, 0x74, 0x70, 0x2e,
+  0x66, 0x65, 0x74, 0x63, 0x68, 0x2e, 0x70, 0x72, 0x69, 0x76, 0x61, 0x74,
+  0x65, 0x00, 0x00, 0x03, 0x02, 0x01, 0x00, 0x07, 0x0d, 0x01, 0x09, 0x74,
+  0x72, 0x61, 0x6e, 0x73, 0x66, 0x6f, 0x72, 0x6d, 0x00, 0x01, 0x0a, 0x08,
+  0x01, 0x06, 0x00, 0x20, 0x00, 0x10, 0x00, 0x0b,
+])
+const exportedMemoryWasm = new Uint8Array([
+  0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00, 0x01, 0x06, 0x01, 0x60,
+  0x01, 0x7f, 0x01, 0x7f, 0x03, 0x02, 0x01, 0x00, 0x05, 0x03, 0x01, 0x00,
+  0x02, 0x07, 0x16, 0x02, 0x06, 0x6d, 0x65, 0x6d, 0x6f, 0x72, 0x79, 0x02,
+  0x00, 0x09, 0x74, 0x72, 0x61, 0x6e, 0x73, 0x66, 0x6f, 0x72, 0x6d, 0x00,
+  0x00, 0x0a, 0x06, 0x01, 0x04, 0x00, 0x20, 0x00, 0x0b,
+])
 
 const manifest = (
   overrides: Partial<WasmPluginPackageManifest> = {},
@@ -103,6 +126,130 @@ describe('WASM plugin marketplace policy (#6833)', () => {
     )
     expect(uninstalled?.state).toBe('uninstalled')
     expect(listInstalledWasmPlugins(store).plugins).toHaveLength(0)
+  })
+})
+
+describe('WASM plugin execution sandbox (#6832)', () => {
+  test('runs a fixture plugin under resource limits and records metering evidence', async () => {
+    const store = makeInMemoryWasmPluginRegistryStore()
+    const installed = installWasmPluginPackage(
+      store,
+      manifest(),
+      '2026-06-28T00:00:00.000Z',
+    )
+    expect(installed.ok).toBe(true)
+    if (!installed.ok) {
+      return
+    }
+
+    const result = await executeWasmPluginFixture({
+      entry: installed.entry,
+      moduleBytes: fixtureTransformWasm,
+      exportName: 'transform',
+      inputI32: 41,
+      now: () => 100,
+    })
+
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.outputI32).toBe(42)
+      expect(result.evidence.promiseId).toBe('marketplace.wasm_plugins.v1')
+      expect(result.evidence.inputHash).toMatch(/^wasm_plugin\.input\.sha256\./)
+      expect(result.evidence.outputHash).toMatch(
+        /^wasm_plugin\.output\.sha256\./,
+      )
+      expect(result.evidence.receiptRef).toMatch(
+        /^receipt\.wasm_plugin\.execution\./,
+      )
+      expect(result.evidence.resourceUsage).toEqual({
+        elapsedMs: 0,
+        hostCallCount: 0,
+        importCount: 0,
+        memoryPages: 0,
+        moduleBytes: fixtureTransformWasm.byteLength,
+      })
+    }
+  })
+
+  test('rejects undeclared or unsupported host calls fail-closed', async () => {
+    const store = makeInMemoryWasmPluginRegistryStore()
+    const installed = installWasmPluginPackage(store, manifest())
+    expect(installed.ok).toBe(true)
+    if (!installed.ok) {
+      return
+    }
+
+    const result = await executeWasmPluginFixture({
+      entry: installed.entry,
+      moduleBytes: unauthorizedHostCallWasm,
+      exportName: 'transform',
+      inputI32: 1,
+    })
+
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.error.blockerRef).toBe(
+        'blocker.wasm_plugin_execution.host_call_denied',
+      )
+    }
+  })
+
+  test('enforces sandbox memory limits', async () => {
+    const store = makeInMemoryWasmPluginRegistryStore()
+    const installed = installWasmPluginPackage(store, manifest())
+    expect(installed.ok).toBe(true)
+    if (!installed.ok) {
+      return
+    }
+
+    const result = await executeWasmPluginFixture({
+      entry: installed.entry,
+      moduleBytes: exportedMemoryWasm,
+      exportName: 'transform',
+      inputI32: 7,
+      limits: {
+        maxExecutionMs: 25,
+        maxMemoryPages: 1,
+        maxModuleBytes: 64 * 1024,
+      },
+    })
+
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.error.blockerRef).toBe(
+        'blocker.wasm_plugin_execution.memory_limit_exceeded',
+      )
+    }
+  })
+
+  test('enforces elapsed execution-time limits', async () => {
+    const store = makeInMemoryWasmPluginRegistryStore()
+    const installed = installWasmPluginPackage(store, manifest())
+    expect(installed.ok).toBe(true)
+    if (!installed.ok) {
+      return
+    }
+
+    const ticks = [100, 200]
+    const result = await executeWasmPluginFixture({
+      entry: installed.entry,
+      moduleBytes: fixtureTransformWasm,
+      exportName: 'transform',
+      inputI32: 7,
+      limits: {
+        maxExecutionMs: 25,
+        maxMemoryPages: 1,
+        maxModuleBytes: 64 * 1024,
+      },
+      now: () => ticks.shift() ?? 200,
+    })
+
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.error.blockerRef).toBe(
+        'blocker.wasm_plugin_execution.time_limit_exceeded',
+      )
+    }
   })
 })
 
