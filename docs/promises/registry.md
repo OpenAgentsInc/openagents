@@ -1,5 +1,14 @@
 # Promise Registry
 
+> Registry `2026-06-29.3` narrows #7028 for
+> `autopilot.external_repo_studying_pilot.v1` and flips NO promise state. The
+> external-repo studying pilot now cites the existing refs-only, inert
+> privacy-policy/customer-authorization/review binding and self-serve
+> upload/scan/intake binding controls as evidence. The stale external privacy
+> policy and self-serve upload blockers are dropped; marketplace metering,
+> pricing/package policy, payout/settlement gates, and owner-signed
+> receipt-backed transition evidence remain required before any green claim.
+>
 > Registry `2026-06-29.2` is a current-main refresh after #6997, #6999,
 > #7001, #7002, and #7006 and flips NO promise state. It records the
 > terminal-agent current-state audit and Codex tool-layer study as evidence for
@@ -66,9 +75,9 @@
 > Current machine-readable source of truth: `/api/public/product-promises` is
 > generated from
 > [`product-promises.ts`](../../apps/openagents.com/workers/api/src/product-promises.ts),
-> which currently advertises registry `2026-06-29.2` with
+> which currently advertises registry `2026-06-29.3` with
 > `lastUpdated: "2026-06-29"`. This narrative document records the same
-> top-line 2026-06-29.2 promise decisions above, plus historical reconciliation
+> top-line 2026-06-29.3 promise decisions above, plus historical reconciliation
 > context below; when in doubt, agents and reviewers should defer to the
 > machine-readable registry and include its version in mismatch reports.
 >

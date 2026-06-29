@@ -256,6 +256,13 @@ describe('public product promises document', () => {
     // whether an external contributor's study may be admitted for a customer,
     // flag-gated default-OFF, admitted/effectsApplied always false); the
     // promise STAYS yellow, so green remains exactly 24.
+    // The 2026-06-29.3 #7028 narrowing pass drops
+    // external_repo_studying_privacy_policy_missing and
+    // external_repo_studying_self_serve_upload_missing from
+    // autopilot.external_repo_studying_pilot.v1 because the existing refs-only
+    // inert privacy-policy/authorization/review bindings and upload/scan/intake
+    // controls are now cited as promise evidence. The promise STAYS yellow, so
+    // green remains exactly 24.
     // The 2026-06-20.22 Artanis distillation-dataset receipt pass clears
     // tassadar_distillation_dataset_receipt_missing on
     // artanis.tassadar_evolution_loop.v1, but the promise stays yellow pending
@@ -440,8 +447,9 @@ describe('public product promises document', () => {
       /latest stays 0\.2\.5|only published, installable Pylon|release candidate, not stable 0\.3\.0|Pylon v1\.0 is present in the monorepo as a release candidate/i,
     )
     expect(currentCopy).toContain('Pylon v1.0 has a stable source cut')
-    expect(currentCopy).toContain('Registry 2026-06-29.2')
+    expect(currentCopy).toContain('Registry 2026-06-29.3')
     expect(currentCopy).toContain('flips NO promise state')
+    expect(currentCopy).toContain('narrows #7028')
     expect(currentCopy).toContain('Khala Desktop now carries source-level')
     expect(currentCopy).toContain('maxStalenessSeconds:0')
     const codexSuccessorPromise = decoded.promises.find(
@@ -1276,6 +1284,27 @@ describe('public product promises document', () => {
     expect(externalRepoStudyPromise).toMatchObject({
       state: 'yellow',
     })
+    expect(externalRepoStudyPromise?.blockerRefs).toEqual([
+      'blocker.product_promises.external_repo_studying_marketplace_metering_missing',
+      'blocker.product_promises.external_repo_studying_pricing_package_policy_missing',
+      'blocker.product_promises.external_repo_studying_payout_settlement_gates_missing',
+    ])
+    expect(externalRepoStudyPromise?.blockerRefs).not.toContain(
+      'blocker.product_promises.external_repo_studying_privacy_policy_missing',
+    )
+    expect(externalRepoStudyPromise?.blockerRefs).not.toContain(
+      'blocker.product_promises.external_repo_studying_self_serve_upload_missing',
+    )
+    expect(externalRepoStudyPromise?.evidenceRefs).toEqual(
+      expect.arrayContaining([
+        'docs/legal/external-repo-studying-privacy-policy.v0.md',
+        'packages/probe/packages/runtime/src/benchmark/external-repo-studying-privacy-policy-registry.ts',
+        'packages/probe/packages/runtime/tests/external-repo-studying-privacy-policy-registry.test.ts',
+        'packages/probe/packages/runtime/src/benchmark/external-repo-studying-customer-authorization-registry.ts',
+        'packages/probe/packages/runtime/src/benchmark/external-repo-studying-self-serve-upload.ts',
+        'packages/probe/packages/runtime/src/benchmark/external-repo-studying-upload-intake-binding.ts',
+      ]),
+    )
     expect(
       `${externalRepoStudyPromise?.claim} ${externalRepoStudyPromise?.safeCopy}`,
     ).not.toMatch(
