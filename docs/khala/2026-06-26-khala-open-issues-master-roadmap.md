@@ -176,11 +176,19 @@ operator view of what remains, not a public product claim.
 | #6359 | **Open** | Artanis now has live token-pace awareness and `dispatch_codex_task` (#6366) is armed for owner-approved, no-spend, own-capacity Pylon/Codex assignments. Live proof exists in issue comments for `assignment.public.khala_coding.artanis_dispatch_b67343b299a1413c8d68751d6ef67c3f` and `assignment.public.khala_coding.chatcmpl_8bf035f4d7364dbc972ade1d657ea8ea`, both with exact `pylon-codex-own-capacity` token rows. The latest #6359/#6366 audit found the remaining hands-off blocker: local Pylon was advertising `codex.available=1` while the server dispatch gate saw active non-expired leases and returned `blocker.public.pylon_dispatch.duplicate_active_assignment`. The Pylon CLI now surfaces `requestedPylonRef`/`evidenceRefs`, and capacity publishing/planning now subtracts server-side active assignment leases; live smoke reports Codex `ready=1`, `busy=1`, `available=0`, and `khala request` fails honestly with `evidence.khala_coding.target_pylon_ref.unavailable`. Still open until the standing Artanis/burndown loop can keep capacity refilled, safely recover/drain stale no-spend leases, verify closeouts, and keep dispatching without human babysitting. |
 | #6360 | **Open** | **NEW** — Artanis ingests + acts on Khala CLI `/feedback` (`khala_feedback` table): style→response-style change (owner-gated), capability gap→#6357→issue, bug→issue. |
 | #6363 | **Open** | **NEW** — operator console: speak to Artanis directly (owner-auth channel + situational awareness of recent actions/goals/ongoing ops + persistent owner-interaction memory), **not** the Khala collective-intelligence roleplay. The human-facing front of epic #6359. |
+| #6964 | **Closed** | Terminal-agent research slice for Codex's tool-layer design is complete in `docs/research/terminal-agents/codex.md`, matching the existing terminal-agent report format and focusing on tool catalog, schema definitions, execution, permissions/sandboxing, result formatting, and Khala adoption guidance. |
 | #6321 | **Open** | Artanis fleet-overseer control loop (heal/scale/stress/external-yield). Now scoped under the broader Artanis ownership epic #6359. Safe prep has landed the rollback-required `fleet_mutation` approval-gate kind only; no fleet-overseer tick or live fleet action is armed. |
 | #6354 | **Closed** | The execution-lane blocker is implemented: `assignment run-no-spend` publishes a best-effort heartbeat before polling/claiming, returns `diagnostic.assignment.presence_heartbeat_required` with the exact heartbeat command when refresh fails and admission remains stale, and maintains per-run active local assignment markers so `provider go-online --json` and heartbeat `load.coding.*.busy` reflect in-flight Codex/Claude runners. |
 
 ## Execution notes
 
+- 2026-06-29 #6964 terminal-agents research follow-up: the Codex tool-layer
+  study landed at `docs/research/terminal-agents/codex.md`, matching the
+  #6953-#6956 report format. The report studies `openai/codex`
+  `ccdfb4f342a2e659be7ab878309cc5d81683d737`, with concrete source paths for
+  tool planning, schemas, dispatch, unified exec, `apply_patch`, permissions,
+  sandboxing, approval policy, streaming, and what Khala desktop/CLI should
+  adopt or avoid.
 - 2026-06-27 #6316 closeability audit at public commit
   `4b02c1c1016d93d6482d8597c71a28d6aa160d7e`: live GitHub issue state shows
   #6316 still open. The serving blockers checked for this audit are also open:
