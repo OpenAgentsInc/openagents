@@ -1213,10 +1213,32 @@ const historyDayNumber = (day: string): number | undefined => {
 }
 
 const historyDayFromDayNumber = (dayNumber: number): string => {
-  const epochDayNumber = historyDayNumber('1970-01-01') ?? 0
-  return new Date((dayNumber - epochDayNumber) * HISTORY_DAY_SECONDS * 1_000)
-    .toISOString()
-    .slice(0, 10)
+  const era = Math.floor(dayNumber / 146_097)
+  const dayOfEra = dayNumber - era * 146_097
+  const yearOfEra = Math.floor(
+    (dayOfEra -
+      Math.floor(dayOfEra / 1_460) +
+      Math.floor(dayOfEra / 36_524) -
+      Math.floor(dayOfEra / 146_096)) /
+      365,
+  )
+  const year = yearOfEra + era * 400
+  const dayOfYear =
+    dayOfEra -
+    (365 * yearOfEra +
+      Math.floor(yearOfEra / 4) -
+      Math.floor(yearOfEra / 100))
+  const shiftedMonth = Math.floor((5 * dayOfYear + 2) / 153)
+  const dayOfMonth =
+    dayOfYear - Math.floor((153 * shiftedMonth + 2) / 5) + 1
+  const month = shiftedMonth < 10 ? shiftedMonth + 3 : shiftedMonth - 9
+  const calendarYear = year + (month <= 2 ? 1 : 0)
+
+  return [
+    String(calendarYear).padStart(4, '0'),
+    String(month).padStart(2, '0'),
+    String(dayOfMonth).padStart(2, '0'),
+  ].join('-')
 }
 
 const recentContiguousHistorySeries = (
