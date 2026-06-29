@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-29.2'
+export const PublicProductPromisesVersion = '2026-06-29.3'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -4089,30 +4089,35 @@ export const publicProductPromisesDocument = () => {
         promiseId: 'autopilot.agent_character_creation.v1',
         productArea: 'Autopilot desktop',
         audience: ['agent', 'user', 'operator'],
-        state: 'planned',
+        state: 'yellow',
         claim:
-          'Autopilot onboarding is agent character creation: your Pylon warps in and spawns your agent into the world, you customize it, and it automatically introduces itself on the Forum and starts searching for work.',
+          'Autopilot onboarding is becoming agent character creation: your Pylon warps in, spawns your agent into the world, guides customization, prepares a permissioned Forum intro, and projects the work-search beat from real receipts.',
         safeCopy:
-          'Agent character creation is planned, in-progress design and build work (P3, issue #5738) that reframes onboarding as spawning and customizing your agent, with an automated Forum introduction and work search. It builds on the merged scene/payment/growth surfaces and the three-effect#10 W0 primitives (spawner/avatar/warp-in/bars). It is not a shipped onboarding flow.',
+          'Agent character creation now has source-level Autopilot Desktop wiring behind the character-creation flag: the onboarding projection maps real Pylon online, agent registration, identity/customize, Forum-intro readiness, and work-search/earned-sats signals into the warp-in spawn + customize beats, with tests covering incomplete, blocked, rejected, and accepted paths. It remains yellow: Forum posting is deliberately permission-gated and not automatic by surprise, and green still needs a demonstrated end-to-end onboarding receipt plus owner-reviewed receipt-first upgrade.',
         unsafeCopy:
-          'Do not say character-creation onboarding is live, that it spawns agents for real users today, or that it automatically posts to the Forum or searches for paid work for anyone yet.',
+          'Do not say character-creation onboarding is green, default-on for every user, or that it posts to the Forum without explicit agent posting permission. Do not claim the work-search beat accepts paid work or spends money automatically; it is a receipt-driven onboarding projection.',
         evidenceRefs: [
           'docs/launch/2026-06-20-agent-mmorpg-hud-autopilot-audit-and-plan.md',
+          'https://github.com/OpenAgentsInc/openagents/issues/6861',
           'https://github.com/OpenAgentsInc/openagents/issues/5730',
           'https://github.com/OpenAgentsInc/openagents/issues/5738',
+          'apps/autopilot-desktop/src/shared/character-creation-onboarding.ts',
+          'apps/autopilot-desktop/src/shared/character-creation-onboarding.test.ts',
+          'apps/autopilot-desktop/src/shared/onboarding-status.ts',
+          'apps/autopilot-desktop/src/bun/forum-work-search.ts',
           'promise:autopilot.agent_world_scene.v1',
           'promise:autopilot.desktop_gui_client.v1',
           'promise:labor.forum_work_requests.v1',
         ],
         blockerRefs: [
-          'blocker.product_promises.agent_character_creation_not_built',
-          'blocker.product_promises.agent_character_creation_auto_forum_intro_unproven',
-          'blocker.product_promises.agent_character_creation_auto_work_search_unproven',
+          'blocker.product_promises.agent_character_creation_default_on_e2e_receipt_missing',
+          'blocker.product_promises.agent_character_creation_auto_forum_intro_permissioned_receipt_missing',
+          'blocker.product_promises.agent_character_creation_green_owner_review_pending',
         ],
         verification:
-          'Planned: the P3 onboarding-as-character-creation flow (warp-in spawn, customize, automated Forum intro + work search) is design/build scope under issue #5738 in EPIC #5730, reusing the merged P0/P1/P2 scene surfaces and the three-effect#10 W0 primitives. Nothing is live. Green requires a built, tested onboarding flow that spawns and customizes a real user agent, a demonstrated automated Forum introduction and work-search step, and an owner-signed receipt-first upgrade per proof.claim_upgrade_receipts.v1.',
+          'Yellow covers the source-level character-creation projection and tests: projectCharacterCreationOnboarding turns real onboarding-status steps and chat-world Pylon scene data into Pylon online, agent-warp-in, customize, Forum-intro, and work-search beats; the Forum intro beat blocks cleanly without OPENAGENTS_AGENT_TOKEN instead of posting by surprise; and the work-search beat is accepted only after earned-sats/settlement evidence. Green requires a default-on or otherwise owner-accepted end-to-end receipt for a real new user spawning/customizing an agent, a permissioned automated Forum intro receipt, and a receipt-first owner-reviewed upgrade per proof.claim_upgrade_receipts.v1.',
         authorityBoundary:
-          'Character-creation onboarding, when built, grants no spend, payout, settlement, or moderation authority. Any automated Forum posting or work search it performs stays bound to existing agent-posting, labor-market, and approval gates and asserts no new authority on its own.',
+          'Character-creation onboarding grants no spend, payout, settlement, paid-work acceptance, or moderation authority. Forum introduction remains bound to existing agent-posting permission, and work search remains a read/projection step over existing assignment, labor-market, wallet, and settlement receipts.',
       },
       {
         ...basePromiseFields,
@@ -4462,6 +4467,7 @@ export const publicProductPromisesDocument = () => {
       'Registry 2026-06-20.56 is a marketplace.agentic_npm_module_registry.v1 de-stale pass and flips NO promise state. The inert source-level agentic-npm resolver + verification-on-compose core already exists in agentic-npm-composition-runtime.ts with tests: it resolves dependency closures, gates modules on exact-trace/composition/link verification, checks required interfaces, detects missing modules/cycles, and emits a public-safe plan digest. Therefore the broad blocker.product_promises.agentic_npm_module_composition_runtime_missing is replaced with blocker.product_promises.agentic_npm_live_registry_install_use_runtime_missing. The promise remains planned: no public registry, package discovery, install/uninstall lifecycle, execution, metering, billing, attribution, rev-share, sale receipt, or settlement exists.',
       'Registry 2026-06-28.2 is a marketplace.agentic_npm_module_registry.v1 runtime-core pass and flips NO promise state. The source-level runtime now supports public-safe module publication into a registry store, discovery, deterministic dependency-closure resolution, verification-on-install, adapter-scoped invocation, and install/use evidence rows, with tests covering success and failed verification blocking. The live paid marketplace claim remains planned because authenticated self-serve publication, arbitrary package isolation policy, metering, billing, attribution, rev-share, abuse handling, sale receipts, and settlement are still not live.',
       'Registry 2026-06-28.3 is a training.ablation_system.v1 paid-dispatch receipt pass and flips NO promise state. GET /api/public/training/ablation-derisking-ledger now records one public-safe accepted paid ablation settlement receipt for assignment.public.training_ablation.wsd_schedule.one_delta_paid.v1, so paidAblationDispatchAvailable=true, paidAblationCount=1, and acceptedVerdictCount=1. This clears blocker.product_promises.paid_ablation_dispatch_missing, but the promise stays planned on seeded_ablation_replication_missing plus owner_signed_green_transition_missing. No model promotion, checkpoint mutation, broad ablation-system green claim, future spend authority, or public capability claim is created.',
+      'Registry 2026-06-29.3 advances autopilot.agent_character_creation.v1 from planned to yellow on source-level Autopilot Desktop evidence only. The character-creation projection and tests now cover warp-in spawn/customize beats from real onboarding-status and chat-world inputs, permission-gated Forum-intro readiness, and a receipt-driven work-search beat that accepts only after earned-sats/settlement evidence. This clears the stale "not built" / wholly unproven framing, but green remains blocked on a real end-to-end default-on or owner-accepted onboarding receipt, a permissioned automated Forum-intro receipt, and owner-reviewed receipt-first upgrade. No surprise Forum posting, paid-work acceptance, spend, payout, settlement, moderation, or green claim is created.',
       'Registry 2026-06-20.57 is an inference.batch_processing_jobs.v1 paid-receipt surface pass and flips NO promise state (stays planned, green count unchanged at 26). The POST /v1/inference/batches route now persists jobs to D1, and GET /api/public/inference/batch-job-receipts/{receiptRef} serves projected BatchJobCloseoutReceipts for completed jobs. This clears blocker.product_promises.inference_batch_job_paid_receipt_missing only. The promise remains planned on blocker.product_promises.inference_batch_job_surface_unbuilt: there is still no background job processing pipeline to execute workloads, store R2 results, and mark jobs completed. No batch processing workload, R2 execution payload, spend, real closeout, revenue claim, or green transition is created. Evidence: docs/launch/gemini-fleet/inference.batch_processing_jobs.v1.md.',
       'Registry 2026-06-20.58 is a business.ecommerce_workspace_pack.v1 de-stale pass and flips NO promise state (stays yellow, green count unchanged at 26). The POST /api/public/ecommerce-campaign/workspaces route already exists, seeding workspaces using the forge.template.ecommerce.inventory_campaign.v1 template, so blocker.product_promises.ecommerce_pack_self_serve_missing is cleared. The promise remains yellow on blocker.product_promises.ecommerce_pack_first_paid_delivery_receipt_missing: no active operator route to record receipts exists, and no real paid delivery receipt, attribution, revenue claim, or green transition is created. Evidence: docs/launch/gemini-fleet/business.ecommerce_workspace_pack.v1.md.',
       'Registry 2026-06-21.1 is a DE-2 cloud primitive blocker de-stale pass and flips NO promise state (cloud.primitives_suite.v1 stays planned; cloud.fine_tuning_service.v1 and cloud.sandbox_compute_service.v1 stay red; green count unchanged). Fine-tuning and sandbox still are not live sellable services, but their route scaffolds are no longer accurately described as simply unbuilt: /v1/fine_tuning/jobs and /v1/sandboxes exist behind default-off flags, with typed request surfaces, lifecycle reads, cross-account isolation, TTL/isolation controls where applicable, and a tested receipt-first cloud-metering seam. Stale unbuilt blocker refs are replaced with narrower live-service blockers: live fine-tuning intake disabled, real fine-tuning runtime unwired, live sandbox rent surface disabled, sandbox live metering/billing unwired, and suite-level fine-tuning/sandbox live-sellable-service missing. No flags are armed, no runtime adapter is wired, no pricing is live, no credit debit or settlement occurs, and no paid receipt or green transition is created. Evidence: docs/inference/2026-06-19-cloud-primitives-fine-tuning-sandbox-scaffold-advance.md and apps/openagents.com/workers/api/src/cloud/*.',

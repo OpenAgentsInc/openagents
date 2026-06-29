@@ -440,8 +440,8 @@ describe('public product promises document', () => {
       /latest stays 0\.2\.5|only published, installable Pylon|release candidate, not stable 0\.3\.0|Pylon v1\.0 is present in the monorepo as a release candidate/i,
     )
     expect(currentCopy).toContain('Pylon v1.0 has a stable source cut')
-    expect(currentCopy).toContain('Registry 2026-06-29.2')
-    expect(currentCopy).toContain('flips NO promise state')
+    expect(currentCopy).toContain('Registry 2026-06-29.3')
+    expect(currentCopy).toContain('No surprise Forum posting')
     expect(currentCopy).toContain('Khala Desktop now carries source-level')
     expect(currentCopy).toContain('maxStalenessSeconds:0')
     const codexSuccessorPromise = decoded.promises.find(
@@ -471,6 +471,35 @@ describe('public product promises document', () => {
         'apps/openagents.com/workers/api/src/inference/model-router.ts',
         'apps/openagents.com/workers/api/src/inference/model-router.test.ts',
       ]),
+    )
+    const characterCreationPromise = decoded.promises.find(
+      promise => promise.promiseId === 'autopilot.agent_character_creation.v1',
+    )
+    expect(characterCreationPromise?.state).toBe('yellow')
+    expect(characterCreationPromise?.safeCopy).toContain(
+      'source-level Autopilot Desktop wiring',
+    )
+    expect(characterCreationPromise?.safeCopy).toContain(
+      'Forum posting is deliberately permission-gated',
+    )
+    expect(characterCreationPromise?.unsafeCopy).toContain(
+      'without explicit agent posting permission',
+    )
+    expect(characterCreationPromise?.evidenceRefs).toEqual(
+      expect.arrayContaining([
+        'https://github.com/OpenAgentsInc/openagents/issues/6861',
+        'apps/autopilot-desktop/src/shared/character-creation-onboarding.ts',
+        'apps/autopilot-desktop/src/shared/character-creation-onboarding.test.ts',
+        'apps/autopilot-desktop/src/bun/forum-work-search.ts',
+      ]),
+    )
+    expect(characterCreationPromise?.blockerRefs).toEqual([
+      'blocker.product_promises.agent_character_creation_default_on_e2e_receipt_missing',
+      'blocker.product_promises.agent_character_creation_auto_forum_intro_permissioned_receipt_missing',
+      'blocker.product_promises.agent_character_creation_green_owner_review_pending',
+    ])
+    expect(characterCreationPromise?.verification).toContain(
+      'blocks cleanly without OPENAGENTS_AGENT_TOKEN',
     )
     expect(decoded.promises).toEqual(
       expect.arrayContaining([
