@@ -358,9 +358,19 @@ describe('RL-1 staging-test settlement-receipt closed loop (#5524)', () => {
       qualifyingEventKind: 'forum_tip_paid',
       receiptRef: outcome.receiptRef,
       resolution: {
+        liveSettlementRail: false,
         settlementRail: 'staging_test',
         state: 'settled',
         status: 'ok',
+      },
+      promiseGate: {
+        blockerRefs: [
+          'blocker.product_promises.referral_first_real_payout_pending',
+        ],
+        eligible: false,
+        liveSettlementRequired: true,
+        promiseRef: 'promise:sites.referral_bitcoin_stream.v1',
+        requiredSettlementRail: 'hosted_mdk',
       },
       schemaVersion: 'openagents.site_referral_payout_receipt.v1',
     })
@@ -425,6 +435,7 @@ describe('RL-1 staging-test settlement-receipt closed loop (#5524)', () => {
     ).readSiteReferralPayoutReceipt(expectedReceiptRef, '2026-06-22T12:06:00.000Z')
 
     expect(receipt?.resolution.state).toBe('settled')
+    expect(receipt?.promiseGate.eligible).toBe(false)
     expect(receipt?.receiptRef).toBe(expectedReceiptRef)
   })
 

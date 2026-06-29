@@ -24,9 +24,17 @@ const projection = (
   qualifyingEventKind: 'inference_paid_request',
   receiptRef,
   resolution: {
+    liveSettlementRail: true,
     settlementRail: 'hosted_mdk',
     state: 'settled',
     status: 'ok',
+  },
+  promiseGate: {
+    blockerRefs: [],
+    eligible: true,
+    liveSettlementRequired: true,
+    promiseRef: 'promise:sites.referral_bitcoin_stream.v1',
+    requiredSettlementRail: 'hosted_mdk',
   },
   schemaVersion: 'openagents.site_referral_payout_receipt.v1',
   sourceRefs: [
@@ -92,9 +100,17 @@ describe('public Site referral payout receipt routes', () => {
       qualifyingEventKind: 'inference_paid_request',
       receiptRef,
       resolution: {
+        liveSettlementRail: true,
         settlementRail: 'hosted_mdk',
         state: 'settled',
         status: 'ok',
+      },
+      promiseGate: {
+        blockerRefs: [],
+        eligible: true,
+        liveSettlementRequired: true,
+        promiseRef: 'promise:sites.referral_bitcoin_stream.v1',
+        requiredSettlementRail: 'hosted_mdk',
       },
       schemaVersion: 'openagents.site_referral_payout_receipt.v1',
       staleness: {

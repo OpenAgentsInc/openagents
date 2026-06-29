@@ -13,6 +13,14 @@ export type SiteReferralPayoutReceiptSettlementRail =
   | 'staging_test'
   | 'public_safe_adapter'
 
+export type SiteReferralPayoutReceiptPromiseGate = Readonly<{
+  blockerRefs: ReadonlyArray<string>
+  eligible: boolean
+  liveSettlementRequired: true
+  promiseRef: 'promise:sites.referral_bitcoin_stream.v1'
+  requiredSettlementRail: 'hosted_mdk'
+}>
+
 export type PublicSiteReferralPayoutReceiptProjection = Readonly<{
   amountSats: number
   attributionLinked: true
@@ -24,10 +32,12 @@ export type PublicSiteReferralPayoutReceiptProjection = Readonly<{
   qualifyingEventKind: string
   receiptRef: string
   resolution: Readonly<{
+    liveSettlementRail: boolean
     settlementRail: SiteReferralPayoutReceiptSettlementRail
     state: Extract<SiteReferralPayoutState, 'settled'>
     status: 'ok'
   }>
+  promiseGate: SiteReferralPayoutReceiptPromiseGate
   schemaVersion: typeof SITE_REFERRAL_PAYOUT_RECEIPT_SCHEMA_VERSION
   sourceRefs: ReadonlyArray<string>
   staleness: PublicProjectionStalenessContract
@@ -66,6 +76,19 @@ const settlementRailForReceipt = (
       ? 'staging_test'
       : 'public_safe_adapter'
 
+const promiseGateForRail = (
+  settlementRail: SiteReferralPayoutReceiptSettlementRail,
+): SiteReferralPayoutReceiptPromiseGate => ({
+  blockerRefs:
+    settlementRail === 'hosted_mdk'
+      ? []
+      : ['blocker.product_promises.referral_first_real_payout_pending'],
+  eligible: settlementRail === 'hosted_mdk',
+  liveSettlementRequired: true,
+  promiseRef: 'promise:sites.referral_bitcoin_stream.v1',
+  requiredSettlementRail: 'hosted_mdk',
+})
+
 const publicProjection = (
   row: SettledReceiptRow,
   receiptRef: string,
@@ -74,6 +97,7 @@ const publicProjection = (
   const evidenceRefs = parseJsonStringArray(row.evidence_refs_json).filter(ref =>
     isPublicSafeRef(ref),
   )
+  const settlementRail = settlementRailForReceipt(receiptRef)
 
   return {
     amountSats: Number(row.amount_sats),
@@ -87,10 +111,12 @@ const publicProjection = (
     qualifyingEventKind: row.qualifying_event_kind,
     receiptRef,
     resolution: {
-      settlementRail: settlementRailForReceipt(receiptRef),
+      liveSettlementRail: settlementRail === 'hosted_mdk',
+      settlementRail,
       state: 'settled',
       status: 'ok',
     },
+    promiseGate: promiseGateForRail(settlementRail),
     schemaVersion: SITE_REFERRAL_PAYOUT_RECEIPT_SCHEMA_VERSION,
     sourceRefs: [
       `route:/api/public/site-referral-payout-receipts/${receiptRef}`,
