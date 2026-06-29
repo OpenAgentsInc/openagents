@@ -3,13 +3,16 @@ import { describe, expect, test } from 'vitest'
 import {
   MARKETPLACE_COMPOSE_AND_LIST_PROMISE,
   MARKETPLACE_PRODUCT_COMPOSITION_SCHEMA,
+  assembleComposedProduct,
   type ComposedProductDefinition,
   buildComposedProductDefinition,
   composedProductMonetizableLayers,
   composedProductPrimitives,
   listComposedProducts,
   makeInMemoryComposedProductListingStore,
+  recordComposedProductInstallUse,
   readComposedProduct,
+  selfServeListComposedProduct,
 } from './marketplace-product-composition'
 
 const okDefinition = (
@@ -114,6 +117,68 @@ describe('compose-and-list product definition model (#5515)', () => {
       { layer: 'inference', capabilityRef: 'inference.gateway.v1' },
       { layer: 'sandbox', capabilityRef: 'cloud.sandbox.v1' },
     ])
+  })
+
+  test('assembles, self-serve lists, and records buyer install/use with builder attribution (#6882)', () => {
+    const definition = okDefinition()
+    const assembly = assembleComposedProduct(definition, {
+      assembledAt: '2026-06-29T00:00:00.000Z',
+    })
+    expect(assembly.productId).toBe(definition.productId)
+    expect(assembly.fulfillmentMode).toBe('no_spend_public_fixture')
+    expect(assembly.billingState).toBe('not_configured')
+    expect(assembly.primitiveRefs).toEqual([
+      'primitive.public.inference',
+      'primitive.public.sandbox',
+    ])
+    expect(assembly.builderAttribution).toEqual({
+      builderRef: 'agent:raynor',
+      attributionRef:
+        'attribution.public.marketplace_composed_product.prod_research_pack.1',
+      revSharePolicyRef:
+        'revshare.policy.public.marketplace_composed_product.pending_billing',
+    })
+
+    const listed = selfServeListComposedProduct(definition, assembly, {
+      listedAt: '2026-06-29T00:01:00.000Z',
+    })
+    expect(listed.definition.listingState).toBe('listed')
+    expect(listed.listingReceipt.selfServe).toBe(true)
+    expect(listed.listingReceipt.builderAttribution).toEqual(
+      assembly.builderAttribution,
+    )
+
+    const lifecycle = recordComposedProductInstallUse(
+      listed.listingReceipt,
+      {
+        buyerRef: 'buyer:public-fixture',
+        installedAt: '2026-06-29T00:02:00.000Z',
+        usedAt: '2026-06-29T00:03:00.000Z',
+      },
+    )
+    expect(lifecycle.ok).toBe(true)
+    if (lifecycle.ok) {
+      expect(lifecycle.lifecycleReceipt.installState).toBe('used')
+      expect(lifecycle.lifecycleReceipt.billingState).toBe('not_configured')
+      expect(lifecycle.lifecycleReceipt.settlementState).toBe('not_applicable')
+      expect(lifecycle.lifecycleReceipt.builderAttribution).toEqual(
+        assembly.builderAttribution,
+      )
+    }
+  })
+
+  test('install/use lifecycle requires a buyer ref', () => {
+    const definition = okDefinition()
+    const assembly = assembleComposedProduct(definition)
+    const listed = selfServeListComposedProduct(definition, assembly)
+
+    const lifecycle = recordComposedProductInstallUse(listed.listingReceipt, {
+      buyerRef: ' ',
+    })
+    expect(lifecycle.ok).toBe(false)
+    if (!lifecycle.ok) {
+      expect(lifecycle.error.reason).toContain('buyerRef')
+    }
   })
 })
 
