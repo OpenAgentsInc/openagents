@@ -50,6 +50,10 @@ describe("Khala Desktop Apple FM sidecar host", () => {
           result: {
             available: true,
             status: "ready",
+            backendKind: "apple_fm_bridge",
+            profileId: "apple-fm-local",
+            model: "apple-foundation-model",
+            capability: APPLE_FM_CAPABILITY,
             advertisedCapabilities: [APPLE_FM_CAPABILITY],
             baseUrl: "http://127.0.0.1:11435",
             callbackUrl: "http://127.0.0.1/callback",
