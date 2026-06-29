@@ -9,7 +9,9 @@ import {
   copyBoundaryPanel,
   endpointManifestPanel,
   forumStatsPanel,
-  khalaTokensServedPanel,
+  khalaTokensServedHeaderCounter,
+  khalaTokensServedHistoryChart,
+  khalaTokensServedModelMixPanel,
   nostrRelayPanel,
   pylonStatsPanel,
 } from './home'
@@ -36,7 +38,7 @@ export const view = (input: HomeViewInput): Html => {
             h.div(
               [
                 Ui.className<Message>(
-                  'flex flex-wrap items-end justify-between gap-2 border border-[#242424] bg-[#030303] p-3',
+                  'grid gap-3 border border-[#242424] bg-[#030303] p-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end',
                 ),
               ],
               [
@@ -71,21 +73,42 @@ export const view = (input: HomeViewInput): Html => {
                     ),
                   ],
                 ),
-                h.a(
+                h.div(
                   [
-                    h.Href('/'),
                     Ui.className<Message>(
-                      'border border-[#282828] bg-[#0b0b0b] px-2.5 py-2 text-[0.65rem] uppercase leading-none text-white/55 hover:border-[#444] hover:text-[#f1efe8]',
+                      'grid gap-2 sm:justify-items-end',
                     ),
                   ],
-                  ['Home'],
+                  [
+                    khalaTokensServedHeaderCounter(input.publicKhalaTokensServed),
+                    h.a(
+                      [
+                        h.Href('/'),
+                        Ui.className<Message>(
+                          'border border-[#282828] bg-[#0b0b0b] px-2.5 py-2 text-[0.65rem] uppercase leading-none text-white/55 hover:border-[#444] hover:text-[#f1efe8]',
+                        ),
+                      ],
+                      ['Home'],
+                    ),
+                  ],
                 ),
               ],
             ),
-            khalaTokensServedPanel(
-              input.publicKhalaTokensServed,
-              input.publicKhalaTokensServedHistory,
-              input.publicKhalaTokensServedModelMix,
+            h.div(
+              [
+                Ui.className<Message>(
+                  'grid gap-3 lg:grid-cols-[minmax(0,1.75fr)_minmax(18rem,0.85fr)]',
+                ),
+              ],
+              [
+                khalaTokensServedHistoryChart(
+                  input.publicKhalaTokensServedHistory,
+                  'launch-window',
+                ),
+                khalaTokensServedModelMixPanel(
+                  input.publicKhalaTokensServedModelMix,
+                ),
+              ],
             ),
             h.div(
               [

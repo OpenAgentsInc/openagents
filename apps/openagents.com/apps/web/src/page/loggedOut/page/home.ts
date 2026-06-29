@@ -970,6 +970,65 @@ export const khalaTokensServedCounter = (
   )
 }
 
+export const khalaTokensServedHeaderCounter = (
+  model: PublicKhalaTokensServedModel,
+): Html => {
+  const h = html<Message>()
+  const display = formatKhalaTokensServed(model)
+  const live = model._tag === 'PublicKhalaTokensServedLoaded'
+
+  return h.section(
+    [
+      h.DataAttribute('counter', 'khala-tokens-served'),
+      Ui.className<Message>(
+        'flex min-w-[15rem] flex-col gap-2 border border-[#242424] bg-[#050505] px-3 py-2 text-left sm:items-end sm:text-right',
+      ),
+    ],
+    [
+      h.div(
+        [
+          Ui.className<Message>(
+            'flex items-center gap-2 text-[0.62rem] uppercase leading-none tracking-[0.08em] text-white/45 sm:justify-end',
+          ),
+        ],
+        [
+          h.span(
+            [
+              h.DataAttribute('status', live ? 'live' : 'pending'),
+              Ui.className<Message>(
+                `inline-block h-1.5 w-1.5 rounded-full ${
+                  live ? 'bg-[#00c853]' : 'bg-white/30'
+                }`,
+              ),
+            ],
+            [],
+          ),
+          h.span([], ['Khala Tokens Served']),
+        ],
+      ),
+      h.p(
+        [
+          Ui.className<Message>(
+            'm-0 w-full min-w-0 max-w-full text-[1.28rem] font-semibold leading-none tabular-nums text-[#f1efe8] sm:text-[1.42rem]',
+          ),
+        ],
+        [
+          h.span(
+            [
+              h.DataAttribute('value', display),
+              h.DataAttribute('counter-display', 'khala-tokens-served'),
+              Ui.className<Message>(
+                `${motionOdometerClass} block w-full max-w-full whitespace-nowrap`,
+              ),
+            ],
+            [display],
+          ),
+        ],
+      ),
+    ],
+  )
+}
+
 // "Khala Tokens Served" history graph (#6227): a small hand-rolled SVG bar
 // chart of tokens-per-day for the last 30 days, sitting next to the live
 // counter on /stats. Public-safe: the series is bare day + sum. No chart
@@ -982,6 +1041,7 @@ export const khalaTokensServedCounter = (
 
 const HISTORY_DAY_SECONDS = 24 * 60 * 60
 const HISTORY_CHART_MAX_DAYS = 4
+const HISTORY_CHART_START_DAY = '2026-06-24'
 
 const compactNumberFormatter = new Intl.NumberFormat('en-US', {
   notation: 'compact',
@@ -1152,6 +1212,13 @@ const historyDayNumber = (day: string): number | undefined => {
   return era * 146_097 + dayOfEra
 }
 
+const historyDayFromDayNumber = (dayNumber: number): string => {
+  const epochDayNumber = historyDayNumber('1970-01-01') ?? 0
+  return new Date((dayNumber - epochDayNumber) * HISTORY_DAY_SECONDS * 1_000)
+    .toISOString()
+    .slice(0, 10)
+}
+
 const recentContiguousHistorySeries = (
   series: ReadonlyArray<PublicKhalaTokensServedHistoryPoint>,
 ): ReadonlyArray<PublicKhalaTokensServedHistoryPoint> => {
@@ -1197,6 +1264,67 @@ const recentContiguousHistorySeries = (
 
   return selected
 }
+
+const khalaLaunchHistorySeries = (
+  series: ReadonlyArray<PublicKhalaTokensServedHistoryPoint>,
+  generatedAt: string | undefined,
+  timezone: string,
+): ReadonlyArray<PublicKhalaTokensServedHistoryPoint> => {
+  const points = series
+    .map(point => ({ point, dayNumber: historyDayNumber(point.day) }))
+    .filter(
+      (
+        entry,
+      ): entry is {
+        point: PublicKhalaTokensServedHistoryPoint
+        dayNumber: number
+      } => entry.dayNumber !== undefined,
+    )
+    .sort((left, right) => left.dayNumber - right.dayNumber)
+
+  if (points.length === 0) {
+    return series
+  }
+
+  const startDayNumber = historyDayNumber(HISTORY_CHART_START_DAY)
+  const generatedAtParts = historyTimezoneParts(generatedAt, timezone)
+  const generatedAtDayNumber =
+    generatedAtParts === undefined
+      ? undefined
+      : historyDayNumber(historyDayFromTimezoneParts(generatedAtParts))
+  const latestPointDayNumber = points[points.length - 1]?.dayNumber
+  const endDayNumber =
+    generatedAtDayNumber ?? latestPointDayNumber ?? startDayNumber
+
+  if (startDayNumber === undefined || endDayNumber === undefined) {
+    return points.map(entry => entry.point)
+  }
+
+  if (endDayNumber < startDayNumber) {
+    return points.map(entry => entry.point)
+  }
+
+  const tokensByDay = new Map(
+    points.map(entry => [
+      entry.point.day,
+      Math.max(0, entry.point.tokensServed),
+    ]),
+  )
+  const selected: Array<PublicKhalaTokensServedHistoryPoint> = []
+
+  for (
+    let dayNumber = startDayNumber;
+    dayNumber <= endDayNumber;
+    dayNumber += 1
+  ) {
+    const day = historyDayFromDayNumber(dayNumber)
+    selected.push({ day, tokensServed: tokensByDay.get(day) ?? 0 })
+  }
+
+  return selected
+}
+
+type KhalaTokensServedHistoryChartMode = 'recent' | 'launch-window'
 
 type HistoryTimezoneParts = Readonly<{
   day: number
@@ -1539,6 +1667,7 @@ const historyChartBars = (
 
 export const khalaTokensServedHistoryChart = (
   model: PublicKhalaTokensServedHistoryModel,
+  mode: KhalaTokensServedHistoryChartMode = 'recent',
 ): Html =>
   M.value(model).pipe(
     M.tagsExhaustive({
@@ -1569,7 +1698,14 @@ export const khalaTokensServedHistoryChart = (
               `Daily all-demand input + output tokens served across the network in ${history.timezone}.`,
             ),
           onNonEmpty: series => {
-            const chartSeries = recentContiguousHistorySeries(series)
+            const chartSeries =
+              mode === 'launch-window'
+                ? khalaLaunchHistorySeries(
+                    series,
+                    history.generatedAt,
+                    history.timezone,
+                  )
+                : recentContiguousHistorySeries(series)
             const peakTokens = chartSeries.reduce(
               (max, point) =>
                 point.tokensServed > max ? point.tokensServed : max,

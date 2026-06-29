@@ -52,12 +52,27 @@ const sparseRecentHistory = PublicKhalaTokensServedHistory.make({
   window: '30d',
   bucket: 'day',
   timezone: 'America/Chicago',
-  generatedAt: '2026-06-26T19:20:00.000Z',
+  generatedAt: '2026-06-29T19:20:00.000Z',
   series: [
     { day: '2026-06-11', tokensServed: 7 },
-    { day: '2026-06-24', tokensServed: 14_700_000 },
-    { day: '2026-06-25', tokensServed: 73_300_000 },
     { day: '2026-06-26', tokensServed: 206_200_000 },
+    { day: '2026-06-28', tokensServed: 73_300_000 },
+    { day: '2026-06-29', tokensServed: 14_700_000 },
+  ],
+})
+
+const statsLaunchHistory = PublicKhalaTokensServedHistory.make({
+  window: '30d',
+  bucket: 'day',
+  timezone: 'America/Chicago',
+  generatedAt: '2026-06-29T19:20:00.000Z',
+  series: [
+    { day: '2026-06-24', tokensServed: 31_000 },
+    { day: '2026-06-25', tokensServed: 0 },
+    { day: '2026-06-26', tokensServed: 206_200_000 },
+    { day: '2026-06-27', tokensServed: 96_250 },
+    { day: '2026-06-28', tokensServed: 73_300_000 },
+    { day: '2026-06-29', tokensServed: 14_700_000 },
   ],
 })
 
@@ -79,6 +94,9 @@ const homeInputWithTokens = (tokensServed: number) => ({
 
 const statsInputWithModelMix = () => ({
   ...homeInputWithTokens(1_250_000),
+  publicKhalaTokensServedHistory: LoadedPublicKhalaTokensServedHistory({
+    history: statsLaunchHistory,
+  }),
   publicKhalaTokensServedModelMix: LoadedPublicKhalaTokensServedModelMix({
     mix: {
       schemaVersion: 'openagents.public_khala_model_mix.v1',
@@ -267,7 +285,7 @@ describe('Khala Tokens Served history chart (#6227)', () => {
     expect(markup).toContain('"data-day":"2026-06-23"')
   })
 
-  test('starts the compact chart at the latest contiguous daily run', () => {
+  test('renders the /stats chart from June 24 through the current Central day', () => {
     const markup = JSON.stringify(
       StatsPage.view(statsInputWithHistory(sparseRecentHistory)),
     )
@@ -277,10 +295,14 @@ describe('Khala Tokens Served history chart (#6227)', () => {
     expect(markup).toContain('"data-day":"2026-06-24"')
     expect(markup).toContain('"data-day":"2026-06-25"')
     expect(markup).toContain('"data-day":"2026-06-26"')
+    expect(markup).toContain('"data-day":"2026-06-27"')
+    expect(markup).toContain('"data-day":"2026-06-28"')
+    expect(markup).toContain('"data-day":"2026-06-29"')
+    expect(markup).toContain('2026-06-24: 0 tokens')
     expect(markup).toContain('06/24')
     expect(markup).toContain('14.7M')
     expect(markup).toContain('"data-highlight":"peak"')
-    expect(markup).toContain('Last 3 days, peak 206.2M in a day.')
+    expect(markup).toContain('Last 6 days, peak 206.2M in a day.')
   })
 
   test('aligns every day label directly under its bar and projects today to midnight', () => {
@@ -289,18 +311,18 @@ describe('Khala Tokens Served history chart (#6227)', () => {
     )
 
     expect(markup).toContain(
-      'grid-template-columns: repeat(3, minmax(0, 1fr));',
+      'grid-template-columns: repeat(6, minmax(0, 1fr));',
     )
     expect(markup).toContain('grid-rows-[9.25rem_auto]')
     expect(markup).toContain('h-[9.25rem]')
     expect(markup).toContain('"data-projection":"end-of-day"')
-    expect(markup).toContain('"data-projected-tokens":"345265116"')
+    expect(markup).toContain('"data-projected-tokens":"24613953"')
     expect(markup).toContain('repeating-linear-gradient(135deg')
-    expect(markup).toContain('EOD est. 345.3M')
+    expect(markup).toContain('EOD est. 24.6M')
     expect(markup).toContain(
-      '2026-06-26 projected by midnight: 345,265,116 tokens',
+      '2026-06-29 projected by midnight: 24,613,953 tokens',
     )
-    expect(markup).toContain('Current pace projects 345.3M by midnight.')
+    expect(markup).toContain('Current pace projects 24.6M by midnight.')
   })
 
   test('renders the same per-day curve on public /stats', () => {
@@ -311,8 +333,10 @@ describe('Khala Tokens Served history chart (#6227)', () => {
       },
       Scene.with(LoggedOut.init(HomeRoute())),
       Scene.expect(Scene.text('Network Stats')).toExist(),
+      Scene.expect(Scene.text('Khala Tokens Served')).toExist(),
       Scene.expect(Scene.text('Tokens Served / Day')).toExist(),
-      Scene.expect(Scene.text('2026-06-23: 96,250 tokens')).toExist(),
+      Scene.expect(Scene.text('2026-06-24: 31,000 tokens')).toExist(),
+      Scene.expect(Scene.text('2026-06-29: 14,700,000 tokens')).toExist(),
       Scene.expect(Scene.text('Model Family Mix')).toExist(),
       Scene.expect(Scene.text('GLM family')).toExist(),
       Scene.expect(Scene.text('Pylon-Codex')).toExist(),
