@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-29.3'
+export const PublicProductPromisesVersion = '2026-06-29.4'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -4131,31 +4131,41 @@ export const publicProductPromisesDocument = () => {
         promiseId: 'autopilot.agent_character_creation.v1',
         productArea: 'Autopilot desktop',
         audience: ['agent', 'user', 'operator'],
-        state: 'planned',
+        state: 'yellow',
         claim:
-          'Autopilot onboarding is agent character creation: your Pylon warps in and spawns your agent into the world, you customize it, and it automatically introduces itself on the Forum and starts searching for work.',
+          'Autopilot Desktop has source-level character-creation onboarding: a new Pylon warps into the scene, spawns an agent identity, projects customization progress, posts one bounded Forum introduction when agent posting credentials exist, and runs read-only work search after onboarding.',
         safeCopy:
-          'Agent character creation is planned, in-progress design and build work (P3, issues #5738/#6861) that reframes onboarding as spawning and customizing your agent, with an automated Forum introduction and work search. The closure gate is receipt-first: a built spawn/customize flow, an end-to-end automated Forum introduction receipt, and a tested automated work-search receipt. It builds on the merged scene/payment/growth surfaces and the three-effect#10 W0 primitives (spawner/avatar/warp-in/bars). It is not a shipped onboarding flow.',
+          'Agent character creation is yellow on source-level Autopilot Desktop evidence for issues #5738/#6861. The character-creation flag maps real Pylon online, agent registration, identity/customize, Forum-intro receipt, and read-only work-search receipt signals into the warp-in spawn + customize onboarding beats. The headless proof/smoke harnesses exercise fresh registration, presence, payout-readiness, assignment polling, an automated Forum self-introduction, and read-only work search against a mock Worker, while unit tests cover the projection, Forum intro, and work-search paths. This is not a green/default-on live-production claim: green still needs owner-accepted real-user receipts for the shipped onboarding flow, a permissioned Forum intro, and work-search evidence.',
         unsafeCopy:
-          'Do not say character-creation onboarding is live, that it spawns agents for real users today, or that it automatically posts to the Forum or searches for paid work for anyone yet.',
+          'Do not say character-creation onboarding is green, default-on for every user, or broadly proven in production. Do not say it posts to the Forum without persisted agent posting credentials, and do not say work search bids, accepts paid work, spends money, or settles anything automatically.',
         evidenceRefs: [
           'docs/launch/2026-06-20-agent-mmorpg-hud-autopilot-audit-and-plan.md',
           'https://github.com/OpenAgentsInc/openagents/issues/5730',
           'https://github.com/OpenAgentsInc/openagents/issues/5738',
           'https://github.com/OpenAgentsInc/openagents/issues/6861',
+          'apps/autopilot-desktop/src/shared/character-creation-onboarding.ts',
+          'apps/autopilot-desktop/src/shared/character-creation-onboarding.test.ts',
+          'apps/autopilot-desktop/src/shared/onboarding-status.ts',
+          'apps/autopilot-desktop/tests/onboarding-status.test.ts',
+          'apps/autopilot-desktop/src/bun/forum-intro.ts',
+          'apps/autopilot-desktop/tests/forum-intro.test.ts',
+          'apps/autopilot-desktop/src/bun/forum-work-search.ts',
+          'apps/autopilot-desktop/tests/forum-work-search.test.ts',
+          'apps/autopilot-desktop/scripts/auto-onboarding-headless-proof.ts',
+          'apps/autopilot-desktop/scripts/auto-onboarding-e2e-smoke.ts',
           'promise:autopilot.agent_world_scene.v1',
           'promise:autopilot.desktop_gui_client.v1',
           'promise:labor.forum_work_requests.v1',
         ],
         blockerRefs: [
-          'blocker.product_promises.agent_character_creation_not_built',
-          'blocker.product_promises.agent_character_creation_auto_forum_intro_unproven',
-          'blocker.product_promises.agent_character_creation_auto_work_search_unproven',
+          'blocker.product_promises.agent_character_creation_live_new_user_receipt_missing',
+          'blocker.product_promises.agent_character_creation_permissioned_forum_intro_receipt_missing',
+          'blocker.product_promises.agent_character_creation_green_owner_review_pending',
         ],
         verification:
-          'Planned: the P3 onboarding-as-character-creation flow (warp-in spawn, customize, automated Forum intro + work search) is design/build scope under issues #5738/#6861 in EPIC #5730, reusing the merged P0/P1/P2 scene surfaces and the three-effect#10 W0 primitives. Nothing is live. Green requires a built, tested onboarding flow that spawns and customizes a real user agent, a demonstrated automated Forum introduction, a demonstrated automated work-search step covered by tests, and a receipt-first upgrade per proof.claim_upgrade_receipts.v1.',
+          'Yellow: repository evidence now covers the source-level character-creation onboarding path. projectCharacterCreationOnboarding turns real onboarding-status steps and chat-world Pylon scene data into Pylon online, agent-warp-in, customize, Forum-intro, and work-search beats; postForumIntroduction posts one idempotent, rate-capped Forum introduction only after a persisted agent credential exists; searchForumWork performs read-only typed work-request discovery; auto-onboarding proof/smoke scripts drive the chain against a mock Worker. Green still requires a real new-user/default-on or owner-accepted canary receipt, a permissioned automated Forum-intro receipt, and owner-reviewed receipt-first upgrade per proof.claim_upgrade_receipts.v1.',
         authorityBoundary:
-          'Character-creation onboarding, when built, grants no spend, payout, settlement, or moderation authority. Any automated Forum posting or work search it performs stays bound to existing agent-posting, labor-market, and approval gates and asserts no new authority on its own.',
+          'Character-creation onboarding grants no spend, payout, settlement, paid-work acceptance, or moderation authority. Forum introduction stays bound to existing agent posting credentials, idempotency, and rate limits. Work search is read-only discovery over existing work-request projections and never bids, quotes, accepts, commits, spends, or settles.',
       },
       {
         ...basePromiseFields,
@@ -4434,6 +4444,7 @@ export const publicProductPromisesDocument = () => {
     ],
     notes: [
       `Include version ${PublicProductPromisesVersion} and the relevant promiseId when reporting a mismatch.`,
+      'Registry 2026-06-29.4 advances autopilot.agent_character_creation.v1 from planned to yellow on source-level Autopilot Desktop evidence for #6861. The desktop character-creation projection, onboarding-status projection, Forum intro module, read-only work-search module, unit tests, and headless proof/smoke harnesses now cover the warp-in spawn/customize beats, one idempotent credential-gated Forum self-introduction, and read-only work-search receipt path. Green remains blocked on owner-accepted real-user/default-on evidence, a permissioned live Forum-intro receipt, and receipt-first owner review. No broad default-on production claim, surprise Forum posting, paid-work acceptance, spend, payout, settlement, moderation, or green transition is created.',
       'Registry 2026-06-29.3 is a receipt-gate tightening pass for autopilot.agent_character_creation.v1 / #6861 and flips NO promise state. The planned character-creation promise now cites the active public issue and names the three concrete closure receipts: built spawn/customize onboarding, automated Forum self-introduction demonstrated end to end, and automated work-search covered by tests. The promise remains planned; no spawn flow, Forum posting authority, work-search automation, spend, payout, settlement, or green claim is created.',
       'The Pylon launch-promise inventory is represented one-for-one in the promise records above.',
       'Episode 199 is included with a heavy historical caveat: Claude Code-first mech-suit language is withdrawn as current public framing; current coding-agent runtime claims should point to Codex-oriented Autopilot/Probe/Pylon records.',
