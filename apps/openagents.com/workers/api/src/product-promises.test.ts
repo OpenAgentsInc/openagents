@@ -440,10 +440,46 @@ describe('public product promises document', () => {
       /latest stays 0\.2\.5|only published, installable Pylon|release candidate, not stable 0\.3\.0|Pylon v1\.0 is present in the monorepo as a release candidate/i,
     )
     expect(currentCopy).toContain('Pylon v1.0 has a stable source cut')
-    expect(currentCopy).toContain('Registry 2026-06-29.2')
+    expect(currentCopy).toContain('Registry 2026-06-29.3')
     expect(currentCopy).toContain('flips NO promise state')
     expect(currentCopy).toContain('Khala Desktop now carries source-level')
     expect(currentCopy).toContain('maxStalenessSeconds:0')
+    const agentWorldScenePromise = decoded.promises.find(
+      promise => promise.promiseId === 'autopilot.agent_world_scene.v1',
+    )
+    expect(agentWorldScenePromise?.state).toBe('yellow')
+    expect(agentWorldScenePromise?.safeCopy).toContain(
+      'intentionally flag-gated',
+    )
+    expect(agentWorldScenePromise?.verification).toContain('#7030 decision')
+    expect(agentWorldScenePromise?.blockerRefs).toEqual([
+      'blocker.product_promises.agent_world_scene_not_default_on',
+    ])
+    const paymentVisualizationPromise = decoded.promises.find(
+      promise =>
+        promise.promiseId === 'autopilot.bitcoin_payment_visualization.v1',
+    )
+    expect(paymentVisualizationPromise?.state).toBe('yellow')
+    expect(paymentVisualizationPromise?.safeCopy).toContain(
+      'intentionally default-off CHAT_WORLD_PAYMENTS',
+    )
+    expect(paymentVisualizationPromise?.verification).toContain(
+      'stale beam expiry',
+    )
+    expect(paymentVisualizationPromise?.blockerRefs).toEqual([
+      'blocker.product_promises.payment_visualization_flag_default_off',
+    ])
+    const pylonGrowthPromise = decoded.promises.find(
+      promise =>
+        promise.promiseId === 'autopilot.pylon_growth_visualization.v1',
+    )
+    expect(pylonGrowthPromise?.state).toBe('yellow')
+    expect(pylonGrowthPromise?.safeCopy).toContain(
+      'intentionally flag-gated chat-world scene',
+    )
+    expect(pylonGrowthPromise?.blockerRefs).toEqual([
+      'blocker.product_promises.pylon_growth_flag_default_off',
+    ])
     const codexSuccessorPromise = decoded.promises.find(
       promise => promise.promiseId === 'autopilot.codex_probe_pylon_successor.v1',
     )
