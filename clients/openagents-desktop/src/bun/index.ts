@@ -5,6 +5,12 @@ import { homedir } from "node:os"
 import { dirname, join, resolve } from "node:path"
 
 import {
+  codexAccountsFromOperatorStatus,
+  codexAccountsFromPylonStatus,
+  type CodexAccountResetResult,
+  type CodexAccountStatusResult,
+} from "../shared/account-status.js"
+import {
   type CodingCodexSession,
   emptyCodingStatusSummary,
   parseCodexSessionRollout,
@@ -482,6 +488,136 @@ const spawnText = async (cmd: readonly string[]): Promise<string> => {
   return stdout
 }
 
+const spawnTextChecked = async (
+  cmd: readonly string[],
+  options: { cwd?: string } = {},
+): Promise<string> => {
+  const proc = Bun.spawn({
+    cmd: [...cmd],
+    env: withExtraPath({
+      ...Bun.env,
+      PYLON_OPENAGENTS_BASE_URL: baseUrl,
+    }),
+    stderr: "pipe",
+    stdout: "pipe",
+    ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
+  })
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ])
+  if (exitCode !== 0) {
+    throw new Error(stderr.trim() || stdout.trim() || `command exited ${exitCode}`)
+  }
+  return stdout
+}
+
+const runPylonAccountStatus = async (
+  input:
+    | { readonly kind: "status" }
+    | { readonly kind: "reset"; readonly accountRef: string },
+): Promise<unknown> => {
+  const pylonAppPath = await resolvePylonAppPath()
+  const bunExecutable = resolveBunExecutable()
+  const args =
+    input.kind === "reset"
+      ? [
+          "src/index.ts",
+          "accounts",
+          "status",
+          "--account",
+          input.accountRef,
+          "--reset",
+          "--json",
+        ]
+      : ["src/index.ts", "accounts", "status", "--all", "--json"]
+  return JSON.parse(await spawnTextChecked([bunExecutable, ...args], { cwd: pylonAppPath }))
+}
+
+const fetchOperatorAccountStatus = async (): Promise<unknown> => {
+  const token = Bun.env.OPENAGENTS_AGENT_TOKEN?.trim()
+  if (!token) throw new Error("Set OPENAGENTS_AGENT_TOKEN to load OpenAgents account status.")
+  const response = await fetch(`${baseUrl.replace(/\/+$/, "")}/api/operator/accounts/status`, {
+    headers: {
+      accept: "application/json",
+      authorization: `Bearer ${token}`,
+    },
+    method: "GET",
+  })
+  if (!response.ok) throw new Error("OpenAgents could not load Codex account status right now.")
+  return response.json()
+}
+
+const observedAtFrom = (value: unknown, fallback: string): string =>
+  stringValue((value as { observedAt?: unknown }).observedAt, fallback)
+
+const codexAccountStatus = async (): Promise<CodexAccountStatusResult> => {
+  const observedAt = new Date().toISOString()
+  try {
+    const localProjection = await runPylonAccountStatus({ kind: "status" })
+    const accounts = codexAccountsFromPylonStatus(localProjection)
+    if (accounts.length > 0) {
+      return {
+        ok: true,
+        accounts,
+        observedAt: observedAtFrom(localProjection, observedAt),
+        source: "local-pylon",
+      }
+    }
+  } catch {
+    // Fall through to the owner API when the local Pylon source is unavailable.
+  }
+
+  try {
+    const operatorProjection = await fetchOperatorAccountStatus()
+    return {
+      ok: true,
+      accounts: codexAccountsFromOperatorStatus(operatorProjection),
+      observedAt: observedAtFrom(operatorProjection, observedAt),
+      source: "openagents",
+      notice: "Reset actions require a local Pylon with account status support.",
+    }
+  } catch (error) {
+    return {
+      ok: false,
+      accounts: [],
+      error: error instanceof Error ? error.message : String(error),
+      observedAt,
+      source: "local-pylon",
+    }
+  }
+}
+
+const codexAccountReset = async (
+  accountRef: string,
+): Promise<CodexAccountResetResult> => {
+  const observedAt = new Date().toISOString()
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/.test(accountRef)) {
+    return {
+      ok: false,
+      error: "Account reset requires a valid local Codex account ref.",
+      observedAt,
+    }
+  }
+  try {
+    const projection = await runPylonAccountStatus({ kind: "reset", accountRef })
+    const accounts = codexAccountsFromPylonStatus(projection)
+    return {
+      ok: true,
+      account: accounts.find(account => account.accountRef === accountRef) ?? null,
+      accounts,
+      observedAt: observedAtFrom(projection, observedAt),
+    }
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+      observedAt,
+    }
+  }
+}
+
 const codingStatus = async (): Promise<CodingStatusResult> => {
   const observedAt = new Date().toISOString()
   const home = supervisorHome()
@@ -571,6 +707,8 @@ const rpc = BrowserView.defineRPC<OpenAgentsDesktopRPCSchema>({
   maxRequestTime: OPENAGENTS_DESKTOP_RPC_MAX_REQUEST_TIME_MS,
   handlers: {
     requests: {
+      codexAccountReset,
+      codexAccountStatus,
       codingStatus,
       createPylon,
       async pylonStatus() {

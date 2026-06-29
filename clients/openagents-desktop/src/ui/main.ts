@@ -1,6 +1,12 @@
 import { Electroview } from "electrobun/view"
 
 import {
+  type CodexAccountStatusResult,
+  type DesktopCodexAccount,
+  type DesktopCodexAccountReadiness,
+  OPENAGENTS_DESKTOP_ACCOUNT_POLL_INTERVAL_MS,
+} from "../shared/account-status"
+import {
   type CodingCodexSession,
   OPENAGENTS_DESKTOP_CODING_POLL_INTERVAL_MS,
   type CodingStatusResult,
@@ -55,6 +61,16 @@ const codingMetricCodex = requireElement<HTMLElement>("#coding-metric-codex")
 const codingMetricBurning = requireElement<HTMLElement>("#coding-metric-burning")
 const codingMetricKhala = requireElement<HTMLElement>("#coding-metric-khala")
 const codingMetricReady = requireElement<HTMLElement>("#coding-metric-ready")
+const codingAccountsSummary = requireElement<HTMLElement>(
+  "#coding-accounts-summary",
+)
+const codingAccountsRecheck = requireElement<HTMLButtonElement>(
+  "#coding-accounts-recheck",
+)
+const codingAccountsList = requireElement<HTMLElement>("#coding-accounts-list")
+const codingAccountsActionStatus = requireElement<HTMLElement>(
+  "#coding-accounts-action-status",
+)
 const codingActiveList = requireElement<HTMLElement>("#coding-active-list")
 const codingList = requireElement<HTMLElement>("#coding-list")
 const codingTranscriptTitle = requireElement<HTMLElement>(
@@ -115,6 +131,155 @@ const formatRelativeTimestamp = (value: string | null): string => {
   const hours = Math.round(minutes / 60)
   if (hours < 48) return `${formatCount(hours)}h ago`
   return `${formatCount(Math.round(hours / 24))}d ago`
+}
+
+const formatPercent = (value: number | null): string =>
+  value === null
+    ? "-"
+    : `${Math.max(0, Math.min(100, value)).toFixed(value % 1 === 0 ? 0 : 1)}%`
+
+const readinessLabel = (value: DesktopCodexAccountReadiness): string => {
+  switch (value) {
+    case "ready":
+      return "ready"
+    case "credentials_missing":
+      return "credentials missing"
+    case "credentials_revoked":
+      return "credentials revoked"
+    case "disabled_by_config":
+      return "disabled"
+    case "platform_unsupported":
+      return "unsupported"
+    case "rate_limited":
+      return "rate limited"
+    case "sdk_missing":
+      return "SDK missing"
+    case "usage_limited":
+      return "usage limited"
+    case "unknown":
+      return "unknown"
+  }
+}
+
+const accountResetLabel = (account: DesktopCodexAccount): string => {
+  if (account.resetAt !== null) return `Reset ${formatTimestamp(account.resetAt, null)}`
+  const windowReset = account.windows.find(window => window.resetAt !== null)?.resetAt ?? null
+  return windowReset === null ? "No reset time" : `Window ${formatTimestamp(windowReset, null)}`
+}
+
+const accountUsageLabel = (account: DesktopCodexAccount): string => {
+  const windows = account.windows
+    .slice(0, 2)
+    .map(window => `${window.label} ${formatPercent(window.usedPercent)}`)
+  if (windows.length > 0) return windows.join(" · ")
+  if (account.totalTokens !== null) return `${formatCount(account.totalTokens)} tokens`
+  return "No usage window"
+}
+
+let isRecheckingAccounts = false
+let resettingAccountRef: string | null = null
+
+const setAccountActionStatus = (value: string): void => {
+  codingAccountsActionStatus.textContent = value
+}
+
+const codexAccountRow = (account: DesktopCodexAccount): HTMLElement => {
+  const row = document.createElement("article")
+  row.className = "coding-account-row"
+  row.dataset.state =
+    account.readiness === "ready"
+      ? "ready"
+      : account.readiness === "rate_limited" || account.readiness === "usage_limited"
+        ? "limited"
+        : "blocked"
+
+  const identity = document.createElement("div")
+  identity.className = "coding-account-identity"
+
+  const title = document.createElement("strong")
+  title.textContent = account.accountRef ?? account.accountRefHash
+
+  const meta = document.createElement("span")
+  meta.textContent = [
+    accountUsageLabel(account),
+    accountResetLabel(account),
+    account.manualResetsRemaining === null
+      ? null
+      : `${formatCount(account.manualResetsRemaining)} manual resets`,
+  ]
+    .filter((value): value is string => value !== null)
+    .join(" · ")
+
+  identity.append(title, meta)
+
+  const readiness = document.createElement("span")
+  readiness.className = "coding-account-readiness"
+  readiness.textContent = readinessLabel(account.readiness)
+
+  const action = document.createElement("button")
+  action.className = "coding-account-action"
+  action.type = "button"
+  action.textContent = account.resetAvailable ? "Reset" : "Reset unavailable"
+  action.disabled = !account.resetAvailable || resettingAccountRef !== null
+  action.hidden = !account.resetSupported
+  const localAccountRef = account.accountRef
+  if (localAccountRef !== null) {
+    action.addEventListener("click", () => {
+      if (!account.resetAvailable || resettingAccountRef !== null) return
+      resettingAccountRef = localAccountRef
+      setAccountActionStatus(`Resetting ${localAccountRef}...`)
+      void rpc.request
+        .codexAccountReset(localAccountRef)
+        .then(result => {
+          if (result.ok) {
+            setAccountActionStatus(`${localAccountRef} reset rechecked.`)
+            renderCodexAccountStatus({
+              ok: true,
+              accounts: result.accounts,
+              observedAt: result.observedAt,
+              source: "local-pylon",
+            })
+            return
+          }
+          setAccountActionStatus(`Could not reset ${localAccountRef}: ${result.error}`)
+        })
+        .catch(error => {
+          setAccountActionStatus(
+            `Could not reset ${localAccountRef}: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          )
+        })
+        .finally(() => {
+          resettingAccountRef = null
+          void loadCodexAccountStatus()
+        })
+    })
+  }
+
+  row.append(identity, readiness, action)
+  return row
+}
+
+const renderCodexAccountStatus = (result: CodexAccountStatusResult): void => {
+  const readyCount = result.accounts.filter(account => account.readiness === "ready").length
+  const limitedCount = result.accounts.filter(account =>
+    account.readiness === "rate_limited" || account.readiness === "usage_limited",
+  ).length
+  codingAccountsSummary.textContent = result.ok
+    ? `${formatCount(readyCount)} ready · ${formatCount(limitedCount)} limited`
+    : result.error
+  codingAccountsList.replaceChildren()
+  if (result.accounts.length === 0) {
+    const empty = document.createElement("div")
+    empty.className = "coding-empty"
+    empty.textContent = result.ok
+      ? result.notice ?? "No Codex accounts reported yet."
+      : result.error
+    codingAccountsList.append(empty)
+    return
+  }
+  codingAccountsList.append(...result.accounts.map(codexAccountRow))
 }
 
 const pylonIsOnline = (pylon: DesktopPylon): boolean =>
