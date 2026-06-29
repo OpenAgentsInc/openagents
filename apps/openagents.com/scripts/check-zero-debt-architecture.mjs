@@ -323,11 +323,12 @@ const budgetChecks = [
     // +1 (93 -> 94) for the marketplace work-class catalog surface
     // (marketplace-work-class-catalog-routes.ts,
     // autopilot.control_center_fanout_marketplace.v1, yellow): a read-only
-    // registry projection of the listable marketplace work classes that always
-    // reports the still-uncleared plugin-marketplace-beyond-code_task blocker and
-    // clears nothing. It returns `Effect.Effect<Response>` like the sibling
-    // public read handlers. Ratchet back down when these public-projection
-    // handlers are extracted behind shared route mappers.
+    // registry projection of the listable marketplace work classes, including
+    // the live non-code `data_labeling` class that clears the
+    // plugin-marketplace-beyond-code_task blocker at the catalog/planner level
+    // while keeping the promise yellow. It returns `Effect.Effect<Response>` like
+    // the sibling public read handlers. Ratchet back down when these
+    // public-projection handlers are extracted behind shared route mappers.
     // +1 (94 -> 95) for the OpenAI-compatible single-model retrieve dispatcher
     // (inference/models-routes.ts, inference.gateway_credits_business.v1, red):
     // routeModelRetrieveRequest dispatches the path-param GET /v1/models/{model}

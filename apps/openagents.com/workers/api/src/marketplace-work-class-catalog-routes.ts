@@ -2,13 +2,14 @@
 // (promise autopilot.control_center_fanout_marketplace.v1, yellow).
 //
 // HONESTY / SCOPE: this route exposes the catalog projection unchanged. It is
-// ALWAYS honest: `inert: true`, `promiseState: 'yellow'`, the single live work
-// class (`code_task`), and the still-uncleared plugin-marketplace-beyond-code_task
-// blocker. There is NO flag and NO store to arm here because the catalog makes no
-// live claim of its own — `code_task` is the only live class and
+// ALWAYS honest: `inert: false`, `promiseState: 'yellow'`, the live work
+// classes (`code_task` and `data_labeling`), and no uncleared
+// plugin-marketplace-beyond-code_task blocker. There is NO flag and NO store to
+// arm here because the catalog itself only declares typed work-class contracts;
 // `assertCatalogInvariants` (called inside the projection) throws rather than let
-// any plugin class silently flip live. This route lists nothing executable; it is
-// purely a read-only registry view. Read-only (GET only).
+// a misedit silently over-claim live fanout support. This route lists no market
+// job, opens no escrow, and moves no money; it is purely a read-only registry
+// view. Read-only (GET only).
 
 import { Effect } from 'effect'
 
