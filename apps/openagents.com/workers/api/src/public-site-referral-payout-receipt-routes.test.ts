@@ -21,6 +21,24 @@ const projection = (
   ],
   generatedAt: '2026-06-20T00:01:00.000Z',
   policyRefs: ['policy.site_referral_payout.v1'],
+  proofChain: {
+    attribution: {
+      linked: true,
+      source: 'consume_once_referral_attribution',
+    },
+    eligibility: {
+      source: 'site_referral_payout_ledger_entries',
+      state: 'recorded',
+    },
+    paidEvent: {
+      kind: 'inference_paid_request',
+      source: 'qualifying_event_kind',
+    },
+    settlement: {
+      receiptRef,
+      state: 'settled',
+    },
+  },
   qualifyingEventKind: 'inference_paid_request',
   receiptRef,
   resolution: {
@@ -89,6 +107,24 @@ describe('public Site referral payout receipt routes', () => {
     expect(body.receipt).toMatchObject({
       attributionLinked: true,
       generatedAt: '2026-06-20T00:01:00.000Z',
+      proofChain: {
+        attribution: {
+          linked: true,
+          source: 'consume_once_referral_attribution',
+        },
+        eligibility: {
+          source: 'site_referral_payout_ledger_entries',
+          state: 'recorded',
+        },
+        paidEvent: {
+          kind: 'inference_paid_request',
+          source: 'qualifying_event_kind',
+        },
+        settlement: {
+          receiptRef,
+          state: 'settled',
+        },
+      },
       qualifyingEventKind: 'inference_paid_request',
       receiptRef,
       resolution: {

@@ -355,6 +355,24 @@ describe('RL-1 staging-test settlement-receipt closed loop (#5524)', () => {
     expect(receipt).toMatchObject({
       amountSats: fed.entry.amountSats,
       attributionLinked: true,
+      proofChain: {
+        attribution: {
+          linked: true,
+          source: 'consume_once_referral_attribution',
+        },
+        eligibility: {
+          source: 'site_referral_payout_ledger_entries',
+          state: 'recorded',
+        },
+        paidEvent: {
+          kind: 'forum_tip_paid',
+          source: 'qualifying_event_kind',
+        },
+        settlement: {
+          receiptRef: outcome.receiptRef,
+          state: 'settled',
+        },
+      },
       qualifyingEventKind: 'forum_tip_paid',
       receiptRef: outcome.receiptRef,
       resolution: {

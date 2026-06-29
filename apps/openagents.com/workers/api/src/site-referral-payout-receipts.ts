@@ -21,6 +21,24 @@ export type PublicSiteReferralPayoutReceiptProjection = Readonly<{
   evidenceRefs: ReadonlyArray<string>
   generatedAt: string
   policyRefs: ReadonlyArray<string>
+  proofChain: Readonly<{
+    attribution: Readonly<{
+      linked: true
+      source: 'consume_once_referral_attribution'
+    }>
+    eligibility: Readonly<{
+      source: 'site_referral_payout_ledger_entries'
+      state: 'recorded'
+    }>
+    paidEvent: Readonly<{
+      kind: string
+      source: 'qualifying_event_kind'
+    }>
+    settlement: Readonly<{
+      receiptRef: string
+      state: 'settled'
+    }>
+  }>
   qualifyingEventKind: string
   receiptRef: string
   resolution: Readonly<{
@@ -84,6 +102,24 @@ const publicProjection = (
     evidenceRefs,
     generatedAt,
     policyRefs: parseJsonStringArray(row.policy_refs_json),
+    proofChain: {
+      attribution: {
+        linked: true,
+        source: 'consume_once_referral_attribution',
+      },
+      eligibility: {
+        source: 'site_referral_payout_ledger_entries',
+        state: 'recorded',
+      },
+      paidEvent: {
+        kind: row.qualifying_event_kind,
+        source: 'qualifying_event_kind',
+      },
+      settlement: {
+        receiptRef,
+        state: 'settled',
+      },
+    },
     qualifyingEventKind: row.qualifying_event_kind,
     receiptRef,
     resolution: {
