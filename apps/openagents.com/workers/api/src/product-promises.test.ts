@@ -440,10 +440,38 @@ describe('public product promises document', () => {
       /latest stays 0\.2\.5|only published, installable Pylon|release candidate, not stable 0\.3\.0|Pylon v1\.0 is present in the monorepo as a release candidate/i,
     )
     expect(currentCopy).toContain('Pylon v1.0 has a stable source cut')
-    expect(currentCopy).toContain('Registry 2026-06-29.2')
+    expect(currentCopy).toContain('Registry 2026-06-29.3')
     expect(currentCopy).toContain('flips NO promise state')
     expect(currentCopy).toContain('Khala Desktop now carries source-level')
     expect(currentCopy).toContain('maxStalenessSeconds:0')
+    const multiplayerWorldPromise = decoded.promises.find(
+      promise => promise.promiseId === 'world.multiplayer_agent_world.v1',
+    )
+    expect(multiplayerWorldPromise?.state).toBe('planned')
+    expect(multiplayerWorldPromise?.blockerRefs).not.toContain(
+      'blocker.product_promises.multiplayer_world_worlddb_client_unshipped',
+    )
+    expect(multiplayerWorldPromise?.blockerRefs).toEqual(
+      expect.arrayContaining([
+        'blocker.product_promises.multiplayer_world_not_built',
+        'blocker.product_promises.multiplayer_world_walkable_navigation_unbuilt',
+        'blocker.product_promises.multiplayer_world_live_avatar_rendering_unproven',
+      ]),
+    )
+    expect(multiplayerWorldPromise?.evidenceRefs).toEqual(
+      expect.arrayContaining([
+        'apps/openagents-world/src/commands.test.ts',
+        'apps/openagents-world/src/subscriptions.test.ts',
+        'packages/world-client/src/index.test.ts',
+        'packages/world-contract/src/index.test.ts',
+      ]),
+    )
+    expect(multiplayerWorldPromise?.safeCopy).toContain(
+      'WorldReadModel with avatar position projection tests',
+    )
+    expect(multiplayerWorldPromise?.safeCopy).toContain(
+      'This is not yet a shipped walkable multiplayer world',
+    )
     const codexSuccessorPromise = decoded.promises.find(
       promise => promise.promiseId === 'autopilot.codex_probe_pylon_successor.v1',
     )
