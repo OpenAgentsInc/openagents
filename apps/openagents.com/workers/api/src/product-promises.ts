@@ -1942,7 +1942,7 @@ export const publicProductPromisesDocument = () => {
         claim:
           'An owner who verifies agent ownership with an X verification tweet can become eligible for a promotional 1000-sat reward.',
         safeCopy:
-          'Verified X owner claims record a 1000-sat reward eligibility row in a bounded campaign ledger with anti-Sybil dedupe (one reward per X account and per challenge) and a campaign budget cap. Eligibility, operator-approved dispatch, treasury dispatch, and settlement are separate states. The Worker-side dispatcher is implemented behind TREASURY_DISPATCH_ENABLED=false by default with per-run and per-day caps, pending-payment polling, and public-safe status stats. No reward has completed a live dispatch smoke yet.',
+          'Verified X owner claims record a 1000-sat reward eligibility row in a bounded campaign ledger with anti-Sybil dedupe (one reward per X account and per challenge) and a campaign budget cap. Eligibility, operator-approved dispatch, treasury dispatch, and settlement are separate states. The Worker-side dispatcher is implemented behind TREASURY_DISPATCH_ENABLED=false by default with BOLT12-only recipient resolution, per-run and per-day caps, pending-payment polling, public-safe status stats, and smoke gates for candidate, preflight, dispatch outcome, settlement evidence, settled receipt audit, and transition-request assembly. No owner-armed reward has completed a live dispatch smoke to a real receive code yet.',
         unsafeCopy:
           'Do not claim verified owners are instantly or automatically paid, do not present eligibility as spendable balance or settlement, and do not describe the promotional reward as Forum tip settlement or accepted-work payout.',
         evidenceRefs: [
@@ -1951,13 +1951,18 @@ export const publicProductPromisesDocument = () => {
           'apps/openagents.com/workers/api/migrations/0149_x_claim_reward_ledger.sql',
           'apps/openagents.com/workers/api/migrations/0164_x_claim_reward_treasury_dispatch.sql',
           'apps/openagents.com/workers/api/src/agent-owner-claim-routes.test.ts',
+          'apps/openagents.com/workers/api/src/x-claim-reward-smoke-candidate.test.ts',
+          'apps/openagents.com/workers/api/src/x-claim-reward-smoke-dispatch-outcome.test.ts',
+          'apps/openagents.com/workers/api/src/x-claim-reward-smoke-receipt-audit.test.ts',
+          'apps/openagents.com/workers/api/src/x-claim-reward-smoke-completion.test.ts',
+          'apps/openagents.com/workers/api/src/x-claim-reward-settlement-evidence.test.ts',
           'apps/openagents.com/workers/api/src/x-claim-reward-treasury-dispatcher.test.ts',
         ],
         blockerRefs: [
           'blocker.product_promises.x_claim_reward_live_dispatch_smoke_missing',
         ],
         verification:
-          'Run the agent-owner-claim reward tests and the X-claim treasury dispatcher tests: verified X claims must create eligibility with dedupe and budget refusal, dispatch transitions must be admin-gated, the dispatcher must stay flag-off by default, resolve only registered BOLT12 recipient identity, enforce caps, poll pending payments without re-paying, and redact payment material. Green requires one live operator-dispatched reward settled to a real owner receive code with public-safe receipt refs.',
+          'Run the agent-owner-claim reward tests, X-claim treasury dispatcher tests, and X-claim smoke harness tests: verified X claims must create eligibility with dedupe and budget refusal, dispatch transitions must be admin-gated, the dispatcher must stay flag-off by default, resolve only registered BOLT12 recipient identity, enforce caps, poll pending payments without re-paying, redact payment material, reject unsafe settlement evidence before persistence, and emit a transition request only after both the dispatch outcome and settled receipt audits pass. Green requires one live operator-dispatched reward settled to a real owner receive code with public-safe receipt refs and owner sign-off.',
         authorityBoundary:
           'Reward eligibility is a promotional campaign state, not Forum tip settlement, accepted-work payout, Treasury authority, or spendable balance. Dispatch requires the operator admin gate.',
       },
