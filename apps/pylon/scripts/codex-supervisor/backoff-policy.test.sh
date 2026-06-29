@@ -20,6 +20,7 @@ export SUP_PER_ACCOUNT=3
 export SUP_MAX_SLOTS=8
 export SUP_CODEX_REFUSAL_TUNE_THRESHOLD=3
 export SUP_CLAIMED_DEEP_BACKLOG_SLEEP_SECS=1
+export SUP_FAILURE_BACKOFF_ESCALATE_THRESHOLD=2
 mkdir -p "$SUP_STATE_DIR" "$SUP_BACKOFF_POLICY_DIR"
 
 # shellcheck source=backoff-policy.sh
@@ -100,6 +101,24 @@ if [ "$(sup_claimed_pick_backoff_secs 4 4 15)" = "15" ]; then
   ok "shallow/equal backlog keeps normal backoff"
 else
   bad "shallow backlog should keep normal backoff"
+fi
+
+if sup_should_escalate_failure_backoff refused 1; then
+  bad "first genuine refusal should not escalate backoff"
+else
+  ok "first genuine refusal does not escalate backoff"
+fi
+
+if sup_should_escalate_failure_backoff refused 2; then
+  ok "repeated genuine refusal escalates backoff"
+else
+  bad "repeated genuine refusal should escalate backoff"
+fi
+
+if sup_should_escalate_failure_backoff codex_agent_execution_refused 9; then
+  bad "executor refusal should not escalate general backoff"
+else
+  ok "executor refusal never escalates general backoff"
 fi
 
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
