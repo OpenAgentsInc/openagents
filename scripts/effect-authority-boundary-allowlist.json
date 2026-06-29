@@ -1,0 +1,26 @@
+{
+  "schema": "openagents.effect_authority_boundary_allowlist.v1",
+  "description": "Report-only allowlist for intentional raw authority edges. Each entry must explain why the edge is raw and what Effect or Schema boundary contains it.",
+  "entries": [
+    {
+      "ruleId": "raw-json-parse",
+      "path": "apps/openagents.com/workers/api/src/json-boundary.ts",
+      "reason": "This is the Worker named JSON boundary. Raw parse is intentionally centralized here before callers decode or narrow unknown values."
+    },
+    {
+      "ruleId": "direct-env-read",
+      "path": "apps/pylon/src/bootstrap.ts",
+      "reason": "Bootstrap is a CLI edge adapter. It accepts process env as raw input and turns it into a bounded bootstrap summary for downstream code."
+    },
+    {
+      "ruleId": "effect-run-promise-bridge",
+      "path": "apps/pylon/src/index.ts",
+      "reason": "Pylon CLI/node startup is an entry edge where Effect programs are finally bridged into Bun process execution."
+    },
+    {
+      "ruleId": "raw-fetch",
+      "path": "packages/probe/packages/runtime/src/llm/openrouter.ts",
+      "reason": "OpenRouterClientLive is the provider HTTP adapter. It wraps fetch in Effect.tryPromise, tagged errors, timeout, retry, and redacted config."
+    }
+  ]
+}
