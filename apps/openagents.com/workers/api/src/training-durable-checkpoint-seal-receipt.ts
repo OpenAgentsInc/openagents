@@ -26,14 +26,16 @@ type DurableCheckpointSealValue = typeof DurableCheckpointSeal.Type
  * emitters.
  *
  * Like those emitters, this REFUSES to fabricate a receipt: it re-runs the seal
- * predicate and throws unless the seal is durable, so a receipt can never be minted
- * for a non-content-addressed, ephemeral, under-replicated, or never-read-back
- * checkpoint. The receipt ref is derived deterministically from the window ref and
- * the checkpoint digest, so the same durable seal always maps to the same id.
+ * predicate and throws unless the seal is durable, so a receipt can never be
+ * minted for a non-content-addressed, ephemeral, under-replicated,
+ * never-read-back, or read-back-without-proof checkpoint. The receipt ref is
+ * derived deterministically from the window ref and the checkpoint digest, so the
+ * same durable seal always maps to the same id.
  *
  * It is contract-level only. Emitting a receipt here records that a recorded seal
- * satisfied the durability conditions; it grants no dispatch, settlement,
- * storage-backend, promise-state, or green-claim authority. No window has been
+ * satisfied the durability conditions and carried a read-back proof ref; it
+ * grants no dispatch, settlement, storage-backend, promise-state, or green-claim
+ * authority. No window has been
  * sealed on a real remote content-addressed checkpoint store, so the public
  * projection's `durableCheckpointSealReceiptAvailable` /
  * `remoteCheckpointStoreReadbackReceiptAvailable` flags stay false — this is the
@@ -55,7 +57,7 @@ export const DurableCheckpointSealReceipt = S.Struct({
   publicSafe: S.Literal(true),
   receiptRef: S.String,
   replicationFactor: S.Int,
-  retrievalProofRef: S.optional(S.String),
+  retrievalProofRef: S.String,
   schemaVersion: S.Literal(DurableCheckpointSealReceiptSchemaVersion),
   sizeBytes: S.Int,
   sourceRefs: S.Array(S.String),
@@ -116,6 +118,13 @@ export const buildDurableCheckpointSealReceipt = (
       reason: `A durable-checkpoint-seal receipt may only be emitted for a durable seal; this seal is ${gate.decision} (${gate.reasons.join(', ')}).`,
     })
   }
+  if (seal.retrievalProofRef === undefined) {
+    throw new DurableCheckpointSealReceiptUnsafe({
+      blockerRef: DurableCheckpointSealBlocker,
+      reason:
+        'A durable-checkpoint-seal receipt requires a read-back proof ref.',
+    })
+  }
 
   return DurableCheckpointSealReceipt.make({
     authorityBoundary: receiptAuthorityBoundary,
@@ -130,9 +139,7 @@ export const buildDurableCheckpointSealReceipt = (
       seal.checkpointDigestRef,
     ),
     replicationFactor: seal.replicationFactor,
-    ...(seal.retrievalProofRef === undefined
-      ? {}
-      : { retrievalProofRef: seal.retrievalProofRef }),
+    retrievalProofRef: seal.retrievalProofRef,
     schemaVersion: DurableCheckpointSealReceiptSchemaVersion,
     sizeBytes: seal.sizeBytes,
     sourceRefs: receiptSourceRefs,

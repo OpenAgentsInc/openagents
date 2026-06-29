@@ -448,6 +448,7 @@ describe('training run window authority', () => {
         durableCheckpointSeal: {
           checkpointDigestRef,
           replicationFactor: 1,
+          retrievalProofRef: 'receipt.training.checkpoint_readback.window.0001',
           retrievalVerified: true,
           sizeBytes: 1_048_576,
           storageClass: 'content_addressed_object_store',
@@ -463,6 +464,7 @@ describe('training run window authority', () => {
         durableCheckpointSeal: {
           checkpointDigestRef,
           replicationFactor: 2,
+          retrievalProofRef: 'receipt.training.checkpoint_readback.window.other',
           retrievalVerified: true,
           sizeBytes: 1_048_576,
           storageClass: 'content_addressed_object_store',
@@ -470,6 +472,21 @@ describe('training run window authority', () => {
         },
       }),
       /must match the sealed windowRef/,
+    )
+    expectSealValidationError(
+      sealAttempt({
+        ...validSealMetadata,
+        checkpointDigestRef,
+        durableCheckpointSeal: {
+          checkpointDigestRef,
+          replicationFactor: 2,
+          retrievalVerified: true,
+          sizeBytes: 1_048_576,
+          storageClass: 'content_addressed_object_store',
+          windowRef: 'training.window.0001',
+        },
+      }),
+      /checkpoint_retrieval_proof_ref_missing/,
     )
   })
 

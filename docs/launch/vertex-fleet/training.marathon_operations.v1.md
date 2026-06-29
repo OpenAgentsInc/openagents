@@ -656,3 +656,28 @@ above — no window has been sealed on a real remote content-addressed checkpoin
 store, so no genuine receipt or feed exists to verify yet. A real remote
 checkpoint-store read-back receipt
 (`durableCheckpointRemoteReadbackReceiptAvailable`) remains unproven.
+
+## 2026-06-29 — Durable-checkpoint seal requires read-back proof refs
+
+**Blocker advanced:** `blocker.product_promises.durable_checkpoint_seal_missing`
+(NOT cleared).
+
+The durable seal predicate previously required `retrievalVerified=true`, but that
+boolean could be asserted without a public read-back proof ref. This tightens the
+contract so a checkpoint seal is durable only when the read-back/re-hash assertion
+is receipt-backed:
+
+- `evaluateDurableCheckpointSeal` now returns
+  `checkpoint_retrieval_proof_ref_missing` when `retrievalVerified=true` has no
+  `retrievalProofRef`.
+- `transitionTrainingWindowRecord` therefore blocks checkpoint-backed seal
+  transitions whose durable descriptor has no read-back proof ref.
+- `DurableCheckpointSealReceipt` now requires `retrievalProofRef`; untrusted
+  receipt objects without it fail toward not-verified instead of being admitted as
+  legacy optional-proof receipts.
+
+This is still contract-level hardening only. No R2 or other real remote
+content-addressed checkpoint store has produced a read-back-and-rehash receipt, no
+runtime emits one, and the public projection flags remain false. The promise stays
+planned and `durable_checkpoint_seal_missing` remains listed until a real remote
+store write/read/rehash receipt exists and owner-signoff handles any state change.

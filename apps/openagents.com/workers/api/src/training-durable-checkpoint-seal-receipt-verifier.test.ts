@@ -93,6 +93,13 @@ describe('durable checkpoint seal receipt verifier', () => {
     expect(verdict.receiptRef).toBeUndefined()
   })
 
+  test('fails toward not-verified for a receipt without read-back proof ref', () => {
+    const { retrievalProofRef: _ignored, ...withoutProof } = genuineReceipt()
+    const verdict = verifyUntrustedDurableCheckpointSealReceipt(withoutProof)
+    expect(verdict.verified).toBe(false)
+    expect(verdict.reasons).toEqual(['receipt_malformed'])
+  })
+
   test('fails toward not-verified for a forged outcome that does not decode', () => {
     const verdict = verifyUntrustedDurableCheckpointSealReceipt({
       ...genuineReceipt(),

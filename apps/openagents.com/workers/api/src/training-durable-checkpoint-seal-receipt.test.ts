@@ -53,11 +53,11 @@ describe('durable checkpoint seal receipt emitter', () => {
     ).toBe(buildDurableCheckpointSealReceipt(durableSeal()).receiptRef)
   })
 
-  test('omits the retrieval proof ref when the descriptor has none', () => {
+  test('refuses to emit when read-back verification has no proof ref', () => {
     const { retrievalProofRef: _ignored, ...withoutProof } = durableSeal()
-    const receipt = buildDurableCheckpointSealReceipt(withoutProof)
-    expect(receipt.retrievalProofRef).toBeUndefined()
-    expect(receipt.outcome).toBe('seal_on_durable_checkpoint')
+    expect(() => buildDurableCheckpointSealReceipt(withoutProof)).toThrow(
+      DurableCheckpointSealReceiptUnsafe,
+    )
   })
 
   test('refuses to emit when the digest is not content-addressed', () => {

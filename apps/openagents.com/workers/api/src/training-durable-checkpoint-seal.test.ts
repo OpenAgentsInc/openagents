@@ -65,6 +65,13 @@ describe('durable checkpoint seal evaluator', () => {
     expect(gate.reasons).toContain('checkpoint_retrieval_not_verified')
   })
 
+  test('holds when read-back verification has no proof ref', () => {
+    const { retrievalProofRef: _ignored, ...sealWithoutProof } = durableSeal
+    const gate = evaluateDurableCheckpointSeal(sealWithoutProof)
+    expect(gate.durable).toBe(false)
+    expect(gate.reasons).toContain('checkpoint_retrieval_proof_ref_missing')
+  })
+
   test('a malformed descriptor fails toward hold, never toward sealing', () => {
     const gate = evaluateUntrustedDurableCheckpointSeal({
       storageClass: 'unknown_backend',

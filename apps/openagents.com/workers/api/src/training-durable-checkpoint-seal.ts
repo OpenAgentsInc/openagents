@@ -76,7 +76,7 @@ export const DurableCheckpointSeal = S.Struct({
   /**
    * True only when the seal pipeline fetched the checkpoint back from durable
    * storage and re-hashed it to `checkpointDigestRef`. Asserting durability
-   * without a read-back is not durability.
+   * without a read-back receipt is not durability.
    */
   retrievalVerified: S.Boolean,
   /** Public-safe ref to the read-back verification receipt, when present. */
@@ -99,6 +99,7 @@ export type DurableCheckpointSealReason =
   | 'storage_class_not_durable_content_addressed'
   | 'replication_factor_below_durable_minimum'
   | 'checkpoint_retrieval_not_verified'
+  | 'checkpoint_retrieval_proof_ref_missing'
   | 'seal_descriptor_malformed'
 
 export type DurableCheckpointSealGate = Readonly<{
@@ -141,6 +142,9 @@ export const evaluateDurableCheckpointSeal = (
   }
   if (!seal.retrievalVerified) {
     reasons.push('checkpoint_retrieval_not_verified')
+  }
+  if (seal.retrievalVerified && seal.retrievalProofRef === undefined) {
+    reasons.push('checkpoint_retrieval_proof_ref_missing')
   }
 
   const durable = reasons.length === 0
