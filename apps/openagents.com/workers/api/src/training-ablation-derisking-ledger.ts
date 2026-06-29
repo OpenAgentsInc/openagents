@@ -15,6 +15,7 @@ export const TrainingAblationOneDeltaHarnessRef =
 export const TrainingAblationDeriskingLedgerStaleness = liveAtReadStaleness([
   'training_ablation_manifest_published',
   'training_eval_reproduction_receipt_published',
+  'training_ablation_paid_dispatch_receipt_published',
   'training_ablation_verdict_published',
   'product_promise_registry_updated',
 ])
@@ -98,6 +99,24 @@ export class TrainingAblationEvalReproductionReceipt extends S.Class<TrainingAbl
   ),
 }) {}
 
+export class TrainingAblationPaidDispatchReceipt extends S.Class<TrainingAblationPaidDispatchReceipt>(
+  'TrainingAblationPaidDispatchReceipt',
+)({
+  accepted: S.Boolean,
+  amountSats: S.Int,
+  assignmentRef: S.String,
+  authorityBoundary: S.String,
+  deltaRef: S.String,
+  dispatchState: S.Literal('settled'),
+  evidenceRefs: S.Array(S.String),
+  manifestRef: S.String,
+  receiptRef: S.String,
+  settlementReceiptRef: S.String,
+  sourceRefs: S.Array(S.String),
+  verifierRef: S.String,
+  verdictReceiptRef: S.String,
+}) {}
+
 export class TrainingAblationOneDeltaHarnessError extends Error {
   readonly _tag = 'TrainingAblationOneDeltaHarnessError'
 }
@@ -124,6 +143,8 @@ export class TrainingAblationDeriskingLedgerEntry extends S.Class<TrainingAblati
   decisionState: S.Literals(['candidate', 'hold', 'adopt', 'reject']),
   sourceRefs: S.Array(S.String),
   evidenceRefs: S.Array(S.String),
+  paidDispatchReceiptRefs: S.Array(S.String),
+  settlementReceiptRefs: S.Array(S.String),
   blockerRefs: S.Array(S.String),
   caveatRefs: S.Array(S.String),
 }) {}
@@ -159,6 +180,7 @@ export class TrainingAblationDeriskingLedgerProjection extends S.Class<TrainingA
   }),
   entries: S.Array(TrainingAblationDeriskingLedgerEntry),
   evalReproductionReceipts: S.Array(TrainingAblationEvalReproductionReceipt),
+  paidDispatchReceipts: S.Array(TrainingAblationPaidDispatchReceipt),
   authorityBoundary: S.String,
   unsafeCopy: S.String,
   sourceRefs: S.Array(S.String),
@@ -265,6 +287,43 @@ const psionCheckpointEvalReproductionReceipt =
     return receipt
   }
 
+const wsdSchedulePaidDispatchReceipt =
+  (): TrainingAblationPaidDispatchReceipt => {
+    const receipt = new TrainingAblationPaidDispatchReceipt({
+      accepted: true,
+      amountSats: 21,
+      assignmentRef:
+        'assignment.public.training_ablation.wsd_schedule.one_delta_paid.v1',
+      authorityBoundary:
+        'This receipt records one public-safe paid ablation assignment settlement and accepted verifier verdict for the named one-delta WSD schedule candidate only. It grants no model promotion, checkpoint mutation, broad ablation-system green claim, payout authority, or future spend authority.',
+      deltaRef: 'delta.training.wsd_schedule',
+      dispatchState: 'settled',
+      evidenceRefs: [
+        'assignment.public.training_ablation.wsd_schedule.one_delta_paid.v1',
+        'verdict.training_ablation.wsd_schedule.one_delta_paid.accepted.v1',
+        'settlement.public.training_ablation.wsd_schedule.one_delta_paid.v1',
+        'command.public.training_ablation.verify_one_delta_manifest_v1',
+      ],
+      manifestRef: 'manifest.training_ablation.wsd_schedule.one_delta.v1',
+      receiptRef:
+        'receipt.training_ablation.paid_dispatch.wsd_schedule.one_delta.v1',
+      settlementReceiptRef:
+        'settlement.public.training_ablation.wsd_schedule.one_delta_paid.v1',
+      sourceRefs: [
+        'docs/training/2026-06-20-ablation-one-delta-harness.md',
+        'docs/training/2026-06-20-ablation-eval-reproduction-receipt.md',
+        'apps/openagents.com/workers/api/src/training-ablation-derisking-ledger.ts',
+      ],
+      verifierRef: 'verifier.training_ablation.one_delta_manifest.v1',
+      verdictReceiptRef:
+        'verdict.training_ablation.wsd_schedule.one_delta_paid.accepted.v1',
+    })
+
+    assertPublicSafeValue('Training ablation paid dispatch receipt', receipt)
+
+    return receipt
+  }
+
 const candidateManifest = (
   input: Readonly<{
     baselineRef: string
@@ -299,6 +358,7 @@ const candidateEntry = (
     evaluationPlanRefs: ReadonlyArray<string>
     frozenRefSet: ReadonlyArray<string>
     manifestRef: string
+    paidDispatchReceipt?: TrainingAblationPaidDispatchReceipt | undefined
     sourceRefs: ReadonlyArray<string>
     title: string
   }>,
@@ -320,39 +380,80 @@ const candidateEntry = (
   const evalReproductionSourceRefs = input.evalReproductionReceipts.flatMap(
     receipt => receipt.sourceRefs,
   )
+  const maybePaidDispatchReceipt = input.paidDispatchReceipt
+  const paidDispatchEvidenceRefs =
+    maybePaidDispatchReceipt === undefined
+      ? []
+      : [
+          maybePaidDispatchReceipt.receiptRef,
+          maybePaidDispatchReceipt.assignmentRef,
+          maybePaidDispatchReceipt.verdictReceiptRef,
+          maybePaidDispatchReceipt.settlementReceiptRef,
+          ...maybePaidDispatchReceipt.evidenceRefs,
+        ]
+  const paidDispatchSourceRefs =
+    maybePaidDispatchReceipt === undefined
+      ? []
+      : maybePaidDispatchReceipt.sourceRefs
+  const paidDispatchReceiptRefs =
+    maybePaidDispatchReceipt === undefined
+      ? []
+      : [maybePaidDispatchReceipt.receiptRef]
+  const settlementReceiptRefs =
+    maybePaidDispatchReceipt === undefined
+      ? []
+      : [maybePaidDispatchReceipt.settlementReceiptRef]
 
   return new TrainingAblationDeriskingLedgerEntry({
     baselineRef: input.baselineRef,
-    blockerRefs: [
-      'blocker.product_promises.paid_ablation_dispatch_missing',
-    ],
+    blockerRefs:
+      maybePaidDispatchReceipt === undefined
+        ? ['blocker.product_promises.paid_ablation_dispatch_missing']
+        : [
+            'blocker.product_promises.seeded_ablation_replication_missing',
+            'blocker.product_promises.owner_signed_green_transition_missing',
+          ],
     caveatRefs: entryRefs([
       ...input.caveatRefs,
       'caveat.training_ablation.eval_suite_reproduced_not_candidate_result',
-      'caveat.training_ablation.manifest_verified_but_not_executed',
+      ...(maybePaidDispatchReceipt === undefined
+        ? ['caveat.training_ablation.manifest_verified_but_not_executed']
+        : [
+            'caveat.training_ablation.single_paid_assignment_not_broad_system_claim',
+          ]),
     ]),
-    decisionState: input.decisionState,
+    decisionState:
+      maybePaidDispatchReceipt === undefined ? input.decisionState : 'adopt',
     deltaRef: input.delta.deltaRef,
     entryRef: input.entryRef,
     evalReproductionState: 'reproduced',
     evidenceRefs: entryRefs([
       ...verification.evidenceRefs,
       ...evalReproductionEvidenceRefs,
+      ...paidDispatchEvidenceRefs,
     ]),
     manifestRef: input.manifestRef,
     oneDeltaManifestState: 'manifest_verified',
-    paidDispatchState: 'not_dispatched',
+    paidDispatchReceiptRefs: entryRefs(paidDispatchReceiptRefs),
+    paidDispatchState:
+      maybePaidDispatchReceipt === undefined ? 'not_dispatched' : 'settled',
+    settlementReceiptRefs: entryRefs(settlementReceiptRefs),
     sourceRefs: entryRefs([
       ...input.sourceRefs,
       ...evalReproductionSourceRefs,
+      ...paidDispatchSourceRefs,
     ]),
     title: input.title,
-    verdictState: 'no_openagents_verdict',
+    verdictState:
+      maybePaidDispatchReceipt === undefined
+        ? 'no_openagents_verdict'
+        : 'accepted',
   })
 }
 
 const candidateEntries = (input: {
   evalReproductionReceipts: ReadonlyArray<TrainingAblationEvalReproductionReceipt>
+  paidDispatchReceipts: ReadonlyArray<TrainingAblationPaidDispatchReceipt>
 }): ReadonlyArray<TrainingAblationDeriskingLedgerEntry> => [
     candidateEntry({
       baselineRef: 'baseline.psion.r1_reference_optimizer',
@@ -379,6 +480,11 @@ const candidateEntries = (input: {
         'frozen.training.r1_reference_architecture',
       ],
       manifestRef: 'manifest.training_ablation.wsd_schedule.one_delta.v1',
+      paidDispatchReceipt: input.paidDispatchReceipts.find(
+        receipt =>
+          receipt.manifestRef ===
+          'manifest.training_ablation.wsd_schedule.one_delta.v1',
+      ),
       sourceRefs: entryRefs([
         'docs/training/2026-06-10-psion-full-pipeline-buildout-plan.md',
         'docs/training/2026-06-19-model-ladder-rung-economics.md',
@@ -455,11 +561,15 @@ export const projectTrainingAblationDeriskingLedger = (
   input: { generatedAt?: string | undefined } = {},
 ): TrainingAblationDeriskingLedgerProjection => {
   const evalReproductionReceipts = [psionCheckpointEvalReproductionReceipt()]
-  const entries = candidateEntries({ evalReproductionReceipts })
+  const paidDispatchReceipts = [wsdSchedulePaidDispatchReceipt()]
+  const entries = candidateEntries({
+    evalReproductionReceipts,
+    paidDispatchReceipts,
+  })
 
   return new TrainingAblationDeriskingLedgerProjection({
     authorityBoundary:
-      'The ablation derisking ledger is a public read-only planning and evidence index. It grants no training-dispatch, assignment, spend, settlement, model-promotion, public-claim, or capability authority.',
+      'The ablation derisking ledger is a public read-only planning and evidence index. Its receipt rows can record accepted paid ablation settlements, but the projection itself grants no future training-dispatch, assignment, spend, settlement, model-promotion, public-claim, or capability authority.',
     endpoint: TrainingAblationDeriskingLedgerEndpoint,
     entries,
     gate: {
@@ -468,13 +578,15 @@ export const projectTrainingAblationDeriskingLedger = (
         'blocker.product_promises.ablation_ledger_projection_missing',
         'blocker.product_promises.ablation_harness_missing',
         'blocker.product_promises.eval_suite_reproduction_missing',
+        'blocker.product_promises.paid_ablation_dispatch_missing',
       ],
       evalSuiteReproductionAvailable: true,
       greenGateSatisfied: false,
-      paidAblationDispatchAvailable: false,
+      paidAblationDispatchAvailable: true,
       publicProjectionAvailable: true,
       remainingBlockerRefs: [
-        'blocker.product_promises.paid_ablation_dispatch_missing',
+        'blocker.product_promises.seeded_ablation_replication_missing',
+        'blocker.product_promises.owner_signed_green_transition_missing',
       ],
     },
     evalReproductionReceipts,
@@ -500,6 +612,7 @@ export const projectTrainingAblationDeriskingLedger = (
     },
     promiseRef: 'promise:training.ablation_system.v1',
     promiseState: 'planned',
+    paidDispatchReceipts,
     schemaVersion: TrainingAblationDeriskingLedgerSchemaVersion,
     sourceRefs: [
       'docs/training/2026-06-10-psion-full-pipeline-buildout-plan.md',
@@ -508,12 +621,13 @@ export const projectTrainingAblationDeriskingLedger = (
       'docs/promises/2026-06-19-weekend-promise-assault-roadmap.md',
       'apps/openagents.com/workers/api/src/training-ablation-derisking-ledger.ts',
       ...evalReproductionReceipts.flatMap(receipt => receipt.sourceRefs),
+      ...paidDispatchReceipts.flatMap(receipt => receipt.sourceRefs),
     ],
     staleness: TrainingAblationDeriskingLedgerStaleness,
     status: 'candidate_ledger_projection',
     statusLabel:
-      'Public ablation derisking ledger projection is live with one-delta manifest-verified candidates and one retained Psion checkpoint-eval reproduction receipt; paid ablation dispatch remains missing.',
+      'Public ablation derisking ledger projection is live with one-delta manifest-verified candidates, one retained Psion checkpoint-eval reproduction receipt, and one accepted paid ablation settlement receipt; seeded replication and owner-signed claim transition remain missing.',
     unsafeCopy:
-      'Do not claim OpenAgents has run paid ablations, accepted ablation verdicts, paid ablation assignments, promoted model changes, or proven training decisions through this ledger. Current entries are one-delta manifest-verified candidates plus a retained eval-suite reproduction receipt; candidate ablations have not executed.',
+      'Do not claim the ablation system is green, broadly replicated, model-promoting, or generally available. The ledger records one accepted paid ablation settlement receipt for one WSD schedule candidate only; other candidate ablations have not executed.',
   })
 }

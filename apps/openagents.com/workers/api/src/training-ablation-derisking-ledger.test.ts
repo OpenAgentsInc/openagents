@@ -45,7 +45,7 @@ describe('training ablation derisking ledger projection', () => {
       ablationHarnessAvailable: true,
       evalSuiteReproductionAvailable: true,
       greenGateSatisfied: false,
-      paidAblationDispatchAvailable: false,
+      paidAblationDispatchAvailable: true,
       publicProjectionAvailable: true,
     })
     expect(projection.gate.clearsBlockerRefs).toContain(
@@ -57,16 +57,34 @@ describe('training ablation derisking ledger projection', () => {
     expect(projection.gate.clearsBlockerRefs).toContain(
       'blocker.product_promises.eval_suite_reproduction_missing',
     )
-    expect(projection.gate.remainingBlockerRefs).toEqual([
+    expect(projection.gate.clearsBlockerRefs).toContain(
       'blocker.product_promises.paid_ablation_dispatch_missing',
+    )
+    expect(projection.gate.remainingBlockerRefs).toEqual([
+      'blocker.product_promises.seeded_ablation_replication_missing',
+      'blocker.product_promises.owner_signed_green_transition_missing',
     ])
     expect(projection.ledgerSummary).toMatchObject({
-      acceptedVerdictCount: 0,
+      acceptedVerdictCount: 1,
       entryCount: 3,
       evalSuiteReproductionReceiptCount: 1,
-      paidAblationCount: 0,
+      paidAblationCount: 1,
       reproducedEvalCount: 3,
       verifiedManifestCount: 3,
+    })
+    expect(projection.paidDispatchReceipts[0]).toMatchObject({
+      accepted: true,
+      amountSats: 21,
+      assignmentRef:
+        'assignment.public.training_ablation.wsd_schedule.one_delta_paid.v1',
+      dispatchState: 'settled',
+      manifestRef: 'manifest.training_ablation.wsd_schedule.one_delta.v1',
+      receiptRef:
+        'receipt.training_ablation.paid_dispatch.wsd_schedule.one_delta.v1',
+      settlementReceiptRef:
+        'settlement.public.training_ablation.wsd_schedule.one_delta_paid.v1',
+      verdictReceiptRef:
+        'verdict.training_ablation.wsd_schedule.one_delta_paid.accepted.v1',
     })
     expect(projection.evalReproductionReceipts[0]).toMatchObject({
       aggregatePassRateBps: 10000,
@@ -85,11 +103,15 @@ describe('training ablation derisking ledger projection', () => {
         entry =>
           entry.manifestRef.startsWith('manifest.training_ablation.') &&
           entry.oneDeltaManifestState === 'manifest_verified' &&
-          entry.evalReproductionState === 'reproduced' &&
-          entry.paidDispatchState === 'not_dispatched' &&
-          entry.verdictState === 'no_openagents_verdict',
+          entry.evalReproductionState === 'reproduced',
       ),
     ).toBe(true)
+    expect(
+      projection.entries.filter(entry => entry.paidDispatchState === 'settled'),
+    ).toHaveLength(1)
+    expect(
+      projection.entries.filter(entry => entry.verdictState === 'accepted'),
+    ).toHaveLength(1)
     expect(
       projection.entries.every(
         entry =>
@@ -107,7 +129,9 @@ describe('training ablation derisking ledger projection', () => {
     const serialized = JSON.stringify(projection)
 
     expect(projection.authorityBoundary).toContain('grants no')
-    expect(projection.unsafeCopy).toContain('Do not claim OpenAgents has run')
+    expect(projection.unsafeCopy).toContain(
+      'Do not claim the ablation system is green',
+    )
     expect(serialized).not.toMatch(
       /wallet|invoice|preimage|payment_hash|secret|raw_prompt|private_repo|\/home\/|\/Users\//i,
     )
