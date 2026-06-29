@@ -28,6 +28,10 @@ const previewRpc = (): DesktopRpc => ({
       postPreviewRpc<Awaited<ReturnType<DesktopRpcRequests["appInfo"]>>>(
         "appInfo",
       ),
+    appleFmReadiness: () =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["appleFmReadiness"]>>
+      >("appleFmReadiness"),
   },
 })
 

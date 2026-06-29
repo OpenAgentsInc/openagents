@@ -6,6 +6,12 @@ import {
   KHALA_CODE_DESKTOP_RPC_MAX_REQUEST_TIME_MS,
   type KhalaCodeDesktopRPCSchema,
 } from "../shared/rpc.js"
+import { createAppleFmSidecarHost } from "./apple-fm-sidecar.js"
+
+// Optional on-device Apple Foundation Models sidecar (Mac/Apple-Silicon only).
+// Off by default and fails soft: readiness reports unavailability rather than
+// throwing when the FM bridge or hardware is missing.
+const appleFmSidecar = createAppleFmSidecarHost()
 
 const previewPort = (): number => {
   const parsed = Number(
@@ -51,6 +57,9 @@ const rpcRequestHandlers: KhalaCodeDesktopRPCSchema["requests"] = {
       app: "Khala Code Desktop",
       observedAt: new Date().toISOString(),
     }
+  },
+  async appleFmReadiness() {
+    return appleFmSidecar.readiness()
   },
 }
 

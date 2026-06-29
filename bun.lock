@@ -378,21 +378,6 @@
         "typescript": "catalog:",
       },
     },
-    "clients/khala-desktop": {
-      "name": "@openagentsinc/khala-desktop",
-      "version": "0.0.1",
-      "dependencies": {
-        "@openagentsinc/three-effect": "github:OpenAgentsInc/three-effect#7c6df05",
-        "effect": "catalog:",
-        "electrobun": "1.18.1",
-        "three": "0.184.0",
-      },
-      "devDependencies": {
-        "@types/three": "0.184.0",
-        "bun-types": "^1.0.0",
-        "typescript": "catalog:",
-      },
-    },
     "packages/agent-runtime-schema": {
       "name": "@openagentsinc/agent-runtime-schema",
       "version": "0.1.0",
@@ -994,8 +979,6 @@
     "@openagentsinc/khala": ["@openagentsinc/khala@workspace:clients/khala-cli"],
 
     "@openagentsinc/khala-code-desktop": ["@openagentsinc/khala-code-desktop@workspace:clients/khala-code-desktop"],
-
-    "@openagentsinc/khala-desktop": ["@openagentsinc/khala-desktop@workspace:clients/khala-desktop"],
 
     "@openagentsinc/khala-tools": ["@openagentsinc/khala-tools@workspace:packages/khala-tools"],
 

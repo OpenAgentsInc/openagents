@@ -23,7 +23,6 @@
       "apps/pylon/packages/*",
       "clients/khala-cli",
       "clients/khala-code-desktop",
-      "clients/khala-desktop",
       "clients/khala-ios/*",
       "packages/*",
       "packages/probe",
