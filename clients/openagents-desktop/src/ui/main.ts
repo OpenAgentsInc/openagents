@@ -117,6 +117,19 @@ const formatRelativeTimestamp = (value: string | null): string => {
   return `${formatCount(Math.round(hours / 24))}d ago`
 }
 
+const formatAbsoluteTimestamp = (value: string | null): string => {
+  if (value === null) return "No timestamp"
+  const date = new Date(value)
+  if (!Number.isFinite(date.getTime())) return value
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+  }).format(date)
+}
+
 const pylonIsOnline = (pylon: DesktopPylon): boolean =>
   pylon.heartbeatFresh || pylon.status.trim().toLowerCase() === "online"
 
@@ -258,23 +271,65 @@ const messageRow = (message: CodingTranscriptMessage): HTMLElement => {
   const row = document.createElement("article")
   row.className = "coding-message"
   row.dataset.role = message.role
+  row.dataset.status = message.status
 
   const heading = document.createElement("div")
   heading.className = "coding-message-heading"
 
+  const marker = document.createElement("span")
+  marker.className = "coding-message-marker"
+  marker.setAttribute("aria-hidden", "true")
+
+  const label = document.createElement("div")
+  label.className = "coding-message-label"
+
   const role = document.createElement("strong")
-  role.textContent = message.role
+  role.textContent = message.title
+
+  const kind = document.createElement("span")
+  kind.textContent = message.kind
+
+  label.append(role, kind)
+
+  const chips = document.createElement("div")
+  chips.className = "coding-message-chips"
+
+  if (message.detail !== null) {
+    const detail = document.createElement("span")
+    detail.className = "coding-message-chip"
+    detail.textContent = message.detail
+    chips.append(detail)
+  }
+
+  if (message.status !== "info") {
+    const status = document.createElement("span")
+    status.className = "coding-message-chip"
+    status.dataset.status = message.status
+    status.textContent = message.status
+    chips.append(status)
+  }
+
+  const time = document.createElement("time")
+  time.className = "coding-message-time"
+  if (message.timestamp !== null) time.dateTime = message.timestamp
+  time.textContent = formatAbsoluteTimestamp(message.timestamp)
 
   const meta = document.createElement("span")
-  meta.textContent = [
-    message.kind,
-    formatRelativeTimestamp(message.timestamp),
-  ].join(" · ")
+  meta.className = "coding-message-relative-time"
+  meta.textContent = formatRelativeTimestamp(message.timestamp)
 
-  const body = document.createElement("p")
+  const body =
+    message.role === "tool" || message.status === "error"
+      ? document.createElement("pre")
+      : document.createElement("p")
+  body.className = "coding-message-body"
   body.textContent = message.text
 
-  heading.append(role, meta)
+  const metaGroup = document.createElement("div")
+  metaGroup.className = "coding-message-meta"
+  metaGroup.append(chips, time, meta)
+
+  heading.append(marker, label, metaGroup)
   row.append(heading, body)
   return row
 }

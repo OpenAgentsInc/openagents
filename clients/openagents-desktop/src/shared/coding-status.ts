@@ -40,11 +40,16 @@ export type CodingTranscriptRole =
   | "tool"
   | "user"
 
+export type CodingTranscriptStatus = "error" | "info" | "ok" | "running"
+
 export type CodingTranscriptMessage = {
+  readonly detail: string | null
   readonly kind: string
   readonly role: CodingTranscriptRole
+  readonly status: CodingTranscriptStatus
   readonly text: string
   readonly timestamp: string | null
+  readonly title: string
 }
 
 export type CodingCodexSession = {
@@ -363,6 +368,19 @@ const truncateTranscriptText = (value: string): string => {
   return trimmed.length > 2_400 ? `${trimmed.slice(0, 2_397)}...` : trimmed
 }
 
+const transcriptMessage = (
+  message: Omit<CodingTranscriptMessage, "detail" | "status" | "title"> &
+    Partial<Pick<CodingTranscriptMessage, "detail" | "status" | "title">>,
+): CodingTranscriptMessage => ({
+  detail: message.detail ?? null,
+  kind: message.kind,
+  role: message.role,
+  status: message.status ?? "info",
+  text: message.text,
+  timestamp: message.timestamp,
+  title: message.title ?? message.kind,
+})
+
 const textFromUnknown = (value: unknown): string | null => {
   if (typeof value === "string") return value
   if (Array.isArray(value)) {
@@ -389,6 +407,16 @@ const textFromUnknown = (value: unknown): string | null => {
   )
 }
 
+const compactJsonFromUnknown = (value: unknown): string | null => {
+  if (typeof value === "string") return value
+  if (value === null || value === undefined) return null
+  try {
+    return JSON.stringify(value, null, 2)
+  } catch {
+    return null
+  }
+}
+
 const transcriptRoleFromMessageRole = (role: string | null): CodingTranscriptRole => {
   if (
     role === "assistant" ||
@@ -412,66 +440,84 @@ const transcriptMessageFromResponseItem = (
     const text = textFromUnknown(payload.content)
     if (text === null || text.trim() === "") return null
     const role = transcriptRoleFromMessageRole(stringValueFromUnknown(payload.role))
-    return {
+    return transcriptMessage({
       kind: "message",
       role,
       text: truncateTranscriptText(text),
       timestamp,
-    }
+      title: role,
+    })
   }
 
   if (type === "agent_message") {
     const text = textFromUnknown(payload.content)
     if (text === null || text.trim() === "") return null
-    return {
+    return transcriptMessage({
       kind: "agent message",
       role: "assistant",
       text: truncateTranscriptText(text),
       timestamp,
-    }
+      title: "assistant",
+    })
   }
 
   if (type === "reasoning") {
     const text = textFromUnknown(payload.summary) ?? "Reasoning"
-    return {
+    return transcriptMessage({
       kind: "reasoning",
       role: "reasoning",
       text: truncateTranscriptText(text),
       timestamp,
-    }
+      title: "reasoning",
+    })
   }
 
   if (type === "function_call" || type === "custom_tool_call") {
     const name = stringValueFromUnknown(payload.name) ?? "tool"
     const args = stringValueFromUnknown(payload.arguments) ??
-      stringValueFromUnknown(payload.input)
-    return {
+      stringValueFromUnknown(payload.input) ??
+      compactJsonFromUnknown(payload.arguments) ??
+      compactJsonFromUnknown(payload.input)
+    return transcriptMessage({
+      detail: stringValueFromUnknown(payload.call_id),
       kind: "tool call",
       role: "tool",
-      text: args === null ? name : `${name} ${truncateTranscriptText(args)}`,
+      status: "running",
+      text: args === null ? "No input captured." : truncateTranscriptText(args),
       timestamp,
-    }
+      title: name,
+    })
   }
 
   if (type === "function_call_output" || type === "custom_tool_call_output") {
-    const text = textFromUnknown(payload.output)
+    const text = textFromUnknown(payload.output) ?? compactJsonFromUnknown(payload.output)
     if (text === null || text.trim() === "") return null
-    return {
+    const isError = payload.is_error === true
+    return transcriptMessage({
+      detail: stringValueFromUnknown(payload.call_id),
       kind: "tool output",
       role: "tool",
+      status: isError ? "error" : "ok",
       text: truncateTranscriptText(text),
       timestamp,
-    }
+      title: isError ? "tool error" : "tool result",
+    })
   }
 
   if (type === "local_shell_call") {
-    const text = textFromUnknown(payload.action) ?? "shell command"
-    return {
+    const text =
+      textFromUnknown(payload.action) ??
+      compactJsonFromUnknown(payload.action) ??
+      "shell command"
+    return transcriptMessage({
+      detail: stringValueFromUnknown(payload.call_id),
       kind: "shell",
       role: "tool",
+      status: "running",
       text: truncateTranscriptText(text),
       timestamp,
-    }
+      title: "shell",
+    })
   }
 
   return null
@@ -487,12 +533,13 @@ const transcriptMessageFromEvent = (
   if (type === "user_message") {
     const text = stringValueFromUnknown(payload.message) ?? textFromUnknown(payload.text_elements)
     if (text === null || text.trim() === "") return null
-    return {
+    return transcriptMessage({
       kind: "user event",
       role: "user",
       text: truncateTranscriptText(text),
       timestamp,
-    }
+      title: "user",
+    })
   }
 
   if (type === "agent_message") {
@@ -500,12 +547,13 @@ const transcriptMessageFromEvent = (
       stringValueFromUnknown(payload.text) ??
       textFromUnknown(payload.content)
     if (text === null || text.trim() === "") return null
-    return {
+    return transcriptMessage({
       kind: "agent event",
       role: "assistant",
       text: truncateTranscriptText(text),
       timestamp,
-    }
+      title: "assistant",
+    })
   }
 
   const text =
@@ -514,12 +562,16 @@ const transcriptMessageFromEvent = (
     stringValueFromUnknown(payload.text)
   if (text === null) return null
 
-  return {
-    kind: type.replaceAll("_", " "),
+  const kind = type.replaceAll("_", " ")
+  const isError = /\berror\b|failed|failure/i.test(kind)
+  return transcriptMessage({
+    kind,
     role: "event",
+    status: isError ? "error" : "info",
     text: truncateTranscriptText(text),
     timestamp,
-  }
+    title: isError ? "error" : kind,
+  })
 }
 
 const firstTranscriptLine = (value: string): string | null => {

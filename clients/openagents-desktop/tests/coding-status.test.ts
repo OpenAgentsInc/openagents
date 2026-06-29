@@ -80,12 +80,14 @@ Pylon presence failed: OpenAgents presence request failed (401): {"error":"unaut
 {"timestamp":"2026-06-29T02:44:00.929Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Implement issue #6958"}]}}
 {"timestamp":"2026-06-29T02:45:00.000Z","type":"response_item","payload":{"type":"function_call","name":"shell","arguments":"{\\"cmd\\":\\"git status\\"}","call_id":"call-1"}}
 {"timestamp":"2026-06-29T02:45:01.000Z","type":"response_item","payload":{"type":"function_call_output","call_id":"call-1","output":"clean"}}
+{"timestamp":"2026-06-29T02:45:02.000Z","type":"response_item","payload":{"type":"reasoning","summary":[{"type":"summary_text","text":"Check the working tree before editing."}]}}
+{"timestamp":"2026-06-29T02:45:03.000Z","type":"response_item","payload":{"type":"function_call_output","call_id":"call-2","output":"permission denied","is_error":true}}
 {"timestamp":"2026-06-29T02:46:00.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Done."}]}}
 `)
 
     expect(parsed).toMatchObject({
       cwd: "/tmp/workspace-one",
-      messageCount: 4,
+      messageCount: 6,
       sessionId: "019f1143-24ae-76b1-851b-494930817124",
       source: "exec",
       title: "Implement issue #6958",
@@ -94,8 +96,36 @@ Pylon presence failed: OpenAgents presence request failed (401): {"error":"unaut
       "user",
       "tool",
       "tool",
+      "reasoning",
+      "tool",
       "assistant",
     ])
+    expect(parsed.messages[1]).toMatchObject({
+      detail: "call-1",
+      kind: "tool call",
+      status: "running",
+      text: "{\"cmd\":\"git status\"}",
+      title: "shell",
+    })
+    expect(parsed.messages[2]).toMatchObject({
+      detail: "call-1",
+      kind: "tool output",
+      status: "ok",
+      title: "tool result",
+    })
+    expect(parsed.messages[3]).toMatchObject({
+      kind: "reasoning",
+      status: "info",
+      text: "Check the working tree before editing.",
+      title: "reasoning",
+    })
+    expect(parsed.messages[4]).toMatchObject({
+      detail: "call-2",
+      kind: "tool output",
+      status: "error",
+      text: "permission denied",
+      title: "tool error",
+    })
     expect(parsed.messages.at(-1)?.text).toBe("Done.")
   })
 
