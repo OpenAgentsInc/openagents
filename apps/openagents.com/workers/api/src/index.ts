@@ -468,6 +468,7 @@ import {
   matchMirrorCodeRunByIdRequest,
 } from './inference/gym/mirrorcode-routes'
 import { makeD1MirrorCodeRunStore } from './inference/gym/mirrorcode-store'
+import { runServingRateMonitorScheduled } from './inference/serving-rate-monitor'
 import {
   handleOperatorKhalaHeadToHeadApi,
   handlePublicKhalaHeadToHeadApi,
@@ -13970,6 +13971,21 @@ export default {
             { scheduledTimeMs: event.scheduledTime },
             (line, fields) =>
               logWorkerRouteWarning('fleet_burn_stall_watchdog', {
+                line,
+                ...fields,
+              }),
+          ),
+        ),
+      ),
+      observedEffect(
+        'ServingRateMonitor.tick',
+        Effect.promise(() =>
+          runServingRateMonitorScheduled(
+            openAgentsDatabase(env),
+            env,
+            { scheduledTimeMs: event.scheduledTime },
+            (line, fields) =>
+              logWorkerRouteWarning('serving_rate_monitor', {
                 line,
                 ...fields,
               }),
