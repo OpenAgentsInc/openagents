@@ -67,6 +67,7 @@ import {
   HYDRALISK_GPT_OSS_120B_ADAPTER_ID,
   OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
   VERTEX_GEMINI_ADAPTER_ID,
+  makeGlmOwnCapacityFailover,
   selectAdapterPlan,
 } from './model-router'
 import {
@@ -3418,6 +3419,127 @@ describe('POST /v1/chat/completions', () => {
         fallbackReason: 'glm_pool_saturated',
         glmSaturationPolicy: 'queue_then_overflow',
         queueWaitMs: 0,
+      },
+    })
+    expect(recorded[0]?.usage.totalTokens).toBeGreaterThan(0)
+  })
+
+  test('GLM no-headroom admission activates paid multi-lane failover for internal stress (#6823)', async () => {
+    let glmCalls = 0
+    let geminiCalls = 0
+    let fireworksCalls = 0
+    let openrouterCalls = 0
+    const alerts: Array<{
+      message: string
+      type: string
+    }> = []
+    const recorded: Array<{
+      adapterId: string
+      requestAttribution?: unknown
+      requestMetrics?: unknown
+      usage: InferenceUsage
+    }> = []
+    const registry = new InferenceProviderRegistry()
+    registry.register({
+      ...echoAdapter(HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID),
+      complete: request => {
+        glmCalls += 1
+        return stubEchoAdapter.complete(request)
+      },
+    })
+    registry.register({
+      ...echoAdapter(VERTEX_GEMINI_ADAPTER_ID),
+      complete: request => {
+        geminiCalls += 1
+        return stubEchoAdapter.complete(request)
+      },
+    })
+    registry.register({
+      ...echoAdapter(FIREWORKS_ADAPTER_ID),
+      complete: request => {
+        fireworksCalls += 1
+        return stubEchoAdapter.complete(request)
+      },
+    })
+    registry.register({
+      ...echoAdapter(OPENROUTER_KHALA_FALLBACK_ADAPTER_ID),
+      complete: request => {
+        openrouterCalls += 1
+        return stubEchoAdapter.complete(request)
+      },
+    })
+
+    const deps = baseDeps({
+      dispatch: {
+        glmOwnCapacityFailover: makeGlmOwnCapacityFailover({
+          failureThreshold: 2,
+          onAlert: event => {
+            alerts.push({ message: event.message, type: event.type })
+          },
+        }),
+        sleep: () => Effect.void,
+      },
+      lanePlan: () => [
+        HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
+        VERTEX_GEMINI_ADAPTER_ID,
+        FIREWORKS_ADAPTER_ID,
+        OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
+      ],
+      recordTokensServed: input =>
+        Effect.sync(() => {
+          recorded.push({
+            adapterId: input.adapterId,
+            requestAttribution: input.requestAttribution,
+            requestMetrics: input.requestMetrics,
+            usage: input.usage,
+          })
+        }),
+      registry,
+      routeAdmission: {
+        reason: 'glm_aggregate_external_headroom_zero',
+        reservedExternalHeadroomAvailable: false,
+      },
+    })
+
+    const stressRequest = () =>
+      chatRequest(helloBody, {
+        headers: {
+          [INFERENCE_CLIENT_HEADER]: 'stress-harness',
+          [INFERENCE_DEMAND_KIND_HEADER]: 'internal_stress',
+          [INFERENCE_DEMAND_SOURCE_HEADER]: 'glm-saturation',
+        },
+      })
+
+    const first = await run(handleChatCompletions(stressRequest(), deps))
+    const second = await run(handleChatCompletions(stressRequest(), deps))
+
+    expect(first.status).toBe(429)
+    expect(second.status).toBe(200)
+    const body = (await second.json()) as {
+      openagents?: {
+        routing?: { fallback_reason?: string | null }
+        worker?: string
+      }
+    }
+    expect(body.openagents?.worker).toBe(VERTEX_GEMINI_ADAPTER_ID)
+    expect(body.openagents?.routing?.fallback_reason).toBe(null)
+    expect(glmCalls).toBe(0)
+    expect(geminiCalls).toBe(1)
+    expect(fireworksCalls).toBe(0)
+    expect(openrouterCalls).toBe(0)
+    expect(alerts).toEqual([
+      {
+        message: 'GLM own-capacity down — failover active',
+        type: 'activated',
+      },
+    ])
+    expect(recorded).toHaveLength(1)
+    expect(recorded[0]).toMatchObject({
+      adapterId: VERTEX_GEMINI_ADAPTER_ID,
+      requestAttribution: {
+        demandClient: 'stress-harness',
+        demandKind: 'internal_stress',
+        demandSource: 'glm-saturation',
       },
     })
     expect(recorded[0]?.usage.totalTokens).toBeGreaterThan(0)
