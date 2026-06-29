@@ -140,7 +140,7 @@ export interface KhalaWorkspaceService {
   readonly resolvePath?: (path: string) => Effect.Effect<string, KhalaToolRuntimeError>
 }
 
-export type KhalaProcessOutputChannel = "stdout" | "stderr"
+export type KhalaProcessOutputChannel = "stdin" | "stdout" | "stderr"
 
 export type KhalaProcessEvent = Readonly<{
   channel: KhalaProcessOutputChannel
@@ -156,6 +156,19 @@ export type KhalaProcessExecInput = Readonly<{
   maxCaptureBytes: number
   shell?: string
   timeoutMs: number
+}>
+
+export type KhalaProcessSessionStartInput = KhalaProcessExecInput & Readonly<{
+  khalaSessionId: string
+  yieldTimeMs: number
+}>
+
+export type KhalaProcessStdinInput = Readonly<{
+  chars?: string
+  khalaSessionId: string
+  maxCaptureBytes: number
+  sessionId: string
+  yieldTimeMs: number
 }>
 
 export type KhalaProcessExecResult = Readonly<{
@@ -176,8 +189,14 @@ export type KhalaProcessExecResult = Readonly<{
   timedOut: boolean
 }>
 
+export type KhalaProcessSessionResult = KhalaProcessExecResult & Readonly<{
+  sessionId: string
+}>
+
 export interface KhalaProcessService {
   readonly execCommand: (input: KhalaProcessExecInput) => Effect.Effect<KhalaProcessExecResult, KhalaToolRuntimeError>
+  readonly startSession: (input: KhalaProcessSessionStartInput) => Effect.Effect<KhalaProcessSessionResult, KhalaToolRuntimeError>
+  readonly writeStdin: (input: KhalaProcessStdinInput) => Effect.Effect<KhalaProcessSessionResult, KhalaToolRuntimeError>
   readonly marker: "khala.process_service"
 }
 
@@ -435,6 +454,172 @@ export const defaultKhalaProcessService: KhalaProcessService = {
       }
     }),
   marker: "khala.process_service",
+  startSession: input =>
+    Effect.promise(async () => {
+      const started = Date.now()
+      let timedOut = false
+      let cancelled = false
+      const command = input.argv !== undefined && input.argv.length > 0
+        ? [...input.argv]
+        : [input.shell ?? process.env.SHELL ?? "/bin/sh", "-lc", input.command]
+      const proc = Bun.spawn(command, {
+        cwd: input.cwd,
+        stderr: "pipe",
+        stdin: "pipe",
+        stdout: "pipe",
+      })
+      const sessionId = `khala.proc.${Date.now().toString(36)}.${Math.random().toString(36).slice(2)}`
+      const session: DefaultKhalaProcessSession = {
+        cancelled: false,
+        command: input.command,
+        createdAtMs: started,
+        events: [],
+        exitCode: null,
+        khalaSessionId: input.khalaSessionId,
+        maxCaptureBytes: input.maxCaptureBytes,
+        proc,
+        sessionId,
+        stderr: "",
+        stderrTruncated: false,
+        stdout: "",
+        stdoutTruncated: false,
+        timedOut: false,
+      }
+      defaultProcessSessions.set(sessionId, session)
+      void pumpSessionStream(session, proc.stdout, "stdout")
+      void pumpSessionStream(session, proc.stderr, "stderr")
+      void proc.exited.then(exitCode => {
+        session.exitCode = exitCode
+      }).catch(() => {
+        session.exitCode = null
+      })
+      setTimeout(() => {
+        if (session.exitCode === null) {
+          timedOut = true
+          session.timedOut = true
+          proc.kill()
+        }
+      }, input.timeoutMs)
+      await sleep(input.yieldTimeMs)
+      timedOut = session.timedOut
+      cancelled = session.cancelled
+      return sessionSnapshot(session, Date.now() - started, timedOut, cancelled)
+    }),
+  writeStdin: input =>
+    Effect.promise(async () => {
+      const session = defaultProcessSessions.get(input.sessionId)
+      if (session === undefined) throw new Error(`unknown process session: ${input.sessionId}`)
+      if (session.khalaSessionId !== input.khalaSessionId) {
+        throw new Error("process session does not belong to the active Khala session")
+      }
+      if (input.chars !== undefined && input.chars.length > 0) {
+        if (session.exitCode !== null) throw new Error(`process session is closed: ${input.sessionId}`)
+        if (input.chars === "\u0003") {
+          session.cancelled = true
+          session.proc.kill()
+        } else {
+          const stdin = session.proc.stdin as unknown as BunFileSink | undefined
+          if (stdin === undefined) throw new Error(`process session stdin is closed: ${input.sessionId}`)
+          stdin.write(input.chars)
+          stdin.flush()
+        }
+        session.events.push({ channel: "stdin", text: input.chars, timestampMs: Date.now() })
+      }
+      await sleep(input.yieldTimeMs)
+      return sessionSnapshot(
+        session,
+        Date.now() - session.createdAtMs,
+        session.timedOut,
+        session.cancelled,
+      )
+    }),
+}
+
+type DefaultKhalaProcessSession = {
+  cancelled: boolean
+  command: string
+  createdAtMs: number
+  events: KhalaProcessEvent[]
+  exitCode: number | null
+  khalaSessionId: string
+  maxCaptureBytes: number
+  proc: ReturnType<typeof Bun.spawn>
+  sessionId: string
+  stderr: string
+  stderrTruncated: boolean
+  stdout: string
+  stdoutTruncated: boolean
+  timedOut: boolean
+}
+
+type BunFileSink = Readonly<{
+  flush: () => void
+  write: (value: string | Uint8Array) => unknown
+}>
+
+const defaultProcessSessions = new Map<string, DefaultKhalaProcessSession>()
+
+async function pumpSessionStream(
+  session: DefaultKhalaProcessSession,
+  stream: ReadableStream<Uint8Array>,
+  channel: "stdout" | "stderr",
+): Promise<void> {
+  const reader = stream.getReader()
+  while (true) {
+    const read = await reader.read()
+    if (read.done) break
+    const chunk = Buffer.from(read.value).toString("utf8")
+    session.events.push({ channel, text: chunk, timestampMs: Date.now() })
+    if (channel === "stdout") {
+      if (Buffer.byteLength(session.stdout + chunk, "utf8") > session.maxCaptureBytes) {
+        session.stdoutTruncated = true
+        session.stdout = tailByBytes(`${session.stdout}${chunk}`, session.maxCaptureBytes)
+      } else {
+        session.stdout += chunk
+      }
+    } else if (Buffer.byteLength(session.stderr + chunk, "utf8") > session.maxCaptureBytes) {
+      session.stderrTruncated = true
+      session.stderr = tailByBytes(`${session.stderr}${chunk}`, session.maxCaptureBytes)
+    } else {
+      session.stderr += chunk
+    }
+  }
+}
+
+function sessionSnapshot(
+  session: DefaultKhalaProcessSession,
+  durationMs: number,
+  timedOut: boolean,
+  cancelled: boolean,
+): KhalaProcessSessionResult {
+  return {
+    cancelled,
+    durationMs,
+    events: [...session.events].sort((a, b) => a.timestampMs - b.timestampMs),
+    exitCode: session.exitCode,
+    sandbox: {
+      enforced: false,
+      kind: "none",
+      note: "No sandbox is enforced by the default local Khala process service.",
+    },
+    sessionId: session.sessionId,
+    signal: null,
+    stderr: session.stderr,
+    stderrTruncated: session.stderrTruncated,
+    stdout: session.stdout,
+    stdoutTruncated: session.stdoutTruncated,
+    timedOut,
+  }
+}
+
+function tailByBytes(text: string, maxBytes: number): string {
+  const bytes = Buffer.from(text, "utf8")
+  if (bytes.byteLength <= maxBytes) return text
+  return bytes.subarray(bytes.byteLength - maxBytes).toString("utf8")
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms))
 }
 
 async function readProcessStream(
@@ -549,6 +734,7 @@ export { createEditTool, editToolDefinition } from "./edit.js"
 export { createWriteTool, writeToolDefinition } from "./write.js"
 export { applyPatchToolDefinition, createApplyPatchTool } from "./apply-patch.js"
 export { createExecCommandTool, execCommandToolDefinition } from "./exec-command.js"
+export { createWriteStdinTool, writeStdinToolDefinition } from "./write-stdin.js"
 
 function permissionRequestFor(
   definition: KhalaToolDefinition,

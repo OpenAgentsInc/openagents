@@ -97,3 +97,12 @@ the workspace cwd, require scoped shell approval, request extra approval for
 external cwd or network-looking commands, stream stdout/stderr events for
 terminal renderers, and return a tail-oriented model preview. The default local
 service honestly reports that it does not enforce a sandbox.
+
+### `write_stdin`
+
+`write_stdin` writes to or polls an interactive process session created by
+`exec_command` with `tty: true`. It accepts `session_id`, optional `chars`,
+`yield_time_ms`, and `max_output_tokens`. Empty input polls recent captured
+output. Session ownership is bound to the active Khala session, stdin/stdout/
+stderr chunks remain ordered for terminal renderers, and oversized previews use
+private artifact refs.

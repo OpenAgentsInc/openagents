@@ -139,14 +139,25 @@ function executeExecCommandTool(
       }
 
       const result = await Effect.runPromise(
-        context.services.process.execCommand({
-          ...(args.argv === undefined ? {} : { argv: args.argv }),
-          ...(args.cancelAfterMs === undefined ? {} : { cancelAfterMs: args.cancelAfterMs }),
-          command: args.command,
-          cwd: cwd.realPath,
-          maxCaptureBytes: options.maxCaptureBytes ?? 256 * 1024,
-          timeoutMs: args.timeoutMs,
-        }),
+        args.tty
+          ? context.services.process.startSession({
+              ...(args.argv === undefined ? {} : { argv: args.argv }),
+              ...(args.cancelAfterMs === undefined ? {} : { cancelAfterMs: args.cancelAfterMs }),
+              command: args.command,
+              cwd: cwd.realPath,
+              khalaSessionId: context.invocation.sessionId,
+              maxCaptureBytes: options.maxCaptureBytes ?? 256 * 1024,
+              timeoutMs: args.timeoutMs,
+              yieldTimeMs: args.yieldTimeMs ?? 250,
+            })
+          : context.services.process.execCommand({
+              ...(args.argv === undefined ? {} : { argv: args.argv }),
+              ...(args.cancelAfterMs === undefined ? {} : { cancelAfterMs: args.cancelAfterMs }),
+              command: args.command,
+              cwd: cwd.realPath,
+              maxCaptureBytes: options.maxCaptureBytes ?? 256 * 1024,
+              timeoutMs: args.timeoutMs,
+            }),
       )
       return await renderExecResult(args, cwd.displayPath, result, context)
     } catch (error) {
@@ -161,6 +172,7 @@ async function renderExecResult(
   result: KhalaProcessExecResult,
   context: KhalaToolExecuteContext,
 ): Promise<KhalaToolResult> {
+  const sessionId = "sessionId" in result ? result.sessionId : undefined
   const stdoutBytes = Buffer.byteLength(result.stdout, "utf8")
   const stderrBytes = Buffer.byteLength(result.stderr, "utf8")
   const combined = [
@@ -181,12 +193,15 @@ async function renderExecResult(
     artifacts.push(artifact)
   }
 
-  const failed = result.exitCode !== 0 || result.timedOut || result.cancelled
+  const runningSession = sessionId !== undefined && result.exitCode === null && !result.timedOut && !result.cancelled
+  const failed = !runningSession && (result.exitCode !== 0 || result.timedOut || result.cancelled)
   const header = result.timedOut
     ? "Command timed out"
     : result.cancelled
       ? "Command cancelled"
-      : `Command exited ${result.exitCode ?? "unknown"}`
+      : runningSession
+        ? `Started session ${sessionId}`
+        : `Command exited ${result.exitCode ?? "unknown"}`
   const modelText = `${header}\n${preview.text}${preview.truncated ? "\n[exec output truncated; see private artifact]" : ""}`
   const ok = khalaToolOk({
     artifacts,
@@ -211,6 +226,7 @@ async function renderExecResult(
       stdoutBytes,
       stdoutTruncated: result.stdoutTruncated,
       timedOut: result.timedOut,
+      ...(sessionId === undefined ? {} : { sessionId }),
       ttyRequested: args.tty,
       yieldTimeMs: args.yieldTimeMs,
     },
