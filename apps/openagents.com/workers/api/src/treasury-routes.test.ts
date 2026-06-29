@@ -1,6 +1,7 @@
 import { Effect } from 'effect'
 import { describe, expect, test } from 'vitest'
 
+import type { XClaimRewardRecord } from './agent-owner-claim-routes'
 import type { ContainerPathFetch } from './http/container-fetch'
 import type {
   TreasuryTransactionRecord,
@@ -16,10 +17,12 @@ import {
   handleOperatorTreasuryRecipientReportApi,
   handleOperatorTreasuryStatusApi,
   handleOperatorTreasuryTransactionReconcileApi,
+  handleOperatorXClaimRewardSmokeRunApi,
   handlePublicTreasuryLaunchStatusApi,
   reconcilePendingTreasuryTransactions,
   treasuryPayoutPlan,
 } from './treasury-routes'
+import type { XClaimRewardTreasuryDispatchSummary } from './x-claim-reward-treasury-dispatcher'
 
 const run = <A>(effect: Effect.Effect<A>): Promise<A> =>
   Effect.runPromise(effect)
@@ -36,6 +39,50 @@ const healthzPayload = (configured: boolean) => ({
   ok: true,
   serviceTokenConfigured: configured,
   service: 'openagents-mdk-treasury',
+})
+
+const settledXClaimReward = (
+  overrides: Partial<XClaimRewardRecord> = {},
+): XClaimRewardRecord => ({
+  agentUserId: 'user_agent_1',
+  amountSats: 1000,
+  challengeId: 'x_challenge_1',
+  claimId: 'agent_claim_1',
+  createdAt: '2026-06-10T10:00:00.000Z',
+  evidenceRefs: [
+    'receipt.public.x_claim.1',
+    'settlement_evidence.public.mdk_treasury.x_claim_reward_1',
+  ],
+  id: 'x_claim_reward_1',
+  ownerUserId: 'user_owner_1',
+  receiptRef: 'x_claim_reward_receipt_x_claim_reward_1',
+  state: 'settled',
+  stateReasonRef: null,
+  treasuryPaymentId: 'payment_secret_1',
+  updatedAt: '2026-06-10T12:00:00.000Z',
+  xAccountRef: 'x_account.public.owner_1',
+  ...overrides,
+})
+
+const xClaimRewardSmokeSummary = (
+  overrides: Partial<XClaimRewardTreasuryDispatchSummary> = {},
+): XClaimRewardTreasuryDispatchSummary => ({
+  failed: 0,
+  pending: 0,
+  polled: 0,
+  requested: 1,
+  settled: 1,
+  skippedReasonRefs: [],
+  stats: {
+    dailySatsCap: 5000,
+    enabled: true,
+    liquidityBufferSats: 11,
+    pendingPaymentCount: 0,
+    perRunRewardCap: 1,
+    requestedDispatchCount: 0,
+    todayReservedSats: 1000,
+  },
+  ...overrides,
 })
 
 const makeMemoryTransactionStore = (
@@ -428,6 +475,137 @@ describe('operator treasury status', () => {
 
     expect(response.status).toBe(200)
     expect('rewardDispatchSmokePreflight' in body).toBe(false)
+  })
+})
+
+describe('operator X-claim reward smoke run', () => {
+  const smokeRequest = (body: unknown) =>
+    new Request(
+      'https://openagents.com/api/operator/treasury/x-claim-reward-smoke',
+      {
+        body: JSON.stringify(body),
+        headers: { 'content-type': 'application/json' },
+        method: 'POST',
+      },
+    )
+
+  test('requires the admin api token', async () => {
+    const response = await run(
+      handleOperatorXClaimRewardSmokeRunApi(
+        smokeRequest({ rewardRef: 'x_claim_reward_1' }),
+        {
+          readRewardByRef: () => Promise.resolve(settledXClaimReward()),
+          requireAdminApiToken: () => Promise.resolve(false),
+          runRewardDispatch: () => Promise.resolve(xClaimRewardSmokeSummary()),
+        },
+      ),
+    )
+
+    expect(response.status).toBe(401)
+  })
+
+  test('requires a reward ref', async () => {
+    const response = await run(
+      handleOperatorXClaimRewardSmokeRunApi(smokeRequest({}), {
+        readRewardByRef: () => Promise.resolve(settledXClaimReward()),
+        requireAdminApiToken: () => Promise.resolve(true),
+        runRewardDispatch: () => Promise.resolve(xClaimRewardSmokeSummary()),
+      }),
+    )
+
+    await expect(response.json()).resolves.toEqual({
+      error: 'reward_ref_required',
+    })
+    expect(response.status).toBe(400)
+  })
+
+  test('runs the dispatcher and emits a public-safe completion report', async () => {
+    let dispatchRan = false
+    const response = await run(
+      handleOperatorXClaimRewardSmokeRunApi(
+        smokeRequest({ rewardRef: 'x_claim_reward_receipt_x_claim_reward_1' }),
+        {
+          readRewardByRef: rewardRef =>
+            Promise.resolve(
+              rewardRef === 'x_claim_reward_receipt_x_claim_reward_1'
+                ? settledXClaimReward()
+                : undefined,
+            ),
+          requireAdminApiToken: () => Promise.resolve(true),
+          runRewardDispatch: () => {
+            dispatchRan = true
+
+            return Promise.resolve(xClaimRewardSmokeSummary())
+          },
+        },
+      ),
+    )
+    const body = (await response.json()) as {
+      completion: {
+        ready: boolean
+        transitionRequest: { evidenceRefs: ReadonlyArray<string> } | null
+      }
+      reward: {
+        amountSats: number
+        receiptRef: string
+        rewardId: string
+        state: string
+      }
+    }
+    const serialized = JSON.stringify(body)
+
+    expect(response.status).toBe(200)
+    expect(dispatchRan).toBe(true)
+    expect(body.reward).toEqual({
+      amountSats: 1000,
+      receiptRef: 'x_claim_reward_receipt_x_claim_reward_1',
+      rewardId: 'x_claim_reward_1',
+      state: 'settled',
+    })
+    expect(body.completion.ready).toBe(true)
+    expect(body.completion.transitionRequest?.evidenceRefs).toEqual([
+      'x_claim_reward_receipt_x_claim_reward_1',
+      'settlement_evidence.public.mdk_treasury.x_claim_reward_1',
+    ])
+    expect(serialized).not.toContain('payment_secret_1')
+    expect(serialized).not.toMatch(/lno1[a-z0-9]{20,}/i)
+    expect(serialized).not.toMatch(/\b[0-9a-f]{64}\b/i)
+  })
+
+  test('withholds transition request when the dispatch run is not clean', async () => {
+    const response = await run(
+      handleOperatorXClaimRewardSmokeRunApi(
+        smokeRequest({ rewardRef: 'x_claim_reward_1' }),
+        {
+          readRewardByRef: () => Promise.resolve(settledXClaimReward()),
+          requireAdminApiToken: () => Promise.resolve(true),
+          runRewardDispatch: () =>
+            Promise.resolve(
+              xClaimRewardSmokeSummary({
+                pending: 1,
+                stats: {
+                  ...xClaimRewardSmokeSummary().stats,
+                  pendingPaymentCount: 1,
+                },
+              }),
+            ),
+        },
+      ),
+    )
+    const body = (await response.json()) as {
+      completion: {
+        blockingReasonRefs: ReadonlyArray<string>
+        ready: boolean
+        transitionRequest: unknown
+      }
+    }
+
+    expect(response.status).toBe(200)
+    expect(body.completion.ready).toBe(false)
+    expect(body.completion.transitionRequest).toBeNull()
+    expect(body.completion.blockingReasonRefs).toContain(
+      'reason.public.x_claim_reward_smoke_dispatch_payment_still_pending',
+    )
   })
 })
 

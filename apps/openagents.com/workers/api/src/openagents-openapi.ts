@@ -1787,6 +1787,12 @@ const schemaComponents = (): JsonSchema => ({
   XClaimRewardEligibilityStatusResponse: objectSummary(
     'Public-safe single X-claim reward eligibility projection resolved by reward id or receipt ref, with the four-state lifecycle position, digest-only identity refs, generatedAt, and the declared staleness contract. Eligibility is not a spendable balance and grants no payout authority.',
   ),
+  XClaimRewardSmokeRunRequest: objectSummary(
+    'Operator-only X-claim reward smoke run request with rewardRef (reward id or receipt ref) naming the single approved reward row to audit after the armed dispatcher runs.',
+  ),
+  XClaimRewardSmokeRunResponse: objectSummary(
+    'Operator-only public-safe X-claim reward smoke run report: kind, redacted reward summary, completion gate result, blocking reason refs, dispatch outcome counters, and optional product-promise transitionRequest. It never returns treasury payment ids, recipient destinations, invoices, preimages, payment hashes, or BOLT12 offers.',
+  ),
   ProviderAccountPoolResponse: objectSummary(
     'Account-pool dashboard projection over the connected provider accounts owned by the signed-in user or the agent grant owner: provider-tagged per-account status/health, lease eligibility with typed reasons, active lease count vs lease limit, cooldown-until plus remaining seconds, low-credit flags, recent failure class, last-selected/sanity-check/probe/launch timestamps, and reconnect nudges for expired or reauth-required accounts; plus the active lease list, the next-selection explain row, summary counts, generatedAt, and the declared staleness contract (live_at_read, rebuilds on provider-account connect/disconnect/health/lease/failover transitions). Read-only projection: lease refs and typed state only. Provider tokens, secrets, grants, and raw provider payloads are never returned, and the projection grants no lease, spend, or provider-mutation authority.',
   ),
@@ -9733,6 +9739,26 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Updated public-safe reward projection.',
           '#/components/schemas/XClaimRewardEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/operator/treasury/x-claim-reward-smoke': {
+    post: operation({
+      operationId: 'runXClaimRewardTreasurySmoke',
+      summary: 'Run X-claim reward treasury smoke',
+      description:
+        'Admin-token-gated live smoke harness for the promotional X-claim reward dispatcher. When the treasury dispatch flag is armed, it runs the bounded dispatcher, resolves the named reward by id or receipt ref, and returns the composite public-safe completion gate: dispatch outcome, settled receipt audit, and optional product-promise transition request. The response is redacted and carries no treasury payment ids, recipient destinations, invoices, preimages, payment hashes, raw BOLT12 offers, wallet material, or payout authority.',
+      tags: ['Treasury'],
+      security: adminSession,
+      requestBody: jsonContent(
+        '#/components/schemas/XClaimRewardSmokeRunRequest',
+      ),
+      responses: {
+        '200': okJson(
+          'Public-safe X-claim reward smoke completion report.',
+          '#/components/schemas/XClaimRewardSmokeRunResponse',
         ),
         ...errorResponses(),
       },

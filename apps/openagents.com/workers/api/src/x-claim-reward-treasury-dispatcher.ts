@@ -114,6 +114,9 @@ export type XClaimRewardTreasuryDispatchStore = Readonly<{
     dayStartIso: string,
     config: XClaimRewardTreasuryDispatchConfig,
   ) => Promise<XClaimRewardTreasuryDispatchStats>
+  readRewardByRef: (
+    rewardRef: string,
+  ) => Promise<XClaimRewardRecord | undefined>
   settleReward: (input: {
     evidenceRefs: ReadonlyArray<string>
     nowIso: string
@@ -407,6 +410,20 @@ export const makeD1XClaimRewardTreasuryDispatchStore = (
           requested === null ? 0 : Number(requested.count),
         todayReservedSats,
       }
+    },
+    readRewardByRef: async rewardRef => {
+      const row = await db
+        .prepare(
+          `SELECT *
+             FROM x_claim_reward_ledger
+            WHERE id = ?
+               OR receipt_ref = ?
+            LIMIT 1`,
+        )
+        .bind(rewardRef, rewardRef)
+        .first<XClaimRewardRow>()
+
+      return row === null ? undefined : rowToReward(row)
     },
     settleReward: input =>
       updateReward({

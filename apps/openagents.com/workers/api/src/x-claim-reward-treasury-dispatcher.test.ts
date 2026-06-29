@@ -168,6 +168,11 @@ class MemoryDispatchStore implements XClaimRewardTreasuryDispatchStore {
     todayReservedSats: await this.countTodayReservedSats(dayStartIso),
   })
 
+  readRewardByRef = async (rewardRef: string) =>
+    this.sortedRewards().find(
+      reward => reward.id === rewardRef || reward.receiptRef === rewardRef,
+    )
+
   settleReward = async (input: {
     evidenceRefs: ReadonlyArray<string>
     nowIso: string

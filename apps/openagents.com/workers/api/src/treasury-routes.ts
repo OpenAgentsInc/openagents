@@ -1,5 +1,6 @@
 import { Effect } from 'effect'
 
+import type { XClaimRewardRecord } from './agent-owner-claim-routes'
 import { sha256Hex } from './agent-registration'
 import type { ContainerPathFetch } from './http/container-fetch'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
@@ -11,7 +12,11 @@ import type {
   TreasuryTransactionStore,
 } from './treasury-page-routes'
 import {
+  assertXClaimRewardSmokeCompletion,
+} from './x-claim-reward-smoke-completion'
+import {
   evaluateXClaimRewardSmokePreflight,
+  type XClaimRewardTreasuryDispatchSummary,
   type XClaimRewardTreasuryDispatchStats,
 } from './x-claim-reward-treasury-dispatcher'
 
@@ -47,6 +52,14 @@ export type TreasuryRouteDependencies = Readonly<{
     address: string,
     amountSat: number,
   ) => Promise<{ ok: true; bolt11: string } | { ok: false; reason: string }>
+}>
+
+export type XClaimRewardSmokeRunDependencies = Readonly<{
+  readRewardByRef: (
+    rewardRef: string,
+  ) => Promise<XClaimRewardRecord | undefined>
+  requireAdminApiToken: (request: Request) => Promise<boolean>
+  runRewardDispatch: () => Promise<XClaimRewardTreasuryDispatchSummary>
 }>
 
 type TreasuryHealth = Readonly<{
@@ -535,6 +548,93 @@ export const handleOperatorTreasuryStatusApi = (
               state: treasuryState(health),
             })
           }),
+        ),
+      )
+    }),
+  )
+}
+
+export const handleOperatorXClaimRewardSmokeRunApi = (
+  request: Request,
+  dependencies: XClaimRewardSmokeRunDependencies,
+) => {
+  if (request.method !== 'POST') {
+    return Effect.succeed(methodNotAllowed(['POST']))
+  }
+
+  return Effect.tryPromise({
+    catch: () => false,
+    try: () => dependencies.requireAdminApiToken(request),
+  }).pipe(
+    Effect.catch(() => Effect.succeed(false)),
+    Effect.flatMap(authorized => {
+      if (!authorized) {
+        return Effect.succeed(
+          noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 }),
+        )
+      }
+
+      return Effect.tryPromise({
+        catch: error =>
+          error instanceof Error
+            ? error
+            : new Error('x_claim_reward_smoke_run_failed'),
+        try: async () => {
+          let body: { rewardRef?: unknown } = {}
+
+          try {
+            body = (await request.json()) as typeof body
+          } catch {
+            return noStoreJsonResponse(
+              { error: 'invalid_json_body' },
+              { status: 400 },
+            )
+          }
+
+          const rewardRef =
+            typeof body.rewardRef === 'string' ? body.rewardRef.trim() : ''
+
+          if (rewardRef === '') {
+            return noStoreJsonResponse(
+              { error: 'reward_ref_required' },
+              { status: 400 },
+            )
+          }
+
+          const summary = await dependencies.runRewardDispatch()
+          const reward = await dependencies.readRewardByRef(rewardRef)
+
+          if (reward === undefined) {
+            return noStoreJsonResponse(
+              { error: 'x_claim_reward_not_found' },
+              { status: 404 },
+            )
+          }
+
+          const completion = assertXClaimRewardSmokeCompletion({
+            reward,
+            summary,
+          })
+
+          return noStoreJsonResponse({
+            completion,
+            kind: 'x_claim_reward_dispatch_smoke_run',
+            reward: {
+              amountSats: reward.amountSats,
+              receiptRef: reward.receiptRef,
+              rewardId: reward.id,
+              state: reward.state,
+            },
+          })
+        },
+      }).pipe(
+        Effect.catch(() =>
+          Effect.succeed(
+            noStoreJsonResponse(
+              { error: 'x_claim_reward_smoke_run_failed' },
+              { status: 503 },
+            ),
+          ),
         ),
       )
     }),

@@ -1095,6 +1095,7 @@ import {
   handleOperatorTreasuryRecipientReportApi,
   handleOperatorTreasuryStatusApi,
   handleOperatorTreasuryTransactionReconcileApi,
+  handleOperatorXClaimRewardSmokeRunApi,
   handlePublicTreasuryLaunchStatusApi,
   reconcilePendingTreasuryTransactions,
 } from './treasury-routes'
@@ -1109,8 +1110,11 @@ import {
 } from './voice-program-ingest-routes'
 import { makeWorkerRouteRequest } from './worker-routes'
 import {
+  makeD1XClaimRewardRecipientResolver,
   makeD1XClaimRewardTreasuryDispatchStore,
+  makeXClaimRewardTreasuryClient,
   readXClaimRewardTreasuryDispatchConfig,
+  runXClaimRewardTreasuryDispatch,
   runXClaimRewardTreasuryDispatchScheduled,
   xClaimRewardDispatchDayStartIso,
 } from './x-claim-reward-treasury-dispatcher'
@@ -11463,6 +11467,29 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         requireAdminApiToken: adminRequest =>
           requireAdminApiToken(adminRequest, env),
       }),
+  },
+  {
+    path: '/api/operator/treasury/x-claim-reward-smoke',
+    handler: (request, env) => {
+      const db = openAgentsDatabase(env)
+      const store = makeD1XClaimRewardTreasuryDispatchStore(db)
+
+      return handleOperatorXClaimRewardSmokeRunApi(request, {
+        readRewardByRef: rewardRef => store.readRewardByRef(rewardRef),
+        requireAdminApiToken: adminRequest =>
+          requireAdminApiToken(adminRequest, env),
+        runRewardDispatch: () => {
+          const nowIso = currentIsoTimestamp()
+
+          return runXClaimRewardTreasuryDispatch({
+            config: readXClaimRewardTreasuryDispatchConfig(env, nowIso),
+            resolveRecipient: makeD1XClaimRewardRecipientResolver(db),
+            store,
+            treasury: makeXClaimRewardTreasuryClient(fetchMdkTreasuryPath(env)),
+          })
+        },
+      })
+    },
   },
   {
     path: '/api/operator/treasury/funding-destination',

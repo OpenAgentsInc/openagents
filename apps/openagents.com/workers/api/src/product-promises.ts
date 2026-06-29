@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-29.2'
+export const PublicProductPromisesVersion = '2026-06-29.3'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -1995,15 +1995,17 @@ export const publicProductPromisesDocument = () => {
         claim:
           'An owner who verifies agent ownership with an X verification tweet can become eligible for a promotional 1000-sat reward.',
         safeCopy:
-          'Verified X owner claims record a 1000-sat reward eligibility row in a bounded campaign ledger with anti-Sybil dedupe (one reward per X account and per challenge) and a campaign budget cap. Eligibility, operator-approved dispatch, treasury dispatch, and settlement are separate states. The Worker-side dispatcher is implemented behind TREASURY_DISPATCH_ENABLED=false by default with BOLT12-only recipient resolution, per-run and per-day caps, pending-payment polling, public-safe status stats, and smoke gates for candidate, preflight, dispatch outcome, settlement evidence, settled receipt audit, and transition-request assembly. No owner-armed reward has completed a live dispatch smoke to a real receive code yet.',
+          'Verified X owner claims record a 1000-sat reward eligibility row in a bounded campaign ledger with anti-Sybil dedupe (one reward per X account and per challenge) and a campaign budget cap. Eligibility, operator-approved dispatch, treasury dispatch, and settlement are separate states. The Worker-side dispatcher is implemented behind TREASURY_DISPATCH_ENABLED=false by default with BOLT12-only recipient resolution, per-run and per-day caps, pending-payment polling, public-safe status stats, and an admin-gated smoke-run endpoint that executes the armed dispatcher for one named reward and returns only the composite public-safe completion report. No owner-armed reward has completed a live dispatch smoke to a real receive code yet.',
         unsafeCopy:
           'Do not claim verified owners are instantly or automatically paid, do not present eligibility as spendable balance or settlement, and do not describe the promotional reward as Forum tip settlement or accepted-work payout.',
         evidenceRefs: [
           'route:/api/agents/claims/{claimId}/x/verify',
           'route:/api/agents/claims/rewards/{rewardId}/dispatch',
+          'route:/api/operator/treasury/x-claim-reward-smoke',
           'apps/openagents.com/workers/api/migrations/0149_x_claim_reward_ledger.sql',
           'apps/openagents.com/workers/api/migrations/0164_x_claim_reward_treasury_dispatch.sql',
           'apps/openagents.com/workers/api/src/agent-owner-claim-routes.test.ts',
+          'apps/openagents.com/workers/api/src/treasury-routes.test.ts',
           'apps/openagents.com/workers/api/src/x-claim-reward-smoke-candidate.test.ts',
           'apps/openagents.com/workers/api/src/x-claim-reward-smoke-dispatch-outcome.test.ts',
           'apps/openagents.com/workers/api/src/x-claim-reward-smoke-receipt-audit.test.ts',
@@ -2015,7 +2017,7 @@ export const publicProductPromisesDocument = () => {
           'blocker.product_promises.x_claim_reward_live_dispatch_smoke_missing',
         ],
         verification:
-          'Run the agent-owner-claim reward tests, X-claim treasury dispatcher tests, and X-claim smoke harness tests: verified X claims must create eligibility with dedupe and budget refusal, dispatch transitions must be admin-gated, the dispatcher must stay flag-off by default, resolve only registered BOLT12 recipient identity, enforce caps, poll pending payments without re-paying, redact payment material, reject unsafe settlement evidence before persistence, and emit a transition request only after both the dispatch outcome and settled receipt audits pass. Green requires one live operator-dispatched reward settled to a real owner receive code with public-safe receipt refs and owner sign-off.',
+          'Run the agent-owner-claim reward tests, X-claim treasury dispatcher tests, treasury route tests, and X-claim smoke harness tests: verified X claims must create eligibility with dedupe and budget refusal, dispatch transitions must be admin-gated, the dispatcher must stay flag-off by default, resolve only registered BOLT12 recipient identity, enforce caps, poll pending payments without re-paying, redact payment material, reject unsafe settlement evidence before persistence, and have the operator smoke-run endpoint emit a transition request only after both the dispatch outcome and settled receipt audits pass. Green requires one live operator-dispatched reward settled to a real owner receive code with public-safe receipt refs and owner sign-off.',
         authorityBoundary:
           'Reward eligibility is a promotional campaign state, not Forum tip settlement, accepted-work payout, Treasury authority, or spendable balance. Dispatch requires the operator admin gate.',
       },
