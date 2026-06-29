@@ -257,6 +257,51 @@ const rowOrFail = <T>(row: T | null, label: string): T => {
   return row
 }
 
+const assertApprovedPromotionHasPassingVerification = async (
+  db: D1Database,
+  receipt: ForgePromotionDecisionReceipt,
+): Promise<void> => {
+  if (receipt.decision !== 'approved') {
+    return
+  }
+
+  if (receipt.verification_ref === null) {
+    throw new ForgeCoordinationStoreInvariantError(
+      'approved Forge promotion requires a verification receipt ref',
+    )
+  }
+
+  const verificationRow = await db
+    .prepare(
+      `
+        SELECT *
+        FROM forge_verification_receipts
+        WHERE tenant_ref = ? AND verification_ref = ?
+      `,
+    )
+    .bind(receipt.tenant_ref, receipt.verification_ref)
+    .first<ForgeVerificationReceiptRow>()
+
+  if (verificationRow === null) {
+    throw new ForgeCoordinationStoreInvariantError(
+      'approved Forge promotion verification receipt is missing',
+    )
+  }
+
+  const verification = verificationReceiptFromRow(verificationRow)
+  if (
+    verification.change_ref !== receipt.change_ref ||
+    verification.base_head !== receipt.base_head ||
+    verification.head_head !== receipt.candidate_head ||
+    verification.verdict !== 'passed' ||
+    verification.exit_code !== 0
+  ) {
+    throw new ForgeCoordinationStoreInvariantError(
+      'approved Forge promotion verification receipt does not match the promoted change',
+    )
+  }
+}
+
 const firstIssue = async (
   db: D1Database,
   tenantRef: string,
@@ -858,6 +903,7 @@ export const makeD1ForgeCoordinationStore = (
 
   async recordPromotionDecisionReceipt(receipt, createdAt) {
     const decoded = decodeForgePromotionDecisionReceipt(receipt)
+    await assertApprovedPromotionHasPassingVerification(db, decoded)
     await db
       .prepare(
         `

@@ -644,8 +644,6 @@ export async function publishAssignmentPullRequest(
       title,
       "-m",
       issueNumber === null ? `Assignment: ${input.assignmentRef}` : `Addresses #${issueNumber}.`,
-      "-m",
-      "Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>",
     ],
     cwd: workingDirectory,
     timeoutMs: GIT_TIMEOUT_MS,

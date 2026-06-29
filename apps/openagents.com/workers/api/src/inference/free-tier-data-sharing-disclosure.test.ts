@@ -17,6 +17,7 @@ describe('free-tier data-sharing disclosure (#6296)', () => {
     // The bounded policy facts mirror the runtime capture seams.
     expect(disclosure.policy).toEqual({
       capturedByDefault: true,
+      defaultCaptureGate: 'owner_gated',
       redacted: true,
       defaultVisibility: 'owner_only',
       mayTrain: true,
@@ -25,6 +26,34 @@ describe('free-tier data-sharing disclosure (#6296)', () => {
       rewardInert: true,
     })
     expect(disclosure.reportPath).toContain('forum/f/product-promises')
+    expect(disclosure.blockerRefs).toEqual([
+      'blocker.product_promises.free_tier_capture_default_owner_gated',
+      'blocker.product_promises.disclosure_copy_owner_signoff_pending',
+      'blocker.product_promises.trace_capture_public_disclosure_alignment_required',
+      'blocker.product_promises.trace_capture_reward_marker_inert',
+      'blocker.product_promises.paid_privacy_owner_signoff_pending',
+      'blocker.product_promises.paid_khala_business_loop_not_green',
+    ])
+    expect(disclosure.gates.defaultCapture).toEqual({
+      state: 'owner_gated',
+      envFlag: 'KHALA_FREE_TIER_TRACE_CAPTURE_DEFAULT',
+      blockerRef:
+        'blocker.product_promises.free_tier_capture_default_owner_gated',
+    })
+    expect(disclosure.gates.paidPrivacyOptOut).toEqual({
+      state: 'wired_yellow',
+      failClosed: true,
+      blockerRefs: [
+        'blocker.product_promises.paid_privacy_owner_signoff_pending',
+        'blocker.product_promises.paid_khala_business_loop_not_green',
+      ],
+    })
+    expect(disclosure.gates.traceRewards).toEqual({
+      state: 'inert',
+      payoutClaimAllowed: false,
+      blockerRef:
+        'blocker.product_promises.trace_capture_reward_marker_inert',
+    })
   })
 
   test('terms cover the four honest clauses without overclaiming', () => {
@@ -33,6 +62,8 @@ describe('free-tier data-sharing disclosure (#6296)', () => {
       .toLowerCase()
     // captured by default, redacted, private
     expect(text).toContain('captured by default')
+    expect(text).toContain('owner-gated')
+    expect(text).toContain('khala_free_tier_trace_capture_default')
     expect(text).toContain('redacted')
     expect(text).toContain('owner_only')
     // may improve/train
@@ -53,8 +84,16 @@ describe('free-tier data-sharing disclosure (#6296)', () => {
       ),
     )
     expect(ok.status).toBe(200)
-    const body = (await ok.json()) as { promiseId: string }
+    const body = (await ok.json()) as {
+      promiseId: string
+      gates: { defaultCapture: { state: string } }
+      blockerRefs: ReadonlyArray<string>
+    }
     expect(body.promiseId).toBe(FREE_TIER_DATA_SHARING_PROMISE_ID)
+    expect(body.gates.defaultCapture.state).toBe('owner_gated')
+    expect(body.blockerRefs).toContain(
+      'blocker.product_promises.free_tier_capture_default_owner_gated',
+    )
 
     const denied = await Effect.runPromise(
       handleFreeTierDataSharingDisclosureApi(

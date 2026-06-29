@@ -64,6 +64,7 @@ const approvedExactRoutePaths = [
   '/api/operator/khala/head-to-head',
   '/api/gym/mirrorcode/runs',
   '/api/gym/mirrorcode/token-burn',
+  '/api/gym/mirrorcode/backstop-burn',
   '/api/operator/gym/full-trace-archives',
   '/api/operator/customer-one-cohort/rows',
   '/api/operator/product-promises/transitions',
