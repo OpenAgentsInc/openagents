@@ -11,7 +11,7 @@ import {
   type PublicProjectionStalenessContract,
   liveAtReadStaleness,
 } from './public-projection-staleness'
-import { currentIsoTimestamp } from './runtime-primitives'
+import { currentEpochMillis, currentIsoTimestamp } from './runtime-primitives'
 
 export const WASM_PLUGIN_MARKETPLACE_SCHEMA =
   'openagents.wasm_plugin_marketplace.v1' as const
@@ -75,12 +75,59 @@ export class WasmPluginAdmissionRejected extends S.TaggedErrorClass<WasmPluginAd
   },
 ) {}
 
+export class WasmPluginSandboxRejected extends S.TaggedErrorClass<WasmPluginSandboxRejected>()(
+  'WasmPluginSandboxRejected',
+  {
+    reason: S.String,
+    blockerRef: S.String,
+  },
+) {}
+
+export const WasmPluginExecutionPolicy = S.Struct({
+  maxModuleBytes: S.Number,
+  maxInputBytes: S.Number,
+  maxOutputBytes: S.Number,
+  maxDurationMs: S.Number,
+  maxMemoryPages: S.Number,
+  allowedHostCalls: S.Array(WasmPluginPermission),
+  policyRef: S.String,
+})
+export type WasmPluginExecutionPolicy = typeof WasmPluginExecutionPolicy.Type
+
+export const WasmPluginExecutionEvidence = S.Struct({
+  schema: S.Literal('openagents.wasm_plugin_execution_evidence.v1'),
+  promiseId: S.Literal(WASM_PLUGIN_MARKETPLACE_PROMISE),
+  packageRef: S.String,
+  version: S.String,
+  wasmModuleDigestRef: S.String,
+  exportName: S.String,
+  inputHash: S.String,
+  outputHash: S.String,
+  durationMs: S.Number,
+  moduleBytes: S.Number,
+  inputBytes: S.Number,
+  outputBytes: S.Number,
+  maxDurationMs: S.Number,
+  maxMemoryPages: S.Number,
+  hostCallsAllowed: S.Array(WasmPluginPermission),
+  hostCallsAttempted: S.Array(S.String),
+  hostCallsRejected: S.Array(S.String),
+  runtimeRef: S.String,
+  policyRef: S.String,
+  evidenceRef: S.String,
+})
+export type WasmPluginExecutionEvidence =
+  typeof WasmPluginExecutionEvidence.Type
+
 const decodeManifest = S.decodeUnknownSync(WasmPluginPackageManifest)
+const decodePolicy = S.decodeUnknownSync(WasmPluginExecutionPolicy)
 const safeRefPattern = /^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,260}$/
 const versionPattern = /^\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?$/
 const wasmDigestPattern = /^wasm\.sha256\.[a-f0-9]{64}$/
 const unsafeRefPattern =
   /(@|\/Users\/|\/home\/|access[_-]?token|api[_-]?key|auth\.json|bearer|cookie|email|gho_[A-Za-z0-9_]+|ghp_[A-Za-z0-9_]+|github\.com\/[^:/]+\/private|invoice|lnbc|lnurl|mdk|mnemonic|oauth|payment|payout|preimage|private|provider|raw|secret|sk-[a-z0-9]|source_archive|token|wallet)/i
+const wasmHostImportNamespace = 'openagents:host'
+const textEncoder = new TextEncoder()
 
 const isNonEmpty = (value: string): boolean => value.trim().length > 0
 
@@ -96,6 +143,285 @@ const reject = (
   blockerRef: string,
 ): WasmPluginAdmissionRejected =>
   new WasmPluginAdmissionRejected({ reason, blockerRef })
+
+const rejectSandbox = (
+  reason: string,
+  blockerRef: string,
+): WasmPluginSandboxRejected =>
+  new WasmPluginSandboxRejected({ reason, blockerRef })
+
+const sha256Hex = async (bytes: Uint8Array): Promise<string> => {
+  const digest = await crypto.subtle.digest('SHA-256', bytesToArrayBuffer(bytes))
+  return [...new Uint8Array(digest)]
+    .map(byte => byte.toString(16).padStart(2, '0'))
+    .join('')
+}
+
+const bytesToArrayBuffer = (bytes: Uint8Array): ArrayBuffer =>
+  bytes.buffer.slice(
+    bytes.byteOffset,
+    bytes.byteOffset + bytes.byteLength,
+  ) as ArrayBuffer
+
+const jsonBytes = (value: unknown): Uint8Array =>
+  textEncoder.encode(JSON.stringify(value))
+
+const byteLength = (bytes: Uint8Array): number => bytes.byteLength
+
+const normalizePolicy = (
+  policy: WasmPluginExecutionPolicy,
+): WasmPluginExecutionPolicy => {
+  const normalized = decodePolicy(policy)
+  if (
+    normalized.maxModuleBytes < 1 ||
+    normalized.maxInputBytes < 1 ||
+    normalized.maxOutputBytes < 1 ||
+    normalized.maxDurationMs < 1 ||
+    normalized.maxMemoryPages < 1
+  ) {
+    throw rejectSandbox(
+      'execution policy limits must be positive.',
+      'blocker.wasm_plugin_sandbox.policy_limit_invalid',
+    )
+  }
+  if (
+    !safeRefPattern.test(normalized.policyRef) ||
+    unsafeRefPattern.test(normalized.policyRef)
+  ) {
+    throw rejectSandbox(
+      'execution policy must cite a public-safe policy ref.',
+      'blocker.wasm_plugin_sandbox.policy_ref_invalid',
+    )
+  }
+
+  return {
+    ...normalized,
+    allowedHostCalls: uniqueSorted(normalized.allowedHostCalls),
+  }
+}
+
+const hostCallForImport = (
+  moduleName: string,
+  importName: string,
+): string | null =>
+  moduleName === wasmHostImportNamespace &&
+  (WasmPluginPermission.literals as ReadonlyArray<string>).includes(importName)
+    ? importName
+    : null
+
+const ensureAllowedImports = (
+  module: WebAssembly.Module,
+  policy: WasmPluginExecutionPolicy,
+  manifest: WasmPluginPackageManifest,
+): {
+  attempted: ReadonlyArray<string>
+  rejected: ReadonlyArray<string>
+} => {
+  const moduleImports = WebAssembly.Module.imports(module)
+  const attempted = moduleImports.map(
+    entry => `${entry.module}.${entry.name}:${entry.kind}`,
+  )
+  const rejected = moduleImports
+    .filter(entry => {
+      const hostCall = hostCallForImport(entry.module, entry.name)
+
+      return (
+        entry.kind !== 'function' ||
+        hostCall === null ||
+        !policy.allowedHostCalls.includes(hostCall as WasmPluginPermission) ||
+        !manifest.permissions.includes(hostCall as WasmPluginPermission)
+      )
+    })
+    .map(entry => `${entry.module}.${entry.name}:${entry.kind}`)
+
+  if (rejected.length > 0) {
+    throw rejectSandbox(
+      'WASM module imports must be explicit manifest-declared and policy-allowed OpenAgents host calls.',
+      'blocker.wasm_plugin_sandbox.unauthorized_import',
+    )
+  }
+
+  return { attempted, rejected }
+}
+
+const ensureMemoryPolicy = (
+  instance: WebAssembly.Instance,
+  policy: WasmPluginExecutionPolicy,
+): void => {
+  const memory = instance.exports.memory
+  if (memory instanceof WebAssembly.Memory) {
+    const pages = memory.buffer.byteLength / 65_536
+    if (pages > policy.maxMemoryPages) {
+      throw rejectSandbox(
+        'WASM memory exceeds the execution policy limit.',
+        'blocker.wasm_plugin_sandbox.memory_limit_exceeded',
+      )
+    }
+  }
+}
+
+export const executeWasmPluginFixture = async (input: {
+  manifest: WasmPluginPackageManifest
+  moduleBytes: Uint8Array
+  exportName: string
+  args: ReadonlyArray<number>
+  policy: WasmPluginExecutionPolicy
+  nowMs?: () => number
+}): Promise<
+  | {
+    ok: true
+    result: number
+    evidence: WasmPluginExecutionEvidence
+  }
+  | { ok: false; error: WasmPluginSandboxRejected }
+> => {
+  try {
+    const admitted = admitWasmPluginPackage(input.manifest)
+    if (!admitted.ok) {
+      return {
+        ok: false,
+        error: rejectSandbox(
+          admitted.error.reason,
+          admitted.error.blockerRef,
+        ),
+      }
+    }
+
+    const policy = normalizePolicy(input.policy)
+    const moduleBytes = input.moduleBytes
+    if (moduleBytes.byteLength > policy.maxModuleBytes) {
+      throw rejectSandbox(
+        'WASM module exceeds the execution policy byte limit.',
+        'blocker.wasm_plugin_sandbox.module_too_large',
+      )
+    }
+
+    const moduleDigest = await sha256Hex(moduleBytes)
+    if (
+      admitted.manifest.wasmModuleDigestRef !== `wasm.sha256.${moduleDigest}`
+    ) {
+      throw rejectSandbox(
+        'WASM module bytes do not match the admitted digest ref.',
+        'blocker.wasm_plugin_sandbox.digest_mismatch',
+      )
+    }
+
+    const interfaceDecl = admitted.manifest.interfaceDecls.find(
+      decl => decl.exportName === input.exportName,
+    )
+    if (interfaceDecl === undefined) {
+      throw rejectSandbox(
+        'requested export is not declared by the admitted plugin interface.',
+        'blocker.wasm_plugin_sandbox.export_not_declared',
+      )
+    }
+
+    const inputBytes = jsonBytes(input.args)
+    if (byteLength(inputBytes) > policy.maxInputBytes) {
+      throw rejectSandbox(
+        'WASM plugin input exceeds the execution policy byte limit.',
+        'blocker.wasm_plugin_sandbox.input_too_large',
+      )
+    }
+
+    const module = new WebAssembly.Module(bytesToArrayBuffer(moduleBytes))
+    const imports = ensureAllowedImports(module, policy, admitted.manifest)
+    const importsObject = {
+      [wasmHostImportNamespace]: Object.fromEntries(
+        policy.allowedHostCalls.map(permission => [permission, () => 0]),
+      ),
+    }
+
+    const nowMs = input.nowMs ?? currentEpochMillis
+    const startedAtMs = nowMs()
+    const instance = await WebAssembly.instantiate(module, importsObject)
+    ensureMemoryPolicy(instance, policy)
+    const exported = instance.exports[input.exportName]
+    if (typeof exported !== 'function') {
+      throw rejectSandbox(
+        'declared WASM export is not an executable function.',
+        'blocker.wasm_plugin_sandbox.export_not_function',
+      )
+    }
+
+    const rawResult = exported(...input.args)
+    if (typeof rawResult !== 'number') {
+      throw rejectSandbox(
+        'fixture WASM export must return a numeric result.',
+        'blocker.wasm_plugin_sandbox.output_type_invalid',
+      )
+    }
+
+    const endedAtMs = nowMs()
+    const durationMs = Math.max(0, endedAtMs - startedAtMs)
+    if (durationMs > policy.maxDurationMs) {
+      throw rejectSandbox(
+        'WASM plugin execution exceeded the execution policy duration limit.',
+        'blocker.wasm_plugin_sandbox.duration_limit_exceeded',
+      )
+    }
+
+    const outputBytes = jsonBytes(rawResult)
+    if (byteLength(outputBytes) > policy.maxOutputBytes) {
+      throw rejectSandbox(
+        'WASM plugin output exceeds the execution policy byte limit.',
+        'blocker.wasm_plugin_sandbox.output_too_large',
+      )
+    }
+
+    const inputHash = `sha256:${await sha256Hex(inputBytes)}`
+    const outputHash = `sha256:${await sha256Hex(outputBytes)}`
+    const evidenceRefDigest = await sha256Hex(
+      jsonBytes({
+        packageRef: admitted.manifest.packageRef,
+        version: admitted.manifest.version,
+        wasmModuleDigestRef: admitted.manifest.wasmModuleDigestRef,
+        exportName: input.exportName,
+        inputHash,
+        outputHash,
+        policyRef: policy.policyRef,
+      }),
+    )
+
+    return {
+      ok: true,
+      result: rawResult,
+      evidence: {
+        schema: 'openagents.wasm_plugin_execution_evidence.v1',
+        promiseId: WASM_PLUGIN_MARKETPLACE_PROMISE,
+        packageRef: admitted.manifest.packageRef,
+        version: admitted.manifest.version,
+        wasmModuleDigestRef: admitted.manifest.wasmModuleDigestRef,
+        exportName: input.exportName,
+        inputHash,
+        outputHash,
+        durationMs,
+        moduleBytes: moduleBytes.byteLength,
+        inputBytes: byteLength(inputBytes),
+        outputBytes: byteLength(outputBytes),
+        maxDurationMs: policy.maxDurationMs,
+        maxMemoryPages: policy.maxMemoryPages,
+        hostCallsAllowed: policy.allowedHostCalls,
+        hostCallsAttempted: imports.attempted,
+        hostCallsRejected: imports.rejected,
+        runtimeRef: 'runtime.javascript_webassembly.source_fixture.v1',
+        policyRef: policy.policyRef,
+        evidenceRef: `evidence.wasm_plugin_execution.${evidenceRefDigest.slice(0, 32)}`,
+      },
+    }
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof WasmPluginSandboxRejected
+        ? error
+        : rejectSandbox(
+          'WASM plugin execution failed closed.',
+          'blocker.wasm_plugin_sandbox.execution_failed',
+        ),
+    }
+  }
+}
+
 
 const publicSafeRefs = (
   label: string,
