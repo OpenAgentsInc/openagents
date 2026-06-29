@@ -51,6 +51,7 @@ uses the `EOD est.` label, not counted as observed tokens.
 {
   "schemaVersion": "openagents.public_khala_model_mix.v1",
   "window": "30d",
+  "liveAt": "2026-06-26T00:00:00.000Z",
   "generatedAt": "2026-06-26T00:00:00.000Z",
   "totalTokens": 0,
   "groups": [
@@ -63,14 +64,27 @@ uses the `EOD est.` label, not counted as observed tokens.
     }
   ],
   "staleness": {
-    "mode": "live_at_read"
+    "composition": "live_at_read",
+    "contractVersion": "projection_staleness.v1",
+    "maxStalenessSeconds": 0,
+    "rebuildsOn": ["token_usage_events"]
   }
 }
 ```
 
 Supported windows are `today`, `7d`, `30d`, and `all`; the default is `30d`.
 
-The projection is live-at-read over `token_usage_events`, aggregates input plus output tokens, and includes all real demand kinds (`internal`, `internal_stress`, `own_capacity`, `external`, and unlabeled). It remains public-safe by collapsing provider/model identifiers before serving and exposing no per-user, per-team, demand label, prompt, raw provider/model, key, wallet, payment, settlement, or routing material.
+The projection is live-at-read over `token_usage_events`, so `liveAt` and
+`generatedAt` are the request-time read timestamp and the declared maximum
+staleness is `0` seconds. It aggregates input plus output tokens and includes
+all real demand kinds (`internal`, `internal_stress`, `own_capacity`,
+`external`, and unlabeled), including Pylon-Codex own-capacity rows. That
+headline served volume is not an external-demand, revenue, paid resale, or
+marketplace-health claim. Those claims require separate demand provenance and
+receipt evidence. The model-mix payload remains public-safe by collapsing
+provider/model identifiers before serving and exposing no per-user, per-team,
+demand label, prompt, raw provider/model, key, wallet, payment, settlement, or
+routing material.
 
 ## 5c Canonical Model Grouping
 

@@ -1123,6 +1123,7 @@ export const PublicKhalaTokensServedModelMix = S.Struct({
   window: S.String,
   totalTokens: S.Number,
   groups: S.Array(PublicKhalaTokensServedModelMixFamily),
+  liveAt: S.optionalKey(S.String),
   generatedAt: S.String,
   staleness: S.optionalKey(S.Unknown),
 })

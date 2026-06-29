@@ -1545,6 +1545,34 @@ describe('public product promises document', () => {
     )
   })
 
+  test('keeps Khala model-family mix yellow with explicit staleness and demand caveats', () => {
+    const decoded = S.decodeUnknownSync(ProductPromisesDocument)(
+      publicProductPromisesDocument(),
+    )
+    const modelMixPromise = decoded.promises.find(
+      promise => promise.promiseId === 'metrics.khala_model_family_mix_public.v1',
+    )
+
+    expect(modelMixPromise?.state).toBe('yellow')
+    expect(modelMixPromise?.safeCopy).toContain('liveAt/generatedAt')
+    expect(modelMixPromise?.safeCopy).toContain('maxStalenessSeconds:0')
+    expect(modelMixPromise?.safeCopy).toContain('stable public model-family')
+    expect(modelMixPromise?.safeCopy).toContain('Pylon-Codex own-capacity')
+    expect(modelMixPromise?.unsafeCopy).toContain(
+      'external customer demand, revenue',
+    )
+    expect(modelMixPromise?.evidenceRefs).toContain(
+      'route:/api/public/khala-tokens-served/model-mix',
+    )
+    expect(modelMixPromise?.blockerRefs).toEqual([
+      'blocker.product_promises.model_mix_green_owner_signoff_pending',
+    ])
+    expect(modelMixPromise?.verification).toContain('issue #6858')
+    expect(modelMixPromise?.verification).toContain(
+      'Green still requires a live receipt/owner sign-off',
+    )
+  })
+
   test('keeps kernel optimization planned while exposing code-backed dispatch and parity receipt machinery', () => {
     const decoded = S.decodeUnknownSync(ProductPromisesDocument)(
       publicProductPromisesDocument(),

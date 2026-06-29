@@ -84,6 +84,7 @@ const statsInputWithModelMix = () => ({
       schemaVersion: 'openagents.public_khala_model_mix.v1',
       window: '30d',
       totalTokens: 1_250_000,
+      liveAt: '2026-06-24T12:00:00.000Z',
       generatedAt: '2026-06-24T12:00:00.000Z',
       groups: [
         {
@@ -324,7 +325,9 @@ describe('Khala Tokens Served history chart (#6227)', () => {
     expect(markup).toContain('Model Family Mix')
     expect(markup).toContain('GLM family')
     expect(markup).toContain('Pylon-Codex')
-    expect(markup).toContain('all demand included')
+    expect(markup).toContain('headline tokens served')
+    expect(markup).toContain('external, internal, unlabeled')
+    expect(markup).toContain('not revenue or external-demand proof')
     expect(markup).not.toContain('gpt-')
     expect(markup).not.toContain('provider')
     expect(markup).not.toContain('accountRef')

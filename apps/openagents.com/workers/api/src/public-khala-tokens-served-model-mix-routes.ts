@@ -26,6 +26,7 @@ export const PublicKhalaTokensServedModelMixGroup = S.Struct({
 export const PublicKhalaTokensServedModelMixResponse = S.Struct({
   schemaVersion: S.Literal('openagents.public_khala_model_mix.v1'),
   window: PublicKhalaTokensServedHistoryWindow,
+  liveAt: S.String,
   totalTokens: S.Int,
   groups: S.Array(PublicKhalaTokensServedModelMixGroup),
   generatedAt: S.String,
@@ -56,9 +57,11 @@ export const handlePublicKhalaTokensServedModelMixApi = (
 
   return ledger.readPublicTokensServedModelMix({ window }).pipe(
     Effect.map(mix => {
+      const readAt = nowIso()
       const payload: PublicKhalaTokensServedModelMixResponse = {
         schemaVersion: 'openagents.public_khala_model_mix.v1',
         window: mix.window,
+        liveAt: readAt,
         totalTokens: mix.totalTokens,
         groups: mix.groups.map(group => ({
           family: group.family,
@@ -67,7 +70,7 @@ export const handlePublicKhalaTokensServedModelMixApi = (
           reqs: group.reqs,
           pct: group.pct,
         })),
-        generatedAt: nowIso(),
+        generatedAt: readAt,
         staleness: liveAtReadStaleness(['token_usage_events']),
       }
 

@@ -4,6 +4,7 @@ import { describe, expect, test } from 'vitest'
 import { handlePublicKhalaTokensServedModelMixApi } from './public-khala-tokens-served-model-mix-routes'
 import {
   makeD1TokenUsageLedger,
+  publicModelFamilyFromProviderAndModel,
   type TokenUsageLedgerRuntime,
   type TokenUsageLedgerShape,
 } from './token-usage-ledger'
@@ -83,9 +84,12 @@ describe('GET /api/public/khala-tokens-served/model-mix', () => {
     expect(body.window).toBe('30d')
     expect(body.totalTokens).toBe(2_000)
     expect(body.generatedAt).toBe(nowIso)
+    expect(body.liveAt).toBe(nowIso)
     expect(body.staleness).toMatchObject({
       composition: 'live_at_read',
+      contractVersion: 'projection_staleness.v1',
       maxStalenessSeconds: 0,
+      rebuildsOn: ['token_usage_events'],
     })
     expect(body.groups).toEqual([
       {
@@ -192,6 +196,7 @@ describe('GET /api/public/khala-tokens-served/model-mix', () => {
     expect(Object.keys(body).sort()).toEqual([
       'generatedAt',
       'groups',
+      'liveAt',
       'schemaVersion',
       'staleness',
       'totalTokens',
@@ -209,5 +214,36 @@ describe('GET /api/public/khala-tokens-served/model-mix', () => {
     ])
     expect(JSON.stringify(body)).not.toContain('gpt-4.1-secret-experiment')
     expect(JSON.stringify(body)).not.toContain('openai-private-lane')
+  })
+
+  test('normalizes provider and model variants into stable public families', () => {
+    expect(publicModelFamilyFromProviderAndModel('reap', 'glm-4.5')).toBe('glm')
+    expect(publicModelFamilyFromProviderAndModel('Z.AI', 'zhipu-chat')).toBe(
+      'glm',
+    )
+    expect(
+      publicModelFamilyFromProviderAndModel('fireworks-ai', 'deepseek-v3'),
+    ).toBe('fireworks_deepseek')
+    expect(
+      publicModelFamilyFromProviderAndModel(
+        'pylon-codex-own-capacity',
+        'openagents/pylon-codex',
+      ),
+    ).toBe('pylon_codex')
+    expect(
+      publicModelFamilyFromProviderAndModel(
+        'pylon_claude_own_capacity',
+        'openagents/pylon-claude',
+      ),
+    ).toBe('pylon_claude')
+    expect(publicModelFamilyFromProviderAndModel('openrouter', 'gpt_oss_120b')).toBe(
+      'gpt_oss',
+    )
+    expect(publicModelFamilyFromProviderAndModel('google_vertex', 'gemini-pro')).toBe(
+      'gemini',
+    )
+    expect(publicModelFamilyFromProviderAndModel('private-provider', 'x')).toBe(
+      'other',
+    )
   })
 })

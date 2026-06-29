@@ -1718,16 +1718,16 @@ export const khalaTokensServedModelMixPanel = (
             historyChartShell(
               true,
               modelMixPlaceholder('No model-family rows yet.'),
-              `Canonical model-family mix for ${mix.window}, all demand included.`,
+              `Canonical model-family mix for ${mix.window}; headline served volume includes external, internal, unlabeled, and Pylon-Codex own-capacity rows, but is not revenue or external-demand proof.`,
               'Model Family Mix',
             ),
           onNonEmpty: groups =>
             historyChartShell(
               true,
               modelMixRows(groups),
-              `Canonical model-family mix for ${mix.window}, all demand included. Total ${formatNumber(
+              `Canonical model-family mix for ${mix.window}. Total ${formatNumber(
                 mix.totalTokens,
-              )} tokens served.`,
+              )} headline tokens served across external, internal, unlabeled, and Pylon-Codex own-capacity rows; not revenue or external-demand proof.`,
               'Model Family Mix',
             ),
         }),
