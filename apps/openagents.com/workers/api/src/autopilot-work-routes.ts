@@ -36,6 +36,7 @@ import {
   evaluateLaneCFanoutForWorkOrder,
   laneCFanoutObjectiveRef,
 } from './lane-c-fanout-bridge'
+import { isMarketplaceWorkClassId } from './marketplace-work-class-catalog'
 import { buildSelfServeFanoutPlan } from './self-serve-fanout'
 import {
   methodNotAllowed,
@@ -3112,6 +3113,20 @@ const laneCFanoutWorkOrder = <Bindings extends AutopilotWorkRouteEnv>(
     })) ?? {}
     const customerOptIn = body.customerOptIn === true
     const budgetCapSats = typeof body.budgetCapSats === 'number' ? body.budgetCapSats : 0
+    const requestedWorkClass =
+      typeof body.workClass === 'string' ? body.workClass : undefined
+    if (
+      requestedWorkClass !== undefined &&
+      !isMarketplaceWorkClassId(requestedWorkClass)
+    ) {
+      return noStoreJsonResponse(
+        {
+          error: 'lane_c_fanout_invalid_work_class',
+          reason: `Unknown marketplace work class: ${requestedWorkClass}`,
+        },
+        { status: 400 },
+      )
+    }
 
     const work = projectionForRecord(record, false, nowIso, pylonRegistrations)
     // Server-supplied placement/policy + readiness facts for the lane-C gate.
@@ -3143,7 +3158,8 @@ const laneCFanoutWorkOrder = <Bindings extends AutopilotWorkRouteEnv>(
     // action. Build the typed plan so the response is the self-serve capability,
     // not an operator-staged two-step. The plan reuses the SAME lane-C gate, so
     // a blocked gate yields a plan with marketWorkRequest=null. It is INERT and
-    // clears only the self-serve blocker (code_task work class only).
+    // clears the self-serve blocker without bypassing class-specific
+    // capability or verification contracts.
     const selfServePlanResult = buildSelfServeFanoutPlan(
       {
         workOrderRef,
@@ -3151,11 +3167,23 @@ const laneCFanoutWorkOrder = <Bindings extends AutopilotWorkRouteEnv>(
         customerOptIn,
         budgetCapSats,
         title: `Lane C fanout: ${workOrderRef}`,
+        ...(requestedWorkClass === undefined
+          ? {}
+          : { workClass: requestedWorkClass }),
       },
       workOrderFacts,
       nowIso,
     )
-    const selfServePlan = selfServePlanResult.ok ? selfServePlanResult.plan : null
+    if (!selfServePlanResult.ok) {
+      return noStoreJsonResponse(
+        {
+          error: 'lane_c_fanout_invalid_work_class',
+          reason: selfServePlanResult.error.reason,
+        },
+        { status: 400 },
+      )
+    }
+    const selfServePlan = selfServePlanResult.plan
 
     if (!fanout.readyForMarket) {
       return noStoreJsonResponse(
@@ -3180,6 +3208,15 @@ const laneCFanoutWorkOrder = <Bindings extends AutopilotWorkRouteEnv>(
     // (POST /api/forum/work-requests). A private/non-public order never reaches
     // this branch (it gets a 409 above), so the floor cannot be bypassed.
     const objectiveRef = laneCFanoutObjectiveRef(workOrderRef)
+    const marketWorkRequestInput = selfServePlan.marketWorkRequest ?? {
+      budgetSats: budgetCapSats,
+      deadlineRef: 'deadline.public.lane_c_fanout.20261231',
+      objectiveRef,
+      requiredCapabilityRefs: ['capability.pylon.local_claude_agent'],
+      title: `Lane C fanout: ${workOrderRef}`.slice(0, 160),
+      verificationCommandRef: 'command.public.pylon.labor.bun_test',
+      workClass: 'code_task',
+    }
     return noStoreJsonResponse(
       {
         fanout: {
@@ -3191,16 +3228,9 @@ const laneCFanoutWorkOrder = <Bindings extends AutopilotWorkRouteEnv>(
           state: fanout.decision.state,
         },
         generatedAt: nowIso,
-        marketWorkRequestInput: {
-          budgetSats: budgetCapSats,
-          deadlineRef: 'deadline.public.lane_c_fanout.20261231',
-          objectiveRef,
-          requiredCapabilityRefs: ['capability.pylon.local_claude_agent'],
-          title: `Lane C fanout: ${workOrderRef}`.slice(0, 160),
-          verificationCommandRef: 'command.public.pylon.labor.bun_test',
-        },
+        marketWorkRequestInput,
         // The customer-initiated self-serve fanout plan (single-action,
-        // INERT, code_task work class only). This makes the route the
+        // INERT until dispatch is armed). This makes the route the
         // self-serve capability rather than an operator-staged two-step.
         selfServeFanout: selfServePlan,
         workOrderRef,

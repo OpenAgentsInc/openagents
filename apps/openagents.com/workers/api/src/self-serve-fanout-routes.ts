@@ -5,9 +5,9 @@
 // injected plan store that the Worker leaves EMPTY unless the self-serve fanout
 // flag is explicitly armed (SELF_SERVE_FANOUT_ENABLED). Either way the response
 // is honest: `inert: true`, `promiseState: 'yellow'`, `selfServe: true`,
-// `workClass: 'code_task'`, with NO market listing, escrow, dispatch, or
-// settlement. The dispatch seam (dispatchSelfServeFanout) is never reachable
-// from this read-only route. Read-only (GET only).
+// typed work classes, with NO market listing, escrow, dispatch, or settlement.
+// The dispatch seam (dispatchSelfServeFanout) is never reachable from this
+// read-only route. Read-only (GET only).
 
 import { Effect } from 'effect'
 
@@ -16,7 +16,6 @@ import { currentIsoTimestamp } from './runtime-primitives'
 import {
   type SelfServeFanoutStore,
   SELF_SERVE_FANOUT_CLEARED_BLOCKER_REF,
-  SELF_SERVE_FANOUT_PLUGIN_MARKETPLACE_BLOCKER_REF,
   SELF_SERVE_FANOUT_PROMISE,
   SELF_SERVE_FANOUT_SCHEMA,
   SELF_SERVE_FANOUT_WORK_CLASS,
@@ -83,7 +82,7 @@ export const handleSelfServeFanoutApi = (
         maxStalenessSeconds: SelfServeFanoutStaleness.maxStalenessSeconds,
         staleness: SelfServeFanoutStaleness,
         clearedBlockerRefs: [SELF_SERVE_FANOUT_CLEARED_BLOCKER_REF],
-        unclearedBlockerRefs: [SELF_SERVE_FANOUT_PLUGIN_MARKETPLACE_BLOCKER_REF],
+        unclearedBlockerRefs: [],
         plan: readSelfServeFanoutPlan(store, planId),
       }),
     )
