@@ -1096,6 +1096,103 @@ export const PublicActivityTimelineModel = S.Union([
 export type PublicActivityTimelineModel =
   typeof PublicActivityTimelineModel.Type
 
+export const PublicArtanisFleetAgent = S.Struct({
+  agentId: S.String,
+  family: S.Literals(['codex', 'claude', 'other']),
+  onlineNow: S.Boolean,
+  capacityAvailable: S.Int,
+  status: S.String,
+})
+export type PublicArtanisFleetAgent = typeof PublicArtanisFleetAgent.Type
+
+export const PublicArtanisFleetSummary = S.Struct({
+  onlineNow: S.Int,
+  registeredTotal: S.Int,
+  codexReady: S.Int,
+  claudeReady: S.Int,
+  capacityAvailable: S.Int,
+  genericAgents: S.Array(PublicArtanisFleetAgent),
+})
+export type PublicArtanisFleetSummary = typeof PublicArtanisFleetSummary.Type
+
+export const PublicArtanisActiveAssignment = S.Struct({
+  assignmentId: S.String,
+  agentId: S.String,
+  workerFamily: S.Literals(['codex', 'claude', 'other']),
+  state: S.String,
+  repo: S.NullOr(S.String),
+  publicIssue: S.NullOr(S.String),
+  sourceRefs: S.Array(S.String),
+  updatedAt: S.String,
+})
+export type PublicArtanisActiveAssignment =
+  typeof PublicArtanisActiveAssignment.Type
+
+export const PublicArtanisDecision = S.Struct({
+  decisionId: S.String,
+  kind: S.String,
+  status: S.String,
+  agentId: S.String,
+  assignmentId: S.NullOr(S.String),
+  publicIssue: S.NullOr(S.String),
+  sourceRefs: S.Array(S.String),
+  observedAt: S.String,
+})
+export type PublicArtanisDecision = typeof PublicArtanisDecision.Type
+
+export const PublicArtanisBurnPace = S.Struct({
+  tokensLastHour: S.Int,
+  tokensLast24h: S.Int,
+  turnsLastHour: S.Int,
+  turnsLast24h: S.Int,
+  sourceRefs: S.Array(S.String),
+})
+export type PublicArtanisBurnPace = typeof PublicArtanisBurnPace.Type
+
+export const PublicArtanisFailureMode = S.Struct({
+  modeRef: S.String,
+  count: S.Int,
+  exampleSourceRefs: S.Array(S.String),
+})
+export type PublicArtanisFailureMode = typeof PublicArtanisFailureMode.Type
+
+export const PublicArtanisActivity = S.Struct({
+  schemaVersion: S.Literal('openagents.public_artanis_activity.v1'),
+  generatedAt: S.String,
+  sourceUrl: S.Literal('https://openagents.com/api/public/artanis/activity'),
+  staleness: S.Unknown,
+  fleet: PublicArtanisFleetSummary,
+  activeAssignments: S.Array(PublicArtanisActiveAssignment),
+  recentDecisions: S.Array(PublicArtanisDecision),
+  burnPace: PublicArtanisBurnPace,
+  failureModes: S.Array(PublicArtanisFailureMode),
+  safety: S.Struct({
+    redaction: S.Literal('public_safe_summary_only'),
+    excludedFields: S.Array(S.String),
+  }),
+})
+export type PublicArtanisActivity = typeof PublicArtanisActivity.Type
+
+export const IdlePublicArtanisActivity = ts('PublicArtanisActivityIdle', {})
+export const LoadingPublicArtanisActivity = ts(
+  'PublicArtanisActivityLoading',
+  {},
+)
+export const LoadedPublicArtanisActivity = ts('PublicArtanisActivityLoaded', {
+  activity: PublicArtanisActivity,
+})
+export const FailedPublicArtanisActivity = ts('PublicArtanisActivityFailed', {
+  error: S.String,
+})
+export const PublicArtanisActivityModel = S.Union([
+  IdlePublicArtanisActivity,
+  LoadingPublicArtanisActivity,
+  LoadedPublicArtanisActivity,
+  FailedPublicArtanisActivity,
+])
+export type PublicArtanisActivityModel =
+  typeof PublicArtanisActivityModel.Type
+
 export const PublicKhalaTokensServedModelFamily = S.Literals([
   'glm',
   'fireworks_deepseek',
@@ -1598,6 +1695,7 @@ export const Model = ts('LoggedOut', {
   publicKhalaTokensServed: PublicKhalaTokensServedModel,
   publicKhalaTokensServedHistory: PublicKhalaTokensServedHistoryModel,
   publicActivityTimeline: PublicActivityTimelineModel,
+  publicArtanisActivity: PublicArtanisActivityModel,
   publicKhalaTokensServedModelMix: PublicKhalaTokensServedModelMixModel,
   khalaTokensServedStream: KhalaTokensServedStreamModel,
   publicForumLaunchStatus: PublicForumLaunchStatusModel,
@@ -1681,6 +1779,10 @@ export const init = (
       route._tag === 'PublicAgent' && route.agentRef === 'artanis'
         ? LoadingPublicActivityTimeline()
         : IdlePublicActivityTimeline(),
+    publicArtanisActivity:
+      route._tag === 'PublicAgent' && route.agentRef === 'artanis'
+        ? LoadingPublicArtanisActivity()
+        : IdlePublicArtanisActivity(),
     publicKhalaTokensServedModelMix:
       route._tag === 'Stats' || route._tag === 'PublicStatsArchive'
         ? LoadingPublicKhalaTokensServedModelMix()

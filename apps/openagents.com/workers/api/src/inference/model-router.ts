@@ -676,6 +676,23 @@ export type DispatchFailureTelemetry = (
   event: DispatchFailureTelemetryEvent,
 ) => void
 
+export type GlmOwnCapacityFailoverEvent = Readonly<{
+  adapterId: string
+  consecutiveFailures: number
+  message: string
+  reason: 'glm_recovered' | 'reserved_headroom_unavailable'
+  threshold: number
+  type: 'activated' | 'cleared'
+}>
+
+export type DispatchGlmOwnCapacityFailover = Readonly<{
+  adapterId: string
+  isActive: () => boolean
+  isRecovered: () => boolean
+  recordFailure: (error: InferenceAdapterError) => void
+  recordSuccess: (adapterId: string) => void
+}>
+
 export type DispatchFailureTelemetryClassifier =
   | 'empty_content'
   | 'fallback'
@@ -732,6 +749,11 @@ export type DispatchDeps = Readonly<{
   // Optional public-safe failure telemetry. The event shape carries counts and
   // neutral classifiers only: never prompts, completions, URLs, IPs, or tokens.
   failureTelemetry?: DispatchFailureTelemetry | undefined
+  // Optional GLM own-capacity failover breaker. When the self-hosted GLM lane
+  // returns repeated public-safe no-headroom saturation signals, external demand
+  // skips that lane until the control-plane recovery predicate clears the
+  // breaker.
+  glmOwnCapacityFailover?: DispatchGlmOwnCapacityFailover | undefined
 }>
 
 export type DispatchRouteMetadata = Readonly<{
@@ -941,6 +963,111 @@ const recordFailureTelemetry = (
   telemetry?.(event)
 }
 
+const GLM_OWN_CAPACITY_DOWN_ALERT =
+  'GLM own-capacity down — failover active'
+
+const GLM_ROUTE_HEADROOM_FAILURE_KINDS = new Set([
+  'route_admission_reserved_headroom_unavailable',
+  'glm_reserved_external_headroom_unavailable',
+])
+
+const GLM_POOL_HEADROOM_FAILURE_REASONS = new Set([
+  'glm_aggregate_external_headroom_zero',
+  'glm_reserved_external_headroom_unavailable',
+  'reserved_headroom_unavailable',
+])
+
+const isGlmOwnCapacityUnavailableFailure = (
+  error: InferenceAdapterError,
+): boolean => {
+  if (GLM_ROUTE_HEADROOM_FAILURE_KINDS.has(error.kind ?? '')) {
+    return true
+  }
+  if (error.kind !== 'glm_pool_saturated') {
+    return false
+  }
+  const metadata = error.adapterRouteMetadata
+  if (metadata?.glmAggregateExternalHeadroom === 0) {
+    return true
+  }
+  const replicaBusyReason = metadata?.replicaBusyReason
+  return (
+    typeof replicaBusyReason === 'string' &&
+    GLM_POOL_HEADROOM_FAILURE_REASONS.has(replicaBusyReason)
+  )
+}
+
+export const makeGlmOwnCapacityFailover = (
+  input: Readonly<{
+    adapterId?: string | undefined
+    failureThreshold?: number | undefined
+    isRecovered?: (() => boolean) | undefined
+    onAlert?: ((event: GlmOwnCapacityFailoverEvent) => void) | undefined
+  }> = {},
+): DispatchGlmOwnCapacityFailover => {
+  const adapterId = input.adapterId ?? HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID
+  const threshold =
+    input.failureThreshold === undefined ||
+    !Number.isFinite(input.failureThreshold) ||
+    input.failureThreshold <= 0
+      ? 3
+      : Math.floor(input.failureThreshold)
+  let consecutiveFailures = 0
+  let active = false
+  const alert = (event: GlmOwnCapacityFailoverEvent): void => {
+    input.onAlert?.(event)
+  }
+  const clear = (): void => {
+    if (!active && consecutiveFailures === 0) {
+      return
+    }
+    const wasActive = active
+    active = false
+    consecutiveFailures = 0
+    if (!wasActive) {
+      return
+    }
+    alert({
+      adapterId,
+      consecutiveFailures,
+      message: 'GLM own-capacity recovered - failover cleared',
+      reason: 'glm_recovered',
+      threshold,
+      type: 'cleared',
+    })
+  }
+  return {
+    adapterId,
+    isActive: () => active,
+    isRecovered: () => input.isRecovered?.() === true,
+    recordFailure: error => {
+      if (
+        error.adapterId !== adapterId ||
+        !isGlmOwnCapacityUnavailableFailure(error)
+      ) {
+        return
+      }
+      consecutiveFailures += 1
+      if (!active && consecutiveFailures >= threshold) {
+        active = true
+        alert({
+          adapterId,
+          consecutiveFailures,
+          message: GLM_OWN_CAPACITY_DOWN_ALERT,
+          reason: 'reserved_headroom_unavailable',
+          threshold,
+          type: 'activated',
+        })
+      }
+    },
+    recordSuccess: servedAdapterId => {
+      if (servedAdapterId === adapterId) {
+        clear()
+      }
+    },
+  }
+}
+
 const telemetryForError = (
   error: InferenceAdapterError,
   stage: DispatchFailureTelemetryEvent['stage'],
@@ -1093,10 +1220,30 @@ export const dispatchWithOverflowWithMetadata = <A>(
 
     const adapterIds = planFor(request.model)
     let healthQuarantinedLaneCount = 0
+    const glmOwnCapacityFailover = deps.glmOwnCapacityFailover
+    const recoveredGlmOwnCapacity =
+      glmOwnCapacityFailover?.isActive() === true &&
+      glmOwnCapacityFailover.isRecovered()
+    if (recoveredGlmOwnCapacity) {
+      glmOwnCapacityFailover?.recordSuccess(glmOwnCapacityFailover.adapterId)
+    }
     // Resolve to the lanes that are actually registered (skip absent partners).
     const adapters = adapterIds.flatMap(id => {
       const adapter = deps.registry.resolve(id)
       if (adapter === undefined) {
+        return []
+      }
+      if (
+        id === glmOwnCapacityFailover?.adapterId &&
+        glmOwnCapacityFailover.isActive()
+      ) {
+        recordFailureTelemetry(deps.failureTelemetry, {
+          adapterId: id,
+          classifier: 'fallback',
+          kind: 'glm_own_capacity_failover_active',
+          retryable: true,
+          stage: 'fallback',
+        })
         return []
       }
       const signals = deps.routingSignals?.(id)
@@ -1243,6 +1390,7 @@ export const dispatchWithOverflowWithMetadata = <A>(
               stage: 'fallback',
             })
           }
+          deps.glmOwnCapacityFailover?.recordSuccess(adapter.id)
           return {
             route: {
               fallbackReason,
@@ -1271,6 +1419,7 @@ export const dispatchWithOverflowWithMetadata = <A>(
         }
 
         lastError = outcome.error
+        deps.glmOwnCapacityFailover?.recordFailure(outcome.error)
         if (wasInternalStressPreempted(adapterRequest)) {
           return yield* Effect.fail(internalStressPreemptedError(adapterRequest))
         }
