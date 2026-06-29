@@ -1027,14 +1027,15 @@ describe('public product promises document', () => {
           audience: expect.arrayContaining(['agent', 'operator', 'developer']),
           blockerRefs: expect.arrayContaining([
             'blocker.product_promises.repo_studying_privacy_review_missing',
-            'blocker.product_promises.repo_studying_marketplace_metering_missing',
-            'blocker.product_promises.repo_studying_payout_settlement_gates_missing',
+            'blocker.product_promises.repo_studying_armed_marketplace_closeout_receipt_missing',
+            'blocker.product_promises.repo_studying_owner_signed_marketplace_green_transition_missing',
           ]),
           evidenceRefs: expect.arrayContaining([
             'docs/research/machine-studying/openagents-studybench/runs/2026-06-17-mvp-14-baseline-packet-gepa-comparison.md',
             'packages/probe/docs/benchmarks/2026-06-17-openagents-studybench-mvp-14-comparison.json',
             'docs/promises/2026-06-17-repo-studying-product-promise-gate-review.md',
             'packages/probe/packages/runtime/src/benchmark/openagents-customer-private-validation.ts',
+            'packages/probe/packages/runtime/src/benchmark/external-repo-studying-marketplace-gates.ts',
             'promise:repo.open_source_code_map.v1',
           ]),
           promiseId: 'autopilot.repo_study_packets.v1',
@@ -1270,6 +1271,22 @@ describe('public product promises document', () => {
     expect(repoStudyPacketPromise?.authorityBoundary).toContain(
       'not paid work',
     )
+    expect(repoStudyPacketPromise?.evidenceRefs).toContain(
+      'packages/probe/packages/runtime/tests/external-repo-studying-marketplace-gates.test.ts',
+    )
+    expect(repoStudyPacketPromise?.blockerRefs).not.toEqual(
+      expect.arrayContaining([
+        'blocker.product_promises.repo_studying_marketplace_metering_missing',
+        'blocker.product_promises.repo_studying_pricing_package_policy_missing',
+        'blocker.product_promises.repo_studying_payout_settlement_gates_missing',
+      ]),
+    )
+    expect(repoStudyPacketPromise?.blockerRefs).toEqual(
+      expect.arrayContaining([
+        'blocker.product_promises.repo_studying_armed_marketplace_closeout_receipt_missing',
+        'blocker.product_promises.repo_studying_owner_signed_marketplace_green_transition_missing',
+      ]),
+    )
     const externalRepoStudyPromise = decoded.promises.find(
       promise => promise.promiseId === 'autopilot.external_repo_studying_pilot.v1',
     )
@@ -1292,6 +1309,22 @@ describe('public product promises document', () => {
     )
     expect(externalRepoStudyPromise?.authorityBoundary).toContain(
       'no private repo ingestion authority',
+    )
+    expect(externalRepoStudyPromise?.evidenceRefs).toContain(
+      'packages/probe/packages/runtime/src/benchmark/external-repo-studying-marketplace-gates.ts',
+    )
+    expect(externalRepoStudyPromise?.blockerRefs).not.toEqual(
+      expect.arrayContaining([
+        'blocker.product_promises.external_repo_studying_marketplace_metering_missing',
+        'blocker.product_promises.external_repo_studying_pricing_package_policy_missing',
+        'blocker.product_promises.external_repo_studying_payout_settlement_gates_missing',
+      ]),
+    )
+    expect(externalRepoStudyPromise?.blockerRefs).toEqual(
+      expect.arrayContaining([
+        'blocker.product_promises.external_repo_studying_armed_marketplace_closeout_receipt_missing',
+        'blocker.product_promises.external_repo_studying_owner_signed_marketplace_green_transition_missing',
+      ]),
     )
   })
 

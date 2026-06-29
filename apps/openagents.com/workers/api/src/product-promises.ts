@@ -261,6 +261,7 @@ export const publicProductPromisesDocument = () => {
         'Registry 2026-06-28.3 implements #6891 for models.tassadar_percepta_executor.v1 and flips NO promise state. Pylon v1.0 now has a deterministic bounded CPU computation-transform fixture in apps/pylon/src/tassadar-cpu-transform-training.ts that runs one CPU-only optimization step, self-verifies loss improvement, emits receipt.models.tassadar_percepta_executor.cpu_transform_training.cpu_transform_fixture_v1, and keeps realBitcoinMoved:false / settlementState:not_settled. GET /api/public/models/tassadar-percepta-executor/cpu-transform-training-receipts now projects that public-safe receipt alongside the architecture and Artanis distillation dataset inputs, so the old pylon_v03_cpu_transform_training_receipts_missing blocker is replaced by blocker.product_promises.tassadar_cpu_transform_real_settlement_missing and blocker.product_promises.tassadar_cpu_transform_owner_green_signoff_missing. The promise STAYS planned: this is one fixture-scale receipt, not a trained model, not a paid earning path, not model promotion, and not a green transition; any future green flip remains receipt-first and owner-signed per proof.claim_upgrade_receipts.v1.',
         'Registry 2026-06-29.1 implements #6848 for payments.accepted_outcome_economics.v1 and flips NO promise state. The accepted-outcome economics spine now has a dereferenceable contributor accrual bundle at GET /api/public/payments/contributor-accrual-bundle?economicsId=... plus the settlement bundle at GET /api/public/accepted-outcome/settlement/{economicsId}; together they compose a gross-margin receipt, contributor accrual ledger entries, and an eight-state settlement machine from one stored accepted-outcome economics row. Tests prove the ledger and receipt share the same economicsId, reconcile gross margin exactly, reconcile pending_payout to the distributable ledger pool, keep public projections free of internal cents/raw payment material, and surface missing contributor provenance honestly. The old source-level blockers contributor_ledger_missing and gross_margin_receipts_missing are replaced by real_accepted_outcome_receipt_missing and owner_signed_green_transition_missing. The promise STAYS red because source/fixture receipt machinery is not a real accepted outcome carried through a money-moving settlement path, and any future green flip remains receipt-first and owner-signed per proof.claim_upgrade_receipts.v1.',
         'Registry 2026-06-29.2 is a current-main refresh after #6997/#6999/#7001/#7002/#7006 and flips NO promise state. The terminal-agent current-state audit and Codex tool-layer study are now cited as evidence for the Codex/Probe/Pylon runtime direction: current production coding delegation is still Pylon plus external agent SDK lanes and OpenAgents-native terminal tools remain a consolidation task, not a new green claim. The codex-supervisor LOCKOUT replenishment helper can create or reuse three bounded standing issues so owner-capacity supervisors do not idle indefinitely, but it creates no paid labor, payout, settlement, or broad availability claim. The inference router now has GLM own-capacity failover alerting and public-safe fallback telemetry for repeated no-headroom saturation, but the paid gateway still stays red until a dereferenceable paid receipt exists. Khala Desktop now carries source-level Electrobun Apple FM sidecar packaging/readiness plus redaction tests, but Apple FM local mode remains yellow until a signed/notarized from-install smoke with helper supervision exists. The Khala model-mix promise remains live-at-read with maxStalenessSeconds:0; the stale 2-second cache wording is not applied.',
+        'Registry 2026-06-29.3 implements #7028 economic-gate narrowing for repo studying and flips NO promise state. packages/probe/packages/runtime/src/benchmark/external-repo-studying-marketplace-gates.ts now provides a refs-only inert marketplace gate that requires package policy, usage-metering unit, pricing policy, payout policy, settlement policy, terms, flag arming, and owner sign-off before a future marketplace package could be allowed. The gate always keeps customerPublicClaimAllowed:false, marketplacePackageAllowed:false, packageListed:false, payoutEligible:false, and effectsApplied:false, so it lists no package, bills nothing, pays nothing, settles nothing, and exposes no raw private repo material. The broad economic-policy blockers on autopilot.repo_study_packets.v1 and autopilot.external_repo_studying_pilot.v1 are narrowed to receipt-first armed-marketplace blockers; privacy, self-serve upload, product-copy, and real armed customer-private closeout blockers remain.',
       ],
     },
     promises: [
@@ -314,17 +315,18 @@ export const publicProductPromisesDocument = () => {
           'docs/promises/2026-06-17-repo-studying-product-promise-gate-review.md',
           'packages/probe/packages/runtime/src/benchmark/openagents-customer-private-validation.ts',
           'packages/probe/packages/runtime/tests/openagents-customer-private-validation.test.ts',
+          'packages/probe/packages/runtime/src/benchmark/external-repo-studying-marketplace-gates.ts',
+          'packages/probe/packages/runtime/tests/external-repo-studying-marketplace-gates.test.ts',
           'promise:repo.open_source_code_map.v1',
         ],
         blockerRefs: [
           'blocker.product_promises.repo_studying_privacy_review_missing',
-          'blocker.product_promises.repo_studying_marketplace_metering_missing',
-          'blocker.product_promises.repo_studying_pricing_package_policy_missing',
-          'blocker.product_promises.repo_studying_payout_settlement_gates_missing',
+          'blocker.product_promises.repo_studying_armed_marketplace_closeout_receipt_missing',
+          'blocker.product_promises.repo_studying_owner_signed_marketplace_green_transition_missing',
           'blocker.product_promises.repo_studying_product_copy_review_missing',
         ],
         verification:
-          'Yellow is limited to the recorded MVP-14 OpenAgents public-safe comparison plus docs review. Green or external copy requires customer-data privacy review, private validation/holdout discipline, marketplace package policy, usage metering, pricing, payout eligibility, settlement receipts, and product-promise preflight. Public score summaries must keep productPromiseBoundary.publicProductClaimAllowed false until those gates pass.',
+          'Yellow is limited to the recorded MVP-14 OpenAgents public-safe comparison plus docs review. Green or external copy requires customer-data privacy review, private validation/holdout discipline, the refs-only marketplace economic gate, an armed customer-private marketplace closeout receipt, owner-signed transition, and product-promise preflight. Public score summaries must keep productPromiseBoundary.publicProductClaimAllowed false until those gates pass.',
         authorityBoundary:
           'A StudyBench row or study packet is evidence and repository-memory input only. It grants no runtime mutation, customer repository ingestion, marketplace listing, billing, payout eligibility, settlement, training promotion, or public green-claim authority, and it is not paid work.',
       },
@@ -346,6 +348,8 @@ export const publicProductPromisesDocument = () => {
           'packages/probe/packages/runtime/src/benchmark/external-repo-studying-pilot-admission.ts',
           'packages/probe/packages/runtime/tests/external-repo-studying-pilot-admission.test.ts',
           'packages/probe/packages/runtime/src/benchmark/openagents-customer-private-validation.ts',
+          'packages/probe/packages/runtime/src/benchmark/external-repo-studying-marketplace-gates.ts',
+          'packages/probe/packages/runtime/tests/external-repo-studying-marketplace-gates.test.ts',
           'docs/research/machine-studying/openagents-studybench/private-boundary.md',
           'docs/research/machine-studying/2026-06-17-tassadar-openagents-repo-studying-roadmap.md#phase-6',
           'promise:autopilot.repo_study_packets.v1',
@@ -353,12 +357,11 @@ export const publicProductPromisesDocument = () => {
         blockerRefs: [
           'blocker.product_promises.external_repo_studying_privacy_policy_missing',
           'blocker.product_promises.external_repo_studying_self_serve_upload_missing',
-          'blocker.product_promises.external_repo_studying_marketplace_metering_missing',
-          'blocker.product_promises.external_repo_studying_pricing_package_policy_missing',
-          'blocker.product_promises.external_repo_studying_payout_settlement_gates_missing',
+          'blocker.product_promises.external_repo_studying_armed_marketplace_closeout_receipt_missing',
+          'blocker.product_promises.external_repo_studying_owner_signed_marketplace_green_transition_missing',
         ],
         verification:
-          'Yellow is limited to the S7 non-OpenAgents fixture pipeline: corpus manifest, study packet, graph, S3 verdict, S4-style eval lift, and coder context. Any real customer-private repo product requires admission policy, privacy review, customer review, self-serve controls, usage metering, pricing, payout eligibility, settlement evidence, and product-promise copy preflight.',
+          'Yellow is limited to the S7 non-OpenAgents fixture pipeline: corpus manifest, study packet, graph, S3 verdict, S4-style eval lift, coder context, and refs-only inert marketplace economic gates. Any real customer-private repo product requires admission policy, privacy review, customer review, self-serve controls, an armed marketplace closeout receipt, owner-signed transition, and product-promise copy preflight.',
         authorityBoundary:
           'The external-repo studying pilot is repository-memory evidence only. It grants no private repo ingestion authority, write authority, runtime mutation, marketplace listing, billing, payout eligibility, settlement, training promotion, or green public customer claim.',
       },
