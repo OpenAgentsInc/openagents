@@ -52,6 +52,9 @@ describe('Probe GEPA standing optimization loop projection (#6707)', () => {
     expect(projection.offlineOptimizationReady).toBe(true)
     expect(projection.candidateArtifactsAdmissibleToAuthority).toBe(true)
     expect(projection.livePromotionAllowed).toBe(false)
+    expect(projection.evalResultRefs).toEqual([
+      'eval_result.studybench.recent.low_quality_001',
+    ])
     expect(projection.evidenceRefs).toEqual([
       'eval_result.studybench.recent.low_quality_001',
       'optimizer_run.gepa_dspy.mutalisk.issue_6707.001',
@@ -148,5 +151,22 @@ describe('Probe GEPA standing optimization loop projection (#6707)', () => {
         ),
       ).toThrow(ProbeGepaStandingOptimizationLoopUnsafe)
     }
+  })
+
+  test('dedupes and exposes eval result refs as first-class closure evidence', () => {
+    const projection = projectProbeGepaStandingOptimizationLoop(
+      input({
+        evalResultRefs: [
+          'eval_result.studybench.recent.low_quality_002',
+          'eval_result.studybench.recent.low_quality_001',
+          'eval_result.studybench.recent.low_quality_002',
+        ],
+      }),
+    )
+
+    expect(projection.evalResultRefs).toEqual([
+      'eval_result.studybench.recent.low_quality_001',
+      'eval_result.studybench.recent.low_quality_002',
+    ])
   })
 })
