@@ -440,10 +440,47 @@ describe('public product promises document', () => {
       /latest stays 0\.2\.5|only published, installable Pylon|release candidate, not stable 0\.3\.0|Pylon v1\.0 is present in the monorepo as a release candidate/i,
     )
     expect(currentCopy).toContain('Pylon v1.0 has a stable source cut')
-    expect(currentCopy).toContain('Registry 2026-06-29.2')
+    expect(currentCopy).toContain('Registry 2026-06-29.3')
     expect(currentCopy).toContain('flips NO promise state')
+    expect(currentCopy).toContain(
+      'records the conservative Autopilot world-visualization gate decision',
+    )
     expect(currentCopy).toContain('Khala Desktop now carries source-level')
     expect(currentCopy).toContain('maxStalenessSeconds:0')
+    const worldScenePromise = decoded.promises.find(
+      promise => promise.promiseId === 'autopilot.agent_world_scene.v1',
+    )
+    const paymentVisualizationPromise = decoded.promises.find(
+      promise =>
+        promise.promiseId === 'autopilot.bitcoin_payment_visualization.v1',
+    )
+    const growthVisualizationPromise = decoded.promises.find(
+      promise =>
+        promise.promiseId === 'autopilot.pylon_growth_visualization.v1',
+    )
+    expect(worldScenePromise?.state).toBe('yellow')
+    expect(paymentVisualizationPromise?.state).toBe('yellow')
+    expect(growthVisualizationPromise?.state).toBe('yellow')
+    expect(worldScenePromise?.blockerRefs).toEqual([
+      'blocker.product_promises.agent_world_scene_intentionally_flag_gated',
+    ])
+    expect(paymentVisualizationPromise?.blockerRefs).toEqual([
+      'blocker.product_promises.payment_visualization_intentionally_flag_gated',
+    ])
+    expect(growthVisualizationPromise?.blockerRefs).toEqual([
+      'blocker.product_promises.pylon_growth_intentionally_flag_gated',
+    ])
+    for (const promise of [
+      worldScenePromise,
+      paymentVisualizationPromise,
+      growthVisualizationPromise,
+    ]) {
+      expect(promise?.safeCopy).toContain('2026-06-29 #7030 decision')
+      expect(promise?.safeCopy).toContain('off by default')
+      expect(promise?.evidenceRefs).toContain(
+        'docs/promises/2026-06-29-autopilot-world-visualization-gate-decision.md',
+      )
+    }
     const codexSuccessorPromise = decoded.promises.find(
       promise => promise.promiseId === 'autopilot.codex_probe_pylon_successor.v1',
     )
