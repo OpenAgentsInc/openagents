@@ -1,16 +1,15 @@
 // Omni client-delivery business-object projection endpoint
 // (promise workrooms.omni_client_delivery_workrooms.v1, yellow; DE-9 / EPIC #5532).
 //
-// INERT by default. The route is wired into the live Worker but reads from an
+// Disabled by default. The route is wired into the live Worker but reads from an
 // injected store that the Worker leaves EMPTY unless the surface flag is
 // explicitly armed (OMNI_CLIENT_DELIVERY_PROJECTION_ENABLED). When armed it
 // projects the EXISTING source-authorized business-object delivery seam
 // (buildOmniBusinessObjectDeliveryPlan) over the live client-delivery workroom
-// surface: per-write approval-gated decisions plus the integration gate verdict.
-// It NEVER applies a business-object write, sends, settles, spends, mutates a
-// connector, notifies, launches a runner, or upgrades a public claim
-// (effectsApplied is ALWAYS false; the delivery gate is held inert_disabled
-// unless its own owner-gated config is armed independently of this surface flag).
+// surface: per-write approval-gated decisions plus the integration gate verdict
+// and applied business-object projections when the owner-gated delivery config
+// reaches enabled_ready. It never sends, settles, spends, mutates a connector,
+// notifies, launches a runner, or upgrades a public claim.
 //
 // This clears ONLY the missing read-only delivery projection blocker. The
 // live-integration / owner-sign-off / closeout-receipt blockers stay
@@ -167,6 +166,7 @@ const projectionPayload = (
     (count, plan) => count + plan.applyableCount,
     0,
   )
+  const effectsApplied = plans.some(plan => plan.effectsApplied)
 
   return {
     promiseId: OMNI_CLIENT_DELIVERY_PROJECTION_PROMISE_ID,
@@ -180,10 +180,11 @@ const projectionPayload = (
     maxStalenessSeconds: OmniClientDeliveryProjectionStaleness.maxStalenessSeconds,
     staleness: OmniClientDeliveryProjectionStaleness,
     audience,
-    // The delivery seam is read-only: it plans approval-gated writes but never
-    // applies one. These flags make that boundary machine-checkable.
-    effectsApplied: false as const,
-    writeMutationAllowed: false as const,
+    // The delivery seam only applies owner-gated business-object projections.
+    // It still cannot mutate connectors, send notifications, move money, run
+    // workers, or upgrade public claims.
+    effectsApplied,
+    writeMutationAllowed: effectsApplied,
     connectorWriteAllowed: false as const,
     notificationMutationAllowed: false as const,
     paymentMutationAllowed: false as const,
@@ -197,11 +198,11 @@ const projectionPayload = (
     applyableWriteCount: applyableCount,
     plans,
     note:
-      'Omni client-delivery business-object projection is read-only. It plans ' +
-      'approval-gated writes via the existing delivery seam and clears only ' +
-      'the missing read-only delivery-projection blocker; the live ' +
-      'integration, owner sign-off, and closeout receipt remain owner-gated, ' +
-      'so the promise stays yellow.',
+      'Omni client-delivery business-object projection plans approval-gated ' +
+      'writes via the existing delivery seam and applies only when the ' +
+      'owner-gated config carries source refs, approval, owner sign-off, and ' +
+      'closeout receipts. Connector writes, notifications, settlement, runner ' +
+      'launch, and public-claim upgrades remain disabled.',
   }
 }
 

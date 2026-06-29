@@ -2,6 +2,10 @@ import { Effect } from 'effect'
 import { describe, expect, test } from 'vitest'
 
 import { makeOmniWorkroomRoutes } from './omni-workroom-routes'
+import {
+  OMNI_BUSINESS_OBJECT_WRITE_FIXTURE,
+  OMNI_SOURCE_AUTHORITY_BINDING_FIXTURE,
+} from './omni-source-authorized-business-objects'
 
 type RefRow = Readonly<{ archived_at: string | null; id: string }>
 type WorkroomRow = Readonly<{
@@ -511,6 +515,67 @@ describe('Omni workroom routes', () => {
     expect(json.sourceAuthorityDelivery.effectsApplied).toBe(false)
     expect(json.sourceAuthorityDelivery.applyableCount).toBe(0)
     expect(json.sourceAuthorityDelivery.proposedCount).toBe(1)
+  })
+
+  test('applies an approved source-authorized business-object write on the live workroom route', async () => {
+    const store = new OmniWorkroomStore()
+    const routes = makeRoutes(store)
+
+    await runRequest(
+      routes,
+      postRequest(
+        createBody({
+          id: 'omni_workroom_business_sa_applied',
+          idempotencyKey: 'omni-workroom:business-sa-applied',
+          metadata: {
+            sourceAuthority: {
+              bindings: [OMNI_SOURCE_AUTHORITY_BINDING_FIXTURE],
+              config: {
+                closeoutReceiptRef: 'closeout_receipt.acme',
+                integrationEnabled: true,
+                ownerSignOffRef: 'owner_sign_off.acme',
+              },
+              writes: [OMNI_BUSINESS_OBJECT_WRITE_FIXTURE],
+            },
+          },
+        }),
+      ),
+      store,
+    )
+
+    const response = await runRequest(
+      routes,
+      new Request(
+        'https://openagents.com/api/omni/workrooms/omni_workroom_business_sa_applied/source-authority?surface=operator',
+      ),
+      store,
+    )
+    expect(response.status).toBe(200)
+    const json = (await response.json()) as {
+      sourceAuthorityDelivery: {
+        applyableCount: number
+        effectsApplied: boolean
+        entries: ReadonlyArray<{
+          appliedBusinessObject?: Record<string, unknown>
+          closeoutReceiptRefs: ReadonlyArray<string>
+        }>
+        gateState: string
+        proposedCount: number
+      }
+    }
+    expect(json.sourceAuthorityDelivery.gateState).toBe('enabled_ready')
+    expect(json.sourceAuthorityDelivery.effectsApplied).toBe(true)
+    expect(json.sourceAuthorityDelivery.applyableCount).toBe(1)
+    expect(json.sourceAuthorityDelivery.proposedCount).toBe(1)
+    expect(
+      json.sourceAuthorityDelivery.entries[0]?.appliedBusinessObject,
+    ).toMatchObject({
+      businessObjectKind: 'contact',
+      businessObjectRef: 'business_object.contact.acme_primary',
+    })
+    expect(
+      json.sourceAuthorityDelivery.entries[0]?.closeoutReceiptRefs,
+    ).toContain('closeout_receipt.acme')
   })
 
   test('requires an operator session for operator source-authority reads', async () => {

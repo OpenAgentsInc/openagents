@@ -452,7 +452,7 @@ describe('public product promises document', () => {
         }),
         expect.objectContaining({
           promiseId: 'workrooms.source_authorized_business_objects.v1',
-          state: 'red',
+          state: 'yellow',
         }),
         expect.objectContaining({
           promiseId: 'mobile.voice_approval_companion.v1',

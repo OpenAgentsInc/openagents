@@ -58,6 +58,20 @@ const armedStore = () =>
     },
   ])
 
+const armedReadyStore = () =>
+  makeInMemoryOmniClientDeliveryProjectionStore([
+    {
+      bindings: [OMNI_SOURCE_AUTHORITY_BINDING_FIXTURE],
+      config: {
+        closeoutReceiptRef: 'closeout_receipt.acme',
+        integrationEnabled: true,
+        ownerSignOffRef: 'owner_sign_off.acme',
+      },
+      workroom: workroom(),
+      writes: [OMNI_BUSINESS_OBJECT_WRITE_FIXTURE],
+    },
+  ])
+
 const deps = (
   override: Partial<OmniClientDeliveryProjectionDeps> = {},
 ): OmniClientDeliveryProjectionDeps => ({
@@ -113,7 +127,7 @@ describe('Omni client-delivery projection endpoint (INERT)', () => {
     expect(body.plans).toEqual([])
   })
 
-  test('enabled with armed store: projects the delivery plan, holds writes inert', async () => {
+  test('enabled with armed store: projects the delivery plan, holding writes until owner-gated config is ready', async () => {
     const res = handleOmniClientDeliveryProjectionApi(
       get(),
       deps({ enabled: true, store: armedStore() }),
@@ -132,6 +146,27 @@ describe('Omni client-delivery projection endpoint (INERT)', () => {
     expect(plans[0]?.gateState).toBe('inert_disabled')
     expect(plans[0]?.applyableCount).toBe(0)
     expect(plans[0]?.workroomId).toBe('workroom.acme_delivery')
+  })
+
+  test('enabled with owner-gated ready store: applies approved business-object writes with receipts', async () => {
+    const res = handleOmniClientDeliveryProjectionApi(
+      get(),
+      deps({ enabled: true, store: armedReadyStore() }),
+    )
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as Record<string, unknown>
+    expect(body.enabled).toBe(true)
+    expect(body.inert).toBe(false)
+    expect(body.effectsApplied).toBe(true)
+    expect(body.writeMutationAllowed).toBe(true)
+    expect(body.connectorWriteAllowed).toBe(false)
+    expect(body.settlementAllowed).toBe(false)
+    expect(body.publicClaimUpgradeAllowed).toBe(false)
+    expect(body.applyableWriteCount).toBe(1)
+    const plans = body.plans as ReadonlyArray<Record<string, unknown>>
+    expect(plans[0]?.effectsApplied).toBe(true)
+    expect(plans[0]?.gateState).toBe('enabled_ready')
+    expect(plans[0]?.applyableCount).toBe(1)
   })
 
   test('empty store factory yields no workrooms', () => {

@@ -58,7 +58,7 @@ const buildPlan = (
     writes: [OMNI_BUSINESS_OBJECT_WRITE_FIXTURE],
   })
 
-describe('Omni workroom business-object delivery integration (INERT)', () => {
+describe('Omni workroom business-object delivery integration', () => {
   test('gate resolves inert_disabled by default', () => {
     expect(resolveOmniBusinessObjectDeliveryGate({})).toBe('inert_disabled')
     expect(
@@ -122,7 +122,7 @@ describe('Omni workroom business-object delivery integration (INERT)', () => {
     expect(plan.entries[0]?.applyAllowed).toBe(false)
   })
 
-  test('enabled_ready plan surfaces applyable writes but never applies effects', () => {
+  test('enabled_ready plan applies approved writes with receipts', () => {
     const plan = buildPlan({
       closeoutReceiptRef: 'closeout_receipt.acme',
       integrationEnabled: true,
@@ -130,12 +130,25 @@ describe('Omni workroom business-object delivery integration (INERT)', () => {
     })
 
     expect(plan.gateState).toBe('enabled_ready')
-    // Even at the highest gate state, the integration only plans; it never
-    // applies a real business-object mutation by itself.
-    expect(plan.effectsApplied).toBe(false)
+    expect(plan.effectsApplied).toBe(true)
     expect(plan.blockerRefs).toEqual([])
     expect(plan.applyableCount).toBe(1)
     expect(plan.entries[0]?.applyAllowed).toBe(true)
+    expect(plan.entries[0]?.appliedReceiptRefs).toEqual([
+      'closeout_receipt.acme',
+      'receipt.business_object_write.contact_updated',
+    ])
+    expect(plan.entries[0]?.closeoutReceiptRefs).toEqual([
+      'closeout.business_object_write.contact_updated',
+      'closeout_receipt.acme',
+    ])
+    expect(plan.entries[0]?.appliedBusinessObject).toMatchObject({
+      businessObjectKind: 'contact',
+      businessObjectRef: 'business_object.contact.acme_primary',
+      operation: 'update',
+      sourceRefs: ['source.workroom.chat_extraction_summary'],
+      writeRef: 'business_object_write.acme_contact_1',
+    })
     expect(plan.entries[0]?.reasonRef).toBe(
       'reason.source_authority.approved_write_applyable',
     )
@@ -153,6 +166,7 @@ describe('Omni workroom business-object delivery integration (INERT)', () => {
     })
 
     expect(inputs.bindings).toHaveLength(1)
+    expect(inputs.config).toBeUndefined()
     expect(inputs.writes).toHaveLength(1)
     expect(inputs.bindings[0]?.id).toBe(
       OMNI_SOURCE_AUTHORITY_BINDING_FIXTURE.id,
@@ -160,7 +174,7 @@ describe('Omni workroom business-object delivery integration (INERT)', () => {
   })
 
   test('extracts empty inputs when no source-authority metadata block exists', () => {
-    expect(extractWorkroomSourceAuthorityInputs(workroom())).toEqual({
+    expect(extractWorkroomSourceAuthorityInputs(workroom())).toMatchObject({
       bindings: [],
       writes: [],
     })
@@ -225,6 +239,57 @@ describe('Omni workroom business-object delivery integration (INERT)', () => {
     expect(plan.applyableCount).toBe(0)
     expect(plan.entries[0]?.blockerRefs).toContain(
       'blocker.business_object_delivery.binding_not_found',
+    )
+  })
+
+  test('source-less writes are denied instead of applied', () => {
+    const plan = buildOmniBusinessObjectDeliveryPlan({
+      audience: 'operator',
+      bindings: [OMNI_SOURCE_AUTHORITY_BINDING_FIXTURE],
+      config: {
+        closeoutReceiptRef: 'closeout_receipt.acme',
+        integrationEnabled: true,
+        ownerSignOffRef: 'owner_sign_off.acme',
+      },
+      nowIso,
+      workroom: workroom(),
+      writes: [{ ...OMNI_BUSINESS_OBJECT_WRITE_FIXTURE, sourceRefs: [] }],
+    })
+
+    expect(plan.effectsApplied).toBe(false)
+    expect(plan.applyableCount).toBe(0)
+    expect(plan.entries[0]?.applyAllowed).toBe(false)
+    expect(plan.entries[0]?.blockerRefs).toContain(
+      'blocker.business_object_delivery.write_unsafe',
+    )
+    expect(plan.entries[0]?.appliedBusinessObject).toBeUndefined()
+  })
+
+  test('record-level builder applies approved metadata writes when owner-gated config is present', () => {
+    const plan = buildOmniWorkroomSourceAuthorityDeliveryPlan({
+      audience: 'operator',
+      nowIso,
+      workroom: {
+        ...workroom(),
+        metadata: {
+          sourceAuthority: {
+            bindings: [OMNI_SOURCE_AUTHORITY_BINDING_FIXTURE],
+            config: {
+              closeoutReceiptRef: 'closeout_receipt.acme',
+              integrationEnabled: true,
+              ownerSignOffRef: 'owner_sign_off.acme',
+            },
+            writes: [OMNI_BUSINESS_OBJECT_WRITE_FIXTURE],
+          },
+        },
+      },
+    })
+
+    expect(plan.gateState).toBe('enabled_ready')
+    expect(plan.effectsApplied).toBe(true)
+    expect(plan.applyableCount).toBe(1)
+    expect(plan.entries[0]?.closeoutReceiptRefs).toContain(
+      'closeout_receipt.acme',
     )
   })
 })
