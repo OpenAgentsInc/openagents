@@ -6,15 +6,19 @@ import {
   countRollingWindowLocalSessionTokens,
   collectPylonAccountUsageSummary,
   collectPylonAccountsList,
+  collectPylonAccountsStatus,
   collectPylonAccountsUsage,
+  inferCodexQuotaBlockKindFromProviderSnapshots,
   loadAccountUsageStore,
   parseCodexRateLimitHeaders,
+  parsePylonAccountsStatusArgs,
   parsePylonAccountsUsageArgs,
   providerRateLimitSnapshotsFromEvent,
   recordPylonAccountUsageObservation,
 } from "../src/account-usage"
 import { createBootstrapSummary, parseBootstrapArgs } from "../src/bootstrap"
 import { hashPylonAccountRef } from "../src/account-registry"
+import { recordQuotaBlock } from "../src/account-quota-ledger"
 import { assertPublicProjectionSafe } from "../src/state"
 
 const INDEX = join(import.meta.dir, "..", "src", "index.ts")
@@ -177,6 +181,93 @@ describe("pylon account usage", () => {
         }),
       }),
     ])
+  })
+
+  test("infers cooldown versus weekly exhaustion from Codex quota windows", () => {
+    expect(inferCodexQuotaBlockKindFromProviderSnapshots(parseCodexRateLimitHeaders({
+      "x-codex-primary-used-percent": "100",
+      "x-codex-primary-window-minutes": "300",
+      "x-codex-primary-reset-at": "1780000000",
+      "x-codex-secondary-used-percent": "45",
+      "x-codex-secondary-window-minutes": "10080",
+    }))).toBe("cooldown")
+
+    expect(inferCodexQuotaBlockKindFromProviderSnapshots(parseCodexRateLimitHeaders({
+      "x-codex-primary-used-percent": "87",
+      "x-codex-primary-window-minutes": "300",
+      "x-codex-secondary-used-percent": "100",
+      "x-codex-secondary-window-minutes": "10080",
+    }))).toBe("weekly_exhausted")
+  })
+
+  test("account status separates 5-hour cooldown from weekly recovery controls", async () => {
+    await withHome(async (home) => {
+      const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), { PYLON_HOME: home })
+      const codexHome = join(home, "codex-a")
+      await mkdir(codexHome, { recursive: true })
+      await writeFile(
+        summary.paths.config,
+        `${JSON.stringify({ dev: { accounts: [{ ref: "codex-a", provider: "codex", home: codexHome }] } })}\n`,
+      )
+      const accountRefHash = hashPylonAccountRef("codex", "codex-a")
+      const env = {
+        PYLON_HOME: home,
+        CODEX_HOME: join(home, "codex-default"),
+        PYLON_ACCOUNT_HOME_ROOT: join(home, "none"),
+      }
+      await recordQuotaBlock(summary, {
+        accountRefHash,
+        provider: "codex",
+        retryAtIso: "2026-06-28T15:00:00.000Z",
+        kind: "cooldown",
+        sourceDigestRef: "digest.pylon.account_quota.cooldown",
+        now: new Date("2026-06-28T14:00:00.000Z"),
+      })
+
+      const cooldown = await collectPylonAccountsStatus(
+        summary,
+        parsePylonAccountsStatusArgs(["--account", "codex-a", "--json"]),
+        { env, now: new Date("2026-06-28T14:10:00.000Z") },
+      )
+      expect(cooldown.accounts[0]?.quota).toMatchObject({
+        state: "cooldown",
+        kind: "cooldown",
+        cooldownExpiresAt: "2026-06-28T15:00:00.000Z",
+        cooldownSecondsRemaining: 3000,
+        resetAllowed: false,
+        operatorAction: "wait_for_cooldown",
+      })
+
+      const refusedReset = await collectPylonAccountsStatus(
+        summary,
+        parsePylonAccountsStatusArgs(["--account", "codex-a", "--reset", "--json"]),
+        { env, now: new Date("2026-06-28T14:10:00.000Z") },
+      )
+      expect(refusedReset.accounts[0]?.manualReset.blockerRefs).toContain(
+        "blocker.pylon.accounts_status.reset_requires_weekly_exhaustion",
+      )
+
+      await recordQuotaBlock(summary, {
+        accountRefHash,
+        provider: "codex",
+        retryAtIso: null,
+        kind: "weekly_exhausted",
+        sourceDigestRef: "digest.pylon.account_quota.weekly",
+        now: new Date("2026-06-28T14:20:00.000Z"),
+      })
+      const weekly = await collectPylonAccountsStatus(
+        summary,
+        parsePylonAccountsStatusArgs(["--account", "codex-a", "--json"]),
+        { env, now: new Date("2026-06-28T14:30:00.000Z") },
+      )
+      expect(weekly.accounts[0]?.quota).toMatchObject({
+        state: "weekly_exhausted",
+        kind: "weekly_exhausted",
+        resetAllowed: true,
+        operatorAction: "manual_recovery_available",
+      })
+      assertPublicProjectionSafe(weekly)
+    })
   })
 
   test("stores provider and local session truth with stale labeling", async () => {

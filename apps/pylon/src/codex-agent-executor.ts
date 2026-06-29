@@ -45,6 +45,10 @@ import { installCodexRipgrepGuard } from "./codex-rg-guard.js"
 import { classifyQuotaSignal } from "./account-quota.js"
 import { recordQuotaBlock } from "./account-quota-ledger.js"
 import {
+  inferCodexQuotaBlockKindFromProviderSnapshots,
+  loadAccountUsageStore,
+} from "./account-usage.js"
+import {
   classifyCodexAccountFailure,
   codexAccountFailureBlockerRefs,
   type PylonCodexAccountFailure,
@@ -1196,17 +1200,33 @@ async function recordCodexExecutionFailureHealth(input: {
 }) {
   const accountRefHash = input.account?.accountRefHash
   if (accountRefHash === undefined) return
+  let failure = input.failure
+  let quota: ReturnType<typeof classifyQuotaSignal> | null = null
+  let kind: "cooldown" | "weekly_exhausted" | "unknown" = "unknown"
+  if (failureMeansQuotaBlock(input.failure)) {
+    quota = classifyQuotaSignal(input.failure.publicMessage, "codex")
+    const usageStore = await loadAccountUsageStore(input.state).catch(() => null)
+    const latestProviderSnapshots =
+      usageStore?.accounts[accountRefHash]?.providerTruth?.snapshots ?? []
+    const inferredKind = inferCodexQuotaBlockKindFromProviderSnapshots(latestProviderSnapshots)
+    kind = inferredKind === "unknown" && input.failure.reason === "usage_limited"
+      ? "weekly_exhausted"
+      : inferredKind
+    if (kind === "cooldown" && input.failure.reason === "usage_limited") {
+      failure = { ...input.failure, reason: "rate_limited" }
+    }
+  }
   await recordCodexAccountHealthFailure(input.state, {
     accountRefHash,
-    failure: input.failure,
+    failure,
     now: input.now,
   }).catch(() => undefined)
-  if (failureMeansQuotaBlock(input.failure)) {
-    const quota = classifyQuotaSignal(input.failure.publicMessage, "codex")
+  if (quota) {
     await recordQuotaBlock(input.state, {
       accountRefHash,
       provider: "codex",
       retryAtIso: quota.retryAtIso,
+      kind,
       sourceDigestRef: quota.sourceDigestRef,
       now: input.now,
     }).catch(() => undefined)

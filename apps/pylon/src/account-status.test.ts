@@ -119,9 +119,12 @@ describe("#6637 account status observability", () => {
       expect(status.accounts).toHaveLength(1)
       expect(status.accounts[0]?.quota).toMatchObject({
         state: "limited",
+        kind: "unknown",
         cooldownExpiresAt: "2026-06-28T22:00:00.000Z",
         cooldownSecondsRemaining: 900,
         manualResetsRemaining: 3,
+        resetAllowed: false,
+        operatorAction: "none",
       })
       expect(status.accounts[0]?.capacity.hourly?.remainingPercent).toBe(75)
       expect(status.accounts[0]?.capacity.weekly?.remainingPercent).toBe(50)
