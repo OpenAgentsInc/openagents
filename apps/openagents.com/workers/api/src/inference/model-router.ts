@@ -631,6 +631,7 @@ export type DispatchLoadSheddingPolicy = Readonly<{
 
 export type DispatchRouteAdmissionPolicy = Readonly<{
   demandClass: InferenceDemandClass
+  internalStressHeadroomAvailable?: boolean | undefined
   reservedExternalHeadroomAvailable: boolean
   reason: string
 }>
@@ -907,7 +908,8 @@ const shouldRejectAdmission = (
 ): boolean =>
   admission !== undefined &&
   admission.demandClass === 'internal_stress' &&
-  !admission.reservedExternalHeadroomAvailable
+  !(admission.internalStressHeadroomAvailable ??
+    admission.reservedExternalHeadroomAvailable)
 
 const admissionError = (
   admission: DispatchRouteAdmissionPolicy,

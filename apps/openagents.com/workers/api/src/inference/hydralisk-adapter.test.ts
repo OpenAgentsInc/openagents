@@ -328,6 +328,7 @@ describe('hydralisk vLLM adapter', () => {
     })
 
     expect(runtime.routeAdmission()).toEqual({
+      internalStressHeadroomAvailable: true,
       reason: 'glm_reserved_external_headroom_available',
       reservedExternalHeadroomAvailable: true,
     })
@@ -336,37 +337,46 @@ describe('hydralisk vLLM adapter', () => {
     await startedFetchPromise
 
     expect(runtime.routeAdmission()).toEqual({
-      reason: 'glm_reserved_external_headroom_available',
-      reservedExternalHeadroomAvailable: true,
+      internalStressHeadroomAvailable: true,
+      reason: 'glm_reserved_external_headroom_unavailable',
+      reservedExternalHeadroomAvailable: false,
     })
 
     releaseFetch?.()
     await pending
 
     expect(runtime.routeAdmission()).toEqual({
+      internalStressHeadroomAvailable: true,
       reason: 'glm_reserved_external_headroom_available',
       reservedExternalHeadroomAvailable: true,
     })
   })
 
-  it('rejects route admission only when eligible GLM headroom is exhausted', () => {
+  it('admits internal stress on the final free GLM slot while reserving it from stress admission once exhausted', () => {
     const config = {
       id: GLM_POOL_ADAPTER_ID,
       replicas: [
-        replicaFixture('primary', {
-          maxInflight: 1,
-        }),
+        replicaFixture('primary', { maxInflight: 2 }),
       ],
       upstreamModel: 'openagents/glm-5.2-reap-504b',
     }
 
     expect(readHydraliskPoolRouteAdmission(config)).toEqual({
+      internalStressHeadroomAvailable: true,
       reason: 'glm_reserved_external_headroom_available',
       reservedExternalHeadroomAvailable: true,
     })
     expect(
       readHydraliskPoolRouteAdmission(config, new Map([['primary', 1]])),
     ).toEqual({
+      internalStressHeadroomAvailable: true,
+      reason: 'glm_reserved_external_headroom_unavailable',
+      reservedExternalHeadroomAvailable: false,
+    })
+    expect(
+      readHydraliskPoolRouteAdmission(config, new Map([['primary', 2]])),
+    ).toEqual({
+      internalStressHeadroomAvailable: false,
       reason: 'glm_aggregate_external_headroom_zero',
       reservedExternalHeadroomAvailable: false,
     })
@@ -403,6 +413,7 @@ describe('hydralisk vLLM adapter', () => {
     })
 
     expect(runtime.routeAdmission()).toEqual({
+      internalStressHeadroomAvailable: true,
       reason: 'glm_reserved_external_headroom_available',
       reservedExternalHeadroomAvailable: true,
     })
@@ -411,14 +422,16 @@ describe('hydralisk vLLM adapter', () => {
     await startedFetchPromise
 
     expect(runtime.routeAdmission()).toEqual({
-      reason: 'glm_reserved_external_headroom_available',
-      reservedExternalHeadroomAvailable: true,
+      internalStressHeadroomAvailable: true,
+      reason: 'glm_reserved_external_headroom_unavailable',
+      reservedExternalHeadroomAvailable: false,
     })
 
     releaseFetch?.()
     await pending
 
     expect(runtime.routeAdmission()).toEqual({
+      internalStressHeadroomAvailable: true,
       reason: 'glm_reserved_external_headroom_available',
       reservedExternalHeadroomAvailable: true,
     })

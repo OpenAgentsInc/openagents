@@ -2852,6 +2852,52 @@ describe('POST /v1/chat/completions', () => {
     })
   })
 
+  test('admits internal_stress when GLM has real free capacity but reserved external headroom is consumed', async () => {
+    let dispatched = false
+    let registerCalls = 0
+    const coordinator: InternalStressPreemptionCoordinator = {
+      preempt: async () => undefined,
+      register: async () => {
+        registerCalls += 1
+        return async () => {}
+      },
+      snapshot: async () => ({ activeStressCount: 0 }),
+    }
+    const registry = new InferenceProviderRegistry()
+    registry.register({
+      ...echoAdapter('primary'),
+      complete: request => {
+        dispatched = request.priority === 'internal_stress'
+        return stubEchoAdapter.complete(request)
+      },
+    })
+
+    const response = await run(
+      handleChatCompletions(
+        chatRequest(helloBody, {
+          headers: {
+            [INFERENCE_DEMAND_KIND_HEADER]: 'internal_stress',
+            [INFERENCE_DEMAND_SOURCE_HEADER]: 'glm-saturation',
+          },
+        }),
+        baseDeps({
+          internalStressCoordinator: coordinator,
+          lanePlan: () => ['primary'],
+          registry,
+          routeAdmission: {
+            internalStressHeadroomAvailable: true,
+            reason: 'glm_reserved_external_headroom_unavailable',
+            reservedExternalHeadroomAvailable: false,
+          },
+        }),
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    expect(dispatched).toBe(true)
+    expect(registerCalls).toBe(1)
+  })
+
   test('keeps external route demand admitted when breached SLO shedding is external-labeled', async () => {
     let dispatched = false
     const registry = new InferenceProviderRegistry()
