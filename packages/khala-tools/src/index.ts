@@ -9,6 +9,7 @@ export const KhalaToolAuthority = S.Literals([
   "shell",
   "process_stdin",
   "interaction",
+  "session_state",
   "network",
   "browser",
   "external_directory",
@@ -106,6 +107,7 @@ export const KhalaToolEventKind = S.Literals([
   "user_input_answered",
   "user_input_unavailable",
   "user_input_timed_out",
+  "todo_list_updated",
   "tool_completed",
   "tool_failed",
   "tool_cancelled",
@@ -274,11 +276,50 @@ export interface KhalaInteractionService {
   readonly marker: "khala.interaction_service"
 }
 
+export type KhalaTodoStatus = "pending" | "in_progress" | "blocked" | "completed" | "cancelled"
+
+export type KhalaTodoItemInput = Readonly<{
+  blockerReason?: string
+  content: string
+  id: string
+  status: KhalaTodoStatus
+}>
+
+export type KhalaTodoItem = KhalaTodoItemInput & Readonly<{
+  order: number
+  updatedAtMs: number
+}>
+
+export type KhalaTodoEvent = Readonly<{
+  kind: "todo_list_updated"
+  payload: unknown
+  timestampMs: number
+}>
+
+export type KhalaTodoWriteInput = Readonly<{
+  invocationId: string
+  khalaSessionId: string
+  todos: ReadonlyArray<KhalaTodoItemInput>
+}>
+
+export type KhalaTodoWriteResult = Readonly<{
+  events: ReadonlyArray<KhalaTodoEvent>
+  revision: number
+  sessionId: string
+  todos: ReadonlyArray<KhalaTodoItem>
+}>
+
+export interface KhalaTodoService {
+  readonly marker: "khala.todo_service"
+  readonly writeTodos: (input: KhalaTodoWriteInput) => Effect.Effect<KhalaTodoWriteResult, KhalaToolRuntimeError>
+}
+
 export interface KhalaToolServices {
   readonly interaction: KhalaInteractionService
   readonly outputStore: KhalaOutputStore
   readonly permission: KhalaPermissionService
   readonly process: KhalaProcessService
+  readonly todo: KhalaTodoService
   readonly workspace: KhalaWorkspaceService
 }
 
@@ -523,10 +564,49 @@ export const nonInteractiveKhalaInteractionService: KhalaInteractionService = {
   marker: "khala.interaction_service",
 }
 
+export function inMemoryKhalaTodoService(): KhalaTodoService {
+  const sessions = new Map<string, Readonly<{ revision: number; todos: ReadonlyArray<KhalaTodoItem> }>>()
+  return {
+    marker: "khala.todo_service",
+    writeTodos: input =>
+      Effect.sync(() => {
+        const previous = sessions.get(input.khalaSessionId)
+        const revision = (previous?.revision ?? 0) + 1
+        const updatedAtMs = Date.now()
+        const todos = input.todos.map((todo, index): KhalaTodoItem => ({
+          ...(todo.blockerReason === undefined ? {} : { blockerReason: todo.blockerReason }),
+          content: todo.content,
+          id: todo.id,
+          order: index,
+          status: todo.status,
+          updatedAtMs,
+        }))
+        const event: KhalaTodoEvent = {
+          kind: "todo_list_updated",
+          payload: {
+            invocationId: input.invocationId,
+            revision,
+            sessionId: input.khalaSessionId,
+            todos,
+          },
+          timestampMs: updatedAtMs,
+        }
+        sessions.set(input.khalaSessionId, { revision, todos })
+        return {
+          events: [event],
+          revision,
+          sessionId: input.khalaSessionId,
+          todos,
+        }
+      }),
+  }
+}
+
 export function makeKhalaToolServices(input: {
   readonly interaction?: KhalaInteractionService
   readonly permission?: KhalaPermissionService
   readonly process?: KhalaProcessService
+  readonly todo?: KhalaTodoService
   readonly workingDirectory?: string
 } = {}): KhalaToolServices {
   return {
@@ -534,6 +614,7 @@ export function makeKhalaToolServices(input: {
     outputStore: inMemoryKhalaOutputStore(),
     permission: input.permission ?? allowAllKhalaPermissionService,
     process: input.process ?? defaultKhalaProcessService,
+    todo: input.todo ?? inMemoryKhalaTodoService(),
     workspace: { workingDirectory: input.workingDirectory ?? process.cwd() },
   }
 }
@@ -896,6 +977,7 @@ export { applyPatchToolDefinition, createApplyPatchTool } from "./apply-patch.js
 export { createExecCommandTool, execCommandToolDefinition } from "./exec-command.js"
 export { createWriteStdinTool, writeStdinToolDefinition } from "./write-stdin.js"
 export { askUserToolDefinition, createAskUserTool } from "./ask-user.js"
+export { createTodoWriteTool, todoWriteToolDefinition } from "./todo-write.js"
 
 function permissionRequestFor(
   definition: KhalaToolDefinition,

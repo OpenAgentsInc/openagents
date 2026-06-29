@@ -116,3 +116,14 @@ separate from permission prompts and cannot grant filesystem, shell, network, or
 credential authority. Non-interactive hosts return typed unavailable results;
 hosts that support pending prompts emit `user_input_*` events for desktop and
 CLI renderers.
+
+### `todo_write`
+
+`todo_write` replaces the current session-local todo list with ordered items
+containing stable `id`, `content`, and one of `pending`, `in_progress`,
+`blocked`, `completed`, or `cancelled`. Blocked items require
+`blocker_reason`, and only one item may be `in_progress`. Todo state is
+in-memory session planning state only: it is not persistent memory, accepted
+work, payout authority, a product promise, or a public receipt. Hosts render the
+latest list from the structured `todo_list_updated` payload instead of scraping
+assistant prose.
