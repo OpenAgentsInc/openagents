@@ -65,6 +65,10 @@ const sourceRefs = [
   'apps/pylon/scripts/codex-supervisor/replenishment.test.sh',
   'apps/openagents.com/workers/api/src/inference/model-router.ts',
   'apps/openagents.com/workers/api/src/inference/model-router.test.ts',
+  'apps/openagents.com/workers/api/src/operator-fleet-status-routes.ts',
+  'apps/openagents.com/workers/api/src/operator-fleet-status-routes.test.ts',
+  'apps/openagents.com/apps/web/src/page/loggedOut/page/publicAgent.ts',
+  'apps/openagents.com/apps/web/src/page/loggedOut/page/publicAgent.story.test.ts',
   'docs/apple-fm/2026-06-29-electrobun-apple-fm-swift-sidecar-plan.md',
   'clients/khala-desktop/src/bun/apple-fm-sidecar.ts',
   'clients/khala-desktop/src/shared/apple-fm-packaging.ts',
@@ -264,6 +268,7 @@ export const publicProductPromisesDocument = () => {
         'Registry 2026-06-29.1 implements #6848 for payments.accepted_outcome_economics.v1 and flips NO promise state. The accepted-outcome economics spine now has a dereferenceable contributor accrual bundle at GET /api/public/payments/contributor-accrual-bundle?economicsId=... plus the settlement bundle at GET /api/public/accepted-outcome/settlement/{economicsId}; together they compose a gross-margin receipt, contributor accrual ledger entries, and an eight-state settlement machine from one stored accepted-outcome economics row. Tests prove the ledger and receipt share the same economicsId, reconcile gross margin exactly, reconcile pending_payout to the distributable ledger pool, keep public projections free of internal cents/raw payment material, and surface missing contributor provenance honestly. The old source-level blockers contributor_ledger_missing and gross_margin_receipts_missing are replaced by real_accepted_outcome_receipt_missing and owner_signed_green_transition_missing. The promise STAYS red because source/fixture receipt machinery is not a real accepted outcome carried through a money-moving settlement path, and any future green flip remains receipt-first and owner-signed per proof.claim_upgrade_receipts.v1.',
         'Registry 2026-06-29.2 is a current-main refresh after #6997/#6999/#7001/#7002/#7006 and flips NO promise state. The terminal-agent current-state audit and Codex tool-layer study are now cited as evidence for the Codex/Probe/Pylon runtime direction: current production coding delegation is still Pylon plus external agent SDK lanes and OpenAgents-native terminal tools remain a consolidation task, not a new green claim. The codex-supervisor LOCKOUT replenishment helper can create or reuse three bounded standing issues so owner-capacity supervisors do not idle indefinitely, but it creates no paid labor, payout, settlement, or broad availability claim. The inference router now has GLM own-capacity failover alerting and public-safe fallback telemetry for repeated no-headroom saturation, but the paid gateway still stays red until a dereferenceable paid receipt exists. Khala Desktop now carries source-level Electrobun Apple FM sidecar packaging/readiness plus redaction tests, but Apple FM local mode remains yellow until a signed/notarized from-install smoke with helper supervision exists. The Khala model-mix promise remains live-at-read with maxStalenessSeconds:0; the stale 2-second cache wording is not applied.',
         'Registry 2026-06-29.3 implements #7027 for the world-first / largest-force promise audit and flips NO promise state. docs/promises/2026-06-29-world-first-claims-7027-audit.md is now load-bearing evidence for claims.world_first_ai_training_paid_bitcoin.v1, claims.world_first_public_llm_computer_training_run.v1, claims.pursued_world_first_largest_agentic_sales_force.v1, and claims.pursued_world_first_largest_sales_force.v1. The audit records exact allowed wording, refuse-list wording, prior-art caveats, receipt refs, and dated blocker notes. The two world-first claims stay red; the two largest-force records stay planned pursuits; no owner-signed transition receipt, record-holder status, green claim, payout, settlement, or marketing-claim authority is created.',
+        'Registry 2026-06-29.3 is a fleet-state/public-board sync after #6995/#7004 and flips NO promise state. The owner-scoped /api/operator/fleet/state route and Khala fleet client wiring are now cited as CLI/operator evidence, but only for linked-owner status visibility; the legacy admin fleet status route remains admin-token-only and the state route creates no dispatch, spend, payout, settlement, or cross-owner capacity authority. The public Artanis page now renders a fleet map and active task board from public Pylon stats/activity timeline data, but that is a public observability surface only; it is not assignment-specific proof, guaranteed availability, or a revenue/settlement claim.',
       ],
     },
     promises: [
@@ -1434,23 +1439,25 @@ export const publicProductPromisesDocument = () => {
         claim:
           '@openagentsinc/khala ships a terminal client for Khala chat and operator utilities.',
         safeCopy:
-          '@openagentsinc/khala v0.1.16 exposes the khala command: interactive scrollback chat, headless prompt/stdin mode, /info and /msginfo metadata, feedback, changelog, version, public token counter, background update checks, OpenAgents login/logout for owner/operator flows, optional local Codex workspace delegation when local credentials are connected, and the owner-authenticated Artanis operator channel. The CLI uses a normal terminal scrollback/raw-mode input, not the superseded OpenTUI single-line plan.',
+          '@openagentsinc/khala v0.1.16 exposes the khala command: interactive scrollback chat, headless prompt/stdin mode, /info and /msginfo metadata, feedback, changelog, version, public token counter, background update checks, OpenAgents login/logout for owner/operator flows, `khala fleet status` / `khala fleet list` over owner-scoped fleet state, optional local Codex workspace delegation when local credentials are connected, and the owner-authenticated Artanis operator channel. The CLI uses a normal terminal scrollback/raw-mode input, not the superseded OpenTUI single-line plan.',
         unsafeCopy:
-          'Do not claim the CLI is a full TUI, a billing/account console, a wallet, a guaranteed local-code executor, or a public Artanis access path. Do not cite old v0.1.11 sneak-peek output as the current version without the v0.1.16 source/changelog.',
+          'Do not claim the CLI is a full TUI, a billing/account console, a wallet, a guaranteed local-code executor, a cross-owner fleet browser, or a public Artanis access path. Do not cite old v0.1.11 sneak-peek output as the current version without the v0.1.16 source/changelog.',
         evidenceRefs: [
           'clients/khala-cli/package.json',
           'clients/khala-cli/README.md',
           'clients/khala-cli/src/cli.ts',
+          'clients/khala-cli/src/fleet.ts',
           'clients/khala-cli/src/input.ts',
           'clients/khala-cli/src/changelog.ts',
+          'apps/openagents.com/workers/api/src/operator-fleet-status-routes.ts',
           'docs/khala-cli/README.md',
           'docs/transcripts/244.md',
         ],
         blockerRefs: [],
         verification:
-          'khala --version reports 0.1.16; CLI source exposes the documented commands and flags; changelog.ts records v0.1.14 Artanis, v0.1.15 login/logout, and v0.1.16 identity wording; README docs carry the current scoped copy and supersede the old OpenTUI plan.',
+          'khala --version reports 0.1.16; CLI source exposes the documented commands and flags; changelog.ts records v0.1.14 Artanis, v0.1.15 login/logout, and v0.1.16 identity wording; fleet status/list read the owner-scoped /api/operator/fleet/state surface; README docs carry the current scoped copy and supersede the old OpenTUI plan.',
         authorityBoundary:
-          'The CLI is a client surface only. Authentication, trace visibility, Codex delegation, Artanis access, spend, and account authority are still enforced by their respective server/local credential gates.',
+          'The CLI is a client surface only. Authentication, fleet visibility, trace visibility, Codex delegation, Artanis access, spend, and account authority are still enforced by their respective server/local credential gates.',
       },
       {
         ...basePromiseFields,
