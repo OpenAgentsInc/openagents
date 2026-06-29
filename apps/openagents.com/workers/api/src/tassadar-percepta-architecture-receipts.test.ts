@@ -6,6 +6,8 @@ import {
   TassadarPerceptaArchitectureReceiptsEndpoint,
   TassadarPerceptaArchitectureReceiptsProjection,
   TassadarPerceptaArchitectureReceiptRef,
+  TassadarPerceptaCpuTransformOwnerGreenSignoffBlocker,
+  TassadarPerceptaCpuTransformRealSettlementBlocker,
   TassadarPerceptaCpuTransformTrainingReceiptBlocker,
   projectTassadarPerceptaArchitectureReceipts,
 } from './tassadar-percepta-architecture-receipts'
@@ -47,12 +49,16 @@ describe('Tassadar Percepta architecture receipts projection', () => {
     })
     expect(projection.gate).toEqual({
       architectureReceiptsAvailable: true,
-      clearsBlockerRefs: [TassadarPerceptaArchitectureReceiptBlocker],
+      clearsBlockerRefs: [
+        TassadarPerceptaArchitectureReceiptBlocker,
+        TassadarPerceptaCpuTransformTrainingReceiptBlocker,
+      ],
       greenGateSatisfied: false,
-      pylonCpuTransformTrainingReceiptsAvailable: false,
+      pylonCpuTransformTrainingReceiptsAvailable: true,
       publicProjectionAvailable: true,
       remainingBlockerRefs: [
-        TassadarPerceptaCpuTransformTrainingReceiptBlocker,
+        TassadarPerceptaCpuTransformRealSettlementBlocker,
+        TassadarPerceptaCpuTransformOwnerGreenSignoffBlocker,
       ],
     })
     expect(projection.receiptSummary).toMatchObject({
@@ -131,7 +137,7 @@ describe('Tassadar Percepta architecture receipts projection', () => {
     )
     expect(body.promiseState).toBe('planned')
     expect(body.gate.architectureReceiptsAvailable).toBe(true)
-    expect(body.gate.pylonCpuTransformTrainingReceiptsAvailable).toBe(false)
+    expect(body.gate.pylonCpuTransformTrainingReceiptsAvailable).toBe(true)
     expect(body.gate.greenGateSatisfied).toBe(false)
   })
 

@@ -434,7 +434,7 @@ export const TassadarPerceptaArchitectureReceiptsEnvelope: JsonSchema = {
   type: 'object',
   additionalProperties: true,
   description:
-    'Public-safe architecture-receipts projection for models.tassadar_percepta_executor.v1. Carries generatedAt, a live_at_read staleness contract, one architecture receipt bundle with compiled-executor, learned-interface, verifier, and artifact-lineage components, plus explicit gate fields showing architectureReceiptsAvailable=true, pylonCpuTransformTrainingReceiptsAvailable=false, and greenGateSatisfied=false. It exposes refs and digests only: no raw traces, private runner logs, provider payloads, wallet material, payment material, trained-model claim, inference endpoint, model promotion, or CPU-transform training claim.',
+    'Public-safe architecture-receipts projection for models.tassadar_percepta_executor.v1. Carries generatedAt, a live_at_read staleness contract, one architecture receipt bundle with compiled-executor, learned-interface, verifier, and artifact-lineage components, plus explicit gate fields showing architectureReceiptsAvailable=true, pylonCpuTransformTrainingReceiptsAvailable=true for the separate bounded fixture receipt, and greenGateSatisfied=false. It exposes refs and digests only: no raw traces, private runner logs, provider payloads, wallet material, payment material, trained-model claim, inference endpoint, model promotion, broad CPU-transform training claim, settlement claim, or green promise claim.',
   required: [
     'authorityBoundary',
     'endpoint',
@@ -7833,7 +7833,7 @@ const paths = (): JsonSchema => ({
       operationId: 'getTassadarPerceptaArchitectureReceipts',
       summary: 'Read Tassadar Percepta executor architecture receipts',
       description:
-        'Returns the public-safe architecture-receipts projection for models.tassadar_percepta_executor.v1. The receipt bundle ties the public model profile to compiled/frozen executor refs, learned-interface refs, artifact-lineage hashes, and verifier refs. It clears only the architecture-receipt blocker; Pylon CPU-transform training receipts remain missing and greenGateSatisfied remains false. Read-only; grants no training dispatch, spend, settlement, model promotion, inference endpoint, CPU-transform training claim, or green product-promise authority.',
+        'Returns the public-safe architecture-receipts projection for models.tassadar_percepta_executor.v1. The receipt bundle ties the public model profile to compiled/frozen executor refs, learned-interface refs, artifact-lineage hashes, and verifier refs. It now points at the separate bounded Pylon CPU-transform fixture receipt while keeping real settlement missing and greenGateSatisfied=false. Read-only; grants no training dispatch, spend, settlement, model promotion, inference endpoint, broad CPU-transform training claim, or green product-promise authority.',
       tags: ['Training', 'Public Proof'],
       security: publicRead,
       responses: {
