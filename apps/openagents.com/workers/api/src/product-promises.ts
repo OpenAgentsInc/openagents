@@ -3142,7 +3142,7 @@ export const publicProductPromisesDocument = () => {
         claim:
           'Spoken commands and intent can be ingested into Autopilot workrooms as transcribed, approval-gated action proposals.',
         safeCopy:
-          'Voice-session evidence contracts, read-only projections, and a voice-transcript→program ingest core shipped in wave-3 (#4992): voice-session metadata, transcript segments, and command proposals with approval-required and risk labels, projected with mutation disabled. Going further is a product decision plus wiring: pick an STT vendor and capture path, the flag-gated INERT ingestion endpoint (POST /api/mobile/voice-sessions/ingest, default off) is now wired to the ingest core (#5542, clearing the endpoint blocker); remaining is an STT vendor + capture path, AI proposal generation, and the approval UI. Foundation infrastructure for mobile.voice_approval_companion.v1.',
+          'Voice-session evidence contracts, read-only projections, and a voice-transcript→program ingest core shipped in wave-3 (#4992): voice-session metadata, transcript segments, and command proposals with approval-required and risk labels, projected with mutation disabled. Going further is a product decision plus wiring: pick an STT vendor and capture path. The flag-gated INERT ingestion endpoint (POST /api/mobile/voice-sessions/ingest, default off) is wired to the ingest core (#5542, clearing the endpoint blocker), and when armed it now returns a machine-checkable approvalGate (operator_required, needs_approval, Medium risk, no approval mutation, no command execution) alongside the program-input proposal. Remaining is an STT vendor + capture path, AI proposal generation, and the approval UI. Foundation infrastructure for mobile.voice_approval_companion.v1.',
         unsafeCopy:
           'Do not claim users can speak commands that execute, or that voice transcripts are trusted for mutations (CRM, email send, code, deploy, spend) without server-side approval; the ingest core exists but no STT vendor or live capture path is chosen.',
         evidenceRefs: [
@@ -3158,7 +3158,7 @@ export const publicProductPromisesDocument = () => {
           'blocker.product_promises.voice_proposal_and_approval_ui_missing',
         ],
         verification:
-          'Voice evidence contracts and projection logic pass tests. Green requires an ingestion endpoint, a transcription service, proposal generation, and an approval UI, with every proposed action gated server-side.',
+          'Voice evidence contracts, projection logic, the flag-gated ingestion endpoint, and the explicit approvalGate response are covered by tests. Green requires a transcription service, live capture path, proposal generation, and approval UI, with every proposed action gated server-side.',
         authorityBoundary:
           'A voice transcript is evidence of user intent, not command authority; all proposed actions require server-side policy checks and explicit approval.',
       },
