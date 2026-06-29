@@ -7549,13 +7549,11 @@ const providerAccountRoutes = makeProviderAccountRoutes({
       ),
     ),
   handleProviderAccountGrantIssueApi: (request, env, ctx, providerAccountRef) =>
-    routeEffect('handle_provider_account_grant_issue_api', () =>
-      providerAccountBrowserHandlers.handleProviderAccountGrantIssueApi(
-        request,
-        env,
-        ctx,
-        providerAccountRef,
-      ),
+    providerAccountBrowserHandlers.handleProviderAccountGrantIssueApi(
+      request,
+      env,
+      ctx,
+      providerAccountRef,
     ),
   handleProviderAccountGrantResolveApi: (request, env) =>
     routeEffect('handle_provider_account_grant_resolve_api', () =>

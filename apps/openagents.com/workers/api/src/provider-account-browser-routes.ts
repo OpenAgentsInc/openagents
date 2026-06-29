@@ -1,3 +1,9 @@
+import { Effect, type Layer } from 'effect'
+
+import {
+  type RouteEffect,
+  RouteDependencyError,
+} from './http/route-effects'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
 import {
   optionalBoolean,
@@ -16,14 +22,15 @@ import {
   type StoreConnectedCodexAuth,
   type StoreStartedCodexDeviceLogin,
   disconnectProviderAccountForUser,
-  issueProviderAccountGrant,
   listProviderAccountsForUser,
   makeD1ProviderAccountRepository,
+  makeProviderAccountLifecycleLayer,
   pollOpenAiCodexDeviceLogin,
   refreshChatGptCodexDeviceLoginForUser,
   startChatGptCodexDeviceLogin,
   startOpenAiCodexDeviceLogin,
 } from './provider-accounts'
+import { ProviderAccountLifecycleService } from './provider-account-service'
 import {
   providerAccountRouteErrorMessage,
   providerAccountRouteErrorName,
@@ -45,7 +52,7 @@ type ProviderAccountBrowserSession = Readonly<{
 
 type ProviderAccountBrowserDependencies<
   Session extends ProviderAccountBrowserSession,
-  Env extends ProviderAccountBrowserEnv,
+  Bindings extends ProviderAccountBrowserEnv,
 > = Readonly<{
   appendRefreshedSessionCookies: (
     response: Response,
@@ -55,11 +62,14 @@ type ProviderAccountBrowserDependencies<
     kv: KVNamespace,
   ) => DeleteStartedCodexDeviceLogin
   providerAuthSecretKey: (providerAccountRef: string) => string
+  providerAccountLifecycleLayer?: (
+    env: Bindings,
+  ) => Layer.Layer<ProviderAccountLifecycleService>
   readStartedCodexDeviceLogin: (kv: KVNamespace) => ReadStartedCodexDeviceLogin
   probeProviderApiKey: ProviderApiKeyProbe
   requireBrowserSession: (
     request: Request,
-    env: Env,
+    env: Bindings,
     ctx: ExecutionContext,
   ) => Promise<Session | undefined>
   storeConnectedCodexAuth: (kv: KVNamespace) => StoreConnectedCodexAuth
@@ -71,15 +81,55 @@ type ProviderAccountBrowserDependencies<
   ) => StoreStartedCodexDeviceLogin
 }>
 
+const dependencyErrorMessage = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error)
+
+const dependencyEffect = <A>(
+  operation: string,
+  run: () => Promise<A>,
+): Effect.Effect<A, RouteDependencyError> =>
+  Effect.tryPromise({
+    try: run,
+    catch: error =>
+      new RouteDependencyError({
+        operation,
+        message: dependencyErrorMessage(error),
+      }),
+  })
+
+const makeBrowserProviderAccountLifecycleLayer = <
+  Session extends ProviderAccountBrowserSession,
+  Bindings extends ProviderAccountBrowserEnv,
+>(
+  dependencies: ProviderAccountBrowserDependencies<Session, Bindings>,
+  env: Bindings,
+): Layer.Layer<ProviderAccountLifecycleService> =>
+  dependencies.providerAccountLifecycleLayer?.(env) ??
+  makeProviderAccountLifecycleLayer({
+    deleteStartedDeviceLogin: dependencies.deleteStartedCodexDeviceLogin(
+      env.AUTH_STORAGE,
+    ),
+    pollDeviceLogin: pollOpenAiCodexDeviceLogin,
+    readStartedDeviceLogin: dependencies.readStartedCodexDeviceLogin(
+      env.AUTH_STORAGE,
+    ),
+    repository: makeD1ProviderAccountRepository(openAgentsDatabase(env)),
+    startDeviceLogin: startOpenAiCodexDeviceLogin,
+    storeConnectedAuth: dependencies.storeConnectedCodexAuth(env.AUTH_STORAGE),
+    storeStartedDeviceLogin: dependencies.storeStartedCodexDeviceLogin(
+      env.AUTH_STORAGE,
+    ),
+  })
+
 export const makeProviderAccountBrowserHandlers = <
   Session extends ProviderAccountBrowserSession,
-  Env extends ProviderAccountBrowserEnv,
+  Bindings extends ProviderAccountBrowserEnv,
 >(
-  dependencies: ProviderAccountBrowserDependencies<Session, Env>,
+  dependencies: ProviderAccountBrowserDependencies<Session, Bindings>,
 ) => ({
   handleProviderAccountsListApi: async (
     request: Request,
-    env: Env,
+    env: Bindings,
     ctx: ExecutionContext,
   ): Promise<Response> => {
     if (request.method !== 'GET') {
@@ -102,7 +152,7 @@ export const makeProviderAccountBrowserHandlers = <
 
   handleProviderAccountDisconnectApi: async (
     request: Request,
-    env: Env,
+    env: Bindings,
     ctx: ExecutionContext,
     providerAccountRef: string,
   ): Promise<Response> => {
@@ -136,47 +186,70 @@ export const makeProviderAccountBrowserHandlers = <
     )
   },
 
-  handleProviderAccountGrantIssueApi: async (
+  handleProviderAccountGrantIssueApi: (
     request: Request,
-    env: Env,
+    env: Bindings,
     ctx: ExecutionContext,
     providerAccountRef: string,
-  ): Promise<Response> => {
+  ): RouteEffect => {
     if (request.method !== 'POST') {
-      return methodNotAllowed(['POST'])
+      return Effect.succeed(methodNotAllowed(['POST']))
     }
 
-    const session = await dependencies.requireBrowserSession(request, env, ctx)
-
-    if (session === undefined) {
-      return noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
-    }
-
-    const body = await readJsonObject(request).catch(
-      (): Record<string, unknown> => ({}),
-    )
-    const requestedAction = optionalString(body.requestedAction)
-    const threadId = optionalString(body.threadId)
-    const workroomId = optionalString(body.workroomId)
-    const runnerSessionId =
-      optionalString(body.runnerSessionId) ?? optionalString(body.runId)
-
-    try {
-      const grant = await observedPromise(
-        'ProviderAccountBrowser.issueProviderAccountGrant',
-        () =>
-          issueProviderAccountGrant(
-            makeD1ProviderAccountRepository(openAgentsDatabase(env)),
-            {
-              providerAccountRef,
-              userId: session.user.userId,
-              ...(requestedAction === undefined ? {} : { requestedAction }),
-              ...(threadId === undefined ? {} : { threadId }),
-              ...(workroomId === undefined ? {} : { workroomId }),
-              ...(runnerSessionId === undefined ? {} : { runnerSessionId }),
-            },
-          ),
+    return Effect.gen(function* () {
+      const session = yield* dependencyEffect(
+        'provider_account_grant_issue_require_session',
+        () => dependencies.requireBrowserSession(request, env, ctx),
       )
+
+      if (session === undefined) {
+        return noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
+      }
+
+      const body = yield* dependencyEffect(
+        'provider_account_grant_issue_read_body',
+        () => readJsonObject(request).catch((): Record<string, unknown> => ({})),
+      )
+      const requestedAction = optionalString(body.requestedAction)
+      const threadId = optionalString(body.threadId)
+      const workroomId = optionalString(body.workroomId)
+      const runnerSessionId =
+        optionalString(body.runnerSessionId) ?? optionalString(body.runId)
+      const service = yield* ProviderAccountLifecycleService
+
+      const grant = yield* service
+        .issueProviderAccountGrant({
+          providerAccountRef,
+          userId: session.user.userId,
+          ...(requestedAction === undefined ? {} : { requestedAction }),
+          ...(threadId === undefined ? {} : { threadId }),
+          ...(workroomId === undefined ? {} : { workroomId }),
+          ...(runnerSessionId === undefined ? {} : { runnerSessionId }),
+        })
+        .pipe(
+          Effect.catch(error =>
+            Effect.sync(() => {
+              logWorkerRouteError('provider_account_grant_issue_failed', error, {
+                errorName: providerAccountRouteErrorName(error),
+                providerAccountRef,
+                requestedAction,
+                runnerSessionId,
+              })
+
+              return noStoreJsonResponse(
+                {
+                  error: 'provider_account_grant_issue_failed',
+                  message: providerAccountRouteErrorMessage(error),
+                },
+                { status: providerAccountRouteErrorStatus(error) },
+              )
+            }),
+          ),
+        )
+
+      if (grant instanceof Response) {
+        return grant
+      }
 
       if (grant === undefined) {
         return noStoreJsonResponse({ error: 'not_found' }, { status: 404 })
@@ -186,27 +259,16 @@ export const makeProviderAccountBrowserHandlers = <
         noStoreJsonResponse({ grant }, { status: 201 }),
         session,
       )
-    } catch (error) {
-      logWorkerRouteError('provider_account_grant_issue_failed', error, {
-        errorName: providerAccountRouteErrorName(error),
-        providerAccountRef,
-        requestedAction,
-        runnerSessionId,
-      })
-
-      return noStoreJsonResponse(
-        {
-          error: 'provider_account_grant_issue_failed',
-          message: providerAccountRouteErrorMessage(error),
-        },
-        { status: providerAccountRouteErrorStatus(error) },
-      )
-    }
+    }).pipe(
+      Effect.provide(
+        makeBrowserProviderAccountLifecycleLayer(dependencies, env),
+      ),
+    )
   },
 
   handleProviderApiKeyConnectApi: async (
     request: Request,
-    env: Env,
+    env: Bindings,
     ctx: ExecutionContext,
     providerRouteSegment: string,
   ) => {
@@ -287,7 +349,7 @@ export const makeProviderAccountBrowserHandlers = <
 
   handleProviderDeviceLoginStartApi: async (
     request: Request,
-    env: Env,
+    env: Bindings,
     ctx: ExecutionContext,
   ): Promise<Response> => {
     if (request.method !== 'POST') {
@@ -352,7 +414,7 @@ export const makeProviderAccountBrowserHandlers = <
 
   handleProviderDeviceLoginStatusApi: async (
     request: Request,
-    env: Env,
+    env: Bindings,
     ctx: ExecutionContext,
     attemptId: string,
   ): Promise<Response> => {

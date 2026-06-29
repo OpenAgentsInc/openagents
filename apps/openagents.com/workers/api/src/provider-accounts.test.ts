@@ -42,6 +42,7 @@ import {
   providerAccountTestIdFactory,
   providerAccountTestNow,
 } from './test/service-fixtures'
+import { makeProviderAccountBrowserHandlers } from './provider-account-browser-routes'
 
 class MemoryProviderAccountRepository implements ProviderAccountRepository {
   readonly accounts: Array<ProviderAccountRecord> = []
@@ -1351,6 +1352,74 @@ describe('provider account service', () => {
     )
 
     expect(grant?.grantRef).toBe('codex-auth-grant_grant_ref_grant_ref')
+    expect(repository.grants[0]?.status).toBe('issued')
+  })
+
+  test('browser grant route issues through the lifecycle service layer', async () => {
+    const repository = new MemoryProviderAccountRepository()
+    repository.accounts.push(makeAccount({}))
+    const layer = makeProviderAccountLifecycleTestLayer({
+      makeId: providerAccountTestIdFactory([
+        'grant_ref',
+        'grant',
+        'grant_event',
+      ]),
+      now: providerAccountTestNow,
+      repository,
+    })
+    const handlers = makeProviderAccountBrowserHandlers({
+      appendRefreshedSessionCookies: response => response,
+      deleteStartedCodexDeviceLogin: () => async () => undefined,
+      probeProviderApiKey: async () => ({
+        health: 'healthy',
+        probeStatus: 200,
+      }),
+      providerAccountLifecycleLayer: () => layer,
+      providerAuthSecretKey: providerAccountRef =>
+        `provider-auth:${providerAccountRef}`,
+      readStartedCodexDeviceLogin: () => async () => undefined,
+      requireBrowserSession: async () => ({ user: { userId: 'github:1' } }),
+      storeConnectedCodexAuth: () => async ({ providerAccountRef }) =>
+        `codex-auth://${providerAccountRef}`,
+      storeConnectedProviderApiKey: () => async () => undefined,
+      storeStartedCodexDeviceLogin: () => async () => undefined,
+    })
+
+    const response = await Effect.runPromise(
+      handlers.handleProviderAccountGrantIssueApi(
+        new Request(
+          'https://openagents.com/api/provider-accounts/provider-account_1/grants',
+          {
+            body: JSON.stringify({ runnerSessionId: 'runner_session_1' }),
+            headers: { 'content-type': 'application/json' },
+            method: 'POST',
+          },
+        ),
+        {
+          AUTH_STORAGE: {
+            delete: async () => undefined,
+            get: async () => null,
+            list: async () => ({ keys: [], list_complete: true }),
+            put: async () => undefined,
+          } as unknown as KVNamespace,
+          OPENAGENTS_DB: {} as D1Database,
+        },
+        {
+          passThroughOnException: () => undefined,
+          props: undefined,
+          waitUntil: () => undefined,
+        },
+        'provider-account_1',
+      ),
+    )
+    const payload = (await response.json()) as {
+      grant?: { grantRef?: string } | undefined
+    }
+
+    expect(response.status).toBe(201)
+    expect(payload.grant?.grantRef).toBe(
+      'codex-auth-grant_grant_ref_grant_ref',
+    )
     expect(repository.grants[0]?.status).toBe('issued')
   })
 
