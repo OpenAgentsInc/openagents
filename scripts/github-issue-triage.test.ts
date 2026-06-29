@@ -3,8 +3,10 @@ import { spawnSync } from "node:child_process"
 import {
   buildTechnicalPlan,
   buildCandidateIssueSearch,
+  buildIssueViewArgs,
   classifyIssuePriority,
   findDuplicateCandidates,
+  hydrateCandidateIssues,
   inferRelevantFiles,
   issueHasAnyLabel,
   issueHasPriorityLabel,
@@ -135,6 +137,45 @@ describe("github issue triage output", () => {
       `is:issue is:open ${PRIORITY_LABELS.map(label => `-label:"${label}"`).join(" ")} sort:created-desc`,
     )
     expect(buildCandidateIssueSearch(true)).toBe("is:issue is:open sort:created-desc")
+  })
+
+  test("builds bounded issue view args for full candidate descriptions", () => {
+    expect(buildIssueViewArgs("OpenAgentsInc/openagents", 6708)).toEqual([
+      "issue",
+      "view",
+      "6708",
+      "--repo",
+      "OpenAgentsInc/openagents",
+      "--json",
+      "number,title,body,labels,url",
+    ])
+  })
+
+  test("hydrates candidate issues before classification", () => {
+    const listed = issue({
+      body: "",
+      labels: [],
+      number: 6708,
+      title: "task(ops): standing backlog triage",
+    })
+    const hydrated = hydrateCandidateIssues([listed], issueNumber =>
+      issue({
+        body: "Full description mentions docs/promises/registry.md and duplicate checks.",
+        labels: [{ name: "standing-task" }],
+        number: issueNumber,
+        title: "task(ops): standing backlog triage + scoping + dedup loop",
+        url: "https://github.com/OpenAgentsInc/openagents/issues/6708",
+      }),
+    )
+
+    expect(hydrated).toEqual([
+      expect.objectContaining({
+        body: "Full description mentions docs/promises/registry.md and duplicate checks.",
+        labels: [{ name: "standing-task" }],
+        number: 6708,
+        title: "task(ops): standing backlog triage + scoping + dedup loop",
+      }),
+    ])
   })
 
   test("builds a scoped execution plan and rendered comment", () => {
