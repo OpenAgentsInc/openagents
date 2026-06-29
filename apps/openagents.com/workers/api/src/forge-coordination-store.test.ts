@@ -70,12 +70,20 @@ const controlPlaneReceiptsMigration = readFileSync(
   new URL('../migrations/0254_forge_control_plane_receipts.sql', import.meta.url),
   'utf8',
 )
+const promotionDecisionGateResultsMigration = readFileSync(
+  new URL(
+    '../migrations/0259_forge_promotion_decision_gate_results.sql',
+    import.meta.url,
+  ),
+  'utf8',
+)
 
 const makeStore = (): ForgeCoordinationStore => {
   const db = new DatabaseSync(':memory:')
   db.exec('PRAGMA foreign_keys = ON')
   db.exec(coordinationMigration)
   db.exec(controlPlaneReceiptsMigration)
+  db.exec(promotionDecisionGateResultsMigration)
   return makeD1ForgeCoordinationStore(new SqliteD1(db) as unknown as D1Database)
 }
 
@@ -253,13 +261,24 @@ describe('forge coordination D1 store', () => {
         tenant_ref: 'tenant.openagents',
         promotion_ref: 'promotion.forge.6770',
         queue_ref: 'queue.forge.main',
+        queue_position: 0,
         change_ref: 'change.forge.6770',
         decision: 'approved',
+        target_ref: 'refs/heads/main',
         base_head: '8e0c9b2eaf84c821caf555cae233a0d27e94d4ab',
         candidate_head: '9e0c9b2eaf84c821caf555cae233a0d27e94d4ac',
         promoted_head: '9e0c9b2eaf84c821caf555cae233a0d27e94d4ac',
         verification_ref: verificationReceipt.verification_ref,
         gate_refs: ['gate.tests'],
+        gate_results: [
+          {
+            gate_ref: 'gate.tests',
+            verdict: 'passed',
+            evidence_refs: [verificationReceipt.verification_ref],
+            blocker_refs: [],
+            decided_at: '2026-06-28T16:03:00.000Z',
+          },
+        ],
         blocker_refs: [],
         decided_by_ref: 'agent.public.forge',
         decided_at: '2026-06-28T16:03:00.000Z',
@@ -269,6 +288,8 @@ describe('forge coordination D1 store', () => {
       now,
     )
     expect(promotionDecision.decision).toBe('approved')
+    expect(promotionDecision.target_ref).toBe('refs/heads/main')
+    expect(promotionDecision.gate_results[0]?.verdict).toBe('passed')
     await expect(
       store.listPromotionDecisionReceipts('tenant.openagents', 10, 'change.forge.6770'),
     ).resolves.toEqual([promotionDecision])
