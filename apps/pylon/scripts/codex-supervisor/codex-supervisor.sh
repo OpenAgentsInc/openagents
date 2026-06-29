@@ -74,6 +74,9 @@ source "$SCRIPT_DIR/../supervisor-fresh-base.sh"
 source "$SCRIPT_DIR/priority-dispatch.sh"
 # shellcheck source=standing-tasks.sh
 source "$SCRIPT_DIR/standing-tasks.sh"
+# Refusal-aware backoff and per-account concurrency tuning (#6900).
+# shellcheck source=backoff-policy.sh
+source "$SCRIPT_DIR/backoff-policy.sh"
 
 # --- Config (all overridable via env) ---
 export PYLON_OPENAGENTS_BASE_URL="${PYLON_OPENAGENTS_BASE_URL:-https://openagents.com}"
@@ -266,10 +269,10 @@ standing_task_keeper_loop() {
 heartbeater_loop() {
   while true; do
     [ -f "$PAUSE_FILE" ] && { sleep "$SUP_HEARTBEAT_SECS"; continue; }
-    local ready desired
+    local ready desired account_slots=()
     ready=$(ready_codex_account_refs | grep -c . || echo 0)
-    desired=$(( ready * SUP_PER_ACCOUNT ))
-    [ "$desired" -gt "$SUP_MAX_SLOTS" ] && desired="$SUP_MAX_SLOTS"
+    while IFS= read -r slot_acc; do account_slots+=("$slot_acc"); done < <(sup_expand_account_slots $(ready_codex_account_refs))
+    desired="${#account_slots[@]}"
     echo "$desired" > "$DESIRED_FILE"
     OPENAGENTS_PYLON_CODEX_CONCURRENCY="$desired" \
     OPENAGENTS_PYLON_CODEX_BUSY=0 \
@@ -278,7 +281,7 @@ heartbeater_loop() {
     # last_dispatch_time telemetry (#6646): emitted on the heartbeat line so a
     # wedged loop (heartbeat firing, dispatch stalled) is visible in the log and
     # the watcher's liveness check has a fresh value to read.
-    log "heartbeat ready_codex=$ready desired_slots=$desired last_dispatch_time=$(read_last_dispatch_time)"
+    log "heartbeat ready_codex=$ready desired_slots=$desired tuned_account_slots=${account_slots[*]:-none} last_dispatch_time=$(read_last_dispatch_time)"
     bound_log
     sleep "$SUP_HEARTBEAT_SECS"
   done
@@ -294,10 +297,16 @@ worker_loop() {
     local desired; desired=$(cat "$DESIRED_FILE" 2>/dev/null || echo 0)
     if [ "$slot" -ge "$desired" ]; then sleep 10; continue; fi
 
-    # Round-robin account across the live ready set; default omits --account-ref.
+    # Round-robin account across the live tuned slot set; default omits
+    # --account-ref. Repeated local Codex executor refusals shrink a specific
+    # account's expansion here, so the fleet finds the clean per-account ceiling
+    # without forcing every account down.
     local refs=(); while IFS= read -r r; do refs+=("$r"); done < <(ready_codex_account_refs)
     [ "${#refs[@]}" -eq 0 ] && { sleep 20; continue; }
-    local acc="${refs[$(( slot % ${#refs[@]} ))]}"
+    local account_slots=(); while IFS= read -r slot_acc; do account_slots+=("$slot_acc"); done < <(sup_expand_account_slots "${refs[@]}")
+    [ "${#account_slots[@]}" -eq 0 ] && { sleep 20; continue; }
+    if [ "$slot" -ge "${#account_slots[@]}" ]; then sleep 10; continue; fi
+    local acc="${account_slots[$slot]}"
     local acc_args=(); [ "$acc" != "default" ] && acc_args=(--account-ref "$acc")
 
     # Refresh the active pool from the unsupported-request ledger, with a short
@@ -364,9 +373,13 @@ worker_loop() {
     local issue
     issue=$(pick_and_claim_unlocked_issue 0 "${ordered[@]}")
     if [ -z "$issue" ]; then
-      log "slot=$slot LOCKOUT all backlog issues are closed, already have open PRs, or are claimed by other slots; backing off ${backoff}s"
-      sleep "$backoff"
-      backoff=$(( backoff * 2 )); [ "$backoff" -gt "$SUP_BACKOFF_MAX" ] && backoff="$SUP_BACKOFF_MAX"
+      local pick_sleep
+      pick_sleep="$(sup_claimed_pick_backoff_secs "${#issues[@]}" "$desired" "$backoff")"
+      log "slot=$slot LOCKOUT all backlog issues are closed, already have open PRs, or are claimed by other slots; open_backlog=${#issues[@]} desired_slots=$desired backing off ${pick_sleep}s"
+      sleep "$pick_sleep"
+      if [ "$pick_sleep" = "$backoff" ]; then
+        backoff=$(( backoff * 2 )); [ "$backoff" -gt "$SUP_BACKOFF_MAX" ] && backoff="$SUP_BACKOFF_MAX"
+      fi
       continue
     fi
     # Base every assignment on FRESH origin/main, never the supervisor's stale
@@ -421,6 +434,7 @@ worker_loop() {
 
     if grep -qiE '"ok": ?true|"closeout"|accepted' "$out" 2>/dev/null && [ "$rc" -eq 0 ]; then
       backoff="$SUP_BACKOFF_MIN"
+      sup_reset_account_refusals "$acc"
       # Keep the issue claimed (refresh TTL) so no other slot re-picks it while
       # its PR/lockout state settles; the open-PR lockout then takes over and the
       # claim eventually GCs.
@@ -432,8 +446,7 @@ worker_loop() {
     # Refused / unavailable / rate-limited / error -> exponential backoff so the
     # pool settles at the login's real headroom.
     local sig="other"
-    grep -qiE '409|dispatch gate refused|target_pylon_unavailable|duplicate_active_assignment' "$out" 2>/dev/null && sig="refused"
-    grep -qiE '429|rate.?limit|too many requests|quota' "$out" 2>/dev/null && sig="rate_limited"
+    sig="$(sup_dispatch_failure_signature "$out")"
     if [ "$sig" = "refused" ]; then
       # The gate already has an active assignment for this issue (it is busy
       # elsewhere). PARK it for the full claim TTL so the fleet stops hammering
@@ -445,9 +458,20 @@ worker_loop() {
       # the claim so another (less throttled) slot/account can retry this issue.
       sup_release_claim "$issue"
     fi
-    log "slot=$slot acc=$acc issue=#$issue NO-DISPATCH ($sig rc=$rc); backoff ${backoff}s"
-    sleep "$backoff"
-    backoff=$(( backoff * 2 )); [ "$backoff" -gt "$SUP_BACKOFF_MAX" ] && backoff="$SUP_BACKOFF_MAX"
+    local tune_action
+    tune_action="$(sup_record_account_refusal "$acc" "$sig")"
+    [ -n "$tune_action" ] && log "slot=$slot acc=$acc REFUSAL-TUNE $tune_action"
+    local failure_sleep="$backoff"
+    local escalate_backoff=1
+    if [ "$sig" = "codex_agent_execution_refused" ]; then
+      failure_sleep="$SUP_CLAIMED_DEEP_BACKLOG_SLEEP_SECS"
+      escalate_backoff=0
+    fi
+    log "slot=$slot acc=$acc issue=#$issue NO-DISPATCH ($sig rc=$rc); backoff ${failure_sleep}s"
+    sleep "$failure_sleep"
+    if [ "$escalate_backoff" -eq 1 ]; then
+      backoff=$(( backoff * 2 )); [ "$backoff" -gt "$SUP_BACKOFF_MAX" ] && backoff="$SUP_BACKOFF_MAX"
+    fi
   done
 }
 

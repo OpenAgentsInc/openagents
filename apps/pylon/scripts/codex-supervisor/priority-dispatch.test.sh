@@ -47,15 +47,17 @@ source "$SCRIPT_DIR/priority-dispatch.sh"
 [ "$(sup_priority_rank_for_labels 'prio:0-pr-burndown-extra')" = "99" ] && ok "rank ignores non-exact prio label" || bad "rank non-exact"
 
 # --- sup_order_pool_by_priority -------------------------------------------
-# Inject labels directly (override the map lookup; no gh needed).
-declare -A LBL=(
-  [10]="prio:4-backstop-burn"
-  [11]="prio:0-pr-burndown"
-  [12]="bug"
-  [13]="prio:2-issue-triage"
-  [14]="prio:0-pr-burndown"
-)
-sup_labels_for_issue() { printf '%s' "${LBL[$1]:-}"; }
+# Inject labels directly (override the map lookup; no gh needed). Use a case
+# statement instead of associative arrays so stock macOS Bash 3 can run this.
+sup_labels_for_issue() {
+  case "$1" in
+    10) printf 'prio:4-backstop-burn' ;;
+    11) printf 'prio:0-pr-burndown' ;;
+    12) printf 'bug' ;;
+    13) printf 'prio:2-issue-triage' ;;
+    14) printf 'prio:0-pr-burndown' ;;
+  esac
+}
 
 # start=0: tiers ascending; within prio:0, input order (11 then 14) preserved.
 order="$(sup_order_pool_by_priority 0 10 11 12 13 14 | tr '\n' ' ')"
