@@ -3,14 +3,17 @@ import { describe, expect, test } from 'vitest'
 import {
   clearOperatorFleetStatusCacheForTests,
   makeOperatorFleetStatusRoutes,
+  runServingRateMonitorScheduled,
 } from './operator-fleet-status-routes'
 
 type QueryLog = Array<string>
+type RowResolver = (sql: string) => ReadonlyArray<Record<string, unknown>>
 
 class FakeStatement {
   constructor(
     private readonly sql: string,
     private readonly log: QueryLog,
+    private readonly resolveRows: RowResolver,
   ) {}
 
   bind(): FakeStatement {
@@ -19,12 +22,12 @@ class FakeStatement {
 
   async all<T>(): Promise<{ results: ReadonlyArray<T> }> {
     this.log.push(this.sql)
-    return { results: rowsForSql(this.sql) as ReadonlyArray<T> }
+    return { results: this.resolveRows(this.sql) as ReadonlyArray<T> }
   }
 
   async first<T>(): Promise<T | null> {
     this.log.push(this.sql)
-    const rows = rowsForSql(this.sql)
+    const rows = this.resolveRows(this.sql)
     return (rows[0] ?? null) as T | null
   }
 }
@@ -116,6 +119,10 @@ const rowsForSql = (sql: string): ReadonlyArray<Record<string, unknown>> => {
     return [{ tokens_window: 600 }]
   }
 
+  if (sql.includes('tokens_hour')) {
+    return [{ tokens_hour: 55_000_000 }]
+  }
+
   if (sql.includes('FROM artanis_owner_memory')) {
     return [
       {
@@ -127,19 +134,30 @@ const rowsForSql = (sql: string): ReadonlyArray<Record<string, unknown>> => {
     ]
   }
 
-  if (sql.includes('FROM glm_fleet_readiness_heartbeats')) {
+  if (sql.includes('$.heartbeatKind')) {
     return [
-      { health_status: 'ok', replica_id: 'glm-1' },
-      { health_status: 'degraded', replica_id: 'glm-2' },
+      {
+        health_status: 'ok',
+        observed_at: '2026-06-27T18:40:00.000Z',
+        replica_id: 'glm-1',
+      },
+      {
+        health_status: 'degraded',
+        observed_at: '2026-06-27T18:39:00.000Z',
+        replica_id: 'glm-2',
+      },
     ]
   }
 
   return []
 }
 
-const fakeDb = (log: QueryLog): D1Database =>
+const fakeDb = (
+  log: QueryLog,
+  resolveRows: RowResolver = rowsForSql,
+): D1Database =>
   ({
-    prepare: (sql: string) => new FakeStatement(sql, log),
+    prepare: (sql: string) => new FakeStatement(sql, log, resolveRows),
   }) as unknown as D1Database
 
 const request = (method = 'GET', path = '/api/operator/fleet/state'): Request =>
@@ -191,7 +209,7 @@ describe('operator fleet status route', () => {
     expect(first.headers.get('x-openagents-cache')).toBe('miss')
     expect(second.headers.get('x-openagents-cache')).toBe('hit')
     expect(log.length).toBeGreaterThan(0)
-    expect(log.length).toBe(9)
+    expect(log.length).toBe(10)
     expect(cachedBody).toEqual(body)
     expect(body).toMatchObject({
       authority: {
@@ -224,6 +242,20 @@ describe('operator fleet status route', () => {
         readyReplicas: 1,
         status: 'degraded',
         totalReplicas: 2,
+      },
+      opsMonitor: {
+        activeAlertRefs: [],
+        glmLaneHealth: {
+          readyReplicas: 1,
+          status: 'ok',
+          totalReplicas: 2,
+        },
+        status: 'ok',
+        tokenVelocity: {
+          floorTokensPerHour: 50_000_000,
+          status: 'ok',
+          tokensPerHour: 55_000_000,
+        },
       },
       pace: {
         liveBurnRateTokensPerMinute: 60,
@@ -306,5 +338,48 @@ describe('operator fleet status route', () => {
 
     expect(response.status).toBe(401)
     expect(response.headers.get('cache-control')).toBe('no-store')
+  })
+
+  test('scheduled serving-rate monitor logs low-token and GLM-down alerts', async () => {
+    const log: QueryLog = []
+    const warningLines: Array<Record<string, unknown>> = []
+    const rowsForAlert: RowResolver = sql => {
+      if (sql.includes('tokens_hour')) {
+        return [{ tokens_hour: 12 }]
+      }
+
+      if (sql.includes('$.heartbeatKind')) {
+        return [
+          {
+            health_status: 'degraded',
+            observed_at: '2026-06-27T18:00:00.000Z',
+            replica_id: 'glm-1',
+          },
+          {
+            health_status: 'failed',
+            observed_at: '2026-06-27T18:01:00.000Z',
+            replica_id: 'glm-2',
+          },
+        ]
+      }
+
+      return rowsForSql(sql)
+    }
+
+    const result = await runServingRateMonitorScheduled(
+      fakeDb(log, rowsForAlert),
+      { nowIso: '2026-06-27T18:41:00.000Z' },
+      (line, fields) => warningLines.push({ line, ...fields }),
+    )
+
+    expect(result).toMatchObject({
+      activeAlertRefs: [
+        'alert.public.ops.serving_rate.tokens_per_hour_below_floor',
+        'alert.public.ops.serving_rate.glm_down',
+      ],
+      status: 'alert',
+    })
+    expect(warningLines).toHaveLength(1)
+    expect(JSON.stringify(warningLines)).not.toContain('/Users/')
   })
 })

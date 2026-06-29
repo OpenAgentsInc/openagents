@@ -761,7 +761,10 @@ import {
 import { makeOperatorBillingHandlers } from './operator-billing-routes'
 import { makeOperatorBuyModeRoutes } from './operator-buy-mode-routes'
 import { makeOperatorEmailInspectionRoutes } from './operator-email-inspection-routes'
-import { makeOperatorFleetStatusRoutes } from './operator-fleet-status-routes'
+import {
+  makeOperatorFleetStatusRoutes,
+  runServingRateMonitorScheduled,
+} from './operator-fleet-status-routes'
 import { makeOperatorOrderTriageRoutes } from './operator-order-triage-routes'
 import { makeOperatorProviderAccountRoutes } from './operator-provider-account-routes'
 import { makeOperatorPylonMarketplaceRoutes } from './operator-pylon-marketplace-routes'
@@ -13951,6 +13954,20 @@ export default {
             { scheduledTimeMs: event.scheduledTime },
             (line, fields) =>
               logWorkerRouteWarning('fleet_burn_stall_watchdog', {
+                line,
+                ...fields,
+              }),
+          ),
+        ),
+      ),
+      observedEffect(
+        'ServingRateMonitor.tick',
+        Effect.promise(() =>
+          runServingRateMonitorScheduled(
+            openAgentsDatabase(env),
+            { nowIso: epochMillisToIsoTimestamp(event.scheduledTime) },
+            (line, fields) =>
+              logWorkerRouteWarning('serving_rate_monitor', {
                 line,
                 ...fields,
               }),

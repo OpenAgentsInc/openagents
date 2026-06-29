@@ -3,11 +3,17 @@ import { jsonResponse } from '@openagentsinc/sync-worker'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
 import { parseJsonStringArray } from './json-boundary'
 import { openAgentsDatabase } from './runtime'
-import { currentIsoTimestamp } from './runtime-primitives'
+import {
+  currentIsoTimestamp,
+  isoTimestampAfterIso,
+} from './runtime-primitives'
 
 export const OPERATOR_FLEET_STATUS_PATH = '/api/operator/fleet/status'
 export const OPERATOR_FLEET_STATE_PATH = '/api/operator/fleet/state'
 const CACHE_TTL_MILLIS = 10_000
+const SERVING_RATE_MONITOR_WINDOW_MINUTES = 60
+const SERVING_RATE_MONITOR_TOKEN_FLOOR_PER_HOUR = 50_000_000
+const SERVING_RATE_MONITOR_GLM_DOWN_MINUTES = 15
 
 type OperatorFleetStatusEnv = Readonly<{
   OPENAGENTS_DB: D1Database
@@ -69,6 +75,7 @@ type ProviderAccountRow = Readonly<{
 type TokenTodayRow = Readonly<{ tokens_today: number | null }>
 type TokenYesterdayRow = Readonly<{ tokens_yesterday: number | null }>
 type TokenWindowRow = Readonly<{ tokens_window: number | null }>
+type TokenHourRow = Readonly<{ tokens_hour: number | null }>
 type BrainRow = Readonly<{
   memory_ref: string
   created_at: string
@@ -78,6 +85,7 @@ type BrainRow = Readonly<{
 type GlmHeartbeatRow = Readonly<{
   replica_id: string
   health_status: string | null
+  observed_at: string | null
 }>
 
 type CacheEntry = Readonly<{
@@ -109,6 +117,27 @@ const millisBetween = (startIso: string, endIso: string): number => {
     ? Math.max(0, end - start)
     : 0
 }
+
+const isoAgeMs = (timestampIso: string | null, nowIso: string): number | null => {
+  if (timestampIso === null) {
+    return null
+  }
+  const timestampMs = Date.parse(timestampIso)
+  const nowMs = Date.parse(nowIso)
+  if (!Number.isFinite(timestampMs) || !Number.isFinite(nowMs)) {
+    return null
+  }
+  return Math.max(0, nowMs - timestampMs)
+}
+
+const isHealthyGlmStatus = (status: string | null): boolean =>
+  status === 'ok' || status === 'ready' || status === 'healthy'
+
+const earlierIso = (left: string | null, right: string): string =>
+  left === null || right < left ? right : left
+
+const laterIso = (left: string | null, right: string): string =>
+  left === null || right > left ? right : left
 
 const safeAll = async <T>(
   db: D1Database,
@@ -167,6 +196,7 @@ const buildFleetStatusSnapshot = async (
     today,
     yesterday,
     window,
+    hour,
     brainRows,
     glmRows,
   ] = await Promise.all([
@@ -236,6 +266,14 @@ const buildFleetStatusSnapshot = async (
          FROM token_usage_events
         WHERE observed_at >= datetime('now', '-10 minutes')`,
     ),
+    safeFirst<TokenHourRow>(
+      db,
+      `SELECT COALESCE(SUM(input_tokens), 0) + COALESCE(SUM(output_tokens), 0)
+              AS tokens_hour
+         FROM token_usage_events
+        WHERE observed_at >= ?`,
+      isoTimestampAfterIso(nowIso, -SERVING_RATE_MONITOR_WINDOW_MINUTES * 60_000),
+    ),
     safeAll<BrainRow>(
       db,
       `SELECT memory_ref, created_at, note_category
@@ -247,10 +285,16 @@ const buildFleetStatusSnapshot = async (
     ),
     safeAll<GlmHeartbeatRow>(
       db,
-      `SELECT replica_id, health_status
-         FROM glm_fleet_readiness_heartbeats
+      `SELECT
+          json_extract(safe_metadata_json, '$.selectedReplicaId') AS replica_id,
+          json_extract(safe_metadata_json, '$.healthStatus') AS health_status,
+          observed_at
+         FROM token_usage_events
+        WHERE model = 'openagents/glm-5.2-reap-504b'
+          AND demand_source = 'glm-pool-heartbeat'
+          AND json_extract(safe_metadata_json, '$.heartbeatKind') = 'glm_pool_heartbeat'
         ORDER BY observed_at DESC
-        LIMIT 50`,
+        LIMIT 100`,
     ),
   ])
 
@@ -317,6 +361,7 @@ const buildFleetStatusSnapshot = async (
   const todayTokens = Math.max(0, Math.trunc(today?.tokens_today ?? 0))
   const yesterdayTokens = Math.max(0, Math.trunc(yesterday?.tokens_yesterday ?? 0))
   const windowTokens = Math.max(0, Math.trunc(window?.tokens_window ?? 0))
+  const hourTokens = Math.max(0, Math.trunc(hour?.tokens_hour ?? 0))
   const burnRateTokensPerMinute = Math.round(windowTokens / 10)
   const targetFloor = yesterdayTokens * 4
   const paceToFloor =
@@ -331,16 +376,43 @@ const buildFleetStatusSnapshot = async (
         ? 'STALLED'
         : 'RECOVERING'
 
-  const uniqueGlmReplicas = new Map<string, string | null>()
+  const uniqueGlmReplicas = new Map<string, GlmHeartbeatRow>()
+  let oldestGlmHeartbeatAt: string | null = null
+  let latestHealthyGlmHeartbeatAt: string | null = null
   for (const row of glmRows) {
+    if (row.replica_id === null || row.replica_id === '') {
+      continue
+    }
     if (!uniqueGlmReplicas.has(row.replica_id)) {
-      uniqueGlmReplicas.set(row.replica_id, row.health_status)
+      uniqueGlmReplicas.set(row.replica_id, row)
+    }
+    if (typeof row.observed_at === 'string') {
+      oldestGlmHeartbeatAt = earlierIso(oldestGlmHeartbeatAt, row.observed_at)
+      latestHealthyGlmHeartbeatAt =
+        isHealthyGlmStatus(row.health_status)
+          ? laterIso(latestHealthyGlmHeartbeatAt, row.observed_at)
+          : latestHealthyGlmHeartbeatAt
     }
   }
-  const glmReady = [...uniqueGlmReplicas.values()].filter(status =>
-    status === 'ok' || status === 'ready' || status === 'healthy',
+  const glmReady = [...uniqueGlmReplicas.values()].filter(row =>
+    isHealthyGlmStatus(row.health_status),
   ).length
   const glmTotal = uniqueGlmReplicas.size
+  const glmDownSince = latestHealthyGlmHeartbeatAt ?? oldestGlmHeartbeatAt
+  const glmDownDurationMs =
+    glmReady > 0 ? 0 : isoAgeMs(glmDownSince, nowIso) ?? 0
+  const glmDownAlert =
+    glmTotal > 0 &&
+    glmReady === 0 &&
+    glmDownDurationMs >= SERVING_RATE_MONITOR_GLM_DOWN_MINUTES * 60_000
+  const servingRateAlert =
+    hourTokens < SERVING_RATE_MONITOR_TOKEN_FLOOR_PER_HOUR
+  const opsMonitorAlerts = [
+    ...(servingRateAlert
+      ? ['alert.public.ops.serving_rate.tokens_per_hour_below_floor']
+      : []),
+    ...(glmDownAlert ? ['alert.public.ops.serving_rate.glm_down'] : []),
+  ]
 
   return {
     schemaVersion: 'operator.fleet_status.v1',
@@ -449,8 +521,38 @@ const buildFleetStatusSnapshot = async (
       status: glmTotal === 0 ? 'unknown' : glmReady === glmTotal ? 'ready' : 'degraded',
       readyReplicas: glmReady,
       totalReplicas: glmTotal,
-      sourceRefs: ['d1:glm_fleet_readiness_heartbeats'],
+      latestHealthyHeartbeatAt: latestHealthyGlmHeartbeatAt,
+      sourceRefs: ['d1:token_usage_events'],
       caveatRefs: glmTotal === 0 ? ['caveat.public.operator_fleet_status.glm_heartbeat_rows_missing'] : [],
+    },
+    opsMonitor: {
+      status: opsMonitorAlerts.length === 0 ? 'ok' : 'alert',
+      activeAlertRefs: opsMonitorAlerts,
+      tokenVelocity: {
+        status: servingRateAlert ? 'alert' : 'ok',
+        windowMinutes: SERVING_RATE_MONITOR_WINDOW_MINUTES,
+        tokensInWindow: hourTokens,
+        tokensPerHour: hourTokens,
+        floorTokensPerHour: SERVING_RATE_MONITOR_TOKEN_FLOOR_PER_HOUR,
+        reasonRef: servingRateAlert
+          ? 'blocker.public.ops.serving_rate.tokens_per_hour_below_floor'
+          : 'ops.serving_rate.tokens_per_hour_ok',
+      },
+      glmLaneHealth: {
+        status: glmTotal === 0 ? 'unknown' : glmDownAlert ? 'alert' : 'ok',
+        readyReplicas: glmReady,
+        totalReplicas: glmTotal,
+        downWindowMinutes: SERVING_RATE_MONITOR_GLM_DOWN_MINUTES,
+        downSince: glmReady === 0 ? glmDownSince : null,
+        downDurationMs: glmDownDurationMs,
+        reasonRef:
+          glmTotal === 0
+            ? 'caveat.public.ops.serving_rate.glm_heartbeat_rows_missing'
+            : glmDownAlert
+              ? 'blocker.public.ops.serving_rate.glm_down_over_15m'
+              : 'ops.serving_rate.glm_lane_ok',
+      },
+      sourceRefs: ['d1:token_usage_events', 'worker:scheduled'],
     },
     brain: {
       loopHealth: watchdogState === 'STALLED' ? 'stalled' : 'healthy',
@@ -468,6 +570,38 @@ const buildFleetStatusSnapshot = async (
       sourceRefs: ['d1:artanis_owner_memory'],
     },
   }
+}
+
+type ServingRateMonitorSnapshot = Readonly<{
+  status: 'ok' | 'alert'
+  activeAlertRefs: ReadonlyArray<string>
+}>
+
+export const runServingRateMonitorScheduled = async (
+  db: D1Database,
+  input: Readonly<{ nowIso: string }>,
+  log: (line: string, fields: Record<string, unknown>) => void,
+): Promise<ServingRateMonitorSnapshot | null> => {
+  const snapshot = await buildFleetStatusSnapshot(db, input.nowIso, {
+    kind: 'admin',
+  })
+  const monitor =
+    typeof snapshot === 'object' && snapshot !== null && 'opsMonitor' in snapshot
+      ? (snapshot as { opsMonitor?: ServingRateMonitorSnapshot }).opsMonitor
+      : undefined
+
+  if (monitor === undefined) {
+    return null
+  }
+
+  if (monitor.status === 'alert') {
+    log('serving_rate_monitor_alert', {
+      activeAlertRefs: monitor.activeAlertRefs.join(','),
+      monitor,
+    })
+  }
+
+  return monitor
 }
 
 type OperatorFleetReadScope =
