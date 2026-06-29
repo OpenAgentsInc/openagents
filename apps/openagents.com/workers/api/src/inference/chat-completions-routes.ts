@@ -3229,6 +3229,11 @@ export const handleChatCompletions = (
             reservedExternalHeadroomAvailable:
               effectiveRouteAdmission.reservedExternalHeadroomAvailable,
           })
+    const dispatchGlmOwnCapacityFailover =
+      glmSaturationStressKhalaRequest &&
+      deps.dispatch?.glmOwnCapacityFailover !== undefined
+        ? deps.dispatch.glmOwnCapacityFailover
+        : undefined
     const dispatchDeps: DispatchDeps = {
       registry: deps.registry,
       plan: () => plannedIds,
@@ -3282,9 +3287,9 @@ export const handleChatCompletions = (
       ...(deps.dispatch?.failureTelemetry === undefined
         ? {}
         : { failureTelemetry: deps.dispatch.failureTelemetry }),
-      ...(deps.dispatch?.glmOwnCapacityFailover === undefined
+      ...(dispatchGlmOwnCapacityFailover === undefined
         ? {}
-        : { glmOwnCapacityFailover: deps.dispatch.glmOwnCapacityFailover }),
+        : { glmOwnCapacityFailover: dispatchGlmOwnCapacityFailover }),
     }
 
     if (inferenceRequest.stream) {
