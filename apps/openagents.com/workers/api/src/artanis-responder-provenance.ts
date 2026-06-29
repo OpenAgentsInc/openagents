@@ -41,6 +41,11 @@ export const ARTANIS_RESPONDER_SUPPORT_STALENESS: PublicProjectionStalenessContr
     'artanis_responder_actions.update',
   ])
 
+export const ARTANIS_RESPONDER_EXTERNAL_CONTRIBUTOR_FLOW_BLOCKER =
+  'blocker.product_promises.external_contributor_flow_unproven'
+export const ARTANIS_RESPONDER_TEN_UNATTENDED_TICKS_BLOCKER =
+  'blocker.product_promises.ten_unattended_responder_ticks_unaccrued'
+
 // The bounded asker-provenance enum. external_contributor is the only class
 // the green gate cares about; the others exist so the classifier is total
 // and the projection can honestly say WHY a given interaction does not count.
@@ -134,6 +139,10 @@ export type ArtanisResponderSupportProjection = Readonly<{
   // True once at least one external contributor has been answered end to end
   // with a dereferenceable reply post. This is the gate the blocker tracks.
   externalContributorFlowProven: boolean
+  // The product-promise blocker tokens tracked by this readiness surface.
+  blockerRefs: ReadonlyArray<string>
+  // The blockers still open under the live responder/tick evidence in this response.
+  remainingBlockerRefs: ReadonlyArray<string>
   // The external-contributor interactions, newest first, each with the
   // dereferenceable reply-post ref.
   externalInteractions: ReadonlyArray<ArtanisExternalSupportInteraction>
@@ -224,10 +233,27 @@ export const projectArtanisResponderSupport = (
   const externalContributorFlowProven = externalInteractions.some(
     interaction => interaction.replyPostRef !== null,
   )
+  const externalContributorAnsweredWithinTickWindow =
+    tickReadiness?.externalContributorAnsweredWithinTickWindow === true
+  const unattendedResponderTicksProven =
+    tickReadiness?.unattendedResponderTicksProven === true
+  const remainingBlockerRefs = [
+    ...(externalContributorFlowProven &&
+    externalContributorAnsweredWithinTickWindow
+      ? []
+      : [ARTANIS_RESPONDER_EXTERNAL_CONTRIBUTOR_FLOW_BLOCKER]),
+    ...(unattendedResponderTicksProven
+      ? []
+      : [ARTANIS_RESPONDER_TEN_UNATTENDED_TICKS_BLOCKER]),
+  ]
 
   return {
     authorityBoundary:
       'Read-only projection over the Artanis responder-action ledger. Grants no dispatch, spend, assignment, settlement, moderation, or registry authority and cannot create an interaction, a reply, or a tip. Asker provenance is a bounded identity-field classification (operator/owner/agent/user prefix plus known internal Artanis/admin refs); the mind still owns the question-class decision.',
+    blockerRefs: [
+      ARTANIS_RESPONDER_EXTERNAL_CONTRIBUTOR_FLOW_BLOCKER,
+      ARTANIS_RESPONDER_TEN_UNATTENDED_TICKS_BLOCKER,
+    ],
     externalContributorAnsweredCount,
     externalContributorFlowProven,
     externalContributorTippedCount,
@@ -241,6 +267,7 @@ export const projectArtanisResponderSupport = (
     ],
     ownerOperatorAnsweredCount,
     publicSafe: true,
+    remainingBlockerRefs,
     staleness: ARTANIS_RESPONDER_SUPPORT_STALENESS,
     ...(tickReadiness === undefined ? {} : { tickReadiness }),
   }

@@ -98,6 +98,10 @@ describe('artanis labor requester green-readiness projection', () => {
       ARTANIS_LABOR_LIVE_ENABLEMENT_BLOCKER,
       ARTANIS_LABOR_UNATTENDED_RECEIPTS_BLOCKER,
     ])
+    expect(readiness.remainingBlockerRefs).toEqual([
+      ARTANIS_LABOR_LIVE_ENABLEMENT_BLOCKER,
+      ARTANIS_LABOR_UNATTENDED_RECEIPTS_BLOCKER,
+    ])
     expect(readiness.unattendedRequestTarget).toBe(
       ARTANIS_LABOR_UNATTENDED_REQUEST_TARGET,
     )
@@ -118,6 +122,9 @@ describe('artanis labor requester green-readiness projection', () => {
     expect(readiness.liveEnablementProven).toBe(true)
     expect(readiness.unattendedRequestReceiptsProven).toBe(false)
     expect(readiness.greenGateMet).toBe(false)
+    expect(readiness.remainingBlockerRefs).toEqual([
+      ARTANIS_LABOR_UNATTENDED_RECEIPTS_BLOCKER,
+    ])
     expect(readiness.placedRequests).toHaveLength(1)
     expect(readiness.placedRequests[0]?.terminalState).toBe(
       'requested_pending_delivery',
@@ -142,6 +149,7 @@ describe('artanis labor requester green-readiness projection', () => {
     expect(readiness.unattendedRequestReceiptsProven).toBe(true)
     expect(readiness.greenGateMet).toBe(true)
     expect(artanisLaborGreenGateMet(readiness)).toBe(true)
+    expect(readiness.remainingBlockerRefs).toEqual([])
     expect(readiness.placedRequests).toHaveLength(
       ARTANIS_LABOR_UNATTENDED_REQUEST_TARGET,
     )

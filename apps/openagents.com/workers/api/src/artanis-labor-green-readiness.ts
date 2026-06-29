@@ -82,6 +82,8 @@ export type ArtanisLaborGreenReadinessProjection = Readonly<{
   // The blocker tokens this surface tracks, named so the operator recording the
   // transition can cite the exact refs being cleared.
   blockerRefs: ReadonlyArray<string>
+  // The blockers still open under the live receipt evidence in this response.
+  remainingBlockerRefs: ReadonlyArray<string>
   // The number of placed receipts required before the receipts blocker clears.
   unattendedRequestTarget: number
   // The placed-request count over the projected feed window.
@@ -145,6 +147,12 @@ export const projectArtanisLaborGreenReadinessProjection = (
     placedRequestCount >= ARTANIS_LABOR_UNATTENDED_REQUEST_TARGET
   const greenGateMet =
     liveEnablementProven && unattendedRequestReceiptsProven
+  const remainingBlockerRefs = [
+    ...(liveEnablementProven ? [] : [ARTANIS_LABOR_LIVE_ENABLEMENT_BLOCKER]),
+    ...(unattendedRequestReceiptsProven
+      ? []
+      : [ARTANIS_LABOR_UNATTENDED_RECEIPTS_BLOCKER]),
+  ]
 
   return {
     authorityBoundary: AUTHORITY_BOUNDARY,
@@ -167,6 +175,7 @@ export const projectArtanisLaborGreenReadinessProjection = (
     placedRequestCount,
     placedRequests,
     publicSafe: true,
+    remainingBlockerRefs,
     staleness: liveAtReadStaleness([
       'artanis_labor_unattended_request_receipt_stored',
     ]),

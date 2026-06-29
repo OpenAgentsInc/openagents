@@ -1,13 +1,37 @@
 import { describe, expect, test } from 'vitest'
 
 import {
+  ARTANIS_RESPONDER_EXTERNAL_CONTRIBUTOR_FLOW_BLOCKER,
+  ARTANIS_RESPONDER_TEN_UNATTENDED_TICKS_BLOCKER,
   boundedResponderSupportLimit,
   classifyAskerProvenance,
   projectArtanisResponderSupport,
   type ArtanisResponderActionRow,
 } from './artanis-responder-provenance'
+import type { ArtanisResponderTickReadinessProjection } from './artanis-responder-ticks'
 
 const nowIso = '2026-06-20T00:00:00.000Z'
+
+const tickReadiness = (
+  overrides: Partial<ArtanisResponderTickReadinessProjection> = {},
+): ArtanisResponderTickReadinessProjection => ({
+  authorityBoundary: 'test',
+  externalContributorAnsweredWithinTickWindow: true,
+  kind: 'artanis_pylon_support_responder_tick_readiness',
+  notes: [],
+  publicSafe: true,
+  qualifyingUnattendedResponderTickCount: 10,
+  staleness: {
+    composition: 'live_at_read',
+    contractVersion: 'projection_staleness.v1',
+    maxStalenessSeconds: 0,
+    rebuildsOn: ['test'],
+  },
+  tickTarget: 10,
+  tickWindows: [],
+  unattendedResponderTicksProven: true,
+  ...overrides,
+})
 
 const row = (
   overrides: Partial<ArtanisResponderActionRow>,
@@ -45,8 +69,8 @@ describe('classifyAskerProvenance', () => {
 
   test('pinned admin actor refs are owner_operator, never external', () => {
     expect(
-      classifyAskerProvenance('user:admin_chris', {
-        adminActorRefs: ['user:admin_chris'],
+      classifyAskerProvenance('user:admin_owner', {
+        adminActorRefs: ['user:admin_owner'],
       }),
     ).toBe('owner_operator')
   })
@@ -67,7 +91,11 @@ describe('classifyAskerProvenance', () => {
 
 describe('projectArtanisResponderSupport', () => {
   test('an answered external contributor proves the flow with a deref ref', () => {
-    const projection = projectArtanisResponderSupport([row({})], nowIso)
+    const projection = projectArtanisResponderSupport(
+      [row({})],
+      nowIso,
+      tickReadiness(),
+    )
     expect(projection.kind).toBe('artanis_pylon_support_responder_external_flow')
     expect(projection.publicSafe).toBe(true)
     expect(projection.staleness.contractVersion).toBe('projection_staleness.v1')
@@ -81,6 +109,11 @@ describe('projectArtanisResponderSupport', () => {
     expect(projection.externalInteractions[0]?.publicUrl).toContain(
       '#post-post.public.forum.artanis.status.42',
     )
+    expect(projection.blockerRefs).toEqual([
+      ARTANIS_RESPONDER_EXTERNAL_CONTRIBUTOR_FLOW_BLOCKER,
+      ARTANIS_RESPONDER_TEN_UNATTENDED_TICKS_BLOCKER,
+    ])
+    expect(projection.remainingBlockerRefs).toEqual([])
   })
 
   test('a tipped external interaction counts the economic leg', () => {
@@ -113,6 +146,10 @@ describe('projectArtanisResponderSupport', () => {
     expect(projection.ownerOperatorAnsweredCount).toBe(1)
     expect(projection.externalContributorAnsweredCount).toBe(0)
     expect(projection.externalContributorFlowProven).toBe(false)
+    expect(projection.remainingBlockerRefs).toEqual([
+      ARTANIS_RESPONDER_EXTERNAL_CONTRIBUTOR_FLOW_BLOCKER,
+      ARTANIS_RESPONDER_TEN_UNATTENDED_TICKS_BLOCKER,
+    ])
   })
 
   test('proposed and skipped actions are not answered interactions', () => {
@@ -160,6 +197,21 @@ describe('projectArtanisResponderSupport', () => {
     )
     expect(projection.externalContributorAnsweredCount).toBe(0)
     expect(projection.ownerOperatorAnsweredCount).toBe(0)
+  })
+
+  test('keeps the ten-tick blocker explicit until tick readiness reaches target', () => {
+    const projection = projectArtanisResponderSupport(
+      [row({})],
+      nowIso,
+      tickReadiness({
+        qualifyingUnattendedResponderTickCount: 9,
+        unattendedResponderTicksProven: false,
+      }),
+    )
+    expect(projection.externalContributorFlowProven).toBe(true)
+    expect(projection.remainingBlockerRefs).toEqual([
+      ARTANIS_RESPONDER_TEN_UNATTENDED_TICKS_BLOCKER,
+    ])
   })
 })
 
