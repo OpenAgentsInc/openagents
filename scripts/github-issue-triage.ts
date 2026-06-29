@@ -311,7 +311,9 @@ export const listRepositoryFiles = (cwd: string): ReadonlyArray<string> => {
 }
 
 export const buildCandidateIssueSearch = (includeLabeled: boolean): string =>
-  includeLabeled ? "is:issue is:open sort:created-desc" : "is:issue is:open no:label sort:created-desc"
+  includeLabeled
+    ? "is:issue is:open sort:created-desc"
+    : `is:issue is:open ${PRIORITY_LABELS.map(label => `-label:"${label}"`).join(" ")} sort:created-desc`
 
 const listCandidateIssues = (
   repo: string,
@@ -378,7 +380,7 @@ const main = () => {
   const options = parseArgs(Bun.argv.slice(2))
   const repositoryFiles = listRepositoryFiles(process.cwd())
   const candidates = listCandidateIssues(options.repo, options.limit, options.includeLabeled).filter(
-    issue => options.includeLabeled || !issueHasAnyLabel(issue),
+    issue => options.includeLabeled || !issueHasPriorityLabel(issue),
   )
   const openIssues = listOpenIssues(options.repo, Math.max(options.limit, 100))
   const decisions = candidates.map(issue =>

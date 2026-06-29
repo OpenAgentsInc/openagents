@@ -121,9 +121,30 @@ describe("github issue triage output", () => {
     expect(issueHasAnyLabel(issue({ labels: [{ name: "standing-task" }] }))).toBe(true)
   })
 
-  test("builds the default candidate query from newly opened unlabeled issues", () => {
-    expect(buildCandidateIssueSearch(false)).toBe("is:issue is:open no:label sort:created-desc")
+  test("builds the default candidate query from issues missing priority labels", () => {
+    expect(buildCandidateIssueSearch(false)).toBe(
+      [
+        "is:issue is:open",
+        '-label:"prio:0-pr-burndown"',
+        '-label:"prio:1-continual-learning"',
+        '-label:"prio:2-issue-triage"',
+        '-label:"prio:3-product-promises"',
+        '-label:"prio:4-backstop-burn"',
+        "sort:created-desc",
+      ].join(" "),
+    )
     expect(buildCandidateIssueSearch(true)).toBe("is:issue is:open sort:created-desc")
+  })
+
+  test("keeps standing-task issues eligible until they have a priority label", () => {
+    expect(issueHasPriorityLabel(issue({ labels: [{ name: "standing-task" }] }))).toBe(false)
+    expect(
+      issueHasPriorityLabel(
+        issue({
+          labels: [{ name: "standing-task" }, { name: "prio:2-issue-triage" }],
+        }),
+      ),
+    ).toBe(true)
   })
 
   test("builds a scoped execution plan and rendered comment", () => {
