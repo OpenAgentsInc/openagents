@@ -4,7 +4,7 @@ Date: 2026-06-29
 
 Status: audit and implementation plan for issue #6947. This document does not
 implement the sidecar. The implementation issue is tracked separately and is
-blocked on #6932: #6978.
+blocked on #6932: #6973.
 
 ## Summary
 
@@ -119,12 +119,14 @@ These docs establish the current posture:
 
 ### Khala macOS Context
 
-The now-closed native macOS direction is represented by issues such as #6790 and
-#6812. Those issues scoped a native SwiftUI desktop app that would boot Pylon,
-connect Apple Foundation Models, and make the Mac a local Khala node. That
-direction is paused in favor of the Electrobun desktop app tracked by #6932, but
-the product requirement survives: on Apple targets, the desktop app should make
-local Apple FM available through the same Pylon/Khala authority path.
+The now-closed native macOS direction is represented by #6790, #6812, #6873,
+#6874, #6884, and #6885. Those issues scoped a native SwiftUI desktop app that
+would boot Pylon, connect Apple Foundation Models, package and verify the Swift
+helper, publish truthful local capacity, and ship through the signed/notarized
+Apple lane. That direction is paused in favor of the Electrobun desktop app
+tracked by #6932, but the product requirement survives: on Apple targets, the
+desktop app should make local Apple FM available through the same Pylon/Khala
+authority path.
 
 The change is implementation shape, not authority shape. The SwiftUI app shell
 is no longer the first integration target; the Swift bridge remains the sidecar.
@@ -234,7 +236,7 @@ Recommended ledger identity for the first local Apple FM own-capacity lane:
 - backend profile: `apple-fm-local`
 - backend kind: `apple_fm_bridge`
 - demand kind: `own_capacity`
-- demand source: `khala_local_apple_fm`
+- demand source: `khala_apple_fm_delegation`
 
 The exact strings should be implemented once in the Worker/Pylon contracts, not
 duplicated in UI code.

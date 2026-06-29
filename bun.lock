@@ -163,6 +163,7 @@
         "happy-dom": "^20.9.0",
         "unplugin": "^2.3.11",
         "vite": "^8.0.10",
+        "vitest": "^4.1.8",
       },
     },
     "apps/openagents.com/packages/email-templates": {
@@ -275,7 +276,9 @@
         "stripe": "^22.2.0",
       },
       "devDependencies": {
+        "@cloudflare/workers-types": "^4.20260609.1",
         "playwright": "^1.61.0",
+        "vitest": "^4.1.8",
       },
     },
     "apps/pylon": {
