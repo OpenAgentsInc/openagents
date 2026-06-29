@@ -12,7 +12,7 @@ describe("openagents desktop coding status", () => {
     const processes = parseCodingProcesses(`
   100     1  8.2      01:20 /Users/me/.codex/accounts/codex-4/codex/vendor/aarch64-apple-darwin/bin/codex exec --json
   101     1  0.0      02:00 bun apps/pylon/src/index.ts khala request --prompt Implement public issue #6932 --account-ref codex-6
-  102   101  0.1      00:30 /Users/me/node_modules/@openai/codex/vendor/aarch64-apple-darwin/bin/codex exec --cd /tmp/workspace-one
+  102   101  0.1      00:30 /Users/me/node_modules/@openai/codex/vendor/aarch64-apple-darwin/bin/codex exec --cd /tmp/workspace-one --assignment-ref assignment.public.khala_coding.test_6932
   103     1  0.2      10:00 bash /Users/me/work/apps/pylon/scripts/codex-supervisor/codex-supervisor.sh
   104     1  5.0      00:30 bun scripts/khala-vertex-continual-learning-burn.mjs
 `)
@@ -36,6 +36,7 @@ describe("openagents desktop coding status", () => {
     })
     expect(processes[2]).toMatchObject({
       accountRef: "codex-6",
+      assignmentRef: "assignment.public.khala_coding.test_6932",
       issueRef: "6932",
       parentPid: 101,
       workspacePath: "/tmp/workspace-one",
@@ -77,6 +78,7 @@ Pylon presence failed: OpenAgents presence request failed (401): {"error":"unaut
   test("parses Codex rollout transcript messages", () => {
     const parsed = parseCodexSessionRollout(`
 {"timestamp":"2026-06-29T02:44:00.928Z","type":"session_meta","payload":{"id":"019f1143-24ae-76b1-851b-494930817124","cwd":"/tmp/workspace-one","source":"exec"}}
+{"timestamp":"2026-06-29T02:44:00.928Z","type":"event_msg","payload":{"type":"assignment","message":"assignment.public.khala_coding.test_6958 accepted"}}
 {"timestamp":"2026-06-29T02:44:00.929Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Implement issue #6958"}]}}
 {"timestamp":"2026-06-29T02:45:00.000Z","type":"response_item","payload":{"type":"function_call","name":"shell","arguments":"{\\"cmd\\":\\"git status\\"}","call_id":"call-1"}}
 {"timestamp":"2026-06-29T02:45:01.000Z","type":"response_item","payload":{"type":"function_call_output","call_id":"call-1","output":"clean"}}
@@ -86,13 +88,15 @@ Pylon presence failed: OpenAgents presence request failed (401): {"error":"unaut
 `)
 
     expect(parsed).toMatchObject({
+      assignmentRef: "assignment.public.khala_coding.test_6958",
       cwd: "/tmp/workspace-one",
-      messageCount: 6,
+      messageCount: 7,
       sessionId: "019f1143-24ae-76b1-851b-494930817124",
       source: "exec",
       title: "Implement issue #6958",
     })
     expect(parsed.messages.map(message => message.role)).toEqual([
+      "event",
       "user",
       "tool",
       "tool",
@@ -100,26 +104,26 @@ Pylon presence failed: OpenAgents presence request failed (401): {"error":"unaut
       "tool",
       "assistant",
     ])
-    expect(parsed.messages[1]).toMatchObject({
+    expect(parsed.messages[2]).toMatchObject({
       detail: "call-1",
       kind: "tool call",
       status: "running",
       text: "{\"cmd\":\"git status\"}",
       title: "shell",
     })
-    expect(parsed.messages[2]).toMatchObject({
+    expect(parsed.messages[3]).toMatchObject({
       detail: "call-1",
       kind: "tool output",
       status: "ok",
       title: "tool result",
     })
-    expect(parsed.messages[3]).toMatchObject({
+    expect(parsed.messages[4]).toMatchObject({
       kind: "reasoning",
       status: "info",
       text: "Check the working tree before editing.",
       title: "reasoning",
     })
-    expect(parsed.messages[4]).toMatchObject({
+    expect(parsed.messages[5]).toMatchObject({
       detail: "call-2",
       kind: "tool output",
       status: "error",

@@ -1,6 +1,7 @@
 import { BrowserView, BrowserWindow } from "electrobun/bun"
 import { existsSync } from "node:fs"
-import { readdir, stat } from "node:fs/promises"
+import { mkdir, readdir, rename, stat } from "node:fs/promises"
+import type { Stats } from "node:fs"
 import { homedir } from "node:os"
 import { dirname, join, resolve } from "node:path"
 
@@ -35,6 +36,17 @@ import {
   OPENAGENTS_DESKTOP_RPC_MAX_REQUEST_TIME_MS,
   type OpenAgentsDesktopRPCSchema,
 } from "../shared/rpc.js"
+import {
+  emptyTokenAccountingSpool,
+  isPublicSafeAssignmentRef,
+  OPENAGENTS_DESKTOP_TOKEN_FAILURE_SPOOL_NAME,
+  parseTokenFailureSpool,
+  type AssignmentTokenUsageVerification,
+  type TokenAccountingReplayResult,
+  type TokenAccountingSpool,
+  type TokenAccountingStatusResult,
+  verificationFromProofPayload,
+} from "../shared/token-accounting.js"
 
 const baseUrl =
   Bun.env.PYLON_OPENAGENTS_BASE_URL ??
@@ -154,6 +166,14 @@ const readTextFile = async (path: string): Promise<string> => {
     return await Bun.file(path).text()
   } catch {
     return ""
+  }
+}
+
+const fileStatOrNull = async (path: string): Promise<Stats | null> => {
+  try {
+    return await stat(path)
+  } catch {
+    return null
   }
 }
 
@@ -453,6 +473,7 @@ const readCodexSessions = async (
       return {
         accountRef,
         active,
+        assignmentRef: parsed.assignmentRef ?? process?.assignmentRef ?? null,
         cwd: parsed.cwd,
         issueRef: process?.issueRef ?? null,
         messageCount: parsed.messageCount,
@@ -558,6 +579,274 @@ const khalaDispatchPlan = async (
     return {
       ok: false,
       error: error instanceof Error ? error.message : String(error),
+      observedAt,
+    }
+  }
+}
+
+const tokenFailureSpoolPath = (): string =>
+  resolve(join(homedir(), ".pylon-fable"), OPENAGENTS_DESKTOP_TOKEN_FAILURE_SPOOL_NAME)
+
+const readTokenFailureSpool = async (): Promise<TokenAccountingSpool> => {
+  const path = tokenFailureSpoolPath()
+  const fileStat = await fileStatOrNull(path)
+  if (fileStat === null || fileStat.size <= 0) {
+    return emptyTokenAccountingSpool(path)
+  }
+
+  return parseTokenFailureSpool({
+    byteLength: fileStat.size,
+    path,
+    text: await readTextFile(path),
+  })
+}
+
+const tokenAccountingStatus = async (): Promise<TokenAccountingStatusResult> => ({
+  ok: true,
+  observedAt: new Date().toISOString(),
+  spool: await readTokenFailureSpool(),
+})
+
+const tokenCandidates = (): readonly string[] => [
+  ...(Bun.env.OPENAGENTS_AGENT_TOKEN ? [Bun.env.OPENAGENTS_AGENT_TOKEN] : []),
+]
+
+const readStoredAgentToken = async (): Promise<string | null> => {
+  for (const candidate of [
+    resolve(join(homedir(), ".pylon-fable"), "auth", "openagents-agent-token"),
+    resolve(resolvePylonHome(), "auth", "openagents-agent-token"),
+  ]) {
+    const token = (await readTextFile(candidate)).trim()
+    if (token !== "") return token
+  }
+  return null
+}
+
+const resolveAgentToken = async (): Promise<string | null> => {
+  const envToken = tokenCandidates().find(value => value.trim() !== "")
+  return envToken?.trim() ?? await readStoredAgentToken()
+}
+
+const compactError = (value: unknown): string => {
+  const text = (value instanceof Error ? value.message : String(value)).replace(
+    /oa_agent_[A-Za-z0-9._-]+/g,
+    "oa_agent_[redacted]",
+  )
+  return text.length > 180 ? `${text.slice(0, 177)}...` : text
+}
+
+const rawFailureReports = async (): Promise<readonly Record<string, unknown>[]> => {
+  const path = tokenFailureSpoolPath()
+  const text = await readTextFile(path)
+  const reports: Record<string, unknown>[] = []
+  for (const line of text.split("\n")) {
+    if (line.trim() === "") continue
+    try {
+      const parsed = JSON.parse(line) as unknown
+      if (
+        typeof parsed === "object" &&
+        parsed !== null &&
+        !Array.isArray(parsed) &&
+        typeof (parsed as Record<string, unknown>).report === "object" &&
+        (parsed as Record<string, unknown>).report !== null
+      ) {
+        reports.push((parsed as { report: Record<string, unknown> }).report)
+      }
+    } catch {
+      // Invalid JSONL rows remain in the spool for manual inspection.
+    }
+  }
+  return reports
+}
+
+const nonNegativeInteger = (value: unknown): number =>
+  typeof value === "number" && Number.isFinite(value)
+    ? Math.max(0, Math.trunc(value))
+    : 0
+
+const replayReport = async (
+  report: Record<string, unknown>,
+  agentToken: string,
+): Promise<void> => {
+  const assignmentRef = String(report.assignmentRef ?? "")
+  const pylonRef = String(report.pylonRef ?? "")
+  const leaseRef = String(report.leaseRef ?? "")
+  const turnIndex = nonNegativeInteger(report.turnIndex) + 1
+  if (
+    !isPublicSafeAssignmentRef(assignmentRef) ||
+    !isPublicSafeAssignmentRef(pylonRef) ||
+    !isPublicSafeAssignmentRef(leaseRef)
+  ) {
+    throw new Error("spooled Codex turn report contains a non-public-safe ref")
+  }
+  const usage =
+    typeof report.usage === "object" && report.usage !== null && !Array.isArray(report.usage)
+      ? report.usage as Record<string, unknown>
+      : {}
+  const sessionRef =
+    typeof report.sessionRef === "string" && report.sessionRef.trim() !== ""
+      ? report.sessionRef.trim()
+      : "session.pending"
+  const body = {
+    assignmentRef,
+    leaseRef,
+    pylonRef,
+    runnerKind: "codex_sdk",
+    schemaVersion: "openagents.pylon.codex_turn.v1",
+    turnIndex,
+    ...(typeof report.runRef === "string" ? { runRef: report.runRef } : {}),
+    ...(typeof report.sessionRef === "string" ? { sessionRef: report.sessionRef } : {}),
+    ...(typeof report.workspaceRef === "string" ? { workspaceRef: report.workspaceRef } : {}),
+    ...(typeof report.observedAt === "string" ? { observedAt: report.observedAt } : {}),
+    items: Array.isArray(report.items) ? report.items : [],
+    ...(Array.isArray(report.rawEvents) ? { rawEvents: report.rawEvents } : {}),
+    usage: {
+      inputTokens: nonNegativeInteger(usage.inputTokens),
+      ...(usage.cachedInputTokens === undefined
+        ? {}
+        : { cachedInputTokens: nonNegativeInteger(usage.cachedInputTokens) }),
+      outputTokens: nonNegativeInteger(usage.outputTokens),
+      ...(usage.reasoningOutputTokens === undefined
+        ? {}
+        : { reasoningOutputTokens: nonNegativeInteger(usage.reasoningOutputTokens) }),
+    },
+  }
+  const response = await fetch(new URL("/api/pylon/codex/turns", baseUrl), {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${agentToken}`,
+      "content-type": "application/json",
+      "Idempotency-Key": [
+        "pylon.codex.turn",
+        pylonRef,
+        assignmentRef,
+        sessionRef,
+        String(turnIndex),
+      ].join("."),
+    },
+    body: JSON.stringify(body),
+  })
+  if (!response.ok) {
+    throw new Error(`Pylon Codex turn replay failed (${response.status})`)
+  }
+}
+
+const archiveTimestamp = (): string =>
+  new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z")
+
+const replayTokenFailures = async (): Promise<TokenAccountingReplayResult> => {
+  const observedAt = new Date().toISOString()
+  const before = await readTokenFailureSpool()
+  if (!before.exists || before.lineCount === 0) {
+    return {
+      ok: true,
+      archivedPath: null,
+      observedAt,
+      replayedReports: 0,
+      spool: before,
+    }
+  }
+
+  const token = await resolveAgentToken()
+  if (token === null) {
+    return {
+      ok: false,
+      error: "No OpenAgents agent token is available for replay.",
+      observedAt,
+      replayedReports: 0,
+      spool: before,
+    }
+  }
+
+  const reports = await rawFailureReports()
+  let replayedReports = 0
+  try {
+    if (reports.length !== before.lineCount) {
+      throw new Error("failure spool contains rows that cannot be replayed safely")
+    }
+    for (const report of reports) {
+      await replayReport(report, token)
+      replayedReports += 1
+    }
+    const archiveDir = resolve(join(homedir(), ".pylon-fable"), "replayed-failures")
+    await mkdir(archiveDir, { recursive: true })
+    const archivedPath = resolve(
+      archiveDir,
+      `codex-turn-report-failures-${archiveTimestamp()}.jsonl`,
+    )
+    await rename(before.path, archivedPath)
+    return {
+      ok: true,
+      archivedPath,
+      observedAt: new Date().toISOString(),
+      replayedReports,
+      spool: await readTokenFailureSpool(),
+    }
+  } catch (error) {
+    return {
+      ok: false,
+      error: compactError(error),
+      observedAt: new Date().toISOString(),
+      replayedReports,
+      spool: await readTokenFailureSpool(),
+    }
+  }
+}
+
+const spawnJson = async (cmd: readonly string[]): Promise<unknown> => {
+  const agentToken = await resolveAgentToken()
+  const proc = Bun.spawn({
+    cmd: [...cmd],
+    env: withExtraPath({
+      ...Bun.env,
+      PYLON_OPENAGENTS_BASE_URL: baseUrl,
+      ...(agentToken === null ? {} : { OPENAGENTS_AGENT_TOKEN: agentToken }),
+    }),
+    stderr: "pipe",
+    stdout: "pipe",
+  })
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ])
+  if (exitCode !== 0) {
+    throw new Error(stderr.trim() || stdout.trim() || `command exited ${exitCode}`)
+  }
+  return JSON.parse(stdout)
+}
+
+const verifyAssignmentTokenUsage = async (
+  assignmentRef: string,
+): Promise<AssignmentTokenUsageVerification> => {
+  const observedAt = new Date().toISOString()
+  if (!isPublicSafeAssignmentRef(assignmentRef)) {
+    return {
+      ok: false,
+      assignmentRef,
+      blockerRef: "blocker.desktop_token_accounting.assignment_ref_missing",
+      observedAt,
+    }
+  }
+
+  try {
+    const pylonAppPath = await resolvePylonAppPath()
+    const bunExecutable = resolveBunExecutable()
+    const payload = await spawnJson([
+      bunExecutable,
+      resolve(pylonAppPath, "src", "index.ts"),
+      "khala",
+      "proof",
+      assignmentRef,
+      "--json",
+    ])
+    return verificationFromProofPayload(assignmentRef, payload, new Date().toISOString())
+  } catch (error) {
+    return {
+      ok: false,
+      assignmentRef,
+      blockerRef: "blocker.desktop_token_accounting.proof_unavailable",
+      error: compactError(error),
       observedAt,
     }
   }
@@ -678,6 +967,9 @@ const rpc = BrowserView.defineRPC<OpenAgentsDesktopRPCSchema>({
       async pylonStatus() {
         return desktopPylonStatus()
       },
+      replayTokenFailures,
+      tokenAccountingStatus,
+      verifyAssignmentTokenUsage,
     },
     messages: {},
   },

@@ -16,6 +16,10 @@ import {
   OPENAGENTS_DESKTOP_RPC_MAX_REQUEST_TIME_MS,
   type OpenAgentsDesktopRPCSchema,
 } from "../shared/rpc"
+import {
+  type AssignmentTokenUsageVerification,
+  type TokenAccountingStatusResult,
+} from "../shared/token-accounting"
 import { mountLandingSquares } from "./landing-squares"
 import "./styles.css"
 
@@ -55,6 +59,9 @@ const codingMetricCodex = requireElement<HTMLElement>("#coding-metric-codex")
 const codingMetricBurning = requireElement<HTMLElement>("#coding-metric-burning")
 const codingMetricKhala = requireElement<HTMLElement>("#coding-metric-khala")
 const codingMetricReady = requireElement<HTMLElement>("#coding-metric-ready")
+const codingMetricTokenFailures = requireElement<HTMLElement>(
+  "#coding-metric-token-failures",
+)
 const codingActiveList = requireElement<HTMLElement>("#coding-active-list")
 const codingList = requireElement<HTMLElement>("#coding-list")
 const codingTranscriptTitle = requireElement<HTMLElement>(
@@ -69,13 +76,25 @@ const codingTranscriptCount = requireElement<HTMLElement>(
 const codingTranscriptMessages = requireElement<HTMLElement>(
   "#coding-transcript-messages",
 )
+const codingTokenVerification = requireElement<HTMLElement>(
+  "#coding-token-verification",
+)
 const codingEvents = requireElement<HTMLElement>("#coding-events")
 const codingDispatchSummary = requireElement<HTMLElement>(
   "#coding-dispatch-summary",
 )
+const tokenAccountingSummary = requireElement<HTMLElement>(
+  "#token-accounting-summary",
+)
+const tokenReplay = requireElement<HTMLButtonElement>("#token-replay")
+const tokenSpoolList = requireElement<HTMLElement>("#token-spool-list")
+const tokenReplayStatus = requireElement<HTMLElement>("#token-replay-status")
 
 let latestCodingResult: CodingStatusResult | null = null
+let latestTokenAccounting: TokenAccountingStatusResult | null = null
 let selectedSessionPath: string | null = null
+const tokenVerificationCache = new Map<string, AssignmentTokenUsageVerification>()
+const tokenVerificationInFlight = new Set<string>()
 
 const prefersReducedMotion = globalThis.matchMedia?.(
   "(prefers-reduced-motion: reduce)",
@@ -218,6 +237,7 @@ const sessionSubtitle = (session: CodingCodexSession): string => {
   const parts = [
     session.accountRef,
     session.issueRef === null ? null : `#${session.issueRef}`,
+    session.assignmentRef,
     session.pid === null ? null : `PID ${formatCount(session.pid)}`,
     formatRelativeTimestamp(session.modifiedAt),
   ].filter((value): value is string => value !== null)
@@ -358,6 +378,7 @@ const renderCodingTranscript = (
   session: CodingCodexSession | null,
 ): void => {
   codingTranscriptMessages.replaceChildren()
+  renderAssignmentTokenVerification(session)
   if (session === null) {
     codingTranscriptTitle.textContent = "No session selected"
     codingTranscriptMeta.textContent = "Click a Codex instance"
@@ -387,6 +408,125 @@ const renderCodingTranscript = (
   }
 
   codingTranscriptMessages.append(...session.messages.map(messageRow))
+}
+
+const tokenUsageText = (verification: AssignmentTokenUsageVerification): string => {
+  if (!verification.ok) return verification.blockerRef
+  return `${formatCount(verification.totalTokens)} tokens · ${formatCount(verification.rowCount)} rows · exact`
+}
+
+const renderAssignmentTokenVerification = (
+  session: CodingCodexSession | null,
+): void => {
+  codingTokenVerification.replaceChildren()
+  if (session === null || session.assignmentRef === null) {
+    const empty = document.createElement("div")
+    empty.className = "token-verification-empty"
+    empty.textContent = "No assignment ref detected for this session."
+    codingTokenVerification.append(empty)
+    return
+  }
+
+  const assignmentRef = session.assignmentRef
+  const row = document.createElement("article")
+  row.className = "token-verification-row"
+  row.dataset.state = "pending"
+
+  const heading = document.createElement("div")
+  heading.className = "token-verification-heading"
+
+  const title = document.createElement("strong")
+  title.textContent = assignmentRef
+
+  const status = document.createElement("span")
+  const cached = tokenVerificationCache.get(assignmentRef)
+  if (cached === undefined) {
+    status.textContent = tokenVerificationInFlight.has(assignmentRef)
+      ? "Verifying"
+      : "Queued"
+  } else {
+    row.dataset.state = cached.ok ? "ok" : "blocked"
+    status.textContent = cached.ok ? "Verified" : "Blocked"
+  }
+
+  heading.append(title, status)
+
+  const body = document.createElement("p")
+  body.textContent =
+    cached === undefined
+      ? "Checking assignment token usage event proof."
+      : tokenUsageText(cached)
+
+  row.append(heading, body)
+  codingTokenVerification.append(row)
+
+  if (
+    cached === undefined &&
+    !tokenVerificationInFlight.has(assignmentRef)
+  ) {
+    tokenVerificationInFlight.add(assignmentRef)
+    void rpc.request
+      .verifyAssignmentTokenUsage(assignmentRef)
+      .then(result => {
+        tokenVerificationCache.set(assignmentRef, result)
+      })
+      .catch(error => {
+        tokenVerificationCache.set(assignmentRef, {
+          ok: false,
+          assignmentRef,
+          blockerRef: "blocker.desktop_token_accounting.proof_unavailable",
+          error: error instanceof Error ? error.message : String(error),
+          observedAt: new Date().toISOString(),
+        })
+      })
+      .finally(() => {
+        tokenVerificationInFlight.delete(assignmentRef)
+        if (latestCodingResult !== null) renderCodingStatus(latestCodingResult)
+      })
+  }
+}
+
+const renderTokenAccounting = (result: TokenAccountingStatusResult): void => {
+  latestTokenAccounting = result
+  const spool = result.spool
+  codingMetricTokenFailures.textContent = formatCount(spool.lineCount)
+  tokenReplay.disabled = spool.lineCount === 0
+  tokenAccountingSummary.textContent =
+    spool.lineCount === 0
+      ? "No failure spool"
+      : `${formatCount(spool.lineCount)} reports · ${formatCount(spool.byteLength)} bytes`
+
+  tokenSpoolList.replaceChildren()
+  if (spool.lineCount === 0) {
+    const empty = document.createElement("div")
+    empty.className = "token-spool-empty"
+    empty.textContent = "No unposted Codex turn reports."
+    tokenSpoolList.append(empty)
+    return
+  }
+
+  tokenSpoolList.append(
+    ...spool.reports.slice(0, 6).map(report => {
+      const row = document.createElement("article")
+      row.className = "token-spool-row"
+
+      const title = document.createElement("strong")
+      title.textContent = report.assignmentRef
+
+      const meta = document.createElement("span")
+      meta.textContent = [
+        report.turnIndex === null ? null : `turn ${formatCount(report.turnIndex)}`,
+        report.totalTokens > 0 ? `${formatCount(report.totalTokens)} tokens` : null,
+        formatRelativeTimestamp(report.observedAt),
+      ].filter((value): value is string => value !== null).join(" · ")
+
+      const error = document.createElement("p")
+      error.textContent = report.error
+
+      row.append(title, meta, error)
+      return row
+    }),
+  )
 }
 
 const renderCodingSessions = (
@@ -469,6 +609,9 @@ const renderCodingStatus = (result: CodingStatusResult): void => {
   codingMetricKhala.textContent = formatCount(summary.khalaRequestCount)
   codingMetricReady.textContent =
     summary.readyCodex === null ? "-" : formatCount(summary.readyCodex)
+  if (latestTokenAccounting === null) {
+    codingMetricTokenFailures.textContent = "0"
+  }
 
   renderCodingSessions(result.sessions)
 
@@ -555,6 +698,16 @@ const loadCodingStatus = async (): Promise<void> => {
   }
 }
 
+const loadTokenAccounting = async (): Promise<void> => {
+  try {
+    renderTokenAccounting(await rpc.request.tokenAccountingStatus())
+  } catch (error) {
+    tokenAccountingSummary.textContent = "Token accounting unavailable"
+    tokenReplayStatus.textContent =
+      error instanceof Error ? error.message : String(error)
+  }
+}
+
 type DesktopRoute = "coding" | "landing" | "pylons"
 
 const routeFromLocation = (): DesktopRoute => {
@@ -623,9 +776,47 @@ createPylonButton.addEventListener("click", () => {
     })
 })
 
+let isReplayingTokenFailures = false
+tokenReplay.addEventListener("click", () => {
+  if (isReplayingTokenFailures) return
+
+  isReplayingTokenFailures = true
+  tokenReplay.disabled = true
+  tokenReplayStatus.textContent = "Replaying unposted turn reports..."
+
+  void rpc.request
+    .replayTokenFailures()
+    .then(result => {
+      tokenReplayStatus.textContent = result.ok
+        ? result.archivedPath === null
+          ? "No reports needed replay."
+          : `Replayed ${formatCount(result.replayedReports)} reports and archived the spool.`
+        : `Replay stopped after ${formatCount(result.replayedReports)} reports: ${result.error}`
+      renderTokenAccounting({
+        ok: true,
+        observedAt: result.observedAt,
+        spool: result.spool,
+      })
+      tokenVerificationCache.clear()
+      if (latestCodingResult !== null) renderCodingStatus(latestCodingResult)
+    })
+    .catch(error => {
+      tokenReplayStatus.textContent = `Replay failed: ${
+        error instanceof Error ? error.message : String(error)
+      }`
+    })
+    .finally(() => {
+      isReplayingTokenFailures = false
+      tokenReplay.disabled =
+        latestTokenAccounting === null ||
+        latestTokenAccounting.spool.lineCount === 0
+    })
+})
+
 applyRoute(routeFromLocation())
 void loadCodingStatus()
 void loadPylonStatus()
+void loadTokenAccounting()
 globalThis.setInterval(
   () => void loadCodingStatus(),
   OPENAGENTS_DESKTOP_CODING_POLL_INTERVAL_MS,
@@ -633,4 +824,8 @@ globalThis.setInterval(
 globalThis.setInterval(
   () => void loadPylonStatus(),
   OPENAGENTS_DESKTOP_PYLON_POLL_INTERVAL_MS,
+)
+globalThis.setInterval(
+  () => void loadTokenAccounting(),
+  OPENAGENTS_DESKTOP_CODING_POLL_INTERVAL_MS,
 )

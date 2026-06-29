@@ -97,7 +97,31 @@
               <small>Ready</small>
               <strong id="coding-metric-ready">-</strong>
             </span>
+            <span class="coding-metric">
+              <small>Token failures</small>
+              <strong id="coding-metric-token-failures">0</strong>
+            </span>
           </div>
+          <section
+            class="token-accounting-panel"
+            aria-labelledby="token-accounting-title"
+          >
+            <div class="token-accounting-heading">
+              <div>
+                <h3 id="token-accounting-title">Token Accounting</h3>
+                <span id="token-accounting-summary">No failure spool</span>
+              </div>
+              <button id="token-replay" class="token-replay" type="button">
+                Replay
+              </button>
+            </div>
+            <div id="token-spool-list" class="token-spool-list"></div>
+            <div
+              id="token-replay-status"
+              class="token-replay-status"
+              aria-live="polite"
+            ></div>
+          </section>
           <div id="coding-active-list" class="coding-active-list"></div>
           <div class="coding-workspace">
             <div class="coding-session-column">
@@ -118,6 +142,10 @@
               <div
                 id="coding-transcript-messages"
                 class="coding-transcript-messages"
+              ></div>
+              <div
+                id="coding-token-verification"
+                class="coding-token-verification"
               ></div>
             </section>
           </div>
