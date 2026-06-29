@@ -17,6 +17,8 @@ const baseInput = (
   mode: 'fake_sandbox',
   operatorApprovedPayment: false,
   routeStateRef: 'route_state.fake_sandbox.l402_available',
+  sendCapacityRef: 'capacity.mdk_agent_wallet.minimum_not_satisfied',
+  sendCapacitySufficient: false,
   spendCapBitcoinSatoshis: 10_000,
   tokenCacheRef: 'token_cache.local.redacted',
   walletHomeMode: 'unknown',
@@ -56,6 +58,8 @@ describe('OpenAgents MDK agent-wallet smoke fixture', () => {
       baseInput({
         mode: 'signet',
         operatorApprovedPayment: true,
+        sendCapacityRef: 'capacity.mdk_agent_wallet.minimum_satisfied',
+        sendCapacitySufficient: true,
         walletHomeMode: 'original_funded_wallet_home',
       }),
     )
@@ -92,6 +96,8 @@ describe('OpenAgents MDK agent-wallet smoke fixture', () => {
         amountBitcoinSatoshis: 20_000,
         mode: 'signet',
         operatorApprovedPayment: true,
+        sendCapacityRef: 'capacity.mdk_agent_wallet.minimum_satisfied',
+        sendCapacitySufficient: true,
         spendCapBitcoinSatoshis: 10_000,
         walletHomeMode: 'original_funded_wallet_home',
       }),
@@ -107,6 +113,35 @@ describe('OpenAgents MDK agent-wallet smoke fixture', () => {
     expect(overCap.steps.some(step => step.maySpendBitcoin)).toBe(false)
     expect(liveBlocked.status).toBe('blocked_until_operator_authority')
     expect(liveBlocked.steps.some(step => step.kind === 'send')).toBe(false)
+  })
+
+  test('blocks signet send plans without a public-safe capacity receipt', () => {
+    const projection = planOpenAgentsMdkAgentWalletSmoke(
+      baseInput({
+        mode: 'signet',
+        operatorApprovedPayment: true,
+        sendCapacityRef: 'capacity.mdk_agent_wallet.minimum_not_satisfied',
+        sendCapacitySufficient: false,
+        walletHomeMode: 'original_funded_wallet_home',
+      }),
+    )
+
+    expect(projection.status).toBe('blocked_by_send_capacity')
+    expect(projection.sendCapacityRef).toBe(
+      'capacity.mdk_agent_wallet.minimum_not_satisfied',
+    )
+    expect(projection.payoutModeGate.blockerRefs).toContain(
+      'blocker.mdk_agent_wallet.send_readiness_missing',
+    )
+    expect(
+      projection.steps.find(step => step.kind === 'send_readiness_preflight')
+        ?.noteRefs,
+    ).toEqual(
+      expect.arrayContaining([
+        'capacity.mdk_agent_wallet.minimum_not_satisfied',
+      ]),
+    )
+    expect(projection.steps.some(step => step.kind === 'send')).toBe(false)
   })
 
   test('blocks mnemonic-restore mode before any send step', () => {

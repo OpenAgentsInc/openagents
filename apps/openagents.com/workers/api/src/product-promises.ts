@@ -1255,13 +1255,14 @@ export const publicProductPromisesDocument = () => {
         claim:
           'OpenAgents switched payments to Money Dev Kit: self-custodial Lightning agent wallet, single command setup, LSP/splice channels, immediate receive liquidity, and hosted checkout.',
         safeCopy:
-          'OpenAgents uses MDK hosted checkout and agent-wallet flows for scoped small-sats/L402 paths, and Forum tips can project confirmed live direct BOLT 12 MDK/provider payments as ordinary content tips. Broader payout, withdrawal, and accepted-work settlement claims remain scoped by their own route authority and wallet readiness.',
+          'OpenAgents uses MDK hosted checkout and agent-wallet flows for scoped small-sats/L402 paths, and Forum tips can project confirmed live direct BOLT 12 MDK/provider payments as ordinary content tips. Agent-wallet send readiness is separate from receive readiness, balance visibility, and hosted checkout readiness; the registry stays yellow until a public-safe minimum send-capacity receipt exists for the scoped wallet path. Broader payout, withdrawal, and accepted-work settlement claims remain scoped by their own route authority and wallet readiness.',
         unsafeCopy:
-          'Do not claim MDK mnemonic restore or hosted MDK payout proves full send readiness or provider settlement.',
+          'Do not claim MDK mnemonic restore, positive balance, receive readiness, or hosted MDK payout proves full send readiness, sufficient outbound capacity, custody, payout authority, or provider settlement.',
         evidenceRefs: [
           'apps/openagents.com/docs/mdk',
           'apps/pylon/docs/mdk-wallet-readiness-ledger.md',
           'apps/openagents.com/docs/nexus/2026-06-08-mdk-agent-wallet-outbound-capacity-restore-report.md',
+          'apps/openagents.com/docs/nexus/2026-06-29-mdk-agent-wallet-send-readiness-capacity-gate.md',
           'docs/forum/2026-06-09-forum-mdk-webhook-reconciliation-audit.md',
           'route:/api/forum/paid-actions/mdk/webhooks',
           'script:apps/openagents.com/scripts/forum.mjs tip-post-smoke',
@@ -1274,7 +1275,7 @@ export const publicProductPromisesDocument = () => {
           'blocker.product_promises.mdk_agent_wallet_send_readiness_insufficient_capacity',
         ],
         verification:
-          'Run smoke:forum:mdk-readiness with a ready-recipient post, user-specified sats amount, explicit live-spend approval, public receipt lookup, and `tip-post-smoke --strict-smooth` from a funded production payer wallet. Separate wallet configured, receive-ready, positive balance, send-ready, direct payment sent, webhook-confirmed payment, timeout recovery, refund/reversal, accepted work, payout, and accepted-work settlement states.',
+          'Run smoke:forum:mdk-readiness with a ready-recipient post, user-specified sats amount, explicit live-spend approval, public receipt lookup, and `tip-post-smoke --strict-smooth` from a funded production payer wallet. A green transition additionally requires a public-safe MDK agent-wallet send-capacity receipt for the scoped path: original funded wallet home, operator-approved spend cap, redaction guard, minimum send capacity satisfied for the bounded smoke amount, successful send, and paid retry/receipt ref. Separate wallet configured, receive-ready, positive balance, send-ready capacity, direct payment sent, webhook-confirmed payment, timeout recovery, refund/reversal, accepted work, payout, and accepted-work settlement states.',
         authorityBoundary:
           'Payment proof does not bypass route auth, owner scope, moderation, deployment, payout, or settlement gates.',
       },

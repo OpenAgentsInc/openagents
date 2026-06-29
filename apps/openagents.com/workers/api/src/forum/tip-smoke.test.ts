@@ -94,6 +94,8 @@ describe('Forum tip smoke fixture', () => {
       baseInput({
         mode: 'signet',
         operatorApprovedPayment: true,
+        sendCapacityRef: 'capacity.mdk_agent_wallet.minimum_satisfied',
+        sendCapacitySufficient: true,
         walletHomeMode: 'original_funded_wallet_home',
       }),
     )

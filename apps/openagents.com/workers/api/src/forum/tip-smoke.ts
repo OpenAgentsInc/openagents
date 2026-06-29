@@ -53,6 +53,8 @@ export const ForumTipSmokeInput = S.Struct({
   recipientReadinessRef: S.String,
   redactedEvidenceRef: S.String,
   routeStateRef: S.String,
+  sendCapacityRef: S.optionalKey(S.String),
+  sendCapacitySufficient: S.optionalKey(S.Boolean),
   spendCapBitcoinSatoshis: S.Number,
   tokenCacheRef: S.String,
   walletHomeMode: S.optionalKey(
@@ -174,6 +176,7 @@ const statusForInput = (
   input: ForumTipSmokeInput,
   agentWalletStatus:
     | 'blocked_by_spend_cap'
+    | 'blocked_by_send_capacity'
     | 'blocked_by_wallet_restore_mode'
     | 'blocked_until_operator_authority'
     | 'documentation_only'
@@ -406,6 +409,9 @@ export const planForumTipSmoke = (
     operatorApprovedPayment:
       input.operatorApprovedPayment && higherLevelPrerequisitesReady,
     routeStateRef: input.routeStateRef,
+    sendCapacityRef:
+      input.sendCapacityRef ?? 'capacity.mdk_agent_wallet.minimum_not_satisfied',
+    sendCapacitySufficient: input.sendCapacitySufficient ?? false,
     spendCapBitcoinSatoshis,
     tokenCacheRef: input.tokenCacheRef,
     walletHomeMode: input.walletHomeMode ?? 'unknown',

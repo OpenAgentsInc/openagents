@@ -72,6 +72,8 @@ export class PylonInstallToBitcoinSmokeInput extends S.Class<PylonInstallToBitco
   payoutReadinessRefs: S.Array(S.String),
   registrationRefs: S.Array(S.String),
   routeStateRef: S.String,
+  sendCapacityRef: S.optionalKey(S.String),
+  sendCapacitySufficient: S.optionalKey(S.Boolean),
   settlementReceiptRefs: S.Array(S.String),
   spendCapSats: S.Number,
   tokenCacheRef: S.String,
@@ -239,6 +241,9 @@ const mdkSmokeInputFor = (
         : 'live_blocked',
   operatorApprovedPayment: input.operatorApprovedLiveSpend,
   routeStateRef: input.routeStateRef,
+  sendCapacityRef:
+    input.sendCapacityRef ?? 'capacity.mdk_agent_wallet.minimum_not_satisfied',
+  sendCapacitySufficient: input.sendCapacitySufficient ?? false,
   spendCapBitcoinSatoshis: Math.max(0, Math.trunc(input.spendCapSats)),
   tokenCacheRef: input.tokenCacheRef,
   walletHomeMode: input.walletHomeMode,

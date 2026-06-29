@@ -1077,9 +1077,19 @@ describe('public product promises document', () => {
             'script:apps/openagents.com/scripts/forum.mjs tip-post-smoke',
             'apps/openagents.com/docs/forum-tip-payout-smoke.md',
             'apps/openagents.com/docs/mdk-forum-readiness-smoke.md',
+            'apps/openagents.com/docs/nexus/2026-06-29-mdk-agent-wallet-send-readiness-capacity-gate.md',
           ]),
           promiseId: 'payments.money_dev_kit.v1',
+          safeCopy: expect.stringContaining(
+            'minimum send-capacity receipt',
+          ),
           state: 'yellow',
+          unsafeCopy: expect.stringContaining(
+            'positive balance, receive readiness',
+          ),
+          verification: expect.stringContaining(
+            'minimum send capacity satisfied',
+          ),
         }),
         expect.objectContaining({
           blockerRefs: [],

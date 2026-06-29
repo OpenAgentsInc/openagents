@@ -17,6 +17,7 @@ export type OpenAgentsMdkAgentWalletSmokeMode =
 
 export const OpenAgentsMdkAgentWalletSmokeStatus = S.Literals([
   'blocked_by_spend_cap',
+  'blocked_by_send_capacity',
   'blocked_by_wallet_restore_mode',
   'blocked_until_operator_authority',
   'documentation_only',
@@ -44,6 +45,8 @@ export const OpenAgentsMdkAgentWalletSmokeInput = S.Struct({
   mode: OpenAgentsMdkAgentWalletSmokeMode,
   operatorApprovedPayment: S.Boolean,
   routeStateRef: S.String,
+  sendCapacityRef: S.String,
+  sendCapacitySufficient: S.Boolean,
   spendCapBitcoinSatoshis: S.Number,
   tokenCacheRef: S.String,
   walletHomeMode: S.optionalKey(
@@ -71,6 +74,8 @@ export const OpenAgentsMdkAgentWalletSmokeProjection = S.Struct({
   payoutModeGate: MdkPayoutModeGateProjection,
   reasonRefs: S.Array(S.String),
   routeStateRef: S.String,
+  sendCapacityRef: S.String,
+  sendCapacitySufficient: S.Boolean,
   spendCapBitcoinSatoshis: S.Number,
   status: OpenAgentsMdkAgentWalletSmokeStatus,
   steps: S.Array(OpenAgentsMdkAgentWalletSmokeStep),
@@ -116,12 +121,16 @@ const publicLiteralValues = new Set([
   'blocker.mdk_agent_wallet.original_wallet_home_unverified',
   'blocker.mdk_agent_wallet.local_bridge_authority_missing',
   'blocker.mdk_agent_wallet.redaction_boundary_missing',
+  'blocker.product_promises.mdk_agent_wallet_send_readiness_insufficient_capacity',
   'blocker.mdk_agent_wallet.send_readiness_missing',
   'caveat.mdk_agent_wallet.local_bridge_not_hosted_direct_payout',
   'caveat.mdk_agent_wallet.original_funded_home_required_for_send',
   'caveat.mdk_agent_wallet.bridge_material_redaction_checked',
+  'capacity.mdk_agent_wallet.minimum_not_satisfied',
+  'capacity.mdk_agent_wallet.minimum_satisfied',
   'evidence.mdk_agent_wallet.local_bridge_authority_recorded',
   'evidence.mdk_agent_wallet.bridge_material_redaction_checked',
+  'evidence.mdk_agent_wallet.send_capacity_minimum_satisfied',
   'evidence.mdk_agent_wallet.send_readiness_preflight_ready',
   'Local MDK agent-wallet bridge',
   'Local MDK agent-wallet bridge disabled',
@@ -226,7 +235,9 @@ const statusForInput = (
     ? 'blocked_by_spend_cap'
     : input.operatorApprovedPayment && input.mode === 'signet'
       ? (input.walletHomeMode ?? 'unknown') === 'original_funded_wallet_home'
-        ? 'ready_for_signet'
+        ? input.sendCapacitySufficient
+          ? 'ready_for_signet'
+          : 'blocked_by_send_capacity'
         : 'blocked_by_wallet_restore_mode'
       : input.mode === 'fake_sandbox'
         ? 'documentation_only'
@@ -261,6 +272,10 @@ const baseSteps = (
       `wallet_home.mdk_agent_wallet.${input.walletHomeMode ?? 'unknown'}`,
       'note.agent_wallet.original_funded_home_required_for_send',
       'note.agent_wallet.send_readiness_preflight_shared',
+      input.sendCapacitySufficient
+        ? 'capacity.mdk_agent_wallet.minimum_satisfied'
+        : 'capacity.mdk_agent_wallet.minimum_not_satisfied',
+      input.sendCapacityRef,
       ...((input.walletHomeMode ?? 'unknown') === 'mnemonic_restore'
         ? ['note.agent_wallet.mnemonic_restore_not_send_ready']
         : []),
@@ -312,6 +327,7 @@ const paymentSteps = (
           maySpendBitcoin: true,
           noteRefs: safeRefs([
             `spend_cap.bitcoin_satoshis.${input.spendCapBitcoinSatoshis}`,
+            'evidence.mdk_agent_wallet.send_capacity_minimum_satisfied',
             'note.agent_wallet.operator_approved_signet_only',
           ]),
         },
@@ -356,6 +372,8 @@ export const planOpenAgentsMdkAgentWalletSmoke = (
     payoutModeGate,
     reasonRefs: safeRefs([`reason.agent_wallet_smoke.${status}`]),
     routeStateRef: safeRef(input.routeStateRef) ?? 'route_state.redacted',
+    sendCapacityRef: safeRef(input.sendCapacityRef) ?? 'send_capacity.redacted',
+    sendCapacitySufficient: input.sendCapacitySufficient,
     spendCapBitcoinSatoshis: Math.max(
       0,
       Math.trunc(input.spendCapBitcoinSatoshis),

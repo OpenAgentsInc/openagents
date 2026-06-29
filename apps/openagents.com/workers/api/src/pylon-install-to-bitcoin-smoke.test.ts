@@ -111,6 +111,8 @@ describe('Pylon install-to-bitcoin launch smoke', () => {
         settlementReceiptRefs: [
           'settlement.public.live_small_sats.receipt_recorded',
         ],
+        sendCapacityRef: 'capacity.mdk_agent_wallet.minimum_satisfied',
+        sendCapacitySufficient: true,
         walletHomeMode: 'original_funded_wallet_home',
         walletHomeRef:
           'wallet_home.mdk_agent_wallet.original_funded_wallet_home',
