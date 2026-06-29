@@ -15,7 +15,9 @@
 #   * sup_claim_is_active reflects held vs released vs stale claims.
 #   * sup_release_claim frees a claim immediately.
 #   * sup_gc_stale_claims removes only entries past SUP_CLAIM_TTL_SECS.
+#   * sup_gc_orphan_claims removes fresh claims whose owner process is gone.
 #   * sup_refresh_claim renews a claim's TTL window.
+#   * epics/standing-tasks are never claimed for dispatch.
 #   * pick_and_claim_unlocked_issue returns DISTINCT issues on repeated calls,
 #     still honors the CLOSED/open-PR lockout, and reports rc 1 when nothing
 #     distinct+unlocked remains.
@@ -101,6 +103,14 @@ if sup_claim_is_active 701; then bad "stale #701 should be GC'd"; else ok "stale
 if sup_claim_is_active 702; then ok "fresh #702 survives GC"; else bad "fresh #702 should survive GC"; fi
 sup_release_claim 702
 
+# --- sup_gc_orphan_claims ---------------------------------------------------
+sup_try_claim_issue 704 99999999 >/dev/null
+sup_try_claim_issue 705 $$ >/dev/null
+sup_gc_orphan_claims
+if sup_claim_is_active 704; then bad "orphan #704 should be GC'd on startup cleanup"; else ok "orphan #704 GC'd by sup_gc_orphan_claims"; fi
+if sup_claim_is_active 705; then ok "live-owner #705 survives orphan GC"; else bad "live-owner #705 should survive orphan GC"; fi
+sup_release_claim 705
+
 # --- sup_refresh_claim renews TTL ------------------------------------------
 sup_try_claim_issue 703 >/dev/null
 touch -t 200001010000 "$(sup_claims_dir)/claim.703" 2>/dev/null || true
@@ -132,6 +142,19 @@ sup_release_claim 710; sup_release_claim 711; sup_release_claim 712
 picked=$(pick_and_claim_unlocked_issue 0 799 713)
 if [ "$picked" = "713" ]; then ok "pick_and_claim skips CLOSED #799 -> #713"; else bad "expected 713, got '$picked'"; fi
 sup_release_claim 713
+
+# --- pick_and_claim never claims epics / standing tasks ---------------------
+sup_labels_for_issue() {
+  case "$1" in
+    714) printf 'epic' ;;
+    715) printf 'standing-task' ;;
+    *) printf '' ;;
+  esac
+}
+picked=$(pick_and_claim_unlocked_issue 0 714 715 716)
+if [ "$picked" = "716" ]; then ok "pick_and_claim skips epic/standing-task issues -> #716"; else bad "expected 716 after epic/standing-task skip, got '$picked'"; fi
+sup_release_claim 716
+unset -f sup_labels_for_issue
 
 # --- CONCURRENCY: N slots, same pool -> all DISTINCT, no duplicates ---------
 # This is the core regression assertion for the duplicate-dispatch bug.

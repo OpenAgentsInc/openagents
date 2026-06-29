@@ -298,6 +298,35 @@ sup_gc_stale_claims() {
   done
 }
 
+sup_claim_owner_pid() {
+  local claim="$1"
+  awk 'NR==1 {print $1; exit}' "$claim/meta" 2>/dev/null
+}
+
+sup_pid_is_alive() {
+  local pid="$1"
+  [ "$pid" -ge 1 ] 2>/dev/null || return 1
+  kill -0 "$pid" 2>/dev/null
+}
+
+# sup_gc_orphan_claims
+#   Startup/restart cleanup for fresh claim dirs left behind by a SIGKILLed
+#   supervisor. TTL-only GC is not enough here: a recently killed process can
+#   leave fresh claims that block every slot until the full dispatch timeout.
+#   Claims with no live owner PID are removed; claims owned by a still-running
+#   process are preserved.
+sup_gc_orphan_claims() {
+  local dir; dir="$(sup_claims_dir)"
+  local claim owner
+  for claim in "$dir"/claim.*; do
+    [ -e "$claim" ] || continue
+    owner="$(sup_claim_owner_pid "$claim")"
+    if ! sup_pid_is_alive "$owner"; then
+      rm -rf "$claim" 2>/dev/null || true
+    fi
+  done
+}
+
 # sup_claim_is_active <issue>
 #   rc 0 if a FRESH claim is held for the issue (reserved by some slot), rc 1
 #   otherwise. Does not mutate; GC of stale entries is sup_gc_stale_claims's job.
@@ -352,6 +381,17 @@ sup_release_claim() {
   rm -rf "$(sup_claims_dir)/claim.$issue" 2>/dev/null || true
 }
 
+sup_issue_is_claim_excluded() {
+  local issue="$1"
+  [ -n "$issue" ] || return 1
+  if command -v sup_labels_for_issue >/dev/null 2>&1; then
+    case ",$(sup_labels_for_issue "$issue")," in
+      *,epic,*|*,standing-task,*) return 0 ;;
+    esac
+  fi
+  return 1
+}
+
 # pick_and_claim_unlocked_issue <start_index> <issue...>
 #   Like pick_unlocked_issue, but additionally enforces cross-slot distinctness:
 #   it GCs stale claims, then scans the rotation skipping issues that are CLOSED,
@@ -370,6 +410,11 @@ pick_and_claim_unlocked_issue() {
   for (( k=0; k<n; k++ )); do
     i=$(( (start + k) % n ))
     issue="${arr[$i]}"
+    # Epics and standing tasks are backlog steering containers, not dispatch
+    # units; claiming them wedges the real work queue behind non-actionable rows.
+    if sup_issue_is_claim_excluded "$issue"; then
+      continue
+    fi
     # Already reserved by another slot this window -> spread to a distinct issue.
     if sup_claim_is_active "$issue"; then
       continue

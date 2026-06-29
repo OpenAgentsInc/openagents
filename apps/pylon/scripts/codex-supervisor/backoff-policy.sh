@@ -16,6 +16,7 @@
 : "${SUP_CODEX_REFUSAL_TUNE_THRESHOLD:=3}"
 : "${SUP_CLAIMED_DEEP_BACKLOG_SLEEP_SECS:=1}"
 : "${SUP_FAILURE_BACKOFF_ESCALATE_THRESHOLD:=2}"
+: "${SUP_TRANSIENT_REFUSAL_RETRY_SECS:=2}"
 
 sup_backoff_policy_dir() {
   local d="${SUP_BACKOFF_POLICY_DIR:-$SUP_STATE_DIR/backoff-policy}"
@@ -143,6 +144,9 @@ sup_should_escalate_failure_backoff() {
   local sig="$1"
   local repeated="$2"
   if [ "$sig" = "codex_agent_execution_refused" ]; then
+    return 1
+  fi
+  if [ "$sig" = "refused" ]; then
     return 1
   fi
   [ "$repeated" -ge "$SUP_FAILURE_BACKOFF_ESCALATE_THRESHOLD" ] 2>/dev/null

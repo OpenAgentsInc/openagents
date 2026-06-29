@@ -21,6 +21,7 @@ export SUP_MAX_SLOTS=8
 export SUP_CODEX_REFUSAL_TUNE_THRESHOLD=3
 export SUP_CLAIMED_DEEP_BACKLOG_SLEEP_SECS=1
 export SUP_FAILURE_BACKOFF_ESCALATE_THRESHOLD=2
+export SUP_TRANSIENT_REFUSAL_RETRY_SECS=2
 mkdir -p "$SUP_STATE_DIR" "$SUP_BACKOFF_POLICY_DIR"
 
 # shellcheck source=backoff-policy.sh
@@ -103,16 +104,22 @@ else
   bad "shallow backlog should keep normal backoff"
 fi
 
-if sup_should_escalate_failure_backoff refused 1; then
-  bad "first genuine refusal should not escalate backoff"
+if [ "$SUP_TRANSIENT_REFUSAL_RETRY_SECS" = "2" ]; then
+  ok "transient gate refusal retry is fast"
 else
-  ok "first genuine refusal does not escalate backoff"
+  bad "transient gate refusal retry should be 2s, got $SUP_TRANSIENT_REFUSAL_RETRY_SECS"
+fi
+
+if sup_should_escalate_failure_backoff refused 1; then
+  bad "first gate refusal should not escalate backoff"
+else
+  ok "first gate refusal does not escalate backoff"
 fi
 
 if sup_should_escalate_failure_backoff refused 2; then
-  ok "repeated genuine refusal escalates backoff"
+  bad "repeated gate refusal should stay fast-retry"
 else
-  bad "repeated genuine refusal should escalate backoff"
+  ok "repeated gate refusal stays fast-retry"
 fi
 
 if sup_should_escalate_failure_backoff codex_agent_execution_refused 9; then

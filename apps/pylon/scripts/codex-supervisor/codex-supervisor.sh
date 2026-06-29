@@ -513,6 +513,9 @@ worker_loop() {
     if [ "$sig" = "codex_agent_execution_refused" ]; then
       failure_sleep="$SUP_CLAIMED_DEEP_BACKLOG_SLEEP_SECS"
       escalate_backoff=0
+    elif [ "$sig" = "refused" ]; then
+      failure_sleep="$SUP_TRANSIENT_REFUSAL_RETRY_SECS"
+      escalate_backoff=0
     elif ! sup_should_escalate_failure_backoff "$sig" "$failure_repeat"; then
       escalate_backoff=0
     fi
@@ -542,6 +545,7 @@ echo $$ > "$SUP_STATE_DIR/supervisor.pid"
 # Seed last_dispatch_time at startup so the liveness check has a baseline and the
 # fresh process is not flagged wedged before its first dispatch (#6646).
 record_dispatch_attempt
+sup_gc_orphan_claims
 log "=== codex-supervisor START pid=$$ repo=$REPO_ROOT pylon=$SUP_PYLON_REF per_account=$SUP_PER_ACCOUNT max_slots=$SUP_MAX_SLOTS account_refs=${SUP_ACCOUNT_REFS:-all} ==="
 
 sup_run_timeout "$SUP_PYLON_TIMEOUT_SECS" "${PYLON[@]}" provider go-online >> "$SUP_LOG" 2>&1 || log "provider go-online nonzero (continuing)"
