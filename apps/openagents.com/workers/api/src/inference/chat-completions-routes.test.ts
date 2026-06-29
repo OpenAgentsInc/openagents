@@ -2807,7 +2807,7 @@ describe('POST /v1/chat/completions', () => {
     })
   })
 
-  test('rejects internal_stress route admission when reserved external headroom is unavailable', async () => {
+  test('admits internal_stress route dispatch when only reserved external headroom is unavailable', async () => {
     let dispatched = false
     const registry = new InferenceProviderRegistry()
     registry.register({
@@ -2837,19 +2837,12 @@ describe('POST /v1/chat/completions', () => {
       ),
     )
 
-    expect(response.status).toBe(429)
-    expect(response.headers.get('retry-after')).toBe('1')
-    expect(dispatched).toBe(false)
+    expect(response.status).toBe(200)
+    expect(dispatched).toBe(true)
     const body = (await response.json()) as {
-      error?: { code?: string; message?: string; retryable?: boolean }
+      openagents?: { worker?: string }
     }
-    expect(body.error).toEqual({
-      code: 'route_admission_reserved_headroom_unavailable',
-      message:
-        'internal_stress rejected because reserved external headroom is unavailable: glm_aggregate_external_headroom_zero',
-      retryable: true,
-      type: 'route_admission_reserved_headroom_unavailable',
-    })
+    expect(body.openagents?.worker).toBe('primary')
   })
 
   test('keeps external route demand admitted when breached SLO shedding is external-labeled', async () => {
@@ -3253,7 +3246,7 @@ describe('POST /v1/chat/completions', () => {
     })
   })
 
-  test('global coordinator is not registered when route admission rejects internal_stress before dispatch', async () => {
+  test('global coordinator still registers internal_stress when reserved external headroom is unavailable', async () => {
     let registerCalls = 0
     const coordinator: InternalStressPreemptionCoordinator = {
       preempt: async () => undefined,
@@ -3292,13 +3285,9 @@ describe('POST /v1/chat/completions', () => {
       ),
     )
 
-    expect(stressResponse.status).toBe(429)
-    expect(await stressResponse.json()).toMatchObject({
-      error: {
-        code: 'route_admission_reserved_headroom_unavailable',
-      },
-    })
-    expect(registerCalls).toBe(0)
+    expect(stressResponse.status).toBe(200)
+    await stressResponse.text()
+    expect(registerCalls).toBe(1)
   })
 
   test('wired GLM saturation proof: internal_stress yields while external overflows and records exact served tokens', async () => {
