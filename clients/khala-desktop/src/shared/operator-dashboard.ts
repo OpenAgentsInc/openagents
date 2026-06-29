@@ -101,7 +101,7 @@ export class KhalaOperatorDashboardFetchError extends S.TaggedErrorClass<KhalaOp
   "KhalaOperatorDashboardFetchError",
   {
     cause: S.Unknown,
-    message: S.String,
+    reason: S.String,
   },
 ) {}
 
@@ -297,7 +297,7 @@ const fetchJson = (options: {
     catch: (error: unknown) =>
       new KhalaOperatorDashboardFetchError({
         cause: error,
-        message: error instanceof Error ? error.message : String(error),
+        reason: error instanceof Error ? error.message : String(error),
       }),
     try: async () => {
       const response = await options.fetch(`${options.baseUrl}${options.path}`, {
@@ -346,7 +346,7 @@ export const fetchOperatorDashboard = (
     Effect.catch((error: KhalaOperatorDashboardFetchError) =>
       Effect.succeed({
         ok: false as const,
-        error: error.message,
+        error: error.reason,
         observedAt: new Date().toISOString(),
       }),
     ),

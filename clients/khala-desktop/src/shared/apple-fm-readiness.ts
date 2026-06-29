@@ -4,6 +4,8 @@ export const APPLE_FM_BACKEND_KIND = "apple_fm_bridge" as const
 export const APPLE_FM_LOCAL_PROFILE_ID = "apple-fm-local" as const
 export const APPLE_FM_MODEL_ID = "apple-foundation-model" as const
 export const APPLE_FM_CAPABILITY = "probe.backend.apple_fm_bridge" as const
+export const APPLE_FM_SAFE_TOOL_PROJECTION_CAPABILITY =
+  "probe.blueprint.tool_menu" as const
 export const KHALA_APPLE_FM_TOKEN_PROVIDER =
   "pylon-apple-fm-own-capacity" as const
 export const KHALA_APPLE_FM_DEMAND_SOURCE =
@@ -153,7 +155,12 @@ export function buildKhalaAppleFmReadiness(
     pylon !== null &&
     pylon.available &&
     pylon.status === "ready" &&
+    pylon.backendKind === APPLE_FM_BACKEND_KIND &&
+    pylon.profileId === APPLE_FM_LOCAL_PROFILE_ID &&
+    pylon.model === APPLE_FM_MODEL_ID &&
+    pylon.capability === APPLE_FM_CAPABILITY &&
     pylon.advertisedCapabilities.includes(pylon.capability) &&
+    pylon.advertisedCapabilities.includes(APPLE_FM_SAFE_TOOL_PROJECTION_CAPABILITY) &&
     pylon.blockerRefs.length === 0
   const helperUsable = input.helperFound && input.helperExecutable !== false
 

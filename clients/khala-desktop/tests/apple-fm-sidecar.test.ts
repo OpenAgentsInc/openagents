@@ -7,7 +7,10 @@ import { createAppleFmSidecarHost } from "../src/bun/apple-fm-sidecar.js"
 import {
   APPLE_FM_BRIDGE_RESOURCES_SUBPATH,
 } from "../src/shared/apple-fm-packaging.js"
-import { APPLE_FM_CAPABILITY } from "../src/shared/apple-fm-readiness.js"
+import {
+  APPLE_FM_CAPABILITY,
+  APPLE_FM_SAFE_TOOL_PROJECTION_CAPABILITY,
+} from "../src/shared/apple-fm-readiness.js"
 
 const fixedNow = "2026-06-29T00:00:00.000Z"
 
@@ -50,7 +53,10 @@ describe("Khala Desktop Apple FM sidecar host", () => {
           result: {
             available: true,
             status: "ready",
-            advertisedCapabilities: [APPLE_FM_CAPABILITY],
+            advertisedCapabilities: [
+              APPLE_FM_CAPABILITY,
+              APPLE_FM_SAFE_TOOL_PROJECTION_CAPABILITY,
+            ],
             baseUrl: "http://127.0.0.1:11435",
             callbackUrl: "http://127.0.0.1/callback",
             controlToken: "secret-control-token-1234",

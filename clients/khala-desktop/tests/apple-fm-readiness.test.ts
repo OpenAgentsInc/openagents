@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 
 import {
   APPLE_FM_CAPABILITY,
+  APPLE_FM_SAFE_TOOL_PROJECTION_CAPABILITY,
   buildKhalaAppleFmReadiness,
   sanitizePylonAppleFmStatus,
 } from "../src/shared/apple-fm-readiness.js"
@@ -34,7 +35,10 @@ describe("khala desktop Apple FM readiness", () => {
       pylonStatus: {
         available: true,
         status: "ready",
-        advertisedCapabilities: [APPLE_FM_CAPABILITY, "probe.blueprint.tool_menu"],
+        advertisedCapabilities: [
+          APPLE_FM_CAPABILITY,
+          APPLE_FM_SAFE_TOOL_PROJECTION_CAPABILITY,
+        ],
         blockerRefs: [],
       },
       observedAt: "2026-06-29T00:00:00.000Z",
@@ -45,6 +49,29 @@ describe("khala desktop Apple FM readiness", () => {
     expect(readiness.provider).toBe("pylon-apple-fm-own-capacity")
     expect(readiness.demandSource).toBe("khala_apple_fm_delegation")
     expect(readiness.usageTruth).toBe("estimated")
+  })
+
+  test("does not report ready without the safe Blueprint tool projection", () => {
+    const readiness = buildKhalaAppleFmReadiness({
+      platform: { platform: "darwin", arch: "arm64" },
+      helperFound: true,
+      helperExecutable: true,
+      helperLaunchState: "running",
+      pylonControlConfigured: true,
+      pylonStatus: {
+        available: true,
+        status: "ready",
+        advertisedCapabilities: [APPLE_FM_CAPABILITY],
+        blockerRefs: [],
+      },
+      observedAt: "2026-06-29T00:00:00.000Z",
+    })
+
+    expect(readiness.available).toBe(false)
+    expect(readiness.state).toBe("running")
+    expect(readiness.blockerRefs).toContain(
+      "blocker.khala_desktop.apple_fm.pylon_not_ready",
+    )
   })
 
   test("keeps Pylon status public-safe and omits loopback paths and tokens", () => {

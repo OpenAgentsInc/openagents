@@ -2,9 +2,10 @@
 
 Date: 2026-06-29
 
-Status: audit and implementation plan for issue #6947. This document does not
-implement the sidecar. The implementation issue is tracked separately and is
-blocked on #6932: #6973.
+Status: audit and implementation plan for issue #6947, with the bounded #6973
+Khala Desktop sidecar implementation now represented in
+`clients/khala-desktop`. This document remains architecture guidance, not
+public product-claim copy.
 
 ## Summary
 
@@ -29,6 +30,30 @@ The recommended architecture is:
    separate settlement policy is proven.
 5. The webview receives only public-safe readiness, blocker refs, and run
    summaries. It never calls the sidecar directly.
+
+## #6973 Implementation Status
+
+The first Khala Desktop Electrobun Apple sidecar slice now includes:
+
+- a build preparation script that compiles
+  `apps/pylon/swift/foundation-bridge` and copies the executable helper into
+  `clients/khala-desktop/resources/apple-fm-bridge/foundation-bridge`;
+- an Electrobun copy rule that packages the helper at
+  `Contents/Resources/app/apple-fm-bridge/foundation-bridge`;
+- a packaged-helper verifier for non-empty executable helper presence before
+  signing/notarization;
+- a macOS-arm64-only Bun host sidecar launcher/adopter plus public-safe
+  `appleFmReadiness` RPC projection;
+- readiness gating that requires live Pylon Apple FM health and both
+  `probe.backend.apple_fm_bridge` and `probe.blueprint.tool_menu` capability
+  refs before advertising local Apple FM capacity;
+- CI-safe packaging, sidecar, readiness, and dashboard tests; and
+- an admitted-Mac smoke runbook at
+  `docs/apple-fm/2026-06-29-khala-desktop-apple-fm-sidecar-smoke-runbook.md`.
+
+The signed/notarized from-install admitted-Mac smoke remains an operator-run
+acceptance step. Do not claim public readiness from this implementation alone
+until that smoke produces public-safe evidence.
 
 ## Existing Material
 
