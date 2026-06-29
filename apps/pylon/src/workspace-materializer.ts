@@ -2,8 +2,14 @@ import { existsSync, realpathSync } from "node:fs"
 import { mkdir, readdir, readFile, rm, stat, utimes, writeFile } from "node:fs/promises"
 import { dirname, join, resolve } from "node:path"
 import { createHash } from "node:crypto"
+import { Effect, Scope } from "effect"
 import { CLAUDE_AGENT_CAPABILITY_REF } from "./claude-agent.js"
 import { CODEX_AGENT_CAPABILITY_REF } from "./codex-agent.js"
+import {
+  PylonEffectRuntimePolicy,
+  gitOperationRetrySchedule,
+  scopedResource,
+} from "./effect-runtime-patterns.js"
 
 /**
  * The adapter-neutral git_checkout workspace materializer (issue #4798).
@@ -203,10 +209,6 @@ export function checkoutSourceRef(checkout: GitCheckoutWorkspace): string {
 // collide with a background `git gc --auto` that escaped the critical section.
 // These are recoverable: retry the same git command a bounded number of times
 // with exponential backoff instead of surfacing a hard checkout failure.
-const gitCommandMaxAttempts = 6
-const gitCommandRetryBaseMs = 40
-const gitCommandRetryMaxMs = 1_500
-
 const transientGitLockPattern =
   /(?:index|config|shallow|packed-refs|HEAD|ORIG_HEAD|FETCH_HEAD)\.lock|unable to create '[^']*\.lock'|cannot lock ref|unable to lock|could not lock|gc is already running|another git process seems to be running|Unable to create '[^']*': File exists|fatal: Unable to create/i
 
@@ -227,6 +229,55 @@ async function spawnGitCommand(
   return { exitCode, stdout, stderr }
 }
 
+class TransientGitLockFailure {
+  readonly _tag = "TransientGitLockFailure"
+
+  constructor(readonly result: { exitCode: number; stdout: string; stderr: string }) {}
+}
+
+function retryableGitCommandResult(result: {
+  exitCode: number
+  stdout: string
+  stderr: string
+}) {
+  return result.exitCode !== 0 && isTransientGitLockStderr(result.stderr)
+}
+
+function runGitCommandEffect(
+  args: string[],
+  cwd: string,
+): Effect.Effect<{ exitCode: number; stdout: string; stderr: string }, never, PylonEffectRuntimePolicy> {
+  return Effect.gen(function* () {
+    const policy = yield* PylonEffectRuntimePolicy
+    const attempt = Effect.tryPromise({
+      try: () => spawnGitCommand(args, cwd),
+      catch: (error) => error,
+    }).pipe(
+      Effect.flatMap((result) =>
+        retryableGitCommandResult(result)
+          ? Effect.fail(new TransientGitLockFailure(result))
+          : Effect.succeed(result),
+      ),
+    )
+    return yield* attempt.pipe(
+      Effect.retry({
+        schedule: gitOperationRetrySchedule(policy),
+        while: (error) => error instanceof TransientGitLockFailure,
+      }),
+      Effect.catchIf(
+        (error): error is TransientGitLockFailure => error instanceof TransientGitLockFailure,
+        (error) => Effect.succeed(error.result),
+        (error) =>
+          Effect.succeed({
+            exitCode: 1,
+            stdout: "",
+            stderr: error instanceof Error ? error.message : String(error),
+          }),
+      ),
+    )
+  })
+}
+
 /**
  * Runs a git command, retrying with bounded exponential backoff only when the
  * failure is a transient git lock collision. Non-lock failures (a missing
@@ -237,14 +288,7 @@ async function runGitCommand(
   args: string[],
   cwd: string,
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
-  let result = await spawnGitCommand(args, cwd)
-  for (let attempt = 1; attempt < gitCommandMaxAttempts; attempt += 1) {
-    if (result.exitCode === 0 || !isTransientGitLockStderr(result.stderr)) return result
-    const backoff = Math.min(gitCommandRetryBaseMs * 2 ** (attempt - 1), gitCommandRetryMaxMs)
-    await sleep(backoff + Math.floor(Math.random() * gitCommandRetryBaseMs))
-    result = await spawnGitCommand(args, cwd)
-  }
-  return result
+  return Effect.runPromise(runGitCommandEffect(args, cwd).pipe(Effect.provide(PylonEffectRuntimePolicy.Default)))
 }
 
 async function runQuietCommand(args: string[], cwd: string): Promise<number> {
@@ -875,13 +919,38 @@ async function withRepositoryCacheProcessLock<T>(
   bareDirectory: string,
   work: () => Promise<T>,
 ): Promise<T> {
-  const lock = await acquireRepositoryCacheProcessLock(bareDirectory)
-  try {
-    return await work()
-  } finally {
-    clearInterval(lock.heartbeat)
-    await rm(lock.lockDirectory, { recursive: true, force: true })
-  }
+  return Effect.runPromise(
+    withRepositoryCacheProcessLockEffect(
+      bareDirectory,
+      Effect.tryPromise({
+        try: work,
+        catch: (error) => error,
+      }),
+    ).pipe(Effect.provide(PylonEffectRuntimePolicy.Default)),
+  )
+}
+
+export function repositoryCacheProcessLockResource(
+  bareDirectory: string,
+): Effect.Effect<RepositoryCacheProcessLock, unknown, PylonEffectRuntimePolicy | Scope.Scope> {
+  return scopedResource(
+    Effect.tryPromise({
+      try: () => acquireRepositoryCacheProcessLock(bareDirectory),
+      catch: (error) => error,
+    }),
+    (lock) =>
+      Effect.promise(async () => {
+        clearInterval(lock.heartbeat)
+        await rm(lock.lockDirectory, { recursive: true, force: true })
+      }),
+  )
+}
+
+export function withRepositoryCacheProcessLockEffect<A, E, R>(
+  bareDirectory: string,
+  work: Effect.Effect<A, E, R>,
+): Effect.Effect<A, E | unknown, R | PylonEffectRuntimePolicy> {
+  return repositoryCacheProcessLockResource(bareDirectory).pipe(Effect.flatMap(() => work), Effect.scoped)
 }
 
 async function withRepositoryCacheLock<T>(bareDirectory: string, work: () => Promise<T>): Promise<T> {

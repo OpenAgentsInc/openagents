@@ -3,6 +3,7 @@ import { existsSync } from "node:fs"
 import { mkdir, mkdtemp, rm, utimes, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
+import { Deferred, Effect, Fiber, Layer } from "effect"
 import {
   captureWorkspaceChanges,
   cleanupExpiredWorkspaces,
@@ -14,6 +15,7 @@ import {
   pruneWorkspaceCacheDirectories,
   publicWorkspaceChangeCaptureProjection,
   publicWorkspaceLeaseProjection,
+  repositoryCacheProcessLockResource,
   releaseWorkspace,
   repositoryCacheProcessLockOwnerIsLive,
   repositoryCacheKeyFor,
@@ -29,6 +31,11 @@ import {
   type WorkspaceCheckoutRunner,
   type WorkspaceLeaseRecord,
 } from "../src/workspace-materializer"
+import {
+  PYLON_EFFECT_RUNTIME_POLICY_DEFAULTS,
+  PylonEffectRuntimePolicy,
+  gitOperationRetrySchedule,
+} from "../src/effect-runtime-patterns"
 import { CLAUDE_AGENT_CAPABILITY_REF } from "../src/claude-agent"
 import { CODEX_AGENT_CAPABILITY_REF } from "../src/codex-agent"
 import { assertPublicProjectionSafe } from "../src/state"
@@ -497,6 +504,72 @@ describe("createGitWorktreeCheckoutRunner", () => {
     } finally {
       await rm(root, { recursive: true, force: true })
     }
+  })
+})
+
+class FixtureRetryError {
+  readonly _tag = "FixtureRetryError"
+}
+
+describe("Effect runtime resource patterns", () => {
+  test("scoped repository cache locks clean up when interrupted", async () => {
+    const root = await mkdtemp(join(tmpdir(), "pylon-worktree-scope-"))
+    try {
+      const bareDirectory = join(root, "git-cache", "fixture.git")
+      const lockDirectory = `${bareDirectory}.pylon-lock`
+      const exit = await Effect.runPromiseExit(
+        Effect.gen(function* () {
+          const acquired = yield* Deferred.make<boolean>()
+          const fiber = yield* Effect.gen(function* () {
+            yield* repositoryCacheProcessLockResource(bareDirectory)
+            yield* Deferred.succeed(acquired, existsSync(lockDirectory))
+            yield* Effect.never
+          }).pipe(
+            Effect.scoped,
+            Effect.provide(PylonEffectRuntimePolicy.Default),
+            Effect.forkChild,
+          )
+          const lockExistsWhileHeld = yield* Deferred.await(acquired)
+          yield* Fiber.interrupt(fiber)
+          return lockExistsWhileHeld
+        }),
+      )
+
+      expect(exit._tag).toBe("Success")
+      if (exit._tag === "Success") expect(exit.value).toBe(true)
+      expect(existsSync(lockDirectory)).toBe(false)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  test("per-test retry policy layers expose typed failures through runPromiseExit", async () => {
+    let attempts = 0
+    const layer = Layer.succeed(PylonEffectRuntimePolicy, {
+      ...PYLON_EFFECT_RUNTIME_POLICY_DEFAULTS,
+      gitOperationBaseDelayMs: 1,
+      gitOperationMaxDelayMs: 5,
+      gitOperationMaxRetries: 2,
+    })
+
+    const exit = await Effect.runPromiseExit(
+      Effect.gen(function* () {
+        const policy = yield* PylonEffectRuntimePolicy
+        return yield* Effect.sync(() => {
+          attempts += 1
+          return attempts
+        }).pipe(
+          Effect.flatMap(() => Effect.fail(new FixtureRetryError())),
+          Effect.retry({
+            schedule: gitOperationRetrySchedule(policy),
+            while: (error) => error instanceof FixtureRetryError,
+          }),
+        )
+      }).pipe(Effect.provide(layer)),
+    )
+
+    expect(exit._tag).toBe("Failure")
+    expect(attempts).toBe(3)
   })
 })
 
