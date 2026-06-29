@@ -1774,6 +1774,34 @@ describe('public product promises document', () => {
     )
   })
 
+  test('keeps X claim reward yellow while naming settled dispatch receipt evidence', () => {
+    const decoded = S.decodeUnknownSync(ProductPromisesDocument)(
+      publicProductPromisesDocument(),
+    )
+    const xClaimRewardPromise = decoded.promises.find(
+      promise => promise.promiseId === 'agents.x_claim_reward.v1',
+    )
+
+    expect(xClaimRewardPromise).toMatchObject({
+      state: 'yellow',
+      blockerRefs: [
+        'blocker.product_promises.x_claim_reward_live_dispatch_smoke_missing',
+      ],
+    })
+    expect(xClaimRewardPromise?.safeCopy).toContain(
+      'settled dispatch receipt refs',
+    )
+    expect(xClaimRewardPromise?.safeCopy).toContain(
+      'No owner-armed reward has completed a live dispatch smoke',
+    )
+    expect(xClaimRewardPromise?.verification).toContain(
+      'persist a public settled dispatch receipt ref',
+    )
+    expect(xClaimRewardPromise?.verification).toContain(
+      'Green requires one live operator-dispatched reward',
+    )
+  })
+
   test('blocks announcement copy until the live endpoint serves the announced version', () => {
     const document = publicProductPromisesDocument()
 
