@@ -3010,7 +3010,7 @@ export const publicProductPromisesDocument = () => {
         claim:
           'Autopilot Sites customers can serve their sites under custom branded hostnames.',
         safeCopy:
-          'Tenant custom-hostname registration, DNS-token verification, hostname→tenant mapping, request-time resolution, and a live Cloudflare custom-hostname client shipped in wave-3 (#4988/#4989). A CUSTOMER self-serve path is now mounted and live: a signed-in team owner/admin can claim a custom hostname for their own team and any team member can list their team’s claimed hostnames with the exact DNS TXT record to publish (GET/POST /api/tenant/hostnames, browser-session + team-role gated). The self-serve path is INERT by design: a claimed hostname is stored `pending` and never resolves or serves; it touches no live DNS, no SSL issuance, no origin binding, and no spend. Driving a hostname to `active` (live serving) stays the owner-gated Cloudflare provisioning core’s job, which is itself default-OFF until CLOUDFLARE_API_TOKEN and CLOUDFLARE_ZONE_ID are set. Automated SSL issuance and the tenant-scoped rendering context switch are still not wired.',
+          'Tenant custom-hostname registration, DNS-token verification, hostname→tenant mapping, request-time resolution, and a live Cloudflare custom-hostname client shipped in wave-3 (#4988/#4989). A CUSTOMER self-serve path is now mounted and live: a signed-in team owner/admin can claim a custom hostname for their own team and any team member can list their team’s claimed hostnames with the exact DNS TXT record to publish (GET/POST /api/tenant/hostnames, browser-session + team-role gated). The self-serve path is INERT by design: a claimed hostname is stored `pending` and never resolves or serves; it touches no live DNS, no SSL issuance, no origin binding, and no spend. Request-time rendering now resolves an already-active custom hostname to the mapped tenant team’s public active Site runtime, so live serving is blocked on owner-gated provisioning to `active`, not on the rendering context switch. Driving a hostname to `active` stays the owner-gated Cloudflare provisioning core’s job, which is itself default-OFF until CLOUDFLARE_API_TOKEN and CLOUDFLARE_ZONE_ID are set. Automated SSL issuance is still not fully wired into a mounted owner-gated route.',
         unsafeCopy:
           'Do not claim that claiming a hostname makes a site live, that DNS/SSL/branding switching works end to end, or that a claimed hostname serves anything; self-serve claiming writes a pending row only, and live provisioning (Cloudflare for SaaS) stays owner-gated and default-OFF.',
         evidenceRefs: [
@@ -3019,6 +3019,8 @@ export const publicProductPromisesDocument = () => {
           'apps/openagents.com/workers/api/src/tenant-custom-hostname-self-serve.test.ts',
           'apps/openagents.com/workers/api/src/tenant-custom-hostname-self-serve-routes.ts',
           'apps/openagents.com/workers/api/src/tenant-custom-hostname-self-serve-routes.test.ts',
+          'apps/openagents.com/workers/api/src/site-runtime-routes.ts',
+          'apps/openagents.com/workers/api/src/site-runtime-routes.test.ts',
           'apps/openagents.com/workers/api/src/cloudflare-custom-hostname-client.ts',
           'route:/api/tenant/hostnames',
           'https://github.com/OpenAgentsInc/openagents/issues/4988',
@@ -3026,10 +3028,9 @@ export const publicProductPromisesDocument = () => {
         ],
         blockerRefs: [
           'blocker.product_promises.hostname_ssl_issuance_not_wired',
-          'blocker.product_promises.hostname_rendering_context_switch_not_wired',
         ],
         verification:
-          'The customer self-serve claim/list path is mounted and gated (browser session + active team membership; only owner/admin may claim) and is covered by unit tests over the core and the routes; it writes only pending tenant_custom_hostnames rows and reports servingLive=false while provisioning is unarmed. Operator registration/verification still works and passes type checks. Green requires automated DNS verification + SSL provisioning (live Cloudflare for SaaS, owner-gated, default-OFF today) and request routing to tenant-scoped rendering.',
+          'The customer self-serve claim/list path is mounted and gated (browser session + active team membership; only owner/admin may claim) and is covered by unit tests over the core and the routes; it writes only pending tenant_custom_hostnames rows and reports servingLive=false while provisioning is unarmed. Operator registration/verification still works and passes type checks. Site runtime route tests cover active custom-host request-time rendering: a custom hostname resolves to its tenant team and serves that team’s active public Site without a slug prefix while first-party hosts are not intercepted. Green still requires automated DNS verification + SSL provisioning (live Cloudflare for SaaS, owner-gated, default-OFF today) to advance claimed hostnames to active serving.',
         authorityBoundary:
           'Hostname registration is not DNS authority, SSL certificate authority, or site-content publication authority.',
       },

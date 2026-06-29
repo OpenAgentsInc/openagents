@@ -9636,6 +9636,17 @@ const imageGenerationRoutes = makeImageGenerationRoutes({
 })
 
 const siteRuntimeRoutes = makeSiteRuntimeRoutes({
+  reservedHosts: new Set([
+    'auth.openagents.com',
+    'localhost',
+    'openagents-staging.openagents.workers.dev',
+    'openagents.com',
+    '127.0.0.1',
+  ]),
+  resolveCustomHostname: (hostname, env) =>
+    makeTenantCustomHostnames(openAgentsDatabase(env)).resolveTenantByHostname(
+      hostname,
+    ),
   sitesHost: 'sites.openagents.com',
 })
 
