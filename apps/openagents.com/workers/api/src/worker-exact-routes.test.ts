@@ -26,6 +26,7 @@ const approvedExactRoutePaths = [
   '/api/public/product-promises/transitions',
   '/api/public/product-promises/audit',
   '/api/public/metrics/accepted-outcomes-per-kwh',
+  '/api/public/energy/flexible-load-proof',
   '/api/public/reputation/verified-outcomes',
   '/api/public/gym/run-progress',
   '/api/public/gym/leaderboard',

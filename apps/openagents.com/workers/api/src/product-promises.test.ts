@@ -493,6 +493,21 @@ describe('public product promises document', () => {
         expect.objectContaining({
           promiseId: 'energy.flexible_load_proof.v1',
           state: 'planned',
+          evidenceRefs: expect.arrayContaining([
+            'route:/api/public/energy/flexible-load-proof',
+            'apps/openagents.com/workers/api/src/ercot-lmp-ingestion.ts',
+            'apps/openagents.com/workers/api/src/pylon-flexible-load-profiles.ts',
+            'apps/openagents.com/workers/api/src/pylon-flexible-load-events.ts',
+            'apps/openagents.com/workers/api/src/energy-flexible-load-proof.ts',
+          ]),
+          blockerRefs: [
+            'blocker.product_promises.real_flexible_load_receipt_missing',
+            'blocker.product_promises.owner_signed_energy_green_transition_missing',
+          ],
+          safeCopy: expect.stringContaining(
+            '/api/public/energy/flexible-load-proof',
+          ),
+          verification: expect.stringContaining('greenGateSatisfied=false'),
         }),
         expect.objectContaining({
           promiseId: 'training.full_pipeline_program.v1',

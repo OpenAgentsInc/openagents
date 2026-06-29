@@ -1879,7 +1879,7 @@ export const publicProductPromisesDocument = () => {
         claim:
           'OpenAgents should compare accepted outcomes, mining, grid service, AI-load smoothing, forward-purchased power capture, curtailment, reserve, and idle states with evidence labels.',
         safeCopy:
-          'Flexible-load economics are planned/modeling work and must be labeled as modeled until measured operator proof exists. A MODELED operator proof report now exists (docs/metrics/2026-06-19-flexible-load-operator-proof-report-modeled.md): it compares accepted outcomes, AI inference, mining, grid service, AI-load smoothing, forward-purchased power capture, curtailment, reserve, and idle states with per-row evidence labels, in dollars-per-MWh, derived from the studied oa_aibtc_model + ERCOT references and the single receipt-backed accepted-outcome datapoint (#4777). Everything except that one datapoint is explicitly MODELED, not measured operator telemetry. Still missing for green: live energy-market ingestion, work-class flex profiles from real telemetry, and a real flexible-load event history (the planned training-marathon curtailment drill receipt).',
+          'Flexible-load economics remain planned/receipt-gated and must be labeled as modeled until measured operator proof exists. GET /api/public/energy/flexible-load-proof now exposes the public evidence scaffold: fixture-backed ERCOT public price rows decoded into a typed time-series, read-only work-class flex profiles, and a labeled flexible-load event-history projection. The MODELED operator proof report still compares accepted outcomes, AI inference, mining, grid service, AI-load smoothing, forward-purchased power capture, curtailment, reserve, and idle states with per-row evidence labels in dollars-per-MWh; everything except the single receipt-backed accepted-outcome datapoint (#4777) remains explicitly MODELED, not measured operator telemetry. Still missing for green: a real flexible-load receipt and an owner-signed promise transition.',
         unsafeCopy:
           'Do not claim grid-service revenue, AI-load smoothing revenue, avoided interconnection cost, or energy-market optimization without event proof and caveats. Do not present the MODELED operator proof report as measured operator results — every figure except the single accepted-outcome datapoint is a modeled estimate.',
         evidenceRefs: [
@@ -1888,19 +1888,26 @@ export const publicProductPromisesDocument = () => {
           'docs/training/2026-06-10-psion-full-pipeline-buildout-plan.md',
           'docs/metrics/2026-06-19-flexible-load-operator-proof-report-modeled.md',
           'docs/metrics/2026-06-15-accepted-outcomes-per-kwh.md',
+          'route:/api/public/energy/flexible-load-proof',
+          'apps/openagents.com/workers/api/src/ercot-lmp-ingestion.ts',
+          'apps/openagents.com/workers/api/src/ercot-lmp-ingestion.test.ts',
+          'apps/openagents.com/workers/api/src/pylon-flexible-load-profiles.ts',
+          'apps/openagents.com/workers/api/src/pylon-flexible-load-profiles.test.ts',
+          'apps/openagents.com/workers/api/src/pylon-flexible-load-events.ts',
+          'apps/openagents.com/workers/api/src/pylon-flexible-load-events.test.ts',
+          'apps/openagents.com/workers/api/src/energy-flexible-load-proof.ts',
+          'apps/openagents.com/workers/api/src/energy-flexible-load-proof.test.ts',
           'promise:metrics.accepted_outcomes_per_kwh.v1',
           'promise:training.marathon_operations.v1',
         ],
         blockerRefs: [
-          'blocker.product_promises.energy_market_ingestion_missing',
-          'blocker.product_promises.work_class_flex_profiles_missing',
-          'blocker.product_promises.flexible_load_event_history_missing',
-          'blocker.product_promises.operator_proof_report_missing',
+          'blocker.product_promises.real_flexible_load_receipt_missing',
+          'blocker.product_promises.owner_signed_energy_green_transition_missing',
         ],
         verification:
-          'Green requires an operator report with measured or explicitly modeled dollars per MWh, evidence-state labels, and public-safe caveats. A planned evidence path is the training marathon’s scheduled curtailment drill (training.marathon_operations.v1): shed part of the fleet on schedule, resume from sealed checkpoints, publish the receipt.',
+          'Dereference GET /api/public/energy/flexible-load-proof and confirm gate.greenGateSatisfied=false, marketPriceIngestionAvailable=true, workClassFlexProfilesAvailable=true, marketPrices.decodedRowCount=96, and eventHistory.evidenceStateLabels includes measured, verified, and settled labels. Green still requires a real flexible-load receipt plus an owner-signed promise transition.',
         authorityBoundary:
-          'Energy models are operational estimates, not investment, grid, utility, or financial advice.',
+          'Energy models and flexible-load projections are operational estimates, not investment, grid, utility, or financial advice. The public projection is read-only and grants no grid dispatch, capacity assignment, runner launch, wallet spend, payout, settlement, or public promise-state authority.',
       },
       {
         ...basePromiseFields,

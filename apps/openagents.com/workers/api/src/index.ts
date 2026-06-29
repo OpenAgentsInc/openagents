@@ -26,6 +26,8 @@ import { Exit } from 'effect'
 import { WorkerEnvironment } from 'effect-cf'
 
 import { handleAcceptedOutcomesPerKwhApi } from './accepted-outcomes-per-kwh-routes'
+import { EnergyFlexibleLoadProofEndpoint } from './energy-flexible-load-proof'
+import { handleEnergyFlexibleLoadProofApi } from './energy-flexible-load-proof-routes'
 import { AdjutantEnrichmentQueueMessage } from './adjutant-enrichment-jobs'
 import type { AdjutantTaskPacketRefValidationInput } from './adjutant-task-packets'
 import { recordAdjutantUsageReceipt } from './adjutant-usage-receipts'
@@ -10507,6 +10509,14 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
   {
     path: '/api/public/metrics/accepted-outcomes-per-kwh',
     handler: request => handleAcceptedOutcomesPerKwhApi(request),
+  },
+  {
+    // Public flexible-load proof evidence scaffold for
+    // energy.flexible_load_proof.v1 (#6851). Read-only: decodes public ERCOT
+    // fixture rows, exposes work-class flex profiles, and projects labeled
+    // flexible-load event history while keeping the green gate receipt-blocked.
+    path: EnergyFlexibleLoadProofEndpoint,
+    handler: request => handleEnergyFlexibleLoadProofApi(request),
   },
   {
     // Public seed TraceRank/EigenTrust projection over replay-verified,
