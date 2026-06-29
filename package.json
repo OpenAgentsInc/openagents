@@ -82,6 +82,7 @@
     "test:qa-async-gce-trigger": "bun test scripts/qa-async-gce-trigger.test.ts",
     "test:github-issue-triage": "bun test scripts/github-issue-triage.test.ts",
     "triage:issues": "bun run scripts/github-issue-triage.ts",
+    "scan:effect-authority-boundaries": "bun run scripts/effect-authority-boundary-scan.ts",
     "check:deploy": "bun run --cwd apps/openagents.com check:deploy",
     "typecheck": "bun run typecheck:forge && bun run typecheck:forum && bun run typecheck:nostr-relay && bun run typecheck:openagents-world && bun run typecheck:khala-cli && bun run typecheck:khala-macos && bun run typecheck:openagents-desktop && bun run typecheck:nip90 && bun run typecheck:proof-replay && bun run typecheck:public-activity-timeline && bun run typecheck:input-bindings && bun run typecheck:design-tokens && bun run typecheck:replay-clips && bun run typecheck:ui && bun run typecheck:agent-runtime-schema && bun run typecheck:provider-account-schema && bun run typecheck:blueprint-contracts && bun run typecheck:mcp-contract && bun run typecheck:forge-protocol && bun run typecheck:world-contract && bun run typecheck:world-client && bun run typecheck:autopilot-ui && bun run typecheck:durable-stream",
     "typecheck:forge": "bun run --cwd apps/forge typecheck",
