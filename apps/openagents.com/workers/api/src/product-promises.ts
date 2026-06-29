@@ -697,6 +697,7 @@ export const publicProductPromisesDocument = () => {
           'docs/transcripts/238.md',
           'docs/launch/2026-06-18-pylon-v1-launch-readiness-audit.md',
           'docs/launch/2026-06-18-world-firsts-verification.md',
+          'docs/promises/2026-06-29-world-first-claims-blocker-audit.md',
           'promise:training.decentralized_training_launch.v1',
           'promise:promises.registry.v1',
           'promise:proof.claim_upgrade_receipts.v1',
@@ -706,7 +707,7 @@ export const publicProductPromisesDocument = () => {
           'blocker.product_promises.world_first_owner_signed_upgrade_missing',
         ],
         verification:
-          'An independent prior-art/competing-claim search now exists (docs/launch/2026-06-18-world-firsts-verification.md; prior art checked includes Spirit of Satoshi, Bittensor/Templar, Gensyn, Prime Intellect, Nous/Psyche, Salad, Percepta, Tracr) with a defensible narrowed wording. Green still requires (1) a dereferenceable evidence pack tying the qualified world-first to the live run receipts and (2) an owner-signed receipt-first upgrade per proof.claim_upgrade_receipts.v1. Until then this stays red and any public use must carry the full qualifiers.',
+          'An independent prior-art/competing-claim search now exists (docs/launch/2026-06-18-world-firsts-verification.md; prior art checked includes Spirit of Satoshi, Bittensor/Templar, Gensyn, Prime Intellect, Nous/Psyche, Salad, Percepta, Tracr) with a defensible narrowed wording. The dated #7027 blocker audit (docs/promises/2026-06-29-world-first-claims-blocker-audit.md) keeps this red because green still requires (1) a dereferenceable evidence pack tying the qualified world-first to the live run receipts and (2) an owner-signed receipt-first upgrade per proof.claim_upgrade_receipts.v1. Until then this stays red and any public use must carry the full qualifiers.',
         authorityBoundary:
           'A launch transcript does not establish a world-first. The bounded real settlements prove payment to two contributors, not a first-in-the-world claim, and grant no network-scale or comparison authority.',
       },
@@ -728,6 +729,7 @@ export const publicProductPromisesDocument = () => {
           'docs/launch/2026-06-18-world-firsts-verification.md',
           'docs/launch/2026-06-20-llm-computer-training-run-definition.md',
           'docs/launch/2026-06-20-world-first-llm-computer-evidence-pack.md',
+          'docs/promises/2026-06-29-world-first-claims-blocker-audit.md',
           'apps/openagents.com/workers/api/src/world-first-llm-computer-evidence-pack.test.ts',
           'promise:compute.tassadar_executor_poc.v1',
           'promise:models.tassadar_percepta_executor.v1',
@@ -738,7 +740,7 @@ export const publicProductPromisesDocument = () => {
           'blocker.product_promises.world_first_owner_signed_upgrade_missing',
         ],
         verification:
-          'An independent prior-art/competing-claim search now exists (docs/launch/2026-06-18-world-firsts-verification.md) with a defensible narrowed wording crediting Percepta as the paradigm originator. A precise definition of "LLM-computer training run" now exists (docs/launch/2026-06-20-llm-computer-training-run-definition.md): it pins the phrase to the executor-construction / exact-trace sense (sense B), distinguishes it from gradient-descent model training (sense A), credits Percepta, and enumerates the refuse-list so the phrase cannot overclaim against the no-gradient-descent executor PoC. A focused, dereferenceable evidence pack now exists (docs/launch/2026-06-20-world-first-llm-computer-evidence-pack.md): it ties the qualified Claim-2 world-first to the live-run receipts qualifier-by-qualifier (public/open-contributor paid loop -> run summary + two contributor settlement receipts; Percepta paradigm credit -> Percepta blog/transformer-vm + prior-art search; executor/exact-trace/replay-verified -> verified+rejected replay pairs and a Verified challenge), with a skeptic-runnable verification recipe and a refuse-list. A regression guard (apps/openagents.com/workers/api/src/world-first-llm-computer-evidence-pack.test.ts) now machine-enforces that the pack and definition stay dereferenceable: every repo-relative doc they cite resolves on disk, every promise: evidence ref resolves to a real registry promiseId, the cleared definition/evidence-pack blockers stay cleared without flipping state, and the refuse-list plus Percepta credit stay in the copy. Green still requires an owner-signed receipt-first upgrade per proof.claim_upgrade_receipts.v1, and the underlying public paid loop remains bounded (two contributors, not at scale).',
+          'An independent prior-art/competing-claim search now exists (docs/launch/2026-06-18-world-firsts-verification.md) with a defensible narrowed wording crediting Percepta as the paradigm originator. A precise definition of "LLM-computer training run" now exists (docs/launch/2026-06-20-llm-computer-training-run-definition.md): it pins the phrase to the executor-construction / exact-trace sense (sense B), distinguishes it from gradient-descent model training (sense A), credits Percepta, and enumerates the refuse-list so the phrase cannot overclaim against the no-gradient-descent executor PoC. A focused, dereferenceable evidence pack now exists (docs/launch/2026-06-20-world-first-llm-computer-evidence-pack.md): it ties the qualified Claim-2 world-first to the live-run receipts qualifier-by-qualifier (public/open-contributor paid loop -> run summary + two contributor settlement receipts; Percepta paradigm credit -> Percepta blog/transformer-vm + prior-art search; executor/exact-trace/replay-verified -> verified+rejected replay pairs and a Verified challenge), with a skeptic-runnable verification recipe and a refuse-list. The dated #7027 blocker audit (docs/promises/2026-06-29-world-first-claims-blocker-audit.md) keeps this red until an owner-signed receipt-first transition exists. A regression guard (apps/openagents.com/workers/api/src/world-first-llm-computer-evidence-pack.test.ts) now machine-enforces that the pack and definition stay dereferenceable: every repo-relative doc they cite resolves on disk, every promise: evidence ref resolves to a real registry promiseId, the cleared definition/evidence-pack blockers stay cleared without flipping state, and the refuse-list plus Percepta credit stay in the copy. Green still requires an owner-signed receipt-first upgrade per proof.claim_upgrade_receipts.v1, and the underlying public paid loop remains bounded (two contributors, not at scale).',
         authorityBoundary:
           'A bounded exact-trace executor proof of concept grants no general LLM-computer capability claim and no world-first claim. The Tassadar research publication gates stay closed for everything beyond the scoped compute.tassadar_executor_poc.v1 promise.',
       },
@@ -3870,6 +3872,7 @@ export const publicProductPromisesDocument = () => {
         evidenceRefs: [
           'docs/transcripts/239.md',
           'docs/promises/2026-06-19-episode-239-lets-make-money-registry-reconciliation.md',
+          'docs/promises/2026-06-29-world-first-claims-blocker-audit.md',
           'promise:referral.refer_once_earn_forever.v1',
           'promise:claims.world_first_ai_training_paid_bitcoin.v1',
         ],
@@ -3879,7 +3882,7 @@ export const publicProductPromisesDocument = () => {
           'blocker.product_promises.world_first_owner_signed_upgrade_missing',
         ],
         verification:
-          'This record is intentionally never green from aspiration. Any future non-aspirational claim would require a real, sized, independently-countable agentic sales force, an independent prior-art / record review, a dereferenceable evidence pack, and an owner-signed receipt-first upgrade per proof.claim_upgrade_receipts.v1. Until then it stays a labeled pursuit.',
+          'This record is intentionally never green from aspiration. The dated #7027 blocker audit (docs/promises/2026-06-29-world-first-claims-blocker-audit.md) keeps it planned because no sized, independently-countable agentic sales force exists and no owner-signed receipt-first transition exists. Any future non-aspirational claim would require a real, sized, independently-countable agentic sales force, an independent prior-art / record review, a dereferenceable evidence pack, and an owner-signed receipt-first upgrade per proof.claim_upgrade_receipts.v1. Until then it stays a labeled pursuit.',
         authorityBoundary:
           'A pursued world first grants no record-holder status, no marketing-claim authority, and no sales, payout, or settlement authority. Aspiration is not achievement.',
       },
@@ -3898,6 +3901,7 @@ export const publicProductPromisesDocument = () => {
         evidenceRefs: [
           'docs/transcripts/239.md',
           'docs/promises/2026-06-19-episode-239-lets-make-money-registry-reconciliation.md',
+          'docs/promises/2026-06-29-world-first-claims-blocker-audit.md',
           'promise:claims.pursued_world_first_largest_agentic_sales_force.v1',
           'promise:claims.world_first_public_llm_computer_training_run.v1',
         ],
@@ -3907,7 +3911,7 @@ export const publicProductPromisesDocument = () => {
           'blocker.product_promises.world_first_owner_signed_upgrade_missing',
         ],
         verification:
-          'This record is intentionally never green from aspiration. Any future non-aspirational claim would require independently verified counts crossing the stated bar, an independent prior-art / record review (with the comparison figure independently sourced, not ChatGPT-attributed), a dereferenceable evidence pack, and an owner-signed receipt-first upgrade per proof.claim_upgrade_receipts.v1.',
+          'This record is intentionally never green from aspiration. The dated #7027 blocker audit (docs/promises/2026-06-29-world-first-claims-blocker-audit.md) keeps it planned because the roughly seven-million selling-or-sell-equipped-agent bar is unmet, the comparison figure is not OpenAgents-verified evidence, and no owner-signed receipt-first transition exists. Any future non-aspirational claim would require independently verified counts crossing the stated bar, an independent prior-art / record review (with the comparison figure independently sourced, not ChatGPT-attributed), a dereferenceable evidence pack, and an owner-signed receipt-first upgrade per proof.claim_upgrade_receipts.v1.',
         authorityBoundary:
           'A pursued world first grants no record-holder status, no marketing-claim authority, and no sales, payout, or settlement authority. Aspiration is not achievement.',
       },
