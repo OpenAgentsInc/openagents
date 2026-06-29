@@ -2469,7 +2469,13 @@ button {
   }
 
   .coding-metrics {
-    grid-template-columns: repeat(2, minmax(135px, 1fr));
+    grid-template-columns: repeat(5, minmax(108px, 1fr));
+    padding: 8px 12px;
+  }
+
+  .coding-metric {
+    min-height: 50px;
+    padding: 9px 10px;
   }
 
   .coding-command-console,
