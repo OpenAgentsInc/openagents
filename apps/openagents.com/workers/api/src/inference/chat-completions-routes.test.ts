@@ -4482,6 +4482,104 @@ describe('POST /v1/chat/completions', () => {
     expect(fireworksCalls).toBe(0)
   })
 
+  test('active GLM own-capacity failover does not divert tool-bearing Khala requests from GLM', async () => {
+    const registry = new InferenceProviderRegistry()
+    let glmCalls = 0
+    let fireworksCalls = 0
+    registry.register({
+      complete: request =>
+        Effect.sync(() => {
+          glmCalls += 1
+          expect(request.model).toBe(HYDRALISK_GLM_52_REAP_504B_MODEL_ID)
+          return {
+            content: '',
+            finishReason: 'tool_calls',
+            servedModel: HYDRALISK_GLM_52_REAP_504B_MODEL_ID,
+            toolCalls: [
+              {
+                function: { arguments: '{"command":"pwd"}', name: 'bash' },
+                id: 'call_bash',
+                type: 'function' as const,
+              },
+            ],
+            usage: { completionTokens: 3, promptTokens: 11, totalTokens: 14 },
+          }
+        }),
+      id: HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
+      stream: () => Effect.sync(() => []),
+    })
+    registry.register({
+      complete: () =>
+        Effect.sync(() => {
+          fireworksCalls += 1
+          return {
+            content: 'wrong lane',
+            finishReason: 'stop',
+            servedModel: 'accounts/fireworks/models/deepseek-v4-flash',
+            usage: { completionTokens: 2, promptTokens: 7, totalTokens: 9 },
+          }
+        }),
+      id: FIREWORKS_ADAPTER_ID,
+      stream: () => Effect.sync(() => []),
+    })
+
+    const failover = makeGlmOwnCapacityFailover({ failureThreshold: 1 })
+    failover.recordFailure(
+      new InferenceAdapterError({
+        adapterId: HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
+        httpStatus: 503,
+        kind: 'route_admission_reserved_headroom_unavailable',
+        reason: 'GLM own-capacity lane has no reserved external headroom',
+        retryable: true,
+      }),
+    )
+
+    const response = await run(
+      handleChatCompletions(
+        chatRequest({
+          messages: [{ content: 'Use the available tool.', role: 'user' }],
+          model: KHALA_MODEL_ID,
+          tool_choice: 'auto',
+          tools: [
+            {
+              function: {
+                description: 'Run a shell command.',
+                name: 'bash',
+                parameters: {
+                  additionalProperties: false,
+                  properties: { command: { type: 'string' } },
+                  required: ['command'],
+                  type: 'object',
+                },
+              },
+              type: 'function',
+            },
+          ],
+        }),
+        baseDeps({
+          dispatch: {
+            glmOwnCapacityFailover: failover,
+            sleep: () => Effect.void,
+          },
+          laneArming: hydraliskGlm52ReapReadyArming,
+          lanePlan: () => [
+            HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
+            FIREWORKS_ADAPTER_ID,
+          ],
+          registry,
+        }),
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as {
+      openagents?: { worker: string }
+    }
+    expect(body.openagents?.worker).toBe(HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID)
+    expect(glmCalls).toBe(1)
+    expect(fireworksCalls).toBe(0)
+  })
+
   test('a non-tool conversational Khala request prefers fast Fireworks over GLM when Gemini is absent', async () => {
     const registry = new InferenceProviderRegistry()
     let glmCalls = 0
