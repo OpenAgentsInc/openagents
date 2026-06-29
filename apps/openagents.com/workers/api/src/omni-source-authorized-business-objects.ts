@@ -14,13 +14,12 @@ import { OmniProjectionAudience } from './omni-data-classification'
 // omni-crm-follow-up-workrooms and omni-support-project-ops-workrooms modules:
 // it records authority bindings, proposed writes, approvals, write receipts,
 // and closeout as public-safe refs only. It never performs a real business-
-// object mutation, never settles, never sends, and never grants spend or
-// provider-account authority by itself.
+// object mutation by itself, never settles, never sends, and never grants spend
+// or provider-account authority by itself.
 //
-// The promise stays RED. Green requires a LIVE source-authorized,
-// approval-gated workroom write with a closeout receipt and owner sign-off
-// (see omni-workroom-business-object-delivery.ts for the flag-gated INERT
-// delivery integration seam, and product-promises.ts for the gate).
+// The delivery seam in omni-workroom-business-object-delivery.ts is responsible
+// for turning approved, source-backed records into applied business-object
+// projections with receipt refs.
 // ---------------------------------------------------------------------------
 
 /**

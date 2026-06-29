@@ -356,14 +356,15 @@ const audienceForSurface = (
   }
 }
 
-// Read-only, INERT source-authority delivery projection for a live workroom.
+// Source-authority delivery projection for a live workroom.
 //
 // This is the seam that wires the source-authority + approval-gated write
 // model (omni-source-authorized-business-objects.ts) onto the LIVE omni
-// client-delivery workroom surface. It reads the workroom's projection-only
-// `metadata.sourceAuthority` bindings/writes and returns the FLAG-GATED INERT
-// delivery plan: it never applies a write, never sends, never settles, and
-// `effectsApplied` is always false. Operator/team surfaces require a session.
+// client-delivery workroom surface. It reads the workroom's metadata
+// `sourceAuthority` bindings/writes/config and returns the delivery plan. When
+// the owner-gated config is ready, approved source-backed writes are reported
+// as applied business-object projections with closeout receipts. Operator/team
+// surfaces require a session.
 const readWorkroomSourceAuthority = <Bindings extends OmniWorkroomRouteEnv>(
   dependencies: OmniWorkroomRoutesDependencies<Bindings>,
   request: Request,

@@ -17,11 +17,12 @@ import {
 //
 // This is the seam where the source-authority + approval-gated write model
 // touches the LIVE omni client-delivery workroom surface
-// (workrooms.omni_client_delivery_workrooms.v1, yellow). It is FLAG-GATED
-// INERT: by default the integration is disabled, and even when enabled it
-// only ever produces a PLAN of approval-gated write decisions plus a typed
-// gate verdict. It never applies a write, never sends, never settles, and
-// never returns "applied" authority by itself.
+// (workrooms.omni_client_delivery_workrooms.v1, yellow). By default the
+// integration is disabled. When the owner-gated delivery config reaches
+// enabled_ready, approved proposed writes are materialized as applied
+// business-object projections with deterministic write and closeout receipts.
+// The seam still never sends, settles, spends, mutates connectors, or upgrades
+// a public claim by itself.
 //
 // Promotion of the source-authorized-business-objects promise to green
 // requires the live integration ENABLED, an owner sign-off ref, and a
@@ -69,11 +70,27 @@ export const OMNI_BUSINESS_OBJECT_DELIVERY_INERT_CONFIG: OmniBusinessObjectDeliv
 export class OmniBusinessObjectDeliveryPlanEntry extends S.Class<OmniBusinessObjectDeliveryPlanEntry>(
   'OmniBusinessObjectDeliveryPlanEntry',
 )({
+  appliedBusinessObject: S.optionalKey(S.Unknown),
+  appliedReceiptRefs: S.Array(S.String),
   applyAllowed: S.Boolean,
   approvalRequired: S.Boolean,
   blockerRefs: S.Array(S.String),
+  closeoutReceiptRefs: S.Array(S.String),
   reasonRef: S.String,
   write: S.Unknown,
+}) {}
+
+export class OmniAppliedBusinessObjectProjection extends S.Class<OmniAppliedBusinessObjectProjection>(
+  'OmniAppliedBusinessObjectProjection',
+)({
+  appliedAtIso: S.String,
+  appliedReceiptRefs: S.Array(S.String),
+  businessObjectKind: S.String,
+  businessObjectRef: S.String,
+  closeoutReceiptRefs: S.Array(S.String),
+  operation: S.String,
+  sourceRefs: S.Array(S.String),
+  writeRef: S.String,
 }) {}
 
 export class OmniBusinessObjectDeliveryPlan extends S.Class<OmniBusinessObjectDeliveryPlan>(
@@ -152,6 +169,74 @@ const gateBlockerRefs = (
   return blockers.sort()
 }
 
+const deterministicApplyReceiptRefs = (
+  record: OmniBusinessObjectWriteRecord,
+  config: OmniBusinessObjectDeliveryConfig,
+): ReadonlyArray<string> => [
+  ...(record.appliedReceiptRefs.length > 0
+    ? record.appliedReceiptRefs
+    : [`receipt.business_object_delivery.${record.id}.applied`]),
+  ...(typeof config.closeoutReceiptRef === 'string' &&
+  config.closeoutReceiptRef.trim() !== ''
+    ? [config.closeoutReceiptRef.trim()]
+    : []),
+]
+
+const deterministicCloseoutReceiptRefs = (
+  record: OmniBusinessObjectWriteRecord,
+  config: OmniBusinessObjectDeliveryConfig,
+): ReadonlyArray<string> => [
+  ...(record.closeoutRefs.length > 0
+    ? record.closeoutRefs
+    : [`closeout.business_object_delivery.${record.id}.applied`]),
+  ...(typeof config.closeoutReceiptRef === 'string' &&
+  config.closeoutReceiptRef.trim() !== ''
+    ? [config.closeoutReceiptRef.trim()]
+    : []),
+]
+
+const appliedBusinessObjectForWrite = (
+  record: OmniBusinessObjectWriteRecord,
+  config: OmniBusinessObjectDeliveryConfig,
+  nowIso: string,
+): OmniAppliedBusinessObjectProjection =>
+  new OmniAppliedBusinessObjectProjection({
+    appliedAtIso: nowIso,
+    appliedReceiptRefs: [
+      ...new Set(deterministicApplyReceiptRefs(record, config)),
+    ].sort(),
+    businessObjectKind: record.businessObjectKind,
+    businessObjectRef: record.businessObjectRef,
+    closeoutReceiptRefs: [
+      ...new Set(deterministicCloseoutReceiptRefs(record, config)),
+    ].sort(),
+    operation: record.operation,
+    sourceRefs: [...new Set(record.sourceRefs)].sort(),
+    writeRef: record.id,
+  })
+
+const blockedEntryForUnsafeWrite = (
+  input: Readonly<{
+    reason: string
+    write: OmniBusinessObjectWriteRecord
+  }>,
+): OmniBusinessObjectDeliveryPlanEntry =>
+  new OmniBusinessObjectDeliveryPlanEntry({
+    appliedBusinessObject: undefined,
+    appliedReceiptRefs: [],
+    applyAllowed: false,
+    approvalRequired: true,
+    blockerRefs: ['blocker.business_object_delivery.write_unsafe'],
+    closeoutReceiptRefs: [],
+    reasonRef: 'reason.business_object_delivery.write_unsafe',
+    write: {
+      id: input.write.id,
+      blockerRefs: ['blocker.business_object_delivery.write_unsafe'],
+      reason: input.reason,
+      state: 'blocked',
+    },
+  })
+
 /**
  * Build the inert delivery plan for a live client-delivery workroom. It
  * matches each write to its named binding, runs the pure approval-gated
@@ -181,9 +266,12 @@ export const buildOmniBusinessObjectDeliveryPlan = (
 
       if (binding === undefined) {
         return new OmniBusinessObjectDeliveryPlanEntry({
+          appliedBusinessObject: undefined,
+          appliedReceiptRefs: [],
           applyAllowed: false,
           approvalRequired: true,
           blockerRefs: ['blocker.business_object_delivery.binding_not_found'],
+          closeoutReceiptRefs: [],
           reasonRef: 'reason.business_object_delivery.binding_not_found',
           write: projectOmniBusinessObjectWrite(
             write,
@@ -193,15 +281,29 @@ export const buildOmniBusinessObjectDeliveryPlan = (
         })
       }
 
-      const decision = decideOmniBusinessObjectWrite(binding, write)
+      let decision
+      try {
+        decision = decideOmniBusinessObjectWrite(binding, write)
+      } catch (error) {
+        return blockedEntryForUnsafeWrite({
+          reason: error instanceof Error ? error.message : String(error),
+          write,
+        })
+      }
 
-      // The pure model may say a write is applyable, but the integration gate
-      // holds it inert until enabled_ready. effectsApplied stays false either
-      // way; this only governs the per-entry applyAllowed signal callers read.
       const integrationApplyAllowed =
         gateState === 'enabled_ready' && decision.applyAllowed
+      const appliedBusinessObject = integrationApplyAllowed
+        ? appliedBusinessObjectForWrite(write, config, input.nowIso)
+        : undefined
+      const appliedReceiptRefs =
+        appliedBusinessObject?.appliedReceiptRefs ?? []
+      const closeoutReceiptRefs =
+        appliedBusinessObject?.closeoutReceiptRefs ?? []
 
       return new OmniBusinessObjectDeliveryPlanEntry({
+        appliedBusinessObject,
+        appliedReceiptRefs,
         applyAllowed: integrationApplyAllowed,
         approvalRequired: decision.approvalRequired,
         blockerRefs:
@@ -215,6 +317,7 @@ export const buildOmniBusinessObjectDeliveryPlan = (
                 ]
                 : ['blocker.business_object_delivery.integration_enabled_blocked']),
             ].sort(),
+        closeoutReceiptRefs,
         reasonRef:
           gateState === 'enabled_ready'
             ? decision.reasonRef
@@ -232,7 +335,7 @@ export const buildOmniBusinessObjectDeliveryPlan = (
     applyableCount: entries.filter(entry => entry.applyAllowed).length,
     audience: input.audience,
     blockerRefs: gateBlockerRefs(gateState, config),
-    effectsApplied: false,
+    effectsApplied: entries.some(entry => entry.applyAllowed),
     entries,
     gateState,
     proposedCount: entries.length,
@@ -251,7 +354,8 @@ export const buildOmniBusinessObjectDeliveryPlan = (
 // field; no new migration, no new state). Extraction is decode-or-empty: any
 // absent, malformed, or unsafe entry is dropped rather than thrown, so the
 // integration can never crash a live workroom read and never fabricates a
-// binding or write. The resulting plan is still FLAG-GATED INERT.
+// binding or write. The resulting plan applies only when the owner-gated
+// delivery config reaches enabled_ready.
 // ---------------------------------------------------------------------------
 
 /**
@@ -261,8 +365,48 @@ export const buildOmniBusinessObjectDeliveryPlan = (
  */
 type WorkroomSourceAuthorityMetadata = Readonly<{
   bindings: ReadonlyArray<OmniSourceAuthorityBinding>
+  config?: OmniBusinessObjectDeliveryConfig | undefined
   writes: ReadonlyArray<OmniBusinessObjectWriteRecord>
 }>
+
+const safeDeliveryConfigRefPattern = /^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,260}$/
+const unsafeDeliveryConfigRefPattern =
+  /(@|\/Users\/|\/home\/|access[_-]?token|auth\.json|bearer|cookie|email|gho_|ghp_|invoice|lnbc|lntb|lno1|mnemonic|oauth|payment|payout|preimage|private|provider|raw|secret|sk-[a-z0-9]|token|wallet)/i
+
+const safeConfigRef = (value: unknown): string | undefined => {
+  if (typeof value !== 'string') {
+    return undefined
+  }
+
+  const ref = value.trim()
+  if (
+    ref === '' ||
+    !safeDeliveryConfigRefPattern.test(ref) ||
+    unsafeDeliveryConfigRefPattern.test(ref)
+  ) {
+    return undefined
+  }
+
+  return ref
+}
+
+const decodeConfigSafely = (
+  value: unknown,
+): OmniBusinessObjectDeliveryConfig | undefined => {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return undefined
+  }
+
+  const record = value as Readonly<Record<string, unknown>>
+  const ownerSignOffRef = safeConfigRef(record['ownerSignOffRef'])
+  const closeoutReceiptRef = safeConfigRef(record['closeoutReceiptRef'])
+
+  return {
+    closeoutReceiptRef,
+    integrationEnabled: record['integrationEnabled'] === true,
+    ownerSignOffRef,
+  }
+}
 
 const decodeBindingsSafely = (
   value: unknown,
@@ -325,16 +469,18 @@ export const extractWorkroomSourceAuthorityInputs = (
 
   return {
     bindings: decodeBindingsSafely(record['bindings']),
+    config: decodeConfigSafely(record['config']),
     writes: decodeWritesSafely(record['writes']),
   }
 }
 
 /**
- * Build the INERT source-authority delivery plan directly from a live workroom
+ * Build the source-authority delivery plan directly from a live workroom
  * record by extracting its `metadata.sourceAuthority` bindings/writes. This is
  * the entry point the live omni client-delivery workroom route surface uses to
- * project the source-authority model for a real workroom. It applies nothing;
- * `effectsApplied` is always false and the gate defaults to `inert_disabled`.
+ * project the source-authority model for a real workroom. The gate defaults to
+ * `inert_disabled`; approved source-backed writes apply only when the owner-
+ * gated config is present.
  */
 export const buildOmniWorkroomSourceAuthorityDeliveryPlan = (
   input: Readonly<{
@@ -344,14 +490,14 @@ export const buildOmniWorkroomSourceAuthorityDeliveryPlan = (
     workroom: OmniWorkroomRecord
   }>,
 ): OmniBusinessObjectDeliveryPlan => {
-  const { bindings, writes } = extractWorkroomSourceAuthorityInputs(
+  const { bindings, config, writes } = extractWorkroomSourceAuthorityInputs(
     input.workroom,
   )
 
   return buildOmniBusinessObjectDeliveryPlan({
     audience: input.audience,
     bindings,
-    config: input.config,
+    config: input.config ?? config,
     nowIso: input.nowIso,
     workroom: input.workroom,
     writes,

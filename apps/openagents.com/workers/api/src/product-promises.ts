@@ -1766,13 +1766,13 @@ export const publicProductPromisesDocument = () => {
         promiseId: 'workrooms.source_authorized_business_objects.v1',
         productArea: 'workrooms',
         audience: ['user', 'agent', 'operator'],
-        state: 'red',
+        state: 'yellow',
         claim:
           'Business workrooms should turn chat and files into source-authorized contacts, companies, tasks, decisions, documents, approvals, artifacts, and receipts.',
         safeCopy:
-          'Source-authorized business workrooms are a roadmap target. Current public copy should not claim full CRM, legal, investor, support, or finance workrooms are live.',
+          'Source-authorized business-object writes are now implemented on the Omni workroom source-authority path: a workroom metadata block can carry source-authority bindings, proposed writes, approval refs, owner sign-off, and closeout receipts; the live source-authority route and public projection report effectsApplied=true only for approved, source-backed writes. This is receipt-first and still scoped to the workroom business-object projection, not broad CRM/legal/finance truth.',
         unsafeCopy:
-          'Do not claim generated summaries become operational truth without connector source refs, human approval, and write receipts.',
+          'Do not claim generated summaries become operational truth without source refs, human approval, owner sign-off, and write/closeout receipts; do not claim connector writeback, notifications, settlement, runner launch, or public-claim upgrade authority.',
         evidenceRefs: [
           'docs/promises/2026-06-09-product-promises-gap-audit.md',
           'apps/openagents.com/workers/api/src/omni-support-project-ops-workrooms.ts',
@@ -1781,16 +1781,22 @@ export const publicProductPromisesDocument = () => {
           'apps/openagents.com/workers/api/src/omni-source-authorized-business-objects.test.ts',
           'apps/openagents.com/workers/api/src/omni-workroom-business-object-delivery.ts',
           'apps/openagents.com/workers/api/src/omni-workroom-business-object-delivery.test.ts',
+          'apps/openagents.com/workers/api/src/omni-workroom-routes.ts',
+          'apps/openagents.com/workers/api/src/omni-workroom-routes.test.ts',
+          'apps/openagents.com/workers/api/src/omni-client-delivery-projection-routes.ts',
+          'apps/openagents.com/workers/api/src/omni-client-delivery-projection-routes.test.ts',
+          'GET /api/omni/workrooms/:id/source-authority',
+          'route:/api/public/omni/client-delivery-projection',
           'https://github.com/OpenAgentsInc/openagents/issues/5532',
+          'https://github.com/OpenAgentsInc/openagents/issues/6886',
         ],
         blockerRefs: [
-          'blocker.product_promises.source_authority_model_not_green',
-          'blocker.product_promises.approval_gated_business_writes_missing',
+          'blocker.product_promises.owner_accepted_green_receipt_missing',
         ],
         verification:
-          'Green requires a live workroom kind with source refs, proposed updates, approvals, artifacts, closeout receipts, and public-safe proof.',
+          'Yellow evidence: omni-workroom-business-object-delivery applies only approved, source-backed writes when owner sign-off and closeout receipts are present; source-less or unapproved writes are denied server-side. Green still requires an owner-accepted live receipt and copy gate for the exact operational claim.',
         authorityBoundary:
-          'Workroom summaries are proposals until accepted by the authorized user or organization.',
+          'Workroom summaries remain proposals until accepted by the authorized user or organization; the applied business-object projection grants no connector writeback, notification, settlement, spend, runner, or public-claim authority.',
       },
       {
         ...basePromiseFields,
@@ -2916,7 +2922,7 @@ export const publicProductPromisesDocument = () => {
         claim:
           'Omni client-delivery workrooms route chat, tasks, and artifacts into client-scoped delivery contexts.',
         safeCopy:
-          "The client-delivery workroom surface shipped in the wave-3 Agency Pack (epic #4973, closed 2026-06-14): a typed workroom record (status, visibility, trust tier, data classification), CRUD/lifecycle/bundle/handoff routes, kind templates, client-scoped views, and the client-delivery workroom page live-wired into the logged-in loop (#4977), with a credits/cost-preview panel embedded. As of registry 2026-06-20.8 the source-authority model is integrated into the live surface: a read-only, operator-gated route GET /api/omni/workrooms/:id/source-authority reads a workroom record's projection-only metadata.sourceAuthority bindings/writes and returns the FLAG-GATED INERT source-authority delivery plan (gate inert_disabled by default, effectsApplied always false). Still missing for the full source-authorized promise: AI inference on workroom content, and the approval-gated business writes ENABLED end-to-end (those remain workrooms.source_authorized_business_objects.v1). Treat this as a live client-delivery workspace surface, not operational CRM/legal/finance truth.",
+          "The client-delivery workroom surface shipped in the wave-3 Agency Pack (epic #4973, closed 2026-06-14): a typed workroom record (status, visibility, trust tier, data classification), CRUD/lifecycle/bundle/handoff routes, kind templates, client-scoped views, and the client-delivery workroom page live-wired into the logged-in loop (#4977), with a credits/cost-preview panel embedded. The source-authority model is integrated into the live surface: GET /api/omni/workrooms/:id/source-authority reads a workroom record's metadata.sourceAuthority bindings/writes/config and returns approval-gated delivery evidence; approved, source-backed writes with owner sign-off and closeout receipts report effectsApplied=true. Treat this as a scoped client-delivery workspace business-object projection, not broad operational CRM/legal/finance truth.",
         unsafeCopy:
           'Do not claim generated summaries mutate CRM, documents, or send communications without source refs and human approval, or that the workroom is source-authorized business truth; the live surface is a client-scoped delivery workspace, not an approval-gated business-object system.',
         evidenceRefs: [
@@ -2935,10 +2941,10 @@ export const publicProductPromisesDocument = () => {
           'docs/autopilot-coder/2026-06-14-cloud-desktop-mobile-coding-sessions-full-flow-audit.md',
         ],
         blockerRefs: [
-          'blocker.product_promises.workroom_approval_gated_writes_missing',
+          'blocker.product_promises.owner_accepted_green_receipt_missing',
         ],
         verification:
-          'The client-delivery workroom page is wired into the logged-in loop with CRUD/lifecycle/bundle/handoff routes and client-scoped views passing type checks and tests. The source-authority model is now reachable on the live surface via GET /api/omni/workrooms/:id/source-authority, which returns the INERT delivery plan (effectsApplied always false) for a real workroom. Green (as the source-authorized business-object promise) requires that integration ENABLED end-to-end: source refs for proposed updates, an approval flow, acceptance receipts, a closeout receipt, owner sign-off, and liability/copy gates.',
+          'The client-delivery workroom page is wired into the logged-in loop with CRUD/lifecycle/bundle/handoff routes and client-scoped views passing type checks and tests. The source-authority model is reachable on the live surface via GET /api/omni/workrooms/:id/source-authority, and approved source-backed writes with owner sign-off plus closeout receipts report effectsApplied=true. Green still requires an owner-accepted live receipt and liability/copy gates for the exact source-authorized claim.',
         authorityBoundary:
           'Workroom data structure grants no customer write authority, source mutation, CRM sync, notification send, or third-party integration without separate approval gates.',
       },

@@ -10758,17 +10758,14 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
   },
   {
     // Omni client-delivery business-object projection (DE-9 / EPIC #5532;
-    // promise workrooms.omni_client_delivery_workrooms.v1, yellow). INERT by
+    // promise workrooms.omni_client_delivery_workrooms.v1, yellow). Disabled by
     // default: the store is empty unless OMNI_CLIENT_DELIVERY_PROJECTION_ENABLED
     // is armed. When armed it projects the existing source-authorized
-    // business-object delivery seam (buildOmniBusinessObjectDeliveryPlan) over
-    // an injected client-delivery workroom store: per-write approval-gated
-    // decisions plus the integration gate verdict. It applies no write, sends,
-    // settles, spends, mutates a connector, notifies, launches a runner, or
-    // upgrades a public claim (effectsApplied is always false). This clears ONLY
-    // blocker.product_promises.omni_client_delivery_projection_missing; the
-    // live-integration, owner-sign-off, and closeout-receipt blockers stay
-    // owner-gated and the promise stays yellow. GET only.
+    // business-object delivery seam over an injected client-delivery workroom
+    // store: per-write approval-gated decisions plus applied business-object
+    // projections when owner sign-off and closeout receipts are present. It
+    // does not send, settle, spend, mutate connectors, notify, launch runners,
+    // or upgrade public claims. GET only.
     path: OmniClientDeliveryProjectionEndpoint,
     handler: (request, env) =>
       Effect.succeed(
