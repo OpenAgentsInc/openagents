@@ -978,6 +978,7 @@ export { createExecCommandTool, execCommandToolDefinition } from "./exec-command
 export { createWriteStdinTool, writeStdinToolDefinition } from "./write-stdin.js"
 export { askUserToolDefinition, createAskUserTool } from "./ask-user.js"
 export { createTodoWriteTool, todoWriteToolDefinition } from "./todo-write.js"
+export { createViewImageTool, viewImageToolDefinition } from "./view-image.js"
 
 function permissionRequestFor(
   definition: KhalaToolDefinition,

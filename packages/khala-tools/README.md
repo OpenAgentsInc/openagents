@@ -127,3 +127,13 @@ in-memory session planning state only: it is not persistent memory, accepted
 work, payout authority, a product promise, or a public receipt. Hosts render the
 latest list from the structured `todo_list_updated` payload instead of scraping
 assistant prose.
+
+### `view_image`
+
+`view_image` reads local PNG, JPEG, GIF, and WebP files through the same read
+path and external-directory approval boundary as text reads. It validates image
+magic bytes, dimensions, file type, and size before returning a structured UI
+preview with dimensions, media type, private artifact ref, and redaction
+classification. When the active backend supports vision, hosts can pass through
+the private image content part; non-vision backends receive the same safe
+preview metadata without image bytes in public summaries.
