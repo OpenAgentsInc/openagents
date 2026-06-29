@@ -11,7 +11,9 @@ import {
   type CloudSessionGrantBinding,
 } from "../src/openagents-cloud-provider"
 import {
+  CLOUD_WORKROOM_EVENT_KINDS,
   resolveCloudControlConfig,
+  resolveCloudEventKind,
   type CloudWorkroomEvent,
 } from "../src/cloud-control-client"
 
@@ -165,6 +167,25 @@ describe("OpenAgents Cloud execution backend (#4997)", () => {
       expect(ok.config.baseUrl).toBe("https://cloud.example")
       expect(ok.config.bearerToken).toBe("tok")
     }
+  })
+
+  test("codex workroom event v1 kinds round-trip through cloud event normalization", () => {
+    for (const kind of CLOUD_WORKROOM_EVENT_KINDS) {
+      const broadKind = kind.startsWith("cloud.gce.")
+        ? kind === "cloud.gce.cleanup"
+          ? "cleanup"
+          : kind === "cloud.gce.resource_usage_receipt"
+            ? "receipt"
+            : kind === "cloud.gce.provisioned"
+              ? "started"
+              : "log"
+        : kind
+      expect(resolveCloudEventKind(broadKind, kind)).toBe(kind)
+      expect(resolveCloudEventKind(kind, undefined)).toBe(kind)
+    }
+    expect(resolveCloudEventKind("receipt", "cloud.gce.resource")).toBe(
+      "cloud.gce.resource_usage_receipt",
+    )
   })
 
   test("spawn cloud-gcp resolves grant, places run, maps events, surfaces terminal + artifact + receipt", async () => {

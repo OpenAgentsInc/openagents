@@ -112,6 +112,7 @@ export type CloudWorkroomEventKind =
   | "redacted"
   | "artifact"
   | "receipt"
+  | "cleanup"
   | "completed"
   | "failed"
   | "timeout"
@@ -138,6 +139,25 @@ export type CloudWorkroomEventKind =
   // `cloud.gce.resource`. Pylon accepts either spelling and normalizes to this
   // canonical kind.
   | "cloud.gce.resource_usage_receipt"
+
+export const CLOUD_WORKROOM_EVENT_KINDS: readonly CloudWorkroomEventKind[] = [
+  "queued",
+  "started",
+  "log",
+  "redacted",
+  "artifact",
+  "receipt",
+  "cleanup",
+  "completed",
+  "failed",
+  "timeout",
+  "cancelled",
+  "placement.bound",
+  "cloud.gce.provisioned",
+  "cloud.gce.cleanup",
+  "cloud.gce.degraded",
+  "cloud.gce.resource_usage_receipt",
+]
 
 export type CloudWorkroomEvent = {
   kind: CloudWorkroomEventKind
