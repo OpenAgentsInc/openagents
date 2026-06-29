@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test"
+import { readFileSync } from "node:fs"
+import { join } from "node:path"
 
 import {
   APPLE_FM_BRIDGE_ELECTROBUN_COPY_DEST,
@@ -29,6 +31,19 @@ describe("khala desktop Apple FM packaging", () => {
   test("packaged helper path stays inside the Khala app bundle", () => {
     expect(packagedAppleFmBridgePath("build/stable-macos-arm64/Khala.app")).toBe(
       "build/stable-macos-arm64/Khala.app/Contents/Resources/app/apple-fm-bridge/foundation-bridge",
+    )
+  })
+
+  test("build script verifies the packaged helper after electrobun build", () => {
+    const packageJson = JSON.parse(
+      readFileSync(join(import.meta.dir, "..", "package.json"), "utf8"),
+    ) as { scripts?: Record<string, string> }
+    const buildScript = packageJson.scripts?.build ?? ""
+
+    expect(buildScript).toContain("electrobun build")
+    expect(buildScript).toContain("bun run verify:apple-fm-bridge")
+    expect(buildScript.indexOf("electrobun build")).toBeLessThan(
+      buildScript.indexOf("bun run verify:apple-fm-bridge"),
     )
   })
 
