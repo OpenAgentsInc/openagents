@@ -392,6 +392,12 @@ const main = () => {
     }),
   )
 
+  if (decisions.length === 0) {
+    console.log(
+      `[github-issue-triage] no candidate issues found for ${options.repo} using search: ${buildCandidateIssueSearch(options.includeLabeled)}`,
+    )
+  }
+
   for (const decision of decisions) {
     console.log(renderTriageComment(decision))
     console.log("")
