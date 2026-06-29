@@ -366,9 +366,13 @@ describe('public product promises document', () => {
     // khala.own_capacity_codex_delegation.v1 promise green after live dispatch,
     // materialization, trace-status, proof, and no-spend closeout evidence.
     // Green is now exactly 31.
+    // The #7029 MDK send-readiness capacity pass clears the scoped
+    // payments.money_dev_kit.v1 blocker only for the original funded wallet
+    // home, backed by public-safe 1-sat receipts and capacity-sufficient
+    // preflight evidence. Green is now exactly 32.
     expect(
       decoded.promises.filter(promise => promise.state === 'green').length,
-    ).toBe(31)
+    ).toBe(32)
     expect(decoded.verificationSummary.evidenceRefCount).toBeGreaterThan(0)
     expect(decoded.verificationSummary.uniqueBlockerCount).toBeGreaterThan(0)
     expect(
@@ -1068,10 +1072,13 @@ describe('public product promises document', () => {
           state: 'green',
         }),
         expect.objectContaining({
-          blockerRefs: expect.arrayContaining([
-            'blocker.product_promises.mdk_agent_wallet_send_readiness_insufficient_capacity',
-          ]),
+          blockerRefs: [],
           evidenceRefs: expect.arrayContaining([
+            'apps/openagents.com/docs/nexus/2026-06-08-mdk-agent-wallet-send-readiness-preflight.md',
+            'apps/openagents.com/docs/nexus/2026-06-08-mdk-agent-wallet-outbound-capacity-restore-report.md',
+            'receipt.nexus_pylon.settlement.assignment_public_probe_gepa_paid_multi_pylon_20260608214500_1',
+            'receipt.nexus_pylon.settlement.assignment_public_probe_gepa_paid_multi_pylon_20260608214500_2',
+            'capacity.mdk_agent_wallet.send.sufficient_for_scoped_smoke',
             'docs/forum/2026-06-09-forum-mdk-webhook-reconciliation-audit.md',
             'route:/api/forum/paid-actions/mdk/webhooks',
             'script:apps/openagents.com/scripts/forum.mjs tip-post-smoke',
@@ -1079,7 +1086,9 @@ describe('public product promises document', () => {
             'apps/openagents.com/docs/mdk-forum-readiness-smoke.md',
           ]),
           promiseId: 'payments.money_dev_kit.v1',
-          state: 'yellow',
+          safeCopy: expect.stringContaining('Spark remains the primary'),
+          state: 'green',
+          unsafeCopy: expect.stringContaining('Do not claim MDK mnemonic restore'),
         }),
         expect.objectContaining({
           blockerRefs: [],

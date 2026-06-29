@@ -1251,17 +1251,21 @@ export const publicProductPromisesDocument = () => {
         promiseId: 'payments.money_dev_kit.v1',
         productArea: 'payments',
         audience: ['agent', 'contributor', 'operator'],
-        state: 'yellow',
+        state: 'green',
         claim:
           'OpenAgents switched payments to Money Dev Kit: self-custodial Lightning agent wallet, single command setup, LSP/splice channels, immediate receive liquidity, and hosted checkout.',
         safeCopy:
-          'OpenAgents uses MDK hosted checkout and agent-wallet flows for scoped small-sats/L402 paths, and Forum tips can project confirmed live direct BOLT 12 MDK/provider payments as ordinary content tips. Broader payout, withdrawal, and accepted-work settlement claims remain scoped by their own route authority and wallet readiness.',
+          'OpenAgents uses MDK hosted checkout and a scoped local MDK agent-wallet bridge for small-sats/L402 paths. The MDK send-readiness claim is limited to the original funded wallet home with public-safe 1-sat settlement receipts and a capacity-sufficient preflight; Spark remains the primary agent/MPP payment rail. Broader custody, payout, withdrawal, and accepted-work settlement claims remain scoped by their own route authority and wallet readiness.',
         unsafeCopy:
-          'Do not claim MDK mnemonic restore or hosted MDK payout proves full send readiness or provider settlement.',
+          'Do not claim MDK mnemonic restore, hosted MDK checkout, or a positive wallet balance proves broad custody, full send readiness, payout, withdrawal, accepted-work settlement, or provider settlement.',
         evidenceRefs: [
           'apps/openagents.com/docs/mdk',
           'apps/pylon/docs/mdk-wallet-readiness-ledger.md',
+          'apps/openagents.com/docs/nexus/2026-06-08-mdk-agent-wallet-send-readiness-preflight.md',
           'apps/openagents.com/docs/nexus/2026-06-08-mdk-agent-wallet-outbound-capacity-restore-report.md',
+          'receipt.nexus_pylon.settlement.assignment_public_probe_gepa_paid_multi_pylon_20260608214500_1',
+          'receipt.nexus_pylon.settlement.assignment_public_probe_gepa_paid_multi_pylon_20260608214500_2',
+          'capacity.mdk_agent_wallet.send.sufficient_for_scoped_smoke',
           'docs/forum/2026-06-09-forum-mdk-webhook-reconciliation-audit.md',
           'route:/api/forum/paid-actions/mdk/webhooks',
           'script:apps/openagents.com/scripts/forum.mjs tip-post-smoke',
@@ -1270,13 +1274,11 @@ export const publicProductPromisesDocument = () => {
           'apps/openagents.com/docs/forum/2026-06-11-forum-tip-webhook-refund-live-smoke-evidence.md',
           'transition:promise_transition_c30b7327-e82b-4696-8886-97aafa454284',
         ],
-        blockerRefs: [
-          'blocker.product_promises.mdk_agent_wallet_send_readiness_insufficient_capacity',
-        ],
+        blockerRefs: [],
         verification:
-          'Run smoke:forum:mdk-readiness with a ready-recipient post, user-specified sats amount, explicit live-spend approval, public receipt lookup, and `tip-post-smoke --strict-smooth` from a funded production payer wallet. Separate wallet configured, receive-ready, positive balance, send-ready, direct payment sent, webhook-confirmed payment, timeout recovery, refund/reversal, accepted work, payout, and accepted-work settlement states.',
+          'Scoped send-readiness is proven only for the original funded MDK agent-wallet home with public-safe 1-sat settlement receipts (`receipt.nexus_pylon.settlement.assignment_public_probe_gepa_paid_multi_pylon_20260608214500_1` and `_2`) and the send-readiness preflight capacity ref `capacity.mdk_agent_wallet.send.sufficient_for_scoped_smoke`. The smoke fixture blocks send planning unless operator approval, original funded wallet-home mode, spend-cap compliance, and the capacity-sufficient ref are all present. Keep wallet configured, receive-ready, positive balance, send-ready, direct payment sent, webhook-confirmed payment, timeout recovery, refund/reversal, accepted work, payout, and accepted-work settlement states separate.',
         authorityBoundary:
-          'Payment proof does not bypass route auth, owner scope, moderation, deployment, payout, or settlement gates.',
+          'Scoped MDK send-readiness proof does not make MDK the primary agent/MPP rail and does not bypass route auth, owner scope, moderation, deployment, payout, withdrawal, custody, or settlement gates.',
       },
       {
         ...basePromiseFields,
