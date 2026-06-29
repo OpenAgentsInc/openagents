@@ -27,6 +27,7 @@ import {
 import type { CodexAgentRuntimePhase, CodexAgentRunner } from "./codex-agent-executor.js"
 import {
   agentRunnerForLease,
+  agentRunnerResolutionForLease,
   agentRunnerServiceForLease,
   executeRegisteredAgentRunner,
   type AgentRunnerCloseoutRecord,
@@ -1107,6 +1108,8 @@ export async function computeAssignmentAdmission(
     if (age > (options.staleAfterMs ?? 120_000)) blockerRefs.add("blocker.assignment.presence_stale")
   }
   if (!hasRequiredCapabilities(state, lease)) blockerRefs.add("blocker.assignment.wrong_capability")
+  const runnerResolution = agentRunnerResolutionForLease(lease)
+  if (runnerResolution.status === "ambiguous") blockerRefs.add(runnerResolution.blockerRef)
   if (lease.backendRef && !state.runtime.capabilityRefs.includes(lease.backendRef)) {
     blockerRefs.add("blocker.assignment.unsupported_backend")
   }

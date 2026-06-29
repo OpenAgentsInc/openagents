@@ -19,6 +19,7 @@ import { assertPublicProjectionSafe, ensurePylonLocalState, writePresenceState }
 import { PSIONIC_QWEN_MODEL_REFS, type PsionicQwenModelAdmission } from "../packages/runtime/src/index"
 import { CLAUDE_AGENT_SDK_PACKAGE } from "../src/claude-agent"
 import {
+  CLAUDE_AGENT_SUM_REPAIR_FIXTURE_REF,
   CLAUDE_AGENT_TASK_SCHEMA,
   type ClaudeAgentCheckoutRunner,
   type ClaudeAgentRunner,
@@ -194,6 +195,41 @@ async function readySummary(home: string, capabilityRefs: string[] = ["cap.gepa.
 }
 
 describe("Pylon assignment lease flow", () => {
+  test("admission blocks ambiguous mixed-runner coding assignments", async () => {
+    await withTempHome(async (home) => {
+      const fake = fakeAssignmentServer()
+      const summary = await readySummary(home, [])
+      await sendHeartbeat(summary, {
+        baseUrl: fake.baseUrl,
+        now: () => new Date("2026-06-09T00:00:00.000Z"),
+      })
+      const state = await ensurePylonLocalState(summary)
+      const admission = await computeAssignmentAdmission(
+        state,
+        lease({
+          capabilityRefs: [],
+          codingAssignment: {
+            claudeAgent: {
+              schema: CLAUDE_AGENT_TASK_SCHEMA,
+              agentKind: "claude_agent_sdk",
+              fixtureRef: CLAUDE_AGENT_SUM_REPAIR_FIXTURE_REF,
+            },
+            codex: {
+              schema: CODEX_AGENT_TASK_SCHEMA,
+              agentKind: "codex_sdk",
+              fixtureRef: CODEX_AGENT_SUM_REPAIR_FIXTURE_REF,
+            },
+          },
+          expiresAt: "2026-06-09T01:00:00.000Z",
+        }),
+        { now: () => new Date("2026-06-09T00:00:30.000Z") },
+      )
+
+      expect(admission.admissible).toBe(false)
+      expect(admission.blockerRefs).toContain("blocker.assignment.agent_runner_ambiguous")
+    })
+  })
+
   test("polls, accepts, submits progress/proof refs, and closes a no-spend assignment", async () => {
     await withTempHome(async (home) => {
       const fake = fakeAssignmentServer()
