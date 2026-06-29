@@ -899,6 +899,50 @@ export type AssignmentRow = {
   readonly expiresAt: string
 }
 
+export type PylonFleetAssignmentState =
+  | "executing"
+  | "stale_unknown"
+  | "marker_only"
+
+export type PylonFleetCapacityState =
+  | "verified"
+  | "stale"
+  | "unknown"
+  | "blocked"
+
+export type PylonFleetAssignmentRow = {
+  readonly assignmentRef: string
+  readonly leaseRef: string
+  readonly service: "codex" | "claude" | "unknown"
+  readonly state: PylonFleetAssignmentState
+  readonly accountRefHash: string | null
+  readonly ageSeconds: number | null
+}
+
+export type PylonFleetReconciliation = {
+  readonly fetchedAt: string
+  readonly pylonRefs: readonly string[]
+  readonly counts: {
+    readonly pylons: number
+    readonly assigned: number
+    readonly executing: number
+    readonly stale: number
+    readonly accepted: number
+    readonly rejected: number
+    readonly tokenFailures: number
+    readonly khalaRequestWrappers: number
+  }
+  readonly capacity: {
+    readonly state: PylonFleetCapacityState
+    readonly lastHeartbeatAt: string | null
+    readonly ageSeconds: number | null
+    readonly availableCodexSlots: number | null
+    readonly sourceRefs: readonly string[]
+    readonly blockerRefs: readonly string[]
+  }
+  readonly assignments: readonly PylonFleetAssignmentRow[]
+}
+
 export type NodeStateMessage = {
   readonly ok: boolean
   readonly schema: string
@@ -919,6 +963,11 @@ export type NodeStateMessage = {
   readonly wallet?: WalletStatusRow | null
   // CL-50: open work-lease assignments (read-only).
   readonly assignments?: AssignmentRow[]
+  // #7593: public-safe local Pylon/Codex assignment reconciliation. Read-only:
+  // active marker counts, live child-process counts, recent closeout log
+  // classification, and heartbeat freshness. Never includes raw paths,
+  // prompts, command output, tokens, or secrets.
+  readonly pylonFleet?: PylonFleetReconciliation
   // CL-51: node coordinator paused flag (null when the node doesn't expose it).
   readonly coordinatorPaused?: boolean | null
   // #5468 (EPIC #5461): the BOUNDED auto-approve audit trail, refs-only. Present

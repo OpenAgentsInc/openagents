@@ -8,6 +8,8 @@ import type { SessionSummary } from "@openagentsinc/autopilot-control-protocol"
 import type {
   AssignmentRow,
   IntentRow,
+  PylonFleetCapacityState,
+  PylonFleetReconciliation,
   SessionArtifactStats,
   SessionEventRow,
   TrainingRunsResponse,
@@ -204,6 +206,60 @@ export function assignmentMeta(row: AssignmentRow): { goal: string; meta: string
   const refSuffix = row.assignmentRef.slice(-6)
   const meta = `${row.paymentMode}${datePart} · ${refSuffix}`
   return { goal, meta }
+}
+
+export function pylonFleetCapacityLabel(
+  state: PylonFleetCapacityState,
+): string {
+  switch (state) {
+    case "verified":
+      return "capacity verified"
+    case "stale":
+      return "heartbeat stale"
+    case "blocked":
+      return "capacity blocked"
+    case "unknown":
+      return "capacity unknown"
+  }
+}
+
+export function pylonFleetSummary(
+  fleet: PylonFleetReconciliation,
+): {
+  line: string
+  capacityLine: string
+  tone: "ready" | "watch" | "blocked"
+} {
+  const parts = [
+    `${fleet.counts.pylons} pylons`,
+    `${fleet.counts.assigned} assigned`,
+    `${fleet.counts.executing} executing`,
+    `${fleet.counts.stale} stale`,
+    `${fleet.counts.accepted} accepted`,
+    `${fleet.counts.rejected} rejected`,
+    `${fleet.counts.tokenFailures} token failures`,
+  ]
+  const age =
+    fleet.capacity.ageSeconds === null
+      ? "no heartbeat"
+      : `${fleet.capacity.ageSeconds}s old`
+  const slots =
+    fleet.capacity.availableCodexSlots === null
+      ? "slots unknown"
+      : `${fleet.capacity.availableCodexSlots} slots available`
+  const tone =
+    fleet.capacity.state === "blocked"
+      ? "blocked"
+      : fleet.capacity.state === "verified" &&
+          fleet.counts.stale === 0 &&
+          fleet.counts.tokenFailures === 0
+        ? "ready"
+        : "watch"
+  return {
+    capacityLine: `${pylonFleetCapacityLabel(fleet.capacity.state)} · ${age} · ${slots}`,
+    line: parts.join(" · "),
+    tone,
+  }
 }
 
 // ── Settings: connection summary ──────────────────────────────────────────────
