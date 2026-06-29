@@ -94,6 +94,12 @@ describe('buildMirrorCodeRun', () => {
     ).toThrow(MirrorCodeRunError)
   })
 
+  test('rejects unsafe run ids before they can be stored or served', () => {
+    expect(() =>
+      buildMirrorCodeRun({ ...validInput, runId: 'mc unsafe/run id' }),
+    ).toThrow(MirrorCodeRunError)
+  })
+
   test('rejects a malformed body', () => {
     expect(() => buildMirrorCodeRun({ runId: 'x' })).toThrow(MirrorCodeRunError)
   })
@@ -564,6 +570,29 @@ describe('handleMirrorCodeRunsApi POST', () => {
     )
     expect(response.status).toBe(400)
     expect(stored).toBe(0)
+  })
+
+  test('authorized POST with unsafe run id is rejected before storage', async () => {
+    let stored = 0
+    const response = await run(
+      handleMirrorCodeRunsApi(
+        postRequest({ ...validInput, runId: 'mc unsafe/run id' }),
+        {
+          requireAdminApiToken: async () => true,
+          store: {
+            listRuns: () => Effect.succeed([]),
+            getRun: () => Effect.sync(() => undefined),
+            upsertRun: () => Effect.sync(() => {
+              stored += 1
+            }),
+          },
+        },
+      ),
+    )
+    expect(response.status).toBe(400)
+    expect(stored).toBe(0)
+    const body = (await response.json()) as { reason: string }
+    expect(body.reason).toContain('runId must be a public-safe ref')
   })
 })
 
