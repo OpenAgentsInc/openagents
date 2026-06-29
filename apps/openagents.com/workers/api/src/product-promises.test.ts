@@ -108,7 +108,6 @@ describe('public product promises document', () => {
     expect(promiseById.get('business.coding_quick_win.v1')).toMatchObject({
       state: 'yellow',
       blockerRefs: expect.arrayContaining([
-        'blocker.product_promises.business_coding_quick_win_self_serve_missing',
         'blocker.product_promises.business_coding_quick_win_paid_receipt_missing',
       ]),
     })
@@ -572,8 +571,11 @@ describe('public product promises document', () => {
     )
     expect(currentCopy).toContain('Pylon v1.0 has a stable source cut')
     expect(currentCopy).toContain('Registry 2026-06-29.2')
+    expect(currentCopy).toContain('Registry 2026-06-29.3')
     expect(currentCopy).toContain('flips NO promise state')
     expect(currentCopy).toContain('Khala Desktop now carries source-level')
+    expect(currentCopy).toContain('owner-scoped /api/operator/fleet/state')
+    expect(currentCopy).toContain('public Artanis page now renders a fleet map')
     expect(currentCopy).toContain('maxStalenessSeconds:0')
     const codexSuccessorPromise = decoded.promises.find(
       promise => promise.promiseId === 'autopilot.codex_probe_pylon_successor.v1',
@@ -602,6 +604,26 @@ describe('public product promises document', () => {
         'apps/openagents.com/workers/api/src/inference/model-router.ts',
         'apps/openagents.com/workers/api/src/inference/model-router.test.ts',
       ]),
+    )
+    const khalaCliPromise = decoded.promises.find(
+      promise => promise.promiseId === 'khala.cli_terminal_client.v1',
+    )
+    expect(khalaCliPromise?.state).toBe('green')
+    expect(khalaCliPromise?.safeCopy).toContain('khala fleet status')
+    expect(khalaCliPromise?.safeCopy).toContain(
+      'owner-scoped fleet state',
+    )
+    expect(khalaCliPromise?.unsafeCopy).toContain(
+      'cross-owner fleet browser',
+    )
+    expect(khalaCliPromise?.evidenceRefs).toEqual(
+      expect.arrayContaining([
+        'clients/khala-cli/src/fleet.ts',
+        'apps/openagents.com/workers/api/src/operator-fleet-status-routes.ts',
+      ]),
+    )
+    expect(khalaCliPromise?.authorityBoundary).toContain(
+      'fleet visibility',
     )
     expect(decoded.promises).toEqual(
       expect.arrayContaining([
