@@ -394,8 +394,8 @@ describe('docs and blog routes', () => {
             tokensUsed: 1250,
             timeUsedSeconds: 60,
             remainingTokens: 8750,
-            createdAt: '2026-06-04T00:00:00.000Z',
-            updatedAt: '2026-06-04T00:05:00.000Z',
+            createdAt: '2026-06-29T08:00:00.000Z',
+            updatedAt: '2026-06-29T08:05:00.000Z',
             completedAt: null,
             publicUrl: 'https://openagents.com/api/public/goals/goal_public_1',
           },
@@ -412,7 +412,7 @@ describe('docs and blog routes', () => {
               artifactRefs: ['artifact_public-release-notes'],
               receiptRefs: ['sha256:1234567890abcdef'],
               commitRefs: ['ae7912549301df1a0df78353d47f64196ad6faf6'],
-              createdAt: '2026-06-04T00:01:00.000Z',
+              createdAt: '2026-06-29T08:01:00.000Z',
             },
           ],
         },
@@ -566,7 +566,7 @@ describe('docs and blog routes', () => {
       Scene.expect(
         Scene.text('Make Artanis progress visible safely.'),
       ).toExist(),
-      Scene.expect(Scene.text('Run accepted.')).toExist(),
+      Scene.expect(Scene.text('Run accepted.')).toBeAbsent(),
       // Live fleet-shipping feed replaces the stale status report + admin ticks.
       Scene.expect(Scene.text('Fleet shipping')).toExist(),
       Scene.expect(Scene.text('What the fleet is doing now')).toExist(),

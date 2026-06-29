@@ -307,6 +307,9 @@ describe('public Artanis Pulse panel', () => {
     expect(markup).toContain('Claimed')
     expect(markup).toContain('Verifying')
     expect(markup).toContain('Issue 6656 fleet board work claimed.')
+    expect(markup).toContain(
+      'https://github.com/OpenAgentsInc/openagents/issues/6656',
+    )
     expect(markup).toContain('Issue 6656 public verification queued.')
     expect(markup).toContain('Only public activity rows are shown')
     expect(markup).toContain('artanis-virtual-merge-queue')

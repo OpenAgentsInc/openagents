@@ -7,6 +7,7 @@ import type { Html } from 'foldkit/html'
 import { html } from 'foldkit/html'
 
 import { userFacingCopy } from '../../../display-copy'
+import { publicActivityEventUrls } from '../../../scene/publicActivityTimelineElement'
 import { currentUnixMs, friendlyRelativeTime } from '../../../time-format'
 import * as Ui from '../../../ui'
 import type { Message } from '../message'
@@ -1761,6 +1762,7 @@ const activeTaskBoardEvents = (
 const taskBoardRow = (event: PublicActivityTimelineEvent): Html => {
   const h = html<Message>()
   const actor = event.actorRef ?? event.targetRef ?? event.runRef ?? 'public ref'
+  const proofUrl = publicActivityEventUrls(event)[0]
 
   return h.li(
     [
@@ -1781,9 +1783,25 @@ const taskBoardRow = (event: PublicActivityTimelineEvent): Html => {
         ],
         [
           h.span([Ui.className<Message>('truncate')], [actor]),
-          h.span([Ui.className<Message>('tabular-nums')], [
-            friendlyRelativeTime(event.ts),
-          ]),
+          h.span(
+            [Ui.className<Message>('flex shrink-0 items-center gap-2')],
+            [
+              proofUrl === undefined
+                ? null
+                : h.a(
+                    [
+                      h.Href(proofUrl.href),
+                      Ui.className<Message>(
+                        'text-white/55 underline underline-offset-4 hover:text-[#f1efe8]',
+                      ),
+                    ],
+                    ['Proof'],
+                  ),
+              h.span([Ui.className<Message>('tabular-nums')], [
+                friendlyRelativeTime(event.ts),
+              ]),
+            ],
+          ),
         ],
       ),
     ],

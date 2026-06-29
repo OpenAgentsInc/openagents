@@ -696,6 +696,11 @@ const publicHrefForRef = (
     return safePublicPath(trimmed)
   }
 
+  const githubIssue = /^issue\.public\.github\.(\d+)$/i.exec(trimmed)
+  if (githubIssue !== null) {
+    return `https://github.com/OpenAgentsInc/openagents/issues/${githubIssue[1]}`
+  }
+
   if (/^receipt\.forum\./i.test(trimmed)) {
     return safePublicPath(`/api/forum/receipts/${encodeURIComponent(trimmed)}`)
   }
