@@ -1,4 +1,5 @@
 import { describe, expect, mock, test } from "bun:test"
+import { Deferred, Effect, Fiber } from "effect"
 import { existsSync } from "node:fs"
 import { lstat, mkdir, mkdtemp, readdir, readFile, readlink, rm, writeFile } from "node:fs/promises"
 import { join, relative } from "node:path"
@@ -31,6 +32,10 @@ import {
   WorkspaceCheckoutError,
   workspaceLeaseRecordFor,
 } from "../src/workspace-materializer"
+import {
+  PylonRuntimeRetrySchedules,
+  scopedTimeout,
+} from "../src/effect-runtime-patterns"
 
 const now = new Date("2026-06-11T22:00:00.000Z")
 
@@ -297,6 +302,53 @@ describe("codex agent task recognition", () => {
       )
       assertPublicProjectionSafe(record)
     })
+  })
+
+  test("scoped deadline timers are released when the owning fiber is interrupted", async () => {
+    const events: string[] = []
+
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const acquired = yield* Deferred.make<void>()
+          const fiber = yield* Effect.forkScoped(
+            Effect.scoped(
+              Effect.gen(function* () {
+                yield* scopedTimeout({
+                  delayMs: 10_000,
+                  onTimeout: () => events.push("timeout-fired"),
+                  setTimeout: (() => {
+                    events.push("timeout-scheduled")
+                    return 42 as unknown as ReturnType<typeof setTimeout>
+                  }) as typeof setTimeout,
+                  clearTimeout: ((timer) => {
+                    events.push(`timeout-cleared:${String(timer)}`)
+                  }) as typeof clearTimeout,
+                })
+                yield* Deferred.succeed(acquired, undefined)
+                yield* Effect.never
+              }),
+            ),
+          )
+
+          yield* Deferred.await(acquired)
+          yield* Fiber.interrupt(fiber)
+        }),
+      ),
+    )
+
+    expect(events).toEqual(["timeout-scheduled", "timeout-cleared:42"])
+  })
+
+  test("Pylon retry schedules expose named Effect schedules for shared runtime paths", () => {
+    expect(Object.keys(PylonRuntimeRetrySchedules).sort()).toEqual([
+      "d1TransientFailure",
+      "durableObjectCall",
+      "externalHttpProviderCall",
+      "gitGithubOperation",
+      "publicProjectionSync",
+      "walletAdjacentCall",
+    ])
   })
 
   test("redaction: unsafe-shaped digests are rejected before any POST", async () => {
