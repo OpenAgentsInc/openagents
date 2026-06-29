@@ -8,6 +8,7 @@ export const KhalaToolAuthority = S.Literals([
   "patch",
   "shell",
   "process_stdin",
+  "interaction",
   "network",
   "browser",
   "external_directory",
@@ -72,7 +73,7 @@ export const KhalaToolArtifact = S.Struct({
 })
 export type KhalaToolArtifact = typeof KhalaToolArtifact.Type
 
-export const KhalaToolResultStatus = S.Literals(["ok", "failed", "denied"])
+export const KhalaToolResultStatus = S.Literals(["ok", "failed", "denied", "needs_input", "unavailable"])
 export type KhalaToolResultStatus = typeof KhalaToolResultStatus.Type
 
 export const KhalaToolResult = S.Struct({
@@ -98,8 +99,13 @@ export const KhalaToolEventKind = S.Literals([
   "tool_progress",
   "stdout_chunk",
   "stderr_chunk",
+  "stdin_chunk",
   "diff_chunk",
   "artifact_written",
+  "user_input_requested",
+  "user_input_answered",
+  "user_input_unavailable",
+  "user_input_timed_out",
   "tool_completed",
   "tool_failed",
   "tool_cancelled",
@@ -208,7 +214,68 @@ export interface KhalaOutputStore {
   }) => Effect.Effect<KhalaToolArtifact, KhalaToolRuntimeError>
 }
 
+export type KhalaInteractionChoice = Readonly<{
+  description?: string
+  id: string
+  label: string
+}>
+
+export type KhalaInteractionAnswer =
+  | Readonly<{
+    choiceId: string
+    kind: "choice"
+    text: string
+  }>
+  | Readonly<{
+    kind: "freeform"
+    text: string
+  }>
+  | Readonly<{
+    kind: "default"
+    text: string
+  }>
+
+export type KhalaInteractionAskStatus = "answered" | "pending" | "timed_out" | "unavailable"
+
+export type KhalaInteractionEventKind =
+  | "user_input_requested"
+  | "user_input_answered"
+  | "user_input_unavailable"
+  | "user_input_timed_out"
+
+export type KhalaInteractionEvent = Readonly<{
+  kind: KhalaInteractionEventKind
+  payload: unknown
+  timestampMs: number
+}>
+
+export type KhalaInteractionAskInput = Readonly<{
+  allowFreeform: boolean
+  choices: ReadonlyArray<KhalaInteractionChoice>
+  defaultAnswer?: string
+  invocationId: string
+  khalaSessionId: string
+  nonBlocking: boolean
+  prompt: string
+  publicSafe: boolean
+  timeoutMs?: number
+}>
+
+export type KhalaInteractionAskResult = Readonly<{
+  answer?: KhalaInteractionAnswer
+  events: ReadonlyArray<KhalaInteractionEvent>
+  reason?: string
+  requestId: string
+  status: KhalaInteractionAskStatus
+}>
+
+export interface KhalaInteractionService {
+  readonly askUser: (input: KhalaInteractionAskInput) => Effect.Effect<KhalaInteractionAskResult, KhalaToolRuntimeError>
+  readonly marker: "khala.interaction_service"
+}
+
 export interface KhalaToolServices {
+  readonly interaction: KhalaInteractionService
   readonly outputStore: KhalaOutputStore
   readonly permission: KhalaPermissionService
   readonly process: KhalaProcessService
@@ -340,6 +407,42 @@ export function khalaToolDenied(code: string, reason: string): KhalaToolResult {
   return { ...error, status: "denied" }
 }
 
+export function khalaToolNeedsInput(input: {
+  readonly modelText: string
+  readonly publicSummary: string
+  readonly ui: unknown
+  readonly publicSafety?: KhalaPublicSafety
+}): KhalaToolResult {
+  return sanitizeToolResult({
+    artifacts: [],
+    modelOutput: { text: input.modelText },
+    privateDataRefs: [],
+    publicSafety: input.publicSafety ?? "private",
+    publicSummary: input.publicSummary,
+    redactionRefs: [],
+    status: "needs_input",
+    ui: input.ui,
+  })
+}
+
+export function khalaToolUnavailable(input: {
+  readonly modelText: string
+  readonly publicSummary: string
+  readonly ui: unknown
+  readonly publicSafety?: KhalaPublicSafety
+}): KhalaToolResult {
+  return sanitizeToolResult({
+    artifacts: [],
+    modelOutput: { text: input.modelText },
+    privateDataRefs: [],
+    publicSafety: input.publicSafety ?? "public_safe",
+    publicSummary: input.publicSummary,
+    redactionRefs: [],
+    status: "unavailable",
+    ui: input.ui,
+  })
+}
+
 export function sanitizeToolResult(result: KhalaToolResult): KhalaToolResult {
   const publicSummary = redactKhalaPublicText(result.publicSummary)
   const modelText = redactKhalaPublicText(result.modelOutput.text)
@@ -391,16 +494,73 @@ export const inMemoryKhalaOutputStore = (): KhalaOutputStore & {
   }
 }
 
+export const nonInteractiveKhalaInteractionService: KhalaInteractionService = {
+  askUser: input =>
+    Effect.sync(() => {
+      const requestId = createInteractionRequestId(input.invocationId)
+      const requestedAt = Date.now()
+      return {
+        events: [
+          {
+            kind: "user_input_requested",
+            payload: interactionRequestPayload(requestId, input),
+            timestampMs: requestedAt,
+          },
+          {
+            kind: "user_input_unavailable",
+            payload: {
+              reason: "host_interaction_unavailable",
+              requestId,
+            },
+            timestampMs: requestedAt,
+          },
+        ],
+        reason: "host_interaction_unavailable",
+        requestId,
+        status: "unavailable",
+      }
+    }),
+  marker: "khala.interaction_service",
+}
+
 export function makeKhalaToolServices(input: {
+  readonly interaction?: KhalaInteractionService
   readonly permission?: KhalaPermissionService
   readonly process?: KhalaProcessService
   readonly workingDirectory?: string
 } = {}): KhalaToolServices {
   return {
+    interaction: input.interaction ?? nonInteractiveKhalaInteractionService,
     outputStore: inMemoryKhalaOutputStore(),
     permission: input.permission ?? allowAllKhalaPermissionService,
     process: input.process ?? defaultKhalaProcessService,
     workspace: { workingDirectory: input.workingDirectory ?? process.cwd() },
+  }
+}
+
+function createInteractionRequestId(invocationId: string): string {
+  const safeInvocation = invocationId.replace(/[^A-Za-z0-9_.-]/gu, "_").slice(0, 80) || "request"
+  return `khala.ask.${safeInvocation}.${Date.now().toString(36)}`
+}
+
+function interactionRequestPayload(
+  requestId: string,
+  input: KhalaInteractionAskInput,
+): Readonly<{
+  allowFreeform: boolean
+  choices: ReadonlyArray<KhalaInteractionChoice>
+  nonBlocking: boolean
+  prompt: string
+  requestId: string
+  timeoutMs?: number
+}> {
+  return {
+    allowFreeform: input.allowFreeform,
+    choices: input.choices,
+    nonBlocking: input.nonBlocking,
+    prompt: input.prompt,
+    requestId,
+    ...(input.timeoutMs === undefined ? {} : { timeoutMs: input.timeoutMs }),
   }
 }
 
@@ -735,6 +895,7 @@ export { createWriteTool, writeToolDefinition } from "./write.js"
 export { applyPatchToolDefinition, createApplyPatchTool } from "./apply-patch.js"
 export { createExecCommandTool, execCommandToolDefinition } from "./exec-command.js"
 export { createWriteStdinTool, writeStdinToolDefinition } from "./write-stdin.js"
+export { askUserToolDefinition, createAskUserTool } from "./ask-user.js"
 
 function permissionRequestFor(
   definition: KhalaToolDefinition,

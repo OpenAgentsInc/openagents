@@ -106,3 +106,13 @@ service honestly reports that it does not enforce a sandbox.
 output. Session ownership is bound to the active Khala session, stdin/stdout/
 stderr chunks remain ordered for terminal renderers, and oversized previews use
 private artifact refs.
+
+### `ask_user`
+
+`ask_user` asks the local operator a short question for missing information or
+preference input. It accepts `prompt`, optional `choices`, `allow_freeform`,
+`non_blocking`, `timeout_ms`, `default_answer`, and `public_safe`. It is
+separate from permission prompts and cannot grant filesystem, shell, network, or
+credential authority. Non-interactive hosts return typed unavailable results;
+hosts that support pending prompts emit `user_input_*` events for desktop and
+CLI renderers.
