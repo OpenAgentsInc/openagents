@@ -409,6 +409,10 @@ describe('public product promises document', () => {
     // /api/public/marketplace/composed-products read surface. Runtime,
     // self-serve write/install lifecycle, and billing blockers remain, so
     // green remains exactly 26.
+    // The 2026-06-29.1 compose-and-list lifecycle pass adds no-spend
+    // assemble/list/install-use receipts with builder attribution, replacing
+    // the unbuilt runtime/lifecycle blockers with the paid-listing runtime
+    // blocker. Billing/settlement remains, so no promise flips green.
     // The agentic-npm runtime pass clears the stale source-level registry and
     // install/use blocker by acknowledging the bounded runtime core plus
     // install/use evidence rows. Paid public marketplace and billing/settlement
@@ -466,10 +470,15 @@ describe('public product promises document', () => {
     expect(composeAndListPromise?.blockerRefs).not.toContain(
       'blocker.product_promises.marketplace_listing_lifecycle_unbuilt',
     )
+    expect(composeAndListPromise?.blockerRefs).not.toContain(
+      'blocker.product_promises.marketplace_composition_runtime_unbuilt',
+    )
+    expect(composeAndListPromise?.blockerRefs).not.toContain(
+      'blocker.product_promises.marketplace_self_serve_listing_write_install_lifecycle_unbuilt',
+    )
     expect(composeAndListPromise?.blockerRefs).toEqual(
       expect.arrayContaining([
-        'blocker.product_promises.marketplace_composition_runtime_unbuilt',
-        'blocker.product_promises.marketplace_self_serve_listing_write_install_lifecycle_unbuilt',
+        'blocker.product_promises.marketplace_paid_listing_runtime_missing',
         'blocker.product_promises.marketplace_billing_settlement_missing',
       ]),
     )
@@ -477,7 +486,7 @@ describe('public product promises document', () => {
       'route:/api/public/marketplace/composed-products',
     )
     expect(composeAndListPromise?.safeCopy).toContain(
-      'public read-only listing/discovery projection',
+      'no-spend assemble/list/install-use lifecycle receipts',
     )
     const agenticNpmPromise = decoded.promises.find(
       promise =>
@@ -1010,8 +1019,7 @@ describe('public product promises document', () => {
           promiseId: 'marketplace.compose_and_list_products.v1',
           state: 'planned',
           blockerRefs: expect.arrayContaining([
-            'blocker.product_promises.marketplace_composition_runtime_unbuilt',
-            'blocker.product_promises.marketplace_self_serve_listing_write_install_lifecycle_unbuilt',
+            'blocker.product_promises.marketplace_paid_listing_runtime_missing',
             'blocker.product_promises.marketplace_billing_settlement_missing',
           ]),
           evidenceRefs: expect.arrayContaining([

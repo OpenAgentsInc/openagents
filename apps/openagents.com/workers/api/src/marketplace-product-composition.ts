@@ -8,16 +8,15 @@
 // for sale.
 //
 // SCOPE / HONESTY: this is an INERT scaffold toward that marketplace, NOT a
-// claim it is live. It is PURE:
+// paid marketplace claim. It is PURE:
 //   - it moves no money, runs no fulfillment, reads no wallet, writes no
 //     receipt, and provisions no primitive;
-//   - it only defines a typed, versioned product DEFINITION (a composition of
-//     primitive/market capability references) and a read-only listing
-//     projection over an injected store.
+//   - it defines a typed, versioned product definition plus bounded no-spend
+//     assemble/list/install-use lifecycle receipts over public-safe refs.
 // The promise marketplace.compose_and_list_products.v1 STAYS `planned`. Nothing
-// here flips it green: there is no composition runtime, no install/use
-// lifecycle, no billing, attribution, rev-share, or settlement. A green flip
-// stays receipt-first and owner-signed per proof.claim_upgrade_receipts.v1.
+// here flips it green: there is no billing, paid sale receipt, rev-share
+// settlement, or live primitive provisioning. A green flip stays receipt-first
+// and owner-signed per proof.claim_upgrade_receipts.v1.
 
 import { Schema as S } from 'effect'
 
@@ -95,6 +94,61 @@ export const ComposedProductDefinition = S.Struct({
 })
 export type ComposedProductDefinition = typeof ComposedProductDefinition.Type
 
+export const MarketplaceBuilderAttribution = S.Struct({
+  builderRef: S.String,
+  attributionRef: S.String,
+  revSharePolicyRef: S.String,
+})
+export type MarketplaceBuilderAttribution =
+  typeof MarketplaceBuilderAttribution.Type
+
+export const ComposedProductAssemblyReceipt = S.Struct({
+  schema: S.Literal(MARKETPLACE_PRODUCT_COMPOSITION_SCHEMA),
+  promiseId: S.Literal(MARKETPLACE_COMPOSE_AND_LIST_PROMISE),
+  assemblyRef: S.String,
+  productId: S.String,
+  definitionVersion: S.Number,
+  builderAttribution: MarketplaceBuilderAttribution,
+  primitiveRefs: S.Array(S.String),
+  assembledAt: S.String,
+  fulfillmentMode: S.Literal('no_spend_public_fixture'),
+  billingState: S.Literal('not_configured'),
+})
+export type ComposedProductAssemblyReceipt =
+  typeof ComposedProductAssemblyReceipt.Type
+
+export const ComposedProductListingWriteReceipt = S.Struct({
+  schema: S.Literal(MARKETPLACE_PRODUCT_COMPOSITION_SCHEMA),
+  promiseId: S.Literal(MARKETPLACE_COMPOSE_AND_LIST_PROMISE),
+  listingRef: S.String,
+  assemblyRef: S.String,
+  productId: S.String,
+  builderAttribution: MarketplaceBuilderAttribution,
+  listedAt: S.String,
+  listingState: S.Literal('listed'),
+  selfServe: S.Literal(true),
+  billingState: S.Literal('not_configured'),
+})
+export type ComposedProductListingWriteReceipt =
+  typeof ComposedProductListingWriteReceipt.Type
+
+export const ComposedProductBuyerLifecycleReceipt = S.Struct({
+  schema: S.Literal(MARKETPLACE_PRODUCT_COMPOSITION_SCHEMA),
+  promiseId: S.Literal(MARKETPLACE_COMPOSE_AND_LIST_PROMISE),
+  lifecycleRef: S.String,
+  listingRef: S.String,
+  productId: S.String,
+  buyerRef: S.String,
+  builderAttribution: MarketplaceBuilderAttribution,
+  installedAt: S.String,
+  usedAt: S.String,
+  installState: S.Literal('used'),
+  billingState: S.Literal('not_configured'),
+  settlementState: S.Literal('not_applicable'),
+})
+export type ComposedProductBuyerLifecycleReceipt =
+  typeof ComposedProductBuyerLifecycleReceipt.Type
+
 export class ComposedProductValidationError extends S.TaggedErrorClass<ComposedProductValidationError>()(
   'ComposedProductValidationError',
   {
@@ -103,6 +157,14 @@ export class ComposedProductValidationError extends S.TaggedErrorClass<ComposedP
 ) {}
 
 const isNonEmpty = (value: string): boolean => value.trim().length > 0
+
+const defaultAttribution = (
+  definition: ComposedProductDefinition,
+): MarketplaceBuilderAttribution => ({
+  builderRef: definition.builderRef,
+  attributionRef: `attribution.public.marketplace_composed_product.${definition.productId}.${definition.definitionVersion}`,
+  revSharePolicyRef: 'revshare.policy.public.marketplace_composed_product.pending_billing',
+})
 
 /**
  * Build a typed product definition from raw input. PURE and validating:
@@ -233,6 +295,121 @@ export const composedProductMonetizableLayers = (
     }
   }
   return [...byLayer].map(([layer, capabilityRef]) => ({ layer, capabilityRef }))
+}
+
+export const assembleComposedProduct = (
+  definition: ComposedProductDefinition,
+  input: {
+    assemblyRef?: string
+    builderAttribution?: MarketplaceBuilderAttribution
+    assembledAt?: string
+  } = {},
+): ComposedProductAssemblyReceipt => ({
+  schema: MARKETPLACE_PRODUCT_COMPOSITION_SCHEMA,
+  promiseId: MARKETPLACE_COMPOSE_AND_LIST_PROMISE,
+  assemblyRef:
+    input.assemblyRef ??
+    `assembly.public.marketplace_composed_product.${definition.productId}.${definition.definitionVersion}`,
+  productId: definition.productId,
+  definitionVersion: definition.definitionVersion,
+  builderAttribution: input.builderAttribution ?? defaultAttribution(definition),
+  primitiveRefs: composedProductPrimitives(definition).map(
+    primitive => `primitive.public.${primitive}`,
+  ),
+  assembledAt: input.assembledAt ?? currentIsoTimestamp(),
+  fulfillmentMode: 'no_spend_public_fixture',
+  billingState: 'not_configured',
+})
+
+export const selfServeListComposedProduct = (
+  definition: ComposedProductDefinition,
+  assembly: ComposedProductAssemblyReceipt,
+  input: {
+    listingRef?: string
+    listedAt?: string
+  } = {},
+):
+  | {
+      ok: true
+      definition: ComposedProductDefinition
+      listingReceipt: ComposedProductListingWriteReceipt
+    }
+  | { ok: false; error: ComposedProductValidationError } => {
+  if (
+    assembly.productId !== definition.productId ||
+    assembly.definitionVersion !== definition.definitionVersion
+  ) {
+    return {
+      ok: false,
+      error: new ComposedProductValidationError({
+        reason: 'assembly receipt must match the composed product definition',
+      }),
+    }
+  }
+
+  return {
+    ok: true,
+    definition: {
+      ...definition,
+      listingState: 'listed',
+    },
+    listingReceipt: {
+      schema: MARKETPLACE_PRODUCT_COMPOSITION_SCHEMA,
+      promiseId: MARKETPLACE_COMPOSE_AND_LIST_PROMISE,
+      listingRef:
+        input.listingRef ??
+        `listing.public.marketplace_composed_product.${definition.productId}.${definition.definitionVersion}`,
+      assemblyRef: assembly.assemblyRef,
+      productId: definition.productId,
+      builderAttribution: assembly.builderAttribution,
+      listedAt: input.listedAt ?? currentIsoTimestamp(),
+      listingState: 'listed',
+      selfServe: true,
+      billingState: 'not_configured',
+    },
+  }
+}
+
+export const recordComposedProductInstallUse = (
+  listing: ComposedProductListingWriteReceipt,
+  input: {
+    buyerRef: string
+    lifecycleRef?: string
+    installedAt?: string
+    usedAt?: string
+  },
+):
+  | { ok: true; lifecycleReceipt: ComposedProductBuyerLifecycleReceipt }
+  | { ok: false; error: ComposedProductValidationError } => {
+  if (!isNonEmpty(input.buyerRef)) {
+    return {
+      ok: false,
+      error: new ComposedProductValidationError({
+        reason: 'buyerRef must be non-empty',
+      }),
+    }
+  }
+
+  const installedAt = input.installedAt ?? currentIsoTimestamp()
+  return {
+    ok: true,
+    lifecycleReceipt: {
+      schema: MARKETPLACE_PRODUCT_COMPOSITION_SCHEMA,
+      promiseId: MARKETPLACE_COMPOSE_AND_LIST_PROMISE,
+      lifecycleRef:
+        input.lifecycleRef ??
+        `lifecycle.public.marketplace_composed_product.${listing.productId}.${input.buyerRef}`,
+      listingRef: listing.listingRef,
+      productId: listing.productId,
+      buyerRef: input.buyerRef,
+      builderAttribution: listing.builderAttribution,
+      installedAt,
+      usedAt: input.usedAt ?? installedAt,
+      installState: 'used',
+      billingState: 'not_configured',
+      settlementState: 'not_applicable',
+    },
+  }
 }
 
 /**
