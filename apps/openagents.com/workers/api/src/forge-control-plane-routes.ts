@@ -612,6 +612,49 @@ const routeVerificationReceipts = async <Bindings>(
   return noStoreJsonResponse({ verificationReceipt }, { status: 201 })
 }
 
+const assertApprovedPromotionHasCurrentPassingVerification = async (
+  store: ForgeCoordinationStore,
+  receipt: typeof ForgePromotionDecisionReceipt.Type,
+): Promise<void> => {
+  if (receipt.decision !== 'approved') {
+    return
+  }
+
+  if (receipt.verification_ref === null) {
+    throw new ForgeControlPlaneHttpError(
+      409,
+      'forge_promotion_verification_receipt_required',
+      'Approved Forge promotion decisions require a receipt-backed passing verification.',
+    )
+  }
+
+  const verification = (
+    await store.listVerificationReceipts(receipt.tenant_ref, 100, receipt.change_ref)
+  ).find(candidate => candidate.verification_ref === receipt.verification_ref)
+
+  if (verification === undefined) {
+    throw new ForgeControlPlaneHttpError(
+      409,
+      'forge_promotion_verification_receipt_missing',
+      'Approved Forge promotion decisions require an existing verification receipt for the same change.',
+    )
+  }
+
+  if (
+    verification.verdict !== 'passed' ||
+    verification.exit_code !== 0 ||
+    verification.base_head !== receipt.base_head ||
+    verification.head_head !== receipt.candidate_head ||
+    receipt.promoted_head !== receipt.candidate_head
+  ) {
+    throw new ForgeControlPlaneHttpError(
+      409,
+      'forge_promotion_verification_receipt_not_current_passing',
+      'Approved Forge promotion decisions require a passing verification receipt for the exact base and candidate heads being promoted.',
+    )
+  }
+}
+
 const routePromotionDecisions = async <Bindings>(
   dependencies: ForgeControlPlaneRouteDependencies<Bindings>,
   request: Request,
@@ -647,6 +690,7 @@ const routePromotionDecisions = async <Bindings>(
     'forge:promotion:decide',
     receipt.tenant_ref,
   )
+  await assertApprovedPromotionHasCurrentPassingVerification(store, receipt)
   const promotionDecision = await store.recordPromotionDecisionReceipt(
     receipt,
     routeNowIso(dependencies),
