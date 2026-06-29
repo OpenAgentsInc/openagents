@@ -297,6 +297,9 @@ describe('X claim reward treasury dispatcher', () => {
     expect(reward?.evidenceRefs).toContain(
       'settlement_evidence.public.mdk_treasury.x_claim_reward_x_claim_reward_1',
     )
+    expect(reward?.evidenceRefs).toContain(
+      'receipt.public.x_claim_reward.settled_x_claim_reward_1',
+    )
     expect(serialized).not.toContain(safeOffer)
     expect(serialized).not.toContain('payment_secret_1')
   })

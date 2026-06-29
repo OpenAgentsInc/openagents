@@ -570,6 +570,9 @@ const dispatchAttemptRef = (rewardId: string): string =>
 const settlementEvidenceRef = (rewardId: string): string =>
   `settlement_evidence.public.mdk_treasury.x_claim_reward_${rewardId}`
 
+const settledReceiptRef = (rewardId: string): string =>
+  `receipt.public.x_claim_reward.settled_${rewardId}`
+
 const uniqueRefs = (
   refs: ReadonlyArray<string>,
   extraRefs: ReadonlyArray<string>,
@@ -595,6 +598,7 @@ const processPendingReward = async (
     await dependencies.store.settleReward({
       evidenceRefs: uniqueRefs(reward.evidenceRefs, [
         settlementEvidenceRef(reward.id),
+        settledReceiptRef(reward.id),
       ]),
       nowIso: dependencies.config.nowIso,
       rewardId: reward.id,
@@ -707,6 +711,7 @@ const processDispatchRequestedReward = async (
     await dependencies.store.settleReward({
       evidenceRefs: uniqueRefs(withPayment.evidenceRefs, [
         settlementEvidenceRef(reward.id),
+        settledReceiptRef(reward.id),
       ]),
       nowIso: dependencies.config.nowIso,
       rewardId: reward.id,

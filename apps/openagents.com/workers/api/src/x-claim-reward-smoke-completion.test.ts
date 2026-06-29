@@ -44,6 +44,7 @@ const settledReward = (
   evidenceRefs: [
     'receipt.public.x_claim.1',
     'settlement_evidence.public.mdk_treasury.x_claim_reward_1',
+    'receipt.public.x_claim_reward.settled_x_claim_reward_1',
   ],
   id: 'x_claim_reward_1',
   ownerUserId: 'user_owner_1',
@@ -71,6 +72,7 @@ describe('X claim reward smoke completion gate', () => {
       evidenceRefs: [
         'x_claim_reward_receipt_x_claim_reward_1',
         'settlement_evidence.public.mdk_treasury.x_claim_reward_1',
+        'receipt.public.x_claim_reward.settled_x_claim_reward_1',
       ],
       promiseId: 'agents.x_claim_reward.v1',
       toState: 'green',

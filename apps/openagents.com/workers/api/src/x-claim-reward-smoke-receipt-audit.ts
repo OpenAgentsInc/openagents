@@ -13,11 +13,14 @@ const ReceiptRefMalformedReasonRef =
   'reason.public.x_claim_reward_smoke_receipt_ref_malformed'
 const SettlementEvidenceMissingReasonRef =
   'reason.public.x_claim_reward_smoke_settlement_evidence_missing'
+const SettledReceiptMissingReasonRef =
+  'reason.public.x_claim_reward_smoke_settled_receipt_missing'
 const PaymentMaterialLeakedReasonRef =
   'reason.public.x_claim_reward_smoke_payment_material_leaked'
 
 const ReceiptRefPattern = /^x_claim_reward_receipt_/
 const SettlementEvidencePattern = /^settlement_evidence\.public\./
+const SettledReceiptPattern = /^receipt\.public\.x_claim_reward\.settled_/
 
 /**
  * Patterns for payment material that must never appear in a public-safe
@@ -55,6 +58,7 @@ export type XClaimRewardSmokeReceiptAudit = Readonly<{
     amountSats: number
     receiptRef: string
     rewardId: string
+    settledReceiptRefs: ReadonlyArray<string>
     settlementEvidenceRefs: ReadonlyArray<string>
     state: string
   }>
@@ -90,6 +94,9 @@ export const auditXClaimRewardSmokeReceipt = (
   const settlementEvidenceRefs = reward.evidenceRefs.filter(ref =>
     SettlementEvidencePattern.test(ref),
   )
+  const settledReceiptRefs = reward.evidenceRefs.filter(ref =>
+    SettledReceiptPattern.test(ref),
+  )
   const leakedMaterial = findPaymentMaterial(reward)
 
   const checks: ReadonlyArray<XClaimRewardSmokeReceiptCheck> = [
@@ -123,6 +130,12 @@ export const auditXClaimRewardSmokeReceipt = (
           : SettlementEvidenceMissingReasonRef,
     },
     {
+      name: 'settled_receipt_present',
+      ok: settledReceiptRefs.length >= 1,
+      reasonRef:
+        settledReceiptRefs.length >= 1 ? null : SettledReceiptMissingReasonRef,
+    },
+    {
       name: 'no_payment_material_leaked',
       ok: leakedMaterial.length === 0,
       reasonRef:
@@ -145,6 +158,7 @@ export const auditXClaimRewardSmokeReceipt = (
       amountSats: reward.amountSats,
       receiptRef: reward.receiptRef,
       rewardId: reward.id,
+      settledReceiptRefs,
       settlementEvidenceRefs,
       state: reward.state,
     },
@@ -201,6 +215,7 @@ export const buildXClaimRewardSmokeTransitionRequest = (
     new Set([
       audit.transitionReceiptSummary.receiptRef,
       ...audit.transitionReceiptSummary.settlementEvidenceRefs,
+      ...audit.transitionReceiptSummary.settledReceiptRefs,
     ]),
   )
 
