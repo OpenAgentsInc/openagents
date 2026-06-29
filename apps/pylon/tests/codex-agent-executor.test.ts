@@ -6,6 +6,7 @@ import { tmpdir } from "node:os"
 import {
   CODEX_AGENT_SUM_REPAIR_FIXTURE_REF,
   CODEX_AGENT_TASK_SCHEMA,
+  classifyCodexAgentExecutionRefusal,
   codexAgentTaskFrom,
   effectiveSandboxMode,
   executeCodexAgentAssignment,
@@ -90,6 +91,21 @@ async function withState<T>(fn: (state: Awaited<ReturnType<typeof ensurePylonLoc
 }
 
 describe("codex agent task recognition", () => {
+  test("classifies Codex account execution refusals without exposing raw messages", () => {
+    expect(
+      classifyCodexAgentExecutionRefusal(
+        new Error(
+          "Your access token could not be refreshed because your refresh token was revoked. Please log out and sign in again.",
+        ),
+      ),
+    ).toBe("credentials_revoked")
+    expect(classifyCodexAgentExecutionRefusal("usage limit reached for this account")).toBe("usage_limited")
+    expect(classifyCodexAgentExecutionRefusal("429 too many requests")).toBe("rate_limited")
+    expect(classifyCodexAgentExecutionRefusal("WebSocket connection failed")).toBe("network")
+    expect(classifyCodexAgentExecutionRefusal("operation timed out")).toBe("timeout")
+    expect(classifyCodexAgentExecutionRefusal("sdk exploded")).toBe("other")
+  })
+
   test("recognizes the typed work class and passes everything else through", async () => {
     expect(codexAgentTaskFrom(codexAgentCodingAssignment)).not.toBeNull()
     expect(codexAgentTaskFrom({ kind: "job.public.tassadar_executor_trace", tassadar: {} })).toBeNull()
@@ -208,6 +224,48 @@ describe("codex agent task recognition", () => {
       })
       expect(record?.status).toBe("rejected")
       expect(record?.blockerRefs).toEqual(["blocker.assignment.codex_agent_execution_refused"])
+    })
+  })
+
+  test("surfaces specific Codex auth and usage refusal blockers from runner errors", async () => {
+    await withState(async (state) => {
+      const revokedRunner: CodexAgentRunner = async () => {
+        throw new Error(
+          "Your access token could not be refreshed because your refresh token was revoked. Please log out and sign in again.",
+        )
+      }
+      const revoked = await executeCodexAgentAssignment(state, lease, now, {
+        codexAgentRunner: revokedRunner,
+        codexAgentProbe: readyProbe,
+      })
+      expect(revoked?.status).toBe("rejected")
+      expect(revoked?.blockerRefs).toEqual([
+        "blocker.assignment.codex_agent_execution_refused",
+        "blocker.assignment.codex_agent_credentials_revoked",
+      ])
+      expect(revoked?.resultRefs).toContain("result.public.pylon.codex_agent_task.credentials_revoked")
+      expect(JSON.stringify(revoked)).not.toContain("refresh token was revoked")
+      assertPublicProjectionSafe(revoked)
+
+      const usageLimited: CodexAgentRunner = async () => ({
+        outcome: "refused",
+        executionRefusalReason: "usage_limited",
+        turnCount: 1,
+        editedFileCount: 0,
+        commandCount: 0,
+        sessionRef: null,
+      })
+      const usage = await executeCodexAgentAssignment(state, lease, now, {
+        codexAgentRunner: usageLimited,
+        codexAgentProbe: readyProbe,
+      })
+      expect(usage?.status).toBe("rejected")
+      expect(usage?.blockerRefs).toEqual([
+        "blocker.assignment.codex_agent_execution_refused",
+        "blocker.assignment.codex_agent_usage_limited",
+      ])
+      expect(usage?.resultRefs).toContain("result.public.pylon.codex_agent_task.usage_limited")
+      assertPublicProjectionSafe(usage)
     })
   })
 
