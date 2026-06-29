@@ -328,29 +328,47 @@ export const selfServeListComposedProduct = (
     listingRef?: string
     listedAt?: string
   } = {},
-): {
-  definition: ComposedProductDefinition
-  listingReceipt: ComposedProductListingWriteReceipt
-} => ({
-  definition: {
-    ...definition,
-    listingState: 'listed',
-  },
-  listingReceipt: {
-    schema: MARKETPLACE_PRODUCT_COMPOSITION_SCHEMA,
-    promiseId: MARKETPLACE_COMPOSE_AND_LIST_PROMISE,
-    listingRef:
-      input.listingRef ??
-      `listing.public.marketplace_composed_product.${definition.productId}.${definition.definitionVersion}`,
-    assemblyRef: assembly.assemblyRef,
-    productId: definition.productId,
-    builderAttribution: assembly.builderAttribution,
-    listedAt: input.listedAt ?? currentIsoTimestamp(),
-    listingState: 'listed',
-    selfServe: true,
-    billingState: 'not_configured',
-  },
-})
+):
+  | {
+      ok: true
+      definition: ComposedProductDefinition
+      listingReceipt: ComposedProductListingWriteReceipt
+    }
+  | { ok: false; error: ComposedProductValidationError } => {
+  if (
+    assembly.productId !== definition.productId ||
+    assembly.definitionVersion !== definition.definitionVersion
+  ) {
+    return {
+      ok: false,
+      error: new ComposedProductValidationError({
+        reason: 'assembly receipt must match the composed product definition',
+      }),
+    }
+  }
+
+  return {
+    ok: true,
+    definition: {
+      ...definition,
+      listingState: 'listed',
+    },
+    listingReceipt: {
+      schema: MARKETPLACE_PRODUCT_COMPOSITION_SCHEMA,
+      promiseId: MARKETPLACE_COMPOSE_AND_LIST_PROMISE,
+      listingRef:
+        input.listingRef ??
+        `listing.public.marketplace_composed_product.${definition.productId}.${definition.definitionVersion}`,
+      assemblyRef: assembly.assemblyRef,
+      productId: definition.productId,
+      builderAttribution: assembly.builderAttribution,
+      listedAt: input.listedAt ?? currentIsoTimestamp(),
+      listingState: 'listed',
+      selfServe: true,
+      billingState: 'not_configured',
+    },
+  }
+}
 
 export const recordComposedProductInstallUse = (
   listing: ComposedProductListingWriteReceipt,

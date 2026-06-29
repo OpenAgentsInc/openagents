@@ -142,6 +142,10 @@ describe('compose-and-list product definition model (#5515)', () => {
     const listed = selfServeListComposedProduct(definition, assembly, {
       listedAt: '2026-06-29T00:01:00.000Z',
     })
+    expect(listed.ok).toBe(true)
+    if (!listed.ok) {
+      throw new Error(`expected listed product: ${listed.error.reason}`)
+    }
     expect(listed.definition.listingState).toBe('listed')
     expect(listed.listingReceipt.selfServe).toBe(true)
     expect(listed.listingReceipt.builderAttribution).toEqual(
@@ -171,6 +175,10 @@ describe('compose-and-list product definition model (#5515)', () => {
     const definition = okDefinition()
     const assembly = assembleComposedProduct(definition)
     const listed = selfServeListComposedProduct(definition, assembly)
+    expect(listed.ok).toBe(true)
+    if (!listed.ok) {
+      throw new Error(`expected listed product: ${listed.error.reason}`)
+    }
 
     const lifecycle = recordComposedProductInstallUse(listed.listingReceipt, {
       buyerRef: ' ',
@@ -178,6 +186,21 @@ describe('compose-and-list product definition model (#5515)', () => {
     expect(lifecycle.ok).toBe(false)
     if (!lifecycle.ok) {
       expect(lifecycle.error.reason).toContain('buyerRef')
+    }
+  })
+
+  test('self-serve listing requires the assembly receipt to match the definition', () => {
+    const definition = okDefinition()
+    const otherDefinition = okDefinition({
+      productId: 'prod_other_pack',
+      definitionVersion: 2,
+    })
+    const otherAssembly = assembleComposedProduct(otherDefinition)
+
+    const listed = selfServeListComposedProduct(definition, otherAssembly)
+    expect(listed.ok).toBe(false)
+    if (!listed.ok) {
+      expect(listed.error.reason).toContain('assembly receipt')
     }
   })
 })
