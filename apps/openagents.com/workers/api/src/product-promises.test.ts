@@ -523,7 +523,8 @@ describe('public product promises document', () => {
             'apps/openagents.com/workers/api/src/training-ablation-derisking-ledger.test.ts',
           ]),
           blockerRefs: expect.arrayContaining([
-            'blocker.product_promises.paid_ablation_dispatch_missing',
+            'blocker.product_promises.seeded_ablation_replication_missing',
+            'blocker.product_promises.owner_signed_green_transition_missing',
           ]),
           safeCopy: expect.stringContaining(
             '/api/public/training/ablation-derisking-ledger',
@@ -1383,7 +1384,8 @@ describe('public product promises document', () => {
     expect(ablationPromise).toMatchObject({
       state: 'planned',
       blockerRefs: [
-        'blocker.product_promises.paid_ablation_dispatch_missing',
+        'blocker.product_promises.seeded_ablation_replication_missing',
+        'blocker.product_promises.owner_signed_green_transition_missing',
       ],
       evidenceRefs: expect.arrayContaining([
         'docs/training/2026-06-20-ablation-one-delta-harness.md',
@@ -1402,14 +1404,17 @@ describe('public product promises document', () => {
     expect(ablationPromise?.blockerRefs).not.toContain(
       'blocker.product_promises.eval_suite_reproduction_missing',
     )
+    expect(ablationPromise?.blockerRefs).not.toContain(
+      'blocker.product_promises.paid_ablation_dispatch_missing',
+    )
     expect(ablationPromise?.safeCopy).toContain(
-      'retained Psion checkpoint-eval reproduction receipt',
+      'one accepted paid ablation settlement receipt',
     )
     expect(ablationPromise?.verification).toContain(
-      'zero paid ablations and zero accepted verdicts',
+      'paidAblationCount=1 and acceptedVerdictCount=1',
     )
     expect(ablationPromise?.authorityBoundary).toContain(
-      'no dispatch or spend authority',
+      'no future dispatch or spend authority',
     )
   })
 
