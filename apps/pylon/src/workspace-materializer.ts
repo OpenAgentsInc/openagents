@@ -224,14 +224,25 @@ function isTransientGitLockStderr(stderr: string): boolean {
 async function spawnGitCommand(
   args: string[],
   cwd: string,
+  signal?: AbortSignal,
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
   const proc = Bun.spawn(args, { cwd, stderr: "pipe", stdout: "pipe" })
-  const [stdout, stderr, exitCode] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ])
-  return { exitCode, stdout, stderr }
+  const abort = () => proc.kill()
+  if (signal?.aborted) {
+    abort()
+  } else {
+    signal?.addEventListener("abort", abort, { once: true })
+  }
+  try {
+    const [stdout, stderr, exitCode] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ])
+    return { exitCode, stdout, stderr }
+  } finally {
+    signal?.removeEventListener("abort", abort)
+  }
 }
 
 /**
@@ -243,19 +254,20 @@ async function spawnGitCommand(
 async function runGitCommand(
   args: string[],
   cwd: string,
+  signal?: AbortSignal,
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
-  let result = await spawnGitCommand(args, cwd)
+  let result = await spawnGitCommand(args, cwd, signal)
   for (let attempt = 1; attempt < gitCommandMaxAttempts; attempt += 1) {
     if (result.exitCode === 0 || !isTransientGitLockStderr(result.stderr)) return result
     const backoff = Math.min(gitCommandRetryBaseMs * 2 ** (attempt - 1), gitCommandRetryMaxMs)
     await sleep(backoff + Math.floor(Math.random() * gitCommandRetryBaseMs))
-    result = await spawnGitCommand(args, cwd)
+    result = await spawnGitCommand(args, cwd, signal)
   }
   return result
 }
 
-async function runQuietCommand(args: string[], cwd: string): Promise<number> {
-  return (await runGitCommand(args, cwd)).exitCode
+async function runQuietCommand(args: string[], cwd: string, signal?: AbortSignal): Promise<number> {
+  return (await runGitCommand(args, cwd, signal)).exitCode
 }
 
 async function runTextCommand(args: string[], cwd: string): Promise<{ exitCode: number; stdout: string }> {
@@ -277,8 +289,13 @@ export function workspaceCheckoutFailureReasonRef(error: unknown): string | null
   return error instanceof WorkspaceCheckoutError ? error.reasonRef : null
 }
 
-async function runCheckedCommand(args: string[], cwd: string, reasonRef?: string): Promise<void> {
-  const exitCode = await runQuietCommand(args, cwd)
+async function runCheckedCommand(
+  args: string[],
+  cwd: string,
+  reasonRef?: string,
+  signal?: AbortSignal,
+): Promise<void> {
+  const exitCode = await runQuietCommand(args, cwd, signal)
   if (exitCode !== 0) {
     if (reasonRef !== undefined) throw new WorkspaceCheckoutError(reasonRef)
     throw new Error(`command failed: ${args[0] ?? "unknown"}`)
@@ -586,14 +603,15 @@ export function detectInFlightVirtualBranchConflicts(
 export const defaultGitCheckoutRunner: WorkspaceCheckoutRunner = async (
   workingDirectory,
   checkout,
+  signal,
 ) => {
   const baseCommitSha = checkoutBaseCommitSha(checkout)
   await rm(workingDirectory, { recursive: true, force: true })
   await mkdir(workingDirectory, { recursive: true })
-  await runCheckedCommand(["git", "init"], workingDirectory, "reason.workspace_checkout.init_failed")
+  await runCheckedCommand(["git", "init"], workingDirectory, "reason.workspace_checkout.init_failed", signal)
   // Each detached checkout is isolated, but disabling auto maintenance keeps a
   // background `git gc` from ever racing a concurrent sibling materialization.
-  await disableGitAutoMaintenance(workingDirectory)
+  await disableGitAutoMaintenance(workingDirectory, signal)
   await runCheckedCommand(
     [
       "git",
@@ -604,16 +622,19 @@ export const defaultGitCheckoutRunner: WorkspaceCheckoutRunner = async (
     ],
     workingDirectory,
     "reason.workspace_checkout.remote_add_failed",
+    signal,
   )
   await runCheckedCommand(
     ["git", "fetch", "--depth", "1", "origin", baseCommitSha],
     workingDirectory,
     "reason.workspace_checkout.fetch_failed",
+    signal,
   )
   await runCheckedCommand(
     ["git", "checkout", "--detach", baseCommitSha],
     workingDirectory,
     "reason.workspace_checkout.checkout_failed",
+    signal,
   )
 }
 
@@ -624,9 +645,9 @@ export const defaultGitCheckoutRunner: WorkspaceCheckoutRunner = async (
  * sibling materialization on the shared object store. Best-effort: a failure
  * to set config never fails the checkout.
  */
-async function disableGitAutoMaintenance(gitDirectory: string): Promise<void> {
-  await runQuietCommand(["git", "config", "gc.auto", "0"], gitDirectory)
-  await runQuietCommand(["git", "config", "maintenance.auto", "false"], gitDirectory)
+async function disableGitAutoMaintenance(gitDirectory: string, signal?: AbortSignal): Promise<void> {
+  await runQuietCommand(["git", "config", "gc.auto", "0"], gitDirectory, signal)
+  await runQuietCommand(["git", "config", "maintenance.auto", "false"], gitDirectory, signal)
 }
 
 /**
