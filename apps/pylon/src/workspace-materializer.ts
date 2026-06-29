@@ -45,6 +45,7 @@ export type GitCheckoutWorkspace = {
 export type WorkspaceCheckoutRunner = (
   workingDirectory: string,
   checkout: GitCheckoutWorkspace,
+  signal?: AbortSignal,
 ) => Promise<void>
 
 export type MaterializedWorkspace = {
@@ -641,16 +642,60 @@ export async function materializeGitCheckoutWorkspace(input: {
   leaseRef: string
   refPrefix: string
 }): Promise<MaterializedWorkspace> {
+  return Effect.runPromise(Effect.scoped(materializeGitCheckoutWorkspaceEffect(input)))
+}
+
+/**
+ * Effect-native workspace materialization pattern (#7013): acquire the local
+ * workspace directory in Scope, run the checkout with an AbortSignal, and keep
+ * the finalizer armed until checkout has fully completed. Interruption or a
+ * checkout failure removes the partially-created assignment directory.
+ */
+export function materializeGitCheckoutWorkspaceEffect(input: {
+  cacheRoot: string
+  checkout: GitCheckoutWorkspace
+  checkoutRunner?: WorkspaceCheckoutRunner
+  leaseRef: string
+  refPrefix: string
+}) {
   const workspaceRef = stableRef(input.refPrefix, input.leaseRef)
   const workingDirectory = join(input.cacheRoot, workspaceRef)
-  await mkdir(input.cacheRoot, { recursive: true })
-  await (input.checkoutRunner ?? defaultGitCheckoutRunner)(workingDirectory, input.checkout)
-  return {
+  const materialized = {
     cleanupRef: stableRef("cleanup.pylon.workspace", workspaceRef),
     sourceRef: checkoutSourceRef(input.checkout),
     workingDirectory,
     workspaceRef,
   }
+  let checkoutCompleted = false
+
+  return Effect.gen(function* () {
+    yield* Effect.acquireRelease(
+      Effect.tryPromise({
+        try: () => mkdir(input.cacheRoot, { recursive: true }).then(() => materialized),
+        catch: (error) => error,
+      }),
+      (workspace) =>
+        checkoutCompleted
+          ? Effect.void
+          : Effect.promise(() =>
+              removeMaterializedWorkspace({
+                cacheRoot: input.cacheRoot,
+                workingDirectory: workspace.workingDirectory,
+              }).catch(() => undefined),
+            ),
+    )
+    yield* Effect.tryPromise({
+      try: (signal) =>
+        (input.checkoutRunner ?? defaultGitCheckoutRunner)(
+          workingDirectory,
+          input.checkout,
+          signal,
+        ),
+      catch: (error) => error,
+    })
+    checkoutCompleted = true
+    return materialized
+  })
 }
 
 /**
