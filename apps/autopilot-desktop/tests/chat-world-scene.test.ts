@@ -186,6 +186,44 @@ describe("projectChatWorldPylonScene", () => {
     expect(scene.growth.tier).toBeGreaterThanOrEqual(4)
   })
 
+  test("per-Pylon growth tiers come from public cumulative settled sats", () => {
+    const scene = projectChatWorldPylonScene(
+      snapshot({
+        pylonsOnlineNow: 3,
+        recentPylons: [
+          {
+            nostrPubkeyShort: "zero",
+            onlineNow: true,
+            cumulativeSettledSats: 0,
+          } satisfies LiveRecentPylon,
+          {
+            nostrPubkeyShort: "missing",
+            onlineNow: true,
+          } satisfies LiveRecentPylon,
+          {
+            nostrPubkeyShort: "earned",
+            onlineNow: true,
+            cumulativeSettledSats: 1_000_000,
+          } satisfies LiveRecentPylon,
+        ] as never,
+      }),
+    )
+
+    expect(scene.nodes.map((node) => node.growth.settledSats)).toEqual([
+      0,
+      0,
+      1_000_000,
+    ])
+    expect(scene.nodes[0]!.growth.tier).toBe(0)
+    expect(scene.nodes[0]!.growth.scale).toBe(1)
+    expect(scene.nodes[0]!.growth.brightness).toBe(0)
+    expect(scene.nodes[1]!.growth.tier).toBe(0)
+    expect(scene.nodes[2]!.growth.tier).toBeGreaterThan(scene.nodes[0]!.growth.tier)
+    expect(scene.nodes[2]!.growth.scale).toBeGreaterThan(scene.nodes[0]!.growth.scale)
+    expect(scene.nodes[2]!.growth.facets).toBeGreaterThan(scene.nodes[0]!.growth.facets)
+    expect(scene.nodes[2]!.growth.brightness).toBeGreaterThan(scene.nodes[0]!.growth.brightness)
+  })
+
   test("empty recentPylons with zero online → empty zero-state", () => {
     expect(projectChatWorldPylonScene(snapshot({ pylonsOnlineNow: 0 })).empty).toBe(true)
   })
