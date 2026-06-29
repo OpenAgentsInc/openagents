@@ -98,4 +98,65 @@ describe("Khala Desktop Apple FM sidecar host", () => {
       rmSync(resourcesDir, { force: true, recursive: true })
     }
   })
+
+  test("restarts the packaged helper after a failed child exit", async () => {
+    const resourcesDir = mkdtempSync(join(tmpdir(), "khala-apple-fm-sidecar-"))
+    const helperPath = join(resourcesDir, APPLE_FM_BRIDGE_RESOURCES_SUBPATH)
+    mkdirSync(dirname(helperPath), { recursive: true })
+    writeFileSync(helperPath, "#!/usr/bin/env bash\n")
+    chmodSync(helperPath, 0o755)
+
+    let firstExit: ((exitCode: number) => void) | null = null
+    const spawned: Array<ReadonlyArray<string>> = []
+    const host = createAppleFmSidecarHost({
+      arch: "arm64",
+      env: { PYLON_CONTROL_TOKEN: "secret-control-token-1234" },
+      fetchFn: (async () =>
+        Response.json({
+          ok: true,
+          result: {
+            available: true,
+            status: "ready",
+            advertisedCapabilities: [APPLE_FM_CAPABILITY],
+            supervisor: {
+              health: "running",
+              phase: "ready",
+              supervised: true,
+            },
+          },
+        })) as unknown as typeof fetch,
+      now: () => fixedNow,
+      platform: "darwin",
+      resourcesDir,
+      spawn: ((command: ReadonlyArray<string>) => {
+        spawned.push([...command])
+        return {
+          exited:
+            spawned.length === 1
+              ? new Promise<number>((resolve) => {
+                  firstExit = resolve
+                })
+              : new Promise<number>(() => {}),
+          kill() {},
+        }
+      }) as unknown as typeof Bun.spawn,
+    })
+
+    try {
+      await host.readiness()
+      expect(spawned).toHaveLength(1)
+
+      firstExit?.(1)
+      await Promise.resolve()
+      await host.readiness()
+
+      expect(spawned).toEqual([
+        [helperPath, "--port", "11435"],
+        [helperPath, "--port", "11435"],
+      ])
+    } finally {
+      host.stop()
+      rmSync(resourcesDir, { force: true, recursive: true })
+    }
+  })
 })

@@ -440,7 +440,7 @@ describe('public product promises document', () => {
       /latest stays 0\.2\.5|only published, installable Pylon|release candidate, not stable 0\.3\.0|Pylon v1\.0 is present in the monorepo as a release candidate/i,
     )
     expect(currentCopy).toContain('Pylon v1.0 has a stable source cut')
-    expect(currentCopy).toContain('Registry 2026-06-29.2')
+    expect(currentCopy).toContain('Registry 2026-06-29.3')
     expect(currentCopy).toContain('flips NO promise state')
     expect(currentCopy).toContain('Khala Desktop now carries source-level')
     expect(currentCopy).toContain('maxStalenessSeconds:0')
@@ -1156,7 +1156,7 @@ describe('public product promises document', () => {
           audience: expect.arrayContaining(['user', 'agent', 'operator']),
           blockerRefs: expect.arrayContaining([
             'blocker.product_promises.local_apple_fm_signed_installer_recut_missing',
-            'blocker.product_promises.local_apple_fm_helper_supervision_missing',
+            'blocker.product_promises.local_apple_fm_from_install_helper_supervision_smoke_missing',
           ]),
           evidenceRefs: expect.arrayContaining([
             'docs/apple-fm/2026-06-15-current-apple-fm-electrobun-desktop-audit.md',
@@ -1218,9 +1218,16 @@ describe('public product promises document', () => {
     expect(localAppleFmPromise?.blockerRefs).not.toContain(
       'blocker.product_promises.local_apple_fm_admitted_mac_smoke_missing',
     )
+    expect(localAppleFmPromise?.blockerRefs).not.toContain(
+      'blocker.product_promises.local_apple_fm_helper_supervision_missing',
+    )
     expect(localAppleFmPromise?.safeCopy).toContain('Khala Desktop')
+    expect(localAppleFmPromise?.safeCopy).toContain('failed child exit')
     expect(localAppleFmPromise?.verification).toContain(
       'source-level packaging/readiness',
+    )
+    expect(localAppleFmPromise?.verification).toContain(
+      'restart after a failed child exit',
     )
     const mondayTrainingPromise = decoded.promises.find(
       promise =>
