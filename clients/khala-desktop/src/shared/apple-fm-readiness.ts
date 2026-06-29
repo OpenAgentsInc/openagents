@@ -154,7 +154,8 @@ export function buildKhalaAppleFmReadiness(
     pylon.available &&
     pylon.status === "ready" &&
     pylon.advertisedCapabilities.includes(pylon.capability) &&
-    pylon.blockerRefs.length === 0
+    pylon.blockerRefs.length === 0 &&
+    (pylon.supervisor?.blockerRefs.length ?? 0) === 0
   const helperUsable = input.helperFound && input.helperExecutable !== false
 
   const blockers = new Set<string>()

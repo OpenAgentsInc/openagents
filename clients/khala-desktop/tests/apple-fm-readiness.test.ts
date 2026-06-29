@@ -47,6 +47,34 @@ describe("khala desktop Apple FM readiness", () => {
     expect(readiness.usageTruth).toBe("estimated")
   })
 
+  test("fails closed when the Pylon supervisor reports blockers", () => {
+    const readiness = buildKhalaAppleFmReadiness({
+      platform: { platform: "darwin", arch: "arm64" },
+      helperFound: true,
+      helperExecutable: true,
+      helperLaunchState: "running",
+      pylonControlConfigured: true,
+      pylonStatus: {
+        available: true,
+        status: "ready",
+        advertisedCapabilities: [APPLE_FM_CAPABILITY],
+        blockerRefs: [],
+        supervisor: {
+          health: "running",
+          phase: "ready",
+          supervised: true,
+          blockerRefs: ["blocker.pylon.apple_fm.bridge_unreachable"],
+        },
+      },
+      observedAt: "2026-06-29T00:00:00.000Z",
+    })
+
+    expect(readiness.available).toBe(false)
+    expect(readiness.state).toBe("running")
+    expect(readiness.blockerRefs).toContain("blocker.khala_desktop.apple_fm.pylon_not_ready")
+    expect(readiness.blockerRefs).toContain("blocker.pylon.apple_fm.bridge_unreachable")
+  })
+
   test("keeps Pylon status public-safe and omits loopback paths and tokens", () => {
     const status = sanitizePylonAppleFmStatus({
       available: false,
