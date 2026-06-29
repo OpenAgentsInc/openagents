@@ -1,14 +1,16 @@
 import { describe, expect, test } from "bun:test"
 import { existsSync } from "node:fs"
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
+import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
+import { Effect, Fiber } from "effect"
 import {
   checkoutBaseCommitSha,
   checkoutSourceRef,
   cleanupOldestMaterializedWorkspaces,
   gitCheckoutWorkspaceFrom,
   materializeGitCheckoutWorkspace,
+  materializeGitCheckoutWorkspaceEffect,
   materializeGitCheckoutWorkspaceWithLease,
   removeMaterializedWorkspace,
   type GitCheckoutWorkspace,
@@ -260,6 +262,55 @@ describe("materializeGitCheckoutWorkspace", () => {
       expect(first.workingDirectory).not.toBe(second.workingDirectory)
       expect(existsSync(first.workingDirectory)).toBe(true)
       expect(existsSync(second.workingDirectory)).toBe(true)
+    } finally {
+      await rm(cacheRoot, { recursive: true, force: true })
+    }
+  })
+
+  test("Effect-scoped materialization removes a partial workspace on interruption", async () => {
+    const cacheRoot = await mkdtemp(join(tmpdir(), "pylon-workspace-cache-"))
+    let releaseStarted: (() => void) | undefined
+    const started = new Promise<void>((resolve) => {
+      releaseStarted = resolve
+    })
+    let abortObserved = false
+    const interruptedRunner: WorkspaceCheckoutRunner = async (workingDirectory, _checkout, signal) => {
+      await mkdir(workingDirectory, { recursive: true })
+      await writeFile(join(workingDirectory, "partial"), "started\n")
+      releaseStarted?.()
+      await new Promise<void>((_resolve, reject) => {
+        signal?.addEventListener(
+          "abort",
+          () => {
+            abortObserved = true
+            reject(new Error("checkout interrupted"))
+          },
+          { once: true },
+        )
+      })
+    }
+
+    try {
+      await Effect.runPromise(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const fiber = yield* Effect.forkScoped(
+              materializeGitCheckoutWorkspaceEffect({
+                cacheRoot,
+                checkout: validCheckout,
+                checkoutRunner: interruptedRunner,
+                leaseRef: "lease.public.workspace.interrupted",
+                refPrefix: "workspace.pylon.codex_agent_task",
+              }),
+            )
+            yield* Effect.promise(() => started)
+            yield* Fiber.interrupt(fiber)
+          }),
+        ),
+      )
+
+      expect(abortObserved).toBe(true)
+      expect((await readdir(cacheRoot)).filter((entry) => entry.startsWith("workspace.pylon."))).toEqual([])
     } finally {
       await rm(cacheRoot, { recursive: true, force: true })
     }
