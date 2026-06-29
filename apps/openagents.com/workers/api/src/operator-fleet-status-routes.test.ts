@@ -290,4 +290,21 @@ describe('operator fleet status route', () => {
     expect(log.some(sql => sql.includes('owner_agent_user_id = ?'))).toBe(true)
     expect(log.some(sql => sql.includes('AND user_id = ?'))).toBe(true)
   })
+
+  test('keeps the legacy fleet status path admin-token only', async () => {
+    clearOperatorFleetStatusCacheForTests()
+    const routes = makeOperatorFleetStatusRoutes({
+      authenticateAgentToken: async () => ({ userId: 'agent_owner_public' }),
+      currentIsoTimestamp: () => '2026-06-27T18:41:00.000Z',
+      requireAdminApiToken: async () => false,
+    })
+
+    const response = await routes.handleOperatorFleetStatusApi(
+      request('GET', '/api/operator/fleet/status'),
+      { OPENAGENTS_DB: fakeDb([]) },
+    )
+
+    expect(response.status).toBe(401)
+    expect(response.headers.get('cache-control')).toBe('no-store')
+  })
 })

@@ -478,9 +478,14 @@ const authorizeFleetRead = async <Bindings extends OperatorFleetStatusEnv>(
   dependencies: OperatorFleetStatusDependencies<Bindings>,
   request: Request,
   env: Bindings,
+  allowAgentToken: boolean,
 ): Promise<OperatorFleetReadScope | null> => {
   if (await dependencies.requireAdminApiToken(request, env)) {
     return { kind: 'admin' }
+  }
+
+  if (!allowAgentToken) {
+    return null
   }
 
   const agent = await dependencies.authenticateAgentToken?.(request, env)
@@ -504,7 +509,14 @@ export const makeOperatorFleetStatusRoutes = <
       return methodNotAllowed(['GET'])
     }
 
-    const scope = await authorizeFleetRead(dependencies, request, env)
+    const allowAgentToken =
+      new URL(request.url).pathname === OPERATOR_FLEET_STATE_PATH
+    const scope = await authorizeFleetRead(
+      dependencies,
+      request,
+      env,
+      allowAgentToken,
+    )
     if (scope === null) {
       return noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
     }
