@@ -1,7 +1,7 @@
 import { jsonResponse } from '@openagentsinc/sync-worker'
 
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
-import { parseJsonStringArray } from './json-boundary'
+import { parseJsonRecord, parseJsonStringArray } from './json-boundary'
 import { openAgentsDatabase } from './runtime'
 import { currentIsoTimestamp } from './runtime-primitives'
 
@@ -43,6 +43,20 @@ type AssignmentRow = Readonly<{
   created_at: string
   updated_at: string
   lease_expires_at: string
+}>
+
+type AssignmentProgressEventRow = Readonly<{
+  assignment_ref: string
+  created_at: string
+  event_body_json: string
+  event_kind: string
+  event_ref: string
+  status: string
+}>
+
+type AssignmentTokenRow = Readonly<{
+  task_ref: string
+  total_tokens: number | null
 }>
 
 type AlertRow = Readonly<{
@@ -110,6 +124,21 @@ const millisBetween = (startIso: string, endIso: string): number => {
     : 0
 }
 
+const optionalNumber = (value: unknown): number | null =>
+  typeof value === 'number' && Number.isFinite(value) ? value : null
+
+const progressEventFromRow = (row: AssignmentProgressEventRow) => {
+  const body = parseJsonRecord(row.event_body_json) ?? {}
+  return {
+    eventKind: row.event_kind,
+    eventRef: row.event_ref,
+    observedAt: row.created_at,
+    progressPercent: optionalNumber(body.progressPercent),
+    progressRefs: parseJsonStringArray(JSON.stringify(body.progressRefs ?? [])),
+    status: row.status,
+  }
+}
+
 const safeAll = async <T>(
   db: D1Database,
   sql: string,
@@ -163,6 +192,8 @@ const buildFleetStatusSnapshot = async (
     registrations,
     assignments,
     providerAccounts,
+    progressEvents,
+    assignmentTokenRows,
     latestAlert,
     today,
     yesterday,
@@ -207,6 +238,31 @@ const buildFleetStatusSnapshot = async (
           CASE provider WHEN 'chatgpt_codex' THEN 0 ELSE 1 END,
           provider_account_ref ASC
         LIMIT 100`,
+      ...ownerBindings,
+    ),
+    safeAll<AssignmentProgressEventRow>(
+      db,
+      `SELECT assignment_ref, created_at, event_body_json, event_kind,
+              event_ref, status
+         FROM pylon_api_events
+        WHERE archived_at IS NULL
+          AND assignment_ref IS NOT NULL
+          ${scope.kind === 'agent' ? 'AND owner_agent_user_id = ?' : ''}
+        ORDER BY created_at DESC
+        LIMIT 100`,
+      ...ownerBindings,
+    ),
+    safeAll<AssignmentTokenRow>(
+      db,
+      `SELECT task_ref, COALESCE(SUM(total_tokens), 0) AS total_tokens
+         FROM token_usage_events
+        WHERE task_ref IS NOT NULL
+          AND demand_kind = 'own_capacity'
+          AND demand_source = 'khala_coding_delegation'
+          ${scope.kind === 'agent' ? 'AND actor_user_id = ?' : ''}
+        GROUP BY task_ref
+        ORDER BY MAX(observed_at) DESC
+        LIMIT 200`,
       ...ownerBindings,
     ),
     safeFirst<AlertRow>(
@@ -284,6 +340,19 @@ const buildFleetStatusSnapshot = async (
   const activeAssignments = assignments.filter(row =>
     row.state === 'accepted' || row.state === 'running' || row.state === 'proof_submitted',
   )
+  const latestProgressByAssignment = new Map<
+    string,
+    ReturnType<typeof progressEventFromRow>
+  >()
+  for (const row of progressEvents) {
+    if (!latestProgressByAssignment.has(row.assignment_ref)) {
+      latestProgressByAssignment.set(row.assignment_ref, progressEventFromRow(row))
+    }
+  }
+  const tokensByAssignment = new Map<string, number>()
+  for (const row of assignmentTokenRows) {
+    tokensByAssignment.set(row.task_ref, Math.max(0, Math.trunc(row.total_tokens ?? 0)))
+  }
   const accountLedger = providerAccounts.map(row => {
     const cooldownExpiresAt =
       row.cooldown_until !== null && row.cooldown_until > nowIso
@@ -369,24 +438,27 @@ const buildFleetStatusSnapshot = async (
       busySlots,
       queuedSlots,
       spread: fleetAccounts,
-      activeAssignments: assignments.map(row => ({
-        assignmentRef: row.assignment_ref,
-        pylonRef: row.pylon_ref,
-        jobKind: row.job_kind,
-        state: row.state,
-        elapsedMs: millisBetween(row.created_at, nowIso),
-        phase:
-          row.state === 'proof_submitted'
-            ? 'proof'
-            : row.state === 'running' || row.state === 'accepted'
-              ? 'running'
-              : 'queued',
-        tokensSoFar: null,
-        lastProgressEvent: null,
-        lastLog: null,
-        updatedAt: row.updated_at,
-        leaseExpiresAt: row.lease_expires_at,
-      })),
+      activeAssignments: assignments.map(row => {
+        const progressEvent = latestProgressByAssignment.get(row.assignment_ref) ?? null
+        return {
+          assignmentRef: row.assignment_ref,
+          pylonRef: row.pylon_ref,
+          jobKind: row.job_kind,
+          state: row.state,
+          elapsedMs: millisBetween(row.created_at, nowIso),
+          phase:
+            row.state === 'proof_submitted'
+              ? 'proof'
+              : row.state === 'running' || row.state === 'accepted'
+                ? 'running'
+                : 'queued',
+          tokensSoFar: tokensByAssignment.get(row.assignment_ref) ?? 0,
+          lastProgressEvent: progressEvent,
+          lastLog: null,
+          updatedAt: row.updated_at,
+          leaseExpiresAt: row.lease_expires_at,
+        }
+      }),
       inFlightAssignments: assignments.map(row => ({
         assignmentRef: row.assignment_ref,
         pylonRef: row.pylon_ref,
@@ -397,7 +469,12 @@ const buildFleetStatusSnapshot = async (
         leaseExpiresAt: row.lease_expires_at,
       })),
       activeAssignmentCount: activeAssignments.length,
-      sourceRefs: ['d1:pylon_api_registrations', 'd1:pylon_api_assignments'],
+      sourceRefs: [
+        'd1:pylon_api_registrations',
+        'd1:pylon_api_assignments',
+        'd1:pylon_api_events',
+        'd1:token_usage_events',
+      ],
     },
     accounts: {
       status: accountLedger,

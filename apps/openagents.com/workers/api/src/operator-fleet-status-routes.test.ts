@@ -91,6 +91,22 @@ const rowsForSql = (sql: string): ReadonlyArray<Record<string, unknown>> => {
     ]
   }
 
+  if (sql.includes('FROM pylon_api_events')) {
+    return [
+      {
+        assignment_ref: 'assignment.public.issue_6427',
+        created_at: '2026-06-27T18:40:30.000Z',
+        event_body_json: JSON.stringify({
+          progressPercent: 65,
+          progressRefs: ['progress.public.assignment.testing'],
+        }),
+        event_kind: 'assignment_progress',
+        event_ref: 'event.public.assignment.issue_6427.progress.testing',
+        status: 'ok',
+      },
+    ]
+  }
+
   if (sql.includes('FROM fleet_alerts')) {
     return [
       {
@@ -100,6 +116,15 @@ const rowsForSql = (sql: string): ReadonlyArray<Record<string, unknown>> => {
         detected_at: '2026-06-27T18:39:30.000Z',
         queued_assignments: 0,
         reason_ref: 'reason.public.fleet.no_token_burn',
+      },
+    ]
+  }
+
+  if (sql.includes('task_ref')) {
+    return [
+      {
+        task_ref: 'assignment.public.issue_6427',
+        total_tokens: 4096,
       },
     ]
   }
@@ -191,7 +216,7 @@ describe('operator fleet status route', () => {
     expect(first.headers.get('x-openagents-cache')).toBe('miss')
     expect(second.headers.get('x-openagents-cache')).toBe('hit')
     expect(log.length).toBeGreaterThan(0)
-    expect(log.length).toBe(9)
+    expect(log.length).toBe(11)
     expect(cachedBody).toEqual(body)
     expect(body).toMatchObject({
       authority: {
@@ -209,9 +234,16 @@ describe('operator fleet status route', () => {
           {
             assignmentRef: 'assignment.public.issue_6427',
             elapsedMs: 660000,
-            lastProgressEvent: null,
+            lastProgressEvent: {
+              eventKind: 'assignment_progress',
+              eventRef: 'event.public.assignment.issue_6427.progress.testing',
+              observedAt: '2026-06-27T18:40:30.000Z',
+              progressPercent: 65,
+              progressRefs: ['progress.public.assignment.testing'],
+              status: 'ok',
+            },
             phase: 'running',
-            tokensSoFar: null,
+            tokensSoFar: 4096,
           },
         ],
         activeSlots: 3,
@@ -287,8 +319,11 @@ describe('operator fleet status route', () => {
 
     expect(response.status).toBe(200)
     expect(body.fleet.sourceRefs).toContain('d1:pylon_api_registrations')
+    expect(body.fleet.sourceRefs).toContain('d1:pylon_api_events')
+    expect(body.fleet.sourceRefs).toContain('d1:token_usage_events')
     expect(log.some(sql => sql.includes('owner_agent_user_id = ?'))).toBe(true)
     expect(log.some(sql => sql.includes('AND user_id = ?'))).toBe(true)
+    expect(log.some(sql => sql.includes('AND actor_user_id = ?'))).toBe(true)
   })
 
   test('keeps the legacy fleet status path admin-token only', async () => {
