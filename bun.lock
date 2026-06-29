@@ -384,6 +384,17 @@
         "typescript": "catalog:",
       },
     },
+    "clients/openagents-desktop": {
+      "name": "@openagentsinc/desktop",
+      "version": "0.0.1",
+      "dependencies": {
+        "electrobun": "1.18.1",
+      },
+      "devDependencies": {
+        "bun-types": "^1.0.0",
+        "typescript": "catalog:",
+      },
+    },
     "packages/agent-runtime-schema": {
       "name": "@openagentsinc/agent-runtime-schema",
       "version": "0.1.0",
@@ -944,6 +955,8 @@
     "@openagentsinc/blueprint-contracts": ["@openagentsinc/blueprint-contracts@workspace:packages/blueprint-contracts"],
 
     "@openagentsinc/design-tokens": ["@openagentsinc/design-tokens@workspace:packages/design-tokens"],
+
+    "@openagentsinc/desktop": ["@openagentsinc/desktop@workspace:clients/openagents-desktop"],
 
     "@openagentsinc/durable-stream": ["@openagentsinc/durable-stream@workspace:packages/durable-stream"],
 
