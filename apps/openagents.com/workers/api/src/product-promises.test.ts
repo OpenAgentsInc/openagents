@@ -398,8 +398,7 @@ describe('public product promises document', () => {
     )
     expect(composeAndListPromise?.blockerRefs).toEqual(
       expect.arrayContaining([
-        'blocker.product_promises.marketplace_composition_runtime_unbuilt',
-        'blocker.product_promises.marketplace_self_serve_listing_write_install_lifecycle_unbuilt',
+        'blocker.product_promises.marketplace_live_durable_self_serve_listing_install_lifecycle_missing',
         'blocker.product_promises.marketplace_billing_settlement_missing',
       ]),
     )
@@ -407,7 +406,7 @@ describe('public product promises document', () => {
       'route:/api/public/marketplace/composed-products',
     )
     expect(composeAndListPromise?.safeCopy).toContain(
-      'public read-only listing/discovery projection',
+      'injected assembly/list/install/use lifecycle store',
     )
     const agenticNpmPromise = decoded.promises.find(
       promise =>
@@ -915,12 +914,12 @@ describe('public product promises document', () => {
           promiseId: 'marketplace.compose_and_list_products.v1',
           state: 'planned',
           blockerRefs: expect.arrayContaining([
-            'blocker.product_promises.marketplace_composition_runtime_unbuilt',
-            'blocker.product_promises.marketplace_self_serve_listing_write_install_lifecycle_unbuilt',
+            'blocker.product_promises.marketplace_live_durable_self_serve_listing_install_lifecycle_missing',
             'blocker.product_promises.marketplace_billing_settlement_missing',
           ]),
           evidenceRefs: expect.arrayContaining([
             'apps/openagents.com/workers/api/src/marketplace-product-composition.ts',
+            'apps/openagents.com/workers/api/src/marketplace-product-composition.test.ts',
             'apps/openagents.com/workers/api/src/marketplace-composition-routes.ts',
             'route:/api/public/marketplace/composed-products',
           ]),

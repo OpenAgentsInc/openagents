@@ -3795,7 +3795,7 @@ export const publicProductPromisesDocument = () => {
         claim:
           'Agents and humans build their own products out of the OpenAgents Cloud primitives and open markets, then list those products for sale in the OpenAgents marketplace.',
         safeCopy:
-          'Compose-your-own-product-and-list-it-for-sale is the Episode 239 marketplace vision (docs/transcripts/239.md), and it is roadmap. A typed product-definition scaffold and public read-only listing/discovery projection exist at GET /api/public/marketplace/composed-products; the route is inert, planned-state, and empty by default unless injected/flag-armed. Adjacent planned lanes exist — the agentic-npm module registry (marketplace.agentic_npm_module_registry.v1) and WASM plugins (marketplace.wasm_plugins.v1) — but there is no live composition runtime that provisions primitives into a buyable product, no self-serve listing write/install/use lifecycle, no marketplace billing, attribution, rev-share, or settlement. Nobody has composed a product from the primitives and sold it through OpenAgents.',
+          'Compose-your-own-product-and-list-it-for-sale is the Episode 239 marketplace vision (docs/transcripts/239.md), and it is roadmap. A typed product-definition scaffold, injected assembly/list/install/use lifecycle store, builder attribution ref, and public read-only listing/discovery projection exist at GET /api/public/marketplace/composed-products; the route is inert, planned-state, and empty by default unless injected/flag-armed. Adjacent planned lanes exist — the agentic-npm module registry (marketplace.agentic_npm_module_registry.v1) and WASM plugins (marketplace.wasm_plugins.v1) — but there is no live durable self-serve write/install route that provisions primitives into a buyable product, no marketplace billing, rev-share, or settlement. Nobody has composed a product from the primitives and sold it through OpenAgents.',
         unsafeCopy:
           'Do not claim users or agents can build a live product from the primitives and list it for sale today, that an OpenAgents product marketplace is live, or that composed products are buyable, installable, fulfillable, billable, settled, or revenue-bearing. Do not present the inert read-only listing scaffold or planned module/plugin lanes as a live compose-and-sell marketplace.',
         evidenceRefs: [
@@ -3806,18 +3806,18 @@ export const publicProductPromisesDocument = () => {
           'promise:cloud.primitives_suite.v1',
           'promise:markets.open_protocol_markets.v1',
           'apps/openagents.com/workers/api/src/marketplace-product-composition.ts',
+          'apps/openagents.com/workers/api/src/marketplace-product-composition.test.ts',
           'apps/openagents.com/workers/api/src/marketplace-composition-routes.ts',
           'route:/api/public/marketplace/composed-products',
         ],
         blockerRefs: [
-          'blocker.product_promises.marketplace_composition_runtime_unbuilt',
-          'blocker.product_promises.marketplace_self_serve_listing_write_install_lifecycle_unbuilt',
+          'blocker.product_promises.marketplace_live_durable_self_serve_listing_install_lifecycle_missing',
           'blocker.product_promises.marketplace_billing_settlement_missing',
         ],
         verification:
-          'Planned until a composed product can be assembled from primitives, self-serve listed, discovered, installed/used by a buyer, and produce a dereferenceable paid receipt with attribution and rev-share to the builder. The current route proves only the inert typed definition + read-only listing/discovery scaffold. Per proof.demand_provenance.v1, an internally-built or injected listing is plumbing proof, not market proof.',
+          'Planned until a composed product can be assembled from primitives through a live durable self-serve route, listed, discovered, installed/used by a buyer, and produce a dereferenceable paid receipt with attribution and rev-share to the builder. The current code proves only the inert typed definition, injected assembly/list/install/use lifecycle scaffold, builder attribution ref, and read-only listing/discovery projection. Per proof.demand_provenance.v1, an internally-built or injected listing is plumbing proof, not market proof.',
         authorityBoundary:
-          'A compose-and-list vision and read-only listing scaffold grant no live composition runtime, self-serve listing write, install/use, fulfillment, billing, rev-share, payout, or public-marketplace-claim authority.',
+          'A compose-and-list vision, injected lifecycle scaffold, and read-only listing projection grant no live durable self-serve route, fulfillment, billing, rev-share, payout, settlement, or public-marketplace-claim authority.',
       },
       {
         ...basePromiseFields,

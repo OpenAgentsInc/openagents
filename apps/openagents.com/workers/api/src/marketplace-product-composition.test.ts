@@ -3,13 +3,19 @@ import { describe, expect, test } from 'vitest'
 import {
   MARKETPLACE_COMPOSE_AND_LIST_PROMISE,
   MARKETPLACE_PRODUCT_COMPOSITION_SCHEMA,
+  assembleComposedProduct,
   type ComposedProductDefinition,
   buildComposedProductDefinition,
+  composedProductBuilderAttributionRef,
   composedProductMonetizableLayers,
   composedProductPrimitives,
+  installComposedProduct,
   listComposedProducts,
+  makeInMemoryMarketplaceCompositionLifecycleStore,
   makeInMemoryComposedProductListingStore,
+  recordComposedProductUse,
   readComposedProduct,
+  selfServeListComposedProduct,
 } from './marketplace-product-composition'
 
 const okDefinition = (
@@ -114,6 +120,119 @@ describe('compose-and-list product definition model (#5515)', () => {
       { layer: 'inference', capabilityRef: 'inference.gateway.v1' },
       { layer: 'sandbox', capabilityRef: 'cloud.sandbox.v1' },
     ])
+  })
+
+  test('assembles a composed product with builder attribution and no payment authority', () => {
+    const definition = okDefinition({
+      productId: 'prod_alpha',
+      definitionVersion: 2,
+      builderRef: 'agent:builder',
+    })
+    const assembly = assembleComposedProduct(definition, {
+      assemblyId: 'assembly_1',
+      assembledAt: '2026-06-29T00:00:00.000Z',
+    })
+
+    expect(assembly).toMatchObject({
+      assemblyId: 'assembly_1',
+      productId: 'prod_alpha',
+      definitionVersion: 2,
+      builderRef: 'agent:builder',
+      builderAttributionRef:
+        'attribution.marketplace.composed_product.agent:builder.prod_alpha.v2',
+      componentRefs: definition.components,
+      billingAuthority: false,
+      settlementAuthority: false,
+    })
+    expect(composedProductBuilderAttributionRef(definition)).toBe(
+      assembly.builderAttributionRef,
+    )
+  })
+})
+
+describe('compose-and-list self-serve lifecycle scaffold (#6882)', () => {
+  test('persists listing, install, and use lifecycle with builder attribution', () => {
+    const store = makeInMemoryMarketplaceCompositionLifecycleStore()
+    const definition = okDefinition({
+      productId: 'prod_self_serve',
+      builderRef: 'agent:builder',
+      listingState: 'draft',
+    })
+
+    const listing = selfServeListComposedProduct(store, {
+      definition,
+      listingId: 'listing_1',
+      assemblyId: 'assembly_1',
+      listedAt: '2026-06-29T00:00:00.000Z',
+    })
+
+    expect(listing.definition.listingState).toBe('listed')
+    expect(store.listListings().map(record => record.listingId)).toEqual([
+      'listing_1',
+    ])
+    expect(listing.assembly.builderAttributionRef).toBe(
+      'attribution.marketplace.composed_product.agent:builder.prod_self_serve.v1',
+    )
+    expect(listing.assembly.billingAuthority).toBe(false)
+    expect(listing.assembly.settlementAuthority).toBe(false)
+
+    const installed = installComposedProduct(store, {
+      listingId: 'listing_1',
+      buyerRef: 'agent:buyer',
+      installId: 'install_1',
+      installedAt: '2026-06-29T00:01:00.000Z',
+    })
+
+    expect(installed.ok).toBe(true)
+    if (!installed.ok) {
+      throw new Error(installed.error.reason)
+    }
+    expect(installed.install).toMatchObject({
+      installId: 'install_1',
+      productId: 'prod_self_serve',
+      buyerRef: 'agent:buyer',
+      builderRef: 'agent:builder',
+      builderAttributionRef: listing.assembly.builderAttributionRef,
+      state: 'installed',
+      useCount: 0,
+      billingAuthority: false,
+      settlementAuthority: false,
+    })
+
+    const used = recordComposedProductUse(store, {
+      installId: 'install_1',
+      usedAt: '2026-06-29T00:02:00.000Z',
+    })
+
+    expect(used.ok).toBe(true)
+    if (!used.ok) {
+      throw new Error(used.error.reason)
+    }
+    expect(used.install.state).toBe('used')
+    expect(used.install.useCount).toBe(1)
+    expect(used.install.lastUsedAt).toBe('2026-06-29T00:02:00.000Z')
+    expect(store.listInstalls()).toEqual([used.install])
+  })
+
+  test('rejects install/use lifecycle references that were not self-serve listed', () => {
+    const store = makeInMemoryMarketplaceCompositionLifecycleStore()
+
+    const missingListing = installComposedProduct(store, {
+      listingId: 'missing',
+      buyerRef: 'agent:buyer',
+    })
+    expect(missingListing.ok).toBe(false)
+    if (!missingListing.ok) {
+      expect(missingListing.error.reason).toContain('listingId')
+    }
+
+    const missingInstall = recordComposedProductUse(store, {
+      installId: 'missing',
+    })
+    expect(missingInstall.ok).toBe(false)
+    if (!missingInstall.ok) {
+      expect(missingInstall.error.reason).toContain('installId')
+    }
   })
 })
 

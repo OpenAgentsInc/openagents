@@ -11,13 +11,13 @@
 // claim it is live. It is PURE:
 //   - it moves no money, runs no fulfillment, reads no wallet, writes no
 //     receipt, and provisions no primitive;
-//   - it only defines a typed, versioned product DEFINITION (a composition of
-//     primitive/market capability references) and a read-only listing
-//     projection over an injected store.
+//   - it defines a typed, versioned product DEFINITION (a composition of
+//     primitive/market capability references), a pure assembly/list/install/use
+//     lifecycle over an injected store, and a read-only listing projection.
 // The promise marketplace.compose_and_list_products.v1 STAYS `planned`. Nothing
-// here flips it green: there is no composition runtime, no install/use
-// lifecycle, no billing, attribution, rev-share, or settlement. A green flip
-// stays receipt-first and owner-signed per proof.claim_upgrade_receipts.v1.
+// here flips it green: there is no live durable self-serve write route, no
+// billing, rev-share, or settlement. A green flip stays receipt-first and
+// owner-signed per proof.claim_upgrade_receipts.v1.
 
 import { Schema as S } from 'effect'
 
@@ -25,7 +25,7 @@ import {
   type PublicProjectionStalenessContract,
   liveAtReadStaleness,
 } from './public-projection-staleness'
-import { currentIsoTimestamp } from './runtime-primitives'
+import { compactRandomId, currentIsoTimestamp } from './runtime-primitives'
 
 export const MARKETPLACE_PRODUCT_COMPOSITION_SCHEMA =
   'openagents.marketplace_product_composition.v1' as const
@@ -95,6 +95,54 @@ export const ComposedProductDefinition = S.Struct({
 })
 export type ComposedProductDefinition = typeof ComposedProductDefinition.Type
 
+export const MarketplaceInstallUseState = S.Literals(['installed', 'used'])
+export type MarketplaceInstallUseState = typeof MarketplaceInstallUseState.Type
+
+export const ComposedProductAssembly = S.Struct({
+  schema: S.Literal(MARKETPLACE_PRODUCT_COMPOSITION_SCHEMA),
+  assemblyId: S.String,
+  productId: S.String,
+  definitionVersion: S.Number,
+  builderRef: S.String,
+  builderAttributionRef: S.String,
+  componentRefs: S.Array(MarketplaceComponentRef),
+  assembledAt: S.String,
+  promiseId: S.Literal(MARKETPLACE_COMPOSE_AND_LIST_PROMISE),
+  billingAuthority: S.Boolean,
+  settlementAuthority: S.Boolean,
+})
+export type ComposedProductAssembly = typeof ComposedProductAssembly.Type
+
+export const SelfServeComposedProductListing = S.Struct({
+  schema: S.Literal(MARKETPLACE_PRODUCT_COMPOSITION_SCHEMA),
+  listingId: S.String,
+  definition: ComposedProductDefinition,
+  assembly: ComposedProductAssembly,
+  listedAt: S.String,
+  promiseId: S.Literal(MARKETPLACE_COMPOSE_AND_LIST_PROMISE),
+})
+export type SelfServeComposedProductListing =
+  typeof SelfServeComposedProductListing.Type
+
+export const ComposedProductInstallUseRecord = S.Struct({
+  schema: S.Literal(MARKETPLACE_PRODUCT_COMPOSITION_SCHEMA),
+  installId: S.String,
+  listingId: S.String,
+  productId: S.String,
+  buyerRef: S.String,
+  builderRef: S.String,
+  builderAttributionRef: S.String,
+  state: MarketplaceInstallUseState,
+  installedAt: S.String,
+  lastUsedAt: S.NullOr(S.String),
+  useCount: S.Number,
+  promiseId: S.Literal(MARKETPLACE_COMPOSE_AND_LIST_PROMISE),
+  billingAuthority: S.Boolean,
+  settlementAuthority: S.Boolean,
+})
+export type ComposedProductInstallUseRecord =
+  typeof ComposedProductInstallUseRecord.Type
+
 export class ComposedProductValidationError extends S.TaggedErrorClass<ComposedProductValidationError>()(
   'ComposedProductValidationError',
   {
@@ -103,6 +151,14 @@ export class ComposedProductValidationError extends S.TaggedErrorClass<ComposedP
 ) {}
 
 const isNonEmpty = (value: string): boolean => value.trim().length > 0
+
+const publicRefSegment = (value: string): string =>
+  value.trim().replace(/[^A-Za-z0-9_.:-]+/g, '_').slice(0, 80)
+
+export const composedProductBuilderAttributionRef = (
+  definition: ComposedProductDefinition,
+): string =>
+  `attribution.marketplace.composed_product.${publicRefSegment(definition.builderRef)}.${publicRefSegment(definition.productId)}.v${definition.definitionVersion}`
 
 /**
  * Build a typed product definition from raw input. PURE and validating:
@@ -233,6 +289,175 @@ export const composedProductMonetizableLayers = (
     }
   }
   return [...byLayer].map(([layer, capabilityRef]) => ({ layer, capabilityRef }))
+}
+
+export const assembleComposedProduct = (
+  definition: ComposedProductDefinition,
+  options: { assemblyId?: string; assembledAt?: string } = {},
+): ComposedProductAssembly => ({
+  schema: MARKETPLACE_PRODUCT_COMPOSITION_SCHEMA,
+  assemblyId: options.assemblyId ?? compactRandomId('assembly'),
+  productId: definition.productId,
+  definitionVersion: definition.definitionVersion,
+  builderRef: definition.builderRef,
+  builderAttributionRef: composedProductBuilderAttributionRef(definition),
+  componentRefs: definition.components,
+  assembledAt: options.assembledAt ?? currentIsoTimestamp(),
+  promiseId: MARKETPLACE_COMPOSE_AND_LIST_PROMISE,
+  billingAuthority: false,
+  settlementAuthority: false,
+})
+
+export type MarketplaceCompositionLifecycleStore = {
+  listListings: () => ReadonlyArray<SelfServeComposedProductListing>
+  listInstalls: () => ReadonlyArray<ComposedProductInstallUseRecord>
+  saveListing: (listing: SelfServeComposedProductListing) => void
+  saveInstall: (install: ComposedProductInstallUseRecord) => void
+}
+
+export const makeInMemoryMarketplaceCompositionLifecycleStore = (
+  seed: {
+    listings?: ReadonlyArray<SelfServeComposedProductListing>
+    installs?: ReadonlyArray<ComposedProductInstallUseRecord>
+  } = {},
+): MarketplaceCompositionLifecycleStore => {
+  const listings = [...(seed.listings ?? [])]
+  const installs = [...(seed.installs ?? [])]
+
+  return {
+    listListings: () => listings,
+    listInstalls: () => installs,
+    saveListing: listing => {
+      const existingIndex = listings.findIndex(
+        existing => existing.listingId === listing.listingId,
+      )
+      if (existingIndex >= 0) {
+        listings[existingIndex] = listing
+      } else {
+        listings.push(listing)
+      }
+    },
+    saveInstall: install => {
+      const existingIndex = installs.findIndex(
+        existing => existing.installId === install.installId,
+      )
+      if (existingIndex >= 0) {
+        installs[existingIndex] = install
+      } else {
+        installs.push(install)
+      }
+    },
+  }
+}
+
+export const selfServeListComposedProduct = (
+  store: MarketplaceCompositionLifecycleStore,
+  input: {
+    definition: ComposedProductDefinition
+    listingId?: string
+    listedAt?: string
+    assemblyId?: string
+  },
+): SelfServeComposedProductListing => {
+  const definition = { ...input.definition, listingState: 'listed' as const }
+  const listing = {
+    schema: MARKETPLACE_PRODUCT_COMPOSITION_SCHEMA,
+    listingId: input.listingId ?? compactRandomId('listing'),
+    definition,
+    assembly: assembleComposedProduct(definition, {
+      ...(input.assemblyId === undefined ? {} : { assemblyId: input.assemblyId }),
+      ...(input.listedAt === undefined ? {} : { assembledAt: input.listedAt }),
+    }),
+    listedAt: input.listedAt ?? currentIsoTimestamp(),
+    promiseId: MARKETPLACE_COMPOSE_AND_LIST_PROMISE,
+  }
+
+  store.saveListing(listing)
+  return listing
+}
+
+export const installComposedProduct = (
+  store: MarketplaceCompositionLifecycleStore,
+  input: {
+    listingId: string
+    buyerRef: string
+    installId?: string
+    installedAt?: string
+  },
+):
+  | { ok: true; install: ComposedProductInstallUseRecord }
+  | { ok: false; error: ComposedProductValidationError } => {
+  if (!isNonEmpty(input.buyerRef)) {
+    return {
+      ok: false,
+      error: new ComposedProductValidationError({
+        reason: 'buyerRef must be non-empty',
+      }),
+    }
+  }
+
+  const listing = store
+    .listListings()
+    .find(candidate => candidate.listingId === input.listingId)
+
+  if (listing === undefined) {
+    return {
+      ok: false,
+      error: new ComposedProductValidationError({
+        reason: 'listingId does not reference a self-serve listed product',
+      }),
+    }
+  }
+
+  const install = {
+    schema: MARKETPLACE_PRODUCT_COMPOSITION_SCHEMA,
+    installId: input.installId ?? compactRandomId('install'),
+    listingId: listing.listingId,
+    productId: listing.definition.productId,
+    buyerRef: input.buyerRef,
+    builderRef: listing.definition.builderRef,
+    builderAttributionRef: listing.assembly.builderAttributionRef,
+    state: 'installed' as const,
+    installedAt: input.installedAt ?? currentIsoTimestamp(),
+    lastUsedAt: null,
+    useCount: 0,
+    promiseId: MARKETPLACE_COMPOSE_AND_LIST_PROMISE,
+    billingAuthority: false,
+    settlementAuthority: false,
+  }
+
+  store.saveInstall(install)
+  return { ok: true, install }
+}
+
+export const recordComposedProductUse = (
+  store: MarketplaceCompositionLifecycleStore,
+  input: { installId: string; usedAt?: string },
+):
+  | { ok: true; install: ComposedProductInstallUseRecord }
+  | { ok: false; error: ComposedProductValidationError } => {
+  const install = store
+    .listInstalls()
+    .find(candidate => candidate.installId === input.installId)
+
+  if (install === undefined) {
+    return {
+      ok: false,
+      error: new ComposedProductValidationError({
+        reason: 'installId does not reference an installed composed product',
+      }),
+    }
+  }
+
+  const updated = {
+    ...install,
+    state: 'used' as const,
+    lastUsedAt: input.usedAt ?? currentIsoTimestamp(),
+    useCount: install.useCount + 1,
+  }
+
+  store.saveInstall(updated)
+  return { ok: true, install: updated }
 }
 
 /**
