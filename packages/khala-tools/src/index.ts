@@ -418,6 +418,7 @@ export function toOpenAiCompatibleTools(
 export { createReadTool, readToolDefinition } from "./read.js"
 export { createLsTool, lsToolDefinition } from "./ls.js"
 export { createGlobTool, globToolDefinition } from "./glob.js"
+export { createGrepTool, grepToolDefinition } from "./grep.js"
 
 function permissionRequestFor(
   definition: KhalaToolDefinition,

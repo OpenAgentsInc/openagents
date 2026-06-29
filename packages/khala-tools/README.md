@@ -51,3 +51,12 @@ search root `path`, and optional `limit`. The default implementation uses
 honored, then falls back to a deterministic local walker with simple
 `.gitignore` support. Results are POSIX-style workspace-relative paths with
 structured match counts and truncation metadata.
+
+### `grep`
+
+`grep` searches text content without spending shell authority. It accepts
+`pattern`, optional search root `path`, optional file `glob`, `ignore_case`,
+`literal`, `context`, and `limit`. The tool uses ripgrep when available, then
+falls back to an ignore-aware local walker. Binary files and credential-shaped
+paths are skipped, output is bounded by line, match, byte, and model-text caps,
+and no-match searches succeed with structured empty results.
