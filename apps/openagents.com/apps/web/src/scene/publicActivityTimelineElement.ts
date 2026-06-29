@@ -24,6 +24,23 @@ type ActivityFilter =
   | 'work'
 type ActivityTimelineDataState = 'loading' | 'ok' | 'empty' | 'error'
 
+type FleetSlot = Readonly<{
+  event: PublicActivityTimelineEvent
+  lastSeen: string
+  pylonRef: string
+  refs: ReadonlyArray<string>
+  status: string
+}>
+
+type ActiveTask = Readonly<{
+  actorRef: string
+  event: PublicActivityTimelineEvent
+  refs: ReadonlyArray<string>
+  state: string
+  targetRef: string
+  title: string
+}>
+
 export type PublicActivityEventUrl = Readonly<{
   href: string
   label: string
@@ -186,6 +203,105 @@ h3 {
   grid-template-columns: minmax(0, 1fr) minmax(20rem, 0.74fr);
   gap: 16px;
   align-items: start;
+}
+.ops-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+  gap: 16px;
+}
+.fleet-map,
+.task-board {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid rgba(244, 242, 234, 0.12);
+  border-radius: 8px;
+  background: rgba(16, 17, 18, 0.9);
+}
+.fleet-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: 8px;
+  padding: 12px;
+}
+.fleet-slot {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+  border: 1px solid rgba(244, 242, 234, 0.1);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.035);
+  padding: 10px;
+}
+.slot-head {
+  display: flex;
+  min-width: 0;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+}
+.slot-ref,
+.task-title {
+  min-width: 0;
+  color: #f4f2ea;
+  font-size: 0.78rem;
+  font-weight: 720;
+  overflow-wrap: anywhere;
+}
+.slot-state,
+.task-state {
+  flex: none;
+  border: 1px solid rgba(141, 211, 199, 0.34);
+  border-radius: 999px;
+  background: rgba(141, 211, 199, 0.09);
+  color: rgba(244, 242, 234, 0.82);
+  font-size: 0.66rem;
+  line-height: 1.2;
+  padding: 3px 7px;
+  white-space: nowrap;
+}
+.slot-meta,
+.task-meta {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  color: rgba(244, 242, 234, 0.56);
+  font-size: 0.72rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.task-list {
+  display: grid;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.task-item {
+  min-width: 0;
+  border-top: 1px solid rgba(244, 242, 234, 0.08);
+}
+.task-item:first-child {
+  border-top: 0;
+}
+.task-button {
+  width: 100%;
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  padding: 12px;
+  text-align: left;
+}
+.task-button:hover,
+.task-button:focus-visible {
+  background: rgba(255, 255, 255, 0.05);
+  outline: none;
+}
+.task-button[aria-pressed="true"] {
+  background: rgba(141, 211, 199, 0.08);
 }
 .pane-grid {
   min-width: 0;
@@ -426,6 +542,7 @@ time,
 @media (max-width: 1080px) {
   .hero,
   .dashboard-grid,
+  .ops-grid,
   .pane-grid {
     grid-template-columns: 1fr;
   }
@@ -896,6 +1013,198 @@ const eventsForPane = (
   )
 }
 
+const latestFleetSlots = (
+  envelope: PublicActivityTimelineEnvelope,
+): ReadonlyArray<FleetSlot> => {
+  const slots = new Map<string, FleetSlot>()
+
+  for (const event of latestFirst(envelope.events)) {
+    if (
+      !fleetKinds.has(event.kind) &&
+      event.sourceKind !== 'pylon_api' &&
+      event.sourceKind !== 'pylon_presence'
+    ) {
+      continue
+    }
+
+    const pylonRef =
+      event.actorRef ??
+      event.refs.find(ref =>
+        /^pylon\.(public|agent)|^pylon_public/i.test(ref),
+      ) ??
+      event.sourceRefs.find(ref =>
+        /^pylon\.(public|agent)|^pylon_public/i.test(ref),
+      )
+    if (pylonRef === undefined || slots.has(pylonRef)) continue
+
+    slots.set(pylonRef, {
+      event,
+      lastSeen: event.ts,
+      pylonRef,
+      refs: event.refs.length > 0 ? event.refs : event.sourceRefs,
+      status: event.state ?? displayLabel(event.kind),
+    })
+  }
+
+  return [...slots.values()].slice(0, 12)
+}
+
+const activeTaskKinds = new Set<PublicActivityTimelineEvent['kind']>([
+  'assignment_ready',
+  'window_opened',
+  'work_claimed',
+  'trace_submitted',
+  'verification_queued',
+])
+
+const activeTasks = (
+  envelope: PublicActivityTimelineEnvelope,
+): ReadonlyArray<ActiveTask> =>
+  latestFirst(envelope.events)
+    .filter(event => activeTaskKinds.has(event.kind))
+    .filter(event => {
+      const state = event.state?.toLowerCase() ?? ''
+      return ![
+        'closed',
+        'settled',
+        'verified',
+        'rejected',
+        'confirmed',
+      ].includes(state)
+    })
+    .slice(0, 8)
+    .map(event => ({
+      actorRef: event.actorRef ?? 'unassigned',
+      event,
+      refs: event.refs.length > 0 ? event.refs : event.sourceRefs,
+      state: event.state ?? displayLabel(event.kind),
+      targetRef: event.targetRef ?? event.windowRef ?? event.runRef ?? 'none',
+      title: displayLabel(event.kind),
+    }))
+
+const renderFleetMap = (
+  input: Readonly<{
+    envelope: PublicActivityTimelineEnvelope
+    root: HTMLElement
+    state: PublicActivityTimelineRenderState
+  }>,
+): HTMLElement => {
+  const slots = latestFleetSlots(input.envelope)
+  const section = create('section', 'fleet-map')
+  section.dataset.activityPane = 'fleet-map'
+
+  const head = create('div', 'pane-head')
+  head.append(
+    create('h2', undefined, 'Fleet Map'),
+    create('span', 'count', `${formatCount(slots.length)} public slots`),
+  )
+  section.append(head)
+
+  if (slots.length === 0) {
+    section.append(create('p', 'empty', 'No public Pylon slots in range.'))
+    return section
+  }
+
+  const grid = create('div', 'fleet-grid')
+  for (const slot of slots) {
+    const cell = create('article', 'fleet-slot')
+    cell.dataset.pylonSlot = slot.pylonRef
+    const slotHead = create('div', 'slot-head')
+    slotHead.append(
+      create('span', 'slot-ref', slot.pylonRef),
+      create('span', 'slot-state', slot.status),
+    )
+    const meta = create('div', 'slot-meta')
+    meta.append(
+      create('span', undefined, `last seen ${formatTime(slot.lastSeen)}`),
+      refsView(slot.refs, 2),
+    )
+    const button = create(
+      'button',
+      'task-button',
+      'Open proof',
+    ) as HTMLButtonElement
+    button.type = 'button'
+    button.dataset.activityEvent = slot.event.cursor
+    button.setAttribute(
+      'aria-pressed',
+      String(
+        slot.event.cursor ===
+          selectedEventFor(input.envelope, input.state.selectedCursor)?.cursor,
+      ),
+    )
+    button.addEventListener('click', () => {
+      input.state.selectedCursor = slot.event.cursor
+      renderEnvelope(input.root, input.state, input.envelope)
+    })
+    cell.append(slotHead, meta, button)
+    grid.append(cell)
+  }
+  section.append(grid)
+  return section
+}
+
+const renderActiveTaskBoard = (
+  input: Readonly<{
+    envelope: PublicActivityTimelineEnvelope
+    root: HTMLElement
+    state: PublicActivityTimelineRenderState
+  }>,
+): HTMLElement => {
+  const tasks = activeTasks(input.envelope)
+  const section = create('section', 'task-board')
+  section.dataset.activityPane = 'active-tasks'
+
+  const head = create('div', 'pane-head')
+  head.append(
+    create('h2', undefined, 'Active Task Board'),
+    create('span', 'count', `${formatCount(tasks.length)} public tasks`),
+  )
+  section.append(head)
+
+  if (tasks.length === 0) {
+    section.append(create('p', 'empty', 'No active public tasks in range.'))
+    return section
+  }
+
+  const list = create('ol', 'task-list')
+  for (const task of tasks) {
+    const item = create('li', 'task-item')
+    const button = create('button', 'task-button') as HTMLButtonElement
+    button.type = 'button'
+    button.dataset.activityEvent = task.event.cursor
+    button.setAttribute(
+      'aria-pressed',
+      String(
+        task.event.cursor ===
+          selectedEventFor(input.envelope, input.state.selectedCursor)?.cursor,
+      ),
+    )
+    button.addEventListener('click', () => {
+      input.state.selectedCursor = task.event.cursor
+      renderEnvelope(input.root, input.state, input.envelope)
+    })
+
+    const title = create('div', 'slot-head')
+    title.append(
+      create('span', 'task-title', task.title),
+      create('span', 'task-state', task.state),
+    )
+    const meta = create('div', 'task-meta')
+    meta.append(
+      create('span', undefined, `actor ${task.actorRef}`),
+      create('span', undefined, `target ${task.targetRef}`),
+      create('span', undefined, `observed ${formatTime(task.event.ts)}`),
+      refsView(task.refs, 3),
+    )
+    button.append(title, meta)
+    item.append(button)
+    list.append(item)
+  }
+  section.append(list)
+  return section
+}
+
 const renderPane = (
   input: Readonly<{
     countLabel: string
@@ -1303,10 +1612,16 @@ const renderEnvelope = (
     renderTimelinePane(envelope, state, root),
   )
 
+  const opsGrid = create('div', 'ops-grid')
+  opsGrid.append(
+    renderFleetMap({ envelope, root, state }),
+    renderActiveTaskBoard({ envelope, root, state }),
+  )
+
   const dashboard = create('div', 'dashboard-grid')
   dashboard.append(paneGrid, renderProofDrawer(envelope, state))
 
-  activity.append(hero, renderSourceStrip(envelope), dashboard)
+  activity.append(hero, renderSourceStrip(envelope), opsGrid, dashboard)
   root.append(activity)
 }
 
