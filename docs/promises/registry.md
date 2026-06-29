@@ -88,7 +88,7 @@
 > Tassadar CPU-transform, referral, small-model proxy, WASM plugin, Verse scene,
 > native email, marketplace, metrics, terminal-agent audit, supervisor
 > replenishment, GLM failover, Apple FM sidecar, and operator-safety merges were
-> checked against the current `2026-06-29.2` registry header. This pass records
+> checked against the current `2026-06-29.3` registry header. This pass records
 > no additional promise state flips and no new green claims beyond the already
 > source-recorded scoped transitions; red/planned/yellow records keep their
 > owner-signed, receipt-first green gates.
