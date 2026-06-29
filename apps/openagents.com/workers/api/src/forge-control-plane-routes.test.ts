@@ -441,6 +441,52 @@ describe('Forge control-plane routes', () => {
     expect(body.reason).toContain('passing')
   })
 
+  test('accepts approved promotion when matching receipt is outside list window', async () => {
+    const { run } = makeHarness()
+    const scopes = 'forge:receipt:write forge:promotion:decide'
+    const verificationResponse = await run(
+      requestJson('/api/forge/verification-receipts', {
+        json: forgeVerificationReceipt({
+          completed_at: '2026-06-28T17:01:00.000Z',
+        }),
+        headers: authHeaders(scopes),
+        method: 'POST',
+      }),
+    )
+    expect(verificationResponse.status).toBe(201)
+
+    await Array.from({ length: 101 }).reduce<Promise<void>>(
+      (previous, _, index) =>
+        previous.then(async () => {
+          const response = await run(
+            requestJson('/api/forge/verification-receipts', {
+              json: forgeVerificationReceipt({
+                verification_ref: `verification.forge.noise.${index}`,
+                completed_at: `2026-06-28T18:${String(Math.floor(index / 60)).padStart(
+                  2,
+                  '0',
+                )}:${String(index % 60).padStart(2, '0')}.000Z`,
+              }),
+              headers: authHeaders(scopes),
+              method: 'POST',
+            }),
+          )
+          expect(response.status).toBe(201)
+        }),
+      Promise.resolve(),
+    )
+
+    const promotionResponse = await run(
+      requestJson('/api/forge/promotion-decisions', {
+        json: forgePromotionDecision(),
+        headers: authHeaders(scopes),
+        method: 'POST',
+      }),
+    )
+
+    expect(promotionResponse.status).toBe(201)
+  })
+
   test('imports the public OpenAgents main ref into canonical refs idempotently', async () => {
     const { canonicalStore, run } = makeHarness()
     const headers = authHeaders('forge:admin forge:change:read')

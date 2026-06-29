@@ -628,9 +628,10 @@ const assertApprovedPromotionHasPassingVerificationReceipt = async (
     )
   }
 
-  const verificationReceipt = (
-    await store.listVerificationReceipts(receipt.tenant_ref, 100, receipt.change_ref)
-  ).find(candidate => candidate.verification_ref === receipt.verification_ref)
+  const verificationReceipt = await store.readVerificationReceipt(
+    receipt.tenant_ref,
+    receipt.verification_ref,
+  )
 
   if (verificationReceipt === undefined) {
     throw new ForgeControlPlaneHttpError(
@@ -643,6 +644,7 @@ const assertApprovedPromotionHasPassingVerificationReceipt = async (
   if (
     verificationReceipt.verdict !== 'passed' ||
     verificationReceipt.exit_code !== 0 ||
+    verificationReceipt.change_ref !== receipt.change_ref ||
     verificationReceipt.base_head !== receipt.base_head ||
     verificationReceipt.head_head !== receipt.candidate_head
   ) {
