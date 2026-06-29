@@ -1026,7 +1026,7 @@ export const assessAgentClVertexRunnerCircuitBreaker = (
     'owner.approval.agentcl.vertex_stress.required',
   )
   const reason =
-    input.estimatedSpendUsdCents > runnerPlan.budgetGuard.spendCapUsdCents
+    input.estimatedSpendUsdCents >= runnerPlan.budgetGuard.spendCapUsdCents
       ? 'spend_cap_exceeded'
       : input.consecutiveBillingOrQuotaErrors >=
           runnerPlan.budgetGuard.abortOnConsecutiveBillingOrQuotaErrors

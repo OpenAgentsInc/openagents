@@ -354,7 +354,7 @@ describe('AgentCL repo-reuse gym environment', () => {
     })
     expect(
       assessAgentClVertexRunnerCircuitBreaker({
-        estimatedSpendUsdCents: 5001,
+        estimatedSpendUsdCents: 5000,
         consecutiveBillingOrQuotaErrors: 0,
       }),
     ).toEqual({ tripped: true, reason: 'spend_cap_exceeded' })
@@ -444,6 +444,35 @@ describe('AgentCL repo-reuse gym environment', () => {
     expect(result.report.budgetGuard.estimatedSpendUsdCents).toBeGreaterThan(
       5000,
     )
+  })
+
+  test('halts AgentCL live execution at the $50 cap before another paid call', async () => {
+    let calls = 0
+    const result = await Effect.runPromise(
+      runAgentClVertexRunnerLoop({
+        adapter: fakeVertexAdapter(() => {
+          calls += 1
+          return Effect.succeed(
+            vertexResult({
+              completionTokens: 166_666_667,
+              promptTokens: 0,
+              totalTokens: 166_666_667,
+            }),
+          )
+        }),
+        ownerApprovalRef: 'owner.approval.agentcl.vertex_stress.20260628',
+        runMode: 'owner_armed_real',
+      }),
+    )
+
+    expect(calls).toBe(1)
+    expect(result.status).toBe('aborted_circuit_breaker')
+    expect(result.report.budgetGuard.circuitBreakerReason).toBe(
+      'spend_cap_exceeded',
+    )
+    expect(
+      result.report.budgetGuard.estimatedSpendUsdCents,
+    ).toBeGreaterThanOrEqual(5000)
   })
 
   test('aborts AgentCL live execution after three consecutive billing or quota errors', async () => {
