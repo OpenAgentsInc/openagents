@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-29.2'
+export const PublicProductPromisesVersion = '2026-06-29.3'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -72,6 +72,9 @@ const sourceRefs = [
   'clients/khala-desktop/tests/apple-fm-packaging.test.ts',
   'clients/khala-desktop/tests/apple-fm-readiness.test.ts',
   'clients/khala-desktop/tests/apple-fm-sidecar.test.ts',
+  'docs/apple-fm/2026-06-29-local-apple-fm-signed-installer-smoke-gate.md',
+  'apps/autopilot-desktop/src/shared/apple-fm-from-install-smoke.ts',
+  'apps/autopilot-desktop/tests/apple-fm-from-install-smoke.test.ts',
   'docs/promises/2026-06-14-registry-reality-reconciliation-audit.md',
   'docs/promises/2026-06-17-training-monday-simulation-settlement-policy.md',
   'docs/promises/2026-06-18-training-monday-real-settlement-gate-met.md',
@@ -3256,7 +3259,7 @@ export const publicProductPromisesDocument = () => {
         claim:
           'An Apple Silicon user can run a basic Autopilot chat and tool loop entirely locally through Apple Foundation Models, without OpenAgents hosted compute or user-supplied cloud model keys.',
         safeCopy:
-          'Source support and admitted-Mac smoke evidence now exist for the basic local Apple FM mode: on supported macOS Apple Silicon machines, Autopilot Desktop can ask Pylon to start a bounded local Apple FM chat/tool session after live readiness passes, using read-only workspace tools and public-safe desktop event summaries without sending prompts to OpenAgents hosted compute. Khala Desktop now also has source-level Electrobun Apple FM sidecar packaging/readiness: it can discover or launch the packaged Foundation Models helper, read Pylon apple_fm.status over loopback, and emit public-safe readiness without leaking tokens, callback URLs, prompts, or local paths. This is yellow, not green: the current public installer still needs a signed recut with helper launch/supervision, and the claim is limited to basic local chat/tool use on admitted Apple hardware.',
+          'Source support and admitted-Mac smoke evidence now exist for the basic local Apple FM mode: on supported macOS Apple Silicon machines, Autopilot Desktop can ask Pylon to start a bounded local Apple FM chat/tool session after live readiness passes, using read-only workspace tools and public-safe desktop event summaries without sending prompts to OpenAgents hosted compute. Khala Desktop now also has source-level Electrobun Apple FM sidecar packaging/readiness: it can discover or launch the packaged Foundation Models helper, read Pylon apple_fm.status over loopback, and emit public-safe readiness without leaking tokens, callback URLs, prompts, or local paths. The remaining signed-installer transition now has a fail-closed source gate for the required from-install smoke facts. This is yellow, not green: the current public installer still needs a signed recut with helper launch/supervision, and the claim is limited to basic local chat/tool use on admitted Apple hardware.',
         unsafeCopy:
           'Do not claim this works in the current installer, do not claim every Apple device is supported, do not claim offline internet-free coding beyond the local tool scope, do not claim Codex parity, and do not imply Bitcoin earning, paid compute resale, cloud fallback, or settlement authority from this local mode.',
         evidenceRefs: [
@@ -3304,6 +3307,9 @@ export const publicProductPromisesDocument = () => {
           'clients/khala-desktop/tests/apple-fm-packaging.test.ts',
           'clients/khala-desktop/tests/apple-fm-readiness.test.ts',
           'clients/khala-desktop/tests/apple-fm-sidecar.test.ts',
+          'docs/apple-fm/2026-06-29-local-apple-fm-signed-installer-smoke-gate.md',
+          'apps/autopilot-desktop/src/shared/apple-fm-from-install-smoke.ts',
+          'apps/autopilot-desktop/tests/apple-fm-from-install-smoke.test.ts',
           'https://github.com/OpenAgentsInc/openagents/issues/5068',
           'https://github.com/OpenAgentsInc/openagents/issues/5069',
           'https://github.com/OpenAgentsInc/openagents/issues/5070',
@@ -3316,7 +3322,7 @@ export const publicProductPromisesDocument = () => {
           'blocker.product_promises.local_apple_fm_helper_supervision_missing',
         ],
         verification:
-          'Yellow is satisfied by focused fake-bridge tests plus an admitted-Mac source smoke showing bridge health ready, desktop/Pylon Apple FM readiness ready, one local read_file chat/tool session, local lane, read-only sandbox, network disabled, no cloud runner, no resource_usage_receipt, disabled handling, and redaction of prompts, file contents, callback tokens, callback URLs, bearer material, and local paths. Khala Desktop sidecar evidence is source-level packaging/readiness only: tests verify packaged-helper discovery, launch, Pylon status sanitation, unsupported-host handling, and redaction of loopback URLs, callback data, prompts, secrets, and local helper paths. Green requires a signed/notarized installer recut that bundles or supervises the helper and repeats the same from-install smoke.',
+          'Yellow is satisfied by focused fake-bridge tests plus an admitted-Mac source smoke showing bridge health ready, desktop/Pylon Apple FM readiness ready, one local read_file chat/tool session, local lane, read-only sandbox, network disabled, no cloud runner, no resource_usage_receipt, disabled handling, and redaction of prompts, file contents, callback tokens, callback URLs, bearer material, and local paths. Khala Desktop sidecar evidence is source-level packaging/readiness only: tests verify packaged-helper discovery, launch, Pylon status sanitation, unsupported-host handling, and redaction of loopback URLs, callback data, prompts, secrets, and local helper paths. The #7022 from-install smoke gate requires supported Apple Silicon, signed/notarized installer, packaged-helper verification, helper launch/readiness/restart supervision, bounded local session completion, no hosted prompt fallback, redaction, clean shutdown/restart, and a public-safe evidence ref before both remaining blockers clear. Green requires the owner-gated signed/notarized installer recut and that from-install smoke evidence.',
         authorityBoundary:
           'This promise is a local user-owned model path only. It grants no cloud compute, paid assignment, payout, settlement, provider-account, deploy, spend, or public-claim authority, and local tools remain bounded by explicit workspace/tool policy.',
       },

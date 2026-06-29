@@ -1181,6 +1181,9 @@ describe('public product promises document', () => {
             'clients/khala-desktop/src/shared/apple-fm-packaging.ts',
             'clients/khala-desktop/src/shared/apple-fm-readiness.ts',
             'clients/khala-desktop/tests/apple-fm-sidecar.test.ts',
+            'docs/apple-fm/2026-06-29-local-apple-fm-signed-installer-smoke-gate.md',
+            'apps/autopilot-desktop/src/shared/apple-fm-from-install-smoke.ts',
+            'apps/autopilot-desktop/tests/apple-fm-from-install-smoke.test.ts',
           ]),
           promiseId: 'autopilot.local_apple_fm_tool_chat.v1',
           state: 'yellow',
@@ -1221,6 +1224,9 @@ describe('public product promises document', () => {
     expect(localAppleFmPromise?.safeCopy).toContain('Khala Desktop')
     expect(localAppleFmPromise?.verification).toContain(
       'source-level packaging/readiness',
+    )
+    expect(localAppleFmPromise?.verification).toContain(
+      'signed/notarized installer',
     )
     const mondayTrainingPromise = decoded.promises.find(
       promise =>
