@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-29.2'
+export const PublicProductPromisesVersion = '2026-06-29.3'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -4188,13 +4188,23 @@ export const publicProductPromisesDocument = () => {
         claim:
           "A business customer can buy a coding quick win: a written objective is taken into a repository, the customer's verification command is run, and a reviewable change is handed back with verification evidence.",
         safeCopy:
-          'Coding quick wins are available as an operator-assisted business offering. The coding-agent runtime (local Claude/Codex bridge, Probe/Pylon CLI/TUI background execution) and the negotiated forum labor market are live and green, so OpenAgents can take a bounded coding objective and return a diff with verification evidence. Packaging this as a priced intake -> delivery -> accepted-outcome -> receipt business product is operator-assisted today, not self-serve.',
+          'Coding quick wins have a self-serve evidence pipeline: the public route accepts scoped intake, provisioning, runtime invocation, delivery, acceptance, and payment evidence and returns a machine-checkable receipt. The coding-agent runtime and negotiated forum labor market remain the execution backing. The promise is still yellow because the first real paid customer receipt plus owner sign-off has not been substantiated.',
         unsafeCopy:
-          'Do not say coding quick wins are a one-click self-serve product, that arbitrary large projects are guaranteed, or that delivery happens without a human review gate and an accepted-outcome check.',
+          'Do not say coding quick wins have a substantiated first paid customer receipt, that arbitrary large projects are guaranteed, or that delivery happens without a human review gate and an accepted-outcome check.',
         evidenceRefs: [
           'docs/business/2026-06-20-openagents-business-intake-spec.md',
           'docs/launch/2026-06-19-coding-agent-live-verification.md',
+          'docs/launch/gemini-fleet/business.coding_quick_win.v1.md',
           'docs/labor/2026-06-14-first-negotiated-labor-job-evidence-bundle.md',
+          'apps/openagents.com/workers/api/src/coding-quick-win-pipeline.ts',
+          'apps/openagents.com/workers/api/src/coding-quick-win-pipeline.test.ts',
+          'apps/openagents.com/workers/api/src/coding-quick-win-pipeline-routes.ts',
+          'apps/openagents.com/workers/api/src/coding-quick-win-pipeline-routes.test.ts',
+          'apps/openagents.com/workers/api/src/coding-quick-win-claim-upgrade.ts',
+          'apps/openagents.com/workers/api/src/coding-quick-win-claim-upgrade.test.ts',
+          'apps/openagents.com/workers/api/src/coding-quick-win-receipt-public-routes.ts',
+          'apps/openagents.com/workers/api/src/coding-quick-win-receipt-public-routes.test.ts',
+          'route:/api/public/business/coding-quick-win-receipts?view=paid-delivery-claims',
           'promise:pylon.local_claude_agent_bridge.v1',
           'promise:autopilot.codex_probe_pylon_successor.v1',
           'promise:pylon.cli_tui_probe_background.v1',
@@ -4204,11 +4214,10 @@ export const publicProductPromisesDocument = () => {
           'promise:business.intake_quick_win_offering.v1',
         ],
         blockerRefs: [
-          'blocker.product_promises.business_coding_quick_win_self_serve_missing',
           'blocker.product_promises.business_coding_quick_win_paid_receipt_missing',
         ],
         verification:
-          'Yellow inherits its execution evidence from the green coding-agent records (local single-task exec re-verified 2026-06-19, docs/launch/2026-06-19-coding-agent-live-verification.md) and the green negotiated labor market (#4777 settled labor job). True today: OpenAgents can run a bounded coding objective and return a verified diff, operator-assisted. Green requires a packaged, repeatable coding-quick-win business product (priced intake -> delivery -> accepted outcome) with a dereferenceable first paid customer receipt and a receipt-first upgrade per proof.claim_upgrade_receipts.v1.',
+          'Yellow inherits its execution evidence from the green coding-agent records (local single-task exec re-verified 2026-06-19, docs/launch/2026-06-19-coding-agent-live-verification.md) and the green negotiated labor market (#4777 settled labor job). The self-serve evidence route POST /api/public/business/coding-quick-win-pipeline accepts scope -> provisioning -> runtime invocation -> delivery -> acceptance -> payment events and returns a machine-checkable BusinessQuickWinReceipt without moving money. True today: the route can validate a complete coding quick-win evidence chain and build the receipt shape. Green still requires a dereferenceable first real paid customer receipt plus owner sign-off projected through GET /api/public/business/coding-quick-win-receipts?view=paid-delivery-claims, per proof.claim_upgrade_receipts.v1.',
         authorityBoundary:
           "A coding quick win delivers a reviewable change with evidence under a human review gate. It grants no auto-merge, deploy, spend, payout, or settlement authority, and accepting an outcome is the customer's decision, not an automatic one.",
       },

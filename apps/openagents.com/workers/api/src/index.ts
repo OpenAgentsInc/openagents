@@ -302,6 +302,8 @@ import { isCrmResendSendEnabled, makeCrmResendSender } from './crm-resend'
 import { makeCrmResendRoutes } from './crm-resend-routes'
 import { makeCrmRoutes } from './crm-routes'
 import { makeCrmSendRoutes } from './crm-send-routes'
+import { makeInMemoryCodingQuickWinPaidDeliveryClaimStore } from './coding-quick-win-claim-upgrade'
+import { makeCodingQuickWinReceiptPublicRoutes } from './coding-quick-win-receipt-public-routes'
 import { CustomerOneCohortEndpoint } from './customer-one-cohort-projection'
 import {
   handleOperatorCustomerOneCohortRowsApi,
@@ -8419,6 +8421,11 @@ const marketingAgencyReceiptPublicRoutes =
     makeClaimStore: _env =>
       makeInMemoryMarketingAgencyPaidDeliveryClaimStore([]),
   })
+const codingQuickWinReceiptPublicRoutes =
+  makeCodingQuickWinReceiptPublicRoutes<Env>({
+    makeClaimStore: _env =>
+      makeInMemoryCodingQuickWinPaidDeliveryClaimStore([]),
+  })
 const marketingAgencySelfServePublicRoutes =
   makeMarketingAgencySelfServePublicRoutes<Env>({
     makeClaimStore: _env => makeInMemoryMarketingAgencySelfServeClaimStore([]),
@@ -13450,6 +13457,8 @@ const routeRequest = makeWorkerRouteRequest({
     ecommerceCampaignReceiptOperatorRoutes.routeEcommerceCampaignReceiptOperatorRequest,
   routeEcommerceCampaignSelfServeRequest:
     ecommerceCampaignSelfServeRoutes.routeEcommerceCampaignSelfServeRequest,
+  routeCodingQuickWinReceiptRequest:
+    codingQuickWinReceiptPublicRoutes.routeCodingQuickWinReceiptRequest,
   routeMarketingAgencyReceiptRequest:
     marketingAgencyReceiptPublicRoutes.routeMarketingAgencyReceiptRequest,
   routeMarketingAgencySelfServeRequest:
