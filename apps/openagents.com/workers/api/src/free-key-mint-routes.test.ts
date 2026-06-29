@@ -8,6 +8,7 @@ import {
   type AgentRegistrationStore,
 } from './agent-registration'
 import { type Env, handleFreeKeyMint } from './index'
+import { freeTierDataSharingDisclosure } from './inference/free-tier-data-sharing-disclosure'
 import { FREE_KEY_MAX_MINTS_PER_IP_PER_DAY } from './inference/inference-free-tier-key'
 
 // In-memory agent registration store so minting reuses the real registration
@@ -164,12 +165,7 @@ describe('POST /api/keys/free (issue #6228)', () => {
     expect(body.quota.maxRequestsPerDay).toBeGreaterThan(0)
     // DISCLOSURE (#6296): the honest free-tier data-sharing terms ride along on
     // the mint response so a caller is told the deal at key-mint time.
-    expect(body.dataSharing.promiseId).toBe(
-      'data.free_tier_capture_disclosure.v1',
-    )
-    expect(body.dataSharing.terms.length).toBeGreaterThan(0)
-    expect(body.dataSharing.policy.capturedByDefault).toBe(true)
-    expect(body.dataSharing.policy.paidPrivacyOptOut).toBe(true)
+    expect(body.dataSharing).toEqual(freeTierDataSharingDisclosure())
     // The minted account is now marked free-tier in D1.
     const row = await db
       .prepare(

@@ -6,6 +6,7 @@ import {
   publicProductPromisesAnnouncementReadiness,
   publicProductPromisesDocument,
 } from './product-promises'
+import { FREE_TIER_DATA_SHARING_PROMISE_ID } from './inference/free-tier-data-sharing-disclosure'
 
 const ProductPromiseState = S.Literals([
   'degraded',
@@ -1650,6 +1651,66 @@ describe('public product promises document', () => {
     )
     expect(kernelPromise?.verification).toContain(
       'Green still requires a real live market-dispatched optimized kernel',
+    )
+  })
+
+  test('keeps Khala data/privacy capture promises aligned and explicitly gated (#7019)', () => {
+    const decoded = S.decodeUnknownSync(ProductPromisesDocument)(
+      publicProductPromisesDocument(),
+    )
+    const byId = (promiseId: string) =>
+      decoded.promises.find(promise => promise.promiseId === promiseId)
+
+    const disclosurePromise = byId(FREE_TIER_DATA_SHARING_PROMISE_ID)
+    expect(disclosurePromise).toMatchObject({
+      state: 'yellow',
+      blockerRefs: [
+        'blocker.product_promises.free_tier_capture_default_owner_gated',
+        'blocker.product_promises.disclosure_copy_owner_signoff_pending',
+      ],
+    })
+    expect(disclosurePromise?.safeCopy).toContain(
+      'GET /api/public/free-tier-data-sharing',
+    )
+    expect(disclosurePromise?.safeCopy).toContain(
+      'POST /api/keys/free mint response',
+    )
+    expect(disclosurePromise?.safeCopy).toContain(
+      'Pay for privacy, or run confidential compute, to opt out of capture',
+    )
+    expect(disclosurePromise?.authorityBoundary).toContain(
+      'does not change capture behavior',
+    )
+
+    const capturePromise = byId('data.khala_free_tier_trace_capture.v1')
+    expect(capturePromise).toMatchObject({
+      state: 'yellow',
+      blockerRefs: [
+        'blocker.product_promises.free_tier_capture_default_owner_gated',
+        'blocker.product_promises.trace_capture_public_disclosure_alignment_required',
+        'blocker.product_promises.trace_capture_reward_marker_inert',
+      ],
+    })
+    expect(capturePromise?.safeCopy).toContain(
+      'captured traces are owner_only',
+    )
+    expect(capturePromise?.unsafeCopy).toContain(
+      'do not claim capture pays users or contributors',
+    )
+
+    const privacyPromise = byId('privacy.khala_paid_capture_optout.v1')
+    expect(privacyPromise).toMatchObject({
+      state: 'yellow',
+      blockerRefs: [
+        'blocker.product_promises.paid_privacy_owner_signoff_pending',
+        'blocker.product_promises.paid_khala_business_loop_not_green',
+      ],
+    })
+    expect(privacyPromise?.safeCopy).toContain(
+      'fails closed to not-captured',
+    )
+    expect(privacyPromise?.unsafeCopy).toContain(
+      'Do not claim paid privacy, confidential compute, or privacy-preserving paid Khala is broadly green',
     )
   })
 
