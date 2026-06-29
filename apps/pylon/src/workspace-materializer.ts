@@ -2,6 +2,7 @@ import { existsSync, realpathSync } from "node:fs"
 import { mkdir, readdir, readFile, rm, stat, utimes, writeFile } from "node:fs/promises"
 import { dirname, join, resolve } from "node:path"
 import { createHash } from "node:crypto"
+import { Context, Effect, Layer } from "effect"
 import { CLAUDE_AGENT_CAPABILITY_REF } from "./claude-agent.js"
 import { CODEX_AGENT_CAPABILITY_REF } from "./codex-agent.js"
 
@@ -755,6 +756,36 @@ export type WorkspaceLeaseRecord = {
   }
 }
 
+export type WorkspaceLeaseReadFailureKind = "not_found" | "malformed" | "storage_failed"
+
+export class WorkspaceLeaseReadError extends Error {
+  readonly operation = "workspace_lease.read"
+  readonly reasonRef: string
+  readonly causeRef: string
+
+  constructor(
+    readonly kind: WorkspaceLeaseReadFailureKind,
+    readonly workspaceRef: string,
+    cause: unknown,
+  ) {
+    const causeLabel = cause instanceof Error ? cause.name : typeof cause
+    super(`workspace lease read ${kind}: ${workspaceRef}`)
+    this.name = "WorkspaceLeaseReadError"
+    this.reasonRef = `reason.workspace_lease_read.${kind}`
+    this.causeRef = stableRef("cause.pylon.workspace_lease_read", `${kind}:${workspaceRef}:${causeLabel}`)
+  }
+}
+
+export class PylonWorkspaceLeaseStore extends Context.Service<
+  PylonWorkspaceLeaseStore,
+  {
+    readonly readLeaseRecord: (input: {
+      readonly workspaceStateRoot: string
+      readonly workspaceRef: string
+    }) => Effect.Effect<WorkspaceLeaseRecord, WorkspaceLeaseReadError>
+  }
+>()("PylonWorkspaceLeaseStore") {}
+
 /** Stable cache key for one public repository's shared bare clone. */
 export function repositoryCacheKeyFor(fullName: string): string {
   return createHash("sha256").update(fullName).digest("hex").slice(0, 24)
@@ -984,10 +1015,58 @@ function leaseRecordPath(workspaceStateRoot: string, workspaceRef: string) {
   return join(workspaceStateRoot, `${workspaceRef}.json`)
 }
 
-async function readLeaseRecord(path: string): Promise<WorkspaceLeaseRecord | null> {
+function workspaceLeaseReadErrorFromUnknown(
+  error: unknown,
+  workspaceRef: string,
+): WorkspaceLeaseReadError {
+  if (error instanceof WorkspaceLeaseReadError) return error
+  return new WorkspaceLeaseReadError("storage_failed", workspaceRef, error)
+}
+
+async function readLeaseRecordStrict(input: {
+  workspaceStateRoot: string
+  workspaceRef: string
+}): Promise<WorkspaceLeaseRecord> {
+  const path = leaseRecordPath(input.workspaceStateRoot, input.workspaceRef)
+  let raw: string
   try {
-    const record = JSON.parse(await readFile(path, "utf8")) as WorkspaceLeaseRecord
-    return record.schema === WORKSPACE_LEASE_SCHEMA ? record : null
+    raw = await readFile(path, "utf8")
+  } catch (error) {
+    if (isNodeErrorWithCode(error, "ENOENT")) {
+      throw new WorkspaceLeaseReadError("not_found", input.workspaceRef, error)
+    }
+    throw new WorkspaceLeaseReadError("storage_failed", input.workspaceRef, error)
+  }
+
+  try {
+    const record = JSON.parse(raw) as WorkspaceLeaseRecord
+    if (record?.schema !== WORKSPACE_LEASE_SCHEMA) {
+      throw new WorkspaceLeaseReadError("malformed", input.workspaceRef, "schema")
+    }
+    return record
+  } catch (error) {
+    throw workspaceLeaseReadErrorFromUnknown(
+      error instanceof WorkspaceLeaseReadError
+        ? error
+        : new WorkspaceLeaseReadError("malformed", input.workspaceRef, error),
+      input.workspaceRef,
+    )
+  }
+}
+
+export const PylonWorkspaceLeaseStoreLive = Layer.succeed(PylonWorkspaceLeaseStore, {
+  readLeaseRecord: (input) =>
+    Effect.tryPromise({
+      try: () => readLeaseRecordStrict(input),
+      catch: (error) => workspaceLeaseReadErrorFromUnknown(error, input.workspaceRef),
+    }),
+})
+
+async function readLeaseRecord(path: string): Promise<WorkspaceLeaseRecord | null> {
+  const workspaceRef = path.endsWith(".json") ? path.slice(path.lastIndexOf("/") + 1, -".json".length) : path
+  const workspaceStateRoot = path.slice(0, Math.max(0, path.length - `${workspaceRef}.json`.length - 1))
+  try {
+    return await readLeaseRecordStrict({ workspaceStateRoot, workspaceRef })
   } catch {
     return null
   }
@@ -1254,7 +1333,15 @@ export async function workspaceLeaseRecordFor(input: {
   workspaceStateRoot: string
   workspaceRef: string
 }): Promise<WorkspaceLeaseRecord | null> {
-  return readLeaseRecord(leaseRecordPath(input.workspaceStateRoot, input.workspaceRef))
+  return Effect.runPromise(
+    Effect.gen(function* () {
+      const store = yield* PylonWorkspaceLeaseStore
+      return yield* store.readLeaseRecord(input)
+    }).pipe(
+      Effect.catch(() => Effect.succeed(null)),
+      Effect.provide(PylonWorkspaceLeaseStoreLive),
+    ),
+  )
 }
 
 /**

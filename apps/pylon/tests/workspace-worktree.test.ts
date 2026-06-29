@@ -3,6 +3,7 @@ import { existsSync } from "node:fs"
 import { mkdir, mkdtemp, rm, utimes, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
+import { Effect } from "effect"
 import {
   captureWorkspaceChanges,
   cleanupExpiredWorkspaces,
@@ -12,6 +13,8 @@ import {
   detectWorkspaceChangeConflicts,
   materializeGitCheckoutWorkspaceWithLease,
   pruneWorkspaceCacheDirectories,
+  PylonWorkspaceLeaseStore,
+  PylonWorkspaceLeaseStoreLive,
   publicWorkspaceChangeCaptureProjection,
   publicWorkspaceLeaseProjection,
   releaseWorkspace,
@@ -101,6 +104,18 @@ function leaseInput(root: string, overrides: Record<string, unknown> = {}) {
     workspaceStateRoot: join(root, "workspace-leases"),
     ...overrides,
   }
+}
+
+function readLeaseRecordWithLiveStore(input: {
+  workspaceStateRoot: string
+  workspaceRef: string
+}) {
+  return Effect.runPromise(
+    Effect.gen(function* () {
+      const store = yield* PylonWorkspaceLeaseStore
+      return yield* store.readLeaseRecord(input)
+    }).pipe(Effect.provide(PylonWorkspaceLeaseStoreLive)),
+  )
 }
 
 describe("repositoryCacheKeyFor", () => {
@@ -551,6 +566,68 @@ describe("materializeGitCheckoutWorkspaceWithLease", () => {
       expect(record?.generatedAt).toBe(now.toISOString())
       expect(record?.cleanupRef).toBe(materialized.cleanupRef)
       expect(record?.local.workingDirectory).toBe(materialized.workingDirectory)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  test("Effect lease store distinguishes missing lease records", async () => {
+    const root = await mkdtemp(join(tmpdir(), "pylon-worktree-lease-store-"))
+    try {
+      await expect(
+        readLeaseRecordWithLiveStore({
+          workspaceStateRoot: join(root, "workspace-leases"),
+          workspaceRef: "workspace.pylon.codex_agent_task.missing",
+        }),
+      ).rejects.toMatchObject({
+        kind: "not_found",
+        operation: "workspace_lease.read",
+        reasonRef: "reason.workspace_lease_read.not_found",
+        workspaceRef: "workspace.pylon.codex_agent_task.missing",
+      })
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  test("Effect lease store distinguishes malformed lease records", async () => {
+    const root = await mkdtemp(join(tmpdir(), "pylon-worktree-lease-store-"))
+    try {
+      const workspaceStateRoot = join(root, "workspace-leases")
+      const workspaceRef = "workspace.pylon.codex_agent_task.malformed"
+      await mkdir(workspaceStateRoot, { recursive: true })
+      await writeFile(join(workspaceStateRoot, `${workspaceRef}.json`), "{not-json}\n")
+
+      await expect(
+        readLeaseRecordWithLiveStore({ workspaceStateRoot, workspaceRef }),
+      ).rejects.toMatchObject({
+        kind: "malformed",
+        operation: "workspace_lease.read",
+        reasonRef: "reason.workspace_lease_read.malformed",
+        workspaceRef,
+      })
+      await expect(workspaceLeaseRecordFor({ workspaceStateRoot, workspaceRef })).resolves.toBeNull()
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  test("Effect lease store distinguishes storage failures", async () => {
+    const root = await mkdtemp(join(tmpdir(), "pylon-worktree-lease-store-"))
+    try {
+      const workspaceStateRoot = join(root, "workspace-leases")
+      await writeFile(workspaceStateRoot, "not a directory\n")
+      await expect(
+        readLeaseRecordWithLiveStore({
+          workspaceStateRoot,
+          workspaceRef: "workspace.pylon.codex_agent_task.storage_failed",
+        }),
+      ).rejects.toMatchObject({
+        kind: "storage_failed",
+        operation: "workspace_lease.read",
+        reasonRef: "reason.workspace_lease_read.storage_failed",
+        workspaceRef: "workspace.pylon.codex_agent_task.storage_failed",
+      })
     } finally {
       await rm(root, { recursive: true, force: true })
     }
