@@ -1229,7 +1229,7 @@ describe('dispatchWithOverflow', () => {
     expect(gemini.calls()).toBe(1)
   })
 
-  test('activates GLM own-capacity failover after consecutive reserved-headroom 503s and auto-clears on recovery', async () => {
+  test('activates GLM own-capacity failover after consecutive no-headroom saturation failures and auto-clears on recovery', async () => {
     let recovered = false
     const alerts: Array<{
       message: string
@@ -1249,16 +1249,27 @@ describe('dispatchWithOverflow', () => {
           replicaBusyReason: 'reserved_headroom_unavailable',
           replicaFallbackReason: 'reserved_headroom_unavailable',
         },
-        httpStatus: 503,
-        kind: 'route_admission_reserved_headroom_unavailable',
-        reason: 'GLM own-capacity lane has no reserved external headroom',
+        httpStatus: 429,
+        kind: 'glm_pool_saturated',
+        reason:
+          'hydralisk GLM pool saturated (glm_aggregate_external_headroom_zero); overflowing to the next Khala lane',
         retryable: true,
       }),
       new InferenceAdapterError({
         adapterId: HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
-        httpStatus: 503,
-        kind: 'route_admission_reserved_headroom_unavailable',
-        reason: 'GLM own-capacity lane has no reserved external headroom',
+        adapterRouteMetadata: {
+          glmAggregateExternalHeadroom: 0,
+          glmAggregateInflightCount: 8,
+          glmAggregateMaxInflight: 8,
+          glmSaturationPolicy: 'overflow_immediately',
+          queueWaitMs: 0,
+          replicaBusyReason: 'inflight_full',
+          replicaFallbackReason: 'inflight_full',
+        },
+        httpStatus: 429,
+        kind: 'glm_pool_saturated',
+        reason:
+          'hydralisk GLM pool saturated (inflight_full); overflowing to the next Khala lane',
         retryable: true,
       }),
       undefined,

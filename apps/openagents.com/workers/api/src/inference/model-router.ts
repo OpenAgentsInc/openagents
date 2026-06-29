@@ -750,9 +750,9 @@ export type DispatchDeps = Readonly<{
   // neutral classifiers only: never prompts, completions, URLs, IPs, or tokens.
   failureTelemetry?: DispatchFailureTelemetry | undefined
   // Optional GLM own-capacity failover breaker. When the self-hosted GLM lane
-  // returns repeated reserved-headroom 503s, external demand skips that lane and
-  // overflows to the paid multi-lane plan until the control-plane recovery
-  // predicate clears the breaker.
+  // returns repeated public-safe no-headroom saturation signals, external demand
+  // skips that lane until the control-plane recovery predicate clears the
+  // breaker.
   glmOwnCapacityFailover?: DispatchGlmOwnCapacityFailover | undefined
 }>
 
@@ -966,16 +966,36 @@ const recordFailureTelemetry = (
 const GLM_OWN_CAPACITY_DOWN_ALERT =
   'GLM own-capacity down — failover active'
 
-const GLM_RESERVED_HEADROOM_FAILURE_KINDS = new Set([
+const GLM_ROUTE_HEADROOM_FAILURE_KINDS = new Set([
   'route_admission_reserved_headroom_unavailable',
   'glm_reserved_external_headroom_unavailable',
 ])
 
-const isGlmReservedHeadroomFailure = (
+const GLM_POOL_HEADROOM_FAILURE_REASONS = new Set([
+  'glm_aggregate_external_headroom_zero',
+  'glm_reserved_external_headroom_unavailable',
+  'reserved_headroom_unavailable',
+])
+
+const isGlmOwnCapacityUnavailableFailure = (
   error: InferenceAdapterError,
-): boolean =>
-  error.httpStatus === 503 &&
-  GLM_RESERVED_HEADROOM_FAILURE_KINDS.has(error.kind ?? '')
+): boolean => {
+  if (GLM_ROUTE_HEADROOM_FAILURE_KINDS.has(error.kind ?? '')) {
+    return true
+  }
+  if (error.kind !== 'glm_pool_saturated') {
+    return false
+  }
+  const metadata = error.adapterRouteMetadata
+  if (metadata?.glmAggregateExternalHeadroom === 0) {
+    return true
+  }
+  const replicaBusyReason = metadata?.replicaBusyReason
+  return (
+    typeof replicaBusyReason === 'string' &&
+    GLM_POOL_HEADROOM_FAILURE_REASONS.has(replicaBusyReason)
+  )
+}
 
 export const makeGlmOwnCapacityFailover = (
   input: Readonly<{
@@ -1021,7 +1041,10 @@ export const makeGlmOwnCapacityFailover = (
     isActive: () => active,
     isRecovered: () => input.isRecovered?.() === true,
     recordFailure: error => {
-      if (error.adapterId !== adapterId || !isGlmReservedHeadroomFailure(error)) {
+      if (
+        error.adapterId !== adapterId ||
+        !isGlmOwnCapacityUnavailableFailure(error)
+      ) {
         return
       }
       consecutiveFailures += 1
