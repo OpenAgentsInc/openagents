@@ -65,6 +65,9 @@ Artanis acts only within explicit, bounded authority:
 - Full status: `2026-06-10-artanis-pylon-tassadar-full-status-audit.md`,
   `2026-06-10-artanis-production-tick-and-tassadar-evolution-audit.md`.
 - Implementation deep-dive: `2026-06-06-artanis-implementation-audit.md`.
+- RLM composition: `2026-06-28-artanis-rlm-composition-architecture.md`
+  covers the #6654 Artanis owner-chat RLM slice and the matching FRLM conductor
+  projection primitives.
 - Deploy readiness: `2026-06-07-artanis-deploy-readiness-full-audit.md`,
   `2026-06-06-production-launch-gate-runbook.md`.
 - Treasury / payouts: `treasury-runbook.md`, `tips-buffer-runbook.md`.

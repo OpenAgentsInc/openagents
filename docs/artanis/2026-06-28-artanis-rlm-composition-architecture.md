@@ -40,6 +40,54 @@ Each returned turn carries an `rlmTrace` with:
 - `compositionInstruction`
 - `used`
 
+## Implemented Closure Slice
+
+Issue #6654 is satisfied by the current operator path at the reasoning layer:
+
+- Long-form owner turns are detected by `shouldUseArtanisRlmComposition`.
+- The operator asks Khala for a typed decomposition instead of answering the
+  owner directly.
+- Each subquery is executed as its own `openagents/khala` request.
+- The final owner answer is composed from the returned evidence packets.
+- The returned `rlmTrace` records the program ref, Blueprint signature ref,
+  decomposition, evidence packets, served model ids, and composition
+  instruction.
+- The #6651 continue-on-length loop still wraps planner, subquery, and
+  composition calls, so single-completion limits are a local fallback rather
+  than the architecture.
+
+The regression coverage is
+`apps/openagents.com/workers/api/src/artanis-operator.test.ts`, specifically the
+`#6654 Artanis RLM composition` tests. The focused verification command is:
+
+```sh
+bun run --cwd apps/openagents.com/workers/api test -- src/artanis-operator.test.ts
+```
+
+## FRLM Projection Primitives
+
+The broader federated conductor primitives already exist in
+`apps/pylon/src/frlm-conductor-execution.ts` and are covered by
+`apps/pylon/tests/frlm-conductor-execution.test.ts`.
+
+Those primitives model the historical FRLM conductor shape without granting new
+runtime authority:
+
+- `planFrlmConductorExecution` projects recursive fanout, linear fallback,
+  budget/depth blockers, evidence refs, and execution-plan refs.
+- `scheduleFrlmConductor` computes public-safe recursive batches and local
+  fallback steps from Pylon slot refs.
+- `composeFrlmRecursiveResponse` deterministically composes completed subquery
+  response segments.
+- `emitFrlmRlmStepTrace` emits public-safe RLM step traces with redacted content
+  and evidence refs.
+
+The operator implementation above is the owner-chat reasoning slice; the Pylon
+FRLM module is the projection/scheduling slice. A later integration can wire the
+two by persisting the operator `rlmTrace` as FRLM evidence rows and then letting
+the conductor schedule recursive Pylon/Codex fanout under its existing budget,
+slot, and fallback blockers.
+
 ## Blueprint Grounding
 
 This is intentionally aligned with `autonomous-ops-v1`:
@@ -61,3 +109,10 @@ behind the existing Artanis approval-gate and gated-tool boundaries.
 The #6651 continue-on-length loop remains in place for each individual planner,
 subquery, or composition completion. It is now the fallback inside a larger RLM
 run, not the primary architecture for long answers.
+
+The current owner-chat slice deliberately suppresses operator tools while
+running the RLM decomposition pass. That keeps this issue closed at the
+composition layer without accidentally widening authority. Tool-backed recursive
+execution should be promoted only after it carries explicit FRLM conductor rows,
+BudgetPolicy refs, Pylon slot refs, and approval-gate evidence for any
+state-changing action.
