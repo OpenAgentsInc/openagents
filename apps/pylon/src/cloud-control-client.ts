@@ -114,6 +114,7 @@ export const OPENAGENTS_CODEX_WORKROOM_EVENT_KINDS = [
   "redacted",
   "artifact",
   "receipt",
+  "cleanup",
   "completed",
   "failed",
   "timeout",

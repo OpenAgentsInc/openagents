@@ -493,9 +493,9 @@ describe("OpenAgents Cloud execution backend (#4997)", () => {
       expect(row?.lane).toBe("cloud-gcp")
 
       // MOST IMPORTANT: the resource_usage_receipt.v1 ref round-trips to the
-      // session exactly like SHC/local (first receipt ref captured — the
-      // provision receipt arrives first on the cloud.gce.provisioned event).
-      expect(row?.resourceUsageReceiptRef).toBe("sha256:provision-receipt-0")
+      // session exactly like SHC/local. Provision/cleanup receipts are
+      // lifecycle provenance only and must not mask the usage receipt.
+      expect(row?.resourceUsageReceiptRef).toBe("sha256:resource-usage-receipt-1")
 
       // VM lifecycle provenance lines appear in the lane-transparent stream.
       const detail = await actions.events(spawned.sessionRef)
