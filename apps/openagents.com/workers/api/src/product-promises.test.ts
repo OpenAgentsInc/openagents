@@ -440,6 +440,38 @@ describe('public product promises document', () => {
       /latest stays 0\.2\.5|only published, installable Pylon|release candidate, not stable 0\.3\.0|Pylon v1\.0 is present in the monorepo as a release candidate/i,
     )
     expect(currentCopy).toContain('Pylon v1.0 has a stable source cut')
+    expect(currentCopy).toContain('Registry 2026-06-29.2')
+    expect(currentCopy).toContain('flips NO promise state')
+    expect(currentCopy).toContain('Khala Desktop now carries source-level')
+    expect(currentCopy).toContain('maxStalenessSeconds:0')
+    const codexSuccessorPromise = decoded.promises.find(
+      promise => promise.promiseId === 'autopilot.codex_probe_pylon_successor.v1',
+    )
+    expect(codexSuccessorPromise?.state).toBe('green')
+    expect(codexSuccessorPromise?.safeCopy).toContain(
+      'terminal-agent audits plus supervisor replenishment',
+    )
+    expect(codexSuccessorPromise?.evidenceRefs).toEqual(
+      expect.arrayContaining([
+        'docs/research/terminal-agents/openagents-current-state.md',
+        'docs/research/terminal-agents/codex.md',
+        'apps/pylon/scripts/codex-supervisor/replenishment.sh',
+        'apps/pylon/scripts/codex-supervisor/replenishment.test.sh',
+      ]),
+    )
+    const inferenceGatewayPromise = decoded.promises.find(
+      promise => promise.promiseId === 'inference.gateway_credits_business.v1',
+    )
+    expect(inferenceGatewayPromise?.state).toBe('red')
+    expect(inferenceGatewayPromise?.safeCopy).toContain(
+      'GLM own-capacity failover alerting',
+    )
+    expect(inferenceGatewayPromise?.evidenceRefs).toEqual(
+      expect.arrayContaining([
+        'apps/openagents.com/workers/api/src/inference/model-router.ts',
+        'apps/openagents.com/workers/api/src/inference/model-router.test.ts',
+      ]),
+    )
     expect(decoded.promises).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -1144,6 +1176,11 @@ describe('public product promises document', () => {
             'apps/autopilot-desktop/src/ui/view.ts',
             'apps/autopilot-desktop/tests/apple-fm-loopback-integration.test.ts',
             'apps/autopilot-desktop/tests/cl-53-sanitize.test.ts',
+            'docs/apple-fm/2026-06-29-electrobun-apple-fm-swift-sidecar-plan.md',
+            'clients/khala-desktop/src/bun/apple-fm-sidecar.ts',
+            'clients/khala-desktop/src/shared/apple-fm-packaging.ts',
+            'clients/khala-desktop/src/shared/apple-fm-readiness.ts',
+            'clients/khala-desktop/tests/apple-fm-sidecar.test.ts',
           ]),
           promiseId: 'autopilot.local_apple_fm_tool_chat.v1',
           state: 'yellow',
@@ -1180,6 +1217,10 @@ describe('public product promises document', () => {
     )
     expect(localAppleFmPromise?.blockerRefs).not.toContain(
       'blocker.product_promises.local_apple_fm_admitted_mac_smoke_missing',
+    )
+    expect(localAppleFmPromise?.safeCopy).toContain('Khala Desktop')
+    expect(localAppleFmPromise?.verification).toContain(
+      'source-level packaging/readiness',
     )
     const mondayTrainingPromise = decoded.promises.find(
       promise =>
