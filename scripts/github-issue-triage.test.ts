@@ -7,6 +7,8 @@ import {
   inferRelevantFiles,
   issueHasAnyLabel,
   issueHasPriorityLabel,
+  issueNeedsPriorityTriage,
+  PRIORITY_LABELS,
   renderTriageComment,
   tokenizeIssueText,
   triageIssue,
@@ -121,8 +123,16 @@ describe("github issue triage output", () => {
     expect(issueHasAnyLabel(issue({ labels: [{ name: "standing-task" }] }))).toBe(true)
   })
 
-  test("builds the default candidate query from newly opened unlabeled issues", () => {
-    expect(buildCandidateIssueSearch(false)).toBe("is:issue is:open no:label sort:created-desc")
+  test("keeps non-priority labeled issues in the priority triage queue", () => {
+    expect(issueNeedsPriorityTriage(issue({ labels: [] }))).toBe(true)
+    expect(issueNeedsPriorityTriage(issue({ labels: [{ name: "standing-task" }] }))).toBe(true)
+    expect(issueNeedsPriorityTriage(issue({ labels: [{ name: "prio:2-issue-triage" }] }))).toBe(false)
+  })
+
+  test("builds the default candidate query from issues missing priority labels", () => {
+    expect(buildCandidateIssueSearch(false)).toBe(
+      `is:issue is:open ${PRIORITY_LABELS.map(label => `-label:"${label}"`).join(" ")} sort:created-desc`,
+    )
     expect(buildCandidateIssueSearch(true)).toBe("is:issue is:open sort:created-desc")
   })
 
