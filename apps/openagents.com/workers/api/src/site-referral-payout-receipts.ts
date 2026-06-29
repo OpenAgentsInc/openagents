@@ -20,6 +20,15 @@ export type PublicSiteReferralPayoutReceiptProjection = Readonly<{
   caveatRefs: ReadonlyArray<string>
   evidenceRefs: ReadonlyArray<string>
   generatedAt: string
+  promiseGate: Readonly<{
+    broaderReferralPromiseIdsNotSatisfied: ReadonlyArray<string>
+    livePurchaseToBitcoinPayoutReceipt: boolean
+    requiredSettlementRail: Extract<
+      SiteReferralPayoutReceiptSettlementRail,
+      'hosted_mdk'
+    >
+    scopedPromiseId: 'sites.referral_bitcoin_stream.v1'
+  }>
   policyRefs: ReadonlyArray<string>
   qualifyingEventKind: string
   receiptRef: string
@@ -66,6 +75,12 @@ const settlementRailForReceipt = (
       ? 'staging_test'
       : 'public_safe_adapter'
 
+const BROADER_REFERRAL_PROMISE_IDS_NOT_SATISFIED = [
+  'referral.refer_once_earn_forever.v1',
+  'inference.referral_on_all_inference.v1',
+  'marketplace.monetize_any_layer_with_referral.v1',
+] as const
+
 const publicProjection = (
   row: SettledReceiptRow,
   receiptRef: string,
@@ -74,6 +89,7 @@ const publicProjection = (
   const evidenceRefs = parseJsonStringArray(row.evidence_refs_json).filter(ref =>
     isPublicSafeRef(ref),
   )
+  const settlementRail = settlementRailForReceipt(receiptRef)
 
   return {
     amountSats: Number(row.amount_sats),
@@ -83,11 +99,18 @@ const publicProjection = (
     caveatRefs: parseJsonStringArray(row.caveat_refs_json),
     evidenceRefs,
     generatedAt,
+    promiseGate: {
+      broaderReferralPromiseIdsNotSatisfied:
+        BROADER_REFERRAL_PROMISE_IDS_NOT_SATISFIED,
+      livePurchaseToBitcoinPayoutReceipt: settlementRail === 'hosted_mdk',
+      requiredSettlementRail: 'hosted_mdk',
+      scopedPromiseId: 'sites.referral_bitcoin_stream.v1',
+    },
     policyRefs: parseJsonStringArray(row.policy_refs_json),
     qualifyingEventKind: row.qualifying_event_kind,
     receiptRef,
     resolution: {
-      settlementRail: settlementRailForReceipt(receiptRef),
+      settlementRail,
       state: 'settled',
       status: 'ok',
     },
