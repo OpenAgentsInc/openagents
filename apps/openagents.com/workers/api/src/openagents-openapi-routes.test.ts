@@ -195,10 +195,32 @@ describe('OpenAgents OpenAPI route', () => {
       operationAt(body, '/api/public/training/public-gradient-windows', 'get')
         .operationId,
     ).toBe('getTrainingPublicGradientWindowsStatus')
-    expect(
-      operationAt(body, '/api/public/training/ablation-derisking-ledger', 'get')
-        .operationId,
-    ).toBe('getTrainingAblationDeriskingLedger')
+    const ablationLedgerOperation = operationAt(
+      body,
+      '/api/public/training/ablation-derisking-ledger',
+      'get',
+    )
+    expect(ablationLedgerOperation.operationId).toBe(
+      'getTrainingAblationDeriskingLedger',
+    )
+    expect(ablationLedgerOperation.description).toEqual(
+      expect.stringContaining(
+        'one accepted paid ablation settlement receipt',
+      ),
+    )
+    const ablationLedgerProperties = schemaProperties(
+      body,
+      'TrainingAblationDeriskingLedgerEnvelope',
+    )
+    expect(ablationLedgerProperties.paidDispatchReceipts).toMatchObject({
+      type: 'array',
+    })
+    expect(ablationLedgerProperties.ledgerSummary?.properties).toEqual(
+      expect.objectContaining({
+        acceptedVerdictCount: expect.any(Object),
+        paidAblationCount: expect.any(Object),
+      }),
+    )
     expect(
       operationAt(
         body,

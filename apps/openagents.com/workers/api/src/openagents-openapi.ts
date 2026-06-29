@@ -231,7 +231,7 @@ export const TrainingAblationDeriskingLedgerEnvelope: JsonSchema = {
   type: 'object',
   additionalProperties: true,
   description:
-    'Public-safe ablation derisking ledger projection for training.ablation_system.v1 with generatedAt and a live_at_read staleness contract whose maxStalenessSeconds is 0. It exposes one-delta manifest-verified candidate entries, retained eval-reproduction receipts, source refs, blocker refs, and a gate that explicitly keeps paid dispatch and green status false until paid ablation receipts exist. It contains no raw training data, prompts, logs, wallet material, payment material, private paths, or dispatch authority.',
+    'Public-safe ablation derisking ledger projection for training.ablation_system.v1 with generatedAt and a live_at_read staleness contract whose maxStalenessSeconds is 0. It exposes one-delta manifest-verified candidate entries, retained eval-reproduction receipts, one accepted paid ablation settlement receipt, source refs, blocker refs, and a gate that keeps the broad green claim false until seeded replication and owner-signed transition receipts exist. It contains no raw training data, prompts, logs, wallet material, payment material, private paths, or dispatch authority.',
   required: [
     'authorityBoundary',
     'endpoint',
@@ -240,6 +240,7 @@ export const TrainingAblationDeriskingLedgerEnvelope: JsonSchema = {
     'gate',
     'generatedAt',
     'ledgerSummary',
+    'paidDispatchReceipts',
     'promiseRef',
     'promiseState',
     'schemaVersion',
@@ -265,6 +266,8 @@ export const TrainingAblationDeriskingLedgerEnvelope: JsonSchema = {
           'oneDeltaManifestState',
           'evalReproductionState',
           'paidDispatchState',
+          'paidDispatchReceiptRefs',
+          'settlementReceiptRefs',
           'verdictState',
           'blockerRefs',
           'sourceRefs',
@@ -276,6 +279,14 @@ export const TrainingAblationDeriskingLedgerEnvelope: JsonSchema = {
           manifestRef: { type: 'string' },
           oneDeltaManifestState: { type: 'string' },
           paidDispatchState: { type: 'string' },
+          paidDispatchReceiptRefs: {
+            type: 'array',
+            items: { type: 'string' },
+          },
+          settlementReceiptRefs: {
+            type: 'array',
+            items: { type: 'string' },
+          },
           sourceRefs: { type: 'array', items: { type: 'string' } },
           verdictState: { type: 'string' },
         },
@@ -355,6 +366,37 @@ export const TrainingAblationDeriskingLedgerEnvelope: JsonSchema = {
         paidAblationCount: { type: 'integer', minimum: 0 },
         reproducedEvalCount: { type: 'integer', minimum: 0 },
         verifiedManifestCount: { type: 'integer', minimum: 0 },
+      },
+    },
+    paidDispatchReceipts: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: true,
+        required: [
+          'accepted',
+          'amountSats',
+          'assignmentRef',
+          'dispatchState',
+          'manifestRef',
+          'receiptRef',
+          'settlementReceiptRef',
+          'verdictReceiptRef',
+          'authorityBoundary',
+          'sourceRefs',
+        ],
+        properties: {
+          accepted: { type: 'boolean' },
+          amountSats: { type: 'integer', minimum: 0 },
+          assignmentRef: { type: 'string' },
+          authorityBoundary: { type: 'string' },
+          dispatchState: { type: 'string', enum: ['settled'] },
+          manifestRef: { type: 'string' },
+          receiptRef: { type: 'string' },
+          settlementReceiptRef: { type: 'string' },
+          sourceRefs: { type: 'array', items: { type: 'string' } },
+          verdictReceiptRef: { type: 'string' },
+        },
       },
     },
     promiseRef: {
@@ -1726,6 +1768,12 @@ const schemaComponents = (): JsonSchema => ({
   ),
   AutopilotDecisionActionEnvelope: objectSummary(
     'Autopilot decision action envelope with generatedAt, idempotent flag, and directEffectPermitted: false. The delivered-work accept path returns the completed decision-action projection and public-safe work-order context after the gated review submission is recorded; non-review command responses return an evidence-only command receipt and never grant direct effect authority.',
+  ),
+  AutopilotWorkDecisionListEnvelope: objectSummary(
+    'Owner-scoped Autopilot decision queue envelope for one work order: generatedAt, pendingCount, directEffectPermitted: false, public-safe work context, and decision items with any matching decision closeout receipts. It is a read projection only and grants no deploy, spend, payout, settlement, or direct-effect authority.',
+  ),
+  AutopilotDecisionCloseoutEnvelope: objectSummary(
+    'Owner-scoped Autopilot decision closeout receipt envelope with generatedAt, directEffectPermitted: false, and a public-safe receipt that records the resolved review action for one work order. It is audit evidence only and grants no deploy, spend, payout, settlement, or Forum publication authority.',
   ),
   XClaimRewardDispatchRequest: objectSummary(
     'Operator dispatch action for a promotional X-claim reward: action (approve_dispatch, mark_dispatched, mark_settled, mark_failed, refuse), optional public-safe evidenceRefs (required for mark_settled), optional stateReasonRef.',
@@ -7717,7 +7765,7 @@ const paths = (): JsonSchema => ({
       operationId: 'getTrainingAblationDeriskingLedger',
       summary: 'Read training ablation derisking ledger',
       description:
-        'Returns the public-safe ablation derisking ledger projection for training.ablation_system.v1. Current entries are one-delta manifest-verified candidates with a retained Psion checkpoint-eval reproduction receipt; paid ablation dispatch and accepted verdict gates remain false until dereferenceable paid ablation receipts exist. Read-only; grants no training-dispatch, spend, settlement, model-promotion, or public-claim authority.',
+        'Returns the public-safe ablation derisking ledger projection for training.ablation_system.v1. Current entries are one-delta manifest-verified candidates with a retained Psion checkpoint-eval reproduction receipt and one accepted paid ablation settlement receipt; the broad green gate remains false until seeded replication and owner-signed transition receipts exist. Read-only; grants no training-dispatch, spend, settlement, model-promotion, or public-claim authority.',
       tags: ['Training', 'Public Proof'],
       security: publicRead,
       responses: {
@@ -9554,6 +9602,46 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Autopilot decision queue projection.',
           '#/components/schemas/AutopilotDecisionListEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/autopilot/work/{workOrderRef}/decisions': {
+    get: operation({
+      operationId: 'listAutopilotWorkOrderDecisions',
+      summary: 'List decisions for one Autopilot work order',
+      description:
+        'Returns the authenticated owner-scoped decision projection for one Autopilot work order, including pending or completed decision rows and any matching decision closeout receipts. Every row carries directEffectPermitted: false; this route is read-only evidence and grants no deploy authority, worker payout authority, settlement authority, spend authority, or Forum publication authority. Requires customer_orders.read for registered agents or a browser session.',
+      tags: ['Autopilot Work'],
+      security: browserSessionOrAgentBearer,
+      parameters: [
+        pathParam('workOrderRef', 'Autopilot work-order reference.'),
+      ],
+      responses: {
+        '200': okJson(
+          'Autopilot work-order decision projection.',
+          '#/components/schemas/AutopilotWorkDecisionListEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/autopilot/decision-closeouts/{closeoutRef}': {
+    get: operation({
+      operationId: 'getAutopilotDecisionCloseout',
+      summary: 'Read an Autopilot decision closeout receipt',
+      description:
+        'Dereferences an authenticated owner-scoped Autopilot decision closeout receipt. The receipt records the review outcome for one work order and is audit evidence only: directEffectPermitted stays false and the read grants no deploy authority, worker payout authority, settlement authority, spend authority, or Forum publication authority. Requires customer_orders.read for registered agents or a browser session.',
+      tags: ['Autopilot Work'],
+      security: browserSessionOrAgentBearer,
+      parameters: [
+        pathParam('closeoutRef', 'Autopilot decision closeout reference.'),
+      ],
+      responses: {
+        '200': okJson(
+          'Autopilot decision closeout receipt.',
+          '#/components/schemas/AutopilotDecisionCloseoutEnvelope',
         ),
         ...errorResponses(),
       },
