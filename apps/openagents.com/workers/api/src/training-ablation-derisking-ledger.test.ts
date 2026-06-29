@@ -18,6 +18,15 @@ type TrainingAblationLedgerBody = Readonly<{
   gate: Readonly<{
     publicProjectionAvailable: boolean
     greenGateSatisfied: boolean
+    paidAblationDispatchAvailable: boolean
+  }>
+  ledgerSummary: Readonly<{
+    acceptedVerdictCount: number
+    paidAblationCount: number
+  }>
+  paidDispatchReceipts: ReadonlyArray<{
+    receiptRef: string
+    settlementReceiptRef: string
   }>
   promiseRef: string
 }>
@@ -112,6 +121,15 @@ describe('training ablation derisking ledger projection', () => {
     expect(
       projection.entries.filter(entry => entry.verdictState === 'accepted'),
     ).toHaveLength(1)
+    const settledEntry = projection.entries.find(
+      entry => entry.paidDispatchState === 'settled',
+    )
+    expect(settledEntry?.paidDispatchReceiptRefs).toContain(
+      'receipt.training_ablation.paid_dispatch.wsd_schedule.one_delta.v1',
+    )
+    expect(settledEntry?.settlementReceiptRefs).toContain(
+      'settlement.public.training_ablation.wsd_schedule.one_delta_paid.v1',
+    )
     expect(
       projection.entries.every(
         entry =>
@@ -152,7 +170,16 @@ describe('training ablation derisking ledger projection', () => {
     expect(body.endpoint).toBe(TrainingAblationDeriskingLedgerEndpoint)
     expect(body.promiseRef).toBe('promise:training.ablation_system.v1')
     expect(body.gate.publicProjectionAvailable).toBe(true)
+    expect(body.gate.paidAblationDispatchAvailable).toBe(true)
     expect(body.gate.greenGateSatisfied).toBe(false)
+    expect(body.ledgerSummary.paidAblationCount).toBe(1)
+    expect(body.ledgerSummary.acceptedVerdictCount).toBe(1)
+    expect(body.paidDispatchReceipts[0]).toMatchObject({
+      receiptRef:
+        'receipt.training_ablation.paid_dispatch.wsd_schedule.one_delta.v1',
+      settlementReceiptRef:
+        'settlement.public.training_ablation.wsd_schedule.one_delta_paid.v1',
+    })
   })
 
   test('verifies exactly one public-safe ablation delta', () => {
