@@ -2829,11 +2829,15 @@ export const makeOperatorProviderAccountRoutes = <
       )
     }
 
-    const providerAccountRef = optionalString(body.providerAccountRef)
+    const providerAccountRef =
+      optionalString(body.providerAccountRef) ?? optionalString(body.accountRefHash)
 
     if (providerAccountRef === undefined) {
       return noStoreJsonResponse(
-        { error: 'bad_request', reason: 'providerAccountRef is required' },
+        {
+          error: 'bad_request',
+          reason: 'providerAccountRef or accountRefHash is required',
+        },
         { status: 400 },
       )
     }
