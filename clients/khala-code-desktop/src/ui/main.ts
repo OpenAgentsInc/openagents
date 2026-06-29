@@ -32,6 +32,10 @@ const previewRpc = (): DesktopRpc => ({
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["appleFmReadiness"]>>
       >("appleFmReadiness"),
+    onDeviceDeciderStatus: () =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["onDeviceDeciderStatus"]>>
+      >("onDeviceDeciderStatus"),
   },
 })
 

@@ -7,11 +7,17 @@ import {
   type KhalaCodeDesktopRPCSchema,
 } from "../shared/rpc.js"
 import { createAppleFmSidecarHost } from "./apple-fm-sidecar.js"
+import { createOnDeviceDeciderHost } from "./on-device-decider-host.js"
 
 // Optional on-device Apple Foundation Models sidecar (Mac/Apple-Silicon only).
 // Off by default and fails soft: readiness reports unavailability rather than
 // throwing when the FM bridge or hardware is missing.
 const appleFmSidecar = createAppleFmSidecarHost()
+
+// Optional on-device decider: a small local model that selects a
+// platform-appropriate backend (Apple FM on Apple Silicon, self-hosted GPT-OSS
+// elsewhere). Reuses the sidecar above so a single helper is supervised.
+const onDeviceDecider = createOnDeviceDeciderHost({ sidecar: appleFmSidecar })
 
 const previewPort = (): number => {
   const parsed = Number(
@@ -60,6 +66,9 @@ const rpcRequestHandlers: KhalaCodeDesktopRPCSchema["requests"] = {
   },
   async appleFmReadiness() {
     return appleFmSidecar.readiness()
+  },
+  async onDeviceDeciderStatus() {
+    return onDeviceDecider.select()
   },
 }
 

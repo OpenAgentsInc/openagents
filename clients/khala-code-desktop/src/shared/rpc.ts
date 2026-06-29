@@ -1,4 +1,5 @@
 import type { KhalaAppleFmReadiness } from "./apple-fm-readiness.js"
+import type { OnDeviceDeciderSelection } from "./on-device-decider.js"
 
 export const KHALA_CODE_DESKTOP_RPC_MAX_REQUEST_TIME_MS = 30_000
 export const KHALA_CODE_DESKTOP_DEFAULT_PREVIEW_PORT = 50021
@@ -21,5 +22,6 @@ export type KhalaCodeDesktopRPCSchema = {
   requests: {
     appInfo(): Promise<KhalaCodeDesktopAppInfo>
     appleFmReadiness(): Promise<KhalaAppleFmReadiness>
+    onDeviceDeciderStatus(): Promise<OnDeviceDeciderSelection>
   }
 }
