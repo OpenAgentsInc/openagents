@@ -1,8 +1,17 @@
 import { BrowserView, BrowserWindow } from "electrobun/bun"
 import { existsSync } from "node:fs"
+import { readdir } from "node:fs/promises"
 import { homedir } from "node:os"
-import { join, resolve } from "node:path"
+import { dirname, join, resolve } from "node:path"
 
+import {
+  emptyCodingStatusSummary,
+  parseCodingProcesses,
+  parseSupervisorLog,
+  summarizeCodingProcesses,
+  type CodingStatusResult,
+  type CodingStatusSummary,
+} from "../shared/coding-status.js"
 import {
   connectedPylonCount,
   type CreatePylonResult,
@@ -21,21 +30,75 @@ const baseUrl =
   Bun.env.OPENAGENTS_COM_BASE_URL ??
   OPENAGENTS_DESKTOP_DEFAULT_BASE_URL
 
+const pathCandidates = (): readonly string[] => [
+  Bun.env.PATH ?? "",
+  join(homedir(), ".bun", "bin"),
+  "/opt/homebrew/bin",
+  "/usr/local/bin",
+  "/usr/bin",
+  "/bin",
+]
+
+const withExtraPath = (env: NodeJS.ProcessEnv): NodeJS.ProcessEnv => ({
+  ...env,
+  PATH: pathCandidates().filter(path => path !== "").join(":"),
+})
+
+const ancestorPylonCandidates = (anchor: string): readonly string[] => {
+  const candidates: string[] = []
+  let current = resolve(anchor)
+  for (let index = 0; index < 12; index += 1) {
+    candidates.push(resolve(current, "apps/pylon"))
+    candidates.push(resolve(current, "../../apps/pylon"))
+    const parent = dirname(current)
+    if (parent === current) break
+    current = parent
+  }
+  return candidates
+}
+
 const pylonAppCandidates = (): readonly string[] => [
   ...(Bun.env.OPENAGENTS_PYLON_APP_PATH
     ? [Bun.env.OPENAGENTS_PYLON_APP_PATH]
     : []),
+  ...(Bun.env.OPENAGENTS_REPO_ROOT
+    ? [resolve(Bun.env.OPENAGENTS_REPO_ROOT, "apps/pylon")]
+    : []),
+  ...(Bun.env.INIT_CWD ? ancestorPylonCandidates(Bun.env.INIT_CWD) : []),
+  ...(Bun.env.PWD ? ancestorPylonCandidates(Bun.env.PWD) : []),
+  ...ancestorPylonCandidates(process.cwd()),
+  join(homedir(), "work", "openagents", "apps", "pylon"),
   resolve(process.cwd(), "../../apps/pylon"),
   resolve(process.cwd(), "apps/pylon"),
 ]
 
 const resolvePylonAppPath = async (): Promise<string> => {
+  const seen = new Set<string>()
   for (const candidate of pylonAppCandidates()) {
+    if (seen.has(candidate)) continue
+    seen.add(candidate)
     if (await Bun.file(resolve(candidate, "package.json")).exists()) {
       return candidate
     }
   }
   return pylonAppCandidates()[0] ?? resolve(process.cwd(), "../../apps/pylon")
+}
+
+const bunExecutableCandidates = (): readonly string[] => [
+  ...(Bun.env.OPENAGENTS_BUN_PATH ? [Bun.env.OPENAGENTS_BUN_PATH] : []),
+  process.execPath,
+  resolve(process.cwd(), "bun"),
+  join(homedir(), ".bun", "bin", "bun"),
+  "/opt/homebrew/bin/bun",
+  "/usr/local/bin/bun",
+  "/usr/bin/bun",
+]
+
+const resolveBunExecutable = (): string => {
+  for (const candidate of bunExecutableCandidates()) {
+    if (candidate !== "" && existsSync(candidate)) return candidate
+  }
+  return "bun"
 }
 
 const pylonHomeCandidates = (): readonly string[] => {
@@ -67,6 +130,15 @@ const readJsonFile = async (
       : null
   } catch {
     return null
+  }
+}
+
+const readTextFile = async (path: string): Promise<string> => {
+  try {
+    if (!(await Bun.file(path).exists())) return ""
+    return await Bun.file(path).text()
+  } catch {
+    return ""
   }
 }
 
@@ -163,17 +235,97 @@ const desktopPylonStatus = async (): Promise<PylonStatusResult> => {
   return result.ok ? result : localPylonStatus(result.error)
 }
 
+const supervisorHome = (): string =>
+  Bun.env.CODEX_SUPERVISOR_HOME ??
+  join(homedir(), ".codex-supervisor")
+
+const countDirectoryEntries = async (path: string): Promise<number> => {
+  try {
+    return (await readdir(path)).length
+  } catch {
+    return 0
+  }
+}
+
+const countNonEmptyLines = async (path: string): Promise<number | null> => {
+  const text = await readTextFile(path)
+  if (text === "") return null
+  return text.split("\n").filter(line => line.trim() !== "").length
+}
+
+const spawnText = async (cmd: readonly string[]): Promise<string> => {
+  const proc = Bun.spawn({
+    cmd: [...cmd],
+    env: withExtraPath(Bun.env),
+    stderr: "ignore",
+    stdout: "pipe",
+  })
+  const stdout = await new Response(proc.stdout).text()
+  await proc.exited
+  return stdout
+}
+
+const codingStatus = async (): Promise<CodingStatusResult> => {
+  const observedAt = new Date().toISOString()
+  const home = supervisorHome()
+  const [psOutput, supervisorLog, claimCount, openIssueCount] =
+    await Promise.all([
+      spawnText([
+        "/bin/ps",
+        "axww",
+        "-o",
+        "pid=",
+        "-o",
+        "ppid=",
+        "-o",
+        "pcpu=",
+        "-o",
+        "etime=",
+        "-o",
+        "command=",
+      ]),
+      readTextFile(resolve(home, "supervisor.log")),
+      countDirectoryEntries(resolve(home, "claims")),
+      countNonEmptyLines(resolve(home, "open-issues.set")),
+    ])
+
+  const processes = parseCodingProcesses(psOutput)
+  const processSummary = summarizeCodingProcesses(processes)
+  const logSummary = parseSupervisorLog(supervisorLog)
+  const summary: CodingStatusSummary = {
+    ...emptyCodingStatusSummary(),
+    ...processSummary,
+    claimCount,
+    desiredSlots: logSummary.desiredSlots,
+    lastDispatchAt: logSummary.lastDispatchAt,
+    lockoutRecent: logSummary.lockoutRecent,
+    noDispatchRecent: logSummary.noDispatchRecent,
+    okRecent: logSummary.okRecent,
+    openIssueCount,
+    readyCodex: logSummary.readyCodex,
+  }
+
+  return {
+    ok: true,
+    events: logSummary.events,
+    observedAt,
+    processes,
+    summary,
+  }
+}
+
 const createPylon = async (): Promise<CreatePylonResult> => {
   const observedAt = new Date().toISOString()
   try {
     const pylonAppPath = await resolvePylonAppPath()
+    const bunExecutable = resolveBunExecutable()
     const proc = Bun.spawn({
-      cmd: ["bun", "run", "start"],
+      cmd: [bunExecutable, "run", "start"],
       cwd: pylonAppPath,
-      env: {
+      env: withExtraPath({
         ...Bun.env,
         PYLON_OPENAGENTS_BASE_URL: baseUrl,
-      },
+      }),
       stderr: "ignore",
       stdin: "ignore",
       stdout: "ignore",
@@ -200,6 +352,7 @@ const rpc = BrowserView.defineRPC<OpenAgentsDesktopRPCSchema>({
   maxRequestTime: OPENAGENTS_DESKTOP_RPC_MAX_REQUEST_TIME_MS,
   handlers: {
     requests: {
+      codingStatus,
       createPylon,
       async pylonStatus() {
         return desktopPylonStatus()

@@ -25,6 +25,9 @@ describe("openagents desktop app shell", () => {
     ).text()
 
     expect(html).toContain('<button')
+    expect(html).toContain('id="coding-status"')
+    expect(html).toContain('id="coding-page"')
+    expect(html).toContain("Coding: 0")
     expect(html).toContain('id="pylon-status"')
     expect(html).toContain('id="pylons-page"')
     expect(html).toContain("Create Pylon")

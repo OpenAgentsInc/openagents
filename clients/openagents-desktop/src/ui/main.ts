@@ -1,6 +1,12 @@
 import { Electroview } from "electrobun/view"
 
 import {
+  type CodingProcess,
+  OPENAGENTS_DESKTOP_CODING_POLL_INTERVAL_MS,
+  type CodingStatusResult,
+  type CodingSupervisorEvent,
+} from "../shared/coding-status"
+import {
   type DesktopPylon,
   OPENAGENTS_DESKTOP_PYLON_POLL_INTERVAL_MS,
   type PylonStatusResult,
@@ -30,6 +36,8 @@ const requireElement = <T extends Element>(selector: string): T => {
 
 const shell = requireElement<HTMLElement>(".openagents-shell")
 const scene = requireElement<HTMLElement>("#openagents-scene")
+const codingStatus = requireElement<HTMLButtonElement>("#coding-status")
+const codingCount = requireElement<HTMLElement>("#coding-count")
 const pylonStatus = requireElement<HTMLButtonElement>("#pylon-status")
 const pylonCount = requireElement<HTMLElement>("#pylon-count")
 const pylonsPage = requireElement<HTMLElement>("#pylons-page")
@@ -38,6 +46,19 @@ const pylonsSummary = requireElement<HTMLElement>("#pylons-summary")
 const pylonsList = requireElement<HTMLElement>("#pylons-list")
 const createPylonButton = requireElement<HTMLButtonElement>("#create-pylon")
 const pylonActionStatus = requireElement<HTMLElement>("#pylon-action-status")
+const codingPage = requireElement<HTMLElement>("#coding-page")
+const codingBack = requireElement<HTMLButtonElement>("#coding-back")
+const codingObserved = requireElement<HTMLElement>("#coding-observed")
+const codingSummary = requireElement<HTMLElement>("#coding-summary")
+const codingMetricCodex = requireElement<HTMLElement>("#coding-metric-codex")
+const codingMetricBurning = requireElement<HTMLElement>("#coding-metric-burning")
+const codingMetricKhala = requireElement<HTMLElement>("#coding-metric-khala")
+const codingMetricReady = requireElement<HTMLElement>("#coding-metric-ready")
+const codingList = requireElement<HTMLElement>("#coding-list")
+const codingEvents = requireElement<HTMLElement>("#coding-events")
+const codingDispatchSummary = requireElement<HTMLElement>(
+  "#coding-dispatch-summary",
+)
 
 const prefersReducedMotion = globalThis.matchMedia?.(
   "(prefers-reduced-motion: reduce)",
@@ -139,6 +160,109 @@ const renderPylonsPage = (result: PylonStatusResult): void => {
   pylonsList.append(...result.pylons.map(pylonRow))
 }
 
+const processRow = (process: CodingProcess): HTMLElement => {
+  const row = document.createElement("article")
+  row.className = "coding-row"
+  row.dataset.state = process.status
+
+  const identity = document.createElement("div")
+  identity.className = "coding-row-identity"
+
+  const label = document.createElement("strong")
+  label.textContent = process.label
+
+  const meta = document.createElement("span")
+  meta.textContent = `PID ${formatCount(process.pid)} · ${process.age} · ${process.cpuPercent.toFixed(1)}% CPU`
+
+  identity.append(label, meta)
+
+  const status = document.createElement("span")
+  status.className = "coding-row-status"
+  status.textContent = process.status
+
+  row.append(identity, status)
+  return row
+}
+
+const eventRow = (event: CodingSupervisorEvent): HTMLElement => {
+  const row = document.createElement("article")
+  row.className = "coding-event"
+
+  const status = document.createElement("strong")
+  status.textContent = event.status
+
+  const text = document.createElement("span")
+  const slot = event.slot === null ? "" : `slot ${formatCount(event.slot)} `
+  const account = event.accountRef === null ? "" : `${event.accountRef} `
+  const issue = event.issueRef === null ? "" : `#${event.issueRef} `
+  text.textContent = `${slot}${account}${issue}${event.text}`.trim()
+
+  row.append(status, text)
+  return row
+}
+
+const renderCodingStatus = (result: CodingStatusResult): void => {
+  const summary = result.summary
+  codingCount.textContent = `Coding: ${formatCount(summary.codexExecCount)}`
+  codingStatus.dataset.state =
+    summary.codexExecCount > 0
+      ? summary.burningCodexCount > 0
+        ? "online"
+        : "empty"
+      : "unknown"
+  codingStatus.title = result.ok ? "Open Coding" : result.error
+
+  codingObserved.textContent = formatTimestamp(result.observedAt, "Local now")
+  codingSummary.textContent = `Codex: ${formatCount(summary.codexExecCount)}`
+  codingMetricCodex.textContent = formatCount(summary.codexExecCount)
+  codingMetricBurning.textContent = formatCount(summary.burningCodexCount)
+  codingMetricKhala.textContent = formatCount(summary.khalaRequestCount)
+  codingMetricReady.textContent =
+    summary.readyCodex === null ? "-" : formatCount(summary.readyCodex)
+
+  codingList.replaceChildren()
+  const visibleProcesses = result.processes
+    .filter(process => process.kind !== "supervisor")
+    .slice(0, 12)
+  if (visibleProcesses.length === 0) {
+    const empty = document.createElement("div")
+    empty.className = "coding-empty"
+    empty.textContent = result.ok
+      ? "No live coding agent processes."
+      : result.error
+    codingList.append(empty)
+  } else {
+    codingList.append(...visibleProcesses.map(processRow))
+  }
+
+  codingDispatchSummary.textContent = [
+    `OK ${formatCount(summary.okRecent)}`,
+    `No dispatch ${formatCount(summary.noDispatchRecent)}`,
+    `Lockout ${formatCount(summary.lockoutRecent)}`,
+    summary.desiredSlots === null
+      ? null
+      : `Desired ${formatCount(summary.desiredSlots)}`,
+    `Claims ${formatCount(summary.claimCount)}`,
+    summary.openIssueCount === null
+      ? null
+      : `Issues ${formatCount(summary.openIssueCount)}`,
+    `Vertex ${formatCount(summary.vertexBurnCount)}`,
+  ]
+    .filter((value): value is string => value !== null)
+    .join(" · ")
+
+  codingEvents.replaceChildren()
+  if (result.events.length === 0) {
+    const empty = document.createElement("div")
+    empty.className = "coding-empty"
+    empty.textContent = "No recent supervisor events."
+    codingEvents.append(empty)
+  } else {
+    codingEvents.append(...result.events.map(eventRow))
+  }
+
+}
+
 const renderPylonStatus = (result: PylonStatusResult): void => {
   pylonCount.textContent = `Pylons: ${formatCount(result.count)}`
   pylonStatus.dataset.state =
@@ -161,26 +285,61 @@ const loadPylonStatus = async (): Promise<void> => {
   }
 }
 
-type DesktopRoute = "landing" | "pylons"
+const loadCodingStatus = async (): Promise<void> => {
+  try {
+    renderCodingStatus(await rpc.request.codingStatus())
+  } catch (error) {
+    renderCodingStatus({
+      ok: false,
+      events: [],
+      processes: [],
+      summary: {
+        assignmentRunnerCount: 0,
+        burningCodexCount: 0,
+        claimCount: 0,
+        codexExecCount: 0,
+        desiredSlots: null,
+        khalaRequestCount: 0,
+        lastDispatchAt: null,
+        lockoutRecent: 0,
+        noDispatchRecent: 0,
+        okRecent: 0,
+        openIssueCount: null,
+        pylonNodeCount: 0,
+        readyCodex: null,
+        standingPylonCount: 0,
+        supervisorCount: 0,
+        vertexBurnCount: 0,
+      },
+      error: error instanceof Error ? error.message : String(error),
+      observedAt: new Date().toISOString(),
+    })
+  }
+}
 
-const routeFromLocation = (): DesktopRoute =>
-  globalThis.location.hash.replace(/^#\/?/, "") === "pylons"
-    ? "pylons"
-    : "landing"
+type DesktopRoute = "coding" | "landing" | "pylons"
+
+const routeFromLocation = (): DesktopRoute => {
+  const route = globalThis.location.hash.replace(/^#\/?/, "")
+  return route === "pylons" || route === "coding" ? route : "landing"
+}
 
 const applyRoute = (route: DesktopRoute): void => {
   shell.dataset.route = route
   pylonsPage.hidden = route !== "pylons"
+  codingPage.hidden = route !== "coding"
+  codingStatus.setAttribute("aria-expanded", route === "coding" ? "true" : "false")
   pylonStatus.setAttribute("aria-expanded", route === "pylons" ? "true" : "false")
-  handle.setPose(route === "pylons" ? "pylons" : "landing")
+  handle.setPose(route === "landing" ? "landing" : "pylons")
 }
 
 const navigateTo = (route: DesktopRoute): void => {
-  if (route === "pylons") {
-    if (globalThis.location.hash !== "#pylons") {
-      globalThis.location.hash = "pylons"
+  if (route !== "landing") {
+    const hash = `#${route}`
+    if (globalThis.location.hash !== hash) {
+      globalThis.location.hash = route
     }
-    applyRoute("pylons")
+    applyRoute(route)
     return
   }
 
@@ -190,7 +349,9 @@ const navigateTo = (route: DesktopRoute): void => {
   applyRoute("landing")
 }
 
+codingStatus.addEventListener("click", () => navigateTo("coding"))
 pylonStatus.addEventListener("click", () => navigateTo("pylons"))
+codingBack.addEventListener("click", () => navigateTo("landing"))
 pylonsBack.addEventListener("click", () => navigateTo("landing"))
 globalThis.addEventListener("hashchange", () => applyRoute(routeFromLocation()))
 globalThis.addEventListener("popstate", () => applyRoute(routeFromLocation()))
@@ -225,7 +386,12 @@ createPylonButton.addEventListener("click", () => {
 })
 
 applyRoute(routeFromLocation())
+void loadCodingStatus()
 void loadPylonStatus()
+globalThis.setInterval(
+  () => void loadCodingStatus(),
+  OPENAGENTS_DESKTOP_CODING_POLL_INTERVAL_MS,
+)
 globalThis.setInterval(
   () => void loadPylonStatus(),
   OPENAGENTS_DESKTOP_PYLON_POLL_INTERVAL_MS,
