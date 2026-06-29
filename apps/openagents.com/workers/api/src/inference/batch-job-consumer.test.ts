@@ -8,6 +8,10 @@ import {
   executeBatchJob,
 } from './batch-job-consumer'
 import type {
+  BatchJobResultStore,
+  BatchJobResultsPayload,
+} from './batch-job-results'
+import type {
   BatchJobRecord,
   BatchJobStatus,
   BatchJobStore,
@@ -37,6 +41,7 @@ const makeFakeStore = (
     status: BatchJobStatus
     processedItems?: number
     failedItems?: number
+    resultsR2Key?: string | null
     startedAt?: string
   }>
 } => {
@@ -45,6 +50,7 @@ const makeFakeStore = (
     status: BatchJobStatus
     processedItems?: number
     failedItems?: number
+    resultsR2Key?: string | null
     startedAt?: string
   }> = []
   const store: BatchJobStore = {
@@ -159,6 +165,26 @@ const meteringRecorder = (): {
   }
 }
 
+const memoryResultStore = (): {
+  store: BatchJobResultStore
+  payloads: () => ReadonlyArray<BatchJobResultsPayload>
+} => {
+  const payloads: Array<BatchJobResultsPayload> = []
+  return {
+    payloads: () => payloads,
+    store: {
+      getResults: key =>
+        Effect.succeed(
+          payloads.find(payload => `memory://${payload.jobId}` === key) ?? null,
+        ),
+      putResults: payload => {
+        payloads.push(payload)
+        return Effect.succeed(`memory://${payload.jobId}`)
+      },
+    },
+  }
+}
+
 const dispatchDepsFor = (adapter: InferenceProviderAdapter) => {
   const registry = new InferenceProviderRegistry()
   registry.register(adapter)
@@ -179,12 +205,14 @@ describe('executeBatchJob', () => {
       usage: { completionTokens: 20, promptTokens: 10, totalTokens: 30 },
     })
     const metering = meteringRecorder()
+    const resultStore = memoryResultStore()
 
     const outcome = await run(
       executeBatchJob(
         {
           dispatch: dispatchDepsFor(gateway.adapter),
           meteringHook: metering.hook,
+          resultStore: resultStore.store,
           store: fake.store,
         },
         makeQueueMessage('batch_test', 2),
@@ -218,7 +246,43 @@ describe('executeBatchJob', () => {
     expect(terminal?.status).toBe('completed')
     expect(terminal?.processedItems).toBe(2)
     expect(terminal?.failedItems).toBe(0)
+    expect(terminal?.resultsR2Key).toBe('memory://batch_test')
     expect(fake.reads()?.status).toBe('completed')
+    expect(fake.reads()?.resultsR2Key).toBe('memory://batch_test')
+    expect(resultStore.payloads()).toEqual([
+      {
+        jobId: 'batch_test',
+        results: [
+          {
+            content: 'fake completion',
+            finishReason: 'stop',
+            index: 0,
+            model: 'gemini-3.5-flash',
+            servedModel: 'served/fireworks',
+            status: 'succeeded',
+            usage: {
+              completionTokens: 20,
+              promptTokens: 10,
+              totalTokens: 30,
+            },
+          },
+          {
+            content: 'fake completion',
+            finishReason: 'stop',
+            index: 1,
+            model: 'gemini-3.5-flash',
+            servedModel: 'served/fireworks',
+            status: 'succeeded',
+            usage: {
+              completionTokens: 20,
+              promptTokens: 10,
+              totalTokens: 30,
+            },
+          },
+        ],
+        schemaVersion: 'openagents.inference.batch_job.results.v1',
+      },
+    ])
   })
 
   it('stamps the consumer-start time (END of the batch wait) from the injected clock', async () => {

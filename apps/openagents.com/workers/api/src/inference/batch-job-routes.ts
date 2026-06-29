@@ -1,18 +1,20 @@
 import { Effect, Schema as S } from 'effect'
 
 import { noStoreJsonResponse } from '../http/responses'
+import { parseJsonUnknown } from '../json-boundary'
 import { compactRandomId } from '../runtime-primitives'
-import {
-  type BatchJobExecutableItem,
-  BatchJobQueueMessage,
-} from './batch-job-consumer'
-import { settleBatchJobCharge } from './batch-job-metering'
-import { makeD1BatchJobStore } from './batch-job-store'
 import {
   buildBatchJobTelemetryRecord,
   computeBatchWaitMs,
   projectBatchJobCloseoutReceipt,
 } from './batch-job-closeout-receipts'
+import {
+  type BatchJobExecutableItem,
+  BatchJobQueueMessage,
+} from './batch-job-consumer'
+import { settleBatchJobCharge } from './batch-job-metering'
+import type { BatchJobResultStore } from './batch-job-results'
+import { makeD1BatchJobStore } from './batch-job-store'
 // public-projection-staleness
 import { estimateRequestCost } from './cost-estimate'
 
@@ -43,6 +45,7 @@ export type BatchJobRoutesDeps = Readonly<{
   // accepted + persisted but never executed, preserving the pre-producer
   // behaviour for the flag-off path.
   enqueueBatchJob?: EnqueueBatchJob | undefined
+  resultStore?: BatchJobResultStore | undefined
 }>
 
 // One submitted dataset row. Carries BOTH the token counts the route prices the
@@ -83,8 +86,6 @@ const decodeBody = (value: unknown) => {
   }
 }
 
-import { parseJsonUnknown } from '../json-boundary'
-
 const safeJsonParse = (text: string): unknown => {
   try {
     return parseJsonUnknown(text)
@@ -113,7 +114,7 @@ export const handleBatchJobsSubmit = (
     }
 
     const session = yield* Effect.promise(() => deps.authenticate(request))
-    
+
     if (session === undefined) {
       const headers = new Headers({ 'www-authenticate': 'Bearer' })
       return noStoreJsonResponse(
@@ -122,8 +123,10 @@ export const handleBatchJobsSubmit = (
       )
     }
 
-    const textResult = yield* Effect.promise(() => request.text().catch(() => ''))
-    
+    const textResult = yield* Effect.promise(() =>
+      request.text().catch(() => ''),
+    )
+
     if (textResult === '') {
       return noStoreJsonResponse({ error: 'invalid_json' }, { status: 400 })
     }
@@ -254,11 +257,16 @@ export const handleBatchJobReceiptRead = (
     }
 
     if (request.method !== 'GET') {
-      return noStoreJsonResponse({ error: 'method_not_allowed' }, { status: 405 })
+      return noStoreJsonResponse(
+        { error: 'method_not_allowed' },
+        { status: 405 },
+      )
     }
 
     const url = new URL(request.url)
-    const match = url.pathname.match(/^\/api\/public\/inference\/batch-job-receipts\/(.+)$/)
+    const match = url.pathname.match(
+      /^\/api\/public\/inference\/batch-job-receipts\/(.+)$/,
+    )
     if (!match) {
       return noStoreJsonResponse({ error: 'not_found' }, { status: 404 })
     }
@@ -280,9 +288,11 @@ export const handleBatchJobReceiptRead = (
     // Cost MSat from ledger
     const costMsatRaw = yield* Effect.tryPromise(() =>
       deps.db
-        .prepare('SELECT cost_msat FROM pay_ins WHERE public_receipt_ref = ? LIMIT 1')
+        .prepare(
+          'SELECT cost_msat FROM pay_ins WHERE public_receipt_ref = ? LIMIT 1',
+        )
         .bind(job.chargeReceiptRef)
-        .first<{ cost_msat: number }>()
+        .first<{ cost_msat: number }>(),
     ).pipe(Effect.orDie)
 
     const costMsat = costMsatRaw ? costMsatRaw.cost_msat : 0
@@ -313,7 +323,7 @@ export const handleBatchJobReceiptRead = (
     }
 
     return noStoreJsonResponse(
-      projectBatchJobCloseoutReceipt(receipt, deps.nowIso())
+      projectBatchJobCloseoutReceipt(receipt, deps.nowIso()),
     )
   })
 
@@ -330,13 +340,19 @@ export const handleBatchJobStatusRead = (
     }
 
     if (request.method !== 'GET') {
-      return noStoreJsonResponse({ error: 'method_not_allowed' }, { status: 405 })
+      return noStoreJsonResponse(
+        { error: 'method_not_allowed' },
+        { status: 405 },
+      )
     }
 
     const session = yield* Effect.promise(() => deps.authenticate(request))
     if (session === undefined) {
       const headers = new Headers({ 'www-authenticate': 'Bearer' })
-      return noStoreJsonResponse({ error: 'unauthorized' }, { headers, status: 401 })
+      return noStoreJsonResponse(
+        { error: 'unauthorized' },
+        { headers, status: 401 },
+      )
     }
 
     const url = new URL(request.url)
@@ -369,5 +385,76 @@ export const handleBatchJobStatusRead = (
       enqueuedAt: job.enqueuedAt,
       startedAt: job.startedAt,
       batchWaitMs: batchWaitMs ?? null,
+    })
+  })
+
+export const handleBatchJobResultsRead = (
+  request: Request,
+  deps: BatchJobRoutesDeps,
+) =>
+  Effect.gen(function* () {
+    if (!deps.enabled) {
+      return noStoreJsonResponse(
+        { error: 'inference_batch_jobs_disabled' },
+        { status: 404 },
+      )
+    }
+
+    if (request.method !== 'GET') {
+      return noStoreJsonResponse(
+        { error: 'method_not_allowed' },
+        { status: 405 },
+      )
+    }
+
+    const session = yield* Effect.promise(() => deps.authenticate(request))
+    if (session === undefined) {
+      const headers = new Headers({ 'www-authenticate': 'Bearer' })
+      return noStoreJsonResponse(
+        { error: 'unauthorized' },
+        { headers, status: 401 },
+      )
+    }
+
+    const url = new URL(request.url)
+    const match = url.pathname.match(
+      /^\/v1\/inference\/batches\/(.+)\/results$/,
+    )
+    if (!match) {
+      return noStoreJsonResponse({ error: 'not_found' }, { status: 404 })
+    }
+
+    const jobId = match[1] ?? ''
+    const store = makeD1BatchJobStore(deps.db, deps.nowIso)
+    const job = yield* store.getBatchJob(jobId)
+
+    if (!job || job.accountRef !== session.accountRef) {
+      return noStoreJsonResponse({ error: 'not_found' }, { status: 404 })
+    }
+
+    if (job.resultsR2Key === null) {
+      return noStoreJsonResponse(
+        { error: 'batch_results_not_ready', status: job.status },
+        { status: 409 },
+      )
+    }
+
+    if (deps.resultStore === undefined) {
+      return noStoreJsonResponse(
+        { error: 'batch_results_store_unavailable' },
+        { status: 503 },
+      )
+    }
+
+    const results = yield* deps.resultStore.getResults(job.resultsR2Key)
+    if (results === null) {
+      return noStoreJsonResponse({ error: 'not_found' }, { status: 404 })
+    }
+
+    return noStoreJsonResponse({
+      jobId: job.jobId,
+      status: job.status,
+      resultsR2Key: job.resultsR2Key,
+      results: results.results,
     })
   })

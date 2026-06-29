@@ -25,22 +25,21 @@
 // module is pure orchestration over injected seams (store, registry, metering
 // hook, clock) so it is fully exercisable against a fake gateway + fake queue
 // message with no live run and no new infrastructure.
-
 import { Effect, Schema as S } from 'effect'
 
 import { workerLogEntry } from '../observability'
 import { currentIsoTimestamp } from '../runtime-primitives'
 import {
-  type DispatchDeps,
-  dispatchWithOverflow,
-} from './model-router'
+  type BatchJobResultItem,
+  type BatchJobResultStore,
+  failedBatchJobResultItem,
+  succeededBatchJobResultItem,
+} from './batch-job-results'
+import type { BatchJobStore } from './batch-job-store'
 import type { MeteringContext, MeteringHook } from './metering-hook'
 import { stubMeteringHook } from './metering-hook'
-import type {
-  InferenceRequest,
-  InferenceResult,
-} from './provider-adapter'
-import type { BatchJobStore } from './batch-job-store'
+import { type DispatchDeps, dispatchWithOverflow } from './model-router'
+import type { InferenceRequest, InferenceResult } from './provider-adapter'
 
 // One executable unit of a batch job. The submit route prices on token counts;
 // the consumer needs the actual prompt to RUN the item, so the queue message
@@ -121,6 +120,9 @@ export type BatchJobConsumerDeps = Readonly<{
   // `batchWaitMs` is exactly assertable. Injectable so the consumer stays a pure
   // function of its seams.
   nowIso?: (() => string) | undefined
+  // Stores the customer-visible result payload once item execution completes.
+  // Production uses the private ARTIFACTS R2 bucket; tests inject memory stores.
+  resultStore?: BatchJobResultStore | undefined
 }>
 
 const toInferenceRequest = (
@@ -193,6 +195,7 @@ export const executeBatchJob = (
 
     let processedItems = 0
     let failedItems = 0
+    const results: Array<BatchJobResultItem> = []
 
     for (let index = 0; index < message.items.length; index += 1) {
       const item = message.items[index]
@@ -223,6 +226,13 @@ export const executeBatchJob = (
 
       if (!dispatched.ok) {
         failedItems += 1
+        results.push(
+          failedBatchJobResultItem({
+            errorReason: dispatched.reason,
+            index,
+            model: item.model,
+          }),
+        )
         yield* Effect.logInfo(
           workerLogEntry('inference.batch_job.item.failed', {
             index,
@@ -232,6 +242,14 @@ export const executeBatchJob = (
         )
         continue
       }
+
+      results.push(
+        succeededBatchJobResultItem({
+          index,
+          model: item.model,
+          result: dispatched.served.value,
+        }),
+      )
 
       // Decrement credits through the EXISTING metering hook. The per-item
       // request id is `<jobId>:<index>` so the hook's idempotency key dedupes a
@@ -252,10 +270,19 @@ export const executeBatchJob = (
     const allFailed =
       message.items.length > 0 && failedItems === message.items.length
     const terminalStatus = allFailed ? 'failed' : 'completed'
+    const resultsR2Key =
+      deps.resultStore === undefined
+        ? null
+        : yield* deps.resultStore.putResults({
+            jobId: message.jobId,
+            results,
+            schemaVersion: 'openagents.inference.batch_job.results.v1',
+          })
 
     yield* deps.store.updateBatchJobStatus(message.jobId, terminalStatus, {
       failedItems,
       processedItems,
+      ...(resultsR2Key === null ? {} : { resultsR2Key }),
     })
 
     yield* Effect.logInfo(

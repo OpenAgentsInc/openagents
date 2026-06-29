@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-29.2'
+export const PublicProductPromisesVersion = '2026-06-29.3'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -4076,9 +4076,7 @@ export const publicProductPromisesDocument = () => {
           'promise:autopilot.agent_world_scene.v1',
           'promise:autopilot.bitcoin_payment_visualization.v1',
         ],
-        blockerRefs: [
-          'blocker.product_promises.pylon_growth_flag_default_off',
-        ],
+        blockerRefs: ['blocker.product_promises.pylon_growth_flag_default_off'],
         verification:
           'Yellow now covers the live scene wiring behind CHAT_WORLD_SCENE / CHAT_WORLD_PAYMENTS: PublicRecentPylon preserves public cumulativeSettledSats when present, projectChatWorldPylonScene computes each node growth descriptor from that value, liveChatWorldNetworkScene carries the descriptor into PylonNetworkNode, and pylonNetworkVisualizationOptions maps tiers onto the pinned three-effect renderer knobs (larger role geometry, brighter status, and facet/sats detail). Tier 0 remains the 0-sat still crystal. Green still requires an owner decision on default-on and an owner-signed receipt-first upgrade per proof.claim_upgrade_receipts.v1.',
         authorityBoundary:
@@ -4251,23 +4249,28 @@ export const publicProductPromisesDocument = () => {
         claim:
           'A business customer can hand OpenAgents a batch of items (summaries, classifications, extractions) and get the processed results back as a buyable, metered inference job.',
         safeCopy:
-          'Batch inference processing as a buyable business offering is planned roadmap scope. The underlying single-request gateway is live and free inference works, but there is no batch-job product surface (submit a dataset, meter it, return results with a receipt) and the paid credits loop it would bill against is not yet collectable.',
+          'Batch inference processing as a buyable business offering remains planned. The code-backed batch surface now accepts datasets, queues executable items through the existing inference gateway, meters each processed item, stores owner-scoped results, exposes status/result retrieval, and projects a closeout receipt for completed jobs. Keep public copy receipt-first: this is tested implementation evidence, not a green product claim, until a real paid batch job receipt and collectable paid-credits loop are owner-signed.',
         unsafeCopy:
-          'Do not say OpenAgents has a live batch-processing product, that customers can submit datasets for metered batch inference today, or that batch jobs return billed receipts.',
+          'Do not say OpenAgents has a broadly live batch-processing product, that customers can buy production batch jobs today, or that the promise is green before a real paid batch-job receipt and owner-signed transition exist.',
         evidenceRefs: [
           'docs/business/2026-06-20-openagents-business-intake-spec.md',
           'docs/inference/README.md',
           'docs/inference/2026-06-19-inference-gateway-business.md',
           'docs/launch/gemini-fleet/inference.batch_processing_jobs.v1.md',
+          'apps/openagents.com/workers/api/src/inference/batch-job-flow.test.ts',
+          'apps/openagents.com/workers/api/src/inference/batch-job-routes.test.ts',
+          'apps/openagents.com/workers/api/src/inference/batch-job-consumer.test.ts',
           'promise:inference.gateway_credits_business.v1',
           'promise:inference.free_tier_taste.v1',
           'promise:business.intake_quick_win_offering.v1',
         ],
         blockerRefs: [
-          'blocker.product_promises.inference_batch_job_surface_unbuilt',
+          'blocker.product_promises.inference_batch_job_first_real_paid_receipt_missing',
+          'blocker.product_promises.inference_paid_credits_collectable_loop_missing',
+          'blocker.product_promises.inference_batch_job_owner_signed_green_transition_missing',
         ],
         verification:
-          'Planned: the per-request gateway (POST /v1/chat/completions) and free taste are live, but no batch-job offering exists — there is no dataset-submission surface, no batch metering/result-return loop, and the paid credits path it would bill against is not collectable (see inference.gateway_credits_business.v1). Green requires a built, tested batch-processing product with a dereferenceable first paid batch-job receipt and a receipt-first upgrade per proof.claim_upgrade_receipts.v1.',
+          'Planned with tested implementation evidence: POST /v1/inference/batches accepts a fixture dataset, the async consumer executes items through the existing provider-adapter gateway, per-item metering hooks run with batch=true, GET /v1/inference/batches/{jobId} exposes owner-scoped status, GET /v1/inference/batches/{jobId}/results returns owner-scoped processed results, and GET /api/public/inference/batch-job-receipts/{receiptRef} dereferences completed closeout receipts. Route/consumer/flow tests cover submit -> process -> results -> receipt. The promise stays planned because green still requires a real paid batch-job receipt, collectable paid credits, and an owner-signed receipt-first upgrade per proof.claim_upgrade_receipts.v1.',
         authorityBoundary:
           "A batch inference job, when built, grants no spend authority beyond the customer's funded balance, no payout, and no settlement authority, and processing results never asserts an outcome the underlying model run did not produce.",
       },
@@ -4463,6 +4466,7 @@ export const publicProductPromisesDocument = () => {
       'Registry 2026-06-28.2 is a marketplace.agentic_npm_module_registry.v1 runtime-core pass and flips NO promise state. The source-level runtime now supports public-safe module publication into a registry store, discovery, deterministic dependency-closure resolution, verification-on-install, adapter-scoped invocation, and install/use evidence rows, with tests covering success and failed verification blocking. The live paid marketplace claim remains planned because authenticated self-serve publication, arbitrary package isolation policy, metering, billing, attribution, rev-share, abuse handling, sale receipts, and settlement are still not live.',
       'Registry 2026-06-28.3 is a training.ablation_system.v1 paid-dispatch receipt pass and flips NO promise state. GET /api/public/training/ablation-derisking-ledger now records one public-safe accepted paid ablation settlement receipt for assignment.public.training_ablation.wsd_schedule.one_delta_paid.v1, so paidAblationDispatchAvailable=true, paidAblationCount=1, and acceptedVerdictCount=1. This clears blocker.product_promises.paid_ablation_dispatch_missing, but the promise stays planned on seeded_ablation_replication_missing plus owner_signed_green_transition_missing. No model promotion, checkpoint mutation, broad ablation-system green claim, future spend authority, or public capability claim is created.',
       'Registry 2026-06-20.57 is an inference.batch_processing_jobs.v1 paid-receipt surface pass and flips NO promise state (stays planned, green count unchanged at 26). The POST /v1/inference/batches route now persists jobs to D1, and GET /api/public/inference/batch-job-receipts/{receiptRef} serves projected BatchJobCloseoutReceipts for completed jobs. This clears blocker.product_promises.inference_batch_job_paid_receipt_missing only. The promise remains planned on blocker.product_promises.inference_batch_job_surface_unbuilt: there is still no background job processing pipeline to execute workloads, store R2 results, and mark jobs completed. No batch processing workload, R2 execution payload, spend, real closeout, revenue claim, or green transition is created. Evidence: docs/launch/gemini-fleet/inference.batch_processing_jobs.v1.md.',
+      'Registry 2026-06-29.3 is an inference.batch_processing_jobs.v1 result-return and end-to-end flow pass and flips NO promise state. The batch lane now has code-backed submit -> queue -> consumer -> owner-scoped results -> closeout receipt coverage: executable dataset rows are enqueued, the consumer dispatches through the existing inference gateway, meters each successful item with batch=true, writes a private ARTIFACTS-backed results payload, stores the result key on the job row, GET /v1/inference/batches/{jobId}/results returns those results only to the owning agent token, and the public closeout receipt remains dereferenceable for completed jobs. This clears the stale unbuilt-surface wording, but the promise STAYS planned on first real paid batch-job receipt, collectable paid credits, and owner-signed green transition blockers. No live broad product claim, no green flip, no new spend authority, and no owner-signoff transition is created.',
       'Registry 2026-06-20.58 is a business.ecommerce_workspace_pack.v1 de-stale pass and flips NO promise state (stays yellow, green count unchanged at 26). The POST /api/public/ecommerce-campaign/workspaces route already exists, seeding workspaces using the forge.template.ecommerce.inventory_campaign.v1 template, so blocker.product_promises.ecommerce_pack_self_serve_missing is cleared. The promise remains yellow on blocker.product_promises.ecommerce_pack_first_paid_delivery_receipt_missing: no active operator route to record receipts exists, and no real paid delivery receipt, attribution, revenue claim, or green transition is created. Evidence: docs/launch/gemini-fleet/business.ecommerce_workspace_pack.v1.md.',
       'Registry 2026-06-21.1 is a DE-2 cloud primitive blocker de-stale pass and flips NO promise state (cloud.primitives_suite.v1 stays planned; cloud.fine_tuning_service.v1 and cloud.sandbox_compute_service.v1 stay red; green count unchanged). Fine-tuning and sandbox still are not live sellable services, but their route scaffolds are no longer accurately described as simply unbuilt: /v1/fine_tuning/jobs and /v1/sandboxes exist behind default-off flags, with typed request surfaces, lifecycle reads, cross-account isolation, TTL/isolation controls where applicable, and a tested receipt-first cloud-metering seam. Stale unbuilt blocker refs are replaced with narrower live-service blockers: live fine-tuning intake disabled, real fine-tuning runtime unwired, live sandbox rent surface disabled, sandbox live metering/billing unwired, and suite-level fine-tuning/sandbox live-sellable-service missing. No flags are armed, no runtime adapter is wired, no pricing is live, no credit debit or settlement occurs, and no paid receipt or green transition is created. Evidence: docs/inference/2026-06-19-cloud-primitives-fine-tuning-sandbox-scaffold-advance.md and apps/openagents.com/workers/api/src/cloud/*.',
       'Registry 2026-06-21.2 is a DE-2 cloud primitives unified-balance blocker de-stale pass and flips NO promise state (cloud.primitives_suite.v1 stays planned; green count unchanged). The composed-run source already models the one-shared-balance shape: buildComposedRunPlan carries a single ComposedRunBalance and receipt envelope, composeRunExecution folds component charge shapes into one composed spend, and the receipt gate checks one_shared_balance plus reconciliation. Therefore the stale blocker.product_promises.cloud_primitives_unified_balance_unbuilt is replaced with blocker.product_promises.cloud_primitives_live_unified_balance_debit_receipt_missing. The remaining gap is live multi-primitive execution debiting one real balance and producing a dereferenceable unified-balance receipt. No route is armed, no D1 balance is read/debited, no receipt row is written, no customer composed-run claim is created, and no green transition is created.',

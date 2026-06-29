@@ -26,8 +26,6 @@ import { Exit } from 'effect'
 import { WorkerEnvironment } from 'effect-cf'
 
 import { handleAcceptedOutcomesPerKwhApi } from './accepted-outcomes-per-kwh-routes'
-import { EnergyFlexibleLoadProofEndpoint } from './energy-flexible-load-proof'
-import { handleEnergyFlexibleLoadProofApi } from './energy-flexible-load-proof-routes'
 import { AdjutantEnrichmentQueueMessage } from './adjutant-enrichment-jobs'
 import type { AdjutantTaskPacketRefValidationInput } from './adjutant-task-packets'
 import { recordAdjutantUsageReceipt } from './adjutant-usage-receipts'
@@ -81,11 +79,11 @@ import {
   runArtanisAdminTickScheduled,
   runArtanisCloseoutVerifierScheduled,
 } from './artanis-administrator-tick'
-import { runArtanisFleetOverseerTickScheduled } from './artanis-fleet-overseer-tick'
 import {
   boundedDistillationDatasetLimit,
   readArtanisDistillationDatasetReceipt,
 } from './artanis-distillation-dataset-receipt'
+import { runArtanisFleetOverseerTickScheduled } from './artanis-fleet-overseer-tick'
 import { deliverArtanisForumPublicationIntent } from './artanis-forum-delivery'
 import { ArtanisForumPublicationIntentRecord } from './artanis-forum-publication'
 import { exampleArtanisForumPublicationQueue } from './artanis-forum-publication'
@@ -102,8 +100,8 @@ import {
 } from './artanis-labor-receipt-routes'
 import { makeD1ArtanisLaborUnattendedReceiptStore } from './artanis-labor-receipt-store'
 import { ArtanisMindSmokeSystem, artanisMindComplete } from './artanis-mind'
-import { makeOperatorArtanisChatRoutes } from './artanis-operator-chat-routes'
 import { loadArtanisNetworkStatsFromLedger } from './artanis-network-stats-d1'
+import { makeOperatorArtanisChatRoutes } from './artanis-operator-chat-routes'
 import { makeOperatorArtanisConsoleRoutes } from './artanis-operator-console-routes'
 import { makeOperatorArtanisDashboardRoutes } from './artanis-operator-dashboard-routes'
 import {
@@ -112,25 +110,25 @@ import {
   readEffectiveArtanisPylonDispatchApprovalForOwner,
 } from './artanis-operator-dispatch-execution'
 import { makeArtanisForumUpdateWriter } from './artanis-operator-forum-update'
-import {
-  isOpenAgentsOwnerAgentOpenAuthUserId,
-  ownerAgentHasStandingApprovalForRiskyAction,
-} from './artanis-owner-authority'
+import { makeArtanisGlmFleetStatusLoader } from './artanis-operator-glm-fleet-status'
+import { makeArtanisKhalaFeedbackReader } from './artanis-operator-khala-feedback'
 import {
   makeArtanisPylonAssignmentsLister,
   makeArtanisPylonJobStatusReader,
 } from './artanis-operator-pylon-job-status'
-import { makeArtanisGlmFleetStatusLoader } from './artanis-operator-glm-fleet-status'
-import { makeArtanisKhalaFeedbackReader } from './artanis-operator-khala-feedback'
-import { makeArtanisTraceReviewLoader } from './artanis-operator-trace-review'
 import {
   makeArtanisGithubIssueOpener,
   makeArtanisOperatorTools,
 } from './artanis-operator-tools'
+import { makeArtanisTraceReviewLoader } from './artanis-operator-trace-review'
 import {
-  makeArtanisUnsupportedRequestsReader,
   makeArtanisUnsupportedRequestWriter,
+  makeArtanisUnsupportedRequestsReader,
 } from './artanis-operator-unsupported-requests'
+import {
+  isOpenAgentsOwnerAgentOpenAuthUserId,
+  ownerAgentHasStandingApprovalForRiskyAction,
+} from './artanis-owner-authority'
 import { saveArtanisForumPublicationIntent } from './artanis-persistence'
 import { handlePublicArtanisReportApi } from './artanis-public-report-routes'
 import { runArtanisComposerScheduled } from './artanis-reply-composer'
@@ -205,6 +203,10 @@ import {
   verifyAutopilotL402PaymentProofFromBuyerLedger,
 } from './autopilot-work-routes'
 import {
+  recordBackendIncidentEvent,
+  routePatternFromRequest,
+} from './backend-incident-events'
+import {
   type BillingSummary,
   markOutOfCreditsNotificationFailed,
   markOutOfCreditsNotificationSent,
@@ -216,10 +218,6 @@ import {
   withBillingCreditPackages,
 } from './billing'
 import { makeBillingApiHandlers } from './billing-routes'
-import {
-  recordBackendIncidentEvent,
-  routePatternFromRequest,
-} from './backend-incident-events'
 import { OpenAgentsDatabase, ThreadFileArtifacts } from './bindings'
 import { makeBlueprintProbeContributionRoutes } from './blueprint-probe-contribution-routes'
 import { makeBlueprintRoutes } from './blueprint-routes'
@@ -250,8 +248,8 @@ import { makeCheckoutPageRoutes } from './checkout-page-routes'
 // OA_CLOUD_CONTROL_URL/TOKEN are configured. The promise STAYS red until a real
 // desktop-originated GCE run produces artifact + receipt evidence.
 import {
-  isCloudGceProvisioningArmed,
   isCloudCodingSessionsEnabled,
+  isCloudGceProvisioningArmed,
   makeCloudControlCloudCodingAdapter,
   routeCloudCodingSessionRequest as routeCloudCodingSessionRequestImpl,
 } from './cloud/cloud-coding-session-routes'
@@ -335,8 +333,19 @@ import {
   isEmailSequenceSendEnabled,
   makeCloudflareEmailSequenceSender,
 } from './email-sequence-send-service'
+import { EnergyFlexibleLoadProofEndpoint } from './energy-flexible-load-proof'
+import { handleEnergyFlexibleLoadProofApi } from './energy-flexible-load-proof-routes'
 import { makeFirmupBitcoinSettlementRoutes } from './firmup-bitcoin-settlement-routes'
 import { readFirmupSettleableEscrow } from './firmup-settleable-escrow'
+import {
+  authorizeForgeControlPlaneBearer,
+  makeForgeControlPlaneRoutes,
+} from './forge-control-plane-routes'
+import { makeD1ForgeCoordinationStore } from './forge-coordination-store'
+import { makeD1ForgeGitCanonicalStore } from './forge-git-canonical-store'
+import { makeForgeGitIntakeRoutes } from './forge-git-intake-routes'
+import { makeD1R2ForgeGitPackfileArchiveStore } from './forge-git-packfile-archive-store'
+import { makeD1ForgeTenantGitAuthStore } from './forge-tenant-git-auth-store'
 import { makeForumRoutes } from './forum-routes'
 import { forumWorkRequestRelayPublisherForEnv } from './forum-work-request-live-publisher'
 import { archiveStaleDirectTipRecoveries } from './forum/paid-actions'
@@ -410,12 +419,19 @@ import {
   BatchJobQueueMessage,
   executeBatchJob,
 } from './inference/batch-job-consumer'
+import { makeR2BatchJobResultStore } from './inference/batch-job-results'
 import {
   handleBatchJobReceiptRead,
+  handleBatchJobResultsRead,
   handleBatchJobStatusRead,
   handleBatchJobsSubmit,
 } from './inference/batch-job-routes'
 import { makeD1BatchJobStore } from './inference/batch-job-store'
+import {
+  handleOperatorKhalaHeadToHeadApi,
+  handlePublicKhalaHeadToHeadApi,
+} from './inference/benchmark/head-to-head-routes'
+import { makeD1KhalaHeadToHeadStore } from './inference/benchmark/head-to-head-store'
 import { makeD1CardCreditSpendReceiptStore } from './inference/card-credit-spend-receipt-store'
 import {
   handleChatCompletions,
@@ -423,11 +439,11 @@ import {
   isInferenceGatewayEnabled,
   khalaRequestForAdapter,
 } from './inference/chat-completions-routes'
-import { handleDispatchFailureTelemetryReadout } from './inference/dispatch-failure-telemetry-routes'
 import {
   type DiscoverySurfacePath,
   renderDiscoverySurface,
 } from './inference/discovery-surfaces'
+import { handleDispatchFailureTelemetryReadout } from './inference/dispatch-failure-telemetry-routes'
 import { type DurableStreamNamespace } from './inference/durable-inference-do-transport'
 import {
   matchDurableReadRequest,
@@ -450,12 +466,6 @@ import {
 import { handleOperatorHarborFullTraceArchivesApi } from './inference/gym/harbor-full-trace-archive-routes'
 import { makeD1R2HarborFullTraceArchiveStore } from './inference/gym/harbor-full-trace-archive-store'
 import {
-  handleOperatorGymRunProgressApi,
-  handlePublicGymRunProgressApi,
-} from './inference/gym/run-progress-routes'
-import { makeD1GymRunProgressStore } from './inference/gym/run-progress-store'
-import { publishGymRunProgressSnapshot } from './inference/gym/run-progress-sync'
-import {
   handleOperatorGymLeaderboardApi,
   handlePublicGymLeaderboardApi,
 } from './inference/gym/ladder-routes'
@@ -467,10 +477,11 @@ import {
 } from './inference/gym/mirrorcode-routes'
 import { makeD1MirrorCodeRunStore } from './inference/gym/mirrorcode-store'
 import {
-  handleOperatorKhalaHeadToHeadApi,
-  handlePublicKhalaHeadToHeadApi,
-} from './inference/benchmark/head-to-head-routes'
-import { makeD1KhalaHeadToHeadStore } from './inference/benchmark/head-to-head-store'
+  handleOperatorGymRunProgressApi,
+  handlePublicGymRunProgressApi,
+} from './inference/gym/run-progress-routes'
+import { makeD1GymRunProgressStore } from './inference/gym/run-progress-store'
+import { publishGymRunProgressSnapshot } from './inference/gym/run-progress-sync'
 import {
   type HydraliskPoolRouteAdmissionSnapshot,
   makeHydraliskVllmAdapter,
@@ -513,6 +524,11 @@ import {
 import { withReferralAccrual } from './inference/inference-referral-accrual'
 import { makeInferenceReferralRoutes } from './inference/inference-referral-routes'
 import {
+  type InternalStressSchedulerNamespace,
+  makeInternalStressPreemptionCoordinatorDO,
+  makeInternalStressPreemptionRegistry,
+} from './inference/internal-stress-preemption'
+import {
   settleVerifiedAcceptedOutcome,
   summarizeAcceptedOutcomeSettlement,
 } from './inference/khala-accepted-outcome-settlement'
@@ -532,12 +548,6 @@ import {
   buildKhalaTokensServedDelta,
   publishKhalaTokensServedDelta,
 } from './inference/khala-tokens-served-sync'
-import {
-  type InternalStressSchedulerNamespace,
-  makeInternalStressPreemptionCoordinatorDO,
-  makeInternalStressPreemptionRegistry,
-} from './inference/internal-stress-preemption'
-export { GlmStressSchedulerDurableObject } from './inference/internal-stress-preemption-do'
 import { makeLedgerMeteringHook } from './inference/metering-hook'
 import {
   FIREWORKS_ADAPTER_ID,
@@ -635,15 +645,6 @@ import {
   safeJsonRecord,
   stringArrayFromUnknown,
 } from './json-boundary'
-import {
-  authorizeForgeControlPlaneBearer,
-  makeForgeControlPlaneRoutes,
-} from './forge-control-plane-routes'
-import { makeD1ForgeCoordinationStore } from './forge-coordination-store'
-import { makeD1ForgeGitCanonicalStore } from './forge-git-canonical-store'
-import { makeForgeGitIntakeRoutes } from './forge-git-intake-routes'
-import { makeD1R2ForgeGitPackfileArchiveStore } from './forge-git-packfile-archive-store'
-import { makeD1ForgeTenantGitAuthStore } from './forge-tenant-git-auth-store'
 import type { KhalaChatStreamClient } from './khala-chat-program'
 import {
   loadKhalaChatAccountPylonContext,
@@ -656,23 +657,19 @@ import {
   makeD1KhalaFeedbackStore,
 } from './khala-feedback-routes'
 import {
-  handleOperatorKhalaTraceReview,
-  makeD1KhalaTraceReviewStore,
-} from './khala-trace-review-routes'
-import {
-  handleOperatorRlmTraces,
-  makeD1OperatorRlmTraceStore,
-} from './rlm-operator-traces-routes'
-import {
-  handleOperatorKhalaUnsupportedRequests,
-  makeD1KhalaUnsupportedRequestStore,
-} from './khala-unsupported-request-routes'
-import {
   combineMcpCatalogs,
   khalaDurableRequestIsLinkedToPrincipal,
   khalaMcpAgentPrincipal,
   makeKhalaMcpCatalog,
 } from './khala-mcp'
+import {
+  handleOperatorKhalaTraceReview,
+  makeD1KhalaTraceReviewStore,
+} from './khala-trace-review-routes'
+import {
+  handleOperatorKhalaUnsupportedRequests,
+  makeD1KhalaUnsupportedRequestStore,
+} from './khala-unsupported-request-routes'
 import { makeOpenAgentsL402HmacSigningBoundary } from './l402-credential-service'
 import { handlePublicLaborEarningsApi } from './labor-earnings-routes'
 import { handleSelfServeLaborPayoutApi } from './labor-self-serve-earning-payout-routes'
@@ -689,10 +686,6 @@ import {
   MarketplaceWorkClassCatalogEndpoint,
   handleMarketplaceWorkClassCatalogApi,
 } from './marketplace-work-class-catalog-routes'
-import {
-  WasmPluginMarketplaceEndpoint,
-  handleWasmPluginMarketplaceApi,
-} from './wasm-plugin-marketplace-routes'
 import {
   mdkContainerEnvVars,
   optionalMdkContainerSecret,
@@ -812,11 +805,11 @@ import { handlePublicAdjutantActivityApi } from './public-adjutant-activity-rout
 import { makePublicCardCreditSpendReceiptRoutes } from './public-card-credit-spend-receipt-routes'
 import { handlePublicForumActivityApiForEnv } from './public-forum-activity-routes'
 import { makePublicInferenceReceiptRoutes } from './public-inference-receipt-routes'
+import { recordPublicKhalaChatServedTokens } from './public-khala-chat-served-tokens'
 import { handlePublicKhalaTokensServedDemandMixApi } from './public-khala-tokens-served-demand-mix-routes'
 import { handlePublicKhalaTokensServedHistoryApi } from './public-khala-tokens-served-history-routes'
 import { handlePublicKhalaTokensServedModelMixApi } from './public-khala-tokens-served-model-mix-routes'
 import { handlePublicKhalaTokensServedApi } from './public-khala-tokens-served-routes'
-import { recordPublicKhalaChatServedTokens } from './public-khala-chat-served-tokens'
 import { handlePublicLaunchDashboardApi } from './public-launch-dashboard-routes'
 import { makePublicNip90MarketReceiptRoutes } from './public-nip90-market-receipt-routes'
 import { handlePublicOtecProofApi } from './public-otec-proof-routes'
@@ -868,6 +861,10 @@ import {
 } from './relay-health'
 import { handlePublicRelayHealthApi } from './relay-health-routes'
 import { handleResendWebhook } from './resend-webhooks'
+import {
+  handleOperatorRlmTraces,
+  makeD1OperatorRlmTraceStore,
+} from './rlm-operator-traces-routes'
 import { makeExactRouteRegistry } from './routing/exact-routes'
 import {
   cleanProductRouteRedirectLocation,
@@ -1060,7 +1057,6 @@ import {
   TrainingPublicGradientWindowsEndpoint,
   handleTrainingPublicGradientWindowsApi,
 } from './training-public-gradient-windows-routes'
-import { handleVerifiedOutcomeReputationApi } from './verified-outcome-reputation-routes'
 import {
   buildTrainingWindowRecord,
   makeD1TrainingAuthorityStore,
@@ -1098,6 +1094,7 @@ import {
   handlePublicTreasuryLaunchStatusApi,
   reconcilePendingTreasuryTransactions,
 } from './treasury-routes'
+import { handleVerifiedOutcomeReputationApi } from './verified-outcome-reputation-routes'
 import {
   type ViralAgentFunnelEventKind,
   recordViralAgentFunnelEvent,
@@ -1107,6 +1104,10 @@ import {
   handleVoiceProgramIngestApi,
   isVoiceProgramIngestEnabled,
 } from './voice-program-ingest-routes'
+import {
+  WasmPluginMarketplaceEndpoint,
+  handleWasmPluginMarketplaceApi,
+} from './wasm-plugin-marketplace-routes'
 import { makeWorkerRouteRequest } from './worker-routes'
 import {
   makeD1XClaimRewardTreasuryDispatchStore,
@@ -1114,6 +1115,8 @@ import {
   runXClaimRewardTreasuryDispatchScheduled,
   xClaimRewardDispatchDayStartIso,
 } from './x-claim-reward-treasury-dispatcher'
+
+export { GlmStressSchedulerDurableObject } from './inference/internal-stress-preemption-do'
 
 export type Env = WorkerBindings & OpenAgentsWorkerConfigEnv
 
@@ -1358,8 +1361,7 @@ const fetchMdkTreasuryPath = (
   environment: Env,
 ): ContainerPathFetch | undefined => {
   const namespace = environment.MDK_TREASURY as
-    | DurableObjectNamespace<MdkTreasuryContainer>
-    | undefined
+    DurableObjectNamespace<MdkTreasuryContainer> | undefined
 
   if (namespace === undefined) {
     return undefined
@@ -6734,23 +6736,23 @@ export const handleProgrammaticAgentRegistration = async (
             'readiness.public.spark_primary.agent_balance',
           ]
         : lightningAddressPrimary
-        ? [
-            'readiness.public.spark_lightning_address.receive_ready',
-            'readiness.public.spark_primary.agent_balance',
-          ]
-        : [
-            'readiness.public.mdk_agent.daemon_running',
-            'readiness.public.mdk_agent.receive_ready',
-            'readiness.public.mdk_agent.setup_present',
-          ]
+          ? [
+              'readiness.public.spark_lightning_address.receive_ready',
+              'readiness.public.spark_primary.agent_balance',
+            ]
+          : [
+              'readiness.public.mdk_agent.daemon_running',
+              'readiness.public.mdk_agent.receive_ready',
+              'readiness.public.mdk_agent.setup_present',
+            ]
       const custodyPolicyRefs = sparkAddressPrimary
         ? [
             'policy.public.forum_tip_recipient.self_custody_mdk_agent_wallet',
             'policy.public.forum_tip_recipient.spark_self_custody',
           ]
         : lightningAddressPrimary
-        ? ['policy.public.forum_tip_recipient.spark_self_custody']
-        : ['policy.public.forum_tip_recipient.self_custody_mdk_agent_wallet']
+          ? ['policy.public.forum_tip_recipient.spark_self_custody']
+          : ['policy.public.forum_tip_recipient.self_custody_mdk_agent_wallet']
 
       await Effect.runPromise(
         upsertForumTipRecipientWallet(db, {
@@ -6828,9 +6830,7 @@ export const handleAdminReissueAgentToken = async (
 
       const session = await requireBrowserSession(authRequest, authEnv, authCtx)
 
-      return (
-        session !== undefined && isOpenAgentsAdminEmail(session.user.email)
-      )
+      return session !== undefined && isOpenAgentsAdminEmail(session.user.email)
     })
 
   if (!(await authorize(request, env, ctx))) {
@@ -6852,8 +6852,8 @@ export const handleAdminReissueAgentToken = async (
     parsed.slug !== undefined
       ? ({ slug: parsed.slug } as const)
       : parsed.externalId !== undefined
-      ? ({ externalId: parsed.externalId } as const)
-      : undefined
+        ? ({ externalId: parsed.externalId } as const)
+        : undefined
 
   if (selector === undefined) {
     return badRequest('slug or externalId is required')
@@ -7197,7 +7197,8 @@ const pylonCodexTurnIngestRoutes = makePylonCodexTurnIngestRoutes<Env>({
   agentStore: env => makeD1AgentRegistrationStore(openAgentsDatabase(env)),
   ledger: env => makeD1TokenUsageLedger(openAgentsDatabase(env)),
   pylonStore: env => makeD1PylonApiStore(openAgentsDatabase(env)),
-  proofStore: env => makeD1PylonCodexAssignmentProofStore(openAgentsDatabase(env)),
+  proofStore: env =>
+    makeD1PylonCodexAssignmentProofStore(openAgentsDatabase(env)),
   traceStatusStore: env =>
     makeD1PylonCodexAssignmentProofStore(openAgentsDatabase(env)),
   rawEventChunkStore: env =>
@@ -9698,9 +9699,9 @@ const fireworksStrongCodingAdapter: InferenceProviderAdapter = {
     ? {}
     : {
         streamSse: request =>
-          fireworksAdapter
-            .streamSse!(request)
-            .pipe(Effect.mapError(toRetryableStrongCodingError)),
+          fireworksAdapter.streamSse!(request).pipe(
+            Effect.mapError(toRetryableStrongCodingError),
+          ),
       }),
 }
 inferenceProviderRegistry.register(fireworksStrongCodingAdapter)
@@ -9858,8 +9859,7 @@ const registerHydraliskAdapter = (
 }
 
 let latestHydraliskGlm52RouteAdmission:
-  | HydraliskPoolRouteAdmissionSnapshot
-  | undefined
+  HydraliskPoolRouteAdmissionSnapshot | undefined
 
 const hydraliskGlm52RouteAdmissionForEnv = (
   env: HydraliskServeEnv,
@@ -9889,10 +9889,7 @@ const registerOpenRouterAdapter = (
   openRouterAdaptersRegistered.add(env)
   const apiKey = env.OPENROUTER_API_KEY?.trim()
   const baseUrl = env.OPENROUTER_BASE_URL?.trim() || OPENROUTER_DEFAULT_BASE_URL
-  if (
-    apiKey === undefined ||
-    apiKey === ''
-  ) {
+  if (apiKey === undefined || apiKey === '') {
     return
   }
   registry.register(
@@ -9982,7 +9979,8 @@ const setInferenceAdapterEnv = (env: OpenAgentsWorkerConfigEnv): void => {
 // passthrough/Vertex secrets) — rather than a raw Cloudflare `Env`, keeping the
 // worker off the raw-Env ratchet.
 type BatchJobConsumerEnv = OpenAgentsWorkerConfigEnv &
-  Pick<WorkerBindings, 'OPENAGENTS_DB'>
+  Pick<WorkerBindings, 'OPENAGENTS_DB'> &
+  Readonly<{ ARTIFACTS: R2Bucket }>
 const makeBatchJobConsumerDeps = (env: BatchJobConsumerEnv) => {
   registerPassthroughAdapters(inferenceProviderRegistry, env)
   registerHydraliskAdapter(inferenceProviderRegistry, env)
@@ -10000,6 +9998,7 @@ const makeBatchJobConsumerDeps = (env: BatchJobConsumerEnv) => {
     // END of the batch wait) with this clock so the closeout receipt can disclose
     // an honest `batchWaitMs`.
     nowIso: currentIsoTimestamp,
+    resultStore: makeR2BatchJobResultStore(env.ARTIFACTS),
     store: makeD1BatchJobStore(openAgentsDatabase(env), currentIsoTimestamp),
   }
 }
@@ -12234,6 +12233,29 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       }),
   },
   {
+    path: '/v1/inference/batches/:jobId/results',
+    handler: (request, env) =>
+      handleBatchJobResultsRead(request, {
+        authenticate: async authRequest => {
+          const token = readBearerToken(authRequest)
+          if (token === undefined) {
+            return undefined
+          }
+          const session = await authenticateProgrammaticAgent(
+            makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+            token,
+          )
+          return session === undefined
+            ? undefined
+            : { accountRef: `agent:${session.user.id}` }
+        },
+        db: openAgentsDatabase(env),
+        enabled: isInferenceGatewayEnabled(env.INFERENCE_GATEWAY_ENABLED),
+        nowIso: currentIsoTimestamp,
+        resultStore: makeR2BatchJobResultStore(env.ARTIFACTS),
+      }),
+  },
+  {
     // Inference gateway (EPIC #5474, #5476). INERT by default: gated behind
     // INFERENCE_GATEWAY_ENABLED (default off). Ships wired to the stub/echo
     // adapter + no-op metering stub; Phase-2 issues register real adapters
@@ -13230,7 +13252,9 @@ const routeRequest = makeWorkerRouteRequest({
           : { accountRef: `agent:${session.user.id}` }
       },
       adapter: makeD1SandboxRuntimeAdapter(openAgentsDatabase(env)),
-      enabled: isSandboxComputeServiceEnabled(env.CLOUD_SANDBOX_COMPUTE_ENABLED),
+      enabled: isSandboxComputeServiceEnabled(
+        env.CLOUD_SANDBOX_COMPUTE_ENABLED,
+      ),
     }),
   // OpenAI-compatible GET /v1/models/{model} retrieve. Gated by the SAME
   // INFERENCE_GATEWAY_ENABLED flag as the list and chat-completions routes, so

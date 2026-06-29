@@ -16,22 +16,27 @@ import { Effect, Schema as S } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import {
-  type BatchJobRoutesDeps,
-  handleBatchJobReceiptRead,
-  handleBatchJobsSubmit,
-} from './batch-job-routes'
-import {
   type BatchJobConsumerDeps,
   BatchJobQueueMessage,
   batchJobCloseoutReceiptRef,
   executeBatchJob,
 } from './batch-job-consumer'
+import type {
+  BatchJobResultStore,
+  BatchJobResultsPayload,
+} from './batch-job-results'
+import {
+  type BatchJobRoutesDeps,
+  handleBatchJobReceiptRead,
+  handleBatchJobResultsRead,
+  handleBatchJobsSubmit,
+} from './batch-job-routes'
 import { makeD1BatchJobStore } from './batch-job-store'
 import type { MeteringContext, MeteringOutcome } from './metering-hook'
 import {
   type InferenceProviderAdapter,
-  type InferenceResult,
   InferenceProviderRegistry,
+  type InferenceResult,
 } from './provider-adapter'
 
 const run = <A>(effect: Effect.Effect<A, never, never>): Promise<A> =>
@@ -68,7 +73,7 @@ const makeStatefulDb = (): D1Database => {
 
   const prepare = (sql: string) => {
     const make = (bindings: unknown[]) => ({
-      first: async <T,>(): Promise<T | null> => {
+      first: async <T>(): Promise<T | null> => {
         if (sql.includes('FROM inference_batch_jobs')) {
           const jobId = String(bindings[0])
           const row = rows.get(jobId)
@@ -219,6 +224,37 @@ const receiptDeps = (db: D1Database): BatchJobRoutesDeps => ({
   nowIso: () => '2026-06-22T00:05:00.000Z',
 })
 
+const resultsDeps = (
+  db: D1Database,
+  resultStore: BatchJobResultStore,
+): BatchJobRoutesDeps => ({
+  authenticate: async () => ({ accountRef: 'agent:flow' }),
+  db,
+  enabled: true,
+  nowIso: () => '2026-06-22T00:05:00.000Z',
+  resultStore,
+})
+
+const memoryResultStore = (): {
+  store: BatchJobResultStore
+  payloads: () => ReadonlyArray<BatchJobResultsPayload>
+} => {
+  const payloads: Array<BatchJobResultsPayload> = []
+  return {
+    payloads: () => payloads,
+    store: {
+      getResults: key =>
+        Effect.succeed(
+          payloads.find(payload => `memory://${payload.jobId}` === key) ?? null,
+        ),
+      putResults: payload => {
+        payloads.push(payload)
+        return Effect.succeed(`memory://${payload.jobId}`)
+      },
+    },
+  }
+}
+
 const submitRequest = (body: unknown): Request =>
   new Request('https://openagents.com/v1/inference/batches', {
     body: JSON.stringify(body),
@@ -230,6 +266,11 @@ const receiptRequest = (receiptRef: string): Request =>
     `https://openagents.com/api/public/inference/batch-job-receipts/${receiptRef}`,
     { method: 'GET' },
   )
+
+const resultsRequest = (jobId: string): Request =>
+  new Request(`https://openagents.com/v1/inference/batches/${jobId}/results`, {
+    method: 'GET',
+  })
 
 describe('async batch-job flow (submit -> queue -> consumer -> receipt)', () => {
   it('runs a detached khala job end-to-end and makes its receipt dereferenceable', async () => {
@@ -298,6 +339,7 @@ describe('async batch-job flow (submit -> queue -> consumer -> receipt)', () => 
       JSON.parse(JSON.stringify(captured[0])),
     )
     const metering = recordingMetering()
+    const resultStore = memoryResultStore()
     const outcome = await run(
       executeBatchJob(
         {
@@ -307,6 +349,7 @@ describe('async batch-job flow (submit -> queue -> consumer -> receipt)', () => 
           // the batch wait) with this clock; with the 00:00:00 enqueue the receipt
           // discloses a real batchWaitMs of 120000 (2 min in queue).
           nowIso: () => '2026-06-22T00:02:00.000Z',
+          resultStore: resultStore.store,
           store: makeD1BatchJobStore(db, () => '2026-06-22T00:02:00.000Z'),
         },
         message,
@@ -322,7 +365,26 @@ describe('async batch-job flow (submit -> queue -> consumer -> receipt)', () => 
     expect(metering.calls()[0]?.accountRef).toBe('agent:flow')
     expect(metering.calls()[0]?.requestId).toBe(`${jobId}:0`)
 
-    // 3) RECEIPT is now dereferenceable (status flipped to completed).
+    // 3) RESULT retrieval is now dereferenceable for the owning account.
+    const resultsResponse = await run(
+      handleBatchJobResultsRead(
+        resultsRequest(jobId),
+        resultsDeps(db, resultStore.store),
+      ),
+    )
+    expect(resultsResponse.status).toBe(200)
+    const resultsBody = (await resultsResponse.json()) as {
+      resultsR2Key: string
+      results: ReadonlyArray<{ content: string; status: string }>
+    }
+    expect(resultsBody.resultsR2Key).toBe(`memory://${jobId}`)
+    expect(resultsBody.results).toHaveLength(1)
+    expect(resultsBody.results[0]).toMatchObject({
+      content: 'fake completion',
+      status: 'succeeded',
+    })
+
+    // 4) RECEIPT is now dereferenceable (status flipped to completed).
     const finalReceipt = await run(
       handleBatchJobReceiptRead(
         receiptRequest(batchJobCloseoutReceiptRef(jobId)),
