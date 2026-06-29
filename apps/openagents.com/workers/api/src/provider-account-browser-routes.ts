@@ -1,3 +1,5 @@
+import { Effect } from 'effect'
+
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
 import {
   optionalBoolean,
@@ -5,31 +7,36 @@ import {
   readJsonObject,
 } from './json-boundary'
 import {
+  logWorkerRouteError,
+  observedEffect,
+  observedPromise,
+} from './observability'
+import {
   type ProviderApiKeyProbe,
   type StoreConnectedProviderApiKey,
   connectProviderApiKeyAccount,
   providerApiKeyConnectPolicyForRouteSegment,
 } from './provider-account-api-key'
 import {
+  providerAccountRouteErrorMessage,
+  providerAccountRouteErrorName,
+  providerAccountRouteErrorStatus,
+} from './provider-account-route-errors'
+import {
   type DeleteStartedCodexDeviceLogin,
+  ProviderAccountLifecycleService,
   type ReadStartedCodexDeviceLogin,
   type StoreConnectedCodexAuth,
   type StoreStartedCodexDeviceLogin,
   disconnectProviderAccountForUser,
   issueProviderAccountGrant,
-  listProviderAccountsForUser,
   makeD1ProviderAccountRepository,
+  makeProviderAccountLifecycleLayer,
   pollOpenAiCodexDeviceLogin,
   refreshChatGptCodexDeviceLoginForUser,
   startChatGptCodexDeviceLogin,
   startOpenAiCodexDeviceLogin,
 } from './provider-accounts'
-import {
-  providerAccountRouteErrorMessage,
-  providerAccountRouteErrorName,
-  providerAccountRouteErrorStatus,
-} from './provider-account-route-errors'
-import { logWorkerRouteError, observedPromise } from './observability'
 import { openAgentsDatabase } from './runtime'
 
 type ProviderAccountBrowserEnv = Readonly<{
@@ -71,6 +78,24 @@ type ProviderAccountBrowserDependencies<
   ) => StoreStartedCodexDeviceLogin
 }>
 
+export const handleProviderAccountsListEffect = <
+  Session extends ProviderAccountBrowserSession,
+>(
+  session: Session,
+  appendRefreshedSessionCookies: (
+    response: globalThis.Response,
+    session: Session,
+  ) => globalThis.Response,
+) =>
+  Effect.gen(function* () {
+    const lifecycle = yield* ProviderAccountLifecycleService
+    const response = noStoreJsonResponse(
+      yield* lifecycle.listForUser(session.user.userId),
+    )
+
+    return appendRefreshedSessionCookies(response, session)
+  })
+
 export const makeProviderAccountBrowserHandlers = <
   Session extends ProviderAccountBrowserSession,
   Env extends ProviderAccountBrowserEnv,
@@ -92,12 +117,45 @@ export const makeProviderAccountBrowserHandlers = <
       return noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
     }
 
-    const repository = makeD1ProviderAccountRepository(openAgentsDatabase(env))
-    const response = noStoreJsonResponse(
-      await listProviderAccountsForUser(repository, session.user.userId),
-    )
+    try {
+      const lifecycleLayer = makeProviderAccountLifecycleLayer({
+        deleteStartedDeviceLogin: dependencies.deleteStartedCodexDeviceLogin(
+          env.AUTH_STORAGE,
+        ),
+        pollDeviceLogin: secret => pollOpenAiCodexDeviceLogin(secret),
+        readStartedDeviceLogin: dependencies.readStartedCodexDeviceLogin(
+          env.AUTH_STORAGE,
+        ),
+        repository: makeD1ProviderAccountRepository(openAgentsDatabase(env)),
+        startDeviceLogin: () => startOpenAiCodexDeviceLogin(),
+        storeConnectedAuth: dependencies.storeConnectedCodexAuth(
+          env.AUTH_STORAGE,
+        ),
+        storeStartedDeviceLogin: dependencies.storeStartedCodexDeviceLogin(
+          env.AUTH_STORAGE,
+        ),
+      })
 
-    return dependencies.appendRefreshedSessionCookies(response, session)
+      return await observedEffect(
+        'ProviderAccountBrowser.listProviderAccountsForUser',
+        handleProviderAccountsListEffect(
+          session,
+          dependencies.appendRefreshedSessionCookies,
+        ).pipe(Effect.provide(lifecycleLayer)),
+      )
+    } catch (error) {
+      logWorkerRouteError('provider_accounts_list_failed', error, {
+        errorName: providerAccountRouteErrorName(error),
+      })
+
+      return noStoreJsonResponse(
+        {
+          error: 'provider_accounts_list_failed',
+          message: providerAccountRouteErrorMessage(error),
+        },
+        { status: providerAccountRouteErrorStatus(error, 502) },
+      )
+    }
   },
 
   handleProviderAccountDisconnectApi: async (
@@ -324,9 +382,8 @@ export const makeProviderAccountBrowserHandlers = <
             },
             () => startOpenAiCodexDeviceLogin(),
             {
-              storeStartedDeviceLogin: dependencies.storeStartedCodexDeviceLogin(
-                env.AUTH_STORAGE,
-              ),
+              storeStartedDeviceLogin:
+                dependencies.storeStartedCodexDeviceLogin(env.AUTH_STORAGE),
             },
           ),
       )

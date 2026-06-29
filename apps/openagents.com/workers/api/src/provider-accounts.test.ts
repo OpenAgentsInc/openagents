@@ -3,6 +3,7 @@ import { Effect } from 'effect'
 import { describe, expect, test } from 'vitest'
 
 import worker from './index'
+import { handleProviderAccountsListEffect } from './provider-account-browser-routes'
 import {
   CHATGPT_CODEX_PROVIDER,
   CHATGPT_CODEX_VERIFICATION_URL,
@@ -911,6 +912,42 @@ describe('provider account service', () => {
     expect(bundle.accounts.map(account => account.providerAccountRef)).toEqual([
       'provider-account_1',
       'provider-account_2',
+    ])
+  })
+
+  test('browser account list route composes through the lifecycle service layer', async () => {
+    const repository = new MemoryProviderAccountRepository()
+    repository.accounts.push(
+      makeAccount({
+        id: 'provider_account_1',
+        providerAccountRef: 'provider-account_1',
+      }),
+    )
+
+    const response = await Effect.runPromise(
+      handleProviderAccountsListEffect(
+        { user: { userId: 'github:1' } },
+        routeResponse => {
+          routeResponse.headers.set('x-session-refreshed', '1')
+
+          return routeResponse
+        },
+      ).pipe(
+        Effect.provide(
+          makeProviderAccountLifecycleTestLayer({
+            now: () => new Date('2026-06-02T19:05:00.000Z'),
+            repository,
+          }),
+        ),
+      ),
+    )
+    const body = (await response.json()) as Awaited<
+      ReturnType<typeof listProviderAccountsForUser>
+    >
+
+    expect(response.headers.get('x-session-refreshed')).toBe('1')
+    expect(body.accounts.map(account => account.providerAccountRef)).toEqual([
+      'provider-account_1',
     ])
   })
 
