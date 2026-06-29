@@ -132,21 +132,26 @@ promotable or blocked it. The required fields are:
 
 - `promotion_ref`
 - `queue_ref`
+- `queue_position`
 - `change_ref`
 - `decision`
+- `target_ref`
 - `base_head`
 - `candidate_head`
 - `promoted_head`
 - `verification_ref`
 - `gate_refs`
+- `gate_results`
 - `blocker_refs`
 - `decided_by_ref`
 - `decided_at`
 - `source_refs`
 - `redacted: true`
 
-`approved` decisions identify the fast-forward target in `promoted_head`.
-`blocked` decisions keep `promoted_head` null and name the blockers.
+`target_ref` names the canonical ref being promoted. `approved` decisions
+identify the fast-forward target in `promoted_head`. `blocked` decisions keep
+`promoted_head` null and name the blockers. `gate_results` records one bounded
+public-safe result per Blueprint gate, with evidence refs and blocker refs only.
 
 ## UI Boundary
 
