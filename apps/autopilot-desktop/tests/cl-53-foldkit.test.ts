@@ -23,6 +23,7 @@ import {
   coordinatorToggleLabel,
   nodeStatusLine,
   parseVerifyLines,
+  pylonFleetSummary,
   shipStatusLine,
   stateBreakdown,
   trainingProjectionMeta,
@@ -287,6 +288,36 @@ describe("helpers (CL-47..CL-58 parity, pure)", () => {
     expect(goal).toBe("Fix the bug")
     expect(meta).toContain("fixed")
     expect(meta).toContain("expires 2026-07-01")
+  })
+
+  test("pylonFleetSummary distinguishes verified capacity from stale work", () => {
+    const summary = pylonFleetSummary({
+      assignments: [],
+      capacity: {
+        ageSeconds: 30,
+        availableCodexSlots: 2,
+        blockerRefs: [],
+        lastHeartbeatAt: "2026-06-29T15:00:00.000Z",
+        sourceRefs: ["source.local.pylon.presence_state"],
+        state: "verified",
+      },
+      counts: {
+        accepted: 3,
+        assigned: 2,
+        executing: 2,
+        khalaRequestWrappers: 1,
+        pylons: 1,
+        rejected: 1,
+        stale: 0,
+        tokenFailures: 0,
+      },
+      fetchedAt: "2026-06-29T15:00:30.000Z",
+      pylonRefs: ["pylon.local"],
+    })
+    expect(summary.tone).toBe("ready")
+    expect(summary.capacityLine).toContain("capacity verified")
+    expect(summary.capacityLine).toContain("2 slots available")
+    expect(summary.line).toContain("2 executing")
   })
 
   test("connectionSummary + coordinatorToggleLabel", () => {

@@ -2406,6 +2406,80 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.fleet-capacity {
+  margin: 0;
+  color: var(--text-secondary, #8a8c93);
+  font-size: 0.78rem;
+}
+
+.fleet-capacity-ready {
+  color: var(--success, #00c853);
+}
+
+.fleet-capacity-watch {
+  color: var(--warning, #ffb400);
+}
+
+.fleet-capacity-blocked {
+  color: var(--danger, #d32f2f);
+}
+
+.fleet-assignment-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.fleet-assignment-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+  border: 1px solid var(--outline, #525458);
+  border-radius: 6px;
+  background: rgb(255 255 255 / 0.035);
+  padding: 0.45rem 0.55rem;
+}
+
+.fleet-assignment-executing {
+  border-color: color-mix(in srgb, var(--success, #00c853) 54%, var(--outline, #525458));
+}
+
+.fleet-assignment-stale_unknown {
+  border-color: color-mix(in srgb, var(--warning, #ffb400) 58%, var(--outline, #525458));
+}
+
+.fleet-assignment-main,
+.fleet-assignment-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.fleet-assignment-main code {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fleet-assignment-state {
+  flex: 0 0 auto;
+  color: var(--text-secondary, #8a8c93);
+  font-size: 0.68rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.fleet-assignment-meta {
+  overflow: hidden;
+  color: var(--text-secondary, #8a8c93);
+  font-size: 0.72rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .session-detail-context-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));

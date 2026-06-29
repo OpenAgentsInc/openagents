@@ -1,4 +1,6 @@
 import { existsSync, readFileSync } from "node:fs"
+import { readdir, readFile, stat } from "node:fs/promises"
+import { homedir } from "node:os"
 import { join } from "node:path"
 import {
   CONTROL_HEALTH_CAPABILITIES,
@@ -8,6 +10,12 @@ import {
   type BridgeCredential,
   type SessionSummary,
 } from "@openagentsinc/autopilot-control-protocol"
+import {
+  reconcilePylonFleet,
+  summarizeAssignmentLogTexts,
+  type ActiveAssignmentMarker,
+  type PresenceSnapshot,
+} from "../shared/pylon-fleet-reconciliation.js"
 import type {
   AccountRow,
   AppleFmReadinessResponse,
@@ -19,6 +27,7 @@ import type {
   SessionArtifactStats,
   SessionEventRow,
   WalletStatusRow,
+  PylonFleetReconciliation,
 } from "../shared/rpc.js"
 
 // ── CL-14 bridge transport (desktop) ──────────────────────────────────────
@@ -113,6 +122,193 @@ const optionalString = (value: unknown): string | null =>
 
 const requiredString = (value: unknown, fallback: string): string =>
   typeof value === "string" && value.trim() !== "" ? value : fallback
+
+const optionalObject = (value: unknown): Record<string, unknown> | null =>
+  value !== null && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null
+
+const pylonHomeCandidates = (): readonly string[] => {
+  const homes = [
+    process.env.PYLON_HOME?.trim(),
+    join(homedir(), ".pylon-fable"),
+    join(homedir(), ".openagents", "pylon"),
+    join(homedir(), ".pylon"),
+  ].filter((value): value is string => typeof value === "string" && value.length > 0)
+  return [...new Set(homes)]
+}
+
+const readJsonRecord = async (path: string): Promise<Record<string, unknown> | null> => {
+  try {
+    return optionalObject(JSON.parse(await readFile(path, "utf8")))
+  } catch {
+    return null
+  }
+}
+
+const readPresenceSnapshots = async (
+  homes: readonly string[],
+): Promise<PresenceSnapshot[]> => {
+  const snapshots: PresenceSnapshot[] = []
+  for (const home of homes) {
+    const record = await readJsonRecord(join(home, "presence-state.json"))
+    if (record === null) continue
+    snapshots.push({
+      blockerRefs: stringArray(record.blockerRefs),
+      lastHeartbeatAt: optionalString(record.lastHeartbeatAt),
+      pylonRef: optionalString(record.pylonRef),
+    })
+  }
+  return snapshots
+}
+
+const readActiveAssignmentMarkers = async (
+  homes: readonly string[],
+): Promise<ActiveAssignmentMarker[]> => {
+  const markers: ActiveAssignmentMarker[] = []
+  for (const home of homes) {
+    const dir = join(home, "active-assignment-runs")
+    let filenames: string[] = []
+    try {
+      filenames = await readdir(dir)
+    } catch {
+      continue
+    }
+    for (const filename of filenames) {
+      if (!filename.endsWith(".json")) continue
+      const record = await readJsonRecord(join(dir, filename))
+      if (record === null) continue
+      const assignmentRef = optionalString(record.assignmentRef)
+      const leaseRef = optionalString(record.leaseRef)
+      const refreshedAt = optionalString(record.refreshedAt)
+      const service = optionalString(record.service)
+      if (
+        assignmentRef === null ||
+        leaseRef === null ||
+        refreshedAt === null ||
+        service === null
+      ) {
+        continue
+      }
+      const accountRefHash = optionalString(record.accountRefHash)
+      markers.push({
+        ...(accountRefHash === null ? {} : { accountRefHash }),
+        assignmentRef,
+        leaseRef,
+        refreshedAt,
+        service,
+      })
+    }
+  }
+  return markers
+}
+
+const processInventory = async (): Promise<{
+  codexExec: number
+  khalaRequestWrappers: number
+}> => {
+  try {
+    const proc = Bun.spawn(["ps", "-axo", "pid,ppid,etime,command"], {
+      stderr: "pipe",
+      stdout: "pipe",
+    })
+    const [stdout, exitCode] = await Promise.all([
+      new Response(proc.stdout).text(),
+      proc.exited,
+    ])
+    if (exitCode !== 0) return { codexExec: 0, khalaRequestWrappers: 0 }
+    const lines = stdout.split(/\r?\n/)
+    return {
+      codexExec: lines.filter(line => /\bcodex\s+exec\b/.test(line)).length,
+      khalaRequestWrappers: lines.filter(line =>
+        line.includes("apps/pylon/src/index.ts khala request"),
+      ).length,
+    }
+  } catch {
+    return { codexExec: 0, khalaRequestWrappers: 0 }
+  }
+}
+
+const recentAssignmentLogTexts = async (
+  homes: readonly string[],
+): Promise<readonly string[]> => {
+  const dirs = [
+    ...homes.map(home => join(home, "pr-resolver-logs")),
+    join(homedir(), ".pylon-fable", "pr-resolver-logs"),
+  ]
+  const entries: Array<{ path: string; mtimeMs: number }> = []
+  for (const dir of [...new Set(dirs)]) {
+    let filenames: string[] = []
+    try {
+      filenames = await readdir(dir)
+    } catch {
+      continue
+    }
+    for (const filename of filenames) {
+      if (!filename.startsWith("pr-review-") || !filename.endsWith(".log")) continue
+      const path = join(dir, filename)
+      try {
+        const info = await stat(path)
+        if (info.isFile()) entries.push({ path, mtimeMs: info.mtimeMs })
+      } catch {
+        // Ignore files that rotate while the poll is running.
+      }
+    }
+  }
+  entries.sort((a, b) => b.mtimeMs - a.mtimeMs)
+  const texts: string[] = []
+  for (const entry of entries.slice(0, 160)) {
+    try {
+      texts.push(await readFile(entry.path, "utf8"))
+    } catch {
+      texts.push("")
+    }
+  }
+  return texts
+}
+
+const tokenFailureCount = async (): Promise<number> => {
+  const path = join(homedir(), ".pylon-fable", "codex-turn-report-failures.jsonl")
+  try {
+    const text = await readFile(path, "utf8")
+    return text.split(/\r?\n/).filter(line => line.trim() !== "").length
+  } catch {
+    return 0
+  }
+}
+
+const availableCodexSlotsFromEnv = (): number | null => {
+  const concurrency = Number.parseInt(process.env.OPENAGENTS_PYLON_CODEX_CONCURRENCY ?? "", 10)
+  if (!Number.isSafeInteger(concurrency) || concurrency < 0) return null
+  const busy = Number.parseInt(process.env.OPENAGENTS_PYLON_CODEX_BUSY ?? "0", 10)
+  const queued = Number.parseInt(process.env.OPENAGENTS_PYLON_CODEX_QUEUED ?? "0", 10)
+  const load =
+    (Number.isSafeInteger(busy) && busy > 0 ? busy : 0) +
+    (Number.isSafeInteger(queued) && queued > 0 ? queued : 0)
+  return Math.max(0, concurrency - load)
+}
+
+export async function fetchPylonFleetReconciliation(): Promise<PylonFleetReconciliation> {
+  const fetchedAt = new Date().toISOString()
+  const homes = pylonHomeCandidates()
+  const [presences, markers, processCounts, logs, failures] = await Promise.all([
+    readPresenceSnapshots(homes),
+    readActiveAssignmentMarkers(homes),
+    processInventory(),
+    recentAssignmentLogTexts(homes).then(summarizeAssignmentLogTexts),
+    tokenFailureCount(),
+  ])
+  return reconcilePylonFleet({
+    availableCodexSlots: availableCodexSlotsFromEnv(),
+    fetchedAt,
+    khalaRequestWrappers: processCounts.khalaRequestWrappers,
+    liveCodexExecCount: processCounts.codexExec,
+    logs,
+    markers,
+    presences,
+    tokenFailureCount: failures,
+  })
+}
 
 export function controlHealthSupportsDesktop(health: NodeHealth): boolean {
   if (health.ok !== true || typeof health.schema !== "string") return false
@@ -802,6 +998,7 @@ export async function fetchNodeState(input: {
   approvals: ApprovalRow[]
   wallet: WalletStatusRow | null
   assignments: AssignmentRow[]
+  pylonFleet: PylonFleetReconciliation
   coordinatorPaused: boolean | null
 }> {
   const fetchFn = input.fetchFn ?? fetch
@@ -902,12 +1099,13 @@ export async function fetchNodeState(input: {
   // CL-47..CL-51: parity surfaces — owner asks, approvals, wallet, assignments,
   // and the coordinator paused flag. All read-only; each degrades to empty/null
   // independently so one missing command can't blank the whole projection.
-  const [intents, approvals, wallet, assignments, coordinatorPaused] = await Promise.all([
+  const [intents, approvals, wallet, assignments, coordinatorPaused, pylonFleet] = await Promise.all([
     fetchIntentRows({ baseUrl, token: input.token, fetchFn }),
     fetchApprovalRows({ baseUrl, token: input.token, fetchFn }),
     fetchWalletRow({ baseUrl, token: input.token, fetchFn }),
     fetchAssignmentRows({ baseUrl, token: input.token, fetchFn }),
     fetchCoordinatorPausedFlag({ baseUrl, token: input.token, fetchFn }),
+    fetchPylonFleetReconciliation(),
   ])
 
   return {
@@ -922,6 +1120,7 @@ export async function fetchNodeState(input: {
     approvals,
     wallet,
     assignments,
+    pylonFleet,
     coordinatorPaused,
   }
 }

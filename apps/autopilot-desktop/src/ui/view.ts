@@ -348,6 +348,7 @@ import {
   nodeStatusLine,
   orderSwarmSessions,
   parseVerifyLines,
+  pylonFleetSummary,
   sessionCancellable,
   shipStatusLine,
   stateBreakdown,
@@ -1001,6 +1002,49 @@ const assignmentsCard = (model: Model): Html => {
   ])
 }
 
+const pylonFleetCard = (model: Model): Html => {
+  const fleet = modelNode(model)?.pylonFleet ?? null
+  if (fleet === null) return h.empty
+  const summary = pylonFleetSummary(fleet)
+  const rows = fleet.assignments.slice(0, 6)
+  return card("Pylon / Codex fleet", [
+    h.p([cls(`fleet-capacity fleet-capacity-${summary.tone}`)], [
+      summary.capacityLine,
+    ]),
+    h.p([cls("card-subtitle")], [summary.line]),
+    rows.length === 0
+      ? h.p([cls("empty-state")], ["No active assignment markers observed."])
+      : h.div(
+          [cls("fleet-assignment-list")],
+          rows.map((row) =>
+            h.div(
+              [
+                cls(`fleet-assignment-row fleet-assignment-${row.state}`),
+                h.DataAttribute("pylon-fleet-assignment-state", row.state),
+              ],
+              [
+                h.div([cls("fleet-assignment-main")], [
+                  h.code([cls("mono"), h.Title(row.assignmentRef)], [
+                    row.assignmentRef.slice(-16),
+                  ]),
+                  h.span([cls("fleet-assignment-state")], [row.state]),
+                ]),
+                h.div([cls("fleet-assignment-meta mono")], [
+                  [
+                    row.service,
+                    row.ageSeconds === null ? "age unknown" : `${row.ageSeconds}s`,
+                    row.accountRefHash === null
+                      ? "account unkeyed"
+                      : `acct ${row.accountRefHash.slice(0, 10)}`,
+                  ].join(" · "),
+                ]),
+              ],
+            ),
+          ),
+        ),
+  ])
+}
+
 const cloudCard = (model: Model): Html => {
   const view = cloudCardView(modelNode(model) ?? null)
   if (!view.visible) return h.empty
@@ -1402,6 +1446,7 @@ const nodesPane = (model: Model): Html => {
       approvalsCard(model),
       balanceCard(model),
       assignmentsCard(model),
+      pylonFleetCard(model),
       cloudCard(model),
       node ? accountsSection(node) : h.empty,
       notifications ? notificationsSection(notifications) : h.empty,
