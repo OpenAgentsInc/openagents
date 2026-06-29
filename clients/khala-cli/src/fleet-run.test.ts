@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 
 import {
   buildFleetRunPlan,
+  nextFleetSupervisorDelay,
   parseFleetIssueList,
   plannedReplenishmentRounds,
   runKhalaFleetSupervisor,
@@ -76,6 +77,24 @@ describe("fleet run planning", () => {
     const second = plannedReplenishmentRounds(plan, new Set(first.map(round => round.dedupeKey ?? "")))
     expect(second).toHaveLength(1)
     expect(second[0]?.dedupeKey).toBe("test-lint-typecheck-sweep")
+  })
+
+  test("keeps lockout recovery in the short supervisor cadence", () => {
+    const firstLockoutWait = nextFleetSupervisorDelay({
+      anyRefused: true,
+      lockout: true,
+      refusedBackoffMs: 15_000,
+    })
+    expect(firstLockoutWait.delayMs).toBe(2_000)
+    expect(firstLockoutWait.refusedBackoffMs).toBe(15_000)
+
+    const partialRefusalWait = nextFleetSupervisorDelay({
+      anyRefused: true,
+      lockout: false,
+      refusedBackoffMs: 15_000,
+    })
+    expect(partialRefusalWait.delayMs).toBe(15_000)
+    expect(partialRefusalWait.refusedBackoffMs).toBe(30_000)
   })
 })
 
