@@ -16,8 +16,10 @@ export type CodingProcess = {
   readonly issueRef: string | null
   readonly kind: CodingProcessKind
   readonly label: string
+  readonly parentPid: number
   readonly pid: number
   readonly status: "active" | "idle"
+  readonly workspacePath: string | null
 }
 
 export type CodingSupervisorEvent = {
@@ -27,6 +29,47 @@ export type CodingSupervisorEvent = {
   readonly status: string
   readonly text: string
   readonly timestamp: string | null
+}
+
+export type CodingTranscriptRole =
+  | "assistant"
+  | "developer"
+  | "event"
+  | "reasoning"
+  | "system"
+  | "tool"
+  | "user"
+
+export type CodingTranscriptMessage = {
+  readonly kind: string
+  readonly role: CodingTranscriptRole
+  readonly text: string
+  readonly timestamp: string | null
+}
+
+export type CodingCodexSession = {
+  readonly accountRef: string | null
+  readonly active: boolean
+  readonly cwd: string | null
+  readonly issueRef: string | null
+  readonly messageCount: number
+  readonly messages: readonly CodingTranscriptMessage[]
+  readonly modifiedAt: string
+  readonly path: string
+  readonly pid: number | null
+  readonly sessionId: string
+  readonly source: string | null
+  readonly status: "active" | "idle" | "recent"
+  readonly title: string
+}
+
+export type ParsedCodexSessionRollout = {
+  readonly cwd: string | null
+  readonly messageCount: number
+  readonly messages: readonly CodingTranscriptMessage[]
+  readonly sessionId: string | null
+  readonly source: string | null
+  readonly title: string | null
 }
 
 export type CodingStatusSummary = {
@@ -54,6 +97,7 @@ export type CodingStatusResult =
       readonly events: readonly CodingSupervisorEvent[]
       readonly observedAt: string
       readonly processes: readonly CodingProcess[]
+      readonly sessions: readonly CodingCodexSession[]
       readonly summary: CodingStatusSummary
     }
   | {
@@ -62,6 +106,7 @@ export type CodingStatusResult =
       readonly events: readonly CodingSupervisorEvent[]
       readonly observedAt: string
       readonly processes: readonly CodingProcess[]
+      readonly sessions: readonly CodingCodexSession[]
       readonly summary: CodingStatusSummary
     }
 
@@ -98,6 +143,14 @@ const issueRefFromCommand = (command: string): string | null =>
   command.match(/#(\d{3,})/)?.[1] ??
   null
 
+const unquoteShellToken = (value: string): string =>
+  value.replace(/^(['"])(.*)\1$/, "$2")
+
+const workspacePathFromCommand = (command: string): string | null => {
+  const match = command.match(/(?:^|\s)--(?:cd|cwd)\s+((?:"[^"]+")|(?:'[^']+')|\S+)/)
+  return match === null ? null : unquoteShellToken(match[1])
+}
+
 const labelForProcess = (
   kind: CodingProcessKind,
   accountRef: string | null,
@@ -119,12 +172,20 @@ export const parseCodingProcesses = (
     if (match === null) continue
 
     const [, pidValue, cpuValue, age, command] = match
+    const parentPidValue = line.match(/^\s*\d+\s+(\d+)\s+/)?.[1] ?? "0"
     const kind = processKindFromCommand(command)
     if (kind === null) continue
 
     const pid = Number(pidValue)
+    const parentPid = Number(parentPidValue)
     const cpuPercent = Number(cpuValue)
-    if (!Number.isFinite(pid) || !Number.isFinite(cpuPercent)) continue
+    if (
+      !Number.isFinite(pid) ||
+      !Number.isFinite(parentPid) ||
+      !Number.isFinite(cpuPercent)
+    ) {
+      continue
+    }
 
     const accountRef = accountRefFromCommand(command)
     const issueRef = issueRefFromCommand(command)
@@ -135,12 +196,25 @@ export const parseCodingProcesses = (
       issueRef,
       kind,
       label: labelForProcess(kind, accountRef, issueRef),
+      parentPid,
       pid,
       status: cpuPercent >= 5 ? "active" : "idle",
+      workspacePath: workspacePathFromCommand(command),
     })
   }
 
-  return rows
+  const byPid = new Map(rows.map(row => [row.pid, row]))
+  return rows.map(row => {
+    const parent = byPid.get(row.parentPid)
+    const accountRef = row.accountRef ?? parent?.accountRef ?? null
+    const issueRef = row.issueRef ?? parent?.issueRef ?? null
+    return {
+      ...row,
+      accountRef,
+      issueRef,
+      label: labelForProcess(row.kind, accountRef, issueRef),
+    }
+  })
 }
 
 export const emptyCodingStatusSummary = (): CodingStatusSummary => ({
@@ -273,5 +347,274 @@ export const parseSupervisorLog = (
     noDispatchRecent,
     okRecent,
     readyCodex,
+  }
+}
+
+type JsonObject = Record<string, unknown>
+
+const isJsonObject = (value: unknown): value is JsonObject =>
+  typeof value === "object" && value !== null && !Array.isArray(value)
+
+const stringValueFromUnknown = (value: unknown): string | null =>
+  typeof value === "string" && value.trim() !== "" ? value.trim() : null
+
+const truncateTranscriptText = (value: string): string => {
+  const trimmed = value.replace(/\s+$/g, "")
+  return trimmed.length > 2_400 ? `${trimmed.slice(0, 2_397)}...` : trimmed
+}
+
+const textFromUnknown = (value: unknown): string | null => {
+  if (typeof value === "string") return value
+  if (Array.isArray(value)) {
+    const text = value
+      .map(item => textFromUnknown(item))
+      .filter((item): item is string => item !== null)
+      .join("\n")
+      .trim()
+    return text === "" ? null : text
+  }
+  if (!isJsonObject(value)) return null
+
+  const direct =
+    stringValueFromUnknown(value.text) ??
+    stringValueFromUnknown(value.output_text) ??
+    stringValueFromUnknown(value.input_text) ??
+    stringValueFromUnknown(value.content)
+  if (direct !== null) return direct
+
+  return (
+    textFromUnknown(value.content_items) ??
+    textFromUnknown(value.items) ??
+    textFromUnknown(value.summary)
+  )
+}
+
+const transcriptRoleFromMessageRole = (role: string | null): CodingTranscriptRole => {
+  if (
+    role === "assistant" ||
+    role === "developer" ||
+    role === "system" ||
+    role === "user"
+  ) {
+    return role
+  }
+  return "event"
+}
+
+const transcriptMessageFromResponseItem = (
+  payload: JsonObject,
+  timestamp: string | null,
+): CodingTranscriptMessage | null => {
+  const type = stringValueFromUnknown(payload.type)
+  if (type === null) return null
+
+  if (type === "message") {
+    const text = textFromUnknown(payload.content)
+    if (text === null || text.trim() === "") return null
+    const role = transcriptRoleFromMessageRole(stringValueFromUnknown(payload.role))
+    return {
+      kind: "message",
+      role,
+      text: truncateTranscriptText(text),
+      timestamp,
+    }
+  }
+
+  if (type === "agent_message") {
+    const text = textFromUnknown(payload.content)
+    if (text === null || text.trim() === "") return null
+    return {
+      kind: "agent message",
+      role: "assistant",
+      text: truncateTranscriptText(text),
+      timestamp,
+    }
+  }
+
+  if (type === "reasoning") {
+    const text = textFromUnknown(payload.summary) ?? "Reasoning"
+    return {
+      kind: "reasoning",
+      role: "reasoning",
+      text: truncateTranscriptText(text),
+      timestamp,
+    }
+  }
+
+  if (type === "function_call" || type === "custom_tool_call") {
+    const name = stringValueFromUnknown(payload.name) ?? "tool"
+    const args = stringValueFromUnknown(payload.arguments) ??
+      stringValueFromUnknown(payload.input)
+    return {
+      kind: "tool call",
+      role: "tool",
+      text: args === null ? name : `${name} ${truncateTranscriptText(args)}`,
+      timestamp,
+    }
+  }
+
+  if (type === "function_call_output" || type === "custom_tool_call_output") {
+    const text = textFromUnknown(payload.output)
+    if (text === null || text.trim() === "") return null
+    return {
+      kind: "tool output",
+      role: "tool",
+      text: truncateTranscriptText(text),
+      timestamp,
+    }
+  }
+
+  if (type === "local_shell_call") {
+    const text = textFromUnknown(payload.action) ?? "shell command"
+    return {
+      kind: "shell",
+      role: "tool",
+      text: truncateTranscriptText(text),
+      timestamp,
+    }
+  }
+
+  return null
+}
+
+const transcriptMessageFromEvent = (
+  payload: JsonObject,
+  timestamp: string | null,
+): CodingTranscriptMessage | null => {
+  const type = stringValueFromUnknown(payload.type)
+  if (type === null || type === "token_count") return null
+
+  if (type === "user_message") {
+    const text = stringValueFromUnknown(payload.message) ?? textFromUnknown(payload.text_elements)
+    if (text === null || text.trim() === "") return null
+    return {
+      kind: "user event",
+      role: "user",
+      text: truncateTranscriptText(text),
+      timestamp,
+    }
+  }
+
+  if (type === "agent_message") {
+    const text = stringValueFromUnknown(payload.message) ??
+      stringValueFromUnknown(payload.text) ??
+      textFromUnknown(payload.content)
+    if (text === null || text.trim() === "") return null
+    return {
+      kind: "agent event",
+      role: "assistant",
+      text: truncateTranscriptText(text),
+      timestamp,
+    }
+  }
+
+  const text =
+    stringValueFromUnknown(payload.message) ??
+    stringValueFromUnknown(payload.error) ??
+    stringValueFromUnknown(payload.text)
+  if (text === null) return null
+
+  return {
+    kind: type.replaceAll("_", " "),
+    role: "event",
+    text: truncateTranscriptText(text),
+    timestamp,
+  }
+}
+
+const firstTranscriptLine = (value: string): string | null => {
+  const line = value.split("\n").find(part => part.trim() !== "")?.trim()
+  return line === undefined || line === "" ? null : line
+}
+
+const titleFromJsonText = (value: string): string | null => {
+  const trimmed = value.trim()
+  if (!trimmed.startsWith("{")) return null
+  try {
+    const parsed = JSON.parse(trimmed)
+    return isJsonObject(parsed) ? stringValueFromUnknown(parsed.title) : null
+  } catch {
+    return null
+  }
+}
+
+const usefulTitleText = (value: string): boolean => {
+  const normalized = value.trim()
+  if (normalized === "") return false
+  if (/^#\s*AGENTS\.md instructions\b/i.test(normalized)) return false
+  if (/^<environment_context>/i.test(normalized)) return false
+  if (/^You are writing the title and body for a GitHub pull request/i.test(normalized)) {
+    return false
+  }
+  if (/^You are working in a bounded public repository\b/i.test(normalized)) {
+    return false
+  }
+  return true
+}
+
+const sessionMetaPayload = (payload: unknown): JsonObject | null => {
+  if (!isJsonObject(payload)) return null
+  return isJsonObject(payload.meta) ? payload.meta : payload
+}
+
+export const parseCodexSessionRollout = (
+  rolloutText: string,
+): ParsedCodexSessionRollout => {
+  let cwd: string | null = null
+  let sessionId: string | null = null
+  let source: string | null = null
+  let title: string | null = null
+  const messages: CodingTranscriptMessage[] = []
+
+  for (const line of rolloutText.split("\n")) {
+    if (line.trim() === "") continue
+    let record: unknown
+    try {
+      record = JSON.parse(line)
+    } catch {
+      continue
+    }
+    if (!isJsonObject(record)) continue
+
+    const timestamp = stringValueFromUnknown(record.timestamp)
+    const type = stringValueFromUnknown(record.type)
+    const payload = record.payload
+
+    if (type === "session_meta") {
+      const meta = sessionMetaPayload(payload)
+      if (meta === null) continue
+      cwd = cwd ?? stringValueFromUnknown(meta.cwd)
+      sessionId =
+        sessionId ??
+        stringValueFromUnknown(meta.id) ??
+        stringValueFromUnknown(meta.session_id)
+      source = source ?? stringValueFromUnknown(meta.source)
+      continue
+    }
+
+    if (!isJsonObject(payload)) continue
+
+    const message =
+      type === "response_item"
+        ? transcriptMessageFromResponseItem(payload, timestamp)
+        : type === "event_msg"
+          ? transcriptMessageFromEvent(payload, timestamp)
+          : null
+    if (message === null) continue
+
+    if (title === null && (message.role === "user" || message.role === "assistant")) {
+      const candidate = titleFromJsonText(message.text) ?? firstTranscriptLine(message.text)
+      if (candidate !== null && usefulTitleText(candidate)) title = candidate
+    }
+    messages.push(message)
+  }
+
+  return {
+    cwd,
+    messageCount: messages.length,
+    messages: messages.slice(-24),
+    sessionId,
+    source,
+    title,
   }
 }

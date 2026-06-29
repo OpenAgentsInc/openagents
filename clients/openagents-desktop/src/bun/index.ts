@@ -1,13 +1,16 @@
 import { BrowserView, BrowserWindow } from "electrobun/bun"
 import { existsSync } from "node:fs"
-import { readdir } from "node:fs/promises"
+import { readdir, stat } from "node:fs/promises"
 import { homedir } from "node:os"
 import { dirname, join, resolve } from "node:path"
 
 import {
+  type CodingCodexSession,
   emptyCodingStatusSummary,
+  parseCodexSessionRollout,
   parseCodingProcesses,
   parseSupervisorLog,
+  type CodingProcess,
   summarizeCodingProcesses,
   type CodingStatusResult,
   type CodingStatusSummary,
@@ -253,6 +256,220 @@ const countNonEmptyLines = async (path: string): Promise<number | null> => {
   return text.split("\n").filter(line => line.trim() !== "").length
 }
 
+const codexSessionDateSegments = (): readonly string[] => {
+  const segments = new Set<string>()
+  const now = new Date()
+  for (let offset = 0; offset < 3; offset += 1) {
+    const date = new Date(now)
+    date.setDate(now.getDate() - offset)
+    const year = String(date.getFullYear()).padStart(4, "0")
+    const month = String(date.getMonth() + 1).padStart(2, "0")
+    const day = String(date.getDate()).padStart(2, "0")
+    segments.add(join(year, month, day))
+  }
+  return [...segments]
+}
+
+const pylonCodexAccountRootCandidates = (): readonly string[] => [
+  resolve(resolvePylonHome(), "accounts", "codex"),
+  join(homedir(), ".pylon-fable", "accounts", "codex"),
+  join(homedir(), ".openagents", "pylon", "accounts", "codex"),
+  join(homedir(), ".pylon", "accounts", "codex"),
+]
+
+const codexHomeCandidates = async (): Promise<readonly string[]> => {
+  const homes = new Set<string>()
+  if (Bun.env.CODEX_HOME) homes.add(Bun.env.CODEX_HOME)
+  homes.add(join(homedir(), ".codex"))
+
+  for (const root of pylonCodexAccountRootCandidates()) {
+    try {
+      for (const entry of await readdir(root, { withFileTypes: true })) {
+        if (entry.isDirectory() && /^codex-\d+$/.test(entry.name)) {
+          homes.add(resolve(root, entry.name))
+        }
+      }
+    } catch {
+      // Optional account homes are best-effort.
+    }
+  }
+
+  return [...homes]
+}
+
+const accountRefFromCodexHome = (home: string): string | null =>
+  home.match(/\/accounts\/codex\/(codex-\d+)(?:\/|$)/)?.[1] ?? null
+
+type CodexSessionFile = {
+  readonly accountRef: string | null
+  readonly modifiedAtMs: number
+  readonly path: string
+}
+
+let sessionFileScanCache:
+  | {
+      readonly files: readonly CodexSessionFile[]
+      readonly scannedAtMs: number
+    }
+  | null = null
+
+const collectCodexSessionFiles = async (
+  root: string,
+  accountRef: string | null,
+): Promise<readonly CodexSessionFile[]> => {
+  const files: CodexSessionFile[] = []
+
+  const visit = async (directory: string): Promise<void> => {
+    let entries
+    try {
+      entries = await readdir(directory, { withFileTypes: true })
+    } catch {
+      return
+    }
+
+    await Promise.all(
+      entries.map(async entry => {
+        const path = resolve(directory, entry.name)
+        if (entry.isDirectory()) {
+          await visit(path)
+          return
+        }
+        if (!entry.isFile() || !entry.name.endsWith(".jsonl")) return
+        try {
+          const fileStat = await stat(path)
+          files.push({
+            accountRef,
+            modifiedAtMs: fileStat.mtimeMs,
+            path,
+          })
+        } catch {
+          // Ignore files that disappear while scanning.
+        }
+      }),
+    )
+  }
+
+  await visit(root)
+  return files
+}
+
+const recentCodexSessionFiles = async (): Promise<readonly CodexSessionFile[]> => {
+  if (
+    sessionFileScanCache !== null &&
+    Date.now() - sessionFileScanCache.scannedAtMs <= 15_000
+  ) {
+    return sessionFileScanCache.files
+  }
+
+  const homes = await codexHomeCandidates()
+  const segments = codexSessionDateSegments()
+  const files = (
+    await Promise.all(
+      homes.flatMap(home =>
+        segments.map(segment =>
+          collectCodexSessionFiles(
+            resolve(home, "sessions", segment),
+            accountRefFromCodexHome(home),
+          ),
+        ),
+      ),
+    )
+  ).flat()
+
+  const recentFiles = files
+    .sort((left, right) => right.modifiedAtMs - left.modifiedAtMs)
+    .slice(0, 32)
+  sessionFileScanCache = {
+    files: recentFiles,
+    scannedAtMs: Date.now(),
+  }
+  return recentFiles
+}
+
+const sessionIdFromRolloutPath = (path: string): string =>
+  path.match(/rollout-.+-([0-9a-f]{8}-[0-9a-f-]{27})\.jsonl$/i)?.[1] ??
+  path.split("/").at(-1)?.replace(/\.jsonl$/, "") ??
+  path
+
+const matchingCodexProcess = (
+  session: {
+    readonly accountRef: string | null
+    readonly cwd: string | null
+  },
+  processes: readonly CodingProcess[],
+): CodingProcess | null =>
+  processes.find(process => {
+    if (process.kind !== "codex_exec") return false
+    if (
+      session.accountRef !== null &&
+      process.accountRef !== null &&
+      session.accountRef !== process.accountRef
+    ) {
+      return false
+    }
+    return (
+      session.cwd !== null &&
+      process.workspacePath !== null &&
+      session.cwd === process.workspacePath
+    )
+  }) ?? null
+
+const fallbackSessionTitle = (sessionId: string): string =>
+  sessionId.startsWith("rollout-") ? sessionId : `Codex ${sessionId.slice(0, 8)}`
+
+const readCodexSessions = async (
+  processes: readonly CodingProcess[],
+): Promise<readonly CodingCodexSession[]> => {
+  const files = await recentCodexSessionFiles()
+  const sessions = await Promise.all(
+    files.map(async file => {
+      const text = await readTextFile(file.path)
+      const parsed = parseCodexSessionRollout(text)
+      const sessionId = parsed.sessionId ?? sessionIdFromRolloutPath(file.path)
+      const accountRef = file.accountRef
+      const process = matchingCodexProcess(
+        {
+          accountRef,
+          cwd: parsed.cwd,
+        },
+        processes,
+      )
+      const isRecent = Date.now() - file.modifiedAtMs <= 10 * 60 * 1_000
+      const active = process !== null
+      const modifiedAt = new Date(file.modifiedAtMs).toISOString()
+
+      return {
+        accountRef,
+        active,
+        cwd: parsed.cwd,
+        issueRef: process?.issueRef ?? null,
+        messageCount: parsed.messageCount,
+        messages: parsed.messages,
+        modifiedAt,
+        path: file.path,
+        pid: process?.pid ?? null,
+        sessionId,
+        source: parsed.source,
+        status: active ? process.status : isRecent ? "recent" : "idle",
+        title: parsed.title ?? process?.label ?? fallbackSessionTitle(sessionId),
+      } satisfies CodingCodexSession
+    }),
+  )
+
+  return sessions
+    .sort((left, right) => {
+      if (left.active !== right.active) return left.active ? -1 : 1
+      if (left.status !== right.status) {
+        if (left.status === "active") return -1
+        if (right.status === "active") return 1
+        if (left.status === "recent") return -1
+        if (right.status === "recent") return 1
+      }
+      return Date.parse(right.modifiedAt) - Date.parse(left.modifiedAt)
+    })
+    .slice(0, 24)
+}
+
 const spawnText = async (cmd: readonly string[]): Promise<string> => {
   const proc = Bun.spawn({
     cmd: [...cmd],
@@ -290,6 +507,7 @@ const codingStatus = async (): Promise<CodingStatusResult> => {
     ])
 
   const processes = parseCodingProcesses(psOutput)
+  const sessions = await readCodexSessions(processes)
   const processSummary = summarizeCodingProcesses(processes)
   const logSummary = parseSupervisorLog(supervisorLog)
   const summary: CodingStatusSummary = {
@@ -310,6 +528,7 @@ const codingStatus = async (): Promise<CodingStatusResult> => {
     events: logSummary.events,
     observedAt,
     processes,
+    sessions,
     summary,
   }
 }

@@ -98,7 +98,29 @@
               <strong id="coding-metric-ready">-</strong>
             </span>
           </div>
-          <div id="coding-list" class="coding-list"></div>
+          <div id="coding-active-list" class="coding-active-list"></div>
+          <div class="coding-workspace">
+            <div class="coding-session-column">
+              <div id="coding-list" class="coding-list"></div>
+            </div>
+            <section
+              id="coding-transcript"
+              class="coding-transcript"
+              aria-label="Codex session transcript"
+            >
+              <div class="coding-transcript-heading">
+                <div>
+                  <h3 id="coding-transcript-title">No session selected</h3>
+                  <span id="coding-transcript-meta">Click a Codex instance</span>
+                </div>
+                <span id="coding-transcript-count">0 messages</span>
+              </div>
+              <div
+                id="coding-transcript-messages"
+                class="coding-transcript-messages"
+              ></div>
+            </section>
+          </div>
           <div class="coding-events-block">
             <div class="coding-events-heading">
               <h3>Recent dispatch</h3>

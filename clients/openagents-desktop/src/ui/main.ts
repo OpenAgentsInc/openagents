@@ -1,10 +1,11 @@
 import { Electroview } from "electrobun/view"
 
 import {
-  type CodingProcess,
+  type CodingCodexSession,
   OPENAGENTS_DESKTOP_CODING_POLL_INTERVAL_MS,
   type CodingStatusResult,
   type CodingSupervisorEvent,
+  type CodingTranscriptMessage,
 } from "../shared/coding-status"
 import {
   type DesktopPylon,
@@ -54,11 +55,27 @@ const codingMetricCodex = requireElement<HTMLElement>("#coding-metric-codex")
 const codingMetricBurning = requireElement<HTMLElement>("#coding-metric-burning")
 const codingMetricKhala = requireElement<HTMLElement>("#coding-metric-khala")
 const codingMetricReady = requireElement<HTMLElement>("#coding-metric-ready")
+const codingActiveList = requireElement<HTMLElement>("#coding-active-list")
 const codingList = requireElement<HTMLElement>("#coding-list")
+const codingTranscriptTitle = requireElement<HTMLElement>(
+  "#coding-transcript-title",
+)
+const codingTranscriptMeta = requireElement<HTMLElement>(
+  "#coding-transcript-meta",
+)
+const codingTranscriptCount = requireElement<HTMLElement>(
+  "#coding-transcript-count",
+)
+const codingTranscriptMessages = requireElement<HTMLElement>(
+  "#coding-transcript-messages",
+)
 const codingEvents = requireElement<HTMLElement>("#coding-events")
 const codingDispatchSummary = requireElement<HTMLElement>(
   "#coding-dispatch-summary",
 )
+
+let latestCodingResult: CodingStatusResult | null = null
+let selectedSessionPath: string | null = null
 
 const prefersReducedMotion = globalThis.matchMedia?.(
   "(prefers-reduced-motion: reduce)",
@@ -85,6 +102,19 @@ const formatTimestamp = (value: string | null, label: string | null): string => 
     dateStyle: "medium",
     timeStyle: "short",
   }).format(date)
+}
+
+const formatRelativeTimestamp = (value: string | null): string => {
+  if (value === null) return "No timestamp"
+  const millis = Date.parse(value)
+  if (!Number.isFinite(millis)) return value
+  const seconds = Math.max(0, Math.round((Date.now() - millis) / 1000))
+  if (seconds < 60) return "Just now"
+  const minutes = Math.round(seconds / 60)
+  if (minutes < 60) return `${formatCount(minutes)}m ago`
+  const hours = Math.round(minutes / 60)
+  if (hours < 48) return `${formatCount(hours)}h ago`
+  return `${formatCount(Math.round(hours / 24))}d ago`
 }
 
 const pylonIsOnline = (pylon: DesktopPylon): boolean =>
@@ -160,28 +190,168 @@ const renderPylonsPage = (result: PylonStatusResult): void => {
   pylonsList.append(...result.pylons.map(pylonRow))
 }
 
-const processRow = (process: CodingProcess): HTMLElement => {
-  const row = document.createElement("article")
-  row.className = "coding-row"
-  row.dataset.state = process.status
+const compactPath = (value: string | null): string | null => {
+  if (value === null) return null
+  const marker = "/.pylon-fable/cache/codex-agent-tasks/"
+  const markerIndex = value.indexOf(marker)
+  if (markerIndex !== -1) {
+    return value.slice(markerIndex + marker.length)
+  }
+  const parts = value.split("/").filter(part => part !== "")
+  return parts.length <= 3 ? value : `.../${parts.slice(-3).join("/")}`
+}
 
-  const identity = document.createElement("div")
-  identity.className = "coding-row-identity"
+const sessionSubtitle = (session: CodingCodexSession): string => {
+  const parts = [
+    session.accountRef,
+    session.issueRef === null ? null : `#${session.issueRef}`,
+    session.pid === null ? null : `PID ${formatCount(session.pid)}`,
+    formatRelativeTimestamp(session.modifiedAt),
+  ].filter((value): value is string => value !== null)
+  return parts.join(" · ")
+}
 
-  const label = document.createElement("strong")
-  label.textContent = process.label
+const selectSession = (session: CodingCodexSession): void => {
+  selectedSessionPath = session.path
+  if (latestCodingResult !== null) renderCodingStatus(latestCodingResult)
+}
+
+const sessionButton = (
+  session: CodingCodexSession,
+  variant: "chip" | "row",
+): HTMLButtonElement => {
+  const button = document.createElement("button")
+  button.className =
+    variant === "chip" ? "coding-active-session" : "coding-session-row"
+  button.type = "button"
+  button.dataset.state = session.status
+  button.dataset.selected =
+    selectedSessionPath === session.path ? "true" : "false"
+  button.addEventListener("click", () => selectSession(session))
+
+  const title = document.createElement("strong")
+  title.textContent = session.title
 
   const meta = document.createElement("span")
-  meta.textContent = `PID ${formatCount(process.pid)} · ${process.age} · ${process.cpuPercent.toFixed(1)}% CPU`
-
-  identity.append(label, meta)
+  meta.textContent = sessionSubtitle(session)
 
   const status = document.createElement("span")
-  status.className = "coding-row-status"
-  status.textContent = process.status
+  status.className = "coding-session-status"
+  status.textContent = session.status
 
-  row.append(identity, status)
+  if (variant === "chip") {
+    button.append(title, meta)
+  } else {
+    const preview = document.createElement("span")
+    preview.className = "coding-session-preview"
+    preview.textContent =
+      session.messages.at(-1)?.text.split("\n")[0]?.trim() ??
+      compactPath(session.cwd) ??
+      session.path
+    button.append(title, meta, preview, status)
+  }
+
+  return button
+}
+
+const messageRow = (message: CodingTranscriptMessage): HTMLElement => {
+  const row = document.createElement("article")
+  row.className = "coding-message"
+  row.dataset.role = message.role
+
+  const heading = document.createElement("div")
+  heading.className = "coding-message-heading"
+
+  const role = document.createElement("strong")
+  role.textContent = message.role
+
+  const meta = document.createElement("span")
+  meta.textContent = [
+    message.kind,
+    formatRelativeTimestamp(message.timestamp),
+  ].join(" · ")
+
+  const body = document.createElement("p")
+  body.textContent = message.text
+
+  heading.append(role, meta)
+  row.append(heading, body)
   return row
+}
+
+const renderCodingTranscript = (
+  session: CodingCodexSession | null,
+): void => {
+  codingTranscriptMessages.replaceChildren()
+  if (session === null) {
+    codingTranscriptTitle.textContent = "No session selected"
+    codingTranscriptMeta.textContent = "Click a Codex instance"
+    codingTranscriptCount.textContent = "0 messages"
+    const empty = document.createElement("div")
+    empty.className = "coding-empty"
+    empty.textContent = "No Codex session transcript loaded."
+    codingTranscriptMessages.append(empty)
+    return
+  }
+
+  codingTranscriptTitle.textContent = session.title
+  codingTranscriptMeta.textContent = [
+    sessionSubtitle(session),
+    compactPath(session.cwd),
+  ]
+    .filter((value): value is string => value !== null && value !== "")
+    .join(" · ")
+  codingTranscriptCount.textContent = `${formatCount(session.messageCount)} messages`
+
+  if (session.messages.length === 0) {
+    const empty = document.createElement("div")
+    empty.className = "coding-empty"
+    empty.textContent = "No transcript messages yet."
+    codingTranscriptMessages.append(empty)
+    return
+  }
+
+  codingTranscriptMessages.append(...session.messages.map(messageRow))
+}
+
+const renderCodingSessions = (
+  sessions: readonly CodingCodexSession[],
+): void => {
+  if (
+    sessions.length > 0 &&
+    (selectedSessionPath === null ||
+      !sessions.some(session => session.path === selectedSessionPath))
+  ) {
+    selectedSessionPath = sessions[0].path
+  }
+
+  const selectedSession =
+    sessions.find(session => session.path === selectedSessionPath) ?? null
+
+  codingActiveList.replaceChildren()
+  const activeSessions = sessions.filter(session => session.active).slice(0, 8)
+  if (activeSessions.length === 0) {
+    const empty = document.createElement("div")
+    empty.className = "coding-empty coding-active-empty"
+    empty.textContent = "No active Codex sessions."
+    codingActiveList.append(empty)
+  } else {
+    codingActiveList.append(
+      ...activeSessions.map(session => sessionButton(session, "chip")),
+    )
+  }
+
+  codingList.replaceChildren()
+  if (sessions.length === 0) {
+    const empty = document.createElement("div")
+    empty.className = "coding-empty"
+    empty.textContent = "No Codex session rollouts found."
+    codingList.append(empty)
+  } else {
+    codingList.append(...sessions.map(session => sessionButton(session, "row")))
+  }
+
+  renderCodingTranscript(selectedSession)
 }
 
 const eventRow = (event: CodingSupervisorEvent): HTMLElement => {
@@ -202,6 +372,7 @@ const eventRow = (event: CodingSupervisorEvent): HTMLElement => {
 }
 
 const renderCodingStatus = (result: CodingStatusResult): void => {
+  latestCodingResult = result
   const summary = result.summary
   codingCount.textContent = `Coding: ${formatCount(summary.codexExecCount)}`
   codingStatus.dataset.state =
@@ -220,20 +391,7 @@ const renderCodingStatus = (result: CodingStatusResult): void => {
   codingMetricReady.textContent =
     summary.readyCodex === null ? "-" : formatCount(summary.readyCodex)
 
-  codingList.replaceChildren()
-  const visibleProcesses = result.processes
-    .filter(process => process.kind !== "supervisor")
-    .slice(0, 12)
-  if (visibleProcesses.length === 0) {
-    const empty = document.createElement("div")
-    empty.className = "coding-empty"
-    empty.textContent = result.ok
-      ? "No live coding agent processes."
-      : result.error
-    codingList.append(empty)
-  } else {
-    codingList.append(...visibleProcesses.map(processRow))
-  }
+  renderCodingSessions(result.sessions)
 
   codingDispatchSummary.textContent = [
     `OK ${formatCount(summary.okRecent)}`,
@@ -293,6 +451,7 @@ const loadCodingStatus = async (): Promise<void> => {
       ok: false,
       events: [],
       processes: [],
+      sessions: [],
       summary: {
         assignmentRunnerCount: 0,
         burningCodexCount: 0,
