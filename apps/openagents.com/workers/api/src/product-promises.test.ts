@@ -88,6 +88,56 @@ const repoFile = (relPath: string): URL =>
   new URL(`../../../../../${relPath}`, import.meta.url)
 
 describe('public product promises document', () => {
+  test('keeps business quick-win paid receipt blockers exact for issue 7025', () => {
+    const decoded = S.decodeUnknownSync(ProductPromisesDocument)(
+      publicProductPromisesDocument(),
+    )
+    const promiseById = new Map(
+      decoded.promises.map(promise => [promise.promiseId, promise]),
+    )
+
+    expect(
+      promiseById.get('business.intake_quick_win_offering.v1'),
+    ).toMatchObject({
+      state: 'yellow',
+      blockerRefs: expect.arrayContaining([
+        'blocker.product_promises.business_quick_win_self_serve_delivery_missing',
+        'blocker.product_promises.business_first_paid_quick_win_receipt_missing',
+      ]),
+    })
+    expect(promiseById.get('business.coding_quick_win.v1')).toMatchObject({
+      state: 'yellow',
+      blockerRefs: expect.arrayContaining([
+        'blocker.product_promises.business_coding_quick_win_self_serve_missing',
+        'blocker.product_promises.business_coding_quick_win_paid_receipt_missing',
+      ]),
+    })
+    expect(
+      promiseById.get('business.ecommerce_workspace_pack.v1'),
+    ).toMatchObject({
+      state: 'yellow',
+      blockerRefs: [
+        'blocker.product_promises.ecommerce_pack_first_paid_delivery_receipt_missing',
+      ],
+    })
+    expect(promiseById.get('business.legal_workspace_pack.v1')).toMatchObject({
+      state: 'yellow',
+      blockerRefs: expect.arrayContaining([
+        'blocker.product_promises.legal_pack_self_serve_missing',
+        'blocker.product_promises.legal_pack_first_paid_delivery_receipt_missing',
+      ]),
+    })
+    expect(
+      promiseById.get('business.marketing_agency_workspace_pack.v1'),
+    ).toMatchObject({
+      state: 'yellow',
+      blockerRefs: expect.arrayContaining([
+        'blocker.product_promises.marketing_agency_pack_self_serve_missing',
+        'blocker.product_promises.marketing_agency_pack_first_paid_delivery_receipt_missing',
+      ]),
+    })
+  })
+
   test('matches the browser-facing schema', () => {
     const decoded = S.decodeUnknownSync(ProductPromisesDocument)(
       publicProductPromisesDocument(),
