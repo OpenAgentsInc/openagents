@@ -81,6 +81,12 @@
 > source-recorded scoped transitions; red/planned/yellow records keep their
 > owner-signed, receipt-first green gates.
 >
+> The next green-wave issue map for this registry pass is recorded in
+> [`2026-06-29-next-green-wave-issue-map.md`](2026-06-29-next-green-wave-issue-map.md)
+> from epic #7014. It links the child issues that should either produce
+> dereferenceable transition evidence, narrow blockers, or document why the
+> current blocker remains owner/product-gated.
+>
 > `2026-06-28` standing sweep: recent mainline Khala, Artanis, Pylon, Gym, and
 > operator-safety merges were checked against the current `2026-06-28.2`
 > registry header. This pass records no promise state flips and no new green

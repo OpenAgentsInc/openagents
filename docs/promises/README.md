@@ -95,6 +95,9 @@ Product Promises Forum.
   the gate review for `autopilot.repo_study_packets.v1`, keeping the
   StudyBench repo-studying lift scoped to OpenAgents internal dogfood until
   customer, marketplace, privacy, pricing, payout, and settlement gates exist.
+- [`2026-06-29-next-green-wave-issue-map.md`](2026-06-29-next-green-wave-issue-map.md):
+  the public issue map for epic #7014, linking the `2026-06-29.2`
+  non-green promise child wave without flipping promise state.
 - [`templates/promise-record.md`](templates/promise-record.md): a reusable
   promise record template.
 - [`templates/promise-report.md`](templates/promise-report.md): a reusable
