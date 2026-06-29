@@ -11,6 +11,30 @@ import { APPLE_FM_CAPABILITY } from "../src/shared/apple-fm-readiness.js"
 
 const fixedNow = "2026-06-29T00:00:00.000Z"
 
+const createPackagedHelper = () => {
+  const resourcesDir = mkdtempSync(join(tmpdir(), "khala-apple-fm-sidecar-"))
+  const helperPath = join(resourcesDir, APPLE_FM_BRIDGE_RESOURCES_SUBPATH)
+  mkdirSync(dirname(helperPath), { recursive: true })
+  writeFileSync(helperPath, "#!/usr/bin/env bash\n")
+  chmodSync(helperPath, 0o755)
+  return { helperPath, resourcesDir }
+}
+
+const readyPylonFetch = (async () =>
+  Response.json({
+    ok: true,
+    result: {
+      available: true,
+      status: "ready",
+      advertisedCapabilities: [APPLE_FM_CAPABILITY],
+      supervisor: {
+        health: "running",
+        phase: "ready",
+        supervised: true,
+      },
+    },
+  })) as unknown as typeof fetch
+
 describe("Khala Desktop Apple FM sidecar host", () => {
   test("reports unsupported hosts without advertising Apple FM capacity", async () => {
     const host = createAppleFmSidecarHost({
@@ -31,11 +55,7 @@ describe("Khala Desktop Apple FM sidecar host", () => {
   })
 
   test("launches the packaged helper and keeps readiness public-safe", async () => {
-    const resourcesDir = mkdtempSync(join(tmpdir(), "khala-apple-fm-sidecar-"))
-    const helperPath = join(resourcesDir, APPLE_FM_BRIDGE_RESOURCES_SUBPATH)
-    mkdirSync(dirname(helperPath), { recursive: true })
-    writeFileSync(helperPath, "#!/usr/bin/env bash\n")
-    chmodSync(helperPath, 0o755)
+    const { helperPath, resourcesDir } = createPackagedHelper()
 
     const spawned: Array<ReadonlyArray<string>> = []
     const host = createAppleFmSidecarHost({
@@ -99,6 +119,83 @@ describe("Khala Desktop Apple FM sidecar host", () => {
       }
     } finally {
       host.stop()
+      rmSync(resourcesDir, { force: true, recursive: true })
+    }
+  })
+
+  test("restarts a crashed packaged helper within the bounded supervision policy", async () => {
+    const { resourcesDir } = createPackagedHelper()
+    const exits: Array<(code: number) => void> = []
+    const spawned: Array<ReadonlyArray<string>> = []
+    const host = createAppleFmSidecarHost({
+      arch: "arm64",
+      env: {
+        PYLON_CONTROL_TOKEN: "secret-control-token-1234",
+        PYLON_CONTROL_URL: "http://127.0.0.1:4716",
+      },
+      fetchFn: readyPylonFetch,
+      maxRestarts: 1,
+      now: () => fixedNow,
+      platform: "darwin",
+      resourcesDir,
+      restartDelayMs: 0,
+      spawn: ((command: ReadonlyArray<string>) => {
+        spawned.push([...command])
+        const exited = new Promise<number>((resolve) => exits.push(resolve))
+        return {
+          exited,
+          kill() {},
+        }
+      }) as unknown as typeof Bun.spawn,
+    })
+
+    try {
+      await host.readiness()
+      expect(spawned).toHaveLength(1)
+
+      exits[0]?.(1)
+      await Bun.sleep(10)
+
+      expect(spawned).toHaveLength(2)
+    } finally {
+      host.stop()
+      rmSync(resourcesDir, { force: true, recursive: true })
+    }
+  })
+
+  test("stop cancels a pending Apple FM helper restart", async () => {
+    const { resourcesDir } = createPackagedHelper()
+    const exits: Array<(code: number) => void> = []
+    const spawned: Array<ReadonlyArray<string>> = []
+    const host = createAppleFmSidecarHost({
+      arch: "arm64",
+      env: {
+        PYLON_CONTROL_TOKEN: "secret-control-token-1234",
+      },
+      fetchFn: readyPylonFetch,
+      maxRestarts: 1,
+      now: () => fixedNow,
+      platform: "darwin",
+      resourcesDir,
+      restartDelayMs: 25,
+      spawn: ((command: ReadonlyArray<string>) => {
+        spawned.push([...command])
+        const exited = new Promise<number>((resolve) => exits.push(resolve))
+        return {
+          exited,
+          kill() {},
+        }
+      }) as unknown as typeof Bun.spawn,
+    })
+
+    try {
+      await host.readiness()
+      exits[0]?.(1)
+      host.stop()
+      await Bun.sleep(40)
+
+      expect(spawned).toHaveLength(1)
+    } finally {
       rmSync(resourcesDir, { force: true, recursive: true })
     }
   })
