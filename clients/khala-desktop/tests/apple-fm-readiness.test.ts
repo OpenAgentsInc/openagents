@@ -2,11 +2,35 @@ import { describe, expect, test } from "bun:test"
 
 import {
   APPLE_FM_CAPABILITY,
+  buildKhalaAppleFmInstallSmokeEvidence,
   buildKhalaAppleFmReadiness,
   sanitizePylonAppleFmStatus,
+  type KhalaAppleFmReadiness,
 } from "../src/shared/apple-fm-readiness.js"
 
 describe("khala desktop Apple FM readiness", () => {
+  const readyFromInstallReadiness = (): KhalaAppleFmReadiness =>
+    buildKhalaAppleFmReadiness({
+      platform: { platform: "darwin", arch: "arm64" },
+      helperFound: true,
+      helperExecutable: true,
+      helperLaunchState: "running",
+      pylonControlConfigured: true,
+      pylonStatus: {
+        available: true,
+        status: "ready",
+        advertisedCapabilities: [APPLE_FM_CAPABILITY],
+        blockerRefs: [],
+        supervisor: {
+          health: "healthy",
+          phase: "running",
+          supervised: true,
+          blockerRefs: [],
+        },
+      },
+      observedAt: "2026-06-29T00:00:00.000Z",
+    })
+
   test("does not advertise Apple FM capacity from hardware alone", () => {
     const readiness = buildKhalaAppleFmReadiness({
       platform: { platform: "darwin", arch: "arm64" },
@@ -84,5 +108,110 @@ describe("khala desktop Apple FM readiness", () => {
     expect(readiness.supported).toBe(false)
     expect(readiness.available).toBe(false)
     expect(readiness.state).toBe("not_supported")
+  })
+
+  test("from-install smoke evidence passes only with signed supervised local execution", () => {
+    const evidence = buildKhalaAppleFmInstallSmokeEvidence({
+      readiness: readyFromInstallReadiness(),
+      installer: {
+        artifactRef: "artifact.public.khala_desktop.signed_notarized.apple_fm.20260629",
+        notarized: true,
+        signed: true,
+      },
+      helper: {
+        packaged: true,
+        restartObserved: true,
+        source: "packaged-resource",
+        supervised: true,
+      },
+      session: {
+        adapter: "apple_fm",
+        cloudRunner: null,
+        completed: true,
+        executionMode: "local_bounded",
+        lane: "local",
+        networkAccessEnabled: false,
+        resourceUsageReceiptRef: null,
+        sandboxMode: "read-only",
+        toolSuccess: true,
+      },
+      redaction: {
+        bearerLeaked: false,
+        callbackTokenLeaked: false,
+        callbackUrlLeaked: false,
+        fileContentLeaked: false,
+        localPathLeaked: false,
+        promptLeaked: false,
+      },
+      observedAt: "2026-06-29T00:00:00.000Z",
+    })
+
+    expect(evidence.ok).toBe(true)
+    expect(evidence.state).toBe("passed")
+    expect(evidence.blockerRefs).toEqual([])
+    expect(evidence.checked).toMatchObject({
+      boundedLocalSession: true,
+      helperRestartObserved: true,
+      noHostedCompute: true,
+      packagedHelper: true,
+      publicSafeRedaction: true,
+      pylonReady: true,
+      supervisedHelper: true,
+    })
+    expect(JSON.stringify(evidence)).not.toContain("127.0.0.1")
+    expect(JSON.stringify(evidence)).not.toContain("/Users/")
+  })
+
+  test("from-install smoke evidence stays blocked without packaged supervision and redaction", () => {
+    const evidence = buildKhalaAppleFmInstallSmokeEvidence({
+      readiness: readyFromInstallReadiness(),
+      installer: {
+        artifactRef: "/Users/example/Khala.dmg",
+        notarized: false,
+        signed: true,
+      },
+      helper: {
+        packaged: false,
+        restartObserved: false,
+        source: "source-build",
+        supervised: false,
+      },
+      session: {
+        adapter: "apple_fm",
+        cloudRunner: "hosted",
+        completed: true,
+        executionMode: "local_bounded",
+        lane: "local",
+        networkAccessEnabled: false,
+        resourceUsageReceiptRef: "receipt.public.hosted",
+        sandboxMode: "read-only",
+        toolSuccess: true,
+      },
+      redaction: {
+        bearerLeaked: false,
+        callbackTokenLeaked: true,
+        callbackUrlLeaked: false,
+        fileContentLeaked: false,
+        localPathLeaked: true,
+        promptLeaked: false,
+      },
+      observedAt: "2026-06-29T00:00:00.000Z",
+    })
+
+    expect(evidence.ok).toBe(false)
+    expect(evidence.state).toBe("blocked")
+    expect(evidence.artifactRef).toBeNull()
+    expect(evidence.blockerRefs).toContain(
+      "blocker.product_promises.local_apple_fm_helper_supervision_missing",
+    )
+    expect(evidence.blockerRefs).toContain(
+      "blocker.product_promises.local_apple_fm_packaged_helper_missing",
+    )
+    expect(evidence.blockerRefs).toContain(
+      "blocker.product_promises.local_apple_fm_redaction_proof_missing",
+    )
+    expect(evidence.blockerRefs).toContain(
+      "blocker.product_promises.local_apple_fm_no_hosted_compute_proof_missing",
+    )
   })
 })
