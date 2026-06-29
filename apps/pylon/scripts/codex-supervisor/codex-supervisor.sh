@@ -74,6 +74,11 @@ source "$SCRIPT_DIR/../supervisor-fresh-base.sh"
 source "$SCRIPT_DIR/priority-dispatch.sh"
 # shellcheck source=standing-tasks.sh
 source "$SCRIPT_DIR/standing-tasks.sh"
+# LOCKOUT auto-replenishment (#6822): on sustained full lockout, create/reuse
+# bounded real-work issues (continual learning, audits, test sweeps) instead of
+# sleeping at the max backoff with all slots idle.
+# shellcheck source=replenishment.sh
+source "$SCRIPT_DIR/replenishment.sh"
 # Refusal-aware backoff and per-account concurrency tuning (#6900).
 # shellcheck source=backoff-policy.sh
 source "$SCRIPT_DIR/backoff-policy.sh"
@@ -294,6 +299,7 @@ worker_loop() {
   local iter=0
   local last_failure_sig=""
   local failure_repeat=0
+  local lockout_repeat=0
   while true; do
     if [ -f "$PAUSE_FILE" ]; then sleep 30; continue; fi
     local desired; desired=$(cat "$DESIRED_FILE" 2>/dev/null || echo 0)
@@ -379,9 +385,35 @@ worker_loop() {
     local issue
     issue=$(pick_and_claim_unlocked_issue 0 "${ordered[@]}")
     if [ -z "$issue" ]; then
+      lockout_repeat=$(( lockout_repeat + 1 ))
+      if [ "$lockout_repeat" -ge "$SUP_REPLENISHMENT_LOCKOUTS" ] 2>/dev/null; then
+        local replenishment=()
+        while IFS= read -r rissue; do
+          [ -n "$rissue" ] && replenishment+=("$rissue")
+        done < <(sup_ensure_replenishment_issues 2>>"$SUP_LOG")
+        if [ "${#replenishment[@]}" -gt 0 ]; then
+          local replenished_ordered=()
+          sup_fetch_issue_label_map >/dev/null 2>&1 || true
+          while IFS= read -r oissue; do
+            [ -n "$oissue" ] && replenished_ordered+=("$oissue")
+          done < <(sup_order_pool_by_priority 0 "${replenishment[@]}")
+          [ "${#replenished_ordered[@]}" -gt 0 ] || replenished_ordered=("${replenishment[@]}")
+          issue=$(pick_and_claim_unlocked_issue 0 "${replenished_ordered[@]}")
+          if [ -n "$issue" ]; then
+            lockout_repeat=0
+            log "slot=$slot REPLENISHMENT picked issue=#$issue after sustained LOCKOUT (${#replenishment[@]} replenishment candidate(s))"
+          else
+            log "slot=$slot REPLENISHMENT candidates locked too after sustained LOCKOUT (${#replenishment[@]} candidate(s))"
+          fi
+        else
+          log "slot=$slot REPLENISHMENT unavailable after sustained LOCKOUT (gh/auth missing or create failed)"
+        fi
+      fi
+    fi
+    if [ -z "$issue" ]; then
       local pick_sleep
       pick_sleep="$(sup_claimed_pick_backoff_secs "${#issues[@]}" "$desired" "$backoff")"
-      log "slot=$slot LOCKOUT all backlog issues are closed, already have open PRs, or are claimed by other slots; open_backlog=${#issues[@]} desired_slots=$desired backing off ${pick_sleep}s"
+      log "slot=$slot LOCKOUT all backlog issues are closed, already have open PRs, or are claimed by other slots; open_backlog=${#issues[@]} desired_slots=$desired repeated=$lockout_repeat backing off ${pick_sleep}s"
       sleep "$pick_sleep"
       if [ "$pick_sleep" = "$backoff" ]; then
         backoff=$(( backoff * 2 )); [ "$backoff" -gt "$SUP_BACKOFF_MAX" ] && backoff="$SUP_BACKOFF_MAX"
@@ -442,6 +474,7 @@ worker_loop() {
       backoff="$SUP_BACKOFF_MIN"
       last_failure_sig=""
       failure_repeat=0
+      lockout_repeat=0
       sup_reset_account_refusals "$acc"
       # Keep the issue claimed (refresh TTL) so no other slot re-picks it while
       # its PR/lockout state settles; the open-PR lockout then takes over and the
