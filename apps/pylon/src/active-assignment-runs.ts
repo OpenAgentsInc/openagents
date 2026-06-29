@@ -2,6 +2,8 @@ import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises"
 import { existsSync } from "node:fs"
 import { createHash, randomUUID } from "node:crypto"
 import { join } from "node:path"
+import { parseJsonEffect } from "@openagentsinc/effect-boundary"
+import { Effect, Schema as S } from "effect"
 import {
   assertPublicProjectionSafe,
   type PylonPaths,
@@ -39,6 +41,17 @@ export type PylonAssignmentLeaseLike = Readonly<{
 const DEFAULT_ACTIVE_RUN_TTL_MS = 120_000
 const CODEX_CAPABILITY_REF = "capability.pylon.local_codex"
 const CLAUDE_CAPABILITY_REF = "capability.pylon.local_claude_agent"
+const PylonCodingServiceRefSchema = S.Literals(["claude", "codex"])
+const PylonActiveAssignmentRunSchema = S.Struct({
+  schema: S.Literal("openagents.pylon.active_assignment_run.v0.1"),
+  accountRefHash: S.optional(S.String),
+  assignmentRef: S.String,
+  leaseRef: S.String,
+  refreshedAt: S.String,
+  runRef: S.String,
+  service: PylonCodingServiceRefSchema,
+  startedAt: S.String,
+})
 
 const stableRef = (prefix: string, value: string) =>
   `${prefix}.${createHash("sha256").update(value).digest("hex").slice(0, 32)}`
@@ -50,17 +63,23 @@ const activeRunPath = (paths: PylonPaths, runRef: string) =>
   join(paths.activeAssignmentRuns, activeRunFilename(runRef))
 
 const activeRunFromUnknown = (value: unknown): PylonActiveAssignmentRun | null => {
-  const record = value as PylonActiveAssignmentRun
-  return record?.schema === "openagents.pylon.active_assignment_run.v0.1" &&
-    (record.service === "codex" || record.service === "claude") &&
-    typeof record.assignmentRef === "string" &&
-    typeof record.leaseRef === "string" &&
-    typeof record.refreshedAt === "string" &&
-    typeof record.runRef === "string" &&
-    typeof record.startedAt === "string"
-    ? record
-    : null
+  try {
+    return S.decodeUnknownSync(PylonActiveAssignmentRunSchema)(value)
+  } catch {
+    return null
+  }
 }
+
+const readActiveRunFile = async (
+  path: string,
+): Promise<PylonActiveAssignmentRun | null> =>
+  Effect.runPromise(
+    parseJsonEffect(
+      PylonActiveAssignmentRunSchema,
+      await readFile(path, "utf8"),
+      "pylon.active_assignment_run.file",
+    ).pipe(Effect.catch(() => Effect.succeed(null))),
+  )
 
 const activeRunIsFresh = (
   run: PylonActiveAssignmentRun,
@@ -105,7 +124,7 @@ export async function refreshActiveCodingRun(
 ): Promise<void> {
   const path = activeRunPath(paths, runRef)
   if (!existsSync(path)) return
-  const run = activeRunFromUnknown(JSON.parse(await readFile(path, "utf8")) as unknown)
+  const run = await readActiveRunFile(path)
   if (run === null) return
   const next = {
     ...run,
@@ -136,7 +155,7 @@ export async function activeCodingRunCounts(
     const path = join(paths.activeAssignmentRuns, filename)
     let run: PylonActiveAssignmentRun | null = null
     try {
-      run = activeRunFromUnknown(JSON.parse(await readFile(path, "utf8")) as unknown)
+      run = await readActiveRunFile(path)
     } catch {
       run = null
     }
@@ -167,7 +186,7 @@ export async function activeCodingRunCountsByAccount(
     const path = join(paths.activeAssignmentRuns, filename)
     let run: PylonActiveAssignmentRun | null = null
     try {
-      run = activeRunFromUnknown(JSON.parse(await readFile(path, "utf8")) as unknown)
+      run = await readActiveRunFile(path)
     } catch {
       run = null
     }

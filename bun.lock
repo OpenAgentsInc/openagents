@@ -253,6 +253,7 @@
         "@openagentsinc/atif": "workspace:*",
         "@openagentsinc/blueprint-contracts": "workspace:*",
         "@openagentsinc/durable-stream": "workspace:*",
+        "@openagentsinc/effect-boundary": "workspace:*",
         "@openagentsinc/email-templates": "workspace:*",
         "@openagentsinc/forge-protocol": "workspace:*",
         "@openagentsinc/mcp-contract": "workspace:*",
@@ -294,6 +295,7 @@
         "@openagentsinc/agent-runtime-schema": "workspace:*",
         "@openagentsinc/autopilot-control-protocol": "workspace:*",
         "@openagentsinc/blueprint-contracts": "workspace:*",
+        "@openagentsinc/effect-boundary": "workspace:*",
         "@openagentsinc/forge-protocol": "workspace:*",
         "@openagentsinc/mcp-contract": "workspace:*",
         "@openagentsinc/nip90": "workspace:*",
@@ -472,6 +474,17 @@
     },
     "packages/durable-stream": {
       "name": "@openagentsinc/durable-stream",
+      "version": "0.1.0",
+      "dependencies": {
+        "effect": "catalog:",
+      },
+      "devDependencies": {
+        "bun-types": "^1.0.0",
+        "typescript": "catalog:",
+      },
+    },
+    "packages/effect-boundary": {
+      "name": "@openagentsinc/effect-boundary",
       "version": "0.1.0",
       "dependencies": {
         "effect": "catalog:",
@@ -966,6 +979,8 @@
     "@openagentsinc/desktop": ["@openagentsinc/desktop@workspace:clients/openagents-desktop"],
 
     "@openagentsinc/durable-stream": ["@openagentsinc/durable-stream@workspace:packages/durable-stream"],
+
+    "@openagentsinc/effect-boundary": ["@openagentsinc/effect-boundary@workspace:packages/effect-boundary"],
 
     "@openagentsinc/email-templates": ["@openagentsinc/email-templates@workspace:apps/openagents.com/packages/email-templates"],
 

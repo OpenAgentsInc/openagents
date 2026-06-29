@@ -42,6 +42,7 @@
     "@moneydevkit/api-contract": "0.1.36",
     "@openagentsinc/atif": "workspace:*",
     "@openagentsinc/durable-stream": "workspace:*",
+    "@openagentsinc/effect-boundary": "workspace:*",
     "@openagentsinc/mcp-contract": "workspace:*",
     "@openagentsinc/nip90": "workspace:*",
     "@openagentsinc/proof-replay": "workspace:*",
