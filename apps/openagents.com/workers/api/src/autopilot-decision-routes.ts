@@ -10,7 +10,11 @@ import {
 import {
   classifyAutopilotDecisionActRoute,
 } from './autopilot-decision-act-routing'
-import { buildAutopilotDecisionCloseoutReceipt } from './autopilot-decision-closeout'
+import {
+  type AutopilotDecisionCloseoutReceipt,
+  buildAutopilotDecisionCloseoutReceipt,
+  validateAutopilotDecisionCloseoutReceipt,
+} from './autopilot-decision-closeout'
 import {
   type AutopilotWorkOrderRecord,
   type AutopilotWorkReviewAction,
@@ -143,6 +147,7 @@ export type AutopilotWorkDecisionContext = Readonly<{
 }>
 
 export type AutopilotDecisionQueueItem = Readonly<{
+  closeoutReceipts: ReadonlyArray<AutopilotDecisionCloseoutReceipt>
   decision: CodingAutopilotDecisionActionProjection
   work: AutopilotWorkDecisionContext
 }>
@@ -297,12 +302,18 @@ export const decisionRecordsForWorkOrder = (
 const projectedQueueItems = (
   records: ReadonlyArray<AutopilotWorkOrderRecord>,
   nowIso: string,
+  closeoutReceiptsByWorkOrder: ReadonlyMap<
+    string,
+    ReadonlyArray<AutopilotDecisionCloseoutReceipt>
+  > = new Map(),
 ): ReadonlyArray<AutopilotDecisionQueueItem> =>
   records.flatMap(record =>
     decisionRecordsForWorkOrder(record).flatMap(decisionRecord => {
       try {
         return [
           {
+            closeoutReceipts:
+              closeoutReceiptsByWorkOrder.get(record.workOrderRef) ?? [],
             decision: projectCodingAutopilotDecisionActionRecord(
               decisionRecord,
               'customer',
@@ -354,6 +365,51 @@ const routeErrorResponse = (error: AutopilotWorkStoreError): HttpResponse =>
               : 400,
     },
   )
+
+const closeoutReceiptsForWorkOrder = <Bindings>(
+  dependencies: AutopilotDecisionRoutesDependencies<Bindings>,
+  env: Bindings,
+  input: Readonly<{ ownerUserId: string; workOrderRef: string }>,
+): Effect.Effect<
+  ReadonlyArray<AutopilotDecisionCloseoutReceipt>,
+  AutopilotWorkStoreError
+> =>
+  Effect.tryPromise({
+    catch: error =>
+      new AutopilotWorkStoreError({
+        kind: 'storage_error',
+        reason: error instanceof Error ? error.message : String(error),
+      }),
+    try: async () =>
+      dependencies.makeStore(env).listDecisionCloseoutReceiptsForWorkOrder?.(
+        input,
+      ) ?? [],
+  }).pipe(
+    Effect.map(receipts =>
+      receipts.filter(receipt =>
+        validateAutopilotDecisionCloseoutReceipt(receipt)
+      )
+    ),
+  )
+
+const closeoutReceiptMapForRecords = <Bindings>(
+  dependencies: AutopilotDecisionRoutesDependencies<Bindings>,
+  env: Bindings,
+  ownerUserId: string,
+  records: ReadonlyArray<AutopilotWorkOrderRecord>,
+): Effect.Effect<
+  ReadonlyMap<string, ReadonlyArray<AutopilotDecisionCloseoutReceipt>>,
+  AutopilotWorkStoreError
+> =>
+  Effect.forEach(records, record =>
+    Effect.map(
+      closeoutReceiptsForWorkOrder(dependencies, env, {
+        ownerUserId,
+        workOrderRef: record.workOrderRef,
+      }),
+      receipts => [record.workOrderRef, receipts] as const,
+    )
+  ).pipe(Effect.map(entries => new Map(entries)))
 
 const requireIdempotencyHash = (
   request: Request,
@@ -530,7 +586,15 @@ const listDecisions = <Bindings extends AutopilotDecisionRouteEnv>(
           ownerUserId: auth.ownerUserId,
         }),
     })
-    const decisions = orderedQueueItems(projectedQueueItems(records, nowIso))
+    const closeoutReceiptsByWorkOrder = yield* closeoutReceiptMapForRecords(
+      dependencies,
+      env,
+      auth.ownerUserId,
+      records,
+    )
+    const decisions = orderedQueueItems(
+      projectedQueueItems(records, nowIso, closeoutReceiptsByWorkOrder),
+    )
     const pendingCount = decisions.filter(
       item => item.decision.status !== 'completed',
     ).length
@@ -540,6 +604,144 @@ const listDecisions = <Bindings extends AutopilotDecisionRouteEnv>(
       directEffectPermitted: false,
       generatedAt: nowIso,
       pendingCount,
+    })
+  }).pipe(
+    Effect.catchTag('CustomerOrderAgentAuthFailure', () =>
+      Effect.succeed(unauthorized())
+    ),
+    Effect.catch(error => Effect.succeed(routeErrorResponse(error))),
+  )
+
+const listDecisionsForWorkOrder = <Bindings extends AutopilotDecisionRouteEnv>(
+  dependencies: AutopilotDecisionRoutesDependencies<Bindings>,
+  request: Request,
+  env: Bindings,
+  ctx: ExecutionContext,
+  workOrderRef: string,
+): Effect.Effect<HttpResponse> =>
+  Effect.gen(function* () {
+    const nowIso = routeNowIso(dependencies)
+    const auth = yield* authenticateAutopilotWorkRequest(
+      dependencies,
+      request,
+      env,
+      {
+        ctx,
+        nowIso: () => nowIso,
+        requiredScope: 'customer_orders.read',
+      },
+    )
+    const record = yield* Effect.tryPromise({
+      catch: error =>
+        new AutopilotWorkStoreError({
+          kind: 'storage_error',
+          reason: error instanceof Error ? error.message : String(error),
+        }),
+      try: () => dependencies.makeStore(env).readWorkOrder(workOrderRef),
+    })
+
+    if (record === undefined || record.ownerUserId !== auth.ownerUserId) {
+      return noStoreJsonResponse(
+        {
+          error: 'autopilot_decision_not_found',
+          reason: 'Autopilot work-order decision projection was not found.',
+        },
+        { status: 404 },
+      )
+    }
+
+    const closeoutReceipts = yield* closeoutReceiptsForWorkOrder(
+      dependencies,
+      env,
+      { ownerUserId: auth.ownerUserId, workOrderRef },
+    )
+    const decisions = orderedQueueItems(
+      projectedQueueItems(
+        [record],
+        nowIso,
+        new Map([[workOrderRef, closeoutReceipts]]),
+      ),
+    )
+
+    return noStoreJsonResponse({
+      decisions,
+      directEffectPermitted: false,
+      generatedAt: nowIso,
+      pendingCount: decisions.filter(
+        item => item.decision.status !== 'completed',
+      ).length,
+      work: workDecisionContext(record),
+    })
+  }).pipe(
+    Effect.catchTag('CustomerOrderAgentAuthFailure', () =>
+      Effect.succeed(unauthorized())
+    ),
+    Effect.catch(error => Effect.succeed(routeErrorResponse(error))),
+  )
+
+const closeoutRefFromPath = (pathname: string): string | undefined => {
+  const match = /^\/api\/autopilot\/decision-closeouts\/([^/]+)$/.exec(
+    pathname,
+  )
+
+  return match?.[1] === undefined ? undefined : decodeURIComponent(match[1])
+}
+
+const decisionsWorkOrderRefFromPath = (pathname: string): string | undefined => {
+  const match = /^\/api\/autopilot\/work\/([^/]+)\/decisions$/.exec(pathname)
+
+  return match?.[1] === undefined ? undefined : decodeURIComponent(match[1])
+}
+
+const readDecisionCloseout = <Bindings extends AutopilotDecisionRouteEnv>(
+  dependencies: AutopilotDecisionRoutesDependencies<Bindings>,
+  request: Request,
+  env: Bindings,
+  ctx: ExecutionContext,
+  closeoutRef: string,
+): Effect.Effect<HttpResponse> =>
+  Effect.gen(function* () {
+    const nowIso = routeNowIso(dependencies)
+    const auth = yield* authenticateAutopilotWorkRequest(
+      dependencies,
+      request,
+      env,
+      {
+        ctx,
+        nowIso: () => nowIso,
+        requiredScope: 'customer_orders.read',
+      },
+    )
+    const receipt = yield* Effect.tryPromise({
+      catch: error =>
+        new AutopilotWorkStoreError({
+          kind: 'storage_error',
+          reason: error instanceof Error ? error.message : String(error),
+        }),
+      try: () =>
+        dependencies.makeStore(env).readDecisionCloseoutReceipt?.({
+          closeoutRef,
+          ownerUserId: auth.ownerUserId,
+        }) ?? Promise.resolve(undefined),
+    })
+
+    if (
+      receipt === undefined ||
+      !validateAutopilotDecisionCloseoutReceipt(receipt)
+    ) {
+      return noStoreJsonResponse(
+        {
+          error: 'autopilot_decision_closeout_not_found',
+          reason: 'Autopilot decision closeout receipt was not found.',
+        },
+        { status: 404 },
+      )
+    }
+
+    return noStoreJsonResponse({
+      directEffectPermitted: false,
+      generatedAt: nowIso,
+      receipt,
     })
   }).pipe(
     Effect.catchTag('CustomerOrderAgentAuthFailure', () =>
@@ -720,6 +922,16 @@ const actOnDecision = <Bindings extends AutopilotDecisionRouteEnv>(
       reviewDecision,
       workOrderRef,
     })
+    yield* Effect.tryPromise({
+      catch: error =>
+        new AutopilotWorkStoreError({
+          kind: 'storage_error',
+          reason: error instanceof Error ? error.message : String(error),
+        }),
+      try: () =>
+        dependencies.makeStore(env).recordDecisionCloseoutReceipt?.(closeout) ??
+        Promise.resolve(),
+    })
 
     return noStoreJsonResponse(
       {
@@ -754,6 +966,34 @@ export const makeAutopilotDecisionRoutes = <
     if (url.pathname === '/api/autopilot/decisions') {
       return M.value(request.method).pipe(
         M.when('GET', () => listDecisions(dependencies, request, env, ctx)),
+        M.orElse(() => Effect.succeed(methodNotAllowed(['GET']))),
+      )
+    }
+
+    const workOrderRef = decisionsWorkOrderRefFromPath(url.pathname)
+
+    if (workOrderRef !== undefined) {
+      return M.value(request.method).pipe(
+        M.when('GET', () =>
+          listDecisionsForWorkOrder(
+            dependencies,
+            request,
+            env,
+            ctx,
+            workOrderRef,
+          )
+        ),
+        M.orElse(() => Effect.succeed(methodNotAllowed(['GET']))),
+      )
+    }
+
+    const closeoutRef = closeoutRefFromPath(url.pathname)
+
+    if (closeoutRef !== undefined) {
+      return M.value(request.method).pipe(
+        M.when('GET', () =>
+          readDecisionCloseout(dependencies, request, env, ctx, closeoutRef)
+        ),
         M.orElse(() => Effect.succeed(methodNotAllowed(['GET']))),
       )
     }

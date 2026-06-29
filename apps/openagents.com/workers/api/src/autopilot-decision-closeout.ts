@@ -180,7 +180,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 // reconstructs byte-identically from the validated fields.
 export const validateAutopilotDecisionCloseoutReceipt = (
   receipt: unknown,
-): boolean => {
+): receipt is AutopilotDecisionCloseoutReceipt => {
   if (!isRecord(receipt)) return false
   if (receipt.kind !== 'autopilot_decision_closeout_receipt') return false
   if (typeof receipt.decisionRef !== 'string') return false
