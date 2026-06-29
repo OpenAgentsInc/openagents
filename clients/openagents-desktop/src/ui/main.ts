@@ -1,6 +1,11 @@
 import { Electroview } from "electrobun/view"
 
 import {
+  type AccountStatusResult,
+  type FleetAccount,
+  OPENAGENTS_DESKTOP_ACCOUNT_POLL_INTERVAL_MS,
+} from "../shared/account-status"
+import {
   apmSummaryText,
   calculateApmStats,
   formatApm,
@@ -53,6 +58,10 @@ const postPreviewRpc = async <Result>(
 
 const previewRpc = (): DesktopRpc => ({
   request: {
+    codexAccountsStatus: () =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["codexAccountsStatus"]>>
+      >("codexAccountsStatus"),
     codingStatus: () =>
       postPreviewRpc<Awaited<ReturnType<DesktopRpcRequests["codingStatus"]>>>(
         "codingStatus",
@@ -131,6 +140,10 @@ const pylonsSummary = requireElement<HTMLElement>("#pylons-summary")
 const pylonsList = requireElement<HTMLElement>("#pylons-list")
 const createPylonButton = requireElement<HTMLButtonElement>("#create-pylon")
 const pylonActionStatus = requireElement<HTMLElement>("#pylon-action-status")
+const fleetAccountsSummary = requireElement<HTMLElement>(
+  "#fleet-accounts-summary",
+)
+const fleetAccountsList = requireElement<HTMLElement>("#fleet-accounts-list")
 const codingPage = requireElement<HTMLElement>("#coding-page")
 const codingBack = requireElement<HTMLButtonElement>("#coding-back")
 const codingApm = requireElement<HTMLButtonElement>("#coding-apm")
@@ -330,6 +343,109 @@ const renderPylonsPage = (result: PylonStatusResult): void => {
   }
 
   pylonsList.append(...result.pylons.map(pylonRow))
+}
+
+const accountReadinessState = (
+  account: FleetAccount,
+): "missing" | "ready" | "degraded" =>
+  account.ready ? "ready" : account.credentialsMissing ? "missing" : "degraded"
+
+const accountBadgeLabel = (account: FleetAccount): string => {
+  switch (accountReadinessState(account)) {
+    case "ready":
+      return "Ready"
+    case "missing":
+      return "Needs reconnect"
+    case "degraded":
+      return account.state.replace(/_/g, " ")
+  }
+}
+
+const fleetAccountRow = (account: FleetAccount): HTMLElement => {
+  const row = document.createElement("article")
+  row.className = "fleet-account-row"
+  row.dataset.state = accountReadinessState(account)
+
+  const identity = document.createElement("div")
+  identity.className = "fleet-account-identity"
+
+  const ref = document.createElement("strong")
+  ref.textContent = account.label
+
+  const provider = document.createElement("span")
+  provider.className = "fleet-account-provider"
+  provider.textContent = account.provider === "claude" ? "Claude" : "Codex"
+
+  identity.append(ref, provider)
+
+  const badge = document.createElement("span")
+  badge.className = "fleet-account-badge"
+
+  const dot = document.createElement("span")
+  dot.className = "fleet-account-dot"
+  dot.setAttribute("aria-hidden", "true")
+
+  const badgeText = document.createElement("span")
+  badgeText.textContent = accountBadgeLabel(account)
+
+  badge.append(dot, badgeText)
+
+  row.append(identity, badge)
+
+  if (!account.ready) {
+    const hint = document.createElement("p")
+    hint.className = "fleet-account-hint"
+    hint.append(document.createTextNode("Run "))
+    const code = document.createElement("code")
+    code.textContent = "khala fleet connect"
+    hint.append(code, document.createTextNode(" to reconnect"))
+    row.append(hint)
+  }
+
+  return row
+}
+
+const renderAccountStatus = (result: AccountStatusResult): void => {
+  fleetAccountsSummary.textContent = result.ok
+    ? `Ready ${formatCount(result.readyCount)} · Needs reconnect ${formatCount(
+        result.needsReconnectCount,
+      )}`
+    : "Accounts unavailable"
+
+  fleetAccountsList.replaceChildren()
+
+  if (!result.ok) {
+    const empty = document.createElement("div")
+    empty.className = "fleet-account-empty"
+    empty.textContent = result.error
+    fleetAccountsList.append(empty)
+    return
+  }
+
+  if (result.accounts.length === 0) {
+    const empty = document.createElement("div")
+    empty.className = "fleet-account-empty"
+    empty.textContent = "No Codex or Claude accounts connected."
+    fleetAccountsList.append(empty)
+    return
+  }
+
+  fleetAccountsList.append(...result.accounts.map(fleetAccountRow))
+}
+
+const loadAccountStatus = async (): Promise<void> => {
+  try {
+    renderAccountStatus(await rpc.request.codexAccountsStatus())
+  } catch (error) {
+    renderAccountStatus({
+      ok: false,
+      observedAt: new Date().toISOString(),
+      accounts: [],
+      readyCount: 0,
+      needsReconnectCount: 0,
+      error: error instanceof Error ? error.message : String(error),
+    })
+  }
 }
 
 const compactPath = (value: string | null): string | null => {
@@ -1330,6 +1446,7 @@ tokenReplay.addEventListener("click", () => {
 applyRoute(routeFromLocation())
 void loadCodingStatus()
 void loadPylonStatus()
+void loadAccountStatus()
 void loadTokenAccounting()
 globalThis.setInterval(
   () => void loadCodingStatus(),
@@ -1338,6 +1455,10 @@ globalThis.setInterval(
 globalThis.setInterval(
   () => void loadPylonStatus(),
   OPENAGENTS_DESKTOP_PYLON_POLL_INTERVAL_MS,
+)
+globalThis.setInterval(
+  () => void loadAccountStatus(),
+  OPENAGENTS_DESKTOP_ACCOUNT_POLL_INTERVAL_MS,
 )
 globalThis.setInterval(
   () => void loadTokenAccounting(),

@@ -426,6 +426,170 @@ button {
   padding: 0 20px 18px;
 }
 
+.fleet-accounts {
+  display: grid;
+  gap: 10px;
+  margin: 4px 16px 6px;
+  padding: 14px 14px 16px;
+  background: rgba(8, 14, 26, 0.62);
+  border: 1px solid rgba(58, 123, 255, 0.28);
+  border-radius: 10px;
+  box-shadow: 0 0 24px rgba(58, 123, 255, 0.08);
+}
+
+.fleet-accounts-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.fleet-accounts-heading h3 {
+  margin: 0;
+  color: #fff;
+  font-size: 0.98rem;
+  line-height: 1;
+}
+
+.fleet-accounts-heading span {
+  color: #9bb8e8;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.fleet-accounts-list {
+  display: grid;
+  gap: 8px;
+}
+
+.fleet-account-row,
+.fleet-account-empty {
+  display: grid;
+  gap: 8px;
+  padding: 11px 13px;
+  background: rgba(0, 0, 0, 0.34);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+}
+
+.fleet-account-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.fleet-account-empty {
+  color: #9bb8e8;
+  font-size: 0.72rem;
+  line-height: 1.5;
+}
+
+.fleet-account-identity {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 9px;
+}
+
+.fleet-account-identity strong {
+  overflow: hidden;
+  color: #fff;
+  font-size: 0.86rem;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fleet-account-provider {
+  flex: none;
+  padding: 3px 8px;
+  color: #b6c8e8;
+  background: rgba(58, 123, 255, 0.1);
+  border: 1px solid rgba(58, 123, 255, 0.26);
+  border-radius: 999px;
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.fleet-account-badge {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 7px;
+  min-width: 132px;
+  padding: 7px 11px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  color: #b6c8e8;
+  font-size: 0.66rem;
+  font-weight: 700;
+  line-height: 1;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.fleet-account-dot {
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #6f8abb;
+}
+
+.fleet-account-row[data-state="ready"] .fleet-account-badge {
+  color: #aef0bf;
+  background: rgba(63, 185, 80, 0.12);
+  border-color: rgba(63, 185, 80, 0.4);
+}
+
+.fleet-account-row[data-state="ready"] .fleet-account-dot {
+  background: #3fb950;
+  box-shadow: 0 0 9px rgba(63, 185, 80, 0.7);
+}
+
+.fleet-account-row[data-state="missing"] .fleet-account-badge {
+  color: #ffc7c2;
+  background: rgba(248, 81, 73, 0.12);
+  border-color: rgba(248, 81, 73, 0.42);
+}
+
+.fleet-account-row[data-state="missing"] .fleet-account-dot {
+  background: #f85149;
+  box-shadow: 0 0 9px rgba(248, 81, 73, 0.7);
+}
+
+.fleet-account-row[data-state="degraded"] .fleet-account-badge {
+  color: #ffe1a6;
+  background: rgba(255, 180, 0, 0.12);
+  border-color: rgba(255, 180, 0, 0.42);
+}
+
+.fleet-account-row[data-state="degraded"] .fleet-account-dot {
+  background: #ffb400;
+  box-shadow: 0 0 9px rgba(255, 180, 0, 0.7);
+}
+
+.fleet-account-hint {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: #9bb8e8;
+  font-size: 0.7rem;
+  line-height: 1.5;
+}
+
+.fleet-account-hint code {
+  padding: 1px 5px;
+  color: #dfe9ff;
+  background: rgba(58, 123, 255, 0.14);
+  border: 1px solid rgba(58, 123, 255, 0.24);
+  border-radius: 5px;
+  font-size: 0.68rem;
+}
+
 .coding-observed {
   align-self: center;
   color: #8fa9d6;

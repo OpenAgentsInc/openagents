@@ -1,3 +1,4 @@
+import type { AccountStatusResult } from "./account-status"
 import type { CodingStatusResult } from "./coding-status"
 import type {
   DesktopKhalaDispatchPlanInput,
@@ -15,6 +16,7 @@ export const OPENAGENTS_DESKTOP_RPC_MAX_REQUEST_TIME_MS = 60_000
 
 export type OpenAgentsDesktopRPCSchema = {
   requests: {
+    codexAccountsStatus(): Promise<AccountStatusResult>
     codingStatus(): Promise<CodingStatusResult>
     createPylon(): Promise<CreatePylonResult>
     khalaDispatchPlan(

@@ -6,6 +6,10 @@ import { homedir } from "node:os"
 import { dirname, join, resolve } from "node:path"
 
 import {
+  accountStatusFromPayload,
+  type AccountStatusResult,
+} from "../shared/account-status.js"
+import {
   buildManagerResumeSnapshot,
   type CodingAssignmentDetail,
   type CodingManagerAssignmentMarker,
@@ -1376,7 +1380,58 @@ const khalaFleetSnapshot = async (): Promise<KhalaFleetSnapshotResult> => {
   }
 }
 
+const codexAccountsStatus = async (): Promise<AccountStatusResult> => {
+  const observedAt = new Date().toISOString()
+  try {
+    const pylonAppPath = await resolvePylonAppPath()
+    const bunExecutable = resolveBunExecutable()
+    const proc = Bun.spawn({
+      cmd: [
+        bunExecutable,
+        resolve(pylonAppPath, "src", "index.ts"),
+        "codex",
+        "accounts",
+        "list",
+        "--json",
+      ],
+      cwd: pylonAppPath,
+      env: withExtraPath({
+        ...Bun.env,
+        PYLON_OPENAGENTS_BASE_URL: baseUrl,
+      }),
+      stderr: "pipe",
+      stdout: "pipe",
+    })
+    const [stdout, stderr, exitCode] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ])
+    if (exitCode !== 0) {
+      return {
+        ok: false,
+        observedAt,
+        accounts: [],
+        readyCount: 0,
+        needsReconnectCount: 0,
+        error: stderr.trim() || stdout.trim() || `pylon exited ${exitCode}`,
+      }
+    }
+    return accountStatusFromPayload(JSON.parse(stdout), observedAt)
+  } catch (error) {
+    return {
+      ok: false,
+      observedAt,
+      accounts: [],
+      readyCount: 0,
+      needsReconnectCount: 0,
+      error: error instanceof Error ? error.message : String(error),
+    }
+  }
+}
+
 const desktopRpcRequestHandlers = {
+  codexAccountsStatus,
   codingStatus,
   createPylon,
   khalaDispatchPlan,
