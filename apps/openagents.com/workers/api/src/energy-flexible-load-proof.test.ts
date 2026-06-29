@@ -38,10 +38,10 @@ describe('energy flexible-load proof projection', () => {
     })
     expect(projection.eventHistory.projectedEventCount).toBe(1)
     expect(projection.eventHistory.evidenceStateLabels).toEqual([
-      'Settled',
+      'Measured',
       'Measured response',
-      'Verified evidence',
-      'Settled event',
+      'Not verified',
+      'Not settled',
     ])
     expect(projection.gate.blockerRefs).toEqual([
       'blocker.product_promises.real_flexible_load_receipt_missing',

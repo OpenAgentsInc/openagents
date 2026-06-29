@@ -1917,7 +1917,7 @@ export const publicProductPromisesDocument = () => {
           'blocker.product_promises.owner_signed_energy_green_transition_missing',
         ],
         verification:
-          'Dereference GET /api/public/energy/flexible-load-proof and confirm gate.greenGateSatisfied=false, marketPriceIngestionAvailable=true, workClassFlexProfilesAvailable=true, marketPrices.decodedRowCount=96, and eventHistory.evidenceStateLabels includes measured, verified, and settled labels. Green still requires a real flexible-load receipt plus an owner-signed promise transition.',
+          'Dereference GET /api/public/energy/flexible-load-proof and confirm gate.greenGateSatisfied=false, marketPriceIngestionAvailable=true, workClassFlexProfilesAvailable=true, marketPrices.decodedRowCount=96, and eventHistory.evidenceStateLabels includes measured response plus Not verified and Not settled labels. Green still requires a real flexible-load receipt plus an owner-signed promise transition.',
         authorityBoundary:
           'Energy models and flexible-load projections are operational estimates, not investment, grid, utility, or financial advice. The public projection is read-only and grants no grid dispatch, capacity assignment, runner launch, wallet spend, payout, settlement, or public promise-state authority.',
       },

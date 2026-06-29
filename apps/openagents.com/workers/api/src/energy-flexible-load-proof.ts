@@ -82,7 +82,13 @@ export const projectEnergyFlexibleLoadProof = (
     nowIso,
   )
   const event = projectPylonFlexibleLoadEvent(
-    examplePylonFlexibleLoadEvent(),
+    {
+      ...examplePylonFlexibleLoadEvent(),
+      compensationRefs: [],
+      evidenceRefs: [],
+      settlementRefs: [],
+      state: 'measured',
+    },
     'public',
     nowIso,
   )
