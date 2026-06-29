@@ -92,6 +92,18 @@ const rowsForSql = (sql: string): ReadonlyArray<Record<string, unknown>> => {
   }
 
   if (sql.includes('FROM fleet_alerts')) {
+    if (sql.includes('serving_rate_low')) {
+      return [
+        {
+          active_assignments: 0,
+          alert_ref: 'serving_rate_alert.serving_rate_low.2026-06-27T18:39:00.000Z.feedface',
+          classification: 'serving_rate_low',
+          detected_at: '2026-06-27T18:39:00.000Z',
+          queued_assignments: 0,
+          reason_ref: 'blocker.public.serving_rate.tokens_per_hour_below_floor',
+        },
+      ]
+    }
     return [
       {
         active_assignments: 1,
@@ -191,7 +203,7 @@ describe('operator fleet status route', () => {
     expect(first.headers.get('x-openagents-cache')).toBe('miss')
     expect(second.headers.get('x-openagents-cache')).toBe('hit')
     expect(log.length).toBeGreaterThan(0)
-    expect(log.length).toBe(9)
+    expect(log.length).toBe(10)
     expect(cachedBody).toEqual(body)
     expect(body).toMatchObject({
       authority: {
@@ -255,6 +267,13 @@ describe('operator fleet status route', () => {
         ],
       },
       schemaVersion: 'operator.fleet_status.v1',
+      servingRateMonitor: {
+        latestAlert: {
+          classification: 'serving_rate_low',
+          reasonRef: 'blocker.public.serving_rate.tokens_per_hour_below_floor',
+        },
+        state: 'SERVING_RATE_LOW',
+      },
       supervisor: {
         availableCodexSlots: 3,
         desiredCodexSlots: 2,

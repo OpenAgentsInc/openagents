@@ -164,6 +164,7 @@ const buildFleetStatusSnapshot = async (
     assignments,
     providerAccounts,
     latestAlert,
+    latestServingRateAlert,
     today,
     yesterday,
     window,
@@ -214,6 +215,16 @@ const buildFleetStatusSnapshot = async (
       `SELECT alert_ref, classification, detected_at, reason_ref,
               active_assignments, queued_assignments
          FROM fleet_alerts
+        WHERE classification = 'stalled'
+        ORDER BY detected_at DESC
+        LIMIT 1`,
+    ),
+    safeFirst<AlertRow>(
+      db,
+      `SELECT alert_ref, classification, detected_at, reason_ref,
+              active_assignments, queued_assignments
+         FROM fleet_alerts
+        WHERE classification IN ('serving_rate_low', 'glm_down')
         ORDER BY detected_at DESC
         LIMIT 1`,
     ),
@@ -324,6 +335,10 @@ const buildFleetStatusSnapshot = async (
 
   const latestAlertAgeMs =
     latestAlert === null ? Number.POSITIVE_INFINITY : millisBetween(latestAlert.detected_at, nowIso)
+  const latestServingRateAlertAgeMs =
+    latestServingRateAlert === null
+      ? Number.POSITIVE_INFINITY
+      : millisBetween(latestServingRateAlert.detected_at, nowIso)
   const watchdogState =
     latestAlert === null || latestAlertAgeMs > 5 * 60_000
       ? 'HEALTHY'
@@ -444,6 +459,26 @@ const buildFleetStatusSnapshot = async (
         detectedAt: latestAlert.detected_at,
       }],
       sourceRefs: ['d1:fleet_alerts', 'd1:pylon_api_assignments'],
+    },
+    servingRateMonitor: {
+      state:
+        latestServingRateAlert === null ||
+        latestServingRateAlertAgeMs > 15 * 60_000
+          ? 'HEALTHY'
+          : latestServingRateAlert.classification === 'glm_down'
+            ? 'GLM_DOWN'
+            : 'SERVING_RATE_LOW',
+      latestAlert:
+        latestServingRateAlert === null ||
+        latestServingRateAlertAgeMs > 15 * 60_000
+          ? null
+          : {
+              alertRef: latestServingRateAlert.alert_ref,
+              classification: latestServingRateAlert.classification,
+              detectedAt: latestServingRateAlert.detected_at,
+              reasonRef: latestServingRateAlert.reason_ref,
+            },
+      sourceRefs: ['d1:fleet_alerts', 'd1:token_usage_events'],
     },
     glm: {
       status: glmTotal === 0 ? 'unknown' : glmReady === glmTotal ? 'ready' : 'degraded',
