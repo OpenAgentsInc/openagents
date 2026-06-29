@@ -36,20 +36,20 @@ export const FREE_TIER_DATA_SHARING_PROMISE_ID =
 
 // Disclosure version. Bump when the TERMS text changes (not on unrelated copy
 // edits). Surfaces echo this so a caller/agent can pin which terms they saw.
-export const FREE_TIER_DATA_SHARING_DISCLOSURE_VERSION = '2026-06-25.1' as const
+export const FREE_TIER_DATA_SHARING_DISCLOSURE_VERSION = '2026-06-29.1' as const
 
 // Public, human-readable summary line. Intentionally short and quotable; the
 // full clause list carries the precise terms.
 export const FREE_TIER_DATA_SHARING_SUMMARY: string =
-  'Free API usage is captured by default as redacted, private-by-default traces ' +
-  'that may be used to improve and train OpenAgents models. Pay for privacy ' +
-  '(or use confidential compute) to opt out of capture. Public sharing of a ' +
-  'captured trace is opt-in only.'
+  'Free API usage is designed to be captured by default, when owner-armed, as ' +
+  'redacted, private-by-default traces that may be used to improve and train ' +
+  'OpenAgents models. Pay for privacy (or use confidential compute) to opt out ' +
+  'of capture. Public sharing of a captured trace is opt-in only.'
 
 // The precise, code-accurate terms, one bounded clause each. Public-safe: no
 // secrets, no account material, no prompts.
 export const FREE_TIER_DATA_SHARING_TERMS: ReadonlyArray<string> = [
-  'Free tier: when you use the free Khala API (openagents/khala) without paying for privacy, your request/response traffic is captured by default.',
+  'Free tier: when the deployment owner arms default capture for the free Khala API (openagents/khala), free usage without paid privacy is captured by default; until then, the owner-gated blocker remains explicit.',
   'Redacted: captured traffic is scrubbed for secrets, credentials, wallet/payment material, and personal data before storage, with a public-safety backstop that drops anything residual.',
   'Private by default: an auto-captured trace is stored owner_only — it is not in any public feed and is not reachable by link until you explicitly choose to share it.',
   'May be used to improve/train: captured free-tier data may be used to improve and train the next generation of OpenAgents models.',
@@ -64,6 +64,10 @@ export type FreeTierDataSharingPolicy = Readonly<{
   // Free-tier traffic is captured by default (subject to the deployment's
   // capture flag being armed; the POLICY default is capture-on for free tier).
   capturedByDefault: true
+  // Default capture is still owner-gated until the deployment flag is armed.
+  captureDefaultOwnerGated: true
+  // Public-safe name of the deployment flag that arms default capture.
+  captureDefaultGate: 'KHALA_FREE_TIER_TRACE_CAPTURE_DEFAULT'
   // Captured traffic is redacted before storage.
   redacted: true
   // Default stored visibility of an auto-captured trace.
@@ -76,16 +80,24 @@ export type FreeTierDataSharingPolicy = Readonly<{
   publicSharingOptIn: true
   // Capture grants no payout/settlement (reward marker inert, owner-gated).
   rewardInert: true
+  // Public-safe blocker refs that explain why this disclosure is yellow.
+  blockerRefs: ReadonlyArray<string>
 }>
 
 export const FREE_TIER_DATA_SHARING_POLICY: FreeTierDataSharingPolicy = {
   capturedByDefault: true,
+  captureDefaultOwnerGated: true,
+  captureDefaultGate: 'KHALA_FREE_TIER_TRACE_CAPTURE_DEFAULT',
   redacted: true,
   defaultVisibility: 'owner_only',
   mayTrain: true,
   paidPrivacyOptOut: true,
   publicSharingOptIn: true,
   rewardInert: true,
+  blockerRefs: [
+    'blocker.product_promises.free_tier_capture_default_owner_gated',
+    'blocker.product_promises.disclosure_copy_owner_signoff_pending',
+  ],
 }
 
 // The canonical disclosure object surfaced to humans and agents. Stable shape:

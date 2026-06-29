@@ -1026,9 +1026,9 @@ export const publicProductPromisesDocument = () => {
         audience: ['user', 'agent', 'contributor', 'public'],
         state: 'yellow',
         claim:
-          'Free Khala API usage is captured by default as redacted, private traces that may be used to improve and train models; pay for privacy to opt out; public sharing is opt-in only.',
+          'Free Khala API usage is designed to be captured by default when owner-armed as redacted, private traces that may be used to improve and train models; pay for privacy to opt out; public sharing is opt-in only.',
         safeCopy:
-          'Free tier: when you use the free Khala API without paying for privacy, your traffic is captured by default as a redacted, private-by-default (owner_only) trace and may be used to improve and train OpenAgents models. Pay for privacy, or run confidential compute, to opt out of capture (fail-closed to not-captured). A captured trace is shared publicly only if its owner explicitly opts it into public visibility. Capture grants no payout or settlement — the data-market reward marker is inert and owner-gated. The canonical terms are served at GET /api/public/free-tier-data-sharing and embedded in the POST /api/keys/free mint response.',
+          'Free tier: the free Khala API disclosure describes default capture when the deployment owner arms KHALA_FREE_TIER_TRACE_CAPTURE_DEFAULT; until then, blocker.product_promises.free_tier_capture_default_owner_gated remains explicit. When armed, free usage without paid privacy is captured as a redacted, private-by-default (owner_only) trace and may be used to improve and train OpenAgents models. Pay for privacy, or run confidential compute, to opt out of capture (fail-closed to not-captured). A captured trace is shared publicly only if its owner explicitly opts it into public visibility. Capture grants no payout or settlement — the data-market reward marker is inert and owner-gated. The canonical terms are served at GET /api/public/free-tier-data-sharing and embedded in the POST /api/keys/free mint response.',
         unsafeCopy:
           'Do not claim free traffic is never captured, do not claim captured traces are public by default, do not claim paid-privacy callers are captured, and do not claim capture earns the user a payout, reward, or settlement.',
         evidenceRefs: [

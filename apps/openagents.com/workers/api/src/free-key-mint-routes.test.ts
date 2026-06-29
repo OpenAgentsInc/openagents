@@ -155,7 +155,11 @@ describe('POST /api/keys/free (issue #6228)', () => {
       dataSharing: {
         promiseId: string
         terms: ReadonlyArray<string>
-        policy: { capturedByDefault: boolean; paidPrivacyOptOut: boolean }
+        policy: {
+          capturedByDefault: boolean
+          captureDefaultOwnerGated: boolean
+          paidPrivacyOptOut: boolean
+        }
       }
     }
     expect(body.tier).toBe('free')
@@ -169,6 +173,7 @@ describe('POST /api/keys/free (issue #6228)', () => {
     )
     expect(body.dataSharing.terms.length).toBeGreaterThan(0)
     expect(body.dataSharing.policy.capturedByDefault).toBe(true)
+    expect(body.dataSharing.policy.captureDefaultOwnerGated).toBe(true)
     expect(body.dataSharing.policy.paidPrivacyOptOut).toBe(true)
     // The minted account is now marked free-tier in D1.
     const row = await db

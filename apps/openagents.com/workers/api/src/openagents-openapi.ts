@@ -4153,7 +4153,7 @@ const requestSchemas = (): JsonSchema => ({
     additionalProperties: false,
     required: ['tier', 'model', 'credential', 'quota', 'usage', 'dataSharing'],
     description:
-      'Khala FREE API mode mint result. The raw bearer token is returned ONCE here and is not redisplayed. No wallet, payment, or owner-private material is included. The dataSharing field carries the honest free-tier data-sharing terms (#6296): free usage is captured by default as redacted, private traces that may improve/train models; pay for privacy to opt out; public sharing is opt-in only.',
+      'Khala FREE API mode mint result. The raw bearer token is returned ONCE here and is not redisplayed. No wallet, payment, or owner-private material is included. The dataSharing field carries the honest free-tier data-sharing terms (#6296): free usage is designed to be captured by default when owner-armed as redacted, private traces that may improve/train models; pay for privacy to opt out; public sharing is opt-in only.',
     properties: {
       tier: { type: 'string', enum: ['free'] },
       model: { type: 'string', enum: ['openagents/khala'] },
@@ -5606,7 +5606,7 @@ const paths = (): JsonSchema => ({
       operationId: 'getFreeTierDataSharingDisclosure',
       summary: 'Read free-API data-sharing terms',
       description:
-        'Returns the canonical, code-accurate data-sharing terms for the free Khala API so agents and users can discover them over the API surface, not only in human UI. The honest terms: free API usage is captured by default as REDACTED, PRIVATE (owner_only) traces that may be used to improve and train OpenAgents models; paying for privacy (or running confidential compute) opts you OUT of capture (fail-closed to not-captured); public sharing of a captured trace is owner opt-in only; and being captured grants NO payout or settlement (the data-market reward marker is inert and owner-gated). The same disclosure object is embedded in the POST /api/keys/free mint response. Read-only, no auth, no secrets.',
+        'Returns the canonical, code-accurate data-sharing terms for the free Khala API so agents and users can discover them over the API surface, not only in human UI. The honest terms: free API usage is designed to be captured by default when owner-armed as REDACTED, PRIVATE (owner_only) traces that may be used to improve and train OpenAgents models; until then the owner-gated blocker remains explicit; paying for privacy (or running confidential compute) opts you OUT of capture (fail-closed to not-captured); public sharing of a captured trace is owner opt-in only; and being captured grants NO payout or settlement (the data-market reward marker is inert and owner-gated). The same disclosure object is embedded in the POST /api/keys/free mint response. Read-only, no auth, no secrets.',
       tags: ['Public Proof', 'Agents'],
       security: publicRead,
       responses: {

@@ -69,12 +69,13 @@ your key. Streaming via `"stream": true` (SSE). Over the free quota → `402`; a
 or wait for the UTC reset. Full quickstart (curl + Python + JS, limits, errors):
 `docs/faq/khala-inference-quickstart.md`.
 
-**Free-tier data sharing (read this).** When you use the free Khala API without
-paying for privacy, your traffic is **captured by default** as a **redacted,
-private-by-default (`owner_only`)** trace and **may be used to improve and train**
-OpenAgents models. **Pay for privacy** (or run confidential compute) to opt out of
-capture entirely. A captured trace is shared **publicly only if its owner opts it
-in**. Capture grants **no payout or settlement** (the data-market reward marker is
+**Free-tier data sharing (read this).** The free Khala API is designed to be
+**captured by default when owner-armed**; until then, the owner-gated blocker
+remains explicit. Captured traffic is a **redacted, private-by-default
+(`owner_only`)** trace and **may be used to improve and train** OpenAgents
+models. **Pay for privacy** (or run confidential compute) to opt out of capture
+entirely. A captured trace is shared **publicly only if its owner opts it in**.
+Capture grants **no payout or settlement** (the data-market reward marker is
 inert and owner-gated). The full canonical terms are agent-readable at
 `GET https://openagents.com/api/public/free-tier-data-sharing` (also embedded in
 the `POST /api/keys/free` mint response as `dataSharing`), and tracked as the

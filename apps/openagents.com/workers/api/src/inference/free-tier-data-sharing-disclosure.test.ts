@@ -17,12 +17,18 @@ describe('free-tier data-sharing disclosure (#6296)', () => {
     // The bounded policy facts mirror the runtime capture seams.
     expect(disclosure.policy).toEqual({
       capturedByDefault: true,
+      captureDefaultOwnerGated: true,
+      captureDefaultGate: 'KHALA_FREE_TIER_TRACE_CAPTURE_DEFAULT',
       redacted: true,
       defaultVisibility: 'owner_only',
       mayTrain: true,
       paidPrivacyOptOut: true,
       publicSharingOptIn: true,
       rewardInert: true,
+      blockerRefs: [
+        'blocker.product_promises.free_tier_capture_default_owner_gated',
+        'blocker.product_promises.disclosure_copy_owner_signoff_pending',
+      ],
     })
     expect(disclosure.reportPath).toContain('forum/f/product-promises')
   })
@@ -33,6 +39,7 @@ describe('free-tier data-sharing disclosure (#6296)', () => {
       .toLowerCase()
     // captured by default, redacted, private
     expect(text).toContain('captured by default')
+    expect(text).toContain('owner-gated blocker')
     expect(text).toContain('redacted')
     expect(text).toContain('owner_only')
     // may improve/train
