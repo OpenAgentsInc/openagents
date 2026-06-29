@@ -162,6 +162,7 @@ type TrainingDeviceCapabilityJson = Readonly<{
     earningEstimate: Readonly<{ basisLabel: string }> | null
     verified: boolean
   }>
+  ownerAcceptedProductionThermalReceiptRefs: ReadonlyArray<string>
   schemaVersion: string
   sameClassReplicationBlockerRefs: ReadonlyArray<string>
   sameClassReplicationSignals: ReadonlyArray<Readonly<{ state: string }>>
@@ -539,6 +540,7 @@ describe('training run window routes', () => {
           verified: true,
         },
       ],
+      ownerAcceptedProductionThermalReceiptRefs: [],
       schemaVersion: 'openagents.training.device_capability_dashboard.v1',
       sameClassReplicationBlockerRefs: [
         'blocker.cs336_a2.requires_cross_machine_same_class_replication',
@@ -2172,6 +2174,7 @@ describe('training run window routes', () => {
           verified: true,
         },
       ],
+      ownerAcceptedProductionThermalReceiptRefs: [],
       schemaVersion: 'openagents.training.device_capability_dataset.v1',
       sameClassReplicationBlockerRefs: [
         'blocker.cs336_a2.requires_cross_machine_same_class_replication',
@@ -2207,6 +2210,7 @@ describe('training run window routes', () => {
           verified: true,
         },
       ],
+      ownerAcceptedProductionThermalReceiptRefs: [],
       sameClassReplicationBlockerRefs: [
         'blocker.cs336_a2.requires_cross_machine_same_class_replication',
       ],
@@ -2240,6 +2244,9 @@ describe('training run window routes', () => {
       min: 0.7,
       p50: 0.74,
       p90: 0.78,
+      ownerAcceptedProductionReceiptRefs: [
+        'receipt.cs336_a2.thermal.owner_accepted.production.route.1',
+      ],
       receiptRefs: ['receipt.cs336_a2.thermal.verified_row.1'],
       sameClassReplicationScope: 'cross_machine_same_class',
       sampleCount: 3,
@@ -2284,6 +2291,10 @@ describe('training run window routes', () => {
     expect(admittedBody.dataset.thermalThrottleReceiptRefs).toEqual([
       'receipt.cs336_a2.thermal.verified_row.1',
     ])
+    expect(
+      admittedBody.dataset.ownerAcceptedProductionThermalReceiptRefs,
+    ).toEqual(['receipt.cs336_a2.thermal.owner_accepted.production.route.1'])
+    expect(admittedBody.dataset.thermalThrottleBlockerRefs).toEqual([])
 
     const dashboard = await runRoute(
       routes.routeTrainingRunWindowRequest(
@@ -2302,6 +2313,10 @@ describe('training run window routes', () => {
     expect(dashboardBody.thermalThrottleReceiptRefs).toEqual([
       'receipt.cs336_a2.thermal.verified_row.1',
     ])
+    expect(dashboardBody.ownerAcceptedProductionThermalReceiptRefs).toEqual([
+      'receipt.cs336_a2.thermal.owner_accepted.production.route.1',
+    ])
+    expect(dashboardBody.thermalThrottleBlockerRefs).toEqual([])
   })
 
   it('plans, activates, seals, reconciles, reads, and claims training windows', async () => {

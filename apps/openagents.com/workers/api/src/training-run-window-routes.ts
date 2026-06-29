@@ -50,6 +50,7 @@ import {
   admitCs336A2DeviceBenchmarkEvidence,
   buildDeviceCapabilitySameClassReplicationSignals,
   buildDeviceCapabilityThermalThrottleSignals,
+  ownerAcceptedProductionThermalReceiptRefs,
   publicDeviceCapabilityProjection,
   sameClassReplicationBlockerRefs,
   sameClassReplicationStatus,
@@ -1824,6 +1825,10 @@ const routeA2DeviceCapabilities = <Bindings extends TrainingRunWindowRouteEnv>(
       observedDeviceClassCount,
       observedMeasurementCount: classDistributions.length,
       observedSettledDeviceClassCount,
+      ownerAcceptedProductionThermalReceiptRefs:
+        ownerAcceptedProductionThermalReceiptRefs(
+          dashboardThermalThrottleSignals,
+        ),
       projections,
       schemaVersion: 'openagents.training.device_capability_dashboard.v1',
       sameClassReplicationBlockerRefs:
