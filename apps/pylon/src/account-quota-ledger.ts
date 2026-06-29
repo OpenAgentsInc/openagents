@@ -157,7 +157,7 @@ export async function loadQuotaRecord(
 
 export async function loadManualQuotaResetRecord(
   summary: QuotaSummary,
-  input: { accountRefHash: string; provider: string },
+  input: { accountRefHash: string; provider: string; defaultManualResetsRemaining?: number | null },
 ): Promise<ManualQuotaResetRecord> {
   try {
     const raw = await readFile(manualResetRecordPath(summary, input.accountRefHash), "utf8")
@@ -167,10 +167,14 @@ export async function loadManualQuotaResetRecord(
     // Missing or malformed local manual-reset state starts from the default allowance.
   }
   const now = new Date(0).toISOString()
+  const defaultRemaining =
+    input.defaultManualResetsRemaining === undefined || input.defaultManualResetsRemaining === null
+      ? DEFAULT_MANUAL_QUOTA_RESETS
+      : nonNegativeInteger(input.defaultManualResetsRemaining) ?? DEFAULT_MANUAL_QUOTA_RESETS
   return {
     accountRefHash: input.accountRefHash,
     provider: publicProviderRef(input.provider),
-    manualResetsRemaining: DEFAULT_MANUAL_QUOTA_RESETS,
+    manualResetsRemaining: defaultRemaining,
     updatedAt: now,
     resetEvents: [],
   }
@@ -178,7 +182,7 @@ export async function loadManualQuotaResetRecord(
 
 export async function consumeManualQuotaReset(
   summary: QuotaSummary,
-  input: { accountRefHash: string; provider: string; now?: Date },
+  input: { accountRefHash: string; provider: string; defaultManualResetsRemaining?: number | null; now?: Date },
 ): Promise<ManualQuotaResetRecord> {
   const existing = await loadManualQuotaResetRecord(summary, input)
   if (existing.manualResetsRemaining <= 0) {

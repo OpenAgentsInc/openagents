@@ -4,7 +4,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 
 import { hashPylonAccountRef } from "../src/account-registry"
-import { recordQuotaBlock } from "../src/account-quota-ledger"
+import { consumeManualQuotaReset, recordQuotaBlock } from "../src/account-quota-ledger"
 import { collectPylonOperatorAccountStatus } from "../src/account-status"
 import { recordPylonAccountUsageObservation } from "../src/account-usage"
 import { createBootstrapSummary, parseBootstrapArgs } from "../src/bootstrap"
@@ -190,6 +190,57 @@ describe("pylon operator account status", () => {
 
       expect(projection.accounts[0]?.hourlyUsage).toBe(110)
       expect(projection.accounts[0]?.weeklyUsage).toBe(null)
+      assertPublicProjectionSafe(projection)
+    })
+  })
+
+  test("reports consumed manual resets from the quota ledger", async () => {
+    await withHome(async (home) => {
+      const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), { PYLON_HOME: home })
+      const codexHome = join(home, "codex-a")
+      await mkdir(codexHome, { recursive: true })
+      await writeFile(
+        summary.paths.config,
+        `${JSON.stringify(
+          {
+            dev: {
+              accounts: [
+                {
+                  ref: "codex-a",
+                  provider: "codex",
+                  home: codexHome,
+                  manualResetsRemaining: 2,
+                },
+              ],
+            },
+          },
+          null,
+          2,
+        )}\n`,
+      )
+
+      const accountRefHash = hashPylonAccountRef("codex", "codex-a")
+      await recordQuotaBlock(summary, {
+        accountRefHash,
+        provider: "codex",
+        retryAtIso: "2026-06-28T02:00:00.000Z",
+        sourceDigestRef: "digest.pylon.account_quota.test",
+        manualResetsRemaining: 2,
+        now: new Date("2026-06-28T01:00:00.000Z"),
+      })
+      await consumeManualQuotaReset(summary, {
+        accountRefHash,
+        provider: "codex",
+        defaultManualResetsRemaining: 2,
+        now: new Date("2026-06-28T01:10:00.000Z"),
+      })
+
+      const projection = await collectPylonOperatorAccountStatus(summary, {
+        now: new Date("2026-06-28T01:15:00.000Z"),
+      })
+
+      expect(projection.accounts[0]?.manualResetsRemaining).toBe(1)
+      expect(projection.accounts[0]?.isRateLimited).toBe(false)
       assertPublicProjectionSafe(projection)
     })
   })
