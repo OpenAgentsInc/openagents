@@ -33,6 +33,9 @@
 : "${SUP_STATE_DIR:=$HOME/.codex-supervisor}"
 # Strict timeout (s) for every external `gh` CLI call (issue #6646 wedge fix).
 : "${SUP_GH_TIMEOUT_SECS:=15}"
+: "${SUP_NON_DISPATCH_ISSUES:=6376 6637 6654 6707 6708 6709}"
+: "${SUP_NON_DISPATCH_LABELS:=epic standing-task}"
+: "${SUP_NON_DISPATCH_TITLE_RE:=^(EPIC:|task\\(ops\\):)}"
 
 # Portable file mtime (BSD/macOS `stat -f`, GNU/Linux `stat -c`).
 sup_file_mtime() {
@@ -164,6 +167,48 @@ issue_is_open() {
   esac
 }
 
+# issue_has_non_dispatch_metadata <issue>
+#   rc 0 when issue metadata identifies an epic / standing task that the coding
+#   supervisor must never claim for one-shot dispatch. Fails open when metadata
+#   cannot be read so transient GitHub errors do not stall ordinary work.
+issue_has_non_dispatch_metadata() {
+  local issue="$1"
+  [ -n "$issue" ] || return 1
+
+  local configured
+  for configured in $SUP_NON_DISPATCH_ISSUES; do
+    [ "$configured" = "$issue" ] && return 0
+  done
+
+  command -v "$SUP_GH_BIN" >/dev/null 2>&1 || return 1
+
+  local json verdict
+  json=$(sup_run_timeout "$SUP_GH_TIMEOUT_SECS" "$SUP_GH_BIN" issue view "$issue" --repo "$SUP_REPO" \
+    --json title,labels 2>/dev/null) || return 1
+  [ -n "$json" ] || return 1
+
+  verdict=$(printf '%s' "$json" | \
+    SUP_NON_DISPATCH_LABELS="$SUP_NON_DISPATCH_LABELS" \
+    SUP_NON_DISPATCH_TITLE_RE="$SUP_NON_DISPATCH_TITLE_RE" \
+    python3 -c "import json, os, re, sys
+try:
+    row=json.load(sys.stdin)
+except Exception:
+    sys.exit(1)
+title=row.get('title') or ''
+title_re=os.environ.get('SUP_NON_DISPATCH_TITLE_RE') or ''
+if title_re and re.search(title_re, title, re.I):
+    print('skip'); sys.exit(0)
+skip_labels={s.lower() for s in (os.environ.get('SUP_NON_DISPATCH_LABELS') or '').split() if s}
+labels=row.get('labels') or []
+for label in labels:
+    name=(label.get('name') if isinstance(label, dict) else str(label)).lower()
+    if name in skip_labels:
+        print('skip'); sys.exit(0)
+print('dispatch')" 2>/dev/null) || return 1
+  [ "$verdict" = "skip" ]
+}
+
 # sup_open_issue_numbers
 #   Prints the repo's currently-OPEN issue numbers (one per line) with a short
 #   TTL cache, so the supervisor can dynamically refetch the open-issue set each
@@ -225,6 +270,10 @@ pick_unlocked_issue() {
   for (( k=0; k<n; k++ )); do
     i=$(( (start + k) % n ))
     issue="${arr[$i]}"
+    # Epics and standing ops tasks are not one-shot coding dispatch work.
+    if issue_has_non_dispatch_metadata "$issue"; then
+      continue
+    fi
     # Skip issues that were closed/merged during the run (stale-snapshot redo).
     if ! issue_is_open "$issue"; then
       continue
@@ -280,6 +329,19 @@ sup_claims_dir() {
   printf '%s' "$d"
 }
 
+sup_claim_owner_pid() {
+  local claim="$1"
+  [ -n "$claim" ] || return 1
+  [ -f "$claim/meta" ] || return 1
+  awk '{print $1}' "$claim/meta" 2>/dev/null
+}
+
+sup_pid_is_alive() {
+  local pid="$1"
+  [ "$pid" -ge 1 ] 2>/dev/null || return 1
+  kill -0 "$pid" 2>/dev/null
+}
+
 # sup_gc_stale_claims
 #   Remove claim entries whose age has reached SUP_CLAIM_TTL_SECS. A claim that
 #   old means its dispatch (bounded by SUP_DISPATCH_TIMEOUT_SECS <= TTL) has
@@ -287,15 +349,28 @@ sup_claims_dir() {
 #   concurrently from every slot (rm is a no-op on an already-removed entry).
 sup_gc_stale_claims() {
   local dir; dir="$(sup_claims_dir)"
-  local now claim age
+  local now claim age owner_pid
   now=$(date +%s)
   for claim in "$dir"/claim.*; do
     [ -e "$claim" ] || continue
+    owner_pid="$(sup_claim_owner_pid "$claim" 2>/dev/null || true)"
+    if [ -z "$owner_pid" ] || ! sup_pid_is_alive "$owner_pid"; then
+      rm -rf "$claim" 2>/dev/null || true
+      continue
+    fi
     age=$(( now - $(sup_file_mtime "$claim") ))
     if [ "$age" -lt 0 ] || [ "$age" -ge "$SUP_CLAIM_TTL_SECS" ]; then
       rm -rf "$claim" 2>/dev/null || true
     fi
   done
+}
+
+sup_gc_orphan_claims() {
+  sup_gc_stale_claims
+}
+
+sup_gc_orphaned_claims() {
+  sup_gc_orphan_claims
 }
 
 # sup_claim_is_active <issue>
@@ -305,6 +380,9 @@ sup_claim_is_active() {
   local issue="$1"; [ -n "$issue" ] || return 1
   local f; f="$(sup_claims_dir)/claim.$issue"
   [ -e "$f" ] || return 1
+  local owner_pid
+  owner_pid="$(sup_claim_owner_pid "$f" 2>/dev/null || true)"
+  [ -n "$owner_pid" ] && sup_pid_is_alive "$owner_pid" || return 1
   local now age
   now=$(date +%s)
   age=$(( now - $(sup_file_mtime "$f") ))
@@ -319,6 +397,9 @@ sup_claim_is_active() {
 sup_try_claim_issue() {
   local issue="$1"; local owner="${2:-$$}"
   [ -n "$issue" ] || return 1
+  if issue_has_non_dispatch_metadata "$issue"; then
+    return 1
+  fi
   local dir; dir="$(sup_claims_dir)"
   local claim="$dir/claim.$issue"
   if mkdir "$claim" 2>/dev/null; then
@@ -370,6 +451,10 @@ pick_and_claim_unlocked_issue() {
   for (( k=0; k<n; k++ )); do
     i=$(( (start + k) % n ))
     issue="${arr[$i]}"
+    # Epics and standing ops tasks are not one-shot coding dispatch work.
+    if issue_has_non_dispatch_metadata "$issue"; then
+      continue
+    fi
     # Already reserved by another slot this window -> spread to a distinct issue.
     if sup_claim_is_active "$issue"; then
       continue

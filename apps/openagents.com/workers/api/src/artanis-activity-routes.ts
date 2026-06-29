@@ -587,7 +587,7 @@ export const handlePublicArtanisActivityApi = (
 
   const nowIso = input.nowIso ?? currentIsoTimestamp
 
-  return Effect.promise(() =>
+  return Effect.tryPromise(() =>
     buildPublicArtanisActivity(store, { limit, nowIso: nowIso() }),
   ).pipe(
     Effect.map(payload => noStoreJsonResponse(payload)),

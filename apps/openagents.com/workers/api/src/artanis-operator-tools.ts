@@ -513,6 +513,15 @@ const readGrepPatternArg = (args: unknown): string | undefined => {
   return typeof value === 'string' && value !== '' ? value : undefined
 }
 
+const makeRepoGrepMatcher = (pattern: string): ((line: string) => boolean) => {
+  try {
+    const regex = new RegExp(pattern)
+    return line => regex.test(line)
+  } catch {
+    return line => line.includes(pattern)
+  }
+}
+
 // repo_grep(pattern, path) — grep a single repo file for a pattern and return
 // the matching lines. Lets Artanis confirm a script/command is real AND carries
 // the symbol/flag he is about to recommend (vs. a stub). Boundary: ONE named
@@ -563,15 +572,7 @@ export const makeArtanisRepoGrepTool = (
           return `(blocked: "${path}" is not an allowed public-repo path)`
         }
 
-        // Compile the pattern as a regex; fall back to a literal-substring
-        // matcher if it is not a valid regex, so a model typo never throws.
-        let matcher: (line: string) => boolean
-        try {
-          const regex = new RegExp(pattern)
-          matcher = line => regex.test(line)
-        } catch {
-          matcher = line => line.includes(pattern)
-        }
+        const matcher = makeRepoGrepMatcher(pattern)
 
         const fetched = yield* fetchArtanisRepoFileText(resolved, path)
         if (!fetched.ok) {

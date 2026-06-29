@@ -16,6 +16,7 @@
 : "${SUP_CODEX_REFUSAL_TUNE_THRESHOLD:=3}"
 : "${SUP_CLAIMED_DEEP_BACKLOG_SLEEP_SECS:=1}"
 : "${SUP_FAILURE_BACKOFF_ESCALATE_THRESHOLD:=2}"
+: "${SUP_GATE_CONTENTION_RETRY_SECS:=1}"
 
 sup_backoff_policy_dir() {
   local d="${SUP_BACKOFF_POLICY_DIR:-$SUP_STATE_DIR/backoff-policy}"
@@ -117,11 +118,23 @@ sup_dispatch_failure_signature() {
     printf 'codex_agent_execution_refused'
     return 0
   fi
+  if grep -qiE 'duplicate_active_assignment|pylon_api_conflict|dispatch[_ -]?gate[_ -]?(blocked|contention|conflict)|target_pylon_ref\.dispatch_gate_blocked' "$out" 2>/dev/null; then
+    printf 'gate_contention'
+    return 0
+  fi
+  if grep -qiE 'HTTP[^0-9]*(409|500|503)|status[^0-9]*(409|500|503)|"status"[[:space:]]*:[[:space:]]*(409|500|503)|"statusCode"[[:space:]]*:[[:space:]]*(409|500|503)' "$out" 2>/dev/null; then
+    printf 'gate_contention'
+    return 0
+  fi
+  if grep -qiE 'could not read linked owner registration|linked pylon capacity|d1|database unavailable|database is locked|internal_server_error|store[_ -]?unavailable|temporar(il)?y unavailable|service unavailable' "$out" 2>/dev/null; then
+    printf 'gate_contention'
+    return 0
+  fi
   if grep -qiE '429|rate.?limit|too many requests|quota|lockout' "$out" 2>/dev/null; then
     printf 'rate_limited'
     return 0
   fi
-  if grep -qiE '409|dispatch gate refused|target_pylon_unavailable|duplicate_active_assignment' "$out" 2>/dev/null; then
+  if grep -qiE 'dispatch gate refused|target_pylon_unavailable' "$out" 2>/dev/null; then
     printf 'refused'
     return 0
   fi
@@ -143,6 +156,9 @@ sup_should_escalate_failure_backoff() {
   local sig="$1"
   local repeated="$2"
   if [ "$sig" = "codex_agent_execution_refused" ]; then
+    return 1
+  fi
+  if [ "$sig" = "gate_contention" ]; then
     return 1
   fi
   [ "$repeated" -ge "$SUP_FAILURE_BACKOFF_ESCALATE_THRESHOLD" ] 2>/dev/null

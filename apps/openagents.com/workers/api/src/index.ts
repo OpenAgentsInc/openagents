@@ -10387,9 +10387,10 @@ const glmOwnCapacityFailover = makeGlmOwnCapacityFailover({
     latestHydraliskGlm52RouteAdmission?.reservedExternalHeadroomAvailable ===
     true,
   onAlert: event => {
-    console.warn(event.message, {
+    logWorkerRouteWarning('glm_own_capacity_failover_alert', {
       adapterId: event.adapterId,
       consecutiveFailures: event.consecutiveFailures,
+      message: event.message,
       reason: event.reason,
       threshold: event.threshold,
       type: event.type,
