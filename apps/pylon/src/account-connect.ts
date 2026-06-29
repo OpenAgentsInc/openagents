@@ -12,6 +12,7 @@ import { recordAccountLinkInPresence } from "./presence.js"
 import { assertPublicProjectionSafe } from "./state.js"
 import {
   classifyCodexAccountFailure,
+  type PylonCodexAccountFailure,
   type PylonCodexAccountHealthReason,
 } from "./codex-account-health.js"
 import { clearCodexAccountHealthFailure } from "./codex-account-health-ledger.js"
@@ -51,7 +52,7 @@ export type PylonCodexAuthInvalidReason = Exclude<PylonCodexAccountHealthReason,
  */
 export type PylonCodexAuthValidity =
   | { valid: true; reason?: string }
-  | { valid: false; reason: PylonCodexAuthInvalidReason }
+  | { valid: false; reason: PylonCodexAuthInvalidReason; failure?: PylonCodexAccountFailure }
 
 /**
  * Injectable probe that classifies a stored Codex credential as valid or
@@ -323,14 +324,14 @@ export function classifyCodexAuthProbeOutput(input: {
 }): PylonCodexAuthValidity {
   const text = `${input.stdout}\n${input.stderr}`
   const failure = classifyCodexAccountFailure(text)
-  if (failure.reason === "credentials_revoked") return { valid: false, reason: "credentials_revoked" }
-  if (failure.reason === "usage_limited" || failure.reason === "rate_limited") return { valid: false, reason: failure.reason }
+  if (failure.reason === "credentials_revoked") return { valid: false, reason: "credentials_revoked", failure }
+  if (failure.reason === "usage_limited" || failure.reason === "rate_limited") return { valid: false, reason: failure.reason, failure }
   if (
     /could not be refreshed|refresh token|token (?:has )?expired|expired token|unauthorized|\b401\b|not logged in|please (?:sign in|log ?in)|sign in again|authentication (?:failed|error)|invalid (?:token|credential)/.test(
       text.toLowerCase(),
     )
   ) {
-    return { valid: false, reason: "auth_error" }
+    return { valid: false, reason: "auth_error", failure }
   }
   if (input.exitCode === 0) {
     return { valid: true }
