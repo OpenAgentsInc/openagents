@@ -11,7 +11,7 @@ private let maxRequestBytes = 1_048_576
 @main
 enum FoundationBridge {
     static func main() async throws {
-        let port = parsePort(CommandLine.arguments.dropFirst().first)
+        let port = parsePort(CommandLine.arguments.dropFirst())
         let handler = AppleFmHandler()
         let server = try HttpServer(port: port, handler: handler)
         server.start()
@@ -19,11 +19,19 @@ enum FoundationBridge {
         dispatchMain()
     }
 
-    private static func parsePort(_ value: String?) -> UInt16 {
-        guard let value, let port = UInt16(value) else {
-            return defaultPort
+    private static func parsePort(_ arguments: ArraySlice<String>) -> UInt16 {
+        if let portFlagIndex = arguments.firstIndex(of: "--port") {
+            let nextIndex = arguments.index(after: portFlagIndex)
+            if nextIndex < arguments.endIndex, let port = UInt16(arguments[nextIndex]) {
+                return port
+            }
         }
-        return port
+
+        if let first = arguments.first, let port = UInt16(first) {
+            return port
+        }
+
+        return defaultPort
     }
 }
 
