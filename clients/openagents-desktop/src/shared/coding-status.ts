@@ -55,8 +55,22 @@ export type CodingTranscriptMessage = {
 export type CodingCodexSession = {
   readonly accountRef: string | null
   readonly active: boolean
+  readonly assignmentRef: string | null
+  readonly closeout: {
+    readonly blockerRefs: readonly string[]
+    readonly closeoutRef: string | null
+    readonly status: string | null
+  }
   readonly cwd: string | null
+  readonly elapsed: string | null
   readonly issueRef: string | null
+  readonly lastEvent: {
+    readonly ageSeconds: number | null
+    readonly name: string | null
+    readonly timestamp: string | null
+  }
+  readonly leaseRef: string | null
+  readonly pullRequestRef: string | null
   readonly messageCount: number
   readonly messages: readonly CodingTranscriptMessage[]
   readonly modifiedAt: string
@@ -66,6 +80,20 @@ export type CodingCodexSession = {
   readonly source: string | null
   readonly status: "active" | "idle" | "recent"
   readonly title: string
+}
+
+export type CodingAssignmentDetail = {
+  readonly assignmentRef: string
+  readonly blockerRefs: readonly string[]
+  readonly closeoutRef: string | null
+  readonly closeoutStatus: string | null
+  readonly elapsedMs: number | null
+  readonly issueRef: string | null
+  readonly lastEvent: string | null
+  readonly lastEventAt: string | null
+  readonly leaseRef: string | null
+  readonly pullRequestRef: string | null
+  readonly workspacePath: string | null
 }
 
 export type ParsedCodexSessionRollout = {
@@ -365,7 +393,7 @@ const stringValueFromUnknown = (value: unknown): string | null =>
 
 const truncateTranscriptText = (value: string): string => {
   const trimmed = value.replace(/\s+$/g, "")
-  return trimmed.length > 2_400 ? `${trimmed.slice(0, 2_397)}...` : trimmed
+  return trimmed.length > 1_200 ? `${trimmed.slice(0, 1_197)}...` : trimmed
 }
 
 const transcriptMessage = (
@@ -669,4 +697,120 @@ export const parseCodexSessionRollout = (
     source,
     title,
   }
+}
+
+const numberValueFromUnknown = (value: unknown): number | null =>
+  typeof value === "number" && Number.isFinite(value) ? value : null
+
+const stringArrayFromUnknown = (value: unknown): readonly string[] =>
+  Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string")
+    : []
+
+const valueMentionsAssignment = (value: unknown, assignmentRef: string): boolean => {
+  if (typeof value === "string") return value === assignmentRef
+  if (Array.isArray(value)) return value.some(item => valueMentionsAssignment(item, assignmentRef))
+  if (!isJsonObject(value)) return false
+  return Object.values(value).some(item => valueMentionsAssignment(item, assignmentRef))
+}
+
+const assignmentRefFromRecord = (record: JsonObject): string | null =>
+  stringValueFromUnknown(record.assignmentRef) ??
+  (isJsonObject(record.assignmentRun)
+    ? assignmentRefFromRecord(record.assignmentRun)
+    : null) ??
+  (isJsonObject(record.closeout)
+    ? stringValueFromUnknown(record.closeout.assignmentRef)
+    : null)
+
+export const parseCodingAssignmentDetails = (
+  logText: string,
+): readonly CodingAssignmentDetail[] => {
+  const byAssignment = new Map<string, CodingAssignmentDetail>()
+  const ensure = (assignmentRef: string): CodingAssignmentDetail => {
+    const current = byAssignment.get(assignmentRef)
+    if (current !== undefined) return current
+    const next: CodingAssignmentDetail = {
+      assignmentRef,
+      blockerRefs: [],
+      closeoutRef: null,
+      closeoutStatus: null,
+      elapsedMs: null,
+      issueRef: null,
+      lastEvent: null,
+      lastEventAt: null,
+      leaseRef: null,
+      pullRequestRef: null,
+      workspacePath: null,
+    }
+    byAssignment.set(assignmentRef, next)
+    return next
+  }
+  const merge = (assignmentRef: string, patch: Partial<CodingAssignmentDetail>) => {
+    const current = ensure(assignmentRef)
+    byAssignment.set(assignmentRef, {
+      ...current,
+      ...Object.fromEntries(
+        Object.entries(patch).filter(([, value]) =>
+          Array.isArray(value) ? value.length > 0 : value !== null && value !== undefined,
+        ),
+      ),
+    })
+  }
+
+  for (const line of logText.split("\n")) {
+    const trimmed = line.trim()
+    if (!trimmed.startsWith("{")) continue
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(trimmed)
+    } catch {
+      continue
+    }
+    if (!isJsonObject(parsed)) continue
+    const assignmentRef = assignmentRefFromRecord(parsed)
+    if (assignmentRef === null || !valueMentionsAssignment(parsed, assignmentRef)) continue
+
+    const nestedRun = isJsonObject(parsed.assignmentRun) ? parsed.assignmentRun : null
+    const nestedCloseout = nestedRun !== null && isJsonObject(nestedRun.closeout)
+      ? nestedRun.closeout
+      : isJsonObject(parsed.closeout)
+        ? parsed.closeout
+        : null
+    const closeoutReceipt =
+      nestedRun !== null && isJsonObject(nestedRun.closeoutReceipt)
+        ? nestedRun.closeoutReceipt
+        : null
+    const issueNumber = numberValueFromUnknown(parsed.issueNumber)
+    const pullRequestNumber = numberValueFromUnknown(parsed.pullRequestNumber)
+    merge(assignmentRef, {
+      blockerRefs:
+        stringArrayFromUnknown(parsed.blockerRefs).length > 0
+          ? stringArrayFromUnknown(parsed.blockerRefs)
+          : nestedCloseout === null
+            ? []
+            : stringArrayFromUnknown(nestedCloseout.blockerRefs),
+      closeoutRef:
+        stringValueFromUnknown(parsed.closeoutRef) ??
+        stringValueFromUnknown(closeoutReceipt?.closeoutRef),
+      closeoutStatus:
+        stringValueFromUnknown(parsed.status) ??
+        (nestedCloseout === null ? null : stringValueFromUnknown(nestedCloseout.status)),
+      elapsedMs: numberValueFromUnknown(parsed.elapsedMs),
+      issueRef:
+        stringValueFromUnknown(parsed.issueRef) ??
+        (issueNumber === null ? null : String(issueNumber)),
+      lastEvent: stringValueFromUnknown(parsed.event),
+      lastEventAt: stringValueFromUnknown(parsed.observedAt),
+      leaseRef: stringValueFromUnknown(parsed.leaseRef),
+      pullRequestRef:
+        stringValueFromUnknown(parsed.pullRequestRef) ??
+        (pullRequestNumber === null ? null : String(pullRequestNumber)),
+      workspacePath:
+        stringValueFromUnknown(parsed.workspacePath) ??
+        stringValueFromUnknown(parsed.localWorkspacePath),
+    })
+  }
+
+  return [...byAssignment.values()]
 }

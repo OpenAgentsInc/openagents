@@ -5,9 +5,11 @@ import { homedir } from "node:os"
 import { dirname, join, resolve } from "node:path"
 
 import {
+  type CodingAssignmentDetail,
   type CodingCodexSession,
   emptyCodingStatusSummary,
   parseCodexSessionRollout,
+  parseCodingAssignmentDetails,
   parseCodingProcesses,
   parseSupervisorLog,
   type CodingProcess,
@@ -414,11 +416,62 @@ const matchingCodexProcess = (
     )
   }) ?? null
 
+const recentAssignmentLogs = async (): Promise<readonly string[]> => {
+  const dirs = [
+    resolve(resolvePylonHome(), "pr-resolver-logs"),
+    join(homedir(), ".pylon-fable", "pr-resolver-logs"),
+  ]
+  const entries: Array<{ modifiedAtMs: number; path: string }> = []
+  for (const dir of [...new Set(dirs)]) {
+    let files
+    try {
+      files = await readdir(dir, { withFileTypes: true })
+    } catch {
+      continue
+    }
+    await Promise.all(
+      files.map(async file => {
+        if (!file.isFile() || !file.name.endsWith(".log")) return
+        const path = resolve(dir, file.name)
+        try {
+          const fileStat = await stat(path)
+          entries.push({ modifiedAtMs: fileStat.mtimeMs, path })
+        } catch {
+          // Logs can rotate while the desktop poll is running.
+        }
+      }),
+    )
+  }
+  entries.sort((left, right) => right.modifiedAtMs - left.modifiedAtMs)
+  return Promise.all(entries.slice(0, 160).map(entry => readTextFile(entry.path)))
+}
+
+const matchingAssignmentDetail = (
+  session: {
+    readonly cwd: string | null
+    readonly issueRef: string | null
+  },
+  details: readonly CodingAssignmentDetail[],
+): CodingAssignmentDetail | null => {
+  const workspaceMatch = details.find(detail =>
+    session.cwd !== null &&
+      detail.workspacePath !== null &&
+      session.cwd === detail.workspacePath,
+  )
+  if (workspaceMatch !== undefined) return workspaceMatch
+  return details.find(detail =>
+    (session.issueRef !== null &&
+      detail.issueRef !== null &&
+      session.issueRef === detail.issueRef),
+  ) ?? null
+}
+
 const fallbackSessionTitle = (sessionId: string): string =>
   sessionId.startsWith("rollout-") ? sessionId : `Codex ${sessionId.slice(0, 8)}`
 
 const readCodexSessions = async (
   processes: readonly CodingProcess[],
+  assignmentDetails: readonly CodingAssignmentDetail[],
 ): Promise<readonly CodingCodexSession[]> => {
   const files = await recentCodexSessionFiles()
   const sessions = await Promise.all(
@@ -437,12 +490,39 @@ const readCodexSessions = async (
       const isRecent = Date.now() - file.modifiedAtMs <= 10 * 60 * 1_000
       const active = process !== null
       const modifiedAt = new Date(file.modifiedAtMs).toISOString()
+      const issueRef = process?.issueRef ?? null
+      const assignment = matchingAssignmentDetail(
+        { cwd: parsed.cwd, issueRef },
+        assignmentDetails,
+      )
+      const lastMessage = parsed.messages.at(-1)
+      const lastEventAt = assignment?.lastEventAt ?? lastMessage?.timestamp ?? modifiedAt
+      const lastEventAtMs = Date.parse(lastEventAt)
 
       return {
         accountRef,
         active,
+        assignmentRef: assignment?.assignmentRef ?? null,
+        closeout: {
+          blockerRefs: assignment?.blockerRefs ?? [],
+          closeoutRef: assignment?.closeoutRef ?? null,
+          status: assignment?.closeoutStatus ?? null,
+        },
         cwd: parsed.cwd,
-        issueRef: process?.issueRef ?? null,
+        elapsed:
+          assignment?.elapsedMs === null || assignment?.elapsedMs === undefined
+            ? process?.age ?? null
+            : `${Math.max(0, Math.floor(assignment.elapsedMs / 1000))}s`,
+        issueRef: issueRef ?? assignment?.issueRef ?? null,
+        lastEvent: {
+          ageSeconds: Number.isFinite(lastEventAtMs)
+            ? Math.max(0, Math.floor((Date.now() - lastEventAtMs) / 1000))
+            : null,
+          name: assignment?.lastEvent ?? lastMessage?.kind ?? null,
+          timestamp: lastEventAt,
+        },
+        leaseRef: assignment?.leaseRef ?? null,
+        pullRequestRef: assignment?.pullRequestRef ?? null,
         messageCount: parsed.messageCount,
         messages: parsed.messages,
         modifiedAt,
@@ -451,7 +531,11 @@ const readCodexSessions = async (
         sessionId,
         source: parsed.source,
         status: active ? "active" : isRecent ? "recent" : "idle",
-        title: parsed.title ?? process?.label ?? fallbackSessionTitle(sessionId),
+        title:
+          parsed.title ??
+          process?.label ??
+          assignment?.assignmentRef ??
+          fallbackSessionTitle(sessionId),
       } satisfies CodingCodexSession
     }),
   )
@@ -507,7 +591,10 @@ const codingStatus = async (): Promise<CodingStatusResult> => {
     ])
 
   const processes = parseCodingProcesses(psOutput)
-  const sessions = await readCodexSessions(processes)
+  const assignmentDetails = (await recentAssignmentLogs()).flatMap(log =>
+    parseCodingAssignmentDetails(log),
+  )
+  const sessions = await readCodexSessions(processes, assignmentDetails)
   const processSummary = summarizeCodingProcesses(processes)
   const logSummary = parseSupervisorLog(supervisorLog)
   const summary: CodingStatusSummary = {

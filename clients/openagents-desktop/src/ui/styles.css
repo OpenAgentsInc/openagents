@@ -673,6 +673,42 @@ button {
   );
 }
 
+.coding-session-details {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-left: 10px;
+}
+
+.coding-detail-chip {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  min-width: 0;
+  gap: 6px;
+  padding: 6px 8px;
+  background: rgba(255, 255, 255, 0.055);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+}
+
+.coding-detail-chip strong {
+  flex: 0 0 auto;
+  color: #9bb8e8;
+  font-size: 0.64rem;
+  text-transform: uppercase;
+}
+
+.coding-detail-chip code {
+  overflow: hidden;
+  color: #e8f0ff;
+  font-size: 0.68rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .coding-message {
   position: relative;
   display: grid;
