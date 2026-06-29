@@ -32,6 +32,7 @@ import {
   KHALA_MODEL_ID,
   MIRRORCODE_BENCHMARK_LABEL,
   MIRRORCODE_PAPER_REFERENCE_COMPARATORS,
+  MIRRORCODE_SMOKE_LAUNCH_POLICY,
   MirrorCodeTokenBurnReportSchemaVersion,
   MirrorCodeRunError,
   MirrorCodeRunsSchemaVersion,
@@ -154,6 +155,7 @@ const publicEnvelope = (
   staleness: mirrorCodeStaleness(),
   model: KHALA_MODEL_ID,
   benchmark: MIRRORCODE_BENCHMARK_LABEL,
+  launchPolicy: MIRRORCODE_SMOKE_LAUNCH_POLICY,
   runs,
   comparators: MIRRORCODE_PAPER_REFERENCE_COMPARATORS,
 })
