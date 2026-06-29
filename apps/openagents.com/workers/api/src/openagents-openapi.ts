@@ -1960,7 +1960,7 @@ const schemaComponents = (): JsonSchema => ({
     'Public-safe Artanis Tassadar distillation dataset receipt: a refs-only live-at-read manifest over accepted Artanis admin executor-trace closeouts. Returns receiptState, receiptRef/datasetRef when enough verified traces exist, required/source verified trace counts, digest prefixes, closeout receipt refs, clearsBlockerRefs/blockerRefs, and per-trace public refs. It exposes no raw trace bodies, private runner logs, prompts, provider payloads, wallet material, customer data, settlement claim, model-training claim, or model-promotion claim.',
   ),
   ArtanisResponderSupportResponse: objectSummary(
-    'Public-safe Artanis Pylon-support responder external-contributor-flow and tick-readiness projection: per-asker-provenance counts (externalContributorAnsweredCount, externalContributorTippedCount, ownerOperatorAnsweredCount), externalContributorFlowProven, external-contributor interactions with dereferenceable reply-post refs, and tickReadiness with the ten unattended responder tick target, qualifying tick count, tick windows, and externalContributorAnsweredWithinTickWindow. An external contributor is a registered non-owner, non-operator, non-Artanis identity; operator/owner test articles are classified owner_operator and never satisfy the gate. Carries generatedAt plus projection_staleness.v1 contracts (live_at_read, maxStalenessSeconds 0, rebuildsOn the responder-action and responder-tick ledger writes). Read-only projection; it grants no dispatch, spend, assignment, settlement, moderation, Forum-write, or registry-transition authority and cannot create an interaction, a reply, a tip, or a tick.',
+    'Public-safe Artanis Pylon-support responder external-contributor-flow and tick-readiness projection: per-asker-provenance counts (externalContributorAnsweredCount, externalContributorTippedCount, ownerOperatorAnsweredCount), externalContributorFlowProven, external-contributor interactions with dereferenceable reply-post refs, blockerRefs/clearedBlockerRefs/unclearedBlockerRefs, greenGateMet, and tickReadiness with the ten unattended responder tick target, qualifying tick count, tick windows, and externalContributorAnsweredWithinTickWindow. An external contributor is a registered non-owner, non-operator, non-Artanis identity; operator/owner test articles are classified owner_operator and never satisfy the gate. Carries generatedAt plus projection_staleness.v1 contracts (live_at_read, maxStalenessSeconds 0, rebuildsOn the responder-action and responder-tick ledger writes). Read-only projection; it grants no dispatch, spend, assignment, settlement, moderation, Forum-write, or registry-transition authority and cannot create an interaction, a reply, a tip, or a tick.',
   ),
   LaborSelfServePayoutRequest: objectSummary(
     'Agent-authenticated self-serve labor payout request. The providerRef must match the bearer-authenticated actor; the route currently returns a typed plan plus an inert dispatch decision unless explicitly enabled.',
@@ -3725,6 +3725,7 @@ const schemaComponents = (): JsonSchema => ({
     required: [
       'authorityBoundary',
       'blockerRefs',
+      'clearedBlockerRefs',
       'generatedAt',
       'greenGateMet',
       'kind',
@@ -3733,6 +3734,7 @@ const schemaComponents = (): JsonSchema => ({
       'placedRequests',
       'publicSafe',
       'staleness',
+      'unclearedBlockerRefs',
       'unattendedRequestReceiptsProven',
       'unattendedRequestTarget',
     ],
@@ -3740,6 +3742,7 @@ const schemaComponents = (): JsonSchema => ({
       authorityBoundary: { type: 'string' },
       blockerRefs: { type: 'array', items: { type: 'string' } },
       byTerminalState: { type: 'object' },
+      clearedBlockerRefs: { type: 'array', items: { type: 'string' } },
       generatedAt: { type: 'string', format: 'date-time' },
       greenGateMet: { type: 'boolean' },
       kind: {
@@ -3770,6 +3773,7 @@ const schemaComponents = (): JsonSchema => ({
           rebuildsOn: { type: 'array', items: { type: 'string' } },
         },
       },
+      unclearedBlockerRefs: { type: 'array', items: { type: 'string' } },
       unattendedRequestReceiptsProven: { type: 'boolean' },
       unattendedRequestTarget: { type: 'integer' },
     },

@@ -1,11 +1,14 @@
 import { describe, expect, test } from 'vitest'
 
 import {
+  ARTANIS_RESPONDER_EXTERNAL_FLOW_BLOCKER,
+  ARTANIS_RESPONDER_TEN_TICKS_BLOCKER,
   boundedResponderSupportLimit,
   classifyAskerProvenance,
   projectArtanisResponderSupport,
   type ArtanisResponderActionRow,
 } from './artanis-responder-provenance'
+import type { ArtanisResponderTickReadinessProjection } from './artanis-responder-ticks'
 
 const nowIso = '2026-06-20T00:00:00.000Z'
 
@@ -22,6 +25,28 @@ const row = (
   state: 'responded',
   tip_receipt_ref: null,
   topic_id: 'topic-1',
+  ...overrides,
+})
+
+const tickReadiness = (
+  overrides: Partial<ArtanisResponderTickReadinessProjection> = {},
+): ArtanisResponderTickReadinessProjection => ({
+  authorityBoundary:
+    'Read-only projection over Artanis responder scheduled tick receipts.',
+  externalContributorAnsweredWithinTickWindow: false,
+  kind: 'artanis_pylon_support_responder_tick_readiness',
+  notes: [],
+  publicSafe: true,
+  qualifyingUnattendedResponderTickCount: 0,
+  staleness: {
+    composition: 'live_at_read',
+    contractVersion: 'projection_staleness.v1',
+    maxStalenessSeconds: 0,
+    rebuildsOn: ['artanis_responder_ticks.insert'],
+  },
+  tickTarget: 10,
+  tickWindows: [],
+  unattendedResponderTicksProven: false,
   ...overrides,
 })
 
@@ -74,6 +99,12 @@ describe('projectArtanisResponderSupport', () => {
     expect(projection.staleness.composition).toBe('live_at_read')
     expect(projection.externalContributorAnsweredCount).toBe(1)
     expect(projection.externalContributorFlowProven).toBe(true)
+    expect(projection.greenGateMet).toBe(false)
+    expect(projection.clearedBlockerRefs).toEqual([])
+    expect(projection.unclearedBlockerRefs).toEqual([
+      ARTANIS_RESPONDER_EXTERNAL_FLOW_BLOCKER,
+      ARTANIS_RESPONDER_TEN_TICKS_BLOCKER,
+    ])
     expect(projection.externalInteractions).toHaveLength(1)
     expect(projection.externalInteractions[0]?.replyPostRef).toBe(
       'post.public.forum.artanis.status.42',
@@ -113,6 +144,53 @@ describe('projectArtanisResponderSupport', () => {
     expect(projection.ownerOperatorAnsweredCount).toBe(1)
     expect(projection.externalContributorAnsweredCount).toBe(0)
     expect(projection.externalContributorFlowProven).toBe(false)
+    expect(projection.unclearedBlockerRefs).toEqual([
+      ARTANIS_RESPONDER_EXTERNAL_FLOW_BLOCKER,
+      ARTANIS_RESPONDER_TEN_TICKS_BLOCKER,
+    ])
+  })
+
+  test('clears both responder blockers only when external flow lands in a proven ten-tick window', () => {
+    const projection = projectArtanisResponderSupport(
+      [row({})],
+      nowIso,
+      tickReadiness({
+        externalContributorAnsweredWithinTickWindow: true,
+        qualifyingUnattendedResponderTickCount: 10,
+        unattendedResponderTicksProven: true,
+      }),
+    )
+
+    expect(projection.blockerRefs).toEqual([
+      ARTANIS_RESPONDER_EXTERNAL_FLOW_BLOCKER,
+      ARTANIS_RESPONDER_TEN_TICKS_BLOCKER,
+    ])
+    expect(projection.clearedBlockerRefs).toEqual([
+      ARTANIS_RESPONDER_EXTERNAL_FLOW_BLOCKER,
+      ARTANIS_RESPONDER_TEN_TICKS_BLOCKER,
+    ])
+    expect(projection.unclearedBlockerRefs).toEqual([])
+    expect(projection.greenGateMet).toBe(true)
+  })
+
+  test('keeps the external blocker explicit when the answer is outside the tick window', () => {
+    const projection = projectArtanisResponderSupport(
+      [row({})],
+      nowIso,
+      tickReadiness({
+        qualifyingUnattendedResponderTickCount: 10,
+        unattendedResponderTicksProven: true,
+      }),
+    )
+
+    expect(projection.externalContributorFlowProven).toBe(true)
+    expect(projection.clearedBlockerRefs).toEqual([
+      ARTANIS_RESPONDER_TEN_TICKS_BLOCKER,
+    ])
+    expect(projection.unclearedBlockerRefs).toEqual([
+      ARTANIS_RESPONDER_EXTERNAL_FLOW_BLOCKER,
+    ])
+    expect(projection.greenGateMet).toBe(false)
   })
 
   test('proposed and skipped actions are not answered interactions', () => {
