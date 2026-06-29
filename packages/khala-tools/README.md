@@ -137,3 +137,13 @@ preview with dimensions, media type, private artifact ref, and redaction
 classification. When the active backend supports vision, hosts can pass through
 the private image content part; non-vision backends receive the same safe
 preview metadata without image bytes in public summaries.
+
+### `web_fetch`
+
+`web_fetch` is part of the optional `network` preset, not the offline coding
+core. It fetches one HTTP(S) URL only after explicit `network` permission, with
+bounded redirects, timeout, and response bytes. It rejects caller-supplied
+headers, credentials, tokens, and authority flags; use local `read`, `glob`, and
+`grep` for repository navigation. Results include source URL, final URL, status,
+content type, fetched-at timestamp, redirect metadata, bounded private
+model-visible text, and private artifacts for truncated or binary bodies.

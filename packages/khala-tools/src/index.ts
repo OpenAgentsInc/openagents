@@ -20,7 +20,7 @@ export const KhalaToolAuthority = S.Literals([
 ])
 export type KhalaToolAuthority = typeof KhalaToolAuthority.Type
 
-export const KhalaToolAvailability = S.Literals(["inspect", "coding", "owner_local_full", "browser", "extension"])
+export const KhalaToolAvailability = S.Literals(["inspect", "coding", "owner_local_full", "network", "browser", "extension"])
 export type KhalaToolAvailability = typeof KhalaToolAvailability.Type
 
 export const KhalaPermissionMode = S.Literals(["allow", "approval_required", "deny"])
@@ -314,8 +314,39 @@ export interface KhalaTodoService {
   readonly writeTodos: (input: KhalaTodoWriteInput) => Effect.Effect<KhalaTodoWriteResult, KhalaToolRuntimeError>
 }
 
+export type KhalaNetworkFetchInput = Readonly<{
+  maxBytes: number
+  maxRedirects: number
+  timeoutMs: number
+  url: string
+}>
+
+export type KhalaNetworkRedirect = Readonly<{
+  from: string
+  status: number
+  to: string
+}>
+
+export type KhalaNetworkFetchResult = Readonly<{
+  body: Uint8Array
+  bodyTruncated: boolean
+  contentType: string
+  fetchedAtMs: number
+  finalUrl: string
+  redirectChain: ReadonlyArray<KhalaNetworkRedirect>
+  status: number
+  statusText: string
+  url: string
+}>
+
+export interface KhalaNetworkService {
+  readonly fetchUrl: (input: KhalaNetworkFetchInput) => Effect.Effect<KhalaNetworkFetchResult, KhalaToolRuntimeError>
+  readonly marker: "khala.network_service"
+}
+
 export interface KhalaToolServices {
   readonly interaction: KhalaInteractionService
+  readonly network: KhalaNetworkService
   readonly outputStore: KhalaOutputStore
   readonly permission: KhalaPermissionService
   readonly process: KhalaProcessService
@@ -602,8 +633,55 @@ export function inMemoryKhalaTodoService(): KhalaTodoService {
   }
 }
 
+export function createFetchKhalaNetworkService(fetchImpl: typeof fetch = globalThis.fetch): KhalaNetworkService {
+  return {
+    fetchUrl: input =>
+      Effect.promise(async () => {
+        const controller = new AbortController()
+        const timeout = setTimeout(() => controller.abort(), input.timeoutMs)
+        const redirectChain: KhalaNetworkRedirect[] = []
+        let currentUrl = input.url
+        try {
+          for (let redirects = 0; redirects <= input.maxRedirects; redirects += 1) {
+            const response = await fetchImpl(currentUrl, {
+              redirect: "manual",
+              signal: controller.signal,
+            })
+            const location = response.headers.get("location")
+            if (isRedirectStatus(response.status) && location !== null) {
+              const nextUrl = new URL(location, currentUrl).toString()
+              redirectChain.push({ from: currentUrl, status: response.status, to: nextUrl })
+              currentUrl = nextUrl
+              continue
+            }
+            const body = await readNetworkResponseBody(response, input.maxBytes)
+            return {
+              body: body.bytes,
+              bodyTruncated: body.truncated,
+              contentType: response.headers.get("content-type") ?? "application/octet-stream",
+              fetchedAtMs: Date.now(),
+              finalUrl: response.url || currentUrl,
+              redirectChain,
+              status: response.status,
+              statusText: response.statusText,
+              url: input.url,
+            }
+          }
+          throw new Error(`too many redirects; limit ${input.maxRedirects}`)
+        } catch (error) {
+          if (controller.signal.aborted) throw new Error("network fetch timed out")
+          throw error
+        } finally {
+          clearTimeout(timeout)
+        }
+      }),
+    marker: "khala.network_service",
+  }
+}
+
 export function makeKhalaToolServices(input: {
   readonly interaction?: KhalaInteractionService
+  readonly network?: KhalaNetworkService
   readonly permission?: KhalaPermissionService
   readonly process?: KhalaProcessService
   readonly todo?: KhalaTodoService
@@ -611,6 +689,7 @@ export function makeKhalaToolServices(input: {
 } = {}): KhalaToolServices {
   return {
     interaction: input.interaction ?? nonInteractiveKhalaInteractionService,
+    network: input.network ?? createFetchKhalaNetworkService(),
     outputStore: inMemoryKhalaOutputStore(),
     permission: input.permission ?? allowAllKhalaPermissionService,
     process: input.process ?? defaultKhalaProcessService,
@@ -642,6 +721,49 @@ function interactionRequestPayload(
     prompt: input.prompt,
     requestId,
     ...(input.timeoutMs === undefined ? {} : { timeoutMs: input.timeoutMs }),
+  }
+}
+
+function isRedirectStatus(status: number): boolean {
+  return status === 301 || status === 302 || status === 303 || status === 307 || status === 308
+}
+
+async function readNetworkResponseBody(
+  response: Response,
+  maxBytes: number,
+): Promise<Readonly<{ bytes: Uint8Array; truncated: boolean }>> {
+  const limit = Math.max(0, maxBytes)
+  const chunks: Buffer[] = []
+  let byteLength = 0
+  let truncated = false
+  if (response.body === null) {
+    const bytes = new Uint8Array(await response.arrayBuffer())
+    return {
+      bytes: bytes.byteLength > limit ? bytes.slice(0, limit) : bytes,
+      truncated: bytes.byteLength > limit,
+    }
+  }
+
+  const reader = response.body.getReader()
+  while (true) {
+    const read = await reader.read()
+    if (read.done) break
+    const remaining = limit - byteLength
+    if (remaining <= 0 || read.value.byteLength > remaining) {
+      if (remaining > 0) {
+        chunks.push(Buffer.from(read.value.slice(0, remaining)))
+        byteLength += remaining
+      }
+      truncated = true
+      await reader.cancel()
+      break
+    }
+    chunks.push(Buffer.from(read.value))
+    byteLength += read.value.byteLength
+  }
+  return {
+    bytes: Buffer.concat(chunks, byteLength),
+    truncated,
   }
 }
 
@@ -979,13 +1101,18 @@ export { createWriteStdinTool, writeStdinToolDefinition } from "./write-stdin.js
 export { askUserToolDefinition, createAskUserTool } from "./ask-user.js"
 export { createTodoWriteTool, todoWriteToolDefinition } from "./todo-write.js"
 export { createViewImageTool, viewImageToolDefinition } from "./view-image.js"
+export { createWebFetchTool, webFetchToolDefinition } from "./web-fetch.js"
 
 function permissionRequestFor(
   definition: KhalaToolDefinition,
   invocation: KhalaToolInvocation,
   services: KhalaToolServices,
 ): KhalaPermissionRequest {
-  const resources = typeof invocation.arguments.path === "string" ? [invocation.arguments.path] : []
+  const resources = typeof invocation.arguments.path === "string"
+    ? [invocation.arguments.path]
+    : typeof invocation.arguments.url === "string"
+      ? [invocation.arguments.url]
+      : []
   return {
     action: definition.authority,
     authorityMode: definition.executionMode,
