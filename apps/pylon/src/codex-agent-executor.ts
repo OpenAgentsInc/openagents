@@ -1,6 +1,6 @@
-import { access, mkdir, readFile, writeFile } from "node:fs/promises"
-import { dirname, isAbsolute, join, resolve } from "node:path"
-import { createHash } from "node:crypto"
+import { access, lstat, mkdir, readFile, readlink, rename, rm, symlink, writeFile } from "node:fs/promises"
+import { dirname, isAbsolute, join, relative, resolve } from "node:path"
+import { createHash, randomUUID } from "node:crypto"
 import {
   CODEX_AGENT_SDK_PACKAGE,
   loadCodexAgentConfig,
@@ -385,11 +385,109 @@ async function dependencyInstallDirectories(input: {
   return [...new Set(dirs)]
 }
 
-async function prepareWorkspaceDependencies(input: {
+/**
+ * Shared node_modules cache across Codex worktrees (concurrency fix).
+ *
+ * A git worktree shares the bare object store but never shares
+ * `node_modules`, so N concurrent `codex_agent_task` assignments each ran a
+ * fresh `bun install` and thrashed disk/CPU, serializing fleet startup. The
+ * helpers below let the FIRST task install once and every subsequent task with
+ * a matching lockfile symlink the prebuilt `node_modules` in instantly.
+ *
+ * Correctness rule: reuse is keyed by the SHA-256 of the workspace `bun.lock`,
+ * so stale dependency trees are never shared. Any miss/mismatch falls back to a
+ * fresh `bun install`. Sharing is a read-only symlink; the one-time cache
+ * populate is guarded by an atomic mkdir lock so concurrent first-runs cannot
+ * corrupt the shared entry.
+ */
+async function workspaceLockfileHash(workspaceRoot: string): Promise<string | null> {
+  for (const name of ["bun.lock", "bun.lockb"]) {
+    try {
+      const bytes = await readFile(join(workspaceRoot, name))
+      return createHash("sha256").update(bytes).digest("hex").slice(0, 24)
+    } catch {
+      // Try the next candidate lockfile name.
+    }
+  }
+  return null
+}
+
+/**
+ * Filesystem-safe per-install-directory key. The workspace root and each
+ * hoisted/per-package install directory get a distinct cached `node_modules`.
+ */
+function sharedInstallDirectoryKey(workspaceRoot: string, directory: string): string {
+  const rel = relative(workspaceRoot, directory)
+  if (rel.length === 0) return "__root__"
+  return `dir-${createHash("sha256").update(rel).digest("hex").slice(0, 24)}`
+}
+
+/**
+ * Symlinks a shared, lockfile-matched `node_modules` into a worktree install
+ * directory. Clears a stale/broken symlink first but never clobbers a real
+ * directory. Returns true only when the worktree now points at the shared tree.
+ */
+async function linkSharedNodeModules(cacheEntryDir: string, targetNodeModules: string): Promise<boolean> {
+  try {
+    const existing = await lstat(targetNodeModules).catch(() => null)
+    if (existing !== null) {
+      if (!existing.isSymbolicLink()) return false
+      await rm(targetNodeModules, { force: true })
+    }
+    await symlink(cacheEntryDir, targetNodeModules, "dir")
+    return true
+  } catch {
+    return false
+  }
+}
+
+type SharedCachePopulation = "linked" | "exists" | "skipped"
+
+/**
+ * Moves a freshly installed `node_modules` into the shared cache and symlinks
+ * it back into the worktree, guarded by an atomic mkdir lock so concurrent
+ * first-runs cannot collide. Best-effort: any failure leaves the worktree's
+ * real `node_modules` untouched and returns "skipped".
+ */
+async function populateSharedNodeModules(input: {
+  cacheEntryDir: string
+  lockDir: string
+  sourceNodeModules: string
+  targetNodeModules: string
+}): Promise<SharedCachePopulation> {
+  try {
+    await mkdir(dirname(input.lockDir), { recursive: true })
+  } catch {
+    return "skipped"
+  }
+  try {
+    await mkdir(input.lockDir)
+  } catch {
+    // Another worktree is populating this exact lockfile/dir entry right now.
+    return "skipped"
+  }
+  try {
+    if (await pathExists(input.cacheEntryDir)) return "exists"
+    const tmp = `${input.cacheEntryDir}.tmp-${randomUUID()}`
+    await rm(tmp, { force: true, recursive: true })
+    await rename(input.sourceNodeModules, tmp)
+    await rename(tmp, input.cacheEntryDir)
+    await linkSharedNodeModules(input.cacheEntryDir, input.targetNodeModules)
+    return "linked"
+  } catch {
+    return "skipped"
+  } finally {
+    await rm(input.lockDir, { force: true, recursive: true }).catch(() => {})
+  }
+}
+
+export async function prepareWorkspaceDependencies(input: {
   installer?: LocalCommandRunner
+  sharedCacheRoot?: string
   verificationArgs: string[]
   workspace: string
 }): Promise<DependencyPreparation> {
+  const workspaceRoot = resolve(input.workspace)
   const hasPackageJson = await pathExists(join(input.workspace, "package.json"))
   const hasBunLock =
     (await pathExists(join(input.workspace, "bun.lock"))) ||
@@ -416,9 +514,36 @@ async function prepareWorkspaceDependencies(input: {
     }
   }
 
+  // Lockfile-keyed shared cache root: only reuse when bun.lock matches exactly.
+  const lockHash = await workspaceLockfileHash(workspaceRoot)
+  const sharedCacheRoot =
+    input.sharedCacheRoot !== undefined && lockHash !== null
+      ? join(input.sharedCacheRoot, lockHash)
+      : null
+
   const installer = input.installer ?? runCommand
   const installReceipts: string[] = []
+  let installedDirectoryCount = 0
   for (const directory of missingInstallDirectories) {
+    const sharedKey = sharedInstallDirectoryKey(workspaceRoot, directory)
+    const sharedEntryDir =
+      sharedCacheRoot === null ? null : join(sharedCacheRoot, sharedKey, "node_modules")
+    const targetNodeModules = join(directory, "node_modules")
+
+    // Cache hit: symlink the shared, lockfile-matched node_modules and skip install.
+    if (sharedEntryDir !== null && (await pathExists(sharedEntryDir))) {
+      if (await linkSharedNodeModules(sharedEntryDir, targetNodeModules)) {
+        installReceipts.push(
+          stableRef(
+            "dependency.pylon.codex_agent_task.node_modules_shared_reuse",
+            `${relative(workspaceRoot, directory) || "."}:${lockHash}`,
+          ),
+        )
+        continue
+      }
+    }
+
+    // Cache miss (or mismatch/missing cache): install into this worktree directory.
     const install = await installer({
       args: ["bun", "install", "--no-save", "--ignore-scripts"],
       cwd: directory,
@@ -431,6 +556,30 @@ async function prepareWorkspaceDependencies(input: {
     installReceipts.push(receiptRef)
     if (install.exitCode !== 0 || install.timedOut) {
       return { ok: false, receiptRef }
+    }
+    installedDirectoryCount += 1
+
+    // Populate the shared cache so the next concurrent/later task reuses it.
+    if (sharedCacheRoot !== null && sharedEntryDir !== null && (await pathExists(targetNodeModules))) {
+      await populateSharedNodeModules({
+        cacheEntryDir: sharedEntryDir,
+        lockDir: join(sharedCacheRoot, sharedKey, ".populate.lock"),
+        sourceNodeModules: targetNodeModules,
+        targetNodeModules,
+      })
+    }
+  }
+
+  // Only a real `bun install` can dirty tracked files (package.json/bun.lock);
+  // a pure symlink-reuse pass leaves the checkout pristine, so skip the restore.
+  if (installedDirectoryCount === 0) {
+    return {
+      ok: true,
+      prepared: true,
+      receiptRef: stableRef(
+        "dependency.pylon.codex_agent_task.node_modules_shared_reuse",
+        installReceipts.join(":"),
+      ),
     }
   }
   const restore = await installer({
@@ -1024,6 +1173,7 @@ export async function executeCodexAgentAssignment(
 
   const dependencies = await prepareWorkspaceDependencies({
     ...(options.dependencyInstaller === undefined ? {} : { installer: options.dependencyInstaller }),
+    sharedCacheRoot: join(state.paths.cache, "codex-agent-tasks-node-modules-shared"),
     verificationArgs: materialized.verificationArgs,
     workspace: materialized.workspace,
   })
