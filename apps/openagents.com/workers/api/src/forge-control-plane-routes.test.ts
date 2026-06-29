@@ -103,6 +103,10 @@ const authHeaders = (scopes: string): HeadersInit => ({
 })
 
 const githubMainSha = '1234567890abcdef1234567890abcdef12345678'
+const headA = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+const headB = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+const headC = 'cccccccccccccccccccccccccccccccccccccccc'
+const headD = 'dddddddddddddddddddddddddddddddddddddddd'
 const makeGitHubFetch = (sha: string = githubMainSha): typeof fetch =>
   (async () =>
     Response.json({
@@ -151,6 +155,103 @@ const makeHarness = () => {
   }
 
   return { canonicalStore, run, store: coordinationStore }
+}
+
+const createForgeWork = async (
+  run: (request: Request) => Promise<Response>,
+  issueNumber: number,
+  scopes: string,
+): Promise<void> => {
+  const response = await run(
+    requestJson('/api/forge/work-records', {
+      json: {
+        tenantRef: 'tenant.openagents',
+        issueRef: `issue.forge.${issueNumber}`,
+        githubIssueNumber: issueNumber,
+        title: `Forge issue ${issueNumber}`,
+        state: 'open',
+        sourceRefs: [`github:OpenAgentsInc/openagents#${issueNumber}`],
+      },
+      headers: authHeaders(scopes),
+      method: 'POST',
+    }),
+  )
+  expect(response.status).toBe(201)
+}
+
+const createForgeChange = async (
+  run: (request: Request) => Promise<Response>,
+  input: Readonly<{
+    baseHead: string
+    blockerRefs?: ReadonlyArray<string>
+    issueNumber: number
+    patchHead: string
+    scopes: string
+    verificationRef: string
+  }>,
+): Promise<void> => {
+  const response = await run(
+    requestJson('/api/forge/changes', {
+      json: {
+        tenantRef: 'tenant.openagents',
+        prRef: `pr.forge.${input.issueNumber}`,
+        issueRef: `issue.forge.${input.issueNumber}`,
+        changeRef: `change.forge.${input.issueNumber}`,
+        state: 'ready',
+        baseHead: input.baseHead,
+        patchHead: input.patchHead,
+        verificationRef: input.verificationRef,
+        blockerRefs: input.blockerRefs ?? [],
+        sourceRefs: [`github:OpenAgentsInc/openagents#${input.issueNumber}`],
+      },
+      headers: authHeaders(input.scopes),
+      method: 'POST',
+    }),
+  )
+  expect(response.status).toBe(201)
+}
+
+const createPassingVerification = async (
+  run: (request: Request) => Promise<Response>,
+  input: Readonly<{
+    baseHead: string
+    changeRef: string
+    headHead: string
+    scopes: string
+    verificationRef: string
+  }>,
+): Promise<void> => {
+  const response = await run(
+    requestJson('/api/forge/verification-receipts', {
+      json: {
+        schema: 'openagents.forge.verification.receipt.v0.1',
+        tenant_ref: 'tenant.openagents',
+        verification_ref: input.verificationRef,
+        change_ref: input.changeRef,
+        repository_ref: 'repo.openagents.openagents',
+        base_ref: 'refs/heads/main',
+        base_head: input.baseHead,
+        head_ref: `refs/heads/${input.changeRef}`,
+        head_head: input.headHead,
+        packfile_ref: `packfile.${input.changeRef}`,
+        packfile_sha256: `sha256:${input.verificationRef}`,
+        executor_identity_ref: 'agent.public.forge',
+        command_ref: `command.${input.verificationRef}`,
+        command_args: ['bun', 'test'],
+        exit_code: 0,
+        verdict: 'passed',
+        started_at: now,
+        completed_at: '2026-06-28T17:02:00.000Z',
+        artifact_refs: ['artifact:test-log'],
+        log_sha256: `sha256:log.${input.verificationRef}`,
+        source_refs: ['github:OpenAgentsInc/openagents#6794'],
+        redacted: true,
+      },
+      headers: authHeaders(input.scopes),
+      method: 'POST',
+    }),
+  )
+  expect(response.status).toBe(201)
 }
 
 describe('Forge control-plane routes', () => {
@@ -408,6 +509,162 @@ describe('Forge control-plane routes', () => {
       promotionDecisions: ReadonlyArray<unknown>
     }
     expect(decisionsBody.promotionDecisions).toHaveLength(1)
+  })
+
+  test('derives nextActualPromotion from live Forge rows and serializes concurrent changes', async () => {
+    const { run, store } = makeHarness()
+    const scopes = [
+      'forge:work:write',
+      'forge:change:write',
+      'forge:receipt:write',
+      'forge:queue:read',
+      'forge:queue:write',
+    ].join(' ')
+
+    await createForgeWork(run, 6794, scopes)
+    await createForgeWork(run, 6795, scopes)
+    await createForgeChange(run, {
+      baseHead: headA,
+      issueNumber: 6794,
+      patchHead: headB,
+      scopes,
+      verificationRef: 'verification.forge.6794',
+    })
+    await createForgeChange(run, {
+      baseHead: headB,
+      issueNumber: 6795,
+      patchHead: headC,
+      scopes,
+      verificationRef: 'verification.forge.6795',
+    })
+    await createPassingVerification(run, {
+      baseHead: headA,
+      changeRef: 'change.forge.6794',
+      headHead: headB,
+      scopes,
+      verificationRef: 'verification.forge.6794',
+    })
+    await createPassingVerification(run, {
+      baseHead: headB,
+      changeRef: 'change.forge.6795',
+      headHead: headC,
+      scopes,
+      verificationRef: 'verification.forge.6795',
+    })
+
+    const deriveResponse = await run(
+      requestJson('/api/forge/queue/derive', {
+        json: {
+          tenantRef: 'tenant.openagents',
+          queueRef: 'queue.forge.openagents.main',
+          actualHead: headA,
+          sourceRefs: ['github:OpenAgentsInc/openagents#6794'],
+        },
+        headers: authHeaders(scopes),
+        method: 'POST',
+      }),
+    )
+    const deriveBody = (await deriveResponse.json()) as {
+      derived: {
+        nextActualPromotion: { candidateRef: string; waitsForActualHead: string | null }
+        ready: ReadonlyArray<{ candidateRef: string; waitsForActualHead: string | null }>
+        virtualHead: string
+      }
+      queueSnapshot: { next_promotion_ref: string | null; virtual_head: string }
+    }
+
+    expect(deriveResponse.status).toBe(201)
+    expect(deriveBody.derived.ready.map(entry => entry.candidateRef)).toEqual([
+      'change.forge.6794',
+      'change.forge.6795',
+    ])
+    expect(deriveBody.derived.nextActualPromotion).toMatchObject({
+      candidateRef: 'change.forge.6794',
+      waitsForActualHead: null,
+    })
+    expect(deriveBody.derived.ready[1]).toMatchObject({
+      candidateRef: 'change.forge.6795',
+      waitsForActualHead: headB,
+    })
+    expect(deriveBody.queueSnapshot.next_promotion_ref).toContain(
+      'promotion.forge.next_actual.',
+    )
+    expect(deriveBody.queueSnapshot.virtual_head).toBe(headC)
+
+    await expect(store.readLatestMergeQueueLedger('tenant.openagents')).resolves.toMatchObject({
+      next_promotion_ref: deriveBody.queueSnapshot.next_promotion_ref,
+      virtual_head: headC,
+    })
+  })
+
+  test('blocks stale-base and deletion-poisoned changes before promotion', async () => {
+    const { run } = makeHarness()
+    const scopes = [
+      'forge:work:write',
+      'forge:change:write',
+      'forge:receipt:write',
+      'forge:queue:read',
+    ].join(' ')
+
+    await createForgeWork(run, 6794, scopes)
+    await createForgeWork(run, 6796, scopes)
+    await createForgeChange(run, {
+      baseHead: headD,
+      issueNumber: 6794,
+      patchHead: headB,
+      scopes,
+      verificationRef: 'verification.forge.6794',
+    })
+    await createForgeChange(run, {
+      baseHead: headA,
+      blockerRefs: ['blocker.forge.deletion_poison.protected_path_deleted'],
+      issueNumber: 6796,
+      patchHead: headC,
+      scopes,
+      verificationRef: 'verification.forge.6796',
+    })
+    await createPassingVerification(run, {
+      baseHead: headD,
+      changeRef: 'change.forge.6794',
+      headHead: headB,
+      scopes,
+      verificationRef: 'verification.forge.6794',
+    })
+    await createPassingVerification(run, {
+      baseHead: headA,
+      changeRef: 'change.forge.6796',
+      headHead: headC,
+      scopes,
+      verificationRef: 'verification.forge.6796',
+    })
+
+    const response = await run(
+      new Request(
+        `https://openagents.com/api/forge/queue?tenantRef=tenant.openagents&actualHead=${headA}`,
+        { headers: authHeaders(scopes) },
+      ),
+    )
+    const body = (await response.json()) as {
+      derived: {
+        blocked: ReadonlyArray<{ blockedReasonRef: string; candidateRef: string }>
+        nextActualPromotion: null
+      }
+    }
+
+    expect(response.status).toBe(200)
+    expect(body.derived.nextActualPromotion).toBeNull()
+    expect(body.derived.blocked).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          blockedReasonRef: 'virtual_merge_queue.blocked.stale_base',
+          candidateRef: 'change.forge.6794',
+        }),
+        expect.objectContaining({
+          blockedReasonRef: 'virtual_merge_queue.blocked.protected_path_deleted',
+          candidateRef: 'change.forge.6796',
+        }),
+      ]),
+    )
   })
 
   test('imports the public OpenAgents main ref into canonical refs idempotently', async () => {
