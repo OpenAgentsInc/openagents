@@ -117,6 +117,9 @@ const rowsForSql = (sql: string): ReadonlyArray<Record<string, unknown>> => {
   }
 
   if (sql.includes('FROM artanis_owner_memory')) {
+    if (sql.includes('AND 1 = 0')) {
+      return []
+    }
     return [
       {
         body: 'Fan out bounded public issue work through caller-owned Codex capacity.',
@@ -201,6 +204,7 @@ describe('operator fleet status route', () => {
         settlementMutationAllowed: false,
       },
       brain: {
+        recentDecisions: [],
         loopHealth: 'stalled',
       },
       fleet: {
@@ -289,6 +293,7 @@ describe('operator fleet status route', () => {
     expect(body.fleet.sourceRefs).toContain('d1:pylon_api_registrations')
     expect(log.some(sql => sql.includes('owner_agent_user_id = ?'))).toBe(true)
     expect(log.some(sql => sql.includes('AND user_id = ?'))).toBe(true)
+    expect(log.some(sql => sql.includes('AND owner_id = ?'))).toBe(true)
   })
 
   test('keeps the legacy fleet status path admin-token only', async () => {

@@ -159,7 +159,10 @@ const buildFleetStatusSnapshot = async (
          )`
       : ''
   const accountOwnerClause = scope.kind === 'agent' ? 'AND user_id = ?' : ''
+  const brainOwnerClause = scope.kind === 'agent' ? 'AND owner_id = ?' : 'AND 1 = 0'
   const ownerBindings = scope.kind === 'agent' ? [scope.userId] : []
+  const brainOwnerBindings =
+    scope.kind === 'agent' ? [`owner:${scope.userId}`] : []
   const [
     registrations,
     assignments,
@@ -243,8 +246,10 @@ const buildFleetStatusSnapshot = async (
          FROM artanis_owner_memory
         WHERE kind = 'note'
           AND note_category = 'decision'
+          ${brainOwnerClause}
         ORDER BY created_at DESC
         LIMIT 3`,
+      ...brainOwnerBindings,
     ),
     safeAll<GlmHeartbeatRow>(
       db,
