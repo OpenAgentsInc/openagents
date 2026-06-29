@@ -2485,10 +2485,10 @@ button {
 
   .coding-command-console {
     grid-template-rows:
-      minmax(150px, 0.34fr)
-      minmax(260px, 0.72fr)
-      minmax(168px, 0.46fr);
-    overflow: hidden;
+      minmax(180px, 0.42fr)
+      minmax(230px, 0.52fr)
+      minmax(110px, 0.25fr);
+    overflow: auto;
   }
 
   .coding-ops-rail,
