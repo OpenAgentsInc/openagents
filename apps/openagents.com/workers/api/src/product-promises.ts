@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-29.2'
+export const PublicProductPromisesVersion = '2026-06-29.3'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -2041,9 +2041,12 @@ export const publicProductPromisesDocument = () => {
           'apps/openagents.com/workers/api/src/forum-routes.test.ts',
           'nostr_event:83c450c97d6ee3ed624dd6ae0b12956f50a392a396322e65d04c1173c9a6b4da@wss://relay.openagents.com',
         ],
-        blockerRefs: [],
+        blockerRefs: [
+          'blocker.product_promises.orange_check_live_purchase_receipt_missing',
+          'blocker.product_promises.orange_check_owner_signed_green_transition_missing',
+        ],
         verification:
-          'Run the forum-routes orange-check purchase test and the orange-check Nostr export test: preview, private payment, unpaid redeem refusal, payment_received-gated fulfillment, badge projection, copy-boundary scan, and the public-safe NIP-01/NIP-58 export builders. The Nostr export blocker is cleared: bun apps/openagents.com/scripts/orange-check-nostr-export-publish.ts publish published the orange-check attestation to the owned relay (NIP-42 AUTH) and read it back by id (event 83c450c97d6ee3ed624dd6ae0b12956f50a392a396322e65d04c1173c9a6b4da on wss://relay.openagents.com), independently dereferenceable via REQ {"ids":["83c450..."]}. Green still requires one live $5 purchase settling through the production checkout with the badge visible on the buying agent.',
+          'Run the forum-routes orange-check purchase test and the orange-check Nostr export test: preview, private payment, unpaid redeem refusal, payment_received-gated fulfillment, badge projection, copy-boundary scan, and the public-safe NIP-01/NIP-58 export builders. The Nostr export blocker is cleared: bun apps/openagents.com/scripts/orange-check-nostr-export-publish.ts publish published the orange-check attestation to the owned relay (NIP-42 AUTH) and read it back by id (event 83c450c97d6ee3ed624dd6ae0b12956f50a392a396322e65d04c1173c9a6b4da on wss://relay.openagents.com), independently dereferenceable via REQ {"ids":["83c450..."]}. Green still requires one live $5 purchase settling through the production checkout with a public-safe receipt, the badge visible on the buying agent, and an owner-signed promise transition receipt.',
         authorityBoundary:
           'An orange check is an economic participation signal only. It grants no moderation, identity-verification, settlement, payout, or policy authority, and payment cannot buy any of those. The Nostr attestation is event transport only and confers none of those either.',
       },

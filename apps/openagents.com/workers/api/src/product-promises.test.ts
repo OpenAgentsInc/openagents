@@ -84,6 +84,29 @@ const ProductPromisesDocument = S.Struct({
 })
 
 describe('public product promises document', () => {
+  test('orange-check promise stays yellow with explicit remaining green blockers', () => {
+    const decoded = S.decodeUnknownSync(ProductPromisesDocument)(
+      publicProductPromisesDocument(),
+    )
+    const orangeCheckPromise = decoded.promises.find(
+      promise => promise.promiseId === 'identity.orange_check_forum_signal.v1',
+    )
+
+    expect(orangeCheckPromise).toMatchObject({
+      state: 'yellow',
+      blockerRefs: [
+        'blocker.product_promises.orange_check_live_purchase_receipt_missing',
+        'blocker.product_promises.orange_check_owner_signed_green_transition_missing',
+      ],
+    })
+    expect(orangeCheckPromise?.blockerRefs).not.toContain(
+      'blocker.product_promises.orange_check_nostr_export_missing',
+    )
+    expect(orangeCheckPromise?.verification).toContain(
+      'owner-signed promise transition receipt',
+    )
+  })
+
   test('matches the browser-facing schema', () => {
     const decoded = S.decodeUnknownSync(ProductPromisesDocument)(
       publicProductPromisesDocument(),
