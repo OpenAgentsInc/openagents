@@ -72,6 +72,15 @@ export type AgentRunnerDescriptor = {
   ) => Promise<AgentRunnerCloseoutRecord | null>
 }
 
+export type AgentRunnerResolution =
+  | { status: "matched"; runner: AgentRunnerDescriptor }
+  | { status: "none" }
+  | {
+      status: "ambiguous"
+      runnerKinds: AgentRunnerKind[]
+      blockerRef: "blocker.assignment.agent_runner_ambiguous"
+    }
+
 function hasObjectField(value: unknown, key: string): boolean {
   const field = (value as Record<string, unknown> | undefined)?.[key]
   return field !== null && typeof field === "object"
@@ -127,13 +136,26 @@ export function agentRunnerForAdapterKind(
   return AGENT_RUNNER_REGISTRY.find((runner) => runner.adapterKind === adapterKind) ?? null
 }
 
+export function agentRunnerResolutionForLease(lease: PylonAssignmentLease): AgentRunnerResolution {
+  const matches = AGENT_RUNNER_REGISTRY.filter((runner) => runner.canRunAssignment(lease.codingAssignment))
+  if (matches.length === 0) return { status: "none" }
+  if (matches.length === 1) return { status: "matched", runner: matches[0] }
+  return {
+    status: "ambiguous",
+    runnerKinds: matches.map((runner) => runner.kind),
+    blockerRef: "blocker.assignment.agent_runner_ambiguous",
+  }
+}
+
 export function agentRunnerForLease(lease: PylonAssignmentLease): AgentRunnerDescriptor | null {
-  return AGENT_RUNNER_REGISTRY.find((runner) => runner.canRunAssignment(lease.codingAssignment)) ?? null
+  const resolution = agentRunnerResolutionForLease(lease)
+  return resolution.status === "matched" ? resolution.runner : null
 }
 
 export function agentRunnerServiceForLease(lease: PylonAssignmentLease): AgentRunnerServiceRef | null {
-  const runner = agentRunnerForLease(lease)
-  if (runner !== null) return runner.serviceRef
+  const resolution = agentRunnerResolutionForLease(lease)
+  if (resolution.status === "matched") return resolution.runner.serviceRef
+  if (resolution.status === "ambiguous") return null
 
   const codingAssignment = lease.codingAssignment
   const legacyRunner = AGENT_RUNNER_REGISTRY.find((candidate) => {
@@ -151,7 +173,7 @@ export async function executeRegisteredAgentRunner(
   now: Date,
   options: AgentRunnerExecutionOptions,
 ): Promise<AgentRunnerCloseoutRecord | null> {
-  const runner = agentRunnerForLease(lease)
-  if (runner === null) return null
-  return runner.execute(state, lease, now, options)
+  const resolution = agentRunnerResolutionForLease(lease)
+  if (resolution.status !== "matched") return null
+  return resolution.runner.execute(state, lease, now, options)
 }

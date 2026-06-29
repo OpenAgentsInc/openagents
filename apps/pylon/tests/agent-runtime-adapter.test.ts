@@ -22,6 +22,7 @@ import {
 import {
   AGENT_RUNNER_REGISTRY,
   agentRunnerForLease,
+  agentRunnerResolutionForLease,
   agentRunnerServiceForLease,
 } from "../src/agent-runner-registry"
 import { createBootstrapSummary, parseBootstrapArgs } from "../src/bootstrap"
@@ -166,6 +167,38 @@ describe("AgentRuntimeAdapter", () => {
     expect(agentRunnerServiceForLease(claudeLease)).toBe("claude")
     expect(agentRunnerForLease(codexLease)?.adapterKind).toBe("codex")
     expect(agentRunnerServiceForLease(codexLease)).toBe("codex")
+  })
+
+  test("registry resolution rejects ambiguous mixed-runner assignment payloads", () => {
+    const lease = {
+      schema: "openagents.pylon.assignment_lease.v0.3",
+      assignmentRef: "assignment.public.registry.ambiguous",
+      leaseRef: "lease.public.registry.ambiguous",
+      goal: "goal.public.registry.ambiguous",
+      paymentMode: "no-spend",
+      capabilityRefs: [],
+      codingAssignment: {
+        claudeAgent: {
+          schema: CLAUDE_AGENT_TASK_SCHEMA,
+          agentKind: "claude_agent_sdk",
+          fixtureRef: CLAUDE_AGENT_SUM_REPAIR_FIXTURE_REF,
+        },
+        codex: {
+          schema: CODEX_AGENT_TASK_SCHEMA,
+          agentKind: "codex_sdk",
+          fixtureRef: CODEX_AGENT_SUM_REPAIR_FIXTURE_REF,
+        },
+      },
+      expiresAt: now.toISOString(),
+    } as const
+
+    expect(agentRunnerResolutionForLease(lease)).toEqual({
+      status: "ambiguous",
+      runnerKinds: ["claude_agent", "codex"],
+      blockerRef: "blocker.assignment.agent_runner_ambiguous",
+    })
+    expect(agentRunnerForLease(lease)).toBeNull()
+    expect(agentRunnerServiceForLease(lease)).toBeNull()
   })
 
   test("fixture, Codex, and Claude wrappers emit the same kernel event contract", async () => {
