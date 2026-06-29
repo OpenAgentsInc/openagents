@@ -1621,6 +1621,99 @@ describe('public product promises document', () => {
     expect(largestSalesForce?.verification).toContain('#7027 dated audit')
   })
 
+  test('keeps agent-world default gates yellow with owner-review blocker for issue 7030', () => {
+    const decoded = S.decodeUnknownSync(ProductPromisesDocument)(
+      publicProductPromisesDocument(),
+    )
+    const byId = new Map(
+      decoded.promises.map(promise => [promise.promiseId, promise]),
+    )
+
+    const scene = byId.get('autopilot.agent_world_scene.v1')
+    expect(scene).toMatchObject({
+      state: 'yellow',
+      blockerRefs: [
+        'blocker.product_promises.agent_world_scene_owner_review_green_pending',
+      ],
+      evidenceRefs: expect.arrayContaining([
+        'https://github.com/OpenAgentsInc/openagents/issues/7030',
+        'apps/autopilot-desktop/src/shared/chat-world-flags.ts',
+        'apps/autopilot-desktop/src/ui/chat-world-subscriptions.ts',
+        'apps/autopilot-desktop/src/ui/update.ts',
+        'apps/autopilot-desktop/src/ui/view.ts',
+        'apps/autopilot-desktop/tests/verse-launch-checklist.test.ts',
+        'apps/autopilot-desktop/tests/verse-toggle.test.ts',
+      ]),
+    })
+    expect(scene?.blockerRefs).not.toContain(
+      'blocker.product_promises.agent_world_scene_not_default_on',
+    )
+    expect(scene?.safeCopy).toContain(
+      'This is NOT a green/default-on production claim',
+    )
+    expect(scene?.safeCopy).toContain('yellow, source-level receipt')
+    expect(scene?.unsafeCopy).toContain('production-default-on for all users')
+    expect(scene?.verification).toContain(
+      'chatWorldBuildFlags defaults CHAT_WORLD_SCENE and CHAT_WORLD_PAYMENTS on',
+    )
+    expect(scene?.verification).toContain('shipped-channel visual receipt')
+    expect(scene?.authorityBoundary).toContain('grants no runtime mutation')
+
+    const payments = byId.get('autopilot.bitcoin_payment_visualization.v1')
+    expect(payments).toMatchObject({
+      state: 'yellow',
+      blockerRefs: [
+        'blocker.product_promises.payment_visualization_owner_review_green_pending',
+      ],
+      evidenceRefs: expect.arrayContaining([
+        'https://github.com/OpenAgentsInc/openagents/issues/7030',
+        'apps/autopilot-desktop/src/shared/chat-world-flags.ts',
+        'apps/autopilot-desktop/src/shared/chat-world-visualization.ts',
+        'apps/autopilot-desktop/tests/chat-world-visualization.test.ts',
+        'apps/autopilot-desktop/tests/verse-launch-checklist.test.ts',
+        'https://openagents.com/api/public/activity-timeline?limit=8',
+      ]),
+    })
+    expect(payments?.blockerRefs).not.toContain(
+      'blocker.product_promises.payment_visualization_flag_default_off',
+    )
+    expect(payments?.safeCopy).toContain(
+      'This is NOT a green/default-on production claim',
+    )
+    expect(payments?.safeCopy).toContain('realBitcoinMoved:true')
+    expect(payments?.unsafeCopy).toContain('production-default-on for all users')
+    expect(payments?.verification).toContain(
+      'PAYMENT_EVENT_KINDS remains exactly {real_bitcoin_moved, settlement_recorded}',
+    )
+    expect(payments?.authorityBoundary).toContain('grants no payment authority')
+
+    const growth = byId.get('autopilot.pylon_growth_visualization.v1')
+    expect(growth).toMatchObject({
+      state: 'yellow',
+      blockerRefs: [
+        'blocker.product_promises.pylon_growth_owner_review_green_pending',
+      ],
+      evidenceRefs: expect.arrayContaining([
+        'https://github.com/OpenAgentsInc/openagents/issues/7030',
+        'apps/autopilot-desktop/src/shared/chat-world-flags.ts',
+        'apps/autopilot-desktop/src/ui/pylon-network-visualization.ts',
+        'apps/autopilot-desktop/tests/pylon-network-visualization.test.ts',
+        'apps/autopilot-desktop/tests/verse-launch-checklist.test.ts',
+      ]),
+    })
+    expect(growth?.blockerRefs).not.toContain(
+      'blocker.product_promises.pylon_growth_flag_default_off',
+    )
+    expect(growth?.safeCopy).toContain(
+      'This is NOT a green/default-on production claim',
+    )
+    expect(growth?.unsafeCopy).toContain('production-default-on for all users')
+    expect(growth?.verification).toContain(
+      'CHAT_WORLD_SCENE defaults on under the Verse launch default',
+    )
+    expect(growth?.authorityBoundary).toContain('grants no earning')
+  })
+
   test('weekend pylon promise assault attaches evidence without flipping any state', () => {
     const document = publicProductPromisesDocument()
     const byId = new Map(
