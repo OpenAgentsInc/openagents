@@ -639,7 +639,7 @@ button {
   display: grid;
   flex: 0 0 220px;
   gap: 7px;
-  padding-right: 96px;
+  padding-right: 118px;
   padding-left: 28px;
 }
 
@@ -687,7 +687,7 @@ button {
   position: relative;
   display: grid;
   gap: 7px;
-  padding-right: 100px;
+  padding-right: 118px;
 }
 
 .coding-active-session strong,
@@ -718,11 +718,20 @@ button {
   white-space: nowrap;
 }
 
+.coding-session-outcome {
+  overflow: hidden;
+  color: #c2d8ff;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .coding-session-status {
   position: absolute;
   top: 12px;
   right: 12px;
-  min-width: 72px;
+  min-width: 86px;
+  max-width: 104px;
+  overflow: hidden;
   padding: 7px 10px;
   color: #b6c8e8;
   background: rgba(255, 255, 255, 0.06);
@@ -733,6 +742,8 @@ button {
   line-height: 1;
   text-align: center;
   text-transform: uppercase;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .coding-active-session[data-state="active"] .coding-session-status,
@@ -747,6 +758,31 @@ button {
   color: #e8f0ff;
   background: rgba(143, 182, 255, 0.09);
   border-color: rgba(143, 182, 255, 0.28);
+}
+
+.coding-active-session[data-state="accepted"] .coding-session-status,
+.coding-active-session[data-state="counted"] .coding-session-status,
+.coding-session-row[data-state="accepted"] .coding-session-status,
+.coding-session-row[data-state="counted"] .coding-session-status {
+  color: #dcfff7;
+  background: rgba(35, 212, 165, 0.1);
+  border-color: rgba(35, 212, 165, 0.36);
+}
+
+.coding-active-session[data-state="verifying"] .coding-session-status,
+.coding-session-row[data-state="verifying"] .coding-session-status {
+  color: #e8f0ff;
+  background: rgba(143, 182, 255, 0.1);
+  border-color: rgba(143, 182, 255, 0.34);
+}
+
+.coding-active-session[data-state="blocked"] .coding-session-status,
+.coding-active-session[data-state="rejected"] .coding-session-status,
+.coding-session-row[data-state="blocked"] .coding-session-status,
+.coding-session-row[data-state="rejected"] .coding-session-status {
+  color: #ffd8dd;
+  background: rgba(255, 107, 122, 0.1);
+  border-color: rgba(255, 107, 122, 0.4);
 }
 
 .coding-transcript {

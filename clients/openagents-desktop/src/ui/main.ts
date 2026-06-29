@@ -260,10 +260,73 @@ const sessionSubtitle = (session: CodingCodexSession): string => {
   return parts.join(" · ")
 }
 
+type SessionLifecycleState =
+  | "accepted"
+  | "active"
+  | "blocked"
+  | "counted"
+  | "idle"
+  | "recent"
+  | "rejected"
+  | "verifying"
+
+const verificationForSession = (
+  session: CodingCodexSession,
+): AssignmentTokenUsageVerification | null =>
+  session.assignmentRef === null
+    ? null
+    : tokenVerificationCache.get(session.assignmentRef) ?? null
+
+const sessionLifecycleState = (
+  session: CodingCodexSession,
+): SessionLifecycleState => {
+  if (session.active || session.status === "active") return "active"
+  const verification = verificationForSession(session)
+  if (verification?.ok === true) return "counted"
+  if (verification?.ok === false) return "blocked"
+  if (
+    session.assignmentRef !== null &&
+    tokenVerificationInFlight.has(session.assignmentRef)
+  ) {
+    return "verifying"
+  }
+  const closeoutStatus = session.closeout.status?.toLowerCase()
+  if (closeoutStatus === "accepted") return "accepted"
+  if (closeoutStatus === "rejected") return "rejected"
+  if (session.status === "recent") return "recent"
+  return "idle"
+}
+
+const sessionLifecycleLabel = (session: CodingCodexSession): string => {
+  const state = sessionLifecycleState(session)
+  switch (state) {
+    case "accepted":
+      return "Accepted"
+    case "active":
+      return "Active"
+    case "blocked":
+      return "Proof blocked"
+    case "counted":
+      return "Counted"
+    case "rejected":
+      return "Rejected"
+    case "verifying":
+      return "Verifying"
+    case "recent":
+      return "Recent"
+    case "idle":
+      return "Idle"
+  }
+}
+
 const sessionStatusRank = (session: CodingCodexSession): number => {
-  if (session.active || session.status === "active") return 0
+  const state = sessionLifecycleState(session)
+  if (state === "active") return 0
   if (session.status === "recent") return 1
-  return 2
+  if (state === "counted" || state === "accepted" || state === "rejected") {
+    return 2
+  }
+  return 3
 }
 
 const sessionModifiedAtMs = (session: CodingCodexSession): number => {
@@ -280,6 +343,36 @@ const visibleCodingSessions = (
     return sessionModifiedAtMs(right) - sessionModifiedAtMs(left)
   })
 
+const sessionOutcome = (session: CodingCodexSession): string | null => {
+  const parts = [
+    session.pullRequestRef === null ? null : `PR #${session.pullRequestRef}`,
+    session.issueRef === null ? null : `issue #${session.issueRef}`,
+  ]
+  const verification = verificationForSession(session)
+  if (verification !== null) {
+    parts.push(
+      verification.ok
+        ? `${formatCount(verification.totalTokens)} tokens counted`
+        : `token proof blocked: ${verification.blockerRef}`,
+    )
+  } else if (
+    session.assignmentRef !== null &&
+    tokenVerificationInFlight.has(session.assignmentRef)
+  ) {
+    parts.push("token proof verifying")
+  } else if (session.closeout.status !== null) {
+    parts.push(`closeout ${session.closeout.status}`)
+  }
+  if (session.lastEvent.name !== null) parts.push(session.lastEvent.name)
+  const text = parts.filter((value): value is string => value !== null).join(" · ")
+  return text === "" ? null : text
+}
+
+const sessionPreview = (session: CodingCodexSession): string =>
+  session.messages.at(-1)?.text.split("\n")[0]?.trim() ??
+  compactPath(session.cwd) ??
+  session.path
+
 const selectSession = (session: CodingCodexSession): void => {
   selectedSessionPath = session.path
   if (latestCodingResult !== null) renderCodingStatus(latestCodingResult)
@@ -293,7 +386,7 @@ const sessionButton = (
   button.className =
     variant === "chip" ? "coding-active-session" : "coding-session-row"
   button.type = "button"
-  button.dataset.state = session.status
+  button.dataset.state = sessionLifecycleState(session)
   button.dataset.selected =
     selectedSessionPath === session.path ? "true" : "false"
   button.addEventListener("click", () => selectSession(session))
@@ -306,18 +399,31 @@ const sessionButton = (
 
   const status = document.createElement("span")
   status.className = "coding-session-status"
-  status.textContent = session.status.toUpperCase()
+  status.textContent = sessionLifecycleLabel(session).toUpperCase()
+
+  const outcomeText = sessionOutcome(session)
+  const outcome =
+    outcomeText === null ? null : document.createElement("span")
+  if (outcome !== null) {
+    outcome.className = "coding-session-outcome"
+    outcome.textContent = outcomeText
+  }
 
   if (variant === "chip") {
-    button.append(title, meta, status)
+    if (outcome === null) {
+      button.append(title, meta, status)
+    } else {
+      button.append(title, meta, outcome, status)
+    }
   } else {
     const preview = document.createElement("span")
     preview.className = "coding-session-preview"
-    preview.textContent =
-      session.messages.at(-1)?.text.split("\n")[0]?.trim() ??
-      compactPath(session.cwd) ??
-      session.path
-    button.append(title, meta, preview, status)
+    preview.textContent = sessionPreview(session)
+    if (outcome === null) {
+      button.append(title, meta, preview, status)
+    } else {
+      button.append(title, meta, outcome, preview, status)
+    }
   }
 
   return button
@@ -483,6 +589,35 @@ const tokenUsageText = (verification: AssignmentTokenUsageVerification): string 
   return `${formatCount(verification.totalTokens)} tokens · ${formatCount(verification.rowCount)} rows · exact`
 }
 
+const queueAssignmentTokenVerification = (assignmentRef: string): void => {
+  if (
+    tokenVerificationCache.has(assignmentRef) ||
+    tokenVerificationInFlight.has(assignmentRef)
+  ) {
+    return
+  }
+
+  tokenVerificationInFlight.add(assignmentRef)
+  void rpc.request
+    .verifyAssignmentTokenUsage(assignmentRef)
+    .then(result => {
+      tokenVerificationCache.set(assignmentRef, result)
+    })
+    .catch(error => {
+      tokenVerificationCache.set(assignmentRef, {
+        ok: false,
+        assignmentRef,
+        blockerRef: "blocker.desktop_token_accounting.proof_unavailable",
+        error: error instanceof Error ? error.message : String(error),
+        observedAt: new Date().toISOString(),
+      })
+    })
+    .finally(() => {
+      tokenVerificationInFlight.delete(assignmentRef)
+      if (latestCodingResult !== null) renderCodingStatus(latestCodingResult)
+    })
+}
+
 const renderAssignmentTokenVerification = (
   session: CodingCodexSession | null,
 ): void => {
@@ -528,30 +663,7 @@ const renderAssignmentTokenVerification = (
   row.append(heading, body)
   codingTokenVerification.append(row)
 
-  if (
-    cached === undefined &&
-    !tokenVerificationInFlight.has(assignmentRef)
-  ) {
-    tokenVerificationInFlight.add(assignmentRef)
-    void rpc.request
-      .verifyAssignmentTokenUsage(assignmentRef)
-      .then(result => {
-        tokenVerificationCache.set(assignmentRef, result)
-      })
-      .catch(error => {
-        tokenVerificationCache.set(assignmentRef, {
-          ok: false,
-          assignmentRef,
-          blockerRef: "blocker.desktop_token_accounting.proof_unavailable",
-          error: error instanceof Error ? error.message : String(error),
-          observedAt: new Date().toISOString(),
-        })
-      })
-      .finally(() => {
-        tokenVerificationInFlight.delete(assignmentRef)
-        if (latestCodingResult !== null) renderCodingStatus(latestCodingResult)
-      })
-  }
+  if (cached === undefined) queueAssignmentTokenVerification(assignmentRef)
 }
 
 const renderTokenAccounting = (result: TokenAccountingStatusResult): void => {
@@ -601,6 +713,18 @@ const renderCodingSessions = (
   sessions: readonly CodingCodexSession[],
 ): void => {
   const visibleSessions = visibleCodingSessions(sessions)
+  const activeSessions = visibleSessions.filter(
+    session => session.active || session.status === "active",
+  )
+
+  for (const session of visibleSessions.slice(0, 8)) {
+    if (
+      session.assignmentRef !== null &&
+      (session.status === "recent" || session.closeout.status !== null)
+    ) {
+      queueAssignmentTokenVerification(session.assignmentRef)
+    }
+  }
 
   if (
     visibleSessions.length > 0 &&
@@ -614,11 +738,14 @@ const renderCodingSessions = (
     visibleSessions.find(session => session.path === selectedSessionPath) ?? null
 
   codingActiveList.replaceChildren()
-  const topSessions = visibleSessions.slice(0, 8)
+  const topSessions = activeSessions.slice(0, 8)
   if (topSessions.length === 0) {
     const empty = document.createElement("div")
     empty.className = "coding-empty coding-active-empty"
-    empty.textContent = "No active Codex sessions."
+    empty.textContent =
+      visibleSessions.length === 0
+        ? "No Codex session transcripts found."
+        : "No live Codex exec processes. Recent and completed sessions are listed below."
     codingActiveList.append(empty)
   } else {
     codingActiveList.append(
@@ -676,20 +803,25 @@ const renderCodingStatus = (result: CodingStatusResult): void => {
   latestCodingResult = result
   const summary = result.summary
   const manager = result.managerResume
-  codingCount.textContent = `Coding: ${formatCount(summary.codexExecCount)}`
-  codingStatus.dataset.state =
+  codingCount.textContent = `Live Codex: ${formatCount(summary.codexExecCount)}`
+  const statusState =
     summary.codexExecCount > 0
       ? summary.burningCodexCount > 0
         ? "online"
         : "empty"
-      : "unknown"
-  codingStatus.title = result.ok ? "Open Coding" : result.error
+      : summary.assignmentRunnerCount > 0
+        ? "empty"
+        : "unknown"
+  codingStatus.dataset.state = statusState
+  codingStatus.title = result.ok
+    ? `Open Coding. ${formatCount(summary.codexExecCount)} live Codex exec processes, ${formatCount(summary.assignmentRunnerCount)} assignment runners.`
+    : result.error
 
   codingObserved.textContent = formatTimestamp(result.observedAt, "Local now")
-  codingSummary.textContent = `Codex: ${formatCount(summary.codexExecCount)}`
+  codingSummary.textContent = `Live Codex: ${formatCount(summary.codexExecCount)}`
   codingMetricCodex.textContent = formatCount(summary.codexExecCount)
   codingMetricBurning.textContent = formatCount(summary.burningCodexCount)
-  codingMetricKhala.textContent = formatCount(summary.khalaRequestCount)
+  codingMetricKhala.textContent = formatCount(summary.assignmentRunnerCount)
   codingMetricReady.textContent =
     summary.readyCodex === null ? "-" : formatCount(summary.readyCodex)
   if (latestTokenAccounting === null) {
@@ -698,6 +830,8 @@ const renderCodingStatus = (result: CodingStatusResult): void => {
 
   codingManagerSummary.textContent = [
     `Assigned ${formatCount(manager.activeAssignments.length)}`,
+    `Runners ${formatCount(summary.assignmentRunnerCount)}`,
+    `Requests ${formatCount(summary.khalaRequestCount)}`,
     `Locks ${formatCount(manager.queueLocks.filter(lock => lock.type === "lock").length)}`,
     `Token failures ${formatCount(manager.tokenFailures.failureCount)}`,
     `Warnings ${formatCount(manager.warnings.length)}`,

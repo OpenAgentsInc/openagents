@@ -618,7 +618,7 @@ const codexHomeCandidates = async (): Promise<readonly string[]> => {
   for (const root of pylonCodexAccountRootCandidates()) {
     try {
       for (const entry of await readdir(root, { withFileTypes: true })) {
-        if (entry.isDirectory() && /^codex-\d+$/.test(entry.name)) {
+        if (entry.isDirectory() && /^codex(?:-\d+)?$/.test(entry.name)) {
           homes.add(resolve(root, entry.name))
         }
       }
@@ -631,7 +631,7 @@ const codexHomeCandidates = async (): Promise<readonly string[]> => {
 }
 
 const accountRefFromCodexHome = (home: string): string | null =>
-  home.match(/\/accounts\/codex\/(codex-\d+)(?:\/|$)/)?.[1] ?? null
+  home.match(/\/accounts\/codex\/(codex(?:-\d+)?)(?:\/|$)/)?.[1] ?? null
 
 type CodexSessionFile = {
   readonly accountRef: string | null

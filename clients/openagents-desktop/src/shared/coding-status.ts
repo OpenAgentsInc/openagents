@@ -280,8 +280,11 @@ const processKindFromCommand = (command: string): CodingProcessKind | null => {
 }
 
 const accountRefFromCommand = (command: string): string | null =>
-  command.match(/(?:--account-ref\s+)(codex-\d+)/)?.[1] ??
-  command.match(/(?:\/|=|\s)(codex-\d+)(?:\/|\s|$)/)?.[1] ??
+  command.match(/(?:--account-ref\s+)(codex(?:-\d+)?)/)?.[1] ??
+  command.match(/\/accounts\/codex\/(codex(?:-\d+)?)(?:\/|$)/)?.[1] ??
+  command.match(/\/accounts\/(codex-\d+)(?:\/|$)/)?.[1] ??
+  command.match(/(?:^|[\s=])(codex-\d+)(?:[\s/]|$)/)?.[1] ??
+  command.match(/(?:^|[\s=])(codex)(?:\s|$)/)?.[1] ??
   null
 
 const issueRefFromCommand = (command: string): string | null =>
@@ -529,6 +532,7 @@ export const formatManagerResumeStatusBlock = (
 ): string => {
   const assigned = snapshot.activeAssignments.length
   const executing = processCount(snapshot.liveProcesses, "codex_exec")
+  const assignmentRunners = processCount(snapshot.liveProcesses, "assignment_runner")
   const khalaRequests = processCount(snapshot.liveProcesses, "khala_request")
   const locks = snapshot.queueLocks.filter(marker => marker.type === "lock")
   const done = snapshot.queueLocks.filter(marker => marker.type === "done")
@@ -550,6 +554,7 @@ export const formatManagerResumeStatusBlock = (
     `observed_at: ${snapshot.observedAt}`,
     `assigned_markers: ${assigned}`,
     `live_codex_exec: ${executing}`,
+    `assignment_runners: ${assignmentRunners}`,
     `khala_requests: ${khalaRequests}`,
     `queue_locks: ${locks.length}`,
     `queue_done_markers: ${done.length}`,
@@ -591,6 +596,7 @@ export const buildManagerResumeSnapshot = (input: {
   const candidateLane = candidateLaneWithStates(input.prStates)
   const warnings: CodingManagerMismatchWarning[] = []
   const codexExecCount = processCount(input.liveProcesses, "codex_exec")
+  const assignmentRunnerCount = processCount(input.liveProcesses, "assignment_runner")
   const khalaRequestCount = processCount(input.liveProcesses, "khala_request")
   const activeMarkerCount = input.activeAssignments.length
 
@@ -601,11 +607,13 @@ export const buildManagerResumeSnapshot = (input: {
       severity: "warning",
     })
   }
-  if (input.logs.acceptedRunningOrUnknown > activeMarkerCount + khalaRequestCount) {
+  const visibleLocalRuntimeCount =
+    activeMarkerCount + codexExecCount + assignmentRunnerCount + khalaRequestCount
+  if (input.logs.acceptedRunningOrUnknown > visibleLocalRuntimeCount) {
     warnings.push({
       code: "accepted_logs_without_local_runtime",
-      message: `Recent logs contain ${input.logs.acceptedRunningOrUnknown} accepted runs but only ${activeMarkerCount} markers and ${khalaRequestCount} Khala request wrappers.`,
-      severity: "warning",
+      message: `Recent logs contain ${input.logs.acceptedRunningOrUnknown} accepted-without-completed entries but only ${visibleLocalRuntimeCount} visible local runtimes (${activeMarkerCount} markers, ${codexExecCount} codex exec, ${assignmentRunnerCount} runners, ${khalaRequestCount} Khala request wrappers). This is history until a matching live process or marker appears.`,
+      severity: visibleLocalRuntimeCount === 0 ? "info" : "warning",
     })
   }
   if (input.tokenFailures.failureCount > 0 || input.tokenFailures.byteLength > 0) {
@@ -719,7 +727,7 @@ export const parseSupervisorLog = (
     if (/\bLOCKOUT\b/.test(line)) lockoutRecent += 1
 
     const event = line.match(
-      /^(\S+)\s+slot=(\d+)\s+acc=(codex-\d+)\s+issue=#(\d+)\s+([A-Z-]+)/,
+      /^(\S+)\s+slot=(\d+)\s+acc=(codex(?:-\d+)?)\s+issue=#(\d+)\s+([A-Z-]+)/,
     )
     if (event !== null) {
       events.push({

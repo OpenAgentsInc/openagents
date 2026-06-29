@@ -18,6 +18,7 @@ describe("openagents desktop coding status", () => {
   102   101  0.1      00:30 /Users/me/node_modules/@openai/codex/vendor/aarch64-apple-darwin/bin/codex exec --cd /tmp/workspace-one --assignment-ref assignment.public.khala_coding.test_6932
   103     1  0.2      10:00 bash /Users/me/work/apps/pylon/scripts/codex-supervisor/codex-supervisor.sh
   104     1  5.0      00:30 bun scripts/khala-vertex-continual-learning-burn.mjs
+  105     1  0.0      00:20 bun apps/pylon/src/index.ts assignment run-no-spend --account-ref codex --concurrency 20
 `)
 
     expect(processes.map(process => process.kind)).toEqual([
@@ -26,6 +27,7 @@ describe("openagents desktop coding status", () => {
       "codex_exec",
       "supervisor",
       "vertex_burn",
+      "assignment_runner",
     ])
     expect(processes[0]).toMatchObject({
       accountRef: "codex-4",
@@ -44,7 +46,12 @@ describe("openagents desktop coding status", () => {
       parentPid: 101,
       workspacePath: "/tmp/workspace-one",
     })
+    expect(processes[5]).toMatchObject({
+      accountRef: "codex",
+      kind: "assignment_runner",
+    })
     expect(summarizeCodingProcesses(processes)).toMatchObject({
+      assignmentRunnerCount: 1,
       burningCodexCount: 1,
       codexExecCount: 2,
       khalaRequestCount: 1,
@@ -282,6 +289,7 @@ Pylon presence failed: OpenAgents presence request failed (401): {"error":"unaut
       "queue_lock_github_state_mismatch",
     ])
     expect(snapshot.statusBlock).toContain("OPENAGENTS MANAGER RESUME")
+    expect(snapshot.statusBlock).toContain("assignment_runners: 0")
     expect(snapshot.statusBlock).toContain("candidate_lane: #7557 open")
   })
 })
