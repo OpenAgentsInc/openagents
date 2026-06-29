@@ -399,7 +399,7 @@ const paidAssignmentPaymentModes = new Set([
 // events; if it goes silent for more than this window it no longer consumes
 // future capacity. The store path proactively marks these rows stale before gate
 // accounting, while this pure gate check keeps tests/fallback stores correct.
-export const PYLON_ASSIGNMENT_ACTIVE_LEASE_TTL_MS = 5 * 60 * 1000
+export const PYLON_ASSIGNMENT_ACTIVE_LEASE_TTL_MS = 90 * 1000
 
 export const staleAssignmentLeaseCutoffIso = (nowIso: string): string =>
   isoTimestampAfterIso(nowIso, -PYLON_ASSIGNMENT_ACTIVE_LEASE_TTL_MS)
