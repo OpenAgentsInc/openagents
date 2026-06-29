@@ -1098,11 +1098,13 @@ async function releaseCodexAgentWorkspace(input: {
   return { resultRefs: [] }
 }
 
-type CodexAgentLease = {
+export type CodexAgentLease = {
   assignmentRef: string
   leaseRef: string
   codingAssignment?: unknown
 }
+
+export type CodexAgentExecutionResult = Awaited<ReturnType<typeof executeCodexAgentAssignment>>
 
 function deadlineBudgetExceededResult(): CodexAgentRunResult {
   return {
