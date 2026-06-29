@@ -52,7 +52,10 @@ export type DurableCheckpointSealReceiptFeedRejectionReason =
 
 export type DurableCheckpointSealReceiptFeedEntry = Readonly<{
   checkpointDigestRef: string
+  readbackRehashReceiptRef: string
   receiptRef: string
+  remoteCheckpointObjectRef: string
+  remoteCheckpointStoreRef: string
   replicationFactor: number
   storageClass: string
   windowRef: string
@@ -114,7 +117,10 @@ export const buildDurableCheckpointSealReceiptFeed = (
 
     acceptedByRef.set(decoded.receiptRef, {
       checkpointDigestRef: decoded.checkpointDigestRef,
+      readbackRehashReceiptRef: decoded.readbackRehashReceiptRef,
       receiptRef: decoded.receiptRef,
+      remoteCheckpointObjectRef: decoded.remoteCheckpointObjectRef,
+      remoteCheckpointStoreRef: decoded.remoteCheckpointStoreRef,
       replicationFactor: decoded.replicationFactor,
       storageClass: decoded.storageClass,
       windowRef: decoded.windowRef,

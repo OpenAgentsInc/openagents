@@ -61,6 +61,9 @@ export type DurableCheckpointSealReceiptVerificationReason =
   | 'receipt_ref_mismatch'
   | 'checkpoint_digest_not_content_addressed'
   | 'replication_factor_below_durable_minimum'
+  | 'remote_checkpoint_store_ref_invalid'
+  | 'remote_checkpoint_object_ref_invalid'
+  | 'readback_rehash_receipt_ref_invalid'
 
 export type DurableCheckpointSealReceiptVerificationVerdict = Readonly<{
   authorityBoundary: string
@@ -74,6 +77,14 @@ export type DurableCheckpointSealReceiptVerificationVerdict = Readonly<{
 
 const verificationAuthorityBoundary =
   'Durable-checkpoint-seal receipt verification confirms that a published receipt is internally authentic and consistent with the emitter invariants (canonical content-addressed ref, content-addressed digest, durable-minimum replication). A verified verdict grants no dispatch, settlement, storage-backend, promise-state, or green-claim authority, does not assert any real remote checkpoint store was read back, and a not-verified verdict is the safe default.'
+
+const PublicSafeRefPattern = /^[A-Za-z0-9][A-Za-z0-9_.:/-]*$/
+
+const isPublicSafeRef = (value: string): boolean =>
+  value.trim() === value &&
+  value.length >= 3 &&
+  value.length <= 260 &&
+  PublicSafeRefPattern.test(value)
 
 /**
  * Verify an already-decoded durable-checkpoint-seal receipt. A receipt is verified
@@ -97,6 +108,15 @@ export const verifyDurableCheckpointSealReceipt = (
   }
   if (receipt.replicationFactor < MinDurableReplicationFactor) {
     reasons.push('replication_factor_below_durable_minimum')
+  }
+  if (!isPublicSafeRef(receipt.remoteCheckpointStoreRef)) {
+    reasons.push('remote_checkpoint_store_ref_invalid')
+  }
+  if (!isPublicSafeRef(receipt.remoteCheckpointObjectRef)) {
+    reasons.push('remote_checkpoint_object_ref_invalid')
+  }
+  if (!isPublicSafeRef(receipt.readbackRehashReceiptRef)) {
+    reasons.push('readback_rehash_receipt_ref_invalid')
   }
 
   const verified = reasons.length === 0

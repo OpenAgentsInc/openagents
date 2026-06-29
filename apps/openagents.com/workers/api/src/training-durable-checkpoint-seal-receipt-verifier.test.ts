@@ -89,6 +89,19 @@ describe('durable checkpoint seal receipt verifier', () => {
     )
   })
 
+  test('rejects a receipt with invalid remote read-back evidence refs', () => {
+    const verdict = verifyDurableCheckpointSealReceipt({
+      ...genuineReceipt(),
+      readbackRehashReceiptRef: '',
+      remoteCheckpointObjectRef: ' raw/object ',
+      remoteCheckpointStoreRef: '../private-store',
+    })
+    expect(verdict.verified).toBe(false)
+    expect(verdict.reasons).toContain('readback_rehash_receipt_ref_invalid')
+    expect(verdict.reasons).toContain('remote_checkpoint_object_ref_invalid')
+    expect(verdict.reasons).toContain('remote_checkpoint_store_ref_invalid')
+  })
+
   test('fails toward not-verified for a malformed untrusted receipt', () => {
     const verdict = verifyUntrustedDurableCheckpointSealReceipt({
       receiptRef: 42,
