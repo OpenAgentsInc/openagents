@@ -104,6 +104,55 @@ h2 {
   margin: 18px 0;
 }
 
+.status-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  background: #1d2530;
+}
+
+.status-grid article {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 16px 18px;
+  background: rgba(12, 15, 19, 0.92);
+}
+
+.status-grid span {
+  color: #aeb9c6;
+  font-size: 12px;
+}
+
+.status-grid strong {
+  min-width: 0;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.blocker-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 14px 18px;
+  border-top: 1px solid #1d2530;
+}
+
+.blocker-list code {
+  padding: 5px 8px;
+  border: 1px solid #2b3646;
+  border-radius: 6px;
+  color: #c9d2dd;
+  font-size: 11px;
+}
+
+.muted {
+  color: #aeb9c6;
+  font-size: 12px;
+}
+
 .metrics article,
 .panel {
   background: rgba(12, 15, 19, 0.92);
@@ -250,6 +299,10 @@ code,
   }
 
   .metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .status-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

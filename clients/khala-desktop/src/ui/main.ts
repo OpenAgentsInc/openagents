@@ -1,12 +1,12 @@
 import { Electroview } from "electrobun/view"
 
+import type { KhalaAppleFmReadiness } from "../shared/apple-fm-readiness.js"
 import {
   KHALA_OPERATOR_POLL_INTERVAL_MS,
   type DashboardAccount,
   type DashboardPylon,
   type DashboardSession,
   type KhalaDesktopDashboard,
-  type KhalaDesktopDashboardResult,
 } from "../shared/operator-dashboard.js"
 import {
   KHALA_DESKTOP_RPC_MAX_REQUEST_TIME_MS,
@@ -26,7 +26,11 @@ new Electroview({ rpc })
 
 type ViewState =
   | { readonly status: "loading" }
-  | { readonly status: "ready"; readonly dashboard: KhalaDesktopDashboard }
+  | {
+      readonly status: "ready"
+      readonly appleFmReadiness: KhalaAppleFmReadiness
+      readonly dashboard: KhalaDesktopDashboard
+    }
   | { readonly status: "error"; readonly error: string; readonly observedAt: string }
 
 const app = document.querySelector<HTMLElement>("#app")
@@ -53,6 +57,9 @@ const formatElapsed = (elapsedMs: number): string => {
 
 const readinessLabel = (readiness: DashboardAccount["readiness"]): string =>
   readiness.replace(/_/g, " ")
+
+const appleFmStateLabel = (state: KhalaAppleFmReadiness["state"]): string =>
+  state.replace(/_/g, " ")
 
 const escapeHtml = (value: string): string =>
   value.replace(/[&<>"']/g, character => {
@@ -110,7 +117,35 @@ const sessionRow = (session: DashboardSession): string => `
 const emptyRow = (message: string, columns: number): string =>
   `<tr><td class="empty-row" colspan="${columns}">${escapeHtml(message)}</td></tr>`
 
-const renderDashboard = (dashboard: KhalaDesktopDashboard): string => `
+const renderAppleFmReadiness = (readiness: KhalaAppleFmReadiness): string => {
+  const pylonStatus = readiness.pylon === null
+    ? "not connected"
+    : readiness.pylon.available
+      ? readiness.pylon.status
+      : readiness.pylon.unavailableReason ?? readiness.pylon.status
+  const blockers = readiness.blockerRefs.length === 0
+    ? "<span class=\"muted\">none</span>"
+    : readiness.blockerRefs.map((ref: string) => `<code>${escapeHtml(ref)}</code>`).join("")
+  return `
+    <section class="panel">
+      <div class="section-heading">
+        <h2>Apple FM Sidecar</h2>
+        <span>${escapeHtml(readiness.provider)}</span>
+      </div>
+      <div class="status-grid">
+        <article><span>State</span><strong><span class="pill ${readiness.available ? "pill-ready" : "pill-warn"}">${escapeHtml(appleFmStateLabel(readiness.state))}</span></strong></article>
+        <article><span>Pylon</span><strong>${escapeHtml(pylonStatus)}</strong></article>
+        <article><span>Demand</span><strong>${escapeHtml(readiness.demandSource)}</strong></article>
+        <article><span>Usage truth</span><strong>${escapeHtml(readiness.usageTruth)}</strong></article>
+      </div>
+      <div class="blocker-list">${blockers}</div>
+    </section>`
+}
+
+const renderDashboard = (
+  dashboard: KhalaDesktopDashboard,
+  appleFmReadiness: KhalaAppleFmReadiness,
+): string => `
   <section class="hero">
     <div>
       <p class="kicker">Khala operator desktop</p>
@@ -130,6 +165,8 @@ const renderDashboard = (dashboard: KhalaDesktopDashboard): string => `
     <article><span>Ready accounts</span><strong>${formatNumber(dashboard.totals.readyAccounts)}</strong></article>
     <article><span>Tokens today</span><strong>${formatNumber(dashboard.totals.tokensToday)}</strong></article>
   </section>
+
+  ${renderAppleFmReadiness(appleFmReadiness)}
 
   <section class="panel">
     <div class="section-heading">
@@ -194,13 +231,16 @@ const render = (state: ViewState): void => {
     return
   }
 
-  app.innerHTML = renderDashboard(state.dashboard)
+  app.innerHTML = renderDashboard(state.dashboard, state.appleFmReadiness)
 }
 
 const load = async (): Promise<void> => {
-  const result: KhalaDesktopDashboardResult = await rpc.request.operatorDashboard()
+  const [result, appleFmReadiness] = await Promise.all([
+    rpc.request.operatorDashboard(),
+    rpc.request.appleFmReadiness(),
+  ])
   if (result.ok) {
-    render({ status: "ready", dashboard: result.dashboard })
+    render({ status: "ready", dashboard: result.dashboard, appleFmReadiness })
   } else {
     render({ status: "error", error: result.error, observedAt: result.observedAt })
   }

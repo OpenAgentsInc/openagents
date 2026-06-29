@@ -97,6 +97,14 @@ export type OperatorFetchOptions = {
   readonly fetch?: typeof fetch
 }
 
+export class KhalaOperatorDashboardFetchError extends S.TaggedErrorClass<KhalaOperatorDashboardFetchError>()(
+  "KhalaOperatorDashboardFetchError",
+  {
+    cause: S.Unknown,
+    message: S.String,
+  },
+) {}
+
 const asRecord = (value: unknown): Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value)
     ? value as Record<string, unknown>
@@ -284,9 +292,13 @@ const fetchJson = (options: {
   readonly fetch: typeof fetch
   readonly path: string
   readonly token: string
-}): Effect.Effect<unknown, Error> =>
+}): Effect.Effect<unknown, KhalaOperatorDashboardFetchError> =>
   Effect.tryPromise({
-    catch: (error: unknown) => error instanceof Error ? error : new Error(String(error)),
+    catch: (error: unknown) =>
+      new KhalaOperatorDashboardFetchError({
+        cause: error,
+        message: error instanceof Error ? error.message : String(error),
+      }),
     try: async () => {
       const response = await options.fetch(`${options.baseUrl}${options.path}`, {
         headers: {
@@ -331,7 +343,7 @@ export const fetchOperatorDashboard = (
       }),
     }
   }).pipe(
-    Effect.catch((error: Error) =>
+    Effect.catch((error: KhalaOperatorDashboardFetchError) =>
       Effect.succeed({
         ok: false as const,
         error: error.message,
