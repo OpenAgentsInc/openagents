@@ -161,6 +161,9 @@ export const CLOUD_WORKROOM_EVENT_KINDS: readonly CloudWorkroomEventKind[] = [
 
 export type CloudWorkroomEvent = {
   kind: CloudWorkroomEventKind
+  // Optional cloud-native discriminator. GCE lifecycle events arrive here while
+  // `kind` carries the broader workroom bucket.
+  type?: string
   // Bounded human-readable summary (the cloud side redacts token-like content).
   summary?: string
   // Artifact refs surfaced by `artifact` events.
