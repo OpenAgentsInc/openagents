@@ -10,6 +10,7 @@ import {
 import { openAgentsRunnerGatewayPayloadHasPrivateMaterial } from '../runner-gateway'
 
 export const ForumTipSmokeStatus = S.Literals([
+  'blocked_by_agent_wallet_send_capacity',
   'blocked_by_payer_wallet',
   'blocked_by_recipient_readiness',
   'blocked_by_spend_cap',
@@ -53,6 +54,9 @@ export const ForumTipSmokeInput = S.Struct({
   recipientReadinessRef: S.String,
   redactedEvidenceRef: S.String,
   routeStateRef: S.String,
+  sendReadinessCapacity: S.optionalKey(
+    S.Literals(['insufficient', 'sufficient', 'unknown']),
+  ),
   spendCapBitcoinSatoshis: S.Number,
   tokenCacheRef: S.String,
   walletHomeMode: S.optionalKey(
@@ -173,6 +177,7 @@ const safeRef = (value: string, fallback: string): string =>
 const statusForInput = (
   input: ForumTipSmokeInput,
   agentWalletStatus:
+    | 'blocked_by_insufficient_capacity'
     | 'blocked_by_spend_cap'
     | 'blocked_by_wallet_restore_mode'
     | 'blocked_until_operator_authority'
@@ -193,6 +198,10 @@ const statusForInput = (
 
   if (agentWalletStatus === 'ready_for_signet') {
     return 'ready_for_signet'
+  }
+
+  if (agentWalletStatus === 'blocked_by_insufficient_capacity') {
+    return 'blocked_by_agent_wallet_send_capacity'
   }
 
   return input.mode === 'fake_sandbox'
@@ -406,6 +415,7 @@ export const planForumTipSmoke = (
     operatorApprovedPayment:
       input.operatorApprovedPayment && higherLevelPrerequisitesReady,
     routeStateRef: input.routeStateRef,
+    sendReadinessCapacity: input.sendReadinessCapacity ?? 'unknown',
     spendCapBitcoinSatoshis,
     tokenCacheRef: input.tokenCacheRef,
     walletHomeMode: input.walletHomeMode ?? 'unknown',

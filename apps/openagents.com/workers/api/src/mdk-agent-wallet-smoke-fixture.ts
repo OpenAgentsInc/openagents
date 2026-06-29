@@ -16,6 +16,7 @@ export type OpenAgentsMdkAgentWalletSmokeMode =
   typeof OpenAgentsMdkAgentWalletSmokeMode.Type
 
 export const OpenAgentsMdkAgentWalletSmokeStatus = S.Literals([
+  'blocked_by_insufficient_capacity',
   'blocked_by_spend_cap',
   'blocked_by_wallet_restore_mode',
   'blocked_until_operator_authority',
@@ -45,6 +46,9 @@ export const OpenAgentsMdkAgentWalletSmokeInput = S.Struct({
   operatorApprovedPayment: S.Boolean,
   routeStateRef: S.String,
   spendCapBitcoinSatoshis: S.Number,
+  sendReadinessCapacity: S.optionalKey(
+    S.Literals(['insufficient', 'sufficient', 'unknown']),
+  ),
   tokenCacheRef: S.String,
   walletHomeMode: S.optionalKey(
     S.Literals(['mnemonic_restore', 'original_funded_wallet_home', 'unknown']),
@@ -72,6 +76,11 @@ export const OpenAgentsMdkAgentWalletSmokeProjection = S.Struct({
   reasonRefs: S.Array(S.String),
   routeStateRef: S.String,
   spendCapBitcoinSatoshis: S.Number,
+  sendReadinessCapacity: S.Literals([
+    'insufficient',
+    'sufficient',
+    'unknown',
+  ]),
   status: OpenAgentsMdkAgentWalletSmokeStatus,
   steps: S.Array(OpenAgentsMdkAgentWalletSmokeStep),
   tokenCacheRef: S.String,
@@ -98,6 +107,7 @@ const publicLiteralValues = new Set([
   '<payment_preimage_from_wallet_output>',
   'Authorization: L402 <l402_token_from_402_response>:<payment_preimage_from_wallet_output>',
   'balance',
+  'blocked_by_insufficient_capacity',
   'blocked_by_spend_cap',
   'blocked_by_wallet_restore_mode',
   'blocked_until_operator_authority',
@@ -139,6 +149,8 @@ const publicLiteralValues = new Set([
   'note.agent_wallet.operator_approved_signet_only',
   'note.agent_wallet.original_funded_home_required_for_send',
   'note.agent_wallet.receive_for_funding_test_only',
+  'note.agent_wallet.send_capacity_required_for_amount',
+  'note.agent_wallet.send_capacity_sufficient_public_signal',
   'note.agent_wallet.send_readiness_preflight_shared',
   'paid_retry',
   'receive',
@@ -226,7 +238,9 @@ const statusForInput = (
     ? 'blocked_by_spend_cap'
     : input.operatorApprovedPayment && input.mode === 'signet'
       ? (input.walletHomeMode ?? 'unknown') === 'original_funded_wallet_home'
-        ? 'ready_for_signet'
+        ? (input.sendReadinessCapacity ?? 'unknown') === 'sufficient'
+          ? 'ready_for_signet'
+          : 'blocked_by_insufficient_capacity'
         : 'blocked_by_wallet_restore_mode'
       : input.mode === 'fake_sandbox'
         ? 'documentation_only'
@@ -261,6 +275,10 @@ const baseSteps = (
       `wallet_home.mdk_agent_wallet.${input.walletHomeMode ?? 'unknown'}`,
       'note.agent_wallet.original_funded_home_required_for_send',
       'note.agent_wallet.send_readiness_preflight_shared',
+      'note.agent_wallet.send_capacity_required_for_amount',
+      ...((input.sendReadinessCapacity ?? 'unknown') === 'sufficient'
+        ? ['note.agent_wallet.send_capacity_sufficient_public_signal']
+        : []),
       ...((input.walletHomeMode ?? 'unknown') === 'mnemonic_restore'
         ? ['note.agent_wallet.mnemonic_restore_not_send_ready']
         : []),
@@ -356,6 +374,7 @@ export const planOpenAgentsMdkAgentWalletSmoke = (
     payoutModeGate,
     reasonRefs: safeRefs([`reason.agent_wallet_smoke.${status}`]),
     routeStateRef: safeRef(input.routeStateRef) ?? 'route_state.redacted',
+    sendReadinessCapacity: input.sendReadinessCapacity ?? 'unknown',
     spendCapBitcoinSatoshis: Math.max(
       0,
       Math.trunc(input.spendCapBitcoinSatoshis),

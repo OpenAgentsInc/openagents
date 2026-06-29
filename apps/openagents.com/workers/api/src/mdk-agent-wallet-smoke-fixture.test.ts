@@ -18,6 +18,7 @@ const baseInput = (
   operatorApprovedPayment: false,
   routeStateRef: 'route_state.fake_sandbox.l402_available',
   spendCapBitcoinSatoshis: 10_000,
+  sendReadinessCapacity: 'unknown',
   tokenCacheRef: 'token_cache.local.redacted',
   walletHomeMode: 'unknown',
   walletHomeRef: 'wallet_home.local.mdk_wallet',
@@ -56,6 +57,7 @@ describe('OpenAgents MDK agent-wallet smoke fixture', () => {
       baseInput({
         mode: 'signet',
         operatorApprovedPayment: true,
+        sendReadinessCapacity: 'sufficient',
         walletHomeMode: 'original_funded_wallet_home',
       }),
     )
@@ -92,6 +94,7 @@ describe('OpenAgents MDK agent-wallet smoke fixture', () => {
         amountBitcoinSatoshis: 20_000,
         mode: 'signet',
         operatorApprovedPayment: true,
+        sendReadinessCapacity: 'sufficient',
         spendCapBitcoinSatoshis: 10_000,
         walletHomeMode: 'original_funded_wallet_home',
       }),
@@ -107,6 +110,28 @@ describe('OpenAgents MDK agent-wallet smoke fixture', () => {
     expect(overCap.steps.some(step => step.maySpendBitcoin)).toBe(false)
     expect(liveBlocked.status).toBe('blocked_until_operator_authority')
     expect(liveBlocked.steps.some(step => step.kind === 'send')).toBe(false)
+  })
+
+  test('blocks original funded homes until send capacity is public-safe sufficient', () => {
+    const projection = planOpenAgentsMdkAgentWalletSmoke(
+      baseInput({
+        mode: 'signet',
+        operatorApprovedPayment: true,
+        sendReadinessCapacity: 'insufficient',
+        walletHomeMode: 'original_funded_wallet_home',
+      }),
+    )
+
+    expect(projection.status).toBe('blocked_by_insufficient_capacity')
+    expect(projection.sendReadinessCapacity).toBe('insufficient')
+    expect(projection.payoutModeGate.blockerRefs).toContain(
+      'blocker.mdk_agent_wallet.send_readiness_missing',
+    )
+    expect(projection.steps.some(step => step.kind === 'send')).toBe(false)
+    expect(
+      projection.steps.find(step => step.kind === 'send_readiness_preflight')
+        ?.noteRefs,
+    ).toContain('note.agent_wallet.send_capacity_required_for_amount')
   })
 
   test('blocks mnemonic-restore mode before any send step', () => {

@@ -1080,6 +1080,10 @@ describe('public product promises document', () => {
           ]),
           promiseId: 'payments.money_dev_kit.v1',
           state: 'yellow',
+          unsafeCopy: expect.stringContaining('positive balance'),
+          verification: expect.stringContaining(
+            'sufficient capacity for the attempted amount',
+          ),
         }),
         expect.objectContaining({
           blockerRefs: [],

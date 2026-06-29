@@ -1257,7 +1257,7 @@ export const publicProductPromisesDocument = () => {
         safeCopy:
           'OpenAgents uses MDK hosted checkout and agent-wallet flows for scoped small-sats/L402 paths, and Forum tips can project confirmed live direct BOLT 12 MDK/provider payments as ordinary content tips. Broader payout, withdrawal, and accepted-work settlement claims remain scoped by their own route authority and wallet readiness.',
         unsafeCopy:
-          'Do not claim MDK mnemonic restore or hosted MDK payout proves full send readiness or provider settlement.',
+          'Do not claim MDK mnemonic restore, positive balance, or hosted MDK payout proves sufficient agent-wallet send readiness or provider settlement.',
         evidenceRefs: [
           'apps/openagents.com/docs/mdk',
           'apps/pylon/docs/mdk-wallet-readiness-ledger.md',
@@ -1274,7 +1274,7 @@ export const publicProductPromisesDocument = () => {
           'blocker.product_promises.mdk_agent_wallet_send_readiness_insufficient_capacity',
         ],
         verification:
-          'Run smoke:forum:mdk-readiness with a ready-recipient post, user-specified sats amount, explicit live-spend approval, public receipt lookup, and `tip-post-smoke --strict-smooth` from a funded production payer wallet. Separate wallet configured, receive-ready, positive balance, send-ready, direct payment sent, webhook-confirmed payment, timeout recovery, refund/reversal, accepted work, payout, and accepted-work settlement states.',
+          'Run smoke:forum:mdk-readiness with a ready-recipient post, user-specified sats amount, explicit live-spend approval, public receipt lookup, and `tip-post-smoke --strict-smooth` from an original funded production payer wallet whose public-safe send-readiness preflight shows sufficient capacity for the attempted amount. Separate wallet configured, receive-ready, positive balance, sufficient send capacity, direct payment sent, webhook-confirmed payment, timeout recovery, refund/reversal, accepted work, payout, and accepted-work settlement states.',
         authorityBoundary:
           'Payment proof does not bypass route auth, owner scope, moderation, deployment, payout, or settlement gates.',
       },

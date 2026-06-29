@@ -94,6 +94,7 @@ describe('Forum tip smoke fixture', () => {
       baseInput({
         mode: 'signet',
         operatorApprovedPayment: true,
+        sendReadinessCapacity: 'sufficient',
         walletHomeMode: 'original_funded_wallet_home',
       }),
     )
@@ -117,6 +118,23 @@ describe('Forum tip smoke fixture', () => {
       'send',
       'paid_retry',
     ])
+  })
+
+  test('blocks signet wallet payment when agent-wallet send capacity is not sufficient', () => {
+    const projection = planForumTipSmoke(
+      baseInput({
+        mode: 'signet',
+        operatorApprovedPayment: true,
+        sendReadinessCapacity: 'insufficient',
+        walletHomeMode: 'original_funded_wallet_home',
+      }),
+    )
+
+    expect(projection.status).toBe('blocked_by_agent_wallet_send_capacity')
+    expect(projection.steps.some(step => step.maySpendBitcoin)).toBe(false)
+    expect(projection.agentWalletSmoke.status).toBe(
+      'blocked_by_insufficient_capacity',
+    )
   })
 
   test('blocks mnemonic-restore payer wallet before Forum wallet payment', () => {
