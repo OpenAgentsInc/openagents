@@ -101,6 +101,14 @@ if sup_claim_is_active 701; then bad "stale #701 should be GC'd"; else ok "stale
 if sup_claim_is_active 702; then ok "fresh #702 survives GC"; else bad "fresh #702 should survive GC"; fi
 sup_release_claim 702
 
+# --- sup_gc_orphaned_claims -------------------------------------------------
+sup_try_claim_issue 704 999999 >/dev/null
+sup_try_claim_issue 705 "$$" >/dev/null
+sup_gc_orphaned_claims
+if sup_claim_is_active 704; then bad "orphaned #704 claim should be GC'd on startup"; else ok "orphaned #704 claim GC'd on startup"; fi
+if sup_claim_is_active 705; then ok "live-owner #705 claim survives startup GC"; else bad "live-owner #705 claim should survive startup GC"; fi
+sup_release_claim 705
+
 # --- sup_refresh_claim renews TTL ------------------------------------------
 sup_try_claim_issue 703 >/dev/null
 touch -t 200001010000 "$(sup_claims_dir)/claim.703" 2>/dev/null || true
@@ -132,6 +140,23 @@ sup_release_claim 710; sup_release_claim 711; sup_release_claim 712
 picked=$(pick_and_claim_unlocked_issue 0 799 713)
 if [ "$picked" = "713" ]; then ok "pick_and_claim skips CLOSED #799 -> #713"; else bad "expected 713, got '$picked'"; fi
 sup_release_claim 713
+
+# --- pick_and_claim skips standing-task / epic queue governors --------------
+sup_labels_for_issue() {
+  case "$1" in
+    714) printf 'standing-task,prio:4-backstop-burn' ;;
+    715) printf 'epic,prio:1-continual-learning' ;;
+    *) printf '' ;;
+  esac
+}
+picked=$(pick_and_claim_unlocked_issue 0 714 715 716)
+if [ "$picked" = "716" ]; then
+  ok "pick_and_claim skips standing-task/epic issues -> #716"
+else
+  bad "expected standing/epic skip to pick 716, got '$picked'"
+fi
+sup_release_claim 716
+sup_labels_for_issue() { printf ''; }
 
 # --- CONCURRENCY: N slots, same pool -> all DISTINCT, no duplicates ---------
 # This is the core regression assertion for the duplicate-dispatch bug.

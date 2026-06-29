@@ -124,8 +124,16 @@ sup_dispatch_failure_signature() {
     printf 'rate_limited'
     return 0
   fi
-  if grep -qiE '409|dispatch gate refused|target_pylon_unavailable|duplicate_active_assignment' "$out" 2>/dev/null; then
+  if grep -qiE 'duplicate_active_assignment' "$out" 2>/dev/null; then
     printf 'refused'
+    return 0
+  fi
+  if grep -qiE '409|pylon_api_conflict|dispatch gate refused|target_pylon_unavailable' "$out" 2>/dev/null; then
+    printf 'dispatch_gate_conflict'
+    return 0
+  fi
+  if grep -qiE '(^|[^0-9])(500|503)([^0-9]|$)|internal_server_error|could not read linked owner registration|linked Pylon capacity|d1 read' "$out" 2>/dev/null; then
+    printf 'dispatch_gate_transient'
     return 0
   fi
   printf 'other'
@@ -164,6 +172,12 @@ sup_should_escalate_failure_backoff() {
   local sig="$1"
   local repeated="$2"
   if [ "$sig" = "codex_agent_execution_refused" ]; then
+    return 1
+  fi
+  if [ "$sig" = "dispatch_gate_conflict" ]; then
+    return 1
+  fi
+  if [ "$sig" = "dispatch_gate_transient" ]; then
     return 1
   fi
   [ "$repeated" -ge "$SUP_FAILURE_BACKOFF_ESCALATE_THRESHOLD" ] 2>/dev/null
