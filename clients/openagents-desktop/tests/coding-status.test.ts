@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test"
 
 import {
+  buildManagerResumeSnapshot,
   parseCodexSessionRollout,
   parseCodingProcesses,
   parseSupervisorLog,
+  summarizeManagerAssignmentLogs,
   summarizeCodingProcesses,
 } from "../src/shared/coding-status.js"
 
@@ -142,5 +144,121 @@ Pylon presence failed: OpenAgents presence request failed (401): {"error":"unaut
 `)
 
     expect(parsed.title).toBe("fix(operator): accept account ref hash")
+  })
+
+  test("classifies manager assignment logs by final lifecycle state", () => {
+    const summary = summarizeManagerAssignmentLogs([
+      {
+        path: "/logs/accepted.log",
+        text: '{"event":"assignment_run.completed","status":"accepted"}',
+      },
+      {
+        path: "/logs/rejected.log",
+        text: '{"event":"assignment_run.accepted"}\n{"event":"assignment_run.completed","status":"rejected","blocker":"blocker.assignment.codex_agent_execution_refused"}',
+      },
+      {
+        path: "/logs/running.log",
+        text: '{"event":"assignment_run.accepted"}',
+      },
+      {
+        path: "/logs/error.log",
+        text: '{"ok": false, "error": "capacity unavailable"}',
+      },
+      {
+        path: "/logs/pending.log",
+        text: "launching",
+      },
+      {
+        path: "/logs/empty.log",
+        text: "",
+      },
+    ])
+
+    expect(summary).toMatchObject({
+      acceptedRunningOrUnknown: 1,
+      completedAccepted: 1,
+      completedRejected: 1,
+      empty: 1,
+      failedBeforeAccept: 1,
+      pendingOutput: 1,
+      scannedLogCount: 6,
+    })
+    expect(summary.latestBlockers[0]).toMatchObject({
+      blocker: "blocker.assignment.codex_agent_execution_refused",
+      count: 1,
+      latestLogPath: "/logs/rejected.log",
+    })
+  })
+
+  test("builds manager resume JSON and mismatch warnings", () => {
+    const processes = parseCodingProcesses(`
+  200     1  0.1      04:00 bun apps/pylon/src/index.ts khala request --prompt Resolve PR #7557 --account-ref codex-3
+`)
+    const snapshot = buildManagerResumeSnapshot({
+      activeAssignments: [
+        {
+          accountRef: "codex-3",
+          accountRefHash: "hash-3",
+          assignmentRef: "assignment.public.test",
+          issueRef: "7557",
+          markerPath: "/active/one.json",
+          updatedAt: "2026-06-29T14:00:00Z",
+        },
+      ],
+      github: {
+        closedPrsSince: 97,
+        mergedPrsSince: 19,
+        openPrs: 267,
+        since: "2026-06-29T13:45:00Z",
+      },
+      liveProcesses: processes,
+      logs: summarizeManagerAssignmentLogs([
+        {
+          path: "/logs/running.log",
+          text: '{"event":"assignment_run.accepted"}',
+        },
+      ]),
+      observedAt: "2026-06-29T15:00:00Z",
+      prStates: {
+        "7486": "merged",
+        "7557": "open",
+      },
+      queueLocks: [
+        {
+          ageSeconds: 120,
+          issueRef: "7486",
+          markerPath: "/locks/pr.7486",
+          type: "lock",
+        },
+      ],
+      tokenFailures: {
+        byteLength: 128,
+        failureCount: 1,
+        latestFailures: [
+          {
+            assignmentRef: "assignment.public.test",
+            error: "D1 timeout",
+            observedAt: "2026-06-29T14:10:00Z",
+          },
+        ],
+        spoolPath: "/spool.jsonl",
+      },
+    })
+
+    expect(snapshot.candidateLane[0]).toMatchObject({
+      issueRef: "7557",
+      prState: "open",
+    })
+    expect(snapshot.queueLocks[0]).toMatchObject({
+      issueRef: "7486",
+      prState: "merged",
+    })
+    expect(snapshot.warnings.map(warning => warning.code)).toEqual([
+      "markers_codex_process_mismatch",
+      "token_usage_failure_spool_nonempty",
+      "queue_lock_github_state_mismatch",
+    ])
+    expect(snapshot.statusBlock).toContain("OPENAGENTS MANAGER RESUME")
+    expect(snapshot.statusBlock).toContain("candidate_lane: #7557 open")
   })
 })

@@ -2,6 +2,7 @@ import { Electroview } from "electrobun/view"
 
 import {
   type CodingCodexSession,
+  emptyManagerResumeSnapshot,
   OPENAGENTS_DESKTOP_CODING_POLL_INTERVAL_MS,
   type CodingStatusResult,
   type CodingSupervisorEvent,
@@ -62,6 +63,17 @@ const codingMetricReady = requireElement<HTMLElement>("#coding-metric-ready")
 const codingMetricTokenFailures = requireElement<HTMLElement>(
   "#coding-metric-token-failures",
 )
+const codingManagerSummary = requireElement<HTMLElement>(
+  "#coding-manager-summary",
+)
+const codingManagerStatus = requireElement<HTMLElement>(
+  "#coding-manager-status",
+)
+const codingManagerWarnings = requireElement<HTMLElement>(
+  "#coding-manager-warnings",
+)
+const codingCopyStatus = requireElement<HTMLButtonElement>("#coding-copy-status")
+const codingCopyJson = requireElement<HTMLButtonElement>("#coding-copy-json")
 const codingActiveList = requireElement<HTMLElement>("#coding-active-list")
 const codingList = requireElement<HTMLElement>("#coding-list")
 const codingTranscriptTitle = requireElement<HTMLElement>(
@@ -590,9 +602,24 @@ const eventRow = (event: CodingSupervisorEvent): HTMLElement => {
   return row
 }
 
+const copyText = async (value: string, button: HTMLButtonElement): Promise<void> => {
+  const original = button.textContent ?? "Copy"
+  try {
+    await globalThis.navigator.clipboard.writeText(value)
+    button.textContent = "Copied"
+  } catch {
+    button.textContent = "Copy Failed"
+  } finally {
+    globalThis.setTimeout(() => {
+      button.textContent = original
+    }, 1_200)
+  }
+}
+
 const renderCodingStatus = (result: CodingStatusResult): void => {
   latestCodingResult = result
   const summary = result.summary
+  const manager = result.managerResume
   codingCount.textContent = `Coding: ${formatCount(summary.codexExecCount)}`
   codingStatus.dataset.state =
     summary.codexExecCount > 0
@@ -611,6 +638,35 @@ const renderCodingStatus = (result: CodingStatusResult): void => {
     summary.readyCodex === null ? "-" : formatCount(summary.readyCodex)
   if (latestTokenAccounting === null) {
     codingMetricTokenFailures.textContent = "0"
+  }
+
+  codingManagerSummary.textContent = [
+    `Assigned ${formatCount(manager.activeAssignments.length)}`,
+    `Locks ${formatCount(manager.queueLocks.filter(lock => lock.type === "lock").length)}`,
+    `Token failures ${formatCount(manager.tokenFailures.failureCount)}`,
+    `Warnings ${formatCount(manager.warnings.length)}`,
+  ].join(" · ")
+  codingManagerStatus.textContent = manager.statusBlock
+  codingManagerWarnings.replaceChildren()
+  if (manager.warnings.length === 0) {
+    const empty = document.createElement("div")
+    empty.className = "coding-empty coding-manager-empty"
+    empty.textContent = "No mismatch warnings."
+    codingManagerWarnings.append(empty)
+  } else {
+    codingManagerWarnings.append(
+      ...manager.warnings.slice(0, 6).map(warning => {
+        const row = document.createElement("article")
+        row.className = "coding-manager-warning"
+        row.dataset.severity = warning.severity
+        const code = document.createElement("strong")
+        code.textContent = warning.code
+        const message = document.createElement("span")
+        message.textContent = warning.message
+        row.append(code, message)
+        return row
+      }),
+    )
   }
 
   renderCodingSessions(result.sessions)
@@ -672,6 +728,7 @@ const loadCodingStatus = async (): Promise<void> => {
     renderCodingStatus({
       ok: false,
       events: [],
+      managerResume: emptyManagerResumeSnapshot(new Date().toISOString()),
       processes: [],
       sessions: [],
       summary: {
@@ -744,6 +801,17 @@ codingStatus.addEventListener("click", () => navigateTo("coding"))
 pylonStatus.addEventListener("click", () => navigateTo("pylons"))
 codingBack.addEventListener("click", () => navigateTo("landing"))
 pylonsBack.addEventListener("click", () => navigateTo("landing"))
+codingCopyStatus.addEventListener("click", () => {
+  if (latestCodingResult === null) return
+  void copyText(latestCodingResult.managerResume.statusBlock, codingCopyStatus)
+})
+codingCopyJson.addEventListener("click", () => {
+  if (latestCodingResult === null) return
+  void copyText(
+    JSON.stringify(latestCodingResult.managerResume, null, 2),
+    codingCopyJson,
+  )
+})
 globalThis.addEventListener("hashchange", () => applyRoute(routeFromLocation()))
 globalThis.addEventListener("popstate", () => applyRoute(routeFromLocation()))
 

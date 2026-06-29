@@ -6,13 +6,22 @@ import { homedir } from "node:os"
 import { dirname, join, resolve } from "node:path"
 
 import {
+  buildManagerResumeSnapshot,
+  type CodingManagerAssignmentMarker,
+  type CodingManagerGithubCounts,
+  type CodingManagerPrState,
+  type CodingManagerQueueMarker,
+  type CodingManagerTokenFailure,
+  type CodingManagerTokenFailures,
   type CodingCodexSession,
   emptyCodingStatusSummary,
+  OPENAGENTS_DESKTOP_MANAGER_GITHUB_SINCE,
   parseCodexSessionRollout,
   parseCodingProcesses,
   parseSupervisorLog,
   type CodingProcess,
   summarizeCodingProcesses,
+  summarizeManagerAssignmentLogs,
   type CodingStatusResult,
   type CodingStatusSummary,
 } from "../shared/coding-status.js"
@@ -274,12 +283,302 @@ const supervisorHome = (): string =>
   Bun.env.CODEX_SUPERVISOR_HOME ??
   join(homedir(), ".codex-supervisor")
 
+const pylonFableHome = (): string =>
+  Bun.env.PYLON_FABLE_HOME ?? join(homedir(), ".pylon-fable")
+
 const countDirectoryEntries = async (path: string): Promise<number> => {
   try {
     return (await readdir(path)).length
   } catch {
     return 0
   }
+}
+
+const listFiles = async (path: string): Promise<readonly string[]> => {
+  try {
+    const entries = await readdir(path, { withFileTypes: true })
+    return entries
+      .filter(entry => entry.isFile())
+      .map(entry => resolve(path, entry.name))
+      .sort()
+  } catch {
+    return []
+  }
+}
+
+const numberValue = (value: unknown): number | null =>
+  typeof value === "number" && Number.isFinite(value) ? value : null
+
+const markerIssueRef = (marker: Record<string, unknown>): string | null => {
+  const direct =
+    nullableString(marker.issueRef) ??
+    nullableString(marker.prRef) ??
+    nullableString(marker.pullRequestRef)
+  if (direct !== null) return direct.match(/\d+/)?.[0] ?? direct
+  const text = JSON.stringify(marker)
+  return text.match(/(?:issue|PR|pull request)\s+#?(\d{3,})/i)?.[1] ??
+    text.match(/#(\d{3,})/)?.[1] ??
+    null
+}
+
+const readActiveAssignmentMarkers = async (): Promise<
+  readonly CodingManagerAssignmentMarker[]
+> => {
+  const files = await listFiles(resolve(pylonFableHome(), "active-assignment-runs"))
+  const markers = await Promise.all(
+    files
+      .filter(path => path.endsWith(".json"))
+      .map(async markerPath => {
+        const [marker, fileStat] = await Promise.all([
+          readJsonFile(markerPath),
+          stat(markerPath).catch(() => null),
+        ])
+        if (marker === null) return null
+        return {
+          accountRef: nullableString(marker.accountRef),
+          accountRefHash: nullableString(marker.accountRefHash),
+          assignmentRef: nullableString(marker.assignmentRef),
+          issueRef: markerIssueRef(marker),
+          markerPath,
+          updatedAt:
+            nullableString(marker.updatedAt) ??
+            nullableString(marker.observedAt) ??
+            (fileStat === null ? null : new Date(fileStat.mtimeMs).toISOString()),
+        } satisfies CodingManagerAssignmentMarker
+      }),
+  )
+  return markers
+    .filter((marker): marker is CodingManagerAssignmentMarker => marker !== null)
+    .sort((left, right) =>
+      compactNullableTime(right.updatedAt) - compactNullableTime(left.updatedAt),
+    )
+}
+
+const compactNullableTime = (value: string | null): number => {
+  if (value === null) return 0
+  const millis = Date.parse(value)
+  return Number.isFinite(millis) ? millis : 0
+}
+
+const issueRefFromQueueMarkerPath = (path: string): string | null =>
+  path.match(/(?:^|\/)pr\.(\d+)(?:\.|$)/)?.[1] ??
+  path.match(/(\d{3,})/)?.[1] ??
+  null
+
+const readQueueMarkers = async (): Promise<
+  readonly Omit<CodingManagerQueueMarker, "prState">[]
+> => {
+  const root = resolve(supervisorHome(), "pr-review")
+  const markerFiles = [
+    ...(await listFiles(resolve(root, "locks"))).map(path => ({
+      path,
+      type: "lock" as const,
+    })),
+    ...(await listFiles(resolve(root, "done"))).map(path => ({
+      path,
+      type: "done" as const,
+    })),
+  ]
+  const now = Date.now()
+  const markers = await Promise.all(
+    markerFiles.map(async marker => {
+      const fileStat = await stat(marker.path).catch(() => null)
+      return {
+        ageSeconds:
+          fileStat === null ? null : Math.max(0, Math.round((now - fileStat.mtimeMs) / 1000)),
+        issueRef: issueRefFromQueueMarkerPath(marker.path),
+        markerPath: marker.path,
+        type: marker.type,
+      } satisfies Omit<CodingManagerQueueMarker, "prState">
+    }),
+  )
+  return markers.sort((left, right) => (right.ageSeconds ?? 0) - (left.ageSeconds ?? 0))
+}
+
+const readRecentPrResolverLogs = async (): Promise<
+  readonly { readonly path: string; readonly text: string }[]
+> => {
+  const files = await listFiles(resolve(pylonFableHome(), "pr-resolver-logs"))
+  const withStats = await Promise.all(
+    files
+      .filter(path => /\/pr-review-.*\.log$/.test(path))
+      .map(async path => ({
+        path,
+        modifiedAtMs: (await stat(path).catch(() => null))?.mtimeMs ?? 0,
+      })),
+  )
+  return Promise.all(
+    withStats
+      .sort((left, right) => right.modifiedAtMs - left.modifiedAtMs)
+      .slice(0, 160)
+      .map(async file => ({
+        path: file.path,
+        text: await readTextFile(file.path),
+      })),
+  )
+}
+
+const tokenFailureFromLine = (line: string): CodingManagerTokenFailure | null => {
+  try {
+    const parsed: unknown = JSON.parse(line)
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+      return null
+    }
+    const object = parsed as Record<string, unknown>
+    const report =
+      typeof object.report === "object" && object.report !== null && !Array.isArray(object.report)
+        ? object.report as Record<string, unknown>
+        : {}
+    const error = nullableString(object.error)
+    return {
+      assignmentRef: nullableString(report.assignmentRef),
+      error: error === null ? null : error.slice(0, 180),
+      observedAt: nullableString(object.observedAt),
+    }
+  } catch {
+    return null
+  }
+}
+
+const readTokenFailures = async (): Promise<CodingManagerTokenFailures> => {
+  const spoolPath = resolve(pylonFableHome(), "codex-turn-report-failures.jsonl")
+  const [text, fileStat] = await Promise.all([
+    readTextFile(spoolPath),
+    stat(spoolPath).catch(() => null),
+  ])
+  const lines = text.split("\n").filter(line => line.trim() !== "")
+  return {
+    byteLength: fileStat?.size ?? 0,
+    failureCount: lines.length,
+    latestFailures: lines
+      .slice(-6)
+      .map(tokenFailureFromLine)
+      .filter((failure): failure is CodingManagerTokenFailure => failure !== null)
+      .reverse(),
+    spoolPath,
+  }
+}
+
+const spawnJson = async (cmd: readonly string[]): Promise<unknown | null> => {
+  try {
+    const text = await spawnText(cmd)
+    return text.trim() === "" ? null : JSON.parse(text)
+  } catch {
+    return null
+  }
+}
+
+type GithubPrRecord = {
+  readonly closedAt?: string | null
+  readonly mergedAt?: string | null
+  readonly number: number
+  readonly title?: string | null
+}
+
+const githubPrRecords = (value: unknown): readonly GithubPrRecord[] =>
+  Array.isArray(value)
+    ? value
+        .filter((item): item is Record<string, unknown> =>
+          typeof item === "object" && item !== null && !Array.isArray(item),
+        )
+        .map(item => ({
+          closedAt: nullableString(item.closedAt),
+          mergedAt: nullableString(item.mergedAt),
+          number: numberValue(item.number) ?? 0,
+          title: nullableString(item.title),
+        }))
+        .filter(item => item.number > 0)
+    : []
+
+let githubStateCache:
+  | {
+      readonly readAtMs: number
+      readonly state: {
+        readonly counts: CodingManagerGithubCounts
+        readonly prStates: Readonly<Record<string, CodingManagerPrState>>
+      }
+    }
+  | null = null
+
+const readGithubState = async (): Promise<{
+  readonly counts: CodingManagerGithubCounts
+  readonly prStates: Readonly<Record<string, CodingManagerPrState>>
+}> => {
+  if (githubStateCache !== null && Date.now() - githubStateCache.readAtMs <= 60_000) {
+    return githubStateCache.state
+  }
+  const [openValue, mergedValue, closedValue] = await Promise.all([
+    spawnJson([
+      "gh",
+      "pr",
+      "list",
+      "--repo",
+      "OpenAgentsInc/openagents",
+      "--state",
+      "open",
+      "--json",
+      "number,title",
+      "--limit",
+      "500",
+    ]),
+    spawnJson([
+      "gh",
+      "pr",
+      "list",
+      "--repo",
+      "OpenAgentsInc/openagents",
+      "--state",
+      "merged",
+      "--json",
+      "number,mergedAt,title",
+      "--limit",
+      "150",
+    ]),
+    spawnJson([
+      "gh",
+      "pr",
+      "list",
+      "--repo",
+      "OpenAgentsInc/openagents",
+      "--state",
+      "closed",
+      "--json",
+      "number,closedAt,title",
+      "--limit",
+      "150",
+    ]),
+  ])
+  const open = githubPrRecords(openValue)
+  const merged = githubPrRecords(mergedValue)
+  const closed = githubPrRecords(closedValue)
+  const sinceMs = Date.parse(OPENAGENTS_DESKTOP_MANAGER_GITHUB_SINCE)
+  const afterSince = (value: string | null | undefined): boolean => {
+    if (!Number.isFinite(sinceMs) || value === null || value === undefined) return false
+    const millis = Date.parse(value)
+    return Number.isFinite(millis) && millis >= sinceMs
+  }
+  const prStates: Record<string, CodingManagerPrState> = {}
+  for (const pr of closed) prStates[String(pr.number)] = "closed"
+  for (const pr of merged) prStates[String(pr.number)] = "merged"
+  for (const pr of open) prStates[String(pr.number)] = "open"
+  const state = {
+    counts: {
+      closedPrsSince: closedValue === null
+        ? null
+        : closed.filter(pr => afterSince(pr.closedAt)).length,
+      mergedPrsSince: mergedValue === null
+        ? null
+        : merged.filter(pr => afterSince(pr.mergedAt)).length,
+      openPrs: openValue === null ? null : open.length,
+      since: OPENAGENTS_DESKTOP_MANAGER_GITHUB_SINCE,
+    },
+    prStates,
+  }
+  githubStateCache = {
+    readAtMs: Date.now(),
+    state,
+  }
+  return state
 }
 
 const countNonEmptyLines = async (path: string): Promise<number | null> => {
@@ -855,7 +1154,17 @@ const verifyAssignmentTokenUsage = async (
 const codingStatus = async (): Promise<CodingStatusResult> => {
   const observedAt = new Date().toISOString()
   const home = supervisorHome()
-  const [psOutput, supervisorLog, claimCount, openIssueCount] =
+  const [
+    psOutput,
+    supervisorLog,
+    claimCount,
+    openIssueCount,
+    activeAssignments,
+    queueLocks,
+    prResolverLogs,
+    tokenFailures,
+    githubState,
+  ] =
     await Promise.all([
       spawnText([
         "/bin/ps",
@@ -874,12 +1183,27 @@ const codingStatus = async (): Promise<CodingStatusResult> => {
       readTextFile(resolve(home, "supervisor.log")),
       countDirectoryEntries(resolve(home, "claims")),
       countNonEmptyLines(resolve(home, "open-issues.set")),
+      readActiveAssignmentMarkers(),
+      readQueueMarkers(),
+      readRecentPrResolverLogs(),
+      readTokenFailures(),
+      readGithubState(),
     ])
 
   const processes = parseCodingProcesses(psOutput)
   const sessions = await readCodexSessions(processes)
   const processSummary = summarizeCodingProcesses(processes)
   const logSummary = parseSupervisorLog(supervisorLog)
+  const managerResume = buildManagerResumeSnapshot({
+    activeAssignments,
+    github: githubState.counts,
+    liveProcesses: processes,
+    logs: summarizeManagerAssignmentLogs(prResolverLogs),
+    observedAt,
+    prStates: githubState.prStates,
+    queueLocks,
+    tokenFailures,
+  })
   const summary: CodingStatusSummary = {
     ...emptyCodingStatusSummary(),
     ...processSummary,
@@ -896,6 +1220,7 @@ const codingStatus = async (): Promise<CodingStatusResult> => {
   return {
     ok: true,
     events: logSummary.events,
+    managerResume,
     observedAt,
     processes,
     sessions,
