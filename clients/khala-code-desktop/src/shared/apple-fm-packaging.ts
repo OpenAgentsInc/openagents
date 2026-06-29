@@ -12,9 +12,9 @@ export const KHALA_PACKAGED_APP_BUNDLE_CANDIDATES: ReadonlyArray<{
   readonly env: "dev" | "canary" | "stable"
   readonly bundleDir: string
 }> = [
-  { env: "dev", bundleDir: "build/dev-macos-arm64/Khala-dev.app" },
-  { env: "canary", bundleDir: "build/canary-macos-arm64/Khala-canary.app" },
-  { env: "stable", bundleDir: "build/stable-macos-arm64/Khala.app" },
+  { env: "dev", bundleDir: "build/dev-macos-arm64/Khala Code-dev.app" },
+  { env: "canary", bundleDir: "build/canary-macos-arm64/Khala Code-canary.app" },
+  { env: "stable", bundleDir: "build/stable-macos-arm64/Khala Code.app" },
 ]
 
 function joinPosix(...segments: ReadonlyArray<string>): string {

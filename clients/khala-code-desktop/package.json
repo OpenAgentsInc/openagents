@@ -14,8 +14,12 @@
     "verify": "bun run typecheck && bun test tests/*.test.ts && bun run build:ui && bun build src/bun/index.ts --outdir /tmp/khala-code-desktop-bun-build --target bun"
   },
   "dependencies": {
+    "@openagentsinc/khala-tools": "workspace:*",
     "@openagentsinc/ui": "workspace:*",
-    "electrobun": "1.18.1"
+    "chromium-bidi": "15.0.0",
+    "effect": "catalog:",
+    "electrobun": "1.18.1",
+    "playwright": "^1.61.0"
   },
   "devDependencies": {
     "bun-types": "^1.0.0",

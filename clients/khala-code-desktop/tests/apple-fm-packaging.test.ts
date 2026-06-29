@@ -29,8 +29,8 @@ describe("khala desktop Apple FM packaging", () => {
   })
 
   test("packaged helper path stays inside the Khala app bundle", () => {
-    expect(packagedAppleFmBridgePath("build/stable-macos-arm64/Khala.app")).toBe(
-      "build/stable-macos-arm64/Khala.app/Contents/Resources/app/apple-fm-bridge/foundation-bridge",
+    expect(packagedAppleFmBridgePath("build/stable-macos-arm64/Khala Code.app")).toBe(
+      "build/stable-macos-arm64/Khala Code.app/Contents/Resources/app/apple-fm-bridge/foundation-bridge",
     )
   })
 
@@ -50,7 +50,7 @@ describe("khala desktop Apple FM packaging", () => {
   test("verifier accepts the first non-empty executable helper", () => {
     const result = verifyPackagedAppleFmBridge({ probe: healthy })
     expect(result.ok).toBe(true)
-    expect(result.verifiedPath).toContain("Khala-dev.app")
+    expect(result.verifiedPath).toContain("Khala Code-dev.app")
   })
 
   test("verifier picks the first candidate that ships a usable helper", () => {
@@ -63,7 +63,7 @@ describe("khala desktop Apple FM packaging", () => {
 
     expect(result.ok).toBe(true)
     expect(result.verifiedEnv).toBe("stable")
-    expect(result.verifiedPath).toContain("Khala.app")
+    expect(result.verifiedPath).toContain("Khala Code.app")
   })
 
   test("verifier rejects missing, empty, and non-executable helpers", () => {

@@ -137,6 +137,11 @@ button {
   justify-items: end;
 }
 
+.message-bubble--tool {
+  max-width: min(100%, 40rem);
+  color: #b7c8dc;
+}
+
 .message-label {
   color: #8fb6ff;
   font-size: 0.68rem;
@@ -147,6 +152,10 @@ button {
 
 .message-bubble--user .message-label {
   color: #4fd0ff;
+}
+
+.message-bubble--tool .message-label {
+  color: #6ee7b7;
 }
 
 .message-body {
@@ -165,6 +174,10 @@ button {
 
 .message-bubble--user .message-prose {
   text-align: right;
+}
+
+.message-bubble--tool .message-prose {
+  color: #b7c8dc;
 }
 
 .composer-dock {
@@ -202,6 +215,11 @@ button {
   font-size: 0.8125rem;
   line-height: 1.55;
   outline: none;
+}
+
+#composer-input:disabled {
+  color: rgba(241, 239, 232, 0.64);
+  cursor: wait;
 }
 
 #composer-input::placeholder {

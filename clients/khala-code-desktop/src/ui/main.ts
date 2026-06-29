@@ -2,6 +2,7 @@ import { Electroview } from "electrobun/view"
 
 import {
   KHALA_CODE_DESKTOP_RPC_MAX_REQUEST_TIME_MS,
+  type KhalaCodeDesktopChatTurnRequest,
   type KhalaCodeDesktopMessage,
   type KhalaCodeDesktopMessageRole,
   type KhalaCodeDesktopRPCSchema,
@@ -12,11 +13,14 @@ import "./styles.css"
 type DesktopRpc = ReturnType<typeof Electroview.defineRPC<KhalaCodeDesktopRPCSchema>>
 type DesktopRpcRequests = KhalaCodeDesktopRPCSchema["requests"]
 
-const postPreviewRpc = async <Result>(method: string): Promise<Result> => {
+const postPreviewRpc = async <Result>(
+  method: string,
+  ...args: readonly unknown[]
+): Promise<Result> => {
   const response = await fetch(`/rpc/${encodeURIComponent(method)}`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ args: [] }),
+    body: JSON.stringify({ args }),
   })
   if (!response.ok) throw new Error(`${method} failed with ${response.status}`)
   return await response.json() as Result
@@ -36,6 +40,14 @@ const previewRpc = (): DesktopRpc => ({
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["onDeviceDeciderStatus"]>>
       >("onDeviceDeciderStatus"),
+    submitChatMessage: request =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["submitChatMessage"]>>
+      >("submitChatMessage", request),
+    toolCatalog: () =>
+      postPreviewRpc<Awaited<ReturnType<DesktopRpcRequests["toolCatalog"]>>>(
+        "toolCatalog",
+      ),
   },
 })
 
@@ -101,9 +113,12 @@ const composerInput = requireElement<HTMLTextAreaElement>("#composer-input")
 const sendButton = requireElement<HTMLButtonElement>("#send-button")
 
 let messages: KhalaCodeDesktopMessage[] = [...initialMessages]
+let pendingTurn = false
+const sessionId = `khala-code-desktop-${Date.now().toString(36)}`
 
 const roleLabel = (role: KhalaCodeDesktopMessageRole): string => {
   if (role === "user") return "You"
+  if (role === "tool") return "Tool"
   if (role === "system") return "System"
   return "Khala Code"
 }
@@ -137,7 +152,9 @@ const scrollToEnd = (): void => {
 
 const render = (): void => {
   messageList.replaceChildren(...messages.map(renderMessage))
-  sendButton.disabled = composerInput.value.trim() === ""
+  sendButton.disabled = pendingTurn || composerInput.value.trim() === ""
+  composerInput.disabled = pendingTurn
+  composerForm.dataset.pending = pendingTurn ? "true" : "false"
   requestAnimationFrame(scrollToEnd)
 }
 
@@ -158,37 +175,67 @@ const addMessage = (
   return message
 }
 
-const submitComposer = (): KhalaCodeDesktopMessage | null => {
+const appendMessages = (nextMessages: readonly KhalaCodeDesktopMessage[]): void => {
+  if (nextMessages.length === 0) return
+  messages = [...messages, ...nextMessages]
+  render()
+}
+
+const submitComposer = async (): Promise<KhalaCodeDesktopMessage | null> => {
+  if (pendingTurn) return null
   const text = composerInput.value.trim()
   if (text === "") return null
   composerInput.value = ""
-  return addMessage("user", text)
+  const message = addMessage("user", text)
+  pendingTurn = true
+  render()
+  try {
+    const request: KhalaCodeDesktopChatTurnRequest = {
+      messages,
+      sessionId,
+    }
+    const response = await rpc.request.submitChatMessage(request)
+    appendMessages(response.messages)
+  } catch (error) {
+    appendMessages([
+      {
+        body: `Khala Code turn failed: ${error instanceof Error ? error.message : String(error)}`,
+        id: nextMessageId("system"),
+        role: "system",
+      },
+    ])
+  } finally {
+    pendingTurn = false
+    render()
+  }
+  return message
 }
 
 composerForm.addEventListener("submit", event => {
   event.preventDefault()
-  submitComposer()
-  composerInput.focus()
+  void submitComposer().finally(() => composerInput.focus())
 })
 
 composerInput.addEventListener("input", () => {
-  sendButton.disabled = composerInput.value.trim() === ""
+  sendButton.disabled = pendingTurn || composerInput.value.trim() === ""
 })
 
 composerInput.addEventListener("keydown", event => {
-  if (event.key === "Enter" && !event.shiftKey && composerInput.value.trim() !== "") {
+  if (event.key === "Enter" && !event.shiftKey && composerInput.value.trim() !== "" && !pendingTurn) {
     event.preventDefault()
-    submitComposer()
+    void submitComposer()
   }
 })
 
 const controls = {
   addMessage,
   appInfo: () => rpc.request.appInfo(),
+  isPending: () => pendingTurn,
   messages: () => messages.map(message => ({ ...message })),
   reset: () => {
     messages = [...initialMessages]
     composerInput.value = ""
+    pendingTurn = false
     render()
   },
   setComposerDraft: (value: string) => {
@@ -196,6 +243,7 @@ const controls = {
     sendButton.disabled = composerInput.value.trim() === ""
   },
   submitComposer,
+  toolCatalog: () => rpc.request.toolCatalog(),
 }
 
 Object.assign(globalThis, {

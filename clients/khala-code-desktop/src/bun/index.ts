@@ -7,6 +7,10 @@ import {
   type KhalaCodeDesktopRPCSchema,
 } from "../shared/rpc.js"
 import { createAppleFmSidecarHost } from "./apple-fm-sidecar.js"
+import {
+  khalaCodeDesktopToolCatalog,
+  runKhalaCodeDesktopChatTurn,
+} from "./khala-chat-runtime.js"
 import { createOnDeviceDeciderHost } from "./on-device-decider-host.js"
 
 // Optional on-device Apple Foundation Models sidecar (Mac/Apple-Silicon only).
@@ -36,15 +40,40 @@ const contentTypeFor = (path: string): string => {
   return "text/html; charset=utf-8"
 }
 
-const previewAssetPath = (pathname: string): string => {
+const packagedViewPath = (...segments: readonly string[]): string =>
+  resolve(process.cwd(), "../Resources/app/views/khala-code-desktop", ...segments)
+
+const previewAssetPaths = (pathname: string): readonly string[] => {
   const clean = pathname === "/" ? "/index.html" : pathname
-  if (clean === "/index.html") return resolve(process.cwd(), "src/ui/index.html")
-  if (clean === "/main.js") return resolve(process.cwd(), "resources/ui/main.js")
-  if (clean === "/main.css") return resolve(process.cwd(), "resources/ui/main.css")
-  if (clean.startsWith("/fonts/")) {
-    return resolve(process.cwd(), "src/ui", clean.slice(1))
+  if (clean === "/index.html") {
+    return [
+      resolve(process.cwd(), "src/ui/index.html"),
+      packagedViewPath("index.html"),
+    ]
   }
-  return resolve(process.cwd(), "resources/ui", clean.replace(/^\/+/, ""))
+  if (clean === "/main.js") {
+    return [
+      resolve(process.cwd(), "resources/ui/main.js"),
+      packagedViewPath("main.js"),
+    ]
+  }
+  if (clean === "/main.css") {
+    return [
+      resolve(process.cwd(), "resources/ui/main.css"),
+      packagedViewPath("main.css"),
+    ]
+  }
+  if (clean.startsWith("/fonts/")) {
+    return [
+      resolve(process.cwd(), "src/ui", clean.slice(1)),
+      packagedViewPath(clean.slice(1)),
+    ]
+  }
+  const asset = clean.replace(/^\/+/, "")
+  return [
+    resolve(process.cwd(), "resources/ui", asset),
+    packagedViewPath(asset),
+  ]
 }
 
 const jsonResponse = (payload: unknown, init?: ResponseInit): Response =>
@@ -70,6 +99,16 @@ const rpcRequestHandlers: KhalaCodeDesktopRPCSchema["requests"] = {
   async onDeviceDeciderStatus() {
     return onDeviceDecider.select()
   },
+  async submitChatMessage(request) {
+    return runKhalaCodeDesktopChatTurn({
+      env: Bun.env,
+      request,
+      workingDirectory: process.cwd(),
+    })
+  },
+  async toolCatalog() {
+    return khalaCodeDesktopToolCatalog()
+  },
 }
 
 const previewRpcResponse = async (
@@ -84,17 +123,26 @@ const previewRpcResponse = async (
     return jsonResponse({ ok: false, error: "unknown_method" }, { status: 404 })
   }
 
-  return jsonResponse(await handler())
+  let args: unknown[] = []
+  try {
+    const body = await request.json() as { args?: unknown }
+    args = Array.isArray(body.args) ? body.args : []
+  } catch {
+    args = []
+  }
+
+  const invoke = handler as (...args: readonly unknown[]) => Promise<unknown>
+  return jsonResponse(await invoke(...args))
 }
 
 const previewAssetResponse = async (pathname: string): Promise<Response> => {
-  const path = previewAssetPath(pathname)
-  if (!(await Bun.file(path).exists())) {
-    return new Response("not found", { status: 404 })
+  for (const path of previewAssetPaths(pathname)) {
+    if (!(await Bun.file(path).exists())) continue
+    return new Response(Bun.file(path), {
+      headers: { "content-type": contentTypeFor(path) },
+    })
   }
-  return new Response(Bun.file(path), {
-    headers: { "content-type": contentTypeFor(path) },
-  })
+  return new Response("not found", { status: 404 })
 }
 
 const previewFetch = async (request: Request): Promise<Response> => {
