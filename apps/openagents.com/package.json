@@ -25,6 +25,7 @@
     "test:web": "cd apps/web && bun run test",
     "test:api": "cd workers/api && bun run test",
     "check:effect-topology": "bun scripts/check-effect-topology.mjs",
+    "check:effect-authority-boundaries": "bun scripts/check-effect-authority-boundaries.mjs",
     "check:effect-upgrade-metadata": "bun scripts/check-effect-upgrade-metadata.mjs",
     "check:agent-doc-links": "bun scripts/check-live-agent-doc-links.mjs",
     "check:public-projection-freshness": "bun scripts/check-public-projection-freshness.mjs",
