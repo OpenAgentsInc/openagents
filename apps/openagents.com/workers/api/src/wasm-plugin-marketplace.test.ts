@@ -292,6 +292,37 @@ describe('WASM plugin execution sandbox policy (#6832)', () => {
       expect(result.evidence.hostCallsRejected).toEqual([])
     }
   })
+
+  test('rejects policy-allowed host imports that the manifest did not declare', async () => {
+    const wasmModuleDigestRef = `wasm.sha256.${await sha256Hex(
+      allowedHostCallFixtureWasm,
+    )}`
+    const result = await executeWasmPluginFixture({
+      manifest: manifest({
+        wasmModuleDigestRef,
+        permissions: ['clock.read'],
+        interfaceDecls: [
+          {
+            kind: 'marketplace.transform.v1',
+            exportName: 'run',
+            inputSchemaRef: 'schema.public.example.input.v1',
+            outputSchemaRef: 'schema.public.example.output.v1',
+          },
+        ],
+      }),
+      moduleBytes: allowedHostCallFixtureWasm,
+      exportName: 'run',
+      args: [],
+      policy: executionPolicy({ allowedHostCalls: ['log.public'] }),
+    })
+
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.error.blockerRef).toBe(
+        'blocker.wasm_plugin_sandbox.unauthorized_import',
+      )
+    }
+  })
 })
 
 describe('WASM plugin marketplace discovery route (#6833)', () => {

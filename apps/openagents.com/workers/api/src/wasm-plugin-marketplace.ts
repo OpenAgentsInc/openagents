@@ -212,6 +212,7 @@ const hostCallForImport = (
 const ensureAllowedImports = (
   module: WebAssembly.Module,
   policy: WasmPluginExecutionPolicy,
+  manifest: WasmPluginPackageManifest,
 ): {
   attempted: ReadonlyArray<string>
   rejected: ReadonlyArray<string>
@@ -227,14 +228,15 @@ const ensureAllowedImports = (
       return (
         entry.kind !== 'function' ||
         hostCall === null ||
-        !policy.allowedHostCalls.includes(hostCall as WasmPluginPermission)
+        !policy.allowedHostCalls.includes(hostCall as WasmPluginPermission) ||
+        !manifest.permissions.includes(hostCall as WasmPluginPermission)
       )
     })
     .map(entry => `${entry.module}.${entry.name}:${entry.kind}`)
 
   if (rejected.length > 0) {
     throw rejectSandbox(
-      'WASM module imports must be explicit allowed OpenAgents host calls.',
+      'WASM module imports must be explicit manifest-declared and policy-allowed OpenAgents host calls.',
       'blocker.wasm_plugin_sandbox.unauthorized_import',
     )
   }
@@ -323,7 +325,7 @@ export const executeWasmPluginFixture = async (input: {
     }
 
     const module = new WebAssembly.Module(bytesToArrayBuffer(moduleBytes))
-    const imports = ensureAllowedImports(module, policy)
+    const imports = ensureAllowedImports(module, policy, admitted.manifest)
     const importsObject = {
       [wasmHostImportNamespace]: Object.fromEntries(
         policy.allowedHostCalls.map(permission => [permission, () => 0]),
