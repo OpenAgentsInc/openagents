@@ -78,3 +78,12 @@ preview and request scoped write approval before bytes are changed.
 Existing files require a fresh guard before overwrite, preserve an existing
 UTF-8 BOM, produce a structured diff receipt, and request scoped write approval
 before bytes are changed.
+
+### `apply_patch`
+
+`apply_patch` applies a constrained freeform patch grammar with `*** Begin
+Patch` / `*** End Patch` markers and add, update, or delete file operations.
+The whole patch is parsed, paths are resolved, and update hunks are matched
+before any side effect. One scoped patch approval covers all touched resources.
+V1 application is sequential and explicitly non-atomic; partial failures return
+a structured receipt with the number of applied operations.

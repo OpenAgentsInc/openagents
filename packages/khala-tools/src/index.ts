@@ -421,6 +421,7 @@ export { createGlobTool, globToolDefinition } from "./glob.js"
 export { createGrepTool, grepToolDefinition } from "./grep.js"
 export { createEditTool, editToolDefinition } from "./edit.js"
 export { createWriteTool, writeToolDefinition } from "./write.js"
+export { applyPatchToolDefinition, createApplyPatchTool } from "./apply-patch.js"
 
 function permissionRequestFor(
   definition: KhalaToolDefinition,
