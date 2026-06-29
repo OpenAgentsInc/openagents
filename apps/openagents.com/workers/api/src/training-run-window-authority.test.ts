@@ -463,6 +463,7 @@ describe('training run window authority', () => {
         durableCheckpointSeal: {
           checkpointDigestRef,
           replicationFactor: 2,
+          retrievalProofRef: 'receipt.training.checkpoint_readback.window.other',
           retrievalVerified: true,
           sizeBytes: 1_048_576,
           storageClass: 'content_addressed_object_store',

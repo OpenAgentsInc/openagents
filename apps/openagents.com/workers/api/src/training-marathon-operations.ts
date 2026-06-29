@@ -155,6 +155,7 @@ const sourceRefs = [
   buildoutPlanRef,
   pluralisRoadmapRef,
   'apps/openagents.com/workers/api/src/training-durable-checkpoint-seal.ts',
+  'apps/openagents.com/workers/api/src/training-durable-checkpoint-store.ts',
   'apps/openagents.com/workers/api/src/training-standby-dispatch.ts',
   'apps/openagents.com/workers/api/src/training-curtailment-drill.ts',
   'apps/openagents.com/workers/api/src/training-run-window-authority.ts',
@@ -179,6 +180,7 @@ export const projectTrainingMarathonOperations = (
       schemaVersion: DurableCheckpointSealSchemaVersion,
       sourceRefs: [
         'apps/openagents.com/workers/api/src/training-durable-checkpoint-seal.ts',
+        'apps/openagents.com/workers/api/src/training-durable-checkpoint-store.ts',
         'apps/openagents.com/workers/api/src/training-durable-checkpoint-seal-receipt.ts',
         'apps/openagents.com/workers/api/src/training-durable-checkpoint-seal-receipt-verifier.ts',
         'apps/openagents.com/workers/api/src/training-durable-checkpoint-seal-receipt-feed.ts',
@@ -188,7 +190,7 @@ export const projectTrainingMarathonOperations = (
         worklogRef,
       ],
       statusLabel:
-        'Durable-checkpoint seal predicate and bootstrap filtering are wired; no real remote checkpoint-store read-back receipt exists.',
+        'Durable-checkpoint seal predicate, bootstrap filtering, and source-level R2 read-back-and-rehash seal path are wired; no live production remote checkpoint read-back receipt exists.',
     }),
     curtailmentSurface: new TrainingMarathonCurtailmentSurface({
       blockerRef: TrainingMarathonCurtailmentDrillBlocker,

@@ -50,8 +50,32 @@ settlement, storage-backend, or green-claim authority.
 
 ## What genuinely remains for this blocker
 
-- Prove it end-to-end against a real remote content-addressed checkpoint store
-  (the read-back is still a declared descriptor/proof ref, not a wired fetch).
+- Produce and publish a live production marathon checkpoint seal receipt from a
+  real run. The source path can now write/read/rehash through R2, but no
+  production marathon run has emitted the dereferenceable receipt yet.
+
+## 2026-06-29 R2 content-addressed checkpoint seal path
+
+Blocker advanced: **`blocker.product_promises.durable_checkpoint_seal_missing`**
+(still listed).
+
+The seal path now has a source-level remote checkpoint store:
+
+- `training-durable-checkpoint-store.ts` writes checkpoint bytes to the Worker
+  R2 binding under a digest-derived private key, reads the object back, rehashes
+  the fetched bytes, and creates the `retrievalProofRef`.
+- The verified descriptor feeds `buildDurableCheckpointSealReceipt` and then
+  `transitionTrainingWindowRecord`, so the normal seal transition gate still
+  enforces the durable seal predicate.
+- `evaluateDurableCheckpointSeal` now fails closed when `retrievalVerified` is
+  asserted without a public-safe retrieval proof ref.
+- Tests cover content-addressed R2 write/readback/rehash, receipt verification,
+  sealing a window with the verified descriptor, and bootstrap selection from
+  that sealed row.
+
+This does not expose checkpoint bytes and does not flip the promise green. The
+remaining evidence gap is a live production marathon run publishing the
+dereferenceable remote checkpoint read-back receipt.
 
 ## 2026-06-20 standby dispatch admissibility predicate
 
