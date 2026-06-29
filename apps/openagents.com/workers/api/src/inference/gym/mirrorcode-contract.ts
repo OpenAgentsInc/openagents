@@ -371,6 +371,26 @@ const decisionGradeFor = (
 const tokenAttributionProofRefFor = (runId: string): string =>
   `proof.gym.mirrorcode.exact_token_rows.${runId.replace(/[^A-Za-z0-9_.:-]/g, '_')}`
 
+const assertPhase0LaunchCaps = (launch: MirrorCodeLaunchRequest): void => {
+  if (
+    launch.maxTokens !== undefined &&
+    launch.maxTokens > MIRRORCODE_PHASE0_DEFAULT_MAX_TOKENS
+  ) {
+    throw new MirrorCodeRunError(
+      `maxTokens must be <= ${MIRRORCODE_PHASE0_DEFAULT_MAX_TOKENS} for Phase-0 launch intents.`,
+    )
+  }
+  if (
+    launch.maxWallClockSeconds !== undefined &&
+    launch.maxWallClockSeconds >
+      MIRRORCODE_PHASE0_DEFAULT_MAX_WALL_CLOCK_SECONDS
+  ) {
+    throw new MirrorCodeRunError(
+      `maxWallClockSeconds must be <= ${MIRRORCODE_PHASE0_DEFAULT_MAX_WALL_CLOCK_SECONDS} for Phase-0 launch intents.`,
+    )
+  }
+}
+
 // Build the public-safe stored run from a raw ingest body. Validates the shape,
 // re-asserts the public-safety boundary, and derives the honesty fields. Throws
 // MirrorCodeRunError on any rejection so nothing unsafe is ever stored.
@@ -467,6 +487,7 @@ export const buildMirrorCodeLaunchRun = (
       'MirrorCode launch intents are smoke-only; post the scored decision_grade result with exactTokenUsageEventRefs after execution.',
     )
   }
+  assertPhase0LaunchCaps(launch)
 
   return buildMirrorCodeRun({
     runId: `mc-${launch.bucket.toLowerCase()}-${taskPart}-${languagePart}-${timestampPart}`,

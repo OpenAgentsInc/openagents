@@ -134,6 +134,33 @@ describe('buildMirrorCodeRun', () => {
     expect(built.maxWallClockSeconds).toBe(600)
   })
 
+  test('rejects owner-gated launch caps above Phase-0 hard caps', () => {
+    expect(() =>
+      buildMirrorCodeLaunchRun(
+        {
+          kind: 'launch',
+          taskId: 'cal',
+          bucket: 'S',
+          language: 'python',
+          maxTokens: 1_000_001,
+        },
+        '2026-06-27T02:03:04.000Z',
+      ),
+    ).toThrow(MirrorCodeRunError)
+    expect(() =>
+      buildMirrorCodeLaunchRun(
+        {
+          kind: 'launch',
+          taskId: 'cal',
+          bucket: 'S',
+          language: 'python',
+          maxWallClockSeconds: 3_601,
+        },
+        '2026-06-27T02:03:04.000Z',
+      ),
+    ).toThrow(MirrorCodeRunError)
+  })
+
   test('rejects an owner-gated launch outside the Phase-0 S bucket', () => {
     expect(() =>
       buildMirrorCodeLaunchRun(
@@ -444,6 +471,36 @@ describe('handleMirrorCodeRunsApi POST', () => {
     expect(stored).toBe(0)
     const body = (await response.json()) as { reason: string }
     expect(body.reason).toContain('launch intents are smoke-only')
+  })
+
+  test('authorized POST rejects launch caps above the Phase-0 hard cap without storing', async () => {
+    let stored = 0
+    const response = await run(
+      handleMirrorCodeRunsApi(
+        postRequest({
+          kind: 'launch',
+          taskId: 'qsv_select',
+          bucket: 'S',
+          language: 'python',
+          maxTokens: 1_000_001,
+        }),
+        {
+          requireAdminApiToken: async () => true,
+          nowIso: () => '2026-06-27T02:03:04.000Z',
+          store: {
+            listRuns: () => Effect.succeed([]),
+            getRun: () => Effect.sync(() => undefined),
+            upsertRun: () => Effect.sync(() => {
+              stored += 1
+            }),
+          },
+        },
+      ),
+    )
+    expect(response.status).toBe(400)
+    expect(stored).toBe(0)
+    const body = (await response.json()) as { reason: string }
+    expect(body.reason).toContain('maxTokens must be <=')
   })
 
   test('authorized POST with task contents is rejected 400', async () => {
