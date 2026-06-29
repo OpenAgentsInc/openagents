@@ -6,6 +6,7 @@ import {
   parseFleetIssueList,
   plannedReplenishmentRounds,
   runKhalaFleetSupervisor,
+  shouldDispatchReplenishment,
   validateFleetRunVerify,
 } from "./fleet-run.js"
 import type { KhalaFleetStatus } from "./fleet.js"
@@ -80,6 +81,10 @@ describe("fleet run planning", () => {
   })
 
   test("keeps lockout recovery in the short supervisor cadence", () => {
+    expect(shouldDispatchReplenishment(0)).toBe(false)
+    expect(shouldDispatchReplenishment(1)).toBe(false)
+    expect(shouldDispatchReplenishment(2)).toBe(true)
+
     const firstLockoutWait = nextFleetSupervisorDelay({
       anyRefused: true,
       lockout: true,
