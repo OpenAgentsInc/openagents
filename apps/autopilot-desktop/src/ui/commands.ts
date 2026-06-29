@@ -63,6 +63,8 @@ import {
   SettledReconcileTrainingWindow,
   SettledRequestTrainingBootstrap,
   SettledManagedAccountMutation,
+  GotAccountStatus,
+  SettledAccountStatusReset,
   SettledResolveApproval,
   SettledSubmitIntent,
   GotManagedAccounts,
@@ -1541,6 +1543,39 @@ export const LoadManagedAccounts = Command.define(
     Effect.catch((error) =>
       Effect.succeed(
         GotManagedAccounts({
+          projection: { ok: false, accounts: [], error: errorText(error) },
+        }),
+      ),
+    ),
+  ),
+)
+
+export const LoadAccountStatus = Command.define(
+  "LoadAccountStatus",
+  GotAccountStatus,
+)(
+  Effect.tryPromise(() => getRequest().getAccountStatus({})).pipe(
+    Effect.map((projection) => GotAccountStatus({ projection })),
+    Effect.catch((error) =>
+      Effect.succeed(
+        GotAccountStatus({
+          projection: { ok: false, accounts: [], error: errorText(error) },
+        }),
+      ),
+    ),
+  ),
+)
+
+export const ResetAccountStatus = Command.define(
+  "ResetAccountStatus",
+  { accountRef: S.String },
+  SettledAccountStatusReset,
+)(({ accountRef }) =>
+  Effect.tryPromise(() => getRequest().resetAccountStatus({ accountRef })).pipe(
+    Effect.map((projection) => SettledAccountStatusReset({ projection })),
+    Effect.catch((error) =>
+      Effect.succeed(
+        SettledAccountStatusReset({
           projection: { ok: false, accounts: [], error: errorText(error) },
         }),
       ),

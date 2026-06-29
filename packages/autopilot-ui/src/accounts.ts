@@ -6,10 +6,28 @@ import { statusChip } from "./view.js"
 export type AccountSummary = Readonly<{
   accountRefHash: string
   provider: "codex" | "claude" | string
-  state: "ready" | "quota_blocked" | "unavailable"
+  state:
+    | "ready"
+    | "credentials_missing"
+    | "auth_refresh_failed"
+    | "cooldown"
+    | "weekly_exhausted"
+    | "model_unavailable"
+    | "execution_refused"
+    | "quota_blocked"
+    | "unavailable"
   usage?: {
     used: number
     limit: number
+  }
+  resetAt?: string | null
+  cooldownSecondsRemaining?: number | null
+  activeSlots?: number | null
+  recentRefusalReason?: string | null
+  lastSuccessfulTurn?: string | null
+  manualReset?: {
+    allowed: boolean
+    remaining: number
   }
 }>
 
@@ -21,8 +39,14 @@ const accountStateTone = (state: AccountSummary["state"]): ChipTone => {
   switch (state) {
     case "ready":
       return "success"
+    case "cooldown":
+    case "weekly_exhausted":
     case "quota_blocked":
       return "warning"
+    case "credentials_missing":
+    case "auth_refresh_failed":
+    case "model_unavailable":
+    case "execution_refused":
     case "unavailable":
       return "danger"
   }
@@ -38,6 +62,28 @@ const quotaTone = (account: AccountSummary): ChipTone => {
 
 const quotaLabel = (usage: AccountSummary["usage"]): string =>
   usage === undefined ? "quota: unknown" : `quota: ${usage.used}/${usage.limit}`
+
+const accountDetails = (account: AccountSummary): string[] =>
+  [
+    account.resetAt === undefined || account.resetAt === null ? null : `reset_at: ${account.resetAt}`,
+    account.cooldownSecondsRemaining === undefined || account.cooldownSecondsRemaining === null
+      ? null
+      : `cooldown: ${account.cooldownSecondsRemaining}s`,
+    account.activeSlots === undefined || account.activeSlots === null
+      ? null
+      : `active slots: ${account.activeSlots}`,
+    account.recentRefusalReason === undefined || account.recentRefusalReason === null
+      ? null
+      : `recent refusal: ${account.recentRefusalReason}`,
+    account.lastSuccessfulTurn === undefined || account.lastSuccessfulTurn === null
+      ? null
+      : `last successful turn: ${account.lastSuccessfulTurn}`,
+    account.manualReset === undefined
+      ? null
+      : account.manualReset.allowed
+        ? `manual reset: available (${account.manualReset.remaining} left)`
+        : `manual reset: not available (${account.manualReset.remaining} left)`,
+  ].filter((value): value is string => value !== null)
 
 export const AccountRow = (account: AccountSummary): Html =>
   h.article(
@@ -64,6 +110,12 @@ export const AccountRow = (account: AccountSummary): Html =>
         tone: quotaTone(account),
         attrs: [h.DataAttribute("autopilot-account-quota", account.accountRefHash)],
       }),
+      ...accountDetails(account).map((detail) =>
+        h.span(
+          [className("font-mono text-xs text-[var(--text-secondary,#8a8c93)] sm:col-span-4")],
+          [detail],
+        ),
+      ),
     ],
   )
 

@@ -230,7 +230,7 @@ describe("CS-A1 account-management reducer", () => {
     expect(model.verseMode).toBe("code")
     expect(model.managedAccountsPending).toBe(true)
     expect(model.managedAccountsStatus.text).toContain("Codex accounts")
-    expect(commands.map((command) => command.name)).toEqual(["LoadManagedAccounts"])
+    expect(commands.map((command) => command.name)).toEqual(["LoadManagedAccounts", "LoadAccountStatus"])
   })
 
   test("GotManagedAccounts stores the projection and clears pending", () => {
@@ -333,16 +333,118 @@ describe("CS-A1 account-management reducer", () => {
     expect(modelPaneLayer(model).panes.map((pane) => pane.kind)).toEqual(["accounts"])
     expect(commands.map((command) => command.name)).toEqual([
       "LoadManagedAccounts",
+      "LoadAccountStatus",
       "LoadInferenceGatewayReadiness",
     ])
 
-    const tree = serializeView(view(model).body)
+    const [opened] = update(model, OpenedManagedPane({ pane: "accounts" }))
+    const tree = serializeView(view(opened).body)
     expect(tree).toContain("pane-window")
     expect(tree).toContain("Accounts")
     expect(tree).toContain("Add account")
     expect(tree).toContain("work")
     expect(tree).toContain("home missing")
     expect(tree).toContain("claude_agent")
+  })
+
+  test("Accounts pane shows Codex cooldowns and manual reset controls", () => {
+    const node = nodeWithAccounts([
+      {
+        provider: "codex",
+        homeState: "present",
+        ready: true,
+        accountRef: "work",
+        accountRefHash: "account.pylon.codex.workabcdef",
+        selector: "registry_ref",
+        blockerRefs: [],
+        priority: 1,
+      },
+      {
+        provider: "codex",
+        homeState: "present",
+        ready: true,
+        accountRef: "weekly",
+        accountRefHash: "account.pylon.codex.weeklyabcdef",
+        selector: "registry_ref",
+        blockerRefs: [],
+        priority: 2,
+      },
+    ])
+    const model = Model.make({
+      ...initialModel,
+      pane: "chat",
+      verseMode: "code",
+      node,
+      accountStatus: {
+        schema: "openagents.pylon.accounts_status.v0.1",
+        observedAt: "2026-06-29T15:00:00.000Z",
+        accounts: [
+          {
+            provider: "codex",
+            selector: "registry_ref",
+            accountRef: "work",
+            accountRefHash: "account.pylon.codex.workabcdef",
+            readiness: { state: "ready", blockerRefs: [] },
+            quota: {
+              state: "cooldown",
+              kind: "cooldown",
+              observedAt: "2026-06-29T14:55:00.000Z",
+              cooldownExpiresAt: "2026-06-29T20:00:00.000Z",
+              cooldownSecondsRemaining: 18_000,
+              sourceDigestRef: "digest.public.cooldown",
+              manualResetsRemaining: 3,
+              resetAllowed: false,
+              operatorAction: "wait_for_cooldown",
+            },
+            capacity: { hourly: null, weekly: null, windows: [] },
+            usage: { observedAt: null, inputTokens: null, outputTokens: null, totalTokens: null },
+            manualReset: {
+              performed: false,
+              manualResetsRemaining: 3,
+              updatedAt: "2026-06-29T14:55:00.000Z",
+              blockerRefs: [],
+            },
+            blockerRefs: ["blocker.pylon.accounts_status.cooldown"],
+          },
+          {
+            provider: "codex",
+            selector: "registry_ref",
+            accountRef: "weekly",
+            accountRefHash: "account.pylon.codex.weeklyabcdef",
+            readiness: { state: "ready", blockerRefs: [] },
+            quota: {
+              state: "weekly_exhausted",
+              kind: "weekly_exhausted",
+              observedAt: "2026-06-29T14:55:00.000Z",
+              cooldownExpiresAt: null,
+              cooldownSecondsRemaining: null,
+              sourceDigestRef: "digest.public.weekly",
+              manualResetsRemaining: 2,
+              resetAllowed: true,
+              operatorAction: "manual_recovery_available",
+            },
+            capacity: { hourly: null, weekly: null, windows: [] },
+            usage: { observedAt: null, inputTokens: null, outputTokens: null, totalTokens: null },
+            manualReset: {
+              performed: false,
+              manualResetsRemaining: 2,
+              updatedAt: "2026-06-29T14:55:00.000Z",
+              blockerRefs: [],
+            },
+            blockerRefs: ["blocker.pylon.accounts_status.weekly_exhausted"],
+          },
+        ],
+      },
+    })
+    const [opened] = update(model, OpenedManagedPane({ pane: "accounts" }))
+    const tree = serializeView(view(opened).body)
+    expect(tree).toContain("cooldown")
+    expect(tree).toContain("reset_at: 2026-06-29T20:00:00.000Z")
+    expect(tree).toContain("cooldown: 18000s")
+    expect(tree).toContain("weekly_exhausted")
+    expect(tree).toContain("manual reset: available (2 left)")
+    expect(tree).toContain("Reset weekly")
+    expect(tree).not.toContain("Reset work")
   })
 
   test("managed account mutations update Verse code inventory without restarting Verse", () => {

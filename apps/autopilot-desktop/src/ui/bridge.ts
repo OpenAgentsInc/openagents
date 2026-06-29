@@ -28,6 +28,7 @@ import type {
   KhalaTurnResponse,
   ManagedAccountMutationResponse,
   ManagedAccountsResponse,
+  AccountStatusResponse,
   OnboardingStatusResponse,
   PublicActivityTimelineResponse,
   PromiseSurfacingInput,
@@ -197,6 +198,8 @@ export type DesktopRequests = {
   }): Promise<AppleFmSessionStartResponse>
   // CS-A1 account management against the node's local dev.accounts config.
   listManagedAccounts(p: Record<string, never>): Promise<ManagedAccountsResponse>
+  getAccountStatus(p: Record<string, never>): Promise<AccountStatusResponse>
+  resetAccountStatus(p: { accountRef: string }): Promise<AccountStatusResponse>
   addManagedAccount(p: {
     ref: string
     provider: "codex" | "claude_agent"

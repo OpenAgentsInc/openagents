@@ -145,7 +145,7 @@ export interface ControlCommandActions {
   }
   // CL-18: read-only accounts + readiness panel (public-projection-safe).
   accountsList?: () => Promise<unknown>
-  accountsStatus?: (input?: { accountRef?: string; reset?: boolean }) => Promise<unknown>
+  accountsStatus?: (input?: { accountRef?: string; reset?: boolean; detailed?: boolean }) => Promise<unknown>
   // CL-16: read-only pending approvals + exactly-once resolve (approve/deny/answer).
   approvals?: {
     list: () => Promise<unknown>
@@ -361,6 +361,15 @@ export const startControlServer = (
         case "accounts.status":
           if (!options.actions.accountsStatus) throw new Error("account status unavailable on this node")
           return options.actions.accountsStatus()
+        case "accounts.status.detailed":
+          if (!options.actions.accountsStatus) throw new Error("account status unavailable on this node")
+          return options.actions.accountsStatus({ detailed: true })
+        case "accounts.status.manual_reset": {
+          if (!options.actions.accountsStatus) throw new Error("account status unavailable on this node")
+          const accountRef = typeof command.accountRef === "string" ? command.accountRef : ""
+          if (accountRef.length === 0) throw new Error("account ref required")
+          return options.actions.accountsStatus({ accountRef, reset: true })
+        }
         case "bridge.issueBootstrap":
           // Returns { bootstrapId, secret } for the operator to hand to a client
           // (QR/connect payload). Single-use; the secret is exchanged at
