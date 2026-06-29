@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test"
 
 import {
+  codexProcessSessionFromProcess,
+  codingSessionMatchesProcess,
   parseCodexSessionRollout,
   parseCodingProcesses,
   parseSupervisorLog,
@@ -97,6 +99,46 @@ Pylon presence failed: OpenAgents presence request failed (401): {"error":"unaut
       "assistant",
     ])
     expect(parsed.messages.at(-1)?.text).toBe("Done.")
+  })
+
+  test("derives active Codex session rows from unmatched live processes", () => {
+    const [process] = parseCodingProcesses(`
+  102     1  0.1      00:30 /Users/me/node_modules/@openai/codex/vendor/aarch64-apple-darwin/bin/codex exec --cd /tmp/workspace-one --account-ref codex-6
+`)
+    if (process === undefined) throw new Error("expected process fixture")
+
+    expect(
+      codingSessionMatchesProcess(
+        { accountRef: "codex-6", cwd: "/tmp/workspace-one" },
+        process,
+      ),
+    ).toBe(true)
+    expect(
+      codingSessionMatchesProcess(
+        { accountRef: "codex-7", cwd: "/tmp/workspace-one" },
+        process,
+      ),
+    ).toBe(false)
+    expect(
+      codingSessionMatchesProcess({ accountRef: "codex-6", cwd: null }, process),
+    ).toBe(false)
+
+    expect(
+      codexProcessSessionFromProcess(process, "2026-06-29T03:00:00.000Z"),
+    ).toMatchObject({
+      accountRef: "codex-6",
+      active: true,
+      cwd: "/tmp/workspace-one",
+      messageCount: 0,
+      messages: [],
+      modifiedAt: "2026-06-29T03:00:00.000Z",
+      path: "process:102",
+      pid: 102,
+      sessionId: "process-102",
+      source: "process",
+      status: "active",
+      title: "Codex exec codex-6",
+    })
   })
 
   test("uses task-like rollout text instead of injected AGENTS context as title", () => {

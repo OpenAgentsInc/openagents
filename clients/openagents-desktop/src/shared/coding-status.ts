@@ -110,6 +110,47 @@ export type CodingStatusResult =
       readonly summary: CodingStatusSummary
     }
 
+export const codingSessionMatchesProcess = (
+  session: {
+    readonly accountRef: string | null
+    readonly cwd: string | null
+  },
+  process: CodingProcess,
+): boolean => {
+  if (process.kind !== "codex_exec") return false
+  if (
+    session.accountRef !== null &&
+    process.accountRef !== null &&
+    session.accountRef !== process.accountRef
+  ) {
+    return false
+  }
+  return (
+    session.cwd !== null &&
+    process.workspacePath !== null &&
+    session.cwd === process.workspacePath
+  )
+}
+
+export const codexProcessSessionFromProcess = (
+  process: CodingProcess,
+  observedAt: string,
+): CodingCodexSession => ({
+  accountRef: process.accountRef,
+  active: true,
+  cwd: process.workspacePath,
+  issueRef: process.issueRef,
+  messageCount: 0,
+  messages: [],
+  modifiedAt: observedAt,
+  path: `process:${process.pid}`,
+  pid: process.pid,
+  sessionId: `process-${process.pid}`,
+  source: "process",
+  status: "active",
+  title: process.label,
+})
+
 const processKindLabel: Record<CodingProcessKind, string> = {
   assignment_runner: "Assignment runner",
   codex_exec: "Codex exec",

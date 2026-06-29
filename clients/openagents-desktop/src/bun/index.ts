@@ -6,6 +6,8 @@ import { dirname, join, resolve } from "node:path"
 
 import {
   type CodingCodexSession,
+  codexProcessSessionFromProcess,
+  codingSessionMatchesProcess,
   emptyCodingStatusSummary,
   parseCodexSessionRollout,
   parseCodingProcesses,
@@ -398,21 +400,7 @@ const matchingCodexProcess = (
   },
   processes: readonly CodingProcess[],
 ): CodingProcess | null =>
-  processes.find(process => {
-    if (process.kind !== "codex_exec") return false
-    if (
-      session.accountRef !== null &&
-      process.accountRef !== null &&
-      session.accountRef !== process.accountRef
-    ) {
-      return false
-    }
-    return (
-      session.cwd !== null &&
-      process.workspacePath !== null &&
-      session.cwd === process.workspacePath
-    )
-  }) ?? null
+  processes.find(process => codingSessionMatchesProcess(session, process)) ?? null
 
 const fallbackSessionTitle = (sessionId: string): string =>
   sessionId.startsWith("rollout-") ? sessionId : `Codex ${sessionId.slice(0, 8)}`
@@ -456,7 +444,17 @@ const readCodexSessions = async (
     }),
   )
 
-  return sessions
+  const matchedPids = new Set(
+    sessions
+      .map(session => session.pid)
+      .filter((pid): pid is number => pid !== null),
+  )
+  const observedAt = new Date().toISOString()
+  const processSessions = processes
+    .filter(process => process.kind === "codex_exec" && !matchedPids.has(process.pid))
+    .map(process => codexProcessSessionFromProcess(process, observedAt))
+
+  return [...sessions, ...processSessions]
     .sort((left, right) => {
       if (left.active !== right.active) return left.active ? -1 : 1
       if (left.status !== right.status) {
