@@ -314,6 +314,11 @@ import {
   runPylonKhalaBurndownPlan,
 } from "./khala-burndown.js"
 import {
+  buildPylonKhalaDispatchPlan,
+  normalizeKhalaDispatchCandidateRefs,
+  type KhalaDispatchAccountTarget,
+} from "./khala-dispatch.js"
+import {
   buildPylonKhalaSpawnPlan,
   repeatedKhalaSpawnObjectives,
   runPylonKhalaSpawnPlan,
@@ -4136,6 +4141,76 @@ async function main() {
           summary,
         })
         emit(result)
+        return
+      }
+
+      if (command === "dispatch") {
+        const commit = optionString(options, "commit")
+        const repository = optionString(options, "repo") ?? "OpenAgentsInc/openagents"
+        const verificationCommand = optionString(options, "verify")
+        const candidatesOption =
+          optionString(options, "candidates") ??
+          optionString(options, "candidate-refs")
+        const accountsOption =
+          optionString(options, "accounts") ??
+          optionString(options, "account-targets")
+        const missingPins = [
+          commit === undefined ? "--commit" : null,
+          verificationCommand === undefined ? "--verify" : null,
+          candidatesOption === undefined ? "--candidates" : null,
+          accountsOption === undefined ? "--accounts" : null,
+        ].filter((pin): pin is string => pin !== null)
+        if (missingPins.length > 0) {
+          throw new Error(
+            `usage: pylon khala dispatch --candidates <pr:1,issue:2> --accounts <refs> --commit <sha> --verify <argv> [--repo owner/repo] [--concurrency n] [--priority-lane name] [--json]; missing ${missingPins.join(", ")}`,
+          )
+        }
+        const candidateRefsArg = candidatesOption as string
+        const accountTargetsArg = accountsOption as string
+        const pinnedCommit = commit as string
+        const pinnedVerificationCommand = verificationCommand as string
+        const state = await ensurePylonLocalState(summary)
+        const targetPylonRef =
+          optionString(options, "pylon-ref") ??
+          optionString(options, "target-pylon-ref") ??
+          localPylonTargetRef(state)
+        const accounts = await collectPylonAccountsList(summary, { env: Bun.env })
+        const wantedAccounts = new Set(
+          accountTargetsArg
+            .split(",")
+            .map((value) => value.trim())
+            .filter((value) => value !== ""),
+        )
+        const accountTargets: KhalaDispatchAccountTarget[] = accounts.accounts
+          .filter((account) =>
+            account.provider === "codex" &&
+            ((account.accountRef !== null && wantedAccounts.has(account.accountRef)) ||
+              wantedAccounts.has(account.accountRefHash))
+          )
+          .map((account) => ({
+            accountRef: account.accountRef,
+            accountRefHash: account.accountRefHash,
+            provider: "codex",
+          }))
+        const branch = optionString(options, "branch")
+        const plan = buildPylonKhalaDispatchPlan({
+          accountTargets,
+          candidateRefs: normalizeKhalaDispatchCandidateRefs(
+            candidateRefsArg.split(","),
+          ),
+          concurrency:
+            positiveIntegerOption(options, "concurrency", "khala dispatch --concurrency") ??
+            1,
+          priorityLane: optionString(options, "priority-lane") ?? "default",
+          targetPylonRef,
+          verifier: {
+            ...(branch === undefined ? {} : { branch }),
+            commit: pinnedCommit,
+            command: pinnedVerificationCommand,
+            repository,
+          },
+        })
+        emit(plan)
         return
       }
 
