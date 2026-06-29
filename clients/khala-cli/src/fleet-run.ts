@@ -65,7 +65,7 @@ const DEFAULT_MAX_SLOTS = 8
 const SUPERVISOR_IDLE_MS = 2_000
 const REFUSED_BACKOFF_MS = 15_000
 const MAX_REFUSED_BACKOFF_MS = 120_000
-const LOCKOUT_REPLENISH_AFTER_ROUNDS = 2
+const LOCKOUT_REPLENISH_AFTER_ROUNDS = 1
 
 type FleetRunSlot = Omit<KhalaFleetRunRound, "ok" | "status" | "assignmentRef">
 
@@ -243,6 +243,23 @@ export function plannedReplenishmentRounds(
   }))
 }
 
+export function nextFleetSupervisorDelay(input: {
+  readonly anyRefused: boolean
+  readonly lockout: boolean
+  readonly refusedBackoffMs: number
+}): { readonly delayMs: number; readonly refusedBackoffMs: number } {
+  if (input.lockout) {
+    return { delayMs: SUPERVISOR_IDLE_MS, refusedBackoffMs: REFUSED_BACKOFF_MS }
+  }
+  if (input.anyRefused) {
+    return {
+      delayMs: input.refusedBackoffMs,
+      refusedBackoffMs: Math.min(input.refusedBackoffMs * 2, MAX_REFUSED_BACKOFF_MS),
+    }
+  }
+  return { delayMs: SUPERVISOR_IDLE_MS, refusedBackoffMs: REFUSED_BACKOFF_MS }
+}
+
 async function runSupervisorLoop(input: {
   readonly env: Record<string, string | undefined>
   readonly plan: KhalaFleetRunPlan
@@ -278,14 +295,17 @@ async function runSupervisorLoop(input: {
         await delay(SUPERVISOR_IDLE_MS)
         continue
       }
-    }
-    if (round.some(item => item.status === "refused")) {
-      await delay(refusedBackoffMs)
-      refusedBackoffMs = Math.min(refusedBackoffMs * 2, MAX_REFUSED_BACKOFF_MS)
-    } else {
       refusedBackoffMs = REFUSED_BACKOFF_MS
       await delay(SUPERVISOR_IDLE_MS)
+      continue
     }
+    const wait = nextFleetSupervisorDelay({
+      anyRefused: round.some(item => item.status === "refused"),
+      lockout,
+      refusedBackoffMs,
+    })
+    refusedBackoffMs = wait.refusedBackoffMs
+    await delay(wait.delayMs)
   }
 }
 
