@@ -1,6 +1,7 @@
 import { access, lstat, mkdir, readFile, readlink, rename, rm, symlink, writeFile } from "node:fs/promises"
 import { dirname, isAbsolute, join, relative, resolve } from "node:path"
 import { createHash, randomUUID } from "node:crypto"
+import { Effect } from "effect"
 import {
   CODEX_AGENT_SDK_PACKAGE,
   loadCodexAgentConfig,
@@ -30,6 +31,7 @@ import {
 } from "./codex-pr-publisher.js"
 import { runCodexComposerStream } from "./codex-composer.js"
 import type { CodexAgentConfig } from "./codex-agent.js"
+import { scopedTimeout } from "./effect-runtime-patterns.js"
 import {
   createPylonCodexEventChunkReporter,
   createPylonCodexTurnReporter,
@@ -1118,21 +1120,23 @@ async function runCodexAgentWithOuterDeadline(
   runner: CodexAgentRunner,
   input: CodexAgentRunInput,
 ): Promise<CodexAgentRunResult> {
-  let timeout: ReturnType<typeof setTimeout> | undefined
-  const runnerPromise = runner(input)
-  runnerPromise.catch(() => undefined)
-  const timeoutPromise = new Promise<CodexAgentRunResult>((resolve) => {
-    timeout = setTimeout(
-      () => resolve(deadlineBudgetExceededResult()),
-      Math.max(0, input.timeoutMs),
-    )
-  })
-
-  try {
-    return await Promise.race([runnerPromise, timeoutPromise])
-  } finally {
-    if (timeout !== undefined) clearTimeout(timeout)
-  }
+  return Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const runnerPromise = runner(input)
+        runnerPromise.catch(() => undefined)
+        let resolveDeadline!: (result: CodexAgentRunResult) => void
+        const timeoutPromise = new Promise<CodexAgentRunResult>((resolve) => {
+          resolveDeadline = resolve
+        })
+        yield* scopedTimeout({
+          delayMs: input.timeoutMs,
+          onTimeout: () => resolveDeadline(deadlineBudgetExceededResult()),
+        })
+        return yield* Effect.promise(() => Promise.race([runnerPromise, timeoutPromise]))
+      }),
+    ),
+  )
 }
 
 function refusalRecord(input: {
