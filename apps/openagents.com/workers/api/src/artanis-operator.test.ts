@@ -636,6 +636,53 @@ describe('#6654 Artanis RLM composition', () => {
       requests.every(request => request.model === ARTANIS_OPERATOR_KHALA_MODEL),
     ).toBe(true)
   })
+
+  test('uses RLM composition on the real tool-enabled operator path', async () => {
+    const { calls, tool } = makeFakeReadTool('tool result should not be needed')
+    const { client, requests } = makeScriptedKhalaClient([
+      textResult(
+        JSON.stringify({
+          compositionInstruction:
+            'Compose from the typed evidence packets only.',
+          subqueries: [
+            {
+              evidenceRefs: ['evidence.artanis.operator.rlm.tool_enabled'],
+              id: 'tool-enabled',
+              question: 'What should the operator compose?',
+              signatureRef: ARTANIS_OPERATOR_RLM_SIGNATURE_REF,
+            },
+          ],
+        }),
+      ),
+      textResult('Evidence packet from a separate RLM subquery.'),
+      textResult('I composed this through the RLM path.'),
+    ])
+
+    const result = await Effect.runPromise(
+      artanisOperatorTurn({
+        awareness: exampleAwareness,
+        khalaClient: client,
+        memory: exampleMemory,
+        messages: [
+          {
+            content: 'write a detailed architecture report',
+            role: 'user',
+          },
+        ],
+        ownerId: 'owner:github:14167547',
+        tools: [tool],
+      }),
+    )
+
+    expect('error' in result).toBe(false)
+    if ('error' in result) return
+    expect(result.reply).toBe('I composed this through the RLM path.')
+    expect(result.rlmTrace.used).toBe(true)
+    expect(result.toolInvocations).toEqual([])
+    expect(calls).toHaveLength(0)
+    expect(requests).toHaveLength(3)
+    expect(requests.every(request => !('tools' in request))).toBe(true)
+  })
 })
 
 describe('#6364 artanis operator bounded tool-calling loop', () => {

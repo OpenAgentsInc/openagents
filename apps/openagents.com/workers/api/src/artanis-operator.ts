@@ -667,7 +667,6 @@ const LONG_FORM_OWNER_CUES: ReadonlyArray<string> = [
   'long',
   'plan',
   'report',
-  'roadmap',
   'strategy',
   'write-up',
 ]
@@ -1335,7 +1334,7 @@ export const artanisOperatorTurn = (input: {
       messages: input.messages,
     })
 
-    if (tools.length === 0 && shouldUseArtanisRlmComposition(input.messages)) {
+    if (shouldUseArtanisRlmComposition(input.messages)) {
       const composed = yield* runArtanisRlmComposition({
         baseMessages,
         khalaClient: input.khalaClient,
