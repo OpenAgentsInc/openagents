@@ -104,7 +104,12 @@ This spec clears:
 
 Still blocked:
 
-- `blocker.product_promises.pylon_v03_cpu_transform_training_receipts_missing`
+- `blocker.product_promises.tassadar_cpu_transform_real_settlement_missing`
+- `blocker.product_promises.tassadar_cpu_transform_owner_green_signoff_missing`
 
-Green still requires receipt-first owner sign-off under
-`proof.claim_upgrade_receipts.v1`.
+The bounded Pylon v1.0 CPU computation-transform fixture receipt is now
+projected at
+`/api/public/models/tassadar-percepta-executor/cpu-transform-training-receipts`.
+It clears the old missing-receipt blocker for fixture scope only; green still
+requires real settlement evidence where money moved where applicable plus
+receipt-first owner sign-off under `proof.claim_upgrade_receipts.v1`.
