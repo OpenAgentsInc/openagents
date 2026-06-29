@@ -5,7 +5,13 @@ import { html } from 'foldkit/html'
 
 import { aiElementBase } from './base'
 import { codeBlockCopyButton } from './code-block'
-import { codeTokenClass, tokenizeCode } from './code-highlight'
+import {
+  type DiffRow,
+  type DiffRowKind,
+  codeTokenClass,
+  parseUnifiedDiff,
+  tokenizeCode,
+} from './code-highlight'
 
 const MODULE_ID = 'diff'
 
@@ -41,111 +47,6 @@ export const DiffProps = Schema.Struct({
   filename: Schema.optional(Schema.String),
 })
 export type DiffProps = typeof DiffProps.Type
-
-type DiffRowKind = 'hunk' | 'add' | 'remove' | 'context'
-
-type DiffRow = {
-  readonly kind: DiffRowKind
-  readonly oldNo?: number
-  readonly newNo?: number
-  readonly text: string
-}
-
-type ParsedDiff = {
-  readonly rows: ReadonlyArray<DiffRow>
-  readonly added: number
-  readonly removed: number
-  readonly filename?: string
-}
-
-const stripPrefix = (path: string): string =>
-  path.startsWith('a/') || path.startsWith('b/') ? path.slice(2) : path
-
-// Parse a unified diff (git patch) into render rows. Header noise
-// (`diff --git`, `index`, `---`, `+++`) is consumed for the filename but not
-// rendered, leaving a clean hunk/line view.
-export const parseUnifiedDiff = (
-  patch: string,
-  filenameOverride?: string,
-): ParsedDiff => {
-  const lines = patch.split('\n')
-  const rows: DiffRow[] = []
-  let oldNo = 0
-  let newNo = 0
-  let added = 0
-  let removed = 0
-  let filename = filenameOverride
-
-  lines.forEach((line, index) => {
-    // Drop a single trailing empty line produced by a trailing newline.
-    if (line === '' && index === lines.length - 1) {
-      return
-    }
-
-    if (line.startsWith('@@')) {
-      const match = line.match(/@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/)
-      if (match !== null) {
-        oldNo = Number(match[1])
-        newNo = Number(match[2])
-      }
-      rows.push({ kind: 'hunk', text: line })
-      return
-    }
-
-    if (
-      line.startsWith('diff ') ||
-      line.startsWith('index ') ||
-      line.startsWith('new file') ||
-      line.startsWith('deleted file') ||
-      line.startsWith('similarity ') ||
-      line.startsWith('rename ') ||
-      line.startsWith('\\')
-    ) {
-      return
-    }
-
-    if (line.startsWith('+++ ')) {
-      const path = line.slice(4).trim()
-      if (filename === undefined && path !== '/dev/null' && path.length > 0) {
-        filename = stripPrefix(path)
-      }
-      return
-    }
-    if (line.startsWith('--- ')) {
-      const path = line.slice(4).trim()
-      if (filename === undefined && path !== '/dev/null' && path.length > 0) {
-        filename = stripPrefix(path)
-      }
-      return
-    }
-
-    const sign = line.charAt(0)
-    if (sign === '+') {
-      added += 1
-      rows.push({ kind: 'add', newNo, text: line.slice(1) })
-      newNo += 1
-      return
-    }
-    if (sign === '-') {
-      removed += 1
-      rows.push({ kind: 'remove', oldNo, text: line.slice(1) })
-      oldNo += 1
-      return
-    }
-
-    const text = line.startsWith(' ') ? line.slice(1) : line
-    rows.push({ kind: 'context', oldNo, newNo, text })
-    oldNo += 1
-    newNo += 1
-  })
-
-  return {
-    rows,
-    added,
-    removed,
-    ...(filename === undefined ? {} : { filename }),
-  }
-}
 
 // Clear green/red change signal: a 2px left accent bar + a saturated-enough
 // line tint that reads unmistakably over the near-black surface, even though

@@ -460,3 +460,114 @@ export const tokenizeCodeLines = (
 
   return lines
 }
+
+// --- Unified-diff parsing -----------------------------------------------------
+//
+// Pure (Foldkit-free) so both the web `diff` component and non-Foldkit hosts
+// (e.g. the desktop transcript renderer) share one parser and stay byte-faithful
+// to the same change model.
+
+export type DiffRowKind = 'hunk' | 'add' | 'remove' | 'context'
+
+export type DiffRow = {
+  readonly kind: DiffRowKind
+  readonly oldNo?: number
+  readonly newNo?: number
+  readonly text: string
+}
+
+export type ParsedDiff = {
+  readonly rows: ReadonlyArray<DiffRow>
+  readonly added: number
+  readonly removed: number
+  readonly filename?: string
+}
+
+const stripDiffPathPrefix = (path: string): string =>
+  path.startsWith('a/') || path.startsWith('b/') ? path.slice(2) : path
+
+// Parse a unified diff (git patch) into render rows. Header noise
+// (`diff --git`, `index`, `---`, `+++`) is consumed for the filename but not
+// rendered, leaving a clean hunk/line view.
+export const parseUnifiedDiff = (
+  patch: string,
+  filenameOverride?: string,
+): ParsedDiff => {
+  const lines = patch.split('\n')
+  const rows: DiffRow[] = []
+  let oldNo = 0
+  let newNo = 0
+  let added = 0
+  let removed = 0
+  let filename = filenameOverride
+
+  lines.forEach((line, index) => {
+    // Drop a single trailing empty line produced by a trailing newline.
+    if (line === '' && index === lines.length - 1) {
+      return
+    }
+
+    if (line.startsWith('@@')) {
+      const match = line.match(/@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/)
+      if (match !== null) {
+        oldNo = Number(match[1])
+        newNo = Number(match[2])
+      }
+      rows.push({ kind: 'hunk', text: line })
+      return
+    }
+
+    if (
+      line.startsWith('diff ') ||
+      line.startsWith('index ') ||
+      line.startsWith('new file') ||
+      line.startsWith('deleted file') ||
+      line.startsWith('similarity ') ||
+      line.startsWith('rename ') ||
+      line.startsWith('\\')
+    ) {
+      return
+    }
+
+    if (line.startsWith('+++ ')) {
+      const path = line.slice(4).trim()
+      if (filename === undefined && path !== '/dev/null' && path.length > 0) {
+        filename = stripDiffPathPrefix(path)
+      }
+      return
+    }
+    if (line.startsWith('--- ')) {
+      const path = line.slice(4).trim()
+      if (filename === undefined && path !== '/dev/null' && path.length > 0) {
+        filename = stripDiffPathPrefix(path)
+      }
+      return
+    }
+
+    const sign = line.charAt(0)
+    if (sign === '+') {
+      added += 1
+      rows.push({ kind: 'add', newNo, text: line.slice(1) })
+      newNo += 1
+      return
+    }
+    if (sign === '-') {
+      removed += 1
+      rows.push({ kind: 'remove', oldNo, text: line.slice(1) })
+      oldNo += 1
+      return
+    }
+
+    const text = line.startsWith(' ') ? line.slice(1) : line
+    rows.push({ kind: 'context', oldNo, newNo, text })
+    oldNo += 1
+    newNo += 1
+  })
+
+  return {
+    rows,
+    added,
+    removed,
+    ...(filename === undefined ? {} : { filename }),
+  }
+}

@@ -1151,22 +1151,41 @@ button {
 }
 
 .coding-message-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.coding-message-prose {
   margin: 0;
   overflow-wrap: anywhere;
   color: #e6efff;
-  font-size: 0.74rem;
-  line-height: 1.5;
+  font-family: var(--oa-font-sans);
+  font-size: 0.78rem;
+  line-height: 1.6;
   white-space: pre-wrap;
 }
 
-pre.coding-message-body {
-  max-height: 220px;
+.coding-message-output {
+  margin: 0;
+  max-height: 240px;
   overflow: auto;
-  padding: 9px 10px;
+  padding: 9px 11px;
   color: #d7e2f0;
-  background: rgba(0, 0, 0, 0.22);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 6px;
+  font-family: var(--oa-font-code);
+  font-size: 0.72rem;
+  line-height: 1.5;
+  white-space: pre;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 8px;
+}
+
+.coding-message-output[data-status="error"] {
+  color: #f0727a;
+  border-color: rgba(229, 72, 77, 0.4);
+  background: rgba(58, 22, 25, 0.45);
 }
 
 .coding-events-block {
@@ -1610,4 +1629,195 @@ pre.coding-message-body {
     scroll-behavior: auto !important;
     transition-duration: 1ms !important;
   }
+}
+
+/* ---------------------------------------------------------------------------
+   Shared code surface — mirrors @openagentsinc/ui ai-elements (code block +
+   diff). Same Protoss-glow frame, cool-blue syntax tokens, and green/red change
+   tints as the web /code page, so the transcript speaks one visual language.
+--------------------------------------------------------------------------- */
+
+:root {
+  /* Dynamically generated chat content must NOT use Berkeley Mono (licensed for
+     static UI only). Code uses the design system's chat-mono stack; agent prose
+     uses the sans stack. */
+  --oa-font-code:
+    "Commit Mono", "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Monaco,
+    Consolas, "Liberation Mono", monospace;
+  --oa-font-sans:
+    "Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", sans-serif;
+}
+
+.cb {
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
+  border: 1px solid #1d2a44;
+  border-radius: 8px;
+  background: #05080e;
+  color: #d7e2f0;
+  font-family: var(--oa-font-code);
+  box-shadow: 0 0 28px -10px rgba(58, 123, 255, 0.5);
+}
+
+.cb-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 11px;
+  border-bottom: 1px solid #16233b;
+  background: #0a111d;
+}
+
+.cb-file {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #aecbff;
+  font-size: 0.72rem;
+}
+
+.cb-lang {
+  flex: none;
+  color: #7aa2ff;
+  font-size: 0.62rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.cb-body {
+  margin: 0;
+  max-height: 420px;
+  overflow: auto;
+  padding: 8px 0;
+  font-size: 0.74rem;
+  line-height: 1.55;
+}
+
+.cb-code-grid {
+  display: grid;
+}
+
+.cb-line {
+  padding: 0 11px;
+  min-height: 1.55em;
+  white-space: pre;
+}
+
+.cb-tok {
+  color: inherit;
+}
+.cb-tok--plain {
+  color: #d7e2f0;
+}
+.cb-tok--comment {
+  color: #6b7a90;
+  font-style: italic;
+}
+.cb-tok--keyword {
+  color: #7aa2ff;
+}
+.cb-tok--string {
+  color: #9ed1ff;
+}
+.cb-tok--number {
+  color: #4fd0ff;
+}
+.cb-tok--constant {
+  color: #8fb6ff;
+}
+.cb-tok--function {
+  color: #cfe3ff;
+}
+.cb-tok--type {
+  color: #67d4ff;
+}
+.cb-tok--property {
+  color: #aecbff;
+}
+.cb-tok--operator {
+  color: #9fb2c9;
+}
+.cb-tok--punctuation {
+  color: #7e8a98;
+}
+
+/* Diff surface */
+
+.cb-diff-stats {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.72rem;
+}
+.cb-stat-add {
+  color: #3fb950;
+}
+.cb-stat-rem {
+  color: #f85149;
+}
+
+.cb-diff-hunk {
+  display: block;
+  padding: 1px 11px;
+  background: #0b1626;
+  color: #5f86c2;
+  white-space: pre;
+  font-size: 0.72rem;
+}
+
+.cb-diff-line {
+  display: flex;
+  min-height: 1.55em;
+  border-left: 2px solid transparent;
+}
+.cb-diff-line[data-kind="add"] {
+  background: #0f3320;
+  border-left-color: #2ea043;
+}
+.cb-diff-line[data-kind="remove"] {
+  background: #3a161a;
+  border-left-color: #e5484d;
+}
+
+.cb-diff-gutter {
+  width: 34px;
+  flex: none;
+  padding: 0 6px;
+  text-align: right;
+  color: #34507f;
+  user-select: none;
+  font-variant-numeric: tabular-nums;
+}
+.cb-diff-gutter--add {
+  color: #56d364;
+}
+.cb-diff-gutter--remove {
+  color: #f0727a;
+}
+
+.cb-diff-sign {
+  width: 14px;
+  flex: none;
+  text-align: center;
+  font-weight: 700;
+  user-select: none;
+}
+.cb-diff-line[data-kind="add"] .cb-diff-sign {
+  color: #56d364;
+}
+.cb-diff-line[data-kind="remove"] .cb-diff-sign {
+  color: #f0727a;
+}
+
+.cb-diff-code {
+  flex: 1;
+  min-width: 0;
+  padding-right: 11px;
+  white-space: pre;
 }

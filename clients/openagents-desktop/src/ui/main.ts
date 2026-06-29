@@ -28,6 +28,7 @@ import {
   type TokenAccountingStatusResult,
 } from "../shared/token-accounting"
 import { mountLandingSquares } from "./landing-squares"
+import { renderMessageBody } from "./transcript-render"
 import "./styles.css"
 
 const rpc = Electroview.defineRPC<OpenAgentsDesktopRPCSchema>({
@@ -502,12 +503,15 @@ const messageRow = (message: CodingTranscriptMessage): HTMLElement => {
   meta.className = "coding-message-relative-time"
   meta.textContent = formatRelativeTimestamp(message.timestamp)
 
-  const body =
-    message.role === "tool" || message.status === "error"
-      ? document.createElement("pre")
-      : document.createElement("p")
+  const body = document.createElement("div")
   body.className = "coding-message-body"
-  body.textContent = message.text
+  body.append(
+    ...renderMessageBody({
+      text: message.text,
+      role: message.role,
+      status: message.status,
+    }),
+  )
 
   const metaGroup = document.createElement("div")
   metaGroup.className = "coding-message-meta"

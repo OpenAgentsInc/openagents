@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import type { Html } from 'foldkit/html'
 
 import { AiElements } from '../src/index'
-import { parseUnifiedDiff } from '../src/ai-elements/diff'
+import { parseUnifiedDiff } from '../src/ai-elements/code-highlight'
 
 type VNodeLike = {
   sel?: string

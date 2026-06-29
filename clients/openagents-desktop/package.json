@@ -15,7 +15,8 @@
     "@openagentsinc/three-effect": "github:OpenAgentsInc/three-effect#b3bdc2a",
     "effect": "catalog:",
     "electrobun": "1.18.1",
-    "three": "0.184.0"
+    "three": "0.184.0",
+    "@openagentsinc/ui": "workspace:*"
   },
   "devDependencies": {
     "@types/three": "0.184.0",

@@ -394,6 +394,7 @@
       "version": "0.0.1",
       "dependencies": {
         "@openagentsinc/three-effect": "github:OpenAgentsInc/three-effect#b3bdc2a",
+        "@openagentsinc/ui": "workspace:*",
         "effect": "catalog:",
         "electrobun": "1.18.1",
         "three": "0.184.0",
