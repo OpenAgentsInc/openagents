@@ -1,5 +1,18 @@
 # Promise Registry
 
+> Registry `2026-06-29.3` is a #7023 destale for
+> `autopilot.desktop_gui_client.v1` and flips NO promise state. The AO-6
+> from-DMG clean-Mac proof already recorded in
+> `docs/launch/2026-06-18-autopilot-desktop-ao6-from-dmg-runbook.md` and
+> `docs/launch/artifacts/ao6-20260619T010148` now clears the from-DMG sub-gate
+> in registry copy: signed/notarized DMG rendered a first-run window, production
+> pylon-stats showed `pylon.fa4e9049a4329f3d56e2` active, and a Tassadar window
+> settled with a real Bitcoin receipt. The promise STAYS yellow because live
+> PDF/preview/ingest/browser runtimes, cloud lane, and pricing/distribution
+> gates remain open. `autopilot.builtin_compute_agent.v1` also STAYS yellow
+> pending packaged compute credentials plus metered from-install go-online
+> smoke.
+>
 > Registry `2026-06-29.2` is a current-main refresh after #6997, #6999,
 > #7001, #7002, and #7006 and flips NO promise state. It records the
 > terminal-agent current-state audit and Codex tool-layer study as evidence for
@@ -66,9 +79,9 @@
 > Current machine-readable source of truth: `/api/public/product-promises` is
 > generated from
 > [`product-promises.ts`](../../apps/openagents.com/workers/api/src/product-promises.ts),
-> which currently advertises registry `2026-06-29.2` with
+> which currently advertises registry `2026-06-29.3` with
 > `lastUpdated: "2026-06-29"`. This narrative document records the same
-> top-line 2026-06-29.2 promise decisions above, plus historical reconciliation
+> top-line 2026-06-29.3 promise decisions above, plus historical reconciliation
 > context below; when in doubt, agents and reviewers should defer to the
 > machine-readable registry and include its version in mismatch reports.
 >
@@ -76,7 +89,7 @@
 > Tassadar CPU-transform, referral, small-model proxy, WASM plugin, Verse scene,
 > native email, marketplace, metrics, terminal-agent audit, supervisor
 > replenishment, GLM failover, Apple FM sidecar, and operator-safety merges were
-> checked against the current `2026-06-29.2` registry header. This pass records
+> checked against the current `2026-06-29.3` registry header. This pass records
 > no additional promise state flips and no new green claims beyond the already
 > source-recorded scoped transitions; red/planned/yellow records keep their
 > owner-signed, receipt-first green gates.
@@ -90,8 +103,10 @@
 >
 > Historical reconciliation `2026-06-19.2` was a copy/evidence destale pass with
 > no state flips: `autopilot.desktop_gui_client.v1` stays yellow but records the
-> BUILT auto-onboarding EPIC #5441 (AO-1..AO-6) with the final from-DMG clean-Mac
-> proof owner-gated and pending; the Sites referral payout ledger is WIRED in
+> BUILT auto-onboarding EPIC #5441 (AO-1..AO-6). Registry `2026-06-29.3`
+> supersedes the stale "from-DMG proof pending" copy by citing the completed AO-6
+> from-DMG artifact bundle while keeping the remaining desktop runtime/cloud/
+> pricing blockers active; the Sites referral payout ledger is WIRED in
 > source (RL-1 #5458: eligibility feed + readiness-gated idempotent
 > approved->dispatched->settled dispatch via the MDK/Spark adapter) but no real
 > referral payout has settled, so `sites.referral_bitcoin_stream.v1` stays

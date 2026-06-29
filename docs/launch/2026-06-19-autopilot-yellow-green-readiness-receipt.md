@@ -160,7 +160,7 @@ state flip.
   admitted Apple Silicon.
 - **Owner-gated:** yes (signed recut + flip).
 
-### autopilot.desktop_gui_client.v1 — yellow (green-candidate, owner-gated DMG proof)
+### autopilot.desktop_gui_client.v1 — yellow (green-candidate, runtime/distribution gated)
 
 - **Status:** Bun/Electrobun shell + Foldkit webview, loopback Pylon pairing,
   session list/decision cards/timeline, full auto-onboarding EPIC (#5441,
@@ -169,12 +169,16 @@ state flip.
 - **Verify:** `bun run --cwd apps/autopilot-desktop verify:deploy` (part of
   `check:deploy`) runs `electrobun-config.test.ts` + the full build + the
   diamond.glb asset check.
-- **Receipt needed for green:** the owner-gated from-DMG proof on a clean
-  external Mac (rendered window from the signed DMG, real presence on
-  production `/api/public/pylon-stats`, a claimed+settled Tassadar window with a
-  Bitcoin receipt) **plus** the live PDF/preview/ingest/browser runtimes wired
-  and observed, cloud-lane sessions, and a decided distribution/pricing path.
-- **Owner-gated:** yes (from-DMG clean-Mac proof).
+- **From-DMG proof:** recorded in
+  `docs/launch/2026-06-18-autopilot-desktop-ao6-from-dmg-runbook.md` and
+  `docs/launch/artifacts/ao6-20260619T010148`: signed/notarized DMG rendered a
+  clean first-run window, appeared on production `/api/public/pylon-stats` as
+  `pylon.fa4e9049a4329f3d56e2`, and settled a Tassadar window with a real
+  Bitcoin receipt.
+- **Receipt needed for green:** the live PDF/preview/ingest/browser runtimes
+  wired and observed, cloud-lane sessions, and a decided distribution/pricing
+  path. The from-DMG proof alone does not green the broader promise.
+- **Owner-gated:** yes (remaining runtime/distribution scope and green flip).
 
 ### autopilot.control_center_fanout_marketplace.v1 — yellow (first-live met, self-serve gate)
 
@@ -250,7 +254,7 @@ state flip.
 | autopilot.cloud_credits_ui.v1 | yellow | evidence assembled (24 pass) | yes (billing backend) |
 | autopilot.builtin_compute_agent.v1 | yellow | evidence assembled (2 pass) | yes (signed recut) |
 | autopilot.local_apple_fm_tool_chat.v1 | yellow | evidence assembled (3 pass) | yes (signed recut) |
-| autopilot.desktop_gui_client.v1 | yellow | evidence assembled (verify:deploy) | yes (from-DMG proof) |
+| autopilot.desktop_gui_client.v1 | yellow | from-DMG proof recorded; runtime/distribution gates open | yes (remaining scope + green flip) |
 | autopilot.control_center_fanout_marketplace.v1 | yellow | first-live recorded | yes (self-serve) |
 | autopilot.agentic_labor_products.v1 | yellow | direction; flow evidence needed | yes |
 | autopilot.repo_study_packets.v1 | yellow | internal dogfood only | yes (many gates) |

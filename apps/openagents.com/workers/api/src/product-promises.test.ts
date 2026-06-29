@@ -440,10 +440,11 @@ describe('public product promises document', () => {
       /latest stays 0\.2\.5|only published, installable Pylon|release candidate, not stable 0\.3\.0|Pylon v1\.0 is present in the monorepo as a release candidate/i,
     )
     expect(currentCopy).toContain('Pylon v1.0 has a stable source cut')
-    expect(currentCopy).toContain('Registry 2026-06-29.2')
+    expect(currentCopy).toContain('Registry 2026-06-29.3')
     expect(currentCopy).toContain('flips NO promise state')
     expect(currentCopy).toContain('Khala Desktop now carries source-level')
     expect(currentCopy).toContain('maxStalenessSeconds:0')
+    expect(currentCopy).toContain('destales autopilot.desktop_gui_client.v1')
     const codexSuccessorPromise = decoded.promises.find(
       promise => promise.promiseId === 'autopilot.codex_probe_pylon_successor.v1',
     )
@@ -470,6 +471,44 @@ describe('public product promises document', () => {
       expect.arrayContaining([
         'apps/openagents.com/workers/api/src/inference/model-router.ts',
         'apps/openagents.com/workers/api/src/inference/model-router.test.ts',
+      ]),
+    )
+    const desktopPromise = decoded.promises.find(
+      promise => promise.promiseId === 'autopilot.desktop_gui_client.v1',
+    )
+    expect(desktopPromise?.state).toBe('yellow')
+    expect(desktopPromise?.safeCopy).toContain(
+      'AO-6 from-DMG clean-Mac proof is recorded',
+    )
+    expect(desktopPromise?.unsafeCopy).toContain(
+      'Do not claim Autopilot Desktop is green',
+    )
+    expect(desktopPromise?.evidenceRefs).toEqual(
+      expect.arrayContaining([
+        'docs/launch/2026-06-18-autopilot-desktop-ao6-from-dmg-runbook.md',
+        'docs/launch/artifacts/ao6-20260619T010148/initial-window.png',
+        'docs/launch/artifacts/ao6-20260619T010148/pylon-detail-summary.json',
+        'docs/launch/artifacts/ao6-20260619T010148/manual-settlement-response-summary.json',
+      ]),
+    )
+    expect(desktopPromise?.blockerRefs).not.toContain(
+      'blocker.product_promises.autopilot_desktop_from_dmg_proof_owner_gated',
+    )
+    expect(desktopPromise?.blockerRefs).toEqual(
+      expect.arrayContaining([
+        'blocker.product_promises.autopilot_desktop_live_runtimes_not_wired',
+        'blocker.product_promises.autopilot_desktop_remote_cloud_lane_not_wired',
+        'blocker.product_promises.autopilot_desktop_pricing_distribution_undecided',
+      ]),
+    )
+    const builtinComputePromise = decoded.promises.find(
+      promise => promise.promiseId === 'autopilot.builtin_compute_agent.v1',
+    )
+    expect(builtinComputePromise?.state).toBe('yellow')
+    expect(builtinComputePromise?.blockerRefs).toEqual(
+      expect.arrayContaining([
+        'blocker.product_promises.builtin_compute_agent_live_from_install_smoke_missing',
+        'blocker.product_promises.openagents_compute_metering_live_smoke_missing',
       ]),
     )
     expect(decoded.promises).toEqual(
