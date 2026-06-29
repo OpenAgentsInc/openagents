@@ -160,7 +160,9 @@ export type DeviceCapabilityDistribution = Readonly<{
   sourceRefs: ReadonlyArray<string>
   unit: string
   verificationRefs: ReadonlyArray<string>
+  ownerAcceptedThermalReceiptRefs: ReadonlyArray<string>
   sameClassReplicationBlockerRefs: ReadonlyArray<string>
+  sameClassReplicationEvidenceRefs: ReadonlyArray<string>
   sameClassReplicationScope: DeviceCapabilitySameClassReplicationScope
   sameClassReplicationStatus: Exclude<
     DeviceCapabilitySameClassReplicationStatus,
@@ -184,8 +186,10 @@ export type DeviceCapabilityThermalThrottleSignal = Readonly<{
   ratioFloor: typeof Cs336A2ThermalThrottleRatioFloor
   reasonCode:
     | 'device_capability.public.thermal_probe_needs_statistical_cross_check'
+    | 'device_capability.public.thermal_probe_needs_owner_accepted_production_receipt'
     | 'device_capability.public.thermal_throttle_not_observed_sustained_ratio_at_or_above_floor'
     | 'device_capability.public.thermal_throttle_observed_sustained_ratio_below_floor'
+  ownerAcceptedThermalReceiptRefs: ReadonlyArray<string>
   receiptRefs: ReadonlyArray<string>
   sampleCount: number
   sourceRefs: ReadonlyArray<string>
@@ -204,11 +208,13 @@ export type DeviceCapabilitySameClassReplicationSignal = Readonly<{
   metric: Cs336A2QualificationProbeMeasurement
   reasonCode:
     | 'device_capability.public.same_class_replication_cross_machine'
+    | 'device_capability.public.same_class_replication_cross_machine_evidence_missing'
     | 'device_capability.public.same_class_replication_same_host_only'
     | 'device_capability.public.same_class_replication_single_observation'
     | 'device_capability.public.same_class_replication_scope_unknown'
   sampleCount: number
   scope: DeviceCapabilitySameClassReplicationScope
+  sameClassReplicationEvidenceRefs: ReadonlyArray<string>
   sourceRefs: ReadonlyArray<string>
   state: Exclude<DeviceCapabilitySameClassReplicationStatus, 'missing'>
   verified: boolean
@@ -267,9 +273,11 @@ export const Cs336A2MeasurementEvidence = S.Struct({
   measurementRef: S.optionalKey(PublicSafeRef),
   metric: S.Literals(Cs336A2QualificationProbeMeasurements),
   min: S.Number,
+  ownerAcceptedThermalReceiptRefs: PublicSafeRefs,
   p50: S.Number,
   p90: S.Number,
   receiptRefs: S.Array(PublicSafeRef),
+  sameClassReplicationEvidenceRefs: PublicSafeRefs,
   sameClassReplicationScope: S.optionalKey(
     S.Literals(DeviceCapabilitySameClassReplicationScopes),
   ),
@@ -449,12 +457,17 @@ const sameClassReplicationScopeFromUnknown = (
     : 'cross_process_same_host'
 }
 
-const sameClassReplicationStatusFromScope = (
-  scope: DeviceCapabilitySameClassReplicationScope,
+const sameClassReplicationStatusFromEvidence = (
+  input: Readonly<{
+    evidenceRefs: ReadonlyArray<string>
+    scope: DeviceCapabilitySameClassReplicationScope
+  }>,
 ): Exclude<DeviceCapabilitySameClassReplicationStatus, 'missing'> => {
-  switch (scope) {
+  switch (input.scope) {
     case 'cross_machine_same_class':
-      return 'cross_machine_replicated'
+      return input.evidenceRefs.length > 0
+        ? 'cross_machine_replicated'
+        : 'unknown_scope'
     case 'cross_process_same_host':
       return 'same_host_only'
     case 'single_observation':
@@ -545,8 +558,14 @@ const distributionsFromEvidence = (
         measurement.sameClassReplicationScope,
         provenance,
       )
+      const sameClassReplicationEvidenceRefs = uniqueRefs(
+        stringArrayFromUnknown(measurement.sameClassReplicationEvidenceRefs),
+      )
       const sameClassReplicationStatus =
-        sameClassReplicationStatusFromScope(sameClassReplicationScope)
+        sameClassReplicationStatusFromEvidence({
+          evidenceRefs: sameClassReplicationEvidenceRefs,
+          scope: sameClassReplicationScope,
+        })
       const projected: DeviceCapabilityDistribution = {
         crossCheckState: state,
         deviceClassRef,
@@ -566,8 +585,12 @@ const distributionsFromEvidence = (
         p50,
         p90,
         receiptRefs: uniqueRefs(stringArrayFromUnknown(measurement.receiptRefs)),
+        ownerAcceptedThermalReceiptRefs: uniqueRefs(
+          stringArrayFromUnknown(measurement.ownerAcceptedThermalReceiptRefs),
+        ),
         sameClassReplicationBlockerRefs:
           sameClassReplicationBlockersForStatus(sameClassReplicationStatus),
+        sameClassReplicationEvidenceRefs,
         sameClassReplicationScope,
         sameClassReplicationStatus,
         sampleCount,
@@ -597,6 +620,10 @@ export const buildDeviceCapabilitySameClassReplicationSignals = (
     const reasonCode =
       state === 'cross_machine_replicated'
         ? 'device_capability.public.same_class_replication_cross_machine'
+        : distribution.sameClassReplicationScope ===
+              'cross_machine_same_class' &&
+            distribution.sameClassReplicationEvidenceRefs.length === 0
+          ? 'device_capability.public.same_class_replication_cross_machine_evidence_missing'
         : state === 'same_host_only'
           ? 'device_capability.public.same_class_replication_same_host_only'
           : state === 'single_observation'
@@ -612,6 +639,8 @@ export const buildDeviceCapabilitySameClassReplicationSignals = (
       reasonCode,
       sampleCount: distribution.sampleCount,
       scope: distribution.sameClassReplicationScope,
+      sameClassReplicationEvidenceRefs:
+        distribution.sameClassReplicationEvidenceRefs,
       sourceRefs: distribution.sourceRefs,
       state,
       verified: distribution.verified,
@@ -664,25 +693,34 @@ export const buildDeviceCapabilityThermalThrottleSignals = (
         return []
       }
 
-      const needsVerification = !distribution.verified
+      const hasOwnerAcceptedThermalReceipt =
+        distribution.ownerAcceptedThermalReceiptRefs.length > 0
+      const needsVerification =
+        !distribution.verified || !hasOwnerAcceptedThermalReceipt
       const throttled =
         distribution.verified &&
+        hasOwnerAcceptedThermalReceipt &&
         distribution.p50 < Cs336A2ThermalThrottleRatioFloor
       const state: DeviceCapabilityThermalThrottleState = needsVerification
         ? 'thermal_probe_needs_verification'
         : throttled
           ? 'thermal_throttle_observed'
           : 'thermal_throttle_not_observed'
-      const blockerRefs =
-        state === 'thermal_probe_needs_verification'
-          ? ['blocker.cs336_a2.requires_verified_sustained_vs_burst_thermal_probe']
+      const blockerRefs = !distribution.verified
+        ? ['blocker.cs336_a2.requires_verified_sustained_vs_burst_thermal_probe']
+        : !hasOwnerAcceptedThermalReceipt
+          ? [
+              'blocker.cs336_a2.requires_owner_accepted_production_thermal_receipt',
+            ]
           : []
       const reasonCode =
-        state === 'thermal_probe_needs_verification'
+        !distribution.verified
           ? 'device_capability.public.thermal_probe_needs_statistical_cross_check'
-          : state === 'thermal_throttle_observed'
-            ? 'device_capability.public.thermal_throttle_observed_sustained_ratio_below_floor'
-            : 'device_capability.public.thermal_throttle_not_observed_sustained_ratio_at_or_above_floor'
+          : !hasOwnerAcceptedThermalReceipt
+            ? 'device_capability.public.thermal_probe_needs_owner_accepted_production_receipt'
+            : state === 'thermal_throttle_observed'
+              ? 'device_capability.public.thermal_throttle_observed_sustained_ratio_below_floor'
+              : 'device_capability.public.thermal_throttle_not_observed_sustained_ratio_at_or_above_floor'
       const signal: DeviceCapabilityThermalThrottleSignal = {
         blockerRefs,
         crossCheckState: distribution.crossCheckState,
@@ -696,6 +734,8 @@ export const buildDeviceCapabilityThermalThrottleSignals = (
         p90Ratio: distribution.p90,
         ratioFloor: Cs336A2ThermalThrottleRatioFloor,
         reasonCode,
+        ownerAcceptedThermalReceiptRefs:
+          distribution.ownerAcceptedThermalReceiptRefs,
         receiptRefs: distribution.receiptRefs,
         sampleCount: distribution.sampleCount,
         sourceRefs: distribution.sourceRefs,
@@ -752,7 +792,7 @@ export const thermalThrottleReceiptRefs = (
   uniqueRefs(
     signals
       .filter(signal => signal.verified)
-      .flatMap(signal => signal.receiptRefs),
+      .flatMap(signal => signal.ownerAcceptedThermalReceiptRefs),
   )
 
 export const buildCs336A2DeviceBenchmarkPayload = (
@@ -822,6 +862,26 @@ const assertAdmissibleMeasurement = (
   ) {
     throw new DeviceCapabilityEvidenceValidationError(
       'CS336 A2 sustained-vs-burst thermal evidence requires unit ratio.',
+    )
+  }
+
+  if (
+    measurement.metric !== Cs336A2ThermalThrottleMetric &&
+    measurement.ownerAcceptedThermalReceiptRefs !== undefined &&
+    measurement.ownerAcceptedThermalReceiptRefs.length > 0
+  ) {
+    throw new DeviceCapabilityEvidenceValidationError(
+      'CS336 A2 owner-accepted thermal receipt refs are only valid on sustained-vs-burst thermal evidence.',
+    )
+  }
+
+  if (
+    measurement.sameClassReplicationScope === 'cross_machine_same_class' &&
+    (measurement.sameClassReplicationEvidenceRefs === undefined ||
+      measurement.sameClassReplicationEvidenceRefs.length === 0)
+  ) {
+    throw new DeviceCapabilityEvidenceValidationError(
+      'CS336 A2 cross_machine_same_class evidence requires at least one public cross-machine replication evidence ref.',
     )
   }
 

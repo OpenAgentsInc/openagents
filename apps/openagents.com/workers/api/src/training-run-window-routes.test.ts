@@ -2238,9 +2238,15 @@ describe('training run window routes', () => {
       measurementRef: 'measurement.cs336_a2.thermal.example_gpu_24gb',
       metric: 'sustained_vs_burst_throughput_ratio',
       min: 0.7,
+      ownerAcceptedThermalReceiptRefs: [
+        'receipt.cs336_a2.thermal.owner_accepted.production.1',
+      ],
       p50: 0.74,
       p90: 0.78,
       receiptRefs: ['receipt.cs336_a2.thermal.verified_row.1'],
+      sameClassReplicationEvidenceRefs: [
+        'evidence.cs336_a2.replication.cross_machine.thermal.1',
+      ],
       sameClassReplicationScope: 'cross_machine_same_class',
       sampleCount: 3,
       sourceRefs: ['artifact.cs336_a2.thermal_probe.window_samples.1'],
@@ -2282,7 +2288,7 @@ describe('training run window routes', () => {
       'device_capability.public.thermal_throttle_observed_sustained_ratio_below_floor',
     ])
     expect(admittedBody.dataset.thermalThrottleReceiptRefs).toEqual([
-      'receipt.cs336_a2.thermal.verified_row.1',
+      'receipt.cs336_a2.thermal.owner_accepted.production.1',
     ])
 
     const dashboard = await runRoute(
@@ -2300,7 +2306,7 @@ describe('training run window routes', () => {
       'device_capability.public.thermal_throttle_observed_sustained_ratio_below_floor',
     ])
     expect(dashboardBody.thermalThrottleReceiptRefs).toEqual([
-      'receipt.cs336_a2.thermal.verified_row.1',
+      'receipt.cs336_a2.thermal.owner_accepted.production.1',
     ])
   })
 

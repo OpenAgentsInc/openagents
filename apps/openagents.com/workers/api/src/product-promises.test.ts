@@ -660,6 +660,22 @@ describe('public product promises document', () => {
           ),
         }),
         expect.objectContaining({
+          promiseId: 'training.device_capability_dataset.v1',
+          safeCopy: expect.stringContaining('ownerAcceptedThermalReceiptRefs'),
+          verification: expect.stringContaining(
+            'thermalThrottleReceiptRefs only includes owner-accepted production thermal receipts',
+          ),
+        }),
+        expect.objectContaining({
+          promiseId: 'training.device_capability_dataset.v1',
+          safeCopy: expect.stringContaining(
+            'sameClassReplicationEvidenceRefs',
+          ),
+          verification: expect.stringContaining(
+            'cross_machine_same_class requires sameClassReplicationEvidenceRefs',
+          ),
+        }),
+        expect.objectContaining({
           promiseId: 'training.post_training_arc.v1',
           state: 'planned',
           evidenceRefs: expect.arrayContaining([

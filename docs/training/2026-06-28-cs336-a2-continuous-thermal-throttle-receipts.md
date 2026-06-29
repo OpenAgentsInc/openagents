@@ -15,9 +15,12 @@ sustained-vs-burst thermal evidence:
 - `buildCs336A2ThermalThrottleMeasurementEvidence` derives a
   `sustained_vs_burst_throughput_ratio` row from burst and sustained throughput
   samples.
-- Verified thermal rows project their row `receiptRefs`.
+- Verified thermal rows project their generic row `receiptRefs`, but the
+  product gate only clears when the row also carries
+  `ownerAcceptedThermalReceiptRefs` from a production contributor run.
 - Dataset and dashboard projections expose `thermalThrottleReceiptRefs` and
-  `thermalThrottleFunnelReasonCodes`.
+  `thermalThrottleFunnelReasonCodes`; `thermalThrottleReceiptRefs` is now the
+  owner-accepted production receipt list, not any generic benchmark receipt.
 - The capacity funnel accepts closed `device_capability.public.*` reason-code
   refs without treating them as private hardware material.
 
@@ -42,4 +45,3 @@ payment material, raw runner logs, host paths, or private hardware payloads.
 - `apps/openagents.com/workers/api/src/training-device-capability.test.ts`
 - `apps/openagents.com/workers/api/src/training-run-window-routes.test.ts`
 - `apps/openagents.com/workers/api/src/pylon-capacity-funnel.test.ts`
-

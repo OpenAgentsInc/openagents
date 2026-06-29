@@ -22,11 +22,15 @@ Each measurement row also carries fail-closed replication fields:
 - `sameClassReplicationScope`
 - `sameClassReplicationStatus`
 - `sameClassReplicationBlockerRefs`
+- `sameClassReplicationEvidenceRefs`
 
 Legacy settled rows default to `cross_process_same_host`, not cross-machine.
 That matches the known first A2 closeouts: two registered Pylons on the same
 physical host. A row becomes `cross_machine_replicated` only when its evidence
-declares `sameClassReplicationScope: "cross_machine_same_class"`.
+declares `sameClassReplicationScope: "cross_machine_same_class"` and includes at
+least one public `sameClassReplicationEvidenceRefs` entry. A legacy or malformed
+row with the cross-machine scope but no evidence ref fails closed to
+`unknown_scope` and keeps the cross-machine blocker.
 
 Measured-but-unsettled rows default to `single_observation`, which preserves
 the x86_64 Linux Intel row as real measured data but not replicated, verified,
@@ -43,8 +47,8 @@ Now the public route is consistent with the promise copy:
 - same-host-only rows report `sameClassReplicationStatus: "same_host_only"`
 - the route carries
   `blocker.cs336_a2.requires_cross_machine_same_class_replication`
-- only explicitly cross-machine same-class evidence clears the replication
-  blocker in the projection
+- only explicitly cross-machine same-class evidence with public evidence refs
+  clears the replication blocker in the projection
 
 ## Boundaries
 

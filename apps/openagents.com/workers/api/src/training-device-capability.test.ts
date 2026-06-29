@@ -367,6 +367,9 @@ describe('CS336 A2 device capability projection', () => {
       p50: 94,
       p90: 99,
       receiptRefs: ['receipt.cs336.a2.host_ram.1'],
+      sameClassReplicationEvidenceRefs: [
+        'evidence.cs336_a2.replication.cross_machine.host_ram.1',
+      ],
       sameClassReplicationScope: 'cross_machine_same_class' as const,
       sampleCount: 5,
       unit: 'gigabytes',
@@ -380,7 +383,13 @@ describe('CS336 A2 device capability projection', () => {
       min: 0.84,
       p50: 0.91,
       p90: 0.95,
+      ownerAcceptedThermalReceiptRefs: [
+        'receipt.cs336_a2.thermal.owner_accepted.production.1',
+      ],
       receiptRefs: ['receipt.cs336.a2.sustained_ratio.1'],
+      sameClassReplicationEvidenceRefs: [
+        'evidence.cs336_a2.replication.cross_machine.thermal.1',
+      ],
       sameClassReplicationScope: 'cross_machine_same_class' as const,
       sampleCount: 5,
       unit: 'ratio',
@@ -415,6 +424,9 @@ describe('CS336 A2 device capability projection', () => {
     expect(projection.thermalThrottleSignals[0]).toMatchObject({
       deviceClassRef: 'device_class.example.rtx_4090_24gb_96gb_host',
       metric: 'sustained_vs_burst_throughput_ratio',
+      ownerAcceptedThermalReceiptRefs: [
+        'receipt.cs336_a2.thermal.owner_accepted.production.1',
+      ],
       p50Ratio: 0.91,
       ratioFloor: 0.8,
       reasonCode:
@@ -457,6 +469,36 @@ describe('CS336 A2 device capability projection', () => {
         run,
       }),
     ).toThrow('unit ratio')
+    expect(() =>
+      admitCs336A2DeviceBenchmarkEvidence({
+        nowIso: '2026-06-12T16:05:00.000Z',
+        request: {
+          measurements: [
+            {
+              ...hostRamMeasurement,
+              ownerAcceptedThermalReceiptRefs: [
+                'receipt.cs336_a2.thermal.owner_accepted.production.1',
+              ],
+            },
+          ],
+        },
+        run,
+      }),
+    ).toThrow('only valid on sustained-vs-burst thermal evidence')
+    expect(() =>
+      admitCs336A2DeviceBenchmarkEvidence({
+        nowIso: '2026-06-12T16:05:00.000Z',
+        request: {
+          measurements: [
+            {
+              ...hostRamMeasurement,
+              sameClassReplicationEvidenceRefs: [],
+            },
+          ],
+        },
+        run,
+      }),
+    ).toThrow('cross_machine_same_class evidence')
   })
 
   it('admits a genuinely measured but unsettled second device class without a settlement receipt or earning estimate', () => {
@@ -581,13 +623,14 @@ describe('CS336 A2 device capability projection', () => {
     })
   })
 
-  it('projects verified continuous thermal-throttle receipts and funnel reason codes', () => {
+  it('keeps verified thermal rows blocked until an owner-accepted production receipt is present', () => {
     const run = buildTrainingRunRecord({
-      makeId: () => 'a2-verified-thermal',
+      makeId: () => 'a2-verified-thermal-without-production-receipt',
       nowIso: '2026-06-28T00:00:00.000Z',
       request: {
         promiseRef: 'training.device_capability_dataset.v1',
-        trainingRunRef: 'run.cs336.a2.device_capability.verified_thermal',
+        trainingRunRef:
+          'run.cs336.a2.device_capability.verified_thermal_no_production_receipt',
       },
     })
     const measurement = buildCs336A2ThermalThrottleMeasurementEvidence({
@@ -620,6 +663,70 @@ describe('CS336 A2 device capability projection', () => {
     })
 
     expect(projection.thermalThrottleDetectionStatus).toBe(
+      'needs_verified_thermal_probe',
+    )
+    expect(projection.thermalThrottleBlockerRefs).toEqual([
+      'blocker.cs336_a2.requires_owner_accepted_production_thermal_receipt',
+    ])
+    expect(projection.thermalThrottleReceiptRefs).toEqual([])
+    expect(projection.thermalThrottleSignals[0]).toMatchObject({
+      blockerRefs: [
+        'blocker.cs336_a2.requires_owner_accepted_production_thermal_receipt',
+      ],
+      reasonCode:
+        'device_capability.public.thermal_probe_needs_owner_accepted_production_receipt',
+      receiptRefs: ['receipt.cs336_a2.thermal.verified_row.1'],
+      state: 'thermal_probe_needs_verification',
+      verified: true,
+    })
+  })
+
+  it('projects owner-accepted production thermal receipts and funnel reason codes', () => {
+    const run = buildTrainingRunRecord({
+      makeId: () => 'a2-verified-thermal',
+      nowIso: '2026-06-28T00:00:00.000Z',
+      request: {
+        promiseRef: 'training.device_capability_dataset.v1',
+        trainingRunRef: 'run.cs336.a2.device_capability.verified_thermal',
+      },
+    })
+    const measurement = {
+      ...buildCs336A2ThermalThrottleMeasurementEvidence({
+        deviceClassRef: 'device_class.example.gpu_24gb',
+        digestCommitmentRefs: ['commitment.cs336_a2.thermal.sha256_demo'],
+        receiptRefs: ['receipt.cs336_a2.thermal.verified_row.1'],
+        samples: [
+          { phase: 'burst', throughput: 100 },
+          { phase: 'burst', throughput: 100 },
+          { phase: 'burst', throughput: 120 },
+          { phase: 'sustained', throughput: 70 },
+          { phase: 'sustained', throughput: 78 },
+          { phase: 'sustained', throughput: 74 },
+        ],
+        sourceRefs: ['artifact.cs336_a2.thermal_probe.window_samples.1'],
+        verificationRefs: [
+          'verdict.training.statistical_cross_check.thermal.1',
+        ],
+        workClass: 'cs336_a2_device_benchmark',
+      }),
+      ownerAcceptedThermalReceiptRefs: [
+        'receipt.cs336_a2.thermal.owner_accepted.production.1',
+      ],
+    }
+
+    const admitted = admitCs336A2DeviceBenchmarkEvidence({
+      nowIso: '2026-06-28T00:01:00.000Z',
+      request: { measurements: [measurement] },
+      run,
+    })
+    const projection = publicDeviceCapabilityProjection({
+      challenges: [],
+      leases: [],
+      run: admitted,
+      windows: [],
+    })
+
+    expect(projection.thermalThrottleDetectionStatus).toBe(
       'thermal_throttle_observed',
     )
     expect(projection.thermalThrottleBlockerRefs).toEqual([])
@@ -627,12 +734,15 @@ describe('CS336 A2 device capability projection', () => {
       'device_capability.public.thermal_throttle_observed_sustained_ratio_below_floor',
     ])
     expect(projection.thermalThrottleReceiptRefs).toEqual([
-      'receipt.cs336_a2.thermal.verified_row.1',
+      'receipt.cs336_a2.thermal.owner_accepted.production.1',
     ])
     expect(projection.thermalThrottleSignals[0]).toMatchObject({
       p50Ratio: 0.74,
       reasonCode:
         'device_capability.public.thermal_throttle_observed_sustained_ratio_below_floor',
+      ownerAcceptedThermalReceiptRefs: [
+        'receipt.cs336_a2.thermal.owner_accepted.production.1',
+      ],
       receiptRefs: ['receipt.cs336_a2.thermal.verified_row.1'],
       state: 'thermal_throttle_observed',
       verified: true,
