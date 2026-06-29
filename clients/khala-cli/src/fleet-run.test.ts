@@ -76,8 +76,39 @@ describe("fleet run planning", () => {
     expect(first[1]?.objective).toContain("apps/pylon")
 
     const second = plannedReplenishmentRounds(plan, new Set(first.map(round => round.dedupeKey ?? "")))
-    expect(second).toHaveLength(1)
+    expect(second).toHaveLength(2)
     expect(second[0]?.dedupeKey).toBe("test-lint-typecheck-sweep")
+    expect(second[1]?.dedupeKey).toBe("lockout-recovery-sweep-2")
+  })
+
+  test("keeps producing bounded replenishment work after fixed recovery tasks are exhausted", () => {
+    const plan = buildFleetRunPlan({
+      commit,
+      issues: [6820, 6707],
+      maxSlots: 2,
+      mode: "supervise",
+      perAccount: 1,
+      pylonRef: "pylon.local",
+      readyAccounts: ["codex", "codex-2"],
+      repo: "OpenAgentsInc/openagents",
+      verify: "bun test",
+    })
+    const dispatched = new Set([
+      "gepa-dspy-6707",
+      "bounded-codebase-audit",
+      "test-lint-typecheck-sweep",
+    ])
+
+    const generated = plannedReplenishmentRounds(plan, dispatched)
+
+    expect(generated).toHaveLength(2)
+    expect(generated.map(round => round.workKind)).toEqual(["replenishment", "replenishment"])
+    expect(generated.map(round => round.dedupeKey)).toEqual([
+      "lockout-recovery-sweep-3",
+      "lockout-recovery-sweep-4",
+    ])
+    expect(generated.map(round => round.issue)).toEqual([6707, 6820])
+    expect(generated[0]?.objective).toContain("Re-audit public issue #6707")
   })
 
   test("keeps lockout recovery in the short supervisor cadence", () => {
