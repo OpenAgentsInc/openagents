@@ -65,7 +65,7 @@ const DEFAULT_MAX_SLOTS = 8
 const SUPERVISOR_IDLE_MS = 2_000
 const REFUSED_BACKOFF_MS = 15_000
 const MAX_REFUSED_BACKOFF_MS = 120_000
-const LOCKOUT_REPLENISH_AFTER_ROUNDS = 1
+const LOCKOUT_REPLENISH_AFTER_ROUNDS = 2
 
 type FleetRunSlot = Omit<KhalaFleetRunRound, "ok" | "status" | "assignmentRef">
 
@@ -260,6 +260,10 @@ export function nextFleetSupervisorDelay(input: {
   return { delayMs: SUPERVISOR_IDLE_MS, refusedBackoffMs: REFUSED_BACKOFF_MS }
 }
 
+export function shouldDispatchReplenishment(consecutiveLockoutRounds: number): boolean {
+  return consecutiveLockoutRounds >= LOCKOUT_REPLENISH_AFTER_ROUNDS
+}
+
 async function runSupervisorLoop(input: {
   readonly env: Record<string, string | undefined>
   readonly plan: KhalaFleetRunPlan
@@ -282,7 +286,7 @@ async function runSupervisorLoop(input: {
     issueOffset = (issueOffset + round.length) % input.plan.issues.length
     const lockout = round.length > 0 && round.every(item => item.status === "refused")
     consecutiveLockoutRounds = lockout ? consecutiveLockoutRounds + 1 : 0
-    if (consecutiveLockoutRounds >= LOCKOUT_REPLENISH_AFTER_ROUNDS) {
+    if (shouldDispatchReplenishment(consecutiveLockoutRounds)) {
       const replenishmentPlan = plannedReplenishmentRounds(input.plan, dispatchedReplenishmentKeys)
       for (const slot of replenishmentPlan) {
         if (slot.dedupeKey !== undefined) dispatchedReplenishmentKeys.add(slot.dedupeKey)
