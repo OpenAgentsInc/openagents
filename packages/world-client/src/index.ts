@@ -1,4 +1,4 @@
-import { Data, Effect } from "effect"
+import { Data, Effect, Exit, Scope } from "effect"
 
 import {
   WORLD_DELTA_SCHEMA_VERSION,
@@ -103,6 +103,11 @@ type BrowserWebSocketLike = Readonly<{
 
 type BrowserWebSocketCtor = new (url: string) => BrowserWebSocketLike
 
+type ScopedBrowserWebSocket = Readonly<{
+  socket: BrowserWebSocketLike
+  release: () => void
+}>
+
 export type BrowserWorldTransportInput = Readonly<{
   worldUrl: string
   actorRef: string
@@ -197,6 +202,7 @@ export const createBrowserWorldTransport = (
   const WebSocketCtor = input.webSocketCtor ??
     (globalThis as unknown as { WebSocket?: BrowserWebSocketCtor }).WebSocket
   let socket: BrowserWebSocketLike | null = null
+  let socketScope: Scope.Closeable | null = null
   const pendingCommands = new Map<
     string,
     {
@@ -215,52 +221,95 @@ export const createBrowserWorldTransport = (
     }
   }
 
+  const closeSocketScope = (): Effect.Effect<void> =>
+    Effect.gen(function* () {
+      const scope = socketScope
+      socketScope = null
+      socket = null
+      if (scope !== null) {
+        yield* Scope.close(scope, Exit.void)
+      }
+    })
+
+  const acquireSocket = (
+    socketUrl: string,
+  ): Effect.Effect<ScopedBrowserWebSocket, WorldClientError, Scope.Scope> =>
+    Effect.acquireRelease(
+      Effect.tryPromise({
+        try: signal =>
+          new Promise<ScopedBrowserWebSocket>((resolve, reject) => {
+            if (WebSocketCtor === undefined) {
+              reject(new Error("WebSocket is not available in this runtime."))
+              return
+            }
+            const next = new WebSocketCtor(socketUrl)
+            let settled = false
+            const cleanup = (): void => {
+              next.removeEventListener("open", onOpen)
+              next.removeEventListener("message", onMessage)
+              next.removeEventListener("error", onError)
+              signal.removeEventListener("abort", onAbort)
+            }
+            const onOpen = (): void => {
+              settled = true
+              cleanup()
+              next.addEventListener("message", onMessage)
+              next.send(JSON.stringify({ frameKind: "hydrate" }))
+              resolve({
+                socket: next,
+                release: () => {
+                  cleanup()
+                  next.close()
+                },
+              })
+            }
+            const onError = (): void => {
+              settled = true
+              cleanup()
+              reject(new Error("World WebSocket connection failed."))
+            }
+            const onAbort = (): void => {
+              cleanup()
+              next.close()
+              if (!settled) reject(new Error("World WebSocket connection interrupted."))
+            }
+            const onMessage = (event: unknown): void => {
+              const data = (event as { data?: unknown }).data
+              if (typeof data !== "string") return
+              try {
+                applyFrame(decodeWorldTransportFrame(JSON.parse(data)))
+              } catch {
+                // Bad frames are ignored locally; the Worker emits typed diagnostics
+                // for command/schema failures that pass the transport boundary.
+              }
+            }
+            next.addEventListener("open", onOpen, { once: true })
+            next.addEventListener("error", onError, { once: true })
+            signal.addEventListener("abort", onAbort, { once: true })
+          }),
+        catch: error => new WorldClientError({
+          phase: "connect",
+          reason: error instanceof Error ? error.message : "World socket connection failed.",
+          retryable: true,
+          sourceRefs: ["world-client.browser.socket"],
+        }),
+      }),
+      resource => Effect.sync(() => resource.release()),
+      { interruptible: true },
+    )
+
   const connectSocket = (
     socketUrl: string,
   ): Effect.Effect<void, WorldClientError> =>
-    Effect.tryPromise({
-      try: () =>
-        new Promise<void>((resolve, reject) => {
-          if (WebSocketCtor === undefined) {
-            reject(new Error("WebSocket is not available in this runtime."))
-            return
-          }
-          const next = new WebSocketCtor(socketUrl)
-          socket = next
-          const cleanup = (): void => {
-            next.removeEventListener("open", onOpen)
-            next.removeEventListener("message", onMessage)
-            next.removeEventListener("error", onError)
-          }
-          const onOpen = (): void => {
-            cleanup()
-            next.addEventListener("message", onMessage)
-            next.send(JSON.stringify({ frameKind: "hydrate" }))
-            resolve()
-          }
-          const onError = (): void => {
-            cleanup()
-            reject(new Error("World WebSocket connection failed."))
-          }
-          const onMessage = (event: unknown): void => {
-            const data = (event as { data?: unknown }).data
-            if (typeof data !== "string") return
-            try {
-              applyFrame(decodeWorldTransportFrame(JSON.parse(data)))
-            } catch {
-              // Bad frames are ignored locally; the Worker emits typed diagnostics
-              // for command/schema failures that pass the transport boundary.
-            }
-          }
-          next.addEventListener("open", onOpen, { once: true })
-          next.addEventListener("error", onError, { once: true })
-        }),
-      catch: error => new WorldClientError({
-        phase: "connect",
-        reason: error instanceof Error ? error.message : "World socket connection failed.",
-        retryable: true,
-        sourceRefs: ["world-client.browser.socket"],
-      }),
+    Effect.gen(function* () {
+      yield* closeSocketScope()
+      const scope = yield* Scope.make()
+      const resource = yield* acquireSocket(socketUrl).pipe(
+        Scope.provide(scope),
+        Effect.onInterrupt(() => Scope.close(scope, Exit.void)),
+      )
+      socketScope = scope
+      socket = resource.socket
     })
 
   const connect = (
@@ -348,9 +397,7 @@ export const createBrowserWorldTransport = (
             }),
       }),
     disconnect: () =>
-      Effect.sync(() => {
-        socket?.close()
-        socket = null
+      Effect.gen(function* () {
         for (const pending of pendingCommands.values()) {
           pending.reject(new WorldClientError({
             phase: "disconnect",
@@ -360,6 +407,7 @@ export const createBrowserWorldTransport = (
           }))
         }
         pendingCommands.clear()
+        yield* closeSocketScope()
       }),
   }
 }

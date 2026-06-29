@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test"
-import { Effect } from "effect"
+import { Effect, Fiber } from "effect"
 
 import {
+  WORLD_CONTRACT_SCHEMA_VERSION,
   WORLD_DELTA_SCHEMA_VERSION,
   decodeWorldCommandEnvelope,
   decodeWorldDelta,
@@ -17,6 +18,7 @@ import {
   applyDeltaToReadModel,
   applyDeltaToState,
   commandAckFromReceipt,
+  createBrowserWorldTransport,
   createStubWorldClientTransport,
   createWorldClient,
   makeEmptyClientWorld,
@@ -373,6 +375,75 @@ describe("world-client", () => {
     expect(calls).toContain("connect:cursor.region.run.1.1")
     expect(calls).toContain("connect:cursor.region.run.1.999")
     expect(calls).toContain("disconnect")
+  })
+
+  test("browser transport closes an opening socket when connect is interrupted", async () => {
+    class InterruptibleSocket {
+      static readonly instances: Array<InterruptibleSocket> = []
+
+      readonly listeners = new Map<string, Set<(event: unknown) => void>>()
+      readonly sent: Array<string> = []
+      readonly url: string
+      readyState = 0
+      closed = false
+
+      constructor(url: string) {
+        this.url = url
+        InterruptibleSocket.instances.push(this)
+      }
+
+      send(data: string): void {
+        this.sent.push(data)
+      }
+
+      close(): void {
+        this.closed = true
+        this.readyState = 3
+      }
+
+      addEventListener(type: string, listener: (event: unknown) => void): void {
+        const listeners = this.listeners.get(type) ?? new Set<(event: unknown) => void>()
+        listeners.add(listener)
+        this.listeners.set(type, listeners)
+      }
+
+      removeEventListener(type: string, listener: (event: unknown) => void): void {
+        this.listeners.get(type)?.delete(listener)
+      }
+    }
+
+    const fetchFn = (async () =>
+      new Response(JSON.stringify({
+        ok: true,
+        schemaVersion: WORLD_CONTRACT_SCHEMA_VERSION,
+        regionRef,
+        socketUrl: "wss://world.test/regions/region.run.1/socket",
+        subscriptionPlan: plan(),
+      }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      })) as unknown as typeof fetch
+
+    const transport = createBrowserWorldTransport({
+      worldUrl: "https://world.test",
+      actorRef: "actor.alice",
+      fetchFn,
+      webSocketCtor: InterruptibleSocket,
+    })
+
+    const fiber = Effect.runFork(transport.connect({}))
+    for (let attempt = 0; attempt < 10 && InterruptibleSocket.instances.length === 0; attempt += 1) {
+      await Effect.runPromise(Effect.yieldNow)
+    }
+
+    expect(InterruptibleSocket.instances).toHaveLength(1)
+    expect(InterruptibleSocket.instances[0]?.closed).toBe(false)
+
+    await Effect.runPromise(Fiber.interrupt(fiber))
+
+    expect(InterruptibleSocket.instances[0]?.closed).toBe(true)
+    expect(InterruptibleSocket.instances[0]?.listeners.get("open")?.size ?? 0).toBe(0)
+    expect(InterruptibleSocket.instances[0]?.listeners.get("error")?.size ?? 0).toBe(0)
   })
 
   test("callCommand exposes receipt sequence ack state", async () => {
