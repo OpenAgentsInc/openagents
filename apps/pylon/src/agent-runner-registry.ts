@@ -20,6 +20,7 @@ import {
   codexAgentTaskFrom,
   executeCodexAgentAssignment,
   type CodexAgentExecutionOptions,
+  type CodexAgentRuntimeProgress,
   type CodexAgentRunner,
 } from "./codex-agent-executor.js"
 import type { PylonAssignmentLease } from "./assignment.js"
@@ -52,6 +53,7 @@ export type AgentRunnerExecutionOptions = {
   claudeAgentRunner?: ClaudeAgentRunner
   codexAgentProbe?: CodexAgentProbeOptions
   codexAgentRunner?: CodexAgentRunner
+  onCodexProgress?: (progress: CodexAgentRuntimeProgress) => void | Promise<void>
   fetch?: typeof fetch
 }
 
@@ -114,6 +116,7 @@ export const AGENT_RUNNER_REGISTRY: ReadonlyArray<AgentRunnerDescriptor> = [
         ...commonExecutionOptions(options),
         ...(options.codexAgentProbe === undefined ? {} : { codexAgentProbe: options.codexAgentProbe }),
         ...(options.codexAgentRunner === undefined ? {} : { codexAgentRunner: options.codexAgentRunner }),
+        ...(options.onCodexProgress === undefined ? {} : { onProgress: options.onCodexProgress }),
       } satisfies CodexAgentExecutionOptions),
   },
 ]

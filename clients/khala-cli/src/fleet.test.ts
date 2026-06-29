@@ -254,7 +254,7 @@ describe("operator fleet live status", () => {
         seenAuth.push(init?.headers instanceof Headers
           ? init.headers.get("authorization")
           : (init?.headers as Record<string, string> | undefined)?.authorization ?? null)
-        expect(String(input)).toBe("https://example.test/api/operator/fleet/status")
+        expect(String(input)).toBe("https://example.test/api/operator/fleet/state")
         return Response.json({ pace: { burnRate: 12 }, fleet: { ready: 2 } })
       },
     })

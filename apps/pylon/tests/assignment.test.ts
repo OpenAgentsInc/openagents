@@ -581,7 +581,10 @@ describe("Pylon assignment lease flow", () => {
         (event) => event.event === "assignment_run.runtime_progress",
       )
       expect(progressEvents.length).toBeGreaterThan(0)
-      expect(progressEvents[0]).toMatchObject({
+      const runtimeActiveProgress = progressEvents.find(
+        (event) => event.phase === "runtime_active",
+      )
+      expect(runtimeActiveProgress).toMatchObject({
         schema: "openagents.pylon.assignment_run_lifecycle_event.v0.1",
         assignmentRef: codexLease.assignmentRef,
         accountRefHash: expect.stringMatching(/^account\.pylon\.codex\.[a-f0-9]{24}$/),
@@ -589,8 +592,8 @@ describe("Pylon assignment lease flow", () => {
         phase: "runtime_active",
         lastProgressEvent: "assignment_run.runtime_started",
       })
-      expect(typeof progressEvents[0].elapsedMs).toBe("number")
-      expect(progressEvents[0].elapsedMs).toBeGreaterThanOrEqual(0)
+      expect(typeof runtimeActiveProgress?.elapsedMs).toBe("number")
+      expect(runtimeActiveProgress?.elapsedMs).toBeGreaterThanOrEqual(0)
 
       const lifecycleJson = JSON.stringify(lifecycleEvents)
       expect(lifecycleJson).not.toContain(home)

@@ -6,6 +6,7 @@ import { openAgentsDatabase } from './runtime'
 import { currentIsoTimestamp } from './runtime-primitives'
 
 export const OPERATOR_FLEET_STATUS_PATH = '/api/operator/fleet/status'
+export const OPERATOR_FLEET_STATE_PATH = '/api/operator/fleet/state'
 const CACHE_TTL_MILLIS = 10_000
 
 type OperatorFleetStatusEnv = Readonly<{
@@ -14,6 +15,10 @@ type OperatorFleetStatusEnv = Readonly<{
 
 type OperatorFleetStatusDependencies<Bindings extends OperatorFleetStatusEnv> =
   Readonly<{
+    authenticateAgentToken?: (
+      request: Request,
+      env: Bindings,
+    ) => Promise<{ userId: string } | undefined>
     currentIsoTimestamp?: () => string
     requireAdminApiToken: (request: Request, env: Bindings) => Promise<boolean>
   }>
@@ -47,6 +52,18 @@ type AlertRow = Readonly<{
   reason_ref: string
   active_assignments: number
   queued_assignments: number
+}>
+
+type ProviderAccountRow = Readonly<{
+  provider_account_ref: string
+  provider: string
+  status: string | null
+  health: string | null
+  cooldown_until: string | null
+  recent_failure_class: string | null
+  reauth_required_reason: string | null
+  low_credit_flag: number | null
+  lease_limit: number | null
 }>
 
 type TokenTodayRow = Readonly<{ tokens_today: number | null }>
@@ -127,10 +144,25 @@ const safeFirst = async <T>(
 const buildFleetStatusSnapshot = async (
   db: D1Database,
   nowIso: string,
+  scope: OperatorFleetReadScope,
 ): Promise<unknown> => {
+  const registrationOwnerClause =
+    scope.kind === 'agent' ? 'AND owner_agent_user_id = ?' : ''
+  const assignmentOwnerClause =
+    scope.kind === 'agent'
+      ? `AND pylon_ref IN (
+           SELECT pylon_ref
+             FROM pylon_api_registrations
+            WHERE archived_at IS NULL
+              AND owner_agent_user_id = ?
+         )`
+      : ''
+  const accountOwnerClause = scope.kind === 'agent' ? 'AND user_id = ?' : ''
+  const ownerBindings = scope.kind === 'agent' ? [scope.userId] : []
   const [
     registrations,
     assignments,
+    providerAccounts,
     latestAlert,
     today,
     yesterday,
@@ -145,8 +177,10 @@ const buildFleetStatusSnapshot = async (
               capability_refs_json, status
          FROM pylon_api_registrations
         WHERE archived_at IS NULL
+          ${registrationOwnerClause}
         ORDER BY updated_at DESC
         LIMIT 100`,
+      ...ownerBindings,
     ),
     safeAll<AssignmentRow>(
       db,
@@ -154,9 +188,26 @@ const buildFleetStatusSnapshot = async (
               lease_expires_at
          FROM pylon_api_assignments
         WHERE archived_at IS NULL
+          ${assignmentOwnerClause}
           AND state IN ('offered','accepted','running','proof_submitted')
         ORDER BY updated_at DESC
         LIMIT 50`,
+      ...ownerBindings,
+    ),
+    safeAll<ProviderAccountRow>(
+      db,
+      `SELECT provider_account_ref, provider, status, health, cooldown_until,
+              recent_failure_class, reauth_required_reason, low_credit_flag,
+              lease_limit
+         FROM provider_accounts
+        WHERE deleted_at IS NULL
+          AND provider IN ('chatgpt_codex', 'claude')
+          ${accountOwnerClause}
+        ORDER BY
+          CASE provider WHEN 'chatgpt_codex' THEN 0 ELSE 1 END,
+          provider_account_ref ASC
+        LIMIT 100`,
+      ...ownerBindings,
     ),
     safeFirst<AlertRow>(
       db,
@@ -233,6 +284,35 @@ const buildFleetStatusSnapshot = async (
   const activeAssignments = assignments.filter(row =>
     row.state === 'accepted' || row.state === 'running' || row.state === 'proof_submitted',
   )
+  const accountLedger = providerAccounts.map(row => {
+    const cooldownExpiresAt =
+      row.cooldown_until !== null && row.cooldown_until > nowIso
+        ? row.cooldown_until
+        : null
+    const reason =
+      row.reauth_required_reason ??
+      row.recent_failure_class ??
+      (row.low_credit_flag === 1 ? 'low_credit' : null)
+    const status =
+      row.reauth_required_reason !== null
+        ? 'revoked'
+        : cooldownExpiresAt !== null || row.recent_failure_class === 'rate_limited'
+          ? 'rate_limited'
+          : row.recent_failure_class === 'usage_limited'
+            ? 'usage_limited'
+            : row.status === 'connected' && (row.health === null || row.health === 'healthy')
+              ? 'healthy'
+              : row.health ?? row.status ?? 'unknown'
+
+    return {
+      accountRefHash: row.provider_account_ref,
+      provider: row.provider === 'chatgpt_codex' ? 'codex' : row.provider,
+      status,
+      resetAt: cooldownExpiresAt,
+      concurrency: Math.max(1, Math.trunc(row.lease_limit ?? 1)),
+      reason,
+    }
+  })
 
   const todayTokens = Math.max(0, Math.trunc(today?.tokens_today ?? 0))
   const yesterdayTokens = Math.max(0, Math.trunc(yesterday?.tokens_yesterday ?? 0))
@@ -289,6 +369,24 @@ const buildFleetStatusSnapshot = async (
       busySlots,
       queuedSlots,
       spread: fleetAccounts,
+      activeAssignments: assignments.map(row => ({
+        assignmentRef: row.assignment_ref,
+        pylonRef: row.pylon_ref,
+        jobKind: row.job_kind,
+        state: row.state,
+        elapsedMs: millisBetween(row.created_at, nowIso),
+        phase:
+          row.state === 'proof_submitted'
+            ? 'proof'
+            : row.state === 'running' || row.state === 'accepted'
+              ? 'running'
+              : 'queued',
+        tokensSoFar: null,
+        lastProgressEvent: null,
+        lastLog: null,
+        updatedAt: row.updated_at,
+        leaseExpiresAt: row.lease_expires_at,
+      })),
       inFlightAssignments: assignments.map(row => ({
         assignmentRef: row.assignment_ref,
         pylonRef: row.pylon_ref,
@@ -301,6 +399,40 @@ const buildFleetStatusSnapshot = async (
       activeAssignmentCount: activeAssignments.length,
       sourceRefs: ['d1:pylon_api_registrations', 'd1:pylon_api_assignments'],
     },
+    accounts: {
+      status: accountLedger,
+      healthyCount: accountLedger.filter(row => row.status === 'healthy').length,
+      limitedCount: accountLedger.filter(row =>
+        row.status === 'rate_limited' || row.status === 'usage_limited',
+      ).length,
+      sourceRefs: ['d1:provider_accounts'],
+    },
+    supervisor: {
+      state: readySlots > busySlots ? 'ready' : activeAssignments.length > 0 ? 'busy' : 'idle',
+      desiredCodexSlots: readySlots,
+      availableCodexSlots: activeSlots,
+      queueDepth: queuedSlots,
+      sourceRefs: ['d1:pylon_api_registrations'],
+    },
+    recentFailures: [
+      ...accountLedger
+        .filter(row => row.reason !== null && row.status !== 'healthy')
+        .slice(0, 10)
+        .map(row => ({
+          scope: 'account',
+          ref: row.accountRefHash,
+          reasonCode: row.reason,
+          observedAt: nowIso,
+        })),
+      ...(latestAlert === null || latestAlertAgeMs > 5 * 60_000
+        ? []
+        : [{
+            scope: 'fleet',
+            ref: latestAlert.alert_ref,
+            reasonCode: latestAlert.reason_ref,
+            observedAt: latestAlert.detected_at,
+          }]),
+    ].slice(0, 10),
     watchdog: {
       state: watchdogState,
       lastCronHeartbeatAt: latestAlert?.detected_at ?? null,
@@ -338,6 +470,32 @@ const buildFleetStatusSnapshot = async (
   }
 }
 
+type OperatorFleetReadScope =
+  | Readonly<{ kind: 'admin' }>
+  | Readonly<{ kind: 'agent'; userId: string }>
+
+const authorizeFleetRead = async <Bindings extends OperatorFleetStatusEnv>(
+  dependencies: OperatorFleetStatusDependencies<Bindings>,
+  request: Request,
+  env: Bindings,
+  allowAgentToken: boolean,
+): Promise<OperatorFleetReadScope | null> => {
+  if (await dependencies.requireAdminApiToken(request, env)) {
+    return { kind: 'admin' }
+  }
+
+  if (!allowAgentToken) {
+    return null
+  }
+
+  const agent = await dependencies.authenticateAgentToken?.(request, env)
+  if (agent !== undefined) {
+    return { kind: 'agent', userId: agent.userId }
+  }
+
+  return null
+}
+
 export const makeOperatorFleetStatusRoutes = <
   Bindings extends OperatorFleetStatusEnv,
 >(
@@ -351,12 +509,23 @@ export const makeOperatorFleetStatusRoutes = <
       return methodNotAllowed(['GET'])
     }
 
-    if (!(await dependencies.requireAdminApiToken(request, env))) {
+    const allowAgentToken =
+      new URL(request.url).pathname === OPERATOR_FLEET_STATE_PATH
+    const scope = await authorizeFleetRead(
+      dependencies,
+      request,
+      env,
+      allowAgentToken,
+    )
+    if (scope === null) {
       return noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
     }
 
     const nowIso = (dependencies.currentIsoTimestamp ?? currentIsoTimestamp)()
-    const cacheKey = 'operator:fleet:status:v1'
+    const cacheKey =
+      scope.kind === 'admin'
+        ? 'operator:fleet:state:v1:admin'
+        : `operator:fleet:state:v1:agent:${scope.userId}`
     const cached = snapshotCache.get(cacheKey)
     const nowMs = Date.parse(nowIso)
     if (
@@ -372,7 +541,11 @@ export const makeOperatorFleetStatusRoutes = <
       })
     }
 
-    const response = await buildFleetStatusSnapshot(openAgentsDatabase(env), nowIso)
+    const response = await buildFleetStatusSnapshot(
+      openAgentsDatabase(env),
+      nowIso,
+      scope,
+    )
     if (Number.isFinite(nowMs)) {
       snapshotCache.set(cacheKey, {
         expiresAt: nowMs + CACHE_TTL_MILLIS,

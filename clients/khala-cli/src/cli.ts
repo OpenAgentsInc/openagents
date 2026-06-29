@@ -2185,7 +2185,7 @@ Flags:
   --per-account <n>    Fleet run slots per ready Codex account (default: 1)
   --once               Fleet run one refill round, then exit
   --dry-run            Fleet run prints the resolved plan without dispatching
-  --live               Poll /api/operator/fleet/status for khala fleet status
+  --live               Poll /api/operator/fleet/state for khala fleet status
   --help, -h           Show this help
 `
 }
