@@ -278,7 +278,7 @@ describe("Khala CLI info diagnostics", () => {
       port: 0,
       fetch: request => {
         authHeaders.push(request.headers.get("authorization"))
-        expect(new URL(request.url).pathname).toBe("/api/operator/fleet/status")
+        expect(new URL(request.url).pathname).toBe("/api/operator/fleet/state")
         return Response.json({
           pace: { burnRate: "900 tokens/min", paceToFloor: "on pace" },
           fleet: { concurrency: 2, inFlightIssues: ["#6429"] },

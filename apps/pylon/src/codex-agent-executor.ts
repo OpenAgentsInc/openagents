@@ -101,6 +101,21 @@ export type CodexAgentRunInput = {
   sandboxMode: CodexAgentRuntimeSandboxMode
   timeoutMs: number
   model?: string
+  onProgress?: (progress: CodexAgentRuntimeProgress) => void | Promise<void>
+}
+
+export type CodexAgentRuntimePhase =
+  | "materializing"
+  | "installing"
+  | "running"
+  | "testing"
+  | "diff"
+  | "proof"
+
+export type CodexAgentRuntimeProgress = {
+  phase: CodexAgentRuntimePhase
+  tokensSoFar?: number
+  lastProgressEvent?: string
 }
 
 export type CodexAgentRunOutcome =
@@ -145,6 +160,7 @@ export type CodexAgentExecutionOptions = {
    * diff, pushes a scoped branch, and opens one PR against the base branch.
    */
   pullRequestPublisher?: AssignmentPullRequestPublisher
+  onProgress?: (progress: CodexAgentRuntimeProgress) => void | Promise<void>
 }
 
 type CodexAgentFixture = {
@@ -499,6 +515,19 @@ function usageFromTurnCompleted(event: CodexThreadEvent): CodexTurnUsage | undef
   }
 }
 
+function totalTokensFromUsage(usage: CodexTurnUsage | undefined): number | undefined {
+  if (usage === undefined) return undefined
+  return usage.inputTokens + usage.outputTokens + (usage.reasoningOutputTokens ?? 0)
+}
+
+async function emitCodexProgress(
+  reporter: CodexAgentRunInput["onProgress"],
+  progress: CodexAgentRuntimeProgress,
+) {
+  if (reporter === undefined) return
+  await Promise.resolve(reporter(progress)).catch(() => undefined)
+}
+
 function outputBytes(item: CodexThreadEvent["item"]): number | undefined {
   if (typeof item?.aggregated_output !== "string") return undefined
   return new TextEncoder().encode(item.aggregated_output).byteLength
@@ -675,6 +704,7 @@ export async function runWithCodexSdk(input: CodexAgentRunInput): Promise<CodexA
   let threadId: string | null = null
   let failed = false
   let activeTurnIndex = 0
+  let tokensSoFar = 0
   let itemOrdinal = 0
   let currentTurnChunkIndex = 0
   let currentTurnItems: Array<CodexTurnReportItem> = []
@@ -735,6 +765,10 @@ export async function runWithCodexSdk(input: CodexAgentRunInput): Promise<CodexA
         currentRawEvents = rawEvent === undefined ? pendingRawEvents : [...pendingRawEvents, rawEvent]
         pendingRawEvents = []
         await flushEventChunk(activeTurnIndex)
+        await emitCodexProgress(input.onProgress, {
+          phase: "running",
+          lastProgressEvent: "turn.started",
+        })
       }
       if (event.type === "turn.completed") {
         const completedTurnIndex = activeTurnIndex > 0 ? activeTurnIndex : turnCount + 1
@@ -743,6 +777,7 @@ export async function runWithCodexSdk(input: CodexAgentRunInput): Promise<CodexA
         turnCount += 1
         const sessionRef =
           threadId === null ? undefined : stableRef("session.pylon.codex_agent", threadId)
+        const usage = usageFromTurnCompleted(event)
         await reportCodexTurn({
           eventReporter: input.eventReporter,
           items: currentTurnItems,
@@ -750,7 +785,13 @@ export async function runWithCodexSdk(input: CodexAgentRunInput): Promise<CodexA
           runInput: input,
           sessionRef,
           turnIndex: completedTurnIndex,
-          usage: usageFromTurnCompleted(event),
+          usage,
+        })
+        tokensSoFar += totalTokensFromUsage(usage) ?? 0
+        await emitCodexProgress(input.onProgress, {
+          phase: "running",
+          tokensSoFar,
+          lastProgressEvent: "turn.completed",
         })
         currentTurnItems = []
         currentRawEvents = []
@@ -762,6 +803,10 @@ export async function runWithCodexSdk(input: CodexAgentRunInput): Promise<CodexA
       if (event.type === "turn.failed" || event.type === "error") failed = true
       if (event.type === "item.completed" && event.item?.type === "command_execution") {
         commandCount += 1
+        await emitCodexProgress(input.onProgress, {
+          phase: "testing",
+          lastProgressEvent: "command_execution.completed",
+        })
       }
       if (event.type === "item.completed") {
         const projected = projectCodexItem(event.item, itemOrdinal + 1)
@@ -775,6 +820,10 @@ export async function runWithCodexSdk(input: CodexAgentRunInput): Promise<CodexA
       if (event.type === "item.completed" && event.item?.type === "file_change") {
         const changes = Array.isArray(event.item.changes) ? event.item.changes : []
         editedFileCount += changes.length
+        await emitCodexProgress(input.onProgress, {
+          phase: "diff",
+          lastProgressEvent: "file_change.completed",
+        })
         for (const change of changes) {
           if (typeof change.path === "string" && fileChangeEscapesWorkspace(change.path, input.cwd)) {
             escaped = true
@@ -1001,6 +1050,10 @@ export async function executeCodexAgentAssignment(
 
   let materialized: Awaited<ReturnType<typeof materializeCodexAgentWorkspace>>
   try {
+    await Promise.resolve(options.onProgress?.({
+      phase: "materializing",
+      lastProgressEvent: "workspace.materializing",
+    })).catch(() => undefined)
     materialized = await materializeCodexAgentWorkspace({
       ...(options.checkoutRunner === undefined ? {} : { checkoutRunner: options.checkoutRunner }),
       leaseRef: lease.leaseRef,
@@ -1027,6 +1080,10 @@ export async function executeCodexAgentAssignment(
     verificationArgs: materialized.verificationArgs,
     workspace: materialized.workspace,
   })
+  await Promise.resolve(options.onProgress?.({
+    phase: "installing",
+    lastProgressEvent: dependencies.ok ? "dependencies.prepared" : "dependencies.failed",
+  })).catch(() => undefined)
   if (!dependencies.ok) {
     await releaseCodexAgentWorkspace({ materialized, now })
     return refusalRecord({
@@ -1081,6 +1138,7 @@ export async function executeCodexAgentAssignment(
       sandboxMode: effectiveSandboxMode(task.sandboxMode, config.sandboxMode),
       timeoutMs,
       ...(config.model === undefined ? {} : { model: config.model }),
+      ...(options.onProgress === undefined ? {} : { onProgress: options.onProgress }),
       workspaceRef: materialized.workspaceRef,
     })
   } catch {
@@ -1128,7 +1186,15 @@ export async function executeCodexAgentAssignment(
     })
   }
 
+  await Promise.resolve(options.onProgress?.({
+    phase: "testing",
+    lastProgressEvent: "verification.started",
+  })).catch(() => undefined)
   const verification = await runCommand({ args: materialized.verificationArgs, cwd: materialized.workspace })
+  await Promise.resolve(options.onProgress?.({
+    phase: "proof",
+    lastProgressEvent: verification.exitCode === 0 ? "verification.passed" : "verification.failed",
+  })).catch(() => undefined)
   const commandRef = stableRef(
     "command.pylon.codex_agent_task.verification",
     `${lease.leaseRef}:${verification.exitCode}:${verification.stdoutBytes}:${verification.stderrBytes}`,

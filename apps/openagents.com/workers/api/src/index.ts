@@ -8965,6 +8965,15 @@ const operatorPylonMarketplaceRoutes = makeOperatorPylonMarketplaceRoutes({
 })
 
 const operatorFleetStatusRoutes = makeOperatorFleetStatusRoutes({
+  authenticateAgentToken: async (request, env) => {
+    const token = readBearerToken(request)
+    if (token === undefined) return undefined
+    const session = await authenticateProgrammaticAgent(
+      makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+      token,
+    )
+    return session === undefined ? undefined : { userId: session.user.id }
+  },
   requireAdminApiToken,
 })
 
@@ -11261,6 +11270,13 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
   },
   {
     path: '/api/operator/fleet/status',
+    handler: (request, env) =>
+      Effect.promise(() =>
+        operatorFleetStatusRoutes.handleOperatorFleetStatusApi(request, env),
+      ),
+  },
+  {
+    path: '/api/operator/fleet/state',
     handler: (request, env) =>
       Effect.promise(() =>
         operatorFleetStatusRoutes.handleOperatorFleetStatusApi(request, env),

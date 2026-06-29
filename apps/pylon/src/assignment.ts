@@ -24,7 +24,7 @@ import {
   probeCodexAgentReadiness,
   type CodexAgentProbeOptions,
 } from "./codex-agent.js"
-import type { CodexAgentRunner } from "./codex-agent-executor.js"
+import type { CodexAgentRuntimePhase, CodexAgentRunner } from "./codex-agent-executor.js"
 import {
   agentRunnerForLease,
   agentRunnerServiceForLease,
@@ -199,8 +199,9 @@ export type AssignmentRunLifecycleEvent = {
   closeoutRef?: string
   accountRefHash?: string
   elapsedMs?: number
-  phase?: "runtime_active"
-  lastProgressEvent?: AssignmentRunLifecycleEvent["event"]
+  phase?: "runtime_active" | CodexAgentRuntimePhase
+  tokensSoFar?: number
+  lastProgressEvent?: AssignmentRunLifecycleEvent["event"] | string
   blockerRefs?: string[]
 }
 
@@ -1814,6 +1815,18 @@ export async function runNoSpendAssignment(summary: BootstrapSummary, options: A
           ...(options.codexAgentRunner === undefined ? {} : { codexAgentRunner: options.codexAgentRunner }),
           ...(options.codexAgentProbe === undefined ? {} : { codexAgentProbe: options.codexAgentProbe }),
           ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
+          onCodexProgress: async (progress) => {
+            await emitLifecycleEvent({
+              event: "assignment_run.runtime_progress",
+              assignmentRef: lease.assignmentRef,
+              ...(agentAccount.accountRefHash === undefined ? {} : { accountRefHash: agentAccount.accountRefHash }),
+              leaseRef: lease.leaseRef,
+              phase: progress.phase,
+              elapsedMs: Math.max(0, Date.now() - runtimeStartedAtMs),
+              ...(progress.tokensSoFar === undefined ? {} : { tokensSoFar: progress.tokensSoFar }),
+              ...(progress.lastProgressEvent === undefined ? {} : { lastProgressEvent: progress.lastProgressEvent }),
+            })
+          },
         })) ??
         (await executeRuntimeGate(state, lease, observedAtDate)),
     })

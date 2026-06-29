@@ -1283,6 +1283,7 @@ const intentionallyUndocumentedApiRoutes: ReadonlyArray<string> = [
   // internal Artanis and fleet surfaces; public pages consume a later
   // public-safe projection, not this operator route directly.
   '/api/operator/fleet/status',
+  '/api/operator/fleet/state',
   '/api/admin/provider-accounts/usage',
   '/api/admin/sync/notify',
   // Self-hosted trace media blob serving (#6223): serves the public-safe R2 blob

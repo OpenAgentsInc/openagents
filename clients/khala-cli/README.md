@@ -86,7 +86,7 @@ two modes:
   Capability questions answer with the `/spawn` and `khala spawn --count`
   command paths instead of falling through to a generic chat refusal.
 - **Fleet live dashboard:** `khala fleet status --live` polls the owner-only
-  `/api/operator/fleet/status` endpoint about every five seconds and renders
+  `/api/operator/fleet/state` endpoint about every five seconds and renders
   Pace, Fleet, Watchdog, GLM, and Brain/Artanis blocks as a terminal dashboard.
   It uses your `khala login` token, `OPENAGENTS_AGENT_TOKEN`, or `--token`.
 - **Utility commands:** `khala feedback "..."` saves feedback to
@@ -171,7 +171,7 @@ no long-string pasting:
   the standing GEPA/DSPy loop, source audits over Pylon/clients/Worker code, and
   test/lint/typecheck sweeps.
 - `khala fleet status --live` polls the owner-only
-  `/api/operator/fleet/status` endpoint about every five seconds and renders the
+  `/api/operator/fleet/state` endpoint about every five seconds and renders the
   Pace, Fleet, Watchdog, GLM, and Brain/Artanis blocks as a terminal dashboard.
   It uses your `khala login` token, `OPENAGENTS_AGENT_TOKEN`, or `--token`.
 

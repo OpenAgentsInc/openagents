@@ -617,7 +617,7 @@ export async function fetchOperatorFleetStatus(options: {
   if (token.length === 0) {
     throw new Error("khala fleet status --live requires an owner token. Run `khala login` or pass --token.")
   }
-  const response = await (options.fetch ?? fetch)(`${baseUrl}/api/operator/fleet/status`, {
+  const response = await (options.fetch ?? fetch)(`${baseUrl}/api/operator/fleet/state`, {
     method: "GET",
     headers: {
       accept: "application/json",
@@ -684,7 +684,7 @@ export function formatOperatorFleetDashboard(snapshot: KhalaOperatorFleetStatusS
   const payload = asRecord(snapshot.payload) ?? {}
   const lines = [
     `Khala fleet live dashboard`,
-    `updated: ${snapshot.fetchedAt}  source: ${snapshot.baseUrl}/api/operator/fleet/status`,
+    `updated: ${snapshot.fetchedAt}  source: ${snapshot.baseUrl}/api/operator/fleet/state`,
     "",
     formatDashboardBlock("Pace", firstRecord(payload, ["pace", "paceToFloor", "pace_to_floor", "burnPace"])),
     formatDashboardBlock("Fleet", firstRecord(payload, ["fleet", "codexFleet", "capacity", "pylons"])),

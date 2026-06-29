@@ -64,6 +64,33 @@ const rowsForSql = (sql: string): ReadonlyArray<Record<string, unknown>> => {
     ]
   }
 
+  if (sql.includes('FROM provider_accounts')) {
+    return [
+      {
+        cooldown_until: '2026-06-27T19:00:00.000Z',
+        health: 'healthy',
+        lease_limit: 2,
+        low_credit_flag: 0,
+        provider: 'chatgpt_codex',
+        provider_account_ref: 'acct_hash_codex_3',
+        reauth_required_reason: null,
+        recent_failure_class: 'rate_limited',
+        status: 'connected',
+      },
+      {
+        cooldown_until: null,
+        health: 'healthy',
+        lease_limit: 1,
+        low_credit_flag: 0,
+        provider: 'chatgpt_codex',
+        provider_account_ref: 'acct_hash_codex_4',
+        reauth_required_reason: null,
+        recent_failure_class: null,
+        status: 'connected',
+      },
+    ]
+  }
+
   if (sql.includes('FROM fleet_alerts')) {
     return [
       {
@@ -115,8 +142,8 @@ const fakeDb = (log: QueryLog): D1Database =>
     prepare: (sql: string) => new FakeStatement(sql, log),
   }) as unknown as D1Database
 
-const request = (method = 'GET'): Request =>
-  new Request('https://openagents.com/api/operator/fleet/status', { method })
+const request = (method = 'GET', path = '/api/operator/fleet/state'): Request =>
+  new Request(`https://openagents.com${path}`, { method })
 
 describe('operator fleet status route', () => {
   test('requires GET', async () => {
@@ -164,7 +191,7 @@ describe('operator fleet status route', () => {
     expect(first.headers.get('x-openagents-cache')).toBe('miss')
     expect(second.headers.get('x-openagents-cache')).toBe('hit')
     expect(log.length).toBeGreaterThan(0)
-    expect(log.length).toBe(8)
+    expect(log.length).toBe(9)
     expect(cachedBody).toEqual(body)
     expect(body).toMatchObject({
       authority: {
@@ -178,6 +205,15 @@ describe('operator fleet status route', () => {
       },
       fleet: {
         activeAssignmentCount: 1,
+        activeAssignments: [
+          {
+            assignmentRef: 'assignment.public.issue_6427',
+            elapsedMs: 660000,
+            lastProgressEvent: null,
+            phase: 'running',
+            tokensSoFar: null,
+          },
+        ],
         activeSlots: 3,
         busySlots: 1,
         queuedSlots: 0,
@@ -196,7 +232,35 @@ describe('operator fleet status route', () => {
         todayTokens: 1200,
         yesterdayTokens: 250,
       },
+      accounts: {
+        healthyCount: 1,
+        limitedCount: 1,
+        status: [
+          {
+            accountRefHash: 'acct_hash_codex_3',
+            concurrency: 2,
+            provider: 'codex',
+            reason: 'rate_limited',
+            resetAt: '2026-06-27T19:00:00.000Z',
+            status: 'rate_limited',
+          },
+          {
+            accountRefHash: 'acct_hash_codex_4',
+            concurrency: 1,
+            provider: 'codex',
+            reason: null,
+            resetAt: null,
+            status: 'healthy',
+          },
+        ],
+      },
       schemaVersion: 'operator.fleet_status.v1',
+      supervisor: {
+        availableCodexSlots: 3,
+        desiredCodexSlots: 2,
+        queueDepth: 0,
+        state: 'ready',
+      },
       watchdog: {
         activeLeases: 1,
         state: 'STALLED',
@@ -205,5 +269,25 @@ describe('operator fleet status route', () => {
     expect(JSON.stringify(body)).not.toContain('/Users/')
     expect(JSON.stringify(body)).not.toContain('auth.json')
     expect(JSON.stringify(body)).not.toContain('Fan out bounded')
+  })
+
+  test('accepts a registered agent token through the owner-scoped state path', async () => {
+    clearOperatorFleetStatusCacheForTests()
+    const log: QueryLog = []
+    const routes = makeOperatorFleetStatusRoutes({
+      authenticateAgentToken: async () => ({ userId: 'agent_owner_public' }),
+      currentIsoTimestamp: () => '2026-06-27T18:41:00.000Z',
+      requireAdminApiToken: async () => false,
+    })
+    const response = await routes.handleOperatorFleetStatusApi(
+      request('GET', '/api/operator/fleet/state'),
+      { OPENAGENTS_DB: fakeDb(log) },
+    )
+    const body = await response.json() as Record<string, any>
+
+    expect(response.status).toBe(200)
+    expect(body.fleet.sourceRefs).toContain('d1:pylon_api_registrations')
+    expect(log.some(sql => sql.includes('owner_agent_user_id = ?'))).toBe(true)
+    expect(log.some(sql => sql.includes('AND user_id = ?'))).toBe(true)
   })
 })
