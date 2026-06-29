@@ -34,6 +34,7 @@ type AppleFmSidecarHostOptions = {
 }
 
 const APPLE_FM_BRIDGE_DEFAULT_PORT = 11435
+const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]", "::1"])
 
 const trim = (value: string | undefined): string | null => {
   const trimmed = value?.trim() ?? ""
@@ -86,6 +87,23 @@ function controlBaseUrlFromEnv(env: Readonly<Record<string, string | undefined>>
   const host = trim(env.PYLON_CONTROL_HOST) ?? "127.0.0.1"
   const port = Number(trim(env.PYLON_CONTROL_PORT) ?? 4716)
   return `http://${host}:${Number.isFinite(port) ? port : 4716}`
+}
+
+function bridgePortFromEnv(env: Readonly<Record<string, string | undefined>>): number {
+  const rawBaseUrl =
+    trim(env.OPENAGENTS_APPLE_FM_BASE_URL) ?? trim(env.PROBE_APPLE_FM_BASE_URL)
+  if (rawBaseUrl === null) return APPLE_FM_BRIDGE_DEFAULT_PORT
+
+  try {
+    const parsed = new URL(rawBaseUrl)
+    if (!LOOPBACK_HOSTS.has(parsed.hostname)) return APPLE_FM_BRIDGE_DEFAULT_PORT
+    const port = Number(parsed.port)
+    return Number.isInteger(port) && port > 0 && port <= 65_535
+      ? port
+      : APPLE_FM_BRIDGE_DEFAULT_PORT
+  } catch {
+    return APPLE_FM_BRIDGE_DEFAULT_PORT
+  }
 }
 
 async function controlTokenFromEnv(
@@ -148,6 +166,7 @@ export function createAppleFmSidecarHost(
   const fetchFn = options.fetchFn ?? fetch
   const spawn = options.spawn ?? Bun.spawn
   const now = options.now ?? (() => new Date().toISOString())
+  const bridgePort = bridgePortFromEnv(env)
   const discoverOptions = {
     cwd: process.cwd(),
     env,
@@ -167,7 +186,7 @@ export function createAppleFmSidecarHost(
     }
     try {
       launchState = "launching"
-      child = spawn([helper.path, "--port", String(APPLE_FM_BRIDGE_DEFAULT_PORT)], {
+      child = spawn([helper.path, "--port", String(bridgePort)], {
         stdin: "ignore",
         stdout: "ignore",
         stderr: "ignore",

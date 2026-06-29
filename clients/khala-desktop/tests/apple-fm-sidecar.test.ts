@@ -98,4 +98,72 @@ describe("Khala Desktop Apple FM sidecar host", () => {
       rmSync(resourcesDir, { force: true, recursive: true })
     }
   })
+
+  test("uses explicit loopback Apple FM base URL port when launching helper", async () => {
+    const resourcesDir = mkdtempSync(join(tmpdir(), "khala-apple-fm-sidecar-port-"))
+    const helperPath = join(resourcesDir, APPLE_FM_BRIDGE_RESOURCES_SUBPATH)
+    mkdirSync(dirname(helperPath), { recursive: true })
+    writeFileSync(helperPath, "#!/usr/bin/env bash\n")
+    chmodSync(helperPath, 0o755)
+
+    const spawned: Array<ReadonlyArray<string>> = []
+    const host = createAppleFmSidecarHost({
+      arch: "arm64",
+      env: {
+        OPENAGENTS_APPLE_FM_BASE_URL: "http://127.0.0.1:12435",
+      },
+      now: () => fixedNow,
+      platform: "darwin",
+      resourcesDir,
+      spawn: ((command: ReadonlyArray<string>) => {
+        spawned.push([...command])
+        return {
+          exited: new Promise<number>(() => {}),
+          kill() {},
+        }
+      }) as unknown as typeof Bun.spawn,
+    })
+
+    try {
+      await host.readiness()
+      expect(spawned).toEqual([[helperPath, "--port", "12435"]])
+    } finally {
+      host.stop()
+      rmSync(resourcesDir, { force: true, recursive: true })
+    }
+  })
+
+  test("ignores non-loopback Apple FM base URL ports when launching helper", async () => {
+    const resourcesDir = mkdtempSync(join(tmpdir(), "khala-apple-fm-sidecar-port-"))
+    const helperPath = join(resourcesDir, APPLE_FM_BRIDGE_RESOURCES_SUBPATH)
+    mkdirSync(dirname(helperPath), { recursive: true })
+    writeFileSync(helperPath, "#!/usr/bin/env bash\n")
+    chmodSync(helperPath, 0o755)
+
+    const spawned: Array<ReadonlyArray<string>> = []
+    const host = createAppleFmSidecarHost({
+      arch: "arm64",
+      env: {
+        OPENAGENTS_APPLE_FM_BASE_URL: "http://example.com:12435",
+      },
+      now: () => fixedNow,
+      platform: "darwin",
+      resourcesDir,
+      spawn: ((command: ReadonlyArray<string>) => {
+        spawned.push([...command])
+        return {
+          exited: new Promise<number>(() => {}),
+          kill() {},
+        }
+      }) as unknown as typeof Bun.spawn,
+    })
+
+    try {
+      await host.readiness()
+      expect(spawned).toEqual([[helperPath, "--port", "11435"]])
+    } finally {
+      host.stop()
+      rmSync(resourcesDir, { force: true, recursive: true })
+    }
+  })
 })
