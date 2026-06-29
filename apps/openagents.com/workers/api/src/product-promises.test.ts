@@ -482,6 +482,10 @@ describe('public product promises document', () => {
       expect.arrayContaining([
         'apps/openagents.com/workers/api/src/inference/model-router.ts',
         'apps/openagents.com/workers/api/src/inference/model-router.test.ts',
+        'apps/openagents.com/workers/api/src/inference/usd-credit-bridge.ts',
+        'apps/openagents.com/workers/api/src/inference/card-credit-spend-receipt-resolver.ts',
+        'apps/openagents.com/workers/api/src/inference/card-credit-spend-receipt-store.ts',
+        'apps/openagents.com/workers/api/src/public-card-credit-spend-receipt-routes.ts',
       ]),
     )
     expect(decoded.promises).toEqual(
