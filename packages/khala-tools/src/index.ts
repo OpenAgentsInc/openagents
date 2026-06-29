@@ -415,6 +415,8 @@ export function toOpenAiCompatibleTools(
   return definitions.map(toOpenAiCompatibleTool)
 }
 
+export { createReadTool, readToolDefinition } from "./read.js"
+
 function permissionRequestFor(
   definition: KhalaToolDefinition,
   invocation: KhalaToolInvocation,
