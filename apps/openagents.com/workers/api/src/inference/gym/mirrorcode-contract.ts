@@ -261,6 +261,9 @@ const assertBounds = (input: MirrorCodeRunInput): void => {
   if (input.runId.length < 1 || input.runId.length > MAX_RUN_ID_LENGTH) {
     throw new MirrorCodeRunError('runId must be 1..128 characters.')
   }
+  if (!PUBLIC_REF_PATTERN.test(input.runId)) {
+    throw new MirrorCodeRunError('runId must be a public-safe ref.')
+  }
   if (input.taskId.length < 1 || input.taskId.length > MAX_TASK_ID_LENGTH) {
     throw new MirrorCodeRunError('taskId must be 1..64 characters.')
   }
