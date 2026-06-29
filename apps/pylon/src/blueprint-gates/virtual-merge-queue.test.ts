@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
+import { PYLON_COMMAND_CATALOG } from "../cli-catalog.js"
 import {
   planVirtualMergeQueuePrFastForward,
   projectVirtualMergeQueue,
@@ -479,5 +480,18 @@ describe("virtual merge queue", () => {
       state: "blocked",
       blockedReasonRef: "virtual_merge_queue.pr_fast_forward.blocked.invalid_branch",
     })
+  })
+
+  test("catalog exposes PR fast-forward planning as a local read-only command", () => {
+    const command = PYLON_COMMAND_CATALOG.find((entry) => entry.command === "vmq")
+
+    expect(command).toMatchObject({
+      command: "vmq",
+      mutates: false,
+      spends: false,
+      json: true,
+    })
+    expect(command?.needsNode).toBeUndefined()
+    expect(command?.args.map((arg) => arg.name)).toContain("pr-fast-forward-plan")
   })
 })
