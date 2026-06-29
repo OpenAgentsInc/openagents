@@ -124,6 +124,10 @@ export type ForgeCoordinationStore = Readonly<{
     receipt: ForgeVerificationReceipt,
     createdAt: string,
   ) => Promise<ForgeVerificationReceipt>
+  readVerificationReceipt: (
+    tenantRef: string,
+    verificationRef: string,
+  ) => Promise<ForgeVerificationReceipt | undefined>
   listVerificationReceipts: (
     tenantRef: string,
     limit: number,
@@ -854,6 +858,22 @@ export const makeD1ForgeCoordinationStore = (
             .all<ForgeVerificationReceiptRow>()
 
     return rows.results.map(verificationReceiptFromRow)
+  },
+
+  async readVerificationReceipt(tenantRef, verificationRef) {
+    const row = await db
+      .prepare(
+        `
+          SELECT *
+          FROM forge_verification_receipts
+          WHERE tenant_ref = ? AND verification_ref = ?
+          LIMIT 1
+        `,
+      )
+      .bind(tenantRef, verificationRef)
+      .first<ForgeVerificationReceiptRow>()
+
+    return row === null ? undefined : verificationReceiptFromRow(row)
   },
 
   async recordPromotionDecisionReceipt(receipt, createdAt) {
