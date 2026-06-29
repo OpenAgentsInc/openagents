@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-29.2'
+export const PublicProductPromisesVersion = '2026-06-29.3'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -1255,13 +1255,16 @@ export const publicProductPromisesDocument = () => {
         claim:
           'OpenAgents switched payments to Money Dev Kit: self-custodial Lightning agent wallet, single command setup, LSP/splice channels, immediate receive liquidity, and hosted checkout.',
         safeCopy:
-          'OpenAgents uses MDK hosted checkout and agent-wallet flows for scoped small-sats/L402 paths, and Forum tips can project confirmed live direct BOLT 12 MDK/provider payments as ordinary content tips. Broader payout, withdrawal, and accepted-work settlement claims remain scoped by their own route authority and wallet readiness.',
+          'OpenAgents uses MDK hosted checkout and local agent-wallet bridge code for scoped small-sats/L402 paths, and Forum tips can project confirmed live direct BOLT 12 MDK/provider payments as ordinary content tips. The local agent-wallet bridge is not send-ready until an original funded wallet home, positive outbound capacity, a passing send-readiness preflight, spend cap, and owner authority are all present. Broader payout, withdrawal, and accepted-work settlement claims remain scoped by their own route authority and wallet readiness.',
         unsafeCopy:
-          'Do not claim MDK mnemonic restore or hosted MDK payout proves full send readiness or provider settlement.',
+          'Do not claim MDK mnemonic restore, positive balance, receive readiness, or hosted MDK payout proves local agent-wallet send readiness or provider settlement.',
         evidenceRefs: [
           'apps/openagents.com/docs/mdk',
           'apps/pylon/docs/mdk-wallet-readiness-ledger.md',
           'apps/openagents.com/docs/nexus/2026-06-08-mdk-agent-wallet-outbound-capacity-restore-report.md',
+          'apps/openagents.com/workers/api/src/mdk-agent-wallet-smoke-fixture.ts',
+          'apps/openagents.com/workers/api/src/mdk-agent-wallet-smoke-fixture.test.ts',
+          'apps/openagents.com/workers/api/src/treasury-payment-mdk-agent-wallet-adapter.test.ts',
           'docs/forum/2026-06-09-forum-mdk-webhook-reconciliation-audit.md',
           'route:/api/forum/paid-actions/mdk/webhooks',
           'script:apps/openagents.com/scripts/forum.mjs tip-post-smoke',
@@ -1274,7 +1277,7 @@ export const publicProductPromisesDocument = () => {
           'blocker.product_promises.mdk_agent_wallet_send_readiness_insufficient_capacity',
         ],
         verification:
-          'Run smoke:forum:mdk-readiness with a ready-recipient post, user-specified sats amount, explicit live-spend approval, public receipt lookup, and `tip-post-smoke --strict-smooth` from a funded production payer wallet. Separate wallet configured, receive-ready, positive balance, send-ready, direct payment sent, webhook-confirmed payment, timeout recovery, refund/reversal, accepted work, payout, and accepted-work settlement states.',
+          'The bounded MDK agent-wallet fixture separates documentation-only, live-blocked, mnemonic-restore-blocked, and operator-approved signet send plans without exposing invoices, preimages, payment hashes, wallet paths, mnemonics, or customer-private values. Keep blocker.product_promises.mdk_agent_wallet_send_readiness_insufficient_capacity until a public-safe live receipt proves original funded wallet home, positive outbound capacity, passing send-readiness preflight, bounded send, and paid retry. Run smoke:forum:mdk-readiness with a ready-recipient post, user-specified sats amount, explicit live-spend approval, public receipt lookup, and `tip-post-smoke --strict-smooth` from a funded production payer wallet. Separate wallet configured, receive-ready, positive balance, send-ready, direct payment sent, webhook-confirmed payment, timeout recovery, refund/reversal, accepted work, payout, and accepted-work settlement states.',
         authorityBoundary:
           'Payment proof does not bypass route auth, owner scope, moderation, deployment, payout, or settlement gates.',
       },

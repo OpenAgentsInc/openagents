@@ -1653,6 +1653,42 @@ describe('public product promises document', () => {
     )
   })
 
+  test('keeps MDK agent-wallet send readiness scoped to the funded local bridge proof', () => {
+    const decoded = S.decodeUnknownSync(ProductPromisesDocument)(
+      publicProductPromisesDocument(),
+    )
+    const mdkPromise = decoded.promises.find(
+      promise => promise.promiseId === 'payments.money_dev_kit.v1',
+    )
+
+    expect(mdkPromise).toMatchObject({
+      blockerRefs: [
+        'blocker.product_promises.mdk_agent_wallet_send_readiness_insufficient_capacity',
+      ],
+      promiseId: 'payments.money_dev_kit.v1',
+      state: 'yellow',
+    })
+    expect(mdkPromise?.safeCopy).toContain('original funded wallet home')
+    expect(mdkPromise?.safeCopy).toContain('positive outbound capacity')
+    expect(mdkPromise?.safeCopy).toContain('passing send-readiness preflight')
+    expect(mdkPromise?.unsafeCopy).toContain(
+      'positive balance, receive readiness',
+    )
+    expect(mdkPromise?.verification).toContain(
+      'The bounded MDK agent-wallet fixture separates documentation-only, live-blocked, mnemonic-restore-blocked, and operator-approved signet send plans',
+    )
+    expect(mdkPromise?.verification).toContain(
+      'Keep blocker.product_promises.mdk_agent_wallet_send_readiness_insufficient_capacity',
+    )
+    expect(mdkPromise?.evidenceRefs).toEqual(
+      expect.arrayContaining([
+        'apps/openagents.com/workers/api/src/mdk-agent-wallet-smoke-fixture.ts',
+        'apps/openagents.com/workers/api/src/mdk-agent-wallet-smoke-fixture.test.ts',
+        'apps/openagents.com/workers/api/src/treasury-payment-mdk-agent-wallet-adapter.test.ts',
+      ]),
+    )
+  })
+
   test('blocks announcement copy until the live endpoint serves the announced version', () => {
     const document = publicProductPromisesDocument()
 
