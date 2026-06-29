@@ -117,6 +117,18 @@ const formatRelativeTimestamp = (value: string | null): string => {
   return `${formatCount(Math.round(hours / 24))}d ago`
 }
 
+const formatMessageTimestamp = (value: string | null): string => {
+  if (value === null) return "No timestamp"
+  const date = new Date(value)
+  if (!Number.isFinite(date.getTime())) return value
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(date)
+}
+
 const pylonIsOnline = (pylon: DesktopPylon): boolean =>
   pylon.heartbeatFresh || pylon.status.trim().toLowerCase() === "online"
 
@@ -258,24 +270,62 @@ const messageRow = (message: CodingTranscriptMessage): HTMLElement => {
   const row = document.createElement("article")
   row.className = "coding-message"
   row.dataset.role = message.role
+  row.dataset.kind = message.kind.replaceAll(" ", "-")
+  row.dataset.status = message.status
+
+  const rail = document.createElement("span")
+  rail.className = "coding-message-rail"
+  rail.setAttribute("aria-hidden", "true")
+
+  const content = document.createElement("div")
+  content.className = "coding-message-content"
 
   const heading = document.createElement("div")
   heading.className = "coding-message-heading"
 
-  const role = document.createElement("strong")
-  role.textContent = message.role
+  const identity = document.createElement("div")
+  identity.className = "coding-message-identity"
 
-  const meta = document.createElement("span")
-  meta.textContent = [
-    message.kind,
+  const label = document.createElement("strong")
+  label.textContent = message.label
+
+  const title = document.createElement("span")
+  title.textContent = message.title ?? message.kind
+
+  identity.append(label, title)
+
+  const meta = document.createElement("div")
+  meta.className = "coding-message-meta"
+
+  if (message.detail !== null) {
+    const detail = document.createElement("span")
+    detail.className = "coding-message-detail"
+    detail.textContent = message.detail
+    meta.append(detail)
+  }
+
+  const status = document.createElement("span")
+  status.className = "coding-message-status"
+  status.textContent = message.status
+
+  const time = document.createElement("time")
+  if (message.timestamp !== null) time.dateTime = message.timestamp
+  time.textContent = [
+    formatMessageTimestamp(message.timestamp),
     formatRelativeTimestamp(message.timestamp),
   ].join(" · ")
 
-  const body = document.createElement("p")
+  meta.append(status, time)
+
+  const body = document.createElement(
+    message.role === "tool" ? "pre" : "p",
+  )
+  body.className = "coding-message-body"
   body.textContent = message.text
 
-  heading.append(role, meta)
-  row.append(heading, body)
+  heading.append(identity, meta)
+  content.append(heading, body)
+  row.append(rail, content)
   return row
 }
 

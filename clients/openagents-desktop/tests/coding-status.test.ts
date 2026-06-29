@@ -96,7 +96,46 @@ Pylon presence failed: OpenAgents presence request failed (401): {"error":"unaut
       "tool",
       "assistant",
     ])
+    expect(parsed.messages[1]).toMatchObject({
+      detail: "call-1",
+      label: "Tool call",
+      status: "active",
+      title: "shell",
+    })
+    expect(parsed.messages[2]).toMatchObject({
+      detail: "call-1",
+      label: "Tool result",
+      status: "completed",
+    })
     expect(parsed.messages.at(-1)?.text).toBe("Done.")
+  })
+
+  test("classifies reasoning and failed Codex tool output", () => {
+    const parsed = parseCodexSessionRollout(`
+{"timestamp":"2026-06-29T02:44:00.929Z","type":"response_item","payload":{"type":"reasoning","summary":[{"type":"summary_text","text":"Checking the failure."}]}}
+{"timestamp":"2026-06-29T02:45:00.000Z","type":"response_item","payload":{"type":"function_call","name":"shell","arguments":"{\\"cmd\\":\\"bun test\\"}","call_id":"call-2","status":"completed"}}
+{"timestamp":"2026-06-29T02:45:01.000Z","type":"response_item","payload":{"type":"function_call_output","call_id":"call-2","output":"exit code 1","status":"failed"}}
+`)
+
+    expect(parsed.messages).toHaveLength(3)
+    expect(parsed.messages[0]).toMatchObject({
+      label: "Reasoning",
+      role: "reasoning",
+      status: "active",
+      text: "Checking the failure.",
+    })
+    expect(parsed.messages[1]).toMatchObject({
+      detail: "call-2",
+      status: "completed",
+      text: '{\n  "cmd": "bun test"\n}',
+      title: "shell",
+    })
+    expect(parsed.messages[2]).toMatchObject({
+      detail: "call-2",
+      label: "Tool error",
+      status: "error",
+      text: "exit code 1",
+    })
   })
 
   test("uses task-like rollout text instead of injected AGENTS context as title", () => {

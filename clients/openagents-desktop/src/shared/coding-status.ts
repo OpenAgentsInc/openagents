@@ -41,10 +41,14 @@ export type CodingTranscriptRole =
   | "user"
 
 export type CodingTranscriptMessage = {
+  readonly detail: string | null
   readonly kind: string
+  readonly label: string
   readonly role: CodingTranscriptRole
+  readonly status: "active" | "completed" | "error" | "info"
   readonly text: string
   readonly timestamp: string | null
+  readonly title: string | null
 }
 
 export type CodingCodexSession = {
@@ -389,6 +393,28 @@ const textFromUnknown = (value: unknown): string | null => {
   )
 }
 
+const compactJsonFromUnknown = (value: unknown): string | null => {
+  if (value === undefined || value === null) return null
+  if (typeof value === "string") return value.trim() === "" ? null : value
+  try {
+    return JSON.stringify(value, null, 2)
+  } catch {
+    return null
+  }
+}
+
+const normalizeToolArguments = (value: unknown): string | null => {
+  const text = compactJsonFromUnknown(value)
+  if (text === null) return null
+  const trimmed = text.trim()
+  if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) return trimmed
+  try {
+    return JSON.stringify(JSON.parse(trimmed), null, 2)
+  } catch {
+    return trimmed
+  }
+}
+
 const transcriptRoleFromMessageRole = (role: string | null): CodingTranscriptRole => {
   if (
     role === "assistant" ||
@@ -401,6 +427,54 @@ const transcriptRoleFromMessageRole = (role: string | null): CodingTranscriptRol
   return "event"
 }
 
+const transcriptStatusFromUnknown = (
+  value: unknown,
+): CodingTranscriptMessage["status"] | null => {
+  const normalized =
+    typeof value === "string" ? value.trim().toLowerCase() : null
+  if (normalized === null || normalized === "") return null
+  if (
+    normalized.includes("fail") ||
+    normalized.includes("error") ||
+    normalized.includes("denied")
+  ) {
+    return "error"
+  }
+  if (
+    normalized.includes("complete") ||
+    normalized.includes("success") ||
+    normalized.includes("done")
+  ) {
+    return "completed"
+  }
+  if (
+    normalized.includes("running") ||
+    normalized.includes("started") ||
+    normalized.includes("pending")
+  ) {
+    return "active"
+  }
+  return "info"
+}
+
+const transcriptMessage = (
+  message: Omit<CodingTranscriptMessage, "detail" | "label" | "status" | "title"> & {
+    readonly detail?: string | null
+    readonly label?: string
+    readonly status?: CodingTranscriptMessage["status"]
+    readonly title?: string | null
+  },
+): CodingTranscriptMessage => ({
+  detail: message.detail ?? null,
+  kind: message.kind,
+  label: message.label ?? message.role,
+  role: message.role,
+  status: message.status ?? "info",
+  text: message.text,
+  timestamp: message.timestamp,
+  title: message.title ?? null,
+})
+
 const transcriptMessageFromResponseItem = (
   payload: JsonObject,
   timestamp: string | null,
@@ -412,66 +486,97 @@ const transcriptMessageFromResponseItem = (
     const text = textFromUnknown(payload.content)
     if (text === null || text.trim() === "") return null
     const role = transcriptRoleFromMessageRole(stringValueFromUnknown(payload.role))
-    return {
+    return transcriptMessage({
       kind: "message",
+      label: role === "assistant" ? "Assistant" : role,
       role,
+      status: role === "assistant" ? "completed" : "info",
       text: truncateTranscriptText(text),
       timestamp,
-    }
+    })
   }
 
   if (type === "agent_message") {
     const text = textFromUnknown(payload.content)
     if (text === null || text.trim() === "") return null
-    return {
+    return transcriptMessage({
       kind: "agent message",
+      label: "Assistant",
       role: "assistant",
+      status: "completed",
       text: truncateTranscriptText(text),
       timestamp,
-    }
+    })
   }
 
   if (type === "reasoning") {
     const text = textFromUnknown(payload.summary) ?? "Reasoning"
-    return {
+    return transcriptMessage({
       kind: "reasoning",
+      label: "Reasoning",
       role: "reasoning",
+      status: "active",
       text: truncateTranscriptText(text),
       timestamp,
-    }
+    })
   }
 
   if (type === "function_call" || type === "custom_tool_call") {
     const name = stringValueFromUnknown(payload.name) ?? "tool"
-    const args = stringValueFromUnknown(payload.arguments) ??
-      stringValueFromUnknown(payload.input)
-    return {
+    const args = normalizeToolArguments(payload.arguments) ??
+      normalizeToolArguments(payload.input)
+    const callId =
+      stringValueFromUnknown(payload.call_id) ??
+      stringValueFromUnknown(payload.id)
+    return transcriptMessage({
+      detail: callId,
       kind: "tool call",
+      label: "Tool call",
       role: "tool",
-      text: args === null ? name : `${name} ${truncateTranscriptText(args)}`,
+      status: transcriptStatusFromUnknown(payload.status) ?? "active",
+      text: args === null ? name : truncateTranscriptText(args),
       timestamp,
-    }
+      title: name,
+    })
   }
 
   if (type === "function_call_output" || type === "custom_tool_call_output") {
-    const text = textFromUnknown(payload.output)
+    const text =
+      textFromUnknown(payload.output) ??
+      stringValueFromUnknown(payload.error) ??
+      stringValueFromUnknown(payload.message)
     if (text === null || text.trim() === "") return null
-    return {
+    const callId =
+      stringValueFromUnknown(payload.call_id) ??
+      stringValueFromUnknown(payload.id)
+    const status =
+      transcriptStatusFromUnknown(payload.status) ??
+      (stringValueFromUnknown(payload.error) === null ? "completed" : "error")
+    return transcriptMessage({
+      detail: callId,
       kind: "tool output",
+      label: status === "error" ? "Tool error" : "Tool result",
       role: "tool",
+      status,
       text: truncateTranscriptText(text),
       timestamp,
-    }
+    })
   }
 
   if (type === "local_shell_call") {
-    const text = textFromUnknown(payload.action) ?? "shell command"
-    return {
+    const text =
+      normalizeToolArguments(payload.action) ??
+      textFromUnknown(payload.action) ??
+      "shell command"
+    return transcriptMessage({
       kind: "shell",
+      label: "Shell",
       role: "tool",
+      status: transcriptStatusFromUnknown(payload.status) ?? "active",
       text: truncateTranscriptText(text),
       timestamp,
-    }
+      title: "local shell",
+    })
   }
 
   return null
@@ -487,12 +592,14 @@ const transcriptMessageFromEvent = (
   if (type === "user_message") {
     const text = stringValueFromUnknown(payload.message) ?? textFromUnknown(payload.text_elements)
     if (text === null || text.trim() === "") return null
-    return {
+    return transcriptMessage({
       kind: "user event",
+      label: "User",
       role: "user",
+      status: "info",
       text: truncateTranscriptText(text),
       timestamp,
-    }
+    })
   }
 
   if (type === "agent_message") {
@@ -500,12 +607,14 @@ const transcriptMessageFromEvent = (
       stringValueFromUnknown(payload.text) ??
       textFromUnknown(payload.content)
     if (text === null || text.trim() === "") return null
-    return {
+    return transcriptMessage({
       kind: "agent event",
+      label: "Assistant",
       role: "assistant",
+      status: "completed",
       text: truncateTranscriptText(text),
       timestamp,
-    }
+    })
   }
 
   const text =
@@ -514,12 +623,16 @@ const transcriptMessageFromEvent = (
     stringValueFromUnknown(payload.text)
   if (text === null) return null
 
-  return {
+  return transcriptMessage({
     kind: type.replaceAll("_", " "),
+    label: type.replaceAll("_", " "),
     role: "event",
+    status:
+      transcriptStatusFromUnknown(payload.status) ??
+      (stringValueFromUnknown(payload.error) === null ? "info" : "error"),
     text: truncateTranscriptText(text),
     timestamp,
-  }
+  })
 }
 
 const firstTranscriptLine = (value: string): string | null => {
