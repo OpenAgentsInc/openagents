@@ -13485,6 +13485,8 @@ const routeRequest = makeWorkerRouteRequest({
       nowIso: currentIsoTimestamp,
       requireAdminApiToken: (authRequest, authEnv) =>
         requireAdminApiToken(authRequest, authEnv),
+      resolveGitHubMirrorToken: mirrorEnv =>
+        mirrorEnv.OPENAGENTS_FORGE_GITHUB_MIRROR_TOKEN,
     }).routeForgeControlPlaneRequest(request, env),
   routeSiteCommerceRequest: (request, _env, _ctx) =>
     siteCommerceRoutesForEnv(_env).routeSiteCommerceRequest(request),

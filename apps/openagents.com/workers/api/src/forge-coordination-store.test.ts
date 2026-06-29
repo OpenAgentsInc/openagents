@@ -70,12 +70,17 @@ const controlPlaneReceiptsMigration = readFileSync(
   new URL('../migrations/0254_forge_control_plane_receipts.sql', import.meta.url),
   'utf8',
 )
+const gitHubMirrorReceiptsMigration = readFileSync(
+  new URL('../migrations/0257_forge_github_mirror_receipts.sql', import.meta.url),
+  'utf8',
+)
 
 const makeStore = (): ForgeCoordinationStore => {
   const db = new DatabaseSync(':memory:')
   db.exec('PRAGMA foreign_keys = ON')
   db.exec(coordinationMigration)
   db.exec(controlPlaneReceiptsMigration)
+  db.exec(gitHubMirrorReceiptsMigration)
   return makeD1ForgeCoordinationStore(new SqliteD1(db) as unknown as D1Database)
 }
 
@@ -272,5 +277,43 @@ describe('forge coordination D1 store', () => {
     await expect(
       store.listPromotionDecisionReceipts('tenant.openagents', 10, 'change.forge.6770'),
     ).resolves.toEqual([promotionDecision])
+  })
+
+  test('records GitHub mirror receipts for promoted commits', async () => {
+    const store = makeStore()
+    const receipt = await store.recordGitHubMirrorReceipt(
+      {
+        schema: 'openagents.forge.github.mirror.receipt.v0.1',
+        tenant_ref: 'tenant.openagents',
+        mirror_ref: 'mirror.github.openagents.main.6770',
+        promotion_ref: 'promotion.forge.6770',
+        source_canonical_ref: 'refs/heads/main',
+        destination_repository: 'OpenAgentsInc/openagents',
+        destination_ref: 'refs/heads/main',
+        commit_id: '9e0c9b2eaf84c821caf555cae233a0d27e94d4ac',
+        status: 'mirrored',
+        attempted_at: '2026-06-28T16:04:00.000Z',
+        mirrored_at: '2026-06-28T16:04:00.000Z',
+        refusal_reason: null,
+        error_reason: null,
+        source_refs: ['github:OpenAgentsInc/openagents#6796'],
+        redacted: true,
+      },
+      now,
+    )
+
+    await expect(
+      store.readGitHubMirrorReceipt(
+        'tenant.openagents',
+        'mirror.github.openagents.main.6770',
+      ),
+    ).resolves.toEqual(receipt)
+    await expect(
+      store.listGitHubMirrorReceipts(
+        'tenant.openagents',
+        10,
+        'promotion.forge.6770',
+      ),
+    ).resolves.toEqual([receipt])
   })
 })

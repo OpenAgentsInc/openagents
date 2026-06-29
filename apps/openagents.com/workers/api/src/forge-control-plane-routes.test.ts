@@ -67,6 +67,10 @@ const canonicalGitMigration = readFileSync(
   new URL('../migrations/0255_forge_git_canonical_store.sql', import.meta.url),
   'utf8',
 )
+const gitHubMirrorReceiptsMigration = readFileSync(
+  new URL('../migrations/0257_forge_github_mirror_receipts.sql', import.meta.url),
+  'utf8',
+)
 
 const makeStores = (): Readonly<{
   canonicalStore: ForgeGitCanonicalStore
@@ -77,6 +81,7 @@ const makeStores = (): Readonly<{
   db.exec(coordinationMigration)
   db.exec(controlPlaneReceiptsMigration)
   db.exec(canonicalGitMigration)
+  db.exec(gitHubMirrorReceiptsMigration)
   const d1 = new SqliteD1(db) as unknown as D1Database
   return {
     canonicalStore: makeD1ForgeGitCanonicalStore(d1),
@@ -123,14 +128,25 @@ const requestJson = (
 
 const makeHarness = () => {
   const { canonicalStore, coordinationStore } = makeStores()
+  const githubMirrorUpdates: Array<{
+    commitId: string
+    destinationRef: string
+    destinationRepository: string
+    token: string
+  }> = []
   const routes = makeForgeControlPlaneRoutes({
     authorizeControlPlaneBearer: (request, _env, scope) =>
       authorizeForgeControlPlaneBearer(request, controlPlaneToken, scope),
     fetch: makeGitHubFetch(),
+    githubMirrorRefUpdater: async update => {
+      githubMirrorUpdates.push(update)
+      return { status: 'mirrored' }
+    },
     makeCanonicalStore: () => canonicalStore,
     makeStore: () => coordinationStore,
     nowIso: () => now,
     requireAdminApiToken: () => Promise.resolve(false),
+    resolveGitHubMirrorToken: () => 'github-mirror-token',
   })
   const run = (request: Request): Promise<Response> => {
     const effect = routes.routeForgeControlPlaneRequest(request, {})
@@ -142,7 +158,7 @@ const makeHarness = () => {
     return Effect.runPromise(effect)
   }
 
-  return { canonicalStore, run, store: coordinationStore }
+  return { canonicalStore, githubMirrorUpdates, run, store: coordinationStore }
 }
 
 describe('Forge control-plane routes', () => {
@@ -389,6 +405,144 @@ describe('Forge control-plane routes', () => {
       promotionDecisions: ReadonlyArray<unknown>
     }
     expect(decisionsBody.promotionDecisions).toHaveLength(1)
+  })
+
+  test('mirrors only approved Forge promotion decisions to GitHub', async () => {
+    const { githubMirrorUpdates, run } = makeHarness()
+    const scopes = [
+      'forge:promotion:decide',
+      'forge:mirror:read',
+      'forge:mirror:write',
+    ].join(' ')
+
+    await run(
+      requestJson('/api/forge/promotion-decisions', {
+        json: {
+          schema: 'openagents.forge.promotion.decision.v0.1',
+          tenant_ref: 'tenant.openagents',
+          promotion_ref: 'promotion.forge.blocked',
+          queue_ref: 'queue.forge.main',
+          change_ref: 'change.forge.blocked',
+          decision: 'blocked',
+          base_head: '8e0c9b2eaf84c821caf555cae233a0d27e94d4ab',
+          candidate_head: '9e0c9b2eaf84c821caf555cae233a0d27e94d4ac',
+          promoted_head: null,
+          verification_ref: null,
+          gate_refs: [],
+          blocker_refs: ['gate.tests.failed'],
+          decided_by_ref: 'agent.public.forge',
+          decided_at: '2026-06-28T17:03:00.000Z',
+          source_refs: ['github:OpenAgentsInc/openagents#6796'],
+          redacted: true,
+        },
+        headers: authHeaders(scopes),
+        method: 'POST',
+      }),
+    )
+
+    const refusedMirrorResponse = await run(
+      requestJson('/api/forge/github-mirrors', {
+        json: {
+          tenantRef: 'tenant.openagents',
+          mirrorRef: 'mirror.github.openagents.main.blocked',
+          promotionRef: 'promotion.forge.blocked',
+          sourceCanonicalRef: 'refs/heads/main',
+          destinationRepository: 'OpenAgentsInc/openagents',
+          destinationRef: 'refs/heads/main',
+          sourceRefs: ['github:OpenAgentsInc/openagents#6796'],
+        },
+        headers: authHeaders(scopes),
+        method: 'POST',
+      }),
+    )
+    const refusedMirrorBody = (await refusedMirrorResponse.json()) as {
+      githubMirrorReceipt: { status: string; refusal_reason: string }
+    }
+    expect(refusedMirrorResponse.status).toBe(201)
+    expect(refusedMirrorBody.githubMirrorReceipt).toMatchObject({
+      refusal_reason: 'promotion_blocked',
+      status: 'refused',
+    })
+    expect(githubMirrorUpdates).toHaveLength(0)
+
+    const promotedCommit = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+    await run(
+      requestJson('/api/forge/promotion-decisions', {
+        json: {
+          schema: 'openagents.forge.promotion.decision.v0.1',
+          tenant_ref: 'tenant.openagents',
+          promotion_ref: 'promotion.forge.approved',
+          queue_ref: 'queue.forge.main',
+          change_ref: 'change.forge.approved',
+          decision: 'approved',
+          base_head: '8e0c9b2eaf84c821caf555cae233a0d27e94d4ab',
+          candidate_head: promotedCommit,
+          promoted_head: promotedCommit,
+          verification_ref: 'verification.forge.approved',
+          gate_refs: ['gate.tests'],
+          blocker_refs: [],
+          decided_by_ref: 'agent.public.forge',
+          decided_at: '2026-06-28T17:04:00.000Z',
+          source_refs: ['github:OpenAgentsInc/openagents#6796'],
+          redacted: true,
+        },
+        headers: authHeaders(scopes),
+        method: 'POST',
+      }),
+    )
+
+    const mirrorRequest: JsonRequestInit = {
+      json: {
+        tenantRef: 'tenant.openagents',
+        mirrorRef: 'mirror.github.openagents.main.approved',
+        promotionRef: 'promotion.forge.approved',
+        sourceCanonicalRef: 'refs/heads/main',
+        destinationRepository: 'OpenAgentsInc/openagents',
+        destinationRef: 'refs/heads/main',
+        sourceRefs: ['github:OpenAgentsInc/openagents#6796'],
+      },
+      headers: authHeaders(scopes),
+      method: 'POST',
+    }
+    const mirrorResponse = await run(
+      requestJson('/api/forge/github-mirrors', mirrorRequest),
+    )
+    const mirrorBody = (await mirrorResponse.json()) as {
+      githubMirrorReceipt: { commit_id: string; status: string }
+    }
+    expect(mirrorResponse.status).toBe(201)
+    expect(mirrorBody.githubMirrorReceipt).toMatchObject({
+      commit_id: promotedCommit,
+      status: 'mirrored',
+    })
+    expect(githubMirrorUpdates).toEqual([
+      {
+        commitId: promotedCommit,
+        destinationRef: 'refs/heads/main',
+        destinationRepository: 'OpenAgentsInc/openagents',
+        token: 'github-mirror-token',
+      },
+    ])
+
+    const retryResponse = await run(
+      requestJson('/api/forge/github-mirrors', mirrorRequest),
+    )
+    const retryBody = (await retryResponse.json()) as { idempotent: boolean }
+    expect(retryResponse.status).toBe(200)
+    expect(retryBody.idempotent).toBe(true)
+    expect(githubMirrorUpdates).toHaveLength(1)
+
+    const listResponse = await run(
+      new Request(
+        'https://openagents.com/api/forge/github-mirrors?tenantRef=tenant.openagents&promotionRef=promotion.forge.approved',
+        { headers: authHeaders(scopes) },
+      ),
+    )
+    const listBody = (await listResponse.json()) as {
+      githubMirrorReceipts: ReadonlyArray<unknown>
+    }
+    expect(listResponse.status).toBe(200)
+    expect(listBody.githubMirrorReceipts).toHaveLength(1)
   })
 
   test('imports the public OpenAgents main ref into canonical refs idempotently', async () => {

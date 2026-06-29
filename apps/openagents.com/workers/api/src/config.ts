@@ -430,6 +430,7 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   OPENAGENTS_SPARK_API_KEY?: string | undefined
   OPENAGENTS_ADMIN_API_TOKEN?: string | undefined
   OPENAGENTS_FORGE_CONTROL_PLANE_TOKEN?: string | undefined
+  OPENAGENTS_FORGE_GITHUB_MIRROR_TOKEN?: string | undefined
   OPENAGENTS_APP_URL?: string | undefined
   OPENAUTH_CLIENT_ID?: string | undefined
   OPENAUTH_ISSUER_URL?: string | undefined
