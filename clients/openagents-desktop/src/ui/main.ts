@@ -1,6 +1,12 @@
 import { Electroview } from "electrobun/view"
 
 import {
+  apmSummaryText,
+  calculateApmStats,
+  formatApm,
+  type ApmStats,
+} from "../shared/apm"
+import {
   type CodingCodexSession,
   emptyManagerResumeSnapshot,
   OPENAGENTS_DESKTOP_CODING_POLL_INTERVAL_MS,
@@ -104,6 +110,16 @@ const tokenSpoolList = requireElement<HTMLElement>("#token-spool-list")
 const tokenReplayStatus = requireElement<HTMLElement>("#token-replay-status")
 const apmPage = requireElement<HTMLElement>("#apm-page")
 const apmBack = requireElement<HTMLButtonElement>("#apm-back")
+const apmObserved = requireElement<HTMLElement>("#apm-observed")
+const apmCurrent = requireElement<HTMLElement>("#apm-current")
+const apmCurrentDetail = requireElement<HTMLElement>("#apm-current-detail")
+const apmChart = requireElement<HTMLElement>("#apm-chart")
+const apmRecent = requireElement<HTMLElement>("#apm-recent")
+const apmPeak = requireElement<HTMLElement>("#apm-peak")
+const apmActions = requireElement<HTMLElement>("#apm-actions")
+const apmActionsDetail = requireElement<HTMLElement>("#apm-actions-detail")
+const apmSummary = requireElement<HTMLElement>("#apm-summary")
+const apmSessionList = requireElement<HTMLElement>("#apm-session-list")
 
 let latestCodingResult: CodingStatusResult | null = null
 let latestTokenAccounting: TokenAccountingStatusResult | null = null
@@ -126,6 +142,12 @@ globalThis.addEventListener("pagehide", () => {
 
 const formatCount = (value: number): string =>
   new Intl.NumberFormat("en-US").format(Math.max(0, Math.trunc(value)))
+
+const formatDecimal = (value: number): string =>
+  new Intl.NumberFormat("en-US", {
+    maximumFractionDigits: 1,
+    minimumFractionDigits: 1,
+  }).format(Number.isFinite(value) ? Math.max(0, value) : 0)
 
 const formatTimestamp = (value: string | null, label: string | null): string => {
   if (label !== null) return label
@@ -860,6 +882,7 @@ const renderCodingStatus = (result: CodingStatusResult): void => {
   }
 
   renderCodingSessions(result.sessions)
+  renderApm(result)
 
   codingDispatchSummary.textContent = [
     `OK ${formatCount(summary.okRecent)}`,
@@ -887,6 +910,155 @@ const renderCodingStatus = (result: CodingStatusResult): void => {
     codingEvents.append(...result.events.map(eventRow))
   }
 
+}
+
+const chartPath = (
+  points: readonly { readonly x: number; readonly y: number }[],
+): string =>
+  points
+    .map((point, index) =>
+      `${index === 0 ? "M" : "L"} ${formatDecimal(point.x)} ${formatDecimal(point.y)}`,
+    )
+    .join(" ")
+
+const renderApmChart = (stats: ApmStats): void => {
+  apmChart.replaceChildren()
+  apmChart.setAttribute("aria-label", apmSummaryText(stats))
+
+  if (stats.series.every(point => point.actionCount === 0)) {
+    const empty = document.createElement("div")
+    empty.className = "apm-chart-empty"
+    empty.textContent = "No timestamped Coding actions in the last hour."
+    apmChart.append(empty)
+    return
+  }
+
+  const width = 720
+  const height = 190
+  const padding = 18
+  const maxApm = Math.max(1, stats.peakApm)
+  const points = stats.series.map((point, index) => ({
+    x:
+      padding +
+      (index / Math.max(1, stats.series.length - 1)) * (width - padding * 2),
+    y:
+      height -
+      padding -
+      (point.apm / maxApm) * (height - padding * 2),
+  }))
+  const line = chartPath(points)
+  const area = `${line} L ${width - padding} ${height - padding} L ${padding} ${height - padding} Z`
+
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg")
+  svg.setAttribute("viewBox", `0 0 ${width} ${height}`)
+  svg.setAttribute("role", "presentation")
+  svg.classList.add("apm-chart-svg")
+
+  const areaPath = document.createElementNS("http://www.w3.org/2000/svg", "path")
+  areaPath.setAttribute("d", area)
+  areaPath.setAttribute("class", "apm-chart-area")
+
+  const linePath = document.createElementNS("http://www.w3.org/2000/svg", "path")
+  linePath.setAttribute("d", line)
+  linePath.setAttribute("class", "apm-chart-line")
+
+  const axis = document.createElementNS("http://www.w3.org/2000/svg", "line")
+  axis.setAttribute("x1", String(padding))
+  axis.setAttribute("x2", String(width - padding))
+  axis.setAttribute("y1", String(height - padding))
+  axis.setAttribute("y2", String(height - padding))
+  axis.setAttribute("class", "apm-chart-axis")
+
+  svg.append(areaPath, linePath, axis)
+  points.forEach((point, index) => {
+    const source = stats.series[index]
+    if (source.actionCount === 0) return
+    const dot = document.createElementNS("http://www.w3.org/2000/svg", "circle")
+    dot.setAttribute("cx", formatDecimal(point.x))
+    dot.setAttribute("cy", formatDecimal(point.y))
+    dot.setAttribute("r", "3.5")
+    dot.setAttribute("class", "apm-chart-dot")
+    const title = document.createElementNS("http://www.w3.org/2000/svg", "title")
+    title.textContent = `${source.label}: ${formatApm(source.apm)} APM, ${formatCount(source.actionCount)} actions`
+    dot.append(title)
+    svg.append(dot)
+  })
+
+  const fallback = document.createElement("p")
+  fallback.className = "apm-chart-fallback"
+  fallback.textContent = stats.series
+    .filter(point => point.actionCount > 0)
+    .map(point => `${point.label} ${formatApm(point.apm)} APM`)
+    .join(" · ")
+
+  apmChart.append(svg, fallback)
+}
+
+const renderApmSessions = (sessions: readonly CodingCodexSession[]): void => {
+  apmSessionList.replaceChildren()
+  const rows = visibleCodingSessions(sessions).slice(0, 8)
+  if (rows.length === 0) {
+    const empty = document.createElement("div")
+    empty.className = "apm-session-empty"
+    empty.textContent = "No Coding sessions loaded."
+    apmSessionList.append(empty)
+    return
+  }
+
+  apmSessionList.append(
+    ...rows.map(session => {
+      const stats = calculateApmStats([session])
+      const row = document.createElement("article")
+      row.className = "apm-session-row"
+      row.dataset.state = session.status
+
+      const identity = document.createElement("div")
+      identity.className = "apm-session-identity"
+
+      const title = document.createElement("strong")
+      title.textContent = session.title
+
+      const meta = document.createElement("span")
+      meta.textContent = sessionSubtitle(session)
+
+      identity.append(title, meta)
+
+      const value = document.createElement("div")
+      value.className = "apm-session-value"
+      const apm = document.createElement("strong")
+      apm.textContent = formatApm(stats.currentApm)
+      const label = document.createElement("span")
+      label.textContent = `${formatCount(stats.actionCount)} actions`
+      value.append(apm, label)
+
+      row.append(identity, value)
+      return row
+    }),
+  )
+}
+
+const renderApm = (result: CodingStatusResult): void => {
+  const stats = calculateApmStats(result.sessions)
+  apmObserved.textContent = formatTimestamp(result.observedAt, "Local now")
+  apmCurrent.textContent = formatApm(stats.currentApm)
+  apmCurrentDetail.textContent =
+    stats.actionCount === 0
+      ? "Waiting for timestamped Coding session actions."
+      : `${formatCount(stats.actionCount)} actions from ${formatCount(stats.sessionCount)} sessions since ${
+          stats.firstActionAt === null
+            ? "the first loaded action"
+            : formatAbsoluteTimestamp(stats.firstActionAt)
+        }.`
+  apmRecent.textContent = formatApm(stats.recentApm)
+  apmPeak.textContent = formatApm(stats.peakApm)
+  apmActions.textContent = formatCount(stats.actionCount)
+  apmActionsDetail.textContent =
+    stats.lastActionAt === null
+      ? "No loaded Coding actions yet."
+      : `Last action ${formatRelativeTimestamp(stats.lastActionAt)}. Active sessions ${formatCount(stats.activeSessionCount)}.`
+  apmSummary.textContent = apmSummaryText(stats)
+  renderApmChart(stats)
+  renderApmSessions(result.sessions)
 }
 
 const renderPylonStatus = (result: PylonStatusResult): void => {

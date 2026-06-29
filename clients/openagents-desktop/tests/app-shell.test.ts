@@ -28,6 +28,7 @@ describe("openagents desktop app shell", () => {
     expect(html).toContain('id="coding-status"')
     expect(html).toContain('id="coding-page"')
     expect(html).toContain('id="coding-apm"')
+    expect(html).toContain('id="apm-page"')
     expect(html).toContain('id="coding-active-list"')
     expect(html).toContain('id="coding-transcript"')
     expect(html).toContain('id="coding-transcript-messages"')
@@ -43,17 +44,19 @@ describe("openagents desktop app shell", () => {
     expect(html).toContain("Pylons: 0")
   })
 
-  test("renders the APM audit screen inside the Coding section", async () => {
+  test("renders the live APM screen inside the Coding section", async () => {
     const html = await Bun.file(
       new URL("../src/ui/index.html", import.meta.url),
     ).text()
 
     expect(html).toContain('id="apm-page"')
     expect(html).toContain('id="apm-title"')
-    expect(html).toContain("(messages + tool_calls) / duration_minutes")
-    expect(html).toContain("No APM runtime code runs")
-    expect(html).toContain("Implementation waves")
-    expect(html).toContain("Correctness warning")
-    expect(html).toContain("Rank on outcomes")
+    expect(html).toContain('id="apm-current"')
+    expect(html).toContain('id="apm-chart"')
+    expect(html).toContain('id="apm-recent"')
+    expect(html).toContain('id="apm-peak"')
+    expect(html).toContain('id="apm-session-list"')
+    expect(html).not.toContain("Implementation waves")
+    expect(html).not.toContain("Correctness warning")
   })
 })

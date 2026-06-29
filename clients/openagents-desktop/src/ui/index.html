@@ -191,95 +191,47 @@
             <button id="apm-back" class="pylons-back" type="button">
               Coding
             </button>
-            <span class="coding-observed">Historical audit</span>
+            <span id="apm-observed" class="coding-observed">Local now</span>
           </div>
-          <div class="apm-hero">
-            <div>
-              <p class="apm-kicker">Actions Per Minute</p>
-              <h2 id="apm-title">APM</h2>
-              <p>
-                APM is the historical StarCraft-inspired Coding velocity metric:
-                messages plus tool calls divided by active minutes. It is dormant
-                in the live product today, and survives here as audit context.
+          <div class="apm-live-hero">
+            <div class="apm-live-number">
+              <span>Actions Per Minute</span>
+              <strong id="apm-current">0.0</strong>
+              <p id="apm-current-detail">
+                Waiting for timestamped Coding session actions.
               </p>
             </div>
-            <div class="apm-formula" aria-label="APM formula">
-              <span>APM</span>
-              <strong>(messages + tool_calls) / duration_minutes</strong>
-            </div>
-          </div>
-          <div class="apm-status-grid" aria-label="APM audit status">
-            <article class="apm-status-card">
-              <span>Status</span>
-              <strong>Historical</strong>
-              <p>No APM runtime code runs in the active desktop or product surface.</p>
-            </article>
-            <article class="apm-status-card">
-              <span>Origin</span>
-              <strong>Episodes 185-188</strong>
-              <p>The first baseline target was local Claude Code conversation logs.</p>
-            </article>
-            <article class="apm-status-card">
-              <span>Successor</span>
-              <strong>ATIF traces</strong>
-              <p>Capture moved toward `/trace/{uuid}` and accepted outcome receipts.</p>
-            </article>
-          </div>
-          <div class="apm-section-grid">
-            <section class="apm-section" aria-labelledby="apm-waves-title">
-              <h3 id="apm-waves-title">Implementation waves</h3>
-              <ol class="apm-timeline">
-                <li>
-                  <strong>Jul 2025</strong>
-                  <span>Tauri and Convex Stats pane parsed saved Claude Code JSONL.</span>
-                </li>
-                <li>
-                  <strong>Dec 2025</strong>
-                  <span>MechaCoder Electrobun HUD added a live ticker protocol.</span>
-                </li>
-                <li>
-                  <strong>Late Dec 2025</strong>
-                  <span>Rust autopilot added APM storage, CLI, gauge, and leaderboard specs.</span>
-                </li>
-                <li>
-                  <strong>Feb 2026</strong>
-                  <span>The restructure pruned active APM code into history and backroom mirrors.</span>
-                </li>
-              </ol>
-            </section>
-            <section class="apm-section" aria-labelledby="apm-warning-title">
-              <h3 id="apm-warning-title">Correctness warning</h3>
-              <p>
-                The formula stayed stable, but tier bands drifted. One spec called
-                20+ Superhuman, another called 50+ Elite, and the old gauge used
-                Idle, Low, Normal, High, and Intense. Any revival must pick one
-                scale before showing ranks.
-              </p>
-              <div class="apm-band-list" aria-label="Recommended tier scale">
-                <span>Baseline 0-5</span>
-                <span>Active 5-15</span>
-                <span>Productive 15-30</span>
-                <span>High 30-50</span>
-                <span>Elite 50+</span>
+            <div class="apm-live-chart" aria-labelledby="apm-chart-title">
+              <div class="apm-chart-heading">
+                <h2 id="apm-title">APM</h2>
+                <span id="apm-chart-title">Last 60 minutes</span>
               </div>
-            </section>
-          </div>
-          <section class="apm-section apm-revival" aria-labelledby="apm-revival-title">
-            <h3 id="apm-revival-title">Revival path</h3>
-            <div class="apm-revival-grid">
-              <article>
-                <strong>Diagnostic only</strong>
-                <p>Use APM to spot stalls, thrash, and velocity changes inside a run.</p>
-              </article>
-              <article>
-                <strong>Source from traces</strong>
-                <p>Compute it from redacted ATIF traces, not bespoke local log parsing.</p>
-              </article>
-              <article>
-                <strong>Rank on outcomes</strong>
-                <p>Keep leaderboards receipt-backed: accepted outcomes per week.</p>
-              </article>
+              <div id="apm-chart" class="apm-chart" role="img"></div>
             </div>
+          </div>
+          <div class="apm-status-grid" aria-label="APM metrics">
+            <article class="apm-status-card">
+              <span>Last hour</span>
+              <strong id="apm-recent">0.0</strong>
+              <p>Actions per minute from timestamped Coding messages and tool calls.</p>
+            </article>
+            <article class="apm-status-card">
+              <span>Peak bucket</span>
+              <strong id="apm-peak">0.0</strong>
+              <p>Highest two-and-a-half-minute bucket in the visible graph.</p>
+            </article>
+            <article class="apm-status-card">
+              <span>Actions</span>
+              <strong id="apm-actions">0</strong>
+              <p id="apm-actions-detail">No loaded Coding actions yet.</p>
+            </article>
+          </div>
+          <section class="apm-session-panel" aria-labelledby="apm-sessions-title">
+            <div class="apm-session-heading">
+              <h3 id="apm-sessions-title">Session APM</h3>
+              <span id="apm-summary">No timestamped Coding actions loaded yet.</span>
+            </div>
+            <div id="apm-session-list" class="apm-session-list"></div>
           </section>
         </div>
       </section>
