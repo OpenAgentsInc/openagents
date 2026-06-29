@@ -4100,6 +4100,7 @@ export const publicProductPromisesDocument = () => {
           'docs/launch/2026-06-20-agent-mmorpg-hud-autopilot-audit-and-plan.md',
           'https://github.com/OpenAgentsInc/openagents/issues/5730',
           'https://github.com/OpenAgentsInc/openagents/issues/5738',
+          'https://github.com/OpenAgentsInc/openagents/issues/6861',
           'promise:autopilot.agent_world_scene.v1',
           'promise:autopilot.desktop_gui_client.v1',
           'promise:labor.forum_work_requests.v1',
