@@ -1458,19 +1458,41 @@ const packagedPreviewRootCandidates = (): readonly string[] => [
   resolve(process.cwd(), "app/views/openagents-desktop"),
 ]
 
+const previewProjectRootCandidates = (): readonly string[] => {
+  const candidates = [
+    Bun.env.OPENAGENTS_DESKTOP_SOURCE_ROOT,
+    Bun.env.INIT_CWD,
+    Bun.env.PWD,
+    resolve(process.cwd(), "../../../../../"),
+    process.cwd(),
+  ]
+  return candidates.filter(
+    (candidate): candidate is string =>
+      typeof candidate === "string" && candidate.trim() !== "",
+  )
+}
+
 const sourcePreviewAssetCandidates = (pathname: string): readonly string[] => {
   const normalized = pathname === "/" ? "/index.html" : pathname
   if (normalized === "/index.html") {
-    return [resolve(process.cwd(), "src/ui/index.html")]
+    return previewProjectRootCandidates().map(root =>
+      resolve(root, "src/ui/index.html"),
+    )
   }
   if (normalized === "/main.js") {
-    return [resolve(process.cwd(), "resources/ui/main.js")]
+    return previewProjectRootCandidates().map(root =>
+      resolve(root, "resources/ui/main.js"),
+    )
   }
   if (normalized === "/main.css") {
-    return [resolve(process.cwd(), "resources/ui/main.css")]
+    return previewProjectRootCandidates().map(root =>
+      resolve(root, "resources/ui/main.css"),
+    )
   }
   if (normalized.startsWith("/fonts/")) {
-    return [resolve(process.cwd(), "src/ui", normalized.slice(1))]
+    return previewProjectRootCandidates().map(root =>
+      resolve(root, "src/ui", normalized.slice(1)),
+    )
   }
   return []
 }
@@ -1479,10 +1501,10 @@ const previewAssetCandidates = (pathname: string): readonly string[] => {
   const normalized = pathname === "/" ? "/index.html" : pathname
   if (normalized.includes("..")) return []
   return [
+    ...sourcePreviewAssetCandidates(normalized),
     ...packagedPreviewRootCandidates().map(root =>
       resolve(root, normalized.slice(1)),
     ),
-    ...sourcePreviewAssetCandidates(normalized),
   ]
 }
 
