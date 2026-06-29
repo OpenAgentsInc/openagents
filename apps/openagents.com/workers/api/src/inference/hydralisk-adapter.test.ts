@@ -7,6 +7,7 @@ import {
   makeHydraliskVllmAdapter,
   makeHydraliskVllmPoolAdapter,
   makeHydraliskVllmPoolRuntime,
+  readHydraliskPoolRouteAdmission,
 } from './hydralisk-adapter'
 import { HYDRALISK_ADAPTER_ID } from './model-router'
 import { HYDRALISK_GPT_OSS_20B_MODEL_ID } from './pricing'
@@ -335,8 +336,8 @@ describe('hydralisk vLLM adapter', () => {
     await startedFetchPromise
 
     expect(runtime.routeAdmission()).toEqual({
-      reason: 'glm_reserved_external_headroom_unavailable',
-      reservedExternalHeadroomAvailable: false,
+      reason: 'glm_reserved_external_headroom_available',
+      reservedExternalHeadroomAvailable: true,
     })
 
     releaseFetch?.()
@@ -348,7 +349,30 @@ describe('hydralisk vLLM adapter', () => {
     })
   })
 
-  it('does not count degraded replicas as reserved external route headroom', async () => {
+  it('rejects route admission only when eligible GLM headroom is exhausted', () => {
+    const config = {
+      id: GLM_POOL_ADAPTER_ID,
+      replicas: [
+        replicaFixture('primary', {
+          maxInflight: 1,
+        }),
+      ],
+      upstreamModel: 'openagents/glm-5.2-reap-504b',
+    }
+
+    expect(readHydraliskPoolRouteAdmission(config)).toEqual({
+      reason: 'glm_reserved_external_headroom_available',
+      reservedExternalHeadroomAvailable: true,
+    })
+    expect(
+      readHydraliskPoolRouteAdmission(config, new Map([['primary', 1]])),
+    ).toEqual({
+      reason: 'glm_aggregate_external_headroom_zero',
+      reservedExternalHeadroomAvailable: false,
+    })
+  })
+
+  it('does not count degraded replicas as external route headroom', async () => {
     let releaseFetch: (() => void) | undefined
     let startedFetch: (() => void) | undefined
     const startedFetchPromise = new Promise<void>(resolve => {
@@ -387,8 +411,8 @@ describe('hydralisk vLLM adapter', () => {
     await startedFetchPromise
 
     expect(runtime.routeAdmission()).toEqual({
-      reason: 'glm_reserved_external_headroom_unavailable',
-      reservedExternalHeadroomAvailable: false,
+      reason: 'glm_reserved_external_headroom_available',
+      reservedExternalHeadroomAvailable: true,
     })
 
     releaseFetch?.()

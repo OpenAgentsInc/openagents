@@ -128,7 +128,6 @@ export type HydraliskVllmPoolRuntime = Readonly<{
 
 const DEFAULT_GLM_ASYNC_QUEUE_WAIT_MS = 250
 const MAX_GLM_EDGE_QUEUE_WAIT_MS = 1_000
-const DEFAULT_RESERVED_EXTERNAL_HEADROOM_SLOTS = 1
 
 const requestUrl = (config: HydraliskAdapterConfig): string =>
   `${config.baseUrl.replace(/\/+$/u, '')}/v1/chat/completions`
@@ -965,15 +964,6 @@ const routeAdmissionForHeadroom = (
   if (headroom.aggregateExternalHeadroom <= 0) {
     return {
       reason: 'glm_aggregate_external_headroom_zero',
-      reservedExternalHeadroomAvailable: false,
-    }
-  }
-  if (
-    headroom.aggregateExternalHeadroom <=
-    DEFAULT_RESERVED_EXTERNAL_HEADROOM_SLOTS
-  ) {
-    return {
-      reason: 'glm_reserved_external_headroom_unavailable',
       reservedExternalHeadroomAvailable: false,
     }
   }
