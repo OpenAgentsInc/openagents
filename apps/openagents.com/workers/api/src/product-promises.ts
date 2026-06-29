@@ -274,6 +274,7 @@ export const publicProductPromisesDocument = () => {
         'Registry 2026-06-28.2: marketplace.wasm_plugins.v1 gains source-level WASM-plugin package policy and install-state registry machinery plus an inert installed-plugin discovery route at GET /api/public/marketplace/wasm-plugins; NO promise state flips. The manifest schema requires version, WASM digest ref, interface declarations, bounded permissions, source refs, and policy refs; admission fails closed on malformed or over-privileged manifests; install/uninstall persists state in the injected registry store; and the public route lists only installed plugins from the injected store while reporting inert/planned. The broad package-policy/install-registry gap is narrowed, but the promise STAYS planned because there is still no public self-serve install marketplace, sandboxed execution receipt, billing, or settlement. No third-party WASM execution, code loading, marketplace mutation, billing, payout, or green claim is created.',
         'Registry 2026-06-29.3 implements #6832 as a narrow source-level WASM execution evidence step and flips NO promise state. workers/api/src/wasm-plugin-marketplace.ts now has a digest-pinned fixture executor that validates the admitted manifest, checks module bytes against wasm.sha256, rejects undeclared/unauthorized imports before instantiation, applies bounded module/input/output/duration/memory policy checks available to JavaScript WebAssembly, and returns a metering-shaped evidence record with input/output hashes, policy refs, host-call attempts, runtime ref, and deterministic evidenceRef. Tests run a real tiny WASM add fixture, reject digest mismatch, and reject an unauthorized host import. This is NOT a production sandbox claim: the public route remains inert, no third-party plugin execution is mounted, no billing/settlement/payout authority exists, and the promise STAYS planned on self-serve marketplace, production resource-limit enforcement, billing, and settlement blockers.',
         'Registry 2026-06-28.2 clears the stale P2.5 live-wiring blocker from autopilot.agent_world_scene.v1 without flipping the promise green. The running Autopilot Desktop Verse now has the complete flag-gated live path: chat-world-subscriptions.ts polls /api/public/pylon-stats into GotChatWorldScene, update.ts stores the latest ChatWorldPylonScene without resetting the controller, view.ts composes modelChatWorldScene into the behind-chat three-effect visualization, and payment particles are both event-pruned and idle-pruned by TickedChatWorldPaymentParticles so stale beams do not imply current activity on quiet networks. Focused desktop tests cover the pylon-stats subscription, scene reducer/view wiring, and idle beam expiry. The promise STAYS yellow on blocker.product_promises.agent_world_scene_not_default_on because the public product default-on / stay-flag-gated decision still needs explicit owner sign-off and any future green flip remains receipt-first per proof.claim_upgrade_receipts.v1. No spend, payout, settlement, runtime authority, or multiplayer authority is created by this visual wiring.',
+        'Registry 2026-06-29.4 is the #7030 source-level default-gate receipt for autopilot.agent_world_scene.v1 and the attached payment/growth visualization records, and flips NO promise state. Source evidence now shows the Verse launch resolver defaults CHAT_WORLD_SCENE and CHAT_WORLD_PAYMENTS on when no Verse kill switch is set, keeps VITE_DISABLE_VERSE/VITE_VERSE_DISABLED as hard kill switches, and still requires realBitcoinMoved:true plus sourceRefs before any payment beam renders. This is NOT a green/default-on production claim: green still needs an owner-reviewed visual receipt for the exact shipped channel plus an owner-signed receipt-first transition. The old default-off blockers are replaced with explicit owner-review/green-pending blockers.',
         'Registry 2026-06-28.2: autopilot_sites.native_email_sequences.v1 adds the real Cloudflare Email binding path for authored sequence sends and flips NO promise state (stays yellow). The scheduled dispatcher now routes authored sequence templates through the sequence send service when supplied, `makeCloudflareEmailSequenceSender` renders a transactional sequence email, sends via the Worker `EMAIL` binding, and records `email_messages` + `email_deliveries` receipts; disabled config still records the dry-run/skipped path and never calls the sender. Domain auth and live-smoke instructions live at apps/openagents.com/docs/sites/2026-06-28-native-email-sequence-cloudflare-send-service.md. The remaining blocker is still email_deliverability_unproven: green requires a live deliverability smoke with send-to-deliver evidence, bounce/complaint handling, customer self-serve authoring, and owner sign-off per proof.claim_upgrade_receipts.v1.',
         'Registry 2026-06-28.3 implements #6891 for models.tassadar_percepta_executor.v1 and flips NO promise state. Pylon v1.0 now has a deterministic bounded CPU computation-transform fixture in apps/pylon/src/tassadar-cpu-transform-training.ts that runs one CPU-only optimization step, self-verifies loss improvement, emits receipt.models.tassadar_percepta_executor.cpu_transform_training.cpu_transform_fixture_v1, and keeps realBitcoinMoved:false / settlementState:not_settled. GET /api/public/models/tassadar-percepta-executor/cpu-transform-training-receipts now projects that public-safe receipt alongside the architecture and Artanis distillation dataset inputs, so the old pylon_v03_cpu_transform_training_receipts_missing blocker is replaced by blocker.product_promises.tassadar_cpu_transform_real_settlement_missing and blocker.product_promises.tassadar_cpu_transform_owner_green_signoff_missing. The promise STAYS planned: this is one fixture-scale receipt, not a trained model, not a paid earning path, not model promotion, and not a green transition; any future green flip remains receipt-first and owner-signed per proof.claim_upgrade_receipts.v1.',
         'Registry 2026-06-29.1 implements #6848 for payments.accepted_outcome_economics.v1 and flips NO promise state. The accepted-outcome economics spine now has a dereferenceable contributor accrual bundle at GET /api/public/payments/contributor-accrual-bundle?economicsId=... plus the settlement bundle at GET /api/public/accepted-outcome/settlement/{economicsId}; together they compose a gross-margin receipt, contributor accrual ledger entries, and an eight-state settlement machine from one stored accepted-outcome economics row. Tests prove the ledger and receipt share the same economicsId, reconcile gross margin exactly, reconcile pending_payout to the distributable ledger pool, keep public projections free of internal cents/raw payment material, and surface missing contributor provenance honestly. The old source-level blockers contributor_ledger_missing and gross_margin_receipts_missing are replaced by real_accepted_outcome_receipt_missing and owner_signed_green_transition_missing. The promise STAYS red because source/fixture receipt machinery is not a real accepted outcome carried through a money-moving settlement path, and any future green flip remains receipt-first and owner-signed per proof.claim_upgrade_receipts.v1.',
@@ -4030,9 +4031,9 @@ export const publicProductPromisesDocument = () => {
         claim:
           'The Autopilot chat is set inside a living 3D Pylon world: a glass-over-canvas scene rendered behind the conversation where each live Pylon appears as a crystal, driven by real pylon-stats data.',
         safeCopy:
-          'The agent world scene exists behind the Autopilot chat as a flag-gated, glass-over-canvas 3D render. The live in-app wiring is present: pylon-stats feeds the running scene through the chat-world subscription/reducer/view path, live Pylons render as crystals, and stale payment beams age out instead of implying current activity. The product default-on / stay-flag-gated decision is still owner-gated, so this remains a yellow, receipt-bounded claim.',
+          'The agent world scene exists behind the Autopilot chat as a glass-over-canvas 3D render. Source-level gates now resolve the Verse launch scene and payment layers on by default when no Verse kill switch is set, while VITE_DISABLE_VERSE / VITE_VERSE_DISABLED still hard-disable them. The live in-app wiring is present: pylon-stats feeds the running scene through the chat-world subscription/reducer/view path, live Pylons render as crystals, and stale payment beams age out instead of implying current activity. This is NOT a green/default-on production claim: it is a yellow, source-level receipt pending owner review and a shipped-channel visual receipt.',
         unsafeCopy:
-          'Do not say the 3D agent world is on by default for all users, that it is a finished shipped feature, that it is a walkable or multiplayer world (see world.multiplayer_agent_world.v1), or that the scene shows anything other than evidence-bound live Pylon state.',
+          'Do not say the 3D agent world is green, production-default-on for all users, a finished shipped feature, a walkable or multiplayer world (see world.multiplayer_agent_world.v1), or that the scene shows anything other than evidence-bound live Pylon state.',
         evidenceRefs: [
           'docs/launch/2026-06-20-agent-mmorpg-hud-autopilot-audit-and-plan.md',
           'https://github.com/OpenAgentsInc/openagents/pull/5742',
@@ -4040,6 +4041,8 @@ export const publicProductPromisesDocument = () => {
           'https://github.com/OpenAgentsInc/openagents/issues/5730',
           'https://github.com/OpenAgentsInc/openagents/issues/5735',
           'https://github.com/OpenAgentsInc/openagents/issues/5736',
+          'https://github.com/OpenAgentsInc/openagents/issues/7030',
+          'apps/autopilot-desktop/src/shared/chat-world-flags.ts',
           'apps/autopilot-desktop/src/shared/chat-world-scene.ts',
           'apps/autopilot-desktop/src/ui/chat-world-subscriptions.ts',
           'apps/autopilot-desktop/src/ui/subscriptions.ts',
@@ -4048,14 +4051,15 @@ export const publicProductPromisesDocument = () => {
           'apps/autopilot-desktop/tests/chat-world-scene.test.ts',
           'apps/autopilot-desktop/tests/chat-world-subscriptions.test.ts',
           'apps/autopilot-desktop/tests/verse-launch-checklist.test.ts',
+          'apps/autopilot-desktop/tests/verse-toggle.test.ts',
           'https://openagents.com/api/public/pylon-stats',
           'promise:repo.open_source_code_map.v1',
         ],
         blockerRefs: [
-          'blocker.product_promises.agent_world_scene_not_default_on',
+          'blocker.product_promises.agent_world_scene_owner_review_green_pending',
         ],
         verification:
-          'Yellow is limited to what is merged to main: the P0 scene mount behind CHAT_WORLD_SCENE (PR #5742), P1 live Pylon crystals fed from the public pylon-stats projection (PR #5743), and the P2.5 in-app wiring path that carries pylon-stats through chat-world-subscriptions.ts -> GotChatWorldScene -> modelChatWorldScene -> verseSceneVisualization, plus idle expiry for evidence-bound payment beams. Focused proof: bun test tests/verse-launch-checklist.test.ts tests/chat-world-subscriptions.test.ts tests/chat-world-scene.test.ts in apps/autopilot-desktop. Green still requires the owner decision that the scene is default-on or explicitly remains flag-gated as the product, plus an owner-signed receipt-first upgrade per proof.claim_upgrade_receipts.v1.',
+          'Yellow is limited to source evidence merged to main: chatWorldBuildFlags defaults CHAT_WORLD_SCENE and CHAT_WORLD_PAYMENTS on under the Verse launch default, the hard Verse kill switches force both off, pylon-stats flows through chat-world-subscriptions.ts -> GotChatWorldScene -> modelChatWorldScene -> verseSceneVisualization, and TickedChatWorldPaymentParticles idle-expires evidence-bound beams. Focused proof: bun test tests/verse-launch-checklist.test.ts tests/verse-toggle.test.ts tests/chat-world-subscriptions.test.ts tests/chat-world-scene.test.ts in apps/autopilot-desktop. Green still requires owner review of the default-on production scope, a shipped-channel visual receipt, and an owner-signed receipt-first upgrade per proof.claim_upgrade_receipts.v1.',
         authorityBoundary:
           'The agent world scene is a presentational projection of already-public Pylon state. It grants no runtime mutation, no spend, no settlement, no payout, and no authority over the data it visualizes, and it makes no separate Pylon earning, payment, multiplayer, or onboarding claim green.',
       },
@@ -4068,14 +4072,16 @@ export const publicProductPromisesDocument = () => {
         claim:
           'Real Bitcoin settlements are visualized in the agent world as gold particles flying agent-to-agent, each particle bound to a real settlement receipt and clickable to its evidence.',
         safeCopy:
-          'The Bitcoin payment visualization is wired into the live running agent-world scene behind the default-off CHAT_WORLD_PAYMENTS flag. It is evidence-bound by construction: a gold payment particle is only emitted for a real_bitcoin_moved or settlement_recorded event that proves realBitcoinMoved:true and carries at least one sourceRef, and the mappers refuse to emit a particle with no sourceRef or simulated settlement evidence.',
+          'The Bitcoin payment visualization is wired into the live running agent-world scene. Source-level gates now resolve CHAT_WORLD_PAYMENTS on under the Verse launch default unless the Verse kill switch is set. It is evidence-bound by construction: a gold payment particle is only emitted for a real_bitcoin_moved or settlement_recorded event that proves realBitcoinMoved:true and carries at least one sourceRef, and the mappers refuse to emit a particle with no sourceRef or simulated settlement evidence. This is NOT a green/default-on production claim; owner review and a shipped-channel visual receipt remain pending.',
         unsafeCopy:
-          'Do not say payment particles are live for all users, that the visualization is on by default, that it shows simulated or unbacked payments, or that visualizing a settlement implies any new earning, payout, or settlement authority.',
+          'Do not say payment particles are green, production-default-on for all users, that they show simulated or unbacked payments, or that visualizing a settlement implies any new earning, payout, or settlement authority.',
         evidenceRefs: [
           'docs/launch/2026-06-20-agent-mmorpg-hud-autopilot-audit-and-plan.md',
           'https://github.com/OpenAgentsInc/openagents/pull/5743',
           'https://github.com/OpenAgentsInc/openagents/issues/5730',
           'https://github.com/OpenAgentsInc/openagents/issues/5736',
+          'https://github.com/OpenAgentsInc/openagents/issues/7030',
+          'apps/autopilot-desktop/src/shared/chat-world-flags.ts',
           'apps/autopilot-desktop/src/shared/chat-world-scene.ts',
           'apps/autopilot-desktop/src/shared/chat-world-visualization.ts',
           'apps/autopilot-desktop/src/ui/chat-world-subscriptions.ts',
@@ -4083,14 +4089,17 @@ export const publicProductPromisesDocument = () => {
           'apps/autopilot-desktop/tests/chat-world-scene.test.ts',
           'apps/autopilot-desktop/tests/chat-world-subscriptions.test.ts',
           'apps/autopilot-desktop/tests/chat-world-visualization.test.ts',
+          'apps/autopilot-desktop/tests/verse-launch-checklist.test.ts',
+          'apps/autopilot-desktop/tests/verse-toggle.test.ts',
+          'https://openagents.com/api/public/activity-timeline?limit=8',
           'promise:autopilot.agent_world_scene.v1',
           'promise:training.decentralized_training_launch.v1',
         ],
         blockerRefs: [
-          'blocker.product_promises.payment_visualization_flag_default_off',
+          'blocker.product_promises.payment_visualization_owner_review_green_pending',
         ],
         verification:
-          'Yellow covers the live wiring behind CHAT_WORLD_PAYMENTS: chat-world-subscriptions.ts backfills and streams public activity-timeline events into GotChatWorldPaymentParticle, update.ts stores the bounded active set, view.ts composes modelChatWorldParticles through withChatWorldPaymentLayer, and chat-world-visualization.ts turns each accepted particle into clickable beam/burst endpoint evidence. PAYMENT_EVENT_KINDS remains exactly {real_bitcoin_moved, settlement_recorded}; realBitcoinMoved:true and sourceRefs are required, so an event with no sourceRef or simulated settlement evidence returns null. Green requires an owner decision on default-on and an owner-signed receipt-first upgrade per proof.claim_upgrade_receipts.v1.',
+          'Yellow covers the source-level default gate and live wiring: chatWorldBuildFlags defaults CHAT_WORLD_PAYMENTS on under the Verse launch default unless the hard kill switch is set; chat-world-subscriptions.ts backfills and streams public activity-timeline events into GotChatWorldPaymentParticle; update.ts stores the bounded active set; view.ts composes modelChatWorldParticles through withChatWorldPaymentLayer; and chat-world-visualization.ts turns each accepted particle into clickable beam/burst endpoint evidence. PAYMENT_EVENT_KINDS remains exactly {real_bitcoin_moved, settlement_recorded}; realBitcoinMoved:true and sourceRefs are required, so an event with no sourceRef or simulated settlement evidence returns null. Green requires owner review of the production default-on scope, a shipped-channel visual receipt, and an owner-signed receipt-first upgrade per proof.claim_upgrade_receipts.v1.',
         authorityBoundary:
           'Visualizing a Bitcoin settlement grants no payment authority, no spend, no payout, and no settlement authority. The particle is a clickable projection of an already-public receipt or event; it never moves money and never asserts a settlement that the underlying receipt does not.',
       },
@@ -4103,26 +4112,31 @@ export const publicProductPromisesDocument = () => {
         claim:
           'A Pylon visibly grows in the agent world — crystal scale, facets, and brightness step up by tier — as it earns cumulative settled sats.',
         safeCopy:
-          'Pylon growth tiers are merged and live-wired behind the chat-world flags: public per-Pylon cumulative settled sats map to a monotonic growth tier that the scene adapter turns into crystal scale/status brightness and facet metadata, with tier 0 an honest still crystal for a Pylon that has not settled any earnings yet. It rides the same default-off CHAT_WORLD_SCENE / CHAT_WORLD_PAYMENTS flags and is not on by default.',
+          'Pylon growth tiers are merged and live-wired through the chat-world scene: public per-Pylon cumulative settled sats map to a monotonic growth tier that the scene adapter turns into crystal scale/status brightness and facet metadata, with tier 0 an honest still crystal for a Pylon that has not settled any earnings yet. Source-level gates now resolve the backing scene on under the Verse launch default unless the Verse kill switch is set. This is NOT a green/default-on production claim; owner review and a shipped-channel visual receipt remain pending.',
         unsafeCopy:
-          'Do not say Pylon growth is live for all users by default, that growth reflects anything other than real settled sats, or that a larger crystal implies any new earning, payout, or settlement capability.',
+          'Do not say Pylon growth is green, production-default-on for all users, that growth reflects anything other than real settled sats, or that a larger crystal implies any new earning, payout, or settlement capability.',
         evidenceRefs: [
           'docs/launch/2026-06-20-agent-mmorpg-hud-autopilot-audit-and-plan.md',
           'https://github.com/OpenAgentsInc/openagents/pull/5743',
           'https://github.com/OpenAgentsInc/openagents/issues/5730',
           'https://github.com/OpenAgentsInc/openagents/issues/5737',
           'https://github.com/OpenAgentsInc/openagents/issues/6868',
+          'https://github.com/OpenAgentsInc/openagents/issues/7030',
+          'apps/autopilot-desktop/src/shared/chat-world-flags.ts',
           'apps/autopilot-desktop/src/shared/chat-world-scene.ts',
           'apps/autopilot-desktop/src/shared/chat-world-scene.test.ts',
           'apps/autopilot-desktop/src/ui/pylon-network-visualization.ts',
+          'apps/autopilot-desktop/tests/pylon-network-visualization.test.ts',
+          'apps/autopilot-desktop/tests/verse-launch-checklist.test.ts',
+          'apps/autopilot-desktop/tests/verse-toggle.test.ts',
           'promise:autopilot.agent_world_scene.v1',
           'promise:autopilot.bitcoin_payment_visualization.v1',
         ],
         blockerRefs: [
-          'blocker.product_promises.pylon_growth_flag_default_off',
+          'blocker.product_promises.pylon_growth_owner_review_green_pending',
         ],
         verification:
-          'Yellow now covers the live scene wiring behind CHAT_WORLD_SCENE / CHAT_WORLD_PAYMENTS: PublicRecentPylon preserves public cumulativeSettledSats when present, projectChatWorldPylonScene computes each node growth descriptor from that value, liveChatWorldNetworkScene carries the descriptor into PylonNetworkNode, and pylonNetworkVisualizationOptions maps tiers onto the pinned three-effect renderer knobs (larger role geometry, brighter status, and facet/sats detail). Tier 0 remains the 0-sat still crystal. Green still requires an owner decision on default-on and an owner-signed receipt-first upgrade per proof.claim_upgrade_receipts.v1.',
+          'Yellow now covers the source-level default gate and live scene wiring: CHAT_WORLD_SCENE defaults on under the Verse launch default unless the hard kill switch is set; PublicRecentPylon preserves public cumulativeSettledSats when present; projectChatWorldPylonScene computes each node growth descriptor from that value; liveChatWorldNetworkScene carries the descriptor into PylonNetworkNode; and pylonNetworkVisualizationOptions maps tiers onto the pinned three-effect renderer knobs (larger role geometry, brighter status, and facet/sats detail). Tier 0 remains the 0-sat still crystal. Green still requires owner review of the production default-on scope, a shipped-channel visual receipt, and an owner-signed receipt-first upgrade per proof.claim_upgrade_receipts.v1.',
         authorityBoundary:
           'Pylon growth visualization is a presentational projection of already-public settled-sats data. It grants no earning, spend, payout, or settlement authority, and a crystal tier never asserts earnings the underlying settlement receipts do not.',
       },
@@ -4444,7 +4458,7 @@ export const publicProductPromisesDocument = () => {
     ],
     notes: [
       `Include version ${PublicProductPromisesVersion} and the relevant promiseId when reporting a mismatch.`,
-      'Registry 2026-06-29.4 advances autopilot.agent_character_creation.v1 from planned to yellow on source-level Autopilot Desktop evidence for #6861. The desktop character-creation projection, onboarding-status projection, Forum intro module, read-only work-search module, unit tests, and headless proof/smoke harnesses now cover the warp-in spawn/customize beats, one idempotent credential-gated Forum self-introduction, and read-only work-search receipt path. Green remains blocked on owner-accepted real-user/default-on evidence, a permissioned live Forum-intro receipt, and receipt-first owner review. No broad default-on production claim, surprise Forum posting, paid-work acceptance, spend, payout, settlement, moderation, or green transition is created.',
+      'Registry 2026-06-29.4 advances autopilot.agent_character_creation.v1 from planned to yellow on source-level Autopilot Desktop evidence for #6861 (the desktop character-creation projection, onboarding-status projection, Forum intro module, read-only work-search module, unit tests, and headless proof/smoke harnesses cover the warp-in spawn/customize beats, one idempotent credential-gated Forum self-introduction, and a read-only work-search receipt path), and is also the #7030 yellow-only source-level receipt for autopilot.agent_world_scene.v1, autopilot.bitcoin_payment_visualization.v1, and autopilot.pylon_growth_visualization.v1 (the current source resolver defaults the scene/payment gates on under the Verse launch default while retaining the hard Verse kill switches and payment-source guards). It is NOT a green/default-on production claim for any of these records: green remains blocked on owner-accepted real-user/default-on evidence, permissioned live receipts, a shipped-channel visual receipt, and receipt-first owner review. No broad default-on production claim, surprise Forum posting, paid-work acceptance, spend, payout, settlement, moderation, or green transition is created.',
       'Registry 2026-06-29.3 is a receipt-gate tightening pass for autopilot.agent_character_creation.v1 / #6861 and flips NO promise state. The planned character-creation promise now cites the active public issue and names the three concrete closure receipts: built spawn/customize onboarding, automated Forum self-introduction demonstrated end to end, and automated work-search covered by tests. The promise remains planned; no spawn flow, Forum posting authority, work-search automation, spend, payout, settlement, or green claim is created.',
       'The Pylon launch-promise inventory is represented one-for-one in the promise records above.',
       'Episode 199 is included with a heavy historical caveat: Claude Code-first mech-suit language is withdrawn as current public framing; current coding-agent runtime claims should point to Codex-oriented Autopilot/Probe/Pylon records.',
