@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-29.2'
+export const PublicProductPromisesVersion = '2026-06-29.3'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -65,6 +65,7 @@ const sourceRefs = [
   'apps/pylon/scripts/codex-supervisor/replenishment.test.sh',
   'apps/openagents.com/workers/api/src/inference/model-router.ts',
   'apps/openagents.com/workers/api/src/inference/model-router.test.ts',
+  'docs/promises/2026-06-29-issue-7018-paid-inference-receipt-audit.md',
   'docs/apple-fm/2026-06-29-electrobun-apple-fm-swift-sidecar-plan.md',
   'clients/khala-desktop/src/bun/apple-fm-sidecar.ts',
   'clients/khala-desktop/src/shared/apple-fm-packaging.ts',
@@ -261,6 +262,7 @@ export const publicProductPromisesDocument = () => {
         'Registry 2026-06-28.3 implements #6891 for models.tassadar_percepta_executor.v1 and flips NO promise state. Pylon v1.0 now has a deterministic bounded CPU computation-transform fixture in apps/pylon/src/tassadar-cpu-transform-training.ts that runs one CPU-only optimization step, self-verifies loss improvement, emits receipt.models.tassadar_percepta_executor.cpu_transform_training.cpu_transform_fixture_v1, and keeps realBitcoinMoved:false / settlementState:not_settled. GET /api/public/models/tassadar-percepta-executor/cpu-transform-training-receipts now projects that public-safe receipt alongside the architecture and Artanis distillation dataset inputs, so the old pylon_v03_cpu_transform_training_receipts_missing blocker is replaced by blocker.product_promises.tassadar_cpu_transform_real_settlement_missing and blocker.product_promises.tassadar_cpu_transform_owner_green_signoff_missing. The promise STAYS planned: this is one fixture-scale receipt, not a trained model, not a paid earning path, not model promotion, and not a green transition; any future green flip remains receipt-first and owner-signed per proof.claim_upgrade_receipts.v1.',
         'Registry 2026-06-29.1 implements #6848 for payments.accepted_outcome_economics.v1 and flips NO promise state. The accepted-outcome economics spine now has a dereferenceable contributor accrual bundle at GET /api/public/payments/contributor-accrual-bundle?economicsId=... plus the settlement bundle at GET /api/public/accepted-outcome/settlement/{economicsId}; together they compose a gross-margin receipt, contributor accrual ledger entries, and an eight-state settlement machine from one stored accepted-outcome economics row. Tests prove the ledger and receipt share the same economicsId, reconcile gross margin exactly, reconcile pending_payout to the distributable ledger pool, keep public projections free of internal cents/raw payment material, and surface missing contributor provenance honestly. The old source-level blockers contributor_ledger_missing and gross_margin_receipts_missing are replaced by real_accepted_outcome_receipt_missing and owner_signed_green_transition_missing. The promise STAYS red because source/fixture receipt machinery is not a real accepted outcome carried through a money-moving settlement path, and any future green flip remains receipt-first and owner-signed per proof.claim_upgrade_receipts.v1.',
         'Registry 2026-06-29.2 is a current-main refresh after #6997/#6999/#7001/#7002/#7006 and flips NO promise state. The terminal-agent current-state audit and Codex tool-layer study are now cited as evidence for the Codex/Probe/Pylon runtime direction: current production coding delegation is still Pylon plus external agent SDK lanes and OpenAgents-native terminal tools remain a consolidation task, not a new green claim. The codex-supervisor LOCKOUT replenishment helper can create or reuse three bounded standing issues so owner-capacity supervisors do not idle indefinitely, but it creates no paid labor, payout, settlement, or broad availability claim. The inference router now has GLM own-capacity failover alerting and public-safe fallback telemetry for repeated no-headroom saturation, but the paid gateway still stays red until a dereferenceable paid receipt exists. Khala Desktop now carries source-level Electrobun Apple FM sidecar packaging/readiness plus redaction tests, but Apple FM local mode remains yellow until a signed/notarized from-install smoke with helper supervision exists. The Khala model-mix promise remains live-at-read with maxStalenessSeconds:0; the stale 2-second cache wording is not applied.',
+        'Registry 2026-06-29.3 audits issue #7018 and flips NO promise state. The card-to-credit-to-inference path remains source-wired, including Stripe checkout/webhook credit fulfillment, the USD-credit bridge into inference-spendable msat, receipt-first inference metering, and public card-credit-spend receipt projection. That source plumbing narrows the blocker, but does not satisfy it: inference.gateway_credits_business.v1 and payments.autopilot_credits_purchase.v1 stay red until a real customer/agent card or owner-approved staging-to-production payment funds credit, that credit is spent through a metered inference request, and a dereferenceable public-safe receipt links payment -> credit -> bridge -> inference usage -> remaining balance without raw prompts, provider payloads, payment secrets, wallet material, or private customer data.',
       ],
     },
     promises: [
@@ -3389,6 +3391,7 @@ export const publicProductPromisesDocument = () => {
           'apps/openagents.com/workers/api/src/inference/model-router.ts',
           'apps/openagents.com/workers/api/src/inference/model-router.test.ts',
           'apps/openagents.com/workers/api/src/inference/card-credit-spend-receipt-store.ts',
+          'docs/promises/2026-06-29-issue-7018-paid-inference-receipt-audit.md',
           'apps/openagents.com/workers/api/src/inference/mpp/mpp-chat-completions-routes.ts',
           'promise:api.hosted_gemini.v1',
           'promise:payments.accepted_outcome_economics.v1',
@@ -3931,6 +3934,7 @@ export const publicProductPromisesDocument = () => {
           'apps/openagents.com/workers/api/src/inference/card-credit-spend-receipt-store.ts',
           'docs/promises/2026-06-23-khala-billing-mpp-proof-gate.md',
           'apps/openagents.com/docs/launch/2026-06-23-khala-billing-mpp-production-proof.md',
+          'docs/promises/2026-06-29-issue-7018-paid-inference-receipt-audit.md',
           'apps/openagents.com/apps/web/src/page/loggedIn/page/billing.ts',
           'docs/transcripts/239.md',
           'promise:inference.gateway_credits_business.v1',

@@ -441,7 +441,9 @@ describe('public product promises document', () => {
     )
     expect(currentCopy).toContain('Pylon v1.0 has a stable source cut')
     expect(currentCopy).toContain('Registry 2026-06-29.2')
+    expect(currentCopy).toContain('Registry 2026-06-29.3')
     expect(currentCopy).toContain('flips NO promise state')
+    expect(currentCopy).toContain('audits issue #7018')
     expect(currentCopy).toContain('Khala Desktop now carries source-level')
     expect(currentCopy).toContain('maxStalenessSeconds:0')
     const codexSuccessorPromise = decoded.promises.find(
@@ -466,10 +468,39 @@ describe('public product promises document', () => {
     expect(inferenceGatewayPromise?.safeCopy).toContain(
       'GLM own-capacity failover alerting',
     )
+    expect(inferenceGatewayPromise?.verification).toContain(
+      'dereferenceable card->credit->inference-spend receipt',
+    )
     expect(inferenceGatewayPromise?.evidenceRefs).toEqual(
       expect.arrayContaining([
         'apps/openagents.com/workers/api/src/inference/model-router.ts',
         'apps/openagents.com/workers/api/src/inference/model-router.test.ts',
+        'docs/promises/2026-06-29-issue-7018-paid-inference-receipt-audit.md',
+      ]),
+    )
+    expect(inferenceGatewayPromise?.blockerRefs).toEqual(
+      expect.arrayContaining([
+        'blocker.product_promises.inference_paid_credits_card_to_credit_not_collectable',
+        'blocker.product_promises.inference_paid_receipt_not_yet_supplied',
+      ]),
+    )
+    const autopilotCreditsPurchasePromise = decoded.promises.find(
+      promise => promise.promiseId === 'payments.autopilot_credits_purchase.v1',
+    )
+    expect(autopilotCreditsPurchasePromise?.state).toBe('red')
+    expect(autopilotCreditsPurchasePromise?.safeCopy).toContain(
+      'public card-credit-spend receipts can prove card -> credit -> bridge -> metered inference',
+    )
+    expect(autopilotCreditsPurchasePromise?.evidenceRefs).toEqual(
+      expect.arrayContaining([
+        'docs/promises/2026-06-29-issue-7018-paid-inference-receipt-audit.md',
+      ]),
+    )
+    expect(autopilotCreditsPurchasePromise?.blockerRefs).toEqual(
+      expect.arrayContaining([
+        'blocker.product_promises.autopilot_credits_prod_stripe_secrets_missing',
+        'blocker.product_promises.autopilot_credits_no_real_card_purchase_receipt',
+        'blocker.product_promises.autopilot_credits_no_card_credit_spend_receipt',
       ]),
     )
     expect(decoded.promises).toEqual(
