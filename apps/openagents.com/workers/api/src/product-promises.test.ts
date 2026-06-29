@@ -440,7 +440,7 @@ describe('public product promises document', () => {
       /latest stays 0\.2\.5|only published, installable Pylon|release candidate, not stable 0\.3\.0|Pylon v1\.0 is present in the monorepo as a release candidate/i,
     )
     expect(currentCopy).toContain('Pylon v1.0 has a stable source cut')
-    expect(currentCopy).toContain('Registry 2026-06-29.2')
+    expect(currentCopy).toContain('Registry 2026-06-29.3')
     expect(currentCopy).toContain('flips NO promise state')
     expect(currentCopy).toContain('Khala Desktop now carries source-level')
     expect(currentCopy).toContain('maxStalenessSeconds:0')
@@ -496,6 +496,18 @@ describe('public product promises document', () => {
           blockerRefs: expect.not.arrayContaining([
             'blocker.product_promises.mobile_projection_missing',
           ]),
+        }),
+        expect.objectContaining({
+          promiseId: 'mobile.voice_session_evidence_transcript_ingest.v1',
+          state: 'red',
+          evidenceRefs: expect.arrayContaining([
+            'apps/openagents.com/workers/api/src/voice-program-ingest-routes.ts',
+            'route:/api/mobile/voice-sessions/ingest',
+          ]),
+          blockerRefs: [
+            'blocker.product_promises.voice_transcription_service_missing',
+            'blocker.product_promises.voice_proposal_and_approval_ui_missing',
+          ],
         }),
         expect.objectContaining({
           promiseId: 'pylon.no_dark_capacity_accounting.v1',
@@ -1186,6 +1198,23 @@ describe('public product promises document', () => {
           state: 'yellow',
         }),
       ]),
+    )
+    const voiceTranscriptPromise = decoded.promises.find(
+      promise =>
+        promise.promiseId ===
+        'mobile.voice_session_evidence_transcript_ingest.v1',
+    )
+    expect(voiceTranscriptPromise?.safeCopy).toContain(
+      'flag-gated INERT ingestion endpoint',
+    )
+    expect(voiceTranscriptPromise?.verification).toContain(
+      'flag-gated inert ingestion endpoint pass tests',
+    )
+    expect(voiceTranscriptPromise?.verification).toContain(
+      'Green requires an STT transcription service with a live capture path',
+    )
+    expect(voiceTranscriptPromise?.verification).not.toContain(
+      'Green requires an ingestion endpoint',
     )
     const mobileApprovalPromise = decoded.promises.find(
       promise => promise.promiseId === 'mobile.voice_approval_companion.v1',
