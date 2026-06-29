@@ -30,11 +30,7 @@ const previewAssetPath = (pathname: string): string => {
   if (clean === "/main.js") return resolve(process.cwd(), "resources/ui/main.js")
   if (clean === "/main.css") return resolve(process.cwd(), "resources/ui/main.css")
   if (clean.startsWith("/fonts/")) {
-    return resolve(
-      process.cwd(),
-      "../openagents-desktop/src/ui",
-      clean.slice(1),
-    )
+    return resolve(process.cwd(), "src/ui", clean.slice(1))
   }
   return resolve(process.cwd(), "resources/ui", clean.replace(/^\/+/, ""))
 }

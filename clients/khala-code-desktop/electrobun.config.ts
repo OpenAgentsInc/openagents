@@ -15,9 +15,9 @@ export default {
     },
     copy: {
       "resources/ui/main.css": "views/khala-code-desktop/main.css",
-      "../openagents-desktop/src/ui/fonts/BerkeleyMono-Bold.woff2":
+      "src/ui/fonts/BerkeleyMono-Bold.woff2":
         "views/khala-code-desktop/fonts/BerkeleyMono-Bold.woff2",
-      "../openagents-desktop/src/ui/fonts/BerkeleyMono-Regular.woff2":
+      "src/ui/fonts/BerkeleyMono-Regular.woff2":
         "views/khala-code-desktop/fonts/BerkeleyMono-Regular.woff2",
       "src/ui/index.html": "views/khala-code-desktop/index.html",
     },
