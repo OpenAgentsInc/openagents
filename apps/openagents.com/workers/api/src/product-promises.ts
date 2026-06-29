@@ -1074,11 +1074,10 @@ export const publicProductPromisesDocument = () => {
         ],
         blockerRefs: [
           'blocker.product_promises.free_tier_capture_default_owner_gated',
-          'blocker.product_promises.trace_capture_public_disclosure_alignment_required',
           'blocker.product_promises.trace_capture_reward_marker_inert',
         ],
         verification:
-          'Yellow requires the capture emitter, disclosure surface, and privacy-entitlement exclusion code to agree. Green requires production gate evidence, redaction/private-owner scoping evidence, public-copy owner sign-off, and no payout/settlement implication.',
+          'The capture emitter, disclosure surface, and privacy-entitlement exclusion code now agree: free capture is redacted and owner_only when armed, paid/privacy callers are excluded fail-closed, public sharing is opt-in only, and reward/payout markers remain inert. Green still requires production gate evidence, redaction/private-owner scoping evidence, public-copy owner sign-off, and no payout/settlement implication.',
         authorityBoundary:
           'Trace capture is data-retention behavior only. It grants no public trace publication, training-data sale, payout, settlement, billing, or confidential-compute authority.',
       },

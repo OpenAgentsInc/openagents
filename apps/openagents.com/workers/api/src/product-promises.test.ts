@@ -440,6 +440,31 @@ describe('public product promises document', () => {
         'apps/openagents.com/workers/api/src/agentic-npm-composition-runtime.test.ts',
       ]),
     )
+    const freeTierTraceCapturePromise = decoded.promises.find(
+      promise =>
+        promise.promiseId === 'data.khala_free_tier_trace_capture.v1',
+    )
+    expect(freeTierTraceCapturePromise?.blockerRefs).not.toContain(
+      'blocker.product_promises.trace_capture_public_disclosure_alignment_required',
+    )
+    expect(freeTierTraceCapturePromise?.blockerRefs).toEqual(
+      expect.arrayContaining([
+        'blocker.product_promises.free_tier_capture_default_owner_gated',
+        'blocker.product_promises.trace_capture_reward_marker_inert',
+      ]),
+    )
+    expect(freeTierTraceCapturePromise?.verification).toContain(
+      'disclosure surface, and privacy-entitlement exclusion code now agree',
+    )
+    const paidCaptureOptoutPromise = decoded.promises.find(
+      promise => promise.promiseId === 'privacy.khala_paid_capture_optout.v1',
+    )
+    expect(paidCaptureOptoutPromise?.blockerRefs).toEqual(
+      expect.arrayContaining([
+        'blocker.product_promises.paid_privacy_owner_signoff_pending',
+        'blocker.product_promises.paid_khala_business_loop_not_green',
+      ]),
+    )
     expect(agenticNpmPromise?.safeCopy).toContain(
       'bounded source-level registry + install/use runtime core exists',
     )
