@@ -96,10 +96,94 @@ export type CodingStatusSummary = {
   readonly vertexBurnCount: number
 }
 
+export type CodingManagerAssignmentMarker = {
+  readonly accountRef: string | null
+  readonly accountRefHash: string | null
+  readonly assignmentRef: string | null
+  readonly issueRef: string | null
+  readonly markerPath: string
+  readonly updatedAt: string | null
+}
+
+export type CodingManagerPrState = "closed" | "merged" | "open" | "unknown"
+
+export type CodingManagerQueueMarker = {
+  readonly ageSeconds: number | null
+  readonly issueRef: string | null
+  readonly markerPath: string
+  readonly prState: CodingManagerPrState
+  readonly type: "done" | "lock"
+}
+
+export type CodingManagerCandidate = {
+  readonly issueRef: string
+  readonly prState: CodingManagerPrState
+  readonly priority: number
+  readonly title: string
+}
+
+export type CodingManagerLatestBlocker = {
+  readonly blocker: string
+  readonly count: number
+  readonly latestLogPath: string | null
+}
+
+export type CodingManagerLogSummary = {
+  readonly acceptedRunningOrUnknown: number
+  readonly completedAccepted: number
+  readonly completedRejected: number
+  readonly empty: number
+  readonly failedBeforeAccept: number
+  readonly latestBlockers: readonly CodingManagerLatestBlocker[]
+  readonly pendingOutput: number
+  readonly scannedLogCount: number
+}
+
+export type CodingManagerTokenFailure = {
+  readonly assignmentRef: string | null
+  readonly error: string | null
+  readonly observedAt: string | null
+}
+
+export type CodingManagerTokenFailures = {
+  readonly byteLength: number
+  readonly failureCount: number
+  readonly latestFailures: readonly CodingManagerTokenFailure[]
+  readonly spoolPath: string
+}
+
+export type CodingManagerGithubCounts = {
+  readonly closedPrsSince: number | null
+  readonly mergedPrsSince: number | null
+  readonly openPrs: number | null
+  readonly since: string
+}
+
+export type CodingManagerMismatchWarning = {
+  readonly code: string
+  readonly message: string
+  readonly severity: "info" | "warning"
+}
+
+export type CodingManagerResumeSnapshot = {
+  readonly activeAssignments: readonly CodingManagerAssignmentMarker[]
+  readonly candidateLane: readonly CodingManagerCandidate[]
+  readonly github: CodingManagerGithubCounts
+  readonly latestBlockers: readonly CodingManagerLatestBlocker[]
+  readonly liveProcesses: readonly CodingProcess[]
+  readonly logs: CodingManagerLogSummary
+  readonly observedAt: string
+  readonly queueLocks: readonly CodingManagerQueueMarker[]
+  readonly statusBlock: string
+  readonly tokenFailures: CodingManagerTokenFailures
+  readonly warnings: readonly CodingManagerMismatchWarning[]
+}
+
 export type CodingStatusResult =
   | {
       readonly ok: true
       readonly events: readonly CodingSupervisorEvent[]
+      readonly managerResume: CodingManagerResumeSnapshot
       readonly observedAt: string
       readonly processes: readonly CodingProcess[]
       readonly sessions: readonly CodingCodexSession[]
@@ -109,6 +193,7 @@ export type CodingStatusResult =
       readonly ok: false
       readonly error: string
       readonly events: readonly CodingSupervisorEvent[]
+      readonly managerResume: CodingManagerResumeSnapshot
       readonly observedAt: string
       readonly processes: readonly CodingProcess[]
       readonly sessions: readonly CodingCodexSession[]
@@ -124,6 +209,32 @@ const processKindLabel: Record<CodingProcessKind, string> = {
   supervisor: "Supervisor",
   vertex_burn: "Vertex burn",
 }
+
+export const OPENAGENTS_DESKTOP_MANAGER_GITHUB_SINCE =
+  "2026-06-29T13:45:00Z"
+
+export const OPENAGENTS_DESKTOP_MANAGER_CANDIDATE_LANE: readonly Omit<
+  CodingManagerCandidate,
+  "prState"
+>[] = [
+  { issueRef: "7557", priority: 1, title: "Expose Codex fleet quota cooldown state" },
+  { issueRef: "7579", priority: 2, title: "Expose Codex quota reset policy status" },
+  { issueRef: "7560", priority: 3, title: "fix(pylon): update account reset status" },
+  { issueRef: "7523", priority: 4, title: "fix(pylon): parse provider quota reset hints" },
+  { issueRef: "7558", priority: 5, title: "fix(pylon): classify codex account execution refusals" },
+  { issueRef: "7246", priority: 6, title: "fix(pylon): surface Codex execution refusal reasons" },
+  { issueRef: "7221", priority: 7, title: "fix(pylon): surface codex execution refusal reasons" },
+  { issueRef: "7510", priority: 8, title: "fix(khala-desktop): add Codex account readiness controls" },
+  { issueRef: "7279", priority: 9, title: "fix(codex-supervisor): GC orphan claims and fast-retry gate refusals" },
+  { issueRef: "7104", priority: 10, title: "fix(codex-supervisor): GC stale claims and fast-retry gate flakes" },
+  { issueRef: "7073", priority: 11, title: "feat(operator): surface live Pylon runtime progress" },
+  { issueRef: "7283", priority: 12, title: "fix(operator): register fleet state observability route" },
+  { issueRef: "7230", priority: 13, title: "feat(operator): surface fleet assignment progress" },
+  { issueRef: "7336", priority: 14, title: "feat(operator): surface fleet assignment progress" },
+  { issueRef: "7589", priority: 15, title: "Align Pylon coordinator with runner registry" },
+  { issueRef: "7571", priority: 16, title: "Harden Pylon agent runner resolution" },
+  { issueRef: "7486", priority: 17, title: "Harden Pylon agent runner registry contract" },
+]
 
 const processKindFromCommand = (command: string): CodingProcessKind | null => {
   if (/codex\/vendor.*bin\/codex exec|(^|\s)codex exec(\s|$)/i.test(command)) {
@@ -275,6 +386,252 @@ export const summarizeCodingProcesses = (
   vertexBurnCount: processes.filter(process => process.kind === "vertex_burn")
     .length,
 })
+
+type CodingManagerLogInput = {
+  readonly path: string
+  readonly text: string
+}
+
+const blockerPattern = /\bblocker\.[a-z0-9_.-]+/gi
+
+export const summarizeManagerAssignmentLogs = (
+  logs: readonly CodingManagerLogInput[],
+): CodingManagerLogSummary => {
+  let acceptedRunningOrUnknown = 0
+  let completedAccepted = 0
+  let completedRejected = 0
+  let empty = 0
+  let failedBeforeAccept = 0
+  let pendingOutput = 0
+  const blockers = new Map<string, CodingManagerLatestBlocker>()
+
+  for (const log of logs) {
+    const text = log.text
+    const trimmed = text.trim()
+    const matches = text.match(blockerPattern) ?? []
+    for (const blocker of matches) {
+      const key = blocker.toLowerCase()
+      const existing = blockers.get(key)
+      blockers.set(key, {
+        blocker: key,
+        count: (existing?.count ?? 0) + 1,
+        latestLogPath: existing?.latestLogPath ?? log.path,
+      })
+    }
+
+    if (trimmed === "") {
+      empty += 1
+    } else if (
+      /"event"\s*:\s*"assignment_run\.completed"/.test(text) &&
+      /"status"\s*:\s*"accepted"/.test(text)
+    ) {
+      completedAccepted += 1
+    } else if (
+      /"event"\s*:\s*"assignment_run\.completed"/.test(text) &&
+      /"status"\s*:\s*"rejected"/.test(text)
+    ) {
+      completedRejected += 1
+    } else if (/"event"\s*:\s*"assignment_run\.accepted"/.test(text)) {
+      acceptedRunningOrUnknown += 1
+    } else if (/"ok"\s*:\s*false/.test(text) || /"error"\s*:/.test(text)) {
+      failedBeforeAccept += 1
+    } else {
+      pendingOutput += 1
+    }
+  }
+
+  return {
+    acceptedRunningOrUnknown,
+    completedAccepted,
+    completedRejected,
+    empty,
+    failedBeforeAccept,
+    latestBlockers: [...blockers.values()]
+      .sort((left, right) => right.count - left.count)
+      .slice(0, 8),
+    pendingOutput,
+    scannedLogCount: logs.length,
+  }
+}
+
+const processCount = (
+  processes: readonly CodingProcess[],
+  kind: CodingProcessKind,
+): number => processes.filter(process => process.kind === kind).length
+
+const stateForIssue = (
+  issueRef: string | null,
+  prStates: Readonly<Record<string, CodingManagerPrState>>,
+): CodingManagerPrState =>
+  issueRef === null ? "unknown" : prStates[issueRef] ?? "unknown"
+
+export const candidateLaneWithStates = (
+  prStates: Readonly<Record<string, CodingManagerPrState>>,
+): readonly CodingManagerCandidate[] =>
+  OPENAGENTS_DESKTOP_MANAGER_CANDIDATE_LANE.map(candidate => ({
+    ...candidate,
+    prState: stateForIssue(candidate.issueRef, prStates),
+  }))
+
+const compactManagerLine = (value: string | null): string =>
+  value === null || value.trim() === "" ? "-" : value.trim()
+
+export const formatManagerResumeStatusBlock = (
+  snapshot: Omit<CodingManagerResumeSnapshot, "statusBlock">,
+): string => {
+  const assigned = snapshot.activeAssignments.length
+  const executing = processCount(snapshot.liveProcesses, "codex_exec")
+  const khalaRequests = processCount(snapshot.liveProcesses, "khala_request")
+  const locks = snapshot.queueLocks.filter(marker => marker.type === "lock")
+  const done = snapshot.queueLocks.filter(marker => marker.type === "done")
+  const nextCandidate =
+    snapshot.candidateLane.find(candidate => candidate.prState === "open") ??
+    snapshot.candidateLane[0] ??
+    null
+  const blockers = snapshot.latestBlockers
+    .slice(0, 3)
+    .map(blocker => `${blocker.blocker} x${blocker.count}`)
+    .join(", ")
+  const warnings = snapshot.warnings
+    .slice(0, 5)
+    .map(warning => `${warning.severity}:${warning.code}`)
+    .join(", ")
+
+  return [
+    "OPENAGENTS MANAGER RESUME",
+    `observed_at: ${snapshot.observedAt}`,
+    `assigned_markers: ${assigned}`,
+    `live_codex_exec: ${executing}`,
+    `khala_requests: ${khalaRequests}`,
+    `queue_locks: ${locks.length}`,
+    `queue_done_markers: ${done.length}`,
+    `token_failures: ${snapshot.tokenFailures.failureCount}`,
+    `open_prs: ${snapshot.github.openPrs ?? "unknown"}`,
+    `merged_prs_since_${snapshot.github.since}: ${
+      snapshot.github.mergedPrsSince ?? "unknown"
+    }`,
+    `closed_prs_since_${snapshot.github.since}: ${
+      snapshot.github.closedPrsSince ?? "unknown"
+    }`,
+    `recent_logs: accepted=${snapshot.logs.completedAccepted} rejected=${
+      snapshot.logs.completedRejected
+    } running_or_unknown=${snapshot.logs.acceptedRunningOrUnknown}`,
+    `candidate_lane: ${compactManagerLine(
+      nextCandidate === null
+        ? null
+        : `#${nextCandidate.issueRef} ${nextCandidate.prState} ${nextCandidate.title}`,
+    )}`,
+    `latest_blockers: ${compactManagerLine(blockers)}`,
+    `warnings: ${compactManagerLine(warnings)}`,
+  ].join("\n")
+}
+
+export const buildManagerResumeSnapshot = (input: {
+  readonly activeAssignments: readonly CodingManagerAssignmentMarker[]
+  readonly github: CodingManagerGithubCounts
+  readonly liveProcesses: readonly CodingProcess[]
+  readonly logs: CodingManagerLogSummary
+  readonly observedAt: string
+  readonly prStates: Readonly<Record<string, CodingManagerPrState>>
+  readonly queueLocks: readonly Omit<CodingManagerQueueMarker, "prState">[]
+  readonly tokenFailures: CodingManagerTokenFailures
+}): CodingManagerResumeSnapshot => {
+  const queueLocks = input.queueLocks.map(marker => ({
+    ...marker,
+    prState: stateForIssue(marker.issueRef, input.prStates),
+  }))
+  const candidateLane = candidateLaneWithStates(input.prStates)
+  const warnings: CodingManagerMismatchWarning[] = []
+  const codexExecCount = processCount(input.liveProcesses, "codex_exec")
+  const khalaRequestCount = processCount(input.liveProcesses, "khala_request")
+  const activeMarkerCount = input.activeAssignments.length
+
+  if (activeMarkerCount !== codexExecCount) {
+    warnings.push({
+      code: "markers_codex_process_mismatch",
+      message: `Active assignment markers (${activeMarkerCount}) differ from live codex exec processes (${codexExecCount}).`,
+      severity: "warning",
+    })
+  }
+  if (input.logs.acceptedRunningOrUnknown > activeMarkerCount + khalaRequestCount) {
+    warnings.push({
+      code: "accepted_logs_without_local_runtime",
+      message: `Recent logs contain ${input.logs.acceptedRunningOrUnknown} accepted runs but only ${activeMarkerCount} markers and ${khalaRequestCount} Khala request wrappers.`,
+      severity: "warning",
+    })
+  }
+  if (input.tokenFailures.failureCount > 0 || input.tokenFailures.byteLength > 0) {
+    warnings.push({
+      code: "token_usage_failure_spool_nonempty",
+      message: `${input.tokenFailures.failureCount} token usage reports are waiting in the local failure spool.`,
+      severity: "warning",
+    })
+  }
+  if (
+    input.github.openPrs === null ||
+    input.github.mergedPrsSince === null ||
+    input.github.closedPrsSince === null
+  ) {
+    warnings.push({
+      code: "github_state_unavailable",
+      message: "GitHub PR counts were unavailable, so queue and marker state may be stale.",
+      severity: "warning",
+    })
+  }
+
+  const staleLocks = queueLocks.filter(
+    marker => marker.type === "lock" && marker.prState !== "open" && marker.prState !== "unknown",
+  )
+  if (staleLocks.length > 0) {
+    warnings.push({
+      code: "queue_lock_github_state_mismatch",
+      message: `${staleLocks.length} queue locks point at merged or closed PRs.`,
+      severity: "warning",
+    })
+  }
+
+  const snapshotWithoutBlock = {
+    activeAssignments: input.activeAssignments,
+    candidateLane,
+    github: input.github,
+    latestBlockers: input.logs.latestBlockers,
+    liveProcesses: input.liveProcesses,
+    logs: input.logs,
+    observedAt: input.observedAt,
+    queueLocks,
+    tokenFailures: input.tokenFailures,
+    warnings,
+  }
+
+  return {
+    ...snapshotWithoutBlock,
+    statusBlock: formatManagerResumeStatusBlock(snapshotWithoutBlock),
+  }
+}
+
+export const emptyManagerResumeSnapshot = (
+  observedAt: string,
+): CodingManagerResumeSnapshot =>
+  buildManagerResumeSnapshot({
+    activeAssignments: [],
+    github: {
+      closedPrsSince: null,
+      mergedPrsSince: null,
+      openPrs: null,
+      since: OPENAGENTS_DESKTOP_MANAGER_GITHUB_SINCE,
+    },
+    liveProcesses: [],
+    logs: summarizeManagerAssignmentLogs([]),
+    observedAt,
+    prStates: {},
+    queueLocks: [],
+    tokenFailures: {
+      byteLength: 0,
+      failureCount: 0,
+      latestFailures: [],
+      spoolPath: "",
+    },
+  })
 
 export const parseSupervisorLog = (
   logText: string,

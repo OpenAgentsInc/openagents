@@ -170,6 +170,7 @@ button {
 .coding-status:focus-visible,
 .pylons-back:focus-visible,
 .create-pylon:focus-visible,
+.coding-manager-actions button:focus-visible,
 .coding-active-session:focus-visible,
 .coding-session-row:focus-visible {
   outline: 2px solid rgba(79, 208, 255, 0.84);
@@ -461,6 +462,115 @@ button {
   color: #fff;
   font-size: 1.1rem;
   line-height: 1;
+}
+
+.coding-manager {
+  display: grid;
+  gap: 10px;
+  margin: 4px 16px 10px;
+  padding: 12px;
+  background: rgba(4, 9, 18, 0.88);
+  border: 1px solid rgba(79, 208, 255, 0.16);
+  border-radius: 8px;
+}
+
+.coding-manager-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.coding-manager-heading div:first-child {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+}
+
+.coding-manager-heading h3 {
+  margin: 0;
+  color: #f4f8ff;
+  font-size: 0.86rem;
+  line-height: 1;
+}
+
+.coding-manager-heading span {
+  overflow: hidden;
+  color: #9bb8e8;
+  font-size: 0.72rem;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.coding-manager-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 8px;
+}
+
+.coding-manager-actions button {
+  min-height: 30px;
+  padding: 0 10px;
+  color: #dbe8ff;
+  background: rgba(7, 11, 18, 0.82);
+  border: 1px solid rgba(58, 123, 255, 0.42);
+  border-radius: 8px;
+  font-size: 0.66rem;
+  font-weight: 700;
+  line-height: 1;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.coding-manager-status {
+  max-height: 190px;
+  margin: 0;
+  overflow: auto;
+  padding: 10px;
+  color: #d7e2f0;
+  background: rgba(0, 0, 0, 0.24);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 6px;
+  font-size: 0.7rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.coding-manager-warnings {
+  display: grid;
+  gap: 7px;
+}
+
+.coding-manager-warning {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.32fr) minmax(0, 1fr);
+  gap: 10px;
+  padding: 9px 10px;
+  background: rgba(28, 18, 8, 0.62);
+  border: 1px solid rgba(255, 184, 77, 0.22);
+  border-radius: 6px;
+}
+
+.coding-manager-warning[data-severity="info"] {
+  background: rgba(7, 18, 31, 0.72);
+  border-color: rgba(143, 182, 255, 0.22);
+}
+
+.coding-manager-warning strong {
+  overflow: hidden;
+  color: #ffdca8;
+  font-size: 0.66rem;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.coding-manager-warning span {
+  color: #dbe8ff;
+  font-size: 0.7rem;
+  line-height: 1.45;
 }
 
 .coding-active-list {
@@ -942,6 +1052,20 @@ pre.coding-message-body {
   }
 
   .coding-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .coding-manager-heading,
+  .coding-manager-warning {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .coding-manager-heading {
+    display: grid;
+  }
+
+  .coding-manager-actions {
+    display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
