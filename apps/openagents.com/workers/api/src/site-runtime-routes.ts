@@ -7,6 +7,7 @@ import {
   SiteRuntimeService,
   SiteRuntimeStorageError,
 } from './site-runtime'
+import { type TenantRef } from './tenant-custom-hostnames'
 
 type SiteRuntimeRouteEnv = Readonly<{
   ARTIFACTS: R2Bucket
@@ -15,8 +16,13 @@ type SiteRuntimeRouteEnv = Readonly<{
 }>
 type HttpResponse = globalThis.Response
 
-type SiteRuntimeRoutesConfig = Readonly<{
+type SiteRuntimeRoutesConfig<Env extends SiteRuntimeRouteEnv> = Readonly<{
   sitesHost: string
+  reservedHosts?: ReadonlySet<string>
+  resolveTenant?: (
+    request: Request,
+    env: Env,
+  ) => Effect.Effect<TenantRef | null, SiteRuntimeStorageError>
 }>
 
 type ParsedSiteRuntimePath = Readonly<{
@@ -121,6 +127,23 @@ const parseSiteRuntimePath = (url: URL): ParsedSiteRuntimePath | null => {
   }
 }
 
+const parseCustomHostnameRuntimePath = (
+  url: URL,
+): Omit<ParsedSiteRuntimePath, 'slug' | 'versionId'> | null => {
+  const segments = url.pathname.split('/').filter(segment => segment !== '')
+
+  if (hasUnsafePathSegment(segments)) {
+    return null
+  }
+
+  const restPath = segments.join('/')
+
+  return {
+    candidatePaths: candidateAssetPaths(restPath, url.pathname),
+    dispatchPath: url.pathname === '' ? '/' : url.pathname,
+  }
+}
+
 const artifactHeaders = (
   object: R2ObjectBody,
   asset: SiteRuntimeStaticAsset,
@@ -190,14 +213,74 @@ const runSiteRuntimeRoute = (
     ),
   )
 
-export const makeSiteRuntimeRoutes = (config: SiteRuntimeRoutesConfig) => ({
+export const makeSiteRuntimeRoutes = <Env extends SiteRuntimeRouteEnv>(
+  config: SiteRuntimeRoutesConfig<Env>,
+) => ({
   routeSiteRuntimeRequest: (
     request: Request,
-    env: SiteRuntimeRouteEnv,
+    env: Env,
   ): Effect.Effect<HttpResponse> | undefined => {
     const url = new URL(request.url)
 
-    if (url.hostname !== config.sitesHost) {
+    if (url.hostname === config.sitesHost) {
+      if (url.search !== '') {
+        return Effect.succeed(redirectResponse(`${url.origin}${url.pathname}`))
+      }
+
+      const parsed = parseSiteRuntimePath(url)
+
+      if (parsed === null) {
+        return Effect.succeed(publicSiteNotFound())
+      }
+
+      return runSiteRuntimeRoute(
+        env,
+        Effect.gen(function* () {
+          const runtime = yield* SiteRuntimeService
+          const target =
+            parsed.versionId === null
+              ? yield* runtime.resolveRuntimeTarget(
+                  parsed.slug,
+                  parsed.candidatePaths,
+                )
+              : yield* runtime.resolveVersionRuntimeTarget(
+                  parsed.slug,
+                  parsed.versionId,
+                  parsed.candidatePaths,
+                )
+
+          if (target === null) {
+            return publicSiteNotFound()
+          }
+
+          if (target._tag === 'worker') {
+            return yield* workerDispatchResponse(
+              env.SITES_DISPATCH,
+              target,
+              request,
+              parsed.dispatchPath,
+            )
+          }
+
+          if (request.method !== 'GET' && request.method !== 'HEAD') {
+            return methodNotAllowed(['GET', 'HEAD'])
+          }
+
+          const object = yield* runtime.readArtifactObject(target)
+
+          return object === null
+            ? publicSiteNotFound()
+            : artifactResponse(request, object, target)
+        }),
+      )
+    }
+
+    const resolveTenant = config.resolveTenant
+
+    if (
+      resolveTenant === undefined ||
+      config.reservedHosts?.has(url.hostname) === true
+    ) {
       return undefined
     }
 
@@ -205,7 +288,7 @@ export const makeSiteRuntimeRoutes = (config: SiteRuntimeRoutesConfig) => ({
       return Effect.succeed(redirectResponse(`${url.origin}${url.pathname}`))
     }
 
-    const parsed = parseSiteRuntimePath(url)
+    const parsed = parseCustomHostnameRuntimePath(url)
 
     if (parsed === null) {
       return Effect.succeed(publicSiteNotFound())
@@ -214,18 +297,17 @@ export const makeSiteRuntimeRoutes = (config: SiteRuntimeRoutesConfig) => ({
     return runSiteRuntimeRoute(
       env,
       Effect.gen(function* () {
+        const tenant = yield* resolveTenant(request, env)
+
+        if (tenant === null) {
+          return publicSiteNotFound()
+        }
+
         const runtime = yield* SiteRuntimeService
-        const target =
-          parsed.versionId === null
-            ? yield* runtime.resolveRuntimeTarget(
-                parsed.slug,
-                parsed.candidatePaths,
-              )
-            : yield* runtime.resolveVersionRuntimeTarget(
-                parsed.slug,
-                parsed.versionId,
-                parsed.candidatePaths,
-              )
+        const target = yield* runtime.resolveRuntimeTargetByTeam(
+          tenant.teamId,
+          parsed.candidatePaths,
+        )
 
         if (target === null) {
           return publicSiteNotFound()

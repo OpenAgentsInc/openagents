@@ -19,6 +19,7 @@ type SiteRuntimeRow = Readonly<{
   site_status: string
   slug: string
   static_assets_manifest_json: string | null
+  team_id: string | null
   version_id: string | null
   visibility: string
   worker_module_r2_key: string | null
@@ -51,37 +52,39 @@ class SiteRuntimeDbStore {
           },
         },
       }),
+      team_id: 'team_otec',
       version_id: 'site_version_otec_previous',
       visibility: 'public',
       worker_module_r2_key: null,
     },
     {
-    access_mode: 'public',
-    active_deployment_id: 'site_deployment_otec',
-    build_status: 'saved',
-    deployment_id: 'site_deployment_otec',
-    deployment_status: 'active',
-    dispatch_namespace: null,
-    external_deployment_id: null,
-    d1_binding_name: null,
-    r2_binding_name: null,
-    runtime_kind: 'omega_static_r2',
-    runtime_script_name: null,
-    site_id: 'site_project_otec',
-    site_status: 'approved',
-    slug: 'otec',
-    static_assets_manifest_json: JSON.stringify({
-      assets: {
-        'index.html': {
-          cacheControl: 'public, max-age=120',
-          contentType: 'text/html; charset=utf-8',
-          r2Key: 'sites/otec/deployments/site_deployment_otec/index.html',
+      access_mode: 'public',
+      active_deployment_id: 'site_deployment_otec',
+      build_status: 'saved',
+      deployment_id: 'site_deployment_otec',
+      deployment_status: 'active',
+      dispatch_namespace: null,
+      external_deployment_id: null,
+      d1_binding_name: null,
+      r2_binding_name: null,
+      runtime_kind: 'omega_static_r2',
+      runtime_script_name: null,
+      site_id: 'site_project_otec',
+      site_status: 'approved',
+      slug: 'otec',
+      static_assets_manifest_json: JSON.stringify({
+        assets: {
+          'index.html': {
+            cacheControl: 'public, max-age=120',
+            contentType: 'text/html; charset=utf-8',
+            r2Key: 'sites/otec/deployments/site_deployment_otec/index.html',
+          },
         },
-      },
-    }),
-    version_id: 'site_version_otec',
-    visibility: 'public',
-    worker_module_r2_key: null,
+      }),
+      team_id: 'team_otec',
+      version_id: 'site_version_otec',
+      visibility: 'public',
+      worker_module_r2_key: null,
     },
   ]
 
@@ -112,16 +115,26 @@ class SiteRuntimeStatement implements D1PreparedStatement {
   first<T = Record<string, unknown>>(): Promise<T | null>
   first<T = unknown>(): Promise<T | null> {
     if (this.query.includes('FROM site_projects')) {
+      const isTeamQuery = this.query.includes('site_projects.team_id = ?')
       const isVersionQuery = this.query.includes('site_versions.id = ?')
       const versionId = isVersionQuery ? String(this.values[0]) : null
-      const slug = String(this.values[isVersionQuery ? 1 : 0])
-      const row = isVersionQuery
+      const row = isTeamQuery
         ? this.store.rows.find(
-            row => row.slug === slug && row.version_id === versionId,
+            row =>
+              row.team_id === String(this.values[0]) &&
+              row.deployment_id === row.active_deployment_id,
           )
-        : this.store.row?.slug === slug
-          ? this.store.row
-          : undefined
+        : (() => {
+            const slug = String(this.values[isVersionQuery ? 1 : 0])
+
+            return isVersionQuery
+              ? this.store.rows.find(
+                  row => row.slug === slug && row.version_id === versionId,
+                )
+              : this.store.row?.slug === slug
+                ? this.store.row
+                : undefined
+          })()
 
       return Promise.resolve((row as T | undefined) ?? null)
     }
@@ -209,13 +222,24 @@ class MemoryDispatchNamespace {
 }
 
 const routes = makeSiteRuntimeRoutes({ sitesHost: 'sites.openagents.com' })
+const customHostnameRoutes = makeSiteRuntimeRoutes({
+  reservedHosts: new Set(['openagents.com', 'auth.openagents.com']),
+  resolveTenant: () =>
+    Effect.succeed({
+      hostname: 'brand.example.com',
+      status: 'active',
+      teamId: 'team_otec',
+    }),
+  sitesHost: 'sites.openagents.com',
+})
 
 const runRoute = (
   store: SiteRuntimeDbStore,
   request: Request,
   dispatch = new MemoryDispatchNamespace(),
+  runtimeRoutes = routes,
 ): Promise<Response> => {
-  const route = routes.routeSiteRuntimeRequest(request, {
+  const route = runtimeRoutes.routeSiteRuntimeRequest(request, {
     ARTIFACTS: new MemoryR2Bucket() as unknown as R2Bucket,
     OPENAGENTS_DB: siteRuntimeDb(store),
     SITES_DISPATCH: dispatch as unknown as DispatchNamespace,
@@ -272,6 +296,35 @@ describe('site runtime routes', () => {
   test('does not match non-sites hosts', () => {
     const route = routes.routeSiteRuntimeRequest(
       new Request('https://openagents.com/otec'),
+      {
+        ARTIFACTS: new MemoryR2Bucket() as unknown as R2Bucket,
+        OPENAGENTS_DB: siteRuntimeDb(new SiteRuntimeDbStore()),
+        SITES_DISPATCH:
+          new MemoryDispatchNamespace() as unknown as DispatchNamespace,
+      },
+    )
+
+    expect(route).toBeUndefined()
+  })
+
+  test('serves the active public Site for an active custom hostname tenant', async () => {
+    const response = await runRoute(
+      new SiteRuntimeDbStore(),
+      new Request('https://brand.example.com/'),
+      new MemoryDispatchNamespace(),
+      customHostnameRoutes,
+    )
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get('content-type')).toBe(
+      'text/html; charset=utf-8',
+    )
+    await expect(response.text()).resolves.toContain('<title>OTEC</title>')
+  })
+
+  test('does not claim reserved first-party hosts as custom hostnames', () => {
+    const route = customHostnameRoutes.routeSiteRuntimeRequest(
+      new Request('https://openagents.com/'),
       {
         ARTIFACTS: new MemoryR2Bucket() as unknown as R2Bucket,
         OPENAGENTS_DB: siteRuntimeDb(new SiteRuntimeDbStore()),

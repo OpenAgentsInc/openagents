@@ -245,6 +245,11 @@ describe('public product promises document', () => {
     // claim/list path at /api/tenant/hostnames that writes only pending rows;
     // live provisioning stays owner-gated and INERT default-OFF), without
     // flipping the promise (stays yellow), so green remains exactly 24.
+    // The 2026-06-29.1 custom-hostname rendering pass clears
+    // hostname_rendering_context_switch_not_wired for already-active custom
+    // hostname rows by resolving the host to a tenant team and serving that
+    // team's active public Site through the Sites runtime; DNS verification and
+    // SSL issuance remain blocked, so the promise STAYS yellow.
     // The 2026-06-20.20 training ablation one-delta harness pass clears the
     // ablation_harness_missing blocker on training.ablation_system.v1 while
     // eval reproduction and paid dispatch remain blocked, so green remains

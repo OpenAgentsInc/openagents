@@ -922,6 +922,7 @@ import { handleSiteReferralPayoutsPublicApi } from './site-referral-payout-publi
 import { makeD1SiteReferralPayoutReceiptStore } from './site-referral-payout-receipts'
 import { makeSiteReferralRoutes } from './site-referral-routes'
 import { PENDING_REFERRAL_COOKIE } from './site-referrals'
+import { SiteRuntimeStorageError } from './site-runtime'
 import { makeSiteRuntimeRoutes } from './site-runtime-routes'
 import { makeSitesOrchestrationRoutes } from './sites-orchestration-routes'
 import { readBillingCreditPackages } from './stripe-billing'
@@ -9636,6 +9637,22 @@ const imageGenerationRoutes = makeImageGenerationRoutes({
 })
 
 const siteRuntimeRoutes = makeSiteRuntimeRoutes({
+  reservedHosts: new Set(['openagents.com', 'auth.openagents.com']),
+  resolveTenant: (request: Request, env: WorkerBindings) =>
+    makeTenantCustomHostnames(
+      openAgentsDatabase(env),
+    )
+      .resolveTenantByHostname(request.headers.get('Host') ?? '')
+      .pipe(
+        Effect.catchTag('TenantCustomHostnameStorageError', error =>
+          Effect.fail(
+            new SiteRuntimeStorageError({
+              error,
+              operation: 'siteRuntime.customHostname.resolveTenant',
+            }),
+          ),
+        ),
+      ),
   sitesHost: 'sites.openagents.com',
 })
 

@@ -41,6 +41,7 @@ export type SiteRuntimeTarget =
 
 type SiteRuntimeDeploymentRow = Readonly<{
   site_id: string
+  team_id: string | null
   slug: string
   site_status: string
   access_mode: string
@@ -110,6 +111,7 @@ const readRuntimeDeployment = (
     db
       .prepare(
         `SELECT site_projects.id AS site_id,
+                site_projects.team_id,
                 site_projects.slug,
                 site_projects.status AS site_status,
                 site_projects.access_mode,
@@ -142,6 +144,49 @@ const readRuntimeDeployment = (
       .first<SiteRuntimeDeploymentRow>(),
   )
 
+const readRuntimeDeploymentByTeam = (
+  db: D1Database,
+  teamId: string,
+): Effect.Effect<SiteRuntimeDeploymentRow | null, SiteRuntimeStorageError> =>
+  d1Effect('siteRuntime.deployments.readActiveByTeam', () =>
+    db
+      .prepare(
+        `SELECT site_projects.id AS site_id,
+                site_projects.team_id,
+                site_projects.slug,
+                site_projects.status AS site_status,
+                site_projects.access_mode,
+                site_projects.visibility,
+                site_projects.active_deployment_id,
+                site_deployments.id AS deployment_id,
+                site_deployments.status AS deployment_status,
+                site_deployments.runtime_kind,
+                site_deployments.runtime_script_name,
+                site_deployments.dispatch_namespace,
+                site_deployments.external_deployment_id,
+                site_versions.id AS version_id,
+                site_versions.build_status,
+                site_versions.worker_module_r2_key,
+                site_versions.static_assets_manifest_json,
+                site_versions.d1_binding_name,
+                site_versions.r2_binding_name
+           FROM site_projects
+           LEFT JOIN site_deployments
+             ON site_deployments.id = site_projects.active_deployment_id
+            AND site_deployments.site_id = site_projects.id
+           LEFT JOIN site_versions
+             ON site_versions.id = site_deployments.version_id
+            AND site_versions.site_id = site_projects.id
+          WHERE site_projects.team_id = ?
+            AND site_projects.archived_at IS NULL
+          ORDER BY site_projects.updated_at DESC,
+                   site_projects.created_at DESC
+          LIMIT 1`,
+      )
+      .bind(teamId)
+      .first<SiteRuntimeDeploymentRow>(),
+  )
+
 const readRuntimeVersion = (
   db: D1Database,
   slug: string,
@@ -151,6 +196,7 @@ const readRuntimeVersion = (
     db
       .prepare(
         `SELECT site_projects.id AS site_id,
+                site_projects.team_id,
                 site_projects.slug,
                 site_projects.status AS site_status,
                 site_projects.access_mode,
@@ -384,6 +430,31 @@ const resolveVersionRuntimeTarget = (
     return resolveManifestAsset(row, candidatePaths)
   })
 
+const resolveRuntimeTargetByTeam = (
+  db: D1Database,
+  teamId: string,
+  candidatePaths: ReadonlyArray<string>,
+): Effect.Effect<SiteRuntimeTarget | null, SiteRuntimeStorageError> =>
+  Effect.gen(function* () {
+    const row = yield* readRuntimeDeploymentByTeam(db, teamId)
+
+    if (row === null) {
+      return null
+    }
+
+    const workerDeployment = workerDeploymentFromRow(row)
+
+    if (workerDeployment !== null) {
+      return workerDeployment
+    }
+
+    if (!isPublicActiveStaticRuntimeRow(row)) {
+      return null
+    }
+
+    return resolveManifestAsset(row, candidatePaths)
+  })
+
 const readArtifactObject = (
   artifacts: R2Bucket,
   asset: SiteRuntimeStaticAsset,
@@ -402,6 +473,10 @@ export class SiteRuntimeService extends Context.Service<
     ) => Effect.Effect<SiteRuntimeStaticAsset | null, SiteRuntimeStorageError>
     readonly resolveRuntimeTarget: (
       slug: string,
+      candidatePaths: ReadonlyArray<string>,
+    ) => Effect.Effect<SiteRuntimeTarget | null, SiteRuntimeStorageError>
+    readonly resolveRuntimeTargetByTeam: (
+      teamId: string,
       candidatePaths: ReadonlyArray<string>,
     ) => Effect.Effect<SiteRuntimeTarget | null, SiteRuntimeStorageError>
     readonly resolveVersionRuntimeTarget: (
@@ -423,6 +498,15 @@ export class SiteRuntimeService extends Context.Service<
       resolveRuntimeTarget: Effect.fn('SiteRuntimeService.resolveRuntimeTarget')(
         (slug, candidatePaths) =>
           resolveRuntimeTarget(openAgentsDatabase(env), slug, candidatePaths),
+      ),
+      resolveRuntimeTargetByTeam: Effect.fn(
+        'SiteRuntimeService.resolveRuntimeTargetByTeam',
+      )((teamId, candidatePaths) =>
+        resolveRuntimeTargetByTeam(
+          openAgentsDatabase(env),
+          teamId,
+          candidatePaths,
+        ),
       ),
       resolveVersionRuntimeTarget: Effect.fn(
         'SiteRuntimeService.resolveVersionRuntimeTarget',
