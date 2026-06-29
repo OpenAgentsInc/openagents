@@ -4105,10 +4105,12 @@ const requestSchemas = (): JsonSchema => ({
       'optOut',
       'publicSharing',
       'reportPath',
+      'blockerRefs',
+      'gates',
       'references',
     ],
     description:
-      'Canonical, code-accurate data-sharing terms for the free Khala API (#6296). Public-safe: terms text + bounded policy facts only — no secrets, account, or payment material.',
+      'Canonical, code-accurate data-sharing terms for the free Khala API (#6296/#7019). Public-safe: terms text, bounded policy facts, and explicit blocker/gate refs only — no secrets, account, prompt, trace, or payment material.',
     properties: {
       promiseId: {
         type: 'string',
@@ -4130,6 +4132,7 @@ const requestSchemas = (): JsonSchema => ({
         additionalProperties: false,
         required: [
           'capturedByDefault',
+          'defaultCaptureGate',
           'redacted',
           'defaultVisibility',
           'mayTrain',
@@ -4141,6 +4144,7 @@ const requestSchemas = (): JsonSchema => ({
           'Machine-checkable policy facts mirroring the runtime capture seams.',
         properties: {
           capturedByDefault: { type: 'boolean' },
+          defaultCaptureGate: { type: 'string', enum: ['owner_gated'] },
           redacted: { type: 'boolean' },
           defaultVisibility: { type: 'string', enum: ['owner_only'] },
           mayTrain: { type: 'boolean' },
@@ -4152,6 +4156,54 @@ const requestSchemas = (): JsonSchema => ({
       optOut: { type: 'string' },
       publicSharing: { type: 'string' },
       reportPath: { type: 'string' },
+      blockerRefs: {
+        type: 'array',
+        items: { type: 'string' },
+        description:
+          'Public-safe blocker refs that keep the related data/privacy promises yellow.',
+      },
+      gates: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['defaultCapture', 'paidPrivacyOptOut', 'traceRewards'],
+        description:
+          'Public-safe gate summary so agents do not infer green/live behavior from policy terms alone.',
+        properties: {
+          defaultCapture: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['state', 'envFlag', 'blockerRef'],
+            properties: {
+              state: { type: 'string', enum: ['owner_gated'] },
+              envFlag: {
+                type: 'string',
+                enum: ['KHALA_FREE_TIER_TRACE_CAPTURE_DEFAULT'],
+              },
+              blockerRef: { type: 'string' },
+            },
+          },
+          paidPrivacyOptOut: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['state', 'failClosed', 'blockerRefs'],
+            properties: {
+              state: { type: 'string', enum: ['wired_yellow'] },
+              failClosed: { type: 'boolean' },
+              blockerRefs: { type: 'array', items: { type: 'string' } },
+            },
+          },
+          traceRewards: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['state', 'payoutClaimAllowed', 'blockerRef'],
+            properties: {
+              state: { type: 'string', enum: ['inert'] },
+              payoutClaimAllowed: { type: 'boolean' },
+              blockerRef: { type: 'string' },
+            },
+          },
+        },
+      },
       references: { type: 'array', items: { type: 'string' } },
     },
   },
@@ -5613,7 +5665,7 @@ const paths = (): JsonSchema => ({
       operationId: 'getFreeTierDataSharingDisclosure',
       summary: 'Read free-API data-sharing terms',
       description:
-        'Returns the canonical, code-accurate data-sharing terms for the free Khala API so agents and users can discover them over the API surface, not only in human UI. The honest terms: free API usage is captured by default as REDACTED, PRIVATE (owner_only) traces that may be used to improve and train OpenAgents models; paying for privacy (or running confidential compute) opts you OUT of capture (fail-closed to not-captured); public sharing of a captured trace is owner opt-in only; and being captured grants NO payout or settlement (the data-market reward marker is inert and owner-gated). The same disclosure object is embedded in the POST /api/keys/free mint response. Read-only, no auth, no secrets.',
+        'Returns the canonical, code-accurate data-sharing terms for the free Khala API so agents and users can discover them over the API surface, not only in human UI. The honest terms: free API usage is captured by default when the owner-gated production capture flag is armed, as REDACTED, PRIVATE (owner_only) traces that may be used to improve and train OpenAgents models; paying for privacy (or running confidential compute) opts you OUT of capture (fail-closed to not-captured); public sharing of a captured trace is owner opt-in only; and being captured grants NO payout or settlement (the data-market reward marker is inert and owner-gated). The same disclosure object is embedded in the POST /api/keys/free mint response. Read-only, no auth, no secrets.',
       tags: ['Public Proof', 'Agents'],
       security: publicRead,
       responses: {

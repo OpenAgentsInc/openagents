@@ -36,20 +36,22 @@ export const FREE_TIER_DATA_SHARING_PROMISE_ID =
 
 // Disclosure version. Bump when the TERMS text changes (not on unrelated copy
 // edits). Surfaces echo this so a caller/agent can pin which terms they saw.
-export const FREE_TIER_DATA_SHARING_DISCLOSURE_VERSION = '2026-06-25.1' as const
+export const FREE_TIER_DATA_SHARING_DISCLOSURE_VERSION = '2026-06-29.1' as const
 
 // Public, human-readable summary line. Intentionally short and quotable; the
 // full clause list carries the precise terms.
 export const FREE_TIER_DATA_SHARING_SUMMARY: string =
-  'Free API usage is captured by default as redacted, private-by-default traces ' +
-  'that may be used to improve and train OpenAgents models. Pay for privacy ' +
-  '(or use confidential compute) to opt out of capture. Public sharing of a ' +
-  'captured trace is opt-in only.'
+  'Free API usage is captured by default when the owner-gated production ' +
+  'capture flag is armed, as redacted, private-by-default traces that may be ' +
+  'used to improve and train OpenAgents models. Pay for privacy (or use ' +
+  'confidential compute) to opt out of capture. Public sharing of a captured ' +
+  'trace is opt-in only.'
 
 // The precise, code-accurate terms, one bounded clause each. Public-safe: no
 // secrets, no account material, no prompts.
 export const FREE_TIER_DATA_SHARING_TERMS: ReadonlyArray<string> = [
-  'Free tier: when you use the free Khala API (openagents/khala) without paying for privacy, your request/response traffic is captured by default.',
+  'Free tier: when you use the free Khala API (openagents/khala) without paying for privacy and the owner-gated production capture flag is armed, your request/response traffic is captured by default.',
+  'Current gate: default-on production capture remains owner-gated by KHALA_FREE_TIER_TRACE_CAPTURE_DEFAULT; until that gate is armed, only explicitly opted-in trace emission is captured.',
   'Redacted: captured traffic is scrubbed for secrets, credentials, wallet/payment material, and personal data before storage, with a public-safety backstop that drops anything residual.',
   'Private by default: an auto-captured trace is stored owner_only — it is not in any public feed and is not reachable by link until you explicitly choose to share it.',
   'May be used to improve/train: captured free-tier data may be used to improve and train the next generation of OpenAgents models.',
@@ -64,6 +66,9 @@ export type FreeTierDataSharingPolicy = Readonly<{
   // Free-tier traffic is captured by default (subject to the deployment's
   // capture flag being armed; the POLICY default is capture-on for free tier).
   capturedByDefault: true
+  // The production default-capture flip is still owner-gated while the promise
+  // remains yellow.
+  defaultCaptureGate: 'owner_gated'
   // Captured traffic is redacted before storage.
   redacted: true
   // Default stored visibility of an auto-captured trace.
@@ -80,6 +85,7 @@ export type FreeTierDataSharingPolicy = Readonly<{
 
 export const FREE_TIER_DATA_SHARING_POLICY: FreeTierDataSharingPolicy = {
   capturedByDefault: true,
+  defaultCaptureGate: 'owner_gated',
   redacted: true,
   defaultVisibility: 'owner_only',
   mayTrain: true,
@@ -87,6 +93,15 @@ export const FREE_TIER_DATA_SHARING_POLICY: FreeTierDataSharingPolicy = {
   publicSharingOptIn: true,
   rewardInert: true,
 }
+
+export const FREE_TIER_DATA_SHARING_BLOCKER_REFS: ReadonlyArray<string> = [
+  'blocker.product_promises.free_tier_capture_default_owner_gated',
+  'blocker.product_promises.disclosure_copy_owner_signoff_pending',
+  'blocker.product_promises.trace_capture_public_disclosure_alignment_required',
+  'blocker.product_promises.trace_capture_reward_marker_inert',
+  'blocker.product_promises.paid_privacy_owner_signoff_pending',
+  'blocker.product_promises.paid_khala_business_loop_not_green',
+] as const
 
 // The canonical disclosure object surfaced to humans and agents. Stable shape:
 // version + summary + ordered terms + bounded policy facts + reference links.
@@ -102,6 +117,30 @@ export type FreeTierDataSharingDisclosure = Readonly<{
   publicSharing: string
   // Where to report a disclosure mismatch (Forum-first, per repo policy).
   reportPath: string
+  // Explicit blockers that keep the related data/privacy promises yellow.
+  blockerRefs: ReadonlyArray<string>
+  // Public-safe gate summary so agents do not infer green/live behavior from
+  // the policy terms alone.
+  gates: Readonly<{
+    defaultCapture: Readonly<{
+      state: 'owner_gated'
+      envFlag: 'KHALA_FREE_TIER_TRACE_CAPTURE_DEFAULT'
+      blockerRef: 'blocker.product_promises.free_tier_capture_default_owner_gated'
+    }>
+    paidPrivacyOptOut: Readonly<{
+      state: 'wired_yellow'
+      failClosed: true
+      blockerRefs: ReadonlyArray<
+        | 'blocker.product_promises.paid_privacy_owner_signoff_pending'
+        | 'blocker.product_promises.paid_khala_business_loop_not_green'
+      >
+    }>
+    traceRewards: Readonly<{
+      state: 'inert'
+      payoutClaimAllowed: false
+      blockerRef: 'blocker.product_promises.trace_capture_reward_marker_inert'
+    }>
+  }>
   // Public references for the policy and its source.
   references: ReadonlyArray<string>
 }>
@@ -122,6 +161,29 @@ export const freeTierDataSharingDisclosure =
     publicSharing:
       'Auto-captured traces are private (owner_only). A trace is shared publicly only when its owner explicitly opts it into public visibility.',
     reportPath: FREE_TIER_DATA_SHARING_REPORT_PATH,
+    blockerRefs: FREE_TIER_DATA_SHARING_BLOCKER_REFS,
+    gates: {
+      defaultCapture: {
+        state: 'owner_gated',
+        envFlag: 'KHALA_FREE_TIER_TRACE_CAPTURE_DEFAULT',
+        blockerRef:
+          'blocker.product_promises.free_tier_capture_default_owner_gated',
+      },
+      paidPrivacyOptOut: {
+        state: 'wired_yellow',
+        failClosed: true,
+        blockerRefs: [
+          'blocker.product_promises.paid_privacy_owner_signoff_pending',
+          'blocker.product_promises.paid_khala_business_loop_not_green',
+        ],
+      },
+      traceRewards: {
+        state: 'inert',
+        payoutClaimAllowed: false,
+        blockerRef:
+          'blocker.product_promises.trace_capture_reward_marker_inert',
+      },
+    },
     references: [
       'https://openagents.com/docs/product-promises',
       'https://openagents.com/api/public/product-promises',
