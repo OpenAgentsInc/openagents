@@ -145,6 +145,7 @@ const buildFleetStatusSnapshot = async (
   db: D1Database,
   nowIso: string,
   scope: OperatorFleetReadScope,
+  schemaVersion: 'operator.fleet_status.v1' | 'operator.fleet_state.v1',
 ): Promise<unknown> => {
   const registrationOwnerClause =
     scope.kind === 'agent' ? 'AND owner_agent_user_id = ?' : ''
@@ -343,7 +344,7 @@ const buildFleetStatusSnapshot = async (
   const glmTotal = uniqueGlmReplicas.size
 
   return {
-    schemaVersion: 'operator.fleet_status.v1',
+    schemaVersion,
     generatedAt: nowIso,
     cache: {
       maxAgeSeconds: 10,
@@ -509,8 +510,8 @@ export const makeOperatorFleetStatusRoutes = <
       return methodNotAllowed(['GET'])
     }
 
-    const allowAgentToken =
-      new URL(request.url).pathname === OPERATOR_FLEET_STATE_PATH
+    const pathname = new URL(request.url).pathname
+    const allowAgentToken = pathname === OPERATOR_FLEET_STATE_PATH
     const scope = await authorizeFleetRead(
       dependencies,
       request,
@@ -524,8 +525,8 @@ export const makeOperatorFleetStatusRoutes = <
     const nowIso = (dependencies.currentIsoTimestamp ?? currentIsoTimestamp)()
     const cacheKey =
       scope.kind === 'admin'
-        ? 'operator:fleet:state:v1:admin'
-        : `operator:fleet:state:v1:agent:${scope.userId}`
+        ? `operator:fleet:${pathname}:v1:admin`
+        : `operator:fleet:${pathname}:v1:agent:${scope.userId}`
     const cached = snapshotCache.get(cacheKey)
     const nowMs = Date.parse(nowIso)
     if (
@@ -545,6 +546,9 @@ export const makeOperatorFleetStatusRoutes = <
       openAgentsDatabase(env),
       nowIso,
       scope,
+      pathname === OPERATOR_FLEET_STATE_PATH
+        ? 'operator.fleet_state.v1'
+        : 'operator.fleet_status.v1',
     )
     if (Number.isFinite(nowMs)) {
       snapshotCache.set(cacheKey, {

@@ -839,6 +839,14 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
           'Operator-only Nexus/Pylon receipt detail with redacted operational status and no raw payment material or wallet secrets.',
       },
       {
+        id: 'operator_fleet_state',
+        href: 'https://openagents.com/api/operator/fleet/state',
+        method: 'GET',
+        auth: 'admin_api_token_or_registered_agent_token',
+        description:
+          'Operator and owner-scoped registered-agent fleet observability read: active Pylon assignments with elapsed phase fields, redacted account status/reset/concurrency, supervisor capacity, recent public-safe failure reason codes, token pace, watchdog, and GLM readiness. Read-only; grants no dispatch, spend, payout, settlement, provider credential, raw prompt, or raw log authority.',
+      },
+      {
         id: 'operator_pylon_assignment_create',
         href: 'https://openagents.com/api/operator/pylons/assignments',
         method: 'POST',

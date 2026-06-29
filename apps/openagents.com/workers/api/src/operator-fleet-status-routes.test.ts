@@ -254,7 +254,7 @@ describe('operator fleet status route', () => {
           },
         ],
       },
-      schemaVersion: 'operator.fleet_status.v1',
+      schemaVersion: 'operator.fleet_state.v1',
       supervisor: {
         availableCodexSlots: 3,
         desiredCodexSlots: 2,
@@ -306,5 +306,34 @@ describe('operator fleet status route', () => {
 
     expect(response.status).toBe(401)
     expect(response.headers.get('cache-control')).toBe('no-store')
+  })
+
+  test('keeps state and legacy status snapshots separately cached', async () => {
+    clearOperatorFleetStatusCacheForTests()
+    const log: QueryLog = []
+    const routes = makeOperatorFleetStatusRoutes({
+      currentIsoTimestamp: () => '2026-06-27T18:41:00.000Z',
+      requireAdminApiToken: async () => true,
+    })
+    const env = { OPENAGENTS_DB: fakeDb(log) }
+
+    const status = await routes.handleOperatorFleetStatusApi(
+      request('GET', '/api/operator/fleet/status'),
+      env,
+    )
+    const state = await routes.handleOperatorFleetStatusApi(
+      request('GET', '/api/operator/fleet/state'),
+      env,
+    )
+
+    await expect(status.json()).resolves.toMatchObject({
+      schemaVersion: 'operator.fleet_status.v1',
+    })
+    await expect(state.json()).resolves.toMatchObject({
+      schemaVersion: 'operator.fleet_state.v1',
+    })
+    expect(status.headers.get('x-openagents-cache')).toBe('miss')
+    expect(state.headers.get('x-openagents-cache')).toBe('miss')
+    expect(log.length).toBe(18)
   })
 })

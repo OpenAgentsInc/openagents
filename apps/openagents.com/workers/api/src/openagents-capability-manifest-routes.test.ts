@@ -363,6 +363,12 @@ describe('OpenAgents capability manifest route', () => {
           href: 'https://openagents.com/api/operator/agent-proposals',
           id: 'operator_agent_proposals',
         }),
+        expect.objectContaining({
+          auth: 'admin_api_token_or_registered_agent_token',
+          href: 'https://openagents.com/api/operator/fleet/state',
+          id: 'operator_fleet_state',
+          method: 'GET',
+        }),
       ]),
     )
     expect(body.actions).toEqual(
