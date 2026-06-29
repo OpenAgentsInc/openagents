@@ -206,3 +206,133 @@ the dispatch/claim path. That is how you get to tens of concurrent codex.
   + TTL-fix live; Artanis fix merged (awaiting deploy). Next: make the runner pool
   continuous + standing, fix the supervisor backoff (#6987), add D1-read
   resilience, then offload to archlinux/bertha for true horizontal scale.
+
+## Addendum: 2026-06-29 open-queue triage + immediate burn plan
+
+Snapshot taken from live GitHub state after `main` was clean at
+`b6ddbab062755737eacd8adbcc56c18bb1504b18`: 42 open issues and 7 open PRs. The
+goal for the next two hours is not "perfect architecture first"; it is MAX Khala
+token usage from Codex workers, while landing the architecture in parallel.
+
+### Live action already started
+
+At `2026-06-29T03:13Z`, start one live burn session from current `main` using the
+standing Pylon token and `PYLON_HOME=$HOME/.pylon-fable`:
+
+- 12 pure executor loops:
+  `bun apps/pylon/src/index.ts assignment run-no-spend --json`
+- 1 dispatcher:
+  `bash apps/pylon/scripts/codex-supervisor/codex-supervisor.sh`
+- unset `OPENAI_API_KEY` and `CODEX_API_KEY`
+- overrides: `SUP_MAX_SLOTS=20`, `SUP_PER_ACCOUNT=5`,
+  `SUP_BACKOFF_MIN=2`, `SUP_BACKOFF_MAX=30`,
+  `SUP_FAILURE_BACKOFF_ESCALATE_THRESHOLD=99`
+
+First live count after startup was:
+
+- `codex_exec=15`
+- `run_no_spend=27`
+- `khala_request=15`
+
+Keep that session alive unless it is demonstrably hurting the fleet. Do not
+reflex-restart it. Watch counts in the OpenAgents desktop Coding view and in
+`$HOME/.codex-supervisor/live-burn.log`.
+
+### Immediate operating loop
+
+1. Keep a single dispatcher and many executors. Dispatch creates leases;
+   `assignment run-no-spend` executes them. More executors are useful only when
+   there are leases or stale leases to close out.
+2. If `codex_exec` falls below 10 while open issues remain, first inspect exact
+   recent failures in `live-burn.log`, `supervisor.log`, and the desktop Coding
+   view. Do not infer a ceiling.
+3. If runner loops are alive but `khala_request` is 0, fix/restart only the
+   dispatcher path. Earlier direct execution proved the executor pool works.
+4. If `khala_request` is high but `codex_exec` is low, the gate is accepting work
+   that is not executing; increase pure `run-no-spend` loops or clear stale lease
+   closeout, not one-off dispatch batches.
+5. Keep Vertex/GLM/MirrorCode burn bounded until Codex stays saturated. Codex is
+   still the main token engine.
+
+### PR triage for max fanout
+
+P0, review and merge first:
+
+- [#6995](https://github.com/OpenAgentsInc/openagents/pull/6995)
+  `feat(operator): add owner-scoped fleet state`. This is the "make it visible"
+  PR for [#6958](https://github.com/OpenAgentsInc/openagents/issues/6958). It
+  adds `/api/operator/fleet/state`, active assignment progress, supervisor slot
+  state, and Codex account health/rate-limit details. After it lands, wire
+  `clients/openagents-desktop` to this endpoint so the desktop shows both local
+  process truth and server fleet truth.
+- [#6994](https://github.com/OpenAgentsInc/openagents/pull/6994)
+  `fix(operator): accept accountRefHash for account resets`. This unblocks part
+  of [#6637](https://github.com/OpenAgentsInc/openagents/issues/6637), which is
+  needed to know which accounts are limited and when resets are possible.
+
+P0, build/land immediately if no PR exists:
+
+- [#6987](https://github.com/OpenAgentsInc/openagents/issues/6987)
+  supervisor stale-claim GC + fast retry. This is still the main fanout bug.
+  Treat transient `503`/`500`/D1 read errors and contention-like `409`s as fast
+  retry with jitter, not 15-300 second slot idles. Never claim epics or
+  `standing-task` issues. On startup, GC claims that have no live assignment or
+  active local run.
+- Durable runner pool. There is still no open PR dedicated to the thing that
+  actually moved `codex_exec` up: a supervised `assignment run-no-spend` pool.
+  Make it a sibling to the supervisor, for example
+  `apps/pylon/scripts/codex-supervisor/runner-pool.sh`, with launchd/systemd
+  snippets and desktop-visible health.
+
+P1, merge after the P0 path is stable:
+
+- [#6993](https://github.com/OpenAgentsInc/openagents/pull/6993) for VMQ
+  PR fast-forward planning. This reduces PR closeout drag once workers produce
+  branches.
+- [#6990](https://github.com/OpenAgentsInc/openagents/pull/6990) and
+  [#6991](https://github.com/OpenAgentsInc/openagents/pull/6991) only after
+  Codex remains saturated and D1 is healthy. They can add useful $0 burn, but
+  unbounded burn already starved the Codex path once.
+
+### Desktop visibility requirements
+
+The desktop should be the scoreboard during this burn. Add or keep these as
+top-screen counters:
+
+- active `codex exec`
+- active `assignment run-no-spend`
+- active `khala request`
+- supervisor desired slots
+- open issue count
+- runner pool configured/running/crashed
+- stale claims and recent closeouts
+- per-account ready/limited/revoked/rate-limited status
+- last exact dispatch/execution failure reason
+
+When #6995 lands, desktop should blend:
+
+- local process truth from `clients/openagents-desktop/src/shared/coding-status.ts`
+- server fleet truth from `/api/operator/fleet/state`
+- Codex session messages from local rollout JSONL, clickable by active session
+
+### Do not do during this two-hour burn
+
+- Do not wait on docs before keeping workers busy.
+- Do not run broad pre-push gates before delegating obvious open issues.
+- Do not fire hundreds of one-off `khala request` processes.
+- Do not run unbounded Vertex/GLM/MirrorCode burn while Codex is underfilled.
+- Do not restart live Codex turns just to tidy the process table.
+- Do not treat a stale local process list as the whole truth once the fleet
+  state endpoint exists.
+
+### Acceptance for the next handoff
+
+- Sustained `codex_exec >= 12` for at least 30 minutes, with no increasing stale
+  claim count.
+- Desktop shows active workers and lets the owner click each active Codex
+  session to read messages.
+- #6995 and #6994 are either merged or rejected with exact failing test output.
+- #6987 has a PR, or the next agent has a precise failing command/log proving
+  why it could not be started.
+- Durable runner pool work is either landed or captured as the next P0 issue/PR
+  with exact launch commands that reproduced the live `codex_exec` jump.
