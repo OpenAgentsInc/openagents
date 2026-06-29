@@ -69,13 +69,9 @@ describe("conflict-marker guard", () => {
     expect(middlePattern.test(`${middle} trailing`)).toBe(false);
   });
 
-  test(
-    "the real repo source trees are free of conflict markers",
-    () => {
-      const findings = scanForConflictMarkers();
+  test("the real repo source trees are free of conflict markers", () => {
+    const findings = scanForConflictMarkers();
 
-      expect(findings.map((f) => `${f.path}:${f.lineNumber}`)).toEqual([]);
-    },
-    30_000,
-  );
+    expect(findings.map((f) => `${f.path}:${f.lineNumber}`)).toEqual([]);
+  });
 });
