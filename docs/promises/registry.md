@@ -1,5 +1,16 @@
 # Promise Registry
 
+> Registry `2026-06-29.3` is a standing current-main sweep after #7000,
+> #7004, #7005, and #7007 and flips NO promise state. The #7000 API type-only
+> D1 import fix is implementation hygiene with no claim surface change. The
+> Artanis public-agent fleet map task board rebuild is source-level UI progress
+> only and does not green unattended labor, spend, settlement, or default public
+> world guarantees. The Effect usage audit records architecture debt and
+> migration targets without widening the Effect workspace invariant. The Codex
+> tool design study remains evidence for the already-scoped Codex/Probe/Pylon
+> runtime direction and does not authorize a new OpenAgents-native terminal tool
+> runtime claim.
+>
 > Registry `2026-06-29.2` is a current-main refresh after #6997, #6999,
 > #7001, #7002, and #7006 and flips NO promise state. It records the
 > terminal-agent current-state audit and Codex tool-layer study as evidence for
@@ -66,17 +77,18 @@
 > Current machine-readable source of truth: `/api/public/product-promises` is
 > generated from
 > [`product-promises.ts`](../../apps/openagents.com/workers/api/src/product-promises.ts),
-> which currently advertises registry `2026-06-29.2` with
+> which currently advertises registry `2026-06-29.3` with
 > `lastUpdated: "2026-06-29"`. This narrative document records the same
-> top-line 2026-06-29.2 promise decisions above, plus historical reconciliation
+> top-line 2026-06-29.3 promise decisions above, plus historical reconciliation
 > context below; when in doubt, agents and reviewers should defer to the
 > machine-readable registry and include its version in mismatch reports.
 >
 > `2026-06-29` standing sweep: recent mainline accepted-outcome economics,
 > Tassadar CPU-transform, referral, small-model proxy, WASM plugin, Verse scene,
 > native email, marketplace, metrics, terminal-agent audit, supervisor
-> replenishment, GLM failover, Apple FM sidecar, and operator-safety merges were
-> checked against the current `2026-06-29.2` registry header. This pass records
+> replenishment, GLM failover, Apple FM sidecar, Artanis public-agent UI,
+> Effect-architecture audit, Codex tool-study, and operator-safety merges were
+> checked against the current `2026-06-29.3` registry header. This pass records
 > no additional promise state flips and no new green claims beyond the already
 > source-recorded scoped transitions; red/planned/yellow records keep their
 > owner-signed, receipt-first green gates.
