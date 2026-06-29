@@ -33,6 +33,10 @@ const tickReadiness = (
 ): ArtanisResponderTickReadinessProjection => ({
   authorityBoundary:
     'Read-only projection over Artanis responder scheduled tick receipts.',
+  blockerRefs: [
+    ARTANIS_RESPONDER_EXTERNAL_FLOW_BLOCKER,
+    ARTANIS_RESPONDER_TEN_TICKS_BLOCKER,
+  ],
   externalContributorAnsweredWithinTickWindow: false,
   kind: 'artanis_pylon_support_responder_tick_readiness',
   notes: [],
@@ -47,6 +51,10 @@ const tickReadiness = (
   tickTarget: 10,
   tickWindows: [],
   unattendedResponderTicksProven: false,
+  unmetBlockerRefs: [
+    ARTANIS_RESPONDER_EXTERNAL_FLOW_BLOCKER,
+    ARTANIS_RESPONDER_TEN_TICKS_BLOCKER,
+  ],
   ...overrides,
 })
 

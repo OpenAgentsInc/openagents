@@ -689,7 +689,9 @@ describe('#6654 Artanis RLM composition', () => {
     expect(result.toolInvocations).toEqual([])
     expect(calls).toEqual([])
     expect(requests).toHaveLength(4)
-    expect(requests.every(request => request.tools === undefined)).toBe(true)
+    expect(
+      requests.every(request => request.passthroughParams['tools'] === undefined),
+    ).toBe(true)
   })
 })
 
