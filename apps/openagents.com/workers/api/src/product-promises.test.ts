@@ -440,10 +440,31 @@ describe('public product promises document', () => {
       /latest stays 0\.2\.5|only published, installable Pylon|release candidate, not stable 0\.3\.0|Pylon v1\.0 is present in the monorepo as a release candidate/i,
     )
     expect(currentCopy).toContain('Pylon v1.0 has a stable source cut')
-    expect(currentCopy).toContain('Registry 2026-06-29.2')
+    expect(currentCopy).toContain('Registry 2026-06-29.3')
     expect(currentCopy).toContain('flips NO promise state')
     expect(currentCopy).toContain('Khala Desktop now carries source-level')
     expect(currentCopy).toContain('maxStalenessSeconds:0')
+    const orangeCheckPromise = decoded.promises.find(
+      promise => promise.promiseId === 'identity.orange_check_forum_signal.v1',
+    )
+    expect(orangeCheckPromise).toEqual(
+      expect.objectContaining({
+        state: 'yellow',
+        blockerRefs: [
+          'blocker.product_promises.orange_check_live_purchase_receipt_missing',
+          'blocker.product_promises.orange_check_owner_signed_green_transition_missing',
+        ],
+      }),
+    )
+    expect(orangeCheckPromise?.blockerRefs).not.toContain(
+      'blocker.product_promises.orange_check_nostr_export_missing',
+    )
+    expect(orangeCheckPromise?.verification).toContain(
+      'dereferenceable public-safe receipt',
+    )
+    expect(orangeCheckPromise?.verification).toContain(
+      'receipt-first owner-signed or delegated green transition',
+    )
     const codexSuccessorPromise = decoded.promises.find(
       promise => promise.promiseId === 'autopilot.codex_probe_pylon_successor.v1',
     )
