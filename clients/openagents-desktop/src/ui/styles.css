@@ -1,14 +1,134 @@
 :root {
-  color-scheme: light dark;
-  background: Canvas;
+  color-scheme: dark;
+  background: #000;
+  color: #fff;
+  font-family:
+    "Berkeley Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
+}
+
+@font-face {
+  font-family: "Berkeley Mono";
+  src: url("./fonts/BerkeleyMono-Regular.woff2") format("woff2");
+  font-display: swap;
+  font-style: normal;
+  font-weight: 400;
+}
+
+@font-face {
+  font-family: "Berkeley Mono";
+  src: url("./fonts/BerkeleyMono-Bold.woff2") format("woff2");
+  font-display: swap;
+  font-style: normal;
+  font-weight: 700;
 }
 
 * {
   box-sizing: border-box;
 }
 
+html {
+  min-height: 100%;
+  background: #000;
+}
+
 body {
   min-height: 100vh;
   margin: 0;
-  background: Canvas;
+  overflow: hidden;
+  background: #000;
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+}
+
+.openagents-shell {
+  position: relative;
+  display: grid;
+  min-height: 100vh;
+  min-height: 100dvh;
+  overflow: hidden;
+  background: #000;
+  isolation: isolate;
+}
+
+.openagents-scene {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: #000;
+}
+
+.openagents-scene::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(
+      ellipse 68% 58% at 50% 54%,
+      rgba(0, 0, 0, 0.06) 0%,
+      rgba(0, 0, 0, 0.16) 36%,
+      rgba(0, 0, 0, 0.56) 72%,
+      rgba(0, 0, 0, 0.92) 100%
+    ),
+    linear-gradient(180deg, rgba(0, 0, 0, 0.24), rgba(0, 0, 0, 0.08));
+}
+
+.openagents-wordmark {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding: 48px;
+  pointer-events: none;
+  text-align: center;
+}
+
+.openagents-wordmark h1 {
+  margin: 0;
+  color: #fff;
+  font-size: 7.25rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  line-height: 0.95;
+  text-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.1),
+    0 18px 72px rgba(0, 0, 0, 0.74);
+  text-wrap: balance;
+}
+
+@media (max-width: 900px) {
+  .openagents-wordmark {
+    padding: 40px;
+  }
+
+  .openagents-wordmark h1 {
+    font-size: 5.75rem;
+  }
+}
+
+@media (max-width: 560px) {
+  .openagents-wordmark {
+    padding: 28px;
+  }
+
+  .openagents-wordmark h1 {
+    font-size: 4rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    scroll-behavior: auto !important;
+    transition-duration: 1ms !important;
+  }
 }

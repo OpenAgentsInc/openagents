@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test"
 import config from "../electrobun.config.js"
 
 describe("openagents desktop app shell", () => {
-  test("registers the blank OpenAgents desktop view", () => {
+  test("registers the OpenAgents desktop view", () => {
     expect(config.app).toMatchObject({
       identifier: "com.openagents.desktop",
       name: "OpenAgents",
@@ -14,6 +14,7 @@ describe("openagents desktop app shell", () => {
       entrypoint: "resources/ui/main.js",
     })
     expect(config.build.copy).toMatchObject({
+      "resources/ui/main.css": "views/openagents-desktop/main.css",
       "src/ui/index.html": "views/openagents-desktop/index.html",
     })
   })

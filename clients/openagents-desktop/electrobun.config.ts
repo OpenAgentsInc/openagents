@@ -14,6 +14,11 @@ export default {
       },
     },
     copy: {
+      "resources/ui/main.css": "views/openagents-desktop/main.css",
+      "src/ui/fonts/BerkeleyMono-Bold.woff2":
+        "views/openagents-desktop/fonts/BerkeleyMono-Bold.woff2",
+      "src/ui/fonts/BerkeleyMono-Regular.woff2":
+        "views/openagents-desktop/fonts/BerkeleyMono-Regular.woff2",
       "src/ui/index.html": "views/openagents-desktop/index.html",
     },
   },

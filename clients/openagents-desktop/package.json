@@ -12,9 +12,13 @@
     "verify": "bun run typecheck && bun test tests/*.test.ts && bun run build:ui && bun build src/bun/index.ts --outdir /tmp/openagents-desktop-bun-build --target bun"
   },
   "dependencies": {
-    "electrobun": "1.18.1"
+    "@openagentsinc/three-effect": "github:OpenAgentsInc/three-effect#b3bdc2a",
+    "effect": "catalog:",
+    "electrobun": "1.18.1",
+    "three": "0.184.0"
   },
   "devDependencies": {
+    "@types/three": "0.184.0",
     "bun-types": "^1.0.0",
     "typescript": "catalog:"
   }
