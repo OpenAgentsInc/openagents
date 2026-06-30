@@ -778,7 +778,7 @@ function patchPermission(resources: ReadonlyArray<string>, context: KhalaToolExe
     authorityMode: "local",
     publicSafety: "private",
     resources: [...resources],
-    saveScope: "once",
+    saveScope: "session",
     sessionId: context.invocation.sessionId,
     toolCallId: context.invocation.id,
     toolName: "apply_patch",

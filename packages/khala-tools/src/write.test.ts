@@ -5,6 +5,7 @@ import { join } from "node:path"
 import { describe, expect, test } from "bun:test"
 import { Effect } from "effect"
 import {
+  allowAllKhalaPermissionService,
   createWriteTool,
   denyAllKhalaPermissionService,
   executeKhalaTool,
@@ -21,7 +22,7 @@ async function runWrite(workspace: string, args: Readonly<Record<string, unknown
     executeKhalaTool(
       makeKhalaToolRegistry([createWriteTool()]),
       { arguments: args, id: "call_1", name: "write", sessionId: "s1" },
-      makeKhalaToolServices({ workingDirectory: workspace }),
+      makeKhalaToolServices({ permission: allowAllKhalaPermissionService, workingDirectory: workspace }),
     ),
   )
 }

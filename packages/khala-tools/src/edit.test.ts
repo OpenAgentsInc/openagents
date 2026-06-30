@@ -5,6 +5,7 @@ import { join } from "node:path"
 import { describe, expect, test } from "bun:test"
 import { Effect } from "effect"
 import {
+  allowAllKhalaPermissionService,
   createEditTool,
   denyAllKhalaPermissionService,
   executeKhalaTool,
@@ -25,7 +26,7 @@ async function runEdit(
     executeKhalaTool(
       makeKhalaToolRegistry([tool]),
       { arguments: args, id: `call_${Math.random()}`, name: "edit", sessionId: "s1" },
-      makeKhalaToolServices({ workingDirectory: workspace }),
+      makeKhalaToolServices({ permission: allowAllKhalaPermissionService, workingDirectory: workspace }),
     ),
   )
 }

@@ -4,6 +4,7 @@ import { join } from "node:path"
 import { describe, expect, test } from "bun:test"
 import { Effect } from "effect"
 import {
+  allowAllKhalaPermissionService,
   createExecCommandTool,
   createWriteStdinTool,
   executeKhalaTool,
@@ -20,7 +21,7 @@ async function startSession(workspace: string, cmd = "cat", sessionId = "s1") {
     executeKhalaTool(
       makeKhalaToolRegistry([createExecCommandTool()]),
       { arguments: { cmd, tty: true, yield_time_ms: 20 }, id: "call_exec", name: "exec_command", sessionId },
-      makeKhalaToolServices({ workingDirectory: workspace }),
+      makeKhalaToolServices({ permission: allowAllKhalaPermissionService, workingDirectory: workspace }),
     ),
   )
 }
@@ -34,7 +35,7 @@ async function writeStdin(
     executeKhalaTool(
       makeKhalaToolRegistry([createWriteStdinTool()]),
       { arguments: args, id: "call_stdin", name: "write_stdin", sessionId },
-      makeKhalaToolServices({ workingDirectory: workspace }),
+      makeKhalaToolServices({ permission: allowAllKhalaPermissionService, workingDirectory: workspace }),
     ),
   )
 }

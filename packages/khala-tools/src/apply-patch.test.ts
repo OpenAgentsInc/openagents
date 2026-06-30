@@ -4,6 +4,7 @@ import { join } from "node:path"
 import { describe, expect, test } from "bun:test"
 import { Effect } from "effect"
 import {
+  allowAllKhalaPermissionService,
   createApplyPatchTool,
   executeKhalaTool,
   makeKhalaToolRegistry,
@@ -27,7 +28,7 @@ async function runPatch(
       makeKhalaToolRegistry([createApplyPatchTool(options)]),
       { arguments: { patch }, id: "call_1", name: "apply_patch", sessionId: "s1" },
       makeKhalaToolServices({
-        ...(permission === undefined ? {} : { permission }),
+        permission: permission ?? allowAllKhalaPermissionService,
         workingDirectory: workspace,
       }),
     ),

@@ -2,8 +2,19 @@ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process"
 import { existsSync } from "node:fs"
 import { Effect, Schema as S } from "effect"
 import { makeKhalaToolDispatcher, type KhalaToolDispatcherOptions } from "./dispatcher.js"
+import { makeKhalaPermissionPolicyService } from "./permission-policy.js"
 import { createMacosSeatbeltKhalaProcessService } from "./process-sandbox-macos.js"
 import { redactKhalaPublicText } from "./redaction.js"
+
+export {
+  approvalCacheKeysFor,
+  makeInMemoryKhalaApprovalStore,
+  makeKhalaPermissionPolicyService,
+  type KhalaApprovalCacheKey,
+  type KhalaApprovalScope,
+  type KhalaApprovalStore,
+  type KhalaPermissionPolicyOptions,
+} from "./permission-policy.js"
 
 export {
   defineKhalaFeatureRegistry,
@@ -1032,12 +1043,13 @@ export function makeKhalaToolServices(input: {
   readonly todo?: KhalaTodoService
   readonly workingDirectory?: string
 } = {}): KhalaToolServices {
+  const interaction = input.interaction ?? nonInteractiveKhalaInteractionService
   return {
     browser: input.browser ?? unconfiguredKhalaBrowserService,
-    interaction: input.interaction ?? nonInteractiveKhalaInteractionService,
+    interaction,
     network: input.network ?? createFetchKhalaNetworkService(),
     outputStore: inMemoryKhalaOutputStore(),
-    permission: input.permission ?? allowAllKhalaPermissionService,
+    permission: input.permission ?? makeKhalaPermissionPolicyService({ interaction }),
     process: input.process ?? defaultKhalaProcessService,
     search: input.search ?? unconfiguredKhalaWebSearchService,
     todo: input.todo ?? inMemoryKhalaTodoService(),

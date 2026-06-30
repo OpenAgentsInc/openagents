@@ -4,6 +4,7 @@ import { join } from "node:path"
 import { describe, expect, test } from "bun:test"
 import { Effect } from "effect"
 import {
+  allowAllKhalaPermissionService,
   createExecCommandTool,
   createMacosSeatbeltKhalaProcessService,
   denyAllKhalaPermissionService,
@@ -30,7 +31,7 @@ async function runExec(
       makeKhalaToolRegistry([createExecCommandTool()]),
       { arguments: args, id: "call_1", name: "exec_command", sessionId: "s1" },
       makeKhalaToolServices({
-        ...(permission === undefined ? {} : { permission }),
+        permission: permission ?? allowAllKhalaPermissionService,
         ...(process === undefined ? {} : { process }),
         workingDirectory: workspace,
       }),

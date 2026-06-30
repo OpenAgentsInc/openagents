@@ -4,6 +4,7 @@ import { tmpdir } from "node:os"
 import { describe, expect, test } from "bun:test"
 import { Effect } from "effect"
 import {
+  allowAllKhalaPermissionService,
   createReadTool,
   denyAllKhalaPermissionService,
   executeKhalaTool,
@@ -110,7 +111,7 @@ describe("read tool", () => {
       executeKhalaTool(
         makeKhalaToolRegistry([createReadTool()]),
         { arguments: { path: "/dev/null" }, id: "call_1", name: "read", sessionId: "s1" },
-        makeKhalaToolServices({ workingDirectory: workspace }),
+        makeKhalaToolServices({ permission: allowAllKhalaPermissionService, workingDirectory: workspace }),
       ),
     )
 
