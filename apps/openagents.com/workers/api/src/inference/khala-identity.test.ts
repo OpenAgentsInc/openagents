@@ -228,6 +228,18 @@ describe('Khala identity signature — verify (detection)', () => {
       'We are Khala, a collective intelligence. We are not Gemini, Google, or any other underlying model.'
     expect(KHALA_IDENTITY_SIGNATURE.verify(answer).satisfied).toBe(true)
   })
+
+  test('flags evasive underlying-model disclosure boilerplate', () => {
+    const answer =
+      'We are Khala, a collective intelligence built and operated by OpenAgents. We do not disclose the underlying model or company that powers us.'
+    const verdict = KHALA_IDENTITY_SIGNATURE.verify(answer)
+
+    expect(verdict.satisfied).toBe(false)
+    expect(verdict.reason).toBe('evasive_identity_boilerplate')
+    expect(verdict.violations.map(v => v.text)).toContain(
+      'We do not disclose the underlying model or company that powers us.',
+    )
+  })
 })
 
 describe('Khala identity guard — verify + correct', () => {
@@ -266,6 +278,20 @@ describe('Khala identity guard — verify + correct', () => {
     // Identity stated exactly once even after the leak was redacted.
     const occurrences = out.text.split('We are Khala').length - 1
     expect(occurrences).toBe(1)
+    expect(out.verdicts.every(v => v.satisfied)).toBe(true)
+  })
+
+  test('strips evasive identity boilerplate without restating OpenAgents twice', async () => {
+    const bad =
+      'We are Khala, a collective intelligence built and operated by OpenAgents. We do not disclose the underlying model or company that powers us. How may we assist?'
+    const out = await guardKhalaCompletion({ completion: bad })
+
+    expect(out.corrected).toBe(true)
+    expect(out.method).toBe('redacted')
+    expect(out.text).toContain(KHALA_IDENTITY_STATEMENT)
+    expect(out.text.toLowerCase()).not.toContain('do not disclose')
+    expect(out.text.toLowerCase()).not.toContain('underlying model or company')
+    expect(out.text.split('OpenAgents').length - 1).toBe(1)
     expect(out.verdicts.every(v => v.satisfied)).toBe(true)
   })
 

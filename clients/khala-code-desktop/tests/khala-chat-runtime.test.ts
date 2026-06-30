@@ -122,6 +122,10 @@ describe("Khala Code desktop chat runtime", () => {
     expect(requestMessages[0]?.content).toContain("we are Khala")
     expect(requestMessages[0]?.content).toContain("We are Khala. How can we help?")
     expect(requestMessages[0]?.content).toContain("Never end a turn with only tool output")
+    expect(requestMessages[1]).toMatchObject({ role: "system" })
+    expect(requestMessages[1]?.content).toContain("Available Khala Code Desktop tools:")
+    expect(requestMessages[1]?.content).toContain("- read (read):")
+    expect(requestMessages[1]?.content).toContain("without invoking any tool")
     expect(JSON.stringify(result)).not.toContain("agent-token")
   })
 
@@ -441,6 +445,52 @@ describe("Khala Code desktop chat runtime", () => {
       content: expect.stringContaining("answer the user's request now"),
       role: "user",
     })
+  })
+
+  test("does not accept a canned Khala greeting as the final answer after tools", async () => {
+    const workspace = await tempWorkspace()
+    await writeFile(join(workspace, "fixture.txt"), "hello from the local tool\n", "utf8")
+    const { calls, fetchFn } = captureFetch([
+      {
+        choices: [{
+          finish_reason: "tool_calls",
+          message: {
+            content: "",
+            tool_calls: [{
+              function: {
+                arguments: JSON.stringify({ path: "fixture.txt" }),
+                name: "read",
+              },
+              id: "call_read",
+              type: "function",
+            }],
+          },
+        }],
+      },
+      { choices: [{ message: { content: "We are Khala. How can we help?" } }] },
+      { choices: [{ message: { content: "We read fixture.txt and found hello from the local tool." } }] },
+    ])
+
+    const result = await runKhalaCodeDesktopChatTurn({
+      env: { OPENAGENTS_AGENT_TOKEN: "agent-token" },
+      fetchFn,
+      request: {
+        messages: [{ body: "read the fixture", id: "u1", role: "user" }],
+        sessionId: "session-1",
+      },
+      services: makeKhalaToolServices({
+        permission: allowAllKhalaPermissionService,
+        workingDirectory: workspace,
+      }),
+    })
+
+    expect(result.ok).toBe(true)
+    expect(result.usedTools).toEqual(["read"])
+    expect(result.messages.map(message => message.role)).toEqual(["tool", "assistant"])
+    expect(result.messages[1]?.body).toBe("We read fixture.txt and found hello from the local tool.")
+    expect(result.messages[1]?.body).not.toBe("We are Khala. How can we help?")
+    expect(calls).toHaveLength(3)
+    expect(calls[2]?.body.tools).toBeUndefined()
   })
 
   test("carries previous tool cards into the next model request as context", async () => {

@@ -405,6 +405,7 @@ const toolTranscriptElement = (text: string): HTMLElement => {
   const status = document.createElement("span")
   status.className = "tool-card-status"
   status.textContent = parts.status
+  status.title = parts.status
 
   header.append(name, status)
   root.append(header)
@@ -413,6 +414,7 @@ const toolTranscriptElement = (text: string): HTMLElement => {
     const pre = document.createElement("pre")
     pre.className = "tool-card-output"
     pre.textContent = parts.output
+    pre.title = parts.output
     root.append(pre)
   }
 

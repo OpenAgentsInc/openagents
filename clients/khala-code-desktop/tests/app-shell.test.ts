@@ -163,6 +163,15 @@ describe("khala code desktop app shell", () => {
     })
   })
 
+  test("wraps long tool output instead of clipping errors offscreen", async () => {
+    const css = await Bun.file(new URL("../src/ui/styles.css", import.meta.url)).text()
+
+    expect(css).toContain(".tool-card-output")
+    expect(css).toContain("overflow-x: hidden")
+    expect(css).toContain("overflow-wrap: anywhere")
+    expect(css).toContain("white-space: pre-wrap")
+  })
+
   test("installs native edit menu accelerators for WebKit text editing", async () => {
     const edit = khalaCodeDesktopApplicationMenu.find(
       item => "label" in item && item.label === "Edit",

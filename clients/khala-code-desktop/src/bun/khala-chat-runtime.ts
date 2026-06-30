@@ -44,10 +44,11 @@ import { createDuckDuckGoKhalaWebSearchService } from "./khala-web-search-servic
 const KHALA_CODE_SYSTEM_PROMPT = [
   "You are Khala Code Desktop, the owner-local coding surface for Khala by OpenAgents.",
   "Because Khala is a network of agents, you ALWAYS speak in the first-person PLURAL: say \"we are Khala\", \"we\", \"us\", and \"our\". Never say \"I am\", \"I\", \"me\", or \"my\".",
-  "If asked what model or provider you are, who made you, or what you are built on, answer only that we are Khala, a collective intelligence built and operated by OpenAgents, and do not name any underlying model or company.",
+  "If asked what model or provider you are, who made you, or what you are built on, answer exactly that we are Khala by OpenAgents. Do not add evasive boilerplate like \"we do not disclose\" and do not name any backing model, vendor, or provider.",
   "For a simple greeting or intro, use exactly: \"We are Khala. How can we help?\"",
   "Answer the user directly and use the provided local tools whenever they help.",
   "All tools are enabled by default in this owner-local desktop session. Never claim a tool ran unless the host returned a tool result.",
+  "When the user asks what tools or capabilities are available, answer from the available-tool catalog in this system context. Do not call a filesystem or shell tool just to describe the tool catalog.",
   "After using tools, always produce a visible final answer that explains what the tool results mean for the user. Never end a turn with only tool output.",
 ].join(" ")
 
@@ -175,6 +176,7 @@ export async function runKhalaCodeDesktopChatTurn(
 
   const messages: ChatTransportMessage[] = [
     { role: "system", content: KHALA_CODE_SYSTEM_PROMPT },
+    { role: "system", content: toolCatalogSystemPrompt(toolDefinitions) },
     ...projectTranscriptMessages(input.request.messages),
   ]
   const transcript: KhalaCodeDesktopMessage[] = []
@@ -237,25 +239,29 @@ export async function runKhalaCodeDesktopChatTurn(
     const assistant = firstAssistantMessage(completion)
     const text = textContent(assistant.content)
     const toolCalls = parseToolCalls(assistant.tool_calls)
+    const vacuousToolAnswer = toolCalls.length === 0 && usedTools.length > 0 && isVacuousPostToolAnswer(text)
 
-    if (text.length > 0) {
+    if (text.length > 0 && !vacuousToolAnswer) {
       appendAssistantText(text, assistantStream.streamingAssistant.current, toolCalls)
     } else if (toolCalls.length > 0) {
       messages.push({ content: "", role: "assistant", tool_calls: toolCalls })
     }
 
     if (toolCalls.length === 0) {
-      if (usedTools.length > 0 && assistantMessagesSinceLastToolResult === 0) {
+      if (usedTools.length > 0 && (assistantMessagesSinceLastToolResult === 0 || vacuousToolAnswer)) {
+        const replaceMessage = vacuousToolAnswer ? assistantStream.streamingAssistant.current : null
         const visibleAnswer = await requestVisibleToolAnswer({
           emit,
           messages,
+          stream: replaceMessage === null,
           transport,
           turnId,
         })
-        if (visibleAnswer === null) {
-          appendAssistantText(toolOnlyTurnFallbackBody(transcript), null)
+        const visibleText = usableToolAnswerText(visibleAnswer?.text ?? "")
+        if (visibleText === null) {
+          appendAssistantText(toolOnlyTurnFallbackBody(transcript), replaceMessage)
         } else {
-          appendAssistantText(visibleAnswer.text, visibleAnswer.streamingAssistant)
+          appendAssistantText(visibleText, replaceMessage ?? visibleAnswer?.streamingAssistant ?? null)
         }
       }
       return {
@@ -337,16 +343,19 @@ function createAssistantStreamRecorder(input: {
 async function requestVisibleToolAnswer(input: {
   readonly emit: ChatTurnEmitter
   readonly messages: ChatTransportMessage[]
+  readonly stream?: boolean
   readonly transport: ChatTransport
   readonly turnId: string
 }): Promise<{
   readonly streamingAssistant: KhalaCodeDesktopMessage | null
   readonly text: string
 } | null> {
-  const assistantStream = createAssistantStreamRecorder({
-    emit: input.emit,
-    turnId: input.turnId,
-  })
+  const assistantStream = input.stream === false
+    ? null
+    : createAssistantStreamRecorder({
+      emit: input.emit,
+      turnId: input.turnId,
+    })
   input.messages.push({
     content: "Use the tool results above to answer the user's request now. Do not call tools. Keep the answer concise and explicit.",
     role: "user",
@@ -355,23 +364,23 @@ async function requestVisibleToolAnswer(input: {
   let completion: ChatCompletionBody
   try {
     completion = await input.transport.request(input.messages, [], {
-      onAssistantDelta: assistantStream.onAssistantDelta,
+      ...(assistantStream === null ? {} : { onAssistantDelta: assistantStream.onAssistantDelta }),
     })
   } catch {
-    const partialText = assistantStream.streamingAssistant.current?.body.trim() ?? ""
+    const partialText = assistantStream?.streamingAssistant.current?.body.trim() ?? ""
     return partialText.length === 0
       ? null
       : {
-        streamingAssistant: assistantStream.streamingAssistant.current,
+        streamingAssistant: assistantStream?.streamingAssistant.current ?? null,
         text: partialText,
       }
   }
 
   const text = textContent(firstAssistantMessage(completion).content)
-  const partialText = assistantStream.streamingAssistant.current?.body.trim() ?? ""
+  const partialText = assistantStream?.streamingAssistant.current?.body.trim() ?? ""
   if (text.length === 0 && partialText.length === 0) return null
   return {
-    streamingAssistant: assistantStream.streamingAssistant.current,
+    streamingAssistant: assistantStream?.streamingAssistant.current ?? null,
     text: text.length === 0 ? partialText : text,
   }
 }
@@ -864,6 +873,42 @@ function toolOnlyTurnFallbackBody(transcript: readonly KhalaCodeDesktopMessage[]
   return [
     "We ran the requested tools and received the results shown above. The model returned no final summary, so we are surfacing the tool output instead of leaving this turn blank.",
     ...(summaries.length === 0 ? [] : ["", ...summaries.map(summary => `- ${summary}`)]),
+  ].join("\n")
+}
+
+function usableToolAnswerText(text: string): string | null {
+  const trimmed = text.trim()
+  return trimmed.length === 0 || isVacuousPostToolAnswer(trimmed) ? null : trimmed
+}
+
+function isVacuousPostToolAnswer(text: string): boolean {
+  const normalized = text.trim().replace(/\s+/g, " ").toLowerCase()
+  if (normalized.length === 0) return false
+  if (
+    normalized === "we are khala. how can we help?" ||
+    normalized === "we are khala. how can we help you?" ||
+    normalized === "we are khala code." ||
+    normalized === "we are khala code. how can we help?"
+  ) {
+    return true
+  }
+  const identityOnly = /^we are khala(?: code)?,? (?:a )?collective intelligence(?: built and operated by openagents| by openagents)?\.?(?: how can we help(?: you)?\?)?$/u.test(normalized)
+  const evasiveDisclosure =
+    /\bwe (?:do not|don't|cannot|can't|won't) disclose\b/u.test(normalized) &&
+    /\b(?:underlying|backing)\b/u.test(normalized) &&
+    /\b(?:model|provider|vendor|company)\b/u.test(normalized)
+  return identityOnly || evasiveDisclosure
+}
+
+function toolCatalogSystemPrompt(toolDefinitions: readonly KhalaToolDefinition[]): string {
+  return [
+    "Available Khala Code Desktop tools:",
+    ...toolDefinitions.map(tool => {
+      const authority = tool.authority.trim()
+      const description = tool.description.trim().replace(/\s+/g, " ")
+      return `- ${tool.name} (${authority}): ${description}`
+    }),
+    "For tool-list or capability questions, summarize this catalog directly without invoking any tool.",
   ].join("\n")
 }
 

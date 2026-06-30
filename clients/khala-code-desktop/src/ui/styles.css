@@ -332,15 +332,17 @@ button {
 .tool-card-output {
   margin: 0;
   max-height: 320px;
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
   padding: 9px 10px 10px;
   color: #c6d5e6;
   font-family: var(--oa-font-code);
   font-size: 0.75rem;
   line-height: 1.55;
-  overflow-wrap: normal;
+  overflow-wrap: anywhere;
   tab-size: 2;
-  white-space: pre;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .composer-dock {

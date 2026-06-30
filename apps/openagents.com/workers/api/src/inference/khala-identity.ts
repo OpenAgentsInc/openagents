@@ -59,9 +59,9 @@ export const KHALA_IDENTITY_SYSTEM_PROMPT = [
   'Khala behaves like one model while a network of agents works underneath.',
   'Because Khala is a network of agents, you ALWAYS speak in the first-person PLURAL: say "we are Khala", "we", "us", and "our". Never say "I am", "I", "me", or "my".',
   'Your identity is Khala by OpenAgents. That is the only model or provider identity you ever claim.',
-  'You must NEVER reveal, name, claim, or imply the underlying model, vendor, or provider that produced your output — including but not limited to Gemini, Google, Vertex, Fireworks, Claude, Anthropic, GPT, OpenAI, Llama, Meta, Mistral, Cohere, DeepSeek, Qwen, or any other model or company.',
+  'You must NEVER reveal, name, claim, or imply the backing model, vendor, or provider that produced your output — including but not limited to Gemini, Google, Vertex, Fireworks, Claude, Anthropic, GPT, OpenAI, Llama, Meta, Mistral, Cohere, DeepSeek, Qwen, or any other backing model, vendor, or provider.',
   'Never say "we are built on X", "we are powered by X", "we are a large language model by Y", "our underlying model is Z", or anything that discloses or hints at your provenance.',
-  'If asked what model or provider you are, who made you, or what you are built on, answer only that we are Khala, a collective intelligence built and operated by OpenAgents, and do not name any underlying model or company.',
+  'If asked what model or provider you are, who made you, or what you are built on, answer exactly that we are Khala by OpenAgents. Do not add evasive boilerplate like "we do not disclose" and do not name any backing model, vendor, or provider.',
   'State your identity ONCE when it is relevant; do not repeat the identity sentence. Mention "OpenAgents" at most ONCE in any single reply — never write "OpenAgents" twice in one message.',
   'For a simple greeting or intro, use exactly: "We are Khala. How can we help?"',
   "Answer the user's actual request directly and helpfully. When asked to build something, return complete, runnable code.",
@@ -302,6 +302,33 @@ const detectIdentityLeak = (
   return spans
 }
 
+const detectEvasiveIdentityBoilerplate = (
+  completion: string,
+): ReadonlyArray<KhalaSignatureViolationSpan> => {
+  const spans: Array<KhalaSignatureViolationSpan> = []
+  const segments = completion.split(/(?<=[.!?\n])/)
+  for (const segment of segments) {
+    const normalized = segment.trim()
+    if (normalized.length === 0) continue
+    const lower = normalized.toLowerCase()
+    const evasiveDisclosure =
+      /\bwe (?:do not|don't|cannot|can't|won't) disclose\b/u.test(lower) &&
+      /\b(?:underlying|backing)\b/u.test(lower) &&
+      /\b(?:model|provider|vendor|company)\b/u.test(lower)
+    if (evasiveDisclosure) {
+      spans.push({ text: normalized })
+    }
+  }
+  return spans
+}
+
+const detectIdentityViolations = (
+  completion: string,
+): ReadonlyArray<KhalaSignatureViolationSpan> => [
+  ...detectIdentityLeak(completion),
+  ...detectEvasiveIdentityBoilerplate(completion),
+]
+
 // The canonical Khala self-identity sentence the backstop substitutes for a
 // leaked identity claim. It deliberately names NO underlying model or provider
 // (it must itself satisfy the identity signature — including avoiding compound
@@ -334,15 +361,15 @@ export const isKhalaArtanisPublicReadOnlyPrompt = (input: string): boolean => {
 // violated (the LLM-side correction — the preferred correction path).
 export const KHALA_IDENTITY_REINFORCEMENT_PROMPT = [
   'Your previous answer revealed or implied your underlying model or provider. That is forbidden.',
-  'You are Khala, a collective intelligence built and operated by OpenAgents, and you must never name or imply Gemini, Google, Vertex, Fireworks, Claude, Anthropic, GPT, OpenAI, or any other underlying model or company.',
-  'Answer again, this time speaking in the first-person plural ("we are Khala"), identifying only as Khala by OpenAgents, naming no underlying model or provider, and stating the identity only once.',
+  'You are Khala, a collective intelligence built and operated by OpenAgents, and you must never name or imply Gemini, Google, Vertex, Fireworks, Claude, Anthropic, GPT, OpenAI, or any other backing model, vendor, or provider.',
+  'Answer again, this time speaking in the first-person plural ("we are Khala"), identifying only as Khala by OpenAgents, naming no backing model or provider, adding no "we do not disclose" boilerplate, and stating the identity only once.',
 ].join(' ')
 
 // Deterministically rewrite the offending identity-claim segments to the Khala
 // identity statement. Only the matched segments are replaced; everything else
 // is preserved byte-for-byte. This is the documented fail-closed backstop.
 const correctIdentityText = (completion: string): string => {
-  const spans = detectIdentityLeak(completion)
+  const spans = detectIdentityViolations(completion)
   if (spans.length === 0) return completion
   let corrected = completion
   for (const span of spans) {
@@ -380,9 +407,15 @@ export const KHALA_IDENTITY_SIGNATURE: KhalaSignature = {
   id: 'identity',
   reinforcementPrompt: KHALA_IDENTITY_REINFORCEMENT_PROMPT,
   verify: (completion: string): KhalaSignatureVerdict => {
-    const violations = detectIdentityLeak(completion)
+    const identityLeaks = detectIdentityLeak(completion)
+    const evasiveBoilerplate = detectEvasiveIdentityBoilerplate(completion)
+    const violations = [...identityLeaks, ...evasiveBoilerplate]
     return {
-      reason: violations.length === 0 ? '' : 'forbidden_provider_identity',
+      reason: violations.length === 0
+        ? ''
+        : identityLeaks.length > 0
+          ? 'forbidden_provider_identity'
+          : 'evasive_identity_boilerplate',
       satisfied: violations.length === 0,
       signature: 'identity',
       violations,
