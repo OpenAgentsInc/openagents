@@ -23,6 +23,10 @@ const timeoutMs = positiveInteger(
   Bun.env.KHALA_CODE_DESKTOP_LIVE_CODEX_SPAWN_TIMEOUT_MS,
   TWO_CODEX_READONLY_SMOKE_DEFAULT_TIMEOUT_MS,
 )
+const maxAttempts = positiveInteger(
+  Bun.env.KHALA_CODE_DESKTOP_LIVE_CODEX_SPAWN_ATTEMPTS,
+  3,
+)
 const fixture = process.argv.includes("--fixture")
 const work = fixture
   ? { kind: "fixture" as const }
@@ -30,29 +34,32 @@ const work = fixture
 
 console.error(`[live-smoke] launching two read-only Codex assignments in ${workLabel(work)}`)
 console.error(`[live-smoke] timeout ${timeoutMs}ms`)
+console.error(`[live-smoke] attempts ${maxAttempts}`)
 if (work.kind === "repository") {
   console.error(`[live-smoke] read-only verification: ${work.verify ?? TWO_CODEX_READONLY_SMOKE_READONLY_VERIFY}`)
 }
 
-const summary = await runTwoCodexReadOnlySmoke({
-  env: Bun.env,
-  onProgress: payload => {
-    const event = payload.events.at(-1)
-    const label = [
-      event?.assignmentRef ?? "assignment.pending",
-      event?.event,
-      event?.phase === undefined ? null : `phase=${event.phase}`,
-      event?.status === undefined ? null : `status=${event.status}`,
-    ].filter((value): value is string => value !== null && value !== undefined && value.length > 0)
-      .join(" ")
-    console.error(`[stream +${elapsedSeconds(startedAtMs)}s] ${label || "lifecycle"}`)
-    for (const line of payload.lines.slice(-2)) {
-      console.error(`  ${line}`)
-    }
-  },
-  timeoutMs,
-  work,
-})
+const summary = await runWithTransientRetry(maxAttempts, async () =>
+  runTwoCodexReadOnlySmoke({
+    env: Bun.env,
+    onProgress: payload => {
+      const event = payload.events.at(-1)
+      const label = [
+        event?.assignmentRef ?? "assignment.pending",
+        event?.event,
+        event?.phase === undefined ? null : `phase=${event.phase}`,
+        event?.status === undefined ? null : `status=${event.status}`,
+      ].filter((value): value is string => value !== null && value !== undefined && value.length > 0)
+        .join(" ")
+      console.error(`[stream +${elapsedSeconds(startedAtMs)}s] ${label || "lifecycle"}`)
+      for (const line of payload.lines.slice(-2)) {
+        console.error(`  ${line}`)
+      }
+    },
+    timeoutMs,
+    work,
+  })
+)
 
 console.log(JSON.stringify(summary, null, 2))
 
@@ -132,4 +139,39 @@ function workLabel(work: TwoCodexReadOnlySmokeWork): string {
   return work.kind === "fixture"
     ? "Pylon fixture mode"
     : `${work.repo}@${work.commit.slice(0, 12)} (${work.branch ?? "main"})`
+}
+
+async function runWithTransientRetry<T>(
+  attempts: number,
+  run: () => Promise<T>,
+): Promise<T> {
+  let lastError: unknown
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      return await run()
+    } catch (error) {
+      lastError = error
+      if (attempt >= attempts || !isTransientSetupError(error)) break
+      const delayMs = Math.min(10_000, 1_000 * attempt)
+      console.error(
+        `[live-smoke] transient setup failure on attempt ${attempt}/${attempts}: ${errorMessage(error)}`,
+      )
+      console.error(`[live-smoke] retrying in ${delayMs}ms`)
+      await sleep(delayMs)
+    }
+  }
+  throw lastError
+}
+
+function isTransientSetupError(error: unknown): boolean {
+  return /500|overload|overloaded|queued for too long|D1_ERROR|capacity_probe_failed|presence request failed/iu
+    .test(errorMessage(error))
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms))
 }

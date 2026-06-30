@@ -131,7 +131,7 @@ try {
   })
 
   const serialized = JSON.stringify(result)
-  const modules = result.delegateTrace?.map(step => step.module) ?? []
+  const modules: readonly string[] = result.delegateTrace?.map(step => step.module) ?? []
   const requiredModules = [
     "ensure_pylon",
     "advertise_capacity",
