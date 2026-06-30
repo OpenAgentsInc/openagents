@@ -5,6 +5,7 @@ export * from './containers'
 export * from './display'
 export * from './input'
 export * from './selection'
+export * from './tooltip'
 export {
   basecoatAttrs,
   basecoatClass,
