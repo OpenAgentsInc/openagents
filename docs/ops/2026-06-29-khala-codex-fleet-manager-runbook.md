@@ -597,6 +597,16 @@ The checked-in shape fixture is
 `bun test src/khala-delegation-example-dataset.test.ts` asserts the join path and
 the no raw prompts/secrets/local paths public-safety tripwire.
 
+GD-1 consumes that example shape through
+`apps/openagents.com/workers/api/src/khala-delegation-gepa-feedback.ts` and emits
+`openagents.khala.delegation_gepa_feedback.v0`. The scalar dimensions are
+`single_prompt_success`, `merged_clean`, `admitted_first_try`,
+`wall_clock_seconds`, `token_cost_tokens`, `idle_gap_seconds`, and
+`conflict_churn`; textual feedback is opaque blocker refs only. The regression
+gate `bun test src/khala-delegation-gepa-feedback.test.ts` covers a clean merged
+delegation and a bad `0/1` capacity dead-end with duplicate assignment,
+stale-heartbeat, verify-failed, vacuous-PR, and conflict feedback refs.
+
 ## Current Troubleshooting Cheatsheet
 
 ### `codex_fleet_status` Says `0/N Available`

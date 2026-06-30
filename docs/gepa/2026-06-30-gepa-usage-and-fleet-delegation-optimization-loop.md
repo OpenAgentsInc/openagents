@@ -394,7 +394,7 @@ Mutalisk proposes, Blueprint admits, the watcher executes, traces feed back.
 | --- | --- | --- |
 | **GD-P** (prerequisite) | **The deterministic delegation program** (§5.0): the `ensure_pylon → advertise_capacity → select_account → prepare_work → dispatch → verify_closeout` module pipeline with typed fallbacks, wired into `codex_spawn` / the bundle | core program exists in `packages/khala-tools/src/fleet-delegate-program.ts`; live Desktop/Pylon wiring now advertises per-account Codex capacity before selection/dispatch; the adverse-condition regression matrix covers `0/1` capacity, stale heartbeat, duplicate active assignment, missing/revoked credentials, and high-load typed blockers |
 | GD-0 | Trace export: a public-safe `delegation_example` view joining assignment lifecycle + closeout + token rows + redacted ATIF + PR/merge outcome | `openagents.khala.delegation_example.dataset.v0` is implemented in `apps/openagents.com/workers/api/src/khala-delegation-example-dataset.ts`; sample fixture: `docs/gepa/khala-delegation-example.dataset.v0.json`; tests assert no raw prompts/secrets/local paths |
-| GD-1 | Metric + feedback function (scalar Pareto dims + textual failure refs) | scores a known-good and known-bad delegation correctly; feedback names the real blocker refs |
+| GD-1 | Metric + feedback function (scalar Pareto dims + textual failure refs) | `openagents.khala.delegation_gepa_feedback.v0` is implemented in `apps/openagents.com/workers/api/src/khala-delegation-gepa-feedback.ts`; it scores known-good vs known-bad delegation examples, emits the scalar dimensions, and names concrete blocker refs including the `0/1` no-capacity case |
 | GD-2 | `gepa.optimize` job in Mutalisk over the dataset; emit a `khala.fleet.delegation.v1` candidate to R2/D1 | a candidate artifact with measurable val-set gain over the seed objective/dispatch policy |
 | GD-3 | Effect admission: signature-lookup selectability + action-submission proposal for the delegation-policy candidate | candidate surfaces as a gated proposal; no auto-promotion |
 | GD-4 | Wire the admitted policy into the live Pylon dispatch + watcher; close the loop | next fanout uses the optimized objective/dispatch text; new traces flow back to GD-0 |
@@ -409,6 +409,21 @@ rows with `trajectory_id` prefixes `pylon_codex:<assignmentRef>:` /
 `pylon_claude:<assignmentRef>:`. It deliberately omits `coding_assignment_json`
 and event bodies, then runs the shared ATIF redactor plus a dataset tripwire
 before returning the Mutalisk-readable bundle.
+
+GD-1's feedback builder consumes one GD-0 example and emits only bounded metrics
+and opaque refs: `single_prompt_success`, `merged_clean`, `admitted_first_try`,
+`wall_clock_seconds`, `token_cost_tokens`, `idle_gap_seconds`, and
+`conflict_churn`, plus admission/verification/coordination blocker refs such as
+`blocker.public.pylon_dispatch.no_available_codex_capacity`,
+`blocker.public.pylon_dispatch.duplicate_active_assignment`,
+`blocker.public.pylon_dispatch.pylon_stale`,
+`blocker.public.pylon_assignment.verify_failed`,
+`blocker.public.khala_delegation.vacuous_pr`, and
+`blocker.public.khala_delegation.pr_conflicted`. The feedback object is
+explicitly evidence-only: no runtime promotion, payout, public-claim authority,
+raw prompts, raw traces, or judge rationale. A recovered `0/1` Codex-capacity
+start is retained as a precondition ref; it only becomes a failure blocker when
+the delegation dead-ends before a clean merge.
 
 ---
 
@@ -448,4 +463,4 @@ before returning the Mutalisk-readable bundle.
 | Candidate seam (`psionic.probe_gepa_candidate_manifest.v1`) | defined on both sides; must align Mutalisk `Candidate` to it |
 | Blueprint admission moat | built (signature-lookup + action-submission) |
 | Deterministic delegation program (GD-P, §5.0) | core built in `@openagentsinc/khala-tools` as `khala.fleet.delegate`: typed module/precondition/blocker taxonomy plus an adverse-condition matrix for cold `0/1` capacity recovery, stale-heartbeat refresh, duplicate-assignment retry, credentials-missing/revoked blockers, high-load gating, account selection, dispatch fallbacks, and closeout blockers; `codex_spawn`, `pylon khala spawn`, `pylon khala request --workflow codex_agent_task`, and `khala fleet run` now compute and publish the required per-account capacity before dispatch |
-| Fleet-delegation GEPA loop (GD-0..GD-4) | GD-0 built: `openagents.khala.delegation_example.dataset.v0` joins public-safe assignment lifecycle, closeout/evidence refs, exact token rows, redacted ATIF, and PR/merge refs; GD-1 metric/ASI feedback is next |
+| Fleet-delegation GEPA loop (GD-0..GD-4) | GD-0 and GD-1 built: the dataset contract joins public-safe delegation traces, and `openagents.khala.delegation_gepa_feedback.v0` scores them with scalar Pareto dimensions plus concrete blocker refs; GD-3 candidate admission is next |
