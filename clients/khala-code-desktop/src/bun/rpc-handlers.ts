@@ -23,7 +23,11 @@ import {
   khalaCodeDesktopToolCatalog,
   runKhalaCodeDesktopChatTurn,
 } from "./khala-chat-runtime.js"
-import { ensureLocalPylon, inspectCodexFleet } from "./khala-codex-fleet-tools.js"
+import {
+  ensureLocalPylon,
+  inspectCodexFleet,
+  removeCodexAccount,
+} from "./khala-codex-fleet-tools.js"
 
 type ChatEnv = Readonly<Record<string, string | undefined>>
 type MaybePromise<T> = T | Promise<T>
@@ -177,6 +181,9 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
     },
     async onDeviceDeciderStatus() {
       return input.onDeviceDeciderStatus()
+    },
+    async removeCodexAccount(accountRef: string) {
+      return removeCodexAccount(accountRef, { env: input.env })
     },
     async pylonStatus() {
       const status = await ensureLocalPylon({

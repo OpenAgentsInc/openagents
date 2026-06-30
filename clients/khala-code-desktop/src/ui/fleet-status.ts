@@ -86,7 +86,10 @@ const sectionHeader = (title: string, meta?: string): HTMLElement => {
   return header
 }
 
-const accountCard = (account: KhalaCodeDesktopFleetAccount): HTMLElement => {
+const accountCard = (
+  account: KhalaCodeDesktopFleetAccount,
+  onRemove: (accountRef: string) => void,
+): HTMLElement => {
   const state = accountReadinessState(account.readiness)
   const card = el("article", "khala-fleet-account")
   card.dataset.state = state
@@ -97,6 +100,13 @@ const accountCard = (account: KhalaCodeDesktopFleetAccount): HTMLElement => {
   card.append(identity)
 
   card.append(badge(state, accountBadgeLabel(account.readiness)))
+
+  const remove = el("button", "khala-fleet-delete", "✕")
+  remove.type = "button"
+  remove.title = `Remove ${account.accountRef}`
+  remove.setAttribute("aria-label", `Remove account ${account.accountRef}`)
+  remove.addEventListener("click", () => onRemove(account.accountRef))
+  card.append(remove)
 
   if (account.quotaState !== null && account.quotaState.length > 0) {
     const hint = el(
@@ -120,6 +130,7 @@ const accountCard = (account: KhalaCodeDesktopFleetAccount): HTMLElement => {
 const renderReady = (
   container: HTMLElement,
   data: KhalaCodeDesktopFleetStatus,
+  onRemove: (accountRef: string) => void,
 ): void => {
   const readyAccounts = data.accounts.filter(
     account => accountReadinessState(account.readiness) === "ready",
@@ -172,7 +183,7 @@ const renderReady = (
     )
   } else {
     const list = el("div", "khala-fleet-account-list")
-    for (const account of data.accounts) list.append(accountCard(account))
+    for (const account of data.accounts) list.append(accountCard(account, onRemove))
     accountsSection.append(list)
   }
   container.append(accountsSection)
@@ -226,6 +237,7 @@ const render = (
   container: HTMLElement,
   view: FleetView,
   onRefresh: () => void,
+  onRemove: (accountRef: string) => void,
 ): void => {
   container.replaceChildren()
 
@@ -245,32 +257,57 @@ const render = (
     const error = el("p", "khala-fleet-error", `Could not load fleet status: ${view.message}`)
     body.append(error)
   } else {
-    renderReady(body, view.data)
+    renderReady(body, view.data, onRemove)
   }
   container.append(body)
 }
 
 export const mountFleetPanel = (
   container: HTMLElement,
-  options: Readonly<{ fetch: () => Promise<KhalaCodeDesktopFleetStatus> }>,
+  options: Readonly<{
+    fetch: () => Promise<KhalaCodeDesktopFleetStatus>
+    removeAccount: (
+      accountRef: string,
+    ) => Promise<{ readonly ok: boolean; readonly error?: string }>
+  }>,
 ): FleetPanelHandle => {
   let inFlight = false
+
+  const onRemove = (accountRef: string): void => {
+    const confirmed = window.confirm(
+      `Remove Codex account "${accountRef}" from the fleet? This deletes its local credentials.`,
+    )
+    if (!confirmed) return
+    void (async () => {
+      const result = await options.removeAccount(accountRef)
+      if (result.ok) {
+        await refresh()
+      } else {
+        render(
+          container,
+          { phase: "error", message: result.error ?? "remove failed" },
+          () => void refresh(),
+          onRemove,
+        )
+      }
+    })()
+  }
 
   const refresh = async (): Promise<void> => {
     if (inFlight) return
     inFlight = true
-    render(container, { phase: "loading" }, () => void refresh())
+    render(container, { phase: "loading" }, () => void refresh(), onRemove)
     try {
       const data = await options.fetch()
-      render(container, { phase: "ready", data }, () => void refresh())
+      render(container, { phase: "ready", data }, () => void refresh(), onRemove)
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
-      render(container, { phase: "error", message }, () => void refresh())
+      render(container, { phase: "error", message }, () => void refresh(), onRemove)
     } finally {
       inFlight = false
     }
   }
 
-  render(container, { phase: "loading" }, () => void refresh())
+  render(container, { phase: "loading" }, () => void refresh(), onRemove)
   return { refresh }
 }

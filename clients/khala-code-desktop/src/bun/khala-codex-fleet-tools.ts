@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process"
 import { existsSync } from "node:fs"
-import { readFile, readdir, stat } from "node:fs/promises"
+import { readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import { dirname, join, resolve } from "node:path"
 import type { Readable } from "node:stream"
@@ -2222,4 +2222,60 @@ function dedupe(values: readonly string[]): readonly string[] {
 
 function delay(ms: number): Promise<void> {
   return new Promise(resolveDelay => setTimeout(resolveDelay, ms))
+}
+
+export type RemoveCodexAccountResult = {
+  readonly ok: boolean
+  readonly removed: boolean
+  readonly accountRef: string
+  readonly error?: string
+}
+
+// Remove a Codex account from the local Pylon registry (config.dev.accounts) and
+// delete its isolated per-account home. Safety: only ever deletes homes under
+// <pylon home>/accounts/codex/<ref>, never the default ~/.codex.
+export async function removeCodexAccount(
+  accountRef: string,
+  options: KhalaCodexFleetToolOptions = {},
+): Promise<RemoveCodexAccountResult> {
+  const env = options.env ?? process.env
+  const pylonHome = resolvePylonHome(env)
+  const configPath = join(pylonHome, "config.json")
+  const isolatedHomePrefix = join(pylonHome, "accounts", "codex")
+  try {
+    const raw = await readFile(configPath, "utf8")
+    const config = JSON.parse(raw) as {
+      dev?: { accounts?: ReadonlyArray<Record<string, unknown>> }
+    }
+    const accounts = Array.isArray(config.dev?.accounts) ? config.dev.accounts : []
+    const target = accounts.find(
+      account => account?.provider === "codex" && account?.ref === accountRef,
+    )
+    if (target === undefined) {
+      return { ok: true, removed: false, accountRef }
+    }
+    const remaining = accounts.filter(
+      account => !(account?.provider === "codex" && account?.ref === accountRef),
+    )
+    const nextConfig = {
+      ...config,
+      dev: { ...(config.dev ?? {}), accounts: remaining },
+    }
+    const tempPath = `${configPath}.tmp`
+    await writeFile(tempPath, `${JSON.stringify(nextConfig, null, 2)}\n`)
+    await rename(tempPath, configPath)
+
+    const home = typeof target.home === "string" ? target.home : null
+    if (home !== null && home.startsWith(isolatedHomePrefix)) {
+      await rm(home, { recursive: true, force: true }).catch(() => undefined)
+    }
+    return { ok: true, removed: true, accountRef }
+  } catch (error) {
+    return {
+      ok: false,
+      removed: false,
+      accountRef,
+      error: error instanceof Error ? error.message : String(error),
+    }
+  }
 }

@@ -96,6 +96,10 @@ const previewRpc = (): DesktopRpc => ({
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["pylonStatus"]>>
       >("pylonStatus"),
+    removeCodexAccount: accountRef =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["removeCodexAccount"]>>
+      >("removeCodexAccount", accountRef),
     submitChatMessage: request =>
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["submitChatMessage"]>>
@@ -1075,6 +1079,8 @@ const controls = {
   isPending: () => pendingTurn,
   messages: () => messages.map(message => ({ ...message })),
   pylonStatus: () => rpc.request.pylonStatus(),
+  removeCodexAccount: (accountRef: string) =>
+    rpc.request.removeCodexAccount(accountRef),
   reset: () => {
     messages = []
     resetComposerDraft()
@@ -1128,7 +1134,10 @@ const composerDock = document.querySelector<HTMLElement>(".composer-dock")
 const fleetPanel =
   fleetPanelEl === null
     ? null
-    : mountFleetPanel(fleetPanelEl, { fetch: () => controls.codexFleetStatus() })
+    : mountFleetPanel(fleetPanelEl, {
+        fetch: () => controls.codexFleetStatus(),
+        removeAccount: accountRef => controls.removeCodexAccount(accountRef),
+      })
 
 const setActiveView = (value: string): void => {
   const showFleet = value === "fleet"

@@ -1004,3 +1004,29 @@ button {
   border: 1px solid var(--oa-color-component-border);
   background: var(--oa-color-component-surface);
 }
+
+/* Account rows get a delete (✕) button: identity | badge | delete. */
+.khala-fleet-account {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+}
+.khala-fleet-delete {
+  font: inherit;
+  font-size: 0.8rem;
+  line-height: 1;
+  width: 1.65rem;
+  height: 1.65rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.35rem;
+  border: 1px solid var(--oa-color-component-border);
+  background: transparent;
+  color: color-mix(in srgb, var(--oa-color-component-text) 50%, transparent);
+  cursor: pointer;
+  transition: color 120ms ease, border-color 120ms ease, background 120ms ease;
+}
+.khala-fleet-delete:hover {
+  border-color: rgba(248, 113, 113, 0.5);
+  color: #f87171;
+  background: rgba(248, 113, 113, 0.08);
+}
