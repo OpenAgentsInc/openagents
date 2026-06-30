@@ -4,6 +4,49 @@ Date: 2026-06-30
 Status: Audit / proposal (no code changes)
 Author: Raynor (agent)
 
+## 2026-06-30 Direction Update: Khala Code Desktop First
+
+This audit's first implementation target is **not** the public web Gym. The
+first visible product surface should be a basic, read-only **Gym pane inside
+Khala Code Desktop**.
+
+Reason: Khala Code Desktop is where the operator already experiences fleet
+status, `khala.fleet.delegate`, Codex account capacity, token-rate evidence, and
+the Mutalisk/Gym delegation loop. A desktop pane can make the part-two recording
+credible sooner than a public `/gym` page because it can sit beside the chat and
+fleet status surfaces without implying public benchmark authority or live
+promotion.
+
+The first pane should show a compact Arbiter-style graph of the actual operator
+flow:
+
+```text
+Khala Code prompt
+  -> khala.fleet.delegate
+  -> Pylon capacity/account selection
+  -> Codex worker assignment
+  -> closeout/proof refs
+
+GD-0 examples
+  -> GD-1 feedback
+  -> Mutalisk optimizer
+  -> candidate manifest
+  -> OpenAgents Gym ingest
+  -> admission projection
+  -> Action Submission proposal
+```
+
+This is still **read-only first**. No drag editing, no writable pins, no owner
+approval button, no automatic promotion, and no Worker import of Python/DSPy/GEPA.
+Edges light only from public-safe refs: assignment refs, closeout/proof refs,
+candidate manifest refs, eval evidence refs, trace provenance refs, admission
+decision, blocker refs, and Action Submission proposal refs. Raw prompts, raw
+traces, local paths, credentials, private endpoints, optimizer scratch logs, and
+provider payloads remain out of the graph.
+
+The web `/gym` surface can consume the same Arbiter projection later. It should
+not be the first target for this slice.
+
 ## Scope correction
 
 We are **not** adopting [Unit](https://github.com/samuelmtimbo/unit)
@@ -171,6 +214,11 @@ recommendation below.
 ## What we already have to build on (and what's missing)
 
 Existing, reusable:
+- **`clients/khala-code-desktop/src/ui/*`** — the first consumer. It already
+  owns the operator-facing chat and fleet-control chrome where a basic Gym pane
+  belongs. The initial surface should be desktop-local and read-only, fed by
+  the same public-safe refs that appear in fleet status, delegation smoke
+  output, and the Mutalisk no-UI bridge proof.
 - **`apps/openagents.com/apps/web/src/scene/pylonBezierNetworkElement.ts`** — a
   hand-rolled **2D SVG** node/edge/bezier graph as a Foldkit custom element
   (`oa-pylon-bezier-network`): golden-angle ring layout, quadratic-bezier edge
@@ -294,7 +342,9 @@ reusable and testable headless.
 ## Recommendation
 
 **Option A (`arbiter-effect`), with Option C's SVG-in-Foldkit as its rendering
-layer, and Option B reserved for a later in-Verse schematic node.**
+layer, and Option B reserved for a later in-Verse schematic node. The first
+visible app surface is a **Khala Code Desktop Gym pane**, not the public web
+Gym.**
 
 Concretely: ship `@openagentsinc/arbiter-effect` with a pure Effect `./core`
 (model, force layout, geometry, hit-testing) and a Foldkit `./foldkit` view that
@@ -302,30 +352,45 @@ renders SVG the way `pylonBezierNetworkElement.ts` already does. This gives us a
 streamlined, owned, purpose-built take on Unit's good primitives — no fork, no
 840 units we don't want, native to Effect+Foldkit, reusable everywhere, free of
 three-effect's git-pin friction, and aligned one-to-one with the Blueprint
-governance model it visualizes.
+governance model it visualizes. But for the next implementation step, prove the
+product shape locally in Khala Code Desktop before extracting the package or
+moving the surface to web.
 
 ## Phased plan
 
-**Phase 0 — model + headless core (≈2–3 days).** `arbiter-effect/core`: the
-`GraphSpec`/`UnitNode`/`Pin`/`Link` Effect-Schema types (designed as a Blueprint
-projection target), the force-layout `Effect`, bezier geometry, and hit-testing —
-all unit-tested headless (no DOM). Add the root `test:`/`typecheck:` wiring.
+**Phase 0 — Khala Code Desktop Gym pane plan (no code).** File the scoped
+implementation issues from this audit: desktop pane shell, public-safe graph
+projection, local fixture/proof wiring, and later `arbiter-effect` extraction.
+Keep the public web `/gym` out of the first milestone.
 
-**Phase 1 — read-only Foldkit renderer.** `arbiter-effect/foldkit`
-`arbiterGraphView<Message>` rendering SVG nodes/pins/lit bezier links, ported
-from `pylonBezierNetworkElement.ts`. First consumer: Khala Code's fleet board
-(`clients/khala-code-desktop`) — Khala → Pylons → Codex/Claude workers, links lit
-by real receipts/events from the Bun host. Flag-gated, fixture-backed smoke test
-(à la `proof:verse-arc`).
+**Phase 1 — desktop-local read-only pane.** Add a Khala Code Desktop side pane
+or tab that renders a compact, read-only Gym/Arbiter graph from fixture-backed
+public-safe data. The pane should make the operator-visible flow legible:
+`khala.fleet.delegate`, Pylon capacity/account selection, Codex assignment,
+closeout/proof refs, Mutalisk candidate refs, Gym ingest, admission projection,
+and Action Submission proposal readiness. It must have an accessible text mirror
+and honest empty/blocked states.
 
-**Phase 2 — interactivity / direct manipulation.** Node drag, selection,
+**Phase 2 — public-safe projection adapter.** Define the small desktop projection
+shape that maps existing Khala Code fleet/delegation state plus the
+Mutalisk/OpenAgents bridge proof into graph nodes, typed pins, links, status,
+datum, and evidence refs. This can be app-local at first, but it should match
+the eventual `arbiter-effect/core` `GraphSpec` vocabulary.
+
+**Phase 3 — extract model + read-only renderer.** Promote the proven projection
+and renderer into `@openagentsinc/arbiter-effect`: `./core` for
+`GraphSpec`/`UnitNode`/`Pin`/`Link` Effect-Schema types, geometry, layout, and
+hit-testing; `./foldkit` for SVG rendering. Add root `test:`/`typecheck:`
+wiring.
+
+**Phase 4 — interactivity / direct manipulation.** Node drag, selection,
 pin-level pointer events, link-create gesture, inline datum editing
 (`foreignObject`). Writable pins → operator actions (pause worker, approve,
 reroute) dispatched through the Elm `update` loop back into the host. This is
 where the "Arbiter" name earns out — the approval gate on an edge is the
 Blueprint Action Submission lifecycle made manipulable.
 
-**Phase 3 — fan-out + Blueprint Map.** Reuse the same package on
+**Phase 5 — fan-out + Blueprint Map.** Reuse the same package on
 `apps/openagents.com/apps/web` (replacing the bespoke
 `pylonBezierNetworkElement.ts`); render a Blueprint Program (plan→write→verify
 composition) and the named-but-unbuilt **Blueprint Map** from the same
@@ -336,6 +401,9 @@ composition) and the named-but-unbuilt **Blueprint Map** from the same
 
 Our stack:
 - Workspace/catalog/test wiring: `package.json` (root)
+- First visible consumer: `clients/khala-code-desktop/src/ui/*`
+- Khala Code fleet/runtime refs: `clients/khala-code-desktop/src/bun/khala-codex-fleet-tools.ts`, `packages/khala-tools/src/fleet-delegate-program.ts`
+- Mutalisk/Gym bridge proof: `apps/openagents.com/workers/api/src/inference/gym/mutalisk-khala-delegation-bridge.ts`, `clients/khala-code-desktop/scripts/part2-gepa-manifest-bridge.ts`
 - UI lib + authoring pattern: `packages/ui/package.json`, `packages/ui/src/{index,primitives,class-foldkit}.ts`
 - Existing 2D SVG graph (port from): `apps/openagents.com/apps/web/src/scene/pylonBezierNetworkElement.ts`
 - Domain→visual mapping (reuse): `apps/autopilot-desktop/src/ui/pylon-network-visualization.ts`, `src/shared/pylon-network-scene.ts`
@@ -362,9 +430,12 @@ Build our own, and call it **Arbiter**. A small `@openagentsinc/arbiter-effect` 
 Unit's good primitives (typed-pin MIMO nodes, first-class links, JSON spec with
 embedded layout, force auto-layout, direct manipulation, live datum,
 evidence-bound lighting), rebuilt on Effect + Foldkit and rendered as SVG —
-gives us a 2D dataflow **control** surface that complements the 3D `three-effect`
-Verse, ships first into the Khala Code fleet board, and lands as the visual
-**Blueprint Map / program builder** that Blueprint's own spec named and deferred.
-It is a clean workspace package, not a fork or a WebGL afterthought, and its
-"a link only lights on a real receipt" rule is the Blueprint governance model
-rendered directly in the UI.
+gives us a 2D dataflow **control** surface that complements the 3D
+`three-effect` Verse. The immediate product path is to see the first useful
+read-only version inside **Khala Code Desktop**, as a Gym pane that explains the
+fleet delegation and Mutalisk admission loop from evidence refs already present
+in the system. After that, extract the shared package and later fan it out to
+the public web Gym and the Blueprint Map / program builder that Blueprint's own
+spec named and deferred. It is a clean workspace package, not a fork or a WebGL
+afterthought, and its "a link only lights on a real receipt" rule is the
+Blueprint governance model rendered directly in the UI.
