@@ -365,6 +365,121 @@ describe("Khala spawn proof gate", () => {
     expect(result.results[0]?.state).toBe("failed")
   })
 
+  test("keeps rejected closeouts rejected while aggregating exact proof rows", async () => {
+    const tokenCounts = [2000, 2016]
+    const result = await runPylonKhalaSpawnPlan({
+      deps: {
+        readProof: async () => exactProof,
+        readTokensServed: async () => tokenCounts.shift() ?? 2016,
+        requestAssignment: async () => requestResult,
+        runAssignment: async () => ({
+          closeout: {
+            blockerRefs: ["blocker.assignment.codex_agent_test_failed"],
+            status: "rejected",
+          },
+          ok: false,
+        }),
+      },
+      network: {
+        agentToken: "agent.public.test",
+        baseUrl: "https://openagents.example",
+      },
+      plan,
+      summary: {} as never,
+    })
+
+    expect(result.ok).toBe(false)
+    expect(result.aggregate.acceptedCount).toBe(0)
+    expect(result.aggregate.totalTokenRows).toBe(1)
+    expect(result.aggregate.totalVerifiedTokens).toBe(16)
+    expect(result.counter.state).toBe("increment_observed")
+    expect(result.blockerRefs).toContain("blocker.assignment.codex_agent_test_failed")
+    expect(result.results[0]?.proof?.totalTokens).toBe(16)
+    expect(result.results[0]?.runAccepted).toBe(false)
+    expect(result.results[0]?.state).toBe("rejected")
+    expect(result.results[0]?.lifecycleEvents.map(event => event.state)).toContain("proof_checked")
+  })
+
+  test("backfills delayed exact proof rows for rejected closeouts", async () => {
+    const tokenCounts = [3000, 3016]
+    let proofAttempts = 0
+    const result = await runPylonKhalaSpawnPlan({
+      deps: {
+        readProof: async () => {
+          proofAttempts += 1
+          if (proofAttempts <= 4) {
+            throw new Error("proof rows not indexed yet")
+          }
+          return exactProof
+        },
+        readTokensServed: async () => tokenCounts.shift() ?? 3016,
+        requestAssignment: async () => requestResult,
+        runAssignment: async () => ({
+          closeout: {
+            blockerRefs: ["blocker.assignment.codex_agent_test_failed"],
+            status: "rejected",
+          },
+          ok: false,
+        }),
+        sleep: async () => undefined,
+      },
+      network: {
+        agentToken: "agent.public.test",
+        baseUrl: "https://openagents.example",
+      },
+      plan,
+      summary: {} as never,
+    })
+
+    expect(result.ok).toBe(false)
+    expect(result.aggregate.acceptedCount).toBe(0)
+    expect(result.aggregate.totalTokenRows).toBe(1)
+    expect(result.aggregate.totalVerifiedTokens).toBe(16)
+    expect(result.blockerRefs).toContain("blocker.assignment.codex_agent_test_failed")
+    expect(result.results[0]?.proof?.totalTokens).toBe(16)
+    expect(result.results[0]?.runAccepted).toBe(false)
+    expect(result.results[0]?.state).toBe("rejected")
+    expect(result.results[0]?.lifecycleEvents.at(-1)?.message).toBe("assignment proof backfilled")
+  })
+
+  test("recovers accepted slots when only proof indexing was late", async () => {
+    const tokenCounts = [4000, 4016]
+    let proofAttempts = 0
+    const result = await runPylonKhalaSpawnPlan({
+      deps: {
+        readProof: async () => {
+          proofAttempts += 1
+          if (proofAttempts <= 4) {
+            throw new Error("proof rows not indexed yet")
+          }
+          return exactProof
+        },
+        readTokensServed: async () => tokenCounts.shift() ?? 4016,
+        requestAssignment: async () => requestResult,
+        runAssignment: async () => ({
+          closeout: { status: "accepted" },
+          ok: true,
+        }),
+        sleep: async () => undefined,
+      },
+      network: {
+        agentToken: "agent.public.test",
+        baseUrl: "https://openagents.example",
+      },
+      plan,
+      summary: {} as never,
+    })
+
+    expect(result.ok).toBe(true)
+    expect(result.aggregate.acceptedCount).toBe(1)
+    expect(result.aggregate.totalVerifiedTokens).toBe(16)
+    expect(result.blockerRefs).toEqual([])
+    expect(result.results[0]?.failure).toBeNull()
+    expect(result.results[0]?.proof?.totalTokens).toBe(16)
+    expect(result.results[0]?.state).toBe("accepted")
+    expect(result.results[0]?.lifecycleEvents.at(-1)?.message).toBe("assignment proof backfilled")
+  })
+
   test("classifies request public-safety guard failures explicitly", async () => {
     const result = await runPylonKhalaSpawnPlan({
       deps: {

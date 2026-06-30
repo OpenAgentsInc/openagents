@@ -209,6 +209,7 @@ const blocker = (namespace: string, suffix: string) => `blocker.${namespace}.${s
 const failureRef = (suffix: string) => `failure.khala_spawn.${suffix}`
 
 const defaultProofRetryDelaysMs = [500, 1_500, 3_000] as const
+const defaultProofBackfillRetryDelaysMs = [5_000, 10_000, 20_000, 30_000] as const
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
 
@@ -509,6 +510,7 @@ function spawnFailureProjection(input: {
 }
 
 async function readProofWithRetry<Slot extends PylonKhalaSpawnSlotLike>(input: {
+  delaysMs?: readonly number[]
   network: TipsNetworkOptions
   readProof: NonNullable<PylonKhalaSpawnRunDeps<Slot>["readProof"]>
   sleep: (ms: number) => Promise<void>
@@ -516,17 +518,85 @@ async function readProofWithRetry<Slot extends PylonKhalaSpawnSlotLike>(input: {
   assignmentRef: string
 }): Promise<PylonKhalaProofResult> {
   let lastError: unknown
-  for (let attempt = 0; attempt <= defaultProofRetryDelaysMs.length; attempt += 1) {
+  const delaysMs = input.delaysMs ?? defaultProofRetryDelaysMs
+  for (let attempt = 0; attempt <= delaysMs.length; attempt += 1) {
     try {
       return await input.readProof(input.network, input.assignmentRef, input.slot)
     } catch (error) {
       lastError = error
-      const delay = defaultProofRetryDelaysMs[attempt]
+      const delay = delaysMs[attempt]
       if (delay === undefined) break
       await input.sleep(delay)
     }
   }
   throw lastError
+}
+
+async function backfillMissingProofs<Slot extends PylonKhalaSpawnSlotLike>(input: {
+  deps: PylonKhalaSpawnRunDeps<Slot> | undefined
+  namespace: string
+  network: TipsNetworkOptions
+  readProof: NonNullable<PylonKhalaSpawnRunDeps<Slot>["readProof"]>
+  results: readonly PylonKhalaSpawnSlotResult[]
+  sleep: (ms: number) => Promise<void>
+  slots: readonly Slot[]
+}): Promise<PylonKhalaSpawnSlotResult[]> {
+  return Promise.all(input.results.map(async (result, index) => {
+    if (result.proof !== null || result.assignmentRef === null) return result
+    if (result.failure !== null && result.failure.ref !== failureRef("proof_unavailable")) {
+      return result
+    }
+    const slot = input.slots[result.slotIndex] ?? input.slots[index]
+    if (slot === undefined) return result
+    try {
+      const proof = pylonKhalaProofProjection(
+        await readProofWithRetry({
+          assignmentRef: result.assignmentRef,
+          delaysMs: defaultProofBackfillRetryDelaysMs,
+          network: input.network,
+          readProof: input.readProof,
+          sleep: input.sleep,
+          slot,
+        }),
+      )
+      const recoveredProofUnavailable = result.failure?.ref === failureRef("proof_unavailable")
+      const proofBlockers = proofBlockerRefs(proof, input.namespace)
+      const blockerRefs = [
+        ...result.blockerRefs.filter((ref) => ref !== blocker(input.namespace, "proof_unavailable")),
+        ...proofBlockers,
+      ]
+      const event: PylonKhalaSpawnWorkerEvent = {
+        schema: PYLON_KHALA_SPAWN_WORKER_EVENT_SCHEMA,
+        assignmentRef: result.assignmentRef,
+        message: "assignment proof backfilled",
+        observedAt: new Date().toISOString(),
+        slotIndex: result.slotIndex,
+        state: "proof_checked",
+        status: "proof.khala_spawn.backfilled",
+      }
+      assertPublicProjectionSafe(event)
+      await input.deps?.onWorkerLifecycle?.(event, slot)
+      const state =
+        proofBlockers.length > 0
+          ? "failed"
+          : result.runAccepted === true && blockerRefs.length === 0
+            ? "accepted"
+            : result.runAccepted === false && result.state === "failed"
+              ? "rejected"
+              : result.state
+      return {
+        ...result,
+        blockerRefs,
+        failure: recoveredProofUnavailable ? null : result.failure,
+        lifecycleEvents: [...result.lifecycleEvents, event],
+        ok: blockerRefs.length === 0,
+        proof,
+        state,
+      }
+    } catch {
+      return result
+    }
+  }))
 }
 
 export async function runPylonKhalaSpawnPlan<Slot extends PylonKhalaSpawnSlotLike>(input: {
@@ -566,7 +636,15 @@ export async function runPylonKhalaSpawnPlan<Slot extends PylonKhalaSpawnSlotLik
 
   const laneCount = Math.min(input.plan.maxParallel, input.plan.slots.length)
   await Promise.all(Array.from({ length: laneCount }, () => runNext()))
-  const completedResults = results.filter((result): result is PylonKhalaSpawnSlotResult => result !== undefined)
+  const completedResults = await backfillMissingProofs({
+    deps: input.deps,
+    namespace,
+    network: input.network,
+    readProof,
+    results: results.filter((result): result is PylonKhalaSpawnSlotResult => result !== undefined),
+    sleep: input.deps?.sleep ?? sleep,
+    slots: input.plan.slots,
+  })
   const aggregate = aggregateSpawnResults(completedResults)
   const counterAfter = aggregate.totalVerifiedTokens > 0
     ? await readTokensServed(input.network).catch(() => null)
@@ -692,6 +770,18 @@ async function runPylonKhalaSpawnSlot<Slot extends PylonKhalaSpawnSlotLike>(inpu
       closeoutStatus = run.closeout?.status ?? null
       runAccepted = run.ok === true || run.closeout?.status === "accepted"
       if (!runAccepted) {
+        const projectedProof = await readProofWithRetry({
+          assignmentRef,
+          network: input.network,
+          readProof: input.readProof,
+          sleep: pause,
+          slot: input.slot,
+        }).then(pylonKhalaProofProjection, () => null)
+        if (projectedProof !== null) {
+          proof = projectedProof
+          blockerRefs.push(...proofBlockerRefs(projectedProof, input.namespace))
+          await emit("proof_checked", "assignment proof checked", { assignmentRef })
+        }
         blockerRefs.push(
           ...(run.closeout?.blockerRefs ?? run.acceptance?.blockerRefs ?? [blocker(input.namespace, "assignment_not_accepted")]),
         )
