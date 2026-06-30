@@ -1,6 +1,5 @@
 import { Schema } from "effect"
 import { Runtime } from "foldkit"
-import type { Command } from "foldkit"
 import {
   sidebarInit,
   sidebarUpdate,
@@ -12,24 +11,22 @@ import {
 
 // The sidebar runs as a small, self-contained Foldkit/Effect island mounted into
 // a dedicated container in the Khala Code Desktop shell. Its state is a Foldkit
-// Model, interactions flow through SidebarPrimitiveMessage + sidebarUpdate, and
-// it renders through sidebarView. No manual DOM, no class-name shim.
+// Model, interactions flow through SidebarPrimitiveMessage + sidebarUpdate, and it
+// renders through sidebarView. No manual DOM, no class-name shim.
 
 export type SidebarNavMessage = SidebarPrimitiveMessage
 
 type SidebarModel = SidebarPrimitiveModel
 
-type SidebarCommands = ReadonlyArray<Command<SidebarNavMessage, never, never>>
+// This sidebar never issues commands; init/update return an empty command list.
+const NO_COMMANDS: readonly never[] = []
 
-const NO_COMMANDS: SidebarCommands = []
-
-// Foldkit requires a Schema codec for the Model (devtools / freeze model).
+// Foldkit requires a Schema codec for the Model.
 const SidebarPrimitiveItemSchema = Schema.Struct({
   value: Schema.String,
-  disabled: Schema.optional(Schema.Boolean),
 })
 
-const SidebarModelSchema: Schema.Codec<SidebarModel, unknown, unknown, unknown> = Schema.Struct({
+const SidebarModelSchema = Schema.Struct({
   open: Schema.Boolean,
   breakpoint: Schema.Number,
   items: Schema.Array(SidebarPrimitiveItemSchema),
@@ -57,7 +54,7 @@ const navGroups = (): ReadonlyArray<SidebarViewGroup<SidebarNavMessage>> => [
   },
 ]
 
-const navItems = (): ReadonlyArray<{ value: string }> =>
+const navItems = (): ReadonlyArray<{ readonly value: string }> =>
   navGroups().flatMap(group => group.items.map(item => ({ value: item.value })))
 
 export type SidebarMountOptions = Readonly<{
@@ -69,7 +66,7 @@ export const mountKhalaCodeSidebar = (
   container: HTMLElement,
   options: SidebarMountOptions = {},
 ): void => {
-  const init = (): readonly [SidebarModel, SidebarCommands] => [
+  const init = (): readonly [SidebarModel, readonly never[]] => [
     sidebarInit({
       items: navItems(),
       initialOpen: true,
@@ -84,23 +81,25 @@ export const mountKhalaCodeSidebar = (
   const update = (
     model: SidebarModel,
     message: SidebarNavMessage,
-  ): readonly [SidebarModel, SidebarCommands] => {
+  ): readonly [SidebarModel, readonly never[]] => {
     if (message._tag === "SidebarItemActivated") {
       options.onActivate?.(message.value)
     }
     return [sidebarUpdate(model, message), NO_COMMANDS]
   }
 
-  const view = (model: SidebarModel) =>
-    sidebarView<SidebarNavMessage>({
+  const view = (model: SidebarModel) => ({
+    title: "Khala Code",
+    body: sidebarView<SidebarNavMessage>({
       model,
       groups: navGroups(),
       toMessage: message => message,
       side: "left",
       label: "Khala Code navigation",
-    })
+    }),
+  })
 
-  const program = Runtime.makeProgram<SidebarModel, SidebarNavMessage>({
+  const program = Runtime.makeProgram({
     Model: SidebarModelSchema,
     init,
     update,
