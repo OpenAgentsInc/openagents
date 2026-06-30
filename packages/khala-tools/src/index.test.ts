@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import { fileURLToPath } from "node:url"
 import { Effect } from "effect"
 import {
   allowAllKhalaPermissionService,
@@ -11,6 +12,7 @@ import {
   redactKhalaPublicText,
   resolveKhalaBackend,
   toOpenAiCompatibleTools,
+  type KhalaPrivacyRedactionResult,
   type KhalaRampartGuard,
   type KhalaToolDefinition,
 } from "./index.js"
@@ -166,6 +168,40 @@ describe("@openagentsinc/khala-tools foundation", () => {
     expect(result.redacted).toBe(true)
   })
 
+  test("loads the Rampart contextual model under Bun and redacts names by default", async () => {
+    const { result, revealed } = await runBunJson<{
+      readonly result: KhalaPrivacyRedactionResult
+      readonly revealed: string
+    }>(
+      `
+        import { Effect } from "effect";
+        import { makeKhalaPrivacyRedactionService } from "./src/index.ts";
+
+        const redaction = makeKhalaPrivacyRedactionService();
+        const result = await Effect.runPromise(redaction.protectUserText(
+          "My name is Alice Johnson. Email alice@example.com. I live at 100 Main Street in Chicago, IL 60601.",
+        ));
+        const revealed = await Effect.runPromise(
+          redaction.revealForLocalUser("Hello [GIVEN_NAME_1] [SURNAME_1], email [EMAIL_1]."),
+        );
+        console.log(JSON.stringify({ result, revealed }));
+      `,
+      khalaToolsRoot,
+    )
+
+    expect(result.engine).toBe("@nationaldesignstudio/rampart")
+    expect(result.mode).toBe("rampart_model")
+    expect(result.text).toContain("[GIVEN_NAME_1] [SURNAME_1]")
+    expect(result.text).toContain("[EMAIL_1]")
+    expect(result.text).toContain("[BUILDING_NUMBER_1] [STREET_NAME_1]")
+    expect(result.text).toContain("Chicago, IL 60601")
+    expect(result.text).not.toContain("Alice Johnson")
+    expect(result.text).not.toContain("alice@example.com")
+    expect(result.text).not.toContain("100 Main Street")
+    expect(result.redactionRefs).toEqual(["redaction.khala.rampart.pii"])
+    expect(revealed).toBe("Hello Alice Johnson, email alice@example.com.")
+  })
+
   test("keeps one reversible Rampart session table per redaction service", async () => {
     const guard = fakeRampartGuard({
       protectText: text => text.replace("Alex Rivera", "[GIVEN_NAME_1] [SURNAME_1]"),
@@ -215,6 +251,30 @@ describe("@openagentsinc/khala-tools foundation", () => {
     expect(result.redactionRefs).toContain("redaction.khala.rampart.pii")
   })
 })
+
+const khalaToolsRoot = fileURLToPath(new URL("..", import.meta.url))
+
+async function runBunJson<T>(script: string, cwd: string): Promise<T> {
+  const proc = Bun.spawn([process.execPath, "--eval", script], {
+    cwd,
+    env: process.env,
+    stderr: "pipe",
+    stdout: "pipe",
+  })
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ])
+  if (exitCode !== 0) {
+    throw new Error(`bun child process failed with exit ${exitCode}\nstdout:\n${stdout}\nstderr:\n${stderr}`)
+  }
+  const line = stdout.trim().split(/\n/u).filter(Boolean).at(-1)
+  if (line === undefined) {
+    throw new Error(`bun child process produced no JSON\nstderr:\n${stderr}`)
+  }
+  return JSON.parse(line) as T
+}
 
 function fakeRampartGuard(input: {
   readonly protectText: (text: string) => string

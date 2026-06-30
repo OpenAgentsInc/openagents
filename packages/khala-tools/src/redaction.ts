@@ -1,4 +1,4 @@
-import type { GuardOptions, ScrubResult } from "@nationaldesignstudio/rampart"
+import type { GuardOptions, NerDetector, ScrubResult, TokenClassifier } from "@nationaldesignstudio/rampart"
 import { Context, Effect, Layer } from "effect"
 
 export type KhalaRampartGuard = {
@@ -169,7 +169,65 @@ async function buildRampartGuard(
 
 async function createRampartGuard(options?: GuardOptions): Promise<KhalaRampartGuard> {
   const rampart = await import("@nationaldesignstudio/rampart")
+  if (shouldInjectNodeCompatibleNer(options)) {
+    const ner = await createNodeCompatibleRampartNer(options)
+    return await rampart.createGuard({ ...options, ner })
+  }
   return await rampart.createGuard(options)
+}
+
+function shouldInjectNodeCompatibleNer(options: GuardOptions | undefined): boolean {
+  return isNodeLikeRuntime() &&
+    options?.heuristicsOnly !== true &&
+    options?.ner === undefined &&
+    options?.worker === undefined
+}
+
+async function createNodeCompatibleRampartNer(options: GuardOptions | undefined): Promise<NerDetector> {
+  const [transformers, rampart] = await Promise.all([
+    import("@huggingface/transformers"),
+    import("@nationaldesignstudio/rampart"),
+  ])
+  const model = options?.model ?? rampart.RAMPART_MODEL_ID
+  const device = options?.device ?? "cpu"
+  const classifier = await (transformers as unknown as TransformersModule).pipeline("token-classification", model, {
+    dtype: "q4",
+    device,
+  })
+  const adapter = classifierAdapter(classifier)
+  return (text: string) => rampart.detectNer(text, adapter, options?.minScore)
+}
+
+type TransformersModule = {
+  readonly pipeline: (
+    task: "token-classification",
+    model: string,
+    options: {
+      readonly dtype: "q4"
+      readonly device: NonNullable<GuardOptions["device"]>
+    },
+  ) => Promise<TransformersTokenClassificationPipeline>
+}
+
+type TransformersTokenClassificationPipeline = {
+  readonly tokenizer?: {
+    readonly encode?: (text: string, options?: { readonly add_special_tokens?: boolean }) => number[]
+    readonly tokenize?: (text: string) => string[]
+  }
+  (text: string, options?: unknown): Promise<unknown>
+}
+
+function classifierAdapter(classifier: TransformersTokenClassificationPipeline): TokenClassifier {
+  const adapter: TokenClassifier = (text: string, options?: { aggregation_strategy?: "simple" | "first" | "max" }) =>
+    classifier(text, options) as ReturnType<TokenClassifier>
+  const tokenizer = classifier.tokenizer
+  if (tokenizer?.encode !== undefined) {
+    adapter.countTokens = (text: string) => tokenizer.encode!(text, { add_special_tokens: false }).length
+  }
+  if (tokenizer?.tokenize !== undefined) {
+    adapter.tokenize = (text: string) => tokenizer.tokenize!(text)
+  }
+  return adapter
 }
 
 function rampartResult(

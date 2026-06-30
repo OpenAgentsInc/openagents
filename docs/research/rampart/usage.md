@@ -169,12 +169,16 @@ const guard = await createGuard({
 That catches the deterministic layer only. It is not a substitute for the full
 model path because it will miss names, phone numbers, addresses, and many IDs.
 
-As of `@nationaldesignstudio/rampart@0.1.2`, the heuristics-only Bun/Node smoke
-passes in this worktree, while the full CPU model initializer fails before
-inference because the published browser-targeted bundle does not successfully
-wire `onnxruntime-node` into the Node path. OpenAgents wraps the package with a
-fail-soft Effect service so redaction remains default-on while a future Rampart
-package fix can enable the full contextual model in the same call sites.
+As of `@nationaldesignstudio/rampart@0.1.2`, the package's direct
+`createGuard({ device: "cpu" })` path fails under Bun because the published
+browser-targeted bundle does not successfully wire `onnxruntime-node` into its
+bundled transformers runtime. OpenAgents works around that in
+`@openagentsinc/khala-tools`: it keeps Rampart's guard/session-table API, but
+injects a Bun-compatible NER detector loaded from the explicit
+`@huggingface/transformers@3.7.5` dependency. The default Khala Code Desktop
+path reaches `rampart_model` mode under Bun; tests assert that names, email
+addresses, and street addresses are placeholdered before hosted provider
+requests.
 
 ## Raw Model Use
 

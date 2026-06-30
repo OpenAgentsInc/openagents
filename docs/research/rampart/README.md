@@ -150,12 +150,16 @@ and local tool output before provider requests. Assistant replies are scrubbed
 for provider context and then revealed locally before rendering.
 
 The published Rampart package works in this worktree with `heuristicsOnly:
-true`. The full Node/Bun CPU model initializer currently fails before inference
-because the browser-targeted published bundle does not successfully wire
-`onnxruntime-node` into the Node path. The OpenAgents service therefore tries
-the configured full guard first, falls back to Rampart heuristics, and finally
-falls back to the existing Khala token/API-key scrubber if Rampart itself is
-unavailable. Tests pin that fail-soft behavior.
+true`. Its published browser-targeted bundle does not successfully wire
+`onnxruntime-node` into the Bun CPU path when `createGuard({ device: "cpu" })`
+loads the model directly. OpenAgents therefore keeps Rampart's guard,
+policy, placeholder table, reveal, and `protectReply` API, but injects a
+Bun-compatible NER detector backed by `@huggingface/transformers` and
+`onnxruntime-node`. The default Khala Code Desktop path now reaches
+`rampart_model` mode under Bun and redacts contextual PII such as names and
+street addresses before hosted provider requests. If that model path ever
+fails, the service still falls back to Rampart heuristics and finally the
+existing Khala token/API-key scrubber.
 
 ## Recommendation
 

@@ -140,12 +140,15 @@ const visible = await Effect.runPromise(redaction.revealForLocalUser(reply));
 ```
 
 `clients/khala-code-desktop` creates one default service per chat session. The
-service tries the configured Rampart guard, falls back to Rampart heuristics
-when full model loading is unavailable, and falls back to the existing Khala
-token/API-key scrubber if Rampart itself fails. Tests cover the real
-heuristics-only package path, injected reversible placeholders, full-model
-failover, provider request redaction, local reply reveal, and tool-result
-redaction before provider replay.
+service tries the configured Rampart guard in full model mode by default. Under
+Bun, it injects a Node-compatible NER detector backed by
+`@huggingface/transformers` and `onnxruntime-node` because the published
+Rampart `0.1.2` browser bundle fails its direct CPU initializer. If the full
+model path is unavailable, the service falls back to Rampart heuristics, then
+to the existing Khala token/API-key scrubber. Tests cover the real full-model
+Bun path, real heuristics-only package path, injected reversible placeholders,
+full-model failover, provider request redaction, local reply reveal, and
+tool-result redaction before provider replay.
 
 ## Version Pinning
 

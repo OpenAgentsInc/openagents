@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test"
 import { mkdtemp, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { fileURLToPath } from "node:url"
 import { Effect } from "effect"
 import {
   allowAllKhalaPermissionService,
@@ -15,7 +16,8 @@ import {
   createKhalaCodeDesktopToolRegistry,
   expectedKhalaCodeDesktopToolNames,
   khalaCodeDesktopToolCatalog,
-  runKhalaCodeDesktopChatTurn,
+  runKhalaCodeDesktopChatTurn as runKhalaCodeDesktopChatTurnWithDefaultRedaction,
+  type RunKhalaCodeDesktopChatTurnInput,
 } from "../src/bun/khala-chat-runtime"
 import { createDuckDuckGoKhalaWebSearchService } from "../src/bun/khala-web-search-service"
 import type { KhalaCodeDesktopChatTurnEvent } from "../src/shared/rpc"
@@ -27,6 +29,7 @@ type FetchCall = {
 }
 
 const tempDirs: string[] = []
+const khalaCodeDesktopRoot = fileURLToPath(new URL("..", import.meta.url))
 
 afterEach(async () => {
   await Promise.all(tempDirs.splice(0).map(dir => rm(dir, { force: true, recursive: true })))
@@ -78,6 +81,35 @@ function captureFetch(responses: readonly unknown[]): {
       return jsonResponse(response)
     }) as typeof fetch,
   }
+}
+
+function runKhalaCodeDesktopChatTurn(input: RunKhalaCodeDesktopChatTurnInput) {
+  return runKhalaCodeDesktopChatTurnWithDefaultRedaction({
+    ...input,
+    redaction: input.redaction ?? passthroughRedactionService(),
+  })
+}
+
+async function runBunJson<T>(script: string, cwd: string): Promise<T> {
+  const proc = Bun.spawn([process.execPath, "--eval", script], {
+    cwd,
+    env: process.env,
+    stderr: "pipe",
+    stdout: "pipe",
+  })
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ])
+  if (exitCode !== 0) {
+    throw new Error(`bun child process failed with exit ${exitCode}\nstdout:\n${stdout}\nstderr:\n${stderr}`)
+  }
+  const line = stdout.trim().split(/\n/u).filter(Boolean).at(-1)
+  if (line === undefined) {
+    throw new Error(`bun child process produced no JSON\nstderr:\n${stderr}`)
+  }
+  return JSON.parse(line) as T
 }
 
 describe("Khala Code desktop chat runtime", () => {
@@ -153,6 +185,52 @@ describe("Khala Code desktop chat runtime", () => {
     expect(requestMessages.find(message => message.role === "user")?.content)
       .toBe("My name is [GIVEN_NAME_1] [SURNAME_1].")
     expect(JSON.stringify(calls[0]?.body.messages)).not.toContain("Alex Rivera")
+  })
+
+  test("uses the default Rampart model redaction before hosted provider requests", async () => {
+    const { requestMessages, result } = await runBunJson<{
+      readonly requestMessages: Array<{ readonly content?: string; readonly role?: string }>
+      readonly result: { readonly messages: Array<{ readonly body?: string }>; readonly ok: boolean }
+    }>(
+      `
+        import { runKhalaCodeDesktopChatTurn } from "./src/bun/khala-chat-runtime.ts";
+
+        const calls = [];
+        const fetchFn = async (_input, init) => {
+          const body = JSON.parse(String(init?.body ?? "{}"));
+          calls.push({ body });
+          return new Response(
+            JSON.stringify({ choices: [{ message: { content: "Hello [GIVEN_NAME_1] [SURNAME_1]." } }] }),
+            { headers: { "content-type": "application/json" } },
+          );
+        };
+        const result = await runKhalaCodeDesktopChatTurn({
+          env: { OPENAGENTS_AGENT_TOKEN: "agent-token" },
+          fetchFn,
+          request: {
+            messages: [{
+              body: "My name is Alice Johnson. Email alice@example.com. I live at 100 Main Street in Chicago, IL 60601.",
+              id: "u1",
+              role: "user",
+            }],
+            sessionId: "session-default-rampart-model-redaction-child",
+          },
+        });
+        console.log(JSON.stringify({ result, requestMessages: calls[0]?.body?.messages ?? [] }));
+      `,
+      khalaCodeDesktopRoot,
+    )
+
+    expect(result.ok).toBe(true)
+    expect(result.messages[0]?.body).toBe("Hello Alice Johnson.")
+    const userMessage = requestMessages.find(message => message.role === "user")
+    expect(userMessage?.content).toContain("[GIVEN_NAME_1] [SURNAME_1]")
+    expect(userMessage?.content).toContain("[EMAIL_1]")
+    expect(userMessage?.content).toContain("[BUILDING_NUMBER_1] [STREET_NAME_1]")
+    expect(userMessage?.content).toContain("Chicago, IL 60601")
+    expect(JSON.stringify(requestMessages)).not.toContain("Alice Johnson")
+    expect(JSON.stringify(requestMessages)).not.toContain("alice@example.com")
+    expect(JSON.stringify(requestMessages)).not.toContain("100 Main Street")
   })
 
   test("routes request-specific OpenRouter BYOK through hosted Khala", async () => {
@@ -660,6 +738,27 @@ function fakeRedactionService(): KhalaPrivacyRedactionServiceShape {
     revealTransform: () => Effect.succeed(new TransformStream<string, string>({
       transform(chunk, controller) {
         controller.enqueue(revealText(chunk))
+      },
+    })),
+  }
+}
+
+function passthroughRedactionService(): KhalaPrivacyRedactionServiceShape {
+  const result = (text: string): KhalaPrivacyRedactionResult => ({
+    engine: "@openagentsinc/khala-tools.regex",
+    mode: "regex_only",
+    placeholders: [],
+    redacted: false,
+    redactionRefs: [],
+    text,
+  })
+  return {
+    protectModelText: text => Effect.succeed(result(text)),
+    protectUserText: text => Effect.succeed(result(text)),
+    revealForLocalUser: text => Effect.succeed(text),
+    revealTransform: () => Effect.succeed(new TransformStream<string, string>({
+      transform(chunk, controller) {
+        controller.enqueue(chunk)
       },
     })),
   }
