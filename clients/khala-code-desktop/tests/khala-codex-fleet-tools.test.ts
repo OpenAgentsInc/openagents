@@ -12,6 +12,7 @@ import {
   ensureLocalPylon,
   inspectCodexFleet,
   spawnCodexInstances,
+  spawnVerifiedTokenTotal,
   type KhalaCodexFleetCommandInput,
   type KhalaCodexFleetCommandResult,
 } from "../src/bun/khala-codex-fleet-tools"
@@ -791,6 +792,8 @@ describe("Khala Code Codex fleet tools", () => {
     expect(result.results[0]?.summary).toContain("closeout: accepted")
     expect(result.results[0]?.summary).toContain("blocker refs: none")
     expect(result.results[0]?.summary).toContain("proof: 16 verified tokens across 1 row(s)")
+    expect(result.results[0]?.tokensVerified).toBe(16)
+    expect(spawnVerifiedTokenTotal(result)).toBe(16)
     expect(result.results[0]?.summary).toContain("lifecycle:")
     expect(result.results[0]?.summary).toContain("assignment_run.completed")
     const heartbeatIndex = calls.findIndex(call => pylonArgs(call)[0] === "presence")

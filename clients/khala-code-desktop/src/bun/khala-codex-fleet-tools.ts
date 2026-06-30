@@ -200,6 +200,7 @@ type SpawnSlotResult = {
   readonly slot: number
   readonly status: "accepted" | "failed"
   readonly summary: string
+  readonly tokensVerified: number | null
 }
 
 type BatchSpawnSlotProjection = {
@@ -887,10 +888,11 @@ function executeCodexSpawnTool(
         timeoutMs: optionalInteger(input.timeout_ms),
         verify: optionalString(input.verify),
       }, options)
+      const tokensVerified = spawnVerifiedTokenTotal(result)
       const toolResult = khalaToolOk({
         modelText: renderSpawnResult(result),
         publicSafety: "private",
-        publicSummary: `Codex spawn accepted ${result.acceptedCount}/${result.requestedCount} request(s).`,
+        publicSummary: `Codex spawn accepted ${result.acceptedCount}/${result.requestedCount} request(s); ${tokensVerified} Khala tokens generated.`,
         ui: {
           acceptedCount: result.acceptedCount,
           delegateSignature: result.delegateSignature ?? null,
@@ -900,6 +902,7 @@ function executeCodexSpawnTool(
           pylonRef: result.pylonRef,
           requestedCount: result.requestedCount,
           results: result.results,
+          tokensVerified,
         },
       })
       return result.acceptedCount === result.requestedCount
@@ -1706,6 +1709,7 @@ function spawnResultFromBatchCommand(input: {
         slot: 1,
         status: "failed",
         summary: safeFailureReason(input.command),
+        tokensVerified: null,
       }],
     }
   }
@@ -1733,6 +1737,7 @@ function spawnResultFromBatchCommand(input: {
       slot: slot.slotIndex + 1,
       status: accepted ? "accepted" : "failed",
       summary: acceptedBatchSpawnSummary(slot, payload),
+      tokensVerified: numberField(slot.proof, "totalTokens"),
     }
   })
 
@@ -2013,6 +2018,9 @@ async function runDelegatedNoRunRequests(input: {
       summary: hasAssignmentProjection
         ? acceptedSpawnSummary(assignmentRef, json)
         : safeFailureReason(result),
+      tokensVerified: hasAssignmentProjection
+        ? numberField(recordField(json, "proof"), "totalTokens")
+        : null,
     }
   }))
 
@@ -2079,10 +2087,21 @@ function batchPlanSlotAccountRef(value: unknown): string | null {
   return stringField(account, "accountRef")
 }
 
+export function spawnVerifiedTokenTotal(result: SpawnCodexInstancesResult): number {
+  return result.results.reduce(
+    (sum, slot) => sum + (slot.tokensVerified ?? 0),
+    0,
+  )
+}
+
 function renderSpawnResult(result: SpawnCodexInstancesResult): string {
+  const tokensVerified = spawnVerifiedTokenTotal(result)
   return [
     ...renderDelegateTraceLines(result),
     `Codex spawn: accepted ${result.acceptedCount}/${result.requestedCount}${result.pylonRef ? ` via ${result.pylonRef}` : ""}`,
+    ...(tokensVerified > 0
+      ? [`Khala tokens generated: ${tokensVerified} verified (exact)`]
+      : []),
     ...result.results.map(slot => renderSpawnSlotResult(slot)),
   ].join("\n")
 }
