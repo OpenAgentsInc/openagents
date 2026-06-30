@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
+import { khalaSessionModelItems, readKhalaSessionRollout } from "@openagentsinc/khala-tools"
 
 import { formatKhalaSpawnCapabilityAnswer, runKhalaCli } from "./cli.js"
 import { normalizeTerminalMarkdownSpacing } from "./terminal.js"
@@ -376,6 +377,100 @@ describe("Khala CLI info diagnostics", () => {
 
     expect(authHeaders).toContain("Bearer oa_agent_stored_api_test")
     expect(JSON.parse(stdout).text).toBe("stored api token ok")
+  })
+
+  test("persists headless sessions and resumes or forks them with prior context", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "khala-session-cli-test-"))
+    const sessionDir = join(dir, "state")
+    const requests: Array<ReadonlyArray<{ readonly content?: string; readonly role?: string }>> = []
+    const server = Bun.serve({
+      port: 0,
+      fetch: async request => {
+        expect(new URL(request.url).pathname).toBe("/api/khala/chat")
+        const body = await request.json() as { readonly messages?: ReadonlyArray<{ readonly content?: string; readonly role?: string }> }
+        requests.push(body.messages ?? [])
+        const newest = String(body.messages?.at(-1)?.content ?? "")
+        const text = `answer:${newest}`
+        return new Response([
+          `event: delta\ndata: ${JSON.stringify({ text })}`,
+          'event: done\ndata: {"done":true}',
+          "",
+        ].join("\n\n"), {
+          headers: { "content-type": "text/event-stream" },
+        })
+      },
+    })
+
+    const originalWrite = process.stdout.write
+    let stdout = ""
+    process.stdout.write = ((chunk: string | Uint8Array) => {
+      stdout += String(chunk)
+      return true
+    }) as typeof process.stdout.write
+    try {
+      const firstExit = await runKhalaCli([
+        "--headless",
+        "--json",
+        "--base-url",
+        `http://127.0.0.1:${server.port}`,
+        "--session-dir",
+        sessionDir,
+        "--prompt",
+        "first",
+      ], { KHALA_CODEX_AUTO: "off" })
+      expect(firstExit).toBe(0)
+      const first = JSON.parse(stdout) as { readonly sessionId: string; readonly text: string }
+      expect(first.text).toBe("answer:first")
+
+      stdout = ""
+      const resumeExit = await runKhalaCli([
+        "--json",
+        "--base-url",
+        `http://127.0.0.1:${server.port}`,
+        "--session-dir",
+        sessionDir,
+        "--prompt",
+        "second",
+        "resume",
+        first.sessionId,
+      ], { KHALA_CODEX_AUTO: "off" })
+      expect(resumeExit).toBe(0)
+      const resumed = JSON.parse(stdout) as { readonly sessionId: string; readonly text: string }
+      expect(resumed.sessionId).toBe(first.sessionId)
+      expect(resumed.text).toBe("answer:second")
+
+      stdout = ""
+      const forkExit = await runKhalaCli([
+        "--json",
+        "--base-url",
+        `http://127.0.0.1:${server.port}`,
+        "--session-dir",
+        sessionDir,
+        "fork",
+        first.sessionId,
+      ], { KHALA_CODEX_AUTO: "off" })
+      expect(forkExit).toBe(0)
+      const forked = JSON.parse(stdout) as { readonly parentSessionId: string; readonly sessionId: string }
+      expect(forked.parentSessionId).toBe(first.sessionId)
+      expect(forked.sessionId).not.toBe(first.sessionId)
+
+      const loaded = await readKhalaSessionRollout(sessionDir, first.sessionId)
+      expect(khalaSessionModelItems(loaded).map(item => `${item.role}:${item.body}`)).toEqual([
+        "user:first",
+        "assistant:answer:first",
+        "user:second",
+        "assistant:answer:second",
+      ])
+    } finally {
+      process.stdout.write = originalWrite
+      server.stop(true)
+    }
+
+    expect(requests[1]).toEqual([
+      { content: "first", role: "user" },
+      { content: "answer:first", role: "assistant" },
+      { content: "second", role: "user" },
+    ])
   })
 
   test("uses the stored login token for pylon spawn when no env or flag token is present", async () => {

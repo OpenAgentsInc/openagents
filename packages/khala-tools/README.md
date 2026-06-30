@@ -96,8 +96,10 @@ It accepts command text or argv, optional `workdir`, `timeout_ms`,
 `cancel_after_ms`, `yield_time_ms`, and `max_output_tokens`. Commands default to
 the workspace cwd, require scoped shell approval, request extra approval for
 external cwd or network-looking commands, stream stdout/stderr events for
-terminal renderers, and return a tail-oriented model preview. The default local
-service honestly reports that it does not enforce a sandbox.
+terminal renderers, and return a tail-oriented model preview. On macOS, the
+default local service runs commands through a Seatbelt profile that limits writes
+to the workspace and reports `sandbox.enforced=true`; other platforms continue
+to honestly report that no process sandbox is enforced.
 
 ### `write_stdin`
 

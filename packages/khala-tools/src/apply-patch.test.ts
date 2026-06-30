@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, stat, writeFile } from "node:fs/promises"
+import { chmod, link, mkdir, mkdtemp, readFile, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { describe, expect, test } from "bun:test"
@@ -61,7 +61,7 @@ describe("apply_patch tool", () => {
     expect(result.ui).toMatchObject({
       affectedPaths: ["src/a.txt"],
       appliedOperations: 1,
-      atomic: false,
+      atomic: true,
       kind: "patch_receipt",
       partialFailure: false,
     })
@@ -180,26 +180,76 @@ describe("apply_patch tool", () => {
     })
   })
 
-  test("reports partial-failure behavior for non-atomic V1 application", async () => {
+  test("rolls back committed operations when atomic application fails", async () => {
     const workspace = await makeWorkspace()
 
     const result = await runPatch(workspace, [
       "*** Begin Patch",
-      "*** Add File: a.txt",
-      "+a",
+      "*** Add File: nested/a.txt",
+      "+created",
       "*** Add File: b.txt",
       "+b",
       "*** End Patch",
     ].join("\n"), { failAfterOperations: 1 })
 
     expect(result.status).toBe("failed")
-    expect(await readFile(join(workspace, "a.txt"), "utf8")).toBe("a\n")
+    expect(await exists(join(workspace, "nested", "a.txt"))).toBe(false)
+    expect(await exists(join(workspace, "nested"))).toBe(false)
     expect(await exists(join(workspace, "b.txt"))).toBe(false)
     expect(result.ui).toMatchObject({
       appliedOperations: 1,
-      atomic: false,
+      atomic: true,
       partialFailure: true,
     })
+  })
+
+  test("rejects hard-linked patch targets before side effects", async () => {
+    const workspace = await makeWorkspace()
+    const path = join(workspace, "a.txt")
+    const linkedPath = join(workspace, "linked.txt")
+    await writeFile(path, "before\n")
+    await link(path, linkedPath)
+
+    const result = await runPatch(workspace, [
+      "*** Begin Patch",
+      "*** Update File: a.txt",
+      "@@",
+      "-before",
+      "+after",
+      "*** Add File: b.txt",
+      "+b",
+      "*** End Patch",
+    ].join("\n"))
+
+    expect(result.status).toBe("failed")
+    expect(result.ui).toMatchObject({ failureReason: expect.stringContaining("hard links") })
+    expect(await readFile(path, "utf8")).toBe("before\n")
+    expect(await readFile(linkedPath, "utf8")).toBe("before\n")
+    expect(await exists(join(workspace, "b.txt"))).toBe(false)
+  })
+
+  test("rejects non-writable patch roots before side effects", async () => {
+    const workspace = await makeWorkspace()
+    const locked = join(workspace, "locked")
+    await mkdir(locked)
+    await chmod(locked, 0o555)
+    try {
+      const result = await runPatch(workspace, [
+        "*** Begin Patch",
+        "*** Add File: locked/a.txt",
+        "+blocked",
+        "*** Add File: b.txt",
+        "+b",
+        "*** End Patch",
+      ].join("\n"))
+
+      expect(result.status).toBe("failed")
+      expect(result.ui).toMatchObject({ failureReason: expect.stringContaining("not writable") })
+      expect(await exists(join(locked, "a.txt"))).toBe(false)
+      expect(await exists(join(workspace, "b.txt"))).toBe(false)
+    } finally {
+      await chmod(locked, 0o755)
+    }
   })
 
   test("emits private structured diff receipts for packages/ui rendering", async () => {
