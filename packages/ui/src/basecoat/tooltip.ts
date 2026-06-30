@@ -173,6 +173,20 @@ export const collapsible = <Message>(
   input: CollapsibleProps<Message>,
 ): Html => {
   const h = html<Message>()
+  const triggerProps: CollapsibleTriggerProps<Message> = {
+    children: input.trigger,
+    ...(input.summaryAttrs === undefined ? {} : { attrs: input.summaryAttrs }),
+    ...(input.summaryClassName === undefined
+      ? {}
+      : { className: input.summaryClassName }),
+  }
+  const contentProps: CollapsibleContentProps<Message> = {
+    children: input.children,
+    ...(input.contentAttrs === undefined ? {} : { attrs: input.contentAttrs }),
+    ...(input.contentClassName === undefined
+      ? {}
+      : { className: input.contentClassName }),
+  }
 
   return h.details(
     [
@@ -180,16 +194,8 @@ export const collapsible = <Message>(
       ...(input.open === true ? [h.Attribute('open', '')] : []),
     ],
     [
-      collapsibleTrigger<Message>({
-        attrs: input.summaryAttrs,
-        className: input.summaryClassName,
-        children: input.trigger,
-      }),
-      collapsibleContent<Message>({
-        attrs: input.contentAttrs,
-        className: input.contentClassName,
-        children: input.children,
-      }),
+      collapsibleTrigger<Message>(triggerProps),
+      collapsibleContent<Message>(contentProps),
     ],
   )
 }
