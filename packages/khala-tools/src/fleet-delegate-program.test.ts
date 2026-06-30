@@ -7,8 +7,11 @@ import {
   selectKhalaFleetDelegateAccount,
   type KhalaFleetDelegateAccount,
   type KhalaFleetDelegateAdvertiseResult,
+  type KhalaFleetDelegateBlockerCode,
   type KhalaFleetDelegateDispatchResult,
+  type KhalaFleetDelegateModuleName,
   type KhalaFleetDelegateModules,
+  type KhalaFleetDelegateProgramResult,
 } from "./fleet-delegate-program.js"
 
 const readyAccount = (overrides: Partial<KhalaFleetDelegateAccount> = {}): KhalaFleetDelegateAccount => ({
@@ -44,7 +47,202 @@ const completedModules = (
   ...overrides,
 })
 
+type AdverseMatrixCase = Readonly<{
+  expectedBlockerCode?: KhalaFleetDelegateBlockerCode
+  expectedStatus: KhalaFleetDelegateProgramResult["status"]
+  expectedFallbackModule?: KhalaFleetDelegateModuleName
+  modules: () => KhalaFleetDelegateModules
+  name: string
+}>
+
+const adverseMatrixCases: readonly AdverseMatrixCase[] = [
+  {
+    expectedFallbackModule: "advertise_capacity",
+    expectedStatus: "completed",
+    modules: () => {
+      let advertiseCalls = 0
+      let dispatchCalls = 0
+      return completedModules({
+        advertiseCapacity: input => {
+          advertiseCalls += 1
+          return Effect.succeed(advertiseCalls === 1
+            ? {
+                capacity: {
+                  accounts: [readyAccount({ availableSlots: undefined })],
+                  available: 0,
+                  max: 1,
+                },
+                heartbeatRef: `heartbeat.${input.reason}.zero_one`,
+              }
+            : advertised(1, [readyAccount({ availableSlots: 1 })]))
+        },
+        dispatch: (): Effect.Effect<KhalaFleetDelegateDispatchResult> => {
+          dispatchCalls += 1
+          return Effect.succeed(dispatchCalls === 1
+            ? {
+                blockerCode: "no_available_codex_capacity",
+                message: "capacity unavailable after the first dispatch probe",
+                ok: false,
+                refs: ["blocker.public.pylon_dispatch.no_available_codex_capacity"],
+              }
+            : {
+                assignmentRef: "assignment.public.khala_fleet_delegate.matrix.capacity",
+                ok: true,
+              })
+        },
+      })
+    },
+    name: "capacity 0/1 refreshes through advertise_capacity",
+  },
+  {
+    expectedFallbackModule: "advertise_capacity",
+    expectedStatus: "completed",
+    modules: () => {
+      let dispatchCalls = 0
+      return completedModules({
+        advertiseCapacity: input =>
+          Effect.succeed({
+            ...advertised(1),
+            heartbeatRef: `heartbeat.${input.reason}`,
+          }),
+        dispatch: (): Effect.Effect<KhalaFleetDelegateDispatchResult> => {
+          dispatchCalls += 1
+          return Effect.succeed(dispatchCalls === 1
+            ? {
+                blockerCode: "stale_heartbeat",
+                message: "presence heartbeat is stale",
+                ok: false,
+                refs: ["blocker.public.pylon_dispatch.stale_heartbeat"],
+              }
+            : {
+                assignmentRef: "assignment.public.khala_fleet_delegate.matrix.stale",
+                ok: true,
+              })
+        },
+      })
+    },
+    name: "stale heartbeat 409 refreshes capacity and retries",
+  },
+  {
+    expectedFallbackModule: "dispatch",
+    expectedStatus: "completed",
+    modules: () => {
+      let backoffs = 0
+      let dispatchCalls = 0
+      return completedModules({
+        backoff: () => {
+          backoffs += 1
+          return Effect.void
+        },
+        dispatch: (): Effect.Effect<KhalaFleetDelegateDispatchResult> => {
+          dispatchCalls += 1
+          return Effect.succeed(dispatchCalls === 1
+            ? {
+                blockerCode: "duplicate_active_assignment",
+                message: "duplicate active assignment",
+                ok: false,
+                refs: ["blocker.public.pylon_dispatch.duplicate_active_assignment"],
+              }
+            : {
+                assignmentRef: `assignment.public.khala_fleet_delegate.matrix.duplicate.${backoffs}`,
+                ok: true,
+              })
+        },
+      })
+    },
+    name: "duplicate active assignment backs off and retries",
+  },
+  {
+    expectedBlockerCode: "credentials_missing",
+    expectedStatus: "blocked",
+    modules: () => completedModules({
+      advertiseCapacity: () =>
+        Effect.succeed(advertised(1, [
+          readyAccount({
+            accountRef: "codex-2",
+            availableSlots: 1,
+            readiness: "credentials_missing",
+          }),
+        ])),
+    }),
+    name: "credentials-missing account returns typed actionable blocker",
+  },
+  {
+    expectedBlockerCode: "revoked",
+    expectedStatus: "blocked",
+    modules: () => completedModules({
+      advertiseCapacity: () =>
+        Effect.succeed(advertised(1, [
+          readyAccount({
+            accountRef: "codex-2",
+            availableSlots: 1,
+            readiness: "revoked",
+          }),
+        ])),
+    }),
+    name: "revoked account returns typed actionable blocker",
+  },
+  {
+    expectedBlockerCode: "load_gated",
+    expectedStatus: "blocked",
+    modules: () => completedModules({
+      advertiseCapacity: () =>
+        Effect.succeed({
+          capacity: {
+            ...advertised(1).capacity,
+            loadGated: true,
+          },
+          heartbeatRef: "heartbeat.load_gated",
+        }),
+      dispatch: () =>
+        Effect.fail(new KhalaFleetDelegateModuleError({
+          blockerCode: "dispatch_failed",
+          message: "dispatch should not run while load-gated",
+          module: "dispatch",
+          refs: ["blocker.public.khala_fleet_delegate.dispatch_failed"],
+        })),
+    }),
+    name: "high machine load returns load_gated before dispatch",
+  },
+]
+
+const resultContainsLegacyBareCapacityDeadEnd = (
+  result: KhalaFleetDelegateProgramResult,
+): boolean =>
+  JSON.stringify(result).includes("codex_spawn_failed: No Pylon Codex assignment capacity is available right now")
+
 describe("khala.fleet.delegate deterministic program", () => {
+  describe("adverse-condition recovery matrix", () => {
+    for (const matrixCase of adverseMatrixCases) {
+      test(matrixCase.name, async () => {
+        const result = await Effect.runPromise(runKhalaFleetDelegateProgram({
+          objective: "Run the public fixture.",
+        }, matrixCase.modules()))
+
+        expect(result.signature).toBe("khala.fleet.delegate")
+        expect(result.status).toBe(matrixCase.expectedStatus)
+        expect(result.trace.length).toBeGreaterThan(0)
+        expect(resultContainsLegacyBareCapacityDeadEnd(result)).toBe(false)
+
+        if (result.status === "blocked") {
+          if (matrixCase.expectedBlockerCode !== undefined) {
+            expect(result.blockerCode).toBe(matrixCase.expectedBlockerCode)
+          }
+          expect(result.blockerRefs.length).toBeGreaterThan(0)
+          expect(result.blockerRefs.every(ref => ref.startsWith("blocker."))).toBe(true)
+          expect(result.message.trim().length).toBeGreaterThan(0)
+        } else {
+          expect(result.assignmentRef).toMatch(/^assignment\.public\.khala_fleet_delegate\.matrix\./)
+        }
+
+        if (matrixCase.expectedFallbackModule !== undefined) {
+          expect(result.trace.map(step => step.fallbackModule).filter(Boolean))
+            .toContain(matrixCase.expectedFallbackModule)
+        }
+      })
+    }
+  })
+
   test("reaches dispatch from a cold 0/1 start by advertising capacity first", async () => {
     const calls: string[] = []
     const modules = completedModules({

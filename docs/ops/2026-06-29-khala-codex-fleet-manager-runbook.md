@@ -81,6 +81,13 @@ Expected:
   and now computes `OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY=5` for its Pylon
   child commands before heartbeat/dispatch. Operators can still set the env var
   explicitly for manual shell smokes.
+- The regression gate for this bundle is the adverse-condition matrix in
+  `packages/khala-tools/src/fleet-delegate-program.test.ts` plus the Desktop
+  runner seam in
+  `clients/khala-code-desktop/tests/khala-codex-fleet-tools.test.ts`. It covers
+  `0/1` capacity recovery, stale-heartbeat refresh, duplicate-assignment retry,
+  credentials-missing/revoked typed blockers, and high-load typed gating; none
+  of those cases may regress to a bare `codex_spawn_failed` capacity dead-end.
 
 Start the app:
 

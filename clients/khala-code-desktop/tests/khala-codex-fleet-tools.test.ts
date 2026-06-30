@@ -66,6 +66,82 @@ function pylonArgs(input: KhalaCodexFleetCommandInput): readonly string[] {
   return index === -1 ? input.cmd : input.cmd.slice(index + 1)
 }
 
+const MATRIX_ACCOUNT_KEY = "4db4cc18ebc55f39fb4da894"
+const MATRIX_ACCOUNT_REF_HASH = `account.pylon.codex.${MATRIX_ACCOUNT_KEY}`
+
+function matrixBatchSpawnSuccess(
+  assignmentRef: string,
+  accountRef = "codex-2",
+): Record<string, unknown> {
+  return {
+    aggregate: {
+      acceptedCount: 1,
+      assignmentRefs: [assignmentRef],
+      durableRequestIds: [`durable.${assignmentRef.split(".").at(-1) ?? "matrix"}`],
+      ownerOnlyRawEventCount: 1,
+      ownerOnlyTraceCount: 1,
+      totalTokenRows: 1,
+      totalVerifiedTokens: 100,
+    },
+    blockerRefs: [],
+    counter: { expectedMinimumDelta: 0, state: "not_checked" },
+    ok: true,
+    plan: {
+      requestedCount: 1,
+      slots: [{ account: { accountRef }, slotIndex: 0 }],
+      targetPylonRef: "pylon.local.test",
+    },
+    results: [{
+      assignmentRef,
+      blockerRefs: [],
+      closeoutStatus: "accepted",
+      ok: true,
+      proof: { rawEventCount: 1, tokenRows: 1, totalTokens: 100, traceCount: 1 },
+      runAccepted: true,
+      slotIndex: 0,
+      state: "completed",
+    }],
+    schema: "openagents.pylon.khala_spawn_run.v0.1",
+  }
+}
+
+function matrixBatchSpawnBlocker(
+  blockerRef: string,
+  message: string,
+): Record<string, unknown> {
+  return {
+    aggregate: {
+      acceptedCount: 0,
+      assignmentRefs: [],
+      durableRequestIds: [],
+      ownerOnlyRawEventCount: 0,
+      ownerOnlyTraceCount: 0,
+      totalTokenRows: 0,
+      totalVerifiedTokens: 0,
+    },
+    blockerRefs: [blockerRef],
+    counter: { expectedMinimumDelta: 0, state: "not_checked" },
+    ok: false,
+    plan: {
+      requestedCount: 1,
+      slots: [{ account: { accountRef: "codex-2" }, slotIndex: 0 }],
+      targetPylonRef: "pylon.local.test",
+    },
+    results: [{
+      assignmentRef: null,
+      blockerRefs: [blockerRef],
+      closeoutStatus: null,
+      failure: { message },
+      ok: false,
+      proof: null,
+      runAccepted: false,
+      slotIndex: 0,
+      state: "blocked",
+    }],
+    schema: "openagents.pylon.khala_spawn_run.v0.1",
+  }
+}
+
 describe("Khala Code Codex fleet tools", () => {
   test("ensureLocalPylon starts a missing local Pylon and re-probes it", async () => {
     const fixture = await tempPylonFixture()
@@ -923,6 +999,197 @@ describe("Khala Code Codex fleet tools", () => {
     expect(commandOrder.indexOf("presence heartbeat --base-url https://openagents.com --json"))
       .toBeLessThan(commandOrder.findIndex(command => command.startsWith("khala spawn ")))
   })
+
+  for (const scenario of [
+    {
+      blockerRef: "blocker.public.pylon_dispatch.no_available_codex_capacity",
+      message: "No Pylon Codex assignment capacity is available right now (0/1 available).",
+      name: "no available capacity",
+    },
+    {
+      blockerRef: "blocker.public.pylon_dispatch.stale_heartbeat",
+      message: "presence.stale_heartbeat: refresh heartbeat and retry",
+      name: "stale heartbeat",
+    },
+    {
+      blockerRef: "blocker.public.pylon_dispatch.duplicate_active_assignment",
+      message: "duplicate_active_assignment: assignment already active for this account",
+      name: "duplicate active assignment",
+    },
+  ] as const) {
+    test(`spawnCodexInstances adverse dispatch matrix recovers from ${scenario.name}`, async () => {
+      const fixture = await tempPylonFixture()
+      const calls: KhalaCodexFleetCommandInput[] = []
+      let heartbeatCalls = 0
+      let spawnCalls = 0
+      const runner = async (input: KhalaCodexFleetCommandInput): Promise<KhalaCodexFleetCommandResult> => {
+        calls.push(input)
+        const args = pylonArgs(input)
+        const joined = args.join(" ")
+        if (joined === "provider go-online --json") {
+          return ok({
+            ok: true,
+            ownCapacityDispatch: {
+              availableCodexAssignments: 1,
+              codexAccounts: [
+                {
+                  accountKey: MATRIX_ACCOUNT_KEY,
+                  available: 1,
+                  busy: 0,
+                  queued: 0,
+                  ready: 5,
+                },
+              ],
+              maxCodexAssignments: 5,
+            },
+            pylonRef: "pylon.local.test",
+          })
+        }
+        if (joined === "codex accounts list --json") {
+          return ok({
+            accounts: [
+              {
+                accountRef: "codex-2",
+                accountRefHash: MATRIX_ACCOUNT_REF_HASH,
+                homeState: "present",
+                provider: "codex",
+                readiness: { state: "ready" },
+              },
+            ],
+            schema: "openagents.pylon.accounts_list.v0.3",
+          })
+        }
+        if (joined === "accounts status --provider codex --json") {
+          return ok({
+            accounts: [],
+            schema: "openagents.pylon.accounts_status.v0.1",
+          })
+        }
+        if (joined === "presence heartbeat --base-url https://openagents.com --json") {
+          heartbeatCalls += 1
+          expect(input.env?.OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY).toBe("5")
+          return ok({
+            heartbeatRef: `heartbeat.pylon.local.test.${heartbeatCalls}`,
+            pylonRef: "pylon.local.test",
+          })
+        }
+        if (args[0] === "khala" && args[1] === "spawn") {
+          spawnCalls += 1
+          return ok(spawnCalls === 1
+            ? matrixBatchSpawnBlocker(scenario.blockerRef, scenario.message)
+            : matrixBatchSpawnSuccess(`assignment.public.codex_agent_task.matrix_${spawnCalls}`))
+        }
+        return failed(`unexpected command: ${joined}`)
+      }
+
+      const result = await spawnCodexInstances({
+        count: 1,
+        prompt: "Run the public fixture.",
+      }, {
+        env: fixture.env,
+        runner,
+      })
+
+      expect(result.acceptedCount).toBe(1)
+      expect(result.results[0]?.assignmentRef).toBe("assignment.public.codex_agent_task.matrix_2")
+      expect(spawnCalls).toBe(2)
+      expect(heartbeatCalls).toBe(scenario.name === "duplicate active assignment" ? 1 : 2)
+      const commandOrder = calls.map(call => pylonArgs(call).join(" "))
+      expect(commandOrder.filter(command => command === "presence heartbeat --base-url https://openagents.com --json"))
+        .toHaveLength(heartbeatCalls)
+      expect(commandOrder.filter(command => command.startsWith("khala spawn "))).toHaveLength(2)
+    })
+  }
+
+  for (const scenario of [
+    {
+      expected: "credentials",
+      name: "credentials_missing",
+      readiness: { state: "credentials_missing" },
+    },
+    {
+      expected: "revoked",
+      name: "revoked",
+      readiness: { state: "revoked" },
+    },
+  ] as const) {
+    test(`spawnCodexInstances adverse account matrix blocks ${scenario.name} with a typed action`, async () => {
+      const fixture = await tempPylonFixture()
+      const runner = async (input: KhalaCodexFleetCommandInput): Promise<KhalaCodexFleetCommandResult> => {
+        const args = pylonArgs(input)
+        const joined = args.join(" ")
+        if (joined === "provider go-online --json") {
+          return ok({
+            ok: true,
+            ownCapacityDispatch: {
+              availableCodexAssignments: 1,
+              codexAccounts: [
+                {
+                  accountKey: MATRIX_ACCOUNT_KEY,
+                  available: 1,
+                  busy: 0,
+                  queued: 0,
+                  ready: 1,
+                },
+              ],
+              maxCodexAssignments: 1,
+            },
+            pylonRef: "pylon.local.test",
+          })
+        }
+        if (joined === "codex accounts list --json") {
+          return ok({
+            accounts: [
+              {
+                accountRef: "codex-2",
+                accountRefHash: MATRIX_ACCOUNT_REF_HASH,
+                homeState: "present",
+                provider: "codex",
+                readiness: scenario.readiness,
+              },
+            ],
+            schema: "openagents.pylon.accounts_list.v0.3",
+          })
+        }
+        if (joined === "accounts status --provider codex --json") {
+          return ok({
+            accounts: [],
+            schema: "openagents.pylon.accounts_status.v0.1",
+          })
+        }
+        if (joined === "presence heartbeat --base-url https://openagents.com --json") {
+          return ok({
+            heartbeatRef: "heartbeat.pylon.local.test.1",
+            pylonRef: "pylon.local.test",
+          })
+        }
+        if (args[0] === "khala" && args[1] === "spawn") {
+          throw new Error("khala spawn should not run for a non-ready account")
+        }
+        return failed(`unexpected command: ${joined}`)
+      }
+
+      let thrown: unknown
+      try {
+        await spawnCodexInstances({
+          accountRef: "codex-2",
+          count: 1,
+          prompt: "Run the public fixture.",
+        }, {
+          env: fixture.env,
+          runner,
+        })
+      } catch (error) {
+        thrown = error
+      }
+
+      expect(thrown).toBeDefined()
+      const message = String(thrown instanceof Error ? thrown.message : thrown)
+      expect(message).toContain("Khala fleet delegate blocked at select_account")
+      expect(message).toContain(scenario.expected)
+      expect(message).not.toContain("No Pylon Codex assignment capacity is available right now")
+    })
+  }
 
   test("codex_spawn tool treats failed local auto-runs as failed even with an assignment ref", async () => {
     const fixture = await tempPylonFixture()
