@@ -34,7 +34,12 @@ describe("khala code desktop app shell", () => {
     expect(html).toContain('class="khala-code-shell antialiased"')
     expect(html).toContain('id="message-list"')
     expect(html).toContain('id="composer-form"')
+    expect(html).toContain("oa-ai-command-composer")
+    expect(html).toContain("data-oa-command-composer")
+    expect(html).toContain('id="composer-rail"')
+    expect(html).toContain('id="composer-hud"')
     expect(html).toContain('id="composer-input"')
+    expect(html).toContain("data-oa-command-composer-native-editing")
     expect(html).toContain("autofocus")
     expect(html).toContain('id="send-button"')
     expect(html).not.toContain("Pylons")
@@ -62,19 +67,57 @@ describe("khala code desktop app shell", () => {
   test("keeps composer focus styling on the frame instead of the textarea", async () => {
     const css = await Bun.file(new URL("../src/ui/styles.css", import.meta.url)).text()
 
-    expect(css).toContain(".composer-shell:focus-within")
+    expect(css).toContain(".khala-code-composer:focus-within .oa-ai-command-composer-frame")
     expect(css).not.toContain("#composer-input:focus-visible")
+  })
+
+  test("keeps the composer footer controls in a clean inline strip", async () => {
+    const html = await Bun.file(new URL("../src/ui/index.html", import.meta.url)).text()
+    const main = await Bun.file(new URL("../src/ui/main.ts", import.meta.url)).text()
+    const css = await Bun.file(new URL("../src/ui/styles.css", import.meta.url)).text()
+
+    expect(html.indexOf('id="resize-button"')).toBeLessThan(html.indexOf('id="send-button"'))
+    expect(css).toContain("grid-template-columns: minmax(0, 1fr) minmax(0, auto) 36px 36px")
+    expect(css).toContain(".khala-code-composer .oa-ai-command-composer-submit-label")
+    expect(css).toContain("position: static")
+    expect(main).not.toContain('composerExpanded ? "expanded" : "compact"')
   })
 
   test("keeps the composer input available while a turn is pending", async () => {
     const main = await Bun.file(new URL("../src/ui/main.ts", import.meta.url)).text()
     const css = await Bun.file(new URL("../src/ui/styles.css", import.meta.url)).text()
 
-    expect(main).toContain("sendButton.disabled = pendingTurn || composerInput.value.trim() === \"\"")
+    expect(main).toContain("sendButton.disabled = !pendingTurn && !canSubmitComposer()")
+    expect(main).toContain('sendButton.type = pendingTurn ? "button" : "submit"')
+    expect(main).toContain("stopActiveTurn")
     expect(main).not.toContain("composerInput.disabled = pendingTurn")
     expect(main).toContain("requestAnimationFrame(focusComposerInput)")
     expect(css).not.toContain("#composer-input:disabled")
     expect(css).not.toContain("cursor: wait")
+  })
+
+  test("keeps preview HTTP RPC off Electrobun native internal ports", async () => {
+    const main = await Bun.file(new URL("../src/ui/main.ts", import.meta.url)).text()
+
+    expect(main).toContain("KHALA_CODE_DESKTOP_DEFAULT_PREVIEW_PORT")
+    expect(main).toContain("isKhalaPreviewWindow")
+    expect(main).toContain("const rpc = isKhalaPreviewWindow ? previewRpc() : nativeRpc")
+    expect(main).not.toContain("__electrobunRpcSocketPort")
+  })
+
+  test("wires shared composer state for attachments, large paste, and HUD projection", async () => {
+    const main = await Bun.file(new URL("../src/ui/main.ts", import.meta.url)).text()
+    const pkg = await Bun.file(new URL("../package.json", import.meta.url)).json() as {
+      dependencies: Record<string, string>
+    }
+
+    expect(main).toContain("@openagentsinc/composer-state")
+    expect(main).toContain("stageComposerPastedFiles")
+    expect(main).toContain("stageComposerDroppedFiles")
+    expect(main).toContain("offerComposerLargeTextPaste")
+    expect(main).toContain("createCommandComposerHud")
+    expect(pkg.dependencies["@openagentsinc/composer-state"]).toBe("workspace:*")
+    expect(pkg.dependencies["@openagentsinc/three-effect"]).toContain("fa84064796")
   })
 
   test("splits code and diff fixtures for the initial transcript renderer", () => {

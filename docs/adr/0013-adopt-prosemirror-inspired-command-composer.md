@@ -190,6 +190,11 @@ The implementation should land as a sequence:
   paste/drop staging, non-blocking deferred work descriptors, retry/status
   updates, large-text attachment offers, gapcursor/dropcursor hooks, thumbnail
   rendering, accessible attachment actions, and 100k-character prompt coverage.
+* 2026-06-30: Issue #7643 integrated the shared composer into Khala Code
+  desktop with native shortcut preservation, autofocus and focus-after-submit,
+  always-writable pending turns, Markdown preview, typed attachment and
+  large-text staging, optional three-effect HUD projection, and a clean inline
+  footer strip for status, resize, and send controls.
 
 ## Pros and Cons of the Options
 

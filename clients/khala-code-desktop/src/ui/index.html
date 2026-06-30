@@ -18,9 +18,35 @@
         ></div>
       </section>
       <section class="composer-dock" aria-label="Message composer">
-        <form id="composer-form" class="composer-shell">
+        <form
+          id="composer-form"
+          class="oa-ai-command-composer khala-code-composer"
+          data-oa-command-composer
+          data-oa-command-composer-status="ready"
+          data-oa-command-composer-expanded="false"
+        >
+          <div
+            id="composer-hud"
+            class="khala-code-composer-hud"
+            aria-hidden="true"
+          ></div>
+          <div id="composer-frame" class="oa-ai-command-composer-frame">
+          <label for="composer-input" class="oa-ai-command-composer-label">
+            Message Khala Code
+          </label>
+          <div
+            id="composer-rail"
+            class="oa-ai-command-composer-rail"
+            data-oa-command-composer-rail
+            data-oa-command-composer-drop-target
+            data-oa-command-composer-drag-active="false"
+            role="list"
+            aria-label="Composer attachments"
+            hidden
+          ></div>
           <textarea
             id="composer-input"
+            class="oa-ai-command-composer-textarea"
             name="khala-code-message"
             rows="4"
             autocomplete="off"
@@ -28,10 +54,89 @@
             spellcheck="true"
             placeholder="Send a message"
             aria-label="Message Khala Code"
+            aria-describedby="composer-a11y"
+            data-oa-command-composer-textarea
+            data-oa-command-composer-native-editing="true"
+            data-oa-command-composer-focus-after-submit
+            data-oa-command-composer-autofocus
           ></textarea>
-          <button id="send-button" type="submit" aria-label="Send message">
-            <span aria-hidden="true">↑</span>
-          </button>
+          <div
+            id="composer-preview"
+            class="oa-ai-command-composer-markdown-preview khala-code-composer-preview"
+            data-oa-command-composer-preview
+            hidden
+          ></div>
+          <div class="oa-ai-command-composer-footer">
+            <div
+              id="composer-controls"
+              class="oa-ai-command-composer-controls"
+              data-oa-command-composer-controls
+            >
+              <button
+                id="attach-button"
+                class="oa-ai-command-composer-button"
+                type="button"
+                aria-label="Attach files"
+                title="Attach files"
+                data-oa-command-composer-control="Attach"
+                data-variant="ghost"
+              >
+                <span class="oa-ai-command-composer-icon" aria-hidden="true">+</span>
+                <span class="oa-ai-command-composer-button-label">Attach</span>
+              </button>
+              <button
+                id="preview-button"
+                class="oa-ai-command-composer-button"
+                type="button"
+                aria-label="Toggle Markdown preview"
+                title="Toggle Markdown preview"
+                data-oa-command-composer-control="Preview"
+                data-variant="ghost"
+                aria-pressed="false"
+              >
+                <span class="oa-ai-command-composer-icon" aria-hidden="true">o</span>
+                <span class="oa-ai-command-composer-button-label">Preview</span>
+              </button>
+            </div>
+            <div
+              id="composer-status"
+              class="oa-ai-command-composer-status"
+              data-oa-command-composer-status-label="ready"
+              aria-live="polite"
+            ></div>
+            <button
+              id="resize-button"
+              class="oa-ai-command-composer-resize-handle"
+              type="button"
+              aria-label="Resize composer"
+              title="Resize composer"
+              data-oa-command-composer-resize
+            >
+              <span class="oa-ai-command-composer-icon" aria-hidden="true">/</span>
+            </button>
+            <button
+              id="send-button"
+              class="oa-ai-command-composer-submit"
+              type="submit"
+              aria-label="Send message"
+              title="Send"
+              data-oa-command-composer-submit="send"
+              data-status="ready"
+            >
+              <span class="oa-ai-command-composer-icon" aria-hidden="true">^</span>
+              <span class="oa-ai-command-composer-submit-label">Send</span>
+            </button>
+          </div>
+          <div id="composer-a11y" class="oa-ai-command-composer-a11y" aria-live="polite"></div>
+          <input
+            id="file-input"
+            class="khala-code-file-input"
+            type="file"
+            multiple
+            tabindex="-1"
+            aria-hidden="true"
+          />
+          </div>
         </form>
       </section>
     </main>
