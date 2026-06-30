@@ -571,6 +571,15 @@ export function evaluatePylonKhalaCloseoutChecklist(
         status.tokenUsage.demandSource === proof.tokenUsage.demandSource,
     ),
     checklistItem(
+      "check.khala_closeout.token_usage_totals_consistent",
+      status.tokenUsage.rowCount === proof.tokenUsage.rowCount &&
+        status.tokenUsage.inputTokens === proof.tokenUsage.inputTokens &&
+        status.tokenUsage.outputTokens === proof.tokenUsage.outputTokens &&
+        status.tokenUsage.reasoningTokens === proof.tokenUsage.reasoningTokens &&
+        status.tokenUsage.cacheReadTokens === proof.tokenUsage.cacheReadTokens &&
+        status.tokenUsage.totalTokens === proof.tokenUsage.totalTokens,
+    ),
+    checklistItem(
       "check.khala_closeout.proof_checklist.ok",
       proof.proofChecklist.ok,
     ),

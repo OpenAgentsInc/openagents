@@ -1108,6 +1108,26 @@ describe("pylon khala requester API", () => {
     )
   })
 
+  test("closeout checklist fails closed when exact token projections disagree", () => {
+    const proofPayload = completeProof({
+      tokenUsage: {
+        ...completeProof().tokenUsage,
+        rowCount: 2,
+        totalTokens: 280,
+      },
+    })
+    const proofChecklist = evaluatePylonKhalaProofChecklist(proofPayload as ProofPayload)
+    const checklist = evaluatePylonKhalaCloseoutChecklist(
+      completeTraceStatus() as CloseoutTraceStatus,
+      { ...proofPayload, ok: true, proofChecklist } as CloseoutProofResult,
+    )
+
+    expect(checklist.ok).toBe(false)
+    expect(checklist.blockerRefs).toContain(
+      "blocker.khala_closeout.token_usage_totals_consistent",
+    )
+  })
+
   test("closeout checklist fails closed instead of throwing when remote closeout policy is absent", () => {
     const { closeoutPolicy: _proofCloseoutPolicy, ...proofPayload } =
       completeProof()
