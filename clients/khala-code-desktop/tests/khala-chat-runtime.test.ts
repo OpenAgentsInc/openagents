@@ -150,6 +150,11 @@ describe("Khala Code desktop chat runtime", () => {
     })
     expect(calls[0]?.url).toBe("https://openrouter.ai/api/v1/chat/completions")
     expect(calls[0]?.headers.get("authorization")).toBe("Bearer sk-or-secretkey")
+    expect(calls[0]?.headers.get("http-referer")).toBe("https://openagents.com/khala")
+    expect(calls[0]?.headers.get("x-openrouter-title")).toBe("Khala Code")
+    expect(calls[0]?.headers.get("x-openrouter-categories")).toBe(
+      "cli-agent,cloud-agent,personal-agent,programming-app",
+    )
     expect(calls[0]?.body.model).toBe("anthropic/claude-haiku")
     expect(calls[0]?.body.stream).toBe(true)
     expect(JSON.stringify(result)).not.toContain("sk-or-secretkey")

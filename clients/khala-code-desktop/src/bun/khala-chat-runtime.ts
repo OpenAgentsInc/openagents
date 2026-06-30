@@ -54,6 +54,11 @@ const MAX_TOOL_ROUNDS = 8
 const MAX_TOTAL_TOOL_CALLS = 32
 const DEFAULT_HOSTED_TOKEN_MESSAGE =
   "Khala Code is wired to the hosted OpenAgents cloud by default, but this desktop process does not have an OPENAGENTS_AGENT_TOKEN. Set OPENAGENTS_AGENT_TOKEN for hosted cloud, or set OPENROUTER_API_KEY to use your own OpenRouter key."
+const OPENROUTER_APP_ATTRIBUTION_HEADERS = {
+  "HTTP-Referer": "https://openagents.com/khala",
+  "X-OpenRouter-Categories": "cli-agent,cloud-agent,personal-agent,programming-app",
+  "X-OpenRouter-Title": "Khala Code",
+} as const
 
 type ChatEnv = Readonly<Record<string, string | undefined>>
 
@@ -339,7 +344,10 @@ function createChatTransport(input: {
           ...toolRequestFields(tools),
         },
         fetchFn: input.fetchFn,
-        headers: { authorization: `Bearer ${token}` },
+        headers: {
+          authorization: `Bearer ${token}`,
+          ...OPENROUTER_APP_ATTRIBUTION_HEADERS,
+        },
         ...(callbacks?.onAssistantDelta === undefined ? {} : { onAssistantDelta: callbacks.onAssistantDelta }),
         url: `${(input.env.OPENROUTER_BASE_URL?.trim() || "https://openrouter.ai/api/v1").replace(/\/+$/, "")}/chat/completions`,
       }),
