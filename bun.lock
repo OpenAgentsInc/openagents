@@ -442,6 +442,17 @@
         "typescript": "catalog:",
       },
     },
+    "packages/composer-state": {
+      "name": "@openagentsinc/composer-state",
+      "version": "0.1.0",
+      "dependencies": {
+        "effect": "catalog:",
+      },
+      "devDependencies": {
+        "bun-types": "^1.0.0",
+        "typescript": "catalog:",
+      },
+    },
     "packages/design-tokens": {
       "name": "@openagentsinc/design-tokens",
       "version": "0.1.0",
@@ -963,6 +974,8 @@
     "@openagentsinc/autopilot-web": ["@openagentsinc/autopilot-web@workspace:apps/openagents.com/apps/web"],
 
     "@openagentsinc/blueprint-contracts": ["@openagentsinc/blueprint-contracts@workspace:packages/blueprint-contracts"],
+
+    "@openagentsinc/composer-state": ["@openagentsinc/composer-state@workspace:packages/composer-state"],
 
     "@openagentsinc/design-tokens": ["@openagentsinc/design-tokens@workspace:packages/design-tokens"],
 
