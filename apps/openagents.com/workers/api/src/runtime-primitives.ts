@@ -109,6 +109,27 @@ const dayPartsToKey = (parts: TimezoneDayParts): string =>
     '0',
   )}-${String(parts.day).padStart(2, '0')}`
 
+const dayKeyToParts = (dayKey: string): TimezoneDayParts | undefined => {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dayKey)
+  if (match === null) {
+    return undefined
+  }
+
+  const year = Number(match[1])
+  const month = Number(match[2])
+  const day = Number(match[3])
+  const date = new Date(Date.UTC(year, month - 1, day))
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
+  ) {
+    return undefined
+  }
+
+  return { day, month, year }
+}
+
 export const dayKeyInTimezone = (
   timestamp: string,
   timezone: string,
@@ -167,6 +188,28 @@ const startOfDayIsoForParts = (
   }
 
   return epochMillisToIsoTimestamp(epochMillis)
+}
+
+export const calendarDayKeyAfter = (
+  dayKey: string,
+  days: number,
+): string | undefined => {
+  const parts = dayKeyToParts(dayKey)
+
+  return parts === undefined
+    ? undefined
+    : dayPartsToKey(addCalendarDays(parts, days))
+}
+
+export const startOfCalendarDayIsoTimestampInTimezone = (
+  dayKey: string,
+  timezone: string,
+): string | undefined => {
+  const parts = dayKeyToParts(dayKey)
+
+  return parts === undefined
+    ? undefined
+    : startOfDayIsoForParts(parts, timezone)
 }
 
 export const startOfDayIsoTimestampInTimezone = (

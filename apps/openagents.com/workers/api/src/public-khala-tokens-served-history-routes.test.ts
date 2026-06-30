@@ -8,7 +8,7 @@ import {
   type TokenUsageLedgerShape,
 } from './token-usage-ledger'
 
-const nowIso = '2026-06-24T12:00:00.000Z'
+const nowIso = '2026-06-26T12:00:00.000Z'
 
 const runtime: TokenUsageLedgerRuntime = {
   // 30d window → since = now - 30 days. The fake DB ignores the bound and
@@ -31,17 +31,82 @@ type RawTokenRow = {
 const fakeHistoryDb = (
   rows: ReadonlyArray<HistoryRow | RawTokenRow>,
 ): D1Database => {
-  const prepare = (sql = '') => ({
-    bind: () => prepare(sql),
-    all: <T>(): Promise<{ results: ReadonlyArray<T> }> =>
-      Promise.resolve({
-        results: sql.includes('date(observed_at)')
-          ? (groupRawRowsByUtcDay(rows) as ReadonlyArray<T>)
-          : (rows as ReadonlyArray<T>),
-      }),
-  })
+  const prepare = (sql = '') => {
+    let values: ReadonlyArray<unknown> = []
+
+    const statement = {
+      bind: (...nextValues: ReadonlyArray<unknown>) => {
+        values = nextValues
+
+        return statement
+      },
+      all: <T>(): Promise<{ results: ReadonlyArray<T> }> =>
+        Promise.resolve({
+          results: sql.includes('WITH bounded_token_usage_events AS')
+            ? (groupRawRowsByBoundedDays(rows, values) as ReadonlyArray<T>)
+            : sql.includes('date(observed_at)')
+              ? (groupRawRowsByUtcDay(rows) as ReadonlyArray<T>)
+              : (rows as ReadonlyArray<T>),
+        }),
+      first: <T>(): Promise<T | null> =>
+        Promise.resolve(
+          sql.includes('MIN(observed_at) AS first_observed_at')
+            ? ({
+                first_observed_at:
+                  rows
+                    .filter((row): row is RawTokenRow => !('day' in row))
+                    .map(row => row.observed_at)
+                    .sort((left, right) => left.localeCompare(right))[0] ??
+                  null,
+              } as T)
+            : null,
+        ),
+    }
+
+    return statement
+  }
 
   return { prepare } as unknown as D1Database
+}
+
+const groupRawRowsByBoundedDays = (
+  rows: ReadonlyArray<HistoryRow | RawTokenRow>,
+  values: ReadonlyArray<unknown>,
+): ReadonlyArray<HistoryRow> => {
+  const dayWindows: Array<{
+    day: string
+    endIso: string
+    startIso: string
+  }> = []
+  for (let index = 2; index + 2 < values.length; index += 3) {
+    dayWindows.push({
+      day: String(values[index + 2]),
+      endIso: String(values[index + 1]),
+      startIso: String(values[index]),
+    })
+  }
+
+  const grouped = rows
+    .filter((row): row is RawTokenRow => !('day' in row))
+    .reduce((days, row) => {
+      const dayWindow = dayWindows.find(
+        window =>
+          row.observed_at >= window.startIso && row.observed_at < window.endIso,
+      )
+      if (dayWindow === undefined) {
+        return days
+      }
+
+      days.set(
+        dayWindow.day,
+        (days.get(dayWindow.day) ?? 0) + row.input_tokens + row.output_tokens,
+      )
+      return days
+    }, new Map<string, number>())
+
+  return [...grouped.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([day, tokens]) => ({ day, tokens }))
 }
 
 const groupRawRowsByUtcDay = (

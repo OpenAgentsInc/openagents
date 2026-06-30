@@ -24,9 +24,11 @@ import { summarizeOwnedInferenceHourlyCost } from './inference/owned-inference-c
 import { isRecord, parseJsonRecord } from './json-boundary'
 import { openAgentsDatabase } from './runtime'
 import {
+  calendarDayKeyAfter,
   currentIsoTimestamp,
   dayKeyInTimezone,
   isoTimestampAfterIso,
+  startOfCalendarDayIsoTimestampInTimezone,
   startOfDayIsoTimestampInTimezone,
   utcStartOfDayIsoTimestamp,
 } from './runtime-primitives'
@@ -38,6 +40,7 @@ export type TokenUsageLedgerRuntime = Readonly<{
 }>
 
 export const PUBLIC_KHALA_TOKENS_SERVED_TIMEZONE = 'America/Chicago'
+const PUBLIC_TOKENS_SERVED_HISTORY_QUERY_DAY_CHUNK_SIZE = 90
 
 export const systemTokenUsageLedgerRuntime: TokenUsageLedgerRuntime = {
   isoTimestampAfterIso,
@@ -1050,6 +1053,177 @@ const d1Effect = <A>(
     try: run,
     catch: error => new TokenUsageLedgerStorageError({ operation, error }),
   })
+
+type PublicTokensServedHistoryDayWindow = Readonly<{
+  day: string
+  endIso: string
+  startIso: string
+}>
+
+const chunkReadonlyArray = <A>(
+  values: ReadonlyArray<A>,
+  size: number,
+): ReadonlyArray<ReadonlyArray<A>> => {
+  const chunks: Array<ReadonlyArray<A>> = []
+
+  for (let index = 0; index < values.length; index += size) {
+    chunks.push(values.slice(index, index + size))
+  }
+
+  return chunks
+}
+
+const publicTokensServedHistoryDayWindows = (
+  input: Readonly<{
+    nowIso: string
+    since: string | undefined
+    startAtIso: string
+    timezone: string
+  }>,
+): ReadonlyArray<PublicTokensServedHistoryDayWindow> => {
+  const firstDay = dayKeyInTimezone(input.startAtIso, input.timezone)
+  const lastDay = dayKeyInTimezone(input.nowIso, input.timezone)
+  if (firstDay === undefined || lastDay === undefined || firstDay > lastDay) {
+    return []
+  }
+
+  const windows: Array<PublicTokensServedHistoryDayWindow> = []
+  let day = firstDay
+
+  while (day <= lastDay) {
+    const nextDay = calendarDayKeyAfter(day, 1)
+    const dayStartIso = startOfCalendarDayIsoTimestampInTimezone(
+      day,
+      input.timezone,
+    )
+    const dayEndIso =
+      nextDay === undefined
+        ? undefined
+        : startOfCalendarDayIsoTimestampInTimezone(nextDay, input.timezone)
+
+    if (dayStartIso === undefined || dayEndIso === undefined) {
+      break
+    }
+
+    const startIso =
+      input.since !== undefined && input.since > dayStartIso
+        ? input.since
+        : dayStartIso
+    if (startIso < dayEndIso) {
+      windows.push({ day, endIso: dayEndIso, startIso })
+    }
+
+    if (nextDay === undefined || nextDay <= day) {
+      break
+    }
+    day = nextDay
+  }
+
+  return windows
+}
+
+const publicTokensServedHistorySqlForWindows = (
+  windows: ReadonlyArray<PublicTokensServedHistoryDayWindow>,
+): string => {
+  const cases = windows
+    .map(() => `WHEN observed_at >= ? AND observed_at < ? THEN ?`)
+    .join('\n')
+
+  return `WITH bounded_token_usage_events AS (
+              SELECT observed_at, input_tokens, output_tokens
+                FROM token_usage_events
+               WHERE observed_at >= ?
+                 AND observed_at < ?
+                 AND ${publicTokensServedDemandWhere}
+            )
+            SELECT
+              day,
+              COALESCE(SUM(input_tokens), 0) + COALESCE(SUM(output_tokens), 0)
+                AS tokens
+              FROM (
+                SELECT
+                  CASE
+                    ${cases}
+                    ELSE NULL
+                  END AS day,
+                  input_tokens,
+                  output_tokens
+                FROM bounded_token_usage_events
+              )
+             WHERE day IS NOT NULL
+             GROUP BY day
+             ORDER BY day ASC`
+}
+
+const readPublicTokensServedHistoryForTimezone = (
+  db: D1Database,
+  input: Readonly<{
+    nowIso: string
+    since: string | undefined
+    startAtIso: string | undefined
+    timezone: string
+  }>,
+): Effect.Effect<
+  ReadonlyArray<{ day: string; tokensServed: number }>,
+  TokenUsageLedgerStorageError
+> => {
+  if (input.startAtIso === undefined) {
+    return Effect.succeed([])
+  }
+
+  const windows = publicTokensServedHistoryDayWindows({
+    nowIso: input.nowIso,
+    since: input.since,
+    startAtIso: input.startAtIso,
+    timezone: input.timezone,
+  })
+  if (windows.length === 0) {
+    return Effect.succeed([])
+  }
+
+  return Effect.gen(function* () {
+    const series: Array<{ day: string; tokensServed: number }> = []
+
+    for (const chunk of chunkReadonlyArray(
+      windows,
+      PUBLIC_TOKENS_SERVED_HISTORY_QUERY_DAY_CHUNK_SIZE,
+    )) {
+      const first = chunk[0]
+      const last = chunk[chunk.length - 1]
+      if (first === undefined || last === undefined) {
+        continue
+      }
+
+      const caseValues = chunk.flatMap(dayWindow => [
+        dayWindow.startIso,
+        dayWindow.endIso,
+        dayWindow.day,
+      ])
+      const rows = yield* d1Effect(
+        'tokenUsageEvents.publicTokensServedHistory.timezone.aggregate',
+        () =>
+          db
+            .prepare(publicTokensServedHistorySqlForWindows(chunk))
+            .bind(first.startIso, last.endIso, ...caseValues)
+            .all<{ day: string | null; tokens: number | null }>(),
+      )
+
+      series.push(
+        ...rows.results
+          .filter(
+            (row): row is { day: string; tokens: number | null } =>
+              typeof row.day === 'string' && row.day !== '',
+          )
+          .map(row => ({
+            day: row.day,
+            tokensServed: Math.max(0, Math.trunc(row.tokens ?? 0)),
+          })),
+      )
+    }
+
+    return series.sort((left, right) => left.day.localeCompare(right.day))
+  })
+}
 
 const findExistingEvent = (
   db: D1Database,
@@ -2214,49 +2388,28 @@ export const makeD1TokenUsageLedger = (
           : leaderboardWindowSince(window, nowIso, runtime)
 
       if (timezone !== 'UTC') {
-        const rows = yield* d1Effect(
-          'tokenUsageEvents.publicTokensServedHistory.timezone',
-          () =>
-            db
-              .prepare(
-                since === undefined
-                  ? `SELECT observed_at, input_tokens, output_tokens
-                       FROM token_usage_events
-                      WHERE ${publicTokensServedDemandWhere}
-                      ORDER BY observed_at ASC`
-                  : `SELECT observed_at, input_tokens, output_tokens
-                       FROM token_usage_events
-                      WHERE observed_at >= ? AND ${publicTokensServedDemandWhere}
-                      ORDER BY observed_at ASC`,
-              )
-              .bind(...(since === undefined ? [] : [since]))
-              .all<{
-                observed_at: string | null
-                input_tokens: number | null
-                output_tokens: number | null
-              }>(),
-        )
-
-        const grouped = rows.results.reduce((days, row) => {
-          if (typeof row.observed_at !== 'string') {
-            return days
-          }
-
-          const day = dayKeyInTimezone(row.observed_at, timezone)
-          if (day === undefined) {
-            return days
-          }
-
-          const tokens =
-            Math.max(0, Math.trunc(row.input_tokens ?? 0)) +
-            Math.max(0, Math.trunc(row.output_tokens ?? 0))
-          days.set(day, (days.get(day) ?? 0) + tokens)
-          return days
-        }, new Map<string, number>())
-
-        const series = [...grouped.entries()]
-          .sort(([left], [right]) => left.localeCompare(right))
-          .map(([day, tokensServed]) => ({ day, tokensServed }))
+        const firstObservedAt =
+          since === undefined
+            ? (
+                yield* d1Effect(
+                  'tokenUsageEvents.publicTokensServedHistory.firstObservedAt',
+                  () =>
+                    db
+                      .prepare(
+                        `SELECT MIN(observed_at) AS first_observed_at
+                           FROM token_usage_events
+                          WHERE ${publicTokensServedDemandWhere}`,
+                      )
+                      .first<{ first_observed_at: string | null }>(),
+                )
+              )?.first_observed_at ?? undefined
+            : since
+        const series = yield* readPublicTokensServedHistoryForTimezone(db, {
+          nowIso,
+          since,
+          startAtIso: firstObservedAt,
+          timezone,
+        })
 
         return yield* decodePublicTokensServedHistory({
           bucket,

@@ -103,8 +103,10 @@ const filteredRows = (
   let valueIndex = 0
   const hasSince = query.includes('observed_at >= ?')
   const hasUntil = query.includes('observed_at <= ?')
+  const hasBefore = query.includes('observed_at < ?')
   const since = hasSince ? String(values[valueIndex++]) : undefined
   const until = hasUntil ? String(values[valueIndex++]) : undefined
+  const before = hasBefore ? String(values[valueIndex++]) : undefined
   const textFilters = [
     ['provider = ?', 'provider'],
     ['model = ?', 'model'],
@@ -144,6 +146,7 @@ const filteredRows = (
     return (
       (since === undefined || observedAt >= since) &&
       (until === undefined || observedAt <= until) &&
+      (before === undefined || observedAt < before) &&
       activeTextFilters.every(
         filter => String(row[filter.column] ?? '') === filter.value,
       ) &&
@@ -228,10 +231,12 @@ const makeMemoryD1 = (
   store: TokenUsageLedgerMemory = { preferences: [], rows: [] },
   options: Readonly<{
     failFirstTokenUsageEventInsertWithSuccessFalse?: boolean | undefined
+    queryLog?: Array<string> | undefined
   }> = {},
 ): D1Database & TokenUsageLedgerMemory => {
   let failedTokenUsageInsert = false
   const prepare = (query: string) => {
+    options.queryLog?.push(query)
     let values: ReadonlyArray<unknown> = []
 
     function raw<T = unknown[]>(options: {
@@ -359,6 +364,48 @@ const makeMemoryD1 = (
           )
         }
 
+        if (
+          query.includes('WITH bounded_token_usage_events AS') &&
+          query.includes('CASE') &&
+          query.includes('GROUP BY day')
+        ) {
+          const byDay = new Map<string, number>()
+          const dayWindows: Array<{
+            day: string
+            endIso: string
+            startIso: string
+          }> = []
+
+          for (let index = 2; index + 2 < values.length; index += 3) {
+            dayWindows.push({
+              day: String(values[index + 2]),
+              endIso: String(values[index + 1]),
+              startIso: String(values[index]),
+            })
+          }
+
+          for (const row of rows) {
+            const observedAt = String(row.observed_at)
+            const dayWindow = dayWindows.find(
+              window =>
+                observedAt >= window.startIso && observedAt < window.endIso,
+            )
+            if (dayWindow === undefined) {
+              continue
+            }
+
+            const served =
+              Number(row.input_tokens ?? 0) + Number(row.output_tokens ?? 0)
+            byDay.set(dayWindow.day, (byDay.get(dayWindow.day) ?? 0) + served)
+          }
+
+          const series = [...byDay.entries()]
+            .map(([day, tokens]) => ({ day, tokens }))
+            .sort((left, right) => left.day.localeCompare(right.day))
+
+          return Promise.resolve(makeResult<T>(series as Array<T>))
+        }
+
         // Public tokens-served history: per-day SUM(input + output), ordered
         // ascending by UTC day. The `since` lower bound (when present) was
         // applied by filteredRows via the bound `observed_at >= ?` value.
@@ -456,6 +503,17 @@ const makeMemoryD1 = (
 
           return Promise.resolve({
             tokens_served: count.input_tokens + count.output_tokens,
+          } as T)
+        }
+
+        if (query.includes('MIN(observed_at) AS first_observed_at')) {
+          const rows = filteredRows(store.rows, query, values, store.preferences)
+          const first = [...rows]
+            .map(row => String(row.observed_at))
+            .sort((left, right) => left.localeCompare(right))[0]
+
+          return Promise.resolve({
+            first_observed_at: first ?? null,
           } as T)
         }
 
@@ -1095,6 +1153,41 @@ describe('public tokens-served history', () => {
       { day: '2026-06-06', tokensServed: 215 },
       { day: '2026-06-08', tokensServed: 9 },
     ])
+  })
+
+  test('Central-time history is aggregated in D1 instead of raw-scanning rows', async () => {
+    const queryLog: Array<string> = []
+    const db = makeMemoryD1(
+      { preferences: [], rows: [] },
+      { queryLog },
+    )
+
+    await runLedger(
+      db,
+      Effect.gen(function* () {
+        yield* ingest(eventOnDay('central-1', '2026-06-07T01:00:00.000Z', 4, 6))
+        yield* ingest(eventOnDay('central-2', '2026-06-07T13:00:00.000Z', 7, 8))
+      }),
+    )
+
+    const history = await runLedger(db, tokensServedHistory({ window: '30d' }))
+
+    expect(history.series).toEqual([
+      { day: '2026-06-06', tokensServed: 10 },
+      { day: '2026-06-07', tokensServed: 15 },
+    ])
+    expect(
+      queryLog.some(
+        query =>
+          query.includes('SELECT observed_at, input_tokens, output_tokens') &&
+          query.includes('ORDER BY observed_at ASC'),
+      ),
+    ).toBe(false)
+    expect(
+      queryLog.some(query =>
+        query.includes('WITH bounded_token_usage_events AS'),
+      ),
+    ).toBe(true)
   })
 
   test('the window lower bound excludes older days', async () => {
