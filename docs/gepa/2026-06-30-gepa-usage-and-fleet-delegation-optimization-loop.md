@@ -42,11 +42,28 @@ result = gepa.optimize(
 # result.best_candidate -> the optimized text parameters
 ```
 
-The consumer supplies: (1) a **seed candidate** (the current system text), (2) a
-**metric/feedback function** that scores a rollout *and returns rich textual
-feedback* (the trace GEPA's `reflection_lm` reads), and (3) a **dataset** of
-tasks. GEPA owns the search. Base package has zero hard deps; the `full` extra
-pulls `litellm`, `datasets`, `mlflow`, `wandb`.
+The consumer supplies: (1) a **seed candidate** — a `dict[str,str]` mapping named
+system components to their text, (2) a **metric/feedback function** that scores a
+rollout *and returns rich textual feedback* (the trace GEPA's `reflection_lm`
+reads), and (3) a **dataset** of tasks. GEPA owns the search. Base package has
+zero hard deps; the `full` extra pulls `litellm`, `datasets`, `mlflow`, `wandb`.
+
+The real integration point is the **`GEPAAdapter` protocol**
+(`projects/repos/gepa/src/gepa/core/adapter.py`): implement `evaluate(batch,
+candidate, capture_traces) -> EvaluationBatch` (outputs + per-example scores +
+optional trajectories) and `make_reflective_dataset(candidate, eval_batch,
+components) -> {component: [{"Inputs","Generated Outputs","Feedback"}]}`. The
+`Feedback` is GEPA's **Actionable Side Information (ASI)** — the diagnostic text
+that acts as the text-optimization analogue of a gradient. There is also
+`gepa.optimize_anything(seed_candidate, evaluator, objective, config)`
+(`src/gepa/optimize_anything.py`) for any artifact given just a scoring evaluator
+that logs ASI via `oa.log(...)`. The engine loop lives in `src/gepa/core/engine.py`
+(`GEPAEngine.run`): Pareto-select → execute+capture traces → reflect → mutate
+(`src/gepa/proposer/reflective_mutation/`) → minibatch-accept → full-val + Pareto
+update, with optional system-aware `MergeProposer`. Built-in adapters include
+`DefaultAdapter`, `DSPyAdapter`/`DSPyFullProgramAdapter`, `MCPAdapter` (optimizes
+MCP tool descriptions), and `TerminalBenchAdapter` (optimizes a terminal coding
+agent) — i.e. GEPA already targets agent/tool systems, not just single prompts.
 
 The load-bearing idea for us: **GEPA optimizes text against measured outcomes by
 reading traces.** We already produce rich, redacted traces for every Codex
@@ -88,15 +105,47 @@ The honest current state:
   training, provider mutation, runtime promotion, settlement, and wallet-spend
   authority. It is the *governance/projection wrapper* — the place a real Python
   GEPA job will later plug into — not an optimizer.
+- **The online-authority gate for Mutalisk candidates already exists.**
+  `apps/openagents.com/workers/api/src/probe-gepa-standing-optimization-loop.ts`
+  (schema `omega.probe_gepa_standing_optimization_loop.v1`) is an Effect-Schema
+  governance projection with actions `observe | emit_candidates | promote_live`
+  and decisions `blocked | candidate_artifacts_ready | needs_more_evidence`. Its
+  inputs already carry `mutaliskLaneRefs`, `candidateManifestRefs`,
+  `optimizerRunRefs`, `dspyRlmAuditRefs`, and `releaseGateRefs` — it is purpose-
+  built to ingest Mutalisk's offline candidates and never auto-promote.
+- **Pylons are modeled as GEPA benchmark metric-call runners.**
+  `apps/pylon/src/gepa-capability.ts` (`pylon.capability.gepa.benchmark_runner.v0.3`,
+  envelope `openagents.pylon.gepa_capability_envelope.v0.3`, `stage: "gepa-first"`,
+  `supportsTraining: false`) — Pylons run the *evaluations* GEPA needs, not the
+  optimizer itself.
+- **A GEPA feedback (ASI) builder already exists.**
+  `packages/probe/packages/runtime/src/benchmark/studybench-gepa-feedback.ts`
+  (`probe.studybench_gepa_feedback.v0`) turns OpenAgents StudyBench rubric scores
+  into GEPA-style textual feedback — the template for the metric/feedback function
+  the fleet-delegation loop needs. The candidate seam is the manifest schema
+  **`psionic.probe_gepa_candidate_manifest.v1`** (referenced in
+  `packages/probe/packages/runtime/src/benchmark/candidate-execution.ts` and
+  `closeout-writer.ts`), which Mutalisk's `Candidate` must match.
 - **Mutalisk is the offline lane, scaffolded.** `/Users/christopherdavid/work/mutalisk`
   is "the standalone OpenAgents Python DSPy/GEPA offline-optimization lane"
   (sibling to `hydralisk`, the NVIDIA inference lane). It is a **non-Worker batch
   service** that runs DSPy + GEPA over executed traces/evals and emits
-  **candidate artifacts only**. Its candidate contract (the seam) is:
-  `{ signature, base_module, optimized_module, metric, eval_evidence_refs,
-  trace_provenance }`, written to a shared store (R2/object). Mutalisk **never
-  mutates production**; the Effect side reads candidates, runs its own acceptance
-  gate, and only then promotes. (See `mutalisk/README.md`, `mutalisk/docs/ARCHITECTURE.md`.)
+  **candidate artifacts only**. `pyproject.toml` depends on `dspy>=2.5` +
+  `gepa>=0.1.1` and exposes a `mutalisk-optimize` CLI. `src/mutalisk/optimizer.py`
+  defines two optimizers behind one `Optimizer` protocol: a dependency-free
+  deterministic `LocalSearchOptimizer` (the green default) and **`GepaOptimizer`**,
+  which calls `gepa.optimize(seed_candidate, trainset, valset,
+  adapter=MutaliskOfflineAdapter(), max_metric_calls=..., seed=...)` — where
+  `MutaliskOfflineAdapter` implements the real `GEPAAdapter` (`evaluate`,
+  `make_reflective_dataset`, `propose_new_texts`) **fully offline, no LM/network**,
+  stamping `optimizer@version` (e.g. `gepa@0.1.1`). `src/mutalisk/candidate.py`
+  defines the frozen candidate contract (the seam): `Candidate{ signature,
+  base_module_ref, optimized_module, metric_name, metric_value, optimizer,
+  eval_evidence_refs, trace_provenance_refs }` with fail-closed `validate()`; the
+  R2-sink `CandidateEmitter` is the build-out task, and the shared schema must
+  match the Effect side's `psionic.probe_gepa_candidate_manifest.v1`. Mutalisk
+  **never mutates production**. (See `mutalisk/README.md`,
+  `mutalisk/docs/ARCHITECTURE.md`, `mutalisk/src/mutalisk/{optimizer,candidate}.py`.)
 - **Governance moat is built (Effect).** `signature-lookup.ts` (chooses program
   signatures, module versions, tool scopes, release gates, evidence/receipt
   requirements; enforces `safeProjection`,
@@ -105,13 +154,27 @@ The honest current state:
   `spend_money`, … — through a proposal-only record with
   `directExecution: false`, `programRunAuthorityBoundary: "evidence_only"`,
   `approvalRequired: true`). This is what makes any GEPA output **safe to ingest**.
-- **Historical GEPA/RLM/FRLM is pruned → `backroom`.** openagents removed most
-  DSPy/GEPA/Adjutant/RLM/FRLM code on 2026-02-25 (commit `d7f53fccc`). The FRLM
-  conductor archaeology lives at
-  `backroom/openagents-prune-20260225-205724-wgpui-mvp/crates/frlm/src/conductor.rs`
-  — it models recursive decomposition as **sub-query scheduling/fanout over
-  NIP-90 with a local executor fallback** (the orchestration is market/dispatch
-  logic; the leaf "execute code over a context fragment" is what upstream RLM does).
+- **Historical GEPA/RLM/FRLM/Adjutant is pruned → `backroom`.** openagents
+  removed most DSPy/GEPA/Adjutant/RLM/FRLM code on 2026-02-25 (commit `d7f53fccc`).
+  The archaeology matters because it includes **direct delegation-optimization
+  prior art**:
+  - A **full Rust-native GEPA optimizer** — `backroom/openagents-prune-20260225-205724-wgpui-mvp/crates/dsrs/src/optimizer/gepa.rs`
+    (with `mipro.rs`, `copro.rs`, `pareto.rs`): `GEPACandidate` (instruction,
+    module, per-example `example_scores`, `parent_id`, `generation`), Pareto-front
+    selection, LLM reflection/mutation — a faithful port of the GEPA paper. The
+    project chose to adopt **upstream** GEPA via Mutalisk rather than maintain this.
+  - **Adjutant DSPy decision pipelines** — `backroom/oanix/src/dspy_*.rs` +
+    `backroom/openagents-docs-rust-archive-2026-02-11/docs/dspy/openagents-usage.md`:
+    the **complexity, delegation, and RLM-trigger pipelines were DSPy-first
+    signatures, explicitly planned to be compiled with MIPROv2 by default and
+    GEPA for multi-objective tradeoffs (quality vs cost/latency/tool-calls)**, with
+    training data collected from real runs and compiled artifacts promoted via
+    "policy bundles" (`policy_bundle_id`) through shadow/canary gates. This is the
+    exact precedent for the fleet-delegation loop below — delegation as an
+    optimizable, Pareto-multi-objective signature.
+  - The **FRLM conductor** — `.../crates/frlm/src/conductor.rs` (+ `dspy_signatures.rs`):
+    recursive decomposition as **sub-query fanout over NIP-90 with a local-executor
+    fallback** (budget/verify policy, trace emission). Issue #6654 direction.
 
 So: **we do not yet run a real GEPA optimization loop in production.** We have the
 governance wrapper, the offline lane scaffold, and the candidate/admission seam.
@@ -234,14 +297,19 @@ and evolves better objective/verifier/dispatch/merge text on the Pareto frontier
 
 ### 5.5 Candidate → admission → live (the governance seam)
 
-1. Mutalisk writes a **candidate artifact**:
-   `{ signature: "khala.fleet.delegation.v1", base_module, optimized_module:
-   <new delegation policy text>, metric, eval_evidence_refs, trace_provenance }`
-   → R2, indexed in D1.
-2. The Effect online authority (Khala/Artanis) reads it, runs the **release-gate +
-   action-submission** acceptance (`signature-lookup.ts` selectability +
-   `action-submission.ts` evidence-only boundary). A delegation-policy change is a
-   proposal, not a direct effect — `approvalRequired: true`.
+1. Mutalisk writes a **candidate artifact** in the existing seam — a
+   `Candidate{ signature: "khala.fleet.delegation", base_module_ref,
+   optimized_module: <new delegation policy text>, metric_name, metric_value,
+   optimizer: "gepa@0.1.1", eval_evidence_refs, trace_provenance_refs }`
+   conforming to `psionic.probe_gepa_candidate_manifest.v1` → R2, indexed in D1.
+   (No new seam needed — reuse the manifest schema the benchmark path already uses.)
+2. The Effect online authority ingests it through the **already-built**
+   `probe-gepa-standing-optimization-loop.ts` (`observe → emit_candidates →
+   promote_live`, carrying `candidateManifestRefs`/`releaseGateRefs`), gated by
+   Blueprint `signature-lookup.ts` selectability + the evidence-only
+   `action-submission.ts` boundary. A delegation-policy change is a proposal, not
+   a direct effect — `approvalRequired: true`, never auto-promoted. The metric
+   builder follows the existing `studybench-gepa-feedback.ts` ASI pattern.
 3. On admission, the optimized `objective_template` / `dispatch_policy` /
    `merge_resolution_template` become the live values used by the **Pylon dispatch
    path and the fleet watcher** (the same `khala request` / `assignment
@@ -282,12 +350,13 @@ starting point. Each phase lands behind the existing evidence/receipt boundary.
 
 ## 7. References
 
-- `projects/repos/gepa/README.md`, `projects/repos/gepa/` (the library; `gepa.optimize` API).
-- `/Users/christopherdavid/work/mutalisk/README.md`, `mutalisk/docs/ARCHITECTURE.md` (offline lane + candidate contract).
+- GEPA lib: `projects/repos/gepa/README.md`, `src/gepa/api.py`, `optimize_anything.py`, `core/engine.py`, `core/adapter.py`, `proposer/reflective_mutation/`, `strategies/candidate_selector.py`, `adapters/` (incl. `MCPAdapter`, `TerminalBenchAdapter`, `DSPyAdapter`).
+- Mutalisk: `/Users/christopherdavid/work/mutalisk/{README.md,AGENTS.md,docs/ARCHITECTURE.md,pyproject.toml}`, `src/mutalisk/{optimizer.py,candidate.py}` (offline lane + `GepaOptimizer` + candidate contract).
 - `docs/research/2026-06-28-dspy-rlm-python-backend-vs-effect-audit.md` (the hybrid decision; staged plan).
-- `docs/artanis/2026-06-08-bounded-gepa-scheduled-runner.md` (today's bounded GEPA runner; the governance wrapper).
-- `packages/probe/packages/runtime/src/blueprint/signature-lookup.ts`, `action-submission.ts` (admission moat).
-- `backroom/openagents-prune-20260225-205724-wgpui-mvp/crates/frlm/src/conductor.rs` (FRLM dispatch archaeology, issue #6654).
+- Live GEPA scaffolding (Effect): `apps/openagents.com/workers/api/src/{artanis-gepa-scheduled-runner-proof.ts,probe-gepa-standing-optimization-loop.ts}`, `apps/pylon/src/gepa-capability.ts`, `packages/probe/packages/runtime/src/benchmark/{studybench-gepa-feedback.ts,candidate-execution.ts,closeout-writer.ts}` (seam: `psionic.probe_gepa_candidate_manifest.v1`).
+- Admission moat: `packages/probe/packages/runtime/src/blueprint/{signature-lookup.ts,action-submission.ts}`.
+- `backroom` archaeology: `openagents-prune-20260225-205724-wgpui-mvp/crates/dsrs/src/optimizer/{gepa.rs,mipro.rs,copro.rs,pareto.rs}` (Rust-native GEPA), `crates/frlm/src/{conductor.rs,dspy_signatures.rs}` (FRLM dispatch, #6654), `oanix/src/dspy_*.rs` + `openagents-docs-rust-archive-2026-02-11/docs/dspy/openagents-usage.md` (Adjutant delegation/complexity/RLM-trigger pipelines compiled by MIPROv2/GEPA — the delegation-optimization precedent).
+- Blueprint note: `blueprint/` is **not cloned in this workspace**; its original `docs/programs-optimization-and-rlm.md` / `master-spec.md` are historical references not on disk. The live embodiment is the signature-lookup + action-submission modules above.
 - This session's fleet runbook + learnings: `docs/ops/2026-06-29-khala-codex-fleet-manager-runbook.md` (the delegation failure modes GD-1's feedback function encodes).
 - Codex→Khala port + bond next-step: `docs/codex/2026-06-30-codex-to-khala-code-porting-audit.md`, `docs/labor/2026-06-30-forfeitable-bond-next-step.md` (the backlog the fleet delegation just executed).
 
@@ -296,7 +365,11 @@ starting point. Each phase lands behind the existing evidence/receipt boundary.
 | Item | State |
 | --- | --- |
 | GEPA library available (`projects/repos/gepa`) | yes (reference) |
-| Mutalisk offline lane | scaffolded; candidate contract defined |
+| Mutalisk offline lane | scaffolded; `GepaOptimizer` + `Candidate` contract defined; R2 emitter is the build-out |
 | Live GEPA runner | bounded status projection only (no real optimization) |
+| Online-authority gate (`probe-gepa-standing-optimization-loop.ts`) | built; ingests `candidateManifestRefs`, can't auto-promote |
+| Pylon GEPA capability (`gepa-capability.ts`) | built (benchmark metric-call runner) |
+| GEPA feedback/ASI builder (`studybench-gepa-feedback.ts`) | built (template for the delegation metric) |
+| Candidate seam (`psionic.probe_gepa_candidate_manifest.v1`) | defined on both sides; must align Mutalisk `Candidate` to it |
 | Blueprint admission moat | built (signature-lookup + action-submission) |
 | Fleet-delegation GEPA loop (GD-0..GD-4) | not started — GD-0/GD-1 are the ASAP next step |
