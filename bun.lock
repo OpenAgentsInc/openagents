@@ -634,6 +634,7 @@
         "@openagentsinc/composer-state": "workspace:*",
         "@openagentsinc/design-tokens": "workspace:*",
         "@pierre/diffs": "^1.2.11",
+        "basecoat-css": "^1.0.1",
         "clsx": "^2.1.1",
         "effect": "catalog:",
         "foldkit": "^0.102.1",
@@ -1484,6 +1485,8 @@
     "balanced-match": ["balanced-match@1.0.2", "", {}, "sha512-3oSeUO0TMV67hN1AmbXsK4yaqU7tjiHlbxRDZOpH0KW9+CeX4bRAaX0Anxt0tx2MrpRpWwQaPwIlISEJhYU5Pw=="],
 
     "base64-js": ["base64-js@1.5.1", "", {}, "sha512-AKpaYlHn8t4SVbOHCy+b5+KKgvR4vrsD8vbvrbiQJps7fKDTkjkDry6ji0rUJjC0kzbNePLwzxq8iypo41qeWA=="],
+
+    "basecoat-css": ["basecoat-css@1.0.1", "", {}, "sha512-iFwj7JzoThIMTP8WXhTg227aXgTmSiCghVDoJdLY8g5PMdtNdCyV2R1OynObxTfkO2hfFnasIyrSeoUvbMJdcQ=="],
 
     "basic-ftp": ["basic-ftp@5.3.1", "", {}, "sha512-bopVNp6ugyA150DDuZfPFdt1KZ5a94ZDiwX4hMgZDzF+GttD80lEy8kj98kbyhLXnPvhtIo93mdnLIjpCAeeOw=="],
 
