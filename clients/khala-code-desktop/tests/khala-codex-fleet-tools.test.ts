@@ -208,7 +208,10 @@ describe("Khala Code Codex fleet tools", () => {
         expect(args).toContain("codex")
         expect(args).toContain("--pylon-ref")
         expect(args).toContain("pylon.local.test")
+        expect(args).toContain("--base-url")
+        expect(args).toContain("https://openagents.com")
         expect(args).toContain("--json")
+        expect(input.env?.PYLON_OPENAGENTS_BASE_URL).toBe("https://openagents.com")
         return ok({
           assignmentRef: "assignment.public.codex_agent_task.test",
           autoRun: {

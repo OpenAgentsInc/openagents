@@ -142,6 +142,7 @@ const MAX_SPAWN_COUNT = 4
 const DEFAULT_COMMAND_TIMEOUT_MS = 45_000
 const DEFAULT_SPAWN_TIMEOUT_MS = 180_000
 const DEFAULT_ENSURE_WAIT_MS = 7_500
+const DEFAULT_OPENAGENTS_BASE_URL = "https://openagents.com"
 const MAX_MODEL_OUTPUT_BYTES = 4_000
 
 const pylonEnsureToolDefinition: KhalaToolDefinition = {
@@ -540,6 +541,7 @@ export async function spawnCodexInstances(
 
   const paths = resolvePylonPaths(env)
   const results: SpawnSlotResult[] = []
+  const baseUrl = resolveOpenAgentsBaseUrl(env, input.baseUrl)
   for (let index = 0; index < input.count; index += 1) {
     const selectedAccount = input.accountRef ?? readyAccounts[index % readyAccounts.length]?.accountRef
     const args = [
@@ -553,7 +555,8 @@ export async function spawnCodexInstances(
       input.pylonRef ?? ensure.pylonRef ?? "",
       ...(selectedAccount === undefined ? [] : ["--account-ref", selectedAccount]),
       ...(input.fixture ? ["--fixture"] : workspacePinArgs(input)),
-      ...(input.baseUrl === undefined ? [] : ["--base-url", input.baseUrl]),
+      "--base-url",
+      baseUrl,
       ...(input.noRun ? ["--no-run"] : []),
       "--json",
     ]
@@ -793,12 +796,21 @@ async function runPylonCommand(
 }
 
 function pylonCommandEnv(env: ChatEnv, pylonHome: string): ChatEnv {
+  const mergedEnv = { ...process.env, ...env }
   return {
-    ...process.env,
-    ...env,
-    PATH: pathCandidates(env).filter(path => path.length > 0).join(":"),
+    ...mergedEnv,
+    PATH: pathCandidates(mergedEnv).filter(path => path.length > 0).join(":"),
+    PYLON_OPENAGENTS_BASE_URL: resolveOpenAgentsBaseUrl(mergedEnv),
     PYLON_HOME: pylonHome,
   }
+}
+
+function resolveOpenAgentsBaseUrl(env: ChatEnv, explicit?: string | undefined): string {
+  return (
+    [explicit, env.PYLON_OPENAGENTS_BASE_URL, env.OPENAGENTS_BASE_URL, DEFAULT_OPENAGENTS_BASE_URL]
+      .map(value => value?.trim())
+      .find((value): value is string => value !== undefined && value.length > 0) ?? DEFAULT_OPENAGENTS_BASE_URL
+  ).replace(/\/+$/u, "")
 }
 
 function pathCandidates(env: ChatEnv): readonly string[] {
