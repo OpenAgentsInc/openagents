@@ -139,6 +139,23 @@ describe("khala code desktop app shell", () => {
     expect(css).not.toContain("cursor: wait")
   })
 
+  test("shows a Thinking shimmer until the first streamed response event", async () => {
+    const main = await Bun.file(new URL("../src/ui/main.ts", import.meta.url)).text()
+    const css = await Bun.file(new URL("../src/ui/styles.css", import.meta.url)).text()
+
+    expect(main).toContain("@openagentsinc/ui/ai-elements/shimmer")
+    expect(main).toContain("let thinkingTurnId: string | null = null")
+    expect(main).toContain("renderThinkingIndicator")
+    expect(main).toContain("message-bubble--thinking")
+    expect(main).toContain('shimmer.textContent = "Thinking"')
+    expect(main).toContain("thinkingTurnId = turnId")
+    expect(main).toContain('event.type === "message_start"')
+    expect(main).toContain('event.type === "message_delta"')
+    expect(main).toContain('event.type === "message_replace"')
+    expect(main).toContain("thinkingTurnId = null")
+    expect(css).toContain(".message-bubble--thinking")
+  })
+
   test("keeps preview HTTP RPC off Electrobun native internal ports", async () => {
     const main = await Bun.file(new URL("../src/ui/main.ts", import.meta.url)).text()
 

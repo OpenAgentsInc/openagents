@@ -145,6 +145,14 @@ button {
   color: #b7c8dc;
 }
 
+.message-bubble--thinking {
+  pointer-events: none;
+}
+
+.message-bubble--thinking .message-body {
+  min-height: 1.25rem;
+}
+
 .message-body {
   display: grid;
   gap: 12px;

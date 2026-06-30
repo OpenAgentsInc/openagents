@@ -1,0 +1,46 @@
+.oa-ai-shimmer {
+  --oa-ai-shimmer-duration: 2s;
+  --oa-ai-shimmer-spread: 16ch;
+  --oa-ai-shimmer-base: var(
+    --oa-color-text-on-dark35,
+    rgba(255, 255, 255, 0.35)
+  );
+  --oa-ai-shimmer-highlight: var(--oa-color-component-text, #f1efe8);
+  display: inline-block;
+  width: fit-content;
+  max-width: 100%;
+  color: transparent;
+  background-image: linear-gradient(
+    100deg,
+    var(--oa-ai-shimmer-base) 0,
+    var(--oa-ai-shimmer-base) calc(50% - var(--oa-ai-shimmer-spread)),
+    var(--oa-ai-shimmer-highlight) 50%,
+    var(--oa-ai-shimmer-base) calc(50% + var(--oa-ai-shimmer-spread)),
+    var(--oa-ai-shimmer-base) 100%
+  );
+  background-size: 220% 100%;
+  background-position-x: 180%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: oa-ai-shimmer-sweep var(--oa-ai-shimmer-duration) linear infinite;
+}
+
+@keyframes oa-ai-shimmer-sweep {
+  from {
+    background-position-x: 180%;
+  }
+
+  to {
+    background-position-x: -180%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .oa-ai-shimmer {
+    color: var(--oa-ai-shimmer-highlight);
+    background-image: none;
+    animation: none;
+    -webkit-text-fill-color: currentColor;
+  }
+}

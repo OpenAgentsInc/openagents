@@ -101,6 +101,14 @@ export const aiElementPorts: ReadonlyArray<AiElementPort> = [
     primitives: ['Response', 'ResponseCode', 'ResponseCursor'],
   },
   {
+    moduleId: 'shimmer',
+    label: 'Shimmer',
+    category: 'chat',
+    purpose:
+      'Render theme-aware animated shimmer text for pending/loading AI states, with reduced-motion fallback.',
+    primitives: ['Shimmer'],
+  },
+  {
     moduleId: 'code-block',
     label: 'Code Block',
     category: 'code',

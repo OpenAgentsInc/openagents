@@ -20,6 +20,10 @@ import {
   type CommandComposerStatus,
 } from "@openagentsinc/ui/ai-elements/command-composer"
 import {
+  shimmerBaseTag,
+  shimmerClass,
+} from "@openagentsinc/ui/ai-elements/shimmer"
+import {
   commandComposerHudLayoutFromCssRect,
   createCommandComposerHud,
   type CommandComposerAttachmentProjection,
@@ -162,6 +166,7 @@ const fileInput = requireElement<HTMLInputElement>("#file-input")
 let messages: KhalaCodeDesktopMessage[] = []
 let composerState: ComposerState = emptyComposerState()
 let pendingTurn = false
+let thinkingTurnId: string | null = null
 let lastTurnFailed = false
 let lastSubmittedDraft = ""
 let previewEnabled = false
@@ -199,6 +204,31 @@ const renderMessage = (message: KhalaCodeDesktopMessage): HTMLElement => {
   body.className = "message-body"
   body.append(...renderMessageBody(message.body, message.role))
 
+  article.append(body)
+  return article
+}
+
+const renderThinkingIndicator = (): HTMLElement | null => {
+  if (thinkingTurnId === null) return null
+
+  const article = document.createElement("article")
+  article.className = `${messageClass("assistant")} message-bubble--thinking`
+  article.dataset.messageId = `thinking-${thinkingTurnId}`
+  article.dataset.khalaThinking = "true"
+
+  const body = document.createElement("div")
+  body.className = "message-body"
+
+  const shimmer = document.createElement("span")
+  shimmer.className = shimmerClass
+  shimmer.dataset.uiBase = shimmerBaseTag
+  shimmer.dataset.oaAiShimmer = ""
+  shimmer.setAttribute("role", "status")
+  shimmer.setAttribute("aria-live", "polite")
+  shimmer.setAttribute("aria-label", "Thinking")
+  shimmer.textContent = "Thinking"
+
+  body.append(shimmer)
   article.append(body)
   return article
 }
@@ -276,7 +306,11 @@ const canSubmitComposer = (): boolean =>
   (lastTurnFailed && lastSubmittedDraft.trim() !== "")
 
 const renderMessages = (): void => {
-  messageList.replaceChildren(...messages.map(renderMessage))
+  const thinking = renderThinkingIndicator()
+  messageList.replaceChildren(
+    ...messages.map(renderMessage),
+    ...(thinking === null ? [] : [thinking]),
+  )
   requestAnimationFrame(scrollToEnd)
 }
 
@@ -621,6 +655,13 @@ const appendMessages = (nextMessages: readonly KhalaCodeDesktopMessage[]): void 
 
 function applyChatTurnEvent(event: KhalaCodeDesktopChatTurnEvent): void {
   if (!activeTurnIds.has(event.turnId)) return
+  if (
+    event.type === "message_start" ||
+    event.type === "message_delta" ||
+    event.type === "message_replace"
+  ) {
+    thinkingTurnId = null
+  }
   switch (event.type) {
     case "message_start":
       pendingTurn = true
@@ -675,6 +716,7 @@ const stopActiveTurn = (): void => {
   if (!pendingTurn) return
   activeTurnIds.clear()
   pendingTurn = false
+  thinkingTurnId = null
   appendMessages([
     {
       body: "Stopped the active turn locally. You can keep typing.",
@@ -705,7 +747,8 @@ const submitComposer = async (): Promise<KhalaCodeDesktopMessage | null> => {
   const turnId = nextTurnId()
   activeTurnIds.add(turnId)
   pendingTurn = true
-  renderComposer()
+  thinkingTurnId = turnId
+  render()
   requestAnimationFrame(focusComposerInput)
   try {
     const request: KhalaCodeDesktopChatTurnRequest = {
@@ -715,6 +758,7 @@ const submitComposer = async (): Promise<KhalaCodeDesktopMessage | null> => {
     }
     const response = await rpc.request.submitChatMessage(request)
     if (activeTurnIds.has(turnId)) {
+      if (thinkingTurnId === turnId) thinkingTurnId = null
       appendMessages(response.messages)
     }
   } catch (error) {
@@ -730,6 +774,7 @@ const submitComposer = async (): Promise<KhalaCodeDesktopMessage | null> => {
     }
   } finally {
     activeTurnIds.delete(turnId)
+    if (thinkingTurnId === turnId) thinkingTurnId = null
     pendingTurn = activeTurnIds.size > 0
     renderComposer()
     requestAnimationFrame(focusComposerInput)
@@ -987,6 +1032,7 @@ const controls = {
     messages = []
     resetComposerDraft()
     pendingTurn = false
+    thinkingTurnId = null
     lastTurnFailed = false
     render()
   },
