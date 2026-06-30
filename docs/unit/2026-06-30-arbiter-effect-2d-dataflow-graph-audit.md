@@ -1,7 +1,7 @@
 # Arbiter — Purpose-Built 2D Dataflow-Graph Primitives (`arbiter-effect`)
 
 Date: 2026-06-30
-Status: Audit / proposal (no code changes)
+Status: Audit / implementation record
 Author: Raynor (agent)
 
 ## 2026-06-30 Direction Update: Khala Code Desktop First
@@ -70,6 +70,16 @@ The loader keeps the default pane empty, but lets a preview URL or console call
 load a public-safe bridge proof for smoke testing. It surfaces the scalar
 decision fields and refs needed for the part-two video while leaving live
 subscription, automatic Mutalisk dispatch, and approval controls out of scope.
+
+Implementation note, 2026-06-30: the shared extraction now exists at
+`packages/arbiter-effect`. The package exposes Effect Schema graph contracts
+and layout helpers through `@openagentsinc/arbiter-effect/core`, and the
+read-only SVG/Foldkit renderer through `@openagentsinc/arbiter-effect/foldkit`.
+Khala Code Desktop consumes the package through its existing
+`clients/khala-code-desktop/src/ui/gym-graph-renderer.ts` wrapper, preserving
+the visible Gym pane behavior while moving the reusable graph contract out of
+the app. Root `test:` and `typecheck:` now include `test:arbiter-effect` and
+`typecheck:arbiter-effect`.
 
 ## Scope correction
 

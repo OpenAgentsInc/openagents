@@ -15,6 +15,7 @@
     "dev:hmr": "concurrently \"vite --port 5173 --strictPort\" \"bun run dev\""
   },
   "dependencies": {
+    "@openagentsinc/arbiter-effect": "workspace:*",
     "@openagentsinc/composer-state": "workspace:*",
     "@openagentsinc/khala-tools": "workspace:*",
     "@openagentsinc/three-effect": "github:OpenAgentsInc/three-effect#fa84064796",

@@ -1,0 +1,33 @@
+{
+  "name": "@openagentsinc/arbiter-effect",
+  "version": "0.1.0",
+  "private": false,
+  "type": "module",
+  "sideEffects": [
+    "./src/foldkit-window-shim.ts"
+  ],
+  "exports": {
+    ".": "./src/index.ts",
+    "./core": "./src/core.ts",
+    "./foldkit": "./src/foldkit.ts"
+  },
+  "files": [
+    "src",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "effect": "catalog:",
+    "foldkit": "^0.102.1"
+  },
+  "devDependencies": {
+    "bun-types": "^1.0.0",
+    "typescript": "catalog:"
+  }
+}

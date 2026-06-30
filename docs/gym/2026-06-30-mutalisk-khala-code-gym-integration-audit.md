@@ -44,6 +44,15 @@ show `metricValueBps`, `admissionDecision`, `decisionGrade=false`, candidate
 refs, blocker refs, Action Submission proposal refs, and the read-only graph.
 This is a recording smoke seam, not a live Gym backend subscription.
 
+Update, 2026-06-30: the reusable graph contract and renderer have been
+extracted to `packages/arbiter-effect`. Khala Code Desktop still owns the Gym
+pane and proof loader, but its graph renderer now delegates to
+`@openagentsinc/arbiter-effect/foldkit`; shared schemas, ref safety helpers,
+geometry, and link-state helpers live in
+`@openagentsinc/arbiter-effect/core`. This keeps the current desktop smoke
+behavior stable while making the later web Gym or other operator surfaces reuse
+the same public-safe graph vocabulary.
+
 ## 0. Executive Answer
 
 Mutalisk belongs in the Gym as the offline optimizer lane for Khala Code's
