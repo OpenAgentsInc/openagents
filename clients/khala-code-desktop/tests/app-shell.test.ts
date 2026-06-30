@@ -160,6 +160,8 @@ describe("khala code desktop app shell", () => {
     expect(main).toContain('event.type === "message_replace"')
     expect(main).toContain("thinkingTurnId = null")
     expect(css).toContain(".message-bubble--thinking")
+    expect(css).toContain(".message-bubble--thinking .oa-ai-shimmer")
+    expect(css).toContain("font-size: 0.8125rem")
   })
 
   test("keeps preview HTTP RPC off Electrobun native internal ports", async () => {

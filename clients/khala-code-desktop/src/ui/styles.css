@@ -153,6 +153,11 @@ button {
   min-height: 1.25rem;
 }
 
+.message-bubble--thinking .oa-ai-shimmer {
+  font-size: 0.8125rem;
+  line-height: 1.55;
+}
+
 .message-body {
   display: grid;
   gap: 12px;
