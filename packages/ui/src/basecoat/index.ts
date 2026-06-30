@@ -10,6 +10,7 @@ export * from './form'
 export * from './input'
 export * from './native-select'
 export * from './selection'
+export * from './sidebar'
 export * from './tooltip'
 export {
   basecoatAttrs,
