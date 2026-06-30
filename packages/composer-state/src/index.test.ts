@@ -319,6 +319,12 @@ describe("composer state core", () => {
       sizeBytes: 2048,
     })
     expect(JSON.stringify(planned.plan.receipt)).not.toContain("previewUrl")
+    expect(JSON.stringify(planned.plan.receipt)).not.toContain("browser-file")
+    expect(planned.plan.receipt.contentRef).toBeUndefined()
+    expect(planned.plan.tasks[0]).toMatchObject({
+      kind: "upload_hosted_attachment",
+      contentRef: "browser-file:screen.png",
+    })
 
     const uploading = apply(state, planned.plan.transaction)
     const readyTx = readyComposerAttachmentTransaction(uploading, attachmentId, {
@@ -427,6 +433,14 @@ describe("composer state core", () => {
       "scan_attachment",
       "parse_text_attachment",
     ])
+    expect(planned.plan.receipt.contentRef).toBeUndefined()
+    expect(JSON.stringify(planned.plan.receipt)).not.toContain(
+      "local-file:/private/tmp/notes.md",
+    )
+    expect(planned.plan.tasks[0]).toMatchObject({
+      kind: "register_local_attachment",
+      contentRef: "local-file:/private/tmp/notes.md",
+    })
 
     const localRef = composerAttachmentContentAddressedRef({
       surface: "desktop-local",

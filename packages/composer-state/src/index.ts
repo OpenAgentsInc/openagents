@@ -777,6 +777,22 @@ export const composerAttachmentThumbnailRef = (input: {
   return `attachment_thumbnail.${input.surface}.sha256.${digest}.${input.attachmentId}`
 }
 
+const publicSafeAttachmentContentRef = (
+  surface: ComposerAttachmentSurface,
+  contentRef: string | undefined,
+): string | undefined =>
+  contentRef?.startsWith(`attachment.${surface}.sha256.`) === true
+    ? contentRef
+    : undefined
+
+const publicSafeAttachmentThumbnailRef = (
+  surface: ComposerAttachmentSurface,
+  thumbnailRef: string | undefined,
+): string | undefined =>
+  thumbnailRef?.startsWith(`attachment_thumbnail.${surface}.sha256.`) === true
+    ? thumbnailRef
+    : undefined
+
 const receiptRefForAttachment = (input: {
   attachmentId: ComposerAttachmentId
   surface: ComposerAttachmentSurface
@@ -795,42 +811,49 @@ export const projectComposerAttachmentUploadReceipt = (input: {
   surface: ComposerAttachmentSurface
   observedAt?: number
   errorCode?: string
-}): ComposerAttachmentUploadReceipt => ({
-  kind: "composer_attachment_privacy_receipt",
-  schemaVersion: COMPOSER_SCHEMA_VERSION,
-  receiptRef: receiptRefForAttachment({
+}): ComposerAttachmentUploadReceipt => {
+  const contentRef = publicSafeAttachmentContentRef(
+    input.surface,
+    input.attachment.contentRef,
+  )
+  const thumbnailRef = publicSafeAttachmentThumbnailRef(
+    input.surface,
+    input.attachment.thumbnailRef,
+  )
+
+  return {
+    kind: "composer_attachment_privacy_receipt",
+    schemaVersion: COMPOSER_SCHEMA_VERSION,
+    receiptRef: receiptRefForAttachment({
+      attachmentId: input.attachment.id,
+      surface: input.surface,
+      status: input.attachment.status,
+      ...(input.attachment.digest === undefined
+        ? {}
+        : { digest: input.attachment.digest }),
+      ...(input.errorCode === undefined ? {} : { errorCode: input.errorCode }),
+    }),
     attachmentId: input.attachment.id,
     surface: input.surface,
     status: input.attachment.status,
+    name: input.attachment.name,
+    mime: input.attachment.mime,
+    sizeBytes: input.attachment.sizeBytes,
     ...(input.attachment.digest === undefined
       ? {}
       : { digest: input.attachment.digest }),
+    ...(contentRef === undefined ? {} : { contentRef }),
+    ...(thumbnailRef === undefined ? {} : { thumbnailRef }),
+    ...(input.attachment.dimensions === undefined
+      ? {}
+      : { dimensions: input.attachment.dimensions }),
+    ...(input.attachment.source === undefined
+      ? {}
+      : { source: input.attachment.source }),
     ...(input.errorCode === undefined ? {} : { errorCode: input.errorCode }),
-  }),
-  attachmentId: input.attachment.id,
-  surface: input.surface,
-  status: input.attachment.status,
-  name: input.attachment.name,
-  mime: input.attachment.mime,
-  sizeBytes: input.attachment.sizeBytes,
-  ...(input.attachment.digest === undefined
-    ? {}
-    : { digest: input.attachment.digest }),
-  ...(input.attachment.contentRef === undefined
-    ? {}
-    : { contentRef: input.attachment.contentRef }),
-  ...(input.attachment.thumbnailRef === undefined
-    ? {}
-    : { thumbnailRef: input.attachment.thumbnailRef }),
-  ...(input.attachment.dimensions === undefined
-    ? {}
-    : { dimensions: input.attachment.dimensions }),
-  ...(input.attachment.source === undefined
-    ? {}
-    : { source: input.attachment.source }),
-  ...(input.errorCode === undefined ? {} : { errorCode: input.errorCode }),
-  observedAt: input.observedAt ?? Date.now(),
-})
+    observedAt: input.observedAt ?? Date.now(),
+  }
+}
 
 const mimeAllowedByPolicy = (
   mime: string,
