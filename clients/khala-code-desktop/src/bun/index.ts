@@ -7,11 +7,8 @@ import {
   type KhalaCodeDesktopRPCSchema,
 } from "../shared/rpc.js"
 import { createAppleFmSidecarHost } from "./apple-fm-sidecar.js"
-import {
-  khalaCodeDesktopToolCatalog,
-  runKhalaCodeDesktopChatTurn,
-} from "./khala-chat-runtime.js"
 import { createOnDeviceDeciderHost } from "./on-device-decider-host.js"
+import { createKhalaCodeDesktopRpcRequestHandlers } from "./rpc-handlers.js"
 
 // Optional on-device Apple Foundation Models sidecar (Mac/Apple-Silicon only).
 // Off by default and fails soft: readiness reports unavailability rather than
@@ -85,31 +82,13 @@ const jsonResponse = (payload: unknown, init?: ResponseInit): Response =>
     },
   })
 
-const rpcRequestHandlers: KhalaCodeDesktopRPCSchema["requests"] = {
-  async appInfo() {
-    return {
-      ok: true,
-      app: "Khala Code Desktop",
-      observedAt: new Date().toISOString(),
-    }
-  },
-  async appleFmReadiness() {
-    return appleFmSidecar.readiness()
-  },
-  async onDeviceDeciderStatus() {
-    return onDeviceDecider.select()
-  },
-  async submitChatMessage(request) {
-    return runKhalaCodeDesktopChatTurn({
-      env: Bun.env,
-      request,
-      workingDirectory: process.cwd(),
-    })
-  },
-  async toolCatalog() {
-    return khalaCodeDesktopToolCatalog()
-  },
-}
+const rpcRequestHandlers: KhalaCodeDesktopRPCSchema["requests"] =
+  createKhalaCodeDesktopRpcRequestHandlers({
+    appleFmReadiness: () => appleFmSidecar.readiness(),
+    env: Bun.env,
+    onDeviceDeciderStatus: () => onDeviceDecider.select(),
+    workingDirectory: process.cwd(),
+  })
 
 const previewRpcResponse = async (
   request: Request,

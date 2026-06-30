@@ -48,12 +48,26 @@ export type KhalaCodeDesktopAppInfo = {
   readonly observedAt: string
 }
 
+export type KhalaCodeDesktopRuntimeStatus = {
+  readonly ok: true
+  readonly app: "Khala Code Desktop"
+  readonly available: boolean
+  readonly capability: "codex_accounts" | "coding" | "pylon" | "token_accounting"
+  readonly observedAt: string
+  readonly reason: string
+  readonly status: "not_configured" | "ready"
+}
+
 export type KhalaCodeDesktopRPCSchema = {
   requests: {
     appInfo(): Promise<KhalaCodeDesktopAppInfo>
     appleFmReadiness(): Promise<KhalaAppleFmReadiness>
+    codexAccountsStatus(): Promise<KhalaCodeDesktopRuntimeStatus>
+    codingStatus(): Promise<KhalaCodeDesktopRuntimeStatus>
     onDeviceDeciderStatus(): Promise<OnDeviceDeciderSelection>
+    pylonStatus(): Promise<KhalaCodeDesktopRuntimeStatus>
     submitChatMessage(request: KhalaCodeDesktopChatTurnRequest): Promise<KhalaCodeDesktopChatTurnResponse>
+    tokenAccountingStatus(): Promise<KhalaCodeDesktopRuntimeStatus>
     toolCatalog(): Promise<KhalaCodeDesktopToolCatalogResponse>
   }
 }

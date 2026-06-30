@@ -157,6 +157,72 @@ describe("Khala Code desktop chat runtime", () => {
     expect(result.messages[0]?.body).toContain("OPENROUTER_API_KEY")
   })
 
+  test("retries a hosted provider error without tool declarations for plain chat", async () => {
+    const calls: FetchCall[] = []
+    let index = 0
+    const fetchFn = (async (input: string | URL | Request, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url
+      const headers = new Headers(init?.headers)
+      const body = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>
+      calls.push({ body, headers, url })
+      index += 1
+      if (index === 1) {
+        return jsonResponse(
+          { error: "provider_error", reason: "tool parser rejected the request" },
+          { status: 502 },
+        )
+      }
+      return jsonResponse({ choices: [{ message: { content: "I am Khala Code." } }] })
+    }) as typeof fetch
+
+    const result = await runKhalaCodeDesktopChatTurn({
+      env: { OPENAGENTS_AGENT_TOKEN: "agent-token" },
+      fetchFn,
+      request: {
+        messages: [{ body: "who are you", id: "u1", role: "user" }],
+        sessionId: "session-1",
+      },
+    })
+
+    expect(result.ok).toBe(true)
+    expect(result.messages[0]?.body).toBe("I am Khala Code.")
+    expect(calls).toHaveLength(2)
+    expect(calls[0]?.body.tools).toBeArray()
+    expect(calls[1]?.body.tools).toBeUndefined()
+    expect(calls[1]?.body.tool_choice).toBeUndefined()
+  })
+
+  test("returns a sanitized provider failure message instead of throwing", async () => {
+    const fetchFn = (async () =>
+      jsonResponse(
+        {
+          error: "provider_error",
+          reason: "upstream said Bearer abcdefghijklmnopqrstuvwxyz and sk-or-secretsecret failed",
+        },
+        { status: 401 },
+      )) as unknown as typeof fetch
+
+    const result = await runKhalaCodeDesktopChatTurn({
+      env: {
+        OPENROUTER_API_KEY: "sk-or-secretsecret",
+        OPENROUTER_MODEL: "anthropic/claude-haiku",
+      },
+      fetchFn,
+      request: {
+        messages: [{ body: "hello", id: "u1", role: "user" }],
+        sessionId: "session-1",
+      },
+    })
+
+    expect(result.ok).toBe(false)
+    expect(result.backend.kind).toBe("openrouter_byok")
+    expect(result.messages[0]?.role).toBe("system")
+    expect(result.messages[0]?.body).toContain("OpenRouter request failed")
+    expect(result.messages[0]?.body).toContain("provider_error")
+    expect(result.messages[0]?.body).not.toContain("abcdefghijklmnopqrstuvwxyz")
+    expect(result.messages[0]?.body).not.toContain("sk-or-secretsecret")
+  })
+
   test("executes model tool calls locally and feeds results back to the model", async () => {
     const workspace = await tempWorkspace()
     await writeFile(join(workspace, "fixture.txt"), "hello from the local tool\n", "utf8")

@@ -20,6 +20,7 @@ import {
   executeKhalaTool,
   makeKhalaToolRegistry,
   makeKhalaToolServices,
+  redactKhalaPublicText,
   resolveKhalaBackend,
   toOpenAiCompatibleTools,
   type KhalaBackendSelection,
@@ -165,9 +166,28 @@ export async function runKhalaCodeDesktopChatTurn(
   const usedTools: string[] = []
   const tools = toOpenAiCompatibleTools(toolDefinitions)
   let totalToolCalls = 0
+  let retriedWithoutTools = false
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
-    const completion = await transport.request(messages, tools)
+    let completion: ChatCompletionBody
+    try {
+      completion = await transport.request(messages, tools)
+    } catch (error) {
+      if (
+        !retriedWithoutTools &&
+        totalToolCalls === 0 &&
+        shouldRetryWithoutTools(error)
+      ) {
+        retriedWithoutTools = true
+        try {
+          completion = await transport.request(messages, [])
+        } catch (retryError) {
+          return providerFailureResult(backend, toolNames, usedTools, retryError)
+        }
+      } else {
+        return providerFailureResult(backend, toolNames, usedTools, error)
+      }
+    }
     const assistant = firstAssistantMessage(completion)
     const text = textContent(assistant.content)
     const toolCalls = parseToolCalls(assistant.tool_calls)
@@ -260,8 +280,7 @@ function createChatTransport(input: {
           messages,
           model: input.backend.model,
           stream: false,
-          tool_choice: "auto",
-          tools,
+          ...toolRequestFields(tools),
         },
         fetchFn: input.fetchFn,
         headers: { authorization: `Bearer ${token}` },
@@ -280,13 +299,33 @@ function createChatTransport(input: {
         messages,
         model: input.backend.model,
         stream: false,
-        tool_choice: "auto",
-        tools,
+        ...toolRequestFields(tools),
       },
       fetchFn: input.fetchFn,
       headers: { authorization: `Bearer ${hostedToken}` },
       url: `${(input.backend.baseUrl ?? "https://openagents.com").replace(/\/+$/, "")}/api/v1/chat/completions`,
     }),
+  }
+}
+
+function toolRequestFields(
+  tools: readonly ReturnType<typeof toOpenAiCompatibleTools>[number][],
+): Record<string, unknown> {
+  return tools.length === 0
+    ? {}
+    : {
+      tool_choice: "auto",
+      tools,
+    }
+}
+
+class ChatProviderRequestError extends Error {
+  readonly status: number
+
+  constructor(message: string, status: number) {
+    super(message)
+    this.name = "ChatProviderRequestError"
+    this.status = status
   }
 }
 
@@ -307,7 +346,7 @@ async function postOpenAiCompatible(input: {
   })
   const body = await readJson(response)
   if (!response.ok) {
-    throw new Error(errorText(body, response.status))
+    throw new ChatProviderRequestError(errorText(body, response.status), response.status)
   }
   return isRecord(body) ? body as ChatCompletionBody : {}
 }
@@ -323,9 +362,64 @@ async function readJson(response: Response): Promise<unknown> {
 function errorText(body: unknown, status: number): string {
   if (isRecord(body)) {
     const message = body.message ?? body.error
+    const reason = body.reason
+    if (
+      typeof body.error === "string" &&
+      body.error.trim().length > 0 &&
+      typeof reason === "string" &&
+      reason.trim().length > 0
+    ) {
+      return `${body.error.trim()}: ${reason.trim()}`
+    }
     if (typeof message === "string" && message.trim().length > 0) return message.trim()
   }
   return `chat completion failed with ${status}`
+}
+
+function shouldRetryWithoutTools(error: unknown): boolean {
+  const status = error instanceof ChatProviderRequestError ? error.status : undefined
+  if (status === 401 || status === 402 || status === 403) return false
+  const message = providerErrorText(error).toLowerCase()
+  return (
+    (status === 400 && message.includes("tool")) ||
+    status === 408 ||
+    status === 409 ||
+    status === 429 ||
+    status === undefined ||
+    status >= 500 ||
+    message.includes("provider_error")
+  )
+}
+
+function providerErrorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
+
+function providerFailureResult(
+  backend: KhalaBackendSelection,
+  toolNames: readonly string[],
+  usedTools: readonly string[],
+  error: unknown,
+): KhalaCodeDesktopChatTurnResponse {
+  return {
+    backend: projectBackend(backend),
+    messages: [hostMessage("system", providerFailureMessage(backend, error))],
+    ok: false,
+    toolNames,
+    usedTools,
+  }
+}
+
+function providerFailureMessage(backend: KhalaBackendSelection, error: unknown): string {
+  const detail = redactKhalaPublicText(providerErrorText(error)).trim()
+  const suffix = detail.length === 0 ? "." : `: ${detail}.`
+  if (backend.kind === "openrouter_byok") {
+    return `OpenRouter request failed for ${backend.model}${suffix} Check OPENROUTER_API_KEY and OPENROUTER_MODEL.`
+  }
+  if (backend.kind === "hosted_openagents") {
+    return `Hosted OpenAgents cloud request failed for ${backend.model}${suffix} Set OPENROUTER_API_KEY to use your own OpenRouter key while the hosted lane is unavailable.`
+  }
+  return `Khala provider request failed for ${backend.model}${suffix}`
 }
 
 function projectTranscriptMessages(messages: readonly KhalaCodeDesktopMessage[]): readonly ChatTransportMessage[] {

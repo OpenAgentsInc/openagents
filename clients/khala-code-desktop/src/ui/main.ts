@@ -36,14 +36,30 @@ const previewRpc = (): DesktopRpc => ({
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["appleFmReadiness"]>>
       >("appleFmReadiness"),
+    codexAccountsStatus: () =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["codexAccountsStatus"]>>
+      >("codexAccountsStatus"),
+    codingStatus: () =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["codingStatus"]>>
+      >("codingStatus"),
     onDeviceDeciderStatus: () =>
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["onDeviceDeciderStatus"]>>
       >("onDeviceDeciderStatus"),
+    pylonStatus: () =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["pylonStatus"]>>
+      >("pylonStatus"),
     submitChatMessage: request =>
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["submitChatMessage"]>>
       >("submitChatMessage", request),
+    tokenAccountingStatus: () =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["tokenAccountingStatus"]>>
+      >("tokenAccountingStatus"),
     toolCatalog: () =>
       postPreviewRpc<Awaited<ReturnType<DesktopRpcRequests["toolCatalog"]>>>(
         "toolCatalog",
@@ -234,8 +250,11 @@ composerInput.addEventListener("keydown", event => {
 const controls = {
   addMessage,
   appInfo: () => rpc.request.appInfo(),
+  codexAccountsStatus: () => rpc.request.codexAccountsStatus(),
+  codingStatus: () => rpc.request.codingStatus(),
   isPending: () => pendingTurn,
   messages: () => messages.map(message => ({ ...message })),
+  pylonStatus: () => rpc.request.pylonStatus(),
   reset: () => {
     messages = [...initialMessages]
     composerInput.value = ""
@@ -247,6 +266,7 @@ const controls = {
     sendButton.disabled = composerInput.value.trim() === ""
   },
   submitComposer,
+  tokenAccountingStatus: () => rpc.request.tokenAccountingStatus(),
   toolCatalog: () => rpc.request.toolCatalog(),
 }
 
