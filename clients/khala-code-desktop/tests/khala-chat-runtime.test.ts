@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test"
-import { mkdtemp, rm, writeFile } from "node:fs/promises"
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -20,7 +20,10 @@ import {
   type RunKhalaCodeDesktopChatTurnInput,
 } from "../src/bun/khala-chat-runtime"
 import { createDuckDuckGoKhalaWebSearchService } from "../src/bun/khala-web-search-service"
-import type { KhalaCodeDesktopChatTurnEvent } from "../src/shared/rpc"
+import {
+  KHALA_CODE_DESKTOP_RPC_MAX_REQUEST_TIME_MS,
+  type KhalaCodeDesktopChatTurnEvent,
+} from "../src/shared/rpc"
 
 type FetchCall = {
   readonly body: Record<string, unknown>
@@ -127,6 +130,10 @@ describe("Khala Code desktop chat runtime", () => {
     expect(catalog.tools.find(tool => tool.name === "codex_spawn")?.authority).toBe("owner_full_access")
   })
 
+  test("does not locally time-limit long chat-turn RPC requests", () => {
+    expect(KHALA_CODE_DESKTOP_RPC_MAX_REQUEST_TIME_MS).toBe(Number.POSITIVE_INFINITY)
+  })
+
   test("uses hosted OpenAgents chat completions by default with the full tool catalog", async () => {
     const { calls, fetchFn } = captureFetch([
       { choices: [{ message: { content: "Hosted answer" } }] },
@@ -158,6 +165,8 @@ describe("Khala Code desktop chat runtime", () => {
     expect(requestMessages[0]?.content).toContain("We are Khala. How can we help?")
     expect(requestMessages[0]?.content).toContain("Pylon/Codex fleet tools")
     expect(requestMessages[0]?.content).toContain("Never end a turn with only tool output")
+    expect(requestMessages[0]?.content).toContain("do not infer behavior from filenames alone")
+    expect(requestMessages[0]?.content).toContain("If a tool says output was truncated")
     expect(requestMessages[1]).toMatchObject({ role: "system" })
     expect(requestMessages[1]?.content).toContain("Available Khala Code Desktop tools:")
     expect(requestMessages[1]?.content).toContain("- read (read):")
@@ -496,6 +505,154 @@ describe("Khala Code desktop chat runtime", () => {
       message.tool_call_id === "call_read" &&
       message.content?.includes("hello from the local tool") === true
     )).toBe(true)
+  })
+
+  test("continues local inspection after a truncated ls instead of accepting a final answer", async () => {
+    const workspace = await tempWorkspace()
+    await writeFile(join(workspace, "README.md"), "Project plan\n", "utf8")
+    await writeFile(join(workspace, "alpha.txt"), "alpha\n", "utf8")
+    await writeFile(join(workspace, "beta.txt"), "beta\n", "utf8")
+    const { calls, fetchFn } = captureFetch([
+      {
+        choices: [{
+          finish_reason: "tool_calls",
+          message: {
+            content: "",
+            tool_calls: [{
+              function: {
+                arguments: JSON.stringify({ limit: 2, path: "." }),
+                name: "ls",
+              },
+              id: "call_ls",
+              type: "function",
+            }],
+          },
+        }],
+      },
+      { choices: [{ message: { content: "We looked around and this is likely a small repo." } }] },
+      {
+        choices: [{
+          finish_reason: "tool_calls",
+          message: {
+            content: "",
+            tool_calls: [{
+              function: {
+                arguments: JSON.stringify({ path: "README.md" }),
+                name: "read",
+              },
+              id: "call_read",
+              type: "function",
+            }],
+          },
+        }],
+      },
+      { choices: [{ message: { content: "We read README.md and found the project plan." } }] },
+    ])
+
+    const result = await runKhalaCodeDesktopChatTurn({
+      env: { OPENAGENTS_AGENT_TOKEN: "agent-token" },
+      fetchFn,
+      request: {
+        messages: [{ body: "look around local files", id: "u1", role: "user" }],
+        sessionId: "session-truncated-ls",
+      },
+      services: makeKhalaToolServices({
+        permission: allowAllKhalaPermissionService,
+        workingDirectory: workspace,
+      }),
+    })
+
+    expect(result.ok).toBe(true)
+    expect(result.usedTools).toEqual(["ls", "read"])
+    expect(result.messages.map(message => message.role)).toEqual(["tool", "tool", "assistant"])
+    expect(result.messages[0]?.body).toContain("[ls truncated; refine path or increase limit]")
+    expect(result.messages[2]?.body).toBe("We read README.md and found the project plan.")
+    expect(JSON.stringify(result.messages)).not.toContain("likely")
+    expect(calls).toHaveLength(4)
+    expect(calls[2]?.body.tools).toBeArray()
+    const retryMessages = calls[2]?.body.messages as Array<{ content?: string; role?: string }>
+    expect(retryMessages.at(-1)).toMatchObject({
+      content: expect.stringContaining("last directory listing was truncated"),
+      role: "user",
+    })
+  })
+
+  test("does not accept speculative file descriptions from ls-only evidence", async () => {
+    const workspace = await tempWorkspace()
+    await mkdir(join(workspace, "scripts"))
+    await writeFile(
+      join(workspace, "scripts", "prepare-apple-fm-bridge.sh"),
+      "#!/usr/bin/env bash\nrepo_root=\"$(pwd)\"\n",
+      "utf8",
+    )
+    await writeFile(
+      join(workspace, "scripts", "verify-packaged-apple-fm-bridge.ts"),
+      "export const bridge = 'verified'\n",
+      "utf8",
+    )
+    const { calls, fetchFn } = captureFetch([
+      {
+        choices: [{
+          finish_reason: "tool_calls",
+          message: {
+            content: "",
+            tool_calls: [{
+              function: {
+                arguments: JSON.stringify({ path: "scripts" }),
+                name: "ls",
+              },
+              id: "call_ls_scripts",
+              type: "function",
+            }],
+          },
+        }],
+      },
+      { choices: [{ message: { content: "Those likely prepare and verify the Apple bridge." } }] },
+      {
+        choices: [{
+          finish_reason: "tool_calls",
+          message: {
+            content: "",
+            tool_calls: [{
+              function: {
+                arguments: JSON.stringify({ path: "scripts/prepare-apple-fm-bridge.sh" }),
+                name: "read",
+              },
+              id: "call_read_prepare",
+              type: "function",
+            }],
+          },
+        }],
+      },
+      { choices: [{ message: { content: "We read prepare-apple-fm-bridge.sh and found it sets repo_root from pwd." } }] },
+    ])
+
+    const result = await runKhalaCodeDesktopChatTurn({
+      env: { OPENAGENTS_AGENT_TOKEN: "agent-token" },
+      fetchFn,
+      request: {
+        messages: [{ body: "look around the scripts folder tell me whats in there", id: "u1", role: "user" }],
+        sessionId: "session-ls-only-speculation",
+      },
+      services: makeKhalaToolServices({
+        permission: allowAllKhalaPermissionService,
+        workingDirectory: workspace,
+      }),
+    })
+
+    expect(result.ok).toBe(true)
+    expect(result.usedTools).toEqual(["ls", "read"])
+    expect(result.messages.map(message => message.role)).toEqual(["tool", "tool", "assistant"])
+    expect(result.messages[0]?.body).toContain("prepare-apple-fm-bridge.sh")
+    expect(result.messages[0]?.body).toContain("verify-packaged-apple-fm-bridge.ts")
+    expect(result.messages[2]?.body).toBe("We read prepare-apple-fm-bridge.sh and found it sets repo_root from pwd.")
+    expect(JSON.stringify(result.messages)).not.toContain("likely")
+    expect(calls).toHaveLength(4)
+    const retryMessages = calls[2]?.body.messages as Array<{ content?: string; role?: string }>
+    expect(retryMessages.at(-1)).toMatchObject({
+      content: expect.stringContaining("only local-file evidence so far is directory names"),
+      role: "user",
+    })
   })
 
   test("redacts local tool result content before feeding it back to the provider", async () => {

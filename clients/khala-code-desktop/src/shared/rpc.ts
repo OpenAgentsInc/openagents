@@ -5,7 +5,9 @@ import type {
 } from "./codex-rate-limits.js"
 import type { OnDeviceDeciderSelection } from "./on-device-decider.js"
 
-export const KHALA_CODE_DESKTOP_RPC_MAX_REQUEST_TIME_MS = 30_000
+// Electrobun treats Infinity as no local request timeout; chat turns stream progress
+// over events while hosted model calls and local tools can legitimately exceed 30s.
+export const KHALA_CODE_DESKTOP_RPC_MAX_REQUEST_TIME_MS = Number.POSITIVE_INFINITY
 export const KHALA_CODE_DESKTOP_DEFAULT_PREVIEW_PORT = 50021
 
 export type KhalaCodeDesktopMessageRole = "user" | "assistant" | "system" | "tool"

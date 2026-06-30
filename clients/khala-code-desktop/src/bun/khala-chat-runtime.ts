@@ -53,11 +53,15 @@ const KHALA_CODE_SYSTEM_PROMPT = [
   "All tools are enabled by default in this owner-local desktop session. Never claim a tool ran unless the host returned a tool result.",
   "When the user asks what tools or capabilities are available, answer from the available-tool catalog in this system context. Do not call a filesystem or shell tool just to describe the tool catalog.",
   "When the user asks to spin up, launch, monitor, or manage Codex instances, use the Pylon/Codex fleet tools instead of ad hoc shell commands.",
+  "For local files, do not infer behavior from filenames alone. If you only listed a directory, answer only with exact listed names until you read the relevant files.",
+  "If a tool says output was truncated, continue inspecting with a narrower path, larger limit, offset, or another appropriate tool before giving a final answer.",
+  "When answering from read results, preserve exact paths, line facts, and code literals from the tool output. Do not rewrite code from memory.",
   "After using tools, always produce a visible final answer that explains what the tool results mean for the user. Never end a turn with only tool output.",
 ].join(" ")
 
 const MAX_TOOL_ROUNDS = 8
 const MAX_TOTAL_TOOL_CALLS = 32
+const MAX_LOCAL_GROUNDING_CORRECTIONS = 3
 const DEFAULT_HOSTED_TOKEN_MESSAGE =
   "Khala Code routes model traffic through hosted Khala, but this desktop process does not have an OPENAGENTS_AGENT_TOKEN. Set OPENAGENTS_AGENT_TOKEN for hosted Khala; OPENROUTER_API_KEY alone cannot run the Khala system locally."
 
@@ -104,6 +108,16 @@ type ChatTransport = {
 }
 
 type ChatTurnEmitter = (event: KhalaCodeDesktopChatTurnEvent) => void
+
+type LocalFileEvidenceState = {
+  readonly pendingTruncatedLs: boolean
+  readonly toolNames: readonly string[]
+}
+
+type LocalGroundingCorrection = {
+  readonly prompt: string
+  readonly visibleReason: string
+}
 
 export type RunKhalaCodeDesktopChatTurnInput = {
   readonly env: ChatEnv
@@ -198,6 +212,8 @@ export async function runKhalaCodeDesktopChatTurn(
   let totalToolCalls = 0
   let retriedWithoutTools = false
   let assistantMessagesSinceLastToolResult = 0
+  let localFileEvidence = emptyLocalFileEvidenceState()
+  let localGroundingCorrections = 0
 
   const appendAssistantText = async (
     text: string,
@@ -251,6 +267,34 @@ export async function runKhalaCodeDesktopChatTurn(
     const text = textContent(assistant.content)
     const toolCalls = parseToolCalls(assistant.tool_calls)
     const vacuousToolAnswer = toolCalls.length === 0 && usedTools.length > 0 && isVacuousPostToolAnswer(text)
+    const localGroundingCorrection = toolCalls.length === 0
+      ? localGroundingCorrectionForFinalAnswer(text, localFileEvidence)
+      : null
+
+    if (
+      localGroundingCorrection !== null &&
+      localGroundingCorrections < MAX_LOCAL_GROUNDING_CORRECTIONS
+    ) {
+      localGroundingCorrections += 1
+      replaceRejectedAssistantStream({
+        correction: localGroundingCorrection,
+        emit,
+        stream: assistantStream.streamingAssistant.current,
+        turnId,
+      })
+      messages.push({ content: localGroundingCorrection.prompt, role: "user" })
+      assistantMessagesSinceLastToolResult = 0
+      continue
+    }
+
+    if (localGroundingCorrection !== null) {
+      return limitResult(
+        backend,
+        toolNames,
+        usedTools,
+        "Khala tried to answer from incomplete local file evidence. We stopped instead of guessing; ask us to inspect a narrower path or continue reading the relevant files.",
+      )
+    }
 
     if (text.length > 0 && !vacuousToolAnswer) {
       await appendAssistantText(text, assistantStream.streamingAssistant.current, toolCalls)
@@ -314,6 +358,7 @@ export async function runKhalaCodeDesktopChatTurn(
         role: "tool",
         tool_call_id: call.id,
       })
+      localFileEvidence = updateLocalFileEvidence(localFileEvidence, call.function.name, result)
       assistantMessagesSinceLastToolResult = 0
     }
   }
@@ -327,6 +372,85 @@ function redactionForSession(sessionId: string): KhalaPrivacyRedactionServiceSha
   const redaction = makeKhalaPrivacyRedactionService()
   redactionBySession.set(sessionId, redaction)
   return redaction
+}
+
+function emptyLocalFileEvidenceState(): LocalFileEvidenceState {
+  return {
+    pendingTruncatedLs: false,
+    toolNames: [],
+  }
+}
+
+function updateLocalFileEvidence(
+  evidence: LocalFileEvidenceState,
+  toolName: string,
+  result: KhalaToolResult,
+): LocalFileEvidenceState {
+  if (!isLocalFileInspectionTool(toolName)) return evidence
+  return {
+    pendingTruncatedLs: toolName === "ls" && isTruncatedLsResult(result),
+    toolNames: [...evidence.toolNames, toolName],
+  }
+}
+
+function isLocalFileInspectionTool(toolName: string): boolean {
+  return toolName === "ls" ||
+    toolName === "read" ||
+    toolName === "glob" ||
+    toolName === "grep" ||
+    toolName === "view_image"
+}
+
+function isTruncatedLsResult(result: KhalaToolResult): boolean {
+  return result.modelOutput.text.includes("[ls truncated; refine path or increase limit]")
+}
+
+function localGroundingCorrectionForFinalAnswer(
+  answerText: string,
+  evidence: LocalFileEvidenceState,
+): LocalGroundingCorrection | null {
+  if (evidence.toolNames.length === 0) return null
+  if (evidence.pendingTruncatedLs) {
+    return {
+      prompt: [
+        "The last directory listing was truncated, so do not answer yet.",
+        "Continue local inspection with tools: call ls again with a narrower path or a larger limit, or read/grep/glob the relevant files before giving a final answer.",
+        "When you do answer, say exactly what you inspected and avoid guessing.",
+      ].join(" "),
+      visibleReason: "the previous directory listing was truncated",
+    }
+  }
+  if (evidence.toolNames.every(toolName => toolName === "ls") && containsSpeculativeFileClaim(answerText)) {
+    return {
+      prompt: [
+        "The only local-file evidence so far is directory names, and the draft answer speculated about what files do.",
+        "Continue with tools: read the relevant files before describing behavior or purpose.",
+        "If the user only asked for names, answer only with the exact listed names and do not use speculative language.",
+      ].join(" "),
+      visibleReason: "filenames alone are not enough to describe file behavior",
+    }
+  }
+  return null
+}
+
+function containsSpeculativeFileClaim(text: string): boolean {
+  return /\b(?:likely|probably|presumably|maybe|might|could|appears?|seems?|suggests?)\b/iu.test(text)
+}
+
+function replaceRejectedAssistantStream(input: {
+  readonly correction: LocalGroundingCorrection
+  readonly emit: ChatTurnEmitter
+  readonly stream: KhalaCodeDesktopMessage | null
+  readonly turnId: string
+}): void {
+  if (input.stream === null) return
+  const message: KhalaCodeDesktopMessage = {
+    ...input.stream,
+    body: `Khala Code is continuing local inspection: ${input.correction.visibleReason}.`,
+    role: "system",
+  }
+  input.emit({ message, turnId: input.turnId, type: "message_replace" })
+  input.emit({ messageId: message.id, turnId: input.turnId, type: "message_done" })
 }
 
 function createAssistantStreamRecorder(input: {
