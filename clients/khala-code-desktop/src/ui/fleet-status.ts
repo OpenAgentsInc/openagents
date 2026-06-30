@@ -106,7 +106,25 @@ const accountCard = (
   remove.type = "button"
   remove.title = `Remove ${account.accountRef}`
   remove.setAttribute("aria-label", `Remove account ${account.accountRef}`)
-  remove.addEventListener("click", () => onRemove(account.accountRef))
+  let armed = false
+  let armTimer = 0
+  remove.addEventListener("click", () => {
+    // Two-step confirm in-app (WKWebView has no window.confirm): first click arms,
+    // second click within 3s removes.
+    if (!armed) {
+      armed = true
+      remove.textContent = "Remove?"
+      remove.dataset.armed = "true"
+      armTimer = window.setTimeout(() => {
+        armed = false
+        remove.textContent = "✕"
+        delete remove.dataset.armed
+      }, 3000)
+      return
+    }
+    window.clearTimeout(armTimer)
+    onRemove(account.accountRef)
+  })
   card.append(remove)
 
   if (account.quotaState !== null && account.quotaState.length > 0) {
@@ -275,10 +293,6 @@ export const mountFleetPanel = (
   let inFlight = false
 
   const onRemove = (accountRef: string): void => {
-    const confirmed = window.confirm(
-      `Remove Codex account "${accountRef}" from the fleet? This deletes its local credentials.`,
-    )
-    if (!confirmed) return
     // Optimistic: drop the row immediately so it goes away right away.
     container
       .querySelector(`[data-account-ref="${CSS.escape(accountRef)}"]`)

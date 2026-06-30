@@ -1030,3 +1030,12 @@ button {
   color: #f87171;
   background: rgba(248, 113, 113, 0.08);
 }
+
+.khala-fleet-delete[data-armed="true"] {
+  width: auto;
+  padding: 0 0.5rem;
+  font-size: 0.72rem;
+  border-color: rgba(248, 113, 113, 0.6);
+  color: #f87171;
+  background: rgba(248, 113, 113, 0.12);
+}
