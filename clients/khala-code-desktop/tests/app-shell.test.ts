@@ -50,6 +50,17 @@ describe("khala code desktop app shell", () => {
     expect(css).not.toContain("#composer-input:focus-visible")
   })
 
+  test("keeps the composer input available while a turn is pending", async () => {
+    const main = await Bun.file(new URL("../src/ui/main.ts", import.meta.url)).text()
+    const css = await Bun.file(new URL("../src/ui/styles.css", import.meta.url)).text()
+
+    expect(main).toContain("sendButton.disabled = pendingTurn || composerInput.value.trim() === \"\"")
+    expect(main).not.toContain("composerInput.disabled = pendingTurn")
+    expect(main).toContain("requestAnimationFrame(focusComposerInput)")
+    expect(css).not.toContain("#composer-input:disabled")
+    expect(css).not.toContain("cursor: wait")
+  })
+
   test("splits code and diff fixtures for the initial transcript renderer", () => {
     const segments = parseMessageSegments(
       "Patch:\n\n```diff\n@@ -1 +1 @@\n-a\n+b\n```\n\nCode:\n\n```ts\nexport const ok = true\n```",

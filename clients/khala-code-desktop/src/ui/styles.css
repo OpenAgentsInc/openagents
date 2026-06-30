@@ -225,11 +225,6 @@ button {
   outline: none;
 }
 
-#composer-input:disabled {
-  color: rgba(241, 239, 232, 0.64);
-  cursor: wait;
-}
-
 #composer-input::placeholder {
   color: rgba(169, 195, 255, 0.7);
 }

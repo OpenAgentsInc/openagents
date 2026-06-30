@@ -156,13 +156,12 @@ const scrollToEnd = (): void => {
 const render = (): void => {
   messageList.replaceChildren(...messages.map(renderMessage))
   sendButton.disabled = pendingTurn || composerInput.value.trim() === ""
-  composerInput.disabled = pendingTurn
   composerForm.dataset.pending = pendingTurn ? "true" : "false"
   requestAnimationFrame(scrollToEnd)
 }
 
 const focusComposerInput = (): void => {
-  if (!pendingTurn) composerInput.focus({ preventScroll: true })
+  composerInput.focus({ preventScroll: true })
 }
 
 const nextMessageId = (role: KhalaCodeDesktopMessageRole): string =>
@@ -196,6 +195,7 @@ const submitComposer = async (): Promise<KhalaCodeDesktopMessage | null> => {
   const message = addMessage("user", text)
   pendingTurn = true
   render()
+  requestAnimationFrame(focusComposerInput)
   try {
     const request: KhalaCodeDesktopChatTurnRequest = {
       messages,
@@ -214,6 +214,7 @@ const submitComposer = async (): Promise<KhalaCodeDesktopMessage | null> => {
   } finally {
     pendingTurn = false
     render()
+    requestAnimationFrame(focusComposerInput)
   }
   return message
 }
