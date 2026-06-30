@@ -123,21 +123,26 @@ describe("khala code desktop app shell", () => {
     expect(css).not.toContain("padding: 16px 46px 48px 0")
   })
 
-  test("caps the transcript and composer columns at 768px", async () => {
+  test("keeps transcript scrolling full width while messages and composer stay on the 768px rail", async () => {
     const css = await Bun.file(new URL("../src/ui/styles.css", import.meta.url)).text()
 
     expect(css).toContain(".message-list")
+    expect(css).toContain("max-width: none")
+    expect(css).toContain("scrollbar-gutter: stable")
+    expect(css).toContain("margin-left: max(4px, calc((100% - 768px) / 2))")
+    expect(css).toContain("margin-right: max(4px, calc((100% - 768px) / 2))")
     expect(css).toContain(".khala-code-composer")
-    expect(css.match(/max-width: 768px/g)?.length).toBeGreaterThanOrEqual(2)
+    expect(css).toContain("max-width: 768px")
     expect(css).not.toContain("width: min(100%, 48rem)")
   })
 
   test("lets the transcript bleed vertically to the window and composer", async () => {
     const css = await Bun.file(new URL("../src/ui/styles.css", import.meta.url)).text()
 
-    expect(css).toContain("padding: 0 14px")
+    expect(css).toContain(".khala-code-thread-shell")
+    expect(css).toContain("padding: 0")
     expect(css).toContain("height: 100%")
-    expect(css).toContain("padding: 0 4px 32px")
+    expect(css).toContain("padding: 0 14px 32px")
     expect(css).toContain("scroll-padding-bottom: 32px")
     expect(css).toContain("overscroll-behavior: contain")
     expect(css).toContain("display: flex")
