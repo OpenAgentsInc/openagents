@@ -447,11 +447,16 @@ const buildFleetStatusSnapshot = async (
           jobKind: row.job_kind,
           state: row.state,
           elapsedMs: progress?.elapsedMs ?? millisBetween(row.created_at, nowIso),
+          lastUpdateAgeMs: millisBetween(row.updated_at, nowIso),
           phase: progress?.phase ?? fallbackPhase,
           tokensSoFar: progress?.tokensSoFar ?? null,
           lastProgressEvent: progress?.lastProgressEvent ?? null,
           lastLog: progress?.lastLog ?? null,
           progressObservedAt: progress?.createdAt ?? null,
+          progressAgeMs:
+            progress?.createdAt === undefined
+              ? null
+              : millisBetween(progress.createdAt, nowIso),
           updatedAt: row.updated_at,
           leaseExpiresAt: row.lease_expires_at,
         }
@@ -462,6 +467,7 @@ const buildFleetStatusSnapshot = async (
         jobKind: row.job_kind,
         state: row.state,
         elapsedMs: millisBetween(row.created_at, nowIso),
+        lastUpdateAgeMs: millisBetween(row.updated_at, nowIso),
         updatedAt: row.updated_at,
         leaseExpiresAt: row.lease_expires_at,
       })),
