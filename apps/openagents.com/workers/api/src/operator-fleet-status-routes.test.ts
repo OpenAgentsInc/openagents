@@ -141,6 +141,13 @@ const rowsForSql = (sql: string): ReadonlyArray<Record<string, unknown>> => {
   }
 
   if (sql.includes('tokens_window')) {
+    if (sql.includes('pylon-codex-own-capacity')) {
+      return [{
+        assignments_window: 2,
+        tokens_window: 900,
+        turns_window: 3,
+      }]
+    }
     return [{ tokens_window: 600 }]
   }
 
@@ -219,7 +226,7 @@ describe('operator fleet status route', () => {
     expect(first.headers.get('x-openagents-cache')).toBe('miss')
     expect(second.headers.get('x-openagents-cache')).toBe('hit')
     expect(log.length).toBeGreaterThan(0)
-    expect(log.length).toBe(10)
+    expect(log.length).toBe(12)
     expect(cachedBody).toEqual(body)
     expect(body).toMatchObject({
       authority: {
@@ -259,6 +266,14 @@ describe('operator fleet status route', () => {
       },
       pace: {
         liveBurnRateTokensPerMinute: 60,
+        ownCapacityCodex: {
+          assignmentsWindow: 2,
+          sourceRefs: ['d1:token_usage_events.pylon_codex_own_capacity_exact'],
+          tokensPerMinute: 90,
+          tokensWindow: 900,
+          turnsWindow: 3,
+          windowSeconds: 600,
+        },
         paceToFloor: 'ahead',
         targetFloorTokens: 1000,
         todayTokens: 1200,
@@ -329,6 +344,11 @@ describe('operator fleet status route', () => {
     expect(log.some(sql => sql.includes('owner_agent_user_id = ?'))).toBe(true)
     expect(log.some(sql => sql.includes('AND user_id = ?'))).toBe(true)
     expect(log.some(sql => sql.includes('FROM pylon_api_events') && sql.includes('pylon_ref IN'))).toBe(true)
+    expect(log.some(sql =>
+      sql.includes('FROM token_usage_events') &&
+      sql.includes("provider = 'pylon-codex-own-capacity'") &&
+      sql.includes('AND actor_user_id = ?'),
+    )).toBe(true)
   })
 
   test('keeps the legacy fleet status path admin-token only', async () => {
