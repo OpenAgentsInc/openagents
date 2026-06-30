@@ -146,6 +146,13 @@ export type ForfeitLaborEscrowInput = Readonly<{
   nowIso: string
 }>
 
+export type BondSettlementAdapter = Readonly<{
+  kind: 'credit_ledger'
+  hold(input: ReserveLaborEscrowInput): Promise<LaborEscrowResult>
+  release(input: ReleaseLaborEscrowInput): Promise<LaborEscrowResult>
+  forfeit(input: ForfeitLaborEscrowInput): Promise<LaborEscrowResult>
+}>
+
 export type LaborEscrowResult =
   | Readonly<{ kind: 'ok'; escrow: LaborEscrowRecord; idempotent: boolean }>
   | Readonly<{
@@ -963,6 +970,15 @@ export const forfeitLaborEscrow = async (
   }
   return { escrow: forfeited, idempotent: false, kind: 'ok' }
 }
+
+export const createCreditLedgerBondSettlementAdapter = (
+  db: D1Database,
+): BondSettlementAdapter => ({
+  kind: 'credit_ledger',
+  hold: input => reserveLaborEscrow(db, input),
+  release: input => releaseLaborEscrow(db, input),
+  forfeit: input => forfeitLaborEscrow(db, input),
+})
 
 export const reserveInputFromForumWorkRequest = (
   request: ForumWorkRequestRecord,

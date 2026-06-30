@@ -1078,6 +1078,11 @@ This is the invariant ledger for `openagents`.
   debits the held claim exactly once and either credits the modeled
   counterparty or burns the credit claim without crediting a spender. It is not
   Lightning/on-chain settlement.
+- Bond settlement enters the Worker through the typed
+  `BondSettlementAdapter` seam. The only current implementation is
+  `credit_ledger`, which delegates to the same reserve/release/forfeit
+  functions above; it must not import Spark, MDK, Lightning hold-invoice, Ark, or
+  wallet code, and adapter calls preserve the same fail-closed authority gates.
 - Release-after-refund, refund-after-release, release/refund-after-forfeit,
   double-release, double-refund, and double-forfeit must not move balances.
 - Reserve, release, refund, and forfeit each require public-safe receipt rows
