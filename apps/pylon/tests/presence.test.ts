@@ -917,6 +917,76 @@ describe("Pylon presence registration and heartbeat", () => {
     })
   })
 
+  test("provider go-online JSON uses per-account totals for Codex dispatch capacity", async () => {
+    await withTempHome(async (home) => {
+      const codexOne = join(home, "accounts", "codex", "codex-one")
+      const codexTwo = join(home, "accounts", "codex", "codex-two")
+      for (const accountHome of [codexOne, codexTwo]) {
+        await mkdir(accountHome, { recursive: true })
+        await writeFile(join(accountHome, "auth.json"), "{}\n")
+      }
+      await writeFile(
+        join(home, "config.json"),
+        `${JSON.stringify(
+          {
+            dev: {
+              accounts: [
+                { ref: "codex-one", provider: "codex", home: codexOne },
+                { ref: "codex-two", provider: "codex", home: codexTwo },
+              ],
+            },
+          },
+          null,
+          2,
+        )}\n`,
+      )
+
+      const result = await runProviderCli({
+        args: ["go-online", "--json"],
+        env: {
+          CODEX_HOME: join(home, "missing-default-codex"),
+          OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY: "5",
+          OPENAGENTS_PYLON_CODEX_CONCURRENCY: "4",
+          PYLON_ACCOUNT_HOME_ROOT: join(home, "no-sibling-scan"),
+          PYLON_HOME: home,
+        },
+        timeoutMs: 20_000,
+      })
+
+      expect(result.timedOut).toBe(false)
+      expect(result.exitCode).toBe(0)
+      const json = JSON.parse(result.stdout)
+      const keyOne = codexAccountCapacityKey(hashPylonAccountRef("codex", "codex-one"))
+      const keyTwo = codexAccountCapacityKey(hashPylonAccountRef("codex", "codex-two"))
+      expect(json.ownCapacityDispatch).toMatchObject({
+        availableCodexAssignments: 10,
+        maxCodexAssignments: 10,
+        totalAvailableCodexAssignments: 10,
+        totalMaxCodexAssignments: 10,
+      })
+      expect(json.ownCapacityDispatch.capacityRefs).toEqual([
+        "capacity.coding.codex.ready=10",
+        "capacity.coding.codex.available=10",
+        `capacity.coding.codex.account.${keyOne}.ready=5`,
+        `capacity.coding.codex.account.${keyOne}.available=5`,
+        `capacity.coding.codex.account.${keyTwo}.ready=5`,
+        `capacity.coding.codex.account.${keyTwo}.available=5`,
+      ])
+      expect(json.ownCapacityDispatch.codexAccounts).toEqual([
+        { accountKey: keyOne, available: 5, busy: 0, queued: 0, ready: 5 },
+        { accountKey: keyTwo, available: 5, busy: 0, queued: 0, ready: 5 },
+      ])
+      expect(json.codingCapacity).toContainEqual({
+        available: 10,
+        busy: 0,
+        queued: 0,
+        ready: 10,
+        service: "codex",
+      })
+      assertPublicProjectionSafe(json)
+    })
+  })
+
   test("provider go-online JSON projects active local Codex assignment runs as busy (#6354)", async () => {
     await withTempHome(async (home) => {
       const codexHome = join(home, "codex-home")

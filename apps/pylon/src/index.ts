@@ -5154,7 +5154,6 @@ async function main() {
           { ...state, runtime: nextRuntime },
           providerNetworkOptions,
         )
-        const codingRefs = codingServiceCapacityRefs(codingCapacity)
         // #6354: per-Codex-account capacity so `provider go-online --json`
         // exposes each linked account's own concurrent slots and busy load.
         const codexAccounts = await localCodexAccountCapacities(
@@ -5165,6 +5164,15 @@ async function main() {
             await activeCodingRunCountsByAccount(state.paths),
           ),
         )
+        const codexAccountTotals = codexAccounts.reduce(
+          (totals, account) => ({
+            available: totals.available + account.available,
+            busy: totals.busy + account.busy,
+            queued: totals.queued + account.queued,
+            ready: totals.ready + account.ready,
+          }),
+          { available: 0, busy: 0, queued: 0, ready: 0 },
+        )
         const codexAccountRefs = codexAccountCapacityRefs(codexAccounts)
         const appleFmRefs = appleFmBackendCapacityRefs(appleFmStatus)
         const codexCapacity = codingCapacity.find((item) => item.service === "codex") ?? {
@@ -5174,12 +5182,25 @@ async function main() {
           ready: 0,
           service: "codex" as const,
         }
+        const codexDispatchCapacity = codexAccounts.length > 0
+          ? {
+              ...codexCapacity,
+              available: codexAccountTotals.available,
+              busy: codexAccountTotals.busy,
+              queued: codexAccountTotals.queued,
+              ready: codexAccountTotals.ready,
+            }
+          : codexCapacity
+        const codingCapacityProjection = codingCapacity.some((item) => item.service === "codex")
+          ? codingCapacity.map((item) => item.service === "codex" ? codexDispatchCapacity : item)
+          : [codexDispatchCapacity, ...codingCapacity]
+        const codingRefs = codingServiceCapacityRefs(codingCapacityProjection)
         const result = {
           ok: true,
           pylonRef: state.identity.pylonRef,
           lifecycle: nextRuntime.lifecycle,
           capabilityRefs: nextRuntime.capabilityRefs,
-          codingCapacity,
+          codingCapacity: codingCapacityProjection,
           claudeAgent: {
             state: claudeAgentReadiness.state,
             credentialSourceRef: claudeAgentReadiness.credentialSourceRef,
@@ -5201,7 +5222,7 @@ async function main() {
           },
           ownCapacityDispatch: {
             schema: "openagents.pylon.own_capacity_dispatch.v1",
-            codex: codexCapacity,
+            codex: codexDispatchCapacity,
             assignmentGateRef: "gate.public.pylon.assignment_dispatch.controlled.v1",
             capacityRefs: [
               ...codingRefs.capacityRefs.filter((ref) =>
@@ -5217,10 +5238,11 @@ async function main() {
             ],
             policyRefs: ["policy.public.khala_coding.own_capacity_only"],
             requiredCapabilityRefs: [CODEX_AGENT_CAPABILITY_REF],
-            maxCodexAssignments: codexCapacity.ready,
-            availableCodexAssignments: codexCapacity.available,
-            // #6354: per-account breakdown; pooled `codex` totals above sum
-            // these once the heartbeat advertises per-account refs.
+            maxCodexAssignments: codexDispatchCapacity.ready,
+            availableCodexAssignments: codexDispatchCapacity.available,
+            // #6354: per-account breakdown. When present, the dispatch totals
+            // above are derived from these account buckets so Desktop status
+            // and spawn planning describe the same capacity.
             codexAccounts: codexAccounts.map((account) => ({
               accountKey: account.accountKey,
               available: account.available,
@@ -5228,14 +5250,8 @@ async function main() {
               queued: account.queued,
               ready: account.ready,
             })),
-            totalAvailableCodexAssignments: codexAccounts.reduce(
-              (sum, account) => sum + account.available,
-              0,
-            ),
-            totalMaxCodexAssignments: codexAccounts.reduce(
-              (sum, account) => sum + account.ready,
-              0,
-            ),
+            totalAvailableCodexAssignments: codexAccountTotals.available,
+            totalMaxCodexAssignments: codexAccountTotals.ready,
           },
           tassadar: {
             declared: tassadarDeclaration.declared,

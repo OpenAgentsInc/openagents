@@ -158,24 +158,29 @@ free slots. If it refuses before launch with `Only X/5 advertised ... free`,
 capacity was not actually advertised; rerun the heartbeat/status commands and
 check `ownCapacityDispatch.codexAccounts`.
 
-Verified live on 2026-06-30 after deploying `ba9a5424e5`:
+Verified live on 2026-06-30 after the lifecycle and capacity-projection fixes:
 
-- command above launched five concurrent `khala request` wrappers
-- all five ran through `codex-2` with public account hash
-  `account.pylon.codex.651c03fed68925d7acb2c02f`
-- all five returned `auto-run: completed`, `assignment run: completed`,
-  `closeout: accepted, no-spend, not_applicable`, and `blocker refs: none`
-- assignment refs:
-  `assignment.public.khala_coding.chatcmpl_47bea9cdeb0b40e994beb8b4fbfb4727`,
-  `assignment.public.khala_coding.chatcmpl_89d38b66e198475fb7ef64373db368ad`,
-  `assignment.public.khala_coding.chatcmpl_3b1a9195bb594acd82918baca6dcc473`,
-  `assignment.public.khala_coding.chatcmpl_2c6f011dba654af3898bee3320f65d84`,
-  `assignment.public.khala_coding.chatcmpl_24d158a8b1b14b5c893a70ba7fdf706e`
-- post-run: no active markers remained and
-  `ownCapacityDispatch.codexAccounts` returned both named accounts to `5/5`
-  available; the old pooled `availableCodexAssignments/maxCodexAssignments`
-  still showed `4/4`, so use `codexAccounts` for five-slot Desktop smoke
-  validation.
+- `provider go-online --json` with
+  `OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY=5` reported
+  `ownCapacityDispatch.availableCodexAssignments = 10` and
+  `maxCodexAssignments = 10`.
+- the two ready per-account buckets each reported `5/5`:
+  `account.pylon.codex.4db4cc18ebc55f39fb4da894` and
+  `account.pylon.codex.651c03fed68925d7acb2c02f`.
+- `codex_fleet_status` through the Desktop wrapper also reported `10/10`
+  with no active assignment markers.
+- a bounded four-slot fixture smoke completed `4/4`.
+- the five-slot smoke above completed `5/5`, all through `codex-2`, with
+  `auto-run: completed`, `assignment run: completed`,
+  `closeout: accepted, no-spend, not_applicable`, `blocker refs: none`, and
+  lifecycle summaries through `assignment_run.completed`.
+- five-slot assignment refs:
+  `assignment.public.khala_coding.chatcmpl_312183d0332d445f804619adfb5631bf`,
+  `assignment.public.khala_coding.chatcmpl_89604204bfcd4511969b173cfb07135e`,
+  `assignment.public.khala_coding.chatcmpl_55510df39554465085aaebbb1c8ca19b`,
+  `assignment.public.khala_coding.chatcmpl_0d8804f0c51648079752f613a3698505`,
+  `assignment.public.khala_coding.chatcmpl_6a270198d2954df89872952a93233dfe`.
+- post-run: no active marker files remained and capacity returned to `10/10`.
 
 ## Current A2A Transaction Step: Provider-Bond Contract
 
@@ -187,8 +192,8 @@ pass:
 - ready Codex refs: `(default)`, `codex-2`, `status`
 - `codex` remained `credentials_revoked`; the historical backup/supervisor refs
   remained `credentials_missing`
-- old pooled capacity still reported `4/4`, so keep using the per-account
-  projection for five-slot validation
+- dispatch capacity reported `10/10` from the per-account projection; this is
+  the value Desktop should show and plan against.
 
 The next concrete step toward agents transacting naturally with each other
 (Nostr negotiation, Lightning/MDK/Ark later, forfeitable funds) is tracked in
