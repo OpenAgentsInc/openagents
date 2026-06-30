@@ -285,6 +285,45 @@ publishing an immediate runtime-progress heartbeat:
 - no Worker deploy is required for this specific fix; it is local Pylon runner
   behavior plus tests and runbook evidence.
 
+Verified again on 2026-06-30 after Pylon started posting a generic
+server-visible `running` progress record while the local Codex runtime is
+active, even when the underlying Codex runner is otherwise silent:
+
+- direct smoke command:
+
+  ```sh
+  OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY=5 \
+    bun apps/pylon/src/index.ts khala spawn \
+      --count 5 \
+      --max-parallel 5 \
+      --objective "Run the public Pylon Codex fixture and report exact closeout status for this five-slot handshake smoke after runtime progress heartbeat patch." \
+      --fixture \
+      --execute \
+      --base-url https://openagents.com \
+      --json
+  ```
+
+- pre-run `provider go-online --json` reported `10/10` available, split
+  `5/5` across `account.pylon.codex.4db4cc18ebc55f39fb4da894` and
+  `account.pylon.codex.651c03fed68925d7acb2c02f`.
+- the run completed `ok: true`, `aggregate.acceptedCount = 5`,
+  `blockerRefs = []`, `totalTokenRows = 5`, `ownerOnlyTraceCount = 60`,
+  `ownerOnlyRawEventCount = 86`, and `totalVerifiedTokens = 409059`.
+- token-counter evidence moved from `6443204900` to `6443782205`
+  (`delta = 577305`, `expectedMinimumDelta = 409059`,
+  `state = increment_observed`).
+- every slot emitted `assignment_run.runtime_started`, then a
+  server-visible `assignment_run.runtime_progress`/`running` pulse within
+  about two seconds while the runtime was still active.
+- five-slot assignment refs:
+  `assignment.public.khala_coding.chatcmpl_517e84a9b67549269d033118f33606e7`,
+  `assignment.public.khala_coding.chatcmpl_df2bd1c415e0403fafdb9af6a8e5c9b9`,
+  `assignment.public.khala_coding.chatcmpl_ea323d6f91ce46c4aa43c37bc46e65c8`,
+  `assignment.public.khala_coding.chatcmpl_59901880eac54ffc997b32c1dd5bd7d7`,
+  `assignment.public.khala_coding.chatcmpl_ed55ca47cfd74ba381b2fbc09359d21b`.
+- post-run: no active marker files remained and capacity returned to `10/10`,
+  with both ready account buckets back at `5/5`.
+
 ## Current A2A Transaction Step: Provider-Bond Contract
 
 Checked again on 2026-06-30 before the first forfeitable-bond implementation
@@ -336,6 +375,10 @@ evidence in both places operators need it:
   stderr while the worker is active.
 - The final JSON stdout now also includes `assignmentLifecycleEvents`, so a
   completed tool card can summarize the same path without scraping stderr.
+- The local no-spend runner posts generic `running` progress to the hosted
+  assignment progress endpoint while the runtime is active. This path is
+  fail-soft and operator-visible only; if the progress endpoint is slow or down,
+  local execution and closeout must continue.
 - Khala Code Desktop parses both the final array and the stderr JSONL fallback.
   Timeout summaries should show `command timed out` plus the last lifecycle
   state, for example `assignment_run.runtime_started (phase=runtime_active)`.

@@ -253,12 +253,24 @@ describe("Pylon assignment lease flow", () => {
       expect(result.closeout.artifactRefs[0].startsWith("assignment.artifact.")).toBe(true)
       expect(result.closeout.proofRefs[0].startsWith("assignment.proof.")).toBe(true)
       const pylonRef = fake.requests[0].body.pylonRef
-      expect(fake.requests.map((request) => request.path).filter((path) => path.includes("/assignments/"))).toEqual([
-        `/api/pylons/${encodeURIComponent(pylonRef)}/assignments/${encodeURIComponent(result.lease.leaseRef)}/accept`,
-        `/api/pylons/${encodeURIComponent(fake.requests[0].body.pylonRef)}/assignments/${encodeURIComponent(result.lease.leaseRef)}/progress`,
-        `/api/pylons/${encodeURIComponent(fake.requests[0].body.pylonRef)}/assignments/${encodeURIComponent(result.lease.leaseRef)}/artifacts`,
-        `/api/pylons/${encodeURIComponent(fake.requests[0].body.pylonRef)}/assignments/${encodeURIComponent(result.lease.leaseRef)}/closeout`,
-      ])
+      const assignmentPaths = fake.requests.map((request) => request.path).filter((path) => path.includes("/assignments/"))
+      const expectedAcceptPath = `/api/pylons/${encodeURIComponent(pylonRef)}/assignments/${encodeURIComponent(result.lease.leaseRef)}/accept`
+      const expectedProgressPath = `/api/pylons/${encodeURIComponent(fake.requests[0].body.pylonRef)}/assignments/${encodeURIComponent(result.lease.leaseRef)}/progress`
+      const expectedArtifactsPath = `/api/pylons/${encodeURIComponent(fake.requests[0].body.pylonRef)}/assignments/${encodeURIComponent(result.lease.leaseRef)}/artifacts`
+      const expectedCloseoutPath = `/api/pylons/${encodeURIComponent(fake.requests[0].body.pylonRef)}/assignments/${encodeURIComponent(result.lease.leaseRef)}/closeout`
+      expect(assignmentPaths[0]).toBe(expectedAcceptPath)
+      expect(assignmentPaths.at(-2)).toBe(expectedArtifactsPath)
+      expect(assignmentPaths.at(-1)).toBe(expectedCloseoutPath)
+      expect(assignmentPaths.filter((path) => path === expectedProgressPath).length).toBeGreaterThanOrEqual(2)
+      expect(fake.requests.some((request) =>
+        request.path === expectedProgressPath &&
+        request.body.status === "running" &&
+        request.body.phase === "runtime_active"
+      )).toBe(true)
+      expect(fake.requests.some((request) =>
+        request.path === expectedProgressPath &&
+        request.body.status === "proof-ready"
+      )).toBe(true)
       expect(fake.requests.map((request) => request.path).filter((path) => path.endsWith("/assignments"))).toEqual([
         `/api/pylons/${encodeURIComponent(pylonRef)}/assignments`,
       ])

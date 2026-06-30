@@ -1708,19 +1708,39 @@ export async function runNoSpendAssignment(summary: BootstrapSummary, options: A
       run: () => Promise<T>
     },
   ): Promise<T> => {
-    if (options.onLifecycleEvent === undefined) return input.run()
     let stopped = false
+    let progressSequence = 0
     const tick = async () => {
       if (stopped) return
+      const elapsedMs = Math.max(0, Date.now() - input.startedAtMs)
       await emitLifecycleEvent({
         event: "assignment_run.runtime_progress",
         assignmentRef: input.assignmentRef,
         ...(input.accountRefHash === undefined ? {} : { accountRefHash: input.accountRefHash }),
         leaseRef: input.leaseRef,
         phase: "runtime_active",
-        elapsedMs: Math.max(0, Date.now() - input.startedAtMs),
+        elapsedMs,
         ...(lastProgressEvent === undefined ? {} : { lastProgressEvent }),
       })
+      progressSequence += 1
+      void submitAssignmentProgress(
+        summary,
+        {
+          schema: "openagents.pylon.assignment_progress.v0.3",
+          assignmentRef: input.assignmentRef,
+          leaseRef: input.leaseRef,
+          sequence: progressSequence,
+          status: "running",
+          message: "Runtime is active.",
+          artifactRefs: [],
+          proofRefs: [],
+          observedAt: (options.now?.() ?? new Date()).toISOString(),
+          elapsedMs,
+          phase: "runtime_active",
+          ...(lastProgressEvent === undefined ? {} : { lastProgressEvent }),
+        },
+        options,
+      ).catch(() => {})
     }
     const interval = setInterval(() => {
       void tick()
