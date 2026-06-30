@@ -183,6 +183,7 @@ export type AssignmentClientOptions = {
   localAssignmentHeartbeatStaleAfterMs?: number
   localProcessIsAlive?: (processId: number) => boolean
   onLifecycleEvent?: (event: AssignmentRunLifecycleEvent) => void | Promise<void>
+  requestTimeoutMs?: number
   runtimeHeartbeatIntervalMs?: number
   runtimeProgressIntervalMs?: number
 }
@@ -295,6 +296,8 @@ type PublicPylonAssignmentProjection = Readonly<{
   state?: unknown
   taskRefs?: unknown
 }>
+
+const DEFAULT_ASSIGNMENT_REQUEST_TIMEOUT_MS = 30_000
 
 function stableRef(prefix: string, value: string) {
   return `${prefix}.${createHash("sha256").update(value).digest("hex").slice(0, 24)}`
@@ -1185,7 +1188,12 @@ async function postJson(
         })),
         "Idempotency-Key": idempotencyKey,
       }
-  const response = await fetchImpl(url, { method: "POST", headers, body: text })
+  const response = await fetchImpl(url, {
+    method: "POST",
+    headers,
+    body: text,
+    signal: assignmentRequestSignal(options),
+  })
   const responseText = await response.text()
   const json = responseText.trim() ? (JSON.parse(responseText) as JsonRecord) : {}
   assertPublicProjectionSafe(json)
@@ -1210,7 +1218,11 @@ async function getJson(options: AssignmentClientOptions, path: string, state: Py
         paths: state.paths,
         now: options.now?.(),
       })
-  const response = await fetchImpl(url, { method: "GET", headers })
+  const response = await fetchImpl(url, {
+    method: "GET",
+    headers,
+    signal: assignmentRequestSignal(options),
+  })
   const responseText = await response.text()
   const json = responseText.trim() ? (JSON.parse(responseText) as JsonRecord) : {}
   // Per-assignment safety isolation: one projection-unsafe assignment must
@@ -1247,6 +1259,17 @@ async function getJson(options: AssignmentClientOptions, path: string, state: Py
     throw new Error(`OpenAgents assignment request failed (${response.status}): ${responseText}`)
   }
   return json
+}
+
+function assignmentRequestSignal(options: AssignmentClientOptions): AbortSignal {
+  const requested = options.requestTimeoutMs
+  const timeoutMs =
+    typeof requested === "number" &&
+    Number.isFinite(requested) &&
+    requested > 0
+      ? Math.min(Math.floor(requested), 300_000)
+      : DEFAULT_ASSIGNMENT_REQUEST_TIMEOUT_MS
+  return AbortSignal.timeout(timeoutMs)
 }
 
 export async function pollAssignments(summary: BootstrapSummary, options: AssignmentClientOptions) {

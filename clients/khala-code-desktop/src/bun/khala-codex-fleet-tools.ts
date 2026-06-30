@@ -534,10 +534,21 @@ export async function spawnCodexInstances(
   }
 
   const status = await inspectCodexFleet({ includeProcesses: false, startPylon: false }, { ...options, env })
-  const readyAccounts = status.accounts.filter(account => isReadyAccount(account))
+  const readyAccounts = preferredSpawnAccounts(status.accounts.filter(account => isReadyAccount(account)))
   if (input.accountRef === undefined && readyAccounts.length === 0) {
     throw new Error(
       "No ready Pylon Codex account is connected. Connect one first with `khala fleet connect` or `pylon auth codex --account codex`; this Desktop tool will not run Codex device login.",
+    )
+  }
+  if (input.accountRef !== undefined) {
+    const selected = status.accounts.find(account => account.accountRef === input.accountRef)
+    if (selected !== undefined && !isReadyAccount(selected)) {
+      throw new Error(`Pylon Codex account ${input.accountRef} is not ready (${selected.readiness}).`)
+    }
+  }
+  if (status.availableCodexAssignments !== null && status.availableCodexAssignments <= 0) {
+    throw new Error(
+      `No Pylon Codex assignment capacity is available right now (${capacityLabel(status.availableCodexAssignments, status.maxCodexAssignments)}). Wait for the running assignment to finish or retry after Pylon refreshes.`,
     )
   }
 
@@ -814,12 +825,19 @@ async function runPylonCommand(
 
 function pylonCommandEnv(env: ChatEnv, pylonHome: string): ChatEnv {
   const mergedEnv = { ...process.env, ...env }
+  const configuredBaseUrl = configuredOpenAgentsBaseUrl(mergedEnv)
   return {
     ...mergedEnv,
     PATH: pathCandidates(mergedEnv).filter(path => path.length > 0).join(":"),
-    PYLON_OPENAGENTS_BASE_URL: resolveOpenAgentsBaseUrl(mergedEnv),
+    ...(configuredBaseUrl === undefined ? {} : { PYLON_OPENAGENTS_BASE_URL: configuredBaseUrl }),
     PYLON_HOME: pylonHome,
   }
+}
+
+function configuredOpenAgentsBaseUrl(env: ChatEnv): string | undefined {
+  return [env.PYLON_OPENAGENTS_BASE_URL, env.OPENAGENTS_BASE_URL]
+    .map(value => value?.trim())
+    .find((value): value is string => value !== undefined && value.length > 0)
 }
 
 function resolveOpenAgentsBaseUrl(env: ChatEnv, explicit?: string | undefined): string {
@@ -1218,6 +1236,15 @@ function readyAccountCount(accounts: readonly AccountRow[]): number {
 
 function isReadyAccount(account: AccountRow): boolean {
   return account.readiness === "ready" || account.readiness === "available"
+}
+
+function preferredSpawnAccounts(accounts: readonly AccountRow[]): readonly AccountRow[] {
+  return [...accounts].sort((left, right) => {
+    const leftDefault = left.accountRef === "(default)"
+    const rightDefault = right.accountRef === "(default)"
+    if (leftDefault !== rightDefault) return leftDefault ? 1 : -1
+    return left.accountRef.localeCompare(right.accountRef)
+  })
 }
 
 function commandAccountRef(accountRef: string | undefined): string | undefined {
