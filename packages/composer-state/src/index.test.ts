@@ -1,12 +1,16 @@
 import { describe, expect, test } from "bun:test"
 
 import {
+  ComposerDecoration,
+  ComposerInlineMark,
+  ComposerListItem,
   DEFAULT_DESKTOP_LOCAL_ATTACHMENT_UPLOAD_POLICY,
   DEFAULT_WEB_HOSTED_ATTACHMENT_UPLOAD_POLICY,
   applyComposerTransaction,
   composerAttachmentContentAddressedRef,
   composerAttachmentId,
   composerBlockId,
+  createComposerCollaborativeTransaction,
   emptyComposerState,
   moveComposerAttachmentSelection,
   offerComposerLargeTextPaste,
@@ -14,6 +18,7 @@ import {
   planComposerAttachmentUpload,
   projectComposerAttachmentUploadReceipt,
   readyComposerAttachmentTransaction,
+  rebaseComposerTransaction,
   redoComposerState,
   retryComposerAttachmentTransaction,
   resolveComposerKeyBinding,
@@ -22,11 +27,13 @@ import {
   stageComposerDroppedFiles,
   stageComposerPastedFiles,
   setComposerAttachmentStatusTransaction,
+  summarizeComposerSteps,
   undoComposerState,
   type ComposerAttachment,
   type ComposerState,
   type ComposerTransaction,
 } from "./index"
+import { Schema as S } from "effect"
 
 const tx = (steps: ComposerTransaction["steps"]): ComposerTransaction => ({
   steps,
@@ -523,5 +530,118 @@ describe("composer state core", () => {
     expect(serialized).toContain("- one\n- two")
     expect(serialized).toContain("```ts\nconst answer = 42\n```")
     expect(serialized).toContain("<custom-widget data-x=\"1\">keep me</custom-widget>")
+  })
+
+  test("rebases local text transactions over remote collaborative steps", () => {
+    const blockId = composerBlockId("block-1")
+    const local = tx([
+      {
+        _tag: "InsertText",
+        at: { blockId, offset: 0 },
+        text: " world",
+      },
+    ])
+    const remote: ComposerTransaction = {
+      steps: [
+        {
+          _tag: "InsertText",
+          at: { blockId, offset: 0 },
+          text: "hello",
+        },
+      ],
+      meta: { source: "program", time: 2, clientId: "remote", baseVersion: 0 },
+    }
+
+    const collaborative = createComposerCollaborativeTransaction({
+      sessionRef: "composer-session.public.fixture",
+      transactionRef: "composer-tx.public.local",
+      clientId: "local",
+      baseVersion: 0,
+      transaction: local,
+    })
+    expect(collaborative.version).toBe(1)
+    expect(collaborative.transaction.meta).toMatchObject({
+      clientId: "local",
+      baseVersion: 0,
+    })
+
+    const rebased = rebaseComposerTransaction({
+      transaction: collaborative.transaction,
+      fromBaseVersion: collaborative.baseVersion,
+      remoteSteps: remote.steps,
+    })
+    expect(rebased.toBaseVersion).toBe(1)
+    expect(rebased.transaction.meta.baseVersion).toBe(1)
+    expect(rebased.transaction.steps[0]).toMatchObject({
+      _tag: "InsertText",
+      at: { blockId, offset: 5 },
+      text: " world",
+    })
+    expect(rebased.changeSummary).toMatchObject({
+      insertedTextChars: 6,
+      deletedTextChars: 0,
+      replacedTextChars: 0,
+    })
+    expect(JSON.stringify(rebased.changeSummary)).not.toContain("world")
+
+    const remoteApplied = apply(emptyComposerState(), remote)
+    const merged = apply(remoteApplied, rebased.transaction)
+    expect(firstText(merged)).toBe("hello world")
+  })
+
+  test("summarizes collaborative attachment and view changes without raw content", () => {
+    const attachment: ComposerAttachment = {
+      id: composerAttachmentId("att-summary"),
+      kind: "text",
+      name: "private-notes.txt",
+      mime: "text/plain",
+      sizeBytes: 123,
+      contentRef: "local-file:/private/tmp/private-notes.txt",
+      status: "staged",
+    }
+    const summary = summarizeComposerSteps([
+      { _tag: "InsertAttachment", attachment },
+      {
+        _tag: "UpdateAttachment",
+        attachmentId: attachment.id,
+        patch: { status: "ready", digest: "sha256:feed" },
+      },
+      { _tag: "ResizeComposer", heightPx: 280 },
+    ])
+    expect(summary).toEqual({
+      insertedTextChars: 0,
+      deletedTextChars: 0,
+      replacedTextChars: 0,
+      blockKindChanges: 0,
+      attachmentsInserted: [attachment.id],
+      attachmentsRemoved: [],
+      attachmentsUpdated: [attachment.id],
+      resizeChanges: 1,
+    })
+    expect(JSON.stringify(summary)).not.toContain("private-notes")
+    expect(JSON.stringify(summary)).not.toContain("/private/tmp")
+  })
+
+  test("keeps rich inline, search decoration, and nested-list follow-up state typed", () => {
+    const mark = S.decodeUnknownSync(ComposerInlineMark)({
+      kind: "link",
+      from: 0,
+      to: 5,
+      href: "https://openagents.com",
+    })
+    expect(mark.kind).toBe("link")
+
+    const decoration = S.decodeUnknownSync(ComposerDecoration)({
+      kind: "searchMatch",
+      range: { from: 6, to: 11 },
+      label: "visible match label",
+    })
+    expect(decoration.kind).toBe("searchMatch")
+
+    const nestedItem = S.decodeUnknownSync(ComposerListItem)({
+      text: "parent",
+      children: ["child one", "child two"],
+    })
+    expect(nestedItem.children).toEqual(["child one", "child two"])
   })
 })

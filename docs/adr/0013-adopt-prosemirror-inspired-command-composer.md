@@ -220,6 +220,26 @@ The implementation should land as a sequence:
 | No public projection of raw private prompt or file content | Satisfied for v1 artifacts by the new composer privacy fixture guard and the documented metadata-only attachment boundary. |
 | Product-promise records | No new record was added because this work hardens existing input surfaces and does not broaden public product claims. |
 
+## Rich Inline Editing And Collaboration Follow-Up
+
+Issue #7647 keeps the v1 editor substrate as a native textarea. The current
+decision is:
+
+| Adapter | Fit | Decision |
+| --- | --- | --- |
+| Textarea-native source mode | Best reliability for IME, mobile keyboards, browser copy/paste, selection, screen readers, OS shortcuts, and always-writable pending turns. | Remains the default and only shipped editing mode. |
+| Full ProseMirror browser view | Strongest rich inline editing, decorations, search, nested lists, collaborative rebasing, and changesets, but imports the highest-risk `contentEditable` surface and would need broad IME/mobile/accessibility smoke coverage before use. | Not shipped. Reconsider only after a dedicated adapter preserves the textarea path and passes the full input matrix. |
+| Hybrid adapter | Allows textarea source editing plus typed sidecar state for marks, decorations, nested-list intent, search matches, collaboration envelopes, and change summaries. | Accepted follow-up shape. Keep rich UI optional and driven from typed state, not public raw prompt projections. |
+
+`@openagentsinc/composer-state` now includes collaboration-ready transaction
+envelopes, deterministic text-step rebasing over remote steps, typed richer
+inline/search/nested-list sidecar contracts, and public-safe change summaries.
+The summaries count text and structural edits but do not expose inserted prompt
+text, private file names, local paths, or raw attachment content refs. Shared
+editing UI remains deferred until a view adapter can prove textarea parity for
+IME, mobile, copy/paste, shortcuts, focus, and accessibility without breaking
+the current textarea path.
+
 Deferred follow-ups:
 
 * #7647: rich inline editing, contentEditable/ProseMirror-view evaluation, and
