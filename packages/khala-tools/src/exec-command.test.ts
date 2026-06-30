@@ -1,14 +1,16 @@
-import { mkdir, mkdtemp } from "node:fs/promises"
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { describe, expect, test } from "bun:test"
 import { Effect } from "effect"
 import {
   createExecCommandTool,
+  createMacosSeatbeltKhalaProcessService,
   denyAllKhalaPermissionService,
   executeKhalaTool,
   makeKhalaToolRegistry,
   makeKhalaToolServices,
+  type KhalaProcessService,
   type KhalaPermissionRequest,
   type KhalaPermissionService,
 } from "./index.js"
@@ -21,6 +23,7 @@ async function runExec(
   workspace: string,
   args: Readonly<Record<string, unknown>>,
   permission?: KhalaPermissionService,
+  process?: KhalaProcessService,
 ) {
   return Effect.runPromise(
     executeKhalaTool(
@@ -28,11 +31,14 @@ async function runExec(
       { arguments: args, id: "call_1", name: "exec_command", sessionId: "s1" },
       makeKhalaToolServices({
         ...(permission === undefined ? {} : { permission }),
+        ...(process === undefined ? {} : { process }),
         workingDirectory: workspace,
       }),
     ),
   )
 }
+
+const hasMacosSeatbelt = process.platform === "darwin" && (await Bun.file("/usr/bin/sandbox-exec").exists())
 
 describe("exec_command tool", () => {
   test("runs successful commands through the process service", async () => {
@@ -62,6 +68,21 @@ describe("exec_command tool", () => {
 
     expect(result.status).toBe("failed")
     expect(result.ui).toMatchObject({ timedOut: true })
+  })
+
+  test("timeout kills the command process group", async () => {
+    const workspace = await makeWorkspace()
+
+    const result = await runExec(workspace, {
+      cmd: "sh -c 'sleep 5 & echo $! > child.pid; wait'",
+      timeout_ms: 80,
+    })
+
+    const childPid = Number((await readFile(join(workspace, "child.pid"), "utf8")).trim())
+    await waitForProcessExit(childPid)
+    expect(result.status).toBe("failed")
+    expect(result.ui).toMatchObject({ timedOut: true })
+    expect(processIsAlive(childPid)).toBe(false)
   })
 
   test("supports cancellation deadlines", async () => {
@@ -141,7 +162,7 @@ describe("exec_command tool", () => {
     })
   })
 
-  test("does not claim sandbox enforcement or accept public owner-full escalation fields", async () => {
+  test("honestly reports sandbox enforcement and ignores public owner-full escalation fields", async () => {
     const workspace = await makeWorkspace()
 
     const result = await runExec(workspace, { cmd: "printf ok", owner_full_access: true })
@@ -149,10 +170,70 @@ describe("exec_command tool", () => {
     expect(result.status).toBe("ok")
     expect(result.ui).toMatchObject({
       sandbox: {
-        enforced: false,
-        kind: "none",
+        enforced: hasMacosSeatbelt,
+        kind: hasMacosSeatbelt ? "external" : "none",
       },
     })
     expect(JSON.stringify(result.ui)).not.toContain("owner_full_access")
   })
+
+  test.skipIf(!hasMacosSeatbelt)("blocks writes outside the workspace with macOS Seatbelt", async () => {
+    const workspace = await makeWorkspace()
+    const outside = await mkdtemp(join(tmpdir(), "khala-exec-seatbelt-outside-"))
+    const outsideFile = join(outside, "blocked.txt")
+
+    const result = await runExec(workspace, {
+      cmd: `printf ok > inside.txt; printf nope > ${shellQuote(outsideFile)}`,
+    })
+
+    expect(result.status).toBe("failed")
+    expect(result.ui).toMatchObject({
+      sandbox: {
+        enforced: true,
+        kind: "external",
+      },
+    })
+    expect(await readFile(join(workspace, "inside.txt"), "utf8")).toBe("ok")
+    await expect(readFile(outsideFile, "utf8")).rejects.toThrow()
+  })
+
+  test.skipIf(!hasMacosSeatbelt)("preserves denied-read paths under the macOS sandbox", async () => {
+    const workspace = await makeWorkspace()
+    const deniedDirectory = await mkdtemp(join(tmpdir(), "khala-exec-denied-read-"))
+    const deniedFile = join(deniedDirectory, "secret.txt")
+    await writeFile(deniedFile, "secret\n", "utf8")
+    const sandboxedProcess = createMacosSeatbeltKhalaProcessService({ deniedReadPaths: [deniedDirectory] })
+
+    const result = await runExec(workspace, { cmd: `cat ${shellQuote(deniedFile)}` }, undefined, sandboxedProcess)
+
+    expect(result.status).toBe("failed")
+    expect(result.ui).toMatchObject({
+      sandbox: {
+        enforced: true,
+        kind: "external",
+      },
+      stdoutBytes: 0,
+    })
+    expect(result.modelOutput.text).not.toContain("secret\n")
+  })
 })
+
+function shellQuote(value: string): string {
+  return `'${value.replaceAll("'", "'\\''")}'`
+}
+
+async function waitForProcessExit(pid: number): Promise<void> {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    if (!processIsAlive(pid)) return
+    await new Promise(resolve => setTimeout(resolve, 25))
+  }
+}
+
+function processIsAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch {
+    return false
+  }
+}

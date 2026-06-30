@@ -956,6 +956,93 @@ describe("Khala Code desktop chat runtime", () => {
     )).toBe(true)
   })
 
+  test("compacts synthetic long sessions before hosted provider requests", async () => {
+    const { calls, fetchFn } = captureFetch([
+      { choices: [{ message: { content: "We can continue from the compacted context." } }] },
+    ])
+
+    const result = await runKhalaCodeDesktopChatTurn({
+      env: {
+        KHALA_CODE_DESKTOP_CONTEXT_KEEP_TAIL_COUNT: "2",
+        KHALA_CODE_DESKTOP_CONTEXT_MAX_TOKENS: "250",
+        OPENAGENTS_AGENT_TOKEN: "agent-token",
+      },
+      fetchFn,
+      request: {
+        messages: [
+          {
+            body: `Old user context ${"alpha ".repeat(400)} exact-old-user-detail`,
+            id: "u-old",
+            role: "user",
+          },
+          {
+            body: `Old assistant context ${"beta ".repeat(400)} exact-old-assistant-detail`,
+            id: "a-old",
+            role: "assistant",
+          },
+          { body: "Recent user detail stays visible.", id: "u-tail", role: "user" },
+          { body: "Please continue.", id: "u-current", role: "user" },
+        ],
+        sessionId: "session-long-context",
+      },
+    })
+
+    expect(result.ok).toBe(true)
+    expect(result.messages[0]?.body).toBe("We can continue from the compacted context.")
+    const requestMessages = calls[0]?.body.messages as Array<{ content?: string; role?: string }>
+    const compactSummary = requestMessages.find(message =>
+      message.role === "system" &&
+      message.content?.includes("Khala Code context compaction is active") === true
+    )
+    expect(compactSummary?.content).toContain("Summary ref: summary.khala_code.context.")
+    expect(compactSummary?.content).toContain("Replaced refs: message.u-old, message.a-old")
+    expect(compactSummary?.content).toContain("Preserved tail refs: message.u-tail, message.u-current")
+    expect(JSON.stringify(requestMessages)).not.toContain("exact-old-user-detail")
+    expect(JSON.stringify(requestMessages)).not.toContain("exact-old-assistant-detail")
+    expect(JSON.stringify(requestMessages)).toContain("Recent user detail stays visible.")
+    expect(JSON.stringify(requestMessages)).toContain("Please continue.")
+  })
+
+  test("compaction preserves restored tool-result refs while dropping older raw tool text", async () => {
+    const { calls, fetchFn } = captureFetch([
+      { choices: [{ message: { content: "We restored the recent tool context." } }] },
+    ])
+
+    const result = await runKhalaCodeDesktopChatTurn({
+      env: {
+        KHALA_CODE_DESKTOP_CONTEXT_KEEP_TAIL_COUNT: "2",
+        KHALA_CODE_DESKTOP_CONTEXT_MAX_TOKENS: "240",
+        OPENAGENTS_AGENT_TOKEN: "agent-token",
+      },
+      fetchFn,
+      request: {
+        messages: [
+          {
+            body: `ls: ok\n\n${"older-file\n".repeat(500)}old-tool-raw-output`,
+            id: "t-old",
+            role: "tool",
+          },
+          { body: "Old assistant note.", id: "a-old", role: "assistant" },
+          { body: "read: ok\n\nrecent file contents", id: "t-tail", role: "tool" },
+          { body: "What did the recent read show?", id: "u-current", role: "user" },
+        ],
+        sessionId: "session-long-tool-context",
+      },
+    })
+
+    expect(result.ok).toBe(true)
+    const requestMessages = calls[0]?.body.messages as Array<{ content?: string; role?: string }>
+    const compactSummary = requestMessages.find(message =>
+      message.role === "system" &&
+      message.content?.includes("Khala Code context compaction is active") === true
+    )
+    expect(compactSummary?.content).toContain("Replaced refs: message.t-old, message.a-old")
+    expect(compactSummary?.content).toContain("Preserved tail refs: message.t-tail, message.u-current")
+    expect(JSON.stringify(requestMessages)).not.toContain("old-tool-raw-output")
+    expect(JSON.stringify(requestMessages)).toContain("Previous tool result:")
+    expect(JSON.stringify(requestMessages)).toContain("recent file contents")
+  })
+
   test("keeps the DuckDuckGo web search service available outside the default chat tool catalog", async () => {
     const urls: string[] = []
     const fetchFn = (async (input: string | URL | Request) => {

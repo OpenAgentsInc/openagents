@@ -1,7 +1,12 @@
 import { Effect } from "effect"
 import {
+  buildCompactionSummaryRecord,
+  decideCompaction,
+} from "../../../../apps/pylon/src/tas/compaction.js"
+import {
   allowAllKhalaPermissionService,
   applyPatchToolDefinition,
+  createKhalaToolTurnAccounting,
   createApplyPatchTool,
   createEditTool,
   createExecCommandTool,
@@ -10,8 +15,8 @@ import {
   createLsTool,
   createReadTool,
   createWriteTool,
-  executeKhalaTool,
   makeKhalaPrivacyRedactionService,
+  makeKhalaToolDispatcher,
   makeKhalaToolRegistry,
   makeKhalaToolServices,
   redactKhalaPublicText,
@@ -21,6 +26,7 @@ import {
   type KhalaPrivacyRedactionServiceShape,
   type KhalaToolDefinition,
   type KhalaToolEvent,
+  type KhalaToolDispatcher,
   type KhalaToolRegistry,
   type KhalaToolResult,
   type KhalaToolServices,
@@ -58,6 +64,8 @@ const KHALA_CODE_SYSTEM_PROMPT = [
 const MAX_TOOL_ROUNDS = 8
 const MAX_TOTAL_TOOL_CALLS = 32
 const MAX_LOCAL_GROUNDING_CORRECTIONS = 3
+const DEFAULT_CONTEXT_MAX_TOKENS = 24_000
+const DEFAULT_CONTEXT_KEEP_TAIL_COUNT = 12
 const DEFAULT_HOSTED_TOKEN_MESSAGE =
   "Khala Code routes model traffic through hosted Khala, but this desktop process does not have an OPENAGENTS_AGENT_TOKEN. Set OPENAGENTS_AGENT_TOKEN for hosted Khala; OPENROUTER_API_KEY alone cannot run the Khala system locally."
 
@@ -69,6 +77,11 @@ type ChatTransportMessage = {
   role: "assistant" | "system" | "tool" | "user"
   tool_call_id?: string
   tool_calls?: readonly OpenAiToolCall[]
+}
+
+type ContextManagedChatTransportMessage = ChatTransportMessage & {
+  readonly compactPinned?: boolean
+  readonly sourceRef?: string
 }
 
 type OpenAiToolCall = {
@@ -105,6 +118,11 @@ type ChatTransport = {
 }
 
 type ChatTurnEmitter = (event: KhalaCodeDesktopChatTurnEvent) => void
+
+type ContextCompactionPolicy = {
+  readonly keepTailCount: number
+  readonly maxTokens: number
+}
 
 type LocalFileEvidenceState = {
   readonly pendingTruncatedLs: boolean
@@ -190,19 +208,40 @@ export async function runKhalaCodeDesktopChatTurn(
   }
 
   const redaction = input.redaction ?? redactionForSession(input.request.sessionId)
-  const messages: ChatTransportMessage[] = [
-    { role: "system", content: KHALA_CODE_SYSTEM_PROMPT },
-    { role: "system", content: toolCatalogSystemPrompt(toolDefinitions) },
+  const messages: ContextManagedChatTransportMessage[] = [
+    {
+      compactPinned: true,
+      content: KHALA_CODE_SYSTEM_PROMPT,
+      role: "system",
+      sourceRef: "system.khala_code.identity",
+    },
+    {
+      compactPinned: true,
+      content: toolCatalogSystemPrompt(toolDefinitions),
+      role: "system",
+      sourceRef: "system.khala_code.tool_catalog",
+    },
     ...(await projectTranscriptMessages(input.request.messages, redaction)),
   ]
   const transcript: KhalaCodeDesktopMessage[] = []
   const usedTools: string[] = []
   const tools = toOpenAiCompatibleTools(toolDefinitions)
   const turnId = input.request.turnId ?? nextMessageId("turn")
+  const compactionPolicy = contextCompactionPolicy(input.env)
+  const toolTurnAccounting = createKhalaToolTurnAccounting({
+    maxToolCalls: MAX_TOTAL_TOOL_CALLS,
+    turnId,
+  })
+  const toolDispatcher = makeKhalaToolDispatcher({
+    telemetryTags: {
+      surface: "khala_code_desktop",
+      turnId,
+    },
+    turnAccounting: toolTurnAccounting,
+  })
   const emit = (event: KhalaCodeDesktopChatTurnEvent): void => {
     input.onEvent?.(event)
   }
-  let totalToolCalls = 0
   let retriedWithoutTools = false
   let assistantMessagesSinceLastToolResult = 0
   let localFileEvidence = emptyLocalFileEvidenceState()
@@ -230,6 +269,7 @@ export async function runKhalaCodeDesktopChatTurn(
     messages.push({
       content: modelText,
       role: "assistant",
+      sourceRef: `message.${turnId}.assistant.${messages.length}`,
       ...(toolCalls.length === 0 ? {} : { tool_calls: toolCalls }),
     })
   }
@@ -239,18 +279,26 @@ export async function runKhalaCodeDesktopChatTurn(
     const assistantStream = createAssistantStreamRecorder({ emit, turnId })
 
     try {
-      completion = await transport.request(messages, tools, { onAssistantDelta: assistantStream.onAssistantDelta })
+      completion = await transport.request(
+        compactProviderMessages(messages, compactionPolicy),
+        tools,
+        { onAssistantDelta: assistantStream.onAssistantDelta },
+      )
       usage = addUsage(usage, usageFromPayload(completion.usage))
     } catch (error) {
       if (
         !retriedWithoutTools &&
-        totalToolCalls === 0 &&
+        toolTurnAccounting.snapshot().toolCallCount === 0 &&
         assistantStream.streamingAssistant.current === null &&
         shouldRetryWithoutTools(error)
       ) {
         retriedWithoutTools = true
         try {
-          completion = await transport.request(messages, [], { onAssistantDelta: assistantStream.onAssistantDelta })
+          completion = await transport.request(
+            compactProviderMessages(messages, compactionPolicy),
+            [],
+            { onAssistantDelta: assistantStream.onAssistantDelta },
+          )
           usage = addUsage(usage, usageFromPayload(completion.usage))
         } catch (retryError) {
           return providerFailureResult(backend, toolNames, usedTools, retryError)
@@ -289,7 +337,11 @@ export async function runKhalaCodeDesktopChatTurn(
         stream: assistantStream.streamingAssistant.current,
         turnId,
       })
-      messages.push({ content: localGroundingCorrection.prompt, role: "user" })
+      messages.push({
+        content: localGroundingCorrection.prompt,
+        role: "user",
+        sourceRef: `message.${turnId}.local_grounding_correction.${localGroundingCorrections}`,
+      })
       assistantMessagesSinceLastToolResult = 0
       continue
     }
@@ -306,7 +358,12 @@ export async function runKhalaCodeDesktopChatTurn(
     if (text.length > 0 && !vacuousToolAnswer) {
       await appendAssistantText(text, assistantStream.streamingAssistant.current, toolCalls)
     } else if (toolCalls.length > 0) {
-      messages.push({ content: "", role: "assistant", tool_calls: toolCalls })
+      messages.push({
+        content: "",
+        role: "assistant",
+        sourceRef: `message.${turnId}.assistant_tool_calls.${messages.length}`,
+        tool_calls: toolCalls,
+      })
     }
 
     if (toolCalls.length === 0) {
@@ -314,6 +371,7 @@ export async function runKhalaCodeDesktopChatTurn(
         const replaceMessage = vacuousToolAnswer ? assistantStream.streamingAssistant.current : null
         const visibleAnswer = await requestVisibleToolAnswer({
           emit,
+          compactionPolicy,
           messages,
           stream: replaceMessage === null,
           transport,
@@ -339,10 +397,6 @@ export async function runKhalaCodeDesktopChatTurn(
     }
 
     for (const call of toolCalls) {
-      totalToolCalls += 1
-      if (totalToolCalls > MAX_TOTAL_TOOL_CALLS) {
-        return limitResult(backend, toolNames, usedTools, "Khala requested too many tool calls in one turn.")
-      }
       const toolTranscript = hostMessage("tool", toolTranscriptRunningBody(call.function.name))
       emit({ message: toolTranscript, turnId, type: "message_start" })
       emitToolLifecycleEvent({
@@ -361,6 +415,7 @@ export async function runKhalaCodeDesktopChatTurn(
       })
       const result = await runToolCall({
         call,
+        dispatcher: toolDispatcher,
         registry,
         services,
         sessionId: input.request.sessionId,
@@ -385,6 +440,7 @@ export async function runKhalaCodeDesktopChatTurn(
         content: await protectUserText(toolMessageContent(result), redaction),
         name: call.function.name,
         role: "tool",
+        sourceRef: `tool.${turnId}.${call.id}`,
         tool_call_id: call.id,
       })
       localFileEvidence = updateLocalFileEvidence(localFileEvidence, call.function.name, result)
@@ -401,6 +457,99 @@ function redactionForSession(sessionId: string): KhalaPrivacyRedactionServiceSha
   const redaction = makeKhalaPrivacyRedactionService()
   redactionBySession.set(sessionId, redaction)
   return redaction
+}
+
+function contextCompactionPolicy(env: ChatEnv): ContextCompactionPolicy {
+  return {
+    keepTailCount: positiveIntegerEnv(env.KHALA_CODE_DESKTOP_CONTEXT_KEEP_TAIL_COUNT) ??
+      DEFAULT_CONTEXT_KEEP_TAIL_COUNT,
+    maxTokens: positiveIntegerEnv(env.KHALA_CODE_DESKTOP_CONTEXT_MAX_TOKENS) ??
+      DEFAULT_CONTEXT_MAX_TOKENS,
+  }
+}
+
+function compactProviderMessages(
+  messages: readonly ContextManagedChatTransportMessage[],
+  policy: ContextCompactionPolicy,
+): readonly ChatTransportMessage[] {
+  const decision = decideCompaction({
+    keepTailCount: policy.keepTailCount,
+    maxTokens: policy.maxTokens,
+    usedTokens: estimateMessageTokens(messages),
+  })
+  if (decision.action === "keep") return messages.map(stripContextMetadata)
+
+  const pinned = messages.filter(message => message.compactPinned === true)
+  const compactable = messages.filter(message => message.compactPinned !== true)
+  if (compactable.length <= policy.keepTailCount) return messages.map(stripContextMetadata)
+
+  const tail = compactable.slice(-policy.keepTailCount)
+  const replaced = compactable.slice(0, -policy.keepTailCount)
+  const replacedRefs = replaced.map(message => message.sourceRef ?? fallbackMessageRef(message))
+  const preservedTailRefs = tail.map(message => message.sourceRef ?? fallbackMessageRef(message))
+  const record = buildCompactionSummaryRecord({
+    replacedRefs,
+    summaryRef: contextCompactionSummaryRef(replacedRefs),
+  })
+
+  return [
+    ...pinned.map(stripContextMetadata),
+    {
+      content: [
+        "Khala Code context compaction is active.",
+        `Summary ref: ${record.summaryRef}`,
+        `Replaced refs: ${record.replacedRefs.join(", ")}`,
+        `Preserved tail refs: ${preservedTailRefs.join(", ")}`,
+        "Restored context: earlier turns were replaced by this refs-only compaction record. Use the preserved tail for exact recent details; re-inspect local files before relying on exact older content.",
+      ].join("\n"),
+      role: "system",
+    },
+    ...tail.map(stripContextMetadata),
+  ]
+}
+
+function stripContextMetadata(message: ContextManagedChatTransportMessage): ChatTransportMessage {
+  return {
+    content: message.content,
+    ...(message.name === undefined ? {} : { name: message.name }),
+    role: message.role,
+    ...(message.tool_call_id === undefined ? {} : { tool_call_id: message.tool_call_id }),
+    ...(message.tool_calls === undefined ? {} : { tool_calls: message.tool_calls }),
+  }
+}
+
+function estimateMessageTokens(messages: readonly ContextManagedChatTransportMessage[]): number {
+  return messages.reduce((sum, message) => {
+    const toolCallText = message.tool_calls === undefined ? "" : JSON.stringify(message.tool_calls)
+    return sum + estimateTokens(`${message.role}\n${message.name ?? ""}\n${message.content ?? ""}\n${toolCallText}`)
+  }, 0)
+}
+
+function estimateTokens(text: string): number {
+  return Math.ceil(text.length / 4)
+}
+
+function positiveIntegerEnv(value: string | undefined): number | undefined {
+  if (value === undefined) return undefined
+  const parsed = Number.parseInt(value.trim(), 10)
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : undefined
+}
+
+function contextCompactionSummaryRef(replacedRefs: readonly string[]): string {
+  return `summary.khala_code.context.${stableHash(replacedRefs.join("|"))}`
+}
+
+function fallbackMessageRef(message: ChatTransportMessage): string {
+  return `message.${message.role}.${stableHash(`${message.role}\n${message.content ?? ""}`)}`
+}
+
+function stableHash(value: string): string {
+  let hash = 2166136261
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index)
+    hash = Math.imul(hash, 16777619)
+  }
+  return (hash >>> 0).toString(36)
 }
 
 function emptyLocalFileEvidenceState(): LocalFileEvidenceState {
@@ -513,8 +662,9 @@ function createAssistantStreamRecorder(input: {
 }
 
 async function requestVisibleToolAnswer(input: {
+  readonly compactionPolicy: ContextCompactionPolicy
   readonly emit: ChatTurnEmitter
-  readonly messages: ChatTransportMessage[]
+  readonly messages: ContextManagedChatTransportMessage[]
   readonly stream?: boolean
   readonly transport: ChatTransport
   readonly turnId: string
@@ -531,13 +681,18 @@ async function requestVisibleToolAnswer(input: {
   input.messages.push({
     content: "Use the tool results above to answer the user's request now. Do not call tools. Keep the answer concise and explicit.",
     role: "user",
+    sourceRef: `message.${input.turnId}.visible_tool_answer_request`,
   })
 
   let completion: ChatCompletionBody
   try {
-    completion = await input.transport.request(input.messages, [], {
-      ...(assistantStream === null ? {} : { onAssistantDelta: assistantStream.onAssistantDelta }),
-    })
+    completion = await input.transport.request(
+      compactProviderMessages(input.messages, input.compactionPolicy),
+      [],
+      {
+        ...(assistantStream === null ? {} : { onAssistantDelta: assistantStream.onAssistantDelta }),
+      },
+    )
   } catch {
     const partialText = assistantStream?.streamingAssistant.current?.body.trim() ?? ""
     return partialText.length === 0
@@ -984,8 +1139,8 @@ function providerFailureMessage(backend: KhalaBackendSelection, error: unknown):
 async function projectTranscriptMessages(
   messages: readonly KhalaCodeDesktopMessage[],
   redaction: KhalaPrivacyRedactionServiceShape,
-): Promise<readonly ChatTransportMessage[]> {
-  const projected: ChatTransportMessage[] = []
+): Promise<readonly ContextManagedChatTransportMessage[]> {
+  const projected: ContextManagedChatTransportMessage[] = []
   for (const message of messages) {
     const content = message.body.trim()
     if (content.length === 0) continue
@@ -993,15 +1148,24 @@ async function projectTranscriptMessages(
       projected.push({
         content: await protectUserText(`Previous tool result:\n${content}`, redaction),
         role: "assistant",
+        sourceRef: `message.${message.id}`,
       })
       continue
     }
     if (message.role === "assistant") {
-      projected.push({ role: "assistant", content: await protectModelText(content, redaction) })
+      projected.push({
+        content: await protectModelText(content, redaction),
+        role: "assistant",
+        sourceRef: `message.${message.id}`,
+      })
       continue
     }
     if (message.role === "user") {
-      projected.push({ role: "user", content: await protectUserText(content, redaction) })
+      projected.push({
+        content: await protectUserText(content, redaction),
+        role: "user",
+        sourceRef: `message.${message.id}`,
+      })
     }
   }
   return projected
@@ -1069,23 +1233,28 @@ function parseToolCalls(value: unknown): readonly OpenAiToolCall[] {
 
 async function runToolCall(input: {
   readonly call: OpenAiToolCall
+  readonly dispatcher: KhalaToolDispatcher
   readonly registry: KhalaToolRegistry
   readonly services: KhalaToolServices
   readonly sessionId: string
 }): Promise<KhalaToolResult> {
   const args = parseToolArguments(input.call.function.arguments)
-  return await Effect.runPromise(
-    executeKhalaTool(
-      input.registry,
-      {
+  const dispatched = await Effect.runPromise(
+    input.dispatcher.dispatch({
+      invocation: {
         arguments: args,
         id: input.call.id,
         name: input.call.function.name,
         sessionId: input.sessionId,
       },
-      input.services,
-    ),
+      registry: input.registry,
+      services: input.services,
+      telemetryTags: {
+        openAiToolCallType: input.call.type,
+      },
+    }),
   )
+  return dispatched.result
 }
 
 function parseToolArguments(value: string): Readonly<Record<string, unknown>> {

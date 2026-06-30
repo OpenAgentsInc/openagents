@@ -7,6 +7,9 @@ import {
   buildLaborEscrowPublicProjection,
   evaluateArtanisLaborBudgetGate,
   evaluateLaborEscrowFundingSource,
+  forfeitLaborEscrow,
+  forfeitLaborEscrowStatements,
+  makeCreditLedgerBondSettlementAdapter,
   refundLaborEscrowStatements,
   releaseLaborEscrow,
   releaseLaborEscrowStatements,
@@ -41,6 +44,10 @@ type ModeledEscrow = {
   reserveReceiptRef: string
   releaseReceiptRef: string | null
   refundReceiptRef: string | null
+  forfeitReceiptRef: string | null
+  forfeitDestination: 'counterparty' | 'burn' | null
+  forfeitDestinationActorRef: string | null
+  forfeitConditionRef: string | null
   state: LaborEscrowState
   workRequestId: string
 }
@@ -49,7 +56,7 @@ type ModeledReceipt = {
   escrowId: string
   receiptId: string
   receiptRef: string
-  transitionKind: 'reserve' | 'release' | 'refund'
+  transitionKind: 'reserve' | 'release' | 'refund' | 'forfeit'
 }
 
 class LaborEscrowLedgerModel {
@@ -96,6 +103,10 @@ class LaborEscrowLedgerModel {
       reserveReceiptRef: escrow.reserveReceiptRef,
       releaseReceiptRef: escrow.releaseReceiptRef,
       refundReceiptRef: escrow.refundReceiptRef,
+      forfeitReceiptRef: escrow.forfeitReceiptRef,
+      forfeitDestination: escrow.forfeitDestination,
+      forfeitDestinationActorRef: escrow.forfeitDestinationActorRef,
+      forfeitConditionRef: escrow.forfeitConditionRef,
       state: escrow.state,
       updatedAt: nowIso,
       workRequestId: escrow.workRequestId,
@@ -137,6 +148,10 @@ class LaborEscrowLedgerModel {
         reserveReceiptRef: String(params[7]),
         releaseReceiptRef: null,
         refundReceiptRef: null,
+        forfeitReceiptRef: null,
+        forfeitDestination: null,
+        forfeitDestinationActorRef: null,
+        forfeitConditionRef: null,
         state: 'reserved',
         workRequestId: String(params[2]),
       })
@@ -174,8 +189,12 @@ class LaborEscrowLedgerModel {
       sql.startsWith('INSERT INTO labor_escrow_receipts') &&
       sql.includes('SELECT')
     ) {
-      const transitionKind = sql.includes("'release'") ? 'release' : 'refund'
-      const escrowId = String(params[8])
+      const transitionKind = sql.includes("'release'")
+        ? 'release'
+        : sql.includes("'forfeit'")
+          ? 'forfeit'
+          : 'refund'
+      const escrowId = String(params[10])
       const escrow = this.escrows.get(escrowId)
       if (escrow === undefined || escrow.state !== 'reserved') {
         return
@@ -186,6 +205,27 @@ class LaborEscrowLedgerModel {
         receiptRef: String(params[3]),
         transitionKind,
       })
+      return
+    }
+
+    if (
+      sql.startsWith('UPDATE labor_escrows') &&
+      sql.includes("state = 'forfeited'")
+    ) {
+      const escrowId = String(params[7])
+      if (!this.hasReceipt(String(params[8]))) {
+        return
+      }
+      const escrow = this.escrows.get(escrowId)
+      if (escrow !== undefined && escrow.state === 'reserved') {
+        escrow.state = 'forfeited'
+        escrow.forfeitReceiptRef = String(params[0])
+        escrow.forfeitDestination = params[1] as 'counterparty' | 'burn'
+        escrow.forfeitDestinationActorRef =
+          params[2] === null ? null : String(params[2])
+        escrow.forfeitConditionRef = String(params[3])
+        escrow.publicProjectionJson = String(params[4])
+      }
       return
     }
 
@@ -437,6 +477,210 @@ describe('labor escrow ledger statements', () => {
     )
     expect(JSON.stringify(projection)).not.toMatch(/settled/i)
   })
+
+  test('validator forfeit credits a counterparty exactly once and blocks later refund or release', () => {
+    const model = new LaborEscrowLedgerModel()
+    model.balances.set('agent:requester', {
+      balanceMsat: 100_000,
+      heldMsat: 0,
+    })
+    model.apply(reserveLaborEscrowStatements(reserveInput))
+    const forfeitInput = {
+      authority: {
+        actorRef: 'agent:validator',
+        kind: 'validator_non_acceptance' as const,
+      },
+      counterpartyActorRef: 'agent:counterparty',
+      escrowId: 'escrow_1',
+      forfeitConditionRef: 'verdict.public.validator.non_performance',
+      forfeitDestination: 'counterparty' as const,
+      forfeitReceiptId: 'receipt_row_forfeit_1',
+      forfeitReceiptRef: 'receipt.labor_escrow.forfeit.escrow_1',
+      nowIso,
+    }
+
+    model.apply(
+      forfeitLaborEscrowStatements(model.asRecord('escrow_1'), forfeitInput),
+    )
+    model.apply(
+      forfeitLaborEscrowStatements(model.asRecord('escrow_1'), {
+        ...forfeitInput,
+        forfeitReceiptId: 'receipt_row_forfeit_retry',
+        forfeitReceiptRef: 'receipt.labor_escrow.forfeit.escrow_1.retry',
+      }),
+    )
+    model.apply(
+      refundLaborEscrowStatements(model.asRecord('escrow_1'), {
+        escrowId: 'escrow_1',
+        nowIso,
+        refundReasonRef: 'reason.public.too_late',
+        refundReceiptId: 'receipt_row_refund_after_forfeit',
+        refundReceiptRef: 'receipt.labor_escrow.refund.after_forfeit',
+      }),
+    )
+    model.apply(
+      releaseLaborEscrowStatements(model.asRecord('escrow_1'), {
+        acceptanceEventRef: 'nostr.event.' + 'd'.repeat(64),
+        authority: {
+          actorRef: 'agent:requester',
+          kind: 'requester_acceptance',
+        },
+        escrowId: 'escrow_1',
+        nowIso,
+        providerActorRef: 'agent:provider',
+        releaseReceiptId: 'receipt_row_release_after_forfeit',
+        releaseReceiptRef: 'receipt.labor_escrow.release.after_forfeit',
+      }),
+    )
+
+    expect(model.escrows.get('escrow_1')?.state).toBe('forfeited')
+    expect(model.balances.get('agent:requester')).toEqual({
+      balanceMsat: 50_000,
+      heldMsat: 0,
+    })
+    expect(model.balances.get('agent:counterparty')).toEqual({
+      balanceMsat: 50_000,
+      heldMsat: 0,
+    })
+    expect(
+      model.receipts.filter(receipt => receipt.transitionKind === 'forfeit'),
+    ).toHaveLength(1)
+    expect(
+      model.receipts.filter(receipt => receipt.transitionKind === 'refund'),
+    ).toHaveLength(0)
+    expect(
+      model.receipts.filter(receipt => receipt.transitionKind === 'release'),
+    ).toHaveLength(0)
+    expect(
+      JSON.parse(model.escrows.get('escrow_1')!.publicProjectionJson),
+    ).toMatchObject({
+      forfeitDestination: 'counterparty',
+      forfeitDestinationActorRef: 'agent:counterparty',
+      stateAfter: 'forfeited',
+      transitionKind: 'forfeit',
+    })
+  })
+
+  test('burn forfeit debits the held claim without crediting a spender', () => {
+    const model = new LaborEscrowLedgerModel()
+    model.balances.set('agent:requester', {
+      balanceMsat: 100_000,
+      heldMsat: 0,
+    })
+    model.apply(reserveLaborEscrowStatements(reserveInput))
+
+    model.apply(
+      forfeitLaborEscrowStatements(model.asRecord('escrow_1'), {
+        authority: {
+          actorRef: 'agent:validator',
+          kind: 'validator_non_acceptance',
+        },
+        escrowId: 'escrow_1',
+        forfeitConditionRef: 'verdict.public.validator.non_performance',
+        forfeitDestination: 'burn',
+        forfeitReceiptId: 'receipt_row_forfeit_burn',
+        forfeitReceiptRef: 'receipt.labor_escrow.forfeit.burn',
+        nowIso,
+      }),
+    )
+
+    expect(model.escrows.get('escrow_1')?.state).toBe('forfeited')
+    expect(model.balances.get('agent:requester')).toEqual({
+      balanceMsat: 50_000,
+      heldMsat: 0,
+    })
+    expect(model.balances.has('agent:counterparty')).toBe(false)
+  })
+})
+
+describe('credit-ledger bond settlement adapter', () => {
+  test('exposes hold, release, and forfeit through the existing no-rail ledger path', async () => {
+    const calls: string[] = []
+    const adapter = makeCreditLedgerBondSettlementAdapter(null as never, {
+      reserve: async (_db, input) => {
+        calls.push(`hold:${input.reserveReceiptRef}`)
+        return {
+          escrow: {
+            ...reserveInput,
+            createdAt: nowIso,
+            forfeitConditionRef: null,
+            forfeitDestination: null,
+            forfeitDestinationActorRef: null,
+            forfeitReceiptRef: null,
+            fundingSource: 'ledger_balance',
+            providerActorRef: null,
+            publicProjection: buildLaborEscrowPublicProjection({
+              amountMsat: reserveInput.amountMsat,
+              escrowId: reserveInput.escrowId,
+              evidenceRef: 'nostr.event.' + jobEventId,
+              jobEventId,
+              providerActorRef: null,
+              receiptRef: reserveInput.reserveReceiptRef,
+              requesterActorRef: reserveInput.requesterActorRef,
+              stateAfter: 'reserved',
+              transitionKind: 'reserve',
+              workRequestId: reserveInput.workRequestId,
+            }),
+            releaseReceiptRef: null,
+            refundReceiptRef: null,
+            state: 'reserved',
+            updatedAt: nowIso,
+          },
+          idempotent: false,
+          kind: 'ok',
+        }
+      },
+      release: async (_db, input) => {
+        calls.push(`release:${input.releaseReceiptRef}`)
+        return { kind: 'refused', reason: 'escrow_not_found' }
+      },
+      forfeit: async (_db, input) => {
+        calls.push(`forfeit:${input.forfeitReceiptRef}`)
+        return { kind: 'refused', reason: 'escrow_not_found' }
+      },
+    })
+
+    const holdResult = await adapter.hold(reserveInput)
+    const releaseResult = await adapter.release({
+      acceptanceEventRef: 'nostr.event.' + 'a'.repeat(64),
+      authority: { actorRef: 'agent:requester', kind: 'requester_acceptance' },
+      escrowId: 'escrow_1',
+      nowIso,
+      providerActorRef: 'agent:provider',
+      releaseReceiptId: 'receipt_row_release_adapter',
+      releaseReceiptRef: 'receipt.labor_escrow.release.adapter',
+    })
+    const forfeitResult = await adapter.forfeit({
+      authority: {
+        actorRef: 'agent:validator',
+        kind: 'validator_non_acceptance',
+      },
+      counterpartyActorRef: 'agent:counterparty',
+      escrowId: 'escrow_1',
+      forfeitConditionRef: 'verdict.public.validator.non_performance',
+      forfeitDestination: 'counterparty',
+      forfeitReceiptId: 'receipt_row_forfeit_adapter',
+      forfeitReceiptRef: 'receipt.labor_escrow.forfeit.adapter',
+      nowIso,
+    })
+
+    expect(adapter.kind).toBe('credit_ledger')
+    expect(holdResult.kind).toBe('ok')
+    expect(releaseResult).toEqual({
+      kind: 'refused',
+      reason: 'escrow_not_found',
+    })
+    expect(forfeitResult).toEqual({
+      kind: 'refused',
+      reason: 'escrow_not_found',
+    })
+    expect(calls).toEqual([
+      'hold:receipt.labor_escrow.reserve.escrow_1',
+      'release:receipt.labor_escrow.release.adapter',
+      'forfeit:receipt.labor_escrow.forfeit.adapter',
+    ])
+    expect(JSON.stringify(adapter)).not.toMatch(/lightning|spark|mdk|ark/i)
+  })
 })
 
 describe('labor escrow D1 guards and projections', () => {
@@ -486,6 +730,95 @@ describe('labor escrow D1 guards and projections', () => {
     ).resolves.toEqual({
       kind: 'refused',
       reason: 'release_requires_acceptance_evidence',
+    })
+  })
+
+  test('only validator non-acceptance can trigger forfeit', async () => {
+    await expect(
+      forfeitLaborEscrow(null as never, {
+        authority: { actorRef: 'agent:provider', kind: 'provider' },
+        counterpartyActorRef: 'agent:counterparty',
+        escrowId: 'escrow_1',
+        forfeitConditionRef: 'verdict.public.validator.non_performance',
+        forfeitDestination: 'counterparty',
+        forfeitReceiptId: 'receipt_row_forfeit_provider',
+        forfeitReceiptRef: 'receipt.labor_escrow.forfeit.provider',
+        nowIso,
+      }),
+    ).resolves.toEqual({
+      kind: 'refused',
+      reason: 'forfeit_authority_forbidden',
+    })
+
+    await expect(
+      forfeitLaborEscrow(null as never, {
+        authority: { actorRef: 'agent:worker', kind: 'worker' },
+        counterpartyActorRef: 'agent:counterparty',
+        escrowId: 'escrow_1',
+        forfeitConditionRef: 'verdict.public.validator.non_performance',
+        forfeitDestination: 'counterparty',
+        forfeitReceiptId: 'receipt_row_forfeit_worker',
+        forfeitReceiptRef: 'receipt.labor_escrow.forfeit.worker',
+        nowIso,
+      }),
+    ).resolves.toEqual({
+      kind: 'refused',
+      reason: 'forfeit_authority_forbidden',
+    })
+
+    await expect(
+      forfeitLaborEscrow(null as never, {
+        authority: { actorRef: 'agent:requester', kind: 'requester' },
+        counterpartyActorRef: 'agent:counterparty',
+        escrowId: 'escrow_1',
+        forfeitConditionRef: 'verdict.public.validator.non_performance',
+        forfeitDestination: 'counterparty',
+        forfeitReceiptId: 'receipt_row_forfeit_requester',
+        forfeitReceiptRef: 'receipt.labor_escrow.forfeit.requester',
+        nowIso,
+      }),
+    ).resolves.toEqual({
+      kind: 'refused',
+      reason: 'forfeit_authority_forbidden',
+    })
+  })
+
+  test('forfeit requires validator evidence and destination actor when counterparty-directed', async () => {
+    await expect(
+      forfeitLaborEscrow(null as never, {
+        authority: {
+          actorRef: 'agent:validator',
+          kind: 'validator_non_acceptance',
+        },
+        counterpartyActorRef: 'agent:counterparty',
+        escrowId: 'escrow_1',
+        forfeitConditionRef: '',
+        forfeitDestination: 'counterparty',
+        forfeitReceiptId: 'receipt_row_forfeit_no_evidence',
+        forfeitReceiptRef: 'receipt.labor_escrow.forfeit.no_evidence',
+        nowIso,
+      }),
+    ).resolves.toEqual({
+      kind: 'refused',
+      reason: 'forfeit_requires_validator_evidence',
+    })
+
+    await expect(
+      forfeitLaborEscrow(null as never, {
+        authority: {
+          actorRef: 'agent:validator',
+          kind: 'validator_non_acceptance',
+        },
+        escrowId: 'escrow_1',
+        forfeitConditionRef: 'verdict.public.validator.non_performance',
+        forfeitDestination: 'counterparty',
+        forfeitReceiptId: 'receipt_row_forfeit_no_counterparty',
+        forfeitReceiptRef: 'receipt.labor_escrow.forfeit.no_counterparty',
+        nowIso,
+      }),
+    ).resolves.toEqual({
+      kind: 'refused',
+      reason: 'forfeit_counterparty_required',
     })
   })
 

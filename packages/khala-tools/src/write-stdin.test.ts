@@ -46,6 +46,18 @@ function sessionIdFrom(result: Awaited<ReturnType<typeof startSession>>): string
 }
 
 describe("write_stdin tool", () => {
+  test("starts interactive sessions with terminal stdin", async () => {
+    const workspace = await makeWorkspace()
+    const started = await startSession(workspace, "test -t 0; echo tty:$?; cat")
+    const sessionId = sessionIdFrom(started)
+    const polled = await writeStdin(workspace, { session_id: sessionId, yield_time_ms: 150 })
+
+    expect(started.status).toBe("ok")
+    expect(polled.status).toBe("ok")
+    expect(polled.modelOutput.text).toContain(process.platform === "darwin" ? "tty:1" : "tty:0")
+    await writeStdin(workspace, { chars: "\u0003", session_id: sessionId, yield_time_ms: 10 })
+  })
+
   test("writes input to an interactive session", async () => {
     const workspace = await makeWorkspace()
     const started = await startSession(workspace)
@@ -70,7 +82,7 @@ describe("write_stdin tool", () => {
     const started = await startSession(workspace, "sh -c 'sleep 0.03; echo later; cat'")
     const sessionId = sessionIdFrom(started)
 
-    const result = await writeStdin(workspace, { session_id: sessionId, yield_time_ms: 80 })
+    const result = await writeStdin(workspace, { session_id: sessionId, yield_time_ms: 200 })
 
     expect(result.status).toBe("ok")
     expect(result.modelOutput.text).toContain("later")
@@ -82,7 +94,7 @@ describe("write_stdin tool", () => {
     const started = await startSession(workspace, "printf done")
     const sessionId = sessionIdFrom(started)
 
-    const poll = await writeStdin(workspace, { session_id: sessionId, yield_time_ms: 40 })
+    const poll = await writeStdin(workspace, { session_id: sessionId, yield_time_ms: 120 })
     const write = await writeStdin(workspace, { chars: "again\n", session_id: sessionId, yield_time_ms: 10 })
 
     expect(poll.status).toBe("ok")

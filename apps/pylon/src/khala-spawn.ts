@@ -285,18 +285,26 @@ export function buildPylonKhalaSpawnPlan(input: {
       ? accounts.length
       : advertisedCodexAccounts.reduce((sum, account) => sum + account.available, 0),
   )
+  const requestedCount = input.objectives.length
+  const requestedExceedsAdvertisedAvailability =
+    requestedCount > 0 &&
+    advertisedCodexAvailability > 0 &&
+    requestedCount > advertisedCodexAvailability
   const defaultMaxParallel = Math.max(
     1,
     Math.min(
-      input.objectives.length || 1,
+      requestedCount || 1,
       Math.max(accounts.length, advertisedCodexAvailability),
     ),
   )
   const requestedMaxParallel = Math.max(1, Math.floor(input.maxParallel ?? defaultMaxParallel))
   const selectedParallel =
-    accounts.length === 0 || advertisedCodexAvailability === 0 || input.objectives.length === 0
+    accounts.length === 0 ||
+    advertisedCodexAvailability === 0 ||
+    requestedCount === 0 ||
+    requestedExceedsAdvertisedAvailability
       ? 0
-      : Math.min(requestedMaxParallel, advertisedCodexAvailability, input.objectives.length)
+      : Math.min(requestedMaxParallel, advertisedCodexAvailability, requestedCount)
   const selectedAccounts = weightedKhalaAccountPool(
     accounts,
     advertisedAccountCapacity,
@@ -308,7 +316,10 @@ export function buildPylonKhalaSpawnPlan(input: {
       ? [blocker("khala_spawn", "no_ready_codex_account_slots")]
       : []),
     ...(advertisedCodexAvailability === 0 ? [blocker("khala_spawn", "no_advertised_codex_availability")] : []),
-    ...(input.objectives.length === 0 ? [blocker("khala_spawn", "no_objectives")] : []),
+    ...(requestedExceedsAdvertisedAvailability
+      ? [blocker("khala_spawn", "requested_count_exceeds_advertised_availability")]
+      : []),
+    ...(requestedCount === 0 ? [blocker("khala_spawn", "no_objectives")] : []),
   ]
 
   const slots: PylonKhalaSpawnSlot[] = selectedParallel === 0
@@ -359,9 +370,9 @@ export function buildPylonKhalaSpawnPlan(input: {
     baseUrl: input.baseUrl,
     blockerRefs,
     maxParallel: selectedParallel,
-    objectiveCount: input.objectives.length,
+    objectiveCount: requestedCount,
     readyCodexAccountCount: readyAccounts.length,
-    requestedCount: input.objectives.length,
+    requestedCount,
     slots,
     targetPylonRef: input.targetPylonRef,
   }
