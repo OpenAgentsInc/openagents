@@ -8,6 +8,7 @@ import {
   khalaSessionModelItems,
   listKhalaSessionRollouts,
   readKhalaSessionRollout,
+  runKhalaMcpServerStdio,
   type KhalaSessionRolloutLoaded,
 } from "@openagentsinc/khala-tools"
 import { appendAssistantTurn, prepareUserTurn } from "./bounds.js"
@@ -113,6 +114,7 @@ type ParsedCommand =
     }
   | { readonly kind: "login" }
   | { readonly kind: "logout" }
+  | { readonly kind: "mcpServer" }
   | { readonly kind: "resume"; readonly sessionId: string | undefined }
   | { readonly kind: "fork"; readonly sessionId: string | undefined }
   | { readonly kind: "spawn"; readonly text: string | undefined }
@@ -334,6 +336,10 @@ export async function runKhalaCli(argv: ReadonlyArray<string>, env: Record<strin
           ? `Signed out. Cleared the stored Khala token (${traceTokenPath(env)}).\n`
           : "You were not signed in (no stored Khala token to clear).\n",
       )
+      return 0
+    }
+    if (args.command.kind === "mcpServer") {
+      await runKhalaMcpServerStdio()
       return 0
     }
     if (args.command.kind === "resume") {
@@ -647,6 +653,8 @@ function parseArgs(argv: ReadonlyArray<string>, env: Record<string, string | und
     command = { kind: "login" }
   } else if (maybeCommand === "logout") {
     command = { kind: "logout" }
+  } else if (maybeCommand === "mcp-server") {
+    command = { kind: "mcpServer" }
   } else if (maybeCommand === "resume") {
     command = { kind: "resume", sessionId: positional[1] }
   } else if (maybeCommand === "fork") {

@@ -6,6 +6,31 @@ import { createMacosSeatbeltKhalaProcessService } from "./process-sandbox-macos.
 import { redactKhalaPublicText } from "./redaction.js"
 
 export {
+  createExternalMcpRegisteredTools,
+  createKhalaPublicMcpToolRegistry,
+  handleKhalaMcpRequest,
+  KHALA_MCP_PROTOCOL_VERSION,
+  listKhalaMcpToolDefinitions,
+  makeKhalaMcpClient,
+  runKhalaMcpServerStdio,
+  type KhalaMcpClient,
+  type KhalaMcpClientPolicy,
+  type KhalaMcpExternalServerConfig,
+  type KhalaMcpExternalServerProjection,
+  type KhalaMcpExternalTool,
+  type KhalaMcpExternalToolProjection,
+  type KhalaMcpExternalTransport,
+  type KhalaMcpJsonValue,
+  type KhalaMcpRequest,
+  type KhalaMcpResponse,
+  type KhalaMcpServerLifecycle,
+  type KhalaMcpServerOptions,
+  type KhalaMcpToolCallResult,
+  type KhalaMcpToolContent,
+  type KhalaMcpToolDefinition,
+} from "./mcp.js"
+
+export {
   appendKhalaSessionModelItem,
   appendKhalaSessionRolloutRecord,
   appendKhalaSessionToolEvent,
