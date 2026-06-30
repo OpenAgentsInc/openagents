@@ -1,6 +1,10 @@
 import { describe, expect, test } from 'vitest'
 
 import {
+  type BondSettlementAdapter,
+  createCreditLedgerBondSettlementAdapter,
+} from './bond-settlement-adapter'
+import {
   type LaborEscrowRecord,
   type LaborEscrowState,
   assertLaborEscrowPublicSafe,
@@ -779,6 +783,57 @@ describe('labor escrow D1 guards and projections', () => {
         workRequestId: 'work_request_1',
       }),
     ).not.toThrow()
+  })
+})
+
+describe('bond settlement adapter seam', () => {
+  test('credit ledger adapter exposes the current hold, release, and forfeit operations', async () => {
+    const adapter: BondSettlementAdapter =
+      createCreditLedgerBondSettlementAdapter(null as never)
+
+    expect(adapter.kind).toBe('credit_ledger')
+    await expect(
+      adapter.hold({
+        ...reserveInput,
+        amountMsat: 0,
+        escrowId: 'escrow_invalid_amount',
+        idempotencyKey: 'labor:reserve:invalid_amount',
+      }),
+    ).resolves.toEqual({
+      kind: 'refused',
+      reason: 'invalid_amount',
+    })
+
+    await expect(
+      adapter.release({
+        acceptanceEventRef: 'nostr.event.' + 'f'.repeat(64),
+        authority: { actorRef: 'agent:provider', kind: 'provider' },
+        escrowId: 'escrow_1',
+        nowIso,
+        providerActorRef: 'agent:provider',
+        releaseReceiptId: 'receipt_row_release_adapter_forbidden',
+        releaseReceiptRef: 'receipt.labor_escrow.release.adapter_forbidden',
+      }),
+    ).resolves.toEqual({
+      kind: 'refused',
+      reason: 'release_authority_forbidden',
+    })
+
+    await expect(
+      adapter.forfeit({
+        authority: { actorRef: 'agent:requester', kind: 'requester' },
+        counterpartyActorRef: 'agent:counterparty',
+        escrowId: 'escrow_1',
+        forfeitConditionRef: 'verdict.public.validator.non_performance',
+        forfeitDestination: 'counterparty',
+        forfeitReceiptId: 'receipt_row_forfeit_adapter_forbidden',
+        forfeitReceiptRef: 'receipt.labor_escrow.forfeit.adapter_forbidden',
+        nowIso,
+      }),
+    ).resolves.toEqual({
+      kind: 'refused',
+      reason: 'forfeit_authority_forbidden',
+    })
   })
 })
 

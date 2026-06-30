@@ -207,7 +207,7 @@ Read-only reference (study, do not vendor):
 | --- | --- |
 | FB-1 — `lbr-bond.ts` contract + tests | implemented in `packages/nip90/src/lbr-bond.ts`; exported by `packages/nip90/src/index.ts`; closeout digest binding implemented in `packages/nip90/src/lbr-closeout.ts`; verified by `bun run --cwd packages/nip90 test` and `bun run --cwd packages/nip90 typecheck` |
 | FB-2 — ledger `forfeit` terminal state | implemented in `apps/openagents.com/workers/api/src/labor-escrow.ts`; migration `0261_labor_escrow_forfeit.sql` widens the D1 CHECK state; invariant ledger updated; verified by `bun --cwd apps/openagents.com/workers/api test src/labor-escrow.test.ts src/labor-live-rehearsal.test.ts` and `bun run --cwd apps/openagents.com/workers/api typecheck` |
-| FB-3 — `BondSettlementAdapter` seam | not started |
+| FB-3 — `BondSettlementAdapter` seam | started 2026-06-30 with `apps/openagents.com/workers/api/src/bond-settlement-adapter.ts`: typed hold/release/forfeit adapter plus credit-ledger implementation over the existing labor escrow lifecycle; no rail import, no Lightning/Ark behavior, no public promise upgrade |
 | FB-4 — relay→DB quote/offer bridge (P1) | not started |
 
 Implementation is intended to run through the Khala→Pylon→Codex labor fleet (the

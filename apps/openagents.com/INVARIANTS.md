@@ -1084,6 +1084,11 @@ This is the invariant ledger for `openagents`.
   carrying refs, destinations, and amounts only. Escrowed, credited, or
   forfeited amounts are not settled bitcoin until the later payout path records
   settlement evidence.
+- Bond settlement is addressed through the typed `BondSettlementAdapter` seam.
+  The only current implementation is the credit-ledger adapter over the labor
+  escrow lifecycle; it must not import Spark, MDK, Lightning hold-invoice, Ark,
+  wallet, or payout-rail code. Future rail adapters must preserve the same
+  validator-only forfeit and no-settled-bitcoin-until-receipt invariants.
 - Regression coverage for this policy lives in
   `workers/api/src/artanis-labor-requester.test.ts`,
   `workers/api/src/artanis-studying-labor.test.ts`,
