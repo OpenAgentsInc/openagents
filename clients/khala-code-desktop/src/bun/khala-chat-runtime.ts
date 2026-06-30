@@ -40,6 +40,7 @@ import {
   type KhalaCodeDesktopMessage,
   type KhalaCodeDesktopToolCatalogResponse,
 } from "../shared/rpc.js"
+import { createKhalaCodexFleetTools } from "./khala-codex-fleet-tools.js"
 import { createPlaywrightKhalaBrowserService } from "./khala-browser-service.js"
 import { createDuckDuckGoKhalaWebSearchService } from "./khala-web-search-service.js"
 
@@ -51,6 +52,7 @@ const KHALA_CODE_SYSTEM_PROMPT = [
   "Answer the user directly and use the provided local tools whenever they help.",
   "All tools are enabled by default in this owner-local desktop session. Never claim a tool ran unless the host returned a tool result.",
   "When the user asks what tools or capabilities are available, answer from the available-tool catalog in this system context. Do not call a filesystem or shell tool just to describe the tool catalog.",
+  "When the user asks to spin up, launch, monitor, or manage Codex instances, use the Pylon/Codex fleet tools instead of ad hoc shell commands.",
   "After using tools, always produce a visible final answer that explains what the tool results mean for the user. Never end a turn with only tool output.",
 ].join(" ")
 
@@ -133,6 +135,7 @@ export function createKhalaCodeDesktopTools(): ReadonlyArray<RegisteredKhalaTool
     createWriteStdinTool(),
     createAskUserTool(),
     createTodoWriteTool(),
+    ...createKhalaCodexFleetTools(),
     createViewImageTool(),
     createWebFetchTool(),
     createWebSearchTool(),
@@ -1032,6 +1035,9 @@ export function expectedKhalaCodeDesktopToolNames(): readonly string[] {
     "write_stdin",
     "ask_user",
     "todo_write",
+    "pylon_ensure",
+    "codex_fleet_status",
+    "codex_spawn",
     "view_image",
     "web_fetch",
     "web_search",

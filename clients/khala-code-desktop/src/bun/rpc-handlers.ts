@@ -22,6 +22,7 @@ import {
   khalaCodeDesktopToolCatalog,
   runKhalaCodeDesktopChatTurn,
 } from "./khala-chat-runtime.js"
+import { ensureLocalPylon } from "./khala-codex-fleet-tools.js"
 
 type ChatEnv = Readonly<Record<string, string | undefined>>
 type MaybePromise<T> = T | Promise<T>
@@ -143,11 +144,20 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
       return input.onDeviceDeciderStatus()
     },
     async pylonStatus() {
+      const status = await ensureLocalPylon({
+        start: false,
+        timeoutMs: 10_000,
+        waitMs: 0,
+      }, {
+        env: input.env,
+      })
       return runtimeStatus({
-        available: false,
+        available: status.ok,
         capability: "pylon",
-        reason: "Khala Code Desktop is not attached to a Pylon node in this simplified app.",
-        status: "not_configured",
+        reason: status.ok
+          ? status.message
+          : `${status.message}${status.unavailableReason ? ` ${status.unavailableReason}` : ""}`,
+        status: status.ok ? "ready" : "unavailable",
       })
     },
     async submitChatMessage(request) {

@@ -1,0 +1,181 @@
+import { afterEach, describe, expect, test } from "bun:test"
+import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
+import {
+  ensureLocalPylon,
+  spawnCodexInstances,
+  type KhalaCodexFleetCommandInput,
+  type KhalaCodexFleetCommandResult,
+} from "../src/bun/khala-codex-fleet-tools"
+
+const tempDirs: string[] = []
+
+afterEach(async () => {
+  await Promise.all(tempDirs.splice(0).map(dir => rm(dir, { force: true, recursive: true })))
+})
+
+async function tempPylonFixture(): Promise<{
+  readonly appPath: string
+  readonly env: Record<string, string>
+  readonly home: string
+}> {
+  const root = await mkdtemp(join(tmpdir(), "khala-code-fleet-"))
+  tempDirs.push(root)
+  const appPath = join(root, "apps", "pylon")
+  const home = join(root, "pylon-home")
+  await mkdir(appPath, { recursive: true })
+  await mkdir(home, { recursive: true })
+  await writeFile(join(appPath, "package.json"), JSON.stringify({ name: "@openagentsinc/pylon" }))
+  return {
+    appPath,
+    env: {
+      OPENAGENTS_BUN_PATH: process.execPath,
+      OPENAGENTS_PYLON_APP_PATH: appPath,
+      PYLON_HOME: home,
+    },
+    home,
+  }
+}
+
+function ok(stdout: unknown): KhalaCodexFleetCommandResult {
+  return {
+    exitCode: 0,
+    signal: null,
+    stderr: "",
+    stdout: typeof stdout === "string" ? stdout : JSON.stringify(stdout),
+    timedOut: false,
+  }
+}
+
+function failed(stderr: string): KhalaCodexFleetCommandResult {
+  return {
+    exitCode: 1,
+    signal: null,
+    stderr,
+    stdout: "",
+    timedOut: false,
+  }
+}
+
+function pylonArgs(input: KhalaCodexFleetCommandInput): readonly string[] {
+  const index = input.cmd.indexOf("src/index.ts")
+  return index === -1 ? input.cmd : input.cmd.slice(index + 1)
+}
+
+describe("Khala Code Codex fleet tools", () => {
+  test("ensureLocalPylon starts a missing local Pylon and re-probes it", async () => {
+    const fixture = await tempPylonFixture()
+    const calls: KhalaCodexFleetCommandInput[] = []
+    let goOnlineCalls = 0
+    const runner = async (input: KhalaCodexFleetCommandInput): Promise<KhalaCodexFleetCommandResult> => {
+      calls.push(input)
+      const args = pylonArgs(input)
+      if (args.join(" ") === "provider go-online --json") {
+        goOnlineCalls += 1
+        return goOnlineCalls === 1
+          ? failed("offline")
+          : ok({ ok: true, pylonRef: "pylon.local.test" })
+      }
+      if (input.detached && args.length === 0) return ok("")
+      return failed(`unexpected command: ${args.join(" ")}`)
+    }
+
+    const result = await ensureLocalPylon({
+      start: true,
+      waitMs: 1_000,
+    }, {
+      env: fixture.env,
+      runner,
+      sleep: async () => {},
+    })
+
+    expect(result).toMatchObject({
+      ok: true,
+      pylonRef: "pylon.local.test",
+      started: true,
+      status: "started",
+    })
+    expect(calls.some(call => call.detached === true && pylonArgs(call).length === 0)).toBe(true)
+    expect(goOnlineCalls).toBe(2)
+    expect(calls.some(call => call.env?.PYLON_HOME !== undefined)).toBe(true)
+  })
+
+  test("spawnCodexInstances dispatches codex_agent_task requests through Pylon accounts", async () => {
+    const fixture = await tempPylonFixture()
+    const calls: KhalaCodexFleetCommandInput[] = []
+    const runner = async (input: KhalaCodexFleetCommandInput): Promise<KhalaCodexFleetCommandResult> => {
+      calls.push(input)
+      const args = pylonArgs(input)
+      const joined = args.join(" ")
+      if (joined === "provider go-online --json") {
+        return ok({ ok: true, pylonRef: "pylon.local.test" })
+      }
+      if (joined === "codex accounts list --json") {
+        return ok({
+          accounts: [
+            {
+              accountRef: "codex",
+              homeState: "present",
+              provider: "codex",
+            },
+          ],
+          schema: "openagents.pylon.accounts_list.v0.3",
+        })
+      }
+      if (joined === "accounts status --provider codex --json") {
+        return ok({
+          accounts: [
+            {
+              accountRef: "codex",
+              provider: "codex",
+              quota: { state: "available" },
+              readiness: { state: "ready" },
+            },
+          ],
+          schema: "openagents.pylon.accounts_status.v0.1",
+        })
+      }
+      if (args[0] === "khala" && args[1] === "request") {
+        expect(args).toContain("--workflow")
+        expect(args).toContain("codex_agent_task")
+        expect(args).toContain("--fixture")
+        expect(args).toContain("--account-ref")
+        expect(args).toContain("codex")
+        expect(args).toContain("--pylon-ref")
+        expect(args).toContain("pylon.local.test")
+        expect(args).toContain("--json")
+        return ok({
+          assignmentRef: "assignment.public.codex_agent_task.test",
+          autoRun: {
+            attempted: false,
+            reason: "disabled_by_no_run",
+          },
+        })
+      }
+      return failed(`unexpected command: ${joined}`)
+    }
+
+    const result = await spawnCodexInstances({
+      count: 1,
+      fixture: true,
+      noRun: true,
+      prompt: "Run the public fixture.",
+    }, {
+      env: fixture.env,
+      runner,
+    })
+
+    expect(result).toMatchObject({
+      acceptedCount: 1,
+      pylonRef: "pylon.local.test",
+      requestedCount: 1,
+    })
+    expect(result.results[0]).toMatchObject({
+      accountRef: "codex",
+      assignmentRef: "assignment.public.codex_agent_task.test",
+      status: "accepted",
+    })
+    expect(calls.some(call => pylonArgs(call)[0] === "khala" && pylonArgs(call)[1] === "request")).toBe(true)
+  })
+})

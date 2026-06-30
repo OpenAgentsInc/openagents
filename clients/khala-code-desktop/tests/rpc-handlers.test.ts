@@ -45,12 +45,13 @@ describe("Khala Code desktop RPC handlers", () => {
       ok: true,
       status: "ready",
     })
-    await expect(handlers.pylonStatus()).resolves.toMatchObject({
-      available: false,
+    const pylonStatus = await handlers.pylonStatus()
+    expect(pylonStatus).toMatchObject({
       capability: "pylon",
       ok: true,
-      status: "not_configured",
     })
+    expect(["ready", "unavailable"]).toContain(pylonStatus.status)
+    expect(typeof pylonStatus.available).toBe("boolean")
     await expect(handlers.codexAccountsStatus()).resolves.toMatchObject({
       available: true,
       accounts: [

@@ -120,10 +120,11 @@ describe("Khala Code desktop chat runtime", () => {
 
     expect(assertAllDefaultToolsRegistered(definitions)).toBe(true)
     expect(catalog.defaultEnabled).toBe(true)
-    expect(catalog.toolCount).toBe(21)
+    expect(catalog.toolCount).toBe(24)
     expect(catalog.tools.map(tool => tool.name)).toEqual([...expectedKhalaCodeDesktopToolNames()])
     expect(catalog.tools.find(tool => tool.name === "browser_screenshot")?.authority).toBe("browser")
     expect(catalog.tools.find(tool => tool.name === "web_search")?.authority).toBe("network")
+    expect(catalog.tools.find(tool => tool.name === "codex_spawn")?.authority).toBe("owner_full_access")
   })
 
   test("uses hosted OpenAgents chat completions by default with the full tool catalog", async () => {
@@ -155,10 +156,12 @@ describe("Khala Code desktop chat runtime", () => {
     expect(requestMessages[0]?.content).toContain("first-person PLURAL")
     expect(requestMessages[0]?.content).toContain("we are Khala")
     expect(requestMessages[0]?.content).toContain("We are Khala. How can we help?")
+    expect(requestMessages[0]?.content).toContain("Pylon/Codex fleet tools")
     expect(requestMessages[0]?.content).toContain("Never end a turn with only tool output")
     expect(requestMessages[1]).toMatchObject({ role: "system" })
     expect(requestMessages[1]?.content).toContain("Available Khala Code Desktop tools:")
     expect(requestMessages[1]?.content).toContain("- read (read):")
+    expect(requestMessages[1]?.content).toContain("- codex_spawn (owner_full_access):")
     expect(requestMessages[1]?.content).toContain("without invoking any tool")
     expect(JSON.stringify(result)).not.toContain("agent-token")
   })
