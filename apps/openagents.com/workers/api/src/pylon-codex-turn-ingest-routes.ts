@@ -2375,12 +2375,6 @@ const routeEventChunkIngest = <Bindings>(
       observedAt,
       ownerUserId,
     })
-    if (rawEventsOutcome.kind === 'dropped') {
-      return yield* new PylonCodexStorageError({
-        operation: rawEventsOutcome.diagnostic.operation,
-        reason: rawEventsOutcome.diagnostic.reason,
-      })
-    }
 
     const traceOutcome: PylonCodexTraceOutcome = yield* storeEventChunkTrace(
       dependencies,
@@ -2427,14 +2421,22 @@ const routeEventChunkIngest = <Bindings>(
       schemaVersion: 'openagents.pylon.codex_event_chunk_ingest_result.v1',
       assignmentRef: body.assignmentRef,
       chunkIndex: body.chunkIndex,
-      rawEvents: {
-        byteLength: rawEventsOutcome.byteLength,
-        created: rawEventsOutcome.created,
-        eventCount: rawEventsOutcome.eventCount,
-        ref: rawEventsOutcome.ref,
-        r2Key: rawEventsOutcome.r2Key,
-        visibility: 'owner_only' as const,
-      },
+      rawEvents:
+        rawEventsOutcome.kind === 'stored'
+          ? {
+              byteLength: rawEventsOutcome.byteLength,
+              created: rawEventsOutcome.created,
+              eventCount: rawEventsOutcome.eventCount,
+              ref: rawEventsOutcome.ref,
+              r2Key: rawEventsOutcome.r2Key,
+              visibility: 'owner_only' as const,
+            }
+          : {
+              diagnostic: rawEventsOutcome.diagnostic,
+              dropped: true,
+              eventCount: rawEventsOutcome.eventCount,
+              visibility: 'owner_only' as const,
+            },
       trace,
       turnIndex: body.turnIndex,
       ...(redactionReport === undefined ? {} : { redactionReport }),
