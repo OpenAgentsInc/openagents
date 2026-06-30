@@ -440,9 +440,12 @@ describe('public product promises document', () => {
     // payments.money_dev_kit.v1 blocker only for the original funded wallet
     // home, backed by public-safe 1-sat receipts and capacity-sufficient
     // preflight evidence. Green is now exactly 32.
+    // The 2026-06-29.5 owner-signed transition flips exactly two scoped
+    // promises green: metrics.khala_model_family_mix_public.v1 (#7016) and
+    // autopilot.agent_world_scene.v1 (#7030). Green is now exactly 34.
     expect(
       decoded.promises.filter(promise => promise.state === 'green').length,
-    ).toBe(32)
+    ).toBe(34)
     expect(decoded.verificationSummary.evidenceRefCount).toBeGreaterThan(0)
     expect(decoded.verificationSummary.uniqueBlockerCount).toBeGreaterThan(0)
     expect(
@@ -488,6 +491,14 @@ describe('public product promises document', () => {
     expect(agentCharacterCreationPromise?.safeCopy).toContain(
       'not a green/default-on live-production claim',
     )
+    const hostedGeminiPromise = decoded.promises.find(
+      promise => promise.promiseId === 'api.hosted_gemini.v1',
+    )
+    expect(hostedGeminiPromise?.state).toBe('yellow')
+    expect(hostedGeminiPromise?.blockerRefs).toEqual([
+      'blocker.product_promises.hosted_gemini_production_receipt_pending',
+      'blocker.product_promises.hosted_gemini_owner_upgrade_signoff_pending',
+    ])
     const openMarketsPromise = decoded.promises.find(
       promise => promise.promiseId === 'markets.open_protocol_markets.v1',
     )
@@ -614,6 +625,8 @@ describe('public product promises document', () => {
     expect(currentCopy).toContain('Registry 2026-06-29.2')
     expect(currentCopy).toContain('Registry 2026-06-29.3')
     expect(currentCopy).toContain('Registry 2026-06-29.4')
+    expect(currentCopy).toContain('Registry 2026-06-29.5')
+    expect(currentCopy).toContain('moving green 32 -> 34')
     expect(currentCopy).toContain(
       'advances autopilot.agent_character_creation.v1 from planned to yellow',
     )
@@ -1621,7 +1634,7 @@ describe('public product promises document', () => {
     expect(largestSalesForce?.verification).toContain('#7027 dated audit')
   })
 
-  test('keeps agent-world default gates yellow with owner-review blocker for issue 7030', () => {
+  test('applies owner-signed agent-world scene green transition for issue 7030', () => {
     const decoded = S.decodeUnknownSync(ProductPromisesDocument)(
       publicProductPromisesDocument(),
     )
@@ -1631,10 +1644,8 @@ describe('public product promises document', () => {
 
     const scene = byId.get('autopilot.agent_world_scene.v1')
     expect(scene).toMatchObject({
-      state: 'yellow',
-      blockerRefs: [
-        'blocker.product_promises.agent_world_scene_owner_review_green_pending',
-      ],
+      state: 'green',
+      blockerRefs: [],
       evidenceRefs: expect.arrayContaining([
         'https://github.com/OpenAgentsInc/openagents/issues/7030',
         'apps/autopilot-desktop/src/shared/chat-world-flags.ts',
@@ -1648,15 +1659,24 @@ describe('public product promises document', () => {
     expect(scene?.blockerRefs).not.toContain(
       'blocker.product_promises.agent_world_scene_not_default_on',
     )
+    expect(scene?.blockerRefs).not.toContain(
+      'blocker.product_promises.agent_world_scene_owner_review_green_pending',
+    )
     expect(scene?.safeCopy).toContain(
+      'The owner-signed green transition is applied',
+    )
+    expect(scene?.safeCopy).not.toContain(
       'This is NOT a green/default-on production claim',
     )
-    expect(scene?.safeCopy).toContain('yellow, source-level receipt')
+    expect(scene?.safeCopy).not.toContain('yellow, source-level receipt')
     expect(scene?.unsafeCopy).toContain('production-default-on for all users')
     expect(scene?.verification).toContain(
       'chatWorldBuildFlags defaults CHAT_WORLD_SCENE and CHAT_WORLD_PAYMENTS on',
     )
-    expect(scene?.verification).toContain('shipped-channel visual receipt')
+    expect(scene?.verification).toContain(
+      'owner-signed #7030 transition',
+    )
+    expect(scene?.verification).not.toContain('Green still requires')
     expect(scene?.authorityBoundary).toContain('grants no runtime mutation')
 
     const payments = byId.get('autopilot.bitcoin_payment_visualization.v1')
@@ -2005,7 +2025,7 @@ describe('public product promises document', () => {
     )
   })
 
-  test('keeps Khala model-family mix yellow with explicit staleness and demand caveats', () => {
+  test('applies owner-signed Khala model-family mix green transition', () => {
     const decoded = S.decodeUnknownSync(ProductPromisesDocument)(
       publicProductPromisesDocument(),
     )
@@ -2013,24 +2033,29 @@ describe('public product promises document', () => {
       promise => promise.promiseId === 'metrics.khala_model_family_mix_public.v1',
     )
 
-    expect(modelMixPromise?.state).toBe('yellow')
+    expect(modelMixPromise?.state).toBe('green')
     expect(modelMixPromise?.safeCopy).toContain('liveAt/generatedAt')
     expect(modelMixPromise?.safeCopy).toContain('maxStalenessSeconds:0')
     expect(modelMixPromise?.safeCopy).toContain('stable public model-family')
     expect(modelMixPromise?.safeCopy).toContain('Pylon-Codex own-capacity')
+    expect(modelMixPromise?.safeCopy).toContain(
+      'The owner-signed green transition is applied',
+    )
+    expect(modelMixPromise?.safeCopy).not.toContain('yellow transparency')
     expect(modelMixPromise?.unsafeCopy).toContain(
       'external customer demand, revenue',
     )
     expect(modelMixPromise?.evidenceRefs).toContain(
       'route:/api/public/khala-tokens-served/model-mix',
     )
-    expect(modelMixPromise?.blockerRefs).toEqual([
-      'blocker.product_promises.model_mix_green_owner_signoff_pending',
-    ])
-    expect(modelMixPromise?.verification).toContain('issue #6858')
+    expect(modelMixPromise?.blockerRefs).toEqual([])
     expect(modelMixPromise?.verification).toContain(
-      'Green still requires a live receipt/owner sign-off',
+      'owner-signed #7016 transition',
     )
+    expect(modelMixPromise?.verification).toContain(
+      'creates no external-demand, revenue, paid-provider-resale',
+    )
+    expect(modelMixPromise?.verification).not.toContain('Green still requires')
   })
 
   test('keeps kernel optimization planned while exposing code-backed dispatch and parity receipt machinery', () => {
