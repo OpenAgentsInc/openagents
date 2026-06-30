@@ -1,4 +1,5 @@
 import { Effect, Schema as S } from "effect"
+import { makeKhalaToolDispatcher, type KhalaToolDispatcherOptions } from "./dispatcher.js"
 import { redactKhalaPublicText } from "./redaction.js"
 
 export {
@@ -513,38 +514,10 @@ export function executeKhalaTool(
   registry: KhalaToolRegistry,
   invocation: KhalaToolInvocation,
   services: KhalaToolServices,
+  options: KhalaToolDispatcherOptions = {},
 ): Effect.Effect<KhalaToolResult, never> {
-  const tool = registry.resolve(invocation.name)
-  if (tool === undefined) {
-    return Effect.succeed(khalaToolError("unknown_tool", `Unknown tool: ${invocation.name}`))
-  }
-  if (tool.execute === undefined) {
-    return Effect.succeed(khalaToolError("missing_handler", `Tool has no execute handler: ${invocation.name}`))
-  }
-  if (!isRecord(invocation.arguments)) {
-    return Effect.succeed(khalaToolError("invalid_arguments", "Invalid tool input: expected an object"))
-  }
-  const definition = tool.definition
-  if (definition.permissionMode === "deny") {
-    return Effect.succeed(khalaToolDenied("permission_policy_denied", `${definition.name} is denied by policy`))
-  }
-  const permissionEffect =
-    definition.permissionMode === "approval_required"
-      ? services.permission.decide(permissionRequestFor(definition, invocation, services))
-      : Effect.succeed("allow" as const)
-
-  return permissionEffect.pipe(
-    Effect.flatMap(decision => {
-      if (decision === "deny") {
-        return Effect.succeed(khalaToolDenied("permission_denied", `${definition.name} denied by permission service`))
-      }
-      return tool.execute!(invocation.arguments, { definition, invocation, services }).pipe(
-        Effect.map(sanitizeToolResult),
-        Effect.catchTag("KhalaToolRuntimeError", error =>
-          Effect.succeed(khalaToolError(error.code, error.reason)),
-        ),
-      )
-    }),
+  return makeKhalaToolDispatcher(options).dispatch({ invocation, registry, services }).pipe(
+    Effect.map(dispatched => dispatched.result),
   )
 }
 
@@ -1232,6 +1205,23 @@ export { createViewImageTool, viewImageToolDefinition } from "./view-image.js"
 export { createWebFetchTool, webFetchToolDefinition } from "./web-fetch.js"
 export { createWebSearchTool, webSearchToolDefinition } from "./web-search.js"
 export {
+  createKhalaToolTurnAccounting,
+  makeKhalaToolDispatcher,
+  type KhalaToolDispatcher,
+  type KhalaToolDispatcherOptions,
+  type KhalaToolDispatchAfterHookContext,
+  type KhalaToolDispatchEventContext,
+  type KhalaToolDispatchHookContext,
+  type KhalaToolDispatchHooks,
+  type KhalaToolDispatchInput,
+  type KhalaToolDispatchPhase,
+  type KhalaToolDispatchResult,
+  type KhalaToolTelemetryTags,
+  type KhalaToolTelemetryTagValue,
+  type KhalaToolTurnAccounting,
+  type KhalaToolTurnAccountingSnapshot,
+} from "./dispatcher.js"
+export {
   browserClickToolDefinition,
   browserNavigateToolDefinition,
   browserReadDomToolDefinition,
@@ -1249,38 +1239,3 @@ export {
   createBrowserTypeTool,
   createBrowserWaitForTool,
 } from "./browser.js"
-
-function permissionRequestFor(
-  definition: KhalaToolDefinition,
-  invocation: KhalaToolInvocation,
-  services: KhalaToolServices,
-): KhalaPermissionRequest {
-  const resources = typeof invocation.arguments.path === "string"
-    ? [invocation.arguments.path]
-    : typeof invocation.arguments.url === "string"
-      ? [invocation.arguments.url]
-      : typeof invocation.arguments.query === "string"
-        ? [invocation.arguments.query]
-        : typeof invocation.arguments.selector === "string"
-          ? [invocation.arguments.selector]
-          : typeof invocation.arguments.label === "string"
-            ? [invocation.arguments.label]
-            : typeof invocation.arguments.value === "string"
-              ? [invocation.arguments.value]
-              : []
-  return {
-    action: definition.authority,
-    authorityMode: definition.executionMode,
-    publicSafety: "private",
-    resources,
-    saveScope: "once",
-    sessionId: invocation.sessionId,
-    toolCallId: invocation.id,
-    toolName: definition.name,
-    workingDirectory: services.workspace.workingDirectory,
-  }
-}
-
-function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-}
