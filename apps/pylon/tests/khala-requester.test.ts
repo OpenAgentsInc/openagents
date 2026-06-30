@@ -477,6 +477,12 @@ describe("pylon khala requester API", () => {
       const output = JSON.parse(proc.stdout)
       expect(output).toMatchObject({
         assignmentRef: fake.assignmentRef,
+        assignmentLifecycleEvents: expect.arrayContaining([
+          expect.objectContaining({
+            event: "assignment_run.completed",
+            schema: "openagents.pylon.assignment_run_lifecycle_event.v0.1",
+          }),
+        ]),
         autoRun: {
           assignmentRef: fake.assignmentRef,
           attempted: true,

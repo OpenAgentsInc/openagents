@@ -140,6 +140,14 @@ type SpawnSlotResult = {
   readonly summary: string
 }
 
+type AssignmentLifecycleEvent = {
+  readonly assignmentRef?: string | undefined
+  readonly event: string
+  readonly leaseRef?: string | undefined
+  readonly phase?: string | undefined
+  readonly status?: string | undefined
+}
+
 const MAX_SPAWN_COUNT = 5
 const DEFAULT_COMMAND_TIMEOUT_MS = 45_000
 const DEFAULT_SPAWN_TIMEOUT_MS = 180_000
@@ -611,7 +619,8 @@ export async function spawnCodexInstances(
     const json = parseJsonObject(result.stdout)
     const assignmentRef = stringField(json, "assignmentRef")
     const autoRunOk = booleanField(recordField(json, "autoRun"), "ok")
-    const accepted = result.exitCode === 0 && assignmentRef !== null
+    const accepted = result.exitCode === 0 && assignmentRef !== null && autoRunOk !== false
+    const hasAssignmentProjection = result.exitCode === 0 && assignmentRef !== null
     return {
       accountRef: selectedAccount.accountRef,
       assignmentRef,
@@ -619,7 +628,7 @@ export async function spawnCodexInstances(
       exitCode: result.exitCode,
       slot: index + 1,
       status: accepted ? "accepted" : "failed",
-      summary: accepted
+      summary: hasAssignmentProjection
         ? acceptedSpawnSummary(assignmentRef, json)
         : safeFailureReason(result),
     }
@@ -1251,6 +1260,7 @@ function acceptedSpawnSummary(
 ): string {
   const autoRun = recordField(payload, "autoRun")
   const assignmentRun = recordField(payload, "assignmentRun")
+  const lifecycleEvents = lifecycleEventsFromUnknown(payload?.assignmentLifecycleEvents)
   const lines = [`assignment: ${assignmentRef}`]
 
   const attempted = booleanField(autoRun, "attempted")
@@ -1289,6 +1299,8 @@ function acceptedSpawnSummary(
     if (closeoutRef !== null) lines.push(`closeout ref: ${closeoutRef}`)
   }
 
+  const lifecycleLines = renderLifecycleSummaryLines(lifecycleEvents)
+  if (lifecycleLines.length > 0) lines.push(...lifecycleLines)
   lines.push("next: summarize this status; no local output path was returned")
   return lines.join("\n")
 }
@@ -1419,17 +1431,116 @@ function issueRefFromMarker(marker: Record<string, unknown> | null, fileName: st
 }
 
 function safeFailureReason(result: KhalaCodexFleetCommandResult): string {
-  if (result.timedOut) return "command timed out"
-  const combined = `${result.stdout}\n${result.stderr}`.trim()
-  if (combined.length === 0) return `command exited ${result.exitCode ?? "without status"}`
-  return truncateForModel(safeOutputLine(combined))
+  const combined = `${result.stdout}\n${result.stderr}`
+  const lifecycleEvents = lifecycleEventsFromText(combined)
+  const nonLifecycle = stripLifecycleJsonLines(combined).trim()
+  const lines = [
+    result.timedOut
+      ? "command timed out"
+      : nonLifecycle.length === 0
+        ? `command exited ${result.exitCode ?? "without status"}`
+        : safeOutputBlock(nonLifecycle),
+    ...renderLifecycleSummaryLines(lifecycleEvents),
+  ].filter((line): line is string => line.length > 0)
+  return truncateForModel(lines.join("\n"))
 }
 
-function safeOutputLine(value: string): string {
+function safeOutputBlock(value: string): string {
   return redactKhalaPublicText(value)
     .replaceAll(homedir(), "~")
-    .replace(/\s+/gu, " ")
+    .split(/\r?\n/u)
+    .map(line => line.replace(/\s+/gu, " ").trimEnd())
+    .filter(line => line.trim().length > 0)
+    .join("\n")
     .trim()
+}
+
+function lifecycleEventsFromText(value: string): AssignmentLifecycleEvent[] {
+  return value
+    .split(/\r?\n/u)
+    .map(line => lifecycleEventFromJsonLine(line))
+    .filter((event): event is AssignmentLifecycleEvent => event !== null)
+}
+
+function stripLifecycleJsonLines(value: string): string {
+  return value
+    .split(/\r?\n/u)
+    .filter(line => lifecycleEventFromJsonLine(line) === null)
+    .join("\n")
+}
+
+function lifecycleEventsFromUnknown(value: unknown): AssignmentLifecycleEvent[] {
+  return Array.isArray(value)
+    ? value
+        .map(lifecycleEventFromUnknown)
+        .filter((event): event is AssignmentLifecycleEvent => event !== null)
+    : []
+}
+
+function lifecycleEventFromJsonLine(line: string): AssignmentLifecycleEvent | null {
+  const trimmed = line.trim()
+  if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) return null
+  try {
+    return lifecycleEventFromUnknown(JSON.parse(trimmed) as unknown)
+  } catch {
+    return null
+  }
+}
+
+function lifecycleEventFromUnknown(value: unknown): AssignmentLifecycleEvent | null {
+  const event = record(value)
+  if (event === null) return null
+  if (stringField(event, "schema") !== "openagents.pylon.assignment_run_lifecycle_event.v0.1") return null
+  const eventName = stringField(event, "event")
+  if (eventName === null) return null
+  const assignmentRef = stringField(event, "assignmentRef")
+  const leaseRef = stringField(event, "leaseRef")
+  const phase = stringField(event, "phase")
+  const status = stringField(event, "status")
+  return {
+    ...(assignmentRef === null ? {} : { assignmentRef }),
+    event: eventName,
+    ...(leaseRef === null ? {} : { leaseRef }),
+    ...(phase === null ? {} : { phase }),
+    ...(status === null ? {} : { status }),
+  }
+}
+
+function renderLifecycleSummaryLines(events: readonly AssignmentLifecycleEvent[]): string[] {
+  const compact = compactLifecycleEvents(events)
+  if (compact.length === 0) return []
+  return [
+    "lifecycle:",
+    ...compact.slice(-8).map(event => `  - ${formatLifecycleEvent(event)}`),
+  ]
+}
+
+function compactLifecycleEvents(events: readonly AssignmentLifecycleEvent[]): readonly AssignmentLifecycleEvent[] {
+  const compact: AssignmentLifecycleEvent[] = []
+  for (const event of events) {
+    const previous = compact.at(-1)
+    if (
+      previous !== undefined &&
+      previous.event === event.event &&
+      previous.phase === event.phase &&
+      previous.status === event.status
+    ) {
+      compact[compact.length - 1] = event
+      continue
+    }
+    compact.push(event)
+  }
+  return compact
+}
+
+function formatLifecycleEvent(event: AssignmentLifecycleEvent): string {
+  const details = [
+    event.phase === undefined ? null : `phase=${event.phase}`,
+    event.status === undefined ? null : `status=${event.status}`,
+  ].filter((value): value is string => value !== null)
+  return details.length === 0
+    ? event.event
+    : `${event.event} (${details.join(", ")})`
 }
 
 function truncateForModel(value: string): string {

@@ -259,6 +259,7 @@ import {
   runNoSpendAssignment,
   submitAssignmentCloseout,
   submitAssignmentProgress,
+  type AssignmentRunLifecycleEvent,
   type AssignmentCloseout,
   type AssignmentProgress,
   type PylonAssignmentLease,
@@ -4309,6 +4310,7 @@ async function main() {
           emit({
             ...result,
             assignmentRun: null,
+            assignmentLifecycleEvents: [],
             autoRun: {
               attempted: false,
               reason: assignmentRef === null
@@ -4319,6 +4321,7 @@ async function main() {
           })
           return
         }
+        const assignmentLifecycleEvents: AssignmentRunLifecycleEvent[] = []
         const assignmentRun = await runNoSpendAssignment(summary, {
           ...networkOptions,
           assignmentRef,
@@ -4327,6 +4330,7 @@ async function main() {
           ...(optionFlag(options, "json")
             ? {
                 onLifecycleEvent: (event) => {
+                  assignmentLifecycleEvents.push(event)
                   process.stderr.write(`${JSON.stringify(event)}\n`)
                 },
               }
@@ -4335,6 +4339,7 @@ async function main() {
         emit({
           ...result,
           assignmentRun,
+          assignmentLifecycleEvents,
           autoRun: {
             assignmentRef,
             attempted: true,

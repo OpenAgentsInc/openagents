@@ -219,6 +219,26 @@ The summary should include:
 - `closeout: accepted, no-spend, not_applicable`
 - `blocker refs: none`
 
+### Lifecycle / Failure Rendering Contract
+
+As of 2026-06-30, the Pylon/Desktop handshake carries assignment lifecycle
+evidence in both places operators need it:
+
+- `pylon khala request --json` still streams public-safe lifecycle JSONL to
+  stderr while the worker is active.
+- The final JSON stdout now also includes `assignmentLifecycleEvents`, so a
+  completed tool card can summarize the same path without scraping stderr.
+- Khala Code Desktop parses both the final array and the stderr JSONL fallback.
+  Timeout summaries should show `command timed out` plus the last lifecycle
+  state, for example `assignment_run.runtime_started (phase=runtime_active)`.
+- If a hosted assignment ref was created but the local auto-run returns
+  `autoRun.ok: false`, `codex_spawn` is a failed slot. It must render red and
+  include the closeout/blocker refs instead of showing a green `OK` card.
+
+This is intentionally not a new execution path. The local worker still runs
+through Pylon `runNoSpendAssignment`; the change is that Desktop no longer
+collapses a live worker into a blank "running" card or raw JSON failure blob.
+
 After the smoke, confirm Pylon is back to idle:
 
 ```sh

@@ -303,6 +303,21 @@ describe("Khala Code Codex fleet tools", () => {
         expect(args).toContain("pylon.local.fresh")
         return ok({
           assignmentRef: "assignment.public.codex_agent_task.default",
+          assignmentLifecycleEvents: [
+            {
+              assignmentRef: "assignment.public.codex_agent_task.default",
+              event: "assignment_run.runtime_started",
+              leaseRef: "assignment.public.codex_agent_task.default",
+              schema: "openagents.pylon.assignment_run_lifecycle_event.v0.1",
+            },
+            {
+              assignmentRef: "assignment.public.codex_agent_task.default",
+              event: "assignment_run.completed",
+              leaseRef: "assignment.public.codex_agent_task.default",
+              schema: "openagents.pylon.assignment_run_lifecycle_event.v0.1",
+              status: "accepted",
+            },
+          ],
           autoRun: {
             attempted: true,
             ok: true,
@@ -344,6 +359,8 @@ describe("Khala Code Codex fleet tools", () => {
     expect(result.results[0]?.summary).toContain("closeout: accepted, no-spend, not_applicable")
     expect(result.results[0]?.summary).toContain("blocker refs: none")
     expect(result.results[0]?.summary).toContain("closeout ref: assignment.closeout.assignment.public.codex_agent_task.default")
+    expect(result.results[0]?.summary).toContain("lifecycle:")
+    expect(result.results[0]?.summary).toContain("assignment_run.completed (status=accepted)")
     const heartbeatIndex = calls.findIndex(call => pylonArgs(call)[0] === "presence")
     const requestIndex = calls.findIndex(call => pylonArgs(call)[0] === "khala" && pylonArgs(call)[1] === "request")
     expect(heartbeatIndex).toBeGreaterThanOrEqual(0)
@@ -813,6 +830,93 @@ describe("Khala Code Codex fleet tools", () => {
     })).rejects.toThrow("No Pylon Codex assignment capacity is available right now")
   })
 
+  test("codex_spawn tool treats failed local auto-runs as failed even with an assignment ref", async () => {
+    const fixture = await tempPylonFixture()
+    const runner = async (input: KhalaCodexFleetCommandInput): Promise<KhalaCodexFleetCommandResult> => {
+      const args = pylonArgs(input)
+      const joined = args.join(" ")
+      if (joined === "provider go-online --json") {
+        return ok({ ok: true, pylonRef: "pylon.local.test" })
+      }
+      if (joined === "codex accounts list --json") {
+        return ok({
+          accounts: [
+            {
+              accountRef: "codex",
+              homeState: "present",
+              provider: "codex",
+            },
+          ],
+          schema: "openagents.pylon.accounts_list.v0.3",
+        })
+      }
+      if (joined === "accounts status --provider codex --json") {
+        return ok({
+          accounts: [
+            {
+              accountRef: "codex",
+              provider: "codex",
+              readiness: { state: "ready" },
+            },
+          ],
+          schema: "openagents.pylon.accounts_status.v0.1",
+        })
+      }
+      if (joined === "presence heartbeat --base-url https://openagents.com --json") {
+        return ok({
+          heartbeatRef: "heartbeat.pylon.local.test.1",
+          pylonRef: "pylon.local.test",
+        })
+      }
+      if (args[0] === "khala" && args[1] === "request") {
+        return ok({
+          assignmentRef: "assignment.public.codex_agent_task.failed_autorun",
+          assignmentLifecycleEvents: [
+            {
+              assignmentRef: "assignment.public.codex_agent_task.failed_autorun",
+              event: "assignment_run.runtime_started",
+              leaseRef: "assignment.public.codex_agent_task.failed_autorun",
+              schema: "openagents.pylon.assignment_run_lifecycle_event.v0.1",
+            },
+            {
+              assignmentRef: "assignment.public.codex_agent_task.failed_autorun",
+              event: "assignment_run.completed",
+              leaseRef: "assignment.public.codex_agent_task.failed_autorun",
+              schema: "openagents.pylon.assignment_run_lifecycle_event.v0.1",
+              status: "timed-out",
+            },
+          ],
+          assignmentRun: {
+            closeout: {
+              blockerRefs: ["blocker.assignment.timeout"],
+              paymentMode: "no-spend",
+              settlementState: "not_applicable",
+              status: "timed-out",
+            },
+            ok: false,
+          },
+          autoRun: {
+            attempted: true,
+            ok: false,
+          },
+        })
+      }
+      return failed(`unexpected command: ${joined}`)
+    }
+    const tool = createKhalaCodexFleetTools({ env: fixture.env, runner })
+      .find(item => item.definition.name === "codex_spawn")
+
+    const result = await Effect.runPromise(tool!.execute!({
+      prompt: "Run the public fixture.",
+    }, {} as never))
+
+    expect(result.status).toBe("failed")
+    expect(result.modelOutput.text).toContain("Codex spawn: accepted 0/1")
+    expect(result.modelOutput.text).toContain("assignment run: failed")
+    expect(result.modelOutput.text).toContain("blocker refs: blocker.assignment.timeout")
+    expect(result.modelOutput.text).toContain("assignment_run.completed (status=timed-out)")
+  })
+
   test("codex_spawn tool reports zero accepted timed-out dispatches as failed", async () => {
     const fixture = await tempPylonFixture()
     const runner = async (input: KhalaCodexFleetCommandInput): Promise<KhalaCodexFleetCommandResult> => {
@@ -855,7 +959,13 @@ describe("Khala Code Codex fleet tools", () => {
         return {
           exitCode: null,
           signal: null,
-          stderr: "",
+          stderr: JSON.stringify({
+            assignmentRef: "assignment.public.codex_agent_task.timeout",
+            event: "assignment_run.runtime_started",
+            leaseRef: "assignment.public.codex_agent_task.timeout",
+            phase: "runtime_active",
+            schema: "openagents.pylon.assignment_run_lifecycle_event.v0.1",
+          }),
           stdout: "",
           timedOut: true,
         }
@@ -873,5 +983,7 @@ describe("Khala Code Codex fleet tools", () => {
     expect(result.status).toBe("failed")
     expect(result.modelOutput.text).toContain("Codex spawn: accepted 0/1")
     expect(result.modelOutput.text).toContain("command timed out")
+    expect(result.modelOutput.text).toContain("assignment_run.runtime_started")
+    expect(result.modelOutput.text).toContain("phase=runtime_active")
   })
 })
