@@ -2,6 +2,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process"
 import { existsSync } from "node:fs"
 import { Effect, Schema as S } from "effect"
 import { makeKhalaToolDispatcher, type KhalaToolDispatcherOptions } from "./dispatcher.js"
+import { createMacosSeatbeltKhalaProcessService } from "./process-sandbox-macos.js"
 import { redactKhalaPublicText } from "./redaction.js"
 
 export {
@@ -214,6 +215,7 @@ export type KhalaProcessExecInput = Readonly<{
   maxCaptureBytes: number
   shell?: string
   timeoutMs: number
+  workspaceRoot?: string
 }>
 
 export type KhalaProcessSessionStartInput = KhalaProcessExecInput & Readonly<{
@@ -1080,7 +1082,7 @@ async function readNetworkResponseBody(
   }
 }
 
-export const defaultKhalaProcessService: KhalaProcessService = {
+export const unsandboxedKhalaProcessService: KhalaProcessService = {
   execCommand: input =>
     Effect.promise(async () => {
       const started = Date.now()
@@ -1195,6 +1197,10 @@ export const defaultKhalaProcessService: KhalaProcessService = {
       )
     }),
 }
+
+export const defaultKhalaProcessService: KhalaProcessService = process.platform === "darwin"
+  ? createMacosSeatbeltKhalaProcessService({ fallback: unsandboxedKhalaProcessService })
+  : unsandboxedKhalaProcessService
 
 type DefaultKhalaProcessSession = {
   cancelled: boolean
@@ -1508,6 +1514,7 @@ export { createEditTool, editToolDefinition } from "./edit.js"
 export { createWriteTool, writeToolDefinition } from "./write.js"
 export { applyPatchToolDefinition, createApplyPatchTool } from "./apply-patch.js"
 export { createExecCommandTool, execCommandToolDefinition } from "./exec-command.js"
+export { createMacosSeatbeltKhalaProcessService, seatbeltProfile } from "./process-sandbox-macos.js"
 export { createWriteStdinTool, writeStdinToolDefinition } from "./write-stdin.js"
 export { askUserToolDefinition, createAskUserTool } from "./ask-user.js"
 export { createTodoWriteTool, todoWriteToolDefinition } from "./todo-write.js"

@@ -54,7 +54,7 @@ describe("write_stdin tool", () => {
 
     expect(started.status).toBe("ok")
     expect(polled.status).toBe("ok")
-    expect(polled.modelOutput.text).toContain("tty:0")
+    expect(polled.modelOutput.text).toContain(process.platform === "darwin" ? "tty:1" : "tty:0")
     await writeStdin(workspace, { chars: "\u0003", session_id: sessionId, yield_time_ms: 10 })
   })
 
