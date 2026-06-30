@@ -71,6 +71,20 @@ describe("Khala permission policy", () => {
     expect(interaction.prompts[0]?.choices.map(choice => choice.id)).toEqual(["allow", "deny", "always"])
   })
 
+  test("denies product-policy blocked authorities without prompting", async () => {
+    const interaction = scriptedInteraction(["always"])
+    const permission = makeKhalaPermissionPolicyService({ interaction })
+
+    const decision = await Effect.runPromise(permission.decide(request({
+      action: "owner_full_access",
+      resources: ["danger-full-access"],
+      toolName: "exec_command",
+    })))
+
+    expect(decision).toBe("deny")
+    expect(interaction.prompts).toHaveLength(0)
+  })
+
   test("does not leak session approvals across resources, actions, or sessions", async () => {
     const interaction = scriptedInteraction(["always", "deny", "deny", "deny"])
     const permission = makeKhalaPermissionPolicyService({ interaction })
@@ -96,6 +110,21 @@ describe("Khala permission policy", () => {
     expect(otherAction).toBe("deny")
     expect(otherSession).toBe("deny")
     expect(interaction.prompts).toHaveLength(4)
+  })
+
+  test("requires every resource in a multi-resource request to be cached", async () => {
+    const interaction = scriptedInteraction(["always", "deny"])
+    const permission = makeKhalaPermissionPolicyService({ interaction })
+
+    const first = await Effect.runPromise(permission.decide(request()))
+    const widened = await Effect.runPromise(permission.decide(request({
+      resources: ["src/app.ts", "src/other.ts"],
+      toolCallId: "call-widened",
+    })))
+
+    expect(first).toBe("allow")
+    expect(widened).toBe("deny")
+    expect(interaction.prompts).toHaveLength(2)
   })
 
   test("project approvals are shared across sessions only for the same project action and resource", async () => {

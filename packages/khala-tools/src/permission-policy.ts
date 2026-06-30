@@ -24,9 +24,16 @@ export interface KhalaApprovalStore {
 }
 
 export interface KhalaPermissionPolicyOptions {
+  readonly deniedActions?: ReadonlySet<KhalaToolAuthority> | ReadonlyArray<KhalaToolAuthority>
   readonly interaction: KhalaInteractionService
   readonly store?: KhalaApprovalStore
 }
+
+const defaultDeniedActions = new Set<KhalaToolAuthority>([
+  "credential",
+  "owner_full_access",
+  "persistent_config_write",
+])
 
 export function makeInMemoryKhalaApprovalStore(): KhalaApprovalStore {
   const approvals = new Set<string>()
@@ -40,12 +47,24 @@ export function makeInMemoryKhalaApprovalStore(): KhalaApprovalStore {
 
 export function makeKhalaPermissionPolicyService(options: KhalaPermissionPolicyOptions): KhalaPermissionService {
   const store = options.store ?? makeInMemoryKhalaApprovalStore()
+  const deniedActions = options.deniedActions === undefined
+    ? defaultDeniedActions
+    : new Set(options.deniedActions)
   return {
     decide: request =>
       Effect.gen(function* () {
+        if (deniedActions.has(request.action)) return "deny"
+
         const cacheKeys = approvalCacheKeysFor(request)
-        for (const key of cacheKeys) {
-          if (yield* store.isAllowed(key)) return "allow"
+        if (cacheKeys.length > 0) {
+          let cached = true
+          for (const key of cacheKeys) {
+            if (!(yield* store.isAllowed(key))) {
+              cached = false
+              break
+            }
+          }
+          if (cached) return "allow"
         }
 
         const answer = yield* options.interaction.askUser({
@@ -125,7 +144,7 @@ function permissionPrompt(request: KhalaPermissionRequest): string {
 
 function resourcePatternsFor(request: KhalaPermissionRequest): ReadonlyArray<string> {
   const resources = request.resources.length > 0 ? request.resources : ["*"]
-  return [...new Set(resources.map(normalizeResourcePattern))].sort()
+  return Array.from(new Set(resources.map(normalizeResourcePattern))).sort()
 }
 
 function normalizeProjectRef(value: string | undefined): string {
