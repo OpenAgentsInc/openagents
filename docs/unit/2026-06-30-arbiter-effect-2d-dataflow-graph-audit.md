@@ -1,4 +1,4 @@
-# Purpose-Built 2D Dataflow-Graph Primitives (a `unit-effect`)
+# Arbiter — Purpose-Built 2D Dataflow-Graph Primitives (`arbiter-effect`)
 
 Date: 2026-06-30
 Status: Audit / proposal (no code changes)
@@ -20,11 +20,27 @@ good — implemented natively on our stack (Effect + Foldkit), the same way
 `three-effect` is "React-Three-Fiber rewritten in Effect" rather than a fork of
 R3F.
 
-This audit (a) distills which Unit primitives are actually worth rebuilding,
-then (b) fleshes out the three ways to ship them — a new **`unit-effect`**
-sibling package, **folding 2D graph primitives into `three-effect`**, or
-**porting SVG node/pin/link rendering straight into Foldkit / `packages/ui`** —
-with a recommendation.
+This audit (a) names the thing, (b) distills which Unit primitives are worth
+rebuilding, (c) shows how it syncs with **Blueprint**, then (d) fleshes out the
+three ways to ship it — with a recommendation.
+
+## Name: `arbiter-effect`
+
+Not `unit-effect`. "Unit" collides with the reference repo we are *not*
+adopting, with the literal word "unit" (test units, our own domain "units"), and
+carries no brand. Our package convention is `X-effect` (rhyming with
+`three-effect`, read as "X + Effect"), and our canon is Protoss: Khala, Pylon,
+Tassadar, Artanis, Raynor.
+
+**Arbiter.** In StarCraft the Arbiter is the Protoss capital ship that
+*manipulates the battlefield* — Recall, Stasis Field, cloak. That is a **control
+plane**, which is exactly what this library is: not a read-only chart but a
+surface where you reach in and move things (writable pins → pause a worker,
+approve, reroute). It slots into the existing Protoss naming, has no collisions
+(unlike `sentry-effect` = the observability SaaS we avoid, or `nexus-effect` =
+deprecated `nexus.openagents.com`), and `arbiter-effect` reads cleanly.
+
+Package: `@openagentsinc/arbiter-effect`.
 
 ## Primitives worth stealing from Unit (and nothing else)
 
@@ -54,12 +70,78 @@ rebuild these, minimally:
 6. **Live datum inspection.** Nodes/pins surface their current value inline (the
    Datum / DataTree components). For us: the live token count, approval state,
    current tool call shown right on the node.
-7. **Evidence binding (our addition).** Same discipline as the Verse's "no
-   animation without a receipt": a link only lights when a real Khala receipt /
-   event flows. The graph is a *projection* of real state, never state-of-record.
+7. **Evidence binding (our addition, and our tie to Blueprint).** Same discipline
+   as the Verse's "no animation without a receipt": a link only lights when a
+   real Khala receipt / Blueprint Trust Receipt dereferences. The graph is a
+   *projection* of real state, never state-of-record.
 
 Everything else in Unit — the language, the 850-unit stdlib, the web-OS, the
 shadow-DOM app, voice/gesture editing — we deliberately drop.
+
+## How Arbiter syncs with Blueprint
+
+This is the important alignment, and it is strong. **Blueprint already defines a
+typed, governed dataflow graph but deliberately deferred its visual editor.
+Arbiter is that deferred surface.**
+
+Blueprint (the typed business operating model — Language / Engine / Toolchain) is
+deprecated as a standalone repo/service (archived 2026-05-24, specs absorbed into
+`autopilot4-deprecated/blueprint/docs/`) but **alive as the shared governance
+vocabulary** across Khala (typed Program signatures + GEPA), Probe (Action
+Submission proposals), Artanis (release gates), and `docs/promises/` (receipts).
+Its canonical specs live at `autopilot4-deprecated/blueprint/docs/`
+(`master-spec.md`, `language-engine-toolchain.md`,
+`programs-optimization-and-rlm.md`, `receipt-and-evidence-contract.md`).
+
+Blueprint carries two graph-shaped structures that an Arbiter canvas renders
+directly:
+
+- **The data graph** — Business Objects (typed nodes) joined by typed
+  Relationships (typed edges), queried by Object Set Expressions and walked by a
+  Graph Service (`language-engine-toolchain.md` traverse/search_around). Plus a
+  Lineage graph from any fact back to its source.
+- **The control graph** — Program Types with a **Program Signature** = "the
+  DSPy-style contract: typed inputs, typed outputs, instructions, allowed
+  evidence, and success criteria" (`programs-optimization-and-rlm.md`). Programs
+  **compose** into plan → write → verify pipelines; a Khala request is "a typed
+  Blueprint program call." That is precisely our typed-pin / node / link model.
+
+And the visual layer was named and reserved, not built: **Blueprint Map** —
+"graph view filtered by domain, object type, source, mission, loop, worker,
+evidence, action, and policy" (`master-spec.md`) — with "visual graph editing"
+explicitly listed as a **P2 non-goal / do-not-build-first**. So Arbiter is the
+missing **Blueprint Toolchain** surface, not a new ontology.
+
+The mapping is one-to-one:
+
+| Arbiter concept | Blueprint artifact |
+| --- | --- |
+| Node | Business Object (typed instance) / Program Type |
+| Typed pin (in/out) | Program Signature `input_fields` / `output_fields` |
+| Link (edge) | Relationship (typed edge) / Program composition (plan→write→verify) |
+| JSON graph spec | Object Set Expression + Relationships; Program Type / Module Version records |
+| Swappable node impl | Module Version (`deterministic` / `model_prompt` / `tool_plan` / `rlm` / `external_worker` / `human_review`) |
+| Run record per node fire | Program Run (decision evidence, **no write authority**) |
+| Approval gate on an edge | Action Submission → approval → source write lifecycle |
+| **Edge "lights" on execution** | **Trust/Failure Receipt** (`evidence_ids`, `executed_changes_json`); promise green-flip |
+| The whole canvas | **Blueprint Map** (named, P2-deferred) |
+
+Crucially, our **"a link only lights on a real receipt"** rule is a faithful UI
+rendering of Blueprint's hardest invariants — "Program Runs are decision
+evidence, they do not authorize writes," "Evidence by default," and (live in this
+repo) promises flip to green **only on a dereferenceable receipt with real
+movement** (`docs/promises/`), echoed by the Khala→Pylon→Codex runbook's "counter
+movement alone is never completion evidence." An Arbiter edge stays inert until a
+receipt dereferences; an approval gate on an edge is the Action Submission
+lifecycle made visible. So Arbiter does not just *coexist* with Blueprint — it is
+the direct visual/control expression of the Blueprint governance model.
+
+**Practical consequence for the design:** Arbiter's `GraphSpec` should be a
+*projection target* for Blueprint artifacts, not a parallel format. The
+`./core` model types (below) should map cleanly from Program Signatures
+(→ pins), Relationships (→ links), Module Versions (→ swappable node impls), and
+Trust Receipts (→ lit edges), so the same library renders a fleet board *and* a
+Blueprint Program/Map without a second schema.
 
 ## Where this sits relative to our existing stack
 
@@ -106,34 +188,38 @@ Net-new (does not exist anywhere today):
 - **No interactive graph editor.** No drag, no pin hit-testing, no link-creation
   gesture, no typed-port model, no selection. Every current asset is a
   *read-only* visualization. The interactive primitives are the real work.
+- **No Blueprint Map / visual program builder** — named in the Blueprint spec,
+  never built.
 
-## Option A — new `unit-effect` sibling package (recommended)
+## Option A — new `arbiter-effect` sibling package (recommended)
 
-Build `@openagentsinc/unit-effect`, mirroring `three-effect`'s proven dual-entry
-shape but DOM/SVG-first instead of WebGL.
+Build `@openagentsinc/arbiter-effect`, mirroring `three-effect`'s proven
+dual-entry shape but DOM/SVG-first instead of WebGL.
 
-**Package layout** (`packages/unit-effect/`, in the Bun workspace):
+**Package layout** (`packages/arbiter-effect/`, in the Bun workspace):
 - `./core` — framework-agnostic, Effect-based. The model + algorithms, zero
   Foldkit:
   - **Model:** `UnitNode { id, label, inputs: Pin[], outputs: Pin[], status,
     datum }`, `Pin { id, name, type, value }`, `Link { from: PinRef, to: PinRef,
-    lit }`, `GraphSpec { nodes, links, metadata: { positions } }` — our own,
-    trimmed version of Unit's `GraphSpec`, defined with Effect Schema so it
-    serializes/validates like the rest of our contracts.
+    lit }`, `GraphSpec { nodes, links, metadata: { positions } }` — defined with
+    Effect Schema, designed as a **projection target for Blueprint artifacts**
+    (Program Signatures → pins, Relationships → links, Module Versions →
+    node impls, Trust Receipts → lit edges) so one library renders both a fleet
+    board and a Blueprint Program/Map.
   - **Layout:** a small force/spring simulation (port the *idea* of
     `src/client/simulation.ts`, ~a few hundred lines, no `d3`), exposed as an
     `Effect` that produces settled positions / a tickable handle.
   - **Geometry/hit-testing:** bezier edge path generation, node/pin bounding,
     pointer hit-testing for nodes/pins/links (the net-new interactive core).
-  - **Mount handle:** `mountUnitGraph(el, spec, opts): Effect<UnitGraphHandle>`
+  - **Mount handle:** `mountArbiterGraph(el, spec, opts): Effect<ArbiterHandle>`
     where the handle exposes `{ element, dispose, update(spec), setPinValue,
     onNodeSelected, onLinkCreated, … }` — same `Effect<Handle>` ergonomics as
     three-effect's core.
 - `./foldkit` — thin Foldkit adapter:
-  - `unitGraphView<Message>(attributes, spec, { onNodeSelected, onPinPush, … }):
-    Html` rendered with the html factory's SVG tags, **or** wrapped as a custom
-    element via `foldkit/customElement` (the same bridge three-effect uses) if we
-    want the imperative layout loop to own its own RAF.
+  - `arbiterGraphView<Message>(attributes, spec, { onNodeSelected, onPinPush, …
+    }): Html` rendered with the html factory's SVG tags, **or** wrapped as a
+    custom element via `foldkit/customElement` (the same bridge three-effect
+    uses) if we want the imperative layout loop to own its own RAF.
   - Event handlers are ordinary `Attribute<Message>` values, so drag/select/
     link-create dispatch into the host app's Elm `update` — no parallel runtime.
 
@@ -148,12 +234,12 @@ heavy. Reuse `pylonBezierNetworkElement.ts`'s path math.
   as the sole Three.js home).
 - Workspace package (`workspace:*`) instead of three-effect's per-consumer git
   SHA pins → no SHA-drift friction across desktop/web/khala-code.
-- Reusable across **all** surfaces (Khala Code, autopilot-desktop, web) from day
-  one.
+- Reusable across **all** surfaces (Khala Code, autopilot-desktop, web, and a
+  future Blueprint Map) from day one.
 
 **Costs:** new package wiring — the root `package.json` hand-wires every package
-into `test:*`/`typecheck:*` chains, so add `test:unit-effect` +
-`typecheck:unit-effect` entries (workspace glob `packages/*` already matches).
+into `test:*`/`typecheck:*` chains, so add `test:arbiter-effect` +
+`typecheck:arbiter-effect` entries (workspace glob `packages/*` already matches).
 The interactive core (hit-testing, drag, link-create, force layout) is genuine
 net-new engineering, ~the bulk of the effort.
 
@@ -202,31 +288,32 @@ Elm update loop. `class-foldkit.ts`/`primitives.ts` show the authoring pattern.
 
 **Verdict:** Option C is really "Option A without the package boundary." Use its
 SVG approach *as the rendering layer of* Option A: author the *renderer* exactly
-this way, but put the model/layout/hit-testing in `unit-effect/core` so it's
+this way, but put the model/layout/hit-testing in `arbiter-effect/core` so it's
 reusable and testable headless.
 
 ## Recommendation
 
-**Option A, with Option C's SVG-in-Foldkit as its rendering layer, and Option B
-reserved for a later in-Verse schematic node.**
+**Option A (`arbiter-effect`), with Option C's SVG-in-Foldkit as its rendering
+layer, and Option B reserved for a later in-Verse schematic node.**
 
-Concretely: ship `@openagentsinc/unit-effect` with a pure Effect `./core`
+Concretely: ship `@openagentsinc/arbiter-effect` with a pure Effect `./core`
 (model, force layout, geometry, hit-testing) and a Foldkit `./foldkit` view that
 renders SVG the way `pylonBezierNetworkElement.ts` already does. This gives us a
 streamlined, owned, purpose-built take on Unit's good primitives — no fork, no
-840 units we don't want, native to Effect+Foldkit, reusable everywhere, and free
-of three-effect's git-pin friction.
+840 units we don't want, native to Effect+Foldkit, reusable everywhere, free of
+three-effect's git-pin friction, and aligned one-to-one with the Blueprint
+governance model it visualizes.
 
 ## Phased plan
 
-**Phase 0 — model + headless core (≈2–3 days).** `unit-effect/core`: the
-`GraphSpec`/`UnitNode`/`Pin`/`Link` Effect-Schema types, the force-layout
-`Effect`, bezier geometry, and hit-testing — all unit-tested headless (no DOM).
-Add the root `test:`/`typecheck:` wiring.
+**Phase 0 — model + headless core (≈2–3 days).** `arbiter-effect/core`: the
+`GraphSpec`/`UnitNode`/`Pin`/`Link` Effect-Schema types (designed as a Blueprint
+projection target), the force-layout `Effect`, bezier geometry, and hit-testing —
+all unit-tested headless (no DOM). Add the root `test:`/`typecheck:` wiring.
 
-**Phase 1 — read-only Foldkit renderer.** `unit-effect/foldkit`
-`unitGraphView<Message>` rendering SVG nodes/pins/lit bezier links, ported from
-`pylonBezierNetworkElement.ts`. First consumer: Khala Code's fleet board
+**Phase 1 — read-only Foldkit renderer.** `arbiter-effect/foldkit`
+`arbiterGraphView<Message>` rendering SVG nodes/pins/lit bezier links, ported
+from `pylonBezierNetworkElement.ts`. First consumer: Khala Code's fleet board
 (`clients/khala-code-desktop`) — Khala → Pylons → Codex/Claude workers, links lit
 by real receipts/events from the Bun host. Flag-gated, fixture-backed smoke test
 (à la `proof:verse-arc`).
@@ -234,12 +321,16 @@ by real receipts/events from the Bun host. Flag-gated, fixture-backed smoke test
 **Phase 2 — interactivity / direct manipulation.** Node drag, selection,
 pin-level pointer events, link-create gesture, inline datum editing
 (`foreignObject`). Writable pins → operator actions (pause worker, approve,
-reroute) dispatched through the Elm `update` loop back into the host.
+reroute) dispatched through the Elm `update` loop back into the host. This is
+where the "Arbiter" name earns out — the approval gate on an edge is the
+Blueprint Action Submission lifecycle made manipulable.
 
-**Phase 3 — fan-out.** Reuse the same package on `apps/openagents.com/apps/web`
-(replacing the bespoke `pylonBezierNetworkElement.ts`) and, if desired, add the
-Option-B in-Verse 3D schematic node in `three-effect` for click-through from the
-3D world.
+**Phase 3 — fan-out + Blueprint Map.** Reuse the same package on
+`apps/openagents.com/apps/web` (replacing the bespoke
+`pylonBezierNetworkElement.ts`); render a Blueprint Program (plan→write→verify
+composition) and the named-but-unbuilt **Blueprint Map** from the same
+`GraphSpec`; and, if desired, add the Option-B in-Verse 3D schematic node in
+`three-effect` for click-through from the 3D world.
 
 ## Reference paths
 
@@ -251,6 +342,13 @@ Our stack:
 - three-effect shape/seed: its `packages/{core,foldkit}/src/index.ts`, `packages/core/src/bezierNodes.ts`; consumer types `apps/autopilot-desktop/src/types/three-effect-{core,foldkit}.d.ts`; mount usage `apps/autopilot-desktop/src/ui/view.ts`
 - Foldkit SVG/canvas/customElement surface: `foldkit/{html,canvas,customElement}` (typed via the installed `foldkit@0.102.1` dist)
 
+Blueprint (governance model Arbiter visualizes; specs absorbed, repo deprecated):
+- `autopilot4-deprecated/blueprint/docs/master-spec.md` (Language/Engine/Toolchain; Source Authority; Blueprint Map + P2 deferral)
+- `autopilot4-deprecated/blueprint/docs/language-engine-toolchain.md` (Object/Relationship graph; Graph Service traverse/search)
+- `autopilot4-deprecated/blueprint/docs/programs-optimization-and-rlm.md` (Program Signatures = typed pins; Module Versions; Program Runs as evidence)
+- `autopilot4-deprecated/blueprint/docs/receipt-and-evidence-contract.md` (Trust/Failure Receipt fields a lit edge binds to)
+- Live usage: `docs/khala/2026-06-23-khala-blueprint-program-and-plugin-extensibility.md`, `apps/openagents.com/INVARIANTS.md`, `docs/promises/`
+
 Unit (reference only, `projects/repos/unit/`):
 - Node/pin model: `src/Class/Unit/index.ts`, `src/Pin.ts`
 - Graph/merges + move ops: `src/Class/Graph/index.ts`, `src/Class/Merge.ts`
@@ -260,10 +358,13 @@ Unit (reference only, `projects/repos/unit/`):
 
 ## Bottom line
 
-Build our own. A small `@openagentsinc/unit-effect` — Unit's good primitives
-(typed-pin MIMO nodes, first-class links, JSON spec with embedded layout, force
-auto-layout, direct manipulation, live datum, evidence-bound lighting), rebuilt
-on Effect + Foldkit and rendered as SVG — gives us a 2D dataflow **control**
-surface that complements the 3D `three-effect` Verse, ships first into the Khala
-Code fleet board, and stays a clean workspace package rather than a fork or a
-WebGL afterthought.
+Build our own, and call it **Arbiter**. A small `@openagentsinc/arbiter-effect` —
+Unit's good primitives (typed-pin MIMO nodes, first-class links, JSON spec with
+embedded layout, force auto-layout, direct manipulation, live datum,
+evidence-bound lighting), rebuilt on Effect + Foldkit and rendered as SVG —
+gives us a 2D dataflow **control** surface that complements the 3D `three-effect`
+Verse, ships first into the Khala Code fleet board, and lands as the visual
+**Blueprint Map / program builder** that Blueprint's own spec named and deferred.
+It is a clean workspace package, not a fork or a WebGL afterthought, and its
+"a link only lights on a real receipt" rule is the Blueprint governance model
+rendered directly in the UI.
