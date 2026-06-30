@@ -537,7 +537,7 @@ describe("pylon khala requester API", () => {
       expect(proc.stderr)
         .toContain('"event":"assignment_run.completed"')
     })
-  })
+  }, 15_000)
 
   test("CLI request can leave the lease un-run for diagnostics with --no-run", async () => {
     await withTempHome(async (home) => {

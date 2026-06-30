@@ -8,6 +8,7 @@ import {
   type ClaudeAgentProbeOptions,
 } from "./claude-agent.js"
 import {
+  CLAUDE_AGENT_TASK_SCHEMA,
   CLAUDE_AGENT_TASK_AGENT_KIND,
   claudeAgentTaskFrom,
   executeClaudeAgentAssignment,
@@ -23,6 +24,7 @@ import {
 import {
   CODEX_AGENT_OWNER_LOCAL_APPROVAL_POLICY,
   CODEX_AGENT_OWNER_LOCAL_SANDBOX_MODE,
+  CODEX_AGENT_TASK_SCHEMA,
   CODEX_AGENT_TASK_AGENT_KIND,
   codexAgentTaskFrom,
   executeCodexAgentAssignment,
@@ -32,6 +34,7 @@ import {
 } from "./codex-agent-executor.js"
 import type { PylonAssignmentLease } from "./assignment.js"
 import type { PylonLocalState } from "./state.js"
+import type { GitCheckoutWorkspace } from "./workspace-materializer.js"
 
 export type AgentRunnerKind = "claude_agent" | "codex"
 export type AgentRunnerTaskAgentKind =
@@ -39,6 +42,7 @@ export type AgentRunnerTaskAgentKind =
   | typeof CODEX_AGENT_TASK_AGENT_KIND
 export type AgentRunnerServiceRef = "claude" | "codex"
 export type AgentRunnerAccountProvider = "claude_agent" | "codex"
+export type AgentRunnerTaskField = "claudeAgent" | "codex"
 
 export type AgentRunnerReadinessProbeKind =
   | "claude_agent_sdk_import"
@@ -79,6 +83,21 @@ export type AgentRunnerRuntimeContract = {
   workspaceBoundary: AgentRunnerWorkspaceBoundary
 }
 
+export type AgentTaskPayload = {
+  schema: string
+  agentKind: AgentRunnerTaskAgentKind
+  fixtureRef?: string
+  objectiveSummary?: string
+  timeoutSeconds?: number
+  workspace?: GitCheckoutWorkspace
+}
+
+export type AgentRunnerTaskContract = {
+  field: AgentRunnerTaskField
+  schema: string
+  agentKind: AgentRunnerTaskAgentKind
+}
+
 export type AgentRunnerCloseoutRecord = {
   artifactRefs: string[]
   blockerRefs: string[]
@@ -107,6 +126,17 @@ export type AgentRunnerExecutionOptions = {
   fetch?: typeof fetch
 }
 
+export type AgentRunnerInput = {
+  state: PylonLocalState
+  lease: PylonAssignmentLease
+  now: Date
+  options: AgentRunnerExecutionOptions
+}
+
+export interface AgentRunner {
+  run(input: AgentRunnerInput): Promise<AgentRunnerCloseoutRecord | null>
+}
+
 export type AgentRunnerDescriptor = {
   kind: AgentRunnerKind
   agentKind: AgentRunnerTaskAgentKind
@@ -114,8 +144,10 @@ export type AgentRunnerDescriptor = {
   accountProvider: AgentRunnerAccountProvider
   serviceRef: AgentRunnerServiceRef
   capabilityRef: string
+  task: AgentRunnerTaskContract
   runtime: AgentRunnerRuntimeContract
   canRunAssignment: (codingAssignment: unknown) => boolean
+  run: AgentRunner["run"]
   execute: (
     state: PylonLocalState,
     lease: PylonAssignmentLease,
@@ -133,9 +165,21 @@ export type AgentRunnerResolution =
       blockerRef: "blocker.assignment.agent_runner_ambiguous"
     }
 
-function hasObjectField(value: unknown, key: string): boolean {
+function hasObjectField(value: unknown, key: AgentRunnerTaskField): boolean {
   const field = (value as Record<string, unknown> | undefined)?.[key]
   return field !== null && typeof field === "object"
+}
+
+export function agentTaskPayloadFromAssignment(
+  codingAssignment: unknown,
+  task: AgentRunnerTaskContract,
+): AgentTaskPayload | null {
+  const payload = (codingAssignment as Record<string, unknown> | undefined)?.[task.field]
+  if (payload === null || typeof payload !== "object") return null
+  const candidate = payload as AgentTaskPayload
+  if (candidate.schema !== task.schema) return null
+  if (candidate.agentKind !== task.agentKind) return null
+  return candidate
 }
 
 function commonExecutionOptions(options: AgentRunnerExecutionOptions) {
@@ -147,6 +191,55 @@ function commonExecutionOptions(options: AgentRunnerExecutionOptions) {
   }
 }
 
+const CLAUDE_AGENT_RUNNER_TASK = {
+  field: "claudeAgent",
+  schema: CLAUDE_AGENT_TASK_SCHEMA,
+  agentKind: CLAUDE_AGENT_TASK_AGENT_KIND,
+} satisfies AgentRunnerTaskContract
+
+const CODEX_AGENT_RUNNER_TASK = {
+  field: "codex",
+  schema: CODEX_AGENT_TASK_SCHEMA,
+  agentKind: CODEX_AGENT_TASK_AGENT_KIND,
+} satisfies AgentRunnerTaskContract
+
+function canRunClaudeAgentAssignment(codingAssignment: unknown): boolean {
+  return (
+    agentTaskPayloadFromAssignment(codingAssignment, CLAUDE_AGENT_RUNNER_TASK) !== null &&
+    claudeAgentTaskFrom(codingAssignment) !== null
+  )
+}
+
+function canRunCodexAgentAssignment(codingAssignment: unknown): boolean {
+  return (
+    agentTaskPayloadFromAssignment(codingAssignment, CODEX_AGENT_RUNNER_TASK) !== null &&
+    codexAgentTaskFrom(codingAssignment) !== null
+  )
+}
+
+function runClaudeAgentRunner({ state, lease, now, options }: AgentRunnerInput) {
+  return executeClaudeAgentAssignment(state, lease, now, {
+    ...commonExecutionOptions(options),
+    ...(options.claudeAgentCheckoutRunner === undefined
+      ? {}
+      : { checkoutRunner: options.claudeAgentCheckoutRunner }),
+    ...(options.claudeAgentProbe === undefined ? {} : { claudeAgentProbe: options.claudeAgentProbe }),
+    ...(options.claudeAgentRunner === undefined ? {} : { claudeAgentRunner: options.claudeAgentRunner }),
+  } satisfies ClaudeAgentExecutionOptions)
+}
+
+function runCodexAgentRunner({ state, lease, now, options }: AgentRunnerInput) {
+  return executeCodexAgentAssignment(state, lease, now, {
+    ...commonExecutionOptions(options),
+    ...(options.codexAgentProbe === undefined ? {} : { codexAgentProbe: options.codexAgentProbe }),
+    ...(options.codexAgentRunner === undefined ? {} : { codexAgentRunner: options.codexAgentRunner }),
+    ...(options.codexAuthValidityProbe === undefined
+      ? {}
+      : { codexAuthValidityProbe: options.codexAuthValidityProbe }),
+    ...(options.onCodexProgress === undefined ? {} : { onProgress: options.onCodexProgress }),
+  } satisfies CodexAgentExecutionOptions)
+}
+
 export const AGENT_RUNNER_REGISTRY: ReadonlyArray<AgentRunnerDescriptor> = [
   {
     kind: "claude_agent",
@@ -155,6 +248,7 @@ export const AGENT_RUNNER_REGISTRY: ReadonlyArray<AgentRunnerDescriptor> = [
     accountProvider: "claude_agent",
     serviceRef: "claude",
     capabilityRef: CLAUDE_AGENT_CAPABILITY_REF,
+    task: CLAUDE_AGENT_RUNNER_TASK,
     runtime: {
       sdkPackage: CLAUDE_AGENT_SDK_PACKAGE,
       readinessProbe: "claude_agent_sdk_import",
@@ -174,16 +268,9 @@ export const AGENT_RUNNER_REGISTRY: ReadonlyArray<AgentRunnerDescriptor> = [
         enforcement: "deny_before_tool_use",
       },
     },
-    canRunAssignment: (codingAssignment) => claudeAgentTaskFrom(codingAssignment) !== null,
-    execute: (state, lease, now, options) =>
-      executeClaudeAgentAssignment(state, lease, now, {
-        ...commonExecutionOptions(options),
-        ...(options.claudeAgentCheckoutRunner === undefined
-          ? {}
-          : { checkoutRunner: options.claudeAgentCheckoutRunner }),
-        ...(options.claudeAgentProbe === undefined ? {} : { claudeAgentProbe: options.claudeAgentProbe }),
-        ...(options.claudeAgentRunner === undefined ? {} : { claudeAgentRunner: options.claudeAgentRunner }),
-      } satisfies ClaudeAgentExecutionOptions),
+    canRunAssignment: canRunClaudeAgentAssignment,
+    run: runClaudeAgentRunner,
+    execute: (state, lease, now, options) => runClaudeAgentRunner({ state, lease, now, options }),
   },
   {
     kind: "codex",
@@ -192,6 +279,7 @@ export const AGENT_RUNNER_REGISTRY: ReadonlyArray<AgentRunnerDescriptor> = [
     accountProvider: "codex",
     serviceRef: "codex",
     capabilityRef: CODEX_AGENT_CAPABILITY_REF,
+    task: CODEX_AGENT_RUNNER_TASK,
     runtime: {
       sdkPackage: CODEX_AGENT_SDK_PACKAGE,
       readinessProbe: "codex_sdk_import_or_cli_login",
@@ -211,24 +299,40 @@ export const AGENT_RUNNER_REGISTRY: ReadonlyArray<AgentRunnerDescriptor> = [
         enforcement: "reject_closeout_on_escape",
       },
     },
-    canRunAssignment: (codingAssignment) => codexAgentTaskFrom(codingAssignment) !== null,
-    execute: (state, lease, now, options) =>
-      executeCodexAgentAssignment(state, lease, now, {
-        ...commonExecutionOptions(options),
-        ...(options.codexAgentProbe === undefined ? {} : { codexAgentProbe: options.codexAgentProbe }),
-        ...(options.codexAgentRunner === undefined ? {} : { codexAgentRunner: options.codexAgentRunner }),
-        ...(options.codexAuthValidityProbe === undefined
-          ? {}
-          : { codexAuthValidityProbe: options.codexAuthValidityProbe }),
-        ...(options.onCodexProgress === undefined ? {} : { onProgress: options.onCodexProgress }),
-      } satisfies CodexAgentExecutionOptions),
+    canRunAssignment: canRunCodexAgentAssignment,
+    run: runCodexAgentRunner,
+    execute: (state, lease, now, options) => runCodexAgentRunner({ state, lease, now, options }),
   },
 ]
+
+export const AGENT_RUNNER_REGISTRY_BY_KIND = Object.freeze(
+  Object.fromEntries(AGENT_RUNNER_REGISTRY.map((runner) => [runner.kind, runner])) as Record<
+    AgentRunnerKind,
+    AgentRunnerDescriptor
+  >,
+)
+
+export const AGENT_RUNNER_REGISTRY_BY_AGENT_KIND = Object.freeze(
+  Object.fromEntries(AGENT_RUNNER_REGISTRY.map((runner) => [runner.agentKind, runner])) as Record<
+    AgentRunnerTaskAgentKind,
+    AgentRunnerDescriptor
+  >,
+)
 
 export function agentRunnerForAdapterKind(
   adapterKind: AgentRuntimeAdapterKind,
 ): AgentRunnerDescriptor | null {
   return AGENT_RUNNER_REGISTRY.find((runner) => runner.adapterKind === adapterKind) ?? null
+}
+
+export function agentRunnerForKind(kind: AgentRunnerKind): AgentRunnerDescriptor {
+  return AGENT_RUNNER_REGISTRY_BY_KIND[kind]
+}
+
+export function agentRunnerForAgentKind(
+  agentKind: AgentRunnerTaskAgentKind,
+): AgentRunnerDescriptor {
+  return AGENT_RUNNER_REGISTRY_BY_AGENT_KIND[agentKind]
 }
 
 export function agentRunnerResolutionForLease(lease: PylonAssignmentLease): AgentRunnerResolution {
@@ -255,9 +359,7 @@ export function agentRunnerServiceForLease(lease: PylonAssignmentLease): AgentRu
   const codingAssignment = lease.codingAssignment
   const legacyRunner = AGENT_RUNNER_REGISTRY.find((candidate) => {
     if (lease.capabilityRefs.includes(candidate.capabilityRef)) return true
-    if (candidate.kind === "codex") return hasObjectField(codingAssignment, "codex")
-    if (candidate.kind === "claude_agent") return hasObjectField(codingAssignment, "claudeAgent")
-    return false
+    return hasObjectField(codingAssignment, candidate.task.field)
   })
   return legacyRunner?.serviceRef ?? null
 }
@@ -270,5 +372,5 @@ export async function executeRegisteredAgentRunner(
 ): Promise<AgentRunnerCloseoutRecord | null> {
   const resolution = agentRunnerResolutionForLease(lease)
   if (resolution.status !== "matched") return null
-  return resolution.runner.execute(state, lease, now, options)
+  return resolution.runner.run({ state, lease, now, options })
 }

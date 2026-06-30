@@ -2343,15 +2343,13 @@ async function localCodexDispatchAccounts(
 
 function khalaCodexCapacityAdvertisementEnv(
   env: NodeJS.ProcessEnv,
-  _requestedSlots: number,
+  requestedSlots: number,
 ): NodeJS.ProcessEnv {
-  const perAccountTarget =
-    positiveIntegerEnv(env.OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY) ??
-    positiveIntegerEnv(env.OPENAGENTS_PYLON_CODEX_CONCURRENCY) ??
-    1
-  const pooledTarget =
-    positiveIntegerEnv(env.OPENAGENTS_PYLON_CODEX_CONCURRENCY) ??
-    perAccountTarget
+  const requestedTarget = Math.max(5, requestedSlots)
+  const configuredPerAccount = positiveIntegerEnv(env.OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY)
+  const configuredPooled = positiveIntegerEnv(env.OPENAGENTS_PYLON_CODEX_CONCURRENCY)
+  const perAccountTarget = Math.max(configuredPerAccount ?? configuredPooled ?? 0, requestedTarget, 1)
+  const pooledTarget = Math.max(configuredPooled ?? perAccountTarget, requestedTarget, 1)
   return {
     ...env,
     OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY: String(perAccountTarget),
@@ -4609,6 +4607,13 @@ async function main() {
             schema: "openagents.pylon.khala_request_auto_run.v0.1",
           },
         })
+        await new Promise<void>((resolve, reject) => {
+          process.stdout.write("", (error) => {
+            if (error) reject(error)
+            else resolve()
+          })
+        })
+        process.exit(0)
         return
       }
 

@@ -21,9 +21,12 @@ import {
 } from "../src/agent-runtime-adapter"
 import {
   AGENT_RUNNER_REGISTRY,
+  agentRunnerForAgentKind,
+  agentRunnerForKind,
   agentRunnerForLease,
   agentRunnerResolutionForLease,
   agentRunnerServiceForLease,
+  agentTaskPayloadFromAssignment,
 } from "../src/agent-runner-registry"
 import { createBootstrapSummary, parseBootstrapArgs } from "../src/bootstrap"
 import { CLAUDE_AGENT_SDK_PACKAGE } from "../src/claude-agent"
@@ -120,6 +123,7 @@ describe("AgentRuntimeAdapter", () => {
         kind: runner.kind,
         runtime: runner.runtime,
         serviceRef: runner.serviceRef,
+        task: runner.task,
       })),
     ).toEqual([
       {
@@ -147,6 +151,11 @@ describe("AgentRuntimeAdapter", () => {
           },
         },
         serviceRef: "claude",
+        task: {
+          agentKind: "claude_agent_sdk",
+          field: "claudeAgent",
+          schema: CLAUDE_AGENT_TASK_SCHEMA,
+        },
       },
       {
         accountProvider: "codex",
@@ -173,6 +182,11 @@ describe("AgentRuntimeAdapter", () => {
           },
         },
         serviceRef: "codex",
+        task: {
+          agentKind: "codex_sdk",
+          field: "codex",
+          schema: CODEX_AGENT_TASK_SCHEMA,
+        },
       },
     ])
 
@@ -209,6 +223,14 @@ describe("AgentRuntimeAdapter", () => {
     expect(agentRunnerServiceForLease(claudeLease)).toBe("claude")
     expect(agentRunnerForLease(codexLease)?.adapterKind).toBe("codex")
     expect(agentRunnerServiceForLease(codexLease)).toBe("codex")
+    expect(agentRunnerForKind("claude_agent").adapterKind).toBe("claude_code")
+    expect(agentRunnerForKind("codex").adapterKind).toBe("codex")
+    expect(agentRunnerForAgentKind("claude_agent_sdk").kind).toBe("claude_agent")
+    expect(agentRunnerForAgentKind("codex_sdk").kind).toBe("codex")
+    expect(agentTaskPayloadFromAssignment(claudeLease.codingAssignment, agentRunnerForKind("claude_agent").task))
+      .toMatchObject({ agentKind: "claude_agent_sdk", schema: CLAUDE_AGENT_TASK_SCHEMA })
+    expect(agentTaskPayloadFromAssignment(codexLease.codingAssignment, agentRunnerForKind("codex").task))
+      .toMatchObject({ agentKind: "codex_sdk", schema: CODEX_AGENT_TASK_SCHEMA })
   })
 
   test("registry resolution rejects ambiguous mixed-runner assignment payloads", () => {
