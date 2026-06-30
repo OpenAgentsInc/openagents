@@ -335,6 +335,7 @@ const codexSpawnToolDefinition: KhalaToolDefinition = {
     "Require complete repo, commit, and verify pins only for real repository work.",
     "Do not run Codex login. If no ready Pylon Codex account exists, tell the user to connect one first.",
     "This MVP exposes only pylon_ensure, codex_fleet_status, and codex_spawn for Codex fleet control. Do not invent codex_terminate or other Codex fleet tools.",
+    "After codex_spawn, summarize the returned assignment, auto-run, and closeout status; do not read guessed local output files.",
     "Keep count small; this MVP caps fan-out at four assignments.",
   ],
   renderer: { kind: "codex_spawn", rendererRef: "khala.renderer.codex_spawn.v1" },
@@ -591,7 +592,7 @@ export async function spawnCodexInstances(
       slot: index + 1,
       status: accepted ? "accepted" : "failed",
       summary: accepted
-        ? `accepted ${assignmentRef}`
+        ? acceptedSpawnSummary(assignmentRef, json)
         : safeFailureReason(result),
     })
   }
@@ -1145,10 +1146,67 @@ function renderFleetStatus(result: FleetStatusResult): string {
 function renderSpawnResult(result: SpawnCodexInstancesResult): string {
   return [
     `Codex spawn: accepted ${result.acceptedCount}/${result.requestedCount}${result.pylonRef ? ` via ${result.pylonRef}` : ""}`,
-    ...result.results.map(slot =>
-      `- slot ${slot.slot}${slot.accountRef ? ` ${slot.accountRef}` : ""}: ${slot.status}${slot.assignmentRef ? ` ${slot.assignmentRef}` : ` (${slot.summary})`}`,
-    ),
+    ...result.results.map(slot => renderSpawnSlotResult(slot)),
   ].join("\n")
+}
+
+function renderSpawnSlotResult(slot: SpawnSlotResult): string {
+  const headline = `- slot ${slot.slot}${slot.accountRef ? ` ${slot.accountRef}` : ""}: ${slot.status}`
+  const details = slot.summary
+    .split("\n")
+    .map(line => line.trimEnd())
+    .filter(line => line.length > 0)
+  return details.length === 0
+    ? headline
+    : `${headline}\n  ${details.join("\n  ")}`
+}
+
+function acceptedSpawnSummary(
+  assignmentRef: string,
+  payload: Record<string, unknown> | null,
+): string {
+  const autoRun = recordField(payload, "autoRun")
+  const assignmentRun = recordField(payload, "assignmentRun")
+  const lines = [`assignment: ${assignmentRef}`]
+
+  const attempted = booleanField(autoRun, "attempted")
+  const autoRunOk = booleanField(autoRun, "ok")
+  const autoRunReason = stringField(autoRun, "reason")
+  if (attempted === false) {
+    lines.push(`auto-run: not attempted${autoRunReason === null ? "" : ` (${autoRunReason})`}`)
+  } else if (autoRunOk !== null) {
+    lines.push(`auto-run: ${autoRunOk ? "completed" : "failed"}`)
+  } else {
+    lines.push("auto-run: unknown")
+  }
+
+  if (assignmentRun === null) {
+    lines.push("assignment run: no result returned")
+  } else {
+    const runOk = booleanField(assignmentRun, "ok")
+    if (runOk !== null) {
+      lines.push(`assignment run: ${runOk ? "completed" : "failed"}`)
+    }
+    const closeout = recordField(assignmentRun, "closeout")
+    if (closeout !== null) {
+      const closeoutParts = [
+        stringField(closeout, "status"),
+        stringField(closeout, "paymentMode"),
+        stringField(closeout, "settlementState"),
+      ].filter((value): value is string => value !== null)
+      if (closeoutParts.length > 0) lines.push(`closeout: ${closeoutParts.join(", ")}`)
+      const resultRefs = stringArrayField(closeout, "resultRefs")
+      if (resultRefs.length > 0) lines.push(`result refs: ${resultRefs.slice(0, 3).join(", ")}`)
+      const blockerRefs = stringArrayField(closeout, "blockerRefs")
+      lines.push(`blocker refs: ${blockerRefs.length === 0 ? "none" : blockerRefs.slice(0, 3).join(", ")}`)
+    }
+    const closeoutReceipt = recordField(assignmentRun, "closeoutReceipt")
+    const closeoutRef = stringField(closeoutReceipt, "closeoutRef")
+    if (closeoutRef !== null) lines.push(`closeout ref: ${closeoutRef}`)
+  }
+
+  lines.push("next: summarize this status; no local output path was returned")
+  return lines.join("\n")
 }
 
 function readyAccountCount(accounts: readonly AccountRow[]): number {
@@ -1250,6 +1308,12 @@ function recordField(source: Record<string, unknown> | null, field: string): Rec
 function arrayField(source: Record<string, unknown> | null, field: string): readonly unknown[] {
   const value = source?.[field]
   return Array.isArray(value) ? value : []
+}
+
+function stringArrayField(source: Record<string, unknown> | null, field: string): readonly string[] {
+  return arrayField(source, field)
+    .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+    .map(value => value.trim())
 }
 
 function record(value: unknown): Record<string, unknown> | null {

@@ -137,7 +137,7 @@ describe("khala code desktop app shell", () => {
 
     expect(css).toContain("padding: 0 14px")
     expect(css).toContain("height: 100%")
-    expect(css).toContain("padding: 0 4px")
+    expect(css).toContain("padding: 0 4px 18px")
     expect(css).not.toContain("padding: 28px 14px 12px")
     expect(css).not.toContain("padding: 10px 4px 20px")
     expect(css).not.toContain("padding-top: 16px")
@@ -278,6 +278,11 @@ describe("khala code desktop app shell", () => {
       output: "read_blocked_binary: read only supports text files",
       status: "failed",
       toolName: "read",
+    })
+    expect(parseToolTranscript("codex_spawn: running\n\nPreparing the Pylon/Codex handoff...")).toEqual({
+      output: "Preparing the Pylon/Codex handoff...",
+      status: "running",
+      toolName: "codex_spawn",
     })
   })
 

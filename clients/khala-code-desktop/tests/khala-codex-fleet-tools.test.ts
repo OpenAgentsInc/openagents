@@ -248,6 +248,10 @@ describe("Khala Code Codex fleet tools", () => {
       assignmentRef: "assignment.public.codex_agent_task.test",
       status: "accepted",
     })
+    expect(result.results[0]?.summary).toContain("assignment: assignment.public.codex_agent_task.test")
+    expect(result.results[0]?.summary).toContain("auto-run: not attempted (disabled_by_no_run)")
+    expect(result.results[0]?.summary).toContain("assignment run: no result returned")
+    expect(result.results[0]?.summary).toContain("no local output path was returned")
     expect(calls.some(call => pylonArgs(call)[0] === "khala" && pylonArgs(call)[1] === "request")).toBe(true)
   })
 
@@ -298,6 +302,21 @@ describe("Khala Code Codex fleet tools", () => {
         return ok({
           assignmentRef: "assignment.public.codex_agent_task.default",
           autoRun: {
+            attempted: true,
+            ok: true,
+          },
+          assignmentRun: {
+            closeout: {
+              assignmentRef: "assignment.public.codex_agent_task.default",
+              blockerRefs: [],
+              paymentMode: "no-spend",
+              resultRefs: ["result.public.pylon.codex_agent_task.fixture_repair_passed"],
+              settlementState: "not_applicable",
+              status: "accepted",
+            },
+            closeoutReceipt: {
+              closeoutRef: "assignment.closeout.assignment.public.codex_agent_task.default",
+            },
             ok: true,
           },
         })
@@ -318,6 +337,11 @@ describe("Khala Code Codex fleet tools", () => {
       pylonRef: "pylon.local.fresh",
       requestedCount: 1,
     })
+    expect(result.results[0]?.summary).toContain("auto-run: completed")
+    expect(result.results[0]?.summary).toContain("assignment run: completed")
+    expect(result.results[0]?.summary).toContain("closeout: accepted, no-spend, not_applicable")
+    expect(result.results[0]?.summary).toContain("blocker refs: none")
+    expect(result.results[0]?.summary).toContain("closeout ref: assignment.closeout.assignment.public.codex_agent_task.default")
     const heartbeatIndex = calls.findIndex(call => pylonArgs(call)[0] === "presence")
     const requestIndex = calls.findIndex(call => pylonArgs(call)[0] === "khala" && pylonArgs(call)[1] === "request")
     expect(heartbeatIndex).toBeGreaterThanOrEqual(0)

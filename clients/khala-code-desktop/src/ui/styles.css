@@ -121,7 +121,7 @@ button {
   min-height: 0;
   margin: 0 auto;
   overflow-y: auto;
-  padding: 0 4px;
+  padding: 0 4px 18px;
   scrollbar-color: rgba(79, 208, 255, 0.38) transparent;
 }
 

@@ -189,6 +189,7 @@ describe("Khala Code desktop chat runtime", () => {
     expect(requestMessages[0]?.content).toContain("avoid long front-loaded plans")
     expect(requestMessages[0]?.content).toContain("Pylon/Codex fleet tools")
     expect(requestMessages[0]?.content).toContain("Do not call or invent codex_terminate")
+    expect(requestMessages[0]?.content).toContain("summarize only the returned assignment")
     expect(requestMessages[0]?.content).toContain("Never end a turn with only tool output")
     expect(requestMessages[0]?.content).toContain("do not infer behavior from filenames alone")
     expect(requestMessages[0]?.content).toContain("If a tool result is truncated")
@@ -530,6 +531,14 @@ describe("Khala Code desktop chat runtime", () => {
       message.tool_call_id === "call_read" &&
       message.content?.includes("hello from the local tool") === true
     )).toBe(true)
+  })
+
+  test("populates slow codex_spawn running cards with useful progress text", async () => {
+    const source = await Bun.file(new URL("../src/bun/khala-chat-runtime.ts", import.meta.url)).text()
+
+    expect(source).toContain("codex_spawn: running")
+    expect(source).toContain("Preparing the Pylon/Codex handoff")
+    expect(source).toContain("waiting for the local Codex worker to return status")
   })
 
   test("continues local inspection after a truncated ls instead of accepting a final answer", async () => {

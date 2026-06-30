@@ -46,6 +46,7 @@ const KHALA_CODE_SYSTEM_PROMPT = [
   "Use local tools whenever helpful. Never claim a tool ran unless the host returned a tool result.",
   "For tool-list or capability questions, answer from the tool catalog without calling tools.",
   "For Codex instance launch or monitoring, use only these Pylon/Codex fleet tools: pylon_ensure, codex_fleet_status, codex_spawn. Do not call or invent codex_terminate or other Codex fleet tools.",
+  "After codex_spawn, summarize only the returned assignment, auto-run, and closeout status unless a tool explicitly returns a real local output path.",
   "For local files, do not infer behavior from filenames alone. If you only listed a directory, answer only with exact listed names until relevant files are read.",
   "If a tool result is truncated, continue with a narrower path, larger limit, offset, or another appropriate tool before answering.",
   "When answering from read results, preserve exact paths, line facts, and code literals. Do not rewrite code from memory.",
@@ -1026,6 +1027,17 @@ function toolMessageContent(result: KhalaToolResult): string {
 }
 
 function toolTranscriptRunningBody(toolName: string): string {
+  if (toolName === "codex_spawn") {
+    return [
+      "codex_spawn: running",
+      "",
+      "Preparing the Pylon/Codex handoff...",
+      "- confirming local Pylon is online",
+      "- publishing a fresh Pylon heartbeat",
+      "- creating the hosted assignment",
+      "- waiting for the local Codex worker to return status",
+    ].join("\n")
+  }
   return `${toolName}: running`
 }
 
