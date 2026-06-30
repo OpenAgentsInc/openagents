@@ -268,6 +268,8 @@ export type PylonCodexAssignmentTraceStatus = Readonly<{
     latestEventKind: string | null
     latestStatus: string | null
     latestObservedAt: string | null
+    latestProgressStatus: string | null
+    latestProgressObservedAt: string | null
   }>
   tokenUsage: PylonCodexAssignmentProof['tokenUsage'] &
     Readonly<{ status: 'pending' | 'recorded' }>
@@ -484,6 +486,8 @@ type PylonCodexAssignmentEventAggregateRow = Readonly<{
   latest_event_kind: string | null
   latest_status: string | null
   latest_observed_at: string | null
+  latest_progress_status: string | null
+  latest_progress_observed_at: string | null
 }>
 
 const boundedProofRefs = (
@@ -757,6 +761,26 @@ export const makeD1PylonCodexAssignmentProofStore = (
               ORDER BY created_at DESC
               LIMIT 1
             ) AS latest_status,
+            (
+              SELECT status
+              FROM pylon_api_events
+              WHERE assignment_ref = ?
+                AND owner_agent_user_id = ?
+                AND event_kind = 'assignment_progress'
+                AND archived_at IS NULL
+              ORDER BY created_at DESC
+              LIMIT 1
+            ) AS latest_progress_status,
+            (
+              SELECT created_at
+              FROM pylon_api_events
+              WHERE assignment_ref = ?
+                AND owner_agent_user_id = ?
+                AND event_kind = 'assignment_progress'
+                AND archived_at IS NULL
+              ORDER BY created_at DESC
+              LIMIT 1
+            ) AS latest_progress_observed_at,
             MAX(created_at) AS latest_observed_at
           FROM pylon_api_events
           WHERE assignment_ref = ?
@@ -765,6 +789,10 @@ export const makeD1PylonCodexAssignmentProofStore = (
         `,
       )
       .bind(
+        input.assignment.assignmentRef,
+        input.ownerAgentUserId,
+        input.assignment.assignmentRef,
+        input.ownerAgentUserId,
         input.assignment.assignmentRef,
         input.ownerAgentUserId,
         input.assignment.assignmentRef,
@@ -932,6 +960,9 @@ export const makeD1PylonCodexAssignmentProofStore = (
         count: Number(eventRow?.event_count ?? 0),
         latestEventKind: eventRow?.latest_event_kind ?? null,
         latestObservedAt: eventRow?.latest_observed_at ?? null,
+        latestProgressObservedAt:
+          eventRow?.latest_progress_observed_at ?? null,
+        latestProgressStatus: eventRow?.latest_progress_status ?? null,
         latestStatus: eventRow?.latest_status ?? null,
         progressCount: Number(eventRow?.progress_count ?? 0),
       },
