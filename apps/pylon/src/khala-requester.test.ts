@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test"
 import {
   buildPylonKhalaChatRequestBody,
   issuePylonKhalaRequest,
+  resumePylonKhalaRequest,
 } from "./khala-requester.js"
 
 describe("Pylon Khala requester", () => {
@@ -66,5 +67,93 @@ describe("Pylon Khala requester", () => {
     await expect(result).rejects.toThrow(
       "blocker.public.pylon_dispatch.duplicate_active_assignment",
     )
+  })
+
+  test("parses CRLF SSE frames, public event text, and durable resume metadata", async () => {
+    const fetchMock = (async () =>
+      new Response(
+        [
+          ": keepalive\r\n",
+          "event: delta\r\n",
+          'data: {"text":"Hel"}\r\n',
+          "\r\n",
+          'data: {"choices":[{"delta":{"content":"lo"}}]}\r\n',
+          "\r\n",
+          "data: [DONE]\r\n",
+          "\r\n",
+        ].join(""),
+        {
+          headers: {
+            "openagents-durable-stream-url": "/v1/chat/completions/durable/request.public.123",
+            "stream-closed": "true",
+            "stream-next-offset": "128",
+            "stream-up-to-date": "true",
+          },
+        },
+      )) as unknown as typeof fetch
+
+    const result = await issuePylonKhalaRequest(
+      {
+        agentToken: "oa_agent_test",
+        baseUrl: "https://openagents.example",
+        fetch: fetchMock,
+      },
+      {
+        prompt: "Run the public-safe fixture.",
+        workflow: "codex_agent_task",
+      },
+    )
+
+    expect(result.diagnostics).toEqual([])
+    expect(result.durableRequestId).toBe("request.public.123")
+    expect(result.frames.map((frame) => frame.event ?? null)).toEqual(["delta", null, null])
+    expect(result.nextOffset).toBe("128")
+    expect(result.streamClosed).toBe(true)
+    expect(result.streamUpToDate).toBe(true)
+    expect(result.text).toBe("Hello")
+  })
+
+  test("records malformed SSE JSON as a typed diagnostic instead of silently dropping stream evidence", async () => {
+    const fetchMock = (async () =>
+      new Response(
+        [
+          "event: delta\n",
+          'data: {"text":"ok"}\n',
+          "\n",
+          "event: delta\n",
+          "data: {not-json}\n",
+          "\n",
+        ].join(""),
+        {
+          headers: {
+            "stream-up-to-date": "true",
+          },
+        },
+      )) as unknown as typeof fetch
+
+    const result = await resumePylonKhalaRequest(
+      {
+        agentToken: "oa_agent_test",
+        baseUrl: "https://openagents.example",
+        fetch: fetchMock,
+      },
+      {
+        durableRequestId: "request.public.123",
+        offset: 0,
+      },
+    )
+
+    expect(result.text).toBe("ok")
+    expect(result.diagnostics).toHaveLength(1)
+    expect(result.diagnostics[0]).toMatchObject({
+      code: "malformed_sse_json",
+      event: "delta",
+      frameIndex: 1,
+    })
+    expect(result.frames[1]).toMatchObject({
+      data: "{not-json}",
+      event: "delta",
+      parsed: null,
+    })
   })
 })

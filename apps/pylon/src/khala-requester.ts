@@ -45,10 +45,19 @@ export type PylonKhalaResumeInput = {
 
 export type PylonKhalaSseFrame = {
   data: string
+  event?: string
   parsed: unknown | null
 }
 
+export type PylonKhalaStreamDiagnostic = {
+  code: "malformed_sse_json"
+  event: string | null
+  frameIndex: number
+  reason: string
+}
+
 export type PylonKhalaStreamProjection = {
+  diagnostics: PylonKhalaStreamDiagnostic[]
   durableRequestId: string | null
   durableStreamUrl: string | null
   frames: PylonKhalaSseFrame[]
@@ -57,6 +66,23 @@ export type PylonKhalaStreamProjection = {
   streamClosed: boolean
   streamUpToDate: boolean
   text: string
+}
+
+export class PylonKhalaStreamFrameError extends Error {
+  readonly _tag = "PylonKhalaStreamFrameError"
+  readonly code: "malformed_sse_json"
+  readonly event: string | null
+  readonly frameIndex: number
+  readonly reason: string
+
+  constructor(input: PylonKhalaStreamDiagnostic) {
+    super(`malformed SSE JSON frame ${input.frameIndex}: ${input.reason}`)
+    this.name = "PylonKhalaStreamFrameError"
+    this.code = input.code
+    this.event = input.event
+    this.frameIndex = input.frameIndex
+    this.reason = input.reason
+  }
 }
 
 export type PylonKhalaRequestResult = PylonKhalaStreamProjection & {
@@ -695,27 +721,67 @@ export function buildPylonKhalaChatRequestBody(
   return body
 }
 
-function parseSseFrames(rawSse: string): PylonKhalaSseFrame[] {
-  return rawSse
+function parseSseBlock(block: string): { data: string; event?: string } | null {
+  const data: string[] = []
+  let event: string | undefined
+  for (const line of block.split("\n")) {
+    if (line === "" || line.startsWith(":")) continue
+    const colonIndex = line.indexOf(":")
+    const field = colonIndex >= 0 ? line.slice(0, colonIndex) : line
+    const rawValue = colonIndex >= 0 ? line.slice(colonIndex + 1) : ""
+    const value = rawValue.startsWith(" ") ? rawValue.slice(1) : rawValue
+    if (field === "event") event = value
+    if (field === "data") data.push(value)
+  }
+  if (event === undefined && data.length === 0) return null
+  return event === undefined
+    ? { data: data.join("\n") }
+    : { data: data.join("\n"), event }
+}
+
+function parseSseFrames(rawSse: string): {
+  diagnostics: PylonKhalaStreamDiagnostic[]
+  frames: PylonKhalaSseFrame[]
+} {
+  const diagnostics: PylonKhalaStreamDiagnostic[] = []
+  const frames = rawSse
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
     .split(/\n\n+/)
-    .map((chunk) =>
-      chunk
-        .split(/\n/)
-        .filter((line) => line.startsWith("data:"))
-        .map((line) => line.slice("data:".length).trimStart())
-        .join("\n"),
-    )
-    .filter((data) => data !== "")
-    .map((data) => {
-      if (data === "[DONE]") {
-        return { data, parsed: null }
+    .flatMap((chunk) => {
+      const frame = parseSseBlock(chunk)
+      return frame === null || frame.data === "" ? [] : [frame]
+    })
+    .map((frame, frameIndex) => {
+      if (frame.data === "[DONE]") {
+        return frame.event === undefined
+          ? { data: frame.data, parsed: null }
+          : { data: frame.data, event: frame.event, parsed: null }
       }
       try {
-        return { data, parsed: JSON.parse(data) }
-      } catch {
-        return { data, parsed: null }
+        const parsed = JSON.parse(frame.data)
+        return frame.event === undefined
+          ? { data: frame.data, parsed }
+          : { data: frame.data, event: frame.event, parsed }
+      } catch (error) {
+        const streamError = new PylonKhalaStreamFrameError({
+          code: "malformed_sse_json",
+          event: frame.event ?? null,
+          frameIndex,
+          reason: error instanceof Error ? error.message : String(error),
+        })
+        diagnostics.push({
+          code: streamError.code,
+          event: streamError.event,
+          frameIndex: streamError.frameIndex,
+          reason: streamError.reason,
+        })
+        return frame.event === undefined
+          ? { data: frame.data, parsed: null }
+          : { data: frame.data, event: frame.event, parsed: null }
       }
     })
+  return { diagnostics, frames }
 }
 
 function textFromFrames(frames: readonly PylonKhalaSseFrame[]): string {
@@ -727,6 +793,10 @@ function textFromFrames(frames: readonly PylonKhalaSseFrame[]): string {
       }
       const choices = (parsed as { choices?: unknown }).choices
       if (!Array.isArray(choices)) {
+        if ((parsed as { text?: unknown }).text !== undefined) {
+          const text = (parsed as { text?: unknown }).text
+          return typeof text === "string" ? text : ""
+        }
         return ""
       }
       return choices
@@ -747,10 +817,11 @@ function streamProjection(input: {
   rawSse: string
   response: Response
 }): PylonKhalaStreamProjection {
-  const frames = parseSseFrames(input.rawSse)
+  const { diagnostics, frames } = parseSseFrames(input.rawSse)
   const durableRequestId =
     durableRequestIdFromUrl(input.durableStreamUrl) ?? input.fallbackRequestId ?? null
   return {
+    diagnostics,
     durableRequestId,
     durableStreamUrl: input.durableStreamUrl,
     frames,
