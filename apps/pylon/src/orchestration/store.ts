@@ -1,6 +1,11 @@
 import type { Database } from "bun:sqlite"
 import { createHash } from "node:crypto"
-import type { AgentRunnerKind } from "../agent-runner-registry.js"
+import {
+  isAgentRunnerKind,
+  normalizeAgentRunnerKind,
+  type AgentRunnerKind,
+  type LegacyAgentRunnerKind,
+} from "../agent-runner-registry.js"
 
 export const ORCHESTRATION_SCHEMA_VERSION = 1
 
@@ -63,7 +68,7 @@ export type DispatchContextStatus =
   | "circuit_broken"
 
 export type OrchestrationRunnerKind = AgentRunnerKind | "generic"
-type StoredRunnerKind = OrchestrationRunnerKind | "claude"
+type StoredRunnerKind = OrchestrationRunnerKind | LegacyAgentRunnerKind
 
 export type DispatchContext = {
   id: string
@@ -101,7 +106,7 @@ export type CreateTaskInput = {
 export type CreateDispatchContextInput = {
   id: string
   assigneeHandle: string
-  runnerKind?: OrchestrationRunnerKind | "claude"
+  runnerKind?: OrchestrationRunnerKind | LegacyAgentRunnerKind
   worktreeId?: string | null
   worktreePath?: string | null
   maxConcurrentSlots?: number
@@ -132,8 +137,14 @@ const parseSpec = (value: string): OrchestrationTaskSpec => {
   }
 }
 
-export function normalizeOrchestrationRunnerKind(kind: OrchestrationRunnerKind | "claude"): OrchestrationRunnerKind {
-  return kind === "claude" ? "claude_agent" : kind
+export function normalizeOrchestrationRunnerKind(
+  kind: OrchestrationRunnerKind | LegacyAgentRunnerKind,
+): OrchestrationRunnerKind {
+  return kind === "generic" ? "generic" : normalizeAgentRunnerKind(kind)
+}
+
+export function isStoredOrchestrationRunnerKind(kind: string): kind is StoredRunnerKind {
+  return kind === "generic" || kind === "claude" || isAgentRunnerKind(kind)
 }
 
 type TaskRow = {

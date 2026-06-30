@@ -34,6 +34,7 @@ import type { PylonAssignmentLease } from "./assignment.js"
 import type { PylonLocalState } from "./state.js"
 
 export type AgentRunnerKind = "claude_agent" | "codex"
+export type LegacyAgentRunnerKind = "claude"
 export type AgentRunnerTaskAgentKind =
   | typeof CLAUDE_AGENT_TASK_AGENT_KIND
   | typeof CODEX_AGENT_TASK_AGENT_KIND
@@ -224,6 +225,16 @@ export const AGENT_RUNNER_REGISTRY: ReadonlyArray<AgentRunnerDescriptor> = [
       } satisfies CodexAgentExecutionOptions),
   },
 ]
+
+export const AGENT_RUNNER_KINDS = AGENT_RUNNER_REGISTRY.map((runner) => runner.kind) as readonly AgentRunnerKind[]
+
+export function isAgentRunnerKind(kind: string): kind is AgentRunnerKind {
+  return AGENT_RUNNER_KINDS.includes(kind as AgentRunnerKind)
+}
+
+export function normalizeAgentRunnerKind(kind: AgentRunnerKind | LegacyAgentRunnerKind): AgentRunnerKind {
+  return kind === "claude" ? "claude_agent" : kind
+}
 
 export function agentRunnerForAdapterKind(
   adapterKind: AgentRuntimeAdapterKind,
