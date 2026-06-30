@@ -190,6 +190,10 @@ class MemoryProofStore
       },
       tokenUsage: {
         rowCount: 2,
+        refs: [
+          'event.inference.served-tokens.pylon-codex.001',
+          'event.inference.served-tokens.pylon-codex.002',
+        ],
         provider: 'pylon-codex-own-capacity',
         model: 'openagents/pylon-codex',
         usageTruth: 'exact',
@@ -253,6 +257,7 @@ class MemoryProofStore
       },
       tokenUsage: {
         rowCount: 0,
+        refs: [],
         provider: 'pylon-codex-own-capacity',
         model: 'openagents/pylon-codex',
         usageTruth: 'exact',
@@ -591,8 +596,10 @@ type ProofTokenUsageRow = Readonly<{
   cache_read_tokens: number
   demand_kind: string
   demand_source: string
+  id: string
   input_tokens: number
   model: string
+  observed_at: string
   output_tokens: number
   provider: string
   reasoning_tokens: number
@@ -923,10 +930,53 @@ const makeFakeProofD1 = (): D1Database & {
     )
   }
 
+  const matchToken = (
+    row: ProofTokenUsageRow,
+    values: ReadonlyArray<unknown>,
+  ): boolean => {
+    const [
+      provider,
+      model,
+      demandKind,
+      demandSource,
+      taskRef,
+      accountRef,
+      actorUserId,
+    ] = values.map(String)
+    return (
+      row.provider === provider &&
+      row.model === model &&
+      row.usage_truth === 'exact' &&
+      row.demand_kind === demandKind &&
+      row.demand_source === demandSource &&
+      row.task_ref === taskRef &&
+      row.account_ref === accountRef &&
+      row.actor_user_id === actorUserId
+    )
+  }
+
   const statement = (query: string): D1PreparedStatement => {
     let bound: ReadonlyArray<unknown> = []
     const stmt: D1PreparedStatement = {
       all: async <T,>() => {
+        if (
+          query.includes('SELECT id') &&
+          query.includes('FROM token_usage_events')
+        ) {
+          return {
+            meta: {} as D1Meta & Record<string, unknown>,
+            results: tokenRows
+              .filter(row => matchToken(row, bound))
+              .sort(
+                (left, right) =>
+                  left.observed_at.localeCompare(right.observed_at) ||
+                  left.id.localeCompare(right.id),
+              )
+              .slice(0, 100)
+              .map(row => ({ id: row.id })) as unknown as T[],
+            success: true as const,
+          }
+        }
         if (query.includes('SELECT trace_uuid')) {
           return {
             meta: {} as D1Meta & Record<string, unknown>,
@@ -981,26 +1031,7 @@ const makeFakeProofD1 = (): D1Database & {
       },
       first: async <T,>() => {
         if (query.includes('FROM token_usage_events')) {
-          const [
-            provider,
-            model,
-            demandKind,
-            demandSource,
-            taskRef,
-            accountRef,
-            actorUserId,
-          ] = bound.map(String)
-          const matches = tokenRows.filter(
-            row =>
-              row.provider === provider &&
-              row.model === model &&
-              row.usage_truth === 'exact' &&
-              row.demand_kind === demandKind &&
-              row.demand_source === demandSource &&
-              row.task_ref === taskRef &&
-              row.account_ref === accountRef &&
-              row.actor_user_id === actorUserId,
-          )
+          const matches = tokenRows.filter(row => matchToken(row, bound))
           return {
             cache_read_tokens: matches.reduce(
               (total, row) => total + row.cache_read_tokens,
@@ -1397,6 +1428,10 @@ describe('GET /api/pylon/codex/proof', () => {
       },
       tokenUsage: {
         rowCount: 2,
+        refs: [
+          'event.inference.served-tokens.pylon-codex.001',
+          'event.inference.served-tokens.pylon-codex.002',
+        ],
         provider: 'pylon-codex-own-capacity',
         model: 'openagents/pylon-codex',
         usageTruth: 'exact',
@@ -1470,8 +1505,10 @@ describe('GET /api/pylon/codex/proof', () => {
         cache_read_tokens: 3,
         demand_kind: 'own_capacity',
         demand_source: 'khala_coding_delegation',
+        id: 'event.inference.served-tokens.pylon-codex.001',
         input_tokens: 100,
         model: 'openagents/pylon-codex',
+        observed_at: '2026-06-26T12:00:01.000Z',
         output_tokens: 50,
         provider: 'pylon-codex-own-capacity',
         reasoning_tokens: 10,
@@ -1485,8 +1522,10 @@ describe('GET /api/pylon/codex/proof', () => {
         cache_read_tokens: 7,
         demand_kind: 'own_capacity',
         demand_source: 'khala_coding_delegation',
+        id: 'event.inference.served-tokens.pylon-codex.002',
         input_tokens: 20,
         model: 'openagents/pylon-codex',
+        observed_at: '2026-06-26T12:00:02.000Z',
         output_tokens: 15,
         provider: 'pylon-codex-own-capacity',
         reasoning_tokens: 4,
@@ -1500,8 +1539,10 @@ describe('GET /api/pylon/codex/proof', () => {
         cache_read_tokens: 1000,
         demand_kind: 'own_capacity',
         demand_source: 'khala_coding_delegation',
+        id: 'event.inference.served-tokens.pylon-codex.other',
         input_tokens: 1000,
         model: 'openagents/pylon-codex',
+        observed_at: '2026-06-26T12:00:03.000Z',
         output_tokens: 1000,
         provider: 'pylon-codex-own-capacity',
         reasoning_tokens: 1000,
@@ -1564,6 +1605,10 @@ describe('GET /api/pylon/codex/proof', () => {
       inputTokens: 120,
       outputTokens: 65,
       reasoningTokens: 14,
+      refs: [
+        'event.inference.served-tokens.pylon-codex.001',
+        'event.inference.served-tokens.pylon-codex.002',
+      ],
       rowCount: 2,
       totalTokens: 185,
       usageTruth: 'exact',
@@ -1767,8 +1812,10 @@ describe('GET /api/pylon/codex/trace-status', () => {
       cache_read_tokens: 3,
       demand_kind: 'own_capacity',
       demand_source: 'khala_coding_delegation',
+      id: 'event.inference.served-tokens.pylon-codex.final',
       input_tokens: 100,
       model: 'openagents/pylon-codex',
+      observed_at: '2026-06-26T12:00:05.000Z',
       output_tokens: 50,
       provider: 'pylon-codex-own-capacity',
       reasoning_tokens: 10,
@@ -1822,6 +1869,7 @@ describe('GET /api/pylon/codex/trace-status', () => {
     })
     expect(complete.tokenUsage).toMatchObject({
       rowCount: 1,
+      refs: ['event.inference.served-tokens.pylon-codex.final'],
       status: 'recorded',
       totalTokens: 150,
     })

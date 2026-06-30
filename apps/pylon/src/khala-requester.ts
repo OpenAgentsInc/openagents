@@ -151,6 +151,7 @@ export type PylonKhalaAssignmentTraceStatusResult = {
     outputTokens: number
     provider: "pylon-codex-own-capacity"
     reasoningTokens: number
+    refs: string[]
     rowCount: number
     status: "pending" | "recorded"
     totalTokens: number
@@ -194,6 +195,7 @@ export type PylonKhalaProofResult = {
     outputTokens: number
     provider: "pylon-codex-own-capacity"
     reasoningTokens: number
+    refs: string[]
     rowCount: number
     totalTokens: number
     usageTruth: "exact"
@@ -449,6 +451,7 @@ const checklistItem = (ref: string, ok: boolean): PylonKhalaProofChecklistItem =
 export function evaluatePylonKhalaProofChecklist(
   proof: Omit<PylonKhalaProofResult, "ok" | "proofChecklist">,
 ): PylonKhalaProofChecklist {
+  const tokenUsageRefs = proof.tokenUsage.refs ?? []
   const items = [
     checklistItem(
       "check.khala_proof.schema.codex_assignment_proof_v1",
@@ -466,7 +469,8 @@ export function evaluatePylonKhalaProofChecklist(
       "check.khala_proof.token_usage.rows_and_tokens_present",
       proof.tokenUsage.rowCount > 0 &&
         proof.tokenUsage.totalTokens > 0 &&
-        proof.tokenUsage.totalTokens >= proof.tokenUsage.inputTokens + proof.tokenUsage.outputTokens,
+        proof.tokenUsage.totalTokens >= proof.tokenUsage.inputTokens + proof.tokenUsage.outputTokens &&
+        tokenUsageRefs.length >= Math.min(proof.tokenUsage.rowCount, 100),
     ),
     checklistItem(
       "check.khala_proof.traces.owner_only_present",
@@ -514,6 +518,8 @@ export function evaluatePylonKhalaCloseoutChecklist(
   const statusCloseoutPolicy =
     status.closeoutPolicy ?? unavailableCloseoutPolicy
   const proofCloseoutPolicy = proof.closeoutPolicy ?? unavailableCloseoutPolicy
+  const statusTokenUsageRefs = status.tokenUsage.refs ?? []
+  const proofTokenUsageRefs = proof.tokenUsage.refs ?? []
   const items = [
     checklistItem(
       "check.khala_closeout.status_schema.codex_assignment_trace_status_v1",
@@ -579,6 +585,13 @@ export function evaluatePylonKhalaCloseoutChecklist(
         status.tokenUsage.reasoningTokens === proof.tokenUsage.reasoningTokens &&
         status.tokenUsage.cacheReadTokens === proof.tokenUsage.cacheReadTokens &&
         status.tokenUsage.totalTokens === proof.tokenUsage.totalTokens,
+    ),
+    checklistItem(
+      "check.khala_closeout.token_usage_refs_consistent",
+      statusTokenUsageRefs.length >= Math.min(status.tokenUsage.rowCount, 100) &&
+        proofTokenUsageRefs.length >= Math.min(proof.tokenUsage.rowCount, 100) &&
+        statusTokenUsageRefs.length === proofTokenUsageRefs.length &&
+        statusTokenUsageRefs.every((ref, index) => ref === proofTokenUsageRefs[index]),
     ),
     checklistItem(
       "check.khala_closeout.proof_checklist.ok",

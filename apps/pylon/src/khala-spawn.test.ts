@@ -338,6 +338,7 @@ const exactProof: PylonKhalaProofResult = {
     outputTokens: 5,
     provider: "pylon-codex-own-capacity",
     reasoningTokens: 1,
+    refs: ["event.inference.served-tokens.pylon-codex.owner"],
     rowCount: 1,
     totalTokens: 16,
     usageTruth: "exact",

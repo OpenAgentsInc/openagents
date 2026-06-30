@@ -92,6 +92,7 @@ const proofResult = (assignmentRef: string, totalTokens: number): PylonKhalaProo
     outputTokens: 20,
     provider: "pylon-codex-own-capacity",
     reasoningTokens: 5,
+    refs: [`event.inference.served-tokens.pylon-codex.${assignmentRef}`],
     rowCount: 1,
     totalTokens,
     usageTruth: "exact",
