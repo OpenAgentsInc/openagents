@@ -1640,7 +1640,7 @@ const historyChartBars = (
               h.div(
                 [
                   Ui.className<Message>(
-                    `grid min-w-0 gap-1 border px-2 py-1.5 ${
+                    `grid h-[2.75rem] min-w-0 grid-rows-[minmax(0,1fr)_minmax(0,1fr)] gap-1 border px-2 py-1.5 ${
                       isPeak
                         ? 'border-[#3a7bff] bg-[#0b1322]'
                         : 'border-[#1d1d1d] bg-[#050505]'
@@ -1652,8 +1652,8 @@ const historyChartBars = (
                     [
                       Ui.className<Message>(
                         isPeak
-                          ? 'truncate text-[0.58rem] uppercase leading-none text-[#8fb6ff]'
-                          : 'truncate text-[0.58rem] uppercase leading-none text-white/35',
+                          ? 'self-center truncate text-[0.58rem] uppercase leading-none text-[#8fb6ff]'
+                          : 'self-center truncate text-[0.58rem] uppercase leading-none text-white/35',
                       ),
                     ],
                     [formatHistoryDayLabel(point.day)],
@@ -1662,28 +1662,12 @@ const historyChartBars = (
                     [
                       Ui.className<Message>(
                         isPeak
-                          ? 'truncate text-[0.72rem] font-semibold leading-none tabular-nums text-[#f1efe8]'
-                          : 'truncate text-[0.72rem] font-semibold leading-none tabular-nums text-white/70',
+                          ? 'self-center truncate text-[0.72rem] font-semibold leading-none tabular-nums text-[#f1efe8]'
+                          : 'self-center truncate text-[0.72rem] font-semibold leading-none tabular-nums text-white/70',
                       ),
                     ],
                     [formatCompactNumber(point.tokensServed)],
                   ),
-                  ...(pointProjection === undefined
-                    ? []
-                    : [
-                        h.span(
-                          [
-                            Ui.className<Message>(
-                              'truncate text-[0.56rem] font-medium leading-none tabular-nums text-[#7fb0ff]',
-                            ),
-                          ],
-                          [
-                            `EOD est. ${formatCompactNumber(
-                              pointProjection.projectedTokens,
-                            )}`,
-                          ],
-                        ),
-                      ]),
                 ],
               ),
             ],

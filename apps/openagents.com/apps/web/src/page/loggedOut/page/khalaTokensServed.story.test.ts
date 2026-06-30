@@ -314,11 +314,15 @@ describe('Khala Tokens Served history chart (#6227)', () => {
       'grid-template-columns: repeat(6, minmax(0, 1fr));',
     )
     expect(markup).toContain('grid-rows-[minmax(9.25rem,1fr)_auto]')
+    expect(markup).toContain('"h-[2.75rem]":true')
+    expect(markup).toContain(
+      '"grid-rows-[minmax(0,1fr)_minmax(0,1fr)]":true',
+    )
     expect(markup).toContain('min-h-[9.25rem]')
     expect(markup).toContain('"data-projection":"end-of-day"')
     expect(markup).toContain('"data-projected-tokens":"24613953"')
     expect(markup).toContain('repeating-linear-gradient(135deg')
-    expect(markup).toContain('EOD est. 24.6M')
+    expect(markup).not.toContain('EOD est. 24.6M')
     expect(markup).toContain(
       '2026-06-29 projected by midnight: 24,613,953 tokens',
     )
