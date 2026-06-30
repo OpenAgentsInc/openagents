@@ -1,4 +1,3 @@
-import { ApplicationMenu, BrowserView, BrowserWindow } from "electrobun/bun"
 import { existsSync } from "node:fs"
 import { resolve } from "node:path"
 
@@ -10,18 +9,12 @@ import {
 } from "../shared/rpc.js"
 import { khalaCodeDesktopApplicationMenu } from "./application-menu.js"
 import { createAppleFmSidecarHost } from "./apple-fm-sidecar.js"
+import {
+  readKhalaCodeHeadlessPrompt,
+  runKhalaCodeDesktopHeadlessJsonl,
+} from "./headless.js"
 import { createOnDeviceDeciderHost } from "./on-device-decider-host.js"
 import { createKhalaCodeDesktopRpcRequestHandlers } from "./rpc-handlers.js"
-
-// Optional on-device Apple Foundation Models sidecar (Mac/Apple-Silicon only).
-// Off by default and fails soft: readiness reports unavailability rather than
-// throwing when the FM bridge or hardware is missing.
-const appleFmSidecar = createAppleFmSidecarHost()
-
-// Optional on-device decider: a small local model that selects a
-// platform-appropriate backend (Apple FM on Apple Silicon, self-hosted GPT-OSS
-// elsewhere). Reuses the sidecar above so a single helper is supervised.
-const onDeviceDecider = createOnDeviceDeciderHost({ sidecar: appleFmSidecar })
 
 const previewPort = (): number => {
   const parsed = Number(
@@ -119,15 +112,7 @@ const jsonResponse = (payload: unknown, init?: ResponseInit): Response =>
   })
 
 let emitChatTurnEvent = (_event: KhalaCodeDesktopChatTurnEvent): void => {}
-
-const rpcRequestHandlers: KhalaCodeDesktopRPCSchema["requests"] =
-  createKhalaCodeDesktopRpcRequestHandlers({
-    appleFmReadiness: () => appleFmSidecar.readiness(),
-    emitChatTurnEvent: event => emitChatTurnEvent(event),
-    env: Bun.env,
-    onDeviceDeciderStatus: () => onDeviceDecider.select(),
-    workingDirectory: resolveToolWorkingDirectory(Bun.env),
-  })
+let rpcRequestHandlers: KhalaCodeDesktopRPCSchema["requests"]
 
 const previewRpcResponse = async (
   request: Request,
@@ -201,6 +186,46 @@ const startPreviewServer = (): void => {
     }
   }
 }
+
+const argv = Bun.argv.slice(2)
+if (argv.includes("--json")) {
+  const promptArgv = argv[0] === "code" ? argv.slice(1) : argv
+  const prompt = await readKhalaCodeHeadlessPrompt(promptArgv)
+  if (prompt.length === 0) {
+    process.stderr.write("khala code --json requires a prompt argument or stdin.\n")
+    process.exit(2)
+  }
+  try {
+    await runKhalaCodeDesktopHeadlessJsonl({
+      env: Bun.env,
+      prompt,
+      workingDirectory: resolveToolWorkingDirectory(Bun.env),
+    })
+    process.exit(0)
+  } catch {
+    process.exit(1)
+  }
+}
+
+const { ApplicationMenu, BrowserView, BrowserWindow } = await import("electrobun/bun")
+
+// Optional on-device Apple Foundation Models sidecar (Mac/Apple-Silicon only).
+// Off by default and fails soft: readiness reports unavailability rather than
+// throwing when the FM bridge or hardware is missing.
+const appleFmSidecar = createAppleFmSidecarHost()
+
+// Optional on-device decider: a small local model that selects a
+// platform-appropriate backend (Apple FM on Apple Silicon, self-hosted GPT-OSS
+// elsewhere). Reuses the sidecar above so a single helper is supervised.
+const onDeviceDecider = createOnDeviceDeciderHost({ sidecar: appleFmSidecar })
+
+rpcRequestHandlers = createKhalaCodeDesktopRpcRequestHandlers({
+  appleFmReadiness: () => appleFmSidecar.readiness(),
+  emitChatTurnEvent: event => emitChatTurnEvent(event),
+  env: Bun.env,
+  onDeviceDeciderStatus: () => onDeviceDecider.select(),
+  workingDirectory: resolveToolWorkingDirectory(Bun.env),
+})
 
 const rpc = BrowserView.defineRPC<KhalaCodeDesktopRPCSchema>({
   maxRequestTime: KHALA_CODE_DESKTOP_RPC_MAX_REQUEST_TIME_MS,

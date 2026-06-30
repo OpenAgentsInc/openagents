@@ -1,3 +1,4 @@
+import type { KhalaToolEvent } from "@openagentsinc/khala-tools"
 import type { KhalaAppleFmReadiness } from "./apple-fm-readiness.js"
 import type {
   KhalaCodexRateLimitProviderStatus,
@@ -40,6 +41,18 @@ export type KhalaCodeDesktopChatTurnEvent =
       readonly turnId: string
       readonly type: "message_done"
     }
+  | {
+      readonly event: KhalaToolEvent
+      readonly turnId: string
+      readonly type: "tool_event"
+    }
+
+export type KhalaCodeDesktopUsage = {
+  readonly input: number
+  readonly cachedInput: number
+  readonly output: number
+  readonly reasoningOutput: number
+}
 
 export type KhalaCodeDesktopChatTurnRequest = {
   readonly messages: readonly KhalaCodeDesktopMessage[]
@@ -60,6 +73,7 @@ export type KhalaCodeDesktopChatTurnResponse = {
   readonly messages: readonly KhalaCodeDesktopMessage[]
   readonly ok: boolean
   readonly toolNames: readonly string[]
+  readonly usage?: KhalaCodeDesktopUsage
   readonly usedTools: readonly string[]
 }
 
