@@ -94,23 +94,36 @@ describe("khala code desktop app shell", () => {
     const css = await Bun.file(new URL("../src/ui/styles.css", import.meta.url)).text()
 
     expect(html.indexOf('id="resize-button"')).toBeLessThan(html.indexOf('id="send-button"'))
-    expect(css).toContain("grid-template-columns: minmax(0, 1fr) minmax(0, auto) 36px 36px")
+    expect(css).toContain("grid-template-columns: minmax(0, 1fr) minmax(0, auto) 32px 32px")
     expect(css).toContain(".khala-code-composer .oa-ai-command-composer-submit-label")
     expect(css).toContain("position: static")
     expect(main).not.toContain('composerExpanded ? "expanded" : "compact"')
   })
 
   test("starts the composer compact with the placeholder near the top edge", async () => {
+    const html = await Bun.file(new URL("../src/ui/index.html", import.meta.url)).text()
     const css = await Bun.file(new URL("../src/ui/styles.css", import.meta.url)).text()
 
-    expect(css).toContain("--oa-command-composer-height: 8rem")
-    expect(css).toContain("padding: 10px 12px")
-    expect(css).toContain("min-height: 4.25rem")
+    expect(html).toContain('rows="2"')
+    expect(css).toContain("--oa-command-composer-height: 6rem")
+    expect(css).toContain("padding: 8px 10px")
+    expect(css).toContain("min-height: 2.5rem")
     expect(css).toContain("#composer-input")
     expect(css).toContain("padding: 0")
+    expect(css).not.toContain("--oa-command-composer-height: 8rem")
     expect(css).not.toContain("--oa-command-composer-height: 10.25rem")
+    expect(css).not.toContain("min-height: 4.25rem")
     expect(css).not.toContain("min-height: 9rem")
     expect(css).not.toContain("padding: 16px 46px 48px 0")
+  })
+
+  test("caps the transcript and composer columns at 768px", async () => {
+    const css = await Bun.file(new URL("../src/ui/styles.css", import.meta.url)).text()
+
+    expect(css).toContain(".message-list")
+    expect(css).toContain(".khala-code-composer")
+    expect(css.match(/max-width: 768px/g)?.length).toBeGreaterThanOrEqual(2)
+    expect(css).not.toContain("width: min(100%, 48rem)")
   })
 
   test("keeps the composer input available while a turn is pending", async () => {
