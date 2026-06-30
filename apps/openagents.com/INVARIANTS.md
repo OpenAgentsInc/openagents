@@ -1072,11 +1072,18 @@ This is the invariant ledger for `openagents`.
   accepted or settled lifecycle states.
 - Release credits the provider balance and debits the requester held claim
   exactly once. Refund releases the hold without debiting the requester.
-  Release-after-refund, refund-after-release, double-release, and
-  double-refund must not move balances.
-- Reserve, release, and refund each require public-safe receipt rows carrying
-  refs and amounts only. Escrowed or credited amounts are not settled bitcoin
-  until the later payout path records settlement evidence.
+  Forfeit is a validator-only terminal state for forfeitable provider bonds:
+  only validator non-acceptance evidence may trigger it, the worker/provider
+  cannot self-forfeit, and the requester cannot unilaterally slash. A forfeit
+  debits the held claim exactly once and either credits the modeled
+  counterparty or burns the credit claim without crediting a spender. It is not
+  Lightning/on-chain settlement.
+- Release-after-refund, refund-after-release, release/refund-after-forfeit,
+  double-release, double-refund, and double-forfeit must not move balances.
+- Reserve, release, refund, and forfeit each require public-safe receipt rows
+  carrying refs, destinations, and amounts only. Escrowed, credited, or
+  forfeited amounts are not settled bitcoin until the later payout path records
+  settlement evidence.
 - Regression coverage for this policy lives in
   `workers/api/src/artanis-labor-requester.test.ts`,
   `workers/api/src/artanis-studying-labor.test.ts`,

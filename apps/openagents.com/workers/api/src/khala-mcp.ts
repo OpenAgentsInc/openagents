@@ -799,6 +799,40 @@ const spawnStateFromChildren = (
   return 'active'
 }
 
+const spawnStatusAggregate = (
+  assignments: ReadonlyArray<PylonApiAssignmentRecord>,
+): Record<string, number> =>
+  assignments.reduce(
+    (aggregate, assignment) => ({
+      acceptedCount:
+        aggregate.acceptedCount + (assignment.state === 'accepted' ? 1 : 0),
+      acceptedWorkRefCount:
+        aggregate.acceptedWorkRefCount + assignment.acceptedWorkRefs.length,
+      activeCount:
+        aggregate.activeCount +
+        (assignment.state !== 'accepted' && assignment.state !== 'rejected'
+          ? 1
+          : 0),
+      artifactRefCount: aggregate.artifactRefCount + assignment.artifactRefs.length,
+      closeoutRefCount: aggregate.closeoutRefCount + assignment.closeoutRefs.length,
+      proofRefCount: aggregate.proofRefCount + assignment.proofRefs.length,
+      rejectedCount:
+        aggregate.rejectedCount + (assignment.state === 'rejected' ? 1 : 0),
+      rejectionRefCount:
+        aggregate.rejectionRefCount + assignment.rejectionRefs.length,
+    }),
+    {
+      acceptedCount: 0,
+      acceptedWorkRefCount: 0,
+      activeCount: 0,
+      artifactRefCount: 0,
+      closeoutRefCount: 0,
+      proofRefCount: 0,
+      rejectedCount: 0,
+      rejectionRefCount: 0,
+    },
+  )
+
 const spawnStatusProjection = async (input: Readonly<{
   agentStore: AgentRegistrationStore
   principal: McpPrincipal
@@ -834,6 +868,7 @@ const spawnStatusProjection = async (input: Readonly<{
   }
 
   return {
+    aggregate: spawnStatusAggregate(children),
     childCount: children.length,
     children: children.map(spawnChildStatusProjection),
     ok: true,

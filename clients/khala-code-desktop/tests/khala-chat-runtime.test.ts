@@ -524,6 +524,16 @@ describe("Khala Code desktop chat runtime", () => {
       event.message.role === "tool" &&
       event.message.body.includes("hello from the local tool")
     )).toBe(true)
+    expect(events.some(event =>
+      event.type === "tool_event" &&
+      event.event.kind === "tool_requested" &&
+      event.event.invocationId === "call_read"
+    )).toBe(true)
+    expect(events.some(event =>
+      event.type === "tool_event" &&
+      event.event.kind === "tool_completed" &&
+      event.event.invocationId === "call_read"
+    )).toBe(true)
     expect(calls).toHaveLength(2)
     const secondMessages = calls[1]?.body.messages as Array<{ content?: string; role?: string; tool_call_id?: string }>
     expect(secondMessages.some(message =>
@@ -531,6 +541,33 @@ describe("Khala Code desktop chat runtime", () => {
       message.tool_call_id === "call_read" &&
       message.content?.includes("hello from the local tool") === true
     )).toBe(true)
+  })
+
+  test("captures OpenAI-compatible streamed usage for headless closeout", async () => {
+    const fetchFn = (async () =>
+      sseResponse([
+        'data: {"choices":[{"delta":{"content":"Done"}}]}',
+        'data: {"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":4,"prompt_tokens_details":{"cached_tokens":3},"completion_tokens_details":{"reasoning_tokens":2}}}',
+        "data: [DONE]",
+        "",
+      ].join("\n\n"))) as unknown as typeof fetch
+
+    const result = await runKhalaCodeDesktopChatTurn({
+      env: { OPENAGENTS_AGENT_TOKEN: "agent-token" },
+      fetchFn,
+      request: {
+        messages: [{ body: "hello", id: "u1", role: "user" }],
+        sessionId: "session-usage",
+      },
+    })
+
+    expect(result.ok).toBe(true)
+    expect(result.usage).toEqual({
+      cachedInput: 3,
+      input: 10,
+      output: 4,
+      reasoningOutput: 2,
+    })
   })
 
   test("populates slow codex_spawn running cards with useful progress text", async () => {
@@ -917,6 +954,93 @@ describe("Khala Code desktop chat runtime", () => {
       message.content?.includes("README.md") === true &&
       message.content?.includes("src/") === true
     )).toBe(true)
+  })
+
+  test("compacts synthetic long sessions before hosted provider requests", async () => {
+    const { calls, fetchFn } = captureFetch([
+      { choices: [{ message: { content: "We can continue from the compacted context." } }] },
+    ])
+
+    const result = await runKhalaCodeDesktopChatTurn({
+      env: {
+        KHALA_CODE_DESKTOP_CONTEXT_KEEP_TAIL_COUNT: "2",
+        KHALA_CODE_DESKTOP_CONTEXT_MAX_TOKENS: "250",
+        OPENAGENTS_AGENT_TOKEN: "agent-token",
+      },
+      fetchFn,
+      request: {
+        messages: [
+          {
+            body: `Old user context ${"alpha ".repeat(400)} exact-old-user-detail`,
+            id: "u-old",
+            role: "user",
+          },
+          {
+            body: `Old assistant context ${"beta ".repeat(400)} exact-old-assistant-detail`,
+            id: "a-old",
+            role: "assistant",
+          },
+          { body: "Recent user detail stays visible.", id: "u-tail", role: "user" },
+          { body: "Please continue.", id: "u-current", role: "user" },
+        ],
+        sessionId: "session-long-context",
+      },
+    })
+
+    expect(result.ok).toBe(true)
+    expect(result.messages[0]?.body).toBe("We can continue from the compacted context.")
+    const requestMessages = calls[0]?.body.messages as Array<{ content?: string; role?: string }>
+    const compactSummary = requestMessages.find(message =>
+      message.role === "system" &&
+      message.content?.includes("Khala Code context compaction is active") === true
+    )
+    expect(compactSummary?.content).toContain("Summary ref: summary.khala_code.context.")
+    expect(compactSummary?.content).toContain("Replaced refs: message.u-old, message.a-old")
+    expect(compactSummary?.content).toContain("Preserved tail refs: message.u-tail, message.u-current")
+    expect(JSON.stringify(requestMessages)).not.toContain("exact-old-user-detail")
+    expect(JSON.stringify(requestMessages)).not.toContain("exact-old-assistant-detail")
+    expect(JSON.stringify(requestMessages)).toContain("Recent user detail stays visible.")
+    expect(JSON.stringify(requestMessages)).toContain("Please continue.")
+  })
+
+  test("compaction preserves restored tool-result refs while dropping older raw tool text", async () => {
+    const { calls, fetchFn } = captureFetch([
+      { choices: [{ message: { content: "We restored the recent tool context." } }] },
+    ])
+
+    const result = await runKhalaCodeDesktopChatTurn({
+      env: {
+        KHALA_CODE_DESKTOP_CONTEXT_KEEP_TAIL_COUNT: "2",
+        KHALA_CODE_DESKTOP_CONTEXT_MAX_TOKENS: "240",
+        OPENAGENTS_AGENT_TOKEN: "agent-token",
+      },
+      fetchFn,
+      request: {
+        messages: [
+          {
+            body: `ls: ok\n\n${"older-file\n".repeat(500)}old-tool-raw-output`,
+            id: "t-old",
+            role: "tool",
+          },
+          { body: "Old assistant note.", id: "a-old", role: "assistant" },
+          { body: "read: ok\n\nrecent file contents", id: "t-tail", role: "tool" },
+          { body: "What did the recent read show?", id: "u-current", role: "user" },
+        ],
+        sessionId: "session-long-tool-context",
+      },
+    })
+
+    expect(result.ok).toBe(true)
+    const requestMessages = calls[0]?.body.messages as Array<{ content?: string; role?: string }>
+    const compactSummary = requestMessages.find(message =>
+      message.role === "system" &&
+      message.content?.includes("Khala Code context compaction is active") === true
+    )
+    expect(compactSummary?.content).toContain("Replaced refs: message.t-old, message.a-old")
+    expect(compactSummary?.content).toContain("Preserved tail refs: message.t-tail, message.u-current")
+    expect(JSON.stringify(requestMessages)).not.toContain("old-tool-raw-output")
+    expect(JSON.stringify(requestMessages)).toContain("Previous tool result:")
+    expect(JSON.stringify(requestMessages)).toContain("recent file contents")
   })
 
   test("keeps the DuckDuckGo web search service available outside the default chat tool catalog", async () => {

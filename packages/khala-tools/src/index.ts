@@ -1,4 +1,8 @@
+import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process"
+import { existsSync } from "node:fs"
 import { Effect, Schema as S } from "effect"
+import { makeKhalaToolDispatcher, type KhalaToolDispatcherOptions } from "./dispatcher.js"
+import { createMacosSeatbeltKhalaProcessService } from "./process-sandbox-macos.js"
 import { redactKhalaPublicText } from "./redaction.js"
 
 export {
@@ -14,6 +18,61 @@ export {
   type KhalaFeatureSpec as KhalaFeatureSpecType,
   type KhalaFeatureStage as KhalaFeatureStageType,
 } from "./feature-flags.js"
+
+export {
+  createExternalMcpRegisteredTools,
+  createKhalaPublicMcpToolRegistry,
+  handleKhalaMcpRequest,
+  KHALA_MCP_PROTOCOL_VERSION,
+  listKhalaMcpToolDefinitions,
+  makeKhalaMcpClient,
+  runKhalaMcpServerStdio,
+  type KhalaMcpClient,
+  type KhalaMcpClientPolicy,
+  type KhalaMcpExternalServerConfig,
+  type KhalaMcpExternalServerProjection,
+  type KhalaMcpExternalTool,
+  type KhalaMcpExternalToolProjection,
+  type KhalaMcpExternalTransport,
+  type KhalaMcpJsonValue,
+  type KhalaMcpRequest,
+  type KhalaMcpResponse,
+  type KhalaMcpServerLifecycle,
+  type KhalaMcpServerOptions,
+  type KhalaMcpToolCallResult,
+  type KhalaMcpToolContent,
+  type KhalaMcpToolDefinition,
+} from "./mcp.js"
+
+export {
+  appendKhalaSessionModelItem,
+  appendKhalaSessionRolloutRecord,
+  appendKhalaSessionToolEvent,
+  compactKhalaSessionRollout,
+  createKhalaSessionRollout,
+  forkKhalaSessionRollout,
+  KhalaSessionModelItem,
+  KhalaSessionModelItemRole,
+  KhalaSessionRolloutRecord,
+  KhalaSessionRolloutRecordKind,
+  KhalaSessionRolloutSchemaVersion,
+  khalaSessionModelItems,
+  khalaSessionRolloutPath,
+  khalaSessionToolEvents,
+  listKhalaSessionRollouts,
+  parseKhalaSessionRolloutText,
+  readKhalaSessionRollout,
+  type KhalaSessionModelItem as KhalaSessionModelItemType,
+  type KhalaSessionModelItemRole as KhalaSessionModelItemRoleType,
+  type KhalaSessionRolloutAppendInput,
+  type KhalaSessionRolloutAppendOptions,
+  type KhalaSessionRolloutCreateOptions,
+  type KhalaSessionRolloutForkOptions,
+  type KhalaSessionRolloutLoaded,
+  type KhalaSessionRolloutRecord as KhalaSessionRolloutRecordType,
+  type KhalaSessionRolloutRecordKind as KhalaSessionRolloutRecordKindType,
+  type KhalaSessionRolloutSummary,
+} from "./session-rollout.js"
 
 export {
   KhalaPrivacyRedactionLive,
@@ -56,6 +115,9 @@ export type KhalaPermissionMode = typeof KhalaPermissionMode.Type
 
 export const KhalaToolExecutionMode = S.Literals(["local", "hosted", "delegated"])
 export type KhalaToolExecutionMode = typeof KhalaToolExecutionMode.Type
+
+export const KhalaToolPlannerSource = S.Literals(["built_in", "mcp", "plugin"])
+export type KhalaToolPlannerSource = typeof KhalaToolPlannerSource.Type
 
 export const KhalaJsonSchema = S.Record(S.String, S.Unknown)
 export type KhalaJsonSchema = typeof KhalaJsonSchema.Type
@@ -192,6 +254,7 @@ export type KhalaProcessExecInput = Readonly<{
   maxCaptureBytes: number
   shell?: string
   timeoutMs: number
+  workspaceRoot?: string
 }>
 
 export type KhalaProcessSessionStartInput = KhalaProcessExecInput & Readonly<{
@@ -491,17 +554,60 @@ export interface KhalaToolExecuteContext {
   readonly services: KhalaToolServices
 }
 
+export type KhalaToolModelMetadata = Readonly<{
+  readonly capabilities?: ReadonlyArray<string>
+  readonly contextWindowTokens?: number
+  readonly id?: string
+}>
+
+export type KhalaToolPlannerEnvironment = Readonly<Record<string, string | undefined>>
+
+export type KhalaToolFeatureFlags = Readonly<Record<string, boolean | undefined>>
+
+export type KhalaToolPlannerRule = Readonly<{
+  readonly defer?: boolean
+  readonly featureFlags?: ReadonlyArray<string>
+  readonly modelCapabilities?: ReadonlyArray<string>
+  readonly modes?: ReadonlyArray<KhalaToolAvailability>
+  readonly requiredEnv?: ReadonlyArray<string>
+  readonly searchable?: boolean
+  readonly source?: KhalaToolPlannerSource
+}>
+
+export type KhalaToolPlanInput = Readonly<{
+  readonly env?: KhalaToolPlannerEnvironment
+  readonly featureFlags?: KhalaToolFeatureFlags
+  readonly includeDeferred?: boolean
+  readonly mode: KhalaToolAvailability
+  readonly model?: KhalaToolModelMetadata
+}>
+
+export type KhalaDeferredToolDefinition = Readonly<{
+  readonly definition: KhalaToolDefinition
+  readonly searchText: string
+  readonly source: Exclude<KhalaToolPlannerSource, "built_in">
+}>
+
+export type KhalaToolPlan = Readonly<{
+  readonly deferred: ReadonlyArray<KhalaDeferredToolDefinition>
+  readonly searchDeferredTools: (query: string, limit?: number) => ReadonlyArray<KhalaDeferredToolDefinition>
+  readonly searchTool: KhalaToolDefinition | undefined
+  readonly visible: ReadonlyArray<KhalaToolDefinition>
+}>
+
 export interface RegisteredKhalaTool {
   readonly definition: KhalaToolDefinition
   readonly execute?: (
     input: Readonly<Record<string, unknown>>,
     context: KhalaToolExecuteContext,
   ) => Effect.Effect<KhalaToolResult, KhalaToolRuntimeError>
+  readonly planner?: KhalaToolPlannerRule
 }
 
 export interface KhalaToolRegistry {
   readonly list: () => ReadonlyArray<KhalaToolDefinition>
   readonly materialize: (availability: KhalaToolAvailability) => ReadonlyArray<KhalaToolDefinition>
+  readonly plan: (input: KhalaToolPlanInput) => KhalaToolPlan
   readonly register: (tool: RegisteredKhalaTool) => void
   readonly resolve: (name: string) => RegisteredKhalaTool | undefined
 }
@@ -518,47 +624,149 @@ export function makeKhalaToolRegistry(initial: ReadonlyArray<RegisteredKhalaTool
       [...tools.values()]
         .map(tool => tool.definition)
         .filter(definition => definition.availability.includes(availability)),
+    plan: input => planKhalaTools([...tools.values()], input),
     register,
     resolve: name => tools.get(name),
   }
+}
+
+export const khalaToolSearchDefinition: KhalaToolDefinition = {
+  authority: "external_directory",
+  availability: ["extension"],
+  description: "Search deferred MCP and plugin tools available to this turn.",
+  executionMode: "hosted",
+  inputSchema: {
+    additionalProperties: false,
+    properties: {
+      limit: {
+        minimum: 1,
+        type: "number",
+      },
+      query: {
+        type: "string",
+      },
+    },
+    required: ["query"],
+    type: "object",
+  },
+  internalId: "khala.tools.tool_search",
+  label: "Search Tools",
+  name: "tool_search",
+  permissionMode: "allow",
+  prompt: "Search deferred external tools by name, label, description, and prompt guidance.",
+  promptGuidelines: [
+    "Use when a needed MCP or plugin tool is not directly visible.",
+    "First-party Khala tools are already visible and do not need tool_search discovery.",
+  ],
+}
+
+export function planKhalaTools(
+  tools: ReadonlyArray<RegisteredKhalaTool>,
+  input: KhalaToolPlanInput,
+): KhalaToolPlan {
+  const visible: KhalaToolDefinition[] = []
+  const deferred: KhalaDeferredToolDefinition[] = []
+
+  for (const tool of tools) {
+    if (!toolMatchesPlannerInput(tool, input)) continue
+
+    const source = tool.planner?.source ?? "built_in"
+    const defer = source !== "built_in" && tool.planner?.defer === true
+    if (defer && input.includeDeferred !== true) {
+      if (tool.planner?.searchable !== false) {
+        deferred.push({
+          definition: tool.definition,
+          searchText: searchableTextForTool(tool.definition),
+          source,
+        })
+      }
+      continue
+    }
+    visible.push(tool.definition)
+  }
+
+  const searchDeferredTools = (query: string, limit = 8): ReadonlyArray<KhalaDeferredToolDefinition> =>
+    searchKhalaDeferredTools(deferred, query, limit)
+  const searchTool = deferred.length > 0 && visible.every(tool => tool.name !== khalaToolSearchDefinition.name)
+    ? khalaToolSearchDefinition
+    : undefined
+
+  return {
+    deferred,
+    searchDeferredTools,
+    searchTool,
+    visible: searchTool === undefined ? visible : [...visible, searchTool],
+  }
+}
+
+export function searchKhalaDeferredTools(
+  tools: ReadonlyArray<KhalaDeferredToolDefinition>,
+  query: string,
+  limit = 8,
+): ReadonlyArray<KhalaDeferredToolDefinition> {
+  const terms = query
+    .toLocaleLowerCase()
+    .split(/\s+/u)
+    .map(term => term.trim())
+    .filter(Boolean)
+  const boundedLimit = Math.max(0, Math.floor(limit))
+  if (boundedLimit === 0) return []
+  if (terms.length === 0) return tools.slice(0, boundedLimit)
+
+  return tools
+    .map(tool => ({
+      score: scoreSearchableTool(tool.searchText, terms),
+      tool,
+    }))
+    .filter(result => result.score > 0)
+    .sort((left, right) => right.score - left.score || left.tool.definition.name.localeCompare(right.tool.definition.name))
+    .slice(0, boundedLimit)
+    .map(result => result.tool)
+}
+
+function toolMatchesPlannerInput(tool: RegisteredKhalaTool, input: KhalaToolPlanInput): boolean {
+  const rule = tool.planner
+  const modes = rule?.modes ?? tool.definition.availability
+  if (!modes.includes(input.mode)) return false
+  for (const flag of rule?.featureFlags ?? []) {
+    if (input.featureFlags?.[flag] !== true) return false
+  }
+  for (const envName of rule?.requiredEnv ?? []) {
+    if ((input.env?.[envName] ?? "") === "") return false
+  }
+  const capabilities = new Set(input.model?.capabilities ?? [])
+  for (const capability of rule?.modelCapabilities ?? []) {
+    if (!capabilities.has(capability)) return false
+  }
+  return true
+}
+
+function searchableTextForTool(definition: KhalaToolDefinition): string {
+  return [
+    definition.name,
+    definition.label,
+    definition.description,
+    definition.prompt,
+    ...definition.promptGuidelines,
+  ].join(" ").toLocaleLowerCase()
+}
+
+function scoreSearchableTool(searchText: string, terms: ReadonlyArray<string>): number {
+  let score = 0
+  for (const term of terms) {
+    if (searchText.includes(term)) score += term.length
+  }
+  return score
 }
 
 export function executeKhalaTool(
   registry: KhalaToolRegistry,
   invocation: KhalaToolInvocation,
   services: KhalaToolServices,
+  options: KhalaToolDispatcherOptions = {},
 ): Effect.Effect<KhalaToolResult, never> {
-  const tool = registry.resolve(invocation.name)
-  if (tool === undefined) {
-    return Effect.succeed(khalaToolError("unknown_tool", `Unknown tool: ${invocation.name}`))
-  }
-  if (tool.execute === undefined) {
-    return Effect.succeed(khalaToolError("missing_handler", `Tool has no execute handler: ${invocation.name}`))
-  }
-  if (!isRecord(invocation.arguments)) {
-    return Effect.succeed(khalaToolError("invalid_arguments", "Invalid tool input: expected an object"))
-  }
-  const definition = tool.definition
-  if (definition.permissionMode === "deny") {
-    return Effect.succeed(khalaToolDenied("permission_policy_denied", `${definition.name} is denied by policy`))
-  }
-  const permissionEffect =
-    definition.permissionMode === "approval_required"
-      ? services.permission.decide(permissionRequestFor(definition, invocation, services))
-      : Effect.succeed("allow" as const)
-
-  return permissionEffect.pipe(
-    Effect.flatMap(decision => {
-      if (decision === "deny") {
-        return Effect.succeed(khalaToolDenied("permission_denied", `${definition.name} denied by permission service`))
-      }
-      return tool.execute!(invocation.arguments, { definition, invocation, services }).pipe(
-        Effect.map(sanitizeToolResult),
-        Effect.catchTag("KhalaToolRuntimeError", error =>
-          Effect.succeed(khalaToolError(error.code, error.reason)),
-        ),
-      )
-    }),
+  return makeKhalaToolDispatcher(options).dispatch({ invocation, registry, services }).pipe(
+    Effect.map(dispatched => dispatched.result),
   )
 }
 
@@ -913,48 +1121,42 @@ async function readNetworkResponseBody(
   }
 }
 
-export const defaultKhalaProcessService: KhalaProcessService = {
+export const unsandboxedKhalaProcessService: KhalaProcessService = {
   execCommand: input =>
     Effect.promise(async () => {
       const started = Date.now()
       let timedOut = false
       let cancelled = false
-      const command = input.argv !== undefined && input.argv.length > 0
-        ? [...input.argv]
-        : [input.shell ?? process.env.SHELL ?? "/bin/sh", "-lc", input.command]
-      const proc = Bun.spawn(command, {
-        cwd: input.cwd,
-        stderr: "pipe",
-        stdout: "pipe",
-      })
+      const proc = spawnProcessGroup(input, "pipes")
       const kill = (reason: "cancelled" | "timedOut"): void => {
         if (reason === "cancelled") cancelled = true
         else timedOut = true
-        proc.kill()
+        killProcessGroup(proc)
       }
       const timeout = setTimeout(() => kill("timedOut"), input.timeoutMs)
       const cancel = input.cancelAfterMs === undefined
         ? undefined
         : setTimeout(() => kill("cancelled"), input.cancelAfterMs)
       const events: KhalaProcessEvent[] = []
-      const [stdout, stderr, exitCode] = await Promise.all([
-        readProcessStream(proc.stdout, "stdout", input.maxCaptureBytes, events, () => proc.kill()),
-        readProcessStream(proc.stderr, "stderr", input.maxCaptureBytes, events, () => proc.kill()),
-        proc.exited.catch(() => null),
+      const exit = waitForChildExit(proc)
+      const [stdout, stderr, exitResult] = await Promise.all([
+        readNodeProcessStream(proc.stdout, "stdout", input.maxCaptureBytes, events, () => killProcessGroup(proc)),
+        readNodeProcessStream(proc.stderr, "stderr", input.maxCaptureBytes, events, () => killProcessGroup(proc)),
+        exit,
       ])
       clearTimeout(timeout)
       if (cancel !== undefined) clearTimeout(cancel)
       return {
         cancelled,
         durationMs: Date.now() - started,
-        events: events.sort((a, b) => a.timestampMs - b.timestampMs),
-        exitCode,
+        events,
+        exitCode: exitResult.exitCode,
         sandbox: {
           enforced: false,
           kind: "none",
           note: "No sandbox is enforced by the default local Khala process service.",
         },
-        signal: null,
+        signal: exitResult.signal,
         stderr: stderr.text,
         stderrTruncated: stderr.truncated,
         stdout: stdout.text,
@@ -968,15 +1170,7 @@ export const defaultKhalaProcessService: KhalaProcessService = {
       const started = Date.now()
       let timedOut = false
       let cancelled = false
-      const command = input.argv !== undefined && input.argv.length > 0
-        ? [...input.argv]
-        : [input.shell ?? process.env.SHELL ?? "/bin/sh", "-lc", input.command]
-      const proc = Bun.spawn(command, {
-        cwd: input.cwd,
-        stderr: "pipe",
-        stdin: "pipe",
-        stdout: "pipe",
-      })
+      const proc = spawnProcessGroup(input, "pty")
       const sessionId = `khala.proc.${Date.now().toString(36)}.${Math.random().toString(36).slice(2)}`
       const session: DefaultKhalaProcessSession = {
         cancelled: false,
@@ -986,8 +1180,10 @@ export const defaultKhalaProcessService: KhalaProcessService = {
         exitCode: null,
         khalaSessionId: input.khalaSessionId,
         maxCaptureBytes: input.maxCaptureBytes,
+        pgid: proc.pid,
         proc,
         sessionId,
+        signal: null,
         stderr: "",
         stderrTruncated: false,
         stdout: "",
@@ -997,16 +1193,15 @@ export const defaultKhalaProcessService: KhalaProcessService = {
       defaultProcessSessions.set(sessionId, session)
       void pumpSessionStream(session, proc.stdout, "stdout")
       void pumpSessionStream(session, proc.stderr, "stderr")
-      void proc.exited.then(exitCode => {
-        session.exitCode = exitCode
-      }).catch(() => {
-        session.exitCode = null
+      void waitForChildExit(proc).then(exit => {
+        session.exitCode = exit.exitCode
+        session.signal = exit.signal
       })
       setTimeout(() => {
         if (session.exitCode === null) {
           timedOut = true
           session.timedOut = true
-          proc.kill()
+          killProcessGroup(proc)
         }
       }, input.timeoutMs)
       await sleep(input.yieldTimeMs)
@@ -1025,12 +1220,10 @@ export const defaultKhalaProcessService: KhalaProcessService = {
         if (session.exitCode !== null) throw new Error(`process session is closed: ${input.sessionId}`)
         if (input.chars === "\u0003") {
           session.cancelled = true
-          session.proc.kill()
+          killProcessGroup(session.proc, "SIGINT")
         } else {
-          const stdin = session.proc.stdin as unknown as BunFileSink | undefined
-          if (stdin === undefined) throw new Error(`process session stdin is closed: ${input.sessionId}`)
-          stdin.write(input.chars)
-          stdin.flush()
+          if (session.proc.stdin.destroyed) throw new Error(`process session stdin is closed: ${input.sessionId}`)
+          session.proc.stdin.write(input.chars)
         }
         session.events.push({ channel: "stdin", text: input.chars, timestampMs: Date.now() })
       }
@@ -1044,6 +1237,10 @@ export const defaultKhalaProcessService: KhalaProcessService = {
     }),
 }
 
+export const defaultKhalaProcessService: KhalaProcessService = process.platform === "darwin"
+  ? createMacosSeatbeltKhalaProcessService({ fallback: unsandboxedKhalaProcessService })
+  : unsandboxedKhalaProcessService
+
 type DefaultKhalaProcessSession = {
   cancelled: boolean
   command: string
@@ -1052,8 +1249,10 @@ type DefaultKhalaProcessSession = {
   exitCode: number | null
   khalaSessionId: string
   maxCaptureBytes: number
-  proc: ReturnType<typeof Bun.spawn>
+  pgid: number | undefined
+  proc: ChildProcessWithoutNullStreams
   sessionId: string
+  signal: string | null
   stderr: string
   stderrTruncated: boolean
   stdout: string
@@ -1061,23 +1260,15 @@ type DefaultKhalaProcessSession = {
   timedOut: boolean
 }
 
-type BunFileSink = Readonly<{
-  flush: () => void
-  write: (value: string | Uint8Array) => unknown
-}>
-
 const defaultProcessSessions = new Map<string, DefaultKhalaProcessSession>()
 
 async function pumpSessionStream(
   session: DefaultKhalaProcessSession,
-  stream: ReadableStream<Uint8Array>,
+  stream: NodeJS.ReadableStream,
   channel: "stdout" | "stderr",
 ): Promise<void> {
-  const reader = stream.getReader()
-  while (true) {
-    const read = await reader.read()
-    if (read.done) break
-    const chunk = Buffer.from(read.value).toString("utf8")
+  for await (const value of stream) {
+    const chunk = Buffer.from(value as Buffer).toString("utf8")
     session.events.push({ channel, text: chunk, timestampMs: Date.now() })
     if (channel === "stdout") {
       if (Buffer.byteLength(session.stdout + chunk, "utf8") > session.maxCaptureBytes) {
@@ -1104,7 +1295,7 @@ function sessionSnapshot(
   return {
     cancelled,
     durationMs,
-    events: [...session.events].sort((a, b) => a.timestampMs - b.timestampMs),
+    events: [...session.events],
     exitCode: session.exitCode,
     sandbox: {
       enforced: false,
@@ -1112,7 +1303,7 @@ function sessionSnapshot(
       note: "No sandbox is enforced by the default local Khala process service.",
     },
     sessionId: session.sessionId,
-    signal: null,
+    signal: session.signal,
     stderr: session.stderr,
     stderrTruncated: session.stderrTruncated,
     stdout: session.stdout,
@@ -1131,21 +1322,144 @@ function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms))
 }
 
-async function readProcessStream(
-  stream: ReadableStream<Uint8Array>,
+type ChildExitResult = Readonly<{
+  exitCode: number | null
+  signal: string | null
+}>
+
+type ProcessSpawnMode = "pipes" | "pty"
+
+function spawnProcessGroup(input: KhalaProcessExecInput, mode: ProcessSpawnMode): ChildProcessWithoutNullStreams {
+  const rawCommand = input.argv !== undefined && input.argv.length > 0
+    ? input.argv[0]
+    : input.shell ?? process.env.SHELL ?? "/bin/sh"
+  const rawArgs = input.argv !== undefined && input.argv.length > 0
+    ? [...input.argv.slice(1)]
+    : ["-lc", input.command]
+  const [command, args] = mode === "pty"
+    ? ptyWrappedCommand(rawCommand, rawArgs)
+    : [rawCommand, rawArgs] as const
+  return spawn(command, args, {
+    cwd: input.cwd,
+    detached: true,
+    env: { ...process.env, TERM: process.env.TERM ?? "xterm-256color" },
+    stdio: "pipe",
+  })
+}
+
+function ptyWrappedCommand(command: string, args: ReadonlyArray<string>): readonly [string, ReadonlyArray<string>] {
+  const python = existsSync("/usr/bin/python3") ? "/usr/bin/python3" : "python3"
+  return [python, ["-c", PythonPtyBridge, command, ...args]]
+}
+
+function waitForChildExit(proc: ChildProcessWithoutNullStreams): Promise<ChildExitResult> {
+  return new Promise(resolve => {
+    proc.once("exit", (exitCode, signal) => resolve({ exitCode, signal }))
+    proc.once("error", () => resolve({ exitCode: null, signal: null }))
+  })
+}
+
+function killProcessGroup(proc: ChildProcessWithoutNullStreams, signal: NodeJS.Signals = "SIGTERM"): void {
+  if (proc.pid === undefined) {
+    proc.kill(signal)
+    return
+  }
+  try {
+    process.kill(-proc.pid, signal)
+  } catch {
+    proc.kill(signal)
+  }
+}
+
+const PythonPtyBridge = `
+import errno
+import os
+import pty
+import select
+import signal
+import sys
+argv = sys.argv[1:]
+if not argv:
+    sys.exit(127)
+child_pid, fd = pty.fork()
+if child_pid == 0:
+    os.execvp(argv[0], argv)
+
+def forward_signal(signum, _frame):
+    try:
+        os.kill(child_pid, signum)
+    except ProcessLookupError:
+        pass
+
+signal.signal(signal.SIGINT, forward_signal)
+signal.signal(signal.SIGTERM, forward_signal)
+stdin_open = True
+exit_status = None
+while True:
+    try:
+        done, status = os.waitpid(child_pid, os.WNOHANG)
+        if done == child_pid:
+            exit_status = status
+            break
+    except ChildProcessError:
+        exit_status = 0
+        break
+    readers = [fd]
+    if stdin_open:
+        readers.append(sys.stdin.fileno())
+    try:
+        readable, _, _ = select.select(readers, [], [], 0.05)
+    except InterruptedError:
+        continue
+    if sys.stdin.fileno() in readable:
+        data = os.read(sys.stdin.fileno(), 4096)
+        if data:
+            os.write(fd, data)
+        else:
+            stdin_open = False
+    if fd in readable:
+        try:
+            data = os.read(fd, 4096)
+        except OSError as error:
+            if error.errno != errno.EIO:
+                raise
+            data = b""
+        if data:
+            os.write(sys.stdout.fileno(), data)
+        else:
+            break
+while True:
+    try:
+        data = os.read(fd, 4096)
+    except OSError:
+        break
+    if not data:
+        break
+    os.write(sys.stdout.fileno(), data)
+if exit_status is None:
+    try:
+        _, exit_status = os.waitpid(child_pid, 0)
+    except ChildProcessError:
+        exit_status = 0
+if os.WIFEXITED(exit_status):
+    sys.exit(os.WEXITSTATUS(exit_status))
+if os.WIFSIGNALED(exit_status):
+    sys.exit(128 + os.WTERMSIG(exit_status))
+sys.exit(1)
+`
+
+async function readNodeProcessStream(
+  stream: NodeJS.ReadableStream,
   channel: KhalaProcessOutputChannel,
   maxBytes: number,
   events: KhalaProcessEvent[],
   onTruncate: () => void,
 ): Promise<Readonly<{ text: string; truncated: boolean }>> {
-  const reader = stream.getReader()
   const chunks: Buffer[] = []
   let bytes = 0
   let truncated = false
-  while (true) {
-    const read = await reader.read()
-    if (read.done) break
-    const chunk = read.value
+  for await (const value of stream) {
+    const chunk = Buffer.from(value as Buffer)
     const remaining = maxBytes - bytes
     if (remaining <= 0 || chunk.byteLength > remaining) {
       if (remaining > 0) {
@@ -1239,12 +1553,30 @@ export { createEditTool, editToolDefinition } from "./edit.js"
 export { createWriteTool, writeToolDefinition } from "./write.js"
 export { applyPatchToolDefinition, createApplyPatchTool } from "./apply-patch.js"
 export { createExecCommandTool, execCommandToolDefinition } from "./exec-command.js"
+export { createMacosSeatbeltKhalaProcessService, seatbeltProfile } from "./process-sandbox-macos.js"
 export { createWriteStdinTool, writeStdinToolDefinition } from "./write-stdin.js"
 export { askUserToolDefinition, createAskUserTool } from "./ask-user.js"
 export { createTodoWriteTool, todoWriteToolDefinition } from "./todo-write.js"
 export { createViewImageTool, viewImageToolDefinition } from "./view-image.js"
 export { createWebFetchTool, webFetchToolDefinition } from "./web-fetch.js"
 export { createWebSearchTool, webSearchToolDefinition } from "./web-search.js"
+export {
+  createKhalaToolTurnAccounting,
+  makeKhalaToolDispatcher,
+  type KhalaToolDispatcher,
+  type KhalaToolDispatcherOptions,
+  type KhalaToolDispatchAfterHookContext,
+  type KhalaToolDispatchEventContext,
+  type KhalaToolDispatchHookContext,
+  type KhalaToolDispatchHooks,
+  type KhalaToolDispatchInput,
+  type KhalaToolDispatchPhase,
+  type KhalaToolDispatchResult,
+  type KhalaToolTelemetryTags,
+  type KhalaToolTelemetryTagValue,
+  type KhalaToolTurnAccounting,
+  type KhalaToolTurnAccountingSnapshot,
+} from "./dispatcher.js"
 export {
   browserClickToolDefinition,
   browserNavigateToolDefinition,
@@ -1263,38 +1595,3 @@ export {
   createBrowserTypeTool,
   createBrowserWaitForTool,
 } from "./browser.js"
-
-function permissionRequestFor(
-  definition: KhalaToolDefinition,
-  invocation: KhalaToolInvocation,
-  services: KhalaToolServices,
-): KhalaPermissionRequest {
-  const resources = typeof invocation.arguments.path === "string"
-    ? [invocation.arguments.path]
-    : typeof invocation.arguments.url === "string"
-      ? [invocation.arguments.url]
-      : typeof invocation.arguments.query === "string"
-        ? [invocation.arguments.query]
-        : typeof invocation.arguments.selector === "string"
-          ? [invocation.arguments.selector]
-          : typeof invocation.arguments.label === "string"
-            ? [invocation.arguments.label]
-            : typeof invocation.arguments.value === "string"
-              ? [invocation.arguments.value]
-              : []
-  return {
-    action: definition.authority,
-    authorityMode: definition.executionMode,
-    publicSafety: "private",
-    resources,
-    saveScope: "once",
-    sessionId: invocation.sessionId,
-    toolCallId: invocation.id,
-    toolName: definition.name,
-    workingDirectory: services.workspace.workingDirectory,
-  }
-}
-
-function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-}

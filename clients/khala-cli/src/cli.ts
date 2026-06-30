@@ -1,4 +1,16 @@
 import { Effect } from "effect"
+import { homedir } from "node:os"
+import { join } from "node:path"
+import {
+  appendKhalaSessionModelItem,
+  createKhalaSessionRollout,
+  forkKhalaSessionRollout,
+  khalaSessionModelItems,
+  listKhalaSessionRollouts,
+  readKhalaSessionRollout,
+  runKhalaMcpServerStdio,
+  type KhalaSessionRolloutLoaded,
+} from "@openagentsinc/khala-tools"
 import { appendAssistantTurn, prepareUserTurn } from "./bounds.js"
 import { KHALA_CLI_VERSION, formatKhalaChangelog } from "./changelog.js"
 import {
@@ -102,6 +114,9 @@ type ParsedCommand =
     }
   | { readonly kind: "login" }
   | { readonly kind: "logout" }
+  | { readonly kind: "mcpServer" }
+  | { readonly kind: "resume"; readonly sessionId: string | undefined }
+  | { readonly kind: "fork"; readonly sessionId: string | undefined }
   | { readonly kind: "spawn"; readonly text: string | undefined }
   | { readonly kind: "spawnCancel"; readonly targetRef: string | undefined }
   | { readonly kind: "spawnJoin"; readonly runRef: string | undefined }
@@ -119,6 +134,7 @@ interface ParsedArgs {
   readonly baseUrl: string
   readonly token: string | undefined
   readonly prompt: string | undefined
+  readonly sessionDir: string | undefined
   readonly headless: boolean
   readonly json: boolean
   readonly models: boolean
@@ -322,6 +338,20 @@ export async function runKhalaCli(argv: ReadonlyArray<string>, env: Record<strin
       )
       return 0
     }
+    if (args.command.kind === "mcpServer") {
+      await runKhalaMcpServerStdio()
+      return 0
+    }
+    if (args.command.kind === "resume") {
+      const result = await runResumeCommand(args, env, args.command.sessionId)
+      process.stdout.write(args.json ? `${JSON.stringify(result, null, 2)}\n` : `${formatSessionCommandResult(result)}\n`)
+      return 0
+    }
+    if (args.command.kind === "fork") {
+      const result = await runForkCommand(args, env, args.command.sessionId)
+      process.stdout.write(args.json ? `${JSON.stringify(result, null, 2)}\n` : `${formatSessionCommandResult(result)}\n`)
+      return 0
+    }
     if (args.command.kind === "tokens") {
       const tokens = await Effect.runPromise(fetchTokensServed({ baseUrl: args.baseUrl }))
       process.stdout.write(args.json ? `${JSON.stringify(tokens)}\n` : `${formatTokensServed(tokens)}\n`)
@@ -352,6 +382,11 @@ export async function runKhalaCli(argv: ReadonlyArray<string>, env: Record<strin
 
     if (shouldRunHeadless(args)) {
       const prompt = args.prompt ?? await readStdinPrompt()
+      const session = await createKhalaSessionRollout({
+        sessionId: createCliSessionId(),
+        stateDir: khalaSessionStateDir(args, env),
+      })
+      await appendCliModelItem(args, env, session.sessionId, "user", prompt)
       const text = await runOneTurn(
         args,
         env,
@@ -360,8 +395,9 @@ export async function runKhalaCli(argv: ReadonlyArray<string>, env: Record<strin
         args.json ? undefined : (delta) => process.stdout.write(delta),
         args.json ? undefined : (delta) => process.stderr.write(renderReasoningMarkdownDeltaForTerminal(delta)),
       )
+      await appendCliModelItem(args, env, session.sessionId, "assistant", text)
       if (args.json) {
-        process.stdout.write(`${JSON.stringify({ text })}\n`)
+        process.stdout.write(`${JSON.stringify({ sessionId: session.sessionId, sessionPath: session.path, text })}\n`)
       } else {
         process.stdout.write("\n")
       }
@@ -395,6 +431,7 @@ function parseArgs(argv: ReadonlyArray<string>, env: Record<string, string | und
   let baseUrl = env.KHALA_BASE_URL ?? DEFAULT_BASE_URL
   let token = env.OPENAGENTS_AGENT_TOKEN
   let prompt: string | undefined
+  let sessionDir: string | undefined
   let headless = false
   let json = false
   let models = false
@@ -528,6 +565,11 @@ function parseArgs(argv: ReadonlyArray<string>, env: Record<string, string | und
       index += 1
     } else if (arg.startsWith("--prompt=")) {
       prompt = arg.slice("--prompt=".length)
+    } else if (arg === "--session-dir") {
+      sessionDir = requireValue(argv, index, arg)
+      index += 1
+    } else if (arg.startsWith("--session-dir=")) {
+      sessionDir = arg.slice("--session-dir=".length)
     } else if (arg === "--account") {
       fleetAccount = requireValue(argv, index, arg)
       index += 1
@@ -611,6 +653,12 @@ function parseArgs(argv: ReadonlyArray<string>, env: Record<string, string | und
     command = { kind: "login" }
   } else if (maybeCommand === "logout") {
     command = { kind: "logout" }
+  } else if (maybeCommand === "mcp-server") {
+    command = { kind: "mcpServer" }
+  } else if (maybeCommand === "resume") {
+    command = { kind: "resume", sessionId: positional[1] }
+  } else if (maybeCommand === "fork") {
+    command = { kind: "fork", sessionId: positional[1] }
   } else if (maybeCommand === "spawn") {
     command = {
       kind: "spawn",
@@ -641,6 +689,7 @@ function parseArgs(argv: ReadonlyArray<string>, env: Record<string, string | und
     baseUrl,
     token,
     prompt,
+    sessionDir,
     headless,
     json,
     models,
@@ -675,6 +724,7 @@ async function runInteractive(args: ParsedArgs, env: Record<string, string | und
   // transcript so the two personas never share conversation context.
   let channel: Channel = args.channel
   const sessionId = createCliSessionId()
+  await createKhalaSessionRollout({ sessionId, stateDir: khalaSessionStateDir(args, env) })
   process.stdout.write(`${welcomeBanner()}\n\n`)
   if (channel === "artanis") {
     process.stdout.write(`${artanisBanner()}\n\n`)
@@ -731,6 +781,7 @@ async function runInteractive(args: ParsedArgs, env: Record<string, string | und
 
     if (channel === "artanis") {
       const prepared = prepareUserTurn(messages, prompt)
+      await appendCliModelItem(args, env, sessionId, "user", prompt)
       const waitingDots = startWaitingDots()
       try {
         const token = await ensureStoredAgentToken({
@@ -746,6 +797,7 @@ async function runInteractive(args: ParsedArgs, env: Record<string, string | und
         waitingDots.stop()
         process.stdout.write(`${terminalStyle.assistant("Artanis:")} ${renderMarkdownForTerminal(result.text)}\n\n`)
         messages = appendAssistantTurn(prepared, result.text)
+        await appendCliModelItem(args, env, sessionId, "assistant", result.text)
         lastTraceRef = result.traceRef ?? lastTraceRef
       } catch (error) {
         waitingDots.stop()
@@ -759,6 +811,8 @@ async function runInteractive(args: ParsedArgs, env: Record<string, string | und
     const resolvedArgs = await withStoredApiToken(args, env)
     const routed = await maybeRunLocalCodexTurn(resolvedArgs, env, messages, prompt)
     if (routed.handled) {
+      await appendCliModelItem(args, env, sessionId, "user", prompt)
+      await appendCliModelItem(args, env, sessionId, "assistant", routed.text)
       messages = appendAssistantTurn(
         prepareUserTurn(messages, prompt),
         routed.text,
@@ -767,6 +821,7 @@ async function runInteractive(args: ParsedArgs, env: Record<string, string | und
     }
 
     const prepared = prepareUserTurn(messages, prompt)
+    await appendCliModelItem(args, env, sessionId, "user", prompt)
     // Resolve BYOK per-turn so /key add and /key remove take effect live.
     // Built on resolvedArgs so a stored `khala login` token is still honored.
     const exec = await resolveChatExecution(resolvedArgs, env)
@@ -827,6 +882,7 @@ async function runInteractive(args: ParsedArgs, env: Record<string, string | und
         process.stdout.write(`${terminalStyle.assistant("Khala:")} ${renderMarkdownForTerminal(result.text)}\n\n`)
       }
       messages = appendAssistantTurn(prepared, result.text)
+      await appendCliModelItem(args, env, sessionId, "assistant", result.text)
       lastTraceRef = result.traceRef ?? lastTraceRef
       lastMessageInfo = result.metadata
     } catch (error) {
@@ -1117,6 +1173,127 @@ async function runOneTurn(
     },
   }))
   return result.text
+}
+
+type KhalaSessionCommandResult = Readonly<{
+  action: "fork" | "resume"
+  modelItemCount: number
+  parentSessionId?: string | undefined
+  recordCount: number
+  sessionId: string
+  sessionPath: string
+  text?: string | undefined
+}>
+
+async function runResumeCommand(
+  args: ParsedArgs,
+  env: Record<string, string | undefined>,
+  requestedSessionId: string | undefined,
+): Promise<KhalaSessionCommandResult> {
+  const stateDir = khalaSessionStateDir(args, env)
+  const sessionId = await resolveSessionCommandTarget(stateDir, requestedSessionId)
+  const loaded = await readKhalaSessionRollout(stateDir, sessionId)
+  const prompt = args.prompt?.trim()
+  if (prompt === undefined || prompt.length === 0) {
+    return sessionCommandResult("resume", loaded)
+  }
+  const history = messagesFromRollout(loaded)
+  await appendCliModelItem(args, env, loaded.sessionId, "user", prompt)
+  const text = await runOneTurn(args, env, history, prompt)
+  await appendCliModelItem(args, env, loaded.sessionId, "assistant", text)
+  return { ...sessionCommandResult("resume", await readKhalaSessionRollout(stateDir, loaded.sessionId)), text }
+}
+
+async function runForkCommand(
+  args: ParsedArgs,
+  env: Record<string, string | undefined>,
+  requestedSessionId: string | undefined,
+): Promise<KhalaSessionCommandResult> {
+  const stateDir = khalaSessionStateDir(args, env)
+  const sourceSessionId = await resolveSessionCommandTarget(stateDir, requestedSessionId)
+  const forked = await forkKhalaSessionRollout({
+    fromSessionId: sourceSessionId,
+    stateDir,
+  })
+  const prompt = args.prompt?.trim()
+  if (prompt === undefined || prompt.length === 0) {
+    return sessionCommandResult("fork", forked, sourceSessionId)
+  }
+  const history = messagesFromRollout(forked)
+  await appendCliModelItem(args, env, forked.sessionId, "user", prompt)
+  const text = await runOneTurn(args, env, history, prompt)
+  await appendCliModelItem(args, env, forked.sessionId, "assistant", text)
+  return { ...sessionCommandResult("fork", await readKhalaSessionRollout(stateDir, forked.sessionId), sourceSessionId), text }
+}
+
+async function resolveSessionCommandTarget(stateDir: string, requestedSessionId: string | undefined): Promise<string> {
+  const explicit = requestedSessionId?.trim()
+  if (explicit !== undefined && explicit.length > 0 && explicit !== "--last") return explicit
+  const [latest] = await listKhalaSessionRollouts(stateDir)
+  if (latest === undefined) {
+    throw new Error("No Khala sessions found. Start a chat or pass a session id.")
+  }
+  return latest.sessionId
+}
+
+function sessionCommandResult(
+  action: "fork" | "resume",
+  loaded: KhalaSessionRolloutLoaded,
+  parentSessionId?: string | undefined,
+): KhalaSessionCommandResult {
+  return {
+    action,
+    modelItemCount: khalaSessionModelItems(loaded).length,
+    ...(parentSessionId === undefined ? {} : { parentSessionId }),
+    recordCount: loaded.records.length,
+    sessionId: loaded.sessionId,
+    sessionPath: loaded.path,
+  }
+}
+
+function formatSessionCommandResult(result: KhalaSessionCommandResult): string {
+  const verb = result.action === "fork" ? "Forked" : "Resumed"
+  const lines = [
+    `${verb} Khala session: ${result.sessionId}`,
+    ...(result.parentSessionId === undefined ? [] : [`parent: ${result.parentSessionId}`]),
+    `records: ${result.recordCount}`,
+    `model items: ${result.modelItemCount}`,
+    `rollout: ${result.sessionPath}`,
+  ]
+  if (result.text !== undefined) {
+    lines.push("")
+    lines.push(result.text)
+  }
+  return lines.join("\n")
+}
+
+function messagesFromRollout(loaded: KhalaSessionRolloutLoaded): ReadonlyArray<KhalaChatMessage> {
+  return khalaSessionModelItems(loaded)
+    .flatMap(item => {
+      if (item.role !== "user" && item.role !== "assistant") return []
+      return [{ role: item.role, content: item.body }]
+    })
+}
+
+async function appendCliModelItem(
+  args: ParsedArgs,
+  env: Record<string, string | undefined>,
+  sessionId: string,
+  role: "assistant" | "user",
+  body: string,
+): Promise<void> {
+  await appendKhalaSessionModelItem(khalaSessionStateDir(args, env), sessionId, {
+    body,
+    id: `msg.${role}.${crypto.randomUUID()}`,
+    role,
+  })
+}
+
+function khalaSessionStateDir(args: ParsedArgs, env: Record<string, string | undefined>): string {
+  const explicit = args.sessionDir?.trim() || env.KHALA_SESSION_DIR?.trim()
+  if (explicit) return explicit
+  const stateHome = env.XDG_STATE_HOME?.trim() || join(homedir(), ".local", "state")
+  return join(stateHome, "khala")
 }
 
 async function withStoredApiToken(
@@ -2104,6 +2281,10 @@ Usage:
   khala help
   khala login
   khala logout
+  khala resume <sessionId>
+  khala resume <sessionId> --prompt "continue"
+  khala fork <sessionId>
+  khala fork <sessionId> --prompt "try another path"
   khala info
   khala key add <provider> <api-key>
   khala key list
@@ -2158,6 +2339,7 @@ Flags:
   --public             Use /api/khala/chat (default, no auth)
   --api                Use /api/v1/chat/completions with openagents/khala
   --artanis            Talk to the owner-only Artanis operator channel
+  --session-dir <dir>  Store/read append-only JSONL sessions in this state dir
                        (POST /api/operator/artanis/chat, owner token required)
   --khala              Use the public Khala channel (default)
   --base-url <url>     Override ${DEFAULT_BASE_URL}

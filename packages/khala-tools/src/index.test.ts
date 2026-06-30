@@ -9,6 +9,7 @@ import {
   makeKhalaPrivacyRedactionService,
   makeKhalaToolRegistry,
   makeKhalaToolServices,
+  planKhalaTools,
   redactKhalaPublicText,
   resolveKhalaBackend,
   toOpenAiCompatibleTools,
@@ -50,6 +51,120 @@ describe("@openagentsinc/khala-tools foundation", () => {
         },
         type: "function",
       },
+    ])
+  })
+
+  test("plans visible tools by mode, model metadata, env, and feature flags", () => {
+    const networkTool: KhalaToolDefinition = {
+      ...echoDefinition,
+      authority: "network",
+      availability: ["coding", "network"],
+      internalId: "khala.test.hosted_lookup",
+      name: "hosted_lookup",
+    }
+    const visionTool: KhalaToolDefinition = {
+      ...echoDefinition,
+      availability: ["coding"],
+      internalId: "khala.test.image_reason",
+      name: "image_reason",
+    }
+    const registry = makeKhalaToolRegistry([
+      { definition: echoDefinition },
+      {
+        definition: networkTool,
+        planner: {
+          featureFlags: ["network_tools"],
+          requiredEnv: ["KHALA_SEARCH_PROVIDER"],
+        },
+      },
+      {
+        definition: visionTool,
+        planner: {
+          modelCapabilities: ["vision"],
+          modes: ["coding"],
+        },
+      },
+    ])
+
+    expect(registry.plan({ mode: "inspect" }).visible.map(tool => tool.name)).toEqual(["echo"])
+    expect(registry.plan({ mode: "coding" }).visible.map(tool => tool.name)).toEqual(["echo"])
+    expect(
+      registry.plan({
+        env: { KHALA_SEARCH_PROVIDER: "test" },
+        featureFlags: { network_tools: true },
+        mode: "coding",
+        model: { capabilities: ["vision"], id: "test/vision" },
+      }).visible.map(tool => tool.name),
+    ).toEqual(["echo", "hosted_lookup", "image_reason"])
+  })
+
+  test("keeps first-party tools visible while deferring searchable external tools", () => {
+    const pluginDeployTool: KhalaToolDefinition = {
+      ...echoDefinition,
+      authority: "network",
+      availability: ["coding", "extension"],
+      description: "Deploy an app through an external plugin.",
+      internalId: "plugin.deploy",
+      label: "Plugin Deploy",
+      name: "plugin_deploy",
+      prompt: "Deploy with the configured plugin.",
+      promptGuidelines: ["Use for deployment requests after repository verification."],
+    }
+    const mcpDocsTool: KhalaToolDefinition = {
+      ...echoDefinition,
+      availability: ["coding", "extension"],
+      description: "Search the external MCP documentation index.",
+      internalId: "mcp.docs.search",
+      label: "MCP Docs",
+      name: "mcp_docs",
+      prompt: "Search external documentation.",
+    }
+    const registry = makeKhalaToolRegistry([
+      { definition: echoDefinition },
+      {
+        definition: pluginDeployTool,
+        planner: { defer: true, searchable: true, source: "plugin" },
+      },
+      {
+        definition: mcpDocsTool,
+        planner: { defer: true, searchable: true, source: "mcp" },
+      },
+    ])
+
+    const plan = registry.plan({ mode: "coding" })
+
+    expect(plan.visible.map(tool => tool.name)).toEqual(["echo", "tool_search"])
+    expect(plan.deferred.map(tool => [tool.definition.name, tool.source])).toEqual([
+      ["plugin_deploy", "plugin"],
+      ["mcp_docs", "mcp"],
+    ])
+    expect(plan.searchTool?.name).toBe("tool_search")
+    expect(plan.searchDeferredTools("deploy", 1).map(tool => tool.definition.name)).toEqual(["plugin_deploy"])
+  })
+
+  test("can explicitly include deferred external tools for hosts that do not use progressive disclosure", () => {
+    const registry = makeKhalaToolRegistry([
+      { definition: echoDefinition },
+      {
+        definition: {
+          ...echoDefinition,
+          availability: ["coding", "extension"],
+          internalId: "plugin.visible",
+          name: "plugin_visible",
+        },
+        planner: { defer: true, source: "plugin" },
+      },
+    ])
+
+    expect(registry.plan({ includeDeferred: true, mode: "coding" }).visible.map(tool => tool.name)).toEqual([
+      "echo",
+      "plugin_visible",
+    ])
+  })
+
+  test("plans standalone registered tools without a registry instance", () => {
+    expect(planKhalaTools([{ definition: echoDefinition }], { mode: "coding" }).visible.map(tool => tool.name)).toEqual([
+      "echo",
     ])
   })
 
