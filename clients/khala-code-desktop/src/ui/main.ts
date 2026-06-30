@@ -102,23 +102,6 @@ const initialMessages: readonly KhalaCodeDesktopMessage[] = [
     body:
       "Khala Code is awake. Point me at a repo, and I will keep the patch small enough to understand.",
   },
-  {
-    id: "user-fixture",
-    role: "user",
-    body: "Start with a tiny TypeScript helper and show me the shape before wiring the worker.",
-  },
-  {
-    id: "assistant-code",
-    role: "assistant",
-    body:
-      "Here is the helper I would land first:\n\n```ts\nexport type QueueItem = Readonly<{\n  id: string\n  title: string\n  priority: \"low\" | \"normal\" | \"high\"\n}>\n\nexport const describeItem = (item: QueueItem): string =>\n  `${item.priority}: ${item.title}`\n```\n\nThe important bit is that the queue item stays typed before it reaches any UI surface.",
-  },
-  {
-    id: "assistant-diff",
-    role: "assistant",
-    body:
-      "And the patch would stay this small:\n\n```diff\ndiff --git a/src/queue.ts b/src/queue.ts\nindex 91c5b8d..6df02d1 100644\n--- a/src/queue.ts\n+++ b/src/queue.ts\n@@ -1,5 +1,9 @@\n export type QueueItem = Readonly<{\n   id: string\n   title: string\n+  priority: \"low\" | \"normal\" | \"high\"\n }>\n+\n+export const describeItem = (item: QueueItem): string =>\n+  `${item.priority}: ${item.title}`\n```\n",
-  },
 ]
 
 const requireElement = <T extends Element>(selector: string): T => {

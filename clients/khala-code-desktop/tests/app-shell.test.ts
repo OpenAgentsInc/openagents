@@ -34,6 +34,15 @@ describe("khala code desktop app shell", () => {
     expect(html).not.toContain("Fleet")
   })
 
+  test("does not seed dummy code or diff messages on first load", async () => {
+    const main = await Bun.file(new URL("../src/ui/main.ts", import.meta.url)).text()
+
+    expect(main).not.toContain("assistant-code")
+    expect(main).not.toContain("assistant-diff")
+    expect(main).not.toContain("```diff")
+    expect(main).not.toContain("QueueItem")
+  })
+
   test("keeps composer focus styling on the frame instead of the textarea", async () => {
     const css = await Bun.file(new URL("../src/ui/styles.css", import.meta.url)).text()
 
