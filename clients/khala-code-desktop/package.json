@@ -21,6 +21,7 @@
     "chromium-bidi": "15.0.0",
     "effect": "catalog:",
     "electrobun": "1.18.1",
+    "foldkit": "^0.102.1",
     "playwright": "^1.61.0",
     "three": "0.184.0"
   },

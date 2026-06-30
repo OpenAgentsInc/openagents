@@ -42,6 +42,7 @@ import {
   type KhalaCodeDesktopRPCSchema,
 } from "../shared/rpc"
 import { renderMessageBody } from "./transcript-render"
+import { mountKhalaCodeSidebar } from "./sidebar"
 import "./styles.css"
 
 type DesktopRpc = ReturnType<typeof Electroview.defineRPC<KhalaCodeDesktopRPCSchema>>
@@ -1112,5 +1113,13 @@ Object.assign(globalThis, {
 
 void controls.appInfo().catch(() => undefined)
 mountComposerHud()
+
+const sidebarRoot = document.getElementById("sidebar-root")
+if (sidebarRoot !== null) {
+  mountKhalaCodeSidebar(sidebarRoot, {
+    selectedValue: "chat",
+    onActivate: () => {},
+  })
+}
 render()
 requestAnimationFrame(focusComposerInput)
