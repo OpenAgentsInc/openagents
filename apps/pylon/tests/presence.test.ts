@@ -480,6 +480,72 @@ describe("Pylon presence registration and heartbeat", () => {
     })
   })
 
+  test("heartbeat subtracts server-side per-account Codex leases before local runtime starts", async () => {
+    await withTempHome(async (home) => {
+      const fake = fakePresenceServer()
+      const summary = createBootstrapSummary(
+        parseBootstrapArgs([
+          "--display-name",
+          "Codex Account Lease Capacity Test",
+          "--capability-ref",
+          CODEX_AGENT_CAPABILITY_REF,
+        ]),
+        { PYLON_HOME: home },
+        "darwin",
+      )
+      const accountHomeA = join(home, "accounts", "codex", "codex-a")
+      const accountHomeB = join(home, "accounts", "codex", "codex-b")
+      await mkdir(accountHomeA, { recursive: true })
+      await mkdir(accountHomeB, { recursive: true })
+      await writeFile(join(accountHomeA, "auth.json"), "{}")
+      await writeFile(join(accountHomeB, "auth.json"), "{}")
+      await writeFile(summary.paths.config, JSON.stringify({
+        dev: {
+          accounts: [
+            { provider: "codex", ref: "codex-a", home: accountHomeA },
+            { provider: "codex", ref: "codex-b", home: accountHomeB },
+          ],
+        },
+      }))
+      const accountHashA = hashPylonAccountRef("codex", "codex-a")
+      const accountHashB = hashPylonAccountRef("codex", "codex-b")
+      const accountKeyA = codexAccountCapacityKey(accountHashA)
+      const accountKeyB = codexAccountCapacityKey(accountHashB)
+
+      await sendHeartbeat(summary, {
+        activeRunCountsByAccount: {
+          codex: {
+            [accountHashA]: 2,
+          },
+        },
+        baseUrl: fake.baseUrl,
+        env: {
+          CODEX_HOME: join(home, "empty-default-codex"),
+          OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY: "3",
+          PYLON_ACCOUNT_HOME_ROOT: join(home, "empty-siblings"),
+          PYLON_HOME: home,
+        },
+        walletProbe: offlineWalletProbe,
+      })
+
+      const heartbeat = fake.requests.filter(r => r.path.includes("/heartbeat")).at(-1)!
+      expect(heartbeat.body.capacityRefs).toEqual(
+        expect.arrayContaining([
+          `capacity.coding.codex.account.${accountKeyA}.ready=3`,
+          `capacity.coding.codex.account.${accountKeyA}.available=1`,
+          `capacity.coding.codex.account.${accountKeyB}.ready=3`,
+          `capacity.coding.codex.account.${accountKeyB}.available=3`,
+        ]),
+      )
+      expect(heartbeat.body.loadRefs).toEqual(
+        expect.arrayContaining([
+          `load.coding.codex.account.${accountKeyA}.busy=2`,
+          `load.coding.codex.account.${accountKeyB}.busy=0`,
+        ]),
+      )
+    })
+  })
+
   test("heartbeat advertises Apple FM inference capacity only after live readiness", async () => {
     await withTempHome(async (home) => {
       const fake = fakePresenceServer()

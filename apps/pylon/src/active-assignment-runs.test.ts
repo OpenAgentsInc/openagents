@@ -6,8 +6,10 @@ import { join } from "node:path"
 import {
   activeCodingRunCounts,
   activeCodingRunCountsByAccount,
+  activeCodingRunCountsByAccountFromAssignmentLeases,
   activeCodingRuns,
   activeCodingRunCountsFromAssignmentLeases,
+  maxActiveCodingRunAccountCounts,
   maxActiveCodingRunCounts,
   registerActiveCodingRun,
   UNKEYED_ACTIVE_RUN_ACCOUNT,
@@ -42,6 +44,83 @@ describe("active assignment run counts", () => {
     expect(maxActiveCodingRunCounts({ codex: 1 }, { codex: 4, claude: 1 })).toEqual({
       claude: 1,
       codex: 4,
+    })
+  })
+
+  test("counts unexpired server leases by public-safe account hash", () => {
+    const now = new Date("2026-06-27T13:30:00.000Z")
+
+    expect(
+      activeCodingRunCountsByAccountFromAssignmentLeases(
+        [
+          {
+            capabilityRefs: ["capability.pylon.local_codex"],
+            codingAssignment: {
+              codex: { accountRefHash: "account.pylon.codex.aaaa" },
+            },
+            expiresAt: "2026-06-27T13:31:00.000Z",
+          },
+          {
+            capabilityRefs: ["capability.pylon.local_codex"],
+            codingAssignment: {
+              codex: { accountRefHash: "account.pylon.codex.aaaa" },
+            },
+            expiresAt: "2026-06-27T13:31:00.000Z",
+          },
+          {
+            capabilityRefs: ["capability.pylon.local_codex"],
+            expiresAt: "2026-06-27T13:31:00.000Z",
+          },
+          {
+            capabilityRefs: ["capability.pylon.local_claude_agent"],
+            codingAssignment: {
+              claudeAgent: { accountRefHash: "account.pylon.claude_agent.bbbb" },
+            },
+            expiresAt: "2026-06-27T13:31:00.000Z",
+          },
+          {
+            capabilityRefs: ["capability.pylon.local_codex"],
+            codingAssignment: {
+              codex: { accountRefHash: "account.pylon.codex.expired" },
+            },
+            expiresAt: "2026-06-27T13:29:59.000Z",
+          },
+        ],
+        { now },
+      ),
+    ).toEqual({
+      claude: { "account.pylon.claude_agent.bbbb": 1 },
+      codex: {
+        "account.pylon.codex.aaaa": 2,
+        [UNKEYED_ACTIVE_RUN_ACCOUNT]: 1,
+      },
+    })
+  })
+
+  test("merges per-account busy counts conservatively without double counting", () => {
+    expect(
+      maxActiveCodingRunAccountCounts(
+        {
+          codex: {
+            "account.pylon.codex.aaaa": 1,
+            "account.pylon.codex.bbbb": 3,
+          },
+        },
+        {
+          claude: { "account.pylon.claude_agent.cccc": 2 },
+          codex: {
+            "account.pylon.codex.aaaa": 4,
+            [UNKEYED_ACTIVE_RUN_ACCOUNT]: 1,
+          },
+        },
+      ),
+    ).toEqual({
+      claude: { "account.pylon.claude_agent.cccc": 2 },
+      codex: {
+        "account.pylon.codex.aaaa": 4,
+        "account.pylon.codex.bbbb": 3,
+        [UNKEYED_ACTIVE_RUN_ACCOUNT]: 1,
+      },
     })
   })
 

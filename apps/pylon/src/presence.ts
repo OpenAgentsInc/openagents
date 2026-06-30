@@ -46,6 +46,7 @@ import { PresenceRequestError } from "./presence-error.js"
 import {
   activeCodingRunCounts,
   activeCodingRunCountsByAccount,
+  maxActiveCodingRunAccountCounts,
   maxActiveCodingRunCounts,
   UNKEYED_ACTIVE_RUN_ACCOUNT,
   type PylonActiveCodingRunAccountCounts,
@@ -76,6 +77,10 @@ export type PresenceClientOptions = {
   // orchestration from the assignment poll route. This keeps heartbeat capacity
   // honest when a prior no-spend lease exists but no fresh local marker remains.
   activeRunCounts?: PylonActiveCodingRunCounts
+  // Same accounting, scoped by public-safe account-ref hash, so per-account
+  // heartbeat buckets do not re-advertise a slot that the server has already
+  // leased but the local runtime has not yet registered.
+  activeRunCountsByAccount?: PylonActiveCodingRunAccountCounts
   // Test and node-internal seam for the live Apple FM bridge readiness report.
   // When omitted, heartbeat probes the local /health endpoint through the shared
   // Probe runtime capability reporter.
@@ -760,9 +765,9 @@ export async function sendHeartbeat(summary: BootstrapSummary, options: Presence
   // #6354/#6421: per-account capacity so each linked Codex or Claude account
   // dispatches its own concurrent assignments. Busy is the account's own fresh
   // active local runs, read once and split per service.
-  const activeRunCountsByAccount = await activeCodingRunCountsByAccount(
-    state.paths,
-    { now: options.now?.() },
+  const activeRunCountsByAccount = maxActiveCodingRunAccountCounts(
+    await activeCodingRunCountsByAccount(state.paths, { now: options.now?.() }),
+    options.activeRunCountsByAccount,
   )
   const codexAccountRefs = codexAccountCapacityRefs(
     await localCodexAccountCapacities(

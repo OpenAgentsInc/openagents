@@ -35,6 +35,7 @@ export type PylonActiveCodingRunAccountCounts = Partial<
 
 export type PylonAssignmentLeaseLike = Readonly<{
   capabilityRefs?: ReadonlyArray<string>
+  codingAssignment?: unknown
   expiresAt?: string
 }>
 
@@ -211,6 +212,30 @@ const leaseIsUnexpired = (lease: PylonAssignmentLeaseLike, now: Date): boolean =
   return Number.isFinite(expiresAt) && expiresAt > now.getTime()
 }
 
+const accountRefHashFromCodingPayload = (value: unknown): string | null => {
+  if (value === null || typeof value !== "object") return null
+  const accountRefHash = (value as { accountRefHash?: unknown }).accountRefHash
+  return typeof accountRefHash === "string" && accountRefHash.trim() !== ""
+    ? accountRefHash.trim()
+    : null
+}
+
+const accountRefHashForLeaseService = (
+  lease: PylonAssignmentLeaseLike,
+  service: PylonCodingServiceRef,
+): string => {
+  const codingAssignment = lease.codingAssignment
+  if (codingAssignment !== null && typeof codingAssignment === "object") {
+    const payload =
+      service === "codex"
+        ? (codingAssignment as { codex?: unknown }).codex
+        : (codingAssignment as { claudeAgent?: unknown }).claudeAgent
+    const accountRefHash = accountRefHashFromCodingPayload(payload)
+    if (accountRefHash !== null) return accountRefHash
+  }
+  return UNKEYED_ACTIVE_RUN_ACCOUNT
+}
+
 export function activeCodingRunCountsFromAssignmentLeases(
   leases: ReadonlyArray<PylonAssignmentLeaseLike>,
   input: { now?: Date } = {},
@@ -232,6 +257,29 @@ export function activeCodingRunCountsFromAssignmentLeases(
   return counts
 }
 
+export function activeCodingRunCountsByAccountFromAssignmentLeases(
+  leases: ReadonlyArray<PylonAssignmentLeaseLike>,
+  input: { now?: Date } = {},
+): PylonActiveCodingRunAccountCounts {
+  const now = input.now ?? new Date()
+  const counts: PylonActiveCodingRunAccountCounts = {}
+
+  for (const lease of leases) {
+    if (!leaseIsUnexpired(lease, now)) continue
+    const capabilityRefs = lease.capabilityRefs ?? []
+    for (const service of ["codex", "claude"] as const) {
+      const capabilityRef =
+        service === "codex" ? CODEX_CAPABILITY_REF : CLAUDE_CAPABILITY_REF
+      if (!capabilityRefs.includes(capabilityRef)) continue
+      const accountKey = accountRefHashForLeaseService(lease, service)
+      const byAccount = (counts[service] = counts[service] ?? {})
+      byAccount[accountKey] = (byAccount[accountKey] ?? 0) + 1
+    }
+  }
+
+  return counts
+}
+
 export function maxActiveCodingRunCounts(
   ...counts: ReadonlyArray<PylonActiveCodingRunCounts | undefined>
 ): PylonActiveCodingRunCounts {
@@ -241,6 +289,29 @@ export function maxActiveCodingRunCounts(
     if (count === undefined) continue
     for (const service of ["claude", "codex"] as const) {
       maxCounts[service] = Math.max(maxCounts[service] ?? 0, count[service] ?? 0)
+    }
+  }
+
+  return maxCounts
+}
+
+export function maxActiveCodingRunAccountCounts(
+  ...counts: ReadonlyArray<PylonActiveCodingRunAccountCounts | undefined>
+): PylonActiveCodingRunAccountCounts {
+  const maxCounts: PylonActiveCodingRunAccountCounts = {}
+
+  for (const count of counts) {
+    if (count === undefined) continue
+    for (const service of ["claude", "codex"] as const) {
+      const byAccount = count[service]
+      if (byAccount === undefined) continue
+      const maxByAccount = (maxCounts[service] = maxCounts[service] ?? {})
+      for (const [accountRefHash, value] of Object.entries(byAccount)) {
+        maxByAccount[accountRefHash] = Math.max(
+          maxByAccount[accountRefHash] ?? 0,
+          Math.max(0, value),
+        )
+      }
     }
   }
 

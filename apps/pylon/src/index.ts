@@ -199,9 +199,12 @@ import { assertPublicProjectionSafe, ensurePylonLocalState, loadOrCreatePresence
 import {
   activeCodingRunCounts,
   activeCodingRunCountsByAccount,
+  activeCodingRunCountsByAccountFromAssignmentLeases,
   activeCodingRuns,
   activeCodingRunCountsFromAssignmentLeases,
+  maxActiveCodingRunAccountCounts,
   maxActiveCodingRunCounts,
+  type PylonActiveCodingRunAccountCounts,
   type PylonActiveCodingRunCounts,
 } from "./active-assignment-runs.js"
 import {
@@ -2264,6 +2267,20 @@ async function serverActiveCodingRunCounts(
   }
 }
 
+async function serverActiveCodingRunAccountCounts(
+  summary: BootstrapSummary,
+  options: AssignmentLeaseNetworkOptions | undefined,
+): Promise<PylonActiveCodingRunAccountCounts> {
+  if (options === undefined) return {}
+  try {
+    return activeCodingRunCountsByAccountFromAssignmentLeases(
+      await pollAssignments(summary, options),
+    )
+  } catch {
+    return {}
+  }
+}
+
 async function codingCapacityForDispatch(
   summary: BootstrapSummary,
   state: PylonLocalState,
@@ -2283,13 +2300,24 @@ async function codingCapacityForDispatch(
   return codingCapacity
 }
 
+async function codingAccountBusyCountsForDispatch(
+  summary: BootstrapSummary,
+  state: PylonLocalState,
+  options?: AssignmentLeaseNetworkOptions,
+): Promise<PylonActiveCodingRunAccountCounts> {
+  return maxActiveCodingRunAccountCounts(
+    await activeCodingRunCountsByAccount(state.paths),
+    await serverActiveCodingRunAccountCounts(summary, options),
+  )
+}
+
 async function availableCodexAssignments(
   summary: BootstrapSummary,
   state: PylonLocalState,
   options?: AssignmentLeaseNetworkOptions,
   env: NodeJS.ProcessEnv = Bun.env,
 ): Promise<number> {
-  const codexAccounts = await localCodexDispatchAccounts(summary, state, env)
+  const codexAccounts = await localCodexDispatchAccounts(summary, state, env, options)
   if (codexAccounts.length > 0) {
     return codexAccounts.reduce((sum, account) => sum + account.available, 0)
   }
@@ -2301,34 +2329,34 @@ async function localCodexDispatchAccounts(
   summary: BootstrapSummary,
   state: PylonLocalState,
   env: NodeJS.ProcessEnv = Bun.env,
+  options?: AssignmentLeaseNetworkOptions,
 ) {
   return localCodexAccountCapacities(
     state,
     summary,
     env,
     codexBusyByAccount(
-      await activeCodingRunCountsByAccount(state.paths),
+      await codingAccountBusyCountsForDispatch(summary, state, options),
     ),
   )
 }
 
-const KHALA_CODEX_ACCOUNT_CONCURRENCY_FLOOR = 5
-
 function khalaCodexCapacityAdvertisementEnv(
   env: NodeJS.ProcessEnv,
-  requestedSlots: number,
+  _requestedSlots: number,
 ): NodeJS.ProcessEnv {
-  const target = Math.max(
-    KHALA_CODEX_ACCOUNT_CONCURRENCY_FLOOR,
-    Math.floor(requestedSlots),
-    positiveIntegerEnv(env.OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY) ?? 0,
-    positiveIntegerEnv(env.OPENAGENTS_PYLON_CODEX_CONCURRENCY) ?? 0,
-  )
+  const perAccountTarget =
+    positiveIntegerEnv(env.OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY) ??
+    positiveIntegerEnv(env.OPENAGENTS_PYLON_CODEX_CONCURRENCY) ??
+    1
+  const pooledTarget =
+    positiveIntegerEnv(env.OPENAGENTS_PYLON_CODEX_CONCURRENCY) ??
+    perAccountTarget
   return {
     ...env,
-    OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY: String(target),
+    OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY: String(perAccountTarget),
     OPENAGENTS_PYLON_CODEX_BUSY: "0",
-    OPENAGENTS_PYLON_CODEX_CONCURRENCY: String(target),
+    OPENAGENTS_PYLON_CODEX_CONCURRENCY: String(pooledTarget),
     OPENAGENTS_PYLON_CODEX_QUEUED: "0",
   }
 }
@@ -3669,6 +3697,10 @@ async function main() {
                 ...(resolvedAgentToken === null ? {} : { agentToken: resolvedAgentToken.token }),
                 baseUrl,
               }),
+              activeRunCountsByAccount: await serverActiveCodingRunAccountCounts(summary, {
+                ...(resolvedAgentToken === null ? {} : { agentToken: resolvedAgentToken.token }),
+                baseUrl,
+              }),
             }
           : {}),
       }
@@ -4207,6 +4239,7 @@ async function main() {
               ...presenceClientOptionsFromEnv({ baseUrl, env: capacityEnv }),
               ...(resolvedAgentToken === null ? {} : { agentToken: resolvedAgentToken.token }),
               activeRunCounts: await serverActiveCodingRunCounts(summary, networkOptions),
+              activeRunCountsByAccount: await serverActiveCodingRunAccountCounts(summary, networkOptions),
             })
           } catch {
             // Presence freshness is rechecked by run-no-spend; this best-effort
@@ -4234,7 +4267,7 @@ async function main() {
         if (accountSelector !== undefined && accounts.accounts.length === 0) {
           throw new Error(`khala spawn account ${accountSelector} is not a connected Codex account`)
         }
-        const advertisedCodexAccounts = await localCodexDispatchAccounts(summary, state, capacityEnv)
+        const advertisedCodexAccounts = await localCodexDispatchAccounts(summary, state, capacityEnv, networkOptions)
         const advertisedCodexAvailability = advertisedCodexAccounts.length > 0
           ? advertisedCodexAccounts.reduce((sum, account) => sum + account.available, 0)
           : await availableCodexAssignments(summary, state, networkOptions, capacityEnv)
@@ -4308,6 +4341,7 @@ async function main() {
               ...presenceClientOptionsFromEnv({ baseUrl, env: Bun.env }),
               ...(resolvedAgentToken === null ? {} : { agentToken: resolvedAgentToken.token }),
               activeRunCounts: await serverActiveCodingRunCounts(summary, networkOptions),
+              activeRunCountsByAccount: await serverActiveCodingRunAccountCounts(summary, networkOptions),
             })
           } catch {
             // #6355: execution still proceeds; run-no-spend reports the precise
@@ -4323,7 +4357,7 @@ async function main() {
               )
             : parseKhalaBurndownIssueNumbers(issuesOption)
         const accounts = await collectPylonAccountsList(summary, { env: Bun.env })
-        const advertisedCodexAccounts = await localCodexDispatchAccounts(summary, state)
+        const advertisedCodexAccounts = await localCodexDispatchAccounts(summary, state, Bun.env, networkOptions)
         const maxParallel = positiveIntegerOption(options, "max-parallel", "khala burndown --max-parallel")
         const iterations = positiveIntegerOption(options, "iterations", "khala burndown --iterations")
         const branch = optionString(options, "branch")
@@ -4495,6 +4529,7 @@ async function main() {
             ...presenceClientOptionsFromEnv({ baseUrl, env: requestPresenceEnv }),
             ...(resolvedAgentToken === null ? {} : { agentToken: resolvedAgentToken.token }),
             activeRunCounts: await serverActiveCodingRunCounts(summary, networkOptions),
+            activeRunCountsByAccount: await serverActiveCodingRunAccountCounts(summary, networkOptions),
           })
         }
         const accountRef =
@@ -5388,7 +5423,11 @@ async function main() {
           summary,
           Bun.env,
           codexBusyByAccount(
-            await activeCodingRunCountsByAccount(state.paths),
+            await codingAccountBusyCountsForDispatch(
+              summary,
+              { ...state, runtime: nextRuntime },
+              providerNetworkOptions,
+            ),
           ),
         )
         const codexAccountTotals = codexAccounts.reduce(

@@ -437,8 +437,11 @@ describe("Khala spawn proof gate", () => {
 
     expect(result.ok).toBe(false)
     expect(result.aggregate.acceptedCount).toBe(0)
+    expect(result.aggregate.closeoutAcceptedCount).toBe(0)
+    expect(result.aggregate.rejectedWithVerifiedTokensCount).toBe(1)
     expect(result.aggregate.totalTokenRows).toBe(1)
     expect(result.aggregate.totalVerifiedTokens).toBe(16)
+    expect(result.aggregate.verifiedTokenAssignmentCount).toBe(1)
     expect(result.counter.state).toBe("increment_observed")
     expect(result.blockerRefs).toContain("blocker.assignment.codex_agent_test_failed")
     expect(result.results[0]?.proof?.totalTokens).toBe(16)
@@ -480,8 +483,11 @@ describe("Khala spawn proof gate", () => {
 
     expect(result.ok).toBe(false)
     expect(result.aggregate.acceptedCount).toBe(0)
+    expect(result.aggregate.closeoutAcceptedCount).toBe(0)
+    expect(result.aggregate.rejectedWithVerifiedTokensCount).toBe(1)
     expect(result.aggregate.totalTokenRows).toBe(1)
     expect(result.aggregate.totalVerifiedTokens).toBe(16)
+    expect(result.aggregate.verifiedTokenAssignmentCount).toBe(1)
     expect(result.blockerRefs).toContain("blocker.assignment.codex_agent_test_failed")
     expect(result.results[0]?.proof?.totalTokens).toBe(16)
     expect(result.results[0]?.runAccepted).toBe(false)
@@ -519,7 +525,9 @@ describe("Khala spawn proof gate", () => {
 
     expect(result.ok).toBe(true)
     expect(result.aggregate.acceptedCount).toBe(1)
+    expect(result.aggregate.closeoutAcceptedCount).toBe(1)
     expect(result.aggregate.totalVerifiedTokens).toBe(16)
+    expect(result.aggregate.verifiedTokenAssignmentCount).toBe(1)
     expect(result.blockerRefs).toEqual([])
     expect(result.results[0]?.failure).toBeNull()
     expect(result.results[0]?.proof?.totalTokens).toBe(16)

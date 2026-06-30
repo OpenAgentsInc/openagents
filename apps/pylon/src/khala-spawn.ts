@@ -148,11 +148,15 @@ export type PylonKhalaSpawnCounterEvidence = {
 export type PylonKhalaSpawnAggregate = {
   acceptedCount: number
   assignmentRefs: string[]
+  closeoutAcceptedCount: number
   durableRequestIds: string[]
+  rejectedWithVerifiedTokensCount: number
+  failedWithVerifiedTokensCount: number
   ownerOnlyRawEventCount: number
   ownerOnlyTraceCount: number
   totalTokenRows: number
   totalVerifiedTokens: number
+  verifiedTokenAssignmentCount: number
 }
 
 export type PylonKhalaSpawnRunResult = {
@@ -858,13 +862,20 @@ function lifecycleState(event: AssignmentRunLifecycleEvent): PylonKhalaSpawnWork
 
 function aggregateSpawnResults(results: readonly PylonKhalaSpawnSlotResult[]): PylonKhalaSpawnAggregate {
   const proofs = results.flatMap((result) => result.proof === null ? [] : [result.proof])
+  const resultsWithVerifiedTokens = results.filter((result) =>
+    (result.proof?.totalTokens ?? 0) > 0
+  )
   return {
     acceptedCount: results.filter((result) => result.ok && result.runAccepted).length,
     assignmentRefs: results.flatMap((result) => result.assignmentRef === null ? [] : [result.assignmentRef]),
+    closeoutAcceptedCount: results.filter((result) => result.runAccepted === true).length,
     durableRequestIds: results.flatMap((result) => result.durableRequestId === null ? [] : [result.durableRequestId]),
+    failedWithVerifiedTokensCount: resultsWithVerifiedTokens.filter((result) => result.state === "failed").length,
     ownerOnlyRawEventCount: proofs.reduce((sum, proof) => sum + proof.rawEventCount, 0),
     ownerOnlyTraceCount: proofs.reduce((sum, proof) => sum + proof.traceCount, 0),
+    rejectedWithVerifiedTokensCount: resultsWithVerifiedTokens.filter((result) => result.state === "rejected").length,
     totalTokenRows: proofs.reduce((sum, proof) => sum + proof.tokenRows, 0),
     totalVerifiedTokens: proofs.reduce((sum, proof) => sum + proof.totalTokens, 0),
+    verifiedTokenAssignmentCount: resultsWithVerifiedTokens.length,
   }
 }
