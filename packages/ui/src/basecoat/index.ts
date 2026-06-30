@@ -15,6 +15,7 @@ export * from './select'
 export * from './selection'
 export * from './sidebar'
 export * from './tooltip'
+export * from './toast'
 export {
   basecoatAttrs,
   basecoatClass,
