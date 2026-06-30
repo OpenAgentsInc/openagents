@@ -39,12 +39,19 @@ requests, and default-on Rampart PII redaction. ADR 0012's accepted plan has
 So the porting question is not "copy Codex's tool catalog" — we have it. It is:
 **which of Codex's harder, lower-down execution-boundary machinery should we
 port next, where we currently have honest stubs or nothing.** Those are, in
-priority order: (1) real sandbox enforcement, (2) a session-scoped approval
-cache + a real product permission policy (replace `allowAllKhalaPermissionService`),
-(3) a central tool dispatcher with hooks/lifecycle/telemetry, (4) durable
-session persistence + resume/fork (rollout-style JSONL), (5) atomic
-`apply_patch`, (6) compaction, (7) a headless JSONL event schema, (8) MCP, then
-(9) the planner/feature/config/provider polish.
+priority order: (1) real sandbox enforcement, (2) a central tool dispatcher with
+hooks/lifecycle/telemetry, (3) durable session persistence + resume/fork
+(rollout-style JSONL), (4) atomic `apply_patch`, (5) compaction, (6) a headless
+JSONL event schema, (7) MCP, (8) the planner/feature/config/provider polish, and
+— **last** — (9) a session-scoped approval cache + real product permission policy
+to replace `allowAllKhalaPermissionService`.
+
+**Deliberate stance for now: Khala Code runs permit-all ("YOLO"), for trusted
+local operators only.** The desktop keeps `allowAllKhalaPermissionService` as the
+default, so the permission/approval-cache work is intentionally deprioritized to
+the end of the list. Sandbox enforcement (item 1) still lands early because it
+contains *what* a permitted command can do, independent of *whether* we prompt;
+the prompting/cache layer (item 9) is the thing we defer.
 
 The rest of this doc ranks those, maps each to exact files on both sides, and
 lays out an overnight multi-agent porting plan with lanes that don't collide.
@@ -83,9 +90,12 @@ lays out an overnight multi-agent porting plan with lanes that don't collide.
 - **No sandbox enforcement.** `defaultKhalaProcessService` runs `Bun.spawn` and
   truthfully returns `sandbox: { enforced: false, kind: "none" }`. Tests pin that
   it does **not** claim sandboxing (`exec-command.test.ts`).
-- **No approval cache; desktop auto-approves.** The desktop wires
-  `allowAllKhalaPermissionService`. `executeKhalaTool` evaluates permission
+- **Permit-all by design (for now); no approval cache.** The desktop wires
+  `allowAllKhalaPermissionService` on purpose — Khala Code is "YOLO," for trusted
+  local operators only at this stage. `executeKhalaTool` evaluates permission
   per-call with no "always allow this action/resource for the session" memory.
+  This is the deliberately last-priority item (§3 Tier 4): we are not adding
+  prompts/cache until the rest of the execution boundary lands.
 - **`executeKhalaTool` is minimal.** No pre/post-tool hooks, no lifecycle
   events, no telemetry tags, no per-turn tool-call accounting, no streamed
   argument-diff consumption — Codex's `ToolRegistry::dispatch_*` has all of these.
@@ -145,26 +155,18 @@ Two corrections worth recording from the latest read of Codex `main`:
 Ranked by (safety/credibility value) × (leverage across desktop + CLI + Pylon) ÷
 (port effort). Each item is sized S/M/L.
 
-### Tier 1 — do first (safety + credibility; everything else rides on these)
+### Tier 1 — do first (everything else rides on these)
 
-1. **Real product permission policy + session approval cache (M).**
-   Replace `allowAllKhalaPermissionService` in the desktop with a default
-   `approval_required`-with-prompts policy and add an `ApprovalStore` equivalent
-   so "always allow" scopes to `(action, resource-pattern, session/project)`,
-   not "all tools." Port the *shape* of `core/src/tools/sandboxing.rs`
-   (`with_cached_approval`, typed approval keys, `saveScope`). We already have
-   `KhalaPermissionRequest.saveScope` and decision `always` — wire them to a real
-   cache and a real prompt. **Highest credibility-per-hour:** today the desktop
-   silently auto-approves edits/shell.
-2. **Sandbox enforcement for `exec_command` (L, macOS-first).**
+1. **Sandbox enforcement for `exec_command` (L, macOS-first).**
    Port Codex's Seatbelt path first (`sandboxing/` macOS profile) so local shell
    runs under a real workspace-scoped sandbox on Mac (our primary desktop
    platform), with the existing honest `sandbox.enforced` flag finally able to
    report `true`. Add Linux (Landlock/seccomp via `linux-sandbox`/`bwrap`) as a
    fast-follow. Preserve Codex's **denied-read preservation** rule (don't drop the
-   sandbox to escalate if that would also drop a read-deny). This unblocks
-   running untrusted/agent-authored commands locally without `danger-full-access`.
-3. **Central dispatcher with hooks + lifecycle + per-turn accounting (M).**
+   sandbox to escalate if that would also drop a read-deny). This contains *what*
+   a permitted command can do — valuable even while we stay permit-all, because it
+   bounds blast radius without prompting.
+2. **Central dispatcher with hooks + lifecycle + per-turn accounting (M).**
    Grow `executeKhalaTool` into a `ToolRegistry::dispatch`-equivalent choke point:
    pre/post-tool hooks, `tool_started/progress/completed/failed` lifecycle events
    (the `KhalaToolEvent` kinds already exist), telemetry tags, per-turn tool-call
@@ -172,42 +174,57 @@ Ranked by (safety/credibility value) × (leverage across desktop + CLI + Pylon) 
 
 ### Tier 2 — high leverage, do this week
 
-4. **Durable session persistence + resume/fork (M).**
+3. **Durable session persistence + resume/fork (M).**
    Adopt a rollout-style append-only JSONL per session (model items + tool events
    + approvals) under the desktop's owner-local state dir, plus `khala resume <id>`
    / `khala fork <id>` and a desktop "Resume" surface. Reuse the existing
    `KhalaToolEvent`/transcript shapes as the on-disk record. (Codex: rollout
    crates + `codex exec resume`.)
-5. **Atomic `apply_patch` (S–M).**
+4. **Atomic `apply_patch` (S–M).**
    Add an atomic backend: stage all touched paths, validate, write-or-rollback,
    so a mid-patch failure leaves the tree unchanged. Port `assess_patch_safety`'s
    writable-root + hard-link checks from `core/src/safety.rs`. Keep our grammar.
-6. **Headless JSONL event schema for the desktop host (S–M).**
+5. **Headless JSONL event schema for the desktop host (S–M).**
    Define a Khala equivalent of `exec/src/exec_events.rs` `ThreadEvent`
    (`thread.started`, `turn.*`, `item.*` with `command_execution|file_change|
    mcp_tool_call|todo_list|error`, `Usage`) and a `khala code --json` headless
    mode with the stderr-progress / stdout-final split. This makes Khala Code
    scriptable and eval-harness-friendly (feeds the Gym lane).
-7. **Compaction (M).**
+6. **Compaction (M).**
    Add a context-budget + compaction step to the native loop so long coding
    sessions don't blow the window. (Codex: token-budget tools + summarization;
    our Pylon `tas/compaction.ts` has decision helpers to reuse.)
 
 ### Tier 3 — extensibility & polish, after Tier 1–2 land
 
-8. **MCP client (M) then `khala mcp-server` (M).**
+7. **MCP client (M) then `khala mcp-server` (M).**
    Namespaced, deferred, policy-scoped — must not shadow built-ins (ADR 0012).
    Reuse `packages/mcp-contract` and Pylon `tas/mcp-*.ts`.
-9. **Tool planner + progressive disclosure (M).**
+8. **Tool planner + progressive disclosure (M).**
    A `spec_plan`-style planner that materializes the visible tool subset by mode,
    model metadata, env, and feature flags; deferred/searchable external tools.
-10. **PTY-backed `exec_command`/`write_stdin` (M).**
-    Move from `Bun.spawn` pipes to a real PTY (Probe already has `node-pty` in the
-    vendored snapshot) with process groups, so interactive tools work.
-11. **Feature-flag registry (S) + layered config/profiles (L) + provider schema
-    (M).** Port `features/` first (cheap, high-leverage); config layering and the
-    `ModelProviderInfo` schema only as far as a single-tenant owner-local app
-    needs (skip MDM/enterprise — see §5).
+9. **PTY-backed `exec_command`/`write_stdin` (M) + feature-flag registry (S) +
+   layered config/profiles (L) + provider schema (M).** Move `exec_command`/
+   `write_stdin` from `Bun.spawn` pipes to a real PTY (Probe already has
+   `node-pty` in the vendored snapshot) with process groups. Port `features/`
+   first (cheap, high-leverage); config layering and the `ModelProviderInfo`
+   schema only as far as a single-tenant owner-local app needs (skip
+   MDM/enterprise — see §5).
+
+### Tier 4 — deferred (we run permit-all / "YOLO" until then)
+
+10. **Real product permission policy + session approval cache (M).**
+    Replace `allowAllKhalaPermissionService` with a default
+    `approval_required`-with-prompts policy and an `ApprovalStore` equivalent so
+    "always allow" scopes to `(action, resource-pattern, session/project)`, not
+    "all tools." Port the *shape* of `core/src/tools/sandboxing.rs`
+    (`with_cached_approval`, typed approval keys, `saveScope`); we already have
+    `KhalaPermissionRequest.saveScope` and decision `always` to wire in.
+    **Deliberately last.** For now Khala Code is permit-all for trusted local
+    operators, so this is a posture upgrade we take only once the rest of the
+    boundary (sandbox, dispatcher, persistence, atomic patch) is in place and we
+    want to open Khala Code to less-trusted or remote-driven use. Until then,
+    sandbox containment (Tier 1 #1) — not prompting — is what bounds risk.
 
 ---
 
@@ -216,7 +233,7 @@ Ranked by (safety/credibility value) × (leverage across desktop + CLI + Pylon) 
 Concrete, additive moves that keep ADR 0012's boundaries:
 
 - **Make the executor the only choke point.** Route every desktop/CLI/Pylon-native
-  tool call through one dispatcher (Tier 1 #3). No surface should call a tool
+  tool call through one dispatcher (Tier 1 #2). No surface should call a tool
   handler directly; this is where approval, sandbox decision, hooks, events, and
   bounding live.
 - **Keep tool authority as data.** We already have `KhalaToolAuthority` enums and
@@ -229,7 +246,7 @@ Concrete, additive moves that keep ADR 0012's boundaries:
   *requests*, never authority overrides. (Already an invariant; the sandbox work
   must not regress it.)
 - **One event stream, four lanes, everywhere.** The headless JSONL schema (Tier 2
-  #6) and the desktop UI should both project the same `KhalaToolEvent` stream;
+  #5) and the desktop UI should both project the same `KhalaToolEvent` stream;
   large outputs spill to private artifacts with a bounded model preview (already
   the contract — enforce it in the dispatcher).
 - **Reuse, don't rebuild.** Probe's PTY/browser/scoped-FS slices, Pylon's
@@ -287,12 +304,6 @@ other lane code against its interface.
 
 ### Wave 1 — fan out (lanes are independent; all code against Lane A's interface)
 
-- **Lane B — Permission policy + approval cache.** New
-  `packages/khala-tools/src/permission-policy.ts` (`ApprovalStore`,
-  `with-cached-approval`, real prompt service) + desktop wiring to replace
-  `allowAllKhalaPermissionService`. Donor: `core/src/tools/sandboxing.rs`.
-  Acceptance: edit/shell now prompt; "always allow" scopes to action+resource;
-  tests cover denial, cached allow, scope leakage.
 - **Lane C — macOS sandbox for exec.** New process service backed by a Seatbelt
   profile; flip `sandbox.enforced` to `true` when enforced; denied-read
   preservation. Donor: `sandboxing/` (Seatbelt). Files: `exec-command.ts` +
@@ -326,14 +337,27 @@ other lane code against its interface.
 - **Lane J — PTY exec + process groups.** Donor: `core/src/exec.rs`; reuse Probe
   `node-pty`. **Lane K — feature-flag registry** (cheap; `features/`).
 
+### Wave 3 — deferred (we ship permit-all / "YOLO" until this lands)
+
+- **Lane B — Permission policy + approval cache.** New
+  `packages/khala-tools/src/permission-policy.ts` (`ApprovalStore`,
+  `with-cached-approval`, real prompt service) + desktop wiring to replace
+  `allowAllKhalaPermissionService`. Donor: `core/src/tools/sandboxing.rs`.
+  Acceptance: edit/shell can prompt; "always allow" scopes to action+resource;
+  tests cover denial, cached allow, scope leakage. **Intentionally last** — see
+  §3 Tier 4. Until this lands, Khala Code stays permit-all for trusted local
+  operators and relies on Lane C's sandbox containment to bound risk.
+
 ### Coordination rules for the agent fleet
 
-- Land **Lane A** first; every other lane imports its interface. Lanes B–K touch
-  mostly disjoint files (B=permission, C=process-sandbox, D=apply-patch,
-  E=rollout, F=headless-events, G=chat-runtime, H=mcp, I=planner). The two
-  contended files are `index.ts` (A owns the dispatcher edit; others add exports)
-  and `khala-chat-runtime.ts` (G owns compaction; B/E add wiring — sequence
-  G→B/E or use a fresh worktree per agent).
+- Land **Lane A** first; every other lane imports its interface. The Wave 1–2
+  lanes touch mostly disjoint files (C=process-sandbox, D=apply-patch, E=rollout,
+  F=headless-events, G=chat-runtime, H=mcp, I=planner, J=pty, K=features), so they
+  fan out cleanly. The two contended files are `index.ts` (A owns the dispatcher
+  edit; others add exports) and `khala-chat-runtime.ts` (G owns compaction;
+  E adds resume wiring — sequence G→E or use a fresh worktree per agent). Lane B
+  (deferred) also touches both `index.ts` and the desktop wiring, which is another
+  reason to run it after the contended lanes have settled.
 - Per workspace policy: each agent works in a **clean `origin/main` worktree**,
   commits its scoped lane, and pushes `main` independently. No cross-lane stashing.
 - Every lane lands with its package tests + `check:deploy` green, and updates
@@ -381,7 +405,6 @@ Codex (port *from*, `projects/repos/codex/codex-rs/`):
 | Lane | System | Status |
 | --- | --- | --- |
 | A | Central hooked dispatcher | not started |
-| B | Permission policy + approval cache | not started |
 | C | macOS sandbox for exec | not started |
 | D | Atomic apply_patch + safety | not started |
 | E | Session persistence + resume/fork | not started |
@@ -391,6 +414,7 @@ Codex (port *from*, `projects/repos/codex/codex-rs/`):
 | I | Tool planner + progressive disclosure | not started |
 | J | PTY exec + process groups | not started |
 | K | Feature-flag registry | not started |
+| B | Permission policy + approval cache | deferred — permit-all ("YOLO") until then |
 
 Update this table as lanes land. None of this changes runtime authority, public
 copy, or promise state until a lane ships with tests + `check:deploy` green and
