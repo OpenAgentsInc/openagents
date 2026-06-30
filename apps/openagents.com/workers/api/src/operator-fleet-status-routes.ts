@@ -251,7 +251,7 @@ const buildFleetStatusSnapshot = async (
               COUNT(*) AS raw_chunk_count,
               MAX(observed_at) AS latest_observed_at
          FROM pylon_codex_raw_event_chunks
-        WHERE observed_at >= datetime('now', '-30 minutes')
+        WHERE observed_at >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-30 minutes')
           ${assignmentOwnerClause}
         GROUP BY assignment_ref
         ORDER BY latest_observed_at DESC
@@ -308,7 +308,7 @@ const buildFleetStatusSnapshot = async (
       db,
       `SELECT COALESCE(SUM(total_tokens), 0) AS tokens_window
          FROM token_usage_events
-        WHERE observed_at >= datetime('now', '-10 minutes')`,
+        WHERE observed_at >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-10 minutes')`,
     ),
     safeFirst<OwnCapacityCodexWindowRow>(
       db,
@@ -316,7 +316,7 @@ const buildFleetStatusSnapshot = async (
               COUNT(*) AS turns_window,
               COUNT(DISTINCT task_ref) AS assignments_window
          FROM token_usage_events
-        WHERE observed_at >= datetime('now', '-10 minutes')
+        WHERE observed_at >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-10 minutes')
           AND provider = 'pylon-codex-own-capacity'
           AND model = 'openagents/pylon-codex'
           AND usage_truth = 'exact'
