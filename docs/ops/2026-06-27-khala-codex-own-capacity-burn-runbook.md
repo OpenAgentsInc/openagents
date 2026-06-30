@@ -511,6 +511,19 @@ rows — the `token_usage_events` query from the canonical CLAUDE.md runbook
 '<assignmentRef>'`). Then verify the owner-only `agent_traces` row. See
 CLAUDE.md §6 for the full SQL.
 
+Assignment-scoped readiness evidence should be checked in this order:
+
+1. `khala apm --json` may show active in-flight estimates while the public
+   counter is flat; treat it as live operations telemetry, not completion proof.
+2. `GET /api/pylon/codex/trace-status?assignment_ref=<assignmentRef>` should
+   show owner-only raw chunk presence during the run and progress toward final
+   exact rows without exposing raw prompts, shell output, local paths, or
+   secrets.
+3. `khala proof <assignmentRef> --json` is the closeout proof: expect exact
+   `token_usage_events`, owner-only ATIF trace refs, owner-only raw archive refs,
+   and no-spend closeout policy
+   (`settlementState: not_applicable`, `payoutClaimAllowed: false`).
+
 ---
 
 ## 8. Capacity math for the daily target
