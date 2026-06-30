@@ -10,22 +10,26 @@ import {
 } from './shared'
 
 export type InputType =
-  | 'text'
-  | 'email'
-  | 'password'
-  | 'number'
-  | 'file'
-  | 'tel'
-  | 'url'
-  | 'search'
+  | 'button'
+  | 'checkbox'
+  | 'color'
   | 'date'
   | 'datetime-local'
+  | 'email'
+  | 'file'
+  | 'hidden'
   | 'month'
-  | 'week'
-  | 'time'
-  | 'checkbox'
+  | 'number'
+  | 'password'
   | 'radio'
   | 'range'
+  | 'search'
+  | 'submit'
+  | 'tel'
+  | 'text'
+  | 'time'
+  | 'url'
+  | 'week'
 
 export type InputMode =
   | 'none'
@@ -72,6 +76,7 @@ export type TextareaProps<Message> = BasecoatAttrs<Message> & Readonly<{
 
 export type LabelProps<Message> = BasecoatAttrs<Message> & Readonly<{
   children: BasecoatChildren
+  for?: string
   htmlFor?: string
 }>
 
@@ -86,6 +91,7 @@ export type FieldProps<Message> = BasecoatAttrs<Message> & Readonly<{
 
 export type FieldsetProps<Message> = BasecoatAttrs<Message> & Readonly<{
   children: BasecoatChildren
+  role?: 'group' | 'radiogroup'
 }>
 
 export type FieldLegendVariant = 'legend' | 'label'
@@ -95,15 +101,19 @@ export type FieldLegendProps<Message> = BasecoatAttrs<Message> & Readonly<{
   variant?: FieldLegendVariant
 }>
 
-export type FieldTextProps<Message> = BasecoatAttrs<Message> & Readonly<{
+export type FieldSectionProps<Message> = BasecoatAttrs<Message> & Readonly<{
+  children: BasecoatChildren
+}>
+
+export type FieldDescriptionProps<Message> = BasecoatAttrs<Message> & Readonly<{
+  alert?: boolean
   children: BasecoatChildren
   id?: string
 }>
 
-export type FieldErrorProps<Message> = FieldTextProps<Message>
-
-export type FieldSectionProps<Message> = BasecoatAttrs<Message> & Readonly<{
+export type FieldErrorProps<Message> = BasecoatAttrs<Message> & Readonly<{
   children: BasecoatChildren
+  id?: string
 }>
 
 export type FieldSeparatorProps<Message> = BasecoatAttrs<Message> & Readonly<{
@@ -113,11 +123,12 @@ export type FieldSeparatorProps<Message> = BasecoatAttrs<Message> & Readonly<{
 export type InputGroupOrientation = 'vertical'
 
 export type InputGroupProps<Message> = BasecoatAttrs<Message> & Readonly<{
-  children: ReadonlyArray<Html | string | null>
+  children: BasecoatChildren
   orientation?: InputGroupOrientation
+  role?: 'group'
 }>
 
-export type InputGroupAlign =
+export type InputGroupAddonAlign =
   | 'start'
   | 'end'
   | 'inline-start'
@@ -125,13 +136,17 @@ export type InputGroupAlign =
   | 'block-start'
   | 'block-end'
 
+export type InputGroupAlign = InputGroupAddonAlign
+
 export type InputGroupAddonElement = 'span' | 'header' | 'footer' | 'div'
 
 export type InputGroupAddonProps<Message> = BasecoatAttrs<Message> & Readonly<{
-  align?: InputGroupAlign
+  align?: InputGroupAddonAlign
   ariaHidden?: boolean
   as?: InputGroupAddonElement
   children: BasecoatChildren
+  element?: InputGroupAddonElement
+  hidden?: boolean
   role?: string
 }>
 
@@ -142,24 +157,6 @@ const fieldRoot = basecoatClass('field')
 const fieldsetRoot = basecoatClass('fieldset')
 const fieldSeparatorRoot = basecoatClass('field-separator')
 const inputGroupRoot = basecoatClass('input-group')
-
-const idAttr = <Message>(
-  h: ReturnType<typeof html<Message>>,
-  id: string | undefined,
-): ReadonlyArray<Attribute<Message>> =>
-  id === undefined ? [] : [h.Id(id)]
-
-const nameAttr = <Message>(
-  h: ReturnType<typeof html<Message>>,
-  name: string | undefined,
-): ReadonlyArray<Attribute<Message>> =>
-  name === undefined ? [] : [h.Name(name)]
-
-const placeholderAttr = <Message>(
-  h: ReturnType<typeof html<Message>>,
-  placeholder: string | undefined,
-): ReadonlyArray<Attribute<Message>> =>
-  placeholder === undefined ? [] : [h.Placeholder(placeholder)]
 
 const optionalAttr = <Message>(
   h: ReturnType<typeof html<Message>>,
@@ -183,7 +180,7 @@ const booleanAttrs = <Message>(
     ...(input.checked === true ? [h.Checked(true)] : []),
     ...(input.disabled === true ? [h.Disabled(true)] : []),
     ...(input.invalid === true ? [h.Attribute('aria-invalid', 'true')] : []),
-    ...(input.readonly === true ? [h.Attribute('readonly', '')] : []),
+    ...(input.readonly === true ? [h.Readonly(true)] : []),
     ...(input.required === true ? [h.Required(true)] : []),
   ]
 }
@@ -193,11 +190,11 @@ export const input = <Message>(input: InputProps<Message>): Html => {
 
   return h.input([
     ...basecoatAttrs<Message>(input, inputRoot),
-    ...idAttr(h, input.id),
-    ...nameAttr(h, input.name),
-    ...(input.type === undefined ? [] : [h.Type(input.type)]),
+    ...optionalAttr(h, 'id', input.id),
+    ...optionalAttr(h, 'name', input.name),
+    h.Type(input.type ?? 'text'),
     ...(input.value === undefined ? [] : [h.Value(input.value)]),
-    ...placeholderAttr(h, input.placeholder),
+    ...(input.placeholder === undefined ? [] : [h.Placeholder(input.placeholder)]),
     ...optionalAttr(h, 'aria-describedby', input.describedBy),
     ...optionalAttr(h, 'autocomplete', input.autocomplete),
     ...optionalAttr(h, 'inputmode', input.inputMode),
@@ -212,9 +209,9 @@ export const textarea = <Message>(input: TextareaProps<Message>): Html => {
   return h.textarea(
     [
       ...basecoatAttrs<Message>(input, textareaRoot),
-      ...idAttr(h, input.id),
-      ...nameAttr(h, input.name),
-      ...placeholderAttr(h, input.placeholder),
+      ...optionalAttr(h, 'id', input.id),
+      ...optionalAttr(h, 'name', input.name),
+      ...(input.placeholder === undefined ? [] : [h.Placeholder(input.placeholder)]),
       ...(input.rows === undefined ? [] : [h.Rows(input.rows)]),
       ...optionalAttr(h, 'aria-describedby', input.describedBy),
       ...optionalAttr(h, 'autocomplete', input.autocomplete),
@@ -228,11 +225,12 @@ export const textarea = <Message>(input: TextareaProps<Message>): Html => {
 
 export const label = <Message>(input: LabelProps<Message>): Html => {
   const h = html<Message>()
+  const forValue = input.htmlFor ?? input.for
 
   return h.label(
     [
       ...basecoatAttrs<Message>(input, labelRoot),
-      ...(input.htmlFor === undefined ? [] : [h.For(input.htmlFor)]),
+      ...(forValue === undefined ? [] : [h.For(forValue)]),
     ],
     input.children,
   )
@@ -255,10 +253,18 @@ export const field = <Message>(input: FieldProps<Message>): Html => {
 export const fieldset = <Message>(input: FieldsetProps<Message>): Html => {
   const h = html<Message>()
 
-  return h.fieldset(
-    basecoatAttrs<Message>(input, fieldsetRoot),
-    input.children,
-  )
+  return input.role === undefined
+    ? h.fieldset(
+        basecoatAttrs<Message>(input, fieldsetRoot),
+        input.children,
+      )
+    : h.div(
+        [
+          ...basecoatAttrs<Message>(input, fieldsetRoot),
+          h.Role(input.role),
+        ],
+        input.children,
+      )
 }
 
 export const fieldLegend = <Message>(
@@ -275,15 +281,24 @@ export const fieldLegend = <Message>(
   )
 }
 
+export const fieldSection = <Message>(
+  input: FieldSectionProps<Message>,
+): Html => {
+  const h = html<Message>()
+
+  return h.section(basecoatAttrs<Message>(input), input.children)
+}
+
 export const fieldDescription = <Message>(
-  input: FieldTextProps<Message>,
+  input: FieldDescriptionProps<Message>,
 ): Html => {
   const h = html<Message>()
 
   return h.p(
     [
       ...basecoatAttrs<Message>(input),
-      ...idAttr(h, input.id),
+      ...(input.alert === true ? [h.Role('alert')] : []),
+      ...optionalAttr(h, 'id', input.id),
     ],
     input.children,
   )
@@ -295,34 +310,26 @@ export const fieldError = <Message>(input: FieldErrorProps<Message>): Html => {
   return h.p(
     [
       ...basecoatAttrs<Message>(input),
-      ...idAttr(h, input.id),
       h.Role('alert'),
+      ...optionalAttr(h, 'id', input.id),
     ],
     input.children,
   )
 }
 
-export const fieldSection = <Message>(
-  input: FieldSectionProps<Message>,
-): Html => {
-  const h = html<Message>()
-
-  return h.section(basecoatAttrs<Message>(input), input.children)
-}
-
 export const fieldSeparator = <Message>(
-  input: FieldSeparatorProps<Message>,
+  input: FieldSeparatorProps<Message> = {},
 ): Html => {
   const h = html<Message>()
 
   return h.div(
     basecoatAttrs<Message>(input, fieldSeparatorRoot),
-    [
-      h.hr([h.Role('separator')]),
-      input.children === undefined
-        ? null
-        : h.span([], input.children),
-    ],
+    input.children === undefined
+      ? [h.hr([h.Role('separator')])]
+      : [
+          h.hr([h.Role('separator')]),
+          h.span([], input.children),
+        ],
   )
 }
 
@@ -334,6 +341,7 @@ export const inputGroup = <Message>(
   return h.div(
     [
       ...basecoatAttrs<Message>(input, inputGroupRoot),
+      ...(input.role === undefined ? [] : [h.Role(input.role)]),
       ...dataAttr<Message>('orientation', input.orientation),
     ],
     input.children,
@@ -347,11 +355,13 @@ export const inputGroupAddon = <Message>(
   const attrs = [
     ...basecoatAttrs<Message>(input),
     ...dataAttr<Message>('align', input.align),
-    ...(input.ariaHidden === true ? [h.AriaHidden(true)] : []),
+    ...(input.ariaHidden === true || input.hidden === true
+      ? [h.AriaHidden(true)]
+      : []),
     ...(input.role === undefined ? [] : [h.Role(input.role)]),
   ]
 
-  switch (input.as) {
+  switch (input.as ?? input.element) {
     case 'header':
       return h.header(attrs, input.children)
     case 'footer':
