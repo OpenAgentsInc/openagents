@@ -2281,7 +2281,6 @@ export async function removeCodexAccount(
   const pylonHome = resolvePylonHome(env)
   const configPath = join(pylonHome, "config.json")
 
-  // Refuse refs that could escape accounts/codex, and the non-removable default.
   if (
     accountRef.length === 0 ||
     accountRef.includes("/") ||
@@ -2296,10 +2295,11 @@ export async function removeCodexAccount(
     }
   }
 
-  // The fleet list surfaces accounts from BOTH the registry (config.dev.accounts)
-  // and a scan of the per-account home dirs (<pylon home>/accounts/codex/<ref>).
-  // To make an account actually disappear we remove it from both sources.
-  const accountHomeDir = join(pylonHome, "accounts", "codex", accountRef)
+  // Accounts are surfaced from THREE sources: the Pylon registry
+  // (config.dev.accounts), isolated homes under <pylon home>/accounts/codex/<ref>,
+  // and sibling dotfile homes in $HOME (~/.codex-<x> / ~/.claude-<x>, discovered by
+  // discoverPylonSiblingAccountHomes). Remove the account from all of them.
+  const siblingRoot = (env.PYLON_ACCOUNT_HOME_ROOT ?? "").trim() || homedir()
   let removedSomething = false
 
   try {
@@ -2311,7 +2311,7 @@ export async function removeCodexAccount(
       }
       const accounts = Array.isArray(config.dev?.accounts) ? config.dev.accounts : []
       const remaining = accounts.filter(
-        account => !(account?.provider === "codex" && account?.ref === accountRef),
+        account => account?.ref !== accountRef,
       )
       if (remaining.length !== accounts.length) {
         const nextConfig = {
@@ -2324,13 +2324,23 @@ export async function removeCodexAccount(
         removedSomething = true
       }
     } catch {
-      // no/unreadable config — the home-dir removal below still applies
+      // no/unreadable config — other removals below still apply
     }
 
-    // 2) delete the isolated per-account home dir (the dir-scan source)
-    if (existsSync(accountHomeDir)) {
-      await rm(accountHomeDir, { recursive: true, force: true })
+    // 2) isolated per-account home under the pylon home (safe path)
+    const isolatedHome = join(pylonHome, "accounts", "codex", accountRef)
+    if (existsSync(isolatedHome)) {
+      await rm(isolatedHome, { recursive: true, force: true })
       removedSomething = true
+    }
+
+    // 3) sibling dotfile home in $HOME — but NEVER the bare defaults ~/.codex / ~/.claude
+    if (accountRef !== "codex" && accountRef !== "claude") {
+      const siblingHome = join(siblingRoot, `.${accountRef}`)
+      if (existsSync(siblingHome)) {
+        await rm(siblingHome, { recursive: true, force: true })
+        removedSomething = true
+      }
     }
 
     return { ok: true, removed: removedSomething, accountRef }
