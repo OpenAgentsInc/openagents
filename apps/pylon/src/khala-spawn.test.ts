@@ -184,6 +184,53 @@ describe("Khala spawn per-account planning", () => {
     ])
   })
 
+  test("keeps full long prompts while bounding request objective summaries", () => {
+    const longObjective = [
+      "Coordinate a public OpenAgents fleet packet.",
+      "Review issue 7762 and related progress streaming notes.",
+      "Map implementation files, run focused tests, and close out with evidence refs.",
+      "Repeatable context:",
+      "x".repeat(1_100),
+    ].join(" ")
+
+    const result = buildPylonKhalaSpawnPlan({
+      accounts: {
+        accounts: [
+          {
+            accountRef: "codex-a",
+            accountRefHash: accountHashA,
+            blockerRefs: [],
+            homeState: "present",
+            provider: "codex",
+            readiness: { state: "ready" },
+          },
+        ],
+      } as never,
+      advertisedCodexAccounts: [
+        {
+          accountKey: "aaaaaaaaaaaa",
+          accountRefHash: accountHashA,
+          available: 1,
+          busy: 0,
+          queued: 0,
+          ready: 1,
+        },
+      ],
+      baseUrl: "https://openagents.example",
+      fixture: true,
+      objectives: repeatedKhalaSpawnObjectives({
+        count: 1,
+        objective: longObjective,
+      }),
+      targetPylonRef: "pylon.owner.codex",
+    })
+
+    const requestInput = result.slots[0]?.requestInput
+    expect(requestInput?.prompt).toContain("x".repeat(1_100))
+    expect(requestInput?.objectiveSummary).toHaveLength(1_000)
+    expect(requestInput?.objectiveSummary?.endsWith("...")).toBe(true)
+  })
+
   test("blocks batches that request more slots than advertised free capacity", () => {
     const result = buildPylonKhalaSpawnPlan({
       accounts: {

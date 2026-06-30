@@ -249,6 +249,14 @@ export function repeatedKhalaSpawnObjectives(input: {
   }))
 }
 
+const KHALA_REQUEST_OBJECTIVE_SUMMARY_MAX_LENGTH = 1_000
+
+function objectiveSummaryForKhalaRequest(objective: string): string {
+  const trimmed = objective.trim()
+  if (trimmed.length <= KHALA_REQUEST_OBJECTIVE_SUMMARY_MAX_LENGTH) return trimmed
+  return `${trimmed.slice(0, KHALA_REQUEST_OBJECTIVE_SUMMARY_MAX_LENGTH - 3).trimEnd()}...`
+}
+
 export function buildPylonKhalaSpawnPlan(input: {
   accounts: PylonAccountsListProjection
   advertisedCodexAccounts?: readonly PylonKhalaSpawnAdvertisedCodexAccount[]
@@ -328,7 +336,7 @@ export function buildPylonKhalaSpawnPlan(input: {
     : input.objectives.map((objective, index) => {
         const account = selectedAccounts[index % selectedAccounts.length]!
         const requestInput: PylonKhalaRequestInput = {
-          objectiveSummary: objective.objective,
+          objectiveSummary: objectiveSummaryForKhalaRequest(objective.objective),
           prompt: objective.objective,
           targetAccountRefHash: account.accountRefHash,
           targetPylonRef: input.targetPylonRef,
