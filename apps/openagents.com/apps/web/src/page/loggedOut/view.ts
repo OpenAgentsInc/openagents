@@ -41,6 +41,8 @@ import {
   RequestedLandingLogout,
   SubmittedAutopilotOnboardingTurn,
   SubmittedKhalaChatTurn,
+  ToggledKhalaChatComposerExpanded,
+  ToggledKhalaChatComposerPreview,
   UpdatedAutopilotOnboardingComposer,
   UpdatedKhalaChatComposer,
 } from './message'
@@ -187,6 +189,8 @@ export const view = Submodel.defineView<Model, Message>((model): Html => {
         KhalaChatPage.bottomOverlayView<Message>(model.khalaChat, {
           updatedComposer: value => UpdatedKhalaChatComposer({ value }),
           submittedTurn: () => SubmittedKhalaChatTurn(),
+          toggledPreview: () => ToggledKhalaChatComposerPreview(),
+          toggledExpanded: () => ToggledKhalaChatComposerExpanded(),
           jumpedToLatest: () => ClickedKhalaChatJumpToLatest(),
           openedInfo: () => OpenedKhalaChatInfo(),
           closedInfo: () => ClosedKhalaChatInfo(),

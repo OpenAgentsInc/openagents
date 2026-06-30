@@ -472,6 +472,13 @@ describe('authenticated startup routing', () => {
       Scene.expect(Scene.selector('[data-pose="khala"]')).toExist(),
       Scene.expect(Scene.selector('[data-khala-chat]')).toExist(),
       Scene.expect(Scene.selector('[data-khala-chat-composer]')).toExist(),
+      Scene.expect(Scene.selector('[data-oa-command-composer]')).toExist(),
+      Scene.expect(
+        Scene.selector('[data-oa-command-composer-native-editing="true"]'),
+      ).toExist(),
+      Scene.expect(
+        Scene.selector('[data-oa-command-composer-focus-after-submit]'),
+      ).toExist(),
       Scene.expect(Scene.selector('[data-khala-instructions]')).not.toExist(),
       Scene.expect(Scene.role('link', { name: 'Docs' })).not.toExist(),
       Scene.expect(Scene.role('link', { name: 'Log in' })).not.toExist(),

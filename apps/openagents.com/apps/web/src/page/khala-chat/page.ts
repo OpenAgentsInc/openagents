@@ -29,7 +29,8 @@ export const KHALA_CHAT_ROOT_ATTR = 'khala-chat'
 export const KHALA_CHAT_TRANSCRIPT_ATTR = 'khala-chat-transcript'
 export const KHALA_CHAT_SCROLL_REGION_ATTR = 'khala-chat-scroll-region'
 export const KHALA_CHAT_COMPOSER_ATTR = 'khala-chat-composer'
-export const KHALA_CHAT_COMPOSER_TEXTAREA_ID = 'khala-chat-message'
+export const KHALA_CHAT_COMPOSER_TEXTAREA_ID =
+  'oa-command-composer-khala-chat-message'
 export const KHALA_CHAT_COMPOSER_TEXTAREA_SELECTOR = `#${KHALA_CHAT_COMPOSER_TEXTAREA_ID}`
 export const KHALA_CHAT_LATEST_TURN_ATTR = 'khala-chat-latest-turn'
 export const KHALA_CHAT_LATEST_BUTTON_ATTR = 'khala-chat-latest-button'
@@ -50,6 +51,8 @@ const KHALA_HEADING = 'Khala'
 export type KhalaChatViewActions<Message> = Readonly<{
   updatedComposer: (value: string) => Message
   submittedTurn: () => Message
+  toggledPreview: () => Message
+  toggledExpanded: () => Message
   jumpedToLatest: () => Message
   openedInfo: () => Message
   closedInfo: () => Message
@@ -229,8 +232,29 @@ const composerView = <Message>(
   const h = html<Message>()
 
   const inFlight = model.status === 'submitting' || model.status === 'streaming'
-
   const submitDisabled = inFlight || model.composerDraft.trim() === ''
+  const composerStatus =
+    model.status === 'error'
+      ? 'error'
+      : model.status === 'submitting'
+        ? 'submitted'
+        : model.status === 'streaming'
+          ? 'streaming'
+          : 'ready'
+  const controls = [
+    AiElements.commandComposerButton<Message>({
+      label: model.composerPreview ? 'Edit' : 'Preview',
+      icon: model.composerPreview ? 'preview-off' : 'preview',
+      pressed: model.composerPreview,
+      attrs: [h.OnClick(actions.toggledPreview())],
+    }),
+    AiElements.commandComposerButton<Message>({
+      label: model.composerExpanded ? 'Compact' : 'Expand',
+      icon: model.composerExpanded ? 'compact' : 'expand',
+      pressed: model.composerExpanded,
+      attrs: [h.OnClick(actions.toggledExpanded())],
+    }),
+  ]
 
   return h.div(
     [
@@ -247,61 +271,44 @@ const composerView = <Message>(
             [model.errorReason],
           )
         : h.empty,
-      h.form(
-        [
+      AiElements.commandComposer<Message>({
+        props: {
+          name: 'khala-chat-message',
+          label: 'Message Khala',
+          placeholder: 'Send a message',
+          value: model.composerDraft,
+          status: composerStatus,
+          rows: 4,
+          autofocus: true,
+          preview: model.composerPreview,
+          expanded: model.composerExpanded,
+          ...(model.composerExpanded ? { heightPx: 280 } : {}),
+          sizeLabel: `${model.composerDraft.length.toLocaleString()} chars`,
+          keymapLabel: 'Enter',
+        },
+        controls,
+        formAttrs: [
           h.OnSubmit(actions.submittedTurn()),
-          Ui.className<Message>('relative grid min-h-36 w-full'),
-        ],
-        [
-          h.textarea(
-            [
-              h.Id(KHALA_CHAT_COMPOSER_TEXTAREA_ID),
-              h.Name('khala-chat-message'),
-              h.Placeholder('Send a message'),
-              h.Autofocus(true),
-              h.Value(model.composerDraft),
-              h.OnInput(value => actions.updatedComposer(value)),
-              h.AriaLabel('Message Khala'),
-              h.Rows(4),
-              Ui.className<Message>(
-                'field-sizing-content min-h-36 w-full resize-none bg-transparent px-0 pb-16 pt-4 font-mono text-[0.8125rem] leading-[1.55] text-[#f1efe8] outline-none placeholder:text-[#a9c3ff]/70 max-sm:text-base/6',
-              ),
-              // Enter submits the turn; Shift+Enter inserts a newline.
-              h.OnKeyDownPreventDefault((key, modifiers) =>
-                key === 'Enter' &&
-                !modifiers.shiftKey &&
-                !inFlight &&
-                model.composerDraft.trim() !== ''
-                  ? Option.some(actions.submittedTurn())
-                  : Option.none(),
-              ),
-            ],
-            [model.composerDraft],
-          ),
-          h.button(
-            [
-              h.Type('submit'),
-              h.AriaLabel(inFlight ? 'Sending message' : 'Send message'),
-              ...(submitDisabled ? [h.Disabled(true)] : []),
-              Ui.className<Message>(
-                'khala-focus absolute bottom-3 right-3 inline-flex size-9 items-center justify-center rounded-[2px] border border-[#4fd0ff]/65 bg-[#06101d]/95 text-[#cfe8ff] transition-colors duration-200 ease-out hover:border-[#8fb6ff] hover:bg-[#0a1b31] hover:text-white active:border-[#4fd0ff] active:bg-[#0e213e] disabled:cursor-not-allowed disabled:border-[#3a7bff]/20 disabled:bg-black/40 disabled:text-[#4e668f] disabled:hover:border-[#3a7bff]/20 disabled:hover:bg-black/40 disabled:hover:text-[#4e668f] motion-reduce:transition-none',
-              ),
-            ],
-            [
-              h.span(
-                [
-                  h.AriaHidden(true),
-                  Ui.className<Message>(
-                    'pointer-events-none absolute left-1/2 top-1/2 size-[max(100%,3rem)] -translate-x-1/2 -translate-y-1/2 pointer-fine:hidden',
-                  ),
-                ],
-                [],
-              ),
-              iconView<Message>('ArrowUpSm', 'size-4'),
-            ],
+          Ui.className<Message>(
+            'w-full [--oa-command-composer-bg:rgba(0,0,0,0.64)] [--oa-command-composer-border:rgba(58,123,255,0.45)] [--oa-command-composer-focus:#4fd0ff] [--oa-command-composer-muted:rgba(169,195,255,0.72)]',
           ),
         ],
-      ),
+        textareaAttrs: [
+          h.Value(model.composerDraft),
+          h.OnInput(value => actions.updatedComposer(value)),
+          // Enter submits the turn; Shift+Enter inserts a newline.
+          h.OnKeyDownPreventDefault((key, modifiers) =>
+            key === 'Enter' &&
+            !modifiers.shiftKey &&
+            !inFlight &&
+            model.composerDraft.trim() !== ''
+              ? Option.some(actions.submittedTurn())
+              : Option.none(),
+          ),
+        ],
+        ...(submitDisabled ? { submitAttrs: [h.Disabled(true)] } : {}),
+        resizeAttrs: [h.OnClick(actions.toggledExpanded())],
+      }),
     ],
   )
 }

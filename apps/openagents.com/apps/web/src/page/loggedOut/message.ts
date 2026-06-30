@@ -552,6 +552,12 @@ export const CompletedPersistAutopilotOnboarding = m(
 export const UpdatedKhalaChatComposer = m('UpdatedKhalaChatComposer', {
   value: S.String,
 })
+export const ToggledKhalaChatComposerPreview = m(
+  'ToggledKhalaChatComposerPreview',
+)
+export const ToggledKhalaChatComposerExpanded = m(
+  'ToggledKhalaChatComposerExpanded',
+)
 export const SubmittedKhalaChatTurn = m('SubmittedKhalaChatTurn')
 export const OpenedKhalaChatStream = m('OpenedKhalaChatStream', {
   turnId: S.String,
@@ -687,6 +693,8 @@ export const Message = S.Union([
   ClickedAutopilotOnboardingStartOver,
   CompletedPersistAutopilotOnboarding,
   UpdatedKhalaChatComposer,
+  ToggledKhalaChatComposerPreview,
+  ToggledKhalaChatComposerExpanded,
   SubmittedKhalaChatTurn,
   OpenedKhalaChatStream,
   ReceivedKhalaChatDelta,

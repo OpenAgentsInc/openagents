@@ -58,6 +58,11 @@ export const KhalaChatModel = ts('KhalaChat', {
   // The turn the streaming subscription should drive, or null when none is in
   // flight. Carries the per-turn id so the SSE stream opens exactly once.
   pendingTurn: S.NullOr(KhalaChatPendingTurn),
+  // Local composer display state. The draft is still plain text; preview renders
+  // it through the shared Markdown element, and expanded just changes composer
+  // height. Neither is persisted into any public projection.
+  composerPreview: S.Boolean,
+  composerExpanded: S.Boolean,
   // Whether the "What is Khala?" info popup overlay is open.
   infoOpen: S.Boolean,
 })
@@ -73,6 +78,8 @@ export const initKhalaChatModel = (): KhalaChatModel =>
     transcript: [],
     streamingReply: null,
     pendingTurn: null,
+    composerPreview: false,
+    composerExpanded: false,
     infoOpen: false,
   })
 

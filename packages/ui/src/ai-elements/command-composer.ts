@@ -842,6 +842,11 @@ export const commandComposer = <Message>(input: {
                 ? {}
                 : { keymapLabel: props.keymapLabel }),
             }),
+            commandComposerResizeHandle<Message>({
+              ...(input.resizeAttrs === undefined
+                ? {}
+                : { attrs: input.resizeAttrs }),
+            }),
             commandComposerSubmit<Message>({
               status,
               label: submitLabelFor(status, props),
@@ -850,9 +855,6 @@ export const commandComposer = <Message>(input: {
                 : { attrs: input.submitAttrs }),
             }),
           ]),
-          commandComposerResizeHandle<Message>({
-            ...(input.resizeAttrs === undefined ? {} : { attrs: input.resizeAttrs }),
-          }),
           h.div([h.Id(`${textareaId}-a11y`)], [
             commandComposerA11y<Message>({
               status,

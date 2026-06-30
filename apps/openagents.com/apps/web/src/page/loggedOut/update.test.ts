@@ -27,6 +27,8 @@ import {
   SucceededLoadPublicKhalaTokensServedModelMix,
   SucceededLoadTrace,
   ToggledGymLane,
+  ToggledKhalaChatComposerExpanded,
+  ToggledKhalaChatComposerPreview,
   UpdatedGymSamplesPerCell,
   UpdatedKhalaChatComposer,
 } from './message'
@@ -132,6 +134,25 @@ describe('logged-out nav + copy update', () => {
 
     const [, latestCommands] = update(streaming, ClickedKhalaChatJumpToLatest())
     expect(commandNames(latestCommands)).toEqual(['ScrollKhalaChatThreadToEnd'])
+  })
+
+  test('Khala chat composer preview and expanded state stay local to the chat model', () => {
+    const chatModel = init(KhalaChatRoute())
+
+    const [withPreview, previewCommands] = update(
+      chatModel,
+      ToggledKhalaChatComposerPreview(),
+    )
+    expect(withPreview.khalaChat.composerPreview).toBe(true)
+    expect(previewCommands).toEqual([])
+
+    const [expanded, expandCommands] = update(
+      withPreview,
+      ToggledKhalaChatComposerExpanded(),
+    )
+    expect(expanded.khalaChat.composerPreview).toBe(true)
+    expect(expanded.khalaChat.composerExpanded).toBe(true)
+    expect(expandCommands).toEqual([])
   })
 
   test('ClickedCopyAgentInstructions issues a clipboard copy command', () => {

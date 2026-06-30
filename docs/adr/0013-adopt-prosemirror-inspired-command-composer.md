@@ -195,6 +195,10 @@ The implementation should land as a sequence:
   always-writable pending turns, Markdown preview, typed attachment and
   large-text staging, optional three-effect HUD projection, and a clean inline
   footer strip for status, resize, and send controls.
+* 2026-06-30: Issue #7644 integrated the shared command composer into the
+  public OpenAgents `/chat` Khala surface, replacing the app-local textarea
+  shell while preserving autofocus, Enter-to-send, Markdown preview, expanded
+  height, focus-after-submit, and the stateless in-memory prompt boundary.
 
 ## Pros and Cons of the Options
 

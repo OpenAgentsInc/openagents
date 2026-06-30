@@ -220,12 +220,14 @@
 
 .oa-ai-command-composer-footer {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
-  align-items: end;
-  gap: 0.625rem;
+  grid-template-areas: "controls status resize submit";
+  grid-template-columns: minmax(0, 1fr) minmax(0, auto) auto auto;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .oa-ai-command-composer-controls {
+  grid-area: controls;
   display: flex;
   min-width: 0;
   flex-wrap: wrap;
@@ -278,6 +280,7 @@
 }
 
 .oa-ai-command-composer-submit {
+  grid-area: submit;
   border-color: rgba(79, 208, 255, 0.76);
   background: rgba(79, 208, 255, 0.12);
   color: var(--oa-color-review-link-soft, #8fd0ff);
@@ -288,11 +291,13 @@
 }
 
 .oa-ai-command-composer-status {
+  grid-area: status;
   display: flex;
   max-width: 24rem;
   min-width: 0;
   flex-wrap: wrap;
   justify-content: flex-end;
+  justify-self: end;
   gap: 0.375rem;
   color: var(--oa-command-composer-muted);
   font-family:
@@ -301,6 +306,10 @@
   font-size: 0.6875rem;
   line-height: 1.2;
   text-transform: uppercase;
+}
+
+.oa-ai-command-composer-status [data-slot] {
+  min-width: 0;
 }
 
 .oa-ai-command-composer-status [data-slot="status"] {
@@ -312,11 +321,9 @@
 }
 
 .oa-ai-command-composer-resize-handle {
-  position: absolute;
-  right: 0.5rem;
-  bottom: 0.5rem;
-  min-width: 1.75rem;
-  min-height: 1.75rem;
+  grid-area: resize;
+  min-width: 2rem;
+  min-height: 2rem;
   padding: 0;
 }
 
@@ -337,13 +344,16 @@
   }
 
   .oa-ai-command-composer-footer {
-    grid-template-columns: 1fr auto;
+    grid-template-areas:
+      "controls resize submit"
+      "status status status";
+    grid-template-columns: minmax(0, 1fr) auto auto;
   }
 
   .oa-ai-command-composer-status {
     grid-column: 1 / -1;
     justify-content: flex-start;
-    order: 3;
+    justify-self: start;
   }
 }
 

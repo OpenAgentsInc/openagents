@@ -2820,6 +2820,20 @@ export const update = (model: Model, message: Message): UpdateReturn =>
         }),
         [],
       ],
+      ToggledKhalaChatComposerPreview: () => [
+        evo(model, {
+          khalaChat: chat =>
+            evo(chat, { composerPreview: preview => !preview }),
+        }),
+        [],
+      ],
+      ToggledKhalaChatComposerExpanded: () => [
+        evo(model, {
+          khalaChat: chat =>
+            evo(chat, { composerExpanded: expanded => !expanded }),
+        }),
+        [],
+      ],
       SubmittedKhalaChatTurn: () => {
         const chat = model.khalaChat
         const userText = chat.composerDraft.trim()
