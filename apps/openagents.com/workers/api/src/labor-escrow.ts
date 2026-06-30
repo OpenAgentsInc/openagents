@@ -166,6 +166,26 @@ export type LaborEscrowResult =
       currentState?: LaborEscrowState
     }>
 
+export type BondSettlementAdapterResult =
+  | Readonly<{
+      kind: 'ok'
+      escrow: LaborEscrowRecord
+      idempotent: boolean
+      receiptRef: string
+    }>
+  | Extract<LaborEscrowResult, Readonly<{ kind: 'refused' }>>
+
+export type BondSettlementAdapter = Readonly<{
+  adapterKind: 'credit_ledger'
+  hold: (input: ReserveLaborEscrowInput) => Promise<BondSettlementAdapterResult>
+  release: (
+    input: ReleaseLaborEscrowInput,
+  ) => Promise<BondSettlementAdapterResult>
+  forfeit: (
+    input: ForfeitLaborEscrowInput,
+  ) => Promise<BondSettlementAdapterResult>
+}>
+
 export type ArtanisLaborBudgetGateDecision =
   | Readonly<{ kind: 'allowed'; remainingTickBudgetMsat: number }>
   | Readonly<{
@@ -963,6 +983,40 @@ export const forfeitLaborEscrow = async (
   }
   return { escrow: forfeited, idempotent: false, kind: 'ok' }
 }
+
+const bondSettlementResultFromLaborEscrow = (
+  result: LaborEscrowResult,
+  receiptRef: (escrow: LaborEscrowRecord) => string | null,
+): BondSettlementAdapterResult =>
+  result.kind === 'refused'
+    ? result
+    : {
+        escrow: result.escrow,
+        idempotent: result.idempotent,
+        kind: 'ok',
+        receiptRef: receiptRef(result.escrow) ?? result.escrow.reserveReceiptRef,
+      }
+
+export const createCreditLedgerBondSettlementAdapter = (
+  db: D1Database,
+): BondSettlementAdapter => ({
+  adapterKind: 'credit_ledger',
+  forfeit: async input =>
+    bondSettlementResultFromLaborEscrow(
+      await forfeitLaborEscrow(db, input),
+      escrow => escrow.forfeitReceiptRef,
+    ),
+  hold: async input =>
+    bondSettlementResultFromLaborEscrow(
+      await reserveLaborEscrow(db, input),
+      escrow => escrow.reserveReceiptRef,
+    ),
+  release: async input =>
+    bondSettlementResultFromLaborEscrow(
+      await releaseLaborEscrow(db, input),
+      escrow => escrow.releaseReceiptRef,
+    ),
+})
 
 export const reserveInputFromForumWorkRequest = (
   request: ForumWorkRequestRecord,

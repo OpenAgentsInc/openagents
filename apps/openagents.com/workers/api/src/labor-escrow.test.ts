@@ -5,6 +5,7 @@ import {
   type LaborEscrowState,
   assertLaborEscrowPublicSafe,
   buildLaborEscrowPublicProjection,
+  createCreditLedgerBondSettlementAdapter,
   evaluateArtanisLaborBudgetGate,
   evaluateLaborEscrowFundingSource,
   forfeitLaborEscrow,
@@ -593,6 +594,53 @@ describe('labor escrow ledger statements', () => {
 })
 
 describe('labor escrow D1 guards and projections', () => {
+  test('credit-ledger bond settlement adapter preserves fail-closed authority checks', async () => {
+    const adapter = createCreditLedgerBondSettlementAdapter(null as never)
+
+    expect(adapter.adapterKind).toBe('credit_ledger')
+
+    await expect(
+      adapter.hold({
+        ...reserveInput,
+        amountMsat: 0,
+      }),
+    ).resolves.toEqual({
+      kind: 'refused',
+      reason: 'invalid_amount',
+    })
+
+    await expect(
+      adapter.release({
+        acceptanceEventRef: 'nostr.event.' + 'd'.repeat(64),
+        authority: { actorRef: 'agent:provider', kind: 'provider' },
+        escrowId: 'escrow_1',
+        nowIso,
+        providerActorRef: 'agent:provider',
+        releaseReceiptId: 'receipt_row_release_adapter_forbidden',
+        releaseReceiptRef: 'receipt.labor_escrow.release.adapter_forbidden',
+      }),
+    ).resolves.toEqual({
+      kind: 'refused',
+      reason: 'release_authority_forbidden',
+    })
+
+    await expect(
+      adapter.forfeit({
+        authority: { actorRef: 'agent:requester', kind: 'requester' },
+        counterpartyActorRef: 'agent:counterparty',
+        escrowId: 'escrow_1',
+        forfeitConditionRef: 'verdict.public.validator.non_performance',
+        forfeitDestination: 'counterparty',
+        forfeitReceiptId: 'receipt_row_forfeit_adapter_forbidden',
+        forfeitReceiptRef: 'receipt.labor_escrow.forfeit.adapter_forbidden',
+        nowIso,
+      }),
+    ).resolves.toEqual({
+      kind: 'refused',
+      reason: 'forfeit_authority_forbidden',
+    })
+  })
+
   test('provider and worker authority cannot release escrow', async () => {
     await expect(
       releaseLaborEscrow(null as never, {
