@@ -1,4 +1,4 @@
-# OpenAgents Desktop Codex Fanout Runbook
+# Khala Code Desktop Codex Fleet Runbook
 
 **Date:** 2026-06-29
 **Audience:** OpenAgents operators, manager agents, and desktop implementers
@@ -6,10 +6,302 @@
 with programmatic controls, while preserving exact token accounting and enough
 resume state for the next operator after compaction, restart, or reboot.
 
+**Current lane as of 2026-06-30:** the fastest way to get a local Codex worker
+moving from the desktop app is **Khala Code Desktop** in
+`clients/khala-code-desktop`, using its owner-local tools:
+
+- `pylon_ensure`
+- `codex_fleet_status`
+- `codex_spawn`
+
+The older `clients/openagents-desktop` controls below remain useful source
+material for the broader fanout manager, but the working MVP path today is
+Khala Code Desktop → local Pylon → hosted Khala assignment → local Codex runner
+→ no-spend closeout.
+
 This replaces the shell-loop era runbook. The shell commands below are still
 included because they are the bridge the current Desktop process uses under the
 hood, and because they are the emergency fallback when a manager must get work
 moving before a UI control is finished.
+
+## Current Quick Start: Get Khala Code Desktop Moving
+
+From a clean, current `main` checkout:
+
+```sh
+cd /Users/christopherdavid/work/openagents
+git fetch origin +refs/heads/main:refs/remotes/origin/main
+git status --short --branch
+bun install --frozen-lockfile
+```
+
+Use the normal local Pylon home unless intentionally testing another one:
+
+```sh
+export OPENAGENTS_REPO_ROOT=/Users/christopherdavid/work/openagents
+export OPENAGENTS_PYLON_APP_PATH="$OPENAGENTS_REPO_ROOT/apps/pylon"
+export PYLON_HOME="${PYLON_HOME:-$HOME/.openagents/pylon}"
+```
+
+For hosted Khala chat, the desktop process also needs an owner-linked
+`OPENAGENTS_AGENT_TOKEN` in the environment. Source it from the local ignored
+secret file; never print the token, paste it into logs, or commit it. Do **not**
+use `OPENROUTER_API_KEY` as a local bypass for Khala.
+
+Important: **do not globally export `PYLON_OPENAGENTS_BASE_URL` just to inspect
+local capacity from Khala Code Desktop.** The current desktop wrapper passes
+`--base-url https://openagents.com` on network commands that need it. Local
+provider/status probes should stay local; forcing the hosted base URL into
+every Pylon command can make capacity look like stale hosted pressure (`0/4`)
+even when local Codex capacity is free.
+
+Verify local Pylon and Codex fleet state:
+
+```sh
+bun apps/pylon/src/index.ts provider go-online --json \
+  | jq '{pylonRef, codingCapacity, ownCapacityDispatch}'
+
+bun apps/pylon/src/index.ts codex accounts list --json \
+  | jq '.accounts[] | {accountRef, provider, readiness, accountRefHash}'
+```
+
+Expected:
+
+- `ownCapacityDispatch.availableCodexAssignments` is greater than 0 when no
+  worker is running.
+- At least one named Codex account, usually `codex-2` or `status`, has
+  `readiness.state == "ready"`.
+- `codex` may be `credentials_revoked`; that is not fatal if another named
+  account is ready.
+- `(default)` may be ready, but Khala Code Desktop now prefers named ready
+  accounts before `(default)` for automatic `codex_spawn`.
+
+Start the app:
+
+```sh
+bun run --cwd clients/khala-code-desktop dev
+```
+
+In the chat, the useful operator prompts are deliberately plain:
+
+```txt
+pylon_ensure
+codex_fleet_status
+Check pylon fleet status and delegate a demo read-only task to one of the connected codexes, then summarize its result.
+```
+
+The only fleet tools in this MVP are `pylon_ensure`, `codex_fleet_status`, and
+`codex_spawn`. Do not ask for or invent `codex_terminate`; it does not exist.
+
+## Current Headless Smoke
+
+Use this when the UI is suspect and you need to prove the same desktop tool path
+outside the window:
+
+```sh
+cd /Users/christopherdavid/work/openagents
+
+bun --eval '
+  import { spawnCodexInstances } from "./clients/khala-code-desktop/src/bun/khala-codex-fleet-tools.ts";
+  const result = await spawnCodexInstances({
+    prompt: "Read the bounded public fixture and summarize it in one sentence.",
+    fixture: true,
+    timeoutMs: 300000
+  });
+  console.log(JSON.stringify(result, null, 2));
+'
+```
+
+Expected green shape:
+
+```json
+{
+  "acceptedCount": 1,
+  "requestedCount": 1,
+  "results": [
+    {
+      "accountRef": "codex-2",
+      "autoRunOk": true,
+      "status": "accepted"
+    }
+  ]
+}
+```
+
+The summary should include:
+
+- `auto-run: completed`
+- `assignment run: completed`
+- `closeout: accepted, no-spend, not_applicable`
+- `blocker refs: none`
+
+After the smoke, confirm Pylon is back to idle:
+
+```sh
+find "$PYLON_HOME/active-assignment-runs" -maxdepth 1 -type f -name '*.json' -print
+
+bun apps/pylon/src/index.ts provider go-online --json \
+  | jq '.ownCapacityDispatch | {availableCodexAssignments, maxCodexAssignments, codex, loadRefs}'
+```
+
+Expected: no active marker files and capacity back at `N/N available` (on the
+owner machine this was `4/4` after the 2026-06-30 smoke).
+
+## Assign One Issue To A Codex, Non-Blocking (verified 2026-06-30)
+
+This is the smallest "route one GitHub issue to a local Codex worker" recipe,
+the headless equivalent of typing a task into Khala Code Desktop. It splits
+*assign* (fast, returns a ref) from *run* (long, backgrounded) so an operator or
+manager agent does not block while Codex works.
+
+```sh
+cd /Users/christopherdavid/work/openagents
+export OPENAGENTS_REPO_ROOT=/Users/christopherdavid/work/openagents
+export OPENAGENTS_PYLON_APP_PATH="$OPENAGENTS_REPO_ROOT/apps/pylon"
+export PYLON_HOME="${PYLON_HOME:-$HOME/.openagents/pylon}"
+COMMIT="$(git rev-parse origin/main)"
+PYLON="bun $OPENAGENTS_PYLON_APP_PATH/src/index.ts"
+
+# 0) Preflight: a ready Codex account + free capacity.
+$PYLON codex accounts list --json | jq -c '[.accounts[]?|{ref:(.accountRef//.ref), readiness:(.readiness.state//.readiness//.status)}]'
+$PYLON provider go-online --json | jq '{pylonRef, cap:(.ownCapacityDispatch|{availableCodexAssignments,maxCodexAssignments})}'
+
+# 1) REQUIRED before khala request: publish a FRESH server heartbeat, or the
+#    request 409s with a stale-heartbeat error (see gotchas). provider go-online
+#    alone does NOT refresh the server's view.
+$PYLON presence heartbeat --base-url https://openagents.com --json >/dev/null 2>&1 || true
+
+# 2) Plan (non-mutating) and read the target pylon ref from the slot.
+$PYLON khala dispatch --base-url https://openagents.com \
+  --candidates issue:7652 --accounts codex-2 --concurrency 1 \
+  --priority-lane khala-code --repo OpenAgentsInc/openagents --branch main \
+  --commit "$COMMIT" --verify "bun run test:khala-tools" --json \
+  | jq -r '.slots[0].requestInput.targetPylonRef'   # e.g. pylon.33afd48282a649047e3a
+
+# 3) Create the assignment WITHOUT running it; capture the ref immediately.
+ASSIGN="$($PYLON khala request --base-url https://openagents.com \
+  --account codex-2 --pylon-ref pylon.33afd48282a649047e3a \
+  --prompt "You are working in OpenAgentsInc/openagents. Implement issue #7652 ... Run 'bun run test:khala-tools' before finishing. Open or update a PR that closes #7652." \
+  --workflow codex_agent_task --repo OpenAgentsInc/openagents --branch main \
+  --commit "$COMMIT" --verify "bun run test:khala-tools" \
+  --no-run --json | jq -r '.assignmentRef')"
+echo "$ASSIGN"
+
+# 4) Run it (long; background it). Codex executes in a materialized workspace.
+nohup $PYLON assignment run-no-spend --base-url https://openagents.com \
+  --assignment-ref "$ASSIGN" --json > /tmp/run-$ASSIGN.json 2>/tmp/run-$ASSIGN.err &
+
+# 5) Confirm it was accepted and a codex exec child is live.
+grep -o '"event":"[^"]*"' /tmp/run-$ASSIGN.err | tail -3   # want assignment_run.accepted then runtime_progress
+ps -axo pid,etime,command | grep 'codex exec' | grep -v grep
+```
+
+The materialized workspace for inspection is
+`$PYLON_HOME/cache/codex-agent-tasks/workspace.pylon.codex_agent_task.<statusHash>`
+(the `<statusHash>` is the tail of the `statusRef` in the `assignment_run.accepted`
+event). When the runner exits, verify:
+
+```sh
+$PYLON khala closeout "$ASSIGN" --base-url https://openagents.com --json | jq '.closeoutChecklist.ok'
+$PYLON khala proof "$ASSIGN" --base-url https://openagents.com --json
+```
+
+Expected: `closeoutChecklist.ok: true`, `paymentMode: no-spend`,
+`settlementState: not_applicable`, `payoutClaimAllowed: false`, and exact token
+rows. This is own-capacity work: it consumes the linked ChatGPT account's rate
+budget, not OpenAgents settlement.
+
+### Field Notes And Gotchas (2026-06-30)
+
+- **`khala request` 409 "stale or missing heartbeat" even when local capacity is
+  `4/4`.** `provider go-online` (no base URL) refreshes the *local* capacity view
+  only; the server still sees the Pylon as stale. Always run
+  `presence heartbeat --base-url https://openagents.com` immediately before the
+  request. Error/evidence refs:
+  `evidence.khala_coding.target_pylon_ref.unavailable.stale_or_missing_heartbeat`.
+- **`presence heartbeat --json` can print nothing to stdout yet still exit 0 and
+  succeed** — the server write is the side effect. Do not treat empty output as
+  failure; confirm by retrying the request (the 409 clears) or checking the
+  public projection. It exited cleanly here, so the "needs an outer timeout"
+  caveat did not bite on this build.
+- **macOS has no `timeout`/`gtimeout`.** Wrapping a Pylon command in `timeout`
+  fails with `command not found`, and inside a pipe that silently produces empty
+  output (looks like the Pylon command "hung" or "returned nothing"). Run the
+  Pylon command directly, or install coreutils and use `gtimeout`.
+- **Dispatch slot shape (`...khala_dispatch_plan.v0.1`).** The target pylon ref is
+  `slots[0].requestInput.targetPylonRef`, not a top-level field; the account hash
+  is `slots[0].account.accountRefHash`; the workspace/verifier are under
+  `slots[0].requestInput.workspace`. A bare `--candidates issue:NNNN` auto-derives
+  a generic objective ("Implement OpenAgents issue #NNNN. ... Run verifier: ..."),
+  so pass the real, bounded prompt on `khala request --prompt`.
+- **`codex accounts list --json` returns `ok: null`** (not `true`) in this build;
+  read readiness from `.accounts[].readiness` (string: `ready` /
+  `credentials_revoked` / `credentials_missing`). Prefer a named `ready` account
+  (e.g. `codex-2`); `codex` (default) was `credentials_revoked` here.
+- **The `codex exec` child confirms the owner-local executor invariant:**
+  `codex exec --experimental-json --sandbox danger-full-access --skip-git-repo-check
+  --config sandbox_workspace_write.network_access=true --config approval_policy=never`
+  in the materialized cache workspace. That full access is owner-local only; never
+  a public wire field.
+- **A concurrent fleet burst is normal on the owner machine.** `poll_complete`
+  showed `leaseCount: 25` while a separate controller was bursting; the new
+  assignment was still admitted because Codex capacity was free. Capacity, not the
+  raw process count, is the gate — check `availableCodexAssignments`, not `ps`.
+
+## Current Troubleshooting Cheatsheet
+
+### `codex_fleet_status` Says `0/4 Available`
+
+First distinguish real busy capacity from poisoned local status:
+
+```sh
+find "$PYLON_HOME/active-assignment-runs" -maxdepth 1 -type f -name '*.json' -print -exec sed -n '1,120p' {} \;
+
+ps -axo pid,ppid,etime,command \
+  | rg 'khala request|codex exec|assignment run-no-spend' \
+  | rg -v 'rg|ps -axo'
+
+bun apps/pylon/src/index.ts provider go-online --json \
+  | jq '.ownCapacityDispatch | {availableCodexAssignments, maxCodexAssignments, codex, loadRefs}'
+```
+
+If there is an active marker and a live `codex exec`, the worker is actually
+running. If there are no markers and `provider go-online` says capacity is free,
+Desktop should also show free capacity on current code. If Desktop still says
+`0/4`, verify you are on or after commit
+`a0e3a20df1214dd0084ac7b636462151d2ebb309` and that the app was restarted from
+that checkout.
+
+Do not “fix” this by exporting `PYLON_OPENAGENTS_BASE_URL` globally. Use explicit
+`--base-url https://openagents.com` only on commands that talk to
+`openagents.com`, such as `presence heartbeat`, `assignment run-no-spend`, and
+`khala request`.
+
+### `codex_spawn` Card Sits On `RUNNING`
+
+Check the same process/marker commands above.
+
+- Marker refreshing + `codex exec` visible: local Codex is still running.
+- Marker gone + capacity free + `khala request` wrapper still alive: local Codex
+  finished and the wrapper is in the post-runtime network submit leg.
+- Current Pylon has a 30s default assignment HTTP timeout for poll, progress,
+  artifact, and closeout calls. If a wrapper predates that fix, stop that smoke
+  and retry from current `main`.
+
+The UI should render timed-out/failed `codex_spawn` cards as failed, not green.
+The tool result is failed whenever accepted count is less than requested count.
+
+### `codex_spawn` Chooses The Wrong Account
+
+Automatic selection now prefers named ready accounts before `(default)`. If you
+need to force a specific account:
+
+```txt
+Run codex_spawn with account_ref codex-2 and fixture true for a demo read-only task.
+```
+
+If the account is present but not ready, fix that account instead of relogging
+the default `~/.codex`. Use isolated Pylon account homes only.
 
 ## Hard Truth Of The Current Build
 
@@ -80,12 +372,16 @@ Required environment for the current Desktop/Pylon bridge:
 ```sh
 export OPENAGENTS_REPO_ROOT=/Users/christopherdavid/work/openagents
 export OPENAGENTS_PYLON_APP_PATH="$OPENAGENTS_REPO_ROOT/apps/pylon"
-export PYLON_OPENAGENTS_BASE_URL=https://openagents.com
 export OPENAGENTS_DESKTOP_KHALA_FLEET_DB="$HOME/.openagents/desktop/khala-fleet.sqlite"
 
 # Use the existing local Pylon home unless intentionally testing another one.
 export PYLON_HOME="${PYLON_HOME:-$HOME/.openagents/pylon}"
 ```
+
+For raw Pylon commands that talk to `openagents.com`, pass
+`--base-url https://openagents.com` explicitly. Avoid exporting
+`PYLON_OPENAGENTS_BASE_URL` in the long-lived shell that launches Khala Code
+Desktop or runs local provider status probes.
 
 Authentication is normally read from the stored local Pylon/OpenAgents token.
 If an operator injects `OPENAGENTS_AGENT_TOKEN`, never print it and never write
@@ -133,7 +429,6 @@ Start the app from the repo root:
 
 ```sh
 OPENAGENTS_REPO_ROOT="$OPENAGENTS_REPO_ROOT" \
-PYLON_OPENAGENTS_BASE_URL="$PYLON_OPENAGENTS_BASE_URL" \
 bun run --cwd clients/openagents-desktop dev
 ```
 
@@ -167,7 +462,7 @@ Bring the node online and publish a fresh heartbeat when the CLI supports it:
 
 ```sh
 bun "$OPENAGENTS_PYLON_APP_PATH/src/index.ts" provider go-online
-bun "$OPENAGENTS_PYLON_APP_PATH/src/index.ts" presence heartbeat
+bun "$OPENAGENTS_PYLON_APP_PATH/src/index.ts" presence heartbeat --base-url https://openagents.com
 ```
 
 If those commands fail because this checkout has a newer or older CLI shape,
@@ -267,6 +562,7 @@ Example for one smoke slot:
 
 ```sh
 bun "$OPENAGENTS_PYLON_APP_PATH/src/index.ts" khala dispatch \
+  --base-url https://openagents.com \
   --candidates issue:7590 \
   --accounts codex-2 \
   --concurrency 1 \
@@ -282,6 +578,7 @@ Example for a wider issue/PR burst:
 
 ```sh
 bun "$OPENAGENTS_PYLON_APP_PATH/src/index.ts" khala dispatch \
+  --base-url https://openagents.com \
   --candidates issue:7590,issue:7591,issue:7592,issue:7593,issue:7594,issue:7595,issue:7596,issue:7597,issue:7598 \
   --accounts codex-2,codex-3,codex-4,codex-5,codex-6,codex-7 \
   --concurrency 12 \
@@ -309,7 +606,8 @@ Common blockers:
   or are not Codex-capable.
 - `blocker.khala_dispatch.no_dispatch_slots`: account/candidate/concurrency
   combination produced no work.
-- missing `PYLON_OPENAGENTS_BASE_URL`: pass `--base-url` or export the env var.
+- missing base URL: pass `--base-url https://openagents.com` on the network
+  command instead of exporting a global env var into local status probes.
 
 ## Execute Planned Work
 
@@ -322,6 +620,7 @@ For each planned candidate/account pair:
 PYLON_REF="<target pylon ref from the dispatch slot>"
 
 bun "$OPENAGENTS_PYLON_APP_PATH/src/index.ts" khala request \
+  --base-url https://openagents.com \
   --account codex-2 \
   --pylon-ref "$PYLON_REF" \
   --prompt "You are working in OpenAgentsInc/openagents. Complete issue #7590. Run the required verifier before finishing. Open or update the PR that closes the issue." \
@@ -338,6 +637,7 @@ assignment through the no-spend local executor:
 
 ```sh
 bun "$OPENAGENTS_PYLON_APP_PATH/src/index.ts" assignment run-no-spend \
+  --base-url https://openagents.com \
   --assignment-ref "$ASSIGNMENT_REF" \
   --json
 ```
@@ -386,7 +686,9 @@ If failures exist, use Desktop's replay control, which calls
 `replayTokenFailures()`. Then verify each assignment:
 
 ```sh
-bun "$OPENAGENTS_PYLON_APP_PATH/src/index.ts" khala proof "$ASSIGNMENT_REF" --json
+bun "$OPENAGENTS_PYLON_APP_PATH/src/index.ts" khala proof "$ASSIGNMENT_REF" \
+  --base-url https://openagents.com \
+  --json
 ```
 
 Expected result:
@@ -509,8 +811,7 @@ The following checks were performed:
 1. Installed dependencies with `bun install --frozen-lockfile`.
 2. Confirmed `@openagentsinc/desktop` exposes the Desktop RPC methods listed
    above.
-3. Confirmed missing `PYLON_OPENAGENTS_BASE_URL` fails fast for
-   `khala dispatch`.
+3. Confirmed missing `--base-url` fails fast for `khala dispatch`.
 4. Confirmed account listing works without printing sensitive auth.
 5. Confirmed a non-mutating dispatch plan with ready account `codex-2`,
    candidate `issue:7590`, `concurrency 1`, `repo OpenAgentsInc/openagents`,
@@ -524,6 +825,7 @@ bun run --cwd clients/openagents-desktop verify
 
 COMMIT="$(git rev-parse origin/main)"
 bun "$OPENAGENTS_PYLON_APP_PATH/src/index.ts" khala dispatch \
+  --base-url https://openagents.com \
   --candidates issue:7590 \
   --accounts codex-2 \
   --concurrency 1 \
@@ -546,13 +848,13 @@ For an urgent but controlled fanout:
 
 ```sh
 cd "$OPENAGENTS_REPO_ROOT"
-export PYLON_OPENAGENTS_BASE_URL=https://openagents.com
 COMMIT="$(git rev-parse origin/main)"
 VERIFY="bun scripts/check-conflict-markers.mjs"
 
 bun "$OPENAGENTS_PYLON_APP_PATH/src/index.ts" codex accounts list --json
 
 bun "$OPENAGENTS_PYLON_APP_PATH/src/index.ts" khala dispatch \
+  --base-url https://openagents.com \
   --candidates issue:7590,issue:7591,issue:7592 \
   --accounts codex-2,codex-3,codex-4 \
   --concurrency 3 \
