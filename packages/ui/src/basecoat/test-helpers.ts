@@ -8,6 +8,7 @@ type VNodeLike = Readonly<{
     attrs?: Record<string, unknown>
     props?: Record<string, unknown>
     class?: Record<string, boolean>
+    style?: Record<string, unknown>
   }
 }>
 
@@ -17,13 +18,20 @@ const isVNodeLike = (value: unknown): value is VNodeLike =>
 const attrsToString = (node: VNodeLike): string => {
   const attrs = node.data?.attrs ?? {}
   const props = node.data?.props ?? {}
+  const style = props.style ?? node.data?.style
+  const normalizedProps = {
+    ...props,
+    ...(style && typeof style === 'object'
+      ? { style: styleToString(style as Record<string, unknown>) }
+      : {}),
+  }
   const classes = Object.entries(node.data?.class ?? {})
     .filter(([, enabled]) => enabled)
     .map(([className]) => className)
     .join(' ')
   const pairs = [
     ...Object.entries(attrs),
-    ...Object.entries(props),
+    ...Object.entries(normalizedProps),
     ...(classes.length === 0 ? [] : [['class', classes] as const]),
   ]
 
@@ -34,6 +42,12 @@ const attrsToString = (node: VNodeLike): string => {
     )
     .join('')
 }
+
+const styleToString = (style: Record<string, unknown>): string =>
+  Object.entries(style)
+    .filter(([, value]) => value !== undefined && value !== null)
+    .map(([name, value]) => `${name}: ${String(value)}`)
+    .join('; ')
 
 export const renderHtml = (html: Html): string => {
   if (html === null || !isVNodeLike(html)) {
