@@ -782,6 +782,58 @@ describe("Khala Code desktop chat runtime", () => {
     })
   })
 
+  test("falls back locally when the hosted summary request fails after tool output", async () => {
+    const workspace = await tempWorkspace()
+    await writeFile(join(workspace, "fixture.txt"), "hello from the local tool\n", "utf8")
+    const calls: FetchCall[] = []
+    const fetchFn = (async (input: string | URL | Request, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url
+      const headers = new Headers(init?.headers)
+      const body = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>
+      calls.push({ body, headers, url })
+      if (calls.length === 1) {
+        return jsonResponse({
+          choices: [{
+            finish_reason: "tool_calls",
+            message: {
+              content: "",
+              tool_calls: [{
+                function: {
+                  arguments: JSON.stringify({ path: "fixture.txt" }),
+                  name: "read",
+                },
+                id: "call_read",
+                type: "function",
+              }],
+            },
+          }],
+        })
+      }
+      throw new Error("internal_server_error")
+    }) as typeof fetch
+
+    const result = await runKhalaCodeDesktopChatTurn({
+      env: { OPENAGENTS_AGENT_TOKEN: "agent-token" },
+      fetchFn,
+      request: {
+        messages: [{ body: "read the fixture", id: "u1", role: "user" }],
+        sessionId: "session-provider-fails-after-tool",
+      },
+      services: makeKhalaToolServices({
+        permission: allowAllKhalaPermissionService,
+        workingDirectory: workspace,
+      }),
+    })
+
+    expect(result.ok).toBe(true)
+    expect(result.usedTools).toEqual(["read"])
+    expect(result.messages.map(message => message.role)).toEqual(["tool", "assistant"])
+    expect(result.messages[1]?.body).toContain("We ran the requested tools")
+    expect(result.messages[1]?.body).toContain("read: ok")
+    expect(result.messages[1]?.body).not.toContain("Hosted OpenAgents cloud request failed")
+    expect(calls).toHaveLength(2)
+  })
+
   test("does not accept a canned Khala greeting as the final answer after tools", async () => {
     const workspace = await tempWorkspace()
     await writeFile(join(workspace, "fixture.txt"), "hello from the local tool\n", "utf8")

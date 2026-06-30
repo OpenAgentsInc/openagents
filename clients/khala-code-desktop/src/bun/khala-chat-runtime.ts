@@ -246,6 +246,16 @@ export async function runKhalaCodeDesktopChatTurn(
           return providerFailureResult(backend, toolNames, usedTools, retryError)
         }
       } else {
+        if (usedTools.length > 0 && transcript.some(message => message.role === "tool")) {
+          await appendAssistantText(toolOnlyTurnFallbackBody(transcript), assistantStream.streamingAssistant.current)
+          return {
+            backend: projectBackend(backend),
+            messages: transcript,
+            ok: true,
+            toolNames,
+            usedTools,
+          }
+        }
         return providerFailureResult(backend, toolNames, usedTools, error)
       }
     }

@@ -47,6 +47,8 @@ export type KhalaCodexFleetToolOptions = {
 export type KhalaPylonEnsureResult = {
   readonly ok: boolean
   readonly status: "online" | "started" | "unavailable"
+  readonly availableCodexAssignments: number | null
+  readonly maxCodexAssignments: number | null
   readonly message: string
   readonly pylonHome: string
   readonly pylonRef: string | null
@@ -275,8 +277,9 @@ const codexSpawnToolDefinition: KhalaToolDefinition = {
         type: "integer",
       },
       fixture: {
-        default: false,
-        description: "Use Pylon's bounded public fixture instead of real repository pins.",
+        default: true,
+        description:
+          "Use Pylon's bounded public fixture instead of real repository pins. Defaults on when repo/commit/verify are omitted.",
         type: "boolean",
       },
       no_run: {
@@ -327,7 +330,8 @@ const codexSpawnToolDefinition: KhalaToolDefinition = {
   prompt:
     "Use when the user asks Khala to spin up, launch, fan out, or assign Codex instances through Desktop.",
   promptGuidelines: [
-    "Require either fixture: true or complete repo, commit, and verify pins for real repository work.",
+    "When the user asks for a smoke test or omits repo pins, call this without repo pins; the tool will use the public fixture.",
+    "Require complete repo, commit, and verify pins only for real repository work.",
     "Do not run Codex login. If no ready Pylon Codex account exists, tell the user to connect one first.",
     "Keep count small; this MVP caps fan-out at four assignments.",
   ],
@@ -370,6 +374,8 @@ export async function ensureLocalPylon(
   if (!existsSync(join(paths.appPath, "package.json"))) {
     return {
       ok: false,
+      availableCodexAssignments: null,
+      maxCodexAssignments: null,
       message: "Pylon source was not found in this checkout.",
       pylonHome: paths.pylonHome,
       pylonRef: null,
@@ -388,8 +394,11 @@ export async function ensureLocalPylon(
   const firstJson = parseJsonObject(first.stdout)
   const firstRef = stringField(firstJson, "pylonRef")
   if (first.exitCode === 0 && firstRef !== null) {
+    const capacity = capacityFromProviderProjection(firstJson)
     return {
       ok: true,
+      availableCodexAssignments: capacity.available,
+      maxCodexAssignments: capacity.max,
       message: "Local Pylon is online.",
       pylonHome: paths.pylonHome,
       pylonRef: firstRef,
@@ -401,6 +410,8 @@ export async function ensureLocalPylon(
   if (!start) {
     return {
       ok: false,
+      availableCodexAssignments: null,
+      maxCodexAssignments: null,
       message: "Local Pylon is not online.",
       pylonHome: paths.pylonHome,
       pylonRef: null,
@@ -433,8 +444,11 @@ export async function ensureLocalPylon(
     const json = parseJsonObject(last.stdout)
     const pylonRef = stringField(json, "pylonRef")
     if (last.exitCode === 0 && pylonRef !== null) {
+      const capacity = capacityFromProviderProjection(json)
       return {
         ok: true,
+        availableCodexAssignments: capacity.available,
+        maxCodexAssignments: capacity.max,
         message: "Started local Pylon and confirmed it is online.",
         pylonHome: paths.pylonHome,
         pylonRef,
@@ -446,6 +460,8 @@ export async function ensureLocalPylon(
 
   return {
     ok: false,
+    availableCodexAssignments: null,
+    maxCodexAssignments: null,
     message: "Started local Pylon, but it did not report online before the wait window ended.",
     pylonHome: paths.pylonHome,
     pylonRef: null,
@@ -952,7 +968,25 @@ function providerCapacity(
       numberField(dispatch, "totalMaxCodexAssignments")
     if (available !== null || max !== null) return { available, max }
   }
+  if (ensure.availableCodexAssignments !== null || ensure.maxCodexAssignments !== null) {
+    return {
+      available: ensure.availableCodexAssignments,
+      max: ensure.maxCodexAssignments,
+    }
+  }
   return { available: ensure.ok ? null : 0, max: ensure.ok ? null : 0 }
+}
+
+function capacityFromProviderProjection(
+  projection: Record<string, unknown> | null,
+): { available: number | null; max: number | null } {
+  const dispatch = recordField(projection, "ownCapacityDispatch")
+  return {
+    available: numberField(dispatch, "availableCodexAssignments") ??
+      numberField(dispatch, "totalAvailableCodexAssignments"),
+    max: numberField(dispatch, "maxCodexAssignments") ??
+      numberField(dispatch, "totalMaxCodexAssignments"),
+  }
 }
 
 async function collectActiveAssignmentMarkers(pylonHome: string): Promise<readonly ActiveAssignmentMarker[]> {
@@ -1019,8 +1053,8 @@ function decodeSpawnInput(raw: SpawnCodexInstancesInput): NormalizedSpawnInput {
   if (prompt.length === 0) throw new Error("codex_spawn requires a non-empty prompt")
   const count = boundedPositiveInteger(raw.count, 1, 1, MAX_SPAWN_COUNT)
   const timeoutMs = boundedPositiveInteger(raw.timeoutMs, DEFAULT_SPAWN_TIMEOUT_MS, 10_000, 600_000)
-  const fixture = raw.fixture ?? false
   const hasAnyPin = raw.repo !== undefined || raw.commit !== undefined || raw.verify !== undefined
+  const fixture = raw.fixture ?? !hasAnyPin
   const missingPins = [
     raw.repo === undefined ? "repo" : null,
     raw.commit === undefined ? "commit" : null,

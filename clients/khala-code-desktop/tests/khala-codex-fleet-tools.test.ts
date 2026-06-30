@@ -4,6 +4,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import {
   ensureLocalPylon,
+  inspectCodexFleet,
   spawnCodexInstances,
   type KhalaCodexFleetCommandInput,
   type KhalaCodexFleetCommandResult,
@@ -75,7 +76,14 @@ describe("Khala Code Codex fleet tools", () => {
         goOnlineCalls += 1
         return goOnlineCalls === 1
           ? failed("offline")
-          : ok({ ok: true, pylonRef: "pylon.local.test" })
+          : ok({
+            ok: true,
+            ownCapacityDispatch: {
+              availableCodexAssignments: 3,
+              maxCodexAssignments: 4,
+            },
+            pylonRef: "pylon.local.test",
+          })
       }
       if (input.detached && args.length === 0) return ok("")
       return failed(`unexpected command: ${args.join(" ")}`)
@@ -92,6 +100,8 @@ describe("Khala Code Codex fleet tools", () => {
 
     expect(result).toMatchObject({
       ok: true,
+      availableCodexAssignments: 3,
+      maxCodexAssignments: 4,
       pylonRef: "pylon.local.test",
       started: true,
       status: "started",
@@ -101,7 +111,61 @@ describe("Khala Code Codex fleet tools", () => {
     expect(calls.some(call => call.env?.PYLON_HOME !== undefined)).toBe(true)
   })
 
-  test("spawnCodexInstances dispatches codex_agent_task requests through Pylon accounts", async () => {
+  test("inspectCodexFleet reports capacity from provider go-online", async () => {
+    const fixture = await tempPylonFixture()
+    const runner = async (input: KhalaCodexFleetCommandInput): Promise<KhalaCodexFleetCommandResult> => {
+      const args = pylonArgs(input)
+      const joined = args.join(" ")
+      if (joined === "provider go-online --json") {
+        return ok({
+          ok: true,
+          ownCapacityDispatch: {
+            availableCodexAssignments: 2,
+            maxCodexAssignments: 5,
+          },
+          pylonRef: "pylon.local.test",
+        })
+      }
+      if (joined === "codex accounts list --json") {
+        return ok({
+          accounts: [
+            {
+              accountRef: "codex",
+              homeState: "present",
+              provider: "codex",
+            },
+          ],
+          schema: "openagents.pylon.accounts_list.v0.3",
+        })
+      }
+      if (joined === "accounts status --provider codex --json") {
+        return ok({
+          accounts: [
+            {
+              accountRef: "codex",
+              provider: "codex",
+              readiness: { state: "ready" },
+            },
+          ],
+          schema: "openagents.pylon.accounts_status.v0.1",
+        })
+      }
+      return failed(`unexpected command: ${joined}`)
+    }
+
+    const result = await inspectCodexFleet({
+      includeProcesses: false,
+    }, {
+      env: fixture.env,
+      runner,
+    })
+
+    expect(result.availableCodexAssignments).toBe(2)
+    expect(result.maxCodexAssignments).toBe(5)
+    expect(result.accounts).toHaveLength(1)
+  })
+
+  test("spawnCodexInstances defaults unpinned smoke requests to the Pylon fixture", async () => {
     const fixture = await tempPylonFixture()
     const calls: KhalaCodexFleetCommandInput[] = []
     const runner = async (input: KhalaCodexFleetCommandInput): Promise<KhalaCodexFleetCommandResult> => {
@@ -158,7 +222,6 @@ describe("Khala Code Codex fleet tools", () => {
 
     const result = await spawnCodexInstances({
       count: 1,
-      fixture: true,
       noRun: true,
       prompt: "Run the public fixture.",
     }, {
