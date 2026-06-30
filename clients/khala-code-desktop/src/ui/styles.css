@@ -136,7 +136,7 @@ button {
 .message-bubble--user {
   justify-self: end;
   max-width: min(82%, 34rem);
-  justify-items: end;
+  justify-items: start;
 }
 
 .message-bubble--tool {
@@ -262,7 +262,7 @@ button {
 }
 
 .message-bubble--user .message-prose {
-  text-align: right;
+  text-align: left;
 }
 
 .message-bubble--tool .message-prose {

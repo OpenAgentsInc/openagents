@@ -147,6 +147,16 @@ describe("khala code desktop app shell", () => {
     expect(css).not.toContain("max-height: calc(100dvh - 176px)")
   })
 
+  test("keeps user messages right anchored with left-aligned text", async () => {
+    const css = await Bun.file(new URL("../src/ui/styles.css", import.meta.url)).text()
+
+    expect(css).toContain(".message-bubble--user {\n  justify-self: end;")
+    expect(css).toContain("  justify-items: start;\n}")
+    expect(css).toContain(".message-bubble--user .message-prose {\n  text-align: left;\n}")
+    expect(css).not.toContain("  justify-items: end;\n}")
+    expect(css).not.toContain(".message-bubble--user .message-prose {\n  text-align: right;\n}")
+  })
+
   test("keeps the composer input available while a turn is pending", async () => {
     const main = await Bun.file(new URL("../src/ui/main.ts", import.meta.url)).text()
     const css = await Bun.file(new URL("../src/ui/styles.css", import.meta.url)).text()
