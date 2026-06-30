@@ -140,6 +140,21 @@ type SpawnSlotResult = {
   readonly summary: string
 }
 
+type BatchSpawnSlotProjection = {
+  readonly accountRef: string | null
+  readonly assignmentRef: string | null
+  readonly blockerRefs: readonly string[]
+  readonly closeoutStatus: string | null
+  readonly durableRequestId: string | null
+  readonly failure: Record<string, unknown> | null
+  readonly lifecycleEvents: readonly Record<string, unknown>[]
+  readonly ok: boolean | null
+  readonly proof: Record<string, unknown> | null
+  readonly runAccepted: boolean | null
+  readonly slotIndex: number
+  readonly state: string | null
+}
+
 type AssignmentLifecycleEvent = {
   readonly assignmentRef?: string | undefined
   readonly event: string
@@ -592,6 +607,45 @@ export async function spawnCodexInstances(
       `Only ${plannedAccounts.length}/${input.count} advertised Pylon Codex account slot(s) are free right now. Wait for running assignments to finish or retry after the next heartbeat.`,
     )
   }
+
+  if (!input.noRun) {
+    const selectedCommandAccount =
+      input.accountRef === undefined
+        ? undefined
+        : commandAccountRef(plannedAccounts[0]?.accountRef)
+    const args = [
+      "khala",
+      "spawn",
+      "--count",
+      String(input.count),
+      "--max-parallel",
+      String(input.count),
+      "--objective",
+      input.prompt,
+      "--pylon-ref",
+      targetPylonRef,
+      ...(selectedCommandAccount === undefined ? [] : ["--account-ref", selectedCommandAccount]),
+      ...(input.fixture ? ["--fixture"] : workspacePinArgs(input)),
+      "--base-url",
+      baseUrl,
+      "--execute",
+      "--json",
+    ]
+    const result = await runPylonCommand(args, {
+      env,
+      maxOutputBytes: 5_000_000,
+      paths,
+      runner: options.runner,
+      timeoutMs: input.timeoutMs,
+    })
+    return spawnResultFromBatchCommand({
+      accountHints: plannedAccounts,
+      command: result,
+      fallbackPylonRef: targetPylonRef || null,
+      requestedCount: input.count,
+    })
+  }
+
   const results = await Promise.all(plannedAccounts.map(async (selectedAccount, index): Promise<SpawnSlotResult> => {
     const selectedCommandAccount = commandAccountRef(selectedAccount.accountRef)
     const args = [
@@ -835,6 +889,7 @@ async function runPylonCommand(
   args: readonly string[],
   input: {
     readonly env: ChatEnv
+    readonly maxOutputBytes?: number | undefined
     readonly paths: PylonPaths
     readonly runner?: KhalaCodexFleetCommandRunner | undefined
     readonly timeoutMs: number
@@ -844,7 +899,7 @@ async function runPylonCommand(
     cmd: [input.paths.bunExecutable, "src/index.ts", ...args],
     cwd: input.paths.appPath,
     env: pylonCommandEnv(input.env, input.paths.pylonHome),
-    maxOutputBytes: 80_000,
+    maxOutputBytes: input.maxOutputBytes ?? 80_000,
     timeoutMs: input.timeoutMs,
   })
 }
@@ -1236,6 +1291,92 @@ function renderFleetStatus(result: FleetStatusResult): string {
   return lines.join("\n")
 }
 
+function spawnResultFromBatchCommand(input: {
+  readonly accountHints: readonly AccountRow[]
+  readonly command: KhalaCodexFleetCommandResult
+  readonly fallbackPylonRef: string | null
+  readonly requestedCount: number
+}): SpawnCodexInstancesResult {
+  const payload = parseJsonObject(input.command.stdout)
+  if (input.command.exitCode !== 0 || payload === null) {
+    return {
+      acceptedCount: 0,
+      pylonRef: input.fallbackPylonRef,
+      requestedCount: input.requestedCount,
+      results: [{
+        accountRef: input.accountHints[0]?.accountRef ?? null,
+        assignmentRef: null,
+        autoRunOk: null,
+        exitCode: input.command.exitCode,
+        slot: 1,
+        status: "failed",
+        summary: safeFailureReason(input.command),
+      }],
+    }
+  }
+
+  const aggregate = recordField(payload, "aggregate")
+  const plan = recordField(payload, "plan")
+  const planSlots = arrayField(plan, "slots")
+  const rawResults = arrayField(payload, "results")
+  const acceptedCount = numberField(aggregate, "acceptedCount") ??
+    rawResults.filter(slot => booleanField(record(slot), "ok") === true).length
+  const requestedCount = numberField(plan, "requestedCount") ?? input.requestedCount
+  const pylonRef = stringField(plan, "targetPylonRef") ?? input.fallbackPylonRef
+  const results = rawResults.map((slotValue, index): SpawnSlotResult => {
+    const slot = batchSpawnSlotProjection(slotValue, index)
+    const accountRef =
+      batchPlanSlotAccountRef(planSlots[slot.slotIndex]) ??
+      input.accountHints[index]?.accountRef ??
+      null
+    const accepted = slot.ok === true && slot.runAccepted !== false
+    return {
+      accountRef,
+      assignmentRef: slot.assignmentRef,
+      autoRunOk: slot.runAccepted,
+      exitCode: input.command.exitCode,
+      slot: slot.slotIndex + 1,
+      status: accepted ? "accepted" : "failed",
+      summary: acceptedBatchSpawnSummary(slot, payload),
+    }
+  })
+
+  return {
+    acceptedCount,
+    pylonRef,
+    requestedCount,
+    results,
+  }
+}
+
+function batchSpawnSlotProjection(value: unknown, fallbackIndex: number): BatchSpawnSlotProjection {
+  const slot = record(value)
+  const rawIndex = numberField(slot, "slotIndex")
+  return {
+    accountRef: null,
+    assignmentRef: stringField(slot, "assignmentRef"),
+    blockerRefs: stringArrayField(slot, "blockerRefs"),
+    closeoutStatus: stringField(slot, "closeoutStatus"),
+    durableRequestId: stringField(slot, "durableRequestId"),
+    failure: recordField(slot, "failure"),
+    lifecycleEvents: arrayField(slot, "lifecycleEvents").flatMap(event => {
+      const item = record(event)
+      return item === null ? [] : [item]
+    }),
+    ok: booleanField(slot, "ok"),
+    proof: recordField(slot, "proof"),
+    runAccepted: booleanField(slot, "runAccepted"),
+    slotIndex: rawIndex === null ? fallbackIndex : Math.max(0, Math.floor(rawIndex)),
+    state: stringField(slot, "state"),
+  }
+}
+
+function batchPlanSlotAccountRef(value: unknown): string | null {
+  const slot = record(value)
+  const account = recordField(slot, "account")
+  return stringField(account, "accountRef")
+}
+
 function renderSpawnResult(result: SpawnCodexInstancesResult): string {
   return [
     `Codex spawn: accepted ${result.acceptedCount}/${result.requestedCount}${result.pylonRef ? ` via ${result.pylonRef}` : ""}`,
@@ -1252,6 +1393,74 @@ function renderSpawnSlotResult(slot: SpawnSlotResult): string {
   return details.length === 0
     ? headline
     : `${headline}\n  ${details.join("\n  ")}`
+}
+
+function acceptedBatchSpawnSummary(
+  slot: BatchSpawnSlotProjection,
+  payload: Record<string, unknown>,
+): string {
+  const counter = recordField(payload, "counter")
+  const lines = [
+    slot.assignmentRef === null ? null : `assignment: ${slot.assignmentRef}`,
+    slot.durableRequestId === null ? null : `durable request: ${slot.durableRequestId}`,
+    slot.state === null ? null : `state: ${slot.state}`,
+    slot.runAccepted === null ? null : `assignment run: ${slot.runAccepted ? "completed" : "failed"}`,
+    slot.closeoutStatus === null ? null : `closeout: ${slot.closeoutStatus}`,
+    `blocker refs: ${slot.blockerRefs.length === 0 ? "none" : slot.blockerRefs.slice(0, 3).join(", ")}`,
+    ...batchProofSummaryLines(slot.proof),
+    ...batchFailureSummaryLines(slot.failure),
+    ...batchCounterSummaryLines(counter),
+    ...batchLifecycleSummaryLines(slot.lifecycleEvents),
+    slot.ok === true ? "next: summarize this status; no local output path was returned" : null,
+  ].filter((line): line is string => line !== null && line.length > 0)
+  return lines.join("\n")
+}
+
+function batchProofSummaryLines(proof: Record<string, unknown> | null): string[] {
+  if (proof === null) return []
+  const totalTokens = numberField(proof, "totalTokens")
+  const tokenRows = numberField(proof, "tokenRows")
+  const traceCount = numberField(proof, "traceCount")
+  const rawEventCount = numberField(proof, "rawEventCount")
+  return [
+    `proof: ${totalTokens ?? 0} verified tokens across ${tokenRows ?? 0} row(s)`,
+    `owner evidence: ${traceCount ?? 0} trace(s), ${rawEventCount ?? 0} raw event(s)`,
+  ]
+}
+
+function batchFailureSummaryLines(failure: Record<string, unknown> | null): string[] {
+  if (failure === null) return []
+  const message = stringField(failure, "message") ?? "worker failed"
+  const ref = stringField(failure, "ref")
+  return [`failure: ${ref === null ? message : `${message} (${ref})`}`]
+}
+
+function batchCounterSummaryLines(counter: Record<string, unknown> | null): string[] {
+  if (counter === null) return []
+  const state = stringField(counter, "state")
+  const delta = numberField(counter, "delta")
+  const expected = numberField(counter, "expectedMinimumDelta")
+  if (state === null && delta === null && expected === null) return []
+  return [`counter: ${state ?? "unknown"}${delta === null ? "" : `, delta ${delta}`}${expected === null ? "" : `, expected ${expected}`}`]
+}
+
+function batchLifecycleSummaryLines(events: readonly Record<string, unknown>[]): string[] {
+  if (events.length === 0) return []
+  return [
+    "lifecycle:",
+    ...events.slice(-8).map(event => {
+      const assignmentEvent = stringField(event, "assignmentEvent")
+      const state = stringField(event, "state")
+      const status = stringField(event, "status")
+      const message = stringField(event, "message")
+      const parts = [
+        assignmentEvent ?? state,
+        status === null ? null : `status=${status}`,
+        message === null ? null : message,
+      ].filter((part): part is string => part !== null && part.length > 0)
+      return `  - ${parts.length === 0 ? "event" : parts.join(" · ")}`
+    }),
+  ]
 }
 
 function acceptedSpawnSummary(
@@ -1490,8 +1699,16 @@ function lifecycleEventFromJsonLine(line: string): AssignmentLifecycleEvent | nu
 function lifecycleEventFromUnknown(value: unknown): AssignmentLifecycleEvent | null {
   const event = record(value)
   if (event === null) return null
-  if (stringField(event, "schema") !== "openagents.pylon.assignment_run_lifecycle_event.v0.1") return null
-  const eventName = stringField(event, "event")
+  const schema = stringField(event, "schema")
+  if (
+    schema !== "openagents.pylon.assignment_run_lifecycle_event.v0.1" &&
+    schema !== "openagents.pylon.khala_spawn_worker_event.v0.1"
+  ) return null
+  const eventName =
+    stringField(event, "event") ??
+    stringField(event, "assignmentEvent") ??
+    stringField(event, "state") ??
+    stringField(event, "message")
   if (eventName === null) return null
   const assignmentRef = stringField(event, "assignmentRef")
   const leaseRef = stringField(event, "leaseRef")

@@ -97,6 +97,11 @@ Check pylon fleet status and delegate a demo read-only task to one of the connec
 
 The only fleet tools in this MVP are `pylon_ensure`, `codex_fleet_status`, and
 `codex_spawn`. Do not ask for or invent `codex_terminate`; it does not exist.
+For normal executed assignments, `codex_spawn` delegates to the canonical
+`pylon khala spawn --execute --json` batch handshake. The older per-slot
+`pylon khala request` path is retained only for explicit `no_run` debugging, so
+Desktop and headless Pylon now share the same account-slot planner, lifecycle
+events, proof check, and public token-counter evidence.
 
 ## Current Headless Smoke
 
@@ -211,6 +216,36 @@ per-account spawn-planner, and weighted account-pool fixes:
   `assignment.public.khala_coding.chatcmpl_7793f0010744477b8e174f81ca0eb380`,
   `assignment.public.khala_coding.chatcmpl_bb4b9b08609e49c5a9a7c9c10167cff1`,
   `assignment.public.khala_coding.chatcmpl_ab7b5662144c435e81e69ee2fd73bb8d`.
+- post-run: no active marker files remained and capacity returned to `10/10`.
+
+Verified again on 2026-06-30 after Desktop stopped hand-rolling per-slot
+requests and started using the batch Pylon handshake:
+
+- `provider go-online --json` with
+  `OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY=5` reported `10/10` available,
+  split across the same two ready account buckets.
+- a one-slot Desktop headless `spawnCodexInstances` smoke completed `1/1` via
+  `pylon.33afd48282a649047e3a`; the slot used `codex-2`, closeout was
+  `accepted`, proof reported `101370` verified tokens, and the public counter
+  delta was `214189`.
+- the first five-slot rerun exposed a Desktop bridge bug: the Pylon batch run
+  succeeded, but the wrapper kept only the last `80 KB` of child output, chopped
+  the final JSON object, and rendered raw worker-event JSON as a failed card.
+  The fix is to give batch spawn a larger bounded capture budget and to parse
+  Pylon worker-event JSONL as lifecycle evidence in failure summaries.
+- the corrected five-slot Desktop headless smoke completed `5/5` with slots
+  targeting `codex-2`, `status`, `codex-2`, `status`, `codex-2`.
+- five-slot assignment refs:
+  `assignment.public.khala_coding.chatcmpl_29271ba840054e9996503ed334181c1d`,
+  `assignment.public.khala_coding.chatcmpl_8464743da075412986700efa5bfbc9fb`,
+  `assignment.public.khala_coding.chatcmpl_299b8244e3d54a5f8902a23b00c88c1e`,
+  `assignment.public.khala_coding.chatcmpl_46bbc5366dc64424902d8464531db2fe`,
+  `assignment.public.khala_coding.chatcmpl_6852162c773545b1981d19c422487732`.
+- each slot returned `state: accepted`, `assignment run: completed`,
+  `closeout: accepted`, `blocker refs: none`, proof token rows, and owner-only
+  trace/raw-event evidence. The aggregate public counter check returned
+  `state = increment_observed`, `delta = 529238`,
+  `expectedMinimumDelta = 422903`.
 - post-run: no active marker files remained and capacity returned to `10/10`.
 
 ## Current A2A Transaction Step: Provider-Bond Contract

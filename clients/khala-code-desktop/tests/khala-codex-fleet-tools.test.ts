@@ -297,45 +297,72 @@ describe("Khala Code Codex fleet tools", () => {
           pylonRef: "pylon.local.fresh",
         })
       }
-      if (args[0] === "khala" && args[1] === "request") {
+      if (args[0] === "khala" && args[1] === "spawn") {
         expect(args).not.toContain("--account-ref")
         expect(args).toContain("--pylon-ref")
         expect(args).toContain("pylon.local.fresh")
+        expect(args).toContain("--execute")
+        expect(args).toContain("--json")
+        expect(input.maxOutputBytes).toBeGreaterThanOrEqual(5_000_000)
         return ok({
-          assignmentRef: "assignment.public.codex_agent_task.default",
-          assignmentLifecycleEvents: [
-            {
-              assignmentRef: "assignment.public.codex_agent_task.default",
-              event: "assignment_run.runtime_started",
-              leaseRef: "assignment.public.codex_agent_task.default",
-              schema: "openagents.pylon.assignment_run_lifecycle_event.v0.1",
-            },
-            {
-              assignmentRef: "assignment.public.codex_agent_task.default",
-              event: "assignment_run.completed",
-              leaseRef: "assignment.public.codex_agent_task.default",
-              schema: "openagents.pylon.assignment_run_lifecycle_event.v0.1",
-              status: "accepted",
-            },
-          ],
-          autoRun: {
-            attempted: true,
-            ok: true,
+          aggregate: {
+            acceptedCount: 1,
+            assignmentRefs: ["assignment.public.codex_agent_task.default"],
+            durableRequestIds: ["durable.default"],
+            ownerOnlyRawEventCount: 1,
+            ownerOnlyTraceCount: 1,
+            totalTokenRows: 1,
+            totalVerifiedTokens: 16,
           },
-          assignmentRun: {
-            closeout: {
-              assignmentRef: "assignment.public.codex_agent_task.default",
-              blockerRefs: [],
-              paymentMode: "no-spend",
-              resultRefs: ["result.public.pylon.codex_agent_task.fixture_repair_passed"],
-              settlementState: "not_applicable",
-              status: "accepted",
-            },
-            closeoutReceipt: {
-              closeoutRef: "assignment.closeout.assignment.public.codex_agent_task.default",
-            },
-            ok: true,
+          blockerRefs: [],
+          counter: {
+            delta: 16,
+            expectedMinimumDelta: 16,
+            state: "increment_observed",
           },
+          ok: true,
+          plan: {
+            requestedCount: 1,
+            slots: [{
+              account: { accountRef: null },
+              slotIndex: 0,
+            }],
+            targetPylonRef: "pylon.local.fresh",
+          },
+          results: [{
+            assignmentRef: "assignment.public.codex_agent_task.default",
+            blockerRefs: [],
+            closeoutStatus: "accepted",
+            durableRequestId: "durable.default",
+            lifecycleEvents: [
+              {
+                assignmentEvent: "assignment_run.runtime_started",
+                message: "assignment_run.runtime_started",
+                observedAt: "2026-06-30T00:00:00.000Z",
+                slotIndex: 0,
+                state: "running",
+              },
+              {
+                assignmentEvent: "assignment_run.completed",
+                message: "assignment_run.completed",
+                observedAt: "2026-06-30T00:00:01.000Z",
+                slotIndex: 0,
+                state: "accepted",
+                status: "accepted",
+              },
+            ],
+            ok: true,
+            proof: {
+              rawEventCount: 1,
+              tokenRows: 1,
+              totalTokens: 16,
+              traceCount: 1,
+            },
+            runAccepted: true,
+            slotIndex: 0,
+            state: "accepted",
+          }],
+          schema: "openagents.pylon.khala_spawn_run.v0.1",
         })
       }
       return failed(`unexpected command: ${joined}`)
@@ -354,15 +381,14 @@ describe("Khala Code Codex fleet tools", () => {
       pylonRef: "pylon.local.fresh",
       requestedCount: 1,
     })
-    expect(result.results[0]?.summary).toContain("auto-run: completed")
     expect(result.results[0]?.summary).toContain("assignment run: completed")
-    expect(result.results[0]?.summary).toContain("closeout: accepted, no-spend, not_applicable")
+    expect(result.results[0]?.summary).toContain("closeout: accepted")
     expect(result.results[0]?.summary).toContain("blocker refs: none")
-    expect(result.results[0]?.summary).toContain("closeout ref: assignment.closeout.assignment.public.codex_agent_task.default")
+    expect(result.results[0]?.summary).toContain("proof: 16 verified tokens across 1 row(s)")
     expect(result.results[0]?.summary).toContain("lifecycle:")
-    expect(result.results[0]?.summary).toContain("assignment_run.completed (status=accepted)")
+    expect(result.results[0]?.summary).toContain("assignment_run.completed")
     const heartbeatIndex = calls.findIndex(call => pylonArgs(call)[0] === "presence")
-    const requestIndex = calls.findIndex(call => pylonArgs(call)[0] === "khala" && pylonArgs(call)[1] === "request")
+    const requestIndex = calls.findIndex(call => pylonArgs(call)[0] === "khala" && pylonArgs(call)[1] === "spawn")
     expect(heartbeatIndex).toBeGreaterThanOrEqual(0)
     expect(requestIndex).toBeGreaterThan(heartbeatIndex)
   })
@@ -868,37 +894,44 @@ describe("Khala Code Codex fleet tools", () => {
           pylonRef: "pylon.local.test",
         })
       }
-      if (args[0] === "khala" && args[1] === "request") {
+      if (args[0] === "khala" && args[1] === "spawn") {
         return ok({
-          assignmentRef: "assignment.public.codex_agent_task.failed_autorun",
-          assignmentLifecycleEvents: [
-            {
-              assignmentRef: "assignment.public.codex_agent_task.failed_autorun",
-              event: "assignment_run.runtime_started",
-              leaseRef: "assignment.public.codex_agent_task.failed_autorun",
-              schema: "openagents.pylon.assignment_run_lifecycle_event.v0.1",
-            },
-            {
-              assignmentRef: "assignment.public.codex_agent_task.failed_autorun",
-              event: "assignment_run.completed",
-              leaseRef: "assignment.public.codex_agent_task.failed_autorun",
-              schema: "openagents.pylon.assignment_run_lifecycle_event.v0.1",
-              status: "timed-out",
-            },
-          ],
-          assignmentRun: {
-            closeout: {
-              blockerRefs: ["blocker.assignment.timeout"],
-              paymentMode: "no-spend",
-              settlementState: "not_applicable",
-              status: "timed-out",
-            },
-            ok: false,
+          aggregate: {
+            acceptedCount: 0,
+            assignmentRefs: ["assignment.public.codex_agent_task.failed_autorun"],
+            durableRequestIds: [],
+            ownerOnlyRawEventCount: 0,
+            ownerOnlyTraceCount: 0,
+            totalTokenRows: 0,
+            totalVerifiedTokens: 0,
           },
-          autoRun: {
-            attempted: true,
-            ok: false,
+          blockerRefs: ["blocker.assignment.timeout"],
+          counter: { expectedMinimumDelta: 0, state: "not_checked" },
+          ok: false,
+          plan: {
+            requestedCount: 1,
+            slots: [{ account: { accountRef: "codex" }, slotIndex: 0 }],
+            targetPylonRef: "pylon.local.test",
           },
+          results: [{
+            assignmentRef: "assignment.public.codex_agent_task.failed_autorun",
+            blockerRefs: ["blocker.assignment.timeout"],
+            closeoutStatus: "timed-out",
+            lifecycleEvents: [{
+              assignmentEvent: "assignment_run.completed",
+              message: "assignment_run.completed",
+              observedAt: "2026-06-30T00:00:00.000Z",
+              slotIndex: 0,
+              state: "rejected",
+              status: "timed-out",
+            }],
+            ok: false,
+            proof: null,
+            runAccepted: false,
+            slotIndex: 0,
+            state: "failed",
+          }],
+          schema: "openagents.pylon.khala_spawn_run.v0.1",
         })
       }
       return failed(`unexpected command: ${joined}`)
@@ -914,7 +947,8 @@ describe("Khala Code Codex fleet tools", () => {
     expect(result.modelOutput.text).toContain("Codex spawn: accepted 0/1")
     expect(result.modelOutput.text).toContain("assignment run: failed")
     expect(result.modelOutput.text).toContain("blocker refs: blocker.assignment.timeout")
-    expect(result.modelOutput.text).toContain("assignment_run.completed (status=timed-out)")
+    expect(result.modelOutput.text).toContain("assignment_run.completed")
+    expect(result.modelOutput.text).toContain("status=timed-out")
   })
 
   test("codex_spawn tool reports zero accepted timed-out dispatches as failed", async () => {
@@ -955,16 +989,20 @@ describe("Khala Code Codex fleet tools", () => {
           pylonRef: "pylon.local.test",
         })
       }
-      if (args[0] === "khala" && args[1] === "request") {
+      if (args[0] === "khala" && args[1] === "spawn") {
         return {
           exitCode: null,
           signal: null,
           stderr: JSON.stringify({
             assignmentRef: "assignment.public.codex_agent_task.timeout",
-            event: "assignment_run.runtime_started",
+            assignmentEvent: "assignment_run.runtime_started",
             leaseRef: "assignment.public.codex_agent_task.timeout",
+            message: "assignment lifecycle event",
+            observedAt: "2026-06-30T00:00:00.000Z",
             phase: "runtime_active",
-            schema: "openagents.pylon.assignment_run_lifecycle_event.v0.1",
+            schema: "openagents.pylon.khala_spawn_worker_event.v0.1",
+            slotIndex: 0,
+            state: "running",
           }),
           stdout: "",
           timedOut: true,

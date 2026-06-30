@@ -4005,7 +4005,7 @@ async function main() {
           optionString(options, "prompt") ??
           (args[2] !== undefined && !args[2].startsWith("--") ? args[2] : undefined)
         if (!objective) {
-          throw new Error("usage: pylon khala spawn --count <n> --objective <text> [--fixture | --commit <sha> --repo owner/repo --verify <argv>] [--pylon-ref <pylonRef>] [--max-parallel n] [--execute] [--json]")
+          throw new Error("usage: pylon khala spawn --count <n> --objective <text> [--fixture | --commit <sha> --repo owner/repo --verify <argv>] [--pylon-ref <pylonRef>] [--account <ref>] [--max-parallel n] [--execute] [--json]")
         }
         const count = positiveIntegerOption(options, "count", "khala spawn --count") ?? 1
         const maxParallel = positiveIntegerOption(options, "max-parallel", "khala spawn --max-parallel")
@@ -4048,7 +4048,27 @@ async function main() {
             // push keeps advertised capacity current for the spawn planner.
           }
         }
-        const accounts = await collectPylonAccountsList(summary, { env: Bun.env })
+        const accountSelector =
+          optionString(options, "account") ??
+          optionString(options, "account-ref")
+        const allAccounts = await collectPylonAccountsList(summary, { env: Bun.env })
+        const accounts =
+          accountSelector === undefined
+            ? allAccounts
+            : {
+                ...allAccounts,
+                accounts: allAccounts.accounts.filter((account) =>
+                  account.provider === "codex" &&
+                  (
+                    account.accountRef === accountSelector ||
+                    account.accountRefHash === accountSelector ||
+                    (account.accountRef === null && /^(?:default|\(default\))$/iu.test(accountSelector))
+                  )
+                ),
+              }
+        if (accountSelector !== undefined && accounts.accounts.length === 0) {
+          throw new Error(`khala spawn account ${accountSelector} is not a connected Codex account`)
+        }
         const advertisedCodexAccounts = await localCodexDispatchAccounts(summary, state)
         const advertisedCodexAvailability = advertisedCodexAccounts.length > 0
           ? advertisedCodexAccounts.reduce((sum, account) => sum + account.available, 0)
