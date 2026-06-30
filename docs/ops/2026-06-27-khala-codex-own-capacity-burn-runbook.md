@@ -433,6 +433,20 @@ Expected fields:
 - `active.serverAssignments[]` = live server assignments with `tokens`,
   `tokensPerMinute`, `source`, and optional `tokenCountKind`.
 
+APM triage rule:
+
+- `completedTokensPerMinute > 0` means exact closeout rows are landing.
+- `completedTokensPerMinute == 0` with `active.serverAssignmentCount > 0` and
+  increasing `active.inFlightTokens` means the fleet is still working; wait for
+  turn closeout before calling the public counter stalled.
+- `active.serverAssignmentCount > 0` with `active.inFlightTokens == 0` is an
+  observability gap unless the run just started. Enable progress token estimates
+  on trusted operators, then re-check whether `active.serverAssignments[].source`
+  moves from `unavailable` to `fleet.activeAssignments.tokensSoFar`.
+- `tokenCountKind: "estimated"` is operator telemetry only. Final proof still
+  comes from exact `token_usage_events` rows and the owner-only trace/closeout
+  checks in "Token proof" below.
+
 Operator flag for faster in-run visibility:
 
 ```sh
