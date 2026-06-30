@@ -2910,13 +2910,16 @@ export async function beginCodexConnect(
     }
   }
 
-  await Promise.race([
-    Promise.all([
-      readStream(child.stdout as ReadableStream<Uint8Array>),
-      readStream(child.stderr as ReadableStream<Uint8Array>),
-    ]),
-    new Promise<void>(resolve => setTimeout(resolve, 35_000)),
-  ])
+  // Fire the readers in the background and return as soon as the URL + code are
+  // captured (~2-3s). Do NOT await both streams — the idle stderr reader blocks
+  // for the full timeout otherwise. The child keeps running until the user
+  // authorizes.
+  void readStream(child.stdout as ReadableStream<Uint8Array>)
+  void readStream(child.stderr as ReadableStream<Uint8Array>)
+  const deadline = Date.now() + 25_000
+  while (!done && Date.now() < deadline) {
+    await new Promise<void>(resolve => setTimeout(resolve, 150))
+  }
 
   // Leave the process running; it completes when the user authorizes.
   return {
