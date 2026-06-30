@@ -1726,6 +1726,7 @@ export async function runNoSpendAssignment(summary: BootstrapSummary, options: A
       void tick()
     }, runtimeProgressIntervalMs)
     try {
+      await tick()
       return await input.run()
     } finally {
       stopped = true

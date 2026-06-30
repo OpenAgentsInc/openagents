@@ -248,6 +248,43 @@ requests and started using the batch Pylon handshake:
   `expectedMinimumDelta = 422903`.
 - post-run: no active marker files remained and capacity returned to `10/10`.
 
+Verified again on 2026-06-30 after the Pylon assignment runner started
+publishing an immediate runtime-progress heartbeat:
+
+- direct smoke command:
+
+  ```sh
+  OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY=5 \
+    bun apps/pylon/src/index.ts khala spawn \
+      --count 5 \
+      --max-parallel 5 \
+      --objective "Run the public Pylon Codex fixture and report exact closeout status for this five-slot handshake smoke." \
+      --fixture \
+      --execute \
+      --base-url https://openagents.com \
+      --json
+  ```
+
+- the run completed `ok: true` with `aggregate.acceptedCount = 5`,
+  `blockerRefs = []`, `totalTokenRows = 5`, `ownerOnlyTraceCount = 59`,
+  `ownerOnlyRawEventCount = 84`, and `totalVerifiedTokens = 408893`.
+- token-counter evidence moved by `delta = 565839`, above
+  `expectedMinimumDelta = 408893`, with `state = increment_observed`.
+- each slot emitted `assignment_run.runtime_progress` immediately after
+  `assignment_run.runtime_started` before the underlying Codex task finished.
+  In the observed JSONL, first progress arrived within about one second of
+  runtime start for every slot. If the desktop card says `running` but shows no
+  body after runtime start, treat that as a UI bridge problem, not expected
+  Pylon behavior.
+- assignment refs:
+  `assignment.public.khala_coding.chatcmpl_5e46d6f629634575b6498fd188bf12e0`,
+  `assignment.public.khala_coding.chatcmpl_e74345af9e9b4e2a90a893b1dc966a37`,
+  `assignment.public.khala_coding.chatcmpl_39892527094a4d029e45a805d0230266`,
+  `assignment.public.khala_coding.chatcmpl_3d51c732bda34a41874d0452704be1ce`,
+  `assignment.public.khala_coding.chatcmpl_ea0ebaff39e44be18ccda2d122c3bf3e`.
+- no Worker deploy is required for this specific fix; it is local Pylon runner
+  behavior plus tests and runbook evidence.
+
 ## Current A2A Transaction Step: Provider-Bond Contract
 
 Checked again on 2026-06-30 before the first forfeitable-bond implementation
