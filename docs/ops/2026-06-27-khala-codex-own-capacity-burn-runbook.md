@@ -407,9 +407,14 @@ tail -n 40 ~/.pylon-fable/standing.log
 # tokens post at TURN CLOSEOUT, so the counter steps in bursts.
 # Short samples can read 0 between turns — sample over >= 60s.
 curl -fsS https://openagents.com/api/public/khala-tokens-served      # tokensServed (instant)
-curl -fsS "https://openagents.com/api/public/khala-tokens-served/history?tz=America/Chicago"  # per-day
+curl -fsS https://openagents.com/api/public/khala-tokens-served/history      # per-day, America/Chicago
 curl -fsS https://openagents.com/api/public/khala-tokens-served/model-mix    # by family (watch pylon_codex)
 ```
+
+All operational "today" totals use the America/Chicago calendar day. Do not
+compare the public `/stats` page against ad hoc queries with a different day
+boundary; the page, public history endpoint default, Artanis pace block,
+operator fleet state, and `khala apm` all share the America/Chicago boundary.
 
 ### Live APM, including active sessions
 
@@ -426,7 +431,8 @@ PYLON_OPENAGENTS_BASE_URL=https://openagents.com \
 
 Expected fields:
 
-- `counted.todayTokens` = completed rows already in `token_usage_events`.
+- `counted.todayTokens` = completed rows already in `token_usage_events`,
+  bucketed by the America/Chicago day.
 - `counted.completedTokensPerMinute` = completed-token rolling window.
 - `active.inFlightTokens` = live active-session estimate before closeout.
 - `active.adjustedTokensPerMinute` = completed window plus active-session rate.
