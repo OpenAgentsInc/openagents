@@ -131,6 +131,8 @@ describe('ai-elements command composer', () => {
                 mime: 'image/png',
                 sizeBytes: 1536,
                 status: 'ready',
+                previewUrl: 'blob:screen',
+                dimensions: { width: 320, height: 200 },
               },
             ],
           },
@@ -139,6 +141,8 @@ describe('ai-elements command composer', () => {
           name: 'prompt',
           preview: true,
           status: 'streaming',
+          selectedAttachmentId: 'att-1',
+          dragActive: true,
         },
       }),
     )
@@ -154,10 +158,49 @@ describe('ai-elements command composer', () => {
     )
     expect(rendered).toContain('screen.png')
     expect(rendered).toContain('image/png - 1.5 KB')
+    expect(rendered).toContain('src="blob:screen"')
+    expect(rendered).toContain('width="320"')
+    expect(rendered).toContain('height="200"')
+    expect(rendered).toContain('data-selected="true"')
+    expect(rendered).toContain('data-oa-command-composer-gapcursor="before"')
+    expect(rendered).toContain('data-oa-command-composer-gapcursor="after"')
+    expect(rendered).toContain('data-oa-command-composer-dropcursor=""')
+    expect(rendered).toContain('data-oa-command-composer-drag-active="true"')
+    expect(rendered).toContain('data-oa-command-composer-attachment-action="preview"')
+    expect(rendered).toContain('data-oa-command-composer-attachment-action="remove"')
     expect(rendered).toContain('<strong')
     expect(rendered).toContain('Hello')
     expect(rendered).toContain('data-oa-command-composer-submit="stop"')
     expect(rendered).toContain('type="button"')
+  })
+
+  test('renders error attachment retry action without claiming readiness', () => {
+    const rendered = renderHtml(
+      AiElements.commandComposer({
+        props: { name: 'prompt' },
+        attachments: [
+          {
+            id: 'att-error',
+            kind: 'file',
+            name: 'archive.zip',
+            mime: 'application/zip',
+            sizeBytes: 4096,
+            status: 'error',
+            errorText: 'Upload failed',
+          },
+        ],
+      }),
+    )
+
+    expect(rendered).toContain('archive.zip')
+    expect(rendered).toContain('Error')
+    expect(rendered).toContain('Upload failed')
+    expect(rendered).toContain('data-status="error"')
+    expect(rendered).toContain('data-oa-command-composer-attachment-action="retry"')
+    expect(rendered).toContain('data-oa-command-composer-attachment-action="remove"')
+    expect(rendered).not.toContain(
+      'oa-ai-command-composer-attachment-status"><node>Ready',
+    )
   })
 
   test('keeps text editable while a turn is submitted', () => {
@@ -175,6 +218,24 @@ describe('ai-elements command composer', () => {
     expect(rendered).toContain('data-oa-command-composer-status="submitted"')
     expect(rendered).toContain('data-oa-command-composer-submit="stop"')
     expect(rendered).not.toContain('textarea disabled="true"')
+    expect(rendered).not.toContain('disabled="true"')
+  })
+
+  test('keeps a 100k-character prompt editable', () => {
+    const largePrompt = 'x'.repeat(100_000)
+    const rendered = renderHtml(
+      AiElements.commandComposer({
+        props: {
+          name: 'prompt',
+          value: largePrompt,
+          sizeLabel: '100 KB',
+        },
+      }),
+    )
+
+    expect(rendered).toContain(`>${largePrompt}</node>`)
+    expect(rendered).toContain('100 KB')
+    expect(rendered).toContain('100000 characters')
     expect(rendered).not.toContain('disabled="true"')
   })
 })

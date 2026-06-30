@@ -5,11 +5,17 @@ import {
   composerAttachmentId,
   composerBlockId,
   emptyComposerState,
+  moveComposerAttachmentSelection,
+  offerComposerLargeTextPaste,
   parseComposerMarkdown,
   redoComposerState,
+  retryComposerAttachmentTransaction,
   resolveComposerKeyBinding,
   runComposerInputRules,
   serializeComposerMarkdown,
+  stageComposerDroppedFiles,
+  stageComposerPastedFiles,
+  setComposerAttachmentStatusTransaction,
   undoComposerState,
   type ComposerAttachment,
   type ComposerState,
@@ -122,6 +128,168 @@ describe("composer state core", () => {
     if (!undo.ok) throw new Error(undo.error.message)
     expect(undo.state.doc.attachments).toHaveLength(1)
     expect(undo.state.doc.blocks.at(1)?.kind).toBe("attachmentRef")
+  })
+
+  test("stages pasted images as metadata plus deferred thumbnail work", () => {
+    const staged = stageComposerPastedFiles(
+      [
+        {
+          name: "screen.png",
+          type: "image/png",
+          size: 2048,
+        },
+      ],
+      { at: { index: 1 }, idPrefix: "paste-image" },
+    )
+    expect(staged.attachments).toEqual([
+      expect.objectContaining({
+        id: composerAttachmentId("paste-image-1"),
+        kind: "image",
+        name: "screen.png",
+        mime: "image/png",
+        sizeBytes: 2048,
+        source: "paste",
+        status: "staged",
+      }),
+    ])
+    expect(staged.deferredTasks.map((task) => task.kind)).toEqual([
+      "create_image_thumbnail",
+      "extract_image_dimensions",
+    ])
+
+    const state = apply(emptyComposerState(), staged.transaction)
+    expect(state.doc.attachments[0]?.status).toBe("staged")
+    expect(state.doc.blocks.at(1)?.kind).toBe("attachmentRef")
+  })
+
+  test("stages dropped files without implying upload success", () => {
+    const staged = stageComposerDroppedFiles(
+      [
+        {
+          name: "notes.md",
+          type: "text/markdown",
+          size: 512,
+          contentRef: "local-file:notes",
+        },
+      ],
+      { idPrefix: "drop-file" },
+    )
+    expect(staged.attachments[0]).toMatchObject({
+      id: composerAttachmentId("drop-file-1"),
+      kind: "text",
+      status: "staged",
+      source: "drop",
+      contentRef: "local-file:notes",
+    })
+    expect(staged.attachments[0]?.status).not.toBe("ready")
+    expect(staged.deferredTasks.map((task) => task.kind)).toEqual([
+      "count_text_bytes",
+      "estimate_text_tokens",
+    ])
+  })
+
+  test("offers large pasted text as an attachment instead of rewriting source text", () => {
+    const largeText = "x".repeat(100_000)
+    const offer = offerComposerLargeTextPaste(largeText, {
+      id: composerAttachmentId("paste-large-text"),
+      thresholdBytes: 16_000,
+    })
+    expect(offer.offered).toBe(true)
+    expect(offer.textBytes).toBe(100_000)
+    expect(offer.attachment).toMatchObject({
+      id: composerAttachmentId("paste-large-text"),
+      kind: "text",
+      mime: "text/plain",
+      sizeBytes: 100_000,
+      status: "staged",
+      source: "paste",
+    })
+    expect(offer.transaction?.steps).toHaveLength(1)
+
+    const state = apply(emptyComposerState(), offer.transaction!)
+    expect(firstText(state)).toBe("")
+    expect(serializeComposerMarkdown(state.doc)).toContain(
+      "[attachment:pasted-text.txt]",
+    )
+  })
+
+  test("does not offer small pasted text as an attachment", () => {
+    const offer = offerComposerLargeTextPaste("small", { thresholdBytes: 16_000 })
+    expect(offer.offered).toBe(false)
+    expect(offer.transaction).toBe(null)
+    expect(offer.deferredTasks).toEqual([])
+  })
+
+  test("updates attachment status for error, retry, ready, remove, and undo", () => {
+    const staged = stageComposerPastedFiles(
+      [{ name: "failure.txt", type: "text/plain", size: 12 }],
+      { idPrefix: "retry" },
+    )
+    const inserted = apply(emptyComposerState(), staged.transaction)
+    const attachmentId = composerAttachmentId("retry-1")
+    const errorTx = setComposerAttachmentStatusTransaction(inserted, attachmentId, {
+      status: "error",
+      errorText: "Upload failed",
+    })
+    expect(errorTx).not.toBe(null)
+    const errored = apply(inserted, errorTx!)
+    expect(errored.doc.attachments[0]).toMatchObject({
+      status: "error",
+      errorText: "Upload failed",
+    })
+
+    const retryTx = retryComposerAttachmentTransaction(errored, attachmentId, 2)
+    expect(retryTx).not.toBe(null)
+    const retried = apply(errored, retryTx!)
+    expect(retried.doc.attachments[0]).toMatchObject({ status: "staged" })
+    expect(retried.doc.attachments[0]?.errorText).toBeUndefined()
+
+    const readyTx = setComposerAttachmentStatusTransaction(retried, attachmentId, {
+      status: "ready",
+      digest: "sha256:abcd",
+    })
+    const ready = apply(retried, readyTx!)
+    expect(ready.doc.attachments[0]).toMatchObject({
+      status: "ready",
+      digest: "sha256:abcd",
+    })
+
+    const removed = apply(
+      ready,
+      tx([{ _tag: "RemoveAttachment", attachmentId }]),
+    )
+    expect(removed.doc.attachments).toHaveLength(0)
+    const undo = undoComposerState(removed)
+    expect(undo.ok).toBe(true)
+    if (!undo.ok) throw new Error(undo.error.message)
+    expect(undo.state.doc.attachments[0]).toMatchObject({
+      status: "ready",
+      digest: "sha256:abcd",
+    })
+  })
+
+  test("moves keyboard selection across attachment refs", () => {
+    const staged = stageComposerDroppedFiles(
+      [
+        { name: "one.txt", type: "text/plain", size: 1 },
+        { name: "two.png", type: "image/png", size: 2 },
+      ],
+      { at: { index: 1 }, idPrefix: "nav" },
+    )
+    const state = apply(emptyComposerState(), staged.transaction)
+    const first = moveComposerAttachmentSelection(state, "first")
+    expect(first.selection.selectedAttachmentId).toBe(composerAttachmentId("nav-1"))
+    const next = moveComposerAttachmentSelection(first, "next")
+    expect(next.selection.selectedAttachmentId).toBe(composerAttachmentId("nav-2"))
+    const previous = moveComposerAttachmentSelection(next, "previous")
+    expect(previous.selection.selectedAttachmentId).toBe(
+      composerAttachmentId("nav-1"),
+    )
+    const cleared = moveComposerAttachmentSelection(previous, "clear")
+    expect(cleared.selection.selectedAttachmentId).toBeUndefined()
+    expect(resolveComposerKeyBinding({ key: "ArrowRight", altKey: true })).toBe(
+      "select_next_attachment",
+    )
   })
 
   test("stores resize as a transaction and can undo it", () => {

@@ -80,6 +80,8 @@ export const aiElementPorts: ReadonlyArray<AiElementPort> = [
       'CommandComposerResizeHandle',
       'CommandComposerA11y',
       'CommandComposerMarkdownPreview',
+      'CommandComposerAttachmentAction',
+      'CommandComposerDropcursor',
     ],
   },
   {

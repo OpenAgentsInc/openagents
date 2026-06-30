@@ -111,6 +111,13 @@ export const ComposerAttachmentStatus = S.Literals([
 ])
 export type ComposerAttachmentStatus = typeof ComposerAttachmentStatus.Type
 
+export const ComposerAttachmentSource = S.Literals([
+  "paste",
+  "drop",
+  "manual",
+])
+export type ComposerAttachmentSource = typeof ComposerAttachmentSource.Type
+
 export const ComposerAttachmentDimensions = S.Struct({
   width: S.Number,
   height: S.Number,
@@ -127,10 +134,23 @@ export const ComposerAttachment = S.Struct({
   digest: S.optional(S.String),
   previewUrl: S.optional(S.String),
   dimensions: S.optional(ComposerAttachmentDimensions),
+  contentRef: S.optional(S.String),
+  source: S.optional(ComposerAttachmentSource),
   status: ComposerAttachmentStatus,
   errorText: S.optional(S.String),
 })
 export type ComposerAttachment = typeof ComposerAttachment.Type
+
+export const ComposerAttachmentPatch = S.Struct({
+  status: S.optional(ComposerAttachmentStatus),
+  digest: S.optional(S.NullOr(S.String)),
+  previewUrl: S.optional(S.NullOr(S.String)),
+  dimensions: S.optional(S.NullOr(ComposerAttachmentDimensions)),
+  contentRef: S.optional(S.NullOr(S.String)),
+  source: S.optional(S.NullOr(ComposerAttachmentSource)),
+  errorText: S.optional(S.NullOr(S.String)),
+})
+export type ComposerAttachmentPatch = typeof ComposerAttachmentPatch.Type
 
 export const ComposerDoc = S.Struct({
   schemaVersion: ComposerSchemaVersion,
@@ -202,6 +222,13 @@ export const ComposerRemoveAttachmentStep = S.TaggedStruct("RemoveAttachment", {
 export type ComposerRemoveAttachmentStep =
   typeof ComposerRemoveAttachmentStep.Type
 
+export const ComposerUpdateAttachmentStep = S.TaggedStruct("UpdateAttachment", {
+  attachmentId: ComposerAttachmentId,
+  patch: ComposerAttachmentPatch,
+})
+export type ComposerUpdateAttachmentStep =
+  typeof ComposerUpdateAttachmentStep.Type
+
 export const ComposerResizeComposerStep = S.TaggedStruct("ResizeComposer", {
   heightPx: S.Number,
 })
@@ -214,6 +241,7 @@ export const ComposerStep = S.Union([
   ComposerSetBlockKindStep,
   ComposerInsertAttachmentStep,
   ComposerRemoveAttachmentStep,
+  ComposerUpdateAttachmentStep,
   ComposerResizeComposerStep,
 ])
 export type ComposerStep = typeof ComposerStep.Type
@@ -222,6 +250,7 @@ export const ComposerTransactionSource = S.Literals([
   "input",
   "paste",
   "drop",
+  "manual",
   "keymap",
   "program",
   "submit",
@@ -314,6 +343,288 @@ export const composerBlockId = (id: string): ComposerBlockId =>
 
 export const composerAttachmentId = (id: string): ComposerAttachmentId =>
   id as ComposerAttachmentId
+
+export type ComposerFileLike = Readonly<{
+  name?: string
+  type?: string
+  size?: number
+  previewUrl?: string
+  contentRef?: string
+  dimensions?: ComposerAttachmentDimensions
+}>
+
+export type ComposerAttachmentDeferredTaskKind =
+  | "create_image_thumbnail"
+  | "extract_image_dimensions"
+  | "count_text_bytes"
+  | "estimate_text_tokens"
+  | "detect_snippet_language"
+
+export type ComposerAttachmentDeferredTask = Readonly<{
+  kind: ComposerAttachmentDeferredTaskKind
+  attachmentId: ComposerAttachmentId
+}>
+
+export type ComposerStageAttachmentFilesOptions = Readonly<{
+  source: ComposerAttachmentSource
+  at?: ComposerBlockPosition
+  idPrefix?: string
+}>
+
+export type ComposerStageAttachmentFilesResult = Readonly<{
+  attachments: ReadonlyArray<ComposerAttachment>
+  transaction: ComposerTransaction
+  deferredTasks: ReadonlyArray<ComposerAttachmentDeferredTask>
+}>
+
+export const DEFAULT_LARGE_TEXT_ATTACHMENT_THRESHOLD = 16_000
+
+export type ComposerLargeTextPasteOffer = Readonly<{
+  offered: boolean
+  textBytes: number
+  thresholdBytes: number
+  transaction: ComposerTransaction | null
+  attachment?: ComposerAttachment
+  deferredTasks: ReadonlyArray<ComposerAttachmentDeferredTask>
+}>
+
+const textEncoder = new TextEncoder()
+
+const byteLength = (text: string): number => textEncoder.encode(text).byteLength
+
+const slugForAttachmentName = (name: string): string => {
+  const slug = name
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+  return slug.length === 0 ? "attachment" : slug.slice(0, 80)
+}
+
+const defaultFileNameFor = (
+  source: ComposerAttachmentSource,
+  index: number,
+): string => `${source}-attachment-${index + 1}`
+
+const attachmentIdFor = (
+  source: ComposerAttachmentSource,
+  index: number,
+  name: string,
+  sizeBytes: number,
+): ComposerAttachmentId =>
+  composerAttachmentId(
+    `${source}-${index + 1}-${slugForAttachmentName(name)}-${Math.max(0, sizeBytes)}`,
+  )
+
+const extensionForName = (name: string): string => {
+  const index = name.lastIndexOf(".")
+  return index < 0 ? "" : name.slice(index + 1).toLowerCase()
+}
+
+export const inferComposerAttachmentKind = (
+  mime: string,
+  name: string,
+): ComposerAttachmentKind => {
+  if (mime.startsWith("image/")) return "image"
+  if (mime.startsWith("text/")) return "text"
+  if (
+    [
+      "c",
+      "cpp",
+      "css",
+      "diff",
+      "go",
+      "html",
+      "js",
+      "json",
+      "jsx",
+      "md",
+      "py",
+      "rs",
+      "sh",
+      "sql",
+      "ts",
+      "tsx",
+      "yaml",
+      "yml",
+    ].includes(extensionForName(name))
+  ) {
+    return "snippet"
+  }
+  return "file"
+}
+
+export const deferredComposerAttachmentTasks = (
+  attachment: ComposerAttachment,
+): ReadonlyArray<ComposerAttachmentDeferredTask> => {
+  if (attachment.kind === "image") {
+    return [
+      ...(attachment.previewUrl === undefined
+        ? [{ kind: "create_image_thumbnail" as const, attachmentId: attachment.id }]
+        : []),
+      ...(attachment.dimensions === undefined
+        ? [{ kind: "extract_image_dimensions" as const, attachmentId: attachment.id }]
+        : []),
+    ]
+  }
+
+  if (attachment.kind === "text" || attachment.kind === "snippet") {
+    return [
+      { kind: "count_text_bytes", attachmentId: attachment.id },
+      { kind: "estimate_text_tokens", attachmentId: attachment.id },
+      ...(attachment.kind === "snippet"
+        ? [{ kind: "detect_snippet_language" as const, attachmentId: attachment.id }]
+        : []),
+    ]
+  }
+
+  return []
+}
+
+export const createComposerAttachment = (input: {
+  id: ComposerAttachmentId
+  kind: ComposerAttachmentKind
+  name: string
+  mime: string
+  sizeBytes: number
+  source?: ComposerAttachmentSource
+  status?: ComposerAttachmentStatus
+  digest?: string
+  previewUrl?: string
+  dimensions?: ComposerAttachmentDimensions
+  contentRef?: string
+  errorText?: string
+}): ComposerAttachment => ({
+  id: input.id,
+  kind: input.kind,
+  name: input.name,
+  mime: input.mime,
+  sizeBytes: Math.max(0, Math.trunc(input.sizeBytes)),
+  ...(input.source === undefined ? {} : { source: input.source }),
+  status: input.status ?? "staged",
+  ...(input.digest === undefined ? {} : { digest: input.digest }),
+  ...(input.previewUrl === undefined ? {} : { previewUrl: input.previewUrl }),
+  ...(input.dimensions === undefined ? {} : { dimensions: input.dimensions }),
+  ...(input.contentRef === undefined ? {} : { contentRef: input.contentRef }),
+  ...(input.errorText === undefined ? {} : { errorText: input.errorText }),
+})
+
+const positionForAttachmentIndex = (
+  at: ComposerBlockPosition | undefined,
+  offset: number,
+): ComposerBlockPosition | undefined =>
+  at?.index === undefined ? at : { index: at.index + offset }
+
+export const stageComposerAttachmentFiles = (
+  files: ReadonlyArray<ComposerFileLike>,
+  options: ComposerStageAttachmentFilesOptions,
+): ComposerStageAttachmentFilesResult => {
+  const attachments = files.map((file, index): ComposerAttachment => {
+    const name = file.name ?? defaultFileNameFor(options.source, index)
+    const mime =
+      file.type === undefined || file.type.trim() === ""
+        ? "application/octet-stream"
+        : file.type
+    const sizeBytes = Math.max(0, Math.trunc(file.size ?? 0))
+    return createComposerAttachment({
+      id:
+        options.idPrefix === undefined
+          ? attachmentIdFor(options.source, index, name, sizeBytes)
+          : composerAttachmentId(`${options.idPrefix}-${index + 1}`),
+      kind: inferComposerAttachmentKind(mime, name),
+      name,
+      mime,
+      sizeBytes,
+      source: options.source,
+      status: "staged",
+      ...(file.previewUrl === undefined ? {} : { previewUrl: file.previewUrl }),
+      ...(file.dimensions === undefined ? {} : { dimensions: file.dimensions }),
+      ...(file.contentRef === undefined ? {} : { contentRef: file.contentRef }),
+    })
+  })
+  return {
+    attachments,
+    transaction: {
+      steps: attachments.map((attachment, index) => ({
+        _tag: "InsertAttachment" as const,
+        attachment,
+        ...(positionForAttachmentIndex(options.at, index) === undefined
+          ? {}
+          : { at: positionForAttachmentIndex(options.at, index) }),
+      })),
+      meta: { source: options.source, time: Date.now() },
+    },
+    deferredTasks: attachments.flatMap((attachment) =>
+      deferredComposerAttachmentTasks(attachment),
+    ),
+  }
+}
+
+export const stageComposerPastedFiles = (
+  files: ReadonlyArray<ComposerFileLike>,
+  options: Omit<ComposerStageAttachmentFilesOptions, "source"> = {},
+): ComposerStageAttachmentFilesResult =>
+  stageComposerAttachmentFiles(files, { ...options, source: "paste" })
+
+export const stageComposerDroppedFiles = (
+  files: ReadonlyArray<ComposerFileLike>,
+  options: Omit<ComposerStageAttachmentFilesOptions, "source"> = {},
+): ComposerStageAttachmentFilesResult =>
+  stageComposerAttachmentFiles(files, { ...options, source: "drop" })
+
+export const offerComposerLargeTextPaste = (
+  text: string,
+  options: Readonly<{
+    thresholdBytes?: number
+    name?: string
+    contentRef?: string
+    at?: ComposerBlockPosition
+    id?: ComposerAttachmentId
+  }> = {},
+): ComposerLargeTextPasteOffer => {
+  const textBytes = byteLength(text)
+  const thresholdBytes =
+    options.thresholdBytes ?? DEFAULT_LARGE_TEXT_ATTACHMENT_THRESHOLD
+  if (textBytes < thresholdBytes) {
+    return {
+      offered: false,
+      textBytes,
+      thresholdBytes,
+      transaction: null,
+      deferredTasks: [],
+    }
+  }
+
+  const name = options.name ?? "pasted-text.txt"
+  const attachment = createComposerAttachment({
+    id: options.id ?? attachmentIdFor("paste", 0, name, textBytes),
+    kind: "text",
+    name,
+    mime: "text/plain",
+    sizeBytes: textBytes,
+    source: "paste",
+    status: "staged",
+    contentRef:
+      options.contentRef ??
+      `local-text:${attachmentIdFor("paste", 0, name, textBytes)}`,
+  })
+  return {
+    offered: true,
+    textBytes,
+    thresholdBytes,
+    attachment,
+    transaction: {
+      steps: [
+        {
+          _tag: "InsertAttachment",
+          attachment,
+          ...(options.at === undefined ? {} : { at: options.at }),
+        },
+      ],
+      meta: { source: "paste", time: Date.now() },
+    },
+    deferredTasks: deferredComposerAttachmentTasks(attachment),
+  }
+}
 
 export const createParagraphBlock = (
   id: string,
@@ -672,6 +983,99 @@ const applyRemoveAttachment = (
   }
 }
 
+type MutableAttachment = {
+  -readonly [K in keyof ComposerAttachment]: ComposerAttachment[K]
+}
+
+const patchHas = (
+  patch: ComposerAttachmentPatch,
+  key: keyof ComposerAttachmentPatch,
+): boolean => Object.prototype.hasOwnProperty.call(patch, key)
+
+const applyAttachmentPatch = (
+  attachment: ComposerAttachment,
+  patch: ComposerAttachmentPatch,
+): ComposerAttachment => {
+  const next: MutableAttachment = { ...attachment }
+  if (patch.status !== undefined) next.status = patch.status
+  if (patchHas(patch, "digest")) {
+    if (patch.digest === null) delete next.digest
+    else if (patch.digest !== undefined) next.digest = patch.digest
+  }
+  if (patchHas(patch, "previewUrl")) {
+    if (patch.previewUrl === null) delete next.previewUrl
+    else if (patch.previewUrl !== undefined) next.previewUrl = patch.previewUrl
+  }
+  if (patchHas(patch, "dimensions")) {
+    if (patch.dimensions === null) delete next.dimensions
+    else if (patch.dimensions !== undefined) next.dimensions = patch.dimensions
+  }
+  if (patchHas(patch, "contentRef")) {
+    if (patch.contentRef === null) delete next.contentRef
+    else if (patch.contentRef !== undefined) next.contentRef = patch.contentRef
+  }
+  if (patchHas(patch, "source")) {
+    if (patch.source === null) delete next.source
+    else if (patch.source !== undefined) next.source = patch.source
+  }
+  if (patchHas(patch, "errorText")) {
+    if (patch.errorText === null) delete next.errorText
+    else if (patch.errorText !== undefined) next.errorText = patch.errorText
+  }
+  return next
+}
+
+const inverseAttachmentPatch = (
+  attachment: ComposerAttachment,
+  patch: ComposerAttachmentPatch,
+): ComposerAttachmentPatch => ({
+  ...(patch.status === undefined ? {} : { status: attachment.status }),
+  ...(patchHas(patch, "digest")
+    ? { digest: attachment.digest ?? null }
+    : {}),
+  ...(patchHas(patch, "previewUrl")
+    ? { previewUrl: attachment.previewUrl ?? null }
+    : {}),
+  ...(patchHas(patch, "dimensions")
+    ? { dimensions: attachment.dimensions ?? null }
+    : {}),
+  ...(patchHas(patch, "contentRef")
+    ? { contentRef: attachment.contentRef ?? null }
+    : {}),
+  ...(patchHas(patch, "source") ? { source: attachment.source ?? null } : {}),
+  ...(patchHas(patch, "errorText")
+    ? { errorText: attachment.errorText ?? null }
+    : {}),
+})
+
+const applyUpdateAttachment = (
+  state: ComposerState,
+  step: ComposerUpdateAttachmentStep,
+): ComposerApplyStepResult => {
+  const index = state.doc.attachments.findIndex(
+    (attachment) => attachment.id === step.attachmentId,
+  )
+  const attachment = state.doc.attachments[index]
+  if (attachment === undefined) {
+    return err("attachment_not_found", `Attachment ${step.attachmentId} was not found`)
+  }
+  const nextAttachment = applyAttachmentPatch(attachment, step.patch)
+  const attachments = [
+    ...state.doc.attachments.slice(0, index),
+    nextAttachment,
+    ...state.doc.attachments.slice(index + 1),
+  ]
+  return {
+    ok: true,
+    state: { ...state, doc: { ...state.doc, attachments } },
+    inverse: {
+      _tag: "UpdateAttachment",
+      attachmentId: step.attachmentId,
+      patch: inverseAttachmentPatch(attachment, step.patch),
+    },
+  }
+}
+
 const applyResizeComposer = (
   state: ComposerState,
   step: ComposerResizeComposerStep,
@@ -704,6 +1108,8 @@ export const applyComposerStep = (
       return applyInsertAttachment(state, step)
     case "RemoveAttachment":
       return applyRemoveAttachment(state, step)
+    case "UpdateAttachment":
+      return applyUpdateAttachment(state, step)
     case "ResizeComposer":
       return applyResizeComposer(state, step)
   }
@@ -746,6 +1152,102 @@ export const applyComposerTransaction = (
   }
 
   return { ok: true, state: next, inverseSteps }
+}
+
+export const retryComposerAttachmentTransaction = (
+  state: ComposerState,
+  attachmentId: ComposerAttachmentId,
+  time = Date.now(),
+): ComposerTransaction | null => {
+  const attachment = state.doc.attachments.find(
+    (candidate) => candidate.id === attachmentId,
+  )
+  if (attachment === undefined) return null
+  return {
+    steps: [
+      {
+        _tag: "UpdateAttachment",
+        attachmentId,
+        patch: { status: "staged", errorText: null },
+      },
+    ],
+    meta: { source: "program", time },
+  }
+}
+
+export const setComposerAttachmentStatusTransaction = (
+  state: ComposerState,
+  attachmentId: ComposerAttachmentId,
+  patch: ComposerAttachmentPatch,
+  time = Date.now(),
+): ComposerTransaction | null => {
+  if (!state.doc.attachments.some((attachment) => attachment.id === attachmentId)) {
+    return null
+  }
+  return {
+    steps: [{ _tag: "UpdateAttachment", attachmentId, patch }],
+    meta: { source: "program", time },
+  }
+}
+
+export type ComposerAttachmentNavigationDirection =
+  | "first"
+  | "last"
+  | "next"
+  | "previous"
+  | "clear"
+
+const orderedAttachmentIds = (
+  state: ComposerState,
+): ReadonlyArray<ComposerAttachmentId> => {
+  const idsFromBlocks = state.doc.blocks.flatMap((block) =>
+    block.kind === "attachmentRef" ? [block.attachmentId] : [],
+  )
+  const blockIds = new Set(idsFromBlocks)
+  return [
+    ...idsFromBlocks,
+    ...state.doc.attachments
+      .map((attachment) => attachment.id)
+      .filter((id) => !blockIds.has(id)),
+  ]
+}
+
+export const selectComposerAttachment = (
+  state: ComposerState,
+  attachmentId: ComposerAttachmentId | undefined,
+): ComposerState => {
+  if (attachmentId === undefined) {
+    const { selectedAttachmentId: _selectedAttachmentId, ...selection } =
+      state.selection
+    return { ...state, selection }
+  }
+  return {
+    ...state,
+    selection: { ...state.selection, selectedAttachmentId: attachmentId },
+  }
+}
+
+export const moveComposerAttachmentSelection = (
+  state: ComposerState,
+  direction: ComposerAttachmentNavigationDirection,
+): ComposerState => {
+  if (direction === "clear") return selectComposerAttachment(state, undefined)
+  const ids = orderedAttachmentIds(state)
+  if (ids.length === 0) return selectComposerAttachment(state, undefined)
+  if (direction === "first") return selectComposerAttachment(state, ids[0])
+  if (direction === "last") return selectComposerAttachment(state, ids.at(-1))
+  const selected = state.selection.selectedAttachmentId
+  const index = selected === undefined ? -1 : ids.indexOf(selected)
+  if (direction === "next") {
+    return selectComposerAttachment(
+      state,
+      ids[Math.min(ids.length - 1, index + 1)] ?? ids[0],
+    )
+  }
+  return selectComposerAttachment(
+    state,
+    ids[index <= 0 ? ids.length - 1 : index - 1],
+  )
 }
 
 export const undoComposerState = (
@@ -823,6 +1325,8 @@ export const composerCommandIds = [
   "redo",
   "cancel",
   "attach",
+  "select_next_attachment",
+  "select_previous_attachment",
   "toggle_preview",
   "expand",
 ] as const
@@ -852,6 +1356,8 @@ export const defaultComposerKeymap: ReadonlyArray<ComposerKeyBinding> = [
   { command: "redo", key: "z", primary: true, shift: true },
   { command: "cancel", key: "Escape" },
   { command: "attach", key: "u", primary: true },
+  { command: "select_previous_attachment", key: "ArrowLeft", alt: true },
+  { command: "select_next_attachment", key: "ArrowRight", alt: true },
   { command: "toggle_preview", key: "p", primary: true, shift: true },
   { command: "expand", key: "k", primary: true },
 ]

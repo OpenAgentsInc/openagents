@@ -82,7 +82,7 @@
 
 .oa-ai-command-composer-attachment {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: auto auto auto minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 0.5rem;
   min-width: min(18rem, 82vw);
@@ -91,12 +91,36 @@
   padding: 0.5rem 0.625rem;
 }
 
+.oa-ai-command-composer-attachment[data-selected="true"] {
+  border-color: var(--oa-color-review-link-soft, #8fd0ff);
+  background: rgba(79, 208, 255, 0.1);
+}
+
 .oa-ai-command-composer-attachment[data-status="error"] {
   border-color: rgba(229, 72, 77, 0.58);
 }
 
+.oa-ai-command-composer-gapcursor {
+  display: inline-flex;
+  width: 1px;
+  height: 1.5rem;
+  outline: 0;
+}
+
+.oa-ai-command-composer-gapcursor:focus-visible {
+  background: var(--oa-color-review-link-soft, #8fd0ff);
+  box-shadow: 0 0 12px rgba(79, 208, 255, 0.45);
+}
+
 .oa-ai-command-composer-attachment-icon {
   color: var(--oa-color-review-link-soft, #8fd0ff);
+}
+
+.oa-ai-command-composer-attachment-thumb {
+  width: 2rem;
+  height: 2rem;
+  border: 1px solid rgba(122, 162, 255, 0.24);
+  object-fit: cover;
 }
 
 .oa-ai-command-composer-icon {
@@ -129,6 +153,7 @@
 }
 
 .oa-ai-command-composer-attachment-meta,
+.oa-ai-command-composer-attachment-status,
 .oa-ai-command-composer-attachment-error {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -137,8 +162,53 @@
   font-size: 0.6875rem;
 }
 
+.oa-ai-command-composer-attachment-status {
+  color: var(--oa-color-review-link, #66aaff);
+  text-transform: uppercase;
+}
+
 .oa-ai-command-composer-attachment-error {
   color: var(--oa-color-hud-error, #ff4d4d);
+}
+
+.oa-ai-command-composer-attachment-actions {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.oa-ai-command-composer-attachment-action {
+  min-height: 1.75rem;
+  border: 1px solid rgba(122, 162, 255, 0.24);
+  border-radius: 0;
+  background: rgba(1, 2, 4, 0.64);
+  color: var(--oa-color-text-on-dark60, rgba(255, 255, 255, 0.6));
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.6875rem;
+  line-height: 1;
+  padding-inline: 0.5rem;
+}
+
+.oa-ai-command-composer-attachment-action:hover,
+.oa-ai-command-composer-attachment-action:focus-visible {
+  border-color: var(--oa-color-review-link-soft, #8fd0ff);
+  color: var(--oa-command-composer-text);
+  outline: 0;
+}
+
+.oa-ai-command-composer-rail[data-oa-command-composer-drag-active="true"] {
+  border-color: var(--oa-color-review-link-soft, #8fd0ff);
+  background: rgba(79, 208, 255, 0.08);
+}
+
+.oa-ai-command-composer-dropcursor {
+  width: 2px;
+  min-height: 3rem;
+  align-self: stretch;
+  background: var(--oa-color-review-link-soft, #8fd0ff);
+  box-shadow: 0 0 16px rgba(79, 208, 255, 0.55);
 }
 
 .oa-ai-command-composer-markdown-preview {

@@ -15,7 +15,7 @@ import {
 // fail-closed style as the Tailwind UI v4 family-coverage test.
 const expectedCatalog = [
   { moduleId: 'prompt-input', primitives: 7 },
-  { moduleId: 'command-composer', primitives: 12 },
+  { moduleId: 'command-composer', primitives: 14 },
   { moduleId: 'message', primitives: 4 },
   { moduleId: 'response', primitives: 3 },
   { moduleId: 'code-block', primitives: 5 },

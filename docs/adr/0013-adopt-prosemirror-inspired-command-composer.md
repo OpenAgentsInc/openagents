@@ -186,6 +186,10 @@ The implementation should land as a sequence:
   `command-composer` AI element shell with native textarea editing, autofocus
   and focus-after-submit hooks, attachment rail, status strip, controls, resize
   affordance, Markdown preview, and accessibility mirror.
+* 2026-06-30: Issue #7642 landed attachment and large-text behavior: typed
+  paste/drop staging, non-blocking deferred work descriptors, retry/status
+  updates, large-text attachment offers, gapcursor/dropcursor hooks, thumbnail
+  rendering, accessible attachment actions, and 100k-character prompt coverage.
 
 ## Pros and Cons of the Options
 

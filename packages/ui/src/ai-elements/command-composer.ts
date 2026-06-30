@@ -50,6 +50,12 @@ export const commandComposerA11yClass = componentClass(
 export const commandComposerMarkdownPreviewClass = componentClass(
   'oa-ai-command-composer-markdown-preview',
 )
+export const commandComposerAttachmentActionClass = componentClass(
+  'oa-ai-command-composer-attachment-action',
+)
+export const commandComposerDropcursorClass = componentClass(
+  'oa-ai-command-composer-dropcursor',
+)
 
 const commandComposerStyles = {
   root: commandComposerClass,
@@ -64,6 +70,8 @@ const commandComposerStyles = {
   resizeHandle: commandComposerResizeHandleClass,
   a11y: commandComposerA11yClass,
   markdownPreview: commandComposerMarkdownPreviewClass,
+  attachmentAction: commandComposerAttachmentActionClass,
+  dropcursor: commandComposerDropcursorClass,
 }
 
 export const CommandComposerStatus = Schema.Literals([
@@ -92,6 +100,13 @@ export const CommandComposerAttachmentStatus = Schema.Literals([
 export type CommandComposerAttachmentStatus =
   typeof CommandComposerAttachmentStatus.Type
 
+export const CommandComposerAttachmentDimensions = Schema.Struct({
+  width: Schema.Number,
+  height: Schema.Number,
+})
+export type CommandComposerAttachmentDimensions =
+  typeof CommandComposerAttachmentDimensions.Type
+
 export const CommandComposerAttachmentProps = Schema.Struct({
   id: Schema.String,
   kind: CommandComposerAttachmentKind,
@@ -99,8 +114,11 @@ export const CommandComposerAttachmentProps = Schema.Struct({
   mime: Schema.String,
   sizeBytes: Schema.Number,
   sizeLabel: Schema.optional(Schema.String),
+  dimensions: Schema.optional(CommandComposerAttachmentDimensions),
   status: CommandComposerAttachmentStatus,
   previewUrl: Schema.optional(Schema.String),
+  contentRef: Schema.optional(Schema.String),
+  source: Schema.optional(Schema.Literals(['paste', 'drop', 'manual'])),
   errorText: Schema.optional(Schema.String),
 })
 export type CommandComposerAttachmentProps =
@@ -122,10 +140,17 @@ export const CommandComposerProps = Schema.Struct({
   tokenEstimate: Schema.optional(Schema.Number),
   sizeLabel: Schema.optional(Schema.String),
   keymapLabel: Schema.optional(Schema.String),
+  selectedAttachmentId: Schema.optional(Schema.String),
+  dragActive: Schema.optional(Schema.Boolean),
 })
 export type CommandComposerProps = typeof CommandComposerProps.Type
 
 export type CommandComposerButtonVariant = 'ghost' | 'primary' | 'danger'
+export type CommandComposerAttachmentAction = 'preview' | 'retry' | 'remove'
+export type CommandComposerAttachmentActionAttrs<Message> = (
+  attachment: CommandComposerAttachmentProps,
+  action: CommandComposerAttachmentAction,
+) => ReadonlyArray<Attribute<Message>>
 
 export type CommandComposerIconName =
   | 'attach'
@@ -252,6 +277,21 @@ const normalizeAttachment = (
   }
 }
 
+const statusTextForAttachment = (
+  status: CommandComposerAttachmentStatus,
+): string => {
+  switch (status) {
+    case 'staged':
+      return 'Staged'
+    case 'uploading':
+      return 'Uploading'
+    case 'ready':
+      return 'Ready'
+    case 'error':
+      return 'Error'
+  }
+}
+
 export const commandComposerFrame = <Message>(input: {
   children: ReadonlyArray<Html | string>
   attrs?: ReadonlyArray<Attribute<Message>>
@@ -306,6 +346,36 @@ export const commandComposerButton = <Message>(input: {
   )
 }
 
+export const commandComposerAttachmentAction = <Message>(input: {
+  attachment: CommandComposerAttachmentProps
+  action: CommandComposerAttachmentAction
+  attrs?: ReadonlyArray<Attribute<Message>>
+}): Html => {
+  const h = html<Message>()
+  const label =
+    input.action === 'preview'
+      ? input.attachment.previewUrl === undefined
+        ? 'Open attachment'
+        : 'Preview attachment'
+      : input.action === 'retry'
+        ? 'Retry attachment'
+        : 'Remove attachment'
+
+  return h.button(
+    [
+      ...(input.attrs ?? []),
+      aiElementBase<Message>(MODULE_ID, 'CommandComposerAttachmentAction'),
+      h.Type('button'),
+      h.AriaLabel(`${label}: ${input.attachment.name}`),
+      h.Title(label),
+      h.DataAttribute('oa-command-composer-attachment-action', input.action),
+      h.DataAttribute('attachment-id', input.attachment.id),
+      ...classAttrs<Message>(commandComposerStyles.attachmentAction),
+    ],
+    [input.action === 'preview' ? 'Open' : input.action === 'retry' ? 'Retry' : 'Remove'],
+  )
+}
+
 export const commandComposerSubmit = <Message>(input: {
   status?: CommandComposerStatus
   label?: string
@@ -341,11 +411,21 @@ export const commandComposerSubmit = <Message>(input: {
   )
 }
 
-export const commandComposerAttachment = <Message>(
-  attachment: CommandComposerAttachmentProps,
+export const commandComposerAttachment = <Message>(input:
+  | CommandComposerAttachmentProps
+  | {
+      props: CommandComposerAttachmentProps
+      selected?: boolean
+      actionAttrs?: CommandComposerAttachmentActionAttrs<Message>
+    },
 ): Html => {
   const h = html<Message>()
-  const props = normalizeAttachment(attachment)
+  const props = normalizeAttachment('props' in input ? input.props : input)
+  const selected = 'props' in input && input.selected === true
+  const actionAttrs =
+    'props' in input && input.actionAttrs !== undefined
+      ? input.actionAttrs
+      : () => []
   const iconName: CommandComposerIconName =
     props.kind === 'image'
       ? 'image'
@@ -355,26 +435,85 @@ export const commandComposerAttachment = <Message>(
           ? 'code'
           : 'file'
 
+  const actionNodes: Html[] = [
+    ...(props.previewUrl !== undefined || props.status === 'ready'
+      ? [
+          commandComposerAttachmentAction<Message>({
+            attachment: props,
+            action: 'preview',
+            attrs: actionAttrs(props, 'preview'),
+          }),
+        ]
+      : []),
+    ...(props.status === 'error'
+      ? [
+          commandComposerAttachmentAction<Message>({
+            attachment: props,
+            action: 'retry',
+            attrs: actionAttrs(props, 'retry'),
+          }),
+        ]
+      : []),
+    commandComposerAttachmentAction<Message>({
+      attachment: props,
+      action: 'remove',
+      attrs: actionAttrs(props, 'remove'),
+    }),
+  ]
+
   return h.div(
     [
       aiElementBase<Message>(MODULE_ID, 'CommandComposerAttachment'),
       h.DataAttribute('oa-command-composer-attachment', props.id),
       h.DataAttribute('kind', props.kind),
       h.DataAttribute('status', props.status),
+      h.DataAttribute('selected', selected ? 'true' : 'false'),
       h.Role('listitem'),
+      h.Tabindex(0),
+      h.AriaSelected(selected),
       ...classAttrs<Message>(commandComposerStyles.attachment),
     ],
     [
       h.span(
+        [
+          h.Tabindex(0),
+          h.AriaLabel(`Before ${props.name}`),
+          h.DataAttribute('oa-command-composer-gapcursor', 'before'),
+          h.DataAttribute('attachment-id', props.id),
+          h.Class('oa-ai-command-composer-gapcursor'),
+        ],
+        [],
+      ),
+      h.span(
         [h.AriaHidden(true), h.Class('oa-ai-command-composer-attachment-icon')],
         [commandComposerIcon<Message>(iconName)],
       ),
+      ...(props.kind === 'image' && props.previewUrl !== undefined
+        ? [
+            h.img([
+              h.Src(props.previewUrl),
+              h.Alt(`${props.name} preview`),
+              h.Loading('lazy'),
+              h.Decoding('async'),
+              ...(props.dimensions === undefined
+                ? []
+                : [
+                    h.Width(String(props.dimensions.width)),
+                    h.Height(String(props.dimensions.height)),
+                  ]),
+              h.Class('oa-ai-command-composer-attachment-thumb'),
+            ]),
+          ]
+        : []),
       h.span([h.Class('oa-ai-command-composer-attachment-main')], [
         h.span([h.Class('oa-ai-command-composer-attachment-name')], [
           props.name,
         ]),
         h.span([h.Class('oa-ai-command-composer-attachment-meta')], [
           `${props.mime} - ${props.sizeLabel ?? formatBytes(props.sizeBytes)}`,
+        ]),
+        h.span([h.Class('oa-ai-command-composer-attachment-status')], [
+          statusTextForAttachment(props.status),
         ]),
         ...(props.errorText === undefined
           ? []
@@ -385,12 +524,40 @@ export const commandComposerAttachment = <Message>(
               ),
             ]),
       ]),
+      h.span([h.Class('oa-ai-command-composer-attachment-actions')], actionNodes),
+      h.span(
+        [
+          h.Tabindex(0),
+          h.AriaLabel(`After ${props.name}`),
+          h.DataAttribute('oa-command-composer-gapcursor', 'after'),
+          h.DataAttribute('attachment-id', props.id),
+          h.Class('oa-ai-command-composer-gapcursor'),
+        ],
+        [],
+      ),
     ],
+  )
+}
+
+export const commandComposerDropcursor = <Message>(): Html => {
+  const h = html<Message>()
+
+  return h.div(
+    [
+      aiElementBase<Message>(MODULE_ID, 'CommandComposerDropcursor'),
+      h.DataAttribute('oa-command-composer-dropcursor', ''),
+      h.AriaHidden(true),
+      ...classAttrs<Message>(commandComposerStyles.dropcursor),
+    ],
+    [],
   )
 }
 
 export const commandComposerRail = <Message>(input: {
   attachments: ReadonlyArray<CommandComposerAttachmentProps>
+  selectedAttachmentId?: string
+  dragActive?: boolean
+  actionAttrs?: CommandComposerAttachmentActionAttrs<Message>
 }): Html => {
   const h = html<Message>()
   const attachments = input.attachments.map(normalizeAttachment)
@@ -399,13 +566,27 @@ export const commandComposerRail = <Message>(input: {
     [
       aiElementBase<Message>(MODULE_ID, 'CommandComposerRail'),
       h.DataAttribute('oa-command-composer-rail', ''),
+      h.DataAttribute('oa-command-composer-drop-target', ''),
+      h.DataAttribute(
+        'oa-command-composer-drag-active',
+        input.dragActive === true ? 'true' : 'false',
+      ),
       h.Role('list'),
       h.AriaLabel('Composer attachments'),
       ...classAttrs<Message>(commandComposerStyles.rail),
     ],
-    attachments.map(attachment =>
-      commandComposerAttachment<Message>(attachment),
-    ),
+    [
+      ...attachments.map(attachment =>
+        commandComposerAttachment<Message>({
+          props: attachment,
+          selected: input.selectedAttachmentId === attachment.id,
+          ...(input.actionAttrs === undefined
+            ? {}
+            : { actionAttrs: input.actionAttrs }),
+        }),
+      ),
+      ...(input.dragActive === true ? [commandComposerDropcursor<Message>()] : []),
+    ],
   )
 }
 
@@ -550,6 +731,7 @@ export const commandComposer = <Message>(input: {
   state?: ComposerState
   attachments?: ReadonlyArray<CommandComposerAttachmentProps>
   controls?: ReadonlyArray<Html>
+  attachmentActionAttrs?: CommandComposerAttachmentActionAttrs<Message>
   formAttrs?: ReadonlyArray<Attribute<Message>>
   textareaAttrs?: ReadonlyArray<Attribute<Message>>
   submitAttrs?: ReadonlyArray<Attribute<Message>>
@@ -564,6 +746,8 @@ export const commandComposer = <Message>(input: {
     input.attachments ??
     state.doc.attachments
   ).map(attachment => normalizeAttachment(attachment))
+  const selectedAttachmentId =
+    props.selectedAttachmentId ?? state.selection.selectedAttachmentId
   const textareaId = `oa-command-composer-${idSafe(props.name)}`
   const label = props.label ?? 'Message Khala'
 
@@ -596,7 +780,18 @@ export const commandComposer = <Message>(input: {
           ),
           ...(attachments.length === 0
             ? []
-            : [commandComposerRail<Message>({ attachments })]),
+            : [
+                commandComposerRail<Message>({
+                  attachments,
+                  ...(selectedAttachmentId === undefined
+                    ? {}
+                    : { selectedAttachmentId }),
+                  dragActive: props.dragActive === true,
+                  ...(input.attachmentActionAttrs === undefined
+                    ? {}
+                    : { actionAttrs: input.attachmentActionAttrs }),
+                }),
+              ]),
           h.textarea(
             [
               ...(input.textareaAttrs ?? []),
@@ -684,6 +879,8 @@ export const commandComposerClassNames = {
   resizeHandle: commandComposerResizeHandleClass,
   a11y: commandComposerA11yClass,
   markdownPreview: commandComposerMarkdownPreviewClass,
+  attachmentAction: commandComposerAttachmentActionClass,
+  dropcursor: commandComposerDropcursorClass,
 } as const
 
 export const commandComposerClassName = (
