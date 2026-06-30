@@ -81,6 +81,14 @@ const optionalBooleanAttr = <Message>(
   attr: (value: true) => Attribute<Message>,
 ): ReadonlyArray<Attribute<Message>> => enabled === true ? [attr(true)] : []
 
+const optionalBasecoatProps = <Message>(
+  attrs: ReadonlyArray<Attribute<Message>> | undefined,
+  className: string | undefined,
+): BasecoatAttrs<Message> => ({
+  ...(attrs === undefined ? {} : { attrs }),
+  ...(className === undefined ? {} : { className }),
+})
+
 export const tooltip = <Message>(input: TooltipProps<Message>): Html => {
   const h = html<Message>()
   const attrs = [
@@ -181,13 +189,17 @@ export const collapsible = <Message>(
     ],
     [
       collapsibleTrigger<Message>({
-        attrs: input.summaryAttrs,
-        className: input.summaryClassName,
+        ...optionalBasecoatProps<Message>(
+          input.summaryAttrs,
+          input.summaryClassName,
+        ),
         children: input.trigger,
       }),
       collapsibleContent<Message>({
-        attrs: input.contentAttrs,
-        className: input.contentClassName,
+        ...optionalBasecoatProps<Message>(
+          input.contentAttrs,
+          input.contentClassName,
+        ),
         children: input.children,
       }),
     ],
