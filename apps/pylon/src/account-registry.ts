@@ -12,6 +12,7 @@ export type PylonAccountRegistryEntry = {
   ref: string
   provider: PylonAccountProvider
   home: string
+  openAgentsProviderAccountRef: string | null
   hourlyCap: number | null
   weeklyCap: number | null
   manualResetsRemaining: number | null
@@ -160,6 +161,10 @@ export function loadPylonAccountRegistryEffect(
         provider,
         ref: record.ref,
         home: normalizeAccountHome(home),
+        openAgentsProviderAccountRef: typeof record.openAgentsProviderAccountRef === "string" &&
+          record.openAgentsProviderAccountRef.trim() !== ""
+          ? record.openAgentsProviderAccountRef.trim()
+          : null,
         hourlyCap: nonNegativeNumberOrNull(record.hourlyCap ?? record.hourly_cap),
         weeklyCap: nonNegativeNumberOrNull(record.weeklyCap ?? record.weekly_cap),
         manualResetsRemaining: nonNegativeNumberOrNull(

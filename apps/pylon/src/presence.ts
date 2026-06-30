@@ -302,7 +302,7 @@ export async function localCodingServiceReadyCounts(
 export type PylonCodexAccountReadiness = {
   accountRefHash: string
   ready: boolean
-  reason?: "credentials_revoked" | "usage_limited" | "rate_limited" | "network" | "timeout" | "other"
+  reason?: "account_unlinked" | "credentials_revoked" | "usage_limited" | "rate_limited" | "network" | "timeout" | "other"
 }
 
 export type PylonCodexAccountCapacity = {
@@ -340,6 +340,10 @@ export async function localCodexAccountReadiness(
   for (const entry of codexEntries) {
     const accountRefHash = hashPylonAccountRef("codex", entry.ref)
     let ready = await codexHomeHasAuth(entry.home)
+    if (entry.openAgentsProviderAccountRef === null) {
+      ready = false
+      reasons.set(accountRefHash, "account_unlinked")
+    }
     const health = await loadCodexAccountHealthRecord(summary, accountRefHash)
     if (codexAccountHealthBlocksReadiness(health)) {
       ready = false

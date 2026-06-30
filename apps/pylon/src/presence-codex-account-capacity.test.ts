@@ -67,8 +67,18 @@ describe("#6354 per-account Codex capacity (Pylon side)", () => {
       await writeFile(summary.paths.config, JSON.stringify({
         dev: {
           accounts: [
-            { provider: "codex", ref: "codex-good", home: goodHome },
-            { provider: "codex", ref: "codex-revoked", home: revokedHome },
+            {
+              provider: "codex",
+              ref: "codex-good",
+              home: goodHome,
+              openAgentsProviderAccountRef: "provider_account.public.codex.good",
+            },
+            {
+              provider: "codex",
+              ref: "codex-revoked",
+              home: revokedHome,
+              openAgentsProviderAccountRef: "provider_account.public.codex.revoked",
+            },
           ],
         },
       }))
@@ -94,6 +104,51 @@ describe("#6354 per-account Codex capacity (Pylon side)", () => {
       })
       expect(codexAccountCapacities({ perAccountConcurrency: 1, readiness }).map(account => account.accountRefHash)).toEqual([
         hashPylonAccountRef("codex", "codex-good"),
+      ])
+    } finally {
+      await rm(home, { recursive: true, force: true })
+    }
+  })
+
+  test("registry accounts without an OpenAgents provider-account link are not advertised", async () => {
+    const home = await mkdtemp(join(tmpdir(), "pylon-codex-account-unlinked-"))
+    try {
+      const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), { PYLON_HOME: home })
+      const linkedHome = join(home, "accounts", "codex", "codex-linked")
+      const unlinkedHome = join(home, "accounts", "codex", "codex-unlinked")
+      await mkdir(linkedHome, { recursive: true })
+      await mkdir(unlinkedHome, { recursive: true })
+      await writeFile(join(linkedHome, "auth.json"), "{}")
+      await writeFile(join(unlinkedHome, "auth.json"), "{}")
+      await writeFile(summary.paths.config, JSON.stringify({
+        dev: {
+          accounts: [
+            {
+              provider: "codex",
+              ref: "codex-linked",
+              home: linkedHome,
+              openAgentsProviderAccountRef: "provider_account.public.codex.linked",
+            },
+            { provider: "codex", ref: "codex-unlinked", home: unlinkedHome },
+          ],
+        },
+      }))
+
+      const readiness = await localCodexAccountReadiness(summary, {
+        PYLON_HOME: home,
+        PYLON_ACCOUNT_HOME_ROOT: join(home, "empty-siblings"),
+      })
+      expect(readiness).toContainEqual({
+        accountRefHash: hashPylonAccountRef("codex", "codex-linked"),
+        ready: true,
+      })
+      expect(readiness).toContainEqual({
+        accountRefHash: hashPylonAccountRef("codex", "codex-unlinked"),
+        ready: false,
+        reason: "account_unlinked",
+      })
+      expect(codexAccountCapacities({ perAccountConcurrency: 1, readiness }).map(account => account.accountRefHash)).toEqual([
+        hashPylonAccountRef("codex", "codex-linked"),
       ])
     } finally {
       await rm(home, { recursive: true, force: true })
