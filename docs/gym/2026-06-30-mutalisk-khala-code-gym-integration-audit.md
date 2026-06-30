@@ -22,6 +22,13 @@ honest no-proof state, and exposes loaded/blocked shell states for later graph
 projection wiring. It does not start Mutalisk, call a live Gym backend, approve
 Action Submissions, or fabricate proof data.
 
+Update, 2026-06-30: the desktop-local graph projection now exists in
+`clients/khala-code-desktop/src/ui/gym-graph-projection.ts`. It maps the
+part-two bridge proof shape into public-safe nodes, typed pins, links, datum,
+evidence refs, blocker refs, and caveat refs, while keeping counter-only refs
+from lighting links and rejecting known unsafe raw/private refs. This remains a
+projection contract only; rendering and fixture loading land in later slices.
+
 ## 0. Executive Answer
 
 Mutalisk belongs in the Gym as the offline optimizer lane for Khala Code's

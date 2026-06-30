@@ -47,6 +47,15 @@ provider payloads remain out of the graph.
 The web `/gym` surface can consume the same Arbiter projection later. It should
 not be the first target for this slice.
 
+Implementation note, 2026-06-30: Khala Code Desktop now has the first
+desktop-local projection contract at
+`clients/khala-code-desktop/src/ui/gym-graph-projection.ts`. It is deliberately
+pre-extraction: the graph vocabulary already includes nodes, typed pins, links,
+status, datum, evidence refs, blocker refs, caveat refs, and stable positions so
+it can later move into `@openagentsinc/arbiter-effect/core` without a schema
+rewrite, but it does not yet render the graph or create any direct-manipulation
+surface.
+
 ## Scope correction
 
 We are **not** adopting [Unit](https://github.com/samuelmtimbo/unit)
