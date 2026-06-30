@@ -1,6 +1,14 @@
 import { DatabaseSync } from 'node:sqlite'
 
+import {
+  lbrProviderBondToDraft,
+  lbrQuoteToDraft,
+  makeLbrProviderBond,
+  makeLbrQuote,
+  type LbrUnsignedEventDraft,
+} from '@openagentsinc/nip90'
 import { Effect } from 'effect'
+import { finalizeEvent, getPublicKey } from 'nostr-effect/pure'
 import { beforeEach, describe, expect, test } from 'vitest'
 
 import type { AgentRegistrationStore } from './agent-registration'
@@ -210,11 +218,16 @@ CREATE TABLE labor_escrows (
   reserve_receipt_ref TEXT NOT NULL UNIQUE,
   release_receipt_ref TEXT UNIQUE,
   refund_receipt_ref TEXT UNIQUE,
+  forfeit_receipt_ref TEXT UNIQUE,
+  forfeit_destination TEXT,
+  forfeit_destination_actor_ref TEXT,
+  forfeit_condition_ref TEXT,
   public_projection_json TEXT NOT NULL DEFAULT '{}',
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   released_at TEXT,
   refunded_at TEXT,
+  forfeited_at TEXT,
   archived_at TEXT
 );
 
@@ -230,6 +243,8 @@ CREATE TABLE labor_escrow_receipts (
   receipt_ref TEXT NOT NULL UNIQUE,
   evidence_ref TEXT,
   state_after TEXT NOT NULL,
+  forfeit_destination TEXT,
+  forfeit_destination_actor_ref TEXT,
   public_projection_json TEXT NOT NULL,
   created_at TEXT NOT NULL
 );
@@ -252,9 +267,26 @@ const PUBLIC_PROJECTION_JSON = JSON.stringify({
 
 const NOW = '2026-06-13T18:00:00.000Z'
 const REQUESTER = 'agent:requester-live'
-const PROVIDER_PUBKEY = '2'.repeat(64)
+const REQUESTER_PUBKEY = '1'.repeat(64)
+const PROVIDER_SECRET_KEY = new Uint8Array(32).fill(2)
+const OTHER_PROVIDER_SECRET_KEY = new Uint8Array(32).fill(3)
+const PROVIDER_PUBKEY = getPublicKey(PROVIDER_SECRET_KEY)
 const JOB_EVENT_ID = 'a'.repeat(64)
 const WORK_REQUEST_ID = 'wr_live_1'
+
+const eventFromDraft = (
+  draft: LbrUnsignedEventDraft,
+  secretKey: Uint8Array,
+) =>
+  finalizeEvent(
+    {
+      content: draft.content,
+      created_at: 1_780_000_000,
+      kind: draft.kind,
+      tags: draft.tags.map(tag => [...tag]),
+    },
+    secretKey,
+  )
 
 const seedWorkRequest = (db: DatabaseSync): void => {
   db.prepare(
@@ -480,6 +512,130 @@ describe('live NIP-LBR negotiation route plumbing', () => {
       },
     )
     expect(unauth.status).toBe(401)
+  })
+
+  test('(a2) relay quote plus provider bond event ingests as an API offer', async () => {
+    const quote = makeLbrQuote({
+      amountMsats: 1_000,
+      capabilityRefs: ['capability.pylon.local_claude_agent'],
+      providerRef: 'provider.public.pylon.relay',
+      quoteRef: 'quote.public.live.relay',
+      requestId: JOB_EVENT_ID,
+      requestRelay: 'wss://relay.openagents.com',
+      requesterPubkey: REQUESTER_PUBKEY,
+    })
+    const bond = makeLbrProviderBond({
+      bondMsats: 10_000,
+      bondReceiptRef: 'receipt.public.labor_bond.relay_1',
+      forfeitConditionRef: 'condition.public.validator.non_acceptance',
+      forfeitDestination: 'counterparty',
+      providerRef: quote.providerRef,
+      requestId: JOB_EVENT_ID,
+      requestRelay: 'wss://relay.openagents.com',
+      requesterPubkey: REQUESTER_PUBKEY,
+    })
+    const quoteEvent = eventFromDraft(
+      lbrQuoteToDraft(quote),
+      PROVIDER_SECRET_KEY,
+    )
+    const providerBondEvent = eventFromDraft(
+      lbrProviderBondToDraft(bond),
+      PROVIDER_SECRET_KEY,
+    )
+
+    const first = await harness.route(
+      `/api/forum/work-requests/${WORK_REQUEST_ID}/offers/relay-events`,
+      {
+        authToken: 'oa_agent_live',
+        body: { providerBondEvent, quoteEvent },
+        method: 'POST',
+      },
+    )
+    expect(first.status).toBe(201)
+    const firstBody = (await first.json()) as {
+      idempotent: boolean
+      offer: {
+        amountSats: number
+        providerPubkey: string
+        publicProjection: {
+          providerBond?: {
+            bondMsats: number
+            bondReceiptRef: string
+            forfeitDestination: string
+            relayEventRef: string
+          }
+        }
+        quoteRef: string
+        relayEventRef: string
+      }
+    }
+    expect(firstBody.idempotent).toBe(false)
+    expect(firstBody.offer.quoteRef).toBe('quote.public.live.relay')
+    expect(firstBody.offer.amountSats).toBe(1)
+    expect(firstBody.offer.providerPubkey).toBe(PROVIDER_PUBKEY)
+    expect(firstBody.offer.relayEventRef).toBe(
+      `nostr.event.${quoteEvent.id}`,
+    )
+    expect(firstBody.offer.publicProjection.providerBond).toMatchObject({
+      bondMsats: 10_000,
+      bondReceiptRef: 'receipt.public.labor_bond.relay_1',
+      forfeitDestination: 'counterparty',
+      relayEventRef: `nostr.event.${providerBondEvent.id}`,
+    })
+
+    const repeat = await harness.route(
+      `/api/forum/work-requests/${WORK_REQUEST_ID}/offers/relay-events`,
+      {
+        authToken: 'oa_agent_live',
+        body: { providerBondEvent, quoteEvent },
+        method: 'POST',
+      },
+    )
+    expect(repeat.status).toBe(200)
+    await expect(repeat.json()).resolves.toMatchObject({ idempotent: true })
+  })
+
+  test('(a2) relay offer ingestion rejects a bond signed by a different provider', async () => {
+    const quote = makeLbrQuote({
+      amountMsats: 1_000,
+      capabilityRefs: ['capability.pylon.local_claude_agent'],
+      providerRef: 'provider.public.pylon.relay',
+      quoteRef: 'quote.public.live.relay_bad_bond',
+      requestId: JOB_EVENT_ID,
+      requestRelay: 'wss://relay.openagents.com',
+      requesterPubkey: REQUESTER_PUBKEY,
+    })
+    const bond = makeLbrProviderBond({
+      bondMsats: 10_000,
+      bondReceiptRef: 'receipt.public.labor_bond.relay_bad',
+      forfeitConditionRef: 'condition.public.validator.non_acceptance',
+      forfeitDestination: 'counterparty',
+      providerRef: quote.providerRef,
+      requestId: JOB_EVENT_ID,
+      requestRelay: 'wss://relay.openagents.com',
+      requesterPubkey: REQUESTER_PUBKEY,
+    })
+    const quoteEvent = eventFromDraft(
+      lbrQuoteToDraft(quote),
+      PROVIDER_SECRET_KEY,
+    )
+    const providerBondEvent = eventFromDraft(
+      lbrProviderBondToDraft(bond),
+      OTHER_PROVIDER_SECRET_KEY,
+    )
+
+    const response = await harness.route(
+      `/api/forum/work-requests/${WORK_REQUEST_ID}/offers/relay-events`,
+      {
+        authToken: 'oa_agent_live',
+        body: { providerBondEvent, quoteEvent },
+        method: 'POST',
+      },
+    )
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toMatchObject({
+      error: 'bad_request',
+    })
   })
 
   const submitOffer = async () =>

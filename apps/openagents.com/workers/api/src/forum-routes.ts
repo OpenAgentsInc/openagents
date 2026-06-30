@@ -1,4 +1,9 @@
+import {
+  decodeLbrProviderBondEvent,
+  decodeLbrQuoteEvent,
+} from '@openagentsinc/nip90'
 import { Effect, Schema as S } from 'effect'
+import { type Event as NostrEvent, verifyEvent } from 'nostr-effect/pure'
 
 import type { VerifiedPublicIdentityClaim } from './agent-owner-claim-routes'
 import type { AgentRegistrationStore } from './agent-registration'
@@ -104,6 +109,7 @@ import {
 import {
   type ForumWorkRequestAcceptanceRecord,
   type ForumWorkRequestOfferRecord,
+  type ForumWorkRequestOfferProviderBond,
   type ForumWorkRequestResultRecord,
   listForumWorkRequestOffers,
   markForumWorkRequestSettled,
@@ -120,6 +126,7 @@ import {
   decodeCreateForumWorkRequestBody,
   decodeForumWorkRequestLifecycleBody,
   decodeRelayNativeForumWorkRequestBody,
+  decodeRelayNativeForumWorkRequestOfferBody,
   decodeReleaseForumWorkRequestBody,
   decodeSubmitForumWorkRequestOfferBody,
   decodeSubmitForumWorkRequestResultBody,
@@ -2545,6 +2552,171 @@ const listForumWorkRequestOffersResponse = (
     return noStoreJsonResponse({ offers, workRequest })
   }).pipe(Effect.catch(error => Effect.succeed(writeFailureResponse(error))))
 
+const RelayEventHexPattern = /^[0-9a-f]{64}$/i
+
+const throwRelayOfferValidationError = (reason: string): never => {
+  throw new ForumValidationError({ reason })
+}
+
+const relaySignedEvent = (event: unknown, fieldName: string): NostrEvent => {
+  if (event === null || typeof event !== 'object' || Array.isArray(event)) {
+    throwRelayOfferValidationError(`${fieldName} must be a relay event object.`)
+  }
+
+  const candidate = event as Partial<NostrEvent>
+
+  if (
+    !Number.isInteger(candidate.kind) ||
+    !Number.isInteger(candidate.created_at) ||
+    typeof candidate.content !== 'string' ||
+    typeof candidate.id !== 'string' ||
+    typeof candidate.pubkey !== 'string' ||
+    typeof candidate.sig !== 'string' ||
+    !Array.isArray(candidate.tags) ||
+    !candidate.tags.every(
+      tag => Array.isArray(tag) && tag.every(part => typeof part === 'string'),
+    )
+  ) {
+    throwRelayOfferValidationError(`${fieldName} must be a signed Nostr event.`)
+  }
+
+  const signedEvent = candidate as NostrEvent
+
+  if (!verifyEvent(signedEvent)) {
+    throwRelayOfferValidationError(`${fieldName} signature is invalid.`)
+  }
+
+  return signedEvent
+}
+
+const relayEventStringProperty = (
+  event: NostrEvent,
+  propertyName: 'id' | 'pubkey',
+  fieldName: string,
+): string => {
+  const value = event[propertyName]
+
+  if (typeof value === 'string' && RelayEventHexPattern.test(value)) {
+    return value.toLowerCase()
+  }
+
+  throw new ForumValidationError({
+    reason: `${fieldName} must be a 64-char hex value.`,
+  })
+}
+
+const wholeSatsFromMsats = (amountMsats: number): number => {
+  if (!Number.isInteger(amountMsats) || amountMsats <= 0) {
+    throwRelayOfferValidationError('relay quote amountMsats must be positive.')
+  }
+
+  if (amountMsats % 1000 !== 0) {
+    throwRelayOfferValidationError(
+      'relay quote amountMsats must resolve to whole sats.',
+    )
+  }
+
+  return amountMsats / 1000
+}
+
+const decodeRelayOfferForWorkRequest = (
+  workRequest: ForumWorkRequestRecord,
+  body: Readonly<{
+    providerBondEvent?: unknown | null | undefined
+    quoteEvent: unknown
+  }>,
+): Readonly<{
+  amountSats: number
+  capabilityRefs: ReadonlyArray<string>
+  providerActorRef: string
+  providerBond: ForumWorkRequestOfferProviderBond | null
+  providerPubkey: string
+  quoteRef: string
+  relayEventRef: string
+}> => {
+  const quoteEvent = relaySignedEvent(body.quoteEvent, 'quoteEvent')
+  const quote = decodeLbrQuoteEvent(quoteEvent)
+  const quoteEventId = relayEventStringProperty(
+    quoteEvent,
+    'id',
+    'quoteEvent.id',
+  )
+  const quotePubkey = relayEventStringProperty(
+    quoteEvent,
+    'pubkey',
+    'quoteEvent.pubkey',
+  )
+
+  if (quote.requestId !== workRequest.jobEventId.toLowerCase()) {
+    throwRelayOfferValidationError(
+      'relay quote does not target this work request.',
+    )
+  }
+
+  const providerBond =
+    body.providerBondEvent === null || body.providerBondEvent === undefined
+      ? null
+      : (() => {
+          const signedBondEvent = relaySignedEvent(
+            body.providerBondEvent,
+            'providerBondEvent',
+          )
+          const bond = decodeLbrProviderBondEvent(signedBondEvent)
+          const bondEventId = relayEventStringProperty(
+            signedBondEvent,
+            'id',
+            'providerBondEvent.id',
+          )
+          const bondPubkey = relayEventStringProperty(
+            signedBondEvent,
+            'pubkey',
+            'providerBondEvent.pubkey',
+          )
+
+          if (bond.requestId !== quote.requestId) {
+            throwRelayOfferValidationError(
+              'provider bond does not target the quote request.',
+            )
+          }
+
+          if (bond.requesterPubkey !== quote.requesterPubkey) {
+            throwRelayOfferValidationError(
+              'provider bond requester pubkey does not match quote.',
+            )
+          }
+
+          if (bond.providerRef !== quote.providerRef) {
+            throwRelayOfferValidationError(
+              'provider bond ref does not match quote provider.',
+            )
+          }
+
+          if (bondPubkey !== quotePubkey) {
+            throwRelayOfferValidationError(
+              'provider bond signer does not match quote signer.',
+            )
+          }
+
+          return {
+            bondMsats: bond.bondMsats,
+            bondReceiptRef: bond.bondReceiptRef,
+            forfeitConditionRef: bond.forfeitConditionRef,
+            forfeitDestination: bond.forfeitDestination,
+            relayEventRef: forumWorkRequestEventRef(bondEventId),
+          } satisfies ForumWorkRequestOfferProviderBond
+        })()
+
+  return {
+    amountSats: wholeSatsFromMsats(quote.amountMsats),
+    capabilityRefs: quote.capabilityRefs,
+    providerActorRef: quote.providerRef,
+    providerBond,
+    providerPubkey: quotePubkey,
+    quoteRef: quote.quoteRef,
+    relayEventRef: forumWorkRequestEventRef(quoteEventId),
+  }
+}
+
 // Bridge (a): a provider Pylon publishes its kind-7000 quote on the relay,
 // then submits the public quote refs here so the requester can see and accept
 // the live offer. Registered-agent bearer auth; idempotent on quoteRef.
@@ -2595,6 +2767,76 @@ const submitForumWorkRequestOfferResponse = (
         providerPubkey: body.providerPubkey ?? null,
         quoteRef: body.quoteRef,
         relayEventRef: body.relayEventRef ?? null,
+        workRequestId,
+      },
+      nowIso,
+    )
+
+    return noStoreJsonResponse({ idempotent: false, offer }, { status: 201 })
+  }).pipe(Effect.catch(error => Effect.succeed(writeFailureResponse(error))))
+
+// Bridge (a2): bridge-held relay ingestion path. The caller submits the
+// provider's public kind-7000 quote event (and optional provider-bond event),
+// this route decodes the NIP-LBR refs and records the same API offer shape as
+// the manual bridge above.
+const ingestRelayNativeForumWorkRequestOfferResponse = (
+  request: Request,
+  db: D1Database,
+  workRequestId: string,
+  dependencies: ForumRouteDependencies,
+) =>
+  Effect.gen(function* () {
+    const body = yield* decodeJsonBody(
+      request,
+      decodeRelayNativeForumWorkRequestOfferBody,
+    )
+    const workRequest = yield* readForumWorkRequestById(db, workRequestId)
+
+    if (workRequest === null) {
+      return notFound()
+    }
+
+    // Registered-agent auth mirrors the manual offer bridge and keeps relay
+    // ingestion a server-mediated public-ref write, not an unauthenticated
+    // mutation path.
+    yield* actorForRequest(request, dependencies)
+
+    const decoded = yield* Effect.try({
+      catch: error =>
+        error instanceof ForumValidationError
+          ? error
+          : new ForumValidationError({
+              reason:
+                error instanceof Error
+                  ? error.message
+                  : 'Relay offer event is invalid.',
+            }),
+      try: () => decodeRelayOfferForWorkRequest(workRequest, body),
+    })
+
+    const existing = yield* readForumWorkRequestOfferByQuoteRef(
+      db,
+      workRequestId,
+      decoded.quoteRef,
+    )
+
+    if (existing !== null) {
+      return noStoreJsonResponse({ idempotent: true, offer: existing })
+    }
+
+    const makeId = dependencies.makeId ?? randomUuid
+    const nowIso = (dependencies.nowIso ?? currentIsoTimestamp)()
+    const offer = yield* recordForumWorkRequestOffer(
+      db,
+      {
+        amountSats: decoded.amountSats,
+        capabilityRefs: decoded.capabilityRefs,
+        offerId: makeId(),
+        providerActorRef: decoded.providerActorRef,
+        providerBond: decoded.providerBond,
+        providerPubkey: decoded.providerPubkey,
+        quoteRef: decoded.quoteRef,
+        relayEventRef: decoded.relayEventRef,
         workRequestId,
       },
       nowIso,
@@ -5449,6 +5691,28 @@ export const makeForumRoutes = (dependencies: ForumRouteDependencies = {}) => ({
       return request.method === 'GET'
         ? readForumWorkRequestStatusResponse(db, workRequestId)
         : Effect.succeed(methodNotAllowed(['GET']))
+    }
+
+    const workRequestRelayOffersMatch =
+      /^\/api\/forum\/work-requests\/([^/]+)\/offers\/relay-events$/.exec(
+        url.pathname,
+      )
+
+    if (workRequestRelayOffersMatch !== null) {
+      const workRequestId = decodePathSegment(workRequestRelayOffersMatch[1])
+
+      if (workRequestId === undefined) {
+        return Effect.succeed(badRequest('workRequestId is malformed'))
+      }
+
+      return request.method === 'POST'
+        ? ingestRelayNativeForumWorkRequestOfferResponse(
+            request,
+            db,
+            workRequestId,
+            requestDependencies,
+          )
+        : Effect.succeed(methodNotAllowed(['POST']))
     }
 
     const workRequestOffersMatch =

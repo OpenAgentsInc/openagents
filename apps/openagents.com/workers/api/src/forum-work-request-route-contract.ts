@@ -37,6 +37,13 @@ const RelayNativeForumWorkRequestBody = S.Struct({
 export type RelayNativeForumWorkRequestBody =
   typeof RelayNativeForumWorkRequestBody.Type
 
+const RelayNativeForumWorkRequestOfferBody = S.Struct({
+  providerBondEvent: S.optionalKey(S.NullOr(S.Unknown)),
+  quoteEvent: S.Unknown,
+})
+export type RelayNativeForumWorkRequestOfferBody =
+  typeof RelayNativeForumWorkRequestOfferBody.Type
+
 const ForumWorkRequestLifecycleBody = S.Struct({
   lifecycleKind: ForumWorkRequestLifecycleKind,
   receiptRef: ForumWorkRequestRef,
@@ -129,6 +136,14 @@ export const decodeRelayNativeForumWorkRequestBody = (
   rejectForbiddenWorkRequestBodyKeys(body)
 
   return S.decodeUnknownSync(RelayNativeForumWorkRequestBody)(body)
+}
+
+export const decodeRelayNativeForumWorkRequestOfferBody = (
+  body: unknown,
+): RelayNativeForumWorkRequestOfferBody => {
+  rejectForbiddenWorkRequestBodyKeys(body)
+
+  return S.decodeUnknownSync(RelayNativeForumWorkRequestOfferBody)(body)
 }
 
 export const decodeForumWorkRequestLifecycleBody = (

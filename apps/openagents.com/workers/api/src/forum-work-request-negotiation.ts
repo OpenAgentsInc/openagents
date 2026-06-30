@@ -28,6 +28,14 @@ export type ForumWorkRequestOfferRecord = Readonly<{
   workRequestId: string
 }>
 
+export type ForumWorkRequestOfferProviderBond = Readonly<{
+  bondMsats: number
+  bondReceiptRef: string
+  forfeitConditionRef: string
+  forfeitDestination: 'burn' | 'counterparty' | 'refund_payer'
+  relayEventRef: string
+}>
+
 export type ForumWorkRequestResultRecord = Readonly<{
   artifactRefs: ReadonlyArray<string>
   closeoutRef: string | null
@@ -62,6 +70,7 @@ export type ForumWorkRequestOfferInput = Readonly<{
   amountSats: number
   capabilityRefs: ReadonlyArray<string>
   offerId: string
+  providerBond?: ForumWorkRequestOfferProviderBond | null | undefined
   providerActorRef: string
   providerPubkey?: string | null
   quoteRef: string
@@ -221,6 +230,7 @@ const offerProjection = (
     amountMsats: number
     capabilityRefs: ReadonlyArray<string>
     offerId: string
+    providerBond: ForumWorkRequestOfferProviderBond | null
     providerActorRef: string
     providerPubkey: string | null
     quoteRef: string
@@ -233,6 +243,9 @@ const offerProjection = (
     amountMsats: input.amountMsats,
     capabilityRefs: input.capabilityRefs,
     offerRef: `work_offer.public.${input.offerId}`,
+    ...(input.providerBond === null
+      ? {}
+      : { providerBond: input.providerBond }),
     providerActorRef: input.providerActorRef,
     providerPubkey: input.providerPubkey,
     quoteRef: input.quoteRef,
@@ -372,6 +385,7 @@ export const recordForumWorkRequestOffer = (
 
     const amountMsats = input.amountSats * 1000
     const relayEventRef = input.relayEventRef ?? null
+    const providerBond = input.providerBond ?? null
     const { capabilityRefs, projection, providerPubkey } = yield* Effect.try({
       catch: validationError,
       try: () => {
@@ -386,6 +400,7 @@ export const recordForumWorkRequestOffer = (
             amountMsats,
             capabilityRefs,
             offerId: input.offerId,
+            providerBond,
             providerActorRef: input.providerActorRef,
             providerPubkey,
             quoteRef: input.quoteRef,
