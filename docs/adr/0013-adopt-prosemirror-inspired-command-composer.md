@@ -178,6 +178,15 @@ The implementation should land as a sequence:
    composer, keep typing available during streaming, restore focus after submit,
    and test autofocus/copy/paste/resize/attachments/Markdown/stop-retry.
 
+## Implementation Notes
+
+* 2026-06-30: Issue #7640 landed `@openagentsinc/composer-state`, the typed
+  Effect Schema state/transaction/keymap/input-rule/Markdown core.
+* 2026-06-30: Issue #7641 landed the shared `@openagentsinc/ui`
+  `command-composer` AI element shell with native textarea editing, autofocus
+  and focus-after-submit hooks, attachment rail, status strip, controls, resize
+  affordance, Markdown preview, and accessibility mirror.
+
 ## Pros and Cons of the Options
 
 ### OpenAgents-owned ProseMirror-inspired command composer

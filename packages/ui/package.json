@@ -22,6 +22,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@openagentsinc/composer-state": "workspace:*",
     "@openagentsinc/design-tokens": "workspace:*",
     "@pierre/diffs": "^1.2.11",
     "clsx": "^2.1.1",

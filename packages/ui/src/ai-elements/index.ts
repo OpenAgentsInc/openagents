@@ -5,6 +5,7 @@
 // base-contract tag (see `./base`).
 export * from './base'
 export * from './prompt-input'
+export * from './command-composer'
 export * from './message'
 export * from './response'
 export * from './code-highlight'

@@ -15,6 +15,7 @@ import {
 // fail-closed style as the Tailwind UI v4 family-coverage test.
 const expectedCatalog = [
   { moduleId: 'prompt-input', primitives: 7 },
+  { moduleId: 'command-composer', primitives: 12 },
   { moduleId: 'message', primitives: 4 },
   { moduleId: 'response', primitives: 3 },
   { moduleId: 'code-block', primitives: 5 },
@@ -73,6 +74,7 @@ describe('AI Elements catalog coverage', () => {
 
   it('exposes the family through the package barrel namespace', () => {
     expect(typeof AiElements.promptInput).toBe('function')
+    expect(typeof AiElements.commandComposer).toBe('function')
     expect(typeof AiElements.message).toBe('function')
     expect(typeof AiElements.response).toBe('function')
     expect(typeof AiElements.codeBlock).toBe('function')

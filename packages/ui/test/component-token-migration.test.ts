@@ -17,6 +17,7 @@ const componentCssFiles = [
   here('../src/feedback.css'),
   here('../src/workroom-styles.css'),
   here('../src/ai-elements/prompt-input.css'),
+  here('../src/ai-elements/command-composer.css'),
   // @openagentsinc/autopilot-ui
   here('../../autopilot-ui/src/view.css'),
   here('../../autopilot-ui/src/domain-styles.css'),

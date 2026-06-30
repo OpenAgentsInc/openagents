@@ -3,7 +3,6 @@ import { Schema } from 'effect'
 import type { Attribute, Html } from 'foldkit/html'
 import { html } from 'foldkit/html'
 
-import { eyebrowClass, metaClass } from '../primitives'
 import { aiElementBase } from './base'
 import { response } from './response'
 
@@ -19,7 +18,12 @@ export const messageContentClass =
   'flex w-fit min-w-0 max-w-full flex-col gap-2 overflow-hidden border border-[#222] bg-[#010102] px-3 py-2.5 text-[0.8125rem] leading-[1.45] text-[#f1efe8]'
 export const messageContentUserClass = 'border-[#333] bg-[#141414]'
 export const messageActionsClass = 'flex items-center gap-1'
-export const messageMetaClass = clsx(metaClass, 'flex items-center gap-2')
+export const messageEyebrowClass =
+  'text-[0.6875rem] font-semibold uppercase leading-[1.2] tracking-[0.08em] text-white/35'
+export const messageMetaClass = clsx(
+  'm-0 overflow-hidden text-ellipsis whitespace-nowrap text-[0.75rem] text-white/35',
+  'flex items-center gap-2',
+)
 
 export const MessageRole = Schema.Literals(['user', 'assistant', 'system'])
 export type MessageRole = typeof MessageRole.Type
@@ -57,7 +61,7 @@ export const messageMeta = <Message>(input: {
     [
       input.author === undefined
         ? null
-        : h.span([h.Class(eyebrowClass)], [input.author]),
+        : h.span([h.Class(messageEyebrowClass)], [input.author]),
       input.time === undefined ? null : h.span([], [input.time]),
     ],
   )

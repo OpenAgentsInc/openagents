@@ -1,0 +1,284 @@
+.oa-ai-command-composer {
+  --oa-command-composer-height: 10rem;
+  --oa-command-composer-border: var(--oa-color-component-border, #222);
+  --oa-command-composer-focus: var(--oa-color-review-link-soft, #8fd0ff);
+  --oa-command-composer-bg: var(--oa-color-component-surface-deep, #010102);
+  --oa-command-composer-panel: rgba(6, 11, 18, 0.92);
+  --oa-command-composer-text: var(--oa-color-component-text, #f1efe8);
+  --oa-command-composer-muted: var(
+    --oa-color-text-on-dark55,
+    rgba(255, 255, 255, 0.55)
+  );
+  --oa-command-composer-soft: rgba(79, 208, 255, 0.13);
+  display: block;
+  width: 100%;
+  color: var(--oa-command-composer-text);
+}
+
+.oa-ai-command-composer-frame {
+  position: relative;
+  display: grid;
+  gap: 0.625rem;
+  min-height: var(--oa-command-composer-height);
+  border: 1px solid var(--oa-command-composer-border);
+  border-radius: 0;
+  background:
+    linear-gradient(180deg, rgba(79, 208, 255, 0.06), transparent 38%),
+    var(--oa-command-composer-bg);
+  box-shadow:
+    inset 0 0 0 1px rgba(122, 162, 255, 0.08),
+    0 0 24px rgba(38, 91, 161, 0.18);
+  padding: 0.875rem;
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.oa-ai-command-composer:focus-within .oa-ai-command-composer-frame {
+  border-color: var(--oa-command-composer-focus);
+  box-shadow:
+    inset 0 0 0 1px rgba(79, 208, 255, 0.2),
+    0 0 0 1px rgba(79, 208, 255, 0.34),
+    0 0 26px rgba(79, 208, 255, 0.24);
+}
+
+.oa-ai-command-composer-label,
+.oa-ai-command-composer-a11y {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+
+.oa-ai-command-composer-textarea {
+  min-height: 7rem;
+  width: 100%;
+  resize: none;
+  border: 0;
+  background: transparent;
+  color: var(--oa-command-composer-text);
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+    monospace;
+  font-size: 1rem;
+  line-height: 1.45;
+  outline: 0;
+  padding: 0;
+}
+
+.oa-ai-command-composer-textarea::placeholder {
+  color: rgba(122, 162, 255, 0.58);
+}
+
+.oa-ai-command-composer-rail {
+  display: flex;
+  min-width: 0;
+  gap: 0.5rem;
+  overflow-x: auto;
+  padding-bottom: 0.125rem;
+}
+
+.oa-ai-command-composer-attachment {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 0.5rem;
+  min-width: min(18rem, 82vw);
+  border: 1px solid rgba(122, 162, 255, 0.26);
+  background: rgba(8, 16, 28, 0.86);
+  padding: 0.5rem 0.625rem;
+}
+
+.oa-ai-command-composer-attachment[data-status="error"] {
+  border-color: rgba(229, 72, 77, 0.58);
+}
+
+.oa-ai-command-composer-attachment-icon {
+  color: var(--oa-color-review-link-soft, #8fd0ff);
+}
+
+.oa-ai-command-composer-icon {
+  display: inline-flex;
+  width: 1rem;
+  height: 1rem;
+  align-items: center;
+  justify-content: center;
+  color: currentColor;
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+    monospace;
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.oa-ai-command-composer-attachment-main {
+  display: grid;
+  min-width: 0;
+  gap: 0.125rem;
+}
+
+.oa-ai-command-composer-attachment-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--oa-command-composer-text);
+  font-size: 0.8125rem;
+}
+
+.oa-ai-command-composer-attachment-meta,
+.oa-ai-command-composer-attachment-error {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--oa-command-composer-muted);
+  font-size: 0.6875rem;
+}
+
+.oa-ai-command-composer-attachment-error {
+  color: var(--oa-color-hud-error, #ff4d4d);
+}
+
+.oa-ai-command-composer-markdown-preview {
+  max-height: 16rem;
+  overflow: auto;
+  border-top: 1px solid rgba(122, 162, 255, 0.2);
+  padding-top: 0.625rem;
+}
+
+.oa-ai-command-composer-footer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: end;
+  gap: 0.625rem;
+}
+
+.oa-ai-command-composer-controls {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.oa-ai-command-composer-button,
+.oa-ai-command-composer-submit,
+.oa-ai-command-composer-resize-handle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  min-width: 2rem;
+  min-height: 2rem;
+  border: 1px solid rgba(122, 162, 255, 0.28);
+  border-radius: 0;
+  background: rgba(7, 13, 23, 0.78);
+  color: rgba(241, 239, 232, 0.72);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.75rem;
+  line-height: 1;
+  padding: 0 0.625rem;
+}
+
+.oa-ai-command-composer-button:hover,
+.oa-ai-command-composer-submit:hover,
+.oa-ai-command-composer-resize-handle:hover {
+  border-color: rgba(79, 208, 255, 0.66);
+  color: var(--oa-command-composer-text);
+}
+
+.oa-ai-command-composer-button:focus-visible,
+.oa-ai-command-composer-submit:focus-visible,
+.oa-ai-command-composer-resize-handle:focus-visible {
+  outline: 1px solid var(--oa-command-composer-focus);
+  outline-offset: 0;
+}
+
+.oa-ai-command-composer-button[aria-pressed="true"] {
+  border-color: rgba(79, 208, 255, 0.6);
+  background: var(--oa-command-composer-soft);
+  color: var(--oa-command-composer-text);
+}
+
+.oa-ai-command-composer-button-label {
+  display: none;
+}
+
+.oa-ai-command-composer-submit {
+  border-color: rgba(79, 208, 255, 0.76);
+  background: rgba(79, 208, 255, 0.12);
+  color: var(--oa-color-review-link-soft, #8fd0ff);
+}
+
+.oa-ai-command-composer-submit-label {
+  display: none;
+}
+
+.oa-ai-command-composer-status {
+  display: flex;
+  max-width: 24rem;
+  min-width: 0;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.375rem;
+  color: var(--oa-command-composer-muted);
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+    monospace;
+  font-size: 0.6875rem;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.oa-ai-command-composer-status [data-slot="status"] {
+  color: var(--oa-color-review-link, #66aaff);
+}
+
+.oa-ai-command-composer-status [data-status="error"] {
+  color: var(--oa-color-hud-error, #ff4d4d);
+}
+
+.oa-ai-command-composer-resize-handle {
+  position: absolute;
+  right: 0.5rem;
+  bottom: 0.5rem;
+  min-width: 1.75rem;
+  min-height: 1.75rem;
+  padding: 0;
+}
+
+@media (min-width: 640px) {
+  .oa-ai-command-composer-textarea {
+    font-size: 0.8125rem;
+  }
+
+  .oa-ai-command-composer-button-label,
+  .oa-ai-command-composer-submit-label {
+    display: inline;
+  }
+}
+
+@media (max-width: 639px) {
+  .oa-ai-command-composer-frame {
+    padding: 0.75rem;
+  }
+
+  .oa-ai-command-composer-footer {
+    grid-template-columns: 1fr auto;
+  }
+
+  .oa-ai-command-composer-status {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+    order: 3;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .oa-ai-command-composer-frame {
+    transition: none;
+  }
+}

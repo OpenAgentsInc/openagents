@@ -62,6 +62,27 @@ export const aiElementPorts: ReadonlyArray<AiElementPort> = [
     ],
   },
   {
+    moduleId: 'command-composer',
+    label: 'Command Composer',
+    category: 'chat',
+    purpose:
+      'Render the shared ProseMirror-inspired composer shell with native textarea editing, attachments, status, resize affordances, controls, preview, and accessibility mirrors.',
+    primitives: [
+      'CommandComposer',
+      'CommandComposerFrame',
+      'CommandComposerTextarea',
+      'CommandComposerRail',
+      'CommandComposerAttachment',
+      'CommandComposerStatus',
+      'CommandComposerControls',
+      'CommandComposerButton',
+      'CommandComposerSubmit',
+      'CommandComposerResizeHandle',
+      'CommandComposerA11y',
+      'CommandComposerMarkdownPreview',
+    ],
+  },
+  {
     moduleId: 'message',
     label: 'Message',
     category: 'chat',
