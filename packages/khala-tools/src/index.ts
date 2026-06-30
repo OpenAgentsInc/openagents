@@ -2,6 +2,31 @@ import { Effect, Schema as S } from "effect"
 import { redactKhalaPublicText } from "./redaction.js"
 
 export {
+  createExternalMcpRegisteredTools,
+  createKhalaPublicMcpToolRegistry,
+  handleKhalaMcpRequest,
+  KHALA_MCP_PROTOCOL_VERSION,
+  listKhalaMcpToolDefinitions,
+  makeKhalaMcpClient,
+  runKhalaMcpServerStdio,
+  type KhalaMcpClient,
+  type KhalaMcpClientPolicy,
+  type KhalaMcpExternalServerConfig,
+  type KhalaMcpExternalServerProjection,
+  type KhalaMcpExternalTool,
+  type KhalaMcpExternalToolProjection,
+  type KhalaMcpExternalTransport,
+  type KhalaMcpJsonValue,
+  type KhalaMcpRequest,
+  type KhalaMcpResponse,
+  type KhalaMcpServerLifecycle,
+  type KhalaMcpServerOptions,
+  type KhalaMcpToolCallResult,
+  type KhalaMcpToolContent,
+  type KhalaMcpToolDefinition,
+} from "./mcp.js"
+
+export {
   KhalaPrivacyRedactionLive,
   KhalaPrivacyRedactionService,
   makeKhalaPrivacyRedactionService,
@@ -1016,7 +1041,7 @@ export const defaultKhalaProcessService: KhalaProcessService = {
           const stdin = session.proc.stdin as unknown as BunFileSink | undefined
           if (stdin === undefined) throw new Error(`process session stdin is closed: ${input.sessionId}`)
           stdin.write(input.chars)
-          stdin.flush()
+          await Promise.resolve(stdin.flush())
         }
         session.events.push({ channel: "stdin", text: input.chars, timestampMs: Date.now() })
       }
@@ -1048,7 +1073,7 @@ type DefaultKhalaProcessSession = {
 }
 
 type BunFileSink = Readonly<{
-  flush: () => void
+  flush: () => void | Promise<void>
   write: (value: string | Uint8Array) => unknown
 }>
 

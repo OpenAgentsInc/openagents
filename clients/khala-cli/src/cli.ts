@@ -1,4 +1,5 @@
 import { Effect } from "effect"
+import { runKhalaMcpServerStdio } from "@openagentsinc/khala-tools"
 import { appendAssistantTurn, prepareUserTurn } from "./bounds.js"
 import { KHALA_CLI_VERSION, formatKhalaChangelog } from "./changelog.js"
 import {
@@ -102,6 +103,7 @@ type ParsedCommand =
     }
   | { readonly kind: "login" }
   | { readonly kind: "logout" }
+  | { readonly kind: "mcpServer" }
   | { readonly kind: "spawn"; readonly text: string | undefined }
   | { readonly kind: "spawnCancel"; readonly targetRef: string | undefined }
   | { readonly kind: "spawnJoin"; readonly runRef: string | undefined }
@@ -320,6 +322,10 @@ export async function runKhalaCli(argv: ReadonlyArray<string>, env: Record<strin
           ? `Signed out. Cleared the stored Khala token (${traceTokenPath(env)}).\n`
           : "You were not signed in (no stored Khala token to clear).\n",
       )
+      return 0
+    }
+    if (args.command.kind === "mcpServer") {
+      await runKhalaMcpServerStdio()
       return 0
     }
     if (args.command.kind === "tokens") {
@@ -611,6 +617,8 @@ function parseArgs(argv: ReadonlyArray<string>, env: Record<string, string | und
     command = { kind: "login" }
   } else if (maybeCommand === "logout") {
     command = { kind: "logout" }
+  } else if (maybeCommand === "mcp-server") {
+    command = { kind: "mcpServer" }
   } else if (maybeCommand === "spawn") {
     command = {
       kind: "spawn",
