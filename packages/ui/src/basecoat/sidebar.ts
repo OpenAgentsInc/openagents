@@ -1104,6 +1104,7 @@ const sidebarPrimitive = <Message>(input: SidebarPrimitiveProps<Message>): Html 
   return h.aside(
     [
       ...basecoatAttrs<Message>(input, sidebarRoot),
+      h.DataAttribute('sidebar-initialized', 'true'),
       h.AriaHidden(input.open === false),
       ...(input.open === false ? [h.Inert(true)] : []),
       ...dataAttr<Message>('initial-open', input.initialOpen === false ? 'false' : undefined),

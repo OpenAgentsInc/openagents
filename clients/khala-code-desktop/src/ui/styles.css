@@ -732,114 +732,53 @@ button {
   }
 }
 
-/* Basecoat sidebar (Foldkit/Effect island) — desktop column.
-   Now that Tailwind @apply compiles, Basecoat's real .sidebar is a fixed,
-   hidden-until-initialized overlay. Convert it into a static desktop column
-   and theme it to the dark Khala Code surface. !important beats Basecoat's
-   compiled attribute-selector rules. */
-.khala-code-shell {
-  grid-template-columns: auto minmax(0, 1fr);
-}
+/* Basecoat sidebar (Foldkit/Effect island), themed for Khala Code Desktop.
+   Basecoat's model: nav is position:fixed; the element after .sidebar gets
+   margin-left:--sidebar-width. We define the width vars, dark-theme the nav,
+   and offset the shell content (Basecoat's `& + *` can't cross #sidebar-root). */
 .khala-code-sidebar {
-  position: relative;
-  z-index: 2;
-  grid-column: 1;
-  grid-row: 1 / 3;
-  min-height: 0;
-  display: flex;
+  --sidebar-width: 15rem;
+  --sidebar-mobile-width: 15rem;
+  position: static;
+  z-index: 40;
 }
-.khala-code-thread-shell,
-.composer-dock {
-  grid-column: 2;
-}
-.khala-code-sidebar > aside,
-.khala-code-sidebar .sidebar {
-  display: flex !important;
-  position: relative !important;
-  inset: auto !important;
-  transform: none !important;
-  z-index: auto !important;
-  flex-direction: column;
-  width: 15rem;
-  height: 100%;
-  overflow-y: auto;
-  background: rgba(6, 12, 22, 0.82) !important;
-  border-right: 1px solid rgba(79, 208, 255, 0.16);
-  backdrop-filter: none !important;
-}
-.khala-code-sidebar .sidebar nav,
 .khala-code-sidebar nav {
-  position: relative !important;
-  inset: auto !important;
-  transform: none !important;
-  width: 100% !important;
-  max-width: none !important;
-  height: auto !important;
-  background: transparent !important;
-  box-shadow: none !important;
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  padding: 1rem 0.6rem 1.4rem;
+  background: rgba(6, 12, 22, 0.94);
+  border-color: rgba(79, 208, 255, 0.16);
+  color: #f1efe8;
+  padding: 0.85rem 0.55rem;
+  gap: 0.2rem;
 }
-.khala-code-sidebar section[role="group"] {
-  display: flex;
-  flex-direction: column;
-  gap: 0.1rem;
-  margin-bottom: 0.9rem;
+@media (min-width: 768px) {
+  .khala-code-thread-shell,
+  .composer-dock {
+    margin-left: var(--sidebar-width);
+  }
 }
 .khala-code-sidebar [data-slot="sidebar-group-label"] {
-  margin: 0;
-  padding: 0 0.55rem 0.4rem;
+  padding: 0.4rem 0.55rem 0.3rem;
   font-size: 0.64rem;
   font-weight: 600;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: rgba(241, 239, 232, 0.4) !important;
-}
-.khala-code-sidebar [data-slot="sidebar-menu"] {
-  list-style: none !important;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.1rem;
-}
-.khala-code-sidebar [data-slot="sidebar-menu"] > li {
-  list-style: none !important;
-  margin: 0;
+  color: rgba(241, 239, 232, 0.4);
 }
 .khala-code-sidebar [data-slot="sidebar-menu"] button,
 .khala-code-sidebar [data-slot="sidebar-menu"] a {
-  display: flex !important;
-  align-items: center;
-  width: 100%;
   gap: 0.5rem;
   padding: 0.42rem 0.55rem;
-  font: inherit;
-  font-size: 0.82rem;
-  line-height: 1.2;
-  text-align: left;
-  text-decoration: none;
-  color: rgba(241, 239, 232, 0.82) !important;
-  background: transparent !important;
-  border: 0 !important;
   border-radius: 0.4rem;
-  cursor: pointer;
-  transition: background 120ms ease, color 120ms ease;
+  font-size: 0.82rem;
+  color: rgba(241, 239, 232, 0.82);
 }
 .khala-code-sidebar [data-slot="sidebar-menu"] button:hover,
 .khala-code-sidebar [data-slot="sidebar-menu"] a:hover {
-  background: rgba(255, 255, 255, 0.05) !important;
-  color: #f1efe8 !important;
+  background: rgba(255, 255, 255, 0.06);
+  color: #f1efe8;
 }
 .khala-code-sidebar [data-slot="sidebar-menu"] [aria-current="page"],
 .khala-code-sidebar [data-slot="sidebar-menu"] [data-active="true"] {
-  background: rgba(79, 208, 255, 0.13) !important;
-  color: #cdeeff !important;
+  background: rgba(79, 208, 255, 0.13);
+  color: #cdeeff;
   box-shadow: inset 2px 0 0 rgba(79, 208, 255, 0.7);
-}
-.khala-code-sidebar [data-slot="sidebar-menu"] [data-disabled="true"] {
-  opacity: 0.4;
-  cursor: default;
 }
