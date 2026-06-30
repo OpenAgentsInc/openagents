@@ -19,12 +19,14 @@ export type FleetPanelOptions = Readonly<{
     accountRef: string,
   ) => Promise<{ readonly ok: boolean; readonly error?: string }>
   connectAccount: (accountRef: string) => Promise<KhalaCodeDesktopConnectStart>
+  openExternal: (url: string) => Promise<boolean>
 }>
 
 type Handlers = Readonly<{
   onRefresh: () => void
   onRemove: (accountRef: string) => void
   onConnect: (accountRef: string) => void
+  onOpenUrl: (url: string) => void
 }>
 
 type ConnectView = Readonly<{
@@ -270,10 +272,13 @@ const renderConnecting = (
     if (connect.start.verificationUrl !== null) {
       const urlRow = el("div", "khala-fleet-connect-row")
       urlRow.append(el("span", "khala-fleet-chip-label", "url"))
-      const link = el("a", "khala-fleet-connect-url", connect.start.verificationUrl)
-      link.href = connect.start.verificationUrl
-      link.target = "_blank"
-      link.rel = "noreferrer"
+      const verificationUrl = connect.start.verificationUrl
+      const link = el("a", "khala-fleet-connect-url", verificationUrl)
+      link.href = verificationUrl
+      link.addEventListener("click", event => {
+        event.preventDefault()
+        handlers.onOpenUrl(verificationUrl)
+      })
       urlRow.append(link)
       section.append(urlRow)
     }
@@ -365,6 +370,7 @@ export const mountFleetPanel = (
     onRefresh: () => void refresh(),
     onRemove: (accountRef: string) => onRemove(accountRef),
     onConnect: (accountRef: string) => onConnect(accountRef),
+    onOpenUrl: (url: string) => void options.openExternal(url),
   }
 
   const onRemove = (accountRef: string): void => {

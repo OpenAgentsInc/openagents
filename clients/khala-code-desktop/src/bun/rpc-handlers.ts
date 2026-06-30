@@ -28,6 +28,7 @@ import {
   collectCodexAccountEmails,
   ensureLocalPylon,
   inspectCodexFleet,
+  openExternalUrl,
   removeCodexAccount,
 } from "./khala-codex-fleet-tools.js"
 
@@ -190,7 +191,12 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
       return input.onDeviceDeciderStatus()
     },
     async connectCodexAccount(accountRef: string) {
-      return beginCodexConnect(accountRef, { env: input.env })
+      const result = await beginCodexConnect(accountRef, { env: input.env })
+      if (result.verificationUrl !== null) openExternalUrl(result.verificationUrl)
+      return result
+    },
+    async openExternalUrl(url: string) {
+      return openExternalUrl(url)
     },
     async removeCodexAccount(accountRef: string) {
       return removeCodexAccount(accountRef, { env: input.env })

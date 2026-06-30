@@ -2930,3 +2930,22 @@ export async function beginCodexConnect(
     output: stripAnsi(buffer).slice(-1500),
   }
 }
+
+// Open a URL in the user's default browser. The Electrobun webview (WKWebView)
+// does not open external links itself, so the host process does it.
+export function openExternalUrl(url: string): boolean {
+  if (!/^https?:\/\//.test(url)) return false
+  const platform = process.platform
+  const command =
+    platform === "darwin"
+      ? ["open", url]
+      : platform === "win32"
+        ? ["cmd", "/c", "start", "", url]
+        : ["xdg-open", url]
+  try {
+    Bun.spawn(command, { stdout: "ignore", stderr: "ignore", stdin: "ignore" })
+    return true
+  } catch {
+    return false
+  }
+}

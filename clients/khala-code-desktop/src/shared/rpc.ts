@@ -188,6 +188,7 @@ export type KhalaCodeDesktopRPCSchema = {
     codexAccountsStatus(): Promise<KhalaCodeDesktopCodexAccountsStatus>
     codexFleetStatus(): Promise<KhalaCodeDesktopFleetStatus>
     connectCodexAccount(accountRef: string): Promise<KhalaCodeDesktopConnectStart>
+    openExternalUrl(url: string): Promise<boolean>
     removeCodexAccount(accountRef: string): Promise<KhalaCodeDesktopRemoveAccountResult>
     codingStatus(): Promise<KhalaCodeDesktopRuntimeStatus>
     consumeCodexRateLimitResetCredit(): Promise<KhalaCodeDesktopCodexRateLimitResetResult>
