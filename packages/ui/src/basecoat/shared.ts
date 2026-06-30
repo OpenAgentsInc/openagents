@@ -10,8 +10,8 @@ import {
 export type BasecoatChildren = ReadonlyArray<string | Html | null>
 
 export type BasecoatAttrs<Message> = Readonly<{
-  attrs?: ReadonlyArray<Attribute<Message>>
-  className?: string
+  attrs?: ReadonlyArray<Attribute<Message>> | undefined
+  className?: string | undefined
 }>
 
 export const basecoatClass = (className: string) => componentClass(className)
