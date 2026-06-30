@@ -6,6 +6,20 @@ import { createMacosSeatbeltKhalaProcessService } from "./process-sandbox-macos.
 import { redactKhalaPublicText } from "./redaction.js"
 
 export {
+  defineKhalaFeatureRegistry,
+  isKhalaFeatureEnabled,
+  KhalaFeatureSpec,
+  KhalaFeatureStage,
+  parseKhalaFeatureFlagArgs,
+  type KhalaFeatureConfig,
+  type KhalaFeatureOverride,
+  type KhalaFeatureRegistry,
+  type KhalaFeatureResolution,
+  type KhalaFeatureSpec as KhalaFeatureSpecType,
+  type KhalaFeatureStage as KhalaFeatureStageType,
+} from "./feature-flags.js"
+
+export {
   createExternalMcpRegisteredTools,
   createKhalaPublicMcpToolRegistry,
   handleKhalaMcpRequest,
