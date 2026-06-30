@@ -16,6 +16,7 @@ export * from './native-select'
 export * from './select'
 export * from './selection'
 export * from './sidebar'
+export * from './tabs'
 export * from './tooltip'
 export {
   basecoatAttrs,
