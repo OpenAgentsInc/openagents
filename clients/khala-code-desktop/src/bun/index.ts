@@ -220,7 +220,7 @@ if (Bun.env.KHALA_CODE_DESKTOP_OPEN_WINDOW !== "0") {
   new BrowserWindow({
     title: "Khala Code",
     url: "views://khala-code-desktop/index.html",
-    frame: { x: 152, y: 96, width: 980, height: 740 },
+    frame: { x: 96, y: 56, width: 1180, height: 820 },
     rpc,
   })
 }
