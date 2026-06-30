@@ -16,9 +16,33 @@ export type KhalaCodeDesktopMessage = {
   readonly body: string
 }
 
+export type KhalaCodeDesktopChatTurnEvent =
+  | {
+      readonly message: KhalaCodeDesktopMessage
+      readonly turnId: string
+      readonly type: "message_start"
+    }
+  | {
+      readonly delta: string
+      readonly messageId: string
+      readonly turnId: string
+      readonly type: "message_delta"
+    }
+  | {
+      readonly message: KhalaCodeDesktopMessage
+      readonly turnId: string
+      readonly type: "message_replace"
+    }
+  | {
+      readonly messageId: string
+      readonly turnId: string
+      readonly type: "message_done"
+    }
+
 export type KhalaCodeDesktopChatTurnRequest = {
   readonly messages: readonly KhalaCodeDesktopMessage[]
   readonly sessionId: string
+  readonly turnId?: string
 }
 
 export type KhalaCodeDesktopBackendProjection = {
@@ -101,5 +125,8 @@ export type KhalaCodeDesktopRPCSchema = {
     submitChatMessage(request: KhalaCodeDesktopChatTurnRequest): Promise<KhalaCodeDesktopChatTurnResponse>
     tokenAccountingStatus(): Promise<KhalaCodeDesktopRuntimeStatus>
     toolCatalog(): Promise<KhalaCodeDesktopToolCatalogResponse>
+  }
+  messages: {
+    chatTurnEvent(event: KhalaCodeDesktopChatTurnEvent): void
   }
 }

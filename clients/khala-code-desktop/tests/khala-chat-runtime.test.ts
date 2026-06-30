@@ -16,6 +16,7 @@ import {
   runKhalaCodeDesktopChatTurn,
 } from "../src/bun/khala-chat-runtime"
 import { createDuckDuckGoKhalaWebSearchService } from "../src/bun/khala-web-search-service"
+import type { KhalaCodeDesktopChatTurnEvent } from "../src/shared/rpc"
 
 type FetchCall = {
   readonly body: Record<string, unknown>
@@ -42,6 +43,18 @@ function jsonResponse(body: unknown, init?: ResponseInit): Response {
       "content-type": "application/json",
       ...(init?.headers ?? {}),
     },
+  })
+}
+
+function sseResponse(text: string): Response {
+  return new Response(new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode(text))
+      controller.close()
+    },
+  }), {
+    status: 200,
+    headers: { "content-type": "text/event-stream" },
   })
 }
 
@@ -99,6 +112,8 @@ describe("Khala Code desktop chat runtime", () => {
     expect(calls).toHaveLength(1)
     expect(calls[0]?.url).toBe("https://openagents.com/api/v1/chat/completions")
     expect(calls[0]?.headers.get("authorization")).toBe("Bearer agent-token")
+    expect(calls[0]?.body.stream).toBe(true)
+    expect(calls[0]?.body.stream_options).toEqual({ include_usage: true })
     expect((calls[0]?.body.tools as unknown[]).map(toolName)).toContain("browser_screenshot")
     expect((calls[0]?.body.tools as unknown[]).map(toolName)).toContain("web_search")
     const requestMessages = calls[0]?.body.messages as Array<{ content?: string; role?: string }>
@@ -136,7 +151,50 @@ describe("Khala Code desktop chat runtime", () => {
     expect(calls[0]?.url).toBe("https://openrouter.ai/api/v1/chat/completions")
     expect(calls[0]?.headers.get("authorization")).toBe("Bearer sk-or-secretkey")
     expect(calls[0]?.body.model).toBe("anthropic/claude-haiku")
+    expect(calls[0]?.body.stream).toBe(true)
     expect(JSON.stringify(result)).not.toContain("sk-or-secretkey")
+  })
+
+  test("streams OpenAI-compatible assistant deltas over chat turn events", async () => {
+    const calls: FetchCall[] = []
+    const events: KhalaCodeDesktopChatTurnEvent[] = []
+    const fetchFn = (async (input: string | URL | Request, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url
+      const headers = new Headers(init?.headers)
+      const body = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>
+      calls.push({ body, headers, url })
+      return sseResponse([
+        'data: {"id":"chat_1","model":"openagents/khala","choices":[{"delta":{"content":"Hel"}}]}',
+        'data: {"id":"chat_1","model":"openagents/khala","choices":[{"delta":{"content":"lo"}}]}',
+        'data: {"id":"chat_1","model":"openagents/khala","choices":[{"delta":{},"finish_reason":"stop"}]}',
+        "data: [DONE]",
+        "",
+      ].join("\n\n"))
+    }) as typeof fetch
+
+    const result = await runKhalaCodeDesktopChatTurn({
+      env: { OPENAGENTS_AGENT_TOKEN: "agent-token" },
+      fetchFn,
+      onEvent: event => events.push(event),
+      request: {
+        messages: [{ body: "hello", id: "u1", role: "user" }],
+        sessionId: "session-1",
+        turnId: "turn-stream",
+      },
+    })
+
+    expect(result.ok).toBe(true)
+    expect(result.messages[0]?.body).toBe("Hello")
+    expect(calls[0]?.headers.get("accept")).toContain("text/event-stream")
+    expect(calls[0]?.body.stream).toBe(true)
+    expect(events.map(event => event.type)).toEqual([
+      "message_start",
+      "message_delta",
+      "message_delta",
+      "message_done",
+    ])
+    expect(events.filter(event => event.type === "message_delta").map(event => event.delta)).toEqual(["Hel", "lo"])
+    expect(events[0]?.type === "message_start" ? events[0].message.role : undefined).toBe("assistant")
   })
 
   test("returns an honest setup message instead of faking a hosted response without a token", async () => {
@@ -231,6 +289,7 @@ describe("Khala Code desktop chat runtime", () => {
   test("executes model tool calls locally and feeds results back to the model", async () => {
     const workspace = await tempWorkspace()
     await writeFile(join(workspace, "fixture.txt"), "hello from the local tool\n", "utf8")
+    const events: KhalaCodeDesktopChatTurnEvent[] = []
     const { calls, fetchFn } = captureFetch([
       {
         choices: [{
@@ -254,9 +313,11 @@ describe("Khala Code desktop chat runtime", () => {
     const result = await runKhalaCodeDesktopChatTurn({
       env: { OPENAGENTS_AGENT_TOKEN: "agent-token" },
       fetchFn,
+      onEvent: event => events.push(event),
       request: {
         messages: [{ body: "read the fixture", id: "u1", role: "user" }],
         sessionId: "session-1",
+        turnId: "turn-tools",
       },
       services: makeKhalaToolServices({
         permission: allowAllKhalaPermissionService,
@@ -268,8 +329,19 @@ describe("Khala Code desktop chat runtime", () => {
     expect(result.usedTools).toEqual(["read"])
     expect(result.messages.map(message => message.role)).toEqual(["tool", "assistant"])
     expect(result.messages[0]?.body).toContain("read: ok")
+    expect(result.messages[0]?.body).toContain("\n\n")
     expect(result.messages[0]?.body).toContain("hello from the local tool")
     expect(result.messages[1]?.body).toBe("We read fixture.txt.")
+    expect(events.some(event =>
+      event.type === "message_start" &&
+      event.message.role === "tool" &&
+      event.message.body === "read: running"
+    )).toBe(true)
+    expect(events.some(event =>
+      event.type === "message_replace" &&
+      event.message.role === "tool" &&
+      event.message.body.includes("hello from the local tool")
+    )).toBe(true)
     expect(calls).toHaveLength(2)
     const secondMessages = calls[1]?.body.messages as Array<{ content?: string; role?: string; tool_call_id?: string }>
     expect(secondMessages.some(message =>

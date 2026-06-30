@@ -2,6 +2,7 @@ import { Electroview } from "electrobun/view"
 
 import {
   KHALA_CODE_DESKTOP_RPC_MAX_REQUEST_TIME_MS,
+  type KhalaCodeDesktopChatTurnEvent,
   type KhalaCodeDesktopChatTurnRequest,
   type KhalaCodeDesktopMessage,
   type KhalaCodeDesktopMessageRole,
@@ -69,13 +70,20 @@ const previewRpc = (): DesktopRpc => ({
         "toolCatalog",
       ),
   },
+  send: {
+    chatTurnEvent: () => undefined,
+  },
 })
 
 const nativeRpc = Electroview.defineRPC<KhalaCodeDesktopRPCSchema>({
   maxRequestTime: KHALA_CODE_DESKTOP_RPC_MAX_REQUEST_TIME_MS,
   handlers: {
     requests: {},
-    messages: {},
+    messages: {
+      chatTurnEvent(event) {
+        applyChatTurnEvent(event)
+      },
+    },
   },
 })
 
@@ -117,6 +125,7 @@ const sendButton = requireElement<HTMLButtonElement>("#send-button")
 
 let messages: KhalaCodeDesktopMessage[] = [...initialMessages]
 let pendingTurn = false
+const activeTurnIds = new Set<string>()
 const sessionId = `khala-code-desktop-${Date.now().toString(36)}`
 
 const roleLabel = (role: KhalaCodeDesktopMessageRole): string => {
@@ -140,7 +149,7 @@ const renderMessage = (message: KhalaCodeDesktopMessage): HTMLElement => {
 
   const body = document.createElement("div")
   body.className = "message-body"
-  body.append(...renderMessageBody(message.body))
+  body.append(...renderMessageBody(message.body, message.role))
 
   article.append(label, body)
   return article
@@ -167,6 +176,9 @@ const focusComposerInput = (): void => {
 const nextMessageId = (role: KhalaCodeDesktopMessageRole): string =>
   `${role}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
 
+const nextTurnId = (): string =>
+  `turn-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+
 const addMessage = (
   role: KhalaCodeDesktopMessageRole,
   body: string,
@@ -183,8 +195,41 @@ const addMessage = (
 
 const appendMessages = (nextMessages: readonly KhalaCodeDesktopMessage[]): void => {
   if (nextMessages.length === 0) return
-  messages = [...messages, ...nextMessages]
+  const merged = [...messages]
+  const indexById = new Map(merged.map((message, index) => [message.id, index]))
+  for (const message of nextMessages) {
+    const index = indexById.get(message.id)
+    if (index === undefined) {
+      indexById.set(message.id, merged.length)
+      merged.push(message)
+    } else {
+      merged[index] = message
+    }
+  }
+  messages = merged
   render()
+}
+
+function applyChatTurnEvent(event: KhalaCodeDesktopChatTurnEvent): void {
+  if (!activeTurnIds.has(event.turnId)) return
+  switch (event.type) {
+    case "message_start":
+      appendMessages([event.message])
+      break
+    case "message_delta":
+      messages = messages.map(message =>
+        message.id === event.messageId
+          ? { ...message, body: `${message.body}${event.delta}` }
+          : message
+      )
+      render()
+      break
+    case "message_replace":
+      appendMessages([event.message])
+      break
+    case "message_done":
+      break
+  }
 }
 
 const submitComposer = async (): Promise<KhalaCodeDesktopMessage | null> => {
@@ -193,6 +238,8 @@ const submitComposer = async (): Promise<KhalaCodeDesktopMessage | null> => {
   if (text === "") return null
   composerInput.value = ""
   const message = addMessage("user", text)
+  const turnId = nextTurnId()
+  activeTurnIds.add(turnId)
   pendingTurn = true
   render()
   requestAnimationFrame(focusComposerInput)
@@ -200,6 +247,7 @@ const submitComposer = async (): Promise<KhalaCodeDesktopMessage | null> => {
     const request: KhalaCodeDesktopChatTurnRequest = {
       messages,
       sessionId,
+      turnId,
     }
     const response = await rpc.request.submitChatMessage(request)
     appendMessages(response.messages)
@@ -212,6 +260,7 @@ const submitComposer = async (): Promise<KhalaCodeDesktopMessage | null> => {
       },
     ])
   } finally {
+    activeTurnIds.delete(turnId)
     pendingTurn = false
     render()
     requestAnimationFrame(focusComposerInput)

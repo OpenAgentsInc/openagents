@@ -10,6 +10,7 @@ import {
   parseMarkdownInline,
   type MarkdownInlinePart,
 } from "@openagentsinc/ui/ai-elements/markdown"
+import type { KhalaCodeDesktopMessageRole } from "../shared/rpc"
 
 const EXT_LANGUAGE: Readonly<Record<string, string>> = {
   bash: "bash",
@@ -34,6 +35,12 @@ export type MessageSegment =
   | { readonly kind: "prose"; readonly text: string }
   | { readonly kind: "code"; readonly text: string; readonly language?: string }
   | { readonly kind: "diff"; readonly text: string }
+
+export type ToolTranscriptParts = {
+  readonly output: string
+  readonly status: string
+  readonly toolName: string
+}
 
 type MarkdownBlock = ReturnType<typeof parseMarkdownBlocks>[number]
 
@@ -339,8 +346,62 @@ export const parseMessageSegments = (text: string): readonly MessageSegment[] =>
   return segments
 }
 
-export const renderMessageBody = (text: string): readonly HTMLElement[] =>
-  parseMessageSegments(text).map(segment => {
+export const parseToolTranscript = (text: string): ToolTranscriptParts => {
+  const normalized = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n")
+  const firstLineEnd = normalized.indexOf("\n")
+  const headline = firstLineEnd < 0 ? normalized : normalized.slice(0, firstLineEnd)
+  const body = firstLineEnd < 0 ? "" : normalized.slice(firstLineEnd + 1).replace(/^\n/, "")
+  const match = /^([A-Za-z][\w.-]*):\s*(.+?)\s*$/.exec(headline.trim())
+  if (match === null) {
+    return {
+      output: normalized,
+      status: "output",
+      toolName: "tool",
+    }
+  }
+  return {
+    output: body,
+    status: match[2] ?? "output",
+    toolName: match[1] ?? "tool",
+  }
+}
+
+const toolTranscriptElement = (text: string): HTMLElement => {
+  const parts = parseToolTranscript(text)
+  const root = document.createElement("div")
+  root.className = "tool-card"
+  root.dataset.status = parts.status
+
+  const header = document.createElement("div")
+  header.className = "tool-card-header"
+
+  const name = document.createElement("span")
+  name.className = "tool-card-name"
+  name.textContent = parts.toolName
+
+  const status = document.createElement("span")
+  status.className = "tool-card-status"
+  status.textContent = parts.status
+
+  header.append(name, status)
+  root.append(header)
+
+  if (parts.output.trim().length > 0) {
+    const pre = document.createElement("pre")
+    pre.className = "tool-card-output"
+    pre.textContent = parts.output
+    root.append(pre)
+  }
+
+  return root
+}
+
+export const renderMessageBody = (
+  text: string,
+  role: KhalaCodeDesktopMessageRole = "assistant",
+): readonly HTMLElement[] => {
+  if (role === "tool") return [toolTranscriptElement(text)]
+  return parseMessageSegments(text).map(segment => {
     if (segment.kind === "diff") return diffElement({ patch: segment.text })
     if (segment.kind === "code") {
       return codeBlockElement({
@@ -350,3 +411,4 @@ export const renderMessageBody = (text: string): readonly HTMLElement[] =>
     }
     return markdownElement({ markdown: segment.text })
   })
+}

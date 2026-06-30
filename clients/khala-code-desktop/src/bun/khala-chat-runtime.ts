@@ -32,6 +32,7 @@ import {
 } from "@openagentsinc/khala-tools"
 import {
   type KhalaCodeDesktopBackendProjection,
+  type KhalaCodeDesktopChatTurnEvent,
   type KhalaCodeDesktopChatTurnRequest,
   type KhalaCodeDesktopChatTurnResponse,
   type KhalaCodeDesktopMessage,
@@ -83,11 +84,16 @@ type ChatCompletionBody = {
   }[]
 }
 
+type ChatTransportCallbacks = {
+  readonly onAssistantDelta?: (delta: string) => void
+}
+
 type ChatTransport = {
   readonly backend: KhalaBackendSelection
   readonly request: (
     messages: readonly ChatTransportMessage[],
     tools: readonly ReturnType<typeof toOpenAiCompatibleTools>[number][],
+    callbacks?: ChatTransportCallbacks,
   ) => Promise<ChatCompletionBody>
 }
 
@@ -95,6 +101,7 @@ export type RunKhalaCodeDesktopChatTurnInput = {
   readonly env: ChatEnv
   readonly fetchFn?: typeof fetch
   readonly request: KhalaCodeDesktopChatTurnRequest
+  readonly onEvent?: (event: KhalaCodeDesktopChatTurnEvent) => void
   readonly services?: KhalaToolServices
   readonly registry?: KhalaToolRegistry
   readonly workingDirectory?: string
@@ -170,22 +177,46 @@ export async function runKhalaCodeDesktopChatTurn(
   const transcript: KhalaCodeDesktopMessage[] = []
   const usedTools: string[] = []
   const tools = toOpenAiCompatibleTools(toolDefinitions)
+  const turnId = input.request.turnId ?? nextMessageId("turn")
+  const emit = (event: KhalaCodeDesktopChatTurnEvent): void => {
+    input.onEvent?.(event)
+  }
   let totalToolCalls = 0
   let retriedWithoutTools = false
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
     let completion: ChatCompletionBody
+    const streamingAssistant: { current: KhalaCodeDesktopMessage | null } = { current: null }
+    const onAssistantDelta = (delta: string): void => {
+      if (delta.length === 0) return
+      if (streamingAssistant.current === null) {
+        streamingAssistant.current = hostMessage("assistant", "")
+        emit({ message: streamingAssistant.current, turnId, type: "message_start" })
+      }
+      streamingAssistant.current = {
+        ...streamingAssistant.current,
+        body: `${streamingAssistant.current.body}${delta}`,
+      }
+      emit({
+        delta,
+        messageId: streamingAssistant.current.id,
+        turnId,
+        type: "message_delta",
+      })
+    }
+
     try {
-      completion = await transport.request(messages, tools)
+      completion = await transport.request(messages, tools, { onAssistantDelta })
     } catch (error) {
       if (
         !retriedWithoutTools &&
         totalToolCalls === 0 &&
+        streamingAssistant.current === null &&
         shouldRetryWithoutTools(error)
       ) {
         retriedWithoutTools = true
         try {
-          completion = await transport.request(messages, [])
+          completion = await transport.request(messages, [], { onAssistantDelta })
         } catch (retryError) {
           return providerFailureResult(backend, toolNames, usedTools, retryError)
         }
@@ -198,7 +229,17 @@ export async function runKhalaCodeDesktopChatTurn(
     const toolCalls = parseToolCalls(assistant.tool_calls)
 
     if (text.length > 0) {
-      transcript.push(hostMessage("assistant", text))
+      const streamed = streamingAssistant.current
+      const message = streamed === null
+        ? hostMessage("assistant", text)
+        : { ...streamed, body: text }
+      transcript.push(message)
+      if (streamed === null) {
+        emit({ message, turnId, type: "message_start" })
+      } else if (streamed.body !== text) {
+        emit({ message, turnId, type: "message_replace" })
+      }
+      emit({ messageId: message.id, turnId, type: "message_done" })
       messages.push({
         content: text,
         role: "assistant",
@@ -225,6 +266,8 @@ export async function runKhalaCodeDesktopChatTurn(
       if (totalToolCalls > MAX_TOTAL_TOOL_CALLS) {
         return limitResult(backend, toolNames, usedTools, "Khala requested too many tool calls in one turn.")
       }
+      const toolTranscript = hostMessage("tool", toolTranscriptRunningBody(call.function.name))
+      emit({ message: toolTranscript, turnId, type: "message_start" })
       const result = await runToolCall({
         call,
         registry,
@@ -232,7 +275,14 @@ export async function runKhalaCodeDesktopChatTurn(
         sessionId: input.request.sessionId,
       })
       usedTools.push(call.function.name)
-      transcript.push(toolTranscriptMessage(call.function.name, result))
+      const completedToolTranscript = toolTranscriptMessage(
+        call.function.name,
+        result,
+        toolTranscript.id,
+      )
+      transcript.push(completedToolTranscript)
+      emit({ message: completedToolTranscript, turnId, type: "message_replace" })
+      emit({ messageId: completedToolTranscript.id, turnId, type: "message_done" })
       messages.push({
         content: toolMessageContent(result),
         name: call.function.name,
@@ -279,16 +329,18 @@ function createChatTransport(input: {
     if (token === undefined || token.length === 0) return null
     return {
       backend: input.backend,
-      request: (messages, tools) => postOpenAiCompatible({
+      request: (messages, tools, callbacks) => postOpenAiCompatible({
         body: {
           max_tokens: 4096,
           messages,
           model: input.backend.model,
-          stream: false,
+          stream: true,
+          stream_options: { include_usage: true },
           ...toolRequestFields(tools),
         },
         fetchFn: input.fetchFn,
         headers: { authorization: `Bearer ${token}` },
+        ...(callbacks?.onAssistantDelta === undefined ? {} : { onAssistantDelta: callbacks.onAssistantDelta }),
         url: `${(input.env.OPENROUTER_BASE_URL?.trim() || "https://openrouter.ai/api/v1").replace(/\/+$/, "")}/chat/completions`,
       }),
     }
@@ -298,16 +350,18 @@ function createChatTransport(input: {
   if (hostedToken === undefined || hostedToken.length === 0) return null
   return {
     backend: input.backend,
-    request: (messages, tools) => postOpenAiCompatible({
+    request: (messages, tools, callbacks) => postOpenAiCompatible({
       body: {
         max_tokens: 4096,
         messages,
         model: input.backend.model,
-        stream: false,
+        stream: true,
+        stream_options: { include_usage: true },
         ...toolRequestFields(tools),
       },
       fetchFn: input.fetchFn,
       headers: { authorization: `Bearer ${hostedToken}` },
+      ...(callbacks?.onAssistantDelta === undefined ? {} : { onAssistantDelta: callbacks.onAssistantDelta }),
       url: `${(input.backend.baseUrl ?? "https://openagents.com").replace(/\/+$/, "")}/api/v1/chat/completions`,
     }),
   }
@@ -338,21 +392,26 @@ async function postOpenAiCompatible(input: {
   readonly body: Record<string, unknown>
   readonly fetchFn: typeof fetch
   readonly headers: Readonly<Record<string, string>>
+  readonly onAssistantDelta?: (delta: string) => void
   readonly url: string
 }): Promise<ChatCompletionBody> {
   const response = await input.fetchFn(input.url, {
     method: "POST",
     headers: {
-      accept: "application/json",
+      accept: "text/event-stream, application/json",
       "content-type": "application/json",
       ...input.headers,
     },
     body: JSON.stringify(input.body),
   })
-  const body = await readJson(response)
   if (!response.ok) {
+    const body = await readJsonOrText(response)
     throw new ChatProviderRequestError(errorText(body, response.status), response.status)
   }
+  if (isEventStreamResponse(response)) {
+    return readOpenAiCompatibleStream(response, input.onAssistantDelta)
+  }
+  const body = await readJson(response)
   return isRecord(body) ? body as ChatCompletionBody : {}
 }
 
@@ -364,7 +423,202 @@ async function readJson(response: Response): Promise<unknown> {
   }
 }
 
+async function readJsonOrText(response: Response): Promise<unknown> {
+  const text = await response.text()
+  if (text.trim().length === 0) return null
+  try {
+    return JSON.parse(text) as unknown
+  } catch {
+    return text
+  }
+}
+
+function isEventStreamResponse(response: Response): boolean {
+  return response.headers.get("content-type")?.toLowerCase().includes("text/event-stream") === true
+}
+
+type SseFrame = {
+  readonly data: string
+  readonly event?: string
+}
+
+async function readOpenAiCompatibleStream(
+  response: Response,
+  onAssistantDelta: ((delta: string) => void) | undefined,
+): Promise<ChatCompletionBody> {
+  if (response.body === null) return {}
+  const state: OpenAiStreamState = {
+    content: "",
+    finishReason: undefined,
+    toolCalls: new Map(),
+  }
+  for await (const frame of readSseFrames(response.body)) {
+    if (frame.data.trim() === "[DONE]") break
+    const payload = parseStreamJson(frame.data)
+    applyOpenAiStreamPayload(payload, state, onAssistantDelta)
+  }
+  const toolCalls = [...state.toolCalls.entries()]
+    .sort(([a], [b]) => a - b)
+    .flatMap(([, call]) => {
+      const name = call.name.trim()
+      if (name.length === 0) return []
+      return [{
+        function: {
+          arguments: call.arguments,
+          name,
+        },
+        id: call.id.length > 0 ? call.id : `call_${call.index + 1}`,
+        type: "function" as const,
+      }]
+    })
+
+  return {
+    choices: [{
+      ...(state.finishReason === undefined ? {} : { finish_reason: state.finishReason }),
+      message: {
+        content: state.content,
+        ...(toolCalls.length === 0 ? {} : { tool_calls: toolCalls }),
+      },
+    }],
+  }
+}
+
+type OpenAiStreamToolCallState = {
+  arguments: string
+  id: string
+  index: number
+  name: string
+}
+
+type OpenAiStreamState = {
+  content: string
+  finishReason: unknown
+  toolCalls: Map<number, OpenAiStreamToolCallState>
+}
+
+async function* readSseFrames(body: ReadableStream<Uint8Array>): AsyncGenerator<SseFrame> {
+  const reader = body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ""
+
+  try {
+    while (true) {
+      const chunk = await reader.read()
+      if (chunk.done) break
+      buffer = `${buffer}${decoder.decode(chunk.value, { stream: true })}`
+        .replace(/\r\n/g, "\n")
+        .replace(/\r/g, "\n")
+      let boundary = buffer.indexOf("\n\n")
+      while (boundary >= 0) {
+        const block = buffer.slice(0, boundary)
+        buffer = buffer.slice(boundary + 2)
+        const frame = parseSseBlock(block)
+        if (frame !== null) yield frame
+        boundary = buffer.indexOf("\n\n")
+      }
+    }
+    buffer = `${buffer}${decoder.decode()}`
+    const frame = parseSseBlock(buffer)
+    if (frame !== null) yield frame
+  } finally {
+    reader.releaseLock()
+  }
+}
+
+function parseSseBlock(block: string): SseFrame | null {
+  const lines = block.split("\n")
+  let event: string | undefined
+  const data: string[] = []
+
+  for (const line of lines) {
+    if (line.length === 0 || line.startsWith(":")) continue
+    const colonIndex = line.indexOf(":")
+    const field = colonIndex >= 0 ? line.slice(0, colonIndex) : line
+    const rawValue = colonIndex >= 0 ? line.slice(colonIndex + 1) : ""
+    const value = rawValue.startsWith(" ") ? rawValue.slice(1) : rawValue
+    if (field === "event") event = value
+    if (field === "data") data.push(value)
+  }
+
+  if (event === undefined && data.length === 0) return null
+  return event === undefined ? { data: data.join("\n") } : { event, data: data.join("\n") }
+}
+
+function parseStreamJson(data: string): unknown {
+  try {
+    return JSON.parse(data) as unknown
+  } catch (error) {
+    throw new Error(`Malformed OpenAI-compatible stream frame: ${
+      error instanceof Error ? error.message : String(error)
+    }`)
+  }
+}
+
+function applyOpenAiStreamPayload(
+  payload: unknown,
+  state: OpenAiStreamState,
+  onAssistantDelta: ((delta: string) => void) | undefined,
+): void {
+  if (!isRecord(payload) || !Array.isArray(payload.choices)) return
+  for (const choice of payload.choices) {
+    if (!isRecord(choice)) continue
+    if (choice.finish_reason !== undefined && choice.finish_reason !== null) {
+      state.finishReason = choice.finish_reason
+    }
+    const delta = isRecord(choice.delta) ? choice.delta : undefined
+    if (delta !== undefined) {
+      const content = streamTextDelta(delta.content)
+      if (content.length > 0) {
+        state.content = `${state.content}${content}`
+        onAssistantDelta?.(content)
+      }
+      collectToolCallDeltas(delta.tool_calls, state.toolCalls)
+    }
+    const message = isRecord(choice.message) ? choice.message : undefined
+    if (message !== undefined) {
+      const content = streamTextDelta(message.content)
+      if (content.length > 0) {
+        state.content = `${state.content}${content}`
+        onAssistantDelta?.(content)
+      }
+      collectToolCallDeltas(message.tool_calls, state.toolCalls)
+    }
+  }
+}
+
+function streamTextDelta(value: unknown): string {
+  if (typeof value === "string") return value
+  if (!Array.isArray(value)) return ""
+  return value
+    .map(part => isRecord(part) && typeof part.text === "string" ? part.text : "")
+    .join("")
+}
+
+function collectToolCallDeltas(value: unknown, toolCalls: Map<number, OpenAiStreamToolCallState>): void {
+  if (!Array.isArray(value)) return
+  value.forEach((item, position) => {
+    if (!isRecord(item)) return
+    const index = typeof item.index === "number" && Number.isInteger(item.index)
+      ? item.index
+      : position
+    const current = toolCalls.get(index) ?? {
+      arguments: "",
+      id: "",
+      index,
+      name: "",
+    }
+    const fn = isRecord(item.function) ? item.function : undefined
+    toolCalls.set(index, {
+      arguments: `${current.arguments}${typeof fn?.arguments === "string" ? fn.arguments : ""}`,
+      id: typeof item.id === "string" && item.id.length > 0 ? item.id : current.id,
+      index,
+      name: typeof fn?.name === "string" && fn.name.length > 0 ? fn.name : current.name,
+    })
+  })
+}
+
 function errorText(body: unknown, status: number): string {
+  if (typeof body === "string" && body.trim().length > 0) return body.trim()
   if (isRecord(body)) {
     const message = body.message ?? body.error
     const reason = body.reason
@@ -516,8 +770,27 @@ function toolMessageContent(result: KhalaToolResult): string {
   })
 }
 
-function toolTranscriptMessage(toolName: string, result: KhalaToolResult): KhalaCodeDesktopMessage {
-  return hostMessage("tool", `${toolName}: ${result.status}\n${result.modelOutput.text}`)
+function toolTranscriptRunningBody(toolName: string): string {
+  return `${toolName}: running`
+}
+
+function toolTranscriptBody(toolName: string, result: KhalaToolResult): string {
+  const output = result.modelOutput.text.trimEnd()
+  return output.length === 0
+    ? `${toolName}: ${result.status}`
+    : `${toolName}: ${result.status}\n\n${output}`
+}
+
+function toolTranscriptMessage(
+  toolName: string,
+  result: KhalaToolResult,
+  id = nextMessageId("tool"),
+): KhalaCodeDesktopMessage {
+  return {
+    body: toolTranscriptBody(toolName, result),
+    id,
+    role: "tool",
+  }
 }
 
 function hostMessage(
@@ -526,9 +799,13 @@ function hostMessage(
 ): KhalaCodeDesktopMessage {
   return {
     body,
-    id: `${role}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+    id: nextMessageId(role),
     role,
   }
+}
+
+function nextMessageId(role: string): string {
+  return `${role}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
 }
 
 function limitResult(

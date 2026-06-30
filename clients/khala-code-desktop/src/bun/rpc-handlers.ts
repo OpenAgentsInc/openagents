@@ -8,6 +8,7 @@ import type { KhalaAppleFmReadiness } from "../shared/apple-fm-readiness.js"
 import type { OnDeviceDeciderSelection } from "../shared/on-device-decider.js"
 import {
   type KhalaCodeDesktopAppInfo,
+  type KhalaCodeDesktopChatTurnEvent,
   type KhalaCodeDesktopCodexAccountsStatus,
   type KhalaCodeDesktopCodexRateLimitResetResult,
   type KhalaCodeDesktopRPCSchema,
@@ -32,6 +33,7 @@ export type KhalaCodeDesktopRpcHandlersInput = {
     readonly idempotencyKey: string
   }) => MaybePromise<KhalaCodexRateLimitResetOutcome>
   readonly env: ChatEnv
+  readonly emitChatTurnEvent?: (event: KhalaCodeDesktopChatTurnEvent) => void
   readonly onDeviceDeciderStatus: () => MaybePromise<OnDeviceDeciderSelection>
   readonly workingDirectory: string
 }
@@ -151,6 +153,7 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
     async submitChatMessage(request) {
       return runKhalaCodeDesktopChatTurn({
         env: input.env,
+        ...(input.emitChatTurnEvent === undefined ? {} : { onEvent: input.emitChatTurnEvent }),
         request,
         workingDirectory: input.workingDirectory,
       })

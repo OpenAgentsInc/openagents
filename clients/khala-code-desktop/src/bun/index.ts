@@ -1,9 +1,11 @@
 import { ApplicationMenu, BrowserView, BrowserWindow } from "electrobun/bun"
+import { existsSync } from "node:fs"
 import { resolve } from "node:path"
 
 import {
   KHALA_CODE_DESKTOP_DEFAULT_PREVIEW_PORT,
   KHALA_CODE_DESKTOP_RPC_MAX_REQUEST_TIME_MS,
+  type KhalaCodeDesktopChatTurnEvent,
   type KhalaCodeDesktopRPCSchema,
 } from "../shared/rpc.js"
 import { khalaCodeDesktopApplicationMenu } from "./application-menu.js"
@@ -40,6 +42,39 @@ const contentTypeFor = (path: string): string => {
 
 const packagedViewPath = (...segments: readonly string[]): string =>
   resolve(process.cwd(), "../Resources/app/views/khala-code-desktop", ...segments)
+
+const envPath = (
+  env: Readonly<Record<string, string | undefined>>,
+  key: string,
+): string | undefined => {
+  const value = env[key]?.trim()
+  return value === undefined || value.length === 0 ? undefined : value
+}
+
+const isMacAppBundleCwd = (path: string): boolean =>
+  /\/[^/]+\.app\/Contents\/MacOS\/?$/.test(path)
+
+const resolveToolWorkingDirectory = (
+  env: Readonly<Record<string, string | undefined>>,
+): string => {
+  const explicit = envPath(env, "KHALA_CODE_DESKTOP_WORKSPACE")
+  if (explicit !== undefined) return explicit
+
+  for (const key of ["INIT_CWD", "PWD"]) {
+    const candidate = envPath(env, key)
+    if (candidate !== undefined && !isMacAppBundleCwd(candidate)) return candidate
+  }
+
+  const cwd = process.cwd()
+  if (!isMacAppBundleCwd(cwd)) return cwd
+
+  const home = envPath(env, "HOME")
+  if (home !== undefined) {
+    const workspace = resolve(home, "work")
+    return existsSync(workspace) ? workspace : home
+  }
+  return cwd
+}
 
 const previewAssetPaths = (pathname: string): readonly string[] => {
   const clean = pathname === "/" ? "/index.html" : pathname
@@ -83,12 +118,15 @@ const jsonResponse = (payload: unknown, init?: ResponseInit): Response =>
     },
   })
 
+let emitChatTurnEvent = (_event: KhalaCodeDesktopChatTurnEvent): void => {}
+
 const rpcRequestHandlers: KhalaCodeDesktopRPCSchema["requests"] =
   createKhalaCodeDesktopRpcRequestHandlers({
     appleFmReadiness: () => appleFmSidecar.readiness(),
+    emitChatTurnEvent: event => emitChatTurnEvent(event),
     env: Bun.env,
     onDeviceDeciderStatus: () => onDeviceDecider.select(),
-    workingDirectory: process.cwd(),
+    workingDirectory: resolveToolWorkingDirectory(Bun.env),
   })
 
 const previewRpcResponse = async (
@@ -171,6 +209,8 @@ const rpc = BrowserView.defineRPC<KhalaCodeDesktopRPCSchema>({
     messages: {},
   },
 })
+
+emitChatTurnEvent = event => rpc.send.chatTurnEvent(event)
 
 startPreviewServer()
 

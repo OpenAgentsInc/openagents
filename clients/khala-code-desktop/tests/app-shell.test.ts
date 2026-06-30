@@ -6,7 +6,10 @@ import {
 
 import config from "../electrobun.config.js"
 import { khalaCodeDesktopApplicationMenu } from "../src/bun/application-menu"
-import { parseMessageSegments } from "../src/ui/transcript-render"
+import {
+  parseMessageSegments,
+  parseToolTranscript,
+} from "../src/ui/transcript-render"
 
 describe("khala code desktop app shell", () => {
   test("registers the Khala Code desktop view", () => {
@@ -102,6 +105,19 @@ describe("khala code desktop app shell", () => {
     expect(inline.some(part => part.kind === "code")).toBe(true)
     expect(inline.some(part => part.kind === "link" && part.href === "/docs")).toBe(true)
     expect(inline.some(part => part.kind === "link" && part.href.startsWith("javascript:"))).toBe(false)
+  })
+
+  test("parses tool transcripts without flattening terminal output", () => {
+    expect(parseToolTranscript("ls: ok\n\n.:\nalpha.txt\nBeta.txt\nZoo/")).toEqual({
+      output: ".:\nalpha.txt\nBeta.txt\nZoo/",
+      status: "ok",
+      toolName: "ls",
+    })
+    expect(parseToolTranscript("read: failed\n\nread_blocked_binary: read only supports text files")).toEqual({
+      output: "read_blocked_binary: read only supports text files",
+      status: "failed",
+      toolName: "read",
+    })
   })
 
   test("installs native edit menu accelerators for WebKit text editing", async () => {

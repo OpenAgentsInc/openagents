@@ -270,6 +270,77 @@ button {
   color: #b7c8dc;
 }
 
+.tool-card {
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
+  border: 1px solid rgba(110, 231, 183, 0.28);
+  border-radius: 6px;
+  background: rgba(3, 11, 16, 0.9);
+  box-shadow: 0 0 22px -12px rgba(110, 231, 183, 0.55);
+}
+
+.tool-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 30px;
+  padding: 6px 10px;
+  border-bottom: 1px solid rgba(110, 231, 183, 0.16);
+  background: rgba(5, 20, 27, 0.94);
+}
+
+.tool-card-name {
+  min-width: 0;
+  overflow: hidden;
+  color: #d9fff1;
+  font-size: 0.73rem;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tool-card-status {
+  flex: none;
+  color: #6ee7b7;
+  font-size: 0.62rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.tool-card[data-status="failed"] {
+  border-color: rgba(248, 113, 113, 0.36);
+  box-shadow: 0 0 22px -12px rgba(248, 113, 113, 0.6);
+}
+
+.tool-card[data-status="failed"] .tool-card-header {
+  border-bottom-color: rgba(248, 113, 113, 0.18);
+  background: rgba(31, 8, 13, 0.9);
+}
+
+.tool-card[data-status="failed"] .tool-card-status {
+  color: #fca5a5;
+}
+
+.tool-card[data-status="running"] .tool-card-status {
+  color: #93c5fd;
+}
+
+.tool-card-output {
+  margin: 0;
+  max-height: 320px;
+  overflow: auto;
+  padding: 9px 10px 10px;
+  color: #c6d5e6;
+  font-family: var(--oa-font-code);
+  font-size: 0.75rem;
+  line-height: 1.55;
+  overflow-wrap: normal;
+  tab-size: 2;
+  white-space: pre;
+}
+
 .composer-dock {
   position: relative;
   z-index: 2;
