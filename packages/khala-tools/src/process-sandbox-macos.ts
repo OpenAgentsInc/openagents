@@ -59,7 +59,7 @@ export function createMacosSeatbeltKhalaProcessService(
           if (session.exitCode !== null) throw new Error(`process session is closed: ${input.sessionId}`)
           if (input.chars === "\u0003") {
             session.cancelled = true
-            session.proc.kill()
+            killSandboxedProcessGroup(session.proc)
           } else {
             const stdin = session.proc.stdin as unknown as BunFileSink | undefined
             if (stdin === undefined) throw new Error(`process session stdin is closed: ${input.sessionId}`)
@@ -86,13 +86,14 @@ async function runSandboxedCommand(
   try {
     const proc = Bun.spawn([...sandbox.prefix, ...commandArgs(input)], {
       cwd: input.cwd,
+      detached: true,
       stderr: "pipe",
       stdout: "pipe",
     })
     const kill = (reason: "cancelled" | "timedOut"): void => {
       if (reason === "cancelled") cancelled = true
       else timedOut = true
-      proc.kill()
+      killSandboxedProcessGroup(proc)
     }
     const timeout = setTimeout(() => kill("timedOut"), input.timeoutMs)
     const cancel = input.cancelAfterMs === undefined
@@ -100,8 +101,8 @@ async function runSandboxedCommand(
       : setTimeout(() => kill("cancelled"), input.cancelAfterMs)
     const events: KhalaProcessEvent[] = []
     const [stdout, stderr, exitCode] = await Promise.all([
-      readProcessStream(proc.stdout, "stdout", input.maxCaptureBytes, events, () => proc.kill()),
-      readProcessStream(proc.stderr, "stderr", input.maxCaptureBytes, events, () => proc.kill()),
+      readProcessStream(proc.stdout, "stdout", input.maxCaptureBytes, events, () => killSandboxedProcessGroup(proc)),
+      readProcessStream(proc.stderr, "stderr", input.maxCaptureBytes, events, () => killSandboxedProcessGroup(proc)),
       proc.exited.catch(() => null),
     ])
     clearTimeout(timeout)
@@ -138,6 +139,7 @@ async function startSandboxedSession(
   const sandbox = await makeSandboxArgs(input, sandboxExecPath, deniedReadPaths)
   const proc = Bun.spawn([...sandbox.prefix, ...commandArgs(input)], {
     cwd: input.cwd,
+    detached: true,
     stderr: "pipe",
     stdin: "pipe",
     stdout: "pipe",
@@ -173,7 +175,7 @@ async function startSandboxedSession(
   setTimeout(() => {
     if (session.exitCode === null) {
       session.timedOut = true
-      proc.kill()
+      killSandboxedProcessGroup(proc)
     }
   }, input.timeoutMs)
   await sleep(input.yieldTimeMs)
@@ -334,6 +336,14 @@ function tailByBytes(text: string, maxBytes: number): string {
   const bytes = Buffer.from(text, "utf8")
   if (bytes.byteLength <= maxBytes) return text
   return bytes.subarray(bytes.byteLength - maxBytes).toString("utf8")
+}
+
+function killSandboxedProcessGroup(proc: ReturnType<typeof Bun.spawn>, signal: NodeJS.Signals = "SIGTERM"): void {
+  try {
+    process.kill(-proc.pid, signal)
+  } catch {
+    proc.kill(signal)
+  }
 }
 
 function sleep(ms: number): Promise<void> {
