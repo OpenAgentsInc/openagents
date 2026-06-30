@@ -653,6 +653,14 @@ Desktop should also show free capacity on current code. If Desktop still says
 `a0e3a20df1214dd0084ac7b636462151d2ebb309` and that the app was restarted from
 that checkout.
 
+`codex_fleet_status` now treats process rows as active work only when they are
+real `codex exec` agent turns. It intentionally excludes `/Applications/Codex.app`
+GUI helpers, `durable-runner-pool.sh` supervisors, search commands, and Pylon
+provider/status processes. The rendered process line labels `ps etime` as
+`elapsed=...`; it is not a wall-clock start timestamp. If active marker count and
+active `codex exec` process count differ, treat the reconciliation line as a
+stale-marker or post-runtime-submit clue rather than raw capacity truth.
+
 Do not “fix” this by exporting `PYLON_OPENAGENTS_BASE_URL` globally. Use explicit
 `--base-url https://openagents.com` only on commands that talk to
 `openagents.com`, such as `presence heartbeat`, `assignment run-no-spend`, and

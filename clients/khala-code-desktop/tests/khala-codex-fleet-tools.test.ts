@@ -247,6 +247,99 @@ describe("Khala Code Codex fleet tools", () => {
     expect(result.accounts).toHaveLength(1)
   })
 
+  test("codex_fleet_status counts only real codex exec agent turns", async () => {
+    const fixture = await tempPylonFixture()
+    await writeFile(join(fixture.home, "config.json"), JSON.stringify({ pylonRef: "pylon.local.test" }))
+    const markerRoot = join(fixture.home, "active-assignment-runs")
+    await mkdir(markerRoot, { recursive: true })
+    await writeFile(join(markerRoot, "assignment.public.one.json"), JSON.stringify({
+      assignmentRef: "assignment.public.one",
+      issueRef: "issue:7737",
+      updatedAt: "2026-06-30T12:00:00.000Z",
+    }))
+    await writeFile(join(markerRoot, "assignment.public.stale.json"), JSON.stringify({
+      assignmentRef: "assignment.public.stale",
+      issueRef: "issue:7737",
+      updatedAt: "2026-06-30T11:59:00.000Z",
+    }))
+
+    const runner = async (input: KhalaCodexFleetCommandInput): Promise<KhalaCodexFleetCommandResult> => {
+      if (input.cmd[0] === "ps") {
+        return ok([
+          "  PID  PPID     ELAPSED COMMAND",
+          "  200   199    00:02:03 /opt/homebrew/bin/codex exec --json --sandbox workspace-write",
+          "  201     1    00:44:10 /Applications/Codex.app/Contents/MacOS/Codex",
+          "  202     1    00:10:00 /Users/example/bin/durable-runner-pool.sh codex exec --json",
+          "  203   202    00:00:01 rg codex exec",
+          "  204     1    02:00:00 bun apps/pylon/src/index.ts provider go-online",
+        ].join("\n"))
+      }
+      const args = pylonArgs(input)
+      const joined = args.join(" ")
+      if (joined === "provider go-online --json") {
+        return ok({
+          ok: true,
+          ownCapacityDispatch: {
+            availableCodexAssignments: 1,
+            maxCodexAssignments: 2,
+          },
+          pylonRef: "pylon.local.test",
+        })
+      }
+      if (joined === "codex accounts list --json") {
+        return ok({
+          accounts: [
+            {
+              accountRef: "codex-2",
+              homeState: "present",
+              provider: "codex",
+            },
+          ],
+          schema: "openagents.pylon.accounts_list.v0.3",
+        })
+      }
+      if (joined === "accounts status --provider codex --json") {
+        return ok({
+          accounts: [
+            {
+              accountRef: "codex-2",
+              provider: "codex",
+              readiness: { state: "ready" },
+            },
+          ],
+          schema: "openagents.pylon.accounts_status.v0.1",
+        })
+      }
+      return failed(`unexpected command: ${joined}`)
+    }
+
+    const result = await inspectCodexFleet({}, {
+      env: fixture.env,
+      runner,
+    })
+
+    expect(result.activeAssignments).toHaveLength(2)
+    expect(result.processes).toEqual([{
+      elapsed: "00:02:03",
+      kind: "codex_exec",
+      parentPid: "199",
+      pid: "200",
+    }])
+
+    const tool = createKhalaCodexFleetTools({ env: fixture.env, runner })
+      .find(item => item.definition.name === "codex_fleet_status")
+    const toolResult = await Effect.runPromise(tool!.execute!({}, {} as never))
+
+    expect(toolResult.modelOutput.text).toContain("Active assignment markers: 2")
+    expect(toolResult.modelOutput.text).toContain("Active Codex exec processes: 1")
+    expect(toolResult.modelOutput.text)
+      .toContain("Assignment/process reconciliation: 2 marker(s), 1 codex exec process(es)")
+    expect(toolResult.modelOutput.text).toContain("- 200 parent=199 elapsed=00:02:03 codex_exec")
+    expect(toolResult.modelOutput.text).not.toContain("Local Pylon/Codex processes")
+    expect(toolResult.modelOutput.text).not.toContain("Codex.app")
+    expect(toolResult.modelOutput.text).not.toContain("durable-runner-pool")
+  })
+
   test("spawnCodexInstances defaults unpinned smoke requests to the Pylon fixture", async () => {
     const fixture = await tempPylonFixture()
     const calls: KhalaCodexFleetCommandInput[] = []

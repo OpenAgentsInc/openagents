@@ -101,7 +101,8 @@ type ActiveAssignmentMarker = {
 
 type ProcessRow = {
   readonly elapsed: string
-  readonly kind: "codex" | "pylon"
+  readonly kind: "codex_exec"
+  readonly parentPid: string
   readonly pid: string
 }
 
@@ -1212,21 +1213,39 @@ async function collectProcessSnapshot(
   return result.stdout
     .split(/\r?\n/u)
     .slice(1)
-    .map(line => line.trim())
-    .filter(line => /(pylon|codex)/iu.test(line))
-    .filter(line => !/(rg -n|khala-codex-fleet-tools|ps -axo)/iu.test(line))
+    .map(parsePsRow)
+    .filter((row): row is NonNullable<ReturnType<typeof parsePsRow>> => row !== null)
+    .filter(row => isCodexExecAgentProcess(row.command))
     .slice(0, 25)
-    .map(line => {
-      const parts = line.split(/\s+/u)
-      const pid = parts[0] ?? ""
-      const elapsed = parts[2] ?? ""
-      const command = parts.slice(3).join(" ")
-      return {
-        elapsed,
-        kind: /pylon/iu.test(command) ? "pylon" as const : "codex" as const,
-        pid,
-      }
-    })
+    .map(row => ({
+      elapsed: row.elapsed,
+      kind: "codex_exec",
+      parentPid: row.parentPid,
+      pid: row.pid,
+    }))
+}
+
+function parsePsRow(line: string): { command: string; elapsed: string; parentPid: string; pid: string } | null {
+  const trimmed = line.trim()
+  if (trimmed.length === 0) return null
+  const match = /^(?<pid>\d+)\s+(?<parentPid>\d+)\s+(?<elapsed>\S+)\s+(?<command>.+)$/u.exec(trimmed)
+  if (match?.groups === undefined) return null
+  return {
+    command: match.groups.command ?? "",
+    elapsed: match.groups.elapsed ?? "",
+    parentPid: match.groups.parentPid ?? "",
+    pid: match.groups.pid ?? "",
+  }
+}
+
+function isCodexExecAgentProcess(command: string): boolean {
+  if (!/(^|[\s/])codex\s+exec(?:\s|$)/iu.test(command)) return false
+  if (/\/Applications\/Codex\.app\//iu.test(command)) return false
+  if (/\bdurable-runner-pool\.sh\b/iu.test(command)) return false
+  if (/\b(?:grep|rg|ripgrep)\b.*\bcodex\s+exec\b/iu.test(command)) return false
+  if (/\bps\s+-axo\b/iu.test(command)) return false
+  if (/\bkhala-codex-fleet-tools\b/iu.test(command)) return false
+  return true
 }
 
 function decodeSpawnInput(
@@ -1300,9 +1319,16 @@ function renderFleetStatus(result: FleetStatusResult): string {
     lines.push("- no Pylon Codex accounts found")
   }
   lines.push(`Active assignment markers: ${result.activeAssignments.length}`)
+  lines.push(`Active Codex exec processes: ${result.processes.length}`)
+  if (result.activeAssignments.length !== result.processes.length) {
+    lines.push(
+      `Assignment/process reconciliation: ${result.activeAssignments.length} marker(s), ${result.processes.length} codex exec process(es)`,
+    )
+  }
   if (result.processes.length > 0) {
-    lines.push(`Local Pylon/Codex processes: ${result.processes.length}`)
-    lines.push(...result.processes.slice(0, 5).map(process => `- ${process.pid} ${process.elapsed} ${process.kind}`))
+    lines.push(...result.processes.slice(0, 5).map(process =>
+      `- ${process.pid} parent=${process.parentPid} elapsed=${process.elapsed} ${process.kind}`,
+    ))
   }
   return lines.join("\n")
 }
