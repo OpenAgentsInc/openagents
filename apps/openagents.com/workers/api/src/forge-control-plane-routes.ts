@@ -2,6 +2,8 @@ import {
   ForgeCoordinationChangeState,
   ForgeCoordinationIssueState,
   ForgeCoordinationStatusState,
+  ForgeGitHubMirrorReceipt,
+  ForgeGitHubMirrorStatus,
   ForgeMergeQueueLedgerState,
   ForgePromotionDecisionReceipt,
   ForgeVerificationReceipt,
@@ -14,6 +16,9 @@ import { timingSafeEqual } from './agent-registration'
 import {
   type ForgeCoordinationStore,
 } from './forge-coordination-store'
+import type {
+  ForgeGitHubMirrorStore,
+} from './forge-github-mirror-store'
 import type {
   ForgeGitCanonicalStore,
 } from './forge-git-canonical-store'
@@ -32,6 +37,8 @@ const OPENAGENTS_GITHUB_OWNER = 'OpenAgentsInc'
 const OPENAGENTS_GITHUB_REPO = 'openagents'
 const OPENAGENTS_DEFAULT_BRANCH_REF = 'refs/heads/main'
 
+const OPENAGENTS_GITHUB_REPOSITORY = `${OPENAGENTS_GITHUB_OWNER}/${OPENAGENTS_GITHUB_REPO}`
+
 export type ForgeControlPlaneAuth = Readonly<{
   mode: 'admin' | 'control_plane'
   subjectRef: string
@@ -49,7 +56,9 @@ type ForgeControlPlaneRouteDependencies<Bindings> = Readonly<{
   authorizeControlPlaneBearer?: ForgeControlPlaneAuthorize<Bindings> | undefined
   fetch?: typeof fetch
   makeCanonicalStore: (env: Bindings) => ForgeGitCanonicalStore
+  makeGitHubMirrorStore: (env: Bindings) => ForgeGitHubMirrorStore
   makeStore: (env: Bindings) => ForgeCoordinationStore
+  mirrorGitHubToken?: (env: Bindings) => string | undefined
   nowIso?: () => string
   requireAdminApiToken?: (request: Request, env: Bindings) => Promise<boolean>
 }>
@@ -126,6 +135,11 @@ const ForgeMergeQueueDeriveRequest = S.Struct({
   queueRef: S.String,
   actualHead: S.String,
   sourceRefs: S.optionalKey(S.Array(S.String)),
+})
+
+const ForgeGitHubMirrorRunRequest = S.Struct({
+  tenantRef: S.String,
+  promotionRef: S.optionalKey(S.String),
 })
 
 const ForgeOpenAgentsImportRequest = S.Struct({
@@ -958,6 +972,68 @@ const routePromotionDecisions = async <Bindings>(
   return noStoreJsonResponse({ promotionDecision }, { status: 201 })
 }
 
+const forgeGitHubMirrorStatusFromQuery = (
+  url: URL,
+): typeof ForgeGitHubMirrorStatus.Type | undefined => {
+  const status = optionalQuery(url, 'status')
+
+  if (status === undefined) {
+    return undefined
+  }
+
+  try {
+    return decodeUnknownWithSchema(ForgeGitHubMirrorStatus, status)
+  } catch {
+    throw new ForgeControlPlaneHttpError(
+      400,
+      'forge_github_mirror_bad_status_filter',
+    )
+  }
+}
+
+const forgeGitHubMirrorAttention = (
+  receipts: ReadonlyArray<ForgeGitHubMirrorReceipt>,
+) => {
+  const reasonRefs = receipts
+    .filter(receipt => receipt.status === 'failed' || receipt.status === 'refused')
+    .map(receipt => receipt.refusal_reason ?? receipt.error_reason)
+    .filter((reason): reason is string => reason !== null)
+
+  return {
+    receiptRefs: receipts.map(receipt => receipt.mirror_ref),
+    reasonRefs,
+    state: reasonRefs.length > 0 ? 'needs_attention' : 'clear',
+  }
+}
+
+const routeGitHubMirrorReceipts = async <Bindings>(
+  dependencies: ForgeControlPlaneRouteDependencies<Bindings>,
+  request: Request,
+  env: Bindings,
+  url: URL,
+) => {
+  if (request.method !== 'GET') {
+    return methodNotAllowed(['GET'])
+  }
+
+  const tenantRef = tenantRefFromQuery(url)
+  await requireScope(dependencies, request, env, 'forge:mirror:read', tenantRef)
+  const mirrorReceipts = await dependencies
+    .makeGitHubMirrorStore(env)
+    .listReceipts(tenantRef, {
+      limit: limitFromQuery(url),
+      promotionRef: optionalQuery(url, 'promotionRef'),
+      status: forgeGitHubMirrorStatusFromQuery(url),
+    })
+
+  return noStoreJsonResponse({
+    attention: forgeGitHubMirrorAttention(mirrorReceipts),
+    limit: limitFromQuery(url),
+    mirrorReceipts,
+    tenantRef,
+  })
+}
+
 const sha256Hex = async (value: string): Promise<string> => {
   const bytes = await crypto.subtle.digest(
     'SHA-256',
@@ -1001,6 +1077,389 @@ const readGitHubMainTip = async <Bindings>(
     objectId,
     sourceUrl: typeof body.object?.url === 'string' ? body.object.url : url,
   }
+}
+
+class ForgeGitHubMirrorApiError extends Error {
+  constructor(readonly errorCode: string) {
+    super(errorCode)
+    this.name = 'ForgeGitHubMirrorApiError'
+  }
+}
+
+type ForgeGitHubMirrorDestination = Readonly<{
+  branchApiRef: string
+  githubRepository: string
+  githubRef: string
+  owner: string
+  repo: string
+}>
+
+const openAgentsGitHubMirrorDestination = (): ForgeGitHubMirrorDestination => ({
+  branchApiRef: 'heads/main',
+  githubRepository: OPENAGENTS_GITHUB_REPOSITORY,
+  githubRef: OPENAGENTS_DEFAULT_BRANCH_REF,
+  owner: OPENAGENTS_GITHUB_OWNER,
+  repo: OPENAGENTS_GITHUB_REPO,
+})
+
+const githubMirrorHeaders = (
+  token: string,
+  contentType: boolean = false,
+): HeadersInit => ({
+  accept: 'application/vnd.github+json',
+  authorization: `Bearer ${token}`,
+  ...(contentType ? { 'content-type': 'application/json' } : {}),
+  'user-agent': 'openagents-forge-github-mirror',
+  'x-github-api-version': '2022-11-28',
+})
+
+const readGitHubDestinationHead = async <Bindings>(
+  dependencies: ForgeControlPlaneRouteDependencies<Bindings>,
+  destination: ForgeGitHubMirrorDestination,
+  token: string,
+): Promise<string> => {
+  const response = await (dependencies.fetch ?? fetch)(
+    `https://api.github.com/repos/${encodeURIComponent(destination.owner)}/${encodeURIComponent(destination.repo)}/git/ref/${destination.branchApiRef}`,
+    { headers: githubMirrorHeaders(token) },
+  )
+
+  if (!response.ok) {
+    throw new ForgeGitHubMirrorApiError(
+      `forge_github_mirror_destination_lookup_http_${response.status}`,
+    )
+  }
+
+  const body = (await response.json()) as { object?: { sha?: unknown } }
+  const sha = typeof body.object?.sha === 'string' ? body.object.sha : ''
+
+  if (!commitShaPattern.test(sha)) {
+    throw new ForgeGitHubMirrorApiError(
+      'forge_github_mirror_destination_lookup_bad_ref',
+    )
+  }
+
+  return sha.toLowerCase()
+}
+
+const updateGitHubDestinationHead = async <Bindings>(
+  dependencies: ForgeControlPlaneRouteDependencies<Bindings>,
+  destination: ForgeGitHubMirrorDestination,
+  token: string,
+  commitId: string,
+): Promise<void> => {
+  const response = await (dependencies.fetch ?? fetch)(
+    `https://api.github.com/repos/${encodeURIComponent(destination.owner)}/${encodeURIComponent(destination.repo)}/git/refs/${destination.branchApiRef}`,
+    {
+      body: JSON.stringify({ force: false, sha: commitId }),
+      headers: githubMirrorHeaders(token, true),
+      method: 'PATCH',
+    },
+  )
+
+  if (!response.ok) {
+    throw new ForgeGitHubMirrorApiError(
+      `forge_github_mirror_ref_update_http_${response.status}`,
+    )
+  }
+}
+
+const mirrorRefForPromotion = async (
+  promotionRef: string,
+  destination: ForgeGitHubMirrorDestination,
+): Promise<string> =>
+  `mirror.github.openagents.main.${(await sha256Hex(
+    `${promotionRef}:${destination.githubRepository}:${destination.githubRef}`,
+  )).slice(0, 24)}`
+
+const uniqueSourceRefs = (
+  refs: ReadonlyArray<string>,
+): ReadonlyArray<string> => [...new Set(refs.filter(ref => ref.trim() !== ''))]
+
+const repositoryRefForPromotion = async (
+  store: ForgeCoordinationStore,
+  promotion: ForgePromotionDecisionReceipt,
+): Promise<string> => {
+  if (promotion.verification_ref === null) {
+    return OPENAGENTS_FORGE_REPOSITORY_REF
+  }
+
+  const verification = (
+    await store.listVerificationReceipts(
+      promotion.tenant_ref,
+      100,
+      promotion.change_ref,
+    )
+  ).find(receipt => receipt.verification_ref === promotion.verification_ref)
+
+  return verification?.repository_ref ?? OPENAGENTS_FORGE_REPOSITORY_REF
+}
+
+const recordGitHubMirrorReceipt = async <Bindings>(
+  dependencies: ForgeControlPlaneRouteDependencies<Bindings>,
+  env: Bindings,
+  input: Readonly<{
+    commitId: string
+    destination: ForgeGitHubMirrorDestination
+    errorReason?: string | undefined
+    nowIso: string
+    promotion: ForgePromotionDecisionReceipt
+    refusalReason?: string | undefined
+    repositoryRef: string
+    status: typeof ForgeGitHubMirrorStatus.Type
+  }>,
+): Promise<ForgeGitHubMirrorReceipt> =>
+  dependencies.makeGitHubMirrorStore(env).recordReceipt({
+    change_ref: input.promotion.change_ref,
+    commit_id: input.commitId,
+    completed_at: input.nowIso,
+    destination_github_ref: input.destination.githubRef,
+    destination_github_repository: input.destination.githubRepository,
+    error_reason: input.errorReason ?? null,
+    first_attempted_at: input.nowIso,
+    last_attempted_at: input.nowIso,
+    mirror_ref: await mirrorRefForPromotion(
+      input.promotion.promotion_ref,
+      input.destination,
+    ),
+    promotion_ref: input.promotion.promotion_ref,
+    redacted: true,
+    refusal_reason: input.refusalReason ?? null,
+    repository_ref: input.repositoryRef,
+    source_canonical_ref: input.promotion.target_ref,
+    source_refs: uniqueSourceRefs([
+      ...input.promotion.source_refs,
+      input.promotion.promotion_ref,
+      input.promotion.target_ref,
+      `github:${input.destination.githubRepository}#${input.destination.githubRef}`,
+    ]),
+    status: input.status,
+    tenant_ref: input.promotion.tenant_ref,
+  })
+
+const refusalReceipt = async <Bindings>(
+  dependencies: ForgeControlPlaneRouteDependencies<Bindings>,
+  env: Bindings,
+  input: Readonly<{
+    destination: ForgeGitHubMirrorDestination
+    nowIso: string
+    promotion: ForgePromotionDecisionReceipt
+    reason: string
+    repositoryRef: string
+  }>,
+): Promise<ForgeGitHubMirrorReceipt> =>
+  recordGitHubMirrorReceipt(dependencies, env, {
+    commitId: input.promotion.promoted_head ?? input.promotion.candidate_head,
+    destination: input.destination,
+    nowIso: input.nowIso,
+    promotion: input.promotion,
+    refusalReason: input.reason,
+    repositoryRef: input.repositoryRef,
+    status: 'refused',
+  })
+
+const failureReceipt = async <Bindings>(
+  dependencies: ForgeControlPlaneRouteDependencies<Bindings>,
+  env: Bindings,
+  input: Readonly<{
+    commitId: string
+    destination: ForgeGitHubMirrorDestination
+    nowIso: string
+    promotion: ForgePromotionDecisionReceipt
+    reason: string
+    repositoryRef: string
+  }>,
+): Promise<ForgeGitHubMirrorReceipt> =>
+  recordGitHubMirrorReceipt(dependencies, env, {
+    commitId: input.commitId,
+    destination: input.destination,
+    errorReason: input.reason,
+    nowIso: input.nowIso,
+    promotion: input.promotion,
+    repositoryRef: input.repositoryRef,
+    status: 'failed',
+  })
+
+const mirrorPromotionToGitHub = async <Bindings>(
+  dependencies: ForgeControlPlaneRouteDependencies<Bindings>,
+  env: Bindings,
+  promotion: ForgePromotionDecisionReceipt,
+): Promise<ForgeGitHubMirrorReceipt> => {
+  const destination = openAgentsGitHubMirrorDestination()
+  const nowIso = routeNowIso(dependencies)
+  const store = dependencies.makeStore(env)
+  const repositoryRef = await repositoryRefForPromotion(store, promotion)
+  const existing = await dependencies
+    .makeGitHubMirrorStore(env)
+    .readReceiptForPromotion(
+      promotion.tenant_ref,
+      promotion.promotion_ref,
+      destination.githubRepository,
+      destination.githubRef,
+    )
+
+  if (
+    existing?.status === 'mirrored' &&
+    existing.commit_id === promotion.promoted_head
+  ) {
+    return existing
+  }
+
+  if (promotion.decision !== 'approved' || promotion.promoted_head === null) {
+    return refusalReceipt(dependencies, env, {
+      destination,
+      nowIso,
+      promotion,
+      reason: 'forge_github_mirror_requires_approved_promotion',
+      repositoryRef,
+    })
+  }
+
+  if (promotion.target_ref !== destination.githubRef) {
+    return refusalReceipt(dependencies, env, {
+      destination,
+      nowIso,
+      promotion,
+      reason: 'forge_github_mirror_target_ref_not_configured',
+      repositoryRef,
+    })
+  }
+
+  if (repositoryRef !== OPENAGENTS_FORGE_REPOSITORY_REF) {
+    return refusalReceipt(dependencies, env, {
+      destination,
+      nowIso,
+      promotion,
+      reason: 'forge_github_mirror_repository_not_configured',
+      repositoryRef,
+    })
+  }
+
+  const canonicalRef = await dependencies
+    .makeCanonicalStore(env)
+    .readRef(promotion.tenant_ref, repositoryRef, promotion.target_ref)
+
+  if (
+    canonicalRef?.state !== 'active' ||
+    canonicalRef.object_id?.toLowerCase() !== promotion.promoted_head.toLowerCase()
+  ) {
+    return refusalReceipt(dependencies, env, {
+      destination,
+      nowIso,
+      promotion,
+      reason: 'forge_github_mirror_source_canonical_ref_not_promoted',
+      repositoryRef,
+    })
+  }
+
+  const token = dependencies.mirrorGitHubToken?.(env)
+  if (token === undefined || token.trim() === '') {
+    return failureReceipt(dependencies, env, {
+      commitId: promotion.promoted_head,
+      destination,
+      nowIso,
+      promotion,
+      reason: 'forge_github_mirror_token_missing',
+      repositoryRef,
+    })
+  }
+
+  try {
+    const destinationHead = await readGitHubDestinationHead(
+      dependencies,
+      destination,
+      token,
+    )
+    if (destinationHead !== promotion.promoted_head.toLowerCase()) {
+      await updateGitHubDestinationHead(
+        dependencies,
+        destination,
+        token,
+        promotion.promoted_head,
+      )
+    }
+
+    return recordGitHubMirrorReceipt(dependencies, env, {
+      commitId: promotion.promoted_head,
+      destination,
+      nowIso,
+      promotion,
+      repositoryRef,
+      status: 'mirrored',
+    })
+  } catch (error) {
+    return failureReceipt(dependencies, env, {
+      commitId: promotion.promoted_head,
+      destination,
+      nowIso,
+      promotion,
+      reason:
+        error instanceof ForgeGitHubMirrorApiError
+          ? error.errorCode
+          : 'forge_github_mirror_fetch_failed',
+      repositoryRef,
+    })
+  }
+}
+
+const promotionCandidatesForMirrorRun = async (
+  store: ForgeCoordinationStore,
+  tenantRef: string,
+  promotionRef: string | undefined,
+): Promise<ReadonlyArray<ForgePromotionDecisionReceipt>> => {
+  const promotions = await store.listPromotionDecisionReceipts(tenantRef, 100)
+
+  if (promotionRef === undefined) {
+    return promotions.filter(promotion => promotion.decision === 'approved')
+  }
+
+  const promotion = promotions.find(
+    candidate => candidate.promotion_ref === promotionRef,
+  )
+
+  if (promotion === undefined) {
+    throw new ForgeControlPlaneHttpError(
+      404,
+      'forge_github_mirror_promotion_not_found',
+    )
+  }
+
+  return [promotion]
+}
+
+const routeGitHubMirrorRun = async <Bindings>(
+  dependencies: ForgeControlPlaneRouteDependencies<Bindings>,
+  request: Request,
+  env: Bindings,
+) => {
+  if (request.method !== 'POST') {
+    return methodNotAllowed(['POST'])
+  }
+
+  const body = await decodeBody(request, ForgeGitHubMirrorRunRequest)
+  await requireScope(dependencies, request, env, 'forge:mirror:write', body.tenantRef)
+  const store = dependencies.makeStore(env)
+  const promotions = await promotionCandidatesForMirrorRun(
+    store,
+    body.tenantRef,
+    body.promotionRef,
+  )
+  const mirrorReceipts = await Promise.all(
+    promotions.map(promotion =>
+      mirrorPromotionToGitHub(dependencies, env, promotion),
+    ),
+  )
+
+  return noStoreJsonResponse({
+    attention: forgeGitHubMirrorAttention(mirrorReceipts),
+    mirrorReceipts,
+    mirroredCount: mirrorReceipts.filter(receipt => receipt.status === 'mirrored')
+      .length,
+    refusedCount: mirrorReceipts.filter(receipt => receipt.status === 'refused')
+      .length,
+    failedCount: mirrorReceipts.filter(receipt => receipt.status === 'failed')
+      .length,
+    tenantRef: body.tenantRef,
+  })
 }
 
 const routeRefs = async <Bindings>(
@@ -1180,6 +1639,22 @@ export const makeForgeControlPlaneRoutes = <Bindings>(
     if (route.length === 1 && route[0] === 'promotion-decisions') {
       return routeEffect(() =>
         routePromotionDecisions(dependencies, request, env, url),
+      )
+    }
+
+    if (route.length === 1 && route[0] === 'github-mirror') {
+      return routeEffect(() =>
+        routeGitHubMirrorReceipts(dependencies, request, env, url),
+      )
+    }
+
+    if (
+      route.length === 2 &&
+      route[0] === 'github-mirror' &&
+      route[1] === 'run'
+    ) {
+      return routeEffect(() =>
+        routeGitHubMirrorRun(dependencies, request, env),
       )
     }
 

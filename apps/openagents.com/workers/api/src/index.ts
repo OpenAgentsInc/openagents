@@ -649,6 +649,7 @@ import { makeD1ForgeCoordinationStore } from './forge-coordination-store'
 import { makeD1ForgeGitCanonicalStore } from './forge-git-canonical-store'
 import { makeForgeGitIntakeRoutes } from './forge-git-intake-routes'
 import { makeD1R2ForgeGitPackfileArchiveStore } from './forge-git-packfile-archive-store'
+import { makeD1ForgeGitHubMirrorStore } from './forge-github-mirror-store'
 import { makeD1ForgeTenantGitAuthStore } from './forge-tenant-git-auth-store'
 import type { KhalaChatStreamClient } from './khala-chat-program'
 import {
@@ -2118,6 +2119,20 @@ const getForgeControlPlaneToken = (
 ): string | undefined => {
   const token = redactedValue(
     getOpenAgentsWorkerConfig(env).forgeControlPlaneToken,
+  )
+
+  if (token === undefined || token.trim() === '') {
+    return undefined
+  }
+
+  return token
+}
+
+const getForgeGitHubMirrorToken = (
+  env: OpenAgentsWorkerConfigEnv,
+): string | undefined => {
+  const token = redactedValue(
+    getOpenAgentsWorkerConfig(env).forgeGithubMirrorToken,
   )
 
   if (token === undefined || token.trim() === '') {
@@ -13555,8 +13570,11 @@ const routeRequest = makeWorkerRouteRequest({
         ),
       makeCanonicalStore: storeEnv =>
         makeD1ForgeGitCanonicalStore(openAgentsDatabase(storeEnv)),
+      makeGitHubMirrorStore: storeEnv =>
+        makeD1ForgeGitHubMirrorStore(openAgentsDatabase(storeEnv)),
       makeStore: storeEnv =>
         makeD1ForgeCoordinationStore(openAgentsDatabase(storeEnv)),
+      mirrorGitHubToken: storeEnv => getForgeGitHubMirrorToken(storeEnv),
       nowIso: currentIsoTimestamp,
       requireAdminApiToken: (authRequest, authEnv) =>
         requireAdminApiToken(authRequest, authEnv),

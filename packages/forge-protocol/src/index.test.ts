@@ -9,6 +9,7 @@ import {
   decodeForgeDispatchLeaseRow,
   decodeForgeGitAccessTokenRow,
   decodeForgeGitAccessTokenScopeRow,
+  decodeForgeGitHubMirrorReceipt,
   decodeForgeGitPackfileArchiveRow,
   decodeForgeDispatchCloseout,
   decodeForgeDispatchDecision,
@@ -42,8 +43,12 @@ describe("@openagentsinc/forge-protocol", () => {
 
   test("keeps control-plane scopes separate from smart Git token scopes", () => {
     expect(forgeControlPlaneScopes).toContain("forge:promotion:decide");
+    expect(forgeControlPlaneScopes).toContain("forge:mirror:write");
     expect(decodeForgeControlPlaneScope("forge:work:write")).toBe(
       "forge:work:write",
+    );
+    expect(decodeForgeControlPlaneScope("forge:mirror:read")).toBe(
+      "forge:mirror:read",
     );
     expect(() => decodeForgeControlPlaneScope("git:receive-pack")).toThrow();
     expect(() => decodeForgeControlPlaneScope("git:admin")).toThrow();
@@ -355,5 +360,33 @@ describe("@openagentsinc/forge-protocol", () => {
       "gate.merge-deploy",
       "gate.issue-close-safe",
     ]);
+    const promotedHead = promotion.promoted_head;
+    if (promotedHead === null) {
+      throw new Error("expected approved promotion to carry promoted_head");
+    }
+
+    const mirror = decodeForgeGitHubMirrorReceipt({
+      schema: "openagents.forge.github_mirror.receipt.v0.1",
+      tenant_ref: "tenant.openagents",
+      mirror_ref: "mirror.github.openagents.main.6768",
+      promotion_ref: promotion.promotion_ref,
+      change_ref: promotion.change_ref,
+      repository_ref: "repo.openagents.openagents",
+      source_canonical_ref: promotion.target_ref,
+      destination_github_repository: "OpenAgentsInc/openagents",
+      destination_github_ref: "refs/heads/main",
+      commit_id: promotedHead,
+      status: "mirrored",
+      attempt_count: 1,
+      first_attempted_at: "2026-06-28T16:03:00.000Z",
+      last_attempted_at: "2026-06-28T16:03:00.000Z",
+      completed_at: "2026-06-28T16:03:02.000Z",
+      refusal_reason: null,
+      error_reason: null,
+      source_refs: [promotion.promotion_ref, promotion.target_ref],
+      redacted: true,
+    });
+    expect(mirror.commit_id).toBe(promotedHead);
+    expect(mirror.status).toBe("mirrored");
   });
 });

@@ -428,6 +428,7 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   OPENAGENTS_SPARK_API_KEY?: string | undefined
   OPENAGENTS_ADMIN_API_TOKEN?: string | undefined
   OPENAGENTS_FORGE_CONTROL_PLANE_TOKEN?: string | undefined
+  OPENAGENTS_FORGE_GITHUB_MIRROR_TOKEN?: string | undefined
   OPENAGENTS_APP_URL?: string | undefined
   OPENAUTH_CLIENT_ID?: string | undefined
   OPENAUTH_ISSUER_URL?: string | undefined
@@ -616,6 +617,7 @@ export type OpenAgentsWorkerConfigShape = Readonly<{
   }>
   exa: ExaConfig
   forgeControlPlaneToken?: Redacted.Redacted<WorkerSecret> | undefined
+  forgeGithubMirrorToken?: Redacted.Redacted<WorkerSecret> | undefined
   github: Readonly<{
     clientId: GitHubClientId
     clientSecret: Redacted.Redacted<WorkerSecret>
@@ -1340,6 +1342,10 @@ export const decodeOpenAgentsWorkerConfig = (
       forgeControlPlaneToken: optionalRedacted(
         env,
         'OPENAGENTS_FORGE_CONTROL_PLANE_TOKEN',
+      ),
+      forgeGithubMirrorToken: optionalRedacted(
+        env,
+        'OPENAGENTS_FORGE_GITHUB_MIRROR_TOKEN',
       ),
       github: {
         clientId: GitHubClientId.make(

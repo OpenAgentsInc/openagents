@@ -13,6 +13,10 @@ import {
   type ForgeCoordinationStore,
 } from './forge-coordination-store'
 import {
+  makeD1ForgeGitHubMirrorStore,
+  type ForgeGitHubMirrorStore,
+} from './forge-github-mirror-store'
+import {
   makeD1ForgeGitCanonicalStore,
   type ForgeGitCanonicalStore,
 } from './forge-git-canonical-store'
@@ -70,6 +74,13 @@ const promotionDecisionGateResultsMigration = readFileSync(
   ),
   'utf8',
 )
+const githubMirrorReceiptsMigration = readFileSync(
+  new URL(
+    '../migrations/0260_forge_github_mirror_receipts.sql',
+    import.meta.url,
+  ),
+  'utf8',
+)
 const canonicalGitMigration = readFileSync(
   new URL('../migrations/0255_forge_git_canonical_store.sql', import.meta.url),
   'utf8',
@@ -78,17 +89,20 @@ const canonicalGitMigration = readFileSync(
 const makeStores = (): Readonly<{
   canonicalStore: ForgeGitCanonicalStore
   coordinationStore: ForgeCoordinationStore
+  mirrorStore: ForgeGitHubMirrorStore
 }> => {
   const db = new DatabaseSync(':memory:')
   db.exec('PRAGMA foreign_keys = ON')
   db.exec(coordinationMigration)
   db.exec(controlPlaneReceiptsMigration)
   db.exec(promotionDecisionGateResultsMigration)
+  db.exec(githubMirrorReceiptsMigration)
   db.exec(canonicalGitMigration)
   const d1 = new SqliteD1(db) as unknown as D1Database
   return {
     canonicalStore: makeD1ForgeGitCanonicalStore(d1),
     coordinationStore: makeD1ForgeCoordinationStore(d1),
+    mirrorStore: makeD1ForgeGitHubMirrorStore(d1),
   }
 }
 
@@ -118,6 +132,43 @@ const makeGitHubFetch = (sha: string = githubMainSha): typeof fetch =>
       },
     })) as typeof fetch
 
+const makeMirrorGitHubFetch = (
+  input: Readonly<{ currentSha?: string; updateStatus?: number }> = {},
+) => {
+  const calls: Array<Readonly<{ body: string | null; method: string; url: string }>> =
+    []
+  const fetchMock = (async (url: RequestInfo | URL, init?: RequestInit) => {
+    const target = String(url)
+    const method = init?.method ?? 'GET'
+    calls.push({
+      body: typeof init?.body === 'string' ? init.body : null,
+      method,
+      url: target,
+    })
+
+    if (method === 'PATCH') {
+      return Response.json(
+        {
+          ref: 'refs/heads/main',
+          object: { sha: headB, type: 'commit' },
+        },
+        { status: input.updateStatus ?? 200 },
+      )
+    }
+
+    return Response.json({
+      ref: 'refs/heads/main',
+      object: {
+        sha: input.currentSha ?? headA,
+        type: 'commit',
+        url: `https://api.github.com/repos/OpenAgentsInc/openagents/git/commits/${input.currentSha ?? headA}`,
+      },
+    })
+  }) as typeof fetch
+
+  return { calls, fetchMock }
+}
+
 type JsonRequestInit = Omit<RequestInit, 'body'> & Readonly<{ json?: unknown }>
 
 const requestJson = (
@@ -133,14 +184,24 @@ const requestJson = (
     },
   })
 
-const makeHarness = () => {
-  const { canonicalStore, coordinationStore } = makeStores()
+const makeHarness = (
+  input: Readonly<{
+    fetch?: typeof fetch
+    mirrorGitHubToken?: string | undefined
+  }> = {},
+) => {
+  const { canonicalStore, coordinationStore, mirrorStore } = makeStores()
   const routes = makeForgeControlPlaneRoutes({
     authorizeControlPlaneBearer: (request, _env, scope) =>
       authorizeForgeControlPlaneBearer(request, controlPlaneToken, scope),
-    fetch: makeGitHubFetch(),
+    fetch: input.fetch ?? makeGitHubFetch(),
     makeCanonicalStore: () => canonicalStore,
+    makeGitHubMirrorStore: () => mirrorStore,
     makeStore: () => coordinationStore,
+    mirrorGitHubToken: () =>
+      Object.prototype.hasOwnProperty.call(input, 'mirrorGitHubToken')
+        ? input.mirrorGitHubToken
+        : 'github-mirror-token',
     nowIso: () => now,
     requireAdminApiToken: () => Promise.resolve(false),
   })
@@ -154,7 +215,7 @@ const makeHarness = () => {
     return Effect.runPromise(effect)
   }
 
-  return { canonicalStore, run, store: coordinationStore }
+  return { canonicalStore, mirrorStore, run, store: coordinationStore }
 }
 
 const createForgeWork = async (
@@ -252,6 +313,86 @@ const createPassingVerification = async (
     }),
   )
   expect(response.status).toBe(201)
+}
+
+const createPromotionDecision = async (
+  run: (request: Request) => Promise<Response>,
+  input: Readonly<{
+    baseHead: string
+    decision?: 'approved' | 'blocked'
+    headHead: string
+    issueNumber: number
+    scopes: string
+    verificationRef?: string | null
+  }>,
+): Promise<void> => {
+  const response = await run(
+    requestJson('/api/forge/promotion-decisions', {
+      json: {
+        schema: 'openagents.forge.promotion.decision.v0.1',
+        tenant_ref: 'tenant.openagents',
+        promotion_ref: `promotion.forge.${input.issueNumber}`,
+        queue_ref: 'queue.forge.openagents.main',
+        queue_position: 0,
+        change_ref: `change.forge.${input.issueNumber}`,
+        decision: input.decision ?? 'approved',
+        target_ref: 'refs/heads/main',
+        base_head: input.baseHead,
+        candidate_head: input.headHead,
+        promoted_head:
+          (input.decision ?? 'approved') === 'approved' ? input.headHead : null,
+        verification_ref: Object.prototype.hasOwnProperty.call(
+          input,
+          'verificationRef',
+        )
+          ? input.verificationRef
+          : `verification.forge.${input.issueNumber}`,
+        gate_refs: ['gate.tests'],
+        gate_results: [
+          {
+            gate_ref: 'gate.tests',
+            verdict: (input.decision ?? 'approved') === 'approved' ? 'passed' : 'blocked',
+            evidence_refs: [`verification.forge.${input.issueNumber}`],
+            blocker_refs:
+              (input.decision ?? 'approved') === 'approved'
+                ? []
+                : ['blocker.forge.test'],
+            decided_at: '2026-06-28T17:03:00.000Z',
+          },
+        ],
+        blocker_refs:
+          (input.decision ?? 'approved') === 'approved'
+            ? []
+            : ['blocker.forge.test'],
+        decided_by_ref: 'agent.public.forge',
+        decided_at: '2026-06-28T17:03:00.000Z',
+        source_refs: [`github:OpenAgentsInc/openagents#${input.issueNumber}`],
+        redacted: true,
+      },
+      headers: authHeaders(input.scopes),
+      method: 'POST',
+    }),
+  )
+  expect(response.status).toBe(201)
+}
+
+const importCanonicalMain = async (
+  canonicalStore: ForgeGitCanonicalStore,
+  objectId: string,
+): Promise<void> => {
+  await canonicalStore.importExternalRef({
+    changeRef: `change.forge.promoted.${objectId.slice(0, 12)}`,
+    objectFormat: 'sha1',
+    objectId,
+    packfileRef: `packfile.forge.promoted.${objectId.slice(0, 12)}`,
+    receivePackRef: `receive-pack.forge.promoted.${objectId.slice(0, 12)}`,
+    refName: 'refs/heads/main',
+    repositoryRef: 'repo.openagents.openagents',
+    sourceDigestSha256: `digest.${objectId}`,
+    sourceRefs: ['github:OpenAgentsInc/openagents#6796'],
+    tenantRef: 'tenant.openagents',
+    nowIso: now,
+  })
 }
 
 describe('Forge control-plane routes', () => {
@@ -509,6 +650,222 @@ describe('Forge control-plane routes', () => {
       promotionDecisions: ReadonlyArray<unknown>
     }
     expect(decisionsBody.promotionDecisions).toHaveLength(1)
+  })
+
+  test('mirrors only a Forge-approved canonical promotion to GitHub and reruns idempotently', async () => {
+    const github = makeMirrorGitHubFetch({ currentSha: headA })
+    const { canonicalStore, run } = makeHarness({ fetch: github.fetchMock })
+    const scopes = [
+      'forge:work:write',
+      'forge:change:write',
+      'forge:receipt:write',
+      'forge:promotion:decide',
+      'forge:mirror:read',
+      'forge:mirror:write',
+    ].join(' ')
+
+    await createForgeWork(run, 6796, scopes)
+    await createForgeChange(run, {
+      baseHead: headA,
+      issueNumber: 6796,
+      patchHead: headB,
+      scopes,
+      verificationRef: 'verification.forge.6796',
+    })
+    await createPassingVerification(run, {
+      baseHead: headA,
+      changeRef: 'change.forge.6796',
+      headHead: headB,
+      scopes,
+      verificationRef: 'verification.forge.6796',
+    })
+    await createPromotionDecision(run, {
+      baseHead: headA,
+      headHead: headB,
+      issueNumber: 6796,
+      scopes,
+    })
+    await importCanonicalMain(canonicalStore, headB)
+
+    const response = await run(
+      requestJson('/api/forge/github-mirror/run', {
+        json: {
+          tenantRef: 'tenant.openagents',
+          promotionRef: 'promotion.forge.6796',
+        },
+        headers: authHeaders(scopes),
+        method: 'POST',
+      }),
+    )
+    const body = (await response.json()) as {
+      attention: { state: string }
+      mirrorReceipts: ReadonlyArray<{
+        attempt_count: number
+        commit_id: string
+        destination_github_ref: string
+        status: string
+      }>
+      mirroredCount: number
+    }
+
+    expect(response.status).toBe(200)
+    expect(body.mirroredCount).toBe(1)
+    expect(body.attention.state).toBe('clear')
+    expect(body.mirrorReceipts[0]).toMatchObject({
+      attempt_count: 1,
+      commit_id: headB,
+      destination_github_ref: 'refs/heads/main',
+      status: 'mirrored',
+    })
+    expect(github.calls.map(call => call.method)).toEqual(['GET', 'PATCH'])
+    expect(github.calls.find(call => call.method === 'PATCH')?.body).toBe(
+      JSON.stringify({ force: false, sha: headB }),
+    )
+
+    const rerunResponse = await run(
+      requestJson('/api/forge/github-mirror/run', {
+        json: {
+          tenantRef: 'tenant.openagents',
+          promotionRef: 'promotion.forge.6796',
+        },
+        headers: authHeaders(scopes),
+        method: 'POST',
+      }),
+    )
+    const rerunBody = (await rerunResponse.json()) as {
+      mirrorReceipts: ReadonlyArray<{ attempt_count: number; status: string }>
+    }
+
+    expect(rerunResponse.status).toBe(200)
+    expect(rerunBody.mirrorReceipts[0]).toMatchObject({
+      attempt_count: 1,
+      status: 'mirrored',
+    })
+    expect(github.calls.map(call => call.method)).toEqual(['GET', 'PATCH'])
+
+    const listResponse = await run(
+      new Request(
+        'https://openagents.com/api/forge/github-mirror?tenantRef=tenant.openagents&promotionRef=promotion.forge.6796',
+        { headers: authHeaders(scopes) },
+      ),
+    )
+    const listBody = (await listResponse.json()) as {
+      mirrorReceipts: ReadonlyArray<unknown>
+    }
+    expect(listResponse.status).toBe(200)
+    expect(listBody.mirrorReceipts).toHaveLength(1)
+  })
+
+  test('refuses non-promoted changes without touching GitHub', async () => {
+    const github = makeMirrorGitHubFetch()
+    const { run } = makeHarness({ fetch: github.fetchMock })
+    const scopes = [
+      'forge:promotion:decide',
+      'forge:mirror:write',
+    ].join(' ')
+
+    await createPromotionDecision(run, {
+      baseHead: headA,
+      decision: 'blocked',
+      headHead: headB,
+      issueNumber: 6796,
+      scopes,
+      verificationRef: null,
+    })
+
+    const response = await run(
+      requestJson('/api/forge/github-mirror/run', {
+        json: {
+          tenantRef: 'tenant.openagents',
+          promotionRef: 'promotion.forge.6796',
+        },
+        headers: authHeaders(scopes),
+        method: 'POST',
+      }),
+    )
+    const body = (await response.json()) as {
+      attention: { reasonRefs: ReadonlyArray<string>; state: string }
+      mirrorReceipts: ReadonlyArray<{ refusal_reason: string; status: string }>
+      refusedCount: number
+    }
+
+    expect(response.status).toBe(200)
+    expect(body.refusedCount).toBe(1)
+    expect(body.attention.state).toBe('needs_attention')
+    expect(body.attention.reasonRefs).toContain(
+      'forge_github_mirror_requires_approved_promotion',
+    )
+    expect(body.mirrorReceipts[0]).toMatchObject({
+      refusal_reason: 'forge_github_mirror_requires_approved_promotion',
+      status: 'refused',
+    })
+    expect(github.calls).toHaveLength(0)
+  })
+
+  test('records failed mirror attempts without advancing GitHub state', async () => {
+    const github = makeMirrorGitHubFetch({
+      currentSha: headA,
+      updateStatus: 422,
+    })
+    const { canonicalStore, run } = makeHarness({ fetch: github.fetchMock })
+    const scopes = [
+      'forge:work:write',
+      'forge:change:write',
+      'forge:receipt:write',
+      'forge:promotion:decide',
+      'forge:mirror:write',
+    ].join(' ')
+
+    await createForgeWork(run, 6796, scopes)
+    await createForgeChange(run, {
+      baseHead: headA,
+      issueNumber: 6796,
+      patchHead: headB,
+      scopes,
+      verificationRef: 'verification.forge.6796',
+    })
+    await createPassingVerification(run, {
+      baseHead: headA,
+      changeRef: 'change.forge.6796',
+      headHead: headB,
+      scopes,
+      verificationRef: 'verification.forge.6796',
+    })
+    await createPromotionDecision(run, {
+      baseHead: headA,
+      headHead: headB,
+      issueNumber: 6796,
+      scopes,
+    })
+    await importCanonicalMain(canonicalStore, headB)
+
+    const response = await run(
+      requestJson('/api/forge/github-mirror/run', {
+        json: {
+          tenantRef: 'tenant.openagents',
+          promotionRef: 'promotion.forge.6796',
+        },
+        headers: authHeaders(scopes),
+        method: 'POST',
+      }),
+    )
+    const body = (await response.json()) as {
+      attention: { reasonRefs: ReadonlyArray<string>; state: string }
+      failedCount: number
+      mirrorReceipts: ReadonlyArray<{ error_reason: string; status: string }>
+    }
+
+    expect(response.status).toBe(200)
+    expect(body.failedCount).toBe(1)
+    expect(body.attention.state).toBe('needs_attention')
+    expect(body.attention.reasonRefs).toContain(
+      'forge_github_mirror_ref_update_http_422',
+    )
+    expect(body.mirrorReceipts[0]).toMatchObject({
+      error_reason: 'forge_github_mirror_ref_update_http_422',
+      status: 'failed',
+    })
+    expect(github.calls.map(call => call.method)).toEqual(['GET', 'PATCH'])
   })
 
   test('derives nextActualPromotion from live Forge rows and serializes concurrent changes', async () => {
