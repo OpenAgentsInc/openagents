@@ -114,6 +114,7 @@ export type PylonKhalaAssignmentTraceStatusResult = {
     hasFinalTrace: boolean
     hasLiveChunks: boolean
     hasTokenUsage: boolean
+    missingReadinessRefs: string[]
     state:
       | "assignment_created"
       | "streaming_chunks"

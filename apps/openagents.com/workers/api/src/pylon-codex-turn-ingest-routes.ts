@@ -311,6 +311,7 @@ export type PylonCodexAssignmentTraceStatus = Readonly<{
     hasLiveChunks: boolean
     hasFinalTrace: boolean
     hasTokenUsage: boolean
+    missingReadinessRefs: ReadonlyArray<string>
   }>
   generatedAt: string
 }>
@@ -937,6 +938,12 @@ export const makeD1PylonCodexAssignmentProofStore = (
               : hasLiveChunks
                 ? 'streaming_chunks'
                 : 'assignment_created'
+    const missingReadinessRefs = [
+      hasLiveChunks ? null : 'status.pylon_codex.raw_event_chunks.pending',
+      hasFinalTrace ? null : 'status.pylon_codex.final_trace.pending',
+      hasTokenUsage ? null : 'status.pylon_codex.token_usage.pending',
+      closedOut ? null : 'status.pylon_codex.closeout.pending',
+    ].filter((ref): ref is string => ref !== null)
 
     return {
       schemaVersion: 'openagents.pylon.codex_assignment_trace_status.v1',
@@ -1012,6 +1019,7 @@ export const makeD1PylonCodexAssignmentProofStore = (
         hasFinalTrace,
         hasLiveChunks,
         hasTokenUsage,
+        missingReadinessRefs,
         state: progressState,
       },
       generatedAt: input.nowIso,
