@@ -1,4 +1,18 @@
 import { Effect, Schema as S } from "effect"
+import { redactKhalaPublicText } from "./redaction.js"
+
+export {
+  KhalaPrivacyRedactionLive,
+  KhalaPrivacyRedactionService,
+  makeKhalaPrivacyRedactionService,
+  redactKhalaPublicText,
+  type KhalaPrivacyRedactionMode,
+  type KhalaPrivacyRedactionResult,
+  type KhalaPrivacyRedactionServiceOptions,
+  type KhalaPrivacyRedactionServiceShape,
+  type KhalaRampartGuard,
+  type KhalaRampartGuardFactory,
+} from "./redaction.js"
 
 export const KhalaToolAuthority = S.Literals([
   "read",
@@ -623,14 +637,6 @@ export function sanitizeToolResult(result: KhalaToolResult): KhalaToolResult {
       ? [...new Set([...result.redactionRefs, "redaction.khala_tool.public_text"])]
       : result.redactionRefs,
   }
-}
-
-export function redactKhalaPublicText(value: string): string {
-  return value
-    .replace(/OPENROUTER_API_KEY\s*[:=]\s*\S+/giu, "OPENROUTER_API_KEY=[REDACTED]")
-    .replace(/sk-or-[A-Za-z0-9_-]{8,}/gu, "[REDACTED_OPENROUTER_KEY]")
-    .replace(/sk-[A-Za-z0-9_-]{16,}/gu, "[REDACTED_API_KEY]")
-    .replace(/Bearer\s+[A-Za-z0-9._-]{16,}/giu, "Bearer [REDACTED_TOKEN]")
 }
 
 export const allowAllKhalaPermissionService: KhalaPermissionService = {

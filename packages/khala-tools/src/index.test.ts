@@ -5,11 +5,13 @@ import {
   denyAllKhalaPermissionService,
   executeKhalaTool,
   khalaToolOk,
+  makeKhalaPrivacyRedactionService,
   makeKhalaToolRegistry,
   makeKhalaToolServices,
   redactKhalaPublicText,
   resolveKhalaBackend,
   toOpenAiCompatibleTools,
+  type KhalaRampartGuard,
   type KhalaToolDefinition,
 } from "./index.js"
 
@@ -145,4 +147,94 @@ describe("@openagentsinc/khala-tools foundation", () => {
   test("redacts token-shaped public text", () => {
     expect(redactKhalaPublicText("Bearer abcdefghijklmnopqrstuvwxyz")).toBe("Bearer [REDACTED_TOKEN]")
   })
+
+  test("protects text through the Rampart heuristics guard", async () => {
+    const redaction = makeKhalaPrivacyRedactionService({
+      rampartOptions: { device: "cpu", heuristicsOnly: true },
+    })
+
+    const result = await Effect.runPromise(
+      redaction.protectUserText("Email alex@example.com and SSN 472-81-0094 before sending."),
+    )
+
+    expect(result.engine).toBe("@nationaldesignstudio/rampart")
+    expect(result.mode).toBe("rampart_heuristics")
+    expect(result.text).toContain("[EMAIL_1]")
+    expect(result.text).toContain("[SSN_1]")
+    expect(result.placeholders).toContain("[EMAIL_1]")
+    expect(result.placeholders).toContain("[SSN_1]")
+    expect(result.redacted).toBe(true)
+  })
+
+  test("keeps one reversible Rampart session table per redaction service", async () => {
+    const guard = fakeRampartGuard({
+      protectText: text => text.replace("Alex Rivera", "[GIVEN_NAME_1] [SURNAME_1]"),
+      revealText: text => text
+        .replaceAll("[GIVEN_NAME_1]", "Alex")
+        .replaceAll("[SURNAME_1]", "Rivera"),
+    })
+    const redaction = makeKhalaPrivacyRedactionService({
+      guardFactory: async () => guard,
+    })
+
+    const protectedText = await Effect.runPromise(
+      redaction.protectUserText("My name is Alex Rivera."),
+    )
+    const revealed = await Effect.runPromise(
+      redaction.revealForLocalUser("Hello [GIVEN_NAME_1] [SURNAME_1]."),
+    )
+
+    expect(protectedText.mode).toBe("rampart_model")
+    expect(protectedText.text).toBe("My name is [GIVEN_NAME_1] [SURNAME_1].")
+    expect(protectedText.placeholders).toEqual(["[GIVEN_NAME_1]", "[SURNAME_1]"])
+    expect(protectedText.redactionRefs).toContain("redaction.khala.rampart.pii")
+    expect(revealed).toBe("Hello Alex Rivera.")
+  })
+
+  test("falls back to Rampart heuristics when model initialization fails", async () => {
+    const redaction = makeKhalaPrivacyRedactionService({
+      guardFactory: async options => {
+        if (options?.heuristicsOnly === true) {
+          return fakeRampartGuard({
+            protectText: text => text.replace("472-81-0094", "[SSN_1]"),
+            revealText: text => text.replaceAll("[SSN_1]", "472-81-0094"),
+          })
+        }
+        throw new Error("model unavailable")
+      },
+      rampartOptions: { device: "cpu" },
+    })
+
+    const result = await Effect.runPromise(
+      redaction.protectUserText("SSN 472-81-0094"),
+    )
+
+    expect(result.mode).toBe("rampart_heuristics")
+    expect(result.text).toBe("SSN [SSN_1]")
+    expect(result.redactionRefs).toContain("redaction.khala.rampart.full_model_unavailable")
+    expect(result.redactionRefs).toContain("redaction.khala.rampart.pii")
+  })
 })
+
+function fakeRampartGuard(input: {
+  readonly protectText: (text: string) => string
+  readonly revealText: (text: string) => string
+}): KhalaRampartGuard {
+  const protect = async (text: string) => {
+    const safe = input.protectText(text)
+    return {
+      placeholders: safe.match(/\[[A-Z_]+_\d+\]/gu) ?? [],
+      text: safe,
+    }
+  }
+  return {
+    protect,
+    protectReply: protect,
+    reveal: input.revealText,
+    revealTransform: () => new TransformStream<string, string>({
+      transform(chunk, controller) {
+        controller.enqueue(input.revealText(chunk))
+      },
+    }),
+  }
+}

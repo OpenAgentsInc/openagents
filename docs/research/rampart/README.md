@@ -133,6 +133,30 @@ the keep-set is compile-time, but the published NPM package exposes
 `keepLabels` as a runtime `createGuard` option. For OpenAgents integration work,
 follow the package type surface and verify against the pinned package version.
 
+## OpenAgents Implementation Update
+
+The OpenAgents integration pins `@nationaldesignstudio/rampart@0.1.2`,
+`@huggingface/transformers@3.7.5`, and `onnxruntime-node@1.21.0` in
+`packages/khala-tools`. The shared package now exports an Effect service that
+owns one Rampart guard per caller-created service:
+
+- `makeKhalaPrivacyRedactionService()`
+- `KhalaPrivacyRedactionService`
+- `KhalaPrivacyRedactionLive`
+
+Khala Code Desktop creates a default redaction service per chat session. It
+protects outbound current and previous user text, assistant/history context,
+and local tool output before provider requests. Assistant replies are scrubbed
+for provider context and then revealed locally before rendering.
+
+The published Rampart package works in this worktree with `heuristicsOnly:
+true`. The full Node/Bun CPU model initializer currently fails before inference
+because the browser-targeted published bundle does not successfully wire
+`onnxruntime-node` into the Node path. The OpenAgents service therefore tries
+the configured full guard first, falls back to Rampart heuristics, and finally
+falls back to the existing Khala token/API-key scrubber if Rampart itself is
+unavailable. Tests pin that fail-soft behavior.
+
 ## Recommendation
 
 Use Rampart as an optional owner-local privacy prefilter for chat-like

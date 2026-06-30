@@ -6,6 +6,8 @@ import { Effect } from "effect"
 import {
   allowAllKhalaPermissionService,
   makeKhalaToolServices,
+  type KhalaPrivacyRedactionResult,
+  type KhalaPrivacyRedactionServiceShape,
 } from "@openagentsinc/khala-tools"
 
 import {
@@ -127,6 +129,30 @@ describe("Khala Code desktop chat runtime", () => {
     expect(requestMessages[1]?.content).toContain("- read (read):")
     expect(requestMessages[1]?.content).toContain("without invoking any tool")
     expect(JSON.stringify(result)).not.toContain("agent-token")
+  })
+
+  test("redacts user text before provider requests and reveals placeholders locally", async () => {
+    const redaction = fakeRedactionService()
+    const { calls, fetchFn } = captureFetch([
+      { choices: [{ message: { content: "Hello [GIVEN_NAME_1] [SURNAME_1]." } }] },
+    ])
+
+    const result = await runKhalaCodeDesktopChatTurn({
+      env: { OPENAGENTS_AGENT_TOKEN: "agent-token" },
+      fetchFn,
+      redaction,
+      request: {
+        messages: [{ body: "My name is Alex Rivera.", id: "u1", role: "user" }],
+        sessionId: "session-redaction",
+      },
+    })
+
+    expect(result.ok).toBe(true)
+    expect(result.messages[0]?.body).toBe("Hello Alex Rivera.")
+    const requestMessages = calls[0]?.body.messages as Array<{ content?: string; role?: string }>
+    expect(requestMessages.find(message => message.role === "user")?.content)
+      .toBe("My name is [GIVEN_NAME_1] [SURNAME_1].")
+    expect(JSON.stringify(calls[0]?.body.messages)).not.toContain("Alex Rivera")
   })
 
   test("routes request-specific OpenRouter BYOK through hosted Khala", async () => {
@@ -391,6 +417,53 @@ describe("Khala Code desktop chat runtime", () => {
     )).toBe(true)
   })
 
+  test("redacts local tool result content before feeding it back to the provider", async () => {
+    const workspace = await tempWorkspace()
+    await writeFile(join(workspace, "fixture.txt"), "Alex Rivera is in the local-only file\n", "utf8")
+    const redaction = fakeRedactionService()
+    const { calls, fetchFn } = captureFetch([
+      {
+        choices: [{
+          finish_reason: "tool_calls",
+          message: {
+            content: "",
+            tool_calls: [{
+              function: {
+                arguments: JSON.stringify({ path: "fixture.txt" }),
+                name: "read",
+              },
+              id: "call_read",
+              type: "function",
+            }],
+          },
+        }],
+      },
+      { choices: [{ message: { content: "We saw [GIVEN_NAME_1] [SURNAME_1]." } }] },
+    ])
+
+    const result = await runKhalaCodeDesktopChatTurn({
+      env: { OPENAGENTS_AGENT_TOKEN: "agent-token" },
+      fetchFn,
+      redaction,
+      request: {
+        messages: [{ body: "read the fixture", id: "u1", role: "user" }],
+        sessionId: "session-redaction-tools",
+      },
+      services: makeKhalaToolServices({
+        permission: allowAllKhalaPermissionService,
+        workingDirectory: workspace,
+      }),
+    })
+
+    expect(result.ok).toBe(true)
+    expect(result.messages[0]?.body).toContain("Alex Rivera is in the local-only file")
+    expect(result.messages[1]?.body).toBe("We saw Alex Rivera.")
+    const secondMessages = calls[1]?.body.messages as Array<{ content?: string; role?: string; tool_call_id?: string }>
+    const toolMessage = secondMessages.find(message => message.role === "tool" && message.tool_call_id === "call_read")
+    expect(toolMessage?.content).toContain("[GIVEN_NAME_1] [SURNAME_1]")
+    expect(toolMessage?.content).not.toContain("Alex Rivera")
+  })
+
   test("forces a visible final answer when the model stops after tool output", async () => {
     const workspace = await tempWorkspace()
     await writeFile(join(workspace, "fixture.txt"), "hello from the local tool\n", "utf8")
@@ -561,4 +634,33 @@ function toolName(value: unknown): string | undefined {
   if (typeof value !== "object" || value === null) return undefined
   const fn = (value as { function?: { name?: unknown } }).function
   return typeof fn?.name === "string" ? fn.name : undefined
+}
+
+function fakeRedactionService(): KhalaPrivacyRedactionServiceShape {
+  const protectText = (text: string) =>
+    text.replaceAll("Alex Rivera", "[GIVEN_NAME_1] [SURNAME_1]")
+  const revealText = (text: string) => text
+    .replaceAll("[GIVEN_NAME_1]", "Alex")
+    .replaceAll("[SURNAME_1]", "Rivera")
+  const result = (original: string): KhalaPrivacyRedactionResult => {
+    const text = protectText(original)
+    return {
+      engine: "@nationaldesignstudio/rampart",
+      mode: "rampart_model",
+      placeholders: text.match(/\[[A-Z_]+_\d+\]/gu) ?? [],
+      redacted: text !== original,
+      redactionRefs: text === original ? [] : ["redaction.khala.rampart.pii"],
+      text,
+    }
+  }
+  return {
+    protectModelText: text => Effect.succeed(result(text)),
+    protectUserText: text => Effect.succeed(result(text)),
+    revealForLocalUser: text => Effect.succeed(revealText(text)),
+    revealTransform: () => Effect.succeed(new TransformStream<string, string>({
+      transform(chunk, controller) {
+        controller.enqueue(revealText(chunk))
+      },
+    })),
+  }
 }

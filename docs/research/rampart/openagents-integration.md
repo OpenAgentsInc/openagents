@@ -125,6 +125,28 @@ after Rampart for values outside Rampart's taxonomy:
 Keep those recognizers centralized and typed; do not scatter one-off regexes
 through feature code.
 
+## Implemented Wrapper
+
+The initial implementation lives in `@openagentsinc/khala-tools` as an Effect
+service:
+
+```ts
+import { Effect } from "effect";
+import { makeKhalaPrivacyRedactionService } from "@openagentsinc/khala-tools";
+
+const redaction = makeKhalaPrivacyRedactionService();
+const safe = await Effect.runPromise(redaction.protectUserText(userText));
+const visible = await Effect.runPromise(redaction.revealForLocalUser(reply));
+```
+
+`clients/khala-code-desktop` creates one default service per chat session. The
+service tries the configured Rampart guard, falls back to Rampart heuristics
+when full model loading is unavailable, and falls back to the existing Khala
+token/API-key scrubber if Rampart itself fails. Tests cover the real
+heuristics-only package path, injected reversible placeholders, full-model
+failover, provider request redaction, local reply reveal, and tool-result
+redaction before provider replay.
+
 ## Version Pinning
 
 If this becomes product code, pin all of the following in the implementation

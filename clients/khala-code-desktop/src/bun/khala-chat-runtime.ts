@@ -18,12 +18,14 @@ import {
   createWriteStdinTool,
   createWriteTool,
   executeKhalaTool,
+  makeKhalaPrivacyRedactionService,
   makeKhalaToolRegistry,
   makeKhalaToolServices,
   redactKhalaPublicText,
   resolveKhalaBackend,
   toOpenAiCompatibleTools,
   type KhalaBackendSelection,
+  type KhalaPrivacyRedactionServiceShape,
   type KhalaToolDefinition,
   type KhalaToolRegistry,
   type KhalaToolResult,
@@ -106,10 +108,13 @@ export type RunKhalaCodeDesktopChatTurnInput = {
   readonly fetchFn?: typeof fetch
   readonly request: KhalaCodeDesktopChatTurnRequest
   readonly onEvent?: (event: KhalaCodeDesktopChatTurnEvent) => void
+  readonly redaction?: KhalaPrivacyRedactionServiceShape
   readonly services?: KhalaToolServices
   readonly registry?: KhalaToolRegistry
   readonly workingDirectory?: string
 }
+
+const redactionBySession = new Map<string, KhalaPrivacyRedactionServiceShape>()
 
 export function createKhalaCodeDesktopToolRegistry(): KhalaToolRegistry {
   return makeKhalaToolRegistry(createKhalaCodeDesktopTools())
@@ -174,10 +179,11 @@ export async function runKhalaCodeDesktopChatTurn(
     }
   }
 
+  const redaction = input.redaction ?? redactionForSession(input.request.sessionId)
   const messages: ChatTransportMessage[] = [
     { role: "system", content: KHALA_CODE_SYSTEM_PROMPT },
     { role: "system", content: toolCatalogSystemPrompt(toolDefinitions) },
-    ...projectTranscriptMessages(input.request.messages),
+    ...(await projectTranscriptMessages(input.request.messages, redaction)),
   ]
   const transcript: KhalaCodeDesktopMessage[] = []
   const usedTools: string[] = []
@@ -190,24 +196,26 @@ export async function runKhalaCodeDesktopChatTurn(
   let retriedWithoutTools = false
   let assistantMessagesSinceLastToolResult = 0
 
-  const appendAssistantText = (
+  const appendAssistantText = async (
     text: string,
     streamed: KhalaCodeDesktopMessage | null,
     toolCalls: readonly OpenAiToolCall[] = [],
-  ): void => {
+  ): Promise<void> => {
+    const modelText = await protectModelText(text, redaction)
+    const visibleText = await revealLocalText(modelText, redaction)
     const message = streamed === null
-      ? hostMessage("assistant", text)
-      : { ...streamed, body: text }
+      ? hostMessage("assistant", visibleText)
+      : { ...streamed, body: visibleText }
     transcript.push(message)
     assistantMessagesSinceLastToolResult += 1
     if (streamed === null) {
       emit({ message, turnId, type: "message_start" })
-    } else if (streamed.body !== text) {
+    } else if (streamed.body !== visibleText) {
       emit({ message, turnId, type: "message_replace" })
     }
     emit({ messageId: message.id, turnId, type: "message_done" })
     messages.push({
-      content: text,
+      content: modelText,
       role: "assistant",
       ...(toolCalls.length === 0 ? {} : { tool_calls: toolCalls }),
     })
@@ -242,7 +250,7 @@ export async function runKhalaCodeDesktopChatTurn(
     const vacuousToolAnswer = toolCalls.length === 0 && usedTools.length > 0 && isVacuousPostToolAnswer(text)
 
     if (text.length > 0 && !vacuousToolAnswer) {
-      appendAssistantText(text, assistantStream.streamingAssistant.current, toolCalls)
+      await appendAssistantText(text, assistantStream.streamingAssistant.current, toolCalls)
     } else if (toolCalls.length > 0) {
       messages.push({ content: "", role: "assistant", tool_calls: toolCalls })
     }
@@ -259,9 +267,9 @@ export async function runKhalaCodeDesktopChatTurn(
         })
         const visibleText = usableToolAnswerText(visibleAnswer?.text ?? "")
         if (visibleText === null) {
-          appendAssistantText(toolOnlyTurnFallbackBody(transcript), replaceMessage)
+          await appendAssistantText(toolOnlyTurnFallbackBody(transcript), replaceMessage)
         } else {
-          appendAssistantText(visibleText, replaceMessage ?? visibleAnswer?.streamingAssistant ?? null)
+          await appendAssistantText(visibleText, replaceMessage ?? visibleAnswer?.streamingAssistant ?? null)
         }
       }
       return {
@@ -298,7 +306,7 @@ export async function runKhalaCodeDesktopChatTurn(
       emit({ message: completedToolTranscript, turnId, type: "message_replace" })
       emit({ messageId: completedToolTranscript.id, turnId, type: "message_done" })
       messages.push({
-        content: toolMessageContent(result),
+        content: await protectUserText(toolMessageContent(result), redaction),
         name: call.function.name,
         role: "tool",
         tool_call_id: call.id,
@@ -308,6 +316,14 @@ export async function runKhalaCodeDesktopChatTurn(
   }
 
   return limitResult(backend, toolNames, usedTools, "Khala used the maximum tool rounds without finishing the answer.")
+}
+
+function redactionForSession(sessionId: string): KhalaPrivacyRedactionServiceShape {
+  const existing = redactionBySession.get(sessionId)
+  if (existing !== undefined) return existing
+  const redaction = makeKhalaPrivacyRedactionService()
+  redactionBySession.set(sessionId, redaction)
+  return redaction
 }
 
 function createAssistantStreamRecorder(input: {
@@ -759,19 +775,51 @@ function providerFailureMessage(backend: KhalaBackendSelection, error: unknown):
   return `Khala provider request failed for ${backend.model}${suffix}`
 }
 
-function projectTranscriptMessages(messages: readonly KhalaCodeDesktopMessage[]): readonly ChatTransportMessage[] {
-  return messages.flatMap(message => {
+async function projectTranscriptMessages(
+  messages: readonly KhalaCodeDesktopMessage[],
+  redaction: KhalaPrivacyRedactionServiceShape,
+): Promise<readonly ChatTransportMessage[]> {
+  const projected: ChatTransportMessage[] = []
+  for (const message of messages) {
     const content = message.body.trim()
-    if (content.length === 0) return []
+    if (content.length === 0) continue
     if (message.role === "tool") {
-      return [{
-        content: `Previous tool result:\n${content}`,
+      projected.push({
+        content: await protectUserText(`Previous tool result:\n${content}`, redaction),
         role: "assistant",
-      }]
+      })
+      continue
     }
-    if (message.role !== "assistant" && message.role !== "user") return []
-    return [{ role: message.role, content }]
-  })
+    if (message.role === "assistant") {
+      projected.push({ role: "assistant", content: await protectModelText(content, redaction) })
+      continue
+    }
+    if (message.role === "user") {
+      projected.push({ role: "user", content: await protectUserText(content, redaction) })
+    }
+  }
+  return projected
+}
+
+async function protectUserText(
+  text: string,
+  redaction: KhalaPrivacyRedactionServiceShape,
+): Promise<string> {
+  return (await Effect.runPromise(redaction.protectUserText(text))).text
+}
+
+async function protectModelText(
+  text: string,
+  redaction: KhalaPrivacyRedactionServiceShape,
+): Promise<string> {
+  return (await Effect.runPromise(redaction.protectModelText(text))).text
+}
+
+async function revealLocalText(
+  text: string,
+  redaction: KhalaPrivacyRedactionServiceShape,
+): Promise<string> {
+  return await Effect.runPromise(redaction.revealForLocalUser(text))
 }
 
 function firstAssistantMessage(body: ChatCompletionBody): {

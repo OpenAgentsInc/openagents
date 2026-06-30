@@ -16,6 +16,13 @@ The package declares `@huggingface/transformers` as an optional peer dependency.
 Add it explicitly whenever the classifier will load. For a heuristics-only
 smoke path, the peer dependency is not needed at runtime.
 
+The current OpenAgents integration installs the package in `packages/khala-tools`:
+
+```sh
+bun add @nationaldesignstudio/rampart@0.1.2 @huggingface/transformers@3.7.5 --cwd packages/khala-tools
+bun add onnxruntime-node@1.21.0 --cwd packages/khala-tools
+```
+
 ## Minimal Conversation Guard
 
 Create one guard per conversation. The guard owns the placeholder table, so
@@ -154,12 +161,20 @@ For fast tests that should not download the model, run heuristics only:
 
 ```ts
 const guard = await createGuard({
+  device: "cpu",
   heuristicsOnly: true,
 });
 ```
 
 That catches the deterministic layer only. It is not a substitute for the full
 model path because it will miss names, phone numbers, addresses, and many IDs.
+
+As of `@nationaldesignstudio/rampart@0.1.2`, the heuristics-only Bun/Node smoke
+passes in this worktree, while the full CPU model initializer fails before
+inference because the published browser-targeted bundle does not successfully
+wire `onnxruntime-node` into the Node path. OpenAgents wraps the package with a
+fail-soft Effect service so redaction remains default-on while a future Rampart
+package fix can enable the full contextual model in the same call sites.
 
 ## Raw Model Use
 
