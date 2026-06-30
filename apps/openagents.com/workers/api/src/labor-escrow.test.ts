@@ -9,6 +9,7 @@ import {
   evaluateLaborEscrowFundingSource,
   forfeitLaborEscrow,
   forfeitLaborEscrowStatements,
+  makeCreditLedgerBondSettlementAdapter,
   refundLaborEscrowStatements,
   releaseLaborEscrow,
   releaseLaborEscrowStatements,
@@ -589,6 +590,96 @@ describe('labor escrow ledger statements', () => {
       heldMsat: 0,
     })
     expect(model.balances.has('agent:counterparty')).toBe(false)
+  })
+})
+
+describe('credit-ledger bond settlement adapter', () => {
+  test('exposes hold, release, and forfeit through the existing no-rail ledger path', async () => {
+    const calls: string[] = []
+    const adapter = makeCreditLedgerBondSettlementAdapter(null as never, {
+      reserve: async (_db, input) => {
+        calls.push(`hold:${input.reserveReceiptRef}`)
+        return {
+          escrow: {
+            ...reserveInput,
+            createdAt: nowIso,
+            forfeitConditionRef: null,
+            forfeitDestination: null,
+            forfeitDestinationActorRef: null,
+            forfeitReceiptRef: null,
+            fundingSource: 'ledger_balance',
+            providerActorRef: null,
+            publicProjection: buildLaborEscrowPublicProjection({
+              amountMsat: reserveInput.amountMsat,
+              escrowId: reserveInput.escrowId,
+              evidenceRef: 'nostr.event.' + jobEventId,
+              jobEventId,
+              providerActorRef: null,
+              receiptRef: reserveInput.reserveReceiptRef,
+              requesterActorRef: reserveInput.requesterActorRef,
+              stateAfter: 'reserved',
+              transitionKind: 'reserve',
+              workRequestId: reserveInput.workRequestId,
+            }),
+            releaseReceiptRef: null,
+            refundReceiptRef: null,
+            state: 'reserved',
+            updatedAt: nowIso,
+          },
+          idempotent: false,
+          kind: 'ok',
+        }
+      },
+      release: async (_db, input) => {
+        calls.push(`release:${input.releaseReceiptRef}`)
+        return { kind: 'refused', reason: 'escrow_not_found' }
+      },
+      forfeit: async (_db, input) => {
+        calls.push(`forfeit:${input.forfeitReceiptRef}`)
+        return { kind: 'refused', reason: 'escrow_not_found' }
+      },
+    })
+
+    const holdResult = await adapter.hold(reserveInput)
+    const releaseResult = await adapter.release({
+      acceptanceEventRef: 'nostr.event.' + 'a'.repeat(64),
+      authority: { actorRef: 'agent:requester', kind: 'requester_acceptance' },
+      escrowId: 'escrow_1',
+      nowIso,
+      providerActorRef: 'agent:provider',
+      releaseReceiptId: 'receipt_row_release_adapter',
+      releaseReceiptRef: 'receipt.labor_escrow.release.adapter',
+    })
+    const forfeitResult = await adapter.forfeit({
+      authority: {
+        actorRef: 'agent:validator',
+        kind: 'validator_non_acceptance',
+      },
+      counterpartyActorRef: 'agent:counterparty',
+      escrowId: 'escrow_1',
+      forfeitConditionRef: 'verdict.public.validator.non_performance',
+      forfeitDestination: 'counterparty',
+      forfeitReceiptId: 'receipt_row_forfeit_adapter',
+      forfeitReceiptRef: 'receipt.labor_escrow.forfeit.adapter',
+      nowIso,
+    })
+
+    expect(adapter.kind).toBe('credit_ledger')
+    expect(holdResult.kind).toBe('ok')
+    expect(releaseResult).toEqual({
+      kind: 'refused',
+      reason: 'escrow_not_found',
+    })
+    expect(forfeitResult).toEqual({
+      kind: 'refused',
+      reason: 'escrow_not_found',
+    })
+    expect(calls).toEqual([
+      'hold:receipt.labor_escrow.reserve.escrow_1',
+      'release:receipt.labor_escrow.release.adapter',
+      'forfeit:receipt.labor_escrow.forfeit.adapter',
+    ])
+    expect(JSON.stringify(adapter)).not.toMatch(/lightning|spark|mdk|ark/i)
   })
 })
 

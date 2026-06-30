@@ -1043,3 +1043,30 @@ export const evaluateArtanisLaborBudgetGate = (input: Readonly<{
     remainingTickBudgetMsat: input.perTickBudgetMsat - tickAfter,
   }
 }
+
+export type BondSettlementAdapter = Readonly<{
+  kind: 'credit_ledger'
+  hold: (input: ReserveLaborEscrowInput) => Promise<LaborEscrowResult>
+  release: (input: ReleaseLaborEscrowInput) => Promise<LaborEscrowResult>
+  forfeit: (input: ForfeitLaborEscrowInput) => Promise<LaborEscrowResult>
+}>
+
+export type CreditLedgerBondSettlementAdapterDependencies = Readonly<{
+  reserve: typeof reserveLaborEscrow
+  release: typeof releaseLaborEscrow
+  forfeit: typeof forfeitLaborEscrow
+}>
+
+export const makeCreditLedgerBondSettlementAdapter = (
+  db: D1Database,
+  dependencies: CreditLedgerBondSettlementAdapterDependencies = {
+    forfeit: forfeitLaborEscrow,
+    release: releaseLaborEscrow,
+    reserve: reserveLaborEscrow,
+  },
+): BondSettlementAdapter => ({
+  forfeit: input => dependencies.forfeit(db, input),
+  hold: input => dependencies.reserve(db, input),
+  kind: 'credit_ledger',
+  release: input => dependencies.release(db, input),
+})
