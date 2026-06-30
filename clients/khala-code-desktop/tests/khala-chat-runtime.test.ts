@@ -62,6 +62,10 @@ async function tempWorkspace(): Promise<string> {
   return dir
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
 function jsonResponse(body: unknown, init?: ResponseInit): Response {
   return new Response(JSON.stringify(body), {
     ...init,
@@ -606,15 +610,31 @@ describe("Khala Code desktop chat runtime", () => {
         execute: (_input, context) =>
           Effect.gen(function* () {
             yield* context.emitProgress({
-              events: [{ event: "assignment_run.runtime_progress", phase: "runtime_active" }],
+              events: [{ event: "assignment_run.started", phase: "dispatch" }],
               kind: "codex_spawn_lifecycle",
               lines: [
                 "lifecycle:",
+                "  - assignment_run.started (phase=dispatch)",
+              ],
+              schema: "openagents.khala_code.codex_spawn_progress.v0.1",
+              toolName: "codex_spawn",
+            })
+            yield* Effect.promise(() => sleep(230))
+            yield* context.emitProgress({
+              events: [
+                { event: "assignment_run.started", phase: "dispatch" },
+                { event: "assignment_run.runtime_progress", phase: "runtime_active" },
+              ],
+              kind: "codex_spawn_lifecycle",
+              lines: [
+                "lifecycle:",
+                "  - assignment_run.started (phase=dispatch)",
                 "  - assignment_run.runtime_progress (phase=runtime_active)",
               ],
               schema: "openagents.khala_code.codex_spawn_progress.v0.1",
               toolName: "codex_spawn",
             })
+            yield* Effect.promise(() => sleep(230))
             return khalaToolOk({
               modelText: "Codex spawn: accepted 1/1\n- slot 0: accepted",
               publicSummary: "Codex spawn accepted 1/1 request(s).",
@@ -661,7 +681,16 @@ describe("Khala Code desktop chat runtime", () => {
       event.message.role === "tool" &&
       event.message.id === toolId
     )
-    const progressIndex = toolReplacements.findIndex(event =>
+    const progressReplacements = toolReplacements.filter(event =>
+      event.type === "message_replace" &&
+      event.message.body.includes("codex_spawn: running")
+    )
+    const firstProgressIndex = toolReplacements.findIndex(event =>
+      event.type === "message_replace" &&
+      event.message.body.includes("codex_spawn: running") &&
+      event.message.body.includes("assignment_run.started")
+    )
+    const secondProgressIndex = toolReplacements.findIndex(event =>
       event.type === "message_replace" &&
       event.message.body.includes("codex_spawn: running") &&
       event.message.body.includes("assignment_run.runtime_progress")
@@ -673,8 +702,10 @@ describe("Khala Code desktop chat runtime", () => {
     )
 
     expect(result.ok).toBe(true)
-    expect(progressIndex).toBeGreaterThanOrEqual(0)
-    expect(finalIndex).toBeGreaterThan(progressIndex)
+    expect(progressReplacements).toHaveLength(2)
+    expect(firstProgressIndex).toBeGreaterThanOrEqual(0)
+    expect(secondProgressIndex).toBeGreaterThan(firstProgressIndex)
+    expect(finalIndex).toBeGreaterThan(secondProgressIndex)
     expect(events.some(event =>
       event.type === "tool_event" &&
       event.event.kind === "tool_progress" &&

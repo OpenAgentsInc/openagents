@@ -1403,10 +1403,12 @@ function createLiveToolProgressCard(input: {
   let timer: ReturnType<typeof setTimeout> | null = null
   const emitReplace = () => {
     if (pendingBody === null) return
+    const body = pendingBody
+    pendingBody = null
     input.emit({
       message: {
         ...input.toolTranscript,
-        body: pendingBody,
+        body,
       },
       turnId: input.turnId,
       type: "message_replace",
