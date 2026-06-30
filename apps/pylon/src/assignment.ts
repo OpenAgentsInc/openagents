@@ -28,6 +28,7 @@ import type { PylonCodexAuthValidityProbe } from "./account-connect.js"
 import { probeAndRecordCodexAccountAuthHealth } from "./codex-account-auth-health.js"
 import type { CodexAgentRuntimePhase, CodexAgentRunner } from "./codex-agent-executor.js"
 import {
+  agentRunnerAccountRefHashForLease,
   agentRunnerForLease,
   agentRunnerResolutionForLease,
   agentRunnerServiceForLease,
@@ -972,21 +973,7 @@ function codingRunServiceForLease(lease: PylonAssignmentLease): PylonCodingServi
 }
 
 function codingRunAccountRefHashForLease(lease: PylonAssignmentLease): string | null {
-  const codingAssignment = lease.codingAssignment as { claudeAgent?: unknown; codex?: unknown } | undefined
-  const service = codingRunServiceForLease(lease)
-  const payload =
-    service === "claude"
-      ? codingAssignment?.claudeAgent
-      : service === "codex"
-        ? codingAssignment?.codex
-        : null
-  if (payload === null || typeof payload !== "object") {
-    return null
-  }
-  const accountRefHash = (payload as { accountRefHash?: unknown }).accountRefHash
-  return typeof accountRefHash === "string" && accountRefHash.trim() !== ""
-    ? accountRefHash.trim()
-    : null
+  return agentRunnerAccountRefHashForLease(lease)
 }
 
 function isLegacyLease(value: unknown): value is PylonAssignmentLease {

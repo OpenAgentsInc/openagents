@@ -2343,15 +2343,23 @@ async function localCodexDispatchAccounts(
 
 function khalaCodexCapacityAdvertisementEnv(
   env: NodeJS.ProcessEnv,
-  _requestedSlots: number,
+  requestedSlots: number,
 ): NodeJS.ProcessEnv {
-  const perAccountTarget =
-    positiveIntegerEnv(env.OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY) ??
+  const requestedFloor = Math.max(
+    5,
+    Number.isSafeInteger(requestedSlots) && requestedSlots > 0
+      ? Math.floor(requestedSlots)
+      : 1,
+  )
+  const inheritedPooledConcurrency =
     positiveIntegerEnv(env.OPENAGENTS_PYLON_CODEX_CONCURRENCY) ??
     1
-  const pooledTarget =
-    positiveIntegerEnv(env.OPENAGENTS_PYLON_CODEX_CONCURRENCY) ??
-    perAccountTarget
+  const explicitPerAccountConcurrency =
+    positiveIntegerEnv(env.OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY)
+  const perAccountTarget =
+    explicitPerAccountConcurrency ??
+    Math.max(inheritedPooledConcurrency, requestedFloor)
+  const pooledTarget = Math.max(inheritedPooledConcurrency, requestedFloor)
   return {
     ...env,
     OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY: String(perAccountTarget),

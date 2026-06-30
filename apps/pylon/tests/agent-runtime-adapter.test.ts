@@ -20,10 +20,13 @@ import {
   type AgentRuntimeRunRequest,
 } from "../src/agent-runtime-adapter"
 import {
+  AGENT_RUNNER_NEUTRAL_TASK_KEY,
   AGENT_RUNNER_REGISTRY,
+  agentRunnerAccountRefHashForLease,
   agentRunnerForLease,
   agentRunnerResolutionForLease,
   agentRunnerServiceForLease,
+  agentRunnerTaskPayloadForLease,
 } from "../src/agent-runner-registry"
 import { createBootstrapSummary, parseBootstrapArgs } from "../src/bootstrap"
 import { CLAUDE_AGENT_SDK_PACKAGE } from "../src/claude-agent"
@@ -120,6 +123,7 @@ describe("AgentRuntimeAdapter", () => {
         kind: runner.kind,
         runtime: runner.runtime,
         serviceRef: runner.serviceRef,
+        task: runner.task,
       })),
     ).toEqual([
       {
@@ -147,6 +151,12 @@ describe("AgentRuntimeAdapter", () => {
           },
         },
         serviceRef: "claude",
+        task: {
+          agentKind: "claude_agent_sdk",
+          neutralPayloadKey: AGENT_RUNNER_NEUTRAL_TASK_KEY,
+          payloadKey: "claudeAgent",
+          schema: CLAUDE_AGENT_TASK_SCHEMA,
+        },
       },
       {
         accountProvider: "codex",
@@ -173,6 +183,12 @@ describe("AgentRuntimeAdapter", () => {
           },
         },
         serviceRef: "codex",
+        task: {
+          agentKind: "codex_sdk",
+          neutralPayloadKey: AGENT_RUNNER_NEUTRAL_TASK_KEY,
+          payloadKey: "codex",
+          schema: CODEX_AGENT_TASK_SCHEMA,
+        },
       },
     ])
 
@@ -209,6 +225,57 @@ describe("AgentRuntimeAdapter", () => {
     expect(agentRunnerServiceForLease(claudeLease)).toBe("claude")
     expect(agentRunnerForLease(codexLease)?.adapterKind).toBe("codex")
     expect(agentRunnerServiceForLease(codexLease)).toBe("codex")
+  })
+
+  test("neutral agent payload envelopes resolve through the registry without runner-specific assignment branches", () => {
+    const claudeLease = {
+      schema: "openagents.pylon.assignment_lease.v0.3",
+      assignmentRef: "assignment.public.registry.neutral_claude",
+      leaseRef: "lease.public.registry.neutral_claude",
+      goal: "goal.public.registry.neutral_claude",
+      paymentMode: "no-spend",
+      capabilityRefs: [],
+      codingAssignment: {
+        [AGENT_RUNNER_NEUTRAL_TASK_KEY]: {
+          schema: CLAUDE_AGENT_TASK_SCHEMA,
+          agentKind: "claude_agent_sdk",
+          fixtureRef: CLAUDE_AGENT_SUM_REPAIR_FIXTURE_REF,
+          accountRefHash: "account.pylon.claude_agent.aaaaaaaaaaaa",
+        },
+      },
+      expiresAt: now.toISOString(),
+    } as const
+    const codexLease = {
+      ...claudeLease,
+      assignmentRef: "assignment.public.registry.neutral_codex",
+      leaseRef: "lease.public.registry.neutral_codex",
+      codingAssignment: {
+        [AGENT_RUNNER_NEUTRAL_TASK_KEY]: {
+          schema: CODEX_AGENT_TASK_SCHEMA,
+          agentKind: "codex_sdk",
+          fixtureRef: CODEX_AGENT_SUM_REPAIR_FIXTURE_REF,
+          accountRefHash: "account.pylon.codex.bbbbbbbbbbbb",
+        },
+      },
+    } as const
+
+    expect(agentRunnerForLease(claudeLease)?.kind).toBe("claude_agent")
+    expect(agentRunnerServiceForLease(claudeLease)).toBe("claude")
+    expect(agentRunnerAccountRefHashForLease(claudeLease)).toBe("account.pylon.claude_agent.aaaaaaaaaaaa")
+    expect(agentRunnerTaskPayloadForLease(claudeLease)).toMatchObject({
+      source: "neutral",
+      runner: { kind: "claude_agent" },
+      payload: { agentKind: "claude_agent_sdk" },
+    })
+
+    expect(agentRunnerForLease(codexLease)?.kind).toBe("codex")
+    expect(agentRunnerServiceForLease(codexLease)).toBe("codex")
+    expect(agentRunnerAccountRefHashForLease(codexLease)).toBe("account.pylon.codex.bbbbbbbbbbbb")
+    expect(agentRunnerTaskPayloadForLease(codexLease)).toMatchObject({
+      source: "neutral",
+      runner: { kind: "codex" },
+      payload: { agentKind: "codex_sdk" },
+    })
   })
 
   test("registry resolution rejects ambiguous mixed-runner assignment payloads", () => {
@@ -311,6 +378,48 @@ describe("AgentRuntimeAdapter", () => {
       expect(replayAgentRuntimeEventLog(events).artifactRefs[0]).toStartWith(
         "artifact.pylon.claude_agent_task.patch.",
       )
+    })
+  })
+
+  test("registered adapters execute neutral agent payload envelopes", async () => {
+    const codexAdapter = createCodexAgentRuntimeAdapter({
+      codexAgentProbe: readyCodexProbe,
+      codexAgentRunner: fixingCodexRunner,
+    })
+    await withRequest({
+      [AGENT_RUNNER_NEUTRAL_TASK_KEY]: {
+        schema: CODEX_AGENT_TASK_SCHEMA,
+        agentKind: "codex_sdk",
+        fixtureRef: CODEX_AGENT_SUM_REPAIR_FIXTURE_REF,
+      },
+    }, async (request) => {
+      expect(await Effect.runPromise(codexAdapter.canRun(request))).toBe(true)
+      const projection = replayAgentRuntimeEventLog(await collect(codexAdapter.start(request)))
+      expect(projection).toMatchObject({
+        state: "completed",
+        externalStatus: "completed",
+      })
+      expect(projection.artifactRefs[0]).toStartWith("artifact.pylon.codex_agent_task.patch.")
+    })
+
+    const claudeAdapter = createClaudeCodeAgentRuntimeAdapter({
+      claudeAgentProbe: readyClaudeProbe,
+      claudeAgentRunner: fixingClaudeRunner,
+    })
+    await withRequest({
+      [AGENT_RUNNER_NEUTRAL_TASK_KEY]: {
+        schema: CLAUDE_AGENT_TASK_SCHEMA,
+        agentKind: "claude_agent_sdk",
+        fixtureRef: CLAUDE_AGENT_SUM_REPAIR_FIXTURE_REF,
+      },
+    }, async (request) => {
+      expect(await Effect.runPromise(claudeAdapter.canRun(request))).toBe(true)
+      const projection = replayAgentRuntimeEventLog(await collect(claudeAdapter.start(request)))
+      expect(projection).toMatchObject({
+        state: "completed",
+        externalStatus: "completed",
+      })
+      expect(projection.artifactRefs[0]).toStartWith("artifact.pylon.claude_agent_task.patch.")
     })
   })
 
