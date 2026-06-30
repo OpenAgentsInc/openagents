@@ -1,8 +1,9 @@
 import type { Html } from 'foldkit/html'
 import { html } from 'foldkit/html'
 
+import { statsRouter } from '../../../route'
 import * as Ui from '../../../ui'
-import { ClickedEnterKhala, ClickedExitKhala } from '../message'
+import { ClickedExitKhala } from '../message'
 import type { Message } from '../message'
 import type { PublicKhalaTokensServedModel } from '../model'
 import { formatKhalaTokensServed } from './home'
@@ -38,7 +39,7 @@ export const backArrowClass =
 // full "Khala Tokens Served:" label. `max-w` + `truncate` are the belt-and-
 // suspenders guard; the abbreviation is what actually keeps it tidy on mobile.
 export const khalaTokensServedPillClass =
-  'khala-focus group pointer-events-auto inline-flex max-w-[calc(100vw-2rem)] ' +
+  'khala-focus group pointer-events-auto inline-flex max-w-[calc(100vw-2rem)] cursor-pointer ' +
   'items-center gap-1.5 truncate rounded-full border border-[#3a7bff]/45 ' +
   'bg-[#070b12]/80 px-3 py-1.5 font-mono text-[0.7rem] font-semibold uppercase ' +
   'tracking-[0.12em] text-[#bcd4ff] backdrop-blur-md transition-all duration-300 ' +
@@ -75,10 +76,9 @@ export const backButton = (surface: 'tassadar' | 'khala'): Html => {
 // hero shows this live counter pill where the child routes show "← OpenAgents".
 // It reuses the SAME wrap/pill styling (dark glass, khala-blue, Commit Mono,
 // fixed top-left, reduced-motion safe) and reads the SAME live tokens-served
-// model that powers the hero counter — no parallel data source. Clicking it
-// enters Khala (`ClickedEnterKhala` → NavigateToKhala), the inverse of the back
-// button's navigate-home wire. The digits carry `tabular-nums` so they don't
-// jiggle as the live total ticks up.
+// model that powers the hero counter — no parallel data source. It links to the
+// full public stats page. The digits carry `tabular-nums` so they don't jiggle
+// as the live total ticks up.
 export const khalaTokensServedPill = (
   model: PublicKhalaTokensServedModel,
 ): Html => {
@@ -86,11 +86,10 @@ export const khalaTokensServedPill = (
   return h.div(
     [Ui.className<Message>(backButtonWrapClass)],
     [
-      h.button(
+      h.a(
         [
-          h.Type('button'),
-          h.OnClick(ClickedEnterKhala()),
-          h.AriaLabel('Khala tokens served — open Khala'),
+          h.Href(statsRouter()),
+          h.AriaLabel('Khala tokens served — open stats'),
           h.DataAttribute('landing-khala-tokens-pill', 'home'),
           Ui.className<Message>(khalaTokensServedPillClass),
         ],

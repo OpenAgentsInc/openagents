@@ -15,7 +15,6 @@ import {
 import { update } from '../../../update'
 import { view } from '../../../view'
 import {
-  ClickedEnterKhala,
   CompletedFocusKhalaChatComposer,
   CompletedScrollKhalaChatThread,
 } from '../message'
@@ -26,7 +25,6 @@ import {
 import {
   FocusKhalaChatComposer,
   ScrollKhalaChatLatestTurnIntoView,
-  update as loggedOutUpdate,
 } from '../update'
 import {
   PERSISTENT_SCENE_KEY,
@@ -485,7 +483,7 @@ describe('persistent landing and Khala scene', () => {
   // The live "Khala Tokens Served" pill occupies the top-left slot on the
   // homepage (#6273 follow-up). It reads the SAME live tokens-served model that
   // powers the /khala counter, mirrors the back-button styling, and links to
-  // /khala. The back button (the slot's child-route occupant) is absent on /.
+  // /stats. The back button (the slot's child-route occupant) is absent on /.
   const landingWithTokens = (tokensServed: number) =>
     evo(LoggedOut.init(LandingRoute()), {
       publicKhalaTokensServed: () =>
@@ -512,10 +510,14 @@ describe('persistent landing and Khala scene', () => {
       ).toExist(),
       Scene.expect(Scene.text('Khala Tokens Served:')).toExist(),
       Scene.expect(Scene.text('1,250,000')).toExist(),
-      // It is an accessible, keyboard-activatable control to /khala.
+      // It is an accessible, keyboard-activatable link to /stats, with the same
+      // pointer cursor affordance as the center homepage buttons.
       Scene.expect(
-        Scene.role('button', { name: 'Khala tokens served — open Khala' }),
-      ).toExist(),
+        Scene.role('link', { name: 'Khala tokens served — open stats' }),
+      ).toHaveAttr('href', '/stats'),
+      Scene.expect(
+        Scene.role('link', { name: 'Khala tokens served — open stats' }),
+      ).toHaveClass('cursor-pointer'),
       // The back button (the child-route occupant of the same slot) is NOT on /.
       Scene.expect(Scene.selector('[data-khala-back="home"]')).not.toExist(),
       Scene.expect(Scene.selector('[data-tassadar-back="home"]')).not.toExist(),
@@ -553,15 +555,4 @@ describe('persistent landing and Khala scene', () => {
     )
   })
 
-  test('clicking the homepage pill navigates to /khala (the inverse of the back wire)', () => {
-    // Clicking the pill dispatches `ClickedEnterKhala`; the loggedOut update
-    // returns the `NavigateToKhala` pushUrl command (resolving to
-    // `CompletedNavigateToKhala`) — the same enter-Khala wire the landing CTA
-    // uses, the inverse of the back button's navigate-home.
-    const [, commands] = loggedOutUpdate(
-      LoggedOut.init(LandingRoute()),
-      ClickedEnterKhala(),
-    )
-    expect(commands.map(command => command.name)).toEqual(['NavigateToKhala'])
-  })
 })
