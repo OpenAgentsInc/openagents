@@ -112,8 +112,8 @@ button {
 }
 
 .message-list {
-  display: grid;
-  align-content: end;
+  display: flex;
+  flex-direction: column;
   gap: 24px;
   width: 100%;
   max-width: 768px;
@@ -125,8 +125,14 @@ button {
   scrollbar-color: rgba(79, 208, 255, 0.38) transparent;
 }
 
+.message-list::before {
+  content: "";
+  margin-top: auto;
+}
+
 .message-bubble {
   display: grid;
+  flex: 0 0 auto;
   gap: 8px;
   max-width: min(100%, 44rem);
   color: #f1efe8;
@@ -134,6 +140,7 @@ button {
 }
 
 .message-bubble--user {
+  align-self: flex-end;
   justify-self: end;
   max-width: min(82%, 34rem);
   justify-items: start;
@@ -322,14 +329,30 @@ button {
   color: #fca5a5;
 }
 
+.tool-card[data-status="denied"],
+.tool-card[data-status="unavailable"] {
+  border-color: rgba(251, 191, 36, 0.38);
+  box-shadow: 0 0 22px -12px rgba(251, 191, 36, 0.58);
+}
+
+.tool-card[data-status="denied"] .tool-card-header,
+.tool-card[data-status="unavailable"] .tool-card-header {
+  border-bottom-color: rgba(251, 191, 36, 0.2);
+  background: rgba(34, 22, 5, 0.9);
+}
+
+.tool-card[data-status="denied"] .tool-card-status,
+.tool-card[data-status="unavailable"] .tool-card-status {
+  color: #fcd34d;
+}
+
 .tool-card[data-status="running"] .tool-card-status {
   color: #93c5fd;
 }
 
 .tool-card-output {
   margin: 0;
-  max-height: 320px;
-  overflow-y: auto;
+  overflow-y: visible;
   overflow-x: hidden;
   padding: 9px 10px 10px;
   color: #c6d5e6;

@@ -713,7 +713,7 @@ function executeCodexSpawnTool(
         timeoutMs: optionalInteger(input.timeout_ms),
         verify: optionalString(input.verify),
       }, options)
-      return khalaToolOk({
+      const toolResult = khalaToolOk({
         modelText: renderSpawnResult(result),
         publicSafety: "private",
         publicSummary: `Codex spawn accepted ${result.acceptedCount}/${result.requestedCount} request(s).`,
@@ -725,6 +725,9 @@ function executeCodexSpawnTool(
           results: result.results,
         },
       })
+      return result.acceptedCount === result.requestedCount
+        ? toolResult
+        : { ...toolResult, status: "failed" }
     } catch (error) {
       return khalaToolError("codex_spawn_failed", errorMessage(error))
     }

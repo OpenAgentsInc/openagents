@@ -138,6 +138,11 @@ describe("khala code desktop app shell", () => {
     expect(css).toContain("padding: 0 14px")
     expect(css).toContain("height: 100%")
     expect(css).toContain("padding: 0 4px 18px")
+    expect(css).toContain("display: flex")
+    expect(css).toContain("flex-direction: column")
+    expect(css).toContain(".message-list::before")
+    expect(css).toContain("margin-top: auto")
+    expect(css).not.toContain("align-content: end")
     expect(css).not.toContain("padding: 28px 14px 12px")
     expect(css).not.toContain("padding: 10px 4px 20px")
     expect(css).not.toContain("padding-top: 16px")
@@ -150,9 +155,11 @@ describe("khala code desktop app shell", () => {
   test("keeps user messages right anchored with left-aligned text", async () => {
     const css = await Bun.file(new URL("../src/ui/styles.css", import.meta.url)).text()
 
-    expect(css).toContain(".message-bubble--user {\n  justify-self: end;")
+    expect(css).toContain(".message-bubble--user {\n  align-self: flex-end;")
+    expect(css).toContain("  justify-self: end;")
     expect(css).toContain("  justify-items: start;\n}")
     expect(css).toContain(".message-bubble--user .message-prose {\n  text-align: left;\n}")
+    expect(css).not.toContain("  align-self: stretch;\n}")
     expect(css).not.toContain("  justify-items: end;\n}")
     expect(css).not.toContain(".message-bubble--user .message-prose {\n  text-align: right;\n}")
   })
@@ -168,6 +175,19 @@ describe("khala code desktop app shell", () => {
     expect(main).toContain("requestAnimationFrame(focusComposerInput)")
     expect(css).not.toContain("#composer-input:disabled")
     expect(css).not.toContain("cursor: wait")
+  })
+
+  test("keeps transcript scrolling user-controlled during streaming updates", async () => {
+    const main = await Bun.file(new URL("../src/ui/main.ts", import.meta.url)).text()
+    const css = await Bun.file(new URL("../src/ui/styles.css", import.meta.url)).text()
+
+    expect(main).toContain("const isNearTranscriptEnd")
+    expect(main).toContain("const stickToEnd = isNearTranscriptEnd()")
+    expect(main).toContain("const previousScrollTop = messageList.scrollTop")
+    expect(main).toContain("messageList.scrollTop = previousScrollTop")
+    expect(css).toContain("overflow-y: visible")
+    expect(css).not.toContain("max-height: 320px")
+    expect(css).not.toContain("max-height: 320px;\n  overflow-y: auto")
   })
 
   test("shows a Thinking shimmer until the first streamed response event", async () => {
@@ -291,6 +311,7 @@ describe("khala code desktop app shell", () => {
 
     expect(css).toContain(".tool-card-output")
     expect(css).toContain("overflow-x: hidden")
+    expect(css).toContain("overflow-y: visible")
     expect(css).toContain("overflow-wrap: anywhere")
     expect(css).toContain("white-space: pre-wrap")
   })

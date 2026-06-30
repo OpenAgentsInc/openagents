@@ -229,10 +229,13 @@ const renderThinkingIndicator = (): HTMLElement | null => {
   return article
 }
 
-const scrollToEnd = (): void => {
+const isNearTranscriptEnd = (): boolean =>
+  messageList.scrollHeight - messageList.scrollTop - messageList.clientHeight <= 48
+
+const scrollToEnd = (behavior: ScrollBehavior = "smooth"): void => {
   messageList.scrollTo({
     top: messageList.scrollHeight,
-    behavior: "smooth",
+    behavior,
   })
 }
 
@@ -302,12 +305,20 @@ const canSubmitComposer = (): boolean =>
   (lastTurnFailed && lastSubmittedDraft.trim() !== "")
 
 const renderMessages = (): void => {
+  const stickToEnd = isNearTranscriptEnd()
+  const previousScrollTop = messageList.scrollTop
   const thinking = renderThinkingIndicator()
   messageList.replaceChildren(
     ...messages.map(renderMessage),
     ...(thinking === null ? [] : [thinking]),
   )
-  requestAnimationFrame(scrollToEnd)
+  requestAnimationFrame(() => {
+    if (stickToEnd) {
+      scrollToEnd()
+    } else {
+      messageList.scrollTop = previousScrollTop
+    }
+  })
 }
 
 const buttonLabel = (status: CommandComposerStatus): string => {

@@ -2,7 +2,9 @@ import { afterEach, describe, expect, test } from "bun:test"
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { Effect } from "effect"
 import {
+  createKhalaCodexFleetTools,
   ensureLocalPylon,
   inspectCodexFleet,
   spawnCodexInstances,
@@ -346,5 +348,67 @@ describe("Khala Code Codex fleet tools", () => {
     const requestIndex = calls.findIndex(call => pylonArgs(call)[0] === "khala" && pylonArgs(call)[1] === "request")
     expect(heartbeatIndex).toBeGreaterThanOrEqual(0)
     expect(requestIndex).toBeGreaterThan(heartbeatIndex)
+  })
+
+  test("codex_spawn tool reports zero accepted timed-out dispatches as failed", async () => {
+    const fixture = await tempPylonFixture()
+    const runner = async (input: KhalaCodexFleetCommandInput): Promise<KhalaCodexFleetCommandResult> => {
+      const args = pylonArgs(input)
+      const joined = args.join(" ")
+      if (joined === "provider go-online --json") {
+        return ok({ ok: true, pylonRef: "pylon.local.test" })
+      }
+      if (joined === "codex accounts list --json") {
+        return ok({
+          accounts: [
+            {
+              accountRef: null,
+              homeState: "present",
+              provider: "codex",
+            },
+          ],
+          schema: "openagents.pylon.accounts_list.v0.3",
+        })
+      }
+      if (joined === "accounts status --provider codex --json") {
+        return ok({
+          accounts: [
+            {
+              accountRef: null,
+              provider: "codex",
+              readiness: { state: "ready" },
+            },
+          ],
+          schema: "openagents.pylon.accounts_status.v0.1",
+        })
+      }
+      if (joined === "presence heartbeat --base-url https://openagents.com --json") {
+        return ok({
+          heartbeatRef: "heartbeat.pylon.local.test.1",
+          pylonRef: "pylon.local.test",
+        })
+      }
+      if (args[0] === "khala" && args[1] === "request") {
+        return {
+          exitCode: null,
+          signal: null,
+          stderr: "",
+          stdout: "",
+          timedOut: true,
+        }
+      }
+      return failed(`unexpected command: ${joined}`)
+    }
+    const tool = createKhalaCodexFleetTools({ env: fixture.env, runner })
+      .find(item => item.definition.name === "codex_spawn")
+
+    expect(tool?.execute).toBeDefined()
+    const result = await Effect.runPromise(tool!.execute!({
+      prompt: "Run the public fixture.",
+    }, {} as never))
+
+    expect(result.status).toBe("failed")
+    expect(result.modelOutput.text).toContain("Codex spawn: accepted 0/1")
+    expect(result.modelOutput.text).toContain("command timed out")
   })
 })
