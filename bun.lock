@@ -358,6 +358,7 @@
         "khala": "dist/index.js",
       },
       "dependencies": {
+        "@openagentsinc/khala-tools": "workspace:*",
         "@openai/codex-sdk": "^0.139.0",
       },
       "devDependencies": {
