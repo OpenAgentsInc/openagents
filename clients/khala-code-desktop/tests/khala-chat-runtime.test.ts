@@ -188,6 +188,7 @@ describe("Khala Code desktop chat runtime", () => {
     expect(requestMessages[0]?.content).toContain("usually one or two sentences, then use tools")
     expect(requestMessages[0]?.content).toContain("avoid long front-loaded plans")
     expect(requestMessages[0]?.content).toContain("Pylon/Codex fleet tools")
+    expect(requestMessages[0]?.content).toContain("Do not call or invent codex_terminate")
     expect(requestMessages[0]?.content).toContain("Never end a turn with only tool output")
     expect(requestMessages[0]?.content).toContain("do not infer behavior from filenames alone")
     expect(requestMessages[0]?.content).toContain("If a tool result is truncated")

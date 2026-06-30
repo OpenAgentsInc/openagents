@@ -334,6 +334,7 @@ const codexSpawnToolDefinition: KhalaToolDefinition = {
     "When the user asks for a smoke test or omits repo pins, call this without repo pins; the tool will use the public fixture.",
     "Require complete repo, commit, and verify pins only for real repository work.",
     "Do not run Codex login. If no ready Pylon Codex account exists, tell the user to connect one first.",
+    "This MVP exposes only pylon_ensure, codex_fleet_status, and codex_spawn for Codex fleet control. Do not invent codex_terminate or other Codex fleet tools.",
     "Keep count small; this MVP caps fan-out at four assignments.",
   ],
   renderer: { kind: "codex_spawn", rendererRef: "khala.renderer.codex_spawn.v1" },
@@ -542,8 +543,20 @@ export async function spawnCodexInstances(
   const paths = resolvePylonPaths(env)
   const results: SpawnSlotResult[] = []
   const baseUrl = resolveOpenAgentsBaseUrl(env, input.baseUrl)
+  const heartbeat = await runPylonCommand(["presence", "heartbeat", "--base-url", baseUrl, "--json"], {
+    env,
+    paths,
+    runner: options.runner,
+    timeoutMs: DEFAULT_COMMAND_TIMEOUT_MS,
+  })
+  if (heartbeat.exitCode !== 0) {
+    throw new Error(`Pylon heartbeat failed before Codex spawn: ${safeFailureReason(heartbeat)}`)
+  }
+  const heartbeatPylonRef = stringField(parseJsonObject(heartbeat.stdout), "pylonRef")
+  const targetPylonRef = input.pylonRef ?? heartbeatPylonRef ?? ensure.pylonRef ?? ""
   for (let index = 0; index < input.count; index += 1) {
     const selectedAccount = input.accountRef ?? readyAccounts[index % readyAccounts.length]?.accountRef
+    const selectedCommandAccount = commandAccountRef(selectedAccount)
     const args = [
       "khala",
       "request",
@@ -552,8 +565,8 @@ export async function spawnCodexInstances(
       "--prompt",
       input.prompt,
       "--pylon-ref",
-      input.pylonRef ?? ensure.pylonRef ?? "",
-      ...(selectedAccount === undefined ? [] : ["--account-ref", selectedAccount]),
+      targetPylonRef,
+      ...(selectedCommandAccount === undefined ? [] : ["--account-ref", selectedCommandAccount]),
       ...(input.fixture ? ["--fixture"] : workspacePinArgs(input)),
       "--base-url",
       baseUrl,
@@ -585,7 +598,7 @@ export async function spawnCodexInstances(
 
   return {
     acceptedCount: results.filter(result => result.status === "accepted").length,
-    pylonRef: input.pylonRef ?? ensure.pylonRef,
+    pylonRef: targetPylonRef || null,
     requestedCount: input.count,
     results,
   }
@@ -1144,6 +1157,11 @@ function readyAccountCount(accounts: readonly AccountRow[]): number {
 
 function isReadyAccount(account: AccountRow): boolean {
   return account.readiness === "ready" || account.readiness === "available"
+}
+
+function commandAccountRef(accountRef: string | undefined): string | undefined {
+  if (accountRef === undefined || accountRef === "(default)") return undefined
+  return /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/u.test(accountRef) ? accountRef : undefined
 }
 
 function capacityLabel(available: number | null, max: number | null): string {

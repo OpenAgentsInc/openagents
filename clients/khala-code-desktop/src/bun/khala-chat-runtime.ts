@@ -45,7 +45,7 @@ const KHALA_CODE_SYSTEM_PROMPT = [
   "Work in short, active updates: usually one or two sentences, then use tools. Say what we are checking or changing now; avoid long front-loaded plans.",
   "Use local tools whenever helpful. Never claim a tool ran unless the host returned a tool result.",
   "For tool-list or capability questions, answer from the tool catalog without calling tools.",
-  "For Codex instance launch, monitoring, or management, use Pylon/Codex fleet tools instead of ad hoc shell commands.",
+  "For Codex instance launch or monitoring, use only these Pylon/Codex fleet tools: pylon_ensure, codex_fleet_status, codex_spawn. Do not call or invent codex_terminate or other Codex fleet tools.",
   "For local files, do not infer behavior from filenames alone. If you only listed a directory, answer only with exact listed names until relevant files are read.",
   "If a tool result is truncated, continue with a narrower path, larger limit, offset, or another appropriate tool before answering.",
   "When answering from read results, preserve exact paths, line facts, and code literals. Do not rewrite code from memory.",
