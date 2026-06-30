@@ -16,6 +16,7 @@ export const LaborEscrowState = [
   'reserved',
   'released_to_provider',
   'refunded',
+  'forfeited',
 ] as const
 export type LaborEscrowState = (typeof LaborEscrowState)[number]
 
@@ -23,9 +24,14 @@ export const LaborEscrowTransitionKind = [
   'reserve',
   'release',
   'refund',
+  'forfeit',
 ] as const
 export type LaborEscrowTransitionKind =
   (typeof LaborEscrowTransitionKind)[number]
+
+export const LaborEscrowForfeitDestination = ['counterparty', 'burn'] as const
+export type LaborEscrowForfeitDestination =
+  (typeof LaborEscrowForfeitDestination)[number]
 
 export type LaborEscrowFundingSource =
   | Readonly<{ kind: 'ledger_balance' }>
@@ -34,6 +40,12 @@ export type LaborEscrowFundingSource =
 export type LaborEscrowReleaseAuthority =
   | Readonly<{ kind: 'requester_acceptance'; actorRef: string }>
   | Readonly<{ kind: 'validator_acceptance'; actorRef: string }>
+  | Readonly<{ kind: 'provider'; actorRef: string }>
+  | Readonly<{ kind: 'worker'; actorRef: string }>
+
+export type LaborEscrowForfeitAuthority =
+  | Readonly<{ kind: 'validator_non_acceptance'; actorRef: string }>
+  | Readonly<{ kind: 'requester'; actorRef: string }>
   | Readonly<{ kind: 'provider'; actorRef: string }>
   | Readonly<{ kind: 'worker'; actorRef: string }>
 
@@ -50,6 +62,10 @@ export type LaborEscrowRecord = Readonly<{
   reserveReceiptRef: string
   releaseReceiptRef: string | null
   refundReceiptRef: string | null
+  forfeitReceiptRef: string | null
+  forfeitDestination: LaborEscrowForfeitDestination | null
+  forfeitDestinationActorRef: string | null
+  forfeitConditionRef: string | null
   state: LaborEscrowState
   updatedAt: string
   workRequestId: string
@@ -62,6 +78,8 @@ export type LaborEscrowReceiptRecord = Readonly<{
   evidenceRef: string | null
   idempotencyKey: string
   providerActorRef: string | null
+  forfeitDestination: LaborEscrowForfeitDestination | null
+  forfeitDestinationActorRef: string | null
   publicProjection: LaborEscrowPublicProjection
   receiptId: string
   receiptRef: string
@@ -77,6 +95,8 @@ export type LaborEscrowPublicProjection = Readonly<{
   evidenceRef: string | null
   jobEventRef: string
   providerActorRef: string | null
+  forfeitDestination?: LaborEscrowForfeitDestination | undefined
+  forfeitDestinationActorRef?: string | null | undefined
   receiptRef: string
   requesterActorRef: string
   stateAfter: LaborEscrowState
@@ -115,6 +135,17 @@ export type RefundLaborEscrowInput = Readonly<{
   refundReasonRef: string
 }>
 
+export type ForfeitLaborEscrowInput = Readonly<{
+  authority: LaborEscrowForfeitAuthority
+  counterpartyActorRef?: string | undefined
+  escrowId: string
+  forfeitConditionRef: string
+  forfeitDestination: LaborEscrowForfeitDestination
+  forfeitReceiptId: string
+  forfeitReceiptRef: string
+  nowIso: string
+}>
+
 export type LaborEscrowResult =
   | Readonly<{ kind: 'ok'; escrow: LaborEscrowRecord; idempotent: boolean }>
   | Readonly<{
@@ -126,6 +157,9 @@ export type LaborEscrowResult =
         | 'release_authority_forbidden'
         | 'release_authority_not_requester'
         | 'release_requires_acceptance_evidence'
+        | 'forfeit_authority_forbidden'
+        | 'forfeit_counterparty_required'
+        | 'forfeit_requires_validator_evidence'
         | 'escrow_not_found'
         | 'escrow_not_reserved'
       availableMsat?: number
@@ -192,6 +226,8 @@ export const buildLaborEscrowPublicProjection = (
     evidenceRef: string | null
     jobEventId: string
     providerActorRef: string | null
+    forfeitDestination?: LaborEscrowForfeitDestination | undefined
+    forfeitDestinationActorRef?: string | null | undefined
     receiptRef: string
     requesterActorRef: string
     stateAfter: LaborEscrowState
@@ -204,6 +240,8 @@ export const buildLaborEscrowPublicProjection = (
     amountMsat: input.amountMsat,
     escrowRef: laborEscrowRef(input.escrowId),
     evidenceRef: input.evidenceRef,
+    forfeitDestination: input.forfeitDestination,
+    forfeitDestinationActorRef: input.forfeitDestinationActorRef,
     jobEventRef: laborNostrEventRef(input.jobEventId),
     providerActorRef: input.providerActorRef,
     receiptRef: input.receiptRef,
@@ -311,11 +349,13 @@ const transitionReceiptInsertStatement = (
     jobEventId: string
     nowIso: string
     providerActorRef: string | null
+    forfeitDestination?: LaborEscrowForfeitDestination | undefined
+    forfeitDestinationActorRef?: string | null | undefined
     receiptId: string
     receiptRef: string
     requesterActorRef: string
-    stateAfter: 'released_to_provider' | 'refunded'
-    transitionKind: 'release' | 'refund'
+    stateAfter: 'released_to_provider' | 'refunded' | 'forfeited'
+    transitionKind: 'release' | 'refund' | 'forfeit'
     workRequestId: string
   }>,
 ): LedgerStatement => {
@@ -325,6 +365,8 @@ const transitionReceiptInsertStatement = (
     evidenceRef: input.evidenceRef,
     jobEventId: input.jobEventId,
     providerActorRef: input.providerActorRef,
+    forfeitDestination: input.forfeitDestination,
+    forfeitDestinationActorRef: input.forfeitDestinationActorRef,
     receiptRef: input.receiptRef,
     requesterActorRef: input.requesterActorRef,
     stateAfter: input.stateAfter,
@@ -340,6 +382,8 @@ const transitionReceiptInsertStatement = (
       input.receiptRef,
       input.evidenceRef,
       input.stateAfter,
+      input.forfeitDestination ?? null,
+      input.forfeitDestinationActorRef ?? null,
       JSON.stringify(projection),
       input.nowIso,
       input.escrowId,
@@ -348,11 +392,12 @@ const transitionReceiptInsertStatement = (
             id, escrow_id, idempotency_key, transition_kind,
             work_request_id, requester_actor_ref, provider_actor_ref,
             amount_msat, receipt_ref, evidence_ref, state_after,
+            forfeit_destination, forfeit_destination_actor_ref,
             public_projection_json, created_at
           )
           SELECT ?, e.id, ?, '${input.transitionKind}',
                  e.work_request_id, e.requester_actor_ref, ?,
-                 e.amount_msat, ?, ?, ?, ?, ?
+                 e.amount_msat, ?, ?, ?, ?, ?, ?, ?
             FROM labor_escrows e
            WHERE e.id = ?
              AND e.state = 'reserved'`,
@@ -532,6 +577,144 @@ export const refundLaborEscrowStatements = (
   ]
 }
 
+export const forfeitLaborEscrowStatements = (
+  escrow: LaborEscrowRecord,
+  input: ForfeitLaborEscrowInput,
+): ReadonlyArray<LedgerStatement> => {
+  const conditionRef = input.forfeitConditionRef.trim()
+  if (conditionRef.length === 0) {
+    throw new LaborEscrowUnsafe('forfeit requires validator evidence ref')
+  }
+
+  assertLaborEscrowPublicSafe(conditionRef, 'forfeit condition ref')
+  const maybeForfeitDestinationActorRef =
+    input.forfeitDestination === 'counterparty'
+      ? input.counterpartyActorRef?.trim()
+      : null
+
+  if (
+    input.forfeitDestination === 'counterparty' &&
+    (maybeForfeitDestinationActorRef === null ||
+      maybeForfeitDestinationActorRef === undefined ||
+      maybeForfeitDestinationActorRef.length === 0)
+  ) {
+    throw new LaborEscrowUnsafe('forfeit counterparty actor ref is required')
+  }
+
+  const forfeitDestinationActorRef = maybeForfeitDestinationActorRef ?? null
+
+  if (forfeitDestinationActorRef !== null) {
+    assertLaborEscrowPublicSafe(
+      forfeitDestinationActorRef,
+      'forfeit destination actor ref',
+    )
+  }
+
+  const forfeitProjection = buildLaborEscrowPublicProjection({
+    amountMsat: escrow.amountMsat,
+    escrowId: escrow.escrowId,
+    evidenceRef: conditionRef,
+    forfeitDestination: input.forfeitDestination,
+    forfeitDestinationActorRef,
+    jobEventId: escrow.jobEventId,
+    providerActorRef: escrow.providerActorRef,
+    receiptRef: input.forfeitReceiptRef,
+    requesterActorRef: escrow.requesterActorRef,
+    stateAfter: 'forfeited',
+    transitionKind: 'forfeit',
+    workRequestId: escrow.workRequestId,
+  })
+
+  const debitRequesterStatement: LedgerStatement = {
+    params: [
+      escrow.amountMsat,
+      escrow.amountMsat,
+      input.nowIso,
+      escrow.requesterActorRef,
+      input.forfeitReceiptId,
+    ],
+    sql: `UPDATE agent_balances
+          SET held_msat = held_msat - ?,
+              balance_msat = balance_msat - ?,
+              updated_at = ?
+          WHERE actor_ref = ?
+            AND EXISTS (
+              SELECT 1 FROM labor_escrow_receipts WHERE id = ?
+            )`,
+  }
+
+  const creditCounterpartyStatements: ReadonlyArray<LedgerStatement> =
+    input.forfeitDestination === 'counterparty' &&
+    forfeitDestinationActorRef !== null
+      ? [
+          ensureBalanceRowStatement(forfeitDestinationActorRef, input.nowIso),
+          {
+            params: [
+              escrow.amountMsat,
+              input.nowIso,
+              forfeitDestinationActorRef,
+              input.forfeitReceiptId,
+            ],
+            sql: `UPDATE agent_balances
+                  SET balance_msat = balance_msat + ?, updated_at = ?
+                  WHERE actor_ref = ?
+                    AND EXISTS (
+                      SELECT 1 FROM labor_escrow_receipts WHERE id = ?
+                    )`,
+          },
+        ]
+      : []
+
+  return [
+    transitionReceiptInsertStatement({
+      amountMsat: escrow.amountMsat,
+      escrowId: escrow.escrowId,
+      evidenceRef: conditionRef,
+      forfeitDestination: input.forfeitDestination,
+      forfeitDestinationActorRef,
+      idempotencyKey: `${escrow.idempotencyKey}:forfeit`,
+      jobEventId: escrow.jobEventId,
+      nowIso: input.nowIso,
+      providerActorRef: escrow.providerActorRef,
+      receiptId: input.forfeitReceiptId,
+      receiptRef: input.forfeitReceiptRef,
+      requesterActorRef: escrow.requesterActorRef,
+      stateAfter: 'forfeited',
+      transitionKind: 'forfeit',
+      workRequestId: escrow.workRequestId,
+    }),
+    {
+      params: [
+        input.forfeitReceiptRef,
+        input.forfeitDestination,
+        forfeitDestinationActorRef,
+        conditionRef,
+        JSON.stringify(forfeitProjection),
+        input.nowIso,
+        input.nowIso,
+        escrow.escrowId,
+        input.forfeitReceiptId,
+      ],
+      sql: `UPDATE labor_escrows
+            SET state = 'forfeited',
+                forfeit_receipt_ref = ?,
+                forfeit_destination = ?,
+                forfeit_destination_actor_ref = ?,
+                forfeit_condition_ref = ?,
+                public_projection_json = ?,
+                updated_at = ?,
+                forfeited_at = ?
+            WHERE id = ?
+              AND state = 'reserved'
+              AND EXISTS (
+                SELECT 1 FROM labor_escrow_receipts WHERE id = ?
+              )`,
+    },
+    debitRequesterStatement,
+    ...creditCounterpartyStatements,
+  ]
+}
+
 type LaborEscrowRow = Readonly<{
   amount_msat: number
   created_at: string
@@ -545,6 +728,10 @@ type LaborEscrowRow = Readonly<{
   reserve_receipt_ref: string
   release_receipt_ref: string | null
   refund_receipt_ref: string | null
+  forfeit_receipt_ref: string | null
+  forfeit_destination: LaborEscrowForfeitDestination | null
+  forfeit_destination_actor_ref: string | null
+  forfeit_condition_ref: string | null
   state: LaborEscrowState
   updated_at: string
   work_request_id: string
@@ -569,6 +756,10 @@ const escrowFromRow = (row: LaborEscrowRow): LaborEscrowRecord => ({
   reserveReceiptRef: row.reserve_receipt_ref,
   releaseReceiptRef: row.release_receipt_ref,
   refundReceiptRef: row.refund_receipt_ref,
+  forfeitReceiptRef: row.forfeit_receipt_ref,
+  forfeitDestination: row.forfeit_destination,
+  forfeitDestinationActorRef: row.forfeit_destination_actor_ref,
+  forfeitConditionRef: row.forfeit_condition_ref,
   state: row.state,
   updatedAt: row.updated_at,
   workRequestId: row.work_request_id,
@@ -727,6 +918,50 @@ export const refundLaborEscrow = async (
     return { kind: 'refused', reason: 'escrow_not_found' }
   }
   return { escrow: refunded, idempotent: false, kind: 'ok' }
+}
+
+export const forfeitLaborEscrow = async (
+  db: D1Database,
+  input: ForfeitLaborEscrowInput,
+): Promise<LaborEscrowResult> => {
+  if (input.authority.kind !== 'validator_non_acceptance') {
+    return { kind: 'refused', reason: 'forfeit_authority_forbidden' }
+  }
+
+  if (input.forfeitConditionRef.trim().length === 0) {
+    return {
+      kind: 'refused',
+      reason: 'forfeit_requires_validator_evidence',
+    }
+  }
+
+  if (
+    input.forfeitDestination === 'counterparty' &&
+    (input.counterpartyActorRef === undefined ||
+      input.counterpartyActorRef.trim().length === 0)
+  ) {
+    return { kind: 'refused', reason: 'forfeit_counterparty_required' }
+  }
+
+  const escrow = await readLaborEscrowById(db, input.escrowId)
+  if (escrow === null) {
+    return { kind: 'refused', reason: 'escrow_not_found' }
+  }
+
+  if (escrow.state !== 'reserved') {
+    return {
+      currentState: escrow.state,
+      kind: 'refused',
+      reason: 'escrow_not_reserved',
+    }
+  }
+
+  await runLedgerStatements(db, forfeitLaborEscrowStatements(escrow, input))
+  const forfeited = await readLaborEscrowById(db, input.escrowId)
+  if (forfeited === null) {
+    return { kind: 'refused', reason: 'escrow_not_found' }
+  }
+  return { escrow: forfeited, idempotent: false, kind: 'ok' }
 }
 
 export const reserveInputFromForumWorkRequest = (

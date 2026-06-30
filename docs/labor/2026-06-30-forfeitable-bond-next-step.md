@@ -156,7 +156,7 @@ actually ingestible. Without it, the bond is a schema with no path to the ledger
 | Phase | Deliverable | Acceptance |
 | --- | --- | --- |
 | FB-1 | `packages/nip90/src/lbr-bond.ts` + tests | **landed 2026-06-30 in package contract**: ref-only round-trip; payment-material rejected at decode; release XOR forfeit; closeout digest binds bond outcome; `bun run --cwd packages/nip90 test` and `bun run --cwd packages/nip90 typecheck` green |
-| FB-2 | Ledger `forfeit` terminal state + invariants | validator-only forfeit; worker cannot self-trigger; fail-closed, idempotent; refund vs forfeit destination correct; INVARIANTS.md updated with the new state + a regression test |
+| FB-2 | Ledger `forfeit` terminal state + invariants | **landed 2026-06-30 in the Worker credit ledger**: validator-only forfeit; worker/provider/requester cannot self-trigger; fail-closed, idempotent; refund/release after forfeit cannot move balances; counterparty vs burn destination covered; INVARIANTS.md updated with regression coverage |
 | FB-3 | `BondSettlementAdapter` seam + credit-ledger impl | adapter interface; ledger adapter passes; no rail imported; no-spend invariant preserved |
 | FB-4 | Minimal relay→DB quote/offer ingestion (P1) | `recordForumWorkRequestOffer` has a live caller; a relay kind-7000 quote+bond becomes an API offer; existing labor-market tests stay green |
 
@@ -206,7 +206,7 @@ Read-only reference (study, do not vendor):
 | Phase | Status |
 | --- | --- |
 | FB-1 — `lbr-bond.ts` contract + tests | implemented in `packages/nip90/src/lbr-bond.ts`; exported by `packages/nip90/src/index.ts`; closeout digest binding implemented in `packages/nip90/src/lbr-closeout.ts`; verified by `bun run --cwd packages/nip90 test` and `bun run --cwd packages/nip90 typecheck` |
-| FB-2 — ledger `forfeit` terminal state | not started |
+| FB-2 — ledger `forfeit` terminal state | implemented in `apps/openagents.com/workers/api/src/labor-escrow.ts`; migration `0261_labor_escrow_forfeit.sql` widens the D1 CHECK state; invariant ledger updated; verified by `bun --cwd apps/openagents.com/workers/api test src/labor-escrow.test.ts src/labor-live-rehearsal.test.ts` and `bun run --cwd apps/openagents.com/workers/api typecheck` |
 | FB-3 — `BondSettlementAdapter` seam | not started |
 | FB-4 — relay→DB quote/offer bridge (P1) | not started |
 
@@ -215,3 +215,9 @@ same no-spend lane this workspace uses), each phase running the package/worker
 verifier before merge. The 2026-06-30 FB-1 pass was implemented directly in the
 owner checkout after confirming Pylon fleet status was online and idle; it adds
 no ledger state, no rail adapter, and no public promise upgrade.
+
+The 2026-06-30 FB-2 pass is still credit-ledger-only. It adds no Lightning hold
+invoice, no Ark/VTXO forfeit transaction, no payout settlement, and no public
+promise upgrade. It gives the platform a durable, receipt-backed terminal
+`forfeited` state so the later settlement adapter can target a real invariant
+instead of inventing slashing semantics at the rail boundary.

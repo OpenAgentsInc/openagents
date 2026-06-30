@@ -324,6 +324,38 @@ active, even when the underlying Codex runner is otherwise silent:
 - post-run: no active marker files remained and capacity returned to `10/10`,
   with both ready account buckets back at `5/5`.
 
+Verified again on 2026-06-30 after the FB-2 ledger implementation pass, using
+the Khala Code Desktop headless tool path (`spawnCodexInstances`) rather than a
+direct Pylon CLI call:
+
+- pre-run capacity was `10/10`, split `5/5` across
+  `account.pylon.codex.4db4cc18ebc55f39fb4da894` and
+  `account.pylon.codex.651c03fed68925d7acb2c02f`; active marker count was `0`.
+- the five-slot smoke ran from `2026-06-30T12:31:33.968Z` to
+  `2026-06-30T12:33:41.856Z` and completed `acceptedCount = 5`,
+  `requestedCount = 5`.
+- every slot returned `autoRunOk = true`, `exitCode = 0`, `state: accepted`,
+  `assignment run: completed`, `closeout: accepted`, and `blocker refs: none`.
+- selected account refs were weighted across the ready named pool:
+  `codex-2`, `status`, `codex-2`, `status`, `codex-2`.
+- assignment refs:
+  `assignment.public.khala_coding.chatcmpl_a112ae0c42bb4ae7bdaa80b90ac6eff7`,
+  `assignment.public.khala_coding.chatcmpl_c02cc15ff7264596a2f53c390b5d5adc`,
+  `assignment.public.khala_coding.chatcmpl_7934939c5d41421aa1a6ba4ad0442254`,
+  `assignment.public.khala_coding.chatcmpl_0c85d84c0cbc45a7a1639fa51d053d78`,
+  `assignment.public.khala_coding.chatcmpl_c3fa6b5f8a38431ba3c854e93cdbb30d`.
+- proof rows reported `422804` verified tokens total; public counter evidence
+  returned `state = increment_observed`, `delta = 543763`,
+  `expectedMinimumDelta = 422804`.
+- post-run active marker count returned to `0`; capacity returned to `10/10`,
+  with both ready account buckets back at `5/5`.
+- process-list noise alone is not capacity evidence. This machine also had
+  historical `~/.codex-supervisor/durable-runner-pool.sh` workers spawning
+  short `pylon assignment run-no-spend --json` probes. Treat
+  `$PYLON_HOME/active-assignment-runs/*.json` plus
+  `ownCapacityDispatch.loadRefs` as the source of truth for whether Codex slots
+  are actually busy.
+
 ## Current A2A Transaction Step: Provider-Bond Contract
 
 Checked again on 2026-06-30 before the first forfeitable-bond implementation
@@ -336,6 +368,16 @@ pass:
   remained `credentials_missing`
 - dispatch capacity reported `10/10` from the per-account projection; this is
   the value Desktop should show and plan against.
+
+Checked again on 2026-06-30 before the FB-2 ledger implementation pass:
+
+- local Pylon online: `pylon.33afd48282a649047e3a`
+- dispatch capacity reported `10/10`, split `5/5` across two ready Codex account
+  buckets
+- ready Codex refs included `codex-2`, `status`, and the unnamed default ref;
+  `codex` remained `credentials_revoked`
+- load refs reported `busy=0` and `queued=0` for the aggregate and both ready
+  account buckets
 
 The next concrete step toward agents transacting naturally with each other
 (Nostr negotiation, Lightning/MDK/Ark later, forfeitable funds) is tracked in
@@ -353,11 +395,34 @@ bun run --cwd packages/nip90 typecheck
 bun run --cwd packages/nip90 test
 ```
 
-This is still protocol-only. It moves no sats, creates no hold invoice, imports
-no Lightning/Ark rail, changes no escrow ledger state, and does not upgrade any
-public promise. The next real implementation phase is FB-2: add the validator-
-only credit-ledger `forfeit` terminal state and update
-`apps/openagents.com/INVARIANTS.md` with regression coverage.
+FB-2 is now the Worker credit-ledger step:
+
+- `apps/openagents.com/workers/api/src/labor-escrow.ts` adds the terminal
+  `forfeited` escrow state and `forfeit` receipt transition.
+- Only `validator_non_acceptance` may trigger `forfeit`; requester, provider,
+  and worker authorities fail closed.
+- A counterparty forfeit debits the held claim and credits the modeled
+  counterparty exactly once. A burn forfeit debits the held claim without
+  crediting a spender.
+- Release/refund after forfeit and double-forfeit are no-ops at the balance
+  layer.
+- `apps/openagents.com/workers/api/migrations/0261_labor_escrow_forfeit.sql`
+  widens the D1 CHECK constraints and stores the forfeit receipt/destination
+  refs.
+- `apps/openagents.com/INVARIANTS.md` records that this is credit-ledger
+  forfeiture only, not Lightning/on-chain settlement.
+
+Verification:
+
+```sh
+bun --cwd apps/openagents.com/workers/api test src/labor-escrow.test.ts src/labor-live-rehearsal.test.ts
+bun run --cwd apps/openagents.com/workers/api typecheck
+```
+
+This still moves no sats, creates no hold invoice, imports no Lightning/Ark
+rail, and does not upgrade any public promise. The next real implementation
+phase is FB-3: add the `BondSettlementAdapter` seam with the credit-ledger
+implementation first, keeping Spark/MDK/Ark adapters behind future proof gates.
 
 The summary should include:
 

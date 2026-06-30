@@ -48,6 +48,11 @@ type ModeledEscrow = Readonly<{
   requesterActorRef: string
   reserveReceiptRef: string
   releaseReceiptRef: string | null
+  refundReceiptRef: string | null
+  forfeitReceiptRef: string | null
+  forfeitDestination: 'counterparty' | 'burn' | null
+  forfeitDestinationActorRef: string | null
+  forfeitConditionRef: string | null
   state: LaborEscrowState
   workRequestId: string
 }>
@@ -145,7 +150,11 @@ class RehearsalLedgerModel {
       requesterActorRef: escrow.requesterActorRef,
       reserveReceiptRef: escrow.reserveReceiptRef,
       releaseReceiptRef: escrow.releaseReceiptRef,
-      refundReceiptRef: null,
+      refundReceiptRef: escrow.refundReceiptRef,
+      forfeitReceiptRef: escrow.forfeitReceiptRef,
+      forfeitDestination: escrow.forfeitDestination,
+      forfeitDestinationActorRef: escrow.forfeitDestinationActorRef,
+      forfeitConditionRef: escrow.forfeitConditionRef,
       state: escrow.state,
       updatedAt: nowIso,
       workRequestId: escrow.workRequestId,
@@ -179,6 +188,11 @@ class RehearsalLedgerModel {
         requesterActorRef: String(params[3]),
         reserveReceiptRef: String(params[7]),
         releaseReceiptRef: null,
+        refundReceiptRef: null,
+        forfeitReceiptRef: null,
+        forfeitDestination: null,
+        forfeitDestinationActorRef: null,
+        forfeitConditionRef: null,
         state: 'reserved',
         workRequestId: String(params[2]),
       })
@@ -217,7 +231,7 @@ class RehearsalLedgerModel {
       sql.startsWith('INSERT INTO labor_escrow_receipts') &&
       sql.includes('SELECT')
     ) {
-      const escrowId = String(params[8])
+      const escrowId = String(params[10])
       const escrow = this.escrows.get(escrowId)
       if (escrow !== undefined && escrow.state === 'reserved') {
         this.insertReceipt({
