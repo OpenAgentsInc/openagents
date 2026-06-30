@@ -15,6 +15,12 @@ type VNodeLike = Readonly<{
 const isVNodeLike = (value: unknown): value is VNodeLike =>
   typeof value === 'object' && value !== null
 
+const styleToString = (style: Record<string, unknown>): string =>
+  Object.entries(style)
+    .filter(([, value]) => value !== false && value !== undefined && value !== null)
+    .map(([name, value]) => `${name}: ${String(value)}`)
+    .join('; ')
+
 const attrsToString = (node: VNodeLike): string => {
   const attrs = node.data?.attrs ?? {}
   const props = node.data?.props ?? {}
@@ -42,12 +48,6 @@ const attrsToString = (node: VNodeLike): string => {
     )
     .join('')
 }
-
-const styleToString = (style: Record<string, unknown>): string =>
-  Object.entries(style)
-    .filter(([, value]) => value !== undefined && value !== null)
-    .map(([name, value]) => `${name}: ${String(value)}`)
-    .join('; ')
 
 export const renderHtml = (html: Html): string => {
   if (html === null || !isVNodeLike(html)) {
