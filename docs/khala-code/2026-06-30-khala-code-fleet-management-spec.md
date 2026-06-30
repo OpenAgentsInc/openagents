@@ -90,7 +90,9 @@ the primitives we already have as one coherent operator UI.
 (#6876); `provider go-online` capacity projection
 (`availableCodexAssignments`, per-account buckets); live assignment lifecycle
 events (`assignment_run.accepted/runtime_progress/completed`) emitted by the
-dispatcher.
+dispatcher. For the part-two recording slice, `codex_fleet_status` now also
+projects per-account free/busy/queued slots, active assignment rows, and a safe
+Pylon APM token-rate summary with exact/pending/not-measured states.
 
 **Gap:** a single **fleet graph / board** that unifies accounts → readiness →
 advertised capacity → active assignments → which tools/MCP/filesystem roots each
@@ -171,6 +173,10 @@ per-turn rows posted from the worker); redacted owner-only **ATIF traces**
 archive (`pylon_codex_raw_event_chunks`); per-assignment **proof** + **closeout**
 checklists (`khala proof` / `khala closeout`); Rampart PII redaction on the
 desktop chat boundary; the public token counters as projections of exact rows.
+The desktop `codex_fleet_status` path now surfaces exact token rows and
+tokens/minute when Pylon APM/proof evidence provides them, reports active
+assignments as `pending` while rows have not arrived, and reports
+`not_measured` instead of fabricating zero when no evidence source is available.
 
 **Gap:** an in-app **run timeline / trace viewer** (per worker, per assignment)
 that renders the lifecycle events + closeout + token cost without leaking raw

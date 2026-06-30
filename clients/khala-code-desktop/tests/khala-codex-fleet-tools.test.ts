@@ -340,6 +340,239 @@ describe("Khala Code Codex fleet tools", () => {
     expect(toolResult.modelOutput.text).not.toContain("durable-runner-pool")
   })
 
+  test("codex_fleet_status renders account slots and exact token-rate evidence", async () => {
+    const fixture = await tempPylonFixture()
+    const markerRoot = join(fixture.home, "active-assignment-runs")
+    await mkdir(markerRoot, { recursive: true })
+    const startedAt = new Date(Date.now() - 120_000).toISOString()
+    await writeFile(join(markerRoot, "assignment.public.one.json"), JSON.stringify({
+      accountRefHash: MATRIX_ACCOUNT_REF_HASH,
+      assignmentRef: "assignment.public.one",
+      leaseRef: "lease.public.one",
+      refreshedAt: new Date().toISOString(),
+      runRef: "assignment_run.local.one",
+      schema: "openagents.pylon.active_assignment_run.v0.1",
+      service: "codex",
+      startedAt,
+    }))
+
+    const runner = async (input: KhalaCodexFleetCommandInput): Promise<KhalaCodexFleetCommandResult> => {
+      const args = pylonArgs(input)
+      const joined = args.join(" ")
+      if (joined === "provider go-online --json") {
+        return ok({
+          ok: true,
+          ownCapacityDispatch: {
+            availableCodexAssignments: 4,
+            codexAccounts: [{
+              accountKey: MATRIX_ACCOUNT_KEY,
+              available: 4,
+              busy: 1,
+              queued: 0,
+              ready: 5,
+            }],
+            maxCodexAssignments: 5,
+          },
+          pylonRef: "pylon.local.test",
+        })
+      }
+      if (joined === "codex accounts list --json") {
+        return ok({
+          accounts: [{
+            accountRef: "codex-2",
+            accountRefHash: MATRIX_ACCOUNT_REF_HASH,
+            homeState: "present",
+            provider: "codex",
+          }],
+          schema: "openagents.pylon.accounts_list.v0.3",
+        })
+      }
+      if (joined === "accounts status --provider codex --json") {
+        return ok({
+          accounts: [{
+            accountRef: "codex-2",
+            accountRefHash: MATRIX_ACCOUNT_REF_HASH,
+            provider: "codex",
+            readiness: { state: "ready" },
+          }],
+          ownCapacityDispatch: {
+            availableCodexAssignments: 4,
+            codexAccounts: [{
+              accountKey: MATRIX_ACCOUNT_KEY,
+              available: 4,
+              busy: 1,
+              queued: 0,
+              ready: 5,
+            }],
+            maxCodexAssignments: 5,
+          },
+          schema: "openagents.pylon.accounts_status.v0.1",
+        })
+      }
+      if (joined === "khala apm --base-url https://openagents.com --json") {
+        return ok({
+          active: {
+            adjustedTokensPerMinute: 342,
+            inFlightTokens: 600,
+            inFlightTokensPerMinute: 300,
+            serverAssignmentCount: 1,
+            serverAssignments: [{
+              assignmentRef: "assignment.public.one",
+              elapsedMs: 120_000,
+              source: "fleet.activeAssignments.tokensSoFar",
+              tokenCountKind: "exact",
+              tokens: 600,
+              tokensPerMinute: 300,
+            }],
+          },
+          counted: {
+            completedTokenRows: 3,
+            completedTokensPerMinute: 42,
+            sourceRefs: ["d1:token_usage_events"],
+          },
+          observedAt: "2026-06-30T18:00:00.000Z",
+          schema: "openagents.pylon.khala_apm.v0.1",
+        })
+      }
+      return failed(`unexpected command: ${joined}`)
+    }
+
+    const result = await inspectCodexFleet({ includeProcesses: false }, { env: fixture.env, runner })
+
+    expect(result.accounts[0]?.capacity).toEqual({
+      available: 4,
+      busy: 1,
+      queued: 0,
+      ready: 5,
+    })
+    expect(result.tokenRate).toMatchObject({
+      completedStatus: "exact",
+      completedTokenRows: 3,
+      completedTokensPerMinute: 42,
+      inFlightTokens: 600,
+      inFlightTokensPerMinute: 300,
+    })
+    expect(result.activeAssignments[0]?.tokenRate).toMatchObject({
+      status: "exact",
+      tokenCountKind: "exact",
+      tokens: 600,
+      tokensPerMinute: 300,
+    })
+
+    const tool = createKhalaCodexFleetTools({ env: fixture.env, runner })
+      .find(item => item.definition.name === "codex_fleet_status")
+    const toolResult = await Effect.runPromise(tool!.execute!({ include_processes: false }, {} as never))
+
+    expect(toolResult.modelOutput.text).toContain("- codex-2: ready, slots 4/5 available, busy 1, queued 0")
+    expect(toolResult.modelOutput.text).toContain("Token rate: exact 42 tokens/min completed window across 3 exact row(s)")
+    expect(toolResult.modelOutput.text).toContain("assignment.public.one")
+    expect(toolResult.modelOutput.text).toContain("tokens=exact 600, 300 tokens/min, kind=exact")
+    expect(JSON.stringify(toolResult.ui)).not.toContain("rawSnapshot")
+  })
+
+  test("codex_fleet_status keeps no-rows-yet token rate pending", async () => {
+    const fixture = await tempPylonFixture()
+    const markerRoot = join(fixture.home, "active-assignment-runs")
+    await mkdir(markerRoot, { recursive: true })
+    await writeFile(join(markerRoot, "assignment.public.pending.json"), JSON.stringify({
+      assignmentRef: "assignment.public.pending",
+      leaseRef: "lease.public.pending",
+      refreshedAt: new Date().toISOString(),
+      runRef: "assignment_run.local.pending",
+      schema: "openagents.pylon.active_assignment_run.v0.1",
+      service: "codex",
+      startedAt: new Date(Date.now() - 30_000).toISOString(),
+    }))
+
+    const runner = async (input: KhalaCodexFleetCommandInput): Promise<KhalaCodexFleetCommandResult> => {
+      const args = pylonArgs(input)
+      const joined = args.join(" ")
+      if (joined === "provider go-online --json") {
+        return ok({
+          ok: true,
+          ownCapacityDispatch: { availableCodexAssignments: 0, maxCodexAssignments: 1 },
+          pylonRef: "pylon.local.test",
+        })
+      }
+      if (joined === "codex accounts list --json") {
+        return ok({ accounts: [], schema: "openagents.pylon.accounts_list.v0.3" })
+      }
+      if (joined === "accounts status --provider codex --json") {
+        return ok({ accounts: [], schema: "openagents.pylon.accounts_status.v0.1" })
+      }
+      if (joined === "khala apm --base-url https://openagents.com --json") {
+        return ok({
+          active: {
+            serverAssignmentCount: 1,
+            serverAssignments: [{
+              assignmentRef: "assignment.public.pending",
+              elapsedMs: 30_000,
+              source: "unavailable",
+              tokens: 0,
+              tokensPerMinute: 0,
+            }],
+          },
+          counted: {
+            completedTokensPerMinute: 0,
+            sourceRefs: ["d1:token_usage_events"],
+          },
+          schema: "openagents.pylon.khala_apm.v0.1",
+        })
+      }
+      return failed(`unexpected command: ${joined}`)
+    }
+    const tool = createKhalaCodexFleetTools({ env: fixture.env, runner })
+      .find(item => item.definition.name === "codex_fleet_status")
+
+    const toolResult = await Effect.runPromise(tool!.execute!({ include_processes: false }, {} as never))
+
+    expect(toolResult.modelOutput.text).toContain("Token rate: pending exact token rows")
+    expect(toolResult.modelOutput.text).toContain("tokens=pending exact rows")
+    expect(toolResult.modelOutput.text).not.toContain("pending 0 tokens/min")
+    expect((toolResult.ui as { tokenRate?: { completedStatus?: string } }).tokenRate?.completedStatus)
+      .toBe("pending")
+  })
+
+  test("codex_fleet_status preserves exact zero when token rows exist", async () => {
+    const fixture = await tempPylonFixture()
+    const runner = async (input: KhalaCodexFleetCommandInput): Promise<KhalaCodexFleetCommandResult> => {
+      const args = pylonArgs(input)
+      const joined = args.join(" ")
+      if (joined === "provider go-online --json") {
+        return ok({ ok: true, pylonRef: "pylon.local.test" })
+      }
+      if (joined === "codex accounts list --json") {
+        return ok({ accounts: [], schema: "openagents.pylon.accounts_list.v0.3" })
+      }
+      if (joined === "accounts status --provider codex --json") {
+        return ok({ accounts: [], schema: "openagents.pylon.accounts_status.v0.1" })
+      }
+      if (joined === "khala apm --base-url https://openagents.com --json") {
+        return ok({
+          active: { serverAssignmentCount: 0, serverAssignments: [] },
+          counted: {
+            completedTokenRows: 1,
+            completedTokensPerMinute: 0,
+            sourceRefs: ["d1:token_usage_events"],
+          },
+          schema: "openagents.pylon.khala_apm.v0.1",
+        })
+      }
+      return failed(`unexpected command: ${joined}`)
+    }
+    const tool = createKhalaCodexFleetTools({ env: fixture.env, runner })
+      .find(item => item.definition.name === "codex_fleet_status")
+
+    const toolResult = await Effect.runPromise(tool!.execute!({ include_processes: false }, {} as never))
+
+    expect(toolResult.modelOutput.text).toContain("Token rate: exact 0 tokens/min completed window across 1 exact row(s)")
+    expect((toolResult.ui as { tokenRate?: { completedStatus?: string; completedTokensPerMinute?: number } })
+      .tokenRate).toMatchObject({
+        completedStatus: "exact",
+        completedTokensPerMinute: 0,
+      })
+  })
+
   test("spawnCodexInstances defaults unpinned smoke requests to the Pylon fixture", async () => {
     const fixture = await tempPylonFixture()
     const calls: KhalaCodexFleetCommandInput[] = []

@@ -80,9 +80,17 @@ type AccountRow = {
   readonly accountKey: string | null
   readonly accountRef: string
   readonly accountRefHash: string | null
+  readonly capacity: AccountCapacityRow | null
   readonly provider: "codex"
   readonly quotaState: string | null
   readonly readiness: string
+}
+
+type AccountCapacityRow = {
+  readonly available: number | null
+  readonly busy: number | null
+  readonly queued: number | null
+  readonly ready: number | null
 }
 
 type FleetStatusResult = {
@@ -93,12 +101,48 @@ type FleetStatusResult = {
   readonly maxCodexAssignments: number | null
   readonly observedAt: string
   readonly processes: readonly ProcessRow[]
+  readonly serverAssignments: readonly ServerAssignmentTokenRow[]
+  readonly tokenRate: FleetTokenRateProjection
 }
 
 type ActiveAssignmentMarker = {
+  readonly accountRefHash: string | null
   readonly assignmentRef: string | null
+  readonly elapsedMs: number | null
   readonly issueRef: string | null
+  readonly refreshedAt: string | null
+  readonly runRef: string | null
+  readonly service: string | null
+  readonly startedAt: string | null
+  readonly tokenRate: AssignmentTokenRateProjection
   readonly updatedAt: string | null
+}
+
+type TokenMeasurementStatus = "exact" | "estimated" | "not_measured" | "pending"
+
+type AssignmentTokenRateProjection = {
+  readonly source: string
+  readonly status: TokenMeasurementStatus
+  readonly tokenCountKind: string | null
+  readonly tokens: number | null
+  readonly tokensPerMinute: number | null
+}
+
+type ServerAssignmentTokenRow = {
+  readonly assignmentRef: string | null
+  readonly elapsedMs: number | null
+  readonly tokenRate: AssignmentTokenRateProjection
+}
+
+type FleetTokenRateProjection = {
+  readonly activeAdjustedTokensPerMinute: number | null
+  readonly completedStatus: TokenMeasurementStatus
+  readonly completedTokenRows: number | null
+  readonly completedTokensPerMinute: number | null
+  readonly inFlightTokens: number | null
+  readonly inFlightTokensPerMinute: number | null
+  readonly source: "pylon_khala_apm" | "unavailable"
+  readonly unavailableReason: string | null
 }
 
 type ProcessRow = {
@@ -532,7 +576,8 @@ export async function inspectCodexFleet(
   const env = options.env ?? process.env
   const paths = resolvePylonPaths(env)
   const ensure = await ensureLocalPylon({ start: input.startPylon ?? false }, { ...options, env })
-  const [listResult, statusResult, processes, activeAssignments] = await Promise.all([
+  const baseUrl = resolveOpenAgentsBaseUrl(env)
+  const [listResult, statusResult, apmResult, processes, rawActiveAssignments] = await Promise.all([
     runPylonCommand(["codex", "accounts", "list", "--json"], {
       env,
       paths,
@@ -545,17 +590,30 @@ export async function inspectCodexFleet(
       runner: options.runner,
       timeoutMs: DEFAULT_COMMAND_TIMEOUT_MS,
     }).catch(errorResult),
+    runPylonCommand(["khala", "apm", "--base-url", baseUrl, "--json"], {
+      env,
+      paths,
+      runner: options.runner,
+      timeoutMs: DEFAULT_COMMAND_TIMEOUT_MS,
+    }).catch(errorResult),
     input.includeProcesses === false
       ? Promise.resolve([] as ProcessRow[])
       : collectProcessSnapshot(options.runner ?? defaultCommandRunner, env),
     collectActiveAssignmentMarkers(paths.pylonHome),
   ])
 
-  const accounts = mergeAccountRows(
-    parseJsonObject(listResult.stdout),
-    parseJsonObject(statusResult.stdout),
+  const listProjection = parseJsonObject(listResult.stdout)
+  const statusProjection = parseJsonObject(statusResult.stdout)
+  const apm = fleetTokenRateProjectionFromApm(apmResult, rawActiveAssignments.length)
+  const accounts = withAccountCapacity(
+    mergeAccountRows(listProjection, statusProjection),
+    [statusProjection, listProjection],
   )
-  const provider = providerCapacity(parseJsonObject(listResult.stdout), parseJsonObject(statusResult.stdout), ensure)
+  const activeAssignments = mergeActiveAssignmentTokenRates(
+    rawActiveAssignments,
+    apm.serverAssignments,
+  )
+  const provider = providerCapacity(listProjection, statusProjection, ensure)
   return {
     accounts,
     activeAssignments,
@@ -564,6 +622,8 @@ export async function inspectCodexFleet(
     maxCodexAssignments: provider.max,
     observedAt: new Date().toISOString(),
     processes,
+    serverAssignments: apm.serverAssignments,
+    tokenRate: apm.tokenRate,
   }
 }
 
@@ -716,6 +776,8 @@ export async function spawnCodexInstances(
 }
 
 export function resolvePylonHome(env: ChatEnv = process.env): string {
+  const explicit = env.PYLON_HOME?.trim()
+  if (explicit !== undefined && explicit.length > 0) return resolve(explicit)
   const candidates = pylonHomeCandidates(env)
   const withState = candidates.find(candidate =>
     existsSync(join(candidate, "identity.json")) || existsSync(join(candidate, "config.json")),
@@ -795,6 +857,8 @@ function executeCodexFleetStatusTool(
             started: result.ensure.started,
             status: result.ensure.status,
           },
+          serverAssignments: result.serverAssignments,
+          tokenRate: result.tokenRate,
         },
       })
     } catch (error) {
@@ -1090,6 +1154,7 @@ function mergeAccountRows(
         ...row,
         accountKey: row.accountKey ?? previous?.accountKey ?? null,
         accountRefHash: row.accountRefHash ?? previous?.accountRefHash ?? null,
+        capacity: row.capacity ?? previous?.capacity ?? null,
         readiness: row.readiness === "unknown" ? previous?.readiness ?? "unknown" : row.readiness,
       })
     }
@@ -1118,6 +1183,7 @@ function accountRowFrom(value: unknown): AccountRow | null {
     accountKey: accountKeyFromHash(accountRefHash),
     accountRef,
     accountRefHash,
+    capacity: null,
     provider: "codex",
     quotaState: stringField(quota, "state"),
     readiness,
@@ -1184,8 +1250,46 @@ function codexAccountAvailabilityByRef(
   return out
 }
 
+function withAccountCapacity(
+  accounts: readonly AccountRow[],
+  projections: readonly (Record<string, unknown> | null)[],
+): readonly AccountRow[] {
+  const capacityByKey = new Map<string, AccountCapacityRow>()
+  const capacityByRef = new Map<string, AccountCapacityRow>()
+  for (const projection of projections) {
+    const ownCapacity = recordField(projection, "ownCapacityDispatch")
+    for (const item of arrayField(ownCapacity, "codexAccounts")) {
+      const row = record(item)
+      if (row === null) continue
+      const capacity = accountCapacityRowFrom(row)
+      const accountKey = stringField(row, "accountKey")
+      const accountRef = stringField(row, "accountRef")
+      if (accountKey !== null) capacityByKey.set(accountKey, capacity)
+      if (accountRef !== null) capacityByRef.set(accountRef, capacity)
+    }
+  }
+  if (capacityByKey.size === 0 && capacityByRef.size === 0) return accounts
+  return accounts.map(account => ({
+    ...account,
+    capacity:
+      (account.accountKey === null ? undefined : capacityByKey.get(account.accountKey)) ??
+      capacityByRef.get(account.accountRef) ??
+      account.capacity,
+  }))
+}
+
+function accountCapacityRowFrom(row: Record<string, unknown>): AccountCapacityRow {
+  return {
+    available: numberField(row, "available"),
+    busy: numberField(row, "busy"),
+    queued: numberField(row, "queued"),
+    ready: numberField(row, "ready"),
+  }
+}
+
 async function collectActiveAssignmentMarkers(pylonHome: string): Promise<readonly ActiveAssignmentMarker[]> {
   const root = join(pylonHome, "active-assignment-runs")
+  const nowMs = Date.now()
   try {
     const entries = await readdir(root, { withFileTypes: true })
     const markers = await Promise.all(entries
@@ -1195,13 +1299,23 @@ async function collectActiveAssignmentMarkers(pylonHome: string): Promise<readon
         const path = join(root, entry.name)
         const parsed = parseJsonObject(await readFile(path, "utf8").catch(() => ""))
         const fileStat = await stat(path).catch(() => null)
+        const startedAt = stringField(parsed, "startedAt")
+        const refreshedAt =
+          stringField(parsed, "refreshedAt") ??
+          stringField(parsed, "updatedAt") ??
+          stringField(parsed, "observedAt") ??
+          (fileStat === null ? null : new Date(fileStat.mtimeMs).toISOString())
         return {
+          accountRefHash: stringField(parsed, "accountRefHash"),
           assignmentRef: stringField(parsed, "assignmentRef"),
+          elapsedMs: elapsedMsSince(startedAt, nowMs),
           issueRef: issueRefFromMarker(parsed, entry.name),
-          updatedAt:
-            stringField(parsed, "updatedAt") ??
-            stringField(parsed, "observedAt") ??
-            (fileStat === null ? null : new Date(fileStat.mtimeMs).toISOString()),
+          refreshedAt,
+          runRef: stringField(parsed, "runRef"),
+          service: stringField(parsed, "service"),
+          startedAt,
+          tokenRate: assignmentTokenRateProjectionFromRecord(parsed, elapsedMsSince(startedAt, nowMs), true),
+          updatedAt: refreshedAt,
         }
       }))
     return markers.sort((left, right) =>
@@ -1210,6 +1324,177 @@ async function collectActiveAssignmentMarkers(pylonHome: string): Promise<readon
   } catch {
     return []
   }
+}
+
+function fleetTokenRateProjectionFromApm(
+  result: KhalaCodexFleetCommandResult,
+  localActiveAssignmentCount: number,
+): { serverAssignments: readonly ServerAssignmentTokenRow[]; tokenRate: FleetTokenRateProjection } {
+  if (result.exitCode !== 0) {
+    return {
+      serverAssignments: [],
+      tokenRate: unavailableFleetTokenRate(safeFailureReason(result)),
+    }
+  }
+  const payload = parseJsonObject(result.stdout)
+  if (payload === null) {
+    return {
+      serverAssignments: [],
+      tokenRate: unavailableFleetTokenRate("khala apm returned a non-JSON response"),
+    }
+  }
+  const counted = recordField(payload, "counted")
+  const active = recordField(payload, "active")
+  const rawServerAssignments = arrayField(active, "serverAssignments")
+  const serverAssignments = rawServerAssignments
+    .flatMap((item): ServerAssignmentTokenRow[] => {
+      const assignment = record(item)
+      if (assignment === null) return []
+      const elapsedMs = numberField(assignment, "elapsedMs")
+      return [{
+        assignmentRef: stringField(assignment, "assignmentRef"),
+        elapsedMs,
+        tokenRate: assignmentTokenRateProjectionFromRecord(assignment, elapsedMs, true),
+      }]
+    })
+    .slice(0, 25)
+  const completedTokensPerMinute = numberField(counted, "completedTokensPerMinute")
+  const completedTokenRows = firstNumberField(counted, [
+    "completedTokenRows",
+    "completedTokenRowCount",
+    "rowCount",
+    "tokenRows",
+  ])
+  const serverAssignmentCount =
+    numberField(active, "serverAssignmentCount") ??
+    serverAssignments.length
+  const activeAssignmentCount = Math.max(serverAssignmentCount, localActiveAssignmentCount)
+  return {
+    serverAssignments,
+    tokenRate: {
+      activeAdjustedTokensPerMinute: numberField(active, "adjustedTokensPerMinute"),
+      completedStatus: completedTokenRateStatus({
+        activeAssignmentCount,
+        completedTokenRows,
+        completedTokensPerMinute,
+        sourceRefs: stringArrayField(counted, "sourceRefs"),
+      }),
+      completedTokenRows,
+      completedTokensPerMinute,
+      inFlightTokens: numberField(active, "inFlightTokens"),
+      inFlightTokensPerMinute: numberField(active, "inFlightTokensPerMinute"),
+      source: "pylon_khala_apm",
+      unavailableReason: null,
+    },
+  }
+}
+
+function unavailableFleetTokenRate(reason: string): FleetTokenRateProjection {
+  return {
+    activeAdjustedTokensPerMinute: null,
+    completedStatus: "not_measured",
+    completedTokenRows: null,
+    completedTokensPerMinute: null,
+    inFlightTokens: null,
+    inFlightTokensPerMinute: null,
+    source: "unavailable",
+    unavailableReason: reason,
+  }
+}
+
+function completedTokenRateStatus(input: {
+  readonly activeAssignmentCount: number
+  readonly completedTokenRows: number | null
+  readonly completedTokensPerMinute: number | null
+  readonly sourceRefs: readonly string[]
+}): TokenMeasurementStatus {
+  if (input.completedTokenRows !== null) return "exact"
+  if (
+    input.completedTokensPerMinute !== null &&
+    input.completedTokensPerMinute > 0 &&
+    input.sourceRefs.some(ref => ref.includes("token_usage_events"))
+  ) {
+    return "exact"
+  }
+  return input.activeAssignmentCount > 0 ? "pending" : "not_measured"
+}
+
+function mergeActiveAssignmentTokenRates(
+  markers: readonly ActiveAssignmentMarker[],
+  serverAssignments: readonly ServerAssignmentTokenRow[],
+): readonly ActiveAssignmentMarker[] {
+  const serverByAssignmentRef = new Map<string, ServerAssignmentTokenRow>()
+  for (const assignment of serverAssignments) {
+    if (assignment.assignmentRef !== null) serverByAssignmentRef.set(assignment.assignmentRef, assignment)
+  }
+  return markers.map(marker => {
+    const server = marker.assignmentRef === null ? undefined : serverByAssignmentRef.get(marker.assignmentRef)
+    if (server === undefined) return marker
+    return {
+      ...marker,
+      elapsedMs: marker.elapsedMs ?? server.elapsedMs,
+      tokenRate: server.tokenRate.status === "not_measured" ? marker.tokenRate : server.tokenRate,
+    }
+  })
+}
+
+function assignmentTokenRateProjectionFromRecord(
+  source: Record<string, unknown> | null,
+  elapsedMs: number | null,
+  active: boolean,
+): AssignmentTokenRateProjection {
+  const proof = recordField(source, "proof")
+  const tokenUsage = recordField(source, "tokenUsage")
+  const tokens =
+    numberField(source, "tokens") ??
+    numberField(source, "tokensSoFar") ??
+    numberField(source, "totalTokens") ??
+    numberField(proof, "totalTokens") ??
+    numberField(tokenUsage, "totalTokens")
+  const tokenRows =
+    firstNumberField(source, ["tokenRows", "rowCount"]) ??
+    firstNumberField(proof, ["tokenRows", "rowCount"]) ??
+    firstNumberField(tokenUsage, ["rowCount", "tokenRows"])
+  const tokenCountKind =
+    stringField(source, "tokenCountKind") ??
+    stringField(proof, "usageTruth") ??
+    stringField(tokenUsage, "usageTruth")
+  const rawSource = stringField(source, "source") ?? "not_measured"
+  const tokensPerMinute =
+    numberField(source, "tokensPerMinute") ??
+    tokensPerMinuteFromElapsed(tokens, elapsedMs)
+  const exact =
+    tokenRows !== null ||
+    tokenCountKind === "exact" ||
+    stringField(source, "usageTruth") === "exact" ||
+    stringField(proof, "usageTruth") === "exact" ||
+    stringField(tokenUsage, "usageTruth") === "exact"
+  const status: TokenMeasurementStatus = exact
+    ? "exact"
+    : tokens !== null && tokens > 0
+      ? "estimated"
+      : active
+        ? "pending"
+        : "not_measured"
+  return {
+    source: exact ? "token_usage_events" : rawSource,
+    status,
+    tokenCountKind,
+    tokens,
+    tokensPerMinute,
+  }
+}
+
+function tokensPerMinuteFromElapsed(tokens: number | null, elapsedMs: number | null): number | null {
+  if (tokens === null || elapsedMs === null) return null
+  const elapsedMinutes = Math.max(elapsedMs / 60_000, 1 / 6)
+  return Math.round(tokens / elapsedMinutes)
+}
+
+function elapsedMsSince(startedAt: string | null, nowMs: number): number | null {
+  if (startedAt === null) return null
+  const startedMs = Date.parse(startedAt)
+  return Number.isFinite(startedMs) ? Math.max(0, nowMs - startedMs) : null
 }
 
 async function collectProcessSnapshot(
@@ -1323,15 +1608,21 @@ function renderFleetStatus(result: FleetStatusResult): string {
     `Pylon: ${result.ensure.ok ? result.ensure.status : "unavailable"}${result.ensure.pylonRef ? ` (${result.ensure.pylonRef})` : ""}`,
     `Codex capacity: ${capacityLabel(result.availableCodexAssignments, result.maxCodexAssignments)}`,
     `Codex accounts: ${result.accounts.length} total, ${readyAccountCount(result.accounts)} ready`,
+    renderFleetTokenRate(result.tokenRate),
   ]
   if (result.accounts.length > 0) {
-    lines.push(...result.accounts.map(account =>
-      `- ${account.accountRef}: ${account.readiness}${account.quotaState ? `, quota ${account.quotaState}` : ""}`,
-    ))
+    lines.push(...result.accounts.map(renderAccountStatusLine))
   } else {
     lines.push("- no Pylon Codex accounts found")
   }
   lines.push(`Active assignment markers: ${result.activeAssignments.length}`)
+  if (result.activeAssignments.length > 0) {
+    lines.push(...result.activeAssignments.slice(0, 8).map(renderActiveAssignmentLine))
+  }
+  if (result.serverAssignments.length > 0) {
+    lines.push(`Server assignment token rows: ${result.serverAssignments.length}`)
+    lines.push(...result.serverAssignments.slice(0, 8).map(renderServerAssignmentTokenLine))
+  }
   lines.push(`Active Codex exec processes: ${result.processes.length}`)
   if (result.activeAssignments.length !== result.processes.length) {
     lines.push(
@@ -1344,6 +1635,55 @@ function renderFleetStatus(result: FleetStatusResult): string {
     ))
   }
   return lines.join("\n")
+}
+
+function renderFleetTokenRate(tokenRate: FleetTokenRateProjection): string {
+  if (tokenRate.source === "unavailable") {
+    return `Token rate: not_measured (khala apm unavailable: ${tokenRate.unavailableReason ?? "unknown"})`
+  }
+  const completed = tokenRate.completedTokensPerMinute === null ||
+      (tokenRate.completedStatus !== "exact" && tokenRate.completedTokensPerMinute === 0)
+    ? `${tokenRate.completedStatus} exact token rows`
+    : `${tokenRate.completedStatus} ${tokenRate.completedTokensPerMinute} tokens/min completed window`
+  const rows = tokenRate.completedTokenRows === null ? "" : ` across ${tokenRate.completedTokenRows} exact row(s)`
+  const active = tokenRate.activeAdjustedTokensPerMinute === null
+    ? ""
+    : `; active-adjusted ${tokenRate.activeAdjustedTokensPerMinute} tokens/min`
+  const inFlight = tokenRate.inFlightTokens === null
+    ? ""
+    : `; in-flight ${tokenRate.inFlightTokens} token(s)`
+  return `Token rate: ${completed}${rows}${active}${inFlight}`
+}
+
+function renderAccountStatusLine(account: AccountRow): string {
+  const capacity = account.capacity
+  const capacityText = capacity === null
+    ? ""
+    : `, slots ${capacityLabel(capacity.available, capacity.ready)}${capacity.busy === null ? "" : `, busy ${capacity.busy}`}${capacity.queued === null ? "" : `, queued ${capacity.queued}`}`
+  return `- ${account.accountRef}: ${account.readiness}${capacityText}${account.quotaState ? `, quota ${account.quotaState}` : ""}`
+}
+
+function renderActiveAssignmentLine(marker: ActiveAssignmentMarker): string {
+  const ref = marker.assignmentRef ?? "(unknown assignment)"
+  const issue = marker.issueRef === null ? "" : ` issue=${marker.issueRef}`
+  const elapsed = marker.elapsedMs === null ? "" : ` elapsed=${formatElapsedMs(marker.elapsedMs)}`
+  const account = marker.accountRefHash === null ? "" : ` account=${marker.accountRefHash}`
+  return `- ${ref}${issue}${elapsed}${account} ${renderAssignmentTokenRate(marker.tokenRate)}`
+}
+
+function renderServerAssignmentTokenLine(row: ServerAssignmentTokenRow): string {
+  const ref = row.assignmentRef ?? "(unknown assignment)"
+  const elapsed = row.elapsedMs === null ? "" : ` elapsed=${formatElapsedMs(row.elapsedMs)}`
+  return `- ${ref}${elapsed} ${renderAssignmentTokenRate(row.tokenRate)}`
+}
+
+function renderAssignmentTokenRate(tokenRate: AssignmentTokenRateProjection): string {
+  if (tokenRate.status === "pending") return "tokens=pending exact rows"
+  if (tokenRate.status === "not_measured") return "tokens=not_measured"
+  const tokens = tokenRate.tokens === null ? "unknown" : String(tokenRate.tokens)
+  const rate = tokenRate.tokensPerMinute === null ? "" : `, ${tokenRate.tokensPerMinute} tokens/min`
+  const kind = tokenRate.tokenCountKind === null ? "" : `, kind=${tokenRate.tokenCountKind}`
+  return `tokens=${tokenRate.status} ${tokens}${rate}${kind}`
 }
 
 function spawnResultFromBatchCommand(input: {
@@ -2028,6 +2368,16 @@ function capacityLabel(available: number | null, max: number | null): string {
   return `${max} max`
 }
 
+function formatElapsedMs(value: number): string {
+  const totalSeconds = Math.max(0, Math.floor(value / 1000))
+  const hours = Math.floor(totalSeconds / 3600)
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
+  const seconds = totalSeconds % 60
+  if (hours > 0) return `${hours}h${minutes.toString().padStart(2, "0")}m`
+  if (minutes > 0) return `${minutes}m${seconds.toString().padStart(2, "0")}s`
+  return `${seconds}s`
+}
+
 function issueRefFromMarker(marker: Record<string, unknown> | null, fileName: string): string | null {
   const direct =
     stringField(marker, "issueRef") ??
@@ -2205,6 +2555,14 @@ function stringField(source: Record<string, unknown> | null, field: string): str
 function numberField(source: Record<string, unknown> | null, field: string): number | null {
   const value = source?.[field]
   return typeof value === "number" && Number.isFinite(value) ? value : null
+}
+
+function firstNumberField(source: Record<string, unknown> | null, fields: readonly string[]): number | null {
+  for (const field of fields) {
+    const value = numberField(source, field)
+    if (value !== null) return value
+  }
+  return null
 }
 
 function booleanField(source: Record<string, unknown> | null, field: string): boolean | null {

@@ -101,6 +101,36 @@ Test delegating a piece of work to one Codex worker, targeting one open issue, a
 For a fixture-only smoke, the model should call `codex_spawn` without repo pins.
 For real repository work, give explicit repo, commit, and verifier pins.
 
+## Expected Fleet Status Output
+
+The first status prompt should call `codex_fleet_status`. For recording, the
+important shape is:
+
+```text
+Pylon: online (pylon...)
+Codex capacity: 4/5 available
+Codex accounts: 1 total, 1 ready
+Token rate: exact 42 tokens/min completed window across 3 exact row(s); active-adjusted 342 tokens/min; in-flight 600 token(s)
+- codex-2: ready, slots 4/5 available, busy 1, queued 0
+Active assignment markers: 1
+- assignment.public... elapsed=2m00s account=account.pylon.codex... tokens=exact 600, 300 tokens/min, kind=exact
+Server assignment token rows: 1
+- assignment.public... elapsed=2m00s tokens=exact 600, 300 tokens/min, kind=exact
+Active Codex exec processes: 1
+```
+
+If an assignment is active but exact `token_usage_events` rows have not landed
+yet, the honest status is:
+
+```text
+Token rate: pending exact token rows
+- assignment.public... tokens=pending exact rows
+```
+
+If no APM/proof source is available, the status should say `not_measured`. An
+exact `0 tokens/min` is only recordable when the status also shows exact row
+evidence, such as `across 1 exact row(s)`.
+
 ## Expected `codex_spawn` Output
 
 The model-visible tool output should include the deterministic path before the
@@ -142,10 +172,11 @@ the handoff and makes the module path visible.
 
 ## Verification Commands
 
-Before closing #7752, the focused checks are:
+Before recording, the focused checks are:
 
 ```sh
 bun clients/khala-code-desktop/scripts/part2-delegation-smoke.ts
+bun run typecheck:khala-code-desktop
 bun test clients/khala-code-desktop/tests/khala-codex-fleet-tools.test.ts
 git diff --check
 ```
