@@ -1208,3 +1208,55 @@ bun "$OPENAGENTS_PYLON_APP_PATH/src/index.ts" khala dispatch \
 
 Do not increase concurrency until the Desktop Coding page shows real live Codex
 processes and the token failure spool remains empty.
+
+## Field Notes: Scaled Fanout + Merge Wave (2026-06-30)
+
+Lessons from running the full Khala Code porting backlog (10 lanes) through the
+fleet and merging the resulting PRs.
+
+### Advertising capacity: use the per-account env var
+
+- To advertise more than the default Codex slots, set
+  `OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY=N` (per linked account) before the
+  `presence heartbeat` / `provider go-online`. With two ready accounts and N=5 the
+  Pylon advertised `availableCodexAssignments=10`.
+- The non-account `OPENAGENTS_PYLON_CODEX_CONCURRENCY` did NOT hold; advertised
+  `max` reverted to the default. The per-account var is the reliable one. Using
+  the wrong var is why an early 10-wide fanout only admitted ~3.
+
+### Dispatch-gate guards you will hit
+
+- `blocker.public.pylon_dispatch.duplicate_active_assignment`: firing many
+  `khala request` back-to-back can trip this. It is transient — a fresh
+  `presence heartbeat --base-url https://openagents.com` immediately before the
+  request clears it; space retries one cycle apart.
+- `...no_available_codex_capacity` ("heartbeat codex available=0"): the Pylon is
+  honestly saturated, OR a COMPETING controller is heartbeating the same Pylon and
+  republishing the real busy count over your advertised capacity. Per the "one
+  controller" rule, do not fight it. Gate on `availableCodexAssignments` and the
+  system load average, not the raw `ps` Codex count.
+
+### Merging a wave of sibling PRs (cascade conflicts)
+
+- Lanes that touch the same files (e.g. `packages/khala-tools/src/index.ts`
+  exports/registry) each show `MERGEABLE/CLEAN` individually but flip to
+  `DIRTY/CONFLICTING` the moment a sibling merges. Merge is inherently sequential.
+- Merge the foundational PR first (the central dispatcher), then expect the rest
+  to need rebase. Delegate rebase+resolve+merge to a Codex worker with `gh`/git
+  access: for each PR `gh pr checkout`, merge `origin/main`, UNION every lane's
+  additions (drop no tool), `bun run test:khala-tools` + typecheck, then
+  `gh pr merge --squash --delete-branch`, fetching main before the next.
+- Dedupe: a competing controller may open several PRs for the same unit (e.g.
+  three "credit ledger bond settlement adapter" PRs). Merge one, close the rest.
+
+### Keep the fleet from going idle: a script watcher
+
+- Detached `nohup ... &` runners do NOT notify the orchestrator on completion, so
+  a one-shot `ScheduleWakeup` refill leaves the fleet idle between completions.
+- Run a persistent background watcher loop instead: each cycle refresh the
+  heartbeat, read advertised `availableCodexAssignments`, dispatch the next queued
+  work item into each free slot (load-gated, e.g. skip when 1-min load > ~14), and
+  auto-merge any CLEAN non-draft fleet PR. This fills capacity and lands PRs with
+  no manual steps.
+- The `khala request` objective/`--prompt` summary is capped at 1000 characters;
+  keep delegated objectives concise.
