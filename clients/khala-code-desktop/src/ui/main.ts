@@ -728,6 +728,8 @@ function applyChatTurnEvent(event: KhalaCodeDesktopChatTurnEvent): void {
       break
     case "message_done":
       break
+    case "tool_event":
+      break
   }
 }
 

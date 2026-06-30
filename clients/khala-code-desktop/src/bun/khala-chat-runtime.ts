@@ -25,6 +25,7 @@ import {
   type KhalaBackendSelection,
   type KhalaPrivacyRedactionServiceShape,
   type KhalaToolDefinition,
+  type KhalaToolEvent,
   type KhalaToolDispatcher,
   type KhalaToolRegistry,
   type KhalaToolResult,
@@ -38,6 +39,7 @@ import {
   type KhalaCodeDesktopChatTurnResponse,
   type KhalaCodeDesktopMessage,
   type KhalaCodeDesktopToolCatalogResponse,
+  type KhalaCodeDesktopUsage,
 } from "../shared/rpc.js"
 import { createKhalaCodexFleetTools } from "./khala-codex-fleet-tools.js"
 import { createPlaywrightKhalaBrowserService } from "./khala-browser-service.js"
@@ -99,6 +101,7 @@ type ChatCompletionBody = {
       readonly tool_calls?: unknown
     }
   }[]
+  readonly usage?: unknown
 }
 
 type ChatTransportCallbacks = {
@@ -179,7 +182,10 @@ export async function runKhalaCodeDesktopChatTurn(
 ): Promise<KhalaCodeDesktopChatTurnResponse> {
   const registry = input.registry ?? createKhalaCodeDesktopToolRegistry()
   const toolDefinitions = registry.list()
-  const backend = resolveKhalaBackend({ env: input.env })
+  const backend = resolveKhalaBackend({
+    env: input.env,
+    ...(input.env.KHALA_CODE_DESKTOP_BACKEND === "mock" ? { preferred: "mock" as const } : {}),
+  })
   const services = input.services ?? createDefaultToolServices({
     env: input.env,
     ...(input.fetchFn === undefined ? {} : { fetchFn: input.fetchFn }),
@@ -240,6 +246,7 @@ export async function runKhalaCodeDesktopChatTurn(
   let assistantMessagesSinceLastToolResult = 0
   let localFileEvidence = emptyLocalFileEvidenceState()
   let localGroundingCorrections = 0
+  let usage = emptyUsage()
 
   const appendAssistantText = async (
     text: string,
@@ -277,6 +284,7 @@ export async function runKhalaCodeDesktopChatTurn(
         tools,
         { onAssistantDelta: assistantStream.onAssistantDelta },
       )
+      usage = addUsage(usage, usageFromPayload(completion.usage))
     } catch (error) {
       if (
         !retriedWithoutTools &&
@@ -291,6 +299,7 @@ export async function runKhalaCodeDesktopChatTurn(
             [],
             { onAssistantDelta: assistantStream.onAssistantDelta },
           )
+          usage = addUsage(usage, usageFromPayload(completion.usage))
         } catch (retryError) {
           return providerFailureResult(backend, toolNames, usedTools, retryError)
         }
@@ -302,6 +311,7 @@ export async function runKhalaCodeDesktopChatTurn(
             messages: transcript,
             ok: true,
             toolNames,
+            usage,
             usedTools,
           }
         }
@@ -381,6 +391,7 @@ export async function runKhalaCodeDesktopChatTurn(
           : transcript,
         ok: transcript.length > 0,
         toolNames,
+        usage,
         usedTools,
       }
     }
@@ -388,12 +399,33 @@ export async function runKhalaCodeDesktopChatTurn(
     for (const call of toolCalls) {
       const toolTranscript = hostMessage("tool", toolTranscriptRunningBody(call.function.name))
       emit({ message: toolTranscript, turnId, type: "message_start" })
+      emitToolLifecycleEvent({
+        call,
+        emit,
+        kind: "tool_requested",
+        sessionId: input.request.sessionId,
+        turnId,
+      })
+      emitToolLifecycleEvent({
+        call,
+        emit,
+        kind: "tool_started",
+        sessionId: input.request.sessionId,
+        turnId,
+      })
       const result = await runToolCall({
         call,
         dispatcher: toolDispatcher,
         registry,
         services,
         sessionId: input.request.sessionId,
+      })
+      emitToolResultEvents({
+        call,
+        emit,
+        result,
+        sessionId: input.request.sessionId,
+        turnId,
       })
       usedTools.push(call.function.name)
       const completedToolTranscript = toolTranscriptMessage(
@@ -827,6 +859,7 @@ async function readOpenAiCompatibleStream(
     content: "",
     finishReason: undefined,
     toolCalls: new Map(),
+    usage: emptyUsage(),
   }
   for await (const frame of readSseFrames(response.body)) {
     if (frame.data.trim() === "[DONE]") break
@@ -856,6 +889,7 @@ async function readOpenAiCompatibleStream(
         ...(toolCalls.length === 0 ? {} : { tool_calls: toolCalls }),
       },
     }],
+    usage: state.usage,
   }
 }
 
@@ -870,6 +904,7 @@ type OpenAiStreamState = {
   content: string
   finishReason: unknown
   toolCalls: Map<number, OpenAiStreamToolCallState>
+  usage: KhalaCodeDesktopUsage
 }
 
 async function* readSseFrames(body: ReadableStream<Uint8Array>): AsyncGenerator<SseFrame> {
@@ -935,7 +970,9 @@ function applyOpenAiStreamPayload(
   state: OpenAiStreamState,
   onAssistantDelta: ((delta: string) => void) | undefined,
 ): void {
-  if (!isRecord(payload) || !Array.isArray(payload.choices)) return
+  if (!isRecord(payload)) return
+  state.usage = addUsage(state.usage, usageFromPayload(payload.usage))
+  if (!Array.isArray(payload.choices)) return
   for (const choice of payload.choices) {
     if (!isRecord(choice)) continue
     if (choice.finish_reason !== undefined && choice.finish_reason !== null) {
@@ -968,6 +1005,51 @@ function streamTextDelta(value: unknown): string {
   return value
     .map(part => isRecord(part) && typeof part.text === "string" ? part.text : "")
     .join("")
+}
+
+function emptyUsage(): KhalaCodeDesktopUsage {
+  return {
+    cachedInput: 0,
+    input: 0,
+    output: 0,
+    reasoningOutput: 0,
+  }
+}
+
+function addUsage(
+  left: KhalaCodeDesktopUsage,
+  right: KhalaCodeDesktopUsage,
+): KhalaCodeDesktopUsage {
+  return {
+    cachedInput: left.cachedInput + right.cachedInput,
+    input: left.input + right.input,
+    output: left.output + right.output,
+    reasoningOutput: left.reasoningOutput + right.reasoningOutput,
+  }
+}
+
+function usageFromPayload(value: unknown): KhalaCodeDesktopUsage {
+  if (!isRecord(value)) return emptyUsage()
+  const promptDetails = isRecord(value.prompt_tokens_details) ? value.prompt_tokens_details : {}
+  const completionDetails = isRecord(value.completion_tokens_details) ? value.completion_tokens_details : {}
+  return {
+    cachedInput: numericUsage(value.cached_input_tokens) +
+      numericUsage(value.cached_input) +
+      numericUsage(value.cachedInput) +
+      numericUsage(promptDetails.cached_tokens),
+    input: numericUsage(value.input_tokens) + numericUsage(value.prompt_tokens) + numericUsage(value.input),
+    output: numericUsage(value.output_tokens) + numericUsage(value.completion_tokens) + numericUsage(value.output),
+    reasoningOutput: numericUsage(value.reasoning_output_tokens) +
+      numericUsage(value.reasoning_output) +
+      numericUsage(value.reasoningOutput) +
+      numericUsage(completionDetails.reasoning_tokens),
+  }
+}
+
+function numericUsage(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? Math.trunc(value)
+    : 0
 }
 
 function collectToolCallDeltas(value: unknown, toolCalls: Map<number, OpenAiStreamToolCallState>): void {
@@ -1182,6 +1264,83 @@ function parseToolArguments(value: string): Readonly<Record<string, unknown>> {
   } catch {
     return {}
   }
+}
+
+function emitToolLifecycleEvent(input: {
+  readonly call: OpenAiToolCall
+  readonly emit: ChatTurnEmitter
+  readonly kind: "tool_requested" | "tool_started"
+  readonly sessionId: string
+  readonly turnId: string
+}): void {
+  input.emit({
+    event: {
+      eventId: `${input.turnId}.${input.call.id}.${input.kind}`,
+      invocationId: input.call.id,
+      kind: input.kind,
+      payload: {
+        arguments: parseToolArguments(input.call.function.arguments),
+        name: input.call.function.name,
+      },
+      sessionId: input.sessionId,
+    },
+    turnId: input.turnId,
+    type: "tool_event",
+  })
+}
+
+function emitToolResultEvents(input: {
+  readonly call: OpenAiToolCall
+  readonly emit: ChatTurnEmitter
+  readonly result: KhalaToolResult
+  readonly sessionId: string
+  readonly turnId: string
+}): void {
+  for (const event of toolEventsFromResult(input.result)) {
+    input.emit({
+      event: {
+        ...event,
+        eventId: `${input.turnId}.${input.call.id}.${event.eventId}`,
+        ...(event.invocationId === undefined ? { invocationId: input.call.id } : { invocationId: event.invocationId }),
+        sessionId: event.sessionId || input.sessionId,
+      },
+      turnId: input.turnId,
+      type: "tool_event",
+    })
+  }
+  input.emit({
+    event: {
+      eventId: `${input.turnId}.${input.call.id}.tool_${input.result.status === "ok" ? "completed" : "failed"}`,
+      invocationId: input.call.id,
+      kind: input.result.status === "ok" ? "tool_completed" : "tool_failed",
+      payload: {
+        artifacts: input.result.artifacts,
+        name: input.call.function.name,
+        privateDataRefs: input.result.privateDataRefs,
+        publicSafety: input.result.publicSafety,
+        publicSummary: input.result.publicSummary,
+        redactionRefs: input.result.redactionRefs,
+        status: input.result.status,
+      },
+      sessionId: input.sessionId,
+    },
+    turnId: input.turnId,
+    type: "tool_event",
+  })
+}
+
+function toolEventsFromResult(result: KhalaToolResult): readonly KhalaToolEvent[] {
+  if (!isRecord(result.ui) || !Array.isArray(result.ui.events)) return []
+  return result.ui.events.flatMap((event, index): KhalaToolEvent[] => {
+    if (!isRecord(event) || typeof event.kind !== "string") return []
+    return [{
+      eventId: typeof event.eventId === "string" ? event.eventId : `ui.${index + 1}.${event.kind}`,
+      kind: event.kind as KhalaToolEvent["kind"],
+      payload: event.payload,
+      sessionId: typeof event.sessionId === "string" ? event.sessionId : "",
+      ...(typeof event.invocationId === "string" ? { invocationId: event.invocationId } : {}),
+    }]
+  })
 }
 
 function toolMessageContent(result: KhalaToolResult): string {

@@ -524,6 +524,16 @@ describe("Khala Code desktop chat runtime", () => {
       event.message.role === "tool" &&
       event.message.body.includes("hello from the local tool")
     )).toBe(true)
+    expect(events.some(event =>
+      event.type === "tool_event" &&
+      event.event.kind === "tool_requested" &&
+      event.event.invocationId === "call_read"
+    )).toBe(true)
+    expect(events.some(event =>
+      event.type === "tool_event" &&
+      event.event.kind === "tool_completed" &&
+      event.event.invocationId === "call_read"
+    )).toBe(true)
     expect(calls).toHaveLength(2)
     const secondMessages = calls[1]?.body.messages as Array<{ content?: string; role?: string; tool_call_id?: string }>
     expect(secondMessages.some(message =>
@@ -531,6 +541,33 @@ describe("Khala Code desktop chat runtime", () => {
       message.tool_call_id === "call_read" &&
       message.content?.includes("hello from the local tool") === true
     )).toBe(true)
+  })
+
+  test("captures OpenAI-compatible streamed usage for headless closeout", async () => {
+    const fetchFn = (async () =>
+      sseResponse([
+        'data: {"choices":[{"delta":{"content":"Done"}}]}',
+        'data: {"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":4,"prompt_tokens_details":{"cached_tokens":3},"completion_tokens_details":{"reasoning_tokens":2}}}',
+        "data: [DONE]",
+        "",
+      ].join("\n\n"))) as unknown as typeof fetch
+
+    const result = await runKhalaCodeDesktopChatTurn({
+      env: { OPENAGENTS_AGENT_TOKEN: "agent-token" },
+      fetchFn,
+      request: {
+        messages: [{ body: "hello", id: "u1", role: "user" }],
+        sessionId: "session-usage",
+      },
+    })
+
+    expect(result.ok).toBe(true)
+    expect(result.usage).toEqual({
+      cachedInput: 3,
+      input: 10,
+      output: 4,
+      reasoningOutput: 2,
+    })
   })
 
   test("populates slow codex_spawn running cards with useful progress text", async () => {
