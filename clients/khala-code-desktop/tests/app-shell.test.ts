@@ -45,6 +45,23 @@ describe("khala code desktop app shell", () => {
     expect(html).not.toContain("Pylons")
   })
 
+  test("renders per-account fleet capacity and the display-only default slot", async () => {
+    const rpc = await Bun.file(new URL("../src/shared/rpc.ts", import.meta.url)).text()
+    const fleet = await Bun.file(new URL("../src/ui/fleet-status.ts", import.meta.url)).text()
+    const handlers = await Bun.file(new URL("../src/bun/rpc-handlers.ts", import.meta.url)).text()
+    const css = await Bun.file(new URL("../src/ui/styles.css", import.meta.url)).text()
+
+    expect(rpc).toContain("readonly capacity: {")
+    expect(handlers).toContain("capacity: account.capacity")
+    expect(fleet).toContain("accountCapacityLabel")
+    expect(fleet).toContain("routing\", \"default slot")
+    expect(fleet).toContain("detailChip(\"slots\", capacity)")
+    expect(fleet).toContain("detailChip(\"busy\", slotValue(account.capacity.busy))")
+    expect(fleet).toContain("detailChip(\"queued\", slotValue(account.capacity.queued))")
+    expect(css).toContain(".khala-fleet-account-details")
+    expect(css).toContain("grid-column: 1 / -1")
+  })
+
   test("renders a visible Gym pane entry without seeded private proof data", async () => {
     const html = await Bun.file(new URL("../src/ui/index.html", import.meta.url)).text()
     const sidebar = await Bun.file(new URL("../src/ui/sidebar.ts", import.meta.url)).text()

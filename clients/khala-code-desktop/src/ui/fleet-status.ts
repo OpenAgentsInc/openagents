@@ -67,6 +67,24 @@ const titleize = (value: string): string =>
 const summaryLine = (parts: ReadonlyArray<string | null>): string =>
   parts.filter((part): part is string => Boolean(part)).join("  ·  ")
 
+const isDisplayOnlyDefaultAccountRef = (accountRef: string): boolean =>
+  /^(?:\(default\)|default)$/iu.test(accountRef.trim())
+
+const slotValue = (value: number | null): string =>
+  value === null ? "?" : String(value)
+
+const accountCapacityLabel = (
+  capacity: KhalaCodeDesktopFleetAccount["capacity"],
+): string | null => {
+  if (capacity === null) return null
+  if (capacity.available !== null && capacity.ready !== null) {
+    return `${capacity.available}/${capacity.ready} free`
+  }
+  if (capacity.available !== null) return `${capacity.available} free`
+  if (capacity.ready !== null) return `${capacity.ready} ready`
+  return "unknown"
+}
+
 const badge = (state: string, label: string): HTMLElement => {
   const node = el("span", "khala-fleet-badge")
   node.dataset.state = state
@@ -101,7 +119,13 @@ const accountCard = (
 
   const identity = el("div", "khala-fleet-account-identity")
   const top = el("div", "khala-fleet-account-top")
-  top.append(el("strong", undefined, account.accountRef))
+  top.append(
+    el(
+      "strong",
+      undefined,
+      isDisplayOnlyDefaultAccountRef(account.accountRef) ? "default" : account.accountRef,
+    ),
+  )
   top.append(el("span", "khala-fleet-provider", account.provider))
   identity.append(top)
   identity.append(el("span", "khala-fleet-email", account.email ?? "not signed in"))
@@ -140,6 +164,23 @@ const accountCard = (
     handlers.onRemove(account.accountRef)
   })
   card.append(remove)
+
+  const accountDetails = el("div", "khala-fleet-chips khala-fleet-account-details")
+  if (isDisplayOnlyDefaultAccountRef(account.accountRef)) {
+    accountDetails.append(detailChip("routing", "default slot"))
+  }
+  const capacity = accountCapacityLabel(account.capacity)
+  if (capacity !== null) accountDetails.append(detailChip("slots", capacity))
+  if (account.capacity?.busy !== null && account.capacity?.busy !== undefined) {
+    accountDetails.append(detailChip("busy", slotValue(account.capacity.busy)))
+  }
+  if (account.capacity?.queued !== null && account.capacity?.queued !== undefined) {
+    accountDetails.append(detailChip("queued", slotValue(account.capacity.queued)))
+  }
+  if (account.quotaState !== null) {
+    accountDetails.append(detailChip("quota", account.quotaState))
+  }
+  if (accountDetails.childElementCount > 0) card.append(accountDetails)
 
   return card
 }

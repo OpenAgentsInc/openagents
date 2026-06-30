@@ -136,6 +136,12 @@ export type KhalaCodeDesktopFleetAccount = {
   readonly quotaState: string | null
   readonly accountKey: string | null
   readonly email: string | null
+  readonly capacity: {
+    readonly available: number | null
+    readonly busy: number | null
+    readonly queued: number | null
+    readonly ready: number | null
+  } | null
 }
 
 export type KhalaCodeDesktopFleetAssignment = {

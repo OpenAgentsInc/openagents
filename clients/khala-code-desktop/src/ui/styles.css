@@ -943,6 +943,9 @@ button {
   font-size: 0.72rem;
   color: color-mix(in srgb, var(--oa-color-component-text) 55%, transparent);
 }
+.khala-fleet-account-details {
+  grid-column: 1 / -1;
+}
 .khala-fleet-capacity {
   grid-column: 1 / -1;
   font-size: 0.74rem;

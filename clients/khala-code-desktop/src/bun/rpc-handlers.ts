@@ -166,6 +166,7 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
           quotaState: account.quotaState,
           accountKey: account.accountKey,
           email: emails[account.accountRef] ?? null,
+          capacity: account.capacity,
         })),
         activeAssignments: fleet.activeAssignments.map(marker => ({
           assignmentRef: marker.assignmentRef,
