@@ -220,13 +220,13 @@ describe("khala code desktop app shell", () => {
 
   test("keeps tool names with underscores literal in markdown prose", () => {
     const inline = parseMarkdownInline(
-      "Tools include ask_user, write_stdin, browser_readtext, browser_readdom, and exec_command.",
+      "Tools include exec_command, codex_spawn, pylon_ensure, and codex_fleet_status.",
     )
 
     expect(inline).toEqual([
       {
         kind: "text",
-        text: "Tools include ask_user, write_stdin, browser_readtext, browser_readdom, and exec_command.",
+        text: "Tools include exec_command, codex_spawn, pylon_ensure, and codex_fleet_status.",
       },
     ])
   })

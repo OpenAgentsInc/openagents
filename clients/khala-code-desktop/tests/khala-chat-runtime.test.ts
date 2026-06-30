@@ -33,6 +33,21 @@ type FetchCall = {
 
 const tempDirs: string[] = []
 const khalaCodeDesktopRoot = fileURLToPath(new URL("..", import.meta.url))
+const disabledDefaultChatToolNames = [
+  "write_stdin",
+  "ask_user",
+  "todo_write",
+  "view_image",
+  "web_fetch",
+  "web_search",
+  "browser_navigate",
+  "browser_click",
+  "browser_type",
+  "browser_read_text",
+  "browser_read_dom",
+  "browser_wait_for",
+  "browser_screenshot",
+] as const
 
 afterEach(async () => {
   await Promise.all(tempDirs.splice(0).map(dir => rm(dir, { force: true, recursive: true })))
@@ -123,11 +138,13 @@ describe("Khala Code desktop chat runtime", () => {
 
     expect(assertAllDefaultToolsRegistered(definitions)).toBe(true)
     expect(catalog.defaultEnabled).toBe(true)
-    expect(catalog.toolCount).toBe(24)
+    expect(catalog.toolCount).toBe(11)
     expect(catalog.tools.map(tool => tool.name)).toEqual([...expectedKhalaCodeDesktopToolNames()])
-    expect(catalog.tools.find(tool => tool.name === "browser_screenshot")?.authority).toBe("browser")
-    expect(catalog.tools.find(tool => tool.name === "web_search")?.authority).toBe("network")
     expect(catalog.tools.find(tool => tool.name === "codex_spawn")?.authority).toBe("owner_full_access")
+    expect(catalog.tools.find(tool => tool.name === "exec_command")?.authority).toBe("shell")
+    for (const disabledName of disabledDefaultChatToolNames) {
+      expect(catalog.tools.map(tool => tool.name)).not.toContain(disabledName)
+    }
   })
 
   test("does not locally time-limit long chat-turn RPC requests", () => {
@@ -156,8 +173,13 @@ describe("Khala Code desktop chat runtime", () => {
     expect(calls[0]?.headers.get("authorization")).toBe("Bearer agent-token")
     expect(calls[0]?.body.stream).toBe(true)
     expect(calls[0]?.body.stream_options).toEqual({ include_usage: true })
-    expect((calls[0]?.body.tools as unknown[]).map(toolName)).toContain("browser_screenshot")
-    expect((calls[0]?.body.tools as unknown[]).map(toolName)).toContain("web_search")
+    const providerToolNames = (calls[0]?.body.tools as unknown[]).map(toolName)
+    expect(providerToolNames).toContain("read")
+    expect(providerToolNames).toContain("exec_command")
+    expect(providerToolNames).toContain("codex_spawn")
+    for (const disabledName of disabledDefaultChatToolNames) {
+      expect(providerToolNames).not.toContain(disabledName)
+    }
     const requestMessages = calls[0]?.body.messages as Array<{ content?: string; role?: string }>
     expect(requestMessages[0]).toMatchObject({ role: "system" })
     expect(requestMessages[0]?.content).toContain("first-person PLURAL")
@@ -833,7 +855,7 @@ describe("Khala Code desktop chat runtime", () => {
     )).toBe(true)
   })
 
-  test("backs desktop web_search with bounded DuckDuckGo instant-answer results", async () => {
+  test("keeps the DuckDuckGo web search service available outside the default chat tool catalog", async () => {
     const urls: string[] = []
     const fetchFn = (async (input: string | URL | Request) => {
       const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url
