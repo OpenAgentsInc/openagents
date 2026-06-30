@@ -2,13 +2,28 @@ import { describe, expect, test } from "bun:test"
 
 import {
   PYLON_KHALA_SPAWN_PLAN_SCHEMA,
+  buildPylonKhalaSpawnPlan,
+  repeatedKhalaSpawnObjectives,
   runPylonKhalaSpawnPlan,
   type PylonKhalaSpawnPlan,
 } from "./khala-spawn.js"
 import type { PylonKhalaProofResult, PylonKhalaRequestResult } from "./khala-requester.js"
 
+const accountHashA = "account.pylon.codex.aaaaaaaaaaaa"
+const accountHashB = "account.pylon.codex.bbbbbbbbbbbb"
+
 const plan: PylonKhalaSpawnPlan = {
   schema: PYLON_KHALA_SPAWN_PLAN_SCHEMA,
+  advertisedCodexAccounts: [
+    {
+      accountKey: "aaaaaaaaaaaa",
+      accountRefHash: accountHashA,
+      available: 1,
+      busy: 0,
+      queued: 0,
+      ready: 1,
+    },
+  ],
   advertisedCodexAvailability: 1,
   baseUrl: "https://openagents.example",
   blockerRefs: [],
@@ -20,7 +35,7 @@ const plan: PylonKhalaSpawnPlan = {
     {
       account: {
         accountRef: "codex",
-        accountRefHash: "account.pylon.codex.default",
+        accountRefHash: accountHashA,
       },
       commands: {
         proof: "pylon khala proof --assignment-ref <assignmentRef> --json",
@@ -34,6 +49,7 @@ const plan: PylonKhalaSpawnPlan = {
       },
       requestInput: {
         prompt: "Implement OpenAgents issue #6366 from the Khala roadmap.",
+        targetAccountRefHash: accountHashA,
         targetPylonRef: "pylon.owner.codex",
         workflow: "codex_agent_task",
       },
@@ -42,6 +58,65 @@ const plan: PylonKhalaSpawnPlan = {
   ],
   targetPylonRef: "pylon.owner.codex",
 }
+
+describe("Khala spawn per-account planning", () => {
+  test("targets the selected public account hash and skips ready accounts with no advertised free slots", () => {
+    const result = buildPylonKhalaSpawnPlan({
+      accounts: {
+        accounts: [
+          {
+            accountRef: "codex-a",
+            accountRefHash: accountHashA,
+            blockerRefs: [],
+            homeState: "present",
+            provider: "codex",
+            readiness: { state: "ready" },
+          },
+          {
+            accountRef: "codex-b",
+            accountRefHash: accountHashB,
+            blockerRefs: [],
+            homeState: "present",
+            provider: "codex",
+            readiness: { state: "ready" },
+          },
+        ],
+      } as never,
+      advertisedCodexAccounts: [
+        {
+          accountKey: "aaaaaaaaaaaa",
+          accountRefHash: accountHashA,
+          available: 0,
+          busy: 1,
+          queued: 0,
+          ready: 1,
+        },
+        {
+          accountKey: "bbbbbbbbbbbb",
+          accountRefHash: accountHashB,
+          available: 2,
+          busy: 0,
+          queued: 0,
+          ready: 2,
+        },
+      ],
+      baseUrl: "https://openagents.example",
+      fixture: true,
+      objectives: repeatedKhalaSpawnObjectives({
+        count: 2,
+        objective: "Run the bounded fixture.",
+      }),
+      targetPylonRef: "pylon.owner.codex",
+    })
+
+    expect(result.readyCodexAccountCount).toBe(2)
+    expect(result.maxParallel).toBe(2)
+    expect(result.slots).toHaveLength(2)
+    expect(result.slots.map(slot => slot.account.accountRef)).toEqual(["codex-b", "codex-b"])
+    expect(result.slots.map(slot => slot.requestInput.targetAccountRefHash)).toEqual([accountHashB, accountHashB])
+    expect(result.slots[0]?.commands.request).toContain('--account-ref "codex-b"')
+  })
+})
 
 const requestResult: PylonKhalaRequestResult = {
   assignmentRef: "assignment.public.khala_coding.test",

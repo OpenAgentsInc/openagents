@@ -34,6 +34,15 @@ export type PylonKhalaSpawnAccount = {
   accountRefHash: string
 }
 
+export type PylonKhalaSpawnAdvertisedCodexAccount = {
+  accountKey: string
+  accountRefHash: string
+  available: number
+  busy: number
+  queued: number
+  ready: number
+}
+
 export type PylonKhalaSpawnObjective = {
   objective: string
   objectiveRef: string
@@ -61,6 +70,7 @@ export type PylonKhalaSpawnSlotLike = {
 
 export type PylonKhalaSpawnPlan = {
   schema: typeof PYLON_KHALA_SPAWN_PLAN_SCHEMA
+  advertisedCodexAccounts: readonly PylonKhalaSpawnAdvertisedCodexAccount[]
   advertisedCodexAvailability: number
   baseUrl: string
   blockerRefs: string[]
@@ -192,6 +202,9 @@ const quoteArg = (value: string): string => JSON.stringify(value)
 const accountCommandArgs = (account: PylonKhalaSpawnAccount): string =>
   account.accountRef === null ? "" : ` --account ${quoteArg(account.accountRef)}`
 
+const requestAccountArgs = (account: PylonKhalaSpawnAccount): string[] =>
+  account.accountRef === null ? [] : [`--account-ref ${quoteArg(account.accountRef)}`]
+
 const blocker = (namespace: string, suffix: string) => `blocker.${namespace}.${suffix}`
 const failureRef = (suffix: string) => `failure.khala_spawn.${suffix}`
 
@@ -237,6 +250,7 @@ export function repeatedKhalaSpawnObjectives(input: {
 
 export function buildPylonKhalaSpawnPlan(input: {
   accounts: PylonAccountsListProjection
+  advertisedCodexAccounts?: readonly PylonKhalaSpawnAdvertisedCodexAccount[]
   advertisedCodexAvailability?: number
   baseUrl: string
   branch?: string
@@ -249,8 +263,28 @@ export function buildPylonKhalaSpawnPlan(input: {
   verificationCommand?: string
   workspace?: PylonKhalaGitCheckoutWorkspace
 }): PylonKhalaSpawnPlan {
-  const accounts = readyCodexAccounts(input.accounts)
-  const advertisedCodexAvailability = nonNegativeInteger(input.advertisedCodexAvailability, accounts.length)
+  const readyAccounts = readyCodexAccounts(input.accounts)
+  const advertisedCodexAccounts = (input.advertisedCodexAccounts ?? [])
+    .map((account) => ({
+      accountKey: account.accountKey,
+      accountRefHash: account.accountRefHash,
+      available: nonNegativeInteger(account.available, 0),
+      busy: nonNegativeInteger(account.busy, 0),
+      queued: nonNegativeInteger(account.queued, 0),
+      ready: nonNegativeInteger(account.ready, 0),
+    }))
+  const advertisedAccountCapacity = new Map(
+    advertisedCodexAccounts.map((account) => [account.accountRefHash, account]),
+  )
+  const accounts = advertisedCodexAccounts.length === 0
+    ? readyAccounts
+    : readyAccounts.filter((account) => (advertisedAccountCapacity.get(account.accountRefHash)?.available ?? 0) > 0)
+  const advertisedCodexAvailability = nonNegativeInteger(
+    input.advertisedCodexAvailability,
+    advertisedCodexAccounts.length === 0
+      ? accounts.length
+      : advertisedCodexAccounts.reduce((sum, account) => sum + account.available, 0),
+  )
   const defaultMaxParallel = Math.max(
     1,
     Math.min(
@@ -263,9 +297,16 @@ export function buildPylonKhalaSpawnPlan(input: {
     accounts.length === 0 || advertisedCodexAvailability === 0 || input.objectives.length === 0
       ? 0
       : Math.min(requestedMaxParallel, advertisedCodexAvailability, input.objectives.length)
-  const selectedAccounts = accounts.slice(0, Math.min(accounts.length, Math.max(1, selectedParallel)))
+  const selectedAccounts = spawnAccountPool(
+    accounts,
+    advertisedAccountCapacity,
+    Math.min(accounts.length, Math.max(1, selectedParallel)),
+  )
   const blockerRefs = [
-    ...(accounts.length === 0 ? [blocker("khala_spawn", "no_ready_codex_accounts")] : []),
+    ...(readyAccounts.length === 0 ? [blocker("khala_spawn", "no_ready_codex_accounts")] : []),
+    ...(readyAccounts.length > 0 && accounts.length === 0
+      ? [blocker("khala_spawn", "no_ready_codex_account_slots")]
+      : []),
     ...(advertisedCodexAvailability === 0 ? [blocker("khala_spawn", "no_advertised_codex_availability")] : []),
     ...(input.objectives.length === 0 ? [blocker("khala_spawn", "no_objectives")] : []),
   ]
@@ -277,6 +318,7 @@ export function buildPylonKhalaSpawnPlan(input: {
         const requestInput: PylonKhalaRequestInput = {
           objectiveSummary: objective.objective,
           prompt: objective.objective,
+          targetAccountRefHash: account.accountRefHash,
           targetPylonRef: input.targetPylonRef,
           workflow: "codex_agent_task",
           ...(input.workspace === undefined ? {} : { workspace: input.workspace }),
@@ -297,6 +339,7 @@ export function buildPylonKhalaSpawnPlan(input: {
               "pylon khala request",
               "--workflow codex_agent_task",
               `--pylon-ref ${quoteArg(input.targetPylonRef)}`,
+              ...requestAccountArgs(account),
               `--prompt ${quoteArg(objective.objective)}`,
               ...workspaceArgs,
               "--json",
@@ -311,18 +354,33 @@ export function buildPylonKhalaSpawnPlan(input: {
 
   const plan: PylonKhalaSpawnPlan = {
     schema: PYLON_KHALA_SPAWN_PLAN_SCHEMA,
+    advertisedCodexAccounts,
     advertisedCodexAvailability,
     baseUrl: input.baseUrl,
     blockerRefs,
     maxParallel: selectedParallel,
     objectiveCount: input.objectives.length,
-    readyCodexAccountCount: accounts.length,
+    readyCodexAccountCount: readyAccounts.length,
     requestedCount: input.objectives.length,
     slots,
     targetPylonRef: input.targetPylonRef,
   }
   assertPublicProjectionSafe(plan)
   return plan
+}
+
+function spawnAccountPool(
+  accounts: readonly PylonKhalaSpawnAccount[],
+  advertisedAccountCapacity: ReadonlyMap<string, PylonKhalaSpawnAdvertisedCodexAccount>,
+  maxDistinctAccounts: number,
+): PylonKhalaSpawnAccount[] {
+  const selected = accounts.slice(0, Math.max(0, maxDistinctAccounts))
+  if (advertisedAccountCapacity.size === 0) return selected
+  const pool = selected.flatMap((account) => {
+    const available = advertisedAccountCapacity.get(account.accountRefHash)?.available ?? 0
+    return Array.from({ length: available }, () => account)
+  })
+  return pool.length === 0 ? selected : pool
 }
 
 export async function readPublicKhalaTokensServed(network: TipsNetworkOptions): Promise<number | null> {

@@ -2163,7 +2163,19 @@ async function availableCodexAssignments(
   state: PylonLocalState,
   options?: AssignmentLeaseNetworkOptions,
 ): Promise<number> {
-  const codexAccounts = await localCodexAccountCapacities(
+  const codexAccounts = await localCodexDispatchAccounts(summary, state)
+  if (codexAccounts.length > 0) {
+    return codexAccounts.reduce((sum, account) => sum + account.available, 0)
+  }
+  const codingCapacity = await codingCapacityForDispatch(summary, state, options)
+  return codingCapacity.find((item) => item.service === "codex")?.available ?? 0
+}
+
+async function localCodexDispatchAccounts(
+  summary: BootstrapSummary,
+  state: PylonLocalState,
+) {
+  return localCodexAccountCapacities(
     state,
     summary,
     Bun.env,
@@ -2171,11 +2183,6 @@ async function availableCodexAssignments(
       await activeCodingRunCountsByAccount(state.paths),
     ),
   )
-  if (codexAccounts.length > 0) {
-    return codexAccounts.reduce((sum, account) => sum + account.available, 0)
-  }
-  const codingCapacity = await codingCapacityForDispatch(summary, state, options)
-  return codingCapacity.find((item) => item.service === "codex")?.available ?? 0
 }
 
 async function localGitText(args: string[], cwd = process.cwd()): Promise<string> {
@@ -4042,7 +4049,10 @@ async function main() {
           }
         }
         const accounts = await collectPylonAccountsList(summary, { env: Bun.env })
-        const advertisedCodexAvailability = await availableCodexAssignments(summary, state, networkOptions)
+        const advertisedCodexAccounts = await localCodexDispatchAccounts(summary, state)
+        const advertisedCodexAvailability = advertisedCodexAccounts.length > 0
+          ? advertisedCodexAccounts.reduce((sum, account) => sum + account.available, 0)
+          : await availableCodexAssignments(summary, state, networkOptions)
         const workspace = explicitFixture
           ? undefined
           : buildPylonKhalaGitCheckoutWorkspace({
@@ -4053,6 +4063,7 @@ async function main() {
             })
         const plan = buildPylonKhalaSpawnPlan({
           accounts,
+          advertisedCodexAccounts,
           advertisedCodexAvailability,
           baseUrl,
           ...(optionString(options, "branch") === undefined ? {} : { branch: optionString(options, "branch") }),
@@ -4127,6 +4138,7 @@ async function main() {
               )
             : parseKhalaBurndownIssueNumbers(issuesOption)
         const accounts = await collectPylonAccountsList(summary, { env: Bun.env })
+        const advertisedCodexAccounts = await localCodexDispatchAccounts(summary, state)
         const maxParallel = positiveIntegerOption(options, "max-parallel", "khala burndown --max-parallel")
         const iterations = positiveIntegerOption(options, "iterations", "khala burndown --iterations")
         const branch = optionString(options, "branch")
@@ -4135,6 +4147,7 @@ async function main() {
           baseUrl,
           ...(branch === undefined ? {} : { branch }),
           commit,
+          advertisedCodexAccounts,
           advertisedCodexAvailability,
           issueNumbers,
           ...(iterations === undefined ? {} : { iterations }),

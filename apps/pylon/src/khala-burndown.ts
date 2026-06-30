@@ -22,6 +22,7 @@ import {
   readPublicKhalaTokensServed,
   readyCodexAccounts,
   runPylonKhalaSpawnPlan,
+  type PylonKhalaSpawnAdvertisedCodexAccount,
   type PylonKhalaSpawnProofProjection,
 } from "./khala-spawn.js"
 
@@ -63,6 +64,7 @@ export type PylonKhalaBurndownPlan = {
   commit: string
   verificationCommand: string
   targetPylonRef: string
+  advertisedCodexAccounts: readonly PylonKhalaSpawnAdvertisedCodexAccount[]
   advertisedCodexAvailability: number
   readyCodexAccountCount: number
   issueCount: number
@@ -175,6 +177,9 @@ const quoteArg = (value: string): string =>
 const accountCommandArgs = (account: PylonKhalaBurndownAccount): string =>
   account.accountRef === null ? "" : ` --account ${quoteArg(account.accountRef)}`
 
+const requestAccountArgs = (account: PylonKhalaBurndownAccount): string[] =>
+  account.accountRef === null ? [] : [`--account-ref ${quoteArg(account.accountRef)}`]
+
 export function buildKhalaBurndownObjective(issueNumber: number): string {
   return [
     `Implement OpenAgents issue #${issueNumber} from the Khala roadmap.`,
@@ -185,6 +190,7 @@ export function buildKhalaBurndownObjective(issueNumber: number): string {
 
 export function buildPylonKhalaBurndownPlan(input: {
   accounts: PylonAccountsListProjection
+  advertisedCodexAccounts?: readonly PylonKhalaSpawnAdvertisedCodexAccount[]
   baseUrl: string
   branch?: string
   commit: string
@@ -196,25 +202,51 @@ export function buildPylonKhalaBurndownPlan(input: {
   targetPylonRef: string
   verificationCommand: string
 }): PylonKhalaBurndownPlan {
-  const accounts = readyCodexAccounts(input.accounts)
+  const readyAccounts = readyCodexAccounts(input.accounts)
+  const advertisedCodexAccounts = (input.advertisedCodexAccounts ?? [])
+    .map(account => ({
+      accountKey: account.accountKey,
+      accountRefHash: account.accountRefHash,
+      available: Math.max(0, Math.floor(account.available)),
+      busy: Math.max(0, Math.floor(account.busy)),
+      queued: Math.max(0, Math.floor(account.queued)),
+      ready: Math.max(0, Math.floor(account.ready)),
+    }))
+  const advertisedAccountCapacity = new Map(
+    advertisedCodexAccounts.map(account => [account.accountRefHash, account]),
+  )
+  const accounts = advertisedCodexAccounts.length === 0
+    ? readyAccounts
+    : readyAccounts.filter(account => (advertisedAccountCapacity.get(account.accountRefHash)?.available ?? 0) > 0)
   const maxParallel = Math.max(1, Math.floor(input.maxParallel ?? accounts.length))
   const advertisedCodexAvailability = Math.max(
     0,
-    Math.floor(input.advertisedCodexAvailability ?? accounts.length),
+    Math.floor(
+      input.advertisedCodexAvailability ??
+        (
+          advertisedCodexAccounts.length === 0
+            ? accounts.length
+            : advertisedCodexAccounts.reduce((sum, account) => sum + account.available, 0)
+        ),
+    ),
   )
   const iterations = Math.max(1, Math.floor(input.iterations ?? 1))
   const selectedParallel = Math.min(maxParallel, accounts.length, advertisedCodexAvailability)
+  const selectedAccounts = burndownAccountPool(accounts, advertisedAccountCapacity, selectedParallel)
   const requestedIssueNumbers = uniqueIssueNumbers(input.issueNumbers)
   const issueNumbers = requestedIssueNumbers.slice(0, selectedParallel * iterations)
   const blockerRefs = [
-    ...(accounts.length === 0 ? ["blocker.khala_burndown.no_ready_codex_accounts"] : []),
+    ...(readyAccounts.length === 0 ? ["blocker.khala_burndown.no_ready_codex_accounts"] : []),
+    ...(readyAccounts.length > 0 && accounts.length === 0
+      ? ["blocker.khala_burndown.no_ready_codex_account_slots"]
+      : []),
     ...(advertisedCodexAvailability === 0 ? ["blocker.khala_burndown.no_advertised_codex_availability"] : []),
     ...(requestedIssueNumbers.length === 0 ? ["blocker.khala_burndown.no_issue_numbers"] : []),
   ]
   const slots: PylonKhalaBurndownSlot[] = selectedParallel === 0
     ? []
     : issueNumbers.map((issueNumber, index) => {
-        const account = accounts[index % selectedParallel]
+        const account = selectedAccounts[index % selectedAccounts.length]!
         const iteration = Math.floor(index / selectedParallel) + 1
         const slotIndex = index % selectedParallel
         const objective = buildKhalaBurndownObjective(issueNumber)
@@ -227,6 +259,7 @@ export function buildPylonKhalaBurndownPlan(input: {
         const requestInput: PylonKhalaRequestInput = {
           objectiveSummary: objective,
           prompt: objective,
+          targetAccountRefHash: account.accountRefHash,
           targetPylonRef: input.targetPylonRef,
           workflow: "codex_agent_task",
           workspace,
@@ -235,6 +268,7 @@ export function buildPylonKhalaBurndownPlan(input: {
           "pylon khala request",
           "--workflow codex_agent_task",
           `--pylon-ref ${quoteArg(input.targetPylonRef)}`,
+          ...requestAccountArgs(account),
           `--repo ${quoteArg(input.repository)}`,
           `--commit ${quoteArg(input.commit)}`,
           `--verify ${quoteArg(input.verificationCommand)}`,
@@ -267,8 +301,9 @@ export function buildPylonKhalaBurndownPlan(input: {
     commit: input.commit,
     verificationCommand: input.verificationCommand,
     targetPylonRef: input.targetPylonRef,
+    advertisedCodexAccounts,
     advertisedCodexAvailability,
-    readyCodexAccountCount: accounts.length,
+    readyCodexAccountCount: readyAccounts.length,
     issueCount: requestedIssueNumbers.length,
     slots,
     mergePolicy: "operator_review_required",
@@ -276,6 +311,20 @@ export function buildPylonKhalaBurndownPlan(input: {
   }
   assertPublicProjectionSafe(plan)
   return plan
+}
+
+function burndownAccountPool(
+  accounts: readonly PylonKhalaBurndownAccount[],
+  advertisedAccountCapacity: ReadonlyMap<string, PylonKhalaSpawnAdvertisedCodexAccount>,
+  maxDistinctAccounts: number,
+): PylonKhalaBurndownAccount[] {
+  const selected = accounts.slice(0, Math.max(0, maxDistinctAccounts))
+  if (advertisedAccountCapacity.size === 0) return selected
+  const pool = selected.flatMap(account => {
+    const available = advertisedAccountCapacity.get(account.accountRefHash)?.available ?? 0
+    return Array.from({ length: available }, () => account)
+  })
+  return pool.length === 0 ? selected : pool
 }
 
 export async function runPylonKhalaBurndownPlan(input: {
@@ -295,6 +344,7 @@ export async function runPylonKhalaBurndownPlan(input: {
     network: input.network,
     plan: {
       schema: PYLON_KHALA_SPAWN_PLAN_SCHEMA,
+      advertisedCodexAccounts: input.plan.advertisedCodexAccounts,
       advertisedCodexAvailability: input.plan.advertisedCodexAvailability,
       baseUrl: input.plan.baseUrl,
       blockerRefs: input.plan.blockerRefs,
