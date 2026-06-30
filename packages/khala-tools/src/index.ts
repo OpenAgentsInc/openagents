@@ -1,5 +1,16 @@
 import { Effect, Schema as S } from "effect"
+import { makeKhalaPermissionPolicyService } from "./permission-policy.js"
 import { redactKhalaPublicText } from "./redaction.js"
+
+export {
+  approvalCacheKeysFor,
+  makeInMemoryKhalaApprovalStore,
+  makeKhalaPermissionPolicyService,
+  type KhalaApprovalCacheKey,
+  type KhalaApprovalScope,
+  type KhalaApprovalStore,
+  type KhalaPermissionPolicyOptions,
+} from "./permission-policy.js"
 
 export {
   KhalaPrivacyRedactionLive,
@@ -810,12 +821,13 @@ export function makeKhalaToolServices(input: {
   readonly todo?: KhalaTodoService
   readonly workingDirectory?: string
 } = {}): KhalaToolServices {
+  const interaction = input.interaction ?? nonInteractiveKhalaInteractionService
   return {
     browser: input.browser ?? unconfiguredKhalaBrowserService,
-    interaction: input.interaction ?? nonInteractiveKhalaInteractionService,
+    interaction,
     network: input.network ?? createFetchKhalaNetworkService(),
     outputStore: inMemoryKhalaOutputStore(),
-    permission: input.permission ?? allowAllKhalaPermissionService,
+    permission: input.permission ?? makeKhalaPermissionPolicyService({ interaction }),
     process: input.process ?? defaultKhalaProcessService,
     search: input.search ?? unconfiguredKhalaWebSearchService,
     todo: input.todo ?? inMemoryKhalaTodoService(),
@@ -1273,7 +1285,7 @@ function permissionRequestFor(
     authorityMode: definition.executionMode,
     publicSafety: "private",
     resources,
-    saveScope: "once",
+    saveScope: "session",
     sessionId: invocation.sessionId,
     toolCallId: invocation.id,
     toolName: definition.name,
