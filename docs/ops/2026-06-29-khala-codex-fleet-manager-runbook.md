@@ -577,6 +577,26 @@ budget, not OpenAgents settlement.
   assignment was still admitted because Codex capacity was free. Capacity, not the
   raw process count, is the gate — check `availableCodexAssignments`, not `ps`.
 
+## GEPA Delegation Dataset
+
+GD-0 is now a typed public-safe export, not a handwritten scrape. The Worker
+module `apps/openagents.com/workers/api/src/khala-delegation-example-dataset.ts`
+builds `openagents.khala.delegation_example.dataset.v0` from:
+
+- `pylon_api_assignments` refs and public projections, excluding raw coding
+  assignment bodies.
+- `pylon_api_events.public_projection_json` lifecycle rows.
+- Exact `token_usage_events` rows joined by `task_ref = assignment_ref`.
+- Redacted ATIF rows joined by `pylon_codex:<assignmentRef>:` or
+  `pylon_claude:<assignmentRef>:` trajectory prefixes.
+- Closeout, accepted-work, proof, PR, and merge refs already present in public
+  assignment projections.
+
+The checked-in shape fixture is
+`docs/gepa/khala-delegation-example.dataset.v0.json`. The test gate
+`bun test src/khala-delegation-example-dataset.test.ts` asserts the join path and
+the no raw prompts/secrets/local paths public-safety tripwire.
+
 ## Current Troubleshooting Cheatsheet
 
 ### `codex_fleet_status` Says `0/N Available`
