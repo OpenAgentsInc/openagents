@@ -41,6 +41,7 @@ export const ForgeShellRouteId = Schema.Literals([
   "changes",
   "verification",
   "queue",
+  "mirrors",
   "refs",
 ])
 export type ForgeShellRouteId = typeof ForgeShellRouteId.Type
@@ -96,6 +97,13 @@ export const forgeShellRoutes: ReadonlyArray<ForgeShellRoute> = [
     label: "Merge Queue",
     summary: "virtual heads, gate state, and next promotion",
     apiPath: "/api/forge/queue",
+  },
+  {
+    id: "mirrors",
+    path: "/mirrors",
+    label: "Mirrors",
+    summary: "GitHub mirror receipts and attention state",
+    apiPath: "/api/forge/github-mirror",
   },
   {
     id: "refs",
@@ -157,6 +165,16 @@ export const ForgeShellRefItem = Schema.Struct({
 })
 export type ForgeShellRefItem = typeof ForgeShellRefItem.Type
 
+export const ForgeShellMirrorItem = Schema.Struct({
+  mirrorRef: Schema.String,
+  promotionRef: Schema.String,
+  commit: Schema.String,
+  destination: Schema.String,
+  status: Schema.String,
+  attention: Schema.String,
+})
+export type ForgeShellMirrorItem = typeof ForgeShellMirrorItem.Type
+
 export const ForgeShellDogfoodLane = Schema.Struct({
   laneRef: Schema.String,
   issueRef: Schema.String,
@@ -188,6 +206,7 @@ export const ForgeShellSnapshot = Schema.Struct({
   changes: Schema.Array(ForgeShellChangeItem),
   verification: Schema.Array(ForgeShellVerificationItem),
   mergeQueue: Schema.Array(ForgeShellQueueItem),
+  mirrors: Schema.Array(ForgeShellMirrorItem),
   refs: Schema.Array(ForgeShellRefItem),
 })
 export type ForgeShellSnapshot = typeof ForgeShellSnapshot.Type
@@ -337,6 +356,16 @@ export const forgeShellPreviewState: ForgeShellSnapshot = {
       actualHead: "refs/heads/main",
       gate: "awaiting SU-2 implementation",
       state: "not-promotable",
+    },
+  ],
+  mirrors: [
+    {
+      mirrorRef: "mirror.github.openagents.main.su6",
+      promotionRef: "promotion.forge.su7.su4-blueprint-gated",
+      commit: "pending-first-promoted-head",
+      destination: "OpenAgentsInc/openagents refs/heads/main",
+      status: "waiting-for-approved-promotion",
+      attention: "GET /api/forge/github-mirror surfaces refused or failed receipts",
     },
   ],
   refs: [
@@ -920,6 +949,10 @@ const renderOverview = (): string => `<section class="forge-grid">
     <span class="forge-metric-label">ref namespaces split between Forge authority and GitHub mirror projection</span>
   </article>
   <article class="forge-metric">
+    <span class="forge-metric-value">${forgeShellPreviewState.mirrors.length}</span>
+    <span class="forge-metric-label">GitHub mirror receipt surface wired downstream of Forge promotion</span>
+  </article>
+  <article class="forge-metric">
     <span class="forge-metric-value">${forgeShellPreviewState.dogfoodLanes.length}</span>
     <span class="forge-metric-label">SU-7 Codex/Pylon dogfood lane prepared for Forge-only coordination</span>
   </article>
@@ -1200,6 +1233,41 @@ const renderQueue = (): string => `<section class="forge-panel" data-span="wide"
   </div>
 </section>`
 
+const renderMirrors = (): string => `<section class="forge-panel" data-span="wide">
+  <div class="forge-panel-head">
+    <h3 class="forge-panel-title">GitHub Mirror Receipts</h3>
+    <span class="forge-table-caption">${forgeShellPreviewState.mirrors.length} receipts</span>
+  </div>
+  <div class="forge-table-wrap">
+    <table class="forge-table">
+      <thead>
+        <tr>
+          <th>Mirror</th>
+          <th>Promotion</th>
+          <th>Commit</th>
+          <th>Destination</th>
+          <th>Status</th>
+          <th>Attention</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${forgeShellPreviewState.mirrors
+          .map(
+            item => `<tr>
+              <td class="forge-code">${escapeHtml(item.mirrorRef)}</td>
+              <td>${escapeHtml(item.promotionRef)}</td>
+              <td class="forge-code">${escapeHtml(item.commit)}</td>
+              <td>${escapeHtml(item.destination)}</td>
+              <td>${renderStatus(item.status)}</td>
+              <td class="forge-muted">${escapeHtml(item.attention)}</td>
+            </tr>`,
+          )
+          .join("\n")}
+      </tbody>
+    </table>
+  </div>
+</section>`
+
 const renderRefs = (): string => `<section class="forge-panel" data-span="wide">
   <div class="forge-panel-head">
     <h3 class="forge-panel-title">Canonical Refs</h3>
@@ -1245,6 +1313,8 @@ const renderRouteContent = (routeId: ForgeShellRouteId): string => {
       return renderVerification()
     case "queue":
       return renderQueue()
+    case "mirrors":
+      return renderMirrors()
     case "refs":
       return renderRefs()
     case "overview":
