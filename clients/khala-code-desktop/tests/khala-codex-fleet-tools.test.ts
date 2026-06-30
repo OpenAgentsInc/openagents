@@ -11,10 +11,12 @@ import {
   createKhalaCodexFleetTools,
   ensureLocalPylon,
   inspectCodexFleet,
+  parsePylonLifecycleNdjsonLine,
   spawnCodexInstances,
   spawnVerifiedTokenTotal,
   type KhalaCodexFleetCommandInput,
   type KhalaCodexFleetCommandResult,
+  type KhalaCodexFleetProgressPayload,
 } from "../src/bun/khala-codex-fleet-tools"
 
 const tempDirs: string[] = []
@@ -148,6 +150,34 @@ function matrixBatchSpawnBlocker(
 }
 
 describe("Khala Code Codex fleet tools", () => {
+  test("parsePylonLifecycleNdjsonLine accepts public lifecycle schemas and drops malformed lines", () => {
+    expect(parsePylonLifecycleNdjsonLine("not json")).toBeNull()
+    expect(parsePylonLifecycleNdjsonLine(JSON.stringify({
+      event: "assignment_run.runtime_progress",
+      observedAt: "2026-06-30T00:00:00.000Z",
+      schema: "openagents.pylon.assignment_run_lifecycle_event.v0.1",
+    }))).toMatchObject({
+      event: "assignment_run.runtime_progress",
+      schema: "openagents.pylon.assignment_run_lifecycle_event.v0.1",
+    })
+    expect(parsePylonLifecycleNdjsonLine(JSON.stringify({
+      assignmentEvent: "assignment_run.completed",
+      message: "assignment lifecycle event",
+      observedAt: "2026-06-30T00:00:01.000Z",
+      schema: "openagents.pylon.khala_spawn_worker_event.v0.1",
+      slotIndex: 0,
+      state: "accepted",
+    }))).toMatchObject({
+      assignmentEvent: "assignment_run.completed",
+      schema: "openagents.pylon.khala_spawn_worker_event.v0.1",
+      state: "accepted",
+    })
+    expect(parsePylonLifecycleNdjsonLine(JSON.stringify({
+      event: "assignment_run.runtime_progress",
+      schema: "unknown",
+    }))).toBeNull()
+  })
+
   test("ensureLocalPylon starts a missing local Pylon and re-probes it", async () => {
     const fixture = await tempPylonFixture()
     const calls: KhalaCodexFleetCommandInput[] = []
@@ -667,6 +697,7 @@ describe("Khala Code Codex fleet tools", () => {
   test("spawnCodexInstances heartbeats and omits the display-only default account ref", async () => {
     const fixture = await tempPylonFixture()
     const calls: KhalaCodexFleetCommandInput[] = []
+    const progress: KhalaCodexFleetProgressPayload[] = []
     const runner = async (input: KhalaCodexFleetCommandInput): Promise<KhalaCodexFleetCommandResult> => {
       calls.push(input)
       const args = pylonArgs(input)
@@ -709,8 +740,29 @@ describe("Khala Code Codex fleet tools", () => {
         expect(args).toContain("--pylon-ref")
         expect(args).toContain("pylon.local.fresh")
         expect(args).toContain("--execute")
+        expect(args).toContain("--lifecycle-ndjson")
         expect(args).toContain("--json")
         expect(input.maxOutputBytes).toBeGreaterThanOrEqual(5_000_000)
+        await input.onStderrLine?.(JSON.stringify({
+          assignmentEvent: "assignment_run.runtime_started",
+          assignmentRef: "assignment.public.codex_agent_task.default",
+          message: "assignment lifecycle event",
+          observedAt: "2026-06-30T00:00:00.000Z",
+          schema: "openagents.pylon.khala_spawn_worker_event.v0.1",
+          slotIndex: 0,
+          state: "running",
+        }))
+        await input.onStderrLine?.("not json")
+        await input.onStderrLine?.(JSON.stringify({
+          assignmentEvent: "assignment_run.runtime_progress",
+          assignmentRef: "assignment.public.codex_agent_task.default",
+          message: "assignment lifecycle event",
+          observedAt: "2026-06-30T00:00:00.200Z",
+          phase: "runtime_active",
+          schema: "openagents.pylon.khala_spawn_worker_event.v0.1",
+          slotIndex: 0,
+          state: "running",
+        }))
         return ok({
           aggregate: {
             acceptedCount: 1,
@@ -780,6 +832,9 @@ describe("Khala Code Codex fleet tools", () => {
       prompt: "Run the public fixture.",
     }, {
       env: fixture.env,
+      onProgress: payload => {
+        progress.push(payload)
+      },
       runner,
     })
 
@@ -796,6 +851,9 @@ describe("Khala Code Codex fleet tools", () => {
     expect(spawnVerifiedTokenTotal(result)).toBe(16)
     expect(result.results[0]?.summary).toContain("lifecycle:")
     expect(result.results[0]?.summary).toContain("assignment_run.completed")
+    expect(progress).toHaveLength(2)
+    expect(progress.at(-1)?.lines.join("\n")).toContain("assignment_run.runtime_progress")
+    expect(progress.at(-1)?.events.map(event => event.event)).toContain("assignment_run.runtime_progress")
     const heartbeatIndex = calls.findIndex(call => pylonArgs(call)[0] === "presence")
     const requestIndex = calls.findIndex(call => pylonArgs(call)[0] === "khala" && pylonArgs(call)[1] === "spawn")
     expect(heartbeatIndex).toBeGreaterThanOrEqual(0)

@@ -2113,6 +2113,10 @@ function optionFlag(options: Record<string, string | true>, key: string): boolea
   return value === true || value === "true"
 }
 
+function lifecycleNdjsonRequested(options: Record<string, string | true>): boolean {
+  return optionFlag(options, "lifecycle-ndjson") || optionFlag(options, "json")
+}
+
 function positiveIntegerOption(options: Record<string, string | true>, key: string, label: string): number | undefined {
   const raw = optionString(options, key)
   if (raw === undefined) return undefined
@@ -4165,7 +4169,7 @@ async function main() {
           optionString(options, "prompt") ??
           (args[2] !== undefined && !args[2].startsWith("--") ? args[2] : undefined)
         if (!objective) {
-          throw new Error("usage: pylon khala spawn --count <n> --objective <text> [--fixture | --commit <sha> --repo owner/repo --verify <argv>] [--pylon-ref <pylonRef>] [--account <ref>] [--max-parallel n] [--execute] [--json]")
+          throw new Error("usage: pylon khala spawn --count <n> --objective <text> [--fixture | --commit <sha> --repo owner/repo --verify <argv>] [--pylon-ref <pylonRef>] [--account <ref>] [--max-parallel n] [--execute] [--lifecycle-ndjson] [--json]")
         }
         const count = positiveIntegerOption(options, "count", "khala spawn --count") ?? 1
         const maxParallel = positiveIntegerOption(options, "max-parallel", "khala spawn --max-parallel")
@@ -4262,7 +4266,7 @@ async function main() {
           return
         }
         const result = await runPylonKhalaSpawnPlan({
-          ...(optionFlag(options, "json")
+          ...(lifecycleNdjsonRequested(options)
             ? {
                 deps: {
                   onWorkerLifecycle: (event) => {
@@ -4437,7 +4441,7 @@ async function main() {
           optionFlag(options, "fixture-smoke") ||
           optionFlag(options, "codex-fixture")
         if (!prompt) {
-          throw new Error("usage: pylon khala request --prompt <text> [--workflow claude_agent_task|cloud_coding_session|codex_agent_task] [--pylon-ref <pylonRef>] [--fixture | --commit <sha> --repo <owner/repo> --verify <argv>] [--no-run] [--json]; public issue/repo codex_agent_task and claude_agent_task requests require complete workspace pins")
+          throw new Error("usage: pylon khala request --prompt <text> [--workflow claude_agent_task|cloud_coding_session|codex_agent_task] [--pylon-ref <pylonRef>] [--fixture | --commit <sha> --repo <owner/repo> --verify <argv>] [--no-run] [--lifecycle-ndjson] [--json]; public issue/repo codex_agent_task and claude_agent_task requests require complete workspace pins")
         }
         if (
           workflow !== undefined &&
@@ -4550,7 +4554,7 @@ async function main() {
           assignmentRef,
           ...(accountRef === undefined ? {} : { accountRef }),
           ...(accountHome === undefined ? {} : { accountHome }),
-          ...(optionFlag(options, "json")
+          ...(lifecycleNdjsonRequested(options)
             ? {
                 onLifecycleEvent: (event) => {
                   assignmentLifecycleEvents.push(event)
@@ -5269,7 +5273,7 @@ async function main() {
           optionString(options, "account") ??
           optionString(options, "account-ref")
         const accountHome = optionString(options, "account-home")
-        const emitJsonLifecycle = optionFlag(options, "json")
+        const emitJsonLifecycle = lifecycleNdjsonRequested(options)
         const result = await runNoSpendAssignment(summary, {
           ...clientOptions,
           ...(accountRef === undefined ? {} : { accountRef }),

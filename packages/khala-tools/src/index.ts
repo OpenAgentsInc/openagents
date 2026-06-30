@@ -602,6 +602,7 @@ export class KhalaToolRuntimeError extends S.TaggedErrorClass<KhalaToolRuntimeEr
 
 export interface KhalaToolExecuteContext {
   readonly definition: KhalaToolDefinition
+  readonly emitProgress: (payload: unknown) => Effect.Effect<void, never>
   readonly invocation: KhalaToolInvocation
   readonly services: KhalaToolServices
 }

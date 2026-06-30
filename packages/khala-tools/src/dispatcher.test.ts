@@ -104,6 +104,49 @@ describe("KhalaToolDispatcher", () => {
     expect(dispatched.events.map(event => event.kind)).toContain("tool_failed")
   })
 
+  test("lets tools emit per-invocation progress through dispatcher hooks", async () => {
+    const observedEvents: KhalaToolEvent[] = []
+    const dispatcher = makeKhalaToolDispatcher({
+      hooks: {
+        onEvent: context => Effect.sync(() => {
+          observedEvents.push(context.event)
+        }),
+      },
+    })
+
+    const dispatched = await Effect.runPromise(
+      dispatcher.dispatch({
+        invocation: { arguments: { text: "hello" }, id: "call_progress", name: "echo", sessionId: "session_1" },
+        registry: makeKhalaToolRegistry([
+          {
+            definition: echoDefinition,
+            execute: (_input, context) =>
+              Effect.gen(function* () {
+                yield* context.emitProgress({
+                  kind: "unit_progress",
+                  line: "halfway",
+                })
+                return khalaToolOk({ modelText: "done" })
+              }),
+          },
+        ]),
+        services: makeKhalaToolServices(),
+      }),
+    )
+
+    const customProgress = observedEvents.find(event =>
+      event.kind === "tool_progress" &&
+      typeof event.payload === "object" &&
+      event.payload !== null &&
+      "kind" in event.payload &&
+      event.payload.kind === "unit_progress"
+    )
+    expect(dispatched.result.status).toBe("ok")
+    expect(customProgress).toBeDefined()
+    expect(customProgress?.invocationId).toBe("call_progress")
+    expect(customProgress?.sessionId).toBe("session_1")
+  })
+
   test("enforces per-turn tool-call accounting limits", async () => {
     const dispatcher = makeKhalaToolDispatcher({
       turnAccounting: createKhalaToolTurnAccounting({ maxToolCalls: 1, turnId: "turn_1" }),

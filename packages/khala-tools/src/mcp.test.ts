@@ -215,6 +215,7 @@ describe("Khala MCP client and server", () => {
       { query: "x" },
       {
         definition: registry.resolve("mcp.example.search")!.definition,
+        emitProgress: () => Effect.void,
         invocation: {
           arguments: { query: "x" },
           id: "call",

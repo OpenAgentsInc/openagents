@@ -6,7 +6,10 @@ import { fileURLToPath } from "node:url"
 import { Effect } from "effect"
 import {
   allowAllKhalaPermissionService,
+  khalaToolOk,
+  makeKhalaToolRegistry,
   makeKhalaToolServices,
+  type KhalaToolDefinition,
   type KhalaPrivacyRedactionResult,
   type KhalaPrivacyRedactionServiceShape,
 } from "@openagentsinc/khala-tools"
@@ -576,6 +579,103 @@ describe("Khala Code desktop chat runtime", () => {
     expect(source).toContain("codex_spawn: running")
     expect(source).toContain("Preparing the Pylon/Codex handoff")
     expect(source).toContain("waiting for the local Codex worker to return status")
+  })
+
+  test("streams codex_spawn progress into same-card message replacements before final output", async () => {
+    const events: KhalaCodeDesktopChatTurnEvent[] = []
+    const codexSpawnDefinition: KhalaToolDefinition = {
+      authority: "owner_full_access",
+      availability: ["coding"],
+      description: "Fake codex spawn for runtime progress tests.",
+      executionMode: "local",
+      inputSchema: { properties: {}, type: "object" },
+      internalId: "khala.test.codex_spawn.progress",
+      label: "Codex Spawn",
+      name: "codex_spawn",
+      permissionMode: "allow",
+      prompt: "Fake codex spawn.",
+      promptGuidelines: [],
+    }
+    const registry = makeKhalaToolRegistry([
+      {
+        definition: codexSpawnDefinition,
+        execute: (_input, context) =>
+          Effect.gen(function* () {
+            yield* context.emitProgress({
+              events: [{ event: "assignment_run.runtime_progress", phase: "runtime_active" }],
+              kind: "codex_spawn_lifecycle",
+              lines: [
+                "lifecycle:",
+                "  - assignment_run.runtime_progress (phase=runtime_active)",
+              ],
+              schema: "openagents.khala_code.codex_spawn_progress.v0.1",
+              toolName: "codex_spawn",
+            })
+            return khalaToolOk({
+              modelText: "Codex spawn: accepted 1/1\n- slot 0: accepted",
+              publicSummary: "Codex spawn accepted 1/1 request(s).",
+            })
+          }),
+      },
+    ])
+    const { fetchFn } = captureFetch([
+      {
+        choices: [{
+          finish_reason: "tool_calls",
+          message: {
+            content: "",
+            tool_calls: [{
+              function: {
+                arguments: JSON.stringify({ prompt: "Run the public fixture." }),
+                name: "codex_spawn",
+              },
+              id: "call_codex_spawn",
+              type: "function",
+            }],
+          },
+        }],
+      },
+      { choices: [{ message: { content: "Spawn complete." } }] },
+    ])
+
+    const result = await runKhalaCodeDesktopChatTurn({
+      env: { OPENAGENTS_AGENT_TOKEN: "agent-token" },
+      fetchFn,
+      onEvent: event => events.push(event),
+      registry,
+      request: {
+        messages: [{ body: "spawn codex", id: "u1", role: "user" }],
+        sessionId: "session-codex-progress",
+        turnId: "turn-codex-progress",
+      },
+    })
+
+    const toolStart = events.find(event => event.type === "message_start" && event.message.role === "tool")
+    const toolId = toolStart?.type === "message_start" ? toolStart.message.id : ""
+    const toolReplacements = events.filter(event =>
+      event.type === "message_replace" &&
+      event.message.role === "tool" &&
+      event.message.id === toolId
+    )
+    const progressIndex = toolReplacements.findIndex(event =>
+      event.type === "message_replace" &&
+      event.message.body.includes("codex_spawn: running") &&
+      event.message.body.includes("assignment_run.runtime_progress")
+    )
+    const finalIndex = toolReplacements.findIndex(event =>
+      event.type === "message_replace" &&
+      event.message.body.includes("codex_spawn: ok") &&
+      event.message.body.includes("Codex spawn: accepted 1/1")
+    )
+
+    expect(result.ok).toBe(true)
+    expect(progressIndex).toBeGreaterThanOrEqual(0)
+    expect(finalIndex).toBeGreaterThan(progressIndex)
+    expect(events.some(event =>
+      event.type === "tool_event" &&
+      event.event.kind === "tool_progress" &&
+      event.event.invocationId === "call_codex_spawn"
+    )).toBe(true)
   })
 
   test("continues local inspection after a truncated ls instead of accepting a final answer", async () => {

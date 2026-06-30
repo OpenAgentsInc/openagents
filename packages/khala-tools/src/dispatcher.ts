@@ -309,6 +309,15 @@ function dispatchKhalaTool(
 
     const rawResult = yield* tool.execute(input.invocation.arguments, {
       definition,
+      emitProgress: payload =>
+        emitToolEvent({
+          events: localEvents,
+          input,
+          kind: "tool_progress",
+          options,
+          payload,
+          telemetryTags: taggedTelemetry,
+        }),
       invocation: input.invocation,
       services: input.services,
     }).pipe(

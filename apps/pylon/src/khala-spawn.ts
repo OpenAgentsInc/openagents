@@ -355,7 +355,7 @@ export function buildPylonKhalaSpawnPlan(input: {
               ...workspaceArgs,
               "--json",
             ].join(" "),
-            runNoSpend: `pylon assignment run-no-spend --base-url ${quoteArg(input.baseUrl)}${accountCommandArgs(account)} --assignment-ref <assignmentRef> --json`,
+            runNoSpend: `pylon assignment run-no-spend --base-url ${quoteArg(input.baseUrl)}${accountCommandArgs(account)} --assignment-ref <assignmentRef> --lifecycle-ndjson --json`,
           },
           objective,
           requestInput,

@@ -232,16 +232,27 @@ export async function runKhalaCodeDesktopChatTurn(
     maxToolCalls: MAX_TOTAL_TOOL_CALLS,
     turnId,
   })
+  const emit = (event: KhalaCodeDesktopChatTurnEvent): void => {
+    input.onEvent?.(event)
+  }
+  const liveToolProgress = new Map<string, LiveToolProgressCard>()
   const toolDispatcher = makeKhalaToolDispatcher({
+    hooks: {
+      onEvent: context => Effect.sync(() => {
+        emitLiveDispatcherEvent({
+          emit,
+          event: context.event,
+          liveToolProgress,
+          turnId,
+        })
+      }),
+    },
     telemetryTags: {
       surface: "khala_code_desktop",
       turnId,
     },
     turnAccounting: toolTurnAccounting,
   })
-  const emit = (event: KhalaCodeDesktopChatTurnEvent): void => {
-    input.onEvent?.(event)
-  }
   let retriedWithoutTools = false
   let assistantMessagesSinceLastToolResult = 0
   let localFileEvidence = emptyLocalFileEvidenceState()
@@ -399,6 +410,13 @@ export async function runKhalaCodeDesktopChatTurn(
     for (const call of toolCalls) {
       const toolTranscript = hostMessage("tool", toolTranscriptRunningBody(call.function.name))
       emit({ message: toolTranscript, turnId, type: "message_start" })
+      const progressCard = createLiveToolProgressCard({
+        emit,
+        toolName: call.function.name,
+        toolTranscript,
+        turnId,
+      })
+      liveToolProgress.set(call.id, progressCard)
       emitToolLifecycleEvent({
         call,
         emit,
@@ -413,13 +431,20 @@ export async function runKhalaCodeDesktopChatTurn(
         sessionId: input.request.sessionId,
         turnId,
       })
-      const result = await runToolCall({
-        call,
-        dispatcher: toolDispatcher,
-        registry,
-        services,
-        sessionId: input.request.sessionId,
-      })
+      let result: KhalaToolResult
+      try {
+        result = await runToolCall({
+          call,
+          dispatcher: toolDispatcher,
+          registry,
+          services,
+          sessionId: input.request.sessionId,
+        })
+      } finally {
+        progressCard.flush()
+        progressCard.dispose()
+        liveToolProgress.delete(call.id)
+      }
       emitToolResultEvents({
         call,
         emit,
@@ -1329,6 +1354,98 @@ function emitToolResultEvents(input: {
   })
 }
 
+type LiveToolProgressCard = {
+  readonly accept: (event: KhalaToolEvent) => void
+  readonly dispose: () => void
+  readonly flush: () => void
+}
+
+function emitLiveDispatcherEvent(input: {
+  readonly emit: ChatTurnEmitter
+  readonly event: KhalaToolEvent
+  readonly liveToolProgress: Map<string, LiveToolProgressCard>
+  readonly turnId: string
+}): void {
+  if (input.event.kind !== "tool_progress") return
+  const event: KhalaToolEvent = {
+    ...input.event,
+    eventId: turnScopedToolEventId(input.turnId, input.event),
+  }
+  input.emit({ event, turnId: input.turnId, type: "tool_event" })
+  if (event.invocationId === undefined) return
+  input.liveToolProgress.get(event.invocationId)?.accept(event)
+}
+
+function turnScopedToolEventId(turnId: string, event: KhalaToolEvent): string {
+  return event.eventId.startsWith(`${turnId}.`)
+    ? event.eventId
+    : `${turnId}.${event.invocationId ?? "tool"}.${event.eventId}`
+}
+
+function createLiveToolProgressCard(input: {
+  readonly emit: ChatTurnEmitter
+  readonly toolName: string
+  readonly toolTranscript: KhalaCodeDesktopMessage
+  readonly turnId: string
+}): LiveToolProgressCard {
+  let pendingBody: string | null = null
+  let timer: ReturnType<typeof setTimeout> | null = null
+  const emitReplace = () => {
+    if (pendingBody === null) return
+    input.emit({
+      message: {
+        ...input.toolTranscript,
+        body: pendingBody,
+      },
+      turnId: input.turnId,
+      type: "message_replace",
+    })
+  }
+  const flush = () => {
+    if (timer !== null) {
+      clearTimeout(timer)
+      timer = null
+    }
+    emitReplace()
+  }
+  return {
+    accept: event => {
+      const body = toolProgressTranscriptBody(input.toolName, event)
+      if (body === null) return
+      pendingBody = body
+      if (timer !== null) return
+      timer = setTimeout(() => {
+        timer = null
+        emitReplace()
+      }, 200)
+      timer.unref?.()
+    },
+    dispose: () => {
+      if (timer !== null) clearTimeout(timer)
+      timer = null
+      pendingBody = null
+    },
+    flush,
+  }
+}
+
+function toolProgressTranscriptBody(toolName: string, event: KhalaToolEvent): string | null {
+  if (toolName !== "codex_spawn") return null
+  const payload = isRecord(event.payload) ? event.payload : null
+  if (
+    stringField(payload, "schema") !== "openagents.khala_code.codex_spawn_progress.v0.1" ||
+    stringField(payload, "kind") !== "codex_spawn_lifecycle"
+  ) return null
+  const lines = stringArrayField(payload, "lines")
+  if (lines.length === 0) return null
+  return [
+    "codex_spawn: running",
+    "",
+    "Live Pylon/Codex progress:",
+    ...lines,
+  ].join("\n")
+}
+
 function toolEventsFromResult(result: KhalaToolResult): readonly KhalaToolEvent[] {
   if (!isRecord(result.ui) || !Array.isArray(result.ui.events)) return []
   return result.ui.events.flatMap((event, index): KhalaToolEvent[] => {
@@ -1502,6 +1619,20 @@ export function assertAllDefaultToolsRegistered(definitions: readonly KhalaToolD
   const actual = definitions.map(tool => tool.name)
   const expected = expectedKhalaCodeDesktopToolNames()
   return expected.every(name => actual.includes(name)) && actual.length === expected.length
+}
+
+function stringField(source: Record<string, unknown> | null, field: string): string | null {
+  const value = source?.[field]
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null
+}
+
+function stringArrayField(source: Record<string, unknown> | null, field: string): readonly string[] {
+  const value = source?.[field]
+  return Array.isArray(value)
+    ? value
+        .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+        .map(item => item.trim())
+    : []
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

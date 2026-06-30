@@ -41,7 +41,7 @@ const plan: PylonKhalaSpawnPlan = {
         proof: "pylon khala proof --assignment-ref <assignmentRef> --json",
         request: "pylon khala request --workflow codex_agent_task --fixture --json",
         runNoSpend:
-          'pylon assignment run-no-spend --base-url "https://openagents.example" --account "codex" --assignment-ref <assignmentRef> --json',
+          'pylon assignment run-no-spend --base-url "https://openagents.example" --account "codex" --assignment-ref <assignmentRef> --lifecycle-ndjson --json',
       },
       objective: {
         objective: "Implement OpenAgents issue #6366 from the Khala roadmap.",

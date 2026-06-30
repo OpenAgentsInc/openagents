@@ -4,7 +4,7 @@ import { readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises
 import { homedir } from "node:os"
 import { dirname, join, resolve } from "node:path"
 import type { Readable } from "node:stream"
-import { Effect } from "effect"
+import { Effect, Schema as S, Stream } from "effect"
 import {
   KhalaFleetDelegateModuleError,
   khalaFleetDelegationParametersFromEnv,
@@ -36,6 +36,7 @@ export type KhalaCodexFleetCommandInput = {
   readonly detached?: boolean | undefined
   readonly env?: ChatEnv | undefined
   readonly maxOutputBytes?: number | undefined
+  readonly onStderrLine?: ((line: string) => void | Promise<void>) | undefined
   readonly timeoutMs: number
 }
 
@@ -54,9 +55,22 @@ export type KhalaCodexFleetCommandRunner = (
 export type KhalaCodexFleetToolOptions = {
   readonly delegationParameters?: KhalaFleetDelegationParameterSet | undefined
   readonly env?: ChatEnv | undefined
+  readonly onProgress?: KhalaCodexFleetProgressSink | undefined
   readonly runner?: KhalaCodexFleetCommandRunner | undefined
   readonly sleep?: ((ms: number) => Promise<void>) | undefined
 }
+
+export type KhalaCodexFleetProgressPayload = {
+  readonly schema: "openagents.khala_code.codex_spawn_progress.v0.1"
+  readonly kind: "codex_spawn_lifecycle"
+  readonly toolName: "codex_spawn"
+  readonly events: readonly AssignmentLifecycleEvent[]
+  readonly lines: readonly string[]
+}
+
+export type KhalaCodexFleetProgressSink = (
+  payload: KhalaCodexFleetProgressPayload,
+) => void | Promise<void>
 
 export type KhalaPylonEnsureResult = {
   readonly ok: boolean
@@ -226,6 +240,8 @@ type AssignmentLifecycleEvent = {
   readonly status?: string | undefined
 }
 
+type PylonLifecycleWireEvent = typeof PylonLifecycleWireEvent.Type
+
 const MAX_SPAWN_COUNT = 5
 const DEFAULT_COMMAND_TIMEOUT_MS = 45_000
 const DEFAULT_SPAWN_TIMEOUT_MS = 180_000
@@ -233,6 +249,36 @@ const DEFAULT_ENSURE_WAIT_MS = 7_500
 const DEFAULT_CODEX_ACCOUNT_CONCURRENCY = MAX_SPAWN_COUNT
 const DEFAULT_OPENAGENTS_BASE_URL = "https://openagents.com"
 const MAX_MODEL_OUTPUT_BYTES = 4_000
+const MAX_STREAMED_LIFECYCLE_EVENTS = 200
+
+const PylonAssignmentLifecycleWireEvent = S.Struct({
+  schema: S.Literal("openagents.pylon.assignment_run_lifecycle_event.v0.1"),
+  event: S.String,
+  observedAt: S.String,
+  assignmentRef: S.optional(S.String),
+  leaseRef: S.optional(S.String),
+  phase: S.optional(S.String),
+  status: S.optional(S.String),
+})
+
+const PylonSpawnWorkerLifecycleWireEvent = S.Struct({
+  schema: S.Literal("openagents.pylon.khala_spawn_worker_event.v0.1"),
+  message: S.String,
+  observedAt: S.String,
+  slotIndex: S.Number,
+  state: S.String,
+  assignmentEvent: S.optional(S.String),
+  assignmentRef: S.optional(S.String),
+  leaseRef: S.optional(S.String),
+  phase: S.optional(S.String),
+  status: S.optional(S.String),
+})
+
+const PylonLifecycleWireEvent = S.Union([
+  PylonAssignmentLifecycleWireEvent,
+  PylonSpawnWorkerLifecycleWireEvent,
+])
+const decodePylonLifecycleWireEvent = S.decodeUnknownSync(PylonLifecycleWireEvent)
 
 const pylonEnsureToolDefinition: KhalaToolDefinition = {
   authority: "owner_full_access",
@@ -448,7 +494,14 @@ export function createKhalaCodexFleetTools(
     },
     {
       definition: codexSpawnToolDefinition,
-      execute: input => executeCodexSpawnTool(input, options),
+      execute: (input, context) =>
+        executeCodexSpawnTool(input, {
+          ...options,
+          onProgress: async payload => {
+            await options.onProgress?.(payload)
+            await Effect.runPromise(context.emitProgress(payload))
+          },
+        }),
     },
   ]
 }
@@ -738,6 +791,7 @@ export async function spawnCodexInstances(
               baseUrl,
               env,
               input,
+              onProgress: options.onProgress,
               paths,
               plannedAccounts: planned.accounts,
               parameters: delegationParameters,
@@ -979,6 +1033,7 @@ async function runPylonCommand(
   input: {
     readonly env: ChatEnv
     readonly maxOutputBytes?: number | undefined
+    readonly onStderrLine?: ((line: string) => void | Promise<void>) | undefined
     readonly paths: PylonPaths
     readonly runner?: KhalaCodexFleetCommandRunner | undefined
     readonly timeoutMs: number
@@ -989,6 +1044,7 @@ async function runPylonCommand(
     cwd: input.paths.appPath,
     env: pylonCommandEnv(input.env, input.paths.pylonHome),
     maxOutputBytes: input.maxOutputBytes ?? 80_000,
+    onStderrLine: input.onStderrLine,
     timeoutMs: input.timeoutMs,
   })
 }
@@ -1091,7 +1147,7 @@ async function defaultCommandRunner(
 
   const [stdout, stderr, exited] = await Promise.all([
     collectStream(child.stdout, maxOutputBytes),
-    collectStream(child.stderr, maxOutputBytes),
+    collectStream(child.stderr, maxOutputBytes, { onLine: input.onStderrLine }),
     new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolveExit) => {
       child.on("error", () => resolveExit({ code: 127, signal: null }))
       child.on("close", (code, signal) => resolveExit({ code, signal }))
@@ -1110,8 +1166,15 @@ async function defaultCommandRunner(
   }
 }
 
-function collectStream(stream: Readable | null, maxBytes: number): Promise<string> {
+function collectStream(
+  stream: Readable | null,
+  maxBytes: number,
+  options: { readonly onLine?: ((line: string) => void | Promise<void>) | undefined } = {},
+): Promise<string> {
   if (stream === null) return Promise.resolve("")
+  if (options.onLine !== undefined) {
+    return Effect.runPromise(collectStreamLines(stream, maxBytes, options.onLine))
+  }
   return new Promise(resolveText => {
     let text = ""
     stream.setEncoding("utf8")
@@ -1120,6 +1183,36 @@ function collectStream(stream: Readable | null, maxBytes: number): Promise<strin
     })
     stream.on("end", () => resolveText(text))
     stream.on("error", () => resolveText(text))
+  })
+}
+
+function collectStreamLines(
+  stream: Readable,
+  maxBytes: number,
+  onLine: (line: string) => void | Promise<void>,
+): Effect.Effect<string, never> {
+  return Effect.gen(function* () {
+    let text = ""
+    yield* Stream.fromAsyncIterable(
+      stream as AsyncIterable<Uint8Array>,
+      error => new Error(String(error)),
+    ).pipe(
+      Stream.decodeText(),
+      Stream.splitLines,
+      Stream.runForEach(line =>
+        Effect.promise(async () => {
+          text = tailByBytes(`${text}${line}\n`, maxBytes)
+          try {
+            await onLine(line)
+          } catch {
+            // Tool-card progress is observational; subprocess collection must
+            // remain fail-soft if a UI sink disappears mid-run.
+          }
+        }),
+      ),
+      Effect.catch(() => Effect.void),
+    )
+    return text
   })
 }
 
@@ -1905,6 +1998,7 @@ async function runDelegatedBatchSpawn(input: {
   readonly baseUrl: string
   readonly env: ChatEnv
   readonly input: NormalizedSpawnInput
+  readonly onProgress?: KhalaCodexFleetProgressSink | undefined
   readonly parameters: KhalaFleetDelegationParameterSet
   readonly paths: PylonPaths
   readonly plannedAccounts: readonly AccountRow[]
@@ -1933,6 +2027,7 @@ async function runDelegatedBatchSpawn(input: {
     repo: input.work.kind === "fixture" ? undefined : input.work.repo,
     verify: input.work.kind === "fixture" ? undefined : input.work.verify,
   }, input.parameters)
+  const streamedLifecycleEvents: Record<string, unknown>[] = []
   const result = await runPylonCommand([
     "khala",
     "spawn",
@@ -1949,10 +2044,17 @@ async function runDelegatedBatchSpawn(input: {
     "--base-url",
     input.baseUrl,
     "--execute",
+    "--lifecycle-ndjson",
     "--json",
   ], {
     env: input.env,
     maxOutputBytes: 5_000_000,
+    onStderrLine: line =>
+      handlePylonLifecycleStderrLine({
+        events: streamedLifecycleEvents,
+        line,
+        onProgress: input.onProgress,
+      }),
     paths: input.paths,
     runner: input.runner,
     timeoutMs: input.input.timeoutMs,
@@ -2441,8 +2543,36 @@ function lifecycleEventsFromText(value: string): AssignmentLifecycleEvent[] {
 function stripLifecycleJsonLines(value: string): string {
   return value
     .split(/\r?\n/u)
-    .filter(line => lifecycleEventFromJsonLine(line) === null)
+    .filter(line => parsePylonLifecycleNdjsonLine(line) === null)
     .join("\n")
+}
+
+async function handlePylonLifecycleStderrLine(input: {
+  readonly events: Record<string, unknown>[]
+  readonly line: string
+  readonly onProgress?: KhalaCodexFleetProgressSink | undefined
+}): Promise<void> {
+  const event = parsePylonLifecycleNdjsonLine(input.line)
+  if (event === null) return
+  input.events.push(event)
+  while (input.events.length > MAX_STREAMED_LIFECYCLE_EVENTS) input.events.shift()
+  const lifecycleEvents = input.events
+    .map(lifecycleEventFromUnknown)
+    .filter((item): item is AssignmentLifecycleEvent => item !== null)
+  if (lifecycleEvents.length === 0) return
+  await input.onProgress?.({
+    schema: "openagents.khala_code.codex_spawn_progress.v0.1",
+    events: lifecycleEvents,
+    kind: "codex_spawn_lifecycle",
+    lines: liveLifecycleSummaryLines(input.events),
+    toolName: "codex_spawn",
+  })
+}
+
+function liveLifecycleSummaryLines(events: readonly Record<string, unknown>[]): string[] {
+  return events.some(event => stringField(event, "schema") === "openagents.pylon.khala_spawn_worker_event.v0.1")
+    ? batchLifecycleSummaryLines(events)
+    : renderLifecycleSummaryLines(lifecycleEventsFromUnknown(events))
 }
 
 function lifecycleEventsFromUnknown(value: unknown): AssignmentLifecycleEvent[] {
@@ -2454,18 +2584,31 @@ function lifecycleEventsFromUnknown(value: unknown): AssignmentLifecycleEvent[] 
 }
 
 function lifecycleEventFromJsonLine(line: string): AssignmentLifecycleEvent | null {
+  const event = parsePylonLifecycleNdjsonLine(line)
+  return event === null ? null : lifecycleEventFromUnknown(event)
+}
+
+export function parsePylonLifecycleNdjsonLine(line: string): Record<string, unknown> | null {
   const trimmed = line.trim()
   if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) return null
   try {
-    return lifecycleEventFromUnknown(JSON.parse(trimmed) as unknown)
+    const decoded: PylonLifecycleWireEvent = decodePylonLifecycleWireEvent(JSON.parse(trimmed) as unknown)
+    return record(decoded)
   } catch {
     return null
   }
 }
 
 function lifecycleEventFromUnknown(value: unknown): AssignmentLifecycleEvent | null {
-  const event = record(value)
+  let event = record(value)
   if (event === null) return null
+  try {
+    const decoded: PylonLifecycleWireEvent = decodePylonLifecycleWireEvent(event)
+    event = record(decoded)
+    if (event === null) return null
+  } catch {
+    return null
+  }
   const schema = stringField(event, "schema")
   if (
     schema !== "openagents.pylon.assignment_run_lifecycle_event.v0.1" &&
