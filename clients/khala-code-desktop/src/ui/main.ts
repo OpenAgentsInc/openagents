@@ -43,6 +43,7 @@ import {
 } from "../shared/rpc"
 import { renderMessageBody } from "./transcript-render"
 import { mountFleetPanel } from "./fleet-status"
+import { mountUnifiedInboxPanel } from "./inbox"
 import {
   gymPaneStateFromBridgeProof,
   gymPaneStateFromLocation,
@@ -1175,6 +1176,7 @@ mountComposerHud()
 
 const sidebarRoot = document.getElementById("sidebar-root")
 const fleetPanelEl = document.getElementById("fleet-panel")
+const inboxPanelEl = document.getElementById("inbox-panel")
 const gymPanelEl = document.getElementById("gym-panel")
 const threadShell = document.querySelector<HTMLElement>(".khala-code-thread-shell")
 const composerDock = document.querySelector<HTMLElement>(".composer-dock")
@@ -1191,19 +1193,44 @@ const fleetPanel =
         openExternal: url => controls.openExternalUrl(url),
       })
 
+const showFleetPanel = (): void => {
+  setActiveView("fleet")
+}
+
+const inboxPanel =
+  inboxPanelEl === null
+    ? null
+    : mountUnifiedInboxPanel(inboxPanelEl, {
+        fetch: async () => ({
+          fleet: await controls.codexFleetStatus(),
+          pylon: await controls.pylonStatus(),
+          coding: await controls.codingStatus(),
+          tokenAccounting: await controls.tokenAccountingStatus(),
+        }),
+        onOpenFleet: showFleetPanel,
+        onReconnectAccount: accountRef => {
+          showFleetPanel()
+          void controls.connectCodexAccount(accountRef)
+          void fleetPanel?.refresh()
+        },
+      })
+
 const gymPanel =
   gymPanelEl === null ? null : mountGymPane(gymPanelEl, initialGymState)
 
 const setActiveView = (value: string): void => {
+  const showInbox = value === "inbox"
   const showFleet = value === "fleet"
   const showGym = value === "gym"
+  if (inboxPanelEl !== null) inboxPanelEl.hidden = !showInbox
   if (fleetPanelEl !== null) fleetPanelEl.hidden = !showFleet
   gymPanel?.setVisible(showGym)
-  if (threadShell !== null) threadShell.hidden = showFleet || showGym
-  if (composerDock !== null) composerDock.hidden = showFleet || showGym
+  if (threadShell !== null) threadShell.hidden = showInbox || showFleet || showGym
+  if (composerDock !== null) composerDock.hidden = showInbox || showFleet || showGym
   // setVisible starts/stops the live 5s poll so the panel updates on its own.
+  inboxPanel?.setVisible(showInbox)
   fleetPanel?.setVisible(showFleet)
-  if (!showFleet && !showGym && value === "chat") {
+  if (!showInbox && !showFleet && !showGym && value === "chat") {
     requestAnimationFrame(focusComposerInput)
   }
 }
