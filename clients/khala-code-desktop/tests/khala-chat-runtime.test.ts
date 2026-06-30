@@ -101,6 +101,11 @@ describe("Khala Code desktop chat runtime", () => {
     expect(calls[0]?.headers.get("authorization")).toBe("Bearer agent-token")
     expect((calls[0]?.body.tools as unknown[]).map(toolName)).toContain("browser_screenshot")
     expect((calls[0]?.body.tools as unknown[]).map(toolName)).toContain("web_search")
+    const requestMessages = calls[0]?.body.messages as Array<{ content?: string; role?: string }>
+    expect(requestMessages[0]).toMatchObject({ role: "system" })
+    expect(requestMessages[0]?.content).toContain("first-person PLURAL")
+    expect(requestMessages[0]?.content).toContain("we are Khala")
+    expect(requestMessages[0]?.content).toContain("We are Khala. How can we help?")
     expect(JSON.stringify(result)).not.toContain("agent-token")
   })
 
@@ -172,7 +177,7 @@ describe("Khala Code desktop chat runtime", () => {
           { status: 502 },
         )
       }
-      return jsonResponse({ choices: [{ message: { content: "I am Khala Code." } }] })
+      return jsonResponse({ choices: [{ message: { content: "We are Khala Code." } }] })
     }) as typeof fetch
 
     const result = await runKhalaCodeDesktopChatTurn({
@@ -185,7 +190,7 @@ describe("Khala Code desktop chat runtime", () => {
     })
 
     expect(result.ok).toBe(true)
-    expect(result.messages[0]?.body).toBe("I am Khala Code.")
+    expect(result.messages[0]?.body).toBe("We are Khala Code.")
     expect(calls).toHaveLength(2)
     expect(calls[0]?.body.tools).toBeArray()
     expect(calls[1]?.body.tools).toBeUndefined()
@@ -243,7 +248,7 @@ describe("Khala Code desktop chat runtime", () => {
           },
         }],
       },
-      { choices: [{ message: { content: "I read fixture.txt." } }] },
+      { choices: [{ message: { content: "We read fixture.txt." } }] },
     ])
 
     const result = await runKhalaCodeDesktopChatTurn({
@@ -264,7 +269,7 @@ describe("Khala Code desktop chat runtime", () => {
     expect(result.messages.map(message => message.role)).toEqual(["tool", "assistant"])
     expect(result.messages[0]?.body).toContain("read: ok")
     expect(result.messages[0]?.body).toContain("hello from the local tool")
-    expect(result.messages[1]?.body).toBe("I read fixture.txt.")
+    expect(result.messages[1]?.body).toBe("We read fixture.txt.")
     expect(calls).toHaveLength(2)
     const secondMessages = calls[1]?.body.messages as Array<{ content?: string; role?: string; tool_call_id?: string }>
     expect(secondMessages.some(message =>

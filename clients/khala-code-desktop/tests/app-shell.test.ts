@@ -1,4 +1,8 @@
 import { describe, expect, test } from "bun:test"
+import {
+  parseMarkdownBlocks,
+  parseMarkdownInline,
+} from "@openagentsinc/ui/ai-elements/markdown"
 
 import config from "../electrobun.config.js"
 import { khalaCodeDesktopApplicationMenu } from "../src/bun/application-menu"
@@ -43,6 +47,15 @@ describe("khala code desktop app shell", () => {
     expect(main).not.toContain("QueueItem")
   })
 
+  test("seeds first-load copy in Khala's plural voice", async () => {
+    const main = await Bun.file(new URL("../src/ui/main.ts", import.meta.url)).text()
+
+    expect(main).toContain("Point us at a repo")
+    expect(main).toContain("we will keep the patch")
+    expect(main).not.toContain("Point me at a repo")
+    expect(main).not.toContain("I will keep")
+  })
+
   test("keeps composer focus styling on the frame instead of the textarea", async () => {
     const css = await Bun.file(new URL("../src/ui/styles.css", import.meta.url)).text()
 
@@ -72,6 +85,23 @@ describe("khala code desktop app shell", () => {
       "prose",
       "code",
     ])
+  })
+
+  test("parses assistant prose as markdown instead of literal asterisks", () => {
+    const blocks = parseMarkdownBlocks(
+      "We can:\n\n- **Explore** files\n- Run `tests`\n\n[Docs](/docs) [bad](javascript:alert(1))",
+    )
+    const inline = parseMarkdownInline("**Explore** files, run `tests`, and read [docs](/docs). [bad](javascript:alert(1))")
+
+    expect(blocks.map(block => block.kind)).toEqual([
+      "paragraph",
+      "unordered-list",
+      "paragraph",
+    ])
+    expect(inline.some(part => part.kind === "strong")).toBe(true)
+    expect(inline.some(part => part.kind === "code")).toBe(true)
+    expect(inline.some(part => part.kind === "link" && part.href === "/docs")).toBe(true)
+    expect(inline.some(part => part.kind === "link" && part.href.startsWith("javascript:"))).toBe(false)
   })
 
   test("installs native edit menu accelerators for WebKit text editing", async () => {

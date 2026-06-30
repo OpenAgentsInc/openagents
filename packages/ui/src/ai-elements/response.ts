@@ -3,6 +3,20 @@ import type { Attribute, Html } from 'foldkit/html'
 import { html } from 'foldkit/html'
 
 import { aiElementBase } from './base'
+import {
+  parseMarkdownBlocks,
+  parseMarkdownInline,
+  type MarkdownBlock as Block,
+  type MarkdownInlinePart,
+} from './markdown'
+
+export {
+  isSafeMarkdownHref,
+  parseMarkdownBlocks,
+  parseMarkdownInline,
+  type MarkdownBlock,
+  type MarkdownInlinePart,
+} from './markdown'
 
 const MODULE_ID = 'response'
 
@@ -60,318 +74,57 @@ export const responseEmphasisClass = 'italic'
 
 // INLINE PARSING ----------------------------------------------------------
 
-// A bounded inline tokenizer over a single line of text. Handles, in priority
-// order, inline code (`` `code` ``), links (`[text](url)`), bold (`**` / `__`),
-// and italic (`*` / `_`). A dangling/unterminated marker renders as the literal
-// text from the marker to the end — the streaming-tolerant contract.
-//
-// Returns a list of Foldkit inline nodes (text + element nodes). Links are
-// rendered with an explicit safe-href guard so a model-supplied `javascript:`
-// URL degrades to plain text.
-const isSafeHref = (href: string): boolean => {
-  const trimmed = href.trim()
-  if (trimmed === '') {
-    return false
-  }
-  // Allow relative, anchor, and the http(s)/mailto schemes only. Everything else
-  // (javascript:, data:, vbscript:, …) renders as plain text, never a link.
-  return (
-    /^https?:\/\//i.test(trimmed) ||
-    /^mailto:/i.test(trimmed) ||
-    trimmed.startsWith('/') ||
-    trimmed.startsWith('#')
-  )
-}
-
-const renderInline = <Message>(text: string): ReadonlyArray<Html | string> => {
+const renderInlineParts = <Message>(
+  parts: ReadonlyArray<MarkdownInlinePart>,
+): ReadonlyArray<Html | string> => {
   const h = html<Message>()
   const nodes: Array<Html | string> = []
-  let buffer = ''
-  let index = 0
-
-  const flush = (): void => {
-    if (buffer !== '') {
-      nodes.push(buffer)
-      buffer = ''
-    }
-  }
-
-  while (index < text.length) {
-    const rest = text.slice(index)
-
-    // Inline code: `…`. Highest priority — its content is never further parsed.
-    if (rest.startsWith('`')) {
-      const end = rest.indexOf('`', 1)
-      if (end > 0) {
-        flush()
+  for (const part of parts) {
+    switch (part.kind) {
+      case 'text':
+        nodes.push(part.text)
+        break
+      case 'code':
         nodes.push(
-          h.code([h.Class(responseInlineCodeClass)], [rest.slice(1, end)]),
+          h.code([h.Class(responseInlineCodeClass)], [part.text]),
         )
-        index += end + 1
-        continue
-      }
-      // Dangling backtick mid-stream: emit the literal char, keep scanning.
-      buffer += '`'
-      index += 1
-      continue
-    }
-
-    // Link: [text](href).
-    if (rest.startsWith('[')) {
-      const labelEnd = rest.indexOf(']')
-      if (labelEnd > 0 && rest[labelEnd + 1] === '(') {
-        const hrefEnd = rest.indexOf(')', labelEnd + 2)
-        if (hrefEnd > labelEnd + 1) {
-          const label = rest.slice(1, labelEnd)
-          const href = rest.slice(labelEnd + 2, hrefEnd)
-          flush()
-          if (isSafeHref(href)) {
-            nodes.push(
-              h.a(
-                [
-                  h.Href(href),
-                  h.Target('_blank'),
-                  h.Rel('noopener noreferrer'),
-                  h.Class(responseLinkClass),
-                ],
-                renderInline<Message>(label),
-              ),
-            )
-          } else {
-            // Unsafe scheme: render the visible label as plain inline text.
-            nodes.push(...renderInline<Message>(label))
-          }
-          index += hrefEnd + 1
-          continue
-        }
-      }
-      // Incomplete link mid-stream: literal `[`, keep scanning.
-      buffer += '['
-      index += 1
-      continue
-    }
-
-    // Bold: ** … ** or __ … __.
-    const boldMarker = rest.startsWith('**') ? '**' : rest.startsWith('__') ? '__' : ''
-    if (boldMarker !== '') {
-      const end = rest.indexOf(boldMarker, boldMarker.length)
-      if (end > 0) {
-        flush()
+        break
+      case 'link':
+        nodes.push(
+          h.a(
+            [
+              h.Href(part.href),
+              h.Target('_blank'),
+              h.Rel('noopener noreferrer'),
+              h.Class(responseLinkClass),
+            ],
+            renderInlineParts<Message>(part.children),
+          ),
+        )
+        break
+      case 'strong':
         nodes.push(
           h.strong(
             [h.Class(responseStrongClass)],
-            renderInline<Message>(rest.slice(boldMarker.length, end)),
+            renderInlineParts<Message>(part.children),
           ),
         )
-        index += end + boldMarker.length
-        continue
-      }
-      // Dangling bold marker mid-stream: literal text, keep scanning.
-      buffer += boldMarker
-      index += boldMarker.length
-      continue
-    }
-
-    // Italic: * … * or _ … _ (single marker, not part of a bold pair).
-    const italicMarker =
-      rest.startsWith('*') ? '*' : rest.startsWith('_') ? '_' : ''
-    if (italicMarker !== '') {
-      const end = rest.indexOf(italicMarker, 1)
-      if (end > 0) {
-        flush()
+        break
+      case 'emphasis':
         nodes.push(
           h.em(
             [h.Class(responseEmphasisClass)],
-            renderInline<Message>(rest.slice(1, end)),
+            renderInlineParts<Message>(part.children),
           ),
         )
-        index += end + 1
-        continue
-      }
-      buffer += italicMarker
-      index += 1
-      continue
+        break
     }
-
-    buffer += text[index]
-    index += 1
   }
-
-  flush()
   return nodes
 }
 
-// BLOCK PARSING -----------------------------------------------------------
-
-type Block =
-  | Readonly<{ kind: 'heading'; level: 1 | 2 | 3; text: string }>
-  | Readonly<{ kind: 'paragraph'; text: string }>
-  | Readonly<{ kind: 'unordered-list'; items: ReadonlyArray<string> }>
-  | Readonly<{ kind: 'ordered-list'; items: ReadonlyArray<string> }>
-  | Readonly<{ kind: 'blockquote'; text: string }>
-  | Readonly<{ kind: 'code'; language: string | undefined; code: string }>
-  | Readonly<{ kind: 'rule' }>
-
-const headingMatch = (line: string): { level: 1 | 2 | 3; text: string } | undefined => {
-  const match = /^(#{1,6})\s+(.*)$/.exec(line)
-  if (match === null) {
-    return undefined
-  }
-  const hashes = match[1] ?? ''
-  const level = (hashes.length >= 3 ? 3 : hashes.length) as 1 | 2 | 3
-  return { level, text: (match[2] ?? '').trim() }
-}
-
-const unorderedItemMatch = (line: string): string | undefined => {
-  const match = /^\s*[-*+]\s+(.*)$/.exec(line)
-  return match === null ? undefined : (match[1] ?? '')
-}
-
-const orderedItemMatch = (line: string): string | undefined => {
-  const match = /^\s*\d+[.)]\s+(.*)$/.exec(line)
-  return match === null ? undefined : (match[1] ?? '')
-}
-
-const isRule = (line: string): boolean => /^\s*([-*_])(\s*\1){2,}\s*$/.test(line)
-
-const isBlank = (line: string): boolean => line.trim() === ''
-
-// Parse the accumulated markdown text into a list of blocks. Streaming-tolerant:
-// an unterminated ``` fence captures every line seen so far as a code block; a
-// list still being typed is a valid list; trailing blank lines are dropped.
-export const parseMarkdownBlocks = (text: string): ReadonlyArray<Block> => {
-  const lines = text.replace(/\r\n/g, '\n').split('\n')
-  const blocks: Array<Block> = []
-  let lineIndex = 0
-
-  while (lineIndex < lines.length) {
-    const line = lines[lineIndex] ?? ''
-
-    if (isBlank(line)) {
-      lineIndex += 1
-      continue
-    }
-
-    // Fenced code block: ```lang … ``` . An unterminated fence (mid-stream)
-    // captures the rest of the input as code rather than flashing the raw fence.
-    const fenceMatch = /^\s*```(.*)$/.exec(line)
-    if (fenceMatch !== null) {
-      const language = (fenceMatch[1] ?? '').trim()
-      const codeLines: Array<string> = []
-      lineIndex += 1
-      let closed = false
-      while (lineIndex < lines.length) {
-        const codeLine = lines[lineIndex] ?? ''
-        if (/^\s*```\s*$/.test(codeLine)) {
-          closed = true
-          lineIndex += 1
-          break
-        }
-        codeLines.push(codeLine)
-        lineIndex += 1
-      }
-      // `closed` is informational; whether or not the fence closed, the captured
-      // lines render as a code block (the streaming-tolerant contract).
-      void closed
-      blocks.push({
-        kind: 'code',
-        language: language === '' ? undefined : language,
-        code: codeLines.join('\n'),
-      })
-      continue
-    }
-
-    // Indented code block (4+ leading spaces), collected greedily.
-    if (/^ {4}\S/.test(line)) {
-      const codeLines: Array<string> = []
-      while (lineIndex < lines.length && /^ {4}/.test(lines[lineIndex] ?? '')) {
-        codeLines.push((lines[lineIndex] ?? '').slice(4))
-        lineIndex += 1
-      }
-      blocks.push({ kind: 'code', language: undefined, code: codeLines.join('\n') })
-      continue
-    }
-
-    if (isRule(line)) {
-      blocks.push({ kind: 'rule' })
-      lineIndex += 1
-      continue
-    }
-
-    const heading = headingMatch(line)
-    if (heading !== undefined) {
-      blocks.push({ kind: 'heading', level: heading.level, text: heading.text })
-      lineIndex += 1
-      continue
-    }
-
-    // Unordered list: consecutive `- ` / `* ` / `+ ` lines.
-    if (unorderedItemMatch(line) !== undefined) {
-      const items: Array<string> = []
-      while (lineIndex < lines.length) {
-        const item = unorderedItemMatch(lines[lineIndex] ?? '')
-        if (item === undefined) {
-          break
-        }
-        items.push(item)
-        lineIndex += 1
-      }
-      blocks.push({ kind: 'unordered-list', items })
-      continue
-    }
-
-    // Ordered list: consecutive `1. ` / `2) ` lines.
-    if (orderedItemMatch(line) !== undefined) {
-      const items: Array<string> = []
-      while (lineIndex < lines.length) {
-        const item = orderedItemMatch(lines[lineIndex] ?? '')
-        if (item === undefined) {
-          break
-        }
-        items.push(item)
-        lineIndex += 1
-      }
-      blocks.push({ kind: 'ordered-list', items })
-      continue
-    }
-
-    // Blockquote: consecutive `> ` lines, joined into one quote.
-    if (/^\s*>\s?/.test(line)) {
-      const quoteLines: Array<string> = []
-      while (lineIndex < lines.length && /^\s*>\s?/.test(lines[lineIndex] ?? '')) {
-        quoteLines.push((lines[lineIndex] ?? '').replace(/^\s*>\s?/, ''))
-        lineIndex += 1
-      }
-      blocks.push({ kind: 'blockquote', text: quoteLines.join('\n') })
-      continue
-    }
-
-    // Paragraph: consecutive non-blank lines that don't start a new block, soft
-    // wrapped into one paragraph.
-    const paragraphLines: Array<string> = []
-    while (lineIndex < lines.length) {
-      const candidate = lines[lineIndex] ?? ''
-      if (
-        isBlank(candidate) ||
-        /^\s*```/.test(candidate) ||
-        headingMatch(candidate) !== undefined ||
-        unorderedItemMatch(candidate) !== undefined ||
-        orderedItemMatch(candidate) !== undefined ||
-        /^\s*>\s?/.test(candidate) ||
-        isRule(candidate)
-      ) {
-        break
-      }
-      paragraphLines.push(candidate.trim())
-      lineIndex += 1
-    }
-    if (paragraphLines.length > 0) {
-      blocks.push({ kind: 'paragraph', text: paragraphLines.join(' ') })
-    }
-  }
-
-  return blocks
-}
+const renderInline = <Message>(text: string): ReadonlyArray<Html | string> =>
+  renderInlineParts<Message>(parseMarkdownInline(text))
 
 const headingClassFor = (level: 1 | 2 | 3): string =>
   level === 1 ? responseH1Class : level === 2 ? responseH2Class : responseH3Class

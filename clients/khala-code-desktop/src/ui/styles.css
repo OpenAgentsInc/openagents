@@ -172,6 +172,96 @@ button {
   overflow-wrap: anywhere;
 }
 
+.message-markdown {
+  display: grid;
+  gap: 8px;
+}
+
+.message-markdown .md-paragraph,
+.message-markdown .md-heading,
+.message-markdown .md-blockquote,
+.message-markdown .md-list {
+  margin: 0;
+}
+
+.message-markdown .md-heading {
+  color: #f1efe8;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.message-markdown .md-heading--1 {
+  font-size: 1.05rem;
+}
+
+.message-markdown .md-heading--2 {
+  font-size: 0.95rem;
+}
+
+.message-markdown .md-heading--3 {
+  color: #d9e7ff;
+  font-size: 0.875rem;
+}
+
+.message-markdown .md-list {
+  display: grid;
+  gap: 4px;
+  padding-left: 1.15rem;
+}
+
+.message-markdown .md-list-item {
+  padding-left: 0.15rem;
+}
+
+.message-markdown .md-list-item::marker {
+  color: rgba(143, 182, 255, 0.66);
+}
+
+.message-markdown .md-strong {
+  color: #fff;
+  font-weight: 700;
+}
+
+.message-markdown .md-emphasis {
+  color: #d9e7ff;
+  font-style: italic;
+}
+
+.message-markdown .md-inline-code {
+  border: 1px solid #1d2a44;
+  background: #05080e;
+  padding: 0 0.28rem;
+  color: #d7e2f0;
+  font-family: var(--oa-font-code);
+  font-size: 0.75rem;
+}
+
+.message-markdown .md-link {
+  color: #7aa2ff;
+  text-decoration: underline;
+  text-decoration-color: rgba(58, 123, 255, 0.56);
+  text-underline-offset: 3px;
+}
+
+.message-markdown .md-link:hover {
+  color: #a8c2ff;
+}
+
+.message-markdown .md-blockquote {
+  border-left: 1px solid rgba(58, 123, 255, 0.48);
+  padding-left: 10px;
+  color: #c7d6e8;
+  font-style: italic;
+}
+
+.message-markdown .md-rule {
+  width: 100%;
+  height: 1px;
+  margin: 2px 0;
+  border: 0;
+  background: #1d2a44;
+}
+
 .message-bubble--user .message-prose {
   text-align: right;
 }

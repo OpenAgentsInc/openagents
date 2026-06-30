@@ -5,6 +5,11 @@ import {
   tokenizeCode,
   tokenizeCodeLines,
 } from "@openagentsinc/ui/ai-elements/code-highlight"
+import {
+  parseMarkdownBlocks,
+  parseMarkdownInline,
+  type MarkdownInlinePart,
+} from "@openagentsinc/ui/ai-elements/markdown"
 
 const EXT_LANGUAGE: Readonly<Record<string, string>> = {
   bash: "bash",
@@ -30,6 +35,8 @@ export type MessageSegment =
   | { readonly kind: "code"; readonly text: string; readonly language?: string }
   | { readonly kind: "diff"; readonly text: string }
 
+type MarkdownBlock = ReturnType<typeof parseMarkdownBlocks>[number]
+
 const languageForFilename = (filename: string | undefined): string | undefined => {
   if (filename === undefined) return undefined
   const ext = filename.split(".").pop()?.toLowerCase()
@@ -51,6 +58,53 @@ const tokenizeInto = (
   for (const token of tokenizeCode(text, language)) {
     parent.append(tokenSpan(token.kind, token.text))
   }
+}
+
+const inlineNodes = (parts: readonly MarkdownInlinePart[]): readonly Node[] => {
+  const nodes: Node[] = []
+  for (const part of parts) {
+    switch (part.kind) {
+      case "text":
+        nodes.push(document.createTextNode(part.text))
+        break
+      case "code": {
+        const code = document.createElement("code")
+        code.className = "md-inline-code"
+        code.textContent = part.text
+        nodes.push(code)
+        break
+      }
+      case "link": {
+        const anchor = document.createElement("a")
+        anchor.className = "md-link"
+        anchor.href = part.href
+        anchor.target = "_blank"
+        anchor.rel = "noopener noreferrer"
+        anchor.append(...inlineNodes(part.children))
+        nodes.push(anchor)
+        break
+      }
+      case "strong": {
+        const strong = document.createElement("strong")
+        strong.className = "md-strong"
+        strong.append(...inlineNodes(part.children))
+        nodes.push(strong)
+        break
+      }
+      case "emphasis": {
+        const em = document.createElement("em")
+        em.className = "md-emphasis"
+        em.append(...inlineNodes(part.children))
+        nodes.push(em)
+        break
+      }
+    }
+  }
+  return nodes
+}
+
+const appendInlineMarkdown = (element: HTMLElement, text: string): void => {
+  element.append(...inlineNodes(parseMarkdownInline(text)))
 }
 
 export const codeBlockElement = (input: {
@@ -173,6 +227,69 @@ export const diffElement = (input: {
   return root
 }
 
+const headingElement = (block: Extract<MarkdownBlock, { readonly kind: "heading" }>): HTMLElement => {
+  const tag = block.level === 1 ? "h3" : block.level === 2 ? "h4" : "h5"
+  const heading = document.createElement(tag)
+  heading.className = `md-heading md-heading--${block.level}`
+  appendInlineMarkdown(heading, block.text)
+  return heading
+}
+
+const listElement = (
+  tag: "ol" | "ul",
+  block: Extract<MarkdownBlock, { readonly kind: "ordered-list" | "unordered-list" }>,
+): HTMLElement => {
+  const list = document.createElement(tag)
+  list.className = `md-list md-list--${tag === "ol" ? "ordered" : "unordered"}`
+  for (const item of block.items) {
+    const li = document.createElement("li")
+    li.className = "md-list-item"
+    appendInlineMarkdown(li, item)
+    list.append(li)
+  }
+  return list
+}
+
+const markdownBlockElement = (block: MarkdownBlock): HTMLElement => {
+  switch (block.kind) {
+    case "heading":
+      return headingElement(block)
+    case "paragraph": {
+      const p = document.createElement("p")
+      p.className = "md-paragraph"
+      appendInlineMarkdown(p, block.text)
+      return p
+    }
+    case "unordered-list":
+      return listElement("ul", block)
+    case "ordered-list":
+      return listElement("ol", block)
+    case "blockquote": {
+      const quote = document.createElement("blockquote")
+      quote.className = "md-blockquote"
+      appendInlineMarkdown(quote, block.text)
+      return quote
+    }
+    case "code":
+      return codeBlockElement({
+        code: block.code,
+        ...(block.language === undefined ? {} : { language: block.language }),
+      })
+    case "rule": {
+      const rule = document.createElement("hr")
+      rule.className = "md-rule"
+      return rule
+    }
+  }
+}
+
+export const markdownElement = (input: { readonly markdown: string }): HTMLElement => {
+  const root = document.createElement("div")
+  root.className = "message-prose message-markdown"
+  root.append(...parseMarkdownBlocks(input.markdown).map(markdownBlockElement))
+  return root
+}
+
 export const looksLikeUnifiedDiff = (text: string): boolean => {
   const first = text.split("\n").find(line => line.trim().length > 0) ?? ""
   return (
@@ -231,8 +348,5 @@ export const renderMessageBody = (text: string): readonly HTMLElement[] =>
         ...(segment.language === undefined ? {} : { language: segment.language }),
       })
     }
-    const p = document.createElement("p")
-    p.className = "message-prose"
-    p.textContent = segment.text
-    return p
+    return markdownElement({ markdown: segment.text })
   })

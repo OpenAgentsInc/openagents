@@ -100,7 +100,7 @@ const initialMessages: readonly KhalaCodeDesktopMessage[] = [
     id: "assistant-wake",
     role: "assistant",
     body:
-      "Khala Code is awake. Point me at a repo, and I will keep the patch small enough to understand.",
+      "Khala Code is awake. Point us at a repo, and we will keep the patch small enough to understand.",
   },
 ]
 
