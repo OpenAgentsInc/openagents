@@ -221,6 +221,7 @@ type KhalaByokState =
       _tag: 'accepted'
       apiKey: Redacted.Redacted<string>
       provider: 'openrouter'
+      source: 'account' | 'request'
     }>
   | Readonly<{ _tag: 'invalid'; reason: string }>
 
@@ -242,6 +243,7 @@ const resolveKhalaByokState = (headers: Headers): KhalaByokState => {
       _tag: 'accepted',
       apiKey: Redacted.make(requireProviderApiKeyShape(rawKey)),
       provider: 'openrouter',
+      source: 'request',
     }
   } catch {
     return {
@@ -414,6 +416,16 @@ export type InferenceFundingResolver = (
 
 export const defaultCardFundingResolver: InferenceFundingResolver = async () =>
   'card'
+
+export type KhalaAccountByokResolver = (
+  accountRef: string,
+) => Promise<
+  | Readonly<{
+      apiKey: Redacted.Redacted<string>
+      provider: 'openrouter'
+    }>
+  | undefined
+>
 
 // ROUTING SEAM ------------------------------------------------------------
 // Resolves a requested model alias to an adapter id. #5476 shipped a resolver
@@ -632,6 +644,14 @@ export type ChatCompletionsDeps = Readonly<{
   // Resolves the account's funding kind (card | bitcoin) for the metering hook.
   // Defaults to card (no Bitcoin discount).
   resolveFundingKind?: InferenceFundingResolver
+  // ACCOUNT-ATTACHED BYOK (#7646). Resolves a connected OpenRouter API-key
+  // provider account for this authenticated OpenAgents account. Request-specific
+  // BYOK headers take precedence and remain ephemeral; this resolver is only
+  // consulted when those headers are absent. The resolver returns redacted key
+  // material only, and the route still pins the public model surface to
+  // `openagents/khala`, routes through Khala identity/tool/tracing/metering
+  // boundaries, and records served tokens with no OpenAgents credit debit.
+  resolveAccountByok?: KhalaAccountByokResolver | undefined
   // Minimum available balance (msat) required to accept a request. Until #5477
   // prices per-model, any positive balance clears the gate; an account with
   // zero/negative available balance is rejected.
@@ -2629,16 +2649,34 @@ export const handleChatCompletions = (
         { status: 400 },
       )
     }
-    const byok = resolveKhalaByokState(request.headers)
-    if (byok._tag === 'invalid') {
+    const requestByok = resolveKhalaByokState(request.headers)
+    if (requestByok._tag === 'invalid') {
       return noStoreJsonResponse(
         {
           error: 'invalid_byok_provider_key',
-          reason: byok.reason,
+          reason: requestByok.reason,
         },
-        { headers: byokResponseHeaders(byok, false), status: 400 },
+        { headers: byokResponseHeaders(requestByok, false), status: 400 },
       )
     }
+    const accountByok =
+      requestByok._tag === 'absent' && deps.resolveAccountByok !== undefined
+        ? yield* Effect.tryPromise({
+            try: () => deps.resolveAccountByok!(session.accountRef),
+            catch: () => undefined,
+          }).pipe(Effect.catch(() => Effect.void))
+        : undefined
+    const byok: KhalaByokState =
+      requestByok._tag === 'accepted'
+        ? requestByok
+        : accountByok === undefined
+          ? requestByok
+          : {
+              _tag: 'accepted',
+              apiKey: accountByok.apiKey,
+              provider: accountByok.provider,
+              source: 'account',
+            }
 
     const nowEpochSeconds = deps.nowEpochSeconds ?? currentEpochSeconds
     const newId = deps.newId ?? defaultId

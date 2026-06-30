@@ -75,7 +75,6 @@ export const makeD1ProviderAccountRepository = (
         `SELECT *
          FROM provider_accounts
          WHERE user_id = ?
-           AND provider = 'chatgpt_codex'
            AND deleted_at IS NULL
          ORDER BY updated_at DESC
          LIMIT 50`,

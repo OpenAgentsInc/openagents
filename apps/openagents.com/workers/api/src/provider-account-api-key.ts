@@ -6,6 +6,7 @@ import {
 import {
   ANTHROPIC_CLAUDE_PROVIDER,
   GOOGLE_GEMINI_PROVIDER,
+  OPENROUTER_PROVIDER,
   type IdFactory,
   type ProviderAccountHealth,
   type ProviderAccountRecord,
@@ -40,10 +41,11 @@ import {
 export type ApiKeyConnectProvider =
   | typeof ANTHROPIC_CLAUDE_PROVIDER
   | typeof GOOGLE_GEMINI_PROVIDER
+  | typeof OPENROUTER_PROVIDER
 
 export type ProviderApiKeyConnectPolicy = Readonly<{
   provider: ApiKeyConnectProvider
-  routeSegment: 'anthropic' | 'google-gemini'
+  routeSegment: 'anthropic' | 'google-gemini' | 'openrouter'
   secretRefSegment: string
   probeUrl: string
   probeHeaders: (apiKey: string) => Readonly<Record<string, string>>
@@ -51,6 +53,15 @@ export type ProviderApiKeyConnectPolicy = Readonly<{
 
 export const PROVIDER_API_KEY_CONNECT_POLICIES: ReadonlyArray<ProviderApiKeyConnectPolicy> =
   [
+    {
+      provider: OPENROUTER_PROVIDER,
+      routeSegment: 'openrouter',
+      secretRefSegment: 'openrouter',
+      probeUrl: 'https://openrouter.ai/api/v1/models',
+      probeHeaders: apiKey => ({
+        authorization: `Bearer ${apiKey}`,
+      }),
+    },
     {
       provider: ANTHROPIC_CLAUDE_PROVIDER,
       routeSegment: 'anthropic',

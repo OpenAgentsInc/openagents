@@ -1650,8 +1650,8 @@ function formatKeyAdded(record: StoredProviderKey, env: Record<string, string | 
   return [
     `Saved your ${record.provider} key (${redactProviderKey(record.key)}).`,
     terminalStyle.meta(`Stored locally at ${providerKeyPath(env)} (only you can read it).`),
-    terminalStyle.meta("Khala now sends this key with your chats so usage can run on your own provider account."),
-    terminalStyle.meta("Full upstream BYOK routing is rolling out; until then the server acknowledges the key and chats use the shared collective. Run `khala key remove` to stop sending it."),
+    terminalStyle.meta("Khala sends this key to the hosted OpenAgents gateway for each chat; usage runs through Khala on your provider account."),
+    terminalStyle.meta("Run `khala key remove` to stop sending the request-specific key."),
   ].join("\n")
 }
 

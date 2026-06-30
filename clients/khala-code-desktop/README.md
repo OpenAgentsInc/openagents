@@ -12,9 +12,9 @@ The desktop host routes model traffic through the hosted OpenAgents cloud:
 OPENAGENTS_AGENT_TOKEN=... bun run dev
 ```
 
-Request-specific OpenRouter BYOK is passed to hosted Khala instead of being used
-as a local model backend. Set both credentials when you want the hosted gateway
-to spend a request against your OpenRouter key:
+OpenRouter BYOK is passed to hosted Khala instead of being used as a local model
+backend. An account-attached OpenRouter key is used automatically by the hosted
+gateway. A request-specific key, when set, takes precedence for that request:
 
 ```sh
 OPENAGENTS_AGENT_TOKEN=... OPENROUTER_API_KEY=... bun run dev
