@@ -6,8 +6,12 @@ import {
   canonicalLbrLaborCloseout,
   lbrAcceptanceToDraft,
   lbrAgenticCodingRequestToDraft,
+  lbrBondForfeitToDraft,
+  lbrBondReleaseToDraft,
   lbrQuoteToDraft,
   lbrResultToDraft,
+  makeLbrBondForfeit,
+  makeLbrBondRelease,
   makeLbrAcceptance,
   makeLbrAgenticCodingRequest,
   makeLbrLaborCloseout,
@@ -23,6 +27,7 @@ const requestEventId = "aa".repeat(32)
 const quoteEventId = "bb".repeat(32)
 const acceptanceEventId = "cc".repeat(32)
 const resultEventId = "dd".repeat(32)
+const bondOutcomeEventId = "ee".repeat(32)
 const sig = "33".repeat(64)
 
 type Draft = Readonly<{
@@ -109,6 +114,38 @@ const buildLifecycle = () => {
   })
 
   return { requestEvent, quoteEvent, acceptanceEvent, resultEvent }
+}
+
+const buildBondReleaseEvent = (): LbrLifecycleEvent => {
+  const release = makeLbrBondRelease({
+    requestId: requestEventId,
+    requesterPubkey,
+    bondReceiptRef: "receipt.public.bond.de6_1",
+    releaseReceiptRef: "receipt.public.bond_release.de6_1",
+    authorityRef: "authority.public.validator.de6",
+    requestRelay: "wss://relay.openagents.com",
+  })
+  return eventFrom(lbrBondReleaseToDraft(release), {
+    id: bondOutcomeEventId,
+    pubkey: "44".repeat(32),
+  })
+}
+
+const buildBondForfeitEvent = (): LbrLifecycleEvent => {
+  const forfeit = makeLbrBondForfeit({
+    requestId: requestEventId,
+    requesterPubkey,
+    bondReceiptRef: "receipt.public.bond.de6_1",
+    forfeitReceiptRef: "receipt.public.bond_forfeit.de6_1",
+    forfeitDestination: "counterparty",
+    forfeitConditionRef: "condition.public.validator.nonperformance",
+    authorityRef: "authority.public.validator.de6",
+    requestRelay: "wss://relay.openagents.com",
+  })
+  return eventFrom(lbrBondForfeitToDraft(forfeit), {
+    id: bondOutcomeEventId,
+    pubkey: "44".repeat(32),
+  })
 }
 
 describe("NIP-LBR labor-market closeout receipt", () => {
@@ -209,6 +246,63 @@ describe("NIP-LBR labor-market closeout receipt", () => {
       receiptRef: `lbr-closeout:${requestEventId}:${"00".repeat(32)}`,
     }
     expect(verifyLbrLaborCloseoutDigest(tamperedReceiptRef)).toBe(false)
+  })
+
+  test("binds a provider bond release outcome into the closeout digest", () => {
+    const withoutBond = makeLbrLaborCloseout(buildLifecycle())
+    const withRelease = makeLbrLaborCloseout({
+      ...buildLifecycle(),
+      bondOutcomeEvent: buildBondReleaseEvent(),
+    })
+
+    expect(withRelease.bondOutcome).toEqual({
+      kind: "released",
+      eventId: bondOutcomeEventId,
+      requestId: requestEventId,
+      requesterPubkey,
+      bondReceiptRef: "receipt.public.bond.de6_1",
+      releaseReceiptRef: "receipt.public.bond_release.de6_1",
+      authorityRef: "authority.public.validator.de6",
+    })
+    expect(withRelease.digest).not.toBe(withoutBond.digest)
+    expect(verifyLbrLaborCloseoutDigest(withRelease)).toBe(true)
+
+    if (withRelease.bondOutcome?.kind !== "released") {
+      throw new Error("expected a released bond outcome")
+    }
+    const tampered = {
+      ...withRelease,
+      bondOutcome: {
+        ...withRelease.bondOutcome,
+        releaseReceiptRef: "receipt.public.bond_release.swapped",
+      },
+    }
+    expect(verifyLbrLaborCloseoutDigest(tampered)).toBe(false)
+  })
+
+  test("binds release versus forfeit as mutually distinct terminal outcomes", () => {
+    const withRelease = makeLbrLaborCloseout({
+      ...buildLifecycle(),
+      bondOutcomeEvent: buildBondReleaseEvent(),
+    })
+    const withForfeit = makeLbrLaborCloseout({
+      ...buildLifecycle(),
+      bondOutcomeEvent: buildBondForfeitEvent(),
+    })
+
+    expect(withForfeit.bondOutcome).toEqual({
+      kind: "forfeited",
+      eventId: bondOutcomeEventId,
+      requestId: requestEventId,
+      requesterPubkey,
+      bondReceiptRef: "receipt.public.bond.de6_1",
+      forfeitReceiptRef: "receipt.public.bond_forfeit.de6_1",
+      forfeitDestination: "counterparty",
+      forfeitConditionRef: "condition.public.validator.nonperformance",
+      authorityRef: "authority.public.validator.de6",
+    })
+    expect(withForfeit.digest).not.toBe(withRelease.digest)
+    expect(verifyLbrLaborCloseoutDigest(withForfeit)).toBe(true)
   })
 
   test("rejects a quote that exceeds the request max budget", () => {

@@ -177,6 +177,41 @@ Verified live on 2026-06-30 after deploying `ba9a5424e5`:
   still showed `4/4`, so use `codexAccounts` for five-slot Desktop smoke
   validation.
 
+## Current A2A Transaction Step: Provider-Bond Contract
+
+Checked again on 2026-06-30 before the first forfeitable-bond implementation
+pass:
+
+- local Pylon online: `pylon.33afd48282a649047e3a`
+- active assignment markers: `0`
+- ready Codex refs: `(default)`, `codex-2`, `status`
+- `codex` remained `credentials_revoked`; the historical backup/supervisor refs
+  remained `credentials_missing`
+- old pooled capacity still reported `4/4`, so keep using the per-account
+  projection for five-slot validation
+
+The next concrete step toward agents transacting naturally with each other
+(Nostr negotiation, Lightning/MDK/Ark later, forfeitable funds) is tracked in
+`docs/labor/2026-06-30-forfeitable-bond-next-step.md`. FB-1 is now the package
+contract step:
+
+- `packages/nip90/src/lbr-bond.ts` defines ref-only `provider_bond`,
+  `bond_release`, and `bond_forfeit` kind-7000 feedback variants.
+- `packages/nip90/src/lbr-closeout.ts` can bind a terminal bond outcome into
+  the content-addressed LBR closeout digest.
+- Verification:
+
+```sh
+bun run --cwd packages/nip90 typecheck
+bun run --cwd packages/nip90 test
+```
+
+This is still protocol-only. It moves no sats, creates no hold invoice, imports
+no Lightning/Ark rail, changes no escrow ledger state, and does not upgrade any
+public promise. The next real implementation phase is FB-2: add the validator-
+only credit-ledger `forfeit` terminal state and update
+`apps/openagents.com/INVARIANTS.md` with regression coverage.
+
 The summary should include:
 
 - `auto-run: completed`

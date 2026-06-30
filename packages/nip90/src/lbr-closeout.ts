@@ -38,6 +38,10 @@ import {
   type LbrQuote,
   type LbrResult,
 } from "./lbr.js"
+import {
+  decodeLbrBondOutcomeEvent,
+  type LbrBondOutcome,
+} from "./lbr-bond.js"
 
 export const LBR_CLOSEOUT_RECEIPT_VERSION = "nip-lbr-closeout.v1"
 
@@ -65,7 +69,30 @@ export type LbrLaborCloseoutInput = Readonly<{
   quoteEvent: LbrLifecycleEvent
   acceptanceEvent: LbrLifecycleEvent
   resultEvent: LbrLifecycleEvent
+  bondOutcomeEvent?: LbrLifecycleEvent
 }>
+
+export type LbrLaborCloseoutBondOutcome =
+  | Readonly<{
+      kind: "released"
+      eventId: string
+      requestId: string
+      requesterPubkey: string
+      bondReceiptRef: string
+      releaseReceiptRef: string
+      authorityRef: string
+    }>
+  | Readonly<{
+      kind: "forfeited"
+      eventId: string
+      requestId: string
+      requesterPubkey: string
+      bondReceiptRef: string
+      forfeitReceiptRef: string
+      forfeitDestination: "refund_payer" | "counterparty" | "burn"
+      forfeitConditionRef: string
+      authorityRef: string
+    }>
 
 /**
  * The public-safe, content-addressed labor-market closeout receipt. Every field
@@ -98,6 +125,7 @@ export type LbrLaborCloseout = Readonly<{
   buildRef?: string
   forumTopicRef?: string
   deadline?: string
+  bondOutcome?: LbrLaborCloseoutBondOutcome
   eventIds: Readonly<{
     request: string
     quote: string
@@ -158,6 +186,30 @@ export const canonicalLbrLaborCloseout = (
     buildRef: fields.buildRef ?? null,
     forumTopicRef: fields.forumTopicRef ?? null,
     deadline: fields.deadline ?? null,
+    bondOutcome:
+      fields.bondOutcome === undefined
+        ? null
+        : fields.bondOutcome.kind === "released"
+          ? {
+              kind: fields.bondOutcome.kind,
+              eventId: fields.bondOutcome.eventId,
+              requestId: fields.bondOutcome.requestId,
+              requesterPubkey: fields.bondOutcome.requesterPubkey,
+              bondReceiptRef: fields.bondOutcome.bondReceiptRef,
+              releaseReceiptRef: fields.bondOutcome.releaseReceiptRef,
+              authorityRef: fields.bondOutcome.authorityRef,
+            }
+          : {
+              kind: fields.bondOutcome.kind,
+              eventId: fields.bondOutcome.eventId,
+              requestId: fields.bondOutcome.requestId,
+              requesterPubkey: fields.bondOutcome.requesterPubkey,
+              bondReceiptRef: fields.bondOutcome.bondReceiptRef,
+              forfeitReceiptRef: fields.bondOutcome.forfeitReceiptRef,
+              forfeitDestination: fields.bondOutcome.forfeitDestination,
+              forfeitConditionRef: fields.bondOutcome.forfeitConditionRef,
+              authorityRef: fields.bondOutcome.authorityRef,
+            },
     eventIds: {
       request: fields.eventIds.request,
       quote: fields.eventIds.quote,
@@ -166,18 +218,55 @@ export const canonicalLbrLaborCloseout = (
     },
   })
 
+const closeoutBondOutcome = (
+  outcome: LbrBondOutcome,
+  event: LbrLifecycleEvent,
+  requestEventId: string,
+): LbrLaborCloseoutBondOutcome => {
+  if (outcome.requestId !== requestEventId) {
+    fail(
+      "mismatched_request",
+      "bond outcome requestId must equal the request event id",
+    )
+  }
+  const eventId = ensureEventId(event.id, "bond outcome event id")
+  return outcome.kind === "released"
+    ? {
+        kind: outcome.kind,
+        eventId,
+        requestId: outcome.requestId,
+        requesterPubkey: outcome.requesterPubkey,
+        bondReceiptRef: outcome.bondReceiptRef,
+        releaseReceiptRef: outcome.releaseReceiptRef,
+        authorityRef: outcome.authorityRef,
+      }
+    : {
+        kind: outcome.kind,
+        eventId,
+        requestId: outcome.requestId,
+        requesterPubkey: outcome.requesterPubkey,
+        bondReceiptRef: outcome.bondReceiptRef,
+        forfeitReceiptRef: outcome.forfeitReceiptRef,
+        forfeitDestination: outcome.forfeitDestination,
+        forfeitConditionRef: outcome.forfeitConditionRef,
+        authorityRef: outcome.authorityRef,
+      }
+}
+
 const buildCloseoutFields = (
   events: {
     requestEvent: LbrLifecycleEvent
     quoteEvent: LbrLifecycleEvent
     acceptanceEvent: LbrLifecycleEvent
     resultEvent: LbrLifecycleEvent
+    bondOutcomeEvent?: LbrLifecycleEvent
   },
   decoded: {
     request: LbrAgenticCodingRequest
     quote: LbrQuote
     acceptance: LbrAcceptance
     result: LbrResult
+    bondOutcome?: LbrBondOutcome
   },
 ): Omit<LbrLaborCloseout, "digest" | "receiptRef"> => {
   const requestId = decoded.quote.requestId
@@ -258,6 +347,16 @@ const buildCloseoutFields = (
     ...(decoded.request.deadline === undefined
       ? {}
       : { deadline: decoded.request.deadline }),
+    ...(decoded.bondOutcome === undefined ||
+    events.bondOutcomeEvent === undefined
+      ? {}
+      : {
+          bondOutcome: closeoutBondOutcome(
+            decoded.bondOutcome,
+            events.bondOutcomeEvent,
+            requestEventId,
+          ),
+        }),
     eventIds: {
       request: requestEventId,
       quote: ensureEventId(events.quoteEvent.id, "quote event id"),
@@ -286,12 +385,18 @@ export const makeLbrLaborCloseout = (
   ensureKind(input.quoteEvent.kind, LBR_FEEDBACK_KIND, "quote event")
   ensureKind(input.acceptanceEvent.kind, LBR_FEEDBACK_KIND, "acceptance event")
   ensureKind(input.resultEvent.kind, LBR_AGENTIC_CODING_RESULT_KIND, "result event")
+  if (input.bondOutcomeEvent !== undefined) {
+    ensureKind(input.bondOutcomeEvent.kind, LBR_FEEDBACK_KIND, "bond outcome event")
+  }
 
   const decoded = {
     request: decodeLbrAgenticCodingRequestEvent(input.requestEvent),
     quote: decodeLbrQuoteEvent(input.quoteEvent),
     acceptance: decodeLbrAcceptanceEvent(input.acceptanceEvent),
     result: decodeLbrResultEvent(input.resultEvent),
+    ...(input.bondOutcomeEvent === undefined
+      ? {}
+      : { bondOutcome: decodeLbrBondOutcomeEvent(input.bondOutcomeEvent) }),
   }
 
   const fields = buildCloseoutFields(
@@ -300,6 +405,9 @@ export const makeLbrLaborCloseout = (
       quoteEvent: input.quoteEvent,
       acceptanceEvent: input.acceptanceEvent,
       resultEvent: input.resultEvent,
+      ...(input.bondOutcomeEvent === undefined
+        ? {}
+        : { bondOutcomeEvent: input.bondOutcomeEvent }),
     },
     decoded,
   )

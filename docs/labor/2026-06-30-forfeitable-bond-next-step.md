@@ -155,7 +155,7 @@ actually ingestible. Without it, the bond is a schema with no path to the ledger
 
 | Phase | Deliverable | Acceptance |
 | --- | --- | --- |
-| FB-1 | `packages/nip90/src/lbr-bond.ts` + tests | ref-only round-trip; payment-material rejected at decode; release XOR forfeit; closeout digest binds bond outcome; `bun run test` green for the package |
+| FB-1 | `packages/nip90/src/lbr-bond.ts` + tests | **landed 2026-06-30 in package contract**: ref-only round-trip; payment-material rejected at decode; release XOR forfeit; closeout digest binds bond outcome; `bun run --cwd packages/nip90 test` and `bun run --cwd packages/nip90 typecheck` green |
 | FB-2 | Ledger `forfeit` terminal state + invariants | validator-only forfeit; worker cannot self-trigger; fail-closed, idempotent; refund vs forfeit destination correct; INVARIANTS.md updated with the new state + a regression test |
 | FB-3 | `BondSettlementAdapter` seam + credit-ledger impl | adapter interface; ledger adapter passes; no rail imported; no-spend invariant preserved |
 | FB-4 | Minimal relay→DB quote/offer ingestion (P1) | `recordForumWorkRequestOffer` has a live caller; a relay kind-7000 quote+bond becomes an API offer; existing labor-market tests stay green |
@@ -205,11 +205,13 @@ Read-only reference (study, do not vendor):
 
 | Phase | Status |
 | --- | --- |
-| FB-1 — `lbr-bond.ts` contract + tests | not started |
+| FB-1 — `lbr-bond.ts` contract + tests | implemented in `packages/nip90/src/lbr-bond.ts`; exported by `packages/nip90/src/index.ts`; closeout digest binding implemented in `packages/nip90/src/lbr-closeout.ts`; verified by `bun run --cwd packages/nip90 test` and `bun run --cwd packages/nip90 typecheck` |
 | FB-2 — ledger `forfeit` terminal state | not started |
 | FB-3 — `BondSettlementAdapter` seam | not started |
 | FB-4 — relay→DB quote/offer bridge (P1) | not started |
 
 Implementation is intended to run through the Khala→Pylon→Codex labor fleet (the
-same no-spend lane this workspace uses), each phase opening a PR that runs the
-package/worker verifier before merge.
+same no-spend lane this workspace uses), each phase running the package/worker
+verifier before merge. The 2026-06-30 FB-1 pass was implemented directly in the
+owner checkout after confirming Pylon fleet status was online and idle; it adds
+no ledger state, no rail adapter, and no public promise upgrade.
