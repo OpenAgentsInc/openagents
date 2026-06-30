@@ -116,6 +116,73 @@ describe("Khala spawn per-account planning", () => {
     expect(result.slots.map(slot => slot.requestInput.targetAccountRefHash)).toEqual([accountHashB, accountHashB])
     expect(result.slots[0]?.commands.request).toContain('--account-ref "codex-b"')
   })
+
+  test("spreads initial concurrent slots across advertised ready accounts", () => {
+    const result = buildPylonKhalaSpawnPlan({
+      accounts: {
+        accounts: [
+          {
+            accountRef: "codex-a",
+            accountRefHash: accountHashA,
+            blockerRefs: [],
+            homeState: "present",
+            provider: "codex",
+            readiness: { state: "ready" },
+          },
+          {
+            accountRef: "codex-b",
+            accountRefHash: accountHashB,
+            blockerRefs: [],
+            homeState: "present",
+            provider: "codex",
+            readiness: { state: "ready" },
+          },
+        ],
+      } as never,
+      advertisedCodexAccounts: [
+        {
+          accountKey: "aaaaaaaaaaaa",
+          accountRefHash: accountHashA,
+          available: 5,
+          busy: 0,
+          queued: 0,
+          ready: 5,
+        },
+        {
+          accountKey: "bbbbbbbbbbbb",
+          accountRefHash: accountHashB,
+          available: 5,
+          busy: 0,
+          queued: 0,
+          ready: 5,
+        },
+      ],
+      baseUrl: "https://openagents.example",
+      fixture: true,
+      maxParallel: 5,
+      objectives: repeatedKhalaSpawnObjectives({
+        count: 5,
+        objective: "Run the bounded fixture.",
+      }),
+      targetPylonRef: "pylon.owner.codex",
+    })
+
+    expect(result.maxParallel).toBe(5)
+    expect(result.slots.map((slot) => slot.account.accountRef)).toEqual([
+      "codex-a",
+      "codex-b",
+      "codex-a",
+      "codex-b",
+      "codex-a",
+    ])
+    expect(result.slots.map((slot) => slot.requestInput.targetAccountRefHash)).toEqual([
+      accountHashA,
+      accountHashB,
+      accountHashA,
+      accountHashB,
+      accountHashA,
+    ])
+  })
 })
 
 const requestResult: PylonKhalaRequestResult = {

@@ -178,8 +178,8 @@ prints one final `openagents.pylon.khala_spawn_run.v0.1` JSON object. Success is
 `ok: true`, `aggregate.acceptedCount: 5`, `totalTokenRows: 5`, no
 `blockerRefs`, and a clean process exit.
 
-Verified live on 2026-06-30 after the lifecycle, capacity-projection, and
-per-account spawn-planner fixes:
+Verified live on 2026-06-30 after the lifecycle, capacity-projection,
+per-account spawn-planner, and weighted account-pool fixes:
 
 - `provider go-online --json` with
   `OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY=5` reported
@@ -193,24 +193,24 @@ per-account spawn-planner fixes:
   `targetAccountRefHash`; zero-slot or non-matching local accounts are no
   longer eligible for direct spawn assignment targeting.
 - the direct five-slot Pylon smoke above completed `5/5` with
-  `aggregate.acceptedCount = 5`, `totalTokenRows = 5`, `ownerOnlyTraceCount = 65`,
-  `ownerOnlyRawEventCount = 94`, and `totalVerifiedTokens = 560182`.
-- token-counter evidence moved from `6434501773` to `6435121062`
-  (`delta = 619289`, `state = increment_observed`), above the verified-token
+  `aggregate.acceptedCount = 5`, `totalTokenRows = 5`, `ownerOnlyTraceCount = 58`,
+  `ownerOnlyRawEventCount = 83`, and `totalVerifiedTokens = 409068`.
+- token-counter evidence moved from `6436250864` to `6436768178`
+  (`delta = 517314`, `state = increment_observed`), above the verified-token
   minimum.
 - each slot reached `assignment_run.completed` and proof-check `accepted`, with
   `closeout: accepted, no-spend, not_applicable`, `blocker refs: none`, and
   lifecycle summaries through `assignment_run.completed`.
-- all five direct-spawn slots targeted
-  `account.pylon.codex.651c03fed68925d7acb2c02f` (`codex-2`) via
-  `requestInput.targetAccountRefHash`, so the server admission gate and local
-  no-spend runner agreed on the same account for each assignment.
+- direct-spawn slots targeted the advertised account buckets in weighted
+  round-robin order: `codex-2`, `status`, `codex-2`, `status`, `codex-2`.
+  The server admission gate and local no-spend runner agreed on the same
+  `requestInput.targetAccountRefHash` for each assignment.
 - five-slot assignment refs:
-  `assignment.public.khala_coding.chatcmpl_1df7df588cab4665a5a1640ba91fd1aa`,
-  `assignment.public.khala_coding.chatcmpl_633a39f2649a47d6ab8dd58eb6d9d07f`,
-  `assignment.public.khala_coding.chatcmpl_c8ddc46b676e45769ec22d062a420307`,
-  `assignment.public.khala_coding.chatcmpl_bd3fda5efcb642488195623525a07ee4`,
-  `assignment.public.khala_coding.chatcmpl_615c0faac11a4ca594ba819c0301b84e`.
+  `assignment.public.khala_coding.chatcmpl_cd36793b2c1a4f1d9c257617baea062f`,
+  `assignment.public.khala_coding.chatcmpl_116d758b411b4fb086f2bcf1b2c917b0`,
+  `assignment.public.khala_coding.chatcmpl_7793f0010744477b8e174f81ca0eb380`,
+  `assignment.public.khala_coding.chatcmpl_bb4b9b08609e49c5a9a7c9c10167cff1`,
+  `assignment.public.khala_coding.chatcmpl_ab7b5662144c435e81e69ee2fd73bb8d`.
 - post-run: no active marker files remained and capacity returned to `10/10`.
 
 ## Current A2A Transaction Step: Provider-Bond Contract

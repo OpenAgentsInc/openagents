@@ -22,6 +22,7 @@ import {
   readPublicKhalaTokensServed,
   readyCodexAccounts,
   runPylonKhalaSpawnPlan,
+  weightedKhalaAccountPool,
   type PylonKhalaSpawnAdvertisedCodexAccount,
   type PylonKhalaSpawnProofProjection,
 } from "./khala-spawn.js"
@@ -232,7 +233,7 @@ export function buildPylonKhalaBurndownPlan(input: {
   )
   const iterations = Math.max(1, Math.floor(input.iterations ?? 1))
   const selectedParallel = Math.min(maxParallel, accounts.length, advertisedCodexAvailability)
-  const selectedAccounts = burndownAccountPool(accounts, advertisedAccountCapacity, selectedParallel)
+  const selectedAccounts = weightedKhalaAccountPool(accounts, advertisedAccountCapacity, selectedParallel)
   const requestedIssueNumbers = uniqueIssueNumbers(input.issueNumbers)
   const issueNumbers = requestedIssueNumbers.slice(0, selectedParallel * iterations)
   const blockerRefs = [
@@ -311,20 +312,6 @@ export function buildPylonKhalaBurndownPlan(input: {
   }
   assertPublicProjectionSafe(plan)
   return plan
-}
-
-function burndownAccountPool(
-  accounts: readonly PylonKhalaBurndownAccount[],
-  advertisedAccountCapacity: ReadonlyMap<string, PylonKhalaSpawnAdvertisedCodexAccount>,
-  maxDistinctAccounts: number,
-): PylonKhalaBurndownAccount[] {
-  const selected = accounts.slice(0, Math.max(0, maxDistinctAccounts))
-  if (advertisedAccountCapacity.size === 0) return selected
-  const pool = selected.flatMap(account => {
-    const available = advertisedAccountCapacity.get(account.accountRefHash)?.available ?? 0
-    return Array.from({ length: available }, () => account)
-  })
-  return pool.length === 0 ? selected : pool
 }
 
 export async function runPylonKhalaBurndownPlan(input: {

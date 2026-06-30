@@ -297,7 +297,7 @@ export function buildPylonKhalaSpawnPlan(input: {
     accounts.length === 0 || advertisedCodexAvailability === 0 || input.objectives.length === 0
       ? 0
       : Math.min(requestedMaxParallel, advertisedCodexAvailability, input.objectives.length)
-  const selectedAccounts = spawnAccountPool(
+  const selectedAccounts = weightedKhalaAccountPool(
     accounts,
     advertisedAccountCapacity,
     Math.min(accounts.length, Math.max(1, selectedParallel)),
@@ -369,17 +369,27 @@ export function buildPylonKhalaSpawnPlan(input: {
   return plan
 }
 
-function spawnAccountPool(
-  accounts: readonly PylonKhalaSpawnAccount[],
-  advertisedAccountCapacity: ReadonlyMap<string, PylonKhalaSpawnAdvertisedCodexAccount>,
+export function weightedKhalaAccountPool<Account extends { accountRefHash: string }>(
+  accounts: readonly Account[],
+  advertisedAccountCapacity: ReadonlyMap<string, Pick<PylonKhalaSpawnAdvertisedCodexAccount, "available">>,
   maxDistinctAccounts: number,
-): PylonKhalaSpawnAccount[] {
+): Account[] {
   const selected = accounts.slice(0, Math.max(0, maxDistinctAccounts))
   if (advertisedAccountCapacity.size === 0) return selected
-  const pool = selected.flatMap((account) => {
-    const available = advertisedAccountCapacity.get(account.accountRefHash)?.available ?? 0
-    return Array.from({ length: available }, () => account)
-  })
+  const remaining = selected
+    .map((account) => ({
+      account,
+      remaining: nonNegativeInteger(advertisedAccountCapacity.get(account.accountRefHash)?.available, 0),
+    }))
+    .filter((slot) => slot.remaining > 0)
+  const pool: Account[] = []
+  while (remaining.some((slot) => slot.remaining > 0)) {
+    for (const slot of remaining) {
+      if (slot.remaining <= 0) continue
+      pool.push(slot.account)
+      slot.remaining -= 1
+    }
+  }
   return pool.length === 0 ? selected : pool
 }
 
