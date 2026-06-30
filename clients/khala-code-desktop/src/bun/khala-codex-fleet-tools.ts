@@ -19,6 +19,8 @@ import {
   type KhalaFleetDelegateAccount,
   type KhalaFleetDelegateBlockerCode,
   type KhalaFleetDelegateCapacity,
+  type KhalaFleetDelegateProgramResult,
+  type KhalaFleetDelegateStep,
   type KhalaFleetDelegateWork,
   type KhalaFleetDelegationParameterSet,
   type KhalaToolDefinition,
@@ -138,6 +140,9 @@ type NormalizedSpawnInput = {
 
 type SpawnCodexInstancesResult = {
   readonly acceptedCount: number
+  readonly delegateSignature?: "khala.fleet.delegate" | undefined
+  readonly delegateStatus?: "blocked" | "completed" | undefined
+  readonly delegateTrace?: readonly KhalaFleetDelegateStep[] | undefined
   readonly pylonRef: string | null
   readonly requestedCount: number
   readonly results: readonly SpawnSlotResult[]
@@ -359,6 +364,9 @@ const codexSpawnToolDefinition: KhalaToolDefinition = {
     additionalProperties: false,
     properties: {
       acceptedCount: { type: "integer" },
+      delegateSignature: { type: "string" },
+      delegateStatus: { type: "string" },
+      delegateTrace: { type: "array" },
       pylonRef: { type: ["string", "null"] },
       requestedCount: { type: "integer" },
       results: { type: "array" },
@@ -698,7 +706,9 @@ export async function spawnCodexInstances(
     parameters: delegationParameters,
   }))
 
-  if (dispatchedResult !== null) return dispatchedResult
+  if (dispatchedResult !== null) {
+    return withDelegateTrace(dispatchedResult, delegate)
+  }
   if (delegate.status === "blocked") {
     throw new Error(`Khala fleet delegate blocked at ${delegate.trace.at(-1)?.module ?? "unknown"}: ${delegate.message}`)
   }
@@ -819,6 +829,9 @@ function executeCodexSpawnTool(
         publicSummary: `Codex spawn accepted ${result.acceptedCount}/${result.requestedCount} request(s).`,
         ui: {
           acceptedCount: result.acceptedCount,
+          delegateSignature: result.delegateSignature ?? null,
+          delegateStatus: result.delegateStatus ?? null,
+          delegateTrace: result.delegateTrace ?? [],
           kind: "codex_spawn",
           pylonRef: result.pylonRef,
           requestedCount: result.requestedCount,
@@ -1728,9 +1741,35 @@ function batchPlanSlotAccountRef(value: unknown): string | null {
 
 function renderSpawnResult(result: SpawnCodexInstancesResult): string {
   return [
+    ...renderDelegateTraceLines(result),
     `Codex spawn: accepted ${result.acceptedCount}/${result.requestedCount}${result.pylonRef ? ` via ${result.pylonRef}` : ""}`,
     ...result.results.map(slot => renderSpawnSlotResult(slot)),
   ].join("\n")
+}
+
+function renderDelegateTraceLines(result: SpawnCodexInstancesResult): string[] {
+  if (result.delegateTrace === undefined || result.delegateTrace.length === 0) {
+    return []
+  }
+  const status = result.delegateStatus ?? "completed"
+  return [
+    `Khala fleet delegate: ${result.delegateSignature ?? "khala.fleet.delegate"} (${status})`,
+    ...result.delegateTrace.map(step =>
+      `- ${step.module}: ${step.status}${step.fallbackModule === undefined ? "" : ` -> ${step.fallbackModule}`}${step.blockerCode === undefined ? "" : ` [${step.blockerCode}]`} :: ${step.message}`,
+    ),
+  ]
+}
+
+function withDelegateTrace(
+  result: SpawnCodexInstancesResult,
+  delegate: KhalaFleetDelegateProgramResult,
+): SpawnCodexInstancesResult {
+  return {
+    ...result,
+    delegateSignature: delegate.signature,
+    delegateStatus: delegate.status,
+    delegateTrace: delegate.trace,
+  }
 }
 
 function renderSpawnSlotResult(slot: SpawnSlotResult): string {

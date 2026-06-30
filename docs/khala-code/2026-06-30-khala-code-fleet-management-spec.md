@@ -270,6 +270,7 @@ Khala Code surfaces:
 - `apps/pylon/src/{workspace-materializer,codex-agent-executor,claude-agent-executor}.ts`,
   `apps/pylon/src/node/{approval-queue,auto-approval-policy,notification-projection,notification-router}.ts`
 - `docs/ops/2026-06-29-khala-codex-fleet-manager-runbook.md`
+- `docs/khala-code/2026-06-30-part2-recording-runbook.md`
 - `docs/gepa/2026-06-30-gepa-usage-and-fleet-delegation-optimization-loop.md`
 - `docs/codex/2026-06-30-codex-to-khala-code-porting-audit.md`
 
