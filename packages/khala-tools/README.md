@@ -34,6 +34,14 @@ The initial GD-P core covers the known dead-end classes: cold `0/1` capacity,
 missing/revoked accounts, stale heartbeat, duplicate active assignment,
 `no_available_codex_capacity`, load gating, and failed closeout verification.
 
+Admitted GEPA candidates feed the program through
+`openagents.khala.fleet_delegation.parameters.v0`. Hosts can pass that parameter
+set directly or set
+`OPENAGENTS_KHALA_FLEET_DELEGATION_ADMITTED_PARAMETERS_JSON`; invalid or missing
+admission falls back to the package defaults. The bounded knobs cover capacity
+advertisement, account-ranking heuristic, duplicate retry/backoff, objective
+template rendering, and default verifier criteria.
+
 Blueprint policy and Pylon/Probe runtime pieces can materialize scoped tool
 menus into this package, but local inspect/coding presets do not require a
 Blueprint registry to exist.

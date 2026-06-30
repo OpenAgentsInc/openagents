@@ -7,15 +7,20 @@ import type { Readable } from "node:stream"
 import { Effect } from "effect"
 import {
   KhalaFleetDelegateModuleError,
+  khalaFleetDelegationParametersFromEnv,
+  khalaFleetDelegationPerAccountConcurrency,
   khalaToolError,
   khalaToolOk,
   khalaToolUnavailable,
   redactKhalaPublicText,
+  renderKhalaFleetDelegationObjective,
+  resolveKhalaFleetDelegationParameters,
   runKhalaFleetDelegateProgram,
   type KhalaFleetDelegateAccount,
   type KhalaFleetDelegateBlockerCode,
   type KhalaFleetDelegateCapacity,
   type KhalaFleetDelegateWork,
+  type KhalaFleetDelegationParameterSet,
   type KhalaToolDefinition,
   type KhalaToolResult,
   type RegisteredKhalaTool,
@@ -45,6 +50,7 @@ export type KhalaCodexFleetCommandRunner = (
 ) => Promise<KhalaCodexFleetCommandResult>
 
 export type KhalaCodexFleetToolOptions = {
+  readonly delegationParameters?: KhalaFleetDelegationParameterSet | undefined
   readonly env?: ChatEnv | undefined
   readonly runner?: KhalaCodexFleetCommandRunner | undefined
   readonly sleep?: ((ms: number) => Promise<void>) | undefined
@@ -556,8 +562,11 @@ export async function spawnCodexInstances(
   raw: SpawnCodexInstancesInput,
   options: KhalaCodexFleetToolOptions = {},
 ): Promise<SpawnCodexInstancesResult> {
-  const input = decodeSpawnInput(raw)
-  const env = withCodexCapacityAdvertisementEnv(options.env ?? process.env, input.count)
+  const baseEnv = options.env ?? process.env
+  const delegationParameters = options.delegationParameters ??
+    khalaFleetDelegationParametersFromEnv(baseEnv)
+  const input = decodeSpawnInput(raw, delegationParameters)
+  const env = withCodexCapacityAdvertisementEnv(baseEnv, input.count, delegationParameters)
   const paths = resolvePylonPaths(env)
   const baseUrl = resolveOpenAgentsBaseUrl(env, input.baseUrl)
   let fleetStatus: FleetStatusResult | null = null
@@ -593,7 +602,12 @@ export async function spawnCodexInstances(
     accountAvailability = codexAccountAvailabilityByRef(fleetStatus.accounts, providerProjection)
     const heartbeatRef = stringField(heartbeatJson, "heartbeatRef")
     return {
-      capacity: khalaDelegateCapacityFromFleetStatus(fleetStatus, providerProjection, accountAvailability),
+      capacity: khalaDelegateCapacityFromFleetStatus(
+        fleetStatus,
+        providerProjection,
+        accountAvailability,
+        delegationParameters,
+      ),
       ...(heartbeatRef === null ? {} : { heartbeatRef }),
     }
   }
@@ -630,7 +644,13 @@ export async function spawnCodexInstances(
       Effect.promise(() => refreshFleetProjection(pylonRef, reason)),
     dispatch: ({ capacity, work }) =>
       Effect.promise(async () => {
-        const planned = planDelegatedSpawnAccounts(input, capacity, fleetStatus, accountAvailability)
+        const planned = planDelegatedSpawnAccounts(
+          input,
+          capacity,
+          fleetStatus,
+          accountAvailability,
+          delegationParameters,
+        )
         if (planned.status === "blocked") return planned.dispatch
         const targetPylonRef = input.pylonRef ?? heartbeatPylonRef ?? ""
         dispatchedResult = input.noRun
@@ -640,6 +660,7 @@ export async function spawnCodexInstances(
               input,
               paths,
               plannedAccounts: planned.accounts,
+              parameters: delegationParameters,
               runner: options.runner,
               targetPylonRef,
             })
@@ -649,6 +670,7 @@ export async function spawnCodexInstances(
               input,
               paths,
               plannedAccounts: planned.accounts,
+              parameters: delegationParameters,
               runner: options.runner,
               targetPylonRef,
               work,
@@ -671,6 +693,8 @@ export async function spawnCodexInstances(
           ? {}
           : { message: renderSpawnResult(dispatchedResult) }),
       }),
+  }, {
+    parameters: delegationParameters,
   }))
 
   if (dispatchedResult !== null) return dispatchedResult
@@ -1205,17 +1229,24 @@ async function collectProcessSnapshot(
     })
 }
 
-function decodeSpawnInput(raw: SpawnCodexInstancesInput): NormalizedSpawnInput {
+function decodeSpawnInput(
+  raw: SpawnCodexInstancesInput,
+  parameters: KhalaFleetDelegationParameterSet,
+): NormalizedSpawnInput {
+  const delegationParameters = resolveKhalaFleetDelegationParameters(parameters)
   const prompt = raw.prompt.trim()
   if (prompt.length === 0) throw new Error("codex_spawn requires a non-empty prompt")
   const count = boundedPositiveInteger(raw.count, 1, 1, MAX_SPAWN_COUNT)
   const timeoutMs = boundedPositiveInteger(raw.timeoutMs, DEFAULT_SPAWN_TIMEOUT_MS, 10_000, 600_000)
   const hasAnyPin = raw.repo !== undefined || raw.commit !== undefined || raw.verify !== undefined
   const fixture = raw.fixture ?? !hasAnyPin
+  const verify = raw.verify ?? (!fixture && (raw.repo !== undefined || raw.commit !== undefined)
+    ? delegationParameters.verifyCriteria?.defaultVerify
+    : undefined)
   const missingPins = [
     raw.repo === undefined ? "repo" : null,
     raw.commit === undefined ? "commit" : null,
-    raw.verify === undefined ? "verify" : null,
+    verify === undefined ? "verify" : null,
   ].filter((value): value is string => value !== null)
   if (fixture && hasAnyPin) {
     throw new Error("codex_spawn fixture cannot be combined with repo, commit, or verify pins")
@@ -1231,6 +1262,7 @@ function decodeSpawnInput(raw: SpawnCodexInstancesInput): NormalizedSpawnInput {
     noRun: raw.noRun ?? false,
     prompt,
     timeoutMs,
+    verify,
   }
 }
 
@@ -1333,9 +1365,20 @@ function spawnResultFromBatchCommand(input: {
   }
 }
 
-function withCodexCapacityAdvertisementEnv(env: ChatEnv, requestedCount: number): ChatEnv {
-  const target = Math.max(
+function withCodexCapacityAdvertisementEnv(
+  env: ChatEnv,
+  requestedCount: number,
+  parameters: KhalaFleetDelegationParameterSet,
+): ChatEnv {
+  const fallbackTarget = Math.max(
     DEFAULT_CODEX_ACCOUNT_CONCURRENCY,
+    requestedCount,
+    positiveIntegerEnv(env.OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY) ?? 0,
+    positiveIntegerEnv(env.OPENAGENTS_PYLON_CODEX_CONCURRENCY) ?? 0,
+  )
+  const admittedTarget = khalaFleetDelegationPerAccountConcurrency(parameters, fallbackTarget)
+  const target = Math.max(
+    admittedTarget,
     requestedCount,
     positiveIntegerEnv(env.OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY) ?? 0,
     positiveIntegerEnv(env.OPENAGENTS_PYLON_CODEX_CONCURRENCY) ?? 0,
@@ -1353,9 +1396,10 @@ function khalaDelegateCapacityFromFleetStatus(
   status: FleetStatusResult,
   projection: Record<string, unknown> | null,
   availability: ReadonlyMap<string, number>,
+  parameters: KhalaFleetDelegationParameterSet = resolveKhalaFleetDelegationParameters(undefined),
 ): KhalaFleetDelegateCapacity {
   const capacity = capacityFromProviderProjection(projection)
-  const accounts = preferredSpawnAccounts(status.accounts, availability)
+  const accounts = preferredSpawnAccounts(status.accounts, availability, parameters)
     .map(account => khalaDelegateAccountFromRow(account, availability))
   const readyCount = accounts.filter(account => account.readiness === "ready" || account.readiness === "available").length
   const accountAvailable = availability.size === 0
@@ -1395,6 +1439,7 @@ function planDelegatedSpawnAccounts(
   capacity: KhalaFleetDelegateCapacity,
   status: FleetStatusResult | null,
   availability: ReadonlyMap<string, number>,
+  parameters: KhalaFleetDelegationParameterSet,
 ):
   | Readonly<{ accounts: readonly AccountRow[]; status: "planned" }>
   | Readonly<{ dispatch: { blockerCode: KhalaFleetDelegateBlockerCode; message: string; ok: false; refs: readonly string[] }; status: "blocked" }> {
@@ -1412,6 +1457,7 @@ function planDelegatedSpawnAccounts(
   const readyAccounts = preferredSpawnAccounts(
     status.accounts.filter(account => isReadyAccount(account)),
     availability,
+    parameters,
   )
   if (readyAccounts.length === 0) {
     return {
@@ -1427,7 +1473,7 @@ function planDelegatedSpawnAccounts(
   }
   let selectedAccounts: readonly AccountRow[]
   try {
-    selectedAccounts = resolveSpawnAccounts(input.accountRef, readyAccounts, status.accounts, availability)
+    selectedAccounts = resolveSpawnAccounts(input.accountRef, readyAccounts, status.accounts, availability, parameters)
   } catch (error) {
     const message = errorMessage(error)
     const blockerCode: KhalaFleetDelegateBlockerCode = /not found|not connected/iu.test(message)
@@ -1475,6 +1521,7 @@ async function runDelegatedBatchSpawn(input: {
   readonly baseUrl: string
   readonly env: ChatEnv
   readonly input: NormalizedSpawnInput
+  readonly parameters: KhalaFleetDelegationParameterSet
   readonly paths: PylonPaths
   readonly plannedAccounts: readonly AccountRow[]
   readonly runner?: KhalaCodexFleetCommandRunner | undefined
@@ -1497,6 +1544,11 @@ async function runDelegatedBatchSpawn(input: {
         "--verify",
         input.work.verify,
       ]
+  const objective = renderKhalaFleetDelegationObjective({
+    objective: input.input.prompt,
+    repo: input.work.kind === "fixture" ? undefined : input.work.repo,
+    verify: input.work.kind === "fixture" ? undefined : input.work.verify,
+  }, input.parameters)
   const result = await runPylonCommand([
     "khala",
     "spawn",
@@ -1505,7 +1557,7 @@ async function runDelegatedBatchSpawn(input: {
     "--max-parallel",
     String(input.input.count),
     "--objective",
-    input.input.prompt,
+    objective,
     "--pylon-ref",
     input.targetPylonRef,
     ...(selectedCommandAccount === undefined ? [] : ["--account-ref", selectedCommandAccount]),
@@ -1533,11 +1585,17 @@ async function runDelegatedNoRunRequests(input: {
   readonly baseUrl: string
   readonly env: ChatEnv
   readonly input: NormalizedSpawnInput
+  readonly parameters: KhalaFleetDelegationParameterSet
   readonly paths: PylonPaths
   readonly plannedAccounts: readonly AccountRow[]
   readonly runner?: KhalaCodexFleetCommandRunner | undefined
   readonly targetPylonRef: string
 }): Promise<SpawnCodexInstancesResult> {
+  const objective = renderKhalaFleetDelegationObjective({
+    objective: input.input.prompt,
+    repo: input.input.repo,
+    verify: input.input.verify,
+  }, input.parameters)
   const results = await Promise.all(input.plannedAccounts.map(async (selectedAccount, index): Promise<SpawnSlotResult> => {
     const selectedCommandAccount = commandAccountRef(selectedAccount.accountRef)
     const result = await runPylonCommand([
@@ -1546,7 +1604,7 @@ async function runDelegatedNoRunRequests(input: {
       "--workflow",
       "codex_agent_task",
       "--prompt",
-      input.input.prompt,
+      objective,
       "--pylon-ref",
       input.targetPylonRef,
       ...(selectedCommandAccount === undefined ? [] : ["--account-ref", selectedCommandAccount]),
@@ -1790,25 +1848,28 @@ function isReadyAccount(account: AccountRow): boolean {
 function preferredSpawnAccounts(
   accounts: readonly AccountRow[],
   availability: ReadonlyMap<string, number> = new Map(),
+  parameters: KhalaFleetDelegationParameterSet = resolveKhalaFleetDelegationParameters(undefined),
 ): readonly AccountRow[] {
+  const heuristic =
+    resolveKhalaFleetDelegationParameters(parameters).accountRanking?.heuristic ??
+    "named_ready_highest_slots"
   return [...accounts].sort((left, right) => {
-    const leftRank = spawnAccountRank(left, availability)
-    const rightRank = spawnAccountRank(right, availability)
-    if (leftRank !== rightRank) return leftRank - rightRank
+    const leftReady = isReadyAccount(left)
+    const rightReady = isReadyAccount(right)
+    if (leftReady !== rightReady) return leftReady ? -1 : 1
+    if (heuristic === "lexicographic_ready") return left.accountRef.localeCompare(right.accountRef)
+    const leftSlots = availability.get(left.accountRef) ?? 1
+    const rightSlots = availability.get(right.accountRef) ?? 1
+    if (leftSlots !== rightSlots) return rightSlots - leftSlots
     const leftDefault = isDefaultAccountRef(left.accountRef)
     const rightDefault = isDefaultAccountRef(right.accountRef)
-    if (leftDefault !== rightDefault) return leftDefault ? 1 : -1
+    if (leftDefault !== rightDefault) {
+      return heuristic === "default_ready_highest_slots"
+        ? leftDefault ? -1 : 1
+        : leftDefault ? 1 : -1
+    }
     return left.accountRef.localeCompare(right.accountRef)
   })
-}
-
-function spawnAccountRank(account: AccountRow, availability: ReadonlyMap<string, number>): number {
-  const defaultAccount = isDefaultAccountRef(account.accountRef)
-  if (availability.size === 0) return defaultAccount ? 1 : 0
-  const slots = availability.get(account.accountRef)
-  if (slots !== undefined && slots > 0) return defaultAccount ? 1 : 0
-  if (slots === undefined) return defaultAccount ? 3 : 2
-  return defaultAccount ? 5 : 4
 }
 
 function resolveSpawnAccounts(
@@ -1816,10 +1877,17 @@ function resolveSpawnAccounts(
   readyAccounts: readonly AccountRow[],
   allAccounts: readonly AccountRow[],
   availability: ReadonlyMap<string, number>,
+  parameters: KhalaFleetDelegationParameterSet,
 ): readonly AccountRow[] {
   if (requestedAccountRef === undefined) return dispatchableSpawnAccounts(readyAccounts, availability)
   if (isDefaultAccountRef(requestedAccountRef)) {
     const candidates = dispatchableSpawnAccounts(readyAccounts, availability)
+    const heuristic =
+      resolveKhalaFleetDelegationParameters(parameters).accountRanking?.heuristic ??
+      "named_ready_highest_slots"
+    if (heuristic === "default_ready_highest_slots") {
+      return preferredSpawnAccounts(candidates, availability, parameters)
+    }
     const namedReadyAccounts = candidates.filter(account => !isDefaultAccountRef(account.accountRef))
     return namedReadyAccounts.length > 0 ? namedReadyAccounts : candidates
   }

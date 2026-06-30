@@ -1,4 +1,8 @@
 import { describe, expect, test } from "bun:test"
+import {
+  KhalaFleetDelegationParameterSet,
+  KhalaFleetDelegationParameterSetSchemaVersion,
+} from "@openagentsinc/khala-tools"
 
 import {
   buildFleetRunPlan,
@@ -13,6 +17,18 @@ import {
 import type { KhalaFleetStatus } from "./fleet.js"
 
 const commit = "0123456789abcdef0123456789abcdef01234567"
+
+const admittedParameters = (
+  overrides: Partial<KhalaFleetDelegationParameterSet> = {},
+): KhalaFleetDelegationParameterSet =>
+  new KhalaFleetDelegationParameterSet({
+    actionSubmissionRef: "action_submission.khala_fleet_delegation.cli",
+    candidateRef: "candidate.khala_fleet_delegation.cli",
+    parameterSetRef: "parameter_set.khala_fleet_delegation.cli.v1",
+    schemaVersion: KhalaFleetDelegationParameterSetSchemaVersion,
+    source: "admitted_candidate",
+    ...overrides,
+  })
 
 function status(accountRefs: readonly string[]): KhalaFleetStatus {
   return {
@@ -69,6 +85,64 @@ describe("fleet run planning", () => {
     expect(env.OPENAGENTS_PYLON_CODEX_CONCURRENCY).toBe("10")
     expect(env.OPENAGENTS_PYLON_CODEX_BUSY).toBe("0")
     expect(env.OPENAGENTS_PYLON_CODEX_QUEUED).toBe("0")
+  })
+
+  test("uses admitted parameters for default slot sizing and objective templates", async () => {
+    const parameters = admittedParameters({
+      advertiseCapacity: {
+        maxRequestedSlots: 6,
+        perAccountConcurrency: 3,
+      },
+      objectiveTemplate: "GD4 tuned #{issue}: {objective} [{repo}] verify={verify}",
+    })
+    const tuned = buildFleetRunPlan({
+      commit,
+      delegationParameters: parameters,
+      issues: [7736, 7737],
+      mode: "dry_run",
+      pylonRef: "pylon.local",
+      readyAccounts: ["codex", "codex-2"],
+      repo: "OpenAgentsInc/openagents",
+      verify: "bun test",
+    })
+    const reverted = buildFleetRunPlan({
+      commit,
+      issues: [7736, 7737],
+      mode: "dry_run",
+      pylonRef: "pylon.local",
+      readyAccounts: ["codex", "codex-2"],
+      repo: "OpenAgentsInc/openagents",
+      verify: "bun test",
+    })
+
+    expect(tuned).toMatchObject({
+      delegationParameterSetRef: "parameter_set.khala_fleet_delegation.cli.v1",
+      maxSlots: 6,
+      perAccount: 3,
+      targetSlots: 6,
+    })
+    expect(fleetRunCapacityEnv({}, tuned, parameters).OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY).toBe("3")
+    const result = await runKhalaFleetSupervisor({
+      commit,
+      delegationParameters: parameters,
+      dryRun: true,
+      issues: [7736],
+      pylonRef: "pylon.local",
+      repo: "OpenAgentsInc/openagents",
+      status: status(["codex", "codex-2"]),
+      verify: "bun test",
+    })
+
+    expect(result.plan.delegationParameterSetRef).toBe("parameter_set.khala_fleet_delegation.cli.v1")
+    expect(result.rounds[0]?.objective).toBe(
+      "GD4 tuned #7736: Implement public issue #7736 and run the named verification. [OpenAgentsInc/openagents] verify=bun test",
+    )
+    expect(reverted).toMatchObject({
+      delegationParameterSetRef: "parameter_set.khala_fleet_delegation.default.v1",
+      maxSlots: 8,
+      perAccount: 1,
+      targetSlots: 2,
+    })
   })
 
   test("rejects local/private-looking verify commands", () => {

@@ -397,7 +397,7 @@ Mutalisk proposes, Blueprint admits, the watcher executes, traces feed back.
 | GD-1 | Metric + feedback function (scalar Pareto dims + textual failure refs) | `openagents.khala.delegation_gepa_feedback.v0` is implemented in `apps/openagents.com/workers/api/src/khala-delegation-gepa-feedback.ts`; it scores known-good vs known-bad delegation examples, emits the scalar dimensions, and names concrete blocker refs including the `0/1` no-capacity case |
 | GD-2 | `gepa.optimize` job in Mutalisk over the dataset; emit a `khala.fleet.delegation.v1` candidate to R2/D1 | a candidate artifact with measurable val-set gain over the seed objective/dispatch policy |
 | GD-3 | Effect admission: signature-lookup selectability + action-submission proposal for the delegation-policy candidate | `projectKhalaFleetDelegationCandidateAdmission` in `probe-gepa-standing-optimization-loop.ts` ingests a `khala.fleet.delegation` candidate summary plus Blueprint selection and emits only an approval-required, evidence-only Action Submission proposal; no auto-promotion, live-promotion, runtime-promotion, or direct-execution path exists |
-| GD-4 | Wire the admitted policy into the live Pylon dispatch + watcher; close the loop | next fanout uses the optimized objective/dispatch text; new traces flow back to GD-0 |
+| GD-4 | Wire the admitted policy into the live Pylon dispatch + watcher; close the loop | `openagents.khala.fleet_delegation.parameters.v0` is decoded from `OPENAGENTS_KHALA_FLEET_DELEGATION_ADMITTED_PARAMETERS_JSON` and used by the core delegate program, Khala Code Desktop dispatch, and `khala fleet run`; admitted parameters tune capacity advertisement, account ranking, retry/backoff, objective rendering, and default verifier criteria, while missing/invalid admission falls back to safe defaults |
 
 GD-0 and GD-1 are pure data/eval work (no production risk) and are the ASAP
 starting point. Each phase lands behind the existing evidence/receipt boundary.
@@ -440,6 +440,18 @@ tool scopes, evidence requirements, `safeProjection: true`,
 `programRunAuthorityBoundary: "evidence_only"`; missing lookup or any live
 promotion request blocks admission instead of creating a proposal.
 
+GD-4 is the live read path for an admitted candidate. The admitted artifact is
+reduced to the bounded parameter schema
+`openagents.khala.fleet_delegation.parameters.v0` and supplied explicitly or via
+`OPENAGENTS_KHALA_FLEET_DELEGATION_ADMITTED_PARAMETERS_JSON`. The deterministic
+program reads only those bounded knobs: `advertiseCapacity` slot ceilings,
+`accountRanking` (`named_ready_highest_slots`,
+`default_ready_highest_slots`, or `lexicographic_ready`), `retryBackoff`,
+`objectiveTemplate`, and `verifyCriteria.defaultVerify`. Khala Code Desktop and
+`khala fleet run` both use the same renderer and capacity helpers, so switching
+the admitted set changes the next dispatch/watch plan; clearing the env var or
+omitting the option restores the hard-coded defaults.
+
 ---
 
 ## 6. Non-goals
@@ -478,4 +490,4 @@ promotion request blocks admission instead of creating a proposal.
 | Candidate seam (`psionic.probe_gepa_candidate_manifest.v1`) | defined on both sides; must align Mutalisk `Candidate` to it |
 | Blueprint admission moat | built (signature-lookup + action-submission) |
 | Deterministic delegation program (GD-P, §5.0) | core built in `@openagentsinc/khala-tools` as `khala.fleet.delegate`: typed module/precondition/blocker taxonomy plus an adverse-condition matrix for cold `0/1` capacity recovery, stale-heartbeat refresh, duplicate-assignment retry, credentials-missing/revoked blockers, high-load gating, account selection, dispatch fallbacks, and closeout blockers; `codex_spawn`, `pylon khala spawn`, `pylon khala request --workflow codex_agent_task`, and `khala fleet run` now compute and publish the required per-account capacity before dispatch |
-| Fleet-delegation GEPA loop (GD-0..GD-4) | GD-0, GD-1, and GD-3 built: the dataset contract joins public-safe delegation traces, `openagents.khala.delegation_gepa_feedback.v0` scores them with scalar Pareto dimensions plus concrete blocker refs, and `projectKhalaFleetDelegationCandidateAdmission` gates `khala.fleet.delegation` candidates through evidence-only Action Submission; GD-2 and GD-4 remain |
+| Fleet-delegation GEPA loop (GD-0..GD-4) | GD-0, GD-1, GD-3, and GD-4 built: the dataset contract joins public-safe delegation traces, `openagents.khala.delegation_gepa_feedback.v0` scores them with scalar Pareto dimensions plus concrete blocker refs, `projectKhalaFleetDelegationCandidateAdmission` gates `khala.fleet.delegation` candidates through evidence-only Action Submission, and admitted `openagents.khala.fleet_delegation.parameters.v0` sets now drive live delegation behavior in the core program, Khala Code Desktop, and `khala fleet run`; GD-2 remains |

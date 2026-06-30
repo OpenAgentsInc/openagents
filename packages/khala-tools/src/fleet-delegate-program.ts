@@ -1,6 +1,10 @@
 import { Effect, Schema as S } from "effect"
 
 export const KhalaFleetDelegateSignature = "khala.fleet.delegate" as const
+export const KhalaFleetDelegationParameterSetSchemaVersion =
+  "openagents.khala.fleet_delegation.parameters.v0" as const
+export const KhalaFleetDelegationAdmittedParametersEnv =
+  "OPENAGENTS_KHALA_FLEET_DELEGATION_ADMITTED_PARAMETERS_JSON" as const
 
 export const KhalaFleetDelegateModuleName = S.Literals([
   "ensure_pylon",
@@ -39,6 +43,51 @@ export type KhalaFleetDelegateBlockerCode = typeof KhalaFleetDelegateBlockerCode
 
 export const KhalaFleetDelegateStepStatus = S.Literals(["blocked", "recovered", "satisfied"])
 export type KhalaFleetDelegateStepStatus = typeof KhalaFleetDelegateStepStatus.Type
+
+export const KhalaFleetDelegationParameterSource = S.Literals(["admitted_candidate", "default"])
+export type KhalaFleetDelegationParameterSource = typeof KhalaFleetDelegationParameterSource.Type
+
+export const KhalaFleetDelegationAccountRankingHeuristic = S.Literals([
+  "default_ready_highest_slots",
+  "lexicographic_ready",
+  "named_ready_highest_slots",
+])
+export type KhalaFleetDelegationAccountRankingHeuristic =
+  typeof KhalaFleetDelegationAccountRankingHeuristic.Type
+
+const KhalaFleetDelegationAdvertiseCapacityPolicy = S.Struct({
+  maxRequestedSlots: S.optionalKey(S.Number),
+  perAccountConcurrency: S.optionalKey(S.Number),
+})
+
+const KhalaFleetDelegationAccountRankingPolicy = S.Struct({
+  heuristic: S.optionalKey(KhalaFleetDelegationAccountRankingHeuristic),
+})
+
+const KhalaFleetDelegationRetryBackoffPolicy = S.Struct({
+  dispatchAttempts: S.optionalKey(S.Number),
+  duplicateActiveAssignmentBackoffMs: S.optionalKey(S.Number),
+})
+
+const KhalaFleetDelegationVerifyCriteria = S.Struct({
+  defaultVerify: S.optionalKey(S.String),
+  requireVerifierForRepoWork: S.optionalKey(S.Boolean),
+})
+
+export class KhalaFleetDelegationParameterSet extends S.Class<KhalaFleetDelegationParameterSet>(
+  "KhalaFleetDelegationParameterSet",
+)({
+  accountRanking: S.optionalKey(KhalaFleetDelegationAccountRankingPolicy),
+  actionSubmissionRef: S.optionalKey(S.String),
+  advertiseCapacity: S.optionalKey(KhalaFleetDelegationAdvertiseCapacityPolicy),
+  candidateRef: S.optionalKey(S.String),
+  objectiveTemplate: S.optionalKey(S.String),
+  parameterSetRef: S.String,
+  retryBackoff: S.optionalKey(KhalaFleetDelegationRetryBackoffPolicy),
+  schemaVersion: S.Literal(KhalaFleetDelegationParameterSetSchemaVersion),
+  source: KhalaFleetDelegationParameterSource,
+  verifyCriteria: S.optionalKey(KhalaFleetDelegationVerifyCriteria),
+}) {}
 
 export class KhalaFleetDelegateModuleError extends S.TaggedErrorClass<KhalaFleetDelegateModuleError>()(
   "KhalaFleetDelegateModuleError",
@@ -86,6 +135,10 @@ export type KhalaFleetDelegateInput = Readonly<{
   objective: string
   repo?: string | undefined
   verify?: string | undefined
+}>
+
+export type KhalaFleetDelegateProgramOptions = Readonly<{
+  parameters?: KhalaFleetDelegationParameterSet | undefined
 }>
 
 export type KhalaFleetDelegateEnsureResult = Readonly<{
@@ -171,12 +224,130 @@ export type KhalaFleetDelegateProgramResult =
   | KhalaFleetDelegateCompletedResult
 
 const DEFAULT_DISPATCH_ATTEMPTS = 4
+const DEFAULT_DUPLICATE_ACTIVE_ASSIGNMENT_BACKOFF_MS = 1_000
+const DEFAULT_PARAMETER_SET_REF = "parameter_set.khala_fleet_delegation.default.v1"
+const unsafePolicyTextPattern =
+  /(@|\/Users\/|\/home\/|access[_-]?token|auth\.json|bearer|cookie|credential|gho_[A-Za-z0-9_]+|ghp_[A-Za-z0-9_]+|lnbc|lntb|lnbcrt|lno1|mdk[_-]?(access[_-]?token|mnemonic|webhook[_-]?secret)|mnemonic|oauth|payment[_-]?(hash|id|preimage|proof)|preimage|private[_-]?(channel|key|repo)|provider[_-]?(grant|payload|secret|token)|raw[_-]?(auth|email|fixture|invoice|payment|payload|prompt|provider|runner|run[_-]?log|source[_-]?archive|trace|traces)|runner[_-]?log|secret|sk-[a-z0-9]|source[_-]?archive|token|wallet)/i
+
+export const DefaultKhalaFleetDelegationParameterSet = new KhalaFleetDelegationParameterSet({
+  parameterSetRef: DEFAULT_PARAMETER_SET_REF,
+  schemaVersion: KhalaFleetDelegationParameterSetSchemaVersion,
+  source: "default",
+})
+
+export function decodeKhalaFleetDelegationParameterSet(
+  input: unknown,
+): KhalaFleetDelegationParameterSet {
+  return normalizeKhalaFleetDelegationParameterSet(
+    S.decodeUnknownSync(KhalaFleetDelegationParameterSet)(input),
+  )
+}
+
+export function khalaFleetDelegationParametersFromEnv(
+  env: Readonly<Record<string, string | undefined>>,
+): KhalaFleetDelegationParameterSet {
+  const raw = env[KhalaFleetDelegationAdmittedParametersEnv]?.trim()
+  if (raw === undefined || raw.length === 0) {
+    return DefaultKhalaFleetDelegationParameterSet
+  }
+  try {
+    return decodeKhalaFleetDelegationParameterSet(JSON.parse(raw))
+  } catch (error) {
+    throw new Error(`Invalid ${KhalaFleetDelegationAdmittedParametersEnv}: ${error instanceof Error ? error.message : String(error)}`)
+  }
+}
+
+export function resolveKhalaFleetDelegationParameters(
+  parameters?: KhalaFleetDelegationParameterSet | null | undefined,
+): KhalaFleetDelegationParameterSet {
+  if (parameters === null || parameters === undefined) {
+    return DefaultKhalaFleetDelegationParameterSet
+  }
+  return decodeKhalaFleetDelegationParameterSet(parameters)
+}
+
+export function khalaFleetDelegationPerAccountConcurrency(
+  parameters: KhalaFleetDelegationParameterSet,
+  fallback: number,
+): number {
+  return boundedPolicyInteger(
+    parameters.advertiseCapacity?.perAccountConcurrency,
+    fallback,
+    1,
+    16,
+    "advertiseCapacity.perAccountConcurrency",
+  )
+}
+
+export function khalaFleetDelegationMaxRequestedSlots(
+  parameters: KhalaFleetDelegationParameterSet,
+  fallback: number,
+): number {
+  return boundedPolicyInteger(
+    parameters.advertiseCapacity?.maxRequestedSlots,
+    fallback,
+    1,
+    64,
+    "advertiseCapacity.maxRequestedSlots",
+  )
+}
+
+export function khalaFleetDelegationDispatchAttempts(
+  parameters: KhalaFleetDelegationParameterSet,
+): number {
+  return boundedPolicyInteger(
+    parameters.retryBackoff?.dispatchAttempts,
+    DEFAULT_DISPATCH_ATTEMPTS,
+    1,
+    8,
+    "retryBackoff.dispatchAttempts",
+  )
+}
+
+export function khalaFleetDelegationDuplicateBackoffMs(
+  parameters: KhalaFleetDelegationParameterSet,
+): number {
+  return boundedPolicyInteger(
+    parameters.retryBackoff?.duplicateActiveAssignmentBackoffMs,
+    DEFAULT_DUPLICATE_ACTIVE_ASSIGNMENT_BACKOFF_MS,
+    0,
+    120_000,
+    "retryBackoff.duplicateActiveAssignmentBackoffMs",
+  )
+}
+
+export function renderKhalaFleetDelegationObjective(
+  input: Readonly<{
+    issue?: number | null | undefined
+    objective: string
+    repo?: string | undefined
+    verify?: string | undefined
+  }>,
+  parameters: KhalaFleetDelegationParameterSet = DefaultKhalaFleetDelegationParameterSet,
+): string {
+  const resolved = resolveKhalaFleetDelegationParameters(parameters)
+  const objective = input.objective.trim()
+  const template = resolved.objectiveTemplate?.trim()
+  if (template === undefined || template.length === 0) {
+    return objective
+  }
+  const rendered = template
+    .replaceAll("{objective}", objective)
+    .replaceAll("{issue}", input.issue === null || input.issue === undefined ? "unassigned" : String(input.issue))
+    .replaceAll("{repo}", input.repo ?? "repo.unspecified")
+    .replaceAll("{verify}", input.verify ?? resolved.verifyCriteria?.defaultVerify ?? "verify.unspecified")
+    .trim()
+
+  return rendered.length === 0 ? objective : rendered
+}
 
 export const runKhalaFleetDelegateProgram = (
   input: KhalaFleetDelegateInput,
   modules: KhalaFleetDelegateModules,
+  options: KhalaFleetDelegateProgramOptions = {},
 ): Effect.Effect<KhalaFleetDelegateProgramResult, never> =>
   Effect.gen(function* () {
+    const parameters = resolveKhalaFleetDelegationParameters(options.parameters)
     const trace: KhalaFleetDelegateStep[] = []
     const push = (step: KhalaFleetDelegateStep): void => {
       trace.push(step)
@@ -245,7 +416,7 @@ export const runKhalaFleetDelegateProgram = (
       status: advertised.capacity.available > 0 ? "satisfied" : "blocked",
     })
 
-    const selected = selectKhalaFleetDelegateAccount(input, advertised.capacity.accounts)
+    const selected = selectKhalaFleetDelegateAccount(input, advertised.capacity.accounts, parameters)
     if (selected.status === "blocked") {
       return block(
         ensure.pylonRef,
@@ -264,7 +435,7 @@ export const runKhalaFleetDelegateProgram = (
       status: "satisfied",
     })
 
-    const prepared = prepareKhalaFleetDelegateWork(input)
+    const prepared = prepareKhalaFleetDelegateWork(input, parameters)
     push({
       message: prepared.kind === "fixture" ? "Prepared fixture work." : `Prepared ${prepared.repo}@${prepared.commit}.`,
       module: "prepare_work",
@@ -278,6 +449,7 @@ export const runKhalaFleetDelegateProgram = (
       block,
       capacity: advertised.capacity,
       modules,
+      parameters,
       push,
       pylonRef: ensure.pylonRef,
       work: prepared,
@@ -334,13 +506,17 @@ export const runKhalaFleetDelegateProgram = (
     }
   })
 
-export function prepareKhalaFleetDelegateWork(input: KhalaFleetDelegateInput): KhalaFleetDelegateWork {
+export function prepareKhalaFleetDelegateWork(
+  input: KhalaFleetDelegateInput,
+  parameters: KhalaFleetDelegationParameterSet = DefaultKhalaFleetDelegationParameterSet,
+): KhalaFleetDelegateWork {
   if (input.fixture === true || (input.repo === undefined && input.commit === undefined && input.verify === undefined)) {
     return { fixture: true, kind: "fixture" }
   }
   const repo = input.repo
   const commit = input.commit
-  const verify = input.verify
+  const resolvedParameters = resolveKhalaFleetDelegationParameters(parameters)
+  const verify = input.verify ?? resolvedParameters.verifyCriteria?.defaultVerify
   const missing = [
     repo === undefined ? "repo" : null,
     commit === undefined ? "commit" : null,
@@ -361,6 +537,7 @@ export function prepareKhalaFleetDelegateWork(input: KhalaFleetDelegateInput): K
 export function selectKhalaFleetDelegateAccount(
   input: Pick<KhalaFleetDelegateInput, "accountRef">,
   accounts: ReadonlyArray<KhalaFleetDelegateAccount>,
+  parameters: KhalaFleetDelegationParameterSet = DefaultKhalaFleetDelegationParameterSet,
 ):
   | Readonly<{ account: KhalaFleetDelegateAccount; status: "selected" }>
   | Readonly<{
@@ -379,7 +556,9 @@ export function selectKhalaFleetDelegateAccount(
       `Requested Codex account ${requested} is not connected.`,
     )
   }
-  const sorted = [...candidates].sort(compareKhalaFleetDelegateAccounts)
+  const sorted = [...candidates].sort((left, right) =>
+    compareKhalaFleetDelegateAccounts(left, right, parameters),
+  )
   const selected = sorted.find(account =>
     (account.readiness === "ready" || account.readiness === "available") &&
     (account.availableSlots === undefined || account.availableSlots > 0),
@@ -442,14 +621,65 @@ function accountSelectionBlocker(
   }
 }
 
+function normalizeKhalaFleetDelegationParameterSet(
+  parameters: KhalaFleetDelegationParameterSet,
+): KhalaFleetDelegationParameterSet {
+  assertPublicSafePolicyText("parameterSetRef", parameters.parameterSetRef)
+  if (parameters.actionSubmissionRef !== undefined) {
+    assertPublicSafePolicyText("actionSubmissionRef", parameters.actionSubmissionRef)
+  }
+  if (parameters.candidateRef !== undefined) {
+    assertPublicSafePolicyText("candidateRef", parameters.candidateRef)
+  }
+  if (parameters.objectiveTemplate !== undefined) {
+    assertPublicSafePolicyText("objectiveTemplate", parameters.objectiveTemplate)
+  }
+  if (parameters.verifyCriteria?.defaultVerify !== undefined) {
+    assertPublicSafePolicyText("verifyCriteria.defaultVerify", parameters.verifyCriteria.defaultVerify)
+  }
+  khalaFleetDelegationPerAccountConcurrency(parameters, 1)
+  khalaFleetDelegationMaxRequestedSlots(parameters, 1)
+  khalaFleetDelegationDispatchAttempts(parameters)
+  khalaFleetDelegationDuplicateBackoffMs(parameters)
+  return parameters
+}
+
+function assertPublicSafePolicyText(label: string, value: string): void {
+  const trimmed = value.trim()
+  if (trimmed.length === 0 || trimmed.length > 8_000 || unsafePolicyTextPattern.test(trimmed)) {
+    throw new Error(`${label} must be bounded public-safe delegation policy text`)
+  }
+}
+
+function boundedPolicyInteger(
+  value: number | undefined,
+  fallback: number,
+  min: number,
+  max: number,
+  label: string,
+): number {
+  if (value === undefined) return fallback
+  if (!Number.isSafeInteger(value) || value < min || value > max) {
+    throw new Error(`${label} must be an integer between ${min} and ${max}`)
+  }
+  return value
+}
+
 function compareKhalaFleetDelegateAccounts(
   left: KhalaFleetDelegateAccount,
   right: KhalaFleetDelegateAccount,
+  parameters: KhalaFleetDelegationParameterSet,
 ): number {
+  const heuristic =
+    resolveKhalaFleetDelegationParameters(parameters).accountRanking?.heuristic ??
+    "named_ready_highest_slots"
   const leftReady = left.readiness === "ready" || left.readiness === "available"
   const rightReady = right.readiness === "ready" || right.readiness === "available"
   if (leftReady !== rightReady) {
     return leftReady ? -1 : 1
+  }
+  if (heuristic === "lexicographic_ready") {
+    return left.accountRef.localeCompare(right.accountRef)
   }
   const leftSlots = left.availableSlots ?? 1
   const rightSlots = right.availableSlots ?? 1
@@ -457,6 +687,9 @@ function compareKhalaFleetDelegateAccounts(
     return rightSlots - leftSlots
   }
   if ((left.isDefault ?? false) !== (right.isDefault ?? false)) {
+    if (heuristic === "default_ready_highest_slots") {
+      return left.isDefault === true ? -1 : 1
+    }
     return left.isDefault === true ? 1 : -1
   }
   return left.accountRef.localeCompare(right.accountRef)
@@ -475,6 +708,7 @@ function dispatchWithFallbacks(input: Readonly<{
   ) => KhalaFleetDelegateBlockedResult
   capacity: KhalaFleetDelegateCapacity
   modules: KhalaFleetDelegateModules
+  parameters: KhalaFleetDelegationParameterSet
   push: (step: KhalaFleetDelegateStep) => void
   pylonRef: string | undefined
   work: KhalaFleetDelegateWork
@@ -485,7 +719,8 @@ function dispatchWithFallbacks(input: Readonly<{
 > {
   return Effect.gen(function* () {
     let capacity = input.capacity
-    for (let attempt = 1; attempt <= DEFAULT_DISPATCH_ATTEMPTS; attempt += 1) {
+    const dispatchAttempts = khalaFleetDelegationDispatchAttempts(input.parameters)
+    for (let attempt = 1; attempt <= dispatchAttempts; attempt += 1) {
       if (capacity.loadGated === true) {
         return input.block(
           input.pylonRef,
@@ -527,7 +762,7 @@ function dispatchWithFallbacks(input: Readonly<{
       }
       const blockerCode = result.blockerCode ?? "dispatch_failed"
       const refs = result.refs ?? [khalaFleetDelegateBlockerRef(blockerCode)]
-      if (blockerCode === "stale_heartbeat" && attempt < DEFAULT_DISPATCH_ATTEMPTS) {
+      if (blockerCode === "stale_heartbeat" && attempt < dispatchAttempts) {
         input.push({
           blockerCode,
           fallbackModule: "advertise_capacity",
@@ -558,7 +793,7 @@ function dispatchWithFallbacks(input: Readonly<{
         })
         continue
       }
-      if (blockerCode === "no_available_codex_capacity" && attempt < DEFAULT_DISPATCH_ATTEMPTS) {
+      if (blockerCode === "no_available_codex_capacity" && attempt < dispatchAttempts) {
         input.push({
           blockerCode,
           fallbackModule: "advertise_capacity",
@@ -589,7 +824,7 @@ function dispatchWithFallbacks(input: Readonly<{
         })
         continue
       }
-      if (blockerCode === "duplicate_active_assignment" && attempt < DEFAULT_DISPATCH_ATTEMPTS) {
+      if (blockerCode === "duplicate_active_assignment" && attempt < dispatchAttempts) {
         input.push({
           blockerCode,
           fallbackModule: "dispatch",

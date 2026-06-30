@@ -4,6 +4,10 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Effect } from "effect"
 import {
+  KhalaFleetDelegationAdmittedParametersEnv,
+  KhalaFleetDelegationParameterSetSchemaVersion,
+} from "@openagentsinc/khala-tools"
+import {
   createKhalaCodexFleetTools,
   ensureLocalPylon,
   inspectCodexFleet,
@@ -488,7 +492,7 @@ describe("Khala Code Codex fleet tools", () => {
         return ok({
           accounts: [
             {
-              accountRef: null,
+              accountRef: "(default)",
               homeState: "present",
               provider: "codex",
               readiness: { state: "ready" },
@@ -507,7 +511,7 @@ describe("Khala Code Codex fleet tools", () => {
         return ok({
           accounts: [
             {
-              accountRef: null,
+              accountRef: "(default)",
               provider: "codex",
               readiness: { state: "ready" },
             },
@@ -570,7 +574,7 @@ describe("Khala Code Codex fleet tools", () => {
         return ok({
           accounts: [
             {
-              accountRef: null,
+              accountRef: "(default)",
               homeState: "present",
               provider: "codex",
               readiness: { state: "ready" },
@@ -589,7 +593,7 @@ describe("Khala Code Codex fleet tools", () => {
         return ok({
           accounts: [
             {
-              accountRef: null,
+              accountRef: "(default)",
               provider: "codex",
               readiness: { state: "ready" },
             },
@@ -632,6 +636,144 @@ describe("Khala Code Codex fleet tools", () => {
       accountRef: "codex-2",
       assignmentRef: "assignment.public.codex_agent_task.default_override",
       status: "accepted",
+    })
+  })
+
+  test("spawnCodexInstances applies admitted delegation parameters and clears back to defaults", async () => {
+    const fixture = await tempPylonFixture()
+    const requests: Array<{
+      readonly accountArg: string | null
+      readonly prompt: string
+      readonly verify: string | null
+    }> = []
+    const providerEnvValues: string[] = []
+    const runner = async (input: KhalaCodexFleetCommandInput): Promise<KhalaCodexFleetCommandResult> => {
+      const args = pylonArgs(input)
+      const joined = args.join(" ")
+      if (joined === "provider go-online --json") {
+        providerEnvValues.push(input.env?.OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY ?? "")
+        return ok({
+          ok: true,
+          ownCapacityDispatch: {
+            availableCodexAssignments: 2,
+            maxCodexAssignments: 3,
+          },
+          pylonRef: "pylon.local.test",
+        })
+      }
+      if (joined === "codex accounts list --json") {
+        return ok({
+          accounts: [
+            {
+              accountRef: "(default)",
+              homeState: "present",
+              provider: "codex",
+              readiness: { state: "ready" },
+            },
+            {
+              accountRef: "codex-2",
+              homeState: "present",
+              provider: "codex",
+              readiness: { state: "ready" },
+            },
+          ],
+          schema: "openagents.pylon.accounts_list.v0.3",
+        })
+      }
+      if (joined === "accounts status --provider codex --json") {
+        return ok({
+          accounts: [
+            {
+              accountRef: "(default)",
+              provider: "codex",
+              readiness: { state: "ready" },
+            },
+          ],
+          schema: "openagents.pylon.accounts_status.v0.1",
+        })
+      }
+      if (joined === "presence heartbeat --base-url https://openagents.com --json") {
+        return ok({
+          heartbeatRef: "heartbeat.pylon.local.test.1",
+          pylonRef: "pylon.local.test",
+        })
+      }
+      if (args[0] === "khala" && args[1] === "request") {
+        const accountIndex = args.indexOf("--account-ref")
+        requests.push({
+          accountArg: accountIndex === -1 ? null : args[accountIndex + 1] ?? null,
+          prompt: args[args.indexOf("--prompt") + 1] ?? "",
+          verify: args.includes("--verify") ? args[args.indexOf("--verify") + 1] ?? null : null,
+        })
+        return ok({
+          assignmentRef: `assignment.public.codex_agent_task.gd4.${requests.length}`,
+          autoRun: {
+            attempted: false,
+            reason: "disabled_by_no_run",
+          },
+        })
+      }
+      return failed(`unexpected command: ${joined}`)
+    }
+    const admittedEnv = {
+      ...fixture.env,
+      [KhalaFleetDelegationAdmittedParametersEnv]: JSON.stringify({
+        accountRanking: { heuristic: "default_ready_highest_slots" },
+        actionSubmissionRef: "action_submission.khala_fleet_delegation.desktop",
+        advertiseCapacity: { perAccountConcurrency: 7 },
+        candidateRef: "candidate.khala_fleet_delegation.desktop",
+        objectiveTemplate: "GD4 tuned: {objective} :: verify={verify}",
+        parameterSetRef: "parameter_set.khala_fleet_delegation.desktop.v1",
+        schemaVersion: KhalaFleetDelegationParameterSetSchemaVersion,
+        source: "admitted_candidate",
+        verifyCriteria: { defaultVerify: "bun test packages/khala-tools" },
+      }),
+    }
+
+    const tuned = await spawnCodexInstances({
+      accountRef: "(default)",
+      commit: "0123456789abcdef0123456789abcdef01234567",
+      count: 1,
+      noRun: true,
+      prompt: "Wire issue 7736",
+      repo: "OpenAgentsInc/openagents",
+    }, {
+      env: admittedEnv,
+      runner,
+    })
+    const reverted = await spawnCodexInstances({
+      accountRef: "(default)",
+      commit: "0123456789abcdef0123456789abcdef01234567",
+      count: 1,
+      noRun: true,
+      prompt: "Wire issue 7736",
+      repo: "OpenAgentsInc/openagents",
+      verify: "bun test",
+    }, {
+      env: fixture.env,
+      runner,
+    })
+
+    expect(tuned.results[0]).toMatchObject({
+      accountRef: "(default)",
+      assignmentRef: "assignment.public.codex_agent_task.gd4.1",
+      status: "accepted",
+    })
+    expect(reverted.results[0]).toMatchObject({
+      accountRef: "codex-2",
+      assignmentRef: "assignment.public.codex_agent_task.gd4.2",
+      status: "accepted",
+    })
+    expect(providerEnvValues).toContain("7")
+    expect(requests[0]).toEqual({
+      accountArg: null,
+      prompt: "GD4 tuned: Wire issue 7736 :: verify=bun test packages/khala-tools",
+      verify: "bun test packages/khala-tools",
+    })
+    expect(requests[1]).toEqual({
+      accountArg: "codex-2",
+      prompt: "Wire issue 7736",
+      verify: "bun test",
     })
   })
 

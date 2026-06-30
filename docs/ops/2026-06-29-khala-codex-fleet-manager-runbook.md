@@ -619,6 +619,16 @@ resulting proposal is always `approvalRequired: true`, `proposalOnly: true`,
 direct mutation, and incomplete signature lookup block admission instead of
 building a proposal.
 
+GD-4 wires an admitted candidate into live delegation through the bounded
+parameter schema `openagents.khala.fleet_delegation.parameters.v0`. Set
+`OPENAGENTS_KHALA_FLEET_DELEGATION_ADMITTED_PARAMETERS_JSON` only to an admitted,
+public-safe parameter set; Khala Code Desktop, `khala fleet run`, and the shared
+`khala.fleet.delegate` program then use it for per-account capacity
+advertisement, account ranking, duplicate retry/backoff, objective rendering, and
+default verifier criteria. Unset the env var to revert immediately to the safe
+defaults (`named_ready_highest_slots`, five-slot capacity/default retry budget,
+and the raw objective text).
+
 ## Current Troubleshooting Cheatsheet
 
 ### `codex_fleet_status` Says `0/N Available`

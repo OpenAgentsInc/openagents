@@ -1,6 +1,15 @@
 import { spawnProcess } from "./proc.js"
 import { listFleetAccounts, type KhalaFleetAccount, type KhalaFleetStatus } from "./fleet.js"
 import { DEFAULT_BASE_URL } from "./types.js"
+import {
+  DefaultKhalaFleetDelegationParameterSet,
+  khalaFleetDelegationMaxRequestedSlots,
+  khalaFleetDelegationParametersFromEnv,
+  khalaFleetDelegationPerAccountConcurrency,
+  renderKhalaFleetDelegationObjective,
+  resolveKhalaFleetDelegationParameters,
+  type KhalaFleetDelegationParameterSet,
+} from "@openagentsinc/khala-tools"
 
 export const KHALA_FLEET_RUN_SCHEMA = "openagents.khala.fleet_run.v0.1"
 
@@ -12,6 +21,7 @@ export type KhalaFleetRunPlan = {
   readonly baseUrl: string
   readonly branch: string
   readonly commit: string
+  readonly delegationParameterSetRef: string
   readonly issues: readonly number[]
   readonly maxSlots: number
   readonly perAccount: number
@@ -49,6 +59,7 @@ export type KhalaFleetRunOptions = {
   readonly dryRun?: boolean | undefined
   readonly env?: Record<string, string | undefined> | undefined
   readonly issues: readonly number[]
+  readonly delegationParameters?: KhalaFleetDelegationParameterSet | undefined
   readonly maxSlots?: number | undefined
   readonly once?: boolean | undefined
   readonly perAccount?: number | undefined
@@ -132,6 +143,7 @@ export function buildFleetRunPlan(input: {
   readonly baseUrl?: string | undefined
   readonly branch?: string | undefined
   readonly commit: string
+  readonly delegationParameters?: KhalaFleetDelegationParameterSet | undefined
   readonly issues: readonly number[]
   readonly maxSlots?: number | undefined
   readonly mode: KhalaFleetRunMode
@@ -141,8 +153,17 @@ export function buildFleetRunPlan(input: {
   readonly repo: string
   readonly verify: string
 }): KhalaFleetRunPlan {
-  const perAccount = positiveBounded(input.perAccount ?? DEFAULT_PER_ACCOUNT, "--per-account", 16)
-  const maxSlots = positiveBounded(input.maxSlots ?? DEFAULT_MAX_SLOTS, "--max-slots", 64)
+  const delegationParameters = resolveKhalaFleetDelegationParameters(input.delegationParameters)
+  const perAccount = positiveBounded(
+    input.perAccount ?? khalaFleetDelegationPerAccountConcurrency(delegationParameters, DEFAULT_PER_ACCOUNT),
+    "--per-account",
+    16,
+  )
+  const maxSlots = positiveBounded(
+    input.maxSlots ?? khalaFleetDelegationMaxRequestedSlots(delegationParameters, DEFAULT_MAX_SLOTS),
+    "--max-slots",
+    64,
+  )
   const readyAccounts = input.readyAccounts.filter(ref => ref.trim().length > 0)
   const targetSlots = Math.min(maxSlots, readyAccounts.length * perAccount)
   return {
@@ -150,6 +171,7 @@ export function buildFleetRunPlan(input: {
     baseUrl: input.baseUrl ?? DEFAULT_BASE_URL,
     branch: input.branch?.trim() || "main",
     commit: validateCommit(input.commit),
+    delegationParameterSetRef: delegationParameters.parameterSetRef,
     issues: input.issues,
     maxSlots,
     mode: input.mode,
@@ -165,11 +187,13 @@ export function buildFleetRunPlan(input: {
 export function fleetRunCapacityEnv(
   env: Record<string, string | undefined>,
   plan: KhalaFleetRunPlan,
+  parameters: KhalaFleetDelegationParameterSet = DefaultKhalaFleetDelegationParameterSet,
 ): Record<string, string | undefined> {
+  const perAccount = khalaFleetDelegationPerAccountConcurrency(parameters, plan.perAccount)
   return {
     ...env,
     OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY: String(Math.max(
-      plan.perAccount,
+      perAccount,
       positiveEnvInteger(env.OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY) ?? 0,
     )),
     OPENAGENTS_PYLON_CODEX_BUSY: "0",
@@ -183,6 +207,8 @@ export function fleetRunCapacityEnv(
 
 export async function runKhalaFleetSupervisor(options: KhalaFleetRunOptions): Promise<KhalaFleetRunResult> {
   const env = options.env ?? process.env
+  const delegationParameters = options.delegationParameters ??
+    khalaFleetDelegationParametersFromEnv(env)
   const commandEnv = {
     ...env,
     PYLON_OPENAGENTS_BASE_URL: options.baseUrl ?? env.PYLON_OPENAGENTS_BASE_URL ?? DEFAULT_BASE_URL,
@@ -199,6 +225,7 @@ export async function runKhalaFleetSupervisor(options: KhalaFleetRunOptions): Pr
     baseUrl: options.baseUrl,
     branch: options.branch,
     commit,
+    delegationParameters,
     issues: options.issues,
     maxSlots: options.maxSlots,
     mode,
@@ -218,31 +245,39 @@ export async function runKhalaFleetSupervisor(options: KhalaFleetRunOptions): Pr
   if (plan.pylonRef === null && !options.dryRun) {
     throw new Error("Could not resolve a local Pylon ref. Run `pylon provider go-online --json` or pass --pylon-ref.")
   }
-  const capacityEnv = fleetRunCapacityEnv(commandEnv, plan)
+  const capacityEnv = fleetRunCapacityEnv(commandEnv, plan, delegationParameters)
 
   if (options.dryRun) {
     return {
       schema: KHALA_FLEET_RUN_SCHEMA,
       mode,
       plan,
-      rounds: plannedRounds(plan).map(round => ({ ...round, ok: true, status: "dry_run" })),
+      rounds: plannedRounds(plan, delegationParameters).map(round => ({ ...round, ok: true, status: "dry_run" })),
       status: "planned",
     }
   }
 
   await runPylonCommand(pylonCommand, ["provider", "go-online", "--json"], envWithToken(capacityEnv, options.token))
-  await publishHeartbeat({ env: capacityEnv, plan, pylonCommand, token: options.token })
+  await publishHeartbeat({ delegationParameters, env: capacityEnv, plan, pylonCommand, token: options.token })
   const rounds = options.once
-    ? await runOneRound({ env: capacityEnv, plan, pylonCommand, token: options.token })
-    : await runSupervisorLoop({ env: capacityEnv, plan, pylonCommand, token: options.token })
+    ? await runOneRound({ delegationParameters, env: capacityEnv, plan, pylonCommand, token: options.token })
+    : await runSupervisorLoop({ delegationParameters, env: capacityEnv, plan, pylonCommand, token: options.token })
   return { schema: KHALA_FLEET_RUN_SCHEMA, mode, plan, rounds, status: "completed" }
 }
 
-function plannedRounds(plan: KhalaFleetRunPlan): ReadonlyArray<FleetRunSlot> {
+function plannedRounds(
+  plan: KhalaFleetRunPlan,
+  parameters: KhalaFleetDelegationParameterSet = DefaultKhalaFleetDelegationParameterSet,
+): ReadonlyArray<FleetRunSlot> {
   return Array.from({ length: plan.targetSlots }, (_, slot) => ({
     accountRef: plan.readyAccounts[slot % plan.readyAccounts.length] ?? "codex",
     issue: plan.issues[slot % plan.issues.length] ?? plan.issues[0]!,
-    objective: `Implement public issue #${plan.issues[slot % plan.issues.length] ?? plan.issues[0]!} and run the named verification.`,
+    objective: renderKhalaFleetDelegationObjective({
+      issue: plan.issues[slot % plan.issues.length] ?? plan.issues[0]!,
+      objective: `Implement public issue #${plan.issues[slot % plan.issues.length] ?? plan.issues[0]!} and run the named verification.`,
+      repo: plan.repo,
+      verify: plan.verify,
+    }, parameters),
     slot,
     workKind: "issue",
   }))
@@ -251,13 +286,19 @@ function plannedRounds(plan: KhalaFleetRunPlan): ReadonlyArray<FleetRunSlot> {
 export function plannedReplenishmentRounds(
   plan: KhalaFleetRunPlan,
   alreadyDispatchedKeys: ReadonlySet<string> = new Set(),
+  parameters: KhalaFleetDelegationParameterSet = DefaultKhalaFleetDelegationParameterSet,
 ): ReadonlyArray<FleetRunSlot> {
   const available = REPLENISHMENT_OBJECTIVES.filter(task => !alreadyDispatchedKeys.has(task.dedupeKey))
   const staticRounds = available.slice(0, plan.targetSlots).map((task, slot) => ({
     accountRef: plan.readyAccounts[slot % plan.readyAccounts.length] ?? "codex",
     dedupeKey: task.dedupeKey,
     issue: task.issue,
-    objective: task.objective,
+    objective: renderKhalaFleetDelegationObjective({
+      issue: task.issue,
+      objective: task.objective,
+      repo: plan.repo,
+      verify: plan.verify,
+    }, parameters),
     slot,
     workKind: "replenishment" as const,
   }))
@@ -269,14 +310,20 @@ export function plannedReplenishmentRounds(
     const slot = staticRounds.length + index
     const issue = plan.issues[(generatedStart + index) % plan.issues.length] ?? null
     const dedupeKey = `lockout-recovery-sweep-${generatedStart + index}`
+    const objective =
+      issue === null
+        ? "Run a bounded public-safe lockout recovery audit over the checkout. Fix one concrete issue if found, avoid duplicate open PRs, and run the named verification."
+        : `Re-audit public issue #${issue} after fleet lockout. Implement the smallest safe non-duplicate change that moves it toward closure and run the named verification.`
     return {
       accountRef: plan.readyAccounts[slot % plan.readyAccounts.length] ?? "codex",
       dedupeKey,
       issue,
-      objective:
-        issue === null
-          ? "Run a bounded public-safe lockout recovery audit over the checkout. Fix one concrete issue if found, avoid duplicate open PRs, and run the named verification."
-          : `Re-audit public issue #${issue} after fleet lockout. Implement the smallest safe non-duplicate change that moves it toward closure and run the named verification.`,
+      objective: renderKhalaFleetDelegationObjective({
+        issue,
+        objective,
+        repo: plan.repo,
+        verify: plan.verify,
+      }, parameters),
       slot,
       workKind: "replenishment" as const,
     }
@@ -307,6 +354,7 @@ export function shouldDispatchReplenishment(consecutiveLockoutRounds: number): b
 }
 
 async function runSupervisorLoop(input: {
+  readonly delegationParameters: KhalaFleetDelegationParameterSet
   readonly env: Record<string, string | undefined>
   readonly plan: KhalaFleetRunPlan
   readonly pylonCommand: readonly string[]
@@ -322,14 +370,18 @@ async function runSupervisorLoop(input: {
     const roundPlan = plannedRounds({
       ...input.plan,
       issues: rotateIssues(input.plan.issues, issueOffset),
-    })
+    }, input.delegationParameters)
     const round = await Promise.all(roundPlan.map(slot => dispatchFleetSlot({ ...input, slot })))
     rounds.push(...round)
     issueOffset = (issueOffset + round.length) % input.plan.issues.length
     const lockout = round.length > 0 && round.every(item => item.status === "refused")
     consecutiveLockoutRounds = lockout ? consecutiveLockoutRounds + 1 : 0
     if (shouldDispatchReplenishment(consecutiveLockoutRounds)) {
-      const replenishmentPlan = plannedReplenishmentRounds(input.plan, dispatchedReplenishmentKeys)
+      const replenishmentPlan = plannedReplenishmentRounds(
+        input.plan,
+        dispatchedReplenishmentKeys,
+        input.delegationParameters,
+      )
       for (const slot of replenishmentPlan) {
         if (slot.dedupeKey !== undefined) dispatchedReplenishmentKeys.add(slot.dedupeKey)
       }
@@ -356,12 +408,13 @@ async function runSupervisorLoop(input: {
 }
 
 async function runOneRound(input: {
+  readonly delegationParameters: KhalaFleetDelegationParameterSet
   readonly env: Record<string, string | undefined>
   readonly plan: KhalaFleetRunPlan
   readonly pylonCommand: readonly string[]
   readonly token?: string | undefined
 }): Promise<readonly KhalaFleetRunRound[]> {
-  return await Promise.all(plannedRounds(input.plan).map(slot => dispatchFleetSlot({ ...input, slot })))
+  return await Promise.all(plannedRounds(input.plan, input.delegationParameters).map(slot => dispatchFleetSlot({ ...input, slot })))
 }
 
 async function dispatchFleetSlot(input: {
@@ -408,12 +461,13 @@ async function dispatchFleetSlot(input: {
 }
 
 async function publishHeartbeat(input: {
+  readonly delegationParameters?: KhalaFleetDelegationParameterSet | undefined
   readonly env: Record<string, string | undefined>
   readonly plan: KhalaFleetRunPlan
   readonly pylonCommand: readonly string[]
   readonly token?: string | undefined
 }): Promise<void> {
-  const capacityEnv = fleetRunCapacityEnv(input.env, input.plan)
+  const capacityEnv = fleetRunCapacityEnv(input.env, input.plan, input.delegationParameters)
   await runPylonCommand(input.pylonCommand, ["presence", "heartbeat", "--json"], {
     ...envWithToken(capacityEnv, input.token),
   })

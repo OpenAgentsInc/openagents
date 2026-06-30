@@ -1,8 +1,15 @@
 import { describe, expect, test } from "bun:test"
 import { Effect } from "effect"
 import {
+  DefaultKhalaFleetDelegationParameterSet,
+  KhalaFleetDelegationAdmittedParametersEnv,
+  KhalaFleetDelegationParameterSet,
+  KhalaFleetDelegationParameterSetSchemaVersion,
   KhalaFleetDelegateModuleError,
+  khalaFleetDelegationDispatchAttempts,
+  khalaFleetDelegationParametersFromEnv,
   prepareKhalaFleetDelegateWork,
+  renderKhalaFleetDelegationObjective,
   runKhalaFleetDelegateProgram,
   selectKhalaFleetDelegateAccount,
   type KhalaFleetDelegateAccount,
@@ -46,6 +53,18 @@ const completedModules = (
   verifyCloseout: () => Effect.succeed({ ok: true }),
   ...overrides,
 })
+
+const admittedParameters = (
+  overrides: Partial<KhalaFleetDelegationParameterSet> = {},
+): KhalaFleetDelegationParameterSet =>
+  new KhalaFleetDelegationParameterSet({
+    actionSubmissionRef: "action_submission.khala_fleet_delegation.test",
+    candidateRef: "candidate.khala_fleet_delegation.test",
+    parameterSetRef: "parameter_set.khala_fleet_delegation.test.v1",
+    schemaVersion: KhalaFleetDelegationParameterSetSchemaVersion,
+    source: "admitted_candidate",
+    ...overrides,
+  })
 
 type AdverseMatrixCase = Readonly<{
   expectedBlockerCode?: KhalaFleetDelegateBlockerCode
@@ -212,6 +231,133 @@ const resultContainsLegacyBareCapacityDeadEnd = (
   JSON.stringify(result).includes("codex_spawn_failed: No Pylon Codex assignment capacity is available right now")
 
 describe("khala.fleet.delegate deterministic program", () => {
+  describe("admitted delegation parameters", () => {
+    test("defaults are safe when no candidate is admitted", () => {
+      expect(khalaFleetDelegationParametersFromEnv({})).toEqual(DefaultKhalaFleetDelegationParameterSet)
+      expect(khalaFleetDelegationDispatchAttempts(DefaultKhalaFleetDelegationParameterSet)).toBe(4)
+      expect(renderKhalaFleetDelegationObjective({
+        objective: "Implement public issue #7736.",
+        repo: "OpenAgentsInc/openagents",
+        verify: "bun test",
+      })).toBe("Implement public issue #7736.")
+    })
+
+    test("switching account ranking changes selection and reverting restores the default", () => {
+      const accounts = [
+        readyAccount({ accountRef: "(default)", availableSlots: 3, isDefault: true }),
+        readyAccount({ accountRef: "codex-2", availableSlots: 3 }),
+      ]
+
+      expect(selectKhalaFleetDelegateAccount({}, accounts)).toMatchObject({
+        account: { accountRef: "codex-2" },
+        status: "selected",
+      })
+      expect(selectKhalaFleetDelegateAccount({}, accounts, admittedParameters({
+        accountRanking: { heuristic: "default_ready_highest_slots" },
+      }))).toMatchObject({
+        account: { accountRef: "(default)" },
+        status: "selected",
+      })
+      expect(selectKhalaFleetDelegateAccount({}, accounts, DefaultKhalaFleetDelegationParameterSet)).toMatchObject({
+        account: { accountRef: "codex-2" },
+        status: "selected",
+      })
+    })
+
+    test("switching retry budget changes duplicate-assignment recovery behavior", async () => {
+      let oneAttemptDispatchCalls = 0
+      const oneAttempt = await Effect.runPromise(runKhalaFleetDelegateProgram({
+        objective: "Run fixture.",
+      }, completedModules({
+        dispatch: (): Effect.Effect<KhalaFleetDelegateDispatchResult> => {
+          oneAttemptDispatchCalls += 1
+          return Effect.succeed({
+            blockerCode: "duplicate_active_assignment",
+            message: "duplicate",
+            ok: false,
+            refs: ["blocker.public.pylon_dispatch.duplicate_active_assignment"],
+          })
+        },
+      }), {
+        parameters: admittedParameters({
+          retryBackoff: { dispatchAttempts: 1 },
+        }),
+      }))
+
+      expect(oneAttempt.status).toBe("blocked")
+      expect(oneAttemptDispatchCalls).toBe(1)
+
+      let defaultDispatchCalls = 0
+      const reverted = await Effect.runPromise(runKhalaFleetDelegateProgram({
+        objective: "Run fixture.",
+      }, completedModules({
+        dispatch: (): Effect.Effect<KhalaFleetDelegateDispatchResult> => {
+          defaultDispatchCalls += 1
+          return Effect.succeed(defaultDispatchCalls === 1
+            ? {
+                blockerCode: "duplicate_active_assignment",
+                message: "duplicate",
+                ok: false,
+                refs: ["blocker.public.pylon_dispatch.duplicate_active_assignment"],
+              }
+            : {
+                assignmentRef: "assignment.public.khala_fleet_delegate.reverted_retry",
+                ok: true,
+              })
+        },
+      }), {
+        parameters: DefaultKhalaFleetDelegationParameterSet,
+      }))
+
+      expect(reverted.status).toBe("completed")
+      expect(defaultDispatchCalls).toBe(2)
+    })
+
+    test("objective template and verify criteria are read from the admitted set", () => {
+      const parameters = admittedParameters({
+        objectiveTemplate:
+          "Optimized issue {issue}: {objective} Repo={repo}. Verify with {verify}.",
+        verifyCriteria: { defaultVerify: "bun test packages/khala-tools" },
+      })
+
+      expect(renderKhalaFleetDelegationObjective({
+        issue: 7736,
+        objective: "Wire admitted parameters.",
+        repo: "OpenAgentsInc/openagents",
+      }, parameters)).toBe(
+        "Optimized issue 7736: Wire admitted parameters. Repo=OpenAgentsInc/openagents. Verify with bun test packages/khala-tools.",
+      )
+      expect(prepareKhalaFleetDelegateWork({
+        commit: "0123456789abcdef0123456789abcdef01234567",
+        objective: "Wire admitted parameters.",
+        repo: "OpenAgentsInc/openagents",
+      }, parameters)).toMatchObject({
+        kind: "repo",
+        verify: "bun test packages/khala-tools",
+      })
+    })
+
+    test("env admission decodes a bounded parameter set and rejects unsafe text", () => {
+      const parameters = admittedParameters({
+        advertiseCapacity: { perAccountConcurrency: 4 },
+        objectiveTemplate: "Admitted: {objective}",
+      })
+      const decoded = khalaFleetDelegationParametersFromEnv({
+        [KhalaFleetDelegationAdmittedParametersEnv]: JSON.stringify(parameters),
+      })
+
+      expect(decoded.parameterSetRef).toBe(parameters.parameterSetRef)
+      expect(decoded.advertiseCapacity?.perAccountConcurrency).toBe(4)
+      expect(() =>
+        khalaFleetDelegationParametersFromEnv({
+          [KhalaFleetDelegationAdmittedParametersEnv]: JSON.stringify(admittedParameters({
+            objectiveTemplate: "Read /Users/example/auth.json before dispatch.",
+          })),
+        }),
+      ).toThrow(/public-safe/)
+    })
+  })
+
   describe("adverse-condition recovery matrix", () => {
     for (const matrixCase of adverseMatrixCases) {
       test(matrixCase.name, async () => {
