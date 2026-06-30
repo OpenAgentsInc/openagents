@@ -148,6 +148,7 @@ function executeExecCommandTool(
               khalaSessionId: context.invocation.sessionId,
               maxCaptureBytes: options.maxCaptureBytes ?? 256 * 1024,
               timeoutMs: args.timeoutMs,
+              workspaceRoot: await realpath(context.services.workspace.workingDirectory),
               yieldTimeMs: args.yieldTimeMs ?? 250,
             })
           : context.services.process.execCommand({
@@ -157,6 +158,7 @@ function executeExecCommandTool(
               cwd: cwd.realPath,
               maxCaptureBytes: options.maxCaptureBytes ?? 256 * 1024,
               timeoutMs: args.timeoutMs,
+              workspaceRoot: await realpath(context.services.workspace.workingDirectory),
             }),
       )
       return await renderExecResult(args, cwd.displayPath, result, context)
