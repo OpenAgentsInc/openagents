@@ -176,6 +176,46 @@ desktop chat boundary; the public token counters as projections of exact rows.
 that renders the lifecycle events + closeout + token cost without leaking raw
 prompts/secrets — the operator-facing view over the evidence we already store.
 
+### 3.7 Worker definition, triggers & memory governance
+
+A review of the broader agent-fleet landscape surfaces a few capabilities worth
+naming explicitly — most map onto primitives we already have.
+
+- **Promote a chat task into a saved worker.** Khala Code is chat-first; add a
+  one-click "save this as a reusable worker" that captures the instructions +
+  tools + scope used in an ad-hoc run into a persisted, re-runnable worker. We
+  have the runtime; we lack the "save/promote" affordance.
+- **A clean worker definition.** A worker is: instructions + tool scope + an
+  optional **schedule** (cron) + the **surfaces** it's reachable from + optional
+  **subagents** + **skills**. We have the pieces — Pylon scheduling
+  (`tas/schedule-receipts.ts`), MCP tools (Lane H), the planner/skills (Lane I),
+  subagents via spawn — but not one persisted worker-definition record.
+- **Two credential/identity modes.** Today every worker is **fixed-credential and
+  autonomous** (its own isolated account/identity — `<pylon home>/accounts/...`).
+  A second **user-scoped** mode (the worker acts with the invoking user's
+  credentials and only sees what that user can) is a future addition for shared
+  use; the authority enum already separates `credential` as its own class.
+- **Per-tool human-in-the-loop toggle.** Beyond presets, allow requiring approval
+  before a *specific* tool/action (e.g. any `create_pull_request`, any write
+  outside the workspace). The permission policy + approval cache (Lane B) is the
+  substrate; the per-tool toggle is a UI/policy refinement.
+- **Workers that ask for help and remember the answer.** `ask_user` already lets
+  a worker ask a clarifying question; the addition is **persisting the answer**
+  into worker memory for future runs, through an approved **`memory_write`**
+  (the authority class already exists in `khala-tools`).
+- **Memory governance (self-editing with default-HITL).** A worker editing its
+  own instructions/memory is powerful but risky; default to **staged write →
+  human diff review → approve/reject**, with an explicit per-worker toggle to
+  allow auto-memory. This is the safe self-improvement pattern; it pairs with the
+  GEPA delegation loop (offline) for policy-level improvement.
+- **Event-triggered background workers.** Workers that run on events/schedules in
+  the background (not just on demand), surfaced and unblocked through the Inbox.
+  We have scheduling + work-intake (`tas/work-intake.ts`); the trigger→run→inbox
+  wiring is the gap.
+- **A worker template gallery.** Starter worker definitions for common jobs
+  (issue burn-down, PR review, repo triage) so a new owner starts from a working
+  scope instead of a blank one.
+
 ## 4. The build list (prioritized)
 
 The engine is built; the gaps are surfaces and one orchestration promotion.
@@ -195,6 +235,14 @@ The engine is built; the gaps are surfaces and one orchestration promotion.
    instruction files across harnesses, reference-by-default, never clobber.
 6. **Run timeline / trace viewer** (§3.6) — operator view over exact token rows +
    redacted traces + closeouts.
+
+7. **Worker definition + save-as-worker** (§3.7) — persist instructions/tools/
+   scope/schedule/surfaces into a re-runnable worker; one-click promote from a
+   chat run; a template gallery.
+8. **Memory governance** (§3.7) — staged worker-memory writes with default-HITL
+   diff review + per-worker auto-memory toggle, on the `memory_write` authority.
+9. **Event-triggered workers** (§3.7) — trigger → background run → Inbox unblock,
+   over the existing scheduling + work-intake primitives.
 
 ## 5. Non-goals / boundaries
 
