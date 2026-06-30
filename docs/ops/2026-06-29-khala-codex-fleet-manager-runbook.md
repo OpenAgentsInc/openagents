@@ -75,11 +75,12 @@ Expected:
   account is ready.
 - `(default)` may be ready, but Khala Code Desktop now prefers named ready
   accounts before `(default)` for automatic `codex_spawn`.
-- `codex_spawn` plans against advertised per-account slots, then launches the
-  planned slots concurrently. The Desktop MVP caps requested fanout at five.
-  For a deliberate five-worker smoke, advertise five account slots with
-  `OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY=5`; do not set that globally
-  unless the machine should really take five local Codex runs at once.
+- `codex_spawn` runs through the deterministic `khala.fleet.delegate` bundle:
+  ensure Pylon, advertise per-account capacity, select an account, prepare work,
+  dispatch, and verify closeout. The Desktop MVP caps requested fanout at five
+  and now computes `OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY=5` for its Pylon
+  child commands before heartbeat/dispatch. Operators can still set the env var
+  explicitly for manual shell smokes.
 
 Start the app:
 
@@ -145,7 +146,7 @@ Expected green shape:
 For a bounded five-slot smoke of the same Desktop tool path:
 
 ```sh
-OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY=5 bun --eval '
+bun --eval '
   import { spawnCodexInstances } from "./clients/khala-code-desktop/src/bun/khala-codex-fleet-tools.ts";
   const result = await spawnCodexInstances({
     count: 5,
@@ -1216,10 +1217,14 @@ fleet and merging the resulting PRs.
 
 ### Advertising capacity: use the per-account env var
 
-- To advertise more than the default Codex slots, set
-  `OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY=N` (per linked account) before the
-  `presence heartbeat` / `provider go-online`. With two ready accounts and N=5 the
-  Pylon advertised `availableCodexAssignments=10`.
+- Current Desktop and Pylon fanout entry points compute the per-account Codex
+  capacity env before they heartbeat: `codex_spawn` uses five slots per account
+  (matching its five-worker cap), `pylon khala spawn` uses at least the requested
+  spawn width, and `khala fleet run` uses the plan's `--per-account` value.
+- For manual shell work, still set `OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY=N`
+  (per linked account) before the `presence heartbeat` / `provider go-online`.
+  With two ready accounts and N=5 the Pylon advertised
+  `availableCodexAssignments=10`.
 - The non-account `OPENAGENTS_PYLON_CODEX_CONCURRENCY` did NOT hold; advertised
   `max` reverted to the default. The per-account var is the reliable one. Using
   the wrong var is why an early 10-wide fanout only admitted ~3.

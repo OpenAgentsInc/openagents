@@ -392,7 +392,7 @@ Mutalisk proposes, Blueprint admits, the watcher executes, traces feed back.
 
 | Phase | Deliverable | Acceptance |
 | --- | --- | --- |
-| **GD-P** (prerequisite) | **The deterministic delegation program** (§5.0): the `ensure_pylon → advertise_capacity → select_account → prepare_work → dispatch → verify_closeout` module pipeline with typed fallbacks, wired into `codex_spawn` / the bundle | core program exists in `packages/khala-tools/src/fleet-delegate-program.ts`; #7732 wires it into live desktop/Pylon surfaces so a single-prompt delegation succeeds when capacity starts at `0/1` |
+| **GD-P** (prerequisite) | **The deterministic delegation program** (§5.0): the `ensure_pylon → advertise_capacity → select_account → prepare_work → dispatch → verify_closeout` module pipeline with typed fallbacks, wired into `codex_spawn` / the bundle | core program exists in `packages/khala-tools/src/fleet-delegate-program.ts`; live Desktop/Pylon wiring now advertises per-account Codex capacity before selection/dispatch and loops `no_available_codex_capacity`/`stale_heartbeat` back through `advertise_capacity` |
 | GD-0 | Trace export: a public-safe `delegation_example` view joining assignment lifecycle + closeout + token rows + PR/merge outcome | a Mutalisk-readable dataset of past delegations, redacted |
 | GD-1 | Metric + feedback function (scalar Pareto dims + textual failure refs) | scores a known-good and known-bad delegation correctly; feedback names the real blocker refs |
 | GD-2 | `gepa.optimize` job in Mutalisk over the dataset; emit a `khala.fleet.delegation.v1` candidate to R2/D1 | a candidate artifact with measurable val-set gain over the seed objective/dispatch policy |
@@ -439,5 +439,5 @@ starting point. Each phase lands behind the existing evidence/receipt boundary.
 | GEPA feedback/ASI builder (`studybench-gepa-feedback.ts`) | built (template for the delegation metric) |
 | Candidate seam (`psionic.probe_gepa_candidate_manifest.v1`) | defined on both sides; must align Mutalisk `Candidate` to it |
 | Blueprint admission moat | built (signature-lookup + action-submission) |
-| Deterministic delegation program (GD-P, §5.0) | core built in `@openagentsinc/khala-tools` as `khala.fleet.delegate`: typed module/precondition/blocker taxonomy plus tests for cold `0/1` capacity recovery, account selection, dispatch fallbacks, and closeout blockers; live surface wiring follows in #7732 |
+| Deterministic delegation program (GD-P, §5.0) | core built in `@openagentsinc/khala-tools` as `khala.fleet.delegate`: typed module/precondition/blocker taxonomy plus tests for cold `0/1` capacity recovery, account selection, dispatch fallbacks, and closeout blockers; `codex_spawn`, `pylon khala spawn`, `pylon khala request --workflow codex_agent_task`, and `khala fleet run` now compute and publish the required per-account capacity before dispatch |
 | Fleet-delegation GEPA loop (GD-0..GD-4) | not started — optimizes the GD-P program's parameters; GD-0/GD-1 follow GD-P |

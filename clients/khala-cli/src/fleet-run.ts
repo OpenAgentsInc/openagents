@@ -162,6 +162,25 @@ export function buildFleetRunPlan(input: {
   }
 }
 
+export function fleetRunCapacityEnv(
+  env: Record<string, string | undefined>,
+  plan: KhalaFleetRunPlan,
+): Record<string, string | undefined> {
+  return {
+    ...env,
+    OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY: String(Math.max(
+      plan.perAccount,
+      positiveEnvInteger(env.OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY) ?? 0,
+    )),
+    OPENAGENTS_PYLON_CODEX_BUSY: "0",
+    OPENAGENTS_PYLON_CODEX_CONCURRENCY: String(Math.max(
+      plan.targetSlots,
+      positiveEnvInteger(env.OPENAGENTS_PYLON_CODEX_CONCURRENCY) ?? 0,
+    )),
+    OPENAGENTS_PYLON_CODEX_QUEUED: "0",
+  }
+}
+
 export async function runKhalaFleetSupervisor(options: KhalaFleetRunOptions): Promise<KhalaFleetRunResult> {
   const env = options.env ?? process.env
   const commandEnv = {
@@ -199,6 +218,7 @@ export async function runKhalaFleetSupervisor(options: KhalaFleetRunOptions): Pr
   if (plan.pylonRef === null && !options.dryRun) {
     throw new Error("Could not resolve a local Pylon ref. Run `pylon provider go-online --json` or pass --pylon-ref.")
   }
+  const capacityEnv = fleetRunCapacityEnv(commandEnv, plan)
 
   if (options.dryRun) {
     return {
@@ -210,11 +230,11 @@ export async function runKhalaFleetSupervisor(options: KhalaFleetRunOptions): Pr
     }
   }
 
-  await runPylonCommand(pylonCommand, ["provider", "go-online", "--json"], envWithToken(commandEnv, options.token))
-  await publishHeartbeat({ env: commandEnv, plan, pylonCommand, token: options.token })
+  await runPylonCommand(pylonCommand, ["provider", "go-online", "--json"], envWithToken(capacityEnv, options.token))
+  await publishHeartbeat({ env: capacityEnv, plan, pylonCommand, token: options.token })
   const rounds = options.once
-    ? await runOneRound({ env: commandEnv, plan, pylonCommand, token: options.token })
-    : await runSupervisorLoop({ env: commandEnv, plan, pylonCommand, token: options.token })
+    ? await runOneRound({ env: capacityEnv, plan, pylonCommand, token: options.token })
+    : await runSupervisorLoop({ env: capacityEnv, plan, pylonCommand, token: options.token })
   return { schema: KHALA_FLEET_RUN_SCHEMA, mode, plan, rounds, status: "completed" }
 }
 
@@ -393,11 +413,9 @@ async function publishHeartbeat(input: {
   readonly pylonCommand: readonly string[]
   readonly token?: string | undefined
 }): Promise<void> {
+  const capacityEnv = fleetRunCapacityEnv(input.env, input.plan)
   await runPylonCommand(input.pylonCommand, ["presence", "heartbeat", "--json"], {
-    ...envWithToken(input.env, input.token),
-    OPENAGENTS_PYLON_CODEX_CONCURRENCY: String(input.plan.targetSlots),
-    OPENAGENTS_PYLON_CODEX_BUSY: "0",
-    OPENAGENTS_PYLON_CODEX_QUEUED: "0",
+    ...envWithToken(capacityEnv, input.token),
   })
 }
 
@@ -444,6 +462,11 @@ function pylonCommandFromEnv(env: Record<string, string | undefined>): readonly 
 function envWithToken(env: Record<string, string | undefined>, token: string | undefined): Record<string, string | undefined> {
   const clean = token?.trim()
   return clean ? { ...env, OPENAGENTS_AGENT_TOKEN: clean } : env
+}
+
+function positiveEnvInteger(value: string | undefined): number | null {
+  const parsed = Number.parseInt(value?.trim() ?? "", 10)
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null
 }
 
 function rotateIssues(issues: readonly number[], offset: number): readonly number[] {

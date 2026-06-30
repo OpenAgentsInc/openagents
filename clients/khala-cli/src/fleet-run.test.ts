@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 
 import {
   buildFleetRunPlan,
+  fleetRunCapacityEnv,
   nextFleetSupervisorDelay,
   parseFleetIssueList,
   plannedReplenishmentRounds,
@@ -47,6 +48,27 @@ describe("fleet run planning", () => {
     })
     expect(plan.targetSlots).toBe(5)
     expect(plan.readyAccounts).toEqual(["codex", "codex-2", "codex-3"])
+  })
+
+  test("sets account-level capacity env from the planned per-account slots", () => {
+    const plan = buildFleetRunPlan({
+      commit,
+      issues: [6384, 6408, 6410],
+      maxSlots: 10,
+      mode: "once",
+      perAccount: 5,
+      pylonRef: "pylon.local",
+      readyAccounts: ["codex", "codex-2", "codex-3"],
+      repo: "Example/repo",
+      verify: "bun test",
+    })
+
+    const env = fleetRunCapacityEnv({ OPENAGENTS_PYLON_CODEX_CONCURRENCY: "1" }, plan)
+
+    expect(env.OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY).toBe("5")
+    expect(env.OPENAGENTS_PYLON_CODEX_CONCURRENCY).toBe("10")
+    expect(env.OPENAGENTS_PYLON_CODEX_BUSY).toBe("0")
+    expect(env.OPENAGENTS_PYLON_CODEX_QUEUED).toBe("0")
   })
 
   test("rejects local/private-looking verify commands", () => {

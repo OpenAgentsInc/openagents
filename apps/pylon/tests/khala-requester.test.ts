@@ -102,7 +102,12 @@ async function writeCodexAccounts(home: string, accountRefs: string[]) {
     const accountHome = join(home, "accounts", "codex", ref)
     await mkdir(accountHome, { recursive: true })
     await writeFile(join(accountHome, "auth.json"), "{}\n")
-    accounts.push({ home: accountHome, provider: "codex", ref })
+    accounts.push({
+      home: accountHome,
+      openAgentsProviderAccountRef: `provider_account.public.${ref}`,
+      provider: "codex",
+      ref,
+    })
   }
   await writeFile(
     join(home, "config.json"),
@@ -536,7 +541,8 @@ describe("pylon khala requester API", () => {
 
   test("CLI request can leave the lease un-run for diagnostics with --no-run", async () => {
     await withTempHome(async (home) => {
-      await markAssignmentReady(home)
+      await markAssignmentReady(home, ["capability.pylon.local_codex"])
+      await writeCodexAccounts(home, ["codex-one"])
       const fake = khalaAutoRunServer()
 
       const proc = await runPylonCli(
@@ -554,7 +560,10 @@ describe("pylon khala requester API", () => {
           "--json",
         ],
         {
+          CODEX_HOME: join(home, "missing-default-codex"),
           OPENAGENTS_AGENT_TOKEN: "oa_agent_test",
+          OPENAGENTS_PYLON_CODEX_CONCURRENCY: "1",
+          PYLON_ACCOUNT_HOME_ROOT: join(home, "no-sibling-scan"),
           PYLON_HOME: home,
         },
       )
@@ -576,6 +585,10 @@ describe("pylon khala requester API", () => {
       const chatIndex = paths.findIndex((path) => path === "/api/v1/chat/completions")
       expect(heartbeatIndex).toBeGreaterThanOrEqual(0)
       expect(chatIndex).toBeGreaterThan(heartbeatIndex)
+      const heartbeatRefs = fake.requests[heartbeatIndex]?.body.capacityRefs as string[]
+      expect(heartbeatRefs).toContain("capacity.coding.codex.ready=5")
+      expect(heartbeatRefs.some(ref => ref.startsWith("capacity.coding.codex.account.") && ref.endsWith(".ready=5")))
+        .toBe(true)
       expect(paths.some((path) => path.endsWith("/accept"))).toBe(false)
       expect(paths.some((path) => path.endsWith("/progress"))).toBe(false)
       expect(paths.some((path) => path.endsWith("/closeout"))).toBe(false)
@@ -606,7 +619,6 @@ describe("pylon khala requester API", () => {
         {
           CODEX_HOME: join(home, "missing-default-codex"),
           OPENAGENTS_AGENT_TOKEN: "oa_agent_test",
-          OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY: "5",
           OPENAGENTS_PYLON_CODEX_CONCURRENCY: "1",
           PYLON_ACCOUNT_HOME_ROOT: join(home, "no-sibling-scan"),
           PYLON_HOME: home,

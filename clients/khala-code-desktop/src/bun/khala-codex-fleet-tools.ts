@@ -6,10 +6,16 @@ import { dirname, join, resolve } from "node:path"
 import type { Readable } from "node:stream"
 import { Effect } from "effect"
 import {
+  KhalaFleetDelegateModuleError,
   khalaToolError,
   khalaToolOk,
   khalaToolUnavailable,
   redactKhalaPublicText,
+  runKhalaFleetDelegateProgram,
+  type KhalaFleetDelegateAccount,
+  type KhalaFleetDelegateBlockerCode,
+  type KhalaFleetDelegateCapacity,
+  type KhalaFleetDelegateWork,
   type KhalaToolDefinition,
   type KhalaToolResult,
   type RegisteredKhalaTool,
@@ -167,6 +173,7 @@ const MAX_SPAWN_COUNT = 5
 const DEFAULT_COMMAND_TIMEOUT_MS = 45_000
 const DEFAULT_SPAWN_TIMEOUT_MS = 180_000
 const DEFAULT_ENSURE_WAIT_MS = 7_500
+const DEFAULT_CODEX_ACCOUNT_CONCURRENCY = MAX_SPAWN_COUNT
 const DEFAULT_OPENAGENTS_BASE_URL = "https://openagents.com"
 const MAX_MODEL_OUTPUT_BYTES = 4_000
 
@@ -550,150 +557,127 @@ export async function spawnCodexInstances(
   options: KhalaCodexFleetToolOptions = {},
 ): Promise<SpawnCodexInstancesResult> {
   const input = decodeSpawnInput(raw)
-  const env = options.env ?? process.env
+  const env = withCodexCapacityAdvertisementEnv(options.env ?? process.env, input.count)
   const paths = resolvePylonPaths(env)
-  const ensure = await ensureLocalPylon(
-    { start: true, timeoutMs: input.timeoutMs, waitMs: DEFAULT_ENSURE_WAIT_MS },
-    { ...options, env },
-  )
-  if (!ensure.ok) {
-    throw new Error(`Pylon unavailable: ${ensure.message}${ensure.unavailableReason ? ` (${ensure.unavailableReason})` : ""}`)
-  }
-
-  const status = await inspectCodexFleet({ includeProcesses: false, startPylon: false }, { ...options, env })
-  const providerProjection = await readProviderProjection(env, paths, options.runner)
-  const accountAvailability = codexAccountAvailabilityByRef(status.accounts, providerProjection)
-  const readyAccounts = preferredSpawnAccounts(
-    status.accounts.filter(account => isReadyAccount(account)),
-    accountAvailability,
-  )
-  if (readyAccounts.length === 0) {
-    throw new Error(
-      "No ready Pylon Codex account is connected. Connect one first with `khala fleet connect` or `pylon auth codex --account codex`; this Desktop tool will not run Codex device login.",
-    )
-  }
-  const selectedAccounts = resolveSpawnAccounts(
-    input.accountRef,
-    readyAccounts,
-    status.accounts,
-    accountAvailability,
-  )
-  if (selectedAccounts.length === 0) {
-    throw new Error(
-      "No ready Pylon Codex account has an advertised free slot right now. Wait for the running assignment to finish or retry after the next heartbeat.",
-    )
-  }
-  if (status.availableCodexAssignments !== null && status.availableCodexAssignments <= 0) {
-    throw new Error(
-      `No Pylon Codex assignment capacity is available right now (${capacityLabel(status.availableCodexAssignments, status.maxCodexAssignments)}). Wait for the running assignment to finish or retry after Pylon refreshes.`,
-    )
-  }
-
   const baseUrl = resolveOpenAgentsBaseUrl(env, input.baseUrl)
-  const heartbeat = await runPylonCommand(["presence", "heartbeat", "--base-url", baseUrl, "--json"], {
-    env,
-    paths,
-    runner: options.runner,
-    timeoutMs: DEFAULT_COMMAND_TIMEOUT_MS,
-  })
-  if (heartbeat.exitCode !== 0) {
-    throw new Error(`Pylon heartbeat failed before Codex spawn: ${safeFailureReason(heartbeat)}`)
-  }
-  const heartbeatPylonRef = stringField(parseJsonObject(heartbeat.stdout), "pylonRef")
-  const targetPylonRef = input.pylonRef ?? heartbeatPylonRef ?? ensure.pylonRef ?? ""
-  const plannedAccounts = planSpawnAccounts(input.count, selectedAccounts, accountAvailability)
-  if (plannedAccounts.length < input.count) {
-    throw new Error(
-      `Only ${plannedAccounts.length}/${input.count} advertised Pylon Codex account slot(s) are free right now. Wait for running assignments to finish or retry after the next heartbeat.`,
-    )
-  }
+  let fleetStatus: FleetStatusResult | null = null
+  let providerProjection: Record<string, unknown> | null = null
+  let accountAvailability: ReadonlyMap<string, number> = new Map()
+  let heartbeatPylonRef: string | null = null
+  let dispatchedResult: SpawnCodexInstancesResult | null = null
 
-  if (!input.noRun) {
-    const selectedCommandAccount =
-      input.accountRef === undefined
-        ? undefined
-        : commandAccountRef(plannedAccounts[0]?.accountRef)
-    const args = [
-      "khala",
-      "spawn",
-      "--count",
-      String(input.count),
-      "--max-parallel",
-      String(input.count),
-      "--objective",
-      input.prompt,
-      "--pylon-ref",
-      targetPylonRef,
-      ...(selectedCommandAccount === undefined ? [] : ["--account-ref", selectedCommandAccount]),
-      ...(input.fixture ? ["--fixture"] : workspacePinArgs(input)),
-      "--base-url",
-      baseUrl,
-      "--execute",
-      "--json",
-    ]
-    const result = await runPylonCommand(args, {
-      env,
-      maxOutputBytes: 5_000_000,
-      paths,
-      runner: options.runner,
-      timeoutMs: input.timeoutMs,
-    })
-    return spawnResultFromBatchCommand({
-      accountHints: plannedAccounts,
-      command: result,
-      fallbackPylonRef: targetPylonRef || null,
-      requestedCount: input.count,
-    })
-  }
-
-  const results = await Promise.all(plannedAccounts.map(async (selectedAccount, index): Promise<SpawnSlotResult> => {
-    const selectedCommandAccount = commandAccountRef(selectedAccount.accountRef)
-    const args = [
-      "khala",
-      "request",
-      "--workflow",
-      "codex_agent_task",
-      "--prompt",
-      input.prompt,
-      "--pylon-ref",
-      targetPylonRef,
-      ...(selectedCommandAccount === undefined ? [] : ["--account-ref", selectedCommandAccount]),
-      ...(input.fixture ? ["--fixture"] : workspacePinArgs(input)),
-      "--base-url",
-      baseUrl,
-      ...(input.noRun ? ["--no-run"] : []),
-      "--json",
-    ]
-    const result = await runPylonCommand(args, {
+  const refreshFleetProjection = async (
+    pylonRef: string | undefined,
+    reason: "initial" | "no_available_codex_capacity" | "stale_heartbeat",
+  ) => {
+    const heartbeat = await runPylonCommand(["presence", "heartbeat", "--base-url", baseUrl, "--json"], {
       env,
       paths,
       runner: options.runner,
-      timeoutMs: input.timeoutMs,
+      timeoutMs: DEFAULT_COMMAND_TIMEOUT_MS,
     })
-    const json = parseJsonObject(result.stdout)
-    const assignmentRef = stringField(json, "assignmentRef")
-    const autoRunOk = booleanField(recordField(json, "autoRun"), "ok")
-    const accepted = result.exitCode === 0 && assignmentRef !== null && autoRunOk !== false
-    const hasAssignmentProjection = result.exitCode === 0 && assignmentRef !== null
-    return {
-      accountRef: selectedAccount.accountRef,
-      assignmentRef,
-      autoRunOk,
-      exitCode: result.exitCode,
-      slot: index + 1,
-      status: accepted ? "accepted" : "failed",
-      summary: hasAssignmentProjection
-        ? acceptedSpawnSummary(assignmentRef, json)
-        : safeFailureReason(result),
+    if (heartbeat.exitCode !== 0) {
+      throw new KhalaFleetDelegateModuleError({
+        blockerCode: reason === "stale_heartbeat" ? "stale_heartbeat" : "capacity_probe_failed",
+        message: `Pylon heartbeat failed before Codex spawn: ${safeFailureReason(heartbeat)}`,
+        module: "advertise_capacity",
+        refs: [`blocker.public.khala_fleet_delegate.${reason === "stale_heartbeat" ? "stale_heartbeat" : "capacity_probe_failed"}`],
+      })
     }
+    const heartbeatJson = parseJsonObject(heartbeat.stdout)
+    const freshHeartbeatPylonRef = stringField(heartbeatJson, "pylonRef")
+    if (freshHeartbeatPylonRef !== null) heartbeatPylonRef = freshHeartbeatPylonRef
+    else if (pylonRef !== undefined) heartbeatPylonRef = pylonRef
+    fleetStatus = await inspectCodexFleet({ includeProcesses: false, startPylon: false }, { ...options, env })
+    providerProjection = await readProviderProjection(env, paths, options.runner)
+    accountAvailability = codexAccountAvailabilityByRef(fleetStatus.accounts, providerProjection)
+    const heartbeatRef = stringField(heartbeatJson, "heartbeatRef")
+    return {
+      capacity: khalaDelegateCapacityFromFleetStatus(fleetStatus, providerProjection, accountAvailability),
+      ...(heartbeatRef === null ? {} : { heartbeatRef }),
+    }
+  }
+
+  const delegate = await Effect.runPromise(runKhalaFleetDelegateProgram({
+    accountRef: input.accountRef,
+    branch: input.branch,
+    commit: input.commit,
+    fixture: input.fixture,
+    objective: input.prompt,
+    repo: input.repo,
+    verify: input.verify,
+  }, {
+    ensurePylon: () =>
+      Effect.promise(async () => {
+        const ensure = await ensureLocalPylon(
+          { start: true, timeoutMs: input.timeoutMs, waitMs: DEFAULT_ENSURE_WAIT_MS },
+          { ...options, env },
+        )
+        if (!ensure.ok) {
+          throw new KhalaFleetDelegateModuleError({
+            blockerCode: "pylon_unavailable",
+            message: `Pylon unavailable: ${ensure.message}${ensure.unavailableReason ? ` (${ensure.unavailableReason})` : ""}`,
+            module: "ensure_pylon",
+            refs: ["blocker.public.khala_fleet_delegate.pylon_unavailable"],
+          })
+        }
+        return {
+          pylonRef: input.pylonRef ?? ensure.pylonRef ?? undefined,
+          started: ensure.started,
+        }
+      }),
+    advertiseCapacity: ({ pylonRef, reason }) =>
+      Effect.promise(() => refreshFleetProjection(pylonRef, reason)),
+    dispatch: ({ capacity, work }) =>
+      Effect.promise(async () => {
+        const planned = planDelegatedSpawnAccounts(input, capacity, fleetStatus, accountAvailability)
+        if (planned.status === "blocked") return planned.dispatch
+        const targetPylonRef = input.pylonRef ?? heartbeatPylonRef ?? ""
+        dispatchedResult = input.noRun
+          ? await runDelegatedNoRunRequests({
+              baseUrl,
+              env,
+              input,
+              paths,
+              plannedAccounts: planned.accounts,
+              runner: options.runner,
+              targetPylonRef,
+            })
+          : await runDelegatedBatchSpawn({
+              baseUrl,
+              env,
+              input,
+              paths,
+              plannedAccounts: planned.accounts,
+              runner: options.runner,
+              targetPylonRef,
+              work,
+            })
+        const firstAssignmentRef = firstSpawnAssignmentRef(dispatchedResult)
+        if (dispatchedResult.acceptedCount === input.count && firstAssignmentRef !== null) {
+          return { assignmentRef: firstAssignmentRef, ok: true }
+        }
+        return {
+          blockerCode: classifySpawnDispatchBlocker(dispatchedResult),
+          message: renderSpawnResult(dispatchedResult),
+          ok: false,
+          refs: spawnDispatchBlockerRefs(dispatchedResult),
+        }
+      }),
+    verifyCloseout: () =>
+      Effect.succeed({
+        ok: dispatchedResult !== null && dispatchedResult.acceptedCount === input.count,
+        ...(dispatchedResult === null || dispatchedResult.acceptedCount === input.count
+          ? {}
+          : { message: renderSpawnResult(dispatchedResult) }),
+      }),
   }))
 
-  return {
-    acceptedCount: results.filter(result => result.status === "accepted").length,
-    pylonRef: targetPylonRef || null,
-    requestedCount: input.count,
-    results,
+  if (dispatchedResult !== null) return dispatchedResult
+  if (delegate.status === "blocked") {
+    throw new Error(`Khala fleet delegate blocked at ${delegate.trace.at(-1)?.module ?? "unknown"}: ${delegate.message}`)
   }
+  throw new Error("Khala fleet delegate completed without a dispatch result.")
 }
 
 export function resolvePylonHome(env: ChatEnv = process.env): string {
@@ -1349,6 +1333,287 @@ function spawnResultFromBatchCommand(input: {
   }
 }
 
+function withCodexCapacityAdvertisementEnv(env: ChatEnv, requestedCount: number): ChatEnv {
+  const target = Math.max(
+    DEFAULT_CODEX_ACCOUNT_CONCURRENCY,
+    requestedCount,
+    positiveIntegerEnv(env.OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY) ?? 0,
+    positiveIntegerEnv(env.OPENAGENTS_PYLON_CODEX_CONCURRENCY) ?? 0,
+  )
+  return {
+    ...env,
+    OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY: String(target),
+    OPENAGENTS_PYLON_CODEX_BUSY: "0",
+    OPENAGENTS_PYLON_CODEX_CONCURRENCY: String(target),
+    OPENAGENTS_PYLON_CODEX_QUEUED: "0",
+  }
+}
+
+function khalaDelegateCapacityFromFleetStatus(
+  status: FleetStatusResult,
+  projection: Record<string, unknown> | null,
+  availability: ReadonlyMap<string, number>,
+): KhalaFleetDelegateCapacity {
+  const capacity = capacityFromProviderProjection(projection)
+  const accounts = preferredSpawnAccounts(status.accounts, availability)
+    .map(account => khalaDelegateAccountFromRow(account, availability))
+  const readyCount = accounts.filter(account => account.readiness === "ready" || account.readiness === "available").length
+  const accountAvailable = availability.size === 0
+    ? readyCount
+    : accounts.reduce((sum, account) => sum + Math.max(0, account.availableSlots ?? 0), 0)
+  const available = capacity.available ?? status.availableCodexAssignments ?? accountAvailable
+  const max = capacity.max ?? status.maxCodexAssignments ?? Math.max(available, readyCount)
+  return {
+    accounts,
+    available: Math.max(0, Math.floor(available)),
+    max: Math.max(0, Math.floor(max)),
+  }
+}
+
+function khalaDelegateAccountFromRow(
+  account: AccountRow,
+  availability: ReadonlyMap<string, number>,
+): KhalaFleetDelegateAccount {
+  const availableSlots = availability.get(account.accountRef)
+  return {
+    accountRef: account.accountRef,
+    ...(availableSlots === undefined ? {} : { availableSlots }),
+    isDefault: isDefaultAccountRef(account.accountRef),
+    readiness: khalaDelegateReadiness(account),
+  }
+}
+
+function khalaDelegateReadiness(account: AccountRow): KhalaFleetDelegateAccount["readiness"] {
+  if (account.readiness === "ready" || account.readiness === "available") return account.readiness
+  if (/credential|login|auth|missing/iu.test(account.readiness)) return "credentials_missing"
+  if (/revok|disabled/iu.test(account.readiness)) return "revoked"
+  return "unknown"
+}
+
+function planDelegatedSpawnAccounts(
+  input: NormalizedSpawnInput,
+  capacity: KhalaFleetDelegateCapacity,
+  status: FleetStatusResult | null,
+  availability: ReadonlyMap<string, number>,
+):
+  | Readonly<{ accounts: readonly AccountRow[]; status: "planned" }>
+  | Readonly<{ dispatch: { blockerCode: KhalaFleetDelegateBlockerCode; message: string; ok: false; refs: readonly string[] }; status: "blocked" }> {
+  if (status === null) {
+    return {
+      dispatch: {
+        blockerCode: "capacity_probe_failed",
+        message: "Codex fleet projection was not available after capacity advertisement.",
+        ok: false,
+        refs: ["blocker.public.khala_fleet_delegate.capacity_probe_failed"],
+      },
+      status: "blocked",
+    }
+  }
+  const readyAccounts = preferredSpawnAccounts(
+    status.accounts.filter(account => isReadyAccount(account)),
+    availability,
+  )
+  if (readyAccounts.length === 0) {
+    return {
+      dispatch: {
+        blockerCode: "connect_account_required",
+        message:
+          "No ready Pylon Codex account is connected. Connect one first with `khala fleet connect` or `pylon auth codex --account codex`; this Desktop tool will not run Codex device login.",
+        ok: false,
+        refs: ["blocker.public.khala_fleet_delegate.connect_account_required"],
+      },
+      status: "blocked",
+    }
+  }
+  let selectedAccounts: readonly AccountRow[]
+  try {
+    selectedAccounts = resolveSpawnAccounts(input.accountRef, readyAccounts, status.accounts, availability)
+  } catch (error) {
+    const message = errorMessage(error)
+    const blockerCode: KhalaFleetDelegateBlockerCode = /not found|not connected/iu.test(message)
+      ? "connect_account_required"
+      : /revoked/iu.test(message)
+        ? "revoked"
+        : "credentials_missing"
+    return {
+      dispatch: {
+        blockerCode,
+        message,
+        ok: false,
+        refs: [`blocker.public.khala_fleet_delegate.${blockerCode}`],
+      },
+      status: "blocked",
+    }
+  }
+  if (selectedAccounts.length === 0 || capacity.available <= 0) {
+    return {
+      dispatch: {
+        blockerCode: "no_available_codex_capacity",
+        message: `No Pylon Codex assignment capacity is available right now (${capacityLabel(capacity.available, capacity.max)}).`,
+        ok: false,
+        refs: ["blocker.public.pylon_dispatch.no_available_codex_capacity"],
+      },
+      status: "blocked",
+    }
+  }
+  const plannedAccounts = planSpawnAccounts(input.count, selectedAccounts, availability)
+  if (plannedAccounts.length < input.count) {
+    return {
+      dispatch: {
+        blockerCode: "no_available_codex_capacity",
+        message: `Only ${plannedAccounts.length}/${input.count} advertised Pylon Codex account slot(s) are free right now.`,
+        ok: false,
+        refs: ["blocker.public.pylon_dispatch.no_available_codex_capacity"],
+      },
+      status: "blocked",
+    }
+  }
+  return { accounts: plannedAccounts, status: "planned" }
+}
+
+async function runDelegatedBatchSpawn(input: {
+  readonly baseUrl: string
+  readonly env: ChatEnv
+  readonly input: NormalizedSpawnInput
+  readonly paths: PylonPaths
+  readonly plannedAccounts: readonly AccountRow[]
+  readonly runner?: KhalaCodexFleetCommandRunner | undefined
+  readonly targetPylonRef: string
+  readonly work: KhalaFleetDelegateWork
+}): Promise<SpawnCodexInstancesResult> {
+  const selectedCommandAccount =
+    input.input.accountRef === undefined
+      ? undefined
+      : commandAccountRef(input.plannedAccounts[0]?.accountRef)
+  const workArgs = input.work.kind === "fixture"
+    ? ["--fixture"]
+    : [
+        "--repo",
+        input.work.repo,
+        "--branch",
+        input.work.branch,
+        "--commit",
+        input.work.commit,
+        "--verify",
+        input.work.verify,
+      ]
+  const result = await runPylonCommand([
+    "khala",
+    "spawn",
+    "--count",
+    String(input.input.count),
+    "--max-parallel",
+    String(input.input.count),
+    "--objective",
+    input.input.prompt,
+    "--pylon-ref",
+    input.targetPylonRef,
+    ...(selectedCommandAccount === undefined ? [] : ["--account-ref", selectedCommandAccount]),
+    ...workArgs,
+    "--base-url",
+    input.baseUrl,
+    "--execute",
+    "--json",
+  ], {
+    env: input.env,
+    maxOutputBytes: 5_000_000,
+    paths: input.paths,
+    runner: input.runner,
+    timeoutMs: input.input.timeoutMs,
+  })
+  return spawnResultFromBatchCommand({
+    accountHints: input.plannedAccounts,
+    command: result,
+    fallbackPylonRef: input.targetPylonRef || null,
+    requestedCount: input.input.count,
+  })
+}
+
+async function runDelegatedNoRunRequests(input: {
+  readonly baseUrl: string
+  readonly env: ChatEnv
+  readonly input: NormalizedSpawnInput
+  readonly paths: PylonPaths
+  readonly plannedAccounts: readonly AccountRow[]
+  readonly runner?: KhalaCodexFleetCommandRunner | undefined
+  readonly targetPylonRef: string
+}): Promise<SpawnCodexInstancesResult> {
+  const results = await Promise.all(input.plannedAccounts.map(async (selectedAccount, index): Promise<SpawnSlotResult> => {
+    const selectedCommandAccount = commandAccountRef(selectedAccount.accountRef)
+    const result = await runPylonCommand([
+      "khala",
+      "request",
+      "--workflow",
+      "codex_agent_task",
+      "--prompt",
+      input.input.prompt,
+      "--pylon-ref",
+      input.targetPylonRef,
+      ...(selectedCommandAccount === undefined ? [] : ["--account-ref", selectedCommandAccount]),
+      ...(input.input.fixture ? ["--fixture"] : workspacePinArgs(input.input)),
+      "--base-url",
+      input.baseUrl,
+      "--no-run",
+      "--json",
+    ], {
+      env: input.env,
+      paths: input.paths,
+      runner: input.runner,
+      timeoutMs: input.input.timeoutMs,
+    })
+    const json = parseJsonObject(result.stdout)
+    const assignmentRef = stringField(json, "assignmentRef")
+    const autoRunOk = booleanField(recordField(json, "autoRun"), "ok")
+    const accepted = result.exitCode === 0 && assignmentRef !== null && autoRunOk !== false
+    const hasAssignmentProjection = result.exitCode === 0 && assignmentRef !== null
+    return {
+      accountRef: selectedAccount.accountRef,
+      assignmentRef,
+      autoRunOk,
+      exitCode: result.exitCode,
+      slot: index + 1,
+      status: accepted ? "accepted" : "failed",
+      summary: hasAssignmentProjection
+        ? acceptedSpawnSummary(assignmentRef, json)
+        : safeFailureReason(result),
+    }
+  }))
+
+  return {
+    acceptedCount: results.filter(result => result.status === "accepted").length,
+    pylonRef: input.targetPylonRef || null,
+    requestedCount: input.input.count,
+    results,
+  }
+}
+
+function firstSpawnAssignmentRef(result: SpawnCodexInstancesResult): string | null {
+  return result.results.find(slot => slot.assignmentRef !== null)?.assignmentRef ?? null
+}
+
+function classifySpawnDispatchBlocker(result: SpawnCodexInstancesResult): KhalaFleetDelegateBlockerCode {
+  const text = renderSpawnResult(result)
+  if (/duplicate_active_assignment|duplicate active assignment/iu.test(text)) return "duplicate_active_assignment"
+  if (/stale_heartbeat|stale heartbeat|presence\.stale_heartbeat/iu.test(text)) return "stale_heartbeat"
+  if (/no_available_codex_capacity|no .*capacity|0\/\d+ available|rate.?limit|429|409/iu.test(text)) {
+    return "no_available_codex_capacity"
+  }
+  return "dispatch_failed"
+}
+
+function spawnDispatchBlockerRefs(result: SpawnCodexInstancesResult): readonly string[] {
+  const refs = result.results
+    .flatMap(slot => slot.summary.match(/blocker(?: refs)?: ([^\n]+)/iu)?.[1]?.split(",") ?? [])
+    .map(ref => ref.trim())
+    .filter(ref => ref.length > 0 && ref !== "none")
+  if (refs.length > 0) return [...new Set(refs)]
+  const blocker = classifySpawnDispatchBlocker(result)
+  if (blocker === "duplicate_active_assignment") return ["blocker.public.pylon_dispatch.duplicate_active_assignment"]
+  if (blocker === "stale_heartbeat") return ["blocker.public.pylon_dispatch.stale_heartbeat"]
+  if (blocker === "no_available_codex_capacity") return ["blocker.public.pylon_dispatch.no_available_codex_capacity"]
+  return ["blocker.public.khala_fleet_delegate.dispatch_failed"]
+}
+
 function batchSpawnSlotProjection(value: unknown, fallbackIndex: number): BatchSpawnSlotProjection {
   const slot = record(value)
   const rawIndex = numberField(slot, "slotIndex")
@@ -1792,6 +2057,11 @@ function boundedPositiveInteger(value: number | undefined, fallback: number, min
   const resolved = value ?? fallback
   if (!Number.isInteger(resolved) || resolved < min) return fallback
   return Math.min(resolved, max)
+}
+
+function positiveIntegerEnv(value: string | undefined): number | null {
+  const parsed = Number.parseInt(value?.trim() ?? "", 10)
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null
 }
 
 function stringField(source: Record<string, unknown> | null, field: string): string | null {
