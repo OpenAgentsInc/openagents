@@ -1147,7 +1147,7 @@ async function readProcessStream(
   }
 }
 
-export const KhalaBackendKind = S.Literals(["hosted_openagents", "openrouter_byok", "mock"])
+export const KhalaBackendKind = S.Literals(["hosted_openagents", "mock"])
 export type KhalaBackendKind = typeof KhalaBackendKind.Type
 
 export const KhalaBackendSelection = S.Struct({
@@ -1170,20 +1170,16 @@ export function resolveKhalaBackend(input: {
   const envKey = input.env?.OPENROUTER_API_KEY?.trim()
   const storedOpenRouter =
     input.storedProviderKey?.provider === "openrouter" && input.storedProviderKey.keyConfigured
-
-  if ((input.preferred === "openrouter_byok" || envKey !== undefined && envKey.length > 0 || storedOpenRouter) &&
-    (envKey !== undefined && envKey.length > 0 || storedOpenRouter)
-  ) {
-    return {
-      credentialSource: envKey !== undefined && envKey.length > 0 ? "env:OPENROUTER_API_KEY" : "khala-provider-key",
-      kind: "openrouter_byok",
-      model: input.env?.OPENROUTER_MODEL?.trim() || "ibm-granite/granite-4.1-8b",
-      provider: "openrouter",
-    }
-  }
+  const credentialSource =
+    envKey !== undefined && envKey.length > 0
+      ? "env:OPENROUTER_API_KEY"
+      : storedOpenRouter
+        ? "khala-provider-key"
+        : undefined
 
   return {
     baseUrl: input.env?.OPENAGENTS_BASE_URL?.trim() || "https://openagents.com",
+    ...(credentialSource === undefined ? {} : { credentialSource, provider: "openrouter" as const }),
     kind: "hosted_openagents",
     model: "openagents/khala",
   }

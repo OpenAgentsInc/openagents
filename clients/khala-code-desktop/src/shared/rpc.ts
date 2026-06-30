@@ -48,7 +48,7 @@ export type KhalaCodeDesktopChatTurnRequest = {
 export type KhalaCodeDesktopBackendProjection = {
   readonly baseUrl?: string
   readonly credentialSource?: "env:OPENROUTER_API_KEY" | "khala-provider-key"
-  readonly kind: "hosted_openagents" | "mock" | "openrouter_byok"
+  readonly kind: "hosted_openagents" | "mock"
   readonly model: string
   readonly provider?: "openrouter"
 }

@@ -54,12 +54,7 @@ const KHALA_CODE_SYSTEM_PROMPT = [
 const MAX_TOOL_ROUNDS = 8
 const MAX_TOTAL_TOOL_CALLS = 32
 const DEFAULT_HOSTED_TOKEN_MESSAGE =
-  "Khala Code is wired to the hosted OpenAgents cloud by default, but this desktop process does not have an OPENAGENTS_AGENT_TOKEN. Set OPENAGENTS_AGENT_TOKEN for hosted cloud, or set OPENROUTER_API_KEY to use your own OpenRouter key."
-const OPENROUTER_APP_ATTRIBUTION_HEADERS = {
-  "HTTP-Referer": "https://openagents.com",
-  "X-OpenRouter-Categories": "cli-agent,cloud-agent,personal-agent,programming-app",
-  "X-OpenRouter-Title": "Khala Code",
-} as const
+  "Khala Code routes model traffic through hosted Khala, but this desktop process does not have an OPENAGENTS_AGENT_TOKEN. Set OPENAGENTS_AGENT_TOKEN for hosted Khala; OPENROUTER_API_KEY alone cannot run the Khala system locally."
 
 type ChatEnv = Readonly<Record<string, string | undefined>>
 
@@ -410,31 +405,6 @@ function createChatTransport(input: {
     }
   }
 
-  if (input.backend.kind === "openrouter_byok") {
-    const token = input.env.OPENROUTER_API_KEY?.trim()
-    if (token === undefined || token.length === 0) return null
-    return {
-      backend: input.backend,
-      request: (messages, tools, callbacks) => postOpenAiCompatible({
-        body: {
-          max_tokens: 4096,
-          messages,
-          model: input.backend.model,
-          stream: true,
-          stream_options: { include_usage: true },
-          ...toolRequestFields(tools),
-        },
-        fetchFn: input.fetchFn,
-        headers: {
-          authorization: `Bearer ${token}`,
-          ...OPENROUTER_APP_ATTRIBUTION_HEADERS,
-        },
-        ...(callbacks?.onAssistantDelta === undefined ? {} : { onAssistantDelta: callbacks.onAssistantDelta }),
-        url: `${(input.env.OPENROUTER_BASE_URL?.trim() || "https://openrouter.ai/api/v1").replace(/\/+$/, "")}/chat/completions`,
-      }),
-    }
-  }
-
   const hostedToken = input.env.OPENAGENTS_AGENT_TOKEN?.trim() || input.env.OPENAGENTS_API_KEY?.trim()
   if (hostedToken === undefined || hostedToken.length === 0) return null
   return {
@@ -449,11 +419,24 @@ function createChatTransport(input: {
         ...toolRequestFields(tools),
       },
       fetchFn: input.fetchFn,
-      headers: { authorization: `Bearer ${hostedToken}` },
+      headers: {
+        authorization: `Bearer ${hostedToken}`,
+        ...hostedByokHeaders(input.env),
+      },
       ...(callbacks?.onAssistantDelta === undefined ? {} : { onAssistantDelta: callbacks.onAssistantDelta }),
       url: `${(input.backend.baseUrl ?? "https://openagents.com").replace(/\/+$/, "")}/api/v1/chat/completions`,
     }),
   }
+}
+
+function hostedByokHeaders(env: ChatEnv): Record<string, string> {
+  const openRouterKey = env.OPENROUTER_API_KEY?.trim()
+  return openRouterKey === undefined || openRouterKey.length === 0
+    ? {}
+    : {
+      "x-openagents-provider": "openrouter",
+      "x-openagents-provider-key": openRouterKey,
+    }
 }
 
 function toolRequestFields(
@@ -761,11 +744,8 @@ function providerFailureResult(
 function providerFailureMessage(backend: KhalaBackendSelection, error: unknown): string {
   const detail = redactKhalaPublicText(providerErrorText(error)).trim()
   const suffix = detail.length === 0 ? "." : `: ${detail}.`
-  if (backend.kind === "openrouter_byok") {
-    return `OpenRouter request failed for ${backend.model}${suffix} Check OPENROUTER_API_KEY and OPENROUTER_MODEL.`
-  }
   if (backend.kind === "hosted_openagents") {
-    return `Hosted OpenAgents cloud request failed for ${backend.model}${suffix} Set OPENROUTER_API_KEY to use your own OpenRouter key while the hosted lane is unavailable.`
+    return `Hosted OpenAgents cloud request failed for ${backend.model}${suffix} Check OPENAGENTS_AGENT_TOKEN and hosted Khala availability.`
   }
   return `Khala provider request failed for ${backend.model}${suffix}`
 }

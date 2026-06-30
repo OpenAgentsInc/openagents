@@ -6,22 +6,23 @@ transport and native tool execution.
 
 ## Backends
 
-The desktop host prefers the hosted OpenAgents cloud by default:
+The desktop host routes model traffic through the hosted OpenAgents cloud:
 
 ```sh
 OPENAGENTS_AGENT_TOKEN=... bun run dev
 ```
 
-To use a personal OpenRouter account instead, set `OPENROUTER_API_KEY`. The
-desktop host then sends OpenAI-compatible chat-completion requests to
-OpenRouter, using `OPENROUTER_MODEL` when present.
+Request-specific OpenRouter BYOK is passed to hosted Khala instead of being used
+as a local model backend. Set both credentials when you want the hosted gateway
+to spend a request against your OpenRouter key:
 
 ```sh
-OPENROUTER_API_KEY=... OPENROUTER_MODEL=anthropic/claude-sonnet-4 bun run dev
+OPENAGENTS_AGENT_TOKEN=... OPENROUTER_API_KEY=... bun run dev
 ```
 
-If neither credential is set, the chat box returns a setup message instead of
-pretending a model answered.
+`OPENROUTER_API_KEY` alone is not enough: the desktop app cannot run the full
+Khala system locally. If `OPENAGENTS_AGENT_TOKEN` is missing, the chat box
+returns a setup message instead of pretending a model answered.
 
 ## Tools
 

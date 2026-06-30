@@ -115,7 +115,7 @@ describe("@openagentsinc/khala-tools foundation", () => {
     expect(result.publicSafety).toBe("redacted")
   })
 
-  test("resolves hosted, OpenRouter BYOK, and mock backends without exposing raw keys", () => {
+  test("resolves hosted, request-specific BYOK metadata, and mock backends without exposing raw keys", () => {
     expect(resolveKhalaBackend({ env: {} })).toEqual({
       baseUrl: "https://openagents.com",
       kind: "hosted_openagents",
@@ -128,14 +128,16 @@ describe("@openagentsinc/khala-tools foundation", () => {
         OPENROUTER_MODEL: "anthropic/claude-haiku",
       },
     })).toEqual({
+      baseUrl: "https://openagents.com",
       credentialSource: "env:OPENROUTER_API_KEY",
-      kind: "openrouter_byok",
-      model: "anthropic/claude-haiku",
+      kind: "hosted_openagents",
+      model: "openagents/khala",
       provider: "openrouter",
     })
 
     const defaultOpenRouter = resolveKhalaBackend({ env: { OPENROUTER_API_KEY: "sk-or-secret" } })
-    expect(defaultOpenRouter.model).toBe("ibm-granite/granite-4.1-8b")
+    expect(defaultOpenRouter.kind).toBe("hosted_openagents")
+    expect(defaultOpenRouter.model).toBe("openagents/khala")
     expect(JSON.stringify(defaultOpenRouter)).not.toContain("sk-or-secret")
     expect(resolveKhalaBackend({ preferred: "mock" }).kind).toBe("mock")
   })

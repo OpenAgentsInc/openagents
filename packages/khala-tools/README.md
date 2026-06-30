@@ -8,8 +8,9 @@ registries, invocation/result/event contracts, permission requests, output lanes
 and model-provider adapter helpers.
 
 The local tool runtime does not choose model authority. Hosted OpenAgents cloud
-is the default backend, OpenRouter BYOK is opt-in through `OPENROUTER_API_KEY`
-or the existing Khala provider-key store, and tests use the mock backend with no
+is the only real model backend for Khala Code desktop; request-specific
+OpenRouter BYOK metadata may be forwarded to hosted Khala, but the desktop
+runtime must not call OpenRouter directly. Tests use the mock backend with no
 network or spend.
 
 Tool results keep four lanes separate:

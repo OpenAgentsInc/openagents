@@ -125,13 +125,14 @@ describe("Khala Code desktop chat runtime", () => {
     expect(JSON.stringify(result)).not.toContain("agent-token")
   })
 
-  test("uses OpenRouter BYOK when OPENROUTER_API_KEY is present", async () => {
+  test("routes request-specific OpenRouter BYOK through hosted Khala", async () => {
     const { calls, fetchFn } = captureFetch([
       { choices: [{ message: { content: "BYOK answer" } }] },
     ])
 
     const result = await runKhalaCodeDesktopChatTurn({
       env: {
+        OPENAGENTS_AGENT_TOKEN: "agent-token",
         OPENROUTER_API_KEY: "sk-or-secretkey",
         OPENROUTER_MODEL: "anthropic/claude-haiku",
       },
@@ -145,26 +146,27 @@ describe("Khala Code desktop chat runtime", () => {
     expect(result.ok).toBe(true)
     expect(result.backend).toMatchObject({
       credentialSource: "env:OPENROUTER_API_KEY",
-      kind: "openrouter_byok",
-      model: "anthropic/claude-haiku",
+      kind: "hosted_openagents",
+      model: "openagents/khala",
       provider: "openrouter",
     })
-    expect(calls[0]?.url).toBe("https://openrouter.ai/api/v1/chat/completions")
-    expect(calls[0]?.headers.get("authorization")).toBe("Bearer sk-or-secretkey")
-    expect(calls[0]?.headers.get("http-referer")).toBe("https://openagents.com")
-    expect(calls[0]?.headers.get("x-openrouter-title")).toBe("Khala Code")
-    expect(calls[0]?.headers.get("x-openrouter-categories")).toBe(
-      "cli-agent,cloud-agent,personal-agent,programming-app",
-    )
-    expect(calls[0]?.body.model).toBe("anthropic/claude-haiku")
+    expect(calls[0]?.url).toBe("https://openagents.com/api/v1/chat/completions")
+    expect(calls[0]?.headers.get("authorization")).toBe("Bearer agent-token")
+    expect(calls[0]?.headers.get("x-openagents-provider")).toBe("openrouter")
+    expect(calls[0]?.headers.get("x-openagents-provider-key")).toBe("sk-or-secretkey")
+    expect(calls[0]?.headers.get("http-referer")).toBeNull()
+    expect(calls[0]?.body.model).toBe("openagents/khala")
     expect(calls[0]?.body.stream).toBe(true)
     expect(JSON.stringify(result)).not.toContain("sk-or-secretkey")
+    expect(JSON.stringify(result)).not.toContain("agent-token")
   })
 
-  test("uses Granite as the default OpenRouter BYOK model", async () => {
-    const { calls, fetchFn } = captureFetch([
-      { choices: [{ message: { content: "BYOK answer" } }] },
-    ])
+  test("does not use OPENROUTER_API_KEY alone as a local backend", async () => {
+    let called = false
+    const fetchFn = (async () => {
+      called = true
+      return jsonResponse({})
+    }) as unknown as typeof fetch
 
     const result = await runKhalaCodeDesktopChatTurn({
       env: { OPENROUTER_API_KEY: "sk-or-secretkey" },
@@ -175,12 +177,16 @@ describe("Khala Code desktop chat runtime", () => {
       },
     })
 
-    expect(result.ok).toBe(true)
+    expect(called).toBe(false)
+    expect(result.ok).toBe(false)
     expect(result.backend).toMatchObject({
-      kind: "openrouter_byok",
-      model: "ibm-granite/granite-4.1-8b",
+      credentialSource: "env:OPENROUTER_API_KEY",
+      kind: "hosted_openagents",
+      model: "openagents/khala",
+      provider: "openrouter",
     })
-    expect(calls[0]?.body.model).toBe("ibm-granite/granite-4.1-8b")
+    expect(result.messages[0]?.body).toContain("OPENAGENTS_AGENT_TOKEN")
+    expect(result.messages[0]?.body).toContain("cannot run the Khala system locally")
   })
 
   test("streams OpenAI-compatible assistant deltas over chat turn events", async () => {
@@ -245,7 +251,7 @@ describe("Khala Code desktop chat runtime", () => {
     expect(result.ok).toBe(false)
     expect(result.backend.kind).toBe("hosted_openagents")
     expect(result.messages[0]?.body).toContain("OPENAGENTS_AGENT_TOKEN")
-    expect(result.messages[0]?.body).toContain("OPENROUTER_API_KEY")
+    expect(result.messages[0]?.body).toContain("cannot run the Khala system locally")
   })
 
   test("retries a hosted provider error without tool declarations for plain chat", async () => {
@@ -295,6 +301,7 @@ describe("Khala Code desktop chat runtime", () => {
 
     const result = await runKhalaCodeDesktopChatTurn({
       env: {
+        OPENAGENTS_AGENT_TOKEN: "agent-token",
         OPENROUTER_API_KEY: "sk-or-secretsecret",
         OPENROUTER_MODEL: "anthropic/claude-haiku",
       },
@@ -306,12 +313,13 @@ describe("Khala Code desktop chat runtime", () => {
     })
 
     expect(result.ok).toBe(false)
-    expect(result.backend.kind).toBe("openrouter_byok")
+    expect(result.backend.kind).toBe("hosted_openagents")
     expect(result.messages[0]?.role).toBe("system")
-    expect(result.messages[0]?.body).toContain("OpenRouter request failed")
+    expect(result.messages[0]?.body).toContain("Hosted OpenAgents cloud request failed")
     expect(result.messages[0]?.body).toContain("provider_error")
     expect(result.messages[0]?.body).not.toContain("abcdefghijklmnopqrstuvwxyz")
     expect(result.messages[0]?.body).not.toContain("sk-or-secretsecret")
+    expect(result.messages[0]?.body).not.toContain("agent-token")
   })
 
   test("executes model tool calls locally and feeds results back to the model", async () => {
