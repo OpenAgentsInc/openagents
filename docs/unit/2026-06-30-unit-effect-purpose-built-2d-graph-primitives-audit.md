@@ -1,233 +1,269 @@
-# Unit as a 2D Visualization / Control Layer for Khala Code and OpenAgents Products
+# Purpose-Built 2D Dataflow-Graph Primitives (a `unit-effect`)
 
 Date: 2026-06-30
 Status: Audit / proposal (no code changes)
 Author: Raynor (agent)
 
-## TL;DR
+## Scope correction
 
-[Unit](https://github.com/samuelmtimbo/unit) (`@_unit/unit`, MIT, v1.0.124) is a
-general-purpose **visual dataflow programming language + live editing
-environment** by Samuel Timbó. Formally: *units are Multi-Input Multi-Output
-(MIMO) finite state machines, and a program is a graph*. It ships its own
-homegrown DOM/SVG component framework (no React), a 61k-line spatial graph
-editor, a hand-rolled force-simulation layout engine, and a transport-agnostic
-async facade that can drive a graph locally, in a Web Worker, or over a remote
-port.
+We are **not** adopting [Unit](https://github.com/samuelmtimbo/unit)
+(`@_unit/unit`) as a dependency. Unit is a single-author, beta, multi-MB
+browser-OS with its own homegrown component framework, an uncommitted codegen
+step, and ~850 standard-library units — embedding it whole would drag all of
+that into our stack and fight Foldkit/Effect on every seam. It stays a
+**read-only reference repo** under `projects/repos/unit/`, exactly like our other
+reference lanes.
 
-The interesting question for us is **not** "should we adopt Unit as a
-language." It is: *can Unit's 2D live-graph canvas become a cool, reusable
-visualization and control surface across OpenAgents products — sitting next to
-the 3D `three-effect` Verse rather than replacing it?* The answer is **yes, with
-bounded scope**, and the highest-leverage first target is **Khala Code's fleet /
-agent-orchestration view**, where a dataflow graph is a near-perfect mental
-model for "Khala → Pylon → Codex/Claude workers piping work."
+What we want is our **own streamlined, purpose-built version of Unit's
+primitives** — the small set of ideas that make a live 2D dataflow graph feel
+good — implemented natively on our stack (Effect + Foldkit), the same way
+`three-effect` is "React-Three-Fiber rewritten in Effect" rather than a fork of
+R3F.
 
-This audit covers what Unit is, where it fits, three concrete integration
-targets, the real costs, and a recommended phased plan.
+This audit (a) distills which Unit primitives are actually worth rebuilding,
+then (b) fleshes out the three ways to ship them — a new **`unit-effect`**
+sibling package, **folding 2D graph primitives into `three-effect`**, or
+**porting SVG node/pin/link rendering straight into Foldkit / `packages/ui`** —
+with a recommendation.
 
-## Relationship to our existing visual stack
+## Primitives worth stealing from Unit (and nothing else)
 
-We already have a sanctioned visual language: `@openagentsinc/three-effect`
-(Effect-native Three.js) renders the **3D Verse** — Pylons, avatars, Khala
-crackling arcs, settlement bursts. That stack is about *spectacle and
-inhabiting* the machine-work economy ("where you watch it work").
+Unit's value isn't its runtime; it's a handful of well-shaped abstractions. We
+rebuild these, minimally:
 
-Unit is the orthogonal axis: a **2D, precise, editable dataflow diagram**. It is
-about *structure and control* — wiring, inspecting live values, and direct
-manipulation of a running pipeline. The two are complementary:
+1. **The unit/node model — MIMO.** A node is a Multi-Input Multi-Output box with
+   named, **typed pins**. (Unit calls them units; formally MIMO finite state
+   machines. We don't need the FSM runtime — we need the shape: a box with ports
+   that carry typed values.) Unit ref: `src/Class/Unit/index.ts`, `src/Pin.ts`.
+2. **Merges = links.** A link connects an output pin to an input pin. Edges are
+   first-class, addressable, and can be lit/animated when data flows. Unit ref:
+   `src/Class/Merge.ts`, `src/Class/Graph/index.ts`.
+3. **The spec/serialization model.** A graph is plain JSON: `{ units, merges,
+   inputs, outputs, metadata }`, where `metadata` carries **node positions** —
+   logic and layout serialized together. This is the format we generate from our
+   own domain data and persist/share. Unit ref: `src/types/GraphSpec.ts`,
+   `src/bundle.ts`.
+4. **Force/auto-layout.** Unit's "live objects" feel comes from a hand-rolled
+   D3-force simulation (`src/client/simulation.ts`) — nodes settle physically,
+   no manual placement required. We want a small force/spring layout, not a
+   dependency on `d3`.
+5. **Direct manipulation.** Pins are *writable*. Dragging a link, pausing a
+   node, retuning a value — the diagram is a control surface, not a chart. This
+   is the differentiator over every read-only flow widget. Unit ref: the
+   `move*` family + `buildMoveMap` in `src/Class/Graph/`.
+6. **Live datum inspection.** Nodes/pins surface their current value inline (the
+   Datum / DataTree components). For us: the live token count, approval state,
+   current tool call shown right on the node.
+7. **Evidence binding (our addition).** Same discipline as the Verse's "no
+   animation without a receipt": a link only lights when a real Khala receipt /
+   event flows. The graph is a *projection* of real state, never state-of-record.
 
-| Axis | Stack | Question it answers |
-| --- | --- | --- |
-| 3D world / spectacle | `three-effect` + Foldkit (Verse) | "What is the network *doing* right now?" |
-| 2D dataflow / control | Unit (proposed) | "How is this pipeline *wired*, and can I retune it live?" |
+Everything else in Unit — the language, the 850-unit stdlib, the web-OS, the
+shadow-DOM app, voice/gesture editing — we deliberately drop.
 
-Unit does **not** belong inside `three-effect`'s boundary (Three.js scene code).
-It is a separate DOM/SVG surface. Our `AGENTS.md`/`INVARIANTS.md` rule that
-"three-effect is the only home for Three.js scene code" is unaffected — Unit
-renders HTML+SVG into a Shadow DOM, never a WebGL canvas.
+## Where this sits relative to our existing stack
 
-## What Unit actually is (the parts that matter to us)
+- **`@openagentsinc/three-effect`** — Effect-native **3D** (Three.js/WebGL).
+  Owns the Verse: Pylons, avatars, crackling Khala arcs, settlement bursts.
+  "Where you watch it work." Git-pinned per-consumer
+  (`github:OpenAgentsInc/three-effect#<sha>`), dual-entry (`./core` pure
+  Three+Effect primitives returning `Effect<Handle>`; `./foldkit` wraps them as
+  custom elements with `*View` helpers).
+- **Foldkit** — our Elm-architecture (model/update/view) virtual-DOM runtime.
+  Critically, its `html<Message>()` factory already exposes the **entire SVG tag
+  surface** (`svg`, `g`, `path`, `polyline`, `line`, `rect`, `circle`, `marker`,
+  `defs`, `linearGradient`, `clipPath`, `foreignObject`, `Xmlns`, …) **and** a
+  retained 2D canvas DSL `foldkit/canvas` (`Path`/`MoveTo`/`LineTo`/`BezierTo`/
+  `QuadTo`/`Circle`/`Rect`/`Text`/`Group`). So 2D graph rendering needs **no
+  escape hatch** — it's native Foldkit.
+- **`packages/ui` (`@openagentsinc/ui`)** — Foldkit component library; the
+  authoring pattern is plain functions returning `Html` built with the html
+  factory (`src/primitives.ts`, `src/class-foldkit.ts`). 24 packages in the Bun
+  workspace, named `@openagentsinc/*`, referenced `workspace:*`, `effect` pinned
+  via the root `catalog`.
 
-- **Program model.** A program is a `GraphSpec` JSON: `{ units, merges, inputs,
-  outputs, component, metadata, data }`. `units` reference other specs by `id`
-  (recursive/composable); `merges` are links between unit pins; `metadata`
-  carries node **positions**. So *logic and layout are serialized together* —
-  exactly the shape you want for "store a wiring diagram and replay it."
-- **Runtime.** Live JS classes (`Unit`, `Graph`, `Primitive`) with
-  `push`/`pull`/`take`/`play`/`pause`. Reactive/dataflow: pins propagate through
-  merges, units fire as FSMs when inputs are satisfied. The node graph you see
-  *is* the live program — editing it edits a running system.
-- **Canvas.** Real HTML + SVG via `createElementNS`, mounted inside
-  `root.attachShadow({ mode: 'open' })` — **style-isolated from the host app by
-  construction** (a major embedding win). Layout is a custom D3-force-style
-  simulation (`src/client/simulation.ts`); nodes settle physically, which is
-  what gives the "live objects" feel.
-- **Embedding API (already first-class).**
-  - Web: `import { renderBundle } from '@_unit/unit/client/platform/web/render'`
-    → `renderBundle(rootEl, bundle) → [system, graph, unlisten]`. Then
-    `graph.getUnit('x').push('style', { color: '#ffdd00' })`.
-  - Headless/Node: `boot()` → `fromBundle(json, _specs, {})` → `new Class(system)`
-    → `.play()` / `.push(pin, v)` / `.take(pin)`.
-  - Live structural edits: the `Graph` action surface (`addUnit`, `addMerge`,
-    `setUnitPinData`, `exposePinSet`, …) and the spec reducer/action layer
-    (`src/spec/actions/G.ts`) — built for programmatic *and* collaborative
-    drivers.
-- **Async facade.** `AsyncGraph`/`AsyncG` (`src/types/interface/async/`) is a
-  uniform async API over a graph whether it is in-process, in a worker, or
-  remote. This is the clean seam for "drive the diagram from external data."
+A 2D dataflow graph is **DOM/SVG-native and interactive**, which is squarely
+Foldkit territory, not Three.js territory. That single fact drives the
+recommendation below.
 
-## Why this is a good fit for OpenAgents specifically
+## What we already have to build on (and what's missing)
 
-1. **Our domain is already a dataflow graph.** Khala (inference) → Pylon
-   (delegation) → Codex/Claude executors, with receipts and token accounting
-   flowing back, is literally a MIMO pipeline. Unit's "2D evolution of the CLI
-   where stdin/stdout/stderr pipe into a graph" is the same metaphor we use
-   verbally in the fleet docs.
-2. **"No animation without a receipt" generalizes.** The Verse already binds
-   motion to real Khala receipts. A Unit graph can bind **pin values** to the
-   same receipts/events — every link that lights up is a real token flow, every
-   datum node a real artifact ref. Same evidence discipline, 2D control idiom.
-3. **Direct manipulation = operator control.** Unit isn't just a viewer. Pins
-   are writable. An operator could pause a worker, retune a budget, or rewire a
-   delegation by dragging a link — the graph *is* the control plane, not a
-   read-only chart.
-4. **Shadow-DOM isolation** means we can drop it next to Foldkit DOM and
-   StyleX without CSS collisions.
+Existing, reusable:
+- **`apps/openagents.com/apps/web/src/scene/pylonBezierNetworkElement.ts`** — a
+  hand-rolled **2D SVG** node/edge/bezier graph as a Foldkit custom element
+  (`oa-pylon-bezier-network`): golden-angle ring layout, quadratic-bezier edge
+  paths (`M x y Q cx cy CX CY`), `.edge.lit` dash-flow animation. This is the
+  closest existing renderer and its path math is directly portable.
+- **`three-effect/packages/core/src/bezierNodes.ts`** — a node-graph *model* in
+  3D: `BezierNodeDefinition { id, label, color, position, connectedTo[] }`,
+  `BezierNodeConnection`, dash-animated bezier links. Conceptual ancestor;
+  WebGL, not 2D.
+- **`apps/autopilot-desktop/src/ui/pylon-network-visualization.ts`** (+
+  `src/shared/pylon-network-scene.ts`) — the domain→visual mapping pattern
+  (`PylonNetworkNode`, working/online/offline tones) we'd reuse for node status.
 
-## Integration targets (ranked)
+Net-new (does not exist anywhere today):
+- **No interactive graph editor.** No drag, no pin hit-testing, no link-creation
+  gesture, no typed-port model, no selection. Every current asset is a
+  *read-only* visualization. The interactive primitives are the real work.
 
-### Target 1 — Khala Code: fleet / orchestration graph (recommended first)
+## Option A — new `unit-effect` sibling package (recommended)
 
-**Where:** `clients/khala-code-desktop` (Electrobun). The fleet-management spec
-(`docs/khala-code/2026-06-30-khala-code-fleet-management-spec.md`) already calls
-for an operator UI: inbox, fleet board, worker cards, supervised orchestration,
-trace viewer. A Unit graph is a strong candidate for the **fleet board /
-orchestration** pane.
+Build `@openagentsinc/unit-effect`, mirroring `three-effect`'s proven dual-entry
+shape but DOM/SVG-first instead of WebGL.
 
-**What it shows:** one node per live entity — the Khala model, each Pylon, each
-Codex/Claude worker, the approval queue. Merges = active delegations. Datum
-nodes = live token counts, approval state, current tool call. Operator actions
-(pause worker, approve, reroute) are pin pushes.
+**Package layout** (`packages/unit-effect/`, in the Bun workspace):
+- `./core` — framework-agnostic, Effect-based. The model + algorithms, zero
+  Foldkit:
+  - **Model:** `UnitNode { id, label, inputs: Pin[], outputs: Pin[], status,
+    datum }`, `Pin { id, name, type, value }`, `Link { from: PinRef, to: PinRef,
+    lit }`, `GraphSpec { nodes, links, metadata: { positions } }` — our own,
+    trimmed version of Unit's `GraphSpec`, defined with Effect Schema so it
+    serializes/validates like the rest of our contracts.
+  - **Layout:** a small force/spring simulation (port the *idea* of
+    `src/client/simulation.ts`, ~a few hundred lines, no `d3`), exposed as an
+    `Effect` that produces settled positions / a tickable handle.
+  - **Geometry/hit-testing:** bezier edge path generation, node/pin bounding,
+    pointer hit-testing for nodes/pins/links (the net-new interactive core).
+  - **Mount handle:** `mountUnitGraph(el, spec, opts): Effect<UnitGraphHandle>`
+    where the handle exposes `{ element, dispose, update(spec), setPinValue,
+    onNodeSelected, onLinkCreated, … }` — same `Effect<Handle>` ergonomics as
+    three-effect's core.
+- `./foldkit` — thin Foldkit adapter:
+  - `unitGraphView<Message>(attributes, spec, { onNodeSelected, onPinPush, … }):
+    Html` rendered with the html factory's SVG tags, **or** wrapped as a custom
+    element via `foldkit/customElement` (the same bridge three-effect uses) if we
+    want the imperative layout loop to own its own RAF.
+  - Event handlers are ordinary `Attribute<Message>` values, so drag/select/
+    link-create dispatch into the host app's Elm `update` — no parallel runtime.
 
-**How it mounts:** Electrobun renders Chromium; `renderBundle(div, bundle)` works
-directly in the renderer process — the same path the existing
-`src/client/platform/electron/index.ts` proves out (today it just points a
-BrowserWindow at a local server; we want the in-renderer embed instead). The Bun
-host already owns model transport and tool execution, so it is the natural
-producer of the event stream that drives the graph via `AsyncGraph`.
+**Rendering target:** **SVG via Foldkit** as the default (crisp, accessible,
+hit-testable per element, trivial theming via CSS / `design-tokens`), with
+`foldkit/canvas` as the fallback for very large graphs where per-element SVG gets
+heavy. Reuse `pylonBezierNetworkElement.ts`'s path math.
 
-**Relationship to ADR 0013.** ADR 0013 already introduces a ProseMirror-inspired
-command composer for Khala Code with an *optional `three-effect` HUD*. Unit is a
-**third, distinct** visual register: not the text composer, not the 3D HUD, but
-a 2D structural diagram of the running fleet. It should be a separate, toggleable
-pane, not a replacement for either.
+**Why this is the right call:**
+- Clean separation of concerns: 2D control surface ≠ 3D spectacle. Doesn't
+  pollute three-effect's WebGL boundary (which `INVARIANTS.md`/`AGENTS.md` keep
+  as the sole Three.js home).
+- Workspace package (`workspace:*`) instead of three-effect's per-consumer git
+  SHA pins → no SHA-drift friction across desktop/web/khala-code.
+- Reusable across **all** surfaces (Khala Code, autopilot-desktop, web) from day
+  one.
 
-### Target 2 — Verse companion: 2D "schematic view" of a Pylon/run
+**Costs:** new package wiring — the root `package.json` hand-wires every package
+into `test:*`/`typecheck:*` chains, so add `test:unit-effect` +
+`typecheck:unit-effect` entries (workspace glob `packages/*` already matches).
+The interactive core (hit-testing, drag, link-create, force layout) is genuine
+net-new engineering, ~the bulk of the effort.
 
-**Where:** `apps/autopilot-desktop` (the Verse). When you click a Pylon or the
-Tassadar training core in the 3D world, a 2D Unit overlay could show its internal
-wiring — the dataflow behind the spectacle. 3D for "where," 2D for "how." This
-keeps `three-effect` as the sole 3D renderer and adds Unit purely as a DOM
-overlay layer, no boundary violation.
+## Option B — fold 2D graph primitives into `three-effect`
 
-**Cost note:** this is additive UI on an already-busy surface; sequence it after
-Target 1 proves the embedding pattern.
+Extend `three-effect` with 2D dataflow nodes, seeded by its existing
+`bezierNodes.ts`.
 
-### Target 3 — openagents.com web: shareable live diagrams
+**Viable only if** we want the graph to live *inside* the 3D scene (e.g. a
+schematic floating in the Verse, sharing camera/lighting). For that case it's
+natural — `bezierNodes` already models nodes+bezier links and the curve/edge
+primitives (`curvePrimitives.ts`, `conditionalLinePrimitives.ts`) are reusable.
 
-**Where:** `apps/openagents.com/apps/web` (Cloudflare Workers + web bundle).
-Public, embeddable, link-shareable dataflow diagrams of agent runs / promises —
-"here's the wiring of this accepted job," rendered live in the browser.
+**Against it for a real editor:**
+- three-effect is **WebGL-first**. Crisp 2D text, DOM accessibility, precise
+  per-element pointer hit-testing, CSS theming, and form-like inline datum
+  editing are all things SVG/DOM gives for free and WebGL makes hard.
+- Consumed via **fragile per-app git SHA pins**; every primitive change means
+  landing in the sibling repo and re-pinning three places. Bad fit for a
+  fast-iterating interactive surface.
+- Mixes "2D control" concerns into the "3D spectacle" package, eroding the clean
+  boundary.
 
-**Hard constraint (read before scoping this):** Unit's editor is a *client-side
-browser bundle*. It **cannot run inside a Worker isolate** (no DOM/`window`), and
-the Node headless runtime depends on `jsdom`/`express`/`ws`/Node ≥20 and is also
-not Workers-compatible. On Cloudflare the split must be:
-- Worker / D1 / R2: **store and serve `BundleSpec` JSON only** (and the static
-  prebuilt IIFE asset).
-- Browser: runs the Unit bundle, fetches the JSON, renders.
-- Any server-side *headless graph execution* belongs on a Node service
-  (container / DO-adjacent), never the Worker.
+**Verdict:** do this **only** for an in-3D-scene schematic node, *in addition to*
+Option A — not as the home for the interactive editor.
 
-## Costs, risks, and gotchas (be honest)
+## Option C — port SVG node/pin/link rendering straight into Foldkit / `packages/ui`
 
-- **You embed the whole organism or nothing.** The canvas, runtime, and spec
-  model are one system. You cannot cheaply lift out "just the node renderer."
-  Budget for embedding the full System, not a widget.
-- **Bundle size.** ~850 standard-library units + a 61k-line Editor → a multi-MB
-  editor bundle. Tree-shaking is limited because units resolve dynamically by
-  `id` from a registry. Fine for Electrobun/desktop; a real cold-load
-  consideration for web. Mitigation: a trimmed bundle that ships only the units
-  we actually instantiate (our orchestration nodes + the UI primitives they
-  use), and lazy-load the full editor only when an operator enters edit mode.
-- **Mandatory codegen.** `_specs.ts`/`_classes.ts`/`_components.ts`/`_ids.ts` are
-  **not committed** — generated by `npm run setup` (`src/script/sync.ts`) globbing
-  ~850 `spec.json`. A fresh clone won't build until setup runs. **Mitigation:
-  consume the published npm package `@_unit/unit` (prebuilt `lib/`)** rather than
-  vendoring source; this sidesteps the whole setup step. This also matches our
-  "don't vendor large external code by default" rule in the workspace `AGENTS.md`
-  — Unit stays a dependency, not a fork.
-- **Spec authoring is non-trivial but deterministic.** Generating a valid
-  `BundleSpec` from our fleet data requires knowing unit `id`s and pin names.
-  Recommend a small typed builder in our codebase (`fleetGraph → BundleSpec`)
-  rather than hand-writing JSON, and a fixture-backed test like the Verse's
-  `proof:verse-arc` smoke.
-- **Stack mismatch.** Unit is plain TS/DOM with its own component framework; our
-  surfaces are Effect/Foldkit. There is no Effect integration — Unit runs as an
-  imperative island we boot and drive. Keep the seam thin: an Effect service that
-  owns the `AsyncGraph` handle and translates our event stream (Khala receipts,
-  Pylon state) into pin pushes.
-- **Two reactive systems side by side.** Unit has its own runtime/scheduler;
-  Foldkit/Effect has another. They don't share a fiber. Treat the Unit pane as an
-  external sink fed by our event bus, not as state-of-record. State-of-record
-  stays in our services; Unit is a projection (same discipline as Verse:
-  `verse-khala-effect.ts` is a *projection* of a receipt, not the source).
-- **Maintenance.** Single-author upstream, beta. Pin a version. Don't build a
-  hard dependency on edit-mode semantics that could shift; the read+drive path
-  (`renderBundle` + `AsyncGraph`) is the stable core.
+Skip a dedicated package; build the graph as components in `@openagentsinc/ui`
+(or inline per app), using Foldkit's SVG factory directly.
 
-## Recommended phased plan
+**Fully supported by the stack:** Foldkit has the whole SVG tag/attribute surface
++ `Xmlns` + `foreignObject` (for inline HTML datum editors inside nodes), and the
+`pylonBezierNetworkElement.ts` SVG/bezier logic is the working template.
+Interactivity rides the normal Foldkit `Attribute<Message>` event handlers in the
+Elm update loop. `class-foldkit.ts`/`primitives.ts` show the authoring pattern.
 
-**Phase 0 — spike (≈1–2 days).** In a throwaway Electrobun renderer, `npm
-install @_unit/unit`, `renderBundle` a hand-authored fleet bundle (Khala → 2
-Pylons → 3 workers), and drive pin values from a fake event stream. Goal: prove
-the embed + drive loop and measure bundle weight. No product wiring.
+**Trade-offs:**
+- Fastest to a first pixel; lowest ceremony.
+- But the **model + layout + hit-testing core is framework-agnostic logic** that
+  doesn't belong in a Foldkit view module. If we build it inline, we'll want to
+  extract it into a package anyway the moment a second surface needs it — which
+  is Option A.
+- `packages/ui` is a general component lib; a stateful force-simulated graph
+  editor is a big, specialized citizen there.
 
-**Phase 1 — Khala Code fleet graph (read-only).** A typed `fleetGraph →
-BundleSpec` builder + an Effect service that subscribes to the existing fleet
-event stream and pushes pins via `AsyncGraph`. Ship behind a feature flag as a
-toggleable pane in the Khala Code desktop operator UI. Fixture-backed smoke test.
+**Verdict:** Option C is really "Option A without the package boundary." Use its
+SVG approach *as the rendering layer of* Option A: author the *renderer* exactly
+this way, but put the model/layout/hit-testing in `unit-effect/core` so it's
+reusable and testable headless.
 
-**Phase 2 — direct manipulation.** Make selected pins writable: pause worker,
-approve from the approval queue, reroute a delegation — operator actions become
-pin pushes routed back into the Bun host. This is where Unit earns its keep over
-a static diagram.
+## Recommendation
 
-**Phase 3 — Verse schematic overlay + web sharing.** Add the 2D click-through
-schematic in `autopilot-desktop`, and the static-JSON + browser-bundle sharing
-path on `openagents.com` web (respecting the Workers constraint above).
+**Option A, with Option C's SVG-in-Foldkit as its rendering layer, and Option B
+reserved for a later in-Verse schematic node.**
 
-## Key Unit source references (for implementers)
+Concretely: ship `@openagentsinc/unit-effect` with a pure Effect `./core`
+(model, force layout, geometry, hit-testing) and a Foldkit `./foldkit` view that
+renders SVG the way `pylonBezierNetworkElement.ts` already does. This gives us a
+streamlined, owned, purpose-built take on Unit's good primitives — no fork, no
+840 units we don't want, native to Effect+Foldkit, reusable everywhere, and free
+of three-effect's git-pin friction.
 
-- Embedding API: `src/client/platform/web/render.ts`, `src/client/platform/web/boot.ts`
-- Headless runtime: `src/client/platform/node/boot.ts`, `src/boot.ts`, `src/spec/fromBundle.ts`
-- Runtime + action surface: `src/Class/Graph/index.ts`, `src/Class/Unit/index.ts`
-- Spec / serialization: `src/types/GraphSpec.ts`, `src/types/index.ts`, `src/bundle.ts`
-- Async drive facade: `src/types/interface/async/` (`AsyncGraph.ts`, `AsyncG.ts`)
-- The canvas: `src/system/platform/component/app/Editor/Component.ts` (61k lines)
-- Layout engine: `src/client/simulation.ts`
-- Mandatory codegen: `src/script/sync.ts`
-- Electron precedent: `src/client/platform/electron/index.ts`
+## Phased plan
+
+**Phase 0 — model + headless core (≈2–3 days).** `unit-effect/core`: the
+`GraphSpec`/`UnitNode`/`Pin`/`Link` Effect-Schema types, the force-layout
+`Effect`, bezier geometry, and hit-testing — all unit-tested headless (no DOM).
+Add the root `test:`/`typecheck:` wiring.
+
+**Phase 1 — read-only Foldkit renderer.** `unit-effect/foldkit`
+`unitGraphView<Message>` rendering SVG nodes/pins/lit bezier links, ported from
+`pylonBezierNetworkElement.ts`. First consumer: Khala Code's fleet board
+(`clients/khala-code-desktop`) — Khala → Pylons → Codex/Claude workers, links lit
+by real receipts/events from the Bun host. Flag-gated, fixture-backed smoke test
+(à la `proof:verse-arc`).
+
+**Phase 2 — interactivity / direct manipulation.** Node drag, selection,
+pin-level pointer events, link-create gesture, inline datum editing
+(`foreignObject`). Writable pins → operator actions (pause worker, approve,
+reroute) dispatched through the Elm `update` loop back into the host.
+
+**Phase 3 — fan-out.** Reuse the same package on `apps/openagents.com/apps/web`
+(replacing the bespoke `pylonBezierNetworkElement.ts`) and, if desired, add the
+Option-B in-Verse 3D schematic node in `three-effect` for click-through from the
+3D world.
+
+## Reference paths
+
+Our stack:
+- Workspace/catalog/test wiring: `package.json` (root)
+- UI lib + authoring pattern: `packages/ui/package.json`, `packages/ui/src/{index,primitives,class-foldkit}.ts`
+- Existing 2D SVG graph (port from): `apps/openagents.com/apps/web/src/scene/pylonBezierNetworkElement.ts`
+- Domain→visual mapping (reuse): `apps/autopilot-desktop/src/ui/pylon-network-visualization.ts`, `src/shared/pylon-network-scene.ts`
+- three-effect shape/seed: its `packages/{core,foldkit}/src/index.ts`, `packages/core/src/bezierNodes.ts`; consumer types `apps/autopilot-desktop/src/types/three-effect-{core,foldkit}.d.ts`; mount usage `apps/autopilot-desktop/src/ui/view.ts`
+- Foldkit SVG/canvas/customElement surface: `foldkit/{html,canvas,customElement}` (typed via the installed `foldkit@0.102.1` dist)
+
+Unit (reference only, `projects/repos/unit/`):
+- Node/pin model: `src/Class/Unit/index.ts`, `src/Pin.ts`
+- Graph/merges + move ops: `src/Class/Graph/index.ts`, `src/Class/Merge.ts`
+- Spec/serialization: `src/types/GraphSpec.ts`, `src/bundle.ts`
+- Force layout (port the idea): `src/client/simulation.ts`
+- Editor canvas (study, don't copy): `src/system/platform/component/app/Editor/Component.ts`
 
 ## Bottom line
 
-Unit gives us a credible, MIT-licensed, embeddable **2D live-dataflow control
-surface** that maps almost one-to-one onto how we already describe the Khala →
-Pylon → worker fleet. It complements `three-effect`/Verse rather than competing
-with it (2D structure vs 3D spectacle), it isolates cleanly via Shadow DOM, and
-its embed-and-drive API is exactly the shape we need. The right first bet is the
-**Khala Code fleet graph** as a read-only, flag-gated pane, consumed via the
-published npm package (no fork, no codegen burden), then graduated to direct
-manipulation. The one firm constraint to respect: Unit is browser/Node, not
-Workers — keep Cloudflare to JSON storage + static asset hosting.
+Build our own. A small `@openagentsinc/unit-effect` — Unit's good primitives
+(typed-pin MIMO nodes, first-class links, JSON spec with embedded layout, force
+auto-layout, direct manipulation, live datum, evidence-bound lighting), rebuilt
+on Effect + Foldkit and rendered as SVG — gives us a 2D dataflow **control**
+surface that complements the 3D `three-effect` Verse, ships first into the Khala
+Code fleet board, and stays a clean workspace package rather than a fork or a
+WebGL afterthought.
