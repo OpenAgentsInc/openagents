@@ -75,6 +75,11 @@ type ProviderAccountRow = Readonly<{
 type TokenTodayRow = Readonly<{ tokens_today: number | null }>
 type TokenYesterdayRow = Readonly<{ tokens_yesterday: number | null }>
 type TokenWindowRow = Readonly<{ tokens_window: number | null }>
+type OwnCapacityCodexWindowRow = Readonly<{
+  assignments_window: number | null
+  tokens_window: number | null
+  turns_window: number | null
+}>
 type BrainRow = Readonly<{
   memory_ref: string
   created_at: string
@@ -164,6 +169,7 @@ const buildFleetStatusSnapshot = async (
 ): Promise<unknown> => {
   const registrationOwnerClause =
     scope.kind === 'agent' ? 'AND owner_agent_user_id = ?' : ''
+  const tokenOwnerClause = scope.kind === 'agent' ? 'AND actor_user_id = ?' : ''
   const assignmentOwnerClause =
     scope.kind === 'agent'
       ? `AND pylon_ref IN (
@@ -185,6 +191,7 @@ const buildFleetStatusSnapshot = async (
     today,
     yesterday,
     window,
+    ownCapacityCodexWindow,
     brainRows,
     glmRows,
   ] = await Promise.all([
@@ -275,6 +282,21 @@ const buildFleetStatusSnapshot = async (
       `SELECT COALESCE(SUM(total_tokens), 0) AS tokens_window
          FROM token_usage_events
         WHERE observed_at >= datetime('now', '-10 minutes')`,
+    ),
+    safeFirst<OwnCapacityCodexWindowRow>(
+      db,
+      `SELECT COALESCE(SUM(total_tokens), 0) AS tokens_window,
+              COUNT(*) AS turns_window,
+              COUNT(DISTINCT task_ref) AS assignments_window
+         FROM token_usage_events
+        WHERE observed_at >= datetime('now', '-10 minutes')
+          AND provider = 'pylon-codex-own-capacity'
+          AND model = 'openagents/pylon-codex'
+          AND usage_truth = 'exact'
+          AND demand_kind = 'own_capacity'
+          AND demand_source = 'khala_coding_delegation'
+          ${tokenOwnerClause}`,
+      ...ownerBindings,
     ),
     safeAll<BrainRow>(
       db,
@@ -378,6 +400,18 @@ const buildFleetStatusSnapshot = async (
   const yesterdayTokens = Math.max(0, Math.trunc(yesterday?.tokens_yesterday ?? 0))
   const windowTokens = Math.max(0, Math.trunc(window?.tokens_window ?? 0))
   const burnRateTokensPerMinute = Math.round(windowTokens / 10)
+  const ownCapacityCodexWindowTokens = Math.max(
+    0,
+    Math.trunc(ownCapacityCodexWindow?.tokens_window ?? 0),
+  )
+  const ownCapacityCodexWindowTurns = Math.max(
+    0,
+    Math.trunc(ownCapacityCodexWindow?.turns_window ?? 0),
+  )
+  const ownCapacityCodexWindowAssignments = Math.max(
+    0,
+    Math.trunc(ownCapacityCodexWindow?.assignments_window ?? 0),
+  )
   const targetFloor = yesterdayTokens * 4
   const paceToFloor =
     targetFloor === 0 ? 'no_floor' : todayTokens >= targetFloor ? 'ahead' : 'behind'
@@ -425,6 +459,14 @@ const buildFleetStatusSnapshot = async (
       todayTokens,
       yesterdayTokens,
       targetFloorTokens: targetFloor,
+      ownCapacityCodex: {
+        assignmentsWindow: ownCapacityCodexWindowAssignments,
+        sourceRefs: ['d1:token_usage_events.pylon_codex_own_capacity_exact'],
+        tokensPerMinute: Math.round(ownCapacityCodexWindowTokens / 10),
+        tokensWindow: ownCapacityCodexWindowTokens,
+        turnsWindow: ownCapacityCodexWindowTurns,
+        windowSeconds: 600,
+      },
       sourceRefs: ['d1:token_usage_events'],
     },
     fleet: {
