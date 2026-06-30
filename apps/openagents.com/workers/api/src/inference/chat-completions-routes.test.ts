@@ -2461,9 +2461,9 @@ describe('POST /v1/chat/completions', () => {
 
   test('fans out internal_stress cl-saturation Khala traffic across every registered lane, counting each serve + trace', async () => {
     // The throughput unlock: with GLM own-capacity down, three paid lanes are
-    // registered (Vertex + Fireworks + OpenRouter). Burn traffic must SPREAD
+    // registered (OpenRouter + Vertex + Fireworks). Burn traffic must SPREAD
     // round-robin across all three so aggregate throughput is the SUM of their
-    // serve rates, instead of pinning the single primary lane (Vertex).
+    // serve rates, instead of pinning the single primary lane (OpenRouter).
     const registry = new InferenceProviderRegistry()
     registry.register(echoAdapter(VERTEX_GEMINI_ADAPTER_ID))
     registry.register(echoAdapter(FIREWORKS_ADAPTER_ID))
@@ -2499,10 +2499,10 @@ describe('POST /v1/chat/completions', () => {
             // The full conversational Khala plan (four lanes); GLM is NOT
             // registered, so the fan-out spreads over the three real lanes only.
             lanePlan: () => [
+              OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
               VERTEX_GEMINI_ADAPTER_ID,
               FIREWORKS_ADAPTER_ID,
               HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
-              OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
             ],
             // Deterministic round-robin sequence 0,1,2,3 for this test.
             multiLaneBurnRotation: () => rotation++,
@@ -2534,13 +2534,13 @@ describe('POST /v1/chat/completions', () => {
     }
 
     // Four concurrent burn requests cover ALL THREE registered lanes round-robin
-    // (the unregistered GLM rotation slot is skipped, the 4th wraps to Vertex).
+    // (the unregistered GLM rotation slot is skipped, the 4th wraps to OpenRouter).
     expect(new Set(servedWorkers.slice(0, 3)).size).toBe(3)
     expect(servedWorkers).toEqual([
+      OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
       VERTEX_GEMINI_ADAPTER_ID,
       FIREWORKS_ADAPTER_ID,
       OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
-      VERTEX_GEMINI_ADAPTER_ID,
     ])
     // Each served request recorded exactly one token_usage row on the lane that
     // actually served — the khala counter keeps counting on every lane.
@@ -2581,9 +2581,9 @@ describe('POST /v1/chat/completions', () => {
           baseDeps({
             dispatch: { sleep: () => Effect.void },
             lanePlan: () => [
+              OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
               VERTEX_GEMINI_ADAPTER_ID,
               FIREWORKS_ADAPTER_ID,
-              OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
             ],
             multiLaneBurnRotation: () => {
               rotationCalls += 1
@@ -2601,9 +2601,9 @@ describe('POST /v1/chat/completions', () => {
     }
 
     expect(servedWorkers).toEqual([
-      VERTEX_GEMINI_ADAPTER_ID,
-      VERTEX_GEMINI_ADAPTER_ID,
-      VERTEX_GEMINI_ADAPTER_ID,
+      OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
+      OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
+      OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
     ])
     // The rotation counter is never consulted for non-burn traffic.
     expect(rotationCalls).toBe(0)
@@ -3572,12 +3572,12 @@ describe('POST /v1/chat/completions', () => {
         worker?: string
       }
     }
-    expect(body.openagents?.worker).toBe(VERTEX_GEMINI_ADAPTER_ID)
+    expect(body.openagents?.worker).toBe(OPENROUTER_KHALA_FALLBACK_ADAPTER_ID)
     expect(body.openagents?.routing?.fallback_reason).toBe(null)
     expect(glmCalls).toBe(0)
-    expect(geminiCalls).toBe(1)
+    expect(geminiCalls).toBe(0)
     expect(fireworksCalls).toBe(0)
-    expect(openrouterCalls).toBe(0)
+    expect(openrouterCalls).toBe(1)
     expect(alerts).toEqual([
       {
         message: 'GLM own-capacity down — failover active',
@@ -3586,7 +3586,7 @@ describe('POST /v1/chat/completions', () => {
     ])
     expect(recorded).toHaveLength(1)
     expect(recorded[0]).toMatchObject({
-      adapterId: VERTEX_GEMINI_ADAPTER_ID,
+      adapterId: OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
       requestAttribution: {
         demandClient: 'stress-harness',
         demandKind: 'internal_stress',

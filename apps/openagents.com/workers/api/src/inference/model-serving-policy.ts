@@ -101,10 +101,10 @@ export type SupplyLaneCredentialEnv = Readonly<{
   VERTEX_SA_KEY?: string | undefined
   // Fireworks open-model lane key. See config.ts.
   FIREWORKS_API_KEY?: string | undefined
-  // OpenRouter hidden Khala fallback lane. Presence-only: the Worker secret
-  // arms this emergency lane; the upstream model is fixed in code to
-  // `openrouter/free` at adapter registration so env cannot silently switch it
-  // to a paid or Khala-facing alias.
+  // OpenRouter hidden Khala lane. Presence-only: the Worker secret arms this
+  // supply lane; the upstream model is fixed in code to
+  // `ibm-granite/granite-4.1-8b` at adapter registration so env cannot silently
+  // switch it to a paid or Khala-facing alias.
   OPENROUTER_API_KEY?: string | undefined
   OPENROUTER_KHALA_FALLBACK_MODEL?: string | undefined
   // Operator-only backing selector for the single public Khala model. Supported

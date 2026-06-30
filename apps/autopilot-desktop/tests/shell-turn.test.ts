@@ -92,7 +92,7 @@ describe("buildShellTurn — honest no-token + network behaviour", () => {
     expect(r.ok).toBe(false)
   })
 
-  test("with token: POSTs to /v1/chat/completions with a Bearer header + Gemini default, returns the Autopilot text", async () => {
+  test("with token: POSTs to /api/v1/chat/completions with a Bearer header + Gemini default, returns the Autopilot text", async () => {
     let seenUrl: string | null = null
     let seenAuth: string | null = null
     let seenBody: unknown = null
@@ -117,7 +117,7 @@ describe("buildShellTurn — honest no-token + network behaviour", () => {
       agentToken: "sk-secret",
       fetchFn,
     })
-    expect(seenUrl).toBe("https://gw.test/v1/chat/completions")
+    expect(seenUrl).toBe("https://gw.test/api/v1/chat/completions")
     expect(seenAuth).toBe("Bearer sk-secret")
     expect((seenBody as { model?: string }).model).toBe("gemini-3.5-flash")
     expect((seenBody as { stream?: boolean }).stream).toBe(false)

@@ -134,7 +134,7 @@ describe("buildVerseTurn (#5821)", () => {
       if (url.endsWith("/api/public/product-promises")) {
         return Promise.resolve(new Response(JSON.stringify(productPromises)))
       }
-      if (url.endsWith("/v1/chat/completions")) {
+      if (url.endsWith("/api/v1/chat/completions")) {
         seenAuth =
           (init?.headers as Record<string, string> | undefined)?.authorization ??
           null
@@ -169,7 +169,7 @@ describe("buildVerseTurn (#5821)", () => {
     expect(requested).toContain("https://openagents.test/api/public/pylon-stats")
     expect(requested).toContain("https://openagents.test/api/public/product-promises")
     expect(requested.some(url => url.includes("/api/public/activity-timeline?limit=8"))).toBe(true)
-    expect(requested).toContain("https://openagents.test/v1/chat/completions")
+    expect(requested).toContain("https://openagents.test/api/v1/chat/completions")
     expect(seenAuth).toBe("Bearer oa_agent_secret")
     expect((seenBody as { messages: Array<{ role: string; content: string }> }).messages[0]).toEqual({
       role: "system",

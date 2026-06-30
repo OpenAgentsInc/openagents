@@ -786,7 +786,7 @@ export async function issuePylonKhalaRequest(
   const response = await khalaApiRequest(options, {
     body,
     method: "POST",
-    path: "/v1/chat/completions",
+    path: "/api/v1/chat/completions",
   })
   const rawSse = await response.text()
   const durableStreamUrl = response.headers.get("openagents-durable-stream-url")

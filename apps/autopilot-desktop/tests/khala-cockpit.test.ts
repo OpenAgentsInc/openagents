@@ -250,7 +250,7 @@ describe("buildKhalaTurn — cockpit call path (stub gateway)", () => {
       fetchFn,
     })
 
-    expect(sentUrl).toBe("https://gw.test/v1/chat/completions")
+    expect(sentUrl).toBe("https://gw.test/api/v1/chat/completions")
     // The cockpit always submits the single public id, even when a split slug
     // is requested — the gateway only serves openagents/khala.
     expect((sentBody as { model?: string }).model).toBe("openagents/khala")
@@ -431,7 +431,7 @@ describe("buildKhalaTurn — cockpit call path (stub gateway)", () => {
       agentToken: "agent-token",
       fetchFn,
     })
-    expect(sentUrl).toBe("https://gw.test/v1/chat/completions")
+    expect(sentUrl).toBe("https://gw.test/api/v1/chat/completions")
     expect(sentBody.model).toBe("openagents/khala")
     expect(sentBody.stream).toBe(true)
     expect((sentBody.openagents as { workflowClass?: string }).workflowClass).toBe(
@@ -450,33 +450,18 @@ describe("buildKhalaTurn — cockpit call path (stub gateway)", () => {
     expect(r.assignmentRef).toBe("assignment.khala.local")
   })
 
-  test("default issuer mode calls remote /api/mcp and surfaces the durable handle", async () => {
+  test("default issuer mode calls canonical chat completions directly", async () => {
     let sentUrl = ""
     let sentBody: Record<string, unknown> = {}
     const fetchFn = ((url: string, init?: RequestInit) => {
       sentUrl = url
       sentBody = init?.body ? JSON.parse(init.body as string) : {}
       return Promise.resolve(
-        new Response(
-          JSON.stringify({
-            id: "desktop.khala.request",
-            jsonrpc: "2.0",
-            result: {
-              content: [{ text: "{}", type: "text" }],
-              structuredContent: {
-                assignmentRef: "assignment.khala.remote",
-                durableRequestId: "chatcmpl_remote_123",
-                durableStreamUrl:
-                  "/v1/chat/completions/durable/chatcmpl_remote_123",
-                ok: true,
-                schema: "openagents.khala_mcp.request.v1",
-                stream: true,
-                workflow: "codex_agent_task",
-              },
-            },
-          }),
-          { headers: { "content-type": "application/json" } },
-        ),
+        sseResponse(buildKhalaSseWire(["direct ", "answer"]), {
+          "openagents-coding-assignment-ref": "assignment.khala.direct",
+          "openagents-durable-stream-url":
+            "/v1/chat/completions/durable/chatcmpl_direct_123",
+        }),
       )
     }) as unknown as typeof fetch
     const r = await buildKhalaTurn({
@@ -485,18 +470,14 @@ describe("buildKhalaTurn — cockpit call path (stub gateway)", () => {
       agentToken: "agent-token",
       fetchFn,
     })
-    expect(sentUrl).toBe("https://gw.test/api/mcp")
-    expect(sentBody.method).toBe("tools/call")
-    expect((sentBody.params as { name?: string }).name).toBe("khala.request")
-    expect(
-      ((sentBody.params as { arguments?: { workflow?: string } }).arguments ?? {})
-        .workflow,
-    ).toBe("codex_agent_task")
+    expect(sentUrl).toBe("https://gw.test/api/v1/chat/completions")
+    expect(sentBody.model).toBe("openagents/khala")
+    expect(sentBody.stream).toBe(true)
     expect(r.ok).toBe(true)
-    expect(r.issuerPath).toBe("remote_mcp")
-    expect(r.text).toContain("Resume handle: chatcmpl_remote_123")
-    expect(r.durableRequestId).toBe("chatcmpl_remote_123")
-    expect(r.assignmentRef).toBe("assignment.khala.remote")
+    expect(r.issuerPath).toBe("legacy_gateway")
+    expect(r.text).toBe("direct answer")
+    expect(r.durableRequestId).toBe("chatcmpl_direct_123")
+    expect(r.assignmentRef).toBe("assignment.khala.direct")
   })
 
   test("streamed completion with NO receipt: real answer but NOT live", async () => {

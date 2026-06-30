@@ -236,7 +236,7 @@ function khalaAutoRunServer() {
       const body = text.trim() === "" ? {} : JSON.parse(text)
       requests.push({ body, method: request.method, path: url.pathname })
 
-      if (url.pathname === "/v1/chat/completions") {
+      if (url.pathname === "/api/v1/chat/completions") {
         return new Response(sse("chatcmpl_auto_run", "delegated"), {
           headers: {
             "openagents-coding-assignment-ref": assignmentRef,
@@ -493,7 +493,7 @@ describe("pylon khala requester API", () => {
         },
       })
       const paths = fake.requests.map((request) => request.path)
-      expect(paths).toContain("/v1/chat/completions")
+      expect(paths).toContain("/api/v1/chat/completions")
       expect(paths.some((path) => path.endsWith("/assignments"))).toBe(true)
       expect(paths.some((path) => path.endsWith("/accept"))).toBe(true)
       expect(paths.some((path) => path.endsWith("/closeout"))).toBe(true)
@@ -540,12 +540,12 @@ describe("pylon khala requester API", () => {
         },
       })
       expect(fake.requests.map((request) => request.path)).toEqual([
-        "/v1/chat/completions",
+        "/api/v1/chat/completions",
       ])
     })
   })
 
-  test("request posts to /v1/chat/completions with bearer auth and projects the durable handle", async () => {
+  test("request posts to /api/v1/chat/completions with bearer auth and projects the durable handle", async () => {
     const calls: Array<{ init: RequestInit; url: string }> = []
     const fetcher = async (url: URL | RequestInfo, init?: RequestInit) => {
       calls.push({ init: init ?? {}, url: String(url) })
@@ -571,7 +571,7 @@ describe("pylon khala requester API", () => {
     )
 
     expect(calls).toHaveLength(1)
-    expect(calls[0]?.url).toBe("https://openagents.test/v1/chat/completions")
+    expect(calls[0]?.url).toBe("https://openagents.test/api/v1/chat/completions")
     expect(calls[0]?.init.method).toBe("POST")
     expect((calls[0]?.init.headers as Record<string, string>).Authorization).toBe("Bearer oa_agent_test")
     expect(JSON.parse(String(calls[0]?.init.body))).toMatchObject({
@@ -1160,7 +1160,7 @@ describe("pylon khala requester API", () => {
     expect(result.timedOut).toBe(false)
     expect(result.exitCode).toBe(0)
     expect(requests).toHaveLength(1)
-    expect(requests[0]?.path).toBe("/v1/chat/completions")
+    expect(requests[0]?.path).toBe("/api/v1/chat/completions")
     expect(requests[0]?.headers.get("authorization")).toBe("Bearer oa_agent_cli_test")
     expect(requests[0]?.body).toMatchObject({
       model: "openagents/khala",
@@ -1532,7 +1532,7 @@ describe("pylon khala requester API", () => {
     expect(result.timedOut).toBe(false)
     expect(result.exitCode).toBe(0)
     expect(requests).toHaveLength(1)
-    expect(requests[0]?.path).toBe("/v1/chat/completions")
+    expect(requests[0]?.path).toBe("/api/v1/chat/completions")
     expect(requests[0]?.body).toMatchObject({
       openagents: {
         coding: { targetPylonRef: "pylon.owner.codex" },

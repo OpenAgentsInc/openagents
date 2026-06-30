@@ -316,7 +316,7 @@ const makeOpenAgentsFixtureServer = (input: {
         })
       }
 
-      if (url.pathname === "/v1/chat/completions" && request.method === "POST") {
+      if (url.pathname === "/api/v1/chat/completions" && request.method === "POST") {
         const session = requireSession(request)
         if (session === undefined) return json({ error: "unauthorized" }, { status: 401 })
         const prompt = (body as { messages?: Array<{ content?: unknown }> })

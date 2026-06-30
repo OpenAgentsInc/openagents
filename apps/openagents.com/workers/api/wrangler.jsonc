@@ -197,9 +197,9 @@
     "HYDRALISK_GLM_52_REAP_504B_G4_8G_B_20260624214500_RECEIPT_REF": "receipt.hydralisk.glm_52_reap_504b.g4.roster-10replica-20260626T033107Z",
     // Khala provider backing (#6198, #6259). Operator-only, non-secret routing
     // knob: customers still see/request ONLY `openagents/khala`. Set to the
-    // Hydralisk-backed lane so the router orders the OWN-INFRA GLM-5.2-REAP-504B
-    // private G4 lane FIRST (KHALA_HYDRALISK_ADAPTER_PLAN: GLM -> OpenRouter
-    // free -> Vertex Gemini -> Fireworks), instead of Fireworks DeepSeek.
+    // Hydralisk-backed policy value while the router currently starts the
+    // public Khala chain on the pinned OpenRouter Granite lane before Vertex
+    // Gemini/Fireworks/Hydralisk, instead of Fireworks DeepSeek.
     // GPT-OSS is not in the main Khala fallback thread. Any value
     // other than the deepseek-v4-flash aliases resolves to the Hydralisk backing
     // (model-serving-policy.ts:resolveKhalaBackingModel); Fireworks remains armed

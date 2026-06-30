@@ -10,7 +10,7 @@
 //                   account is present (we never spend the user's credits when
 //                   their own subscription can do the work).
 //   • "gateway"   — route the turn through the OpenAgents inference gateway
-//                   (OpenAI-compatible /v1/chat/completions) billed against the
+//                   (OpenAI-compatible /api/v1/chat/completions) billed against the
 //                   user's OpenAgents API key + pay-as-you-go credit balance.
 //                   This is the DEFAULT FALLBACK for a fresh user with no own
 //                   auth (or out of usable accounts) — the self-serve path.

@@ -35,7 +35,7 @@ describe("resolveInferenceGatewaySettings — INERT default + flag gate", () => 
 
   test("the OpenAI-compatible endpoints are derived from the base url", () => {
     expect(inferenceGatewayChatCompletionsUrl("https://gw.test/")).toBe(
-      "https://gw.test/v1/chat/completions",
+      "https://gw.test/api/v1/chat/completions",
     )
     expect(inferenceGatewayCreditsUrl("https://gw.test")).toBe(
       "https://gw.test/v1/credits",

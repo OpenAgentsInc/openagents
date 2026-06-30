@@ -113,7 +113,7 @@ describe("pylon khala MCP stdio handler", () => {
     const parsed = parseToolResult(response as { jsonrpc: "2.0"; id: string; result?: McpToolCallResult })
     expect(parsed.ok).toBe(true)
     expect(requests).toHaveLength(1)
-    expect(requests[0]?.path).toBe("/v1/chat/completions")
+    expect(requests[0]?.path).toBe("/api/v1/chat/completions")
     expect(requests[0]?.headers.get("authorization")).toBe(
       "Bearer oa_agent_mcp_test",
     )

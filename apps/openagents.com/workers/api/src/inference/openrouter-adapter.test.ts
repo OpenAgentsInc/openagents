@@ -131,7 +131,7 @@ describe('OpenRouter Khala fallback adapter', () => {
     expect(result.success.at(-1)?.usage?.totalTokens).toBe(13)
   })
 
-  it('sends the pinned OpenRouter free fallback model upstream', async () => {
+  it('sends the pinned OpenRouter Granite model upstream', async () => {
     let capturedBody: Record<string, unknown> | undefined
     const fetchImpl: OpenRouterFetch = async (_input, init) => {
       capturedBody = JSON.parse(init.body) as Record<string, unknown>

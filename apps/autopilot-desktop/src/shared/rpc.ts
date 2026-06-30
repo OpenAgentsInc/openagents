@@ -748,7 +748,7 @@ export type InferenceGatewayReadinessResponse = {
 
 // HUD H5 (#5503): the zero-base shell's REAL model response. The Bun host owns
 // the OpenAgents agent token + the gateway base URL and calls the
-// OpenAI-compatible `/v1/chat/completions` surface (Gemini 3.5 Flash on the free
+// OpenAI-compatible `/api/v1/chat/completions` surface (Gemini 3.5 Flash on the free
 // per-agent allowance); the webview receives ONLY the plain Autopilot text (or a
 // clean, honest "how to configure"/error message when there is no token or the
 // call fails). NEVER the raw token. `ok:false` still carries a user-facing
@@ -760,9 +760,9 @@ export type ShellTurnResponse = {
 }
 
 // M1 (#6009, EPIC #6017) — Lane A Cockpit. One Khala cockpit turn: the Bun host
-// issues the prompt through the unified Pylon/MCP issuer by default, with the
-// legacy OpenAI-compatible `/v1/chat/completions` stream available behind the
-// host-side off switch. The webview receives only public-safe answer text,
+// issues the prompt through the standard OpenAI-compatible
+// `/api/v1/chat/completions` stream by default, with explicit MCP issuer modes
+// still available for development. The webview receives only public-safe answer text,
 // receipt projection, durable handle refs, and issuer provenance. `live` is TRUE
 // only when the response carried a real receipt ref — never claim live off a
 // stub/free route. The raw token never crosses here.
@@ -1110,7 +1110,7 @@ export type DesktopRPCSchema = {
       }
       // HUD H5 (#5503): one zero-base shell turn — the Bun host sends the
       // prompt to the live OpenAgents inference gateway
-      // (`POST /v1/chat/completions`, Gemini 3.5 Flash on the free per-agent
+      // (`POST /api/v1/chat/completions`, Gemini 3.5 Flash on the free per-agent
       // allowance) using the desktop's configured agent token and returns ONLY
       // the plain Autopilot text. The raw token never crosses this boundary.
       // No-token / failure returns `ok:false` with an honest plain-language

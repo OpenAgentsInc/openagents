@@ -1,10 +1,10 @@
 // Bun-host Khala cockpit turn (M1, #6009, EPIC #6017).
 //
-// Lane A — Cockpit. Issues Verse Khala prompts through the unified Pylon/MCP
-// issuer contract by default (local Pylon MCP when a local Pylon signal is
-// present, remote `/api/mcp` otherwise). `OPENAGENTS_DESKTOP_KHALA_ISSUER=off`
-// preserves the legacy OpenAI-compatible `POST /v1/chat/completions` streaming
-// path, including the public `openagents` receipt block and LIVE gate.
+// Lane A — Cockpit. Issues Verse Khala prompts through the standard
+// OpenAI-compatible `POST /api/v1/chat/completions` streaming path by default,
+// including the public `openagents` receipt block and LIVE gate. Explicit
+// `OPENAGENTS_DESKTOP_KHALA_ISSUER=local` / `remote` still exercises the MCP
+// issuer contract for development, but the unset/auto path is direct gateway.
 //
 // This is the Khala-specific sibling of `shell-turn.ts`. It submits to the single
 // public `openagents/khala` model (not the free-tier default), and — unlike the
@@ -114,15 +114,10 @@ const envString = (env: KhalaTurnEnv, key: string): string | null => {
   return value && value.length > 0 ? value : null
 }
 
-const hasLocalPylonSignal = (env: KhalaTurnEnv): boolean =>
-  envString(env, "PYLON_HOME") !== null ||
-  envString(env, "PYLON_CONTROL_BASE_URL") !== null ||
-  envString(env, "PYLON_REF") !== null
-
 const resolveKhalaTurnIssuerPath = (env: KhalaTurnEnv): KhalaTurnIssuerPath => {
   const configured = envString(env, DESKTOP_KHALA_ISSUER_ENV)
   if (configured === null) {
-    return hasLocalPylonSignal(env) ? "pylon_mcp_local" : "remote_mcp"
+    return "legacy_gateway"
   }
   const raw = configured.toLowerCase()
   if (raw === "0" || raw === "off" || raw === "legacy") {
@@ -132,7 +127,7 @@ const resolveKhalaTurnIssuerPath = (env: KhalaTurnEnv): KhalaTurnIssuerPath => {
     return "remote_mcp"
   }
   if (raw === "auto" || raw === "1" || raw === "on" || raw === "true") {
-    return hasLocalPylonSignal(env) ? "pylon_mcp_local" : "remote_mcp"
+    return "legacy_gateway"
   }
   if (
     raw === "local" ||

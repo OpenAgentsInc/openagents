@@ -4,8 +4,8 @@
 // The dead-simple default surface (a black screen with one text bar) sends each
 // submitted prompt here via the `shellTurn` RPC verb. This module calls the
 // now-LIVE OpenAgents inference gateway — the OpenAI-compatible
-// `POST /v1/chat/completions` surface on openagents.com (Gemini 3.5 Flash on the
-// free per-agent allowance) — authenticated with the desktop's configured
+// `POST /api/v1/chat/completions` surface on openagents.com (Gemini 3.5 Flash on
+// the free per-agent allowance) — authenticated with the desktop's configured
 // OpenAgents agent token, and projects ONLY the model text back to the
 // webview.
 //

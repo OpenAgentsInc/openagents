@@ -1,6 +1,6 @@
 // OpenAgents inference-gateway default-inference settings (#5485, EPIC #5474).
 //
-// The gateway is the OpenAI-compatible `/v1/chat/completions` surface on
+// The gateway is the OpenAI-compatible `/api/v1/chat/completions` surface on
 // openagents.com, billed against the user's OpenAgents API key + pay-as-you-go
 // credit balance. This module is the single PURE resolver for whether the
 // desktop should offer/use that path as the coding-session inference fallback —
@@ -82,7 +82,7 @@ export const resolveInferenceGatewaySettings = (
 // The OpenAI-compatible chat-completions endpoint for the gateway base URL.
 // Single source so the Bun fetch and any future caller agree on the path.
 export const inferenceGatewayChatCompletionsUrl = (baseUrl: string): string =>
-  `${baseUrl.replace(/\/+$/, "")}/v1/chat/completions`
+  `${baseUrl.replace(/\/+$/, "")}/api/v1/chat/completions`
 
 // The credit-balance read endpoint. The Bun host calls this with the API key
 // (in the Authorization header) and projects only the numeric balance forward.

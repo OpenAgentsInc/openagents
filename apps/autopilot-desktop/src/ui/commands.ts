@@ -1694,7 +1694,7 @@ export const PersistInputProfile = Command.define(
 // now returns a REAL model answer: `RespondToShellInput` calls the Bun host's
 // `shellTurn` RPC verb (same `getRequest()` pattern as SpawnChatTurn), which
 // talks to the now-LIVE OpenAgents inference gateway
-// (`POST /v1/chat/completions`, Gemini 3.5 Flash on the free per-agent
+// (`POST /api/v1/chat/completions`, Gemini 3.5 Flash on the free per-agent
 // allowance) using the desktop's configured OpenAgents agent token. The Bun
 // host owns the token; the webview only ever sees the plain Autopilot text.
 //

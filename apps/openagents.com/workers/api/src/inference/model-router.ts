@@ -265,45 +265,45 @@ const LANE_PLAN_BY_CLASS: Readonly<
 }
 
 const KHALA_CONVERSATIONAL_ADAPTER_PLAN: ReadonlyArray<string> = [
+  OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
   VERTEX_GEMINI_ADAPTER_ID,
   FIREWORKS_ADAPTER_ID,
   HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
-  OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
 ]
 
 const KHALA_FIREWORKS_DEEPSEEK_ADAPTER_PLAN: ReadonlyArray<string> = [
+  OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
   FIREWORKS_ADAPTER_ID,
   HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
   VERTEX_GEMINI_ADAPTER_ID,
-  OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
 ]
 
 const KHALA_AGENT_TOOL_ADAPTER_PLAN: ReadonlyArray<string> = [
+  OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
   HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
   FIREWORKS_ADAPTER_ID,
   VERTEX_GEMINI_ADAPTER_ID,
-  OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
 ]
 
 // Strongest tool-capable coding plan for Khala. Used ONLY for internal,
 // honestly-tagged frontier-coding eval load (e.g. the MirrorCode gym rung) where
 // we deliberately want the best coding model Khala can serve rather than the
 // latency-first conversational backing. The frontier GLM coding lane leads;
-// it overflows to the proven Fireworks Khala backing, then Vertex Gemini, then
-// the hidden OpenRouter free lane. The owned GLM-5.2-REAP lane is intentionally
+// it overflows to the proven Fireworks Khala backing, then the hidden OpenRouter
+// Granite lane before Vertex Gemini. The owned GLM-5.2-REAP lane is intentionally
 // EXCLUDED here because its tool-calling is unreliable for agentic coding loops
 // (see #6310), which is exactly what dumps these runs onto a weak fallback.
 const KHALA_STRONG_CODING_ADAPTER_PLAN: ReadonlyArray<string> = [
   FIREWORKS_STRONG_CODING_ADAPTER_ID,
   FIREWORKS_ADAPTER_ID,
-  VERTEX_GEMINI_ADAPTER_ID,
   OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
+  VERTEX_GEMINI_ADAPTER_ID,
 ]
 
 const KHALA_PAID_FAILOVER_ADAPTER_PLAN: ReadonlyArray<string> = [
+  OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
   VERTEX_GEMINI_ADAPTER_ID,
   FIREWORKS_ADAPTER_ID,
-  OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
 ]
 
 const dedupeAdapterPlan = (
@@ -377,10 +377,10 @@ export const makeKhalaBackedAdapterPlan =
 // ----------------------------------------------------------------------------
 //
 // The normal Khala plan is an ORDERED overflow chain: every request starts on
-// the same primary lane (Vertex Gemini today) and only moves to the next lane
+// the same primary lane (OpenRouter Granite today) and only moves to the next lane
 // when the primary typed-fails retryably (429 / 503 / transport). When the
-// primary lane serves at its own rate WITHOUT 429ing (exactly Vertex's
-// behavior), every request pins to that one lane and aggregate throughput is
+// primary lane serves at its own rate WITHOUT 429ing, every request pins to that
+// one lane and aggregate throughput is
 // capped at a single lane's serve rate — overflow never triggers, so the other
 // healthy paid lanes sit idle.
 //
@@ -470,11 +470,11 @@ const selectAdapterPlanForKhalaPaidFailover = (
 export const selectAdapterPlan = (model: string): ReadonlyArray<string> => {
   const normalizedModel = normalizeKhalaModelId(model)
   if (normalizedModel === KHALA_MODEL_ID) {
-    // Conversational Khala is latency-first: start with fast Vertex Gemini,
-    // then Fireworks, then the owned GLM lane once warm, with OpenRouter free as
-    // the final hidden overflow. Tool/agentic Khala requests use
-    // `selectAdapterPlanForKhalaToolRequest`, which flips the plan to
-    // self-hosted GLM-first.
+    // Conversational Khala is latency-first: start with the pinned OpenRouter
+    // Granite lane, then Vertex Gemini, Fireworks, and the owned GLM lane once
+    // warm. Tool/agentic Khala requests use
+    // `selectAdapterPlanForKhalaToolRequest`, which keeps OpenRouter primary
+    // while putting the self-hosted GLM lane before the other fallbacks.
     // Explicit raw Hydralisk model ids below keep NO Gemini/Fireworks fallback —
     // they are deliberate supply-lane requests, not the generic Khala lane.
     return KHALA_CONVERSATIONAL_ADAPTER_PLAN

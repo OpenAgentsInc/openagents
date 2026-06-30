@@ -1,10 +1,10 @@
-// OpenRouter Khala fallback adapter (#6313).
+// OpenRouter Khala adapter (#6313).
 //
-// OpenRouter is used only as a hidden Khala overflow lane. The public customer
-// model remains `openagents/khala`; the OpenRouter upstream model id is supplied
-// by Worker env at registration time and is never added to the public model
-// catalog. The adapter speaks the OpenAI-compatible Chat Completions shape and
-// normalizes back into the shared provider-adapter contract.
+// OpenRouter is used as a hidden Khala supply lane. The public customer model
+// remains `openagents/khala`; the pinned OpenRouter upstream model id is never
+// added to the public model catalog. The adapter speaks the OpenAI-compatible
+// Chat Completions shape and normalizes back into the shared provider-adapter
+// contract.
 import { Effect, Redacted } from 'effect'
 
 import { parseJsonRecord, recordFromUnknown } from '../json-boundary'
@@ -46,7 +46,8 @@ export type OpenRouterAdapterConfig = Readonly<{
 
 export const OPENROUTER_DEFAULT_TIMEOUT_MS = 60_000
 export const OPENROUTER_DEFAULT_BASE_URL = 'https://openrouter.ai/api/v1'
-export const OPENROUTER_KHALA_FALLBACK_MODEL_ID = 'openrouter/free'
+export const OPENROUTER_KHALA_FALLBACK_MODEL_ID =
+  'ibm-granite/granite-4.1-8b'
 
 const OPENAI_FORWARDED_PARAMS = [
   'temperature',
