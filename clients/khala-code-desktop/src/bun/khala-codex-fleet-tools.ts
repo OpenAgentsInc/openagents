@@ -2241,35 +2241,60 @@ export async function removeCodexAccount(
   const env = options.env ?? process.env
   const pylonHome = resolvePylonHome(env)
   const configPath = join(pylonHome, "config.json")
-  const isolatedHomePrefix = join(pylonHome, "accounts", "codex")
-  try {
-    const raw = await readFile(configPath, "utf8")
-    const config = JSON.parse(raw) as {
-      dev?: { accounts?: ReadonlyArray<Record<string, unknown>> }
-    }
-    const accounts = Array.isArray(config.dev?.accounts) ? config.dev.accounts : []
-    const target = accounts.find(
-      account => account?.provider === "codex" && account?.ref === accountRef,
-    )
-    if (target === undefined) {
-      return { ok: true, removed: false, accountRef }
-    }
-    const remaining = accounts.filter(
-      account => !(account?.provider === "codex" && account?.ref === accountRef),
-    )
-    const nextConfig = {
-      ...config,
-      dev: { ...(config.dev ?? {}), accounts: remaining },
-    }
-    const tempPath = `${configPath}.tmp`
-    await writeFile(tempPath, `${JSON.stringify(nextConfig, null, 2)}\n`)
-    await rename(tempPath, configPath)
 
-    const home = typeof target.home === "string" ? target.home : null
-    if (home !== null && home.startsWith(isolatedHomePrefix)) {
-      await rm(home, { recursive: true, force: true }).catch(() => undefined)
+  // Refuse refs that could escape accounts/codex, and the non-removable default.
+  if (
+    accountRef.length === 0 ||
+    accountRef.includes("/") ||
+    accountRef.includes("..") ||
+    accountRef === "(default)"
+  ) {
+    return {
+      ok: false,
+      removed: false,
+      accountRef,
+      error: "invalid or non-removable account ref",
     }
-    return { ok: true, removed: true, accountRef }
+  }
+
+  // The fleet list surfaces accounts from BOTH the registry (config.dev.accounts)
+  // and a scan of the per-account home dirs (<pylon home>/accounts/codex/<ref>).
+  // To make an account actually disappear we remove it from both sources.
+  const accountHomeDir = join(pylonHome, "accounts", "codex", accountRef)
+  let removedSomething = false
+
+  try {
+    // 1) drop the registry entry if present
+    try {
+      const raw = await readFile(configPath, "utf8")
+      const config = JSON.parse(raw) as {
+        dev?: { accounts?: ReadonlyArray<Record<string, unknown>> }
+      }
+      const accounts = Array.isArray(config.dev?.accounts) ? config.dev.accounts : []
+      const remaining = accounts.filter(
+        account => !(account?.provider === "codex" && account?.ref === accountRef),
+      )
+      if (remaining.length !== accounts.length) {
+        const nextConfig = {
+          ...config,
+          dev: { ...(config.dev ?? {}), accounts: remaining },
+        }
+        const tempPath = `${configPath}.tmp`
+        await writeFile(tempPath, `${JSON.stringify(nextConfig, null, 2)}\n`)
+        await rename(tempPath, configPath)
+        removedSomething = true
+      }
+    } catch {
+      // no/unreadable config — the home-dir removal below still applies
+    }
+
+    // 2) delete the isolated per-account home dir (the dir-scan source)
+    if (existsSync(accountHomeDir)) {
+      await rm(accountHomeDir, { recursive: true, force: true })
+      removedSomething = true
+    }
+
+    return { ok: true, removed: removedSomething, accountRef }
   } catch (error) {
     return {
       ok: false,

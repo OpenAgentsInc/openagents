@@ -93,6 +93,7 @@ const accountCard = (
   const state = accountReadinessState(account.readiness)
   const card = el("article", "khala-fleet-account")
   card.dataset.state = state
+  card.dataset.accountRef = account.accountRef
 
   const identity = el("div", "khala-fleet-account-identity")
   identity.append(el("strong", undefined, account.accountRef))
@@ -278,18 +279,22 @@ export const mountFleetPanel = (
       `Remove Codex account "${accountRef}" from the fleet? This deletes its local credentials.`,
     )
     if (!confirmed) return
+    // Optimistic: drop the row immediately so it goes away right away.
+    container
+      .querySelector(`[data-account-ref="${CSS.escape(accountRef)}"]`)
+      ?.remove()
     void (async () => {
       const result = await options.removeAccount(accountRef)
-      if (result.ok) {
-        await refresh()
-      } else {
+      if (!result.ok) {
         render(
           container,
           { phase: "error", message: result.error ?? "remove failed" },
           () => void refresh(),
           onRemove,
         )
+        return
       }
+      await refresh()
     })()
   }
 
