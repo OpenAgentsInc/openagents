@@ -77,10 +77,10 @@ emit() { # emit final JSON result line
 }
 
 result_json() {
-  local status="$1" pr="$2" check="$3" cost="$4" note="$5"
+  local result_status="$1" pr="$2" check="$3" cost="$4" note="$5"
   # note is already JSON-safe (we pass plain ascii)
   printf '{"promise":"%s","model":"%s","branch":"%s","status":"%s","pr_url":"%s","check_deploy":"%s","cost_usd":%s,"note":"%s"}' \
-    "$PROMISE" "$MODEL" "$BRANCH" "$status" "$pr" "$check" "${cost:-null}" "$note"
+    "$PROMISE" "$MODEL" "$BRANCH" "$result_status" "$pr" "$check" "${cost:-null}" "$note"
 }
 
 # Find the source repo (this script lives inside a checkout). We add the

@@ -86,9 +86,9 @@ log() { echo "[worker:${PROMISE}] $*" >&2; }
 emit() { printf '%s\n' "$1"; }
 
 result_json() {
-  local status="$1" pr="$2" check="$3" tokens="$4" note="$5"
+  local result_status="$1" pr="$2" check="$3" tokens="$4" note="$5"
   printf '{"promise":"%s","model":"%s","branch":"%s","status":"%s","pr_url":"%s","check_deploy":"%s","tokens":%s,"note":"%s"}' \
-    "$PROMISE" "$MODEL" "$BRANCH" "$status" "$pr" "$check" "${tokens:-null}" "$note"
+    "$PROMISE" "$MODEL" "$BRANCH" "$result_status" "$pr" "$check" "${tokens:-null}" "$note"
 }
 
 release_lease() {
