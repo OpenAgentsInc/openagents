@@ -323,66 +323,77 @@ export const codexAccountCapacityKey = (
   return match === null ? null : match[1]!
 }
 
-// Enumerate the linked Codex accounts and whether each one's isolated home holds
-// a usable login. Registry accounts are keyed by their ref (matching
+async function codexReadinessForAccountHome(
+  summary: Pick<BootstrapSummary, "paths">,
+  input: { accountRefHash: string; home: string },
+): Promise<PylonCodexAccountReadiness> {
+  let ready = await codexHomeHasAuth(input.home)
+  let reason: PylonCodexAccountReadiness["reason"] | undefined
+  const health = await loadCodexAccountHealthRecord(summary, input.accountRefHash)
+  if (codexAccountHealthBlocksReadiness(health)) {
+    ready = false
+    reason = health.reason
+  }
+  const quotaRecord = await loadQuotaRecord(summary, input.accountRefHash)
+  const quotaState = quotaStateFrom(quotaRecord, new Date())
+  if (quotaState.limited) {
+    ready = false
+    reason = quotaState.state === "cooldown" ? "rate_limited" : "usage_limited"
+  }
+  return {
+    accountRefHash: input.accountRefHash,
+    ready,
+    ...(reason === undefined ? {} : { reason }),
+  }
+}
+
+// Enumerate the local Codex accounts and whether each one's home holds a usable
+// login. Registry accounts are keyed by ref (matching
 // `resolvePylonAccountSelection`'s registry_ref hash and the per-assignment
-// account hash). The default `~/.codex` home is only included when no registry
-// Codex account exists, so a normal multi-account Pylon does not advertise a
-// phantom default-account slot the supervisor never targets.
+// account hash); discovered sibling homes are keyed by home, matching the
+// selection fallback. The default Codex home is included as its own account when
+// it is not already represented by a registry home, so Desktop inventory and
+// advertised dispatch capacity count the same ready local accounts.
 export async function localCodexAccountReadiness(
   summary: Pick<BootstrapSummary, "paths">,
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<PylonCodexAccountReadiness[]> {
-  const readiness = new Map<string, boolean>()
-  const reasons = new Map<string, PylonCodexAccountReadiness["reason"]>()
+  const readiness = new Map<string, PylonCodexAccountReadiness>()
+  const seenHomes = new Set<string>()
+  const addAccount = async (accountRefHash: string, home: string) => {
+    const normalizedHome = normalizeAccountHome(home)
+    seenHomes.add(normalizedHome)
+    readiness.set(
+      accountRefHash,
+      await codexReadinessForAccountHome(summary, {
+        accountRefHash,
+        home: normalizedHome,
+      }),
+    )
+  }
   const registry = await loadPylonAccountRegistry(summary)
   const codexEntries = registry.filter(entry => entry.provider === "codex")
   for (const entry of codexEntries) {
-    const accountRefHash = hashPylonAccountRef("codex", entry.ref)
-    let ready = await codexHomeHasAuth(entry.home)
-    if (entry.openAgentsProviderAccountRef === null) {
-      ready = false
-      reasons.set(accountRefHash, "account_unlinked")
-    }
-    const health = await loadCodexAccountHealthRecord(summary, accountRefHash)
-    if (codexAccountHealthBlocksReadiness(health)) {
-      ready = false
-      reasons.set(accountRefHash, health.reason)
-    }
-    const quotaRecord = await loadQuotaRecord(summary, accountRefHash)
-    const quotaState = quotaStateFrom(quotaRecord, new Date())
-    if (quotaState.limited) {
-      ready = false
-      reasons.set(accountRefHash, quotaState.state === "cooldown" ? "rate_limited" : "usage_limited")
-    }
-    readiness.set(accountRefHash, ready)
+    await addAccount(hashPylonAccountRef("codex", entry.ref), entry.home)
   }
-  if (codexEntries.length === 0) {
-    const configuredCodexHome = env.CODEX_HOME?.trim()
-    const defaultHome =
-      configuredCodexHome && configuredCodexHome.length > 0
-        ? normalizeAccountHome(configuredCodexHome)
-        : join(homedir(), ".codex")
-    const accountRefHash = hashPylonAccountRef("codex", "default")
-    let ready = await codexHomeHasAuth(defaultHome)
-    const health = await loadCodexAccountHealthRecord(summary, accountRefHash)
-    if (codexAccountHealthBlocksReadiness(health)) {
-      ready = false
-      reasons.set(accountRefHash, health.reason)
-    }
-    const quotaRecord = await loadQuotaRecord(summary, accountRefHash)
-    const quotaState = quotaStateFrom(quotaRecord, new Date())
-    if (quotaState.limited) {
-      ready = false
-      reasons.set(accountRefHash, quotaState.state === "cooldown" ? "rate_limited" : "usage_limited")
-    }
-    readiness.set(accountRefHash, ready)
+
+  const configuredCodexHome = env.CODEX_HOME?.trim()
+  const defaultHome =
+    configuredCodexHome && configuredCodexHome.length > 0
+      ? normalizeAccountHome(configuredCodexHome)
+      : join(homedir(), ".codex")
+  if (!seenHomes.has(defaultHome)) {
+    await addAccount(hashPylonAccountRef("codex", "default"), defaultHome)
   }
-  return [...readiness.entries()].map(([accountRefHash, ready]) => ({
-    accountRefHash,
-    ready,
-    ...(reasons.get(accountRefHash) === undefined ? {} : { reason: reasons.get(accountRefHash)! }),
-  }))
+
+  for (const sibling of await discoverPylonSiblingAccountHomes(env)) {
+    if (sibling.provider !== "codex") continue
+    const home = normalizeAccountHome(sibling.home)
+    if (seenHomes.has(home)) continue
+    await addAccount(hashPylonAccountRef("codex", home), home)
+  }
+
+  return [...readiness.values()]
 }
 
 // Per-account Codex capacity: each ready account advertises `perAccountConcurrency`

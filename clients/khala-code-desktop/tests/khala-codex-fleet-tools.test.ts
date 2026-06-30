@@ -226,6 +226,7 @@ describe("Khala Code Codex fleet tools", () => {
 
   test("inspectCodexFleet reports capacity from provider go-online", async () => {
     const fixture = await tempPylonFixture()
+    const accountRefHash = "account.pylon.codex.651c03fed68925d7acb2c02f"
     const runner = async (input: KhalaCodexFleetCommandInput): Promise<KhalaCodexFleetCommandResult> => {
       const args = pylonArgs(input)
       const joined = args.join(" ")
@@ -234,6 +235,15 @@ describe("Khala Code Codex fleet tools", () => {
           ok: true,
           ownCapacityDispatch: {
             availableCodexAssignments: 2,
+            codexAccounts: [
+              {
+                accountKey: "651c03fed68925d7acb2c02f",
+                available: 2,
+                busy: 0,
+                queued: 0,
+                ready: 5,
+              },
+            ],
             maxCodexAssignments: 5,
           },
           pylonRef: "pylon.local.test",
@@ -244,6 +254,7 @@ describe("Khala Code Codex fleet tools", () => {
           accounts: [
             {
               accountRef: "codex",
+              accountRefHash,
               homeState: "present",
               provider: "codex",
             },
@@ -256,6 +267,7 @@ describe("Khala Code Codex fleet tools", () => {
           accounts: [
             {
               accountRef: "codex",
+              accountRefHash,
               provider: "codex",
               readiness: { state: "ready" },
             },
@@ -276,6 +288,12 @@ describe("Khala Code Codex fleet tools", () => {
     expect(result.availableCodexAssignments).toBe(2)
     expect(result.maxCodexAssignments).toBe(5)
     expect(result.accounts).toHaveLength(1)
+    expect(result.accounts[0]?.capacity).toEqual({
+      available: 2,
+      busy: 0,
+      queued: 0,
+      ready: 5,
+    })
   })
 
   test("codex_fleet_status counts only real codex exec agent turns", async () => {
@@ -1472,8 +1490,8 @@ describe("Khala Code Codex fleet tools", () => {
         })
       }
       if (joined === "presence heartbeat --base-url https://openagents.com --json") {
-        expect(input.env?.OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY).toBe("5")
-        expect(input.env?.OPENAGENTS_PYLON_CODEX_CONCURRENCY).toBe("5")
+        expect(input.env?.OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY).toBe("10")
+        expect(input.env?.OPENAGENTS_PYLON_CODEX_CONCURRENCY).toBe("10")
         advertised = true
         return ok({
           heartbeatRef: "heartbeat.pylon.local.test.1",
@@ -1584,7 +1602,7 @@ describe("Khala Code Codex fleet tools", () => {
         })
       }
       if (joined === "presence heartbeat --base-url https://openagents.com --json") {
-        expect(input.env?.OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY).toBe("5")
+        expect(input.env?.OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY).toBe("10")
         advertised = true
         return ok({
           heartbeatRef: "heartbeat.pylon.local.test.part2",
@@ -1689,7 +1707,7 @@ describe("Khala Code Codex fleet tools", () => {
         }
         if (joined === "presence heartbeat --base-url https://openagents.com --json") {
           heartbeatCalls += 1
-          expect(input.env?.OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY).toBe("5")
+          expect(input.env?.OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY).toBe("10")
           return ok({
             heartbeatRef: `heartbeat.pylon.local.test.${heartbeatCalls}`,
             pylonRef: "pylon.local.test",

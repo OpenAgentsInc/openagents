@@ -68,8 +68,8 @@ try {
       return ok({ accounts: [], schema: "openagents.pylon.accounts_status.v0.1" })
     }
     if (joined === "presence heartbeat --base-url https://openagents.com --json") {
-      if (input.env?.OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY !== "5") {
-        throw new Error("part2 smoke expected desktop to advertise five Codex slots before heartbeat")
+      if (input.env?.OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY !== "10") {
+        throw new Error("part2 smoke expected desktop to advertise ten Codex slots before heartbeat")
       }
       advertised = true
       return ok({

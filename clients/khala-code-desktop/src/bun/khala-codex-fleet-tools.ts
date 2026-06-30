@@ -78,6 +78,7 @@ export type KhalaPylonEnsureResult = {
   readonly availableCodexAssignments: number | null
   readonly maxCodexAssignments: number | null
   readonly message: string
+  readonly providerProjection: Record<string, unknown> | null
   readonly pylonHome: string
   readonly pylonRef: string | null
   readonly started: boolean
@@ -242,9 +243,9 @@ type AssignmentLifecycleEvent = {
 
 type PylonLifecycleWireEvent = typeof PylonLifecycleWireEvent.Type
 
-const MAX_SPAWN_COUNT = 5
+const MAX_SPAWN_COUNT = 10
 const DEFAULT_COMMAND_TIMEOUT_MS = 45_000
-const DEFAULT_SPAWN_TIMEOUT_MS = 180_000
+const DEFAULT_SPAWN_TIMEOUT_MS = 1_800_000
 const DEFAULT_ENSURE_WAIT_MS = 7_500
 const DEFAULT_CODEX_ACCOUNT_CONCURRENCY = MAX_SPAWN_COUNT
 const DEFAULT_OPENAGENTS_BASE_URL = "https://openagents.com"
@@ -526,6 +527,7 @@ export async function ensureLocalPylon(
       availableCodexAssignments: null,
       maxCodexAssignments: null,
       message: "Pylon source was not found in this checkout.",
+      providerProjection: null,
       pylonHome: paths.pylonHome,
       pylonRef: null,
       started: false,
@@ -549,6 +551,7 @@ export async function ensureLocalPylon(
       availableCodexAssignments: capacity.available,
       maxCodexAssignments: capacity.max,
       message: "Local Pylon is online.",
+      providerProjection: firstJson,
       pylonHome: paths.pylonHome,
       pylonRef: firstRef,
       started: false,
@@ -562,6 +565,7 @@ export async function ensureLocalPylon(
       availableCodexAssignments: null,
       maxCodexAssignments: null,
       message: "Local Pylon is not online.",
+      providerProjection: null,
       pylonHome: paths.pylonHome,
       pylonRef: null,
       started: false,
@@ -599,6 +603,7 @@ export async function ensureLocalPylon(
         availableCodexAssignments: capacity.available,
         maxCodexAssignments: capacity.max,
         message: "Started local Pylon and confirmed it is online.",
+        providerProjection: json,
         pylonHome: paths.pylonHome,
         pylonRef,
         started: true,
@@ -612,6 +617,7 @@ export async function ensureLocalPylon(
     availableCodexAssignments: null,
     maxCodexAssignments: null,
     message: "Started local Pylon, but it did not report online before the wait window ended.",
+    providerProjection: null,
     pylonHome: paths.pylonHome,
     pylonRef: null,
     started: true,
@@ -661,7 +667,7 @@ export async function inspectCodexFleet(
   const apm = fleetTokenRateProjectionFromApm(apmResult, rawActiveAssignments.length)
   const accounts = withAccountCapacity(
     mergeAccountRows(listProjection, statusProjection),
-    [statusProjection, listProjection],
+    [ensure.providerProjection, statusProjection, listProjection],
   )
   const activeAssignments = mergeActiveAssignmentTokenRates(
     rawActiveAssignments,
@@ -1650,7 +1656,7 @@ function decodeSpawnInput(
   const prompt = raw.prompt.trim()
   if (prompt.length === 0) throw new Error("codex_spawn requires a non-empty prompt")
   const count = boundedPositiveInteger(raw.count, 1, 1, MAX_SPAWN_COUNT)
-  const timeoutMs = boundedPositiveInteger(raw.timeoutMs, DEFAULT_SPAWN_TIMEOUT_MS, 10_000, 600_000)
+  const timeoutMs = boundedPositiveInteger(raw.timeoutMs, DEFAULT_SPAWN_TIMEOUT_MS, 10_000, 3_600_000)
   const hasAnyPin = raw.repo !== undefined || raw.commit !== undefined || raw.verify !== undefined
   const fixture = raw.fixture ?? !hasAnyPin
   const verify = raw.verify ?? (!fixture && (raw.repo !== undefined || raw.commit !== undefined)

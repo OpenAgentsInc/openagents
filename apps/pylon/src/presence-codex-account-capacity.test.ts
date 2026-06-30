@@ -90,6 +90,7 @@ describe("#6354 per-account Codex capacity (Pylon side)", () => {
       })
 
       const readiness = await localCodexAccountReadiness(summary, {
+        CODEX_HOME: join(home, "empty-default-codex"),
         PYLON_HOME: home,
         PYLON_ACCOUNT_HOME_ROOT: join(home, "empty-siblings"),
       })
@@ -110,7 +111,7 @@ describe("#6354 per-account Codex capacity (Pylon side)", () => {
     }
   })
 
-  test("registry accounts without an OpenAgents provider-account link are not advertised", async () => {
+  test("local-ready registry accounts advertise even before provider-account import is recorded", async () => {
     const home = await mkdtemp(join(tmpdir(), "pylon-codex-account-unlinked-"))
     try {
       const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), { PYLON_HOME: home })
@@ -135,6 +136,7 @@ describe("#6354 per-account Codex capacity (Pylon side)", () => {
       }))
 
       const readiness = await localCodexAccountReadiness(summary, {
+        CODEX_HOME: join(home, "empty-default-codex"),
         PYLON_HOME: home,
         PYLON_ACCOUNT_HOME_ROOT: join(home, "empty-siblings"),
       })
@@ -144,12 +146,53 @@ describe("#6354 per-account Codex capacity (Pylon side)", () => {
       })
       expect(readiness).toContainEqual({
         accountRefHash: hashPylonAccountRef("codex", "codex-unlinked"),
-        ready: false,
-        reason: "account_unlinked",
+        ready: true,
       })
       expect(codexAccountCapacities({ perAccountConcurrency: 1, readiness }).map(account => account.accountRefHash)).toEqual([
         hashPylonAccountRef("codex", "codex-linked"),
+        hashPylonAccountRef("codex", "codex-unlinked"),
       ])
+    } finally {
+      await rm(home, { recursive: true, force: true })
+    }
+  })
+
+  test("default and sibling Codex homes reconcile inventory with advertised capacity", async () => {
+    const home = await mkdtemp(join(tmpdir(), "pylon-codex-account-inventory-"))
+    try {
+      const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), { PYLON_HOME: home })
+      const registryHome = join(home, "accounts", "codex", "codex-registry")
+      const defaultHome = join(home, "default-codex")
+      const siblingRoot = join(home, "siblings")
+      const siblingHome = join(siblingRoot, ".codex-extra")
+      for (const accountHome of [registryHome, defaultHome, siblingHome]) {
+        await mkdir(accountHome, { recursive: true })
+        await writeFile(join(accountHome, "auth.json"), "{}")
+      }
+      await writeFile(summary.paths.config, JSON.stringify({
+        dev: {
+          accounts: [
+            { provider: "codex", ref: "codex-registry", home: registryHome },
+          ],
+        },
+      }))
+
+      const readiness = await localCodexAccountReadiness(summary, {
+        CODEX_HOME: defaultHome,
+        PYLON_ACCOUNT_HOME_ROOT: siblingRoot,
+        PYLON_HOME: home,
+      })
+      const accountHashes = codexAccountCapacities({ perAccountConcurrency: 1, readiness })
+        .map(account => account.accountRefHash)
+      expect(accountHashes).toEqual([
+        hashPylonAccountRef("codex", "default"),
+        hashPylonAccountRef("codex", siblingHome),
+        hashPylonAccountRef("codex", "codex-registry"),
+      ].sort((left, right) => {
+        const leftKey = left.split(".").at(-1) ?? ""
+        const rightKey = right.split(".").at(-1) ?? ""
+        return leftKey.localeCompare(rightKey)
+      }))
     } finally {
       await rm(home, { recursive: true, force: true })
     }
