@@ -1,4 +1,8 @@
 import type { KhalaAppleFmReadiness } from "./apple-fm-readiness.js"
+import type {
+  KhalaCodexRateLimitProviderStatus,
+  KhalaCodexRateLimitResetOutcome,
+} from "./codex-rate-limits.js"
 import type { OnDeviceDeciderSelection } from "./on-device-decider.js"
 
 export const KHALA_CODE_DESKTOP_RPC_MAX_REQUEST_TIME_MS = 30_000
@@ -55,15 +59,43 @@ export type KhalaCodeDesktopRuntimeStatus = {
   readonly capability: "codex_accounts" | "coding" | "pylon" | "token_accounting"
   readonly observedAt: string
   readonly reason: string
-  readonly status: "not_configured" | "ready"
+  readonly status: "error" | "not_configured" | "ready" | "unavailable"
+}
+
+export type KhalaCodeDesktopCodexAccountStatus = {
+  readonly provider: "codex"
+  readonly accountRef: "default"
+  readonly credentialSource: "CODEX_HOME" | "default_home"
+  readonly homeRef: "env:CODEX_HOME" | "default:~/.codex"
+  readonly readiness: {
+    readonly state: "error" | "ready" | "credentials_missing"
+    readonly blockerRefs: readonly string[]
+  }
+  readonly rateLimits: KhalaCodexRateLimitProviderStatus
+}
+
+export type KhalaCodeDesktopCodexAccountsStatus =
+  KhalaCodeDesktopRuntimeStatus & {
+    readonly capability: "codex_accounts"
+    readonly accounts: readonly KhalaCodeDesktopCodexAccountStatus[]
+    readonly rateLimits: KhalaCodexRateLimitProviderStatus
+  }
+
+export type KhalaCodeDesktopCodexRateLimitResetResult = {
+  readonly ok: boolean
+  readonly observedAt: string
+  readonly outcome: KhalaCodexRateLimitResetOutcome | null
+  readonly status: KhalaCodeDesktopCodexAccountsStatus
+  readonly error?: string
 }
 
 export type KhalaCodeDesktopRPCSchema = {
   requests: {
     appInfo(): Promise<KhalaCodeDesktopAppInfo>
     appleFmReadiness(): Promise<KhalaAppleFmReadiness>
-    codexAccountsStatus(): Promise<KhalaCodeDesktopRuntimeStatus>
+    codexAccountsStatus(): Promise<KhalaCodeDesktopCodexAccountsStatus>
     codingStatus(): Promise<KhalaCodeDesktopRuntimeStatus>
+    consumeCodexRateLimitResetCredit(): Promise<KhalaCodeDesktopCodexRateLimitResetResult>
     onDeviceDeciderStatus(): Promise<OnDeviceDeciderSelection>
     pylonStatus(): Promise<KhalaCodeDesktopRuntimeStatus>
     submitChatMessage(request: KhalaCodeDesktopChatTurnRequest): Promise<KhalaCodeDesktopChatTurnResponse>

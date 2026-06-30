@@ -44,6 +44,10 @@ const previewRpc = (): DesktopRpc => ({
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["codingStatus"]>>
       >("codingStatus"),
+    consumeCodexRateLimitResetCredit: () =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["consumeCodexRateLimitResetCredit"]>>
+      >("consumeCodexRateLimitResetCredit"),
     onDeviceDeciderStatus: () =>
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["onDeviceDeciderStatus"]>>
@@ -252,6 +256,8 @@ const controls = {
   appInfo: () => rpc.request.appInfo(),
   codexAccountsStatus: () => rpc.request.codexAccountsStatus(),
   codingStatus: () => rpc.request.codingStatus(),
+  consumeCodexRateLimitResetCredit: () =>
+    rpc.request.consumeCodexRateLimitResetCredit(),
   isPending: () => pendingTurn,
   messages: () => messages.map(message => ({ ...message })),
   pylonStatus: () => rpc.request.pylonStatus(),
