@@ -2803,3 +2803,101 @@ export async function collectCodexAccountEmails(
   }
   return out
 }
+
+export type CodexConnectStart = {
+  readonly ok: boolean
+  readonly accountRef: string
+  readonly verificationUrl: string | null
+  readonly userCode: string | null
+  readonly output: string
+  readonly error?: string
+}
+
+// Begin (or re-begin) a Codex device-auth login for an account ref through the
+// UI. Spawns `pylon accounts connect codex --account <ref> --force-device-login`,
+// which registers the account and runs `codex login --device-auth` (auto-opening
+// the browser). We read its streamed output until the verification URL + user
+// code appear, return them, and leave the process running — it finishes when the
+// user authorizes in the browser, after which the account reads as ready on the
+// next fleet refresh.
+export async function beginCodexConnect(
+  accountRef: string,
+  options: KhalaCodexFleetToolOptions = {},
+): Promise<CodexConnectStart> {
+  if (!/^[A-Za-z0-9._-]+$/.test(accountRef) || accountRef === "(default)") {
+    return {
+      ok: false,
+      accountRef,
+      verificationUrl: null,
+      userCode: null,
+      output: "",
+      error: "invalid account ref",
+    }
+  }
+  const env = options.env ?? process.env
+  const paths = resolvePylonPaths(env)
+  let child: ReturnType<typeof Bun.spawn>
+  try {
+    child = Bun.spawn(
+      [
+        paths.bunExecutable,
+        "src/index.ts",
+        "accounts",
+        "connect",
+        "codex",
+        "--account",
+        accountRef,
+        "--force-device-login",
+      ],
+      {
+        cwd: paths.appPath,
+        env: pylonCommandEnv(env, paths.pylonHome),
+        stdout: "pipe",
+        stderr: "pipe",
+        stdin: "ignore",
+      },
+    )
+  } catch (error) {
+    return {
+      ok: false,
+      accountRef,
+      verificationUrl: null,
+      userCode: null,
+      output: "",
+      error: error instanceof Error ? error.message : String(error),
+    }
+  }
+
+  const decoder = new TextDecoder()
+  let buffer = ""
+  let verificationUrl: string | null = null
+  let userCode: string | null = null
+  const deadline = Date.now() + 30_000
+  const reader = (child.stdout as ReadableStream<Uint8Array>).getReader()
+  try {
+    while (Date.now() < deadline && (verificationUrl === null || userCode === null)) {
+      const { value, done } = await reader.read()
+      if (done) break
+      if (value !== undefined) buffer += decoder.decode(value, { stream: true })
+      if (verificationUrl === null) {
+        verificationUrl = buffer.match(/https?:\/\/[^\s'"]+/)?.[0] ?? null
+      }
+      if (userCode === null) {
+        userCode = buffer.match(/\b[A-Z0-9]{3,}-[A-Z0-9]{3,}\b/)?.[0] ?? null
+      }
+    }
+  } catch {
+    // streamed read interrupted — return whatever we captured
+  } finally {
+    reader.releaseLock()
+  }
+
+  // Leave the process running; it completes when the user authorizes.
+  return {
+    ok: true,
+    accountRef,
+    verificationUrl,
+    userCode,
+    output: buffer.slice(-1500),
+  }
+}

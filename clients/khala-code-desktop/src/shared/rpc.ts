@@ -172,12 +172,22 @@ export type KhalaCodeDesktopRemoveAccountResult = {
   readonly error?: string
 }
 
+export type KhalaCodeDesktopConnectStart = {
+  readonly ok: boolean
+  readonly accountRef: string
+  readonly verificationUrl: string | null
+  readonly userCode: string | null
+  readonly output: string
+  readonly error?: string
+}
+
 export type KhalaCodeDesktopRPCSchema = {
   requests: {
     appInfo(): Promise<KhalaCodeDesktopAppInfo>
     appleFmReadiness(): Promise<KhalaAppleFmReadiness>
     codexAccountsStatus(): Promise<KhalaCodeDesktopCodexAccountsStatus>
     codexFleetStatus(): Promise<KhalaCodeDesktopFleetStatus>
+    connectCodexAccount(accountRef: string): Promise<KhalaCodeDesktopConnectStart>
     removeCodexAccount(accountRef: string): Promise<KhalaCodeDesktopRemoveAccountResult>
     codingStatus(): Promise<KhalaCodeDesktopRuntimeStatus>
     consumeCodexRateLimitResetCredit(): Promise<KhalaCodeDesktopCodexRateLimitResetResult>

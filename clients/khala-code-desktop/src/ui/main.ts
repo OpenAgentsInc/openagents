@@ -84,6 +84,10 @@ const previewRpc = (): DesktopRpc => ({
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["codingStatus"]>>
       >("codingStatus"),
+    connectCodexAccount: accountRef =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["connectCodexAccount"]>>
+      >("connectCodexAccount", accountRef),
     consumeCodexRateLimitResetCredit: () =>
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["consumeCodexRateLimitResetCredit"]>>
@@ -1071,6 +1075,8 @@ const controls = {
   codexAccountsStatus: () => rpc.request.codexAccountsStatus(),
   codexFleetStatus: () => rpc.request.codexFleetStatus(),
   codingStatus: () => rpc.request.codingStatus(),
+  connectCodexAccount: (accountRef: string) =>
+    rpc.request.connectCodexAccount(accountRef),
   composerStatus: statusForComposer,
   consumeCodexRateLimitResetCredit: () =>
     rpc.request.consumeCodexRateLimitResetCredit(),
@@ -1137,6 +1143,7 @@ const fleetPanel =
     : mountFleetPanel(fleetPanelEl, {
         fetch: () => controls.codexFleetStatus(),
         removeAccount: accountRef => controls.removeCodexAccount(accountRef),
+        connectAccount: accountRef => controls.connectCodexAccount(accountRef),
       })
 
 const setActiveView = (value: string): void => {

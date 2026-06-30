@@ -1052,3 +1052,88 @@ button {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.khala-fleet-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.khala-fleet-connect-input {
+  font: inherit;
+  font-size: 0.78rem;
+  padding: 0.3rem 0.5rem;
+  width: 9rem;
+  border-radius: 0.4rem;
+  border: 1px solid var(--oa-color-component-border);
+  background: var(--oa-color-component-surface);
+  color: var(--oa-color-component-text);
+}
+.khala-fleet-reconnect {
+  font: inherit;
+  font-size: 0.72rem;
+  padding: 0.25rem 0.6rem;
+  border-radius: 999px;
+  cursor: pointer;
+  border: 1px solid rgba(79, 208, 255, 0.4);
+  background: rgba(79, 208, 255, 0.1);
+  color: #9be0ff;
+  white-space: nowrap;
+}
+.khala-fleet-reconnect:hover {
+  background: rgba(79, 208, 255, 0.18);
+  color: #cdeeff;
+}
+.khala-fleet-connect {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  padding: 1rem 1.1rem;
+  border-radius: 0.6rem;
+  border: 1px solid rgba(79, 208, 255, 0.22);
+  background: rgba(79, 208, 255, 0.05);
+}
+.khala-fleet-connect-title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+.khala-fleet-connect-hint {
+  margin: 0;
+  font-size: 0.82rem;
+  color: color-mix(in srgb, var(--oa-color-component-text) 70%, transparent);
+}
+.khala-fleet-connect-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+.khala-fleet-connect-url {
+  font-size: 0.8rem;
+  color: #9be0ff;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.khala-fleet-connect-code {
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: #cdeeff;
+  background: rgba(79, 208, 255, 0.12);
+  padding: 0.15rem 0.55rem;
+  border-radius: 0.35rem;
+}
+.khala-fleet-connect-output {
+  margin: 0;
+  max-height: 8rem;
+  overflow: auto;
+  font-size: 0.72rem;
+  white-space: pre-wrap;
+  color: color-mix(in srgb, var(--oa-color-component-text) 65%, transparent);
+}
+.khala-fleet-connect-status {
+  margin: 0;
+  font-size: 0.78rem;
+  color: color-mix(in srgb, var(--oa-color-component-text) 60%, transparent);
+}

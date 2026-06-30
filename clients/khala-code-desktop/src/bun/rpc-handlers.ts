@@ -24,6 +24,7 @@ import {
   runKhalaCodeDesktopChatTurn,
 } from "./khala-chat-runtime.js"
 import {
+  beginCodexConnect,
   collectCodexAccountEmails,
   ensureLocalPylon,
   inspectCodexFleet,
@@ -187,6 +188,9 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
     },
     async onDeviceDeciderStatus() {
       return input.onDeviceDeciderStatus()
+    },
+    async connectCodexAccount(accountRef: string) {
+      return beginCodexConnect(accountRef, { env: input.env })
     },
     async removeCodexAccount(accountRef: string) {
       return removeCodexAccount(accountRef, { env: input.env })

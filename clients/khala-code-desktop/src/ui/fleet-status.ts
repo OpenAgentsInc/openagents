@@ -1,21 +1,42 @@
 import type {
+  KhalaCodeDesktopConnectStart,
   KhalaCodeDesktopFleetAccount,
   KhalaCodeDesktopFleetStatus,
 } from "../shared/rpc"
 
 // Fleet status panel for Khala Code Desktop: current Codex fleet state — all
-// linked accounts and their readiness, local Pylon health + capacity, active
-// assignments, and running codex_exec processes. Backed by the codexFleetStatus
-// RPC (which runs inspectCodexFleet on the bun side).
+// linked accounts (with signed-in email + readiness), local Pylon health +
+// capacity, active assignments, and running codex_exec processes. Accounts can
+// be removed, reconnected, or freshly connected (device-auth) from here.
 
 export type FleetPanelHandle = Readonly<{
   refresh: () => Promise<void>
+}>
+
+export type FleetPanelOptions = Readonly<{
+  fetch: () => Promise<KhalaCodeDesktopFleetStatus>
+  removeAccount: (
+    accountRef: string,
+  ) => Promise<{ readonly ok: boolean; readonly error?: string }>
+  connectAccount: (accountRef: string) => Promise<KhalaCodeDesktopConnectStart>
+}>
+
+type Handlers = Readonly<{
+  onRefresh: () => void
+  onRemove: (accountRef: string) => void
+  onConnect: (accountRef: string) => void
+}>
+
+type ConnectView = Readonly<{
+  accountRef: string
+  start: KhalaCodeDesktopConnectStart | null
 }>
 
 type FleetView =
   | { readonly phase: "loading" }
   | { readonly phase: "error"; readonly message: string }
   | { readonly phase: "ready"; readonly data: KhalaCodeDesktopFleetStatus }
+  | { readonly phase: "connecting"; readonly connect: ConnectView }
 
 const el = <K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -39,26 +60,6 @@ const accountReadinessState = (
 
 const titleize = (value: string): string =>
   value.replace(/[_-]+/g, " ").replace(/\b\w/g, char => char.toUpperCase())
-
-const accountBadgeLabel = (readiness: string): string => {
-  const state = accountReadinessState(readiness)
-  if (state === "ready") return "Ready"
-  if (state === "missing") return "Needs reconnect"
-  return titleize(readiness)
-}
-
-const relativeTime = (iso: string | null): string => {
-  if (iso === null) return "—"
-  const then = Date.parse(iso)
-  if (Number.isNaN(then)) return iso
-  const seconds = Math.max(0, Math.round((Date.now() - then) / 1000))
-  if (seconds < 60) return `${seconds}s ago`
-  const minutes = Math.round(seconds / 60)
-  if (minutes < 60) return `${minutes}m ago`
-  const hours = Math.round(minutes / 60)
-  if (hours < 24) return `${hours}h ago`
-  return `${Math.round(hours / 24)}d ago`
-}
 
 const summaryLine = (parts: ReadonlyArray<string | null>): string =>
   parts.filter((part): part is string => Boolean(part)).join("  ·  ")
@@ -88,7 +89,7 @@ const sectionHeader = (title: string, meta?: string): HTMLElement => {
 
 const accountCard = (
   account: KhalaCodeDesktopFleetAccount,
-  onRemove: (accountRef: string) => void,
+  handlers: Handlers,
 ): HTMLElement => {
   const state = accountReadinessState(account.readiness)
   const card = el("article", "khala-fleet-account")
@@ -100,16 +101,19 @@ const accountCard = (
   top.append(el("strong", undefined, account.accountRef))
   top.append(el("span", "khala-fleet-provider", account.provider))
   identity.append(top)
-  identity.append(
-    el(
-      "span",
-      "khala-fleet-email",
-      account.email ?? "not signed in",
-    ),
-  )
+  identity.append(el("span", "khala-fleet-email", account.email ?? "not signed in"))
   card.append(identity)
 
-  card.append(badge(state, accountBadgeLabel(account.readiness)))
+  if (state === "ready") {
+    card.append(badge("ready", "Ready"))
+  } else {
+    const reconnect = el("button", "khala-fleet-reconnect", "Reconnect")
+    reconnect.type = "button"
+    reconnect.dataset.state = state
+    reconnect.title = `Reconnect ${account.accountRef}`
+    reconnect.addEventListener("click", () => handlers.onConnect(account.accountRef))
+    card.append(reconnect)
+  }
 
   const remove = el("button", "khala-fleet-delete", "✕")
   remove.type = "button"
@@ -118,8 +122,6 @@ const accountCard = (
   let armed = false
   let armTimer = 0
   remove.addEventListener("click", () => {
-    // Two-step confirm in-app (WKWebView has no window.confirm): first click arms,
-    // second click within 3s removes.
     if (!armed) {
       armed = true
       remove.textContent = "Remove?"
@@ -132,33 +134,17 @@ const accountCard = (
       return
     }
     window.clearTimeout(armTimer)
-    onRemove(account.accountRef)
+    handlers.onRemove(account.accountRef)
   })
   card.append(remove)
 
-  if (account.quotaState !== null && account.quotaState.length > 0) {
-    const hint = el(
-      "p",
-      "khala-fleet-account-hint",
-      `Quota: ${titleize(account.quotaState)}`,
-    )
-    card.append(hint)
-  } else if (state !== "ready") {
-    card.append(
-      el(
-        "p",
-        "khala-fleet-account-hint",
-        "Run `khala fleet connect` to reconnect this account.",
-      ),
-    )
-  }
   return card
 }
 
 const renderReady = (
   container: HTMLElement,
   data: KhalaCodeDesktopFleetStatus,
-  onRemove: (accountRef: string) => void,
+  handlers: Handlers,
 ): void => {
   const readyAccounts = data.accounts.filter(
     account => accountReadinessState(account.readiness) === "ready",
@@ -171,19 +157,17 @@ const renderReady = (
 
   // Pylon
   const pylonSection = el("section", "khala-fleet-section")
-  pylonSection.append(sectionHeader("Pylon", relativeTime(data.observedAt)))
+  pylonSection.append(sectionHeader("Pylon"))
   const pylonCard = el("article", "khala-fleet-pylon")
-  pylonCard.dataset.state = data.pylon.status === "unavailable" ? "stale" : "online"
+  const pylonState = data.pylon.status === "unavailable" ? "stale" : "online"
+  pylonCard.dataset.state = pylonState
   const pylonId = el("div", "khala-fleet-pylon-identity")
   pylonId.append(
     el("strong", undefined, data.pylon.pylonRef ?? "local Pylon"),
     el("span", "khala-fleet-pylon-message", data.pylon.message),
   )
   pylonCard.append(pylonId)
-  pylonCard.append(badge(
-    data.pylon.status === "unavailable" ? "stale" : "online",
-    titleize(data.pylon.status),
-  ))
+  pylonCard.append(badge(pylonState, titleize(data.pylon.status)))
   if (capacity !== null) {
     pylonCard.append(el("span", "khala-fleet-capacity", capacity))
   }
@@ -203,15 +187,11 @@ const renderReady = (
   )
   if (data.accounts.length === 0) {
     accountsSection.append(
-      el(
-        "p",
-        "khala-fleet-empty",
-        "No Codex accounts linked. Run `khala fleet connect` to add one.",
-      ),
+      el("p", "khala-fleet-empty", "No Codex accounts linked yet."),
     )
   } else {
     const list = el("div", "khala-fleet-account-list")
-    for (const account of data.accounts) list.append(accountCard(account, onRemove))
+    for (const account of data.accounts) list.append(accountCard(account, handlers))
     accountsSection.append(list)
   }
   container.append(accountsSection)
@@ -219,10 +199,7 @@ const renderReady = (
   // Active assignments
   const activeSection = el("section", "khala-fleet-section")
   activeSection.append(
-    sectionHeader(
-      "Active assignments",
-      `${data.activeAssignments.length} active`,
-    ),
+    sectionHeader("Active assignments", `${data.activeAssignments.length} active`),
   )
   if (data.activeAssignments.length === 0) {
     activeSection.append(
@@ -232,13 +209,11 @@ const renderReady = (
     const list = el("div", "khala-fleet-assignment-list")
     for (const marker of data.activeAssignments) {
       const row = el("article", "khala-fleet-assignment")
-      row.dataset.state = "active"
       const chips = el("div", "khala-fleet-chips")
       if (marker.issueRef !== null) chips.append(detailChip("issue", marker.issueRef))
       if (marker.assignmentRef !== null) {
         chips.append(detailChip("assignment", marker.assignmentRef))
       }
-      chips.append(detailChip("updated", relativeTime(marker.updatedAt)))
       row.append(chips)
       list.append(row)
     }
@@ -246,7 +221,6 @@ const renderReady = (
   }
   container.append(activeSection)
 
-  // Processes
   if (data.processes.length > 0) {
     const procSection = el("section", "khala-fleet-section")
     procSection.append(
@@ -261,93 +235,207 @@ const renderReady = (
   }
 }
 
+const renderConnecting = (
+  container: HTMLElement,
+  connect: ConnectView,
+  handlers: Handlers,
+): void => {
+  const section = el("section", "khala-fleet-connect")
+  section.append(el("h3", "khala-fleet-connect-title", `Connecting ${connect.accountRef}`))
+
+  if (connect.start === null) {
+    section.append(
+      el("p", "khala-fleet-empty", "Starting Codex device login…"),
+    )
+    container.append(section)
+    return
+  }
+
+  if (!connect.start.ok) {
+    section.append(
+      el(
+        "p",
+        "khala-fleet-error",
+        `Could not start device login: ${connect.start.error ?? "unknown error"}`,
+      ),
+    )
+  } else {
+    section.append(
+      el(
+        "p",
+        "khala-fleet-connect-hint",
+        "Your browser should open automatically. Authorize the login there — this updates when it completes.",
+      ),
+    )
+    if (connect.start.verificationUrl !== null) {
+      const urlRow = el("div", "khala-fleet-connect-row")
+      urlRow.append(el("span", "khala-fleet-chip-label", "url"))
+      const link = el("a", "khala-fleet-connect-url", connect.start.verificationUrl)
+      link.href = connect.start.verificationUrl
+      link.target = "_blank"
+      link.rel = "noreferrer"
+      urlRow.append(link)
+      section.append(urlRow)
+    }
+    if (connect.start.userCode !== null) {
+      const codeRow = el("div", "khala-fleet-connect-row")
+      codeRow.append(el("span", "khala-fleet-chip-label", "code"))
+      codeRow.append(el("code", "khala-fleet-connect-code", connect.start.userCode))
+      section.append(codeRow)
+    }
+    if (connect.start.verificationUrl === null && connect.start.userCode === null) {
+      section.append(
+        el(
+          "pre",
+          "khala-fleet-connect-output",
+          connect.start.output || "Waiting for the device-login prompt…",
+        ),
+      )
+    }
+    section.append(el("p", "khala-fleet-connect-status", "Waiting for authorization…"))
+  }
+
+  const close = el("button", "khala-fleet-refresh", "Back to fleet")
+  close.type = "button"
+  close.addEventListener("click", handlers.onRefresh)
+  section.append(close)
+  container.append(section)
+}
+
 const render = (
   container: HTMLElement,
   view: FleetView,
-  onRefresh: () => void,
-  onRemove: (accountRef: string) => void,
+  handlers: Handlers,
 ): void => {
   container.replaceChildren()
 
   const header = el("header", "khala-fleet-header")
   header.append(el("h2", "khala-fleet-title", "Fleet status"))
+  const actions = el("div", "khala-fleet-actions")
+  const connectBtn = el("button", "khala-fleet-refresh", "Connect account")
+  connectBtn.type = "button"
+  connectBtn.disabled = view.phase === "connecting"
+  connectBtn.addEventListener("click", () => {
+    // WKWebView has no window.prompt, so collect the name inline.
+    const input = el("input", "khala-fleet-connect-input")
+    input.type = "text"
+    input.placeholder = "codex-3"
+    const start = el("button", "khala-fleet-refresh", "Start")
+    start.type = "button"
+    const submit = (): void => {
+      const accountRef = input.value.trim()
+      if (accountRef.length > 0) handlers.onConnect(accountRef)
+    }
+    start.addEventListener("click", submit)
+    input.addEventListener("keydown", event => {
+      if (event.key === "Enter") submit()
+    })
+    actions.replaceChildren(input, start)
+    input.focus()
+  })
+  actions.append(connectBtn)
   const refresh = el("button", "khala-fleet-refresh", "Refresh")
   refresh.type = "button"
-  refresh.disabled = view.phase === "loading"
-  refresh.addEventListener("click", onRefresh)
-  header.append(refresh)
+  refresh.disabled = view.phase === "loading" || view.phase === "connecting"
+  refresh.addEventListener("click", handlers.onRefresh)
+  actions.append(refresh)
+  header.append(actions)
   container.append(header)
 
   const body = el("div", "khala-fleet-body")
   if (view.phase === "loading") {
     body.append(el("p", "khala-fleet-empty", "Inspecting Codex fleet…"))
   } else if (view.phase === "error") {
-    const error = el("p", "khala-fleet-error", `Could not load fleet status: ${view.message}`)
-    body.append(error)
+    body.append(
+      el("p", "khala-fleet-error", `Could not load fleet status: ${view.message}`),
+    )
+  } else if (view.phase === "connecting") {
+    renderConnecting(body, view.connect, handlers)
   } else {
-    renderReady(body, view.data, onRemove)
+    renderReady(body, view.data, handlers)
   }
   container.append(body)
 }
 
 export const mountFleetPanel = (
   container: HTMLElement,
-  options: Readonly<{
-    fetch: () => Promise<KhalaCodeDesktopFleetStatus>
-    removeAccount: (
-      accountRef: string,
-    ) => Promise<{ readonly ok: boolean; readonly error?: string }>
-  }>,
+  options: FleetPanelOptions,
 ): FleetPanelHandle => {
   let inFlight = false
   let lastData: KhalaCodeDesktopFleetStatus | null = null
+  let connectPoll = 0
 
   const setRefreshBusy = (busy: boolean): void => {
-    const button = container.querySelector<HTMLButtonElement>(".khala-fleet-refresh")
-    if (button === null) return
-    button.disabled = busy
-    button.textContent = busy ? "Refreshing…" : "Refresh"
+    const buttons = container.querySelectorAll<HTMLButtonElement>(".khala-fleet-refresh")
+    for (const button of buttons) {
+      if (button.textContent === "Refresh") {
+        button.disabled = busy
+        button.textContent = busy ? "Refreshing…" : "Refresh"
+      }
+    }
+  }
+
+  const handlers: Handlers = {
+    onRefresh: () => void refresh(),
+    onRemove: (accountRef: string) => onRemove(accountRef),
+    onConnect: (accountRef: string) => onConnect(accountRef),
   }
 
   const onRemove = (accountRef: string): void => {
-    // Optimistic: drop the row immediately so it goes away right away.
     container
       .querySelector(`[data-account-ref="${CSS.escape(accountRef)}"]`)
       ?.remove()
     void (async () => {
       const result = await options.removeAccount(accountRef)
       if (!result.ok) {
-        render(
-          container,
-          { phase: "error", message: result.error ?? "remove failed" },
-          () => void refresh(),
-          onRemove,
-        )
+        render(container, { phase: "error", message: result.error ?? "remove failed" }, handlers)
         return
       }
       await refresh()
     })()
   }
 
+  const onConnect = (accountRef: string): void => {
+    window.clearTimeout(connectPoll)
+    render(container, { phase: "connecting", connect: { accountRef, start: null } }, handlers)
+    void (async () => {
+      const start = await options.connectAccount(accountRef)
+      render(container, { phase: "connecting", connect: { accountRef, start } }, handlers)
+      if (!start.ok) return
+      const poll = async (): Promise<void> => {
+        try {
+          const data = await options.fetch()
+          lastData = data
+          const account = data.accounts.find(item => item.accountRef === accountRef)
+          if (account !== undefined && accountReadinessState(account.readiness) === "ready") {
+            render(container, { phase: "ready", data }, handlers)
+            return
+          }
+        } catch {
+          // keep polling
+        }
+        connectPoll = window.setTimeout(() => void poll(), 3000)
+      }
+      connectPoll = window.setTimeout(() => void poll(), 3000)
+    })()
+  }
+
   const refresh = async (): Promise<void> => {
     if (inFlight) return
     inFlight = true
-    // Only the first load shows the full-screen "Inspecting…" state. Later
-    // refreshes (and post-delete) keep the current panel and just mark the
-    // Refresh button busy, so the panel never flashes.
     if (lastData === null) {
-      render(container, { phase: "loading" }, () => void refresh(), onRemove)
+      render(container, { phase: "loading" }, handlers)
     } else {
       setRefreshBusy(true)
     }
     try {
       const data = await options.fetch()
       lastData = data
-      render(container, { phase: "ready", data }, () => void refresh(), onRemove)
+      render(container, { phase: "ready", data }, handlers)
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       if (lastData === null) {
-        render(container, { phase: "error", message }, () => void refresh(), onRemove)
+        render(container, { phase: "error", message }, handlers)
       } else {
         setRefreshBusy(false)
       }
@@ -356,6 +444,6 @@ export const mountFleetPanel = (
     }
   }
 
-  render(container, { phase: "loading" }, () => void refresh(), onRemove)
+  render(container, { phase: "loading" }, handlers)
   return { refresh }
 }
