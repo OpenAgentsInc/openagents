@@ -42,6 +42,7 @@ import {
   type KhalaCodeDesktopRPCSchema,
 } from "../shared/rpc"
 import { renderMessageBody } from "./transcript-render"
+import { mountFleetPanel } from "./fleet-status"
 import { mountKhalaCodeSidebar } from "./sidebar"
 import "./styles.css"
 
@@ -75,6 +76,10 @@ const previewRpc = (): DesktopRpc => ({
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["codexAccountsStatus"]>>
       >("codexAccountsStatus"),
+    codexFleetStatus: () =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["codexFleetStatus"]>>
+      >("codexFleetStatus"),
     codingStatus: () =>
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["codingStatus"]>>
@@ -1060,6 +1065,7 @@ const controls = {
   appInfo: () => rpc.request.appInfo(),
   attachments: () => composerState.doc.attachments.map(attachment => ({ ...attachment })),
   codexAccountsStatus: () => rpc.request.codexAccountsStatus(),
+  codexFleetStatus: () => rpc.request.codexFleetStatus(),
   codingStatus: () => rpc.request.codingStatus(),
   composerStatus: statusForComposer,
   consumeCodexRateLimitResetCredit: () =>
@@ -1115,10 +1121,31 @@ void controls.appInfo().catch(() => undefined)
 mountComposerHud()
 
 const sidebarRoot = document.getElementById("sidebar-root")
+const fleetPanelEl = document.getElementById("fleet-panel")
+const threadShell = document.querySelector<HTMLElement>(".khala-code-thread-shell")
+const composerDock = document.querySelector<HTMLElement>(".composer-dock")
+
+const fleetPanel =
+  fleetPanelEl === null
+    ? null
+    : mountFleetPanel(fleetPanelEl, { fetch: () => controls.codexFleetStatus() })
+
+const setActiveView = (value: string): void => {
+  const showFleet = value === "fleet"
+  if (fleetPanelEl !== null) fleetPanelEl.hidden = !showFleet
+  if (threadShell !== null) threadShell.hidden = showFleet
+  if (composerDock !== null) composerDock.hidden = showFleet
+  if (showFleet) {
+    void fleetPanel?.refresh()
+  } else if (value === "chat") {
+    requestAnimationFrame(focusComposerInput)
+  }
+}
+
 if (sidebarRoot !== null) {
   mountKhalaCodeSidebar(sidebarRoot, {
     selectedValue: "chat",
-    onActivate: () => {},
+    onActivate: value => setActiveView(value),
   })
 }
 render()

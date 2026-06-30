@@ -11,6 +11,7 @@ import {
   type KhalaCodeDesktopChatTurnEvent,
   type KhalaCodeDesktopCodexAccountsStatus,
   type KhalaCodeDesktopCodexRateLimitResetResult,
+  type KhalaCodeDesktopFleetStatus,
   type KhalaCodeDesktopRPCSchema,
   type KhalaCodeDesktopRuntimeStatus,
 } from "../shared/rpc.js"
@@ -22,7 +23,7 @@ import {
   khalaCodeDesktopToolCatalog,
   runKhalaCodeDesktopChatTurn,
 } from "./khala-chat-runtime.js"
-import { ensureLocalPylon } from "./khala-codex-fleet-tools.js"
+import { ensureLocalPylon, inspectCodexFleet } from "./khala-codex-fleet-tools.js"
 
 type ChatEnv = Readonly<Record<string, string | undefined>>
 type MaybePromise<T> = T | Promise<T>
@@ -131,6 +132,40 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
     },
     async codexAccountsStatus() {
       return codexAccountsStatus()
+    },
+    async codexFleetStatus(): Promise<KhalaCodeDesktopFleetStatus> {
+      const fleet = await inspectCodexFleet(
+        { includeProcesses: true, startPylon: false },
+        { env: input.env as NodeJS.ProcessEnv },
+      )
+      return {
+        ok: fleet.ensure.ok,
+        observedAt: fleet.observedAt,
+        pylon: {
+          status: fleet.ensure.status,
+          pylonRef: fleet.ensure.pylonRef,
+          message: fleet.ensure.message,
+        },
+        availableCodexAssignments: fleet.availableCodexAssignments,
+        maxCodexAssignments: fleet.maxCodexAssignments,
+        accounts: fleet.accounts.map(account => ({
+          accountRef: account.accountRef,
+          provider: account.provider,
+          readiness: account.readiness,
+          quotaState: account.quotaState,
+          accountKey: account.accountKey,
+        })),
+        activeAssignments: fleet.activeAssignments.map(marker => ({
+          assignmentRef: marker.assignmentRef,
+          issueRef: marker.issueRef,
+          updatedAt: marker.updatedAt,
+        })),
+        processes: fleet.processes.map(process => ({
+          pid: process.pid,
+          parentPid: process.parentPid,
+          elapsed: process.elapsed,
+        })),
+      }
     },
     async codingStatus() {
       return runtimeStatus({

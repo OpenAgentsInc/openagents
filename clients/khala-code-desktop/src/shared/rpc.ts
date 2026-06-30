@@ -129,11 +129,47 @@ export type KhalaCodeDesktopCodexRateLimitResetResult = {
   readonly error?: string
 }
 
+export type KhalaCodeDesktopFleetAccount = {
+  readonly accountRef: string
+  readonly provider: "codex"
+  readonly readiness: string
+  readonly quotaState: string | null
+  readonly accountKey: string | null
+}
+
+export type KhalaCodeDesktopFleetAssignment = {
+  readonly assignmentRef: string | null
+  readonly issueRef: string | null
+  readonly updatedAt: string | null
+}
+
+export type KhalaCodeDesktopFleetProcess = {
+  readonly pid: string
+  readonly parentPid: string
+  readonly elapsed: string
+}
+
+export type KhalaCodeDesktopFleetStatus = {
+  readonly ok: boolean
+  readonly observedAt: string
+  readonly pylon: {
+    readonly status: "online" | "started" | "unavailable"
+    readonly pylonRef: string | null
+    readonly message: string
+  }
+  readonly availableCodexAssignments: number | null
+  readonly maxCodexAssignments: number | null
+  readonly accounts: readonly KhalaCodeDesktopFleetAccount[]
+  readonly activeAssignments: readonly KhalaCodeDesktopFleetAssignment[]
+  readonly processes: readonly KhalaCodeDesktopFleetProcess[]
+}
+
 export type KhalaCodeDesktopRPCSchema = {
   requests: {
     appInfo(): Promise<KhalaCodeDesktopAppInfo>
     appleFmReadiness(): Promise<KhalaAppleFmReadiness>
     codexAccountsStatus(): Promise<KhalaCodeDesktopCodexAccountsStatus>
+    codexFleetStatus(): Promise<KhalaCodeDesktopFleetStatus>
     codingStatus(): Promise<KhalaCodeDesktopRuntimeStatus>
     consumeCodexRateLimitResetCredit(): Promise<KhalaCodeDesktopCodexRateLimitResetResult>
     onDeviceDeciderStatus(): Promise<OnDeviceDeciderSelection>

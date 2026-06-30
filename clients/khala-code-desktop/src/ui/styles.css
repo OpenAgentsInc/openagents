@@ -812,3 +812,195 @@ button {
   color: var(--oa-color-accent);
   box-shadow: inset 2px 0 0 var(--oa-color-accent);
 }
+
+/* Fleet status panel — occupies the chat content column when "Fleet status" is
+   selected in the sidebar. Themed from --oa-* tokens; data-state colored dots. */
+.khala-code-fleet {
+  grid-column: 2;
+  grid-row: 1 / 3;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 1.4rem 1.6rem 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.3rem;
+  color: var(--oa-color-component-text);
+}
+.khala-fleet-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.khala-fleet-title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+.khala-fleet-refresh {
+  font: inherit;
+  font-size: 0.78rem;
+  padding: 0.35rem 0.8rem;
+  border-radius: 0.4rem;
+  border: 1px solid var(--oa-color-component-border);
+  background: var(--oa-color-component-surface);
+  color: var(--oa-color-component-text);
+  cursor: pointer;
+}
+.khala-fleet-refresh:hover {
+  background: var(--oa-color-component-surface-active);
+}
+.khala-fleet-refresh:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.khala-fleet-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1.3rem;
+}
+.khala-fleet-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.khala-fleet-section-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.khala-fleet-section-title {
+  margin: 0;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--oa-color-component-text) 48%, transparent);
+}
+.khala-fleet-section-meta {
+  font-size: 0.74rem;
+  color: color-mix(in srgb, var(--oa-color-component-text) 55%, transparent);
+}
+.khala-fleet-empty {
+  margin: 0;
+  font-size: 0.82rem;
+  color: color-mix(in srgb, var(--oa-color-component-text) 55%, transparent);
+}
+.khala-fleet-error {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--oa-color-danger);
+}
+.khala-fleet-account-list,
+.khala-fleet-assignment-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.khala-fleet-account,
+.khala-fleet-pylon {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.6rem 0.75rem;
+  padding: 0.7rem 0.85rem;
+  border-radius: 0.55rem;
+  border: 1px solid var(--oa-color-component-border);
+  background: var(--oa-color-component-surface);
+}
+.khala-fleet-account-identity,
+.khala-fleet-pylon-identity {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+.khala-fleet-account-identity strong,
+.khala-fleet-pylon-identity strong {
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+.khala-fleet-provider {
+  font-size: 0.58rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--oa-color-accent);
+}
+.khala-fleet-pylon-message {
+  font-size: 0.72rem;
+  color: color-mix(in srgb, var(--oa-color-component-text) 55%, transparent);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.khala-fleet-account-hint {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 0.72rem;
+  color: color-mix(in srgb, var(--oa-color-component-text) 55%, transparent);
+}
+.khala-fleet-capacity {
+  grid-column: 1 / -1;
+  font-size: 0.74rem;
+  color: color-mix(in srgb, var(--oa-color-component-text) 65%, transparent);
+}
+.khala-fleet-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.25rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 500;
+  border: 1px solid var(--oa-color-component-border);
+  white-space: nowrap;
+}
+.khala-fleet-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 999px;
+  background: currentColor;
+  box-shadow: 0 0 6px currentColor;
+}
+.khala-fleet-badge[data-state="ready"],
+.khala-fleet-badge[data-state="online"] {
+  color: #4ade80;
+  border-color: rgba(74, 222, 128, 0.3);
+}
+.khala-fleet-badge[data-state="missing"],
+.khala-fleet-badge[data-state="stale"] {
+  color: #f87171;
+  border-color: rgba(248, 113, 113, 0.3);
+}
+.khala-fleet-badge[data-state="degraded"] {
+  color: #fbbf24;
+  border-color: rgba(251, 191, 36, 0.3);
+}
+.khala-fleet-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.khala-fleet-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.22rem 0.5rem;
+  border-radius: 0.35rem;
+  font-size: 0.72rem;
+  border: 1px solid var(--oa-color-component-border);
+  background: var(--oa-color-component-surface);
+}
+.khala-fleet-chip-label {
+  color: color-mix(in srgb, var(--oa-color-component-text) 50%, transparent);
+}
+.khala-fleet-chip-value {
+  font-variant-numeric: tabular-nums;
+}
+.khala-fleet-assignment {
+  padding: 0.6rem 0.7rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--oa-color-component-border);
+  background: var(--oa-color-component-surface);
+}
