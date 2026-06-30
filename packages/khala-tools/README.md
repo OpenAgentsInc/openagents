@@ -20,6 +20,20 @@ Tool results keep four lanes separate:
 - private local artifact refs
 - public-safe summaries
 
+## Deterministic Fleet Delegation
+
+`fleet-delegate-program.ts` defines the reusable `khala.fleet.delegate` program:
+`ensure_pylon -> advertise_capacity -> select_account -> prepare_work ->
+dispatch -> verify_closeout`. The core is adapter-driven and Effect-based, so
+Desktop, Pylon CLI, and future watchers can share the same deterministic control
+flow while supplying their own command/runtime adapters.
+
+Every module step records a typed precondition, result status, blocker code, and
+fallback module when a missing precondition can be satisfied deterministically.
+The initial GD-P core covers the known dead-end classes: cold `0/1` capacity,
+missing/revoked accounts, stale heartbeat, duplicate active assignment,
+`no_available_codex_capacity`, load gating, and failed closeout verification.
+
 Blueprint policy and Pylon/Probe runtime pieces can materialize scoped tool
 menus into this package, but local inspect/coding presets do not require a
 Blueprint registry to exist.

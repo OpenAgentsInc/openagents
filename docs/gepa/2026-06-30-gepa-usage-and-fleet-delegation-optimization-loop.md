@@ -215,6 +215,69 @@ bounded workspace, implements it, runs a verifier, and opens a PR. Running the
 full Codex-port backlog through the fleet this session exposed exactly the
 failure surface GEPA is built to optimize.
 
+### 5.0 The deterministic delegation program (the bundle GEPA optimizes)
+
+**Observed failure mode (2026-06-30).** From Khala Code Desktop, a one-line
+"delegate this issue for analysis" request through `codex_spawn` hard-failed:
+
+```
+codex_spawn_failed: No Pylon Codex assignment capacity is available right now
+(0/1 available). Wait for the running assignment to finish or retry.
+```
+
+Root cause: `codex_spawn` runs a *partial* sequence — `pylon_ensure` →
+`presence heartbeat` → ready-account selection → dispatch — but it **never
+advertises per-account capacity**. `provider go-online` *without*
+`OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY` reports the floor `max=1, available=0`;
+*with* it set to 5 the same Pylon reports `max=5, available=1`. So when the single
+default slot is busy, the tool errors instead of running the one module that would
+*raise* capacity. There is no fallback ladder: a missing precondition is a dead
+end, not a recoverable step. This is the same brittleness the whole session hit
+manually — the wrong env var capping a 10-wide fanout at 3, stale-heartbeat 409s,
+`duplicate_active_assignment`, a dead `status` account — each a missing or
+mis-ordered deterministic step.
+
+**The target: one prompt → a deterministic bundle that spins up all config and
+goes.** Delegation should be a single typed **program/signature**
+(`khala.fleet.delegate`) the user triggers with one prompt. The program is a
+**fixed, deterministic** sequence of modules, each with a precondition, an action,
+a typed result, and a **deterministic fallback** that runs the module which
+establishes the missing precondition:
+
+| Module | Precondition | Deterministic fallback if unmet |
+| --- | --- | --- |
+| `ensure_pylon` | a local Pylon is online | start/adopt it (`pylon_ensure`) |
+| `advertise_capacity` | ≥1 advertised free Codex slot | set `ACCOUNT_CONCURRENCY` for the ready-account count, fresh `presence heartbeat`, re-read capacity |
+| `select_account` | a ready account with a free slot | skip `credentials_missing`/`revoked`; fall to the next ready account; if none, surface "connect an account" |
+| `prepare_work` | a pinned workspace or fixture | use the fixture when no repo/commit/verify pins are given |
+| `dispatch` | capacity + account + work | on `stale_heartbeat` → re-heartbeat + retry once; on `duplicate_active_assignment` → back off one cycle; on `no_available_codex_capacity` → loop back to `advertise_capacity` (or wait, load-gated) |
+| `verify_closeout` | a closeout + exact token rows | re-poll; on `verify_failed` report the typed blocker, never claim success |
+
+The control flow above is **hand-written and deterministic** — not LLM-decided per
+call. That is the "more deterministic than now" the failure mode demands: the
+bundle cannot dead-end on a missing precondition, because every precondition has a
+module that satisfies it. `codex_spawn`'s `0/1` failure is simply the
+`advertise_capacity` module (and its fallback) being absent.
+
+**Where GEPA fits: it optimizes the program's *parameters*, not its control
+flow.** This is exactly the DSPy model — a deterministic Program/Signature whose
+textual/policy parameters are compiled by an optimizer. The deterministic skeleton
+stays fixed; GEPA tunes the soft knobs of each module:
+
+- `advertise_capacity`: how many slots to advertise given N ready accounts and
+  current machine load (the policy that avoids both `max=1` starvation and overload).
+- `select_account`: the account-ranking heuristic (named-ready before default,
+  skip missing/revoked, spread load).
+- `dispatch`: the retry/backoff policy and the objective-prompt template.
+- `verify_closeout`: the success/abort criteria.
+
+GEPA reads delegation traces — including this exact `0/1` failure as a training
+example with the feedback `no_available_codex_capacity → advertise_capacity module
+absent/insufficient` — and reflects to propose better parameter text. **The
+deterministic program makes delegation reliable today; the GEPA loop makes its
+parameters self-improving over time.** They are complementary: build the program
+first (so a single prompt just works), then optimize its parameters with GEPA.
+
 ### 5.1 What to optimize (the seed candidate — textual parameters)
 
 A `delegation policy` candidate dict, e.g. `khala.fleet.delegation.v1`:
@@ -258,6 +321,9 @@ A per-assignment scorer that returns **both a scalar and rich textual feedback**
 (GEPA's reflection_lm reads the feedback):
 
 - **Scalar** (Pareto dimensions, optimize jointly — GEPA is multi-objective):
+  - `single_prompt_success` (one user prompt spun up all config and produced a
+    result with no manual intervention — the §5.0 bundle ran end-to-end, including
+    `advertise_capacity` when capacity started at `0/1`): the headline reliability bit.
   - `merged_clean` (PR opened → verifier green → squash-merged with no human
     conflict help): the primary success bit.
   - `admitted_first_try` (no `duplicate_active_assignment` / stale-heartbeat
@@ -326,6 +392,7 @@ Mutalisk proposes, Blueprint admits, the watcher executes, traces feed back.
 
 | Phase | Deliverable | Acceptance |
 | --- | --- | --- |
+| **GD-P** (prerequisite) | **The deterministic delegation program** (§5.0): the `ensure_pylon → advertise_capacity → select_account → prepare_work → dispatch → verify_closeout` module pipeline with typed fallbacks, wired into `codex_spawn` / the bundle | core program exists in `packages/khala-tools/src/fleet-delegate-program.ts`; #7732 wires it into live desktop/Pylon surfaces so a single-prompt delegation succeeds when capacity starts at `0/1` |
 | GD-0 | Trace export: a public-safe `delegation_example` view joining assignment lifecycle + closeout + token rows + PR/merge outcome | a Mutalisk-readable dataset of past delegations, redacted |
 | GD-1 | Metric + feedback function (scalar Pareto dims + textual failure refs) | scores a known-good and known-bad delegation correctly; feedback names the real blocker refs |
 | GD-2 | `gepa.optimize` job in Mutalisk over the dataset; emit a `khala.fleet.delegation.v1` candidate to R2/D1 | a candidate artifact with measurable val-set gain over the seed objective/dispatch policy |
@@ -372,4 +439,5 @@ starting point. Each phase lands behind the existing evidence/receipt boundary.
 | GEPA feedback/ASI builder (`studybench-gepa-feedback.ts`) | built (template for the delegation metric) |
 | Candidate seam (`psionic.probe_gepa_candidate_manifest.v1`) | defined on both sides; must align Mutalisk `Candidate` to it |
 | Blueprint admission moat | built (signature-lookup + action-submission) |
-| Fleet-delegation GEPA loop (GD-0..GD-4) | not started — GD-0/GD-1 are the ASAP next step |
+| Deterministic delegation program (GD-P, §5.0) | core built in `@openagentsinc/khala-tools` as `khala.fleet.delegate`: typed module/precondition/blocker taxonomy plus tests for cold `0/1` capacity recovery, account selection, dispatch fallbacks, and closeout blockers; live surface wiring follows in #7732 |
+| Fleet-delegation GEPA loop (GD-0..GD-4) | not started — optimizes the GD-P program's parameters; GD-0/GD-1 follow GD-P |

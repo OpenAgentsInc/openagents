@@ -111,7 +111,7 @@ button {
   display: grid;
   min-height: 0;
   overflow: hidden;
-  padding: 0 14px;
+  padding: 0;
 }
 
 .message-list {
@@ -119,14 +119,15 @@ button {
   flex-direction: column;
   gap: 24px;
   width: 100%;
-  max-width: 768px;
+  max-width: none;
   height: 100%;
   min-height: 0;
-  margin: 0 auto;
+  margin: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 0 4px 32px;
+  padding: 0 14px 32px;
   scroll-padding-bottom: 32px;
+  scrollbar-gutter: stable;
   scrollbar-color: rgba(79, 208, 255, 0.38) transparent;
   -webkit-overflow-scrolling: touch;
 }
@@ -141,6 +142,8 @@ button {
   flex: 0 0 auto;
   gap: 8px;
   max-width: min(100%, 44rem);
+  margin-left: max(4px, calc((100% - 768px) / 2));
+  margin-right: auto;
   color: #f1efe8;
   text-shadow: 0 0 18px rgba(58, 123, 255, 0.2);
 }
@@ -149,6 +152,8 @@ button {
   align-self: flex-end;
   justify-self: end;
   max-width: min(82%, 34rem);
+  margin-left: auto;
+  margin-right: max(4px, calc((100% - 768px) / 2));
   justify-items: start;
 }
 
