@@ -296,6 +296,11 @@ class MemoryProofStore
         hasFinalTrace: false,
         hasLiveChunks: true,
         hasTokenUsage: false,
+        missingReadinessRefs: [
+          'status.pylon_codex.final_trace.pending',
+          'status.pylon_codex.token_usage.pending',
+          'status.pylon_codex.closeout.pending',
+        ],
         state: 'streaming_chunks',
       },
       generatedAt: input.nowIso,
@@ -1731,6 +1736,11 @@ describe('GET /api/pylon/codex/trace-status', () => {
       hasFinalTrace: false,
       hasLiveChunks: true,
       hasTokenUsage: false,
+      missingReadinessRefs: [
+        'status.pylon_codex.final_trace.pending',
+        'status.pylon_codex.token_usage.pending',
+        'status.pylon_codex.closeout.pending',
+      ],
       state: 'streaming_chunks',
     })
     expect(inProgress.rawEventChunks).toMatchObject({
@@ -1807,6 +1817,7 @@ describe('GET /api/pylon/codex/trace-status', () => {
       hasFinalTrace: true,
       hasLiveChunks: true,
       hasTokenUsage: true,
+      missingReadinessRefs: [],
       state: 'closed_out',
     })
     expect(complete.tokenUsage).toMatchObject({
