@@ -177,6 +177,9 @@ The implementation should land as a sequence:
 5. Khala desktop integration: replace the app-local chat box with the shared
    composer, keep typing available during streaming, restore focus after submit,
    and test autofocus/copy/paste/resize/attachments/Markdown/stop-retry.
+6. Final hardening: document the behavior contract, add the cross-surface test
+   matrix, gate composer-specific privacy fixtures, attach desktop/web smoke
+   evidence, and open explicit follow-up issues for deferred post-v1 work.
 
 ## Implementation Notes
 
@@ -199,6 +202,32 @@ The implementation should land as a sequence:
   public OpenAgents `/chat` Khala surface, replacing the app-local textarea
   shell while preserving autofocus, Enter-to-send, Markdown preview, expanded
   height, focus-after-submit, and the stateless in-memory prompt boundary.
+* 2026-06-30: Issue #7645 hardened the composer rollout with the acceptance
+  runbook in `docs/khala/2026-06-30-command-composer-acceptance-runbook.md`,
+  a deploy-gated composer privacy fixture guard, final desktop/web smoke
+  evidence, and explicit follow-up issues #7647, #7648, and #7649.
+
+## Confirmation And Deferrals
+
+| ADR confirmation | Status |
+| --- | --- |
+| Typed Effect Schema state, transactions, history, input rules, keymaps, and Markdown round-trip tests | Satisfied by `@openagentsinc/composer-state` and its test suite. |
+| Native textarea editing while borrowing ProseMirror model/transaction concepts | Satisfied by the shared `command-composer` AI Element and app integrations; platform copy/paste/select-all remain native. |
+| Shared DOM composer with attachments, large text, resize, preview, status, accessibility, and focus hooks | Satisfied by `packages/ui/src/ai-elements/command-composer.ts`, `command-composer.css`, and package tests. |
+| Khala Code desktop integration | Satisfied by `clients/khala-code-desktop`, including pending-turn editability, native edit menu accelerators, Markdown transcript rendering, attachment/large-paste state, and HUD projection wiring. |
+| OpenAgents web integration | Satisfied for the selected public `/chat` Khala surface. Other pre-existing app-local composers are not part of this v1 acceptance and should not be represented as v1 command-composer surfaces until migrated deliberately. |
+| three-effect HUD path | Satisfied for v1 consumption through Khala Code desktop's `createCommandComposerHud` projection and reduced-motion flag; automated visual-regression captures are deferred to #7649. |
+| No public projection of raw private prompt or file content | Satisfied for v1 artifacts by the new composer privacy fixture guard and the documented metadata-only attachment boundary. |
+| Product-promise records | No new record was added because this work hardens existing input surfaces and does not broaden public product claims. |
+
+Deferred follow-ups:
+
+* #7647: rich inline editing, contentEditable/ProseMirror-view evaluation, and
+  collaborative transaction rebasing.
+* #7648: real attachment upload/storage/scan lifecycle and public-safe privacy
+  receipts.
+* #7649: automated visual regression captures for desktop/web composer and
+  three-effect HUD geometry.
 
 ## Pros and Cons of the Options
 
