@@ -24,16 +24,21 @@ const styleToString = (style: Record<string, unknown>): string =>
 const attrsToString = (node: VNodeLike): string => {
   const attrs = node.data?.attrs ?? {}
   const props = node.data?.props ?? {}
-  const style = styleToString(node.data?.style ?? {})
+  const style = props.style ?? node.data?.style
+  const normalizedProps = {
+    ...props,
+    ...(style && typeof style === 'object'
+      ? { style: styleToString(style as Record<string, unknown>) }
+      : {}),
+  }
   const classes = Object.entries(node.data?.class ?? {})
     .filter(([, enabled]) => enabled)
     .map(([className]) => className)
     .join(' ')
   const pairs = [
     ...Object.entries(attrs),
-    ...Object.entries(props),
+    ...Object.entries(normalizedProps),
     ...(classes.length === 0 ? [] : [['class', classes] as const]),
-    ...(style.length === 0 ? [] : [['style', style] as const]),
   ]
 
   return pairs

@@ -31,6 +31,32 @@ export {
 } from "./feature-flags.js"
 
 export {
+  KhalaFleetDelegateBlockerCode,
+  KhalaFleetDelegateModuleError,
+  KhalaFleetDelegateModuleName,
+  KhalaFleetDelegatePrecondition,
+  KhalaFleetDelegateSignature,
+  KhalaFleetDelegateStepStatus,
+  khalaFleetDelegateBlockerRef,
+  prepareKhalaFleetDelegateWork,
+  runKhalaFleetDelegateProgram,
+  selectKhalaFleetDelegateAccount,
+  type KhalaFleetDelegateAccount,
+  type KhalaFleetDelegateAdvertiseResult,
+  type KhalaFleetDelegateBlockedResult,
+  type KhalaFleetDelegateCapacity,
+  type KhalaFleetDelegateCompletedResult,
+  type KhalaFleetDelegateDispatchResult,
+  type KhalaFleetDelegateEnsureResult,
+  type KhalaFleetDelegateInput,
+  type KhalaFleetDelegateModules,
+  type KhalaFleetDelegateProgramResult,
+  type KhalaFleetDelegateStep,
+  type KhalaFleetDelegateVerifyResult,
+  type KhalaFleetDelegateWork,
+} from "./fleet-delegate-program.js"
+
+export {
   createExternalMcpRegisteredTools,
   createKhalaPublicMcpToolRegistry,
   handleKhalaMcpRequest,
