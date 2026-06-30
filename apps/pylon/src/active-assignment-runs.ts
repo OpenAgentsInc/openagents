@@ -145,10 +145,24 @@ export async function activeCodingRunCounts(
   paths: PylonPaths,
   input: { now?: Date; ttlMs?: number } = {},
 ): Promise<PylonActiveCodingRunCounts> {
+  const runs = await activeCodingRuns(paths, input)
+  const counts: PylonActiveCodingRunCounts = {}
+
+  for (const run of runs) {
+    counts[run.service] = (counts[run.service] ?? 0) + 1
+  }
+
+  return counts
+}
+
+export async function activeCodingRuns(
+  paths: PylonPaths,
+  input: { now?: Date; ttlMs?: number } = {},
+): Promise<PylonActiveAssignmentRun[]> {
   await mkdir(paths.activeAssignmentRuns, { recursive: true })
   const now = input.now ?? new Date()
   const ttlMs = input.ttlMs ?? DEFAULT_ACTIVE_RUN_TTL_MS
-  const counts: PylonActiveCodingRunCounts = {}
+  const runs: PylonActiveAssignmentRun[] = []
 
   for (const filename of await readdir(paths.activeAssignmentRuns)) {
     if (!filename.endsWith(".json")) continue
@@ -163,10 +177,10 @@ export async function activeCodingRunCounts(
       await rm(path, { force: true })
       continue
     }
-    counts[run.service] = (counts[run.service] ?? 0) + 1
+    runs.push(run)
   }
 
-  return counts
+  return runs.sort((left, right) => left.startedAt.localeCompare(right.startedAt))
 }
 
 // #6354: per-account busy load from fresh local active runs, keyed by the
@@ -176,24 +190,10 @@ export async function activeCodingRunCountsByAccount(
   paths: PylonPaths,
   input: { now?: Date; ttlMs?: number } = {},
 ): Promise<PylonActiveCodingRunAccountCounts> {
-  await mkdir(paths.activeAssignmentRuns, { recursive: true })
-  const now = input.now ?? new Date()
-  const ttlMs = input.ttlMs ?? DEFAULT_ACTIVE_RUN_TTL_MS
+  const runs = await activeCodingRuns(paths, input)
   const counts: PylonActiveCodingRunAccountCounts = {}
 
-  for (const filename of await readdir(paths.activeAssignmentRuns)) {
-    if (!filename.endsWith(".json")) continue
-    const path = join(paths.activeAssignmentRuns, filename)
-    let run: PylonActiveAssignmentRun | null = null
-    try {
-      run = await readActiveRunFile(path)
-    } catch {
-      run = null
-    }
-    if (run === null || !activeRunIsFresh(run, now, ttlMs)) {
-      await rm(path, { force: true })
-      continue
-    }
+  for (const run of runs) {
     const accountKey =
       typeof run.accountRefHash === "string" && run.accountRefHash.trim() !== ""
         ? run.accountRefHash.trim()

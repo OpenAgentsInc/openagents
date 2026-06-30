@@ -138,6 +138,7 @@ export type AssignmentProgress = {
   elapsedMs?: number
   phase?: "runtime_active" | CodexAgentRuntimePhase
   tokensSoFar?: number
+  tokenCountKind?: "exact" | "estimated"
   lastProgressEvent?: AssignmentRunLifecycleEvent["event"] | string
 }
 
@@ -215,6 +216,7 @@ export type AssignmentRunLifecycleEvent = {
   elapsedMs?: number
   phase?: "runtime_active" | CodexAgentRuntimePhase
   tokensSoFar?: number
+  tokenCountKind?: "exact" | "estimated"
   lastProgressEvent?: AssignmentRunLifecycleEvent["event"] | string
   blockerRefs?: string[]
 }
@@ -1374,10 +1376,17 @@ export async function submitAssignmentProgress(
   options: AssignmentClientOptions,
 ) {
   const state = await ensurePylonLocalState(summary)
+  const body =
+    process.env.OPENAGENTS_PYLON_CODEX_PROGRESS_TOKEN_KIND === "1"
+      ? progress
+      : (() => {
+          const { tokenCountKind: _tokenCountKind, ...compatibleProgress } = progress
+          return compatibleProgress
+        })()
   const response = await postJson(
     options,
     `/api/pylons/${encodeURIComponent(state.identity.pylonRef)}/assignments/${encodeURIComponent(progress.leaseRef)}/progress`,
-    progress,
+    body,
     state,
   )
   return { progressRef: String(response.progressRef ?? stableRef("assignment.progress", `${progress.leaseRef}:${progress.sequence}`)) }
@@ -1679,6 +1688,8 @@ export async function runNoSpendAssignment(summary: BootstrapSummary, options: A
       ? Math.max(1, Math.floor(options.runtimeProgressIntervalMs))
       : 10_000
   let lastProgressEvent: AssignmentRunLifecycleEvent["event"] | undefined
+  let latestRuntimeTokensSoFar: number | undefined
+  let latestRuntimeTokenCountKind: "exact" | "estimated" | undefined
   const emitLifecycleEvent = async (
     event: Omit<AssignmentRunLifecycleEvent, "schema" | "observedAt">,
   ) => {
@@ -1737,6 +1748,8 @@ export async function runNoSpendAssignment(summary: BootstrapSummary, options: A
           observedAt: (options.now?.() ?? new Date()).toISOString(),
           elapsedMs,
           phase: "runtime_active",
+          ...(latestRuntimeTokensSoFar === undefined ? {} : { tokensSoFar: latestRuntimeTokensSoFar }),
+          ...(latestRuntimeTokenCountKind === undefined ? {} : { tokenCountKind: latestRuntimeTokenCountKind }),
           ...(lastProgressEvent === undefined ? {} : { lastProgressEvent }),
         },
         options,
@@ -1920,6 +1933,10 @@ export async function runNoSpendAssignment(summary: BootstrapSummary, options: A
           ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
           onCodexProgress: async (progress) => {
             const elapsedMs = Math.max(0, Date.now() - runtimeStartedAtMs)
+            if (progress.tokensSoFar !== undefined) {
+              latestRuntimeTokensSoFar = progress.tokensSoFar
+              latestRuntimeTokenCountKind = progress.tokenCountKind
+            }
             await emitLifecycleEvent({
               event: "assignment_run.runtime_progress",
               assignmentRef: lease.assignmentRef,
@@ -1927,7 +1944,8 @@ export async function runNoSpendAssignment(summary: BootstrapSummary, options: A
               leaseRef: lease.leaseRef,
               phase: progress.phase,
               elapsedMs,
-              ...(progress.tokensSoFar === undefined ? {} : { tokensSoFar: progress.tokensSoFar }),
+              ...(latestRuntimeTokensSoFar === undefined ? {} : { tokensSoFar: latestRuntimeTokensSoFar }),
+              ...(latestRuntimeTokenCountKind === undefined ? {} : { tokenCountKind: latestRuntimeTokenCountKind }),
               ...(progress.lastProgressEvent === undefined ? {} : { lastProgressEvent: progress.lastProgressEvent }),
             })
             await submitAssignmentProgress(
@@ -1944,7 +1962,8 @@ export async function runNoSpendAssignment(summary: BootstrapSummary, options: A
                 observedAt: (options.now?.() ?? new Date()).toISOString(),
                 elapsedMs,
                 phase: progress.phase,
-                ...(progress.tokensSoFar === undefined ? {} : { tokensSoFar: progress.tokensSoFar }),
+                ...(latestRuntimeTokensSoFar === undefined ? {} : { tokensSoFar: latestRuntimeTokensSoFar }),
+                ...(latestRuntimeTokenCountKind === undefined ? {} : { tokenCountKind: latestRuntimeTokenCountKind }),
                 ...(progress.lastProgressEvent === undefined ? {} : { lastProgressEvent: progress.lastProgressEvent }),
               },
               options,

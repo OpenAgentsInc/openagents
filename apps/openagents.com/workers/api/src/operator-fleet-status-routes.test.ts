@@ -80,6 +80,17 @@ const rowsForSql = (sql: string): ReadonlyArray<Record<string, unknown>> => {
     ]
   }
 
+  if (sql.includes('FROM pylon_codex_raw_event_chunks')) {
+    return [
+      {
+        assignment_ref: 'assignment.public.issue_6427',
+        latest_observed_at: '2026-06-27T18:40:40.000Z',
+        raw_chunk_bytes: 16000,
+        raw_chunk_count: 4,
+      },
+    ]
+  }
+
   if (sql.includes('FROM provider_accounts')) {
     return [
       {
@@ -226,7 +237,7 @@ describe('operator fleet status route', () => {
     expect(first.headers.get('x-openagents-cache')).toBe('miss')
     expect(second.headers.get('x-openagents-cache')).toBe('hit')
     expect(log.length).toBeGreaterThan(0)
-    expect(log.length).toBe(12)
+    expect(log.length).toBe(13)
     expect(cachedBody).toEqual(body)
     expect(body).toMatchObject({
       authority: {
@@ -265,6 +276,12 @@ describe('operator fleet status route', () => {
         totalReplicas: 2,
       },
       pace: {
+        activeAdjustedTokensPerMinute: 464,
+        activeSessionTokenEstimate: {
+          activeAssignmentCount: 1,
+          inFlightTokens: 4242,
+          inFlightTokensPerMinute: 404,
+        },
         liveBurnRateTokensPerMinute: 60,
         ownCapacityCodex: {
           assignmentsWindow: 2,

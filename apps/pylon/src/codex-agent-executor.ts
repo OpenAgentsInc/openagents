@@ -114,6 +114,7 @@ export type CodexAgentRunInput = {
   eventChunkReporter?: CodexEventChunkReporter
   eventReporter?: CodexTurnReporter
   networkAccessEnabled: boolean
+  progressTokenEstimates?: boolean
   sandboxMode: CodexAgentRuntimeSandboxMode
   timeoutMs: number
   model?: string
@@ -131,6 +132,7 @@ export type CodexAgentRuntimePhase =
 export type CodexAgentRuntimeProgress = {
   phase: CodexAgentRuntimePhase
   tokensSoFar?: number
+  tokenCountKind?: "exact" | "estimated"
   lastProgressEvent?: string
 }
 
@@ -687,6 +689,103 @@ function totalTokensFromUsage(usage: CodexTurnUsage | undefined): number | undef
   return usage.inputTokens + usage.outputTokens + (usage.reasoningOutputTokens ?? 0)
 }
 
+const ESTIMATED_CHARS_PER_TOKEN = 4
+
+function textTokenEstimate(text: string): number {
+  const trimmed = text.replace(/\s+/g, " ").trim()
+  if (trimmed.length === 0) return 0
+  return Math.max(1, Math.ceil(trimmed.length / ESTIMATED_CHARS_PER_TOKEN))
+}
+
+function usageRecordFromUnknown(value: unknown): Record<string, unknown> | null {
+  if (value === null || typeof value !== "object") return null
+  const record = value as Record<string, unknown>
+  if (record.total_token_usage !== null && typeof record.total_token_usage === "object") {
+    return record.total_token_usage as Record<string, unknown>
+  }
+  if (record.last_token_usage !== null && typeof record.last_token_usage === "object") {
+    return record.last_token_usage as Record<string, unknown>
+  }
+  if (
+    typeof record.input_tokens === "number" ||
+    typeof record.output_tokens === "number" ||
+    typeof record.reasoning_output_tokens === "number"
+  ) {
+    return record
+  }
+  return null
+}
+
+function tokenField(record: Record<string, unknown>, key: string): number {
+  const value = record[key]
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? Math.trunc(value)
+    : 0
+}
+
+export function liveTokenTotalFromCodexRawEvent(raw: unknown): number | undefined {
+  if (raw === null || typeof raw !== "object") return undefined
+  const event = raw as Record<string, unknown>
+  const payload = event.payload !== null && typeof event.payload === "object"
+    ? event.payload as Record<string, unknown>
+    : null
+  const info = payload?.info ?? event.info
+  const usage = usageRecordFromUnknown(info)
+  if (usage === null) return undefined
+  const total =
+    tokenField(usage, "input_tokens") +
+    tokenField(usage, "output_tokens") +
+    tokenField(usage, "reasoning_output_tokens")
+  return total > 0 ? total : undefined
+}
+
+function textFragmentsFromCodexRawEvent(raw: unknown): string[] {
+  if (raw === null || typeof raw !== "object") return []
+  const event = raw as Record<string, unknown>
+  const payload = event.payload !== null && typeof event.payload === "object"
+    ? event.payload as Record<string, unknown>
+    : null
+  const item = event.item !== null && typeof event.item === "object"
+    ? event.item as Record<string, unknown>
+    : null
+  const records = [payload, item].filter((record): record is Record<string, unknown> => record !== null)
+  const fragments: string[] = []
+
+  for (const record of records) {
+    for (const key of ["message", "last_agent_message", "text", "aggregated_output"]) {
+      const value = record[key]
+      if (typeof value === "string") fragments.push(value)
+    }
+    const summary = record.summary
+    if (typeof summary === "string") fragments.push(summary)
+    if (Array.isArray(summary)) {
+      for (const entry of summary) {
+        if (typeof entry === "string") fragments.push(entry)
+        if (entry !== null && typeof entry === "object") {
+          const text = (entry as Record<string, unknown>).text
+          if (typeof text === "string") fragments.push(text)
+        }
+      }
+    }
+    const content = record.content
+    if (Array.isArray(content)) {
+      for (const block of content) {
+        if (block !== null && typeof block === "object") {
+          const text = (block as Record<string, unknown>).text
+          if (typeof text === "string") fragments.push(text)
+        }
+      }
+    }
+  }
+
+  return fragments
+}
+
+export function estimatedTokenDeltaFromCodexRawEvent(raw: unknown): number {
+  return textFragmentsFromCodexRawEvent(raw)
+    .reduce((sum, text) => sum + textTokenEstimate(text), 0)
+}
+
 async function emitCodexProgress(
   reporter: CodexAgentRunInput["onProgress"],
   progress: CodexAgentRuntimeProgress,
@@ -872,6 +971,12 @@ export async function runWithCodexSdk(input: CodexAgentRunInput): Promise<CodexA
   let failed = false
   let activeTurnIndex = 0
   let tokensSoFar = 0
+  let liveExactTokensSoFar = 0
+  let liveEstimatedTokensSoFar = input.progressTokenEstimates === true
+    ? textTokenEstimate(input.instructions)
+    : 0
+  let lastTokenProgressReportAtMs = 0
+  let lastTokenProgressReportValue = 0
   let itemOrdinal = 0
   let currentTurnChunkIndex = 0
   let currentTurnItems: Array<CodexTurnReportItem> = []
@@ -899,6 +1004,31 @@ export async function runWithCodexSdk(input: CodexAgentRunInput): Promise<CodexA
     pendingChunkRawEvents = []
   }
 
+  const bestLiveTokensSoFar = () =>
+    Math.max(tokensSoFar, liveExactTokensSoFar, liveEstimatedTokensSoFar)
+
+  const liveTokenCountKind = (): "exact" | "estimated" =>
+    Math.max(tokensSoFar, liveExactTokensSoFar) >= liveEstimatedTokensSoFar
+      ? "exact"
+      : "estimated"
+
+  const maybeEmitLiveTokenProgress = async (lastProgressEvent: string | undefined) => {
+    const nextTokensSoFar = bestLiveTokensSoFar()
+    if (nextTokensSoFar <= 0) return
+    const nowMs = Date.now()
+    const enoughTime = nowMs - lastTokenProgressReportAtMs >= 5_000
+    const enoughTokens = Math.abs(nextTokensSoFar - lastTokenProgressReportValue) >= 500
+    if (!enoughTime && !enoughTokens) return
+    lastTokenProgressReportAtMs = nowMs
+    lastTokenProgressReportValue = nextTokensSoFar
+    await emitCodexProgress(input.onProgress, {
+      phase: "running",
+      tokensSoFar: nextTokensSoFar,
+      tokenCountKind: liveTokenCountKind(),
+      ...(lastProgressEvent === undefined ? {} : { lastProgressEvent }),
+    })
+  }
+
   try {
     const codex = new sdk.Codex({ env })
     const thread = codex.startThread({
@@ -915,6 +1045,13 @@ export async function runWithCodexSdk(input: CodexAgentRunInput): Promise<CodexA
       const rawEvent = raw !== null && typeof raw === "object" ? (raw as RawCodexThreadEvent) : undefined
       if (rawEvent !== undefined) {
         pendingChunkRawEvents.push(rawEvent)
+        const exactTotal = liveTokenTotalFromCodexRawEvent(rawEvent)
+        if (exactTotal !== undefined) {
+          liveExactTokensSoFar = Math.max(liveExactTokensSoFar, exactTotal)
+        } else if (input.progressTokenEstimates === true) {
+          liveEstimatedTokensSoFar += estimatedTokenDeltaFromCodexRawEvent(rawEvent)
+        }
+        await maybeEmitLiveTokenProgress(event.type)
       }
       if (rawEvent !== undefined && event.type !== "turn.started") {
         if (activeTurnIndex > 0) {
@@ -956,9 +1093,11 @@ export async function runWithCodexSdk(input: CodexAgentRunInput): Promise<CodexA
           usage,
         })
         tokensSoFar += totalTokensFromUsage(usage) ?? 0
+        liveExactTokensSoFar = Math.max(liveExactTokensSoFar, tokensSoFar)
         await emitCodexProgress(input.onProgress, {
           phase: "running",
           tokensSoFar,
+          tokenCountKind: "exact",
           lastProgressEvent: "turn.completed",
         })
         currentTurnItems = []
@@ -1387,6 +1526,7 @@ export async function executeCodexAgentAssignment(
       leaseRef: lease.leaseRef,
       networkAccessEnabled: true,
       pylonRef: state.identity.pylonRef,
+      progressTokenEstimates: guardedEnv.OPENAGENTS_PYLON_CODEX_PROGRESS_TOKEN_ESTIMATES === "1",
       runRef,
       sandboxMode: effectiveSandboxMode(task.sandboxMode, config.sandboxMode),
       timeoutMs,

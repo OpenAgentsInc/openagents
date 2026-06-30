@@ -411,6 +411,42 @@ curl -fsS "https://openagents.com/api/public/khala-tokens-served/history?tz=Amer
 curl -fsS https://openagents.com/api/public/khala-tokens-served/model-mix    # by family (watch pylon_codex)
 ```
 
+### Live APM, including active sessions
+
+Use the Pylon CLI when the dashboard number looks flat but Codex sessions are
+still running. This endpoint combines completed `token_usage_events` with active
+assignment progress and falls back to raw Codex event chunk byte length when the
+run has not posted exact usage yet:
+
+```sh
+PYLON_OPENAGENTS_BASE_URL=https://openagents.com \
+  bun apps/pylon/src/index.ts khala apm --base-url https://openagents.com --json \
+  | jq '{observedAt, counted, active}'
+```
+
+Expected fields:
+
+- `counted.todayTokens` = completed rows already in `token_usage_events`.
+- `counted.completedTokensPerMinute` = completed-token rolling window.
+- `active.inFlightTokens` = live active-session estimate before closeout.
+- `active.adjustedTokensPerMinute` = completed window plus active-session rate.
+- `active.serverAssignments[]` = live server assignments with `tokens`,
+  `tokensPerMinute`, `source`, and optional `tokenCountKind`.
+
+Operator flag for faster in-run visibility:
+
+```sh
+OPENAGENTS_PYLON_CODEX_PROGRESS_TOKEN_ESTIMATES=1 \
+  bun apps/pylon/src/index.ts assignment run-no-spend --base-url https://openagents.com
+```
+
+When this flag is on, the Codex runner posts `tokensSoFar` progress during the
+run instead of waiting for final turn closeout. After the Worker schema accepting
+`tokenCountKind` is deployed, also set
+`OPENAGENTS_PYLON_CODEX_PROGRESS_TOKEN_KIND=1` on trusted operators to preserve
+whether the progress count is `exact` or `estimated`. If that schema is not yet
+deployed, omit the kind flag; `tokensSoFar` still posts.
+
 ### Supervisor log signals (`~/.codex-supervisor/supervisor.log`)
 ```
 heartbeat ready_codex=N desired_slots=M           # auto-scale is computing slots

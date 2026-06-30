@@ -6,6 +6,7 @@ import { join } from "node:path"
 import {
   activeCodingRunCounts,
   activeCodingRunCountsByAccount,
+  activeCodingRuns,
   activeCodingRunCountsFromAssignmentLeases,
   maxActiveCodingRunCounts,
   registerActiveCodingRun,
@@ -51,6 +52,37 @@ describe("active assignment run counts", () => {
       await writeFile(join(dir, "bad.json"), "{")
 
       expect(await activeCodingRunCounts(paths)).toEqual({})
+    } finally {
+      await rm(dir, { force: true, recursive: true })
+    }
+  })
+
+  test("lists fresh local run details sorted by start time", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "pylon-active-runs-list-"))
+    const paths = { activeAssignmentRuns: dir } as never
+    try {
+      await registerActiveCodingRun(paths, {
+        assignmentRef: "assignment.public.khala_coding.b",
+        leaseRef: "lease.b",
+        now: new Date("2026-06-27T13:31:00.000Z"),
+        service: "codex",
+      })
+      await registerActiveCodingRun(paths, {
+        assignmentRef: "assignment.public.khala_coding.a",
+        leaseRef: "lease.a",
+        now: new Date("2026-06-27T13:30:00.000Z"),
+        service: "codex",
+      })
+
+      expect(
+        (await activeCodingRuns(paths, {
+          now: new Date("2026-06-27T13:31:30.000Z"),
+          ttlMs: 120_000,
+        })).map(run => run.assignmentRef),
+      ).toEqual([
+        "assignment.public.khala_coding.a",
+        "assignment.public.khala_coding.b",
+      ])
     } finally {
       await rm(dir, { force: true, recursive: true })
     }

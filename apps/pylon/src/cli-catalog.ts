@@ -405,13 +405,13 @@ export const PYLON_COMMAND_CATALOG: readonly PylonCommandEntry[] = [
   },
   {
     command: "khala",
-    summary: "Issue/resume/status/proof Khala requests and run roadmap burndown through linked Pylon capacity.",
+    summary: "Issue/resume/status/proof Khala requests, query live APM, and run roadmap burndown through linked Pylon capacity.",
     mutates: true,
     spends: false,
     needsNetwork: true,
     json: true,
     args: [
-      pos("request|resume|status|proof|burndown", "Subcommand."),
+      pos("request|resume|status|proof|apm|burndown", "Subcommand."),
       opt("--prompt", "request: prompt text for openagents/khala."),
       opt("--objective", "request: objective text alias for --prompt."),
       opt("--workflow", "request: typed workflow class claude_agent_task|cloud_coding_session|codex_agent_task."),

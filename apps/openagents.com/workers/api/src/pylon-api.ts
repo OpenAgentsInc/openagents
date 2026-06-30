@@ -529,6 +529,7 @@ export const PylonApiAssignmentProgressRequest = S.Struct({
   progressRefs: PublicSafeRefs,
   status: S.optionalKey(PylonEventStatus),
   tokensSoFar: S.optionalKey(NonNegativeInteger),
+  tokenCountKind: S.optionalKey(S.Literals(['exact', 'estimated'])),
 })
 export type PylonApiAssignmentProgressRequest =
   typeof PylonApiAssignmentProgressRequest.Type

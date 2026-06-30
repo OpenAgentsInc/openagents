@@ -364,4 +364,29 @@ describe("Khala spawn proof gate", () => {
     )
     expect(result.results[0]?.state).toBe("failed")
   })
+
+  test("classifies request public-safety guard failures explicitly", async () => {
+    const result = await runPylonKhalaSpawnPlan({
+      deps: {
+        readTokensServed: async () => 1000,
+        requestAssignment: async () => {
+          throw new Error("khala request prompt contains private, payment, credential, wallet, or raw material")
+        },
+      },
+      network: {
+        agentToken: "agent.public.test",
+        baseUrl: "https://openagents.example",
+      },
+      plan,
+      summary: {} as never,
+    })
+
+    expect(result.ok).toBe(false)
+    expect(result.blockerRefs).toContain(
+      "blocker.khala_spawn.request_public_safety_blocked",
+    )
+    expect(result.results[0]?.failure?.ref).toBe(
+      "failure.khala_spawn.request_public_safety_blocked",
+    )
+  })
 })

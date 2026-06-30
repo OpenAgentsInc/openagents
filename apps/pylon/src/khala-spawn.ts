@@ -457,6 +457,16 @@ function spawnFailureProjection(input: {
   phase: PylonKhalaSpawnWorkerState
 }) {
   const raw = input.error instanceof Error ? input.error.message : String(input.error)
+  if (/\bcontains private, payment, credential, wallet, or raw material\b/iu.test(raw)) {
+    return {
+      blockerRef: blocker(input.namespace, "request_public_safety_blocked"),
+      failure: {
+        message: "worker request was blocked by the public-safety guard",
+        phase: input.phase,
+        ref: failureRef("request_public_safety_blocked"),
+      },
+    }
+  }
   if (/\b(?:timed out|timeout|AbortError)\b/iu.test(raw)) {
     return {
       blockerRef: blocker(input.namespace, "slot_timeout"),

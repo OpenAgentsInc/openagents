@@ -42,13 +42,20 @@ type AssignmentRow = Readonly<{
   state: string
   created_at: string
   updated_at: string
-  lease_expires_at: string
+  lease_expires_at: string | null
 }>
 
 type AssignmentProgressRow = Readonly<{
   assignment_ref: string
   created_at: string
   event_body_json: string
+}>
+
+type RawEventChunkTokenEstimateRow = Readonly<{
+  assignment_ref: string
+  latest_observed_at: string | null
+  raw_chunk_bytes: number | null
+  raw_chunk_count: number | null
 }>
 
 type AlertRow = Readonly<{
@@ -131,6 +138,11 @@ const boundedInteger = (value: unknown): number | null => {
   return Number.isFinite(numberValue) ? Math.max(0, Math.trunc(numberValue)) : null
 }
 
+const boundedTokenCountKind = (value: unknown): 'exact' | 'estimated' | null =>
+  value === 'exact' || value === 'estimated' ? value : null
+
+const RAW_EVENT_BYTES_PER_TOKEN_ESTIMATE = 4
+
 const safeAll = async <T>(
   db: D1Database,
   sql: string,
@@ -185,6 +197,7 @@ const buildFleetStatusSnapshot = async (
     registrations,
     assignments,
     assignmentProgressRows,
+    rawEventChunkTokenEstimateRows,
     providerAccounts,
     latestAlert,
     latestServingRateAlert,
@@ -229,6 +242,20 @@ const buildFleetStatusSnapshot = async (
           ${assignmentOwnerClause}
         ORDER BY created_at DESC
         LIMIT 100`,
+      ...ownerBindings,
+    ),
+    safeAll<RawEventChunkTokenEstimateRow>(
+      db,
+      `SELECT assignment_ref,
+              COALESCE(SUM(byte_length), 0) AS raw_chunk_bytes,
+              COUNT(*) AS raw_chunk_count,
+              MAX(observed_at) AS latest_observed_at
+         FROM pylon_codex_raw_event_chunks
+        WHERE observed_at >= datetime('now', '-30 minutes')
+          ${assignmentOwnerClause}
+        GROUP BY assignment_ref
+        ORDER BY latest_observed_at DESC
+        LIMIT 200`,
       ...ownerBindings,
     ),
     safeAll<ProviderAccountRow>(
@@ -343,8 +370,12 @@ const buildFleetStatusSnapshot = async (
   const readySlots = fleetAccounts.reduce((sum, account) => sum + account.readySlots, 0)
   const busySlots = fleetAccounts.reduce((sum, account) => sum + account.busySlots, 0)
   const queuedSlots = fleetAccounts.reduce((sum, account) => sum + account.queuedSlots, 0)
+  const isActiveAssignmentState = (state: string): boolean =>
+    state === 'accepted' || state === 'running' || state === 'proof_submitted'
+  const leaseIsLive = (leaseExpiresAt: string | null): boolean =>
+    leaseExpiresAt !== null && millisBetween(nowIso, leaseExpiresAt) > 0
   const activeAssignments = assignments.filter(row =>
-    row.state === 'accepted' || row.state === 'running' || row.state === 'proof_submitted',
+    isActiveAssignmentState(row.state) && leaseIsLive(row.lease_expires_at),
   )
   const latestProgressByAssignment = new Map<string, {
     createdAt: string
@@ -352,6 +383,7 @@ const buildFleetStatusSnapshot = async (
     lastLog: string | null
     lastProgressEvent: string | null
     phase: string | null
+    tokenCountKind: 'exact' | 'estimated' | null
     tokensSoFar: number | null
   }>()
   for (const row of assignmentProgressRows) {
@@ -363,7 +395,23 @@ const buildFleetStatusSnapshot = async (
       lastLog: boundedString(body.message, 240),
       lastProgressEvent: boundedString(body.lastProgressEvent, 120),
       phase: boundedString(body.phase, 80),
+      tokenCountKind: boundedTokenCountKind(body.tokenCountKind),
       tokensSoFar: boundedInteger(body.tokensSoFar),
+    })
+  }
+  const rawChunkEstimateByAssignment = new Map<string, {
+    latestObservedAt: string | null
+    rawChunkBytes: number
+    rawChunkCount: number
+    tokenEstimate: number
+  }>()
+  for (const row of rawEventChunkTokenEstimateRows) {
+    const rawChunkBytes = Math.max(0, Math.trunc(row.raw_chunk_bytes ?? 0))
+    rawChunkEstimateByAssignment.set(row.assignment_ref, {
+      latestObservedAt: row.latest_observed_at,
+      rawChunkBytes,
+      rawChunkCount: Math.max(0, Math.trunc(row.raw_chunk_count ?? 0)),
+      tokenEstimate: Math.max(0, Math.round(rawChunkBytes / RAW_EVENT_BYTES_PER_TOKEN_ESTIMATE)),
     })
   }
   const accountLedger = providerAccounts.map(row => {
@@ -412,6 +460,54 @@ const buildFleetStatusSnapshot = async (
     0,
     Math.trunc(ownCapacityCodexWindow?.assignments_window ?? 0),
   )
+  const activeSessionTokenEstimates = activeAssignments.map(row => {
+    const progress = latestProgressByAssignment.get(row.assignment_ref)
+    const rawChunkEstimate = rawChunkEstimateByAssignment.get(row.assignment_ref)
+    const progressTokens = progress?.tokensSoFar ?? null
+    const progressTokenCountKind =
+      progressTokens === null ? null : progress?.tokenCountKind ?? 'estimated'
+    const rawChunkTokens = rawChunkEstimate?.tokenEstimate ?? null
+    const tokens =
+      progressTokenCountKind === 'exact'
+        ? progressTokens ?? 0
+        : Math.max(progressTokens ?? 0, rawChunkTokens ?? 0)
+    const elapsedMs = progress?.elapsedMs ?? millisBetween(row.created_at, nowIso)
+    const elapsedMinutes = Math.max(elapsedMs / 60_000, 1 / 6)
+    const tokensPerMinute = Math.round(tokens / elapsedMinutes)
+    const tokenCountKind =
+      progressTokenCountKind === 'exact'
+        ? 'exact'
+        : tokens > 0
+          ? 'estimated'
+          : null
+    const source =
+      progressTokenCountKind === 'exact'
+        ? 'assignment_progress.tokensSoFar'
+        : rawChunkTokens !== null && rawChunkTokens >= (progressTokens ?? 0)
+          ? 'pylon_codex_raw_event_chunks.byte_length'
+          : progressTokens !== null
+            ? 'assignment_progress.tokensSoFar'
+            : rawChunkEstimate === undefined
+              ? 'unavailable'
+              : 'pylon_codex_raw_event_chunks.byte_length'
+    return {
+      assignmentRef: row.assignment_ref,
+      elapsedMs,
+      rawChunkBytes: rawChunkEstimate?.rawChunkBytes ?? 0,
+      rawChunkCount: rawChunkEstimate?.rawChunkCount ?? 0,
+      rawChunkObservedAt: rawChunkEstimate?.latestObservedAt ?? null,
+      source,
+      tokenCountKind,
+      tokens,
+      tokensPerMinute,
+    }
+  })
+  const inFlightTokenEstimate = activeSessionTokenEstimates
+    .reduce((sum, assignment) => sum + assignment.tokens, 0)
+  const inFlightTokensPerMinuteEstimate = activeSessionTokenEstimates
+    .reduce((sum, assignment) => sum + assignment.tokensPerMinute, 0)
+  const activeAdjustedTokensPerMinute =
+    burnRateTokensPerMinute + inFlightTokensPerMinuteEstimate
   const targetFloor = yesterdayTokens * 4
   const paceToFloor =
     targetFloor === 0 ? 'no_floor' : todayTokens >= targetFloor ? 'ahead' : 'behind'
@@ -454,6 +550,23 @@ const buildFleetStatusSnapshot = async (
       settlementMutationAllowed: false,
     },
     pace: {
+      activeAdjustedTokensPerMinute,
+      activeSessionTokenEstimate: {
+        activeAssignmentCount: activeSessionTokenEstimates.length,
+        assignments: activeSessionTokenEstimates,
+        inFlightTokens: inFlightTokenEstimate,
+        inFlightTokensPerMinute: inFlightTokensPerMinuteEstimate,
+        method:
+          'completed token_usage_events window plus active assignment progress tokensSoFar, falling back to raw event chunk byte_length / 4',
+        caveatRefs: activeSessionTokenEstimates.some(assignment => assignment.source !== 'assignment_progress.tokensSoFar')
+          ? ['caveat.public.operator_fleet_status.active_session_tokens_estimated']
+          : [],
+        sourceRefs: [
+          'd1:token_usage_events',
+          'd1:pylon_api_events.assignment_progress',
+          'd1:pylon_codex_raw_event_chunks.byte_length',
+        ],
+      },
       liveBurnRateTokensPerMinute: burnRateTokensPerMinute,
       paceToFloor,
       todayTokens,
@@ -475,7 +588,7 @@ const buildFleetStatusSnapshot = async (
       busySlots,
       queuedSlots,
       spread: fleetAccounts,
-      activeAssignments: assignments.map(row => {
+      activeAssignments: activeAssignments.map(row => {
         const progress = latestProgressByAssignment.get(row.assignment_ref)
         const fallbackPhase =
           row.state === 'proof_submitted'
@@ -499,11 +612,12 @@ const buildFleetStatusSnapshot = async (
             progress?.createdAt === undefined
               ? null
               : millisBetween(progress.createdAt, nowIso),
+          tokenCountKind: progress?.tokenCountKind ?? null,
           updatedAt: row.updated_at,
           leaseExpiresAt: row.lease_expires_at,
         }
       }),
-      inFlightAssignments: assignments.map(row => ({
+      inFlightAssignments: activeAssignments.map(row => ({
         assignmentRef: row.assignment_ref,
         pylonRef: row.pylon_ref,
         jobKind: row.job_kind,

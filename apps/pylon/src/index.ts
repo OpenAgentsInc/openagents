@@ -199,6 +199,7 @@ import { assertPublicProjectionSafe, ensurePylonLocalState, loadOrCreatePresence
 import {
   activeCodingRunCounts,
   activeCodingRunCountsByAccount,
+  activeCodingRuns,
   activeCodingRunCountsFromAssignmentLeases,
   maxActiveCodingRunCounts,
   type PylonActiveCodingRunCounts,
@@ -2121,6 +2122,121 @@ function positiveIntegerOption(options: Record<string, string | true>, key: stri
   return parsed
 }
 
+const numberFromRecord = (record: Record<string, unknown>, key: string): number => {
+  const value = record[key]
+  return typeof value === "number" && Number.isFinite(value) ? Math.max(0, Math.trunc(value)) : 0
+}
+
+const arrayFromRecord = (record: Record<string, unknown>, key: string): ReadonlyArray<unknown> => {
+  const value = record[key]
+  return Array.isArray(value) ? value : []
+}
+
+async function collectKhalaApmProjection(input: {
+  agentToken: string
+  baseUrl: string
+  state: PylonLocalState
+}) {
+  const observedAt = new Date().toISOString()
+  const response = await fetch(new URL("/api/operator/fleet/state", input.baseUrl), {
+    headers: {
+      authorization: `Bearer ${input.agentToken}`,
+      accept: "application/json",
+    },
+  })
+  if (!response.ok) {
+    throw new Error(`khala apm query failed (${response.status})`)
+  }
+  const snapshot = await response.json() as Record<string, unknown>
+  const pace = snapshot.pace !== null && typeof snapshot.pace === "object"
+    ? snapshot.pace as Record<string, unknown>
+    : {}
+  const fleet = snapshot.fleet !== null && typeof snapshot.fleet === "object"
+    ? snapshot.fleet as Record<string, unknown>
+    : {}
+  const activeSessionTokenEstimate =
+    pace.activeSessionTokenEstimate !== null && typeof pace.activeSessionTokenEstimate === "object"
+      ? pace.activeSessionTokenEstimate as Record<string, unknown>
+      : {}
+  const derivedServerAssignments = arrayFromRecord(fleet, "activeAssignments")
+    .filter((assignment): assignment is Record<string, unknown> =>
+      assignment !== null && typeof assignment === "object"
+    )
+    .map(assignment => {
+      const tokens = numberFromRecord(assignment, "tokensSoFar")
+      const elapsedMs = numberFromRecord(assignment, "elapsedMs")
+      const elapsedMinutes = Math.max(elapsedMs / 60_000, 1 / 6)
+      return {
+        assignmentRef: typeof assignment.assignmentRef === "string" ? assignment.assignmentRef : null,
+        elapsedMs,
+        source: tokens > 0 ? "fleet.activeAssignments.tokensSoFar" : "unavailable",
+        tokenCountKind: typeof assignment.tokenCountKind === "string" ? assignment.tokenCountKind : null,
+        tokens,
+        tokensPerMinute: Math.round(tokens / elapsedMinutes),
+      }
+    })
+  const projectedServerAssignments = arrayFromRecord(activeSessionTokenEstimate, "assignments")
+  const serverAssignments = projectedServerAssignments.length > 0
+    ? projectedServerAssignments
+    : derivedServerAssignments
+  const localRuns = await activeCodingRuns(input.state.paths)
+  const localCodexRuns = localRuns.filter(run => run.service === "codex")
+  const completedTokensPerMinute = numberFromRecord(pace, "liveBurnRateTokensPerMinute")
+  const derivedInFlightTokens = derivedServerAssignments
+    .reduce((sum, assignment) => sum + assignment.tokens, 0)
+  const derivedInFlightTokensPerMinute = derivedServerAssignments
+    .reduce((sum, assignment) => sum + assignment.tokensPerMinute, 0)
+  const inFlightTokens = numberFromRecord(activeSessionTokenEstimate, "inFlightTokens") || derivedInFlightTokens
+  const inFlightTokensPerMinute =
+    numberFromRecord(activeSessionTokenEstimate, "inFlightTokensPerMinute") ||
+    derivedInFlightTokensPerMinute
+  const activeAdjustedTokensPerMinute =
+    numberFromRecord(pace, "activeAdjustedTokensPerMinute") ||
+    completedTokensPerMinute + inFlightTokensPerMinute
+  const todayTokens = numberFromRecord(pace, "todayTokens")
+  const text = [
+    `Khala APM: ${activeAdjustedTokensPerMinute.toLocaleString()} active-adjusted tokens/min`,
+    `completed-window: ${completedTokensPerMinute.toLocaleString()} tokens/min`,
+    `in-flight: ${inFlightTokens.toLocaleString()} tokens across ${serverAssignments.length} server assignment(s), ${localCodexRuns.length} fresh local Codex run(s)`,
+    `today: ${todayTokens.toLocaleString()} counted tokens`,
+  ].join("\n")
+
+  return {
+    schema: "openagents.pylon.khala_apm.v0.1",
+    observedAt,
+    baseUrl: input.baseUrl,
+    pylonRef: input.state.identity.pylonRef,
+    counted: {
+      todayTokens,
+      completedTokensPerMinute,
+      sourceRefs: ["d1:token_usage_events"],
+    },
+    active: {
+      adjustedTokensPerMinute: activeAdjustedTokensPerMinute,
+      inFlightTokens,
+      inFlightTokensPerMinute,
+      localCodexRunCount: localCodexRuns.length,
+      serverAssignmentCount: serverAssignments.length,
+      serverAssignments,
+      localRuns: localCodexRuns.map(run => ({
+        assignmentRef: run.assignmentRef,
+        accountRefHash: run.accountRefHash ?? null,
+        leaseRef: run.leaseRef,
+        refreshedAt: run.refreshedAt,
+        runRef: run.runRef,
+        startedAt: run.startedAt,
+      })),
+      caveatRefs: arrayFromRecord(activeSessionTokenEstimate, "caveatRefs"),
+      method: typeof activeSessionTokenEstimate.method === "string"
+        ? activeSessionTokenEstimate.method
+        : "completed token window plus active assignment token projection",
+      sourceRefs: arrayFromRecord(activeSessionTokenEstimate, "sourceRefs"),
+    },
+    rawSnapshot: snapshot,
+    text,
+  }
+}
+
 type AssignmentLeaseNetworkOptions = {
   agentToken?: string
   baseUrl: string
@@ -3997,6 +4113,17 @@ async function main() {
           ? payload.text
           : JSON.stringify(payload, null, 2)
         process.stdout.write(`${text}\n`)
+      }
+
+      if (command === "apm") {
+        const state = await ensurePylonLocalState(summary)
+        const result = await collectKhalaApmProjection({
+          agentToken: resolvedAgentToken?.token ?? "",
+          baseUrl,
+          state,
+        })
+        emit(result)
+        return
       }
 
       if (command === "spawn") {
