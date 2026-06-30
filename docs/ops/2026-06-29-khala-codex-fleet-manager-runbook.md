@@ -607,6 +607,18 @@ gate `bun test src/khala-delegation-gepa-feedback.test.ts` covers a clean merged
 delegation and a bad `0/1` capacity dead-end with duplicate assignment,
 stale-heartbeat, verify-failed, vacuous-PR, and conflict feedback refs.
 
+GD-3 now admits a Mutalisk `khala.fleet.delegation` candidate only as a gated
+Action Submission proposal. The Worker module
+`apps/openagents.com/workers/api/src/probe-gepa-standing-optimization-loop.ts`
+requires admissible standing-loop candidate artifacts plus Blueprint
+signature-lookup refs for the Khala delegation program signature, program type,
+module version, release gates, evidence requirements, and tool scopes. The
+resulting proposal is always `approvalRequired: true`, `proposalOnly: true`,
+`programRunAuthorityBoundary: "evidence_only"`, `directExecution: false`, and
+`directProgramRunExecutionAllowed: false`; live promotion, runtime promotion,
+direct mutation, and incomplete signature lookup block admission instead of
+building a proposal.
+
 ## Current Troubleshooting Cheatsheet
 
 ### `codex_fleet_status` Says `0/N Available`
