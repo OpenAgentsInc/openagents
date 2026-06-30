@@ -47,6 +47,17 @@ const envPath = (
 const isMacAppBundleCwd = (path: string): boolean =>
   /\/[^/]+\.app\/Contents\/MacOS\/?$/.test(path)
 
+// Launched via `khala`, INIT_CWD/PWD point at the desktop package
+// (clients/khala-code-desktop) — the app's own source, never a useful workspace
+// for the owner's tools. Treat it like the app bundle and fall through to the
+// real workspace (KHALA_CODE_DESKTOP_WORKSPACE, exported by the launcher, or
+// ~/work).
+const isDesktopPackageCwd = (path: string): boolean =>
+  /\/clients\/khala-code-desktop\/?$/.test(path)
+
+const isNonWorkspaceCwd = (path: string): boolean =>
+  isMacAppBundleCwd(path) || isDesktopPackageCwd(path)
+
 const resolveToolWorkingDirectory = (
   env: Readonly<Record<string, string | undefined>>,
 ): string => {
@@ -55,11 +66,11 @@ const resolveToolWorkingDirectory = (
 
   for (const key of ["INIT_CWD", "PWD"]) {
     const candidate = envPath(env, key)
-    if (candidate !== undefined && !isMacAppBundleCwd(candidate)) return candidate
+    if (candidate !== undefined && !isNonWorkspaceCwd(candidate)) return candidate
   }
 
   const cwd = process.cwd()
-  if (!isMacAppBundleCwd(cwd)) return cwd
+  if (!isNonWorkspaceCwd(cwd)) return cwd
 
   const home = envPath(env, "HOME")
   if (home !== undefined) {
