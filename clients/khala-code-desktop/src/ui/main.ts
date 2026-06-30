@@ -1157,9 +1157,9 @@ const setActiveView = (value: string): void => {
   if (fleetPanelEl !== null) fleetPanelEl.hidden = !showFleet
   if (threadShell !== null) threadShell.hidden = showFleet
   if (composerDock !== null) composerDock.hidden = showFleet
-  if (showFleet) {
-    void fleetPanel?.refresh()
-  } else if (value === "chat") {
+  // setVisible starts/stops the live 5s poll so the panel updates on its own.
+  fleetPanel?.setVisible(showFleet)
+  if (!showFleet && value === "chat") {
     requestAnimationFrame(focusComposerInput)
   }
 }

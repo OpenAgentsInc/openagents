@@ -367,7 +367,8 @@ button {
 
 .tool-card-output {
   margin: 0;
-  overflow-y: visible;
+  max-height: 7rem;
+  overflow-y: auto;
   overflow-x: hidden;
   padding: 9px 10px 10px;
   color: #c6d5e6;
@@ -1137,4 +1138,21 @@ button {
   margin: 0;
   font-size: 0.78rem;
   color: color-mix(in srgb, var(--oa-color-component-text) 60%, transparent);
+}
+
+/* Tool cards: compact auto-scrolling live feed; click the header to expand. */
+.tool-card-header--toggle {
+  cursor: pointer;
+}
+.tool-card-chevron::before {
+  content: "\25B8";
+  display: inline-block;
+  transition: transform 120ms ease;
+  color: color-mix(in srgb, var(--oa-color-component-text) 50%, transparent);
+}
+.tool-card[data-expanded="true"] .tool-card-chevron::before {
+  transform: rotate(90deg);
+}
+.tool-card[data-expanded="true"] .tool-card-output {
+  max-height: 32rem;
 }

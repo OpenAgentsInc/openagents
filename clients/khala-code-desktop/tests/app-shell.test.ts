@@ -193,9 +193,8 @@ describe("khala code desktop app shell", () => {
     expect(main).toContain("setTranscriptScrollTop(previousScrollTop)")
     expect(main).toContain("proxyTranscriptWheel")
     expect(main).toContain("window.addEventListener(\"wheel\", proxyTranscriptWheel, { passive: false })")
-    expect(css).toContain("overflow-y: visible")
-    expect(css).not.toContain("max-height: 320px")
-    expect(css).not.toContain("max-height: 320px;\n  overflow-y: auto")
+    expect(css).toContain(".tool-card-output")
+    expect(css).toContain("max-height: 7rem")
   })
 
   test("shows a Thinking shimmer until the first streamed response event", async () => {
@@ -324,9 +323,10 @@ describe("khala code desktop app shell", () => {
 
     expect(css).toContain(".tool-card-output")
     expect(css).toContain("overflow-x: hidden")
-    expect(css).toContain("overflow-y: visible")
+    expect(css).toContain("overflow-y: auto")
     expect(css).toContain("overflow-wrap: anywhere")
     expect(css).toContain("white-space: pre-wrap")
+    expect(css).toContain('[data-expanded="true"] .tool-card-output')
   })
 
   test("installs native edit menu accelerators for WebKit text editing", async () => {

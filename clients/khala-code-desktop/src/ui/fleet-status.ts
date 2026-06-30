@@ -11,6 +11,7 @@ import type {
 
 export type FleetPanelHandle = Readonly<{
   refresh: () => Promise<void>
+  setVisible: (visible: boolean) => void
 }>
 
 export type FleetPanelOptions = Readonly<{
@@ -355,6 +356,9 @@ export const mountFleetPanel = (
   let inFlight = false
   let lastData: KhalaCodeDesktopFleetStatus | null = null
   let connectPoll = 0
+  let connecting = false
+  let visible = false
+  let pollTimer = 0
 
   const setRefreshBusy = (busy: boolean): void => {
     const buttons = container.querySelectorAll<HTMLButtonElement>(".khala-fleet-refresh")
@@ -367,7 +371,10 @@ export const mountFleetPanel = (
   }
 
   const handlers: Handlers = {
-    onRefresh: () => void refresh(),
+    onRefresh: () => {
+      connecting = false
+      void refresh()
+    },
     onRemove: (accountRef: string) => onRemove(accountRef),
     onConnect: (accountRef: string) => onConnect(accountRef),
     onOpenUrl: (url: string) => void options.openExternal(url),
@@ -389,6 +396,7 @@ export const mountFleetPanel = (
 
   const onConnect = (accountRef: string): void => {
     window.clearTimeout(connectPoll)
+    connecting = true
     render(container, { phase: "connecting", connect: { accountRef, start: null } }, handlers)
     void (async () => {
       const start = await options.connectAccount(accountRef)
@@ -400,6 +408,7 @@ export const mountFleetPanel = (
           lastData = data
           const account = data.accounts.find(item => item.accountRef === accountRef)
           if (account !== undefined && accountReadinessState(account.readiness) === "ready") {
+            connecting = false
             render(container, { phase: "ready", data }, handlers)
             return
           }
@@ -436,6 +445,18 @@ export const mountFleetPanel = (
     }
   }
 
+  const setVisible = (next: boolean): void => {
+    visible = next
+    window.clearInterval(pollTimer)
+    if (!next) return
+    void refresh()
+    // Live updates: poll while the panel is visible (skipping in-flight loads and
+    // active connect flows so it never disrupts them).
+    pollTimer = window.setInterval(() => {
+      if (visible && !connecting && !inFlight) void refresh()
+    }, 5000)
+  }
+
   render(container, { phase: "loading" }, handlers)
-  return { refresh }
+  return { refresh, setVisible }
 }

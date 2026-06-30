@@ -422,11 +422,25 @@ const toolTranscriptElement = (text: string): HTMLElement => {
   root.append(header)
 
   if (parts.output.trim().length > 0) {
+    const chevron = document.createElement("span")
+    chevron.className = "tool-card-chevron"
+    chevron.setAttribute("aria-hidden", "true")
+    header.append(chevron)
+    header.classList.add("tool-card-header--toggle")
+    header.setAttribute("role", "button")
+    header.title = "Click to expand"
+    header.addEventListener("click", () => {
+      root.dataset.expanded = root.dataset.expanded === "true" ? "false" : "true"
+    })
+
     const pre = document.createElement("pre")
     pre.className = "tool-card-output"
     pre.textContent = parts.output
-    pre.title = parts.output
     root.append(pre)
+    // Live feed: keep the latest line in view while the box is compact.
+    requestAnimationFrame(() => {
+      if (root.dataset.expanded !== "true") pre.scrollTop = pre.scrollHeight
+    })
   }
 
   return root
