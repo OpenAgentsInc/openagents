@@ -69,35 +69,20 @@ const resolveToolWorkingDirectory = (
   return cwd
 }
 
+// The webview is a Vite build under ./dist (index.html + assets/*, with fonts
+// and scene assets self-contained). The browser preview server mirrors that
+// layout, falling back to the packaged view directory for release builds.
 const previewAssetPaths = (pathname: string): readonly string[] => {
   const clean = pathname === "/" ? "/index.html" : pathname
   if (clean === "/index.html") {
     return [
-      resolve(process.cwd(), "src/ui/index.html"),
+      resolve(process.cwd(), "dist/index.html"),
       packagedViewPath("index.html"),
-    ]
-  }
-  if (clean === "/main.js") {
-    return [
-      resolve(process.cwd(), "resources/ui/main.js"),
-      packagedViewPath("main.js"),
-    ]
-  }
-  if (clean === "/main.css") {
-    return [
-      resolve(process.cwd(), "resources/ui/main.css"),
-      packagedViewPath("main.css"),
-    ]
-  }
-  if (clean.startsWith("/fonts/")) {
-    return [
-      resolve(process.cwd(), "src/ui", clean.slice(1)),
-      packagedViewPath(clean.slice(1)),
     ]
   }
   const asset = clean.replace(/^\/+/, "")
   return [
-    resolve(process.cwd(), "resources/ui", asset),
+    resolve(process.cwd(), "dist", asset),
     packagedViewPath(asset),
   ]
 }
@@ -239,12 +224,24 @@ emitChatTurnEvent = event => rpc.send.chatTurnEvent(event)
 
 startPreviewServer()
 
+const resolveMainViewUrl = async (): Promise<string> => {
+  // HMR: when the Vite dev server (dev:hmr) is up, load the webview from it
+  // for live reload; otherwise fall back to the bundled views.
+  try {
+    const res = await fetch("http://localhost:5173", { signal: AbortSignal.timeout(400) })
+    if (res.ok) return "http://localhost:5173/"
+  } catch {
+    // Vite dev server not running; use bundled views.
+  }
+  return "views://khala-code-desktop/index.html"
+}
+
 if (Bun.env.KHALA_CODE_DESKTOP_OPEN_WINDOW !== "0") {
   ApplicationMenu.setApplicationMenu(khalaCodeDesktopApplicationMenu)
 
   new BrowserWindow({
     title: "Khala Code",
-    url: "views://khala-code-desktop/index.html",
+    url: await resolveMainViewUrl(),
     frame: { x: 96, y: 56, width: 1180, height: 820 },
     rpc,
   })

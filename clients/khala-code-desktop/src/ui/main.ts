@@ -43,6 +43,7 @@ import {
 } from "../shared/rpc"
 import { renderMessageBody } from "./transcript-render"
 import { mountKhalaCodeSidebar } from "./sidebar"
+import "./styles.css"
 
 type DesktopRpc = ReturnType<typeof Electroview.defineRPC<KhalaCodeDesktopRPCSchema>>
 type DesktopRpcRequests = KhalaCodeDesktopRPCSchema["requests"]

@@ -19,12 +19,10 @@ describe("khala code desktop app shell", () => {
       version: "0.1.0",
     })
     expect(config.build.bun.entrypoint).toBe("src/bun/index.ts")
-    expect(config.build.views["khala-code-desktop"]).toMatchObject({
-      entrypoint: "resources/ui/main.js",
-    })
+    expect(config.build.views).toEqual({})
     expect(config.build.copy).toMatchObject({
-      "resources/ui/main.css": "views/khala-code-desktop/main.css",
-      "src/ui/index.html": "views/khala-code-desktop/index.html",
+      "dist/index.html": "views/khala-code-desktop/index.html",
+      "dist/assets/": "views/khala-code-desktop/assets/",
     })
   })
 

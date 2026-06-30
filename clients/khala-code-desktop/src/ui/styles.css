@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "../../../../packages/design-tokens/src/theme.css";
 @source "./";
 @source "../../../../packages/ui/src";
 @import "@openagentsinc/ui/styles.css";
@@ -732,22 +733,52 @@ button {
   }
 }
 
-/* Basecoat sidebar (Foldkit/Effect island), themed for Khala Code Desktop.
-   Basecoat's model: nav is position:fixed; the element after .sidebar gets
-   margin-left:--sidebar-width. We define the width vars, dark-theme the nav,
-   and offset the shell content (Basecoat's `& + *` can't cross #sidebar-root). */
+/* Map the shadcn `--color-*` theme that Basecoat components compile against to
+   our central dark --oa-* tokens, so every Basecoat component is styled like
+   the rest of the app (no per-component hacks). */
+@theme {
+  --color-background: var(--oa-color-bg);
+  --color-foreground: var(--oa-color-component-text);
+  --color-card: var(--oa-color-component-surface);
+  --color-card-foreground: var(--oa-color-component-text);
+  --color-popover: var(--oa-color-component-surface);
+  --color-popover-foreground: var(--oa-color-component-text);
+  --color-primary: var(--oa-color-primary);
+  --color-primary-foreground: var(--oa-color-bg);
+  --color-secondary: var(--oa-color-component-surface-active);
+  --color-secondary-foreground: var(--oa-color-component-text);
+  --color-muted: var(--oa-color-component-surface);
+  --color-muted-foreground: color-mix(in srgb, var(--oa-color-component-text) 55%, transparent);
+  --color-accent: var(--oa-color-component-surface-active);
+  --color-accent-foreground: var(--oa-color-component-text);
+  --color-destructive: var(--oa-color-danger);
+  --color-destructive-foreground: var(--oa-color-component-text);
+  --color-border: var(--oa-color-component-border);
+  --color-input: var(--oa-color-component-input-bg);
+  --color-ring: var(--oa-color-accent);
+  --color-sidebar: var(--oa-color-component-surface);
+  --color-sidebar-foreground: var(--oa-color-component-text);
+  --color-sidebar-accent: var(--oa-color-component-surface-active);
+  --color-sidebar-accent-foreground: var(--oa-color-component-text);
+  --color-sidebar-border: var(--oa-color-component-border);
+  --color-sidebar-primary: var(--oa-color-accent);
+  --color-sidebar-primary-foreground: var(--oa-color-bg);
+  --color-sidebar-ring: var(--oa-color-accent);
+}
+
+/* Khala Code sidebar: Basecoat's fixed-nav layout + our dark theme.
+   Width vars + content offset are the only layout glue (Basecoat's `& + *`
+   can't cross the Foldkit mount container). No !important. */
 .khala-code-sidebar {
   --sidebar-width: 15rem;
   --sidebar-mobile-width: 15rem;
-  position: static;
-  z-index: 40;
 }
 .khala-code-sidebar nav {
-  background: rgba(6, 12, 22, 0.94);
-  border-color: rgba(79, 208, 255, 0.16);
-  color: #f1efe8;
+  background: var(--oa-color-component-surface);
+  border-color: var(--oa-color-component-border);
+  color: var(--oa-color-component-text);
   padding: 0.85rem 0.55rem;
-  gap: 0.2rem;
+  gap: 0.12rem;
 }
 @media (min-width: 768px) {
   .khala-code-thread-shell,
@@ -756,29 +787,28 @@ button {
   }
 }
 .khala-code-sidebar [data-slot="sidebar-group-label"] {
-  padding: 0.4rem 0.55rem 0.3rem;
+  padding: 0.5rem 0.5rem 0.3rem;
   font-size: 0.64rem;
   font-weight: 600;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: rgba(241, 239, 232, 0.4);
+  color: color-mix(in srgb, var(--oa-color-component-text) 42%, transparent);
 }
 .khala-code-sidebar [data-slot="sidebar-menu"] button,
 .khala-code-sidebar [data-slot="sidebar-menu"] a {
   gap: 0.5rem;
-  padding: 0.42rem 0.55rem;
+  padding: 0.42rem 0.5rem;
   border-radius: 0.4rem;
   font-size: 0.82rem;
-  color: rgba(241, 239, 232, 0.82);
+  color: var(--oa-color-component-text);
 }
 .khala-code-sidebar [data-slot="sidebar-menu"] button:hover,
 .khala-code-sidebar [data-slot="sidebar-menu"] a:hover {
-  background: rgba(255, 255, 255, 0.06);
-  color: #f1efe8;
+  background: var(--oa-color-component-surface-active);
 }
 .khala-code-sidebar [data-slot="sidebar-menu"] [aria-current="page"],
 .khala-code-sidebar [data-slot="sidebar-menu"] [data-active="true"] {
-  background: rgba(79, 208, 255, 0.13);
-  color: #cdeeff;
-  box-shadow: inset 2px 0 0 rgba(79, 208, 255, 0.7);
+  background: var(--oa-color-component-surface-active);
+  color: var(--oa-color-accent);
+  box-shadow: inset 2px 0 0 var(--oa-color-accent);
 }
