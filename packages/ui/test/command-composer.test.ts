@@ -143,7 +143,10 @@ describe('ai-elements command composer', () => {
                 mime: 'image/png',
                 sizeBytes: 1536,
                 status: 'ready',
+                digest: 'sha256:abcd',
                 previewUrl: 'blob:screen',
+                thumbnailRef:
+                  'attachment_thumbnail.web-hosted.sha256.thumb.att-1',
                 dimensions: { width: 320, height: 200 },
               },
             ],
@@ -180,6 +183,8 @@ describe('ai-elements command composer', () => {
     expect(rendered).toContain('data-oa-command-composer-drag-active="true"')
     expect(rendered).toContain('data-oa-command-composer-attachment-action="preview"')
     expect(rendered).toContain('data-oa-command-composer-attachment-action="remove"')
+    expect(rendered).not.toContain('sha256:abcd')
+    expect(rendered).not.toContain('attachment_thumbnail.web-hosted')
     expect(rendered).toContain('<strong')
     expect(rendered).toContain('Hello')
     expect(rendered).toContain('data-oa-command-composer-submit="stop"')

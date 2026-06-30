@@ -118,6 +118,18 @@ export const ComposerAttachmentSource = S.Literals([
 ])
 export type ComposerAttachmentSource = typeof ComposerAttachmentSource.Type
 
+export const ComposerAttachmentSurface = S.Literals([
+  "desktop-local",
+  "web-hosted",
+])
+export type ComposerAttachmentSurface = typeof ComposerAttachmentSurface.Type
+
+export const ComposerAttachmentUploadReceiptKind = S.Literal(
+  "composer_attachment_privacy_receipt",
+)
+export type ComposerAttachmentUploadReceiptKind =
+  typeof ComposerAttachmentUploadReceiptKind.Type
+
 export const ComposerAttachmentDimensions = S.Struct({
   width: S.Number,
   height: S.Number,
@@ -135,6 +147,7 @@ export const ComposerAttachment = S.Struct({
   previewUrl: S.optional(S.String),
   dimensions: S.optional(ComposerAttachmentDimensions),
   contentRef: S.optional(S.String),
+  thumbnailRef: S.optional(S.String),
   source: S.optional(ComposerAttachmentSource),
   status: ComposerAttachmentStatus,
   errorText: S.optional(S.String),
@@ -147,10 +160,61 @@ export const ComposerAttachmentPatch = S.Struct({
   previewUrl: S.optional(S.NullOr(S.String)),
   dimensions: S.optional(S.NullOr(ComposerAttachmentDimensions)),
   contentRef: S.optional(S.NullOr(S.String)),
+  thumbnailRef: S.optional(S.NullOr(S.String)),
   source: S.optional(S.NullOr(ComposerAttachmentSource)),
   errorText: S.optional(S.NullOr(S.String)),
 })
 export type ComposerAttachmentPatch = typeof ComposerAttachmentPatch.Type
+
+export const ComposerAttachmentUploadPolicy = S.Struct({
+  surface: ComposerAttachmentSurface,
+  maxSizeBytes: S.Number,
+  allowedMimeTypes: S.Array(S.String),
+  allowedMimePrefixes: S.Array(S.String),
+})
+export type ComposerAttachmentUploadPolicy =
+  typeof ComposerAttachmentUploadPolicy.Type
+
+export const ComposerAttachmentUploadTaskKind = S.Literals([
+  "register_local_attachment",
+  "upload_hosted_attachment",
+  "store_thumbnail",
+  "scan_attachment",
+  "parse_text_attachment",
+])
+export type ComposerAttachmentUploadTaskKind =
+  typeof ComposerAttachmentUploadTaskKind.Type
+
+export const ComposerAttachmentUploadTask = S.Struct({
+  kind: ComposerAttachmentUploadTaskKind,
+  attachmentId: ComposerAttachmentId,
+  surface: ComposerAttachmentSurface,
+  contentRef: S.optional(S.String),
+  thumbnailRef: S.optional(S.String),
+})
+export type ComposerAttachmentUploadTask =
+  typeof ComposerAttachmentUploadTask.Type
+
+export const ComposerAttachmentUploadReceipt = S.Struct({
+  kind: ComposerAttachmentUploadReceiptKind,
+  receiptRef: S.String,
+  schemaVersion: ComposerSchemaVersion,
+  attachmentId: ComposerAttachmentId,
+  surface: ComposerAttachmentSurface,
+  status: ComposerAttachmentStatus,
+  name: S.String,
+  mime: S.String,
+  sizeBytes: S.Number,
+  digest: S.optional(S.String),
+  contentRef: S.optional(S.String),
+  thumbnailRef: S.optional(S.String),
+  dimensions: S.optional(ComposerAttachmentDimensions),
+  source: S.optional(ComposerAttachmentSource),
+  errorCode: S.optional(S.String),
+  observedAt: S.Number,
+})
+export type ComposerAttachmentUploadReceipt =
+  typeof ComposerAttachmentUploadReceipt.Type
 
 export const ComposerDoc = S.Struct({
   schemaVersion: ComposerSchemaVersion,
@@ -273,6 +337,16 @@ export const ComposerTransaction = S.Struct({
 })
 export type ComposerTransaction = typeof ComposerTransaction.Type
 
+export const ComposerAttachmentUploadPlan = S.Struct({
+  attachmentId: ComposerAttachmentId,
+  surface: ComposerAttachmentSurface,
+  transaction: ComposerTransaction,
+  tasks: S.Array(ComposerAttachmentUploadTask),
+  receipt: ComposerAttachmentUploadReceipt,
+})
+export type ComposerAttachmentUploadPlan =
+  typeof ComposerAttachmentUploadPlan.Type
+
 export const ComposerViewState = S.Struct({
   heightPx: S.optional(S.Number),
   expanded: S.optional(S.Boolean),
@@ -350,6 +424,7 @@ export type ComposerFileLike = Readonly<{
   size?: number
   previewUrl?: string
   contentRef?: string
+  thumbnailRef?: string
   dimensions?: ComposerAttachmentDimensions
 }>
 
@@ -365,6 +440,24 @@ export type ComposerAttachmentDeferredTask = Readonly<{
   attachmentId: ComposerAttachmentId
 }>
 
+export type ComposerAttachmentUploadErrorCode =
+  | "file_too_large"
+  | "mime_not_allowed"
+  | "missing_digest"
+  | "attachment_not_found"
+
+export type ComposerAttachmentUploadPlanResult =
+  | Readonly<{
+      ok: true
+      plan: ComposerAttachmentUploadPlan
+    }>
+  | Readonly<{
+      ok: false
+      errorCode: ComposerAttachmentUploadErrorCode
+      transaction: ComposerTransaction
+      receipt: ComposerAttachmentUploadReceipt
+    }>
+
 export type ComposerStageAttachmentFilesOptions = Readonly<{
   source: ComposerAttachmentSource
   at?: ComposerBlockPosition
@@ -378,6 +471,27 @@ export type ComposerStageAttachmentFilesResult = Readonly<{
 }>
 
 export const DEFAULT_LARGE_TEXT_ATTACHMENT_THRESHOLD = 16_000
+
+export const DEFAULT_DESKTOP_LOCAL_ATTACHMENT_UPLOAD_POLICY: ComposerAttachmentUploadPolicy =
+  {
+    surface: "desktop-local",
+    maxSizeBytes: 50 * 1024 * 1024,
+    allowedMimeTypes: [],
+    allowedMimePrefixes: [],
+  }
+
+export const DEFAULT_WEB_HOSTED_ATTACHMENT_UPLOAD_POLICY: ComposerAttachmentUploadPolicy =
+  {
+    surface: "web-hosted",
+    maxSizeBytes: 25 * 1024 * 1024,
+    allowedMimeTypes: [
+      "application/json",
+      "application/pdf",
+      "application/zip",
+      "application/octet-stream",
+    ],
+    allowedMimePrefixes: ["image/", "text/"],
+  }
 
 export type ComposerLargeTextPasteOffer = Readonly<{
   offered: boolean
@@ -492,6 +606,7 @@ export const createComposerAttachment = (input: {
   previewUrl?: string
   dimensions?: ComposerAttachmentDimensions
   contentRef?: string
+  thumbnailRef?: string
   errorText?: string
 }): ComposerAttachment => ({
   id: input.id,
@@ -505,6 +620,9 @@ export const createComposerAttachment = (input: {
   ...(input.previewUrl === undefined ? {} : { previewUrl: input.previewUrl }),
   ...(input.dimensions === undefined ? {} : { dimensions: input.dimensions }),
   ...(input.contentRef === undefined ? {} : { contentRef: input.contentRef }),
+  ...(input.thumbnailRef === undefined
+    ? {}
+    : { thumbnailRef: input.thumbnailRef }),
   ...(input.errorText === undefined ? {} : { errorText: input.errorText }),
 })
 
@@ -539,6 +657,9 @@ export const stageComposerAttachmentFiles = (
       ...(file.previewUrl === undefined ? {} : { previewUrl: file.previewUrl }),
       ...(file.dimensions === undefined ? {} : { dimensions: file.dimensions }),
       ...(file.contentRef === undefined ? {} : { contentRef: file.contentRef }),
+      ...(file.thumbnailRef === undefined
+        ? {}
+        : { thumbnailRef: file.thumbnailRef }),
     })
   })
   return {
@@ -623,6 +744,290 @@ export const offerComposerLargeTextPaste = (
       meta: { source: "paste", time: Date.now() },
     },
     deferredTasks: deferredComposerAttachmentTasks(attachment),
+  }
+}
+
+const normalizeDigestSegment = (digest: string): string => {
+  const trimmed = digest.trim().toLowerCase()
+  const withoutPrefix = trimmed.startsWith("sha256:")
+    ? trimmed.slice("sha256:".length)
+    : trimmed
+  return withoutPrefix.replace(/[^a-f0-9]/g, "")
+}
+
+const publicAttachmentName = (name: string): string =>
+  slugForAttachmentName(name).slice(0, 80)
+
+export const composerAttachmentContentAddressedRef = (input: {
+  surface: ComposerAttachmentSurface
+  digest: string
+  name?: string
+}): string => {
+  const digest = normalizeDigestSegment(input.digest)
+  const name = input.name === undefined ? "" : `.${publicAttachmentName(input.name)}`
+  return `attachment.${input.surface}.sha256.${digest}${name}`
+}
+
+export const composerAttachmentThumbnailRef = (input: {
+  surface: ComposerAttachmentSurface
+  digest: string
+  attachmentId: ComposerAttachmentId
+}): string => {
+  const digest = normalizeDigestSegment(input.digest)
+  return `attachment_thumbnail.${input.surface}.sha256.${digest}.${input.attachmentId}`
+}
+
+const receiptRefForAttachment = (input: {
+  attachmentId: ComposerAttachmentId
+  surface: ComposerAttachmentSurface
+  status: ComposerAttachmentStatus
+  digest?: string
+  errorCode?: string
+}): string => {
+  const digest =
+    input.digest === undefined ? "no_digest" : normalizeDigestSegment(input.digest)
+  const suffix = input.errorCode ?? input.status
+  return `receipt.composer_attachment.${input.surface}.${input.attachmentId}.${suffix}.${digest}`
+}
+
+export const projectComposerAttachmentUploadReceipt = (input: {
+  attachment: ComposerAttachment
+  surface: ComposerAttachmentSurface
+  observedAt?: number
+  errorCode?: string
+}): ComposerAttachmentUploadReceipt => ({
+  kind: "composer_attachment_privacy_receipt",
+  schemaVersion: COMPOSER_SCHEMA_VERSION,
+  receiptRef: receiptRefForAttachment({
+    attachmentId: input.attachment.id,
+    surface: input.surface,
+    status: input.attachment.status,
+    ...(input.attachment.digest === undefined
+      ? {}
+      : { digest: input.attachment.digest }),
+    ...(input.errorCode === undefined ? {} : { errorCode: input.errorCode }),
+  }),
+  attachmentId: input.attachment.id,
+  surface: input.surface,
+  status: input.attachment.status,
+  name: input.attachment.name,
+  mime: input.attachment.mime,
+  sizeBytes: input.attachment.sizeBytes,
+  ...(input.attachment.digest === undefined
+    ? {}
+    : { digest: input.attachment.digest }),
+  ...(input.attachment.contentRef === undefined
+    ? {}
+    : { contentRef: input.attachment.contentRef }),
+  ...(input.attachment.thumbnailRef === undefined
+    ? {}
+    : { thumbnailRef: input.attachment.thumbnailRef }),
+  ...(input.attachment.dimensions === undefined
+    ? {}
+    : { dimensions: input.attachment.dimensions }),
+  ...(input.attachment.source === undefined
+    ? {}
+    : { source: input.attachment.source }),
+  ...(input.errorCode === undefined ? {} : { errorCode: input.errorCode }),
+  observedAt: input.observedAt ?? Date.now(),
+})
+
+const mimeAllowedByPolicy = (
+  mime: string,
+  policy: ComposerAttachmentUploadPolicy,
+): boolean =>
+  policy.allowedMimeTypes.length === 0 && policy.allowedMimePrefixes.length === 0
+    ? true
+    : policy.allowedMimeTypes.includes(mime) ||
+      policy.allowedMimePrefixes.some((prefix) => mime.startsWith(prefix))
+
+const attachmentUploadFailure = (input: {
+  attachment: ComposerAttachment
+  policy: ComposerAttachmentUploadPolicy
+  errorCode: ComposerAttachmentUploadErrorCode
+  errorText: string
+  time: number
+}): ComposerAttachmentUploadPlanResult => {
+  const transaction: ComposerTransaction = {
+    steps: [
+      {
+        _tag: "UpdateAttachment",
+        attachmentId: input.attachment.id,
+        patch: { status: "error", errorText: input.errorText },
+      },
+    ],
+    meta: { source: "program", time: input.time },
+  }
+  return {
+    ok: false,
+    errorCode: input.errorCode,
+    transaction,
+    receipt: projectComposerAttachmentUploadReceipt({
+      attachment: {
+        ...input.attachment,
+        status: "error",
+        errorText: input.errorText,
+      },
+      surface: input.policy.surface,
+      observedAt: input.time,
+      errorCode: input.errorCode,
+    }),
+  }
+}
+
+export const planComposerAttachmentUpload = (
+  state: ComposerState,
+  attachmentId: ComposerAttachmentId,
+  policy: ComposerAttachmentUploadPolicy,
+  time = Date.now(),
+): ComposerAttachmentUploadPlanResult => {
+  const attachment = state.doc.attachments.find(
+    (candidate) => candidate.id === attachmentId,
+  )
+  if (attachment === undefined) {
+    const transaction: ComposerTransaction = {
+      steps: [],
+      meta: { source: "program", time, addToHistory: false },
+    }
+    return {
+      ok: false,
+      errorCode: "attachment_not_found",
+      transaction,
+      receipt: {
+        kind: "composer_attachment_privacy_receipt",
+        schemaVersion: COMPOSER_SCHEMA_VERSION,
+        receiptRef: receiptRefForAttachment({
+          attachmentId,
+          surface: policy.surface,
+          status: "error",
+          errorCode: "attachment_not_found",
+        }),
+        attachmentId,
+        surface: policy.surface,
+        status: "error",
+        name: "",
+        mime: "",
+        sizeBytes: 0,
+        errorCode: "attachment_not_found",
+        observedAt: time,
+      },
+    }
+  }
+
+  if (attachment.sizeBytes > policy.maxSizeBytes) {
+    return attachmentUploadFailure({
+      attachment,
+      policy,
+      errorCode: "file_too_large",
+      errorText: "Attachment is too large.",
+      time,
+    })
+  }
+
+  if (!mimeAllowedByPolicy(attachment.mime, policy)) {
+    return attachmentUploadFailure({
+      attachment,
+      policy,
+      errorCode: "mime_not_allowed",
+      errorText: "Attachment type is not supported.",
+      time,
+    })
+  }
+
+  const transaction: ComposerTransaction = {
+    steps: [
+      {
+        _tag: "UpdateAttachment",
+        attachmentId,
+        patch: { status: "uploading", errorText: null },
+      },
+    ],
+    meta: { source: "program", time },
+  }
+  const uploadTaskKind =
+    policy.surface === "desktop-local"
+      ? "register_local_attachment"
+      : "upload_hosted_attachment"
+  const tasks: ComposerAttachmentUploadTask[] = [
+    {
+      kind: uploadTaskKind,
+      attachmentId,
+      surface: policy.surface,
+      ...(attachment.contentRef === undefined
+        ? {}
+        : { contentRef: attachment.contentRef }),
+    },
+    { kind: "scan_attachment", attachmentId, surface: policy.surface },
+    ...(attachment.kind === "text" || attachment.kind === "snippet"
+      ? [{ kind: "parse_text_attachment" as const, attachmentId, surface: policy.surface }]
+      : []),
+    ...(attachment.kind === "image" && attachment.thumbnailRef === undefined
+      ? [{ kind: "store_thumbnail" as const, attachmentId, surface: policy.surface }]
+      : []),
+  ]
+
+  return {
+    ok: true,
+    plan: {
+      attachmentId,
+      surface: policy.surface,
+      transaction,
+      tasks,
+      receipt: projectComposerAttachmentUploadReceipt({
+        attachment: { ...attachment, status: "uploading" },
+        surface: policy.surface,
+        observedAt: time,
+      }),
+    },
+  }
+}
+
+export const readyComposerAttachmentTransaction = (
+  state: ComposerState,
+  attachmentId: ComposerAttachmentId,
+  input: Readonly<{
+    surface: ComposerAttachmentSurface
+    digest: string
+    thumbnailDigest?: string
+    dimensions?: ComposerAttachmentDimensions
+    time?: number
+  }>,
+): ComposerTransaction | null => {
+  const attachment = state.doc.attachments.find(
+    (candidate) => candidate.id === attachmentId,
+  )
+  if (attachment === undefined) return null
+  const contentRef = composerAttachmentContentAddressedRef({
+    surface: input.surface,
+    digest: input.digest,
+    name: attachment.name,
+  })
+  return {
+    steps: [
+      {
+        _tag: "UpdateAttachment",
+        attachmentId,
+        patch: {
+          status: "ready",
+          digest: input.digest,
+          contentRef,
+          errorText: null,
+          ...(input.thumbnailDigest === undefined
+            ? {}
+            : {
+                thumbnailRef: composerAttachmentThumbnailRef({
+                  surface: input.surface,
+                  digest: input.thumbnailDigest,
+                  attachmentId,
+                }),
+              }),
+          ...(input.dimensions === undefined
+            ? {}
+            : { dimensions: input.dimensions }),
+        },
+      },
+    ],
+    meta: { source: "program", time: input.time ?? Date.now() },
   }
 }
 
@@ -1014,6 +1419,10 @@ const applyAttachmentPatch = (
     if (patch.contentRef === null) delete next.contentRef
     else if (patch.contentRef !== undefined) next.contentRef = patch.contentRef
   }
+  if (patchHas(patch, "thumbnailRef")) {
+    if (patch.thumbnailRef === null) delete next.thumbnailRef
+    else if (patch.thumbnailRef !== undefined) next.thumbnailRef = patch.thumbnailRef
+  }
   if (patchHas(patch, "source")) {
     if (patch.source === null) delete next.source
     else if (patch.source !== undefined) next.source = patch.source
@@ -1041,6 +1450,9 @@ const inverseAttachmentPatch = (
     : {}),
   ...(patchHas(patch, "contentRef")
     ? { contentRef: attachment.contentRef ?? null }
+    : {}),
+  ...(patchHas(patch, "thumbnailRef")
+    ? { thumbnailRef: attachment.thumbnailRef ?? null }
     : {}),
   ...(patchHas(patch, "source") ? { source: attachment.source ?? null } : {}),
   ...(patchHas(patch, "errorText")

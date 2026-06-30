@@ -114,10 +114,12 @@ export const CommandComposerAttachmentProps = Schema.Struct({
   mime: Schema.String,
   sizeBytes: Schema.Number,
   sizeLabel: Schema.optional(Schema.String),
+  digest: Schema.optional(Schema.String),
   dimensions: Schema.optional(CommandComposerAttachmentDimensions),
   status: CommandComposerAttachmentStatus,
   previewUrl: Schema.optional(Schema.String),
   contentRef: Schema.optional(Schema.String),
+  thumbnailRef: Schema.optional(Schema.String),
   source: Schema.optional(Schema.Literals(['paste', 'drop', 'manual'])),
   errorText: Schema.optional(Schema.String),
 })
