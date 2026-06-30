@@ -220,8 +220,8 @@ describe("#6354 per-account Codex capacity (Pylon side)", () => {
     ).toEqual({ [HASH_A]: 3 })
   })
 
-  test("per-account concurrency falls back to the pooled concurrency env then 1", () => {
-    expect(codexPerAccountConcurrency({})).toBe(1)
+  test("per-account concurrency falls back to the pooled concurrency env then the fleet default", () => {
+    expect(codexPerAccountConcurrency({})).toBe(5)
     expect(
       codexPerAccountConcurrency({ OPENAGENTS_PYLON_CODEX_CONCURRENCY: "8" }),
     ).toBe(8)

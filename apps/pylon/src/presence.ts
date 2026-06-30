@@ -443,18 +443,29 @@ export const codexAccountCapacityRefs = (
   ]),
 })
 
-// Per-account Codex concurrency. Reuses the existing
-// `OPENAGENTS_PYLON_CODEX_CONCURRENCY` (pooled today) as the per-account default
-// so an operator who already runs "N concurrent" gets N per account, while
-// `OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY` can override it explicitly.
+export const DEFAULT_CODEX_PER_ACCOUNT_CONCURRENCY = 5
+
+// Per-account Codex concurrency. A ready Codex account can sustain several
+// simultaneous sessions; the default mirrors the fleet runbook's five-slot
+// account lane. Operators can still lower or raise it explicitly with
+// `OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY`, while the older pooled
+// `OPENAGENTS_PYLON_CODEX_CONCURRENCY` remains a fallback override.
 export function codexPerAccountConcurrency(
   env: NodeJS.ProcessEnv = process.env,
 ): number {
   const explicit = env.OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY?.trim()
   if (explicit !== undefined && explicit !== "") {
-    return nonNegativeEnvInteger(env, "OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY", 1)
+    return nonNegativeEnvInteger(
+      env,
+      "OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY",
+      DEFAULT_CODEX_PER_ACCOUNT_CONCURRENCY,
+    )
   }
-  return nonNegativeEnvInteger(env, "OPENAGENTS_PYLON_CODEX_CONCURRENCY", 1)
+  return nonNegativeEnvInteger(
+    env,
+    "OPENAGENTS_PYLON_CODEX_CONCURRENCY",
+    DEFAULT_CODEX_PER_ACCOUNT_CONCURRENCY,
+  )
 }
 
 // Build the per-account Codex capacity for the heartbeat from live readiness and

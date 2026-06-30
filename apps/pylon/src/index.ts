@@ -213,6 +213,7 @@ import {
   codexBusyByAccount,
   codingServiceCapacityFromRuntime,
   codingServiceCapacityRefs,
+  DEFAULT_CODEX_PER_ACCOUNT_CONCURRENCY,
   localCodexAccountCapacities,
   localCodingServiceReadyCounts,
   presenceClientOptionsFromEnv,
@@ -2348,7 +2349,7 @@ function khalaCodexCapacityAdvertisementEnv(
   const perAccountTarget =
     positiveIntegerEnv(env.OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY) ??
     positiveIntegerEnv(env.OPENAGENTS_PYLON_CODEX_CONCURRENCY) ??
-    1
+    DEFAULT_CODEX_PER_ACCOUNT_CONCURRENCY
   const pooledTarget =
     positiveIntegerEnv(env.OPENAGENTS_PYLON_CODEX_CONCURRENCY) ??
     perAccountTarget
