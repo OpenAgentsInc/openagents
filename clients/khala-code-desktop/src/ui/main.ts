@@ -168,6 +168,7 @@ let thinkingTurnId: string | null = null
 let lastTurnFailed = false
 let lastSubmittedDraft = ""
 let dragActive = false
+let transcriptPinnedToEnd = true
 const activeTurnIds = new Set<string>()
 const objectUrls = new Set<string>()
 const localTextAttachments = new Map<string, string>()
@@ -232,11 +233,59 @@ const renderThinkingIndicator = (): HTMLElement | null => {
 const isNearTranscriptEnd = (): boolean =>
   messageList.scrollHeight - messageList.scrollTop - messageList.clientHeight <= 48
 
-const scrollToEnd = (behavior: ScrollBehavior = "smooth"): void => {
+const maxTranscriptScrollTop = (): number =>
+  Math.max(0, messageList.scrollHeight - messageList.clientHeight)
+
+const canScrollTranscript = (): boolean =>
+  maxTranscriptScrollTop() > 1
+
+const scrollToEnd = (behavior: ScrollBehavior = "auto"): void => {
+  transcriptPinnedToEnd = true
   messageList.scrollTo({
     top: messageList.scrollHeight,
     behavior,
   })
+}
+
+const setTranscriptScrollTop = (top: number): void => {
+  messageList.scrollTop = Math.max(0, Math.min(top, maxTranscriptScrollTop()))
+  transcriptPinnedToEnd = isNearTranscriptEnd()
+}
+
+const wheelDeltaPixels = (event: WheelEvent): number => {
+  if (event.deltaMode === WheelEvent.DOM_DELTA_LINE) return event.deltaY * 16
+  if (event.deltaMode === WheelEvent.DOM_DELTA_PAGE) return event.deltaY * messageList.clientHeight
+  return event.deltaY
+}
+
+const isComposerScrollTarget = (target: EventTarget | null): boolean =>
+  target instanceof Element &&
+  target.closest("#composer-form, #composer-input, input, textarea, select, button, [contenteditable='true']") !== null
+
+const proxyTranscriptWheel = (event: WheelEvent): void => {
+  if (event.defaultPrevented || isComposerScrollTarget(event.target) || !canScrollTranscript()) return
+  const before = messageList.scrollTop
+  setTranscriptScrollTop(before + wheelDeltaPixels(event))
+  if (messageList.scrollTop !== before) event.preventDefault()
+}
+
+const proxyTranscriptKeyScroll = (event: KeyboardEvent): void => {
+  if (event.defaultPrevented || isComposerScrollTarget(event.target) || !canScrollTranscript()) return
+  const page = Math.max(80, Math.floor(messageList.clientHeight * 0.82))
+  const delta =
+    event.key === "PageDown" || event.key === " "
+      ? page
+      : event.key === "PageUp"
+        ? -page
+        : event.key === "ArrowDown"
+          ? 40
+          : event.key === "ArrowUp"
+            ? -40
+            : null
+  if (delta === null) return
+  const before = messageList.scrollTop
+  setTranscriptScrollTop(before + delta)
+  if (messageList.scrollTop !== before) event.preventDefault()
 }
 
 const statusForComposer = (): CommandComposerStatus => {
@@ -305,7 +354,7 @@ const canSubmitComposer = (): boolean =>
   (lastTurnFailed && lastSubmittedDraft.trim() !== "")
 
 const renderMessages = (): void => {
-  const stickToEnd = isNearTranscriptEnd()
+  const stickToEnd = transcriptPinnedToEnd && isNearTranscriptEnd()
   const previousScrollTop = messageList.scrollTop
   const thinking = renderThinkingIndicator()
   messageList.replaceChildren(
@@ -316,7 +365,7 @@ const renderMessages = (): void => {
     if (stickToEnd) {
       scrollToEnd()
     } else {
-      messageList.scrollTop = previousScrollTop
+      setTranscriptScrollTop(previousScrollTop)
     }
   })
 }
@@ -993,6 +1042,11 @@ for (const target of [composerForm, composerRail]) {
 }
 
 window.addEventListener("resize", resizeComposerHud)
+messageList.addEventListener("scroll", () => {
+  transcriptPinnedToEnd = isNearTranscriptEnd()
+}, { passive: true })
+window.addEventListener("wheel", proxyTranscriptWheel, { passive: false })
+window.addEventListener("keydown", proxyTranscriptKeyScroll)
 window.addEventListener("beforeunload", () => {
   for (const url of objectUrls) URL.revokeObjectURL(url)
   composerHudRuntime?.dispose()

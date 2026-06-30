@@ -432,6 +432,341 @@ describe("Khala Code Codex fleet tools", () => {
     })
   })
 
+  test("spawnCodexInstances ignores a requested display default when a named account is ready", async () => {
+    const fixture = await tempPylonFixture()
+    const runner = async (input: KhalaCodexFleetCommandInput): Promise<KhalaCodexFleetCommandResult> => {
+      const args = pylonArgs(input)
+      const joined = args.join(" ")
+      if (joined === "provider go-online --json") {
+        return ok({
+          ok: true,
+          ownCapacityDispatch: {
+            availableCodexAssignments: 2,
+            maxCodexAssignments: 3,
+          },
+          pylonRef: "pylon.local.test",
+        })
+      }
+      if (joined === "codex accounts list --json") {
+        return ok({
+          accounts: [
+            {
+              accountRef: null,
+              homeState: "present",
+              provider: "codex",
+              readiness: { state: "ready" },
+            },
+            {
+              accountRef: "codex-2",
+              homeState: "present",
+              provider: "codex",
+              readiness: { state: "ready" },
+            },
+          ],
+          schema: "openagents.pylon.accounts_list.v0.3",
+        })
+      }
+      if (joined === "accounts status --provider codex --json") {
+        return ok({
+          accounts: [
+            {
+              accountRef: null,
+              provider: "codex",
+              readiness: { state: "ready" },
+            },
+          ],
+          schema: "openagents.pylon.accounts_status.v0.1",
+        })
+      }
+      if (joined === "presence heartbeat --base-url https://openagents.com --json") {
+        return ok({
+          heartbeatRef: "heartbeat.pylon.local.test.1",
+          pylonRef: "pylon.local.test",
+        })
+      }
+      if (args[0] === "khala" && args[1] === "request") {
+        expect(args).toContain("--account-ref")
+        expect(args).toContain("codex-2")
+        expect(args).not.toContain("(default)")
+        return ok({
+          assignmentRef: "assignment.public.codex_agent_task.default_override",
+          autoRun: {
+            attempted: false,
+            reason: "disabled_by_no_run",
+          },
+        })
+      }
+      return failed(`unexpected command: ${joined}`)
+    }
+
+    const result = await spawnCodexInstances({
+      accountRef: "(default)",
+      count: 1,
+      noRun: true,
+      prompt: "Run the public fixture.",
+    }, {
+      env: fixture.env,
+      runner,
+    })
+
+    expect(result.results[0]).toMatchObject({
+      accountRef: "codex-2",
+      assignmentRef: "assignment.public.codex_agent_task.default_override",
+      status: "accepted",
+    })
+  })
+
+  test("spawnCodexInstances prefers named accounts with advertised free slots", async () => {
+    const fixture = await tempPylonFixture()
+    const runner = async (input: KhalaCodexFleetCommandInput): Promise<KhalaCodexFleetCommandResult> => {
+      const args = pylonArgs(input)
+      const joined = args.join(" ")
+      if (joined === "provider go-online --json") {
+        return ok({
+          ok: true,
+          ownCapacityDispatch: {
+            availableCodexAssignments: 2,
+            codexAccounts: [
+              {
+                accountKey: "651c03fed68925d7acb2c02f",
+                available: 0,
+                busy: 1,
+                queued: 0,
+                ready: 1,
+              },
+              {
+                accountKey: "4db4cc18ebc55f39fb4da894",
+                available: 1,
+                busy: 0,
+                queued: 0,
+                ready: 1,
+              },
+            ],
+            maxCodexAssignments: 3,
+          },
+          pylonRef: "pylon.local.test",
+        })
+      }
+      if (joined === "codex accounts list --json") {
+        return ok({
+          accounts: [
+            {
+              accountRef: "codex-2",
+              accountRefHash: "account.pylon.codex.651c03fed68925d7acb2c02f",
+              homeState: "present",
+              provider: "codex",
+              readiness: { state: "ready" },
+            },
+            {
+              accountRef: "status",
+              accountRefHash: "account.pylon.codex.4db4cc18ebc55f39fb4da894",
+              homeState: "present",
+              provider: "codex",
+              readiness: { state: "ready" },
+            },
+          ],
+          schema: "openagents.pylon.accounts_list.v0.3",
+        })
+      }
+      if (joined === "accounts status --provider codex --json") {
+        return ok({
+          accounts: [],
+          schema: "openagents.pylon.accounts_status.v0.1",
+        })
+      }
+      if (joined === "presence heartbeat --base-url https://openagents.com --json") {
+        return ok({
+          heartbeatRef: "heartbeat.pylon.local.test.1",
+          pylonRef: "pylon.local.test",
+        })
+      }
+      if (args[0] === "khala" && args[1] === "request") {
+        expect(args).toContain("--account-ref")
+        expect(args).toContain("status")
+        expect(args).not.toContain("codex-2")
+        return ok({
+          assignmentRef: "assignment.public.codex_agent_task.available_account",
+          autoRun: {
+            attempted: false,
+            reason: "disabled_by_no_run",
+          },
+        })
+      }
+      return failed(`unexpected command: ${joined}`)
+    }
+
+    const result = await spawnCodexInstances({
+      count: 1,
+      noRun: true,
+      prompt: "Run the public fixture.",
+    }, {
+      env: fixture.env,
+      runner,
+    })
+
+    expect(result.results[0]).toMatchObject({
+      accountRef: "status",
+      assignmentRef: "assignment.public.codex_agent_task.available_account",
+      status: "accepted",
+    })
+  })
+
+  test("spawnCodexInstances launches planned advertised slots concurrently", async () => {
+    const fixture = await tempPylonFixture()
+    let inFlightRequests = 0
+    let maxInFlightRequests = 0
+    let requestCount = 0
+    const runner = async (input: KhalaCodexFleetCommandInput): Promise<KhalaCodexFleetCommandResult> => {
+      const args = pylonArgs(input)
+      const joined = args.join(" ")
+      if (joined === "provider go-online --json") {
+        return ok({
+          ok: true,
+          ownCapacityDispatch: {
+            availableCodexAssignments: 2,
+            codexAccounts: [
+              {
+                accountKey: "4db4cc18ebc55f39fb4da894",
+                available: 2,
+                busy: 0,
+                queued: 0,
+                ready: 2,
+              },
+            ],
+            maxCodexAssignments: 2,
+          },
+          pylonRef: "pylon.local.test",
+        })
+      }
+      if (joined === "codex accounts list --json") {
+        return ok({
+          accounts: [
+            {
+              accountRef: "status",
+              accountRefHash: "account.pylon.codex.4db4cc18ebc55f39fb4da894",
+              homeState: "present",
+              provider: "codex",
+              readiness: { state: "ready" },
+            },
+          ],
+          schema: "openagents.pylon.accounts_list.v0.3",
+        })
+      }
+      if (joined === "accounts status --provider codex --json") {
+        return ok({
+          accounts: [],
+          schema: "openagents.pylon.accounts_status.v0.1",
+        })
+      }
+      if (joined === "presence heartbeat --base-url https://openagents.com --json") {
+        return ok({
+          heartbeatRef: "heartbeat.pylon.local.test.1",
+          pylonRef: "pylon.local.test",
+        })
+      }
+      if (args[0] === "khala" && args[1] === "request") {
+        expect(args).toContain("--account-ref")
+        expect(args).toContain("status")
+        requestCount += 1
+        const slot = requestCount
+        inFlightRequests += 1
+        maxInFlightRequests = Math.max(maxInFlightRequests, inFlightRequests)
+        await new Promise(resolve => setTimeout(resolve, 25))
+        inFlightRequests -= 1
+        return ok({
+          assignmentRef: `assignment.public.codex_agent_task.concurrent_${slot}`,
+          autoRun: {
+            attempted: false,
+            reason: "disabled_by_no_run",
+          },
+        })
+      }
+      return failed(`unexpected command: ${joined}`)
+    }
+
+    const result = await spawnCodexInstances({
+      count: 2,
+      noRun: true,
+      prompt: "Run the public fixture.",
+    }, {
+      env: fixture.env,
+      runner,
+    })
+
+    expect(result).toMatchObject({
+      acceptedCount: 2,
+      requestedCount: 2,
+    })
+    expect(result.results.map(item => item.accountRef)).toEqual(["status", "status"])
+    expect(maxInFlightRequests).toBe(2)
+  })
+
+  test("spawnCodexInstances refuses when requested count exceeds advertised slots", async () => {
+    const fixture = await tempPylonFixture()
+    const runner = async (input: KhalaCodexFleetCommandInput): Promise<KhalaCodexFleetCommandResult> => {
+      const args = pylonArgs(input)
+      const joined = args.join(" ")
+      if (joined === "provider go-online --json") {
+        return ok({
+          ok: true,
+          ownCapacityDispatch: {
+            availableCodexAssignments: 1,
+            codexAccounts: [
+              {
+                accountKey: "4db4cc18ebc55f39fb4da894",
+                available: 1,
+                busy: 0,
+                queued: 0,
+                ready: 1,
+              },
+            ],
+            maxCodexAssignments: 2,
+          },
+          pylonRef: "pylon.local.test",
+        })
+      }
+      if (joined === "codex accounts list --json") {
+        return ok({
+          accounts: [
+            {
+              accountRef: "status",
+              accountRefHash: "account.pylon.codex.4db4cc18ebc55f39fb4da894",
+              homeState: "present",
+              provider: "codex",
+              readiness: { state: "ready" },
+            },
+          ],
+          schema: "openagents.pylon.accounts_list.v0.3",
+        })
+      }
+      if (joined === "accounts status --provider codex --json") {
+        return ok({
+          accounts: [],
+          schema: "openagents.pylon.accounts_status.v0.1",
+        })
+      }
+      if (joined === "presence heartbeat --base-url https://openagents.com --json") {
+        return ok({
+          heartbeatRef: "heartbeat.pylon.local.test.1",
+          pylonRef: "pylon.local.test",
+        })
+      }
+      if (args[0] === "khala" && args[1] === "request") {
+        throw new Error("khala request should not run when slots are oversubscribed")
+      }
+      return failed(`unexpected command: ${joined}`)
+    }
+
+    await expect(spawnCodexInstances({
+      count: 2,
+      noRun: true,
+      prompt: "Run the public fixture.",
+    }, {
+      env: fixture.env,
+      runner,
+    })).rejects.toThrow("Only 1/2 advertised Pylon Codex account slot")
+  })
+
   test("spawnCodexInstances refuses immediately when Pylon reports no Codex capacity", async () => {
     const fixture = await tempPylonFixture()
     const runner = async (input: KhalaCodexFleetCommandInput): Promise<KhalaCodexFleetCommandResult> => {

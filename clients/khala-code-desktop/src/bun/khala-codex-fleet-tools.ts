@@ -63,7 +63,9 @@ type PylonPaths = {
 }
 
 type AccountRow = {
+  readonly accountKey: string | null
   readonly accountRef: string
+  readonly accountRefHash: string | null
   readonly provider: "codex"
   readonly quotaState: string | null
   readonly readiness: string
@@ -138,7 +140,7 @@ type SpawnSlotResult = {
   readonly summary: string
 }
 
-const MAX_SPAWN_COUNT = 4
+const MAX_SPAWN_COUNT = 5
 const DEFAULT_COMMAND_TIMEOUT_MS = 45_000
 const DEFAULT_SPAWN_TIMEOUT_MS = 180_000
 const DEFAULT_ENSURE_WAIT_MS = 7_500
@@ -334,9 +336,10 @@ const codexSpawnToolDefinition: KhalaToolDefinition = {
     "When the user asks for a smoke test or omits repo pins, call this without repo pins; the tool will use the public fixture.",
     "Require complete repo, commit, and verify pins only for real repository work.",
     "Do not run Codex login. If no ready Pylon Codex account exists, tell the user to connect one first.",
+    "Omit account_ref unless the user names a specific non-default account; Desktop prefers named ready accounts over the display-only default account.",
     "This MVP exposes only pylon_ensure, codex_fleet_status, and codex_spawn for Codex fleet control. Do not invent codex_terminate or other Codex fleet tools.",
     "After codex_spawn, summarize the returned assignment, auto-run, and closeout status; do not read guessed local output files.",
-    "Keep count small; this MVP caps fan-out at four assignments.",
+    "Keep count small; this MVP caps fan-out at five assignments.",
   ],
   renderer: { kind: "codex_spawn", rendererRef: "khala.renderer.codex_spawn.v1" },
 }
@@ -525,6 +528,7 @@ export async function spawnCodexInstances(
 ): Promise<SpawnCodexInstancesResult> {
   const input = decodeSpawnInput(raw)
   const env = options.env ?? process.env
+  const paths = resolvePylonPaths(env)
   const ensure = await ensureLocalPylon(
     { start: true, timeoutMs: input.timeoutMs, waitMs: DEFAULT_ENSURE_WAIT_MS },
     { ...options, env },
@@ -534,17 +538,27 @@ export async function spawnCodexInstances(
   }
 
   const status = await inspectCodexFleet({ includeProcesses: false, startPylon: false }, { ...options, env })
-  const readyAccounts = preferredSpawnAccounts(status.accounts.filter(account => isReadyAccount(account)))
-  if (input.accountRef === undefined && readyAccounts.length === 0) {
+  const providerProjection = await readProviderProjection(env, paths, options.runner)
+  const accountAvailability = codexAccountAvailabilityByRef(status.accounts, providerProjection)
+  const readyAccounts = preferredSpawnAccounts(
+    status.accounts.filter(account => isReadyAccount(account)),
+    accountAvailability,
+  )
+  if (readyAccounts.length === 0) {
     throw new Error(
       "No ready Pylon Codex account is connected. Connect one first with `khala fleet connect` or `pylon auth codex --account codex`; this Desktop tool will not run Codex device login.",
     )
   }
-  if (input.accountRef !== undefined) {
-    const selected = status.accounts.find(account => account.accountRef === input.accountRef)
-    if (selected !== undefined && !isReadyAccount(selected)) {
-      throw new Error(`Pylon Codex account ${input.accountRef} is not ready (${selected.readiness}).`)
-    }
+  const selectedAccounts = resolveSpawnAccounts(
+    input.accountRef,
+    readyAccounts,
+    status.accounts,
+    accountAvailability,
+  )
+  if (selectedAccounts.length === 0) {
+    throw new Error(
+      "No ready Pylon Codex account has an advertised free slot right now. Wait for the running assignment to finish or retry after the next heartbeat.",
+    )
   }
   if (status.availableCodexAssignments !== null && status.availableCodexAssignments <= 0) {
     throw new Error(
@@ -552,8 +566,6 @@ export async function spawnCodexInstances(
     )
   }
 
-  const paths = resolvePylonPaths(env)
-  const results: SpawnSlotResult[] = []
   const baseUrl = resolveOpenAgentsBaseUrl(env, input.baseUrl)
   const heartbeat = await runPylonCommand(["presence", "heartbeat", "--base-url", baseUrl, "--json"], {
     env,
@@ -566,9 +578,14 @@ export async function spawnCodexInstances(
   }
   const heartbeatPylonRef = stringField(parseJsonObject(heartbeat.stdout), "pylonRef")
   const targetPylonRef = input.pylonRef ?? heartbeatPylonRef ?? ensure.pylonRef ?? ""
-  for (let index = 0; index < input.count; index += 1) {
-    const selectedAccount = input.accountRef ?? readyAccounts[index % readyAccounts.length]?.accountRef
-    const selectedCommandAccount = commandAccountRef(selectedAccount)
+  const plannedAccounts = planSpawnAccounts(input.count, selectedAccounts, accountAvailability)
+  if (plannedAccounts.length < input.count) {
+    throw new Error(
+      `Only ${plannedAccounts.length}/${input.count} advertised Pylon Codex account slot(s) are free right now. Wait for running assignments to finish or retry after the next heartbeat.`,
+    )
+  }
+  const results = await Promise.all(plannedAccounts.map(async (selectedAccount, index): Promise<SpawnSlotResult> => {
+    const selectedCommandAccount = commandAccountRef(selectedAccount.accountRef)
     const args = [
       "khala",
       "request",
@@ -595,8 +612,8 @@ export async function spawnCodexInstances(
     const assignmentRef = stringField(json, "assignmentRef")
     const autoRunOk = booleanField(recordField(json, "autoRun"), "ok")
     const accepted = result.exitCode === 0 && assignmentRef !== null
-    results.push({
-      accountRef: selectedAccount ?? null,
+    return {
+      accountRef: selectedAccount.accountRef,
       assignmentRef,
       autoRunOk,
       exitCode: result.exitCode,
@@ -605,8 +622,8 @@ export async function spawnCodexInstances(
       summary: accepted
         ? acceptedSpawnSummary(assignmentRef, json)
         : safeFailureReason(result),
-    })
-  }
+    }
+  }))
 
   return {
     acceptedCount: results.filter(result => result.status === "accepted").length,
@@ -823,6 +840,20 @@ async function runPylonCommand(
   })
 }
 
+async function readProviderProjection(
+  env: ChatEnv,
+  paths: PylonPaths,
+  runner: KhalaCodexFleetCommandRunner | undefined,
+): Promise<Record<string, unknown> | null> {
+  const result = await runPylonCommand(["provider", "go-online", "--json"], {
+    env,
+    paths,
+    runner,
+    timeoutMs: DEFAULT_COMMAND_TIMEOUT_MS,
+  }).catch(errorResult)
+  return result.exitCode === 0 ? parseJsonObject(result.stdout) : null
+}
+
 function pylonCommandEnv(env: ChatEnv, pylonHome: string): ChatEnv {
   const mergedEnv = { ...process.env, ...env }
   const configuredBaseUrl = configuredOpenAgentsBaseUrl(mergedEnv)
@@ -971,6 +1002,8 @@ function mergeAccountRows(
       const previous = rows.get(row.accountRef)
       rows.set(row.accountRef, {
         ...row,
+        accountKey: row.accountKey ?? previous?.accountKey ?? null,
+        accountRefHash: row.accountRefHash ?? previous?.accountRefHash ?? null,
         readiness: row.readiness === "unknown" ? previous?.readiness ?? "unknown" : row.readiness,
       })
     }
@@ -988,6 +1021,7 @@ function accountRowFrom(value: unknown): AccountRow | null {
     stringField(account, "ref") ??
     stringField(account, "id") ??
     "(default)"
+  const accountRefHash = stringField(account, "accountRefHash")
   const readinessObject = recordField(account, "readiness")
   const readiness =
     stringField(readinessObject, "state") ??
@@ -995,11 +1029,18 @@ function accountRowFrom(value: unknown): AccountRow | null {
     (stringField(account, "homeState") === "present" ? "ready" : "unknown")
   const quota = recordField(account, "quota")
   return {
+    accountKey: accountKeyFromHash(accountRefHash),
     accountRef,
+    accountRefHash,
     provider: "codex",
     quotaState: stringField(quota, "state"),
     readiness,
   }
+}
+
+function accountKeyFromHash(accountRefHash: string | null): string | null {
+  const key = accountRefHash?.split(".").at(-1)?.trim().toLowerCase()
+  return key !== undefined && /^[a-f0-9]{16,64}$/u.test(key) ? key : null
 }
 
 function providerCapacity(
@@ -1034,6 +1075,27 @@ function capacityFromProviderProjection(
     max: numberField(dispatch, "maxCodexAssignments") ??
       numberField(dispatch, "totalMaxCodexAssignments"),
   }
+}
+
+function codexAccountAvailabilityByRef(
+  accounts: readonly AccountRow[],
+  projection: Record<string, unknown> | null,
+): ReadonlyMap<string, number> {
+  const ownCapacity = recordField(projection, "ownCapacityDispatch")
+  const accountRefByKey = new Map<string, string>()
+  for (const account of accounts) {
+    if (account.accountKey !== null) accountRefByKey.set(account.accountKey, account.accountRef)
+  }
+  const out = new Map<string, number>()
+  for (const capacity of arrayField(ownCapacity, "codexAccounts")) {
+    const row = record(capacity)
+    if (row === null) continue
+    const accountKey = stringField(row, "accountKey")
+    const accountRef = accountKey === null ? null : accountRefByKey.get(accountKey) ?? null
+    const available = numberField(row, "available")
+    if (accountRef !== null && available !== null) out.set(accountRef, available)
+  }
+  return out
 }
 
 async function collectActiveAssignmentMarkers(pylonHome: string): Promise<readonly ActiveAssignmentMarker[]> {
@@ -1115,6 +1177,7 @@ function decodeSpawnInput(raw: SpawnCodexInstancesInput): NormalizedSpawnInput {
   }
   return {
     ...raw,
+    accountRef: normalizeRequestedAccountRef(raw.accountRef),
     count,
     fixture,
     noRun: raw.noRun ?? false,
@@ -1238,17 +1301,104 @@ function isReadyAccount(account: AccountRow): boolean {
   return account.readiness === "ready" || account.readiness === "available"
 }
 
-function preferredSpawnAccounts(accounts: readonly AccountRow[]): readonly AccountRow[] {
+function preferredSpawnAccounts(
+  accounts: readonly AccountRow[],
+  availability: ReadonlyMap<string, number> = new Map(),
+): readonly AccountRow[] {
   return [...accounts].sort((left, right) => {
-    const leftDefault = left.accountRef === "(default)"
-    const rightDefault = right.accountRef === "(default)"
+    const leftRank = spawnAccountRank(left, availability)
+    const rightRank = spawnAccountRank(right, availability)
+    if (leftRank !== rightRank) return leftRank - rightRank
+    const leftDefault = isDefaultAccountRef(left.accountRef)
+    const rightDefault = isDefaultAccountRef(right.accountRef)
     if (leftDefault !== rightDefault) return leftDefault ? 1 : -1
     return left.accountRef.localeCompare(right.accountRef)
   })
 }
 
+function spawnAccountRank(account: AccountRow, availability: ReadonlyMap<string, number>): number {
+  const defaultAccount = isDefaultAccountRef(account.accountRef)
+  if (availability.size === 0) return defaultAccount ? 1 : 0
+  const slots = availability.get(account.accountRef)
+  if (slots !== undefined && slots > 0) return defaultAccount ? 1 : 0
+  if (slots === undefined) return defaultAccount ? 3 : 2
+  return defaultAccount ? 5 : 4
+}
+
+function resolveSpawnAccounts(
+  requestedAccountRef: string | undefined,
+  readyAccounts: readonly AccountRow[],
+  allAccounts: readonly AccountRow[],
+  availability: ReadonlyMap<string, number>,
+): readonly AccountRow[] {
+  if (requestedAccountRef === undefined) return dispatchableSpawnAccounts(readyAccounts, availability)
+  if (isDefaultAccountRef(requestedAccountRef)) {
+    const candidates = dispatchableSpawnAccounts(readyAccounts, availability)
+    const namedReadyAccounts = candidates.filter(account => !isDefaultAccountRef(account.accountRef))
+    return namedReadyAccounts.length > 0 ? namedReadyAccounts : candidates
+  }
+  const selected = allAccounts.find(account => account.accountRef === requestedAccountRef)
+  if (selected === undefined) {
+    throw new Error(`Pylon Codex account ${requestedAccountRef} was not found.`)
+  }
+  if (!isReadyAccount(selected)) {
+    throw new Error(`Pylon Codex account ${requestedAccountRef} is not ready (${selected.readiness}).`)
+  }
+  const slots = availability.get(selected.accountRef)
+  if (slots !== undefined && slots <= 0) {
+    throw new Error(`Pylon Codex account ${requestedAccountRef} has no advertised available slots right now.`)
+  }
+  return [selected]
+}
+
+function dispatchableSpawnAccounts(
+  accounts: readonly AccountRow[],
+  availability: ReadonlyMap<string, number>,
+): readonly AccountRow[] {
+  if (availability.size === 0) return accounts
+  const positive = accounts.filter(account => (availability.get(account.accountRef) ?? 0) > 0)
+  if (positive.length > 0) return positive
+  return accounts.filter(account => availability.get(account.accountRef) === undefined)
+}
+
+function planSpawnAccounts(
+  count: number,
+  accounts: readonly AccountRow[],
+  availability: ReadonlyMap<string, number>,
+): readonly AccountRow[] {
+  if (count <= 0 || accounts.length === 0) return []
+  if (availability.size === 0) {
+    return Array.from({ length: count }, (_, index) => accounts[index % accounts.length]!)
+  }
+  const planned: AccountRow[] = []
+  for (const account of accounts) {
+    const available = availability.get(account.accountRef)
+    if (available === undefined) {
+      planned.push(account)
+      continue
+    }
+    const slots = Math.max(0, Math.floor(available))
+    for (let index = 0; index < slots && planned.length < count; index += 1) {
+      planned.push(account)
+    }
+    if (planned.length >= count) break
+  }
+  return planned
+}
+
+function normalizeRequestedAccountRef(accountRef: string | undefined): string | undefined {
+  const trimmed = accountRef?.trim()
+  if (trimmed === undefined || trimmed.length === 0) return undefined
+  return isDefaultAccountRef(trimmed) ? "(default)" : trimmed
+}
+
+function isDefaultAccountRef(accountRef: string | undefined): boolean {
+  if (accountRef === undefined) return false
+  return /^(?:\(default\)|default)$/iu.test(accountRef.trim())
+}
+
 function commandAccountRef(accountRef: string | undefined): string | undefined {
-  if (accountRef === undefined || accountRef === "(default)") return undefined
+  if (accountRef === undefined || isDefaultAccountRef(accountRef)) return undefined
   return /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/u.test(accountRef) ? accountRef : undefined
 }
 

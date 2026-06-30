@@ -137,7 +137,9 @@ describe("khala code desktop app shell", () => {
 
     expect(css).toContain("padding: 0 14px")
     expect(css).toContain("height: 100%")
-    expect(css).toContain("padding: 0 4px 18px")
+    expect(css).toContain("padding: 0 4px 32px")
+    expect(css).toContain("scroll-padding-bottom: 32px")
+    expect(css).toContain("overscroll-behavior: contain")
     expect(css).toContain("display: flex")
     expect(css).toContain("flex-direction: column")
     expect(css).toContain(".message-list::before")
@@ -182,9 +184,12 @@ describe("khala code desktop app shell", () => {
     const css = await Bun.file(new URL("../src/ui/styles.css", import.meta.url)).text()
 
     expect(main).toContain("const isNearTranscriptEnd")
-    expect(main).toContain("const stickToEnd = isNearTranscriptEnd()")
+    expect(main).toContain("let transcriptPinnedToEnd = true")
+    expect(main).toContain("const stickToEnd = transcriptPinnedToEnd && isNearTranscriptEnd()")
     expect(main).toContain("const previousScrollTop = messageList.scrollTop")
-    expect(main).toContain("messageList.scrollTop = previousScrollTop")
+    expect(main).toContain("setTranscriptScrollTop(previousScrollTop)")
+    expect(main).toContain("proxyTranscriptWheel")
+    expect(main).toContain("window.addEventListener(\"wheel\", proxyTranscriptWheel, { passive: false })")
     expect(css).toContain("overflow-y: visible")
     expect(css).not.toContain("max-height: 320px")
     expect(css).not.toContain("max-height: 320px;\n  overflow-y: auto")
@@ -302,6 +307,11 @@ describe("khala code desktop app shell", () => {
     expect(parseToolTranscript("codex_spawn: running\n\nPreparing the Pylon/Codex handoff...")).toEqual({
       output: "Preparing the Pylon/Codex handoff...",
       status: "running",
+      toolName: "codex_spawn",
+    })
+    expect(parseToolTranscript("codex_spawn: ok\n\nCodex spawn: accepted 0/1\n- slot 1: failed\n  command timed out")).toEqual({
+      output: "Codex spawn: accepted 0/1\n- slot 1: failed\n  command timed out",
+      status: "failed",
       toolName: "codex_spawn",
     })
   })

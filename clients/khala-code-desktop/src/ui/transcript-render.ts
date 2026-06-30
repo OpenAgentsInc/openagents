@@ -382,11 +382,22 @@ export const parseToolTranscript = (text: string): ToolTranscriptParts => {
       toolName: "tool",
     }
   }
+  const rawStatus = match[2] ?? "output"
   return {
     output: body,
-    status: match[2] ?? "output",
+    status: normalizedToolStatus(rawStatus, body),
     toolName: match[1] ?? "tool",
   }
+}
+
+const normalizedToolStatus = (status: string, output: string): string => {
+  if (status.toLowerCase() !== "ok") return status
+  const normalizedOutput = output.toLowerCase()
+  if (/\bcommand timed out\b/u.test(normalizedOutput)) return "failed"
+  if (/\baccepted\s+0\/[1-9]\d*\b/u.test(normalizedOutput) && /\bfailed\b/u.test(normalizedOutput)) {
+    return "failed"
+  }
+  return status
 }
 
 const toolTranscriptElement = (text: string): HTMLElement => {

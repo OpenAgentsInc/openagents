@@ -75,6 +75,11 @@ Expected:
   account is ready.
 - `(default)` may be ready, but Khala Code Desktop now prefers named ready
   accounts before `(default)` for automatic `codex_spawn`.
+- `codex_spawn` plans against advertised per-account slots, then launches the
+  planned slots concurrently. The Desktop MVP caps requested fanout at five.
+  For a deliberate five-worker smoke, advertise five account slots with
+  `OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY=5`; do not set that globally
+  unless the machine should really take five local Codex runs at once.
 
 Start the app:
 
@@ -120,13 +125,38 @@ Expected green shape:
   "requestedCount": 1,
   "results": [
     {
-      "accountRef": "codex-2",
+      "accountRef": "status",
       "autoRunOk": true,
       "status": "accepted"
     }
   ]
 }
 ```
+
+`accountRef` may be any ready named account with advertised free capacity
+(`status`, `codex-2`, or another linked account). If `codex-2` is busy and
+`status` has a free slot, Desktop should pick `status`.
+
+For a bounded five-slot smoke of the same Desktop tool path:
+
+```sh
+OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY=5 bun --eval '
+  import { spawnCodexInstances } from "./clients/khala-code-desktop/src/bun/khala-codex-fleet-tools.ts";
+  const result = await spawnCodexInstances({
+    count: 5,
+    prompt: "Read the bounded public fixture and summarize it in one sentence.",
+    fixture: true,
+    timeoutMs: 600000
+  });
+  console.log(JSON.stringify(result, null, 2));
+'
+```
+
+Expected: `acceptedCount` is `5`, `requestedCount` is `5`, every slot is
+`accepted`, and the selected account refs correspond to accounts that advertised
+free slots. If it refuses before launch with `Only X/5 advertised ... free`,
+capacity was not actually advertised; rerun the heartbeat/status commands and
+check `ownCapacityDispatch.codexAccounts`.
 
 The summary should include:
 
@@ -250,7 +280,7 @@ budget, not OpenAgents settlement.
 
 ## Current Troubleshooting Cheatsheet
 
-### `codex_fleet_status` Says `0/4 Available`
+### `codex_fleet_status` Says `0/N Available`
 
 First distinguish real busy capacity from poisoned local status:
 
@@ -268,7 +298,7 @@ bun apps/pylon/src/index.ts provider go-online --json \
 If there is an active marker and a live `codex exec`, the worker is actually
 running. If there are no markers and `provider go-online` says capacity is free,
 Desktop should also show free capacity on current code. If Desktop still says
-`0/4`, verify you are on or after commit
+`0/N`, verify you are on or after commit
 `a0e3a20df1214dd0084ac7b636462151d2ebb309` and that the app was restarted from
 that checkout.
 
@@ -290,6 +320,23 @@ Check the same process/marker commands above.
 
 The UI should render timed-out/failed `codex_spawn` cards as failed, not green.
 The tool result is failed whenever accepted count is less than requested count.
+
+### `codex_spawn` Returns Duplicate Active Assignment
+
+If the tool fails with
+`blocker.public.pylon_dispatch.duplicate_active_assignment` while
+`codex_fleet_status` shows another named account has free capacity, check the
+handoff shape and deployed Worker version:
+
+- Pylon must send the public-safe account hash both under
+  `openagents.coding.targetAccountRefHash` and at root `targetAccountRefHash`.
+- The Worker must accept either shape and scope the duplicate gate to that
+  account's advertised slot count.
+- After patching either side, deploy `apps/openagents.com` with the sanctioned
+  `bun run --cwd workers/api deploy:safe` path, heartbeat again, and retry.
+
+Do not work around this by deleting active markers from a live worker. First
+confirm whether `codex exec` is still running for the assignment.
 
 ### `codex_spawn` Chooses The Wrong Account
 
