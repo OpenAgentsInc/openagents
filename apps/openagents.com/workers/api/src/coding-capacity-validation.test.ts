@@ -1081,6 +1081,42 @@ describe('#6354 per-account Codex dispatch division-of-labor', () => {
     ).toBe(ACCOUNT_B_HASH)
   })
 
+  test('root targetAccountRefHash pins account B even when account A is saturated', async () => {
+    const pylonStore = makePylonStore([perAccountRegistration()])
+    for (let index = 0; index < 8; index += 1) {
+      await pylonStore.createAssignment(
+        activeCodexLease('pylon.a.codex', index, ACCOUNT_A_HASH),
+      )
+    }
+
+    const admitted = await delegateCodingWorkflow({
+      classification: {
+        confidence: 1,
+        evidenceRefs: ['evidence.coding_workflow.structured_body'],
+        workflowClass: 'codex_agent_task',
+      },
+      linkedAgents: [linkedAgentA],
+      makeId: () => 'id_req_root_account_b',
+      nowIso: NOW_ISO,
+      pylonStore,
+      rawBody: {
+        openagents: { workflowClass: 'codex_agent_task' },
+        targetAccountRefHash: ACCOUNT_B_HASH,
+        targetPylonRef: 'pylon.a.codex',
+      },
+      requestId: 'req_root_account_b',
+    })
+
+    expect(admitted?.kind).toBe('assigned')
+    if (admitted?.kind !== 'assigned') {
+      throw new Error('expected root account hash request to be admitted')
+    }
+    expect(
+      (admitted.assignment.codingAssignment?.codex as { accountRefHash?: string })
+        ?.accountRefHash,
+    ).toBe(ACCOUNT_B_HASH)
+  })
+
   test('per-account busy accounting: only same-account active leases count toward a request', async () => {
     const pylonStore = makePylonStore([perAccountRegistration()])
     // 8 active leases on account A, plus 7 on account B (B has 1 free slot).

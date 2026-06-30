@@ -677,6 +677,9 @@ export function buildPylonKhalaChatRequestBody(
     ...(targetPylonRef === undefined || targetPylonRef === ""
       ? {}
       : { targetPylonRef }),
+    ...(targetAccountRefHash === undefined || targetAccountRefHash === ""
+      ? {}
+      : { targetAccountRefHash }),
   }
   assertPublicSafe(khalaPublicSafetyValue(body), "khala request body")
   return body

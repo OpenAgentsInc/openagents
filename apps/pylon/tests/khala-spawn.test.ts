@@ -134,6 +134,30 @@ describe("pylon khala spawn planner", () => {
     expect(plan.slots[0]?.commands.runNoSpend).toContain("assignment run-no-spend")
     expect(plan.slots[0]?.commands.proof).toContain("pylon khala proof")
   })
+
+  test("plans multiple advertised slots per ready account", () => {
+    const plan = buildPylonKhalaSpawnPlan({
+      accounts: accountsProjection(),
+      advertisedCodexAvailability: 5,
+      baseUrl: "https://openagents.test",
+      maxParallel: 5,
+      objectives: repeatedKhalaSpawnObjectives({
+        count: 5,
+        objective: "run a live-capacity smoke task",
+      }),
+      targetPylonRef: "pylon.public.local",
+    })
+
+    expect(plan.maxParallel).toBe(5)
+    expect(plan.readyCodexAccountCount).toBe(3)
+    expect(plan.slots.map((slot) => slot.account.accountRefHash)).toEqual([
+      "accthash_one",
+      "accthash_two",
+      "accthash_three",
+      "accthash_one",
+      "accthash_two",
+    ])
+  })
 })
 
 describe("pylon khala spawn runner", () => {
@@ -226,11 +250,96 @@ describe("pylon khala spawn runner", () => {
     expect(result.results.every((slot) => slot.proof?.usageTruth === "exact")).toBe(true)
     expect(result.results.every((slot) => slot.proof?.demandKind === "own_capacity")).toBe(true)
     expect(result.results.every((slot) => slot.proof?.demandSource === "khala_coding_delegation")).toBe(true)
+    expect(result.results.every((slot) => slot.failure === null)).toBe(true)
     expect(lifecycleStates).toContain("queued")
     expect(lifecycleStates).toContain("assignment_created")
     expect(lifecycleStates).toContain("running")
     expect(lifecycleStates).toContain("closeout_submitted")
     expect(lifecycleStates).toContain("proof_checked")
     expect(lifecycleStates).toContain("accepted")
+  })
+
+  test("retries proof reads after an accepted closeout", async () => {
+    const plan = buildPylonKhalaSpawnPlan({
+      accounts: accountsProjection(),
+      advertisedCodexAvailability: 1,
+      baseUrl: "https://openagents.test",
+      maxParallel: 1,
+      objectives: repeatedKhalaSpawnObjectives({
+        count: 1,
+        objective: "run a fixture-backed Codex assignment",
+      }),
+      targetPylonRef: "pylon.public.local",
+    })
+    let proofAttempts = 0
+    const sleeps: number[] = []
+
+    const result = await runPylonKhalaSpawnPlan({
+      deps: {
+        readProof: async (_network, assignmentRef) => {
+          proofAttempts += 1
+          if (proofAttempts < 3) throw new Error("proof unavailable")
+          return proofResult(assignmentRef, 900)
+        },
+        readTokensServed: async () => null,
+        requestAssignment: async (_network, _input, slot) =>
+          requestResult(`assignment.public.spawn.${slot.slotIndex}`),
+        runAssignment: async () => ({ closeout: { status: "accepted" }, ok: true }),
+        sleep: async (ms) => {
+          sleeps.push(ms)
+        },
+      },
+      network: {
+        agentToken: "public-agent-token",
+        baseUrl: "https://openagents.test",
+      },
+      plan,
+      summary: {} as BootstrapSummary,
+    })
+
+    expect(result.ok).toBe(true)
+    expect(proofAttempts).toBe(3)
+    expect(sleeps).toEqual([500, 1500])
+    expect(result.results[0]?.failure).toBeNull()
+    expect(result.results[0]?.proof?.totalTokens).toBe(900)
+  })
+
+  test("projects public-safe timeout failures from slots", async () => {
+    const plan = buildPylonKhalaSpawnPlan({
+      accounts: accountsProjection(),
+      advertisedCodexAvailability: 1,
+      baseUrl: "https://openagents.test",
+      maxParallel: 1,
+      objectives: repeatedKhalaSpawnObjectives({
+        count: 1,
+        objective: "run a fixture-backed Codex assignment",
+      }),
+      targetPylonRef: "pylon.public.local",
+    })
+
+    const result = await runPylonKhalaSpawnPlan({
+      deps: {
+        readTokensServed: async () => null,
+        requestAssignment: async (_network, _input, slot) =>
+          requestResult(`assignment.public.spawn.${slot.slotIndex}`),
+        runAssignment: async () => {
+          throw new Error("command timed out")
+        },
+      },
+      network: {
+        agentToken: "public-agent-token",
+        baseUrl: "https://openagents.test",
+      },
+      plan,
+      summary: {} as BootstrapSummary,
+    })
+
+    expect(result.ok).toBe(false)
+    expect(result.blockerRefs).toContain("blocker.khala_spawn.slot_timeout")
+    expect(result.results[0]?.failure).toEqual({
+      message: "worker failed because a bounded operation timed out",
+      phase: "assignment_created",
+      ref: "failure.khala_spawn.timeout",
+    })
   })
 })

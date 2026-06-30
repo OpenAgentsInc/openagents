@@ -70,6 +70,21 @@ describe("exec_command tool", () => {
     expect(result.ui).toMatchObject({ timedOut: true })
   })
 
+  test("timeout kills the command process group", async () => {
+    const workspace = await makeWorkspace()
+
+    const result = await runExec(workspace, {
+      cmd: "sh -c 'sleep 5 & echo $! > child.pid; wait'",
+      timeout_ms: 80,
+    })
+
+    const childPid = Number((await readFile(join(workspace, "child.pid"), "utf8")).trim())
+    await waitForProcessExit(childPid)
+    expect(result.status).toBe("failed")
+    expect(result.ui).toMatchObject({ timedOut: true })
+    expect(processIsAlive(childPid)).toBe(false)
+  })
+
   test("supports cancellation deadlines", async () => {
     const workspace = await makeWorkspace()
 
@@ -205,4 +220,20 @@ describe("exec_command tool", () => {
 
 function shellQuote(value: string): string {
   return `'${value.replaceAll("'", "'\\''")}'`
+}
+
+async function waitForProcessExit(pid: number): Promise<void> {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    if (!processIsAlive(pid)) return
+    await new Promise(resolve => setTimeout(resolve, 25))
+  }
+}
+
+function processIsAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch {
+    return false
+  }
 }

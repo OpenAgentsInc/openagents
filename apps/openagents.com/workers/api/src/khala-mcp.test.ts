@@ -441,6 +441,13 @@ describe('Khala MCP catalog', () => {
     )
     expect(status.isError).toBeFalsy()
     expect(status.structuredContent).toMatchObject({
+      aggregate: {
+        acceptedCount: 0,
+        activeCount: 2,
+        closeoutRefCount: 0,
+        proofRefCount: 0,
+        rejectedCount: 0,
+      },
       childCount: 2,
       ok: true,
       schema: 'openagents.khala_mcp.spawn_status.v1',

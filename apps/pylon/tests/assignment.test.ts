@@ -31,6 +31,7 @@ import {
 } from "../src/codex-agent-executor"
 import { hashPylonAccountRef } from "../src/account-registry"
 import { loadCodexAccountHealthRecord } from "../src/codex-account-health-ledger"
+import { activeCodingRunCounts } from "../src/active-assignment-runs"
 
 const INDEX = join(import.meta.dir, "..", "src", "index.ts")
 const CWD = join(import.meta.dir, "..")
@@ -252,12 +253,24 @@ describe("Pylon assignment lease flow", () => {
       expect(result.closeout.artifactRefs[0].startsWith("assignment.artifact.")).toBe(true)
       expect(result.closeout.proofRefs[0].startsWith("assignment.proof.")).toBe(true)
       const pylonRef = fake.requests[0].body.pylonRef
-      expect(fake.requests.map((request) => request.path).filter((path) => path.includes("/assignments/"))).toEqual([
-        `/api/pylons/${encodeURIComponent(pylonRef)}/assignments/${encodeURIComponent(result.lease.leaseRef)}/accept`,
-        `/api/pylons/${encodeURIComponent(fake.requests[0].body.pylonRef)}/assignments/${encodeURIComponent(result.lease.leaseRef)}/progress`,
-        `/api/pylons/${encodeURIComponent(fake.requests[0].body.pylonRef)}/assignments/${encodeURIComponent(result.lease.leaseRef)}/artifacts`,
-        `/api/pylons/${encodeURIComponent(fake.requests[0].body.pylonRef)}/assignments/${encodeURIComponent(result.lease.leaseRef)}/closeout`,
-      ])
+      const assignmentPaths = fake.requests.map((request) => request.path).filter((path) => path.includes("/assignments/"))
+      const expectedAcceptPath = `/api/pylons/${encodeURIComponent(pylonRef)}/assignments/${encodeURIComponent(result.lease.leaseRef)}/accept`
+      const expectedProgressPath = `/api/pylons/${encodeURIComponent(fake.requests[0].body.pylonRef)}/assignments/${encodeURIComponent(result.lease.leaseRef)}/progress`
+      const expectedArtifactsPath = `/api/pylons/${encodeURIComponent(fake.requests[0].body.pylonRef)}/assignments/${encodeURIComponent(result.lease.leaseRef)}/artifacts`
+      const expectedCloseoutPath = `/api/pylons/${encodeURIComponent(fake.requests[0].body.pylonRef)}/assignments/${encodeURIComponent(result.lease.leaseRef)}/closeout`
+      expect(assignmentPaths[0]).toBe(expectedAcceptPath)
+      expect(assignmentPaths.at(-2)).toBe(expectedArtifactsPath)
+      expect(assignmentPaths.at(-1)).toBe(expectedCloseoutPath)
+      expect(assignmentPaths.filter((path) => path === expectedProgressPath).length).toBeGreaterThanOrEqual(2)
+      expect(fake.requests.some((request) =>
+        request.path === expectedProgressPath &&
+        request.body.status === "running" &&
+        request.body.phase === "runtime_active"
+      )).toBe(true)
+      expect(fake.requests.some((request) =>
+        request.path === expectedProgressPath &&
+        request.body.status === "proof-ready"
+      )).toBe(true)
       expect(fake.requests.map((request) => request.path).filter((path) => path.endsWith("/assignments"))).toEqual([
         `/api/pylons/${encodeURIComponent(pylonRef)}/assignments`,
       ])
@@ -291,6 +304,7 @@ describe("Pylon assignment lease flow", () => {
         "assignment_run.poll_complete",
         "assignment_run.accepted",
         "assignment_run.runtime_started",
+        "assignment_run.runtime_progress",
         "assignment_run.progress_submitted",
         "assignment_run.artifacts_submitted",
         "assignment_run.closeout_submitted",
@@ -460,6 +474,7 @@ describe("Pylon assignment lease flow", () => {
         "assignment_run.poll_complete",
         "assignment_run.accepted",
         "assignment_run.runtime_started",
+        "assignment_run.runtime_progress",
         "assignment_run.progress_submitted",
         "assignment_run.artifacts_submitted",
         "assignment_run.closeout_submitted",
@@ -735,6 +750,77 @@ describe("Pylon assignment lease flow", () => {
       expect(lifecycleJson).not.toContain("shell output")
       expect(lifecycleJson).not.toContain("token")
       for (const event of lifecycleEvents) assertPublicProjectionSafe(event)
+    })
+  })
+
+  test("closes out Codex runtime failures and clears active run markers", async () => {
+    await withTempHome(async (home) => {
+      const codexLease = lease({
+        assignmentRef: "assignment.public.no_spend.codex_runtime_timeout",
+        leaseRef: "lease.public.no_spend.codex_runtime_timeout",
+        capabilityRefs: ["capability.pylon.local_codex"],
+        codingAssignment: {
+          codex: {
+            agentKind: "codex_sdk",
+            fixtureRef: CODEX_AGENT_SUM_REPAIR_FIXTURE_REF,
+            schema: CODEX_AGENT_TASK_SCHEMA,
+          },
+        },
+      })
+      const fake = fakeAssignmentServer({ leases: [codexLease] })
+      const summary = await readySummary(home, ["capability.pylon.local_codex"])
+      const state = await ensurePylonLocalState(summary)
+      const codexHome = join(home, "accounts/codex/codex-timeout")
+      await mkdir(codexHome, { recursive: true })
+      await writeFile(join(codexHome, "auth.json"), "{}\n")
+      await writeFile(
+        state.paths.config,
+        `${JSON.stringify(
+          {
+            dev: {
+              accounts: [{ provider: "codex", ref: "codex-timeout", home: codexHome }],
+            },
+          },
+          null,
+          2,
+        )}\n`,
+      )
+      await sendHeartbeat(summary, { baseUrl: fake.baseUrl, now: () => new Date("2026-06-09T00:00:00.000Z") })
+
+      const lifecycleEvents: AssignmentRunLifecycleEvent[] = []
+      const timingOutCodexRunner: CodexAgentRunner = async () => {
+        throw new Error("command timed out")
+      }
+
+      const result = await runNoSpendAssignment(summary, {
+        accountRef: "codex-timeout",
+        baseUrl: fake.baseUrl,
+        codexAgentProbe: {
+          env: {},
+          importer: async () => ({}),
+          platform: "darwin",
+        },
+        codexAuthValidityProbe: async () => ({ valid: true }),
+        codexAgentRunner: timingOutCodexRunner,
+        now: () => new Date("2026-06-09T00:00:30.000Z"),
+        onLifecycleEvent: (event) => lifecycleEvents.push(event),
+      })
+
+      expect(result.ok).toBe(false)
+      if (result.ok) throw new Error("expected Codex assignment to fail closed")
+      expect(result.closeout.status).toBe("timed-out")
+      expect(result.closeout.blockerRefs).toContain("blocker.assignment.codex_agent_execution_timed_out")
+      expect(await activeCodingRunCounts(state.paths)).toEqual({})
+      expect(lifecycleEvents).toContainEqual(
+        expect.objectContaining({
+          event: "assignment_run.completed",
+          assignmentRef: codexLease.assignmentRef,
+          leaseRef: codexLease.leaseRef,
+          status: "timed-out",
+          blockerRefs: expect.arrayContaining(["blocker.assignment.codex_agent_execution_timed_out"]),
+        }),
+      )
+      expect(fake.requests.some((request) => request.path.endsWith("/closeout"))).toBe(true)
     })
   })
 

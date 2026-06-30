@@ -1175,13 +1175,18 @@ function refusalRecord(input: {
   resultRef: string
   summaryRef: string
   message: string
+  status?: "rejected" | "timed-out"
 }) {
   const failureRef = stableRef(
     "proof.pylon.codex_agent_task.refused",
     `${input.lease.leaseRef}:${input.blockerRefs.join(",")}`,
   )
+  const artifactRef = stableRef(
+    "artifact.pylon.codex_agent_task.refused",
+    `${input.lease.leaseRef}:${input.resultRef}:${input.summaryRef}`,
+  )
   return {
-    artifactRefs: [],
+    artifactRefs: [artifactRef],
     blockerRefs: input.blockerRefs,
     buildRefs: [input.runRef],
     message: input.message,
@@ -1189,7 +1194,7 @@ function refusalRecord(input: {
     proofRefs: [failureRef],
     resultRefs: [input.resultRef],
     runRefs: [input.runRef],
-    status: "rejected" as const,
+    status: input.status ?? "rejected",
     summaryRefs: [input.summaryRef],
     testRefs: [failureRef],
   }
@@ -1391,6 +1396,7 @@ export async function executeCodexAgentAssignment(
     })
   } catch (error) {
     await releaseCodexAgentWorkspace({ materialized, now })
+    const timedOut = /\b(timed?\s*out|timeout)\b/i.test(error instanceof Error ? error.message : String(error))
     const failure = classifyCodexAccountFailure(error)
     await recordCodexExecutionFailureHealth({
       state,
@@ -1402,13 +1408,22 @@ export async function executeCodexAgentAssignment(
       lease,
       runRef,
       blockerRefs: [
-        "blocker.assignment.codex_agent_execution_refused",
+        timedOut
+          ? "blocker.assignment.codex_agent_execution_timed_out"
+          : "blocker.assignment.codex_agent_execution_refused",
         ...codexAccountFailureBlockerRefs(failure.reason),
         failure.sourceDigestRef,
       ],
-      resultRef: `result.public.pylon.codex_agent_task.execution_refused.${failure.reason}`,
-      summaryRef: `summary.public.pylon.codex_agent_task.execution_refused.${failure.reason}`,
-      message: `Local Codex thread refused with ${failure.reason}: ${failure.publicMessage || "no public error message available"}.`,
+      resultRef: timedOut
+        ? "result.public.pylon.codex_agent_task.execution_timed_out"
+        : `result.public.pylon.codex_agent_task.execution_refused.${failure.reason}`,
+      status: timedOut ? "timed-out" : "rejected",
+      summaryRef: timedOut
+        ? "summary.public.pylon.codex_agent_task.execution_timed_out"
+        : `summary.public.pylon.codex_agent_task.execution_refused.${failure.reason}`,
+      message: timedOut
+        ? "Local Codex thread timed out before completing the task."
+        : `Local Codex thread refused with ${failure.reason}: ${failure.publicMessage || "no public error message available"}.`,
     })
   }
 

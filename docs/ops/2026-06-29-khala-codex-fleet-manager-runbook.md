@@ -75,6 +75,11 @@ Expected:
   account is ready.
 - `(default)` may be ready, but Khala Code Desktop now prefers named ready
   accounts before `(default)` for automatic `codex_spawn`.
+- `codex_spawn` plans against advertised per-account slots, then launches the
+  planned slots concurrently. The Desktop MVP caps requested fanout at five.
+  For a deliberate five-worker smoke, advertise five account slots with
+  `OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY=5`; do not set that globally
+  unless the machine should really take five local Codex runs at once.
 
 Start the app:
 
@@ -92,6 +97,11 @@ Check pylon fleet status and delegate a demo read-only task to one of the connec
 
 The only fleet tools in this MVP are `pylon_ensure`, `codex_fleet_status`, and
 `codex_spawn`. Do not ask for or invent `codex_terminate`; it does not exist.
+For normal executed assignments, `codex_spawn` delegates to the canonical
+`pylon khala spawn --execute --json` batch handshake. The older per-slot
+`pylon khala request` path is retained only for explicit `no_run` debugging, so
+Desktop and headless Pylon now share the same account-slot planner, lifecycle
+events, proof check, and public token-counter evidence.
 
 ## Current Headless Smoke
 
@@ -120,7 +130,7 @@ Expected green shape:
   "requestedCount": 1,
   "results": [
     {
-      "accountRef": "codex-2",
+      "accountRef": "status",
       "autoRunOk": true,
       "status": "accepted"
     }
@@ -128,12 +138,322 @@ Expected green shape:
 }
 ```
 
+`accountRef` may be any ready named account with advertised free capacity
+(`status`, `codex-2`, or another linked account). If `codex-2` is busy and
+`status` has a free slot, Desktop should pick `status`.
+
+For a bounded five-slot smoke of the same Desktop tool path:
+
+```sh
+OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY=5 bun --eval '
+  import { spawnCodexInstances } from "./clients/khala-code-desktop/src/bun/khala-codex-fleet-tools.ts";
+  const result = await spawnCodexInstances({
+    count: 5,
+    prompt: "Read the bounded public fixture and summarize it in one sentence.",
+    fixture: true,
+    timeoutMs: 600000
+  });
+  console.log(JSON.stringify(result, null, 2));
+'
+```
+
+Expected: `acceptedCount` is `5`, `requestedCount` is `5`, every slot is
+`accepted`, and the selected account refs correspond to accounts that advertised
+free slots. If it refuses before launch with `Only X/5 advertised ... free`,
+capacity was not actually advertised; rerun the heartbeat/status commands and
+check `ownCapacityDispatch.codexAccounts`.
+
+When debugging below the desktop wrapper, run the same handoff directly through
+Pylon:
+
+```sh
+OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY=5 \
+  bun apps/pylon/src/index.ts khala spawn \
+    --count 5 \
+    --max-parallel 5 \
+    --objective "Fixture smoke: run the public Codex sum repair fixture and return a public-safe closeout." \
+    --fixture \
+    --execute \
+    --base-url https://openagents.com \
+    --json
+```
+
+This command streams per-slot lifecycle JSONL while each Codex worker runs, then
+prints one final `openagents.pylon.khala_spawn_run.v0.1` JSON object. Success is
+`ok: true`, `aggregate.acceptedCount: 5`, `totalTokenRows: 5`, no
+`blockerRefs`, and a clean process exit.
+
+Verified live on 2026-06-30 after the lifecycle, capacity-projection,
+per-account spawn-planner, and weighted account-pool fixes:
+
+- `provider go-online --json` with
+  `OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY=5` reported
+  `ownCapacityDispatch.availableCodexAssignments = 10` and
+  `maxCodexAssignments = 10`.
+- the two ready per-account buckets each reported `5/5`:
+  `account.pylon.codex.4db4cc18ebc55f39fb4da894` and
+  `account.pylon.codex.651c03fed68925d7acb2c02f`.
+- the direct Pylon `khala spawn` plan carried the advertised
+  `codexAccounts` buckets and pinned every request to the selected public
+  `targetAccountRefHash`; zero-slot or non-matching local accounts are no
+  longer eligible for direct spawn assignment targeting.
+- the direct five-slot Pylon smoke above completed `5/5` with
+  `aggregate.acceptedCount = 5`, `totalTokenRows = 5`, `ownerOnlyTraceCount = 58`,
+  `ownerOnlyRawEventCount = 83`, and `totalVerifiedTokens = 409068`.
+- token-counter evidence moved from `6436250864` to `6436768178`
+  (`delta = 517314`, `state = increment_observed`), above the verified-token
+  minimum.
+- each slot reached `assignment_run.completed` and proof-check `accepted`, with
+  `closeout: accepted, no-spend, not_applicable`, `blocker refs: none`, and
+  lifecycle summaries through `assignment_run.completed`.
+- direct-spawn slots targeted the advertised account buckets in weighted
+  round-robin order: `codex-2`, `status`, `codex-2`, `status`, `codex-2`.
+  The server admission gate and local no-spend runner agreed on the same
+  `requestInput.targetAccountRefHash` for each assignment.
+- five-slot assignment refs:
+  `assignment.public.khala_coding.chatcmpl_cd36793b2c1a4f1d9c257617baea062f`,
+  `assignment.public.khala_coding.chatcmpl_116d758b411b4fb086f2bcf1b2c917b0`,
+  `assignment.public.khala_coding.chatcmpl_7793f0010744477b8e174f81ca0eb380`,
+  `assignment.public.khala_coding.chatcmpl_bb4b9b08609e49c5a9a7c9c10167cff1`,
+  `assignment.public.khala_coding.chatcmpl_ab7b5662144c435e81e69ee2fd73bb8d`.
+- post-run: no active marker files remained and capacity returned to `10/10`.
+
+Verified again on 2026-06-30 after Desktop stopped hand-rolling per-slot
+requests and started using the batch Pylon handshake:
+
+- `provider go-online --json` with
+  `OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY=5` reported `10/10` available,
+  split across the same two ready account buckets.
+- a one-slot Desktop headless `spawnCodexInstances` smoke completed `1/1` via
+  `pylon.33afd48282a649047e3a`; the slot used `codex-2`, closeout was
+  `accepted`, proof reported `101370` verified tokens, and the public counter
+  delta was `214189`.
+- the first five-slot rerun exposed a Desktop bridge bug: the Pylon batch run
+  succeeded, but the wrapper kept only the last `80 KB` of child output, chopped
+  the final JSON object, and rendered raw worker-event JSON as a failed card.
+  The fix is to give batch spawn a larger bounded capture budget and to parse
+  Pylon worker-event JSONL as lifecycle evidence in failure summaries.
+- the corrected five-slot Desktop headless smoke completed `5/5` with slots
+  targeting `codex-2`, `status`, `codex-2`, `status`, `codex-2`.
+- five-slot assignment refs:
+  `assignment.public.khala_coding.chatcmpl_29271ba840054e9996503ed334181c1d`,
+  `assignment.public.khala_coding.chatcmpl_8464743da075412986700efa5bfbc9fb`,
+  `assignment.public.khala_coding.chatcmpl_299b8244e3d54a5f8902a23b00c88c1e`,
+  `assignment.public.khala_coding.chatcmpl_46bbc5366dc64424902d8464531db2fe`,
+  `assignment.public.khala_coding.chatcmpl_6852162c773545b1981d19c422487732`.
+- each slot returned `state: accepted`, `assignment run: completed`,
+  `closeout: accepted`, `blocker refs: none`, proof token rows, and owner-only
+  trace/raw-event evidence. The aggregate public counter check returned
+  `state = increment_observed`, `delta = 529238`,
+  `expectedMinimumDelta = 422903`.
+- post-run: no active marker files remained and capacity returned to `10/10`.
+
+Verified again on 2026-06-30 after the Pylon assignment runner started
+publishing an immediate runtime-progress heartbeat:
+
+- direct smoke command:
+
+  ```sh
+  OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY=5 \
+    bun apps/pylon/src/index.ts khala spawn \
+      --count 5 \
+      --max-parallel 5 \
+      --objective "Run the public Pylon Codex fixture and report exact closeout status for this five-slot handshake smoke." \
+      --fixture \
+      --execute \
+      --base-url https://openagents.com \
+      --json
+  ```
+
+- the run completed `ok: true` with `aggregate.acceptedCount = 5`,
+  `blockerRefs = []`, `totalTokenRows = 5`, `ownerOnlyTraceCount = 59`,
+  `ownerOnlyRawEventCount = 84`, and `totalVerifiedTokens = 408893`.
+- token-counter evidence moved by `delta = 565839`, above
+  `expectedMinimumDelta = 408893`, with `state = increment_observed`.
+- each slot emitted `assignment_run.runtime_progress` immediately after
+  `assignment_run.runtime_started` before the underlying Codex task finished.
+  In the observed JSONL, first progress arrived within about one second of
+  runtime start for every slot. If the desktop card says `running` but shows no
+  body after runtime start, treat that as a UI bridge problem, not expected
+  Pylon behavior.
+- assignment refs:
+  `assignment.public.khala_coding.chatcmpl_5e46d6f629634575b6498fd188bf12e0`,
+  `assignment.public.khala_coding.chatcmpl_e74345af9e9b4e2a90a893b1dc966a37`,
+  `assignment.public.khala_coding.chatcmpl_39892527094a4d029e45a805d0230266`,
+  `assignment.public.khala_coding.chatcmpl_3d51c732bda34a41874d0452704be1ce`,
+  `assignment.public.khala_coding.chatcmpl_ea0ebaff39e44be18ccda2d122c3bf3e`.
+- no Worker deploy is required for this specific fix; it is local Pylon runner
+  behavior plus tests and runbook evidence.
+
+Verified again on 2026-06-30 after Pylon started posting a generic
+server-visible `running` progress record while the local Codex runtime is
+active, even when the underlying Codex runner is otherwise silent:
+
+- direct smoke command:
+
+  ```sh
+  OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY=5 \
+    bun apps/pylon/src/index.ts khala spawn \
+      --count 5 \
+      --max-parallel 5 \
+      --objective "Run the public Pylon Codex fixture and report exact closeout status for this five-slot handshake smoke after runtime progress heartbeat patch." \
+      --fixture \
+      --execute \
+      --base-url https://openagents.com \
+      --json
+  ```
+
+- pre-run `provider go-online --json` reported `10/10` available, split
+  `5/5` across `account.pylon.codex.4db4cc18ebc55f39fb4da894` and
+  `account.pylon.codex.651c03fed68925d7acb2c02f`.
+- the run completed `ok: true`, `aggregate.acceptedCount = 5`,
+  `blockerRefs = []`, `totalTokenRows = 5`, `ownerOnlyTraceCount = 60`,
+  `ownerOnlyRawEventCount = 86`, and `totalVerifiedTokens = 409059`.
+- token-counter evidence moved from `6443204900` to `6443782205`
+  (`delta = 577305`, `expectedMinimumDelta = 409059`,
+  `state = increment_observed`).
+- every slot emitted `assignment_run.runtime_started`, then a
+  server-visible `assignment_run.runtime_progress`/`running` pulse within
+  about two seconds while the runtime was still active.
+- five-slot assignment refs:
+  `assignment.public.khala_coding.chatcmpl_517e84a9b67549269d033118f33606e7`,
+  `assignment.public.khala_coding.chatcmpl_df2bd1c415e0403fafdb9af6a8e5c9b9`,
+  `assignment.public.khala_coding.chatcmpl_ea323d6f91ce46c4aa43c37bc46e65c8`,
+  `assignment.public.khala_coding.chatcmpl_59901880eac54ffc997b32c1dd5bd7d7`,
+  `assignment.public.khala_coding.chatcmpl_ed55ca47cfd74ba381b2fbc09359d21b`.
+- post-run: no active marker files remained and capacity returned to `10/10`,
+  with both ready account buckets back at `5/5`.
+
+Verified again on 2026-06-30 after the FB-2 ledger implementation pass, using
+the Khala Code Desktop headless tool path (`spawnCodexInstances`) rather than a
+direct Pylon CLI call:
+
+- pre-run capacity was `10/10`, split `5/5` across
+  `account.pylon.codex.4db4cc18ebc55f39fb4da894` and
+  `account.pylon.codex.651c03fed68925d7acb2c02f`; active marker count was `0`.
+- the five-slot smoke ran from `2026-06-30T12:31:33.968Z` to
+  `2026-06-30T12:33:41.856Z` and completed `acceptedCount = 5`,
+  `requestedCount = 5`.
+- every slot returned `autoRunOk = true`, `exitCode = 0`, `state: accepted`,
+  `assignment run: completed`, `closeout: accepted`, and `blocker refs: none`.
+- selected account refs were weighted across the ready named pool:
+  `codex-2`, `status`, `codex-2`, `status`, `codex-2`.
+- assignment refs:
+  `assignment.public.khala_coding.chatcmpl_a112ae0c42bb4ae7bdaa80b90ac6eff7`,
+  `assignment.public.khala_coding.chatcmpl_c02cc15ff7264596a2f53c390b5d5adc`,
+  `assignment.public.khala_coding.chatcmpl_7934939c5d41421aa1a6ba4ad0442254`,
+  `assignment.public.khala_coding.chatcmpl_0c85d84c0cbc45a7a1639fa51d053d78`,
+  `assignment.public.khala_coding.chatcmpl_c3fa6b5f8a38431ba3c854e93cdbb30d`.
+- proof rows reported `422804` verified tokens total; public counter evidence
+  returned `state = increment_observed`, `delta = 543763`,
+  `expectedMinimumDelta = 422804`.
+- post-run active marker count returned to `0`; capacity returned to `10/10`,
+  with both ready account buckets back at `5/5`.
+- process-list noise alone is not capacity evidence. This machine also had
+  historical `~/.codex-supervisor/durable-runner-pool.sh` workers spawning
+  short `pylon assignment run-no-spend --json` probes. Treat
+  `$PYLON_HOME/active-assignment-runs/*.json` plus
+  `ownCapacityDispatch.loadRefs` as the source of truth for whether Codex slots
+  are actually busy.
+
+## Current A2A Transaction Step: Provider-Bond Contract
+
+Checked again on 2026-06-30 before the first forfeitable-bond implementation
+pass:
+
+- local Pylon online: `pylon.33afd48282a649047e3a`
+- active assignment markers: `0`
+- ready Codex refs: `(default)`, `codex-2`, `status`
+- `codex` remained `credentials_revoked`; the historical backup/supervisor refs
+  remained `credentials_missing`
+- dispatch capacity reported `10/10` from the per-account projection; this is
+  the value Desktop should show and plan against.
+
+Checked again on 2026-06-30 before the FB-2 ledger implementation pass:
+
+- local Pylon online: `pylon.33afd48282a649047e3a`
+- dispatch capacity reported `10/10`, split `5/5` across two ready Codex account
+  buckets
+- ready Codex refs included `codex-2`, `status`, and the unnamed default ref;
+  `codex` remained `credentials_revoked`
+- load refs reported `busy=0` and `queued=0` for the aggregate and both ready
+  account buckets
+
+The next concrete step toward agents transacting naturally with each other
+(Nostr negotiation, Lightning/MDK/Ark later, forfeitable funds) is tracked in
+`docs/labor/2026-06-30-forfeitable-bond-next-step.md`. FB-1 is now the package
+contract step:
+
+- `packages/nip90/src/lbr-bond.ts` defines ref-only `provider_bond`,
+  `bond_release`, and `bond_forfeit` kind-7000 feedback variants.
+- `packages/nip90/src/lbr-closeout.ts` can bind a terminal bond outcome into
+  the content-addressed LBR closeout digest.
+- Verification:
+
+```sh
+bun run --cwd packages/nip90 typecheck
+bun run --cwd packages/nip90 test
+```
+
+FB-2 is now the Worker credit-ledger step:
+
+- `apps/openagents.com/workers/api/src/labor-escrow.ts` adds the terminal
+  `forfeited` escrow state and `forfeit` receipt transition.
+- Only `validator_non_acceptance` may trigger `forfeit`; requester, provider,
+  and worker authorities fail closed.
+- A counterparty forfeit debits the held claim and credits the modeled
+  counterparty exactly once. A burn forfeit debits the held claim without
+  crediting a spender.
+- Release/refund after forfeit and double-forfeit are no-ops at the balance
+  layer.
+- `apps/openagents.com/workers/api/migrations/0261_labor_escrow_forfeit.sql`
+  widens the D1 CHECK constraints and stores the forfeit receipt/destination
+  refs.
+- `apps/openagents.com/INVARIANTS.md` records that this is credit-ledger
+  forfeiture only, not Lightning/on-chain settlement.
+
+Verification:
+
+```sh
+bun --cwd apps/openagents.com/workers/api test src/labor-escrow.test.ts src/labor-live-rehearsal.test.ts
+bun run --cwd apps/openagents.com/workers/api typecheck
+```
+
+This still moves no sats, creates no hold invoice, imports no Lightning/Ark
+rail, and does not upgrade any public promise. The next real implementation
+phase is FB-3: add the `BondSettlementAdapter` seam with the credit-ledger
+implementation first, keeping Spark/MDK/Ark adapters behind future proof gates.
+
 The summary should include:
 
 - `auto-run: completed`
 - `assignment run: completed`
 - `closeout: accepted, no-spend, not_applicable`
 - `blocker refs: none`
+
+### Lifecycle / Failure Rendering Contract
+
+As of 2026-06-30, the Pylon/Desktop handshake carries assignment lifecycle
+evidence in both places operators need it:
+
+- `pylon khala request --json` still streams public-safe lifecycle JSONL to
+  stderr while the worker is active.
+- The final JSON stdout now also includes `assignmentLifecycleEvents`, so a
+  completed tool card can summarize the same path without scraping stderr.
+- The local no-spend runner posts generic `running` progress to the hosted
+  assignment progress endpoint while the runtime is active. This path is
+  fail-soft and operator-visible only; if the progress endpoint is slow or down,
+  local execution and closeout must continue.
+- Khala Code Desktop parses both the final array and the stderr JSONL fallback.
+  Timeout summaries should show `command timed out` plus the last lifecycle
+  state, for example `assignment_run.runtime_started (phase=runtime_active)`.
+- If a hosted assignment ref was created but the local auto-run returns
+  `autoRun.ok: false`, `codex_spawn` is a failed slot. It must render red and
+  include the closeout/blocker refs instead of showing a green `OK` card.
+
+This is intentionally not a new execution path. The local worker still runs
+through Pylon `runNoSpendAssignment`; the change is that Desktop no longer
+collapses a live worker into a blank "running" card or raw JSON failure blob.
 
 After the smoke, confirm Pylon is back to idle:
 
@@ -145,7 +465,8 @@ bun apps/pylon/src/index.ts provider go-online --json \
 ```
 
 Expected: no active marker files and capacity back at `N/N available` (on the
-owner machine this was `4/4` after the 2026-06-30 smoke).
+owner machine this was `10/10` after the 2026-06-30 five-slot smoke when
+`OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY=5` was set for the check).
 
 ## Assign One Issue To A Codex, Non-Blocking (verified 2026-06-30)
 
@@ -250,7 +571,7 @@ budget, not OpenAgents settlement.
 
 ## Current Troubleshooting Cheatsheet
 
-### `codex_fleet_status` Says `0/4 Available`
+### `codex_fleet_status` Says `0/N Available`
 
 First distinguish real busy capacity from poisoned local status:
 
@@ -268,7 +589,7 @@ bun apps/pylon/src/index.ts provider go-online --json \
 If there is an active marker and a live `codex exec`, the worker is actually
 running. If there are no markers and `provider go-online` says capacity is free,
 Desktop should also show free capacity on current code. If Desktop still says
-`0/4`, verify you are on or after commit
+`0/N`, verify you are on or after commit
 `a0e3a20df1214dd0084ac7b636462151d2ebb309` and that the app was restarted from
 that checkout.
 
@@ -290,6 +611,23 @@ Check the same process/marker commands above.
 
 The UI should render timed-out/failed `codex_spawn` cards as failed, not green.
 The tool result is failed whenever accepted count is less than requested count.
+
+### `codex_spawn` Returns Duplicate Active Assignment
+
+If the tool fails with
+`blocker.public.pylon_dispatch.duplicate_active_assignment` while
+`codex_fleet_status` shows another named account has free capacity, check the
+handoff shape and deployed Worker version:
+
+- Pylon must send the public-safe account hash both under
+  `openagents.coding.targetAccountRefHash` and at root `targetAccountRefHash`.
+- The Worker must accept either shape and scope the duplicate gate to that
+  account's advertised slot count.
+- After patching either side, deploy `apps/openagents.com` with the sanctioned
+  `bun run --cwd workers/api deploy:safe` path, heartbeat again, and retry.
+
+Do not work around this by deleting active markers from a live worker. First
+confirm whether `codex exec` is still running for the assignment.
 
 ### `codex_spawn` Chooses The Wrong Account
 

@@ -195,6 +195,7 @@ export type AssignmentRunLifecycleEvent = {
     | "assignment_run.accepted"
     | "assignment_run.runtime_started"
     | "assignment_run.runtime_progress"
+    | "assignment_run.runtime_failed"
     | "assignment_run.progress_submitted"
     | "assignment_run.artifacts_submitted"
     | "assignment_run.closeout_submitted"
@@ -1479,6 +1480,7 @@ function startLocalLeaseHeartbeat(
   const interval = setInterval(() => {
     void touch().catch(() => {})
   }, LOCAL_ASSIGNMENT_HEARTBEAT_INTERVAL_MS)
+  ;(interval as { unref?: () => void }).unref?.()
   return {
     stop: () => {
       stopped = true
@@ -1490,6 +1492,31 @@ function startLocalLeaseHeartbeat(
 function deterministicIndexFromRef(value: string, size: number): number {
   if (size <= 0) return 0
   return createHash("sha256").update(value).digest().readUInt32BE(0) % size
+}
+
+function runtimeFailureCloseoutRecord(
+  lease: PylonAssignmentLease,
+  error: unknown,
+): AgentRunnerCloseoutRecord {
+  const message = error instanceof Error ? error.message : String(error)
+  const timedOut = /\b(timed?\s*out|timeout)\b/i.test(message)
+  const status = timedOut ? "timed-out" : "rejected"
+  const reason = timedOut ? "timed_out" : "failed"
+  return {
+    artifactRefs: [stableRef("assignment.artifact.runtime_failure", `${lease.leaseRef}:${reason}`)],
+    blockerRefs: [`blocker.assignment.runtime_${reason}`],
+    buildRefs: [],
+    message: timedOut
+      ? "Assignment runtime timed out before producing a usable closeout."
+      : "Assignment runtime failed before producing a usable closeout.",
+    previewRefs: [],
+    proofRefs: [stableRef("assignment.proof.runtime_failure", `${lease.leaseRef}:${reason}`)],
+    resultRefs: [stableRef("assignment.result.runtime_failure", `${lease.assignmentRef}:${reason}`)],
+    runRefs: [],
+    status,
+    summaryRefs: [stableRef("assignment.summary.runtime_failure", `${lease.assignmentRef}:${reason}`)],
+    testRefs: [],
+  }
 }
 
 function interruptedLocalLeaseCloseout(
@@ -1681,24 +1708,45 @@ export async function runNoSpendAssignment(summary: BootstrapSummary, options: A
       run: () => Promise<T>
     },
   ): Promise<T> => {
-    if (options.onLifecycleEvent === undefined) return input.run()
     let stopped = false
+    let progressSequence = 0
     const tick = async () => {
       if (stopped) return
+      const elapsedMs = Math.max(0, Date.now() - input.startedAtMs)
       await emitLifecycleEvent({
         event: "assignment_run.runtime_progress",
         assignmentRef: input.assignmentRef,
         ...(input.accountRefHash === undefined ? {} : { accountRefHash: input.accountRefHash }),
         leaseRef: input.leaseRef,
         phase: "runtime_active",
-        elapsedMs: Math.max(0, Date.now() - input.startedAtMs),
+        elapsedMs,
         ...(lastProgressEvent === undefined ? {} : { lastProgressEvent }),
       })
+      progressSequence += 1
+      void submitAssignmentProgress(
+        summary,
+        {
+          schema: "openagents.pylon.assignment_progress.v0.3",
+          assignmentRef: input.assignmentRef,
+          leaseRef: input.leaseRef,
+          sequence: progressSequence,
+          status: "running",
+          message: "Runtime is active.",
+          artifactRefs: [],
+          proofRefs: [],
+          observedAt: (options.now?.() ?? new Date()).toISOString(),
+          elapsedMs,
+          phase: "runtime_active",
+          ...(lastProgressEvent === undefined ? {} : { lastProgressEvent }),
+        },
+        options,
+      ).catch(() => {})
     }
     const interval = setInterval(() => {
       void tick()
     }, runtimeProgressIntervalMs)
     try {
+      await tick()
       return await input.run()
     } finally {
       stopped = true
@@ -1796,6 +1844,7 @@ export async function runNoSpendAssignment(summary: BootstrapSummary, options: A
     statusRef: acceptance.statusRef,
   })
   const localLeaseHeartbeat = startLocalLeaseHeartbeat(state, lease.leaseRef, options)
+  try {
 
   const observedAt = observedAtDate.toISOString()
   const agentAccount = await resolveAgentAccountForAssignment(
@@ -1839,6 +1888,7 @@ export async function runNoSpendAssignment(summary: BootstrapSummary, options: A
           .then(() => heartbeatRefresh())
           .catch(() => {})
       }, runtimeHeartbeatIntervalMs)
+  ;(activeRunRefreshInterval as { unref?: () => void } | undefined)?.unref?.()
   let runtimeGate:
     | Awaited<ReturnType<typeof executeTassadarAssignment>>
     | AgentRunnerCloseoutRecord
@@ -1902,6 +1952,16 @@ export async function runNoSpendAssignment(summary: BootstrapSummary, options: A
           },
         })) ??
         (await executeRuntimeGate(state, lease, observedAtDate)),
+    })
+  } catch (error) {
+    runtimeGate = runtimeFailureCloseoutRecord(lease, error)
+    await emitLifecycleEvent({
+      event: "assignment_run.runtime_failed",
+      assignmentRef: lease.assignmentRef,
+      ...(agentAccount.accountRefHash === undefined ? {} : { accountRefHash: agentAccount.accountRefHash }),
+      leaseRef: lease.leaseRef,
+      status: runtimeGate.status,
+      blockerRefs: runtimeGate.blockerRefs,
     })
   } finally {
     stopActiveRunRefresh = true
@@ -2054,6 +2114,9 @@ export async function runNoSpendAssignment(summary: BootstrapSummary, options: A
     closeout,
     progressReceipt,
     closeoutReceipt,
+  }
+  } finally {
+    localLeaseHeartbeat.stop()
   }
 }
 

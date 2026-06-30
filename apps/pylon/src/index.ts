@@ -259,6 +259,7 @@ import {
   runNoSpendAssignment,
   submitAssignmentCloseout,
   submitAssignmentProgress,
+  type AssignmentRunLifecycleEvent,
   type AssignmentCloseout,
   type AssignmentProgress,
   type PylonAssignmentLease,
@@ -2162,8 +2163,26 @@ async function availableCodexAssignments(
   state: PylonLocalState,
   options?: AssignmentLeaseNetworkOptions,
 ): Promise<number> {
+  const codexAccounts = await localCodexDispatchAccounts(summary, state)
+  if (codexAccounts.length > 0) {
+    return codexAccounts.reduce((sum, account) => sum + account.available, 0)
+  }
   const codingCapacity = await codingCapacityForDispatch(summary, state, options)
   return codingCapacity.find((item) => item.service === "codex")?.available ?? 0
+}
+
+async function localCodexDispatchAccounts(
+  summary: BootstrapSummary,
+  state: PylonLocalState,
+) {
+  return localCodexAccountCapacities(
+    state,
+    summary,
+    Bun.env,
+    codexBusyByAccount(
+      await activeCodingRunCountsByAccount(state.paths),
+    ),
+  )
 }
 
 async function localGitText(args: string[], cwd = process.cwd()): Promise<string> {
@@ -3986,7 +4005,7 @@ async function main() {
           optionString(options, "prompt") ??
           (args[2] !== undefined && !args[2].startsWith("--") ? args[2] : undefined)
         if (!objective) {
-          throw new Error("usage: pylon khala spawn --count <n> --objective <text> [--fixture | --commit <sha> --repo owner/repo --verify <argv>] [--pylon-ref <pylonRef>] [--max-parallel n] [--execute] [--json]")
+          throw new Error("usage: pylon khala spawn --count <n> --objective <text> [--fixture | --commit <sha> --repo owner/repo --verify <argv>] [--pylon-ref <pylonRef>] [--account <ref>] [--max-parallel n] [--execute] [--json]")
         }
         const count = positiveIntegerOption(options, "count", "khala spawn --count") ?? 1
         const maxParallel = positiveIntegerOption(options, "max-parallel", "khala spawn --max-parallel")
@@ -4029,8 +4048,31 @@ async function main() {
             // push keeps advertised capacity current for the spawn planner.
           }
         }
-        const accounts = await collectPylonAccountsList(summary, { env: Bun.env })
-        const advertisedCodexAvailability = await availableCodexAssignments(summary, state, networkOptions)
+        const accountSelector =
+          optionString(options, "account") ??
+          optionString(options, "account-ref")
+        const allAccounts = await collectPylonAccountsList(summary, { env: Bun.env })
+        const accounts =
+          accountSelector === undefined
+            ? allAccounts
+            : {
+                ...allAccounts,
+                accounts: allAccounts.accounts.filter((account) =>
+                  account.provider === "codex" &&
+                  (
+                    account.accountRef === accountSelector ||
+                    account.accountRefHash === accountSelector ||
+                    (account.accountRef === null && /^(?:default|\(default\))$/iu.test(accountSelector))
+                  )
+                ),
+              }
+        if (accountSelector !== undefined && accounts.accounts.length === 0) {
+          throw new Error(`khala spawn account ${accountSelector} is not a connected Codex account`)
+        }
+        const advertisedCodexAccounts = await localCodexDispatchAccounts(summary, state)
+        const advertisedCodexAvailability = advertisedCodexAccounts.length > 0
+          ? advertisedCodexAccounts.reduce((sum, account) => sum + account.available, 0)
+          : await availableCodexAssignments(summary, state, networkOptions)
         const workspace = explicitFixture
           ? undefined
           : buildPylonKhalaGitCheckoutWorkspace({
@@ -4041,6 +4083,7 @@ async function main() {
             })
         const plan = buildPylonKhalaSpawnPlan({
           accounts,
+          advertisedCodexAccounts,
           advertisedCodexAvailability,
           baseUrl,
           ...(optionString(options, "branch") === undefined ? {} : { branch: optionString(options, "branch") }),
@@ -4115,6 +4158,7 @@ async function main() {
               )
             : parseKhalaBurndownIssueNumbers(issuesOption)
         const accounts = await collectPylonAccountsList(summary, { env: Bun.env })
+        const advertisedCodexAccounts = await localCodexDispatchAccounts(summary, state)
         const maxParallel = positiveIntegerOption(options, "max-parallel", "khala burndown --max-parallel")
         const iterations = positiveIntegerOption(options, "iterations", "khala burndown --iterations")
         const branch = optionString(options, "branch")
@@ -4123,6 +4167,7 @@ async function main() {
           baseUrl,
           ...(branch === undefined ? {} : { branch }),
           commit,
+          advertisedCodexAccounts,
           advertisedCodexAvailability,
           issueNumbers,
           ...(iterations === undefined ? {} : { iterations }),
@@ -4220,7 +4265,7 @@ async function main() {
           optionString(options, "objective") ??
           (args[2] !== undefined && !args[2].startsWith("--") ? args[2] : undefined)
         const workflow = optionString(options, "workflow")
-        const targetPylonRef =
+        const explicitTargetPylonRef =
           optionString(options, "pylon-ref") ??
           optionString(options, "target-pylon-ref")
         const commit = optionString(options, "commit")
@@ -4269,6 +4314,21 @@ async function main() {
         // ref with "not registered for this provider").
         const accountProvider =
           workflow === "claude_agent_task" ? "claude_agent" : "codex"
+        const targetsLocalCodingWorkflow =
+          workflow === "codex_agent_task" || workflow === "claude_agent_task"
+        const requestState = targetsLocalCodingWorkflow
+          ? await ensurePylonLocalState(summary)
+          : null
+        const targetPylonRef =
+          explicitTargetPylonRef ??
+          (requestState === null ? undefined : localPylonTargetRef(requestState))
+        if (requestState !== null && targetPylonRef === localPylonTargetRef(requestState)) {
+          await sendHeartbeat(summary, {
+            ...presenceClientOptionsFromEnv({ baseUrl, env: Bun.env }),
+            ...(resolvedAgentToken === null ? {} : { agentToken: resolvedAgentToken.token }),
+            activeRunCounts: await serverActiveCodingRunCounts(summary, networkOptions),
+          })
+        }
         const accountRef =
           optionString(options, "account") ??
           optionString(options, "account-ref")
@@ -4309,6 +4369,7 @@ async function main() {
           emit({
             ...result,
             assignmentRun: null,
+            assignmentLifecycleEvents: [],
             autoRun: {
               attempted: false,
               reason: assignmentRef === null
@@ -4319,6 +4380,7 @@ async function main() {
           })
           return
         }
+        const assignmentLifecycleEvents: AssignmentRunLifecycleEvent[] = []
         const assignmentRun = await runNoSpendAssignment(summary, {
           ...networkOptions,
           assignmentRef,
@@ -4327,6 +4389,7 @@ async function main() {
           ...(optionFlag(options, "json")
             ? {
                 onLifecycleEvent: (event) => {
+                  assignmentLifecycleEvents.push(event)
                   process.stderr.write(`${JSON.stringify(event)}\n`)
                 },
               }
@@ -4335,6 +4398,7 @@ async function main() {
         emit({
           ...result,
           assignmentRun,
+          assignmentLifecycleEvents,
           autoRun: {
             assignmentRef,
             attempted: true,
@@ -5149,7 +5213,6 @@ async function main() {
           { ...state, runtime: nextRuntime },
           providerNetworkOptions,
         )
-        const codingRefs = codingServiceCapacityRefs(codingCapacity)
         // #6354: per-Codex-account capacity so `provider go-online --json`
         // exposes each linked account's own concurrent slots and busy load.
         const codexAccounts = await localCodexAccountCapacities(
@@ -5160,6 +5223,15 @@ async function main() {
             await activeCodingRunCountsByAccount(state.paths),
           ),
         )
+        const codexAccountTotals = codexAccounts.reduce(
+          (totals, account) => ({
+            available: totals.available + account.available,
+            busy: totals.busy + account.busy,
+            queued: totals.queued + account.queued,
+            ready: totals.ready + account.ready,
+          }),
+          { available: 0, busy: 0, queued: 0, ready: 0 },
+        )
         const codexAccountRefs = codexAccountCapacityRefs(codexAccounts)
         const appleFmRefs = appleFmBackendCapacityRefs(appleFmStatus)
         const codexCapacity = codingCapacity.find((item) => item.service === "codex") ?? {
@@ -5169,12 +5241,25 @@ async function main() {
           ready: 0,
           service: "codex" as const,
         }
+        const codexDispatchCapacity = codexAccounts.length > 0
+          ? {
+              ...codexCapacity,
+              available: codexAccountTotals.available,
+              busy: codexAccountTotals.busy,
+              queued: codexAccountTotals.queued,
+              ready: codexAccountTotals.ready,
+            }
+          : codexCapacity
+        const codingCapacityProjection = codingCapacity.some((item) => item.service === "codex")
+          ? codingCapacity.map((item) => item.service === "codex" ? codexDispatchCapacity : item)
+          : [codexDispatchCapacity, ...codingCapacity]
+        const codingRefs = codingServiceCapacityRefs(codingCapacityProjection)
         const result = {
           ok: true,
           pylonRef: state.identity.pylonRef,
           lifecycle: nextRuntime.lifecycle,
           capabilityRefs: nextRuntime.capabilityRefs,
-          codingCapacity,
+          codingCapacity: codingCapacityProjection,
           claudeAgent: {
             state: claudeAgentReadiness.state,
             credentialSourceRef: claudeAgentReadiness.credentialSourceRef,
@@ -5196,7 +5281,7 @@ async function main() {
           },
           ownCapacityDispatch: {
             schema: "openagents.pylon.own_capacity_dispatch.v1",
-            codex: codexCapacity,
+            codex: codexDispatchCapacity,
             assignmentGateRef: "gate.public.pylon.assignment_dispatch.controlled.v1",
             capacityRefs: [
               ...codingRefs.capacityRefs.filter((ref) =>
@@ -5212,10 +5297,11 @@ async function main() {
             ],
             policyRefs: ["policy.public.khala_coding.own_capacity_only"],
             requiredCapabilityRefs: [CODEX_AGENT_CAPABILITY_REF],
-            maxCodexAssignments: codexCapacity.ready,
-            availableCodexAssignments: codexCapacity.available,
-            // #6354: per-account breakdown; pooled `codex` totals above sum
-            // these once the heartbeat advertises per-account refs.
+            maxCodexAssignments: codexDispatchCapacity.ready,
+            availableCodexAssignments: codexDispatchCapacity.available,
+            // #6354: per-account breakdown. When present, the dispatch totals
+            // above are derived from these account buckets so Desktop status
+            // and spawn planning describe the same capacity.
             codexAccounts: codexAccounts.map((account) => ({
               accountKey: account.accountKey,
               available: account.available,
@@ -5223,14 +5309,8 @@ async function main() {
               queued: account.queued,
               ready: account.ready,
             })),
-            totalAvailableCodexAssignments: codexAccounts.reduce(
-              (sum, account) => sum + account.available,
-              0,
-            ),
-            totalMaxCodexAssignments: codexAccounts.reduce(
-              (sum, account) => sum + account.ready,
-              0,
-            ),
+            totalAvailableCodexAssignments: codexAccountTotals.available,
+            totalMaxCodexAssignments: codexAccountTotals.ready,
           },
           tassadar: {
             declared: tassadarDeclaration.declared,

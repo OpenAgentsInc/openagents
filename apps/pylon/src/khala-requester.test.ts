@@ -1,8 +1,29 @@
 import { describe, expect, test } from "bun:test"
 
-import { issuePylonKhalaRequest } from "./khala-requester.js"
+import {
+  buildPylonKhalaChatRequestBody,
+  issuePylonKhalaRequest,
+} from "./khala-requester.js"
 
 describe("Pylon Khala requester", () => {
+  test("carries target account hash in both root and nested coding fields", () => {
+    const body = buildPylonKhalaChatRequestBody({
+      prompt: "Run the public-safe fixture.",
+      targetAccountRefHash: "account.pylon.codex.651c03fed68925d7acb2c02f",
+      targetPylonRef: "pylon.33afd48282a649047e3a",
+      workflow: "codex_agent_task",
+    }) as {
+      openagents?: { coding?: Record<string, unknown> }
+      targetAccountRefHash?: string
+      targetPylonRef?: string
+    }
+
+    expect(body.targetPylonRef).toBe("pylon.33afd48282a649047e3a")
+    expect(body.targetAccountRefHash).toBe("account.pylon.codex.651c03fed68925d7acb2c02f")
+    expect(body.openagents?.coding?.targetPylonRef).toBe("pylon.33afd48282a649047e3a")
+    expect(body.openagents?.coding?.targetAccountRefHash).toBe("account.pylon.codex.651c03fed68925d7acb2c02f")
+  })
+
   test("surfaces public-safe dispatch gate evidence on failed coding requests", async () => {
     const fetchMock = (async () =>
       new Response(

@@ -9,6 +9,8 @@ package:
 ```ts
 export * from "nostr-effect/nip90"
 export * from "./lbr.js"
+export * from "./lbr-bond.js"
+export * from "./lbr-closeout.js"
 ```
 
 Do not rebuild Nostr event, tag, kind, or validation primitives in this package.
@@ -18,6 +20,9 @@ apps that need a workspace package import.
 The `./lbr` export is an OpenAgents-specific NIP-LBR wrapper over the shared
 labor primitives. It keeps the relay payload ref-only for the labor request,
 quote, acceptance, and result lifecycle described in `docs/nips/LBR.md`.
+The `./lbr-bond` export adds the ref-only provider-bond feedback variants used
+to bind voluntary provider-side performance stakes into LBR receipts without
+putting invoices, preimages, wallet material, or settlement authority on Nostr.
 
 ## Contract
 
@@ -31,6 +36,9 @@ This package covers protocol-only behavior:
 - NIP-LBR agentic-coding request/result helpers for `5934`/`6934`, quote and
   acceptance feedback on `7000`, and decode-time rejection of raw prompts,
   private paths, credentials, and payment material
+- NIP-LBR provider-bond feedback on `7000`: `provider_bond`, `bond_release`,
+  and `bond_forfeit` variants carry only public refs and integer msat amounts;
+  release/forfeit terminal outcomes are XOR and remain protocol-only
 - NIP-DS dataset listing kind `30404`
 - NIP-DS dataset offer kind `30406`
 - DS-DVM dataset access request/result kinds `5960`/`6960`
@@ -53,7 +61,8 @@ This package covers protocol-only behavior:
   re-derives the digest and `receiptRef` so any reader can confirm the receipt
   dereferences the exact lifecycle that produced it. This is the labor market's
   dereferenceable-receipt rung; it moves no sats and grants no settlement
-  authority.
+  authority. If a `bond_release` or `bond_forfeit` event is supplied, its
+  terminal bond outcome is included in the canonical digest.
 
 Historical contract reference:
 

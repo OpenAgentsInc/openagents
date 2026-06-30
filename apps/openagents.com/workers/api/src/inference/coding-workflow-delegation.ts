@@ -243,8 +243,23 @@ const targetAccountRefHashFromBody = (
   | Readonly<{ kind: 'none' }>
   | Readonly<{ kind: 'account'; accountRefHash: string }>
   | Readonly<{ kind: 'rejected'; rejection: CodingDelegationRejection }> => {
+  const bodyRecord =
+    body !== null && typeof body === 'object'
+      ? (body as Record<string, unknown>)
+      : undefined
+  const openagents =
+    bodyRecord?.openagents !== null &&
+    typeof bodyRecord?.openagents === 'object'
+      ? (bodyRecord.openagents as Record<string, unknown>)
+      : undefined
   const coding = rawCodingFromBody(body)
-  const rawValue = coding?.targetAccountRefHash ?? coding?.accountRefHash
+  const rawValue =
+    coding?.targetAccountRefHash ??
+    coding?.accountRefHash ??
+    openagents?.targetAccountRefHash ??
+    openagents?.accountRefHash ??
+    bodyRecord?.targetAccountRefHash ??
+    bodyRecord?.accountRefHash
 
   if (rawValue === undefined || rawValue === null || rawValue === '') {
     return { kind: 'none' }
@@ -259,7 +274,7 @@ const targetAccountRefHashFromBody = (
         ],
         kind: 'rejected',
         reason:
-          'openagents.coding.targetAccountRefHash must be a public-safe per-account hash string.',
+          'targetAccountRefHash must be a public-safe per-account hash string.',
         requestedPylonRef: null,
         statusCode: 400,
       },
@@ -276,7 +291,7 @@ const targetAccountRefHashFromBody = (
         ],
         kind: 'rejected',
         reason:
-          `openagents.coding.targetAccountRefHash must match the public-safe account.pylon.${profile.accountProvider}.<hex> contract.`,
+          `targetAccountRefHash must match the public-safe account.pylon.${profile.accountProvider}.<hex> contract.`,
         requestedPylonRef: null,
         statusCode: 400,
       },
