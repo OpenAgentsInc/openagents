@@ -7,7 +7,7 @@
     "dev": "bun run prepare:apple-fm-bridge && bun run build:ui && electrobun dev",
     "prepare:apple-fm-bridge": "bash scripts/prepare-apple-fm-bridge.sh",
     "verify:apple-fm-bridge": "bun scripts/verify-packaged-apple-fm-bridge.ts",
-    "build:ui": "bun build src/ui/main.ts --outdir resources/ui --target browser --external '/fonts/*'",
+    "build:ui": "tailwindcss -i ./src/ui/styles.css -o ./resources/ui/main.css --minify && bun build ./src/ui/main.ts --outdir resources/ui --target browser --external '/fonts/*'",
     "build": "bun run prepare:apple-fm-bridge && bun run build:ui && electrobun build && bun run verify:apple-fm-bridge",
     "typecheck": "tsc -p tsconfig.typecheck.json --noEmit",
     "test": "bun test tests/*.test.ts",
@@ -26,8 +26,10 @@
     "three": "0.184.0"
   },
   "devDependencies": {
+    "@tailwindcss/cli": "^4.2.4",
     "@types/three": "0.184.0",
     "bun-types": "^1.0.0",
+    "tailwindcss": "^4.2.4",
     "typescript": "catalog:"
   }
 }
