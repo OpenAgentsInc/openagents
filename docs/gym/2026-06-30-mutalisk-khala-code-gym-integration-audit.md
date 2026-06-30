@@ -29,6 +29,13 @@ evidence refs, blocker refs, and caveat refs, while keeping counter-only refs
 from lighting links and rejecting known unsafe raw/private refs. This remains a
 projection contract only; rendering and fixture loading land in later slices.
 
+Update, 2026-06-30: Khala Code Desktop now has the first read-only SVG renderer
+for that projection in `clients/khala-code-desktop/src/ui/gym-graph-renderer.ts`.
+The Gym pane can mount the graph from loaded projection state, distinguish link
+states, show public-safe node detail, and expose an accessible text mirror. It
+still does not load fixture/proof data by default or provide approval/direct
+manipulation controls.
+
 ## 0. Executive Answer
 
 Mutalisk belongs in the Gym as the offline optimizer lane for Khala Code's

@@ -1278,6 +1278,130 @@ button {
   color: #fbbf24;
   border-color: rgba(251, 191, 36, 0.34);
 }
+.khala-gym-graph {
+  display: grid;
+  gap: 0.75rem;
+  min-width: 0;
+  margin: 0;
+}
+.khala-gym-graph-svg {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  aspect-ratio: 1480 / 430;
+  overflow: visible;
+}
+.khala-gym-edge {
+  fill: none;
+  stroke: rgba(147, 164, 189, 0.36);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+.khala-gym-edge[data-status="inactive"] {
+  stroke-dasharray: 3 7;
+}
+.khala-gym-edge[data-status="active"] {
+  stroke: #93c5fd;
+  stroke-dasharray: 8 10;
+}
+.khala-gym-edge[data-status="blocked"] {
+  stroke: #fbbf24;
+  stroke-dasharray: 2 7;
+}
+.khala-gym-edge[data-status="evidence_backed"] {
+  stroke: #4fd0ff;
+  stroke-dasharray: 10 12;
+  filter: drop-shadow(0 0 5px rgba(79, 208, 255, 0.42));
+}
+.khala-gym-graph-svg[data-reduced-motion="false"] .khala-gym-edge[data-status="active"],
+.khala-gym-graph-svg[data-reduced-motion="false"] .khala-gym-edge[data-status="evidence_backed"] {
+  animation: khala-gym-edge-flow 18s linear infinite;
+}
+.khala-gym-edge-label {
+  fill: color-mix(in srgb, var(--oa-color-component-text) 52%, transparent);
+  font-size: 0.68rem;
+  text-anchor: middle;
+}
+.khala-gym-edge-label[data-status="blocked"] {
+  fill: #fbbf24;
+}
+.khala-gym-node-card {
+  fill: rgba(5, 12, 21, 0.96);
+  stroke: rgba(79, 208, 255, 0.2);
+  stroke-width: 1;
+}
+.khala-gym-node[data-status="complete"] .khala-gym-node-card,
+.khala-gym-node[data-status="proposal_ready"] .khala-gym-node-card {
+  stroke: rgba(79, 208, 255, 0.52);
+  filter: drop-shadow(0 0 8px rgba(79, 208, 255, 0.14));
+}
+.khala-gym-node[data-status="active"] .khala-gym-node-card {
+  stroke: rgba(147, 197, 253, 0.55);
+}
+.khala-gym-node[data-status="blocked"] .khala-gym-node-card {
+  stroke: rgba(251, 191, 36, 0.56);
+}
+.khala-gym-node-label {
+  fill: #f1efe8;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+.khala-gym-node-status {
+  fill: #8fb6ff;
+  font-size: 0.62rem;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+.khala-gym-node-datum {
+  fill: color-mix(in srgb, var(--oa-color-component-text) 74%, transparent);
+  font-size: 0.64rem;
+}
+.khala-gym-node-ref {
+  fill: color-mix(in srgb, var(--oa-color-component-text) 52%, transparent);
+  font-size: 0.58rem;
+}
+.khala-gym-graph-mirror {
+  max-height: 9rem;
+  overflow: auto;
+  border: 1px solid var(--oa-color-component-border);
+  border-radius: 0.45rem;
+  background: rgba(0, 0, 0, 0.2);
+}
+.khala-gym-graph-mirror-list {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0.65rem 0.8rem 0.65rem 1.7rem;
+}
+.khala-gym-graph-mirror-row {
+  color: color-mix(in srgb, var(--oa-color-component-text) 70%, transparent);
+  font-size: 0.7rem;
+  line-height: 1.45;
+}
+.khala-gym-graph-mirror-flow {
+  color: #d9e7ff;
+}
+.khala-gym-graph-mirror-status {
+  margin-left: 0.45rem;
+  color: #8fb6ff;
+}
+.khala-gym-graph-mirror-refs {
+  display: block;
+  color: color-mix(in srgb, var(--oa-color-component-text) 48%, transparent);
+  overflow-wrap: anywhere;
+}
+
+@keyframes khala-gym-edge-flow {
+  to {
+    stroke-dashoffset: -88;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .khala-gym-edge {
+    animation: none;
+  }
+}
 
 /* Tool cards: compact auto-scrolling live feed; click the header to expand. */
 .tool-card-header--toggle {

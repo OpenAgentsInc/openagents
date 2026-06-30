@@ -56,6 +56,14 @@ it can later move into `@openagentsinc/arbiter-effect/core` without a schema
 rewrite, but it does not yet render the graph or create any direct-manipulation
 surface.
 
+Implementation note, 2026-06-30: Khala Code Desktop also has a compact
+read-only SVG renderer at
+`clients/khala-code-desktop/src/ui/gym-graph-renderer.ts`, mounted by the Gym
+pane only when a loaded projection is present. The renderer proves the first
+desktop layout, link-state styling, public-safe node detail, reduced-motion
+edge behavior, and accessible text mirror before extraction. Direct
+manipulation remains intentionally out of scope.
+
 ## Scope correction
 
 We are **not** adopting [Unit](https://github.com/samuelmtimbo/unit)

@@ -1,9 +1,13 @@
+import type { KhalaGymGraphProjection } from "./gym-graph-projection"
+import { renderKhalaGymGraphHtml } from "./gym-graph-renderer"
+
 export type GymPaneLoadedState = Readonly<{
   phase: "loaded"
   title: string
   runRef: string
   status: string
   refs: ReadonlyArray<string>
+  graph?: KhalaGymGraphProjection
 }>
 
 export type GymPaneBlockedState = Readonly<{
@@ -86,6 +90,15 @@ const renderLoaded = (
     el("span", "khala-gym-run-ref", state.runRef),
     refList(state.refs),
   )
+  if (state.graph !== undefined) {
+    const template = document.createElement("template")
+    template.innerHTML = renderKhalaGymGraphHtml(state.graph, {
+      reducedMotion:
+        typeof matchMedia === "function" &&
+        matchMedia("(prefers-reduced-motion: reduce)").matches,
+    }).html
+    body.append(template.content.cloneNode(true))
+  }
   section.append(body)
   container.append(section)
 }
