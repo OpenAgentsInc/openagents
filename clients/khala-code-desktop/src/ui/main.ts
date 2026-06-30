@@ -43,6 +43,7 @@ import {
 } from "../shared/rpc"
 import { renderMessageBody } from "./transcript-render"
 import { mountFleetPanel } from "./fleet-status"
+import { mountGymPane, type GymPaneState } from "./gym-pane"
 import { mountKhalaCodeSidebar } from "./sidebar"
 import "./styles.css"
 
@@ -1081,6 +1082,7 @@ const controls = {
   codingStatus: () => rpc.request.codingStatus(),
   connectCodexAccount: (accountRef: string) =>
     rpc.request.connectCodexAccount(accountRef),
+  gymState: (): GymPaneState | null => gymPanel?.snapshot() ?? null,
   openExternalUrl: (url: string) => rpc.request.openExternalUrl(url),
   composerStatus: statusForComposer,
   consumeCodexRateLimitResetCredit: () =>
@@ -1105,6 +1107,7 @@ const controls = {
     lastTurnFailed = false
     renderComposer()
   },
+  setGymState: (state: GymPaneState) => gymPanel?.setState(state),
   simulateLargePaste: (value: string) => stageLargeTextPaste(value),
   stageAttachmentForSmoke: (input: {
     name: string
@@ -1139,6 +1142,7 @@ mountComposerHud()
 
 const sidebarRoot = document.getElementById("sidebar-root")
 const fleetPanelEl = document.getElementById("fleet-panel")
+const gymPanelEl = document.getElementById("gym-panel")
 const threadShell = document.querySelector<HTMLElement>(".khala-code-thread-shell")
 const composerDock = document.querySelector<HTMLElement>(".composer-dock")
 
@@ -1152,14 +1156,18 @@ const fleetPanel =
         openExternal: url => controls.openExternalUrl(url),
       })
 
+const gymPanel = gymPanelEl === null ? null : mountGymPane(gymPanelEl)
+
 const setActiveView = (value: string): void => {
   const showFleet = value === "fleet"
+  const showGym = value === "gym"
   if (fleetPanelEl !== null) fleetPanelEl.hidden = !showFleet
-  if (threadShell !== null) threadShell.hidden = showFleet
-  if (composerDock !== null) composerDock.hidden = showFleet
+  gymPanel?.setVisible(showGym)
+  if (threadShell !== null) threadShell.hidden = showFleet || showGym
+  if (composerDock !== null) composerDock.hidden = showFleet || showGym
   // setVisible starts/stops the live 5s poll so the panel updates on its own.
   fleetPanel?.setVisible(showFleet)
-  if (!showFleet && value === "chat") {
+  if (!showFleet && !showGym && value === "chat") {
     requestAnimationFrame(focusComposerInput)
   }
 }

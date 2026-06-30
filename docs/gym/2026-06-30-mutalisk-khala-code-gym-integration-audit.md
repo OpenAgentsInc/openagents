@@ -16,6 +16,12 @@ Mutalisk summary ingest, standing-loop conversion, and admission projection.
 The polished Khala Code UI and automatic Mutalisk worker dispatch remain
 future work.
 
+Update, 2026-06-30: Khala Code Desktop now has the first visible **Gym** pane
+entry point in the local desktop sidebar. The pane is read-only, starts in an
+honest no-proof state, and exposes loaded/blocked shell states for later graph
+projection wiring. It does not start Mutalisk, call a live Gym backend, approve
+Action Submissions, or fabricate proof data.
+
 ## 0. Executive Answer
 
 Mutalisk belongs in the Gym as the offline optimizer lane for Khala Code's

@@ -41,7 +41,31 @@ describe("khala code desktop app shell", () => {
     expect(html).toContain("autofocus")
     expect(html).toContain('id="send-button"')
     expect(html).toContain('id="fleet-panel"')
+    expect(html).toContain('id="gym-panel"')
     expect(html).not.toContain("Pylons")
+  })
+
+  test("renders a visible Gym pane entry without seeded private proof data", async () => {
+    const html = await Bun.file(new URL("../src/ui/index.html", import.meta.url)).text()
+    const sidebar = await Bun.file(new URL("../src/ui/sidebar.ts", import.meta.url)).text()
+    const main = await Bun.file(new URL("../src/ui/main.ts", import.meta.url)).text()
+    const pane = await Bun.file(new URL("../src/ui/gym-pane.ts", import.meta.url)).text()
+    const css = await Bun.file(new URL("../src/ui/styles.css", import.meta.url)).text()
+
+    expect(sidebar).toContain('{ value: "gym", children: ["Gym"] }')
+    expect(html).toContain('aria-label="Gym delegation graph"')
+    expect(main).toContain("mountGymPane")
+    expect(main).toContain('const showGym = value === "gym"')
+    expect(main).toContain("gymPanel?.setVisible(showGym)")
+    expect(pane).toContain('phase: "empty"')
+    expect(pane).toContain('phase: "loaded"')
+    expect(pane).toContain('phase: "blocked"')
+    expect(pane).toContain("No Gym proof loaded.")
+    expect(css).toContain(".khala-code-gym")
+    expect(css).toContain(".khala-gym-state[data-state=\"blocked\"]")
+    expect(`${html}\n${sidebar}\n${main}\n${pane}`).not.toMatch(
+      /\/Users\/|auth\.json|bearer|credential|provider[_-]?payload|raw[_-]?(prompt|trace)|sk-[a-z0-9]/i,
+    )
   })
 
   test("does not seed dummy code or diff messages on first load", async () => {

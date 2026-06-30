@@ -43,6 +43,7 @@ const navGroups = (): ReadonlyArray<SidebarViewGroup<SidebarNavMessage>> => [
     items: [
       { value: "chat", children: ["Chat"] },
       { value: "fleet", children: ["Fleet status"] },
+      { value: "gym", children: ["Gym"] },
     ],
   },
 ]
