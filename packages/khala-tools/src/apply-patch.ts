@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto"
-import { mkdir, readFile, realpath, stat, unlink, writeFile } from "node:fs/promises"
+import { access, constants, mkdir, readFile, realpath, rmdir, stat, unlink, writeFile } from "node:fs/promises"
 import { basename, dirname, isAbsolute, relative, resolve } from "node:path"
 import { Effect } from "effect"
 import {
@@ -81,6 +81,7 @@ type ResolvedPatchPath = Readonly<{
   existed: boolean
   parentRealPath: string
   realPath: string
+  workspaceRoot: string
 }>
 
 type PlannedPatchOperation =
@@ -94,6 +95,7 @@ type PlannedPatchOperation =
       kind: "add"
       parentRealPath: string
       realPath: string
+      workspaceRoot: string
     }>
   | Readonly<{
       beforeHash: string
@@ -102,6 +104,7 @@ type PlannedPatchOperation =
       displayPath: string
       kind: "delete"
       realPath: string
+      workspaceRoot: string
     }>
   | Readonly<{
       afterHash: string
@@ -114,12 +117,24 @@ type PlannedPatchOperation =
       kind: "update"
       lineEnding: "\n" | "\r\n"
       realPath: string
+      workspaceRoot: string
     }>
 
 type PatchPlan = Readonly<{
   affectedPaths: ReadonlyArray<string>
   diff: string
   operations: ReadonlyArray<PlannedPatchOperation>
+}>
+
+type StagedPatchOperation = Readonly<{
+  afterBytes?: Buffer
+  beforeBytes?: Buffer
+  displayPath: string
+  existed: boolean
+  kind: PlannedPatchOperation["kind"]
+  parentRealPath: string
+  realPath: string
+  workspaceRoot: string
 }>
 
 function executeApplyPatchTool(
@@ -158,14 +173,15 @@ async function applyPlannedPatch(
   try {
     for (const operation of plan.operations) {
       if (options.failAfterOperations !== undefined && appliedOperations >= options.failAfterOperations) {
-        throw new PartialPatchApplyError("injected partial patch failure", appliedOperations)
+        throw new AtomicPatchApplyError("injected atomic patch failure", appliedOperations)
       }
       await revalidateOperation(operation, options)
-      await applyOperation(operation)
       appliedOperations += 1
     }
+    const staged = await stagePatchOperations(plan.operations, options)
+    await commitStagedPatch(staged, options)
   } catch (error) {
-    const applied = error instanceof PartialPatchApplyError ? error.appliedOperations : appliedOperations
+    const applied = error instanceof AtomicPatchApplyError ? error.appliedOperations : appliedOperations
     return patchFailureResult(plan, applied, error instanceof Error ? error.message : String(error))
   }
 
@@ -215,6 +231,7 @@ async function planOperation(
       kind: "add",
       parentRealPath: path.parentRealPath,
       realPath: path.realPath,
+      workspaceRoot: path.workspaceRoot,
     }
   }
 
@@ -228,6 +245,7 @@ async function planOperation(
       displayPath: path.displayPath,
       kind: "delete",
       realPath: path.realPath,
+      workspaceRoot: path.workspaceRoot,
     }
   }
 
@@ -245,33 +263,122 @@ async function planOperation(
     kind: "update",
     lineEnding: before.lineEnding,
     realPath: path.realPath,
+    workspaceRoot: path.workspaceRoot,
   }
 }
 
 async function revalidateOperation(operation: PlannedPatchOperation, options: KhalaApplyPatchToolOptions): Promise<void> {
   if (operation.kind === "add") {
+    await assertWritableRoot(operation.parentRealPath, operation.displayPath)
     if (await fileExists(operation.realPath)) {
-      throw new PartialPatchApplyError(`add target appeared before apply: ${operation.displayPath}`, 0)
+      throw new AtomicPatchApplyError(`add target appeared before apply: ${operation.displayPath}`, 0)
     }
     return
   }
+  await assertWritableRoot(dirname(operation.realPath), operation.displayPath)
+  await assertSafeWritableFile(operation.realPath, operation.displayPath)
   const current = await readPatchText(operation.realPath, options)
   if (current.hash !== operation.beforeHash) {
     throw new Error(`stale content before applying ${operation.displayPath}`)
   }
 }
 
-async function applyOperation(operation: PlannedPatchOperation): Promise<void> {
+async function stagePatchOperations(
+  operations: ReadonlyArray<PlannedPatchOperation>,
+  options: KhalaApplyPatchToolOptions,
+): Promise<ReadonlyArray<StagedPatchOperation>> {
+  const staged: StagedPatchOperation[] = []
+  for (const operation of operations) {
+    await revalidateOperation(operation, options)
+    if (operation.kind === "add") {
+      staged.push({
+        afterBytes: Buffer.from(operation.afterText, "utf8"),
+        displayPath: operation.displayPath,
+        existed: false,
+        kind: operation.kind,
+        parentRealPath: operation.parentRealPath,
+        realPath: operation.realPath,
+        workspaceRoot: operation.workspaceRoot,
+      })
+      continue
+    }
+    const beforeBytes = await readFile(operation.realPath)
+    staged.push({
+      ...(operation.kind === "delete" ? {} : { afterBytes: encodeText(operation.afterText, operation) }),
+      beforeBytes,
+      displayPath: operation.displayPath,
+      existed: true,
+      kind: operation.kind,
+      parentRealPath: dirname(operation.realPath),
+      realPath: operation.realPath,
+      workspaceRoot: operation.workspaceRoot,
+    })
+  }
+  return staged
+}
+
+async function commitStagedPatch(
+  operations: ReadonlyArray<StagedPatchOperation>,
+  options: KhalaApplyPatchToolOptions,
+): Promise<void> {
+  const committed: StagedPatchOperation[] = []
+  try {
+    for (const operation of operations) {
+      if (options.failAfterOperations !== undefined && committed.length >= options.failAfterOperations) {
+        throw new AtomicPatchApplyError("injected atomic patch failure", committed.length)
+      }
+      await applyStagedOperation(operation)
+      committed.push(operation)
+    }
+  } catch (error) {
+    await rollbackStagedPatch(committed)
+    if (error instanceof AtomicPatchApplyError) throw error
+    throw new AtomicPatchApplyError(error instanceof Error ? error.message : String(error), committed.length)
+  }
+}
+
+async function applyStagedOperation(operation: StagedPatchOperation): Promise<void> {
   if (operation.kind === "add") {
     await mkdir(operation.parentRealPath, { recursive: true })
-    await writeFile(operation.realPath, operation.afterText, "utf8")
+    await writeFile(operation.realPath, operation.afterBytes ?? Buffer.alloc(0))
     return
   }
   if (operation.kind === "delete") {
     await unlink(operation.realPath)
     return
   }
-  await writeFile(operation.realPath, encodeText(operation.afterText, operation))
+  await writeFile(operation.realPath, operation.afterBytes ?? Buffer.alloc(0))
+}
+
+async function rollbackStagedPatch(committed: ReadonlyArray<StagedPatchOperation>): Promise<void> {
+  const failures: string[] = []
+  for (const operation of [...committed].reverse()) {
+    try {
+      if (operation.existed) {
+        await writeFile(operation.realPath, operation.beforeBytes ?? Buffer.alloc(0))
+      } else if (await fileExists(operation.realPath)) {
+        await unlink(operation.realPath)
+        await pruneEmptyParents(operation.parentRealPath, operation.workspaceRoot)
+      }
+    } catch (error) {
+      failures.push(`${operation.displayPath}: ${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
+  if (failures.length > 0) {
+    throw new Error(`patch rollback failed: ${failures.join("; ")}`)
+  }
+}
+
+async function pruneEmptyParents(start: string, workspaceRoot: string): Promise<void> {
+  let current = start
+  while (pathIsInside(workspaceRoot, current) && current !== workspaceRoot) {
+    try {
+      await rmdir(current)
+    } catch {
+      return
+    }
+    current = dirname(current)
+  }
 }
 
 function patchSuccessResult(plan: PatchPlan, appliedOperations: number): KhalaToolResult {
@@ -279,7 +386,7 @@ function patchSuccessResult(plan: PatchPlan, appliedOperations: number): KhalaTo
   return khalaToolOk({
     modelText,
     publicSummary:
-      `Applied non-atomic patch: ${appliedOperations}/${plan.operations.length} operations, ` +
+      `Applied atomic patch: ${appliedOperations}/${plan.operations.length} operations, ` +
       `${plan.affectedPaths.length} paths, 1 private diff receipt.`,
     ui: patchUi(plan, appliedOperations, false, null),
     publicSafety: "private",
@@ -295,7 +402,7 @@ function patchFailureResult(plan: PatchPlan, appliedOperations: number, reason: 
     },
     publicSafety: "private",
     publicSummary:
-      `Patch failed after ${appliedOperations}/${plan.operations.length} non-atomic operations; ` +
+      `Atomic patch failed before commit; ${appliedOperations}/${plan.operations.length} operations validated, ` +
       `${plan.affectedPaths.length} paths, 1 private diff receipt.`,
     status: "failed",
     ui: patchUi(plan, appliedOperations, true, reason),
@@ -309,9 +416,9 @@ function renderPatchModelText(
   partialFailure: boolean,
 ): string {
   return [
-    `${label} non-atomic patch`,
+    `${label} atomic patch`,
     `Applied operations: ${appliedOperations}/${plan.operations.length}`,
-    `Partial failure: ${partialFailure ? "yes" : "no"}`,
+    `Rolled back: ${partialFailure ? "yes" : "no"}`,
     "```diff",
     plan.diff,
     "```",
@@ -327,7 +434,7 @@ function patchUi(
   return {
     affectedPaths: plan.affectedPaths,
     appliedOperations,
-    atomic: false,
+    atomic: true,
     diff: {
       format: "unified",
       kind: "unified_diff",
@@ -457,6 +564,28 @@ async function resolvePatchPath(rawPath: string, context: KhalaToolExecuteContex
     existed,
     parentRealPath: dirname(target),
     realPath: target,
+    workspaceRoot,
+  }
+}
+
+async function assertSafeWritableFile(realPath: string, displayPath: string): Promise<void> {
+  const info = await stat(realPath)
+  if (!info.isFile()) throw new Error(`patch target is not a regular file: ${displayPath}`)
+  if (info.nlink > 1) throw new Error(`patch target has hard links: ${displayPath}`)
+  try {
+    await access(realPath, constants.W_OK)
+  } catch {
+    throw new Error(`patch target is not writable: ${displayPath}`)
+  }
+  await assertWritableRoot(dirname(realPath), displayPath)
+}
+
+async function assertWritableRoot(realPath: string, displayPath: string): Promise<void> {
+  try {
+    const writableRoot = await nearestExistingParent(realPath)
+    await access(writableRoot, constants.W_OK)
+  } catch {
+    throw new Error(`patch target is not writable: ${displayPath}`)
   }
 }
 
@@ -687,7 +816,7 @@ function sha256Hex(bytes: Uint8Array): string {
   return createHash("sha256").update(bytes).digest("hex")
 }
 
-class PartialPatchApplyError extends Error {
+class AtomicPatchApplyError extends Error {
   constructor(message: string, readonly appliedOperations: number) {
     super(message)
   }

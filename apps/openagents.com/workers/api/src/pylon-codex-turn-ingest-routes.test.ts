@@ -244,6 +244,8 @@ class MemoryProofStore
       },
       events: {
         count: 2,
+        latestProgressObservedAt: nowIso,
+        latestProgressStatus: 'proof-ready',
         progressCount: 1,
         latestEventKind: 'assignment_progress',
         latestStatus: 'proof-ready',
@@ -1024,6 +1026,10 @@ const makeFakeProofD1 = (): D1Database & {
             latestEventOwnerId,
             latestStatusAssignmentRef,
             latestStatusOwnerId,
+            latestProgressStatusAssignmentRef,
+            latestProgressStatusOwnerId,
+            latestProgressObservedAtAssignmentRef,
+            latestProgressObservedAtOwnerId,
             assignmentRef,
             ownerAgentUserId,
           ] = bound.map(String)
@@ -1049,10 +1055,29 @@ const makeFakeProofD1 = (): D1Database & {
                 row.owner_agent_user_id === latestStatusOwnerId,
             )
             .sort((left, right) => right.created_at.localeCompare(left.created_at))[0]
+          const latestProgressStatus = activeRows
+            .filter(
+              row =>
+                row.assignment_ref === latestProgressStatusAssignmentRef &&
+                row.owner_agent_user_id === latestProgressStatusOwnerId &&
+                row.event_kind === 'assignment_progress',
+            )
+            .sort((left, right) => right.created_at.localeCompare(left.created_at))[0]
+          const latestProgressObservedAt = activeRows
+            .filter(
+              row =>
+                row.assignment_ref === latestProgressObservedAtAssignmentRef &&
+                row.owner_agent_user_id === latestProgressObservedAtOwnerId &&
+                row.event_kind === 'assignment_progress',
+            )
+            .sort((left, right) => right.created_at.localeCompare(left.created_at))[0]
           return {
             event_count: matches.length,
             latest_event_kind: latestEvent?.event_kind ?? null,
             latest_observed_at: matches[0]?.created_at ?? null,
+            latest_progress_observed_at:
+              latestProgressObservedAt?.created_at ?? null,
+            latest_progress_status: latestProgressStatus?.status ?? null,
             latest_status: latestStatus?.status ?? null,
             progress_count: matches.filter(
               row => row.event_kind === 'assignment_progress',
@@ -1575,6 +1600,7 @@ describe('GET /api/pylon/codex/trace-status', () => {
         count: 2,
         latestEventKind: 'assignment_progress',
         latestStatus: 'proof-ready',
+        latestProgressStatus: 'proof-ready',
         progressCount: 1,
       },
       owner: {
@@ -1718,6 +1744,8 @@ describe('GET /api/pylon/codex/trace-status', () => {
       count: 2,
       latestEventKind: 'assignment_progress',
       latestObservedAt: '2026-06-26T12:00:02.000Z',
+      latestProgressObservedAt: '2026-06-26T12:00:02.000Z',
+      latestProgressStatus: 'runtime_active',
       latestStatus: 'runtime_active',
       progressCount: 1,
     })

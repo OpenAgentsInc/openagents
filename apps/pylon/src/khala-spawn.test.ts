@@ -183,6 +183,64 @@ describe("Khala spawn per-account planning", () => {
       accountHashA,
     ])
   })
+
+  test("blocks batches that request more slots than advertised free capacity", () => {
+    const result = buildPylonKhalaSpawnPlan({
+      accounts: {
+        accounts: [
+          {
+            accountRef: "codex-a",
+            accountRefHash: accountHashA,
+            blockerRefs: [],
+            homeState: "present",
+            provider: "codex",
+            readiness: { state: "ready" },
+          },
+          {
+            accountRef: "codex-b",
+            accountRefHash: accountHashB,
+            blockerRefs: [],
+            homeState: "present",
+            provider: "codex",
+            readiness: { state: "ready" },
+          },
+        ],
+      } as never,
+      advertisedCodexAccounts: [
+        {
+          accountKey: "aaaaaaaaaaaa",
+          accountRefHash: accountHashA,
+          available: 1,
+          busy: 4,
+          queued: 0,
+          ready: 5,
+        },
+        {
+          accountKey: "bbbbbbbbbbbb",
+          accountRefHash: accountHashB,
+          available: 1,
+          busy: 4,
+          queued: 0,
+          ready: 5,
+        },
+      ],
+      baseUrl: "https://openagents.example",
+      fixture: true,
+      maxParallel: 5,
+      objectives: repeatedKhalaSpawnObjectives({
+        count: 5,
+        objective: "Run the bounded fixture.",
+      }),
+      targetPylonRef: "pylon.owner.codex",
+    })
+
+    expect(result.advertisedCodexAvailability).toBe(2)
+    expect(result.maxParallel).toBe(0)
+    expect(result.slots).toEqual([])
+    expect(result.blockerRefs).toContain(
+      "blocker.khala_spawn.requested_count_exceeds_advertised_availability",
+    )
+  })
 })
 
 const requestResult: PylonKhalaRequestResult = {

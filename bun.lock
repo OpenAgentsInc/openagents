@@ -358,6 +358,7 @@
         "khala": "dist/index.js",
       },
       "dependencies": {
+        "@openagentsinc/khala-tools": "workspace:*",
         "@openai/codex-sdk": "^0.139.0",
       },
       "devDependencies": {
@@ -515,6 +516,7 @@
       "dependencies": {
         "@huggingface/transformers": "3.7.5",
         "@nationaldesignstudio/rampart": "0.1.2",
+        "@openagentsinc/mcp-contract": "workspace:*",
         "effect": "catalog:",
         "onnxruntime-node": "1.21.0",
       },

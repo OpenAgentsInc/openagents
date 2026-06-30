@@ -6,6 +6,7 @@ import {
 import {
   allowAllKhalaPermissionService,
   applyPatchToolDefinition,
+  createKhalaToolTurnAccounting,
   createApplyPatchTool,
   createEditTool,
   createExecCommandTool,
@@ -14,8 +15,8 @@ import {
   createLsTool,
   createReadTool,
   createWriteTool,
-  executeKhalaTool,
   makeKhalaPrivacyRedactionService,
+  makeKhalaToolDispatcher,
   makeKhalaToolRegistry,
   makeKhalaToolServices,
   redactKhalaPublicText,
@@ -24,6 +25,7 @@ import {
   type KhalaBackendSelection,
   type KhalaPrivacyRedactionServiceShape,
   type KhalaToolDefinition,
+  type KhalaToolDispatcher,
   type KhalaToolRegistry,
   type KhalaToolResult,
   type KhalaToolServices,
@@ -220,10 +222,20 @@ export async function runKhalaCodeDesktopChatTurn(
   const tools = toOpenAiCompatibleTools(toolDefinitions)
   const turnId = input.request.turnId ?? nextMessageId("turn")
   const compactionPolicy = contextCompactionPolicy(input.env)
+  const toolTurnAccounting = createKhalaToolTurnAccounting({
+    maxToolCalls: MAX_TOTAL_TOOL_CALLS,
+    turnId,
+  })
+  const toolDispatcher = makeKhalaToolDispatcher({
+    telemetryTags: {
+      surface: "khala_code_desktop",
+      turnId,
+    },
+    turnAccounting: toolTurnAccounting,
+  })
   const emit = (event: KhalaCodeDesktopChatTurnEvent): void => {
     input.onEvent?.(event)
   }
-  let totalToolCalls = 0
   let retriedWithoutTools = false
   let assistantMessagesSinceLastToolResult = 0
   let localFileEvidence = emptyLocalFileEvidenceState()
@@ -268,7 +280,7 @@ export async function runKhalaCodeDesktopChatTurn(
     } catch (error) {
       if (
         !retriedWithoutTools &&
-        totalToolCalls === 0 &&
+        toolTurnAccounting.snapshot().toolCallCount === 0 &&
         assistantStream.streamingAssistant.current === null &&
         shouldRetryWithoutTools(error)
       ) {
@@ -374,14 +386,11 @@ export async function runKhalaCodeDesktopChatTurn(
     }
 
     for (const call of toolCalls) {
-      totalToolCalls += 1
-      if (totalToolCalls > MAX_TOTAL_TOOL_CALLS) {
-        return limitResult(backend, toolNames, usedTools, "Khala requested too many tool calls in one turn.")
-      }
       const toolTranscript = hostMessage("tool", toolTranscriptRunningBody(call.function.name))
       emit({ message: toolTranscript, turnId, type: "message_start" })
       const result = await runToolCall({
         call,
+        dispatcher: toolDispatcher,
         registry,
         services,
         sessionId: input.request.sessionId,
@@ -1142,23 +1151,28 @@ function parseToolCalls(value: unknown): readonly OpenAiToolCall[] {
 
 async function runToolCall(input: {
   readonly call: OpenAiToolCall
+  readonly dispatcher: KhalaToolDispatcher
   readonly registry: KhalaToolRegistry
   readonly services: KhalaToolServices
   readonly sessionId: string
 }): Promise<KhalaToolResult> {
   const args = parseToolArguments(input.call.function.arguments)
-  return await Effect.runPromise(
-    executeKhalaTool(
-      input.registry,
-      {
+  const dispatched = await Effect.runPromise(
+    input.dispatcher.dispatch({
+      invocation: {
         arguments: args,
         id: input.call.id,
         name: input.call.function.name,
         sessionId: input.sessionId,
       },
-      input.services,
-    ),
+      registry: input.registry,
+      services: input.services,
+      telemetryTags: {
+        openAiToolCallType: input.call.type,
+      },
+    }),
   )
+  return dispatched.result
 }
 
 function parseToolArguments(value: string): Readonly<Record<string, unknown>> {

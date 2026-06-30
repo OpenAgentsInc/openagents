@@ -1607,6 +1607,50 @@ describe('POST /v1/chat/completions', () => {
     expect(body.error).toBe('invalid_byok_provider_key')
   })
 
+  test('rejects BYOK raw provider model ids before dispatch without echoing the key', async () => {
+    let dispatched = false
+    const registry = new InferenceProviderRegistry()
+    registry.register({
+      complete: () =>
+        Effect.sync(() => {
+          dispatched = true
+          return {
+            content: 'should not dispatch',
+            finishReason: 'stop',
+            servedModel: 'openrouter/test-model',
+            usage: { completionTokens: 1, promptTokens: 1, totalTokens: 2 },
+          }
+        }),
+      id: OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
+      stream: () => Effect.sync(() => []),
+    })
+
+    const response = await run(
+      handleChatCompletions(
+        chatRequest(
+          {
+            messages: [{ content: 'hello world', role: 'user' }],
+            model: 'openai/gpt-4o',
+          },
+          {
+            headers: {
+              [KHALA_BYOK_PROVIDER_HEADER]: 'openrouter',
+              [KHALA_BYOK_PROVIDER_KEY_HEADER]: 'sk-or-user-owned-key',
+            },
+          },
+        ),
+        baseDeps({ lanePlan: selectAdapterPlan, registry }),
+      ),
+    )
+
+    expect(response.status).toBe(400)
+    expect(response.headers.get(KHALA_BYOK_ACK_HEADER)).toBeNull()
+    expect(dispatched).toBe(false)
+    const text = await response.text()
+    expect(text).toContain('model_unavailable')
+    expect(text).not.toContain('sk-or-user-owned-key')
+  })
+
   test('records served tokens for a completed non-streaming completion (issue #6227)', async () => {
     const recorded: Array<{
       accountRef: string
