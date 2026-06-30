@@ -257,6 +257,8 @@ export const view = Submodel.defineView<Model, Message>((model): Html => {
                   publicKhalaTokensServed: model.publicKhalaTokensServed,
                   publicKhalaTokensServedHistory:
                     model.publicKhalaTokensServedHistory,
+                  publicKhalaTokensServedHistoryGraphMetric:
+                    model.publicKhalaTokensServedHistoryGraphMetric,
                   publicKhalaTokensServedModelMix:
                     model.publicKhalaTokensServedModelMix,
                   publicPylonStats: model.publicPylonStats,
@@ -269,6 +271,8 @@ export const view = Submodel.defineView<Model, Message>((model): Html => {
                   publicKhalaTokensServed: model.publicKhalaTokensServed,
                   publicKhalaTokensServedHistory:
                     model.publicKhalaTokensServedHistory,
+                  publicKhalaTokensServedHistoryGraphMetric:
+                    model.publicKhalaTokensServedHistoryGraphMetric,
                   publicKhalaTokensServedModelMix:
                     model.publicKhalaTokensServedModelMix,
                   publicPylonStats: model.publicPylonStats,
@@ -281,6 +285,8 @@ export const view = Submodel.defineView<Model, Message>((model): Html => {
                   publicKhalaTokensServed: model.publicKhalaTokensServed,
                   publicKhalaTokensServedHistory:
                     model.publicKhalaTokensServedHistory,
+                  publicKhalaTokensServedHistoryGraphMetric:
+                    model.publicKhalaTokensServedHistoryGraphMetric,
                   publicKhalaTokensServedModelMix:
                     model.publicKhalaTokensServedModelMix,
                   publicPylonStats: model.publicPylonStats,

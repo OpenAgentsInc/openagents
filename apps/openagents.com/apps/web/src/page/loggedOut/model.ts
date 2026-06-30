@@ -1062,6 +1062,13 @@ export const PublicKhalaTokensServedHistoryModel = S.Union([
 export type PublicKhalaTokensServedHistoryModel =
   typeof PublicKhalaTokensServedHistoryModel.Type
 
+export const KhalaTokensServedHistoryGraphMetric = S.Literals([
+  'daily',
+  'cumulative',
+])
+export type KhalaTokensServedHistoryGraphMetric =
+  typeof KhalaTokensServedHistoryGraphMetric.Type
+
 // Live fleet-shipping feed (#6534). The /artanis console renders the read-only
 // public activity timeline as TODAY's live fleet activity (forum, inference,
 // settlement, verification, presence) instead of a stale status report or
@@ -1694,6 +1701,8 @@ export const Model = ts('LoggedOut', {
   publicPylonStats: PublicPylonStatsModel,
   publicKhalaTokensServed: PublicKhalaTokensServedModel,
   publicKhalaTokensServedHistory: PublicKhalaTokensServedHistoryModel,
+  publicKhalaTokensServedHistoryGraphMetric:
+    KhalaTokensServedHistoryGraphMetric,
   publicActivityTimeline: PublicActivityTimelineModel,
   publicArtanisActivity: PublicArtanisActivityModel,
   publicKhalaTokensServedModelMix: PublicKhalaTokensServedModelMixModel,
@@ -1775,6 +1784,7 @@ export const init = (
       (route._tag === 'PublicAgent' && route.agentRef === 'artanis')
         ? LoadingPublicKhalaTokensServedHistory()
         : IdlePublicKhalaTokensServedHistory(),
+    publicKhalaTokensServedHistoryGraphMetric: 'daily',
     publicActivityTimeline:
       route._tag === 'PublicAgent' && route.agentRef === 'artanis'
         ? LoadingPublicActivityTimeline()

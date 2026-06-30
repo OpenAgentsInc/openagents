@@ -2,10 +2,11 @@ import { Scene } from 'foldkit'
 import { describe, expect, test } from 'vitest'
 
 import { LoggedOut } from '../../../model'
-import { HomeRoute } from '../../../route'
+import { HomeRoute, StatsRoute } from '../../../route'
 import {
   RequestedPollKhalaTokensServed,
   RequestedPollKhalaTokensServedHistory,
+  SelectedKhalaTokensServedHistoryGraphMetric,
   SucceededLoadPublicKhalaTokensServed,
   SucceededLoadPublicKhalaTokensServedHistory,
 } from '../message'
@@ -127,6 +128,7 @@ const statsInputWithModelMix = () => ({
 const statsInputWithHistory = (
   history: PublicKhalaTokensServedHistory,
   tokensServed = 1_250_000,
+  graphMetric: 'daily' | 'cumulative' = 'daily',
 ) => ({
   ...statsInputWithModelMix(),
   publicKhalaTokensServed: LoadedPublicKhalaTokensServed({
@@ -135,6 +137,7 @@ const statsInputWithHistory = (
   publicKhalaTokensServedHistory: LoadedPublicKhalaTokensServedHistory({
     history,
   }),
+  publicKhalaTokensServedHistoryGraphMetric: graphMetric,
 })
 
 describe('Khala Tokens Served counter (#6227)', () => {
@@ -305,6 +308,33 @@ describe('Khala Tokens Served history chart (#6227)', () => {
     expect(markup).toContain('Last 6 days, peak 206.2M in a day.')
   })
 
+  test('toggles the /stats chart into cumulative values', () => {
+    const [model] = update(
+      init(StatsRoute()),
+      SelectedKhalaTokensServedHistoryGraphMetric({ metric: 'cumulative' }),
+    )
+    const markup = JSON.stringify(
+      StatsPage.view(
+        statsInputWithHistory(
+          statsLaunchHistory,
+          1_250_000,
+          model.publicKhalaTokensServedHistoryGraphMetric,
+        ),
+      ),
+    )
+
+    expect(model.publicKhalaTokensServedHistoryGraphMetric).toBe('cumulative')
+    expect(markup).toContain('Cumulative Tokens Served')
+    expect(markup).toContain('Daily')
+    expect(markup).toContain('Cumulative')
+    expect(markup).toContain('"aria-pressed":"true"')
+    expect(markup).toContain('2026-06-29: 294,327,250 cumulative tokens')
+    expect(markup).toContain('294.3M')
+    expect(markup).toContain(
+      'Current pace projects 304.2M cumulative by midnight.',
+    )
+  })
+
   test('aligns every day label directly under its bar and projects today to midnight', () => {
     const markup = JSON.stringify(
       StatsPage.view(statsInputWithHistory(sparseRecentHistory)),
@@ -339,6 +369,8 @@ describe('Khala Tokens Served history chart (#6227)', () => {
       Scene.expect(Scene.text('Network Stats')).toExist(),
       Scene.expect(Scene.text('Khala Tokens Served')).toExist(),
       Scene.expect(Scene.text('Tokens Served / Day')).toExist(),
+      Scene.expect(Scene.text('Daily')).toExist(),
+      Scene.expect(Scene.text('Cumulative')).toExist(),
       Scene.expect(Scene.text('2026-06-24: 31,000 tokens')).toExist(),
       Scene.expect(Scene.text('2026-06-29: 14,700,000 tokens')).toExist(),
       Scene.expect(Scene.text('Model Family Mix')).toExist(),

@@ -4,8 +4,12 @@ import type { Attribute, Html } from 'foldkit/html'
 import { html } from 'foldkit/html'
 
 import * as Ui from '../../../ui'
-import type { Message } from '../message'
+import {
+  SelectedKhalaTokensServedHistoryGraphMetric,
+  type Message,
+} from '../message'
 import type {
+  KhalaTokensServedHistoryGraphMetric,
   PublicForumLaunchStatus,
   PublicForumLaunchStatusModel,
   PublicForumTipLeaderboards,
@@ -25,6 +29,7 @@ export type HomeViewInput = {
   forumTipLeaderboards: PublicForumTipLeaderboardsModel
   publicKhalaTokensServed: PublicKhalaTokensServedModel
   publicKhalaTokensServedHistory: PublicKhalaTokensServedHistoryModel
+  publicKhalaTokensServedHistoryGraphMetric?: KhalaTokensServedHistoryGraphMetric
   publicKhalaTokensServedModelMix: PublicKhalaTokensServedModelMixModel
   publicPylonStats: PublicPylonStatsModel
   settledFeed: SettledFeedModel
@@ -1053,28 +1058,92 @@ const compactNumberFormatter = new Intl.NumberFormat('en-US', {
 const formatCompactNumber = (value: number): string =>
   compactNumberFormatter.format(value)
 
-const historyChartHeading = (live: boolean, label: string): Html => {
+const historyMetricTitle = (
+  metric: KhalaTokensServedHistoryGraphMetric,
+): string =>
+  metric === 'daily' ? 'Tokens Served / Day' : 'Cumulative Tokens Served'
+
+const historyMetricToggle = (
+  selectedMetric: KhalaTokensServedHistoryGraphMetric,
+): Html => {
+  const h = html<Message>()
+  const options: ReadonlyArray<{
+    label: string
+    metric: KhalaTokensServedHistoryGraphMetric
+  }> = [
+    { label: 'Daily', metric: 'daily' },
+    { label: 'Cumulative', metric: 'cumulative' },
+  ]
+
+  return h.div(
+    [
+      h.Role('group'),
+      h.AriaLabel('Tokens served chart metric'),
+      Ui.className<Message>(
+        'inline-flex overflow-hidden border border-[#243a60] bg-black/50 text-[0.58rem] font-semibold uppercase leading-none tracking-[0.08em]',
+      ),
+    ],
+    options.map(option => {
+      const selected = option.metric === selectedMetric
+
+      return h.button(
+        [
+          h.Type('button'),
+          h.OnClick(
+            SelectedKhalaTokensServedHistoryGraphMetric({
+              metric: option.metric,
+            }),
+          ),
+          h.Attribute('aria-pressed', selected ? 'true' : 'false'),
+          Ui.className<Message>(
+            `cursor-pointer px-2 py-1.5 transition-colors ${
+              selected
+                ? 'bg-[#15325f] text-[#f1efe8]'
+                : 'text-white/45 hover:bg-[#07111f] hover:text-[#bcd4ff]'
+            }`,
+          ),
+        ],
+        [option.label],
+      )
+    }),
+  )
+}
+
+const historyChartHeading = (
+  live: boolean,
+  label: string,
+  metric: KhalaTokensServedHistoryGraphMetric,
+  showMetricToggle: boolean,
+): Html => {
   const h = html<Message>()
 
   return h.div(
     [
       Ui.className<Message>(
-        'flex items-center gap-2 text-[0.78rem] uppercase leading-none tracking-[0.08em] text-white/55',
+        'flex flex-wrap items-center justify-between gap-2 text-[0.78rem] uppercase leading-none tracking-[0.08em] text-white/55',
       ),
     ],
     [
-      h.span(
+      h.div(
+        [Ui.className<Message>('flex min-w-0 items-center gap-2')],
         [
-          h.DataAttribute('status', live ? 'live' : 'pending'),
-          Ui.className<Message>(
-            `inline-block h-1.5 w-1.5 rounded-full ${
-              live ? 'bg-[#3a7bff] shadow-[0_0_8px_rgba(58,123,255,0.85)]' : 'bg-white/30'
-            }`,
+          h.span(
+            [
+              h.DataAttribute('status', live ? 'live' : 'pending'),
+              Ui.className<Message>(
+                `inline-block h-1.5 w-1.5 shrink-0 rounded-full ${
+                  live
+                    ? 'bg-[#3a7bff] shadow-[0_0_8px_rgba(58,123,255,0.85)]'
+                    : 'bg-white/30'
+                }`,
+              ),
+            ],
+            [],
           ),
+          h.span([Ui.className<Message>('truncate')], [label]),
         ],
-        [],
       ),
-      h.span([], [label]),
+      showMetricToggle ? historyMetricToggle(metric) : h.span([], []),
     ],
   )
 }
@@ -1084,6 +1153,8 @@ const historyChartShell = (
   body: Html,
   caption: string,
   title = 'Tokens Served / Day',
+  metric: KhalaTokensServedHistoryGraphMetric = 'daily',
+  showMetricToggle = false,
 ): Html => {
   const h = html<Message>()
 
@@ -1095,7 +1166,12 @@ const historyChartShell = (
       ),
     ],
     [
-      historyChartHeading(live, title),
+      historyChartHeading(
+        live,
+        title,
+        metric,
+        showMetricToggle,
+      ),
       body,
       h.p(
         [Ui.className<Message>('m-0 text-[0.66rem] leading-4 text-white/35')],
@@ -1132,14 +1208,20 @@ const historyChartPlaceholder = (label: string): Html => {
 const historyTextFallback = (
   series: ReadonlyArray<PublicKhalaTokensServedHistoryPoint>,
   projection: HistoryProjection | undefined = undefined,
+  metric: KhalaTokensServedHistoryGraphMetric = 'daily',
 ): Html => {
   const h = html<Message>()
+  const valueLabel =
+    metric === 'daily' ? 'tokens' : 'cumulative tokens'
 
   return h.ul(
     [Ui.className<Message>('sr-only')],
     [
       ...series.map(point =>
-        h.li([], [`${point.day}: ${formatNumber(point.tokensServed)} tokens`]),
+        h.li(
+          [],
+          [`${point.day}: ${formatNumber(point.tokensServed)} ${valueLabel}`],
+        ),
       ),
       ...(projection === undefined
         ? []
@@ -1147,9 +1229,11 @@ const historyTextFallback = (
             h.li(
               [],
               [
-                `${projection.day} projected by midnight: ${formatNumber(
+                `${
+                  projection.day
+                } projected by midnight: ${formatNumber(
                   projection.projectedTokens,
-                )} tokens`,
+                )} ${valueLabel}`,
               ],
             ),
           ]),
@@ -1514,9 +1598,45 @@ const historyProjectionSegmentStyle = (
     'background-image: repeating-linear-gradient(135deg, rgba(58, 123, 255, 0.9) 0px, rgba(58, 123, 255, 0.9) 2px, transparent 2px, transparent 7px);',
   ].join(' ')
 
+const cumulativeHistorySeries = (
+  series: ReadonlyArray<PublicKhalaTokensServedHistoryPoint>,
+): ReadonlyArray<PublicKhalaTokensServedHistoryPoint> => {
+  let cumulativeTokens = 0
+
+  return series.map(point => {
+    cumulativeTokens += Math.max(0, point.tokensServed)
+
+    return {
+      day: point.day,
+      tokensServed: cumulativeTokens,
+    }
+  })
+}
+
+const cumulativeHistoryProjection = (
+  projection: HistoryProjection | undefined,
+  cumulativeSeries: ReadonlyArray<PublicKhalaTokensServedHistoryPoint>,
+): HistoryProjection | undefined => {
+  if (projection === undefined) {
+    return undefined
+  }
+
+  const latestCumulativeTokens =
+    cumulativeSeries.find(point => point.day === projection.day)
+      ?.tokensServed ?? projection.observedTokens
+
+  return {
+    ...projection,
+    observedTokens: latestCumulativeTokens,
+    projectedTokens:
+      latestCumulativeTokens + projection.projectedExtraTokens,
+  }
+}
+
 const historyChartBars = (
   series: ReadonlyArray<PublicKhalaTokensServedHistoryPoint>,
   projection: HistoryProjection | undefined = undefined,
+  metric: KhalaTokensServedHistoryGraphMetric = 'daily',
 ): Html => {
   const h = html<Message>()
   const maxTokens = series.reduce(
@@ -1526,15 +1646,26 @@ const historyChartBars = (
   const scaleMaxTokens = Math.max(maxTokens, projection?.projectedTokens ?? 0)
   const gridStyle = historyGridColumnsStyle(series.length)
 
-  const ariaLabel = `Tokens served per day for the last ${series.length} ${
-    series.length === 1 ? 'day' : 'days'
-  }. Peak ${formatNumber(maxTokens)} tokens in a day.${
-    projection === undefined
-      ? ''
-      : ` Current pace projects ${formatNumber(
-          projection.projectedTokens,
-        )} tokens by midnight.`
-  }`
+  const ariaLabel =
+    metric === 'daily'
+      ? `Tokens served per day for the last ${series.length} ${
+          series.length === 1 ? 'day' : 'days'
+        }. Peak ${formatNumber(maxTokens)} tokens in a day.${
+          projection === undefined
+            ? ''
+            : ` Current pace projects ${formatNumber(
+                projection.projectedTokens,
+              )} tokens by midnight.`
+        }`
+      : `Cumulative tokens served across the last ${series.length} ${
+          series.length === 1 ? 'day' : 'days'
+        }. Latest total ${formatNumber(maxTokens)} tokens.${
+          projection === undefined
+            ? ''
+            : ` Current pace projects ${formatNumber(
+                projection.projectedTokens,
+              )} cumulative tokens by midnight.`
+        }`
 
   return h.div(
     [
@@ -1674,7 +1805,7 @@ const historyChartBars = (
           )
         }),
       ),
-      historyTextFallback(series, projection),
+      historyTextFallback(series, projection, metric),
     ],
   )
 }
@@ -1682,6 +1813,8 @@ const historyChartBars = (
 export const khalaTokensServedHistoryChart = (
   model: PublicKhalaTokensServedHistoryModel,
   mode: KhalaTokensServedHistoryChartMode = 'recent',
+  metric: KhalaTokensServedHistoryGraphMetric = 'daily',
+  showMetricToggle = false,
 ): Html =>
   M.value(model).pipe(
     M.tagsExhaustive({
@@ -1690,18 +1823,27 @@ export const khalaTokensServedHistoryChart = (
           false,
           historyChartPlaceholder('Waiting for data…'),
           'Daily all-demand input + output tokens served across the network in America/Chicago.',
+          historyMetricTitle(metric),
+          metric,
+          showMetricToggle,
         ),
       PublicKhalaTokensServedHistoryLoading: () =>
         historyChartShell(
           false,
           historyChartPlaceholder('Loading history…'),
           'Daily all-demand input + output tokens served across the network in America/Chicago.',
+          historyMetricTitle(metric),
+          metric,
+          showMetricToggle,
         ),
       PublicKhalaTokensServedHistoryFailed: () =>
         historyChartShell(
           false,
           historyChartPlaceholder('History unavailable.'),
           'Daily all-demand input + output tokens served across the network in America/Chicago.',
+          historyMetricTitle(metric),
+          metric,
+          showMetricToggle,
         ),
       PublicKhalaTokensServedHistoryLoaded: ({ history }) =>
         Array.match(history.series, {
@@ -1710,6 +1852,9 @@ export const khalaTokensServedHistoryChart = (
               true,
               historyChartPlaceholder('No tokens served yet.'),
               `Daily all-demand input + output tokens served across the network in ${history.timezone}.`,
+              historyMetricTitle(metric),
+              metric,
+              showMetricToggle,
             ),
           onNonEmpty: series => {
             const chartSeries =
@@ -1720,31 +1865,60 @@ export const khalaTokensServedHistoryChart = (
                     history.timezone,
                   )
                 : recentContiguousHistorySeries(series)
-            const peakTokens = chartSeries.reduce(
-              (max, point) =>
-                point.tokensServed > max ? point.tokensServed : max,
-              0,
-            )
             const projection = latestDayProjection(
               chartSeries,
               history.generatedAt,
               history.timezone,
             )
+            const displaySeries =
+              metric === 'cumulative'
+                ? cumulativeHistorySeries(chartSeries)
+                : chartSeries
+            const displayProjection =
+              metric === 'cumulative'
+                ? cumulativeHistoryProjection(projection, displaySeries)
+                : projection
+            const peakTokens = chartSeries.reduce(
+              (max, point) =>
+                point.tokensServed > max ? point.tokensServed : max,
+              0,
+            )
+            const latestCumulativeTokens =
+              displaySeries[displaySeries.length - 1]?.tokensServed ?? 0
+            const metricCaption =
+              metric === 'daily'
+                ? `Daily all-demand input + output tokens served across the network in ${history.timezone}. Last ${
+                    chartSeries.length
+                  } ${
+                    chartSeries.length === 1 ? 'day' : 'days'
+                  }, peak ${formatCompactNumber(peakTokens)} in a day.${
+                    projection === undefined
+                      ? ''
+                      : ` Current pace projects ${formatCompactNumber(
+                          projection.projectedTokens,
+                        )} by midnight.`
+                  }`
+                : `Cumulative all-demand input + output tokens served across the network in ${
+                    history.timezone
+                  }. Last ${displaySeries.length} ${
+                    displaySeries.length === 1 ? 'day' : 'days'
+                  }, latest ${formatCompactNumber(
+                    latestCumulativeTokens,
+                  )} total.${
+                    displayProjection === undefined
+                      ? ''
+                      : ` Current pace projects ${formatCompactNumber(
+                          displayProjection.projectedTokens,
+                        )} cumulative by midnight.`
+                  }`
 
             return historyChartShell(
               true,
-              historyChartBars(chartSeries, projection),
-              `Daily all-demand input + output tokens served across the network in ${history.timezone}. Last ${
-                chartSeries.length
-              } ${chartSeries.length === 1 ? 'day' : 'days'}, peak ${formatCompactNumber(
-                peakTokens,
-              )} in a day.${
-                projection === undefined
-                  ? ''
-                  : ` Current pace projects ${formatCompactNumber(
-                      projection.projectedTokens,
-                    )} by midnight.`
-              }`,
+              historyChartBars(displaySeries, displayProjection, metric),
+              metricCaption,
+              historyMetricTitle(metric),
+              metric,
+              showMetricToggle,
             )
           },
         }),

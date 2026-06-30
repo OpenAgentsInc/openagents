@@ -96,6 +96,8 @@ export const view = (input: HomeViewInput): Html => {
                 khalaTokensServedHistoryChart(
                   input.publicKhalaTokensServedHistory,
                   'launch-window',
+                  input.publicKhalaTokensServedHistoryGraphMetric ?? 'daily',
+                  true,
                 ),
                 khalaTokensServedModelMixPanel(
                   input.publicKhalaTokensServedModelMix,

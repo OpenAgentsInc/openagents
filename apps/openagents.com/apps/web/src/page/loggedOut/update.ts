@@ -2067,6 +2067,12 @@ export const update = (model: Model, message: Message): UpdateReturn =>
         }),
         [],
       ],
+      SelectedKhalaTokensServedHistoryGraphMetric: ({ metric }) => [
+        evo(model, {
+          publicKhalaTokensServedHistoryGraphMetric: () => metric,
+        }),
+        [],
+      ],
       // Live fleet-shipping feed (#6534). The poll holds the last loaded
       // envelope (no flash to Loading) so the feed stays stable between fetches
       // and just updates when the next live window arrives.

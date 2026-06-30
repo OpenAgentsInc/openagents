@@ -31,6 +31,7 @@ import {
   PublicArtanisReport,
   PublicForumLaunchStatus,
   PublicForumTipLeaderboards,
+  KhalaTokensServedHistoryGraphMetric,
   PublicKhalaTokensServed,
   PublicKhalaTokensServedHistory,
   PublicKhalaTokensServedModelMix,
@@ -213,6 +214,12 @@ export const FailedLoadPublicKhalaTokensServedHistory = m(
   'FailedLoadPublicKhalaTokensServedHistory',
   {
     error: S.String,
+  },
+)
+export const SelectedKhalaTokensServedHistoryGraphMetric = m(
+  'SelectedKhalaTokensServedHistoryGraphMetric',
+  {
+    metric: KhalaTokensServedHistoryGraphMetric,
   },
 )
 // Live fleet-shipping feed (#6534). The /artanis console polls the read-only
@@ -628,6 +635,7 @@ export const Message = S.Union([
   RequestedPollKhalaTokensServedHistory,
   SucceededLoadPublicKhalaTokensServedHistory,
   FailedLoadPublicKhalaTokensServedHistory,
+  SelectedKhalaTokensServedHistoryGraphMetric,
   RequestedPollPublicActivityTimeline,
   SucceededLoadPublicActivityTimeline,
   FailedLoadPublicActivityTimeline,
