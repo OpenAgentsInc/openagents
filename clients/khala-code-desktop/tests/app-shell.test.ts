@@ -93,11 +93,17 @@ describe("khala code desktop app shell", () => {
     const main = await Bun.file(new URL("../src/ui/main.ts", import.meta.url)).text()
     const css = await Bun.file(new URL("../src/ui/styles.css", import.meta.url)).text()
 
-    expect(html.indexOf('id="resize-button"')).toBeLessThan(html.indexOf('id="send-button"'))
-    expect(css).toContain("grid-template-columns: minmax(0, 1fr) minmax(0, auto) 32px 32px")
+    expect(html).not.toContain('id="preview-button"')
+    expect(html).not.toContain('id="resize-button"')
+    expect(html).not.toContain('data-oa-command-composer-control="Preview"')
+    expect(html).not.toContain("data-oa-command-composer-resize")
+    expect(css).toContain("grid-template-columns: minmax(0, 1fr) minmax(0, auto) 32px")
+    expect(css).not.toContain("grid-template-columns: minmax(0, 1fr) minmax(0, auto) 32px 32px")
     expect(css).toContain(".khala-code-composer .oa-ai-command-composer-submit-label")
-    expect(css).toContain("position: static")
-    expect(main).not.toContain('composerExpanded ? "expanded" : "compact"')
+    expect(main).not.toContain("previewButton")
+    expect(main).not.toContain("resizeButton")
+    expect(main).not.toContain("composerExpanded")
+    expect(main).not.toContain("togglePreview")
   })
 
   test("starts the composer compact with the placeholder near the top edge", async () => {

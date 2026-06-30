@@ -159,8 +159,6 @@ const composerStatus = requireElement<HTMLElement>("#composer-status")
 const composerA11y = requireElement<HTMLElement>("#composer-a11y")
 const sendButton = requireElement<HTMLButtonElement>("#send-button")
 const attachButton = requireElement<HTMLButtonElement>("#attach-button")
-const previewButton = requireElement<HTMLButtonElement>("#preview-button")
-const resizeButton = requireElement<HTMLButtonElement>("#resize-button")
 const fileInput = requireElement<HTMLInputElement>("#file-input")
 
 let messages: KhalaCodeDesktopMessage[] = []
@@ -169,8 +167,6 @@ let pendingTurn = false
 let thinkingTurnId: string | null = null
 let lastTurnFailed = false
 let lastSubmittedDraft = ""
-let previewEnabled = false
-let composerExpanded = false
 let dragActive = false
 const activeTurnIds = new Set<string>()
 const objectUrls = new Set<string>()
@@ -551,15 +547,8 @@ const renderAttachmentRail = (): void => {
 }
 
 const renderComposerPreview = (): void => {
-  composerPreview.hidden = !previewEnabled
-  previewButton.setAttribute("aria-pressed", previewEnabled ? "true" : "false")
-  if (!previewEnabled) {
-    composerPreview.replaceChildren()
-    return
-  }
-  composerPreview.replaceChildren(
-    ...renderMessageBody(composerInput.value, "assistant"),
-  )
+  composerPreview.hidden = true
+  composerPreview.replaceChildren()
 }
 
 function renderComposer(): void {
@@ -568,7 +557,6 @@ function renderComposer(): void {
   const attachmentCount = composerState.doc.attachments.length
 
   composerForm.dataset.oaCommandComposerStatus = status
-  composerForm.dataset.oaCommandComposerExpanded = composerExpanded ? "true" : "false"
   composerFrame.dataset.oaCommandComposerFrame = ""
   sendButton.disabled = !pendingTurn && !canSubmitComposer()
   sendButton.type = pendingTurn ? "button" : "submit"
@@ -826,13 +814,6 @@ const setDragActive = (active: boolean): void => {
   renderComposer()
 }
 
-const resizeComposer = (): void => {
-  composerExpanded = !composerExpanded
-  renderComposer()
-  resizeComposerHud()
-  requestAnimationFrame(focusComposerInput)
-}
-
 const resizeComposerHud = (): void => {
   if (composerHudRuntime === null) return
   const rect = composerFrame.getBoundingClientRect()
@@ -940,14 +921,6 @@ fileInput.addEventListener("change", () => {
   requestAnimationFrame(focusComposerInput)
 })
 
-previewButton.addEventListener("click", () => {
-  previewEnabled = !previewEnabled
-  renderComposer()
-  requestAnimationFrame(focusComposerInput)
-})
-
-resizeButton.addEventListener("click", resizeComposer)
-
 composerInput.addEventListener("input", () => {
   lastTurnFailed = false
   renderComposer()
@@ -1036,7 +1009,6 @@ const controls = {
     lastTurnFailed = false
     render()
   },
-  resizeComposer,
   setComposerDraft: (value: string) => {
     composerInput.value = value
     lastTurnFailed = false
@@ -1063,10 +1035,6 @@ const controls = {
   },
   stopTurn: stopActiveTurn,
   submitComposer,
-  togglePreview: () => {
-    previewEnabled = !previewEnabled
-    renderComposer()
-  },
   tokenAccountingStatus: () => rpc.request.tokenAccountingStatus(),
   toolCatalog: () => rpc.request.toolCatalog(),
 }

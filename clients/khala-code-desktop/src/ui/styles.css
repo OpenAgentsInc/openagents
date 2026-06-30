@@ -450,7 +450,7 @@ button {
 }
 
 .khala-code-composer .oa-ai-command-composer-footer {
-  grid-template-columns: minmax(0, 1fr) minmax(0, auto) 32px 32px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, auto) 32px;
   align-items: center;
   gap: 6px;
 }
@@ -467,18 +467,9 @@ button {
   display: none;
 }
 
-.khala-code-composer .oa-ai-command-composer-resize-handle {
-  position: static;
-  width: 32px;
-  height: 32px;
-  min-width: 32px;
-  min-height: 32px;
-  border-radius: 2px;
-}
-
 @media (max-width: 639px) {
   .khala-code-composer .oa-ai-command-composer-footer {
-    grid-template-columns: minmax(0, 1fr) 32px 32px;
+    grid-template-columns: minmax(0, 1fr) 32px;
   }
 
   .khala-code-composer .oa-ai-command-composer-status {
@@ -487,14 +478,6 @@ button {
     order: -1;
     max-width: 100%;
   }
-}
-
-.khala-code-composer[data-oa-command-composer-expanded="true"] {
-  --oa-command-composer-height: min(48vh, 22rem);
-}
-
-.khala-code-composer[data-oa-command-composer-expanded="true"] #composer-input {
-  min-height: calc(min(48vh, 22rem) - 3.5rem);
 }
 
 .khala-code-composer-preview {
