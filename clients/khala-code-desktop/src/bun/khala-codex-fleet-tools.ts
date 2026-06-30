@@ -2848,6 +2848,7 @@ export async function beginCodexConnect(
         "--account",
         accountRef,
         "--force-device-login",
+        "--json",
       ],
       {
         cwd: paths.appPath,
@@ -2869,28 +2870,53 @@ export async function beginCodexConnect(
   }
 
   const decoder = new TextDecoder()
+  const stripAnsi = (value: string): string =>
+    // eslint-disable-next-line no-control-regex
+    value.replace(/\x1b\[[0-9;]*m/g, "")
   let buffer = ""
   let verificationUrl: string | null = null
   let userCode: string | null = null
-  const deadline = Date.now() + 30_000
-  const reader = (child.stdout as ReadableStream<Uint8Array>).getReader()
-  try {
-    while (Date.now() < deadline && (verificationUrl === null || userCode === null)) {
-      const { value, done } = await reader.read()
-      if (done) break
-      if (value !== undefined) buffer += decoder.decode(value, { stream: true })
-      if (verificationUrl === null) {
-        verificationUrl = buffer.match(/https?:\/\/[^\s'"]+/)?.[0] ?? null
-      }
-      if (userCode === null) {
-        userCode = buffer.match(/\b[A-Z0-9]{3,}-[A-Z0-9]{3,}\b/)?.[0] ?? null
-      }
+  let done = false
+
+  const tryParse = (): void => {
+    const clean = stripAnsi(buffer)
+    if (verificationUrl === null) {
+      verificationUrl = clean.match(/https?:\/\/[^\s'"]+/)?.[0] ?? null
     }
-  } catch {
-    // streamed read interrupted — return whatever we captured
-  } finally {
-    reader.releaseLock()
+    if (userCode === null) {
+      userCode = clean.match(/\b[A-Z0-9]{3,}-[A-Z0-9]{3,}\b/)?.[0] ?? null
+    }
+    if (verificationUrl !== null && userCode !== null) done = true
   }
+
+  const readStream = async (
+    stream: ReadableStream<Uint8Array> | undefined,
+  ): Promise<void> => {
+    if (stream === undefined) return
+    const reader = stream.getReader()
+    try {
+      while (!done) {
+        const { value, done: streamDone } = await reader.read()
+        if (streamDone) break
+        if (value !== undefined) {
+          buffer += decoder.decode(value, { stream: true })
+          tryParse()
+        }
+      }
+    } catch {
+      // stream interrupted — return whatever we captured
+    } finally {
+      reader.releaseLock()
+    }
+  }
+
+  await Promise.race([
+    Promise.all([
+      readStream(child.stdout as ReadableStream<Uint8Array>),
+      readStream(child.stderr as ReadableStream<Uint8Array>),
+    ]),
+    new Promise<void>(resolve => setTimeout(resolve, 35_000)),
+  ])
 
   // Leave the process running; it completes when the user authorizes.
   return {
@@ -2898,6 +2924,6 @@ export async function beginCodexConnect(
     accountRef,
     verificationUrl,
     userCode,
-    output: buffer.slice(-1500),
+    output: stripAnsi(buffer).slice(-1500),
   }
 }

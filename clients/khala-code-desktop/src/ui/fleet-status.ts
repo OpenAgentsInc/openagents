@@ -264,7 +264,7 @@ const renderConnecting = (
       el(
         "p",
         "khala-fleet-connect-hint",
-        "Your browser should open automatically. Authorize the login there — this updates when it completes.",
+        "Open the link below in your browser and enter the code to sign in. This updates automatically when it completes.",
       ),
     )
     if (connect.start.verificationUrl !== null) {
