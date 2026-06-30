@@ -56,7 +56,7 @@ const MAX_TOTAL_TOOL_CALLS = 32
 const DEFAULT_HOSTED_TOKEN_MESSAGE =
   "Khala Code is wired to the hosted OpenAgents cloud by default, but this desktop process does not have an OPENAGENTS_AGENT_TOKEN. Set OPENAGENTS_AGENT_TOKEN for hosted cloud, or set OPENROUTER_API_KEY to use your own OpenRouter key."
 const OPENROUTER_APP_ATTRIBUTION_HEADERS = {
-  "HTTP-Referer": "https://openagents.com/khala",
+  "HTTP-Referer": "https://openagents.com",
   "X-OpenRouter-Categories": "cli-agent,cloud-agent,personal-agent,programming-app",
   "X-OpenRouter-Title": "Khala Code",
 } as const

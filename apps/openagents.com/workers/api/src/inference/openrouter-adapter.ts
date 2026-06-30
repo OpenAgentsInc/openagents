@@ -9,6 +9,7 @@ import { Effect, Redacted } from 'effect'
 
 import { parseJsonRecord, recordFromUnknown } from '../json-boundary'
 import {
+  inferenceToolCallDeltasFromUnknown,
   inferenceToolCallsFromUnknown,
   openAiWireMessageFromInferenceMessage,
 } from './openai-chat-compat'
@@ -18,6 +19,8 @@ import {
   type InferenceRequest,
   type InferenceResult,
   type InferenceStreamChunk,
+  type InferenceStreamEvent,
+  type InferenceStreamSource,
   type InferenceToolCall,
   type InferenceToolCallDelta,
   type InferenceUsage,
@@ -48,6 +51,12 @@ export const OPENROUTER_DEFAULT_TIMEOUT_MS = 60_000
 export const OPENROUTER_DEFAULT_BASE_URL = 'https://openrouter.ai/api/v1'
 export const OPENROUTER_KHALA_FALLBACK_MODEL_ID =
   'ibm-granite/granite-4.1-8b'
+const OPENROUTER_APP_ATTRIBUTION_HEADERS = {
+  'HTTP-Referer': 'https://openagents.com',
+  'X-OpenRouter-Categories':
+    'cli-agent,cloud-agent,personal-agent,programming-app',
+  'X-OpenRouter-Title': 'Khala Code',
+} as const
 
 const OPENAI_FORWARDED_PARAMS = [
   'temperature',
@@ -91,7 +100,8 @@ const requestBody = (
   ...(numberParam(request.passthroughParams, 'max_tokens') === undefined
     ? {}
     : { max_tokens: numberParam(request.passthroughParams, 'max_tokens') }),
-  stream: false,
+  stream: request.stream,
+  ...(request.stream ? { stream_options: { include_usage: true } } : {}),
 })
 
 const classifyStatus = (
@@ -162,9 +172,10 @@ const postChatCompletions = (
       return fetcher(endpointFor(config.baseUrl), {
         body: JSON.stringify(requestBody(config, request)),
         headers: {
-          accept: 'application/json',
+          accept: request.stream ? 'text/event-stream' : 'application/json',
           authorization: `Bearer ${Redacted.value(apiKey)}`,
           'content-type': 'application/json',
+          ...OPENROUTER_APP_ATTRIBUTION_HEADERS,
         },
         method: 'POST',
         ...(signal === undefined ? {} : { signal }),
@@ -296,6 +307,157 @@ const runCompletion = (
     return yield* normalizeResult(config, raw)
   })
 
+const parseSseData = (line: string): Record<string, unknown> | undefined => {
+  const trimmed = line.trim()
+  if (!trimmed.startsWith('data:')) {
+    return undefined
+  }
+  const payload = trimmed.slice('data:'.length).trim()
+  if (payload === '' || payload === '[DONE]') {
+    return undefined
+  }
+  return parseJsonRecord(payload)
+}
+
+const deltaOf = (
+  frame: Record<string, unknown>,
+): Record<string, unknown> | undefined => {
+  const choice = firstChoice(frame)
+  return recordFromUnknown(choice?.['delta'])
+}
+
+const deltaContentOf = (frame: Record<string, unknown>): string => {
+  const content = deltaOf(frame)?.['content']
+  return typeof content === 'string' ? content : ''
+}
+
+const deltaReasoningOf = (frame: Record<string, unknown>): string => {
+  const delta = deltaOf(frame)
+  const direct =
+    delta?.['reasoning_content'] ??
+    delta?.['reasoning'] ??
+    delta?.['reasoning_delta'] ??
+    delta?.['reasoningContent']
+  return typeof direct === 'string' ? direct : ''
+}
+
+const toolCallDeltasOf = (
+  frame: Record<string, unknown>,
+): InferenceStreamEvent['toolCallDeltas'] => {
+  const toolCallDeltas = inferenceToolCallDeltasFromUnknown(
+    deltaOf(frame)?.['tool_calls'],
+  )
+  return toolCallDeltas === undefined || toolCallDeltas.length === 0
+    ? undefined
+    : toolCallDeltas
+}
+
+const finishReasonOf = (frame: Record<string, unknown>): string | undefined => {
+  const reason = firstChoice(frame)?.['finish_reason']
+  return typeof reason === 'string' && reason.length > 0 ? reason : undefined
+}
+
+const eventForFrame = (
+  frame: Record<string, unknown>,
+): InferenceStreamEvent => {
+  const event: {
+    contentDelta: string
+    reasoningDelta?: string
+    toolCallDeltas?: InferenceStreamEvent['toolCallDeltas']
+    finishReason?: string
+    usage?: InferenceUsage
+    servedModel?: string
+  } = { contentDelta: deltaContentOf(frame) }
+  const reasoningDelta = deltaReasoningOf(frame)
+  if (reasoningDelta !== '') {
+    event.reasoningDelta = reasoningDelta
+  }
+  const toolCallDeltas = toolCallDeltasOf(frame)
+  if (toolCallDeltas !== undefined) {
+    event.toolCallDeltas = toolCallDeltas
+  }
+  const finishReason = finishReasonOf(frame)
+  if (finishReason !== undefined) {
+    event.finishReason = finishReason
+  }
+  const usage = extractUsage(frame)
+  if (usage !== undefined) {
+    event.usage = usage
+  }
+  const model = frame['model']
+  if (typeof model === 'string' && model.length > 0) {
+    event.servedModel = model
+  }
+  return event
+}
+
+const makeSseSource = (
+  body: ReadableStream<Uint8Array>,
+  fallbackModel: string,
+): InferenceStreamSource => {
+  let finishReason: string | undefined
+  let usage: InferenceUsage | undefined
+  let servedModel: string | undefined = fallbackModel
+
+  const frames = (async function* (): AsyncIterable<InferenceStreamEvent> {
+    const reader = body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+    try {
+      for (;;) {
+        const { done, value } = await reader.read()
+        if (value !== undefined) {
+          buffer += decoder.decode(value, { stream: true })
+        }
+        let newlineIndex = buffer.indexOf('\n')
+        while (newlineIndex !== -1) {
+          const line = buffer.slice(0, newlineIndex)
+          buffer = buffer.slice(newlineIndex + 1)
+          const frame = parseSseData(line)
+          if (frame !== undefined) {
+            const event = eventForFrame(frame)
+            if (event.finishReason !== undefined) {
+              finishReason = event.finishReason
+            }
+            if (event.usage !== undefined) {
+              usage = event.usage
+            }
+            if (event.servedModel !== undefined) {
+              servedModel = event.servedModel
+            }
+            yield event
+          }
+          newlineIndex = buffer.indexOf('\n')
+        }
+        if (done) {
+          const frame = parseSseData(buffer)
+          if (frame !== undefined) {
+            const event = eventForFrame(frame)
+            if (event.finishReason !== undefined) {
+              finishReason = event.finishReason
+            }
+            if (event.usage !== undefined) {
+              usage = event.usage
+            }
+            if (event.servedModel !== undefined) {
+              servedModel = event.servedModel
+            }
+            yield event
+          }
+          break
+        }
+      }
+    } finally {
+      reader.releaseLock()
+    }
+  })()
+
+  return {
+    frames,
+    terminal: () => ({ finishReason, servedModel, usage }),
+  }
+}
+
 const toolCallDeltasFromResult = (
   toolCalls: ReadonlyArray<InferenceToolCall> | undefined,
 ): ReadonlyArray<InferenceToolCallDelta> | undefined => {
@@ -336,4 +498,36 @@ export const makeOpenRouterAdapter = (
         ]
       }),
     ),
+  streamSse: request =>
+    Effect.gen(function* () {
+      const response = yield* postChatCompletions(config, {
+        ...request,
+        stream: true,
+      })
+      if (!response.ok) {
+        const classified = classifyStatus(response.status)
+        return yield* Effect.fail(
+          adapterError(config, {
+            httpStatus: response.status,
+            kind: classified.kind,
+            reason:
+              response.status === 429
+                ? 'retryable: openrouter rate limited (429)'
+                : `openrouter rejected stream request (${response.status})`,
+            retryable: classified.retryable,
+          }),
+        )
+      }
+      const body = response.body
+      if (body === null) {
+        return yield* Effect.fail(
+          adapterError(config, {
+            kind: 'malformed_response',
+            reason: 'openrouter stream had no response body',
+            retryable: false,
+          }),
+        )
+      }
+      return makeSseSource(body, config.upstreamModel)
+    }),
 })

@@ -297,6 +297,29 @@ export const markdownElement = (input: { readonly markdown: string }): HTMLEleme
   return root
 }
 
+const plainTextElement = (text: string): HTMLElement => {
+  const root = document.createElement("div")
+  root.className = "message-prose message-plain"
+  const paragraphs = text
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .split(/\n{2,}/)
+  for (const paragraph of paragraphs) {
+    if (paragraph.trim().length === 0) continue
+    const p = document.createElement("p")
+    p.className = "md-paragraph"
+    p.textContent = paragraph
+    root.append(p)
+  }
+  if (root.childNodes.length === 0) {
+    const p = document.createElement("p")
+    p.className = "md-paragraph"
+    p.textContent = text
+    root.append(p)
+  }
+  return root
+}
+
 export const looksLikeUnifiedDiff = (text: string): boolean => {
   const first = text.split("\n").find(line => line.trim().length > 0) ?? ""
   return (
@@ -401,6 +424,7 @@ export const renderMessageBody = (
   role: KhalaCodeDesktopMessageRole = "assistant",
 ): readonly HTMLElement[] => {
   if (role === "tool") return [toolTranscriptElement(text)]
+  if (role === "system") return [plainTextElement(text)]
   return parseMessageSegments(text).map(segment => {
     if (segment.kind === "diff") return diffElement({ patch: segment.text })
     if (segment.kind === "code") {

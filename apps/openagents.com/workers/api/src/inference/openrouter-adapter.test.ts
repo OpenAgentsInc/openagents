@@ -7,7 +7,7 @@ import {
   type OpenRouterFetch,
   makeOpenRouterAdapter,
 } from './openrouter-adapter'
-import type { InferenceRequest } from './provider-adapter'
+import type { InferenceRequest, InferenceStreamEvent } from './provider-adapter'
 
 const runResult = <A>(effect: Effect.Effect<A, unknown>) =>
   Effect.runPromise(Effect.result(effect))
@@ -39,6 +39,12 @@ const request = (
 const jsonResponse = (body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), {
     headers: { 'content-type': 'application/json' },
+    status,
+  })
+
+const sseResponse = (body: string, status = 200): Response =>
+  new Response(body, {
+    headers: { 'content-type': 'text/event-stream; charset=utf-8' },
     status,
   })
 
@@ -143,6 +149,45 @@ describe('OpenRouter Khala fallback adapter', () => {
 
     expect(result._tag).toBe('Success')
     expect(capturedBody?.model).toBe(OPENROUTER_KHALA_FALLBACK_MODEL_ID)
+  })
+
+  it('opens a true SSE stream with app attribution and usage opt-in', async () => {
+    let capturedBody: Record<string, unknown> | undefined
+    let capturedHeaders: Record<string, string> | undefined
+    const fetchImpl: OpenRouterFetch = async (_input, init) => {
+      capturedBody = JSON.parse(init.body) as Record<string, unknown>
+      capturedHeaders = init.headers
+      return sseResponse(
+        [
+          'data: {"model":"openrouter/granite","choices":[{"delta":{"content":"Hel"},"finish_reason":null}]}',
+          'data: {"model":"openrouter/granite","choices":[{"delta":{"content":"lo"},"finish_reason":null}]}',
+          'data: {"model":"openrouter/granite","choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":3,"completion_tokens":2,"total_tokens":5}}',
+          'data: [DONE]',
+          '',
+        ].join('\n\n'),
+      )
+    }
+    const adapter = makeOpenRouterAdapter(adapterConfig(fetchImpl))
+
+    const result = await runResult(adapter.streamSse!(request({ stream: true })))
+
+    expect(result._tag).toBe('Success')
+    if (result._tag !== 'Success') return
+    const frames: InferenceStreamEvent[] = []
+    for await (const frame of result.success.frames) {
+      frames.push(frame)
+    }
+    expect(frames.map(frame => frame.contentDelta)).toEqual(['Hel', 'lo', ''])
+    expect(result.success.terminal()).toEqual({
+      finishReason: 'stop',
+      servedModel: 'openrouter/granite',
+      usage: { completionTokens: 2, promptTokens: 3, totalTokens: 5 },
+    })
+    expect(capturedBody?.stream).toBe(true)
+    expect(capturedBody?.stream_options).toEqual({ include_usage: true })
+    expect(capturedHeaders?.accept).toBe('text/event-stream')
+    expect(capturedHeaders?.['HTTP-Referer']).toBe('https://openagents.com')
+    expect(capturedHeaders?.['X-OpenRouter-Title']).toBe('Khala Code')
   })
 
   it('uses a caller-supplied OpenRouter key instead of the configured fallback key', async () => {

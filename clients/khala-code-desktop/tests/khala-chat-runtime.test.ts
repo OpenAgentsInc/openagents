@@ -151,7 +151,7 @@ describe("Khala Code desktop chat runtime", () => {
     })
     expect(calls[0]?.url).toBe("https://openrouter.ai/api/v1/chat/completions")
     expect(calls[0]?.headers.get("authorization")).toBe("Bearer sk-or-secretkey")
-    expect(calls[0]?.headers.get("http-referer")).toBe("https://openagents.com/khala")
+    expect(calls[0]?.headers.get("http-referer")).toBe("https://openagents.com")
     expect(calls[0]?.headers.get("x-openrouter-title")).toBe("Khala Code")
     expect(calls[0]?.headers.get("x-openrouter-categories")).toBe(
       "cli-agent,cloud-agent,personal-agent,programming-app",
@@ -159,6 +159,28 @@ describe("Khala Code desktop chat runtime", () => {
     expect(calls[0]?.body.model).toBe("anthropic/claude-haiku")
     expect(calls[0]?.body.stream).toBe(true)
     expect(JSON.stringify(result)).not.toContain("sk-or-secretkey")
+  })
+
+  test("uses Granite as the default OpenRouter BYOK model", async () => {
+    const { calls, fetchFn } = captureFetch([
+      { choices: [{ message: { content: "BYOK answer" } }] },
+    ])
+
+    const result = await runKhalaCodeDesktopChatTurn({
+      env: { OPENROUTER_API_KEY: "sk-or-secretkey" },
+      fetchFn,
+      request: {
+        messages: [{ body: "hello", id: "u1", role: "user" }],
+        sessionId: "session-1",
+      },
+    })
+
+    expect(result.ok).toBe(true)
+    expect(result.backend).toMatchObject({
+      kind: "openrouter_byok",
+      model: "ibm-granite/granite-4.1-8b",
+    })
+    expect(calls[0]?.body.model).toBe("ibm-granite/granite-4.1-8b")
   })
 
   test("streams OpenAI-compatible assistant deltas over chat turn events", async () => {

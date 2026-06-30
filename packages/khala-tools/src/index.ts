@@ -1177,7 +1177,7 @@ export function resolveKhalaBackend(input: {
     return {
       credentialSource: envKey !== undefined && envKey.length > 0 ? "env:OPENROUTER_API_KEY" : "khala-provider-key",
       kind: "openrouter_byok",
-      model: input.env?.OPENROUTER_MODEL?.trim() || "openrouter/free",
+      model: input.env?.OPENROUTER_MODEL?.trim() || "ibm-granite/granite-4.1-8b",
       provider: "openrouter",
     }
   }

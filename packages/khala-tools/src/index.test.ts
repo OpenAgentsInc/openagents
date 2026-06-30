@@ -134,9 +134,9 @@ describe("@openagentsinc/khala-tools foundation", () => {
       provider: "openrouter",
     })
 
-    expect(JSON.stringify(resolveKhalaBackend({ env: { OPENROUTER_API_KEY: "sk-or-secret" } }))).not.toContain(
-      "sk-or-secret",
-    )
+    const defaultOpenRouter = resolveKhalaBackend({ env: { OPENROUTER_API_KEY: "sk-or-secret" } })
+    expect(defaultOpenRouter.model).toBe("ibm-granite/granite-4.1-8b")
+    expect(JSON.stringify(defaultOpenRouter)).not.toContain("sk-or-secret")
     expect(resolveKhalaBackend({ preferred: "mock" }).kind).toBe("mock")
   })
 
