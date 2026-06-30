@@ -45,6 +45,23 @@ describe("khala code desktop app shell", () => {
     expect(html).not.toContain("Pylons")
   })
 
+  test("renders Fleet status with a board graph and run timeline mount", async () => {
+    const main = await Bun.file(new URL("../src/ui/main.ts", import.meta.url)).text()
+    const panel = await Bun.file(new URL("../src/ui/fleet-status.ts", import.meta.url)).text()
+    const projection = await Bun.file(new URL("../src/ui/fleet-board-projection.ts", import.meta.url)).text()
+    const renderer = await Bun.file(new URL("../src/ui/fleet-board-renderer.ts", import.meta.url)).text()
+    const css = await Bun.file(new URL("../src/ui/styles.css", import.meta.url)).text()
+
+    expect(main).toContain("mountFleetPanel")
+    expect(panel).toContain("appendFleetBoard(container, data)")
+    expect(panel).toContain("buildKhalaFleetBoardProjection")
+    expect(panel).toContain("renderKhalaFleetBoardHtml")
+    expect(projection).toContain("openagents.khala_code.fleet_board_projection.v0")
+    expect(renderer).toContain("Fleet board graph and run timeline")
+    expect(css).toContain(".khala-fleet-board-summary")
+    expect(css).toContain(".khala-fleet-timeline-event")
+  })
+
   test("renders a visible Gym pane entry without seeded private proof data", async () => {
     const html = await Bun.file(new URL("../src/ui/index.html", import.meta.url)).text()
     const sidebar = await Bun.file(new URL("../src/ui/sidebar.ts", import.meta.url)).text()
