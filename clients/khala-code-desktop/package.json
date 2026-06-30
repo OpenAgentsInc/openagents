@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "bun run build:ui && electrobun dev",
+    "dev": "bun run prepare:apple-fm-bridge && bun run build:ui && electrobun dev",
     "prepare:apple-fm-bridge": "bash scripts/prepare-apple-fm-bridge.sh",
     "verify:apple-fm-bridge": "bun scripts/verify-packaged-apple-fm-bridge.ts",
     "build:ui": "bun build src/ui/main.ts --outdir resources/ui --target browser --external '/fonts/*'",

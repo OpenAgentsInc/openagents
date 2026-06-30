@@ -47,6 +47,19 @@ describe("khala desktop Apple FM packaging", () => {
     )
   })
 
+  test("dev script prepares the helper before electrobun dev", () => {
+    const packageJson = JSON.parse(
+      readFileSync(join(import.meta.dir, "..", "package.json"), "utf8"),
+    ) as { scripts?: Record<string, string> }
+    const devScript = packageJson.scripts?.dev ?? ""
+
+    expect(devScript).toContain("bun run prepare:apple-fm-bridge")
+    expect(devScript).toContain("electrobun dev")
+    expect(devScript.indexOf("bun run prepare:apple-fm-bridge")).toBeLessThan(
+      devScript.indexOf("electrobun dev"),
+    )
+  })
+
   test("verifier accepts the first non-empty executable helper", () => {
     const result = verifyPackagedAppleFmBridge({ probe: healthy })
     expect(result.ok).toBe(true)
