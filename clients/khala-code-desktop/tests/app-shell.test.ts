@@ -45,6 +45,18 @@ describe("khala code desktop app shell", () => {
     expect(html).not.toContain("Pylons")
   })
 
+  test("renders Fleet Status capacity and token evidence chips", async () => {
+    const fleetPanel = await Bun.file(new URL("../src/ui/fleet-status.ts", import.meta.url)).text()
+    const css = await Bun.file(new URL("../src/ui/styles.css", import.meta.url)).text()
+
+    expect(fleetPanel).toContain("accountCapacityLabel")
+    expect(fleetPanel).toContain("fleetTokenRateLabel")
+    expect(fleetPanel).toContain("assignmentTokenRateLabel")
+    expect(fleetPanel).toContain('appendChip(pylonDetails, "token rate"')
+    expect(fleetPanel).toContain('appendChip(chips, "tokens"')
+    expect(css).toContain(".khala-fleet-card-details")
+  })
+
   test("renders a visible Gym pane entry without seeded private proof data", async () => {
     const html = await Bun.file(new URL("../src/ui/index.html", import.meta.url)).text()
     const sidebar = await Bun.file(new URL("../src/ui/sidebar.ts", import.meta.url)).text()

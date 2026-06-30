@@ -28,6 +28,7 @@ import {
   collectCodexAccountEmails,
   ensureLocalPylon,
   inspectCodexFleet,
+  type KhalaCodexFleetToolOptions,
   openExternalUrl,
   removeCodexAccount,
 } from "./khala-codex-fleet-tools.js"
@@ -41,6 +42,7 @@ export type KhalaCodeDesktopRpcHandlersInput = {
   readonly consumeCodexRateLimitResetCredit?: (input: {
     readonly idempotencyKey: string
   }) => MaybePromise<KhalaCodexRateLimitResetOutcome>
+  readonly codexFleetToolOptions?: KhalaCodexFleetToolOptions
   readonly env: ChatEnv
   readonly emitChatTurnEvent?: (event: KhalaCodeDesktopChatTurnEvent) => void
   readonly onDeviceDeciderStatus: () => MaybePromise<OnDeviceDeciderSelection>
@@ -143,7 +145,7 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
     async codexFleetStatus(): Promise<KhalaCodeDesktopFleetStatus> {
       const fleet = await inspectCodexFleet(
         { includeProcesses: true, startPylon: false },
-        { env: input.env as NodeJS.ProcessEnv },
+        { ...input.codexFleetToolOptions, env: input.env as NodeJS.ProcessEnv },
       )
       const emails = await collectCodexAccountEmails(
         fleet.accounts.map(account => account.accountRef),
@@ -165,13 +167,17 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
           readiness: account.readiness,
           quotaState: account.quotaState,
           accountKey: account.accountKey,
+          capacity: account.capacity,
           email: emails[account.accountRef] ?? null,
         })),
         activeAssignments: fleet.activeAssignments.map(marker => ({
           assignmentRef: marker.assignmentRef,
+          elapsedMs: marker.elapsedMs,
           issueRef: marker.issueRef,
+          tokenRate: marker.tokenRate,
           updatedAt: marker.updatedAt,
         })),
+        tokenRate: fleet.tokenRate,
         processes: fleet.processes.map(process => ({
           pid: process.pid,
           parentPid: process.parentPid,
