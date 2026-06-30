@@ -80,6 +80,21 @@ describe('basecoat display components', () => {
     expect(rendered).toContain('class="skeleton h-4 w-24"')
   })
 
+  test('omits default Basecoat variant and size data attributes', () => {
+    const rendered = renderHtml(
+      alert({
+        variant: 'default',
+        children: [
+          alertTitle({ children: ['Heads up'] }),
+          avatar({ size: 'default', children: [avatarFallback({ children: ['OA'] })] }),
+        ],
+      }),
+    )
+
+    expect(rendered).not.toContain('data-variant="default"')
+    expect(rendered).not.toContain('data-size="default"')
+  })
+
   test('is exported from the Basecoat namespace', () => {
     expect(Basecoat.alert).toBe(alert)
     expect(Basecoat.alertTitle).toBe(alertTitle)
