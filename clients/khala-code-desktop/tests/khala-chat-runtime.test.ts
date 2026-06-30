@@ -182,13 +182,15 @@ describe("Khala Code desktop chat runtime", () => {
     }
     const requestMessages = calls[0]?.body.messages as Array<{ content?: string; role?: string }>
     expect(requestMessages[0]).toMatchObject({ role: "system" })
-    expect(requestMessages[0]?.content).toContain("first-person PLURAL")
+    expect(requestMessages[0]?.content).toContain("first-person plural")
     expect(requestMessages[0]?.content).toContain("we are Khala")
     expect(requestMessages[0]?.content).toContain("We are Khala. How can we help?")
+    expect(requestMessages[0]?.content).toContain("usually one or two sentences, then use tools")
+    expect(requestMessages[0]?.content).toContain("avoid long front-loaded plans")
     expect(requestMessages[0]?.content).toContain("Pylon/Codex fleet tools")
     expect(requestMessages[0]?.content).toContain("Never end a turn with only tool output")
     expect(requestMessages[0]?.content).toContain("do not infer behavior from filenames alone")
-    expect(requestMessages[0]?.content).toContain("If a tool says output was truncated")
+    expect(requestMessages[0]?.content).toContain("If a tool result is truncated")
     expect(requestMessages[1]).toMatchObject({ role: "system" })
     expect(requestMessages[1]?.content).toContain("Available Khala Code Desktop tools:")
     expect(requestMessages[1]?.content).toContain("- read (read):")
