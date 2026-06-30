@@ -1933,7 +1933,7 @@ const schemaComponents = (): JsonSchema => ({
     'Public-safe "Khala Tokens Served" aggregate: tokensServed (the running network-wide SUM of input + output tokens across all real served-token ledger events, including internal dogfood, internal_stress, own_capacity, external, and unlabeled rows), generatedAt, and the declared live_at_read staleness contract. A single non-negative scalar; no per-user, per-team, demand label, provider, or secret material. Read-only counter; grants no payout, settlement, or public-claim authority.',
   ),
   PublicKhalaTokensServedHistory: objectSummary(
-    'Public-safe "Khala Tokens Served" history: window, bucket (day), timezone (default UTC), and a per-day series of { day, tokensServed } where tokensServed is the SUM of input + output tokens from all real served-token rows that calendar day in the response timezone, including internal dogfood, plus generatedAt and the declared live_at_read staleness contract. Each point is a bare day + sum; no per-user, per-team, demand label, provider, or secret material. Read-only counter history; grants no payout, settlement, or public-claim authority.',
+    'Public-safe "Khala Tokens Served" history: window, bucket (day), timezone (default America/Chicago), and a per-day series of { day, tokensServed } where tokensServed is the SUM of input + output tokens from all real served-token rows that calendar day in the response timezone, including internal dogfood, plus generatedAt and the declared live_at_read staleness contract. Each point is a bare day + sum; no per-user, per-team, demand label, provider, or secret material. Read-only counter history; grants no payout, settlement, or public-claim authority.',
   ),
   PublicKhalaTokensServedModelMix: objectSummary(
     'Public-safe "Khala Tokens Served" model/provider mix for /stats: schemaVersion openagents.public_khala_model_mix.v1, window, totalTokens, and canonical aggregate groups { family, label, tokens, reqs, pct }, plus generatedAt and the declared live_at_read staleness contract. Raw provider ids and model ids are collapsed into glm, fireworks_deepseek, pylon_codex, pylon_claude, gpt_oss, gemini, or other before serving; all real served-token rows count so the mix reconciles with the headline counter. No per-user, per-team, per-account, demand label, raw provider/model, prompt, completion, or secret material. Read-only stats projection; grants no payout, settlement, routing, provider, or public-claim authority.',
@@ -9969,7 +9969,7 @@ const paths = (): JsonSchema => ({
       operationId: 'getPublicKhalaTokensServedHistory',
       summary: 'Read public Khala Tokens Served history',
       description:
-        'Returns the public-safe "Khala Tokens Served" history: window, bucket (day), timezone (default UTC), and a per-day series of { day, tokensServed } where tokensServed is the SUM of input + output tokens from all real served-token rows that calendar day in the response timezone, including internal dogfood, plus generatedAt and the declared live_at_read staleness contract. Each point is a bare day + sum; no per-user, per-team, demand label, provider, or secret material. Read-only counter history; grants no payout, settlement, or public-claim authority.',
+        'Returns the public-safe "Khala Tokens Served" history: window, bucket (day), timezone (default America/Chicago), and a per-day series of { day, tokensServed } where tokensServed is the SUM of input + output tokens from all real served-token rows that calendar day in the response timezone, including internal dogfood, plus generatedAt and the declared live_at_read staleness contract. Each point is a bare day + sum; no per-user, per-team, demand label, provider, or secret material. Read-only counter history; grants no payout, settlement, or public-claim authority.',
       tags: ['Public Proof'],
       security: [],
       parameters: [
@@ -9980,7 +9980,7 @@ const paths = (): JsonSchema => ({
         queryParam('bucket', 'Series bucket. Only day is supported. Default day.'),
         queryParam(
           'timezone',
-          'IANA timezone for calendar-day bucketing, for example America/Chicago. Default UTC. Alias: tz.',
+          'IANA timezone for calendar-day bucketing. Default America/Chicago. Alias: tz.',
         ),
       ],
       responses: {

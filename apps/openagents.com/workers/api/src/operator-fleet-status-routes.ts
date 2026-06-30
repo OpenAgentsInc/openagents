@@ -3,11 +3,17 @@ import { jsonResponse } from '@openagentsinc/sync-worker'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
 import { parseJsonRecord, parseJsonStringArray } from './json-boundary'
 import { openAgentsDatabase } from './runtime'
-import { currentIsoTimestamp } from './runtime-primitives'
+import {
+  currentIsoTimestamp,
+  todayAndYesterdayBoundsInTimezone,
+} from './runtime-primitives'
+import { PUBLIC_KHALA_TOKENS_SERVED_TIMEZONE } from './token-usage-ledger'
 
 export const OPERATOR_FLEET_STATUS_PATH = '/api/operator/fleet/status'
 export const OPERATOR_FLEET_STATE_PATH = '/api/operator/fleet/state'
 const CACHE_TTL_MILLIS = 10_000
+const SERVED_TOKENS_SUM_SQL =
+  'COALESCE(SUM(input_tokens), 0) + COALESCE(SUM(output_tokens), 0)'
 
 type OperatorFleetStatusEnv = Readonly<{
   OPENAGENTS_DB: D1Database
@@ -193,6 +199,10 @@ const buildFleetStatusSnapshot = async (
       : ''
   const accountOwnerClause = scope.kind === 'agent' ? 'AND user_id = ?' : ''
   const ownerBindings = scope.kind === 'agent' ? [scope.userId] : []
+  const dayBounds = todayAndYesterdayBoundsInTimezone(
+    nowIso,
+    PUBLIC_KHALA_TOKENS_SERVED_TIMEZONE,
+  )
   const [
     registrations,
     assignments,
@@ -293,20 +303,23 @@ const buildFleetStatusSnapshot = async (
     ),
     safeFirst<TokenTodayRow>(
       db,
-      `SELECT COALESCE(SUM(total_tokens), 0) AS tokens_today
+      `SELECT ${SERVED_TOKENS_SUM_SQL} AS tokens_today
          FROM token_usage_events
-        WHERE observed_at >= datetime('now', 'start of day')`,
+        WHERE observed_at >= ?`,
+      dayBounds.todayStartIso,
     ),
     safeFirst<TokenYesterdayRow>(
       db,
-      `SELECT COALESCE(SUM(total_tokens), 0) AS tokens_yesterday
+      `SELECT ${SERVED_TOKENS_SUM_SQL} AS tokens_yesterday
          FROM token_usage_events
-        WHERE observed_at >= datetime('now', 'start of day', '-1 day')
-          AND observed_at < datetime('now', 'start of day')`,
+        WHERE observed_at >= ?
+          AND observed_at < ?`,
+      dayBounds.yesterdayStartIso,
+      dayBounds.todayStartIso,
     ),
     safeFirst<TokenWindowRow>(
       db,
-      `SELECT COALESCE(SUM(total_tokens), 0) AS tokens_window
+      `SELECT ${SERVED_TOKENS_SUM_SQL} AS tokens_window
          FROM token_usage_events
         WHERE observed_at >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-10 minutes')`,
     ),
@@ -550,6 +563,7 @@ const buildFleetStatusSnapshot = async (
       settlementMutationAllowed: false,
     },
     pace: {
+      timezone: PUBLIC_KHALA_TOKENS_SERVED_TIMEZONE,
       activeAdjustedTokensPerMinute,
       activeSessionTokenEstimate: {
         activeAssignmentCount: activeSessionTokenEstimates.length,
@@ -580,7 +594,10 @@ const buildFleetStatusSnapshot = async (
         turnsWindow: ownCapacityCodexWindowTurns,
         windowSeconds: 600,
       },
-      sourceRefs: ['d1:token_usage_events'],
+      sourceRefs: [
+        'd1:token_usage_events',
+        `timezone.public.${PUBLIC_KHALA_TOKENS_SERVED_TIMEZONE}`,
+      ],
     },
     fleet: {
       activeSlots,

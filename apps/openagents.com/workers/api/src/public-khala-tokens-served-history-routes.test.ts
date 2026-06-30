@@ -85,9 +85,21 @@ describe('GET /api/public/khala-tokens-served/history', () => {
       handlePublicKhalaTokensServedHistoryApi(
         getRequest('?window=7d&bucket=day'),
         routeInput([
-          { day: '2026-06-22', tokens: 1_000 },
-          { day: '2026-06-23', tokens: 2_500 },
-          { day: '2026-06-24', tokens: 4_200 },
+          {
+            observed_at: '2026-06-22T12:00:00.000Z',
+            input_tokens: 700,
+            output_tokens: 300,
+          },
+          {
+            observed_at: '2026-06-23T12:00:00.000Z',
+            input_tokens: 2_000,
+            output_tokens: 500,
+          },
+          {
+            observed_at: '2026-06-24T12:00:00.000Z',
+            input_tokens: 4_000,
+            output_tokens: 200,
+          },
         ]),
       ),
     )
@@ -114,21 +126,28 @@ describe('GET /api/public/khala-tokens-served/history', () => {
     ])
   })
 
-  test('defaults to the 30d window and day bucket', async () => {
+  test('defaults to the 30d window, day bucket, and America/Chicago timezone', async () => {
     const response = await Effect.runPromise(
       handlePublicKhalaTokensServedHistoryApi(
         getRequest(),
-        routeInput([{ day: '2026-06-24', tokens: 7 }]),
+        routeInput([
+          {
+            observed_at: '2026-06-25T04:30:00.000Z',
+            input_tokens: 6,
+            output_tokens: 4,
+          },
+        ]),
       ),
     )
     const body = (await response.json()) as Record<string, unknown>
 
     expect(body.window).toBe('30d')
     expect(body.bucket).toBe('day')
-    expect(body.timezone).toBe('UTC')
+    expect(body.timezone).toBe('America/Chicago')
+    expect(body.series).toEqual([{ day: '2026-06-24', tokensServed: 10 }])
   })
 
-  test('supports America/Chicago day bucketing at the UTC day boundary', async () => {
+  test('uses America/Chicago by default and supports explicit UTC at the day boundary', async () => {
     const rows: ReadonlyArray<RawTokenRow> = [
       {
         observed_at: '2026-06-25T04:30:00.000Z',
@@ -144,13 +163,13 @@ describe('GET /api/public/khala-tokens-served/history', () => {
 
     const utcResponse = await Effect.runPromise(
       handlePublicKhalaTokensServedHistoryApi(
-        getRequest('?window=7d&bucket=day'),
+        getRequest('?window=7d&bucket=day&tz=UTC'),
         routeInput(rows),
       ),
     )
     const chicagoResponse = await Effect.runPromise(
       handlePublicKhalaTokensServedHistoryApi(
-        getRequest('?window=7d&bucket=day&tz=America/Chicago'),
+        getRequest('?window=7d&bucket=day'),
         routeInput(rows),
       ),
     )

@@ -2194,11 +2194,14 @@ async function collectKhalaApmProjection(input: {
     numberFromRecord(pace, "activeAdjustedTokensPerMinute") ||
     completedTokensPerMinute + inFlightTokensPerMinute
   const todayTokens = numberFromRecord(pace, "todayTokens")
+  const timezone = typeof pace.timezone === "string" && pace.timezone.trim() !== ""
+    ? pace.timezone
+    : "America/Chicago"
   const text = [
     `Khala APM: ${activeAdjustedTokensPerMinute.toLocaleString()} active-adjusted tokens/min`,
     `completed-window: ${completedTokensPerMinute.toLocaleString()} tokens/min`,
     `in-flight: ${inFlightTokens.toLocaleString()} tokens across ${serverAssignments.length} server assignment(s), ${localCodexRuns.length} fresh local Codex run(s)`,
-    `today: ${todayTokens.toLocaleString()} counted tokens`,
+    `today (${timezone}): ${todayTokens.toLocaleString()} counted tokens`,
   ].join("\n")
 
   return {
@@ -2207,6 +2210,7 @@ async function collectKhalaApmProjection(input: {
     baseUrl: input.baseUrl,
     pylonRef: input.state.identity.pylonRef,
     counted: {
+      timezone,
       todayTokens,
       completedTokensPerMinute,
       sourceRefs: ["d1:token_usage_events"],

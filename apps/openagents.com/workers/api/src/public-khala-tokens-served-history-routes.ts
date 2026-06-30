@@ -11,6 +11,7 @@ import {
 } from './public-projection-staleness'
 import { currentEpochMillis, currentIsoTimestamp } from './runtime-primitives'
 import {
+  PUBLIC_KHALA_TOKENS_SERVED_TIMEZONE,
   type TokenUsageLedgerShape,
   makeD1TokenUsageLedger,
 } from './token-usage-ledger'
@@ -77,7 +78,7 @@ export const handlePublicKhalaTokensServedHistoryApi = (
   // Only cache the real (D1-backed) production path. Tests inject their own
   // ledger and must each see their own snapshot, so they bypass the cache.
   const cacheable = input.ledger === undefined
-  const cacheKey = `${window ?? '30d'}|${bucket ?? 'day'}|${timezone ?? 'UTC'}`
+  const cacheKey = `${window ?? '30d'}|${bucket ?? 'day'}|${timezone ?? PUBLIC_KHALA_TOKENS_SERVED_TIMEZONE}`
 
   const cached = cacheable ? historyCache.get(cacheKey) : undefined
   if (

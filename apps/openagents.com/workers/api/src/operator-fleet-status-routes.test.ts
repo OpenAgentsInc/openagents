@@ -276,6 +276,7 @@ describe('operator fleet status route', () => {
         totalReplicas: 2,
       },
       pace: {
+        timezone: 'America/Chicago',
         activeAdjustedTokensPerMinute: 464,
         activeSessionTokenEstimate: {
           activeAssignmentCount: 1,

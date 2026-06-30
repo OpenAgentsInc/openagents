@@ -1078,7 +1078,7 @@ describe('public tokens-served history', () => {
         // Two events on 2026-06-06 → that day sums to (100+40) + (10+5) = 155.
         yield* ingest(eventOnDay('e1', '2026-06-06T09:00:00.000Z', 100, 40))
         yield* ingest(eventOnDay('e2', '2026-06-06T20:30:00.000Z', 10, 5))
-        // One event on 2026-06-07 → 60.
+        // One event at 2026-06-07T01:00Z is still 2026-06-06 in Central time.
         yield* ingest(eventOnDay('e3', '2026-06-07T01:00:00.000Z', 40, 20))
         // One event on 2026-06-08 → 9.
         yield* ingest(eventOnDay('e4', '2026-06-08T11:00:00.000Z', 6, 3))
@@ -1089,11 +1089,10 @@ describe('public tokens-served history', () => {
 
     expect(history.window).toBe('30d')
     expect(history.bucket).toBe('day')
-    expect(history.timezone).toBe('UTC')
+    expect(history.timezone).toBe('America/Chicago')
     // Ascending by day; per-day input + output sums.
     expect(history.series).toEqual([
-      { day: '2026-06-06', tokensServed: 155 },
-      { day: '2026-06-07', tokensServed: 60 },
+      { day: '2026-06-06', tokensServed: 215 },
       { day: '2026-06-08', tokensServed: 9 },
     ])
   })
@@ -1209,6 +1208,35 @@ describe('public tokens-served history', () => {
     expect(chicagoHistory.timezone).toBe('America/Chicago')
     expect(chicagoHistory.series).toEqual([
       { day: '2026-06-24', tokensServed: 10 },
+      { day: '2026-06-25', tokensServed: 25 },
+    ])
+  })
+
+  test('window=today starts at America/Chicago midnight by default', async () => {
+    const db = makeMemoryD1()
+
+    await runLedger(
+      db,
+      Effect.gen(function* () {
+        yield* ingest(
+          eventOnDay('previous-central', '2026-06-25T04:30:00.000Z', 6, 4),
+        )
+        yield* ingest(
+          eventOnDay('today-central', '2026-06-25T05:30:00.000Z', 20, 5),
+        )
+      }),
+    )
+
+    const history = await runLedger(
+      db,
+      tokensServedHistory({
+        now: '2026-06-25T06:00:00.000Z',
+        window: 'today',
+      }),
+    )
+
+    expect(history.timezone).toBe('America/Chicago')
+    expect(history.series).toEqual([
       { day: '2026-06-25', tokensServed: 25 },
     ])
   })

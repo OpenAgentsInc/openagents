@@ -396,7 +396,7 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
         method: 'GET',
         auth: 'public',
         description:
-          'Public-safe "Khala Tokens Served" history: window (today/7d/30d/all, default 30d), bucket (day), timezone (default UTC; accepts IANA zones such as America/Chicago), and a per-day series of { day, tokensServed } summing input + output tokens from all real served-token rows that calendar day in the response timezone, including internal dogfood, plus generatedAt and the live_at_read staleness contract. Each point is a bare day + sum, no per-user, per-team, demand label, provider, or secret material. Read-only counter history; grants no payout, settlement, or public-claim authority.',
+          'Public-safe "Khala Tokens Served" history: window (today/7d/30d/all, default 30d), bucket (day), timezone (default America/Chicago), and a per-day series of { day, tokensServed } summing input + output tokens from all real served-token rows that calendar day in the response timezone, including internal dogfood, plus generatedAt and the live_at_read staleness contract. Each point is a bare day + sum, no per-user, per-team, demand label, provider, or secret material. Read-only counter history; grants no payout, settlement, or public-claim authority.',
       },
       {
         id: 'public_khala_tokens_served_model_mix',
