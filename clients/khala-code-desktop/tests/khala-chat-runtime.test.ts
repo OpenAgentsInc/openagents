@@ -606,15 +606,31 @@ describe("Khala Code desktop chat runtime", () => {
         execute: (_input, context) =>
           Effect.gen(function* () {
             yield* context.emitProgress({
-              events: [{ event: "assignment_run.runtime_progress", phase: "runtime_active" }],
+              events: [{ event: "assignment_run.runtime_started", phase: "runtime_starting" }],
               kind: "codex_spawn_lifecycle",
               lines: [
                 "lifecycle:",
+                "  - assignment_run.runtime_started (phase=runtime_starting)",
+              ],
+              schema: "openagents.khala_code.codex_spawn_progress.v0.1",
+              toolName: "codex_spawn",
+            })
+            yield* Effect.promise(() => new Promise<void>(resolve => setTimeout(resolve, 225)))
+            yield* context.emitProgress({
+              events: [
+                { event: "assignment_run.runtime_started", phase: "runtime_starting" },
+                { event: "assignment_run.runtime_progress", phase: "runtime_active" },
+              ],
+              kind: "codex_spawn_lifecycle",
+              lines: [
+                "lifecycle:",
+                "  - assignment_run.runtime_started (phase=runtime_starting)",
                 "  - assignment_run.runtime_progress (phase=runtime_active)",
               ],
               schema: "openagents.khala_code.codex_spawn_progress.v0.1",
               toolName: "codex_spawn",
             })
+            yield* Effect.promise(() => new Promise<void>(resolve => setTimeout(resolve, 225)))
             return khalaToolOk({
               modelText: "Codex spawn: accepted 1/1\n- slot 0: accepted",
               publicSummary: "Codex spawn accepted 1/1 request(s).",
@@ -673,6 +689,16 @@ describe("Khala Code desktop chat runtime", () => {
     )
 
     expect(result.ok).toBe(true)
+    const progressReplacementBodies = toolReplacements.flatMap(event => {
+      if (event.type !== "message_replace") return []
+      if (!event.message.body.includes("codex_spawn: running")) return []
+      if (!event.message.body.includes("Live Pylon/Codex progress:")) return []
+      return [event.message.body]
+    })
+    expect(progressReplacementBodies).toHaveLength(2)
+    expect(progressReplacementBodies[0]).toContain("assignment_run.runtime_started")
+    expect(progressReplacementBodies[0]).not.toContain("assignment_run.runtime_progress")
+    expect(progressReplacementBodies[1]).toContain("assignment_run.runtime_progress")
     expect(progressIndex).toBeGreaterThanOrEqual(0)
     expect(finalIndex).toBeGreaterThan(progressIndex)
     expect(events.some(event =>
