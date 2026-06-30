@@ -1,0 +1,10 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "types": ["bun-types"],
+    "noEmit": true
+  },
+  "include": ["electrobun.config.ts", "src/**/*.ts", "tests/**/*.ts"]
+}

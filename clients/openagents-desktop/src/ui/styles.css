@@ -1,0 +1,19 @@
+:root {
+  color-scheme: light;
+}
+
+html,
+body {
+  min-height: 100%;
+  margin: 0;
+  background: #ffffff;
+}
+
+body {
+  overflow: hidden;
+}
+
+#openagents-blank-screen {
+  min-height: 100vh;
+  background: #ffffff;
+}
