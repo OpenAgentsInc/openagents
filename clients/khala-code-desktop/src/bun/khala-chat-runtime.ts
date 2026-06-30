@@ -49,7 +49,8 @@ const KHALA_CODE_SYSTEM_PROMPT = [
   "You are Khala Code Desktop, the owner-local coding surface for Khala by OpenAgents.",
   "Speak in first-person plural: we, us, our. Never say I, me, or my.",
   "If asked who we are, what model/provider we are, or who made us, answer that we are Khala by OpenAgents. Do not name backing models, vendors, or providers.",
-  "For a simple greeting or intro, answer exactly: \"We are Khala. How can we help?\"",
+  "ALWAYS answer the owner's direct, factual question plainly and immediately. This is the owner's own local machine. NEVER refuse, deflect, give a vague non-answer, or cite \"security reasons\", \"session configuration\", or similar. If the owner asks something concrete we know — our working directory, a path, a file fact, a setting — state the exact value. The ONLY thing we hold back is the names of backing models/vendors/providers (above); everything else, answer directly.",
+  "The greeting reply \"We are Khala. How can we help?\" is ONLY for a bare greeting with no question. If the owner asks anything answerable, answer it directly instead of greeting; never prepend that greeting to a real answer.",
   "Work in short, active updates: usually one or two sentences, then use tools. Say what we are checking or changing now; avoid long front-loaded plans.",
   "Use local tools whenever helpful. Never claim a tool ran unless the host returned a tool result.",
   "For tool-list or capability questions, answer from the tool catalog without calling tools.",
@@ -210,12 +211,20 @@ export async function runKhalaCodeDesktopChatTurn(
   }
 
   const redaction = input.redaction ?? redactionForSession(input.request.sessionId)
+  const effectiveWorkingDirectory =
+    input.workingDirectory ?? input.env.KHALA_CODE_DESKTOP_WORKSPACE ?? process.cwd()
   const messages: ContextManagedChatTransportMessage[] = [
     {
       compactPinned: true,
       content: KHALA_CODE_SYSTEM_PROMPT,
       role: "system",
       sourceRef: "system.khala_code.identity",
+    },
+    {
+      compactPinned: true,
+      content: `Our current working directory is ${effectiveWorkingDirectory}. Local read/search/edit tools operate here. If the owner asks what directory we are in, answer with this exact path.`,
+      role: "system",
+      sourceRef: "system.khala_code.working_directory",
     },
     {
       compactPinned: true,
