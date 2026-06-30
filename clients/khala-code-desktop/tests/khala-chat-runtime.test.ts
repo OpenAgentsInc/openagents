@@ -121,6 +121,7 @@ describe("Khala Code desktop chat runtime", () => {
     expect(requestMessages[0]?.content).toContain("first-person PLURAL")
     expect(requestMessages[0]?.content).toContain("we are Khala")
     expect(requestMessages[0]?.content).toContain("We are Khala. How can we help?")
+    expect(requestMessages[0]?.content).toContain("Never end a turn with only tool output")
     expect(JSON.stringify(result)).not.toContain("agent-token")
   })
 
@@ -353,6 +354,91 @@ describe("Khala Code desktop chat runtime", () => {
       message.role === "tool" &&
       message.tool_call_id === "call_read" &&
       message.content?.includes("hello from the local tool") === true
+    )).toBe(true)
+  })
+
+  test("forces a visible final answer when the model stops after tool output", async () => {
+    const workspace = await tempWorkspace()
+    await writeFile(join(workspace, "fixture.txt"), "hello from the local tool\n", "utf8")
+    const { calls, fetchFn } = captureFetch([
+      {
+        choices: [{
+          finish_reason: "tool_calls",
+          message: {
+            content: "",
+            tool_calls: [{
+              function: {
+                arguments: JSON.stringify({ path: "fixture.txt" }),
+                name: "read",
+              },
+              id: "call_read",
+              type: "function",
+            }],
+          },
+        }],
+      },
+      { choices: [{ message: { content: "" } }] },
+      { choices: [{ message: { content: "We found fixture.txt and it says hello from the local tool." } }] },
+    ])
+
+    const result = await runKhalaCodeDesktopChatTurn({
+      env: { OPENAGENTS_AGENT_TOKEN: "agent-token" },
+      fetchFn,
+      request: {
+        messages: [{ body: "read the fixture", id: "u1", role: "user" }],
+        sessionId: "session-1",
+      },
+      services: makeKhalaToolServices({
+        permission: allowAllKhalaPermissionService,
+        workingDirectory: workspace,
+      }),
+    })
+
+    expect(result.ok).toBe(true)
+    expect(result.usedTools).toEqual(["read"])
+    expect(result.messages.map(message => message.role)).toEqual(["tool", "assistant"])
+    expect(result.messages[1]?.body).toBe("We found fixture.txt and it says hello from the local tool.")
+    expect(calls).toHaveLength(3)
+    expect(calls[2]?.body.tools).toBeUndefined()
+    expect(calls[2]?.body.tool_choice).toBeUndefined()
+    const forcedMessages = calls[2]?.body.messages as Array<{ content?: string; role?: string; tool_call_id?: string }>
+    expect(forcedMessages.some(message =>
+      message.role === "tool" &&
+      message.tool_call_id === "call_read" &&
+      message.content?.includes("hello from the local tool") === true
+    )).toBe(true)
+    expect(forcedMessages.at(-1)).toMatchObject({
+      content: expect.stringContaining("answer the user's request now"),
+      role: "user",
+    })
+  })
+
+  test("carries previous tool cards into the next model request as context", async () => {
+    const { calls, fetchFn } = captureFetch([
+      { choices: [{ message: { content: "We learned the prior listing included README.md and src." } }] },
+    ])
+
+    const result = await runKhalaCodeDesktopChatTurn({
+      env: { OPENAGENTS_AGENT_TOKEN: "agent-token" },
+      fetchFn,
+      request: {
+        messages: [
+          { body: "list files", id: "u1", role: "user" },
+          { body: "ls: ok\n\nREADME.md\nsrc/", id: "t1", role: "tool" },
+          { body: "what did you learn", id: "u2", role: "user" },
+        ],
+        sessionId: "session-1",
+      },
+    })
+
+    expect(result.ok).toBe(true)
+    expect(result.messages[0]?.body).toBe("We learned the prior listing included README.md and src.")
+    const requestMessages = calls[0]?.body.messages as Array<{ content?: string; role?: string }>
+    expect(requestMessages.some(message =>
+      message.role === "assistant" &&
+      message.content?.includes("Previous tool result") === true &&
+      message.content?.includes("README.md") === true &&
+      message.content?.includes("src/") === true
     )).toBe(true)
   })
 

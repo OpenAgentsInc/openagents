@@ -48,6 +48,7 @@ const KHALA_CODE_SYSTEM_PROMPT = [
   "For a simple greeting or intro, use exactly: \"We are Khala. How can we help?\"",
   "Answer the user directly and use the provided local tools whenever they help.",
   "All tools are enabled by default in this owner-local desktop session. Never claim a tool ran unless the host returned a tool result.",
+  "After using tools, always produce a visible final answer that explains what the tool results mean for the user. Never end a turn with only tool output.",
 ].join(" ")
 
 const MAX_TOOL_ROUNDS = 8
@@ -101,6 +102,8 @@ type ChatTransport = {
     callbacks?: ChatTransportCallbacks,
   ) => Promise<ChatCompletionBody>
 }
+
+type ChatTurnEmitter = (event: KhalaCodeDesktopChatTurnEvent) => void
 
 export type RunKhalaCodeDesktopChatTurnInput = {
   readonly env: ChatEnv
@@ -188,40 +191,47 @@ export async function runKhalaCodeDesktopChatTurn(
   }
   let totalToolCalls = 0
   let retriedWithoutTools = false
+  let assistantMessagesSinceLastToolResult = 0
+
+  const appendAssistantText = (
+    text: string,
+    streamed: KhalaCodeDesktopMessage | null,
+    toolCalls: readonly OpenAiToolCall[] = [],
+  ): void => {
+    const message = streamed === null
+      ? hostMessage("assistant", text)
+      : { ...streamed, body: text }
+    transcript.push(message)
+    assistantMessagesSinceLastToolResult += 1
+    if (streamed === null) {
+      emit({ message, turnId, type: "message_start" })
+    } else if (streamed.body !== text) {
+      emit({ message, turnId, type: "message_replace" })
+    }
+    emit({ messageId: message.id, turnId, type: "message_done" })
+    messages.push({
+      content: text,
+      role: "assistant",
+      ...(toolCalls.length === 0 ? {} : { tool_calls: toolCalls }),
+    })
+  }
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
     let completion: ChatCompletionBody
-    const streamingAssistant: { current: KhalaCodeDesktopMessage | null } = { current: null }
-    const onAssistantDelta = (delta: string): void => {
-      if (delta.length === 0) return
-      if (streamingAssistant.current === null) {
-        streamingAssistant.current = hostMessage("assistant", "")
-        emit({ message: streamingAssistant.current, turnId, type: "message_start" })
-      }
-      streamingAssistant.current = {
-        ...streamingAssistant.current,
-        body: `${streamingAssistant.current.body}${delta}`,
-      }
-      emit({
-        delta,
-        messageId: streamingAssistant.current.id,
-        turnId,
-        type: "message_delta",
-      })
-    }
+    const assistantStream = createAssistantStreamRecorder({ emit, turnId })
 
     try {
-      completion = await transport.request(messages, tools, { onAssistantDelta })
+      completion = await transport.request(messages, tools, { onAssistantDelta: assistantStream.onAssistantDelta })
     } catch (error) {
       if (
         !retriedWithoutTools &&
         totalToolCalls === 0 &&
-        streamingAssistant.current === null &&
+        assistantStream.streamingAssistant.current === null &&
         shouldRetryWithoutTools(error)
       ) {
         retriedWithoutTools = true
         try {
-          completion = await transport.request(messages, [], { onAssistantDelta })
+          completion = await transport.request(messages, [], { onAssistantDelta: assistantStream.onAssistantDelta })
         } catch (retryError) {
           return providerFailureResult(backend, toolNames, usedTools, retryError)
         }
@@ -234,27 +244,25 @@ export async function runKhalaCodeDesktopChatTurn(
     const toolCalls = parseToolCalls(assistant.tool_calls)
 
     if (text.length > 0) {
-      const streamed = streamingAssistant.current
-      const message = streamed === null
-        ? hostMessage("assistant", text)
-        : { ...streamed, body: text }
-      transcript.push(message)
-      if (streamed === null) {
-        emit({ message, turnId, type: "message_start" })
-      } else if (streamed.body !== text) {
-        emit({ message, turnId, type: "message_replace" })
-      }
-      emit({ messageId: message.id, turnId, type: "message_done" })
-      messages.push({
-        content: text,
-        role: "assistant",
-        ...(toolCalls.length === 0 ? {} : { tool_calls: toolCalls }),
-      })
+      appendAssistantText(text, assistantStream.streamingAssistant.current, toolCalls)
     } else if (toolCalls.length > 0) {
       messages.push({ content: "", role: "assistant", tool_calls: toolCalls })
     }
 
     if (toolCalls.length === 0) {
+      if (usedTools.length > 0 && assistantMessagesSinceLastToolResult === 0) {
+        const visibleAnswer = await requestVisibleToolAnswer({
+          emit,
+          messages,
+          transport,
+          turnId,
+        })
+        if (visibleAnswer === null) {
+          appendAssistantText(toolOnlyTurnFallbackBody(transcript), null)
+        } else {
+          appendAssistantText(visibleAnswer.text, visibleAnswer.streamingAssistant)
+        }
+      }
       return {
         backend: projectBackend(backend),
         messages: transcript.length === 0
@@ -294,10 +302,83 @@ export async function runKhalaCodeDesktopChatTurn(
         role: "tool",
         tool_call_id: call.id,
       })
+      assistantMessagesSinceLastToolResult = 0
     }
   }
 
   return limitResult(backend, toolNames, usedTools, "Khala used the maximum tool rounds without finishing the answer.")
+}
+
+function createAssistantStreamRecorder(input: {
+  readonly emit: ChatTurnEmitter
+  readonly turnId: string
+}): {
+  readonly onAssistantDelta: (delta: string) => void
+  readonly streamingAssistant: { current: KhalaCodeDesktopMessage | null }
+} {
+  const streamingAssistant: { current: KhalaCodeDesktopMessage | null } = { current: null }
+  return {
+    onAssistantDelta: delta => {
+      if (delta.length === 0) return
+      if (streamingAssistant.current === null) {
+        streamingAssistant.current = hostMessage("assistant", "")
+        input.emit({ message: streamingAssistant.current, turnId: input.turnId, type: "message_start" })
+      }
+      streamingAssistant.current = {
+        ...streamingAssistant.current,
+        body: `${streamingAssistant.current.body}${delta}`,
+      }
+      input.emit({
+        delta,
+        messageId: streamingAssistant.current.id,
+        turnId: input.turnId,
+        type: "message_delta",
+      })
+    },
+    streamingAssistant,
+  }
+}
+
+async function requestVisibleToolAnswer(input: {
+  readonly emit: ChatTurnEmitter
+  readonly messages: ChatTransportMessage[]
+  readonly transport: ChatTransport
+  readonly turnId: string
+}): Promise<{
+  readonly streamingAssistant: KhalaCodeDesktopMessage | null
+  readonly text: string
+} | null> {
+  const assistantStream = createAssistantStreamRecorder({
+    emit: input.emit,
+    turnId: input.turnId,
+  })
+  input.messages.push({
+    content: "Use the tool results above to answer the user's request now. Do not call tools. Keep the answer concise and explicit.",
+    role: "user",
+  })
+
+  let completion: ChatCompletionBody
+  try {
+    completion = await input.transport.request(input.messages, [], {
+      onAssistantDelta: assistantStream.onAssistantDelta,
+    })
+  } catch {
+    const partialText = assistantStream.streamingAssistant.current?.body.trim() ?? ""
+    return partialText.length === 0
+      ? null
+      : {
+        streamingAssistant: assistantStream.streamingAssistant.current,
+        text: partialText,
+      }
+  }
+
+  const text = textContent(firstAssistantMessage(completion).content)
+  const partialText = assistantStream.streamingAssistant.current?.body.trim() ?? ""
+  if (text.length === 0 && partialText.length === 0) return null
+  return {
+    streamingAssistant: assistantStream.streamingAssistant.current,
+    text: text.length === 0 ? partialText : text,
+  }
 }
 
 function createDefaultToolServices(input: {
@@ -691,9 +772,15 @@ function providerFailureMessage(backend: KhalaBackendSelection, error: unknown):
 
 function projectTranscriptMessages(messages: readonly KhalaCodeDesktopMessage[]): readonly ChatTransportMessage[] {
   return messages.flatMap(message => {
-    if (message.role !== "assistant" && message.role !== "user") return []
     const content = message.body.trim()
     if (content.length === 0) return []
+    if (message.role === "tool") {
+      return [{
+        content: `Previous tool result:\n${content}`,
+        role: "assistant",
+      }]
+    }
+    if (message.role !== "assistant" && message.role !== "user") return []
     return [{ role: message.role, content }]
   })
 }
@@ -787,6 +874,24 @@ function toolTranscriptBody(toolName: string, result: KhalaToolResult): string {
   return output.length === 0
     ? `${toolName}: ${result.status}`
     : `${toolName}: ${result.status}\n\n${output}`
+}
+
+function toolOnlyTurnFallbackBody(transcript: readonly KhalaCodeDesktopMessage[]): string {
+  const summaries = transcript
+    .filter(message => message.role === "tool")
+    .map(message => firstNonEmptyLine(message.body))
+    .filter(summary => summary.length > 0)
+  return [
+    "We ran the requested tools and received the results shown above. The model returned no final summary, so we are surfacing the tool output instead of leaving this turn blank.",
+    ...(summaries.length === 0 ? [] : ["", ...summaries.map(summary => `- ${summary}`)]),
+  ].join("\n")
+}
+
+function firstNonEmptyLine(value: string): string {
+  return value
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .find(line => line.length > 0) ?? ""
 }
 
 function toolTranscriptMessage(
