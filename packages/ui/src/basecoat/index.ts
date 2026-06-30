@@ -20,6 +20,7 @@ export * from './selection'
 export * from './sidebar'
 export * from './tabs'
 export * from './tooltip'
+export * from './toast'
 export {
   basecoatAttrs,
   basecoatClass,
