@@ -27,9 +27,17 @@ describe("khala code desktop app shell", () => {
     expect(html).toContain('id="message-list"')
     expect(html).toContain('id="composer-form"')
     expect(html).toContain('id="composer-input"')
+    expect(html).toContain("autofocus")
     expect(html).toContain('id="send-button"')
     expect(html).not.toContain("Pylons")
     expect(html).not.toContain("Fleet")
+  })
+
+  test("keeps composer focus styling on the frame instead of the textarea", async () => {
+    const css = await Bun.file(new URL("../src/ui/styles.css", import.meta.url)).text()
+
+    expect(css).toContain(".composer-shell:focus-within")
+    expect(css).not.toContain("#composer-input:focus-visible")
   })
 
   test("splits code and diff fixtures for the initial transcript renderer", () => {

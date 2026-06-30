@@ -158,6 +158,10 @@ const render = (): void => {
   requestAnimationFrame(scrollToEnd)
 }
 
+const focusComposerInput = (): void => {
+  if (!pendingTurn) composerInput.focus({ preventScroll: true })
+}
+
 const nextMessageId = (role: KhalaCodeDesktopMessageRole): string =>
   `${role}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
 
@@ -252,3 +256,4 @@ Object.assign(globalThis, {
 
 void controls.appInfo().catch(() => undefined)
 render()
+requestAnimationFrame(focusComposerInput)

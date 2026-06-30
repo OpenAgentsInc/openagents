@@ -203,6 +203,14 @@ button {
   backdrop-filter: blur(16px);
 }
 
+.composer-shell:focus-within {
+  border-color: rgba(79, 208, 255, 0.98);
+  box-shadow:
+    0 0 0 1px rgba(79, 208, 255, 0.88) inset,
+    0 0 18px -6px rgba(79, 208, 255, 0.95),
+    0 22px 70px rgba(0, 0, 0, 0.44);
+}
+
 #composer-input {
   min-height: 9rem;
   width: 100%;
@@ -251,8 +259,7 @@ button {
   color: #fff;
 }
 
-#send-button:focus-visible,
-#composer-input:focus-visible {
+#send-button:focus-visible {
   outline: 2px solid rgba(79, 208, 255, 0.82);
   outline-offset: 0;
 }
