@@ -28,6 +28,7 @@ type Handlers = Readonly<{
   onRemove: (accountRef: string) => void
   onConnect: (accountRef: string) => void
   onOpenUrl: (url: string) => void
+  onCancelConnect: () => void
 }>
 
 type ConnectView = Readonly<{
@@ -39,7 +40,6 @@ type FleetView =
   | { readonly phase: "loading" }
   | { readonly phase: "error"; readonly message: string }
   | { readonly phase: "ready"; readonly data: KhalaCodeDesktopFleetStatus }
-  | { readonly phase: "connecting"; readonly connect: ConnectView }
 
 const el = <K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -301,9 +301,9 @@ const renderConnecting = (
     section.append(el("p", "khala-fleet-connect-status", "Waiting for authorization…"))
   }
 
-  const close = el("button", "khala-fleet-refresh", "Back to fleet")
+  const close = el("button", "khala-fleet-connect-cancel", "Cancel")
   close.type = "button"
-  close.addEventListener("click", handlers.onRefresh)
+  close.addEventListener("click", handlers.onCancelConnect)
   section.append(close)
   container.append(section)
 }
@@ -312,6 +312,7 @@ const render = (
   container: HTMLElement,
   view: FleetView,
   handlers: Handlers,
+  activeConnect: ConnectView | null,
 ): void => {
   container.replaceChildren()
 
@@ -320,7 +321,7 @@ const render = (
   const actions = el("div", "khala-fleet-actions")
   const connectBtn = el("button", "khala-fleet-refresh", "Connect account")
   connectBtn.type = "button"
-  connectBtn.disabled = view.phase === "connecting"
+  connectBtn.disabled = activeConnect !== null
   connectBtn.addEventListener("click", () => {
     // Auto-assign a short, unique ref — no name prompt.
     handlers.onConnect(`codex-${crypto.randomUUID().slice(0, 8)}`)
@@ -328,21 +329,22 @@ const render = (
   actions.append(connectBtn)
   const refresh = el("button", "khala-fleet-refresh", "Refresh")
   refresh.type = "button"
-  refresh.disabled = view.phase === "loading" || view.phase === "connecting"
+  refresh.disabled = view.phase === "loading"
   refresh.addEventListener("click", handlers.onRefresh)
   actions.append(refresh)
   header.append(actions)
   container.append(header)
 
   const body = el("div", "khala-fleet-body")
+  // The connect device-auth card renders inline at the top; the fleet list stays
+  // visible and live below it.
+  if (activeConnect !== null) renderConnecting(body, activeConnect, handlers)
   if (view.phase === "loading") {
     body.append(el("p", "khala-fleet-empty", "Inspecting Codex fleet…"))
   } else if (view.phase === "error") {
     body.append(
       el("p", "khala-fleet-error", `Could not load fleet status: ${view.message}`),
     )
-  } else if (view.phase === "connecting") {
-    renderConnecting(body, view.connect, handlers)
   } else {
     renderReady(body, view.data, handlers)
   }
@@ -356,7 +358,7 @@ export const mountFleetPanel = (
   let inFlight = false
   let lastData: KhalaCodeDesktopFleetStatus | null = null
   let connectPoll = 0
-  let connecting = false
+  let activeConnect: ConnectView | null = null
   let visible = false
   let pollTimer = 0
 
@@ -370,14 +372,23 @@ export const mountFleetPanel = (
     }
   }
 
+  const currentView = (): FleetView =>
+    lastData !== null
+      ? { phase: "ready", data: lastData }
+      : { phase: "loading" }
+
+  const paint = (): void => render(container, currentView(), handlers, activeConnect)
+
   const handlers: Handlers = {
-    onRefresh: () => {
-      connecting = false
-      void refresh()
-    },
+    onRefresh: () => void refresh(),
     onRemove: (accountRef: string) => onRemove(accountRef),
     onConnect: (accountRef: string) => onConnect(accountRef),
     onOpenUrl: (url: string) => void options.openExternal(url),
+    onCancelConnect: () => {
+      window.clearTimeout(connectPoll)
+      activeConnect = null
+      paint()
+    },
   }
 
   const onRemove = (accountRef: string): void => {
@@ -387,7 +398,7 @@ export const mountFleetPanel = (
     void (async () => {
       const result = await options.removeAccount(accountRef)
       if (!result.ok) {
-        render(container, { phase: "error", message: result.error ?? "remove failed" }, handlers)
+        render(container, { phase: "error", message: result.error ?? "remove failed" }, handlers, activeConnect)
         return
       }
       await refresh()
@@ -396,25 +407,30 @@ export const mountFleetPanel = (
 
   const onConnect = (accountRef: string): void => {
     window.clearTimeout(connectPoll)
-    connecting = true
-    render(container, { phase: "connecting", connect: { accountRef, start: null } }, handlers)
+    activeConnect = { accountRef, start: null }
+    paint()
     void (async () => {
       const start = await options.connectAccount(accountRef)
-      render(container, { phase: "connecting", connect: { accountRef, start } }, handlers)
+      // The connect may have been cancelled while we awaited.
+      if (activeConnect === null || activeConnect.accountRef !== accountRef) return
+      activeConnect = { accountRef, start }
+      paint()
       if (!start.ok) return
       const poll = async (): Promise<void> => {
+        if (activeConnect === null || activeConnect.accountRef !== accountRef) return
         try {
           const data = await options.fetch()
           lastData = data
           const account = data.accounts.find(item => item.accountRef === accountRef)
           if (account !== undefined && accountReadinessState(account.readiness) === "ready") {
-            connecting = false
-            render(container, { phase: "ready", data }, handlers)
+            activeConnect = null
+            paint()
             return
           }
         } catch {
           // keep polling
         }
+        paint()
         connectPoll = window.setTimeout(() => void poll(), 3000)
       }
       connectPoll = window.setTimeout(() => void poll(), 3000)
@@ -424,19 +440,19 @@ export const mountFleetPanel = (
   const refresh = async (): Promise<void> => {
     if (inFlight) return
     inFlight = true
-    if (lastData === null) {
-      render(container, { phase: "loading" }, handlers)
+    if (lastData === null && activeConnect === null) {
+      paint()
     } else {
       setRefreshBusy(true)
     }
     try {
       const data = await options.fetch()
       lastData = data
-      render(container, { phase: "ready", data }, handlers)
+      paint()
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       if (lastData === null) {
-        render(container, { phase: "error", message }, handlers)
+        render(container, { phase: "error", message }, handlers, activeConnect)
       } else {
         setRefreshBusy(false)
       }
@@ -450,13 +466,13 @@ export const mountFleetPanel = (
     window.clearInterval(pollTimer)
     if (!next) return
     void refresh()
-    // Live updates: poll while the panel is visible (skipping in-flight loads and
-    // active connect flows so it never disrupts them).
+    // Live updates: poll while the panel is visible (skipping in-flight loads).
+    // The list stays live even during an active connect.
     pollTimer = window.setInterval(() => {
-      if (visible && !connecting && !inFlight) void refresh()
+      if (visible && !inFlight) void refresh()
     }, 5000)
   }
 
-  render(container, { phase: "loading" }, handlers)
+  paint()
   return { refresh, setVisible }
 }

@@ -3057,12 +3057,17 @@ export async function beginCodexConnect(
     if (stream === undefined) return
     const reader = stream.getReader()
     try {
-      while (!done) {
+      // Drain to end-of-stream, NOT until the code is captured. If we stop
+      // reading while the child keeps writing (codex login + pylon connect
+      // continue after the device prompt), the pipe fills and the child blocks
+      // on write — so it never finishes registering the account and the panel
+      // poll never sees it ready. The `done` flag only gates when we return.
+      while (true) {
         const { value, done: streamDone } = await reader.read()
         if (streamDone) break
         if (value !== undefined) {
           buffer += decoder.decode(value, { stream: true })
-          tryParse()
+          if (buffer.length < 65_536) tryParse()
         }
       }
     } catch {
@@ -3072,10 +3077,9 @@ export async function beginCodexConnect(
     }
   }
 
-  // Fire the readers in the background and return as soon as the URL + code are
-  // captured (~2-3s). Do NOT await both streams — the idle stderr reader blocks
-  // for the full timeout otherwise. The child keeps running until the user
-  // authorizes.
+  // Fire the readers in the background (they keep draining until the child
+  // exits, so it never blocks on backpressure) and return as soon as the URL +
+  // code are captured (~2-3s). The child keeps running until the user authorizes.
   void readStream(child.stdout as ReadableStream<Uint8Array>)
   void readStream(child.stderr as ReadableStream<Uint8Array>)
   const deadline = Date.now() + 25_000
