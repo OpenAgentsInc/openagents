@@ -61,6 +61,18 @@ const renderHtml = (html: Html): string => {
 }
 
 describe('ai-elements command composer', () => {
+  test('keeps the empty composer compact before users start typing', async () => {
+    const css = await Bun.file(
+      new URL('../src/ai-elements/command-composer.css', import.meta.url),
+    ).text()
+
+    expect(css).toContain('--oa-command-composer-height: 8rem')
+    expect(css).toContain('min-height: 4rem')
+    expect(css).toContain('padding: 0.75rem')
+    expect(css).not.toContain('--oa-command-composer-height: 10rem')
+    expect(css).not.toContain('min-height: 7rem')
+  })
+
   test('renders the shared composer contract with native text editing intact', () => {
     const rendered = renderHtml(
       AiElements.commandComposer({

@@ -1,5 +1,5 @@
 .oa-ai-command-composer {
-  --oa-command-composer-height: 10rem;
+  --oa-command-composer-height: 8rem;
   --oa-command-composer-border: var(--oa-color-component-border, #222);
   --oa-command-composer-focus: var(--oa-color-review-link-soft, #8fd0ff);
   --oa-command-composer-bg: var(--oa-color-component-surface-deep, #010102);
@@ -18,7 +18,7 @@
 .oa-ai-command-composer-frame {
   position: relative;
   display: grid;
-  gap: 0.625rem;
+  gap: 0.5rem;
   min-height: var(--oa-command-composer-height);
   border: 1px solid var(--oa-command-composer-border);
   border-radius: 0;
@@ -28,7 +28,7 @@
   box-shadow:
     inset 0 0 0 1px rgba(122, 162, 255, 0.08),
     0 0 24px rgba(38, 91, 161, 0.18);
-  padding: 0.875rem;
+  padding: 0.75rem;
   transition:
     border-color 160ms ease,
     box-shadow 160ms ease;
@@ -53,7 +53,7 @@
 }
 
 .oa-ai-command-composer-textarea {
-  min-height: 7rem;
+  min-height: 4rem;
   width: 100%;
   resize: none;
   border: 0;
@@ -340,7 +340,7 @@
 
 @media (max-width: 639px) {
   .oa-ai-command-composer-frame {
-    padding: 0.75rem;
+    padding: 0.625rem;
   }
 
   .oa-ai-command-composer-footer {

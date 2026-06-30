@@ -83,6 +83,19 @@ describe("khala code desktop app shell", () => {
     expect(main).not.toContain('composerExpanded ? "expanded" : "compact"')
   })
 
+  test("starts the composer compact with the placeholder near the top edge", async () => {
+    const css = await Bun.file(new URL("../src/ui/styles.css", import.meta.url)).text()
+
+    expect(css).toContain("--oa-command-composer-height: 8rem")
+    expect(css).toContain("padding: 10px 12px")
+    expect(css).toContain("min-height: 4.25rem")
+    expect(css).toContain("#composer-input")
+    expect(css).toContain("padding: 0")
+    expect(css).not.toContain("--oa-command-composer-height: 10.25rem")
+    expect(css).not.toContain("min-height: 9rem")
+    expect(css).not.toContain("padding: 16px 46px 48px 0")
+  })
+
   test("keeps the composer input available while a turn is pending", async () => {
     const main = await Bun.file(new URL("../src/ui/main.ts", import.meta.url)).text()
     const css = await Bun.file(new URL("../src/ui/styles.css", import.meta.url)).text()
