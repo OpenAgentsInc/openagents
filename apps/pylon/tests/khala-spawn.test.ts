@@ -108,9 +108,9 @@ describe("pylon khala spawn planner", () => {
   test("plans generic objective slots against ready accounts and advertised capacity", () => {
     const plan = buildPylonKhalaSpawnPlan({
       accounts: accountsProjection(),
-      advertisedCodexAvailability: 2,
+      advertisedCodexAvailability: 5,
       baseUrl: "https://openagents.test",
-      maxParallel: 3,
+      maxParallel: 2,
       objectives: repeatedKhalaSpawnObjectives({
         count: 5,
         objective: "audit the public checkout workflow",
@@ -121,7 +121,7 @@ describe("pylon khala spawn planner", () => {
     expect(plan.schema).toBe("openagents.pylon.khala_spawn_plan.v0.1")
     expect(plan.maxParallel).toBe(2)
     expect(plan.readyCodexAccountCount).toBe(3)
-    expect(plan.advertisedCodexAvailability).toBe(2)
+    expect(plan.advertisedCodexAvailability).toBe(5)
     expect(plan.slots).toHaveLength(5)
     expect(plan.slots.map((slot) => slot.account.accountRefHash)).toEqual([
       "accthash_one",
@@ -164,7 +164,7 @@ describe("pylon khala spawn runner", () => {
   test("runs fixture-backed assignment slots in parallel without exceeding maxParallel", async () => {
     const plan = buildPylonKhalaSpawnPlan({
       accounts: accountsProjection(),
-      advertisedCodexAvailability: 2,
+      advertisedCodexAvailability: 4,
       baseUrl: "https://openagents.test",
       maxParallel: 2,
       objectives: repeatedKhalaSpawnObjectives({

@@ -931,8 +931,18 @@ describe("Pylon presence registration and heartbeat", () => {
           {
             dev: {
               accounts: [
-                { ref: "codex-one", provider: "codex", home: codexOne },
-                { ref: "codex-two", provider: "codex", home: codexTwo },
+                {
+                  ref: "codex-one",
+                  provider: "codex",
+                  home: codexOne,
+                  openAgentsProviderAccountRef: "provider_account.public.codex.one",
+                },
+                {
+                  ref: "codex-two",
+                  provider: "codex",
+                  home: codexTwo,
+                  openAgentsProviderAccountRef: "provider_account.public.codex.two",
+                },
               ],
             },
           },
