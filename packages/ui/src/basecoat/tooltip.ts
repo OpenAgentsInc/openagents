@@ -81,14 +81,6 @@ const optionalBooleanAttr = <Message>(
   attr: (value: true) => Attribute<Message>,
 ): ReadonlyArray<Attribute<Message>> => enabled === true ? [attr(true)] : []
 
-const optionalBasecoatProps = <Message>(
-  attrs: ReadonlyArray<Attribute<Message>> | undefined,
-  className: string | undefined,
-): BasecoatAttrs<Message> => ({
-  ...(attrs === undefined ? {} : { attrs }),
-  ...(className === undefined ? {} : { className }),
-})
-
 export const tooltip = <Message>(input: TooltipProps<Message>): Html => {
   const h = html<Message>()
   const attrs = [
@@ -181,6 +173,20 @@ export const collapsible = <Message>(
   input: CollapsibleProps<Message>,
 ): Html => {
   const h = html<Message>()
+  const triggerProps: CollapsibleTriggerProps<Message> = {
+    children: input.trigger,
+    ...(input.summaryAttrs === undefined ? {} : { attrs: input.summaryAttrs }),
+    ...(input.summaryClassName === undefined
+      ? {}
+      : { className: input.summaryClassName }),
+  }
+  const contentProps: CollapsibleContentProps<Message> = {
+    children: input.children,
+    ...(input.contentAttrs === undefined ? {} : { attrs: input.contentAttrs }),
+    ...(input.contentClassName === undefined
+      ? {}
+      : { className: input.contentClassName }),
+  }
 
   return h.details(
     [
@@ -188,20 +194,8 @@ export const collapsible = <Message>(
       ...(input.open === true ? [h.Attribute('open', '')] : []),
     ],
     [
-      collapsibleTrigger<Message>({
-        ...optionalBasecoatProps<Message>(
-          input.summaryAttrs,
-          input.summaryClassName,
-        ),
-        children: input.trigger,
-      }),
-      collapsibleContent<Message>({
-        ...optionalBasecoatProps<Message>(
-          input.contentAttrs,
-          input.contentClassName,
-        ),
-        children: input.children,
-      }),
+      collapsibleTrigger<Message>(triggerProps),
+      collapsibleContent<Message>(contentProps),
     ],
   )
 }
