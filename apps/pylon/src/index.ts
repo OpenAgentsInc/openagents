@@ -2343,15 +2343,24 @@ async function localCodexDispatchAccounts(
 
 function khalaCodexCapacityAdvertisementEnv(
   env: NodeJS.ProcessEnv,
-  _requestedSlots: number,
+  requestedSlots: number,
 ): NodeJS.ProcessEnv {
+  const requestedTarget = Number.isSafeInteger(requestedSlots) && requestedSlots > 0
+    ? Math.floor(requestedSlots)
+    : 1
   const perAccountTarget =
-    positiveIntegerEnv(env.OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY) ??
-    positiveIntegerEnv(env.OPENAGENTS_PYLON_CODEX_CONCURRENCY) ??
-    1
+    Math.max(
+      positiveIntegerEnv(env.OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY) ??
+        positiveIntegerEnv(env.OPENAGENTS_PYLON_CODEX_CONCURRENCY) ??
+        1,
+      requestedTarget,
+    )
   const pooledTarget =
-    positiveIntegerEnv(env.OPENAGENTS_PYLON_CODEX_CONCURRENCY) ??
-    perAccountTarget
+    Math.max(
+      positiveIntegerEnv(env.OPENAGENTS_PYLON_CODEX_CONCURRENCY) ??
+        perAccountTarget,
+      requestedTarget,
+    )
   return {
     ...env,
     OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY: String(perAccountTarget),
@@ -4523,7 +4532,7 @@ async function main() {
           (requestState === null ? undefined : localPylonTargetRef(requestState))
         if (requestState !== null && targetPylonRef === localPylonTargetRef(requestState)) {
           const requestPresenceEnv = workflow === "codex_agent_task"
-            ? khalaCodexCapacityAdvertisementEnv(Bun.env, 1)
+            ? khalaCodexCapacityAdvertisementEnv(Bun.env, 5)
             : Bun.env
           await sendHeartbeat(summary, {
             ...presenceClientOptionsFromEnv({ baseUrl, env: requestPresenceEnv }),
