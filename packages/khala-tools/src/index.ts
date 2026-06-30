@@ -1,3 +1,5 @@
+import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process"
+import { existsSync } from "node:fs"
 import { Effect, Schema as S } from "effect"
 import { redactKhalaPublicText } from "./redaction.js"
 
@@ -905,42 +907,36 @@ export const defaultKhalaProcessService: KhalaProcessService = {
       const started = Date.now()
       let timedOut = false
       let cancelled = false
-      const command = input.argv !== undefined && input.argv.length > 0
-        ? [...input.argv]
-        : [input.shell ?? process.env.SHELL ?? "/bin/sh", "-lc", input.command]
-      const proc = Bun.spawn(command, {
-        cwd: input.cwd,
-        stderr: "pipe",
-        stdout: "pipe",
-      })
+      const proc = spawnProcessGroup(input, "pipes")
       const kill = (reason: "cancelled" | "timedOut"): void => {
         if (reason === "cancelled") cancelled = true
         else timedOut = true
-        proc.kill()
+        killProcessGroup(proc)
       }
       const timeout = setTimeout(() => kill("timedOut"), input.timeoutMs)
       const cancel = input.cancelAfterMs === undefined
         ? undefined
         : setTimeout(() => kill("cancelled"), input.cancelAfterMs)
       const events: KhalaProcessEvent[] = []
-      const [stdout, stderr, exitCode] = await Promise.all([
-        readProcessStream(proc.stdout, "stdout", input.maxCaptureBytes, events, () => proc.kill()),
-        readProcessStream(proc.stderr, "stderr", input.maxCaptureBytes, events, () => proc.kill()),
-        proc.exited.catch(() => null),
+      const exit = waitForChildExit(proc)
+      const [stdout, stderr, exitResult] = await Promise.all([
+        readNodeProcessStream(proc.stdout, "stdout", input.maxCaptureBytes, events, () => killProcessGroup(proc)),
+        readNodeProcessStream(proc.stderr, "stderr", input.maxCaptureBytes, events, () => killProcessGroup(proc)),
+        exit,
       ])
       clearTimeout(timeout)
       if (cancel !== undefined) clearTimeout(cancel)
       return {
         cancelled,
         durationMs: Date.now() - started,
-        events: events.sort((a, b) => a.timestampMs - b.timestampMs),
-        exitCode,
+        events,
+        exitCode: exitResult.exitCode,
         sandbox: {
           enforced: false,
           kind: "none",
           note: "No sandbox is enforced by the default local Khala process service.",
         },
-        signal: null,
+        signal: exitResult.signal,
         stderr: stderr.text,
         stderrTruncated: stderr.truncated,
         stdout: stdout.text,
@@ -954,15 +950,7 @@ export const defaultKhalaProcessService: KhalaProcessService = {
       const started = Date.now()
       let timedOut = false
       let cancelled = false
-      const command = input.argv !== undefined && input.argv.length > 0
-        ? [...input.argv]
-        : [input.shell ?? process.env.SHELL ?? "/bin/sh", "-lc", input.command]
-      const proc = Bun.spawn(command, {
-        cwd: input.cwd,
-        stderr: "pipe",
-        stdin: "pipe",
-        stdout: "pipe",
-      })
+      const proc = spawnProcessGroup(input, "pty")
       const sessionId = `khala.proc.${Date.now().toString(36)}.${Math.random().toString(36).slice(2)}`
       const session: DefaultKhalaProcessSession = {
         cancelled: false,
@@ -972,8 +960,10 @@ export const defaultKhalaProcessService: KhalaProcessService = {
         exitCode: null,
         khalaSessionId: input.khalaSessionId,
         maxCaptureBytes: input.maxCaptureBytes,
+        pgid: proc.pid,
         proc,
         sessionId,
+        signal: null,
         stderr: "",
         stderrTruncated: false,
         stdout: "",
@@ -983,16 +973,15 @@ export const defaultKhalaProcessService: KhalaProcessService = {
       defaultProcessSessions.set(sessionId, session)
       void pumpSessionStream(session, proc.stdout, "stdout")
       void pumpSessionStream(session, proc.stderr, "stderr")
-      void proc.exited.then(exitCode => {
-        session.exitCode = exitCode
-      }).catch(() => {
-        session.exitCode = null
+      void waitForChildExit(proc).then(exit => {
+        session.exitCode = exit.exitCode
+        session.signal = exit.signal
       })
       setTimeout(() => {
         if (session.exitCode === null) {
           timedOut = true
           session.timedOut = true
-          proc.kill()
+          killProcessGroup(proc)
         }
       }, input.timeoutMs)
       await sleep(input.yieldTimeMs)
@@ -1011,12 +1000,10 @@ export const defaultKhalaProcessService: KhalaProcessService = {
         if (session.exitCode !== null) throw new Error(`process session is closed: ${input.sessionId}`)
         if (input.chars === "\u0003") {
           session.cancelled = true
-          session.proc.kill()
+          killProcessGroup(session.proc, "SIGINT")
         } else {
-          const stdin = session.proc.stdin as unknown as BunFileSink | undefined
-          if (stdin === undefined) throw new Error(`process session stdin is closed: ${input.sessionId}`)
-          stdin.write(input.chars)
-          stdin.flush()
+          if (session.proc.stdin.destroyed) throw new Error(`process session stdin is closed: ${input.sessionId}`)
+          session.proc.stdin.write(input.chars)
         }
         session.events.push({ channel: "stdin", text: input.chars, timestampMs: Date.now() })
       }
@@ -1038,8 +1025,10 @@ type DefaultKhalaProcessSession = {
   exitCode: number | null
   khalaSessionId: string
   maxCaptureBytes: number
-  proc: ReturnType<typeof Bun.spawn>
+  pgid: number | undefined
+  proc: ChildProcessWithoutNullStreams
   sessionId: string
+  signal: string | null
   stderr: string
   stderrTruncated: boolean
   stdout: string
@@ -1047,23 +1036,15 @@ type DefaultKhalaProcessSession = {
   timedOut: boolean
 }
 
-type BunFileSink = Readonly<{
-  flush: () => void
-  write: (value: string | Uint8Array) => unknown
-}>
-
 const defaultProcessSessions = new Map<string, DefaultKhalaProcessSession>()
 
 async function pumpSessionStream(
   session: DefaultKhalaProcessSession,
-  stream: ReadableStream<Uint8Array>,
+  stream: NodeJS.ReadableStream,
   channel: "stdout" | "stderr",
 ): Promise<void> {
-  const reader = stream.getReader()
-  while (true) {
-    const read = await reader.read()
-    if (read.done) break
-    const chunk = Buffer.from(read.value).toString("utf8")
+  for await (const value of stream) {
+    const chunk = Buffer.from(value as Buffer).toString("utf8")
     session.events.push({ channel, text: chunk, timestampMs: Date.now() })
     if (channel === "stdout") {
       if (Buffer.byteLength(session.stdout + chunk, "utf8") > session.maxCaptureBytes) {
@@ -1090,7 +1071,7 @@ function sessionSnapshot(
   return {
     cancelled,
     durationMs,
-    events: [...session.events].sort((a, b) => a.timestampMs - b.timestampMs),
+    events: [...session.events],
     exitCode: session.exitCode,
     sandbox: {
       enforced: false,
@@ -1098,7 +1079,7 @@ function sessionSnapshot(
       note: "No sandbox is enforced by the default local Khala process service.",
     },
     sessionId: session.sessionId,
-    signal: null,
+    signal: session.signal,
     stderr: session.stderr,
     stderrTruncated: session.stderrTruncated,
     stdout: session.stdout,
@@ -1117,21 +1098,144 @@ function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms))
 }
 
-async function readProcessStream(
-  stream: ReadableStream<Uint8Array>,
+type ChildExitResult = Readonly<{
+  exitCode: number | null
+  signal: string | null
+}>
+
+type ProcessSpawnMode = "pipes" | "pty"
+
+function spawnProcessGroup(input: KhalaProcessExecInput, mode: ProcessSpawnMode): ChildProcessWithoutNullStreams {
+  const rawCommand = input.argv !== undefined && input.argv.length > 0
+    ? input.argv[0]
+    : input.shell ?? process.env.SHELL ?? "/bin/sh"
+  const rawArgs = input.argv !== undefined && input.argv.length > 0
+    ? [...input.argv.slice(1)]
+    : ["-lc", input.command]
+  const [command, args] = mode === "pty"
+    ? ptyWrappedCommand(rawCommand, rawArgs)
+    : [rawCommand, rawArgs] as const
+  return spawn(command, args, {
+    cwd: input.cwd,
+    detached: true,
+    env: { ...process.env, TERM: process.env.TERM ?? "xterm-256color" },
+    stdio: "pipe",
+  })
+}
+
+function ptyWrappedCommand(command: string, args: ReadonlyArray<string>): readonly [string, ReadonlyArray<string>] {
+  const python = existsSync("/usr/bin/python3") ? "/usr/bin/python3" : "python3"
+  return [python, ["-c", PythonPtyBridge, command, ...args]]
+}
+
+function waitForChildExit(proc: ChildProcessWithoutNullStreams): Promise<ChildExitResult> {
+  return new Promise(resolve => {
+    proc.once("exit", (exitCode, signal) => resolve({ exitCode, signal }))
+    proc.once("error", () => resolve({ exitCode: null, signal: null }))
+  })
+}
+
+function killProcessGroup(proc: ChildProcessWithoutNullStreams, signal: NodeJS.Signals = "SIGTERM"): void {
+  if (proc.pid === undefined) {
+    proc.kill(signal)
+    return
+  }
+  try {
+    process.kill(-proc.pid, signal)
+  } catch {
+    proc.kill(signal)
+  }
+}
+
+const PythonPtyBridge = `
+import errno
+import os
+import pty
+import select
+import signal
+import sys
+argv = sys.argv[1:]
+if not argv:
+    sys.exit(127)
+child_pid, fd = pty.fork()
+if child_pid == 0:
+    os.execvp(argv[0], argv)
+
+def forward_signal(signum, _frame):
+    try:
+        os.kill(child_pid, signum)
+    except ProcessLookupError:
+        pass
+
+signal.signal(signal.SIGINT, forward_signal)
+signal.signal(signal.SIGTERM, forward_signal)
+stdin_open = True
+exit_status = None
+while True:
+    try:
+        done, status = os.waitpid(child_pid, os.WNOHANG)
+        if done == child_pid:
+            exit_status = status
+            break
+    except ChildProcessError:
+        exit_status = 0
+        break
+    readers = [fd]
+    if stdin_open:
+        readers.append(sys.stdin.fileno())
+    try:
+        readable, _, _ = select.select(readers, [], [], 0.05)
+    except InterruptedError:
+        continue
+    if sys.stdin.fileno() in readable:
+        data = os.read(sys.stdin.fileno(), 4096)
+        if data:
+            os.write(fd, data)
+        else:
+            stdin_open = False
+    if fd in readable:
+        try:
+            data = os.read(fd, 4096)
+        except OSError as error:
+            if error.errno != errno.EIO:
+                raise
+            data = b""
+        if data:
+            os.write(sys.stdout.fileno(), data)
+        else:
+            break
+while True:
+    try:
+        data = os.read(fd, 4096)
+    except OSError:
+        break
+    if not data:
+        break
+    os.write(sys.stdout.fileno(), data)
+if exit_status is None:
+    try:
+        _, exit_status = os.waitpid(child_pid, 0)
+    except ChildProcessError:
+        exit_status = 0
+if os.WIFEXITED(exit_status):
+    sys.exit(os.WEXITSTATUS(exit_status))
+if os.WIFSIGNALED(exit_status):
+    sys.exit(128 + os.WTERMSIG(exit_status))
+sys.exit(1)
+`
+
+async function readNodeProcessStream(
+  stream: NodeJS.ReadableStream,
   channel: KhalaProcessOutputChannel,
   maxBytes: number,
   events: KhalaProcessEvent[],
   onTruncate: () => void,
 ): Promise<Readonly<{ text: string; truncated: boolean }>> {
-  const reader = stream.getReader()
   const chunks: Buffer[] = []
   let bytes = 0
   let truncated = false
-  while (true) {
-    const read = await reader.read()
-    if (read.done) break
-    const chunk = read.value
+  for await (const value of stream) {
+    const chunk = Buffer.from(value as Buffer)
     const remaining = maxBytes - bytes
     if (remaining <= 0 || chunk.byteLength > remaining) {
       if (remaining > 0) {
