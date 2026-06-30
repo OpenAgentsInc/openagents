@@ -1039,3 +1039,16 @@ button {
   color: #f87171;
   background: rgba(248, 113, 113, 0.12);
 }
+
+.khala-fleet-account-top {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+.khala-fleet-email {
+  font-size: 0.72rem;
+  color: color-mix(in srgb, var(--oa-color-component-text) 55%, transparent);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

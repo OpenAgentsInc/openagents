@@ -96,8 +96,17 @@ const accountCard = (
   card.dataset.accountRef = account.accountRef
 
   const identity = el("div", "khala-fleet-account-identity")
-  identity.append(el("strong", undefined, account.accountRef))
-  identity.append(el("span", "khala-fleet-provider", account.provider))
+  const top = el("div", "khala-fleet-account-top")
+  top.append(el("strong", undefined, account.accountRef))
+  top.append(el("span", "khala-fleet-provider", account.provider))
+  identity.append(top)
+  identity.append(
+    el(
+      "span",
+      "khala-fleet-email",
+      account.email ?? "not signed in",
+    ),
+  )
   card.append(identity)
 
   card.append(badge(state, accountBadgeLabel(account.readiness)))
@@ -291,6 +300,14 @@ export const mountFleetPanel = (
   }>,
 ): FleetPanelHandle => {
   let inFlight = false
+  let lastData: KhalaCodeDesktopFleetStatus | null = null
+
+  const setRefreshBusy = (busy: boolean): void => {
+    const button = container.querySelector<HTMLButtonElement>(".khala-fleet-refresh")
+    if (button === null) return
+    button.disabled = busy
+    button.textContent = busy ? "Refreshing…" : "Refresh"
+  }
 
   const onRemove = (accountRef: string): void => {
     // Optimistic: drop the row immediately so it goes away right away.
@@ -315,13 +332,25 @@ export const mountFleetPanel = (
   const refresh = async (): Promise<void> => {
     if (inFlight) return
     inFlight = true
-    render(container, { phase: "loading" }, () => void refresh(), onRemove)
+    // Only the first load shows the full-screen "Inspecting…" state. Later
+    // refreshes (and post-delete) keep the current panel and just mark the
+    // Refresh button busy, so the panel never flashes.
+    if (lastData === null) {
+      render(container, { phase: "loading" }, () => void refresh(), onRemove)
+    } else {
+      setRefreshBusy(true)
+    }
     try {
       const data = await options.fetch()
+      lastData = data
       render(container, { phase: "ready", data }, () => void refresh(), onRemove)
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
-      render(container, { phase: "error", message }, () => void refresh(), onRemove)
+      if (lastData === null) {
+        render(container, { phase: "error", message }, () => void refresh(), onRemove)
+      } else {
+        setRefreshBusy(false)
+      }
     } finally {
       inFlight = false
     }

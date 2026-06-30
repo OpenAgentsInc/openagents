@@ -2711,3 +2711,95 @@ export async function removeCodexAccount(
     }
   }
 }
+
+const decodeCodexIdTokenEmail = (idToken: string): string | null => {
+  try {
+    const payload = idToken.split(".")[1]
+    if (payload === undefined) return null
+    const claims = JSON.parse(
+      Buffer.from(payload, "base64url").toString("utf8"),
+    ) as Record<string, unknown>
+    const profile = claims["https://api.openai.com/profile"]
+    const auth = claims["https://api.openai.com/auth"]
+    const candidates: unknown[] = [
+      claims.email,
+      typeof profile === "object" && profile !== null
+        ? (profile as Record<string, unknown>).email
+        : undefined,
+      typeof auth === "object" && auth !== null
+        ? (auth as Record<string, unknown>).email
+        : undefined,
+    ]
+    const email = candidates.find(
+      value => typeof value === "string" && value.includes("@"),
+    )
+    return typeof email === "string" ? email : null
+  } catch {
+    return null
+  }
+}
+
+const codexEmailFromHome = async (home: string): Promise<string | null> => {
+  try {
+    const raw = JSON.parse(
+      await readFile(join(home, "auth.json"), "utf8"),
+    ) as Record<string, unknown>
+    const tokens =
+      typeof raw.tokens === "object" && raw.tokens !== null
+        ? (raw.tokens as Record<string, unknown>)
+        : {}
+    const idToken = tokens.id_token ?? raw.id_token
+    return typeof idToken === "string" ? decodeCodexIdTokenEmail(idToken) : null
+  } catch {
+    return null
+  }
+}
+
+// Resolve the on-disk home for a fleet account ref and decode the signed-in
+// email from its auth.json. Mirrors how the fleet list discovers accounts:
+// (default) -> ~/.codex, registry refs -> config home, otherwise the sibling
+// dotfile (~/.<ref>) or the isolated home (<pylon home>/accounts/codex/<ref>).
+export async function collectCodexAccountEmails(
+  accountRefs: ReadonlyArray<string>,
+  options: KhalaCodexFleetToolOptions = {},
+): Promise<Record<string, string | null>> {
+  const env = options.env ?? process.env
+  const pylonHome = resolvePylonHome(env)
+  const siblingRoot = (env.PYLON_ACCOUNT_HOME_ROOT ?? "").trim() || homedir()
+  const defaultHome = (env.CODEX_HOME ?? "").trim() || join(homedir(), ".codex")
+
+  const configHomes: Record<string, string> = {}
+  try {
+    const config = JSON.parse(
+      await readFile(join(pylonHome, "config.json"), "utf8"),
+    ) as { dev?: { accounts?: ReadonlyArray<Record<string, unknown>> } }
+    for (const account of config.dev?.accounts ?? []) {
+      if (
+        account?.provider === "codex" &&
+        typeof account.ref === "string" &&
+        typeof account.home === "string"
+      ) {
+        configHomes[account.ref] = account.home
+      }
+    }
+  } catch {
+    // no config — fall back to default/sibling/isolated resolution
+  }
+
+  const homeForRef = (accountRef: string): string | null => {
+    if (accountRef === "(default)") return defaultHome
+    if (configHomes[accountRef] !== undefined) return configHomes[accountRef]
+    const sibling = join(siblingRoot, `.${accountRef}`)
+    if (existsSync(sibling)) return sibling
+    const isolated = join(pylonHome, "accounts", "codex", accountRef)
+    if (existsSync(isolated)) return isolated
+    return null
+  }
+
+  const out: Record<string, string | null> = {}
+  for (const accountRef of accountRefs) {
+    const home = homeForRef(accountRef)
+    out[accountRef] = home === null ? null : await codexEmailFromHome(home)
+  }
+  return out
+}

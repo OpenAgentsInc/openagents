@@ -24,6 +24,7 @@ import {
   runKhalaCodeDesktopChatTurn,
 } from "./khala-chat-runtime.js"
 import {
+  collectCodexAccountEmails,
   ensureLocalPylon,
   inspectCodexFleet,
   removeCodexAccount,
@@ -142,6 +143,10 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
         { includeProcesses: true, startPylon: false },
         { env: input.env as NodeJS.ProcessEnv },
       )
+      const emails = await collectCodexAccountEmails(
+        fleet.accounts.map(account => account.accountRef),
+        { env: input.env },
+      )
       return {
         ok: fleet.ensure.ok,
         observedAt: fleet.observedAt,
@@ -158,6 +163,7 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
           readiness: account.readiness,
           quotaState: account.quotaState,
           accountKey: account.accountKey,
+          email: emails[account.accountRef] ?? null,
         })),
         activeAssignments: fleet.activeAssignments.map(marker => ({
           assignmentRef: marker.assignmentRef,
