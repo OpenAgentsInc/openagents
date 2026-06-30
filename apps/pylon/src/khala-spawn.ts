@@ -113,6 +113,11 @@ export type PylonKhalaSpawnSlotResult = {
   blockerRefs: string[]
   closeoutStatus: string | null
   durableRequestId: string | null
+  failure: {
+    message: string
+    phase: PylonKhalaSpawnWorkerState
+    ref: string
+  } | null
   lifecycleEvents: PylonKhalaSpawnWorkerEvent[]
   ok: boolean
   proof: PylonKhalaSpawnProofProjection | null
@@ -169,6 +174,7 @@ export type PylonKhalaSpawnRunDeps<Slot extends PylonKhalaSpawnSlotLike = PylonK
     slot: Slot,
   ) => Promise<PylonKhalaProofResult>
   readTokensServed?: (network: TipsNetworkOptions) => Promise<number | null>
+  sleep?: (ms: number) => Promise<void>
   requestAssignment?: (
     network: TipsNetworkOptions,
     input: PylonKhalaRequestInput,
@@ -187,6 +193,11 @@ const accountCommandArgs = (account: PylonKhalaSpawnAccount): string =>
   account.accountRef === null ? "" : ` --account ${quoteArg(account.accountRef)}`
 
 const blocker = (namespace: string, suffix: string) => `blocker.${namespace}.${suffix}`
+const failureRef = (suffix: string) => `failure.khala_spawn.${suffix}`
+
+const defaultProofRetryDelaysMs = [500, 1_500, 3_000] as const
+
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
 
 function nonNegativeInteger(value: number | undefined, fallback: number): number {
   if (value === undefined || !Number.isFinite(value)) return fallback
@@ -240,8 +251,19 @@ export function buildPylonKhalaSpawnPlan(input: {
 }): PylonKhalaSpawnPlan {
   const accounts = readyCodexAccounts(input.accounts)
   const advertisedCodexAvailability = nonNegativeInteger(input.advertisedCodexAvailability, accounts.length)
-  const requestedMaxParallel = Math.max(1, Math.floor(input.maxParallel ?? accounts.length))
-  const selectedParallel = Math.min(requestedMaxParallel, accounts.length, advertisedCodexAvailability)
+  const defaultMaxParallel = Math.max(
+    1,
+    Math.min(
+      input.objectives.length || 1,
+      Math.max(accounts.length, advertisedCodexAvailability),
+    ),
+  )
+  const requestedMaxParallel = Math.max(1, Math.floor(input.maxParallel ?? defaultMaxParallel))
+  const selectedParallel =
+    accounts.length === 0 || advertisedCodexAvailability === 0 || input.objectives.length === 0
+      ? 0
+      : Math.min(requestedMaxParallel, advertisedCodexAvailability, input.objectives.length)
+  const selectedAccounts = accounts.slice(0, Math.min(accounts.length, Math.max(1, selectedParallel)))
   const blockerRefs = [
     ...(accounts.length === 0 ? [blocker("khala_spawn", "no_ready_codex_accounts")] : []),
     ...(advertisedCodexAvailability === 0 ? [blocker("khala_spawn", "no_advertised_codex_availability")] : []),
@@ -251,7 +273,7 @@ export function buildPylonKhalaSpawnPlan(input: {
   const slots: PylonKhalaSpawnSlot[] = selectedParallel === 0
     ? []
     : input.objectives.map((objective, index) => {
-        const account = accounts[index % selectedParallel]
+        const account = selectedAccounts[index % selectedAccounts.length]!
         const requestInput: PylonKhalaRequestInput = {
           objectiveSummary: objective.objective,
           prompt: objective.objective,
@@ -348,6 +370,74 @@ function proofBlockerRefs(
     ...(proof.traceCount <= 0 ? [blocker(namespace, "owner_trace_missing")] : []),
     ...(proof.rawEventCount <= 0 ? [blocker(namespace, "raw_events_missing")] : []),
   ]
+}
+
+function spawnFailureProjection(input: {
+  error: unknown
+  namespace: string
+  phase: PylonKhalaSpawnWorkerState
+}) {
+  const raw = input.error instanceof Error ? input.error.message : String(input.error)
+  if (/\b(?:timed out|timeout|AbortError)\b/iu.test(raw)) {
+    return {
+      blockerRef: blocker(input.namespace, "slot_timeout"),
+      failure: {
+        message: "worker failed because a bounded operation timed out",
+        phase: input.phase,
+        ref: failureRef("timeout"),
+      },
+    }
+  }
+  const httpStatus = /\((\d{3})\)/u.exec(raw)?.[1]
+  if (httpStatus !== undefined) {
+    return {
+      blockerRef: blocker(input.namespace, `slot_http_${httpStatus}`),
+      failure: {
+        message: `worker failed because the OpenAgents API returned HTTP ${httpStatus}`,
+        phase: input.phase,
+        ref: failureRef(`http_${httpStatus}`),
+      },
+    }
+  }
+  if (/\bproof\b/iu.test(raw)) {
+    return {
+      blockerRef: blocker(input.namespace, "proof_unavailable"),
+      failure: {
+        message: "worker closeout finished but proof was not readable in time",
+        phase: input.phase,
+        ref: failureRef("proof_unavailable"),
+      },
+    }
+  }
+  return {
+    blockerRef: blocker(input.namespace, "slot_failed"),
+    failure: {
+      message: "worker failed with a public-safe internal error",
+      phase: input.phase,
+      ref: failureRef("internal"),
+    },
+  }
+}
+
+async function readProofWithRetry<Slot extends PylonKhalaSpawnSlotLike>(input: {
+  network: TipsNetworkOptions
+  readProof: NonNullable<PylonKhalaSpawnRunDeps<Slot>["readProof"]>
+  sleep: (ms: number) => Promise<void>
+  slot: Slot
+  assignmentRef: string
+}): Promise<PylonKhalaProofResult> {
+  let lastError: unknown
+  for (let attempt = 0; attempt <= defaultProofRetryDelaysMs.length; attempt += 1) {
+    try {
+      return await input.readProof(input.network, input.assignmentRef, input.slot)
+    } catch (error) {
+      lastError = error
+      const delay = defaultProofRetryDelaysMs[attempt]
+      if (delay === undefined) break
+      await input.sleep(delay)
+    }
+  }
+  throw lastError
 }
 
 export async function runPylonKhalaSpawnPlan<Slot extends PylonKhalaSpawnSlotLike>(input: {
@@ -469,7 +559,9 @@ async function runPylonKhalaSpawnSlot<Slot extends PylonKhalaSpawnSlotLike>(inpu
   let proof: PylonKhalaSpawnProofProjection | null = null
   let runAccepted: boolean | null = null
   let closeoutStatus: string | null = null
+  let failure: PylonKhalaSpawnSlotResult["failure"] = null
   let state: PylonKhalaSpawnWorkerState = "queued"
+  const pause = input.deps?.sleep ?? sleep
 
   try {
     await emit("queued", "worker queued")
@@ -520,7 +612,15 @@ async function runPylonKhalaSpawnSlot<Slot extends PylonKhalaSpawnSlotLike>(inpu
           ...(closeoutStatus === null ? {} : { status: closeoutStatus }),
         })
       } else {
-        const projectedProof = pylonKhalaProofProjection(await input.readProof(input.network, assignmentRef, input.slot))
+        const projectedProof = pylonKhalaProofProjection(
+          await readProofWithRetry({
+            assignmentRef,
+            network: input.network,
+            readProof: input.readProof,
+            sleep: pause,
+            slot: input.slot,
+          }),
+        )
         proof = projectedProof
         blockerRefs.push(...proofBlockerRefs(projectedProof, input.namespace))
         state = blockerRefs.length === 0 ? "accepted" : "failed"
@@ -528,10 +628,16 @@ async function runPylonKhalaSpawnSlot<Slot extends PylonKhalaSpawnSlotLike>(inpu
         await emit(state, state === "accepted" ? "worker accepted" : "worker proof failed", { assignmentRef })
       }
     }
-  } catch {
-    blockerRefs.push(blocker(input.namespace, "slot_failed"))
+  } catch (error) {
+    const projected = spawnFailureProjection({
+      error,
+      namespace: input.namespace,
+      phase: events.at(-1)?.state ?? state,
+    })
+    failure = projected.failure
+    blockerRefs.push(projected.blockerRef)
     state = "failed"
-    await emit("failed", "worker failed")
+    await emit("failed", failure.message, { status: failure.ref })
   }
 
   return {
@@ -540,6 +646,7 @@ async function runPylonKhalaSpawnSlot<Slot extends PylonKhalaSpawnSlotLike>(inpu
     blockerRefs,
     closeoutStatus,
     durableRequestId,
+    failure,
     lifecycleEvents: events,
     ok: blockerRefs.length === 0,
     proof,

@@ -487,8 +487,12 @@ function refusalRecord(input: {
     "proof.pylon.claude_agent_task.refused",
     `${input.lease.leaseRef}:${input.blockerRefs.join(",")}`,
   )
+  const artifactRef = stableRef(
+    "artifact.pylon.claude_agent_task.refused",
+    `${input.lease.leaseRef}:${input.resultRef}:${input.summaryRef}`,
+  )
   return {
-    artifactRefs: [],
+    artifactRefs: [artifactRef],
     blockerRefs: input.blockerRefs,
     buildRefs: [input.runRef],
     message: input.message,

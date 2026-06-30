@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test"
-import { mkdtemp, rm, writeFile } from "node:fs/promises"
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
@@ -77,7 +77,7 @@ async function runPylonCli(args: string[], env: Record<string, string>) {
   return { ...exit, stderr, stdout }
 }
 
-async function markAssignmentReady(home: string) {
+async function markAssignmentReady(home: string, capabilityRefs: string[] = []) {
   const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), {
     PYLON_HOME: home,
   })
@@ -88,10 +88,25 @@ async function markAssignmentReady(home: string) {
       lifecycle: "assignment-ready",
       displayName: "Khala Requester Test",
       resourceMode: "background_20",
-      capabilityRefs: [],
+      capabilityRefs,
       blockerRefs: [],
       updatedAt: "2026-06-27T00:00:00.000Z",
     })}\n`,
+  )
+  return state.identity.pylonRef
+}
+
+async function writeCodexAccounts(home: string, accountRefs: string[]) {
+  const accounts = []
+  for (const ref of accountRefs) {
+    const accountHome = join(home, "accounts", "codex", ref)
+    await mkdir(accountHome, { recursive: true })
+    await writeFile(join(accountHome, "auth.json"), "{}\n")
+    accounts.push({ home: accountHome, provider: "codex", ref })
+  }
+  await writeFile(
+    join(home, "config.json"),
+    `${JSON.stringify({ dev: { accounts } }, null, 2)}\n`,
   )
 }
 
@@ -224,7 +239,7 @@ function completeProof(overrides: Record<string, unknown> = {}) {
   }
 }
 
-function khalaAutoRunServer() {
+function khalaAutoRunServer(input: { activeCodexLease?: boolean } = {}) {
   const assignmentRef = "assignment.public.khala_coding.cli_auto_run"
   const leaseRef = "lease.public.khala_coding.cli_auto_run"
   const requests: Array<{ body: Record<string, unknown>; method: string; path: string }> = []
@@ -257,7 +272,7 @@ function khalaAutoRunServer() {
               leaseRef,
               goal: "Return a public-safe proof ref for this fake no-spend assignment.",
               paymentMode: "no-spend",
-              capabilityRefs: [],
+              capabilityRefs: input.activeCodexLease ? ["capability.pylon.local_codex"] : [],
               expiresAt: "2099-01-01T00:00:00.000Z",
             },
           ],
@@ -450,7 +465,7 @@ describe("pylon khala requester body", () => {
 describe("pylon khala requester API", () => {
   test("CLI request auto-runs the returned no-spend assignment unless disabled", async () => {
     await withTempHome(async (home) => {
-      await markAssignmentReady(home)
+      const localPylonRef = await markAssignmentReady(home)
       const fake = khalaAutoRunServer()
 
       const proc = await runPylonCli(
@@ -499,10 +514,21 @@ describe("pylon khala requester API", () => {
         },
       })
       const paths = fake.requests.map((request) => request.path)
+      const heartbeatIndex = paths.findIndex((path) => path.includes("/heartbeat"))
+      const chatIndex = paths.findIndex((path) => path === "/api/v1/chat/completions")
+      expect(heartbeatIndex).toBeGreaterThanOrEqual(0)
+      expect(chatIndex).toBeGreaterThan(heartbeatIndex)
       expect(paths).toContain("/api/v1/chat/completions")
       expect(paths.some((path) => path.endsWith("/assignments"))).toBe(true)
       expect(paths.some((path) => path.endsWith("/accept"))).toBe(true)
       expect(paths.some((path) => path.endsWith("/closeout"))).toBe(true)
+      expect(fake.requests[chatIndex]?.body).toMatchObject({
+        openagents: {
+          coding: { targetPylonRef: localPylonRef },
+          workflowClass: "codex_agent_task",
+        },
+        targetPylonRef: localPylonRef,
+      })
       expect(proc.stderr)
         .toContain('"event":"assignment_run.completed"')
     })
@@ -545,9 +571,57 @@ describe("pylon khala requester API", () => {
           schema: "openagents.pylon.khala_request_auto_run.v0.1",
         },
       })
-      expect(fake.requests.map((request) => request.path)).toEqual([
-        "/api/v1/chat/completions",
-      ])
+      const paths = fake.requests.map((request) => request.path)
+      const heartbeatIndex = paths.findIndex((path) => path.includes("/heartbeat"))
+      const chatIndex = paths.findIndex((path) => path === "/api/v1/chat/completions")
+      expect(heartbeatIndex).toBeGreaterThanOrEqual(0)
+      expect(chatIndex).toBeGreaterThan(heartbeatIndex)
+      expect(paths.some((path) => path.endsWith("/accept"))).toBe(false)
+      expect(paths.some((path) => path.endsWith("/progress"))).toBe(false)
+      expect(paths.some((path) => path.endsWith("/closeout"))).toBe(false)
+    })
+  })
+
+  test("CLI spawn planning uses per-account Codex availability over busy pooled capacity", async () => {
+    await withTempHome(async (home) => {
+      await markAssignmentReady(home, ["capability.pylon.local_codex"])
+      await writeCodexAccounts(home, ["codex-one", "codex-two"])
+      const fake = khalaAutoRunServer({ activeCodexLease: true })
+
+      const proc = await runPylonCli(
+        [
+          "khala",
+          "spawn",
+          "--count",
+          "5",
+          "--max-parallel",
+          "5",
+          "--objective",
+          "Run a fixture-backed capacity smoke.",
+          "--fixture",
+          "--base-url",
+          fake.baseUrl,
+          "--json",
+        ],
+        {
+          CODEX_HOME: join(home, "missing-default-codex"),
+          OPENAGENTS_AGENT_TOKEN: "oa_agent_test",
+          OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY: "5",
+          OPENAGENTS_PYLON_CODEX_CONCURRENCY: "1",
+          PYLON_ACCOUNT_HOME_ROOT: join(home, "no-sibling-scan"),
+          PYLON_HOME: home,
+        },
+      )
+
+      expect(proc.timedOut).toBe(false)
+      expect(proc.exitCode).toBe(0)
+      const plan = JSON.parse(proc.stdout)
+      expect(plan).toMatchObject({
+        advertisedCodexAvailability: 10,
+        maxParallel: 5,
+        readyCodexAccountCount: 2,
+      })
+      expect(plan.slots).toHaveLength(5)
     })
   })
 

@@ -158,6 +158,26 @@ free slots. If it refuses before launch with `Only X/5 advertised ... free`,
 capacity was not actually advertised; rerun the heartbeat/status commands and
 check `ownCapacityDispatch.codexAccounts`.
 
+When debugging below the desktop wrapper, run the same handoff directly through
+Pylon:
+
+```sh
+OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY=5 \
+  bun apps/pylon/src/index.ts khala spawn \
+    --count 5 \
+    --max-parallel 5 \
+    --objective "Fixture smoke: run the public Codex sum repair fixture and return a public-safe closeout." \
+    --fixture \
+    --execute \
+    --base-url https://openagents.com \
+    --json
+```
+
+This command streams per-slot lifecycle JSONL while each Codex worker runs, then
+prints one final `openagents.pylon.khala_spawn_run.v0.1` JSON object. Success is
+`ok: true`, `aggregate.acceptedCount: 5`, `totalTokenRows: 5`, no
+`blockerRefs`, and a clean process exit.
+
 Verified live on 2026-06-30 after the lifecycle and capacity-projection fixes:
 
 - `provider go-online --json` with
@@ -169,17 +189,18 @@ Verified live on 2026-06-30 after the lifecycle and capacity-projection fixes:
   `account.pylon.codex.651c03fed68925d7acb2c02f`.
 - `codex_fleet_status` through the Desktop wrapper also reported `10/10`
   with no active assignment markers.
-- a bounded four-slot fixture smoke completed `4/4`.
-- the five-slot smoke above completed `5/5`, all through `codex-2`, with
-  `auto-run: completed`, `assignment run: completed`,
+- the direct five-slot Pylon smoke above completed `5/5` with
+  `aggregate.acceptedCount = 5`, `totalTokenRows = 5`, `ownerOnlyTraceCount = 62`,
+  `ownerOnlyRawEventCount = 89`, and `totalVerifiedTokens = 385853`.
+- each slot reached `assignment_run.completed` and proof-check `accepted`, with
   `closeout: accepted, no-spend, not_applicable`, `blocker refs: none`, and
   lifecycle summaries through `assignment_run.completed`.
 - five-slot assignment refs:
-  `assignment.public.khala_coding.chatcmpl_312183d0332d445f804619adfb5631bf`,
-  `assignment.public.khala_coding.chatcmpl_89604204bfcd4511969b173cfb07135e`,
-  `assignment.public.khala_coding.chatcmpl_55510df39554465085aaebbb1c8ca19b`,
-  `assignment.public.khala_coding.chatcmpl_0d8804f0c51648079752f613a3698505`,
-  `assignment.public.khala_coding.chatcmpl_6a270198d2954df89872952a93233dfe`.
+  `assignment.public.khala_coding.chatcmpl_29c49a89a2a247778b6f2d7498b731d1`,
+  `assignment.public.khala_coding.chatcmpl_a92071f382a74aafb69be7c4b1bfb264`,
+  `assignment.public.khala_coding.chatcmpl_8d8cd9a4b363457d9a5406f866bbc62c`,
+  `assignment.public.khala_coding.chatcmpl_e6ea08168e8642168dcd4ebbf4e8d363`,
+  `assignment.public.khala_coding.chatcmpl_c54dba0e0a5745e39c2d21967e02a48a`.
 - post-run: no active marker files remained and capacity returned to `10/10`.
 
 ## Current A2A Transaction Step: Provider-Bond Contract
@@ -254,7 +275,8 @@ bun apps/pylon/src/index.ts provider go-online --json \
 ```
 
 Expected: no active marker files and capacity back at `N/N available` (on the
-owner machine this was `4/4` after the 2026-06-30 smoke).
+owner machine this was `10/10` after the 2026-06-30 five-slot smoke when
+`OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY=5` was set for the check).
 
 ## Assign One Issue To A Codex, Non-Blocking (verified 2026-06-30)
 

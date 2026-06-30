@@ -54,7 +54,7 @@ type RuntimeCloseoutRecord = {
   proofRefs: ReadonlyArray<string>
   resultRefs: ReadonlyArray<string>
   runRefs: ReadonlyArray<string>
-  status: "accepted" | "rejected"
+  status: "accepted" | "rejected" | "timed-out"
   summaryRefs: ReadonlyArray<string>
   testRefs: ReadonlyArray<string>
 }

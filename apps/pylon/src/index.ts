@@ -2163,6 +2163,17 @@ async function availableCodexAssignments(
   state: PylonLocalState,
   options?: AssignmentLeaseNetworkOptions,
 ): Promise<number> {
+  const codexAccounts = await localCodexAccountCapacities(
+    state,
+    summary,
+    Bun.env,
+    codexBusyByAccount(
+      await activeCodingRunCountsByAccount(state.paths),
+    ),
+  )
+  if (codexAccounts.length > 0) {
+    return codexAccounts.reduce((sum, account) => sum + account.available, 0)
+  }
   const codingCapacity = await codingCapacityForDispatch(summary, state, options)
   return codingCapacity.find((item) => item.service === "codex")?.available ?? 0
 }
@@ -4221,7 +4232,7 @@ async function main() {
           optionString(options, "objective") ??
           (args[2] !== undefined && !args[2].startsWith("--") ? args[2] : undefined)
         const workflow = optionString(options, "workflow")
-        const targetPylonRef =
+        const explicitTargetPylonRef =
           optionString(options, "pylon-ref") ??
           optionString(options, "target-pylon-ref")
         const commit = optionString(options, "commit")
@@ -4270,6 +4281,21 @@ async function main() {
         // ref with "not registered for this provider").
         const accountProvider =
           workflow === "claude_agent_task" ? "claude_agent" : "codex"
+        const targetsLocalCodingWorkflow =
+          workflow === "codex_agent_task" || workflow === "claude_agent_task"
+        const requestState = targetsLocalCodingWorkflow
+          ? await ensurePylonLocalState(summary)
+          : null
+        const targetPylonRef =
+          explicitTargetPylonRef ??
+          (requestState === null ? undefined : localPylonTargetRef(requestState))
+        if (requestState !== null && targetPylonRef === localPylonTargetRef(requestState)) {
+          await sendHeartbeat(summary, {
+            ...presenceClientOptionsFromEnv({ baseUrl, env: Bun.env }),
+            ...(resolvedAgentToken === null ? {} : { agentToken: resolvedAgentToken.token }),
+            activeRunCounts: await serverActiveCodingRunCounts(summary, networkOptions),
+          })
+        }
         const accountRef =
           optionString(options, "account") ??
           optionString(options, "account-ref")

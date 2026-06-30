@@ -88,7 +88,7 @@ export type AgentRunnerCloseoutRecord = {
   proofRefs: string[]
   resultRefs: string[]
   runRefs: string[]
-  status: "accepted" | "rejected"
+  status: "accepted" | "rejected" | "timed-out"
   summaryRefs: string[]
   testRefs: string[]
 }
