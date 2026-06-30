@@ -132,6 +132,21 @@ describe("khala code desktop app shell", () => {
     expect(css).not.toContain("width: min(100%, 48rem)")
   })
 
+  test("lets the transcript bleed vertically to the window and composer", async () => {
+    const css = await Bun.file(new URL("../src/ui/styles.css", import.meta.url)).text()
+
+    expect(css).toContain("padding: 0 14px")
+    expect(css).toContain("height: 100%")
+    expect(css).toContain("padding: 0 4px")
+    expect(css).not.toContain("padding: 28px 14px 12px")
+    expect(css).not.toContain("padding: 10px 4px 20px")
+    expect(css).not.toContain("padding-top: 16px")
+    expect(css).not.toContain("max-height: calc(100vh - 188px)")
+    expect(css).not.toContain("max-height: calc(100dvh - 188px)")
+    expect(css).not.toContain("max-height: calc(100vh - 176px)")
+    expect(css).not.toContain("max-height: calc(100dvh - 176px)")
+  })
+
   test("keeps the composer input available while a turn is pending", async () => {
     const main = await Bun.file(new URL("../src/ui/main.ts", import.meta.url)).text()
     const css = await Bun.file(new URL("../src/ui/styles.css", import.meta.url)).text()
