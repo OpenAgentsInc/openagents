@@ -1,12 +1,18 @@
 import type { KhalaGymGraphProjection } from "./gym-graph-projection"
 import { renderKhalaGymGraphHtml } from "./gym-graph-renderer"
 
+export type GymPaneDetail = Readonly<{
+  label: string
+  value: string
+}>
+
 export type GymPaneLoadedState = Readonly<{
   phase: "loaded"
   title: string
   runRef: string
   status: string
   refs: ReadonlyArray<string>
+  details?: ReadonlyArray<GymPaneDetail>
   graph?: KhalaGymGraphProjection
 }>
 
@@ -14,6 +20,8 @@ export type GymPaneBlockedState = Readonly<{
   phase: "blocked"
   title: string
   blockerRefs: ReadonlyArray<string>
+  details?: ReadonlyArray<GymPaneDetail>
+  graph?: KhalaGymGraphProjection
 }>
 
 export type GymPaneState =
@@ -64,6 +72,36 @@ const refList = (refs: ReadonlyArray<string>): HTMLElement => {
   return list
 }
 
+const detailList = (
+  details: ReadonlyArray<GymPaneDetail> | undefined,
+): HTMLElement | null => {
+  if (details === undefined || details.length === 0) return null
+  const list = el("dl", "khala-gym-detail-grid")
+  for (const item of details) {
+    const row = el("div", "khala-gym-detail")
+    row.append(
+      el("dt", "khala-gym-detail-label", item.label),
+      el("dd", "khala-gym-detail-value", item.value),
+    )
+    list.append(row)
+  }
+  return list
+}
+
+const appendGraph = (
+  body: HTMLElement,
+  graph: KhalaGymGraphProjection | undefined,
+): void => {
+  if (graph === undefined) return
+  const template = document.createElement("template")
+  template.innerHTML = renderKhalaGymGraphHtml(graph, {
+    reducedMotion:
+      typeof matchMedia === "function" &&
+      matchMedia("(prefers-reduced-motion: reduce)").matches,
+  }).html
+  body.append(template.content.cloneNode(true))
+}
+
 const renderEmpty = (container: HTMLElement): void => {
   const section = el("section", "khala-gym-section")
   section.append(sectionHeader("Delegation visibility"))
@@ -90,15 +128,9 @@ const renderLoaded = (
     el("span", "khala-gym-run-ref", state.runRef),
     refList(state.refs),
   )
-  if (state.graph !== undefined) {
-    const template = document.createElement("template")
-    template.innerHTML = renderKhalaGymGraphHtml(state.graph, {
-      reducedMotion:
-        typeof matchMedia === "function" &&
-        matchMedia("(prefers-reduced-motion: reduce)").matches,
-    }).html
-    body.append(template.content.cloneNode(true))
-  }
+  const details = detailList(state.details)
+  if (details !== null) body.append(details)
+  appendGraph(body, state.graph)
   section.append(body)
   container.append(section)
 }
@@ -115,6 +147,9 @@ const renderBlocked = (
     badge("blocked", "Blocked"),
     refList(state.blockerRefs),
   )
+  const details = detailList(state.details)
+  if (details !== null) body.append(details)
+  appendGraph(body, state.graph)
   section.append(body)
   container.append(section)
 }

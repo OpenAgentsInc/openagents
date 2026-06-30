@@ -36,6 +36,14 @@ states, show public-safe node detail, and expose an accessible text mirror. It
 still does not load fixture/proof data by default or provide approval/direct
 manipulation controls.
 
+Update, 2026-06-30: Khala Code Desktop now has opt-in fixture/proof wiring for
+the Gym pane in `clients/khala-code-desktop/src/ui/gym-proof-loader.ts`. The
+app still starts with an honest no-proof state, but `?gymProof=fixture&view=gym`
+or `khalaCodeDesktop.loadGymProof(...)` can load a public-safe bridge proof and
+show `metricValueBps`, `admissionDecision`, `decisionGrade=false`, candidate
+refs, blocker refs, Action Submission proposal refs, and the read-only graph.
+This is a recording smoke seam, not a live Gym backend subscription.
+
 ## 0. Executive Answer
 
 Mutalisk belongs in the Gym as the offline optimizer lane for Khala Code's
@@ -53,12 +61,14 @@ Worker. The right shape is:
 6. The result becomes an approval-required Action Submission proposal, never an
    automatic live policy change.
 
-The blunt readiness answer: this is not ready for UI testing yet. The local
-Mutalisk side can produce offline candidate artifacts, and OpenAgents already
-has most of the data, feedback, admission, and `khala.fleet.delegate` runtime
-pieces. What is missing is the product seam that lets Khala Code ask the Gym to
-run Mutalisk, follow progress, ingest the candidate into OpenAgents storage, and
-show an admission-ready result without manual CLI work.
+The blunt readiness answer: this is ready for a bounded desktop UI smoke, not
+for the whole product loop. The local Mutalisk side can produce offline
+candidate artifacts, OpenAgents can bridge them into the admission seam, and
+Khala Code Desktop can show the public-safe proof graph when the operator
+explicitly loads a fixture or generated proof JSON. What is still missing is
+the product seam that lets Khala Code ask the Gym to run Mutalisk, follow live
+progress, ingest the candidate into durable OpenAgents storage, and submit or
+approve the result without manual CLI/console work.
 
 ## 1. Sources Read
 

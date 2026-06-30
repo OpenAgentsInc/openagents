@@ -1278,6 +1278,31 @@ button {
   color: #fbbf24;
   border-color: rgba(251, 191, 36, 0.34);
 }
+.khala-gym-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));
+  gap: 0.35rem 0.75rem;
+  margin: 0;
+  min-width: 0;
+}
+.khala-gym-detail {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
+  padding: 0.4rem 0;
+  border-top: 1px solid rgba(147, 164, 189, 0.18);
+}
+.khala-gym-detail-label {
+  color: color-mix(in srgb, var(--oa-color-component-text) 48%, transparent);
+  font-size: 0.66rem;
+}
+.khala-gym-detail-value {
+  margin: 0;
+  color: #e7f4ff;
+  font-size: 0.74rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
 .khala-gym-graph {
   display: grid;
   gap: 0.75rem;

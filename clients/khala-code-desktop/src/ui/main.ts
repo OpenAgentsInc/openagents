@@ -43,6 +43,14 @@ import {
 } from "../shared/rpc"
 import { renderMessageBody } from "./transcript-render"
 import { mountFleetPanel } from "./fleet-status"
+import {
+  gymPaneStateFromBridgeProof,
+  gymPaneStateFromLocation,
+  initialKhalaCodeViewFromLocation,
+  khalaCodeGymDemoBridgeProof,
+  type KhalaGymProofLoadRequest,
+} from "./gym-proof-loader"
+import type { KhalaGymBridgeProofLike } from "./gym-graph-projection"
 import { mountGymPane, type GymPaneState } from "./gym-pane"
 import { mountKhalaCodeSidebar } from "./sidebar"
 import "./styles.css"
@@ -1077,6 +1085,11 @@ const controls = {
   addMessage,
   appInfo: () => rpc.request.appInfo(),
   attachments: () => composerState.doc.attachments.map(attachment => ({ ...attachment })),
+  clearGymProof: (): GymPaneState => {
+    const state = gymPaneStateFromBridgeProof(null)
+    gymPanel?.setState(state)
+    return state
+  },
   codexAccountsStatus: () => rpc.request.codexAccountsStatus(),
   codexFleetStatus: () => rpc.request.codexFleetStatus(),
   codingStatus: () => rpc.request.codingStatus(),
@@ -1090,6 +1103,26 @@ const controls = {
   focusComposer: focusComposerInput,
   isComposerFocused: () => document.activeElement === composerInput,
   isPending: () => pendingTurn,
+  loadGymDemoProof: (): GymPaneState => {
+    const state = gymPaneStateFromBridgeProof({
+      proof: khalaCodeGymDemoBridgeProof,
+      generatedAt: "time.khala_gym_projection.fixture",
+      sourceRef: "fixture.khala_code.gym.part2_demo",
+    })
+    gymPanel?.setState(state)
+    return state
+  },
+  loadGymProof: (
+    input: KhalaGymBridgeProofLike | KhalaGymProofLoadRequest | string | null,
+  ): GymPaneState => {
+    const parsed =
+      typeof input === "string"
+        ? (JSON.parse(input) as KhalaGymBridgeProofLike | KhalaGymProofLoadRequest)
+        : input
+    const state = gymPaneStateFromBridgeProof(parsed)
+    gymPanel?.setState(state)
+    return state
+  },
   messages: () => messages.map(message => ({ ...message })),
   pylonStatus: () => rpc.request.pylonStatus(),
   removeCodexAccount: (accountRef: string) =>
@@ -1145,6 +1178,8 @@ const fleetPanelEl = document.getElementById("fleet-panel")
 const gymPanelEl = document.getElementById("gym-panel")
 const threadShell = document.querySelector<HTMLElement>(".khala-code-thread-shell")
 const composerDock = document.querySelector<HTMLElement>(".composer-dock")
+const initialGymState = gymPaneStateFromLocation(globalThis.location)
+const initialView = initialKhalaCodeViewFromLocation(globalThis.location)
 
 const fleetPanel =
   fleetPanelEl === null
@@ -1156,7 +1191,8 @@ const fleetPanel =
         openExternal: url => controls.openExternalUrl(url),
       })
 
-const gymPanel = gymPanelEl === null ? null : mountGymPane(gymPanelEl)
+const gymPanel =
+  gymPanelEl === null ? null : mountGymPane(gymPanelEl, initialGymState)
 
 const setActiveView = (value: string): void => {
   const showFleet = value === "fleet"
@@ -1174,9 +1210,10 @@ const setActiveView = (value: string): void => {
 
 if (sidebarRoot !== null) {
   mountKhalaCodeSidebar(sidebarRoot, {
-    selectedValue: "chat",
+    selectedValue: initialView,
     onActivate: value => setActiveView(value),
   })
 }
+setActiveView(initialView)
 render()
 requestAnimationFrame(focusComposerInput)

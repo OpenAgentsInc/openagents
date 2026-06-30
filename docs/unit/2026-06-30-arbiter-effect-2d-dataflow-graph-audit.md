@@ -64,6 +64,13 @@ desktop layout, link-state styling, public-safe node detail, reduced-motion
 edge behavior, and accessible text mirror before extraction. Direct
 manipulation remains intentionally out of scope.
 
+Implementation note, 2026-06-30: Khala Code Desktop now also has a small
+fixture/proof loader at `clients/khala-code-desktop/src/ui/gym-proof-loader.ts`.
+The loader keeps the default pane empty, but lets a preview URL or console call
+load a public-safe bridge proof for smoke testing. It surfaces the scalar
+decision fields and refs needed for the part-two video while leaving live
+subscription, automatic Mutalisk dispatch, and approval controls out of scope.
+
 ## Scope correction
 
 We are **not** adopting [Unit](https://github.com/samuelmtimbo/unit)

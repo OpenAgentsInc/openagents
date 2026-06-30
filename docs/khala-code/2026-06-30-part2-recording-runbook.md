@@ -224,6 +224,63 @@ Python, DSPy, or GEPA runtime code; it does not auto-promote or approve the
 candidate; and `decisionGrade` remains `false` until real held-out/live evidence
 satisfies the Gym gates.
 
+## Load The Gym Pane
+
+The Gym pane starts empty by design. For a deterministic UI smoke without a live
+Mutalisk run, use the preview bridge and opt into the public fixture:
+
+```sh
+cd /Users/christopherdavid/work/openagents
+KHALA_CODE_DESKTOP_OPEN_WINDOW=0 \
+KHALA_CODE_DESKTOP_PREVIEW_PORT=50121 \
+bun clients/khala-code-desktop/src/bun/index.ts
+```
+
+Then open:
+
+```text
+http://127.0.0.1:50121/?gymProof=fixture&view=gym
+```
+
+Expected UI shape:
+
+```text
+Gym
+Read-only
+Mutalisk bridge proof
+Loaded
+metricValueBps: 10000 bps
+admissionDecision: gated_proposal_ready
+decisionGrade: false
+candidate refs: manifest... candidate... module...
+Action Submission proposal refs: action_submission.proposal...
+read-only Arbiter-style graph with evidence-backed links
+```
+
+To load a generated bridge proof instead of the built-in fixture, copy the proof
+JSON and load it from the preview or native Web Inspector console:
+
+```sh
+cd /Users/christopherdavid/work/openagents
+pbcopy < out/khala-gepa-bridge-proof.json
+```
+
+```js
+khalaCodeDesktop.loadGymProof(await navigator.clipboard.readText())
+```
+
+For quick local toggles:
+
+```js
+khalaCodeDesktop.loadGymDemoProof()
+khalaCodeDesktop.clearGymProof()
+khalaCodeDesktop.gymState()
+```
+
+Missing proof data should continue to show `No Gym proof loaded.` Blocked proof
+data should show a blocked badge, blocker refs, and blocked graph links rather
+than an admission-ready proposal.
+
 ## Failure Triage
 
 - `codex_spawn_failed: No Pylon Codex assignment capacity is available right now`
@@ -246,6 +303,7 @@ Before recording, the focused checks are:
 bun clients/khala-code-desktop/scripts/part2-delegation-smoke.ts
 bun clients/khala-code-desktop/scripts/part2-gepa-manifest-bridge.ts --summary /Users/christopherdavid/work/mutalisk/out/khala-fleet-delegation-summary.json --out out/khala-gepa-bridge-proof.json
 bun run typecheck:khala-code-desktop
+bun test clients/khala-code-desktop/tests/gym-proof-loader.test.ts clients/khala-code-desktop/tests/gym-graph-renderer.test.ts
 bun test clients/khala-code-desktop/tests/khala-codex-fleet-tools.test.ts
 bun run --cwd apps/openagents.com/workers/api test -- src/inference/gym/mutalisk-khala-delegation-bridge.test.ts src/probe-gepa-standing-optimization-loop.test.ts
 git diff --check
