@@ -829,8 +829,6 @@ const sidebarRich = <Message>(input: SidebarRichProps<Message>): Html => {
   )
 }
 
-export type SidebarSide = 'left' | 'right'
-
 export type SidebarPrimitiveItem = Readonly<{
   value: string
   disabled?: boolean
@@ -886,10 +884,6 @@ export type SidebarNavProps<Message> = BasecoatAttrs<Message> & Readonly<{
   label?: string
 }>
 
-export type SidebarSlotProps<Message> = BasecoatAttrs<Message> & Readonly<{
-  children: BasecoatChildren
-}>
-
 export type SidebarPrimitiveGroupProps<Message> = SidebarSlotProps<Message> & Readonly<{
   label?: string
 }>
@@ -916,7 +910,7 @@ export type SidebarMenuLinkProps<Message> = SidebarMenuButtonProps<Message> & Re
   rel?: string
 }>
 
-export type SidebarViewItem<Message> = SidebarItem & Readonly<{
+export type SidebarViewItem<Message> = SidebarPrimitiveItem & Readonly<{
   children: BasecoatChildren
   href?: string
   target?: string
