@@ -6,6 +6,16 @@ Status: internal architecture audit. Direction-setting only. This document
 does not claim a shipped UI feature, does not publish a benchmark result, does
 not promote a candidate, and does not change runtime authority.
 
+Update, 2026-06-30: the minimum no-UI bridge for the part-two recording now
+exists in
+`apps/openagents.com/workers/api/src/inference/gym/mutalisk-khala-delegation-bridge.ts`
+with the operator script
+`clients/khala-code-desktop/scripts/part2-gepa-manifest-bridge.ts`. It covers
+typed job/summary schemas, in-memory demo storage, run-progress snapshots,
+Mutalisk summary ingest, standing-loop conversion, and admission projection.
+The polished Khala Code UI and automatic Mutalisk worker dispatch remain
+future work.
+
 ## 0. Executive Answer
 
 Mutalisk belongs in the Gym as the offline optimizer lane for Khala Code's

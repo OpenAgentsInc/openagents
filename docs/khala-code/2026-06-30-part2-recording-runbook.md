@@ -13,11 +13,12 @@ Record the part-two follow-up to transcript 245:
 1. show Khala Code can steer the Codex Fleet;
 2. show the old `0/1 available` `codex_spawn` dead-end no longer appears;
 3. show the deterministic `khala.fleet.delegate` module path;
-4. later in the sequence, feed a Mutalisk candidate into the no-UI Gym bridge.
+4. feed a Mutalisk candidate into the no-UI Gym bridge and show the
+   admission-ready Action Submission proposal ref.
 
-This runbook starts with the #7752 deterministic delegation smoke. #7753,
-Mutalisk #10, and #7754 will extend it with token-rate status, candidate
-emission, and Gym/admission ingest.
+This runbook covers the minimum #7755 recording slice: #7752 deterministic
+delegation smoke, #7753 token-rate status, Mutalisk #10 candidate emission, and
+#7754 no-UI Gym/admission ingest.
 
 ## Preflight Smoke
 
@@ -156,6 +157,73 @@ The important on-camera claim is narrow: Khala Code no longer asks the user to
 manually discover Pylon/Codex capacity config. The deterministic bundle performs
 the handoff and makes the module path visible.
 
+## Mutalisk Candidate And Gym Bridge
+
+Run the Mutalisk offline demo from a clean Mutalisk checkout:
+
+```sh
+cd /Users/christopherdavid/work/mutalisk
+uv run mutalisk-optimize demo khala-fleet-delegation \
+  --dataset fixtures/khala_fleet_delegation_demo.json \
+  --max-metric-calls 8 \
+  --emit-openagents-summary out/khala-fleet-delegation-summary.json
+```
+
+Expected shape:
+
+```text
+Mutalisk Khala fleet delegation demo: PASS
+mode:                 offline_gepa_no_lm_no_network
+signature:            khala.fleet.delegation
+metricName:           khala.fleet.delegation
+metricValueBps:       10000
+candidateManifestRef: candidate_manifest.khala.fleet.delegation...
+candidateRef:         candidate.khala.fleet.delegation...
+candidateArtifact:    out/candidates/...
+openagentsSummary:    out/khala-fleet-delegation-summary.json
+OpenAgents no-UI bridge:
+  bun clients/khala-code-desktop/scripts/part2-gepa-manifest-bridge.ts --summary out/khala-fleet-delegation-summary.json --out out/khala-gepa-bridge-proof.json
+```
+
+Then copy the summary JSON into the OpenAgents checkout or point the bridge at
+the Mutalisk output path directly:
+
+```sh
+cd /Users/christopherdavid/work/openagents
+bun clients/khala-code-desktop/scripts/part2-gepa-manifest-bridge.ts \
+  --summary /Users/christopherdavid/work/mutalisk/out/khala-fleet-delegation-summary.json \
+  --out out/khala-gepa-bridge-proof.json
+```
+
+Expected shape:
+
+```text
+OpenAgents Mutalisk Gym bridge: PASS
+runRef=gym.run.khala_code_delegation_gepa...
+jobRef=gym.job.mutalisk_khala_delegation...
+stage=completed
+candidateManifestRef=candidate_manifest.khala.fleet.delegation...
+candidateRef=candidate.khala.fleet.delegation...
+metricValueBps=10000
+admissionDecision=gated_proposal_ready
+decisionGrade=false
+actionSubmissionProposalRef=action_submission.khala_fleet_delegation...
+proof=out/khala-gepa-bridge-proof.json
+```
+
+The bridge is a no-UI backend proof. It schema-decodes Mutalisk's public-safe
+`psionic.probe_gepa_candidate_manifest.v1` summary, creates the typed
+`openagents.gym.mutalisk_khala_delegation_job.v0` /
+`openagents.gym.mutalisk_khala_delegation_summary.v0` records in the
+in-memory demo store, emits `openagents.gym.run_progress.v1` snapshots for
+`queued -> running -> summary_ingested -> admission_projected -> completed` or
+`blocked`, converts the summary into the
+`probe-gepa-standing-optimization-loop` input, and calls
+`projectKhalaFleetDelegationCandidateAdmission`. It does not import Mutalisk
+Python, DSPy, or GEPA runtime code; it does not auto-promote or approve the
+candidate; and `decisionGrade` remains `false` until real held-out/live evidence
+satisfies the Gym gates.
+
 ## Failure Triage
 
 - `codex_spawn_failed: No Pylon Codex assignment capacity is available right now`
@@ -176,7 +244,9 @@ Before recording, the focused checks are:
 
 ```sh
 bun clients/khala-code-desktop/scripts/part2-delegation-smoke.ts
+bun clients/khala-code-desktop/scripts/part2-gepa-manifest-bridge.ts --summary /Users/christopherdavid/work/mutalisk/out/khala-fleet-delegation-summary.json --out out/khala-gepa-bridge-proof.json
 bun run typecheck:khala-code-desktop
 bun test clients/khala-code-desktop/tests/khala-codex-fleet-tools.test.ts
+bun run --cwd apps/openagents.com/workers/api test -- src/inference/gym/mutalisk-khala-delegation-bridge.test.ts src/probe-gepa-standing-optimization-loop.test.ts
 git diff --check
 ```
