@@ -74,6 +74,9 @@ export type KhalaPermissionMode = typeof KhalaPermissionMode.Type
 export const KhalaToolExecutionMode = S.Literals(["local", "hosted", "delegated"])
 export type KhalaToolExecutionMode = typeof KhalaToolExecutionMode.Type
 
+export const KhalaToolPlannerSource = S.Literals(["built_in", "mcp", "plugin"])
+export type KhalaToolPlannerSource = typeof KhalaToolPlannerSource.Type
+
 export const KhalaJsonSchema = S.Record(S.String, S.Unknown)
 export type KhalaJsonSchema = typeof KhalaJsonSchema.Type
 
@@ -508,17 +511,60 @@ export interface KhalaToolExecuteContext {
   readonly services: KhalaToolServices
 }
 
+export type KhalaToolModelMetadata = Readonly<{
+  readonly capabilities?: ReadonlyArray<string>
+  readonly contextWindowTokens?: number
+  readonly id?: string
+}>
+
+export type KhalaToolPlannerEnvironment = Readonly<Record<string, string | undefined>>
+
+export type KhalaToolFeatureFlags = Readonly<Record<string, boolean | undefined>>
+
+export type KhalaToolPlannerRule = Readonly<{
+  readonly defer?: boolean
+  readonly featureFlags?: ReadonlyArray<string>
+  readonly modelCapabilities?: ReadonlyArray<string>
+  readonly modes?: ReadonlyArray<KhalaToolAvailability>
+  readonly requiredEnv?: ReadonlyArray<string>
+  readonly searchable?: boolean
+  readonly source?: KhalaToolPlannerSource
+}>
+
+export type KhalaToolPlanInput = Readonly<{
+  readonly env?: KhalaToolPlannerEnvironment
+  readonly featureFlags?: KhalaToolFeatureFlags
+  readonly includeDeferred?: boolean
+  readonly mode: KhalaToolAvailability
+  readonly model?: KhalaToolModelMetadata
+}>
+
+export type KhalaDeferredToolDefinition = Readonly<{
+  readonly definition: KhalaToolDefinition
+  readonly searchText: string
+  readonly source: Exclude<KhalaToolPlannerSource, "built_in">
+}>
+
+export type KhalaToolPlan = Readonly<{
+  readonly deferred: ReadonlyArray<KhalaDeferredToolDefinition>
+  readonly searchDeferredTools: (query: string, limit?: number) => ReadonlyArray<KhalaDeferredToolDefinition>
+  readonly searchTool: KhalaToolDefinition | undefined
+  readonly visible: ReadonlyArray<KhalaToolDefinition>
+}>
+
 export interface RegisteredKhalaTool {
   readonly definition: KhalaToolDefinition
   readonly execute?: (
     input: Readonly<Record<string, unknown>>,
     context: KhalaToolExecuteContext,
   ) => Effect.Effect<KhalaToolResult, KhalaToolRuntimeError>
+  readonly planner?: KhalaToolPlannerRule
 }
 
 export interface KhalaToolRegistry {
   readonly list: () => ReadonlyArray<KhalaToolDefinition>
   readonly materialize: (availability: KhalaToolAvailability) => ReadonlyArray<KhalaToolDefinition>
+  readonly plan: (input: KhalaToolPlanInput) => KhalaToolPlan
   readonly register: (tool: RegisteredKhalaTool) => void
   readonly resolve: (name: string) => RegisteredKhalaTool | undefined
 }
@@ -535,9 +581,139 @@ export function makeKhalaToolRegistry(initial: ReadonlyArray<RegisteredKhalaTool
       [...tools.values()]
         .map(tool => tool.definition)
         .filter(definition => definition.availability.includes(availability)),
+    plan: input => planKhalaTools([...tools.values()], input),
     register,
     resolve: name => tools.get(name),
   }
+}
+
+export const khalaToolSearchDefinition: KhalaToolDefinition = {
+  authority: "external_directory",
+  availability: ["extension"],
+  description: "Search deferred MCP and plugin tools available to this turn.",
+  executionMode: "hosted",
+  inputSchema: {
+    additionalProperties: false,
+    properties: {
+      limit: {
+        minimum: 1,
+        type: "number",
+      },
+      query: {
+        type: "string",
+      },
+    },
+    required: ["query"],
+    type: "object",
+  },
+  internalId: "khala.tools.tool_search",
+  label: "Search Tools",
+  name: "tool_search",
+  permissionMode: "allow",
+  prompt: "Search deferred external tools by name, label, description, and prompt guidance.",
+  promptGuidelines: [
+    "Use when a needed MCP or plugin tool is not directly visible.",
+    "First-party Khala tools are already visible and do not need tool_search discovery.",
+  ],
+}
+
+export function planKhalaTools(
+  tools: ReadonlyArray<RegisteredKhalaTool>,
+  input: KhalaToolPlanInput,
+): KhalaToolPlan {
+  const visible: KhalaToolDefinition[] = []
+  const deferred: KhalaDeferredToolDefinition[] = []
+
+  for (const tool of tools) {
+    if (!toolMatchesPlannerInput(tool, input)) continue
+
+    const source = tool.planner?.source ?? "built_in"
+    const defer = source !== "built_in" && tool.planner?.defer === true
+    if (defer && input.includeDeferred !== true) {
+      if (tool.planner?.searchable !== false) {
+        deferred.push({
+          definition: tool.definition,
+          searchText: searchableTextForTool(tool.definition),
+          source,
+        })
+      }
+      continue
+    }
+    visible.push(tool.definition)
+  }
+
+  const searchDeferredTools = (query: string, limit = 8): ReadonlyArray<KhalaDeferredToolDefinition> =>
+    searchKhalaDeferredTools(deferred, query, limit)
+  const searchTool = deferred.length > 0 && visible.every(tool => tool.name !== khalaToolSearchDefinition.name)
+    ? khalaToolSearchDefinition
+    : undefined
+
+  return {
+    deferred,
+    searchDeferredTools,
+    searchTool,
+    visible: searchTool === undefined ? visible : [...visible, searchTool],
+  }
+}
+
+export function searchKhalaDeferredTools(
+  tools: ReadonlyArray<KhalaDeferredToolDefinition>,
+  query: string,
+  limit = 8,
+): ReadonlyArray<KhalaDeferredToolDefinition> {
+  const terms = query
+    .toLocaleLowerCase()
+    .split(/\s+/u)
+    .map(term => term.trim())
+    .filter(Boolean)
+  const boundedLimit = Math.max(0, Math.floor(limit))
+  if (boundedLimit === 0) return []
+  if (terms.length === 0) return tools.slice(0, boundedLimit)
+
+  return tools
+    .map(tool => ({
+      score: scoreSearchableTool(tool.searchText, terms),
+      tool,
+    }))
+    .filter(result => result.score > 0)
+    .sort((left, right) => right.score - left.score || left.tool.definition.name.localeCompare(right.tool.definition.name))
+    .slice(0, boundedLimit)
+    .map(result => result.tool)
+}
+
+function toolMatchesPlannerInput(tool: RegisteredKhalaTool, input: KhalaToolPlanInput): boolean {
+  const rule = tool.planner
+  const modes = rule?.modes ?? tool.definition.availability
+  if (!modes.includes(input.mode)) return false
+  for (const flag of rule?.featureFlags ?? []) {
+    if (input.featureFlags?.[flag] !== true) return false
+  }
+  for (const envName of rule?.requiredEnv ?? []) {
+    if ((input.env?.[envName] ?? "") === "") return false
+  }
+  const capabilities = new Set(input.model?.capabilities ?? [])
+  for (const capability of rule?.modelCapabilities ?? []) {
+    if (!capabilities.has(capability)) return false
+  }
+  return true
+}
+
+function searchableTextForTool(definition: KhalaToolDefinition): string {
+  return [
+    definition.name,
+    definition.label,
+    definition.description,
+    definition.prompt,
+    ...definition.promptGuidelines,
+  ].join(" ").toLocaleLowerCase()
+}
+
+function scoreSearchableTool(searchText: string, terms: ReadonlyArray<string>): number {
+  let score = 0
+  for (const term of terms) {
+    if (searchText.includes(term)) score += term.length
+  }
+  return score
 }
 
 export function executeKhalaTool(
