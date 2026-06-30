@@ -1,4 +1,4 @@
-import { BrowserView, BrowserWindow } from "electrobun/bun"
+import { ApplicationMenu, BrowserView, BrowserWindow } from "electrobun/bun"
 import { resolve } from "node:path"
 
 import {
@@ -6,6 +6,7 @@ import {
   KHALA_CODE_DESKTOP_RPC_MAX_REQUEST_TIME_MS,
   type KhalaCodeDesktopRPCSchema,
 } from "../shared/rpc.js"
+import { khalaCodeDesktopApplicationMenu } from "./application-menu.js"
 import { createAppleFmSidecarHost } from "./apple-fm-sidecar.js"
 import { createOnDeviceDeciderHost } from "./on-device-decider-host.js"
 import { createKhalaCodeDesktopRpcRequestHandlers } from "./rpc-handlers.js"
@@ -174,6 +175,8 @@ const rpc = BrowserView.defineRPC<KhalaCodeDesktopRPCSchema>({
 startPreviewServer()
 
 if (Bun.env.KHALA_CODE_DESKTOP_OPEN_WINDOW !== "0") {
+  ApplicationMenu.setApplicationMenu(khalaCodeDesktopApplicationMenu)
+
   new BrowserWindow({
     title: "Khala Code",
     url: "views://khala-code-desktop/index.html",

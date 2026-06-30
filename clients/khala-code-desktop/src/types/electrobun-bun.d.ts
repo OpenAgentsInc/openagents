@@ -28,4 +28,8 @@ declare module "electrobun/bun" {
       readonly rpc?: unknown
     })
   }
+
+  export const ApplicationMenu: Readonly<{
+    setApplicationMenu: (menu: unknown) => void
+  }>
 }

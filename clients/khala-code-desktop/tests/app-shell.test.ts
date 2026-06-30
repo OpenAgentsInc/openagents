@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 
 import config from "../electrobun.config.js"
+import { khalaCodeDesktopApplicationMenu } from "../src/bun/application-menu"
 import { parseMessageSegments } from "../src/ui/transcript-render"
 
 describe("khala code desktop app shell", () => {
@@ -51,5 +52,28 @@ describe("khala code desktop app shell", () => {
       "prose",
       "code",
     ])
+  })
+
+  test("installs native edit menu accelerators for WebKit text editing", async () => {
+    const edit = khalaCodeDesktopApplicationMenu.find(
+      item => "label" in item && item.label === "Edit",
+    ) as { submenu?: Array<{ role?: string; accelerator?: string }> } | undefined
+    expect(edit).toBeDefined()
+    const byRole = new Map(
+      (edit?.submenu ?? [])
+        .filter(item => typeof item.role === "string")
+        .map(item => [item.role, item]),
+    )
+
+    expect(byRole.get("copy")?.accelerator).toBe("CommandOrControl+C")
+    expect(byRole.get("paste")?.accelerator).toBe("CommandOrControl+V")
+    expect(byRole.get("cut")?.accelerator).toBe("CommandOrControl+X")
+    expect(byRole.get("selectAll")?.accelerator).toBe("CommandOrControl+A")
+    expect(byRole.get("undo")?.accelerator).toBe("CommandOrControl+Z")
+
+    const bunEntry = await Bun.file(new URL("../src/bun/index.ts", import.meta.url)).text()
+    expect(bunEntry).toContain(
+      "ApplicationMenu.setApplicationMenu(khalaCodeDesktopApplicationMenu)",
+    )
   })
 })
