@@ -26,7 +26,7 @@ describe("khala code desktop app shell", () => {
     })
   })
 
-  test("renders the chat-only surface", async () => {
+  test("renders the chat shell with the fleet panel container", async () => {
     const html = await Bun.file(new URL("../src/ui/index.html", import.meta.url)).text()
 
     expect(html).toContain('class="khala-code-shell antialiased"')
@@ -40,8 +40,8 @@ describe("khala code desktop app shell", () => {
     expect(html).toContain("data-oa-command-composer-native-editing")
     expect(html).toContain("autofocus")
     expect(html).toContain('id="send-button"')
+    expect(html).toContain('id="fleet-panel"')
     expect(html).not.toContain("Pylons")
-    expect(html).not.toContain("Fleet")
   })
 
   test("does not seed dummy code or diff messages on first load", async () => {

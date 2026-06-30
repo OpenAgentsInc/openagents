@@ -42,14 +42,7 @@ const navGroups = (): ReadonlyArray<SidebarViewGroup<SidebarNavMessage>> => [
     label: "Khala Code",
     items: [
       { value: "chat", children: ["Chat"] },
-      { value: "sessions", children: ["Sessions"] },
-    ],
-  },
-  {
-    label: "Fleet",
-    items: [
       { value: "fleet", children: ["Fleet status"] },
-      { value: "settings", children: ["Settings"] },
     ],
   },
 ]
