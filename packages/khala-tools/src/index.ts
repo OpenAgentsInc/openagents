@@ -2,6 +2,36 @@ import { Effect, Schema as S } from "effect"
 import { redactKhalaPublicText } from "./redaction.js"
 
 export {
+  appendKhalaSessionModelItem,
+  appendKhalaSessionRolloutRecord,
+  appendKhalaSessionToolEvent,
+  compactKhalaSessionRollout,
+  createKhalaSessionRollout,
+  forkKhalaSessionRollout,
+  KhalaSessionModelItem,
+  KhalaSessionModelItemRole,
+  KhalaSessionRolloutRecord,
+  KhalaSessionRolloutRecordKind,
+  KhalaSessionRolloutSchemaVersion,
+  khalaSessionModelItems,
+  khalaSessionRolloutPath,
+  khalaSessionToolEvents,
+  listKhalaSessionRollouts,
+  parseKhalaSessionRolloutText,
+  readKhalaSessionRollout,
+  type KhalaSessionModelItem as KhalaSessionModelItemType,
+  type KhalaSessionModelItemRole as KhalaSessionModelItemRoleType,
+  type KhalaSessionRolloutAppendInput,
+  type KhalaSessionRolloutAppendOptions,
+  type KhalaSessionRolloutCreateOptions,
+  type KhalaSessionRolloutForkOptions,
+  type KhalaSessionRolloutLoaded,
+  type KhalaSessionRolloutRecord as KhalaSessionRolloutRecordType,
+  type KhalaSessionRolloutRecordKind as KhalaSessionRolloutRecordKindType,
+  type KhalaSessionRolloutSummary,
+} from "./session-rollout.js"
+
+export {
   KhalaPrivacyRedactionLive,
   KhalaPrivacyRedactionService,
   makeKhalaPrivacyRedactionService,
