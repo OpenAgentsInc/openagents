@@ -1,13 +1,19 @@
 import { describe, expect, test } from "bun:test"
 
 import {
+  DEFAULT_DESKTOP_LOCAL_ATTACHMENT_UPLOAD_POLICY,
+  DEFAULT_WEB_HOSTED_ATTACHMENT_UPLOAD_POLICY,
   applyComposerTransaction,
+  composerAttachmentContentAddressedRef,
   composerAttachmentId,
   composerBlockId,
   emptyComposerState,
   moveComposerAttachmentSelection,
   offerComposerLargeTextPaste,
   parseComposerMarkdown,
+  planComposerAttachmentUpload,
+  projectComposerAttachmentUploadReceipt,
+  readyComposerAttachmentTransaction,
   redoComposerState,
   retryComposerAttachmentTransaction,
   resolveComposerKeyBinding,
@@ -266,6 +272,175 @@ describe("composer state core", () => {
       status: "ready",
       digest: "sha256:abcd",
     })
+  })
+
+  test("plans hosted attachment uploads with typed tasks and public-safe receipts", () => {
+    const staged = stageComposerPastedFiles(
+      [
+        {
+          name: "screen.png",
+          type: "image/png",
+          size: 2048,
+          contentRef: "browser-file:screen.png",
+        },
+      ],
+      { idPrefix: "hosted" },
+    )
+    const state = apply(emptyComposerState(), staged.transaction)
+    const attachmentId = composerAttachmentId("hosted-1")
+    const planned = planComposerAttachmentUpload(
+      state,
+      attachmentId,
+      DEFAULT_WEB_HOSTED_ATTACHMENT_UPLOAD_POLICY,
+      10,
+    )
+
+    expect(planned.ok).toBe(true)
+    if (!planned.ok) throw new Error(planned.errorCode)
+    expect(planned.plan.surface).toBe("web-hosted")
+    expect(planned.plan.transaction.steps).toEqual([
+      {
+        _tag: "UpdateAttachment",
+        attachmentId,
+        patch: { status: "uploading", errorText: null },
+      },
+    ])
+    expect(planned.plan.tasks.map((task) => task.kind)).toEqual([
+      "upload_hosted_attachment",
+      "scan_attachment",
+      "store_thumbnail",
+    ])
+    expect(planned.plan.receipt).toMatchObject({
+      kind: "composer_attachment_privacy_receipt",
+      surface: "web-hosted",
+      status: "uploading",
+      name: "screen.png",
+      mime: "image/png",
+      sizeBytes: 2048,
+    })
+    expect(JSON.stringify(planned.plan.receipt)).not.toContain("previewUrl")
+
+    const uploading = apply(state, planned.plan.transaction)
+    const readyTx = readyComposerAttachmentTransaction(uploading, attachmentId, {
+      surface: "web-hosted",
+      digest: "sha256:ABCDEF",
+      thumbnailDigest: "0123",
+      dimensions: { width: 640, height: 480 },
+      time: 11,
+    })
+    expect(readyTx).not.toBe(null)
+    const ready = apply(uploading, readyTx!)
+    expect(ready.doc.attachments[0]).toMatchObject({
+      status: "ready",
+      digest: "sha256:ABCDEF",
+      contentRef:
+        "attachment.web-hosted.sha256.abcdef.screen.png",
+      thumbnailRef:
+        "attachment_thumbnail.web-hosted.sha256.0123.hosted-1",
+      dimensions: { width: 640, height: 480 },
+    })
+
+    const receipt = projectComposerAttachmentUploadReceipt({
+      attachment: ready.doc.attachments[0]!,
+      surface: "web-hosted",
+      observedAt: 12,
+    })
+    expect(receipt).toMatchObject({
+      status: "ready",
+      digest: "sha256:ABCDEF",
+      contentRef:
+        "attachment.web-hosted.sha256.abcdef.screen.png",
+      thumbnailRef:
+        "attachment_thumbnail.web-hosted.sha256.0123.hosted-1",
+      observedAt: 12,
+    })
+    expect(JSON.stringify(receipt)).not.toContain("browser-file")
+  })
+
+  test("rejects hosted attachments that violate size or type policy", () => {
+    const staged = stageComposerDroppedFiles(
+      [
+        { name: "archive.exe", type: "application/x-msdownload", size: 128 },
+        { name: "huge.txt", type: "text/plain", size: 30 * 1024 * 1024 },
+      ],
+      { idPrefix: "reject" },
+    )
+    const state = apply(emptyComposerState(), staged.transaction)
+
+    const badType = planComposerAttachmentUpload(
+      state,
+      composerAttachmentId("reject-1"),
+      DEFAULT_WEB_HOSTED_ATTACHMENT_UPLOAD_POLICY,
+      20,
+    )
+    expect(badType.ok).toBe(false)
+    if (badType.ok) throw new Error("expected mime rejection")
+    expect(badType.errorCode).toBe("mime_not_allowed")
+    expect(badType.receipt).toMatchObject({
+      status: "error",
+      errorCode: "mime_not_allowed",
+      surface: "web-hosted",
+    })
+    const erroredType = apply(state, badType.transaction)
+    expect(erroredType.doc.attachments[0]).toMatchObject({
+      status: "error",
+      errorText: "Attachment type is not supported.",
+    })
+
+    const tooLarge = planComposerAttachmentUpload(
+      state,
+      composerAttachmentId("reject-2"),
+      DEFAULT_WEB_HOSTED_ATTACHMENT_UPLOAD_POLICY,
+      21,
+    )
+    expect(tooLarge.ok).toBe(false)
+    if (tooLarge.ok) throw new Error("expected size rejection")
+    expect(tooLarge.errorCode).toBe("file_too_large")
+    expect(tooLarge.receipt.receiptRef).toContain("file_too_large")
+  })
+
+  test("keeps desktop-local and web-hosted attachment refs separate", () => {
+    const staged = stageComposerDroppedFiles(
+      [
+        {
+          name: "notes.md",
+          type: "text/markdown",
+          size: 512,
+          contentRef: "local-file:/private/tmp/notes.md",
+        },
+      ],
+      { idPrefix: "local" },
+    )
+    const state = apply(emptyComposerState(), staged.transaction)
+    const attachmentId = composerAttachmentId("local-1")
+    const planned = planComposerAttachmentUpload(
+      state,
+      attachmentId,
+      DEFAULT_DESKTOP_LOCAL_ATTACHMENT_UPLOAD_POLICY,
+      30,
+    )
+
+    expect(planned.ok).toBe(true)
+    if (!planned.ok) throw new Error(planned.errorCode)
+    expect(planned.plan.tasks.map((task) => task.kind)).toEqual([
+      "register_local_attachment",
+      "scan_attachment",
+      "parse_text_attachment",
+    ])
+
+    const localRef = composerAttachmentContentAddressedRef({
+      surface: "desktop-local",
+      digest: "sha256:feed",
+      name: "notes.md",
+    })
+    const hostedRef = composerAttachmentContentAddressedRef({
+      surface: "web-hosted",
+      digest: "sha256:feed",
+      name: "notes.md",
+    })
+    expect(localRef).toBe("attachment.desktop-local.sha256.feed.notes.md")
+    expect(hostedRef).toBe("attachment.web-hosted.sha256.feed.notes.md")
+    expect(localRef).not.toBe(hostedRef)
   })
 
   test("moves keyboard selection across attachment refs", () => {
