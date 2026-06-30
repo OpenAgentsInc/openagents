@@ -439,6 +439,13 @@ APM triage rule:
 - `completedTokensPerMinute == 0` with `active.serverAssignmentCount > 0` and
   increasing `active.inFlightTokens` means the fleet is still working; wait for
   turn closeout before calling the public counter stalled.
+- Under parallel Codex load, compare `active.serverAssignmentCount` to
+  `fleet.activeAssignments.length` in the raw snapshot and inspect every
+  `active.serverAssignments[].source`. A healthy in-flight fanout can be mixed:
+  some assignments may report `assignment_progress.tokensSoFar` while younger
+  turns fall back to `pylon_codex_raw_event_chunks.byte_length` until the next
+  progress event or final turn closeout. The APM number may be estimated in this
+  state; it is an observability signal, not assignment proof.
 - `active.serverAssignmentCount > 0` with `active.inFlightTokens == 0` is an
   observability gap unless the run just started. Enable progress token estimates
   on trusted operators, then re-check whether `active.serverAssignments[].source`
