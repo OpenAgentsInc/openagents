@@ -163,6 +163,31 @@ describe("khala code desktop app shell", () => {
     expect(inline.some(part => part.kind === "link" && part.href.startsWith("javascript:"))).toBe(false)
   })
 
+  test("keeps tool names with underscores literal in markdown prose", () => {
+    const inline = parseMarkdownInline(
+      "Tools include ask_user, write_stdin, browser_readtext, browser_readdom, and exec_command.",
+    )
+
+    expect(inline).toEqual([
+      {
+        kind: "text",
+        text: "Tools include ask_user, write_stdin, browser_readtext, browser_readdom, and exec_command.",
+      },
+    ])
+  })
+
+  test("hides dangling markdown markers while a response is still streaming", () => {
+    expect(parseMarkdownInline("We can **search files")).toEqual([
+      { kind: "text", text: "We can search files" },
+    ])
+    expect(parseMarkdownInline("Run `bun test")).toEqual([
+      { kind: "text", text: "Run bun test" },
+    ])
+    expect(parseMarkdownInline("Use _preview")).toEqual([
+      { kind: "text", text: "Use preview" },
+    ])
+  })
+
   test("parses tool transcripts without flattening terminal output", () => {
     expect(parseToolTranscript("ls: ok\n\n.:\nalpha.txt\nBeta.txt\nZoo/")).toEqual({
       output: ".:\nalpha.txt\nBeta.txt\nZoo/",

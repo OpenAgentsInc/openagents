@@ -2,7 +2,11 @@ import { describe, expect, test } from 'bun:test'
 import type { Html } from 'foldkit/html'
 
 import { AiElements } from '../src'
-import { parseMarkdownBlocks, response } from '../src/ai-elements/response'
+import {
+  parseMarkdownBlocks,
+  parseMarkdownInline,
+  response,
+} from '../src/ai-elements/response'
 
 // A lightweight Snabbdom-style vnode walker (mirrors business.test.ts) so the
 // markdown renderer can be asserted as serialized markup without a DOM.
@@ -103,6 +107,26 @@ describe('response markdown — inline structure', () => {
     expect(markup).toContain('code')
   })
 
+  test('does not render underscores inside identifiers as emphasis', () => {
+    const text =
+      'Tools: ask_user, write_stdin, browser_readtext, browser_readdom, exec_command.'
+    const parts = parseMarkdownInline(text)
+    const markup = render(text)
+
+    expect(parts).toEqual([{ kind: 'text', text }])
+    expect(markup).toContain('ask_user')
+    expect(markup).toContain('browser_readtext')
+    expect(markup).not.toContain('<em')
+  })
+
+  test('still renders underscore emphasis at word boundaries', () => {
+    const markup = render('This is _intentional emphasis_, not ask_user.')
+
+    expect(markup).toContain('<em')
+    expect(markup).toContain('intentional emphasis')
+    expect(markup).toContain('ask_user')
+  })
+
   test('renders safe links and degrades unsafe schemes to text', () => {
     // The href is a DOM prop on the vnode (not a serialized attr in the
     // lightweight walker); asserting the anchor element + visible label proves
@@ -120,16 +144,28 @@ describe('response markdown — inline structure', () => {
 })
 
 describe('response markdown — streaming tolerance (streamdown pattern)', () => {
-  test('a half-open bold marker never throws and renders as text', () => {
+  test('a half-open bold marker never throws and hides the raw marker', () => {
     expect(() => render('A reply with **bold stil')).not.toThrow()
     const markup = render('A reply with **bold stil')
-    // No <strong> for the dangling marker; the literal text is preserved.
+    // No <strong> for the dangling marker; the content remains readable without
+    // flashing raw markdown while streaming.
     expect(markup).toContain('bold stil')
+    expect(markup).not.toContain('**')
+    expect(markup).not.toContain('<strong')
   })
 
-  test('a dangling inline code backtick renders literally', () => {
+  test('a dangling inline code backtick hides the raw marker', () => {
     expect(() => render('partial `cod')).not.toThrow()
     expect(render('partial `cod')).toContain('cod')
+    expect(render('partial `cod')).not.toContain('`')
+  })
+
+  test('a dangling emphasis marker hides the raw marker while streaming', () => {
+    const markup = render('partial _italic')
+
+    expect(markup).toContain('italic')
+    expect(markup).not.toContain('_italic')
+    expect(markup).not.toContain('<em')
   })
 
   test('an unterminated fenced block renders the captured lines as code', () => {

@@ -25,6 +25,49 @@ export const isSafeMarkdownHref = (href: string): boolean => {
   )
 }
 
+const isWhitespace = (char: string | undefined): boolean =>
+  char !== undefined && /\s/u.test(char)
+
+const isWordChar = (char: string | undefined): boolean =>
+  char !== undefined && /[\p{L}\p{N}]/u.test(char)
+
+const isValidInlineOpener = (
+  text: string,
+  index: number,
+  marker: "*" | "_" | "**" | "__",
+): boolean => {
+  const before = text[index - 1]
+  const after = text[index + marker.length]
+  if (after === undefined || isWhitespace(after)) return false
+  return marker.includes("_") ? !isWordChar(before) : true
+}
+
+const isValidInlineCloser = (
+  text: string,
+  index: number,
+  marker: "*" | "_" | "**" | "__",
+): boolean => {
+  const before = text[index - 1]
+  const after = text[index + marker.length]
+  if (before === undefined || isWhitespace(before)) return false
+  return marker.includes("_") ? !isWordChar(after) : true
+}
+
+const findClosingMarker = (
+  text: string,
+  from: number,
+  marker: "*" | "_" | "**" | "__",
+): number => {
+  let searchFrom = from
+  while (searchFrom < text.length) {
+    const end = text.indexOf(marker, searchFrom)
+    if (end < 0) return -1
+    if (isValidInlineCloser(text, end, marker)) return end
+    searchFrom = end + marker.length
+  }
+  return -1
+}
+
 export const parseMarkdownInline = (text: string): ReadonlyArray<MarkdownInlinePart> => {
   const nodes: MarkdownInlinePart[] = []
   let buffer = ""
@@ -47,7 +90,8 @@ export const parseMarkdownInline = (text: string): ReadonlyArray<MarkdownInlineP
         index += end + 1
         continue
       }
-      buffer += "`"
+      // Streaming can leave an inline-code opener dangling for a few deltas.
+      // Hide the marker while keeping the visible content as plain text.
       index += 1
       continue
     }
@@ -75,36 +119,58 @@ export const parseMarkdownInline = (text: string): ReadonlyArray<MarkdownInlineP
       continue
     }
 
-    const boldMarker = rest.startsWith("**") ? "**" : rest.startsWith("__") ? "__" : ""
-    if (boldMarker.length > 0) {
-      const end = rest.indexOf(boldMarker, boldMarker.length)
-      if (end > 0) {
-        flush()
-        nodes.push({
-          children: parseMarkdownInline(rest.slice(boldMarker.length, end)),
-          kind: "strong",
-        })
-        index += end + boldMarker.length
+    const boldMarker: "**" | "__" | undefined = rest.startsWith("**")
+      ? "**"
+      : rest.startsWith("__")
+        ? "__"
+        : undefined
+    if (boldMarker !== undefined) {
+      if (!isValidInlineOpener(text, index, boldMarker)) {
+        buffer += boldMarker
+        index += boldMarker.length
         continue
       }
-      buffer += boldMarker
+
+      const end = findClosingMarker(text, index + boldMarker.length, boldMarker)
+      if (end > index) {
+        flush()
+        nodes.push({
+          children: parseMarkdownInline(text.slice(index + boldMarker.length, end)),
+          kind: "strong",
+        })
+        index = end + boldMarker.length
+        continue
+      }
+      // Keep streaming output clean: do not show raw `**`/`__` before the close
+      // marker arrives on a later delta.
       index += boldMarker.length
       continue
     }
 
-    const italicMarker = rest.startsWith("*") ? "*" : rest.startsWith("_") ? "_" : ""
-    if (italicMarker.length > 0) {
-      const end = rest.indexOf(italicMarker, 1)
-      if (end > 0) {
-        flush()
-        nodes.push({
-          children: parseMarkdownInline(rest.slice(1, end)),
-          kind: "emphasis",
-        })
-        index += end + 1
+    const italicMarker: "*" | "_" | undefined = rest.startsWith("*")
+      ? "*"
+      : rest.startsWith("_")
+        ? "_"
+        : undefined
+    if (italicMarker !== undefined) {
+      if (!isValidInlineOpener(text, index, italicMarker)) {
+        buffer += italicMarker
+        index += 1
         continue
       }
-      buffer += italicMarker
+
+      const end = findClosingMarker(text, index + 1, italicMarker)
+      if (end > index) {
+        flush()
+        nodes.push({
+          children: parseMarkdownInline(text.slice(index + 1, end)),
+          kind: "emphasis",
+        })
+        index = end + 1
+        continue
+      }
+      // Hide dangling emphasis openers while streaming so users do not see raw
+      // Markdown flicker before the closer arrives.
       index += 1
       continue
     }
