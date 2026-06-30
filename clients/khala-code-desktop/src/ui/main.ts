@@ -131,15 +131,6 @@ if (!isKhalaPreviewWindow) {
   new Electroview({ rpc: nativeRpc })
 }
 
-const initialMessages: readonly KhalaCodeDesktopMessage[] = [
-  {
-    id: "assistant-wake",
-    role: "assistant",
-    body:
-      "Khala Code is awake. Point us at a repo, and we will keep the patch small enough to understand.",
-  },
-]
-
 const composerClasses = {
   attachment: commandComposerClassName("attachment"),
   attachmentAction: commandComposerClassName("attachmentAction"),
@@ -168,7 +159,7 @@ const previewButton = requireElement<HTMLButtonElement>("#preview-button")
 const resizeButton = requireElement<HTMLButtonElement>("#resize-button")
 const fileInput = requireElement<HTMLInputElement>("#file-input")
 
-let messages: KhalaCodeDesktopMessage[] = [...initialMessages]
+let messages: KhalaCodeDesktopMessage[] = []
 let composerState: ComposerState = emptyComposerState()
 let pendingTurn = false
 let lastTurnFailed = false
@@ -196,13 +187,6 @@ type ComposerHudRuntime = Readonly<{
 
 let composerHudRuntime: ComposerHudRuntime | null = null
 
-const roleLabel = (role: KhalaCodeDesktopMessageRole): string => {
-  if (role === "user") return "You"
-  if (role === "tool") return "Tool"
-  if (role === "system") return "System"
-  return "Khala Code"
-}
-
 const messageClass = (role: KhalaCodeDesktopMessageRole): string =>
   `message-bubble message-bubble--${role}`
 
@@ -211,15 +195,11 @@ const renderMessage = (message: KhalaCodeDesktopMessage): HTMLElement => {
   article.className = messageClass(message.role)
   article.dataset.messageId = message.id
 
-  const label = document.createElement("div")
-  label.className = "message-label"
-  label.textContent = roleLabel(message.role)
-
   const body = document.createElement("div")
   body.className = "message-body"
   body.append(...renderMessageBody(message.body, message.role))
 
-  article.append(label, body)
+  article.append(body)
   return article
 }
 
@@ -1004,7 +984,7 @@ const controls = {
   messages: () => messages.map(message => ({ ...message })),
   pylonStatus: () => rpc.request.pylonStatus(),
   reset: () => {
-    messages = [...initialMessages]
+    messages = []
     resetComposerDraft()
     pendingTurn = false
     lastTurnFailed = false

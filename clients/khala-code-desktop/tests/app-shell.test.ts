@@ -55,13 +55,30 @@ describe("khala code desktop app shell", () => {
     expect(main).not.toContain("QueueItem")
   })
 
-  test("seeds first-load copy in Khala's plural voice", async () => {
+  test("starts without a seeded assistant greeting", async () => {
     const main = await Bun.file(new URL("../src/ui/main.ts", import.meta.url)).text()
 
-    expect(main).toContain("Point us at a repo")
-    expect(main).toContain("we will keep the patch")
+    expect(main).toContain("let messages: KhalaCodeDesktopMessage[] = []")
+    expect(main).toContain("messages = []")
+    expect(main).not.toContain("initialMessages")
+    expect(main).not.toContain("Khala Code is awake")
+    expect(main).not.toContain("assistant-wake")
+    expect(main).not.toContain("Point us at a repo")
+    expect(main).not.toContain("we will keep the patch")
     expect(main).not.toContain("Point me at a repo")
     expect(main).not.toContain("I will keep")
+  })
+
+  test("renders messages without speaker labels above them", async () => {
+    const main = await Bun.file(new URL("../src/ui/main.ts", import.meta.url)).text()
+    const css = await Bun.file(new URL("../src/ui/styles.css", import.meta.url)).text()
+
+    expect(main).toContain("article.append(body)")
+    expect(main).not.toContain("roleLabel")
+    expect(main).not.toContain("message-label")
+    expect(main).not.toContain('return "You"')
+    expect(main).not.toContain('return "Khala Code"')
+    expect(css).not.toContain(".message-label")
   })
 
   test("keeps composer focus styling on the frame instead of the textarea", async () => {

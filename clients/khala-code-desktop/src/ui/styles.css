@@ -144,22 +144,6 @@ button {
   color: #b7c8dc;
 }
 
-.message-label {
-  color: #8fb6ff;
-  font-size: 0.68rem;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-}
-
-.message-bubble--user .message-label {
-  color: #4fd0ff;
-}
-
-.message-bubble--tool .message-label {
-  color: #6ee7b7;
-}
-
 .message-body {
   display: grid;
   gap: 12px;
