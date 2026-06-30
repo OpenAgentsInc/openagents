@@ -137,6 +137,92 @@ describe('public product promises document', () => {
     })
   })
 
+  test('keeps issue 7023 desktop and builtin compute proof yellow-only', () => {
+    const decoded = S.decodeUnknownSync(ProductPromisesDocument)(
+      publicProductPromisesDocument(),
+    )
+    const promiseById = new Map(
+      decoded.promises.map(promise => [promise.promiseId, promise]),
+    )
+    const desktop = promiseById.get('autopilot.desktop_gui_client.v1')
+    const builtinCompute = promiseById.get(
+      'autopilot.builtin_compute_agent.v1',
+    )
+
+    expect(desktop).toMatchObject({
+      state: 'yellow',
+      blockerRefs: [
+        'blocker.product_promises.autopilot_desktop_owner_review_green_pending',
+        'blocker.product_promises.autopilot_desktop_live_runtimes_not_wired',
+        'blocker.product_promises.autopilot_desktop_remote_cloud_lane_not_wired',
+        'blocker.product_promises.autopilot_desktop_pricing_distribution_undecided',
+      ],
+      evidenceRefs: expect.arrayContaining([
+        'docs/launch/JUNE19_ROADMAP.md',
+        'docs/launch/artifacts/ao6-20260619T010148/dmg-sha256.txt',
+        'docs/launch/artifacts/ao6-20260619T010148/initial-window.png',
+        'docs/launch/artifacts/ao6-20260619T010148/pylon-detail-summary.json',
+        'docs/launch/artifacts/ao6-20260619T010148/replay-verdict-summary.json',
+        'docs/launch/artifacts/ao6-20260619T010148/settlement-receipt-summary.json',
+        'docs/launch/artifacts/ao6-20260619T010148/live-refs.txt',
+      ]),
+    })
+    expect(desktop?.blockerRefs).not.toContain(
+      'blocker.product_promises.autopilot_desktop_from_dmg_proof_owner_gated',
+    )
+    expect(desktop?.safeCopy).toContain(
+      'This is NOT a green/default-on production claim',
+    )
+    expect(desktop?.safeCopy).toContain('pylon.fa4e9049a4329f3d56e2')
+    expect(desktop?.safeCopy).toContain(
+      'training.verification.challenge.9fd49062-f82c-46ee-a2a0-242d36dd126e',
+    )
+    expect(desktop?.verification).toContain(
+      'Green still requires owner review/sign-off',
+    )
+    expect(desktop?.unsafeCopy).toContain(
+      'Do not claim the from-DMG clean-Mac evidence makes Autopilot Desktop green',
+    )
+
+    expect(builtinCompute).toMatchObject({
+      state: 'yellow',
+      blockerRefs: [
+        'blocker.product_promises.builtin_compute_agent_signed_recut_missing',
+        'blocker.product_promises.builtin_compute_agent_live_from_install_smoke_missing',
+        'blocker.product_promises.openagents_compute_metering_live_smoke_missing',
+        'blocker.product_promises.builtin_compute_agent_owner_review_green_pending',
+      ],
+      evidenceRefs: expect.arrayContaining([
+        'apps/openagents.com/workers/api/src/builtin-compute-agent-metering-smoke.ts',
+        'apps/openagents.com/workers/api/src/builtin-compute-agent-metering-smoke.test.ts',
+        'docs/launch/vertex-fleet/autopilot.builtin_compute_agent.v1.md',
+        'docs/launch/JUNE19_ROADMAP.md',
+      ]),
+    })
+    expect(builtinCompute?.safeCopy).toContain(
+      'not green/default-on production',
+    )
+    expect(builtinCompute?.safeCopy).toContain(
+      'not a from-install built-in-compute Go online session',
+    )
+    expect(builtinCompute?.verification).toContain(
+      'The AO6 DMG evidence is relevant installer proof for the desktop GUI only',
+    )
+    expect(builtinCompute?.unsafeCopy).toContain(
+      'Do not claim the already-published rc.2 installer includes this built-in agent',
+    )
+
+    const currentCopy = [
+      decoded.currentMonorepoStatus.summary,
+      ...decoded.currentMonorepoStatus.caveats,
+      ...decoded.notes,
+    ].join('\n')
+    expect(currentCopy).toContain('Registry 2026-06-29.4')
+    expect(currentCopy).toContain('flips NO promise state')
+    expect(currentCopy).toContain('both promises stay yellow')
+    expect(currentCopy).toContain('NOT a green/default-on production claim')
+  })
+
   test('matches the browser-facing schema', () => {
     const decoded = S.decodeUnknownSync(ProductPromisesDocument)(
       publicProductPromisesDocument(),
