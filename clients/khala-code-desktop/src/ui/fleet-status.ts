@@ -316,22 +316,8 @@ const render = (
   connectBtn.type = "button"
   connectBtn.disabled = view.phase === "connecting"
   connectBtn.addEventListener("click", () => {
-    // WKWebView has no window.prompt, so collect the name inline.
-    const input = el("input", "khala-fleet-connect-input")
-    input.type = "text"
-    input.placeholder = "codex-3"
-    const start = el("button", "khala-fleet-refresh", "Start")
-    start.type = "button"
-    const submit = (): void => {
-      const accountRef = input.value.trim()
-      if (accountRef.length > 0) handlers.onConnect(accountRef)
-    }
-    start.addEventListener("click", submit)
-    input.addEventListener("keydown", event => {
-      if (event.key === "Enter") submit()
-    })
-    actions.replaceChildren(input, start)
-    input.focus()
+    // Auto-assign a short, unique ref — no name prompt.
+    handlers.onConnect(`codex-${crypto.randomUUID().slice(0, 8)}`)
   })
   actions.append(connectBtn)
   const refresh = el("button", "khala-fleet-refresh", "Refresh")
