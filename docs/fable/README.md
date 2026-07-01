@@ -39,3 +39,16 @@ Contents:
   with ticking rate limits and reconnect, throughput gauges, Inbox flags),
   full RPC/QA parity per the QA framework doc, and a "clean 2B-token day"
   live acceptance protocol with a definition-of-done checklist.
+- `2026-07-01-khala-code-effect-integration-audit.md` — deep Effect-usage
+  audit of Khala Code Desktop and everything it consumes, grounded in the
+  Effect v4 source (`projects/repos/effect-smol`), its `.patterns/` rules,
+  and `effect-solutions`. Headline: the desktop links Effect but doesn't
+  adopt it (5/55 files import it; zero services/layers/Config/Scope/Clock;
+  five hand-rolled subprocess implementations; an unvalidated 57-method RPC
+  contract; a 2,598-line vanilla-DOM shell) and takes the imperative escape
+  hatch out of every Effect/Foldkit surface it consumes. Includes a v4
+  best-practices baseline, ranked debt with failure modes, and a four-phase
+  plan: Schema-first contracts → scoped process/protocol services
+  (ChildProcess, CodexAppServer, PylonService, config) → staged Foldkit
+  shell migration on the `apps/autopilot-desktop` template → @effect/vitest
+  + TestClock + guardrails.
