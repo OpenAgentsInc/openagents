@@ -618,7 +618,7 @@ export const KHALA_CODE_DESKTOP_SLASH_COMMANDS = [
     enumName: "Stop",
     command: "stop",
     aliases: ["clean"],
-    description: "Stops an active background terminal command",
+    description: "Stop all background terminal commands",
     supportsInlineArgs: false,
     availableInSideConversation: false,
     availableDuringTask: true,

@@ -133,6 +133,18 @@ const previewRpc = (): DesktopRpc => ({
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["codexApprovalRespond"]>>
       >("codexApprovalRespond", request),
+    codexBackgroundTerminalsClean: request =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["codexBackgroundTerminalsClean"]>>
+      >("codexBackgroundTerminalsClean", request),
+    codexBackgroundTerminalsList: request =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["codexBackgroundTerminalsList"]>>
+      >("codexBackgroundTerminalsList", request),
+    codexBackgroundTerminalsTerminate: request =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["codexBackgroundTerminalsTerminate"]>>
+      >("codexBackgroundTerminalsTerminate", request),
     codexConfigValueWrite: request =>
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["codexConfigValueWrite"]>>

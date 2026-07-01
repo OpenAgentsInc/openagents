@@ -1058,6 +1058,121 @@ describe("Khala Code desktop RPC handlers", () => {
     }])
   })
 
+  test("dispatches background terminal slash commands and RPC actions through Codex app-server", async () => {
+    const requests: { method: string, params: unknown }[] = []
+    const handlers = createKhalaCodeDesktopRpcRequestHandlers({
+      appleFmReadiness: () => {
+        throw new Error("not used")
+      },
+      codexAppServerHost: {
+        dispose: () => undefined,
+        request: async <Result>(method: string, params?: unknown) => {
+          requests.push({ method, params })
+          return method === "thread/backgroundTerminals/list"
+            ? {
+              data: [{
+                command: "python3 -m http.server",
+                cwd: "/workspace",
+                itemId: "item-1",
+                osPid: null,
+                processId: "42",
+              }],
+              nextCursor: null,
+            } as Result
+            : { ok: true } as Result
+        },
+        respondToServerRequest: () => undefined,
+        restart: async () => ({
+          ok: true,
+          action: "restart",
+          changed: false,
+          status: stoppedAppServerStatus(),
+        }),
+        start: async () => ({
+          ok: true,
+          action: "start",
+          changed: false,
+          status: stoppedAppServerStatus(),
+        }),
+        status: stoppedAppServerStatus,
+        stop: async () => ({
+          ok: true,
+          action: "stop",
+          changed: false,
+          status: stoppedAppServerStatus(),
+        }),
+        subscribe: () => () => undefined,
+      },
+      codexChatRuntime: throwingCodexChatRuntime({
+        threadIdForSession: async sessionId => {
+          expect(sessionId).toBe("desktop-session-bg")
+          return "thread-bg"
+        },
+      }),
+      env: {},
+      onDeviceDeciderStatus: () => {
+        throw new Error("not used")
+      },
+      workingDirectory: process.cwd(),
+    })
+
+    await expect(handlers.slashCommandDispatch({
+      raw: "/ps",
+      sessionId: "desktop-session-bg",
+    })).resolves.toMatchObject({
+      ok: true,
+      command: "ps",
+      method: "thread/backgroundTerminals/list",
+      status: "dispatched",
+      message: "Loaded Codex background terminals.",
+      threadId: "thread-bg",
+    })
+
+    await expect(handlers.slashCommandDispatch({
+      raw: "/clean",
+      sessionId: "desktop-session-bg",
+    })).resolves.toMatchObject({
+      ok: true,
+      command: "stop",
+      method: "thread/backgroundTerminals/clean",
+      status: "dispatched",
+      message: "Requested Codex background terminal cleanup.",
+      threadId: "thread-bg",
+    })
+
+    await expect(handlers.codexBackgroundTerminalsTerminate({
+      processId: "42",
+      threadId: "thread-bg",
+    })).resolves.toMatchObject({
+      ok: true,
+      method: "thread/backgroundTerminals/terminate",
+    })
+
+    expect(requests).toEqual([
+      {
+        method: "thread/backgroundTerminals/list",
+        params: {
+          threadId: "thread-bg",
+          cursor: null,
+          limit: 50,
+        },
+      },
+      {
+        method: "thread/backgroundTerminals/clean",
+        params: {
+          threadId: "thread-bg",
+        },
+      },
+      {
+        method: "thread/backgroundTerminals/terminate",
+        params: {
+          threadId: "thread-bg",
+          processId: "42",
+        },
+      },
+    ])
+  })
+
   test("returns blocked and gap results for unavailable slash commands", async () => {
     const handlers = createKhalaCodeDesktopRpcRequestHandlers({
       appleFmReadiness: () => {
