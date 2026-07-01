@@ -12,3 +12,12 @@ Contents:
   the June 29 → July 1 timeline through the Codex-wrapper pivot (epic #7780),
   current architecture, fleet/swarm delegation, verification culture, and an
   assessment of strengths, risks, and open threads.
+- `2026-07-01-episode-245-completion-and-multi-harness-orchestration.md` —
+  audit of what stands between the recorded half of transcript 245 and its
+  unrecorded completion segment (fresh smoke evidence, the live
+  message-triggered `khala_fleet` MCP path, residual gaps), a pre-recording
+  rehearsal checklist, and a minimal-change plan for orchestrating between
+  harnesses: a Codex/Khala chat-harness toggle (Axis A) and a
+  `codex | claude | auto` delegation-target parameter through the
+  deterministic `khala.fleet.delegate` program (Axis B), grounded in the
+  ~80%-parity state of the Claude Code delegation lane.
