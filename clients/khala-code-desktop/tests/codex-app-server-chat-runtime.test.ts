@@ -206,6 +206,150 @@ describe("Codex app-server chat runtime", () => {
     expect(await readFile(fixture.statePath, "utf8")).toContain("thread-codex-1")
   })
 
+  test("captures Codex token usage updates without waiting for a clean turn", async () => {
+    const fixture = await stateFixture()
+    const records: RequestRecord[] = []
+    const reports: unknown[] = []
+    const host = createFakeHost({
+      records,
+      onRequest: (method, _params, subscribers) => {
+        if (method === "thread/start") {
+          return {
+            thread: { id: "thread-usage", status: "running" },
+            model: "gpt-5.5",
+            modelProvider: "openai",
+            cwd: fixture.root,
+          }
+        }
+        if (method === "turn/start") {
+          queueMicrotask(() => {
+            emit(subscribers, {
+              method: "turn/started",
+              params: {
+                threadId: "thread-usage",
+                turn: { id: "turn-usage", status: "inProgress" },
+              },
+            })
+            const firstUsage = {
+              input_tokens: 10,
+              cached_input_tokens: 4,
+              output_tokens: 3,
+              reasoning_output_tokens: 2,
+              total_tokens: 13,
+            }
+            emit(subscribers, {
+              method: "thread/tokenUsage/updated",
+              params: {
+                threadId: "thread-usage",
+                turnId: "turn-usage",
+                info: {
+                  last_token_usage: firstUsage,
+                  total_token_usage: firstUsage,
+                },
+              },
+            })
+            emit(subscribers, {
+              method: "thread/tokenUsage/updated",
+              params: {
+                threadId: "thread-usage",
+                turnId: "turn-usage",
+                info: {
+                  last_token_usage: firstUsage,
+                  total_token_usage: firstUsage,
+                },
+              },
+            })
+            emit(subscribers, {
+              method: "thread/tokenUsage/updated",
+              params: {
+                threadId: "thread-usage",
+                turnId: "turn-usage",
+                info: {
+                  last_token_usage: {
+                    input_tokens: 5,
+                    cached_input_tokens: 1,
+                    output_tokens: 7,
+                    reasoning_output_tokens: 0,
+                    total_tokens: 12,
+                  },
+                  total_token_usage: {
+                    input_tokens: 15,
+                    cached_input_tokens: 5,
+                    output_tokens: 10,
+                    reasoning_output_tokens: 2,
+                    total_tokens: 25,
+                  },
+                },
+              },
+            })
+            emit(subscribers, {
+              method: "turn/completed",
+              params: {
+                threadId: "thread-usage",
+                turn: { id: "turn-usage", status: "interrupted" },
+              },
+            })
+          })
+          return { turn: { id: "turn-usage", status: "inProgress" } }
+        }
+        throw new Error(`unexpected request ${method}`)
+      },
+    })
+    const runtime = createCodexAppServerChatRuntime({
+      host,
+      statePath: fixture.statePath,
+      tokenUsageReporter: async report => {
+        reports.push(report)
+      },
+      turnTimeoutMs: 1_000,
+      workingDirectory: fixture.root,
+    })
+
+    const response = await runtime.startTurn({
+      messages: [{ id: "user-usage", role: "user", body: "Count this" }],
+      sessionId: "desktop-session-usage",
+      turnId: "desktop-turn-usage",
+    })
+
+    expect(response.backend).toMatchObject({
+      model: "gpt-5.5",
+      threadId: "thread-usage",
+      turnId: "turn-usage",
+      turnStatus: "interrupted",
+    })
+    expect(response.usage).toEqual({
+      cachedInput: 5,
+      input: 15,
+      output: 10,
+      reasoningOutput: 2,
+    })
+    expect(reports).toHaveLength(2)
+    expect(reports[0]).toMatchObject({
+      codexThreadId: "thread-usage",
+      codexTurnId: "turn-usage",
+      desktopTurnId: "desktop-turn-usage",
+      model: "gpt-5.5",
+      sequence: 1,
+      usage: {
+        cachedInputTokens: 4,
+        inputTokens: 10,
+        outputTokens: 3,
+        reasoningOutputTokens: 2,
+        totalTokens: 13,
+      },
+    })
+    expect(reports[1]).toMatchObject({
+      sequence: 2,
+      usage: {
+        cachedInputTokens: 1,
+        inputTokens: 5,
+        outputTokens: 7,
+        reasoningOutputTokens: 0,
+        totalTokens: 12,
+      },
+    })
+  })
+
   test("starts turns on freshly created Codex threads without resuming an unmaterialized rollout", async () => {
     const fixture = await stateFixture()
     const records: RequestRecord[] = []

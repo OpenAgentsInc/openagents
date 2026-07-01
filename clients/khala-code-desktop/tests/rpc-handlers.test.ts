@@ -341,10 +341,11 @@ describe("Khala Code desktop RPC handlers", () => {
       status: "ready",
     })
     await expect(handlers.tokenAccountingStatus()).resolves.toMatchObject({
-      available: false,
+      available: true,
       capability: "token_accounting",
       ok: true,
-      status: "not_configured",
+      reason: expect.stringContaining("stored locally"),
+      status: "ready",
     })
   })
 

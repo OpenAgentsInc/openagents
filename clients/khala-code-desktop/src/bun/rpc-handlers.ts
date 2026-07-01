@@ -11,6 +11,10 @@ import {
   createCodexAppServerChatRuntime,
   type CodexAppServerChatRuntime,
 } from "./codex-app-server-chat-runtime.js"
+import {
+  createKhalaCodeDesktopCodexTokenUsageReporter,
+  khalaCodeDesktopTokenUsageTelemetryStatus,
+} from "./codex-token-usage-telemetry.js"
 import type { KhalaAppleFmReadiness } from "../shared/apple-fm-readiness.js"
 import type { OnDeviceDeciderSelection } from "../shared/on-device-decider.js"
 import {
@@ -555,6 +559,7 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
         env: input.env,
         host: input.codexAppServerHost,
         ...(input.emitChatTurnEvent === undefined ? {} : { onEvent: input.emitChatTurnEvent }),
+        tokenUsageReporter: createKhalaCodeDesktopCodexTokenUsageReporter({ env: input.env }),
         workingDirectory: input.workingDirectory,
       }))
   const legacyChatTurn = input.legacyChatTurn ?? runKhalaCodeDesktopChatTurn
@@ -1845,11 +1850,14 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
       }
     },
     async tokenAccountingStatus() {
+      const status = khalaCodeDesktopTokenUsageTelemetryStatus(input.env)
       return runtimeStatus({
-        available: false,
+        available: true,
         capability: "token_accounting",
-        reason: "Token accounting is handled by hosted OpenAgents when a cloud credential is configured.",
-        status: "not_configured",
+        reason: status.remoteConfigured
+          ? "Codex app-server token accounting is stored locally and mirrored to OpenAgents Stats."
+          : "Codex app-server token accounting is stored locally; set a token usage bearer to mirror it to OpenAgents Stats.",
+        status: "ready",
       })
     },
     async toolCatalog() {

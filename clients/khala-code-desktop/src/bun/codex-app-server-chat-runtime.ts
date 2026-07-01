@@ -7,6 +7,7 @@ import type {
   KhalaCodeDesktopChatTurnRequest,
   KhalaCodeDesktopChatTurnResponse,
   KhalaCodeDesktopMessage,
+  KhalaCodeDesktopUsage,
   KhalaCodeDesktopCodexThreadCompactRequest,
   KhalaCodeDesktopCodexThreadForkRequest,
   KhalaCodeDesktopCodexThreadIdRequest,
@@ -26,6 +27,10 @@ import type {
   CodexAppServerHost,
   CodexAppServerNotification,
 } from "./codex-app-server-client.js"
+import type {
+  KhalaCodeDesktopCodexTokenUsageCounts,
+  KhalaCodeDesktopCodexTokenUsageReporter,
+} from "./codex-token-usage-telemetry.js"
 import { createCodexThreadItemEventProjector } from "./codex-thread-item-projector.js"
 import { projectKhalaCodeDesktopCodexThreadList } from "../shared/codex-threads.js"
 
@@ -101,6 +106,7 @@ export type CreateCodexAppServerChatRuntimeOptions = {
   readonly onEvent?: (event: KhalaCodeDesktopChatTurnEvent) => void
   readonly statePath?: string
   readonly turnTimeoutMs?: number
+  readonly tokenUsageReporter?: KhalaCodeDesktopCodexTokenUsageReporter | null
   readonly workingDirectory: string
 }
 
@@ -131,6 +137,141 @@ const arrayField = (value: unknown, field: string): readonly unknown[] | null =>
   const candidate = value[field]
   return Array.isArray(candidate) ? candidate : null
 }
+
+const numericUsage = (value: unknown): number =>
+  typeof value === "number" && Number.isFinite(value) && value > 0
+    ? Math.trunc(value)
+    : 0
+
+const emptyCodexUsage = (): KhalaCodeDesktopCodexTokenUsageCounts => ({
+  cachedInputTokens: 0,
+  inputTokens: 0,
+  outputTokens: 0,
+  reasoningOutputTokens: 0,
+  totalTokens: 0,
+})
+
+const addCodexUsage = (
+  left: KhalaCodeDesktopCodexTokenUsageCounts,
+  right: KhalaCodeDesktopCodexTokenUsageCounts,
+): KhalaCodeDesktopCodexTokenUsageCounts => ({
+  cachedInputTokens: left.cachedInputTokens + right.cachedInputTokens,
+  inputTokens: left.inputTokens + right.inputTokens,
+  outputTokens: left.outputTokens + right.outputTokens,
+  reasoningOutputTokens: left.reasoningOutputTokens + right.reasoningOutputTokens,
+  totalTokens: left.totalTokens + right.totalTokens,
+})
+
+const subtractCodexUsage = (
+  left: KhalaCodeDesktopCodexTokenUsageCounts,
+  right: KhalaCodeDesktopCodexTokenUsageCounts,
+): KhalaCodeDesktopCodexTokenUsageCounts => ({
+  cachedInputTokens: Math.max(0, left.cachedInputTokens - right.cachedInputTokens),
+  inputTokens: Math.max(0, left.inputTokens - right.inputTokens),
+  outputTokens: Math.max(0, left.outputTokens - right.outputTokens),
+  reasoningOutputTokens: Math.max(0, left.reasoningOutputTokens - right.reasoningOutputTokens),
+  totalTokens: Math.max(0, left.totalTokens - right.totalTokens),
+})
+
+const codexUsageHasTokens = (
+  usage: KhalaCodeDesktopCodexTokenUsageCounts,
+): boolean =>
+  usage.inputTokens > 0 ||
+  usage.outputTokens > 0 ||
+  usage.reasoningOutputTokens > 0 ||
+  usage.totalTokens > 0
+
+const codexUsageKey = (usage: KhalaCodeDesktopCodexTokenUsageCounts): string =>
+  [
+    usage.inputTokens,
+    usage.cachedInputTokens,
+    usage.outputTokens,
+    usage.reasoningOutputTokens,
+    usage.totalTokens,
+  ].join(":")
+
+const desktopUsageFromCodexUsage = (
+  usage: KhalaCodeDesktopCodexTokenUsageCounts,
+): KhalaCodeDesktopUsage => ({
+  cachedInput: usage.cachedInputTokens,
+  input: usage.inputTokens,
+  output: usage.outputTokens,
+  reasoningOutput: usage.reasoningOutputTokens,
+})
+
+const codexUsageFromObject = (value: unknown): KhalaCodeDesktopCodexTokenUsageCounts | null => {
+  if (!isObject(value)) return null
+  const promptDetails = objectField(value, "prompt_tokens_details") ?? {}
+  const completionDetails = objectField(value, "completion_tokens_details") ?? {}
+  const inputTokens =
+    numericUsage(value.input_tokens) +
+    numericUsage(value.inputTokens) +
+    numericUsage(value.prompt_tokens) +
+    numericUsage(value.promptTokens) +
+    numericUsage(value.input)
+  const outputTokens =
+    numericUsage(value.output_tokens) +
+    numericUsage(value.outputTokens) +
+    numericUsage(value.completion_tokens) +
+    numericUsage(value.completionTokens) +
+    numericUsage(value.output)
+  const reasoningOutputTokens =
+    numericUsage(value.reasoning_output_tokens) +
+    numericUsage(value.reasoningOutputTokens) +
+    numericUsage(value.reasoning_output) +
+    numericUsage(value.reasoningOutput) +
+    numericUsage(completionDetails.reasoning_tokens) +
+    numericUsage(completionDetails.reasoningTokens)
+  const cachedInputTokens =
+    numericUsage(value.cached_input_tokens) +
+    numericUsage(value.cachedInputTokens) +
+    numericUsage(value.cached_input) +
+    numericUsage(value.cachedInput) +
+    numericUsage(promptDetails.cached_tokens) +
+    numericUsage(promptDetails.cachedTokens)
+  const explicitTotal =
+    numericUsage(value.total_tokens) +
+    numericUsage(value.totalTokens)
+  const usage = {
+    cachedInputTokens,
+    inputTokens,
+    outputTokens,
+    reasoningOutputTokens,
+    totalTokens: explicitTotal > 0 ? explicitTotal : inputTokens + outputTokens,
+  }
+  return codexUsageHasTokens(usage) ? usage : null
+}
+
+const tokenUsageObject = (
+  value: unknown,
+  snakeField: string,
+  camelField: string,
+): KhalaCodeDesktopCodexTokenUsageCounts | null =>
+  codexUsageFromObject(objectField(value, snakeField) ?? objectField(value, camelField))
+
+const tokenUsageInfoFromNotification = (
+  notification: CodexAppServerNotification,
+): {
+  readonly lastUsage: KhalaCodeDesktopCodexTokenUsageCounts | null
+  readonly totalUsage: KhalaCodeDesktopCodexTokenUsageCounts | null
+} | null => {
+  if (notification.method !== "thread/tokenUsage/updated") return null
+  const params = notification.params
+  if (!isObject(params)) return null
+  const info = objectField(params, "info") ?? params
+  const lastUsage =
+    tokenUsageObject(info, "last_token_usage", "lastTokenUsage") ??
+    tokenUsageObject(info, "last_usage", "lastUsage") ??
+    codexUsageFromObject(objectField(info, "usage") ?? objectField(params, "usage")) ??
+    codexUsageFromObject(objectField(info, "tokenUsage") ?? objectField(params, "tokenUsage"))
+  const totalUsage =
+    tokenUsageObject(info, "total_token_usage", "totalTokenUsage") ??
+    tokenUsageObject(info, "total_usage", "totalUsage")
+  return lastUsage === null && totalUsage === null ? null : { lastUsage, totalUsage }
+}
+
+const isTokenUsageNotification = (notification: CodexAppServerNotification): boolean =>
+  tokenUsageInfoFromNotification(notification) !== null
 
 const messagesFromThread = (
   thread: JsonObject | null,
@@ -284,6 +425,7 @@ export function createCodexAppServerChatRuntime(
   const host = options.host
   const statePath = options.statePath ?? defaultStatePath(env)
   const turnTimeoutMs = options.turnTimeoutMs ?? DEFAULT_TURN_TIMEOUT_MS
+  const tokenUsageReporter = options.tokenUsageReporter ?? null
   const activeTurnsByDesktopId = new Map<string, ActiveCodexTurn>()
   const loadedThreadsById = new Map<string, KhalaCodeDesktopCodexThreadResult>()
 
@@ -670,8 +812,13 @@ export function createCodexAppServerChatRuntime(
 
     let thread = await ensureThreadForSession(request.sessionId, request.cwd, request.threadId)
     const projector = createCodexThreadItemEventProjector({ desktopTurnId })
+    let capturedUsage = emptyCodexUsage()
     let codexTurnId: string | null = null
-    let turnStatus = "completed"
+    let turnStatus = "inProgress"
+    let lastTotalUsage: KhalaCodeDesktopCodexTokenUsageCounts | null = null
+    let lastTotalUsageKey: string | null = null
+    let tokenUsageSequence = 0
+    const pendingTokenUsageReports: Promise<void>[] = []
     let done = false
     let finish!: () => void
     let fail!: (error: Error) => void
@@ -686,7 +833,9 @@ export function createCodexAppServerChatRuntime(
     const shouldHandle = (notification: CodexAppServerNotification): boolean => {
       if (threadIdFromNotification(notification) !== thread.threadId) return false
       const notificationTurnId = turnIdFromNotification(notification)
-      if (notificationTurnId === null) return false
+      if (notificationTurnId === null) {
+        return codexTurnId !== null && isTokenUsageNotification(notification)
+      }
       if (codexTurnId === null) {
         codexTurnId = notificationTurnId
         activeTurnsByDesktopId.set(desktopTurnId, {
@@ -699,8 +848,43 @@ export function createCodexAppServerChatRuntime(
       return notificationTurnId === codexTurnId
     }
 
+    const captureTokenUsage = (notification: CodexAppServerNotification): void => {
+      const info = tokenUsageInfoFromNotification(notification)
+      if (info === null) return
+
+      let delta: KhalaCodeDesktopCodexTokenUsageCounts | null = info.lastUsage
+      if (info.totalUsage !== null) {
+        const totalKey = codexUsageKey(info.totalUsage)
+        if (totalKey === lastTotalUsageKey) return
+        if (delta === null && lastTotalUsage !== null) {
+          delta = subtractCodexUsage(info.totalUsage, lastTotalUsage)
+        }
+        lastTotalUsage = info.totalUsage
+        lastTotalUsageKey = totalKey
+      }
+
+      if (delta === null || !codexUsageHasTokens(delta)) return
+      tokenUsageSequence += 1
+      capturedUsage = addCodexUsage(capturedUsage, delta)
+      if (tokenUsageReporter === null || codexTurnId === null) return
+      const report = tokenUsageReporter({
+        codexThreadId: thread.threadId,
+        codexTurnId,
+        desktopSessionId: request.sessionId,
+        desktopTurnId,
+        model: thread.model ?? "openagents/codex-direct-local",
+        observedAt: notification.receivedAt,
+        sequence: tokenUsageSequence,
+        turnStatus,
+        usage: delta,
+      }).catch(() => undefined)
+      pendingTokenUsageReports.push(report)
+    }
+
     const unsubscribe = host.subscribe(notification => {
-      if (!shouldHandle(notification) || done) return
+      if (!shouldHandle(notification)) return
+      captureTokenUsage(notification)
+      if (done) return
       for (const event of projector.accept(notification)) options.onEvent?.(event)
       if (notification.method === "turn/completed") {
         turnStatus = completedTurnStatus(objectField(notification.params, "turn"))
@@ -759,6 +943,7 @@ export function createCodexAppServerChatRuntime(
       clearTimeout(timeout)
       unsubscribe()
       activeTurnsByDesktopId.delete(desktopTurnId)
+      await Promise.allSettled(pendingTokenUsageReports)
     }
 
     const messages = projector.messages()
@@ -783,6 +968,7 @@ export function createCodexAppServerChatRuntime(
         }],
       ok: turnStatus === "completed" || messages.length > 0,
       toolNames: [],
+      ...(codexUsageHasTokens(capturedUsage) ? { usage: desktopUsageFromCodexUsage(capturedUsage) } : {}),
       usedTools: [],
     }
   }
