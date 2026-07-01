@@ -17,6 +17,15 @@ export default {
     bun: {
       entrypoint: "src/bun/index.ts",
     },
+    mac: {
+      icons: "resources/AppIcon.iconset",
+    },
+    win: {
+      icon: "resources/khala-code-app-icon.png",
+    },
+    linux: {
+      icon: "resources/khala-code-app-icon.png",
+    },
     views: {},
     copy: {
       "dist/index.html": "views/khala-code-desktop/index.html",

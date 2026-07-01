@@ -31,6 +31,33 @@ describe("khala code desktop app shell", () => {
     })
   })
 
+  test("packages the Khala Code app icon for desktop platforms", async () => {
+    expect(config.build.mac?.icons).toBe("resources/AppIcon.iconset")
+    expect(config.build.win?.icon).toBe("resources/khala-code-app-icon.png")
+    expect(config.build.linux?.icon).toBe("resources/khala-code-app-icon.png")
+
+    const icon = Bun.file(new URL("../resources/khala-code-app-icon.png", import.meta.url))
+    const iconset = [
+      "icon_16x16.png",
+      "icon_16x16@2x.png",
+      "icon_32x32.png",
+      "icon_32x32@2x.png",
+      "icon_128x128.png",
+      "icon_128x128@2x.png",
+      "icon_256x256.png",
+      "icon_256x256@2x.png",
+      "icon_512x512.png",
+      "icon_512x512@2x.png",
+    ]
+
+    expect(await icon.exists()).toBe(true)
+    for (const name of iconset) {
+      expect(
+        await Bun.file(new URL(`../resources/AppIcon.iconset/${name}`, import.meta.url)).exists(),
+      ).toBe(true)
+    }
+  })
+
   test("opens the desktop window with full-bleed titlebar content", async () => {
     const source = await Bun.file(new URL("../src/bun/index.ts", import.meta.url)).text()
 
