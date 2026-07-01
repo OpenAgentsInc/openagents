@@ -81,6 +81,15 @@ Current, grounded facts:
 - The mobile app already exists as native SwiftUI under `clients/khala-ios/Khala/`.
 - The Khala API is OpenAI-compatible at `https://openagents.com/api/v1`, with
   the single public model `openagents/khala`.
+- OpenRouter BYOK for Khala is hosted account routing, not a local desktop
+  provider path: users attach an OpenRouter API key to their OpenAgents account
+  with `POST /api/provider-accounts/openrouter/connect`, and desktop requests
+  continue to call only `POST /api/v1/chat/completions` with
+  `model: "openagents/khala"`. A one-off request key may be sent on that same
+  hosted endpoint with `x-openagents-provider: openrouter` and
+  `x-openagents-provider-key`; the request key takes precedence, remains
+  redacted, is never persisted, and still runs through Khala routing, tracing,
+  metering, and no-debit BYOK semantics.
 - The repo has Apple FM bridge packaging and smoke material in
   `apps/autopilot-desktop/`.
 - Pylon already has Apple FM backend audits, status/smoke runbooks, and typed

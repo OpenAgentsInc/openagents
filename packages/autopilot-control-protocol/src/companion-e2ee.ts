@@ -20,7 +20,7 @@ const B64URL = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_
 
 export type CompanionCrypto = {
   readonly subtle: SubtleCrypto
-  getRandomValues<T extends ArrayBufferView | null>(array: T): T
+  getRandomValues<T extends Exclude<BufferSource, ArrayBuffer>>(array: T): T
 }
 
 export type CompanionKeyPair = {

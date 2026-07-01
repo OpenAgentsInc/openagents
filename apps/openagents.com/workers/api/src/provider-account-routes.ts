@@ -212,7 +212,7 @@ export const makeProviderAccountRoutes = <Bindings = OpenAgentsEnv>(
     }
 
     const providerApiKeyConnectMatch =
-      /^\/api\/provider-accounts\/(anthropic|google-gemini)\/connect$/.exec(
+      /^\/api\/provider-accounts\/(anthropic|google-gemini|openrouter)\/connect$/.exec(
         url.pathname,
       )
 

@@ -1559,9 +1559,11 @@ describe('POST /v1/chat/completions', () => {
     expect(recorded).toHaveLength(1)
     expect(recorded[0]?.adapterId).toBe(OPENROUTER_KHALA_FALLBACK_ADAPTER_ID)
     expect(recorded[0]?.usage.totalTokens).toBe(8)
+    expect(JSON.stringify(recorded)).not.toContain('sk-or-user-owned-key')
     const body = (await response.json()) as {
       openagents?: { billing?: Record<string, unknown>; worker?: string }
     }
+    expect(JSON.stringify(body)).not.toContain('sk-or-user-owned-key')
     expect(body.openagents?.worker).toBe(OPENROUTER_KHALA_FALLBACK_ADAPTER_ID)
     expect(body.openagents?.billing).toEqual({
       mode: 'no_debit',
@@ -1588,6 +1590,12 @@ describe('POST /v1/chat/completions', () => {
       stream: () => Effect.sync(() => []),
     })
     const metered: Array<MeteringContext> = []
+    const recorded: Array<{
+      adapterId: string
+      accountRef: string
+      requestAttribution?: unknown
+      usage: InferenceUsage
+    }> = []
 
     const response = await run(
       handleChatCompletions(
@@ -1602,6 +1610,15 @@ describe('POST /v1/chat/completions', () => {
           readAvailableMsat: async () => {
             throw new Error('account BYOK must not require credit balance')
           },
+          recordTokensServed: input =>
+            Effect.sync(() => {
+              recorded.push({
+                adapterId: input.adapterId,
+                accountRef: input.accountRef,
+                requestAttribution: input.requestAttribution,
+                usage: input.usage,
+              })
+            }),
           registry,
           resolveAccountByok: async () => ({
             apiKey: Redacted.make('sk-or-account-owned-key'),
@@ -1621,6 +1638,10 @@ describe('POST /v1/chat/completions', () => {
         : Redacted.value(capturedRequest.callerProviderKey.apiKey),
     ).toBe('sk-or-account-owned-key')
     expect(metered).toEqual([])
+    expect(recorded).toHaveLength(1)
+    expect(recorded[0]?.adapterId).toBe(OPENROUTER_KHALA_FALLBACK_ADAPTER_ID)
+    expect(recorded[0]?.usage.totalTokens).toBe(6)
+    expect(JSON.stringify(recorded)).not.toContain('sk-or-account-owned-key')
     const text = await response.text()
     expect(text).toContain('openagents/khala')
     expect(text).not.toContain('sk-or-account-owned-key')

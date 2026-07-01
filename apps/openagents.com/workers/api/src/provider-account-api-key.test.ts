@@ -31,6 +31,7 @@ import {
 
 const FAKE_ANTHROPIC_KEY = 'test-anthropic-key-not-real-0001'
 const FAKE_GEMINI_KEY = 'test-gemini-key-not-real-0001'
+const FAKE_OPENROUTER_KEY = 'sk-or-test-key-not-real-0001'
 
 class MemoryRepository implements ProviderAccountRepository {
   readonly accounts: Array<ProviderAccountRecord> = []
@@ -304,6 +305,37 @@ describe('connectProviderApiKeyAccount', () => {
     )
   })
 
+  test('connects an OpenRouter account with user-scoped secret ref and redacted records', async () => {
+    const repository = new MemoryRepository()
+    const result = await connectProviderApiKeyAccount(
+      repository,
+      {
+        userId: 'user_1',
+        provider: 'openrouter',
+        apiKey: FAKE_OPENROUTER_KEY,
+        accountLabel: 'Khala BYOK',
+      },
+      dependencies(200),
+      options(),
+    )
+
+    expect(result.account).toMatchObject({
+      provider: 'openrouter',
+      authMode: 'api_key',
+      status: 'connected',
+      health: 'healthy',
+      accountLabel: 'Khala BYOK',
+    })
+    expect(repository.accounts[0]?.secretRef).toBe(
+      `provider-account://openrouter/user-api-key/${result.providerAccountRef}`,
+    )
+    expect(repository.events[0]?.summary).toContain('OpenRouter')
+    expect(JSON.stringify(result)).not.toContain(FAKE_OPENROUTER_KEY)
+    expect(JSON.stringify(repository.accounts)).not.toContain(FAKE_OPENROUTER_KEY)
+    expect(JSON.stringify(repository.attempts)).not.toContain(FAKE_OPENROUTER_KEY)
+    expect(JSON.stringify(repository.events)).not.toContain(FAKE_OPENROUTER_KEY)
+  })
+
   test('refuses keys the provider rejects and stores nothing', async () => {
     const repository = new MemoryRepository()
     const keysBefore = recordedKeys.length
@@ -463,11 +495,11 @@ describe('provider api key connect route dispatch', () => {
     waitUntil: () => undefined,
   } as unknown as ExecutionContext
 
-  test('routes anthropic and google-gemini connect to the API-key handler', async () => {
+  test('routes OpenRouter, Anthropic, and Google Gemini connect to the API-key handler', async () => {
     const calls: Array<string> = []
     const router = makeRouter(calls)
 
-    for (const segment of ['anthropic', 'google-gemini']) {
+    for (const segment of ['openrouter', 'anthropic', 'google-gemini']) {
       const effect = router.routeProviderAccountRequest(
         new Request(
           `https://openagents.com/api/provider-accounts/${segment}/connect`,
@@ -485,6 +517,7 @@ describe('provider api key connect route dispatch', () => {
     }
 
     expect(calls).toEqual([
+      'apiKeyConnect:openrouter',
       'apiKeyConnect:anthropic',
       'apiKeyConnect:google-gemini',
     ])
