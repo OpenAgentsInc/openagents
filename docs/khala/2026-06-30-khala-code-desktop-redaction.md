@@ -143,11 +143,18 @@ the `tool` role is protected with `protectUserText`.
 
 When the model returns assistant text:
 
-1. the complete assistant text is passed through `protectModelText`;
-2. the protected model-context text is pushed back into the provider message
-   history;
-3. the protected text is passed through `revealForLocalUser`;
-4. the revealed text is rendered in the local transcript.
+1. the complete raw assistant text is passed through `revealForLocalUser`
+   (revealing from the raw reply — re-protecting first can mangle session
+   placeholder tokens so they no longer match the reveal table);
+2. the revealed text is passed through the irreversible
+   `redactKhalaPublicText` secret-shape scrub (API keys / bearer tokens the
+   model emits must not persist raw in the local transcript; scrubbed
+   secrets are never in the reveal table, so this cannot re-mangle
+   placeholders);
+3. that scrubbed, revealed text is rendered in the local transcript;
+4. independently, the complete assistant text is passed through
+   `protectModelText` and that protected copy is pushed back into the
+   provider message history.
 
 So the intended invariant is:
 
