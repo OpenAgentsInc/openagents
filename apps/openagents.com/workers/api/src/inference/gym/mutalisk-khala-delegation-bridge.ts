@@ -28,11 +28,15 @@ export const GymRunProgressSchemaVersion = 'openagents.gym.run_progress.v1'
 
 export const MutaliskKhalaDelegationStage = S.Literals([
   'queued',
-  'running',
+  'dataset_resolved',
+  'feedback_resolved',
+  'optimizing',
+  'candidate_emitted',
   'summary_ingested',
   'admission_projected',
   'completed',
   'blocked',
+  'failed',
 ])
 export type MutaliskKhalaDelegationStage =
   typeof MutaliskKhalaDelegationStage.Type
@@ -147,14 +151,48 @@ export type MutaliskKhalaDelegationGymStore = Readonly<{
 export type RunMutaliskKhalaDelegationBridgeOptions = Readonly<{
   actorRef?: string
   artifactRefs?: ReadonlyArray<string>
+  job?: MutaliskKhalaDelegationJob
+  jobRef?: string
   maxMetricCalls?: number
   observedAt?: string
   optimizerRunRefs?: ReadonlyArray<string>
+  runRef?: string
   store?: MutaliskKhalaDelegationGymStore
+}>
+
+export type CreateMutaliskKhalaDelegationJobInput = Readonly<{
+  baseModuleRef?: string
+  datasetRef?: string
+  jobRef?: string
+  maxMetricCalls?: number
+  ownerApprovalRef?: string
+  publicSafetyPolicyRef?: string
+  refSeed?: string
+  runRef?: string
+  seedCandidateRef?: string
+  trainSplitRefs?: ReadonlyArray<string>
+  validationSplitRefs?: ReadonlyArray<string>
+}>
+
+export type BuildMutaliskKhalaDelegationRunProgressInput = Readonly<{
+  admission?: KhalaFleetDelegationCandidateAdmissionProjection
+  admissionDecision?: 'blocked' | 'gated_proposal_ready'
+  actionSubmissionProposalRef?: string
+  blockerRefs?: ReadonlyArray<string>
+  candidateManifestRef?: string
+  candidateRef?: string
+  caveatRefs?: ReadonlyArray<string>
+  job: MutaliskKhalaDelegationJob
+  metricValueBps?: number
+  observedAt: string
+  stage: MutaliskKhalaDelegationStage
+  summary?: MutaliskKhalaDelegationSummary
 }>
 
 const unsafePublicProjectionValue =
   /\/Users\/|\/home\/|auth\.json|bearer |authorization:|credential|customer[_-]?(email|name|value)|email[_-]?(address|body)|gho_[A-Za-z0-9_]+|ghp_[A-Za-z0-9_]+|http:\/\/|https:\/\/|invoice|lnbc|lntb|lnbcrt|lno1|mnemonic|oauth|payment[_-]?(hash|id|preimage|proof)|preimage|private[_-]?(endpoint|repo|source)|provider[_-]?(grant|payload|secret|token)|raw[_-]?(auth|email|fixture|log|payload|prompt|provider|runner|source|trace|traces)|secret|sk-[a-z0-9]|token|wallet/i
+const unsafePublicProjectionKey =
+  /^(credential|localPath|optimizerScratch(Log|Ref|Refs)?|private(Endpoint|Repo|Source)?|provider(Grant|Payload|Secret|Token)?|raw(Auth|Email|Fixture|Log|Payload|Prompt|Provider|Runner|Source|Trace|Traces)?|secret|secretRef|token|wallet)$/i
 const safeRefPattern = /^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,260}$/
 
 const uniqueRefs = (
@@ -182,7 +220,10 @@ const collectStringValues = (value: unknown): ReadonlyArray<string> => {
     return value.flatMap(item => collectStringValues(item))
   }
   if (value !== null && typeof value === 'object') {
-    return Object.values(value).flatMap(item => collectStringValues(item))
+    return Object.entries(value).flatMap(([key, item]) => [
+      ...(unsafePublicProjectionKey.test(key) ? [key] : []),
+      ...collectStringValues(item),
+    ])
   }
   return []
 }
@@ -198,6 +239,9 @@ const assertPublicSafeValues = (label: string, value: unknown): void => {
   }
 }
 
+export const assertMutaliskKhalaDelegationPublicSafeValues =
+  assertPublicSafeValues
+
 const assertPublicSafeRefs = (
   label: string,
   refs: ReadonlyArray<string>,
@@ -211,6 +255,9 @@ const assertPublicSafeRefs = (
     })
   }
 }
+
+export const assertMutaliskKhalaDelegationPublicSafeRefs =
+  assertPublicSafeRefs
 
 export const createInMemoryMutaliskKhalaDelegationGymStore =
   (): MutaliskKhalaDelegationGymStore => {
@@ -253,32 +300,61 @@ const defaultOptimizerRunRefs = (
   )}`,
 ]
 
-const buildJob = (
-  candidate: KhalaFleetDelegationCandidateManifestSummary,
-  maxMetricCalls: number,
+export const createMutaliskKhalaDelegationJob = (
+  input: CreateMutaliskKhalaDelegationJobInput = {},
 ): MutaliskKhalaDelegationJob => {
-  const candidateSegment = publicRefSegment(candidate.candidateRef, 'candidate')
+  const candidateSegment = publicRefSegment(input.refSeed ?? 'operator', 'run')
   return new MutaliskKhalaDelegationJob({
     schemaVersion: MutaliskKhalaDelegationJobSchemaVersion,
-    runRef: `gym.run.khala_code_delegation_gepa.${candidateSegment}`,
-    jobRef: `gym.job.mutalisk_khala_delegation.${candidateSegment}`,
+    runRef:
+      input.runRef ?? `gym.run.khala_code_delegation_gepa.${candidateSegment}`,
+    jobRef:
+      input.jobRef ?? `gym.job.mutalisk_khala_delegation.${candidateSegment}`,
     environmentId: KhalaCodeDelegationGepaEnvironmentId,
     signature: KhalaFleetDelegationCandidateSignature,
-    baseModuleRef: candidate.baseModuleRef,
-    seedCandidateRef: 'candidate.khala_fleet_delegation.seed.v1',
-    datasetRef: 'eval.mutalisk.fixtures.khala_fleet_delegation_demo.v1',
-    trainSplitRefs: ['eval_split.khala_fleet_delegation_demo.train.v1'],
-    validationSplitRefs: ['eval_split.khala_fleet_delegation_demo.val.v1'],
+    baseModuleRef:
+      input.baseModuleRef ?? 'module.mutalisk.khala_fleet_delegate_seed.v1',
+    seedCandidateRef:
+      input.seedCandidateRef ?? 'candidate.khala_fleet_delegation.seed.v1',
+    datasetRef:
+      input.datasetRef ?? 'eval.mutalisk.fixtures.khala_fleet_delegation_demo.v1',
+    trainSplitRefs: [
+      ...(input.trainSplitRefs ?? [
+        'eval_split.khala_fleet_delegation_demo.train.v1',
+      ]),
+    ],
+    validationSplitRefs: [
+      ...(input.validationSplitRefs ?? [
+        'eval_split.khala_fleet_delegation_demo.val.v1',
+      ]),
+    ],
     feedbackSchemaRef: 'openagents.khala.delegation_gepa_feedback.v0',
     candidateManifestSchemaVersion: ProbeGepaCandidateManifestSchemaVersion,
-    maxMetricCalls,
-    ownerApprovalRef: 'approval.owner.khala_delegation.operator_review.v1',
+    maxMetricCalls: input.maxMetricCalls ?? 8,
+    ownerApprovalRef:
+      input.ownerApprovalRef ??
+      'approval.owner.khala_delegation.operator_review.v1',
     demandKind: MutaliskKhalaDelegationDemandKind,
     demandSource: MutaliskKhalaDelegationDemandSource,
     publicSafetyPolicyRef:
+      input.publicSafetyPolicyRef ??
       'policy.public_safe.mutalisk_khala_delegation_summary.v0',
   })
 }
+
+const buildJob = (
+  candidate: KhalaFleetDelegationCandidateManifestSummary,
+  maxMetricCalls: number,
+  options: RunMutaliskKhalaDelegationBridgeOptions,
+): MutaliskKhalaDelegationJob =>
+  options.job ??
+  createMutaliskKhalaDelegationJob({
+    baseModuleRef: candidate.baseModuleRef,
+    maxMetricCalls,
+    refSeed: candidate.candidateRef,
+    ...(options.jobRef === undefined ? {} : { jobRef: options.jobRef }),
+    ...(options.runRef === undefined ? {} : { runRef: options.runRef }),
+  })
 
 const buildSummary = (
   candidate: KhalaFleetDelegationCandidateManifestSummary,
@@ -360,13 +436,20 @@ const defaultBlueprintSelection = (): KhalaFleetDelegationBlueprintSelection =>
     toolScopes: ['tool_scope.khala_delegation.policy_proposal'],
   })
 
-const buildProgress = (
-  stage: MutaliskKhalaDelegationStage,
-  job: MutaliskKhalaDelegationJob,
-  observedAt: string,
-  summary?: MutaliskKhalaDelegationSummary,
-  admission?: KhalaFleetDelegationCandidateAdmissionProjection,
-): MutaliskKhalaDelegationRunProgress =>
+export const buildMutaliskKhalaDelegationRunProgress = ({
+  admission,
+  admissionDecision,
+  actionSubmissionProposalRef,
+  blockerRefs = [],
+  candidateManifestRef,
+  candidateRef,
+  caveatRefs = [],
+  job,
+  metricValueBps,
+  observedAt,
+  stage,
+  summary,
+}: BuildMutaliskKhalaDelegationRunProgressInput): MutaliskKhalaDelegationRunProgress =>
   new MutaliskKhalaDelegationRunProgress({
     schemaVersion: GymRunProgressSchemaVersion,
     runRef: job.runRef,
@@ -375,16 +458,19 @@ const buildProgress = (
     runner: 'mutalisk',
     stage,
     decisionGrade: false,
-    inProgress: stage !== 'completed' && stage !== 'blocked',
+    inProgress:
+      stage !== 'completed' && stage !== 'blocked' && stage !== 'failed',
     demandKind: MutaliskKhalaDelegationDemandKind,
     demandSource: MutaliskKhalaDelegationDemandSource,
-    ...(summary === undefined
+    ...(summary === undefined && candidateManifestRef === undefined
       ? {}
-      : {
-          candidateManifestRef: summary.candidateManifestRef,
-          candidateRef: summary.candidateRef,
-          metricValueBps: summary.metricValueBps,
-        }),
+      : { candidateManifestRef: summary?.candidateManifestRef ?? candidateManifestRef }),
+    ...(summary === undefined && candidateRef === undefined
+      ? {}
+      : { candidateRef: summary?.candidateRef ?? candidateRef }),
+    ...(summary === undefined && metricValueBps === undefined
+      ? {}
+      : { metricValueBps: summary?.metricValueBps ?? metricValueBps }),
     ...(admission === undefined
       ? {}
       : {
@@ -396,14 +482,22 @@ const buildProgress = (
                   admission.actionSubmissionProposalRefs[0],
               }),
         }),
+    ...(admission !== undefined || admissionDecision === undefined
+      ? {}
+      : { admissionDecision }),
+    ...(admission !== undefined || actionSubmissionProposalRef === undefined
+      ? {}
+      : { actionSubmissionProposalRef }),
     blockerRefs: uniqueRefs([
       ...(summary?.blockerRefs ?? []),
       ...(admission?.blockerRefs ?? []),
+      ...blockerRefs,
     ]),
-    caveatRefs: [
+    caveatRefs: uniqueRefs([
       'caveat.gym.khala_delegation_gepa.no_live_promotion',
       'caveat.gym.khala_delegation_gepa.decision_grade_false_until_live_evidence',
-    ],
+      ...caveatRefs,
+    ]),
     updatedAt: observedAt,
   })
 
@@ -424,7 +518,7 @@ export const runMutaliskKhalaDelegationNoUiBridge = (
   const optimizerRunRefs = uniqueRefs(
     options.optimizerRunRefs ?? defaultOptimizerRunRefs(candidate),
   )
-  const job = buildJob(candidate, maxMetricCalls)
+  const job = buildJob(candidate, maxMetricCalls, options)
   const summary = buildSummary(candidate, job, artifactRefs, optimizerRunRefs)
 
   assertPublicSafeValues('Mutalisk Khala delegation Gym job', job)
@@ -459,11 +553,52 @@ export const runMutaliskKhalaDelegationNoUiBridge = (
   const finalStage: MutaliskKhalaDelegationStage =
     admission.decision === 'gated_proposal_ready' ? 'completed' : 'blocked'
   const progress = [
-    buildProgress('queued', job, observedAt),
-    buildProgress('running', job, observedAt),
-    buildProgress('summary_ingested', job, observedAt, summary),
-    buildProgress('admission_projected', job, observedAt, summary, admission),
-    buildProgress(finalStage, job, observedAt, summary, admission),
+    buildMutaliskKhalaDelegationRunProgress({
+      job,
+      observedAt,
+      stage: 'queued',
+    }),
+    buildMutaliskKhalaDelegationRunProgress({
+      job,
+      observedAt,
+      stage: 'dataset_resolved',
+    }),
+    buildMutaliskKhalaDelegationRunProgress({
+      job,
+      observedAt,
+      stage: 'feedback_resolved',
+    }),
+    buildMutaliskKhalaDelegationRunProgress({
+      job,
+      observedAt,
+      stage: 'optimizing',
+    }),
+    buildMutaliskKhalaDelegationRunProgress({
+      job,
+      observedAt,
+      stage: 'candidate_emitted',
+      summary,
+    }),
+    buildMutaliskKhalaDelegationRunProgress({
+      job,
+      observedAt,
+      stage: 'summary_ingested',
+      summary,
+    }),
+    buildMutaliskKhalaDelegationRunProgress({
+      admission,
+      job,
+      observedAt,
+      stage: 'admission_projected',
+      summary,
+    }),
+    buildMutaliskKhalaDelegationRunProgress({
+      admission,
+      job,
+      observedAt,
+      stage: finalStage,
+      summary,
+    }),
   ]
 
   store.saveJob(job)

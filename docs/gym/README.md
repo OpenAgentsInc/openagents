@@ -133,8 +133,9 @@ provider-adapter registry, verification-class registry, and the
   `/gym` progress projection.
 - [`2026-06-30-mutalisk-khala-code-gym-integration-audit.md`](2026-06-30-mutalisk-khala-code-gym-integration-audit.md)
   — audit: how Mutalisk should plug into the Gym as the offline GEPA optimizer
-  lane for Khala Code fleet delegation, what is already contract-ready, and what
-  backend/UI seam is still required before product testing is meaningful.
+  lane for Khala Code fleet delegation, including the 2026-07-01 durable Worker
+  seam for run creation, progress ingest, summary ingest, and public-safe
+  projection.
 - [`2026-06-24-openagents-gym-issues-6164-6166-audit.md`](2026-06-24-openagents-gym-issues-6164-6166-audit.md)
   — the Phase 0 / `/gym/oss` issue-run audit (#6163–#6167).
 

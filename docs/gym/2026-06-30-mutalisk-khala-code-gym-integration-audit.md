@@ -356,6 +356,42 @@ Use two layers:
 The D1 row should be enough for admission and UI status. Detailed R2 artifacts
 stay private/operator-only.
 
+### 2026-07-01 Worker Seam Update
+
+Issue #7799 implemented the durable Worker-side product seam:
+
+- operator create/list:
+  `/api/operator/gym/mutalisk-khala-delegation/runs`;
+- operator progress ingest:
+  `/api/operator/gym/mutalisk-khala-delegation/progress`;
+- operator summary ingest:
+  `/api/operator/gym/mutalisk-khala-delegation/summary`;
+- public compact projection:
+  `/api/public/gym/mutalisk-khala-delegation/runs`.
+
+The routes persist:
+
+- `gym_mutalisk_khala_delegation_jobs`;
+- `gym_mutalisk_khala_delegation_progress`;
+- `gym_mutalisk_khala_delegation_summaries`.
+
+The Worker creates the `runRef` immediately, stores queued/progress snapshots,
+ingests the public-safe candidate manifest summary, projects
+`khala.fleet.delegation` admission evidence, and keeps
+`decisionGrade:false`. It does not import or execute the Mutalisk runtime, and
+it rejects raw prompts/traces, local paths, secrets, private endpoints, provider
+payloads, and optimizer scratch-log material before storage.
+
+The Khala Code local bridge script can use the durable path with:
+
+```sh
+bun clients/khala-code-desktop/scripts/part2-gepa-manifest-bridge.ts \
+  --summary /path/to/khala-fleet-delegation-summary.json \
+  --api-base https://openagents.com \
+  --operator-token-env OPENAGENTS_OPERATOR_BEARER_TOKEN \
+  --out out/khala-gepa-bridge-proof.json
+```
+
 ## 7. Khala Code UI Shape
 
 Khala Code should expose this as part of fleet management, not as a generic
@@ -389,12 +425,14 @@ This is ready for product/UI testing only when all of these are true:
 - The backend returns a `runRef` and persists a queued progress snapshot.
 - A Mutalisk worker can pick up a typed job spec from OpenAgents or receive it
   through an operator runner script.
-- Progress reaches `/api/public/gym/run-progress` or an owner-gated equivalent
-  using public-safe fields only.
+- Progress reaches
+  `/api/public/gym/mutalisk-khala-delegation/runs` using public-safe fields
+  only.
 - Mutalisk emits a `psionic.probe_gepa_candidate_manifest.v1` summary for
   `khala.fleet.delegation`.
 - OpenAgents ingests the summary into D1 and stores detailed artifacts privately.
-- A Gym report or reward bundle is built from the summary.
+- A Gym report or reward bundle is built from the summary when needed for the
+  broader Gym report surfaces.
 - `projectKhalaFleetDelegationCandidateAdmission` runs and returns either
   `gated_proposal_ready` or typed blockers.
 - Khala Code displays the run state and the admission result.
@@ -515,13 +553,14 @@ Acceptance:
 
 Build this as a Gym-backed Khala Code optimization workflow.
 
-The next concrete engineering slice should not be another offline Mutalisk unit
-test. It should be the OpenAgents product seam:
+The 2026-07-01 slice added the OpenAgents product seam:
 
 ```text
 typed Gym job + progress + Mutalisk summary ingest + admission projection
 ```
 
-Once that exists, Khala Code can add a small UI affordance and the operator can
-test the real loop from the product. Until then, the system is contract-ready and
-developer-testable, but not ready for end-to-end UI testing.
+The next concrete engineering slice is the Khala Code UI affordance and runner
+pick-up path: start/follow the durable run from the fleet UI, then hand the typed
+job to the out-of-process Mutalisk runner. The Worker side is
+contract-ready and developer-testable; end-to-end UI testing still depends on
+that product surface and runner pickup.

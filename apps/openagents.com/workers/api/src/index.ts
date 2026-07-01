@@ -461,6 +461,13 @@ import {
 import { makeD1GymRunProgressStore } from './inference/gym/run-progress-store'
 import { publishGymRunProgressSnapshot } from './inference/gym/run-progress-sync'
 import {
+  handleOperatorMutaliskKhalaDelegationProgressApi,
+  handleOperatorMutaliskKhalaDelegationRunsApi,
+  handleOperatorMutaliskKhalaDelegationSummaryApi,
+  handlePublicMutaliskKhalaDelegationRunsApi,
+} from './inference/gym/mutalisk-khala-delegation-routes'
+import { makeD1MutaliskKhalaDelegationWorkflowStore } from './inference/gym/mutalisk-khala-delegation-store'
+import {
   handleOperatorGymLeaderboardApi,
   handlePublicGymLeaderboardApi,
 } from './inference/gym/ladder-routes'
@@ -10659,6 +10666,19 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       }),
   },
   {
+    // Public-safe compact read model for the owner-gated Khala Code delegation
+    // GEPA Gym workflow (#7799). Khala Code can poll this projection for run
+    // stage/candidate/admission refs without receiving Mutalisk prompts, traces,
+    // local paths, provider payloads, or optimizer scratch logs.
+    path: '/api/public/gym/mutalisk-khala-delegation/runs',
+    handler: (request, env) =>
+      handlePublicMutaliskKhalaDelegationRunsApi(request, {
+        store: makeD1MutaliskKhalaDelegationWorkflowStore(
+          openAgentsDatabase(env),
+        ),
+      }),
+  },
+  {
     // Public, dereferenceable Gym benchmark LADDER leaderboard (#6309, GTM §4).
     // The three rungs (Big Pickle -> free models -> paid frontier) on the same
     // OpenCode coding surface + our axes (cost-per-accepted-outcome,
@@ -11022,6 +11042,47 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         // Fail-soft and off the customer path via the execution context.
         publishProgress: progress =>
           publishGymRunProgressSnapshot(env, progress, { ctx }),
+      }),
+  },
+  {
+    // Owner-gated durable Khala Code delegation GEPA run create/list (#7799).
+    // POST returns a runRef immediately; GET lists the scoped public-safe
+    // projection rows. No optimizer runtime executes in the Worker.
+    path: '/api/operator/gym/mutalisk-khala-delegation/runs',
+    handler: (request, env) =>
+      handleOperatorMutaliskKhalaDelegationRunsApi(request, {
+        requireAdminApiToken: adminRequest =>
+          requireAdminApiToken(adminRequest, env),
+        store: makeD1MutaliskKhalaDelegationWorkflowStore(
+          openAgentsDatabase(env),
+        ),
+      }),
+  },
+  {
+    // Owner-gated coarse progress ingest from a local Mutalisk runner (#7799).
+    // Stores only stage/ref/metric markers and preserves decisionGrade:false.
+    path: '/api/operator/gym/mutalisk-khala-delegation/progress',
+    handler: (request, env) =>
+      handleOperatorMutaliskKhalaDelegationProgressApi(request, {
+        requireAdminApiToken: adminRequest =>
+          requireAdminApiToken(adminRequest, env),
+        store: makeD1MutaliskKhalaDelegationWorkflowStore(
+          openAgentsDatabase(env),
+        ),
+      }),
+  },
+  {
+    // Owner-gated safe summary ingest for the external Mutalisk optimizer (#7799).
+    // Converts a public-safe candidate manifest summary into the
+    // khala.fleet.delegation admission projection; never auto-promotes it.
+    path: '/api/operator/gym/mutalisk-khala-delegation/summary',
+    handler: (request, env) =>
+      handleOperatorMutaliskKhalaDelegationSummaryApi(request, {
+        requireAdminApiToken: adminRequest =>
+          requireAdminApiToken(adminRequest, env),
+        store: makeD1MutaliskKhalaDelegationWorkflowStore(
+          openAgentsDatabase(env),
+        ),
       }),
   },
   {

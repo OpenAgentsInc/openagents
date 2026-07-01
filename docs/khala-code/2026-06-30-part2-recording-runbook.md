@@ -302,9 +302,11 @@ Before recording, the focused checks are:
 ```sh
 bun clients/khala-code-desktop/scripts/part2-delegation-smoke.ts
 bun clients/khala-code-desktop/scripts/part2-gepa-manifest-bridge.ts --summary /Users/christopherdavid/work/mutalisk/out/khala-fleet-delegation-summary.json --out out/khala-gepa-bridge-proof.json
+bun clients/khala-code-desktop/scripts/part2-gepa-manifest-bridge.ts --summary /Users/christopherdavid/work/mutalisk/out/khala-fleet-delegation-summary.json --api-base https://openagents.com --operator-token-env OPENAGENTS_OPERATOR_BEARER_TOKEN --out out/khala-gepa-worker-proof.json
 bun run typecheck:khala-code-desktop
 bun test clients/khala-code-desktop/tests/gym-proof-loader.test.ts clients/khala-code-desktop/tests/gym-graph-renderer.test.ts
 bun test clients/khala-code-desktop/tests/khala-codex-fleet-tools.test.ts
-bun run --cwd apps/openagents.com/workers/api test -- src/inference/gym/mutalisk-khala-delegation-bridge.test.ts src/probe-gepa-standing-optimization-loop.test.ts
+bun run --cwd apps/openagents.com/workers/api test -- src/inference/gym/mutalisk-khala-delegation-bridge.test.ts src/inference/gym/mutalisk-khala-delegation-routes.test.ts src/worker-exact-routes.test.ts src/probe-gepa-standing-optimization-loop.test.ts
+bun run --cwd apps/openagents.com/workers/api typecheck
 git diff --check
 ```

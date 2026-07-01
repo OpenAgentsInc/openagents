@@ -69,7 +69,10 @@ describe('Mutalisk Khala delegation Gym bridge (#7754)', () => {
     expect(output.blockerRefs).toEqual([])
     expect(output.progress.map(progress => progress.stage)).toEqual([
       'queued',
-      'running',
+      'dataset_resolved',
+      'feedback_resolved',
+      'optimizing',
+      'candidate_emitted',
       'summary_ingested',
       'admission_projected',
       'completed',
@@ -87,7 +90,7 @@ describe('Mutalisk Khala delegation Gym bridge (#7754)', () => {
     ).toBe(true)
     expect(store.snapshot().jobs).toHaveLength(1)
     expect(store.snapshot().summaries).toHaveLength(1)
-    expect(store.snapshot().progress).toHaveLength(5)
+    expect(store.snapshot().progress).toHaveLength(8)
   })
 
   test('blocks instead of projecting unsafe refs or private-path traces', () => {
