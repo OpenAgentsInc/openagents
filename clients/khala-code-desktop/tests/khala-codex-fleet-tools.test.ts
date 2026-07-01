@@ -177,6 +177,18 @@ describe("Khala Code Codex fleet tools", () => {
       event: "assignment_run.runtime_progress",
       schema: "unknown",
     }))).toBeNull()
+    expect(parsePylonLifecycleNdjsonLine(JSON.stringify({
+      event: "assignment_run.not_real",
+      observedAt: "2026-06-30T00:00:02.000Z",
+      schema: "openagents.pylon.assignment_run_lifecycle_event.v0.1",
+    }))).toBeNull()
+    expect(parsePylonLifecycleNdjsonLine(JSON.stringify({
+      message: "assignment lifecycle event",
+      observedAt: "2026-06-30T00:00:03.000Z",
+      schema: "openagents.pylon.khala_spawn_worker_event.v0.1",
+      slotIndex: 0,
+      state: "made_up_state",
+    }))).toBeNull()
   })
 
   test("ensureLocalPylon starts a missing local Pylon and re-probes it", async () => {
@@ -1983,7 +1995,6 @@ describe("Khala Code Codex fleet tools", () => {
             leaseRef: "assignment.public.codex_agent_task.timeout",
             message: "assignment lifecycle event",
             observedAt: "2026-06-30T00:00:00.000Z",
-            phase: "runtime_active",
             schema: "openagents.pylon.khala_spawn_worker_event.v0.1",
             slotIndex: 0,
             state: "running",
@@ -2006,6 +2017,6 @@ describe("Khala Code Codex fleet tools", () => {
     expect(result.modelOutput.text).toContain("Codex spawn: accepted 0/1")
     expect(result.modelOutput.text).toContain("command timed out")
     expect(result.modelOutput.text).toContain("assignment_run.runtime_started")
-    expect(result.modelOutput.text).toContain("phase=runtime_active")
+    expect(result.modelOutput.text).not.toContain("phase=runtime_active")
   })
 })

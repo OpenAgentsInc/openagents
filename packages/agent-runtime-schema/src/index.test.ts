@@ -2,6 +2,10 @@ import { describe, expect, test } from "bun:test"
 import {
   AgentRuntimeEvent,
   AgentRuntimeRun,
+  PylonLifecycleWireEventFromJsonString,
+  decodePylonLifecycleWireEventJson,
+  encodePylonAssignmentRunLifecycleEvent,
+  encodePylonKhalaSpawnWorkerEvent,
   agentRuntimeAdapterKinds,
   agentRuntimeEventTags,
   agentRuntimeLoopKinds,
@@ -162,5 +166,55 @@ describe("@openagentsinc/agent-runtime-schema", () => {
       reviewActionRefs: ["review.public.agent_runtime.blocker.agent_runtime.test_fixture.failed"],
     })
     expect(agentRuntimeSurfaceStatusHasUnsafeMaterial(row)).toBe(false)
+  })
+
+  test("round-trips Pylon lifecycle wire events through shared JSON string schemas", () => {
+    const assignmentEvent = encodePylonAssignmentRunLifecycleEvent({
+      schema: "openagents.pylon.assignment_run_lifecycle_event.v0.1",
+      event: "assignment_run.runtime_progress",
+      observedAt: "2026-07-01T00:00:00.000Z",
+      assignmentRef: "assignment.public.schema_test",
+      leaseRef: "lease.public.schema_test",
+      elapsedMs: 1200,
+      phase: "runtime_active",
+      tokenCountKind: "estimated",
+      tokensSoFar: 42,
+    })
+    const workerEvent = encodePylonKhalaSpawnWorkerEvent({
+      schema: "openagents.pylon.khala_spawn_worker_event.v0.1",
+      assignmentEvent: "assignment_run.completed",
+      assignmentRef: "assignment.public.schema_test",
+      leaseRef: "lease.public.schema_test",
+      message: "assignment lifecycle event",
+      observedAt: "2026-07-01T00:00:01.000Z",
+      slotIndex: 0,
+      state: "accepted",
+      status: "accepted",
+    })
+
+    expect(decodePylonLifecycleWireEventJson(JSON.stringify(assignmentEvent))).toEqual(assignmentEvent)
+    expect(decodePylonLifecycleWireEventJson(JSON.stringify(workerEvent))).toEqual(workerEvent)
+    expect(JSON.stringify(PylonLifecycleWireEventFromJsonString.ast)).toContain(
+      "openagents.pylon.assignment_run_lifecycle_event.v0.1",
+    )
+  })
+
+  test("rejects malformed Pylon lifecycle wire events", () => {
+    expect(() =>
+      decodePylonLifecycleWireEventJson(JSON.stringify({
+        schema: "openagents.pylon.assignment_run_lifecycle_event.v0.1",
+        event: "assignment_run.unknown",
+        observedAt: "2026-07-01T00:00:00.000Z",
+      })),
+    ).toThrow()
+    expect(() =>
+      decodePylonLifecycleWireEventJson(JSON.stringify({
+        schema: "openagents.pylon.khala_spawn_worker_event.v0.1",
+        message: "assignment lifecycle event",
+        observedAt: "2026-07-01T00:00:00.000Z",
+        slotIndex: 0,
+        state: "mystery",
+      })),
+    ).toThrow()
   })
 })

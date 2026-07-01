@@ -308,6 +308,119 @@ export const decodeAgentRuntimeRun = S.decodeUnknownSync(AgentRuntimeRun)
 export const decodeAgentRuntimeEvent = S.decodeUnknownSync(AgentRuntimeEvent)
 export const decodeAgentRuntimeEventLog = S.decodeUnknownSync(AgentRuntimeEventLog)
 
+export const PylonAssignmentRunLifecycleEventSchemaLiteral =
+  "openagents.pylon.assignment_run_lifecycle_event.v0.1" as const
+
+export const PylonKhalaSpawnWorkerEventSchemaLiteral =
+  "openagents.pylon.khala_spawn_worker_event.v0.1" as const
+
+export const PylonAssignmentStatus = S.Literals([
+  "offered",
+  "accepted",
+  "running",
+  "closed",
+  "rejected",
+  "cancelled",
+  "timed-out",
+  "stale",
+])
+export type PylonAssignmentStatus = typeof PylonAssignmentStatus.Type
+
+export const PylonAssignmentProgressStatus = S.Literals([
+  "accepted",
+  "running",
+  "artifact-ready",
+  "proof-ready",
+  "closeout-submitted",
+])
+export type PylonAssignmentProgressStatus = typeof PylonAssignmentProgressStatus.Type
+
+export const PylonCodexAgentRuntimePhase = S.String
+export type PylonCodexAgentRuntimePhase = typeof PylonCodexAgentRuntimePhase.Type
+
+export const PylonAssignmentRunLifecycleEventName = S.Literals([
+  "assignment_run.poll_complete",
+  "assignment_run.accepted",
+  "assignment_run.runtime_started",
+  "assignment_run.runtime_progress",
+  "assignment_run.runtime_failed",
+  "assignment_run.progress_submitted",
+  "assignment_run.artifacts_submitted",
+  "assignment_run.closeout_submitted",
+  "assignment_run.completed",
+  "assignment_run.no_assignment",
+])
+export type PylonAssignmentRunLifecycleEventName = typeof PylonAssignmentRunLifecycleEventName.Type
+
+export const PylonAssignmentRunLifecycleEvent = S.Struct({
+  schema: S.Literal(PylonAssignmentRunLifecycleEventSchemaLiteral),
+  event: PylonAssignmentRunLifecycleEventName,
+  observedAt: S.String,
+  assignmentRef: S.optional(S.String),
+  leaseRef: S.optional(S.String),
+  leaseCount: S.optional(S.Number),
+  candidateCount: S.optional(S.Number),
+  status: S.optional(S.Union([PylonAssignmentStatus, PylonAssignmentProgressStatus])),
+  statusRef: S.optional(S.String),
+  progressRef: S.optional(S.String),
+  artifactRef: S.optional(S.String),
+  closeoutRef: S.optional(S.String),
+  accountRefHash: S.optional(S.String),
+  elapsedMs: S.optional(S.Number),
+  phase: S.optional(S.Union([S.Literal("runtime_active"), PylonCodexAgentRuntimePhase])),
+  tokensSoFar: S.optional(S.Number),
+  tokenCountKind: S.optional(S.Literals(["exact", "estimated"])),
+  lastProgressEvent: S.optional(S.Union([PylonAssignmentRunLifecycleEventName, S.String])),
+  blockerRefs: S.optional(S.Array(S.String)),
+})
+export type PylonAssignmentRunLifecycleEvent = typeof PylonAssignmentRunLifecycleEvent.Type
+
+export const PylonKhalaSpawnWorkerState = S.Literals([
+  "queued",
+  "requesting",
+  "assignment_created",
+  "running",
+  "closeout_submitted",
+  "proof_checked",
+  "accepted",
+  "rejected",
+  "failed",
+  "cancelled",
+])
+export type PylonKhalaSpawnWorkerState = typeof PylonKhalaSpawnWorkerState.Type
+
+export const PylonKhalaSpawnWorkerEvent = S.Struct({
+  schema: S.Literal(PylonKhalaSpawnWorkerEventSchemaLiteral),
+  assignmentEvent: S.optional(PylonAssignmentRunLifecycleEventName),
+  assignmentRef: S.optional(S.String),
+  closeoutRef: S.optional(S.String),
+  leaseRef: S.optional(S.String),
+  message: S.String,
+  observedAt: S.String,
+  slotIndex: S.Number,
+  state: PylonKhalaSpawnWorkerState,
+  status: S.optional(S.String),
+})
+export type PylonKhalaSpawnWorkerEvent = typeof PylonKhalaSpawnWorkerEvent.Type
+
+export const PylonLifecycleWireEvent = S.Union([
+  PylonAssignmentRunLifecycleEvent,
+  PylonKhalaSpawnWorkerEvent,
+])
+export type PylonLifecycleWireEvent = typeof PylonLifecycleWireEvent.Type
+
+export const PylonLifecycleWireEventFromJsonString = S.fromJsonString(PylonLifecycleWireEvent)
+
+export const decodePylonAssignmentRunLifecycleEvent =
+  S.decodeUnknownSync(PylonAssignmentRunLifecycleEvent)
+export const encodePylonAssignmentRunLifecycleEvent =
+  S.encodeUnknownSync(PylonAssignmentRunLifecycleEvent)
+export const decodePylonKhalaSpawnWorkerEvent = S.decodeUnknownSync(PylonKhalaSpawnWorkerEvent)
+export const encodePylonKhalaSpawnWorkerEvent = S.encodeUnknownSync(PylonKhalaSpawnWorkerEvent)
+export const decodePylonLifecycleWireEvent = S.decodeUnknownSync(PylonLifecycleWireEvent)
+export const decodePylonLifecycleWireEventJson =
+  S.decodeUnknownSync(PylonLifecycleWireEventFromJsonString)
+
 const unsafePublicMaterialPattern =
   /(@|\/Users\/|\/home\/|access[_-]?token|api[_-]?key|auth\.json|bearer|callback[_-]?token|cookie|customer[_-]?(email|name|phone|prompt|record|value)|email[_-]?(address|body|html|raw|text)|gho_[A-Za-z0-9_]+|ghp_[A-Za-z0-9_]+|github\.com\/[^:/]+\/private|invoice[_-]?(id|raw)|lnbc|lntb|lnbcrt|lno1|lnurl|local[_-]?path|macaroon|mdk[_-]?(access[_-]?token|mnemonic|webhook[_-]?secret)|mnemonic|oauth|opencode_auth_content|payment[_-]?(hash|id|invoice|preimage|proof|raw|secret)|payout[_-]?(address|destination|private|raw|target)|preimage|private[_-]?(archive|customer|key|repo|source|trace|wallet)|provider[_-]?(account|credential|grant|payload|secret|token)|raw[_-]?(artifact|auth|command|customer|email|invoice|log|payment|payload|prompt|provider|record|repo|runner|run[_-]?log|shell|source|state|target|text|trace|webhook)|recovery[_-]?phrase|secret|seed[_-]?phrase|sk-[a-z0-9]|token[_-]?secret|wallet[._-]?(key|material|mnemonic|payment|preimage|secret|seed))/i
 
