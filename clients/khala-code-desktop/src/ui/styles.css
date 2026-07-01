@@ -1386,6 +1386,50 @@ button {
   text-align: left;
   cursor: pointer;
 }
+.khala-thread-sidebar-rename-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 1.5rem 1.5rem;
+  align-items: center;
+  min-width: 0;
+  height: 100%;
+  gap: 0.22rem;
+}
+.khala-thread-sidebar-rename-input {
+  min-width: 0;
+  height: 1.62rem;
+  border: 1px solid color-mix(in srgb, var(--oa-color-khala-energy-cyan) 45%, var(--oa-color-component-border));
+  border-radius: 0.3rem;
+  background: color-mix(in srgb, var(--oa-color-khala-void) 34%, transparent);
+  color: var(--oa-color-component-text);
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 600;
+  outline: none;
+  padding: 0 0.38rem;
+}
+.khala-thread-sidebar-rename-input:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--oa-color-khala-energy-cyan) 70%, transparent);
+  outline-offset: -1px;
+}
+.khala-thread-sidebar-rename-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border: 0;
+  border-radius: 0.3rem;
+  background: transparent;
+  color: color-mix(in srgb, var(--oa-color-component-text) 72%, transparent);
+  cursor: pointer;
+  padding: 0;
+}
+.khala-thread-sidebar-rename-action:hover,
+.khala-thread-sidebar-rename-action:focus-visible {
+  background: color-mix(in srgb, var(--oa-color-khala-energy-cyan) 16%, transparent);
+  color: var(--oa-color-khala-energy-cyan);
+  outline: none;
+}
 .khala-thread-sidebar-item-title,
 .khala-thread-sidebar-item-time {
   min-width: 0;

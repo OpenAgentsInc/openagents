@@ -112,6 +112,8 @@ export const mountCodexThreadSidebar = (
   let state: ViewState = { phase: "idle" }
   let visible = false
   let activeThreadId = options.activeThreadId()
+  let renamingThreadId: string | null = null
+  let renamingThreadDraft = ""
   let refreshSequence = 0
   const threadMenu = createBasecoatContextMenu({
     id: "khala-thread-sidebar-thread-menu",
@@ -173,6 +175,30 @@ export const mountCodexThreadSidebar = (
     }
   }
 
+  const cancelRename = (): void => {
+    renamingThreadId = null
+    renamingThreadDraft = ""
+    render()
+  }
+
+  const beginRename = (thread: KhalaCodeDesktopCodexThreadSummary): void => {
+    renamingThreadId = thread.id
+    renamingThreadDraft = thread.title
+    render()
+  }
+
+  const submitRename = (
+    thread: KhalaCodeDesktopCodexThreadSummary,
+    value: string,
+  ): void => {
+    const name = value.trim()
+    renamingThreadId = null
+    renamingThreadDraft = ""
+    render()
+    if (name.length === 0 || name === thread.title.trim()) return
+    void runMutation(() => options.renameThread(thread.id, name))
+  }
+
   const threadMenuHeader = (
     thread: KhalaCodeDesktopCodexThreadSummary,
   ): HTMLElement => {
@@ -208,11 +234,7 @@ export const mountCodexThreadSidebar = (
             label: "Rename thread",
             description: "Set display name",
             icon: "Pencil",
-            onSelect: () => {
-              const name = prompt("Thread name", thread.title)
-              if (name === null || name.trim().length === 0) return
-              void runMutation(() => options.renameThread(thread.id, name.trim()))
-            },
+            onSelect: () => beginRename(thread),
           },
           {
             id: "fork-thread",
@@ -276,6 +298,69 @@ export const mountCodexThreadSidebar = (
     threadMenu.openAt(point, threadMenuContent(thread))
   }
 
+  const threadRenameForm = (
+    thread: KhalaCodeDesktopCodexThreadSummary,
+  ): HTMLFormElement => {
+    const form = el("form", "khala-thread-sidebar-rename-form")
+    form.dataset.threadId = thread.id
+    form.setAttribute("aria-label", `Rename ${thread.title}`)
+
+    const renameInput = el("input", "khala-thread-sidebar-rename-input") as HTMLInputElement
+    renameInput.name = "threadName"
+    renameInput.type = "text"
+    renameInput.value = renamingThreadDraft
+    renameInput.autocomplete = "off"
+    renameInput.setAttribute("aria-label", "Thread name")
+    renameInput.addEventListener("input", () => {
+      renamingThreadDraft = renameInput.value
+    })
+
+    const save = el("button", "khala-thread-sidebar-rename-action")
+    save.type = "submit"
+    save.title = "Save thread name"
+    save.setAttribute("aria-label", "Save thread name")
+    save.replaceChildren(sidebarIcon("Check", "Save thread name"), srOnly("Save thread name"))
+
+    const cancel = el("button", "khala-thread-sidebar-rename-action")
+    cancel.type = "button"
+    cancel.title = "Cancel rename"
+    cancel.setAttribute("aria-label", "Cancel rename")
+    cancel.replaceChildren(sidebarIcon("X", "Cancel rename"), srOnly("Cancel rename"))
+    cancel.addEventListener("click", event => {
+      event.preventDefault()
+      event.stopPropagation()
+      cancelRename()
+    })
+
+    form.addEventListener("submit", event => {
+      event.preventDefault()
+      event.stopPropagation()
+      submitRename(thread, renameInput.value)
+    })
+    form.addEventListener("keydown", event => {
+      if (event.key !== "Escape") return
+      event.preventDefault()
+      event.stopPropagation()
+      cancelRename()
+    })
+    form.addEventListener("focusout", event => {
+      const nextTarget = event.relatedTarget
+      if (nextTarget instanceof Node && form.contains(nextTarget)) return
+      requestAnimationFrame(() => {
+        const activeElement = form.ownerDocument.activeElement
+        if (activeElement instanceof Node && form.contains(activeElement)) return
+        if (renamingThreadId === thread.id) cancelRename()
+      })
+    })
+
+    form.append(renameInput, save, cancel)
+    requestAnimationFrame(() => {
+      renameInput.focus({ preventScroll: true })
+      renameInput.select()
+    })
+    return form
+  }
+
   const threadButton = (
     thread: KhalaCodeDesktopCodexThreadSummary,
   ): HTMLElement => {
@@ -310,7 +395,7 @@ export const mountCodexThreadSidebar = (
       ),
     )
 
-    item.append(row)
+    item.append(renamingThreadId === thread.id ? threadRenameForm(thread) : row)
     return item
   }
 
@@ -392,6 +477,13 @@ export const mountCodexThreadSidebar = (
       if (requestSequence !== refreshSequence) return
       state = { phase: "ready", data }
       activeThreadId = data.threads?.find(thread => thread.id === activeThreadId)?.id ?? activeThreadId
+      if (
+        renamingThreadId !== null &&
+        data.threads?.some(thread => thread.id === renamingThreadId) !== true
+      ) {
+        renamingThreadId = null
+        renamingThreadDraft = ""
+      }
     } catch (error) {
       if (requestSequence !== refreshSequence) return
       const message = error instanceof Error ? error.message : String(error)
@@ -413,7 +505,11 @@ export const mountCodexThreadSidebar = (
     setVisible(nextVisible) {
       visible = nextVisible
       container.hidden = !visible
-      if (!visible) threadMenu.close()
+      if (!visible) {
+        threadMenu.close()
+        renamingThreadId = null
+        renamingThreadDraft = ""
+      }
       if (visible && state.phase === "idle") void refresh()
     },
   }
