@@ -781,6 +781,22 @@ describe("khala code desktop app shell", () => {
     expect(css).toContain(".khala-thread-sidebar-item")
   })
 
+  test("keeps the desktop shell sidebars in explicit grid columns", async () => {
+    const sidebar = await Bun.file(new URL("../src/ui/sidebar.ts", import.meta.url)).text()
+    const css = await Bun.file(new URL("../src/ui/styles.css", import.meta.url)).text()
+
+    expect(sidebar).toContain('className: "khala-code-sidebar"')
+    expect(css).toContain("grid-template-columns: var(--sidebar-width) minmax(0, 1fr)")
+    expect(css).toContain(".khala-code-shell > :is(")
+    expect(css).toContain(".khala-code-shell:has(.khala-code-thread-sidebar:not([hidden]))")
+    expect(css).toContain(
+      "grid-template-columns: var(--sidebar-width) var(--thread-sidebar-width) minmax(0, 1fr)",
+    )
+    expect(css).toContain(".khala-code-thread-sidebar {\n  position: relative;")
+    expect(css).not.toContain("left: var(--sidebar-width)")
+    expect(css).not.toContain("margin-left: calc(var(--sidebar-width) + var(--thread-sidebar-width))")
+  })
+
   test("keeps the composer footer controls in a clean inline strip", async () => {
     const html = await Bun.file(new URL("../src/ui/index.html", import.meta.url)).text()
     const main = await Bun.file(new URL("../src/ui/main.ts", import.meta.url)).text()

@@ -90,6 +90,7 @@ export const mountKhalaCodeSidebar = (
       model,
       groups: navGroups(),
       toMessage: message => message,
+      className: "khala-code-sidebar",
       side: "left",
       label: "Khala Code navigation",
     }),
