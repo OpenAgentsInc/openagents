@@ -214,6 +214,7 @@ const failureRef = (suffix: string) => `failure.khala_spawn.${suffix}`
 
 const defaultProofRetryDelaysMs = [500, 1_500, 3_000] as const
 const defaultProofBackfillRetryDelaysMs = [5_000, 10_000, 20_000, 30_000] as const
+const defaultAssignment409RetryDelaysMs = [750, 2_000, 4_000] as const
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
 
@@ -521,6 +522,50 @@ function spawnFailureProjection(input: {
   }
 }
 
+function isHttp409AssignmentConflict(error: unknown): boolean {
+  const raw = error instanceof Error ? error.message : String(error)
+  const status = /\((\d{3})\)/u.exec(raw)?.[1]
+  return status === "409" || /\bHTTP\s+409\b/iu.test(raw)
+}
+
+async function requestAssignmentWith409Retry<Slot extends PylonKhalaSpawnSlotLike>(input: {
+  emit: (
+    state: PylonKhalaSpawnWorkerState,
+    message: string,
+    patch?: Partial<PylonKhalaSpawnWorkerEvent>,
+  ) => Promise<void>
+  network: TipsNetworkOptions
+  requestAssignment: NonNullable<PylonKhalaSpawnRunDeps<Slot>["requestAssignment"]>
+  sleep: (ms: number) => Promise<void>
+  slot: Slot
+}): Promise<{ request: PylonKhalaRequestResult; retried409: boolean }> {
+  let last409: unknown
+  for (let attempt = 0; attempt <= defaultAssignment409RetryDelaysMs.length; attempt += 1) {
+    try {
+      const request = await input.requestAssignment(input.network, input.slot.requestInput, input.slot)
+      if (attempt > 0) {
+        await input.emit("requesting", "Khala assignment creation recovered after transient HTTP 409", {
+          status: "retry.khala_spawn.assignment_http_409_recovered",
+        })
+      }
+      return { request, retried409: attempt > 0 }
+    } catch (error) {
+      if (!isHttp409AssignmentConflict(error)) throw error
+      last409 = error
+      const delay = defaultAssignment409RetryDelaysMs[attempt]
+      if (delay === undefined) break
+      await input.emit("requesting", "Khala assignment creation hit transient HTTP 409; retrying", {
+        status: "retry.khala_spawn.assignment_http_409",
+      })
+      await input.sleep(delay)
+    }
+  }
+  await input.emit("requesting", "Khala assignment creation exhausted HTTP 409 retries", {
+    status: "failure.khala_spawn.assignment_http_409_retry_exhausted",
+  })
+  throw last409 ?? new Error("pylon khala request failed (409): assignment creation retry exhausted")
+}
+
 async function readProofWithRetry<Slot extends PylonKhalaSpawnSlotLike>(input: {
   delaysMs?: readonly number[]
   network: TipsNetworkOptions
@@ -746,7 +791,13 @@ async function runPylonKhalaSpawnSlot<Slot extends PylonKhalaSpawnSlotLike>(inpu
     await emit("queued", "worker queued")
     state = "requesting"
     await emit("requesting", "requesting Khala durable assignment")
-    const request = await input.requestAssignment(input.network, input.slot.requestInput, input.slot)
+    const { request, retried409 } = await requestAssignmentWith409Retry({
+      emit,
+      network: input.network,
+      requestAssignment: input.requestAssignment,
+      sleep: pause,
+      slot: input.slot,
+    })
     assignmentRef = request.assignmentRef
     durableRequestId = request.durableRequestId
     if (assignmentRef === null) {
@@ -755,7 +806,10 @@ async function runPylonKhalaSpawnSlot<Slot extends PylonKhalaSpawnSlotLike>(inpu
       await emit("failed", "Khala request did not return an assignment ref")
     } else {
       state = "assignment_created"
-      await emit("assignment_created", "Khala assignment ref created", { assignmentRef })
+      await emit("assignment_created", "Khala assignment ref created", {
+        assignmentRef,
+        ...(retried409 ? { status: "retry.khala_spawn.assignment_http_409_succeeded" } : {}),
+      })
       const run = await input.runAssignment(
         input.summary,
         {
