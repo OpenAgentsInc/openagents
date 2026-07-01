@@ -56,6 +56,8 @@ describe("khala code desktop app shell", () => {
     expect(sidebar).toContain('{ value: "inbox", children: ["Inbox"] }')
     expect(html).toContain('aria-label="Unified Inbox"')
     expect(main).toContain("mountUnifiedInboxPanel")
+    expect(main).toContain("codexAppServerStatus")
+    expect(main).toContain("codexAppServerStart")
     expect(main).toContain('const showInbox = value === "inbox"')
     expect(main).toContain("inboxPanel?.setVisible(showInbox)")
     expect(css).toContain(".khala-code-inbox")

@@ -4,6 +4,7 @@ import type {
   KhalaCodexRateLimitProviderStatus,
   KhalaCodexRateLimitResetOutcome,
 } from "../shared/codex-rate-limits.js"
+import type { CodexAppServerHost } from "./codex-app-server-client.js"
 import type { KhalaAppleFmReadiness } from "../shared/apple-fm-readiness.js"
 import type { OnDeviceDeciderSelection } from "../shared/on-device-decider.js"
 import {
@@ -40,6 +41,7 @@ type MaybePromise<T> = T | Promise<T>
 
 export type KhalaCodeDesktopRpcHandlersInput = {
   readonly appleFmReadiness: () => MaybePromise<KhalaAppleFmReadiness>
+  readonly codexAppServerHost?: CodexAppServerHost
   readonly codexRateLimitStatus?: () => MaybePromise<KhalaCodexRateLimitProviderStatus>
   readonly codexHarnessStatus?: () => MaybePromise<KhalaCodeDesktopCodexHarnessStatus>
   readonly consumeCodexRateLimitResetCredit?: (input: {
@@ -174,6 +176,91 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
     },
     async appleFmReadiness() {
       return input.appleFmReadiness()
+    },
+    async codexAppServerRestart() {
+      return input.codexAppServerHost?.restart() ?? {
+        ok: false,
+        action: "restart",
+        changed: false,
+        status: {
+          ok: true,
+          app: "Khala Code Desktop",
+          adapterVersion: "unconfigured",
+          codexCommand: "codex",
+          codexHome: "",
+          diagnostics: [],
+          initialized: false,
+          initializeResult: null,
+          lastError: "Codex app-server host is not configured.",
+          pendingRequestCount: 0,
+          pid: null,
+          state: "errored",
+          transport: "stdio",
+        },
+        error: "Codex app-server host is not configured.",
+      }
+    },
+    async codexAppServerStart() {
+      return input.codexAppServerHost?.start() ?? {
+        ok: false,
+        action: "start",
+        changed: false,
+        status: {
+          ok: true,
+          app: "Khala Code Desktop",
+          adapterVersion: "unconfigured",
+          codexCommand: "codex",
+          codexHome: "",
+          diagnostics: [],
+          initialized: false,
+          initializeResult: null,
+          lastError: "Codex app-server host is not configured.",
+          pendingRequestCount: 0,
+          pid: null,
+          state: "errored",
+          transport: "stdio",
+        },
+        error: "Codex app-server host is not configured.",
+      }
+    },
+    async codexAppServerStatus() {
+      return input.codexAppServerHost?.status() ?? {
+        ok: true,
+        app: "Khala Code Desktop",
+        adapterVersion: "unconfigured",
+        codexCommand: "codex",
+        codexHome: "",
+        diagnostics: [],
+        initialized: false,
+        initializeResult: null,
+        lastError: "Codex app-server host is not configured.",
+        pendingRequestCount: 0,
+        pid: null,
+        state: "errored",
+        transport: "stdio",
+      }
+    },
+    async codexAppServerStop() {
+      return input.codexAppServerHost?.stop() ?? {
+        ok: true,
+        action: "stop",
+        changed: false,
+        status: {
+          ok: true,
+          app: "Khala Code Desktop",
+          adapterVersion: "unconfigured",
+          codexCommand: "codex",
+          codexHome: "",
+          diagnostics: [],
+          initialized: false,
+          initializeResult: null,
+          lastError: "Codex app-server host is not configured.",
+          pendingRequestCount: 0,
+          pid: null,
+          state: "stopped",
+          transport: "stdio",
+        },
+      }
     },
     async codexAccountsStatus() {
       return codexAccountsStatus()

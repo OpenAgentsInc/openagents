@@ -13,6 +13,7 @@ import {
   readKhalaCodeHeadlessPrompt,
   runKhalaCodeDesktopHeadlessJsonl,
 } from "./headless.js"
+import { createCodexAppServerHost } from "./codex-app-server-client.js"
 import { createOnDeviceDeciderHost } from "./on-device-decider-host.js"
 import { createKhalaCodeDesktopRpcRequestHandlers } from "./rpc-handlers.js"
 
@@ -209,6 +210,7 @@ const { ApplicationMenu, BrowserView, BrowserWindow } = await import("electrobun
 // Off by default and fails soft: readiness reports unavailability rather than
 // throwing when the FM bridge or hardware is missing.
 const appleFmSidecar = createAppleFmSidecarHost()
+const codexAppServerHost = createCodexAppServerHost({ env: Bun.env })
 
 // Optional on-device decider: a small local model that selects a
 // platform-appropriate backend (Apple FM on Apple Silicon, self-hosted GPT-OSS
@@ -217,10 +219,21 @@ const onDeviceDecider = createOnDeviceDeciderHost({ sidecar: appleFmSidecar })
 
 rpcRequestHandlers = createKhalaCodeDesktopRpcRequestHandlers({
   appleFmReadiness: () => appleFmSidecar.readiness(),
+  codexAppServerHost,
   emitChatTurnEvent: event => emitChatTurnEvent(event),
   env: Bun.env,
   onDeviceDeciderStatus: () => onDeviceDecider.select(),
   workingDirectory: resolveToolWorkingDirectory(Bun.env),
+})
+
+process.once("exit", () => codexAppServerHost.dispose())
+process.once("SIGINT", () => {
+  codexAppServerHost.dispose()
+  process.exit(130)
+})
+process.once("SIGTERM", () => {
+  codexAppServerHost.dispose()
+  process.exit(143)
 })
 
 const rpc = BrowserView.defineRPC<KhalaCodeDesktopRPCSchema>({

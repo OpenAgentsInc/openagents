@@ -138,6 +138,30 @@ export type KhalaCodeDesktopCodexHarnessStatus =
     }
   }
 
+export type KhalaCodeDesktopCodexAppServerStatus = {
+  readonly ok: true
+  readonly app: "Khala Code Desktop"
+  readonly adapterVersion: string
+  readonly codexCommand: string
+  readonly codexHome: string
+  readonly diagnostics: readonly string[]
+  readonly initialized: boolean
+  readonly initializeResult: unknown
+  readonly lastError: string | null
+  readonly pendingRequestCount: number
+  readonly pid: number | null
+  readonly state: "errored" | "running" | "starting" | "stopped"
+  readonly transport: "stdio"
+}
+
+export type KhalaCodeDesktopCodexAppServerControlResult = {
+  readonly ok: boolean
+  readonly action: "restart" | "start" | "stop"
+  readonly changed: boolean
+  readonly status: KhalaCodeDesktopCodexAppServerStatus
+  readonly error?: string
+}
+
 export type KhalaCodeDesktopCodexAccountStatus = {
   readonly provider: "codex"
   readonly accountRef: "default"
@@ -260,6 +284,10 @@ export type KhalaCodeDesktopRPCSchema = {
     appInfo(): Promise<KhalaCodeDesktopAppInfo>
     appleFmReadiness(): Promise<KhalaAppleFmReadiness>
     codexAccountsStatus(): Promise<KhalaCodeDesktopCodexAccountsStatus>
+    codexAppServerRestart(): Promise<KhalaCodeDesktopCodexAppServerControlResult>
+    codexAppServerStart(): Promise<KhalaCodeDesktopCodexAppServerControlResult>
+    codexAppServerStatus(): Promise<KhalaCodeDesktopCodexAppServerStatus>
+    codexAppServerStop(): Promise<KhalaCodeDesktopCodexAppServerControlResult>
     codexFleetStatus(): Promise<KhalaCodeDesktopFleetStatus>
     codexHarnessStatus(): Promise<KhalaCodeDesktopCodexHarnessStatus>
     connectCodexAccount(accountRef: string): Promise<KhalaCodeDesktopConnectStart>

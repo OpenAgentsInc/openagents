@@ -86,6 +86,22 @@ const previewRpc = (): DesktopRpc => ({
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["codexAccountsStatus"]>>
       >("codexAccountsStatus"),
+    codexAppServerRestart: () =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["codexAppServerRestart"]>>
+      >("codexAppServerRestart"),
+    codexAppServerStart: () =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["codexAppServerStart"]>>
+      >("codexAppServerStart"),
+    codexAppServerStatus: () =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["codexAppServerStatus"]>>
+      >("codexAppServerStatus"),
+    codexAppServerStop: () =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["codexAppServerStop"]>>
+      >("codexAppServerStop"),
     codexFleetStatus: () =>
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["codexFleetStatus"]>>
@@ -1096,6 +1112,10 @@ const controls = {
     return state
   },
   codexAccountsStatus: () => rpc.request.codexAccountsStatus(),
+  codexAppServerRestart: () => rpc.request.codexAppServerRestart(),
+  codexAppServerStart: () => rpc.request.codexAppServerStart(),
+  codexAppServerStatus: () => rpc.request.codexAppServerStatus(),
+  codexAppServerStop: () => rpc.request.codexAppServerStop(),
   codexFleetStatus: () => rpc.request.codexFleetStatus(),
   codexHarnessStatus: () => rpc.request.codexHarnessStatus(),
   codingStatus: () => rpc.request.codingStatus(),

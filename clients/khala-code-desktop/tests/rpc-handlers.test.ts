@@ -8,7 +8,11 @@ import type {
   KhalaCodexFleetCommandInput,
   KhalaCodexFleetCommandResult,
 } from "../src/bun/khala-codex-fleet-tools"
-import type { KhalaCodeDesktopCodexHarnessStatus } from "../src/shared/rpc"
+import type {
+  KhalaCodeDesktopCodexAppServerControlResult,
+  KhalaCodeDesktopCodexAppServerStatus,
+  KhalaCodeDesktopCodexHarnessStatus,
+} from "../src/shared/rpc"
 
 const tempDirs: string[] = []
 
@@ -105,6 +109,22 @@ function readyHarness(
   }
 }
 
+const stoppedAppServerStatus = (): KhalaCodeDesktopCodexAppServerStatus => ({
+  ok: true,
+  app: "Khala Code Desktop",
+  adapterVersion: "test-adapter",
+  codexCommand: "codex",
+  codexHome: "/home/user/.codex",
+  diagnostics: [],
+  initialized: false,
+  initializeResult: null,
+  lastError: null,
+  pendingRequestCount: 0,
+  pid: null,
+  state: "stopped",
+  transport: "stdio",
+})
+
 describe("Khala Code desktop RPC handlers", () => {
   test("answers native desktop status probes instead of falling through", async () => {
     const handlers = createKhalaCodeDesktopRpcRequestHandlers({
@@ -136,6 +156,30 @@ describe("Khala Code desktop RPC handlers", () => {
         status: "ok",
       }),
       codexHarnessStatus: () => readyHarness(),
+      codexAppServerHost: {
+        dispose: () => undefined,
+        request: async <Result>() => ({} as Result),
+        restart: async (): Promise<KhalaCodeDesktopCodexAppServerControlResult> => ({
+          ok: true,
+          action: "restart",
+          changed: true,
+          status: { ...stoppedAppServerStatus(), state: "running", initialized: true, pid: 400 },
+        }),
+        start: async (): Promise<KhalaCodeDesktopCodexAppServerControlResult> => ({
+          ok: true,
+          action: "start",
+          changed: true,
+          status: { ...stoppedAppServerStatus(), state: "running", initialized: true, pid: 400 },
+        }),
+        status: () => stoppedAppServerStatus(),
+        stop: async (): Promise<KhalaCodeDesktopCodexAppServerControlResult> => ({
+          ok: true,
+          action: "stop",
+          changed: false,
+          status: stoppedAppServerStatus(),
+        }),
+        subscribe: () => () => undefined,
+      },
       env: {},
       onDeviceDeciderStatus: () => {
         throw new Error("not used")
@@ -148,6 +192,19 @@ describe("Khala Code desktop RPC handlers", () => {
       capability: "coding",
       ok: true,
       status: "ready",
+    })
+    await expect(handlers.codexAppServerStatus()).resolves.toMatchObject({
+      adapterVersion: "test-adapter",
+      state: "stopped",
+      transport: "stdio",
+    })
+    await expect(handlers.codexAppServerStart()).resolves.toMatchObject({
+      action: "start",
+      ok: true,
+      status: {
+        state: "running",
+        initialized: true,
+      },
     })
     await expect(handlers.codexHarnessStatus()).resolves.toMatchObject({
       available: true,
