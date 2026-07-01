@@ -248,10 +248,10 @@ export const gymPaneStateFromLocation = (
 
 export const initialKhalaCodeViewFromLocation = (
   location: Pick<Location, "search" | "hash">,
-): "chat" | "fleet" | "gym" => {
+): "chat" | "inbox" | "fleet" | "gym" => {
   const params = paramsForLocation(location)
   const view = params.get("view")
-  if (view === "fleet" || view === "gym" || view === "chat") return view
+  if (view === "fleet" || view === "gym" || view === "inbox" || view === "chat") return view
   const proof = params.get("gymProof")
   return proof === "fixture" || proof === "demo" ? "gym" : "chat"
 }

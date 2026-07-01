@@ -10,6 +10,7 @@ import {
   parseMessageSegments,
   parseToolTranscript,
 } from "../src/ui/transcript-render"
+import { projectUnifiedInbox } from "../src/ui/inbox"
 
 describe("khala code desktop app shell", () => {
   test("registers the Khala Code desktop view", () => {
@@ -40,9 +41,99 @@ describe("khala code desktop app shell", () => {
     expect(html).toContain("data-oa-command-composer-native-editing")
     expect(html).toContain("autofocus")
     expect(html).toContain('id="send-button"')
+    expect(html).toContain('id="inbox-panel"')
     expect(html).toContain('id="fleet-panel"')
     expect(html).toContain('id="gym-panel"')
     expect(html).not.toContain("Pylons")
+  })
+
+  test("wires the Unified Inbox shell and local-safe projection", async () => {
+    const html = await Bun.file(new URL("../src/ui/index.html", import.meta.url)).text()
+    const sidebar = await Bun.file(new URL("../src/ui/sidebar.ts", import.meta.url)).text()
+    const main = await Bun.file(new URL("../src/ui/main.ts", import.meta.url)).text()
+    const css = await Bun.file(new URL("../src/ui/styles.css", import.meta.url)).text()
+
+    expect(sidebar).toContain('{ value: "inbox", children: ["Inbox"] }')
+    expect(html).toContain('aria-label="Unified Inbox"')
+    expect(main).toContain("mountUnifiedInboxPanel")
+    expect(main).toContain('const showInbox = value === "inbox"')
+    expect(main).toContain("inboxPanel?.setVisible(showInbox)")
+    expect(css).toContain(".khala-code-inbox")
+    expect(css).toContain(".khala-inbox-coverage-row[data-status=\"not_connected\"]")
+
+    const projection = projectUnifiedInbox({
+      fleet: {
+        ok: false,
+        observedAt: "2026-06-30T00:00:00.000Z",
+        pylon: {
+          status: "unavailable",
+          pylonRef: null,
+          message: "Pylon offline",
+        },
+        availableCodexAssignments: null,
+        maxCodexAssignments: null,
+        accounts: [{
+          accountRef: "codex-2",
+          provider: "codex",
+          readiness: "credentials_missing",
+          quotaState: null,
+          accountKey: null,
+          email: null,
+        }],
+        activeAssignments: [{
+          assignmentRef: "assignment.khala.demo",
+          issueRef: "github.issue.openagents.7760",
+          updatedAt: "2026-06-30T00:01:00.000Z",
+        }],
+        processes: [],
+      },
+      pylon: {
+        ok: true,
+        app: "Khala Code Desktop",
+        available: false,
+        capability: "pylon",
+        observedAt: "2026-06-30T00:00:00.000Z",
+        reason: "Pylon offline",
+        status: "unavailable",
+      },
+      coding: {
+        ok: true,
+        app: "Khala Code Desktop",
+        available: true,
+        capability: "coding",
+        observedAt: "2026-06-30T00:00:00.000Z",
+        reason: "ready",
+        status: "ready",
+      },
+      tokenAccounting: {
+        ok: true,
+        app: "Khala Code Desktop",
+        available: false,
+        capability: "token_accounting",
+        observedAt: "2026-06-30T00:00:00.000Z",
+        reason: "not configured",
+        status: "not_configured",
+      },
+    })
+
+    expect(projection.items.map(item => item.kind)).toEqual([
+      "run_blocked",
+      "missing_credential",
+      "ready_for_review",
+    ])
+    expect(projection.items[1]).toMatchObject({
+      accountRef: "codex-2",
+      actions: ["reconnect", "open_fleet"],
+    })
+    expect(projection.items[2]).toMatchObject({
+      assignmentRef: "assignment.khala.demo",
+      resumeCommand: "khala closeout assignment.khala.demo --json",
+    })
+    expect(projection.coverage).toContainEqual({
+      source: "approval queue",
+      status: "not_connected",
+      summary: "Pylon permission prompts are not exposed through the desktop RPC yet.",
+    })
   })
 
   test("renders a visible Gym pane entry without seeded private proof data", async () => {
