@@ -302,8 +302,12 @@ export async function runKhalaCodeDesktopChatTurn(
     streamed: KhalaCodeDesktopMessage | null,
     toolCalls: readonly OpenAiToolCall[] = [],
   ): Promise<void> => {
+    // Reveal from the raw reply (re-protecting first can mangle placeholder
+    // tokens), but keep the irreversible secret-shape scrub on the visible
+    // copy: regex-scrubbed secrets are never in the reveal table, so this
+    // cannot resurrect the mangle bug.
+    const visibleText = redactKhalaPublicText(await revealLocalText(text, redaction))
     const modelText = await protectModelText(text, redaction)
-    const visibleText = await revealLocalText(modelText, redaction)
     const message = streamed === null
       ? hostMessage("assistant", visibleText)
       : { ...streamed, body: visibleText }
