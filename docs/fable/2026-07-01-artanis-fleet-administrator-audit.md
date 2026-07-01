@@ -11,6 +11,9 @@ and, optionally, **per-user fleet manager of a user's own codebases (Artanis
 as a Service)**. Companion to the Orca adoption plan, the fleet fan-out
 instructions, and the Claude-parity doc in this folder. Documentation-only;
 flips no promise state, changes no authority.
+Execution: Priorities 1–5 in §6 are scheduled as the Artanis workstream in
+the unified [`ROADMAP.md`](./ROADMAP.md); §7 maps each dependency onto its
+owning workstream there.
 
 ## 1. What Artanis Is (And Isn't)
 

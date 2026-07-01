@@ -12,6 +12,11 @@ throughput returns to and exceeds the June 29 peak — without June 29's
 failure modes. Companion analyses: the episode-245 doc (delegation state) and
 the Khala Code summary in this folder. This doc flips no promise state and
 broadens no public copy.
+Execution: the lane/issue breakdown in §10 is consolidated into the unified
+[`ROADMAP.md`](./ROADMAP.md); see also the Orca adoption plan (Priority 1:
+build Lanes A/B **on** the dormant `apps/pylon/src/orchestration/` store —
+one state store, not two) and the Effect integration audit (Phases 1–2 are
+the spine the supervisor and cockpit should be built on).
 
 ## 0. The Mission, Stated As Outcomes
 
@@ -134,7 +139,13 @@ Build:
    startedAt, counters }`. Persist under the desktop's owner-local state dir
    (same pattern as `~/.khala-code/codex-sessions.json`) and in the Pylon
    orchestration store so both survive restarts and reconcile
-   (#7593/#7597 patterns).
+   (#7593/#7597 patterns). Per the Orca adoption plan's Priority 1, the
+   Pylon side of this record **is** the dormant
+   `apps/pylon/src/orchestration/` store (tasks = work units, dispatch
+   contexts = workers, messages = lifecycle bus, VirtualHead = merge-queue
+   base pinning) — wire it, do not build a second state model. Adopt Orca's
+   handoff vs supervised-dispatch taxonomy: `codex_spawn` one-shots are
+   handoffs (untracked), FleetRuns are supervised dispatches (DAG-tracked).
 2. **A FleetRunSupervisor in the Bun host** (Effect, `Scope`d): the promoted
    watcher loop. Tick: read run state → count active assignments → if below
    target and work remains, claim next work unit (Lane B) → dispatch one
@@ -224,7 +235,13 @@ Acceptance:
 
 **Goal**: "get a whole sense of the thing" at a glance, and control it.
 
-Build, on the existing `fleet-status.ts`/`fleet-board-projection.ts`:
+Build, on the existing `fleet-status.ts`/`fleet-board-projection.ts` — and
+per the Orca adoption plan's Priority 2, make
+`agent_runner_status_event.v1` the one status vocabulary the cockpit
+consumes (runner → orchestration store → cockpit → Worker → mobile),
+instead of extending bespoke `codexFleetStatus` shapes. The mobile
+companion (Orca plan Priority 3) is a projection of exactly these cards
+and flags; keep every projection public-safe with that in mind.
 
 1. **Run header**: the active FleetRun with state, objective, target vs
    actual concurrency, backlog remaining/claimed/done, elapsed, and controls

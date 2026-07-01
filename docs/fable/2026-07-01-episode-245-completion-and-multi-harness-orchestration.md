@@ -8,6 +8,9 @@ unrecorded completion segment (the italic script), then lays out a
 minimal-change path that also moves toward orchestrating between multiple
 harnesses (Codex, Claude Code, Khala). It flips no promise state and broadens
 no public copy.
+Execution: the P0–P3 sequence in §3.3 is consolidated into the unified
+[`ROADMAP.md`](./ROADMAP.md); the full Claude chat-harness plan this doc
+defers is `2026-07-01-claude-code-parity-and-codex-synergies.md`.
 
 ## 1. Where Episode 245 Stands
 
@@ -233,7 +236,13 @@ converts the legacy path from a deprecation artifact into a deliberate
 product position: *Khala mode is where smart routing lives; Codex mode is
 where local parity lives.* Claude Code as a third Axis-A chat harness is a
 later, larger lift (there is no Claude app-server equivalent; the nearest
-harness is the Agent SDK loop) — do not block anything on it.
+harness is the Agent SDK loop) — do not block anything on it. That larger
+lift is now fully specified in
+`2026-07-01-claude-code-parity-and-codex-synergies.md` (a `ChatRuntime`
+abstraction, a `ClaudeChatRuntime` on the Agent SDK, and a
+"Codex | Claude | Khala" composer pill), so the Axis-A toggle built here
+should introduce the runtime-selector seam that plan extends rather than a
+Codex/Khala-only branch.
 
 **Axis B UI: a delegation-target field on `codex_spawn` and the Fleet
 delegate form — "codex | claude | auto".** This is where Claude Code
@@ -282,7 +291,9 @@ the parity contract changes.
   the shared fleet tooling (`khala-codex-fleet-tools.ts` →
   fleet-tools with a kind parameter; fix the `khala-burndown.ts`
   hard-coding). The Claude executor and server rails need no changes for
-  bounded fixture/checkout work.
+  bounded fixture/checkout work. This is the same work item as Lane B4 of
+  `2026-07-01-fleet-fanout-coding-instructions.md` — implement it once,
+  there, with the FleetRun `workerKind` enum.
 - **P3 (next): `auto` and Khala-as-router.** Local free-slot rule → server
   classifier → GEPA-optimized routing parameters, admission-gated through
   the same Gym path the episode demos. Separately, close the deferrable

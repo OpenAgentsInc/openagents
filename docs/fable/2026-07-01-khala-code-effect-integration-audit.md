@@ -388,15 +388,21 @@ Effect-wrap what isn't effectful.
 
 ## 6. How This Sequences With The Other Fable Plans
 
-Phases 1–2 here are prerequisites the other two plans quietly assume: the
+Phases 1–2 here are prerequisites the other plans quietly assume: the
 fleet fan-out instructions' `FleetRunSupervisor` should be built on the
 `PylonService` + scoped subprocess service (not more `runPylonCommand`
 strings), and the QA framework's schema/consistency oracles need the
-Schema-first RPC contract to exist. Recommended order: Phase 1 → fan-out
+Schema-first RPC contract to exist. The Claude bring-up plan
+(`2026-07-01-claude-code-parity-and-codex-synergies.md`) is the natural
+first *consumer* of this spine going the other way: `ClaudeChatRuntime` is
+greenfield, so it should be written as the desktop's first real Effect
+service from day one (Stream + acquireRelease + Schema-decoded SDK
+boundary) rather than migrated later. Recommended order: Phase 1 → fan-out
 Lane A/B on the new spine → Phase 2 alongside cockpit work → Phase 3
 starting with the cockpit as the first embedded Foldkit program → Phase 4
 continuously. The Foldkit migration is the one item that should *not* block
 episode 245 or the throughput work — it rides behind them, panel by panel.
+The full cross-plan schedule is the unified [`ROADMAP.md`](./ROADMAP.md).
 
 ## 7. Invariants While Migrating
 

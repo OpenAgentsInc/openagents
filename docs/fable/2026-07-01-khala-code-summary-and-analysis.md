@@ -5,6 +5,9 @@ Status: synthesis document. Summarizes and analyzes everything discoverable in
 this repository — code, docs, and the GitHub issue tracker — about **Khala
 Code**. This doc flips no promise state, changes no runtime authority, and
 broadens no public copy. It is a map plus an assessment, not a spec.
+Execution: the open threads in §6.3 are consolidated, with every other
+`docs/fable/` plan, into the unified [`ROADMAP.md`](./ROADMAP.md) in this
+folder; the delivery process is [`EXECUTION.md`](./EXECUTION.md).
 
 ## 1. What Khala Code Is
 
@@ -402,6 +405,9 @@ Khala Code's parity claim is enforced mechanically, not by aspiration:
 
 ### 6.3 Open threads worth tracking
 
+Every thread below has a named workstream in [`ROADMAP.md`](./ROADMAP.md);
+this list is preserved as the original inventory.
+
 - The remaining fleet-management surfaces: worker cards, supervised
   orchestration UI, config scanner ("adopt, don't import" across harnesses),
   run timeline/trace viewer, save-as-worker, memory governance,
@@ -456,3 +462,9 @@ execution-boundary port), #7730 (deterministic delegation), #7755/#7756
 (Part 2 slice + Gym pane), #7780 (Codex wrapper pivot, children
 #7781–#7795), plus follow-ups #7798–#7810. Deprecated model-lane history:
 #6035, #6109, #6241.
+
+Sibling `docs/fable/` analyses that build on this map: episode-245 /
+multi-harness (chat-harness and delegation-target axes), the QA framework
+design, the fleet fan-out instructions, the Effect integration audit, the
+Claude-parity and synergies plan, the Orca adoption plan, and the Artanis
+fleet-administrator audit — all unified in [`ROADMAP.md`](./ROADMAP.md).

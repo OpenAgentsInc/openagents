@@ -5,7 +5,39 @@ analyses that map code, docs, and issue history for a given subject. These are
 orientation/analysis artifacts — they flip no promise state, change no runtime
 authority, and broaden no public copy.
 
-Contents:
+As of 2026-07-01 the folder also carries the **unified execution layer**:
+every recommendation and roadmap across the eight analysis docs is
+consolidated into one roadmap and one operating procedure, cross-linked from
+each source doc.
+
+## Start Here
+
+- [`ROADMAP.md`](./ROADMAP.md) — the single consolidated roadmap: 17
+  workstreams (WS-1…WS-17), ~80 issue-sized tasks with hard dependencies and
+  delegability grades, a five-wave parallelization plan for multi-agent
+  fan-out, milestones M1–M6, and the merged non-negotiable invariants.
+  Headline shape: two small foundations land first — the Schema-first
+  contracts spine (Effect audit Phase 1) and wiring the dormant Pylon
+  orchestration store as the one state model (Orca Priority 1 = fan-out
+  Lanes A1/B1) — then work fans out wide across the fleet-run engine, the
+  work planner + claim registry, the cockpit UI, the QA framework, the
+  Effect process spine, the Claude chat harness, multi-harness routing, the
+  status spine, the mobile companion, Artanis elevation, the staged Foldkit
+  migration, and continuous guardrails — gated at the end by the "clean
+  2B-token day" acceptance run.
+- [`EXECUTION.md`](./EXECUTION.md) — how the roadmap is executed: Artanis
+  (fleet-manager role) supervises; **Khala Code fleet delegation is the
+  primary mechanism**; one GitHub issue per roadmap task, closed only via a
+  reviewed PR merged to `main`, built in a clean worktree; final review by
+  the supervisor or a tightly-controlled subagent, never the authoring
+  worker; every delegated run's tokens verified through the exact
+  `token_usage_events` chain (`POST /api/pylon/{codex,claude}/turns` →
+  ledger → `GET /api/public/khala-tokens-served`) into the public
+  `openagents.com/stats` counters. The run doubles as the final stress test
+  of the Khala Code fleet system before outside users — fleet bugs are
+  fixed in-flight as first-class work.
+
+## Analysis Docs
 
 - `2026-07-01-khala-code-summary-and-analysis.md` — everything in this repo
   (code, docs, issues) about Khala Code: identity and naming disambiguation,

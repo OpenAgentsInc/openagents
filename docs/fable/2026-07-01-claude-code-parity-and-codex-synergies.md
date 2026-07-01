@@ -12,6 +12,11 @@ the fleet-management work. Companion to the multi-harness section of
 `2026-07-01-episode-245-completion-and-multi-harness-orchestration.md`, the
 fleet fan-out instructions, and the Effect integration audit in this folder.
 Documentation-only; flips no promise state.
+Execution: Phases 0–3 and the synergy crossovers in §4 are scheduled as the
+Claude-harness and multi-harness workstreams in the unified
+[`ROADMAP.md`](./ROADMAP.md). Phase 0's `ChatRuntime` selector is the same
+seam as the episode-245 doc's Axis A toggle — build it once; the fan-out
+doc's Lane B4 (`workerKind`) is the Axis B half.
 
 ## 1. Where We Actually Stand
 

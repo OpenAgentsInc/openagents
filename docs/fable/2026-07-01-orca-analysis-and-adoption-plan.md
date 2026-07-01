@@ -9,6 +9,11 @@ companion direction (Khala iOS reaching rough feature parity with Khala Code
 Desktop, minus a few things). Companion to the fleet fan-out instructions,
 the QA framework design, and the Effect integration audit in this folder.
 Documentation-only; flips no promise state.
+Execution: Priorities 1–5 in §3 are scheduled in the unified
+[`ROADMAP.md`](./ROADMAP.md) — Priority 1 is folded into the fan-out
+Lane A/B foundation (one state store), Priority 2 into the status-spine
+workstream, Priority 3 is the mobile-companion workstream, and the Artanis
+audit's Priority 3 administers the same spine.
 
 Reference-repo policy (already established in
 `docs/ade/2026-06-27-orca-orchestrator-adaptation-report.md` and unchanged

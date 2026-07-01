@@ -29,6 +29,13 @@ small; the leverage is in composition. And because Khala Code Desktop becomes
 the flagship native-desktop QA target, every gap we close here directly
 advances the QA-agent product line (#6181 "out-ship Factory").
 
+Cross-connections: gaps G1/G2 are hard prerequisites for Lane D of
+`2026-07-01-fleet-fanout-coding-instructions.md`, and the `schema`/
+`consistency` oracles cannot exist until the Schema-first RPC contract from
+Phase 1 of `2026-07-01-khala-code-effect-integration-audit.md` lands. The
+G-gaps and P-phases here are scheduled as the QA workstream in the unified
+[`ROADMAP.md`](./ROADMAP.md).
+
 ## 1. What Already Exists (Audit Summary)
 
 ### 1.1 The QA agent (`apps/qa-runner` — shipped, epics #6174/#6181/#6206)
