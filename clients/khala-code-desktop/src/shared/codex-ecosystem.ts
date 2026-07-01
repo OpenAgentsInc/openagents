@@ -1,6 +1,7 @@
 export type KhalaCodeDesktopCodexEcosystemSource =
   | "apps"
   | "hooks"
+  | "imports"
   | "khala"
   | "marketplace"
   | "mcp"
@@ -78,6 +79,7 @@ export type KhalaCodeDesktopCodexEcosystemProjection = Readonly<{
   sections: Readonly<{
     apps: KhalaCodeDesktopCodexEcosystemSection
     hooks: KhalaCodeDesktopCodexEcosystemSection
+    imports: KhalaCodeDesktopCodexEcosystemSection
     khala: KhalaCodeDesktopCodexEcosystemSection
     marketplace: KhalaCodeDesktopCodexEcosystemSection
     mcp: KhalaCodeDesktopCodexEcosystemSection
@@ -97,6 +99,8 @@ export type ProjectKhalaCodeDesktopCodexEcosystemInput = Readonly<{
   appsList?: unknown
   cwd?: string
   errors?: readonly string[]
+  externalAgentConfigDetect?: unknown
+  externalAgentConfigImportHistories?: unknown
   hooksList?: unknown
   mcpServerStatusList?: unknown
   notifications?: readonly KhalaCodeDesktopCodexEcosystemRawNotification[]
@@ -163,6 +167,15 @@ const limitedDetail = (value: string): string =>
 
 const countObjectKeys = (value: unknown): number =>
   isRecord(value) ? Object.keys(value).length : 0
+
+const numberField = (
+  value: unknown,
+  key: string,
+): number | null => {
+  if (!isRecord(value)) return null
+  const field = value[key]
+  return typeof field === "number" && Number.isFinite(field) ? field : null
+}
 
 const uniqueById = (
   items: readonly KhalaCodeDesktopCodexEcosystemItem[],
@@ -643,6 +656,102 @@ const parseMcp = (
   return { diagnostics, items: uniqueById(items) }
 }
 
+const countImportResultItems = (value: unknown, key: string): number =>
+  arrayField(value, key).length
+
+const parseExternalImports = (
+  detectResponse: unknown,
+  historiesResponse: unknown,
+  notifications: readonly KhalaCodeDesktopCodexEcosystemRawNotification[],
+  observedAt: string,
+): {
+  readonly diagnostics: readonly KhalaCodeDesktopCodexEcosystemDiagnostic[]
+  readonly items: readonly KhalaCodeDesktopCodexEcosystemItem[]
+} => {
+  const diagnostics: KhalaCodeDesktopCodexEcosystemDiagnostic[] = []
+  const items: KhalaCodeDesktopCodexEcosystemItem[] = []
+  for (const item of arrayField(detectResponse, "items")) {
+    const itemType = safeLabel(stringField(item, "itemType"), "UNKNOWN")
+    const description = safeLabel(stringField(item, "description"), itemType)
+    const cwd = stringField(item, "cwd")
+    const scope = cwd === null ? "home" : "workspace"
+    const projected: KhalaCodeDesktopCodexEcosystemItem = {
+      id: `import:detect:${itemType}:${scope}:${safeIdPart(description)}`,
+      name: itemType,
+      source: "imports",
+      state: "install_required",
+      detail: limitedDetail(`${description} (${scope})`),
+      authRequired: false,
+      enabled: true,
+      installed: false,
+      managed: false,
+    }
+    items.push(projected)
+    diagnostics.push(itemDiagnostic({
+      action: "review",
+      detail: `${description} is importable through Codex externalAgentConfig/import.`,
+      item: projected,
+      observedAt,
+      severity: "info",
+      title: `${itemType} config can be imported`,
+    }))
+  }
+
+  for (const history of arrayField(historiesResponse, "data")) {
+    const importId = safeLabel(stringField(history, "importId"), "unknown-import")
+    const successes = countImportResultItems(history, "successes")
+    const failures = countImportResultItems(history, "failures")
+    const completedAtMs = numberField(history, "completedAtMs")
+    const projected: KhalaCodeDesktopCodexEcosystemItem = {
+      id: `import:history:${importId}`,
+      name: importId,
+      source: "imports",
+      state: failures > 0 ? "error" : "ready",
+      detail: `${successes} imported, ${failures} failed${completedAtMs === null ? "" : ` at ${completedAtMs}`}`,
+      authRequired: false,
+      enabled: true,
+      installed: true,
+      managed: false,
+    }
+    items.push(projected)
+    if (failures > 0) {
+      diagnostics.push(itemDiagnostic({
+        action: "review",
+        detail: `Codex import ${importId} completed with ${failures} failed item(s).`,
+        item: projected,
+        observedAt,
+        severity: "warning",
+        title: "Codex import needs review",
+      }))
+    }
+  }
+
+  for (const notification of notifications) {
+    if (
+      notification.method !== "externalAgentConfig/import/progress" &&
+      notification.method !== "externalAgentConfig/import/completed"
+    ) {
+      continue
+    }
+    const importId = safeLabel(stringField(notification.params, "importId"), "unknown-import")
+    const resultCount = arrayField(notification.params, "itemTypeResults").length
+    const projected: KhalaCodeDesktopCodexEcosystemItem = {
+      id: `import:notification:${importId}`,
+      name: importId,
+      source: "imports",
+      state: notification.method.endsWith("/completed") ? "ready" : "managed",
+      detail: `${resultCount} import result group(s) reported by Codex.`,
+      authRequired: false,
+      enabled: true,
+      installed: true,
+      managed: notification.method.endsWith("/progress"),
+    }
+    items.push(projected)
+  }
+
+  return { diagnostics, items: uniqueById(items) }
+}
+
 const khalaExtensionItems = (): readonly KhalaCodeDesktopCodexEcosystemItem[] => [
   {
     id: "khala:swarm",
@@ -708,6 +817,19 @@ const notificationSummary = (
       summary: `${name} MCP OAuth login ${success === false ? "failed" : "completed"}.`,
     }
   }
+  if (
+    notification.method === "externalAgentConfig/import/progress" ||
+    notification.method === "externalAgentConfig/import/completed"
+  ) {
+    const importId = safeLabel(stringField(notification.params, "importId"), "unknown import")
+    const resultCount = arrayField(notification.params, "itemTypeResults").length
+    return {
+      method: notification.method,
+      receivedAt: notification.receivedAt,
+      severity: "info",
+      summary: `Codex external config import ${importId} ${notification.method.endsWith("/completed") ? "completed" : "progressed"} with ${resultCount} result group(s).`,
+    }
+  }
   return null
 }
 
@@ -738,6 +860,12 @@ export const projectKhalaCodeDesktopCodexEcosystem = (
     )
   const skills = parseSkills(input.skillsList, observedAt)
   const hooks = parseHooks(input.hooksList, observedAt)
+  const imports = parseExternalImports(
+    input.externalAgentConfigDetect,
+    input.externalAgentConfigImportHistories,
+    sourceNotifications,
+    observedAt,
+  )
   const plugins = parsePluginMarketplaces(input.pluginList, input.pluginInstalled, observedAt)
   const apps = parseApps(input.appsList, observedAt)
   const mcp = parseMcp(input.mcpServerStatusList, sourceNotifications, observedAt)
@@ -745,6 +873,7 @@ export const projectKhalaCodeDesktopCodexEcosystem = (
   const sections = {
     apps: section("apps", "Apps and connectors", apps.items),
     hooks: section("hooks", "Hooks", hooks.items),
+    imports: section("imports", "External config imports", imports.items),
     khala: section("khala", "Khala desktop extensions", khalaItems),
     marketplace: section("marketplace", "Plugin marketplaces", plugins.marketplaceItems),
     mcp: section("mcp", "MCP servers", mcp.items),
@@ -766,6 +895,7 @@ export const projectKhalaCodeDesktopCodexEcosystem = (
     ...notificationDiagnostics(notifications),
     ...skills.diagnostics,
     ...hooks.diagnostics,
+    ...imports.diagnostics,
     ...plugins.diagnostics,
     ...apps.diagnostics,
     ...mcp.diagnostics,

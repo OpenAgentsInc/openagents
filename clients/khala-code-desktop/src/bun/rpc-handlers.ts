@@ -509,6 +509,8 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
   const ecosystemNotifications: CodexAppServerNotification[] = []
   const ecosystemNotificationMethods = new Set([
     "app/list/updated",
+    "externalAgentConfig/import/completed",
+    "externalAgentConfig/import/progress",
     "mcpServer/oauthLogin/completed",
     "mcpServer/startupStatus/updated",
     "skills/changed",
@@ -627,6 +629,8 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
     const [
       skillsList,
       hooksList,
+      externalAgentConfigDetect,
+      externalAgentConfigImportHistories,
       pluginList,
       pluginInstalled,
       appsList,
@@ -637,6 +641,11 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
         ...(request.forceReloadSkills === undefined ? {} : { forceReload: request.forceReloadSkills }),
       }),
       capture("hooks/list", "hooks/list", { cwds: [cwd] }),
+      capture("externalAgentConfig/detect", "externalAgentConfig/detect", {
+        cwds: [cwd],
+        includeHome: true,
+      }),
+      capture("externalAgentConfig/import/readHistories", "externalAgentConfig/import/readHistories"),
       capture("plugin/list", "plugin/list", { cwds: [cwd] }),
       capture("plugin/installed", "plugin/installed", { cwds: [cwd] }),
       capture("app/list", "app/list", {
@@ -654,6 +663,8 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
       errors,
       skillsList,
       hooksList,
+      externalAgentConfigDetect,
+      externalAgentConfigImportHistories,
       pluginList,
       pluginInstalled,
       appsList,
@@ -1287,6 +1298,30 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
     },
     async codexEcosystemRead(request = {}) {
       return readCodexEcosystem(request)
+    },
+    async codexExternalAgentConfigDetect(request = {}) {
+      return codexAppServerAction("externalAgentConfig/detect", {
+        ...(request.cwds === undefined ? {} : { cwds: request.cwds }),
+        ...(request.includeHome === undefined ? {} : { includeHome: request.includeHome }),
+      })
+    },
+    async codexExternalAgentConfigImport(request) {
+      return codexAppServerAction("externalAgentConfig/import", {
+        migrationItems: request.migrationItems,
+        ...(request.source === undefined ? {} : { source: request.source }),
+      })
+    },
+    async codexExternalAgentConfigImportHistoriesRead() {
+      return codexAppServerAction("externalAgentConfig/import/readHistories")
+    },
+    async codexFsGetMetadata(request) {
+      return codexAppServerAction("fs/getMetadata", request)
+    },
+    async codexFsReadFile(request) {
+      return codexAppServerAction("fs/readFile", request)
+    },
+    async codexFsWriteFile(request) {
+      return codexAppServerAction("fs/writeFile", request)
     },
     async codexMarketplaceAdd(request) {
       return codexAppServerAction("marketplace/add", {
