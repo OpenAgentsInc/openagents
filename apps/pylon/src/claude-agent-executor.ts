@@ -215,8 +215,8 @@ function boundedNumber(value: number | undefined, fallback: number, max: number)
 /**
  * Returns true when a tool call targets anything outside the bounded
  * workspace. Path fields must resolve under the workspace; Bash commands
- * may not contain parent-directory traversal or absolute paths that leave
- * it. Deny-by-default sandbox policy for the bounded fixture lane.
+ * resolve path-like tokens under the same root and deny only real escapes.
+ * Deny-by-default sandbox policy for the bounded fixture lane.
  */
 export function toolInputEscapesWorkspace(
   toolName: string | undefined,
@@ -251,11 +251,9 @@ export function toolInputEscapesWorkspace(
   if (toolName === "Bash") {
     const command = input.command
     if (typeof command === "string") {
-      if (command.includes("..")) return true
       const systemPrefixes = ["/dev/", "/usr/", "/bin/", "/sbin/", "/opt/"]
-      const absolutePaths = command.match(/(?:^|[\s='"])(\/[^\s'"]+)/g) ?? []
-      for (const match of absolutePaths) {
-        const candidate = resolve(match.replace(/^[\s='"]+/, ""))
+      for (const token of bashPathLikeTokens(command)) {
+        const candidate = isAbsolute(token) ? resolve(token) : resolve(workspaceRealRoot, token)
         const allowed =
           insideWorkspace(candidate) ||
           systemPrefixes.some((prefix) => candidate.startsWith(prefix))
@@ -265,6 +263,59 @@ export function toolInputEscapesWorkspace(
   }
 
   return false
+}
+
+function bashPathLikeTokens(command: string): string[] {
+  const tokens: string[] = []
+  let current = ""
+  let quote: "'" | "\"" | null = null
+  let escaped = false
+
+  const push = () => {
+    const token = shellPathTokenFrom(current)
+    if (token !== null) tokens.push(token)
+    current = ""
+  }
+
+  for (const char of command) {
+    if (escaped) {
+      current += char
+      escaped = false
+      continue
+    }
+    if (char === "\\" && quote !== "'") {
+      escaped = true
+      continue
+    }
+    if ((char === "'" || char === "\"") && quote === null) {
+      quote = char
+      continue
+    }
+    if (char === quote) {
+      quote = null
+      continue
+    }
+    if (quote === null && /\s/.test(char)) {
+      push()
+      continue
+    }
+    current += char
+  }
+  if (escaped) current += "\\"
+  push()
+  return tokens
+}
+
+function shellPathTokenFrom(rawToken: string): string | null {
+  const token = rawToken
+    .replace(/^[;|&(){}[\]<>]+/, "")
+    .replace(/[;|&(){}[\]<>]+$/, "")
+    .replace(/^[A-Za-z_][A-Za-z0-9_]*=/, "")
+  if (token.length === 0) return null
+  if (token === "." || token === "..") return token
+  if (token.startsWith("/") || token.startsWith("./") || token.startsWith("../")) return token
+  if (token.includes("/")) return token
+  return null
 }
 
 async function runCommand(input: { args: string[]; cwd: string }) {

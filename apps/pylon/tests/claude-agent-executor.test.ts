@@ -343,10 +343,19 @@ describe("workspace boundary checks", () => {
 
   test("bash commands with traversal or foreign absolute paths escape", () => {
     expect(toolInputEscapesWorkspace("Bash", { command: "cat ../secrets" }, workspace)).toBe(true)
+    expect(toolInputEscapesWorkspace("Bash", { command: "cat ../../etc/hosts" }, workspace)).toBe(true)
+    expect(toolInputEscapesWorkspace("Bash", { command: "cd .." }, workspace)).toBe(true)
     expect(toolInputEscapesWorkspace("Bash", { command: "cat /etc/passwd" }, workspace)).toBe(true)
     expect(toolInputEscapesWorkspace("Bash", { command: "bun test sum.test.ts" }, workspace)).toBe(false)
     expect(toolInputEscapesWorkspace("Bash", { command: `cat ${workspace}/sum.ts` }, workspace)).toBe(false)
     expect(toolInputEscapesWorkspace("Bash", { command: "/usr/bin/env bun test" }, workspace)).toBe(false)
+  })
+
+  test("bash commands with benign dot-dot syntax do not escape", () => {
+    expect(toolInputEscapesWorkspace("Bash", { command: "for n in {1..5}; do echo $n; done" }, workspace)).toBe(false)
+    expect(toolInputEscapesWorkspace("Bash", { command: "git diff main..HEAD" }, workspace)).toBe(false)
+    expect(toolInputEscapesWorkspace("Bash", { command: "printf 'working... done\\n'" }, workspace)).toBe(false)
+    expect(toolInputEscapesWorkspace("Bash", { command: "cat src/../sum.ts" }, workspace)).toBe(false)
   })
 
   test("symlinked workspace roots accept realpath spellings without widening", async () => {
