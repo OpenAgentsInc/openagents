@@ -31,18 +31,24 @@ export const KhalaCodeHeadlessThreadEvent = S.Union([
     type: S.Literal("thread.started"),
   }),
   S.Struct({
+    thread_id: S.optional(S.String),
     turn_id: S.String,
     type: S.Literal("turn.started"),
   }),
   S.Struct({
+    codex_turn_id: S.optional(S.String),
     final_message: S.optional(S.String),
     ok: S.Boolean,
+    status: S.optional(S.String),
+    thread_id: S.optional(S.String),
     turn_id: S.String,
     type: S.Literal("turn.completed"),
     usage: KhalaCodeHeadlessUsage,
   }),
   S.Struct({
     error: S.String,
+    status: S.optional(S.String),
+    thread_id: S.optional(S.String),
     turn_id: S.String,
     type: S.Literal("turn.failed"),
     usage: KhalaCodeHeadlessUsage,
@@ -89,22 +95,32 @@ export function khalaCodeHeadlessThreadStarted(input: {
   }
 }
 
-export function khalaCodeHeadlessTurnStarted(turnId: string): KhalaCodeHeadlessThreadEvent {
+export function khalaCodeHeadlessTurnStarted(
+  turnId: string,
+  input: { readonly threadId?: string } = {},
+): KhalaCodeHeadlessThreadEvent {
   return {
+    ...(input.threadId === undefined ? {} : { thread_id: input.threadId }),
     turn_id: turnId,
     type: "turn.started",
   }
 }
 
 export function khalaCodeHeadlessTurnCompleted(input: {
+  readonly codexTurnId?: string
   readonly finalMessage?: string
   readonly ok: boolean
+  readonly status?: string
+  readonly threadId?: string
   readonly turnId: string
   readonly usage?: KhalaCodeDesktopUsage
 }): KhalaCodeHeadlessThreadEvent {
   return {
+    ...(input.codexTurnId === undefined ? {} : { codex_turn_id: input.codexTurnId }),
     ...(input.finalMessage === undefined ? {} : { final_message: input.finalMessage }),
     ok: input.ok,
+    ...(input.status === undefined ? {} : { status: input.status }),
+    ...(input.threadId === undefined ? {} : { thread_id: input.threadId }),
     turn_id: input.turnId,
     type: "turn.completed",
     usage: projectUsage(input.usage),
@@ -113,11 +129,15 @@ export function khalaCodeHeadlessTurnCompleted(input: {
 
 export function khalaCodeHeadlessTurnFailed(input: {
   readonly error: string
+  readonly status?: string
+  readonly threadId?: string
   readonly turnId: string
   readonly usage?: KhalaCodeDesktopUsage
 }): KhalaCodeHeadlessThreadEvent {
   return {
     error: input.error,
+    ...(input.status === undefined ? {} : { status: input.status }),
+    ...(input.threadId === undefined ? {} : { thread_id: input.threadId }),
     turn_id: input.turnId,
     type: "turn.failed",
     usage: projectUsage(input.usage),

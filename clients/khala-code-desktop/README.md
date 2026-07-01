@@ -88,15 +88,40 @@ bun test tests/*.test.ts
 bun run verify
 ```
 
+Headless JSONL mode also uses the Codex app-server harness. It requires the
+`codex` CLI and a usable Codex auth home, starts a Codex-backed thread, streams
+Codex-derived item notifications to stderr, and writes one final JSON object to
+stdout. JSONL events include stable desktop ids plus Codex correlation ids such
+as `thread_id` and `codex_turn_id`. If Codex is missing or unauthenticated, the
+command exits nonzero and emits a structured `codex_app_server_unavailable`
+error.
+
+```sh
+bun src/bun/index.ts --json "Summarize this repository."
+KHALA_CODE_HEADLESS_INTERRUPT_AFTER_MS=250 bun src/bun/index.ts --json "Start a long read-only turn."
+```
+
 Composer HUD visual regression coverage is a local warning-only lane because it
 requires a working Chromium + WebGL stack. It launches the Khala Code desktop
 Vite preview and the OpenAgents web Vite preview, types only a fixed synthetic
 prompt, captures desktop/mobile screenshots, and asserts composer framing,
 footer non-overlap, reduced-motion geometry, and nonblank HUD/canvas pixels.
+This is a preview UI geometry smoke only; it does not submit a model turn and
+does not exercise the legacy Khala-native shell/process runtime. Its JSON
+summary is labeled `preview_ui_codex_harness_shell`.
 Artifacts are written under ignored `var/khala-code-desktop/composer-visual-smoke`.
 
 ```sh
 bun run smoke:composer-visual
+bun run smoke:composer-visual-preview
+```
+
+Live delegation coverage is the guarded Codex spawn lane. It exercises
+Pylon-backed worker Codex sessions via the `codex_spawn` wrapper and labels its
+JSON summary `pylon_codex_spawn_live`.
+
+```sh
+KHALA_CODE_DESKTOP_LIVE_CODEX_SPAWN_SMOKE=1 bun run smoke:codex-spawn-live -- --fixture
 ```
 
 For a browser-driven smoke without opening the native window:
@@ -106,4 +131,7 @@ KHALA_CODE_DESKTOP_OPEN_WINDOW=0 KHALA_CODE_DESKTOP_PREVIEW_PORT=50121 bun src/b
 ```
 
 Then open `http://localhost:50121` and use the preview RPC bridge to submit a
-chat turn or inspect `toolCatalog`.
+Codex-backed chat turn or inspect `toolCatalog`. In default mode the preview
+bridge routes chat and process-equivalent coding controls through Codex
+app-server APIs; the legacy Khala-native shell/process tools require the
+explicit legacy runtime flags described above.

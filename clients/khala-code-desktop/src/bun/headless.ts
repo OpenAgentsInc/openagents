@@ -10,10 +10,19 @@ import type {
   KhalaCodeDesktopChatTurnEvent,
   KhalaCodeDesktopChatTurnResponse,
 } from "../shared/rpc.js"
-import { runKhalaCodeDesktopChatTurn } from "./khala-chat-runtime.js"
+import type { CodexAppServerChatRuntime } from "./codex-app-server-chat-runtime.js"
+
+export type KhalaCodeDesktopHeadlessCodexRuntime = Pick<
+  CodexAppServerChatRuntime,
+  "interruptTurn" | "startThread" | "startTurn"
+>
 
 export type KhalaCodeDesktopHeadlessRunInput = {
+  readonly createCodexChatRuntime: (input: {
+    readonly onEvent: (event: KhalaCodeDesktopChatTurnEvent) => void
+  }) => KhalaCodeDesktopHeadlessCodexRuntime
   readonly env: Readonly<Record<string, string | undefined>>
+  readonly interruptAfterMs?: number
   readonly prompt: string
   readonly sessionId?: string
   readonly stderr?: Pick<typeof process.stderr, "write">
@@ -44,33 +53,50 @@ export async function runKhalaCodeDesktopHeadlessJsonl(
       emitJsonl(threadEvent)
     }
   }
+  const codexChatRuntime = input.createCodexChatRuntime({ onEvent })
 
-  emitJsonl(khalaCodeHeadlessThreadStarted({ sessionId }))
-  emitJsonl(khalaCodeHeadlessTurnStarted(turnId))
+  let threadId: string | undefined
+  let interruptTimer: ReturnType<typeof setTimeout> | undefined
 
   try {
-    const response = await runKhalaCodeDesktopChatTurn({
-      env: input.env,
-      onEvent,
-      request: {
-        messages: [{ body: input.prompt, id: "headless-user-1", role: "user" }],
-        sessionId,
-        turnId,
-      },
-      ...(input.workingDirectory === undefined ? {} : { workingDirectory: input.workingDirectory }),
+    const thread = await codexChatRuntime.startThread({
+      sessionId,
+      ...(input.workingDirectory === undefined ? {} : { cwd: input.workingDirectory }),
+    })
+    threadId = thread.threadId
+    emitJsonl(khalaCodeHeadlessThreadStarted({ sessionId, threadId }))
+    emitJsonl(khalaCodeHeadlessTurnStarted(turnId, { threadId }))
+
+    if (input.interruptAfterMs !== undefined && input.interruptAfterMs >= 0) {
+      interruptTimer = setTimeout(() => {
+        void codexChatRuntime.interruptTurn({ sessionId, turnId }).catch(() => undefined)
+      }, input.interruptAfterMs)
+    }
+
+    const response = await codexChatRuntime.startTurn({
+      messages: [{ body: input.prompt, id: "headless-user-1", role: "user" }],
+      sessionId,
+      turnId,
+      ...(input.workingDirectory === undefined ? {} : { cwd: input.workingDirectory }),
     })
     const finalMessage = lastAssistantMessage(response.messages)?.body ?? ""
+    const responseThreadId = response.backend.threadId ?? threadId
     emitJsonl(khalaCodeHeadlessTurnCompleted({
+      ...(response.backend.turnId === undefined ? {} : { codexTurnId: response.backend.turnId }),
       finalMessage,
       ok: response.ok,
+      ...(response.backend.turnStatus === undefined ? {} : { status: response.backend.turnStatus }),
+      ...(responseThreadId === undefined ? {} : { threadId: responseThreadId }),
       turnId,
       ...(response.usage === undefined ? {} : { usage: response.usage }),
     }))
     stdout.write(`${JSON.stringify({
       backend: response.backend,
+      codexTurnId: response.backend.turnId,
       finalMessage,
       ok: response.ok,
       sessionId,
+      threadId: response.backend.threadId ?? threadId,
       toolNames: response.toolNames,
       turnId,
       usage: response.usage,
@@ -79,15 +105,29 @@ export async function runKhalaCodeDesktopHeadlessJsonl(
     return { finalMessage, response, sessionId, turnId }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
-    emitJsonl(khalaCodeHeadlessTurnFailed({ error: message, turnId }))
+    emitJsonl(khalaCodeHeadlessTurnFailed({
+      error: message,
+      status: "codex_app_server_unavailable",
+      ...(threadId === undefined ? {} : { threadId }),
+      turnId,
+    }))
     stdout.write(`${JSON.stringify({
+      backend: {
+        kind: "codex_app_server",
+        runtimeMode: "codex_harness",
+        toolCatalogKind: "codex_app_server",
+      },
       error: message,
       finalMessage: "",
       ok: false,
       sessionId,
+      status: "codex_app_server_unavailable",
+      ...(threadId === undefined ? {} : { threadId }),
       turnId,
     })}\n`)
     throw error
+  } finally {
+    if (interruptTimer !== undefined) clearTimeout(interruptTimer)
   }
 }
 

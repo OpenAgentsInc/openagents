@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 
 import {
   assertCanvasProbe,
+  COMPOSER_VISUAL_SMOKE_HARNESS,
   assertComposerGeometry,
   composerVisualPlan,
   validatePublicSafeComposerPrompt,
@@ -23,6 +24,7 @@ describe("composer visual smoke", () => {
     ])
     expect(plan.targets[0]?.canvasSelector).toBe("#composer-hud canvas")
     expect(plan.targets[2]?.canvasSelector).toBe("oa-landing-squares")
+    expect(COMPOSER_VISUAL_SMOKE_HARNESS).toBe("preview_ui_codex_harness_shell")
   })
 
   test("rejects prompts that look like private material", () => {

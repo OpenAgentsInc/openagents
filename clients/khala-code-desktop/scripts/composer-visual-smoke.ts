@@ -58,6 +58,7 @@ export type ComposerVisualCaptureResult = Readonly<{
 
 export const COMPOSER_VISUAL_SAFE_PROMPT =
   "Synthetic visual smoke prompt: summarize the public onboarding flow."
+export const COMPOSER_VISUAL_SMOKE_HARNESS = "preview_ui_codex_harness_shell"
 
 export const composerVisualPlan = (): ComposerVisualPlan => ({
   prompt: COMPOSER_VISUAL_SAFE_PROMPT,
@@ -216,7 +217,10 @@ export async function runComposerVisualSmoke(
       }
     }
     const summaryPath = join(options.outDir, "summary.json")
-    await writeFile(summaryPath, `${JSON.stringify({ results }, null, 2)}\n`)
+    await writeFile(summaryPath, `${JSON.stringify({
+      harness: COMPOSER_VISUAL_SMOKE_HARNESS,
+      results,
+    }, null, 2)}\n`)
     return results
   } finally {
     if (browser !== null) await browser.close()
@@ -506,7 +510,12 @@ if (import.meta.main) {
     resolve("var/khala-code-desktop/composer-visual-smoke")
   try {
     const results = await runComposerVisualSmoke({ outDir })
-    console.log(JSON.stringify({ ok: true, outDir, results }, null, 2))
+    console.log(JSON.stringify({
+      harness: COMPOSER_VISUAL_SMOKE_HARNESS,
+      ok: true,
+      outDir,
+      results,
+    }, null, 2))
   } catch (error) {
     console.error(error instanceof Error ? error.stack ?? error.message : error)
     process.exit(1)

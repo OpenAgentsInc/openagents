@@ -6,6 +6,8 @@ import {
   type TwoCodexReadOnlySmokeWork,
 } from "../src/bun/khala-codex-live-smoke.js"
 
+const LIVE_CODEX_READONLY_SMOKE_HARNESS = "pylon_codex_spawn_live"
+
 const liveAllowed =
   Bun.env.KHALA_CODE_DESKTOP_LIVE_CODEX_SPAWN_SMOKE === "1" ||
   process.argv.includes("--allow-live")
@@ -32,6 +34,7 @@ const work = fixture
   ? { kind: "fixture" as const }
   : await repositoryWork()
 
+console.error(`[live-smoke] harness ${LIVE_CODEX_READONLY_SMOKE_HARNESS}`)
 console.error(`[live-smoke] launching two read-only Codex assignments in ${workLabel(work)}`)
 console.error(`[live-smoke] timeout ${timeoutMs}ms`)
 console.error(`[live-smoke] attempts ${maxAttempts}`)
@@ -61,7 +64,10 @@ const summary = await runWithTransientRetry(maxAttempts, async () =>
   })
 )
 
-console.log(JSON.stringify(summary, null, 2))
+console.log(JSON.stringify({
+  harness: LIVE_CODEX_READONLY_SMOKE_HARNESS,
+  ...summary,
+}, null, 2))
 
 if (!summary.ok) {
   console.error(`[live-smoke] failed: ${summary.failures.join("; ")}`)

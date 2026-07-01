@@ -13,6 +13,7 @@ import {
   readKhalaCodeHeadlessPrompt,
   runKhalaCodeDesktopHeadlessJsonl,
 } from "./headless.js"
+import { createCodexAppServerChatRuntime } from "./codex-app-server-chat-runtime.js"
 import { createCodexAppServerHost } from "./codex-app-server-client.js"
 import { createOnDeviceDeciderHost } from "./on-device-decider-host.js"
 import { createKhalaCodeDesktopRpcRequestHandlers } from "./rpc-handlers.js"
@@ -184,6 +185,15 @@ const startPreviewServer = (): void => {
   }
 }
 
+const headlessInterruptAfterMs = (
+  env: Readonly<Record<string, string | undefined>>,
+): number | undefined => {
+  const raw = env.KHALA_CODE_HEADLESS_INTERRUPT_AFTER_MS?.trim()
+  if (raw === undefined || raw.length === 0) return undefined
+  const parsed = Number.parseInt(raw, 10)
+  return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : undefined
+}
+
 const argv = Bun.argv.slice(2)
 if (argv.includes("--json")) {
   const promptArgv = argv[0] === "code" ? argv.slice(1) : argv
@@ -192,16 +202,30 @@ if (argv.includes("--json")) {
     process.stderr.write("khala code --json requires a prompt argument or stdin.\n")
     process.exit(2)
   }
+  const workingDirectory = resolveToolWorkingDirectory(Bun.env)
+  const headlessCodexAppServerHost = createCodexAppServerHost({ env: Bun.env })
+  const interruptAfterMs = headlessInterruptAfterMs(Bun.env)
+  let exitCode = 0
   try {
     await runKhalaCodeDesktopHeadlessJsonl({
+      createCodexChatRuntime: ({ onEvent }) =>
+        createCodexAppServerChatRuntime({
+          env: Bun.env,
+          host: headlessCodexAppServerHost,
+          onEvent,
+          workingDirectory,
+        }),
       env: Bun.env,
+      ...(interruptAfterMs === undefined ? {} : { interruptAfterMs }),
       prompt,
-      workingDirectory: resolveToolWorkingDirectory(Bun.env),
+      workingDirectory,
     })
-    process.exit(0)
   } catch {
-    process.exit(1)
+    exitCode = 1
+  } finally {
+    headlessCodexAppServerHost.dispose()
   }
+  process.exit(exitCode)
 }
 
 const { ApplicationMenu, BrowserView, BrowserWindow } = await import("electrobun/bun")

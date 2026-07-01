@@ -397,3 +397,36 @@ Validation:
 - `bun run --cwd clients/khala-code-desktop typecheck`
 - `bun test clients/khala-code-desktop/tests/rpc-handlers.test.ts clients/khala-code-desktop/tests/khala-codex-fleet-tools.test.ts clients/khala-code-desktop/tests/fleet-board-projection.test.ts clients/khala-code-desktop/tests/app-shell.test.ts`
 - `bun run --cwd clients/khala-code-desktop verify`
+
+## Issue #7792: Headless JSONL And Preview Modes On App-server
+
+Status: implemented
+
+`khala code --json` now uses the Codex app-server chat runtime instead of the
+legacy Khala-native chat turn. The headless runner creates a Codex-backed
+thread through `startThread()`, streams projected Codex item notifications as
+JSONL, submits the prompt through `startTurn()`, and writes a single final JSON
+object to stdout. The event stream preserves desktop ids and adds Codex
+correlation fields including `thread_id`, `codex_turn_id`, turn status, backend
+kind, and app-server tool-catalog metadata.
+
+Missing Codex/app-server/auth setup now fails as a structured headless error:
+stderr receives `turn.failed` with `status:
+codex_app_server_unavailable`, stdout receives one final `ok: false` JSON
+object, and the CLI exits nonzero. The headless path also has an interrupt smoke
+hook, `KHALA_CODE_HEADLESS_INTERRUPT_AFTER_MS`, that calls the Codex
+`interruptTurn()` API for bounded automation tests.
+
+The preview and smoke docs now state which harness each lane exercises:
+
+- `smoke:composer-visual` / `smoke:composer-visual-preview` is a preview UI
+  geometry lane labeled `preview_ui_codex_harness_shell`; it does not submit a
+  model turn and does not exercise legacy Khala shell/process tools.
+- `smoke:codex-spawn-live` is the guarded Pylon/Codex worker delegation lane
+  labeled `pylon_codex_spawn_live`.
+
+Validation:
+
+- `bun run --cwd clients/khala-code-desktop typecheck`
+- `bun test clients/khala-code-desktop/tests/headless.test.ts clients/khala-code-desktop/tests/headless-events.test.ts clients/khala-code-desktop/tests/composer-visual-smoke.test.ts clients/khala-code-desktop/tests/app-shell.test.ts clients/khala-code-desktop/tests/rpc-handlers.test.ts`
+- `bun run --cwd clients/khala-code-desktop verify`
