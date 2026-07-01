@@ -1,10 +1,11 @@
 import { spawn } from "node:child_process"
+import { Database } from "bun:sqlite"
 import { existsSync } from "node:fs"
 import { readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import { dirname, join, resolve } from "node:path"
 import type { Readable } from "node:stream"
-import { Effect, Stream } from "effect"
+import { Effect, Exit, Scope, Stream } from "effect"
 import {
   decodePylonLifecycleWireEvent,
   decodePylonLifecycleWireEventJson,
@@ -32,6 +33,30 @@ import {
   type KhalaToolResult,
   type RegisteredKhalaTool,
 } from "@openagentsinc/khala-tools"
+import {
+  createPylonOrchestrationStore,
+  type FleetRun,
+  type FleetRunWorkSource,
+  type FleetRunState,
+  type FleetRunWorkerKind,
+  type PylonOrchestrationStore,
+} from "../../../../apps/pylon/src/orchestration/store.js"
+import {
+  fixtureCandidates,
+  planGithubBacklogWork,
+  planIssueListWork,
+  planWorkCandidates,
+  type GithubBacklogGhRunner,
+} from "../../../../apps/pylon/src/orchestration/work-planner.js"
+import {
+  startFleetRunSupervisor,
+  type FleetRunSupervisorCapacity,
+  type FleetRunSupervisorHandle,
+  type FleetRunSupervisorObservedEvent,
+  type FleetRunSupervisorOptions,
+  type FleetRunSupervisorRunner,
+  type FleetRunSupervisorTickResult,
+} from "./fleet-run-supervisor.js"
 import { khalaCodeConfigFromRuntimeEnv } from "./khala-code-config.js"
 
 type ChatEnv = Readonly<Record<string, string | undefined>>
@@ -61,6 +86,7 @@ export type KhalaCodexFleetCommandRunner = (
 export type KhalaCodexFleetToolOptions = {
   readonly delegationParameters?: KhalaFleetDelegationParameterSet | undefined
   readonly env?: ChatEnv | undefined
+  readonly fleetRunSupervisor?: KhalaFleetRunSupervisorManager | undefined
   readonly onProgress?: KhalaCodexFleetProgressSink | undefined
   readonly runner?: KhalaCodexFleetCommandRunner | undefined
   readonly sleep?: ((ms: number) => Promise<void>) | undefined
@@ -77,6 +103,52 @@ export type KhalaCodexFleetProgressPayload = {
 export type KhalaCodexFleetProgressSink = (
   payload: KhalaCodexFleetProgressPayload,
 ) => void | Promise<void>
+
+export type FleetRunControlVerb = "pause" | "resume" | "drain" | "stop"
+
+export type KhalaFleetRunStartInput = {
+  readonly baseUrl?: string | undefined
+  readonly branch?: string | undefined
+  readonly commit?: string | undefined
+  readonly fixtureCount?: number | undefined
+  readonly issues?: readonly number[] | undefined
+  readonly objective: string
+  readonly pylonRef?: string | undefined
+  readonly repo?: string | undefined
+  readonly runRef?: string | undefined
+  readonly targetConcurrency?: number | undefined
+  readonly timeoutMs?: number | undefined
+  readonly verify?: string | undefined
+  readonly workerKind?: FleetRunWorkerKind | undefined
+  readonly workSource?: FleetRunWorkSource | undefined
+}
+
+export type KhalaFleetRunStatusInput = {
+  readonly runRef?: string | undefined
+}
+
+export type KhalaFleetRunControlInput = {
+  readonly runRef: string
+  readonly verb: FleetRunControlVerb
+}
+
+export type KhalaFleetRunSnapshot = {
+  readonly active: boolean
+  readonly lastTick: FleetRunSupervisorTickResult | null
+  readonly lifecycle: readonly FleetRunSupervisorObservedEvent[]
+  readonly pylonRef: string | null
+  readonly run: FleetRun
+}
+
+export type KhalaFleetRunControlResult = KhalaFleetRunSnapshot & {
+  readonly verb: FleetRunControlVerb
+}
+
+export type KhalaFleetRunSupervisorManager = {
+  readonly start: (input: KhalaFleetRunStartInput) => Promise<KhalaFleetRunSnapshot>
+  readonly status: (input: KhalaFleetRunStatusInput) => Promise<KhalaFleetRunSnapshot | readonly KhalaFleetRunSnapshot[]>
+  readonly control: (input: KhalaFleetRunControlInput) => Promise<KhalaFleetRunControlResult>
+}
 
 export type KhalaPylonEnsureResult = {
   readonly ok: boolean
@@ -463,6 +535,158 @@ const codexSpawnToolDefinition: KhalaToolDefinition = {
   renderer: { kind: "codex_spawn", rendererRef: "khala.renderer.codex_spawn.v1" },
 }
 
+const fleetRunStartToolDefinition: KhalaToolDefinition = {
+  authority: "owner_full_access",
+  availability: ["owner_local_full", "coding"],
+  description:
+    "Start a sustained supervised FleetRun through local owner Pylon capacity. This is the only sustained-run entry point.",
+  executionMode: "local",
+  inputSchema: {
+    additionalProperties: false,
+    properties: {
+      base_url: { description: "Optional OpenAgents API base URL override.", type: "string" },
+      branch: { description: "Branch pin for real repository work.", type: "string" },
+      commit: { description: "Base commit pin for real repository work.", type: "string" },
+      fixture_count: {
+        default: 10,
+        description: "Number of fixture work units when work_source is fixture.",
+        minimum: 1,
+        type: "integer",
+      },
+      issues: {
+        description: "Issue numbers when work_source is issue_list.",
+        items: { type: "integer" },
+        type: "array",
+      },
+      objective: { description: "Public-safe FleetRun objective.", type: "string" },
+      pylon_ref: { description: "Optional target Pylon ref. Defaults to the local Pylon.", type: "string" },
+      repo: { description: "Repository owner/name for issue_list or github_backlog work.", type: "string" },
+      run_ref: { description: "Optional caller-provided run ref.", type: "string" },
+      target_concurrency: {
+        default: 1,
+        description: "Desired sustained concurrent assignments.",
+        minimum: 1,
+        type: "integer",
+      },
+      timeout_ms: { description: "Maximum time for each bounded worker dispatch.", minimum: 10_000, type: "integer" },
+      verify: { description: "Verification command for real repository work.", type: "string" },
+      worker_kind: {
+        default: "codex",
+        description: "Worker kind. Codex is wired now; claude/auto are accepted for schema stability.",
+        enum: ["codex", "claude", "auto"],
+        type: "string",
+      },
+      work_source: {
+        default: "fixture",
+        description: "Work source for the run.",
+        enum: ["github_backlog", "issue_list", "fixture"],
+        type: "string",
+      },
+    },
+    required: ["objective"],
+    type: "object",
+  },
+  internalId: "khala.desktop.fleet_run.start",
+  label: "Start Fleet Run",
+  name: "fleet_run_start",
+  outputSchema: {
+    additionalProperties: false,
+    properties: {
+      active: { type: "boolean" },
+      lastTick: { type: ["object", "null"] },
+      lifecycle: { type: "array" },
+      pylonRef: { type: ["string", "null"] },
+      run: { type: "object" },
+    },
+    required: ["active", "lastTick", "lifecycle", "pylonRef", "run"],
+    type: "object",
+  },
+  permissionMode: "allow",
+  prompt:
+    "Use only after the owner approves starting sustained FleetRun supervision; one approval covers this run start.",
+  promptGuidelines: [
+    "Do not use fleet_run_start for a single bounded handoff; use codex_spawn for one-shot work.",
+    "Keep approval mode prompt in Codex MCP. Never treat this as silent standing authority for future runs.",
+    "Use fleet_run_status to monitor and fleet_run_control to pause, resume, drain, or stop a started run.",
+  ],
+  renderer: { kind: "fleet_run", rendererRef: "khala.renderer.fleet_run.v1" },
+}
+
+const fleetRunStatusToolDefinition: KhalaToolDefinition = {
+  authority: "owner_full_access",
+  availability: ["owner_local_full", "coding"],
+  description: "Inspect one FleetRun, or list all known local FleetRuns when run_ref is omitted.",
+  executionMode: "local",
+  inputSchema: {
+    additionalProperties: false,
+    properties: {
+      run_ref: { description: "Optional FleetRun ref to inspect.", type: "string" },
+    },
+    type: "object",
+  },
+  internalId: "khala.desktop.fleet_run.status",
+  label: "Fleet Run Status",
+  name: "fleet_run_status",
+  outputSchema: {
+    additionalProperties: false,
+    properties: {
+      runs: { type: "array" },
+    },
+    required: ["runs"],
+    type: "object",
+  },
+  permissionMode: "allow",
+  prompt: "Use to monitor sustained FleetRuns started through fleet_run_start.",
+  promptGuidelines: [
+    "Report run state, active assignment count, counters, and whether a local supervisor handle is active.",
+    "Do not infer raw worker output paths from status; only summarize returned run records.",
+  ],
+  renderer: { kind: "fleet_run_status", rendererRef: "khala.renderer.fleet_run_status.v1" },
+}
+
+const fleetRunControlToolDefinition: KhalaToolDefinition = {
+  authority: "owner_full_access",
+  availability: ["owner_local_full", "coding"],
+  description: "Pause, resume, drain, or stop a sustained FleetRun.",
+  executionMode: "local",
+  inputSchema: {
+    additionalProperties: false,
+    properties: {
+      run_ref: { description: "FleetRun ref to control.", type: "string" },
+      verb: {
+        description: "Control verb to apply.",
+        enum: ["pause", "resume", "drain", "stop"],
+        type: "string",
+      },
+    },
+    required: ["run_ref", "verb"],
+    type: "object",
+  },
+  internalId: "khala.desktop.fleet_run.control",
+  label: "Control Fleet Run",
+  name: "fleet_run_control",
+  outputSchema: {
+    additionalProperties: false,
+    properties: {
+      active: { type: "boolean" },
+      lastTick: { type: ["object", "null"] },
+      lifecycle: { type: "array" },
+      pylonRef: { type: ["string", "null"] },
+      run: { type: "object" },
+      verb: { enum: ["pause", "resume", "drain", "stop"], type: "string" },
+    },
+    required: ["active", "lastTick", "lifecycle", "pylonRef", "run", "verb"],
+    type: "object",
+  },
+  permissionMode: "allow",
+  prompt: "Use to pause, resume, drain, or stop a sustained FleetRun after it has been approved and started.",
+  promptGuidelines: [
+    "Use pause for a reversible hold, drain to stop claiming new work while active work finishes, and stop for manual stop.",
+    "Do not use control verbs as a replacement for per-run start approval.",
+  ],
+  renderer: { kind: "fleet_run_control", rendererRef: "khala.renderer.fleet_run_control.v1" },
+}
+
 export function createKhalaCodexFleetTools(
   options: KhalaCodexFleetToolOptions = {},
 ): readonly RegisteredKhalaTool[] {
@@ -485,6 +709,18 @@ export function createKhalaCodexFleetTools(
             await Effect.runPromise(context.emitProgress(payload))
           },
         }),
+    },
+    {
+      definition: fleetRunStartToolDefinition,
+      execute: input => executeFleetRunStartTool(input, options),
+    },
+    {
+      definition: fleetRunStatusToolDefinition,
+      execute: input => executeFleetRunStatusTool(input, options),
+    },
+    {
+      definition: fleetRunControlToolDefinition,
+      execute: input => executeFleetRunControlTool(input, options),
     },
   ]
 }
@@ -954,6 +1190,396 @@ function executeCodexSpawnTool(
       return khalaToolError("codex_spawn_failed", errorMessage(error))
     }
   })
+}
+
+function executeFleetRunStartTool(
+  input: Readonly<Record<string, unknown>>,
+  options: KhalaCodexFleetToolOptions,
+): Effect.Effect<KhalaToolResult, never> {
+  return Effect.promise(async () => {
+    try {
+      const result = await fleetRunSupervisorManager(options).start({
+        baseUrl: optionalString(input.base_url),
+        branch: optionalString(input.branch),
+        commit: optionalString(input.commit),
+        fixtureCount: optionalInteger(input.fixture_count),
+        issues: optionalIntegerArray(input.issues),
+        objective: requiredString(input.objective, "fleet_run_start requires objective"),
+        pylonRef: optionalString(input.pylon_ref),
+        repo: optionalString(input.repo),
+        runRef: optionalString(input.run_ref),
+        targetConcurrency: optionalInteger(input.target_concurrency),
+        timeoutMs: optionalInteger(input.timeout_ms),
+        verify: optionalString(input.verify),
+        workerKind: optionalWorkerKind(input.worker_kind),
+        workSource: optionalWorkSource(input.work_source),
+      })
+      return khalaToolOk({
+        modelText: renderFleetRunSnapshot(result),
+        publicSafety: "private",
+        publicSummary: `Fleet run ${result.run.runRef} started with state ${result.run.state}.`,
+        ui: {
+          ...result,
+          kind: "fleet_run_start",
+        },
+      })
+    } catch (error) {
+      return khalaToolError("fleet_run_start_failed", errorMessage(error))
+    }
+  })
+}
+
+function executeFleetRunStatusTool(
+  input: Readonly<Record<string, unknown>>,
+  options: KhalaCodexFleetToolOptions,
+): Effect.Effect<KhalaToolResult, never> {
+  return Effect.promise(async () => {
+    try {
+      const result = await fleetRunSupervisorManager(options).status({
+        runRef: optionalString(input.run_ref),
+      })
+      const runs = Array.isArray(result) ? result : [result]
+      return khalaToolOk({
+        modelText: runs.length === 0
+          ? "No fleet runs found."
+          : runs.map(renderFleetRunSnapshot).join("\n\n"),
+        publicSafety: "private",
+        publicSummary: `${runs.length} fleet run(s) found.`,
+        ui: {
+          kind: "fleet_run_status",
+          runs,
+        },
+      })
+    } catch (error) {
+      return khalaToolError("fleet_run_status_failed", errorMessage(error))
+    }
+  })
+}
+
+function executeFleetRunControlTool(
+  input: Readonly<Record<string, unknown>>,
+  options: KhalaCodexFleetToolOptions,
+): Effect.Effect<KhalaToolResult, never> {
+  return Effect.promise(async () => {
+    try {
+      const verb = requiredFleetRunControlVerb(input.verb)
+      const result = await fleetRunSupervisorManager(options).control({
+        runRef: requiredString(input.run_ref, "fleet_run_control requires run_ref"),
+        verb,
+      })
+      return khalaToolOk({
+        modelText: renderFleetRunSnapshot(result),
+        publicSafety: "private",
+        publicSummary: `Fleet run ${result.run.runRef} ${verb}: ${result.run.state}.`,
+        ui: {
+          ...result,
+          kind: "fleet_run_control",
+        },
+      })
+    } catch (error) {
+      return khalaToolError("fleet_run_control_failed", errorMessage(error))
+    }
+  })
+}
+
+const DEFAULT_FLEET_RUN_TICK_INTERVAL_MS = 1_000
+const DEFAULT_FLEET_RUN_FIXTURE_COUNT = 10
+
+type FleetRunPlanConfig = {
+  readonly baseUrl?: string | undefined
+  readonly branch?: string | undefined
+  readonly commit?: string | undefined
+  readonly fixtureCount: number
+  readonly issues: readonly number[]
+  readonly repo?: string | undefined
+  readonly timeoutMs?: number | undefined
+  readonly verify?: string | undefined
+}
+
+type ActiveFleetRun = {
+  readonly handle: FleetRunSupervisorHandle
+  lastTick: FleetRunSupervisorTickResult | null
+  readonly lifecycle: FleetRunSupervisorObservedEvent[]
+  readonly pylonRef: string
+  readonly scope: Scope.Scope
+}
+
+class DefaultKhalaFleetRunSupervisorManager implements KhalaFleetRunSupervisorManager {
+  private readonly store: PylonOrchestrationStore
+  private readonly active = new Map<string, ActiveFleetRun>()
+  private readonly planConfigs = new Map<string, FleetRunPlanConfig>()
+
+  constructor(private readonly options: KhalaCodexFleetToolOptions) {
+    this.store = createPylonOrchestrationStore(new Database(":memory:"))
+  }
+
+  async start(input: KhalaFleetRunStartInput): Promise<KhalaFleetRunSnapshot> {
+    const now = new Date()
+    const runRef = input.runRef ?? fleetRunRef(now)
+    if (this.store.getFleetRun(runRef) !== null) throw new Error(`fleet run already exists: ${runRef}`)
+    const workSource = input.workSource ?? "fixture"
+    const workerKind = input.workerKind ?? "codex"
+    if (workerKind !== "codex") {
+      throw new Error(`fleet_run_start currently wires codex workers only; received ${workerKind}`)
+    }
+    const targetConcurrency = boundedPositiveInteger(input.targetConcurrency, 1, 1, MAX_SPAWN_COUNT)
+    const fixtureCount = boundedPositiveInteger(
+      input.fixtureCount,
+      DEFAULT_FLEET_RUN_FIXTURE_COUNT,
+      1,
+      10_000,
+    )
+    if ((workSource === "issue_list" || workSource === "github_backlog") && input.repo === undefined) {
+      throw new Error(`fleet_run_start ${workSource} requires repo`)
+    }
+    if (workSource === "issue_list" && (input.issues ?? []).length === 0) {
+      throw new Error("fleet_run_start issue_list requires at least one issue number")
+    }
+    if (workSource !== "fixture" && (input.commit === undefined || input.verify === undefined)) {
+      throw new Error(`fleet_run_start ${workSource} requires commit and verify pins`)
+    }
+    const expectedWorkUnits =
+      workSource === "fixture" ? fixtureCount :
+      workSource === "issue_list" ? input.issues?.length ?? 0 :
+      0
+    this.store.createFleetRun({
+      runRef,
+      objective: input.objective,
+      workSource,
+      targetConcurrency,
+      workerKind,
+      state: "running",
+      dispatchKind: "supervised_dispatch",
+      startedAt: now,
+      now,
+      counters: { workUnitsTotal: expectedWorkUnits },
+    })
+    this.planConfigs.set(runRef, {
+      baseUrl: input.baseUrl,
+      branch: input.branch,
+      commit: input.commit,
+      fixtureCount,
+      issues: [...(input.issues ?? [])],
+      repo: input.repo,
+      timeoutMs: input.timeoutMs,
+      verify: input.verify,
+    })
+
+    const pylonRef = input.pylonRef ?? (await resolveLocalPylonRef(this.options)) ?? "pylon.local"
+    const scope = Effect.runSync(Scope.make())
+    const active: ActiveFleetRun = {
+      handle: await Effect.runPromise(Effect.provideService(
+        startFleetRunSupervisor({
+          store: this.store,
+          pylonRef,
+          runRef,
+          planner: this.plannerFor(runRef),
+          runner: this.runnerFor(runRef, pylonRef),
+          capacity: this.capacityFor(),
+          tickIntervalMs: DEFAULT_FLEET_RUN_TICK_INTERVAL_MS,
+          onLifecycle: event => {
+            const existing = this.active.get(runRef)
+            existing?.lifecycle.push(event)
+          },
+        }),
+        Scope.Scope,
+        scope,
+      )),
+      lastTick: null,
+      lifecycle: [],
+      pylonRef,
+      scope,
+    }
+    this.active.set(runRef, active)
+    try {
+      active.lastTick = await Effect.runPromise(active.handle.tick())
+    } catch {
+      // The background supervisor remains active; status/control expose the run record.
+    }
+    return this.snapshot(runRef)
+  }
+
+  async status(input: KhalaFleetRunStatusInput): Promise<KhalaFleetRunSnapshot | readonly KhalaFleetRunSnapshot[]> {
+    if (input.runRef !== undefined) return this.snapshot(input.runRef)
+    return this.store.listFleetRuns().map(run => this.snapshotForRun(run.runRef))
+  }
+
+  async control(input: KhalaFleetRunControlInput): Promise<KhalaFleetRunControlResult> {
+    const now = new Date()
+    const nextState: FleetRunState =
+      input.verb === "pause" ? "paused" :
+      input.verb === "resume" ? "running" :
+      input.verb === "drain" ? "draining" :
+      "stopped"
+    this.store.updateFleetRunState(input.runRef, nextState, now)
+    if (input.verb === "stop") {
+      const active = this.active.get(input.runRef)
+      if (active !== undefined) {
+        await Effect.runPromise(Effect.exit(active.handle.stop()))
+        await Effect.runPromise(Scope.close(active.scope, Exit.void))
+        this.active.delete(input.runRef)
+      }
+    }
+    return { ...this.snapshot(input.runRef), verb: input.verb }
+  }
+
+  private plannerFor(runRef: string): FleetRunSupervisorOptions["planner"] {
+    return {
+      plan: async ({ run, now }) => {
+        const config = this.planConfigs.get(runRef)
+        if (config === undefined) throw new Error(`missing fleet run plan config: ${runRef}`)
+        if (run.workSource === "fixture") {
+          return planWorkCandidates("fixture", fixtureCandidates({ kind: "fixture", count: config.fixtureCount }), {
+            now,
+            claimRegistry: this.store,
+          })
+        }
+        if (run.workSource === "issue_list") {
+          if (config.repo === undefined) throw new Error(`missing repo for fleet run: ${runRef}`)
+          return planIssueListWork({
+            kind: "issue_list",
+            repo: config.repo,
+            issues: config.issues,
+          }, { now, claimRegistry: this.store })
+        }
+        if (config.repo === undefined) throw new Error(`missing repo for fleet run: ${runRef}`)
+        return planGithubBacklogWork(
+          { kind: "github_backlog", repo: config.repo },
+          ghRunnerFromOptions(this.options),
+          { now, claimRegistry: this.store },
+        )
+      },
+    }
+  }
+
+  private runnerFor(runRef: string, pylonRef: string): FleetRunSupervisorRunner {
+    return {
+      dispatch: async ({ accountRef, run, workUnit }) => {
+        const config = this.planConfigs.get(runRef)
+        if (config === undefined) throw new Error(`missing fleet run plan config: ${runRef}`)
+        const fixture = run.workSource === "fixture"
+        const result = await spawnCodexInstances({
+          accountRef,
+          baseUrl: config.baseUrl,
+          branch: config.branch,
+          commit: fixture ? undefined : config.commit,
+          count: 1,
+          fixture,
+          prompt: renderFleetRunDispatchPrompt(run, workUnit),
+          pylonRef,
+          repo: fixture ? undefined : config.repo,
+          timeoutMs: config.timeoutMs,
+          verify: fixture ? undefined : config.verify,
+        }, this.options)
+        const first = result.results[0]
+        const accepted = result.acceptedCount >= 1 && first?.status === "accepted"
+        return {
+          assignmentRef: first?.assignmentRef ?? null,
+          lifecycle: [{
+            assignmentRef: first?.assignmentRef ?? null,
+            event: accepted ? "assignment.accepted" : "assignment.failed",
+            phase: "codex_spawn",
+            status: accepted ? "accepted" : "failed",
+          }],
+          status: accepted ? "accepted" : "failed",
+          summary: first?.summary ?? renderSpawnResult(result),
+        }
+      },
+    }
+  }
+
+  private capacityFor(): FleetRunSupervisorCapacity {
+    return {
+      accounts: async () => {
+        const status = await inspectCodexFleet({ includeProcesses: false, startPylon: true }, this.options)
+        return status.accounts
+          .filter(account => account.readiness === "ready")
+          .map(account => ({
+            accountRef: account.accountRef,
+            advertisedCapacity: Math.max(0, account.capacity?.available ?? account.capacity?.ready ?? 1),
+          }))
+      },
+    }
+  }
+
+  private snapshot(runRef: string): KhalaFleetRunSnapshot {
+    const run = this.store.reconcileFleetRun(runRef)
+    return this.snapshotForRun(run.runRef)
+  }
+
+  private snapshotForRun(runRef: string): KhalaFleetRunSnapshot {
+    const run = this.store.getFleetRun(runRef)
+    if (run === null) throw new Error(`unknown fleet run: ${runRef}`)
+    const active = this.active.get(runRef)
+    return {
+      active: active !== undefined,
+      lastTick: active?.lastTick ?? null,
+      lifecycle: [...(active?.lifecycle ?? [])],
+      pylonRef: active?.pylonRef ?? null,
+      run,
+    }
+  }
+}
+
+let defaultFleetRunSupervisorManager: DefaultKhalaFleetRunSupervisorManager | null = null
+
+function fleetRunSupervisorManager(options: KhalaCodexFleetToolOptions): KhalaFleetRunSupervisorManager {
+  if (options.fleetRunSupervisor !== undefined) return options.fleetRunSupervisor
+  defaultFleetRunSupervisorManager ??= new DefaultKhalaFleetRunSupervisorManager(options)
+  return defaultFleetRunSupervisorManager
+}
+
+async function resolveLocalPylonRef(options: KhalaCodexFleetToolOptions): Promise<string | null> {
+  try {
+    const ensure = await ensureLocalPylon({ start: true }, options)
+    return ensure.pylonRef
+  } catch {
+    return null
+  }
+}
+
+function ghRunnerFromOptions(options: KhalaCodexFleetToolOptions): GithubBacklogGhRunner {
+  return async args => {
+    const command = await defaultCommandRunner({
+      cmd: ["gh", ...args],
+      maxOutputBytes: 2_000_000,
+      timeoutMs: DEFAULT_COMMAND_TIMEOUT_MS,
+    })
+    if (command.exitCode !== 0) throw new Error(safeFailureReason(command))
+    return command.stdout
+  }
+}
+
+function fleetRunRef(now: Date): string {
+  return `fleet_run.${now.toISOString().replace(/[^0-9]/g, "").slice(0, 14)}.${Math.random().toString(36).slice(2, 8)}`
+}
+
+function renderFleetRunDispatchPrompt(
+  run: FleetRun,
+  workUnit: { readonly number?: number; readonly repo?: string; readonly title: string; readonly workUnitRef: string },
+): string {
+  return [
+    run.objective,
+    "",
+    `Work unit: ${workUnit.workUnitRef}`,
+    workUnit.repo === undefined ? null : `Repository: ${workUnit.repo}`,
+    workUnit.number === undefined ? null : `Issue/PR: #${workUnit.number}`,
+    `Title: ${workUnit.title}`,
+  ].filter((line): line is string => line !== null).join("\n")
+}
+
+function renderFleetRunSnapshot(snapshot: KhalaFleetRunSnapshot): string {
+  const run = snapshot.run
+  return [
+    `FleetRun ${run.runRef}: ${run.state}${snapshot.active ? " (supervisor active)" : ""}`,
+    `Pylon: ${snapshot.pylonRef ?? "(not active)"}`,
+    `Objective: ${run.objective}`,
+    `Source: ${run.workSource}; worker=${run.workerKind}; concurrency=${run.targetConcurrency}`,
+    `Counters: active=${run.counters.activeAssignments}, completed=${run.counters.completedAssignments}, failed=${run.counters.failedAssignments}, blocked=${run.counters.blockedAssignments}, total=${run.counters.workUnitsTotal}`,
+    snapshot.lastTick === null
+      ? "Last tick: none"
+      : `Last tick: active=${snapshot.lastTick.activeAssignments}, free=${snapshot.lastTick.freeSlots}, claimed=${snapshot.lastTick.claimed}, dispatched=${snapshot.lastTick.dispatched}`,
+  ].join("\n")
 }
 
 function resolvePylonPaths(env: ChatEnv): PylonPaths {
@@ -2746,6 +3372,25 @@ function optionalBoolean(value: unknown): boolean | undefined {
 
 function optionalInteger(value: unknown): number | undefined {
   return Number.isInteger(value) ? Number(value) : undefined
+}
+
+function optionalIntegerArray(value: unknown): readonly number[] | undefined {
+  if (!Array.isArray(value)) return undefined
+  const integers = value.filter((item): item is number => Number.isInteger(item))
+  return integers.length === value.length ? integers : undefined
+}
+
+function optionalWorkSource(value: unknown): FleetRunWorkSource | undefined {
+  return value === "github_backlog" || value === "issue_list" || value === "fixture" ? value : undefined
+}
+
+function optionalWorkerKind(value: unknown): FleetRunWorkerKind | undefined {
+  return value === "codex" || value === "claude" || value === "auto" ? value : undefined
+}
+
+function requiredFleetRunControlVerb(value: unknown): FleetRunControlVerb {
+  if (value === "pause" || value === "resume" || value === "drain" || value === "stop") return value
+  throw new Error("fleet_run_control requires verb pause, resume, drain, or stop")
 }
 
 function boundedPositiveInteger(value: number | undefined, fallback: number, min: number, max: number): number {

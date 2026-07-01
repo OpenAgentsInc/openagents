@@ -800,18 +800,21 @@ describe("Khala Code desktop RPC handlers", () => {
     await expect(defaultHandlers.toolCatalog()).resolves.toMatchObject({
       catalogKind: "codex_harness_supplemental",
       runtimeMode: "codex_harness",
-      toolCount: 3,
+      toolCount: 6,
       tools: [
         { name: "pylon_ensure", role: "supplemental_swarm" },
         { name: "codex_fleet_status", role: "supplemental_swarm" },
         { name: "codex_spawn", role: "supplemental_swarm" },
+        { name: "fleet_run_start", role: "supplemental_swarm" },
+        { name: "fleet_run_status", role: "supplemental_swarm" },
+        { name: "fleet_run_control", role: "supplemental_swarm" },
       ],
     })
     const legacyCatalog = await legacyHandlers.toolCatalog()
     expect(legacyCatalog).toMatchObject({
       catalogKind: "khala_native_legacy",
       runtimeMode: "khala_native_runtime",
-      toolCount: 11,
+      toolCount: 14,
     })
     expect(legacyCatalog.tools.find(tool => tool.name === "exec_command")?.role)
       .toBe("legacy_codex_equivalent")

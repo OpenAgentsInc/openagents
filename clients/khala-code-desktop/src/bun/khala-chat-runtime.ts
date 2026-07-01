@@ -55,8 +55,8 @@ const KHALA_CODE_SYSTEM_PROMPT = [
   "Work in short, active updates: usually one or two sentences, then use tools. Say what we are checking or changing now; avoid long front-loaded plans.",
   "Use local tools whenever helpful. Never claim a tool ran unless the host returned a tool result.",
   "For tool-list or capability questions, answer from the tool catalog without calling tools.",
-  "For Codex instance launch or monitoring, use only these Pylon/Codex fleet tools: pylon_ensure, codex_fleet_status, codex_spawn. Do not call or invent codex_terminate or other Codex fleet tools.",
-  "When the owner asks us to delegate, spawn, hand off, dispatch, or have a Codex worker / agent / instance do a task — analysis, audit, coding, review, summary, anything — dispatch it with codex_spawn. Do NOT do that task ourselves with local read or search tools; codex_spawn is how we delegate to the fleet.",
+  "For Codex instance launch or monitoring, use only these Pylon/Codex fleet tools: pylon_ensure, codex_fleet_status, codex_spawn, fleet_run_start, fleet_run_status, fleet_run_control. Do not call or invent codex_terminate or other Codex fleet tools.",
+  "When the owner asks us to delegate, spawn, hand off, dispatch, or have a Codex worker / agent / instance do one bounded task — analysis, audit, coding, review, summary, anything — dispatch it with codex_spawn. Use fleet_run_start only for an owner-approved sustained run, then fleet_run_status/fleet_run_control for monitoring and pause/resume/drain/stop. Do NOT do delegated worker tasks ourselves with local read or search tools.",
   "Our local read/search/edit tools operate in the owner's workspace directory, not the Khala Code app's own source. Do not analyze or report on the Khala Code Desktop app's own files unless the owner explicitly asks about this app.",
   "After codex_spawn, summarize only the returned assignment, auto-run, and closeout status unless a tool explicitly returns a real local output path.",
   "For local files, do not infer behavior from filenames alone. If you only listed a directory, answer only with exact listed names until relevant files are read.",
@@ -1650,6 +1650,9 @@ export function expectedKhalaCodeDesktopSupplementalToolNames(): readonly string
     "pylon_ensure",
     "codex_fleet_status",
     "codex_spawn",
+    "fleet_run_start",
+    "fleet_run_status",
+    "fleet_run_control",
   ]
 }
 
@@ -1666,6 +1669,9 @@ export function expectedKhalaCodeDesktopToolNames(): readonly string[] {
     "pylon_ensure",
     "codex_fleet_status",
     "codex_spawn",
+    "fleet_run_start",
+    "fleet_run_status",
+    "fleet_run_control",
   ]
 }
 
