@@ -1,3 +1,4 @@
+import { Schema as S } from "effect"
 import type { KhalaToolEvent } from "@openagentsinc/khala-tools"
 import type { KhalaAppleFmReadiness } from "./apple-fm-readiness.js"
 import type {
@@ -32,6 +33,67 @@ import type { OnDeviceDeciderSelection } from "./on-device-decider.js"
 // over events while hosted model calls and local tools can legitimately exceed 30s.
 export const KHALA_CODE_DESKTOP_RPC_MAX_REQUEST_TIME_MS = Number.POSITIVE_INFINITY
 export const KHALA_CODE_DESKTOP_DEFAULT_PREVIEW_PORT = 50021
+
+export type KhalaCodeDesktopRpcJsonPrimitive = string | number | boolean | null
+export type KhalaCodeDesktopRpcJsonValue =
+  | KhalaCodeDesktopRpcJsonPrimitive
+  | readonly KhalaCodeDesktopRpcJsonValue[]
+  | { readonly [key: string]: KhalaCodeDesktopRpcJsonValue }
+
+export const KhalaCodeDesktopRpcJsonValue: S.Schema<KhalaCodeDesktopRpcJsonValue> =
+  S.Union([
+    S.String,
+    S.Number,
+    S.Boolean,
+    S.Null,
+    S.Array(S.suspend(() => KhalaCodeDesktopRpcJsonValue)),
+    S.Record(S.String, S.suspend(() => KhalaCodeDesktopRpcJsonValue)),
+  ])
+
+export const KhalaCodeDesktopRpcDecodeFailure = S.Struct({
+  error: S.String,
+  method: S.String,
+  ok: S.Literal(false),
+  tag: S.Literal("rpc_decode_failed"),
+})
+export type KhalaCodeDesktopRpcDecodeFailure =
+  typeof KhalaCodeDesktopRpcDecodeFailure.Type
+
+export const KhalaCodeDesktopRpcHandlerFailure = S.Struct({
+  error: S.String,
+  method: S.String,
+  ok: S.Literal(false),
+  tag: S.Literal("rpc_handler_failed"),
+})
+export type KhalaCodeDesktopRpcHandlerFailure =
+  typeof KhalaCodeDesktopRpcHandlerFailure.Type
+
+export const KhalaCodeDesktopRpcMethodNotAllowedFailure = S.Struct({
+  error: S.Literal("method_not_allowed"),
+  method: S.String,
+  ok: S.Literal(false),
+  tag: S.Literal("rpc_method_not_allowed"),
+})
+export type KhalaCodeDesktopRpcMethodNotAllowedFailure =
+  typeof KhalaCodeDesktopRpcMethodNotAllowedFailure.Type
+
+export const KhalaCodeDesktopRpcUnknownMethodFailure = S.Struct({
+  error: S.Literal("unknown_method"),
+  method: S.String,
+  ok: S.Literal(false),
+  tag: S.Literal("rpc_unknown_method"),
+})
+export type KhalaCodeDesktopRpcUnknownMethodFailure =
+  typeof KhalaCodeDesktopRpcUnknownMethodFailure.Type
+
+export const KhalaCodeDesktopRpcBridgeFailure = S.Union([
+  KhalaCodeDesktopRpcDecodeFailure,
+  KhalaCodeDesktopRpcHandlerFailure,
+  KhalaCodeDesktopRpcMethodNotAllowedFailure,
+  KhalaCodeDesktopRpcUnknownMethodFailure,
+])
+export type KhalaCodeDesktopRpcBridgeFailure =
+  typeof KhalaCodeDesktopRpcBridgeFailure.Type
 
 export type KhalaCodeDesktopMessageRole = "user" | "assistant" | "system" | "tool"
 
@@ -867,6 +929,913 @@ export type KhalaCodeDesktopConnectStart = {
   readonly output: string
   readonly error?: string
 }
+
+const RpcJson = KhalaCodeDesktopRpcJsonValue
+const RpcStringArray = S.Array(S.String)
+const RpcJsonObject = S.Record(S.String, RpcJson)
+const RpcStringNull = S.NullOr(S.String)
+const RpcNumberNull = S.NullOr(S.Number)
+
+const RpcToolEvent = S.Struct({
+  eventId: S.String,
+  invocationId: S.optional(S.String),
+  kind: S.String,
+  payload: RpcJson,
+  sessionId: S.String,
+})
+
+const RpcCodexPermissionProfile = S.Struct({
+  fileSystem: S.optional(S.Struct({
+    entries: S.optional(S.Array(RpcJson)),
+    globScanMaxDepth: S.optional(S.Number),
+    read: S.optional(S.NullOr(RpcStringArray)),
+    write: S.optional(S.NullOr(RpcStringArray)),
+  })),
+  network: S.optional(S.Struct({
+    enabled: S.optional(S.NullOr(S.Boolean)),
+  })),
+})
+
+const RpcCodexApprovalProjection = S.Struct({
+  additionalPermissions: S.optional(RpcJson),
+  availableDecisions: S.optional(S.Array(RpcJson)),
+  command: S.optional(S.String),
+  cwd: S.optional(S.String),
+  grantRoot: S.optional(S.String),
+  method: S.String,
+  networkApprovalContext: S.optional(RpcJson),
+  permissions: S.optional(RpcCodexPermissionProfile),
+  proposedExecpolicyAmendment: S.optional(RpcStringArray),
+  proposedNetworkPolicyAmendments: S.optional(S.Array(S.Struct({
+    action: S.String,
+    host: S.String,
+  }))),
+  reason: S.optional(S.String),
+  requestId: S.Union([S.String, S.Number]),
+})
+
+const RpcCodexItemCard = S.Struct({
+  approval: S.optional(RpcCodexApprovalProjection),
+  itemId: S.String,
+  itemType: S.String,
+  status: S.String,
+  title: S.String,
+  requestId: S.optional(S.String),
+  subtitle: S.optional(S.String),
+  threadId: S.optional(S.String),
+  turnId: S.optional(S.String),
+})
+
+export const KhalaCodeDesktopMessageSchema = S.Struct({
+  codexItem: S.optional(RpcCodexItemCard),
+  id: S.String,
+  role: S.Literals(["user", "assistant", "system", "tool"]),
+  body: S.String,
+})
+export type KhalaCodeDesktopMessageFromSchema =
+  typeof KhalaCodeDesktopMessageSchema.Type
+
+export const KhalaCodeDesktopChatTurnEventSchema = S.Union([
+  S.Struct({
+    threadId: S.String,
+    turnId: S.String,
+    type: S.Literal("thread_ready"),
+  }),
+  S.Struct({
+    message: KhalaCodeDesktopMessageSchema,
+    turnId: S.String,
+    type: S.Literal("message_start"),
+  }),
+  S.Struct({
+    delta: S.String,
+    messageId: S.String,
+    turnId: S.String,
+    type: S.Literal("message_delta"),
+  }),
+  S.Struct({
+    message: KhalaCodeDesktopMessageSchema,
+    turnId: S.String,
+    type: S.Literal("message_replace"),
+  }),
+  S.Struct({
+    messageId: S.String,
+    turnId: S.String,
+    type: S.Literal("message_done"),
+  }),
+  S.Struct({
+    event: RpcToolEvent,
+    turnId: S.String,
+    type: S.Literal("tool_event"),
+  }),
+])
+export type KhalaCodeDesktopChatTurnEventFromSchema =
+  typeof KhalaCodeDesktopChatTurnEventSchema.Type
+
+const RpcUsage = S.Struct({
+  input: S.Number,
+  cachedInput: S.Number,
+  output: S.Number,
+  reasoningOutput: S.Number,
+})
+
+const RpcChatAttachment = S.Struct({
+  dataBase64: S.optional(S.String),
+  id: S.String,
+  kind: S.Literal("image"),
+  mime: S.String,
+  name: S.String,
+  path: S.optional(S.String),
+  sizeBytes: S.Number,
+})
+
+const RpcChatTurnRequest = S.Struct({
+  attachments: S.optional(S.Array(RpcChatAttachment)),
+  messages: S.Array(KhalaCodeDesktopMessageSchema),
+  sessionId: S.String,
+  startNewThread: S.optional(S.Boolean),
+  threadId: S.optional(S.String),
+  turnId: S.optional(S.String),
+})
+
+const RpcBackendProjection = S.Struct({
+  baseUrl: S.optional(S.String),
+  blockerRefs: S.optional(RpcStringArray),
+  credentialSource: S.optional(S.String),
+  kind: S.String,
+  model: S.String,
+  provider: S.optional(S.String),
+  runtimeMode: S.optional(S.String),
+  threadId: S.optional(S.String),
+  toolCatalogKind: S.optional(S.String),
+  turnId: S.optional(S.String),
+  turnStatus: S.optional(S.String),
+})
+
+const RpcChatTurnResponse = S.Struct({
+  backend: RpcBackendProjection,
+  messages: S.Array(KhalaCodeDesktopMessageSchema),
+  ok: S.Boolean,
+  toolNames: RpcStringArray,
+  usage: S.optional(RpcUsage),
+  usedTools: RpcStringArray,
+})
+
+const RpcRuntimeStatus = S.Struct({
+  ok: S.Literal(true),
+  app: S.Literal("Khala Code Desktop"),
+  available: S.Boolean,
+  capability: S.String,
+  observedAt: S.String,
+  reason: S.String,
+  status: S.String,
+})
+
+const RpcAppInfo = S.Struct({
+  ok: S.Literal(true),
+  app: S.Literal("Khala Code Desktop"),
+  observedAt: S.String,
+})
+
+const RpcAppleFmReadiness = S.Struct({
+  schema: S.String,
+  kind: S.Literal("khala_desktop_apple_fm_readiness"),
+  supported: S.Boolean,
+  available: S.Boolean,
+  state: S.String,
+  backendKind: S.String,
+  profileId: S.String,
+  model: S.String,
+  capability: S.String,
+  provider: S.String,
+  demandKind: S.Literal("own_capacity"),
+  demandSource: S.String,
+  usageTruth: S.Literal("estimated"),
+  pylonControlConfigured: S.Boolean,
+  pylon: S.NullOr(RpcJsonObject),
+  blockerRefs: RpcStringArray,
+  observedAt: S.String,
+  contentRedacted: S.Literal(true),
+})
+
+const RpcCodexHarnessStatus = S.Struct({
+  ok: S.Literal(true),
+  app: S.Literal("Khala Code Desktop"),
+  available: S.Boolean,
+  capability: S.Literal("codex_harness"),
+  observedAt: S.String,
+  reason: S.String,
+  status: S.String,
+  binary: S.Struct({
+    command: S.String,
+    source: S.String,
+    available: S.Boolean,
+    version: RpcStringNull,
+    error: RpcStringNull,
+  }),
+  home: S.Struct({
+    path: S.String,
+    source: S.String,
+    role: S.Literal("main_user_codex_home"),
+    authPath: S.String,
+    fleetIsolation: S.Literal("fleet_accounts_use_pylon_isolated_homes"),
+  }),
+  auth: S.Struct({
+    state: S.String,
+    blockerRefs: RpcStringArray,
+    accessTokenPresent: S.Boolean,
+    accountIdPresent: S.Boolean,
+    refreshTokenPresent: S.Boolean,
+    error: S.optional(S.String),
+  }),
+  signIn: S.Struct({
+    required: S.Boolean,
+    command: S.Literal("codex login"),
+    warning: S.String,
+  }),
+})
+
+const RpcRateLimitWindow = S.Struct({
+  usedPercent: S.Number,
+  remainingPercent: S.Number,
+  windowMinutes: S.Number,
+  resetsAtIso: RpcStringNull,
+  resetDescription: RpcStringNull,
+})
+
+const RpcRateLimitStatus = S.Struct({
+  provider: S.Literal("codex"),
+  session: S.NullOr(RpcRateLimitWindow),
+  weekly: S.NullOr(RpcRateLimitWindow),
+  rateLimitResetCredits: S.optional(S.NullOr(S.Struct({
+    availableCount: S.Number,
+    totalEarnedCount: S.optional(S.Number),
+    nextExpiresAtIso: RpcStringNull,
+    credits: S.optional(S.Array(S.Struct({
+      status: S.String,
+      expiresAtIso: RpcStringNull,
+      grantedAtIso: RpcStringNull,
+    }))),
+  }))),
+  updatedAtIso: S.String,
+  error: RpcStringNull,
+  status: S.String,
+})
+
+const RpcCodexAccountsStatus = S.Struct({
+  ok: S.Literal(true),
+  app: S.Literal("Khala Code Desktop"),
+  available: S.Boolean,
+  capability: S.Literal("codex_accounts"),
+  observedAt: S.String,
+  reason: S.String,
+  status: S.String,
+  accounts: S.Array(S.Struct({
+    provider: S.Literal("codex"),
+    accountRef: S.Literal("default"),
+    credentialSource: S.String,
+    homeRef: S.String,
+    homeRole: S.Literal("main_user_codex_home"),
+    readiness: S.Struct({
+      state: S.String,
+      blockerRefs: RpcStringArray,
+    }),
+    rateLimits: RpcRateLimitStatus,
+  })),
+  harness: RpcCodexHarnessStatus,
+  rateLimits: RpcRateLimitStatus,
+})
+
+const RpcCodexAppServerStatus = S.Struct({
+  ok: S.Literal(true),
+  app: S.Literal("Khala Code Desktop"),
+  adapterVersion: S.String,
+  codexCommand: S.String,
+  codexHome: S.String,
+  diagnostics: RpcStringArray,
+  initialized: S.Boolean,
+  initializeResult: RpcJson,
+  lastError: RpcStringNull,
+  pendingRequestCount: S.Number,
+  pid: S.NullOr(S.Number),
+  state: S.String,
+  transport: S.Literal("stdio"),
+})
+
+const RpcCodexAppServerControlResult = S.Struct({
+  ok: S.Boolean,
+  action: S.String,
+  changed: S.Boolean,
+  status: RpcCodexAppServerStatus,
+  error: S.optional(S.String),
+})
+
+const RpcThreadStartRequest = S.Struct({
+  cwd: S.optional(S.String),
+  sessionId: S.optional(S.String),
+})
+const RpcThreadResumeRequest = S.Struct({
+  cwd: S.optional(S.String),
+  sessionId: S.optional(S.String),
+  threadId: S.String,
+})
+const RpcThreadListRequest = S.Struct({
+  archived: S.optional(S.Boolean),
+  cursor: S.optional(S.String),
+  cwd: S.optional(S.String),
+  limit: S.optional(S.Number),
+  searchTerm: S.optional(S.String),
+  sessionId: S.optional(S.String),
+  useStateDbOnly: S.optional(S.Boolean),
+})
+const RpcThreadReadRequest = S.Struct({
+  includeTurns: S.optional(S.Boolean),
+  threadId: S.String,
+})
+const RpcThreadForkRequest = S.Struct({
+  cwd: S.optional(S.String),
+  lastTurnId: S.optional(S.String),
+  sessionId: S.optional(S.String),
+  threadId: S.String,
+})
+const RpcThreadIdRequest = S.Struct({ threadId: S.String })
+const RpcThreadRenameRequest = S.Struct({ name: S.String, threadId: S.String })
+
+const RpcThreadSummary = S.Struct({
+  id: S.String,
+  sessionId: RpcStringNull,
+  title: S.String,
+  preview: S.String,
+  cwd: RpcStringNull,
+  projectLabel: S.String,
+  status: S.String,
+  statusLabel: S.String,
+  modelProvider: RpcStringNull,
+  source: S.String,
+  forkedFromId: RpcStringNull,
+  parentThreadId: RpcStringNull,
+  createdAt: RpcNumberNull,
+  updatedAt: RpcNumberNull,
+  recencyAt: RpcNumberNull,
+  badges: RpcStringArray,
+})
+const RpcThreadGroup = S.Struct({
+  key: S.String,
+  label: S.String,
+  threadIds: RpcStringArray,
+})
+const RpcThreadResult = S.Struct({
+  ok: S.Literal(true),
+  cwd: S.optional(S.String),
+  desktopSessionId: S.optional(S.String),
+  messages: S.optional(S.Array(KhalaCodeDesktopMessageSchema)),
+  model: S.optional(S.String),
+  modelProvider: S.optional(S.String),
+  thread: RpcJson,
+  threadId: S.String,
+})
+const RpcThreadListResult = S.Struct({
+  ok: S.Literal(true),
+  backwardsCursor: S.optional(RpcStringNull),
+  data: S.Array(RpcJson),
+  groups: S.optional(S.Array(RpcThreadGroup)),
+  nextCursor: S.optional(RpcStringNull),
+  threads: S.optional(S.Array(RpcThreadSummary)),
+})
+const RpcThreadMutationResult = S.Struct({
+  action: S.String,
+  ok: S.Boolean,
+  messages: S.optional(S.Array(KhalaCodeDesktopMessageSchema)),
+  response: S.optional(RpcJson),
+  thread: S.optional(RpcJson),
+  threadId: S.String,
+  error: S.optional(S.String),
+  newThreadId: S.optional(S.String),
+})
+
+const RpcTurnStartRequest = S.Struct({
+  attachments: S.optional(S.Array(RpcChatAttachment)),
+  messages: S.Array(KhalaCodeDesktopMessageSchema),
+  sessionId: S.String,
+  startNewThread: S.optional(S.Boolean),
+  threadId: S.optional(S.String),
+  turnId: S.optional(S.String),
+  cwd: S.optional(S.String),
+})
+const RpcTurnSteerRequest = S.Struct({
+  clientUserMessageId: S.optional(S.String),
+  sessionId: S.String,
+  text: S.String,
+  turnId: S.optional(S.String),
+})
+const RpcTurnInterruptRequest = S.Struct({
+  sessionId: S.String,
+  turnId: S.optional(S.String),
+})
+const RpcTurnActionResult = S.Struct({
+  ok: S.Boolean,
+  codexTurnId: S.optional(S.String),
+  desktopSessionId: S.String,
+  desktopTurnId: S.optional(S.String),
+  error: S.optional(S.String),
+  response: S.optional(RpcJson),
+  threadId: S.optional(S.String),
+})
+const RpcThreadCompactRequest = S.Struct({
+  sessionId: S.optional(S.String),
+  threadId: S.optional(S.String),
+})
+
+const RpcApprovalRespondRequest = S.Struct({
+  action: S.String,
+  execpolicyAmendment: S.optional(RpcStringArray),
+  method: S.String,
+  networkPolicyAmendment: S.optional(S.Struct({ action: S.String, host: S.String })),
+  permissions: S.optional(RpcCodexPermissionProfile),
+  requestId: S.Union([S.String, S.Number]),
+})
+const RpcApprovalRespondResult = S.Struct({
+  method: S.String,
+  ok: S.Boolean,
+  payload: S.optional(RpcJson),
+  requestId: S.Union([S.String, S.Number]),
+  error: S.optional(S.String),
+})
+
+const RpcCodexSettingsReadRequest = S.Struct({
+  cwd: S.optional(S.String),
+  includeHiddenModels: S.optional(S.Boolean),
+})
+const RpcCodexSettingsProjection = RpcJsonObject
+const RpcCodexConfigValueWriteRequest = S.Struct({
+  cwd: S.optional(S.String),
+  expectedVersion: S.optional(S.String),
+  filePath: S.optional(S.String),
+  keyPath: S.String,
+  mergeStrategy: S.optional(S.String),
+  value: RpcJson,
+})
+const RpcCodexConfigValueWriteResult = S.Struct({
+  ok: S.Boolean,
+  keyPath: S.String,
+  response: S.optional(RpcJson),
+  settings: S.optional(RpcCodexSettingsProjection),
+  error: S.optional(S.String),
+})
+const RpcCodexEcosystemReadRequest = S.Struct({
+  cwd: S.optional(S.String),
+  forceRefetchApps: S.optional(S.Boolean),
+  forceReloadSkills: S.optional(S.Boolean),
+  threadId: S.optional(S.String),
+})
+const RpcCodexEcosystemProjection = RpcJsonObject
+const RpcCodexAppServerActionResult = S.Struct({
+  ok: S.Boolean,
+  method: S.String,
+  response: S.optional(RpcJson),
+  error: S.optional(S.String),
+})
+
+const RpcBackgroundTerminalsListRequest = S.Struct({
+  cursor: S.optional(RpcStringNull),
+  limit: S.optional(RpcNumberNull),
+  threadId: S.String,
+})
+const RpcBackgroundTerminalsCleanRequest = S.Struct({ threadId: S.String })
+const RpcBackgroundTerminalsTerminateRequest = S.Struct({
+  processId: S.String,
+  threadId: S.String,
+})
+const RpcMentionCandidatesRequest = S.Struct({
+  cwd: S.optional(S.String),
+  query: S.optional(S.String),
+})
+const RpcMentionCandidate = S.Struct({
+  fileName: S.String,
+  kind: S.Literals(["directory", "file"]),
+  path: S.String,
+  root: S.optional(S.String),
+  score: S.optional(S.Number),
+})
+const RpcMentionCandidatesResult = S.Struct({
+  ok: S.Boolean,
+  candidates: S.Array(RpcMentionCandidate),
+  source: S.String,
+  truncated: S.Boolean,
+  error: S.optional(S.String),
+})
+
+const RpcSkillsExtraRootsSetRequest = S.Struct({ extraRoots: RpcStringArray })
+const RpcSkillsConfigWriteRequest = S.Struct({
+  enabled: S.Boolean,
+  name: S.optional(RpcStringNull),
+  path: S.optional(RpcStringNull),
+})
+const RpcExternalAgentConfigDetectRequest = S.Struct({
+  cwds: S.optional(S.NullOr(RpcStringArray)),
+  includeHome: S.optional(S.Boolean),
+})
+const RpcExternalAgentConfigMigrationItem = S.Struct({
+  itemType: S.String,
+  description: S.String,
+  cwd: RpcStringNull,
+  details: S.optional(S.NullOr(RpcJson)),
+})
+const RpcExternalAgentConfigImportRequest = S.Struct({
+  migrationItems: S.Array(RpcExternalAgentConfigMigrationItem),
+  source: S.optional(RpcStringNull),
+})
+const RpcFsPathRequest = S.Struct({ path: S.String })
+const RpcFsWriteFileRequest = S.Struct({ dataBase64: S.String, path: S.String })
+const RpcMcpResourceReadRequest = S.Struct({
+  server: S.String,
+  threadId: S.optional(RpcStringNull),
+  uri: S.String,
+})
+const RpcMcpToolCallRequest = S.Struct({
+  arguments: S.optional(RpcJson),
+  meta: S.optional(RpcJson),
+  server: S.String,
+  threadId: S.String,
+  tool: S.String,
+})
+const RpcMcpOauthLoginRequest = S.Struct({
+  scopes: S.optional(S.NullOr(RpcStringArray)),
+  server: S.String,
+  threadId: S.optional(RpcStringNull),
+  timeoutSecs: S.optional(RpcNumberNull),
+})
+const RpcMarketplaceAddRequest = S.Struct({
+  refName: S.optional(RpcStringNull),
+  source: S.String,
+  sparsePaths: S.optional(S.NullOr(RpcStringArray)),
+})
+const RpcMarketplaceRemoveRequest = S.Struct({ marketplaceName: S.String })
+const RpcMarketplaceUpgradeRequest = S.Struct({
+  marketplaceName: S.optional(RpcStringNull),
+})
+const RpcPluginInstallRequest = S.Struct({
+  marketplacePath: S.optional(RpcStringNull),
+  pluginName: S.String,
+  remoteMarketplaceName: S.optional(RpcStringNull),
+})
+const RpcPluginUninstallRequest = S.Struct({ pluginId: S.String })
+
+const RpcSlashCommandListRequest = S.Struct({
+  activeTurn: S.optional(S.Boolean),
+  debug: S.optional(S.Boolean),
+  platform: S.optional(S.String),
+  sideConversation: S.optional(S.Boolean),
+})
+const RpcSlashCommandDispatchRequest = S.Struct({
+  activeTurn: S.optional(S.Boolean),
+  debug: S.optional(S.Boolean),
+  platform: S.optional(S.String),
+  sideConversation: S.optional(S.Boolean),
+  cwd: S.optional(S.String),
+  raw: S.String,
+  sessionId: S.String,
+  threadId: S.optional(S.String),
+})
+const RpcSlashCommandListResponse = S.Struct({
+  commands: S.Array(RpcJsonObject),
+  ok: S.Literal(true),
+})
+const RpcSlashCommandDispatchResult = S.Struct({
+  action: S.optional(S.String),
+  command: S.optional(S.String),
+  gap: S.optional(S.Struct({
+    gapId: S.String,
+    kind: S.Literal("upstream_app_server_gap"),
+  })),
+  message: S.String,
+  method: S.optional(S.String),
+  ok: S.Boolean,
+  response: S.optional(RpcJson),
+  status: S.String,
+  threadId: S.optional(S.String),
+})
+
+const RpcThreadTokenSummaryRequest = S.Struct({
+  threadId: S.optional(RpcStringNull),
+})
+const RpcThreadTokenSummary = S.Struct({
+  auditRows: S.Number,
+  codexStateDbPath: S.String,
+  codexStateTokens: S.Number,
+  leaderboardLabel: S.Literal("OpenAgents Stats"),
+  leaderboardSyncedTokens: S.Number,
+  localLedgerPath: S.String,
+  localMessageAuditLedgerPath: S.String,
+  missingUsageTurns: S.Number,
+  ok: S.Literal(true),
+  pendingSyncTokens: S.Number,
+  remoteConfigured: S.Boolean,
+  remoteDisabled: S.Boolean,
+  threadId: RpcStringNull,
+  totalTokens: S.Number,
+  updatedAt: RpcStringNull,
+  usageEventRows: S.Number,
+})
+
+const RpcToolCatalogResponse = S.Struct({
+  catalogKind: S.String,
+  defaultEnabled: S.Boolean,
+  description: S.String,
+  runtimeMode: S.String,
+  toolCount: S.Number,
+  tools: S.Array(S.Struct({
+    authority: S.String,
+    name: S.String,
+    role: S.String,
+  })),
+})
+
+const RpcFleetCapacity = S.Struct({
+  available: RpcNumberNull,
+  busy: RpcNumberNull,
+  queued: RpcNumberNull,
+  ready: RpcNumberNull,
+})
+const RpcFleetQueuePolicy = S.Struct({
+  admission: S.Literal("pylon_capacity_gate"),
+  cooldown: S.String,
+  refill: S.Literal("pylon_presence_heartbeat"),
+  queued: RpcNumberNull,
+})
+const RpcFleetAccount = S.Struct({
+  accountRef: S.String,
+  provider: S.Literal("codex"),
+  readiness: S.String,
+  quotaState: RpcStringNull,
+  accountKey: RpcStringNull,
+  capacity: S.NullOr(RpcFleetCapacity),
+  homeRole: S.optional(S.String),
+  queuePolicy: S.optional(RpcFleetQueuePolicy),
+  sessionRole: S.optional(S.String),
+  email: RpcStringNull,
+})
+const RpcFleetAssignmentTokenRate = S.Struct({
+  source: S.String,
+  status: S.String,
+  tokenCountKind: RpcStringNull,
+  tokens: RpcNumberNull,
+  tokensPerMinute: RpcNumberNull,
+})
+const RpcFleetTokenRate = S.Struct({
+  activeAdjustedTokensPerMinute: RpcNumberNull,
+  completedStatus: S.String,
+  completedTokenRows: RpcNumberNull,
+  completedTokensPerMinute: RpcNumberNull,
+  inFlightTokens: RpcNumberNull,
+  inFlightTokensPerMinute: RpcNumberNull,
+  source: S.String,
+  unavailableReason: RpcStringNull,
+})
+const RpcFleetWorkerSession = S.Struct({
+  approvalState: S.String,
+  blockerRefs: RpcStringArray,
+  closeoutStatus: RpcStringNull,
+  executionRuntime: S.Literal("codex_harness"),
+  homeRole: S.String,
+  queuePolicy: RpcFleetQueuePolicy,
+  reviewState: S.String,
+  role: S.Literal("swarm_worker_codex_session"),
+  transcriptRef: RpcStringNull,
+})
+const RpcFleetAssignment = S.Struct({
+  assignmentRef: RpcStringNull,
+  blockerRefs: S.optional(RpcStringArray),
+  closeoutStatus: S.optional(RpcStringNull),
+  elapsedMs: RpcNumberNull,
+  issueRef: RpcStringNull,
+  workerSession: S.optional(RpcFleetWorkerSession),
+  tokenRate: RpcFleetAssignmentTokenRate,
+  updatedAt: RpcStringNull,
+})
+const RpcFleetStatus = S.Struct({
+  ok: S.Boolean,
+  observedAt: S.String,
+  sessionLayers: S.optional(RpcJsonObject),
+  pylon: S.Struct({
+    status: S.String,
+    pylonRef: RpcStringNull,
+    message: S.String,
+  }),
+  availableCodexAssignments: RpcNumberNull,
+  maxCodexAssignments: RpcNumberNull,
+  tokenRate: RpcFleetTokenRate,
+  accounts: S.Array(RpcFleetAccount),
+  activeAssignments: S.Array(RpcFleetAssignment),
+  processes: S.Array(S.Struct({
+    pid: S.String,
+    parentPid: S.String,
+    elapsed: S.String,
+  })),
+})
+
+const RpcFleetPromotionContextBoundary = S.Struct({
+  allowedRefs: RpcStringArray,
+  includeTranscript: S.Literal(false),
+  mode: S.String,
+  summary: RpcStringNull,
+})
+const RpcFleetPromotionRequest = S.Struct({
+  accountRef: S.optional(S.String),
+  branch: S.optional(S.String),
+  commit: S.optional(S.String),
+  contextBoundary: RpcFleetPromotionContextBoundary,
+  count: S.optional(S.Number),
+  fixture: S.optional(S.Boolean),
+  noRun: S.optional(S.Boolean),
+  objective: S.String,
+  repo: S.optional(S.String),
+  sessionId: S.String,
+  threadId: S.String,
+  timeoutMs: S.optional(S.Number),
+  verify: S.optional(S.String),
+})
+const RpcFleetPromotionResult = RpcJsonObject
+const RpcFleetDelegateRunRequest = S.Struct({
+  accountRef: S.optional(S.String),
+  branch: S.optional(S.String),
+  commit: S.optional(S.String),
+  count: S.optional(S.Number),
+  mode: S.Literals(["fixture", "real_work"]),
+  noRun: S.optional(S.Boolean),
+  objective: S.String,
+  repo: S.optional(S.String),
+  timeoutMs: S.optional(S.Number),
+  verify: S.optional(S.String),
+})
+const RpcFleetDelegateRunResult = RpcJsonObject
+
+const RpcConnectStart = S.Struct({
+  ok: S.Boolean,
+  accountRef: S.String,
+  verificationUrl: RpcStringNull,
+  userCode: RpcStringNull,
+  output: S.String,
+  error: S.optional(S.String),
+})
+const RpcRemoveAccountResult = S.Struct({
+  ok: S.Boolean,
+  removed: S.Boolean,
+  accountRef: S.String,
+  error: S.optional(S.String),
+})
+const RpcRateLimitResetResult = S.Struct({
+  ok: S.Boolean,
+  observedAt: S.String,
+  outcome: S.NullOr(S.String),
+  status: RpcCodexAccountsStatus,
+  error: S.optional(S.String),
+})
+const RpcOnDeviceDeciderSelection = S.Struct({
+  selected: RpcStringNull,
+  preferred: S.String,
+  reason: S.String,
+  readiness: S.Array(S.Struct({
+    backend: S.String,
+    available: S.Boolean,
+    model: S.String,
+    detail: S.String,
+  })),
+})
+
+const noParams = () => [] as const
+const param = <A>(schema: S.Schema<A>) => ({ optional: false, schema }) as const
+const optionalParam = <A>(schema: S.Schema<A>) =>
+  ({ optional: true, schema }) as const
+
+export const KhalaCodeDesktopRpcMethodSchemas = {
+  appInfo: { parameters: noParams(), result: RpcAppInfo },
+  appleFmReadiness: { parameters: noParams(), result: RpcAppleFmReadiness },
+  codexAccountsStatus: { parameters: noParams(), result: RpcCodexAccountsStatus },
+  codexAppServerRestart: { parameters: noParams(), result: RpcCodexAppServerControlResult },
+  codexAppServerStart: { parameters: noParams(), result: RpcCodexAppServerControlResult },
+  codexAppServerStatus: { parameters: noParams(), result: RpcCodexAppServerStatus },
+  codexAppServerStop: { parameters: noParams(), result: RpcCodexAppServerControlResult },
+  codexFleetDelegateRun: { parameters: [param(RpcFleetDelegateRunRequest)], result: RpcFleetDelegateRunResult },
+  codexFleetStatus: { parameters: noParams(), result: RpcFleetStatus },
+  codexFleetPromoteThread: { parameters: [param(RpcFleetPromotionRequest)], result: RpcFleetPromotionResult },
+  codexHarnessStatus: { parameters: noParams(), result: RpcCodexHarnessStatus },
+  codexApprovalRespond: { parameters: [param(RpcApprovalRespondRequest)], result: RpcApprovalRespondResult },
+  codexBackgroundTerminalsClean: { parameters: [param(RpcBackgroundTerminalsCleanRequest)], result: RpcCodexAppServerActionResult },
+  codexBackgroundTerminalsList: { parameters: [param(RpcBackgroundTerminalsListRequest)], result: RpcCodexAppServerActionResult },
+  codexBackgroundTerminalsTerminate: { parameters: [param(RpcBackgroundTerminalsTerminateRequest)], result: RpcCodexAppServerActionResult },
+  codexConfigValueWrite: { parameters: [param(RpcCodexConfigValueWriteRequest)], result: RpcCodexConfigValueWriteResult },
+  codexEcosystemRead: { parameters: [optionalParam(RpcCodexEcosystemReadRequest)], result: RpcCodexEcosystemProjection },
+  codexExternalAgentConfigDetect: { parameters: [optionalParam(RpcExternalAgentConfigDetectRequest)], result: RpcCodexAppServerActionResult },
+  codexExternalAgentConfigImport: { parameters: [param(RpcExternalAgentConfigImportRequest)], result: RpcCodexAppServerActionResult },
+  codexExternalAgentConfigImportHistoriesRead: { parameters: noParams(), result: RpcCodexAppServerActionResult },
+  codexFsGetMetadata: { parameters: [param(RpcFsPathRequest)], result: RpcCodexAppServerActionResult },
+  codexFsReadFile: { parameters: [param(RpcFsPathRequest)], result: RpcCodexAppServerActionResult },
+  codexFsWriteFile: { parameters: [param(RpcFsWriteFileRequest)], result: RpcCodexAppServerActionResult },
+  codexMarketplaceAdd: { parameters: [param(RpcMarketplaceAddRequest)], result: RpcCodexAppServerActionResult },
+  codexMarketplaceRemove: { parameters: [param(RpcMarketplaceRemoveRequest)], result: RpcCodexAppServerActionResult },
+  codexMarketplaceUpgrade: { parameters: [optionalParam(RpcMarketplaceUpgradeRequest)], result: RpcCodexAppServerActionResult },
+  codexMentionCandidates: { parameters: [optionalParam(RpcMentionCandidatesRequest)], result: RpcMentionCandidatesResult },
+  codexMcpOauthLogin: { parameters: [param(RpcMcpOauthLoginRequest)], result: RpcCodexAppServerActionResult },
+  codexMcpResourceRead: { parameters: [param(RpcMcpResourceReadRequest)], result: RpcCodexAppServerActionResult },
+  codexMcpServerReload: { parameters: noParams(), result: RpcCodexAppServerActionResult },
+  codexMcpToolCall: { parameters: [param(RpcMcpToolCallRequest)], result: RpcCodexAppServerActionResult },
+  codexPluginInstall: { parameters: [param(RpcPluginInstallRequest)], result: RpcCodexAppServerActionResult },
+  codexPluginUninstall: { parameters: [param(RpcPluginUninstallRequest)], result: RpcCodexAppServerActionResult },
+  codexSettingsRead: { parameters: [optionalParam(RpcCodexSettingsReadRequest)], result: RpcCodexSettingsProjection },
+  codexSkillsConfigWrite: { parameters: [param(RpcSkillsConfigWriteRequest)], result: RpcCodexAppServerActionResult },
+  codexSkillsExtraRootsSet: { parameters: [param(RpcSkillsExtraRootsSetRequest)], result: RpcCodexAppServerActionResult },
+  codexThreadArchive: { parameters: [param(RpcThreadIdRequest)], result: RpcThreadMutationResult },
+  codexThreadCompact: { parameters: [param(RpcThreadCompactRequest)], result: RpcTurnActionResult },
+  codexThreadDelete: { parameters: [param(RpcThreadIdRequest)], result: RpcThreadMutationResult },
+  codexThreadFork: { parameters: [param(RpcThreadForkRequest)], result: RpcThreadMutationResult },
+  codexThreadList: { parameters: [optionalParam(RpcThreadListRequest)], result: RpcThreadListResult },
+  codexThreadRead: { parameters: [param(RpcThreadReadRequest)], result: RpcThreadResult },
+  codexThreadRename: { parameters: [param(RpcThreadRenameRequest)], result: RpcThreadMutationResult },
+  codexThreadResume: { parameters: [param(RpcThreadResumeRequest)], result: RpcThreadResult },
+  codexThreadStart: { parameters: [optionalParam(RpcThreadStartRequest)], result: RpcThreadResult },
+  codexThreadUnarchive: { parameters: [param(RpcThreadIdRequest)], result: RpcThreadMutationResult },
+  codexTurnInterrupt: { parameters: [param(RpcTurnInterruptRequest)], result: RpcTurnActionResult },
+  codexTurnStart: { parameters: [param(RpcTurnStartRequest)], result: RpcChatTurnResponse },
+  codexTurnSteer: { parameters: [param(RpcTurnSteerRequest)], result: RpcTurnActionResult },
+  connectCodexAccount: { parameters: [param(S.String)], result: RpcConnectStart },
+  openExternalUrl: { parameters: [param(S.String)], result: S.Boolean },
+  removeCodexAccount: { parameters: [param(S.String)], result: RpcRemoveAccountResult },
+  codingStatus: { parameters: noParams(), result: RpcRuntimeStatus },
+  consumeCodexRateLimitResetCredit: { parameters: noParams(), result: RpcRateLimitResetResult },
+  onDeviceDeciderStatus: { parameters: noParams(), result: RpcOnDeviceDeciderSelection },
+  pylonStatus: { parameters: noParams(), result: RpcRuntimeStatus },
+  slashCommandDispatch: { parameters: [param(RpcSlashCommandDispatchRequest)], result: RpcSlashCommandDispatchResult },
+  slashCommandList: { parameters: [optionalParam(RpcSlashCommandListRequest)], result: RpcSlashCommandListResponse },
+  submitChatMessage: { parameters: [param(RpcChatTurnRequest)], result: RpcChatTurnResponse },
+  tokenAccountingStatus: { parameters: noParams(), result: RpcRuntimeStatus },
+  threadTokenSummary: { parameters: [optionalParam(RpcThreadTokenSummaryRequest)], result: RpcThreadTokenSummary },
+  toolCatalog: { parameters: noParams(), result: RpcToolCatalogResponse },
+} as const
+
+export type KhalaCodeDesktopRpcMethodName =
+  keyof typeof KhalaCodeDesktopRpcMethodSchemas
+
+const isRpcMethodName = (method: string): method is KhalaCodeDesktopRpcMethodName =>
+  Object.hasOwn(KhalaCodeDesktopRpcMethodSchemas, method)
+
+export const khalaCodeDesktopRpcMethodSchema = (
+  method: string,
+): (typeof KhalaCodeDesktopRpcMethodSchemas)[KhalaCodeDesktopRpcMethodName] | null =>
+  isRpcMethodName(method) ? KhalaCodeDesktopRpcMethodSchemas[method] : null
+
+const parseErrorMessage = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error)
+
+const decodeWithSchema = (
+  schema: S.Schema<unknown>,
+  value: unknown,
+): unknown =>
+  S.decodeUnknownSync(schema as never)(value)
+
+export const decodeKhalaCodeDesktopRpcParameters = (
+  method: KhalaCodeDesktopRpcMethodName,
+  args: unknown,
+): readonly unknown[] => {
+  const spec = KhalaCodeDesktopRpcMethodSchemas[method]
+  if (!Array.isArray(args)) {
+    throw new Error("RPC request args must be an array.")
+  }
+  if (args.length > spec.parameters.length) {
+    throw new Error(
+      `RPC method ${method} expected ${spec.parameters.length} args but received ${args.length}.`,
+    )
+  }
+  return spec.parameters.map((parameter, index) => {
+    const value = args[index]
+    if (parameter.optional && (value === undefined || value === null)) return undefined
+    return decodeWithSchema(parameter.schema, value)
+  })
+}
+
+export const decodeKhalaCodeDesktopRpcResult = (
+  method: KhalaCodeDesktopRpcMethodName,
+  value: unknown,
+): unknown => decodeWithSchema(KhalaCodeDesktopRpcMethodSchemas[method].result, value)
+
+export const khalaCodeDesktopRpcDecodeFailure = (
+  method: string,
+  error: unknown,
+): KhalaCodeDesktopRpcDecodeFailure => ({
+  error: parseErrorMessage(error),
+  method,
+  ok: false,
+  tag: "rpc_decode_failed",
+})
+
+export const khalaCodeDesktopRpcHandlerFailure = (
+  method: string,
+  error: unknown,
+): KhalaCodeDesktopRpcHandlerFailure => ({
+  error: parseErrorMessage(error),
+  method,
+  ok: false,
+  tag: "rpc_handler_failed",
+})
 
 export type KhalaCodeDesktopRPCSchema = {
   requests: {

@@ -37,11 +37,16 @@ import {
   type CommandComposerHudHandle,
 } from "@openagentsinc/three-effect/core"
 import { Electroview } from "electrobun/view"
+import { Schema as S } from "effect"
 import * as Three from "three"
 
 import {
   KHALA_CODE_DESKTOP_DEFAULT_PREVIEW_PORT,
   KHALA_CODE_DESKTOP_RPC_MAX_REQUEST_TIME_MS,
+  KhalaCodeDesktopRpcBridgeFailure,
+  decodeKhalaCodeDesktopRpcParameters,
+  decodeKhalaCodeDesktopRpcResult,
+  type KhalaCodeDesktopRpcMethodName,
   type KhalaCodeDesktopChatTurnAttachment,
   type KhalaCodeDesktopChatTurnEvent,
   type KhalaCodeDesktopChatTurnRequest,
@@ -82,16 +87,21 @@ type SlashCommandEntry =
   Awaited<ReturnType<DesktopRpcRequests["slashCommandList"]>>["commands"][number]
 
 const postPreviewRpc = async <Result>(
-  method: string,
+  method: KhalaCodeDesktopRpcMethodName,
   ...args: readonly unknown[]
 ): Promise<Result> => {
+  const decodedArgs = decodeKhalaCodeDesktopRpcParameters(method, args)
   const response = await fetch(`/rpc/${encodeURIComponent(method)}`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ args }),
+    body: JSON.stringify({ args: decodedArgs }),
   })
-  if (!response.ok) throw new Error(`${method} failed with ${response.status}`)
-  return await response.json() as Result
+  const payload = await response.json() as unknown
+  if (!response.ok) {
+    const failure = S.decodeUnknownSync(KhalaCodeDesktopRpcBridgeFailure)
+    throw new Error(`${method} failed with ${response.status}: ${failure(payload).tag}`)
+  }
+  return decodeKhalaCodeDesktopRpcResult(method, payload) as Result
 }
 
 const previewRpc = (): DesktopRpc => ({
