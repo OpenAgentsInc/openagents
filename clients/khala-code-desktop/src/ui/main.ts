@@ -1690,7 +1690,7 @@ Object.assign(globalThis, {
 void controls.appInfo().catch(() => undefined)
 mountComposerHud()
 
-const sidebarRoot = document.getElementById("sidebar-root")
+const sidebarNavRoot = document.getElementById("sidebar-nav-root")
 const threadSidebarEl = document.getElementById("thread-sidebar")
 const fleetPanelEl = document.getElementById("fleet-panel")
 const inboxPanelEl = document.getElementById("inbox-panel")
@@ -1824,8 +1824,8 @@ const setActiveView = (value: string): void => {
   }
 }
 
-if (sidebarRoot !== null) {
-  mountKhalaCodeSidebar(sidebarRoot, {
+if (sidebarNavRoot !== null) {
+  mountKhalaCodeSidebar(sidebarNavRoot, {
     selectedValue: initialView,
     onActivate: value => setActiveView(value),
   })

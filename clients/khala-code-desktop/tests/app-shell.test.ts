@@ -34,6 +34,8 @@ describe("khala code desktop app shell", () => {
     const html = await Bun.file(new URL("../src/ui/index.html", import.meta.url)).text()
 
     expect(html).toContain('class="khala-code-shell antialiased"')
+    expect(html).toContain('id="sidebar-root" class="khala-code-sidebar-shell"')
+    expect(html).toContain('id="sidebar-nav-root" class="khala-code-sidebar"')
     expect(html).toContain('id="message-list"')
     expect(html).toContain('id="thread-sidebar"')
     expect(html).toContain('id="composer-form"')
@@ -800,18 +802,28 @@ describe("khala code desktop app shell", () => {
     expect(css).toContain(".khala-thread-sidebar-item")
   })
 
-  test("keeps the desktop shell sidebars in explicit grid columns", async () => {
+  test("keeps Khala Code to one sidebar shell", async () => {
     const sidebar = await Bun.file(new URL("../src/ui/sidebar.ts", import.meta.url)).text()
+    const html = await Bun.file(new URL("../src/ui/index.html", import.meta.url)).text()
+    const main = await Bun.file(new URL("../src/ui/main.ts", import.meta.url)).text()
     const css = await Bun.file(new URL("../src/ui/styles.css", import.meta.url)).text()
 
     expect(sidebar).toContain('className: "khala-code-sidebar"')
+    expect(html).toContain('class="khala-code-sidebar-shell"')
+    expect(html).toContain('id="sidebar-nav-root"')
+    expect(html).toContain('<section\n          id="thread-sidebar"')
+    expect(main).toContain('document.getElementById("sidebar-nav-root")')
     expect(css).toContain("grid-template-columns: var(--sidebar-width) minmax(0, 1fr)")
     expect(css).toContain(".khala-code-shell > :is(")
+    expect(css).toContain(".khala-code-sidebar-shell")
     expect(css).toContain(".khala-code-shell:has(.khala-code-thread-sidebar:not([hidden]))")
     expect(css).toContain(
-      "grid-template-columns: var(--sidebar-width) var(--thread-sidebar-width) minmax(0, 1fr)",
+      "--sidebar-width: var(--sidebar-expanded-width);",
     )
-    expect(css).toContain(".khala-code-thread-sidebar {\n  position: relative;")
+    expect(css).toContain(".khala-code-sidebar-shell:has(.khala-code-thread-sidebar:not([hidden]))")
+    expect(css).toContain(".khala-code-thread-sidebar {\n  grid-row: 2;")
+    expect(css).not.toContain("--thread-sidebar-width")
+    expect(css).not.toContain("grid-template-columns: var(--sidebar-width) var(--thread-sidebar-width) minmax(0, 1fr)")
     expect(css).not.toContain("left: var(--sidebar-width)")
     expect(css).not.toContain("margin-left: calc(var(--sidebar-width) + var(--thread-sidebar-width))")
   })

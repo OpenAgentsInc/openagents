@@ -39,8 +39,9 @@ button {
 }
 
 .khala-code-shell {
+  --sidebar-rail-width: 4.5rem;
+  --sidebar-expanded-width: 22rem;
   --sidebar-width: 4.5rem;
-  --thread-sidebar-width: 18rem;
   position: relative;
   display: grid;
   grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
@@ -914,14 +915,24 @@ button {
   --color-sidebar-ring: var(--oa-color-khala-energy-cyan);
 }
 
-/* Khala Code sidebar: Basecoat's fixed-nav layout + our dark theme.
-   Width vars + content offset are the only layout glue (Basecoat's `& + *`
-   can't cross the Foldkit mount container). No !important. */
-.khala-code-sidebar {
-  --sidebar-width: 4.5rem;
-  --sidebar-mobile-width: 4.5rem;
+/* Khala Code sidebar: one shell owns both global navigation and, on Chat, the
+   Codex thread browser. The shell is a compact icon rail by default and expands
+   into a single contextual sidebar when the thread browser is visible. */
+.khala-code-sidebar-shell {
   grid-column: 1;
   grid-row: 1 / 3;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border-right: 1px solid var(--oa-color-component-border);
+  background: color-mix(in srgb, var(--oa-color-component-surface) 94%, var(--oa-color-khala-void));
+  color: var(--oa-color-component-text);
+}
+.khala-code-sidebar {
+  --sidebar-width: var(--sidebar-rail-width);
+  --sidebar-mobile-width: var(--sidebar-rail-width);
   min-width: 0;
   min-height: 0;
   overflow: hidden;
@@ -930,14 +941,13 @@ button {
   height: 100%;
   min-height: 0;
   overflow-y: auto;
-  background: var(--oa-color-component-surface);
-  border-color: var(--oa-color-component-border);
+  background: transparent;
+  border-color: transparent;
   color: var(--oa-color-component-text);
   padding: 0.85rem 0.55rem;
   gap: 0.12rem;
 }
 .khala-code-shell > :is(
-  .khala-code-thread-sidebar,
   .khala-code-thread-shell,
   .composer-dock,
   .khala-code-inbox,
@@ -949,12 +959,20 @@ button {
 }
 @media (min-width: 768px) {
   .khala-code-shell:has(.khala-code-thread-sidebar:not([hidden])) {
-    grid-template-columns: var(--sidebar-width) var(--thread-sidebar-width) minmax(0, 1fr);
+    --sidebar-width: var(--sidebar-expanded-width);
   }
 
-  .khala-code-shell:has(.khala-code-thread-sidebar:not([hidden])) .khala-code-thread-shell,
-  .khala-code-shell:has(.khala-code-thread-sidebar:not([hidden])) .composer-dock {
-    grid-column: 3;
+  .khala-code-sidebar-shell:has(.khala-code-thread-sidebar:not([hidden])) {
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .khala-code-sidebar-shell:has(.khala-code-thread-sidebar:not([hidden])) .khala-code-sidebar nav {
+    height: auto;
+    min-height: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    border-bottom: 1px solid var(--oa-color-component-border);
+    padding: 0.65rem 0.7rem;
   }
 }
 .khala-code-sidebar [data-slot="sidebar-group-label"] {
@@ -964,6 +982,35 @@ button {
   overflow: hidden;
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
+}
+.khala-code-sidebar nav > [role="group"] {
+  width: 100%;
+}
+.khala-code-sidebar [data-slot="sidebar-menu"] {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  width: 100%;
+}
+@media (min-width: 768px) {
+  .khala-code-sidebar-shell:has(.khala-code-thread-sidebar:not([hidden]))
+    .khala-code-sidebar
+    [data-slot="sidebar-menu"] {
+    flex-direction: row;
+    justify-content: space-between;
+  }
+
+  .khala-code-sidebar-shell:has(.khala-code-thread-sidebar:not([hidden]))
+    .khala-code-sidebar
+    [data-slot="sidebar-menu"]
+    button,
+  .khala-code-sidebar-shell:has(.khala-code-thread-sidebar:not([hidden]))
+    .khala-code-sidebar
+    [data-slot="sidebar-menu"]
+    a {
+    margin-inline: 0;
+  }
 }
 .khala-code-sidebar [data-slot="sidebar-menu"] button,
 .khala-code-sidebar [data-slot="sidebar-menu"] a {
@@ -986,6 +1033,18 @@ button {
   color: var(--oa-color-khala-energy-cyan);
   box-shadow: inset 2px 0 0 var(--oa-color-khala-energy-cyan);
 }
+@media (min-width: 768px) {
+  .khala-code-sidebar-shell:has(.khala-code-thread-sidebar:not([hidden]))
+    .khala-code-sidebar
+    [data-slot="sidebar-menu"]
+    [aria-current="page"],
+  .khala-code-sidebar-shell:has(.khala-code-thread-sidebar:not([hidden]))
+    .khala-code-sidebar
+    [data-slot="sidebar-menu"]
+    [data-active="true"] {
+    box-shadow: inset 0 -2px 0 var(--oa-color-khala-energy-cyan);
+  }
+}
 .khala-code-sidebar-icon,
 .khala-thread-sidebar-icon {
   width: 1.1rem;
@@ -1002,16 +1061,12 @@ button {
 }
 
 .khala-code-thread-sidebar {
-  position: relative;
-  z-index: 3;
-  grid-column: 2;
-  grid-row: 1 / 3;
+  grid-row: 2;
   min-width: 0;
   min-height: 0;
   overflow-y: auto;
   padding: 0.85rem 0.7rem;
-  border-right: 1px solid var(--oa-color-component-border);
-  background: color-mix(in srgb, var(--oa-color-component-surface) 92%, var(--oa-color-khala-void));
+  background: transparent;
   color: var(--oa-color-component-text);
 }
 .khala-thread-sidebar-header {
