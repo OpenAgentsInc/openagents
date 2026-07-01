@@ -34,30 +34,45 @@ describe("khala desktop Apple FM packaging", () => {
     )
   })
 
-  test("build script verifies the packaged helper after electrobun build", () => {
+  test("explicit Apple FM bridge scripts stay available for future re-enable", () => {
+    const packageJson = JSON.parse(
+      readFileSync(join(import.meta.dir, "..", "package.json"), "utf8"),
+    ) as { scripts?: Record<string, string> }
+
+    expect(packageJson.scripts?.["prepare:apple-fm-bridge"]).toContain(
+      "scripts/prepare-apple-fm-bridge.sh",
+    )
+    expect(packageJson.scripts?.["verify:apple-fm-bridge"]).toContain(
+      "scripts/verify-packaged-apple-fm-bridge.ts",
+    )
+  })
+
+  test("launch build does not prepare, bundle, or verify the Apple FM helper", () => {
     const packageJson = JSON.parse(
       readFileSync(join(import.meta.dir, "..", "package.json"), "utf8"),
     ) as { scripts?: Record<string, string> }
     const buildScript = packageJson.scripts?.build ?? ""
-
-    expect(buildScript).toContain("electrobun build")
-    expect(buildScript).toContain("bun run verify:apple-fm-bridge")
-    expect(buildScript.indexOf("electrobun build")).toBeLessThan(
-      buildScript.indexOf("bun run verify:apple-fm-bridge"),
+    const configSource = readFileSync(
+      join(import.meta.dir, "..", "electrobun.config.ts"),
+      "utf8",
     )
+
+    expect(buildScript).toBe("bun run build:ui && electrobun build")
+    expect(buildScript).not.toContain("prepare:apple-fm-bridge")
+    expect(buildScript).not.toContain("verify:apple-fm-bridge")
+    expect(configSource).not.toContain("APPLE_FM_BRIDGE_ELECTROBUN_COPY_SOURCE")
+    expect(configSource).not.toContain("APPLE_FM_BRIDGE_ELECTROBUN_COPY_DEST")
+    expect(configSource).not.toContain("apple-fm-bridge/foundation-bridge")
   })
 
-  test("dev script prepares the helper before electrobun dev", () => {
+  test("dev script does not prepare the Apple FM helper by default", () => {
     const packageJson = JSON.parse(
       readFileSync(join(import.meta.dir, "..", "package.json"), "utf8"),
     ) as { scripts?: Record<string, string> }
     const devScript = packageJson.scripts?.dev ?? ""
 
-    expect(devScript).toContain("bun run prepare:apple-fm-bridge")
-    expect(devScript).toContain("electrobun dev")
-    expect(devScript.indexOf("bun run prepare:apple-fm-bridge")).toBeLessThan(
-      devScript.indexOf("electrobun dev"),
-    )
+    expect(devScript).toBe("bun run build:ui && electrobun dev")
+    expect(devScript).not.toContain("prepare:apple-fm-bridge")
   })
 
   test("verifier accepts the first non-empty executable helper", () => {

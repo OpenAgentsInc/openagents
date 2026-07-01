@@ -70,6 +70,20 @@ describe("khala code desktop app shell", () => {
     expect(source).not.toContain("FullScreen: true")
   })
 
+  test("keeps the Apple FM bridge disabled in launch startup", async () => {
+    const entrypoint = await Bun.file(new URL("../src/bun/index.ts", import.meta.url)).text()
+    const deciderHost = await Bun.file(
+      new URL("../src/bun/on-device-decider-host.ts", import.meta.url),
+    ).text()
+
+    expect(entrypoint).not.toContain('from "./apple-fm-sidecar.js"')
+    expect(entrypoint).not.toContain("createAppleFmSidecarHost")
+    expect(entrypoint).not.toContain("sidecar:")
+    expect(entrypoint).toContain("buildKhalaAppleFmDisabledReadiness")
+    expect(deciderHost).toContain("readonly appleFmEnabled?: boolean")
+    expect(deciderHost).toContain("options.appleFmEnabled === true")
+  })
+
   test("renders the chat shell with the fleet panel container", async () => {
     const html = await Bun.file(new URL("../src/ui/index.html", import.meta.url)).text()
 

@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test"
 
 import {
   APPLE_FM_CAPABILITY,
+  APPLE_FM_LAUNCH_DISABLED_BLOCKER,
+  buildKhalaAppleFmDisabledReadiness,
   buildKhalaAppleFmInstallSmokeEvidence,
   buildKhalaAppleFmReadiness,
   sanitizePylonAppleFmStatus,
@@ -34,6 +36,21 @@ describe("khala desktop Apple FM readiness", () => {
       },
       observedAt: "2026-06-29T00:00:00.000Z",
     })
+
+  test("launch-disabled readiness is explicit and unavailable", () => {
+    const readiness = buildKhalaAppleFmDisabledReadiness({
+      platform: { platform: "darwin", arch: "arm64" },
+      observedAt: "2026-07-01T00:00:00.000Z",
+    })
+
+    expect(readiness.supported).toBe(true)
+    expect(readiness.available).toBe(false)
+    expect(readiness.state).toBe("disabled")
+    expect(readiness.pylonControlConfigured).toBe(false)
+    expect(readiness.pylon).toBeNull()
+    expect(readiness.blockerRefs).toEqual([APPLE_FM_LAUNCH_DISABLED_BLOCKER])
+    expect(readiness.observedAt).toBe("2026-07-01T00:00:00.000Z")
+  })
 
   test("does not advertise Apple FM capacity from hardware alone", () => {
     const readiness = buildKhalaAppleFmReadiness({

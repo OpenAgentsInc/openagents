@@ -8,8 +8,11 @@ export const KHALA_APPLE_FM_TOKEN_PROVIDER =
   "pylon-apple-fm-own-capacity" as const
 export const KHALA_APPLE_FM_DEMAND_SOURCE =
   "khala_apple_fm_delegation" as const
+export const APPLE_FM_LAUNCH_DISABLED_BLOCKER =
+  "blocker.khala_desktop.apple_fm.launch_disabled" as const
 
 export type KhalaAppleFmSidecarState =
+  | "disabled"
   | "not_supported"
   | "helper_missing"
   | "launching"
@@ -173,6 +176,32 @@ const asRecord = (value: unknown): Record<string, unknown> =>
 
 export function appleFmSupportedOn(platform: AppleFmRuntimePlatform): boolean {
   return platform.platform === "darwin" && platform.arch === "arm64"
+}
+
+export function buildKhalaAppleFmDisabledReadiness(input: {
+  readonly platform: AppleFmRuntimePlatform
+  readonly observedAt?: string
+}): KhalaAppleFmReadiness {
+  return {
+    schema: KHALA_APPLE_FM_READINESS_SCHEMA,
+    kind: "khala_desktop_apple_fm_readiness",
+    supported: appleFmSupportedOn(input.platform),
+    available: false,
+    state: "disabled",
+    backendKind: APPLE_FM_BACKEND_KIND,
+    profileId: APPLE_FM_LOCAL_PROFILE_ID,
+    model: APPLE_FM_MODEL_ID,
+    capability: APPLE_FM_CAPABILITY,
+    provider: KHALA_APPLE_FM_TOKEN_PROVIDER,
+    demandKind: "own_capacity",
+    demandSource: KHALA_APPLE_FM_DEMAND_SOURCE,
+    usageTruth: "estimated",
+    pylonControlConfigured: false,
+    pylon: null,
+    blockerRefs: [APPLE_FM_LAUNCH_DISABLED_BLOCKER],
+    observedAt: input.observedAt ?? new Date().toISOString(),
+    contentRedacted: true,
+  }
 }
 
 export function sanitizePylonAppleFmStatus(

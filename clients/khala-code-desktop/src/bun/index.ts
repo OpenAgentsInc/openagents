@@ -7,8 +7,8 @@ import {
   type KhalaCodeDesktopChatTurnEvent,
   type KhalaCodeDesktopRPCSchema,
 } from "../shared/rpc.js"
+import { buildKhalaAppleFmDisabledReadiness } from "../shared/apple-fm-readiness.js"
 import { khalaCodeDesktopApplicationMenu } from "./application-menu.js"
-import { createAppleFmSidecarHost } from "./apple-fm-sidecar.js"
 import {
   readKhalaCodeHeadlessPrompt,
   runKhalaCodeDesktopHeadlessJsonl,
@@ -272,19 +272,21 @@ const resolveMainWindowFrame = (): KhalaCodeDesktopWindowFrame => {
   }
 }
 
-// Optional on-device Apple Foundation Models sidecar (Mac/Apple-Silicon only).
-// Off by default and fails soft: readiness reports unavailability rather than
-// throwing when the FM bridge or hardware is missing.
-const appleFmSidecar = createAppleFmSidecarHost()
+// Apple FM bridge code remains in the repo, but launch builds intentionally do
+// not prepare, bundle, start, or probe it.
+const appleFmReadiness = () =>
+  buildKhalaAppleFmDisabledReadiness({
+    platform: { platform: process.platform, arch: process.arch },
+  })
 const codexAppServerHost = createCodexAppServerHost({ env: Bun.env })
 
 // Optional on-device decider: a small local model that selects a
-// platform-appropriate backend (Apple FM on Apple Silicon, self-hosted GPT-OSS
-// elsewhere). Reuses the sidecar above so a single helper is supervised.
-const onDeviceDecider = createOnDeviceDeciderHost({ sidecar: appleFmSidecar })
+// platform-appropriate backend. Apple FM is omitted for launch unless a future
+// host deliberately opts it back in.
+const onDeviceDecider = createOnDeviceDeciderHost({ env: Bun.env })
 
 rpcRequestHandlers = createKhalaCodeDesktopRpcRequestHandlers({
-  appleFmReadiness: () => appleFmSidecar.readiness(),
+  appleFmReadiness,
   codexAppServerHost,
   emitChatTurnEvent: event => emitChatTurnEvent(event),
   env: Bun.env,

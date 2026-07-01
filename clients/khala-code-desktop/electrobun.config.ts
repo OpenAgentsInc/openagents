@@ -1,8 +1,3 @@
-import {
-  APPLE_FM_BRIDGE_ELECTROBUN_COPY_DEST,
-  APPLE_FM_BRIDGE_ELECTROBUN_COPY_SOURCE,
-} from "./src/shared/apple-fm-packaging.js"
-
 // The webview is built by Vite (build:ui = `vite build`) into ./dist, with
 // Tailwind/Basecoat @apply compiled and fonts + scene assets self-contained
 // under dist/assets/. Electrobun copies that dist into views/khala-code-desktop/
@@ -30,7 +25,6 @@ export default {
     copy: {
       "dist/index.html": "views/khala-code-desktop/index.html",
       "dist/assets/": "views/khala-code-desktop/assets/",
-      [APPLE_FM_BRIDGE_ELECTROBUN_COPY_SOURCE]: APPLE_FM_BRIDGE_ELECTROBUN_COPY_DEST,
     },
   },
 }
