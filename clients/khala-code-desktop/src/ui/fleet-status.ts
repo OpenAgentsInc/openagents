@@ -110,7 +110,7 @@ const sessionRoleLabel = (
   role: KhalaCodeDesktopFleetAccount["sessionRole"],
 ): string | null => {
   if (role === undefined) return null
-  return role === "main_local_codex_session" ? "main session" : "worker session"
+  return role === "main_local_codex_session" ? "primary user session" : "worker Codex session"
 }
 
 const homeRoleLabel = (
@@ -118,8 +118,8 @@ const homeRoleLabel = (
 ): string | null => {
   if (role === undefined) return null
   return role === "main_user_codex_home_display_only"
-    ? "main home display-only"
-    : "isolated worker home"
+    ? "primary Codex home display-only"
+    : "isolated worker Codex home"
 }
 
 const queuePolicyLabel = (
@@ -291,7 +291,7 @@ const renderReady = (
 
   if (data.sessionLayers !== undefined) {
     const sessionSection = el("section", "khala-fleet-section")
-    sessionSection.append(sectionHeader("Codex sessions", "main plus swarm workers"))
+    sessionSection.append(sectionHeader("Codex session boundaries", "primary user plus isolated workers"))
     const list = el("div", "khala-fleet-account-list")
     for (const layer of [data.sessionLayers.main, data.sessionLayers.workers]) {
       const row = el("article", "khala-fleet-session")
@@ -346,7 +346,7 @@ const renderReady = (
   )
   if (data.accounts.length === 0) {
     accountsSection.append(
-      el("p", "khala-fleet-empty", "No Codex accounts linked yet."),
+      el("p", "khala-fleet-empty", "No worker Codex accounts linked yet. Connect account creates an isolated Pylon Codex home."),
     )
   } else {
     const list = el("div", "khala-fleet-account-list")
@@ -432,7 +432,7 @@ const renderConnecting = (
       el(
         "p",
         "khala-fleet-connect-hint",
-        "Open the link below in your browser and enter the code to sign in. This updates automatically when it completes.",
+        "Open the link below in your browser and enter the code to sign in an isolated worker Codex home. This does not touch the primary user Codex session.",
       ),
     )
     if (connect.start.verificationUrl !== null) {

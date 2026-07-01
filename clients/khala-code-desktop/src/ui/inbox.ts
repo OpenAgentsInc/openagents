@@ -141,7 +141,7 @@ export const projectUnifiedInbox = (
       kind: source.codexHarness.auth.state === "credentials_missing"
         ? "missing_credential"
         : "run_blocked",
-      title: "Codex setup required",
+      title: "Codex install or sign-in required",
       summary: source.codexHarness.reason,
       source: "runtime",
       severity: "critical",
@@ -170,7 +170,7 @@ export const projectUnifiedInbox = (
       kind: "missing_credential",
       title: `${account.accountRef} needs reconnect`,
       summary: account.email === null
-        ? `Codex account ${account.accountRef} is not signed in.`
+        ? `Worker Codex account ${account.accountRef} is not signed in in its isolated Pylon home.`
         : `${account.email} is not ready: ${account.readiness}.`,
       source: "fleet",
       severity: "critical",
@@ -261,7 +261,7 @@ export const projectUnifiedInbox = (
       source: "Codex harness",
       status: source.codexHarness?.available ? "connected" as const : "not_connected" as const,
       summary: source.codexHarness?.available
-        ? "The main local Codex install and Codex home are ready for wrapper sessions."
+        ? "The primary user Codex install and Codex home are ready for wrapper sessions."
         : source.codexHarness?.reason ?? "Codex harness readiness has not been connected to this projection yet.",
     },
     {
@@ -286,7 +286,7 @@ export const projectUnifiedInbox = (
     {
       source: "fleet readiness",
       status: "connected" as const,
-      summary: "Codex account readiness, Pylon state, and assignment markers are projected locally.",
+      summary: "Worker Codex account readiness, Pylon state, and assignment markers are projected locally.",
     },
   ]
 

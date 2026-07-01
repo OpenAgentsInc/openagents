@@ -106,7 +106,7 @@ function readyHarness(
     signIn: {
       required: false,
       command: "codex login",
-      warning: "Khala Code never starts Codex login against the default home automatically; fleet accounts stay in isolated Pylon homes.",
+      warning: "Run codex login yourself for the primary user Codex session; Khala Code uses separate device-auth only for isolated Pylon worker homes.",
     },
     ...input,
   }
@@ -371,7 +371,7 @@ describe("Khala Code desktop RPC handlers", () => {
   test("does not fetch rate limits when the Codex harness is not ready", async () => {
     const blockedHarness = readyHarness({
       available: false,
-      reason: "Codex auth.json is missing. Run codex login intentionally in the main user home.",
+      reason: "Codex auth.json is missing. Run codex login intentionally for the primary user Codex home before using Khala Code chat.",
       status: "unavailable",
       auth: {
         state: "credentials_missing",
@@ -384,7 +384,7 @@ describe("Khala Code desktop RPC handlers", () => {
       signIn: {
         required: true,
         command: "codex login",
-        warning: "Khala Code never starts Codex login against the default home automatically; fleet accounts stay in isolated Pylon homes.",
+        warning: "Run codex login yourself for the primary user Codex session; Khala Code uses separate device-auth only for isolated Pylon worker homes.",
       },
     })
     const handlers = createKhalaCodeDesktopRpcRequestHandlers({

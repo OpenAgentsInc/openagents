@@ -43,12 +43,12 @@ const readyHarnessStatus = (): KhalaCodeDesktopCodexHarnessStatus => ({
     source: "input",
   },
   observedAt: "2026-07-01T20:00:00.000Z",
-  reason: "Codex CLI is installed and the main user Codex home has auth state.",
+  reason: "Codex CLI is installed and the primary user Codex home has auth state.",
   signIn: {
     command: "codex login",
     required: false,
     warning:
-      "Khala Code never starts Codex login against the default home automatically; fleet accounts stay in isolated Pylon homes.",
+      "Run codex login yourself for the primary user Codex session; Khala Code uses separate device-auth only for isolated Pylon worker homes.",
   },
   status: "ready",
 })
@@ -64,12 +64,12 @@ const unavailableHarnessStatus = (): KhalaCodeDesktopCodexHarnessStatus => ({
     state: "credentials_missing",
   },
   available: false,
-  reason: "Codex auth.json is missing. Run codex login intentionally in the main user home.",
+  reason: "Codex auth.json is missing. Run codex login intentionally for the primary user Codex home before using Khala Code chat.",
   signIn: {
     command: "codex login",
     required: true,
     warning:
-      "Khala Code never starts Codex login against the default home automatically; fleet accounts stay in isolated Pylon homes.",
+      "Run codex login yourself for the primary user Codex session; Khala Code uses separate device-auth only for isolated Pylon worker homes.",
   },
   status: "unavailable",
 })

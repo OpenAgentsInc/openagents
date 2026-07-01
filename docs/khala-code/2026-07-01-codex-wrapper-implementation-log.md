@@ -462,3 +462,34 @@ Validation:
 - `bun test clients/khala-code-desktop/tests/codex-parity-contract.test.ts clients/khala-code-desktop/tests/codex-parity-live-smoke.test.ts clients/khala-code-desktop/tests/codex-slash-commands.test.ts clients/khala-code-desktop/tests/codex-app-server-chat-runtime.test.ts clients/khala-code-desktop/tests/codex-thread-item-projector.test.ts clients/khala-code-desktop/tests/codex-approval-decisions.test.ts`
 - `bun run --cwd clients/khala-code-desktop smoke:codex-parity-live`
 - `bun run --cwd clients/khala-code-desktop verify`
+
+## Issue #7794: Codex-required Product Docs And Install Copy
+
+Status: implemented
+
+Khala Code now has a dedicated product-positioning note at
+`docs/khala-code/2026-07-01-codex-required-product-positioning.md`. It states
+that Khala Code wraps the user's local Codex install, requires `codex
+app-server --stdio` for the default coding harness, and should not expand a
+parallel TypeScript implementation of Codex Core for parity work.
+
+The desktop README now starts with the Codex install/sign-in flow, documents the
+missing-Codex and missing-auth next steps, links the audit/parity/positioning
+docs plus epic #7780, and separates:
+
+- the primary user Codex session (`CODEX_HOME` or default `~/.codex`);
+- isolated Pylon worker Codex homes for Fleet;
+- explicit legacy Khala-native fallback mode.
+
+The user-facing status and panel copy now matches that contract. Missing Codex
+binary/auth reasons name the install or sign-in action, Settings shows the
+harness boundary, Inbox labels Codex setup as install/sign-in required, and
+Fleet distinguishes the primary user session from isolated worker Codex
+accounts. The older fleet-management spec was updated so hosted
+Khala/OpenRouter is no longer described as the default coding model backend.
+
+Validation:
+
+- `bun run --cwd clients/khala-code-desktop typecheck`
+- `bun test clients/khala-code-desktop/tests/codex-harness-status.test.ts clients/khala-code-desktop/tests/app-shell.test.ts clients/khala-code-desktop/tests/rpc-handlers.test.ts clients/khala-code-desktop/tests/fleet-board-projection.test.ts clients/khala-code-desktop/tests/codex-parity-live-smoke.test.ts`
+- `bun run --cwd clients/khala-code-desktop verify`

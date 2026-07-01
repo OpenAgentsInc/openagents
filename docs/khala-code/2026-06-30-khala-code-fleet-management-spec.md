@@ -155,8 +155,8 @@ device login, isolated per-account home, registered into the local Pylon config,
 **never** uploading credentials or clobbering the owner's existing Codex session.
 MCP client + `khala mcp-server` (Lane H) for tool adoption; the tool planner +
 progressive disclosure (Lane I) for skills-style on-demand loading; everything
-runs owner-local with hosted-Khala as the only model backend (BYOK metadata
-forwarded, never called directly).
+runs owner-local with the user's Codex app-server as the default coding harness.
+Hosted Khala/OpenRouter is legacy/fallback only, not the Fleet coding engine.
 
 **Gap:** a **config scanner** that detects and lets the owner *adopt in place*
 existing skills / MCP servers / instruction files (`AGENTS.md`, `CLAUDE.md`)
@@ -253,17 +253,20 @@ The engine is built; the gaps are surfaces and one orchestration promotion.
 ## 5. Non-goals / boundaries
 
 - **Local-first, no forced cloud.** The owner's configs, skills, MCP servers, and
-  code stay local; hosted Khala is the model backend, not a data sink. Adoption
-  is reference-in-place by default; nothing is uploaded or clobbered.
+  code stay local; default coding flows stay inside the user's Codex
+  app-server boundary. Hosted Khala/OpenRouter is an explicit legacy/fallback
+  path, not the product-center model backend. Adoption is reference-in-place by
+  default; nothing is uploaded or clobbered.
 - **No new authority on the wire.** Owner-local full access stays a local toggle;
   public/request payloads express permission *requests*, never danger overrides.
   "Prompt-unavailable never means allow."
 - **Exact accounting only.** Fleet views project from `token_usage_events` /
   `agent_traces`; no synthesized counters; raw prompts/secrets/local paths never
   enter public projections.
-- **Don't rebuild the harnesses.** Codex/Claude remain delegated execution lanes;
-  the native Khala runtime is the in-process default. Fleet management is the
-  layer above, not a replacement for either.
+- **Don't rebuild the harnesses.** Codex app-server is the default execution
+  lane for Khala Code; Claude remains a delegated external lane when present.
+  The native Khala runtime is explicit legacy/fallback. Fleet management is the
+  layer above those harnesses, not a replacement for them.
 - **One fanout controller at a time** (the dispatch-gate / capacity invariant);
   the supervised orchestration surface must respect advertised capacity + load.
 

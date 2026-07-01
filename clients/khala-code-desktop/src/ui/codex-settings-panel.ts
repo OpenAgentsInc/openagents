@@ -177,6 +177,13 @@ export const mountCodexSettingsPanel = (
     ])
   }
 
+  const renderBoundarySection = (): HTMLElement => section("Harness Boundary", [
+    metric("Default chat", "Codex app-server"),
+    metric("Primary session", "User Codex home"),
+    metric("Fleet workers", "Isolated Pylon Codex homes"),
+    metric("Legacy mode", "Experimental fallback only"),
+  ])
+
   const renderPermissionsSection = (
     current: KhalaCodeDesktopCodexSettingsProjection,
   ): HTMLElement => section("Permissions", [
@@ -326,7 +333,7 @@ export const mountCodexSettingsPanel = (
     const title = el("div", "khala-settings-title-group")
     title.append(
       el("h2", "khala-settings-title", "Settings"),
-      el("p", "khala-settings-subtitle", "Codex app-server"),
+      el("p", "khala-settings-subtitle", "Primary Codex app-server session"),
     )
     const refresh = el("button", "khala-settings-refresh", "Refresh")
     refresh.type = "button"
@@ -351,6 +358,7 @@ export const mountCodexSettingsPanel = (
     }
 
     container.append(
+      renderBoundarySection(),
       renderModelSection(settings),
       renderPermissionsSection(settings),
       renderProviderSection(settings),

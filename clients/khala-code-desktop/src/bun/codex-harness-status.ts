@@ -270,10 +270,10 @@ export async function inspectCodexHarnessStatus(
           : "unavailable" as const
   const available = status === "ready"
   const reason = !version.available
-    ? `${version.error}. Install Codex or configure KHALA_CODE_CODEX_BINARY.`
+    ? `${version.error}. Install Codex with npm install -g @openai/codex, or configure KHALA_CODE_CODEX_BINARY/KHALA_CODE_CODEX_COMMAND.`
     : auth.state === "ready"
-      ? "Codex CLI is installed and the main user Codex home has auth state."
-      : `${auth.error ?? "Codex is not signed in."} Run codex login intentionally in the main user home.`
+      ? "Codex CLI is installed and the primary user Codex home has auth state."
+      : `${auth.error ?? "Codex is not signed in."} Run codex login intentionally for the primary user Codex home before using Khala Code chat.`
 
   return {
     ok: true,
@@ -301,7 +301,7 @@ export async function inspectCodexHarnessStatus(
     signIn: {
       required: auth.state !== "ready",
       command: "codex login",
-      warning: "Khala Code never starts Codex login against the default home automatically; fleet accounts stay in isolated Pylon homes.",
+      warning: "Run codex login yourself for the primary user Codex session; Khala Code uses separate device-auth only for isolated Pylon worker homes.",
     },
   }
 }

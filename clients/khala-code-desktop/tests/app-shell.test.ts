@@ -204,7 +204,7 @@ describe("khala code desktop app shell", () => {
     expect(projection.coverage).toContainEqual({
       source: "Codex harness",
       status: "connected",
-      summary: "The main local Codex install and Codex home are ready for wrapper sessions.",
+      summary: "The primary user Codex install and Codex home are ready for wrapper sessions.",
     })
     expect(projection.coverage).toContainEqual({
       source: "approval queue",
@@ -292,7 +292,7 @@ describe("khala code desktop app shell", () => {
         sessionLayers: {
           main: {
             homeRole: "main_user_codex_home_display_only",
-            label: "Main local Codex session",
+            label: "Primary user Codex session",
             mutationPolicy: "codex_app_server_owned",
             role: "main_local_codex_session",
             runtime: "codex_harness",
@@ -380,7 +380,7 @@ describe("khala code desktop app shell", () => {
         available: false,
         capability: "codex_harness",
         observedAt: "2026-07-01T00:00:00.000Z",
-        reason: "Codex auth.json is missing. Run codex login intentionally in the main user home.",
+        reason: "Codex auth.json is missing. Run codex login intentionally for the primary user Codex home before using Khala Code chat.",
         status: "unavailable",
         binary: {
           command: "codex",
@@ -407,7 +407,7 @@ describe("khala code desktop app shell", () => {
         signIn: {
           required: true,
           command: "codex login",
-          warning: "fleet accounts stay isolated",
+          warning: "Run codex login yourself for the primary user Codex session; Khala Code uses separate device-auth only for isolated Pylon worker homes.",
         },
       },
       fleet: baseFleet,
@@ -443,7 +443,7 @@ describe("khala code desktop app shell", () => {
     expect(projection.items.find(item => item.ref === "inbox.runtime.codex_harness.unavailable")).toMatchObject({
       ref: "inbox.runtime.codex_harness.unavailable",
       kind: "missing_credential",
-      title: "Codex setup required",
+      title: "Codex install or sign-in required",
       source: "runtime",
       severity: "critical",
     })
@@ -556,8 +556,11 @@ describe("khala code desktop app shell", () => {
     expect(fleetPanel).toContain("accountCapacityLabel")
     expect(fleetPanel).toContain("fleetTokenRateLabel")
     expect(fleetPanel).toContain("assignmentTokenRateLabel")
-    expect(fleetPanel).toContain("Codex sessions")
+    expect(fleetPanel).toContain("Codex session boundaries")
+    expect(fleetPanel).toContain("primary user plus isolated workers")
     expect(fleetPanel).toContain("Worker Codex accounts")
+    expect(fleetPanel).toContain("isolated worker Codex home")
+    expect(fleetPanel).toContain("primary user Codex session")
     expect(fleetPanel).toContain("sessionRoleLabel")
     expect(fleetPanel).toContain("homeRoleLabel")
     expect(fleetPanel).toContain("queuePolicyLabel")
@@ -699,6 +702,12 @@ describe("khala code desktop app shell", () => {
 
     expect(readme).toContain("default desktop `toolCatalog()`")
     expect(readme).toContain("only Khala's supplemental swarm/Pylon tools")
+    expect(readme).toContain("npm install -g @openai/codex")
+    expect(readme).toContain("codex app-server --stdio")
+    expect(readme).toContain("Product Boundary")
+    expect(readme).toContain("rather than rebuilding Codex Core behavior in TypeScript")
+    expect(readme).toContain("2026-07-01-codex-required-product-positioning.md")
+    expect(readme).toContain("OpenAgentsInc/openagents#7780")
     expect(readme).toContain("KHALA_CODE_DESKTOP_RUNTIME=khala_native_runtime")
     expect(readme).toContain("legacy turns are labeled")
     expect(readme).toContain("in the transcript")
@@ -725,6 +734,10 @@ describe("khala code desktop app shell", () => {
     expect(panel).toContain("model_reasoning_effort")
     expect(panel).toContain("service_tier")
     expect(panel).toContain("default_permissions")
+    expect(panel).toContain("Primary Codex app-server session")
+    expect(panel).toContain("Harness Boundary")
+    expect(panel).toContain("Fleet workers")
+    expect(panel).toContain("Experimental fallback only")
     expect(handlers).toContain('"model/list"')
     expect(handlers).toContain('"modelProvider/capabilities/read"')
     expect(handlers).toContain('"permissionProfile/list"')

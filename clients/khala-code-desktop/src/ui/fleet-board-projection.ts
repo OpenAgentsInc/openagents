@@ -350,7 +350,7 @@ const buildTimeline = (
   const events: KhalaFleetTimelineEvent[] = [
     timelineEvent({
       id: "main-codex-session",
-      label: "Main Codex session",
+      label: "Primary Codex session",
       status: "complete",
       observedAt: status.observedAt,
       subjectRef: "session.khala_code.main_codex",
@@ -496,7 +496,7 @@ export const buildKhalaFleetBoardProjection = (
       kind: "operator_surface",
       status: status.ok ? "complete" : "blocked",
       outputs: [
-        pin("output", "main-session", "main session", "codex.main.session"),
+        pin("output", "main-session", "primary session", "codex.main.session"),
         pin("output", "fleet-status", "fleet status", "khala.fleet.status"),
       ],
       datum: datum("observed", generatedAt, [pylonRef]),
@@ -506,12 +506,12 @@ export const buildKhalaFleetBoardProjection = (
     }),
     node({
       id: "main-codex-session",
-      label: "Main Codex session",
+      label: "Primary Codex session",
       kind: "main_codex_session",
       status: status.ok ? "complete" : "blocked",
-      inputs: [pin("input", "main-session", "main session", "codex.main.session")],
+      inputs: [pin("input", "main-session", "primary session", "codex.main.session")],
       outputs: [pin("output", "chat", "chat", "codex.app_server.thread")],
-      datum: datum("home", "main user Codex home", [mainSessionRef]),
+      datum: datum("home", "primary user Codex home", [mainSessionRef]),
       evidenceRefs: [mainSessionRef],
       caveatRefs: ["caveat.khala_fleet.main_session_not_worker"],
       x: 255,

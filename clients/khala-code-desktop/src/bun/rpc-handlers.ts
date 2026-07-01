@@ -150,9 +150,9 @@ const fleetQueuePolicy = (
 }
 
 const sessionLayers = (): NonNullable<KhalaCodeDesktopFleetStatus["sessionLayers"]> => ({
-  main: {
-    homeRole: "main_user_codex_home_display_only",
-    label: "Main local Codex session",
+	  main: {
+	    homeRole: "main_user_codex_home_display_only",
+	    label: "Primary user Codex session",
     mutationPolicy: "codex_app_server_owned",
     role: "main_local_codex_session",
     runtime: "codex_harness",

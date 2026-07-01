@@ -77,10 +77,11 @@ describe("Codex harness status", () => {
         command: "codex login",
       },
     })
-    expect(status.reason).toContain("Install Codex")
+    expect(status.reason).toContain("npm install -g @openai/codex")
+    expect(status.reason).toContain("KHALA_CODE_CODEX_BINARY/KHALA_CODE_CODEX_COMMAND")
   })
 
-  test("reports missing auth in the main user Codex home", async () => {
+  test("reports missing auth in the primary user Codex home", async () => {
     const home = await tempCodexHome()
     const status = await inspectCodexHarnessStatus({
       codexHomePath: home,
@@ -110,6 +111,9 @@ describe("Codex harness status", () => {
         required: true,
       },
     })
+    expect(status.reason).toContain("primary user Codex home")
+    expect(status.reason).toContain("before using Khala Code chat")
+    expect(status.signIn.warning).toContain("isolated Pylon worker homes")
   })
 
   test("does not treat malformed auth.json as a usable login", async () => {
