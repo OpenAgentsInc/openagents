@@ -302,8 +302,8 @@ export async function runKhalaCodeDesktopChatTurn(
     streamed: KhalaCodeDesktopMessage | null,
     toolCalls: readonly OpenAiToolCall[] = [],
   ): Promise<void> => {
+    const visibleText = await revealLocalText(text, redaction)
     const modelText = await protectModelText(text, redaction)
-    const visibleText = await revealLocalText(modelText, redaction)
     const message = streamed === null
       ? hostMessage("assistant", visibleText)
       : { ...streamed, body: visibleText }

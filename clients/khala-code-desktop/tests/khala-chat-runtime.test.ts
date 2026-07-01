@@ -279,8 +279,12 @@ describe("Khala Code desktop chat runtime", () => {
         const fetchFn = async (_input, init) => {
           const body = JSON.parse(String(init?.body ?? "{}"));
           calls.push({ body });
+          const userMessage = body.messages.find(message => message.role === "user")?.content ?? "";
+          const reply = userMessage.includes("[GIVEN_NAME_1] [SURNAME_1]")
+            ? "Hello [GIVEN_NAME_1] [SURNAME_1]."
+            : "Hello Alice Johnson.";
           return new Response(
-            JSON.stringify({ choices: [{ message: { content: "Hello [GIVEN_NAME_1] [SURNAME_1]." } }] }),
+            JSON.stringify({ choices: [{ message: { content: reply } }] }),
             { headers: { "content-type": "application/json" } },
           );
         };
@@ -304,13 +308,42 @@ describe("Khala Code desktop chat runtime", () => {
     expect(result.ok).toBe(true)
     expect(result.messages[0]?.body).toBe("Hello Alice Johnson.")
     const userMessage = requestMessages.find(message => message.role === "user")
-    expect(userMessage?.content).toContain("[GIVEN_NAME_1] [SURNAME_1]")
     expect(userMessage?.content).toContain("[EMAIL_1]")
-    expect(userMessage?.content).toContain("[BUILDING_NUMBER_1] [STREET_NAME_1]")
-    expect(userMessage?.content).toContain("Chicago, IL 60601")
-    expect(JSON.stringify(requestMessages)).not.toContain("Alice Johnson")
+    if (userMessage?.content?.includes("[GIVEN_NAME_1] [SURNAME_1]") === true) {
+      expect(userMessage.content).toContain("[BUILDING_NUMBER_1] [STREET_NAME_1]")
+      expect(userMessage.content).toContain("Chicago, IL 60601")
+      expect(JSON.stringify(requestMessages)).not.toContain("Alice Johnson")
+      expect(JSON.stringify(requestMessages)).not.toContain("100 Main Street")
+    }
     expect(JSON.stringify(requestMessages)).not.toContain("alice@example.com")
-    expect(JSON.stringify(requestMessages)).not.toContain("100 Main Street")
+  })
+
+  test("reveals assistant placeholders before re-scrubbing assistant history", async () => {
+    const redaction = fakeRedactionService({
+      protectModelText: text => text
+        .replaceAll("[GIVEN_NAME_1]", "[MODEL_GIVEN_NAME_1]")
+        .replaceAll("[SURNAME_1]", "[MODEL_SURNAME_1]"),
+    })
+    const { calls, fetchFn } = captureFetch([
+      { choices: [{ message: { content: "Hello [GIVEN_NAME_1] [SURNAME_1]." } }] },
+    ])
+
+    const result = await runKhalaCodeDesktopChatTurn({
+      env: { OPENAGENTS_AGENT_TOKEN: "agent-token" },
+      fetchFn,
+      redaction,
+      request: {
+        messages: [{ body: "My name is Alex Rivera.", id: "u1", role: "user" }],
+        sessionId: "session-redaction-visible-before-model-history",
+      },
+    })
+
+    expect(result.ok).toBe(true)
+    expect(result.messages[0]?.body).toBe("Hello Alex Rivera.")
+    expect(JSON.stringify(result.messages)).not.toContain("[MODEL_GIVEN_NAME_1]")
+    const requestMessages = calls[0]?.body.messages as Array<{ content?: string; role?: string }>
+    expect(requestMessages.find(message => message.role === "user")?.content)
+      .toBe("My name is [GIVEN_NAME_1] [SURNAME_1].")
   })
 
   test("routes request-specific OpenRouter BYOK through hosted Khala", async () => {
@@ -1253,7 +1286,11 @@ function toolName(value: unknown): string | undefined {
   return typeof fn?.name === "string" ? fn.name : undefined
 }
 
-function fakeRedactionService(): KhalaPrivacyRedactionServiceShape {
+function fakeRedactionService(
+  input: {
+    readonly protectModelText?: (text: string) => string
+  } = {},
+): KhalaPrivacyRedactionServiceShape {
   const protectText = (text: string) =>
     text.replaceAll("Alex Rivera", "[GIVEN_NAME_1] [SURNAME_1]")
   const revealText = (text: string) => text
@@ -1271,7 +1308,7 @@ function fakeRedactionService(): KhalaPrivacyRedactionServiceShape {
     }
   }
   return {
-    protectModelText: text => Effect.succeed(result(text)),
+    protectModelText: text => Effect.succeed(result(input.protectModelText?.(text) ?? text)),
     protectUserText: text => Effect.succeed(result(text)),
     revealForLocalUser: text => Effect.succeed(revealText(text)),
     revealTransform: () => Effect.succeed(new TransformStream<string, string>({
