@@ -4532,7 +4532,7 @@ async function main() {
           (requestState === null ? undefined : localPylonTargetRef(requestState))
         if (requestState !== null && targetPylonRef === localPylonTargetRef(requestState)) {
           const requestPresenceEnv = workflow === "codex_agent_task"
-            ? khalaCodexCapacityAdvertisementEnv(Bun.env, 1)
+            ? khalaCodexCapacityAdvertisementEnv(Bun.env, 5)
             : Bun.env
           await sendHeartbeat(summary, {
             ...presenceClientOptionsFromEnv({ baseUrl, env: requestPresenceEnv }),

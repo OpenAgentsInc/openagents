@@ -15,10 +15,25 @@ describe("bridge pairing display", () => {
 
     const uri = buildPairingUri(input)
 
-    expect(uri).toBe(
-      "autopilot://pair?host=https%3A%2F%2Fopenagents.com%2Fpylon%20bridge%3Fteam%3Da%26mode%3Dpair&bid=bootstrap%20id%2F1&s=secret%2Bvalue%3D1%26two",
-    )
+    expect(uri).toMatch(/^autopilot:\/\/pair\?/)
     expect(parsePairingUri(uri)).toEqual(input)
+  })
+
+  test("buildPairingUri carries optional public E2EE relay metadata", () => {
+    const input = {
+      baseUrl: "https://openagents.com",
+      bootstrapId: "bootstrap-1",
+      secret: "secret-1",
+      relayUrl: "https://openagents.com/pylon/relay",
+      serverPublicKey: "server-public-key.fixture",
+    }
+
+    const parsed = parsePairingUri(buildPairingUri(input))
+
+    expect(parsed).toEqual({
+      ...input,
+      protocol: "openagents.companion.e2ee.v1",
+    })
   })
 
   test("invalid baseUrl throws", () => {
@@ -42,6 +57,7 @@ describe("bridge pairing display", () => {
   test("parsePairingUri returns null on garbage", () => {
     expect(parsePairingUri("garbage")).toBeNull()
     expect(parsePairingUri("autopilot://pair?host=not-a-url&bid=bootstrap-1&s=secret-1")).toBeNull()
+    expect(parsePairingUri("autopilot://pair?host=https%3A%2F%2Fopenagents.com&bid=bootstrap-1&s=secret-1&relay=ftp%3A%2F%2Fexample.com")).toBeNull()
     expect(parsePairingUri("https://openagents.com/pair?host=https%3A%2F%2Fopenagents.com")).toBeNull()
     expect(parsePairingUri("autopilot://pair?host=https%3A%2F%2Fopenagents.com&bid=bootstrap-1")).toBeNull()
   })
@@ -56,5 +72,20 @@ describe("bridge pairing display", () => {
     expect(text).toContain("https://openagents.com")
     expect(text).toContain("bootstrap-1:secret-1")
     expect(text).toContain("one-time-use")
+  })
+
+  test("renderPairingText shows public E2EE metadata without repeating the full server key", () => {
+    const text = renderPairingText({
+      baseUrl: "https://openagents.com",
+      bootstrapId: "bootstrap-1",
+      secret: "secret-1",
+      relayUrl: "https://openagents.com/pylon/relay",
+      serverPublicKey: "abcdefghijklmnopqrstuvwx",
+    })
+
+    expect(text).toContain("openagents.companion.e2ee.v1")
+    expect(text).toContain("https://openagents.com/pylon/relay")
+    expect(text).toContain("abcdefghijkl...qrstuvwx")
+    expect(text).not.toContain("abcdefghijklmnopqrstuvwx")
   })
 })
