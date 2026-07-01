@@ -25,6 +25,11 @@ const kebabCase = (value: string): string =>
 const codexSlashCommandSourcePath = (): string => {
   const explicit = process.env.KHALA_CODE_CODEX_SLASH_COMMAND_SOURCE?.trim()
   if (explicit !== undefined && explicit.length > 0 && existsSync(explicit)) return explicit
+  const explicitRoot = process.env.KHALA_CODE_CODEX_REFERENCE_ROOT?.trim()
+  if (explicitRoot !== undefined && explicitRoot.length > 0) {
+    const candidate = join(explicitRoot, "codex-rs/tui/src/slash_command.rs")
+    if (existsSync(candidate)) return candidate
+  }
 
   let current = dirname(fileURLToPath(import.meta.url))
   for (let depth = 0; depth < 10; depth += 1) {
@@ -112,6 +117,27 @@ describe("Khala Code Codex slash command registry", () => {
       "pets",
       "mcp",
     ])
+  })
+
+  test("maps background terminal slash commands to experimental app-server methods", () => {
+    expect(findKhalaCodeDesktopSlashCommand("/ps")?.dispatch).toMatchObject({
+      kind: "app_server",
+      method: "thread/backgroundTerminals/list",
+      experimental: true,
+      requiresThread: true,
+    })
+    expect(findKhalaCodeDesktopSlashCommand("/stop")?.dispatch).toMatchObject({
+      kind: "app_server",
+      method: "thread/backgroundTerminals/clean",
+      experimental: true,
+      requiresThread: true,
+    })
+    expect(findKhalaCodeDesktopSlashCommand("/clean")?.dispatch).toMatchObject({
+      kind: "app_server",
+      method: "thread/backgroundTerminals/clean",
+      experimental: true,
+      requiresThread: true,
+    })
   })
 
   test("matches Codex platform/debug visibility gates", () => {

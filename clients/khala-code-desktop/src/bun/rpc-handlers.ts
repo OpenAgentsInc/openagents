@@ -19,6 +19,9 @@ import {
   type KhalaCodeDesktopChatTurnEvent,
   type KhalaCodeDesktopChatTurnResponse,
   type KhalaCodeDesktopCodexConfigValueWriteRequest,
+  type KhalaCodeDesktopCodexBackgroundTerminalsCleanRequest,
+  type KhalaCodeDesktopCodexBackgroundTerminalsListRequest,
+  type KhalaCodeDesktopCodexBackgroundTerminalsTerminateRequest,
   type KhalaCodeDesktopCodexEcosystemReadRequest,
   type KhalaCodeDesktopCodexEcosystemReadResult,
   type KhalaCodeDesktopCodexSettingsReadRequest,
@@ -599,6 +602,39 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
     }
   }
 
+  const nonEmptyCodexField = (
+    value: string,
+    label: string,
+  ): string => {
+    const trimmed = value.trim()
+    if (trimmed.length === 0) throw new Error(`${label} is required`)
+    return trimmed
+  }
+
+  const codexBackgroundTerminalsList = async (
+    request: KhalaCodeDesktopCodexBackgroundTerminalsListRequest,
+  ): Promise<KhalaCodeDesktopCodexAppServerActionResult> =>
+    codexAppServerAction("thread/backgroundTerminals/list", {
+      threadId: nonEmptyCodexField(request.threadId, "threadId"),
+      cursor: request.cursor ?? null,
+      limit: request.limit ?? 50,
+    })
+
+  const codexBackgroundTerminalsClean = async (
+    request: KhalaCodeDesktopCodexBackgroundTerminalsCleanRequest,
+  ): Promise<KhalaCodeDesktopCodexAppServerActionResult> =>
+    codexAppServerAction("thread/backgroundTerminals/clean", {
+      threadId: nonEmptyCodexField(request.threadId, "threadId"),
+    })
+
+  const codexBackgroundTerminalsTerminate = async (
+    request: KhalaCodeDesktopCodexBackgroundTerminalsTerminateRequest,
+  ): Promise<KhalaCodeDesktopCodexAppServerActionResult> =>
+    codexAppServerAction("thread/backgroundTerminals/terminate", {
+      threadId: nonEmptyCodexField(request.threadId, "threadId"),
+      processId: nonEmptyCodexField(request.processId, "processId"),
+    })
+
   const readCodexEcosystem = async (
     request: KhalaCodeDesktopCodexEcosystemReadRequest = {},
   ): Promise<KhalaCodeDesktopCodexEcosystemReadResult> => {
@@ -934,14 +970,24 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
         }
         case "ps":
         case "stop": {
-          const response = await requestCodexAppServer(dispatch.method, { threadId })
+          const response = command.command === "ps"
+            ? await codexBackgroundTerminalsList({ threadId: threadId ?? "" })
+            : await codexBackgroundTerminalsClean({ threadId: threadId ?? "" })
+          if (!response.ok) {
+            return blockedSlashCommand({
+              command: command.command,
+              message: response.error ?? "Codex background terminal request failed.",
+              method: response.method,
+              ...(threadId === null ? {} : { threadId }),
+            })
+          }
           return dispatchedSlashCommand({
             command: command.command,
-            method: dispatch.method,
+            method: response.method,
             message: command.command === "ps"
-              ? "Loaded Codex background terminal commands."
-              : "Requested cleanup of Codex background terminal commands.",
-            response,
+              ? "Loaded Codex background terminals."
+              : "Requested Codex background terminal cleanup.",
+            response: response.response,
             ...(threadId === null ? {} : { threadId }),
           })
         }
@@ -1281,6 +1327,15 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
           error: error instanceof Error ? error.message : String(error),
         }
       }
+    },
+    async codexBackgroundTerminalsClean(request) {
+      return codexBackgroundTerminalsClean(request)
+    },
+    async codexBackgroundTerminalsList(request) {
+      return codexBackgroundTerminalsList(request)
+    },
+    async codexBackgroundTerminalsTerminate(request) {
+      return codexBackgroundTerminalsTerminate(request)
     },
     async codexConfigValueWrite(request) {
       return writeCodexConfigValue(request)

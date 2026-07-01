@@ -17,9 +17,10 @@ the behavior small.
 - `covered_by_app_server`: Codex exposes stable app-server methods. Khala can
   build richer desktop navigation or layout, but the state and mutations must
   round-trip through app-server.
-- `khala_adapter_with_test`: The command is a desktop shell affordance such as
-  copy, clear, title, or diagnostics. Khala can own a tiny adapter if a test
-  covers it and the adapter does not become a second Codex Core.
+- `khala_adapter_with_test`: The command is a desktop shell affordance or a
+  bounded wrapper over experimental app-server methods. Khala can own a tiny
+  adapter if a test covers it and the adapter does not become a second Codex
+  Core.
 - `upstream_app_server_gap`: Codex TUI owns behavior that Khala needs for full
   parity. Khala should request a narrow app-server method or metadata contract
   before implementing the behavior.
@@ -36,7 +37,7 @@ the behavior small.
 | `multi-agent-side-conversation-and-plan` | `upstream_app_server_gap` | `/approve`, `/plan`, `/agent`, `/subagents`, `/side`, `/btw` | `turn/steer`, `thread/fork`, `thread/inject_items`, `thread/approveGuardianDeniedAction`, `thread/metadata/update`, `thread/read` | None | `codex.app_server.gap.side_agent_plan_controls` |
 | `ide-file-mention-and-diff` | `upstream_app_server_gap` | `/ide`, `/diff`, `/mention` | `fuzzyFileSearch`, `gitDiffToRemote`, `fs/readDirectory`, `fs/readFile`, `config/read` | None | `codex.app_server.gap.ide_mentions_diff` |
 | `windows-sandbox-setup-and-readable-roots` | `upstream_app_server_gap` | `/setup-default-sandbox`, `/sandbox-add-read-dir` | `windowsSandbox/setupStart`, `windowsSandbox/readiness`, `config/read`, `config/value/write` | None | `codex.app_server.gap.windows_sandbox_read_roots` |
-| `background-terminal-management` | `upstream_app_server_gap` | `/ps`, `/stop` | None | `thread/backgroundTerminals/list`, `thread/backgroundTerminals/clean`, `thread/backgroundTerminals/terminate` | `codex.app_server.gap.background_terminals` |
+| `background-terminal-management` | `khala_adapter_with_test` | `/ps`, `/stop` | None | `thread/backgroundTerminals/list`, `thread/backgroundTerminals/clean`, `thread/backgroundTerminals/terminate` | Khala wraps Codex's experimental background terminal methods directly: `/ps` lists with bounded pagination, `/stop` and `/clean` request cleanup, and the RPC action path can terminate an explicit app-server `processId`. Stable product copy still tracks `codex.app_server.gap.background_terminals` until Codex stabilizes the methods. |
 
 ## Upstream-ready Gap Names
 
@@ -56,7 +57,9 @@ GitHub issues, or protocol notes:
 - `codex.app_server.gap.windows_sandbox_read_roots`: expose readable-root
   mutation in the Windows sandbox contract.
 - `codex.app_server.gap.background_terminals`: stabilize the existing
-  experimental background terminal list, clean, and terminate methods.
+  experimental background terminal list, clean, and terminate methods. Khala
+  Code now has an adapter over those experimental methods, but the upstream
+  stabilization gap remains visible.
 
 ## Update Rule
 
@@ -73,7 +76,8 @@ The matrix test enforces that:
 
 - every Codex slash command is present exactly once;
 - every stable app-server method exists in the generated Codex schema;
-- experimental background terminal methods stay labeled experimental;
+- experimental background terminal methods stay labeled experimental and route
+  through a tested Khala adapter;
 - every TUI-local behavior has either a named upstream gap or a tested Khala
   adapter rationale;
 - this human-readable document contains every row id and upstream gap id.

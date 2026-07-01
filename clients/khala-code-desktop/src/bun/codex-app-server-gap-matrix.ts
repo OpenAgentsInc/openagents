@@ -388,7 +388,7 @@ export const KHALA_CODE_CODEX_APP_SERVER_GAP_MATRIX: readonly KhalaCodeCodexAppS
   {
     id: "background-terminal-management",
     area: "background terminal listing and cleanup",
-    decision: "upstream_app_server_gap",
+    decision: "khala_adapter_with_test",
     codexSourceRefs: [
       "codex-rs/tui/src/slash_command.rs",
       "codex-rs/app-server-protocol/src/protocol/common.rs",
@@ -406,9 +406,9 @@ export const KHALA_CODE_CODEX_APP_SERVER_GAP_MATRIX: readonly KhalaCodeCodexAppS
     ],
     upstreamGapId: "codex.app_server.gap.background_terminals",
     khalaAdapter:
-      "Khala may call the experimental methods only behind parity checks; stable product copy should keep this row as an upstream gap until Codex stabilizes the methods.",
+      "Khala slash dispatch and RPC actions call Codex's experimental background terminal list, clean, and terminate methods directly with bounded list pagination.",
     rationale:
-      "Codex protocol marks these methods experimental, so Khala must avoid treating them as stable feature parity.",
+      "Codex owns background terminal state. Khala only wraps the experimental app-server methods and keeps stable product copy gated until Codex stabilizes them.",
     linkedIssues: [
       "https://github.com/OpenAgentsInc/openagents/issues/7785",
       "https://github.com/OpenAgentsInc/openagents/issues/7795",
@@ -416,6 +416,7 @@ export const KHALA_CODE_CODEX_APP_SERVER_GAP_MATRIX: readonly KhalaCodeCodexAppS
     testRefs: [
       "clients/khala-code-desktop/tests/codex-slash-commands.test.ts",
       "clients/khala-code-desktop/tests/codex-app-server-gap-matrix.test.ts",
+      "clients/khala-code-desktop/tests/rpc-handlers.test.ts",
     ],
     updateTrigger:
       "Update when Codex stabilizes, renames, or removes background terminal app-server methods.",

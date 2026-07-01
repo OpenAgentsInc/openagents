@@ -379,6 +379,21 @@ export type KhalaCodeDesktopCodexAppServerActionResult = {
   readonly error?: string
 }
 
+export type KhalaCodeDesktopCodexBackgroundTerminalsListRequest = {
+  readonly cursor?: string | null
+  readonly limit?: number | null
+  readonly threadId: string
+}
+
+export type KhalaCodeDesktopCodexBackgroundTerminalsCleanRequest = {
+  readonly threadId: string
+}
+
+export type KhalaCodeDesktopCodexBackgroundTerminalsTerminateRequest = {
+  readonly processId: string
+  readonly threadId: string
+}
+
 export type KhalaCodeDesktopCodexSkillsExtraRootsSetRequest = {
   readonly extraRoots: readonly string[]
 }
@@ -764,6 +779,9 @@ export type KhalaCodeDesktopRPCSchema = {
     codexFleetPromoteThread(request: KhalaCodeDesktopFleetPromotionRequest): Promise<KhalaCodeDesktopFleetPromotionResult>
     codexHarnessStatus(): Promise<KhalaCodeDesktopCodexHarnessStatus>
     codexApprovalRespond(request: KhalaCodeDesktopCodexApprovalRespondRequest): Promise<KhalaCodeDesktopCodexApprovalRespondResult>
+    codexBackgroundTerminalsClean(request: KhalaCodeDesktopCodexBackgroundTerminalsCleanRequest): Promise<KhalaCodeDesktopCodexAppServerActionResult>
+    codexBackgroundTerminalsList(request: KhalaCodeDesktopCodexBackgroundTerminalsListRequest): Promise<KhalaCodeDesktopCodexAppServerActionResult>
+    codexBackgroundTerminalsTerminate(request: KhalaCodeDesktopCodexBackgroundTerminalsTerminateRequest): Promise<KhalaCodeDesktopCodexAppServerActionResult>
     codexConfigValueWrite(request: KhalaCodeDesktopCodexConfigValueWriteRequest): Promise<KhalaCodeDesktopCodexConfigValueWriteResult>
     codexEcosystemRead(request?: KhalaCodeDesktopCodexEcosystemReadRequest): Promise<KhalaCodeDesktopCodexEcosystemReadResult>
     codexMarketplaceAdd(request: KhalaCodeDesktopCodexMarketplaceAddRequest): Promise<KhalaCodeDesktopCodexAppServerActionResult>

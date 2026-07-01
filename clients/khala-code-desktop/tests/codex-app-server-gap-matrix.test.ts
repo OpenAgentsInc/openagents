@@ -127,6 +127,21 @@ describe("Khala Code Codex app-server gap matrix", () => {
     expect(clientCommandsWithoutAdapterDecision).toEqual([])
   })
 
+  test("tracks background terminal parity as an experimental Khala adapter", () => {
+    const row = KHALA_CODE_CODEX_APP_SERVER_GAP_MATRIX.find(row =>
+      row.id === "background-terminal-management"
+    )
+    expect(row).toMatchObject({
+      decision: "khala_adapter_with_test",
+      experimentalAppServerMethods: [
+        "thread/backgroundTerminals/list",
+        "thread/backgroundTerminals/clean",
+        "thread/backgroundTerminals/terminate",
+      ],
+    })
+    expect(row?.testRefs).toContain("clients/khala-code-desktop/tests/rpc-handlers.test.ts")
+  })
+
   test("keeps the human-readable matrix document in sync with checked rows", async () => {
     const docPath = join(repoRoot, KHALA_CODE_CODEX_APP_SERVER_GAP_DOC_PATH)
     expect(existsSync(docPath)).toBe(true)
