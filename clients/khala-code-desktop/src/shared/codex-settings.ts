@@ -62,6 +62,26 @@ export type KhalaCodeDesktopCodexSettingsProjection = {
     readonly layersAvailable: boolean
     readonly originKeys: readonly string[]
   }
+  readonly appearance: {
+    readonly keymap: KhalaCodeDesktopCodexJsonValue
+    readonly keyPaths: {
+      readonly keymap: "tui.keymap"
+      readonly pet: "tui.pet"
+      readonly petAnchor: "tui.pet_anchor"
+      readonly personality: "personality"
+      readonly statusLine: "tui.status_line"
+      readonly statusLineUseColors: "tui.status_line_use_colors"
+      readonly theme: "tui.theme"
+      readonly vimModeDefault: "tui.vim_mode_default"
+    }
+    readonly pet: string | null
+    readonly petAnchor: string | null
+    readonly personality: string | null
+    readonly statusLine: readonly string[] | null
+    readonly statusLineUseColors: boolean | null
+    readonly theme: string | null
+    readonly vimModeDefault: boolean | null
+  }
   readonly models: {
     readonly selected: KhalaCodeDesktopCodexSettingsModelOption | null
     readonly options: readonly KhalaCodeDesktopCodexSettingsModelOption[]
@@ -134,8 +154,26 @@ const stringArray = (value: unknown): readonly string[] | null =>
     ? value.filter((item): item is string => typeof item === "string")
     : null
 
+const jsonValueOrNull = (value: unknown): KhalaCodeDesktopCodexJsonValue =>
+  value === null ||
+  typeof value === "boolean" ||
+  typeof value === "number" ||
+  typeof value === "string" ||
+  Array.isArray(value) ||
+  (typeof value === "object" && value !== null)
+    ? value as KhalaCodeDesktopCodexJsonValue
+    : null
+
 const configFrom = (configRead: unknown): Record<string, unknown> =>
   asRecord(asRecord(configRead).config)
+
+const configAt = (
+  config: Record<string, unknown>,
+  dottedPath: string,
+): unknown => dottedPath.split(".").reduce<unknown>(
+  (current, segment) => asRecord(current)[segment],
+  config,
+)
 
 const originsFrom = (configRead: unknown): Record<string, unknown> =>
   asRecord(asRecord(configRead).origins)
@@ -262,6 +300,16 @@ export const projectKhalaCodeDesktopCodexSettings = (
   const usageRead = asRecord(input.usageRead)
   const errors = input.errors ?? []
   const blockers = blockersFrom({ config, errors, requirements })
+  const keyPaths = {
+    keymap: "tui.keymap",
+    pet: "tui.pet",
+    petAnchor: "tui.pet_anchor",
+    personality: "personality",
+    statusLine: "tui.status_line",
+    statusLineUseColors: "tui.status_line_use_colors",
+    theme: "tui.theme",
+    vimModeDefault: "tui.vim_mode_default",
+  } as const
 
   return {
     ok: errors.length === 0,
@@ -283,6 +331,17 @@ export const projectKhalaCodeDesktopCodexSettings = (
       personality: optionalString(config.personality),
       layersAvailable: Array.isArray(configRead.layers),
       originKeys: Object.keys(origins).sort(),
+    },
+    appearance: {
+      keymap: jsonValueOrNull(configAt(config, keyPaths.keymap)),
+      keyPaths,
+      pet: optionalString(configAt(config, keyPaths.pet)),
+      petAnchor: optionalString(configAt(config, keyPaths.petAnchor)),
+      personality: optionalString(config.personality),
+      statusLine: stringArray(configAt(config, keyPaths.statusLine)),
+      statusLineUseColors: optionalBoolean(configAt(config, keyPaths.statusLineUseColors)),
+      theme: optionalString(configAt(config, keyPaths.theme)),
+      vimModeDefault: optionalBoolean(configAt(config, keyPaths.vimModeDefault)),
     },
     models: {
       selected: selectedModel,

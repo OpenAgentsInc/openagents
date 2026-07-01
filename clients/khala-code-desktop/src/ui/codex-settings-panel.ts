@@ -103,6 +103,30 @@ const renderSelect = (
   return row
 }
 
+const renderTextInput = (
+  input: {
+    readonly disabled?: boolean
+    readonly label: string
+    readonly selected: string | null
+    readonly title?: string
+    readonly onCommit: (value: string) => void
+  },
+): HTMLElement => {
+  const row = el("label", "khala-settings-control")
+  const label = el("span", "khala-settings-control-label", input.label)
+  const text = el("input", "khala-settings-select")
+  text.type = "text"
+  text.disabled = input.disabled === true
+  text.value = input.selected ?? ""
+  if (input.title !== undefined) text.title = input.title
+  text.addEventListener("keydown", event => {
+    if (event.key === "Enter") input.onCommit(text.value.trim())
+  })
+  text.addEventListener("change", () => input.onCommit(text.value.trim()))
+  row.append(label, text)
+  return row
+}
+
 export const mountCodexSettingsPanel = (
   container: HTMLElement,
   options: CodexSettingsPanelOptions,
@@ -214,19 +238,72 @@ export const mountCodexSettingsPanel = (
   const renderCollaborationSection = (
     current: KhalaCodeDesktopCodexSettingsProjection,
   ): HTMLElement => section("Collaboration", [
+    metric("Mode", current.collaboration.currentMode),
+    metric("Personality", current.collaboration.personality),
+    metric("Presets", current.collaboration.modes.map(mode => mode.name).join(", ") || null),
+  ])
+
+  const renderAppearanceSection = (
+    current: KhalaCodeDesktopCodexSettingsProjection,
+  ): HTMLElement => section("Appearance", [
+    renderSelect({
+      label: "Vim default",
+      selected: current.appearance.vimModeDefault === true ? "true" : "false",
+      options: [
+        { label: "Off", value: "false" },
+        { label: "On", value: "true" },
+      ],
+      onChange: value => void write(current.appearance.keyPaths.vimModeDefault, value === "true"),
+    }),
+    renderTextInput({
+      label: "Statusline",
+      selected: current.appearance.statusLine?.join(", ") ?? "",
+      title: "Comma-separated Codex status line item ids",
+      onCommit: value => void write(
+        current.appearance.keyPaths.statusLine,
+        value.length === 0 ? null : value.split(",").map(item => item.trim()).filter(Boolean),
+      ),
+    }),
+    renderSelect({
+      label: "Statusline colors",
+      selected: current.appearance.statusLineUseColors === false ? "false" : "true",
+      options: [
+        { label: "On", value: "true" },
+        { label: "Off", value: "false" },
+      ],
+      onChange: value => void write(current.appearance.keyPaths.statusLineUseColors, value === "true"),
+    }),
+    renderTextInput({
+      label: "Theme",
+      selected: current.appearance.theme ?? "",
+      onCommit: value => void write(current.appearance.keyPaths.theme, value.length === 0 ? null : value),
+    }),
+    renderTextInput({
+      label: "Pet",
+      selected: current.appearance.pet ?? "",
+      onCommit: value => void write(current.appearance.keyPaths.pet, value.length === 0 ? null : value),
+    }),
+    renderSelect({
+      label: "Pet anchor",
+      selected: current.appearance.petAnchor ?? "composer",
+      options: [
+        { label: "Composer", value: "composer" },
+        { label: "Screen bottom", value: "screen-bottom" },
+      ],
+      onChange: value => void write(current.appearance.keyPaths.petAnchor, value),
+    }),
     renderSelect({
       label: "Personality",
-      selected: current.config.personality ?? "",
+      selected: current.appearance.personality ?? "",
       options: [
         { label: "Unset", value: "" },
         { label: "None", value: "none" },
         { label: "Friendly", value: "friendly" },
         { label: "Pragmatic", value: "pragmatic" },
       ],
-      onChange: value => void write("personality", value === "" ? null : value),
+      onChange: value => void write(current.appearance.keyPaths.personality, value === "" ? null : value),
     }),
-    metric("Mode", current.collaboration.currentMode),
-    metric("Presets", current.collaboration.modes.map(mode => mode.name).join(", ") || null),
+    metric("Keymap", current.appearance.keymap),
   ])
 
   const renderUsageSection = (
@@ -362,6 +439,7 @@ export const mountCodexSettingsPanel = (
       renderBoundarySection(),
       renderModelSection(settings),
       renderPermissionsSection(settings),
+      renderAppearanceSection(settings),
       renderProviderSection(settings),
       renderCollaborationSection(settings),
       renderUsageSection(settings),
