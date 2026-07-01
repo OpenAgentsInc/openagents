@@ -264,21 +264,6 @@ const requireNonEmpty = (kind: string, field: string, value: string): void => {
   if (value.trim().length === 0) throw new Error(`${kind} requires ${field}`)
 }
 
-const assertFleetRunControlTransition = (
-  state: KhalaCodeDesktopFleetRunState,
-  verb: KhalaCodeDesktopFleetRunControlRequest["verb"],
-): void => {
-  const allowed: Record<KhalaCodeDesktopFleetRunControlRequest["verb"], readonly KhalaCodeDesktopFleetRunState[]> = {
-    drain: ["running", "paused"],
-    pause: ["running"],
-    resume: ["paused"],
-    stop: ["draft", "running", "paused", "draining"],
-  }
-  if (!allowed[verb].includes(state)) {
-    throw new Error(`fleetRunControl cannot ${verb} a ${state} fleet run`)
-  }
-}
-
 const normalizeMentionCandidate = (value: unknown): KhalaCodeDesktopCodexMentionCandidate | null => {
   if (!isRecord(value)) return null
   const path = stringValue(value.path)
@@ -1797,9 +1782,6 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
     },
     async fleetRunControl(request): Promise<KhalaCodeDesktopFleetRunControlResult> {
       requireNonEmpty("fleetRunControl", "runRef", request.runRef)
-      const before = await requireFleetRunSupervisor().status({ runRef: request.runRef })
-      if (before.run === null) throw new Error(`unknown fleet run: ${request.runRef}`)
-      assertFleetRunControlTransition(before.run.state, request.verb)
       const result = await requireFleetRunSupervisor().control(request)
       return {
         ok: true,

@@ -28,6 +28,7 @@ import {
 } from "./codex-token-usage-telemetry.js"
 import { createOnDeviceDeciderHost } from "./on-device-decider-host.js"
 import { khalaCodeConfigFromRuntimeEnv } from "./khala-code-config.js"
+import { createKhalaCodeDesktopFleetRunSupervisorRpcAdapter } from "./fleet-run-supervisor-rpc-adapter.js"
 import { createKhalaCodeDesktopRpcRequestHandlers } from "./rpc-handlers.js"
 
 const khalaCodeConfig = khalaCodeConfigFromRuntimeEnv()
@@ -351,6 +352,7 @@ rpcRequestHandlers = createKhalaCodeDesktopRpcRequestHandlers({
   enableFleetMcpBridge: true,
   emitChatTurnEvent: event => emitChatTurnEvent(event),
   env: khalaCodeEnv,
+  fleetRunSupervisor: createKhalaCodeDesktopFleetRunSupervisorRpcAdapter({ env: khalaCodeEnv }),
   fleetMcpBridgeRepoRoot: resolveSourceRepositoryRoot(),
   onDeviceDeciderStatus: () => onDeviceDecider.select(),
   workingDirectory: resolveToolWorkingDirectory(khalaCodeEnv),

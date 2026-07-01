@@ -380,7 +380,7 @@ describe("Khala Code desktop RPC handlers", () => {
     expect(calls).toEqual(["pause", "resume", "drain", "stop"])
   })
 
-  test("rejects invalid fleet run control transitions before mutation", async () => {
+  test("delegates fleet run control transition authority to the supervisor", async () => {
     const run = fleetRunProjection({ state: "completed" })
     let mutated = false
     const handlers = createKhalaCodeDesktopRpcRequestHandlers({
@@ -404,8 +404,58 @@ describe("Khala Code desktop RPC handlers", () => {
     })
 
     await expect(handlers.fleetRunControl({ runRef: run.runRef, verb: "pause" }))
-      .rejects.toThrow("fleetRunControl cannot pause a completed fleet run")
-    expect(mutated).toBe(false)
+      .resolves.toMatchObject({ previousState: "completed", run, verb: "pause" })
+    expect(mutated).toBe(true)
+  })
+
+  test("rejects fleet run RPCs when the supervisor is unconfigured", async () => {
+    const handlers = createKhalaCodeDesktopRpcRequestHandlers({
+      appleFmReadiness: () => {
+        throw new Error("not used")
+      },
+      env: {},
+      onDeviceDeciderStatus: () => {
+        throw new Error("not used")
+      },
+      workingDirectory: process.cwd(),
+    })
+
+    await expect(handlers.fleetRunStatus({ runRef: "fleet_run.missing" }))
+      .rejects.toThrow("Fleet run supervisor is not configured.")
+  })
+
+  test("rejects empty fleet run objectives and non-integer target concurrency", async () => {
+    const handlers = createKhalaCodeDesktopRpcRequestHandlers({
+      appleFmReadiness: () => {
+        throw new Error("not used")
+      },
+      env: {},
+      fleetRunSupervisor: {
+        control: async () => {
+          throw new Error("not used")
+        },
+        list: async () => [],
+        start: async () => {
+          throw new Error("not used")
+        },
+        status: async () => ({ run: null, supervisorActive: false }),
+      },
+      onDeviceDeciderStatus: () => {
+        throw new Error("not used")
+      },
+      workingDirectory: process.cwd(),
+    })
+
+    await expect(handlers.fleetRunStart({
+      objective: " ",
+      targetConcurrency: 1,
+      workSource: { kind: "fixture", count: 1 },
+    })).rejects.toThrow("fleetRunStart requires objective")
+    await expect(handlers.fleetRunStart({
+      objective: "Run fixture work.",
+      targetConcurrency: 1.5,
+      workSource: { kind: "fixture", count: 1 },
+    })).rejects.toThrow("fleetRunStart requires positive integer targetConcurrency")
   })
 
   test("lists fleet runs through the supervisor RPC port", async () => {

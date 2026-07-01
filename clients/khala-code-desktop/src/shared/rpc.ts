@@ -1281,12 +1281,12 @@ const RpcFleetRunControlVerb = S.Literals(["pause", "resume", "drain", "stop"])
 const RpcFleetRunRefillPolicy = S.Struct({
   cooldownAware: S.Boolean,
   maxPerAccount: S.Number,
-  stopCondition: S.Literals(["backlog_empty", "manual_stop"]),
+  stopCondition: S.Literals(["backlog_empty", "target_reached", "manual_stop"]),
 })
 const RpcFleetRunRefillPolicyPatch = S.Struct({
   cooldownAware: S.optional(S.Boolean),
   maxPerAccount: S.optional(S.Number),
-  stopCondition: S.optional(S.Literals(["backlog_empty", "manual_stop"])),
+  stopCondition: S.optional(S.Literals(["backlog_empty", "target_reached", "manual_stop"])),
 })
 const RpcFleetRunCounters = S.Struct({
   activeAssignments: S.Number,
