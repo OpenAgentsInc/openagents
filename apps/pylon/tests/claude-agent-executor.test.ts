@@ -343,10 +343,30 @@ describe("workspace boundary checks", () => {
 
   test("bash commands with traversal or foreign absolute paths escape", () => {
     expect(toolInputEscapesWorkspace("Bash", { command: "cat ../secrets" }, workspace)).toBe(true)
+    expect(toolInputEscapesWorkspace("Bash", { command: "cat ../../etc/hosts" }, workspace)).toBe(true)
+    expect(toolInputEscapesWorkspace("Bash", { command: "cd .." }, workspace)).toBe(true)
     expect(toolInputEscapesWorkspace("Bash", { command: "cat /etc/passwd" }, workspace)).toBe(true)
     expect(toolInputEscapesWorkspace("Bash", { command: "bun test sum.test.ts" }, workspace)).toBe(false)
     expect(toolInputEscapesWorkspace("Bash", { command: `cat ${workspace}/sum.ts` }, workspace)).toBe(false)
     expect(toolInputEscapesWorkspace("Bash", { command: "/usr/bin/env bun test" }, workspace)).toBe(false)
+  })
+
+  test("bash commands with benign dot-dot syntax do not escape", () => {
+    expect(toolInputEscapesWorkspace("Bash", { command: "for n in {1..5}; do echo $n; done" }, workspace)).toBe(false)
+    expect(toolInputEscapesWorkspace("Bash", { command: "git diff main..HEAD" }, workspace)).toBe(false)
+    expect(toolInputEscapesWorkspace("Bash", { command: "printf 'working... done\\n'" }, workspace)).toBe(false)
+    expect(toolInputEscapesWorkspace("Bash", { command: "cat src/../sum.ts" }, workspace)).toBe(false)
+  })
+
+  test("dash-flag glued traversal is denied while benign flag values pass", () => {
+    const workspace = "/private/tmp/pylon-claude-guard-ws"
+    expect(toolInputEscapesWorkspace("Bash", { command: "curl --output=../secret http://x" }, workspace)).toBe(true)
+    expect(toolInputEscapesWorkspace("Bash", { command: "tar --directory=../../evil -xf a.tar" }, workspace)).toBe(true)
+    expect(toolInputEscapesWorkspace("Bash", { command: "git --git-dir=../../.git log" }, workspace)).toBe(true)
+    expect(toolInputEscapesWorkspace("Bash", { command: "cc -o../escape main.c" }, workspace)).toBe(true)
+    expect(toolInputEscapesWorkspace("Bash", { command: "curl --output=out/result.bin http://x" }, workspace)).toBe(false)
+    expect(toolInputEscapesWorkspace("Bash", { command: "bun test --filter=sum src/sum.test.ts" }, workspace)).toBe(false)
+    expect(toolInputEscapesWorkspace("Bash", { command: `cp file ${workspace}/dest.txt` }, workspace)).toBe(false)
   })
 
   test("symlinked workspace roots accept realpath spellings without widening", async () => {
