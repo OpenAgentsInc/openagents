@@ -1279,6 +1279,38 @@ const requestBody = () => ({
   ],
 })
 
+const eventChunkBody = () => ({
+  schemaVersion: 'openagents.pylon.codex_event_chunk.v1',
+  assignmentRef: 'assignment-pylon-codex-1',
+  leaseRef: 'lease-pylon-codex-1',
+  pylonRef: 'pylon-local-codex-1',
+  runRef: 'run-pylon-codex-1',
+  sessionRef: 'session-pylon-codex-1',
+  workspaceRef: 'workspace.public.pylon-codex-1',
+  turnIndex: 1,
+  chunkIndex: 2,
+  observedAt: nowIso,
+  rawEvents: [
+    {
+      item: {
+        aggregated_output: 'raw output with sk-proj-secret',
+        command: 'cat /Users/chris/.codex/auth.json',
+        type: 'command_execution',
+      },
+      type: 'item.completed',
+    },
+  ],
+  items: [
+    {
+      itemType: 'agent_message',
+      message:
+        'Streamed alice@example.com and sk-proj-abcdefghijklmnopqrstuvwxyz.',
+      ordinal: 1,
+      status: 'completed',
+    },
+  ],
+})
+
 const postTurn = (body: unknown): Request =>
   new Request(`https://openagents.com${PYLON_CODEX_TURN_INGEST_PATH}`, {
     body: JSON.stringify(body),
@@ -1844,37 +1876,7 @@ describe('POST /api/pylon/codex/turns', () => {
   test('stores streaming raw event chunks and owner-only redacted chunk traces without token rows', async () => {
     const { deltas, ledger, rawEventChunkStore, routes, traceStore } =
       await makeHarness()
-    const chunkBody = {
-      schemaVersion: 'openagents.pylon.codex_event_chunk.v1',
-      assignmentRef: 'assignment-pylon-codex-1',
-      leaseRef: 'lease-pylon-codex-1',
-      pylonRef: 'pylon-local-codex-1',
-      runRef: 'run-pylon-codex-1',
-      sessionRef: 'session-pylon-codex-1',
-      workspaceRef: 'workspace.public.pylon-codex-1',
-      turnIndex: 1,
-      chunkIndex: 2,
-      observedAt: nowIso,
-      rawEvents: [
-        {
-          item: {
-            aggregated_output: 'raw output with sk-proj-secret',
-            command: 'cat /Users/chris/.codex/auth.json',
-            type: 'command_execution',
-          },
-          type: 'item.completed',
-        },
-      ],
-      items: [
-        {
-          itemType: 'agent_message',
-          message:
-            'Streamed alice@example.com and sk-proj-abcdefghijklmnopqrstuvwxyz.',
-          ordinal: 1,
-          status: 'completed',
-        },
-      ],
-    }
+    const chunkBody = eventChunkBody()
 
     const first = await Effect.runPromise(
       routes.handlePylonCodexEventChunkIngestApi(postEventChunk(chunkBody), {}),
@@ -1934,6 +1936,51 @@ describe('POST /api/pylon/codex/turns', () => {
     expect(traceJson).not.toContain('alice@example.com')
     expect(traceJson).not.toContain('sk-proj-abcdefghijklmnopqrstuvwxyz')
     expect(traceJson).toContain('[REDACTED:')
+  })
+
+  test('keeps streaming chunk ingest fail-soft when raw chunk storage is unavailable', async () => {
+    const { deltas, ledger, rawEventChunkStore, routes, traceStore } =
+      await makeHarness()
+    rawEventChunkStore.failPut = true
+
+    const response = await Effect.runPromise(
+      routes.handlePylonCodexEventChunkIngestApi(
+        postEventChunk(eventChunkBody()),
+        {},
+      ),
+    )
+    const body = (await response.json()) as {
+      rawEvents: {
+        diagnostic?: { operation?: string; reason?: string }
+        dropped?: boolean
+        eventCount?: number
+        visibility?: string
+      }
+      trace: { created?: boolean; visibility?: string }
+    }
+
+    expect(response.status).toBe(200)
+    expect(body.rawEvents).toMatchObject({
+      diagnostic: {
+        operation: 'raw_codex_events_store',
+        reason: 'synthetic raw event chunk failure',
+      },
+      dropped: true,
+      eventCount: 1,
+      visibility: 'owner_only',
+    })
+    expect(body.trace).toMatchObject({
+      created: true,
+      visibility: 'owner_only',
+    })
+    expect(ledger.events).toHaveLength(0)
+    expect(deltas).toHaveLength(0)
+    expect(rawEventChunkStore.inputs).toHaveLength(1)
+    expect(rawEventChunkStore.records.size).toBe(0)
+    expect(traceStore.records).toHaveLength(1)
+    expect(JSON.stringify(body)).not.toMatch(
+      /r2_key|prompt|command|shell|\/Users|secret|access[_-]?token|bearer/i,
+    )
   })
 
   test('stores exact downstream Codex tokens and an owner-only redacted trace', async () => {
