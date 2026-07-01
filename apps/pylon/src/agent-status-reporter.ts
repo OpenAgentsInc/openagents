@@ -1,7 +1,36 @@
 export const PYLON_AGENT_STATUS_SCHEMA_VERSION =
   "openagents.pylon.agent_status.v1"
+export const PYLON_AGENT_RUNNER_STATUS_EVENT_SCHEMA_VERSION =
+  "openagents.pylon.agent_runner_status_event.v1"
+export const PYLON_AGENT_RUNNER_CONTROL_COMMAND_SCHEMA_VERSION =
+  "openagents.pylon.agent_runner_control_command.v1"
 
 export type AgentStatusRunnerKind = "codex_sdk" | "claude_agent" | "local_command"
+
+export type AgentRunnerNeutralState =
+  | "idle"
+  | "queued"
+  | "working"
+  | "waiting"
+  | "blocked"
+  | "done"
+  | "failed"
+  | "offline"
+
+export type AgentRunnerControlVerb =
+  | "status.list"
+  | "task.list"
+  | "task.update"
+  | "task.dispatch"
+  | "dispatch.cancel"
+
+export const PYLON_AGENT_RUNNER_CONTROL_VERBS: ReadonlyArray<AgentRunnerControlVerb> = [
+  "status.list",
+  "task.list",
+  "task.update",
+  "task.dispatch",
+  "dispatch.cancel",
+]
 
 export type AgentStatusUsage = {
   inputTokens?: number
@@ -48,6 +77,53 @@ export type AgentStatusReport = {
 
 export type AgentStatusReporter = (report: AgentStatusReport) => Promise<void>
 
+export type AgentRunnerStatusHistoryEntry = {
+  state: AgentRunnerNeutralState
+  stateStartedAt: string
+}
+
+export type AgentRunnerStatusEvent = {
+  eventRef: string
+  runnerRef: string
+  runnerKind: string
+  state: AgentRunnerNeutralState
+  stateStartedAt: string
+  updatedAt: string
+  assignmentRef?: string
+  taskId?: string
+  dispatchContextId?: string
+  assigneeHandle?: string
+  pylonRef?: string
+  worktreeId?: string
+  worktreeRef?: string
+  capabilityRefs?: ReadonlyArray<string>
+  supportedControlVerbs?: ReadonlyArray<AgentRunnerControlVerb>
+  refs?: ReadonlyArray<string>
+  blockerRefs?: ReadonlyArray<string>
+  stateHistory?: ReadonlyArray<AgentRunnerStatusHistoryEntry>
+}
+
+export type AgentRunnerControlCommand = {
+  commandRef: string
+  verb: AgentRunnerControlVerb
+  issuedAt: string
+  target: {
+    runnerRef?: string
+    runnerKind?: string
+    taskId?: string
+    dispatchContextId?: string
+    groupAddress?: string
+  }
+  payload?: {
+    status?: AgentRunnerNeutralState
+    title?: string
+    prompt?: string
+    result?: string
+    reason?: string
+    refs?: ReadonlyArray<string>
+  }
+}
+
 export const normalizeAgentStatusBaseUrl = (
   value: string | undefined,
 ): string | undefined => {
@@ -72,6 +148,20 @@ export const boundedString = (
   if (trimmed === undefined || trimmed === "") return undefined
   return trimmed.length > max ? trimmed.slice(0, max) : trimmed
 }
+
+export const boundedStringArray = (
+  values: ReadonlyArray<string> | undefined,
+  maxItems: number,
+  maxLength: number,
+): string[] =>
+  [...(values ?? [])]
+    .map(value => boundedString(value, maxLength))
+    .filter((value): value is string =>
+      value !== undefined &&
+      !value.startsWith("/") &&
+      !/^[A-Za-z]:[\\/]/.test(value),
+    )
+    .slice(0, maxItems)
 
 export const encodeAgentStatusItems = (
   items: ReadonlyArray<AgentStatusItem>,
@@ -142,3 +232,73 @@ export const encodeAgentStatusReport = (
   items: encodeAgentStatusItems(report.items),
   ...(report.rawEvents === undefined ? {} : { rawEvents: report.rawEvents }),
 })
+
+export const encodeAgentRunnerStatusEvent = (
+  event: AgentRunnerStatusEvent,
+): Record<string, unknown> => ({
+  schemaVersion: PYLON_AGENT_RUNNER_STATUS_EVENT_SCHEMA_VERSION,
+  eventRef: event.eventRef,
+  runnerRef: event.runnerRef,
+  runnerKind: event.runnerKind,
+  state: event.state,
+  stateStartedAt: event.stateStartedAt,
+  updatedAt: event.updatedAt,
+  ...(event.assignmentRef === undefined ? {} : { assignmentRef: event.assignmentRef }),
+  ...(event.taskId === undefined ? {} : { taskId: event.taskId }),
+  ...(event.dispatchContextId === undefined ? {} : { dispatchContextId: event.dispatchContextId }),
+  ...(event.assigneeHandle === undefined ? {} : { assigneeHandle: boundedString(event.assigneeHandle, 120) }),
+  ...(event.pylonRef === undefined ? {} : { pylonRef: event.pylonRef }),
+  ...(event.worktreeId === undefined ? {} : { worktreeId: boundedString(event.worktreeId, 160) }),
+  ...(event.worktreeRef === undefined ? {} : { worktreeRef: event.worktreeRef }),
+  ...(event.capabilityRefs === undefined ? {} : { capabilityRefs: boundedStringArray(event.capabilityRefs, 32, 160) }),
+  ...(event.supportedControlVerbs === undefined
+    ? {}
+    : {
+        supportedControlVerbs: event.supportedControlVerbs.filter((verb): verb is AgentRunnerControlVerb =>
+          PYLON_AGENT_RUNNER_CONTROL_VERBS.includes(verb as AgentRunnerControlVerb),
+        ),
+      }),
+  refs: boundedStringArray(event.refs, 64, 240),
+  blockerRefs: boundedStringArray(event.blockerRefs, 64, 240),
+  ...(event.stateHistory === undefined
+    ? {}
+    : {
+        stateHistory: event.stateHistory.slice(-20).map(entry => ({
+          state: entry.state,
+          stateStartedAt: entry.stateStartedAt,
+        })),
+      }),
+})
+
+export const encodeAgentRunnerControlCommand = (
+  command: AgentRunnerControlCommand,
+): Record<string, unknown> => {
+  if (!PYLON_AGENT_RUNNER_CONTROL_VERBS.includes(command.verb)) {
+    throw new Error(`unsupported agent runner control verb: ${command.verb}`)
+  }
+  return {
+    schemaVersion: PYLON_AGENT_RUNNER_CONTROL_COMMAND_SCHEMA_VERSION,
+    commandRef: command.commandRef,
+    verb: command.verb,
+    issuedAt: command.issuedAt,
+    target: {
+      ...(command.target.runnerRef === undefined ? {} : { runnerRef: command.target.runnerRef }),
+      ...(command.target.runnerKind === undefined ? {} : { runnerKind: command.target.runnerKind }),
+      ...(command.target.taskId === undefined ? {} : { taskId: command.target.taskId }),
+      ...(command.target.dispatchContextId === undefined ? {} : { dispatchContextId: command.target.dispatchContextId }),
+      ...(command.target.groupAddress === undefined ? {} : { groupAddress: boundedString(command.target.groupAddress, 160) }),
+    },
+    ...(command.payload === undefined
+      ? {}
+      : {
+          payload: {
+            ...(command.payload.status === undefined ? {} : { status: command.payload.status }),
+            ...(command.payload.title === undefined ? {} : { title: boundedString(command.payload.title, 240) }),
+            ...(command.payload.prompt === undefined ? {} : { prompt: boundedString(command.payload.prompt, 4 * 1024) }),
+            ...(command.payload.result === undefined ? {} : { result: boundedString(command.payload.result, 4 * 1024) }),
+            ...(command.payload.reason === undefined ? {} : { reason: boundedString(command.payload.reason, 240) }),
+            ...(command.payload.refs === undefined ? {} : { refs: boundedStringArray(command.payload.refs, 32, 240) }),
+          },
+        }),
+  }
+}
