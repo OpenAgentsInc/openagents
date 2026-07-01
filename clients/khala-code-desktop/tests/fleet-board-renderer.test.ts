@@ -14,6 +14,16 @@ const status = (): KhalaCodeDesktopFleetStatus => ({
   },
   availableCodexAssignments: 2,
   maxCodexAssignments: 4,
+  tokenRate: {
+    activeAdjustedTokensPerMinute: null,
+    completedStatus: "not_measured",
+    completedTokenRows: null,
+    completedTokensPerMinute: null,
+    inFlightTokens: null,
+    inFlightTokensPerMinute: null,
+    source: "unavailable",
+    unavailableReason: null,
+  },
   accounts: [
     {
       accountRef: "codex",
@@ -21,13 +31,22 @@ const status = (): KhalaCodeDesktopFleetStatus => ({
       readiness: "ready",
       quotaState: "available",
       accountKey: null,
+      capacity: null,
       email: "operator@example.com",
     },
   ],
   activeAssignments: [
     {
       assignmentRef: "assignment.public.render",
+      elapsedMs: null,
       issueRef: "github.issue.openagents.7768",
+      tokenRate: {
+        source: "unavailable",
+        status: "not_measured",
+        tokenCountKind: null,
+        tokens: null,
+        tokensPerMinute: null,
+      },
       updatedAt: "2026-06-30T20:01:00.000Z",
     },
   ],
@@ -69,13 +88,22 @@ describe("Khala Code Fleet board renderer", () => {
             readiness: "ready",
             quotaState: null,
             accountKey: null,
+            capacity: null,
             email: "operator@example.com",
           },
         ],
         activeAssignments: [
           {
             assignmentRef: "assignment.public.<render>",
+            elapsedMs: null,
             issueRef: "github.issue.openagents.7768",
+            tokenRate: {
+              source: "unavailable",
+              status: "not_measured",
+              tokenCountKind: null,
+              tokens: null,
+              tokensPerMinute: null,
+            },
             updatedAt: "2026-06-30T20:01:00.000Z",
           },
         ],

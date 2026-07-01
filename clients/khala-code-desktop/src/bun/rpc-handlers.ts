@@ -10,11 +10,13 @@ import {
   type KhalaCodeDesktopAppInfo,
   type KhalaCodeDesktopChatTurnEvent,
   type KhalaCodeDesktopCodexAccountsStatus,
+  type KhalaCodeDesktopCodexHarnessStatus,
   type KhalaCodeDesktopCodexRateLimitResetResult,
   type KhalaCodeDesktopFleetStatus,
   type KhalaCodeDesktopRPCSchema,
   type KhalaCodeDesktopRuntimeStatus,
 } from "../shared/rpc.js"
+import { inspectCodexHarnessStatus } from "./codex-harness-status.js"
 import {
   consumeKhalaCodexRateLimitResetCredit,
   fetchKhalaCodexRateLimitStatus,
@@ -39,6 +41,7 @@ type MaybePromise<T> = T | Promise<T>
 export type KhalaCodeDesktopRpcHandlersInput = {
   readonly appleFmReadiness: () => MaybePromise<KhalaAppleFmReadiness>
   readonly codexRateLimitStatus?: () => MaybePromise<KhalaCodexRateLimitProviderStatus>
+  readonly codexHarnessStatus?: () => MaybePromise<KhalaCodeDesktopCodexHarnessStatus>
   readonly consumeCodexRateLimitResetCredit?: (input: {
     readonly idempotencyKey: string
   }) => MaybePromise<KhalaCodexRateLimitResetOutcome>
@@ -72,14 +75,21 @@ const runtimeStatus = (input: {
 
 const codexStatusFromRateLimits = (
   rateLimits: KhalaCodexRateLimitProviderStatus,
+  harness: KhalaCodeDesktopCodexHarnessStatus,
   env: ChatEnv,
 ): KhalaCodeDesktopCodexAccountsStatus => {
-  const available = rateLimits.status === "ok"
+  const available = harness.available && rateLimits.status === "ok"
   const credentialSource = env.CODEX_HOME?.trim()
     ? "CODEX_HOME" as const
     : "default_home" as const
   const readinessState =
-    rateLimits.status === "ok"
+    harness.auth.state !== "ready"
+      ? harness.auth.state === "invalid"
+        ? "invalid" as const
+        : harness.auth.state === "error"
+          ? "error" as const
+          : "credentials_missing" as const
+      : rateLimits.status === "ok"
       ? "ready" as const
       : rateLimits.status === "unavailable"
         ? "credentials_missing" as const
@@ -87,12 +97,14 @@ const codexStatusFromRateLimits = (
   const blockerRefs =
     readinessState === "ready"
       ? []
-      : readinessState === "credentials_missing"
-        ? ["blocker.codex.credentials_missing"]
-        : ["blocker.codex.rate_limit_status_error"]
+      : harness.auth.blockerRefs.length > 0
+        ? harness.auth.blockerRefs
+        : readinessState === "credentials_missing"
+          ? ["blocker.codex.credentials_missing"]
+          : ["blocker.codex.rate_limit_status_error"]
   const status = available
     ? "ready" as const
-    : rateLimits.status === "unavailable"
+    : harness.status === "unavailable" || rateLimits.status === "unavailable"
       ? "unavailable" as const
       : "error" as const
 
@@ -103,8 +115,10 @@ const codexStatusFromRateLimits = (
     capability: "codex_accounts",
     observedAt: new Date().toISOString(),
     reason: available
-      ? "Codex CLI account is signed in and rate-limit windows are available."
-      : rateLimits.error ?? "Codex account status is unavailable.",
+      ? "Codex CLI account is signed in, the harness is ready, and rate-limit windows are available."
+      : harness.available
+        ? rateLimits.error ?? "Codex account status is unavailable."
+        : harness.reason,
     status,
     accounts: [
       {
@@ -112,6 +126,7 @@ const codexStatusFromRateLimits = (
         accountRef: "default",
         credentialSource,
         homeRef: credentialSource === "CODEX_HOME" ? "env:CODEX_HOME" : "default:~/.codex",
+        homeRole: "main_user_codex_home",
         readiness: {
           state: readinessState,
           blockerRefs,
@@ -119,17 +134,38 @@ const codexStatusFromRateLimits = (
         rateLimits,
       },
     ],
+    harness,
     rateLimits,
   }
 }
 
+const unavailableRateLimits = (
+  error: string,
+): KhalaCodexRateLimitProviderStatus => ({
+  provider: "codex",
+  session: null,
+  weekly: null,
+  rateLimitResetCredits: null,
+  updatedAtIso: new Date().toISOString(),
+  error,
+  status: "unavailable",
+})
+
 export function createKhalaCodeDesktopRpcRequestHandlers(
   input: KhalaCodeDesktopRpcHandlersInput,
 ): KhalaCodeDesktopRPCSchema["requests"] {
+  const codexHarnessStatus = async (): Promise<KhalaCodeDesktopCodexHarnessStatus> =>
+    input.codexHarnessStatus?.() ??
+    inspectCodexHarnessStatus({ env: input.env as NodeJS.ProcessEnv })
+
   const codexAccountsStatus = async (): Promise<KhalaCodeDesktopCodexAccountsStatus> => {
+    const harness = await codexHarnessStatus()
+    if (!harness.available) {
+      return codexStatusFromRateLimits(unavailableRateLimits(harness.reason), harness, input.env)
+    }
     const rateLimits = await (input.codexRateLimitStatus?.() ??
       fetchKhalaCodexRateLimitStatus({ env: input.env as NodeJS.ProcessEnv }))
-    return codexStatusFromRateLimits(rateLimits, input.env)
+    return codexStatusFromRateLimits(rateLimits, harness, input.env)
   }
 
   return {
@@ -185,11 +221,23 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
         })),
       }
     },
+    async codexHarnessStatus() {
+      return codexHarnessStatus()
+    },
     async codingStatus() {
+      const harness = await codexHarnessStatus()
+      if (!harness.available) {
+        return runtimeStatus({
+          available: false,
+          capability: "coding",
+          reason: harness.reason,
+          status: harness.status,
+        })
+      }
       return runtimeStatus({
         available: true,
         capability: "coding",
-        reason: "Khala Code chat and owner-local tools are served by this desktop process.",
+        reason: "Khala Code coding is gated on the local Codex harness.",
         status: "ready",
       })
     },

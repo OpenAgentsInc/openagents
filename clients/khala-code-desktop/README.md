@@ -1,32 +1,47 @@
 # Khala Code Desktop
 
-Khala Code Desktop is the Electrobun chat surface for local coding work. The
-first screen is the chat transcript and composer; the Bun host owns model
-transport and native tool execution.
+Khala Code Desktop is the Electrobun wrapper for local Codex coding work. The
+default product path requires the `codex` CLI and a signed-in main Codex home.
+Khala adds the desktop shell, sidebar, Inbox, Fleet, Gym/proof panes, and Pylon
+swarm controls around that Codex harness.
 
 ## Backends
 
-The desktop host routes model traffic through the hosted OpenAgents cloud:
+The default harness is the user's local Codex install:
 
 ```sh
-OPENAGENTS_AGENT_TOKEN=... bun run dev
+npm install -g @openai/codex
+codex login
+bun run dev
 ```
 
-OpenRouter BYOK is passed to hosted Khala instead of being used as a local model
-backend. An account-attached OpenRouter key is used automatically by the hosted
-gateway. A request-specific key, when set, takes precedence for that request:
+Khala Code checks the Codex binary, version, main Codex home, and auth state
+before enabling the default coding harness. `CODEX_HOME` may point the main
+wrapper session at an explicit home; otherwise the normal `~/.codex` home is
+used. To use a non-`PATH` Codex binary, set `KHALA_CODE_CODEX_BINARY` or
+`KHALA_CODE_CODEX_COMMAND`.
+
+Fleet accounts are separate: Pylon/Khala worker accounts use isolated homes
+under the Pylon account directory. The desktop app must not run `codex login`
+against the user's default home automatically and must not reuse the main user
+home for worker accounts.
+
+The legacy hosted Khala/OpenRouter runtime is a fallback/prototype path, not the
+Codex-parity default. When it is explicitly enabled, OpenRouter BYOK is passed to
+hosted Khala instead of being used as a local model backend:
 
 ```sh
 OPENAGENTS_AGENT_TOKEN=... OPENROUTER_API_KEY=... bun run dev
 ```
 
-`OPENROUTER_API_KEY` alone is not enough: the desktop app cannot run the full
-Khala system locally. If `OPENAGENTS_AGENT_TOKEN` is missing, the chat box
-returns a setup message instead of pretending a model answered.
+`OPENROUTER_API_KEY` alone is not enough for the legacy hosted path.
 
 ## Tools
 
-All Khala tool presets are enabled in this desktop app by default:
+The Codex-parity path should use Codex app-server tools, approvals, sandboxing,
+MCP, plugins, skills, and session state. The current Khala tool presets remain
+available only for legacy/fallback and Khala swarm orchestration while the pivot
+lands:
 
 - workspace inspection and edits: `read`, `ls`, `glob`, `grep`, `edit`,
   `write`, `apply_patch`

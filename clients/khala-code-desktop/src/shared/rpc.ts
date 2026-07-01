@@ -96,19 +96,56 @@ export type KhalaCodeDesktopRuntimeStatus = {
   readonly ok: true
   readonly app: "Khala Code Desktop"
   readonly available: boolean
-  readonly capability: "codex_accounts" | "coding" | "pylon" | "token_accounting"
+  readonly capability: "codex_accounts" | "codex_harness" | "coding" | "pylon" | "token_accounting"
   readonly observedAt: string
   readonly reason: string
   readonly status: "error" | "not_configured" | "ready" | "unavailable"
 }
+
+export type KhalaCodeDesktopCodexHarnessStatus =
+  KhalaCodeDesktopRuntimeStatus & {
+    readonly capability: "codex_harness"
+    readonly binary: {
+      readonly command: string
+      readonly source:
+        | "PATH"
+        | "env:KHALA_CODE_CODEX_BINARY"
+        | "env:KHALA_CODE_CODEX_COMMAND"
+        | "input"
+      readonly available: boolean
+      readonly version: string | null
+      readonly error: string | null
+    }
+    readonly home: {
+      readonly path: string
+      readonly source: "default:~/.codex" | "env:CODEX_HOME" | "input"
+      readonly role: "main_user_codex_home"
+      readonly authPath: string
+      readonly fleetIsolation: "fleet_accounts_use_pylon_isolated_homes"
+    }
+    readonly auth: {
+      readonly state: "credentials_missing" | "error" | "invalid" | "ready"
+      readonly blockerRefs: readonly string[]
+      readonly accessTokenPresent: boolean
+      readonly accountIdPresent: boolean
+      readonly refreshTokenPresent: boolean
+      readonly error?: string
+    }
+    readonly signIn: {
+      readonly required: boolean
+      readonly command: "codex login"
+      readonly warning: string
+    }
+  }
 
 export type KhalaCodeDesktopCodexAccountStatus = {
   readonly provider: "codex"
   readonly accountRef: "default"
   readonly credentialSource: "CODEX_HOME" | "default_home"
   readonly homeRef: "env:CODEX_HOME" | "default:~/.codex"
+  readonly homeRole: "main_user_codex_home"
   readonly readiness: {
-    readonly state: "error" | "ready" | "credentials_missing"
+    readonly state: "error" | "ready" | "credentials_missing" | "invalid"
     readonly blockerRefs: readonly string[]
   }
   readonly rateLimits: KhalaCodexRateLimitProviderStatus
@@ -118,6 +155,7 @@ export type KhalaCodeDesktopCodexAccountsStatus =
   KhalaCodeDesktopRuntimeStatus & {
     readonly capability: "codex_accounts"
     readonly accounts: readonly KhalaCodeDesktopCodexAccountStatus[]
+    readonly harness: KhalaCodeDesktopCodexHarnessStatus
     readonly rateLimits: KhalaCodexRateLimitProviderStatus
   }
 
@@ -223,6 +261,7 @@ export type KhalaCodeDesktopRPCSchema = {
     appleFmReadiness(): Promise<KhalaAppleFmReadiness>
     codexAccountsStatus(): Promise<KhalaCodeDesktopCodexAccountsStatus>
     codexFleetStatus(): Promise<KhalaCodeDesktopFleetStatus>
+    codexHarnessStatus(): Promise<KhalaCodeDesktopCodexHarnessStatus>
     connectCodexAccount(accountRef: string): Promise<KhalaCodeDesktopConnectStart>
     openExternalUrl(url: string): Promise<boolean>
     removeCodexAccount(accountRef: string): Promise<KhalaCodeDesktopRemoveAccountResult>

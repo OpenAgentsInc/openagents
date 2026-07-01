@@ -62,6 +62,41 @@ describe("khala code desktop app shell", () => {
     expect(css).toContain(".khala-inbox-coverage-row[data-status=\"not_connected\"]")
 
     const projection = projectUnifiedInbox({
+      codexHarness: {
+        ok: true,
+        app: "Khala Code Desktop",
+        available: true,
+        capability: "codex_harness",
+        observedAt: "2026-06-30T00:00:00.000Z",
+        reason: "ready",
+        status: "ready",
+        binary: {
+          command: "codex",
+          source: "PATH",
+          available: true,
+          version: "codex-cli 1.2.3",
+          error: null,
+        },
+        home: {
+          path: "/tmp/codex-home",
+          source: "input",
+          role: "main_user_codex_home",
+          authPath: "/tmp/codex-home/auth.json",
+          fleetIsolation: "fleet_accounts_use_pylon_isolated_homes",
+        },
+        auth: {
+          state: "ready",
+          blockerRefs: [],
+          accessTokenPresent: true,
+          accountIdPresent: false,
+          refreshTokenPresent: false,
+        },
+        signIn: {
+          required: false,
+          command: "codex login",
+          warning: "fleet accounts stay isolated",
+        },
+      },
       fleet: {
         ok: false,
         observedAt: "2026-06-30T00:00:00.000Z",
@@ -149,9 +184,115 @@ describe("khala code desktop app shell", () => {
       resumeCommand: "khala closeout assignment.khala.demo --json",
     })
     expect(projection.coverage).toContainEqual({
+      source: "Codex harness",
+      status: "connected",
+      summary: "The main local Codex install and Codex home are ready for wrapper sessions.",
+    })
+    expect(projection.coverage).toContainEqual({
       source: "approval queue",
       status: "not_connected",
       summary: "Pylon permission prompts are not exposed through the desktop RPC yet.",
+    })
+  })
+
+  test("projects missing main Codex auth into the Unified Inbox", () => {
+    const baseFleet = {
+      ok: true,
+      observedAt: "2026-07-01T00:00:00.000Z",
+      pylon: {
+        status: "started" as const,
+        pylonRef: "pylon.local",
+        message: "Pylon ready",
+      },
+      availableCodexAssignments: 0,
+      maxCodexAssignments: 0,
+      tokenRate: {
+        activeAdjustedTokensPerMinute: null,
+        completedStatus: "not_measured" as const,
+        completedTokenRows: null,
+        completedTokensPerMinute: null,
+        inFlightTokens: null,
+        inFlightTokensPerMinute: null,
+        source: "unavailable" as const,
+        unavailableReason: null,
+      },
+      accounts: [],
+      activeAssignments: [],
+      processes: [],
+    }
+    const projection = projectUnifiedInbox({
+      codexHarness: {
+        ok: true,
+        app: "Khala Code Desktop",
+        available: false,
+        capability: "codex_harness",
+        observedAt: "2026-07-01T00:00:00.000Z",
+        reason: "Codex auth.json is missing. Run codex login intentionally in the main user home.",
+        status: "unavailable",
+        binary: {
+          command: "codex",
+          source: "PATH",
+          available: true,
+          version: "codex-cli 1.2.3",
+          error: null,
+        },
+        home: {
+          path: "/tmp/codex-home",
+          source: "input",
+          role: "main_user_codex_home",
+          authPath: "/tmp/codex-home/auth.json",
+          fleetIsolation: "fleet_accounts_use_pylon_isolated_homes",
+        },
+        auth: {
+          state: "credentials_missing",
+          blockerRefs: ["blocker.codex.credentials_missing"],
+          accessTokenPresent: false,
+          accountIdPresent: false,
+          refreshTokenPresent: false,
+          error: "Codex auth.json is missing.",
+        },
+        signIn: {
+          required: true,
+          command: "codex login",
+          warning: "fleet accounts stay isolated",
+        },
+      },
+      fleet: baseFleet,
+      pylon: {
+        ok: true,
+        app: "Khala Code Desktop",
+        available: true,
+        capability: "pylon",
+        observedAt: "2026-07-01T00:00:00.000Z",
+        reason: "Pylon ready",
+        status: "ready",
+      },
+      coding: {
+        ok: true,
+        app: "Khala Code Desktop",
+        available: false,
+        capability: "coding",
+        observedAt: "2026-07-01T00:00:00.000Z",
+        reason: "Codex auth.json is missing.",
+        status: "unavailable",
+      },
+      tokenAccounting: {
+        ok: true,
+        app: "Khala Code Desktop",
+        available: false,
+        capability: "token_accounting",
+        observedAt: "2026-07-01T00:00:00.000Z",
+        reason: "not configured",
+        status: "not_configured",
+      },
+    })
+
+    expect(projection.items.find(item => item.ref === "inbox.runtime.codex_harness.unavailable")).toMatchObject({
+      ref: "inbox.runtime.codex_harness.unavailable",
+      kind: "missing_credential",
+      title: "Codex setup required",
+      source: "runtime",
+      severity: "critical",
     })
   })
 

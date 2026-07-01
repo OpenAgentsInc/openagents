@@ -34,6 +34,11 @@ type FetchCall = {
   readonly url: string
 }
 
+type ChatMessageReplaceEvent = Extract<
+  KhalaCodeDesktopChatTurnEvent,
+  { readonly type: "message_replace" }
+>
+
 const tempDirs: string[] = []
 const khalaCodeDesktopRoot = fileURLToPath(new URL("..", import.meta.url))
 const disabledDefaultChatToolNames = [
@@ -676,7 +681,7 @@ describe("Khala Code desktop chat runtime", () => {
 
     const toolStart = events.find(event => event.type === "message_start" && event.message.role === "tool")
     const toolId = toolStart?.type === "message_start" ? toolStart.message.id : ""
-    const toolReplacements = events.filter(event =>
+    const toolReplacements = events.filter((event): event is ChatMessageReplaceEvent =>
       event.type === "message_replace" &&
       event.message.role === "tool" &&
       event.message.id === toolId

@@ -18,6 +18,16 @@ const fleetStatus = (
   },
   availableCodexAssignments: 1,
   maxCodexAssignments: 3,
+  tokenRate: {
+    activeAdjustedTokensPerMinute: null,
+    completedStatus: "not_measured",
+    completedTokenRows: null,
+    completedTokensPerMinute: null,
+    inFlightTokens: null,
+    inFlightTokensPerMinute: null,
+    source: "unavailable",
+    unavailableReason: null,
+  },
   accounts: [
     {
       accountRef: "codex",
@@ -25,6 +35,7 @@ const fleetStatus = (
       readiness: "ready",
       quotaState: "available",
       accountKey: "account_key_public",
+      capacity: null,
       email: "operator@example.com",
     },
     {
@@ -33,13 +44,22 @@ const fleetStatus = (
       readiness: "credentials_missing",
       quotaState: null,
       accountKey: null,
+      capacity: null,
       email: null,
     },
   ],
   activeAssignments: [
     {
       assignmentRef: "assignment.public.one",
+      elapsedMs: null,
       issueRef: "github.issue.openagents.7768",
+      tokenRate: {
+        source: "unavailable",
+        status: "not_measured",
+        tokenCountKind: null,
+        tokens: null,
+        tokensPerMinute: null,
+      },
       updatedAt: "2026-06-30T20:01:00.000Z",
     },
   ],
@@ -113,13 +133,22 @@ describe("Khala Code Fleet board projection", () => {
             readiness: "ready",
             quotaState: null,
             accountKey: "credential.provider.token",
+            capacity: null,
             email: "operator@example.com",
           },
         ],
         activeAssignments: [
           {
             assignmentRef: "raw_prompt.full",
+            elapsedMs: null,
             issueRef: "https://private.example/issue",
+            tokenRate: {
+              source: "unavailable",
+              status: "not_measured",
+              tokenCountKind: null,
+              tokens: null,
+              tokensPerMinute: null,
+            },
             updatedAt: "2026-06-30T20:01:00.000Z",
           },
         ],

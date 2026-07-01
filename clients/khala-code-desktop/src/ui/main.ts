@@ -90,6 +90,10 @@ const previewRpc = (): DesktopRpc => ({
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["codexFleetStatus"]>>
       >("codexFleetStatus"),
+    codexHarnessStatus: () =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["codexHarnessStatus"]>>
+      >("codexHarnessStatus"),
     codingStatus: () =>
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["codingStatus"]>>
@@ -1093,6 +1097,7 @@ const controls = {
   },
   codexAccountsStatus: () => rpc.request.codexAccountsStatus(),
   codexFleetStatus: () => rpc.request.codexFleetStatus(),
+  codexHarnessStatus: () => rpc.request.codexHarnessStatus(),
   codingStatus: () => rpc.request.codingStatus(),
   connectCodexAccount: (accountRef: string) =>
     rpc.request.connectCodexAccount(accountRef),
@@ -1202,6 +1207,7 @@ const inboxPanel =
     ? null
     : mountUnifiedInboxPanel(inboxPanelEl, {
         fetch: async () => ({
+          codexHarness: await controls.codexHarnessStatus(),
           fleet: await controls.codexFleetStatus(),
           pylon: await controls.pylonStatus(),
           coding: await controls.codingStatus(),

@@ -8,6 +8,7 @@ import type {
   KhalaCodexFleetCommandInput,
   KhalaCodexFleetCommandResult,
 } from "../src/bun/khala-codex-fleet-tools"
+import type { KhalaCodeDesktopCodexHarnessStatus } from "../src/shared/rpc"
 
 const tempDirs: string[] = []
 
@@ -63,6 +64,47 @@ function pylonArgs(input: KhalaCodexFleetCommandInput): readonly string[] {
   return index === -1 ? input.cmd : input.cmd.slice(index + 1)
 }
 
+function readyHarness(
+  input: Partial<KhalaCodeDesktopCodexHarnessStatus> = {},
+): KhalaCodeDesktopCodexHarnessStatus {
+  return {
+    ok: true,
+    app: "Khala Code Desktop",
+    available: true,
+    capability: "codex_harness",
+    observedAt: "2026-07-01T15:00:00.000Z",
+    reason: "ready",
+    status: "ready",
+    binary: {
+      command: "codex",
+      source: "PATH",
+      available: true,
+      version: "codex-cli 1.2.3",
+      error: null,
+    },
+    home: {
+      path: "/home/user/.codex",
+      source: "default:~/.codex",
+      role: "main_user_codex_home",
+      authPath: "/home/user/.codex/auth.json",
+      fleetIsolation: "fleet_accounts_use_pylon_isolated_homes",
+    },
+    auth: {
+      state: "ready",
+      blockerRefs: [],
+      accessTokenPresent: true,
+      accountIdPresent: false,
+      refreshTokenPresent: false,
+    },
+    signIn: {
+      required: false,
+      command: "codex login",
+      warning: "Khala Code never starts Codex login against the default home automatically; fleet accounts stay in isolated Pylon homes.",
+    },
+    ...input,
+  }
+}
+
 describe("Khala Code desktop RPC handlers", () => {
   test("answers native desktop status probes instead of falling through", async () => {
     const handlers = createKhalaCodeDesktopRpcRequestHandlers({
@@ -93,6 +135,7 @@ describe("Khala Code desktop RPC handlers", () => {
         error: null,
         status: "ok",
       }),
+      codexHarnessStatus: () => readyHarness(),
       env: {},
       onDeviceDeciderStatus: () => {
         throw new Error("not used")
@@ -103,6 +146,16 @@ describe("Khala Code desktop RPC handlers", () => {
     await expect(handlers.codingStatus()).resolves.toMatchObject({
       available: true,
       capability: "coding",
+      ok: true,
+      status: "ready",
+    })
+    await expect(handlers.codexHarnessStatus()).resolves.toMatchObject({
+      available: true,
+      capability: "codex_harness",
+      home: {
+        role: "main_user_codex_home",
+        fleetIsolation: "fleet_accounts_use_pylon_isolated_homes",
+      },
       ok: true,
       status: "ready",
     })
@@ -119,6 +172,7 @@ describe("Khala Code desktop RPC handlers", () => {
         {
           accountRef: "default",
           credentialSource: "default_home",
+          homeRole: "main_user_codex_home",
           provider: "codex",
           readiness: {
             state: "ready",
@@ -127,6 +181,10 @@ describe("Khala Code desktop RPC handlers", () => {
         },
       ],
       capability: "codex_accounts",
+      harness: {
+        capability: "codex_harness",
+        available: true,
+      },
       ok: true,
       rateLimits: {
         provider: "codex",
@@ -165,6 +223,15 @@ describe("Khala Code desktop RPC handlers", () => {
         error: null,
         status: "ok",
       }),
+      codexHarnessStatus: () => readyHarness({
+        home: {
+          path: "/tmp/codex-home",
+          source: "env:CODEX_HOME",
+          role: "main_user_codex_home",
+          authPath: "/tmp/codex-home/auth.json",
+          fleetIsolation: "fleet_accounts_use_pylon_isolated_homes",
+        },
+      }),
       consumeCodexRateLimitResetCredit: input => {
         expect(input.idempotencyKey).toBeTruthy()
         return "noCredit"
@@ -188,6 +255,60 @@ describe("Khala Code desktop RPC handlers", () => {
             homeRef: "env:CODEX_HOME",
           },
         ],
+      },
+    })
+  })
+
+  test("does not fetch rate limits when the Codex harness is not ready", async () => {
+    const blockedHarness = readyHarness({
+      available: false,
+      reason: "Codex auth.json is missing. Run codex login intentionally in the main user home.",
+      status: "unavailable",
+      auth: {
+        state: "credentials_missing",
+        blockerRefs: ["blocker.codex.credentials_missing"],
+        accessTokenPresent: false,
+        accountIdPresent: false,
+        refreshTokenPresent: false,
+        error: "Codex auth.json is missing.",
+      },
+      signIn: {
+        required: true,
+        command: "codex login",
+        warning: "Khala Code never starts Codex login against the default home automatically; fleet accounts stay in isolated Pylon homes.",
+      },
+    })
+    const handlers = createKhalaCodeDesktopRpcRequestHandlers({
+      appleFmReadiness: () => {
+        throw new Error("not used")
+      },
+      codexHarnessStatus: () => blockedHarness,
+      codexRateLimitStatus: () => {
+        throw new Error("rate limits should not be fetched")
+      },
+      env: {},
+      onDeviceDeciderStatus: () => {
+        throw new Error("not used")
+      },
+      workingDirectory: process.cwd(),
+    })
+
+    await expect(handlers.codingStatus()).resolves.toMatchObject({
+      available: false,
+      capability: "coding",
+      status: "unavailable",
+    })
+    await expect(handlers.codexAccountsStatus()).resolves.toMatchObject({
+      available: false,
+      status: "unavailable",
+      accounts: [{
+        readiness: {
+          state: "credentials_missing",
+          blockerRefs: ["blocker.codex.credentials_missing"],
+        },
+      }],
+      rateLimits: {
+        status: "unavailable",
       },
     })
   })
@@ -283,6 +404,7 @@ describe("Khala Code desktop RPC handlers", () => {
         throw new Error("not used")
       },
       codexFleetToolOptions: { runner },
+      codexHarnessStatus: () => readyHarness(),
       env: fixture.env,
       onDeviceDeciderStatus: () => {
         throw new Error("not used")

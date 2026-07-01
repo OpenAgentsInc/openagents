@@ -1,4 +1,5 @@
 import type {
+  KhalaCodeDesktopCodexHarnessStatus,
   KhalaCodeDesktopFleetStatus,
   KhalaCodeDesktopRuntimeStatus,
 } from "../shared/rpc"
@@ -50,6 +51,7 @@ export type UnifiedInboxProjection = Readonly<{
 }>
 
 export type UnifiedInboxSource = Readonly<{
+  codexHarness?: KhalaCodeDesktopCodexHarnessStatus
   fleet: KhalaCodeDesktopFleetStatus
   pylon: KhalaCodeDesktopRuntimeStatus
   coding: KhalaCodeDesktopRuntimeStatus
@@ -117,6 +119,21 @@ export const projectUnifiedInbox = (
 ): UnifiedInboxProjection => {
   const observedAt = source.fleet.observedAt
   const items: UnifiedInboxItem[] = []
+
+  if (source.codexHarness !== undefined && !source.codexHarness.available) {
+    items.push({
+      ref: "inbox.runtime.codex_harness.unavailable",
+      kind: source.codexHarness.auth.state === "credentials_missing"
+        ? "missing_credential"
+        : "run_blocked",
+      title: "Codex setup required",
+      summary: source.codexHarness.reason,
+      source: "runtime",
+      severity: "critical",
+      observedAt: source.codexHarness.observedAt,
+      actions: ["refresh"],
+    })
+  }
 
   if (!source.pylon.available || source.fleet.pylon.status === "unavailable") {
     items.push({
@@ -187,6 +204,13 @@ export const projectUnifiedInbox = (
   }
 
   const coverage = [
+    {
+      source: "Codex harness",
+      status: source.codexHarness?.available ? "connected" as const : "not_connected" as const,
+      summary: source.codexHarness?.available
+        ? "The main local Codex install and Codex home are ready for wrapper sessions."
+        : source.codexHarness?.reason ?? "Codex harness readiness has not been connected to this projection yet.",
+    },
     {
       source: "approval queue",
       status: "not_connected" as const,
