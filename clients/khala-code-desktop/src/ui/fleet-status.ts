@@ -3,6 +3,8 @@ import type {
   KhalaCodeDesktopFleetAccount,
   KhalaCodeDesktopFleetStatus,
 } from "../shared/rpc"
+import { buildKhalaFleetBoardProjection } from "./fleet-board-projection"
+import { renderKhalaFleetBoardHtml } from "./fleet-board-renderer"
 
 // Fleet status panel for Khala Code Desktop: current Codex fleet state — all
 // linked accounts (with signed-in email + readiness), local Pylon health +
@@ -149,6 +151,20 @@ const sectionHeader = (title: string, meta?: string): HTMLElement => {
   return header
 }
 
+const appendFleetBoard = (
+  container: HTMLElement,
+  data: KhalaCodeDesktopFleetStatus,
+): void => {
+  const projection = buildKhalaFleetBoardProjection({ status: data })
+  const template = document.createElement("template")
+  template.innerHTML = renderKhalaFleetBoardHtml(projection, {
+    reducedMotion:
+      typeof matchMedia === "function" &&
+      matchMedia("(prefers-reduced-motion: reduce)").matches,
+  }).html
+  container.append(template.content.cloneNode(true))
+}
+
 const accountCard = (
   account: KhalaCodeDesktopFleetAccount,
   handlers: Handlers,
@@ -243,6 +259,8 @@ const renderReady = (
     data.availableCodexAssignments === null || data.maxCodexAssignments === null
       ? null
       : `${data.availableCodexAssignments}/${data.maxCodexAssignments} Codex slots free`
+
+  appendFleetBoard(container, data)
 
   // Pylon
   const pylonSection = el("section", "khala-fleet-section")
