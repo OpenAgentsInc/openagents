@@ -24,6 +24,7 @@ const approvedExactRoutePaths = [
   '/api/public/product-promises',
   '/api/public/free-tier-data-sharing',
   '/api/public/product-promises/transitions',
+  '/api/public/product-promises/api.hosted_gemini.v1/readiness',
   '/api/public/product-promises/audit',
   '/api/public/metrics/accepted-outcomes-per-kwh',
   '/api/public/energy/flexible-load-proof',
