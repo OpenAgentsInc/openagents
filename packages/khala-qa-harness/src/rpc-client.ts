@@ -347,7 +347,7 @@ export class KhalaCodeRpcClient {
             method: "POST",
             headers: {
               "content-type": "application/json",
-              ...this.headers,
+              ...Object.fromEntries(new Headers(this.headers ?? {})),
             },
             body: JSON.stringify({ args: decodedArgs.args }),
           }),
