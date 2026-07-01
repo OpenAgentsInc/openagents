@@ -840,6 +840,30 @@ describe("Khala Code Codex fleet tools", () => {
     expect(calls.some(call => pylonArgs(call)[0] === "khala")).toBe(false)
   })
 
+  test("spawnCodexInstances rejects unsafe branch names before git ls-remote", async () => {
+    const fixture = await tempPylonFixture()
+    const calls: KhalaCodexFleetCommandInput[] = []
+    const runner = async (input: KhalaCodexFleetCommandInput): Promise<KhalaCodexFleetCommandResult> => {
+      calls.push(input)
+      return failed(`unexpected command: ${input.cmd.join(" ")}`)
+    }
+
+    await expect(spawnCodexInstances({
+      branch: "-upload-pack=evil",
+      claimRef: "claim.public.t4_2.branch_guard",
+      count: 1,
+      noRun: true,
+      prompt: "Implement public issue #7835.",
+      repo: "OpenAgentsInc/openagents",
+      verify: "command.public.pylon_khala.verify.d32c71ee8e1025e99460d008",
+    }, {
+      env: fixture.env,
+      runner,
+    })).rejects.toThrow(/safe GitHub branch name/)
+
+    expect(calls).toHaveLength(0)
+  })
+
   test("spawnCodexInstances heartbeats and omits the display-only default account ref", async () => {
     const fixture = await tempPylonFixture()
     const calls: KhalaCodexFleetCommandInput[] = []

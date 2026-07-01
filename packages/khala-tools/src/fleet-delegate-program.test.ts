@@ -339,6 +339,33 @@ describe("khala.fleet.delegate deterministic program", () => {
       })
     })
 
+    test("objective template does not duplicate an already-rendered discipline block", () => {
+      const parameters = admittedParameters({
+        objectiveTemplate: [
+          "{objective}",
+          "",
+          "Public issue: #{issue}.",
+          "Claim: {claimRef}.",
+          "Repository: {repo}.",
+          "Base branch: {branch} at {commit}.",
+          "Verification command ref: {verify}.",
+        ].join("\n"),
+      })
+
+      const prompt = renderKhalaFleetDelegationObjective({
+        branch: "main",
+        claimRef: "claim.public.t4_2.dedupe",
+        commit: "0123456789abcdef0123456789abcdef01234567",
+        issue: 7835,
+        objective: "Implement T4.2 prompt discipline.",
+        repo: "OpenAgentsInc/openagents",
+        verify: "command.public.pylon_khala.verify.d32c71ee8e1025e99460d008",
+      }, parameters)
+
+      expect(prompt.match(/Claim: claim\.public\.t4_2\.dedupe\./gu)).toHaveLength(1)
+      expect(prompt.match(/Verification command ref:/gu)).toHaveLength(1)
+    })
+
     test("env admission decodes a bounded parameter set and rejects unsafe text", () => {
       const parameters = admittedParameters({
         advertiseCapacity: { perAccountConcurrency: 4 },

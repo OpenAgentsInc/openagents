@@ -1739,6 +1739,7 @@ async function resolveRealWorkCommitPin(
   if (input.fixture) return input
   if (input.repo === undefined || input.verify === undefined || input.claimRef === undefined) return input
   const branch = input.branch ?? "main"
+  validateGithubBranchName(branch)
   const resolved = await resolveGithubBranchTip({
     branch,
     env: options.env,
@@ -1787,6 +1788,29 @@ function githubRemoteUrl(repo: string): string {
     throw new Error("codex_spawn repo must be owner/repo or a public GitHub URL")
   }
   return `https://github.com/${normalized}.git`
+}
+
+function validateGithubBranchName(branch: string): void {
+  const trimmed = branch.trim()
+  const components = trimmed.split("/")
+  if (
+    trimmed.length === 0 ||
+    trimmed.startsWith("-") ||
+    trimmed.startsWith("/") ||
+    trimmed.endsWith("/") ||
+    trimmed.endsWith(".") ||
+    trimmed.includes("..") ||
+    trimmed.includes("@{") ||
+    trimmed.includes("\\") ||
+    !/^[A-Za-z0-9._/-]+$/u.test(trimmed) ||
+    components.some(component =>
+      component.length === 0 ||
+      component.startsWith(".") ||
+      component.endsWith(".lock")
+    )
+  ) {
+    throw new Error("codex_spawn branch must be a safe GitHub branch name")
+  }
 }
 
 function parseGitLsRemoteCommit(stdout: string, ref: string): string | null {

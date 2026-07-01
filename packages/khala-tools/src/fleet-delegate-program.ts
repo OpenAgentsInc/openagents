@@ -351,6 +351,7 @@ export function renderKhalaFleetDelegationObjective(
 
   const base = rendered.length === 0 ? objective : rendered
   if (input.claimRef === undefined) return base
+  if (renderedContainsKhalaFleetDelegationDiscipline(base)) return base
   return `${base}\n\n${renderKhalaFleetDelegationDiscipline(input)}`
 }
 
@@ -396,6 +397,12 @@ function renderKhalaFleetDelegationDiscipline(input: Readonly<{
       : `Open a ready non-draft PR for this claim, include "Closes #${input.issue}" in the PR body, and do not merge it.`,
     "Use a task branch name that clearly identifies the issue and claim.",
   ].join("\n")
+}
+
+function renderedContainsKhalaFleetDelegationDiscipline(value: string): boolean {
+  return /\bClaim:\s+\S+/u.test(value) &&
+    /\bBase branch:\s+\S+/u.test(value) &&
+    /\bVerification command ref:\s+\S+/u.test(value)
 }
 
 export const runKhalaFleetDelegateProgram = (

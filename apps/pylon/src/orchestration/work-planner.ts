@@ -390,7 +390,8 @@ export const buildWorkPlannerRealWorkDispatch = (
     throw new Error("real-work dispatch requires a GitHub repo and issue/PR number from planner output")
   }
   const branch = options.branch?.trim() || "main"
-  const objective = (options.objective ?? `Implement public issue #${unit.number}: ${unit.title}`).trim()
+  const title = escapePromptLine(unit.title)
+  const objective = (options.objective ?? `Implement public issue #${unit.number}: ${title}`).trim()
   return {
     branch,
     claimRef: options.claimRef,
@@ -410,4 +411,9 @@ export const buildWorkPlannerRealWorkDispatch = (
     repo: unit.repo,
     verify: options.verify,
   }
+}
+
+const escapePromptLine = (value: string): string => {
+  const singleLine = value.replace(/[\r\n\t]+/gu, " ").replace(/\s+/gu, " ").trim()
+  return JSON.stringify(singleLine).slice(1, -1)
 }

@@ -1117,7 +1117,159 @@ describe("Khala Code desktop RPC handlers", () => {
     await expect(handlers.codexFleetDelegateRun({
       mode: "real_work",
       objective: "Missing repo pins should never dispatch.",
-    })).rejects.toThrow("requires repo, commit, and verify pins")
+    })).rejects.toThrow("requires repo, claimRef, commit, and verify pins")
+  })
+
+  test("runs real-work fleet delegate RPC with claim and repository pins", async () => {
+    const fixture = await tempPylonFixture()
+    const liveCommit = "0123456789abcdef0123456789abcdef01234567"
+    const calls: KhalaCodexFleetCommandInput[] = []
+    const runner = async (input: KhalaCodexFleetCommandInput): Promise<KhalaCodexFleetCommandResult> => {
+      calls.push(input)
+      if (input.cmd[0] === "git" && input.cmd[1] === "ls-remote") {
+        expect(input.cmd).toEqual([
+          "git",
+          "ls-remote",
+          "https://github.com/OpenAgentsInc/openagents.git",
+          "refs/heads/main",
+        ])
+        return ok(`${liveCommit}\trefs/heads/main\n`)
+      }
+      const args = pylonArgs(input)
+      const joined = args.join(" ")
+      if (joined === "provider go-online --json") {
+        return ok({
+          ok: true,
+          ownCapacityDispatch: {
+            availableCodexAssignments: 1,
+            codexAccounts: [{
+              accountKey: "4db4cc18ebc55f39fb4da894",
+              available: 1,
+              busy: 0,
+              queued: 0,
+              ready: 1,
+            }],
+            maxCodexAssignments: 1,
+          },
+          pylonRef: "pylon.local.real_work",
+        })
+      }
+      if (joined === "codex accounts list --json") {
+        return ok({
+          accounts: [{
+            accountRef: "codex-worker",
+            accountRefHash: "account.pylon.codex.4db4cc18ebc55f39fb4da894",
+            homeState: "present",
+            provider: "codex",
+            readiness: { state: "ready" },
+          }],
+          schema: "openagents.pylon.accounts_list.v0.3",
+        })
+      }
+      if (joined === "accounts status --provider codex --json") {
+        return ok({
+          accounts: [],
+          schema: "openagents.pylon.accounts_status.v0.1",
+        })
+      }
+      if (joined === "presence heartbeat --base-url https://openagents.com --json") {
+        return ok({
+          heartbeatRef: "heartbeat.pylon.local.real_work.1",
+          pylonRef: "pylon.local.real_work",
+        })
+      }
+      if (joined === "khala apm --base-url https://openagents.com --json") {
+        return ok({
+          active: { serverAssignmentCount: 0, serverAssignments: [] },
+          counted: { completedTokenRows: 0, completedTokensPerMinute: 0 },
+          schema: "openagents.pylon.khala_apm.v0.1",
+        })
+      }
+      if (args[0] === "khala" && args[1] === "spawn") {
+        expect(args).toContain("--repo")
+        expect(args).toContain("OpenAgentsInc/openagents")
+        expect(args).toContain("--commit")
+        expect(args).toContain(liveCommit)
+        expect(args).toContain("--verify")
+        expect(args).toContain("command.public.pylon_khala.verify.d32c71ee8e1025e99460d008")
+        expect(args).not.toContain("--fixture")
+        const objective = args[args.indexOf("--objective") + 1] ?? ""
+        expect(objective).toContain("Ship the pinned public fix.")
+        expect(objective).toContain("Claim: claim.public.t4_2.rpc_real_work.")
+        return ok({
+          aggregate: {
+            acceptedCount: 1,
+            assignmentRefs: ["assignment.public.codex_agent_task.real_work"],
+            durableRequestIds: ["durable.public.real_work"],
+            ownerOnlyRawEventCount: 1,
+            ownerOnlyTraceCount: 1,
+            totalTokenRows: 1,
+            totalVerifiedTokens: 121,
+          },
+          counter: { expectedMinimumDelta: 0, state: "not_checked" },
+          ok: true,
+          plan: {
+            requestedCount: 1,
+            slots: [{ account: { accountRef: "codex-worker" }, slotIndex: 0 }],
+            targetPylonRef: "pylon.local.real_work",
+          },
+          results: [{
+            assignmentRef: "assignment.public.codex_agent_task.real_work",
+            blockerRefs: [],
+            closeoutStatus: "accepted",
+            ok: true,
+            proof: { rawEventCount: 1, tokenRows: 1, totalTokens: 121, traceCount: 1 },
+            runAccepted: true,
+            slotIndex: 0,
+            state: "completed",
+          }],
+          schema: "openagents.pylon.khala_spawn_run.v0.1",
+        })
+      }
+      return failed(`unexpected command: ${joined}`)
+    }
+
+    const handlers = createKhalaCodeDesktopRpcRequestHandlers({
+      appleFmReadiness: () => {
+        throw new Error("not used")
+      },
+      codexFleetToolOptions: { runner },
+      codexHarnessStatus: () => readyHarness(),
+      env: fixture.env,
+      onDeviceDeciderStatus: () => {
+        throw new Error("not used")
+      },
+      workingDirectory: process.cwd(),
+    })
+
+    const result = await handlers.codexFleetDelegateRun({
+      branch: "main",
+      claimRef: "claim.public.t4_2.rpc_real_work",
+      commit: liveCommit,
+      count: 1,
+      mode: "real_work",
+      objective: "Ship the pinned public fix.",
+      repo: "OpenAgentsInc/openagents",
+      verify: "command.public.pylon_khala.verify.d32c71ee8e1025e99460d008",
+    })
+
+    expect(result).toMatchObject({
+      acceptedCount: 1,
+      delegateStatus: "completed",
+      mode: "real_work",
+      ok: true,
+      results: [{
+        assignmentRef: "assignment.public.codex_agent_task.real_work",
+        status: "accepted",
+        tokensVerified: 121,
+      }],
+      validation: {
+        fixture: false,
+        repoPinsComplete: true,
+      },
+    })
+    expect(calls.findIndex(call => call.cmd[0] === "git" && call.cmd[1] === "ls-remote"))
+      .toBeLessThan(calls.findIndex(call => pylonArgs(call)[0] === "khala" && pylonArgs(call)[1] === "spawn"))
   })
 
   test("lists Codex slash commands with desktop availability rules", async () => {
