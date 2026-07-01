@@ -611,9 +611,14 @@ const virtualHeadProjectionRef = (input: { repo: string; branch: string; taskId:
   return `virtual-head.${digest}`
 }
 
-const isSqliteUniqueConstraintError = (error: unknown): boolean =>
+// Only the live-claim-per-unit index may translate to a "unit busy" null;
+// any other constraint failure (e.g. a claimRef primary-key collision) is a
+// caller bug and must surface, not masquerade as contention.
+const isLiveClaimUniqueConstraintError = (error: unknown): boolean =>
   error instanceof Error &&
-  (error.message.includes("UNIQUE constraint failed") || error.message.includes("constraint failed"))
+  error.message.includes("UNIQUE constraint failed") &&
+  (error.message.includes("idx_pylon_orchestration_work_claims_live_unit") ||
+    error.message.includes("pylon_orchestration_work_claims.work_unit_ref"))
 
 export class PylonOrchestrationStore {
   constructor(private readonly db: SqliteDatabase) {}
@@ -842,7 +847,7 @@ export class PylonOrchestrationStore {
       this.db.run("COMMIT")
     } catch (error) {
       this.db.run("ROLLBACK")
-      if (isSqliteUniqueConstraintError(error)) return null
+      if (isLiveClaimUniqueConstraintError(error)) return null
       throw error
     }
     return this.getWorkClaim(claim.claimRef)
