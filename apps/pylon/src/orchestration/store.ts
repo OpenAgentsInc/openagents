@@ -112,6 +112,16 @@ export type OrchestrationMessageKind =
   | "escalation"
   | "decision_gate"
 
+export type OrchestrationMessage = {
+  id: string
+  threadId: string
+  taskId: string | null
+  dispatchContextId: string | null
+  kind: OrchestrationMessageKind
+  body: string
+  createdAt: string
+}
+
 export type CreateTaskInput = {
   id: string
   parentId?: string | null
@@ -131,6 +141,25 @@ export type CreateDispatchContextInput = {
   maxConcurrentSlots?: number
   lastHeartbeatAt?: Date | null
   baseBehindBy?: number
+  now?: Date
+}
+
+export type RecordWorkerHeartbeatInput = {
+  contextId: string
+  taskId?: string | null
+  at?: Date
+  baseBehindBy?: number
+  status?: DispatchContextStatus
+  body?: string
+}
+
+export type RecordWorkerDoneInput = {
+  contextId: string
+  taskId: string
+  status: Extract<OrchestrationTaskStatus, "completed" | "failed" | "blocked">
+  result?: string | null
+  body?: string
+  maxFailures?: number
   now?: Date
 }
 
@@ -209,6 +238,16 @@ type VirtualHeadRow = {
   updated_at: string
 }
 
+type MessageRow = {
+  id: string
+  thread_id: string
+  task_id: string | null
+  dispatch_context_id: string | null
+  kind: OrchestrationMessageKind
+  body: string
+  created_at: string
+}
+
 const taskFromRow = (row: TaskRow): OrchestrationTask => ({
   id: row.id,
   parentId: row.parent_id,
@@ -265,6 +304,16 @@ const virtualHeadFromRow = (row: VirtualHeadRow): VirtualHead => ({
   pendingTaskIds: parsePendingTaskIds(row.pending_task_ids_json),
   createdAt: row.created_at,
   updatedAt: row.updated_at,
+})
+
+const messageFromRow = (row: MessageRow): OrchestrationMessage => ({
+  id: row.id,
+  threadId: row.thread_id,
+  taskId: row.task_id,
+  dispatchContextId: row.dispatch_context_id,
+  kind: row.kind,
+  body: row.body,
+  createdAt: row.created_at,
 })
 
 const virtualHeadProjectionRef = (input: { repo: string; branch: string; taskId: string; branchFrom: string }): string => {
@@ -477,6 +526,43 @@ export class PylonOrchestrationStore {
     return this.getDispatchContext(id) ?? current
   }
 
+  recordWorkerHeartbeat(input: RecordWorkerHeartbeatInput): OrchestrationMessage {
+    const at = input.at ?? new Date()
+    const context = this.getDispatchContext(input.contextId)
+    if (context === null) throw new Error(`unknown dispatch context: ${input.contextId}`)
+    const taskId = input.taskId ?? context.currentTaskId
+    const task = taskId === null ? null : this.getTask(taskId)
+    const threadId = task?.threadId ?? taskId ?? context.id
+    const body = input.body ?? `heartbeat ${context.assigneeHandle}${taskId === null ? "" : ` on ${taskId}`}`
+    const id = `message.${threadId}.${context.id}.heartbeat.${at.getTime()}`
+
+    this.db.run("BEGIN IMMEDIATE")
+    try {
+      this.recordHeartbeat(input.contextId, {
+        at,
+        ...(input.baseBehindBy === undefined ? {} : { baseBehindBy: input.baseBehindBy }),
+        ...(input.status === undefined ? {} : { status: input.status }),
+      })
+      this.appendMessage({
+        id,
+        threadId,
+        taskId,
+        dispatchContextId: context.id,
+        kind: "heartbeat",
+        body,
+        now: at,
+      })
+      this.db.run("COMMIT")
+    } catch (error) {
+      this.db.run("ROLLBACK")
+      throw error
+    }
+
+    const message = this.getMessage(id)
+    if (message === null) throw new Error(`failed to record orchestration heartbeat message ${id}`)
+    return message
+  }
+
   markDispatched(taskId: string, contextId: string, now: Date = new Date()): void {
     const at = iso(now)
     this.db.run("BEGIN IMMEDIATE")
@@ -642,6 +728,76 @@ export class PylonOrchestrationStore {
     return this.getDispatchContext(id) ?? current
   }
 
+  recordWorkerDone(input: RecordWorkerDoneInput): DispatchContext {
+    const now = input.now ?? new Date()
+    const at = iso(now)
+    const task = this.getTask(input.taskId)
+    if (task === null) throw new Error(`unknown orchestration task: ${input.taskId}`)
+    const context = this.getDispatchContext(input.contextId)
+    if (context === null) throw new Error(`unknown dispatch context: ${input.contextId}`)
+    if (context.currentTaskId !== input.taskId) {
+      throw new Error(`dispatch context ${input.contextId} is not assigned to task ${input.taskId}`)
+    }
+
+    const maxFailures = input.maxFailures ?? 3
+    const failureCount = input.status === "failed" ? context.failureCount + 1 : 0
+    const contextStatus: DispatchContextStatus =
+      input.status === "failed" && failureCount >= maxFailures ? "circuit_broken" : "idle"
+    const body = input.body ?? `worker_done ${input.taskId} ${input.status}`
+
+    this.db.run("BEGIN IMMEDIATE")
+    try {
+      this.db
+        .query(`
+          UPDATE pylon_orchestration_tasks
+             SET status = $status,
+                 result_json = $result,
+                 updated_at = $now
+           WHERE id = $taskId
+        `)
+        .run({
+          $taskId: input.taskId,
+          $status: input.status,
+          $result: input.result ?? null,
+          $now: at,
+        })
+      this.db
+        .query(`
+          UPDATE pylon_orchestration_dispatch_contexts
+             SET status = $contextStatus,
+                 current_task_id = NULL,
+                 failure_count = $failureCount,
+                 updated_at = $now
+           WHERE id = $contextId
+        `)
+        .run({
+          $contextId: input.contextId,
+          $contextStatus: contextStatus,
+          $failureCount: failureCount,
+          $now: at,
+        })
+      this.releaseVirtualHeadTask(input.taskId, now)
+      this.appendMessage({
+        id: `message.${input.taskId}.${input.contextId}.worker_done.${now.getTime()}`,
+        threadId: task.threadId,
+        taskId: input.taskId,
+        dispatchContextId: input.contextId,
+        kind: "worker_done",
+        body,
+        now,
+      })
+      this.db.run("COMMIT")
+    } catch (error) {
+      this.db.run("ROLLBACK")
+      throw error
+    }
+
+    if (input.status === "completed") {
+      this.promoteReadyTasks(now)
+    }
+    return this.getDispatchContext(input.contextId) ?? context
+  }
+
   appendMessage(input: {
     id: string
     threadId: string
@@ -667,6 +823,22 @@ export class PylonOrchestrationStore {
         $body: input.body,
         $createdAt: iso(input.now),
       })
+  }
+
+  getMessage(id: string): OrchestrationMessage | null {
+    const row = this.db
+      .query("SELECT * FROM pylon_orchestration_messages WHERE id = $id")
+      .get({ $id: id }) as MessageRow | null
+    return row === null ? null : messageFromRow(row)
+  }
+
+  listMessages(threadId?: string): OrchestrationMessage[] {
+    const rows = threadId === undefined
+      ? this.db.query("SELECT * FROM pylon_orchestration_messages ORDER BY created_at ASC, id ASC").all()
+      : this.db
+        .query("SELECT * FROM pylon_orchestration_messages WHERE thread_id = $threadId ORDER BY created_at ASC, id ASC")
+        .all({ $threadId: threadId })
+    return (rows as MessageRow[]).map(messageFromRow)
   }
 
   publicSnapshot(): { tasks: PublicOrchestrationTask[]; dispatchContexts: PublicDispatchContext[] } {
