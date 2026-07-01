@@ -2067,10 +2067,8 @@ const setActiveView = (value: string): void => {
 
 if (sidebarNavRoot !== null) {
   mountKhalaCodeSidebar(sidebarNavRoot, {
-    fetchFleet: () => controls.codexFleetStatus(),
     selectedValue: initialView,
     onActivate: value => setActiveView(value),
-    onOpenFleet: showFleetPanel,
   })
 }
 setActiveView(initialView)

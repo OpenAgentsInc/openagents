@@ -1031,191 +1031,6 @@ button {
   gap: 0.42rem;
   width: 100%;
 }
-.khala-code-fleet-summary {
-  display: grid;
-  width: 100%;
-  gap: 0.32rem;
-  margin-top: 0.75rem;
-}
-.khala-code-fleet-strip,
-.khala-code-fleet-session {
-  width: 3.6rem;
-  margin-inline: auto;
-  border: 1px solid color-mix(in srgb, var(--oa-color-khala-energy-cyan) 22%, var(--oa-color-component-border));
-  border-radius: 0.2rem;
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--oa-color-khala-surface-raised) 70%, transparent), color-mix(in srgb, var(--oa-color-khala-void) 76%, transparent));
-  color: var(--oa-color-component-text);
-  cursor: pointer;
-  font: inherit;
-  transition:
-    background-color 140ms ease-out,
-    border-color 140ms ease-out,
-    color 140ms ease-out,
-    filter 140ms ease-out;
-}
-.khala-code-fleet-strip {
-  display: grid;
-  min-height: 4.9rem;
-  padding: 0.34rem 0.26rem 0.28rem;
-  gap: 0.26rem;
-}
-.khala-code-fleet-strip:hover,
-.khala-code-fleet-strip:focus-visible,
-.khala-code-fleet-session:hover,
-.khala-code-fleet-session:focus-visible {
-  border-color: color-mix(in srgb, var(--oa-color-khala-energy-cyan) 66%, var(--oa-color-component-border));
-  color: var(--oa-color-khala-text-bright);
-  outline: none;
-  filter: brightness(1.12);
-}
-.khala-code-fleet-summary[data-active="true"] .khala-code-fleet-strip {
-  border-color: color-mix(in srgb, var(--oa-color-khala-energy-cyan) 76%, var(--oa-color-component-border));
-  background:
-    radial-gradient(circle at 50% 8%, color-mix(in srgb, var(--oa-color-khala-energy-cyan) 18%, transparent), transparent 48%),
-    linear-gradient(180deg, color-mix(in srgb, var(--oa-color-khala-surface-active) 88%, transparent), color-mix(in srgb, var(--oa-color-khala-void) 74%, transparent));
-}
-.khala-code-fleet-header {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.2rem;
-}
-.khala-code-fleet-kicker {
-  min-width: 0;
-  overflow: hidden;
-  color: color-mix(in srgb, var(--oa-color-component-text) 60%, transparent);
-  font-family: var(--oa-font-code);
-  font-size: 0.48rem;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  line-height: 1;
-  text-overflow: ellipsis;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-.khala-code-fleet-status {
-  flex: none;
-  width: 0.34rem;
-  height: 0.34rem;
-  border-radius: 999px;
-  background: var(--oa-color-khala-energy-cyan);
-  box-shadow: 0 0 0.55rem color-mix(in srgb, var(--oa-color-khala-energy-cyan) 44%, transparent);
-}
-.khala-code-fleet-summary[data-tone="degraded"] .khala-code-fleet-status {
-  background: var(--oa-color-khala-energy-soft);
-  box-shadow: 0 0 0.55rem color-mix(in srgb, var(--oa-color-khala-energy-soft) 42%, transparent);
-}
-.khala-code-fleet-summary[data-tone="offline"] .khala-code-fleet-status,
-.khala-code-fleet-summary[data-phase="error"] .khala-code-fleet-status {
-  background: var(--oa-color-khala-danger-strong);
-  box-shadow: 0 0 0.55rem color-mix(in srgb, var(--oa-color-khala-danger-strong) 42%, transparent);
-}
-.khala-code-fleet-metrics {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.18rem;
-}
-.khala-code-fleet-metric {
-  display: grid;
-  min-width: 0;
-  min-height: 1.22rem;
-  align-content: center;
-  padding: 0.12rem 0.16rem;
-  border: 1px solid color-mix(in srgb, var(--oa-color-khala-text-muted) 12%, transparent);
-  background: color-mix(in srgb, var(--oa-color-khala-void) 34%, transparent);
-}
-.khala-code-fleet-metric[data-state="alert"] {
-  border-color: color-mix(in srgb, var(--oa-color-khala-danger-strong) 54%, transparent);
-  color: var(--oa-color-khala-danger-text);
-}
-.khala-code-fleet-metric[data-state="muted"] {
-  color: color-mix(in srgb, var(--oa-color-component-text) 58%, transparent);
-}
-.khala-code-fleet-value,
-.khala-code-fleet-label {
-  min-width: 0;
-  overflow: hidden;
-  text-align: center;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.khala-code-fleet-value {
-  font-family: var(--oa-font-code);
-  font-size: 0.64rem;
-  font-weight: 800;
-  line-height: 1;
-}
-.khala-code-fleet-label {
-  color: color-mix(in srgb, var(--oa-color-component-text) 48%, transparent);
-  font-size: 0.42rem;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  line-height: 1.2;
-  text-transform: uppercase;
-}
-.khala-code-fleet-sessions {
-  display: grid;
-  width: 3.6rem;
-  min-width: 0;
-  gap: 0.18rem;
-  margin-inline: auto;
-}
-.khala-code-fleet-session {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  min-width: 0;
-  height: 1.55rem;
-  padding: 0.13rem 0.24rem;
-  text-align: left;
-}
-.khala-code-fleet-session[data-state="blocked"] {
-  border-color: color-mix(in srgb, var(--oa-color-khala-danger-strong) 52%, var(--oa-color-component-border));
-  color: var(--oa-color-khala-danger-text);
-}
-.khala-code-fleet-session[data-state="review"] {
-  border-color: color-mix(in srgb, var(--oa-color-khala-energy-soft) 58%, var(--oa-color-component-border));
-  color: var(--oa-color-khala-energy-text-strong);
-}
-.khala-code-fleet-session-label,
-.khala-code-fleet-session-state,
-.khala-code-fleet-empty {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.khala-code-fleet-session-label {
-  font-family: var(--oa-font-code);
-  font-size: 0.58rem;
-  font-weight: 800;
-  line-height: 1;
-}
-.khala-code-fleet-session-state {
-  color: color-mix(in srgb, var(--oa-color-component-text) 52%, transparent);
-  font-size: 0.44rem;
-  line-height: 1.1;
-  text-transform: uppercase;
-}
-.khala-code-fleet-session-overflow,
-.khala-code-fleet-empty {
-  display: grid;
-  place-items: center;
-  min-height: 1.2rem;
-  color: color-mix(in srgb, var(--oa-color-component-text) 48%, transparent);
-  font-family: var(--oa-font-code);
-  font-size: 0.54rem;
-  font-weight: 800;
-  text-transform: uppercase;
-}
-.khala-code-fleet-empty {
-  width: 3.6rem;
-  margin-inline: auto;
-  border: 1px solid color-mix(in srgb, var(--oa-color-khala-text-muted) 12%, transparent);
-  border-radius: 0.2rem;
-  background: color-mix(in srgb, var(--oa-color-khala-void) 28%, transparent);
-}
 .khala-code-hotbar-slot {
   position: relative;
   display: grid;
@@ -1273,13 +1088,13 @@ button {
   }
 }
 .khala-code-hotbar-icon {
-  width: 1.1rem;
-  height: 1.1rem;
+  width: 1.3rem;
+  height: 1.3rem;
   color: currentColor;
 }
 .khala-thread-sidebar-icon {
-  width: 1.1rem;
-  height: 1.1rem;
+  width: 1.25rem;
+  height: 1.25rem;
   color: currentColor;
 }
 .khala-code-hotbar-key {
