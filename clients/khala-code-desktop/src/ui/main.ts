@@ -112,6 +112,10 @@ const previewRpc = (): DesktopRpc => ({
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["codexHarnessStatus"]>>
       >("codexHarnessStatus"),
+    codexApprovalRespond: request =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["codexApprovalRespond"]>>
+      >("codexApprovalRespond", request),
     codexThreadCompact: request =>
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["codexThreadCompact"]>>
@@ -928,6 +932,50 @@ function applyChatTurnEvent(event: KhalaCodeDesktopChatTurnEvent): void {
   }
 }
 
+const parseDatasetJson = <T>(value: string | undefined): T | undefined => {
+  if (value === undefined || value.length === 0) return undefined
+  try {
+    return JSON.parse(value) as T
+  } catch {
+    return undefined
+  }
+}
+
+const respondToCodexApproval = async (button: HTMLButtonElement): Promise<void> => {
+  const requestId = parseDatasetJson<Parameters<DesktopRpcRequests["codexApprovalRespond"]>[0]["requestId"]>(
+    button.dataset.codexApprovalRequestId,
+  )
+  const method = button.dataset.codexApprovalMethod as Parameters<DesktopRpcRequests["codexApprovalRespond"]>[0]["method"] | undefined
+  const action = button.dataset.codexApprovalAction as Parameters<DesktopRpcRequests["codexApprovalRespond"]>[0]["action"] | undefined
+  if (requestId === undefined || method === undefined || action === undefined) return
+
+  button.disabled = true
+  const execpolicyAmendment = parseDatasetJson<readonly string[]>(
+    button.dataset.codexApprovalExecpolicyAmendment,
+  )
+  const networkPolicyAmendment = parseDatasetJson<
+    Parameters<DesktopRpcRequests["codexApprovalRespond"]>[0]["networkPolicyAmendment"]
+  >(button.dataset.codexApprovalNetworkPolicyAmendment)
+  const permissions = parseDatasetJson<
+    Parameters<DesktopRpcRequests["codexApprovalRespond"]>[0]["permissions"]
+  >(button.dataset.codexApprovalPermissions)
+  const result = await rpc.request.codexApprovalRespond({
+    action,
+    method,
+    requestId,
+    ...(execpolicyAmendment === undefined ? {} : { execpolicyAmendment }),
+    ...(networkPolicyAmendment === undefined ? {} : { networkPolicyAmendment }),
+    ...(permissions === undefined ? {} : { permissions }),
+  })
+  appendMessages([{
+    body: result.ok
+      ? `Sent Codex approval decision: ${action}.`
+      : `Codex approval decision failed: ${result.error ?? "unknown error"}`,
+    id: nextMessageId("system"),
+    role: "system",
+  }])
+}
+
 const attachmentSummaryForSubmit = (
   attachments: readonly ComposerAttachment[],
 ): string => {
@@ -1319,6 +1367,15 @@ for (const target of [composerForm, composerRail]) {
 }
 
 window.addEventListener("resize", resizeComposerHud)
+messageList.addEventListener("click", event => {
+  const target = event.target
+  if (!(target instanceof Element)) return
+  const button = target.closest<HTMLButtonElement>(".codex-approval-button")
+  if (button === null) return
+  event.preventDefault()
+  event.stopPropagation()
+  void respondToCodexApproval(button)
+})
 messageList.addEventListener("scroll", () => {
   transcriptPinnedToEnd = isNearTranscriptEnd()
 }, { passive: true })
@@ -1345,6 +1402,8 @@ const controls = {
   codexAppServerStop: () => rpc.request.codexAppServerStop(),
   codexFleetStatus: () => rpc.request.codexFleetStatus(),
   codexHarnessStatus: () => rpc.request.codexHarnessStatus(),
+  codexApprovalRespond: (request: Parameters<DesktopRpcRequests["codexApprovalRespond"]>[0]) =>
+    rpc.request.codexApprovalRespond(request),
   codexThreadCompact: (request: Parameters<DesktopRpcRequests["codexThreadCompact"]>[0]) =>
     rpc.request.codexThreadCompact(request),
   codexThreadList: (request?: Parameters<DesktopRpcRequests["codexThreadList"]>[0]) =>

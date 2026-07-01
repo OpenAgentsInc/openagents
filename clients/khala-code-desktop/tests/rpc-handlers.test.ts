@@ -191,6 +191,7 @@ describe("Khala Code desktop RPC handlers", () => {
       codexAppServerHost: {
         dispose: () => undefined,
         request: async <Result>() => ({} as Result),
+        respondToServerRequest: () => undefined,
         restart: async (): Promise<KhalaCodeDesktopCodexAppServerControlResult> => ({
           ok: true,
           action: "restart",
@@ -538,6 +539,7 @@ describe("Khala Code desktop RPC handlers", () => {
           requests.push({ method, params })
           return { ok: true } as Result
         },
+        respondToServerRequest: () => undefined,
         restart: async () => ({
           ok: true,
           action: "restart",
@@ -624,6 +626,77 @@ describe("Khala Code desktop RPC handlers", () => {
       command: "init",
       status: "gap",
     })
+  })
+
+  test("sends Codex approval responses through the app-server host", async () => {
+    const responses: { id: number | string, result: unknown }[] = []
+    const handlers = createKhalaCodeDesktopRpcRequestHandlers({
+      appleFmReadiness: () => {
+        throw new Error("not used")
+      },
+      codexAppServerHost: {
+        dispose: () => undefined,
+        request: async <Result>() => ({} as Result),
+        respondToServerRequest: (id, result) => {
+          responses.push({ id, result })
+        },
+        restart: async () => ({
+          ok: true,
+          action: "restart",
+          changed: false,
+          status: stoppedAppServerStatus(),
+        }),
+        start: async () => ({
+          ok: true,
+          action: "start",
+          changed: false,
+          status: stoppedAppServerStatus(),
+        }),
+        status: stoppedAppServerStatus,
+        stop: async () => ({
+          ok: true,
+          action: "stop",
+          changed: false,
+          status: stoppedAppServerStatus(),
+        }),
+        subscribe: () => () => undefined,
+      },
+      codexChatRuntime: throwingCodexChatRuntime(),
+      env: {},
+      onDeviceDeciderStatus: () => {
+        throw new Error("not used")
+      },
+      workingDirectory: process.cwd(),
+    })
+
+    await expect(handlers.codexApprovalRespond({
+      action: "acceptWithExecpolicyAmendment",
+      execpolicyAmendment: ["git status"],
+      method: "item/commandExecution/requestApproval",
+      requestId: 71,
+    })).resolves.toMatchObject({
+      ok: true,
+      method: "item/commandExecution/requestApproval",
+      requestId: 71,
+      payload: {
+        decision: {
+          acceptWithExecpolicyAmendment: {
+            execpolicy_amendment: ["git status"],
+          },
+        },
+      },
+    })
+
+    expect(responses).toEqual([{
+      id: 71,
+      result: {
+        decision: {
+          acceptWithExecpolicyAmendment: {
+            execpolicy_amendment: ["git status"],
+          },
+        },
+      },
+    }])
   })
 
   test("projects Fleet Status capacity and token evidence through RPC", async () => {

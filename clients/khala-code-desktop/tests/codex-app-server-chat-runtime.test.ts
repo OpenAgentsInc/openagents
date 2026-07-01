@@ -77,6 +77,7 @@ function createFakeHost(input: {
       input.records.push({ method, params })
       return input.onRequest(method, params, subscribers) as Result
     },
+    respondToServerRequest: () => undefined,
     restart: async () => ({ ...startResult(), action: "restart" }),
     start: async () => startResult(),
     status: () => runningStatus(),

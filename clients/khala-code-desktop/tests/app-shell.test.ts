@@ -432,6 +432,19 @@ describe("khala code desktop app shell", () => {
     expect(main).toContain("draftText.startsWith(\"/\")")
   })
 
+  test("wires Codex approval response controls without the legacy permission dispatcher", async () => {
+    const css = await Bun.file(new URL("../src/ui/styles.css", import.meta.url)).text()
+    const main = await Bun.file(new URL("../src/ui/main.ts", import.meta.url)).text()
+    const renderer = await Bun.file(new URL("../src/ui/transcript-render.ts", import.meta.url)).text()
+
+    expect(renderer).toContain("codex-approval-button")
+    expect(renderer).toContain("codexApprovalControlsElement")
+    expect(main).toContain("codexApprovalRespond")
+    expect(main).toContain("respondToCodexApproval")
+    expect(main).not.toContain("allowAllKhalaPermissionService")
+    expect(css).toContain(".codex-approval-controls")
+  })
+
   test("keeps the composer footer controls in a clean inline strip", async () => {
     const html = await Bun.file(new URL("../src/ui/index.html", import.meta.url)).text()
     const main = await Bun.file(new URL("../src/ui/main.ts", import.meta.url)).text()

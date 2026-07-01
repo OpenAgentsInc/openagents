@@ -166,3 +166,39 @@ Validation:
 - `bun test clients/khala-code-desktop/tests/codex-slash-commands.test.ts clients/khala-code-desktop/tests/rpc-handlers.test.ts clients/khala-code-desktop/tests/app-shell.test.ts`
 - `bun run --cwd clients/khala-code-desktop typecheck`
 - `bun run --cwd clients/khala-code-desktop verify`
+
+## Issue #7786: Approvals, Permissions, Sandbox, And Guardian Decisions
+
+Status: implemented
+
+Khala Code Desktop now answers Codex app-server approval requests through the
+same JSON-RPC server-request channel that Codex uses. The app-server host can
+write a response with the original server request id, and desktop RPC exposes
+`codexApprovalRespond()` for command execution, file change, and permission
+approval requests.
+
+The approval response builder pins Codex's generated protocol shapes:
+
+- command decisions: `accept`, `acceptForSession`, `decline`, `cancel`,
+  `acceptWithExecpolicyAmendment`, and `applyNetworkPolicyAmendment`;
+- file-change decisions: `accept`, `acceptForSession`, `decline`, and
+  `cancel`;
+- permission grants: turn-scoped, session-scoped, strict turn review, and
+  empty-permission decline responses.
+
+Approval cards now preserve request ids, available decisions, command/cwd
+context, requested permissions, proposed execpolicy amendments, proposed network
+policy amendments, and network context in the Codex item metadata. Pending
+approval cards render desktop buttons that send typed Codex responses rather
+than sending prompt text or using the legacy Khala permission dispatcher.
+
+The UI keeps amendment choices explicit: execpolicy and network policy
+amendments only appear when Codex supplied the proposed amendment payload, and
+network amendments are sent back as `network_policy_amendment` exactly as
+app-server expects.
+
+Validation:
+
+- `bun test clients/khala-code-desktop/tests/codex-approval-decisions.test.ts clients/khala-code-desktop/tests/codex-app-server-client.test.ts clients/khala-code-desktop/tests/codex-thread-item-projector.test.ts clients/khala-code-desktop/tests/rpc-handlers.test.ts clients/khala-code-desktop/tests/app-shell.test.ts`
+- `bun run --cwd clients/khala-code-desktop typecheck`
+- `bun run --cwd clients/khala-code-desktop verify`

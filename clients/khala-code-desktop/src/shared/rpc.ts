@@ -5,6 +5,14 @@ import type {
   KhalaCodexRateLimitResetOutcome,
 } from "./codex-rate-limits.js"
 import type {
+  KhalaCodeDesktopCodexApprovalAction,
+  KhalaCodeDesktopCodexApprovalMethod,
+  KhalaCodeDesktopCodexApprovalProjection,
+  KhalaCodeDesktopCodexNetworkPolicyAmendment,
+  KhalaCodeDesktopCodexPermissionProfile,
+  KhalaCodeDesktopJsonRpcId,
+} from "./codex-approval-decisions.js"
+import type {
   KhalaCodeDesktopSlashCommandWithAvailability,
 } from "./codex-slash-commands.js"
 import type { OnDeviceDeciderSelection } from "./on-device-decider.js"
@@ -17,6 +25,7 @@ export const KHALA_CODE_DESKTOP_DEFAULT_PREVIEW_PORT = 50021
 export type KhalaCodeDesktopMessageRole = "user" | "assistant" | "system" | "tool"
 
 export type KhalaCodeDesktopCodexItemCard = {
+  readonly approval?: KhalaCodeDesktopCodexApprovalProjection
   readonly itemId: string
   readonly itemType: string
   readonly status: string
@@ -248,6 +257,23 @@ export type KhalaCodeDesktopCodexThreadCompactRequest = {
   readonly threadId?: string
 }
 
+export type KhalaCodeDesktopCodexApprovalRespondRequest = {
+  readonly action: KhalaCodeDesktopCodexApprovalAction
+  readonly execpolicyAmendment?: readonly string[]
+  readonly method: KhalaCodeDesktopCodexApprovalMethod
+  readonly networkPolicyAmendment?: KhalaCodeDesktopCodexNetworkPolicyAmendment
+  readonly permissions?: KhalaCodeDesktopCodexPermissionProfile
+  readonly requestId: KhalaCodeDesktopJsonRpcId
+}
+
+export type KhalaCodeDesktopCodexApprovalRespondResult = {
+  readonly method: KhalaCodeDesktopCodexApprovalMethod
+  readonly ok: boolean
+  readonly payload?: unknown
+  readonly requestId: KhalaCodeDesktopJsonRpcId
+  readonly error?: string
+}
+
 export type KhalaCodeDesktopSlashCommandListRequest = {
   readonly activeTurn?: boolean
   readonly debug?: boolean
@@ -412,6 +438,7 @@ export type KhalaCodeDesktopRPCSchema = {
     codexAppServerStop(): Promise<KhalaCodeDesktopCodexAppServerControlResult>
     codexFleetStatus(): Promise<KhalaCodeDesktopFleetStatus>
     codexHarnessStatus(): Promise<KhalaCodeDesktopCodexHarnessStatus>
+    codexApprovalRespond(request: KhalaCodeDesktopCodexApprovalRespondRequest): Promise<KhalaCodeDesktopCodexApprovalRespondResult>
     codexThreadCompact(request: KhalaCodeDesktopCodexThreadCompactRequest): Promise<KhalaCodeDesktopCodexTurnActionResult>
     codexThreadList(request?: KhalaCodeDesktopCodexThreadListRequest): Promise<KhalaCodeDesktopCodexThreadListResult>
     codexThreadResume(request: KhalaCodeDesktopCodexThreadResumeRequest): Promise<KhalaCodeDesktopCodexThreadResult>

@@ -16,9 +16,10 @@ type FakeChild = EventEmitter & {
 }
 
 type WireMessage = {
-  readonly id?: number
+  readonly id?: number | string
   readonly method?: string
   readonly params?: unknown
+  readonly result?: unknown
 }
 
 function makeChild(
@@ -45,7 +46,7 @@ function makeChild(
   return child
 }
 
-function respond(child: FakeChild, id: number | undefined, result: unknown): void {
+function respond(child: FakeChild, id: number | string | undefined, result: unknown): void {
   if (id === undefined) return
   child.stdout.emit("data", Buffer.from(`${JSON.stringify({ id, result })}\n`))
 }
@@ -169,6 +170,32 @@ describe("Codex app-server client", () => {
       method: "item/commandExecution/requestApproval",
     })
     expect(host.status().diagnostics).not.toContain("unknown response id: 99")
+    host.dispose()
+  })
+
+  test("responds to server-to-client requests with the original id", async () => {
+    const writes: WireMessage[] = []
+    const host = createCodexAppServerHost({
+      spawnFn: () => makeChild((message, child) => {
+        writes.push(message)
+        if (message.method === "initialize") {
+          respond(child, message.id as number | undefined, {})
+        }
+      }),
+    })
+
+    await host.start()
+    host.respondToServerRequest("approval-request-1", {
+      decision: "accept",
+    })
+    await Promise.resolve()
+
+    expect(writes).toContainEqual({
+      id: "approval-request-1",
+      result: {
+        decision: "accept",
+      },
+    })
     host.dispose()
   })
 

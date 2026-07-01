@@ -201,6 +201,11 @@ describe("Codex ThreadItem projector", () => {
       cwd: "/workspace",
       reason: "command wants workspace access",
       availableDecisions: ["accept", "decline"],
+      proposedExecpolicyAmendment: ["git status"],
+      proposedNetworkPolicyAmendments: [{
+        action: "allow",
+        host: "api.example.com",
+      }],
     }, 7))
     const resolved = projector.accept(note("serverRequest/resolved", {
       requestId: 7,
@@ -211,6 +216,16 @@ describe("Codex ThreadItem projector", () => {
       itemType: "approval",
       requestId: "7",
       status: "pending",
+      approval: {
+        method: "item/commandExecution/requestApproval",
+        requestId: 7,
+        availableDecisions: ["accept", "decline"],
+        proposedExecpolicyAmendment: ["git status"],
+        proposedNetworkPolicyAmendments: [{
+          action: "allow",
+          host: "api.example.com",
+        }],
+      },
     })
     expect(messageEvents(resolved)[0]?.message.codexItem).toMatchObject({
       requestId: "7",

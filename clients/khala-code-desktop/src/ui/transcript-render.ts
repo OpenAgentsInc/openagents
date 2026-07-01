@@ -14,6 +14,7 @@ import type {
   KhalaCodeDesktopCodexItemCard,
   KhalaCodeDesktopMessageRole,
 } from "../shared/rpc"
+import type { KhalaCodeDesktopCodexApprovalAction } from "../shared/codex-approval-decisions"
 
 const EXT_LANGUAGE: Readonly<Record<string, string>> = {
   bash: "bash",
@@ -518,7 +519,117 @@ const codexItemElement = (input: {
     root.append(body)
   }
 
+  const approvalControls = codexApprovalControlsElement(input.codexItem)
+  if (approvalControls !== null) root.append(approvalControls)
+
   return root
+}
+
+const approvalDecisionKey = (decision: unknown): string | null => {
+  if (typeof decision === "string") return decision
+  if (typeof decision !== "object" || decision === null || Array.isArray(decision)) return null
+  const [key] = Object.keys(decision)
+  return key ?? null
+}
+
+const actionDecisionKey = (action: KhalaCodeDesktopCodexApprovalAction): string => {
+  switch (action) {
+    case "acceptWithExecpolicyAmendment":
+      return "acceptWithExecpolicyAmendment"
+    case "applyNetworkPolicyAmendment":
+      return "applyNetworkPolicyAmendment"
+    case "grantPermissions":
+    case "grantPermissionsForSession":
+    case "grantPermissionsWithStrictReview":
+      return "accept"
+    default:
+      return action
+  }
+}
+
+const approvalActionAvailable = (
+  codexItem: KhalaCodeDesktopCodexItemCard,
+  action: KhalaCodeDesktopCodexApprovalAction,
+): boolean => {
+  const decisions = codexItem.approval?.availableDecisions
+  if (decisions === undefined || decisions.length === 0) return true
+  const keys = new Set(decisions.map(approvalDecisionKey).filter((key): key is string => key !== null))
+  return keys.has(actionDecisionKey(action))
+}
+
+const codexApprovalButton = (
+  codexItem: KhalaCodeDesktopCodexItemCard,
+  label: string,
+  action: KhalaCodeDesktopCodexApprovalAction,
+  options: {
+    readonly execpolicyAmendment?: readonly string[]
+    readonly networkPolicyAmendment?: unknown
+    readonly permissions?: unknown
+  } = {},
+): HTMLButtonElement | null => {
+  const approval = codexItem.approval
+  if (approval === undefined || !approvalActionAvailable(codexItem, action)) return null
+  const button = document.createElement("button")
+  button.type = "button"
+  button.className = "codex-approval-button"
+  button.textContent = label
+  button.title = label
+  button.dataset.codexApprovalAction = action
+  button.dataset.codexApprovalMethod = approval.method
+  button.dataset.codexApprovalRequestId = JSON.stringify(approval.requestId)
+  if (options.execpolicyAmendment !== undefined) {
+    button.dataset.codexApprovalExecpolicyAmendment = JSON.stringify(options.execpolicyAmendment)
+  }
+  if (options.networkPolicyAmendment !== undefined) {
+    button.dataset.codexApprovalNetworkPolicyAmendment = JSON.stringify(options.networkPolicyAmendment)
+  }
+  if (options.permissions !== undefined) {
+    button.dataset.codexApprovalPermissions = JSON.stringify(options.permissions)
+  }
+  return button
+}
+
+const codexApprovalControlsElement = (
+  codexItem: KhalaCodeDesktopCodexItemCard,
+): HTMLElement | null => {
+  const approval = codexItem.approval
+  if (approval === undefined || codexItem.status !== "pending") return null
+  const controls = document.createElement("div")
+  controls.className = "codex-approval-controls"
+
+  if (approval.method === "item/permissions/requestApproval") {
+    const permissions = approval.permissions ?? {}
+    controls.append(
+      ...[
+        codexApprovalButton(codexItem, "Grant", "grantPermissions", { permissions }),
+        codexApprovalButton(codexItem, "Session", "grantPermissionsForSession", { permissions }),
+        codexApprovalButton(codexItem, "Review", "grantPermissionsWithStrictReview", { permissions }),
+        codexApprovalButton(codexItem, "Decline", "decline"),
+      ].filter((button): button is HTMLButtonElement => button !== null),
+    )
+    return controls
+  }
+
+  controls.append(
+    ...[
+      codexApprovalButton(codexItem, "Accept", "accept"),
+      codexApprovalButton(codexItem, "Session", "acceptForSession"),
+      ...(approval.proposedExecpolicyAmendment === undefined
+        ? []
+        : [
+            codexApprovalButton(codexItem, "Execpolicy", "acceptWithExecpolicyAmendment", {
+              execpolicyAmendment: approval.proposedExecpolicyAmendment,
+            }),
+          ]),
+      ...(approval.proposedNetworkPolicyAmendments ?? []).map(amendment =>
+        codexApprovalButton(codexItem, "Network", "applyNetworkPolicyAmendment", {
+          networkPolicyAmendment: amendment,
+        })),
+      codexApprovalButton(codexItem, "Decline", "decline"),
+      codexApprovalButton(codexItem, "Cancel", "cancel"),
+    ].filter((button): button is HTMLButtonElement => button !== null),
+  )
+  return controls
 }
 
 export const renderMessageBody = (

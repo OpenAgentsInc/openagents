@@ -24,6 +24,10 @@ import {
   type KhalaCodeDesktopRuntimeStatus,
 } from "../shared/rpc.js"
 import {
+  khalaCodeDesktopCodexApprovalResponsePayload,
+  type KhalaCodeDesktopJsonRpcId,
+} from "../shared/codex-approval-decisions.js"
+import {
   evaluateKhalaCodeDesktopSlashCommandAvailability,
   khalaCodeDesktopSlashCommandsWithAvailability,
   parseKhalaCodeDesktopSlashCommand,
@@ -683,6 +687,32 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
     },
     async codexHarnessStatus() {
       return codexHarnessStatus()
+    },
+    async codexApprovalRespond(request) {
+      const payload = khalaCodeDesktopCodexApprovalResponsePayload(request)
+      try {
+        input.codexAppServerHost?.respondToServerRequest(
+          request.requestId as KhalaCodeDesktopJsonRpcId,
+          payload,
+        )
+        if (input.codexAppServerHost === undefined) {
+          throw new Error("Codex app-server host is not configured.")
+        }
+        return {
+          ok: true,
+          method: request.method,
+          payload,
+          requestId: request.requestId,
+        }
+      } catch (error) {
+        return {
+          ok: false,
+          method: request.method,
+          payload,
+          requestId: request.requestId,
+          error: error instanceof Error ? error.message : String(error),
+        }
+      }
     },
     async codexThreadCompact(request) {
       return requireCodexChatRuntime().compactThread(request)

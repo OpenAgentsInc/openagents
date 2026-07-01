@@ -1,4 +1,10 @@
 import type {
+  KhalaCodeDesktopCodexApprovalMethod,
+  KhalaCodeDesktopCodexNetworkPolicyAmendment,
+  KhalaCodeDesktopCodexPermissionProfile,
+  KhalaCodeDesktopJsonRpcId,
+} from "../shared/codex-approval-decisions.js"
+import type {
   KhalaCodeDesktopChatTurnEvent,
   KhalaCodeDesktopCodexItemCard,
   KhalaCodeDesktopMessage,
@@ -40,6 +46,22 @@ const arrayField = (value: unknown, field: string): readonly unknown[] => {
   if (!isObject(value)) return []
   const candidate = value[field]
   return Array.isArray(candidate) ? candidate : []
+}
+
+const stringArrayField = (value: unknown, field: string): readonly string[] | undefined => {
+  const values = arrayField(value, field).filter((item): item is string => typeof item === "string")
+  return values.length === 0 ? undefined : values
+}
+
+const networkPolicyAmendments = (
+  value: unknown,
+): readonly KhalaCodeDesktopCodexNetworkPolicyAmendment[] | undefined => {
+  const amendments = arrayField(value, "proposedNetworkPolicyAmendments")
+    .filter((item): item is KhalaCodeDesktopCodexNetworkPolicyAmendment =>
+      isObject(item) &&
+      typeof item.host === "string" &&
+      typeof item.action === "string")
+  return amendments.length === 0 ? undefined : amendments
 }
 
 const itemId = (item: JsonObject | null): string | null => stringField(item, "id")
@@ -309,6 +331,7 @@ const approvalMessage = (
   if (!isObject(params)) return null
   const item = stringField(params, "itemId") ?? String(notification.id ?? "approval")
   const requestId = notification.id === undefined ? undefined : String(notification.id)
+  const requestIdValue = notification.id as KhalaCodeDesktopJsonRpcId | undefined
   const status = "pending"
   const body = bounded([
     stringField(params, "reason") ?? "",
@@ -327,6 +350,34 @@ const approvalMessage = (
       itemType: "approval",
       status,
       title,
+      ...(requestIdValue === undefined ? {} : {
+        approval: {
+          method: notification.method as KhalaCodeDesktopCodexApprovalMethod,
+          requestId: requestIdValue,
+          ...(arrayField(params, "availableDecisions").length === 0
+            ? {}
+            : { availableDecisions: arrayField(params, "availableDecisions") }),
+          ...(stringField(params, "command") === null ? {} : { command: stringField(params, "command")! }),
+          ...(stringField(params, "cwd") === null ? {} : { cwd: stringField(params, "cwd")! }),
+          ...(stringField(params, "grantRoot") === null ? {} : { grantRoot: stringField(params, "grantRoot")! }),
+          ...(objectField(params, "networkApprovalContext") === null
+            ? {}
+            : { networkApprovalContext: objectField(params, "networkApprovalContext")! }),
+          ...(objectField(params, "permissions") === null
+            ? {}
+            : { permissions: objectField(params, "permissions")! as KhalaCodeDesktopCodexPermissionProfile }),
+          ...(objectField(params, "additionalPermissions") === null
+            ? {}
+            : { additionalPermissions: objectField(params, "additionalPermissions")! }),
+          ...(stringArrayField(params, "proposedExecpolicyAmendment") === undefined
+            ? {}
+            : { proposedExecpolicyAmendment: stringArrayField(params, "proposedExecpolicyAmendment")! }),
+          ...(networkPolicyAmendments(params) === undefined
+            ? {}
+            : { proposedNetworkPolicyAmendments: networkPolicyAmendments(params)! }),
+          ...(stringField(params, "reason") === null ? {} : { reason: stringField(params, "reason")! }),
+        },
+      }),
       ...cardContext({
         ...(requestId === undefined ? {} : { requestId }),
         threadId: threadIdFromParams(params),

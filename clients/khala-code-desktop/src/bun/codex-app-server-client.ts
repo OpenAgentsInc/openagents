@@ -85,6 +85,10 @@ export type CodexAppServerHost = Readonly<{
     params?: unknown,
     options?: { readonly timeoutMs?: number },
   ) => Promise<Result>
+  respondToServerRequest: (
+    id: JsonRpcId,
+    result: unknown,
+  ) => void
   restart: () => Promise<KhalaCodeDesktopCodexAppServerControlResult>
   start: () => Promise<KhalaCodeDesktopCodexAppServerControlResult>
   status: () => KhalaCodeDesktopCodexAppServerStatus
@@ -237,6 +241,16 @@ export function createCodexAppServerHost(
     })
     child.stdin.write(`${JSON.stringify({ id, method, params })}\n`)
     return promise
+  }
+
+  const respondToServerRequest = (
+    id: JsonRpcId,
+    result: unknown,
+  ): void => {
+    if (child === null || state !== "running") {
+      throw new Error("Codex app-server is not running")
+    }
+    child.stdin.write(`${JSON.stringify({ id, result })}\n`)
   }
 
   const handleResponse = (message: JsonRpcResponse): void => {
@@ -439,6 +453,7 @@ export function createCodexAppServerHost(
   return {
     dispose,
     request,
+    respondToServerRequest,
     restart,
     start,
     status,

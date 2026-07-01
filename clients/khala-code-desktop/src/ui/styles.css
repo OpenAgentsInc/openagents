@@ -430,6 +430,38 @@ button {
   max-height: 38rem;
 }
 
+.codex-approval-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 10px 10px;
+}
+
+.codex-approval-button {
+  min-height: 28px;
+  border: 1px solid rgba(251, 191, 36, 0.36);
+  border-radius: 2px;
+  background: rgba(36, 28, 10, 0.88);
+  color: #ffe6a8;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.72rem;
+  line-height: 1;
+  padding: 5px 8px;
+}
+
+.codex-approval-button:hover,
+.codex-approval-button:focus-visible {
+  border-color: rgba(251, 191, 36, 0.72);
+  background: rgba(66, 48, 14, 0.94);
+  outline: 1px solid rgba(251, 191, 36, 0.42);
+}
+
+.codex-approval-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.52;
+}
+
 .tool-card-output {
   margin: 0;
   max-height: 7rem;
