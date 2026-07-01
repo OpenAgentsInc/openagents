@@ -949,7 +949,7 @@ describe("khala code desktop app shell", () => {
     expect(main).toContain("response.backend.threadId")
     expect(main).toContain("useStateDbOnly: true")
     expect(main).toContain(
-      "const request: KhalaCodeDesktopChatTurnRequest = {\n      messages,\n      sessionId,\n      ...(activeCodexThreadId === null ? {} : { threadId: activeCodexThreadId }),\n      turnId,\n    }",
+      "const request: KhalaCodeDesktopChatTurnRequest = {\n      messages,\n      sessionId,\n      ...(activeCodexThreadId === null ? { startNewThread: true } : { threadId: activeCodexThreadId }),\n      turnId,\n    }",
     )
     expect(panel).toContain("Search Codex threads")
     expect(panel).toContain('from "@openagentsinc/ui/menu-dom"')

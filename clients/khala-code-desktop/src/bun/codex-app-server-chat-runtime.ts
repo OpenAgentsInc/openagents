@@ -500,6 +500,7 @@ export function createCodexAppServerChatRuntime(
     desktopSessionId: string,
     cwd?: string,
     requestedThreadId?: string,
+    startNewThread = false,
   ): Promise<KhalaCodeDesktopCodexThreadResult> => {
     const explicitThreadId = normalizedThreadId(requestedThreadId)
     if (explicitThreadId !== null) {
@@ -520,6 +521,13 @@ export function createCodexAppServerChatRuntime(
           sessionId: desktopSessionId,
         })
       }
+    }
+
+    if (startNewThread) {
+      return startThread({
+        cwd: cwd ?? options.workingDirectory,
+        sessionId: desktopSessionId,
+      })
     }
 
     const state = await readState(statePath)
@@ -818,7 +826,12 @@ export function createCodexAppServerChatRuntime(
       throw new Error("Codex turn requires a non-empty user message.")
     }
 
-    let thread = await ensureThreadForSession(request.sessionId, request.cwd, request.threadId)
+    let thread = await ensureThreadForSession(
+      request.sessionId,
+      request.cwd,
+      request.threadId,
+      request.startNewThread === true,
+    )
     options.onEvent?.({
       threadId: thread.threadId,
       turnId: desktopTurnId,

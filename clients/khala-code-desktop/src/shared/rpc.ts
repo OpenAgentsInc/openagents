@@ -105,6 +105,7 @@ export type KhalaCodeDesktopUsage = {
 export type KhalaCodeDesktopChatTurnRequest = {
   readonly messages: readonly KhalaCodeDesktopMessage[]
   readonly sessionId: string
+  readonly startNewThread?: boolean
   readonly threadId?: string
   readonly turnId?: string
 }

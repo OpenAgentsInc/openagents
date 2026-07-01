@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises"
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, describe, expect, test } from "bun:test"
@@ -660,6 +660,79 @@ describe("Codex app-server chat runtime", () => {
     })
 
     expect(records.map(record => record.method)).toEqual(["thread/resume", "turn/start"])
+  })
+
+  test("starts a fresh Codex thread for a blank new-chat turn", async () => {
+    const fixture = await stateFixture()
+    await writeFile(
+      fixture.statePath,
+      `${JSON.stringify({
+        schema: "khala-code-desktop.codex-sessions.v1",
+        sessions: {
+          "desktop-session-fresh": {
+            threadId: "thread-old",
+            updatedAt: "2026-07-01T17:30:00.000Z",
+          },
+        },
+      })}\n`,
+    )
+    const records: RequestRecord[] = []
+    const host = createFakeHost({
+      records,
+      onRequest: (method, params, subscribers) => {
+        if (method === "thread/resume") {
+          throw new Error("blank new-chat turns must not resume the stored Codex session")
+        }
+        if (method === "thread/start") {
+          return {
+            thread: { id: "thread-fresh", status: "running" },
+            model: "gpt-5.1-codex",
+            modelProvider: "openai",
+            cwd: fixture.root,
+          }
+        }
+        if (method === "turn/start") {
+          expect(params).toMatchObject({
+            threadId: "thread-fresh",
+            clientUserMessageId: "user-fresh",
+          })
+          queueMicrotask(() => {
+            emit(subscribers, {
+              method: "turn/completed",
+              params: {
+                threadId: "thread-fresh",
+                turn: { id: "turn-fresh", status: "completed" },
+              },
+            })
+          })
+          return { turn: { id: "turn-fresh", status: "inProgress" } }
+        }
+        throw new Error(`unexpected request ${method}`)
+      },
+    })
+    const runtime = createCodexAppServerChatRuntime({
+      host,
+      statePath: fixture.statePath,
+      turnTimeoutMs: 1_000,
+      workingDirectory: fixture.root,
+    })
+
+    const response = await runtime.startTurn({
+      messages: [{ id: "user-fresh", role: "user", body: "How are you today?" }],
+      sessionId: "desktop-session-fresh",
+      startNewThread: true,
+      turnId: "desktop-turn-fresh",
+    })
+
+    expect(records.map(record => record.method)).toEqual(["thread/start", "turn/start"])
+    expect(response.backend).toMatchObject({
+      threadId: "thread-fresh",
+      turnId: "turn-fresh",
+      turnStatus: "completed",
+    })
+    const state = await readFile(fixture.statePath, "utf8")
+    expect(state).toContain("thread-fresh")
+    expect(state).not.toContain("thread-old")
   })
 
   test("lists, reads, renames, forks, archives, unarchives, and deletes Codex threads", async () => {
