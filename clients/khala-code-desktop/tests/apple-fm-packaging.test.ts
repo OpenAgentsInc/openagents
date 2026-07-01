@@ -34,14 +34,12 @@ describe("khala desktop Apple FM packaging", () => {
     )
   })
 
-  test("explicit Apple FM bridge scripts stay available for future re-enable", () => {
+  test("launch package scripts do not expose Apple FM bridge preparation", () => {
     const packageJson = JSON.parse(
       readFileSync(join(import.meta.dir, "..", "package.json"), "utf8"),
     ) as { scripts?: Record<string, string> }
 
-    expect(packageJson.scripts?.["prepare:apple-fm-bridge"]).toContain(
-      "scripts/prepare-apple-fm-bridge.sh",
-    )
+    expect(packageJson.scripts?.["prepare:apple-fm-bridge"]).toBeUndefined()
     expect(packageJson.scripts?.["verify:apple-fm-bridge"]).toContain(
       "scripts/verify-packaged-apple-fm-bridge.ts",
     )

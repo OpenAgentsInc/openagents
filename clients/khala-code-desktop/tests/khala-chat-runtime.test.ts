@@ -821,13 +821,13 @@ describe("Khala Code desktop chat runtime", () => {
     const workspace = await tempWorkspace()
     await mkdir(join(workspace, "scripts"))
     await writeFile(
-      join(workspace, "scripts", "prepare-apple-fm-bridge.sh"),
+      join(workspace, "scripts", "prepare-release.sh"),
       "#!/usr/bin/env bash\nrepo_root=\"$(pwd)\"\n",
       "utf8",
     )
     await writeFile(
-      join(workspace, "scripts", "verify-packaged-apple-fm-bridge.ts"),
-      "export const bridge = 'verified'\n",
+      join(workspace, "scripts", "verify-release.ts"),
+      "export const release = 'verified'\n",
       "utf8",
     )
     const { calls, fetchFn } = captureFetch([
@@ -847,7 +847,7 @@ describe("Khala Code desktop chat runtime", () => {
           },
         }],
       },
-      { choices: [{ message: { content: "Those likely prepare and verify the Apple bridge." } }] },
+      { choices: [{ message: { content: "Those likely prepare and verify the release." } }] },
       {
         choices: [{
           finish_reason: "tool_calls",
@@ -855,7 +855,7 @@ describe("Khala Code desktop chat runtime", () => {
             content: "",
             tool_calls: [{
               function: {
-                arguments: JSON.stringify({ path: "scripts/prepare-apple-fm-bridge.sh" }),
+                arguments: JSON.stringify({ path: "scripts/prepare-release.sh" }),
                 name: "read",
               },
               id: "call_read_prepare",
@@ -864,7 +864,7 @@ describe("Khala Code desktop chat runtime", () => {
           },
         }],
       },
-      { choices: [{ message: { content: "We read prepare-apple-fm-bridge.sh and found it sets repo_root from pwd." } }] },
+      { choices: [{ message: { content: "We read prepare-release.sh and found it sets repo_root from pwd." } }] },
     ])
 
     const result = await runKhalaCodeDesktopChatTurn({
@@ -883,9 +883,9 @@ describe("Khala Code desktop chat runtime", () => {
     expect(result.ok).toBe(true)
     expect(result.usedTools).toEqual(["ls", "read"])
     expect(result.messages.map(message => message.role)).toEqual(["tool", "tool", "assistant"])
-    expect(result.messages[0]?.body).toContain("prepare-apple-fm-bridge.sh")
-    expect(result.messages[0]?.body).toContain("verify-packaged-apple-fm-bridge.ts")
-    expect(result.messages[2]?.body).toBe("We read prepare-apple-fm-bridge.sh and found it sets repo_root from pwd.")
+    expect(result.messages[0]?.body).toContain("prepare-release.sh")
+    expect(result.messages[0]?.body).toContain("verify-release.ts")
+    expect(result.messages[2]?.body).toBe("We read prepare-release.sh and found it sets repo_root from pwd.")
     expect(JSON.stringify(result.messages)).not.toContain("likely")
     expect(calls).toHaveLength(4)
     const retryMessages = calls[2]?.body.messages as Array<{ content?: string; role?: string }>

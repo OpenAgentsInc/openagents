@@ -5,7 +5,6 @@
   "type": "module",
   "scripts": {
     "dev": "bun run build:ui && electrobun dev",
-    "prepare:apple-fm-bridge": "bash scripts/prepare-apple-fm-bridge.sh",
     "verify:apple-fm-bridge": "bun scripts/verify-packaged-apple-fm-bridge.ts",
     "build:ui": "vite build",
     "build": "bun run build:ui && electrobun build",
