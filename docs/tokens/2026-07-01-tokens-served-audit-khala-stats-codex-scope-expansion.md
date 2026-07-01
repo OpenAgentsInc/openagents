@@ -349,6 +349,7 @@ Two reasonable shapes, worth deciding explicitly before implementing:
 - `apps/openagents.com/apps/web/src/route-table.ts`
 - `apps/pylon/src/account-usage.ts`
 - `apps/pylon/src/codex-direct-local-usage-reporter.ts`
+- `apps/pylon/tests/khala-code-programmatic-fleet.test.ts`
 - `apps/openagents.com/INVARIANTS.md` ("Canonical Token Usage Ledger",
   "Captured Trace Demand-Origin Segmentation")
 - `apps/openagents.com/docs/stats/2026-06-26-stats-page-audit.md`
@@ -396,3 +397,30 @@ Updated public surfaces:
   headline counter while preserving the legacy route names internally.
 - `apps/openagents.com/INVARIANTS.md`, OpenAPI, capability manifest, and product
   promises document the broader counter and channel split.
+
+## 12. Programmatic CLI/fleet/stat verification
+
+Added `apps/pylon/tests/khala-code-programmatic-fleet.test.ts` as the
+end-to-end regression for the product claim:
+
+- `pylon khala spawn --fixture --count 2 --max-parallel 2 --json` runs through
+  the real CLI and proves a local Khala Code node can see ready local Codex
+  capacity and produce a two-slot fleet plan.
+- `pylon sessions batch --adapter codex --concurrency 2 --lane local ...`
+  runs as a real CLI subprocess against a fixture loopback control server,
+  proving programmatic session steering over the same `/command` protocol used
+  by the desktop and node control surface. The fixture records every
+  `session.spawn`, caps active sessions at two, returns proof artifacts, and
+  verifies all spawned Codex sessions complete.
+- `pylon accounts usage --provider codex --report-local-codex-usage --json`
+  runs as a real CLI subprocess against a fixture OpenAgents stats server and
+  proves direct-local Codex token deltas are posted to
+  `/api/pylon/codex/local-usage` with bearer auth, idempotency keys, exact
+  input/output deltas, and no local paths, auth material, or raw account homes.
+
+Focused verification run:
+
+- `bun test apps/pylon/tests/khala-code-programmatic-fleet.test.ts apps/pylon/tests/sessions-batch.test.ts apps/pylon/tests/sessions-exec.test.ts apps/pylon/tests/khala-spawn.test.ts apps/pylon/tests/account-usage.test.ts`
+- `bun run --cwd apps/openagents.com/workers/api test -- src/token-usage-ledger.test.ts src/token-usage-ledger-routes.test.ts src/public-khala-tokens-served-channel-mix-routes.test.ts src/public-khala-tokens-served-model-mix-routes.test.ts src/pylon-codex-turn-ingest-routes.test.ts src/product-promises.test.ts`
+- `bun run --cwd apps/openagents.com/apps/web test -- src/page/loggedOut/update.test.ts src/subscriptions.test.ts src/main.test.ts src/page/loggedOut/page/khalaTokensServed.story.test.ts src/page/loggedOut/page/persistentScene.test.ts src/page/loggedOut/page/login.scene.test.ts src/product-policy.test.ts`
+- `bun run --cwd apps/openagents.com typecheck:api`

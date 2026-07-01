@@ -10,7 +10,6 @@ import {
 import {
   CLAUDE_AGENT_TASK_SCHEMA,
   CLAUDE_AGENT_TASK_AGENT_KIND,
-  CLAUDE_AGENT_TASK_SCHEMA,
   claudeAgentTaskFrom,
   executeClaudeAgentAssignment,
   type ClaudeAgentCheckoutRunner,
@@ -27,7 +26,6 @@ import {
   CODEX_AGENT_OWNER_LOCAL_SANDBOX_MODE,
   CODEX_AGENT_TASK_SCHEMA,
   CODEX_AGENT_TASK_AGENT_KIND,
-  CODEX_AGENT_TASK_SCHEMA,
   codexAgentTaskFrom,
   executeCodexAgentAssignment,
   type CodexAgentExecutionOptions,
