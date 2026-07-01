@@ -117,6 +117,10 @@ describe('ai-elements command composer', () => {
     expect(rendered).toContain('--oa-command-composer-height:220px')
     expect(rendered).toContain('42 tok')
     expect(rendered).toContain('Enter sends')
+    expect(rendered).toContain('data-oa-command-composer-icon="attach"')
+    expect(rendered).toContain('data-oa-command-composer-icon="send"')
+    expect(rendered).not.toContain('>+</span>')
+    expect(rendered).not.toContain('>^</span>')
   })
 
   test('renders attachments and markdown preview from the state contract', () => {
@@ -183,6 +187,11 @@ describe('ai-elements command composer', () => {
     expect(rendered).toContain('data-oa-command-composer-drag-active="true"')
     expect(rendered).toContain('data-oa-command-composer-attachment-action="preview"')
     expect(rendered).toContain('data-oa-command-composer-attachment-action="remove"')
+    expect(rendered).toContain('data-oa-command-composer-icon="image"')
+    expect(rendered).toContain('data-oa-command-composer-icon="preview"')
+    expect(rendered).toContain('data-oa-command-composer-icon="remove"')
+    expect(rendered).not.toContain('>Open</button>')
+    expect(rendered).not.toContain('>Remove</button>')
     expect(rendered).not.toContain('sha256:abcd')
     expect(rendered).not.toContain('attachment_thumbnail.web-hosted')
     expect(rendered).toContain('<strong')

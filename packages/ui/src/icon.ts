@@ -3,7 +3,6 @@
 import { Array, Effect, Layer, Option, Schema as S } from 'effect'
 import * as Context from 'effect/Context'
 import type { Html } from 'foldkit/html'
-import { html } from 'foldkit/html'
 
 export const IconName = S.Literals([
   'AddMember',
@@ -3806,18 +3805,22 @@ export const iconView = <Message>(
   name: IconName,
   className = 'size-4 text-white/55',
 ): Html => {
-  const h = html<Message>()
+  const classes =
+    `inline-flex shrink-0 items-center justify-center ${className} [&>svg]:size-full [&>svg]:shrink-0`
 
-  return h.span(
-    [
-      h.AriaHidden(true),
-      h.Class(
-        `inline-flex shrink-0 items-center justify-center ${className} [&>svg]:size-full [&>svg]:shrink-0`,
-      ),
-      h.InnerHTML(iconSvg(name)),
-    ],
-    [],
-  )
+  return ({
+    sel: 'span',
+    data: {
+      attrs: {
+        'aria-hidden': 'true',
+        class: classes,
+      },
+      props: {
+        innerHTML: iconSvg(name),
+      },
+    },
+    children: [],
+  } as unknown) as Html
 }
 
 export type IconServiceShape = {

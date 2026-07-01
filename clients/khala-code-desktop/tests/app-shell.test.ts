@@ -75,7 +75,7 @@ describe("khala code desktop app shell", () => {
     const main = await Bun.file(new URL("../src/ui/main.ts", import.meta.url)).text()
     const css = await Bun.file(new URL("../src/ui/styles.css", import.meta.url)).text()
 
-    expect(sidebar).toContain('{ value: "inbox", children: ["Inbox"] }')
+    expect(sidebar).toContain('navItem("inbox", "Inbox", "NotificationBell")')
     expect(html).toContain('aria-label="Unified Inbox"')
     expect(main).toContain("mountUnifiedInboxPanel")
     expect(main).toContain("codexAppServerStatus")
@@ -621,7 +621,7 @@ describe("khala code desktop app shell", () => {
     const loader = await Bun.file(new URL("../src/ui/gym-proof-loader.ts", import.meta.url)).text()
     const css = await Bun.file(new URL("../src/ui/styles.css", import.meta.url)).text()
 
-    expect(sidebar).toContain('{ value: "gym", children: ["Gym"] }')
+    expect(sidebar).toContain('navItem("gym", "Gym", "Dumbbell")')
     expect(html).toContain('aria-label="Gym delegation graph"')
     expect(main).toContain("mountGymPane")
     expect(main).toContain("gymPaneStateFromLocation")
@@ -740,7 +740,7 @@ describe("khala code desktop app shell", () => {
     const handlers = await Bun.file(new URL("../src/bun/rpc-handlers.ts", import.meta.url)).text()
     const css = await Bun.file(new URL("../src/ui/styles.css", import.meta.url)).text()
 
-    expect(sidebar).toContain('{ value: "settings", children: ["Settings"] }')
+    expect(sidebar).toContain('navItem("settings", "Settings", "Settings")')
     expect(html).toContain('aria-label="Codex settings"')
     expect(main).toContain("mountCodexSettingsPanel")
     expect(main).toContain("codexSettingsRead")
@@ -832,6 +832,31 @@ describe("khala code desktop app shell", () => {
     expect(main).not.toContain("resizeButton")
     expect(main).not.toContain("composerExpanded")
     expect(main).not.toContain("togglePreview")
+  })
+
+  test("uses the shared Apps SDK icon catalog for composer and sidebar chrome", async () => {
+    const html = await Bun.file(new URL("../src/ui/index.html", import.meta.url)).text()
+    const main = await Bun.file(new URL("../src/ui/main.ts", import.meta.url)).text()
+    const sidebar = await Bun.file(new URL("../src/ui/sidebar.ts", import.meta.url)).text()
+    const threadSidebar = await Bun.file(new URL("../src/ui/codex-thread-sidebar.ts", import.meta.url)).text()
+    const css = await Bun.file(new URL("../src/ui/styles.css", import.meta.url)).text()
+
+    expect(html).toContain('data-oa-command-composer-icon="attach"')
+    expect(html).toContain('data-oa-command-composer-icon="send"')
+    expect(html).not.toContain('aria-hidden="true">+</span>')
+    expect(html).not.toContain('aria-hidden="true">^</span>')
+    expect(main).toContain('from "@openagentsinc/ui/icon-dom"')
+    expect(main).toContain("composerIconCatalog")
+    expect(main).toContain('send: "ArrowUp"')
+    expect(main).toContain('stop: "Stop"')
+    expect(sidebar).toContain('from "@openagentsinc/ui/icon"')
+    expect(sidebar).toContain('iconView<SidebarNavMessage>')
+    expect(threadSidebar).toContain('from "@openagentsinc/ui/icon-dom"')
+    expect(threadSidebar).toContain('sidebarIcon("Plus", "New thread")')
+    expect(threadSidebar).toContain('actionButton("Rename thread", "Pencil"')
+    expect(css).toContain(".khala-code-sidebar-icon")
+    expect(css).toContain(".khala-thread-sidebar-icon")
+    expect(css).toContain("--sidebar-width: 4.5rem")
   })
 
   test("starts the composer compact with the placeholder near the top edge", async () => {

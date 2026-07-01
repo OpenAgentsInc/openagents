@@ -7,6 +7,8 @@ import type {
 import type {
   KhalaCodeDesktopCodexThreadSummary,
 } from "../shared/codex-threads"
+import { iconElement } from "@openagentsinc/ui/icon-dom"
+import type { IconName } from "@openagentsinc/ui/icon"
 
 export type CodexThreadSidebarHandle = {
   readonly refresh: () => Promise<void>
@@ -51,6 +53,17 @@ const el = <Tag extends keyof HTMLElementTagNameMap>(
   if (text !== undefined) node.textContent = text
   return node
 }
+
+const srOnly = (text: string): HTMLSpanElement => {
+  const node = el("span", "khala-code-sr-only", text)
+  return node
+}
+
+const sidebarIcon = (icon: IconName, label: string): HTMLSpanElement =>
+  iconElement(icon, {
+    className: "khala-thread-sidebar-icon",
+    dataIcon: label,
+  })
 
 const formatTime = (seconds: number | null): string => {
   if (seconds === null) return ""
@@ -151,11 +164,14 @@ export const mountCodexThreadSidebar = (
 
   const actionButton = (
     label: string,
+    icon: IconName,
     action: () => void,
   ): HTMLButtonElement => {
-    const button = el("button", "khala-thread-sidebar-action", label)
+    const button = el("button", "khala-thread-sidebar-action")
     button.type = "button"
     button.title = label
+    button.setAttribute("aria-label", label)
+    button.replaceChildren(sidebarIcon(icon, label), srOnly(label))
     button.addEventListener("click", event => {
       event.preventDefault()
       event.stopPropagation()
@@ -188,16 +204,16 @@ export const mountCodexThreadSidebar = (
     for (const badge of thread.badges) badges.append(el("span", "khala-thread-sidebar-badge", badge))
     const actions = el("span", "khala-thread-sidebar-actions")
     actions.append(
-      actionButton("Name", () => {
+      actionButton("Rename thread", "Pencil", () => {
         const name = prompt("Thread name", thread.title)
         if (name === null || name.trim().length === 0) return
         void runMutation(() => options.renameThread(thread.id, name.trim()))
       }),
-      actionButton("Fork", () => void runMutation(() => options.forkThread(thread.id))),
+      actionButton("Fork thread", "BranchAlt", () => void runMutation(() => options.forkThread(thread.id))),
       archived
-        ? actionButton("Unarchive", () => void runMutation(() => options.unarchiveThread(thread.id)))
-        : actionButton("Archive", () => void runMutation(() => options.archiveThread(thread.id))),
-      actionButton("Delete", () => {
+        ? actionButton("Unarchive thread", "Unarchive", () => void runMutation(() => options.unarchiveThread(thread.id)))
+        : actionButton("Archive thread", "Archive", () => void runMutation(() => options.archiveThread(thread.id))),
+      actionButton("Delete thread", "Trash", () => {
         if (!confirm(`Delete ${thread.title}?`)) return
         void runMutation(() => options.deleteThread(thread.id))
       }),
@@ -211,8 +227,11 @@ export const mountCodexThreadSidebar = (
     container.replaceChildren()
     const header = el("div", "khala-thread-sidebar-header")
     header.append(el("h2", "khala-thread-sidebar-title", "Chat"))
-    const newThread = el("button", "khala-thread-sidebar-new", "New")
+    const newThread = el("button", "khala-thread-sidebar-new")
     newThread.type = "button"
+    newThread.title = "New thread"
+    newThread.setAttribute("aria-label", "New thread")
+    newThread.replaceChildren(sidebarIcon("Plus", "New thread"), srOnly("New thread"))
     newThread.addEventListener("click", () => void startThread())
     header.append(newThread)
 
@@ -235,8 +254,11 @@ export const mountCodexThreadSidebar = (
       void refresh()
     })
     archiveLabel.append(archiveInput, el("span", undefined, "Archived"))
-    const refreshButton = el("button", "khala-thread-sidebar-refresh", "Refresh")
+    const refreshButton = el("button", "khala-thread-sidebar-refresh")
     refreshButton.type = "button"
+    refreshButton.title = "Refresh threads"
+    refreshButton.setAttribute("aria-label", "Refresh threads")
+    refreshButton.replaceChildren(sidebarIcon("Reload", "Refresh threads"), srOnly("Refresh threads"))
     refreshButton.addEventListener("click", () => void refresh())
     controls.append(search, archiveLabel, refreshButton)
     container.append(header, controls)

@@ -1,5 +1,6 @@
 import { Schema } from "effect"
 import { Runtime } from "foldkit"
+import { html } from "foldkit/html"
 import {
   sidebarInit,
   sidebarUpdate,
@@ -8,6 +9,7 @@ import {
   type SidebarPrimitiveModel,
   type SidebarViewGroup,
 } from "@openagentsinc/ui/basecoat/sidebar"
+import { iconView, type IconName } from "@openagentsinc/ui/icon"
 
 // The sidebar runs as a small, self-contained Foldkit/Effect island mounted into
 // a dedicated container in the Khala Code Desktop shell. Its state is a Foldkit
@@ -37,15 +39,30 @@ const SidebarModelSchema = Schema.Struct({
 // The desktop has no session-list RPC yet, so the initial sidebar is a small,
 // representative navigation. The app owns the nav data + current selection; the
 // sidebar owns chrome + behavior. Replace these groups when a session list lands.
+const h = html<SidebarNavMessage>()
+
+const navItem = (
+  value: string,
+  label: string,
+  icon: IconName,
+): SidebarViewGroup<SidebarNavMessage>["items"][number] => ({
+  value,
+  attrs: [h.Title(label)],
+  children: [
+    iconView<SidebarNavMessage>(icon, "khala-code-sidebar-icon"),
+    h.span([h.Class("khala-code-sidebar-label")], [label]),
+  ],
+})
+
 const navGroups = (): ReadonlyArray<SidebarViewGroup<SidebarNavMessage>> => [
   {
     label: "Khala Code",
     items: [
-      { value: "chat", children: ["Chat"] },
-      { value: "inbox", children: ["Inbox"] },
-      { value: "fleet", children: ["Fleet status"] },
-      { value: "gym", children: ["Gym"] },
-      { value: "settings", children: ["Settings"] },
+      navItem("chat", "Chat", "Chat"),
+      navItem("inbox", "Inbox", "NotificationBell"),
+      navItem("fleet", "Fleet status", "Robot"),
+      navItem("gym", "Gym", "Dumbbell"),
+      navItem("settings", "Settings", "Settings"),
     ],
   },
 ]

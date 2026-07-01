@@ -11,11 +11,34 @@ import {
 } from '../src/icon'
 
 const requiredChromeIcons: ReadonlyArray<IconNameType> = [
+  'Archive',
   'ArrowLeft',
+  'ArrowRotateCcw',
+  'ArrowUp',
+  'BranchAlt',
   'ChatCompose',
   'ChevronRight',
+  'Collapse',
+  'Code',
+  'Dumbbell',
+  'Expand',
+  'ExpandSm',
+  'Eye',
+  'EyeOff',
+  'File',
+  'FileImage',
   'Folder',
+  'NotificationBell',
+  'Paperclip',
+  'Pencil',
   'Plus',
+  'Reload',
+  'Robot',
+  'Settings',
+  'Stop',
+  'Text',
+  'Trash',
+  'Unarchive',
 ]
 
 describe('icon catalog', () => {

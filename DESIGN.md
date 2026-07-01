@@ -89,6 +89,18 @@ canvas behind it share one palette.
   65–75ch.
 - **Code:** mono, `#d7e2f0` on the sunken surface.
 
+## Iconography
+
+- **Only use the OpenAI Apps SDK icon catalog exposed by
+  `@openagentsinc/ui/icon`.** Product and brand surfaces render those icons via
+  `iconView` (Foldkit) or `iconElement` (DOM). Do not introduce Lucide, emoji,
+  ASCII glyphs, hand-authored SVGs, icon fonts, or text stand-ins for icon
+  controls.
+- If an icon is missing, sync or add it to the shared catalog first, then consume
+  it from `packages/ui`. Local one-off icon assets are a design-system violation.
+- Icon-only controls keep accessible labels through `aria-label`, `title`, or
+  visually hidden text. The visible mark still comes from the shared catalog.
+
 ## Spacing & Layout
 
 - Centered single column, `min(100%, 880px)`, generous side gutter so the 3D

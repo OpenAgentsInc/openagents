@@ -270,7 +270,15 @@ The engine is built; the gaps are surfaces and one orchestration promotion.
 - **One fanout controller at a time** (the dispatch-gate / capacity invariant);
   the supervised orchestration surface must respect advertised capacity + load.
 
-## 6. References
+## 6. UI design boundary: shared icons only
+
+Khala Code iconography is restricted to the OpenAI Apps SDK icon catalog exposed
+by `@openagentsinc/ui/icon`. Use `iconView` for Foldkit-rendered UI and
+`iconElement` for direct DOM UI. Do not use ASCII glyph placeholders, emoji,
+hand-authored SVGs, icon fonts, Lucide, or visible words as stand-ins for icon
+controls. Missing icons must be added to or synced into `packages/ui` first.
+
+## 7. References
 
 Khala Code surfaces:
 - `clients/khala-code-desktop/src/bun/{khala-chat-runtime,khala-codex-fleet-tools}.ts`
@@ -292,7 +300,7 @@ Issue history (most of this is built; lanes merged this cycle):
   identity), #6790/#6811/#6812/#6874 (native macOS app + Apple FM backend).
 - Open follow-ups: #7647–#7649 (composer), #7646 (BYOK → hosted routing, done).
 
-## 7. Status
+## 8. Status
 
 | Capability | State |
 | --- | --- |

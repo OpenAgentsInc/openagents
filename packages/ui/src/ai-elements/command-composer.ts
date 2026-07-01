@@ -11,6 +11,7 @@ import {
   classAttrs,
   componentClass,
 } from '../class-foldkit'
+import { iconSvg, type IconName } from '../icon'
 import { aiElementBase } from './base'
 import { response } from './response'
 
@@ -222,34 +223,26 @@ const submitLabelFor = (
 const submitIconFor = (status: CommandComposerStatus): CommandComposerIconName =>
   status === 'submitted' || status === 'streaming' ? 'stop' : 'send'
 
-const glyphForIcon = (icon: CommandComposerIconName): string => {
-  switch (icon) {
-    case 'attach':
-      return '+'
-    case 'code':
-      return '{}'
-    case 'compact':
-      return '-'
-    case 'expand':
-      return '[]'
-    case 'file':
-      return '#'
-    case 'image':
-      return '[]'
-    case 'preview':
-      return 'o'
-    case 'preview-off':
-      return '/'
-    case 'resize':
-      return '/'
-    case 'send':
-      return '^'
-    case 'stop':
-      return 'x'
-    case 'text':
-      return 'T'
-  }
-}
+const commandComposerIconMap = {
+  attach: 'Paperclip',
+  code: 'Code',
+  compact: 'Collapse',
+  expand: 'Expand',
+  file: 'File',
+  image: 'FileImage',
+  preview: 'Eye',
+  'preview-off': 'EyeOff',
+  resize: 'ExpandSm',
+  send: 'ArrowUp',
+  stop: 'Stop',
+  text: 'Text',
+} satisfies Record<CommandComposerIconName, IconName>
+
+const commandComposerActionIconMap = {
+  preview: 'Eye',
+  retry: 'ArrowRotateCcw',
+  remove: 'Trash',
+} satisfies Record<CommandComposerAttachmentAction, IconName>
 
 const commandComposerIcon = <Message>(icon: CommandComposerIconName): Html => {
   const h = html<Message>()
@@ -259,8 +252,26 @@ const commandComposerIcon = <Message>(icon: CommandComposerIconName): Html => {
       h.AriaHidden(true),
       h.DataAttribute('oa-command-composer-icon', icon),
       h.Class('oa-ai-command-composer-icon'),
+      h.InnerHTML(iconSvg(commandComposerIconMap[icon])),
     ],
-    [glyphForIcon(icon)],
+    [],
+  )
+}
+
+const commandComposerCatalogIcon = <Message>(
+  icon: IconName,
+  semanticName: string,
+): Html => {
+  const h = html<Message>()
+
+  return h.span(
+    [
+      h.AriaHidden(true),
+      h.DataAttribute('oa-command-composer-icon', semanticName),
+      h.Class('oa-ai-command-composer-icon'),
+      h.InnerHTML(iconSvg(icon)),
+    ],
+    [],
   )
 }
 
@@ -374,7 +385,12 @@ export const commandComposerAttachmentAction = <Message>(input: {
       h.DataAttribute('attachment-id', input.attachment.id),
       ...classAttrs<Message>(commandComposerStyles.attachmentAction),
     ],
-    [input.action === 'preview' ? 'Open' : input.action === 'retry' ? 'Retry' : 'Remove'],
+    [
+      commandComposerCatalogIcon<Message>(
+        commandComposerActionIconMap[input.action],
+        input.action,
+      ),
+    ],
   )
 }
 

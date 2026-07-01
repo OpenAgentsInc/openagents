@@ -19,6 +19,8 @@ import {
   type CommandComposerAttachmentProps,
   type CommandComposerStatus,
 } from "@openagentsinc/ui/ai-elements/command-composer"
+import { iconElement } from "@openagentsinc/ui/icon-dom"
+import type { IconName } from "@openagentsinc/ui/icon"
 import {
   shimmerBaseTag,
   shimmerClass,
@@ -318,6 +320,64 @@ const composerClasses = {
   status: commandComposerClassName("status"),
 } as const
 
+type ComposerIconName =
+  | "attach"
+  | "code"
+  | "file"
+  | "image"
+  | "preview"
+  | "remove"
+  | "retry"
+  | "send"
+  | "stop"
+  | "text"
+
+const composerIconCatalog = {
+  attach: "Paperclip",
+  code: "Code",
+  file: "File",
+  image: "FileImage",
+  preview: "Eye",
+  remove: "Trash",
+  retry: "ArrowRotateCcw",
+  send: "ArrowUp",
+  stop: "Stop",
+  text: "Text",
+} satisfies Record<ComposerIconName, IconName>
+
+const composerIconElement = (name: ComposerIconName): HTMLSpanElement => {
+  const icon = iconElement(composerIconCatalog[name], {
+    className: "oa-ai-command-composer-icon",
+    dataIcon: name,
+  })
+  icon.dataset.oaCommandComposerIcon = name
+  return icon
+}
+
+const attachmentIconName = (
+  kind: CommandComposerAttachmentProps["kind"],
+): ComposerIconName =>
+  kind === "image"
+    ? "image"
+    : kind === "text"
+      ? "text"
+      : kind === "snippet"
+        ? "code"
+        : "file"
+
+const setButtonIcon = (
+  button: HTMLButtonElement,
+  name: ComposerIconName,
+): void => {
+  const current = button.querySelector(".oa-ai-command-composer-icon")
+  const next = composerIconElement(name)
+  if (current === null) {
+    button.prepend(next)
+    return
+  }
+  current.replaceWith(next)
+}
+
 const requireElement = <T extends Element>(selector: string): T => {
   const element = document.querySelector<T>(selector)
   if (element === null) throw new Error(`Missing ${selector}`)
@@ -604,11 +664,11 @@ const renderAttachmentAction = (
   const button = document.createElement("button")
   button.type = "button"
   button.className = composerClasses.attachmentAction
-  button.textContent = label
   button.title = label
   button.setAttribute("aria-label", `${label} attachment: ${attachment.name}`)
   button.dataset.oaCommandComposerAttachmentAction = action
   button.dataset.attachmentId = attachment.id
+  button.replaceChildren(composerIconElement(action))
   return button
 }
 
@@ -704,14 +764,7 @@ const renderAttachment = (
   const icon = document.createElement("span")
   icon.className = "oa-ai-command-composer-attachment-icon"
   icon.setAttribute("aria-hidden", "true")
-  icon.textContent =
-    attachment.kind === "image"
-      ? "[]"
-      : attachment.kind === "text"
-        ? "T"
-        : attachment.kind === "snippet"
-          ? "{}"
-          : "#"
+  icon.replaceChildren(composerIconElement(attachmentIconName(attachment.kind)))
 
   const preview =
     attachment.kind === "image" && attachment.previewUrl !== undefined
@@ -910,8 +963,8 @@ function renderComposer(): void {
   sendButton.setAttribute("aria-label", `${sendLabel} message`)
   sendButton.dataset.oaCommandComposerSubmit = pendingTurn ? "stop" : "send"
   sendButton.dataset.status = status
-  sendButton.querySelector(".oa-ai-command-composer-icon")!.textContent =
-    pendingTurn ? "x" : "^"
+  setButtonIcon(sendButton, pendingTurn ? "stop" : "send")
+  setButtonIcon(attachButton, "attach")
   sendButton.querySelector(".oa-ai-command-composer-submit-label")!.textContent =
     sendLabel
 

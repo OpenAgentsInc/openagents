@@ -46,6 +46,14 @@ desktop app adds:
 - Fleet and Pylon swarm controls around isolated worker Codex accounts;
 - Gym/proof panes and smoke-test harnesses for desktop advantages.
 
+## Iconography
+
+Khala Code uses only the OpenAI Apps SDK icon catalog from
+`@openagentsinc/ui/icon`. Foldkit surfaces should use `iconView`; direct DOM
+surfaces should use `iconElement` from `@openagentsinc/ui/icon-dom`. Do not use
+ASCII glyph placeholders, emoji, hand-authored SVGs, icon fonts, Lucide, or
+visible words as stand-ins for icon controls.
+
 Tracking context:
 
 - Audit: [docs/khala-code/2026-07-01-codex-harness-wrapper-port-audit.md](../../docs/khala-code/2026-07-01-codex-harness-wrapper-port-audit.md)

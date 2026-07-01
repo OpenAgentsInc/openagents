@@ -1,5 +1,22 @@
 /* #6046: shared component classes backed by central --oa-* tokens. */
 
+.oa-ui-icon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 1em;
+  height: 1em;
+  color: currentColor;
+  line-height: 1;
+}
+
+.oa-ui-icon > svg {
+  width: 100%;
+  height: 100%;
+  flex: none;
+}
+
 .oa-ui-heading-root {
   min-width: 0;
 }
