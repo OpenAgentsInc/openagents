@@ -65,6 +65,43 @@ export type SidebarMountOptions = Readonly<{
   readonly onActivate?: (value: string) => void
 }>
 
+type NavigatorWithUserAgentData = Navigator & {
+  readonly userAgentData?: {
+    readonly platform?: string
+  }
+}
+
+type HotbarShortcut = Readonly<{
+  ariaModifier: "Control" | "Meta"
+  label: "Command" | "Ctrl"
+  modifierKey: "ctrlKey" | "metaKey"
+}>
+
+const platformName = (): string => {
+  const navigatorWithUserAgentData = navigator as NavigatorWithUserAgentData
+  return (
+    navigatorWithUserAgentData.userAgentData?.platform ??
+    navigator.platform ??
+    ""
+  )
+}
+
+const isApplePlatform = (): boolean =>
+  /Mac|iPhone|iPad|iPod/i.test(platformName())
+
+const hotbarShortcut = (): HotbarShortcut =>
+  isApplePlatform()
+    ? {
+        ariaModifier: "Meta",
+        label: "Command",
+        modifierKey: "metaKey",
+      }
+    : {
+        ariaModifier: "Control",
+        label: "Ctrl",
+        modifierKey: "ctrlKey",
+      }
+
 const isEditableTarget = (target: EventTarget | null): boolean =>
   target instanceof Element &&
   target.closest("input, textarea, select, [contenteditable='true']") !== null
@@ -74,6 +111,7 @@ export const mountKhalaCodeSidebar = (
   options: SidebarMountOptions = {},
 ): void => {
   let selectedValue = options.selectedValue ?? "chat"
+  const shortcut = hotbarShortcut()
 
   const activate = (slot: KhalaCodeHotbarSlot): void => {
     selectedValue = slot.value
@@ -96,12 +134,15 @@ export const mountKhalaCodeSidebar = (
     button.dataset.hotkey = slot.hotkey
     button.dataset.active = active ? "true" : "false"
     button.setAttribute("aria-pressed", active ? "true" : "false")
-    button.setAttribute("aria-keyshortcuts", `Alt+${slot.hotkey}`)
+    button.setAttribute(
+      "aria-keyshortcuts",
+      `${shortcut.ariaModifier}+${slot.hotkey}`,
+    )
     button.setAttribute(
       "aria-label",
       `${slot.label}, command slot ${slot.hotkey}`,
     )
-    button.title = `${slot.label} (Alt+${slot.hotkey})`
+    button.title = `${slot.label} (${shortcut.label}+${slot.hotkey})`
     button.append(
       iconElement(slot.icon, {
         className: "khala-code-hotbar-icon",
@@ -129,15 +170,11 @@ export const mountKhalaCodeSidebar = (
     nav.setAttribute("aria-label", "Khala Code command hotbar")
     nav.dataset.khalaCodeHotbar = ""
 
-    const header = document.createElement("div")
-    header.className = "khala-code-hotbar-header"
-    header.textContent = "CMD"
-
     const slots = document.createElement("div")
     slots.className = "khala-code-hotbar-slots"
     slots.append(...KHALA_CODE_HOTBAR_SLOTS.map(hotbarButton))
 
-    nav.append(header, slots)
+    nav.append(slots)
     container.replaceChildren(nav)
   }
 
@@ -146,9 +183,17 @@ export const mountKhalaCodeSidebar = (
     if (slot === undefined) return
 
     const editable = isEditableTarget(event.target)
-    const explicitHotkey = event.altKey && !event.metaKey && !event.ctrlKey
+    const explicitHotkey =
+      event[shortcut.modifierKey] &&
+      !event.altKey &&
+      !event.shiftKey &&
+      (shortcut.modifierKey === "metaKey" ? !event.ctrlKey : !event.metaKey)
     const ambientHotkey =
-      !editable && !event.altKey && !event.metaKey && !event.ctrlKey && !event.shiftKey
+      !editable &&
+      !event.altKey &&
+      !event.metaKey &&
+      !event.ctrlKey &&
+      !event.shiftKey
     if (!explicitHotkey && !ambientHotkey) return
 
     event.preventDefault()
