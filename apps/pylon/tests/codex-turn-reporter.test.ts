@@ -1,7 +1,11 @@
 import { describe, expect, test } from "bun:test"
 
 import {
+  PYLON_AGENT_RUNNER_CONTROL_COMMAND_SCHEMA_VERSION,
+  PYLON_AGENT_RUNNER_STATUS_EVENT_SCHEMA_VERSION,
   PYLON_AGENT_STATUS_SCHEMA_VERSION,
+  encodeAgentRunnerControlCommand,
+  encodeAgentRunnerStatusEvent,
   encodeAgentStatusReport,
 } from "../src/agent-status-reporter"
 import {
@@ -49,6 +53,61 @@ describe("Pylon Codex turn reporter", () => {
       { itemType: "command_execution", ordinal: 1, outputBytes: 12 },
     ])
     expect(JSON.stringify(body)).not.toContain("/Users/")
+  })
+
+  test("encodes runner-neutral status events and allowlisted control commands", () => {
+    const status = encodeAgentRunnerStatusEvent({
+      eventRef: "event.public.pylon.runner_status.test",
+      runnerRef: "runner.public.pylon.test",
+      runnerKind: "codex",
+      state: "working",
+      stateStartedAt: "2026-07-01T12:00:00.000Z",
+      updatedAt: "2026-07-01T12:01:00.000Z",
+      pylonRef: "pylon.public.test",
+      taskId: "task.public.test",
+      dispatchContextId: "ctx.codex.1",
+      worktreeId: "wt-public",
+      worktreeRef: "worktree.public.pylon.test",
+      supportedControlVerbs: ["status.list", "task.list", "task.update", "task.dispatch", "dispatch.cancel"],
+      refs: ["ref.public.ok", "/Users/private/path"],
+      stateHistory: Array.from({ length: 22 }, (_, index) => ({
+        state: index === 21 ? "working" : "idle",
+        stateStartedAt: `2026-07-01T12:${String(index).padStart(2, "0")}:00.000Z`,
+      })),
+    })
+
+    expect(status).toMatchObject({
+      schemaVersion: PYLON_AGENT_RUNNER_STATUS_EVENT_SCHEMA_VERSION,
+      runnerKind: "codex",
+      state: "working",
+      taskId: "task.public.test",
+    })
+    expect((status.stateHistory as unknown[]).length).toBe(20)
+    expect(JSON.stringify(status)).not.toContain("/Users/private/path")
+
+    const command = encodeAgentRunnerControlCommand({
+      commandRef: "command.public.pylon.runner_control.test",
+      verb: "task.dispatch",
+      issuedAt: "2026-07-01T12:02:00.000Z",
+      target: {
+        groupAddress: "@runner:codex",
+        taskId: "task.public.test",
+      },
+      payload: {
+        prompt: "Dispatch the public issue.",
+        refs: ["issue.public.7809"],
+      },
+    })
+
+    expect(command).toMatchObject({
+      schemaVersion: PYLON_AGENT_RUNNER_CONTROL_COMMAND_SCHEMA_VERSION,
+      commandRef: "command.public.pylon.runner_control.test",
+      verb: "task.dispatch",
+      target: {
+        groupAddress: "@runner:codex",
+        taskId: "task.public.test",
+      },
+    })
   })
 
   test("posts the exact turn envelope with bearer auth and stable idempotency", async () => {

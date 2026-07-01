@@ -3,6 +3,7 @@ import { Database } from "bun:sqlite"
 
 import { dispatchEligibility, dispatchLiveness, dispatchReadySupervisorTasks } from "./coordinator.js"
 import { parseOrchestrationGroupAddress, resolveOrchestrationGroup } from "./groups.js"
+import { encodeAgentRunnerStatusEventForDispatchContext } from "./status-control.js"
 import {
   createPylonOrchestrationStore,
   isStoredOrchestrationRunnerKind,
@@ -135,6 +136,46 @@ describe("Pylon supervisor orchestration store", () => {
     ])
     expect(store.getTask("task.codex")?.status).toBe("dispatched")
     expect(store.getTask("task.claude")?.status).toBe("dispatched")
+  })
+
+  test("projects dispatch contexts as runner-neutral fleet status events", () => {
+    const now = new Date("2026-07-01T12:00:00.000Z")
+    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const task = store.createTask({
+      id: "task.7809",
+      spec: { ...baseTaskSpec, title: "Issue #7809", runnerKind: "codex" },
+      now,
+    })
+    store.createDispatchContext({
+      id: "ctx.codex.7809",
+      assigneeHandle: "codex-1",
+      runnerKind: "codex",
+      worktreeId: "wt-7809",
+      worktreePath: "/Users/private/worktree",
+      lastHeartbeatAt: now,
+      now,
+    })
+    store.markDispatched(task.id, "ctx.codex.7809", now)
+    const context = store.getDispatchContext("ctx.codex.7809")
+
+    expect(context).not.toBeNull()
+    const event = encodeAgentRunnerStatusEventForDispatchContext({
+      context: context!,
+      task: store.getTask(task.id),
+      pylonRef: "pylon.public.runner-status",
+      now: new Date("2026-07-01T12:01:00.000Z"),
+    })
+
+    expect(event).toMatchObject({
+      runnerKind: "codex",
+      state: "working",
+      taskId: "task.7809",
+      dispatchContextId: "ctx.codex.7809",
+      pylonRef: "pylon.public.runner-status",
+      supportedControlVerbs: ["status.list", "task.list", "task.update", "task.dispatch", "dispatch.cancel"],
+    })
+    expect(String(event.worktreeRef)).toStartWith("worktree.public.pylon.")
+    expect(JSON.stringify(event)).not.toContain("/Users/private/worktree")
   })
 
   test("normalizes legacy runner aliases through the AgentRunner registry vocabulary", () => {

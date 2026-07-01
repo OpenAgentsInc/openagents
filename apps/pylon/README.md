@@ -293,6 +293,17 @@ payout target`) run from the palette and always end in an explicit
   Codex/Claude composer execution only, reject local danger modes, accept
   per-session account/workspace selectors, and retain path-safe artifacts
   under the Pylon home.
+- Registered assignment runners also expose a runner-neutral status/control
+  contract for Khala Code fleet and inbox projections. Status events use
+  `openagents.pylon.agent_runner_status_event.v1` with a neutral state
+  (`idle`, `queued`, `working`, `waiting`, `blocked`, `done`, `failed`, or
+  `offline`), runner/task/dispatch refs, public-safe worktree refs, and the
+  supported control verbs. Control commands use
+  `openagents.pylon.agent_runner_control_command.v1`; the initial allowlist is
+  `status.list`, `task.list`, `task.update`, `task.dispatch`, and
+  `dispatch.cancel`. This is a contract/projection surface only: current Codex
+  and Claude assignment execution still flows through the existing lease runner
+  paths, and destructive or spendful controls remain outside this local slice.
 
 ### TUI test harness
 
