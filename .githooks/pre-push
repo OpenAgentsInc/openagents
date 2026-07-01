@@ -1,48 +1,86 @@
 #!/usr/bin/env bash
-# Pre-push gate — enforces "everything goes through all gates" without CI.
-# Policy: NO GitHub Actions. This local hook is how direct pushes to main
-# (including owner-agent pushes like cinder/lathe) are gated on check:deploy.
+# Pre-push guard — fast by default so local iteration stays moving.
+# Policy: NO GitHub Actions. Direct pushes to main get cheap local policy checks;
+# run the full deploy gate explicitly, or opt in with OPENAGENTS_PRE_PUSH_FULL_GATE=1.
 #
 # Enable in any checkout with:  git config core.hooksPath .githooks
 #
-# Gates only pushes whose remote ref is main. Other branches push freely.
+# Guards only pushes whose remote ref is main. Other branches push freely.
 set -uo pipefail
 
 gate=0
+main_local_sha=""
+main_remote_sha=""
 while read -r local_ref local_sha remote_ref remote_sha; do
   case "$remote_ref" in
-    refs/heads/main|*/main) gate=1 ;;
+    refs/heads/main|*/main)
+      gate=1
+      main_local_sha="$local_sha"
+      main_remote_sha="$remote_sha"
+      ;;
   esac
 done
 
 [ "$gate" = 1 ] || exit 0
 
 root="$(git rev-parse --show-toplevel)"
+zero_sha="0000000000000000000000000000000000000000"
 
-# Fast fail: no merge-conflict markers in source.
-if grep -rqE '^<<<<<<<|^=======$|^>>>>>>>' \
-     "$root/apps/openagents.com/workers/api/src" \
-     "$root/apps/openagents.com/apps/web/src" 2>/dev/null; then
-  echo "[pre-push gate] BLOCKED: merge-conflict markers present in source." >&2
+is_enabled() {
+  case "${1:-}" in
+    1|true|TRUE|yes|YES|on|ON) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+if [ "$main_local_sha" = "$zero_sha" ]; then
+  echo "[pre-push guard] BLOCKED: refusing to delete main." >&2
   exit 1
 fi
 
-echo "[pre-push gate] push to main -> running check:deploy (all gates)..." >&2
-if ! ( cd "$root/apps/openagents.com" && bun run check:deploy ) >&2; then
-  echo "[pre-push gate] BLOCKED: check:deploy failed. Fix it before pushing to main." >&2
+echo "[pre-push guard] push to main -> running fast policy checks..." >&2
+
+if [ -n "$main_local_sha" ] && [ "$main_remote_sha" != "$zero_sha" ]; then
+  if ! ( cd "$root" && git diff --check "$main_remote_sha..$main_local_sha" ) >&2; then
+    echo "[pre-push guard] BLOCKED: whitespace errors in pushed diff." >&2
+    exit 1
+  fi
+elif [ -n "$main_local_sha" ]; then
+  if ! ( cd "$root" && git diff-tree --check --no-commit-id -r "$main_local_sha" ) >&2; then
+    echo "[pre-push guard] BLOCKED: whitespace errors in pushed commit." >&2
+    exit 1
+  fi
+fi
+
+if ! ( cd "$root/apps/openagents.com" && bun run check:conflict-markers && bun run check:no-github-actions ) >&2; then
+  echo "[pre-push guard] BLOCKED: fast policy checks failed." >&2
   exit 1
 fi
 
-echo "[pre-push gate] check:deploy GREEN." >&2
-echo "[pre-push gate] running warning-only Tier 1 QA smoke for changed user-facing surfaces..." >&2
-if ! ( cd "$root" && bun scripts/qa-pre-push-smoke.ts ) >&2; then
-  echo "[pre-push gate] WARNING: Tier 1 QA smoke did not pass or did not finish. Push remains allowed; Tier 2 async QA is authoritative." >&2
+if is_enabled "${OPENAGENTS_PRE_PUSH_FULL_GATE:-}" || is_enabled "${OPENAGENTS_PRE_PUSH_CHECK_DEPLOY:-}"; then
+  echo "[pre-push guard] OPENAGENTS_PRE_PUSH_FULL_GATE enabled -> running check:deploy..." >&2
+  if ! ( cd "$root/apps/openagents.com" && bun run check:deploy ) >&2; then
+    echo "[pre-push guard] BLOCKED: check:deploy failed. Fix it before pushing to main." >&2
+    exit 1
+  fi
+  echo "[pre-push guard] check:deploy GREEN." >&2
+else
+  echo "[pre-push guard] full check:deploy skipped; run it directly or set OPENAGENTS_PRE_PUSH_FULL_GATE=1 when needed." >&2
 fi
 
-echo "[pre-push gate] launching warning-only Tier 2 async QA on OpenAgents GCE..." >&2
-if ! ( cd "$root" && bun scripts/qa-async-gce-trigger.ts ) >&2; then
-  echo "[pre-push gate] WARNING: Tier 2 async QA trigger failed. Push remains allowed; inspect oa-codex-control / GCE runner health." >&2
+if is_enabled "${OPENAGENTS_PRE_PUSH_QA:-}" || is_enabled "${OPENAGENTS_PRE_PUSH_QA_SMOKE:-}"; then
+  echo "[pre-push guard] running warning-only Tier 1 QA smoke..." >&2
+  if ! ( cd "$root" && bun scripts/qa-pre-push-smoke.ts ) >&2; then
+    echo "[pre-push guard] WARNING: Tier 1 QA smoke did not pass or did not finish. Push remains allowed; Tier 2 async QA is authoritative." >&2
+  fi
 fi
 
-echo "[pre-push gate] main gate green; QA stages yielded — push allowed." >&2
+if is_enabled "${OPENAGENTS_PRE_PUSH_QA:-}" || is_enabled "${OPENAGENTS_PRE_PUSH_ASYNC_QA:-}"; then
+  echo "[pre-push guard] launching warning-only Tier 2 async QA on OpenAgents GCE..." >&2
+  if ! ( cd "$root" && bun scripts/qa-async-gce-trigger.ts ) >&2; then
+    echo "[pre-push guard] WARNING: Tier 2 async QA trigger failed. Push remains allowed; inspect oa-codex-control / GCE runner health." >&2
+  fi
+fi
+
+echo "[pre-push guard] fast main guard green — push allowed." >&2
 exit 0
