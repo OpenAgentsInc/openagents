@@ -1,4 +1,8 @@
 import { randomUUID } from "node:crypto"
+import { Buffer } from "node:buffer"
+import { mkdir, writeFile } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import { basename, join } from "node:path"
 
 import type { KhalaFleetDelegateStep } from "@openagentsinc/khala-tools"
 import type {
@@ -21,8 +25,10 @@ import type { KhalaAppleFmReadiness } from "../shared/apple-fm-readiness.js"
 import type { OnDeviceDeciderSelection } from "../shared/on-device-decider.js"
 import {
   type KhalaCodeDesktopAppInfo,
+  type KhalaCodeDesktopChatTurnAttachment,
   type KhalaCodeDesktopCodexAppServerActionResult,
   type KhalaCodeDesktopChatTurnEvent,
+  type KhalaCodeDesktopChatTurnRequest,
   type KhalaCodeDesktopChatTurnResponse,
   type KhalaCodeDesktopCodexConfigValueWriteRequest,
   type KhalaCodeDesktopCodexBackgroundTerminalsCleanRequest,
@@ -116,6 +122,7 @@ const appInfo = (): KhalaCodeDesktopAppInfo => ({
 const MAX_MENTION_CANDIDATES = 20
 const MAX_DIRECTORY_CANDIDATES = 20
 const MAX_DIFF_DISPLAY_CHARS = 80_000
+const CHAT_ATTACHMENT_TMP_ROOT = join(tmpdir(), "khala-code-chat-attachments")
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null
@@ -125,6 +132,90 @@ const stringValue = (value: unknown): string | null =>
 
 const numberValue = (value: unknown): number | undefined =>
   typeof value === "number" && Number.isFinite(value) ? value : undefined
+
+const safePathSegment = (value: string, fallback: string): string => {
+  const sanitized = value.replace(/[^A-Za-z0-9._-]+/g, "_").replace(/^_+|_+$/g, "")
+  return sanitized.length > 0 ? sanitized : fallback
+}
+
+const imageExtensionForMime = (mime: string): string => {
+  switch (mime.toLowerCase()) {
+    case "image/jpeg":
+    case "image/jpg":
+      return ".jpg"
+    case "image/png":
+      return ".png"
+    case "image/gif":
+      return ".gif"
+    case "image/webp":
+      return ".webp"
+    case "image/heic":
+      return ".heic"
+    default:
+      return ".img"
+  }
+}
+
+const safeAttachmentFilename = (
+  attachment: KhalaCodeDesktopChatTurnAttachment,
+): string => {
+  const rawName = basename(attachment.name.replace(/\\/g, "/"))
+  const fallback = `image${imageExtensionForMime(attachment.mime)}`
+  const sanitized = safePathSegment(rawName, fallback)
+  return sanitized.includes(".")
+    ? sanitized
+    : `${sanitized}${imageExtensionForMime(attachment.mime)}`
+}
+
+const materializeChatAttachment = async (
+  attachment: KhalaCodeDesktopChatTurnAttachment,
+  input: {
+    readonly index: number
+    readonly sessionId: string
+    readonly turnId: string
+  },
+): Promise<KhalaCodeDesktopChatTurnAttachment> => {
+  if (attachment.path !== undefined || attachment.dataBase64 === undefined) {
+    return attachment
+  }
+  if (!attachment.mime.toLowerCase().startsWith("image/")) return attachment
+  const directory = join(
+    CHAT_ATTACHMENT_TMP_ROOT,
+    safePathSegment(input.sessionId, "session"),
+    safePathSegment(input.turnId, "turn"),
+  )
+  await mkdir(directory, { recursive: true })
+  const filename = `${input.index}-${safePathSegment(attachment.id, "image")}-${safeAttachmentFilename(attachment)}`
+  const path = join(directory, filename)
+  await writeFile(path, Buffer.from(attachment.dataBase64, "base64"))
+  return {
+    id: attachment.id,
+    kind: "image",
+    mime: attachment.mime,
+    name: attachment.name,
+    path,
+    sizeBytes: attachment.sizeBytes,
+  }
+}
+
+const materializeChatAttachments = async (
+  request: KhalaCodeDesktopChatTurnRequest,
+): Promise<KhalaCodeDesktopChatTurnRequest> => {
+  if (request.attachments === undefined || request.attachments.length === 0) return request
+  const turnId = request.turnId ?? randomUUID()
+  const attachments = await Promise.all(request.attachments.map((attachment, index) =>
+    materializeChatAttachment(attachment, {
+      index,
+      sessionId: request.sessionId,
+      turnId,
+    })
+  ))
+  return {
+    ...request,
+    attachments,
+    turnId,
+  }
+}
 
 const normalizeMentionCandidate = (value: unknown): KhalaCodeDesktopCodexMentionCandidate | null => {
   if (!isRecord(value)) return null
@@ -1814,16 +1905,17 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
       }
     },
     async submitChatMessage(request) {
+      const materializedRequest = await materializeChatAttachments(request)
       if (!useLegacyKhalaNativeRuntime()) {
         return await labelCodexHarnessResponse(await requireCodexChatRuntime().startTurn({
-          ...request,
+          ...materializedRequest,
           cwd: input.workingDirectory,
         }))
       }
       return labelLegacyRuntimeResponse(await legacyChatTurn({
         env: input.env,
         ...(input.emitChatTurnEvent === undefined ? {} : { onEvent: input.emitChatTurnEvent }),
-        request,
+        request: materializedRequest,
         workingDirectory: input.workingDirectory,
       }))
     },

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test"
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises"
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
@@ -510,6 +510,67 @@ describe("Khala Code desktop RPC handlers", () => {
     })
     expect(codexTurnStarted).toBe(true)
     expect(legacyTurnStarted).toBe(false)
+  })
+
+  test("materializes image attachment payloads before routing chat submits", async () => {
+    let capturedAttachmentPath: string | undefined
+    const handlers = createKhalaCodeDesktopRpcRequestHandlers({
+      appleFmReadiness: () => {
+        throw new Error("not used")
+      },
+      codexChatRuntime: throwingCodexChatRuntime({
+        startTurn: async request => {
+          const attachment = request.attachments?.[0]
+          expect(attachment).toMatchObject({
+            id: "attachment-image-1",
+            kind: "image",
+            mime: "image/png",
+            name: "composer.png",
+            sizeBytes: 11,
+          })
+          expect(attachment?.dataBase64).toBeUndefined()
+          expect(attachment?.path).toContain("khala-code-chat-attachments")
+          capturedAttachmentPath = attachment?.path
+          if (capturedAttachmentPath === undefined) throw new Error("missing materialized attachment path")
+          await expect(readFile(capturedAttachmentPath, "utf8")).resolves.toBe("image-bytes")
+          return {
+            backend: {
+              kind: "codex_app_server",
+              model: "gpt-5.1-codex",
+              threadId: "thread-image",
+              turnId: "turn-image",
+            },
+            messages: [{ id: "agent-image", role: "assistant", body: "I can see it" }],
+            ok: true,
+            toolNames: [],
+            usedTools: [],
+          }
+        },
+      }),
+      env: {},
+      onDeviceDeciderStatus: () => {
+        throw new Error("not used")
+      },
+      workingDirectory: process.cwd(),
+    })
+
+    await expect(handlers.submitChatMessage({
+      attachments: [{
+        dataBase64: "aW1hZ2UtYnl0ZXM=",
+        id: "attachment-image-1",
+        kind: "image",
+        mime: "image/png",
+        name: "composer.png",
+        sizeBytes: 11,
+      }],
+      messages: [{ id: "user-image", role: "user", body: "Summarize this image" }],
+      sessionId: "desktop-session-image",
+      turnId: "desktop-turn-image",
+    })).resolves.toMatchObject({
+      messages: [{ body: "I can see it" }],
+      ok: true,
+    })
+    expect(capturedAttachmentPath).toContain("attachment-image-1-composer.png")
   })
 
   test("adds typed Codex auth blocker refs to failed Codex app-server chat turns", async () => {

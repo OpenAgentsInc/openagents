@@ -3,6 +3,7 @@ import { homedir } from "node:os"
 import { dirname, join } from "node:path"
 
 import type {
+  KhalaCodeDesktopChatTurnAttachment,
   KhalaCodeDesktopChatTurnEvent,
   KhalaCodeDesktopChatTurnRequest,
   KhalaCodeDesktopChatTurnResponse,
@@ -62,6 +63,28 @@ type ActiveCodexTurn = {
   readonly desktopSessionId: string
   readonly desktopTurnId: string
 }
+
+type CodexAppServerTurnInput =
+  | {
+      readonly text: string
+      readonly textElements: readonly []
+      readonly type: "text"
+    }
+  | {
+      readonly path: string
+      readonly type: "localImage"
+    }
+
+const codexTurnInputFor = (
+  text: string,
+  attachments: readonly KhalaCodeDesktopChatTurnAttachment[] = [],
+): readonly CodexAppServerTurnInput[] => [
+  { type: "text", text, textElements: [] },
+  ...attachments.flatMap(attachment => {
+    if (attachment.kind !== "image" || attachment.path === undefined) return []
+    return [{ type: "localImage" as const, path: attachment.path }]
+  }),
+]
 
 export type CodexAppServerChatRuntime = Readonly<{
   compactThread: (
@@ -938,7 +961,7 @@ export function createCodexAppServerChatRuntime(
         host.request("turn/start", {
           threadId: thread.threadId,
           clientUserMessageId: userMessage.id,
-          input: [{ type: "text", text: userMessage.body, textElements: [] }],
+          input: codexTurnInputFor(userMessage.body, request.attachments),
           cwd: request.cwd ?? options.workingDirectory,
           responsesapiClientMetadata: {
             khalaDesktopSessionId: request.sessionId,

@@ -949,8 +949,9 @@ describe("khala code desktop app shell", () => {
     expect(main).toContain("response.backend.threadId")
     expect(main).toContain("useStateDbOnly: true")
     expect(main).toContain(
-      "const request: KhalaCodeDesktopChatTurnRequest = {\n      messages,\n      sessionId,\n      ...(activeCodexThreadId === null ? { startNewThread: true } : { threadId: activeCodexThreadId }),\n      turnId,\n    }",
+      "const request: KhalaCodeDesktopChatTurnRequest = {\n      ...(imageAttachments.length === 0 ? {} : { attachments: imageAttachments }),\n      messages,\n      sessionId,\n      ...(activeCodexThreadId === null ? { startNewThread: true } : { threadId: activeCodexThreadId }),\n      turnId,\n    }",
     )
+    expect(main).toContain("const imageAttachments = await imageAttachmentsForSubmit(attachments)")
     expect(panel).toContain("Search Codex threads")
     expect(panel).toContain('from "@openagentsinc/ui/menu-dom"')
     expect(panel).toContain("createBasecoatContextMenu")
@@ -1272,6 +1273,8 @@ describe("khala code desktop app shell", () => {
     expect(main).toContain("readyComposerAttachmentTransaction")
     expect(main).toContain("projectComposerAttachmentUploadReceipt")
     expect(main).toContain("DEFAULT_DESKTOP_LOCAL_ATTACHMENT_UPLOAD_POLICY")
+    expect(main).toContain("base64FromArrayBuffer")
+    expect(main).toContain("imageAttachmentsForSubmit")
     expect(main).toContain("sha256DigestForBytes")
     expect(main).toContain("attachmentReceipts")
     expect(main).toContain("createCommandComposerHud")

@@ -42,6 +42,7 @@ import * as Three from "three"
 import {
   KHALA_CODE_DESKTOP_DEFAULT_PREVIEW_PORT,
   KHALA_CODE_DESKTOP_RPC_MAX_REQUEST_TIME_MS,
+  type KhalaCodeDesktopChatTurnAttachment,
   type KhalaCodeDesktopChatTurnEvent,
   type KhalaCodeDesktopChatTurnRequest,
   type KhalaCodeDesktopMessage,
@@ -942,6 +943,16 @@ const arrayBufferForText = (text: string): ArrayBuffer => {
   ) as ArrayBuffer
 }
 
+const base64FromArrayBuffer = (bytes: ArrayBuffer): string => {
+  const view = new Uint8Array(bytes)
+  let binary = ""
+  const chunkSize = 0x8000
+  for (let offset = 0; offset < view.length; offset += chunkSize) {
+    binary += String.fromCharCode(...view.subarray(offset, offset + chunkSize))
+  }
+  return btoa(binary)
+}
+
 const pushAttachmentReceipt = (
   receipt: ComposerAttachmentUploadReceipt,
 ): void => {
@@ -1503,6 +1514,30 @@ const submittedBody = (
   return `${text}\n\n${summary}`
 }
 
+const imageAttachmentsForSubmit = async (
+  attachments: readonly ComposerAttachment[],
+): Promise<readonly KhalaCodeDesktopChatTurnAttachment[]> => {
+  const payloads = await Promise.all(attachments.map(
+    async (attachment): Promise<KhalaCodeDesktopChatTurnAttachment | null> => {
+      if (attachment.kind !== "image" || attachment.status !== "ready") return null
+      const file = localAttachmentFiles.get(attachment.id)
+      if (file === undefined || !file.type.startsWith("image/")) return null
+      const bytes = await file.arrayBuffer()
+      return {
+        dataBase64: base64FromArrayBuffer(bytes),
+        id: attachment.id,
+        kind: "image",
+        mime: attachment.mime || file.type,
+        name: attachment.name || file.name,
+        sizeBytes: attachment.sizeBytes || file.size,
+      }
+    },
+  ))
+  return payloads.filter(
+    (payload): payload is KhalaCodeDesktopChatTurnAttachment => payload !== null,
+  )
+}
+
 const resetComposerDraft = (): void => {
   for (const url of objectUrls) URL.revokeObjectURL(url)
   objectUrls.clear()
@@ -1622,6 +1657,7 @@ const submitComposer = async (): Promise<KhalaCodeDesktopMessage | null> => {
   if (draftText.startsWith("/")) {
     return submitSlashCommand(draftText, body)
   }
+  const imageAttachments = await imageAttachmentsForSubmit(attachments)
   lastSubmittedDraft = draftText
   lastTurnFailed = false
   resetComposerDraft()
@@ -1634,6 +1670,7 @@ const submitComposer = async (): Promise<KhalaCodeDesktopMessage | null> => {
   requestAnimationFrame(focusComposerInput)
   try {
     const request: KhalaCodeDesktopChatTurnRequest = {
+      ...(imageAttachments.length === 0 ? {} : { attachments: imageAttachments }),
       messages,
       sessionId,
       ...(activeCodexThreadId === null ? { startNewThread: true } : { threadId: activeCodexThreadId }),

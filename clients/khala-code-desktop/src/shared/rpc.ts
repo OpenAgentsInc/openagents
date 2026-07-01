@@ -103,11 +103,22 @@ export type KhalaCodeDesktopUsage = {
 }
 
 export type KhalaCodeDesktopChatTurnRequest = {
+  readonly attachments?: readonly KhalaCodeDesktopChatTurnAttachment[]
   readonly messages: readonly KhalaCodeDesktopMessage[]
   readonly sessionId: string
   readonly startNewThread?: boolean
   readonly threadId?: string
   readonly turnId?: string
+}
+
+export type KhalaCodeDesktopChatTurnAttachment = {
+  readonly dataBase64?: string
+  readonly id: string
+  readonly kind: "image"
+  readonly mime: string
+  readonly name: string
+  readonly path?: string
+  readonly sizeBytes: number
 }
 
 export type KhalaCodeDesktopBackendProjection = {

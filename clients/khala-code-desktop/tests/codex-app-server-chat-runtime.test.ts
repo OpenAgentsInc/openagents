@@ -207,6 +207,66 @@ describe("Codex app-server chat runtime", () => {
     expect(await readFile(fixture.statePath, "utf8")).toContain("thread-codex-1")
   })
 
+  test("passes materialized image attachments as Codex local image input", async () => {
+    const fixture = await stateFixture()
+    const records: RequestRecord[] = []
+    const host = createFakeHost({
+      records,
+      onRequest: (method, _params, subscribers) => {
+        if (method === "thread/start") {
+          return {
+            thread: { id: "thread-with-image", status: "running" },
+            model: "gpt-5.1-codex",
+            modelProvider: "openai",
+            cwd: fixture.root,
+          }
+        }
+        if (method === "turn/start") {
+          queueMicrotask(() => {
+            emit(subscribers, {
+              method: "turn/completed",
+              params: {
+                threadId: "thread-with-image",
+                turn: { id: "turn-with-image", status: "completed" },
+              },
+            })
+          })
+          return { turn: { id: "turn-with-image", status: "inProgress" } }
+        }
+        throw new Error(`unexpected request ${method}`)
+      },
+    })
+    const runtime = createCodexAppServerChatRuntime({
+      host,
+      statePath: fixture.statePath,
+      turnTimeoutMs: 1_000,
+      workingDirectory: fixture.root,
+    })
+
+    await runtime.startTurn({
+      attachments: [{
+        id: "image-1",
+        kind: "image",
+        mime: "image/png",
+        name: "composer.png",
+        path: join(fixture.root, "composer.png"),
+        sizeBytes: 12,
+      }],
+      messages: [{ id: "user-image", role: "user", body: "Summarize this image" }],
+      sessionId: "desktop-session-image",
+      turnId: "desktop-turn-image",
+    })
+
+    expect(records[1]?.params).toMatchObject({
+      threadId: "thread-with-image",
+      clientUserMessageId: "user-image",
+      input: [
+        { type: "text", text: "Summarize this image", textElements: [] },
+        { type: "localImage", path: join(fixture.root, "composer.png") },
+      ],
+    })
+  })
+
   test("captures Codex token usage updates without waiting for a clean turn", async () => {
     const fixture = await stateFixture()
     const records: RequestRecord[] = []
