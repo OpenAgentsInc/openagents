@@ -34,9 +34,8 @@ export type CodexThreadSidebarOptions = {
   readonly renameThread: (threadId: string, name: string) => Promise<KhalaCodeDesktopCodexThreadMutationResult>
   readonly resumeThread: (threadId: string) => Promise<KhalaCodeDesktopCodexThreadResult>
   readonly sessionId: string
-  readonly startThread: () => Promise<KhalaCodeDesktopCodexThreadResult>
   readonly unarchiveThread: (threadId: string) => Promise<KhalaCodeDesktopCodexThreadMutationResult>
-  readonly onThreadStarted?: () => void
+  readonly onNewThreadRequested: () => void
   readonly onThreadSelected: (
     input: {
       readonly messages: readonly KhalaCodeDesktopMessage[]
@@ -160,19 +159,11 @@ export const mountCodexThreadSidebar = (
     }
   }
 
-  const startThread = async (): Promise<void> => {
-    try {
-      const result = await options.startThread()
-      activeThreadId = result.threadId
-      options.onThreadSelected({
-        threadId: result.threadId,
-        messages: messagesForResult(result),
-      })
-      await refresh()
-      options.onThreadStarted?.()
-    } catch (error) {
-      setStatusError(error)
-    }
+  const startNewChat = (): void => {
+    threadMenu.close()
+    activeThreadId = null
+    options.onNewThreadRequested()
+    render()
   }
 
   const cancelRename = (): void => {
@@ -409,7 +400,7 @@ export const mountCodexThreadSidebar = (
     newThread.title = "New thread"
     newThread.setAttribute("aria-label", "New thread")
     newThread.replaceChildren(sidebarIcon("Plus", "New thread"), srOnly("New thread"))
-    newThread.addEventListener("click", () => void startThread())
+    newThread.addEventListener("click", startNewChat)
     header.append(newThread)
 
     const controls = el("div", "khala-thread-sidebar-controls")

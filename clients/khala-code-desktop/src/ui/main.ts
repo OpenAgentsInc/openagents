@@ -2194,6 +2194,17 @@ const activateCodexThread = (input: {
   requestAnimationFrame(focusComposerInput)
 }
 
+const beginNewCodexThread = (): void => {
+  setActiveCodexThreadId(null)
+  messages = []
+  activeTurnIds.clear()
+  pendingTurn = false
+  thinkingTurnId = null
+  lastTurnFailed = false
+  render()
+  requestAnimationFrame(focusComposerInput)
+}
+
 const loadGymDemoOptimization = () => {
   const state = gymPaneStateFromBridgeProof({
     proof: khalaCodeGymDemoBridgeProof,
@@ -2247,9 +2258,8 @@ const threadSidebar =
         renameThread: (threadId, name) => controls.codexThreadRename({ name, threadId }),
         resumeThread: threadId => controls.codexThreadResume({ sessionId, threadId }),
         sessionId,
-        startThread: () => controls.codexThreadStart({ sessionId }),
         unarchiveThread: threadId => controls.codexThreadUnarchive({ threadId }),
-        onThreadStarted: () => requestAnimationFrame(focusComposerInput),
+        onNewThreadRequested: beginNewCodexThread,
         onThreadSelected: activateCodexThread,
       })
 

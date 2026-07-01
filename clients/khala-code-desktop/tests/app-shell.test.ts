@@ -957,6 +957,10 @@ describe("khala code desktop app shell", () => {
     expect(panel).toContain("createBasecoatContextMenu")
     expect(panel).not.toContain("readonly clearDraftThread")
     expect(panel).not.toContain("readonly upsertDraftThread")
+    expect(panel).toContain("readonly onNewThreadRequested: () => void")
+    expect(panel).toContain("activeThreadId = null\n    options.onNewThreadRequested()\n    render()")
+    expect(panel).not.toContain("readonly startThread")
+    expect(panel).not.toContain("readonly onThreadStarted")
     expect(panel).not.toContain("const draftThreadSummary =")
     expect(panel).not.toContain("const dataWithDraftThreads =")
     expect(panel).not.toContain('label: "Drafts"')
@@ -1205,13 +1209,18 @@ describe("khala code desktop app shell", () => {
     expect(css).not.toContain("cursor: wait")
   })
 
-  test("focuses the composer after starting a new thread from the sidebar", async () => {
+  test("clears the active thread before composing a new chat from the sidebar", async () => {
     const main = await Bun.file(new URL("../src/ui/main.ts", import.meta.url)).text()
     const sidebar = await Bun.file(new URL("../src/ui/codex-thread-sidebar.ts", import.meta.url)).text()
 
-    expect(sidebar).toContain("readonly onThreadStarted?: () => void")
-    expect(sidebar).toContain("await refresh()\n      options.onThreadStarted?.()")
-    expect(main).toContain("onThreadStarted: () => requestAnimationFrame(focusComposerInput)")
+    expect(sidebar).toContain("readonly onNewThreadRequested: () => void")
+    expect(sidebar).toContain("const startNewChat = (): void => {")
+    expect(sidebar).toContain("activeThreadId = null\n    options.onNewThreadRequested()\n    render()")
+    expect(sidebar).not.toContain("options.startThread()")
+    expect(sidebar).not.toContain("options.onThreadStarted")
+    expect(main).toContain("const beginNewCodexThread = (): void => {")
+    expect(main).toContain("setActiveCodexThreadId(null)\n  messages = []")
+    expect(main).toContain("onNewThreadRequested: beginNewCodexThread")
   })
 
   test("keeps transcript scrolling user-controlled during streaming updates", async () => {
