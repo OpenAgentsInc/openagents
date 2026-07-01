@@ -171,6 +171,13 @@ export type CommandComposerIconName =
 
 const decodeProps = Schema.decodeUnknownSync(CommandComposerProps)
 const decodeAttachment = Schema.decodeUnknownSync(CommandComposerAttachmentProps)
+const commandComposerMaxRows = 10
+
+const commandComposerRows = (value: string, minRows: number): number =>
+  Math.min(
+    commandComposerMaxRows,
+    Math.max(minRows, value.split(/\r\n|\r|\n/).length),
+  )
 
 const idSafe = (name: string): string =>
   name.replace(/[^a-zA-Z0-9_-]/g, '-').replace(/^-+|-+$/g, '') || 'prompt'
@@ -768,6 +775,7 @@ export const commandComposer = <Message>(input: {
     props.selectedAttachmentId ?? state.selection.selectedAttachmentId
   const textareaId = `oa-command-composer-${idSafe(props.name)}`
   const label = props.label ?? 'Message Khala'
+  const rows = commandComposerRows(value, props.rows ?? 3)
 
   return h.form(
     [
@@ -819,7 +827,7 @@ export const commandComposer = <Message>(input: {
               h.AriaLabel(label),
               h.AriaDescribedBy(`${textareaId}-a11y`),
               h.Placeholder(props.placeholder ?? 'Send a message'),
-              h.Rows(props.rows ?? 3),
+              h.Rows(rows),
               h.Spellcheck(true),
               h.Autocapitalize('sentences'),
               h.InputMode('text'),

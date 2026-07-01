@@ -365,6 +365,29 @@ describe('persistent landing and Khala scene', () => {
     )
   })
 
+  test('expands the /chat composer to ten rows before scrolling', () => {
+    const tallPrompt = [
+      'Line one',
+      'Line two',
+      'Line three',
+      'Line four',
+      'Line five',
+      'Line six',
+      'Line seven',
+      'Line eight',
+      'Line nine',
+      'Line ten',
+      'Line eleven',
+    ].join('\n')
+
+    Scene.scene(
+      { update, view },
+      Scene.with(LoggedOut.init(KhalaChatRoute())),
+      Scene.type(Scene.label('Message Khala'), tallPrompt),
+      Scene.expect(Scene.label('Message Khala')).toHaveAttr('rows', '10'),
+    )
+  })
+
   test('renders /login as the sign-in card over the same persistent scene', () => {
     Scene.scene(
       { update, view },

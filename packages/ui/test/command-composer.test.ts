@@ -124,6 +124,39 @@ describe('ai-elements command composer', () => {
     expect(rendered).not.toContain('>^</span>')
   })
 
+  test('expands tall prompts to ten rows before scrolling', async () => {
+    const tallPrompt = [
+      'Line one',
+      'Line two',
+      'Line three',
+      'Line four',
+      'Line five',
+      'Line six',
+      'Line seven',
+      'Line eight',
+      'Line nine',
+      'Line ten',
+      'Line eleven',
+    ].join('\n')
+    const rendered = renderHtml(
+      AiElements.commandComposer({
+        props: {
+          name: 'prompt',
+          value: tallPrompt,
+          rows: 4,
+        },
+      }),
+    )
+    const css = await Bun.file(
+      new URL('../src/ai-elements/command-composer.css', import.meta.url),
+    ).text()
+
+    expect(rendered).toContain('rows="10"')
+    expect(css).toContain('field-sizing: content')
+    expect(css).toContain('max-height: 14.5em')
+    expect(css).toContain('overflow-y: auto')
+  })
+
   test('renders attachments and markdown preview from the state contract', () => {
     const state = emptyComposerState()
     const rendered = renderHtml(

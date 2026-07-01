@@ -65,9 +65,12 @@
 }
 
 .oa-ai-command-composer-textarea {
+  field-sizing: content;
+  max-height: 14.5em;
   min-height: 4rem;
   width: 100%;
   resize: none;
+  overflow-y: auto;
   border: 0;
   background: transparent;
   color: var(--oa-command-composer-text);
