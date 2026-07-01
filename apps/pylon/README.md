@@ -158,6 +158,27 @@ pylon apple-fm status
 pylon apple-fm tool-stream-demo
 ```
 
+## Local Orchestration Store
+
+`apps/pylon/src/orchestration/` contains the local supervisor state spine for
+registered agent runners. The store persists a typed task DAG, dispatch
+contexts keyed by runner vocabulary (`codex`, `claude_agent`, or `generic`),
+heartbeat timestamps, base-drift counters, and a three-failure circuit breaker
+for flapping runner contexts. The legacy `claude` runner alias is accepted at
+read/write boundaries and normalized to `claude_agent`.
+
+When a dispatched context records a failure, the assigned task is moved to
+`failed`, the context is released, and the context is quarantined as
+`circuit_broken` after the configured failure threshold. Later heartbeats update
+liveness data but do not clear a circuit breaker; an operator must explicitly
+reset or replace that context.
+
+Use `publicSnapshot()` for surfaces that may leave the local process. That
+projection contains task/context refs, statuses, runner kinds, heartbeat/drift
+metadata, and repo refs only. It intentionally omits task prompts and replaces
+local worktree paths with `null`; raw prompts, verification details, and local
+paths remain local-only execution state.
+
 ## Dashboard (TUI)
 
 Running `pylon` with no subcommand opens the observational dashboard: an

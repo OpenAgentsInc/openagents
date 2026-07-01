@@ -40,21 +40,51 @@ describe("Pylon supervisor orchestration store", () => {
   })
 
   test("records dispatch failures as a three-strike circuit breaker", () => {
+    const now = new Date("2026-06-27T12:00:00.000Z")
     const store = createPylonOrchestrationStore(new Database(":memory:"))
+    store.createTask({ id: "task.flaky", spec: baseTaskSpec, now })
     store.createDispatchContext({
       id: "ctx.codex.1",
       assigneeHandle: "codex-1",
       runnerKind: "codex",
-      lastHeartbeatAt: new Date("2026-06-27T12:00:00.000Z"),
+      lastHeartbeatAt: now,
+      now,
     })
+    store.markDispatched("task.flaky", "ctx.codex.1", now)
 
-    expect(store.recordDispatchFailure("ctx.codex.1").status).toBe("idle")
+    expect(store.recordDispatchFailure("ctx.codex.1", 3, now).status).toBe("idle")
+    expect(store.getTask("task.flaky")?.status).toBe("failed")
     expect(store.recordDispatchFailure("ctx.codex.1").status).toBe("idle")
     const broken = store.recordDispatchFailure("ctx.codex.1")
 
     expect(broken.failureCount).toBe(3)
     expect(broken.status).toBe("circuit_broken")
     expect(dispatchEligibility(broken, { now: new Date("2026-06-27T12:01:00.000Z") })).toEqual({
+      ok: false,
+      reason: "circuit_broken",
+    })
+  })
+
+  test("keeps circuit-broken dispatch contexts quarantined across heartbeats", () => {
+    const now = new Date("2026-06-27T12:00:00.000Z")
+    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    store.createDispatchContext({
+      id: "ctx.flapping",
+      assigneeHandle: "codex-flap",
+      runnerKind: "codex",
+      lastHeartbeatAt: now,
+      now,
+    })
+
+    store.recordDispatchFailure("ctx.flapping", 1, now)
+    const heartbeat = store.recordHeartbeat("ctx.flapping", {
+      at: new Date("2026-06-27T12:01:00.000Z"),
+      status: "idle",
+    })
+
+    expect(heartbeat.status).toBe("circuit_broken")
+    expect(heartbeat.lastHeartbeatAt).toBe("2026-06-27T12:01:00.000Z")
+    expect(dispatchEligibility(heartbeat, { now: new Date("2026-06-27T12:01:30.000Z") })).toEqual({
       ok: false,
       reason: "circuit_broken",
     })
@@ -180,6 +210,10 @@ describe("Pylon supervisor orchestration store", () => {
 
   test("normalizes legacy runner aliases through the AgentRunner registry vocabulary", () => {
     const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const task = store.createTask({
+      id: "task.legacy-claude",
+      spec: { ...baseTaskSpec, runnerKind: "claude_agent" },
+    })
     const context = store.createDispatchContext({
       id: "ctx.legacy-claude",
       assigneeHandle: "claude-legacy",
@@ -187,11 +221,58 @@ describe("Pylon supervisor orchestration store", () => {
       lastHeartbeatAt: new Date("2026-06-27T12:00:00.000Z"),
     })
 
+    expect(task.spec.runnerKind).toBe("claude_agent")
     expect(context.runnerKind).toBe("claude_agent")
     expect(normalizeOrchestrationRunnerKind("claude")).toBe("claude_agent")
     expect(isStoredOrchestrationRunnerKind("claude_agent")).toBe(true)
     expect(isStoredOrchestrationRunnerKind("claude")).toBe(true)
     expect(isStoredOrchestrationRunnerKind("opencode")).toBe(false)
+  })
+
+  test("projects public-safe task and dispatch-context state without prompts or worktree paths", () => {
+    const now = new Date("2026-06-27T12:00:00.000Z")
+    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    store.createTask({
+      id: "task.public-safe",
+      spec: {
+        ...baseTaskSpec,
+        prompt: "Public issue prompt with operational detail.",
+        issueRef: "issue.7808",
+        runnerKind: "codex",
+      },
+      now,
+    })
+    store.createDispatchContext({
+      id: "ctx.public-safe",
+      assigneeHandle: "codex-1",
+      runnerKind: "codex",
+      worktreeId: "wt-public-safe",
+      worktreePath: "/private/local/worktree/path",
+      lastHeartbeatAt: now,
+      now,
+    })
+
+    const snapshot = store.publicSnapshot()
+
+    expect(snapshot.tasks).toEqual([
+      {
+        id: "task.public-safe",
+        parentId: null,
+        threadId: "task.public-safe",
+        status: "ready",
+        deps: [],
+        runnerKind: "codex",
+        repo: "OpenAgentsInc/openagents",
+        branch: "main",
+        baseCommit: "abc123",
+        issueRef: "issue.7808",
+        createdAt: "2026-06-27T12:00:00.000Z",
+        updatedAt: "2026-06-27T12:00:00.000Z",
+      },
+    ])
+    expect(JSON.stringify(snapshot)).not.toContain("Public issue prompt")
+    expect(JSON.stringify(snapshot)).not.toContain("/private/local/worktree/path")
+    expect(snapshot.dispatchContexts[0]?.worktreePath).toBeNull()
   })
 
   test("refuses an otherwise healthy idle context when the ready task requires another runner", () => {
