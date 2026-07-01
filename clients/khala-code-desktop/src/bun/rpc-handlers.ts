@@ -377,16 +377,33 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
     ],
   })
 
-  const labelCodexHarnessResponse = (
+  const failedCodexHarnessBlockerRefs = async (
     response: KhalaCodeDesktopChatTurnResponse,
-  ): KhalaCodeDesktopChatTurnResponse => ({
-    ...response,
-    backend: {
-      ...response.backend,
-      runtimeMode: "codex_harness",
-      toolCatalogKind: response.backend.toolCatalogKind ?? "codex_app_server",
-    },
-  })
+  ): Promise<readonly string[]> => {
+    if (response.ok || response.backend.kind !== "codex_app_server") return []
+    if (response.backend.turnStatus !== "failed") return []
+    try {
+      const status = await codexHarnessStatus()
+      return [...new Set(status.auth.blockerRefs)]
+    } catch {
+      return []
+    }
+  }
+
+  const labelCodexHarnessResponse = async (
+    response: KhalaCodeDesktopChatTurnResponse,
+  ): Promise<KhalaCodeDesktopChatTurnResponse> => {
+    const blockerRefs = response.backend.blockerRefs ?? await failedCodexHarnessBlockerRefs(response)
+    return {
+      ...response,
+      backend: {
+        ...response.backend,
+        ...(blockerRefs.length === 0 ? {} : { blockerRefs }),
+        runtimeMode: "codex_harness",
+        toolCatalogKind: response.backend.toolCatalogKind ?? "codex_app_server",
+      },
+    }
+  }
 
   const ecosystemNotifications: CodexAppServerNotification[] = []
   const ecosystemNotificationMethods = new Set([
@@ -1304,7 +1321,7 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
     },
     async submitChatMessage(request) {
       if (!useLegacyKhalaNativeRuntime()) {
-        return labelCodexHarnessResponse(await requireCodexChatRuntime().startTurn({
+        return await labelCodexHarnessResponse(await requireCodexChatRuntime().startTurn({
           ...request,
           cwd: input.workingDirectory,
         }))

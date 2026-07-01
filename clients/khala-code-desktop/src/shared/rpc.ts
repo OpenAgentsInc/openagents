@@ -105,6 +105,7 @@ export type KhalaCodeDesktopChatTurnRequest = {
 
 export type KhalaCodeDesktopBackendProjection = {
   readonly baseUrl?: string
+  readonly blockerRefs?: readonly string[]
   readonly credentialSource?: "env:OPENROUTER_API_KEY" | "khala-provider-key"
   readonly kind: "codex_app_server" | "hosted_openagents" | "mock"
   readonly model: string
