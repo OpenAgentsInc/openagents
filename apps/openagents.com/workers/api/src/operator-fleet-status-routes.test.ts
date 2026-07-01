@@ -61,6 +61,15 @@ const rowsForSql = (sql: string): ReadonlyArray<Record<string, unknown>> => {
         state: 'running',
         updated_at: '2026-06-27T18:39:00.000Z',
       },
+      {
+        assignment_ref: 'assignment.public.issue_6428',
+        created_at: '2026-06-27T18:35:00.000Z',
+        job_kind: 'codex_agent_task',
+        lease_expires_at: '2026-06-27T19:35:00.000Z',
+        pylon_ref: 'pylon.public.codex_one',
+        state: 'running',
+        updated_at: '2026-06-27T18:40:00.000Z',
+      },
     ]
   }
 
@@ -87,6 +96,12 @@ const rowsForSql = (sql: string): ReadonlyArray<Record<string, unknown>> => {
         latest_observed_at: '2026-06-27T18:40:40.000Z',
         raw_chunk_bytes: 16000,
         raw_chunk_count: 4,
+      },
+      {
+        assignment_ref: 'assignment.public.issue_6428',
+        latest_observed_at: '2026-06-27T18:40:50.000Z',
+        raw_chunk_bytes: 32000,
+        raw_chunk_count: 8,
       },
     ]
   }
@@ -250,7 +265,7 @@ describe('operator fleet status route', () => {
         loopHealth: 'stalled',
       },
       fleet: {
-        activeAssignmentCount: 1,
+        activeAssignmentCount: 2,
         activeAssignments: [
           {
             assignmentRef: 'assignment.public.issue_6427',
@@ -262,6 +277,17 @@ describe('operator fleet status route', () => {
             progressAgeMs: 30000,
             progressObservedAt: '2026-06-27T18:40:30.000Z',
             tokensSoFar: 4242,
+          },
+          {
+            assignmentRef: 'assignment.public.issue_6428',
+            elapsedMs: 360000,
+            lastLog: null,
+            lastProgressEvent: null,
+            lastUpdateAgeMs: 60000,
+            phase: 'running',
+            progressAgeMs: null,
+            progressObservedAt: null,
+            tokensSoFar: null,
           },
         ],
         activeSlots: 3,
@@ -277,11 +303,34 @@ describe('operator fleet status route', () => {
       },
       pace: {
         timezone: 'America/Chicago',
-        activeAdjustedTokensPerMinute: 464,
+        activeAdjustedTokensPerMinute: 1797,
         activeSessionTokenEstimate: {
-          activeAssignmentCount: 1,
-          inFlightTokens: 4242,
-          inFlightTokensPerMinute: 404,
+          activeAssignmentCount: 2,
+          assignments: [
+            {
+              assignmentRef: 'assignment.public.issue_6427',
+              rawChunkBytes: 16000,
+              rawChunkCount: 4,
+              rawChunkObservedAt: '2026-06-27T18:40:40.000Z',
+              source: 'assignment_progress.tokensSoFar',
+              tokenCountKind: 'estimated',
+              tokens: 4242,
+              tokensPerMinute: 404,
+            },
+            {
+              assignmentRef: 'assignment.public.issue_6428',
+              rawChunkBytes: 32000,
+              rawChunkCount: 8,
+              rawChunkObservedAt: '2026-06-27T18:40:50.000Z',
+              source: 'pylon_codex_raw_event_chunks.byte_length',
+              tokenCountKind: 'estimated',
+              tokens: 8000,
+              tokensPerMinute: 1333,
+            },
+          ],
+          caveatRefs: ['caveat.public.operator_fleet_status.active_session_tokens_estimated'],
+          inFlightTokens: 12242,
+          inFlightTokensPerMinute: 1737,
         },
         liveBurnRateTokensPerMinute: 60,
         ownCapacityCodex: {
@@ -334,7 +383,7 @@ describe('operator fleet status route', () => {
         state: 'ready',
       },
       watchdog: {
-        activeLeases: 1,
+        activeLeases: 2,
         state: 'STALLED',
       },
     })
