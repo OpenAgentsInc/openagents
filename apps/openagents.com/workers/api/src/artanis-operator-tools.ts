@@ -30,6 +30,10 @@
 // inputs or outputs.
 
 import { Data, Effect } from 'effect'
+import {
+  authorizeCommandProposal,
+  evaluateCommandSourceVerified,
+} from '@openagentsinc/blueprint-contracts'
 
 import type {
   ArtanisOperatorGatedResult,
@@ -3224,6 +3228,29 @@ const DISPATCH_UNSAFE_PATTERN =
 const dispatchFieldIsSafe = (value: string): boolean =>
   !DISPATCH_UNSAFE_PATTERN.test(value)
 
+const commandProposalGateForVerify = (
+  verify: string,
+) => {
+  const isApiTestCommand =
+    /^bun\s+run\s+--cwd\s+apps\/openagents\.com\/workers\/api\s+test(?:\s|$)/.test(
+      verify,
+    )
+  return authorizeCommandProposal(
+    evaluateCommandSourceVerified({
+      commandString: verify,
+      declaredFlags: isApiTestCommand ? ['--cwd'] : [],
+      dryRunExitCode: isApiTestCommand ? 0 : null,
+      expectedFlags: ['--cwd'],
+      scriptPath: isApiTestCommand
+        ? 'apps/openagents.com/workers/api/package.json'
+        : 'unknown',
+      sourceReadHash: isApiTestCommand
+        ? 'source.public.apps.openagents.com.workers.api.package_json.test'
+        : null,
+    }),
+  )
+}
+
 // The validated, public-safe plan input the gated tool hands to the execution
 // seam. Every field has already passed the public-safety gate.
 export type ArtanisDispatchPlanInput = Readonly<{
@@ -3443,6 +3470,17 @@ export const makeArtanisDispatchCodexTaskTool = (
             outcome: 'deferred',
             plan: built.planText,
             reason: 'no_effective_owner_approval',
+          }
+        }
+
+        const commandProposal = commandProposalGateForVerify(
+          built.input.verify ?? '',
+        )
+        if (!commandProposal.ok) {
+          return {
+            outcome: 'deferred',
+            plan: built.planText,
+            reason: 'command_source_not_verified',
           }
         }
 

@@ -68,6 +68,10 @@ export interface MergeDeployGateResult {
   readonly state: MergeDeployState
   /** True only when the terminal state LIVE is reached. */
   readonly isLive: boolean
+  readonly identity: Readonly<{
+    readonly prNumbers: ReadonlyArray<number>
+    readonly mergeCommitHashes: ReadonlyArray<string>
+  }>
   readonly isRed: boolean
   /** True while a RED gate has no rollback evidence ref presented. */
   readonly blocksFurtherMerges: boolean
@@ -121,6 +125,10 @@ export function evaluateMergeDeployGate(
   inputs: MergeDeployGateInputs,
 ): MergeDeployGateResult {
   const satisfied: Array<MergeDeployEvidenceRef> = []
+  const identity = {
+    prNumbers: inputs.prNumbers,
+    mergeCommitHashes: inputs.mergeCommitHashes,
+  }
   const hasRollback =
     typeof inputs.rollbackEvidenceRef === "string" &&
     inputs.rollbackEvidenceRef.trim().length > 0
@@ -132,6 +140,7 @@ export function evaluateMergeDeployGate(
   ): MergeDeployGateResult => ({
     state: "RED",
     isLive: false,
+    identity,
     isRed: true,
     blocksFurtherMerges: !hasRollback,
     failedGate,
@@ -203,6 +212,7 @@ export function evaluateMergeDeployGate(
   return {
     state: "LIVE",
     isLive: true,
+    identity,
     isRed: false,
     blocksFurtherMerges: false,
     failedGate: null,

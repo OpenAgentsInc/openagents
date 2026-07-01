@@ -5,6 +5,7 @@ import { Schema as S } from "effect";
 // home) so the openagents.com Worker operator loop and the Pylon blueprint-gates
 // both import + apply the SAME function instead of re-describing it.
 export * from "./command-execution-source-verified.js";
+export * from "./enforced-actions.js";
 export * from "./operator-grounded-assertion.js";
 
 // ---------------------------------------------------------------------------

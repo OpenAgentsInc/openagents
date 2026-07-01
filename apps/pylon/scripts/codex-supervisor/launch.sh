@@ -20,8 +20,9 @@
 # WEDGE — alive + heartbeating but no longer dispatching (an external call hung
 # the dispatch loop). `wedge-check` runs the tested liveness check in
 # `apps/pylon/src/blueprint-gates/fleet-liveness.ts` against the supervisor pid +
-# `$SUP_STATE_DIR/last_dispatch_time`; `wedge-watch` additionally force-kills and
-# restarts the supervisor when that check reports `wedged`. Run `wedge-watch` on
+# `$SUP_STATE_DIR/last_dispatch_time`, `$HOME/.pylon/account-quota/*.json`, and
+# `$SUP_STATE_DIR/heartbeat_payload.json`; `wedge-watch` additionally force-kills
+# and restarts the supervisor when that check reports `wedged`. Run `wedge-watch` on
 # an interval from an external watcher (cron / standing loop) with
 # OPENAGENTS_AGENT_TOKEN in the environment.
 #

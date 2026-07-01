@@ -5,6 +5,10 @@ import {
   captureWorkspaceChanges,
   type WorkspaceChangeCapture,
 } from "./workspace-materializer.js"
+import {
+  authorizeIssueClose,
+  evaluateIssueCloseSafe,
+} from "./blueprint-gates/index.js"
 
 /**
  * Assignment pull-request publisher (issue #6439, dedup hardening #6439-reopen).
@@ -130,6 +134,10 @@ const githubFullNamePattern = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/
 const gitCommitShaPattern = /^[a-f0-9]{40}$/i
 const conventionalTitlePattern =
   /^(feat|fix|docs|test|chore|refactor|perf|build|ci|style|revert)(\([A-Za-z0-9_.\-/]+\))?!?: .+/
+const closingKeywordForIssue = (issueNumber: number): RegExp =>
+  new RegExp(`\\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\\s+#${issueNumber}(?!\\d)`, "gi")
+const issueReferencePattern = (issueNumber: number): RegExp =>
+  new RegExp(`(?<!\\d)#${issueNumber}(?!\\d)`)
 
 async function defaultRunner(input: {
   args: string[]
@@ -185,6 +193,23 @@ export function issueNumberFromSummary(summary: string | undefined): number | nu
   if (ref === null) return null
   const value = Number.parseInt(ref.slice(1), 10)
   return Number.isFinite(value) ? value : null
+}
+
+export function downgradeClosingKeywords(body: string, issueNumber: number | null): string {
+  if (issueNumber === null) return body
+  return body.replace(closingKeywordForIssue(issueNumber), `Addresses #${issueNumber}`)
+}
+
+export function closingBodyCandidate(body: string, issueNumber: number): string {
+  const downgraded = downgradeClosingKeywords(body.trim(), issueNumber)
+  const addressPattern = new RegExp(`\\bAddresses\\s+#${issueNumber}(?!\\d)`, "i")
+  if (addressPattern.test(downgraded)) {
+    return downgraded.replace(addressPattern, `Closes #${issueNumber}`)
+  }
+  if (issueReferencePattern(issueNumber).test(downgraded)) {
+    return `Closes #${issueNumber}.\n\n${downgraded}`
+  }
+  return `Closes #${issueNumber}.\n\n${downgraded}`
 }
 
 /**
@@ -332,9 +357,10 @@ export function buildStructuredBody(input: {
 function normalizeGeneratedBody(body: string, issueNumber: number | null): string {
   const trimmed = body.trim()
   if (issueNumber === null) return trimmed
-  const pattern = new RegExp(`(?<!\\d)#${issueNumber}(?!\\d)`)
-  if (pattern.test(trimmed)) return trimmed
-  return `Addresses #${issueNumber}.\n\n${trimmed}`
+  const downgraded = downgradeClosingKeywords(trimmed, issueNumber)
+  const pattern = issueReferencePattern(issueNumber)
+  if (pattern.test(downgraded)) return downgraded
+  return `Addresses #${issueNumber}.\n\n${downgraded}`
 }
 
 function assertPylonOwnedWorkspaceTarget(input: { cacheRoot: string; workingDirectory: string }) {
@@ -439,6 +465,65 @@ async function fetchIssueTitle(input: {
   } catch {
     return null
   }
+}
+
+async function fetchIssueLabels(input: {
+  runner: AssignmentPrCommandRunner
+  cwd: string
+  fullName: string
+  issueNumber: number
+}): Promise<ReadonlyArray<string> | null> {
+  try {
+    const res = await input.runner({
+      args: [
+        "gh",
+        "issue",
+        "view",
+        String(input.issueNumber),
+        "--repo",
+        input.fullName,
+        "--json",
+        "labels",
+      ],
+      cwd: input.cwd,
+      timeoutMs: GH_TIMEOUT_MS,
+    })
+    if (res.exitCode !== 0 || res.timedOut) return null
+    const parsed = JSON.parse(res.stdout) as { labels?: unknown }
+    if (!Array.isArray(parsed.labels)) return null
+    return parsed.labels
+      .map((label) => {
+        if (typeof label === "string") return label
+        if (typeof label === "object" && label !== null && typeof (label as { name?: unknown }).name === "string") {
+          return (label as { name: string }).name
+        }
+        return null
+      })
+      .filter((label): label is string => label !== null)
+  } catch {
+    return null
+  }
+}
+
+export function authorizeIssueClosingBody(input: {
+  body: string
+  issueNumber: number
+  prNumber: number
+  issueLabels: ReadonlyArray<string> | null
+}): { ok: true; body: string } | { ok: false; reason: string } {
+  const candidate = closingBodyCandidate(input.body, input.issueNumber)
+  const decision = authorizeIssueClose(
+    evaluateIssueCloseSafe({
+      issueNumber: input.issueNumber,
+      issueLabels: input.issueLabels,
+      parentEpicNumber: null,
+      prNumber: input.prNumber,
+      prBody: candidate,
+    }),
+  )
+  return decision.ok
+    ? { ok: true, body: candidate }
+    : { ok: false, reason: decision.reason }
 }
 
 async function gitDiffStat(input: {
@@ -610,6 +695,8 @@ export async function publishAssignmentPullRequest(
       verifyExitCode: input.verification.exitCode,
       verifyPassed: input.verification.passed,
     })
+  } else {
+    body = downgradeClosingKeywords(body, issueNumber)
   }
 
   // Create the assignment/issue branch at the pinned base commit (the detached
@@ -731,6 +818,36 @@ export async function publishAssignmentPullRequest(
   }
   const prUrl = urlMatch[0]
   const prNumber = parsePullRequestNumber(prUrl) ?? 0
+  if (issueNumber !== null && prNumber > 0) {
+    const issueLabels = await fetchIssueLabels({
+      runner,
+      cwd: workingDirectory,
+      fullName: input.repository.fullName,
+      issueNumber,
+    })
+    const authorized = authorizeIssueClosingBody({
+      body,
+      issueLabels,
+      issueNumber,
+      prNumber,
+    })
+    if (authorized.ok) {
+      await runner({
+        args: [
+          "gh",
+          "pr",
+          "edit",
+          String(prNumber),
+          "--repo",
+          input.repository.fullName,
+          "--body",
+          authorized.body,
+        ],
+        cwd: workingDirectory,
+        timeoutMs: GH_TIMEOUT_MS,
+      })
+    }
+  }
   return {
     state: "opened",
     prUrl,

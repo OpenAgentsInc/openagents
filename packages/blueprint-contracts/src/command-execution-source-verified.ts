@@ -79,6 +79,11 @@ export interface CommandSourceVerifiedResult {
   readonly state: CommandSourceVerifiedState
   /** True only when the terminal state SAFE_TO_PROPOSE is reached. */
   readonly canPropose: boolean
+  /** The command identity evaluated by this result. */
+  readonly identity: Readonly<{
+    readonly commandString: string
+    readonly scriptPath: string
+  }>
   /** Flags considered (command-parsed flags unioned with expectedFlags). */
   readonly proposedFlags: ReadonlyArray<string>
   /** Proposed flags absent from the declared argument surface. */
@@ -143,6 +148,10 @@ export function evaluateCommandSourceVerified(
     parseCommandFlags(inputs.commandString),
     inputs.expectedFlags ?? [],
   )
+  const identity = {
+    commandString: inputs.commandString,
+    scriptPath: inputs.scriptPath,
+  }
   const declared = inputs.declaredFlags ?? []
   const unknownFlags = proposedFlags.filter((flag) => !declared.includes(flag))
 
@@ -154,6 +163,7 @@ export function evaluateCommandSourceVerified(
   ): CommandSourceVerifiedResult => ({
     state,
     canPropose: false,
+    identity,
     proposedFlags,
     unknownFlags,
     satisfiedEvidence: satisfied,
@@ -223,6 +233,7 @@ export function evaluateCommandSourceVerified(
   return {
     state: "SAFE_TO_PROPOSE",
     canPropose: true,
+    identity,
     proposedFlags,
     unknownFlags,
     satisfiedEvidence: satisfied,

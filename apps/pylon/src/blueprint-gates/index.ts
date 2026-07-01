@@ -8,13 +8,17 @@
  * consequential action; a missing required evidence ref makes the action
  * structurally impossible.
  *
- * These are libraries (types + pure functions + Bun tests). Most are not yet
- * wired into the live supervisor/watcher — wiring is a follow-up. The exception
- * is `fleet-liveness` (#6646), whose CLI entry IS consumed by
- * `apps/pylon/scripts/codex-supervisor/launch.sh wedge-watch` to force-restart a
- * wedged supervisor.
+ * These modules expose pure evaluators plus enforced action authorizers. Fleet
+ * liveness is wired into Pylon status reporting. The issue-close authorizer is
+ * wired into the Pylon PR publisher's closing-keyword edit path, and the
+ * diagnosis, command-proposal, and merge-deploy authorizers are wired into the
+ * Artanis scheduled/operator dispatch call sites that construct those
+ * consequential actions. Other consumers must still call an authorizer at the
+ * acting site before treating a non-terminal gate as action authority.
  */
 
+export * from "./enforced-actions.js"
+export * from "./diagnosis-grounding.js"
 export * from "./issue-close-safe.js"
 export * from "./command-execution-source-verified.js"
 export * from "./merge-deploy-gate.js"

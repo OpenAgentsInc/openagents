@@ -186,6 +186,22 @@ describe('makeArtanisDispatchExecution (#6366 live seam)', () => {
     expect(created).toHaveLength(0)
   })
 
+  test('rejects direct execution calls when command-source gate denies verification command', async () => {
+    const { created, deps } = makeDeps({ approved: true })
+    const execution = makeArtanisDispatchExecution(deps)
+    const result = await Effect.runPromise(
+      execution.createCodexAssignment({
+        ...plan,
+        verify: 'bun scripts/unknown.ts --fabricated-flag',
+      }),
+    )
+    expect(result).toEqual({
+      kind: 'rejected',
+      reason: 'command_source_not_verified',
+    })
+    expect(created).toHaveLength(0)
+  })
+
   test('rejects when the verified workspace commit cannot be resolved', async () => {
     const { created, deps } = makeDeps({ approved: true })
     const execution = makeArtanisDispatchExecution({
