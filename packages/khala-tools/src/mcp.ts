@@ -453,6 +453,8 @@ function khalaAuthorityToMcpAuthority(authority: KhalaToolDefinition["authority"
       return "coding_session_control"
     case "credential":
       return "private_account_read"
+    case "owner_full_access":
+      return "local_node_control"
     default:
       return undefined
   }

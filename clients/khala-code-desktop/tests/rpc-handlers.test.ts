@@ -512,6 +512,69 @@ describe("Khala Code desktop RPC handlers", () => {
     expect(legacyTurnStarted).toBe(false)
   })
 
+  test("registers the Khala Fleet MCP bridge before default Codex chat turns", async () => {
+    const requests: Array<{ method: string; params: unknown }> = []
+    const host = {
+      request: async (method: string, params?: unknown) => {
+        requests.push({ method, params })
+        return {}
+      },
+      subscribe: () => () => {},
+    }
+    const handlers = createKhalaCodeDesktopRpcRequestHandlers({
+      appleFmReadiness: () => {
+        throw new Error("not used")
+      },
+      codexAppServerHost: host as never,
+      codexChatRuntime: throwingCodexChatRuntime({
+        startTurn: async () => ({
+          backend: {
+            kind: "codex_app_server",
+            model: "gpt-5.1-codex",
+            threadId: "thread-codex-default",
+            turnId: "turn-codex-default",
+          },
+          messages: [{ id: "agent-1", role: "assistant", body: "Codex default path" }],
+          ok: true,
+          toolNames: [],
+          usedTools: [],
+        }),
+      }),
+      enableFleetMcpBridge: true,
+      env: { KHALA_CODE_DESKTOP_BUN_COMMAND: "bun-test" },
+      fleetMcpBridgeRepoRoot: "/repo/openagents",
+      onDeviceDeciderStatus: () => {
+        throw new Error("not used")
+      },
+      workingDirectory: process.cwd(),
+    })
+
+    await expect(handlers.submitChatMessage({
+      messages: [{ id: "user-1", role: "user", body: "Fan out one worker" }],
+      sessionId: "desktop-session-1",
+      turnId: "desktop-turn-1",
+    })).resolves.toMatchObject({
+      backend: { kind: "codex_app_server" },
+      messages: [{ body: "Codex default path" }],
+      ok: true,
+    })
+
+    expect(requests.map(request => request.method)).toEqual([
+      "config/value/write",
+      "config/value/write",
+      "config/value/write",
+      "config/value/write",
+      "config/value/write",
+      "config/value/write",
+      "config/mcpServer/reload",
+    ])
+    expect(requests[0]?.params).toEqual({
+      keyPath: "mcp_servers.khala_fleet.command",
+      mergeStrategy: "replace",
+      value: "bun-test",
+    })
+  })
+
   test("materializes image attachment payloads before routing chat submits", async () => {
     let capturedAttachmentPath: string | undefined
     const handlers = createKhalaCodeDesktopRpcRequestHandlers({

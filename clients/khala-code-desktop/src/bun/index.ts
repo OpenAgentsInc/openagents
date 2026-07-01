@@ -87,6 +87,9 @@ const resolveToolWorkingDirectory = (
   return cwd
 }
 
+const resolveSourceRepositoryRoot = (): string =>
+  resolve(import.meta.dir, "../../../..")
+
 // The webview is a Vite build under ./dist (index.html + assets/*, with fonts
 // and scene assets self-contained). The browser preview server mirrors that
 // layout, falling back to the packaged view directory for release builds.
@@ -299,8 +302,10 @@ const onDeviceDecider = createOnDeviceDeciderHost({ env: Bun.env })
 rpcRequestHandlers = createKhalaCodeDesktopRpcRequestHandlers({
   appleFmReadiness,
   codexAppServerHost,
+  enableFleetMcpBridge: true,
   emitChatTurnEvent: event => emitChatTurnEvent(event),
   env: Bun.env,
+  fleetMcpBridgeRepoRoot: resolveSourceRepositoryRoot(),
   onDeviceDeciderStatus: () => onDeviceDecider.select(),
   workingDirectory: resolveToolWorkingDirectory(Bun.env),
 })

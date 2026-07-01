@@ -21,6 +21,10 @@ import {
   khalaCodeDesktopTokenUsageTelemetryStatus,
   readKhalaCodeDesktopThreadTokenSummary,
 } from "./codex-token-usage-telemetry.js"
+import {
+  ensureCodexFleetMcpBridge,
+  type CodexFleetMcpBridgeEnsureResult,
+} from "./codex-fleet-mcp-bridge.js"
 import type { KhalaAppleFmReadiness } from "../shared/apple-fm-readiness.js"
 import type { OnDeviceDeciderSelection } from "../shared/on-device-decider.js"
 import {
@@ -100,12 +104,14 @@ export type KhalaCodeDesktopRpcHandlersInput = {
   readonly appleFmReadiness: () => MaybePromise<KhalaAppleFmReadiness>
   readonly codexAppServerHost?: CodexAppServerHost
   readonly codexChatRuntime?: CodexAppServerChatRuntime
+  readonly enableFleetMcpBridge?: boolean
   readonly codexRateLimitStatus?: () => MaybePromise<KhalaCodexRateLimitProviderStatus>
   readonly codexHarnessStatus?: () => MaybePromise<KhalaCodeDesktopCodexHarnessStatus>
   readonly consumeCodexRateLimitResetCredit?: (input: {
     readonly idempotencyKey: string
   }) => MaybePromise<KhalaCodexRateLimitResetOutcome>
   readonly codexFleetToolOptions?: KhalaCodexFleetToolOptions
+  readonly fleetMcpBridgeRepoRoot?: string
   readonly env: ChatEnv
   readonly emitChatTurnEvent?: (event: KhalaCodeDesktopChatTurnEvent) => void
   readonly legacyChatTurn?: typeof runKhalaCodeDesktopChatTurn
@@ -668,6 +674,43 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
   const useLegacyKhalaNativeRuntime = (): boolean =>
     input.env.KHALA_CODE_DESKTOP_RUNTIME === "khala_native_runtime" ||
     input.env.KHALA_CODE_DESKTOP_LEGACY_KHALA_NATIVE_RUNTIME === "1"
+  let fleetMcpBridgeReady = false
+
+  const maybeEnsureFleetMcpBridge = async (): Promise<CodexFleetMcpBridgeEnsureResult | null> => {
+    if (input.enableFleetMcpBridge !== true || fleetMcpBridgeReady) return null
+    const result = await ensureCodexFleetMcpBridge({
+      env: input.env,
+      host: input.codexAppServerHost,
+      repoRoot: input.fleetMcpBridgeRepoRoot ?? input.workingDirectory,
+    })
+    if (result.ok) fleetMcpBridgeReady = true
+    return result
+  }
+
+  const withFleetMcpBridgeNote = (
+    response: KhalaCodeDesktopChatTurnResponse,
+    bridge: CodexFleetMcpBridgeEnsureResult | null,
+  ): KhalaCodeDesktopChatTurnResponse => {
+    if (bridge === null || bridge.ok) return response
+    return {
+      ...response,
+      backend: {
+        ...response.backend,
+        blockerRefs: [
+          ...(response.backend.blockerRefs ?? []),
+          "blocker.local.khala_fleet_mcp_bridge.unavailable",
+        ],
+      },
+      messages: [
+        {
+          id: `fleet-mcp-bridge-${Date.now().toString(36)}`,
+          role: "system",
+          body: "Khala Fleet message-trigger tools were not registered for this turn. The Fleet panel and direct delegate runner are still available.",
+        },
+        ...response.messages,
+      ],
+    }
+  }
 
   const labelLegacyRuntimeResponse = (
     response: KhalaCodeDesktopChatTurnResponse,
@@ -1907,10 +1950,11 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
     async submitChatMessage(request) {
       const materializedRequest = await materializeChatAttachments(request)
       if (!useLegacyKhalaNativeRuntime()) {
-        return await labelCodexHarnessResponse(await requireCodexChatRuntime().startTurn({
+        const bridge = await maybeEnsureFleetMcpBridge()
+        return withFleetMcpBridgeNote(await labelCodexHarnessResponse(await requireCodexChatRuntime().startTurn({
           ...materializedRequest,
           cwd: input.workingDirectory,
-        }))
+        })), bridge)
       }
       return labelLegacyRuntimeResponse(await legacyChatTurn({
         env: input.env,

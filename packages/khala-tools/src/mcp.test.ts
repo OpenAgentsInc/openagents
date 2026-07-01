@@ -30,6 +30,13 @@ const echoDefinition: KhalaToolDefinition = {
   promptGuidelines: [],
 }
 
+const ownerLocalDefinition: KhalaToolDefinition = {
+  ...echoDefinition,
+  authority: "owner_full_access",
+  internalId: "khala.test.owner_local",
+  name: "owner_local",
+}
+
 describe("Khala MCP client and server", () => {
   test("lists only policy-scoped public MCP built-ins", async () => {
     const response = await handleKhalaMcpRequest({
@@ -41,6 +48,37 @@ describe("Khala MCP client and server", () => {
     const tools = response.result?.tools as Array<{ name: string; annotations: { sourceLabel: string } }>
     expect(tools.map(tool => tool.name)).toEqual(["read", "ls", "glob", "grep"])
     expect(tools.every(tool => tool.annotations.sourceLabel === "khala-built-in")).toBe(true)
+  })
+
+  test("lists owner-local tools only when the MCP policy grants local node control", async () => {
+    const registry = makeKhalaToolRegistry([
+      {
+        definition: ownerLocalDefinition,
+        execute: input => Effect.succeed(khalaToolOk({ modelText: String(input.text ?? "") })),
+      },
+    ])
+
+    const defaultResponse = await handleKhalaMcpRequest(
+      { id: "default-tools", jsonrpc: "2.0", method: "tools/list" },
+      { registry },
+    )
+    expect(defaultResponse.result?.tools).toEqual([])
+
+    const localResponse = await handleKhalaMcpRequest(
+      { id: "local-tools", jsonrpc: "2.0", method: "tools/list" },
+      {
+        policy: {
+          allowedAuthorities: ["local_node_control"],
+          denyHighRisk: false,
+        },
+        registry,
+      },
+    )
+    const tools = localResponse.result?.tools as Array<{ name: string; annotations: { khalaAuthority: string } }>
+    expect(tools).toEqual([expect.objectContaining({
+      annotations: expect.objectContaining({ khalaAuthority: "owner_full_access" }),
+      name: "owner_local",
+    })])
   })
 
   test("calls registered built-ins through MCP JSON-RPC", async () => {

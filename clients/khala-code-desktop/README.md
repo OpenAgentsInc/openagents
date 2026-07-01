@@ -70,6 +70,14 @@ primary Codex session separately from worker sessions, including worker readines
 capacity, queue/refill policy, cooldown state, active assignments, transcript
 refs, closeout state, and token proof.
 
+Default desktop chat turns also register a local Codex MCP server named
+`khala_fleet`. That is the message-triggered bridge: a normal Codex-backed
+message can call the MCP `codex_spawn` tool, which runs the deterministic
+`khala.fleet.delegate` program. The bridge exposes only `pylon_ensure`,
+`codex_fleet_status`, and `codex_spawn`, with Codex MCP approval mode set to
+`prompt`. Set `KHALA_CODE_DESKTOP_FLEET_MCP_BRIDGE=0` to disable registration
+while debugging.
+
 `codexFleetPromoteThread()` promotes a current Codex thread into a swarm
 delegation request only with explicit context boundaries. It carries the origin
 `sessionId`/`threadId`, an explicit objective, optional public refs, and a
