@@ -529,6 +529,10 @@ export type KhalaCodeDesktopSlashCommandDispatchRequest =
 export type KhalaCodeDesktopSlashCommandDispatchResult = {
   readonly action?: string
   readonly command?: string
+  readonly gap?: {
+    readonly gapId: string
+    readonly kind: "upstream_app_server_gap"
+  }
   readonly message: string
   readonly method?: string
   readonly ok: boolean
@@ -539,6 +543,7 @@ export type KhalaCodeDesktopSlashCommandDispatchResult = {
     | "dispatched"
     | "gap"
     | "not_found"
+    | "unavailable"
   readonly threadId?: string
 }
 

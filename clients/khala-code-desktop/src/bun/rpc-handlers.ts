@@ -977,8 +977,9 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
     if (dispatch.kind === "gap") {
       return {
         ok: false,
-        status: "gap",
+        status: dispatch.unavailable === undefined ? "gap" : "unavailable",
         command: command.command,
+        ...(dispatch.unavailable === undefined ? {} : { gap: dispatch.unavailable }),
         message: dispatch.dependency,
       }
     }
@@ -1167,6 +1168,24 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
             message: ideMessage(response),
             response,
           })
+        }
+        case "btw": {
+          const response = await requireCodexChatRuntime().steerTurn({
+            clientUserMessageId: `khala-code-slash-btw-${Date.now().toString(36)}`,
+            sessionId: request.sessionId,
+            text: args,
+          })
+          return {
+            ok: response.ok,
+            status: response.ok ? "dispatched" : "blocked",
+            command: command.command,
+            method: dispatch.method,
+            message: response.ok
+              ? "Steered the active Codex turn with a BTW side note."
+              : response.error ?? "Codex turn steering could not be applied.",
+            response,
+            ...(response.threadId === undefined ? {} : { threadId: response.threadId }),
+          }
         }
         case "ps":
         case "stop": {
