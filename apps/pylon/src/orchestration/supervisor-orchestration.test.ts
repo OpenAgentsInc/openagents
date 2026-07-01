@@ -338,6 +338,100 @@ describe("Pylon supervisor orchestration store", () => {
     expect(store.getVirtualHead("OpenAgentsInc/openagents", "main")?.pendingTaskIds).toEqual(["task.b"])
   })
 
+  test("records worker heartbeat and done messages while releasing completed dispatches", () => {
+    const now = new Date("2026-06-27T12:00:00.000Z")
+    const heartbeatAt = new Date("2026-06-27T12:01:00.000Z")
+    const doneAt = new Date("2026-06-27T12:02:00.000Z")
+    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    store.createTask({ id: "task.root", spec: baseTaskSpec, now })
+    store.createTask({
+      id: "task.child",
+      spec: { ...baseTaskSpec, title: "child" },
+      deps: ["task.root"],
+      now,
+    })
+    store.createDispatchContext({
+      id: "ctx.codex",
+      assigneeHandle: "codex-1",
+      runnerKind: "codex",
+      lastHeartbeatAt: now,
+      now,
+    })
+
+    dispatchReadySupervisorTasks(store, { now })
+    const heartbeat = store.recordWorkerHeartbeat({
+      contextId: "ctx.codex",
+      at: heartbeatAt,
+      baseBehindBy: 2,
+      body: "codex-1 still running task.root",
+    })
+    const contextAfterHeartbeat = store.getDispatchContext("ctx.codex")
+
+    expect(heartbeat.kind).toBe("heartbeat")
+    expect(heartbeat.threadId).toBe("task.root")
+    expect(heartbeat.taskId).toBe("task.root")
+    expect(contextAfterHeartbeat?.lastHeartbeatAt).toBe(heartbeatAt.toISOString())
+    expect(contextAfterHeartbeat?.baseBehindBy).toBe(2)
+
+    const released = store.recordWorkerDone({
+      contextId: "ctx.codex",
+      taskId: "task.root",
+      status: "completed",
+      result: JSON.stringify({ ok: true }),
+      now: doneAt,
+    })
+
+    expect(store.getTask("task.root")?.status).toBe("completed")
+    expect(store.getTask("task.child")?.status).toBe("ready")
+    expect(released.status).toBe("idle")
+    expect(released.currentTaskId).toBeNull()
+    expect(released.failureCount).toBe(0)
+    expect(store.getVirtualHead("OpenAgentsInc/openagents", "main")?.pendingTaskIds).toEqual([])
+    expect(store.listMessages("task.root").map((message) => message.kind)).toEqual([
+      "dispatch",
+      "heartbeat",
+      "worker_done",
+    ])
+  })
+
+  test("worker failures increment the dispatch circuit breaker and preserve dependent blockers", () => {
+    const now = new Date("2026-06-27T12:00:00.000Z")
+    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    store.createTask({ id: "task.fail", spec: baseTaskSpec, now })
+    store.createTask({
+      id: "task.dependent",
+      spec: { ...baseTaskSpec, title: "dependent" },
+      deps: ["task.fail"],
+      now,
+    })
+    store.createDispatchContext({
+      id: "ctx.codex",
+      assigneeHandle: "codex-1",
+      runnerKind: "codex",
+      lastHeartbeatAt: now,
+      now,
+    })
+
+    dispatchReadySupervisorTasks(store, { now })
+    const context = store.recordWorkerDone({
+      contextId: "ctx.codex",
+      taskId: "task.fail",
+      status: "failed",
+      maxFailures: 1,
+      now,
+    })
+
+    expect(store.getTask("task.fail")?.status).toBe("failed")
+    expect(store.getTask("task.dependent")?.status).toBe("pending")
+    expect(context.status).toBe("circuit_broken")
+    expect(context.failureCount).toBe(1)
+    expect(context.currentTaskId).toBeNull()
+    expect(store.listMessages("task.fail").map((message) => message.kind)).toEqual([
+      "dispatch",
+      "worker_done",
+    ])
+  })
+
   test("classifies heartbeat liveness with fresh, stale, hung, and missing states", () => {
     const now = new Date("2026-06-27T12:00:00.000Z")
     const store = createPylonOrchestrationStore(new Database(":memory:"))

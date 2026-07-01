@@ -173,6 +173,12 @@ Each entry declares: how to **detect** the binary, how to **launch** it, how pro
 - **"Khala mobile operator companion + Durable-Object relay"** — E2EE pairing, agent-status subscription, finish notifications (socket + APNs), follow-up/steer send, method allowlist; DO-mediated for remote fleets. AaaS console.
 - **"Uniform agent-status ingest pipeline across all runners"** — generalize the Codex turn reporter into a runner-neutral status event consumed by dashboard + mobile + Artanis.
 
+### 2026-07-01 implementation note
+
+Pylon now has a first production slice of the Orca-style state spine in `apps/pylon/src/orchestration/`: a SQLite task DAG, dispatch contexts with runner-kind matching and heartbeat/base-drift eligibility, group addressing, virtual HEAD reservations for concurrent git tasks, and typed worker lifecycle APIs. The latest slice adds `recordWorkerHeartbeat`, `recordWorkerDone`, and message readback so worker progress and terminal closeout are represented as correlated `heartbeat` / `worker_done` messages while the dispatch context is released for constant-motion follow-on work. Failed worker closeouts increment the same circuit-breaker counter used by dispatch planning; completed closeouts release virtual HEAD reservations and promote dependents.
+
+Next: wire these store APIs into the existing local assignment runner/supervisor loop so accepted Khala Code leases emit orchestration heartbeats and worker-done records in addition to the current assignment progress and closeout projections.
+
 ---
 
 ## 7. License / attribution note
