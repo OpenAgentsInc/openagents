@@ -273,6 +273,14 @@ button {
   justify-items: start;
 }
 
+.message-bubble--user .message-body {
+  padding: 9px 12px;
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--oa-color-khala-energy-cyan) 6%, transparent), transparent 72%),
+    color-mix(in srgb, var(--oa-color-khala-surface-active) 78%, var(--oa-color-khala-void));
+}
+
 .message-bubble--tool {
   max-width: min(100%, 40rem);
   color: var(--oa-color-khala-text-muted);
