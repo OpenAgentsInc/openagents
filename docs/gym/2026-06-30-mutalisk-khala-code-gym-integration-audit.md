@@ -53,6 +53,16 @@ geometry, and link-state helpers live in
 behavior stable while making the later web Gym or other operator surfaces reuse
 the same public-safe graph vocabulary.
 
+Update, 2026-07-01: Khala Code Desktop now has the first Fleet/Gym UI path for
+the Part 2 loop. The Fleet screen exposes **Optimize delegation policy** and
+**Load demo proof**, projects the resulting run by `runRef`, dataset refs,
+stage, score bps, candidate refs, admission decision, blocker refs, and Action
+Submission proposal ref, and sends the proof into the read-only Gym pane. The
+Gym pane also shows the active
+`openagents.khala.fleet_delegation.parameters.v0` source. This is still a
+preview/mock UI action over the local bridge fixture until the desktop app is
+wired to the durable Worker route and an external Mutalisk runner.
+
 ## 0. Executive Answer
 
 Mutalisk belongs in the Gym as the offline optimizer lane for Khala Code's
@@ -413,6 +423,13 @@ Recommended first UI:
 - A "use admitted defaults" readout showing which
   `openagents.khala.fleet_delegation.parameters.v0` set is active.
 
+2026-07-01 desktop status: the Fleet panel now has this first UI shape. It can
+load the deterministic bridge fixture, show the run/candidate/admission refs,
+switch to the Gym pane without console helpers, and keep the active-parameter
+readout at `source=default` until an owner-approved admitted candidate exists.
+The action does not yet call the durable Worker route or subscribe to live
+Mutalisk progress.
+
 Do not put raw GEPA traces or full prompt bodies in this UI. The operator should
 see refs, bounded summaries, and explicit blocker labels. The private artifact
 can be downloadable only from an operator route if needed.
@@ -439,6 +456,11 @@ This is ready for product/UI testing only when all of these are true:
 - No code path auto-promotes the candidate or bypasses Action Submission.
 - Public-safety tests prove no raw prompts, raw traces, local paths, secrets, or
   private endpoints leak into the public Gym projection.
+
+Current desktop coverage satisfies the UI representation and public-safe
+projection parts with a deterministic preview fixture. The remaining live gap
+is connecting **Optimize delegation policy** to the durable Worker create/list
+routes, then following real public progress from the external Mutalisk runner.
 
 Until that checklist is green, the feature is developer/agent-testable through
 contracts and CLI artifacts, not user-testable through the Khala Code UI.

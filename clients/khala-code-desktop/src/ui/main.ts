@@ -55,6 +55,7 @@ import { mountCodexSettingsPanel } from "./codex-settings-panel"
 import { mountCodexThreadSidebar } from "./codex-thread-sidebar"
 import {
   gymPaneStateFromBridgeProof,
+  gymOptimizationRunFromBridgeProof,
   gymPaneStateFromLocation,
   initialKhalaCodeViewFromLocation,
   khalaCodeGymDemoBridgeProof,
@@ -1939,11 +1940,24 @@ const activateCodexThread = (input: {
   requestAnimationFrame(focusComposerInput)
 }
 
+const loadGymDemoOptimization = () => {
+  const state = gymPaneStateFromBridgeProof({
+    proof: khalaCodeGymDemoBridgeProof,
+    generatedAt: new Date().toISOString(),
+    sourceRef: "fixture.khala_code.gym.part2_demo",
+  })
+  gymPanel?.setState(state)
+  setActiveView("gym")
+  return gymOptimizationRunFromBridgeProof(khalaCodeGymDemoBridgeProof)
+}
+
 const fleetPanel =
   fleetPanelEl === null
     ? null
     : mountFleetPanel(fleetPanelEl, {
         delegateRun: request => controls.codexFleetDelegateRun(request),
+        loadGymDemoProof: () => loadGymDemoOptimization(),
+        startDelegationOptimization: async () => loadGymDemoOptimization(),
         fetch: () => controls.codexFleetStatus(),
         removeAccount: accountRef => controls.removeCodexAccount(accountRef),
         connectAccount: accountRef => controls.connectCodexAccount(accountRef),

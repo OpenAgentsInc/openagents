@@ -2056,6 +2056,33 @@ button {
   display: grid;
   gap: 0.45rem;
 }
+.khala-fleet-optimization {
+  gap: 0.7rem;
+  padding: 0.85rem 0.95rem;
+  border: 1px solid color-mix(in srgb, var(--oa-color-khala-energy-blue) 24%, transparent);
+  border-radius: 0.55rem;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--oa-color-khala-energy-blue) 5%, transparent), transparent 58%),
+    var(--oa-color-component-surface);
+}
+.khala-fleet-optimization-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.khala-fleet-parameter-readout {
+  padding: 0.55rem 0.65rem;
+  border: 1px solid color-mix(in srgb, var(--oa-color-khala-neutral-line) 16%, transparent);
+  border-radius: 0.45rem;
+  background: color-mix(in srgb, var(--oa-color-khala-void) 14%, transparent);
+}
+.khala-fleet-optimization-output {
+  border-top-color: color-mix(in srgb, var(--oa-color-khala-energy-blue) 22%, transparent);
+}
+.khala-fleet-optimization-output[data-state="blocked"] {
+  border-top-color: color-mix(in srgb, var(--oa-color-khala-warning) 35%, transparent);
+}
 @media (max-width: 840px) {
   .khala-fleet-delegate-grid,
   .khala-fleet-delegate-pins {
@@ -2382,6 +2409,7 @@ button {
 .khala-code-gym {
   grid-column: 2;
   grid-row: 1 / 3;
+  min-width: 0;
   min-height: 0;
   overflow-y: auto;
   padding: 1.4rem 1.6rem 2rem;
@@ -2395,6 +2423,7 @@ button {
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
+  min-width: 0;
 }
 .khala-gym-title-group {
   display: flex;
@@ -2417,12 +2446,14 @@ button {
   display: flex;
   flex-direction: column;
   gap: 1rem;
+  min-width: 0;
 }
 .khala-gym-section-header {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   gap: 1rem;
+  min-width: 0;
 }
 .khala-gym-section-title {
   margin: 0;
@@ -2438,7 +2469,9 @@ button {
 }
 .khala-gym-state {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.75rem;
+  min-width: 0;
   padding: 0.8rem 0.9rem;
   border: 1px solid var(--oa-color-component-border);
   border-radius: 0.55rem;
@@ -2450,6 +2483,12 @@ button {
   border-color: color-mix(in srgb, var(--oa-color-khala-warning) 34%, transparent);
   background:
     linear-gradient(180deg, color-mix(in srgb, var(--oa-color-khala-warning) 5%, transparent), transparent 48%),
+    var(--oa-color-component-surface);
+}
+.khala-gym-parameters .khala-gym-state {
+  border-color: color-mix(in srgb, var(--oa-color-khala-energy-blue) 22%, transparent);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--oa-color-khala-energy-blue) 4%, transparent), transparent 48%),
     var(--oa-color-component-surface);
 }
 .khala-gym-empty {
@@ -2541,6 +2580,7 @@ button {
 }
 .khala-gym-graph {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.75rem;
   min-width: 0;
   margin: 0;
@@ -2548,9 +2588,11 @@ button {
 .khala-gym-graph-svg {
   display: block;
   width: 100%;
+  min-width: 0;
   max-width: 100%;
+  height: auto;
   aspect-ratio: 1480 / 430;
-  overflow: visible;
+  overflow: hidden;
 }
 .khala-gym-edge {
   fill: none;
@@ -2622,6 +2664,7 @@ button {
   font-size: 0.58rem;
 }
 .khala-gym-graph-mirror {
+  min-width: 0;
   max-height: 9rem;
   overflow: auto;
   border: 1px solid var(--oa-color-component-border);

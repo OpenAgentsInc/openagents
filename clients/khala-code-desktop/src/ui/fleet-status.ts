@@ -9,6 +9,10 @@ import type {
 } from "../shared/rpc"
 import { buildKhalaFleetBoardProjection } from "./fleet-board-projection"
 import { renderKhalaFleetBoardHtml } from "./fleet-board-renderer"
+import {
+  defaultKhalaFleetDelegationActiveParameters,
+  type KhalaGymDelegationOptimizationRun,
+} from "./gym-proof-loader"
 
 // Fleet status panel for Khala Code Desktop: current Codex fleet state — all
 // linked accounts (with signed-in email + readiness), local Pylon health +
@@ -24,6 +28,10 @@ export type FleetPanelOptions = Readonly<{
   delegateRun: (
     request: KhalaCodeDesktopFleetDelegateRunRequest,
   ) => Promise<KhalaCodeDesktopFleetDelegateRunResult>
+  loadGymDemoProof: () =>
+    | KhalaGymDelegationOptimizationRun
+    | Promise<KhalaGymDelegationOptimizationRun>
+  startDelegationOptimization: () => Promise<KhalaGymDelegationOptimizationRun>
   fetch: () => Promise<KhalaCodeDesktopFleetStatus>
   removeAccount: (
     accountRef: string,
@@ -35,6 +43,8 @@ export type FleetPanelOptions = Readonly<{
 type Handlers = Readonly<{
   onDelegateField: (field: keyof FleetDelegateFormState, value: string | boolean) => void
   onDelegateRun: () => void
+  onLoadGymDemoProof: () => void
+  onOptimizationStart: () => void
   onRefresh: () => void
   onRemove: (accountRef: string) => void
   onConnect: (accountRef: string) => void
@@ -64,6 +74,12 @@ type DelegateRunView =
   | { readonly phase: "loading" }
   | { readonly phase: "error"; readonly message: string }
   | { readonly phase: "ready"; readonly result: KhalaCodeDesktopFleetDelegateRunResult }
+
+type OptimizationRunView =
+  | { readonly phase: "idle" }
+  | { readonly phase: "loading" }
+  | { readonly phase: "error"; readonly message: string }
+  | { readonly phase: "ready"; readonly result: KhalaGymDelegationOptimizationRun }
 
 type FleetView =
   | { readonly phase: "loading" }
@@ -443,6 +459,114 @@ const renderDelegateRunner = (
   container.append(section)
 }
 
+const optimizationState = (
+  phase: KhalaGymDelegationOptimizationRun["phase"],
+): "missing" | "online" | "ready" => {
+  if (phase === "blocked") return "missing"
+  if (phase === "queued" || phase === "running") return "online"
+  return "ready"
+}
+
+const appendOptimizationRunChips = (
+  container: HTMLElement,
+  run: KhalaGymDelegationOptimizationRun,
+): void => {
+  appendChip(container, "run", run.runRef)
+  appendChip(container, "stage", titleize(run.stage))
+  appendChip(container, "metric", run.metricValueBps === undefined ? null : `${run.metricValueBps} bps`)
+  appendChip(container, "candidate", run.candidateManifestRef ?? run.candidateRef ?? null)
+  appendChip(container, "admission", run.admissionDecision ?? null)
+  appendChip(container, "proposal", run.actionSubmissionProposalRef ?? null)
+  if (run.blockerRefs.length > 0) {
+    appendChip(container, "blockers", run.blockerRefs.slice(0, 3).join(", "))
+  }
+}
+
+const appendActiveParameterChips = (
+  container: HTMLElement,
+  run: KhalaGymDelegationOptimizationRun | null,
+): void => {
+  const activeParameters =
+    run?.activeParameters ?? defaultKhalaFleetDelegationActiveParameters
+  appendChip(container, "active source", activeParameters.source)
+  appendChip(container, "parameters", activeParameters.parameterRef)
+  appendChip(container, "candidate", activeParameters.candidateRef ?? null)
+  appendChip(
+    container,
+    "proposal",
+    activeParameters.actionSubmissionProposalRef ?? null,
+  )
+}
+
+const renderOptimizationRunner = (
+  container: HTMLElement,
+  run: OptimizationRunView,
+  handlers: Handlers,
+): void => {
+  const section = el("section", "khala-fleet-section khala-fleet-optimization")
+  section.append(sectionHeader("Delegation optimization", "khala-code-delegation-gepa"))
+
+  const actions = el("div", "khala-fleet-optimization-actions")
+  const start = iconButton(
+    run.phase === "loading" ? "Starting" : "Optimize delegation policy",
+    "Play",
+    "khala-fleet-run",
+  )
+  start.disabled = run.phase === "loading"
+  start.addEventListener("click", handlers.onOptimizationStart)
+  const load = iconButton("Load demo proof", "Eye", "khala-fleet-refresh")
+  load.disabled = run.phase === "loading"
+  load.addEventListener("click", handlers.onLoadGymDemoProof)
+  actions.append(start, load)
+  section.append(actions)
+
+  const parameterChips = el("div", "khala-fleet-chips khala-fleet-parameter-readout")
+  appendActiveParameterChips(
+    parameterChips,
+    run.phase === "ready" ? run.result : null,
+  )
+  section.append(parameterChips)
+
+  if (run.phase === "idle") {
+    section.append(
+      el("p", "khala-fleet-empty", "No optimization run loaded."),
+    )
+  } else if (run.phase === "loading") {
+    const output = el("div", "khala-fleet-delegate-output")
+    output.dataset.state = "loading"
+    output.append(
+      badge("online", "Queued"),
+      el("p", "khala-fleet-empty", "Creating khala-code-delegation-gepa run…"),
+    )
+    section.append(output)
+  } else if (run.phase === "error") {
+    const output = el("div", "khala-fleet-delegate-output")
+    output.dataset.state = "blocked"
+    output.append(
+      badge("missing", "Blocked"),
+      el("p", "khala-fleet-error", run.message),
+    )
+    section.append(output)
+  } else {
+    const output = el("div", "khala-fleet-delegate-output khala-fleet-optimization-output")
+    output.dataset.state = run.result.phase
+    const chips = el("div", "khala-fleet-chips")
+    chips.append(
+      badge(optimizationState(run.result.phase), titleize(run.result.phase)),
+    )
+    appendOptimizationRunChips(chips, run.result)
+    section.append(output)
+    output.append(chips)
+    if (run.result.datasetRefs.length > 0) {
+      const refs = el("div", "khala-fleet-chips")
+      refs.append(detailChip("dataset", run.result.datasetRefs.slice(0, 3).join(", ")))
+      output.append(refs)
+    }
+  }
+
+  container.append(section)
+}
+
 const accountCard = (
   account: KhalaCodeDesktopFleetAccount,
   handlers: Handlers,
@@ -739,6 +863,7 @@ const render = (
   activeConnect: ConnectView | null,
   delegateForm: FleetDelegateFormState,
   delegateRun: DelegateRunView,
+  optimizationRun: OptimizationRunView,
 ): void => {
   container.replaceChildren()
 
@@ -765,6 +890,7 @@ const render = (
   // visible and live below it.
   if (activeConnect !== null) renderConnecting(body, activeConnect, handlers)
   renderDelegateRunner(body, delegateForm, delegateRun, handlers)
+  renderOptimizationRunner(body, optimizationRun, handlers)
   if (view.phase === "loading") {
     body.append(el("p", "khala-fleet-empty", "Inspecting Codex fleet…"))
   } else if (view.phase === "error") {
@@ -795,6 +921,8 @@ export const mountFleetPanel = (
     verify: "",
   }
   let delegateRun: DelegateRunView = { phase: "idle" }
+  let optimizationInFlight = false
+  let optimizationRun: OptimizationRunView = { phase: "idle" }
   let lastData: KhalaCodeDesktopFleetStatus | null = null
   let connectPoll = 0
   let activeConnect: ConnectView | null = null
@@ -815,7 +943,15 @@ export const mountFleetPanel = (
       : { phase: "loading" }
 
   const paint = (): void =>
-    render(container, currentView(), handlers, activeConnect, delegateForm, delegateRun)
+    render(
+      container,
+      currentView(),
+      handlers,
+      activeConnect,
+      delegateForm,
+      delegateRun,
+      optimizationRun,
+    )
 
   const delegateRequest = (): KhalaCodeDesktopFleetDelegateRunRequest | string => {
     const objective = delegateForm.objective.trim()
@@ -870,6 +1006,8 @@ export const mountFleetPanel = (
       if (field === "mode") paint()
     },
     onDelegateRun: () => onDelegateRun(),
+    onLoadGymDemoProof: () => onLoadGymDemoProof(),
+    onOptimizationStart: () => onOptimizationStart(),
     onRefresh: () => void refresh(),
     onRemove: (accountRef: string) => onRemove(accountRef),
     onConnect: (accountRef: string) => onConnect(accountRef),
@@ -909,6 +1047,44 @@ export const mountFleetPanel = (
     })()
   }
 
+  const onLoadGymDemoProof = (): void => {
+    if (optimizationInFlight) return
+    void (async () => {
+      try {
+        const result = await options.loadGymDemoProof()
+        optimizationRun = { phase: "ready", result }
+        paint()
+      } catch (error) {
+        optimizationRun = {
+          phase: "error",
+          message: error instanceof Error ? error.message : String(error),
+        }
+        paint()
+      }
+    })()
+  }
+
+  const onOptimizationStart = (): void => {
+    if (optimizationInFlight) return
+    optimizationInFlight = true
+    optimizationRun = { phase: "loading" }
+    paint()
+    void (async () => {
+      try {
+        const result = await options.startDelegationOptimization()
+        optimizationRun = { phase: "ready", result }
+      } catch (error) {
+        optimizationRun = {
+          phase: "error",
+          message: error instanceof Error ? error.message : String(error),
+        }
+      } finally {
+        optimizationInFlight = false
+        paint()
+      }
+    })()
+  }
+
   const onRemove = (accountRef: string): void => {
     container
       .querySelector(`[data-account-ref="${CSS.escape(accountRef)}"]`)
@@ -923,6 +1099,7 @@ export const mountFleetPanel = (
           activeConnect,
           delegateForm,
           delegateRun,
+          optimizationRun,
         )
         return
       }
@@ -984,6 +1161,7 @@ export const mountFleetPanel = (
           activeConnect,
           delegateForm,
           delegateRun,
+          optimizationRun,
         )
       } else {
         setRefreshBusy(false)

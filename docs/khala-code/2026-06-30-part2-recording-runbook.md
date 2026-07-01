@@ -224,10 +224,11 @@ Python, DSPy, or GEPA runtime code; it does not auto-promote or approve the
 candidate; and `decisionGrade` remains `false` until real held-out/live evidence
 satisfies the Gym gates.
 
-## Load The Gym Pane
+## Load The Fleet/Gym Optimization UI
 
-The Gym pane starts empty by design. For a deterministic UI smoke without a live
-Mutalisk run, use the preview bridge and opt into the public fixture:
+The Gym pane starts empty by design, but the Fleet panel now owns the visible
+Part 2 entry point. For a deterministic UI smoke without a live Mutalisk run,
+start the preview bridge:
 
 ```sh
 cd /Users/christopherdavid/work/openagents
@@ -236,13 +237,38 @@ KHALA_CODE_DESKTOP_PREVIEW_PORT=50121 \
 bun clients/khala-code-desktop/src/bun/index.ts
 ```
 
-Then open:
+Then open the app normally:
 
 ```text
-http://127.0.0.1:50121/?gymProof=fixture&view=gym
+http://127.0.0.1:50121/
 ```
 
-Expected UI shape:
+Open **Fleet**, then click either:
+
+- **Optimize delegation policy**: starts the preview-backed
+  `khala-code-delegation-gepa` run and opens Gym.
+- **Load demo proof**: loads the same public-safe fixture without implying a
+  live runner.
+
+Expected Fleet shape:
+
+```text
+Delegation optimization
+khala-code-delegation-gepa
+Optimize delegation policy
+Load demo proof
+active source: default
+parameters: parameters.khala_fleet_delegation.default.v1
+run: gym.run.khala_code_delegation_gepa.part2_fixture
+stage: Completed
+metric: 10000 bps
+candidate: manifest.khala_fleet_delegation.part2_fixture.v1
+admission: gated_proposal_ready
+proposal: action_submission.proposal.khala_delegation.part2_fixture.v1
+dataset: eval.mutalisk.fixtures.khala_fleet_delegation_demo.v1
+```
+
+Expected Gym shape:
 
 ```text
 Gym
@@ -255,10 +281,21 @@ decisionGrade: false
 candidate refs: manifest... candidate... module...
 Action Submission proposal refs: action_submission.proposal...
 read-only Arbiter-style graph with evidence-backed links
+Active delegation parameters
+source: default
+parameterRef: parameters.khala_fleet_delegation.default.v1
+actionSubmissionProposalRef: action_submission.proposal...
 ```
 
-To load a generated bridge proof instead of the built-in fixture, copy the proof
-JSON and load it from the preview or native Web Inspector console:
+The URL fixture remains available for direct pane checks:
+
+```text
+http://127.0.0.1:50121/?gymProof=fixture&view=gym
+```
+
+For generated bridge proofs, prefer producing the proof file through the bridge
+script and loading it through a UI control wired to the same proof loader. The
+debug console helpers remain available for local triage:
 
 ```sh
 cd /Users/christopherdavid/work/openagents
@@ -305,6 +342,8 @@ bun clients/khala-code-desktop/scripts/part2-gepa-manifest-bridge.ts --summary /
 bun clients/khala-code-desktop/scripts/part2-gepa-manifest-bridge.ts --summary /Users/christopherdavid/work/mutalisk/out/khala-fleet-delegation-summary.json --api-base https://openagents.com --operator-token-env OPENAGENTS_OPERATOR_BEARER_TOKEN --out out/khala-gepa-worker-proof.json
 bun run typecheck:khala-code-desktop
 bun test clients/khala-code-desktop/tests/gym-proof-loader.test.ts clients/khala-code-desktop/tests/gym-graph-renderer.test.ts
+bun test clients/khala-code-desktop/tests/part2-fleet-gym-visual-smoke.test.ts
+bun run --cwd clients/khala-code-desktop smoke:part2-fleet-gym-visual
 bun test clients/khala-code-desktop/tests/khala-codex-fleet-tools.test.ts
 bun run --cwd apps/openagents.com/workers/api test -- src/inference/gym/mutalisk-khala-delegation-bridge.test.ts src/inference/gym/mutalisk-khala-delegation-routes.test.ts src/worker-exact-routes.test.ts src/probe-gepa-standing-optimization-loop.test.ts
 bun run --cwd apps/openagents.com/workers/api typecheck

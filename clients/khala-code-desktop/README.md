@@ -84,6 +84,14 @@ projection shows module/precondition/status/fallback/blocker/public refs only:
 it does not echo the raw objective, raw trace messages, local paths, provider
 payloads, credentials, or bearer material.
 
+The same Fleet surface owns the Part 2 delegation-optimization preview. The
+**Optimize delegation policy** and **Load demo proof** controls project a
+`khala-code-delegation-gepa` run into Fleet and open the read-only Gym pane with
+run refs, dataset refs, candidate/admission refs, blocker refs, and the Action
+Submission proposal ref. The active-parameter readout stays on
+`openagents.khala.fleet_delegation.parameters.v0` `source=default` until an
+owner-approved admitted candidate can become live delegation input.
+
 The legacy hosted Khala/OpenRouter runtime is a fallback/prototype path, not the
 Codex-parity default and not the local coding engine. When it is explicitly
 enabled, OpenRouter BYOK is passed to hosted Khala instead of being used as a
@@ -150,14 +158,21 @@ requires a working Chromium + WebGL stack. It launches the Khala Code desktop
 Vite preview and the OpenAgents web Vite preview, types only a fixed synthetic
 prompt, captures desktop/mobile screenshots, and asserts composer framing,
 footer non-overlap, reduced-motion geometry, and nonblank HUD/canvas pixels.
+Fleet/Gym source-level tests also assert the delegation-optimization UI hooks,
+active-parameter readout, and public-safe proof-loading path. The Part 2
+Fleet/Gym visual smoke clicks Fleet, starts **Optimize delegation policy** into
+Gym, captures desktop/mobile screenshots, and checks the proof graph plus
+active-parameter cards for visible, non-overlapping geometry.
 This is a preview UI geometry smoke only; it does not submit a model turn and
-does not exercise the legacy Khala-native shell/process runtime. Its JSON
-summary is labeled `preview_ui_codex_harness_shell`.
+does not exercise the legacy Khala-native shell/process runtime. The composer
+JSON summary is labeled `preview_ui_codex_harness_shell`; the Fleet/Gym summary
+is labeled `khala_code_part2_fleet_gym_visual_smoke`.
 Artifacts are written under ignored `var/khala-code-desktop/composer-visual-smoke`.
 
 ```sh
 bun run smoke:composer-visual
 bun run smoke:composer-visual-preview
+bun run smoke:part2-fleet-gym-visual
 ```
 
 Live delegation coverage is the guarded Codex spawn lane. It exercises

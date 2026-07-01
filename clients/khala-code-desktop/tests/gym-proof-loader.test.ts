@@ -1,8 +1,12 @@
 import { describe, expect, test } from "bun:test"
 
 import {
+  bridgeProofFromOptimizationProjection,
+  defaultKhalaFleetDelegationActiveParameters,
+  gymOptimizationRunFromProjection,
   gymPaneStateFromBridgeProof,
   gymPaneStateFromLocation,
+  gymPaneStateFromOptimizationRun,
   initialKhalaCodeViewFromLocation,
   khalaCodeGymDemoBridgeProof,
 } from "../src/ui/gym-proof-loader"
@@ -78,11 +82,24 @@ describe("Khala Code Gym proof loader", () => {
         "action_submission.proposal.khala_delegation.part2_fixture.v1",
       ),
     )).toBe(true)
+    expect(state.activeParameters).toMatchObject({
+      actionSubmissionProposalRef:
+        "action_submission.proposal.khala_delegation.part2_fixture.v1",
+      candidateManifestRef: "manifest.khala_fleet_delegation.part2_fixture.v1",
+      candidateRef: "candidate.khala_fleet_delegation.part2_fixture.v1",
+      parameterRef: "parameters.khala_fleet_delegation.default.v1",
+      schemaVersion: "openagents.khala.fleet_delegation.parameters.v0",
+      source: "default",
+    })
   })
 
   test("missing proof stays honest and empty", () => {
-    expect(gymPaneStateFromBridgeProof(null)).toEqual({ phase: "empty" })
+    expect(gymPaneStateFromBridgeProof(null)).toEqual({
+      activeParameters: defaultKhalaFleetDelegationActiveParameters,
+      phase: "empty",
+    })
     expect(gymPaneStateFromBridgeProof({ proof: null })).toEqual({
+      activeParameters: defaultKhalaFleetDelegationActiveParameters,
       phase: "empty",
     })
   })
@@ -109,6 +126,9 @@ describe("Khala Code Gym proof loader", () => {
       detail.label === "blocker refs" &&
       detail.value.includes("fixture_missing_live_gate"),
     )).toBe(true)
+    expect(state.activeParameters?.blockerRefs).toEqual([
+      "blocker.gym.khala_delegation.fixture_missing_live_gate",
+    ])
   })
 
   test("URL fixture proof is opt-in and can open directly to Gym", () => {
@@ -123,9 +143,72 @@ describe("Khala Code Gym proof loader", () => {
     })
     const chatView = initialKhalaCodeViewFromLocation({ search: "", hash: "" })
 
-    expect(empty).toEqual({ phase: "empty" })
+    expect(empty).toEqual({
+      activeParameters: defaultKhalaFleetDelegationActiveParameters,
+      phase: "empty",
+    })
     expect(fixture.phase).toBe("loaded")
     expect(fixtureView).toBe("gym")
     expect(chatView).toBe("chat")
+  })
+
+  test("Worker optimization projection maps into the same Gym pane state", () => {
+    const projection = {
+      actionSubmissionProposalRef:
+        "action_submission.proposal.khala_delegation.worker_projection.v1",
+      admissionDecision: "gated_proposal_ready",
+      baseModuleRef: "module.khala_fleet_delegation.base.v1",
+      blockerRefs: [],
+      candidateManifestRef:
+        "manifest.khala_fleet_delegation.worker_projection.v1",
+      candidateRef: "candidate.khala_fleet_delegation.worker_projection.v1",
+      caveatRefs: [
+        "caveat.gym.khala_delegation_gepa.decision_grade_false_until_live_evidence",
+      ],
+      datasetRef: "eval.mutalisk.fixtures.khala_fleet_delegation_demo.v1",
+      feedbackSchemaRef: "openagents.khala.delegation_gepa_feedback.v0",
+      jobRef: "gym.job.mutalisk_khala_delegation.worker_projection",
+      latestStage: "completed",
+      metricValueBps: 9400,
+      ownerApprovalRef: "approval.owner.khala_delegation.operator_review.v1",
+      publicSafetyPolicyRef:
+        "policy.public_safe.mutalisk_khala_delegation_summary.v0",
+      runRef: "gym.run.khala_code_delegation_gepa.worker_projection",
+      trainSplitRefs: ["eval_split.khala_fleet_delegation_demo.train.v1"],
+      validationSplitRefs: ["eval_split.khala_fleet_delegation_demo.val.v1"],
+    } as const
+
+    const proof = bridgeProofFromOptimizationProjection(projection)
+    const run = gymOptimizationRunFromProjection(projection)
+    const state = gymPaneStateFromOptimizationRun(projection)
+
+    expect(proof.job?.runRef).toBe(
+      "gym.run.khala_code_delegation_gepa.worker_projection",
+    )
+    expect(run).toMatchObject({
+      actionSubmissionProposalRef:
+        "action_submission.proposal.khala_delegation.worker_projection.v1",
+      admissionDecision: "gated_proposal_ready",
+      candidateManifestRef:
+        "manifest.khala_fleet_delegation.worker_projection.v1",
+      metricValueBps: 9400,
+      phase: "proposal_ready",
+      runRef: "gym.run.khala_code_delegation_gepa.worker_projection",
+      stage: "completed",
+    })
+    expect(run.datasetRefs).toEqual([
+      "eval.mutalisk.fixtures.khala_fleet_delegation_demo.v1",
+      "eval_split.khala_fleet_delegation_demo.train.v1",
+      "eval_split.khala_fleet_delegation_demo.val.v1",
+    ])
+    expect(state.phase).toBe("loaded")
+    if (state.phase !== "loaded") throw new Error("expected loaded state")
+    expect(state.activeParameters).toMatchObject({
+      actionSubmissionProposalRef:
+        "action_submission.proposal.khala_delegation.worker_projection.v1",
+      candidateManifestRef:
+        "manifest.khala_fleet_delegation.worker_projection.v1",
+      source: "default",
+    })
   })
 })

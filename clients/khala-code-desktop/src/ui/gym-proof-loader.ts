@@ -1,17 +1,75 @@
 import {
   buildKhalaGymGraphProjection,
+  type KhalaGymBridgeProgressLike,
   type KhalaGymBridgeProofLike,
   type KhalaGymGraphDatum,
   type KhalaGymGraphNode,
   type KhalaGymGraphProjection,
 } from "./gym-graph-projection"
-import type { GymPaneDetail, GymPaneState } from "./gym-pane"
+import type {
+  GymPaneActiveParameters,
+  GymPaneDetail,
+  GymPaneState,
+} from "./gym-pane"
 
 export type KhalaGymProofLoadRequest = Readonly<{
   proof?: KhalaGymBridgeProofLike | null
   generatedAt?: string
   sourceRef?: string
 }>
+
+export type KhalaGymDelegationOptimizationPhase =
+  | "blocked"
+  | "proposal_ready"
+  | "queued"
+  | "running"
+
+export type KhalaGymDelegationOptimizationRun = Readonly<{
+  actionSubmissionProposalRef?: string
+  activeParameters: GymPaneActiveParameters
+  admissionDecision?: "blocked" | "gated_proposal_ready"
+  blockerRefs: ReadonlyArray<string>
+  candidateManifestRef?: string
+  candidateRef?: string
+  datasetRefs: ReadonlyArray<string>
+  metricValueBps?: number
+  phase: KhalaGymDelegationOptimizationPhase
+  runRef: string
+  stage: string
+}>
+
+export type KhalaGymDelegationRunProjectionLike = Readonly<{
+  actionSubmissionProposalRef?: string
+  admissionDecision?: "blocked" | "gated_proposal_ready"
+  baseModuleRef?: string
+  blockerRefs?: ReadonlyArray<string>
+  candidateManifestRef?: string
+  candidateRef?: string
+  caveatRefs?: ReadonlyArray<string>
+  datasetRef?: string
+  feedbackSchemaRef?: string
+  jobRef?: string
+  latestStage?: string
+  maxMetricCalls?: number
+  metricValueBps?: number
+  ownerApprovalRef?: string
+  progress?: ReadonlyArray<KhalaGymBridgeProgressLike>
+  publicSafetyPolicyRef?: string
+  runRef?: string
+  seedCandidateRef?: string
+  trainSplitRefs?: ReadonlyArray<string>
+  validationSplitRefs?: ReadonlyArray<string>
+}>
+
+export const defaultKhalaFleetDelegationActiveParameters: GymPaneActiveParameters = {
+  blockerRefs: [],
+  caveatRefs: [
+    "caveat.khala_fleet_delegation.active_parameters.default_until_owner_admission",
+  ],
+  parameterRef: "parameters.khala_fleet_delegation.default.v1",
+  schemaVersion: "openagents.khala.fleet_delegation.parameters.v0",
+  source: "default",
+}
 
 export const khalaCodeGymDemoBridgeProof = {
   schemaVersion: "openagents.gym.mutalisk_khala_delegation_bridge_output.v0",
@@ -111,6 +169,75 @@ const lastProgress = (
   proof: KhalaGymBridgeProofLike,
 ) => proof.progress?.at(-1)
 
+const firstDefined = <T>(
+  values: ReadonlyArray<T | null | undefined>,
+): T | undefined =>
+  values.find((value): value is T => value !== undefined && value !== null)
+
+const blockerRefsForProof = (
+  proof: KhalaGymBridgeProofLike,
+): ReadonlyArray<string> =>
+  unique([
+    ...(proof.blockerRefs ?? []),
+    ...(proof.summary?.blockerRefs ?? []),
+    ...(proof.admission?.blockerRefs ?? []),
+    ...(lastProgress(proof)?.blockerRefs ?? []),
+  ])
+
+const actionSubmissionProposalRefForProof = (
+  proof: KhalaGymBridgeProofLike,
+): string | undefined =>
+  firstDefined([
+    proof.actionSubmissionProposalRef ?? undefined,
+    proof.admission?.actionSubmissionProposalRefs?.[0],
+    lastProgress(proof)?.actionSubmissionProposalRef,
+  ])
+
+const candidateManifestRefForProof = (
+  proof: KhalaGymBridgeProofLike,
+): string | undefined =>
+  firstDefined([
+    proof.candidateManifestRef,
+    proof.summary?.candidateManifestRef,
+    proof.admission?.candidateManifestRef,
+    lastProgress(proof)?.candidateManifestRef,
+  ])
+
+const candidateRefForProof = (
+  proof: KhalaGymBridgeProofLike,
+): string | undefined =>
+  firstDefined([
+    proof.candidateRef,
+    proof.summary?.candidateRef,
+    proof.admission?.candidateRef,
+    lastProgress(proof)?.candidateRef,
+  ])
+
+export const activeParametersFromBridgeProof = (
+  proof: KhalaGymBridgeProofLike | null | undefined,
+): GymPaneActiveParameters => {
+  if (proof === undefined || proof === null) {
+    return defaultKhalaFleetDelegationActiveParameters
+  }
+  const blockerRefs = blockerRefsForProof(proof)
+  const actionSubmissionProposalRef = actionSubmissionProposalRefForProof(proof)
+  const candidateManifestRef = candidateManifestRefForProof(proof)
+  const candidateRef = candidateRefForProof(proof)
+  return {
+    ...defaultKhalaFleetDelegationActiveParameters,
+    blockerRefs,
+    caveatRefs: unique([
+      ...defaultKhalaFleetDelegationActiveParameters.caveatRefs,
+      ...(lastProgress(proof)?.caveatRefs ?? []),
+    ]),
+    ...(actionSubmissionProposalRef === undefined
+      ? {}
+      : { actionSubmissionProposalRef }),
+    ...(candidateManifestRef === undefined ? {} : { candidateManifestRef }),
+    ...(candidateRef === undefined ? {} : { candidateRef }),
+  }
+}
+
 const graphNode = (
   graph: KhalaGymGraphProjection,
   id: string,
@@ -172,6 +299,165 @@ const refsForGraph = (graph: KhalaGymGraphProjection): ReadonlyArray<string> =>
 const runRefForProof = (proof: KhalaGymBridgeProofLike): string =>
   proof.job?.runRef ?? lastProgress(proof)?.runRef ?? "run ref unavailable"
 
+const datasetRefsForProof = (
+  proof: KhalaGymBridgeProofLike,
+): ReadonlyArray<string> =>
+  unique([
+    ...(proof.job?.datasetRef === undefined ? [] : [proof.job.datasetRef]),
+    ...(proof.job?.trainSplitRefs ?? []),
+    ...(proof.job?.validationSplitRefs ?? []),
+  ])
+
+const phaseForProof = (
+  proof: KhalaGymBridgeProofLike,
+): KhalaGymDelegationOptimizationPhase => {
+  const stage = lastProgress(proof)?.stage ?? "queued"
+  if (blockerRefsForProof(proof).length > 0 || proof.admissionDecision === "blocked") {
+    return "blocked"
+  }
+  if (actionSubmissionProposalRefForProof(proof) !== undefined) {
+    return "proposal_ready"
+  }
+  return stage === "queued" ? "queued" : "running"
+}
+
+export const gymOptimizationRunFromBridgeProof = (
+  proof: KhalaGymBridgeProofLike,
+): KhalaGymDelegationOptimizationRun => {
+  const latest = lastProgress(proof)
+  const actionSubmissionProposalRef = actionSubmissionProposalRefForProof(proof)
+  const candidateManifestRef = candidateManifestRefForProof(proof)
+  const candidateRef = candidateRefForProof(proof)
+  const metricValueBps = proof.metricValueBps ?? latest?.metricValueBps
+  return {
+    activeParameters: activeParametersFromBridgeProof(proof),
+    blockerRefs: blockerRefsForProof(proof),
+    datasetRefs: datasetRefsForProof(proof),
+    phase: phaseForProof(proof),
+    runRef: runRefForProof(proof),
+    stage: latest?.stage ?? "queued",
+    ...(actionSubmissionProposalRef === undefined
+      ? {}
+      : { actionSubmissionProposalRef }),
+    ...(proof.admissionDecision === undefined
+      ? latest?.admissionDecision === undefined
+        ? {}
+        : { admissionDecision: latest.admissionDecision }
+      : { admissionDecision: proof.admissionDecision }),
+    ...(candidateManifestRef === undefined ? {} : { candidateManifestRef }),
+    ...(candidateRef === undefined ? {} : { candidateRef }),
+    ...(metricValueBps === undefined ? {} : { metricValueBps }),
+  }
+}
+
+export const bridgeProofFromOptimizationProjection = (
+  run: KhalaGymDelegationRunProjectionLike,
+): KhalaGymBridgeProofLike => {
+  const candidateManifestRef = firstDefined([
+    run.candidateManifestRef,
+    run.progress?.at(-1)?.candidateManifestRef,
+  ])
+  const candidateRef = firstDefined([
+    run.candidateRef,
+    run.progress?.at(-1)?.candidateRef,
+  ])
+  const metricValueBps = firstDefined([
+    run.metricValueBps,
+    run.progress?.at(-1)?.metricValueBps,
+  ])
+  const actionSubmissionProposalRef = firstDefined([
+    run.actionSubmissionProposalRef,
+    run.progress?.at(-1)?.actionSubmissionProposalRef,
+  ])
+  const admissionDecision = firstDefined([
+    run.admissionDecision,
+    run.progress?.at(-1)?.admissionDecision,
+  ])
+  const job: NonNullable<KhalaGymBridgeProofLike["job"]> = {
+    ...(run.datasetRef === undefined ? {} : { datasetRef: run.datasetRef }),
+    ...(run.feedbackSchemaRef === undefined
+      ? {}
+      : { feedbackSchemaRef: run.feedbackSchemaRef }),
+    ...(run.jobRef === undefined ? {} : { jobRef: run.jobRef }),
+    ...(run.ownerApprovalRef === undefined
+      ? {}
+      : { ownerApprovalRef: run.ownerApprovalRef }),
+    ...(run.publicSafetyPolicyRef === undefined
+      ? {}
+      : { publicSafetyPolicyRef: run.publicSafetyPolicyRef }),
+    ...(run.runRef === undefined ? {} : { runRef: run.runRef }),
+    ...(run.trainSplitRefs === undefined
+      ? {}
+      : { trainSplitRefs: run.trainSplitRefs }),
+    ...(run.validationSplitRefs === undefined
+      ? {}
+      : { validationSplitRefs: run.validationSplitRefs }),
+  }
+  const summary: NonNullable<KhalaGymBridgeProofLike["summary"]> | undefined =
+    candidateManifestRef === undefined && candidateRef === undefined
+      ? undefined
+      : {
+          ...(run.baseModuleRef === undefined
+            ? {}
+            : { baseModuleRef: run.baseModuleRef }),
+          blockerRefs: run.blockerRefs ?? [],
+          ...(candidateManifestRef === undefined
+            ? {}
+            : { candidateManifestRef }),
+          ...(candidateRef === undefined ? {} : { candidateRef }),
+          ...(metricValueBps === undefined ? {} : { metricValueBps }),
+        }
+  const progress: KhalaGymBridgeProofLike["progress"] = run.progress ?? [
+    {
+      blockerRefs: run.blockerRefs ?? [],
+      caveatRefs: run.caveatRefs ?? [],
+      ...(run.jobRef === undefined ? {} : { jobRef: run.jobRef }),
+      ...(run.runRef === undefined ? {} : { runRef: run.runRef }),
+      stage: run.latestStage ?? "queued",
+      ...(actionSubmissionProposalRef === undefined
+        ? {}
+        : { actionSubmissionProposalRef }),
+      ...(admissionDecision === undefined ? {} : { admissionDecision }),
+      ...(candidateManifestRef === undefined ? {} : { candidateManifestRef }),
+      ...(candidateRef === undefined ? {} : { candidateRef }),
+      ...(metricValueBps === undefined ? {} : { metricValueBps }),
+    },
+  ]
+  const admission: NonNullable<KhalaGymBridgeProofLike["admission"]> = {
+    actionSubmissionProposalRefs:
+      actionSubmissionProposalRef === undefined ? [] : [actionSubmissionProposalRef],
+    blockerRefs: run.blockerRefs ?? [],
+    ...(candidateManifestRef === undefined ? {} : { candidateManifestRef }),
+    ...(candidateRef === undefined ? {} : { candidateRef }),
+    ...(admissionDecision === undefined ? {} : { decision: admissionDecision }),
+  }
+  return {
+    schemaVersion: "openagents.gym.mutalisk_khala_delegation_bridge_output.v0",
+    job,
+    ...(summary === undefined ? {} : { summary }),
+    progress,
+    admission,
+    blockerRefs: run.blockerRefs ?? [],
+    decisionGrade: false,
+    ...(actionSubmissionProposalRef === undefined
+      ? { actionSubmissionProposalRef: null }
+      : { actionSubmissionProposalRef }),
+    ...(admissionDecision === undefined ? {} : { admissionDecision }),
+    ...(candidateManifestRef === undefined ? {} : { candidateManifestRef }),
+    ...(candidateRef === undefined ? {} : { candidateRef }),
+    ...(metricValueBps === undefined ? {} : { metricValueBps }),
+  }
+}
+
+export const gymOptimizationRunFromProjection = (
+  run: KhalaGymDelegationRunProjectionLike,
+): KhalaGymDelegationOptimizationRun =>
+  gymOptimizationRunFromBridgeProof(bridgeProofFromOptimizationProjection(run))
+
+export const gymPaneStateFromOptimizationRun = (
+  run: KhalaGymDelegationRunProjectionLike,
+): GymPaneState => gymPaneStateFromBridgeProof(bridgeProofFromOptimizationProjection(run))
+
 const isProofLoadRequest = (
   input: KhalaGymProofLoadRequest | KhalaGymBridgeProofLike,
 ): input is KhalaGymProofLoadRequest =>
@@ -189,7 +475,12 @@ export const gymPaneStateFromBridgeProof = (
   input?: KhalaGymProofLoadRequest | KhalaGymBridgeProofLike | null,
 ): GymPaneState => {
   const request = requestFromInput(input)
-  if (request.proof === undefined || request.proof === null) return { phase: "empty" }
+  if (request.proof === undefined || request.proof === null) {
+    return {
+      activeParameters: defaultKhalaFleetDelegationActiveParameters,
+      phase: "empty",
+    }
+  }
 
   const graph = buildKhalaGymGraphProjection({
     proof: request.proof,
@@ -198,11 +489,13 @@ export const gymPaneStateFromBridgeProof = (
   const details = proofDetails(request.proof, graph)
   const refs = refsForGraph(graph)
   const title = "Mutalisk bridge proof"
+  const activeParameters = activeParametersFromBridgeProof(request.proof)
 
   if (graph.status === "blocked") {
     return {
       phase: "blocked",
       title,
+      activeParameters,
       blockerRefs: graph.blockerRefs,
       details,
       graph,
@@ -214,6 +507,7 @@ export const gymPaneStateFromBridgeProof = (
     title,
     runRef: runRefForProof(request.proof),
     status: graph.status,
+    activeParameters,
     refs,
     details,
     graph,
@@ -243,7 +537,10 @@ export const gymPaneStateFromLocation = (
       sourceRef: "fixture.khala_code.gym.part2_demo",
     })
   }
-  return { phase: "empty" }
+  return {
+    activeParameters: defaultKhalaFleetDelegationActiveParameters,
+    phase: "empty",
+  }
 }
 
 export const initialKhalaCodeViewFromLocation = (
