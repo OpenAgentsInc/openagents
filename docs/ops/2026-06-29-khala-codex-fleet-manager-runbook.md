@@ -6,18 +6,21 @@
 with programmatic controls, while preserving exact token accounting and enough
 resume state for the next operator after compaction, restart, or reboot.
 
-**Current lane as of 2026-06-30:** the fastest way to get a local Codex worker
-moving from the desktop app is **Khala Code Desktop** in
-`clients/khala-code-desktop`, using its owner-local tools:
+**Current lane as of 2026-07-01:** Khala Code is now the **Codex-wrapper**
+desktop path. The desktop app wraps Codex app-server as the default harness for
+coding turns and uses Pylon fleet delegation as the owner-local capacity layer
+for linked Codex accounts. The fastest way to get a local Codex worker moving
+from the desktop app remains **Khala Code Desktop** in
+`clients/khala-code-desktop`, using its owner-local fleet tools:
 
 - `pylon_ensure`
 - `codex_fleet_status`
 - `codex_spawn`
 
 The older `clients/openagents-desktop` controls below remain useful source
-material for the broader fanout manager, but the working MVP path today is
-Khala Code Desktop → local Pylon → hosted Khala assignment → local Codex runner
-→ no-spend closeout.
+material for the broader fanout manager, but the current working path is Khala
+Code Desktop Codex-wrapper UI → local Pylon fleet delegation → hosted Khala
+assignment envelope → local Codex runner → no-spend closeout.
 
 This replaces the shell-loop era runbook. The shell commands below are still
 included because they are the bridge the current Desktop process uses under the

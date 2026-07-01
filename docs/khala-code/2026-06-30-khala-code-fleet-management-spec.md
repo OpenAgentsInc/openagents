@@ -7,6 +7,13 @@ the "manage many coding agents from one place" capability, maps each feature to
 what OpenAgents has **already built**, and lists the remaining gaps. This is a
 planning artifact: it flips no promise state and broadens no public copy.
 
+**July 1 architecture note:** this June 30 spec is pre-pivot context. The
+current Khala Code architecture is the **Codex-wrapper** path: desktop and CLI
+surfaces wrap Codex app-server as the default harness, while Pylon fleet
+delegation remains the owner-local capacity layer for linked Codex accounts.
+The native `@openagentsinc/khala-tools` runtime is now legacy/fallback for coding
+work, not the center of the default Khala Code execution path.
+
 ## 0. Identity note (read first)
 
 External landscape research conflated two unrelated projects both called
@@ -65,11 +72,9 @@ sending the owner's configs or code to a cloud. The capabilities:
   an Apple FM local backend.
 - **`@openagentsinc/khala-tools`**: the provider-neutral tool runtime — read/ls/
   glob/grep/edit/write/apply_patch/exec_command/write_stdin/ask_user/todo_write/
-  view_image/web_*/browser — now with the Codex-port lanes merged: central
-  dispatcher (A), macOS sandbox (C), atomic apply_patch (D), session rollout +
-  resume (E), headless JSONL events (F), compaction (G), MCP client+server (H),
-  tool planner + progressive disclosure (I), PTY exec (J), feature-flag registry
-  (K), and a product permission policy + session approval cache (B).
+  view_image/web_*/browser — pre-pivot native runtime coverage. After the July 1
+  Codex-wrapper pivot, this remains useful fallback/donor machinery; default
+  coding parity should come from Codex app-server methods first.
 - **Pylon delegation**: `khala request` / `assignment run-no-spend`, the
   workspace materializer, Codex/Claude executors with isolated per-account homes,
   the approval queue + bounded auto-approval policy, and the

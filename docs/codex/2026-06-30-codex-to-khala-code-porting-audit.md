@@ -8,6 +8,13 @@ ships as **Khala Code**, and proposes a concrete, parallelizable "port Codex
 into our coding app overnight" plan. This doc flips no promise state, changes no
 runtime authority, and broadens no public copy.
 
+**July 1 architecture note:** this audit captured the pre-pivot porting plan.
+The current Khala Code architecture is the **Codex-wrapper** path: Khala Code
+wraps Codex app-server as the default harness and implements only small
+desktop-local adapters or documented upstream gap placeholders where app-server
+coverage is missing. Treat the lane plan below as historical donor analysis for
+fallback/native-runtime work, not the current product-center execution plan.
+
 Inputs:
 
 - `docs/research/terminal-agents/codex.md` — the deep Codex tool-layer study.
@@ -26,25 +33,16 @@ Inputs:
 
 ## 0. TL;DR
 
-**We are much further along than "we should build a coding agent."** Khala Code
-is a working agentic coding app: the desktop runs a real tool loop over a native
-Effect/Effect-Schema tool runtime (`@openagentsinc/khala-tools`) that already
-implements the full Codex-equivalent core catalog (`read`, `ls`, `glob`, `grep`,
-`edit`, `write`, `apply_patch`, `exec_command`, `write_stdin`, `ask_user`,
-`todo_write`, `view_image`, plus `web_fetch`/`web_search`/`browser` presets),
-four-lane results, an OpenAI-compatible tool adapter, scoped permission
-requests, and default-on Rampart PII redaction. ADR 0012's accepted plan has
-**shipped**.
+**Historical pre-pivot read:** Khala Code was already much further along than
+"we should build a coding agent." The desktop had a real tool loop over the
+native Effect/Effect-Schema runtime (`@openagentsinc/khala-tools`) and ADR
+0012's accepted native-runtime plan had shipped.
 
-So the porting question is not "copy Codex's tool catalog" — we have it. It is:
-**which of Codex's harder, lower-down execution-boundary machinery should we
-port next, where we currently have honest stubs or nothing.** Those are, in
-priority order: (1) real sandbox enforcement, (2) a central tool dispatcher with
-hooks/lifecycle/telemetry, (3) durable session persistence + resume/fork
-(rollout-style JSONL), (4) atomic `apply_patch`, (5) compaction, (6) a headless
-JSONL event schema, (7) MCP, (8) the planner/feature/config/provider polish, and
-— **last** — (9) a session-scoped approval cache + real product permission policy
-to replace `allowAllKhalaPermissionService`.
+**Current July 1 read:** the porting question changed. Khala Code should not
+clone Codex Core or rebuild Codex TUI behavior in TypeScript when Codex
+app-server already exposes the state or mutation. The default path is now:
+wrap Codex app-server, keep desktop adapters small and tested, and file narrow
+upstream app-server gaps for the missing TUI-owned semantics.
 
 **Deliberate stance for now: Khala Code runs permit-all ("YOLO"), for trusted
 local operators only.** The desktop keeps `allowAllKhalaPermissionService` as the
