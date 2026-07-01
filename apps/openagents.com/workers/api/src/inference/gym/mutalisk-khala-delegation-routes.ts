@@ -9,7 +9,7 @@ import { Effect, Schema as S } from 'effect'
 
 import { methodNotAllowed, noStoreJsonResponse } from '../../http/responses'
 import { liveAtReadStaleness } from '../../public-projection-staleness'
-import { currentIsoTimestamp } from '../../runtime-primitives'
+import { currentIsoTimestamp, randomUuid } from '../../runtime-primitives'
 import {
   assertMutaliskKhalaDelegationPublicSafeValues,
   buildMutaliskKhalaDelegationRunProgress,
@@ -129,7 +129,7 @@ const reasonFor = (error: unknown): string => {
 }
 
 const defaultRunToken = (): string =>
-  crypto.randomUUID().replaceAll('-', '').slice(0, 24)
+  randomUuid().replaceAll('-', '').slice(0, 24)
 
 const listProjections = (
   input: MutaliskKhalaDelegationRouteInput,

@@ -463,7 +463,15 @@ const budgetChecks = [
     // labeled illustrative paper-reference comparators, never task contents) and
     // mint no spend/settlement/payout/public-claim authority. Ratchet back down
     // when these route handlers move behind a shared route mapper.
-    budget: 123,
+    // +9 (123 -> 132) on 2026-07-01 for the Mutalisk Khala-delegation Gym
+    // route handlers in inference/gym/mutalisk-khala-delegation-routes.ts
+    // (public run projection + owner-gated ingest handlers returning
+    // Response, same shape as the sibling gym handlers above). The lane that
+    // added the file never bumped this ratchet, leaving check:deploy red on
+    // main; this records the actual count. They mint no spend/settlement/
+    // payout/public-claim authority. Ratchet back down when these handlers
+    // move behind a shared route mapper.
+    budget: 132,
     description:
       'Worker domain and route modules may not grow Response-returning surfaces while route mappers are extracted.',
     details: countByFile(
@@ -532,6 +540,12 @@ const budgetChecks = [
 ]
 
 const runPromiseAllowlist = new Map([
+  // Added 2026-07-01: the Mutalisk Khala-delegation Gym routes bridge their
+  // Effect-returning store/read programs once from Promise-shaped route
+  // handlers (`const run = (effect) => Effect.runPromise(effect)`), the same
+  // named-bridge shape as the billing/operator routes below. Ratchet down if
+  // the gym route handlers move to an Effect program.
+  ['workers/api/src/inference/gym/mutalisk-khala-delegation-routes.ts', 1],
   // index.ts raised 6 -> 7 on 2026-06-14 for the wave-3 tenant-client
   // integration bridge; ratchet back down with the Effect-program migration.
   ['workers/api/src/index.ts', 7],
@@ -766,6 +780,15 @@ const publicProjectionSurfaces = [
   {
     module: 'workers/api/src/public-khala-tokens-served-routes.ts',
     route: '/api/public/khala-tokens-served',
+    status: 'staleness_declared',
+  },
+  // Added 2026-07-01: the Mutalisk Khala-delegation Gym run projection was
+  // introduced by the gym bridge lane with the staleness contract wired
+  // (liveAtReadStaleness) but never registered here; registering closes the
+  // pre-existing check:deploy red on main.
+  {
+    module: 'workers/api/src/inference/gym/mutalisk-khala-delegation-routes.ts',
+    route: '/api/public/gym/mutalisk-khala-delegation/runs',
     status: 'staleness_declared',
   },
   {

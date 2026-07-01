@@ -2319,6 +2319,13 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     include `generatedAt` and the shared `projection_staleness.v1` contract;
     the route grants no deploy, spend, payout, settlement, auto-merge, or
     green-claim authority. `staleness_declared`.
+  - `GET /api/public/gym/mutalisk-khala-delegation/runs` — live at read over
+    the Mutalisk Khala-delegation Gym workflow store — compliant
+    (`generatedAt`, `staleness` contract `projection_staleness.v1`
+    live_at_read rebuilt on run_created/progress_ingested/summary_ingested;
+    public-safe run/candidate projections only; grants no promotion
+    authority — optimizer candidates stay admission-gated with
+    `decisionGrade: false`). `staleness_declared`.
   - `GET /api/public/artanis/report` — live at read over tick rows rebuilt on
     closeout — compliant (`generatedAtUnixMs`, report + loop contracts, stale
     and example-fallback flags with caveat refs).
