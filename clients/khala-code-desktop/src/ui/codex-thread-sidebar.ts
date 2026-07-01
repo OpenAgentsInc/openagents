@@ -152,6 +152,21 @@ const dataForState = (
     ? state.data
     : undefined
 
+export const renameThreadInListData = (
+  data: KhalaCodeDesktopCodexThreadListResult,
+  threadId: string,
+  title: string,
+): KhalaCodeDesktopCodexThreadListResult => {
+  if (data.threads === undefined) return data
+  let renamed = false
+  const threads = data.threads.map(thread => {
+    if (thread.id !== threadId || thread.title === title) return thread
+    renamed = true
+    return { ...thread, title }
+  })
+  return renamed ? { ...data, threads } : data
+}
+
 export const mountCodexThreadSidebar = (
   container: HTMLElement,
   options: CodexThreadSidebarOptions,
@@ -166,11 +181,48 @@ export const mountCodexThreadSidebar = (
   let renamingThreadDraft = ""
   let refreshSequence = 0
   let selectionSequence = 0
+  const optimisticThreadTitles = new Map<string, string>()
   const threadMenu = createBasecoatContextMenu({
     id: "khala-thread-sidebar-thread-menu",
     ownerDocument: container.ownerDocument,
     className: "khala-thread-sidebar-menu",
   })
+
+  const applyOptimisticThreadTitles = (
+    data: KhalaCodeDesktopCodexThreadListResult,
+  ): KhalaCodeDesktopCodexThreadListResult => {
+    let nextData = data
+    for (const [threadId, title] of optimisticThreadTitles) {
+      const thread = nextData.threads?.find(candidate => candidate.id === threadId)
+      if (thread?.title === title) {
+        optimisticThreadTitles.delete(threadId)
+        continue
+      }
+      nextData = renameThreadInListData(nextData, threadId, title)
+    }
+    return nextData
+  }
+
+  const stateWithThreadTitle = (
+    currentState: ViewState,
+    threadId: string,
+    title: string,
+  ): ViewState => {
+    const data = dataForState(currentState)
+    if (data === undefined) return currentState
+    const renamedData = renameThreadInListData(data, threadId, title)
+    if (renamedData === data) return currentState
+    switch (currentState.phase) {
+      case "loading":
+        return { phase: "loading", data: renamedData }
+      case "error":
+        return { phase: "error", message: currentState.message, data: renamedData }
+      case "ready":
+        return { phase: "ready", data: renamedData }
+      case "idle":
+        return currentState
+    }
+  }
 
   const setStatusError = (error: unknown): void => {
     state = { phase: "error", message: error instanceof Error ? error.message : String(error) }
@@ -226,6 +278,22 @@ export const mountCodexThreadSidebar = (
     }
   }
 
+  const runRenameMutation = async (
+    threadId: string,
+    name: string,
+  ): Promise<void> => {
+    try {
+      const result = await options.renameThread(threadId, name)
+      if (!result.ok) throw new Error(result.error ?? "rename failed")
+      await refresh()
+    } catch (error) {
+      if (optimisticThreadTitles.get(threadId) === name) {
+        optimisticThreadTitles.delete(threadId)
+      }
+      setStatusError(error)
+    }
+  }
+
   const startNewChat = (): void => {
     threadMenu.close()
     activeThreadId = null
@@ -250,16 +318,23 @@ export const mountCodexThreadSidebar = (
     value: string,
   ): void => {
     const name = value.trim()
+    if (name.length === 0 || name === thread.title.trim()) {
+      cancelRename()
+      return
+    }
     renamingThreadId = null
     renamingThreadDraft = ""
+    optimisticThreadTitles.set(thread.id, name)
+    state = stateWithThreadTitle(state, thread.id, name)
     render()
-    if (name.length === 0 || name === thread.title.trim()) return
-    void runMutation(() => options.renameThread(thread.id, name))
+    void runRenameMutation(thread.id, name)
   }
 
   const loadRecentThreadData = async (): Promise<KhalaCodeDesktopCodexThreadListResult> => {
     const requestSequence = ++refreshSequence
-    const data = await options.listThreads({ archived: false, searchTerm: "" })
+    const data = applyOptimisticThreadTitles(
+      await options.listThreads({ archived: false, searchTerm: "" }),
+    )
     if (requestSequence !== refreshSequence) return data
     state = { phase: "ready", data }
     activeThreadId = data.threads?.find(thread => thread.id === activeThreadId)?.id ?? activeThreadId
@@ -614,7 +689,9 @@ export const mountCodexThreadSidebar = (
       : { phase: "loading", data: previousData }
     render()
     try {
-      const data = await options.listThreads({ archived: false, searchTerm })
+      const data = applyOptimisticThreadTitles(
+        await options.listThreads({ archived: false, searchTerm }),
+      )
       if (requestSequence !== refreshSequence) return
       state = { phase: "ready", data }
       activeThreadId = data.threads?.find(thread => thread.id === activeThreadId)?.id ?? activeThreadId
