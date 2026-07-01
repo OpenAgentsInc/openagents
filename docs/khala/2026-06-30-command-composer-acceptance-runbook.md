@@ -47,8 +47,10 @@ Deferred from v1:
   ProseMirror-view embedding: #7647.
 * Hosted/local attachment upload storage, scan/parse workers, and public-safe
   attachment receipts: #7648.
-* Automated visual regression captures for the desktop/web composer and
-  three-effect HUD: #7649.
+No v1 visual-regression deferrals remain for the composer/HUD lane. The
+automated Playwright smoke is warning-only for pre-push because it needs local
+browser dependencies and two Vite dev servers, but its assertions are
+deterministic and its artifacts are public-safe synthetic captures.
 
 ## Privacy Boundary
 
@@ -78,6 +80,7 @@ claim did not broaden. The work replaced and hardened existing input surfaces.
 | Khala desktop | `clients/khala-code-desktop/tests/app-shell.test.ts` and `bun run --cwd clients/khala-code-desktop verify` | Chat-only shell, no dummy fixture messages, plural Khala voice, Markdown transcript rendering, native edit menu accelerators, pending-turn editability, attachments/large paste/HUD wiring, footer layout. |
 | OpenAgents web | `apps/openagents.com/apps/web/src/main.test.ts`, `apps/openagents.com/apps/web/src/page/loggedOut/update.test.ts`, and local Playwright smoke | Public `/chat` uses the shared composer, native edit/focus hooks are present, preview/expanded state stays local, Enter submits, Shift+Enter remains textarea input. |
 | three-effect HUD | `clients/khala-code-desktop/src/ui/main.ts`, `clients/khala-code-desktop/tests/app-shell.test.ts`, and issue #7643/#7645 smoke evidence | Khala desktop consumes `createCommandComposerHud`, mounts `#composer-hud`, projects focus/attachment/preview state, passes reduced-motion preference, and hides the HUD on renderer failure rather than blocking text entry. |
+| Automated visual regression | `clients/khala-code-desktop/scripts/composer-visual-smoke.ts` and `clients/khala-code-desktop/tests/composer-visual-smoke.test.ts` | Launches Khala Code desktop and OpenAgents web Vite previews, captures desktop/mobile screenshots for Khala Code, `/chat`, and `/autopilot`, asserts nonblank canvas/HUD pixels, focus border framing, footer child non-overlap, viewport geometry, reduced-motion media behavior, and synthetic prompt privacy. |
 | Privacy fixture guard | `apps/openagents.com/scripts/check-command-composer-privacy-fixtures.test.ts` | Deploy-gated scan of v1 composer docs/source/tests for raw private prompt/file and secret sentinel patterns. |
 
 ## Acceptance Commands
@@ -91,26 +94,32 @@ bun run --cwd packages/ui typecheck
 bun run --cwd apps/openagents.com/apps/web test -- src/main.test.ts src/page/loggedOut/update.test.ts
 bun run --cwd apps/openagents.com/apps/web typecheck
 bun run --cwd apps/openagents.com test:command-composer-privacy-guard
+bun test clients/khala-code-desktop/tests/composer-visual-smoke.test.ts
+bun run --cwd clients/khala-code-desktop smoke:composer-visual
 bun run --cwd clients/khala-code-desktop verify
 bun run check:deploy
 ```
 
-Optional browser smoke for `/chat`:
+`smoke:composer-visual` writes public-safe screenshots and `summary.json` to
+`var/khala-code-desktop/composer-visual-smoke` by default. The harness fills
+only this synthetic prompt:
+`Synthetic visual smoke prompt: summarize the public onboarding flow.`
 
-1. Start `bun run --cwd apps/openagents.com/apps/web dev -- --host 127.0.0.1`.
-2. Open `/chat`.
-3. Verify the composer autofocuses.
-4. Type Markdown, submit with Enter, and confirm focus returns to the textarea.
-5. Toggle Preview and Expand.
-6. Check the footer: status, resize, and Send must not overlap.
-7. Stop the dev server.
+The local pre-push hook exposes the same capture lane as warning-only:
+
+```bash
+OPENAGENTS_PRE_PUSH_COMPOSER_VISUAL=1 git push origin main
+```
+
+That hook path never blocks a push by itself. It is for browser-dependent
+evidence collection; the deploy gate remains `check:deploy`.
 
 ## Issue Evidence
 
-Issue #7645 should link the final commit and include:
+Issue closeouts should link the final commit and include:
 
 * commit hash;
 * the commands above and their pass/fail result;
-* the local browser smoke result for `/chat`;
+* the composer visual smoke artifact directory or blocker;
 * the desktop verifier result;
 * the follow-up issue numbers for deferred work.

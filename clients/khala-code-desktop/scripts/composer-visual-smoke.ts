@@ -33,7 +33,20 @@ type Rect = Readonly<{
   height: number
 }>
 
-type CanvasProbe = Readonly<{
+export type FocusProbe = Readonly<{
+  activeElementMatchesInput: boolean
+  borderColor: string
+  boxShadow: string
+  focusedBorderColor: string
+  hasVisibleFrame: boolean
+}>
+
+export type ReducedMotionProbe = Readonly<{
+  matchesMedia: boolean
+  transitionDurationMs: number
+}>
+
+export type CanvasProbe = Readonly<{
   found: boolean
   width: number
   height: number
@@ -41,10 +54,12 @@ type CanvasProbe = Readonly<{
   nonBlankPixels: number
 }>
 
-type GeometryProbe = Readonly<{
+export type GeometryProbe = Readonly<{
   composer: Rect
+  footerChildren: ReadonlyArray<Rect>
   footer: Rect
   input: Rect
+  viewport: Rect
 }>
 
 export type ComposerVisualCaptureResult = Readonly<{
@@ -52,7 +67,9 @@ export type ComposerVisualCaptureResult = Readonly<{
   viewport: string
   screenshot: string
   geometry: GeometryProbe
+  focus: FocusProbe
   canvas: CanvasProbe | null
+  reducedMotionProbe: ReducedMotionProbe
   reducedMotion: boolean
 }>
 
@@ -116,6 +133,14 @@ export const assertComposerGeometry = (probe: GeometryProbe): void => {
   if (probe.composer.width < 280 || probe.composer.height < 72) {
     throw new Error("composer frame is too small for a stable capture")
   }
+  if (probe.composer.x < -1 || probe.composer.y < -1) {
+    throw new Error("composer frame is clipped outside the viewport")
+  }
+  const composerRight = probe.composer.x + probe.composer.width
+  const viewportRight = probe.viewport.x + probe.viewport.width
+  if (composerRight > viewportRight + 1) {
+    throw new Error("composer frame overflows the viewport width")
+  }
   if (probe.input.width <= 0 || probe.input.height <= 0) {
     throw new Error("composer input is not visible")
   }
@@ -135,6 +160,27 @@ export const assertComposerGeometry = (probe: GeometryProbe): void => {
   if (footerStartsBeforeInputEnds && columnsOverlap) {
     throw new Error("composer footer controls overlap the input")
   }
+  for (let index = 0; index < probe.footerChildren.length; index += 1) {
+    const left = probe.footerChildren[index]
+    if (left === undefined) continue
+    for (
+      let compareIndex = index + 1;
+      compareIndex < probe.footerChildren.length;
+      compareIndex += 1
+    ) {
+      const right = probe.footerChildren[compareIndex]
+      if (right === undefined) continue
+      const overlapX =
+        left.x < right.x + right.width - 1 &&
+        right.x < left.x + left.width - 1
+      const overlapY =
+        left.y < right.y + right.height - 1 &&
+        right.y < left.y + left.height - 1
+      if (overlapX && overlapY) {
+        throw new Error("composer footer controls overlap each other")
+      }
+    }
+  }
 }
 
 export const assertCanvasProbe = (
@@ -148,6 +194,37 @@ export const assertCanvasProbe = (
   }
   if (probe.sampledPixels < 1 || probe.nonBlankPixels < 1) {
     throw new Error(`${targetName} canvas/HUD pixels are blank`)
+  }
+}
+
+export const assertFocusProbe = (
+  targetName: string,
+  probe: FocusProbe,
+): void => {
+  if (!probe.activeElementMatchesInput) {
+    throw new Error(`${targetName} input did not retain focus`)
+  }
+  if (!probe.hasVisibleFrame) {
+    throw new Error(`${targetName} composer frame has no visible focus border`)
+  }
+  if (
+    probe.borderColor === "rgba(0, 0, 0, 0)" &&
+    (probe.boxShadow === "" || probe.boxShadow === "none")
+  ) {
+    throw new Error(`${targetName} composer focus frame is transparent`)
+  }
+}
+
+export const assertReducedMotionProbe = (
+  targetName: string,
+  probe: ReducedMotionProbe,
+  expectedReducedMotion: boolean,
+): void => {
+  if (probe.matchesMedia !== expectedReducedMotion) {
+    throw new Error(`${targetName} reduced-motion media query mismatch`)
+  }
+  if (expectedReducedMotion && probe.transitionDurationMs > 0) {
+    throw new Error(`${targetName} keeps transitions under reduced motion`)
   }
 }
 
@@ -264,13 +341,106 @@ async function captureTarget(
         height: rect.height,
       }
     }
+    const footer = document.querySelector(selectors.footerSelector)
+    if (!(footer instanceof HTMLElement)) {
+      throw new Error(`missing visual smoke selector: ${selectors.footerSelector}`)
+    }
+    const childRects = Array.from(footer.children)
+      .filter((element): element is HTMLElement => element instanceof HTMLElement)
+      .filter(element => {
+        const style = window.getComputedStyle(element)
+        return style.display !== "none" && style.visibility !== "hidden"
+      })
+      .map(element => {
+        const rect = element.getBoundingClientRect()
+        return {
+          x: rect.x,
+          y: rect.y,
+          width: rect.width,
+          height: rect.height,
+        }
+      })
+      .filter(rect => rect.width > 0 && rect.height > 0)
     return {
       composer: rectFor(selectors.composerSelector),
       footer: rectFor(selectors.footerSelector),
+      footerChildren: childRects,
       input: rectFor(selectors.inputSelector),
+      viewport: {
+        x: 0,
+        y: 0,
+        width: window.innerWidth,
+        height: window.innerHeight,
+      },
     }
   }, input.target)
   assertComposerGeometry(geometry)
+
+  const focus = await page.evaluate(selectors => {
+    const input = document.querySelector(selectors.inputSelector)
+    const composer = document.querySelector(selectors.composerSelector)
+    const frame =
+      composer?.querySelector(".oa-ai-command-composer-frame") ??
+      composer?.querySelector(".oa-ai-prompt-input") ??
+      composer
+    if (!(frame instanceof HTMLElement)) {
+      throw new Error("missing composer focus frame")
+    }
+    const style = window.getComputedStyle(frame)
+    const focusedBorderColor = style.getPropertyValue(
+      "--oa-command-composer-focus",
+    ).trim()
+    const borderWidths = [
+      style.borderTopWidth,
+      style.borderRightWidth,
+      style.borderBottomWidth,
+      style.borderLeftWidth,
+    ].map(value => Number.parseFloat(value))
+    return {
+      activeElementMatchesInput: input === document.activeElement,
+      borderColor: style.borderTopColor,
+      boxShadow: style.boxShadow,
+      focusedBorderColor,
+      hasVisibleFrame:
+        borderWidths.some(width => Number.isFinite(width) && width > 0) &&
+        style.borderTopStyle !== "none" &&
+        style.borderTopColor !== "rgba(0, 0, 0, 0)",
+    }
+  }, input.target)
+  assertFocusProbe(input.target.name, focus)
+
+  const reducedMotionProbe = await page.evaluate(selectors => {
+    const composer = document.querySelector(selectors.composerSelector)
+    const frame =
+      composer?.querySelector(".oa-ai-command-composer-frame") ??
+      composer?.querySelector(".oa-ai-prompt-input") ??
+      composer
+    if (!(frame instanceof HTMLElement)) {
+      throw new Error("missing composer motion frame")
+    }
+    const style = window.getComputedStyle(frame)
+    const durations = style.transitionDuration
+      .split(",")
+      .map(value => value.trim())
+      .map(value =>
+        value.endsWith("ms")
+          ? Number.parseFloat(value)
+          : value.endsWith("s")
+            ? Number.parseFloat(value) * 1000
+            : Number.parseFloat(value),
+      )
+      .filter(value => Number.isFinite(value))
+    return {
+      matchesMedia: window.matchMedia("(prefers-reduced-motion: reduce)")
+        .matches,
+      transitionDurationMs: Math.max(0, ...durations),
+    }
+  }, input.target)
+  assertReducedMotionProbe(
+    input.target.name,
+    reducedMotionProbe,
+    input.reducedMotion,
+  )
 
   let canvas =
     input.target.canvasSelector === null
@@ -383,7 +553,9 @@ async function captureTarget(
     viewport: input.viewport.name,
     screenshot,
     geometry,
+    focus,
     canvas,
+    reducedMotionProbe,
     reducedMotion: input.reducedMotion,
   }
 }

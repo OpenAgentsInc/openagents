@@ -75,6 +75,13 @@ if is_enabled "${OPENAGENTS_PRE_PUSH_QA:-}" || is_enabled "${OPENAGENTS_PRE_PUSH
   fi
 fi
 
+if is_enabled "${OPENAGENTS_PRE_PUSH_COMPOSER_VISUAL:-}"; then
+  echo "[pre-push guard] running warning-only composer visual smoke..." >&2
+  if ! ( cd "$root" && bun run --cwd clients/khala-code-desktop smoke:composer-visual ) >&2; then
+    echo "[pre-push guard] WARNING: composer visual smoke did not pass or did not finish. Push remains allowed; inspect var/khala-code-desktop/composer-visual-smoke." >&2
+  fi
+fi
+
 if is_enabled "${OPENAGENTS_PRE_PUSH_QA:-}" || is_enabled "${OPENAGENTS_PRE_PUSH_ASYNC_QA:-}"; then
   echo "[pre-push guard] launching warning-only Tier 2 async QA on OpenAgents GCE..." >&2
   if ! ( cd "$root" && bun scripts/qa-async-gce-trigger.ts ) >&2; then

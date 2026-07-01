@@ -4,6 +4,8 @@ import {
   assertCanvasProbe,
   COMPOSER_VISUAL_SMOKE_HARNESS,
   assertComposerGeometry,
+  assertFocusProbe,
+  assertReducedMotionProbe,
   composerVisualPlan,
   validatePublicSafeComposerPrompt,
 } from "../scripts/composer-visual-smoke"
@@ -40,17 +42,51 @@ describe("composer visual smoke", () => {
   test("accepts stable composer geometry and rejects overlapping footer controls", () => {
     assertComposerGeometry({
       composer: { x: 12, y: 600, width: 760, height: 120 },
+      footerChildren: [
+        { x: 22, y: 682, width: 110, height: 28 },
+        { x: 610, y: 682, width: 94, height: 28 },
+        { x: 712, y: 682, width: 32, height: 28 },
+      ],
       footer: { x: 22, y: 682, width: 740, height: 28 },
       input: { x: 22, y: 612, width: 740, height: 54 },
+      viewport: { x: 0, y: 0, width: 1280, height: 800 },
     })
 
     expect(() =>
       assertComposerGeometry({
         composer: { x: 12, y: 600, width: 760, height: 120 },
+        footerChildren: [],
         footer: { x: 22, y: 642, width: 740, height: 28 },
         input: { x: 22, y: 612, width: 740, height: 54 },
+        viewport: { x: 0, y: 0, width: 1280, height: 800 },
       }),
     ).toThrow("overlap")
+
+    expect(() =>
+      assertComposerGeometry({
+        composer: { x: 0, y: 700, width: 392, height: 120 },
+        footerChildren: [
+          { x: 12, y: 780, width: 96, height: 28 },
+          { x: 100, y: 780, width: 96, height: 28 },
+        ],
+        footer: { x: 12, y: 780, width: 360, height: 28 },
+        input: { x: 12, y: 712, width: 360, height: 54 },
+        viewport: { x: 0, y: 0, width: 390, height: 844 },
+      }),
+    ).toThrow("viewport")
+
+    expect(() =>
+      assertComposerGeometry({
+        composer: { x: 12, y: 600, width: 760, height: 120 },
+        footerChildren: [
+          { x: 22, y: 682, width: 120, height: 28 },
+          { x: 120, y: 682, width: 120, height: 28 },
+        ],
+        footer: { x: 22, y: 682, width: 740, height: 28 },
+        input: { x: 22, y: 612, width: 740, height: 54 },
+        viewport: { x: 0, y: 0, width: 1280, height: 800 },
+      }),
+    ).toThrow("footer controls overlap")
   })
 
   test("requires nonblank pixels for canvas-backed HUD captures", () => {
@@ -71,5 +107,51 @@ describe("composer visual smoke", () => {
       }),
     ).toThrow("blank")
     expect(() => assertCanvasProbe("desktop", null)).not.toThrow()
+  })
+
+  test("requires focus framing and reduced-motion-safe transitions", () => {
+    assertFocusProbe("khala-code-desktop", {
+      activeElementMatchesInput: true,
+      borderColor: "rgb(79, 208, 255)",
+      boxShadow: "rgb(79, 208, 255) 0px 0px 0px 1px inset",
+      focusedBorderColor: "rgb(79, 208, 255)",
+      hasVisibleFrame: true,
+    })
+    expect(() =>
+      assertFocusProbe("khala-code-desktop", {
+        activeElementMatchesInput: false,
+        borderColor: "rgb(79, 208, 255)",
+        boxShadow: "none",
+        focusedBorderColor: "rgb(79, 208, 255)",
+        hasVisibleFrame: true,
+      }),
+    ).toThrow("focus")
+    expect(() =>
+      assertFocusProbe("khala-code-desktop", {
+        activeElementMatchesInput: true,
+        borderColor: "rgba(0, 0, 0, 0)",
+        boxShadow: "none",
+        focusedBorderColor: "rgb(79, 208, 255)",
+        hasVisibleFrame: true,
+      }),
+    ).toThrow("transparent")
+
+    assertReducedMotionProbe(
+      "openagents-khala-chat",
+      { matchesMedia: true, transitionDurationMs: 0 },
+      true,
+    )
+    assertReducedMotionProbe(
+      "openagents-khala-chat",
+      { matchesMedia: false, transitionDurationMs: 160 },
+      false,
+    )
+    expect(() =>
+      assertReducedMotionProbe(
+        "openagents-khala-chat",
+        { matchesMedia: true, transitionDurationMs: 160 },
+        true,
+      ),
+    ).toThrow("reduced motion")
   })
 })
