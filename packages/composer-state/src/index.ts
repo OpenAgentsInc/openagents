@@ -48,6 +48,33 @@ export const ComposerInlineMark = S.Struct({
 })
 export type ComposerInlineMark = typeof ComposerInlineMark.Type
 
+export const ComposerDecorationKind = S.Literals([
+  "searchMatch",
+  "selectionMirror",
+  "remoteCursor",
+  "syntaxHint",
+])
+export type ComposerDecorationKind = typeof ComposerDecorationKind.Type
+
+export const ComposerDecoration = S.Struct({
+  kind: ComposerDecorationKind,
+  range: S.optional(
+    S.Struct({
+      from: S.Number,
+      to: S.Number,
+    }),
+  ),
+  ref: S.optional(S.String),
+  label: S.optional(S.String),
+})
+export type ComposerDecoration = typeof ComposerDecoration.Type
+
+export const ComposerListItem = S.Struct({
+  text: S.String,
+  children: S.Array(S.String),
+})
+export type ComposerListItem = typeof ComposerListItem.Type
+
 export const ComposerParagraphBlock = S.Struct({
   id: ComposerBlockId,
   kind: S.Literal("paragraph"),
@@ -327,6 +354,9 @@ export const ComposerTransactionMeta = S.Struct({
   source: ComposerTransactionSource,
   time: S.Number,
   addToHistory: S.optional(S.Boolean),
+  clientId: S.optional(S.String),
+  sequence: S.optional(S.Number),
+  baseVersion: S.optional(S.Number),
 })
 export type ComposerTransactionMeta = typeof ComposerTransactionMeta.Type
 
@@ -336,6 +366,39 @@ export const ComposerTransaction = S.Struct({
   meta: ComposerTransactionMeta,
 })
 export type ComposerTransaction = typeof ComposerTransaction.Type
+
+export const ComposerCollaborativeTransaction = S.Struct({
+  schemaVersion: ComposerSchemaVersion,
+  sessionRef: S.String,
+  transactionRef: S.String,
+  clientId: S.String,
+  baseVersion: S.Number,
+  version: S.Number,
+  transaction: ComposerTransaction,
+})
+export type ComposerCollaborativeTransaction =
+  typeof ComposerCollaborativeTransaction.Type
+
+export const ComposerChangeSummary = S.Struct({
+  insertedTextChars: S.Number,
+  deletedTextChars: S.Number,
+  replacedTextChars: S.Number,
+  blockKindChanges: S.Number,
+  attachmentsInserted: S.Array(ComposerAttachmentId),
+  attachmentsRemoved: S.Array(ComposerAttachmentId),
+  attachmentsUpdated: S.Array(ComposerAttachmentId),
+  resizeChanges: S.Number,
+})
+export type ComposerChangeSummary = typeof ComposerChangeSummary.Type
+
+export const ComposerRebasedTransaction = S.Struct({
+  schemaVersion: ComposerSchemaVersion,
+  fromBaseVersion: S.Number,
+  toBaseVersion: S.Number,
+  transaction: ComposerTransaction,
+  changeSummary: ComposerChangeSummary,
+})
+export type ComposerRebasedTransaction = typeof ComposerRebasedTransaction.Type
 
 export const ComposerAttachmentUploadPlan = S.Struct({
   attachmentId: ComposerAttachmentId,
@@ -1176,6 +1239,175 @@ export const mapSelectionThroughStep = (
   return selection.selectedAttachmentId === undefined
     ? { anchor, head }
     : { anchor, head, selectedAttachmentId: selection.selectedAttachmentId }
+}
+
+export const mapComposerStepThroughStep = (
+  step: ComposerStep,
+  remoteStep: ComposerStep,
+): ComposerStep => {
+  switch (step._tag) {
+    case "InsertText":
+      return {
+        ...step,
+        at: mapPositionThroughStep(step.at, remoteStep),
+      }
+    case "DeleteRange":
+      return {
+        ...step,
+        range: {
+          anchor: mapPositionThroughStep(step.range.anchor, remoteStep),
+          head: mapPositionThroughStep(step.range.head, remoteStep),
+        },
+      }
+    case "ReplaceRange":
+      return {
+        ...step,
+        range: {
+          anchor: mapPositionThroughStep(step.range.anchor, remoteStep),
+          head: mapPositionThroughStep(step.range.head, remoteStep),
+        },
+      }
+    case "SetBlockKind":
+    case "InsertAttachment":
+    case "RemoveAttachment":
+    case "UpdateAttachment":
+    case "ResizeComposer":
+      return step
+  }
+}
+
+export const mapComposerTransactionThroughSteps = (
+  transaction: ComposerTransaction,
+  remoteSteps: ReadonlyArray<ComposerStep>,
+): ComposerTransaction => {
+  const steps = transaction.steps.map((step) =>
+    remoteSteps.reduce(
+      (mappedStep, remoteStep) => mapComposerStepThroughStep(mappedStep, remoteStep),
+      step,
+    ),
+  )
+  const selection =
+    transaction.selection === undefined
+      ? undefined
+      : remoteSteps.reduce(
+          (mappedSelection, remoteStep) =>
+            mapSelectionThroughStep(mappedSelection, remoteStep),
+          transaction.selection,
+        )
+  return {
+    ...transaction,
+    steps,
+    ...(selection === undefined ? {} : { selection }),
+  }
+}
+
+const rangeCharLength = (range: ComposerTextRange): number =>
+  Math.abs(Math.trunc(range.head.offset) - Math.trunc(range.anchor.offset))
+
+const uniqueComposerAttachmentIds = (
+  ids: ReadonlyArray<ComposerAttachmentId>,
+): ReadonlyArray<ComposerAttachmentId> => [...new Set(ids)]
+
+export const summarizeComposerSteps = (
+  steps: ReadonlyArray<ComposerStep>,
+): ComposerChangeSummary => {
+  let insertedTextChars = 0
+  let deletedTextChars = 0
+  let replacedTextChars = 0
+  let blockKindChanges = 0
+  let resizeChanges = 0
+  const attachmentsInserted: ComposerAttachmentId[] = []
+  const attachmentsRemoved: ComposerAttachmentId[] = []
+  const attachmentsUpdated: ComposerAttachmentId[] = []
+
+  for (const step of steps) {
+    switch (step._tag) {
+      case "InsertText":
+        insertedTextChars += step.text.length
+        break
+      case "DeleteRange":
+        deletedTextChars += rangeCharLength(step.range)
+        break
+      case "ReplaceRange":
+        replacedTextChars += rangeCharLength(step.range)
+        insertedTextChars += step.text.length
+        break
+      case "SetBlockKind":
+        blockKindChanges += 1
+        break
+      case "InsertAttachment":
+        attachmentsInserted.push(step.attachment.id)
+        break
+      case "RemoveAttachment":
+        attachmentsRemoved.push(step.attachmentId)
+        break
+      case "UpdateAttachment":
+        attachmentsUpdated.push(step.attachmentId)
+        break
+      case "ResizeComposer":
+        resizeChanges += 1
+        break
+    }
+  }
+
+  return {
+    insertedTextChars,
+    deletedTextChars,
+    replacedTextChars,
+    blockKindChanges,
+    attachmentsInserted: uniqueComposerAttachmentIds(attachmentsInserted),
+    attachmentsRemoved: uniqueComposerAttachmentIds(attachmentsRemoved),
+    attachmentsUpdated: uniqueComposerAttachmentIds(attachmentsUpdated),
+    resizeChanges,
+  }
+}
+
+export const createComposerCollaborativeTransaction = (input: {
+  sessionRef: string
+  transactionRef: string
+  clientId: string
+  baseVersion: number
+  transaction: ComposerTransaction
+}): ComposerCollaborativeTransaction => ({
+  schemaVersion: COMPOSER_SCHEMA_VERSION,
+  sessionRef: input.sessionRef,
+  transactionRef: input.transactionRef,
+  clientId: input.clientId,
+  baseVersion: Math.max(0, Math.trunc(input.baseVersion)),
+  version: Math.max(0, Math.trunc(input.baseVersion)) + input.transaction.steps.length,
+  transaction: {
+    ...input.transaction,
+    meta: {
+      ...input.transaction.meta,
+      clientId: input.clientId,
+      baseVersion: Math.max(0, Math.trunc(input.baseVersion)),
+    },
+  },
+})
+
+export const rebaseComposerTransaction = (input: {
+  transaction: ComposerTransaction
+  fromBaseVersion: number
+  remoteSteps: ReadonlyArray<ComposerStep>
+}): ComposerRebasedTransaction => {
+  const fromBaseVersion = Math.max(0, Math.trunc(input.fromBaseVersion))
+  const transaction = mapComposerTransactionThroughSteps(
+    input.transaction,
+    input.remoteSteps,
+  )
+  return {
+    schemaVersion: COMPOSER_SCHEMA_VERSION,
+    fromBaseVersion,
+    toBaseVersion: fromBaseVersion + input.remoteSteps.length,
+    transaction: {
+      ...transaction,
+      meta: {
+        ...transaction.meta,
+        baseVersion: fromBaseVersion + input.remoteSteps.length,
+      },
+    },
+    changeSummary: summarizeComposerSteps(transaction.steps),
+  }
 }
 
 const setSelectionAfterText = (
