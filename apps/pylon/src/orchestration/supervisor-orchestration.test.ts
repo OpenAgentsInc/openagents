@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { Database } from "bun:sqlite"
+import fc from "fast-check"
 import { mkdtemp, readFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -9,6 +10,7 @@ import { parseOrchestrationGroupAddress, resolveOrchestrationGroup } from "./gro
 import { encodeAgentRunnerStatusEventForDispatchContext } from "./status-control.js"
 import {
   FLEET_RUN_SCHEMA,
+  WORK_CLAIM_SCHEMA,
   createPylonOrchestrationStore,
   fleetRunOwnerLocalStatePath,
   isStoredOrchestrationRunnerKind,
@@ -486,6 +488,149 @@ describe("Pylon supervisor orchestration store", () => {
         },
       ],
     })).rejects.toThrow("fleet run targetConcurrency must be a positive integer")
+  })
+
+  test("enforces one live work claim per work unit with TTL reuse", () => {
+    const now = new Date("2026-07-01T12:00:00.000Z")
+    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const first = store.tryClaimWorkUnit({
+      claimRef: "claim.1",
+      workUnitRef: "issue.7827",
+      runRef: "fleet_run.claims",
+      assignmentRef: "assignment.1",
+      workerAccountRef: "codex-1",
+      ttl: 60_000,
+      now,
+    })
+    const duplicate = store.tryClaimWorkUnit({
+      claimRef: "claim.2",
+      workUnitRef: "issue.7827",
+      runRef: "fleet_run.claims",
+      assignmentRef: "assignment.2",
+      workerAccountRef: "codex-2",
+      ttl: 60_000,
+      now,
+    })
+
+    expect(first).toMatchObject({
+      schema: WORK_CLAIM_SCHEMA,
+      claimRef: "claim.1",
+      workUnitRef: "issue.7827",
+      state: "claimed",
+      workerAccountRef: "codex-1",
+    })
+    expect(duplicate).toBeNull()
+    expect(store.listLiveWorkClaims(now).map((claim) => claim.claimRef)).toEqual(["claim.1"])
+
+    const afterTtl = new Date("2026-07-01T12:01:00.001Z")
+    const replacement = store.tryClaimWorkUnit({
+      claimRef: "claim.3",
+      workUnitRef: "issue.7827",
+      runRef: "fleet_run.claims",
+      assignmentRef: "assignment.3",
+      workerAccountRef: "codex-3",
+      ttl: 60_000,
+      now: afterTtl,
+    })
+
+    expect(store.getWorkClaim("claim.1")?.state).toBe("expired")
+    expect(replacement?.claimRef).toBe("claim.3")
+    expect(store.listLiveWorkClaims(afterTtl).map((claim) => claim.claimRef)).toEqual(["claim.3"])
+  })
+
+  test("releases live work claims when worker heartbeat evidence is dead", () => {
+    const now = new Date("2026-07-01T12:00:00.000Z")
+    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    store.createDispatchContext({
+      id: "ctx.dead",
+      assigneeHandle: "codex-dead",
+      runnerKind: "codex",
+      lastHeartbeatAt: new Date("2026-07-01T11:50:00.000Z"),
+      now,
+    })
+    store.createDispatchContext({
+      id: "ctx.fresh",
+      assigneeHandle: "codex-fresh",
+      runnerKind: "codex",
+      lastHeartbeatAt: new Date("2026-07-01T11:59:30.000Z"),
+      now,
+    })
+    store.tryClaimWorkUnit({
+      claimRef: "claim.dead-worker",
+      workUnitRef: "issue.dead-worker",
+      runRef: "fleet_run.claims",
+      workerAccountRef: "codex-dead",
+      ttl: 60 * 60 * 1000,
+      now,
+    })
+    store.tryClaimWorkUnit({
+      claimRef: "claim.fresh-worker",
+      workUnitRef: "issue.fresh-worker",
+      runRef: "fleet_run.claims",
+      workerAccountRef: "codex-fresh",
+      ttl: 60 * 60 * 1000,
+      now,
+    })
+
+    const reconciled = store.reconcileWorkClaims({ now, workerHeartbeatTtlMs: 5 * 60 * 1000 })
+
+    expect(reconciled.expired).toEqual([])
+    expect(reconciled.released.map((claim) => claim.claimRef)).toEqual(["claim.dead-worker"])
+    expect(store.getWorkClaim("claim.dead-worker")?.state).toBe("released")
+    expect(store.getWorkClaim("claim.fresh-worker")?.state).toBe("claimed")
+  })
+
+  test("property: concurrent claim interleavings and expiries never create duplicate live unit claims", () => {
+    const operationArbitrary = fc.oneof(
+      fc.record({
+        kind: fc.constant("claim" as const),
+        unit: fc.integer({ min: 0, max: 4 }),
+        worker: fc.integer({ min: 0, max: 5 }),
+        ttl: fc.integer({ min: 1, max: 50 }),
+      }),
+      fc.record({
+        kind: fc.constant("advance" as const),
+        ms: fc.integer({ min: 0, max: 75 }),
+      }),
+      fc.record({
+        kind: fc.constant("expire" as const),
+      }),
+    )
+
+    fc.assert(
+      fc.property(fc.array(operationArbitrary, { minLength: 1, maxLength: 120 }), (operations) => {
+        const store = createPylonOrchestrationStore(new Database(":memory:"))
+        let nowMs = Date.parse("2026-07-01T12:00:00.000Z")
+        let claimSeq = 0
+
+        for (const operation of operations) {
+          const now = new Date(nowMs)
+          if (operation.kind === "claim") {
+            store.tryClaimWorkUnit({
+              claimRef: `claim.${claimSeq++}`,
+              workUnitRef: `fixture.unit.${operation.unit}`,
+              runRef: "fleet_run.property",
+              assignmentRef: `assignment.${claimSeq}`,
+              workerAccountRef: `worker.${operation.worker}`,
+              ttl: operation.ttl,
+              now,
+            })
+          } else if (operation.kind === "advance") {
+            nowMs += operation.ms
+            store.expireWorkClaims(new Date(nowMs))
+          } else {
+            store.expireWorkClaims(now)
+          }
+
+          const liveCounts = new Map<string, number>()
+          for (const claim of store.listLiveWorkClaims(new Date(nowMs))) {
+            liveCounts.set(claim.workUnitRef, (liveCounts.get(claim.workUnitRef) ?? 0) + 1)
+          }
+          expect([...liveCounts.values()].every((count) => count <= 1)).toBe(true)
+        }
+      }),
+      { numRuns: 200 },
+    )
   })
 
   test("refuses an otherwise healthy idle context when the ready task requires another runner", () => {

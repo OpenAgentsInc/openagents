@@ -4,13 +4,6 @@ import { existsSync } from "node:fs"
 import { mkdir, readFile, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { Schema as S } from "effect"
-import type { PylonPaths } from "../state.js"
-import {
-  isAgentRunnerKind,
-  normalizeAgentRunnerKind,
-  type AgentRunnerKind,
-  type LegacyAgentRunnerKind,
-} from "../agent-runner-registry.js"
 
 export const ORCHESTRATION_SCHEMA_VERSION = 2
 
@@ -64,6 +57,7 @@ export type PublicOrchestrationTask = {
 
 export const FLEET_RUN_SCHEMA = "openagents.khala_code.fleet_run.v1" as const
 export const FLEET_RUN_OWNER_LOCAL_STATE_SCHEMA = "openagents.khala_code.fleet_runs.owner_local.v1" as const
+export const WORK_CLAIM_SCHEMA = "openagents.khala_code.work_claim.v1" as const
 
 export const FleetRunWorkSourceSchema = S.Literals(["github_backlog", "issue_list", "fixture"])
 export type FleetRunWorkSource = typeof FleetRunWorkSourceSchema.Type
@@ -86,6 +80,9 @@ export type FleetRunState = typeof FleetRunStateSchema.Type
 
 export const FleetRunStopConditionSchema = S.Literals(["backlog_empty", "target_reached", "manual_stop"])
 export type FleetRunStopCondition = typeof FleetRunStopConditionSchema.Type
+
+export type AgentRunnerKind = "claude_agent" | "codex"
+export type LegacyAgentRunnerKind = "claude"
 
 export const FleetRunRefillPolicySchema = S.Struct({
   maxPerAccount: S.Number,
@@ -126,6 +123,46 @@ export const FleetRunOwnerLocalStateSchema = S.Struct({
   runs: S.Array(FleetRunSchema),
 })
 export type FleetRunOwnerLocalState = typeof FleetRunOwnerLocalStateSchema.Type
+
+export const WorkClaimStateSchema = S.Literals([
+  "claimed",
+  "in_progress",
+  "closeout",
+  "released",
+  "expired",
+])
+export type WorkClaimState = typeof WorkClaimStateSchema.Type
+export type LiveWorkClaimState = Extract<WorkClaimState, "claimed" | "in_progress" | "closeout">
+
+export const WorkClaimSchema = S.Struct({
+  schema: S.Literal(WORK_CLAIM_SCHEMA),
+  claimRef: S.String,
+  workUnitRef: S.String,
+  runRef: S.String,
+  assignmentRef: S.NullOr(S.String),
+  workerAccountRef: S.String,
+  state: WorkClaimStateSchema,
+  ttl: S.Number,
+  claimedAt: S.String,
+  expiresAt: S.String,
+  updatedAt: S.String,
+})
+export type WorkClaim = typeof WorkClaimSchema.Type
+
+export type CreateWorkClaimInput = {
+  claimRef: string
+  workUnitRef: string
+  runRef: string
+  assignmentRef?: string | null
+  workerAccountRef: string
+  ttl: number
+  now?: Date
+}
+
+export type ReconcileWorkClaimsInput = {
+  now?: Date
+  workerHeartbeatTtlMs?: number
+}
 
 export type CreateFleetRunInput = {
   runRef: string
@@ -250,6 +287,7 @@ export type RecordWorkerDoneInput = {
 }
 
 type SqliteDatabase = Pick<Database, "exec" | "query" | "run">
+type PylonHomePaths = { home: string }
 
 const iso = (date: Date = new Date()): string => date.toISOString()
 
@@ -298,10 +336,19 @@ const assertWholeNonNegative = (field: string, value: number): void => {
   if (!Number.isInteger(value) || value < 0) throw new Error(`fleet run ${field} must be a non-negative integer`)
 }
 
+const assertNonEmpty = (kind: string, field: string, value: string): void => {
+  if (!value.trim()) throw new Error(`${kind} ${field} is required`)
+}
+
+const LIVE_WORK_CLAIM_STATES: readonly LiveWorkClaimState[] = ["claimed", "in_progress", "closeout"]
+
+const isLiveWorkClaimState = (state: WorkClaimState): state is LiveWorkClaimState =>
+  LIVE_WORK_CLAIM_STATES.includes(state as LiveWorkClaimState)
+
 export function decodeFleetRun(input: unknown): FleetRun {
   const run = S.decodeUnknownSync(FleetRunSchema)(input)
-  if (!run.runRef.trim()) throw new Error("fleet run runRef is required")
-  if (!run.objective.trim()) throw new Error("fleet run objective is required")
+  assertNonEmpty("fleet run", "runRef", run.runRef)
+  assertNonEmpty("fleet run", "objective", run.objective)
   assertWholePositive("targetConcurrency", run.targetConcurrency)
   assertWholePositive("refillPolicy.maxPerAccount", run.refillPolicy.maxPerAccount)
   for (const [key, value] of Object.entries(run.counters) as Array<[keyof FleetRunCounters, number]>) {
@@ -320,6 +367,41 @@ export function decodeFleetRun(input: unknown): FleetRun {
     throw new Error("fleet run timestamps must be ISO-compatible")
   }
   return run
+}
+
+export function decodeWorkClaim(input: unknown): WorkClaim {
+  const claim = S.decodeUnknownSync(WorkClaimSchema)(input)
+  assertNonEmpty("work claim", "claimRef", claim.claimRef)
+  assertNonEmpty("work claim", "workUnitRef", claim.workUnitRef)
+  assertNonEmpty("work claim", "runRef", claim.runRef)
+  assertNonEmpty("work claim", "workerAccountRef", claim.workerAccountRef)
+  assertWholePositive("claim ttl", claim.ttl)
+  for (const field of ["claimedAt", "expiresAt", "updatedAt"] as const) {
+    if (Number.isNaN(Date.parse(claim[field]))) throw new Error(`work claim ${field} must be ISO-compatible`)
+  }
+  if (Date.parse(claim.expiresAt) <= Date.parse(claim.claimedAt)) {
+    throw new Error("work claim expiresAt must be after claimedAt")
+  }
+  return claim
+}
+
+export function buildWorkClaim(input: CreateWorkClaimInput): WorkClaim {
+  const now = input.now ?? new Date()
+  const claimedAt = iso(now)
+  const expiresAt = iso(new Date(now.getTime() + input.ttl))
+  return decodeWorkClaim({
+    schema: WORK_CLAIM_SCHEMA,
+    claimRef: input.claimRef,
+    workUnitRef: input.workUnitRef,
+    runRef: input.runRef,
+    assignmentRef: input.assignmentRef ?? null,
+    workerAccountRef: input.workerAccountRef,
+    state: "claimed",
+    ttl: input.ttl,
+    claimedAt,
+    expiresAt,
+    updatedAt: claimedAt,
+  })
 }
 
 export function buildFleetRun(input: CreateFleetRunInput): FleetRun {
@@ -358,11 +440,12 @@ const fleetRunFromJson = (value: string): FleetRun => decodeFleetRun(JSON.parse(
 export function normalizeOrchestrationRunnerKind(
   kind: OrchestrationRunnerKind | LegacyAgentRunnerKind,
 ): OrchestrationRunnerKind {
-  return kind === "generic" ? "generic" : normalizeAgentRunnerKind(kind)
+  if (kind === "claude") return "claude_agent"
+  return kind
 }
 
 export function isStoredOrchestrationRunnerKind(kind: string): kind is StoredRunnerKind {
-  return kind === "generic" || kind === "claude" || isAgentRunnerKind(kind)
+  return kind === "generic" || kind === "claude" || kind === "claude_agent" || kind === "codex"
 }
 
 type TaskRow = {
@@ -412,6 +495,19 @@ type FleetRunRow = {
   created_at: string
   updated_at: string
   started_at: string | null
+}
+
+type WorkClaimRow = {
+  claim_ref: string
+  work_unit_ref: string
+  run_ref: string
+  assignment_ref: string | null
+  worker_account_ref: string
+  state: WorkClaimState
+  ttl_ms: number
+  claimed_at: string
+  expires_at: string
+  updated_at: string
 }
 
 type MessageRow = {
@@ -493,6 +589,20 @@ const messageFromRow = (row: MessageRow): OrchestrationMessage => ({
   createdAt: row.created_at,
 })
 
+const workClaimFromRow = (row: WorkClaimRow): WorkClaim => decodeWorkClaim({
+  schema: WORK_CLAIM_SCHEMA,
+  claimRef: row.claim_ref,
+  workUnitRef: row.work_unit_ref,
+  runRef: row.run_ref,
+  assignmentRef: row.assignment_ref,
+  workerAccountRef: row.worker_account_ref,
+  state: row.state,
+  ttl: row.ttl_ms,
+  claimedAt: row.claimed_at,
+  expiresAt: row.expires_at,
+  updatedAt: row.updated_at,
+})
+
 const virtualHeadProjectionRef = (input: { repo: string; branch: string; taskId: string; branchFrom: string }): string => {
   const digest = createHash("sha256")
     .update(`${input.repo}\0${input.branch}\0${input.taskId}\0${input.branchFrom}`)
@@ -500,6 +610,10 @@ const virtualHeadProjectionRef = (input: { repo: string; branch: string; taskId:
     .slice(0, 20)
   return `virtual-head.${digest}`
 }
+
+const isSqliteUniqueConstraintError = (error: unknown): boolean =>
+  error instanceof Error &&
+  (error.message.includes("UNIQUE constraint failed") || error.message.includes("constraint failed"))
 
 export class PylonOrchestrationStore {
   constructor(private readonly db: SqliteDatabase) {}
@@ -579,6 +693,27 @@ export class PylonOrchestrationStore {
         ON pylon_orchestration_fleet_runs(state, updated_at);
       CREATE INDEX IF NOT EXISTS idx_pylon_orchestration_fleet_runs_dispatch
         ON pylon_orchestration_fleet_runs(dispatch_kind, updated_at);
+      CREATE TABLE IF NOT EXISTS pylon_orchestration_work_claims (
+        claim_ref TEXT PRIMARY KEY,
+        work_unit_ref TEXT NOT NULL,
+        run_ref TEXT NOT NULL,
+        assignment_ref TEXT,
+        worker_account_ref TEXT NOT NULL,
+        state TEXT NOT NULL CHECK (state IN ('claimed', 'in_progress', 'closeout', 'released', 'expired')),
+        ttl_ms INTEGER NOT NULL CHECK (ttl_ms > 0),
+        claimed_at TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_pylon_orchestration_work_claims_live_unit
+        ON pylon_orchestration_work_claims(work_unit_ref)
+        WHERE state IN ('claimed', 'in_progress', 'closeout');
+      CREATE INDEX IF NOT EXISTS idx_pylon_orchestration_work_claims_expiry
+        ON pylon_orchestration_work_claims(state, expires_at);
+      CREATE INDEX IF NOT EXISTS idx_pylon_orchestration_work_claims_run
+        ON pylon_orchestration_work_claims(run_ref, updated_at);
+      CREATE INDEX IF NOT EXISTS idx_pylon_orchestration_work_claims_worker
+        ON pylon_orchestration_work_claims(worker_account_ref, state);
     `)
     this.db
       .query("INSERT OR REPLACE INTO pylon_orchestration_meta (key, value) VALUES ('schema_version', $version)")
@@ -675,6 +810,188 @@ export class PylonOrchestrationStore {
 
   reconcileFleetRuns(now: Date = new Date()): FleetRun[] {
     return this.listFleetRuns().map((run) => this.reconcileFleetRun(run.runRef, now))
+  }
+
+  tryClaimWorkUnit(input: CreateWorkClaimInput): WorkClaim | null {
+    const claim = buildWorkClaim(input)
+    const at = iso(input.now)
+    this.db.run("BEGIN IMMEDIATE")
+    try {
+      this.expireWorkClaims(input.now)
+      this.db
+        .query(`
+          INSERT INTO pylon_orchestration_work_claims
+            (claim_ref, work_unit_ref, run_ref, assignment_ref, worker_account_ref, state,
+             ttl_ms, claimed_at, expires_at, updated_at)
+          VALUES
+            ($claimRef, $workUnitRef, $runRef, $assignmentRef, $workerAccountRef, $state,
+             $ttl, $claimedAt, $expiresAt, $updatedAt)
+        `)
+        .run({
+          $claimRef: claim.claimRef,
+          $workUnitRef: claim.workUnitRef,
+          $runRef: claim.runRef,
+          $assignmentRef: claim.assignmentRef,
+          $workerAccountRef: claim.workerAccountRef,
+          $state: claim.state,
+          $ttl: claim.ttl,
+          $claimedAt: claim.claimedAt,
+          $expiresAt: claim.expiresAt,
+          $updatedAt: at,
+        })
+      this.db.run("COMMIT")
+    } catch (error) {
+      this.db.run("ROLLBACK")
+      if (isSqliteUniqueConstraintError(error)) return null
+      throw error
+    }
+    return this.getWorkClaim(claim.claimRef)
+  }
+
+  getWorkClaim(claimRef: string): WorkClaim | null {
+    const row = this.db
+      .query("SELECT * FROM pylon_orchestration_work_claims WHERE claim_ref = $claimRef")
+      .get({ $claimRef: claimRef }) as WorkClaimRow | null
+    return row === null ? null : workClaimFromRow(row)
+  }
+
+  getLiveWorkClaim(workUnitRef: string, now: Date = new Date()): WorkClaim | null {
+    this.expireWorkClaims(now)
+    const row = this.db
+      .query(`
+        SELECT * FROM pylon_orchestration_work_claims
+         WHERE work_unit_ref = $workUnitRef
+           AND state IN ('claimed', 'in_progress', 'closeout')
+         ORDER BY claimed_at DESC
+         LIMIT 1
+      `)
+      .get({ $workUnitRef: workUnitRef }) as WorkClaimRow | null
+    return row === null ? null : workClaimFromRow(row)
+  }
+
+  listWorkClaims(input: { state?: WorkClaimState; runRef?: string } = {}): WorkClaim[] {
+    const clauses: string[] = []
+    const params: Record<string, string> = {}
+    if (input.state !== undefined) {
+      clauses.push("state = $state")
+      params.$state = input.state
+    }
+    if (input.runRef !== undefined) {
+      clauses.push("run_ref = $runRef")
+      params.$runRef = input.runRef
+    }
+    const where = clauses.length === 0 ? "" : ` WHERE ${clauses.join(" AND ")}`
+    const rows = this.db
+      .query(`SELECT * FROM pylon_orchestration_work_claims${where} ORDER BY claimed_at ASC, claim_ref ASC`)
+      .all(params) as WorkClaimRow[]
+    return rows.map(workClaimFromRow)
+  }
+
+  listLiveWorkClaims(now: Date = new Date()): WorkClaim[] {
+    this.expireWorkClaims(now)
+    const rows = this.db
+      .query(`
+        SELECT * FROM pylon_orchestration_work_claims
+         WHERE state IN ('claimed', 'in_progress', 'closeout')
+         ORDER BY claimed_at ASC, claim_ref ASC
+      `)
+      .all() as WorkClaimRow[]
+    return rows.map(workClaimFromRow)
+  }
+
+  updateWorkClaimState(claimRef: string, state: WorkClaimState, now: Date = new Date()): WorkClaim {
+    const current = this.getWorkClaim(claimRef)
+    if (current === null) throw new Error(`unknown work claim: ${claimRef}`)
+    if (!isLiveWorkClaimState(current.state) && isLiveWorkClaimState(state)) {
+      throw new Error(`cannot revive terminal work claim: ${claimRef}`)
+    }
+    this.db
+      .query(`
+        UPDATE pylon_orchestration_work_claims
+           SET state = $state,
+               updated_at = $updatedAt
+         WHERE claim_ref = $claimRef
+      `)
+      .run({ $claimRef: claimRef, $state: state, $updatedAt: iso(now) })
+    const updated = this.getWorkClaim(claimRef)
+    if (updated === null) throw new Error(`failed to update work claim: ${claimRef}`)
+    return updated
+  }
+
+  releaseWorkClaim(claimRef: string, now: Date = new Date()): WorkClaim {
+    return this.updateWorkClaimState(claimRef, "released", now)
+  }
+
+  expireWorkClaims(now: Date = new Date()): WorkClaim[] {
+    const at = iso(now)
+    const rows = this.db
+      .query(`
+        SELECT * FROM pylon_orchestration_work_claims
+         WHERE state IN ('claimed', 'in_progress', 'closeout')
+           AND expires_at <= $now
+         ORDER BY expires_at ASC, claim_ref ASC
+      `)
+      .all({ $now: at }) as WorkClaimRow[]
+    if (rows.length === 0) return []
+    this.db
+      .query(`
+        UPDATE pylon_orchestration_work_claims
+           SET state = 'expired',
+               updated_at = $now
+         WHERE state IN ('claimed', 'in_progress', 'closeout')
+           AND expires_at <= $now
+      `)
+      .run({ $now: at })
+    return rows.map((row) => workClaimFromRow({ ...row, state: "expired", updated_at: at }))
+  }
+
+  reconcileWorkClaims(input: ReconcileWorkClaimsInput = {}): { expired: WorkClaim[]; released: WorkClaim[] } {
+    const now = input.now ?? new Date()
+    const expired = this.expireWorkClaims(now)
+    const heartbeatTtlMs = input.workerHeartbeatTtlMs ?? 5 * 60 * 1000
+    const freshAfter = now.getTime() - heartbeatTtlMs
+    const released: WorkClaim[] = []
+
+    this.db.run("BEGIN IMMEDIATE")
+    try {
+      for (const claim of this.listLiveWorkClaims(now)) {
+        const row = this.db
+          .query(`
+            SELECT * FROM pylon_orchestration_dispatch_contexts
+             WHERE assignee_handle = $workerAccountRef
+             ORDER BY updated_at DESC
+             LIMIT 1
+          `)
+          .get({ $workerAccountRef: claim.workerAccountRef }) as DispatchContextRow | null
+        const context = row === null ? null : contextFromRow(row)
+        const heartbeatAt = context?.lastHeartbeatAt === null || context?.lastHeartbeatAt === undefined
+          ? null
+          : Date.parse(context.lastHeartbeatAt)
+        const workerDead =
+          context === null ||
+          context.status === "circuit_broken" ||
+          heartbeatAt === null ||
+          Number.isNaN(heartbeatAt) ||
+          heartbeatAt <= freshAfter
+        if (!workerDead) continue
+        this.db
+          .query(`
+            UPDATE pylon_orchestration_work_claims
+               SET state = 'released',
+                   updated_at = $now
+             WHERE claim_ref = $claimRef
+               AND state IN ('claimed', 'in_progress', 'closeout')
+          `)
+          .run({ $claimRef: claim.claimRef, $now: iso(now) })
+        released.push({ ...claim, state: "released", updatedAt: iso(now) })
+      }
+      this.db.run("COMMIT")
+    } catch (error) {
+      this.db.run("ROLLBACK")
+      throw error
+    }
+
+    return { expired, released }
   }
 
   createTask(input: CreateTaskInput): OrchestrationTask {
@@ -1132,11 +1449,11 @@ export class PylonOrchestrationStore {
   }
 }
 
-export const fleetRunOwnerLocalStatePath = (paths: Pick<PylonPaths, "home">): string =>
+export const fleetRunOwnerLocalStatePath = (paths: PylonHomePaths): string =>
   join(paths.home, "fleet-runs.json")
 
 export async function loadFleetRunOwnerLocalState(
-  paths: Pick<PylonPaths, "home">,
+  paths: PylonHomePaths,
 ): Promise<FleetRunOwnerLocalState> {
   const path = fleetRunOwnerLocalStatePath(paths)
   if (!existsSync(path)) return { schema: FLEET_RUN_OWNER_LOCAL_STATE_SCHEMA, runs: [] }
@@ -1146,7 +1463,7 @@ export async function loadFleetRunOwnerLocalState(
 }
 
 export async function saveFleetRunOwnerLocalState(
-  paths: Pick<PylonPaths, "home">,
+  paths: PylonHomePaths,
   state: FleetRunOwnerLocalState,
 ): Promise<void> {
   const decoded = S.decodeUnknownSync(FleetRunOwnerLocalStateSchema)(state)
@@ -1157,7 +1474,7 @@ export async function saveFleetRunOwnerLocalState(
 
 export async function syncFleetRunsToOwnerLocalState(
   store: PylonOrchestrationStore,
-  paths: Pick<PylonPaths, "home">,
+  paths: PylonHomePaths,
 ): Promise<FleetRunOwnerLocalState> {
   const state: FleetRunOwnerLocalState = {
     schema: FLEET_RUN_OWNER_LOCAL_STATE_SCHEMA,
@@ -1169,7 +1486,7 @@ export async function syncFleetRunsToOwnerLocalState(
 
 export async function reconcileFleetRunsFromOwnerLocalState(
   store: PylonOrchestrationStore,
-  paths: Pick<PylonPaths, "home">,
+  paths: PylonHomePaths,
   input: { now?: Date } = {},
 ): Promise<FleetRun[]> {
   const localState = await loadFleetRunOwnerLocalState(paths)

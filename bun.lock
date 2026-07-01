@@ -311,6 +311,7 @@
       "devDependencies": {
         "@openagentsinc/durable-stream": "workspace:*",
         "bun-types": "^1.0.0",
+        "fast-check": "^4.8.0",
       },
       "optionalDependencies": {
         "@anthropic-ai/claude-agent-sdk": "^0.3.172",
