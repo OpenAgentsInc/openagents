@@ -9,6 +9,11 @@ import type {
 } from "../shared/codex-threads"
 import { iconElement } from "@openagentsinc/ui/icon-dom"
 import type { IconName } from "@openagentsinc/ui/icon"
+import {
+  createBasecoatContextMenu,
+  type BasecoatMenuDomContent,
+  type BasecoatMenuDomPoint,
+} from "@openagentsinc/ui/menu-dom"
 
 export type CodexThreadSidebarHandle = {
   readonly refresh: () => Promise<void>
@@ -109,6 +114,11 @@ export const mountCodexThreadSidebar = (
   let state: ViewState = { phase: "idle" }
   let visible = false
   let activeThreadId = options.activeThreadId()
+  const threadMenu = createBasecoatContextMenu({
+    id: "khala-thread-sidebar-thread-menu",
+    ownerDocument: container.ownerDocument,
+    className: "khala-thread-sidebar-menu",
+  })
 
   const setStatusError = (error: unknown): void => {
     state = { phase: "error", message: error instanceof Error ? error.message : String(error) }
@@ -116,6 +126,7 @@ export const mountCodexThreadSidebar = (
   }
 
   const selectThread = async (threadId: string): Promise<void> => {
+    threadMenu.close()
     try {
       const result = await options.resumeThread(threadId)
       activeThreadId = result.threadId
@@ -162,64 +173,134 @@ export const mountCodexThreadSidebar = (
     }
   }
 
-  const actionButton = (
-    label: string,
-    icon: IconName,
-    action: () => void,
-  ): HTMLButtonElement => {
-    const button = el("button", "khala-thread-sidebar-action")
-    button.type = "button"
-    button.title = label
-    button.setAttribute("aria-label", label)
-    button.replaceChildren(sidebarIcon(icon, label), srOnly(label))
-    button.addEventListener("click", event => {
-      event.preventDefault()
-      event.stopPropagation()
-      action()
-    })
-    return button
+  const threadMenuHeader = (
+    thread: KhalaCodeDesktopCodexThreadSummary,
+  ): HTMLElement => {
+    const header = el("div", "khala-thread-sidebar-menu-summary")
+    const title = el("div", "khala-thread-sidebar-menu-title", thread.title)
+    const preview = el("div", "khala-thread-sidebar-menu-preview", thread.preview || thread.id)
+    const meta = el("div", "khala-thread-sidebar-menu-meta")
+    const time = formatTime(thread.recencyAt ?? thread.updatedAt)
+    meta.append(el("span", undefined, thread.statusLabel || thread.status))
+    if (time.length > 0) meta.append(el("span", undefined, time))
+    header.append(title, preview, meta)
+
+    if (thread.badges.length > 0) {
+      const badges = el("div", "khala-thread-sidebar-menu-badges")
+      for (const badge of thread.badges) badges.append(el("span", "khala-thread-sidebar-menu-badge", badge))
+      header.append(badges)
+    }
+
+    return header
+  }
+
+  const threadMenuContent = (
+    thread: KhalaCodeDesktopCodexThreadSummary,
+  ): BasecoatMenuDomContent => ({
+    label: `Thread actions for ${thread.title}`,
+    header: threadMenuHeader(thread),
+    sections: [
+      {
+        label: "Thread",
+        items: [
+          {
+            id: "rename-thread",
+            label: "Rename thread",
+            description: "Set display name",
+            icon: "Pencil",
+            onSelect: () => {
+              const name = prompt("Thread name", thread.title)
+              if (name === null || name.trim().length === 0) return
+              void runMutation(() => options.renameThread(thread.id, name.trim()))
+            },
+          },
+          {
+            id: "fork-thread",
+            label: "Fork thread",
+            description: "Create branch thread",
+            icon: "BranchAlt",
+            onSelect: () => void runMutation(() => options.forkThread(thread.id)),
+          },
+        ],
+      },
+      {
+        label: "Lifecycle",
+        items: [
+          archived
+            ? {
+                id: "unarchive-thread",
+                label: "Unarchive thread",
+                description: "Return to active threads",
+                icon: "Unarchive",
+                onSelect: () => void runMutation(() => options.unarchiveThread(thread.id)),
+              }
+            : {
+                id: "archive-thread",
+                label: "Archive thread",
+                description: "Move out of active threads",
+                icon: "Archive",
+                onSelect: () => void runMutation(() => options.archiveThread(thread.id)),
+              },
+          {
+            id: "delete-thread",
+            label: "Delete thread",
+            description: "Remove this thread",
+            icon: "Trash",
+            destructive: true,
+            onSelect: () => {
+              if (!confirm(`Delete ${thread.title}?`)) return
+              void runMutation(() => options.deleteThread(thread.id))
+            },
+          },
+        ],
+      },
+    ],
+  })
+
+  const openThreadMenu = (
+    thread: KhalaCodeDesktopCodexThreadSummary,
+    point: BasecoatMenuDomPoint,
+  ): void => {
+    threadMenu.openAt(point, threadMenuContent(thread))
   }
 
   const threadButton = (
     thread: KhalaCodeDesktopCodexThreadSummary,
   ): HTMLElement => {
-    const button = el("button", "khala-thread-sidebar-item")
-    button.type = "button"
-    button.dataset.threadId = thread.id
-    button.dataset.status = thread.status
-    button.dataset.active = activeThreadId === thread.id ? "true" : "false"
-    button.addEventListener("click", () => void selectThread(thread.id))
+    const item = el("div", "khala-thread-sidebar-item")
+    item.dataset.threadId = thread.id
+    item.dataset.status = thread.status
+    item.dataset.active = activeThreadId === thread.id ? "true" : "false"
+    item.addEventListener("contextmenu", event => {
+      event.preventDefault()
+      event.stopPropagation()
+      openThreadMenu(thread, { x: event.clientX, y: event.clientY })
+    })
 
-    const main = el("span", "khala-thread-sidebar-item-main")
-    main.append(
+    const row = el("button", "khala-thread-sidebar-item-row")
+    row.type = "button"
+    row.title = `${thread.title} — ${thread.preview || thread.id}`
+    row.addEventListener("click", () => void selectThread(thread.id))
+    row.append(
       el("span", "khala-thread-sidebar-item-title", thread.title),
-      el("span", "khala-thread-sidebar-item-preview", thread.preview || thread.id),
+      el("span", "khala-thread-sidebar-item-time", formatTime(thread.recencyAt ?? thread.updatedAt) || thread.statusLabel),
     )
-    const meta = el("span", "khala-thread-sidebar-item-meta")
-    meta.append(
-      el("span", undefined, thread.statusLabel),
-      el("span", undefined, formatTime(thread.recencyAt ?? thread.updatedAt)),
-    )
-    const badges = el("span", "khala-thread-sidebar-badges")
-    for (const badge of thread.badges) badges.append(el("span", "khala-thread-sidebar-badge", badge))
-    const actions = el("span", "khala-thread-sidebar-actions")
-    actions.append(
-      actionButton("Rename thread", "Pencil", () => {
-        const name = prompt("Thread name", thread.title)
-        if (name === null || name.trim().length === 0) return
-        void runMutation(() => options.renameThread(thread.id, name.trim()))
-      }),
-      actionButton("Fork thread", "BranchAlt", () => void runMutation(() => options.forkThread(thread.id))),
-      archived
-        ? actionButton("Unarchive thread", "Unarchive", () => void runMutation(() => options.unarchiveThread(thread.id)))
-        : actionButton("Archive thread", "Archive", () => void runMutation(() => options.archiveThread(thread.id))),
-      actionButton("Delete thread", "Trash", () => {
-        if (!confirm(`Delete ${thread.title}?`)) return
-        void runMutation(() => options.deleteThread(thread.id))
-      }),
-    )
-    button.append(main, meta, badges, actions)
-    return button
+
+    const menuButton = el("button", "khala-thread-sidebar-menu-button")
+    menuButton.type = "button"
+    menuButton.title = "Thread actions"
+    menuButton.setAttribute("aria-label", `Thread actions for ${thread.title}`)
+    menuButton.setAttribute("aria-haspopup", "menu")
+    menuButton.replaceChildren(sidebarIcon("DotsVerticalMoreMenu", "Thread actions"), srOnly("Thread actions"))
+    menuButton.addEventListener("click", event => {
+      event.preventDefault()
+      event.stopPropagation()
+      const rect = menuButton.getBoundingClientRect()
+      openThreadMenu(thread, { x: rect.right + 4, y: rect.top })
+    })
+
+    item.append(row, menuButton)
+    return item
   }
 
   function render(): void {
@@ -290,6 +371,7 @@ export const mountCodexThreadSidebar = (
   }
 
   async function refresh(): Promise<void> {
+    threadMenu.close()
     state = { phase: "loading" }
     render()
     try {
@@ -313,6 +395,7 @@ export const mountCodexThreadSidebar = (
     setVisible(nextVisible) {
       visible = nextVisible
       container.hidden = !visible
+      if (!visible) threadMenu.close()
       if (visible && state.phase === "idle") void refresh()
     },
   }

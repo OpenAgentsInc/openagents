@@ -1089,7 +1089,7 @@ button {
 }
 .khala-thread-sidebar-new,
 .khala-thread-sidebar-refresh,
-.khala-thread-sidebar-action {
+.khala-thread-sidebar-menu-button {
   font: inherit;
   border: 1px solid var(--oa-color-component-border);
   background: var(--oa-color-component-surface);
@@ -1107,20 +1107,23 @@ button {
   padding: 0;
   font-size: 0.74rem;
 }
-.khala-thread-sidebar-action {
+.khala-thread-sidebar-menu-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 1.85rem;
-  height: 1.85rem;
+  width: 1.65rem;
+  height: 1.65rem;
   border-radius: 0.32rem;
   padding: 0;
   font-size: 0.64rem;
+  opacity: 0.7;
 }
 .khala-thread-sidebar-new:hover,
 .khala-thread-sidebar-refresh:hover,
-.khala-thread-sidebar-action:hover {
+.khala-thread-sidebar-menu-button:hover,
+.khala-thread-sidebar-menu-button:focus-visible {
   background: var(--oa-color-component-surface-active);
+  opacity: 1;
 }
 .khala-thread-sidebar-controls {
   display: grid;
@@ -1174,67 +1177,99 @@ button {
 }
 .khala-thread-sidebar-list {
   display: grid;
-  gap: 0.38rem;
+  gap: 0.22rem;
 }
 .khala-thread-sidebar-item {
   display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
   width: 100%;
   min-width: 0;
-  gap: 0.35rem;
-  padding: 0.55rem;
+  height: 2.25rem;
+  min-height: 2.25rem;
+  gap: 0.25rem;
+  padding: 0.16rem 0.22rem 0.16rem 0.5rem;
   border: 1px solid var(--oa-color-component-border);
-  border-radius: 0.45rem;
+  border-radius: 0.36rem;
   background: color-mix(in srgb, var(--oa-color-khala-void) 16%, transparent);
   color: var(--oa-color-component-text);
   text-align: left;
-  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
 }
 .khala-thread-sidebar-item:hover,
 .khala-thread-sidebar-item[data-active="true"] {
   border-color: color-mix(in srgb, var(--oa-color-khala-energy-cyan) 58%, var(--oa-color-component-border));
   background: var(--oa-color-component-surface-active);
 }
-.khala-thread-sidebar-item-main,
-.khala-thread-sidebar-item-meta,
-.khala-thread-sidebar-badges,
-.khala-thread-sidebar-actions {
-  display: flex;
+.khala-thread-sidebar-item-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
   min-width: 0;
-  gap: 0.35rem;
-}
-.khala-thread-sidebar-item-main {
-  flex-direction: column;
+  height: 100%;
+  gap: 0.45rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
 }
 .khala-thread-sidebar-item-title,
-.khala-thread-sidebar-item-preview {
+.khala-thread-sidebar-item-time {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .khala-thread-sidebar-item-title {
-  font-size: 0.78rem;
+  font-size: 0.72rem;
   font-weight: 600;
 }
-.khala-thread-sidebar-item-preview,
-.khala-thread-sidebar-item-meta {
+.khala-thread-sidebar-item-time {
   color: color-mix(in srgb, var(--oa-color-component-text) 55%, transparent);
-  font-size: 0.68rem;
+  font-size: 0.62rem;
+  font-family: var(--oa-font-code);
 }
-.khala-thread-sidebar-item-meta {
-  justify-content: space-between;
+.khala-thread-sidebar-menu-summary {
+  display: grid;
+  min-width: 0;
+  max-width: min(20rem, calc(100vw - 2rem));
+  gap: 0.35rem;
 }
-.khala-thread-sidebar-badges,
-.khala-thread-sidebar-actions {
+.khala-thread-sidebar-menu-title,
+.khala-thread-sidebar-menu-preview {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.khala-thread-sidebar-menu-title {
+  color: var(--oa-color-component-text);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+.khala-thread-sidebar-menu-preview,
+.khala-thread-sidebar-menu-meta {
+  color: color-mix(in srgb, var(--oa-color-component-text) 58%, transparent);
+  font-size: 0.66rem;
+}
+.khala-thread-sidebar-menu-meta,
+.khala-thread-sidebar-menu-badges {
+  display: flex;
+  min-width: 0;
   flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
 }
-.khala-thread-sidebar-badge {
+.khala-thread-sidebar-menu-badge {
   border: 1px solid color-mix(in srgb, var(--oa-color-khala-energy-cyan) 35%, transparent);
   border-radius: 999px;
   color: var(--oa-color-khala-energy-line);
-  font-size: 0.58rem;
+  font-size: 0.56rem;
   line-height: 1;
-  padding: 0.16rem 0.34rem;
+  padding: 0.14rem 0.32rem;
   text-transform: uppercase;
 }
 
