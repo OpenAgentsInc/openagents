@@ -93,10 +93,10 @@ const sidebarIcon = (icon: IconName, label: string): HTMLSpanElement =>
   })
 
 const isThreadStreaming = (
-  thread: KhalaCodeDesktopCodexThreadSummary,
+  threadId: string,
   options: Pick<CodexThreadSidebarOptions, "isThreadStreaming">,
 ): boolean =>
-  thread.status === "active" || options.isThreadStreaming?.(thread.id) === true
+  options.isThreadStreaming?.(threadId) === true
 
 const threadStreamingIndicator = (): HTMLSpanElement => {
   const indicator = el("span", "khala-thread-sidebar-item-spinner")
@@ -109,7 +109,7 @@ const threadTimeContent = (
   options: Pick<CodexThreadSidebarOptions, "isThreadStreaming">,
 ): HTMLSpanElement => {
   const time = el("span", "khala-thread-sidebar-item-time")
-  if (isThreadStreaming(thread, options)) {
+  if (isThreadStreaming(thread.id, options)) {
     time.dataset.streaming = "true"
     time.title = "Streaming response"
     time.setAttribute("aria-label", "Streaming response")
