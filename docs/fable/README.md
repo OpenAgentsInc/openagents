@@ -21,3 +21,12 @@ Contents:
   `codex | claude | auto` delegation-target parameter through the
   deterministic `khala.fleet.delegate` program (Axis B), grounded in the
   ~80%-parity state of the Claude Code delegation lane.
+- `2026-07-01-khala-code-desktop-qa-framework-design.md` — design for the
+  Khala Code Desktop testing framework/agent: four access modes (typed RPC,
+  DOM/Playwright, vision/computer-use headed+headless, headless JSONL) behind
+  one driver contract, a typed scenario DSL with per-phase expectations, a
+  seeded-monkey + LLM free-explore mode with a coverage ledger, an oracle
+  catalog (schema/consistency/visual/perf/public-safety), a determinism layer
+  (fixture Codex app-server, TestClock), property/model-based and bounded
+  TLA+ tiers, GEPA optimization loops, and the productization path built on
+  the shipped `apps/qa-runner` (@openagentsinc/qa-runner) substrate.
