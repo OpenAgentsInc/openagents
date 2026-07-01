@@ -309,6 +309,23 @@ const demandChannelFromText = (
 // external, and unlabeled demand. The public projection stays safe by returning
 // aggregate numbers only, never demand labels, accounts, prompts, or providers.
 const publicTokensServedDemandWhere = `1 = 1`
+const publicTokensServedSqlExpression = `CASE
+  WHEN COALESCE(input_tokens, 0) + COALESCE(output_tokens, 0) > 0
+    THEN COALESCE(input_tokens, 0) + COALESCE(output_tokens, 0)
+  ELSE COALESCE(total_tokens, 0)
+END`
+
+const publicTokensServedFromRow = (
+  row: Pick<TokenUsageEventRow, 'input_tokens' | 'output_tokens' | 'total_tokens'>,
+): number => {
+  const splitTokens =
+    Math.max(0, Math.trunc(row.input_tokens ?? 0)) +
+    Math.max(0, Math.trunc(row.output_tokens ?? 0))
+
+  return splitTokens > 0
+    ? splitTokens
+    : Math.max(0, Math.trunc(row.total_tokens ?? 0))
+}
 
 const demandAttributionFromInput = (
   body: typeof TokenUsageEventIngestBody.Type,
@@ -1185,7 +1202,7 @@ const publicTokensServedHistorySqlForWindows = (
     .join('\n')
 
   return `WITH bounded_token_usage_events AS (
-              SELECT observed_at, input_tokens, output_tokens
+              SELECT observed_at, input_tokens, output_tokens, total_tokens
                 FROM token_usage_events
                WHERE observed_at >= ?
                  AND observed_at < ?
@@ -1193,8 +1210,7 @@ const publicTokensServedHistorySqlForWindows = (
             )
             SELECT
               day,
-              COALESCE(SUM(input_tokens), 0) + COALESCE(SUM(output_tokens), 0)
-                AS tokens
+              COALESCE(SUM(${publicTokensServedSqlExpression}), 0) AS tokens
               FROM (
                 SELECT
                   CASE
@@ -1202,7 +1218,8 @@ const publicTokensServedHistorySqlForWindows = (
                     ELSE NULL
                   END AS day,
                   input_tokens,
-                  output_tokens
+                  output_tokens,
+                  total_tokens
                 FROM bounded_token_usage_events
               )
              WHERE day IS NOT NULL
@@ -1222,8 +1239,7 @@ const readPublicTokensServedPartialHistoryDay = (
       .prepare(
         `SELECT
             '${input.day}' AS day,
-            COALESCE(SUM(input_tokens), 0) + COALESCE(SUM(output_tokens), 0)
-              AS tokens,
+            COALESCE(SUM(${publicTokensServedSqlExpression}), 0) AS tokens,
             COUNT(*) AS usage_events
            FROM token_usage_events
           WHERE observed_at >= ?
@@ -1440,8 +1456,7 @@ const readPublicTokensServedModelMixRaw = (
         `SELECT
             provider,
             model,
-            COALESCE(SUM(input_tokens), 0) + COALESCE(SUM(output_tokens), 0)
-              AS tokens,
+            COALESCE(SUM(${publicTokensServedSqlExpression}), 0) AS tokens,
             COUNT(*) AS usage_events
            FROM token_usage_events
           WHERE ${where}
@@ -1539,8 +1554,7 @@ const readPublicTokensServedChannelMixRaw = (
       .prepare(
         `SELECT
             COALESCE(NULLIF(demand_channel, ''), 'khala_api') AS demand_channel,
-            COALESCE(SUM(input_tokens), 0) + COALESCE(SUM(output_tokens), 0)
-              AS tokens,
+            COALESCE(SUM(${publicTokensServedSqlExpression}), 0) AS tokens,
             COUNT(*) AS usage_events
            FROM token_usage_events
           WHERE ${where}
@@ -1773,10 +1787,7 @@ const publicTokensServedDailyRollupStatements = (
     return []
   }
 
-  const tokensServed = Math.max(
-    0,
-    Math.trunc(row.input_tokens ?? 0) + Math.trunc(row.output_tokens ?? 0),
-  )
+  const tokensServed = publicTokensServedFromRow(row)
 
   return [
     db
@@ -1813,10 +1824,7 @@ const publicTokensServedMixRollupStatements = (
     return []
   }
 
-  const tokensServed = Math.max(
-    0,
-    Math.trunc(row.input_tokens ?? 0) + Math.trunc(row.output_tokens ?? 0),
-  )
+  const tokensServed = publicTokensServedFromRow(row)
   const demandChannel = demandChannelFromText(row.demand_channel)
 
   return [
@@ -2930,7 +2938,7 @@ export const makeD1TokenUsageLedger = (
         db
           .prepare(
             `SELECT
-                COALESCE(SUM(input_tokens), 0) + COALESCE(SUM(output_tokens), 0)
+                COALESCE(SUM(${publicTokensServedSqlExpression}), 0)
                   AS tokens_served
                FROM token_usage_events
               WHERE ${publicTokensServedDemandWhere}`,
@@ -3010,7 +3018,7 @@ export const makeD1TokenUsageLedger = (
               since === undefined
                 ? `SELECT
                       date(observed_at) AS day,
-                      COALESCE(SUM(input_tokens), 0) + COALESCE(SUM(output_tokens), 0)
+                      COALESCE(SUM(${publicTokensServedSqlExpression}), 0)
                         AS tokens
                      FROM token_usage_events
                     WHERE ${publicTokensServedDemandWhere}
@@ -3018,7 +3026,7 @@ export const makeD1TokenUsageLedger = (
                     ORDER BY day ASC`
                 : `SELECT
                       date(observed_at) AS day,
-                      COALESCE(SUM(input_tokens), 0) + COALESCE(SUM(output_tokens), 0)
+                      COALESCE(SUM(${publicTokensServedSqlExpression}), 0)
                         AS tokens
                      FROM token_usage_events
                     WHERE observed_at >= ? AND ${publicTokensServedDemandWhere}
@@ -3143,7 +3151,7 @@ export const makeD1TokenUsageLedger = (
                       COALESCE(demand_kind, 'unlabeled') AS demand_kind,
                       COALESCE(NULLIF(demand_source, ''), 'unknown') AS demand_source,
                       COALESCE(NULLIF(demand_client, ''), 'unknown') AS demand_client,
-                      COALESCE(SUM(input_tokens), 0) + COALESCE(SUM(output_tokens), 0)
+                      COALESCE(SUM(${publicTokensServedSqlExpression}), 0)
                         AS tokens,
                       COUNT(*) AS usage_events
                      FROM token_usage_events
@@ -3153,7 +3161,7 @@ export const makeD1TokenUsageLedger = (
                       COALESCE(demand_kind, 'unlabeled') AS demand_kind,
                       COALESCE(NULLIF(demand_source, ''), 'unknown') AS demand_source,
                       COALESCE(NULLIF(demand_client, ''), 'unknown') AS demand_client,
-                      COALESCE(SUM(input_tokens), 0) + COALESCE(SUM(output_tokens), 0)
+                      COALESCE(SUM(${publicTokensServedSqlExpression}), 0)
                         AS tokens,
                       COUNT(*) AS usage_events
                      FROM token_usage_events

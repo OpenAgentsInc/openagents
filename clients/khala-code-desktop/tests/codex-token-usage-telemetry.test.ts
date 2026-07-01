@@ -273,6 +273,62 @@ describe("Codex token usage telemetry", () => {
     expect(successRows).toHaveLength(1)
   })
 
+  test("posts total-only Codex usage with a public-counter split fallback", async () => {
+    const root = await tempLedgerRoot()
+    const localLedgerPath = join(root, "token-usage-events.jsonl")
+    const totalOnlyEvent = khalaCodeDesktopCodexTokenUsageEvent({
+      ...sampleReport(),
+      codexThreadId: "thread-total-only",
+      codexTurnId: "turn-total-only",
+      desktopTurnId: "desktop-turn-total-only",
+      usage: {
+        cachedInputTokens: 0,
+        inputTokens: 0,
+        outputTokens: 0,
+        reasoningOutputTokens: 0,
+        totalTokens: 8_333_893,
+      },
+    })
+    await appendFile(localLedgerPath, `${JSON.stringify({
+      schemaVersion: "khala-code-desktop.codex-token-usage.local.v1",
+      recordedAt: "2026-07-01T16:29:00.000Z",
+      event: totalOnlyEvent,
+    })}\n`, "utf8")
+
+    const posts: Array<{ readonly body: unknown }> = []
+    const result = await syncKhalaCodeDesktopPendingTokenUsageReports({
+      env: {
+        KHALA_CODE_TOKEN_USAGE_BASE_URL: "https://openagents.example",
+        KHALA_CODE_TOKEN_USAGE_BEARER_TOKEN: "test-token",
+      },
+      fetch: async (_url, init) => {
+        posts.push({ body: JSON.parse(String(init?.body)) })
+        return new Response(JSON.stringify({ inserted: true }), { status: 201 })
+      },
+      localLedgerPath,
+    })
+
+    expect(result).toMatchObject({ attempted: 1, failed: 0, synced: 1 })
+    expect(posts).toHaveLength(1)
+    expect(posts[0]?.body).toMatchObject({
+      tokenCounts: {
+        inputTokens: 8_333_893,
+        outputTokens: 0,
+        totalTokens: 8_333_893,
+      },
+    })
+    const localRows = (await readFile(localLedgerPath, "utf8")).trim().split("\n")
+    expect(JSON.parse(localRows[0] ?? "{}")).toMatchObject({
+      event: {
+        tokenCounts: {
+          inputTokens: 0,
+          outputTokens: 0,
+          totalTokens: 8_333_893,
+        },
+      },
+    })
+  })
+
   test("background sync replays pending Khala usage rows on startup and interval ticks", async () => {
     const root = await tempLedgerRoot()
     const localLedgerPath = join(root, "token-usage-events.jsonl")

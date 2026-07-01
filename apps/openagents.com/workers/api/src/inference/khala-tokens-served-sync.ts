@@ -58,6 +58,11 @@ export const KHALA_TOKENS_SERVED_SYNC_COLLECTION = 'tokens_served_deltas'
 export const KHALA_TOKENS_SERVED_SUMMARY_COLLECTION = 'tokens_served_summary'
 export const KHALA_TOKENS_SERVED_SUMMARY_ENTITY_ID = 'summary'
 const PUBLIC_TOKENS_SERVED_DEMAND_WHERE = `1 = 1`
+const PUBLIC_TOKENS_SERVED_SQL_EXPRESSION = `CASE
+  WHEN COALESCE(input_tokens, 0) + COALESCE(output_tokens, 0) > 0
+    THEN COALESCE(input_tokens, 0) + COALESCE(output_tokens, 0)
+  ELSE COALESCE(total_tokens, 0)
+END`
 
 // The public-safe shape that lands on the sync room (and in the homepage Model).
 // By construction it carries ONLY bare integers + a timestamp — no per
@@ -102,9 +107,11 @@ export const buildKhalaTokensServedDelta = (
 
 type KhalaTokensServedSyncEnv = Pick<WorkerBindings, 'OPENAGENTS_DB' | 'SYNC_ROOM'>
 
-// Read the AUTHORITATIVE public running total: the live `SUM(input+output)`
-// over every canonical served-token ledger row, including internal dogfood and
-// owner-capacity work — the SAME aggregate the scalar
+// Read the AUTHORITATIVE public running total: split `input+output` when a
+// ledger row has provider split counts, otherwise its provider-reported
+// `total_tokens`. That covers direct-local Codex rows where Codex exposes only
+// a total. The aggregate includes internal dogfood and owner-capacity work —
+// the SAME aggregate the scalar
 // `GET /api/public/khala-tokens-served` endpoint serves. Read here (after the
 // row this publish announces is already committed) so the summary/event totals
 // equal the ledger. A plain D1 read keeps this Promise-based module out of any
@@ -117,7 +124,7 @@ const readAuthoritativeTokensServedTotal = async (
     const row = await db
       .prepare(
         `SELECT
-            COALESCE(SUM(input_tokens), 0) + COALESCE(SUM(output_tokens), 0)
+            COALESCE(SUM(${PUBLIC_TOKENS_SERVED_SQL_EXPRESSION}), 0)
               AS tokens_served
            FROM token_usage_events
           WHERE ${PUBLIC_TOKENS_SERVED_DEMAND_WHERE}`,

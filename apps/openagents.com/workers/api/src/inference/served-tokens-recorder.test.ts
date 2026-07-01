@@ -22,12 +22,22 @@ import {
 // runs on the recorder write path + the public served-tokens counter read:
 //   - findExisting: SELECT * FROM token_usage_events WHERE idempotency_key=? OR id=?
 //   - insert:       INSERT INTO token_usage_events (...) VALUES (...)  (UNIQUE id/key)
-//   - publicTokensServed: SELECT SUM(input)+SUM(output) AS tokens_served
+//   - publicTokensServed: SELECT served-token SUM AS tokens_served
 // This exercises the REAL ledger (validation, idempotency, the public SUM) so
 // the round trip is honest, not a stubbed projection.
 // ---------------------------------------------------------------------------
 
 type Row = Record<string, string | number | null>
+
+const numberFromRow = (row: Row, key: string): number =>
+  typeof row[key] === 'number' ? row[key] : 0
+
+const servedTokensFromRow = (row: Row): number => {
+  const splitTokens =
+    numberFromRow(row, 'input_tokens') + numberFromRow(row, 'output_tokens')
+
+  return splitTokens > 0 ? splitTokens : numberFromRow(row, 'total_tokens')
+}
 
 const COLUMNS = [
   'id',
@@ -57,6 +67,7 @@ const COLUMNS = [
   'usage_truth',
   'cost_amount',
   'currency',
+  'demand_channel',
   'demand_kind',
   'demand_source',
   'demand_client',
@@ -89,10 +100,7 @@ const makeFakeDb = (rows: Array<Row> = []): D1Database => {
       first: async <T>(): Promise<T | null> => {
         if (sql.includes('AS tokens_served')) {
           const tokensServed = rows.reduce(
-            (sum, row) =>
-              sum +
-              Number(row.input_tokens ?? 0) +
-              Number(row.output_tokens ?? 0),
+            (sum, row) => sum + servedTokensFromRow(row),
             0,
           )
           return { tokens_served: tokensServed } as unknown as T
@@ -137,7 +145,8 @@ const makeFakeDb = (rows: Array<Row> = []): D1Database => {
 
   return {
     prepare,
-    batch: async () => [],
+    batch: async <T = unknown>(statements: Array<D1PreparedStatement>) =>
+      Promise.all(statements.map(statement => statement.run<T>())),
     dump: async () => new ArrayBuffer(0),
     exec: async () => ({ count: 0, duration: 0 }),
     withSession: () => {

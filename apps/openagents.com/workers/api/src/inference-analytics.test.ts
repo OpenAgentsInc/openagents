@@ -74,10 +74,42 @@ const demandAttributionMigration = readFileSync(
   ),
   'utf8',
 )
+const demandChannelMigration = readFileSync(
+  new URL('../migrations/0262_token_usage_demand_channel.sql', import.meta.url),
+  'utf8',
+)
+const publicTokensServedDailyRollupsMigration = readFileSync(
+  new URL(
+    '../migrations/0264_public_khala_tokens_served_daily_rollups.sql',
+    import.meta.url,
+  ),
+  'utf8',
+)
+const publicTokensServedMixRollupsMigration = readFileSync(
+  new URL(
+    '../migrations/0265_public_khala_tokens_served_mix_rollups.sql',
+    import.meta.url,
+  ),
+  'utf8',
+)
+const publicTokensServedTotalFallbackMigration = readFileSync(
+  new URL(
+    '../migrations/0267_public_khala_tokens_served_total_fallback.sql',
+    import.meta.url,
+  ),
+  'utf8',
+)
 
 const makeDb = (): D1Database => {
   const raw = new DatabaseSync(':memory:')
-  raw.exec(`${tokenUsageEventsMigration}\n${demandAttributionMigration}`)
+  raw.exec(
+    `${tokenUsageEventsMigration}
+${demandAttributionMigration}
+${demandChannelMigration}
+${publicTokensServedDailyRollupsMigration}
+${publicTokensServedMixRollupsMigration}
+${publicTokensServedTotalFallbackMigration}`,
+  )
   return new SqliteD1(raw) as unknown as D1Database
 }
 
@@ -104,6 +136,7 @@ const fireworksEvent = (
     model?: string | undefined
     provider?: string | undefined
     safeMetadata?: Record<string, unknown> | undefined
+    totalTokens?: number | undefined
   }>,
 ) => ({
   schemaVersion: 'openagents.token_usage_event.v1' as const,
@@ -142,7 +175,8 @@ const fireworksEvent = (
     inputTokens: overrides.inputTokens,
     outputTokens: overrides.outputTokens,
     reasoningTokens: 0,
-    totalTokens: overrides.inputTokens + overrides.outputTokens,
+    totalTokens:
+      overrides.totalTokens ?? overrides.inputTokens + overrides.outputTokens,
   },
   usageTruth: 'exact' as const,
 })
@@ -762,6 +796,31 @@ describe('readInferenceAnalytics (#6232)', () => {
     expect(result).toEqual({ tokensServed: 165 })
     expect(JSON.stringify(result)).not.toContain('internal_stress')
     expect(JSON.stringify(result)).not.toContain('glm-saturation')
+  })
+
+  test('counts exact total-only Khala Code rows in the public counter', async () => {
+    const db = makeDb()
+    await runLedger(
+      db,
+      ingest(
+        fireworksEvent({
+          demandClient: 'khala_code_desktop',
+          demandKind: 'own_capacity',
+          demandSource: 'direct_local_codex',
+          eventId: 'khala-code-total-only',
+          inputTokens: 0,
+          model: 'openagents/codex-direct-local',
+          observedAt: '2026-06-25T03:00:00.000Z',
+          outputTokens: 0,
+          provider: 'pylon-codex-direct-local',
+          totalTokens: 8_333_893,
+        }),
+      ),
+    )
+
+    const result = await runLedger(db, publicTokensServed())
+
+    expect(result).toEqual({ tokensServed: 8_333_893 })
   })
 
   test('window=today excludes rows before UTC start of day', async () => {

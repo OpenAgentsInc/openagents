@@ -260,6 +260,7 @@ describe('publishKhalaTokensServedDelta', () => {
       db.queries.some(
         query =>
           query.includes('AS tokens_served') &&
+          query.includes('total_tokens') &&
           !query.includes("lower(demand_kind) <> 'internal'"),
       ),
     ).toBe(true)

@@ -227,9 +227,9 @@ const defaultTokenUsageSyncIntervalMs = (
 ): number => {
   if (boolEnv(env.KHALA_CODE_TOKEN_USAGE_BACKGROUND_SYNC_DISABLED)) return 0
   const explicit = nonEmpty(env.KHALA_CODE_TOKEN_USAGE_SYNC_INTERVAL_MS)
-  if (explicit === null) return 60_000
+  if (explicit === null) return 2_000
   const parsed = Number.parseInt(explicit, 10)
-  return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : 60_000
+  return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : 2_000
 }
 
 const unquoteEnvValue = (value: string): string => {
@@ -724,10 +724,28 @@ const postTokenUsageEvent = async (
     method: "POST",
   })
 
-const tokenUsageEventForRemotePost = (event: JsonRecord): JsonRecord => ({
-  ...event,
-  privacy: { leaderboardEligible: true, privacyOptOut: false },
-})
+const tokenCountsForRemotePost = (tokenCounts: JsonRecord | null): JsonRecord | null => {
+  if (tokenCounts === null) return null
+  const inputTokens = numberField(tokenCounts, "inputTokens")
+  const outputTokens = numberField(tokenCounts, "outputTokens")
+  const totalTokens = numberField(tokenCounts, "totalTokens")
+  if (inputTokens + outputTokens > 0 || totalTokens <= 0) return tokenCounts
+
+  return {
+    ...tokenCounts,
+    inputTokens: totalTokens,
+  }
+}
+
+const tokenUsageEventForRemotePost = (event: JsonRecord): JsonRecord => {
+  const tokenCounts = tokenCountsForRemotePost(objectField(event, "tokenCounts"))
+
+  return {
+    ...event,
+    privacy: { leaderboardEligible: true, privacyOptOut: false },
+    ...(tokenCounts === null ? {} : { tokenCounts }),
+  }
+}
 
 const rewriteJsonLines = async (
   path: string,

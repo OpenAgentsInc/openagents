@@ -50,6 +50,12 @@ const makeResult = <T>(
 const asNumber = (value: string | number | null | undefined): number =>
   typeof value === 'number' ? value : 0
 
+const servedTokensFromRow = (row: StoredTokenUsageRow): number => {
+  const splitTokens = asNumber(row.input_tokens) + asNumber(row.output_tokens)
+
+  return splitTokens > 0 ? splitTokens : asNumber(row.total_tokens)
+}
+
 type TokenUsageCountRow = {
   cache_read_tokens: number
   cache_write_1h_tokens: number
@@ -270,9 +276,7 @@ const makeMemoryD1 = (
 
             days.set(
               day,
-              (days.get(day) ?? 0) +
-                asNumber(row.input_tokens) +
-                asNumber(row.output_tokens),
+              (days.get(day) ?? 0) + servedTokensFromRow(row),
             )
             return days
           }, new Map<string, number>())
@@ -317,10 +321,7 @@ const makeMemoryD1 = (
               }
               groups.set(key, {
                 ...previous,
-                tokens:
-                  previous.tokens +
-                  Number(row.input_tokens ?? 0) +
-                  Number(row.output_tokens ?? 0),
+                tokens: previous.tokens + servedTokensFromRow(row),
                 usage_events: previous.usage_events + 1,
               })
 
@@ -377,10 +378,7 @@ const makeMemoryD1 = (
               }
               groups.set(demandChannel, {
                 ...previous,
-                tokens:
-                  previous.tokens +
-                  Number(row.input_tokens ?? 0) +
-                  Number(row.output_tokens ?? 0),
+                tokens: previous.tokens + servedTokensFromRow(row),
                 usage_events: previous.usage_events + 1,
               })
 
@@ -540,8 +538,7 @@ const makeMemoryD1 = (
               continue
             }
 
-            const served =
-              Number(row.input_tokens ?? 0) + Number(row.output_tokens ?? 0)
+            const served = servedTokensFromRow(row)
             byDay.set(dayWindow.day, (byDay.get(dayWindow.day) ?? 0) + served)
           }
 
@@ -562,8 +559,7 @@ const makeMemoryD1 = (
           const byDay = new Map<string, number>()
           for (const row of rows) {
             const day = String(row.observed_at).slice(0, 10)
-            const served =
-              Number(row.input_tokens ?? 0) + Number(row.output_tokens ?? 0)
+            const served = servedTokensFromRow(row)
             byDay.set(day, (byDay.get(day) ?? 0) + served)
           }
 
@@ -599,10 +595,7 @@ const makeMemoryD1 = (
             }
             byProviderModel.set(key, {
               ...previous,
-              tokens:
-                previous.tokens +
-                Number(row.input_tokens ?? 0) +
-                Number(row.output_tokens ?? 0),
+              tokens: previous.tokens + servedTokensFromRow(row),
               usage_events: previous.usage_events + 1,
             })
           }
@@ -635,10 +628,7 @@ const makeMemoryD1 = (
             }
             byChannel.set(channel, {
               demand_channel: channel,
-              tokens:
-                previous.tokens +
-                Number(row.input_tokens ?? 0) +
-                Number(row.output_tokens ?? 0),
+              tokens: previous.tokens + servedTokensFromRow(row),
               usage_events: previous.usage_events + 1,
             })
           }
@@ -678,10 +668,7 @@ const makeMemoryD1 = (
             }
             byDemand.set(key, {
               ...previous,
-              tokens:
-                previous.tokens +
-                Number(row.input_tokens ?? 0) +
-                Number(row.output_tokens ?? 0),
+              tokens: previous.tokens + servedTokensFromRow(row),
               usage_events: previous.usage_events + 1,
             })
           }
@@ -1034,6 +1021,23 @@ describe('token usage ledger', () => {
     )
     expect(publicStatsMixRollupMigration).toContain(
       'public_khala_tokens_served_channel_daily_rollups',
+    )
+
+    const publicStatsTotalFallbackMigration = await readFile(
+      new URL(
+        '../migrations/0267_public_khala_tokens_served_total_fallback.sql',
+        import.meta.url,
+      ),
+      'utf8',
+    )
+    expect(publicStatsTotalFallbackMigration).toContain(
+      'idx_token_usage_events_public_observed_tokens_total',
+    )
+    expect(publicStatsTotalFallbackMigration).toContain(
+      'ELSE COALESCE(total_tokens, 0)',
+    )
+    expect(publicStatsTotalFallbackMigration).toContain(
+      'DELETE FROM public_khala_tokens_served_daily_rollups',
     )
   })
 
@@ -1582,6 +1586,47 @@ describe('public tokens-served history', () => {
     ])
   })
 
+  test('history counts exact total-only Khala Code rows', async () => {
+    const db = makeMemoryD1()
+    const base = eventOnDay(
+      'history-total-only-khala-code',
+      '2026-06-07T13:00:00.000Z',
+      0,
+      0,
+      'own_capacity',
+    )
+
+    await runLedger(
+      db,
+      ingest({
+        ...base,
+        demand: {
+          demandChannel: 'direct_local',
+          demandClient: 'khala_code_desktop',
+          demandKind: 'own_capacity',
+          demandSource: 'direct_local_codex',
+        },
+        model: 'openagents/codex-direct-local',
+        producerSystem: 'pylon',
+        provider: 'pylon-codex-direct-local',
+        sourceRoute: 'pylon_codex_direct_local',
+        tokenCounts: {
+          ...base.tokenCounts,
+          totalTokens: 8_333_893,
+        },
+      }),
+    )
+
+    const history = await runLedger(
+      db,
+      tokensServedHistory({ now: '2026-06-08T12:00:00.000Z', window: '7d' }),
+    )
+
+    expect(history.series).toEqual([
+      { day: '2026-06-07', tokensServed: 8_333_893 },
+    ])
+  })
+
   test('can bucket history by America/Chicago local day across a UTC boundary', async () => {
     const db = makeMemoryD1()
 
@@ -1684,6 +1729,7 @@ describe('public tokens-served model mix', () => {
       outputTokens: number
       provider: string
       inputTokens: number
+      totalTokens?: number
     }>,
   ) => ({
     schemaVersion: 'openagents.token_usage_event.v1',
@@ -1710,7 +1756,7 @@ describe('public tokens-served model mix', () => {
       inputTokens: input.inputTokens,
       outputTokens: input.outputTokens,
       reasoningTokens: 0,
-      totalTokens: input.inputTokens + input.outputTokens,
+      totalTokens: input.totalTokens ?? input.inputTokens + input.outputTokens,
     },
     usageTruth: 'exact',
   })
@@ -1888,6 +1934,44 @@ describe('public tokens-served model mix', () => {
       },
     ])
   })
+
+  test('model mix counts exact total-only Khala Code rows', async () => {
+    const db = makeMemoryD1()
+
+    await runLedger(
+      db,
+      ingest(
+        eventForFamily('codex-total-only', {
+          demandKind: 'own_capacity',
+          inputTokens: 0,
+          model: 'openagents/codex-direct-local',
+          observedAt: '2026-06-07T13:00:00.000Z',
+          outputTokens: 0,
+          provider: 'pylon-codex-direct-local',
+          totalTokens: 8_333_893,
+        }),
+      ),
+    )
+
+    const mix = await runLedger(
+      db,
+      tokensServedModelMix({ now: nowIso, window: '30d' }),
+    )
+
+    expect(mix).toEqual({
+      groups: [
+        {
+          family: 'codex_direct',
+          label: 'Codex (direct)',
+          pct: 100,
+          reqs: 1,
+          tokens: 8_333_893,
+        },
+      ],
+      totalTokens: 8_333_893,
+      window: '30d',
+    })
+  })
 })
 
 describe('public tokens-served channel mix', () => {
@@ -1962,6 +2046,57 @@ describe('public tokens-served channel mix', () => {
           tokens: 50,
         },
       ],
+    })
+  })
+
+  test('channel mix counts exact total-only direct-local Khala Code rows', async () => {
+    const db = makeMemoryD1()
+
+    await runLedger(
+      db,
+      ingest({
+        ...validProbeEvent,
+        demand: {
+          demandChannel: 'direct_local',
+          demandClient: 'khala_code_desktop',
+          demandKind: 'own_capacity',
+          demandSource: 'direct_local_codex',
+        },
+        eventId: 'token_event_direct_local_total_only',
+        idempotencyKey: 'pylon:codex-direct-local:total-only',
+        model: 'openagents/codex-direct-local',
+        producerSystem: 'pylon',
+        provider: 'pylon-codex-direct-local',
+        sourceRoute: 'pylon_codex_direct_local',
+        tokenCounts: {
+          cacheReadTokens: 0,
+          cacheWrite1hTokens: 0,
+          cacheWrite5mTokens: 0,
+          inputTokens: 0,
+          outputTokens: 0,
+          reasoningTokens: 0,
+          totalTokens: 8_333_893,
+        },
+      }),
+    )
+
+    const mix = await runLedger(
+      db,
+      tokensServedChannelMix({ now: nowIso, window: '30d' }),
+    )
+
+    expect(mix).toEqual({
+      groups: [
+        {
+          channel: 'direct_local',
+          label: 'Direct local',
+          pct: 100,
+          reqs: 1,
+          tokens: 8_333_893,
+        },
+      ],
+      totalTokens: 8_333_893,
+      window: '30d',
     })
   })
 })
