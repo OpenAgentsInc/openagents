@@ -201,6 +201,69 @@ describe("Codex ThreadItem projector", () => {
     expect(projector.messages().find(message => message.id === "item-file")?.body).toContain("+new")
   })
 
+  test("labels tool cards with relative paths instead of absolute worktree paths", () => {
+    const displayRoot = "/Users/christopherdavid/work/openagents"
+    const sourcePath = `${displayRoot}/clients/khala-code-desktop/src/ui/transcript-render.ts`
+    const projector = createCodexThreadItemEventProjector({
+      desktopTurnId: "desktop-turn-fixture",
+      displayRoot,
+    })
+
+    projector.accept(item({
+      type: "commandExecution",
+      id: "item-read",
+      command: `sed -n '1,20p' ${sourcePath}`,
+      cwd: displayRoot,
+      source: "agent",
+      status: "completed",
+      commandActions: [{
+        type: "read",
+        command: "sed",
+        name: "sed",
+        path: sourcePath,
+      }],
+      aggregatedOutput: `${sourcePath}: ok`,
+      exitCode: 0,
+      durationMs: 11,
+    }))
+    projector.accept(item({
+      type: "fileChange",
+      id: "item-edit",
+      status: "completed",
+      changes: [{
+        path: sourcePath,
+        kind: "update",
+        diff: "--- a/clients/khala-code-desktop/src/ui/transcript-render.ts\n+++ b/clients/khala-code-desktop/src/ui/transcript-render.ts\n@@ -1 +1 @@\n-old\n+new\n",
+      }],
+    }))
+    projector.accept(item({
+      type: "dynamicToolCall",
+      id: "item-dynamic-read",
+      namespace: "filesystem",
+      tool: "read_file",
+      arguments: { path: sourcePath },
+      status: "completed",
+      contentItems: [{ type: "inputText", text: sourcePath }],
+      success: true,
+      durationMs: 4,
+    }))
+
+    const messages = projector.messages()
+    expect(messages.find(message => message.id === "item-read")?.codexItem).toMatchObject({
+      subtitle: ".",
+      title: "Read clients/khala-code-desktop/src/ui/transcript-render.ts",
+    })
+    expect(messages.find(message => message.id === "item-edit")?.codexItem?.title).toBe(
+      "Edited clients/khala-code-desktop/src/ui/transcript-render.ts",
+    )
+    expect(messages.find(message => message.id === "item-dynamic-read")?.codexItem?.title).toBe(
+      "Read clients/khala-code-desktop/src/ui/transcript-render.ts",
+    )
+    expect(messages.map(message => `${message.codexItem?.title ?? ""}\n${message.body}`).join("\n")).not.toContain(
+      "/Users/christopherdavid/work/openagents",
+    )
+  })
+
   test("suppresses Codex reasoning items so only the transient Thinking shimmer represents waiting", () => {
     const projector = createCodexThreadItemEventProjector({ desktopTurnId: "desktop-turn-fixture" })
 

@@ -329,6 +329,7 @@ const isTokenUsageNotification = (notification: CodexAppServerNotification): boo
 
 const messagesFromThread = (
   thread: JsonObject | null,
+  displayRoot?: string,
 ): readonly KhalaCodeDesktopMessage[] => {
   if (thread === null) return []
   const threadId = stringField(thread, "id")
@@ -340,6 +341,7 @@ const messagesFromThread = (
     if (turnId === null) continue
     const projector = createCodexThreadItemEventProjector({
       desktopTurnId: `codex-history-${turnId}`,
+      ...(displayRoot === undefined ? {} : { displayRoot }),
       renderUserMessages: true,
     })
     for (const item of arrayField(turn, "items") ?? []) {
@@ -417,13 +419,15 @@ const persistSession = async (
 const extractThreadResult = (
   response: unknown,
   desktopSessionId?: string,
+  displayRoot?: string,
 ): KhalaCodeDesktopCodexThreadResult => {
   const thread = objectField(response, "thread")
   const threadId = stringField(thread, "id")
   if (thread === null || threadId === null) {
     throw new Error("Codex app-server returned a thread response without thread.id")
   }
-  const messages = messagesFromThread(thread)
+  const responseCwd = stringField(response, "cwd") ?? displayRoot
+  const messages = messagesFromThread(thread, responseCwd)
   return {
     ok: true,
     thread,
@@ -526,7 +530,11 @@ export function createCodexAppServerChatRuntime(
     const response = await host.request("thread/start", {
       cwd: request.cwd ?? options.workingDirectory,
     })
-    const result = markThreadLoaded(extractThreadResult(response, request.sessionId))
+    const result = markThreadLoaded(extractThreadResult(
+      response,
+      request.sessionId,
+      request.cwd ?? options.workingDirectory,
+    ))
     if (request.sessionId !== undefined) {
       await persistSession(statePath, request.sessionId, { threadId: result.threadId })
     }
@@ -548,7 +556,11 @@ export function createCodexAppServerChatRuntime(
       threadId: request.threadId,
       cwd: request.cwd ?? options.workingDirectory,
     })
-    const result = markThreadLoaded(extractThreadResult(response, request.sessionId))
+    const result = markThreadLoaded(extractThreadResult(
+      response,
+      request.sessionId,
+      request.cwd ?? options.workingDirectory,
+    ))
     if (request.sessionId !== undefined) {
       await persistSession(statePath, request.sessionId, { threadId: result.threadId })
     }
@@ -656,7 +668,7 @@ export function createCodexAppServerChatRuntime(
       threadId: request.threadId,
       includeTurns: request.includeTurns === true,
     })
-    const result = extractThreadResult(response)
+    const result = extractThreadResult(response, undefined, options.workingDirectory)
     return request.includeTurns === true ? markThreadLoaded(result) : result
   }
 
@@ -720,7 +732,7 @@ export function createCodexAppServerChatRuntime(
     await ensureStarted()
     try {
       const response = await host.request("thread/unarchive", { threadId: request.threadId })
-      const result = extractThreadResult(response)
+      const result = extractThreadResult(response, undefined, options.workingDirectory)
       return {
         ok: true,
         action: "unarchive",
@@ -748,7 +760,11 @@ export function createCodexAppServerChatRuntime(
         ...(request.lastTurnId === undefined ? {} : { lastTurnId: request.lastTurnId }),
         cwd: request.cwd ?? options.workingDirectory,
       })
-      const result = markThreadLoaded(extractThreadResult(response, request.sessionId))
+      const result = markThreadLoaded(extractThreadResult(
+        response,
+        request.sessionId,
+        request.cwd ?? options.workingDirectory,
+      ))
       if (request.sessionId !== undefined) {
         await persistSession(statePath, request.sessionId, { threadId: result.threadId })
       }
@@ -899,7 +915,10 @@ export function createCodexAppServerChatRuntime(
       turnId: desktopTurnId,
       type: "thread_ready",
     })
-    const projector = createCodexThreadItemEventProjector({ desktopTurnId })
+    const projector = createCodexThreadItemEventProjector({
+      desktopTurnId,
+      displayRoot: request.cwd ?? options.workingDirectory,
+    })
     let capturedUsage = emptyCodexUsage()
     let codexTurnId: string | null = null
     let turnStatus = "inProgress"

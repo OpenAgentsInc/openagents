@@ -10,14 +10,21 @@ import type {
   KhalaCodeDesktopMessage,
   KhalaCodeDesktopMessageRole,
 } from "../shared/rpc.js"
+import {
+  displayLocalPathsForKhalaCode,
+  displayPathForKhalaCode,
+} from "../shared/display-paths.js"
 import type { CodexAppServerNotification } from "./codex-app-server-client.js"
 
 type JsonObject = Readonly<Record<string, unknown>>
 
 type ProjectorOptions = {
   readonly desktopTurnId: string
+  readonly displayRoot?: string
   readonly renderUserMessages?: boolean
 }
+
+type DisplayContext = Pick<ProjectorOptions, "displayRoot">
 
 const MAX_BODY_CHARS = 24_000
 
@@ -114,11 +121,33 @@ const safeJson = (value: unknown): string => {
   }
 }
 
+const sanitizeJsonForDisplay = (
+  value: unknown,
+  context: DisplayContext,
+): unknown => {
+  if (typeof value === "string") {
+    return displayLocalPathsForKhalaCode(value, context.displayRoot)
+  }
+  if (Array.isArray(value)) {
+    return value.map(item => sanitizeJsonForDisplay(item, context))
+  }
+  if (!isObject(value)) return value
+  return Object.fromEntries(
+    Object.entries(value).map(([key, item]) => [key, sanitizeJsonForDisplay(item, context)]),
+  )
+}
+
+const safeJsonForDisplay = (value: unknown, context: DisplayContext): string =>
+  safeJson(sanitizeJsonForDisplay(value, context))
+
 const bounded = (body: string): string => {
   if (body.length <= MAX_BODY_CHARS) return body
   const omitted = body.length - MAX_BODY_CHARS
   return `${body.slice(0, MAX_BODY_CHARS)}\n\n[truncated ${omitted} chars]`
 }
+
+const boundedForDisplay = (body: string, context: DisplayContext): string =>
+  bounded(displayLocalPathsForKhalaCode(body, context.displayRoot))
 
 const textFromUserInput = (input: unknown): string => {
   if (!isObject(input)) return ""
@@ -137,37 +166,148 @@ const textList = (values: readonly unknown[]): string =>
     .filter(value => value.trim().length > 0)
     .join("\n\n")
 
-const jsonSection = (title: string, value: unknown): string => {
+const jsonSection = (title: string, value: unknown, context: DisplayContext): string => {
   if (value === undefined || value === null) return ""
-  return `\n\n${title}\n\n\`\`\`json\n${safeJson(value)}\n\`\`\``
+  return `\n\n${title}\n\n\`\`\`json\n${safeJsonForDisplay(value, context)}\n\`\`\``
 }
 
-const commandBody = (item: JsonObject): string => {
+const displayPath = (value: string, context: DisplayContext): string =>
+  displayPathForKhalaCode(value, context.displayRoot)
+
+const PATH_FIELD_NAMES = new Set([
+  "absolutePath",
+  "cwd",
+  "file",
+  "file_name",
+  "file_path",
+  "fileName",
+  "filePath",
+  "filename",
+  "filepath",
+  "path",
+  "relativePath",
+  "target_file",
+  "targetFile",
+])
+
+const PATH_COLLECTION_FIELD_NAMES = new Set(["files", "paths"])
+
+const looksPathLike = (value: string): boolean =>
+  value.startsWith(".") || value.startsWith("/") || value.includes("/")
+
+const firstPathValue = (value: unknown, depth = 0): string | null => {
+  if (depth > 5) return null
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const path = firstPathValue(item, depth + 1)
+      if (path !== null) return path
+    }
+    return null
+  }
+  if (!isObject(value)) return null
+
+  for (const [key, item] of Object.entries(value)) {
+    if (
+      PATH_FIELD_NAMES.has(key) &&
+      typeof item === "string" &&
+      item.trim().length > 0 &&
+      looksPathLike(item)
+    ) {
+      return item
+    }
+    if (PATH_COLLECTION_FIELD_NAMES.has(key) && Array.isArray(item)) {
+      const path = firstPathValue(item, depth + 1)
+      if (path !== null) return path
+    }
+  }
+
+  for (const item of Object.values(value)) {
+    const path = firstPathValue(item, depth + 1)
+    if (path !== null) return path
+  }
+  return null
+}
+
+const commandActionTitle = (
+  item: JsonObject,
+  context: DisplayContext,
+): string | null => {
+  for (const action of arrayField(item, "commandActions")) {
+    if (!isObject(action)) continue
+    const type = stringField(action, "type")
+    const path = stringField(action, "path")
+    if (type === "read" && path !== null) return `Read ${displayPath(path, context)}`
+    if (type === "listFiles") {
+      return path === null ? "Listed files" : `Listed ${displayPath(path, context)}`
+    }
+    if (type === "search") {
+      return path === null ? "Searched files" : `Searched ${displayPath(path, context)}`
+    }
+  }
+  return null
+}
+
+const commandTitle = (item: JsonObject, context: DisplayContext): string =>
+  commandActionTitle(item, context) ??
+  (stringField(item, "source") === "userShell" ? "Shell command" : "Ran command")
+
+const fileChangesTitle = (
+  changes: readonly unknown[],
+  context: DisplayContext,
+): string => {
+  if (changes.length === 1 && isObject(changes[0])) {
+    return `Edited ${displayPath(stringField(changes[0], "path") ?? "file", context)}`
+  }
+  if (changes.length > 1) return `Edited ${changes.length} files`
+  return "Edited files"
+}
+
+const toolVerbFor = (tool: string): string => {
+  const normalized = tool.toLowerCase()
+  if (/(?:^|[_./-])(read|get|fetch|open|view)(?:$|[_./-])/u.test(normalized)) return "Read"
+  if (/(?:^|[_./-])(edit|write|patch|update|create|delete|remove|move|rename)(?:$|[_./-])/u.test(normalized)) {
+    return "Edited"
+  }
+  return humanize(tool)
+}
+
+const toolCallTitle = (
+  item: JsonObject,
+  fallbackTool: string,
+  context: DisplayContext,
+): string => {
+  const tool = stringField(item, "tool") ?? fallbackTool
+  const path = firstPathValue(item.arguments)
+  if (path === null) return humanize(tool)
+  return `${toolVerbFor(tool)} ${displayPath(path, context)}`
+}
+
+const commandBody = (item: JsonObject, context: DisplayContext): string => {
   const command = stringField(item, "command") ?? ""
   const cwd = stringField(item, "cwd")
   const output = stringField(item, "aggregatedOutput")
   const exitCode = numberField(item, "exitCode")
   const duration = numberField(item, "durationMs")
-  return bounded([
-    cwd === null ? "" : `cwd: ${cwd}`,
+  return boundedForDisplay([
+    cwd === null ? "" : `cwd: ${displayPath(cwd, context)}`,
     command.length === 0 ? "" : `\`\`\`bash\n${command}\n\`\`\``,
     output === null || output.length === 0 ? "" : `Output\n\n\`\`\`\n${output}\n\`\`\``,
     exitCode === null ? "" : `exit: ${exitCode}`,
     duration === null ? "" : `duration: ${duration}ms`,
-  ].filter(Boolean).join("\n\n"))
+  ].filter(Boolean).join("\n\n"), context)
 }
 
-const fileChangesBody = (changes: readonly unknown[]): string => {
+const fileChangesBody = (changes: readonly unknown[], context: DisplayContext): string => {
   if (changes.length === 0) return "No file changes are available yet."
-  return bounded(changes.map(change => {
+  return boundedForDisplay(changes.map(change => {
     if (!isObject(change)) return safeJson(change)
-    const path = stringField(change, "path") ?? "file"
+    const path = displayPath(stringField(change, "path") ?? "file", context)
     const diff = stringField(change, "diff") ?? ""
     return [
       `### ${path}`,
       diff.length === 0 ? "No diff is available yet." : `\`\`\`diff\n${diff}\n\`\`\``,
     ].join("\n\n")
-  }).join("\n\n"))
+  }).join("\n\n"), context)
 }
 
 const statesBody = (states: JsonObject | null): string => {
@@ -184,7 +324,7 @@ const statesBody = (states: JsonObject | null): string => {
 const projectionForItem = (
   item: JsonObject,
   fallbackStatus: string,
-  context: {
+  context: DisplayContext & {
     readonly threadId: string | null
     readonly turnId: string | null
   },
@@ -231,29 +371,31 @@ const projectionForItem = (
       ].filter(Boolean).join("\n\n")
       break
     case "commandExecution":
-      title = stringField(item, "source") === "userShell" ? "Shell command" : "Command"
-      subtitle = stringField(item, "cwd") ?? undefined
-      body = commandBody(item)
+      title = commandTitle(item, context)
+      subtitle = stringField(item, "cwd") === null ? undefined : displayPath(stringField(item, "cwd")!, context)
+      body = commandBody(item, context)
       break
     case "fileChange":
-      title = "File changes"
-      body = fileChangesBody(arrayField(item, "changes"))
+      title = fileChangesTitle(arrayField(item, "changes"), context)
+      body = fileChangesBody(arrayField(item, "changes"), context)
       break
     case "mcpToolCall":
-      title = `MCP: ${stringField(item, "server") ?? "server"}/${stringField(item, "tool") ?? "tool"}`
-      body = bounded([
-        jsonSection("Arguments", item.arguments),
-        jsonSection("Result", item.result),
-        jsonSection("Error", item.error),
-      ].join("").trim() || "MCP call is pending.")
+      title = toolCallTitle(item, "tool", context)
+      subtitle = stringField(item, "server") ?? undefined
+      body = boundedForDisplay([
+        jsonSection("Arguments", item.arguments, context),
+        jsonSection("Result", item.result, context),
+        jsonSection("Error", item.error, context),
+      ].join("").trim() || "MCP call is pending.", context)
       break
     case "dynamicToolCall":
-      title = `Dynamic tool: ${stringField(item, "tool") ?? "tool"}`
-      body = bounded([
-        jsonSection("Arguments", item.arguments),
-        jsonSection("Content", item.contentItems),
+      title = toolCallTitle(item, "tool", context)
+      subtitle = stringField(item, "namespace") ?? undefined
+      body = boundedForDisplay([
+        jsonSection("Arguments", item.arguments, context),
+        jsonSection("Content", item.contentItems, context),
         item.success === undefined || item.success === null ? "" : `\n\nsuccess: ${String(item.success)}`,
-      ].join("").trim() || "Dynamic tool call is pending.")
+      ].join("").trim() || "Dynamic tool call is pending.", context)
       break
     case "collabAgentToolCall":
       title = `Subagent: ${humanize(stringField(item, "tool") ?? "request")}`
@@ -264,19 +406,22 @@ const projectionForItem = (
         stringField(item, "reasoningEffort") === null ? "" : `effort: ${stringField(item, "reasoningEffort")}`,
         statesBody(objectField(item, "agentsStates")),
       ].filter(Boolean).join("\n\n"))
+      body = displayLocalPathsForKhalaCode(body, context.displayRoot)
       break
     case "subAgentActivity":
       title = `Subagent ${humanize(stringField(item, "kind") ?? "activity")}`
       subtitle = stringField(item, "agentThreadId") ?? undefined
-      body = stringField(item, "agentPath") ?? ""
+      body = displayLocalPathsForKhalaCode(stringField(item, "agentPath") ?? "", context.displayRoot)
       break
     case "webSearch":
       title = "Web search"
       body = stringField(item, "query") ?? ""
       break
     case "imageView":
-      title = "Image"
-      body = stringField(item, "path") ?? ""
+      title = stringField(item, "path") === null
+        ? "Viewed image"
+        : `Viewed ${displayPath(stringField(item, "path")!, context)}`
+      body = displayLocalPathsForKhalaCode(stringField(item, "path") ?? "", context.displayRoot)
       break
     case "sleep":
       title = "Sleep"
@@ -284,11 +429,11 @@ const projectionForItem = (
       break
     case "imageGeneration":
       title = "Image generation"
-      body = bounded([
+      body = boundedForDisplay([
         stringField(item, "revisedPrompt") ?? "",
         stringField(item, "result") ?? "",
         stringField(item, "savedPath") ?? "",
-      ].filter(Boolean).join("\n\n"))
+      ].filter(Boolean).join("\n\n"), context)
       break
     case "enteredReviewMode":
       title = "Review started"
@@ -304,11 +449,11 @@ const projectionForItem = (
       break
     default:
       title = `Unknown Codex item: ${type}`
-      body = `Codex emitted an item variant Khala Code does not render yet.\n\n\`\`\`json\n${safeJson(item)}\n\`\`\``
+      body = `Codex emitted an item variant Khala Code does not render yet.\n\n\`\`\`json\n${safeJsonForDisplay(item, context)}\n\`\`\``
       break
   }
 
-  const boundedBody = bounded(body)
+  const boundedBody = boundedForDisplay(body, context)
   if (!shouldRenderCodexItemCard(type)) {
     if (boundedBody.trim().length === 0) return null
     return {
@@ -340,6 +485,7 @@ const projectionForItem = (
 const approvalMessage = (
   notification: CodexAppServerNotification,
   title: string,
+  context: DisplayContext,
 ): KhalaCodeDesktopMessage | null => {
   const params = notification.params
   if (!isObject(params)) return null
@@ -347,14 +493,14 @@ const approvalMessage = (
   const requestId = notification.id === undefined ? undefined : String(notification.id)
   const requestIdValue = notification.id as KhalaCodeDesktopJsonRpcId | undefined
   const status = "pending"
-  const body = bounded([
+  const body = boundedForDisplay([
     stringField(params, "reason") ?? "",
-    stringField(params, "cwd") === null ? "" : `cwd: ${stringField(params, "cwd")}`,
+    stringField(params, "cwd") === null ? "" : `cwd: ${displayPath(stringField(params, "cwd")!, context)}`,
     stringField(params, "command") === null ? "" : `\`\`\`bash\n${stringField(params, "command")}\n\`\`\``,
-    jsonSection("Network", params.networkApprovalContext),
-    jsonSection("Permissions", params.permissions ?? params.additionalPermissions),
-    jsonSection("Available decisions", params.availableDecisions),
-  ].filter(Boolean).join("\n\n") || "Codex is waiting for approval.")
+    jsonSection("Network", params.networkApprovalContext, context),
+    jsonSection("Permissions", params.permissions ?? params.additionalPermissions, context),
+    jsonSection("Available decisions", params.availableDecisions, context),
+  ].filter(Boolean).join("\n\n") || "Codex is waiting for approval.", context)
   return {
     id: `approval-${requestId ?? item}`,
     role: "tool",
@@ -441,6 +587,9 @@ export function createCodexThreadItemEventProjector(
     notification: CodexAppServerNotification,
   ): KhalaCodeDesktopChatTurnEvent[] => {
     if (item.itemType === "reasoning") return []
+    const visibleDelta = item.itemType === "agentMessage"
+      ? delta
+      : displayLocalPathsForKhalaCode(delta, options.displayRoot)
     const previous = messages.get(item.itemId)
     if (previous === undefined) {
       const codexItem = shouldRenderCodexItemCard(item.itemType)
@@ -463,19 +612,19 @@ export function createCodexThreadItemEventProjector(
       }
       messages.set(item.itemId, {
         ...message,
-        body: bounded(delta),
+        body: bounded(visibleDelta),
       })
       return [
         { message, turnId: options.desktopTurnId, type: "message_start" },
-        { delta, messageId: item.itemId, turnId: options.desktopTurnId, type: "message_delta" },
+        { delta: visibleDelta, messageId: item.itemId, turnId: options.desktopTurnId, type: "message_delta" },
       ]
     }
     messages.set(item.itemId, {
       ...previous,
-      body: bounded(`${previous.body}${delta}`),
+      body: bounded(`${previous.body}${visibleDelta}`),
     })
     if (item.itemType === "agentMessage") {
-      return [{ delta, messageId: item.itemId, turnId: options.desktopTurnId, type: "message_delta" }]
+      return [{ delta: visibleDelta, messageId: item.itemId, turnId: options.desktopTurnId, type: "message_delta" }]
     }
     return upsert(messages.get(item.itemId) ?? previous)
   }
@@ -489,6 +638,7 @@ export function createCodexThreadItemEventProjector(
       if (item === null) return []
       if (itemType(item) === "userMessage" && options.renderUserMessages !== true) return []
       const message = projectionForItem(item, notification.method === "item/completed" ? "completed" : "running", {
+        ...(options.displayRoot === undefined ? {} : { displayRoot: options.displayRoot }),
         threadId: threadIdFromParams(params),
         turnId: turnIdFromParams(params),
       })
@@ -549,12 +699,12 @@ export function createCodexThreadItemEventProjector(
       return upsert({
         id,
         role: "tool",
-        body: fileChangesBody(arrayField(params, "changes")),
+        body: fileChangesBody(arrayField(params, "changes"), options),
         codexItem: {
           itemId: id,
           itemType: "fileChange",
           status: "running",
-          title: "File changes",
+          title: fileChangesTitle(arrayField(params, "changes"), options),
           ...cardContext({
             threadId: threadIdFromParams(params),
             turnId: turnIdFromParams(params),
@@ -586,7 +736,7 @@ export function createCodexThreadItemEventProjector(
           : notification.method === "item/fileChange/requestApproval"
             ? "File change approval"
             : "Permission approval"
-      const message = approvalMessage(notification, title)
+      const message = approvalMessage(notification, title, options)
       return message === null ? [] : upsert(message)
     }
 
@@ -598,7 +748,10 @@ export function createCodexThreadItemEventProjector(
       return upsert({
         id: `approval-review-${reviewId}`,
         role: "tool",
-        body: bounded(jsonSection("Review", params.review).trim() || "Auto-approval review is running."),
+        body: boundedForDisplay(
+          jsonSection("Review", params.review, options).trim() || "Auto-approval review is running.",
+          options,
+        ),
         codexItem: {
           itemId: stringField(params, "targetItemId") ?? reviewId,
           itemType: "approvalReview",

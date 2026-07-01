@@ -15,6 +15,10 @@ import { projectUnifiedInbox } from "../src/ui/inbox"
 import {
   projectKhalaCodeDesktopCodexEcosystem,
 } from "../src/shared/codex-ecosystem"
+import {
+  displayLocalPathsForKhalaCode,
+  displayPathForKhalaCode,
+} from "../src/shared/display-paths"
 
 describe("khala code desktop app shell", () => {
   test("registers the Khala Code desktop view", () => {
@@ -1287,8 +1291,12 @@ describe("khala code desktop app shell", () => {
     expect(renderer).toContain("tool-card-summary")
     expect(renderer).toContain("bindExpandableToolCard")
     expect(renderer).toContain('header.setAttribute("aria-expanded", "false")')
+    expect(renderer).toContain('status.setAttribute("aria-label", input.codexItem.status)')
+    expect(renderer).not.toContain("status.textContent = input.codexItem.status")
+    expect(renderer).not.toContain("status.textContent = parts.status")
     expect(css).toContain(".tool-card-summary")
     expect(css).toContain(".tool-card-icon")
+    expect(css).toContain("border-radius: 999px")
     expect(css).toContain('.tool-card:not([data-expanded="true"]) .tool-card-header')
     expect(css).toContain(".codex-item-card:not([data-expanded=\"true\"]) .codex-item-card-body")
     expect(css).toContain(".tool-card[data-expanded=\"true\"] .tool-card-output")
@@ -1463,8 +1471,30 @@ describe("khala code desktop app shell", () => {
       "}",
       "```",
     ].join("\n"))).toBe("\"uri\": \"uidotsh://ui\"")
+    expect(compactToolSummary([
+      "Arguments",
+      "",
+      "```json",
+      "{",
+      "  \"path\": \"/Users/christopherdavid/work/openagents/clients/khala-code-desktop/src/ui/main.ts\"",
+      "}",
+      "```",
+    ].join("\n"))).toBe("\"path\": \"clients/khala-code-desktop/src/ui/main.ts\"")
     expect(compactToolSummary("")).toBe("Details available")
     expect(compactToolSummary("x".repeat(200))).toHaveLength(160)
+  })
+
+  test("formats local paths relative to the active Khala Code worktree", () => {
+    const root = "/Users/christopherdavid/work/openagents"
+    const file = `${root}/clients/khala-code-desktop/src/ui/transcript-render.ts`
+
+    expect(displayPathForKhalaCode(file, root)).toBe(
+      "clients/khala-code-desktop/src/ui/transcript-render.ts",
+    )
+    expect(displayPathForKhalaCode(root, root)).toBe(".")
+    expect(displayLocalPathsForKhalaCode(`Edited ${file}`, root)).toBe(
+      "Edited clients/khala-code-desktop/src/ui/transcript-render.ts",
+    )
   })
 
   test("wraps long tool output instead of clipping errors offscreen", async () => {

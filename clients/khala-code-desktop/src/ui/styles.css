@@ -452,6 +452,7 @@ button {
 }
 
 .tool-card-icon {
+  flex: none;
   width: 0.875rem;
   height: 0.875rem;
   color: color-mix(in srgb, var(--oa-color-khala-energy-cyan) 72%, var(--oa-color-khala-text-muted));
@@ -481,10 +482,12 @@ button {
 
 .tool-card-status {
   flex: none;
-  color: var(--oa-color-khala-success-accent);
-  font-size: 0.62rem;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+  width: 0.45rem;
+  height: 0.45rem;
+  border: 1px solid color-mix(in srgb, var(--oa-color-khala-success-accent) 80%, transparent);
+  border-radius: 999px;
+  background: var(--oa-color-khala-success-accent);
+  box-shadow: 0 0 10px -3px color-mix(in srgb, var(--oa-color-khala-success-accent) 84%, transparent);
 }
 
 .tool-card[data-status="failed"] {
@@ -497,8 +500,11 @@ button {
   background: color-mix(in srgb, var(--oa-color-khala-surface-danger) 90%, transparent);
 }
 
-.tool-card[data-status="failed"] .tool-card-status {
-  color: var(--oa-color-khala-danger-text);
+.tool-card[data-status="failed"] .tool-card-status,
+.tool-card[data-status="errored"] .tool-card-status {
+  border-color: color-mix(in srgb, var(--oa-color-khala-danger-text) 86%, transparent);
+  background: var(--oa-color-khala-danger-text);
+  box-shadow: 0 0 10px -3px color-mix(in srgb, var(--oa-color-khala-danger) 86%, transparent);
 }
 
 .tool-card[data-status="denied"],
@@ -514,12 +520,18 @@ button {
 }
 
 .tool-card[data-status="denied"] .tool-card-status,
+.tool-card[data-status="interrupted"] .tool-card-status,
+.tool-card[data-status="pending"] .tool-card-status,
 .tool-card[data-status="unavailable"] .tool-card-status {
-  color: var(--oa-color-khala-warning-strong);
+  border-color: color-mix(in srgb, var(--oa-color-khala-warning-strong) 86%, transparent);
+  background: var(--oa-color-khala-warning-strong);
+  box-shadow: 0 0 10px -3px color-mix(in srgb, var(--oa-color-khala-warning) 86%, transparent);
 }
 
 .tool-card[data-status="running"] .tool-card-status {
-  color: var(--oa-color-khala-energy-line);
+  border-color: color-mix(in srgb, var(--oa-color-khala-energy-line) 86%, transparent);
+  background: var(--oa-color-khala-energy-line);
+  box-shadow: 0 0 10px -3px color-mix(in srgb, var(--oa-color-khala-energy-line) 86%, transparent);
 }
 
 .codex-item-card {
@@ -545,12 +557,12 @@ button {
 
 .codex-item-card-header {
   display: grid;
-  grid-template-columns: auto minmax(4rem, 12rem) minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(4rem, 12rem) auto minmax(0, 1fr) auto auto;
   justify-content: stretch;
 }
 
 .codex-item-card[data-expanded="true"] .codex-item-card-header {
-  grid-template-columns: auto minmax(0, 1fr) auto auto auto auto;
+  grid-template-columns: minmax(0, 1fr) auto auto auto auto auto;
 }
 
 .codex-item-card[data-expanded="true"] .codex-item-card-summary {

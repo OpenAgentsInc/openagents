@@ -17,6 +17,7 @@ import type {
   KhalaCodeDesktopMessageRole,
 } from "../shared/rpc"
 import type { KhalaCodeDesktopCodexApprovalAction } from "../shared/codex-approval-decisions"
+import { displayLocalPathsForKhalaCode } from "../shared/display-paths"
 
 const EXT_LANGUAGE: Readonly<Record<string, string>> = {
   bash: "bash",
@@ -72,7 +73,7 @@ const truncateCompactSummary = (summary: string, fallback: string): string => {
 }
 
 export const compactToolSummary = (text: string, fallback = "Details available"): string => {
-  const normalized = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n")
+  const normalized = displayLocalPathsForKhalaCode(text).replace(/\r\n/g, "\n").replace(/\r/g, "\n")
   const command = /```(?:bash|sh|zsh)\n([\s\S]*?)\n```/u.exec(normalized)
   if (command?.[1] !== undefined) return truncateCompactSummary(command[1], fallback)
 
@@ -500,6 +501,7 @@ const normalizedToolStatus = (status: string, output: string): string => {
 
 const toolTranscriptElement = (text: string): HTMLElement => {
   const parts = parseToolTranscript(text)
+  const displayOutput = displayLocalPathsForKhalaCode(parts.output)
   const root = document.createElement("div")
   root.className = "tool-card"
   root.dataset.status = parts.status
@@ -518,17 +520,18 @@ const toolTranscriptElement = (text: string): HTMLElement => {
 
   const summary = document.createElement("span")
   summary.className = "tool-card-summary"
-  summary.textContent = compactToolSummary(parts.output, parts.status)
+  summary.textContent = compactToolSummary(displayOutput, parts.status)
 
   const status = document.createElement("span")
   status.className = "tool-card-status"
-  status.textContent = parts.status
+  status.setAttribute("aria-label", parts.status)
+  status.setAttribute("role", "img")
   status.title = parts.status
 
-  header.append(icon, name, summary, status)
+  header.append(name, icon, summary, status)
   root.append(header)
 
-  if (parts.output.trim().length > 0) {
+  if (displayOutput.trim().length > 0) {
     const chevron = document.createElement("span")
     chevron.className = "tool-card-chevron"
     chevron.setAttribute("aria-hidden", "true")
@@ -537,7 +540,7 @@ const toolTranscriptElement = (text: string): HTMLElement => {
 
     const pre = document.createElement("pre")
     pre.className = "tool-card-output"
-    pre.textContent = parts.output
+    pre.textContent = displayOutput
     root.append(pre)
     // Live feed: keep the latest line in view while the box is compact.
     requestAnimationFrame(() => {
@@ -584,7 +587,8 @@ const codexItemElement = (input: {
 
   const status = document.createElement("span")
   status.className = "tool-card-status codex-item-card-status"
-  status.textContent = input.codexItem.status
+  status.setAttribute("aria-label", input.codexItem.status)
+  status.setAttribute("role", "img")
   status.title = input.codexItem.status
 
   const copy = document.createElement("button")
@@ -601,7 +605,7 @@ const codexItemElement = (input: {
   chevron.className = "tool-card-chevron"
   chevron.setAttribute("aria-hidden", "true")
 
-  header.append(icon, title, summary, meta, status, copy, chevron)
+  header.append(title, icon, summary, meta, status, copy, chevron)
   bindExpandableToolCard(root, header, input.codexItem.title)
   root.append(header)
 
