@@ -733,6 +733,137 @@ describe("Khala Code Codex fleet tools", () => {
     expect(calls.some(call => pylonArgs(call)[0] === "khala" && pylonArgs(call)[1] === "request")).toBe(true)
   })
 
+  test("spawnCodexInstances resolves live commit pins and renders claim-aware real-work prompts", async () => {
+    const fixture = await tempPylonFixture()
+    const liveCommit = "abcdef0123456789abcdef0123456789abcdef01"
+    const calls: KhalaCodexFleetCommandInput[] = []
+    const runner = async (input: KhalaCodexFleetCommandInput): Promise<KhalaCodexFleetCommandResult> => {
+      calls.push(input)
+      if (input.cmd[0] === "git" && input.cmd[1] === "ls-remote") {
+        expect(input.cmd).toEqual(["git", "ls-remote", "https://github.com/OpenAgentsInc/openagents.git", "refs/heads/main"])
+        return ok(`${liveCommit}\trefs/heads/main\n`)
+      }
+      const args = pylonArgs(input)
+      const joined = args.join(" ")
+      if (joined === "provider go-online --json") {
+        return ok({ ok: true, pylonRef: "pylon.local.test" })
+      }
+      if (joined === "codex accounts list --json") {
+        return ok({
+          accounts: [{ accountRef: "codex-2", homeState: "present", provider: "codex" }],
+          schema: "openagents.pylon.accounts_list.v0.3",
+        })
+      }
+      if (joined === "accounts status --provider codex --json") {
+        return ok({
+          accounts: [{ accountRef: "codex-2", provider: "codex", readiness: { state: "ready" } }],
+          schema: "openagents.pylon.accounts_status.v0.1",
+        })
+      }
+      if (joined === "presence heartbeat --base-url https://openagents.com --json") {
+        return ok({
+          heartbeatRef: "heartbeat.pylon.local.test.1",
+          pylonRef: "pylon.local.test",
+        })
+      }
+      if (args[0] === "khala" && args[1] === "request") {
+        expect(args).toContain("--repo")
+        expect(args).toContain("OpenAgentsInc/openagents")
+        expect(args).toContain("--branch")
+        expect(args).toContain("main")
+        expect(args).toContain("--commit")
+        expect(args).toContain(liveCommit)
+        expect(args).toContain("--verify")
+        expect(args).toContain("command.public.pylon_khala.verify.28484fe0b746db06b92c2eb2")
+        const prompt = args[args.indexOf("--prompt") + 1] ?? ""
+        expect(prompt).toContain("Public issue: #7835.")
+        expect(prompt).toContain("Claim: claim.public.t4_2.issue_7835.")
+        expect(prompt).toContain(`Base branch: main at ${liveCommit}.`)
+        expect(prompt).toContain("Verification command ref: command.public.pylon_khala.verify.28484fe0b746db06b92c2eb2.")
+        expect(prompt).toContain('include "Closes #7835" in the PR body')
+        expect(prompt).toContain("ready non-draft PR")
+        expect(prompt).toContain("do not merge it")
+        return ok({
+          assignmentRef: "assignment.public.codex_agent_task.t4_2",
+          autoRun: {
+            attempted: false,
+            reason: "disabled_by_no_run",
+          },
+        })
+      }
+      return failed(`unexpected command: ${joined}`)
+    }
+
+    const result = await spawnCodexInstances({
+      claimRef: "claim.public.t4_2.issue_7835",
+      count: 1,
+      issue: 7835,
+      noRun: true,
+      prompt: "Implement public issue #7835.",
+      repo: "OpenAgentsInc/openagents",
+      verify: "command.public.pylon_khala.verify.28484fe0b746db06b92c2eb2",
+    }, {
+      env: fixture.env,
+      runner,
+    })
+
+    expect(result.results[0]?.assignmentRef).toBe("assignment.public.codex_agent_task.t4_2")
+    expect(calls.findIndex(call => call.cmd[0] === "git" && call.cmd[1] === "ls-remote"))
+      .toBeLessThan(calls.findIndex(call => pylonArgs(call)[0] === "khala" && pylonArgs(call)[1] === "request"))
+  })
+
+  test("spawnCodexInstances rejects stale real-work commit pins before dispatch", async () => {
+    const fixture = await tempPylonFixture()
+    const calls: KhalaCodexFleetCommandInput[] = []
+    const runner = async (input: KhalaCodexFleetCommandInput): Promise<KhalaCodexFleetCommandResult> => {
+      calls.push(input)
+      if (input.cmd[0] === "git" && input.cmd[1] === "ls-remote") {
+        return ok("abcdef0123456789abcdef0123456789abcdef01\trefs/heads/main\n")
+      }
+      return failed(`unexpected command: ${pylonArgs(input).join(" ")}`)
+    }
+
+    await expect(spawnCodexInstances({
+      claimRef: "claim.public.t4_2.issue_7835",
+      commit: "0123456789abcdef0123456789abcdef01234567",
+      count: 1,
+      issue: 7835,
+      noRun: true,
+      prompt: "Implement public issue #7835.",
+      repo: "OpenAgentsInc/openagents",
+      verify: "command.public.pylon_khala.verify.28484fe0b746db06b92c2eb2",
+    }, {
+      env: fixture.env,
+      runner,
+    })).rejects.toThrow(/stale commit pin/)
+
+    expect(calls.some(call => pylonArgs(call)[0] === "khala")).toBe(false)
+  })
+
+  test("spawnCodexInstances rejects unsafe branch names before git ls-remote", async () => {
+    const fixture = await tempPylonFixture()
+    const calls: KhalaCodexFleetCommandInput[] = []
+    const runner = async (input: KhalaCodexFleetCommandInput): Promise<KhalaCodexFleetCommandResult> => {
+      calls.push(input)
+      return failed(`unexpected command: ${input.cmd.join(" ")}`)
+    }
+
+    await expect(spawnCodexInstances({
+      branch: "-upload-pack=evil",
+      claimRef: "claim.public.t4_2.branch_guard",
+      count: 1,
+      noRun: true,
+      prompt: "Implement public issue #7835.",
+      repo: "OpenAgentsInc/openagents",
+      verify: "command.public.pylon_khala.verify.d32c71ee8e1025e99460d008",
+    }, {
+      env: fixture.env,
+      runner,
+    })).rejects.toThrow(/safe GitHub branch name/)
+
+    expect(calls).toHaveLength(0)
+  })
+
   test("spawnCodexInstances heartbeats and omits the display-only default account ref", async () => {
     const fixture = await tempPylonFixture()
     const calls: KhalaCodexFleetCommandInput[] = []
@@ -1074,6 +1205,9 @@ describe("Khala Code Codex fleet tools", () => {
     }> = []
     const providerEnvValues: string[] = []
     const runner = async (input: KhalaCodexFleetCommandInput): Promise<KhalaCodexFleetCommandResult> => {
+      if (input.cmd[0] === "git" && input.cmd[1] === "ls-remote") {
+        return ok("0123456789abcdef0123456789abcdef01234567\trefs/heads/main\n")
+      }
       const args = pylonArgs(input)
       const joined = args.join(" ")
       if (joined === "provider go-online --json") {
@@ -1158,6 +1292,7 @@ describe("Khala Code Codex fleet tools", () => {
 
     const tuned = await spawnCodexInstances({
       accountRef: "(default)",
+      claimRef: "claim.public.gd4.tuned",
       commit: "0123456789abcdef0123456789abcdef01234567",
       count: 1,
       noRun: true,
@@ -1169,6 +1304,7 @@ describe("Khala Code Codex fleet tools", () => {
     })
     const reverted = await spawnCodexInstances({
       accountRef: "(default)",
+      claimRef: "claim.public.gd4.reverted",
       commit: "0123456789abcdef0123456789abcdef01234567",
       count: 1,
       noRun: true,
@@ -1191,16 +1327,16 @@ describe("Khala Code Codex fleet tools", () => {
       status: "accepted",
     })
     expect(providerEnvValues).toContain("7")
-    expect(requests[0]).toEqual({
-      accountArg: null,
-      prompt: "GD4 tuned: Wire issue 7736 :: verify=bun test packages/khala-tools",
-      verify: "bun test packages/khala-tools",
-    })
-    expect(requests[1]).toEqual({
-      accountArg: "codex-2",
-      prompt: "Wire issue 7736",
-      verify: "bun test",
-    })
+    expect(requests[0]?.accountArg).toBeNull()
+    expect(requests[0]?.prompt).toStartWith("GD4 tuned: Wire issue 7736 :: verify=bun test packages/khala-tools")
+    expect(requests[0]?.prompt).toContain("Claim: claim.public.gd4.tuned.")
+    expect(requests[0]?.prompt).toContain("Verification command ref: bun test packages/khala-tools.")
+    expect(requests[0]?.verify).toBe("bun test packages/khala-tools")
+    expect(requests[1]?.accountArg).toBe("codex-2")
+    expect(requests[1]?.prompt).toStartWith("Wire issue 7736")
+    expect(requests[1]?.prompt).toContain("Claim: claim.public.gd4.reverted.")
+    expect(requests[1]?.prompt).toContain("Verification command ref: bun test.")
+    expect(requests[1]?.verify).toBe("bun test")
   })
 
   test("spawnCodexInstances prefers named accounts with advertised free slots", async () => {

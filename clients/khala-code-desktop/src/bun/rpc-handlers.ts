@@ -478,6 +478,7 @@ const missingDelegateRunPins = (
   request: KhalaCodeDesktopFleetDelegateRunRequest,
 ): readonly string[] => [
   request.repo?.trim() ? null : "repo",
+  request.claimRef?.trim() ? null : "claimRef",
   request.commit?.trim() ? null : "commit",
   request.verify?.trim() ? null : "verify",
 ].filter((value): value is string => value !== null)
@@ -1611,11 +1612,12 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
       }
       const missingPins = missingDelegateRunPins(request)
       if (request.mode === "real_work" && missingPins.length > 0) {
-        throw new Error(`codexFleetDelegateRun real-work mode requires repo, commit, and verify pins; missing ${missingPins.join(", ")}`)
+        throw new Error(`codexFleetDelegateRun real-work mode requires repo, claimRef, commit, and verify pins; missing ${missingPins.join(", ")}`)
       }
       const spawn = await spawnCodexInstances({
         accountRef: request.accountRef,
         branch: request.mode === "fixture" ? undefined : request.branch,
+        claimRef: request.mode === "fixture" ? undefined : request.claimRef,
         commit: request.mode === "fixture" ? undefined : request.commit,
         count: request.count,
         fixture: request.mode === "fixture",
@@ -1696,6 +1698,7 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
       const spawn = await spawnCodexInstances({
         accountRef: request.accountRef,
         branch: request.branch,
+        claimRef: request.claimRef,
         commit: request.commit,
         count: request.count,
         fixture: request.fixture,

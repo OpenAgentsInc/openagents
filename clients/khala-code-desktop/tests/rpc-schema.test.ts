@@ -68,6 +68,40 @@ describe("Khala Code desktop schema-first RPC contract", () => {
     })
   })
 
+  test("decodes optional real-work claim refs on fleet RPC requests", () => {
+    expect(decodeKhalaCodeDesktopRpcParameters("codexFleetDelegateRun", [{
+      branch: "main",
+      claimRef: "claim.public.t4_2.rpc_delegate",
+      commit: "0123456789abcdef0123456789abcdef01234567",
+      mode: "real_work",
+      objective: "Run pinned public work.",
+      repo: "OpenAgentsInc/openagents",
+      verify: "command.public.pylon_khala.verify.d32c71ee8e1025e99460d008",
+    }])[0]).toMatchObject({
+      claimRef: "claim.public.t4_2.rpc_delegate",
+      mode: "real_work",
+    })
+
+    expect(decodeKhalaCodeDesktopRpcParameters("codexFleetPromoteThread", [{
+      claimRef: "claim.public.t4_2.rpc_promote",
+      commit: "0123456789abcdef0123456789abcdef01234567",
+      contextBoundary: {
+        allowedRefs: [],
+        includeTranscript: false,
+        mode: "explicit_objective",
+        summary: null,
+      },
+      objective: "Promote pinned public work.",
+      repo: "OpenAgentsInc/openagents",
+      sessionId: "session-1",
+      threadId: "thread-1",
+      verify: "command.public.pylon_khala.verify.d32c71ee8e1025e99460d008",
+    }])[0]).toMatchObject({
+      claimRef: "claim.public.t4_2.rpc_promote",
+      objective: "Promote pinned public work.",
+    })
+  })
+
   test("models handler failures as distinct tagged bridge errors", () => {
     const failure = khalaCodeDesktopRpcHandlerFailure(
       "appInfo",
