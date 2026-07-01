@@ -9,6 +9,27 @@ export const KHALA_CODE_CODEX_PARITY_REFERENCE_COMMIT =
 export const KHALA_CODE_CODEX_PARITY_REFERENCE_LABEL =
   "openai/codex app-server v2 schema at db887d03e1"
 
+export const KHALA_CODE_CODEX_REFERENCE_CHECKOUT_MISSING_BLOCKER_REF =
+  "blocker.codex_reference_checkout_missing"
+
+const KHALA_CODE_CODEX_REFERENCE_SCHEMA_DIR =
+  "codex-rs/app-server-protocol/schema/typescript"
+
+type KhalaCodeCodexReferenceRootInspectionEnv = Readonly<Record<string, string | undefined>>
+
+export type KhalaCodeCodexReferenceRootStatus =
+  | {
+      readonly ok: true
+      readonly root: string
+      readonly status: "ready"
+    }
+  | {
+      readonly blockerRef: typeof KHALA_CODE_CODEX_REFERENCE_CHECKOUT_MISSING_BLOCKER_REF
+      readonly ok: false
+      readonly reason: string
+      readonly status: "blocked"
+    }
+
 export type KhalaCodeCodexParityHarness =
   | "codex_wrapper_fixture"
   | "codex_wrapper_live"
@@ -290,19 +311,55 @@ export const KHALA_CODE_CODEX_PARITY_REQUIRED_THREAD_ITEM_TYPES = [
   "contextCompaction",
 ] as const
 
-export function findCodexReferenceRoot(startDir = dirname(fileURLToPath(import.meta.url))): string {
-  const explicit = process.env.KHALA_CODE_CODEX_REFERENCE_ROOT?.trim()
-  if (explicit !== undefined && explicit.length > 0 && existsSync(explicit)) return explicit
+const referenceSchemaRoot = (root: string): string =>
+  join(root, KHALA_CODE_CODEX_REFERENCE_SCHEMA_DIR)
+
+const codexReferenceCheckoutMissing = (reason: string): KhalaCodeCodexReferenceRootStatus => ({
+  blockerRef: KHALA_CODE_CODEX_REFERENCE_CHECKOUT_MISSING_BLOCKER_REF,
+  ok: false,
+  reason,
+  status: "blocked",
+})
+
+export function inspectCodexReferenceRoot(
+  startDir = dirname(fileURLToPath(import.meta.url)),
+  env: KhalaCodeCodexReferenceRootInspectionEnv = process.env,
+): KhalaCodeCodexReferenceRootStatus {
+  const explicit = env.KHALA_CODE_CODEX_REFERENCE_ROOT?.trim()
+  if (explicit !== undefined && explicit.length > 0) {
+    if (existsSync(referenceSchemaRoot(explicit))) {
+      return {
+        ok: true,
+        root: explicit,
+        status: "ready",
+      }
+    }
+    return codexReferenceCheckoutMissing(
+      `KHALA_CODE_CODEX_REFERENCE_ROOT does not contain ${KHALA_CODE_CODEX_REFERENCE_SCHEMA_DIR}: ${explicit}`,
+    )
+  }
 
   let current = startDir
   for (let depth = 0; depth < 10; depth += 1) {
     const candidate = join(current, "projects/repos/codex")
-    if (existsSync(join(candidate, "codex-rs/app-server-protocol/schema/typescript"))) {
-      return candidate
+    if (existsSync(referenceSchemaRoot(candidate))) {
+      return {
+        ok: true,
+        root: candidate,
+        status: "ready",
+      }
     }
     current = dirname(current)
   }
-  throw new Error("Could not locate projects/repos/codex reference checkout")
+  return codexReferenceCheckoutMissing(
+    `Could not locate projects/repos/codex reference checkout with ${KHALA_CODE_CODEX_REFERENCE_SCHEMA_DIR} from ${startDir}`,
+  )
+}
+
+export function findCodexReferenceRoot(startDir = dirname(fileURLToPath(import.meta.url))): string {
+  const status = inspectCodexReferenceRoot(startDir)
+  if (status.ok) return status.root
+  throw new Error(status.reason)
 }
 
 export async function readCodexReferenceCommit(root = findCodexReferenceRoot()): Promise<string> {

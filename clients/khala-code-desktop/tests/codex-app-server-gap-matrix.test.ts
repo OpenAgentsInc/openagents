@@ -11,7 +11,8 @@ import {
 } from "../src/bun/codex-app-server-gap-matrix"
 import {
   extractAppServerMethodsFromGeneratedType,
-  findCodexReferenceRoot,
+  inspectCodexReferenceRoot,
+  KHALA_CODE_CODEX_REFERENCE_CHECKOUT_MISSING_BLOCKER_REF,
   KHALA_CODE_CODEX_PARITY_REFERENCE_COMMIT,
   readCodexSchemaFile,
 } from "../src/bun/codex-parity-contract"
@@ -24,6 +25,19 @@ const repoRoot = new URL("../../..", import.meta.url).pathname
 
 const sorted = (values: readonly string[]): readonly string[] => [...values].sort()
 
+const expectCodexReferenceRootOrBlocker = (): string | null => {
+  const status = inspectCodexReferenceRoot()
+  if (status.ok) return status.root
+
+  expect(status).toMatchObject({
+    blockerRef: KHALA_CODE_CODEX_REFERENCE_CHECKOUT_MISSING_BLOCKER_REF,
+    ok: false,
+    status: "blocked",
+  })
+  expect(status.reason.length).toBeGreaterThan(0)
+  return null
+}
+
 describe("Khala Code Codex app-server gap matrix", () => {
   test("pins the same Codex reference as the parity contract", () => {
     expect(KHALA_CODE_CODEX_APP_SERVER_GAP_MATRIX_REFERENCE_COMMIT).toBe(
@@ -35,7 +49,6 @@ describe("Khala Code Codex app-server gap matrix", () => {
     const rowIds = KHALA_CODE_CODEX_APP_SERVER_GAP_MATRIX.map(row => row.id)
     expect(new Set(rowIds).size).toBe(rowIds.length)
 
-    const codexRoot = findCodexReferenceRoot()
     const incompleteRows = KHALA_CODE_CODEX_APP_SERVER_GAP_MATRIX.filter(row =>
       row.area.length === 0 ||
       row.rationale.length === 0 ||
@@ -46,17 +59,20 @@ describe("Khala Code Codex app-server gap matrix", () => {
     ).map(row => row.id)
     expect(incompleteRows).toEqual([])
 
-    const missingCodexRefs = KHALA_CODE_CODEX_APP_SERVER_GAP_MATRIX
-      .flatMap(row => row.codexSourceRefs.map(ref => ({ row: row.id, ref })))
-      .filter(({ ref }) => !existsSync(join(codexRoot, ref)))
-    expect(missingCodexRefs).toEqual([])
-
     const invalidDecisions = KHALA_CODE_CODEX_APP_SERVER_GAP_MATRIX.filter(row => {
       if (row.decision === "covered_by_app_server") return row.appServerMethods.length === 0
       if (row.decision === "khala_adapter_with_test") return row.khalaAdapter === undefined
       return row.upstreamGapId?.startsWith("codex.app_server.gap.") !== true
     }).map(row => row.id)
     expect(invalidDecisions).toEqual([])
+
+    const codexRoot = expectCodexReferenceRootOrBlocker()
+    if (codexRoot === null) return
+
+    const missingCodexRefs = KHALA_CODE_CODEX_APP_SERVER_GAP_MATRIX
+      .flatMap(row => row.codexSourceRefs.map(ref => ({ row: row.id, ref })))
+      .filter(({ ref }) => !existsSync(join(codexRoot, ref)))
+    expect(missingCodexRefs).toEqual([])
   })
 
   test("maps every slash command exactly once", () => {
@@ -73,7 +89,9 @@ describe("Khala Code Codex app-server gap matrix", () => {
   })
 
   test("uses real generated methods for stable app-server rows", async () => {
-    const root = findCodexReferenceRoot()
+    const root = expectCodexReferenceRootOrBlocker()
+    if (root === null) return
+
     const generatedClientMethods = new Set(extractAppServerMethodsFromGeneratedType(
       await readCodexSchemaFile(root, "ClientRequest.ts"),
     ))
