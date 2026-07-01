@@ -4,7 +4,13 @@ import { resolve } from "node:path"
 import {
   KHALA_CODE_DESKTOP_DEFAULT_PREVIEW_PORT,
   KHALA_CODE_DESKTOP_RPC_MAX_REQUEST_TIME_MS,
+  decodeKhalaCodeDesktopRpcParameters,
+  decodeKhalaCodeDesktopRpcResult,
+  khalaCodeDesktopRpcDecodeFailure,
+  khalaCodeDesktopRpcHandlerFailure,
+  khalaCodeDesktopRpcMethodSchema,
   type KhalaCodeDesktopChatTurnEvent,
+  type KhalaCodeDesktopRpcMethodName,
   type KhalaCodeDesktopRPCSchema,
 } from "../shared/rpc.js"
 import { buildKhalaAppleFmDisabledReadiness } from "../shared/apple-fm-readiness.js"
@@ -125,23 +131,59 @@ const previewRpcResponse = async (
   method: string,
 ): Promise<Response> => {
   if (request.method !== "POST") {
-    return jsonResponse({ ok: false, error: "method_not_allowed" }, { status: 405 })
+    return jsonResponse({
+      ok: false,
+      error: "method_not_allowed",
+      method,
+      tag: "rpc_method_not_allowed",
+    }, { status: 405 })
   }
-  const handler = rpcRequestHandlers[method as keyof typeof rpcRequestHandlers]
+  const methodSchema = khalaCodeDesktopRpcMethodSchema(method)
+  if (methodSchema === null) {
+    return jsonResponse({
+      ok: false,
+      error: "unknown_method",
+      method,
+      tag: "rpc_unknown_method",
+    }, { status: 404 })
+  }
+  const rpcMethod = method as KhalaCodeDesktopRpcMethodName
+  const handler = rpcRequestHandlers[rpcMethod as keyof typeof rpcRequestHandlers]
   if (handler === undefined) {
-    return jsonResponse({ ok: false, error: "unknown_method" }, { status: 404 })
+    return jsonResponse({
+      ok: false,
+      error: "unknown_method",
+      method,
+      tag: "rpc_unknown_method",
+    }, { status: 404 })
   }
 
-  let args: unknown[] = []
+  let rawArgs: unknown = []
   try {
     const body = await request.json() as { args?: unknown }
-    args = Array.isArray(body.args) ? body.args : []
-  } catch {
-    args = []
+    rawArgs = body.args ?? []
+  } catch (error) {
+    return jsonResponse(khalaCodeDesktopRpcDecodeFailure(method, error), { status: 400 })
+  }
+
+  let args: readonly unknown[]
+  try {
+    args = decodeKhalaCodeDesktopRpcParameters(rpcMethod, rawArgs)
+  } catch (error) {
+    return jsonResponse(khalaCodeDesktopRpcDecodeFailure(method, error), { status: 400 })
   }
 
   const invoke = handler as (...args: readonly unknown[]) => Promise<unknown>
-  return jsonResponse(await invoke(...args))
+  try {
+    const result = await invoke(...args)
+    try {
+      return jsonResponse(decodeKhalaCodeDesktopRpcResult(rpcMethod, result))
+    } catch (error) {
+      return jsonResponse(khalaCodeDesktopRpcDecodeFailure(method, error), { status: 500 })
+    }
+  } catch (error) {
+    return jsonResponse(khalaCodeDesktopRpcHandlerFailure(method, error), { status: 500 })
+  }
 }
 
 const previewAssetResponse = async (pathname: string): Promise<Response> => {

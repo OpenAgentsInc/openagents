@@ -648,7 +648,8 @@ describe("khala code desktop app shell", () => {
     const fleetPanel = await Bun.file(new URL("../src/ui/fleet-status.ts", import.meta.url)).text()
     const css = await Bun.file(new URL("../src/ui/styles.css", import.meta.url)).text()
 
-    expect(rpc).toContain("readonly capacity: KhalaCodeDesktopFleetCapacity | null")
+    expect(rpc).toContain("export type KhalaCodeDesktopFleetAccount = typeof RpcFleetAccount.Type")
+    expect(rpc).toContain("capacity: S.NullOr(RpcFleetCapacity)")
     expect(handlers).toContain("capacity: account.capacity")
     expect(fleetPanel).toContain("isDisplayOnlyDefaultAccountRef")
     expect(fleetPanel).toContain("accountCapacityLabel")

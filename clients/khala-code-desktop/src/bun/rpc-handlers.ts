@@ -68,6 +68,7 @@ import {
 } from "../shared/rpc.js"
 import {
   khalaCodeDesktopCodexApprovalResponsePayload,
+  type KhalaCodeDesktopCodexApprovalResponseInput,
   type KhalaCodeDesktopJsonRpcId,
 } from "../shared/codex-approval-decisions.js"
 import { projectKhalaCodeDesktopCodexSettings } from "../shared/codex-settings.js"
@@ -1110,7 +1111,10 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
       }
     }
     const command = parsed.command
-    const availability = evaluateKhalaCodeDesktopSlashCommandAvailability(command, request)
+    const availability = evaluateKhalaCodeDesktopSlashCommandAvailability(command, {
+      ...(request.activeTurn === undefined ? {} : { activeTurn: request.activeTurn }),
+      ...(request.sideConversation === undefined ? {} : { sideConversation: request.sideConversation }),
+    })
     if (!availability.available) {
       return blockedSlashCommand({
         command: command.command,
@@ -1710,7 +1714,14 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
       return codexHarnessStatus()
     },
     async codexApprovalRespond(request) {
-      const payload = khalaCodeDesktopCodexApprovalResponsePayload(request)
+      const approvalInput = {
+        action: request.action,
+        method: request.method,
+        ...(request.execpolicyAmendment === undefined ? {} : { execpolicyAmendment: request.execpolicyAmendment }),
+        ...(request.networkPolicyAmendment === undefined ? {} : { networkPolicyAmendment: request.networkPolicyAmendment }),
+        ...(request.permissions === undefined ? {} : { permissions: request.permissions }),
+      } as KhalaCodeDesktopCodexApprovalResponseInput
+      const payload = khalaCodeDesktopCodexApprovalResponsePayload(approvalInput)
       try {
         input.codexAppServerHost?.respondToServerRequest(
           request.requestId as KhalaCodeDesktopJsonRpcId,
