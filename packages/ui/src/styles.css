@@ -1,4 +1,5 @@
 /* #6046: aggregated component stylesheet backed by central --oa-* tokens. */
+@import '@openagentsinc/design-tokens/theme.css';
 @import 'basecoat-css';
 @import './shared.css';
 @import './forms.css';

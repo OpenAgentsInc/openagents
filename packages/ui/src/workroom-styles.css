@@ -1,8 +1,10 @@
 /* #6046: workroom component classes backed by central --oa-* tokens. */
 
 .oa-ui-workroom-chat-surface {
-  --font-family-mono: var(--font-family-chat-mono);
-  font-family: var(--font-family-chat-mono);
+  --font-family-sans: var(--oa-font-sans);
+  --font-family-chat-mono: var(--oa-font-code);
+  --font-family-mono: var(--oa-font-code);
+  font-family: var(--oa-font-sans);
 }
 
 .oa-ui-workroom-text-12-regular {

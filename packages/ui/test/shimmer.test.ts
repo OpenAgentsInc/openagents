@@ -85,7 +85,7 @@ describe('ai-elements shimmer', () => {
 
     expect(css).toContain('.oa-ai-shimmer')
     expect(css).toContain('@keyframes oa-ai-shimmer-sweep')
-    expect(css).toContain('var(--oa-color-component-text, #f1efe8)')
+    expect(css).toContain('var(--oa-color-khala-energy-text-strong, #cdeeff)')
     expect(css).toContain('@media (prefers-reduced-motion: reduce)')
   })
 })

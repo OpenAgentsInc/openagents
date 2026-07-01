@@ -1,15 +1,23 @@
 .oa-ai-command-composer {
   --oa-command-composer-height: 8rem;
-  --oa-command-composer-border: var(--oa-color-component-border, #222);
-  --oa-command-composer-focus: var(--oa-color-review-link-soft, #8fd0ff);
-  --oa-command-composer-bg: var(--oa-color-component-surface-deep, #010102);
-  --oa-command-composer-panel: rgba(6, 11, 18, 0.92);
+  --oa-command-composer-border: var(--oa-color-component-border, #1d2a44);
+  --oa-command-composer-focus: var(--oa-color-khala-energy-text-strong, #cdeeff);
+  --oa-command-composer-bg: var(--oa-color-component-surface-deep, #000);
+  --oa-command-composer-panel: color-mix(
+    in srgb,
+    var(--oa-color-khala-surface-raised) 92%,
+    transparent
+  );
   --oa-command-composer-text: var(--oa-color-component-text, #f1efe8);
   --oa-command-composer-muted: var(
     --oa-color-text-on-dark55,
-    rgba(255, 255, 255, 0.55)
+    rgb(183 200 220 / 0.55)
   );
-  --oa-command-composer-soft: rgba(79, 208, 255, 0.13);
+  --oa-command-composer-soft: color-mix(
+    in srgb,
+    var(--oa-color-khala-energy-cyan) 13%,
+    transparent
+  );
   display: block;
   width: 100%;
   color: var(--oa-command-composer-text);
@@ -23,11 +31,15 @@
   border: 1px solid var(--oa-command-composer-border);
   border-radius: 0;
   background:
-    linear-gradient(180deg, rgba(79, 208, 255, 0.06), transparent 38%),
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--oa-color-khala-energy-cyan) 6%, transparent),
+      transparent 38%
+    ),
     var(--oa-command-composer-bg);
   box-shadow:
-    inset 0 0 0 1px rgba(122, 162, 255, 0.08),
-    0 0 24px rgba(38, 91, 161, 0.18);
+    inset 0 0 0 1px color-mix(in srgb, var(--oa-color-khala-energy-muted) 8%, transparent),
+    0 0 24px color-mix(in srgb, var(--oa-color-khala-energy-blue) 18%, transparent);
   padding: 0.75rem;
   transition:
     border-color 160ms ease,
@@ -37,9 +49,9 @@
 .oa-ai-command-composer:focus-within .oa-ai-command-composer-frame {
   border-color: var(--oa-command-composer-focus);
   box-shadow:
-    inset 0 0 0 1px rgba(79, 208, 255, 0.2),
-    0 0 0 1px rgba(79, 208, 255, 0.34),
-    0 0 26px rgba(79, 208, 255, 0.24);
+    inset 0 0 0 1px color-mix(in srgb, var(--oa-color-khala-energy-cyan) 20%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--oa-color-khala-energy-cyan) 34%, transparent),
+    0 0 26px color-mix(in srgb, var(--oa-color-khala-energy-cyan) 24%, transparent);
 }
 
 .oa-ai-command-composer-label,
@@ -59,9 +71,7 @@
   border: 0;
   background: transparent;
   color: var(--oa-command-composer-text);
-  font-family:
-    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
-    monospace;
+  font-family: var(--oa-font-sans);
   font-size: 1rem;
   line-height: 1.45;
   outline: 0;
@@ -69,7 +79,7 @@
 }
 
 .oa-ai-command-composer-textarea::placeholder {
-  color: rgba(122, 162, 255, 0.58);
+  color: color-mix(in srgb, var(--oa-color-khala-energy-muted) 58%, transparent);
 }
 
 .oa-ai-command-composer-rail {
@@ -86,18 +96,18 @@
   align-items: center;
   gap: 0.5rem;
   min-width: min(18rem, 82vw);
-  border: 1px solid rgba(122, 162, 255, 0.26);
-  background: rgba(8, 16, 28, 0.86);
+  border: 1px solid color-mix(in srgb, var(--oa-color-khala-energy-muted) 26%, transparent);
+  background: color-mix(in srgb, var(--oa-color-khala-surface-raised) 86%, transparent);
   padding: 0.5rem 0.625rem;
 }
 
 .oa-ai-command-composer-attachment[data-selected="true"] {
-  border-color: var(--oa-color-review-link-soft, #8fd0ff);
-  background: rgba(79, 208, 255, 0.1);
+  border-color: var(--oa-color-khala-energy-text-strong, #cdeeff);
+  background: color-mix(in srgb, var(--oa-color-khala-energy-cyan) 10%, transparent);
 }
 
 .oa-ai-command-composer-attachment[data-status="error"] {
-  border-color: rgba(229, 72, 77, 0.58);
+  border-color: color-mix(in srgb, var(--oa-color-khala-danger-strong) 58%, transparent);
 }
 
 .oa-ai-command-composer-gapcursor {
@@ -108,18 +118,18 @@
 }
 
 .oa-ai-command-composer-gapcursor:focus-visible {
-  background: var(--oa-color-review-link-soft, #8fd0ff);
-  box-shadow: 0 0 12px rgba(79, 208, 255, 0.45);
+  background: var(--oa-color-khala-energy-text-strong, #cdeeff);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--oa-color-khala-energy-cyan) 45%, transparent);
 }
 
 .oa-ai-command-composer-attachment-icon {
-  color: var(--oa-color-review-link-soft, #8fd0ff);
+  color: var(--oa-color-khala-energy-text-strong, #cdeeff);
 }
 
 .oa-ai-command-composer-attachment-thumb {
   width: 2rem;
   height: 2rem;
-  border: 1px solid rgba(122, 162, 255, 0.24);
+  border: 1px solid color-mix(in srgb, var(--oa-color-khala-energy-muted) 24%, transparent);
   object-fit: cover;
 }
 
@@ -130,9 +140,7 @@
   align-items: center;
   justify-content: center;
   color: currentColor;
-  font-family:
-    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
-    monospace;
+  font-family: var(--oa-font-code);
   font-size: 0.75rem;
   font-weight: 700;
   line-height: 1;
@@ -163,12 +171,12 @@
 }
 
 .oa-ai-command-composer-attachment-status {
-  color: var(--oa-color-review-link, #66aaff);
+  color: var(--oa-color-khala-energy-muted, #7aa2ff);
   text-transform: uppercase;
 }
 
 .oa-ai-command-composer-attachment-error {
-  color: var(--oa-color-hud-error, #ff4d4d);
+  color: var(--oa-color-khala-danger-strong, #f85149);
 }
 
 .oa-ai-command-composer-attachment-actions {
@@ -180,10 +188,10 @@
 
 .oa-ai-command-composer-attachment-action {
   min-height: 1.75rem;
-  border: 1px solid rgba(122, 162, 255, 0.24);
+  border: 1px solid color-mix(in srgb, var(--oa-color-khala-energy-muted) 24%, transparent);
   border-radius: 0;
-  background: rgba(1, 2, 4, 0.64);
-  color: var(--oa-color-text-on-dark60, rgba(255, 255, 255, 0.6));
+  background: color-mix(in srgb, var(--oa-color-khala-void) 64%, transparent);
+  color: var(--oa-color-text-on-dark60, rgb(183 200 220 / 0.6));
   cursor: pointer;
   font: inherit;
   font-size: 0.6875rem;
@@ -193,28 +201,28 @@
 
 .oa-ai-command-composer-attachment-action:hover,
 .oa-ai-command-composer-attachment-action:focus-visible {
-  border-color: var(--oa-color-review-link-soft, #8fd0ff);
+  border-color: var(--oa-color-khala-energy-text-strong, #cdeeff);
   color: var(--oa-command-composer-text);
   outline: 0;
 }
 
 .oa-ai-command-composer-rail[data-oa-command-composer-drag-active="true"] {
-  border-color: var(--oa-color-review-link-soft, #8fd0ff);
-  background: rgba(79, 208, 255, 0.08);
+  border-color: var(--oa-color-khala-energy-text-strong, #cdeeff);
+  background: color-mix(in srgb, var(--oa-color-khala-energy-cyan) 8%, transparent);
 }
 
 .oa-ai-command-composer-dropcursor {
   width: 2px;
   min-height: 3rem;
   align-self: stretch;
-  background: var(--oa-color-review-link-soft, #8fd0ff);
-  box-shadow: 0 0 16px rgba(79, 208, 255, 0.55);
+  background: var(--oa-color-khala-energy-text-strong, #cdeeff);
+  box-shadow: 0 0 16px color-mix(in srgb, var(--oa-color-khala-energy-cyan) 55%, transparent);
 }
 
 .oa-ai-command-composer-markdown-preview {
   max-height: 16rem;
   overflow: auto;
-  border-top: 1px solid rgba(122, 162, 255, 0.2);
+  border-top: 1px solid color-mix(in srgb, var(--oa-color-khala-energy-muted) 20%, transparent);
   padding-top: 0.625rem;
 }
 
@@ -244,10 +252,10 @@
   gap: 0.375rem;
   min-width: 2rem;
   min-height: 2rem;
-  border: 1px solid rgba(122, 162, 255, 0.28);
+  border: 1px solid color-mix(in srgb, var(--oa-color-khala-energy-muted) 28%, transparent);
   border-radius: 0;
-  background: rgba(7, 13, 23, 0.78);
-  color: rgba(241, 239, 232, 0.72);
+  background: color-mix(in srgb, var(--oa-color-khala-surface-raised) 78%, transparent);
+  color: color-mix(in srgb, var(--oa-color-component-text) 72%, transparent);
   cursor: pointer;
   font: inherit;
   font-size: 0.75rem;
@@ -258,7 +266,7 @@
 .oa-ai-command-composer-button:hover,
 .oa-ai-command-composer-submit:hover,
 .oa-ai-command-composer-resize-handle:hover {
-  border-color: rgba(79, 208, 255, 0.66);
+  border-color: color-mix(in srgb, var(--oa-color-khala-energy-cyan) 66%, transparent);
   color: var(--oa-command-composer-text);
 }
 
@@ -270,7 +278,7 @@
 }
 
 .oa-ai-command-composer-button[aria-pressed="true"] {
-  border-color: rgba(79, 208, 255, 0.6);
+  border-color: color-mix(in srgb, var(--oa-color-khala-energy-cyan) 60%, transparent);
   background: var(--oa-command-composer-soft);
   color: var(--oa-command-composer-text);
 }
@@ -281,9 +289,9 @@
 
 .oa-ai-command-composer-submit {
   grid-area: submit;
-  border-color: rgba(79, 208, 255, 0.76);
-  background: rgba(79, 208, 255, 0.12);
-  color: var(--oa-color-review-link-soft, #8fd0ff);
+  border-color: color-mix(in srgb, var(--oa-color-khala-energy-cyan) 76%, transparent);
+  background: color-mix(in srgb, var(--oa-color-khala-energy-cyan) 12%, transparent);
+  color: var(--oa-color-khala-energy-text-strong, #cdeeff);
 }
 
 .oa-ai-command-composer-submit-label {
@@ -300,9 +308,7 @@
   justify-self: end;
   gap: 0.375rem;
   color: var(--oa-command-composer-muted);
-  font-family:
-    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
-    monospace;
+  font-family: var(--oa-font-code);
   font-size: 0.6875rem;
   line-height: 1.2;
   text-transform: uppercase;
@@ -313,11 +319,11 @@
 }
 
 .oa-ai-command-composer-status [data-slot="status"] {
-  color: var(--oa-color-review-link, #66aaff);
+  color: var(--oa-color-khala-energy-muted, #7aa2ff);
 }
 
 .oa-ai-command-composer-status [data-status="error"] {
-  color: var(--oa-color-hud-error, #ff4d4d);
+  color: var(--oa-color-khala-danger-strong, #f85149);
 }
 
 .oa-ai-command-composer-resize-handle {

@@ -53,6 +53,22 @@ describe("khala code desktop app shell", () => {
     expect(html).not.toContain("Pylons")
   })
 
+  test("uses the shared blue sci-fi UI tokens and licensed-safe chat fonts", async () => {
+    const css = await Bun.file(new URL("../src/ui/styles.css", import.meta.url)).text()
+
+    expect(css).toContain('@import "@openagentsinc/ui/styles.css";')
+    expect(css).not.toContain("packages/design-tokens/src/theme.css")
+    expect(css).not.toContain("Berkeley Mono")
+    expect(css).not.toContain("@font-face")
+    expect(css).toContain("font-family: var(--oa-font-sans)")
+    expect(css).toContain(".message-prose")
+    expect(css).toContain("font-family: var(--oa-font-code)")
+    expect(css).toContain("var(--oa-color-khala-energy-cyan)")
+    expect(css).toContain("var(--oa-color-khala-surface)")
+    expect(css).not.toMatch(/#[0-9a-fA-F]{3,8}\b|rgba?\(/)
+    expect(css).not.toMatch(/oa-color-(accent|warning|primary|bg|danger|success|info|review|hud)/)
+  })
+
   test("wires the Unified Inbox shell and local-safe projection", async () => {
     const html = await Bun.file(new URL("../src/ui/index.html", import.meta.url)).text()
     const sidebar = await Bun.file(new URL("../src/ui/sidebar.ts", import.meta.url)).text()

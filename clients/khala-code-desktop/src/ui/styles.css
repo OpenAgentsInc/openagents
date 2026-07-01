@@ -1,35 +1,13 @@
 @import "tailwindcss";
-@import "../../../../packages/design-tokens/src/theme.css";
 @source "./";
 @source "../../../../packages/ui/src";
 @import "@openagentsinc/ui/styles.css";
 
 :root {
   color-scheme: dark;
-  background: #000;
-  color: #f1efe8;
-  font-family:
-    "Berkeley Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
-    "Liberation Mono", "Courier New", monospace;
-  --oa-font-code:
-    "Berkeley Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
-    "Liberation Mono", "Courier New", monospace;
-}
-
-@font-face {
-  font-family: "Berkeley Mono";
-  src: url("/fonts/BerkeleyMono-Regular.woff2") format("woff2");
-  font-display: swap;
-  font-style: normal;
-  font-weight: 400;
-}
-
-@font-face {
-  font-family: "Berkeley Mono";
-  src: url("/fonts/BerkeleyMono-Bold.woff2") format("woff2");
-  font-display: swap;
-  font-style: normal;
-  font-weight: 700;
+  background: var(--oa-color-khala-void);
+  color: var(--oa-color-khala-text-primary);
+  font-family: var(--oa-font-sans);
 }
 
 * {
@@ -38,7 +16,7 @@
 
 html {
   min-height: 100%;
-  background: #000;
+  background: var(--oa-color-khala-void);
   -webkit-font-smoothing: antialiased;
   text-rendering: geometricPrecision;
 }
@@ -48,7 +26,7 @@ body {
   min-height: 100dvh;
   margin: 0;
   overflow: hidden;
-  background: #000;
+  background: var(--oa-color-khala-void);
 }
 
 button,
@@ -74,22 +52,22 @@ button {
   overflow: hidden;
   isolation: isolate;
   background:
-    linear-gradient(180deg, rgba(0, 0, 0, 0.16), rgba(0, 0, 0, 0.92)),
+    linear-gradient(180deg, color-mix(in srgb, var(--oa-color-khala-void) 16%, transparent), color-mix(in srgb, var(--oa-color-khala-void) 92%, transparent)),
     repeating-linear-gradient(
       90deg,
-      rgba(79, 208, 255, 0.035) 0,
-      rgba(79, 208, 255, 0.035) 1px,
+      color-mix(in srgb, var(--oa-color-khala-energy-cyan) 3.5%, transparent) 0,
+      color-mix(in srgb, var(--oa-color-khala-energy-cyan) 3.5%, transparent) 1px,
       transparent 1px,
       transparent 72px
     ),
     repeating-linear-gradient(
       0deg,
-      rgba(58, 123, 255, 0.03) 0,
-      rgba(58, 123, 255, 0.03) 1px,
+      color-mix(in srgb, var(--oa-color-khala-energy-blue) 3%, transparent) 0,
+      color-mix(in srgb, var(--oa-color-khala-energy-blue) 3%, transparent) 1px,
       transparent 1px,
       transparent 72px
     ),
-    #000;
+    var(--oa-color-khala-void);
 }
 
 .khala-code-scene {
@@ -100,9 +78,9 @@ button {
   z-index: -1;
   pointer-events: none;
   background:
-    linear-gradient(115deg, transparent 0 34%, rgba(58, 123, 255, 0.1) 34.2%, transparent 34.6% 100%),
-    linear-gradient(245deg, transparent 0 40%, rgba(79, 208, 255, 0.08) 40.2%, transparent 40.55% 100%),
-    linear-gradient(180deg, rgba(6, 14, 26, 0.58), rgba(0, 0, 0, 0.82));
+    linear-gradient(115deg, transparent 0 34%, color-mix(in srgb, var(--oa-color-khala-energy-blue) 10%, transparent) 34.2%, transparent 34.6% 100%),
+    linear-gradient(245deg, transparent 0 40%, color-mix(in srgb, var(--oa-color-khala-energy-cyan) 8%, transparent) 40.2%, transparent 40.55% 100%),
+    linear-gradient(180deg, color-mix(in srgb, var(--oa-color-khala-surface-raised) 58%, transparent), color-mix(in srgb, var(--oa-color-khala-void) 82%, transparent));
 }
 
 .khala-code-scene::after {
@@ -110,8 +88,8 @@ button {
   position: absolute;
   inset: 0;
   background:
-    linear-gradient(180deg, rgba(0, 0, 0, 0.12), rgba(0, 0, 0, 0.88)),
-    linear-gradient(90deg, rgba(0, 0, 0, 0.78), transparent 28% 72%, rgba(0, 0, 0, 0.78));
+    linear-gradient(180deg, color-mix(in srgb, var(--oa-color-khala-void) 12%, transparent), color-mix(in srgb, var(--oa-color-khala-void) 88%, transparent)),
+    linear-gradient(90deg, color-mix(in srgb, var(--oa-color-khala-void) 78%, transparent), transparent 28% 72%, color-mix(in srgb, var(--oa-color-khala-void) 78%, transparent));
 }
 
 .khala-code-thread-shell {
@@ -139,7 +117,7 @@ button {
   padding: 0 14px 32px;
   scroll-padding-bottom: 32px;
   scrollbar-gutter: stable;
-  scrollbar-color: rgba(79, 208, 255, 0.38) transparent;
+  scrollbar-color: color-mix(in srgb, var(--oa-color-khala-energy-cyan) 38%, transparent) transparent;
   -webkit-overflow-scrolling: touch;
 }
 
@@ -155,8 +133,8 @@ button {
   max-width: min(100%, 44rem);
   margin-left: max(4px, calc((100% - 768px) / 2));
   margin-right: auto;
-  color: #f1efe8;
-  text-shadow: 0 0 18px rgba(58, 123, 255, 0.2);
+  color: var(--oa-color-khala-text-primary);
+  text-shadow: 0 0 18px color-mix(in srgb, var(--oa-color-khala-energy-blue) 20%, transparent);
 }
 
 .message-bubble--user {
@@ -170,7 +148,7 @@ button {
 
 .message-bubble--tool {
   max-width: min(100%, 40rem);
-  color: #b7c8dc;
+  color: var(--oa-color-khala-text-muted);
 }
 
 .message-bubble--thinking {
@@ -194,7 +172,7 @@ button {
 
 .message-prose {
   margin: 0;
-  color: #f1efe8;
+  color: var(--oa-color-khala-text-primary);
   font-size: 0.8125rem;
   line-height: 1.55;
   overflow-wrap: anywhere;
@@ -213,7 +191,7 @@ button {
 }
 
 .message-markdown .md-heading {
-  color: #f1efe8;
+  color: var(--oa-color-khala-text-primary);
   font-weight: 700;
   line-height: 1.3;
 }
@@ -227,7 +205,7 @@ button {
 }
 
 .message-markdown .md-heading--3 {
-  color: #d9e7ff;
+  color: var(--oa-color-khala-text-body);
   font-size: 0.875rem;
 }
 
@@ -242,43 +220,43 @@ button {
 }
 
 .message-markdown .md-list-item::marker {
-  color: rgba(143, 182, 255, 0.66);
+  color: color-mix(in srgb, var(--oa-color-khala-energy-soft) 66%, transparent);
 }
 
 .message-markdown .md-strong {
-  color: #fff;
+  color: var(--oa-color-khala-text-bright);
   font-weight: 700;
 }
 
 .message-markdown .md-emphasis {
-  color: #d9e7ff;
+  color: var(--oa-color-khala-text-body);
   font-style: italic;
 }
 
 .message-markdown .md-inline-code {
-  border: 1px solid #1d2a44;
-  background: #05080e;
+  border: 1px solid var(--oa-color-khala-border);
+  background: var(--oa-color-khala-surface);
   padding: 0 0.28rem;
-  color: #d7e2f0;
+  color: var(--oa-color-khala-code-plain);
   font-family: var(--oa-font-code);
   font-size: 0.75rem;
 }
 
 .message-markdown .md-link {
-  color: #7aa2ff;
+  color: var(--oa-color-khala-energy-muted);
   text-decoration: underline;
-  text-decoration-color: rgba(58, 123, 255, 0.56);
+  text-decoration-color: color-mix(in srgb, var(--oa-color-khala-energy-blue) 56%, transparent);
   text-underline-offset: 3px;
 }
 
 .message-markdown .md-link:hover {
-  color: #a8c2ff;
+  color: var(--oa-color-khala-link-hover);
 }
 
 .message-markdown .md-blockquote {
-  border-left: 1px solid rgba(58, 123, 255, 0.48);
+  border-left: 1px solid color-mix(in srgb, var(--oa-color-khala-energy-blue) 48%, transparent);
   padding-left: 10px;
-  color: #c7d6e8;
+  color: var(--oa-color-khala-text-quote);
   font-style: italic;
 }
 
@@ -287,7 +265,7 @@ button {
   height: 1px;
   margin: 2px 0;
   border: 0;
-  background: #1d2a44;
+  background: var(--oa-color-khala-border);
 }
 
 .message-bubble--user .message-prose {
@@ -295,17 +273,17 @@ button {
 }
 
 .message-bubble--tool .message-prose {
-  color: #b7c8dc;
+  color: var(--oa-color-khala-text-muted);
 }
 
 .tool-card {
   width: 100%;
   max-width: 100%;
   overflow: hidden;
-  border: 1px solid rgba(110, 231, 183, 0.28);
+  border: 1px solid color-mix(in srgb, var(--oa-color-khala-success-accent) 28%, transparent);
   border-radius: 6px;
-  background: rgba(3, 11, 16, 0.9);
-  box-shadow: 0 0 22px -12px rgba(110, 231, 183, 0.55);
+  background: color-mix(in srgb, var(--oa-color-khala-surface) 90%, transparent);
+  box-shadow: 0 0 22px -12px color-mix(in srgb, var(--oa-color-khala-success-accent) 55%, transparent);
 }
 
 .tool-card-header {
@@ -315,14 +293,14 @@ button {
   gap: 12px;
   min-height: 30px;
   padding: 6px 10px;
-  border-bottom: 1px solid rgba(110, 231, 183, 0.16);
-  background: rgba(5, 20, 27, 0.94);
+  border-bottom: 1px solid color-mix(in srgb, var(--oa-color-khala-success-accent) 16%, transparent);
+  background: color-mix(in srgb, var(--oa-color-khala-surface-raised) 94%, transparent);
 }
 
 .tool-card-name {
   min-width: 0;
   overflow: hidden;
-  color: #d9fff1;
+  color: var(--oa-color-khala-success-text);
   font-size: 0.73rem;
   font-weight: 700;
   text-overflow: ellipsis;
@@ -331,66 +309,66 @@ button {
 
 .tool-card-status {
   flex: none;
-  color: #6ee7b7;
+  color: var(--oa-color-khala-success-accent);
   font-size: 0.62rem;
   letter-spacing: 0.1em;
   text-transform: uppercase;
 }
 
 .tool-card[data-status="failed"] {
-  border-color: rgba(248, 113, 113, 0.36);
-  box-shadow: 0 0 22px -12px rgba(248, 113, 113, 0.6);
+  border-color: color-mix(in srgb, var(--oa-color-khala-danger) 36%, transparent);
+  box-shadow: 0 0 22px -12px color-mix(in srgb, var(--oa-color-khala-danger) 60%, transparent);
 }
 
 .tool-card[data-status="failed"] .tool-card-header {
-  border-bottom-color: rgba(248, 113, 113, 0.18);
-  background: rgba(31, 8, 13, 0.9);
+  border-bottom-color: color-mix(in srgb, var(--oa-color-khala-danger) 18%, transparent);
+  background: color-mix(in srgb, var(--oa-color-khala-surface-danger) 90%, transparent);
 }
 
 .tool-card[data-status="failed"] .tool-card-status {
-  color: #fca5a5;
+  color: var(--oa-color-khala-danger-text);
 }
 
 .tool-card[data-status="denied"],
 .tool-card[data-status="unavailable"] {
-  border-color: rgba(251, 191, 36, 0.38);
-  box-shadow: 0 0 22px -12px rgba(251, 191, 36, 0.58);
+  border-color: color-mix(in srgb, var(--oa-color-khala-warning) 38%, transparent);
+  box-shadow: 0 0 22px -12px color-mix(in srgb, var(--oa-color-khala-warning) 58%, transparent);
 }
 
 .tool-card[data-status="denied"] .tool-card-header,
 .tool-card[data-status="unavailable"] .tool-card-header {
-  border-bottom-color: rgba(251, 191, 36, 0.2);
-  background: rgba(34, 22, 5, 0.9);
+  border-bottom-color: color-mix(in srgb, var(--oa-color-khala-warning) 20%, transparent);
+  background: color-mix(in srgb, var(--oa-color-khala-surface-warning) 90%, transparent);
 }
 
 .tool-card[data-status="denied"] .tool-card-status,
 .tool-card[data-status="unavailable"] .tool-card-status {
-  color: #fcd34d;
+  color: var(--oa-color-khala-warning-strong);
 }
 
 .tool-card[data-status="running"] .tool-card-status {
-  color: #93c5fd;
+  color: var(--oa-color-khala-energy-line);
 }
 
 .codex-item-card {
-  border-color: rgba(147, 197, 253, 0.34);
-  box-shadow: 0 0 22px -12px rgba(147, 197, 253, 0.58);
+  border-color: color-mix(in srgb, var(--oa-color-khala-energy-line) 34%, transparent);
+  box-shadow: 0 0 22px -12px color-mix(in srgb, var(--oa-color-khala-energy-line) 58%, transparent);
 }
 
 .codex-item-card[data-status="completed"] {
-  border-color: rgba(110, 231, 183, 0.3);
+  border-color: color-mix(in srgb, var(--oa-color-khala-success-accent) 30%, transparent);
 }
 
 .codex-item-card[data-status="interrupted"],
 .codex-item-card[data-status="pending"] {
-  border-color: rgba(251, 191, 36, 0.38);
-  box-shadow: 0 0 22px -12px rgba(251, 191, 36, 0.58);
+  border-color: color-mix(in srgb, var(--oa-color-khala-warning) 38%, transparent);
+  box-shadow: 0 0 22px -12px color-mix(in srgb, var(--oa-color-khala-warning) 58%, transparent);
 }
 
 .codex-item-card[data-status="failed"],
 .codex-item-card[data-status="errored"] {
-  border-color: rgba(248, 113, 113, 0.38);
-  box-shadow: 0 0 22px -12px rgba(248, 113, 113, 0.62);
+  border-color: color-mix(in srgb, var(--oa-color-khala-danger) 38%, transparent);
+  box-shadow: 0 0 22px -12px color-mix(in srgb, var(--oa-color-khala-danger) 62%, transparent);
 }
 
 .codex-item-card-header {
@@ -401,7 +379,7 @@ button {
 .codex-item-card-meta {
   min-width: 0;
   overflow: hidden;
-  color: #8aa8c8;
+  color: var(--oa-color-khala-code-meta);
   font-size: 0.64rem;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -409,10 +387,10 @@ button {
 
 .codex-item-card-copy {
   flex: none;
-  border: 1px solid rgba(147, 197, 253, 0.24);
+  border: 1px solid color-mix(in srgb, var(--oa-color-khala-energy-line) 24%, transparent);
   border-radius: 4px;
-  background: rgba(11, 24, 37, 0.92);
-  color: #d7e8ff;
+  background: color-mix(in srgb, var(--oa-color-khala-surface-muted) 92%, transparent);
+  color: var(--oa-color-khala-energy-button-text-soft);
   cursor: pointer;
   font: inherit;
   font-size: 0.64rem;
@@ -421,8 +399,8 @@ button {
 }
 
 .codex-item-card-copy:hover {
-  border-color: rgba(147, 197, 253, 0.5);
-  background: rgba(21, 40, 61, 0.96);
+  border-color: color-mix(in srgb, var(--oa-color-khala-energy-line) 50%, transparent);
+  background: color-mix(in srgb, var(--oa-color-khala-surface-active) 96%, transparent);
 }
 
 .codex-item-card-body {
@@ -446,10 +424,10 @@ button {
 
 .codex-approval-button {
   min-height: 28px;
-  border: 1px solid rgba(251, 191, 36, 0.36);
+  border: 1px solid color-mix(in srgb, var(--oa-color-khala-warning) 36%, transparent);
   border-radius: 2px;
-  background: rgba(36, 28, 10, 0.88);
-  color: #ffe6a8;
+  background: color-mix(in srgb, var(--oa-color-khala-surface-warning) 88%, transparent);
+  color: var(--oa-color-khala-warning-text);
   cursor: pointer;
   font: inherit;
   font-size: 0.72rem;
@@ -459,9 +437,9 @@ button {
 
 .codex-approval-button:hover,
 .codex-approval-button:focus-visible {
-  border-color: rgba(251, 191, 36, 0.72);
-  background: rgba(66, 48, 14, 0.94);
-  outline: 1px solid rgba(251, 191, 36, 0.42);
+  border-color: color-mix(in srgb, var(--oa-color-khala-warning) 72%, transparent);
+  background: color-mix(in srgb, var(--oa-color-khala-surface-warning) 94%, transparent);
+  outline: 1px solid color-mix(in srgb, var(--oa-color-khala-warning) 42%, transparent);
 }
 
 .codex-approval-button:disabled {
@@ -475,7 +453,7 @@ button {
   overflow-y: auto;
   overflow-x: hidden;
   padding: 9px 10px 10px;
-  color: #c6d5e6;
+  color: var(--oa-color-khala-text-soft);
   font-family: var(--oa-font-code);
   font-size: 0.75rem;
   line-height: 1.55;
@@ -499,11 +477,11 @@ button {
   max-width: 768px;
   margin: 0 auto;
   --oa-command-composer-height: 6rem;
-  --oa-command-composer-border: rgba(58, 123, 255, 0.45);
-  --oa-command-composer-focus: rgba(79, 208, 255, 0.98);
-  --oa-command-composer-bg: rgba(0, 0, 0, 0.62);
-  --oa-command-composer-text: #f1efe8;
-  --oa-command-composer-muted: rgba(169, 195, 255, 0.7);
+  --oa-command-composer-border: color-mix(in srgb, var(--oa-color-khala-energy-blue) 45%, transparent);
+  --oa-command-composer-focus: color-mix(in srgb, var(--oa-color-khala-energy-cyan) 98%, transparent);
+  --oa-command-composer-bg: color-mix(in srgb, var(--oa-color-khala-void) 62%, transparent);
+  --oa-command-composer-text: var(--oa-color-khala-text-primary);
+  --oa-command-composer-muted: color-mix(in srgb, var(--oa-color-khala-energy-soft) 70%, transparent);
 }
 
 .khala-code-composer .oa-ai-command-composer-frame {
@@ -513,22 +491,22 @@ button {
   border-color: var(--oa-command-composer-border);
   border-radius: 2px;
   background:
-    linear-gradient(180deg, rgba(79, 208, 255, 0.035), transparent 38%),
+    linear-gradient(180deg, color-mix(in srgb, var(--oa-color-khala-energy-cyan) 3.5%, transparent), transparent 38%),
     var(--oa-command-composer-bg);
   box-shadow:
-    0 0 0 1px rgba(79, 208, 255, 0.08) inset,
-    0 0 24px -6px rgba(58, 123, 255, 0.45),
-    0 22px 70px rgba(0, 0, 0, 0.44);
+    0 0 0 1px color-mix(in srgb, var(--oa-color-khala-energy-cyan) 8%, transparent) inset,
+    0 0 24px -6px color-mix(in srgb, var(--oa-color-khala-energy-blue) 45%, transparent),
+    0 22px 70px color-mix(in srgb, var(--oa-color-khala-void) 44%, transparent);
   padding: 8px 10px;
   backdrop-filter: blur(16px);
 }
 
 .khala-code-composer:focus-within .oa-ai-command-composer-frame {
-  border-color: rgba(79, 208, 255, 0.98);
+  border-color: color-mix(in srgb, var(--oa-color-khala-energy-cyan) 98%, transparent);
   box-shadow:
-    0 0 0 1px rgba(79, 208, 255, 0.88) inset,
-    0 0 18px -6px rgba(79, 208, 255, 0.95),
-    0 22px 70px rgba(0, 0, 0, 0.44);
+    0 0 0 1px color-mix(in srgb, var(--oa-color-khala-energy-cyan) 88%, transparent) inset,
+    0 0 18px -6px color-mix(in srgb, var(--oa-color-khala-energy-cyan) 95%, transparent),
+    0 22px 70px color-mix(in srgb, var(--oa-color-khala-void) 44%, transparent);
 }
 
 .khala-code-composer-hud {
@@ -550,15 +528,15 @@ button {
   border: 0;
   background: transparent;
   padding: 0;
-  color: #f1efe8;
-  caret-color: #4fd0ff;
+  color: var(--oa-color-khala-text-primary);
+  caret-color: var(--oa-color-khala-energy-cyan);
   font-size: 0.8125rem;
   line-height: 1.55;
   outline: none;
 }
 
 #composer-input::placeholder {
-  color: rgba(169, 195, 255, 0.7);
+  color: color-mix(in srgb, var(--oa-color-khala-energy-soft) 70%, transparent);
 }
 
 .khala-code-slash-command-palette {
@@ -578,8 +556,8 @@ button {
   min-height: 34px;
   border: 0;
   border-radius: 2px;
-  background: rgba(14, 30, 53, 0.72);
-  color: #e8f3ff;
+  background: color-mix(in srgb, var(--oa-color-khala-surface-active) 72%, transparent);
+  color: var(--oa-color-khala-energy-option-text);
   cursor: pointer;
   padding: 5px 8px;
   text-align: left;
@@ -587,8 +565,8 @@ button {
 
 .khala-code-slash-command-option:hover,
 .khala-code-slash-command-option:focus-visible {
-  background: rgba(24, 55, 93, 0.92);
-  outline: 1px solid rgba(79, 208, 255, 0.68);
+  background: color-mix(in srgb, var(--oa-color-khala-graph-line) 92%, transparent);
+  outline: 1px solid color-mix(in srgb, var(--oa-color-khala-energy-cyan) 68%, transparent);
 }
 
 .khala-code-slash-command-option:disabled {
@@ -597,7 +575,7 @@ button {
 }
 
 .khala-code-slash-command-name {
-  color: #8fd4ff;
+  color: var(--oa-color-khala-energy-cyan-soft);
   font-family: var(--oa-font-code);
   font-size: 0.78rem;
   overflow: hidden;
@@ -606,7 +584,7 @@ button {
 }
 
 .khala-code-slash-command-description {
-  color: rgba(219, 231, 247, 0.76);
+  color: color-mix(in srgb, var(--oa-color-khala-text-body) 76%, transparent);
   font-size: 0.75rem;
   line-height: 1.35;
   overflow: hidden;
@@ -617,10 +595,10 @@ button {
 #send-button {
   width: 32px;
   height: 32px;
-  border: 1px solid rgba(79, 208, 255, 0.65);
+  border: 1px solid color-mix(in srgb, var(--oa-color-khala-energy-cyan) 65%, transparent);
   border-radius: 2px;
-  background: rgba(6, 16, 29, 0.95);
-  color: #cfe8ff;
+  background: color-mix(in srgb, var(--oa-color-khala-surface-raised) 95%, transparent);
+  color: var(--oa-color-khala-energy-button-text);
   cursor: pointer;
   font-size: 1rem;
   line-height: 1;
@@ -628,21 +606,21 @@ button {
 
 #send-button:hover,
 #send-button:focus-visible {
-  border-color: rgba(143, 182, 255, 0.92);
-  background: #0a1b31;
-  color: #fff;
+  border-color: color-mix(in srgb, var(--oa-color-khala-energy-soft) 92%, transparent);
+  background: var(--oa-color-khala-surface-active);
+  color: var(--oa-color-khala-text-bright);
 }
 
 #send-button:focus-visible {
-  outline: 2px solid rgba(79, 208, 255, 0.82);
+  outline: 2px solid color-mix(in srgb, var(--oa-color-khala-energy-cyan) 82%, transparent);
   outline-offset: 0;
 }
 
 #send-button:disabled {
   cursor: not-allowed;
-  border-color: rgba(58, 123, 255, 0.2);
-  background: rgba(0, 0, 0, 0.42);
-  color: #4e668f;
+  border-color: color-mix(in srgb, var(--oa-color-khala-energy-blue) 20%, transparent);
+  background: color-mix(in srgb, var(--oa-color-khala-void) 42%, transparent);
+  color: var(--oa-color-khala-text-disabled);
 }
 
 .khala-code-composer .oa-ai-command-composer-rail[hidden],
@@ -691,12 +669,12 @@ button {
   width: 100%;
   max-width: 100%;
   overflow: hidden;
-  border: 1px solid #1d2a44;
+  border: 1px solid var(--oa-color-khala-border);
   border-radius: 8px;
-  background: #05080e;
-  color: #d7e2f0;
+  background: var(--oa-color-khala-surface);
+  color: var(--oa-color-khala-code-plain);
   font-family: var(--oa-font-code);
-  box-shadow: 0 0 28px -10px rgba(58, 123, 255, 0.5);
+  box-shadow: 0 0 28px -10px color-mix(in srgb, var(--oa-color-khala-energy-blue) 50%, transparent);
 }
 
 .cb-header {
@@ -705,14 +683,14 @@ button {
   justify-content: space-between;
   gap: 10px;
   padding: 6px 11px;
-  border-bottom: 1px solid #16233b;
-  background: #0a111d;
+  border-bottom: 1px solid var(--oa-color-khala-border-muted);
+  background: var(--oa-color-khala-surface-raised);
 }
 
 .cb-file {
   min-width: 0;
   overflow: hidden;
-  color: #aecbff;
+  color: var(--oa-color-khala-code-property);
   font-size: 0.72rem;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -720,7 +698,7 @@ button {
 
 .cb-lang {
   flex: none;
-  color: #7aa2ff;
+  color: var(--oa-color-khala-energy-muted);
   font-size: 0.62rem;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -750,48 +728,48 @@ button {
 }
 
 .cb-tok--plain {
-  color: #d7e2f0;
+  color: var(--oa-color-khala-code-plain);
 }
 
 .cb-tok--comment {
-  color: #6b7a90;
+  color: var(--oa-color-khala-code-comment);
   font-style: italic;
 }
 
 .cb-tok--keyword {
-  color: #7aa2ff;
+  color: var(--oa-color-khala-energy-muted);
 }
 
 .cb-tok--string {
-  color: #9ed1ff;
+  color: var(--oa-color-khala-code-string);
 }
 
 .cb-tok--number {
-  color: #4fd0ff;
+  color: var(--oa-color-khala-energy-cyan);
 }
 
 .cb-tok--constant {
-  color: #8fb6ff;
+  color: var(--oa-color-khala-energy-soft);
 }
 
 .cb-tok--function {
-  color: #cfe3ff;
+  color: var(--oa-color-khala-code-function);
 }
 
 .cb-tok--type {
-  color: #67d4ff;
+  color: var(--oa-color-khala-code-type);
 }
 
 .cb-tok--property {
-  color: #aecbff;
+  color: var(--oa-color-khala-code-property);
 }
 
 .cb-tok--operator {
-  color: #9fb2c9;
+  color: var(--oa-color-khala-code-operator);
 }
 
 .cb-tok--punctuation {
-  color: #7e8a98;
+  color: var(--oa-color-khala-code-punctuation);
 }
 
 .cb-diff-stats {
@@ -804,18 +782,18 @@ button {
 }
 
 .cb-stat-add {
-  color: #3fb950;
+  color: var(--oa-color-khala-success-strong);
 }
 
 .cb-stat-rem {
-  color: #f85149;
+  color: var(--oa-color-khala-danger-strong);
 }
 
 .cb-diff-hunk {
   display: block;
   padding: 1px 11px;
-  background: #0b1626;
-  color: #5f86c2;
+  background: var(--oa-color-khala-surface-muted);
+  color: var(--oa-color-khala-graph-text);
   font-size: 0.72rem;
   white-space: pre;
 }
@@ -827,31 +805,31 @@ button {
 }
 
 .cb-diff-line[data-kind="add"] {
-  border-left-color: #2ea043;
-  background: #0f3320;
+  border-left-color: var(--oa-color-khala-success-border);
+  background: var(--oa-color-khala-surface-success);
 }
 
 .cb-diff-line[data-kind="remove"] {
-  border-left-color: #e5484d;
-  background: #3a161a;
+  border-left-color: var(--oa-color-khala-danger-border);
+  background: var(--oa-color-khala-surface-danger);
 }
 
 .cb-diff-gutter {
   flex: none;
   width: 34px;
   padding: 0 6px;
-  color: #34507f;
+  color: var(--oa-color-khala-graph-line);
   font-variant-numeric: tabular-nums;
   text-align: right;
   user-select: none;
 }
 
 .cb-diff-gutter--add {
-  color: #56d364;
+  color: var(--oa-color-khala-success-strong);
 }
 
 .cb-diff-gutter--remove {
-  color: #f0727a;
+  color: var(--oa-color-khala-danger-accent);
 }
 
 .cb-diff-sign {
@@ -863,11 +841,11 @@ button {
 }
 
 .cb-diff-line[data-kind="add"] .cb-diff-sign {
-  color: #56d364;
+  color: var(--oa-color-khala-success-strong);
 }
 
 .cb-diff-line[data-kind="remove"] .cb-diff-sign {
-  color: #f0727a;
+  color: var(--oa-color-khala-danger-accent);
 }
 
 .cb-diff-code {
@@ -898,33 +876,33 @@ button {
    our central dark --oa-* tokens, so every Basecoat component is styled like
    the rest of the app (no per-component hacks). */
 @theme {
-  --color-background: var(--oa-color-bg);
-  --color-foreground: var(--oa-color-component-text);
-  --color-card: var(--oa-color-component-surface);
-  --color-card-foreground: var(--oa-color-component-text);
-  --color-popover: var(--oa-color-component-surface);
-  --color-popover-foreground: var(--oa-color-component-text);
-  --color-primary: var(--oa-color-primary);
-  --color-primary-foreground: var(--oa-color-bg);
-  --color-secondary: var(--oa-color-component-surface-active);
-  --color-secondary-foreground: var(--oa-color-component-text);
-  --color-muted: var(--oa-color-component-surface);
-  --color-muted-foreground: color-mix(in srgb, var(--oa-color-component-text) 55%, transparent);
-  --color-accent: var(--oa-color-component-surface-active);
-  --color-accent-foreground: var(--oa-color-component-text);
-  --color-destructive: var(--oa-color-danger);
-  --color-destructive-foreground: var(--oa-color-component-text);
-  --color-border: var(--oa-color-component-border);
-  --color-input: var(--oa-color-component-input-bg);
-  --color-ring: var(--oa-color-accent);
-  --color-sidebar: var(--oa-color-component-surface);
-  --color-sidebar-foreground: var(--oa-color-component-text);
-  --color-sidebar-accent: var(--oa-color-component-surface-active);
-  --color-sidebar-accent-foreground: var(--oa-color-component-text);
-  --color-sidebar-border: var(--oa-color-component-border);
-  --color-sidebar-primary: var(--oa-color-accent);
-  --color-sidebar-primary-foreground: var(--oa-color-bg);
-  --color-sidebar-ring: var(--oa-color-accent);
+  --color-background: var(--oa-color-khala-void);
+  --color-foreground: var(--oa-color-khala-text-primary);
+  --color-card: var(--oa-color-khala-surface);
+  --color-card-foreground: var(--oa-color-khala-text-primary);
+  --color-popover: var(--oa-color-khala-surface);
+  --color-popover-foreground: var(--oa-color-khala-text-primary);
+  --color-primary: var(--oa-color-khala-energy-cyan);
+  --color-primary-foreground: var(--oa-color-khala-void);
+  --color-secondary: var(--oa-color-khala-surface-active);
+  --color-secondary-foreground: var(--oa-color-khala-text-primary);
+  --color-muted: var(--oa-color-khala-surface);
+  --color-muted-foreground: color-mix(in srgb, var(--oa-color-khala-text-muted) 55%, transparent);
+  --color-accent: var(--oa-color-khala-surface-active);
+  --color-accent-foreground: var(--oa-color-khala-energy-text-strong);
+  --color-destructive: var(--oa-color-khala-danger-strong);
+  --color-destructive-foreground: var(--oa-color-khala-text-bright);
+  --color-border: var(--oa-color-khala-border);
+  --color-input: var(--oa-color-khala-surface);
+  --color-ring: var(--oa-color-khala-energy-cyan);
+  --color-sidebar: var(--oa-color-khala-surface);
+  --color-sidebar-foreground: var(--oa-color-khala-text-primary);
+  --color-sidebar-accent: var(--oa-color-khala-surface-active);
+  --color-sidebar-accent-foreground: var(--oa-color-khala-energy-text-strong);
+  --color-sidebar-border: var(--oa-color-khala-border);
+  --color-sidebar-primary: var(--oa-color-khala-energy-cyan);
+  --color-sidebar-primary-foreground: var(--oa-color-khala-void);
+  --color-sidebar-ring: var(--oa-color-khala-energy-cyan);
 }
 
 /* Khala Code sidebar: Basecoat's fixed-nav layout + our dark theme.
@@ -993,8 +971,8 @@ button {
 .khala-code-sidebar [data-slot="sidebar-menu"] [aria-current="page"],
 .khala-code-sidebar [data-slot="sidebar-menu"] [data-active="true"] {
   background: var(--oa-color-component-surface-active);
-  color: var(--oa-color-accent);
-  box-shadow: inset 2px 0 0 var(--oa-color-accent);
+  color: var(--oa-color-khala-energy-cyan);
+  box-shadow: inset 2px 0 0 var(--oa-color-khala-energy-cyan);
 }
 
 .khala-code-thread-sidebar {
@@ -1007,7 +985,7 @@ button {
   overflow-y: auto;
   padding: 0.85rem 0.7rem;
   border-right: 1px solid var(--oa-color-component-border);
-  background: color-mix(in srgb, var(--oa-color-component-surface) 92%, #000);
+  background: color-mix(in srgb, var(--oa-color-component-surface) 92%, var(--oa-color-khala-void));
   color: var(--oa-color-component-text);
 }
 .khala-thread-sidebar-header {
@@ -1058,7 +1036,7 @@ button {
   min-width: 0;
   border: 1px solid var(--oa-color-component-border);
   border-radius: 0.42rem;
-  background: rgba(0, 0, 0, 0.22);
+  background: color-mix(in srgb, var(--oa-color-khala-void) 22%, transparent);
   color: var(--oa-color-component-text);
   font: inherit;
   font-size: 0.76rem;
@@ -1078,7 +1056,7 @@ button {
   line-height: 1.45;
 }
 .khala-thread-sidebar-error {
-  color: #fca5a5;
+  color: var(--oa-color-khala-danger-text);
 }
 .khala-thread-sidebar-group {
   display: grid;
@@ -1108,14 +1086,14 @@ button {
   padding: 0.55rem;
   border: 1px solid var(--oa-color-component-border);
   border-radius: 0.45rem;
-  background: rgba(0, 0, 0, 0.16);
+  background: color-mix(in srgb, var(--oa-color-khala-void) 16%, transparent);
   color: var(--oa-color-component-text);
   text-align: left;
   cursor: pointer;
 }
 .khala-thread-sidebar-item:hover,
 .khala-thread-sidebar-item[data-active="true"] {
-  border-color: color-mix(in srgb, var(--oa-color-accent) 58%, var(--oa-color-component-border));
+  border-color: color-mix(in srgb, var(--oa-color-khala-energy-cyan) 58%, var(--oa-color-component-border));
   background: var(--oa-color-component-surface-active);
 }
 .khala-thread-sidebar-item-main,
@@ -1153,9 +1131,9 @@ button {
   flex-wrap: wrap;
 }
 .khala-thread-sidebar-badge {
-  border: 1px solid color-mix(in srgb, var(--oa-color-accent) 35%, transparent);
+  border: 1px solid color-mix(in srgb, var(--oa-color-khala-energy-cyan) 35%, transparent);
   border-radius: 999px;
-  color: #93c5fd;
+  color: var(--oa-color-khala-energy-line);
   font-size: 0.58rem;
   line-height: 1;
   padding: 0.16rem 0.34rem;
@@ -1221,7 +1199,7 @@ button {
 }
 .khala-inbox-refresh:hover,
 .khala-inbox-action:hover {
-  border-color: rgba(79, 208, 255, 0.4);
+  border-color: color-mix(in srgb, var(--oa-color-khala-energy-cyan) 40%, transparent);
   background: var(--oa-color-component-surface-active);
 }
 .khala-inbox-refresh:disabled,
@@ -1244,14 +1222,14 @@ button {
   justify-content: space-between;
   gap: 1rem;
   padding: 0.75rem 0.85rem;
-  border: 1px solid rgba(79, 208, 255, 0.22);
+  border: 1px solid color-mix(in srgb, var(--oa-color-khala-energy-cyan) 22%, transparent);
   border-radius: 0.55rem;
-  background: rgba(79, 208, 255, 0.05);
+  background: color-mix(in srgb, var(--oa-color-khala-energy-cyan) 5%, transparent);
   color: color-mix(in srgb, var(--oa-color-component-text) 76%, transparent);
   font-size: 0.78rem;
 }
 .khala-inbox-count {
-  color: #cdeeff;
+  color: var(--oa-color-khala-energy-text-strong);
   font-size: 1.05rem;
   font-weight: 700;
 }
@@ -1290,16 +1268,16 @@ button {
   background: var(--oa-color-component-surface);
 }
 .khala-inbox-item[data-severity="critical"] {
-  border-color: rgba(248, 113, 113, 0.34);
+  border-color: color-mix(in srgb, var(--oa-color-khala-danger) 34%, transparent);
 }
 .khala-inbox-item[data-severity="warning"] {
-  border-color: rgba(251, 191, 36, 0.34);
+  border-color: color-mix(in srgb, var(--oa-color-khala-warning) 34%, transparent);
 }
 .khala-inbox-marker {
   margin-top: 0.05rem;
-  color: #9be0ff;
-  border-color: rgba(79, 208, 255, 0.28);
-  background: rgba(79, 208, 255, 0.08);
+  color: var(--oa-color-khala-energy-text);
+  border-color: color-mix(in srgb, var(--oa-color-khala-energy-cyan) 28%, transparent);
+  background: color-mix(in srgb, var(--oa-color-khala-energy-cyan) 8%, transparent);
 }
 .khala-inbox-item-body {
   min-width: 0;
@@ -1324,7 +1302,7 @@ button {
   color: color-mix(in srgb, var(--oa-color-component-text) 66%, transparent);
 }
 .khala-inbox-error {
-  color: var(--oa-color-danger);
+  color: var(--oa-color-khala-danger-strong);
 }
 .khala-inbox-meta span {
   padding: 0.18rem 0.45rem;
@@ -1337,9 +1315,9 @@ button {
   overflow-wrap: anywhere;
   padding: 0.22rem 0.45rem;
   border-radius: 0.3rem;
-  border: 1px solid #1d2a44;
-  background: #05080e;
-  color: #d7e2f0;
+  border: 1px solid var(--oa-color-khala-border);
+  background: var(--oa-color-khala-surface);
+  color: var(--oa-color-khala-code-plain);
   font-size: 0.72rem;
 }
 .khala-inbox-section-title {
@@ -1361,7 +1339,7 @@ button {
   padding: 0.55rem 0.65rem;
   border: 1px solid var(--oa-color-component-border);
   border-radius: 0.45rem;
-  background: rgba(255, 255, 255, 0.02);
+  background: color-mix(in srgb, var(--oa-color-khala-text-primary) 2%, transparent);
   font-size: 0.74rem;
 }
 .khala-inbox-coverage-row strong {
@@ -1373,7 +1351,7 @@ button {
   line-height: 1.45;
 }
 .khala-inbox-coverage-row[data-status="not_connected"] strong {
-  color: #fbbf24;
+  color: var(--oa-color-khala-warning);
 }
 @media (max-width: 860px) {
   .khala-inbox-summary,
@@ -1468,7 +1446,7 @@ button {
 .khala-fleet-error {
   margin: 0;
   font-size: 0.82rem;
-  color: var(--oa-color-danger);
+  color: var(--oa-color-khala-danger-strong);
 }
 .khala-fleet-account-list,
 .khala-fleet-assignment-list {
@@ -1505,7 +1483,7 @@ button {
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--oa-color-accent);
+  color: var(--oa-color-khala-energy-cyan);
 }
 .khala-fleet-pylon-message {
   font-size: 0.72rem;
@@ -1552,17 +1530,17 @@ button {
 }
 .khala-fleet-badge[data-state="ready"],
 .khala-fleet-badge[data-state="online"] {
-  color: #4ade80;
-  border-color: rgba(74, 222, 128, 0.3);
+  color: var(--oa-color-khala-success);
+  border-color: color-mix(in srgb, var(--oa-color-khala-success) 30%, transparent);
 }
 .khala-fleet-badge[data-state="missing"],
 .khala-fleet-badge[data-state="stale"] {
-  color: #f87171;
-  border-color: rgba(248, 113, 113, 0.3);
+  color: var(--oa-color-khala-danger);
+  border-color: color-mix(in srgb, var(--oa-color-khala-danger) 30%, transparent);
 }
 .khala-fleet-badge[data-state="degraded"] {
-  color: #fbbf24;
-  border-color: rgba(251, 191, 36, 0.3);
+  color: var(--oa-color-khala-warning);
+  border-color: color-mix(in srgb, var(--oa-color-khala-warning) 30%, transparent);
 }
 .khala-fleet-chips {
   display: flex;
@@ -1599,7 +1577,7 @@ button {
   border: 1px solid var(--oa-color-component-border);
   border-radius: 0.55rem;
   background:
-    linear-gradient(180deg, rgba(79, 208, 255, 0.035), transparent 44%),
+    linear-gradient(180deg, color-mix(in srgb, var(--oa-color-khala-energy-cyan) 3.5%, transparent), transparent 44%),
     var(--oa-color-component-surface);
 }
 .khala-fleet-board-heading {
@@ -1612,16 +1590,16 @@ button {
 .khala-fleet-board-summary {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  border: 1px solid rgba(147, 164, 189, 0.16);
+  border: 1px solid color-mix(in srgb, var(--oa-color-khala-neutral-line) 16%, transparent);
   border-radius: 0.45rem;
-  background: rgba(0, 0, 0, 0.16);
+  background: color-mix(in srgb, var(--oa-color-khala-void) 16%, transparent);
 }
 .khala-fleet-board-stat {
   display: grid;
   gap: 0.18rem;
   min-width: 0;
   padding: 0.55rem 0.7rem;
-  border-left: 1px solid rgba(147, 164, 189, 0.16);
+  border-left: 1px solid color-mix(in srgb, var(--oa-color-khala-neutral-line) 16%, transparent);
 }
 .khala-fleet-board-stat:first-child {
   border-left: 0;
@@ -1635,7 +1613,7 @@ button {
 }
 .khala-fleet-board-stat strong {
   overflow: hidden;
-  color: #e7f4ff;
+  color: var(--oa-color-khala-text-strong);
   font-size: 0.88rem;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
@@ -1669,25 +1647,25 @@ button {
   box-shadow: 0 0 7px currentColor;
 }
 .khala-fleet-timeline-event[data-status="complete"] {
-  color: #4ade80;
+  color: var(--oa-color-khala-success);
 }
 .khala-fleet-timeline-event[data-status="active"] {
-  color: #4fd0ff;
+  color: var(--oa-color-khala-energy-cyan);
 }
 .khala-fleet-timeline-event[data-status="blocked"] {
-  color: #f87171;
+  color: var(--oa-color-khala-danger);
 }
 .khala-fleet-timeline-event[data-status="idle"] {
-  color: #93a4bd;
+  color: var(--oa-color-khala-neutral-line);
 }
 .khala-fleet-timeline-card {
   display: grid;
   gap: 0.28rem;
   min-width: 0;
   padding: 0.55rem 0.65rem;
-  border: 1px solid rgba(147, 164, 189, 0.16);
+  border: 1px solid color-mix(in srgb, var(--oa-color-khala-neutral-line) 16%, transparent);
   border-radius: 0.45rem;
-  background: rgba(0, 0, 0, 0.14);
+  background: color-mix(in srgb, var(--oa-color-khala-void) 14%, transparent);
   color: var(--oa-color-component-text);
 }
 .khala-fleet-timeline-topline {
@@ -1699,7 +1677,7 @@ button {
 }
 .khala-fleet-timeline-topline strong {
   overflow: hidden;
-  color: #f1efe8;
+  color: var(--oa-color-khala-text-primary);
   font-size: 0.8rem;
   font-weight: 600;
   text-overflow: ellipsis;
@@ -1735,7 +1713,7 @@ button {
   }
 
   .khala-fleet-board-stat:nth-child(n + 3) {
-    border-top: 1px solid rgba(147, 164, 189, 0.16);
+    border-top: 1px solid color-mix(in srgb, var(--oa-color-khala-neutral-line) 16%, transparent);
   }
 }
 
@@ -1760,18 +1738,18 @@ button {
   transition: color 120ms ease, border-color 120ms ease, background 120ms ease;
 }
 .khala-fleet-delete:hover {
-  border-color: rgba(248, 113, 113, 0.5);
-  color: #f87171;
-  background: rgba(248, 113, 113, 0.08);
+  border-color: color-mix(in srgb, var(--oa-color-khala-danger) 50%, transparent);
+  color: var(--oa-color-khala-danger);
+  background: color-mix(in srgb, var(--oa-color-khala-danger) 8%, transparent);
 }
 
 .khala-fleet-delete[data-armed="true"] {
   width: auto;
   padding: 0 0.5rem;
   font-size: 0.72rem;
-  border-color: rgba(248, 113, 113, 0.6);
-  color: #f87171;
-  background: rgba(248, 113, 113, 0.12);
+  border-color: color-mix(in srgb, var(--oa-color-khala-danger) 60%, transparent);
+  color: var(--oa-color-khala-danger);
+  background: color-mix(in srgb, var(--oa-color-khala-danger) 12%, transparent);
 }
 
 .khala-fleet-account-top {
@@ -1808,14 +1786,14 @@ button {
   padding: 0.25rem 0.6rem;
   border-radius: 999px;
   cursor: pointer;
-  border: 1px solid rgba(79, 208, 255, 0.4);
-  background: rgba(79, 208, 255, 0.1);
-  color: #9be0ff;
+  border: 1px solid color-mix(in srgb, var(--oa-color-khala-energy-cyan) 40%, transparent);
+  background: color-mix(in srgb, var(--oa-color-khala-energy-cyan) 10%, transparent);
+  color: var(--oa-color-khala-energy-text);
   white-space: nowrap;
 }
 .khala-fleet-reconnect:hover {
-  background: rgba(79, 208, 255, 0.18);
-  color: #cdeeff;
+  background: color-mix(in srgb, var(--oa-color-khala-energy-cyan) 18%, transparent);
+  color: var(--oa-color-khala-energy-text-strong);
 }
 .khala-fleet-connect {
   display: flex;
@@ -1823,8 +1801,8 @@ button {
   gap: 0.7rem;
   padding: 1rem 1.1rem;
   border-radius: 0.6rem;
-  border: 1px solid rgba(79, 208, 255, 0.22);
-  background: rgba(79, 208, 255, 0.05);
+  border: 1px solid color-mix(in srgb, var(--oa-color-khala-energy-cyan) 22%, transparent);
+  background: color-mix(in srgb, var(--oa-color-khala-energy-cyan) 5%, transparent);
 }
 .khala-fleet-connect-title {
   margin: 0;
@@ -1844,7 +1822,7 @@ button {
 }
 .khala-fleet-connect-url {
   font-size: 0.8rem;
-  color: #9be0ff;
+  color: var(--oa-color-khala-energy-text);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1853,8 +1831,8 @@ button {
   font-size: 1rem;
   font-weight: 700;
   letter-spacing: 0.12em;
-  color: #cdeeff;
-  background: rgba(79, 208, 255, 0.12);
+  color: var(--oa-color-khala-energy-text-strong);
+  background: color-mix(in srgb, var(--oa-color-khala-energy-cyan) 12%, transparent);
   padding: 0.15rem 0.55rem;
   border-radius: 0.35rem;
 }
@@ -1938,13 +1916,13 @@ button {
   border: 1px solid var(--oa-color-component-border);
   border-radius: 0.55rem;
   background:
-    linear-gradient(180deg, rgba(79, 208, 255, 0.04), transparent 46%),
+    linear-gradient(180deg, color-mix(in srgb, var(--oa-color-khala-energy-cyan) 4%, transparent), transparent 46%),
     var(--oa-color-component-surface);
 }
 .khala-gym-state[data-state="blocked"] {
-  border-color: rgba(251, 191, 36, 0.34);
+  border-color: color-mix(in srgb, var(--oa-color-khala-warning) 34%, transparent);
   background:
-    linear-gradient(180deg, rgba(251, 191, 36, 0.05), transparent 48%),
+    linear-gradient(180deg, color-mix(in srgb, var(--oa-color-khala-warning) 5%, transparent), transparent 48%),
     var(--oa-color-component-surface);
 }
 .khala-gym-empty {
@@ -1955,7 +1933,7 @@ button {
 .khala-gym-run-ref {
   min-width: 0;
   overflow: hidden;
-  color: #cdeeff;
+  color: var(--oa-color-khala-energy-text-strong);
   font-size: 0.78rem;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1971,7 +1949,7 @@ button {
   padding: 0.22rem 0.5rem;
   border: 1px solid var(--oa-color-component-border);
   border-radius: 0.35rem;
-  background: rgba(79, 208, 255, 0.06);
+  background: color-mix(in srgb, var(--oa-color-khala-energy-cyan) 6%, transparent);
   color: color-mix(in srgb, var(--oa-color-component-text) 72%, transparent);
   font-size: 0.72rem;
   text-overflow: ellipsis;
@@ -1985,7 +1963,7 @@ button {
   padding: 0.25rem 0.55rem;
   border: 1px solid var(--oa-color-component-border);
   border-radius: 999px;
-  color: #9be0ff;
+  color: var(--oa-color-khala-energy-text);
   font-size: 0.72rem;
   font-weight: 500;
   white-space: nowrap;
@@ -1999,15 +1977,15 @@ button {
 }
 .khala-gym-badge[data-state="readonly"],
 .khala-gym-badge[data-state="loaded"] {
-  color: #4fd0ff;
-  border-color: rgba(79, 208, 255, 0.32);
+  color: var(--oa-color-khala-energy-cyan);
+  border-color: color-mix(in srgb, var(--oa-color-khala-energy-cyan) 32%, transparent);
 }
 .khala-gym-badge[data-state="empty"] {
-  color: #93a4bd;
+  color: var(--oa-color-khala-neutral-line);
 }
 .khala-gym-badge[data-state="blocked"] {
-  color: #fbbf24;
-  border-color: rgba(251, 191, 36, 0.34);
+  color: var(--oa-color-khala-warning);
+  border-color: color-mix(in srgb, var(--oa-color-khala-warning) 34%, transparent);
 }
 .khala-gym-detail-grid {
   display: grid;
@@ -2021,7 +1999,7 @@ button {
   gap: 0.15rem;
   min-width: 0;
   padding: 0.4rem 0;
-  border-top: 1px solid rgba(147, 164, 189, 0.18);
+  border-top: 1px solid color-mix(in srgb, var(--oa-color-khala-neutral-line) 18%, transparent);
 }
 .khala-gym-detail-label {
   color: color-mix(in srgb, var(--oa-color-component-text) 48%, transparent);
@@ -2029,7 +2007,7 @@ button {
 }
 .khala-gym-detail-value {
   margin: 0;
-  color: #e7f4ff;
+  color: var(--oa-color-khala-text-strong);
   font-size: 0.74rem;
   line-height: 1.35;
   overflow-wrap: anywhere;
@@ -2049,7 +2027,7 @@ button {
 }
 .khala-gym-edge {
   fill: none;
-  stroke: rgba(147, 164, 189, 0.36);
+  stroke: color-mix(in srgb, var(--oa-color-khala-neutral-line) 36%, transparent);
   stroke-width: 2;
   vector-effect: non-scaling-stroke;
 }
@@ -2057,17 +2035,17 @@ button {
   stroke-dasharray: 3 7;
 }
 .khala-gym-edge[data-status="active"] {
-  stroke: #93c5fd;
+  stroke: var(--oa-color-khala-energy-line);
   stroke-dasharray: 8 10;
 }
 .khala-gym-edge[data-status="blocked"] {
-  stroke: #fbbf24;
+  stroke: var(--oa-color-khala-warning);
   stroke-dasharray: 2 7;
 }
 .khala-gym-edge[data-status="evidence_backed"] {
-  stroke: #4fd0ff;
+  stroke: var(--oa-color-khala-energy-cyan);
   stroke-dasharray: 10 12;
-  filter: drop-shadow(0 0 5px rgba(79, 208, 255, 0.42));
+  filter: drop-shadow(0 0 5px color-mix(in srgb, var(--oa-color-khala-energy-cyan) 42%, transparent));
 }
 .khala-gym-graph-svg[data-reduced-motion="false"] .khala-gym-edge[data-status="active"],
 .khala-gym-graph-svg[data-reduced-motion="false"] .khala-gym-edge[data-status="evidence_backed"] {
@@ -2079,31 +2057,31 @@ button {
   text-anchor: middle;
 }
 .khala-gym-edge-label[data-status="blocked"] {
-  fill: #fbbf24;
+  fill: var(--oa-color-khala-warning);
 }
 .khala-gym-node-card {
-  fill: rgba(5, 12, 21, 0.96);
-  stroke: rgba(79, 208, 255, 0.2);
+  fill: color-mix(in srgb, var(--oa-color-khala-surface) 96%, transparent);
+  stroke: color-mix(in srgb, var(--oa-color-khala-energy-cyan) 20%, transparent);
   stroke-width: 1;
 }
 .khala-gym-node[data-status="complete"] .khala-gym-node-card,
 .khala-gym-node[data-status="proposal_ready"] .khala-gym-node-card {
-  stroke: rgba(79, 208, 255, 0.52);
-  filter: drop-shadow(0 0 8px rgba(79, 208, 255, 0.14));
+  stroke: color-mix(in srgb, var(--oa-color-khala-energy-cyan) 52%, transparent);
+  filter: drop-shadow(0 0 8px color-mix(in srgb, var(--oa-color-khala-energy-cyan) 14%, transparent));
 }
 .khala-gym-node[data-status="active"] .khala-gym-node-card {
-  stroke: rgba(147, 197, 253, 0.55);
+  stroke: color-mix(in srgb, var(--oa-color-khala-energy-line) 55%, transparent);
 }
 .khala-gym-node[data-status="blocked"] .khala-gym-node-card {
-  stroke: rgba(251, 191, 36, 0.56);
+  stroke: color-mix(in srgb, var(--oa-color-khala-warning) 56%, transparent);
 }
 .khala-gym-node-label {
-  fill: #f1efe8;
+  fill: var(--oa-color-khala-text-primary);
   font-size: 0.78rem;
   font-weight: 700;
 }
 .khala-gym-node-status {
-  fill: #8fb6ff;
+  fill: var(--oa-color-khala-energy-soft);
   font-size: 0.62rem;
   letter-spacing: 0;
   text-transform: uppercase;
@@ -2121,7 +2099,7 @@ button {
   overflow: auto;
   border: 1px solid var(--oa-color-component-border);
   border-radius: 0.45rem;
-  background: rgba(0, 0, 0, 0.2);
+  background: color-mix(in srgb, var(--oa-color-khala-void) 20%, transparent);
 }
 .khala-gym-graph-mirror-list {
   display: grid;
@@ -2135,11 +2113,11 @@ button {
   line-height: 1.45;
 }
 .khala-gym-graph-mirror-flow {
-  color: #d9e7ff;
+  color: var(--oa-color-khala-text-body);
 }
 .khala-gym-graph-mirror-status {
   margin-left: 0.45rem;
-  color: #8fb6ff;
+  color: var(--oa-color-khala-energy-soft);
 }
 .khala-gym-graph-mirror-refs {
   display: block;
@@ -2217,7 +2195,7 @@ button {
   line-height: 1.45;
 }
 .khala-settings-status--error {
-  color: #fca5a5;
+  color: var(--oa-color-khala-danger-text);
 }
 .khala-settings-section {
   display: grid;
@@ -2332,10 +2310,10 @@ button {
   overflow-wrap: anywhere;
 }
 .khala-settings-diagnostic[data-severity="critical"] {
-  color: #fca5a5;
+  color: var(--oa-color-khala-danger-text);
 }
 .khala-settings-diagnostic[data-severity="warning"] {
-  color: #fbbf24;
+  color: var(--oa-color-khala-warning);
 }
 
 @media (max-width: 760px) {

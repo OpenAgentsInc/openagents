@@ -1,11 +1,9 @@
-/*
- * GENERATED — do not edit by hand.
- *
- * This is the checked-in projection of themeCss() from ./src/theme.ts: the
+/**
+ * Generated from ./theme.ts. Do not hand-edit token values here; update the
  * single typed token source (#6046). CSS consumers @import this to get the
- * --oa-* :root custom properties. A test (theme-css-parity) pins this file to
- * the live themeCss() output so it can never drift from the typed source.
+ * --oa-* custom properties without a build-time plugin.
  */
+
 :root {
   --oa-color-bg: #000;
   --oa-color-bg-secondary: #151515;
@@ -35,19 +33,80 @@
   --oa-color-hud-neutral: #9aa6b2;
   --oa-color-hud-line: #e6e9ef;
   --oa-color-hud-bg: #0b0d12;
+  --oa-color-khala-void: #000;
+  --oa-color-khala-surface: #05080e;
+  --oa-color-khala-surface-raised: #0a111d;
+  --oa-color-khala-surface-active: #0a1b31;
+  --oa-color-khala-surface-muted: #0b1626;
+  --oa-color-khala-surface-success: #0f3320;
+  --oa-color-khala-surface-danger: #3a161a;
+  --oa-color-khala-surface-warning: #241c0a;
+  --oa-color-khala-border-muted: #16233b;
+  --oa-color-khala-border: #1d2a44;
+  --oa-color-khala-border-strong: #34507f;
+  --oa-color-khala-text-primary: #f1efe8;
+  --oa-color-khala-text-bright: #fff;
+  --oa-color-khala-text-body: #d9e7ff;
+  --oa-color-khala-text-strong: #e7f4ff;
+  --oa-color-khala-text-soft: #c6d5e6;
+  --oa-color-khala-text-quote: #c7d6e8;
+  --oa-color-khala-text-muted: #b7c8dc;
+  --oa-color-khala-text-faint: #7e8a98;
+  --oa-color-khala-text-dim: #6b7a90;
+  --oa-color-khala-text-disabled: #4e668f;
+  --oa-color-khala-energy-blue: #3a7bff;
+  --oa-color-khala-energy-cyan: #4fd0ff;
+  --oa-color-khala-energy-cyan-soft: #8fd4ff;
+  --oa-color-khala-energy-text: #9be0ff;
+  --oa-color-khala-energy-text-strong: #cdeeff;
+  --oa-color-khala-energy-soft: #8fb6ff;
+  --oa-color-khala-energy-muted: #7aa2ff;
+  --oa-color-khala-energy-line: #93c5fd;
+  --oa-color-khala-energy-button-text: #cfe8ff;
+  --oa-color-khala-energy-button-text-soft: #d7e8ff;
+  --oa-color-khala-energy-option-text: #e8f3ff;
+  --oa-color-khala-link-hover: #a8c2ff;
+  --oa-color-khala-success: #4ade80;
+  --oa-color-khala-success-border: #2ea043;
+  --oa-color-khala-success-strong: #56d364;
+  --oa-color-khala-success-accent: #6ee7b7;
+  --oa-color-khala-success-text: #d9fff1;
+  --oa-color-khala-danger: #f87171;
+  --oa-color-khala-danger-strong: #f85149;
+  --oa-color-khala-danger-border: #e5484d;
+  --oa-color-khala-danger-accent: #f0727a;
+  --oa-color-khala-danger-text: #fca5a5;
+  --oa-color-khala-warning: #fbbf24;
+  --oa-color-khala-warning-strong: #fcd34d;
+  --oa-color-khala-warning-text: #ffe6a8;
+  --oa-color-khala-neutral-line: #93a4bd;
+  --oa-color-khala-code-plain: #d7e2f0;
+  --oa-color-khala-code-comment: #6b7a90;
+  --oa-color-khala-code-keyword: #7aa2ff;
+  --oa-color-khala-code-string: #9ed1ff;
+  --oa-color-khala-code-number: #4fd0ff;
+  --oa-color-khala-code-constant: #8fb6ff;
+  --oa-color-khala-code-function: #cfe3ff;
+  --oa-color-khala-code-type: #67d4ff;
+  --oa-color-khala-code-property: #aecbff;
+  --oa-color-khala-code-operator: #9fb2c9;
+  --oa-color-khala-code-punctuation: #7e8a98;
+  --oa-color-khala-code-meta: #8aa8c8;
+  --oa-color-khala-graph-text: #5f86c2;
+  --oa-color-khala-graph-line: #34507f;
   --oa-color-component-text: #f1efe8;
-  --oa-color-component-border: #222;
-  --oa-color-component-border-strong: #333;
-  --oa-color-component-surface: #080808;
-  --oa-color-component-surface-deep: #010102;
-  --oa-color-component-surface-active: #141414;
-  --oa-color-component-input-bg: #030303;
-  --oa-color-danger-hover: #ff6f00;
-  --oa-color-text-on-dark60: rgba(255, 255, 255, 0.6);
-  --oa-color-text-on-dark55: rgba(255, 255, 255, 0.55);
-  --oa-color-text-on-dark45: rgba(255, 255, 255, 0.45);
-  --oa-color-text-on-dark35: rgba(255, 255, 255, 0.35);
-  --oa-color-text-on-dark30: rgba(255, 255, 255, 0.3);
+  --oa-color-component-border: #1d2a44;
+  --oa-color-component-border-strong: #34507f;
+  --oa-color-component-surface: #05080e;
+  --oa-color-component-surface-deep: #000;
+  --oa-color-component-surface-active: #0a1b31;
+  --oa-color-component-input-bg: #05080e;
+  --oa-color-danger-hover: #f0727a;
+  --oa-color-text-on-dark60: rgb(183 200 220 / 0.6);
+  --oa-color-text-on-dark55: rgb(183 200 220 / 0.55);
+  --oa-color-text-on-dark45: rgb(183 200 220 / 0.45);
+  --oa-color-text-on-dark35: rgb(183 200 220 / 0.35);
+  --oa-color-text-on-dark30: rgb(183 200 220 / 0.3);
   --oa-color-review-border: #30363d;
   --oa-color-review-border-strong: #21262d;
   --oa-color-review-danger: #f85149;
@@ -85,8 +144,9 @@
   --oa-radius-2xl: 10px;
   --oa-radius-3xl: 12px;
   --oa-radius-full: 9999px;
-  --oa-font-sans: inherit;
-  --oa-font-mono: ui-monospace, monospace;
+  --oa-font-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --oa-font-mono: "Commit Mono", "SFMono-Regular", "Cascadia Code", "JetBrains Mono", ui-monospace, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  --oa-font-code: "Commit Mono", "SFMono-Regular", "Cascadia Code", "JetBrains Mono", ui-monospace, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
   --oa-font-size-xs: 0.68rem;
   --oa-font-size-sm: 0.72rem;
   --oa-font-size-base: 0.78rem;

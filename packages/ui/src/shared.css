@@ -36,7 +36,7 @@
   max-width: 58ch;
   font-size: 0.875rem;
   line-height: 1.5;
-  color: var(--oa-color-text-on-dark55, rgba(255, 255, 255, 0.55));
+  color: var(--oa-color-text-on-dark55, rgb(183 200 220 / 0.55));
 }
 
 .oa-ui-button {
@@ -74,45 +74,45 @@
 }
 
 .oa-ui-button-primary {
-  border-color: var(--oa-color-component-text, #f1efe8);
-  background-color: var(--oa-color-component-text, #f1efe8);
-  color: var(--oa-color-bg, #000);
+  border-color: var(--oa-color-khala-energy-cyan, #4fd0ff);
+  background-color: var(--oa-color-khala-energy-cyan, #4fd0ff);
+  color: var(--oa-color-khala-void, #000);
 }
 
 .oa-ui-button-primary:hover {
-  border-color: var(--oa-color-warning, #ffb400);
+  border-color: var(--oa-color-khala-energy-text-strong, #cdeeff);
 }
 
 .oa-ui-button-secondary {
-  border-color: var(--oa-color-component-border, #222);
+  border-color: var(--oa-color-component-border, #1d2a44);
   background-color: transparent;
   color: var(--oa-color-component-text, #f1efe8);
 }
 
 .oa-ui-button-secondary:hover {
-  border-color: var(--oa-color-warning, #ffb400);
+  border-color: var(--oa-color-khala-energy-cyan, #4fd0ff);
 }
 
 .oa-ui-button-ghost {
   border-color: transparent;
   background-color: transparent;
-  color: var(--oa-color-text-on-dark60, rgba(255, 255, 255, 0.6));
+  color: var(--oa-color-text-on-dark60, rgb(183 200 220 / 0.6));
 }
 
 .oa-ui-button-ghost:hover {
-  border-color: var(--oa-color-component-border-strong, #333);
-  background-color: var(--oa-color-component-surface, #080808);
+  border-color: var(--oa-color-component-border-strong, #34507f);
+  background-color: var(--oa-color-component-surface, #05080e);
   color: var(--oa-color-component-text, #f1efe8);
 }
 
 .oa-ui-button-danger {
-  border-color: var(--oa-color-danger, #d32f2f);
-  background-color: var(--oa-color-danger, #d32f2f);
-  color: var(--oa-color-primary, #fff);
+  border-color: var(--oa-color-khala-danger-strong, #f85149);
+  background-color: var(--oa-color-khala-danger-strong, #f85149);
+  color: var(--oa-color-khala-text-bright, #fff);
 }
 
 .oa-ui-button-danger:hover {
-  border-color: var(--oa-color-danger-hover, #ff6f00);
+  border-color: var(--oa-color-danger-hover, #f0727a);
 }
 
 .oa-ui-text-link {
@@ -122,13 +122,13 @@
 }
 
 .oa-ui-text-link:hover {
-  color: var(--oa-color-warning, #ffb400);
+  color: var(--oa-color-khala-energy-cyan, #4fd0ff);
 }
 
 .oa-ui-avatar-image {
   border-width: 1px;
   border-style: solid;
-  border-color: var(--oa-color-component-border, #222);
+  border-color: var(--oa-color-component-border, #1d2a44);
   object-fit: cover;
 }
 
@@ -137,9 +137,9 @@
   place-items: center;
   border-width: 1px;
   border-style: solid;
-  border-color: var(--oa-color-component-border, #222);
-  background-color: var(--oa-color-component-surface, #080808);
-  color: var(--oa-color-text-on-dark45, rgba(255, 255, 255, 0.45));
+  border-color: var(--oa-color-component-border, #1d2a44);
+  background-color: var(--oa-color-component-surface, #05080e);
+  color: var(--oa-color-text-on-dark45, rgb(183 200 220 / 0.45));
 }
 
 .oa-ui-avatar-sm {
@@ -178,8 +178,8 @@
   gap: 8px;
   border-width: 1px;
   border-style: solid;
-  border-color: var(--oa-color-component-border, #222);
-  background-color: var(--oa-color-component-surface-deep, #010102);
+  border-color: var(--oa-color-component-border, #1d2a44);
+  background-color: var(--oa-color-component-surface-deep, #000);
   padding: 8px;
 }
 
@@ -191,8 +191,8 @@
   gap: 12px;
   border-width: 1px;
   border-style: solid;
-  border-color: var(--oa-color-component-border-strong, #333);
-  background-color: var(--oa-color-component-surface, #080808);
+  border-color: var(--oa-color-component-border-strong, #34507f);
+  background-color: var(--oa-color-component-surface, #05080e);
   padding-inline: 12px;
   font-family: inherit;
   font-size: 0.875rem;
@@ -217,19 +217,19 @@
   padding-inline: 10px;
   padding-block: 8px;
   font-size: 0.875rem;
-  color: var(--oa-color-text-on-dark60, rgba(255, 255, 255, 0.6));
+  color: var(--oa-color-text-on-dark60, rgb(183 200 220 / 0.6));
   text-decoration-line: none;
 }
 
 .oa-ui-dropdown-item:hover {
-  border-color: var(--oa-color-component-border-strong, #333);
-  background-color: var(--oa-color-component-surface, #080808);
+  border-color: var(--oa-color-component-border-strong, #34507f);
+  background-color: var(--oa-color-component-surface, #05080e);
   color: var(--oa-color-component-text, #f1efe8);
 }
 
 .oa-ui-dropdown-item-active {
-  border-color: var(--oa-color-component-border-strong, #333);
-  background-color: var(--oa-color-component-surface-active, #141414);
+  border-color: var(--oa-color-component-border-strong, #34507f);
+  background-color: var(--oa-color-component-surface-active, #0a1b31);
   color: var(--oa-color-component-text, #f1efe8);
 }
 

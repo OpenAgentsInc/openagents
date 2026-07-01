@@ -18,7 +18,7 @@
 // --- Color -----------------------------------------------------------------
 //
 // The canonical dark palette plus the supporting greys, status tones, and
-// GitHub-ish diff/review accents that the desktop app previously hardcoded.
+// Khala sci-fi chrome accents that the desktop app previously hardcoded.
 // Values are deduped: identical colors collapse to one named token.
 
 export const colorTokens = {
@@ -60,26 +60,90 @@ export const colorTokens = {
   hudLine: "#e6e9ef",
   hudBg: "#0b0d12",
 
-  // Component chrome neutrals (#6046 part 2): the bone-white face/text plus the
-  // near-black surface + border ramp the `oa-ui-*` / `oa-ai-*` component
-  // stylesheets previously hardcoded. Values are kept EXACT so migrating the
-  // component CSS onto these tokens renders identically.
-  componentText: "#f1efe8",
-  componentBorder: "#222",
-  componentBorderStrong: "#333",
-  componentSurface: "#080808",
-  componentSurfaceDeep: "#010102",
-  componentSurfaceActive: "#141414",
-  componentInputBg: "#030303",
-  dangerHover: "#ff6f00",
+  // Khala sci-fi surface palette. These are the desktop/web house colors for
+  // agent surfaces: void-black base, blue-cyan energy lines, and readable
+  // near-white text with code/diff accents.
+  khalaVoid: "#000",
+  khalaSurface: "#05080e",
+  khalaSurfaceRaised: "#0a111d",
+  khalaSurfaceActive: "#0a1b31",
+  khalaSurfaceMuted: "#0b1626",
+  khalaSurfaceSuccess: "#0f3320",
+  khalaSurfaceDanger: "#3a161a",
+  khalaSurfaceWarning: "#241c0a",
+  khalaBorderMuted: "#16233b",
+  khalaBorder: "#1d2a44",
+  khalaBorderStrong: "#34507f",
+  khalaTextPrimary: "#f1efe8",
+  khalaTextBright: "#fff",
+  khalaTextBody: "#d9e7ff",
+  khalaTextStrong: "#e7f4ff",
+  khalaTextSoft: "#c6d5e6",
+  khalaTextQuote: "#c7d6e8",
+  khalaTextMuted: "#b7c8dc",
+  khalaTextFaint: "#7e8a98",
+  khalaTextDim: "#6b7a90",
+  khalaTextDisabled: "#4e668f",
+  khalaEnergyBlue: "#3a7bff",
+  khalaEnergyCyan: "#4fd0ff",
+  khalaEnergyCyanSoft: "#8fd4ff",
+  khalaEnergyText: "#9be0ff",
+  khalaEnergyTextStrong: "#cdeeff",
+  khalaEnergySoft: "#8fb6ff",
+  khalaEnergyMuted: "#7aa2ff",
+  khalaEnergyLine: "#93c5fd",
+  khalaEnergyButtonText: "#cfe8ff",
+  khalaEnergyButtonTextSoft: "#d7e8ff",
+  khalaEnergyOptionText: "#e8f3ff",
+  khalaLinkHover: "#a8c2ff",
+  khalaSuccess: "#4ade80",
+  khalaSuccessBorder: "#2ea043",
+  khalaSuccessStrong: "#56d364",
+  khalaSuccessAccent: "#6ee7b7",
+  khalaSuccessText: "#d9fff1",
+  khalaDanger: "#f87171",
+  khalaDangerStrong: "#f85149",
+  khalaDangerBorder: "#e5484d",
+  khalaDangerAccent: "#f0727a",
+  khalaDangerText: "#fca5a5",
+  khalaWarning: "#fbbf24",
+  khalaWarningStrong: "#fcd34d",
+  khalaWarningText: "#ffe6a8",
+  khalaNeutralLine: "#93a4bd",
+  khalaCodePlain: "#d7e2f0",
+  khalaCodeComment: "#6b7a90",
+  khalaCodeKeyword: "#7aa2ff",
+  khalaCodeString: "#9ed1ff",
+  khalaCodeNumber: "#4fd0ff",
+  khalaCodeConstant: "#8fb6ff",
+  khalaCodeFunction: "#cfe3ff",
+  khalaCodeType: "#67d4ff",
+  khalaCodeProperty: "#aecbff",
+  khalaCodeOperator: "#9fb2c9",
+  khalaCodePunctuation: "#7e8a98",
+  khalaCodeMeta: "#8aa8c8",
+  khalaGraphText: "#5f86c2",
+  khalaGraphLine: "#34507f",
 
-  // Translucent white text ramp used by the component chrome over the dark
-  // surfaces (muted labels, placeholders, ghost-button text).
-  textOnDark60: "rgba(255, 255, 255, 0.6)",
-  textOnDark55: "rgba(255, 255, 255, 0.55)",
-  textOnDark45: "rgba(255, 255, 255, 0.45)",
-  textOnDark35: "rgba(255, 255, 255, 0.35)",
-  textOnDark30: "rgba(255, 255, 255, 0.3)",
+  // Component chrome (#6046 part 2): now aliases the Khala sci-fi UI palette
+  // so shared `oa-ui-*` / `oa-ai-*` surfaces stop rendering the old grayscale
+  // + amber skin.
+  componentText: "#f1efe8",
+  componentBorder: "#1d2a44",
+  componentBorderStrong: "#34507f",
+  componentSurface: "#05080e",
+  componentSurfaceDeep: "#000",
+  componentSurfaceActive: "#0a1b31",
+  componentInputBg: "#05080e",
+  dangerHover: "#f0727a",
+
+  // Translucent blue text ramp used by the component chrome over dark surfaces
+  // (muted labels, placeholders, ghost-button text).
+  textOnDark60: "rgb(183 200 220 / 0.6)",
+  textOnDark55: "rgb(183 200 220 / 0.55)",
+  textOnDark45: "rgb(183 200 220 / 0.45)",
+  textOnDark35: "rgb(183 200 220 / 0.35)",
+  textOnDark30: "rgb(183 200 220 / 0.3)",
 
   // GitHub-ish review/diff accents (diff-review, status surfaces).
   reviewBorder: "#30363d",
@@ -146,8 +210,12 @@ export type RadiusToken = keyof RadiusTokens
 // --- Typography ------------------------------------------------------------
 
 export const fontTokens = {
-  sans: "inherit",
-  mono: "ui-monospace, monospace",
+  sans:
+    'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+  mono:
+    '"Commit Mono", "SFMono-Regular", "Cascadia Code", "JetBrains Mono", ui-monospace, Menlo, Monaco, Consolas, "Liberation Mono", monospace',
+  code:
+    '"Commit Mono", "SFMono-Regular", "Cascadia Code", "JetBrains Mono", ui-monospace, Menlo, Monaco, Consolas, "Liberation Mono", monospace',
 } as const
 
 export const fontSizeTokens = {

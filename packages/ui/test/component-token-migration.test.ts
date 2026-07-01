@@ -39,6 +39,14 @@ const varRefRe = /var\(\s*(--oa-[a-z0-9-]+)\s*,\s*((?:[^()]|\([^()]*\))*?)\s*\)/
 describe('component CSS is migrated onto the central --oa-* tokens', () => {
   const vars = themeCssVars()
 
+  test('@openagentsinc/ui/styles.css exports the shared design-token stylesheet', () => {
+    const css = stripComments(read(here('../src/styles.css')))
+    expect(css).toContain("@import '@openagentsinc/design-tokens/theme.css';")
+    expect(css.indexOf("@import '@openagentsinc/design-tokens/theme.css';")).toBeLessThan(
+      css.indexOf("@import './shared.css';"),
+    )
+  })
+
   test('every var(--oa-*, fallback) fallback equals the canonical token value', () => {
     let checked = 0
     for (const file of componentCssFiles) {

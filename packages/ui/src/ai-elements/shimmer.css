@@ -3,9 +3,9 @@
   --oa-ai-shimmer-spread: 16ch;
   --oa-ai-shimmer-base: var(
     --oa-color-text-on-dark35,
-    rgba(255, 255, 255, 0.35)
+    rgb(183 200 220 / 0.35)
   );
-  --oa-ai-shimmer-highlight: var(--oa-color-component-text, #f1efe8);
+  --oa-ai-shimmer-highlight: var(--oa-color-khala-energy-text-strong, #cdeeff);
   display: inline-block;
   width: fit-content;
   max-width: 100%;
