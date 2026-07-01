@@ -20,10 +20,13 @@ import {
   type AgentRuntimeRunRequest,
 } from "../src/agent-runtime-adapter"
 import {
+  AGENT_RUNNER_KINDS,
   AGENT_RUNNER_REGISTRY,
   agentRunnerForLease,
   agentRunnerResolutionForLease,
   agentRunnerServiceForLease,
+  isAgentRunnerKind,
+  normalizeAgentRunnerKind,
 } from "../src/agent-runner-registry"
 import { createBootstrapSummary, parseBootstrapArgs } from "../src/bootstrap"
 import { CLAUDE_AGENT_SDK_PACKAGE } from "../src/claude-agent"
@@ -112,6 +115,12 @@ async function withRequest<T>(
 
 describe("AgentRuntimeAdapter", () => {
   test("Claude and Codex runners are selected from the declarative registry", () => {
+    expect(AGENT_RUNNER_KINDS).toEqual(["claude_agent", "codex"])
+    expect(isAgentRunnerKind("claude_agent")).toBe(true)
+    expect(isAgentRunnerKind("codex")).toBe(true)
+    expect(isAgentRunnerKind("generic")).toBe(false)
+    expect(normalizeAgentRunnerKind("claude")).toBe("claude_agent")
+
     expect(
       AGENT_RUNNER_REGISTRY.map((runner) => ({
         agentKind: runner.agentKind,

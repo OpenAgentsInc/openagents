@@ -1,5 +1,5 @@
 import type { DispatchContext, OrchestrationRunnerKind } from "./store.js"
-import { normalizeOrchestrationRunnerKind } from "./store.js"
+import { isStoredOrchestrationRunnerKind, normalizeOrchestrationRunnerKind } from "./store.js"
 
 export type OrchestrationGroupAddress =
   | { kind: "all" }
@@ -14,7 +14,7 @@ export function parseOrchestrationGroupAddress(address: string): OrchestrationGr
   if (address.startsWith("@runner:")) {
     const rawRunnerKind = address.slice("@runner:".length).trim()
     if (rawRunnerKind.length === 0) throw new Error("empty @runner group address")
-    if (rawRunnerKind !== "codex" && rawRunnerKind !== "claude_agent" && rawRunnerKind !== "claude" && rawRunnerKind !== "generic") {
+    if (!isStoredOrchestrationRunnerKind(rawRunnerKind)) {
       throw new Error(`unsupported @runner group address: ${address}`)
     }
     return { kind: "runner", runnerKind: normalizeOrchestrationRunnerKind(rawRunnerKind) }

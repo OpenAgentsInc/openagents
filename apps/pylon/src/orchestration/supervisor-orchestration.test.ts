@@ -2,8 +2,12 @@ import { describe, expect, test } from "bun:test"
 import { Database } from "bun:sqlite"
 
 import { dispatchEligibility, dispatchLiveness, dispatchReadySupervisorTasks } from "./coordinator.js"
-import { resolveOrchestrationGroup } from "./groups.js"
-import { createPylonOrchestrationStore } from "./store.js"
+import { parseOrchestrationGroupAddress, resolveOrchestrationGroup } from "./groups.js"
+import {
+  createPylonOrchestrationStore,
+  isStoredOrchestrationRunnerKind,
+  normalizeOrchestrationRunnerKind,
+} from "./store.js"
 
 const baseTaskSpec = {
   title: "Issue #6405",
@@ -133,6 +137,22 @@ describe("Pylon supervisor orchestration store", () => {
     expect(store.getTask("task.claude")?.status).toBe("dispatched")
   })
 
+  test("normalizes legacy runner aliases through the AgentRunner registry vocabulary", () => {
+    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const context = store.createDispatchContext({
+      id: "ctx.legacy-claude",
+      assigneeHandle: "claude-legacy",
+      runnerKind: "claude",
+      lastHeartbeatAt: new Date("2026-06-27T12:00:00.000Z"),
+    })
+
+    expect(context.runnerKind).toBe("claude_agent")
+    expect(normalizeOrchestrationRunnerKind("claude")).toBe("claude_agent")
+    expect(isStoredOrchestrationRunnerKind("claude_agent")).toBe(true)
+    expect(isStoredOrchestrationRunnerKind("claude")).toBe(true)
+    expect(isStoredOrchestrationRunnerKind("opencode")).toBe(false)
+  })
+
   test("refuses an otherwise healthy idle context when the ready task requires another runner", () => {
     const now = new Date("2026-06-27T12:00:00.000Z")
     const store = createPylonOrchestrationStore(new Database(":memory:"))
@@ -257,5 +277,9 @@ describe("Pylon supervisor group addressing", () => {
     expect(resolveOrchestrationGroup("@runner:claude_agent", contexts).map((context) => context.id)).toEqual(["ctx.b"])
     expect(resolveOrchestrationGroup("@worktree:wt-b", contexts).map((context) => context.id)).toEqual(["ctx.b"])
     expect(resolveOrchestrationGroup("@codex-1", contexts).map((context) => context.id)).toEqual(["ctx.a"])
+    expect(parseOrchestrationGroupAddress("@runner:generic")).toEqual({ kind: "runner", runnerKind: "generic" })
+    expect(() => parseOrchestrationGroupAddress("@runner:opencode")).toThrow(
+      "unsupported @runner group address: @runner:opencode",
+    )
   })
 })
