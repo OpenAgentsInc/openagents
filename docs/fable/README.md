@@ -69,3 +69,16 @@ Contents:
   loop — while explicitly not copying PTY status detection,
   trust-the-summary completion, unclaimed parallelism, or 30-harness
   breadth.
+- `2026-07-01-claude-code-parity-and-codex-synergies.md` — bringing Claude
+  Code (Claude Agent SDK) up to Codex parity as a Khala Code Desktop chat
+  harness, then the crossovers. Grounded in the SDK types
+  (`@anthropic-ai/claude-agent-sdk@0.3.172`) and a desktop seam map. Covers
+  the missing `ChatRuntime` abstraction, a Codex↔Claude protocol mapping
+  table (thread↔session, turn↔user→result span, approvals↔canUseTool), a
+  phased bring-up (harness abstraction → minimal Claude runtime as the
+  desktop's first real Effect service → approvals/telemetry/MCP/settings →
+  sidebar/slash parity, behind a "Codex | Claude | Khala" composer pill),
+  an Effect-wrapping cheat sheet (query→Stream, control methods→service
+  methods, SDKMessage→Schema, canUseTool→bridged callback), and the
+  synergies: Fable/Claude plan-mode decomposition + review delegating
+  coding to Codex through the deterministic delegation program and fleet.
