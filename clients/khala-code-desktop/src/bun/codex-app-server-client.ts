@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process"
+import { fileURLToPath } from "node:url"
 
 import type {
   KhalaCodeDesktopCodexAppServerControlResult,
@@ -97,6 +98,7 @@ export type CodexAppServerHost = Readonly<{
 }>
 
 export type CreateCodexAppServerHostOptions = {
+  readonly codexArgs?: readonly string[]
   readonly clientInfo?: {
     readonly name: string
     readonly title: string
@@ -116,6 +118,12 @@ const defaultClientInfo = {
   version: "0.1.0",
 }
 
+const DEFAULT_CODEX_APP_SERVER_ARGS = ["app-server", "--stdio"] as const
+
+const DEFAULT_FIXTURE_APP_SERVER_PATH = fileURLToPath(
+  new URL("./fixture-codex-app-server.ts", import.meta.url),
+)
+
 const isoNow = (): string => new Date().toISOString()
 
 const configuredCodexCommand = (
@@ -129,6 +137,40 @@ const configuredCodexCommand = (
   const command = env.KHALA_CODE_CODEX_COMMAND?.trim()
   if (command !== undefined && command.length > 0) return command
   return "codex"
+}
+
+const fixtureEnabled = (env: NodeJS.ProcessEnv): boolean => {
+  const value = env.KHALA_CODE_CODEX_APP_SERVER_FIXTURE?.trim().toLowerCase()
+  return value === "1" || value === "true" || value === "yes"
+}
+
+const configuredLaunch = (
+  env: NodeJS.ProcessEnv,
+  explicitCommand?: string,
+  explicitArgs?: readonly string[],
+): { readonly args: readonly string[]; readonly command: string } => {
+  if (explicitArgs !== undefined) {
+    return {
+      args: explicitArgs,
+      command: configuredCodexCommand(env, explicitCommand),
+    }
+  }
+  if (fixtureEnabled(env)) {
+    return {
+      args: [
+        env.KHALA_CODE_CODEX_APP_SERVER_FIXTURE_PATH?.trim() || DEFAULT_FIXTURE_APP_SERVER_PATH,
+        "--stdio",
+      ],
+      command:
+        explicitCommand?.trim() ||
+        env.KHALA_CODE_BUN_BINARY?.trim() ||
+        process.execPath,
+    }
+  }
+  return {
+    args: DEFAULT_CODEX_APP_SERVER_ARGS,
+    command: configuredCodexCommand(env, explicitCommand),
+  }
 }
 
 const appendDiagnostic = (
@@ -146,7 +188,9 @@ export function createCodexAppServerHost(
   options: CreateCodexAppServerHostOptions = {},
 ): CodexAppServerHost {
   const env = options.env ?? process.env
-  const codexCommand = configuredCodexCommand(env, options.codexCommand)
+  const codexLaunch = configuredLaunch(env, options.codexCommand, options.codexArgs)
+  const codexCommand = codexLaunch.command
+  const codexArgs = codexLaunch.args
   const codexHome = resolveCodexHomePath(options.codexHomePath, env)
   const spawnFn: SpawnFn =
     options.spawnFn ??
@@ -364,7 +408,7 @@ export function createCodexAppServerHost(
     stdoutBuffer = ""
     stderrBuffer = ""
     try {
-      const spawned = spawnFn(codexCommand, ["app-server", "--stdio"], {
+      const spawned = spawnFn(codexCommand, codexArgs, {
         env: {
           ...env,
           CODEX_HOME: codexHome,

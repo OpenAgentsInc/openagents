@@ -1,0 +1,147 @@
+{
+  "schema": "khala-code-desktop.fixture-codex-app-server-script.v1",
+  "name": "default-live-shaped-turn",
+  "model": "gpt-5.1-codex-fixture",
+  "modelProvider": "openai",
+  "steps": [
+    {
+      "kind": "notification",
+      "method": "turn/started",
+      "params": {
+        "threadId": "{{threadId}}",
+        "turn": {
+          "id": "{{turnId}}",
+          "status": "inProgress"
+        }
+      }
+    },
+    {
+      "kind": "serverRequest",
+      "requestId": "approval.command.{{turnId}}",
+      "method": "item/commandExecution/requestApproval",
+      "params": {
+        "threadId": "{{threadId}}",
+        "turnId": "{{turnId}}",
+        "itemId": "item-command-{{turnId}}",
+        "command": "printf fixture-app-server",
+        "cwd": "{{cwd}}",
+        "reason": "Fixture command approval before deterministic terminal output.",
+        "availableDecisions": ["accept", "decline"],
+        "proposedExecpolicyAmendment": ["printf fixture-app-server"]
+      }
+    },
+    {
+      "kind": "notification",
+      "method": "item/started",
+      "params": {
+        "threadId": "{{threadId}}",
+        "turnId": "{{turnId}}",
+        "item": {
+          "type": "commandExecution",
+          "id": "item-command-{{turnId}}",
+          "command": "printf fixture-app-server",
+          "cwd": "{{cwd}}",
+          "status": "inProgress"
+        }
+      }
+    },
+    {
+      "kind": "notification",
+      "method": "item/commandExecution/outputDelta",
+      "params": {
+        "threadId": "{{threadId}}",
+        "turnId": "{{turnId}}",
+        "itemId": "item-command-{{turnId}}",
+        "delta": "fixture terminal: booted\n"
+      }
+    },
+    {
+      "kind": "notification",
+      "method": "item/completed",
+      "params": {
+        "threadId": "{{threadId}}",
+        "turnId": "{{turnId}}",
+        "item": {
+          "type": "commandExecution",
+          "id": "item-command-{{turnId}}",
+          "command": "printf fixture-app-server",
+          "cwd": "{{cwd}}",
+          "status": "completed",
+          "exitCode": 0,
+          "aggregatedOutput": "fixture terminal: booted\n"
+        }
+      }
+    },
+    {
+      "kind": "notification",
+      "method": "item/started",
+      "params": {
+        "threadId": "{{threadId}}",
+        "turnId": "{{turnId}}",
+        "item": {
+          "type": "agentMessage",
+          "id": "item-agent-{{turnId}}",
+          "text": ""
+        }
+      }
+    },
+    {
+      "kind": "notification",
+      "method": "item/agentMessage/delta",
+      "params": {
+        "threadId": "{{threadId}}",
+        "turnId": "{{turnId}}",
+        "itemId": "item-agent-{{turnId}}",
+        "delta": "Fixture app-server completed deterministically."
+      }
+    },
+    {
+      "kind": "notification",
+      "method": "item/completed",
+      "params": {
+        "threadId": "{{threadId}}",
+        "turnId": "{{turnId}}",
+        "item": {
+          "type": "agentMessage",
+          "id": "item-agent-{{turnId}}",
+          "text": "Fixture app-server completed deterministically."
+        }
+      }
+    },
+    {
+      "kind": "notification",
+      "method": "thread/tokenUsage/updated",
+      "params": {
+        "threadId": "{{threadId}}",
+        "turnId": "{{turnId}}",
+        "info": {
+          "last_token_usage": {
+            "input_tokens": 11,
+            "cached_input_tokens": 2,
+            "output_tokens": 7,
+            "reasoning_output_tokens": 3,
+            "total_tokens": 21
+          },
+          "total_token_usage": {
+            "input_tokens": 11,
+            "cached_input_tokens": 2,
+            "output_tokens": 7,
+            "reasoning_output_tokens": 3,
+            "total_tokens": 21
+          }
+        }
+      }
+    },
+    {
+      "kind": "notification",
+      "method": "turn/completed",
+      "params": {
+        "threadId": "{{threadId}}",
+        "turn": {
+          "id": "{{turnId}}",
+          "status": "completed"
+        }
+      }
+    }
+  ]
+}
