@@ -9,7 +9,111 @@ import {
   createKhalaCodeDesktopFleetMcpRegistry,
   khalaCodeDesktopFleetMcpPolicy,
 } from "../src/bun/khala-fleet-mcp-server"
+import type {
+  KhalaFleetRunControlInput,
+  KhalaFleetRunSnapshot,
+  KhalaFleetRunStartInput,
+  KhalaFleetRunStatusInput,
+  KhalaFleetRunSupervisorManager,
+} from "../src/bun/khala-codex-fleet-tools"
 import { handleKhalaMcpRequest } from "@openagentsinc/khala-tools"
+
+const fleetRunSnapshot = (input: {
+  readonly active?: boolean
+  readonly runRef?: string
+  readonly state?: "draft" | "running" | "paused" | "draining" | "stopped" | "completed"
+} = {}): KhalaFleetRunSnapshot => {
+  const now = "2026-07-01T12:00:00.000Z"
+  return {
+    active: input.active ?? true,
+    lastTick: {
+      activeAssignments: 1,
+      claimed: 1,
+      dispatched: 1,
+      freeSlots: 0,
+      run: {
+        schema: "openagents.khala_code.fleet_run.v1",
+        runRef: input.runRef ?? "fleet_run.test",
+        objective: "Burn down the fixture backlog.",
+        workSource: "fixture",
+        targetConcurrency: 2,
+        workerKind: "codex",
+        refillPolicy: {
+          cooldownAware: true,
+          maxPerAccount: 1,
+          stopCondition: "backlog_empty",
+        },
+        state: input.state ?? "running",
+        dispatchKind: "supervised_dispatch",
+        dagTracked: true,
+        startedAt: now,
+        counters: {
+          activeAssignments: 1,
+          blockedAssignments: 0,
+          completedAssignments: 0,
+          failedAssignments: 0,
+          workUnitsTotal: 5,
+        },
+        createdAt: now,
+        updatedAt: now,
+      },
+    },
+    lifecycle: [{ kind: "tick", runRef: input.runRef ?? "fleet_run.test", activeAssignments: 1, freeSlots: 1 }],
+    pylonRef: "pylon.owner",
+    run: {
+      schema: "openagents.khala_code.fleet_run.v1",
+      runRef: input.runRef ?? "fleet_run.test",
+      objective: "Burn down the fixture backlog.",
+      workSource: "fixture",
+      targetConcurrency: 2,
+      workerKind: "codex",
+      refillPolicy: {
+        cooldownAware: true,
+        maxPerAccount: 1,
+        stopCondition: "backlog_empty",
+      },
+      state: input.state ?? "running",
+      dispatchKind: "supervised_dispatch",
+      dagTracked: true,
+      startedAt: now,
+      counters: {
+        activeAssignments: 1,
+        blockedAssignments: 0,
+        completedAssignments: 0,
+        failedAssignments: 0,
+        workUnitsTotal: 5,
+      },
+      createdAt: now,
+      updatedAt: now,
+    },
+  }
+}
+
+const mockFleetRunSupervisor = () => {
+  const calls: {
+    controls: KhalaFleetRunControlInput[]
+    starts: KhalaFleetRunStartInput[]
+    statuses: KhalaFleetRunStatusInput[]
+  } = { controls: [], starts: [], statuses: [] }
+  const manager: KhalaFleetRunSupervisorManager = {
+    control: async input => {
+      calls.controls.push(input)
+      const state = input.verb === "pause" ? "paused" : input.verb === "drain" ? "draining" : input.verb === "stop" ? "stopped" : "running"
+      return { ...fleetRunSnapshot({ active: input.verb !== "stop", runRef: input.runRef, state }), verb: input.verb }
+    },
+    start: async input => {
+      calls.starts.push(input)
+      return fleetRunSnapshot({ runRef: input.runRef ?? "fleet_run.mock" })
+    },
+    status: async input => {
+      calls.statuses.push(input)
+      return input.runRef === undefined
+        ? [fleetRunSnapshot({ runRef: "fleet_run.mock" })]
+        : fleetRunSnapshot({ runRef: input.runRef })
+    },
+  }
+  return { calls, manager }
+}
 
 describe("Codex Fleet MCP bridge", () => {
   test("projects the local Fleet server as a prompted Codex MCP config", () => {
@@ -22,7 +126,14 @@ describe("Codex Fleet MCP bridge", () => {
       args: ["/repo/openagents/clients/khala-code-desktop/src/bun/khala-fleet-mcp-server.ts"],
       command: "/usr/local/bin/bun",
       cwd: "/repo/openagents",
-      enabledTools: ["pylon_ensure", "codex_fleet_status", "codex_spawn"],
+      enabledTools: [
+        "pylon_ensure",
+        "codex_fleet_status",
+        "codex_spawn",
+        "fleet_run_start",
+        "fleet_run_status",
+        "fleet_run_control",
+      ],
       serverName: "khala_fleet",
     })
     expect(config.writes).toEqual([
@@ -36,7 +147,14 @@ describe("Codex Fleet MCP bridge", () => {
       { keyPath: "mcp_servers.khala_fleet.default_tools_approval_mode", value: "prompt" },
       {
         keyPath: "mcp_servers.khala_fleet.enabled_tools",
-        value: ["pylon_ensure", "codex_fleet_status", "codex_spawn"],
+        value: [
+          "pylon_ensure",
+          "codex_fleet_status",
+          "codex_spawn",
+          "fleet_run_start",
+          "fleet_run_status",
+          "fleet_run_control",
+        ],
       },
     ])
   })
@@ -107,7 +225,97 @@ describe("Codex Fleet MCP bridge", () => {
       "pylon_ensure",
       "codex_fleet_status",
       "codex_spawn",
+      "fleet_run_start",
+      "fleet_run_status",
+      "fleet_run_control",
     ])
     expect(tools.every(tool => tool.annotations.khalaAuthority === "owner_full_access")).toBe(true)
+  })
+
+  test("Fleet MCP run verbs call the mocked FleetRun supervisor with typed inputs", async () => {
+    const mock = mockFleetRunSupervisor()
+    const registry = createKhalaCodeDesktopFleetMcpRegistry({
+      fleetRunSupervisor: mock.manager,
+    })
+
+    const start = await handleKhalaMcpRequest(
+      {
+        id: "start",
+        jsonrpc: "2.0",
+        method: "tools/call",
+        params: {
+          arguments: {
+            fixture_count: 5,
+            objective: "Burn down the fixture backlog.",
+            pylon_ref: "pylon.owner",
+            run_ref: "fleet_run.mock",
+            target_concurrency: 2,
+            worker_kind: "codex",
+            work_source: "fixture",
+          },
+          name: "fleet_run_start",
+        },
+      },
+      { policy: khalaCodeDesktopFleetMcpPolicy, registry },
+    )
+
+    expect(start.result?.content).toEqual([expect.objectContaining({
+      text: expect.stringContaining("FleetRun fleet_run.mock: running"),
+      type: "text",
+    })])
+    expect(mock.calls.starts).toEqual([{
+      objective: "Burn down the fixture backlog.",
+      fixtureCount: 5,
+      pylonRef: "pylon.owner",
+      runRef: "fleet_run.mock",
+      targetConcurrency: 2,
+      workerKind: "codex",
+      workSource: "fixture",
+      baseUrl: undefined,
+      branch: undefined,
+      commit: undefined,
+      issues: undefined,
+      repo: undefined,
+      timeoutMs: undefined,
+      verify: undefined,
+    }])
+
+    const status = await handleKhalaMcpRequest(
+      {
+        id: "status",
+        jsonrpc: "2.0",
+        method: "tools/call",
+        params: {
+          arguments: { run_ref: "fleet_run.mock" },
+          name: "fleet_run_status",
+        },
+      },
+      { policy: khalaCodeDesktopFleetMcpPolicy, registry },
+    )
+
+    expect(status.result?.content).toEqual([expect.objectContaining({
+      text: expect.stringContaining("FleetRun fleet_run.mock: running"),
+      type: "text",
+    })])
+    expect(mock.calls.statuses).toEqual([{ runRef: "fleet_run.mock" }])
+
+    const control = await handleKhalaMcpRequest(
+      {
+        id: "control",
+        jsonrpc: "2.0",
+        method: "tools/call",
+        params: {
+          arguments: { run_ref: "fleet_run.mock", verb: "pause" },
+          name: "fleet_run_control",
+        },
+      },
+      { policy: khalaCodeDesktopFleetMcpPolicy, registry },
+    )
+
+    expect(control.result?.content).toEqual([expect.objectContaining({
+      text: expect.stringContaining("FleetRun fleet_run.mock: paused"),
+      type: "text",
+    })])
+    expect(mock.calls.controls).toEqual([{ runRef: "fleet_run.mock", verb: "pause" }])
   })
 })

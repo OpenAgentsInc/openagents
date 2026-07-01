@@ -39,7 +39,14 @@ export function codexFleetMcpBridgeConfig(input: {
     "clients/khala-code-desktop/src/bun/khala-fleet-mcp-server.ts",
   )
   const command = input.bunCommand?.trim() || "bun"
-  const enabledTools = ["pylon_ensure", "codex_fleet_status", "codex_spawn"] as const
+  const enabledTools = [
+    "pylon_ensure",
+    "codex_fleet_status",
+    "codex_spawn",
+    "fleet_run_start",
+    "fleet_run_status",
+    "fleet_run_control",
+  ] as const
   const prefix = `mcp_servers.${KHALA_CODE_DESKTOP_FLEET_MCP_SERVER_NAME}`
   const writes: CodexFleetMcpConfigWrite[] = [
     { keyPath: `${prefix}.command`, value: command },
