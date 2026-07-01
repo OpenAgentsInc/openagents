@@ -230,6 +230,18 @@ export const mountCodexThreadSidebar = (
             icon: "BranchAlt",
             onSelect: () => void runMutation(() => options.forkThread(thread.id)),
           },
+          {
+            id: "copy-session-id",
+            label: "Copy session ID",
+            description: thread.sessionId === null
+              ? "Copy thread ID fallback"
+              : "Copy Codex session ref",
+            icon: "Copy",
+            onSelect: () => {
+              const sessionId = thread.sessionId ?? thread.id
+              void navigator.clipboard?.writeText(sessionId).catch(() => undefined)
+            },
+          },
         ],
       },
       {
