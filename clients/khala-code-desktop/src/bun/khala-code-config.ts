@@ -143,6 +143,7 @@ export const khalaCodeConfigProviderFromEnv = (
   ConfigProvider.fromEnv({ env: definedEnvEntries(env) })
 
 export const makeKhalaCodeConfig = (input: {
+  sourceEnv?: Readonly<Record<string, string | undefined>>
   readonly plain: KhalaCodePlainConfig
   readonly secrets: KhalaCodeSecretConfig
 }): KhalaCodeConfigServiceShape => {
@@ -154,7 +155,14 @@ export const makeKhalaCodeConfig = (input: {
   Object.defineProperty(service, "env", {
     enumerable: false,
     get: () => {
-      const env: Partial<Record<KhalaCodeEnvKey, string>> = {}
+      // Spawn-interop surface: children must inherit the FULL runtime env
+      // (TMPDIR, SSH_AUTH_SOCK, GH_TOKEN, proxy/CA vars, ...), with the
+      // declared keys overlaid. Narrowing to declared keys alone broke
+      // git-over-SSH and gh auth inside Codex sessions (review finding).
+      const env: Record<string, string> = {}
+      for (const [key, value] of Object.entries(input.sourceEnv ?? {})) {
+        if (typeof value === "string") env[key] = value
+      }
       for (const key of KhalaCodePlainEnvKeys) {
         const value = input.plain[key]
         if (value.length > 0) env[key] = value
@@ -175,7 +183,7 @@ export const khalaCodeConfigFromEnv = (
 ): KhalaCodeConfigServiceShape =>
   Effect.runSync(
     KhalaCodeConfigSchema.pipe(
-      Effect.map(makeKhalaCodeConfig),
+      Effect.map((parsed) => makeKhalaCodeConfig({ ...parsed, sourceEnv: env })),
       Effect.provideService(ConfigProvider.ConfigProvider, khalaCodeConfigProviderFromEnv(env)),
     ),
   )
@@ -193,7 +201,7 @@ export class KhalaCodeConfig extends Context.Service<
     Layer.effect(
       KhalaCodeConfig,
       KhalaCodeConfigSchema.pipe(
-        Effect.map(makeKhalaCodeConfig),
+        Effect.map((parsed) => makeKhalaCodeConfig({ ...parsed, sourceEnv: env })),
         Effect.provideService(ConfigProvider.ConfigProvider, khalaCodeConfigProviderFromEnv(env)),
       ),
     )
@@ -206,5 +214,12 @@ export class KhalaCodeConfig extends Context.Service<
 
 export const KhalaCodeConfigLive = Layer.effect(
   KhalaCodeConfig,
-  KhalaCodeConfigSchema.pipe(Effect.map(makeKhalaCodeConfig)),
+  KhalaCodeConfigSchema.pipe(
+    Effect.map((parsed) =>
+      makeKhalaCodeConfig({
+        ...parsed,
+        sourceEnv: typeof Bun === "undefined" ? process.env : Bun.env,
+      }),
+    ),
+  ),
 )

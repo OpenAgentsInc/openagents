@@ -87,3 +87,21 @@ describe("KhalaCodeConfig", () => {
     })
   })
 })
+
+describe("spawn env interop", () => {
+  test("undeclared runtime keys survive into config.env with declared overlay", () => {
+    const config = khalaCodeConfigFromEnv({
+      SSH_AUTH_SOCK: "/tmp/agent.sock",
+      GH_TOKEN: "gh-secret",
+      TMPDIR: "/var/tmp/x",
+      KHALA_CODE_DESKTOP_PREVIEW_SERVER: "1",
+      EMPTYVAL: "",
+    })
+    const env = config.env as Record<string, string | undefined>
+    expect(env.SSH_AUTH_SOCK).toBe("/tmp/agent.sock")
+    expect(env.GH_TOKEN).toBe("gh-secret")
+    expect(env.TMPDIR).toBe("/var/tmp/x")
+    expect(env.KHALA_CODE_DESKTOP_PREVIEW_SERVER).toBe("1")
+    expect(env.EMPTYVAL).toBe("")
+  })
+})
