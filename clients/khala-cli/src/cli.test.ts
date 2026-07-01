@@ -49,15 +49,18 @@ describe("Khala CLI info diagnostics", () => {
     }
 
     expect(stdout).toContain("Khala fleet:")
-    expect(stdout).toContain("No Codex accounts connected yet.")
+    expect(stdout).toContain("No harness accounts connected yet.")
     expect(stdout).toContain("khala fleet connect")
+    expect(stdout).toContain("khala fleet connect --harness claude")
   })
 
-  test("lists connected Codex fleet accounts and readiness through the CLI alias", async () => {
+  test("lists connected fleet accounts and readiness through the CLI alias", async () => {
     const dir = mkdtempSync(join(tmpdir(), "khala-fleet-status-test-"))
     const pylonHome = join(dir, ".openagents", "pylon")
     const codexHome = join(pylonHome, "accounts", "codex", "codex")
+    const claudeHome = join(pylonHome, "accounts", "claude_agent", ".claude-claude")
     mkdirSync(codexHome, { recursive: true })
+    mkdirSync(claudeHome, { recursive: true })
     writeFileSync(
       join(codexHome, "auth.json"),
       JSON.stringify({
@@ -70,6 +73,7 @@ describe("Khala CLI info diagnostics", () => {
         },
       }),
     )
+    writeFileSync(join(claudeHome, "claude-oauth-token"), "sk-ant-oat-cli-status\n")
     writeFileSync(
       join(pylonHome, "config.json"),
       JSON.stringify({
@@ -77,6 +81,7 @@ describe("Khala CLI info diagnostics", () => {
           accounts: [
             { ref: "codex", provider: "codex", home: codexHome },
             { ref: "codex-2", provider: "codex", home: join(pylonHome, "accounts", "codex", "codex-2") },
+            { ref: "claude", provider: "claude_agent", home: claudeHome },
           ],
         },
       }),
@@ -97,11 +102,13 @@ describe("Khala CLI info diagnostics", () => {
       process.stdout.write = originalWrite
     }
 
-    expect(stdout).toContain("2 Codex account(s), 1 ready")
+    expect(stdout).toContain("3 account(s), 2 ready")
     expect(stdout).toContain("ACCOUNT")
+    expect(stdout).toContain("HARNESS")
     expect(stdout).toContain("READINESS")
     expect(stdout).toContain("EMAIL")
     expect(stdout).toContain("codex")
+    expect(stdout).toContain("claude")
     expect(stdout).toContain("ready")
     expect(stdout).toContain("fleet@example.com")
     expect(stdout).toContain("codex-2")

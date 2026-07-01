@@ -24,11 +24,19 @@ import { DEFAULT_BASE_URL } from "./types.js"
 //   - Credentials stay local; we never read or print tokens.
 
 const CODEX_LOGIN_MISSING_EXIT = 127
+const CLAUDE_SETUP_TOKEN_MISSING_EXIT = 127
+const PYLON_CLAUDE_OAUTH_TOKEN_FILE = "claude-oauth-token"
+const CLAUDE_AGENT_CAPABILITY_REF = "capability.pylon.local_claude_agent"
+
+export type KhalaFleetHarness = "codex" | "claude"
+type PylonFleetProvider = "codex" | "claude_agent"
 
 export type KhalaFleetAccountReadiness = "ready" | "credentials_missing"
 
 export type KhalaFleetAccount = {
   readonly accountRef: string
+  readonly harness: KhalaFleetHarness
+  readonly provider: PylonFleetProvider
   readonly home: string
   readonly email: string | null
   readonly readiness: KhalaFleetAccountReadiness
@@ -44,6 +52,8 @@ export type KhalaFleetStatus = {
 
 export type KhalaFleetConnectResult = {
   readonly accountRef: string
+  readonly harness: KhalaFleetHarness
+  readonly provider: PylonFleetProvider
   readonly home: string
   readonly email: string | null
   readonly pylonHome: string
@@ -74,6 +84,11 @@ export type KhalaCodexDeviceLoginRunner = (input: {
   readonly home: string
 }) => Promise<{ readonly exitCode: number }>
 
+export type KhalaClaudeSetupTokenRunner = (input: {
+  readonly env: Record<string, string | undefined>
+  readonly home: string
+}) => Promise<{ readonly exitCode: number; readonly stdout?: string | undefined }>
+
 type ConfigRecord = Record<string, unknown>
 type FetchLike = (input: string | URL | Request, init?: RequestInit) => Promise<Response>
 
@@ -93,6 +108,17 @@ export class CodexCliMissingError extends Error {
         "  (or see https://github.com/openai/codex)",
     )
     this.name = "CodexCliMissingError"
+  }
+}
+
+export class ClaudeCliMissingError extends Error {
+  readonly _tag = "ClaudeCliMissingError"
+  constructor() {
+    super(
+      "The `claude` CLI is required to connect a Claude account but was not found on your PATH.\n" +
+        "Install Claude Code, then re-run `khala fleet connect --harness claude`.",
+    )
+    this.name = "ClaudeCliMissingError"
   }
 }
 
@@ -135,6 +161,10 @@ export function codexAccountHome(pylonHome: string, accountRef: string): string 
   return join(pylonHome, "accounts", "codex", accountRef)
 }
 
+export function claudeAccountHome(pylonHome: string, accountRef: string): string {
+  return join(pylonHome, "accounts", "claude_agent", `.claude-${accountRef}`)
+}
+
 function asRecord(value: unknown): ConfigRecord | null {
   return value !== null && typeof value === "object" && !Array.isArray(value)
     ? (value as ConfigRecord)
@@ -143,16 +173,29 @@ function asRecord(value: unknown): ConfigRecord | null {
 
 // Read the codex accounts already registered in a Pylon config object.
 export function parseCodexAccounts(config: ConfigRecord): Array<{ readonly ref: string; readonly home: string | null }> {
+  return parseFleetAccounts(config)
+    .filter(account => account.provider === "codex")
+    .map(account => ({ ref: account.ref, home: account.home }))
+}
+
+export function parseFleetAccounts(config: ConfigRecord): Array<{
+  readonly ref: string
+  readonly provider: PylonFleetProvider
+  readonly harness: KhalaFleetHarness
+  readonly home: string | null
+}> {
   const dev = asRecord(config.dev)
   const accounts = dev !== null && Array.isArray(dev.accounts) ? dev.accounts : []
-  const out: Array<{ ref: string; home: string | null }> = []
+  const out: Array<{ ref: string; provider: PylonFleetProvider; harness: KhalaFleetHarness; home: string | null }> = []
   for (const account of accounts) {
     const record = asRecord(account)
     if (record === null) continue
-    if (record.provider !== "codex") continue
+    if (record.provider !== "codex" && record.provider !== "claude_agent") continue
     if (typeof record.ref !== "string" || record.ref.trim() === "") continue
     out.push({
       ref: record.ref,
+      provider: record.provider,
+      harness: record.provider === "claude_agent" ? "claude" : "codex",
       home: typeof record.home === "string" && record.home.trim() !== "" ? record.home : null,
     })
   }
@@ -162,13 +205,18 @@ export function parseCodexAccounts(config: ConfigRecord): Array<{ readonly ref: 
 // Auto-assign the next codex account ref: "codex", then "codex-2", "codex-3"...
 // (mirrors Pylon's nextCodexAccountRef so refs never collide across the tools).
 export function nextCodexAccountRef(existingRefs: ReadonlyArray<string>): string {
+  return nextFleetAccountRef("codex", existingRefs)
+}
+
+export function nextFleetAccountRef(harness: KhalaFleetHarness, existingRefs: ReadonlyArray<string>): string {
+  const base = harness === "claude" ? "claude" : "codex"
   const existing = new Set(existingRefs)
-  if (!existing.has("codex")) return "codex"
+  if (!existing.has(base)) return base
   for (let index = 2; index < 10_000; index += 1) {
-    const candidate = `codex-${index}`
+    const candidate = `${base}-${index}`
     if (!existing.has(candidate)) return candidate
   }
-  return `codex-${Date.now()}`
+  return `${base}-${Date.now()}`
 }
 
 // Register (or update) a codex account in the Pylon config object. Pure: returns
@@ -178,12 +226,19 @@ export function upsertCodexAccount(
   config: ConfigRecord,
   input: { readonly ref: string; readonly home: string },
 ): { readonly config: ConfigRecord; readonly changed: boolean } {
+  return upsertFleetAccount(config, { provider: "codex", ref: input.ref, home: input.home })
+}
+
+export function upsertFleetAccount(
+  config: ConfigRecord,
+  input: { readonly provider: PylonFleetProvider; readonly ref: string; readonly home: string },
+): { readonly config: ConfigRecord; readonly changed: boolean } {
   const dev = asRecord(config.dev) ?? {}
   const accounts = Array.isArray(dev.accounts) ? [...dev.accounts] : []
-  const nextEntry = { ref: input.ref, provider: "codex", home: input.home }
+  const nextEntry = { ref: input.ref, provider: input.provider, home: input.home }
   const index = accounts.findIndex(account => {
     const record = asRecord(account)
-    return record !== null && record.ref === input.ref && record.provider === "codex"
+    return record !== null && record.ref === input.ref && record.provider === input.provider
   })
   if (index === -1) {
     accounts.push(nextEntry)
@@ -380,11 +435,19 @@ async function readRuntimeCapabilityRefs(pylonHome: string): Promise<string[]> {
 async function capabilityRefsForFleetLink(pylonHome: string): Promise<string[]> {
   const refs = await readRuntimeCapabilityRefs(pylonHome)
   const config = await readPylonConfig(pylonConfigPath(pylonHome))
-  const accounts = parseCodexAccounts(config)
+  const accounts = parseFleetAccounts(config)
   const readyAccounts = await Promise.all(
-    accounts.map(async account => codexHomeHasLogin(account.home ?? codexAccountHome(pylonHome, account.ref))),
+    accounts.map(async account => {
+      const home = account.home ?? defaultAccountHomeForHarness(pylonHome, account.harness, account.ref)
+      return account.provider === "claude_agent" ? claudeHomeHasLogin(home) : codexHomeHasLogin(home)
+    }),
   )
-  if (readyAccounts.some(Boolean)) refs.push(CODEX_AGENT_CAPABILITY_REF)
+  if (readyAccounts.some((ready, index) => ready && accounts[index]?.provider === "codex")) {
+    refs.push(CODEX_AGENT_CAPABILITY_REF)
+  }
+  if (readyAccounts.some((ready, index) => ready && accounts[index]?.provider === "claude_agent")) {
+    refs.push(CLAUDE_AGENT_CAPABILITY_REF)
+  }
   return [...new Set(refs)]
 }
 
@@ -451,6 +514,19 @@ async function codexHomeHasLogin(home: string): Promise<boolean> {
   }
 }
 
+async function claudeHomeHasLogin(home: string): Promise<boolean> {
+  try {
+    const info = await stat(join(home, PYLON_CLAUDE_OAUTH_TOKEN_FILE))
+    return info.isFile() && info.size > 0
+  } catch {
+    return false
+  }
+}
+
+function defaultAccountHomeForHarness(pylonHome: string, harness: KhalaFleetHarness, accountRef: string): string {
+  return harness === "claude" ? claudeAccountHome(pylonHome, accountRef) : codexAccountHome(pylonHome, accountRef)
+}
+
 async function readCodexAccountDetails(
   home: string,
 ): Promise<{ email: string | null; lastLinkedAt: string | null; present: boolean }> {
@@ -470,6 +546,18 @@ async function readCodexAccountDetails(
   }
 }
 
+async function readClaudeAccountDetails(
+  home: string,
+): Promise<{ email: string | null; lastLinkedAt: string | null; present: boolean }> {
+  const tokenPath = join(home, PYLON_CLAUDE_OAUTH_TOKEN_FILE)
+  try {
+    const info = await stat(tokenPath)
+    return { email: null, lastLinkedAt: info.mtime.toISOString(), present: info.isFile() && info.size > 0 }
+  } catch {
+    return { email: null, lastLinkedAt: null, present: false }
+  }
+}
+
 const defaultCodexDeviceLoginRunner: KhalaCodexDeviceLoginRunner = async input => {
   // Inherit stdio so the `codex` CLI shows its device URL + short code, opens
   // the browser, and polls for completion itself. CODEX_HOME pins the isolated
@@ -483,6 +571,29 @@ const defaultCodexDeviceLoginRunner: KhalaCodexDeviceLoginRunner = async input =
   return { exitCode: await child.exited }
 }
 
+const defaultClaudeSetupTokenRunner: KhalaClaudeSetupTokenRunner = async input => {
+  // Capture stdout because `claude setup-token` emits the account OAuth token
+  // there. Stderr/stdin stay inherited for the interactive login prompts.
+  const child = spawnProcess(["claude", "setup-token"], {
+    env: { ...process.env, ...input.env, CLAUDE_CONFIG_DIR: input.home },
+    stdin: "inherit",
+    stdout: "pipe",
+    stderr: "inherit",
+  })
+  const [exitCode, stdout] = await Promise.all([child.exited, child.stdout])
+  return { exitCode, stdout }
+}
+
+function extractClaudeSetupToken(stdout: string | undefined): string | null {
+  const lines = (stdout ?? "").split(/\r?\n/).map(line => line.trim()).filter(Boolean)
+  return lines.find(line => /^sk-ant-oat-[A-Za-z0-9._-]+$/.test(line)) ?? lines.at(-1) ?? null
+}
+
+async function writeClaudeSetupToken(home: string, token: string): Promise<void> {
+  await mkdir(home, { recursive: true })
+  await writeFile(join(home, PYLON_CLAUDE_OAUTH_TOKEN_FILE), `${token.trim()}\n`, { mode: 0o600 })
+}
+
 // List the connected Codex accounts in the user's fleet with readiness.
 export async function listFleetAccounts(
   options: { readonly env?: Record<string, string | undefined> } = {},
@@ -491,13 +602,17 @@ export async function listFleetAccounts(
   const pylonHome = resolvePylonHome(env)
   const configPath = pylonConfigPath(pylonHome)
   const config = await readPylonConfig(configPath)
-  const registered = parseCodexAccounts(config)
+  const registered = parseFleetAccounts(config)
   const accounts: KhalaFleetAccount[] = []
   for (const entry of registered) {
-    const home = entry.home ?? codexAccountHome(pylonHome, entry.ref)
-    const details = await readCodexAccountDetails(home)
+    const home = entry.home ?? defaultAccountHomeForHarness(pylonHome, entry.harness, entry.ref)
+    const details = entry.provider === "claude_agent"
+      ? await readClaudeAccountDetails(home)
+      : await readCodexAccountDetails(home)
     accounts.push({
       accountRef: entry.ref,
+      harness: entry.harness,
+      provider: entry.provider,
       home,
       email: details.email,
       readiness: details.present ? "ready" : "credentials_missing",
@@ -517,33 +632,38 @@ export async function listFleetAccounts(
 export async function connectFleetAccount(
   options: {
     readonly env?: Record<string, string | undefined>
+    readonly harness?: KhalaFleetHarness | undefined
     readonly accountRef?: string | undefined
     readonly force?: boolean | undefined
     readonly runDeviceLogin?: KhalaCodexDeviceLoginRunner | undefined
+    readonly runClaudeSetupToken?: KhalaClaudeSetupTokenRunner | undefined
   } = {},
 ): Promise<KhalaFleetConnectResult> {
   const env = options.env ?? process.env
+  const harness = options.harness ?? "codex"
+  const provider: PylonFleetProvider = harness === "claude" ? "claude_agent" : "codex"
   const pylonHome = resolvePylonHome(env)
   const configPath = pylonConfigPath(pylonHome)
   const config = await readPylonConfig(configPath)
-  const existing = parseCodexAccounts(config)
+  const existing = parseFleetAccounts(config).filter(account => account.harness === harness)
 
   const requested = options.accountRef?.trim()
   const accountRef = requested && requested.length > 0
     ? requested
-    : nextCodexAccountRef(existing.map(account => account.ref))
+    : nextFleetAccountRef(harness, existing.map(account => account.ref))
 
-  if (accountRef === "default" || accountRef === ".codex") {
-    throw new Error(`Refusing to use account ref "${accountRef}" — it could collide with the default Codex home.`)
+  if (accountRef === "default" || accountRef === ".codex" || accountRef === ".claude") {
+    throw new Error(`Refusing to use account ref "${accountRef}" — it could collide with a default agent home.`)
   }
 
-  const home = codexAccountHome(pylonHome, accountRef)
-  await forceCodexFileCredentialStore(home)
+  const home = defaultAccountHomeForHarness(pylonHome, harness, accountRef)
+  if (harness === "codex") await forceCodexFileCredentialStore(home)
 
   let status: KhalaFleetConnectResult["status"] = "connected"
-  if (!options.force && (await codexHomeHasLogin(home))) {
+  const hasLogin = harness === "claude" ? claudeHomeHasLogin : codexHomeHasLogin
+  if (!options.force && (await hasLogin(home))) {
     status = "already_connected"
-  } else {
+  } else if (harness === "codex") {
     const runner = options.runDeviceLogin ?? defaultCodexDeviceLoginRunner
     const result = await runner({ env, home })
     if (result.exitCode === CODEX_LOGIN_MISSING_EXIT) {
@@ -555,16 +675,34 @@ export async function connectFleetAccount(
     if (!(await codexHomeHasLogin(home))) {
       throw new Error("codex login completed but auth.json was not written in the isolated account home")
     }
+  } else {
+    const runner = options.runClaudeSetupToken ?? defaultClaudeSetupTokenRunner
+    const result = await runner({ env, home })
+    if (result.exitCode === CLAUDE_SETUP_TOKEN_MISSING_EXIT) {
+      throw new ClaudeCliMissingError()
+    }
+    if (result.exitCode !== 0) {
+      throw new Error(`claude setup-token exited with status ${result.exitCode}`)
+    }
+    const token = extractClaudeSetupToken(result.stdout)
+    if (token !== null && token.trim().length > 0) {
+      await writeClaudeSetupToken(home, token)
+    }
+    if (!(await claudeHomeHasLogin(home))) {
+      throw new Error("claude setup-token completed but claude-oauth-token was not written in the isolated account home")
+    }
   }
 
-  const upserted = upsertCodexAccount(config, { ref: accountRef, home })
+  const upserted = upsertFleetAccount(config, { provider, ref: accountRef, home })
   if (upserted.changed) {
     await writePylonConfig(configPath, upserted.config)
   }
 
-  const details = await readCodexAccountDetails(home)
+  const details = harness === "claude" ? await readClaudeAccountDetails(home) : await readCodexAccountDetails(home)
   return {
     accountRef,
+    harness,
+    provider,
     home,
     email: details.email,
     pylonHome,

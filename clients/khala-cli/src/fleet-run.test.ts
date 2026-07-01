@@ -35,8 +35,10 @@ function status(accountRefs: readonly string[]): KhalaFleetStatus {
     accounts: accountRefs.map(accountRef => ({
       accountRef,
       email: null,
+      harness: "codex",
       home: `/tmp/${accountRef}`,
       lastLinkedAt: null,
+      provider: "codex",
       readiness: "ready",
     })),
     configPath: "/tmp/pylon/config.json",

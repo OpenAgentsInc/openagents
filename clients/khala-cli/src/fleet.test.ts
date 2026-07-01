@@ -4,7 +4,9 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 
 import {
+  ClaudeCliMissingError,
   CodexCliMissingError,
+  claudeAccountHome,
   codexAccountHome,
   codexConfigWithFileCredentialStore,
   connectFleetAccount,
@@ -13,11 +15,14 @@ import {
   formatOperatorFleetDashboard,
   linkFleetPylon,
   listFleetAccounts,
+  nextFleetAccountRef,
   nextCodexAccountRef,
   parseCodexAccounts,
+  parseFleetAccounts,
   pylonConfigPath,
   resolvePylonHome,
   upsertCodexAccount,
+  upsertFleetAccount,
 } from "./fleet.js"
 
 function idTokenFor(email: string): string {
@@ -32,6 +37,12 @@ describe("fleet ref assignment", () => {
     expect(nextCodexAccountRef(["codex"])).toBe("codex-2")
     expect(nextCodexAccountRef(["codex", "codex-2"])).toBe("codex-3")
     expect(nextCodexAccountRef(["codex", "codex-3"])).toBe("codex-2")
+  })
+
+  test("assigns claude, then claude-2, claude-3", () => {
+    expect(nextFleetAccountRef("claude", [])).toBe("claude")
+    expect(nextFleetAccountRef("claude", ["claude"])).toBe("claude-2")
+    expect(nextFleetAccountRef("claude", ["claude", "claude-2"])).toBe("claude-3")
   })
 })
 
@@ -108,6 +119,10 @@ describe("config parsing + upsert (Pylon-compatible shape)", () => {
       },
     }
     expect(parseCodexAccounts(config)).toEqual([{ ref: "codex", home: "/h/codex" }])
+    expect(parseFleetAccounts(config)).toEqual([
+      { ref: "codex", provider: "codex", harness: "codex", home: "/h/codex" },
+      { ref: "claude", provider: "claude_agent", harness: "claude", home: "/h/claude" },
+    ])
   })
 
   test("upsert adds a new account and is idempotent", () => {
@@ -119,6 +134,16 @@ describe("config parsing + upsert (Pylon-compatible shape)", () => {
     const moved = upsertCodexAccount(first.config, { ref: "codex", home: "/h/new" })
     expect(moved.changed).toBe(true)
     expect(parseCodexAccounts(moved.config)).toEqual([{ ref: "codex", home: "/h/new" }])
+  })
+
+  test("upsert adds a claude_agent account and is idempotent", () => {
+    const first = upsertFleetAccount({}, { provider: "claude_agent", ref: "claude", home: "/h/.claude-claude" })
+    expect(first.changed).toBe(true)
+    expect(first.config).toEqual({
+      dev: { accounts: [{ ref: "claude", provider: "claude_agent", home: "/h/.claude-claude" }] },
+    })
+    const second = upsertFleetAccount(first.config, { provider: "claude_agent", ref: "claude", home: "/h/.claude-claude" })
+    expect(second.changed).toBe(false)
   })
 })
 
@@ -213,6 +238,7 @@ describe("connect + status (with injected device login)", () => {
     const status = await listFleetAccounts({ env })
     expect(status.readyCount).toBe(2)
     expect(status.accounts.map(a => a.accountRef)).toEqual(["codex", "codex-2"])
+    expect(status.accounts.map(a => a.harness)).toEqual(["codex", "codex"])
     expect(status.accounts.map(a => a.readiness)).toEqual(["ready", "ready"])
 
     // The isolated home got the file credential store config.
@@ -220,12 +246,76 @@ describe("connect + status (with injected device login)", () => {
     expect(codexToml).toContain('cli_auth_credentials_store = "file"')
   }, 20000)
 
+  test("connects a Claude account with setup-token in an isolated CLAUDE_CONFIG_DIR home", async () => {
+    const base = await mkdtemp(join(tmpdir(), "khala-fleet-claude-"))
+    const pylonHome = join(base, ".openagents", "pylon")
+    const env = { PYLON_HOME: pylonHome }
+
+    let setupHome: string | undefined
+    let setupEnv: Record<string, string | undefined> | undefined
+    const result = await connectFleetAccount({
+      env,
+      harness: "claude",
+      runClaudeSetupToken: async input => {
+        setupHome = input.home
+        setupEnv = input.env
+        return { exitCode: 0, stdout: "sk-ant-oat-test-token\n" }
+      },
+    })
+
+    expect(result.accountRef).toBe("claude")
+    expect(result.status).toBe("connected")
+    expect(setupHome).toBe(claudeAccountHome(pylonHome, "claude"))
+    expect(setupHome).toContain(".claude-claude")
+    expect(setupHome).not.toBe(join(base, ".claude"))
+    expect(setupEnv).toEqual(env)
+
+    const token = await readFile(join(claudeAccountHome(pylonHome, "claude"), "claude-oauth-token"), "utf8")
+    expect(token).toBe("sk-ant-oat-test-token\n")
+
+    const config = JSON.parse(await readFile(pylonConfigPath(pylonHome), "utf8"))
+    expect(parseFleetAccounts(config)).toEqual([
+      {
+        ref: "claude",
+        provider: "claude_agent",
+        harness: "claude",
+        home: claudeAccountHome(pylonHome, "claude"),
+      },
+    ])
+
+    const second = await connectFleetAccount({
+      env,
+      harness: "claude",
+      runClaudeSetupToken: async () => ({ exitCode: 0, stdout: "sk-ant-oat-second\n" }),
+    })
+    expect(second.accountRef).toBe("claude-2")
+
+    const status = await listFleetAccounts({ env })
+    expect(status.readyCount).toBe(2)
+    expect(status.accounts.map(account => ({
+      harness: account.harness,
+      readiness: account.readiness,
+      ref: account.accountRef,
+    }))).toEqual([
+      { ref: "claude", harness: "claude", readiness: "ready" },
+      { ref: "claude-2", harness: "claude", readiness: "ready" },
+    ])
+  })
+
   test("surfaces a friendly error when the codex CLI is missing (exit 127)", async () => {
     const base = await mkdtemp(join(tmpdir(), "khala-fleet-"))
     const env = { PYLON_HOME: join(base, ".openagents", "pylon") }
     await expect(
       connectFleetAccount({ env, runDeviceLogin: async () => ({ exitCode: 127 }) }),
     ).rejects.toBeInstanceOf(CodexCliMissingError)
+  })
+
+  test("surfaces a friendly error when the claude CLI is missing (exit 127)", async () => {
+    const base = await mkdtemp(join(tmpdir(), "khala-fleet-claude-"))
+    const env = { PYLON_HOME: join(base, ".openagents", "pylon") }
+    await expect(
+      connectFleetAccount({ env, harness: "claude", runClaudeSetupToken: async () => ({ exitCode: 127 }) }),
+    ).rejects.toBeInstanceOf(ClaudeCliMissingError)
   })
 
   test("status reports credentials-missing for a registered home with no auth.json", async () => {
@@ -238,9 +328,39 @@ describe("connect + status (with injected device login)", () => {
     await writeFile(pylonConfigPath(pylonHome), JSON.stringify(config))
     const status = await listFleetAccounts({ env: { PYLON_HOME: pylonHome } })
     expect(status.accounts).toEqual([
-      { accountRef: "codex", home, email: null, readiness: "credentials_missing", lastLinkedAt: null },
+      {
+        accountRef: "codex",
+        harness: "codex",
+        provider: "codex",
+        home,
+        email: null,
+        readiness: "credentials_missing",
+        lastLinkedAt: null,
+      },
     ])
     void stat // keep import used across runtimes
+  })
+
+  test("status reports credentials-missing for a registered Claude home with no setup token", async () => {
+    const base = await mkdtemp(join(tmpdir(), "khala-fleet-claude-"))
+    const pylonHome = join(base, ".openagents", "pylon")
+    const home = claudeAccountHome(pylonHome, "claude")
+    await mkdir(home, { recursive: true })
+    const config = { dev: { accounts: [{ ref: "claude", provider: "claude_agent", home }] } }
+    await mkdir(pylonHome, { recursive: true })
+    await writeFile(pylonConfigPath(pylonHome), JSON.stringify(config))
+    const status = await listFleetAccounts({ env: { PYLON_HOME: pylonHome } })
+    expect(status.accounts).toEqual([
+      {
+        accountRef: "claude",
+        harness: "claude",
+        provider: "claude_agent",
+        home,
+        email: null,
+        readiness: "credentials_missing",
+        lastLinkedAt: null,
+      },
+    ])
   })
 })
 
