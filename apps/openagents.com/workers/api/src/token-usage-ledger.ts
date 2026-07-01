@@ -1340,21 +1340,30 @@ const readPublicTokensServedHistoryFromDailyRollups = (
   const rollupStartDay = firstDayIsPartial
     ? calendarDayKeyAfter(firstWindow.day, 1)
     : firstWindow.day
+  const rollupEndDay = calendarDayKeyAfter(lastWindow.day, -1)
 
   return Effect.gen(function* () {
     const partialFirstDay = firstDayIsPartial
       ? yield* readPublicTokensServedPartialHistoryDay(db, firstWindow)
       : []
+    const liveLastDay =
+      firstWindow.day === lastWindow.day
+        ? firstDayIsPartial
+          ? []
+          : yield* readPublicTokensServedPartialHistoryDay(db, lastWindow)
+        : yield* readPublicTokensServedPartialHistoryDay(db, lastWindow)
     const rollupDays =
-      rollupStartDay === undefined || rollupStartDay > lastWindow.day
+      rollupStartDay === undefined ||
+      rollupEndDay === undefined ||
+      rollupStartDay > rollupEndDay
         ? []
         : yield* readPublicTokensServedDailyRollups(db, {
-            endDay: lastWindow.day,
+            endDay: rollupEndDay,
             startDay: rollupStartDay,
             timezone: input.timezone,
           })
 
-    return [...partialFirstDay, ...rollupDays].sort((left, right) =>
+    return [...partialFirstDay, ...rollupDays, ...liveLastDay].sort((left, right) =>
       left.day.localeCompare(right.day),
     )
   })

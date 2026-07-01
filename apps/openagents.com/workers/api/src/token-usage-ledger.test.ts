@@ -237,6 +237,15 @@ const actorGroupRows = (
 const makeMemoryD1 = (
   store: TokenUsageLedgerMemory = { preferences: [], rows: [] },
   options: Readonly<{
+    dailyRollups?:
+      | ReadonlyArray<
+          Readonly<{
+            day: string
+            timezone: string
+            tokens_served: number
+          }>
+        >
+      | undefined
     failFirstTokenUsageEventInsertWithSuccessFalse?: boolean | undefined
     queryLog?: Array<string> | undefined
   }> = {},
@@ -268,6 +277,24 @@ const makeMemoryD1 = (
           const timezone = String(values[0])
           const startDay = String(values[1])
           const endDay = String(values[2])
+          if (options.dailyRollups !== undefined) {
+            return Promise.resolve(
+              makeResult<T>(
+                options.dailyRollups
+                  .filter(
+                    rollup =>
+                      rollup.timezone === timezone &&
+                      rollup.day >= startDay &&
+                      rollup.day <= endDay,
+                  )
+                  .sort((left, right) => left.day.localeCompare(right.day))
+                  .map(rollup => ({
+                    day: rollup.day,
+                    tokens_served: rollup.tokens_served,
+                  })) as Array<T>,
+              ),
+            )
+          }
           const grouped = store.rows.reduce((days, row) => {
             const day = dayKeyInTimezone(String(row.observed_at), timezone)
             if (day === undefined || day < startDay || day > endDay) {
@@ -711,10 +738,12 @@ const makeMemoryD1 = (
 
         if (query.includes('AS tokens_served')) {
           const rows = filteredRows(store.rows, query, values, store.preferences)
-          const count = countRow(rows)
 
           return Promise.resolve({
-            tokens_served: count.input_tokens + count.output_tokens,
+            tokens_served: rows.reduce(
+              (total, row) => total + servedTokensFromRow(row),
+              0,
+            ),
           } as T)
         }
 
@@ -735,13 +764,15 @@ const makeMemoryD1 = (
           query.includes('COUNT(*) AS usage_events')
         ) {
           const rows = filteredRows(store.rows, query, values, store.preferences)
-          const count = countRow(rows)
           const day = query.match(/SELECT\s+'([^']+)'\s+AS day/)?.[1] ?? null
 
           return Promise.resolve({
             day,
-            tokens: count.input_tokens + count.output_tokens,
-            usage_events: count.usage_events,
+            tokens: rows.reduce(
+              (total, row) => total + servedTokensFromRow(row),
+              0,
+            ),
+            usage_events: rows.length,
           } as T)
         }
 
@@ -1450,6 +1481,23 @@ describe('public tokens-served history', () => {
     usageTruth: 'exact',
   })
 
+  const totalOnlyEventOnDay = (
+    eventId: string,
+    observedAt: string,
+    totalTokens: number,
+  ) => ({
+    ...eventOnDay(eventId, observedAt, 0, 0),
+    tokenCounts: {
+      cacheReadTokens: 0,
+      cacheWrite1hTokens: 0,
+      cacheWrite5mTokens: 0,
+      inputTokens: 0,
+      outputTokens: 0,
+      reasoningTokens: 0,
+      totalTokens,
+    },
+  })
+
   test('returns correct per-day sums over a window from the ledger', async () => {
     const db = makeMemoryD1()
 
@@ -1509,6 +1557,59 @@ describe('public tokens-served history', () => {
     expect(
       queryLog.some(query =>
         query.includes('FROM public_khala_tokens_served_daily_rollups'),
+      ),
+    ).toBe(true)
+  })
+
+  test('Central-time history reads the current day live when the rollup is stale', async () => {
+    const queryLog: Array<string> = []
+    const db = makeMemoryD1(
+      { preferences: [], rows: [] },
+      {
+        dailyRollups: [
+          {
+            day: '2026-06-07',
+            timezone: 'America/Chicago',
+            tokens_served: 15,
+          },
+          {
+            day: '2026-06-08',
+            timezone: 'America/Chicago',
+            tokens_served: 1,
+          },
+        ],
+        queryLog,
+      },
+    )
+
+    await runLedger(
+      db,
+      Effect.gen(function* () {
+        yield* ingest(
+          eventOnDay('previous-day', '2026-06-07T13:00:00.000Z', 7, 8),
+        )
+        yield* ingest(
+          totalOnlyEventOnDay(
+            'current-total-only',
+            '2026-06-08T11:00:00.000Z',
+            250,
+          ),
+        )
+      }),
+    )
+
+    const history = await runLedger(db, tokensServedHistory({ window: '30d' }))
+
+    expect(history.series).toEqual([
+      { day: '2026-06-07', tokensServed: 15 },
+      { day: '2026-06-08', tokensServed: 250 },
+    ])
+    expect(
+      queryLog.some(
+        query =>
+          query.includes('SELECT') &&
+          query.includes('COUNT(*) AS usage_events') &&
+          query.includes('FROM token_usage_events'),
       ),
     ).toBe(true)
   })
