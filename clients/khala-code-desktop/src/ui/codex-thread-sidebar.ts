@@ -14,6 +14,7 @@ import {
   type BasecoatMenuDomContent,
   type BasecoatMenuDomPoint,
 } from "@openagentsinc/ui/menu-dom"
+import { formatCompactThreadTimestamp } from "./thread-time"
 
 export type CodexThreadSidebarHandle = {
   readonly refresh: () => Promise<void>
@@ -70,18 +71,6 @@ const sidebarIcon = (icon: IconName, label: string): HTMLSpanElement =>
     className: "khala-thread-sidebar-icon",
     dataIcon: label,
   })
-
-const formatTime = (seconds: number | null): string => {
-  if (seconds === null) return ""
-  try {
-    return new Intl.DateTimeFormat(undefined, {
-      dateStyle: "short",
-      timeStyle: "short",
-    }).format(new Date(seconds * 1000))
-  } catch {
-    return String(seconds)
-  }
-}
 
 const groupThreads = (
   data: KhalaCodeDesktopCodexThreadListResult,
@@ -189,7 +178,7 @@ export const mountCodexThreadSidebar = (
     const title = el("div", "khala-thread-sidebar-menu-title", thread.title)
     const preview = el("div", "khala-thread-sidebar-menu-preview", thread.preview || thread.id)
     const meta = el("div", "khala-thread-sidebar-menu-meta")
-    const time = formatTime(thread.recencyAt ?? thread.updatedAt)
+    const time = formatCompactThreadTimestamp(thread.recencyAt ?? thread.updatedAt)
     meta.append(el("span", undefined, thread.statusLabel || thread.status))
     if (time.length > 0) meta.append(el("span", undefined, time))
     header.append(title, preview, meta)
@@ -301,26 +290,25 @@ export const mountCodexThreadSidebar = (
     const row = el("button", "khala-thread-sidebar-item-row")
     row.type = "button"
     row.title = `${thread.title} — ${thread.preview || thread.id}`
+    row.setAttribute("aria-haspopup", "menu")
     row.addEventListener("click", () => void selectThread(thread.id))
-    row.append(
-      el("span", "khala-thread-sidebar-item-title", thread.title),
-      el("span", "khala-thread-sidebar-item-time", formatTime(thread.recencyAt ?? thread.updatedAt) || thread.statusLabel),
-    )
-
-    const menuButton = el("button", "khala-thread-sidebar-menu-button")
-    menuButton.type = "button"
-    menuButton.title = "Thread actions"
-    menuButton.setAttribute("aria-label", `Thread actions for ${thread.title}`)
-    menuButton.setAttribute("aria-haspopup", "menu")
-    menuButton.replaceChildren(sidebarIcon("DotsVerticalMoreMenu", "Thread actions"), srOnly("Thread actions"))
-    menuButton.addEventListener("click", event => {
+    row.addEventListener("keydown", event => {
+      if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return
       event.preventDefault()
       event.stopPropagation()
-      const rect = menuButton.getBoundingClientRect()
-      openThreadMenu(thread, { x: rect.right + 4, y: rect.top })
+      const rect = row.getBoundingClientRect()
+      openThreadMenu(thread, { x: rect.right, y: rect.top })
     })
+    row.append(
+      el("span", "khala-thread-sidebar-item-title", thread.title),
+      el(
+        "span",
+        "khala-thread-sidebar-item-time",
+        formatCompactThreadTimestamp(thread.recencyAt ?? thread.updatedAt) || thread.statusLabel,
+      ),
+    )
 
-    item.append(row, menuButton)
+    item.append(row)
     return item
   }
 
