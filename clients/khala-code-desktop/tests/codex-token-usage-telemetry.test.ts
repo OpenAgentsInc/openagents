@@ -1,6 +1,6 @@
-import { appendFile, mkdtemp, readFile, rm } from "node:fs/promises"
+import { appendFile, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { dirname, join } from "node:path"
 import { Database } from "bun:sqlite"
 import { afterEach, describe, expect, test } from "bun:test"
 
@@ -12,6 +12,7 @@ import {
   khalaCodeDesktopCodexTokenUsageEventRefs,
   khalaCodeDesktopTokenUsageTelemetryStatus,
   readKhalaCodeDesktopThreadTokenSummary,
+  syncKhalaCodeDesktopPendingTokenUsageReports,
 } from "../src/bun/codex-token-usage-telemetry"
 
 const tempDirs: string[] = []
@@ -66,6 +67,10 @@ describe("Codex token usage telemetry", () => {
       model: "gpt-5.5",
       producerSystem: "pylon",
       provider: "pylon-codex-direct-local",
+      privacy: {
+        leaderboardEligible: true,
+        privacyOptOut: false,
+      },
       safeMetadata: {
         clientUserMessageId: "user-direct-local",
         codexThreadId: "thread-direct-local",
@@ -125,10 +130,30 @@ describe("Codex token usage telemetry", () => {
         sourceRoute: "pylon_codex_direct_local",
       },
     })
+    const successLines = (await readFile(
+      join(dirname(ledgerPath), "token-usage-report-successes.jsonl"),
+      "utf8",
+    )).trim().split("\n")
+    expect(successLines).toHaveLength(1)
   })
 
-  test("reports local accounting as ready even when remote mirroring is not configured", () => {
-    expect(khalaCodeDesktopTokenUsageTelemetryStatus({})).toMatchObject({
+  test("loads the owner Stats token from the local secret file when env is not exported", async () => {
+    const root = await tempLedgerRoot()
+    const secretPath = join(root, "vortex-admin.env")
+    await writeFile(secretPath, "OPENAGENTS_ADMIN_API_TOKEN=test-token-from-file\n", "utf8")
+
+    expect(khalaCodeDesktopTokenUsageTelemetryStatus({
+      KHALA_CODE_TOKEN_USAGE_SECRET_PATH: secretPath,
+    })).toMatchObject({
+      remoteConfigured: true,
+      remoteDisabled: false,
+    })
+  })
+
+  test("reports missing remote mirroring when no token source is available", () => {
+    expect(khalaCodeDesktopTokenUsageTelemetryStatus({
+      KHALA_CODE_TOKEN_USAGE_SECRET_DISABLED: "1",
+    })).toMatchObject({
       localMessageAuditLedgerPath: expect.stringContaining("message-token-audit.jsonl"),
       remoteConfigured: false,
       remoteDisabled: false,
@@ -137,6 +162,7 @@ describe("Codex token usage telemetry", () => {
 
   test("does not treat a Probe Omega bearer as a Stats token usage producer token", () => {
     expect(khalaCodeDesktopTokenUsageTelemetryStatus({
+      KHALA_CODE_TOKEN_USAGE_SECRET_DISABLED: "1",
       PROBE_OMEGA_BEARER_TOKEN: "agent-token-that-cannot-post-token-usage",
     })).toMatchObject({
       remoteConfigured: false,
@@ -189,6 +215,54 @@ describe("Codex token usage telemetry", () => {
       String(khalaCodeDesktopCodexTokenUsageEvent(sampleReport()).eventId),
     ])
     expect(await readFile(failurePath, "utf8")).toBe("")
+  })
+
+  test("syncs local token usage events that were recorded before remote mirroring was configured", async () => {
+    const root = await tempLedgerRoot()
+    const localLedgerPath = join(root, "token-usage-events.jsonl")
+    const localOnlyEvent = khalaCodeDesktopCodexTokenUsageEvent({
+      ...sampleReport(),
+      codexThreadId: "thread-local-only",
+      codexTurnId: "turn-local-only",
+      desktopTurnId: "desktop-turn-local-only",
+    })
+    await appendFile(localLedgerPath, `${JSON.stringify({
+      schemaVersion: "khala-code-desktop.codex-token-usage.local.v1",
+      recordedAt: "2026-07-01T16:29:00.000Z",
+      event: localOnlyEvent,
+    })}\n`, "utf8")
+
+    const posts: Array<{ readonly body: unknown, readonly url: string }> = []
+    const result = await syncKhalaCodeDesktopPendingTokenUsageReports({
+      env: {
+        KHALA_CODE_TOKEN_USAGE_BASE_URL: "https://openagents.example",
+        KHALA_CODE_TOKEN_USAGE_BEARER_TOKEN: "test-token",
+      },
+      fetch: async (url, init) => {
+        posts.push({
+          body: JSON.parse(String(init?.body)),
+          url: String(url),
+        })
+        return new Response(JSON.stringify({ inserted: true }), { status: 201 })
+      },
+      localLedgerPath,
+    })
+
+    expect(result).toMatchObject({
+      attempted: 1,
+      failed: 0,
+      ok: true,
+      remoteConfigured: true,
+      synced: 1,
+    })
+    expect(posts.map(post => (post.body as { eventId?: string }).eventId)).toEqual([
+      String(localOnlyEvent.eventId),
+    ])
+    const successRows = (await readFile(
+      join(root, "token-usage-report-successes.jsonl"),
+      "utf8",
+    )).trim().split("\n")
+    expect(successRows).toHaveLength(1)
   })
 
   test("stores local message provenance with exact turn token refs for reconciliation", async () => {
@@ -362,6 +436,10 @@ describe("Codex token usage telemetry", () => {
       eventId: "token_usage_event.live.failed",
       idempotencyKey: "khala-code-desktop:live:failed",
     })}\n`, "utf8")
+    await appendFile(join(root, "token-usage-report-successes.jsonl"), `${JSON.stringify({
+      eventId: "token_usage_event.live.ok",
+      idempotencyKey: "khala-code-desktop:live:ok",
+    })}\n`, "utf8")
 
     const summary = await readKhalaCodeDesktopThreadTokenSummary({
       env,
@@ -401,6 +479,7 @@ describe("Codex token usage telemetry", () => {
       env: {
         KHALA_CODE_CODEX_STATE_DB_PATH: codexStateDbPath,
         KHALA_CODE_MESSAGE_TOKEN_AUDIT_LOCAL_LEDGER_PATH: join(root, "message-token-audit.jsonl"),
+        KHALA_CODE_TOKEN_USAGE_SECRET_DISABLED: "1",
         KHALA_CODE_TOKEN_USAGE_LOCAL_LEDGER_PATH: join(root, "token-usage-events.jsonl"),
       },
       threadId: "thread-visible-before-audit",

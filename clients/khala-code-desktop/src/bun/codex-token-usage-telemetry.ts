@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto"
+import { readFileSync } from "node:fs"
 import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import { dirname, join } from "node:path"
@@ -111,7 +112,22 @@ type TokenUsageTelemetryConfig = {
   readonly remoteDisabled: boolean
 }
 
+export type KhalaCodeDesktopTokenUsageSyncResult = {
+  readonly attempted: number
+  readonly failed: number
+  readonly ok: boolean
+  readonly remoteConfigured: boolean
+  readonly remoteDisabled: boolean
+  readonly synced: number
+}
+
 export type CreateKhalaCodeDesktopCodexTokenUsageReporterOptions = {
+  readonly env?: Readonly<Record<string, string | undefined>>
+  readonly fetch?: FetchLike
+  readonly localLedgerPath?: string
+}
+
+export type SyncKhalaCodeDesktopPendingTokenUsageReportsOptions = {
   readonly env?: Readonly<Record<string, string | undefined>>
   readonly fetch?: FetchLike
   readonly localLedgerPath?: string
@@ -192,6 +208,59 @@ const defaultCodexStateDbPath = (
   nonEmpty(env.CODEX_STATE_DB_PATH) ??
   join(homedir(), ".codex", "state_5.sqlite")
 
+const unquoteEnvValue = (value: string): string => {
+  const trimmed = value.trim()
+  if (trimmed.length >= 2) {
+    const first = trimmed[0]
+    const last = trimmed[trimmed.length - 1]
+    if ((first === "\"" && last === "\"") || (first === "'" && last === "'")) {
+      return trimmed.slice(1, -1)
+    }
+  }
+  return trimmed
+}
+
+const readEnvFileValue = (path: string, key: string): string | null => {
+  let text: string
+  try {
+    text = readFileSync(path, "utf8")
+  } catch {
+    return null
+  }
+
+  for (const line of text.split(/\r?\n/)) {
+    const match = line.match(/^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$/)
+    if (match === null || match[1] !== key) continue
+    return nonEmpty(unquoteEnvValue(match[2] ?? ""))
+  }
+  return null
+}
+
+const tokenUsageSecretPaths = (
+  env: Readonly<Record<string, string | undefined>>,
+): readonly string[] => {
+  const explicit = nonEmpty(env.KHALA_CODE_TOKEN_USAGE_SECRET_PATH)
+  if (explicit !== null) return [explicit]
+  if (boolEnv(env.KHALA_CODE_TOKEN_USAGE_SECRET_DISABLED)) return []
+  return [join(homedir(), "work", ".secrets", "vortex-admin.env")]
+}
+
+const tokenUsageBearerFromLocalSecret = (
+  env: Readonly<Record<string, string | undefined>>,
+): string | null => {
+  for (const path of tokenUsageSecretPaths(env)) {
+    for (const key of [
+      "KHALA_CODE_TOKEN_USAGE_BEARER_TOKEN",
+      "OPENAGENTS_ADMIN_API_TOKEN",
+      "PROBE_TOKEN_USAGE_BEARER_TOKEN",
+    ]) {
+      const value = readEnvFileValue(path, key)
+      if (value !== null) return value
+    }
+  }
+  return null
+}
+
 const resolveConfig = (
   env: Readonly<Record<string, string | undefined>>,
   localLedgerPath?: string,
@@ -207,7 +276,8 @@ const resolveConfig = (
       DEFAULT_BASE_URL,
     bearerToken: nonEmpty(env.KHALA_CODE_TOKEN_USAGE_BEARER_TOKEN) ??
       nonEmpty(env.OPENAGENTS_ADMIN_API_TOKEN) ??
-      nonEmpty(env.PROBE_TOKEN_USAGE_BEARER_TOKEN),
+      nonEmpty(env.PROBE_TOKEN_USAGE_BEARER_TOKEN) ??
+      tokenUsageBearerFromLocalSecret(env),
     codexStateDbPath: defaultCodexStateDbPath(env),
     localLedgerPath: localLedgerPath ?? defaultLocalLedgerPath(env),
     localMessageAuditLedgerPath:
@@ -311,12 +381,10 @@ const usageLedgerCountedTokens = (tokenCounts: JsonRecord): number => {
 
 const isSyncedUsageRef = (
   refs: readonly string[],
-  failedRefs: ReadonlySet<string>,
-  remoteConfigured: boolean,
+  successRefs: ReadonlySet<string>,
 ): boolean =>
-  remoteConfigured &&
   refs.length > 0 &&
-  refs.every(ref => !failedRefs.has(ref))
+  refs.every(ref => successRefs.has(ref))
 
 const newerIso = (left: string | null, right: string | null): string | null => {
   if (right === null) return left
@@ -404,12 +472,12 @@ export async function readKhalaCodeDesktopThreadTokenSummary(options: {
   })
   if (threadId === null) return emptySummary()
 
-  const [auditRows, usageRows, failureRows] = await Promise.all([
+  const [auditRows, usageRows, successRows] = await Promise.all([
     readJsonLines(config.localMessageAuditLedgerPath),
     readJsonLines(config.localLedgerPath),
-    readJsonLines(join(dirname(config.localLedgerPath), "token-usage-report-failures.jsonl")),
+    readJsonLines(join(dirname(config.localLedgerPath), "token-usage-report-successes.jsonl")),
   ])
-  const failedRefs = refSetFromRows(failureRows)
+  const successRefs = refSetFromRows(successRows)
   const auditedUsageRefs = new Set<string>()
   let auditRowCount = 0
   let usageEventRowCount = 0
@@ -449,7 +517,7 @@ export async function readKhalaCodeDesktopThreadTokenSummary(options: {
     if (status === "missing_token_usage_update") missingUsageTurns += 1
     if (status === "global_count_backfilled_aggregate") {
       leaderboardSyncedTokens += countedTokens
-    } else if (isSyncedUsageRef(usageEventRefs, failedRefs, remoteConfigured)) {
+    } else if (isSyncedUsageRef(usageEventRefs, successRefs)) {
       leaderboardSyncedTokens += countedTokens
     }
   }
@@ -474,7 +542,7 @@ export async function readKhalaCodeDesktopThreadTokenSummary(options: {
       updatedAt,
       stringField(event, "observedAt") ?? stringField(row, "recordedAt"),
     )
-    if (isSyncedUsageRef(refs, failedRefs, remoteConfigured)) {
+    if (isSyncedUsageRef(refs, successRefs)) {
       leaderboardSyncedTokens += countedTokens
     }
   }
@@ -545,7 +613,7 @@ export function khalaCodeDesktopCodexTokenUsageEvent(
       ? "openagents/codex-direct-local"
       : report.model.trim(),
     observedAt: report.observedAt,
-    privacy: { leaderboardEligible: false, privacyOptOut: true },
+    privacy: { leaderboardEligible: true, privacyOptOut: false },
     producerSystem: "pylon",
     provider: "pylon-codex-direct-local",
     safeMetadata: {
@@ -603,11 +671,14 @@ const appendJsonLine = async (path: string, value: unknown): Promise<void> => {
 const failureLedgerPath = (localLedgerPath: string): string =>
   join(dirname(localLedgerPath), "token-usage-report-failures.jsonl")
 
-const appendFailure = async (
+const successLedgerPath = (localLedgerPath: string): string =>
+  join(dirname(localLedgerPath), "token-usage-report-successes.jsonl")
+
+const appendSuccess = async (
   localLedgerPath: string,
   value: Record<string, unknown>,
 ): Promise<void> => {
-  await appendJsonLine(failureLedgerPath(localLedgerPath), value)
+  await appendJsonLine(successLedgerPath(localLedgerPath), value)
 }
 
 const postTokenUsageEvent = async (
@@ -637,27 +708,53 @@ const rewriteJsonLines = async (
   )
 }
 
-const retryFailedTokenUsageReports = async (
+const compactFailureRows = (
+  rows: readonly JsonRecord[],
+  successRefs: ReadonlySet<string>,
+): readonly JsonRecord[] => {
+  const byKey = new Map<string, JsonRecord>()
+  for (const row of rows) {
+    const refs = refsFromEventLike(row)
+    if (refs.length === 0 || refs.some(ref => successRefs.has(ref))) continue
+    byKey.set(refs.join("\0"), row)
+  }
+  return [...byKey.values()]
+}
+
+const syncPendingTokenUsageReports = async (
   config: TokenUsageTelemetryConfig,
   fetchImpl: FetchLike,
   endpoint: URL,
-): Promise<void> => {
-  if (config.remoteDisabled || config.bearerToken === null) return
+): Promise<KhalaCodeDesktopTokenUsageSyncResult> => {
+  const remoteConfigured = config.bearerToken !== null && !config.remoteDisabled
+  if (!remoteConfigured) {
+    return {
+      attempted: 0,
+      failed: 0,
+      ok: false,
+      remoteConfigured,
+      remoteDisabled: config.remoteDisabled,
+      synced: 0,
+    }
+  }
 
+  const usageRows = await readJsonLines(config.localLedgerPath)
+  const existingSuccessRows = await readJsonLines(successLedgerPath(config.localLedgerPath))
+  const successRefs = new Set(refSetFromRows(existingSuccessRows))
   const failurePath = failureLedgerPath(config.localLedgerPath)
   const failureRows = await readJsonLines(failurePath)
-  if (failureRows.length === 0) return
-
-  const failedRefs = refSetFromRows(failureRows)
-  const usageRows = await readJsonLines(config.localLedgerPath)
-  const remainingFailedRefs = new Set(failedRefs)
+  const nextFailureRows: JsonRecord[] = [...failureRows]
+  let attempted = 0
+  let failed = 0
+  let synced = 0
 
   for (const row of usageRows) {
     const event = objectField(row, "event")
     if (event === null) continue
     const refs = refsFromEventLike(event)
-    if (!refs.some(ref => failedRefs.has(ref))) continue
+    if (refs.length === 0 || refs.every(ref => successRefs.has(ref))) continue
 
+    attempted += 1
     try {
       const response = await postTokenUsageEvent(
         fetchImpl,
@@ -666,19 +763,60 @@ const retryFailedTokenUsageReports = async (
         event,
       )
       if (response.ok) {
-        for (const ref of refs) remainingFailedRefs.delete(ref)
+        await appendSuccess(config.localLedgerPath, {
+          schemaVersion: "khala-code-desktop.codex-token-usage.remote-success.v1",
+          eventId: stringField(event, "eventId"),
+          idempotencyKey: stringField(event, "idempotencyKey"),
+          observedAt: stringField(event, "observedAt") ?? stringField(row, "recordedAt"),
+          status: response.status,
+          syncedAt: new Date().toISOString(),
+        })
+        for (const ref of refs) successRefs.add(ref)
+        synced += 1
+      } else {
+        failed += 1
+        nextFailureRows.push({
+          schemaVersion: "khala-code-desktop.codex-token-usage.remote-failure.v1",
+          eventId: stringField(event, "eventId"),
+          idempotencyKey: stringField(event, "idempotencyKey"),
+          observedAt: stringField(event, "observedAt") ?? stringField(row, "recordedAt"),
+          status: response.status,
+        })
       }
-    } catch {
-      // Leave the failure marker in place for the next configured reporter call.
+    } catch (error) {
+      failed += 1
+      nextFailureRows.push({
+        schemaVersion: "khala-code-desktop.codex-token-usage.remote-failure.v1",
+        eventId: stringField(event, "eventId"),
+        idempotencyKey: stringField(event, "idempotencyKey"),
+        observedAt: stringField(event, "observedAt") ?? stringField(row, "recordedAt"),
+        reason: error instanceof Error ? error.message : String(error),
+      })
     }
   }
 
   await rewriteJsonLines(
     failurePath,
-    failureRows.filter(row =>
-      refsFromEventLike(row).some(ref => remainingFailedRefs.has(ref))
-    ),
+    compactFailureRows(nextFailureRows, successRefs),
   )
+  return {
+    attempted,
+    failed,
+    ok: failed === 0,
+    remoteConfigured,
+    remoteDisabled: config.remoteDisabled,
+    synced,
+  }
+}
+
+export async function syncKhalaCodeDesktopPendingTokenUsageReports(
+  options: SyncKhalaCodeDesktopPendingTokenUsageReportsOptions = {},
+): Promise<KhalaCodeDesktopTokenUsageSyncResult> {
+  const env = options.env ?? process.env
+  const config = resolveConfig(env, options.localLedgerPath)
+  const fetchImpl: FetchLike = options.fetch ?? ((url, init) => globalThis.fetch(url, init))
+  const endpoint = new URL("/api/stats/token-usage/events", config.baseUrl)
+  return syncPendingTokenUsageReports(config, fetchImpl, endpoint)
 }
 
 export function createKhalaCodeDesktopCodexTokenUsageReporter(
@@ -699,30 +837,8 @@ export function createKhalaCodeDesktopCodexTokenUsageReporter(
       event,
     })
 
-    if (config.remoteDisabled || config.bearerToken === null) return
-
     const endpoint = new URL("/api/stats/token-usage/events", config.baseUrl)
-    await retryFailedTokenUsageReports(config, fetchImpl, endpoint)
-    try {
-      const response = await postTokenUsageEvent(fetchImpl, endpoint, config.bearerToken, event)
-      if (!response.ok) {
-        await appendFailure(config.localLedgerPath, {
-          schemaVersion: "khala-code-desktop.codex-token-usage.remote-failure.v1",
-          eventId: event.eventId,
-          idempotencyKey: event.idempotencyKey,
-          observedAt: report.observedAt,
-          status: response.status,
-        })
-      }
-    } catch (error) {
-      await appendFailure(config.localLedgerPath, {
-        schemaVersion: "khala-code-desktop.codex-token-usage.remote-failure.v1",
-        eventId: event.eventId,
-        idempotencyKey: event.idempotencyKey,
-        observedAt: report.observedAt,
-        reason: error instanceof Error ? error.message : String(error),
-      })
-    }
+    await syncPendingTokenUsageReports(config, fetchImpl, endpoint)
   }
 }
 
