@@ -10,6 +10,7 @@ import {
 import {
   createKhalaCodexFleetTools,
   beginCodexConnect,
+  DefaultKhalaFleetRunSupervisorManager,
   ensureLocalPylon,
   inspectCodexFleet,
   parsePylonLifecycleNdjsonLine,
@@ -148,6 +149,57 @@ function matrixBatchSpawnBlocker(
     }],
     schema: "openagents.pylon.khala_spawn_run.v0.1",
   }
+}
+
+function matrixBatchSpawnInFlight(
+  assignmentRef: string,
+  accountRef = "codex-2",
+): Record<string, unknown> {
+  return {
+    aggregate: {
+      acceptedCount: 1,
+      assignmentRefs: [assignmentRef],
+      durableRequestIds: [`durable.${assignmentRef.split(".").at(-1) ?? "matrix"}`],
+      ownerOnlyRawEventCount: 0,
+      ownerOnlyTraceCount: 0,
+      totalTokenRows: 0,
+      totalVerifiedTokens: 0,
+    },
+    blockerRefs: [],
+    ok: true,
+    plan: {
+      requestedCount: 1,
+      slots: [{ account: { accountRef }, slotIndex: 0 }],
+      targetPylonRef: "pylon.local.test",
+    },
+    results: [{
+      assignmentRef,
+      blockerRefs: [],
+      closeoutStatus: null,
+      ok: true,
+      proof: null,
+      runAccepted: null,
+      slotIndex: 0,
+      state: "accepted",
+    }],
+    schema: "openagents.pylon.khala_spawn_run.v0.1",
+  }
+}
+
+async function waitForFleetRunSnapshot(
+  manager: DefaultKhalaFleetRunSupervisorManager,
+  runRef: string,
+  predicate: (snapshot: Awaited<ReturnType<DefaultKhalaFleetRunSupervisorManager["start"]>>) => boolean,
+): Promise<Awaited<ReturnType<DefaultKhalaFleetRunSupervisorManager["start"]>>> {
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    const snapshot = await manager.status({ runRef })
+    if (Array.isArray(snapshot)) throw new Error("expected a single fleet run snapshot")
+    if (predicate(snapshot)) return snapshot
+    await Bun.sleep(10)
+  }
+  const snapshot = await manager.status({ runRef })
+  if (Array.isArray(snapshot)) throw new Error("expected a single fleet run snapshot")
+  throw new Error(`fleet run ${runRef} did not reach expected state; last state=${snapshot.run.state} active=${snapshot.active}`)
 }
 
 describe("Khala Code Codex fleet tools", () => {
@@ -315,6 +367,169 @@ describe("Khala Code Codex fleet tools", () => {
       queued: 0,
       ready: 5,
     })
+  })
+
+  test("DefaultKhalaFleetRunSupervisorManager releases a Pylon slot after natural completion", async () => {
+    const fixture = await tempPylonFixture()
+    const spawnRefs = [
+      "assignment.public.codex_agent_task.completed_one",
+      "assignment.public.codex_agent_task.completed_two",
+    ]
+    const runner = async (input: KhalaCodexFleetCommandInput): Promise<KhalaCodexFleetCommandResult> => {
+      const args = pylonArgs(input)
+      const joined = args.join(" ")
+      if (joined === "provider go-online --json") {
+        return ok({
+          ok: true,
+          ownCapacityDispatch: {
+            availableCodexAssignments: 1,
+            codexAccounts: [{ accountKey: MATRIX_ACCOUNT_KEY, available: 1, busy: 0, queued: 0, ready: 1 }],
+            maxCodexAssignments: 1,
+          },
+          pylonRef: "pylon.local.test",
+        })
+      }
+      if (joined === "codex accounts list --json") {
+        return ok({
+          accounts: [{
+            accountRef: "codex-2",
+            accountRefHash: MATRIX_ACCOUNT_REF_HASH,
+            homeState: "present",
+            provider: "codex",
+          }],
+          schema: "openagents.pylon.accounts_list.v0.3",
+        })
+      }
+      if (joined === "accounts status --provider codex --json") {
+        return ok({
+          accounts: [{
+            accountRef: "codex-2",
+            accountRefHash: MATRIX_ACCOUNT_REF_HASH,
+            provider: "codex",
+            readiness: { state: "ready" },
+          }],
+          schema: "openagents.pylon.accounts_status.v0.1",
+        })
+      }
+      if (joined === "presence heartbeat --base-url https://openagents.com --json") {
+        return ok({ heartbeatRef: "heartbeat.pylon.local.test.completed", pylonRef: "pylon.local.test" })
+      }
+      if (args[0] === "khala" && args[1] === "spawn") {
+        return ok(matrixBatchSpawnSuccess(spawnRefs.shift() ?? "assignment.public.codex_agent_task.completed_extra"))
+      }
+      return failed(`unexpected command: ${joined}`)
+    }
+    const manager = new DefaultKhalaFleetRunSupervisorManager({ env: fixture.env, runner })
+
+    await manager.start({
+      fixtureCount: 1,
+      objective: "Run one fixture and finish.",
+      pylonRef: "pylon.local.test",
+      runRef: "fleet_run.test.completed_one",
+      targetConcurrency: 1,
+      workSource: "fixture",
+    })
+    const first = await waitForFleetRunSnapshot(
+      manager,
+      "fleet_run.test.completed_one",
+      snapshot => snapshot.run.state === "completed" && !snapshot.active,
+    )
+    const second = await manager.start({
+      fixtureCount: 1,
+      objective: "Run another fixture after completion.",
+      pylonRef: "pylon.local.test",
+      runRef: "fleet_run.test.completed_two",
+      targetConcurrency: 1,
+      workSource: "fixture",
+    })
+
+    expect(first.run.state).toBe("completed")
+    expect(first.active).toBe(false)
+    expect(second.run.state).toBe("completed")
+    expect(second.active).toBe(false)
+  })
+
+  test("DefaultKhalaFleetRunSupervisorManager stops a failed start record and closes the leaked scope", async () => {
+    const fixture = await tempPylonFixture()
+    const runner = async (input: KhalaCodexFleetCommandInput): Promise<KhalaCodexFleetCommandResult> => {
+      const args = pylonArgs(input)
+      const joined = args.join(" ")
+      if (joined === "provider go-online --json") {
+        return ok({
+          ok: true,
+          ownCapacityDispatch: {
+            availableCodexAssignments: 1,
+            codexAccounts: [{ accountKey: MATRIX_ACCOUNT_KEY, available: 1, busy: 0, queued: 0, ready: 1 }],
+            maxCodexAssignments: 1,
+          },
+          pylonRef: "pylon.local.test",
+        })
+      }
+      if (joined === "codex accounts list --json") {
+        return ok({
+          accounts: [{
+            accountRef: "codex-2",
+            accountRefHash: MATRIX_ACCOUNT_REF_HASH,
+            homeState: "present",
+            provider: "codex",
+          }],
+          schema: "openagents.pylon.accounts_list.v0.3",
+        })
+      }
+      if (joined === "accounts status --provider codex --json") {
+        return ok({
+          accounts: [{
+            accountRef: "codex-2",
+            accountRefHash: MATRIX_ACCOUNT_REF_HASH,
+            provider: "codex",
+            readiness: { state: "ready" },
+          }],
+          schema: "openagents.pylon.accounts_status.v0.1",
+        })
+      }
+      if (joined === "presence heartbeat --base-url https://openagents.com --json") {
+        return ok({ heartbeatRef: "heartbeat.pylon.local.test.inflight", pylonRef: "pylon.local.test" })
+      }
+      if (args[0] === "khala" && args[1] === "spawn") {
+        return ok(matrixBatchSpawnInFlight("assignment.public.codex_agent_task.inflight"))
+      }
+      return failed(`unexpected command: ${joined}`)
+    }
+    const manager = new DefaultKhalaFleetRunSupervisorManager({ env: fixture.env, runner })
+
+    const active = await manager.start({
+      fixtureCount: 1,
+      objective: "Keep this fixture in flight.",
+      pylonRef: "pylon.local.test",
+      runRef: "fleet_run.test.inflight",
+      targetConcurrency: 1,
+      workSource: "fixture",
+    })
+    await expect(manager.start({
+      fixtureCount: 1,
+      objective: "This start should fail because the Pylon slot is occupied.",
+      pylonRef: "pylon.local.test",
+      runRef: "fleet_run.test.failed_start",
+      targetConcurrency: 1,
+      workSource: "fixture",
+    })).rejects.toThrow("fleet run supervisor already active for pylon pylon.local.test")
+    const failedStart = await manager.status({ runRef: "fleet_run.test.failed_start" })
+
+    expect(active.active).toBe(true)
+    expect(Array.isArray(failedStart)).toBe(false)
+    expect(Array.isArray(failedStart) ? null : failedStart.run.state).toBe("stopped")
+
+    await manager.control({ runRef: "fleet_run.test.inflight", verb: "stop" })
+    const afterStop = await manager.start({
+      fixtureCount: 1,
+      objective: "A later start should not be blocked by the failed start scope.",
+      pylonRef: "pylon.local.test",
+      runRef: "fleet_run.test.after_failed_start",
+      targetConcurrency: 1,
+      workSource: "fixture",
+    })
+    expect(afterStop.run.runRef).toBe("fleet_run.test.after_failed_start")
+    await manager.control({ runRef: "fleet_run.test.after_failed_start", verb: "stop" })
   })
 
   test("codex_fleet_status counts only real codex exec agent turns", async () => {
