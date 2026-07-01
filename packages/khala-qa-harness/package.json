@@ -1,0 +1,22 @@
+{
+  "name": "@openagentsinc/khala-qa-harness",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./rpc-client": "./src/rpc-client.ts"
+  },
+  "scripts": {
+    "test": "bun test src/*.test.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@openagentsinc/khala-code-desktop": "workspace:*",
+    "effect": "catalog:"
+  },
+  "devDependencies": {
+    "bun-types": "^1.0.0",
+    "typescript": "catalog:"
+  }
+}
