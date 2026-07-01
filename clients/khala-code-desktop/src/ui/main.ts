@@ -172,6 +172,22 @@ const previewRpc = (): DesktopRpc => ({
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["codexFleetPromoteThread"]>>
       >("codexFleetPromoteThread", request),
+    fleetRunControl: request =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["fleetRunControl"]>>
+      >("fleetRunControl", request),
+    fleetRunList: request =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["fleetRunList"]>>
+      >("fleetRunList", request),
+    fleetRunStart: request =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["fleetRunStart"]>>
+      >("fleetRunStart", request),
+    fleetRunStatus: request =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["fleetRunStatus"]>>
+      >("fleetRunStatus", request),
     codexHarnessStatus: () =>
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["codexHarnessStatus"]>>
