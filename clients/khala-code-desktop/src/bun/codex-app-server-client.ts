@@ -13,7 +13,7 @@ const DEFAULT_REQUEST_TIMEOUT_MS = 30_000
 const DEFAULT_INITIALIZE_TIMEOUT_MS = 10_000
 const MAX_DIAGNOSTIC_LINES = 80
 
-type JsonRpcId = number
+type JsonRpcId = number | string
 
 type JsonRpcResponse = {
   readonly id?: JsonRpcId
@@ -26,6 +26,7 @@ type JsonRpcResponse = {
 }
 
 type JsonRpcNotification = {
+  readonly id?: JsonRpcId
   readonly method?: string
   readonly params?: unknown
 }
@@ -67,6 +68,7 @@ type PendingRequest = {
 }
 
 export type CodexAppServerNotification = Readonly<{
+  id?: JsonRpcId
   method: string
   params: unknown
   receivedAt: string
@@ -266,6 +268,7 @@ export function createCodexAppServerHost(
       method: message.method,
       params: message.params ?? {},
       receivedAt: isoNow(),
+      ...(message.id === undefined ? {} : { id: message.id }),
     }
     for (const subscriber of subscribers) subscriber(notification)
   }
@@ -285,10 +288,12 @@ export function createCodexAppServerHost(
         appendDiagnostic(diagnostics, `invalid stdout JSON: ${line.slice(0, 240)}`)
         continue
       }
-      if (message.id !== undefined) {
+      if (typeof message.method === "string") {
+        handleNotification(message)
+      } else if (message.id !== undefined) {
         handleResponse(message)
       } else {
-        handleNotification(message)
+        appendDiagnostic(diagnostics, "ignored stdout JSON without id or method")
       }
     }
   }

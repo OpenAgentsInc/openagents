@@ -278,10 +278,15 @@ const renderMessage = (message: KhalaCodeDesktopMessage): HTMLElement => {
   const article = document.createElement("article")
   article.className = messageClass(message.role)
   article.dataset.messageId = message.id
+  if (message.codexItem !== undefined) {
+    article.dataset.codexItemId = message.codexItem.itemId
+    article.dataset.codexItemType = message.codexItem.itemType
+    article.dataset.codexItemStatus = message.codexItem.status
+  }
 
   const body = document.createElement("div")
   body.className = "message-body"
-  body.append(...renderMessageBody(message.body, message.role))
+  body.append(...renderMessageBody(message.body, message.role, message.codexItem))
 
   article.append(body)
   return article

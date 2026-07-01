@@ -13,7 +13,19 @@ export const KHALA_CODE_DESKTOP_DEFAULT_PREVIEW_PORT = 50021
 
 export type KhalaCodeDesktopMessageRole = "user" | "assistant" | "system" | "tool"
 
+export type KhalaCodeDesktopCodexItemCard = {
+  readonly itemId: string
+  readonly itemType: string
+  readonly status: string
+  readonly title: string
+  readonly requestId?: string
+  readonly subtitle?: string
+  readonly threadId?: string
+  readonly turnId?: string
+}
+
 export type KhalaCodeDesktopMessage = {
+  readonly codexItem?: KhalaCodeDesktopCodexItemCard
   readonly id: string
   readonly role: KhalaCodeDesktopMessageRole
   readonly body: string

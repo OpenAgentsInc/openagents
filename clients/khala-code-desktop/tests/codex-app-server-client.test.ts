@@ -135,6 +135,43 @@ describe("Codex app-server client", () => {
     host.dispose()
   })
 
+  test("dispatches server-to-client requests with ids as notifications", async () => {
+    const notifications: { readonly id?: number | string; readonly method: string }[] = []
+    const host = createCodexAppServerHost({
+      spawnFn: () => makeChild((message, child) => {
+        if (message.method === "initialize") {
+          respond(child, message.id, {})
+          queueMicrotask(() => {
+            child.stdout.emit("data", Buffer.from(`${JSON.stringify({
+              id: 99,
+              method: "item/commandExecution/requestApproval",
+              params: {
+                threadId: "thread-1",
+                turnId: "turn-1",
+                itemId: "item-command",
+                command: "git status",
+              },
+            })}\n`))
+          })
+        }
+      }),
+    })
+    host.subscribe(notification => notifications.push({
+      ...(notification.id === undefined ? {} : { id: notification.id }),
+      method: notification.method,
+    }))
+
+    await host.start()
+    await Promise.resolve()
+
+    expect(notifications).toContainEqual({
+      id: 99,
+      method: "item/commandExecution/requestApproval",
+    })
+    expect(host.status().diagnostics).not.toContain("unknown response id: 99")
+    host.dispose()
+  })
+
   test("maps app-server request errors and preserves last error", async () => {
     const host = createCodexAppServerHost({
       spawnFn: () => makeChild((message, child) => {

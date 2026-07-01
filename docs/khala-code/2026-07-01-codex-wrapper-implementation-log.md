@@ -95,3 +95,39 @@ Validation:
 - `bun test clients/khala-code-desktop/tests/codex-app-server-chat-runtime.test.ts clients/khala-code-desktop/tests/rpc-handlers.test.ts clients/khala-code-desktop/tests/app-shell.test.ts`
 - `bun run --cwd clients/khala-code-desktop typecheck`
 - `bun run --cwd clients/khala-code-desktop verify`
+
+## Issue #7784: Codex ThreadItem Renderer
+
+Status: implemented
+
+Khala Code Desktop now projects Codex app-server `ThreadItem` lifecycle into
+stable transcript cards. The projector preserves Codex item ids, item types,
+thread ids, turn ids, request ids, and statuses in the desktop message metadata
+while streaming updates into the existing transcript event model.
+
+The renderer covers:
+
+- user messages when replaying history;
+- agent messages and deltas;
+- reasoning summaries and text deltas;
+- plan deltas;
+- command execution output and final status;
+- file change and patch update lifecycle;
+- MCP and dynamic tool calls;
+- collab/subagent tool calls and subagent activity;
+- web search, image view, sleep, image generation, review mode, and context
+  compaction items;
+- command, file-change, permission, and auto-review approval prompts;
+- safe diagnostic cards for unknown future Codex item variants.
+
+The browser transcript now renders Codex item cards with distinct status styling,
+bounded expandable output, copy controls, and the existing Markdown, code, and
+diff renderers inside each card. The app-server client also forwards
+server-to-client requests that include JSON-RPC ids so approval prompts can be
+rendered instead of being mistaken for unmatched responses.
+
+Validation:
+
+- `bun test clients/khala-code-desktop/tests/codex-thread-item-projector.test.ts clients/khala-code-desktop/tests/codex-app-server-client.test.ts clients/khala-code-desktop/tests/codex-app-server-chat-runtime.test.ts clients/khala-code-desktop/tests/rpc-handlers.test.ts clients/khala-code-desktop/tests/app-shell.test.ts`
+- `bun run --cwd clients/khala-code-desktop typecheck`
+- `bun run --cwd clients/khala-code-desktop verify`

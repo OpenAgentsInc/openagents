@@ -10,7 +10,10 @@ import {
   parseMarkdownInline,
   type MarkdownInlinePart,
 } from "@openagentsinc/ui/ai-elements/markdown"
-import type { KhalaCodeDesktopMessageRole } from "../shared/rpc"
+import type {
+  KhalaCodeDesktopCodexItemCard,
+  KhalaCodeDesktopMessageRole,
+} from "../shared/rpc"
 
 const EXT_LANGUAGE: Readonly<Record<string, string>> = {
   bash: "bash",
@@ -446,10 +449,84 @@ const toolTranscriptElement = (text: string): HTMLElement => {
   return root
 }
 
+const codexItemElement = (input: {
+  readonly codexItem: KhalaCodeDesktopCodexItemCard
+  readonly role: KhalaCodeDesktopMessageRole
+  readonly text: string
+}): HTMLElement => {
+  const root = document.createElement("div")
+  root.className = "tool-card codex-item-card"
+  root.dataset.codexItemType = input.codexItem.itemType
+  root.dataset.itemId = input.codexItem.itemId
+  root.dataset.status = input.codexItem.status
+  if (input.codexItem.threadId !== undefined) root.dataset.threadId = input.codexItem.threadId
+  if (input.codexItem.turnId !== undefined) root.dataset.turnId = input.codexItem.turnId
+
+  const header = document.createElement("div")
+  header.className = "tool-card-header codex-item-card-header tool-card-header--toggle"
+  header.setAttribute("role", "button")
+  header.title = input.codexItem.title
+
+  const title = document.createElement("span")
+  title.className = "tool-card-name codex-item-card-title"
+  title.textContent = input.codexItem.title
+
+  const meta = document.createElement("span")
+  meta.className = "codex-item-card-meta"
+  meta.textContent = input.codexItem.subtitle ?? input.codexItem.itemType
+
+  const status = document.createElement("span")
+  status.className = "tool-card-status codex-item-card-status"
+  status.textContent = input.codexItem.status
+  status.title = input.codexItem.status
+
+  const copy = document.createElement("button")
+  copy.type = "button"
+  copy.className = "codex-item-card-copy"
+  copy.title = "Copy item output"
+  copy.textContent = "Copy"
+  copy.addEventListener("click", event => {
+    event.stopPropagation()
+    void navigator.clipboard?.writeText(input.text).catch(() => undefined)
+  })
+
+  const chevron = document.createElement("span")
+  chevron.className = "tool-card-chevron"
+  chevron.setAttribute("aria-hidden", "true")
+
+  header.append(title, meta, status, copy, chevron)
+  header.addEventListener("click", () => {
+    root.dataset.expanded = root.dataset.expanded === "true" ? "false" : "true"
+  })
+  root.append(header)
+
+  if (input.text.trim().length > 0) {
+    const body = document.createElement("div")
+    body.className = "codex-item-card-body"
+    body.append(...parseMessageSegments(input.text).map(segment => {
+      if (segment.kind === "diff") return diffElement({ patch: segment.text })
+      if (segment.kind === "code") {
+        return codeBlockElement({
+          code: segment.text,
+          ...(segment.language === undefined ? {} : { language: segment.language }),
+        })
+      }
+      return input.role === "system"
+        ? plainTextElement(segment.text)
+        : markdownElement({ markdown: segment.text })
+    }))
+    root.append(body)
+  }
+
+  return root
+}
+
 export const renderMessageBody = (
   text: string,
   role: KhalaCodeDesktopMessageRole = "assistant",
+  codexItem?: KhalaCodeDesktopCodexItemCard,
 ): readonly HTMLElement[] => {
+  if (codexItem !== undefined) return [codexItemElement({ codexItem, role, text })]
   if (role === "tool") return [toolTranscriptElement(text)]
   if (role === "system") return [plainTextElement(text)]
   return parseMessageSegments(text).map(segment => {

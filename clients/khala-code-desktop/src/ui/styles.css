@@ -365,6 +365,71 @@ button {
   color: #93c5fd;
 }
 
+.codex-item-card {
+  border-color: rgba(147, 197, 253, 0.34);
+  box-shadow: 0 0 22px -12px rgba(147, 197, 253, 0.58);
+}
+
+.codex-item-card[data-status="completed"] {
+  border-color: rgba(110, 231, 183, 0.3);
+}
+
+.codex-item-card[data-status="interrupted"],
+.codex-item-card[data-status="pending"] {
+  border-color: rgba(251, 191, 36, 0.38);
+  box-shadow: 0 0 22px -12px rgba(251, 191, 36, 0.58);
+}
+
+.codex-item-card[data-status="failed"],
+.codex-item-card[data-status="errored"] {
+  border-color: rgba(248, 113, 113, 0.38);
+  box-shadow: 0 0 22px -12px rgba(248, 113, 113, 0.62);
+}
+
+.codex-item-card-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto auto auto;
+}
+
+.codex-item-card-meta {
+  min-width: 0;
+  overflow: hidden;
+  color: #8aa8c8;
+  font-size: 0.64rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.codex-item-card-copy {
+  flex: none;
+  border: 1px solid rgba(147, 197, 253, 0.24);
+  border-radius: 4px;
+  background: rgba(11, 24, 37, 0.92);
+  color: #d7e8ff;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.64rem;
+  line-height: 1;
+  padding: 4px 7px;
+}
+
+.codex-item-card-copy:hover {
+  border-color: rgba(147, 197, 253, 0.5);
+  background: rgba(21, 40, 61, 0.96);
+}
+
+.codex-item-card-body {
+  display: grid;
+  gap: 10px;
+  max-height: 14rem;
+  overflow: auto;
+  padding: 10px;
+}
+
+.codex-item-card[data-expanded="true"] .codex-item-card-body {
+  max-height: 38rem;
+}
+
 .tool-card-output {
   margin: 0;
   max-height: 7rem;

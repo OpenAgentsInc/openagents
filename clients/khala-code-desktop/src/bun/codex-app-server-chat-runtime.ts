@@ -15,12 +15,12 @@ import type {
   KhalaCodeDesktopCodexTurnActionResult,
   KhalaCodeDesktopCodexTurnInterruptRequest,
   KhalaCodeDesktopCodexTurnSteerRequest,
-  KhalaCodeDesktopMessage,
 } from "../shared/rpc.js"
 import type {
   CodexAppServerHost,
   CodexAppServerNotification,
 } from "./codex-app-server-client.js"
+import { createCodexThreadItemEventProjector } from "./codex-thread-item-projector.js"
 
 const CODEX_SESSION_STATE_SCHEMA = "khala-code-desktop.codex-sessions.v1"
 const DEFAULT_TURN_TIMEOUT_MS = 30 * 60 * 1_000
@@ -206,19 +206,6 @@ const threadIdFromNotification = (notification: CodexAppServerNotification): str
   const params = notification.params
   if (!isObject(params)) return null
   return stringField(params, "threadId")
-}
-
-const itemFromNotification = (notification: CodexAppServerNotification): JsonObject | null => {
-  if (!isObject(notification.params)) return null
-  return objectField(notification.params, "item")
-}
-
-const itemId = (item: JsonObject | null): string | null => stringField(item, "id")
-
-const agentMessageText = (item: JsonObject | null): string | null => {
-  if (item?.type !== "agentMessage") return null
-  const text = item.text
-  return typeof text === "string" ? text : ""
 }
 
 const completedTurnStatus = (turn: JsonObject | null): string =>
@@ -422,8 +409,7 @@ export function createCodexAppServerChatRuntime(
     }
 
     const thread = await ensureThreadForSession(request.sessionId, request.cwd)
-    const assistantMessages = new Map<string, KhalaCodeDesktopMessage>()
-    const completedMessageIds = new Set<string>()
+    const projector = createCodexThreadItemEventProjector({ desktopTurnId })
     let codexTurnId: string | null = null
     let turnStatus = "completed"
     let done = false
@@ -436,27 +422,6 @@ export function createCodexAppServerChatRuntime(
     const timeout = setTimeout(() => {
       fail(new Error("Codex turn timed out before turn/completed arrived."))
     }, turnTimeoutMs)
-
-    const assistantMessageFor = (id: string, text = ""): KhalaCodeDesktopMessage => {
-      const existing = assistantMessages.get(id)
-      if (existing !== undefined) return existing
-      const message: KhalaCodeDesktopMessage = {
-        id,
-        role: "assistant",
-        body: text,
-      }
-      assistantMessages.set(id, message)
-      options.onEvent?.({ message, turnId: desktopTurnId, type: "message_start" })
-      return message
-    }
-
-    const replaceAssistantMessage = (id: string, body: string): void => {
-      const current = assistantMessageFor(id)
-      if (current.body === body) return
-      const next = { ...current, body }
-      assistantMessages.set(id, next)
-      options.onEvent?.({ message: next, turnId: desktopTurnId, type: "message_replace" })
-    }
 
     const shouldHandle = (notification: CodexAppServerNotification): boolean => {
       if (threadIdFromNotification(notification) !== thread.threadId) return false
@@ -476,40 +441,7 @@ export function createCodexAppServerChatRuntime(
 
     const unsubscribe = host.subscribe(notification => {
       if (!shouldHandle(notification) || done) return
-      if (notification.method === "item/started") {
-        const item = itemFromNotification(notification)
-        const id = itemId(item)
-        const text = agentMessageText(item)
-        if (id !== null && text !== null) assistantMessageFor(id, text)
-        return
-      }
-      if (notification.method === "item/agentMessage/delta") {
-        if (!isObject(notification.params)) return
-        const id = stringField(notification.params, "itemId")
-        const delta = stringField(notification.params, "delta")
-        if (id === null || delta === null) return
-        const current = assistantMessageFor(id)
-        assistantMessages.set(id, { ...current, body: `${current.body}${delta}` })
-        options.onEvent?.({
-          delta,
-          messageId: id,
-          turnId: desktopTurnId,
-          type: "message_delta",
-        })
-        return
-      }
-      if (notification.method === "item/completed") {
-        const item = itemFromNotification(notification)
-        const id = itemId(item)
-        const text = agentMessageText(item)
-        if (id === null || text === null) return
-        replaceAssistantMessage(id, text)
-        if (!completedMessageIds.has(id)) {
-          completedMessageIds.add(id)
-          options.onEvent?.({ messageId: id, turnId: desktopTurnId, type: "message_done" })
-        }
-        return
-      }
+      for (const event of projector.accept(notification)) options.onEvent?.(event)
       if (notification.method === "turn/completed") {
         turnStatus = completedTurnStatus(objectField(notification.params, "turn"))
         done = true
@@ -547,7 +479,7 @@ export function createCodexAppServerChatRuntime(
       activeTurnsByDesktopId.delete(desktopTurnId)
     }
 
-    const messages = [...assistantMessages.values()]
+    const messages = projector.messages()
     return {
       backend: {
         kind: "codex_app_server",
