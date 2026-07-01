@@ -1398,13 +1398,14 @@ export const publicProductPromisesDocument = () => {
         audience: ['agent', 'user', 'public'],
         state: 'green',
         claim:
-          'OpenAgents publishes a live public Khala tokens-served counter and history.',
+          'OpenAgents publishes a live public Tokens Served counter and history.',
         safeCopy:
-          'The public Khala tokens-served counter is live at GET /api/public/khala-tokens-served and is shown on openagents.com surfaces including /khala and /stats. It is a source-agnostic headline total of real served tokens, including internal dogfood and owner-capacity Codex rows after exact closeout ingestion. Use segmented analytics or assignment proof for provenance; the headline counter alone is not proof of external demand, revenue, assignment success, payout, or model quality.',
+          'The public Tokens Served counter is live at GET /api/public/khala-tokens-served and is shown on openagents.com surfaces including /khala and /stats. It is a source-agnostic headline total of real served tokens across product channels, including Khala API rows and explicitly opted-in direct local Codex rows. Use the channel/model/demand aggregate views or assignment proof for provenance; the headline counter alone is not proof of external demand, revenue, assignment success, payout, or model quality.',
         unsafeCopy:
           'Do not describe the headline total as external customer demand, revenue, paid usage, contributor payout, or assignment-specific proof. Do not infer a Khala -> Pylon -> Codex assignment from counter movement without matching exact token_usage_events rows.',
         evidenceRefs: [
           'route:/api/public/khala-tokens-served',
+          'route:/api/public/khala-tokens-served/channel-mix',
           'route:/api/public/khala-token-history',
           'docs/inference/2026-06-25-khala-inference-gtm-push.md',
           'docs/stats/2026-06-26-stats-page-audit.md',
@@ -1415,7 +1416,7 @@ export const publicProductPromisesDocument = () => {
         ],
         blockerRefs: [],
         verification:
-          'GET /api/public/khala-tokens-served must return schemaVersion openagents.public_khala_tokens_served.v1 with tokensServed and live_at_read staleness. Token history and page projections must preserve the policy that all real served tokens count in the headline while provenance/demand segmentation remains separate.',
+          'GET /api/public/khala-tokens-served must return schemaVersion openagents.public_khala_tokens_served.v1 with tokensServed and live_at_read staleness. Token history and page projections must preserve the policy that all real served tokens count in the headline while provenance/channel/demand segmentation remains separate.',
         authorityBoundary:
           'A public aggregate counter does not expose private traces, raw provider events, D1 rows, payment data, or assignment-level proof, and it does not authorize external-demand or revenue claims.',
       },
@@ -1426,20 +1427,21 @@ export const publicProductPromisesDocument = () => {
         audience: ['agent', 'operator', 'public'],
         state: 'green',
         claim:
-          'The Khala stats surface shows model-family/provider mix and daily token volume.',
+          'The stats surface shows model-family/provider mix, channel mix, and daily token volume.',
         safeCopy:
-          'The /stats surface includes public model-family/provider mix and daily token-volume views for Khala. The model-mix route is live-at-read over token_usage_events (liveAt/generatedAt, projection_staleness.v1, maxStalenessSeconds:0), uses stable public model-family normalization, and includes headline served volume across external, internal, internal-stress, unlabeled, and Pylon-Codex own-capacity token rows. The owner-signed green transition is applied for this scoped transparency surface; provenance caveats remain required for demand, revenue, and marketplace-health claims.',
+          'The /stats surface includes public model-family/provider mix, channel mix, and daily token-volume views for Tokens Served. The model-mix and channel-mix routes are live-at-read over token_usage_events (liveAt/generatedAt, projection_staleness.v1, maxStalenessSeconds:0), use stable public normalization, and include headline served volume across Khala API and explicitly opted-in direct local Codex rows. The owner-signed green transition is applied for this scoped transparency surface; provenance caveats remain required for demand, revenue, and marketplace-health claims.',
         unsafeCopy:
-          'Do not use model-mix percentages as proof of external customer demand, revenue, model preference, paid provider resale, or marketplace health. Do not hide internal dogfood or own-capacity provenance when making demand claims.',
+          'Do not use model-mix or channel-mix percentages as proof of external customer demand, revenue, model preference, paid provider resale, or marketplace health. Do not hide internal dogfood, own-capacity, or direct-local provenance when making demand claims.',
         evidenceRefs: [
           'route:/api/public/khala-tokens-served/model-mix',
+          'route:/api/public/khala-tokens-served/channel-mix',
           'docs/stats/2026-06-26-stats-page-audit.md',
           'docs/inference/2026-06-25-khala-inference-gtm-push.md',
           'docs/transcripts/244.md',
         ],
         blockerRefs: [],
         verification:
-          'Green after the owner-signed #7016 transition: route/test evidence covers liveAt/generatedAt live_at_read staleness, stable public model-family normalization, and /stats copy separating headline served volume from external demand and revenue. This verifies the public transparency projection only and creates no external-demand, revenue, paid-provider-resale, or marketplace-health claim.',
+          'Green after the owner-signed #7016 transition plus #7797 channel expansion: route/test evidence covers liveAt/generatedAt live_at_read staleness, stable public model-family/channel normalization, and /stats copy separating headline served volume from external demand and revenue. This verifies the public transparency projection only and creates no external-demand, revenue, paid-provider-resale, or marketplace-health claim.',
         authorityBoundary:
           'Model-mix transparency is not routing authority, provider resale authority, benchmark proof, revenue proof, or public raw-event disclosure.',
       },

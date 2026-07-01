@@ -973,10 +973,10 @@ export const PublicPylonStatsModel = S.Union([
 ])
 export type PublicPylonStatsModel = typeof PublicPylonStatsModel.Type
 
-// "Khala Tokens Served" homepage counter (#6227). The public-safe aggregate
+// "Tokens Served" homepage counter (#6227). The public-safe aggregate
 // from GET /api/public/khala-tokens-served, polled every few seconds so the
 // odometer count-up reads live. `tokensServed` is the running network-wide SUM
-// of input + output tokens served, powered by Khala.
+// of input + output tokens served across OpenAgents products.
 export const PublicKhalaTokensServed = S.Struct({
   tokensServed: S.Number,
   generatedAt: S.String,
@@ -1012,7 +1012,7 @@ export const PublicKhalaTokensServedModel = S.Union([
 export type PublicKhalaTokensServedModel =
   typeof PublicKhalaTokensServedModel.Type
 
-// "Khala Tokens Served" history (#6227): the public-safe per-day series from
+// "Tokens Served" history (#6227): the public-safe per-day series from
 // GET /api/public/khala-tokens-served/history, polled on the same interval as
 // the scalar counter so the /stats history chart reads live. Each point is a
 // bare local day + the SUM of input + output tokens served that day.
@@ -1204,6 +1204,7 @@ export const PublicKhalaTokensServedModelFamily = S.Literals([
   'glm',
   'fireworks_deepseek',
   'pylon_codex',
+  'codex_direct',
   'pylon_claude',
   'gpt_oss',
   'gemini',
@@ -1262,6 +1263,64 @@ export const PublicKhalaTokensServedModelMixModel = S.Union([
 ])
 export type PublicKhalaTokensServedModelMixModel =
   typeof PublicKhalaTokensServedModelMixModel.Type
+
+export const PublicKhalaTokensServedDemandChannel = S.Literals([
+  'khala_api',
+  'direct_local',
+])
+export type PublicKhalaTokensServedDemandChannel =
+  typeof PublicKhalaTokensServedDemandChannel.Type
+
+export const PublicKhalaTokensServedChannelMixGroup = S.Struct({
+  channel: PublicKhalaTokensServedDemandChannel,
+  label: S.String,
+  tokens: S.Number,
+  reqs: S.Number,
+  pct: S.Number,
+})
+export type PublicKhalaTokensServedChannelMixGroup =
+  typeof PublicKhalaTokensServedChannelMixGroup.Type
+
+export const PublicKhalaTokensServedChannelMix = S.Struct({
+  schemaVersion: S.Literal('openagents.public_khala_channel_mix.v1'),
+  window: S.String,
+  totalTokens: S.Number,
+  groups: S.Array(PublicKhalaTokensServedChannelMixGroup),
+  liveAt: S.optionalKey(S.String),
+  generatedAt: S.String,
+  staleness: S.optionalKey(S.Unknown),
+})
+export type PublicKhalaTokensServedChannelMix =
+  typeof PublicKhalaTokensServedChannelMix.Type
+
+export const IdlePublicKhalaTokensServedChannelMix = ts(
+  'PublicKhalaTokensServedChannelMixIdle',
+  {},
+)
+export const LoadingPublicKhalaTokensServedChannelMix = ts(
+  'PublicKhalaTokensServedChannelMixLoading',
+  {},
+)
+export const LoadedPublicKhalaTokensServedChannelMix = ts(
+  'PublicKhalaTokensServedChannelMixLoaded',
+  {
+    mix: PublicKhalaTokensServedChannelMix,
+  },
+)
+export const FailedPublicKhalaTokensServedChannelMix = ts(
+  'PublicKhalaTokensServedChannelMixFailed',
+  {
+    error: S.String,
+  },
+)
+export const PublicKhalaTokensServedChannelMixModel = S.Union([
+  IdlePublicKhalaTokensServedChannelMix,
+  LoadingPublicKhalaTokensServedChannelMix,
+  LoadedPublicKhalaTokensServedChannelMix,
+  FailedPublicKhalaTokensServedChannelMix,
+])
+export type PublicKhalaTokensServedChannelMixModel =
+  typeof PublicKhalaTokensServedChannelMixModel.Type
 
 export const IdlePublicForumLaunchStatus = ts('PublicForumLaunchStatusIdle', {})
 export const LoadingPublicForumLaunchStatus = ts(
@@ -1706,6 +1765,7 @@ export const Model = ts('LoggedOut', {
   publicActivityTimeline: PublicActivityTimelineModel,
   publicArtanisActivity: PublicArtanisActivityModel,
   publicKhalaTokensServedModelMix: PublicKhalaTokensServedModelMixModel,
+  publicKhalaTokensServedChannelMix: PublicKhalaTokensServedChannelMixModel,
   khalaTokensServedStream: KhalaTokensServedStreamModel,
   publicForumLaunchStatus: PublicForumLaunchStatusModel,
   publicForumTipLeaderboards: PublicForumTipLeaderboardsModel,
@@ -1797,6 +1857,10 @@ export const init = (
       route._tag === 'Stats' || route._tag === 'PublicStatsArchive'
         ? LoadingPublicKhalaTokensServedModelMix()
         : IdlePublicKhalaTokensServedModelMix(),
+    publicKhalaTokensServedChannelMix:
+      route._tag === 'Stats' || route._tag === 'PublicStatsArchive'
+        ? LoadingPublicKhalaTokensServedChannelMix()
+        : IdlePublicKhalaTokensServedChannelMix(),
     publicForumLaunchStatus:
       route._tag === 'Home' ||
       route._tag === 'Stats' ||

@@ -845,6 +845,13 @@ This is the invariant ledger for `openagents`.
   refs, anonymized source refs, run/session/task/repository refs, provider,
   model, backend profile, bucketed token counts, usage truth, cost, currency,
   and leaderboard/privacy flags.
+- Token usage demand channel is a first-class dimension distinct from demand
+  kind. `demand_channel = 'khala_api'` is the default/backfill for existing
+  Khala API and Khala-delegated rows; `demand_channel = 'direct_local'` is
+  reserved for explicit opt-in local usage reported by owned tooling without a
+  Khala assignment. Public channel projections may expose only aggregate
+  `khala_api`/`direct_local` totals and must not expose account, prompt,
+  completion, raw provider, local path, or private-session material.
 - Token usage events must not store raw prompts, completions, provider payloads,
   API keys, bearer/callback/OAuth material, tool args, raw source, private repo
   paths, local filesystem paths, or customer/private material. Unsafe fields
@@ -2299,8 +2306,9 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
 - Projection inventory (staleness mode → compliance as of epic #4751):
   - `GET /api/public/forum-activity` — live at read over public forum topics/posts, rebuilt on forum topic/post writes — compliant (`generatedAt`, `live_at_read` contract). Public-safe forum→Verse reflection source (epic #5897, BF-1). `staleness_declared`.
   - `GET /api/public/labor-earnings` — live at read over labor escrow receipts — compliant (`generatedAt`, `live_at_read` contract). `staleness_declared`.
-  - `GET /api/public/khala-tokens-served` — live at read over the canonical token usage ledger; the running network-wide SUM of input + output tokens served, powered by Khala ("Khala Tokens Served" homepage counter, #6227) — compliant (`generatedAt`, `live_at_read` contract over `token_usage_events`). Aggregate only; no per-user/team/account/provider material. A short in-isolate cache is a perf detail under the live-at-read contract. `staleness_declared`.
-  - `GET /api/public/khala-tokens-served/model-mix` — live at read over the canonical token usage ledger; the public `/stats` model/provider mix collapsed into `openagents.public_khala_model_mix.v1` groups (`family`, `label`, `tokens`, `reqs`, `pct`) across the canonical `glm`, `fireworks_deepseek`, `pylon_codex`, `pylon_claude`, `gpt_oss`, `gemini`, and `other` families — compliant (`generatedAt`, `live_at_read` contract over `token_usage_events`). Aggregate only; all demand rows are included, including `internal` and `own_capacity`, while no per-user/team/account/raw-provider/raw-model material is exposed. `staleness_declared`.
+  - `GET /api/public/khala-tokens-served` — live at read over the canonical token usage ledger; the running product-wide SUM of input + output tokens served across Khala API rows and explicitly opted-in direct local Codex rows ("Tokens Served" homepage/stats counter, #6227/#7797) — compliant (`generatedAt`, `live_at_read` contract over `token_usage_events`). Aggregate only; no per-user/team/account/provider material. A short in-isolate cache is a perf detail under the live-at-read contract. `staleness_declared`.
+  - `GET /api/public/khala-tokens-served/model-mix` — live at read over the canonical token usage ledger; the public `/stats` model/provider mix collapsed into `openagents.public_khala_model_mix.v1` groups (`family`, `label`, `tokens`, `reqs`, `pct`) across the canonical `glm`, `fireworks_deepseek`, `pylon_codex`, `codex_direct`, `pylon_claude`, `gpt_oss`, `gemini`, and `other` families — compliant (`generatedAt`, `live_at_read` contract over `token_usage_events`). Aggregate only; all demand rows are included, including `internal`, `own_capacity`, and direct-local rows, while no per-user/team/account/raw-provider/raw-model material is exposed. `staleness_declared`.
+  - `GET /api/public/khala-tokens-served/channel-mix` — live at read over the canonical token usage ledger; the public `/stats` channel mix collapsed into `openagents.public_khala_channel_mix.v1` groups (`channel`, `label`, `tokens`, `reqs`, `pct`) across `khala_api` and `direct_local`, with legacy rows defaulted to `khala_api` — compliant (`generatedAt`, `live_at_read` contract over `token_usage_events`). Aggregate only; no per-user/team/account/raw-provider/raw-model/local-path material is exposed. `staleness_declared`.
   - `GET /api/public/marketing-agency/receipts/{receiptRef}` — live at read
   - `GET /api/public/marketing-agency/self-serve/deliverability/{workspaceRef}` — live at read
   - `POST /api/public/business/coding-quick-win-pipeline` — live at read

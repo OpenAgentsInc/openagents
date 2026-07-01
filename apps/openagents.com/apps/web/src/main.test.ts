@@ -722,6 +722,7 @@ describe('authenticated startup routing', () => {
       'LoadPublicKhalaTokensServed',
       'LoadPublicKhalaTokensServedHistory',
       'LoadPublicKhalaTokensServedModelMix',
+      'LoadPublicKhalaTokensServedChannelMix',
       'LoadPublicForumLaunchStatus',
       'LoadPublicForumTipLeaderboards',
       'LoadSettledFeedSnapshot',

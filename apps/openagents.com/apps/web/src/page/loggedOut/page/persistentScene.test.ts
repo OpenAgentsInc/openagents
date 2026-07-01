@@ -296,11 +296,11 @@ describe('persistent landing and Khala scene', () => {
       Scene.expect(Scene.text('openagents/khala')).toExist(),
       Scene.expect(Scene.text('https://openagents.com/api/v1')).toExist(),
       Scene.expect(Scene.text('POST /api/keys/free')).toExist(),
-      // ...and the live "Khala Tokens Served" counter (#6227).
+      // ...and the live "Tokens Served" counter (#6227).
       Scene.expect(
         Scene.selector('[data-counter="khala-tokens-served"]'),
       ).toExist(),
-      Scene.expect(Scene.text('Khala Tokens Served')).toExist(),
+      Scene.expect(Scene.text('Tokens Served')).toExist(),
       // Back button mirrors /tassadar: same "← OpenAgents" home control.
       Scene.expect(Scene.selector('[data-khala-back="home"]')).toExist(),
       Scene.expect(
@@ -480,7 +480,7 @@ describe('persistent landing and Khala scene', () => {
     )
   })
 
-  // The live "Khala Tokens Served" pill occupies the top-left slot on the
+  // The live "Tokens Served" pill occupies the top-left slot on the
   // homepage (#6273 follow-up). It reads the SAME live tokens-served model that
   // powers the /khala counter, mirrors the back-button styling, and links to
   // /stats. The back button (the slot's child-route occupant) is absent on /.
@@ -495,7 +495,7 @@ describe('persistent landing and Khala scene', () => {
         }),
     })
 
-  test('shows the live "Khala Tokens Served" pill in the top-left slot on the homepage', () => {
+  test('shows the live "Tokens Served" pill in the top-left slot on the homepage', () => {
     Scene.scene(
       { update, view },
       Scene.with(landingWithTokens(1_250_000)),
@@ -508,15 +508,15 @@ describe('persistent landing and Khala scene', () => {
       Scene.expect(
         Scene.selector('[data-landing-khala-tokens-pill="home"]'),
       ).toExist(),
-      Scene.expect(Scene.text('Khala Tokens Served:')).toExist(),
+      Scene.expect(Scene.text('Tokens Served:')).toExist(),
       Scene.expect(Scene.text('1,250,000')).toExist(),
       // It is an accessible, keyboard-activatable link to /stats, with the same
       // pointer cursor affordance as the center homepage buttons.
       Scene.expect(
-        Scene.role('link', { name: 'Khala tokens served — open stats' }),
+        Scene.role('link', { name: 'Tokens served — open stats' }),
       ).toHaveAttr('href', '/stats'),
       Scene.expect(
-        Scene.role('link', { name: 'Khala tokens served — open stats' }),
+        Scene.role('link', { name: 'Tokens served — open stats' }),
       ).toHaveClass('cursor-pointer'),
       // The back button (the child-route occupant of the same slot) is NOT on /.
       Scene.expect(Scene.selector('[data-khala-back="home"]')).not.toExist(),
@@ -531,7 +531,7 @@ describe('persistent landing and Khala scene', () => {
       Scene.expect(
         Scene.selector('[data-landing-khala-tokens-pill="home"]'),
       ).toExist(),
-      Scene.expect(Scene.text('Khala Tokens Served:')).toExist(),
+      Scene.expect(Scene.text('Tokens Served:')).toExist(),
       Scene.expect(Scene.text('—')).toExist(),
     )
   })

@@ -17,6 +17,11 @@ import {
   recordPylonAccountUsageObservation,
 } from "../src/account-usage"
 import { createBootstrapSummary, parseBootstrapArgs } from "../src/bootstrap"
+import {
+  directLocalCodexUsageReportRequested,
+  PYLON_CODEX_DIRECT_LOCAL_USAGE_INGEST_PATH,
+  reportDirectLocalCodexUsage,
+} from "../src/codex-direct-local-usage-reporter"
 import { hashPylonAccountRef } from "../src/account-registry"
 import { recordQuotaBlock } from "../src/account-quota-ledger"
 import { assertPublicProjectionSafe } from "../src/state"
@@ -400,8 +405,18 @@ describe("pylon account usage", () => {
     expect(parsePylonAccountsUsageArgs(["--all", "--refresh", "--json"])).toMatchObject({
       all: true,
       refresh: true,
+      reportLocalCodexUsage: false,
       json: true,
     })
+    expect(parsePylonAccountsUsageArgs(["--provider", "codex", "--report-local-codex-usage", "--json"])).toMatchObject({
+      provider: "codex",
+      reportLocalCodexUsage: true,
+      json: true,
+    })
+    expect(directLocalCodexUsageReportRequested(
+      parsePylonAccountsUsageArgs(["--provider", "codex", "--json"]),
+      { PYLON_REPORT_LOCAL_CODEX_USAGE: "true" },
+    )).toBe(true)
     expect(parsePylonAccountsUsageArgs(["--provider", "chatgpt", "--json"])).toMatchObject({
       provider: "codex",
       all: false,
@@ -418,6 +433,132 @@ describe("pylon account usage", () => {
     expect(() => parsePylonAccountsUsageArgs(["--provider", "codex", "--account", "codex-a", "--json"])).toThrow(
       /only one of --account, --provider, or --all/,
     )
+  })
+
+  test("does not report direct local Codex usage until explicitly opted in", async () => {
+    await withHome(async (home) => {
+      const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), { PYLON_HOME: home })
+      let requestCount = 0
+      const status = await reportDirectLocalCodexUsage(
+        summary,
+        parsePylonAccountsUsageArgs(["--provider", "codex", "--json"]),
+        {
+          env: {
+            PYLON_HOME: home,
+            CODEX_HOME: join(home, "codex-default"),
+            CLAUDE_CONFIG_DIR: join(home, "claude-default"),
+            PYLON_ACCOUNT_HOME_ROOT: join(home, "no-siblings"),
+            OPENAGENTS_AGENT_TOKEN: "oa_agent_test_direct_local",
+          },
+          fetcher: async () => {
+            requestCount += 1
+            return new Response("{}", { status: 500 })
+          },
+        },
+      )
+
+      expect(requestCount).toBe(0)
+      expect(status).toMatchObject({
+        requested: false,
+        performed: false,
+        blockerRefs: ["blocker.pylon.codex_direct_local_usage.opt_in_required"],
+      })
+      assertPublicProjectionSafe(status)
+    })
+  })
+
+  test("reports direct local Codex usage deltas with public-safe metadata only", async () => {
+    await withHome(async (home) => {
+      const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), { PYLON_HOME: home })
+      await recordPylonAccountUsageObservation(summary, {
+        provider: "codex",
+        localSessionUsage: {
+          provider: "codex",
+          sessionRef: "session.pylon.codex.direct_local",
+          inputTokens: 10,
+          outputTokens: 5,
+          totalTokens: 15,
+        },
+        observedAt: new Date("2026-07-01T12:00:00.000Z"),
+      })
+      await recordPylonAccountUsageObservation(summary, {
+        provider: "codex",
+        localSessionUsage: {
+          provider: "codex",
+          sessionRef: "session.pylon.codex.direct_local",
+          inputTokens: 25,
+          outputTokens: 20,
+          totalTokens: 45,
+        },
+        observedAt: new Date("2026-07-01T12:05:00.000Z"),
+      })
+
+      const requests: Array<{
+        body: Record<string, unknown>
+        headers: Headers
+        url: string
+      }> = []
+      const status = await reportDirectLocalCodexUsage(
+        summary,
+        parsePylonAccountsUsageArgs(["--provider", "codex", "--report-local-codex-usage", "--json"]),
+        {
+          env: {
+            PYLON_HOME: home,
+            PYLON_OPENAGENTS_BASE_URL: "https://openagents.test",
+            CODEX_HOME: join(home, "codex-default"),
+            CLAUDE_CONFIG_DIR: join(home, "claude-default"),
+            PYLON_ACCOUNT_HOME_ROOT: join(home, "no-siblings"),
+            OPENAGENTS_AGENT_TOKEN: "oa_agent_test_direct_local",
+          },
+          fetcher: async (input, init) => {
+            const body = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>
+            requests.push({
+              body,
+              headers: new Headers(init?.headers),
+              url: String(input),
+            })
+            const usage = body.usage as { inputTokens: number; outputTokens: number }
+            return Response.json({
+              schemaVersion: "openagents.pylon.codex_direct_local_usage_ingest_result.v1",
+              tokensServedDelta: usage.inputTokens + usage.outputTokens,
+            })
+          },
+        },
+      )
+
+      expect(status).toEqual({
+        requested: true,
+        performed: true,
+        sentCount: 2,
+        insertedCount: 2,
+        duplicateCount: 0,
+        skippedCount: 0,
+        blockerRefs: [],
+      })
+      expect(requests.map(request => request.url)).toEqual([
+        `https://openagents.test${PYLON_CODEX_DIRECT_LOCAL_USAGE_INGEST_PATH}`,
+        `https://openagents.test${PYLON_CODEX_DIRECT_LOCAL_USAGE_INGEST_PATH}`,
+      ])
+      expect(requests[0]?.headers.get("authorization")).toBe("Bearer oa_agent_test_direct_local")
+      expect(requests.map(request => request.body.usage)).toEqual([
+        {
+          inputTokens: 10,
+          outputTokens: 5,
+          totalTokens: 15,
+          usageTruth: "exact",
+        },
+        {
+          inputTokens: 15,
+          outputTokens: 15,
+          totalTokens: 30,
+          usageTruth: "exact",
+        },
+      ])
+      expect(requests[0]?.body.accountRefHash).toBe(hashPylonAccountRef("codex", "default"))
+      expect(JSON.stringify(requests.map(request => request.body))).not.toContain(home)
+      expect(JSON.stringify(requests.map(request => request.body))).not.toContain("oa_agent")
+      assertPublicProjectionSafe(status)
+    })
   })
 
   test("targets default provider accounts with human-friendly account aliases", async () => {

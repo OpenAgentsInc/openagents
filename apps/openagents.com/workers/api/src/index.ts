@@ -819,6 +819,7 @@ import { handlePublicAdjutantActivityApi } from './public-adjutant-activity-rout
 import { makePublicCardCreditSpendReceiptRoutes } from './public-card-credit-spend-receipt-routes'
 import { handlePublicForumActivityApiForEnv } from './public-forum-activity-routes'
 import { makePublicInferenceReceiptRoutes } from './public-inference-receipt-routes'
+import { handlePublicKhalaTokensServedChannelMixApi } from './public-khala-tokens-served-channel-mix-routes'
 import { handlePublicKhalaTokensServedDemandMixApi } from './public-khala-tokens-served-demand-mix-routes'
 import { handlePublicKhalaTokensServedHistoryApi } from './public-khala-tokens-served-history-routes'
 import { handlePublicKhalaTokensServedModelMixApi } from './public-khala-tokens-served-model-mix-routes'
@@ -850,6 +851,7 @@ import {
   PYLON_CODEX_ASSIGNMENT_PROOF_PATH,
   PYLON_CODEX_ASSIGNMENT_TRACE_STATUS_PATH,
   PYLON_CODEX_EVENT_CHUNK_INGEST_PATH,
+  PYLON_CODEX_LOCAL_USAGE_INGEST_PATH,
   PYLON_CODEX_TURN_INGEST_PATH,
   makeD1PylonCodexAssignmentProofStore,
   makeD1R2PylonCodexRawEventChunkStore,
@@ -11464,9 +11466,22 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       handlePublicKhalaTokensServedDemandMixApi(request, env),
   },
   {
+    path: '/api/public/khala-tokens-served/channel-mix',
+    handler: (request, env) =>
+      handlePublicKhalaTokensServedChannelMixApi(request, env),
+  },
+  {
     path: PYLON_CODEX_TURN_INGEST_PATH,
     handler: (request, env) =>
       pylonCodexTurnIngestRoutes.handlePylonCodexTurnIngestApi(request, env),
+  },
+  {
+    path: PYLON_CODEX_LOCAL_USAGE_INGEST_PATH,
+    handler: (request, env) =>
+      pylonCodexTurnIngestRoutes.handlePylonCodexLocalUsageIngestApi(
+        request,
+        env,
+      ),
   },
   {
     path: PYLON_CLAUDE_TURN_INGEST_PATH,

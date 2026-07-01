@@ -10,6 +10,7 @@ import {
   endpointManifestPanel,
   forumStatsPanel,
   khalaTokensServedHeaderCounter,
+  khalaTokensServedChannelMixPanel,
   khalaTokensServedHistoryChart,
   khalaTokensServedModelMixPanel,
   nostrRelayPanel,
@@ -99,8 +100,16 @@ export const view = (input: HomeViewInput): Html => {
                   input.publicKhalaTokensServedHistoryGraphMetric ?? 'daily',
                   true,
                 ),
-                khalaTokensServedModelMixPanel(
-                  input.publicKhalaTokensServedModelMix,
+                h.section(
+                  [Ui.className<Message>('grid content-start gap-3')],
+                  [
+                    khalaTokensServedModelMixPanel(
+                      input.publicKhalaTokensServedModelMix,
+                    ),
+                    khalaTokensServedChannelMixPanel(
+                      input.publicKhalaTokensServedChannelMix,
+                    ),
+                  ],
                 ),
               ],
             ),

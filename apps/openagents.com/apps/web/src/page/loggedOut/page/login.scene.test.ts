@@ -14,6 +14,7 @@ import {
   IdlePublicForumLaunchStatus,
   IdlePublicForumTipLeaderboards,
   IdlePublicKhalaTokensServed,
+  IdlePublicKhalaTokensServedChannelMix,
   IdlePublicKhalaTokensServedHistory,
   IdlePublicKhalaTokensServedModelMix,
   LoadedPublicPylonStats,
@@ -153,6 +154,8 @@ describe('maintenance landing scene', () => {
             publicKhalaTokensServedHistory: IdlePublicKhalaTokensServedHistory(),
             publicKhalaTokensServedModelMix:
               IdlePublicKhalaTokensServedModelMix(),
+            publicKhalaTokensServedChannelMix:
+              IdlePublicKhalaTokensServedChannelMix(),
             publicPylonStats: LoadedPublicPylonStats({
               stats: loadedStatsFixture,
             }),
@@ -196,6 +199,8 @@ describe('maintenance landing scene', () => {
             publicKhalaTokensServedHistory: IdlePublicKhalaTokensServedHistory(),
             publicKhalaTokensServedModelMix:
               IdlePublicKhalaTokensServedModelMix(),
+            publicKhalaTokensServedChannelMix:
+              IdlePublicKhalaTokensServedChannelMix(),
             publicPylonStats: LoadedPublicPylonStats({
               stats: loadedStatsFixture,
             }),

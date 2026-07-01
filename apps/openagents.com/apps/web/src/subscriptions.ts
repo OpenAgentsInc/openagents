@@ -41,6 +41,7 @@ import {
   RequestedPollKhalaTokensServed,
   RequestedPollKhalaTokensServedHistory,
   RequestedPollPublicActivityTimeline,
+  RequestedPollKhalaTokensServedChannelMix,
   RequestedPollKhalaTokensServedModelMix,
   RequestedPollGymRunProgress,
   ClosedGymRunProgressStream,
@@ -572,6 +573,13 @@ const khalaTokensServedModelMixRouteIsLive = (model: Model): boolean =>
     model.route._tag === 'PublicStatsArchive')
 
 export const khalaTokensServedModelMixPollDependenciesForModel = (
+  model: Model,
+): KhalaTokensServedPollDependencies =>
+  khalaTokensServedModelMixRouteIsLive(model)
+    ? { isActive: true }
+    : inactiveKhalaTokensServedPoll
+
+export const khalaTokensServedChannelMixPollDependenciesForModel = (
   model: Model,
 ): KhalaTokensServedPollDependencies =>
   khalaTokensServedModelMixRouteIsLive(model)
@@ -1574,6 +1582,27 @@ export const subscriptions = Subscription.make<Model, Message>()(entry => ({
             Stream.map(() =>
               GotLoggedOutMessage({
                 message: RequestedPollKhalaTokensServedModelMix(),
+              }),
+            ),
+          ),
+          Effect.sync(() => isActive),
+        ),
+    },
+  ),
+  khalaTokensServedChannelMixPoll: entry(
+    {
+      isActive: S.Boolean,
+    },
+    {
+      modelToDependencies: khalaTokensServedChannelMixPollDependenciesForModel,
+      dependenciesToStream: ({ isActive }: { isActive: boolean }) =>
+        Stream.when(
+          Stream.tick(
+            Duration.seconds(KHALA_TOKENS_SERVED_HISTORY_POLL_INTERVAL_SECONDS),
+          ).pipe(
+            Stream.map(() =>
+              GotLoggedOutMessage({
+                message: RequestedPollKhalaTokensServedChannelMix(),
               }),
             ),
           ),

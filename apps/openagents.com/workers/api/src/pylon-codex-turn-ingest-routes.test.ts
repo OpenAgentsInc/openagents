@@ -12,6 +12,7 @@ import {
   PYLON_CODEX_ASSIGNMENT_PROOF_PATH,
   PYLON_CODEX_ASSIGNMENT_TRACE_STATUS_PATH,
   PYLON_CODEX_EVENT_CHUNK_INGEST_PATH,
+  PYLON_CODEX_LOCAL_USAGE_INGEST_PATH,
   PYLON_CODEX_TURN_INGEST_PATH,
   codexTurnUsageTokenCounts,
   makeD1PylonCodexAssignmentProofStore,
@@ -1342,6 +1343,21 @@ const eventChunkBody = () => ({
   ],
 })
 
+const directLocalUsageBody = () => ({
+  schemaVersion: 'openagents.pylon.codex_direct_local_usage.v1',
+  accountRefHash: 'account.pylon.codex.abcdef123456',
+  idempotencyKey: 'pylon:codex-direct-local:abcdef123456',
+  observedAt: nowIso,
+  pylonRef: 'pylon-local-codex-1',
+  sessionRef: 'session.pylon.codex_composer.abc123',
+  usage: {
+    inputTokens: 12,
+    outputTokens: 34,
+    totalTokens: 46,
+    usageTruth: 'exact',
+  },
+})
+
 const postTurn = (body: unknown): Request =>
   new Request(`https://openagents.com${PYLON_CODEX_TURN_INGEST_PATH}`, {
     body: JSON.stringify(body),
@@ -1355,6 +1371,19 @@ const postTurn = (body: unknown): Request =>
 const postEventChunk = (body: unknown): Request =>
   new Request(
     `https://openagents.com${PYLON_CODEX_EVENT_CHUNK_INGEST_PATH}`,
+    {
+      body: JSON.stringify(body),
+      headers: {
+        authorization: `Bearer ${agentToken}`,
+        'content-type': 'application/json',
+      },
+      method: 'POST',
+    },
+  )
+
+const postDirectLocalUsage = (body: unknown): Request =>
+  new Request(
+    `https://openagents.com${PYLON_CODEX_LOCAL_USAGE_INGEST_PATH}`,
     {
       body: JSON.stringify(body),
       headers: {
@@ -1921,6 +1950,120 @@ describe('GET /api/pylon/codex/trace-status', () => {
 })
 
 describe('POST /api/pylon/codex/turns', () => {
+  test('ingests direct-local Codex usage without requiring an assignment', async () => {
+    const { deltas, ledger, routes } = await makeHarness()
+    const response = await Effect.runPromise(
+      routes.handlePylonCodexLocalUsageIngestApi(
+        postDirectLocalUsage(directLocalUsageBody()),
+        {},
+      ),
+    )
+    const body = (await response.json()) as Record<string, unknown>
+
+    expect(response.status).toBe(200)
+    expect(body).toMatchObject({
+      schemaVersion:
+        'openagents.pylon.codex_direct_local_usage_ingest_result.v1',
+      accountRefHash: 'account.pylon.codex.abcdef123456',
+      demandChannel: 'direct_local',
+      insertedTokenUsage: true,
+      tokensServedDelta: 46,
+      usageTruth: 'exact',
+    })
+    expect(ledger.events).toHaveLength(1)
+    expect(ledger.events[0]).toMatchObject({
+      actor: {
+        accountRef: `agent:${agentUserId}`,
+        userId: linkedOpenAuthUserId,
+      },
+      demand: {
+        demandChannel: 'direct_local',
+        demandClient: 'pylon',
+        demandKind: 'own_capacity',
+        demandSource: 'direct_local_codex',
+      },
+      model: 'openagents/codex-direct-local',
+      producerSystem: 'pylon',
+      provider: 'pylon-codex-direct-local',
+      sourceRefs: {
+        anonymizedSourceRef: 'account.pylon.codex.abcdef123456',
+        sessionRef: 'session.pylon.codex_composer.abc123',
+      },
+      sourceRoute: 'pylon_codex_direct_local',
+      tokenCounts: {
+        inputTokens: 12,
+        outputTokens: 34,
+        totalTokens: 46,
+      },
+      usageTruth: 'exact',
+    })
+    expect(JSON.stringify(ledger.events)).not.toContain('/Users/')
+    expect(deltas).toEqual([
+      {
+        eventRef: String(body.tokenUsageEventRef),
+        observedAt: nowIso,
+        tokensServedDelta: 46,
+      },
+    ])
+  })
+
+  test('dedupes direct-local Codex usage on idempotency key', async () => {
+    const { deltas, routes } = await makeHarness()
+    const body = directLocalUsageBody()
+    const first = await Effect.runPromise(
+      routes.handlePylonCodexLocalUsageIngestApi(
+        postDirectLocalUsage(body),
+        {},
+      ),
+    )
+    const second = await Effect.runPromise(
+      routes.handlePylonCodexLocalUsageIngestApi(
+        postDirectLocalUsage(body),
+        {},
+      ),
+    )
+
+    expect(((await first.json()) as Record<string, unknown>).tokensServedDelta).toBe(
+      46,
+    )
+    expect(
+      ((await second.json()) as Record<string, unknown>).tokensServedDelta,
+    ).toBe(0)
+    expect(deltas).toHaveLength(1)
+  })
+
+  test('rejects direct-local usage with non-public account refs or zero tokens', async () => {
+    const { routes } = await makeHarness()
+    const badRef = await Effect.runPromise(
+      routes.handlePylonCodexLocalUsageIngestApi(
+        postDirectLocalUsage({
+          ...directLocalUsageBody(),
+          accountRefHash: '/Users/chris/.codex/auth.json',
+        }),
+        {},
+      ),
+    )
+    const zeroTokens = await Effect.runPromise(
+      routes.handlePylonCodexLocalUsageIngestApi(
+        postDirectLocalUsage({
+          ...directLocalUsageBody(),
+          accountRefHash: 'account.pylon.codex.abcdef123456',
+          idempotencyKey: 'pylon:codex-direct-local:zero',
+          usage: {
+            inputTokens: 0,
+            outputTokens: 0,
+            totalTokens: 0,
+            usageTruth: 'exact',
+          },
+        }),
+        {},
+      ),
+    )
+
+    expect(badRef.status).toBe(400)
+    expect(zeroTokens.status).toBe(400)
+  })
+
   test('stores streaming raw event chunks and owner-only redacted chunk traces without token rows', async () => {
     const { deltas, ledger, rawEventChunkStore, routes, traceStore } =
       await makeHarness()

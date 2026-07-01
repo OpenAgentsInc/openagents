@@ -45,6 +45,8 @@ import {
 type HttpResponse = globalThis.Response
 
 export const PYLON_CODEX_TURN_INGEST_PATH = '/api/pylon/codex/turns'
+export const PYLON_CODEX_LOCAL_USAGE_INGEST_PATH =
+  '/api/pylon/codex/local-usage'
 export const PYLON_CODEX_EVENT_CHUNK_INGEST_PATH =
   '/api/pylon/codex/event-chunks'
 export const PYLON_CODEX_ASSIGNMENT_PROOF_PATH = '/api/pylon/codex/proof'
@@ -68,10 +70,22 @@ const PYLON_CODEX_EVENT_CHUNK_SCHEMA_VERSION =
   'openagents.pylon.codex_event_chunk.v1' as const
 const PYLON_CODEX_MODEL_NAME = 'openagents/pylon-codex' as const
 const PYLON_CODEX_PROVIDER = 'pylon-codex-own-capacity' as const
+const PYLON_CODEX_DIRECT_LOCAL_SCHEMA_VERSION =
+  'openagents.pylon.codex_direct_local_usage.v1' as const
+const PYLON_CODEX_DIRECT_LOCAL_MODEL_NAME =
+  'openagents/codex-direct-local' as const
+const PYLON_CODEX_DIRECT_LOCAL_PROVIDER =
+  'pylon-codex-direct-local' as const
 const PYLON_CODEX_PRODUCER_SYSTEM = 'omega' as const
 const PYLON_CODEX_SOURCE_ROUTE = 'omega_hosted_gemini' as const
 const PYLON_CODEX_DEMAND_KIND = 'own_capacity' as const
 const PYLON_CODEX_DEMAND_SOURCE = 'khala_coding_delegation' as const
+const PYLON_CODEX_DIRECT_LOCAL_PRODUCER_SYSTEM = 'pylon' as const
+const PYLON_CODEX_DIRECT_LOCAL_SOURCE_ROUTE =
+  'pylon_codex_direct_local' as const
+const PYLON_CODEX_DIRECT_LOCAL_DEMAND_SOURCE =
+  'direct_local_codex' as const
+const PYLON_CODEX_DIRECT_LOCAL_DEMAND_CHANNEL = 'direct_local' as const
 const MAX_BODY_BYTES = 8 * 1024 * 1024
 
 const NonEmptyString = S.Trim.check(S.isMinLength(1), S.isMaxLength(512))
@@ -85,6 +99,15 @@ class PylonCodexUsage extends S.Class<PylonCodexUsage>('PylonCodexUsage')({
   cachedInputTokens: S.optionalKey(NonNegativeInt),
   outputTokens: NonNegativeInt,
   reasoningOutputTokens: S.optionalKey(NonNegativeInt),
+}) {}
+
+class PylonCodexDirectLocalUsage extends S.Class<PylonCodexDirectLocalUsage>(
+  'PylonCodexDirectLocalUsage',
+)({
+  inputTokens: NonNegativeInt,
+  outputTokens: NonNegativeInt,
+  totalTokens: NonNegativeInt,
+  usageTruth: S.Literals(['exact', 'estimated']),
 }) {}
 
 class PylonCodexTurnItem extends S.Class<PylonCodexTurnItem>(
@@ -126,6 +149,18 @@ class PylonCodexTurnIngestBody extends S.Class<PylonCodexTurnIngestBody>(
   usage: PylonCodexUsage,
   items: S.Array(PylonCodexTurnItem),
   rawEvents: S.optionalKey(S.Array(RawCodexEventPayload)),
+}) {}
+
+class PylonCodexDirectLocalUsageIngestBody extends S.Class<PylonCodexDirectLocalUsageIngestBody>(
+  'PylonCodexDirectLocalUsageIngestBody',
+)({
+  schemaVersion: S.Literal(PYLON_CODEX_DIRECT_LOCAL_SCHEMA_VERSION),
+  accountRefHash: NonEmptyString,
+  idempotencyKey: NonEmptyString,
+  observedAt: S.optionalKey(S.String.check(S.isMaxLength(80))),
+  pylonRef: S.optionalKey(NonEmptyString),
+  sessionRef: S.optionalKey(NonEmptyString),
+  usage: PylonCodexDirectLocalUsage,
 }) {}
 
 class PylonClaudeTurnIngestBody extends S.Class<PylonClaudeTurnIngestBody>(
@@ -1710,6 +1745,116 @@ const stableTurnDigest = (
     ),
   )
 
+const stableDirectLocalUsageDigest = (
+  body: PylonCodexDirectLocalUsageIngestBody,
+): Effect.Effect<string> =>
+  Effect.promise(() =>
+    sha256Hex(
+      [
+        body.accountRefHash,
+        body.sessionRef ?? 'session.pending',
+        body.observedAt ?? 'observed.pending',
+        body.idempotencyKey,
+        String(body.usage.inputTokens),
+        String(body.usage.outputTokens),
+        String(body.usage.totalTokens),
+        body.usage.usageTruth,
+      ].join(':'),
+    ),
+  )
+
+const validateDirectLocalAccountRefHash = (
+  value: string,
+): Effect.Effect<string, PylonCodexValidationError> =>
+  /^account\.pylon\.codex\.[a-f0-9]{6,64}$/.test(value)
+    ? Effect.succeed(value)
+    : Effect.fail(
+        new PylonCodexValidationError({
+          reason: 'accountRefHash must be a public-safe account.pylon.codex.<hex> ref.',
+        }),
+      )
+
+const directLocalUsageTokenCounts = (
+  usage: PylonCodexDirectLocalUsage,
+): PylonCodexTokenCounts => {
+  const inputTokens = Math.max(0, Math.trunc(usage.inputTokens))
+  const outputTokens = Math.max(0, Math.trunc(usage.outputTokens))
+  const totalTokens = Math.max(
+    inputTokens + outputTokens,
+    Math.trunc(usage.totalTokens),
+  )
+
+  return {
+    cacheReadTokens: 0,
+    inputTokens,
+    outputTokens,
+    reasoningTokens: 0,
+    totalTokens,
+  }
+}
+
+const directLocalTokenUsageEventBody = (
+  input: Readonly<{
+    body: PylonCodexDirectLocalUsageIngestBody
+    digest: string
+    observedAt: string
+    ownerUserId: string
+    session: ProgrammaticAgentSession
+  }>,
+) => {
+  const counts = directLocalUsageTokenCounts(input.body.usage)
+  return {
+    schemaVersion: 'openagents.token_usage_event.v1' as const,
+    actor: {
+      accountRef: `agent:${input.session.user.id}`,
+      userId: input.ownerUserId,
+    },
+    backendProfile: PYLON_CODEX_DIRECT_LOCAL_PROVIDER,
+    demand: {
+      demandChannel: PYLON_CODEX_DIRECT_LOCAL_DEMAND_CHANNEL,
+      demandClient: 'pylon',
+      demandKind: PYLON_CODEX_DEMAND_KIND,
+      demandSource: PYLON_CODEX_DIRECT_LOCAL_DEMAND_SOURCE,
+    },
+    eventId: `event.inference.served-tokens.codex-direct-local.${input.digest.slice(0, 32)}`,
+    idempotencyKey: input.body.idempotencyKey,
+    model: PYLON_CODEX_DIRECT_LOCAL_MODEL_NAME,
+    observedAt: input.observedAt,
+    privacy: { leaderboardEligible: false, privacyOptOut: false },
+    producerSystem: PYLON_CODEX_DIRECT_LOCAL_PRODUCER_SYSTEM,
+    provider: PYLON_CODEX_DIRECT_LOCAL_PROVIDER,
+    safeMetadata: {
+      accountRefHash: input.body.accountRefHash,
+      demandChannel: PYLON_CODEX_DIRECT_LOCAL_DEMAND_CHANNEL,
+      ...(input.body.pylonRef === undefined
+        ? {}
+        : { pylonRef: input.body.pylonRef }),
+      telemetryOptIn: 'pylon_accounts_usage_explicit',
+      usageBasis:
+        input.body.usage.usageTruth === 'exact'
+          ? 'codex_sdk_local_session_delta'
+          : 'codex_rate_window_estimate',
+    },
+    sourceRefs: {
+      anonymizedSourceRef: input.body.accountRefHash,
+      ...(input.body.sessionRef === undefined
+        ? {}
+        : { sessionRef: input.body.sessionRef }),
+    },
+    sourceRoute: PYLON_CODEX_DIRECT_LOCAL_SOURCE_ROUTE,
+    tokenCounts: {
+      cacheReadTokens: counts.cacheReadTokens,
+      cacheWrite1hTokens: 0,
+      cacheWrite5mTokens: 0,
+      inputTokens: counts.inputTokens,
+      outputTokens: counts.outputTokens,
+      reasoningTokens: counts.reasoningTokens,
+      totalTokens: counts.totalTokens,
+    },
+    usageTruth: input.body.usage.usageTruth,
+  }
+}
+
 const stableEventChunkDigest = (
   body: PylonCodexEventChunkIngestBody,
 ): Effect.Effect<string> =>
@@ -2675,6 +2820,106 @@ const routeIngest = <Bindings>(
     })
   })
 
+const routeDirectLocalUsageIngest = <Bindings>(
+  dependencies: PylonCodexTurnIngestDependencies<Bindings>,
+  request: Request,
+  env: Bindings,
+): Effect.Effect<HttpResponse, PylonCodexRouteError> =>
+  Effect.gen(function* () {
+    if (request.method !== 'POST') {
+      return methodNotAllowed(['POST'])
+    }
+
+    const session = yield* requireAgent(dependencies, request, env)
+
+    const rawBody = yield* Effect.tryPromise({
+      catch: () =>
+        new PylonCodexValidationError({
+          reason: 'Request body could not be read.',
+        }),
+      try: () => request.text(),
+    })
+    if (new TextEncoder().encode(rawBody).length > MAX_BODY_BYTES) {
+      return yield* new PylonCodexValidationError({
+        reason: `Pylon Codex direct-local usage payload exceeds the ${MAX_BODY_BYTES}-byte limit.`,
+      })
+    }
+
+    const body = yield* Effect.try({
+      catch: error =>
+        new PylonCodexValidationError({
+          reason:
+            error instanceof Error
+              ? error.message
+              : 'Request body does not match the Pylon Codex direct-local usage schema.',
+        }),
+      try: () =>
+        decodeUnknownWithSchema(
+          PylonCodexDirectLocalUsageIngestBody,
+          rawBody.trim() === '' ? {} : parseJsonUnknown(rawBody),
+        ),
+    })
+
+    yield* validateDirectLocalAccountRefHash(body.accountRefHash)
+
+    const ownerUserId = ownerUserIdForAgent(session)
+    const observedAt = body.observedAt ?? routeNowIso(dependencies)
+    const counts = directLocalUsageTokenCounts(body.usage)
+    const tokensServed = counts.inputTokens + counts.outputTokens
+    if (tokensServed <= 0) {
+      return yield* new PylonCodexValidationError({
+        reason: 'Pylon Codex direct-local usage must include at least one input or output token.',
+      })
+    }
+
+    const digest = yield* stableDirectLocalUsageDigest(body)
+    const tokenBody = directLocalTokenUsageEventBody({
+      body,
+      digest,
+      observedAt,
+      ownerUserId,
+      session,
+    })
+
+    const tokenResult = yield* dependencies
+      .ledger(env)
+      .ingestEvent(tokenBody)
+      .pipe(
+        Effect.mapError(
+          error =>
+            new PylonCodexStorageError({
+              operation: 'token_usage_ingest',
+              reason: storageReason(error),
+            }),
+        ),
+      )
+
+    if (
+      tokenResult.inserted &&
+      dependencies.publishDelta !== undefined &&
+      tokensServed > 0
+    ) {
+      yield* dependencies
+        .publishDelta(env, {
+          eventRef: tokenBody.eventId,
+          observedAt,
+          tokensServedDelta: tokensServed,
+        })
+        .pipe(Effect.catch(() => Effect.void))
+    }
+
+    return noStoreJsonResponse({
+      schemaVersion:
+        'openagents.pylon.codex_direct_local_usage_ingest_result.v1',
+      accountRefHash: body.accountRefHash,
+      demandChannel: PYLON_CODEX_DIRECT_LOCAL_DEMAND_CHANNEL,
+      insertedTokenUsage: tokenResult.inserted,
+      tokenUsageEventRef: tokenBody.eventId,
+      tokensServedDelta: tokenResult.inserted ? tokensServed : 0,
+      usageTruth: body.usage.usageTruth,
+    })
+  })
+
 const claudeTokenUsageEventBody = (
   input: Readonly<{
     body: PylonClaudeTurnIngestBody
@@ -2904,6 +3149,17 @@ export const makePylonCodexTurnIngestRoutes = <Bindings>(
       return Effect.succeed(noStoreJsonResponse({ error: 'not_found' }, { status: 404 }))
     }
     return routeIngest(dependencies, request, env).pipe(
+      Effect.catch(error => Effect.succeed(routeErrorResponse(error))),
+    )
+  },
+  handlePylonCodexLocalUsageIngestApi: (
+    request: Request,
+    env: Bindings,
+  ): Effect.Effect<HttpResponse> => {
+    if (new URL(request.url).pathname !== PYLON_CODEX_LOCAL_USAGE_INGEST_PATH) {
+      return Effect.succeed(noStoreJsonResponse({ error: 'not_found' }, { status: 404 }))
+    }
+    return routeDirectLocalUsageIngest(dependencies, request, env).pipe(
       Effect.catch(error => Effect.succeed(routeErrorResponse(error))),
     )
   },

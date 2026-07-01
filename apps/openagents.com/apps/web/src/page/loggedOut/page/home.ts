@@ -14,6 +14,8 @@ import type {
   PublicForumLaunchStatusModel,
   PublicForumTipLeaderboards,
   PublicForumTipLeaderboardsModel,
+  PublicKhalaTokensServedChannelMixGroup,
+  PublicKhalaTokensServedChannelMixModel,
   PublicKhalaTokensServedHistoryModel,
   PublicKhalaTokensServedHistoryPoint,
   PublicKhalaTokensServedModelMixFamily,
@@ -31,6 +33,7 @@ export type HomeViewInput = {
   publicKhalaTokensServedHistory: PublicKhalaTokensServedHistoryModel
   publicKhalaTokensServedHistoryGraphMetric?: KhalaTokensServedHistoryGraphMetric
   publicKhalaTokensServedModelMix: PublicKhalaTokensServedModelMixModel
+  publicKhalaTokensServedChannelMix: PublicKhalaTokensServedChannelMixModel
   publicPylonStats: PublicPylonStatsModel
   settledFeed: SettledFeedModel
 }
@@ -867,9 +870,9 @@ export const heroIntroLinks = (): Html => {
   )
 }
 
-// "Khala Tokens Served" live counter (#6227). OpenAgents (the network) serves
-// tokens powered by Khala (the engine), so the label is fixed. The number span
-// carries `motionOdometerClass` and is KEYED on the value: when the poll brings
+// "Tokens Served" live counter (#6227). OpenAgents serves tokens across
+// product channels, including Khala API and opted-in direct local Codex usage.
+// The number span carries `motionOdometerClass` and is KEYED on the value: when the poll brings
 // a new total, Foldkit remounts the span and the `oa-odometer-roll` keyframe
 // re-fires, animating the count-up between fetched totals. `tabular-nums` keeps
 // the digits from jiggling as they change.
@@ -880,7 +883,7 @@ const khalaTokensServedFromModel = (
     ? model.served.tokensServed
     : null
 
-// The shared display string for "Khala Tokens Served" (the same `formatNumber`
+// The shared display string for "Tokens Served" (the same `formatNumber`
 // thousands-separator formatter the hero counter uses), so the top-left landing
 // pill and the hero counter render byte-identical numbers off the SAME model.
 // Falls back to the em-dash placeholder when the value has not loaded yet.
@@ -927,7 +930,7 @@ export const khalaTokensServedCounter = (
             ],
             [],
           ),
-          h.span([], ['Khala Tokens Served']),
+          h.span([], ['Tokens Served']),
         ],
       ),
       h.p(
@@ -968,7 +971,7 @@ export const khalaTokensServedCounter = (
           ),
         ],
         [
-          'All real input + output tokens served across the network, including internal and external demand.',
+          'All real input + output tokens served across OpenAgents products, including Khala API and opted-in direct local Codex usage.',
         ],
       ),
     ],
@@ -1010,7 +1013,7 @@ export const khalaTokensServedHeaderCounter = (
             ],
             [],
           ),
-          h.span([], ['Khala Tokens Served']),
+          h.span([], ['Tokens Served']),
         ],
       ),
       h.p(
@@ -1036,7 +1039,7 @@ export const khalaTokensServedHeaderCounter = (
   )
 }
 
-// "Khala Tokens Served" history graph (#6227): a small hand-rolled SVG bar
+// "Tokens Served" history graph (#6227): a small hand-rolled SVG bar
 // chart of tokens-per-day for the last 30 days, sitting next to the live
 // counter on /stats. Public-safe: the series is bare day + sum. No chart
 // library — just scaled rect bars (via the foldkit h.rect builder) in the brand
@@ -1925,7 +1928,7 @@ export const khalaTokensServedHistoryChart = (
     }),
   )
 
-const modelMixPlaceholder = (label: string): Html => {
+const tokenMixPlaceholder = (label: string): Html => {
   const h = html<Message>()
 
   return h.div(
@@ -1939,8 +1942,12 @@ const modelMixPlaceholder = (label: string): Html => {
   )
 }
 
-const modelMixRows = (
-  groups: ReadonlyArray<PublicKhalaTokensServedModelMixFamily>,
+type TokenMixGroup =
+  | PublicKhalaTokensServedModelMixFamily
+  | PublicKhalaTokensServedChannelMixGroup
+
+const tokenMixRows = (
+  groups: ReadonlyArray<TokenMixGroup>,
 ): Html => {
   const h = html<Message>()
 
@@ -2018,21 +2025,21 @@ export const khalaTokensServedModelMixPanel = (
       PublicKhalaTokensServedModelMixIdle: () =>
         historyChartShell(
           false,
-          modelMixPlaceholder('Waiting for model mix…'),
+          tokenMixPlaceholder('Waiting for model mix…'),
           'Canonical model-family mix from all real aggregate token usage rows.',
           'Model Family Mix',
         ),
       PublicKhalaTokensServedModelMixLoading: () =>
         historyChartShell(
           false,
-          modelMixPlaceholder('Loading model mix…'),
+          tokenMixPlaceholder('Loading model mix…'),
           'Canonical model-family mix from all real aggregate token usage rows.',
           'Model Family Mix',
         ),
       PublicKhalaTokensServedModelMixFailed: () =>
         historyChartShell(
           false,
-          modelMixPlaceholder('Model mix unavailable.'),
+          tokenMixPlaceholder('Model mix unavailable.'),
           'Canonical model-family mix from all real aggregate token usage rows.',
           'Model Family Mix',
         ),
@@ -2041,37 +2048,92 @@ export const khalaTokensServedModelMixPanel = (
           onEmpty: () =>
             historyChartShell(
               true,
-              modelMixPlaceholder('No model-family rows yet.'),
-              `Canonical model-family mix for ${mix.window}; headline served volume includes external, internal, unlabeled, and Pylon-Codex own-capacity rows, but is not revenue or external-demand proof.`,
+              tokenMixPlaceholder('No model-family rows yet.'),
+              `Canonical model-family mix for ${mix.window}; headline served volume includes Khala API and opted-in direct local Codex rows, but is not revenue or external-demand proof.`,
               'Model Family Mix',
             ),
           onNonEmpty: groups =>
             historyChartShell(
               true,
-              modelMixRows(groups),
+              tokenMixRows(groups),
               `Canonical model-family mix for ${mix.window}. Total ${formatNumber(
                 mix.totalTokens,
-              )} headline tokens served across external, internal, unlabeled, and Pylon-Codex own-capacity rows; not revenue or external-demand proof.`,
+              )} headline tokens served across Khala API and opted-in direct local Codex rows; not revenue or external-demand proof.`,
               'Model Family Mix',
             ),
         }),
     }),
   )
 
-// The paired "Khala Tokens Served" surface: the live counter and the
+export const khalaTokensServedChannelMixPanel = (
+  model: PublicKhalaTokensServedChannelMixModel,
+): Html =>
+  M.value(model).pipe(
+    M.tagsExhaustive({
+      PublicKhalaTokensServedChannelMixIdle: () =>
+        historyChartShell(
+          false,
+          tokenMixPlaceholder('Waiting for channel mix…'),
+          'Product-wide channel mix from the canonical token usage ledger.',
+          'Channel Mix',
+        ),
+      PublicKhalaTokensServedChannelMixLoading: () =>
+        historyChartShell(
+          false,
+          tokenMixPlaceholder('Loading channel mix…'),
+          'Product-wide channel mix from the canonical token usage ledger.',
+          'Channel Mix',
+        ),
+      PublicKhalaTokensServedChannelMixFailed: () =>
+        historyChartShell(
+          false,
+          tokenMixPlaceholder('Channel mix unavailable.'),
+          'Product-wide channel mix from the canonical token usage ledger.',
+          'Channel Mix',
+        ),
+      PublicKhalaTokensServedChannelMixLoaded: ({ mix }) =>
+        Array.match(mix.groups, {
+          onEmpty: () =>
+            historyChartShell(
+              true,
+              tokenMixPlaceholder('No channel rows yet.'),
+              `Product-wide channel mix for ${mix.window}; legacy rows default to Khala API until an explicit channel is recorded.`,
+              'Channel Mix',
+            ),
+          onNonEmpty: groups =>
+            historyChartShell(
+              true,
+              tokenMixRows(groups),
+              `Product-wide channel mix for ${mix.window}. Total ${formatNumber(
+                mix.totalTokens,
+              )} headline tokens served across Khala API and opted-in direct local Codex usage.`,
+              'Channel Mix',
+            ),
+        }),
+    }),
+  )
+
+// The paired "Tokens Served" surface: the live counter and the
 // tokens-per-day history chart side by side on wide viewports, stacked on
 // narrow ones. Used on both the homepage and /stats.
 export const khalaTokensServedPanel = (
   counter: PublicKhalaTokensServedModel,
   history: PublicKhalaTokensServedHistoryModel,
   modelMix?: PublicKhalaTokensServedModelMixModel,
+  channelMix?: PublicKhalaTokensServedChannelMixModel,
 ): Html => {
   const h = html<Message>()
+  const breakdowns = [
+    ...(modelMix === undefined ? [] : [khalaTokensServedModelMixPanel(modelMix)]),
+    ...(channelMix === undefined
+      ? []
+      : [khalaTokensServedChannelMixPanel(channelMix)]),
+  ]
 
   return h.div(
     [
       Ui.className<Message>(
-        modelMix === undefined
+        breakdowns.length === 0
           ? 'grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]'
           : 'grid gap-3 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.25fr)_minmax(0,1fr)]',
       ),
@@ -2079,9 +2141,9 @@ export const khalaTokensServedPanel = (
     [
       khalaTokensServedCounter(counter),
       khalaTokensServedHistoryChart(history),
-      ...(modelMix === undefined
-        ? []
-        : [khalaTokensServedModelMixPanel(modelMix)]),
+      ...(breakdowns.length <= 1
+        ? breakdowns
+        : [h.div([Ui.className<Message>('grid gap-3')], breakdowns)]),
     ],
   )
 }

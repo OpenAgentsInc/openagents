@@ -29,14 +29,14 @@ export const backArrowClass =
   'motion-reduce:transition-none'
 
 // The homepage pill carries the SAME glass-pill look as the back button but
-// must survive a long label ("Khala Tokens Served:") plus a live thousands-
+// must survive a long label ("Tokens Served:") plus a live thousands-
 // separated total in the narrow top-left slot. On phones the slot competes with
 // the hero, so the pill tightens its padding/letter-spacing, abbreviates the
-// label to "Khala:" (the full label is kept in the DOM, just visually hidden, so
+// label to "Tokens:" (the full label is kept in the DOM, just visually hidden, so
 // the accessible name and the text-content assertions stay intact), and caps its
 // width to the viewport so a very large total can never push it off-screen or
 // over the hero. At `sm`+ it relaxes to the full back-button geometry and the
-// full "Khala Tokens Served:" label. `max-w` + `truncate` are the belt-and-
+// full "Tokens Served:" label. `max-w` + `truncate` are the belt-and-
 // suspenders guard; the abbreviation is what actually keeps it tidy on mobile.
 export const khalaTokensServedPillClass =
   'khala-focus group pointer-events-auto inline-flex max-w-[calc(100vw-2rem)] cursor-pointer ' +
@@ -89,17 +89,17 @@ export const khalaTokensServedPill = (
       h.a(
         [
           h.Href(statsRouter()),
-          h.AriaLabel('Khala tokens served — open stats'),
+          h.AriaLabel('Tokens served — open stats'),
           h.DataAttribute('landing-khala-tokens-pill', 'home'),
           Ui.className<Message>(khalaTokensServedPillClass),
         ],
         [
           // Compact label on phones; the full label takes over at `sm`+. The full
           // label stays in the DOM (visually hidden on mobile) so the accessible
-          // name and the rendered text content remain "Khala Tokens Served:".
-          h.span([Ui.className<Message>('sm:hidden')], ['Khala:']),
+          // name and the rendered text content remain "Tokens Served:".
+          h.span([Ui.className<Message>('sm:hidden')], ['Tokens:']),
           h.span([Ui.className<Message>('hidden sm:inline')], [
-            'Khala Tokens Served:',
+            'Tokens Served:',
           ]),
           h.span(
             [Ui.className<Message>('tabular-nums text-white')],

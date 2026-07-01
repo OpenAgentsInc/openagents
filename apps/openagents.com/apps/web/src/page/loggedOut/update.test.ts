@@ -16,14 +16,17 @@ import {
   ClickedExitKhala,
   ClickedKhalaChatJumpToLatest,
   CompletedCopyAgentInstructions,
+  FailedLoadPublicKhalaTokensServedChannelMix,
   FailedLoadKhalaTokensServedSnapshot,
   FailedLoadPublicKhalaTokensServedModelMix,
   FailedLoadTrace,
   OpenedKhalaChatStream,
   ReceivedKhalaChatDelta,
+  RequestedPollKhalaTokensServedChannelMix,
   RequestedPollKhalaTokensServedModelMix,
   SubmittedKhalaChatTurn,
   SucceededLoadKhalaTokensServedSnapshot,
+  SucceededLoadPublicKhalaTokensServedChannelMix,
   SucceededLoadPublicKhalaTokensServedModelMix,
   SucceededLoadTrace,
   ToggledGymLane,
@@ -35,6 +38,7 @@ import {
 import { init } from './model'
 import {
   LoadPublicKhalaTokensServedHistory,
+  LoadPublicKhalaTokensServedChannelMix,
   LoadPublicKhalaTokensServedModelMix,
   LoadTrace,
   TASSADAR_AGENT_INSTRUCTIONS,
@@ -246,6 +250,7 @@ describe('logged-out nav + copy update', () => {
       'LoadPublicKhalaTokensServed',
       'LoadPublicKhalaTokensServedHistory',
       'LoadPublicKhalaTokensServedModelMix',
+      'LoadPublicKhalaTokensServedChannelMix',
       'LoadPublicForumLaunchStatus',
       'LoadPublicForumTipLeaderboards',
       'LoadSettledFeedSnapshot',
@@ -316,6 +321,56 @@ describe('logged-out nav + copy update', () => {
     }
   })
 
+  test('LoadPublicKhalaTokensServedChannelMix reads canonical aggregate channel mix', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          schemaVersion: 'openagents.public_khala_channel_mix.v1',
+          window: '30d',
+          totalTokens: 14_680_776,
+          generatedAt: '2026-07-01T12:00:00.000Z',
+          groups: [
+            {
+              channel: 'khala_api',
+              label: 'Khala API',
+              tokens: 10_000_000,
+              reqs: 9,
+              pct: 68.12,
+            },
+            {
+              channel: 'direct_local',
+              label: 'Direct local',
+              tokens: 4_680_776,
+              reqs: 3,
+              pct: 31.88,
+            },
+          ],
+          staleness: { mode: 'live_at_read' },
+        }),
+        { headers: { 'content-type': 'application/json' } },
+      ),
+    )
+
+    const message = await Effect.runPromise(
+      LoadPublicKhalaTokensServedChannelMix().effect,
+    )
+
+    expect(message._tag).toBe('SucceededLoadPublicKhalaTokensServedChannelMix')
+    expect(fetchSpy).toHaveBeenCalledWith(
+      '/api/public/khala-tokens-served/channel-mix?window=30d',
+      {
+        cache: 'no-store',
+        headers: { accept: 'application/json' },
+      },
+    )
+    if (message._tag === 'SucceededLoadPublicKhalaTokensServedChannelMix') {
+      expect(message.mix.groups.map(row => row.channel)).toEqual([
+        'khala_api',
+        'direct_local',
+      ])
+    }
+  })
+
   test('SucceededLoadPublicKhalaTokensServedModelMix stores aggregate family rows', () => {
     const [next] = update(
       init(StatsRoute()),
@@ -343,6 +398,37 @@ describe('logged-out nav + copy update', () => {
       mix: {
         totalTokens: 14_680_776,
         groups: [{ family: 'glm' }],
+      },
+    })
+  })
+
+  test('SucceededLoadPublicKhalaTokensServedChannelMix stores aggregate channel rows', () => {
+    const [next] = update(
+      init(StatsRoute()),
+      SucceededLoadPublicKhalaTokensServedChannelMix({
+        mix: {
+          schemaVersion: 'openagents.public_khala_channel_mix.v1',
+          window: '30d',
+          totalTokens: 14_680_776,
+          generatedAt: '2026-07-01T12:00:00.000Z',
+          groups: [
+            {
+              channel: 'direct_local',
+              label: 'Direct local',
+              tokens: 14_680_776,
+              reqs: 12,
+              pct: 100,
+            },
+          ],
+        },
+      }),
+    )
+
+    expect(next.publicKhalaTokensServedChannelMix).toMatchObject({
+      _tag: 'PublicKhalaTokensServedChannelMixLoaded',
+      mix: {
+        totalTokens: 14_680_776,
+        groups: [{ channel: 'direct_local' }],
       },
     })
   })
@@ -386,6 +472,41 @@ describe('logged-out nav + copy update', () => {
     )
   })
 
+  test('RequestedPollKhalaTokensServedChannelMix re-fetches the aggregate without flashing to Loading', () => {
+    const loaded = update(
+      init(StatsRoute()),
+      SucceededLoadPublicKhalaTokensServedChannelMix({
+        mix: {
+          schemaVersion: 'openagents.public_khala_channel_mix.v1',
+          window: '30d',
+          totalTokens: 14_680_776,
+          generatedAt: '2026-07-01T12:00:00.000Z',
+          groups: [
+            {
+              channel: 'direct_local',
+              label: 'Direct local',
+              tokens: 14_680_776,
+              reqs: 12,
+              pct: 100,
+            },
+          ],
+        },
+      }),
+    )[0]
+
+    const [next, commands] = update(
+      loaded,
+      RequestedPollKhalaTokensServedChannelMix(),
+    )
+
+    expect(commandNames(commands)).toEqual([
+      'LoadPublicKhalaTokensServedChannelMix',
+    ])
+    expect(next.publicKhalaTokensServedChannelMix._tag).toBe(
+      'PublicKhalaTokensServedChannelMixLoaded',
+    )
+  })
+
   // #6392: a transient poll failure must never wipe a good loaded mix back to
   // "unavailable" — mirrors the counter's "a failed reconcile never wipes a good
   // live total" rule.
@@ -422,6 +543,39 @@ describe('logged-out nav + copy update', () => {
     })
   })
 
+  test('FailedLoadPublicKhalaTokensServedChannelMix preserves a previously loaded mix', () => {
+    const loaded = update(
+      init(StatsRoute()),
+      SucceededLoadPublicKhalaTokensServedChannelMix({
+        mix: {
+          schemaVersion: 'openagents.public_khala_channel_mix.v1',
+          window: '30d',
+          totalTokens: 14_680_776,
+          generatedAt: '2026-07-01T12:00:00.000Z',
+          groups: [
+            {
+              channel: 'khala_api',
+              label: 'Khala API',
+              tokens: 14_680_776,
+              reqs: 12,
+              pct: 100,
+            },
+          ],
+        },
+      }),
+    )[0]
+
+    const [next] = update(
+      loaded,
+      FailedLoadPublicKhalaTokensServedChannelMix({ error: 'transient' }),
+    )
+
+    expect(next.publicKhalaTokensServedChannelMix).toMatchObject({
+      _tag: 'PublicKhalaTokensServedChannelMixLoaded',
+      mix: { totalTokens: 14_680_776 },
+    })
+  })
+
   // A failure BEFORE any successful load still surfaces the unavailable state so
   // the panel does not sit on a stale "Loading" placeholder forever.
   test('FailedLoadPublicKhalaTokensServedModelMix surfaces the error when no mix has loaded yet', () => {
@@ -432,6 +586,17 @@ describe('logged-out nav + copy update', () => {
 
     expect(next.publicKhalaTokensServedModelMix._tag).toBe(
       'PublicKhalaTokensServedModelMixFailed',
+    )
+  })
+
+  test('FailedLoadPublicKhalaTokensServedChannelMix surfaces the error when no mix has loaded yet', () => {
+    const [next] = update(
+      init(StatsRoute()),
+      FailedLoadPublicKhalaTokensServedChannelMix({ error: 'cold failure' }),
+    )
+
+    expect(next.publicKhalaTokensServedChannelMix._tag).toBe(
+      'PublicKhalaTokensServedChannelMixFailed',
     )
   })
 })

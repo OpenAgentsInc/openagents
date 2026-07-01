@@ -46,6 +46,7 @@ import {
   demoPlaybackDependenciesForModel,
   gymRunProgressPollDependenciesForModel,
   gymRunProgressStreamDependenciesForModel,
+  khalaTokensServedChannelMixPollDependenciesForModel,
   khalaTokensServedModelMixPollDependenciesForModel,
   khalaTokensServedPollDependenciesForModel,
   khalaTokensServedStreamDependenciesForModel,
@@ -768,6 +769,21 @@ describe('Khala tokens-served live surfaces', () => {
     expect(
       khalaTokensServedModelMixPollDependenciesForModel(
         LoggedOut.init(LandingRoute()),
+      ).isActive,
+    ).toBe(false)
+    expect(
+      khalaTokensServedChannelMixPollDependenciesForModel(
+        LoggedOut.init(StatsRoute()),
+      ).isActive,
+    ).toBe(true)
+    expect(
+      khalaTokensServedChannelMixPollDependenciesForModel(
+        LoggedOut.init(PublicStatsArchiveRoute()),
+      ).isActive,
+    ).toBe(true)
+    expect(
+      khalaTokensServedChannelMixPollDependenciesForModel(
+        LoggedOut.init(HomeRoute()),
       ).isActive,
     ).toBe(false)
   })

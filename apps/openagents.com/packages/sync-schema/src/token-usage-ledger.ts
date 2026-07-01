@@ -13,6 +13,7 @@ export type TokenUsageIdempotencyKey = typeof TokenUsageIdempotencyKey.Type
 export const TokenUsageProducerSystem = S.Literals([
   'probe',
   'omega',
+  'pylon',
   'provider_broker',
   'shc_runner',
   'manual',
@@ -25,6 +26,7 @@ export const TokenUsageSourceRoute = S.Literals([
   'probe_local_model',
   'omega_provider_broker',
   'omega_hosted_gemini',
+  'pylon_codex_direct_local',
   'shc_runner_callback',
   'manual',
   'unknown',
@@ -42,6 +44,12 @@ export const TokenUsageDemandKind = S.Literals([
   'unlabeled',
 ])
 export type TokenUsageDemandKind = typeof TokenUsageDemandKind.Type
+
+export const TokenUsageDemandChannel = S.Literals([
+  'khala_api',
+  'direct_local',
+])
+export type TokenUsageDemandChannel = typeof TokenUsageDemandChannel.Type
 
 export const TokenUsageLeaderboardWindow = S.Literals([
   'today',
@@ -111,6 +119,7 @@ export class TokenUsagePrivacyFlags extends S.Class<TokenUsagePrivacyFlags>(
 export class TokenUsageDemandAttribution extends S.Class<TokenUsageDemandAttribution>(
   'TokenUsageDemandAttribution',
 )({
+  demandChannel: S.optionalKey(TokenUsageDemandChannel),
   demandKind: TokenUsageDemandKind,
   demandSource: S.optionalKey(S.String),
   demandClient: S.optionalKey(S.String),
@@ -263,7 +272,7 @@ export class TokenUsageLeaderboardPreferenceUpdateBody extends S.Class<TokenUsag
 }) {}
 
 // Public-safe aggregate: the running network-wide total of tokens SERVED
-// (input + output) — "Khala Tokens Served" on the homepage. This is an
+// (input + output) — the product-wide "Tokens Served" counter. This is an
 // aggregate-only projection of the canonical token usage ledger; it carries NO
 // per-user, per-team, per-account, provider-payload, or any other private
 // material. `tokensServed` is the SUM of input + output tokens across ALL
@@ -278,7 +287,7 @@ export class PublicKhalaTokensServedAggregate extends S.Class<PublicKhalaTokensS
   tokensServed: S.Int,
 }) {}
 
-// The windows the "Khala Tokens Served" history read supports. Reuses the same
+// The windows the public "Tokens Served" history read supports. Reuses the same
 // vocabulary as the token-usage leaderboard window helper. Default is 30d.
 export const PublicKhalaTokensServedHistoryWindow = S.Literals([
   'today',
@@ -325,6 +334,7 @@ export const PublicKhalaTokensServedModelFamily = S.Literals([
   'glm',
   'fireworks_deepseek',
   'pylon_codex',
+  'codex_direct',
   'pylon_claude',
   'gpt_oss',
   'gemini',
@@ -376,6 +386,28 @@ export class PublicKhalaTokensServedDemandMix extends S.Class<PublicKhalaTokensS
   window: PublicKhalaTokensServedHistoryWindow,
   totalTokens: S.Int,
   groups: S.Array(PublicKhalaTokensServedDemandMixGroup),
+}) {}
+
+export class PublicKhalaTokensServedChannelMixGroup extends S.Class<PublicKhalaTokensServedChannelMixGroup>(
+  'PublicKhalaTokensServedChannelMixGroup',
+)({
+  channel: TokenUsageDemandChannel,
+  label: S.String,
+  tokens: S.Int,
+  reqs: S.Int,
+  pct: S.Number,
+}) {}
+
+// Public-safe channel mix for /stats. This splits the product-wide total into
+// Khala API/delegation traffic and explicit opt-in direct-local usage. It is
+// aggregate only and never carries account refs, actor refs, prompts, paths, or
+// provider payloads.
+export class PublicKhalaTokensServedChannelMix extends S.Class<PublicKhalaTokensServedChannelMix>(
+  'PublicKhalaTokensServedChannelMix',
+)({
+  window: PublicKhalaTokensServedHistoryWindow,
+  totalTokens: S.Int,
+  groups: S.Array(PublicKhalaTokensServedChannelMixGroup),
 }) {}
 
 // ----------------------------------------------------------------------------

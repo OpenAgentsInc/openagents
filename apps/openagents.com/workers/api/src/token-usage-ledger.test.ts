@@ -466,6 +466,85 @@ const makeMemoryD1 = (
           )
         }
 
+        if (
+          query.includes('GROUP BY demand_channel') &&
+          query.includes('AS tokens') &&
+          query.includes('AS usage_events')
+        ) {
+          const byChannel = new Map<
+            string,
+            {
+              demand_channel: string | null
+              tokens: number
+              usage_events: number
+            }
+          >()
+
+          for (const row of rows) {
+            const channel = String(row.demand_channel ?? 'khala_api')
+            const previous = byChannel.get(channel) ?? {
+              demand_channel: channel,
+              tokens: 0,
+              usage_events: 0,
+            }
+            byChannel.set(channel, {
+              demand_channel: channel,
+              tokens:
+                previous.tokens +
+                Number(row.input_tokens ?? 0) +
+                Number(row.output_tokens ?? 0),
+              usage_events: previous.usage_events + 1,
+            })
+          }
+
+          return Promise.resolve(
+            makeResult<T>([...byChannel.values()] as Array<T>),
+          )
+        }
+
+        if (
+          query.includes('GROUP BY demand_kind, demand_source, demand_client') &&
+          query.includes('AS tokens') &&
+          query.includes('AS usage_events')
+        ) {
+          const byDemand = new Map<
+            string,
+            {
+              demand_client: string | null
+              demand_kind: string | null
+              demand_source: string | null
+              tokens: number
+              usage_events: number
+            }
+          >()
+
+          for (const row of rows) {
+            const demandKind = String(row.demand_kind ?? 'unlabeled')
+            const demandSource = String(row.demand_source ?? 'unknown')
+            const demandClient = String(row.demand_client ?? 'unknown')
+            const key = `${demandKind}:${demandSource}:${demandClient}`
+            const previous = byDemand.get(key) ?? {
+              demand_client: demandClient,
+              demand_kind: demandKind,
+              demand_source: demandSource,
+              tokens: 0,
+              usage_events: 0,
+            }
+            byDemand.set(key, {
+              ...previous,
+              tokens:
+                previous.tokens +
+                Number(row.input_tokens ?? 0) +
+                Number(row.output_tokens ?? 0),
+              usage_events: previous.usage_events + 1,
+            })
+          }
+
+          return Promise.resolve(
+            makeResult<T>([...byDemand.values()] as Array<T>),
+          )
+        }
+
         return Promise.resolve(makeResult<T>())
       },
       bind: (...nextValues: ReadonlyArray<unknown>) => {
@@ -582,24 +661,25 @@ const makeMemoryD1 = (
             cache_write_5m_tokens: values[21] as number,
             cost_amount: values[25] as number | null,
             currency: values[26] as string | null,
-            demand_client: values[29] as string | null,
-            demand_kind: values[27] as string,
-            demand_source: values[28] as string | null,
+            demand_channel: values[27] as string,
+            demand_client: values[30] as string | null,
+            demand_kind: values[28] as string,
+            demand_source: values[29] as string | null,
             id,
             idempotency_key: idempotencyKey,
             ingested_at: values[3] as string,
             input_tokens: values[17] as number,
-            leaderboard_eligible: values[30] as number,
+            leaderboard_eligible: values[31] as number,
             model: values[15] as string | null,
             observed_at: values[2] as string,
             output_tokens: values[18] as number,
-            privacy_opt_out: values[31] as number,
+            privacy_opt_out: values[32] as number,
             producer_system: values[4] as string,
             provider: values[14] as string | null,
             reasoning_tokens: values[19] as number,
             repository_ref: values[13] as string | null,
             run_ref: values[10] as string | null,
-            safe_metadata_json: values[32] as string,
+            safe_metadata_json: values[33] as string,
             session_ref: values[11] as string | null,
             source_route: values[5] as string,
             task_ref: values[12] as string | null,
@@ -669,6 +749,11 @@ const tokensServedAggregate = () =>
 const tokensServedModelMix = (filters?: TokenUsageLeaderboardFilters) =>
   Effect.flatMap(TokenUsageLedger, ledger =>
     ledger.readPublicTokensServedModelMix(filters),
+  )
+
+const tokensServedChannelMix = (filters?: TokenUsageLeaderboardFilters) =>
+  Effect.flatMap(TokenUsageLedger, ledger =>
+    ledger.readPublicTokensServedChannelMix(filters),
   )
 
 const leaderboards = () =>
@@ -750,6 +835,30 @@ describe('token usage ledger', () => {
     expect(preferenceMigration).toContain(
       "leaderboard_participation IN ('eligible', 'opted_out')",
     )
+
+    const demandMigration = await readFile(
+      new URL(
+        '../migrations/0232_token_usage_demand_attribution.sql',
+        import.meta.url,
+      ),
+      'utf8',
+    )
+    expect(demandMigration).toContain('ADD COLUMN demand_kind')
+    expect(demandMigration).toContain('ADD COLUMN demand_source')
+    expect(demandMigration).toContain('ADD COLUMN demand_client')
+
+    const demandChannelMigration = await readFile(
+      new URL(
+        '../migrations/0262_token_usage_demand_channel.sql',
+        import.meta.url,
+      ),
+      'utf8',
+    )
+    expect(demandChannelMigration).toContain('ADD COLUMN demand_channel')
+    expect(demandChannelMigration).toContain("'direct_local'")
+    expect(demandChannelMigration).toContain(
+      'idx_token_usage_events_demand_channel',
+    )
   })
 
   test('stores one redacted Probe event across repeated idempotent submissions', async () => {
@@ -763,6 +872,7 @@ describe('token usage ledger', () => {
     expect(db.rows[0]).toMatchObject({
       id: 'token_event_probe_1',
       idempotency_key: 'probe:event:1',
+      demand_channel: 'khala_api',
       producer_system: 'probe',
       source_route: 'probe_direct_provider',
       total_tokens: 180,
@@ -789,9 +899,42 @@ describe('token usage ledger', () => {
 
     expect(db.rows).toHaveLength(1)
     expect(db.rows[0]).toMatchObject({
+      demand_channel: 'khala_api',
       demand_client: 'stress-harness',
       demand_kind: 'internal_stress',
       demand_source: 'glm-saturation',
+    })
+  })
+
+  test('persists explicit direct-local demand channel separately from demand kind', async () => {
+    const db = makeMemoryD1()
+    await runLedger(
+      db,
+      ingest({
+        ...validProbeEvent,
+        demand: {
+          demandChannel: 'direct_local',
+          demandClient: 'pylon',
+          demandKind: 'own_capacity',
+          demandSource: 'direct_local_codex',
+        },
+        eventId: 'token_event_direct_local_codex',
+        idempotencyKey: 'pylon:codex-direct-local:1',
+        producerSystem: 'pylon',
+        provider: 'pylon-codex-direct-local',
+        model: 'openagents/codex-direct-local',
+        sourceRoute: 'pylon_codex_direct_local',
+      }),
+    )
+
+    expect(db.rows).toHaveLength(1)
+    expect(db.rows[0]).toMatchObject({
+      demand_channel: 'direct_local',
+      demand_client: 'pylon',
+      demand_kind: 'own_capacity',
+      demand_source: 'direct_local_codex',
+      producer_system: 'pylon',
+      source_route: 'pylon_codex_direct_local',
     })
   })
 
@@ -1568,5 +1711,81 @@ describe('public tokens-served model mix', () => {
         tokens: 100,
       },
     ])
+  })
+})
+
+describe('public tokens-served channel mix', () => {
+  test('splits product-wide tokens by Khala API and direct-local channels', async () => {
+    const db = makeMemoryD1()
+
+    await runLedger(
+      db,
+      Effect.gen(function* () {
+        yield* ingest({
+          ...validProbeEvent,
+          eventId: 'token_event_khala_api_channel',
+          idempotencyKey: 'probe:event:khala-api-channel',
+          tokenCounts: {
+            cacheReadTokens: 0,
+            cacheWrite1hTokens: 0,
+            cacheWrite5mTokens: 0,
+            inputTokens: 100,
+            outputTokens: 50,
+            reasoningTokens: 0,
+            totalTokens: 150,
+          },
+        })
+        yield* ingest({
+          ...validProbeEvent,
+          demand: {
+            demandChannel: 'direct_local',
+            demandClient: 'pylon',
+            demandKind: 'own_capacity',
+            demandSource: 'direct_local_codex',
+          },
+          eventId: 'token_event_direct_local_channel',
+          idempotencyKey: 'pylon:codex-direct-local:channel',
+          model: 'openagents/codex-direct-local',
+          producerSystem: 'pylon',
+          provider: 'pylon-codex-direct-local',
+          sourceRoute: 'pylon_codex_direct_local',
+          tokenCounts: {
+            cacheReadTokens: 0,
+            cacheWrite1hTokens: 0,
+            cacheWrite5mTokens: 0,
+            inputTokens: 25,
+            outputTokens: 25,
+            reasoningTokens: 0,
+            totalTokens: 50,
+          },
+        })
+      }),
+    )
+
+    const mix = await runLedger(
+      db,
+      tokensServedChannelMix({ now: nowIso, window: '30d' }),
+    )
+
+    expect(mix).toEqual({
+      window: '30d',
+      totalTokens: 200,
+      groups: [
+        {
+          channel: 'khala_api',
+          label: 'Khala API',
+          pct: 75,
+          reqs: 1,
+          tokens: 150,
+        },
+        {
+          channel: 'direct_local',
+          label: 'Direct local',
+          pct: 25,
+          reqs: 1,
+          tokens: 50,
+        },
+      ],
+    })
   })
 })

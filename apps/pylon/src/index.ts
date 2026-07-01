@@ -117,6 +117,7 @@ import {
   resolvePylonAccountUsageRefreshTargets,
   type PylonAccountsUsageArgs,
 } from "./account-usage.js"
+import { reportDirectLocalCodexUsage } from "./codex-direct-local-usage-reporter.js"
 import { collectPylonOperatorAccountStatus } from "./account-status.js"
 import {
   createCodexFleetOffloadPlan,
@@ -3528,7 +3529,7 @@ async function main() {
       if (command === "usage") {
         const options = parsePylonAccountsUsageArgs(accountCommandArgs.slice(1))
         if (!options.json) {
-          throw new Error("usage: pylon accounts usage [--account <ref-or-provider>|--provider <codex|claude_agent>|--all] [--refresh] --json")
+          throw new Error("usage: pylon accounts usage [--account <ref-or-provider>|--provider <codex|claude_agent>|--all] [--refresh] [--report-local-codex-usage] --json")
         }
         const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env)
         if (options.refresh) {
@@ -3538,12 +3539,18 @@ async function main() {
           // Codex/Claude rate-limit payloads.
           await runAccountsUsageRefresh(summary, options)
         }
+        const directLocalCodexReport = await reportDirectLocalCodexUsage(
+          summary,
+          options,
+          { env: Bun.env },
+        )
         const projection = await collectPylonAccountsUsage(summary, options, { env: Bun.env })
         process.stdout.write(`${JSON.stringify({
           ...projection,
           refresh: {
             ...projection.refresh,
             performed: options.refresh,
+            directLocalCodexReport,
           },
         }, null, 2)}\n`)
         return

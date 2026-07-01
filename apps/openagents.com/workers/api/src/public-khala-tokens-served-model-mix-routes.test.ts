@@ -144,6 +144,33 @@ describe('GET /api/public/khala-tokens-served/model-mix', () => {
     ])
   })
 
+  test('shows direct local Codex as a separate public family', async () => {
+    const response = await Effect.runPromise(
+      handlePublicKhalaTokensServedModelMixApi(
+        getRequest(),
+        routeInput([
+          {
+            model: 'openagents/codex-direct-local',
+            provider: 'pylon-codex-direct-local',
+            tokens: 64,
+            usage_events: 2,
+          },
+        ]),
+      ),
+    )
+    const body = (await response.json()) as Record<string, unknown>
+
+    expect(body.groups).toEqual([
+      {
+        family: 'codex_direct',
+        label: 'Codex (direct)',
+        pct: 100,
+        reqs: 2,
+        tokens: 64,
+      },
+    ])
+  })
+
   test('rejects non-GET methods', async () => {
     const response = await Effect.runPromise(
       handlePublicKhalaTokensServedModelMixApi(
@@ -230,6 +257,12 @@ describe('GET /api/public/khala-tokens-served/model-mix', () => {
         'openagents/pylon-codex',
       ),
     ).toBe('pylon_codex')
+    expect(
+      publicModelFamilyFromProviderAndModel(
+        'pylon-codex-direct-local',
+        'openagents/codex-direct-local',
+      ),
+    ).toBe('codex_direct')
     expect(
       publicModelFamilyFromProviderAndModel(
         'pylon_claude_own_capacity',

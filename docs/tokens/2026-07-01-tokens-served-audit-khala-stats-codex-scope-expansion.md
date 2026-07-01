@@ -329,6 +329,7 @@ Two reasonable shapes, worth deciding explicitly before implementing:
 - `apps/openagents.com/workers/api/migrations/0137_token_usage_events.sql`
 - `apps/openagents.com/workers/api/migrations/0232_token_usage_demand_attribution.sql`
 - `apps/openagents.com/workers/api/migrations/0236_agent_traces_demand_attribution.sql`
+- `apps/openagents.com/workers/api/migrations/0262_token_usage_demand_channel.sql`
 - `apps/openagents.com/workers/api/src/token-usage-ledger.ts`
 - `apps/openagents.com/workers/api/src/inference/served-tokens-recorder.ts`
 - `apps/openagents.com/workers/api/src/public-khala-chat-served-tokens.ts`
@@ -336,15 +337,62 @@ Two reasonable shapes, worth deciding explicitly before implementing:
 - `apps/openagents.com/workers/api/src/public-khala-tokens-served-routes.ts`
 - `apps/openagents.com/workers/api/src/public-khala-tokens-served-history-routes.ts`
 - `apps/openagents.com/workers/api/src/public-khala-tokens-served-model-mix-routes.ts`
+- `apps/openagents.com/workers/api/src/public-khala-tokens-served-channel-mix-routes.ts`
 - `apps/openagents.com/workers/api/src/public-khala-tokens-served-demand-mix-routes.ts` (built, unused by any page)
+- `apps/openagents.com/workers/api/src/openagents-openapi.ts`
+- `apps/openagents.com/workers/api/src/openagents-capability-manifest.ts`
+- `apps/openagents.com/workers/api/src/product-promises.ts`
 - `apps/openagents.com/packages/sync-schema/src/token-usage-ledger.ts`
 - `apps/openagents.com/apps/web/src/page/loggedOut/page/home.ts`
 - `apps/openagents.com/apps/web/src/page/loggedOut/page/stats.ts`
 - `apps/openagents.com/apps/web/src/page/khala-chat/page.ts`
 - `apps/openagents.com/apps/web/src/route-table.ts`
 - `apps/pylon/src/account-usage.ts`
+- `apps/pylon/src/codex-direct-local-usage-reporter.ts`
 - `apps/openagents.com/INVARIANTS.md` ("Canonical Token Usage Ledger",
   "Captured Trace Demand-Origin Segmentation")
 - `apps/openagents.com/docs/stats/2026-06-26-stats-page-audit.md`
 - `docs/adr/0009-count-served-tokens-from-exact-usage-ledger-rows.md`
 - root `CLAUDE.md` ("Khala -> Pylon -> Codex Coding Delegation Runbook")
+
+## 11. Implementation closeout (#7797)
+
+Implemented Option A: the headline public counter is now framed as
+**Tokens Served**, a product-wide live-at-read total over every real
+`token_usage_events` row. The historic `/api/public/khala-tokens-served`
+route path remains for compatibility, but visible UI copy and public promise
+copy no longer describe the scalar as Khala-only.
+
+Shipped schema/API changes:
+
+- `workers/api/migrations/0262_token_usage_demand_channel.sql` adds
+  `demand_channel` with `khala_api` default/backfill and `direct_local` as the
+  explicit opt-in local channel.
+- `TokenUsageDemandAttribution.demandChannel` is now canonical ledger metadata.
+  Existing ingest paths default to `khala_api`; the new direct-local Codex path
+  writes `direct_local`.
+- `GET /api/public/khala-tokens-served/channel-mix` returns
+  `openagents.public_khala_channel_mix.v1` aggregate rows for `khala_api` and
+  `direct_local`.
+- Model mix now distinguishes `pylon_codex` from `codex_direct`.
+
+Shipped direct-local ingest:
+
+- `POST /api/pylon/codex/local-usage` accepts registered-agent auth, requires
+  no assignment, validates `account.pylon.codex.<hex>` refs, writes only
+  public-safe metadata, and is idempotent on the caller-supplied idempotency key.
+- Pylon reports local Codex usage only when explicitly opted in with
+  `pylon accounts usage --report-local-codex-usage --json` or
+  `PYLON_REPORT_LOCAL_CODEX_USAGE=true`.
+- The reporter sends exact per-session token deltas from
+  `localSessionUsageHistory` when available. Total-only fallback rows are
+  marked `estimated`; no prompts, completions, raw provider payloads, tokens,
+  emails, local filesystem paths, or account homes are sent.
+
+Updated public surfaces:
+
+- `/stats` now renders both Model Family Mix and Channel Mix.
+- Homepage, `/khala`, and `/stats` visible copy use **Tokens Served** for the
+  headline counter while preserving the legacy route names internally.
+- `apps/openagents.com/INVARIANTS.md`, OpenAPI, capability manifest, and product
+  promises document the broader counter and channel split.

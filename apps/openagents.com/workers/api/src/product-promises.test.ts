@@ -2122,8 +2122,8 @@ describe('public product promises document', () => {
     expect(modelMixPromise?.state).toBe('green')
     expect(modelMixPromise?.safeCopy).toContain('liveAt/generatedAt')
     expect(modelMixPromise?.safeCopy).toContain('maxStalenessSeconds:0')
-    expect(modelMixPromise?.safeCopy).toContain('stable public model-family')
-    expect(modelMixPromise?.safeCopy).toContain('Pylon-Codex own-capacity')
+    expect(modelMixPromise?.safeCopy).toContain('stable public normalization')
+    expect(modelMixPromise?.safeCopy).toContain('direct local Codex')
     expect(modelMixPromise?.safeCopy).toContain(
       'The owner-signed green transition is applied',
     )
@@ -2134,9 +2134,12 @@ describe('public product promises document', () => {
     expect(modelMixPromise?.evidenceRefs).toContain(
       'route:/api/public/khala-tokens-served/model-mix',
     )
+    expect(modelMixPromise?.evidenceRefs).toContain(
+      'route:/api/public/khala-tokens-served/channel-mix',
+    )
     expect(modelMixPromise?.blockerRefs).toEqual([])
     expect(modelMixPromise?.verification).toContain(
-      'owner-signed #7016 transition',
+      'owner-signed #7016 transition plus #7797 channel expansion',
     )
     expect(modelMixPromise?.verification).toContain(
       'creates no external-demand, revenue, paid-provider-resale',

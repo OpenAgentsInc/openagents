@@ -1,11 +1,13 @@
 import {
   InferenceAnalyticsResponse,
   PublicKhalaTokensServedAggregate,
+  PublicKhalaTokensServedChannelMix,
   PublicKhalaTokensServedDemandMix,
   PublicKhalaTokensServedHistory,
   PublicKhalaTokensServedModelMix,
   type PublicKhalaTokensServedModelFamily,
   type PublicKhalaTokensServedHistoryBucket,
+  type TokenUsageDemandChannel,
   TokenUsageAggregateResponse,
   TokenUsageCounts,
   type TokenUsageDemandKind,
@@ -159,6 +161,12 @@ export type TokenUsageLedgerShape = Readonly<{
     typeof PublicKhalaTokensServedDemandMix.Type,
     TokenUsageLedgerStorageError | TokenUsageLedgerValidationError
   >
+  readPublicTokensServedChannelMix: (
+    filters?: TokenUsageLeaderboardFilters,
+  ) => Effect.Effect<
+    typeof PublicKhalaTokensServedChannelMix.Type,
+    TokenUsageLedgerStorageError | TokenUsageLedgerValidationError
+  >
   readLeaderboardPreference: (
     input: TokenUsageLeaderboardPreferenceInput,
   ) => Effect.Effect<
@@ -208,6 +216,7 @@ type TokenUsageEventRow = Readonly<{
   usage_truth: string
   cost_amount: number | null
   currency: string | null
+  demand_channel: string | null
   demand_kind: string | null
   demand_source: string | null
   demand_client: string | null
@@ -274,6 +283,14 @@ const demandKindFromText = (
     : 'unlabeled'
 }
 
+const demandChannelFromText = (
+  value: string | null | undefined,
+): TokenUsageDemandChannel => {
+  const normalized = value?.trim().toLowerCase()
+
+  return normalized === 'direct_local' ? 'direct_local' : 'khala_api'
+}
+
 // Public Khala token counters are total-only: every real served-token ledger
 // row counts, including internal dogfood, `internal_stress`, `own_capacity`,
 // external, and unlabeled demand. The public projection stays safe by returning
@@ -283,10 +300,12 @@ const publicTokensServedDemandWhere = `1 = 1`
 const demandAttributionFromInput = (
   body: typeof TokenUsageEventIngestBody.Type,
 ): Readonly<{
+  demandChannel: TokenUsageDemandChannel
   demandClient: string | null
   demandKind: TokenUsageDemandKind
   demandSource: string | null
 }> => ({
+  demandChannel: demandChannelFromText(body.demand?.demandChannel),
   demandClient: optionalText(body.demand?.demandClient) ?? null,
   demandKind: demandKindFromText(body.demand?.demandKind),
   demandSource: optionalText(body.demand?.demandSource) ?? null,
@@ -810,6 +829,21 @@ const decodePublicTokensServedDemandMix = (
       }),
   })
 
+const decodePublicTokensServedChannelMix = (
+  value: unknown,
+): Effect.Effect<
+  typeof PublicKhalaTokensServedChannelMix.Type,
+  TokenUsageLedgerValidationError
+> =>
+  Effect.try({
+    try: () => S.decodeUnknownSync(PublicKhalaTokensServedChannelMix)(value),
+    catch: error =>
+      new TokenUsageLedgerValidationError({
+        field: 'public_tokens_served_channel_mix',
+        message: error instanceof Error ? error.message : String(error),
+      }),
+  })
+
 const decodeLeaderboardsResponse = (
   value: unknown,
 ): Effect.Effect<
@@ -878,6 +912,7 @@ const rowToRecord = (
         ? null
         : { amount: row.cost_amount, currency: row.currency },
     demand: {
+      demandChannel: demandChannelFromText(row.demand_channel),
       ...(row.demand_client == null ? {} : { demandClient: row.demand_client }),
       demandKind: demandKindFromText(row.demand_kind),
       ...(row.demand_source == null ? {} : { demandSource: row.demand_source }),
@@ -932,6 +967,7 @@ const storedRowFromInput = (
     cache_write_5m_tokens: input.tokenCounts.cacheWrite5mTokens,
     cost_amount: body.cost?.amount ?? null,
     currency: body.cost?.currency ?? null,
+    demand_channel: demand.demandChannel,
     demand_client: demand.demandClient,
     demand_kind: demand.demandKind,
     demand_source: demand.demandSource,
@@ -988,6 +1024,7 @@ const insertBindings = (
   row.usage_truth,
   row.cost_amount,
   row.currency,
+  row.demand_channel,
   row.demand_kind,
   row.demand_source,
   row.demand_client,
@@ -1288,13 +1325,14 @@ const insertEventRow = (
           usage_truth,
           cost_amount,
           currency,
+          demand_channel,
           demand_kind,
           demand_source,
           demand_client,
           leaderboard_eligible,
           privacy_opt_out,
           safe_metadata_json
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(...insertBindings(row))
       .run()
@@ -1557,6 +1595,15 @@ export const publicModelFamilyFromProviderAndModel = (
   }
 
   if (
+    text.includes('codex-direct') ||
+    text.includes('codex_direct') ||
+    text.includes('openagents/codex-direct-local') ||
+    text.includes('pylon-codex-direct-local')
+  ) {
+    return 'codex_direct'
+  }
+
+  if (
     text.includes('pylon-codex') ||
     text.includes('pylon_codex') ||
     text.includes('openagents/pylon-codex') ||
@@ -1591,15 +1638,17 @@ export const publicModelFamilyLabel = (
     ? 'GLM family'
     : family === 'fireworks_deepseek'
       ? 'Fireworks DeepSeek'
-      : family === 'pylon_codex'
+    : family === 'pylon_codex'
         ? 'Pylon-Codex'
-        : family === 'pylon_claude'
-          ? 'Pylon-Claude'
-          : family === 'gpt_oss'
-          ? 'GPT-OSS'
-          : family === 'gemini'
-            ? 'Gemini'
-            : 'Other'
+        : family === 'codex_direct'
+          ? 'Codex (direct)'
+          : family === 'pylon_claude'
+            ? 'Pylon-Claude'
+            : family === 'gpt_oss'
+              ? 'GPT-OSS'
+              : family === 'gemini'
+                ? 'Gemini'
+                : 'Other'
 
 const roundedPercent = (tokens: number, totalTokens: number): number =>
   totalTokens <= 0
@@ -1618,6 +1667,10 @@ const publicDemandLabel = (value: string | null | undefined): string => {
 
   return normalized.length > 80 ? normalized.slice(0, 80) : normalized
 }
+
+export const publicDemandChannelLabel = (
+  channel: TokenUsageDemandChannel,
+): string => (channel === 'direct_local' ? 'Direct local' : 'Khala API')
 
 type AggregateWhere = Readonly<{
   filters: TokenUsageLeaderboardFilters | TokenUsageLedgerFilters
@@ -2634,6 +2687,81 @@ export const makeD1TokenUsageLedger = (
         )
 
       return yield* decodePublicTokensServedDemandMix({
+        groups,
+        totalTokens,
+        window,
+      })
+    }),
+
+  // Public-safe channel mix for /stats: aggregate by the bounded channel
+  // taxonomy so product-wide "Tokens Served" can include both Khala-issued API
+  // rows and explicitly opted-in direct-local Codex usage without conflating
+  // provenance. Legacy rows default to khala_api.
+  readPublicTokensServedChannelMix: (filters = {}) =>
+    Effect.gen(function* () {
+      const window = yield* normalizeLeaderboardWindow(filters.window ?? '30d')
+      const nowIso = yield* requireTimestamp(
+        'now',
+        filters.now ?? runtime.nowIso(),
+      )
+      const since = leaderboardWindowSince(window, nowIso, runtime)
+
+      const rows = yield* d1Effect(
+        'tokenUsageEvents.publicTokensServedChannelMix',
+        () =>
+          db
+            .prepare(
+              since === undefined
+                ? `SELECT
+                      COALESCE(NULLIF(demand_channel, ''), 'khala_api') AS demand_channel,
+                      COALESCE(SUM(input_tokens), 0) + COALESCE(SUM(output_tokens), 0)
+                        AS tokens,
+                      COUNT(*) AS usage_events
+                     FROM token_usage_events
+                    WHERE ${publicTokensServedDemandWhere}
+                    GROUP BY demand_channel`
+                : `SELECT
+                      COALESCE(NULLIF(demand_channel, ''), 'khala_api') AS demand_channel,
+                      COALESCE(SUM(input_tokens), 0) + COALESCE(SUM(output_tokens), 0)
+                        AS tokens,
+                      COUNT(*) AS usage_events
+                     FROM token_usage_events
+                    WHERE observed_at >= ? AND ${publicTokensServedDemandWhere}
+                    GROUP BY demand_channel`,
+            )
+            .bind(...(since === undefined ? [] : [since]))
+            .all<{
+              demand_channel: string | null
+              tokens: number | null
+              usage_events: number | null
+            }>(),
+      )
+
+      const groupsWithoutPct = rows.results.map(row => {
+        const channel = demandChannelFromText(row.demand_channel)
+        return {
+          channel,
+          label: publicDemandChannelLabel(channel),
+          reqs: Math.max(0, Math.trunc(row.usage_events ?? 0)),
+          tokens: Math.max(0, Math.trunc(row.tokens ?? 0)),
+        }
+      })
+      const totalTokens = groupsWithoutPct.reduce(
+        (sum, row) => sum + row.tokens,
+        0,
+      )
+      const groups = groupsWithoutPct
+        .map(row => ({
+          ...row,
+          pct: roundedPercent(row.tokens, totalTokens),
+        }))
+        .sort(
+          (left, right) =>
+            right.tokens - left.tokens ||
+            left.channel.localeCompare(right.channel),
+        )
+
+      return yield* decodePublicTokensServedChannelMix({
         groups,
         totalTokens,
         window,

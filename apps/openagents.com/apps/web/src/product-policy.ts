@@ -289,6 +289,7 @@ export const browserCommandProductIntents = {
   LoadExternal: 'navigation.external.load',
   LoadOnboardingRepositories: 'onboarding.repositories.load',
   LoadProviderAccountPool: 'providers.account-pool.load',
+  ResetProviderAccountPoolAccount: 'providers.account-pool.reset-account',
   LoadPrefilledWorkspace: 'workspace.prefilled.load',
   LoadPublicActivityTimeline: 'public.activity-timeline.load',
   LoadPublicAdjutantActivity: 'public.adjutant.activity.load',
@@ -301,6 +302,8 @@ export const browserCommandProductIntents = {
   LoadPublicKhalaTokensServedHistory: 'public.khala.tokens-served.history.load',
   LoadPublicKhalaTokensServedModelMix:
     'public.khala.tokens-served.model-mix.load',
+  LoadPublicKhalaTokensServedChannelMix:
+    'public.khala.tokens-served.channel-mix.load',
   LoadPublicGymRunProgress: 'public.gym.run-progress.load',
   LoadGymRunProgressSnapshot: 'public.gym.run-progress.snapshot.load',
   LoadMirrorCodeRuns: 'public.mirrorcode.runs.load',

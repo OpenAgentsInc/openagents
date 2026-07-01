@@ -1930,13 +1930,16 @@ const schemaComponents = (): JsonSchema => ({
     'Public-safe retained Pylon capacity funnel history: hourly and daily count-only snapshots with the same read-only capacity-accounting authority boundary as the live funnel. No device identifiers, owner linkage, wallet detail, assignment authority, payout authority, or settlement authority.',
   ),
   PublicKhalaTokensServed: objectSummary(
-    'Public-safe "Khala Tokens Served" aggregate: tokensServed (the running network-wide SUM of input + output tokens across all real served-token ledger events, including internal dogfood, internal_stress, own_capacity, external, and unlabeled rows), generatedAt, and the declared live_at_read staleness contract. A single non-negative scalar; no per-user, per-team, demand label, provider, or secret material. Read-only counter; grants no payout, settlement, or public-claim authority.',
+    'Public-safe "Tokens Served" aggregate: tokensServed (the running product-wide SUM of input + output tokens across all real served-token ledger events, including Khala API rows and explicitly opted-in direct local Codex rows), generatedAt, and the declared live_at_read staleness contract. A single non-negative scalar; no per-user, per-team, demand label, provider, account, or secret material. Read-only counter; grants no payout, settlement, or public-claim authority.',
   ),
   PublicKhalaTokensServedHistory: objectSummary(
-    'Public-safe "Khala Tokens Served" history: window, bucket (day), timezone (default America/Chicago), and a per-day series of { day, tokensServed } where tokensServed is the SUM of input + output tokens from all real served-token rows that calendar day in the response timezone, including internal dogfood, plus generatedAt and the declared live_at_read staleness contract. Each point is a bare day + sum; no per-user, per-team, demand label, provider, or secret material. Read-only counter history; grants no payout, settlement, or public-claim authority.',
+    'Public-safe "Tokens Served" history: window, bucket (day), timezone (default America/Chicago), and a per-day series of { day, tokensServed } where tokensServed is the SUM of input + output tokens from all real served-token rows that calendar day in the response timezone, plus generatedAt and the declared live_at_read staleness contract. Each point is a bare day + sum; no per-user, per-team, demand label, provider, account, or secret material. Read-only counter history; grants no payout, settlement, or public-claim authority.',
   ),
   PublicKhalaTokensServedModelMix: objectSummary(
-    'Public-safe "Khala Tokens Served" model/provider mix for /stats: schemaVersion openagents.public_khala_model_mix.v1, window, totalTokens, and canonical aggregate groups { family, label, tokens, reqs, pct }, plus generatedAt and the declared live_at_read staleness contract. Raw provider ids and model ids are collapsed into glm, fireworks_deepseek, pylon_codex, pylon_claude, gpt_oss, gemini, or other before serving; all real served-token rows count so the mix reconciles with the headline counter. No per-user, per-team, per-account, demand label, raw provider/model, prompt, completion, or secret material. Read-only stats projection; grants no payout, settlement, routing, provider, or public-claim authority.',
+    'Public-safe "Tokens Served" model/provider mix for /stats: schemaVersion openagents.public_khala_model_mix.v1, window, totalTokens, and canonical aggregate groups { family, label, tokens, reqs, pct }, plus generatedAt and the declared live_at_read staleness contract. Raw provider ids and model ids are collapsed into glm, fireworks_deepseek, pylon_codex, codex_direct, pylon_claude, gpt_oss, gemini, or other before serving; all real served-token rows count so the mix reconciles with the headline counter. No per-user, per-team, per-account, demand label, raw provider/model, prompt, completion, or secret material. Read-only stats projection; grants no payout, settlement, routing, provider, or public-claim authority.',
+  ),
+  PublicKhalaTokensServedChannelMix: objectSummary(
+    'Public-safe "Tokens Served" channel mix for /stats: schemaVersion openagents.public_khala_channel_mix.v1, window, totalTokens, and aggregate groups { channel, label, tokens, reqs, pct }, plus generatedAt and the declared live_at_read staleness contract. Channel is bounded to khala_api or direct_local, with legacy rows defaulted to khala_api. No per-user, per-team, per-account, raw provider/model, prompt, completion, trace, API key, wallet, payment, or secret material. Read-only stats projection; grants no payout, settlement, routing, provider, or public-claim authority.',
   ),
   PublicKhalaTokensServedDemandMix: objectSummary(
     'Public-safe "Khala Tokens Served" demand/adoption mix for /stats and Khala GTM checks: schemaVersion openagents.public_khala_demand_mix.v1, window, totalTokens, and aggregate groups { kind, source, client, tokens, reqs, pct }, plus generatedAt and the declared live_at_read staleness contract. Demand kind is bounded to external, internal, internal_stress, own_capacity, or unlabeled; source/client labels are sanitized aggregate labels with empty values bucketed as unknown. All real served-token rows count so the mix reconciles with the headline counter. No per-user, per-team, per-account, raw provider/model, prompt, completion, trace, API key, wallet, payment, or secret material. Read-only stats projection; grants no payout, settlement, routing, provider, or public-claim authority.',
@@ -5163,14 +5166,14 @@ const paths = (): JsonSchema => ({
   '/api/public/khala-tokens-served': {
     get: operation({
       operationId: 'getPublicKhalaTokensServed',
-      summary: 'Read public Khala tokens-served aggregate',
+      summary: 'Read public Tokens Served aggregate',
       description:
-        'Returns the public-safe network-wide Khala tokens-served aggregate from the token usage ledger, including internal dogfood, internal_stress, own_capacity, external, and unlabeled rows. The response contains schemaVersion, tokensServed, generatedAt, and the live_at_read staleness contract only; it excludes per-user, per-team, demand label, provider, prompt, completion, API key, wallet, payment, and secret material.',
+        'Returns the public-safe product-wide Tokens Served aggregate from the token usage ledger, including Khala API rows and explicitly opted-in direct local Codex rows. The response contains schemaVersion, tokensServed, generatedAt, and the live_at_read staleness contract only; it excludes per-user, per-team, demand label, provider, account, prompt, completion, API key, wallet, payment, and secret material.',
       tags: ['Public Proof', 'Inference'],
       security: publicRead,
       responses: {
         '200': okJson(
-          'Khala tokens-served aggregate.',
+          'Tokens Served aggregate.',
           '#/components/schemas/PublicKhalaTokensServed',
         ),
         ...errorResponses(),
@@ -9995,9 +9998,9 @@ const paths = (): JsonSchema => ({
   '/api/public/khala-tokens-served/model-mix': {
     get: operation({
       operationId: 'getPublicKhalaTokensServedModelMix',
-      summary: 'Read public Khala model/provider mix',
+      summary: 'Read public Tokens Served model/provider mix',
       description:
-        'Returns the public-safe Khala tokens-served model/provider mix for /stats: schemaVersion openagents.public_khala_model_mix.v1, window (today, 7d, 30d, or all; default 30d), totalTokens, and canonical family aggregate rows { family, label, tokens, reqs, pct }, plus generatedAt and the declared live_at_read staleness contract. Raw provider ids and model ids are collapsed into glm, fireworks_deepseek, pylon_codex, pylon_claude, gpt_oss, gemini, or other before serving; all real served-token rows count so the mix reconciles with the headline counter. Aggregate only; no per-user, per-team, per-account, demand label, raw provider/model, prompt, completion, API key, wallet, payment, or secret material. Read-only stats projection; grants no payout, settlement, routing, provider, or public-claim authority.',
+        'Returns the public-safe Tokens Served model/provider mix for /stats: schemaVersion openagents.public_khala_model_mix.v1, window (today, 7d, 30d, or all; default 30d), totalTokens, and canonical family aggregate rows { family, label, tokens, reqs, pct }, plus generatedAt and the declared live_at_read staleness contract. Raw provider ids and model ids are collapsed into glm, fireworks_deepseek, pylon_codex, codex_direct, pylon_claude, gpt_oss, gemini, or other before serving; all real served-token rows count so the mix reconciles with the headline counter. Aggregate only; no per-user, per-team, per-account, demand label, raw provider/model, prompt, completion, API key, wallet, payment, or secret material. Read-only stats projection; grants no payout, settlement, routing, provider, or public-claim authority.',
       tags: ['Public Proof', 'Inference'],
       security: [],
       parameters: [
@@ -10010,6 +10013,29 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Public Khala model/provider family mix.',
           '#/components/schemas/PublicKhalaTokensServedModelMix',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/public/khala-tokens-served/channel-mix': {
+    get: operation({
+      operationId: 'getPublicKhalaTokensServedChannelMix',
+      summary: 'Read public Tokens Served channel mix',
+      description:
+        'Returns the public-safe Tokens Served channel mix for /stats: schemaVersion openagents.public_khala_channel_mix.v1, window (today, 7d, 30d, or all; default 30d), totalTokens, and aggregate rows { channel, label, tokens, reqs, pct }, plus generatedAt and the declared live_at_read staleness contract. Channel is bounded to khala_api or direct_local, with legacy rows defaulted to khala_api. Aggregate only; no per-user, per-team, per-account, raw provider/model, prompt, completion, trace, API key, wallet, payment, or secret material. Read-only stats projection; grants no payout, settlement, routing, provider, or public-claim authority.',
+      tags: ['Public Proof', 'Inference'],
+      security: [],
+      parameters: [
+        queryParam(
+          'window',
+          'Time window for the mix: today, 7d, 30d, or all. Default 30d.',
+        ),
+      ],
+      responses: {
+        '200': okJson(
+          'Public Tokens Served channel mix.',
+          '#/components/schemas/PublicKhalaTokensServedChannelMix',
         ),
         ...errorResponses(),
       },

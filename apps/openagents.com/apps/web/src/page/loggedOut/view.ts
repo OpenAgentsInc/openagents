@@ -261,6 +261,8 @@ export const view = Submodel.defineView<Model, Message>((model): Html => {
                     model.publicKhalaTokensServedHistoryGraphMetric,
                   publicKhalaTokensServedModelMix:
                     model.publicKhalaTokensServedModelMix,
+                  publicKhalaTokensServedChannelMix:
+                    model.publicKhalaTokensServedChannelMix,
                   publicPylonStats: model.publicPylonStats,
                   settledFeed: model.settledFeed,
                 }),
@@ -275,6 +277,8 @@ export const view = Submodel.defineView<Model, Message>((model): Html => {
                     model.publicKhalaTokensServedHistoryGraphMetric,
                   publicKhalaTokensServedModelMix:
                     model.publicKhalaTokensServedModelMix,
+                  publicKhalaTokensServedChannelMix:
+                    model.publicKhalaTokensServedChannelMix,
                   publicPylonStats: model.publicPylonStats,
                   settledFeed: model.settledFeed,
                 }),
@@ -289,6 +293,8 @@ export const view = Submodel.defineView<Model, Message>((model): Html => {
                     model.publicKhalaTokensServedHistoryGraphMetric,
                   publicKhalaTokensServedModelMix:
                     model.publicKhalaTokensServedModelMix,
+                  publicKhalaTokensServedChannelMix:
+                    model.publicKhalaTokensServedChannelMix,
                   publicPylonStats: model.publicPylonStats,
                   settledFeed: model.settledFeed,
                 }),

@@ -100,6 +100,7 @@ import {
   FailedLoadPublicForumTipLeaderboards,
   FailedLoadPublicGymRunProgress,
   FailedLoadPublicKhalaTokensServed,
+  FailedLoadPublicKhalaTokensServedChannelMix,
   FailedLoadPublicKhalaTokensServedHistory,
   FailedLoadPublicKhalaTokensServedModelMix,
   FailedLoadPublicProductPromises,
@@ -123,6 +124,7 @@ import {
   SucceededLoadPublicForumTipLeaderboards,
   SucceededLoadPublicGymRunProgress,
   SucceededLoadPublicKhalaTokensServed,
+  SucceededLoadPublicKhalaTokensServedChannelMix,
   SucceededLoadPublicKhalaTokensServedHistory,
   SucceededLoadPublicKhalaTokensServedModelMix,
   SucceededLoadPublicProductPromises,
@@ -145,6 +147,7 @@ import {
   FailedPublicForumTipLeaderboards,
   FailedPublicGymRunProgress,
   FailedPublicKhalaTokensServed,
+  FailedPublicKhalaTokensServedChannelMix,
   FailedPublicKhalaTokensServedHistory,
   FailedPublicKhalaTokensServedModelMix,
   FailedPublicProductPromises,
@@ -162,6 +165,7 @@ import {
   LoadedPublicForumTipLeaderboards,
   LoadedPublicGymRunProgress,
   LoadedPublicKhalaTokensServedHistory,
+  LoadedPublicKhalaTokensServedChannelMix,
   LoadedPublicKhalaTokensServedModelMix,
   LoadedPublicProductPromises,
   LoadedPublicPromiseTransitions,
@@ -177,6 +181,7 @@ import {
   PublicForumLaunchStatus,
   PublicForumTipLeaderboards,
   PublicKhalaTokensServed,
+  PublicKhalaTokensServedChannelMix,
   PublicKhalaTokensServedHistory,
   PublicKhalaTokensServedModelMix,
   PublicProductPromises,
@@ -221,6 +226,11 @@ class PublicKhalaTokensServedHistoryLoadError extends S.TaggedErrorClass<PublicK
 
 class PublicKhalaTokensServedModelMixLoadError extends S.TaggedErrorClass<PublicKhalaTokensServedModelMixLoadError>()(
   'PublicKhalaTokensServedModelMixLoadError',
+  { error: S.Defect },
+) {}
+
+class PublicKhalaTokensServedChannelMixLoadError extends S.TaggedErrorClass<PublicKhalaTokensServedChannelMixLoadError>()(
+  'PublicKhalaTokensServedChannelMixLoadError',
   { error: S.Defect },
 ) {}
 
@@ -712,6 +722,53 @@ export const LoadPublicKhalaTokensServedModelMix = Command.define(
     Effect.catch(error =>
       Effect.succeed(
         FailedLoadPublicKhalaTokensServedModelMix({
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      ),
+    ),
+  ),
+)
+
+export const LoadPublicKhalaTokensServedChannelMix = Command.define(
+  'LoadPublicKhalaTokensServedChannelMix',
+  SucceededLoadPublicKhalaTokensServedChannelMix,
+  FailedLoadPublicKhalaTokensServedChannelMix,
+)(
+  Effect.gen(function* () {
+    const search = new URLSearchParams({ window: '30d' })
+    const response = yield* Effect.tryPromise({
+      try: () =>
+        fetch(
+          `/api/public/khala-tokens-served/channel-mix?${search.toString()}`,
+          {
+            cache: 'no-store',
+            headers: { accept: 'application/json' },
+          },
+        ),
+      catch: error =>
+        new PublicKhalaTokensServedChannelMixLoadError({ error }),
+    })
+
+    if (!response.ok) {
+      return yield* new PublicKhalaTokensServedChannelMixLoadError({
+        error: `Public tokens served channel mix returned HTTP ${response.status}.`,
+      })
+    }
+
+    const payload = yield* Effect.tryPromise({
+      try: () => response.json(),
+      catch: error =>
+        new PublicKhalaTokensServedChannelMixLoadError({ error }),
+    })
+    const decoded = yield* S.decodeUnknownEffect(
+      PublicKhalaTokensServedChannelMix,
+    )(payload)
+
+    return SucceededLoadPublicKhalaTokensServedChannelMix({ mix: decoded })
+  }).pipe(
+    Effect.catch(error =>
+      Effect.succeed(
+        FailedLoadPublicKhalaTokensServedChannelMix({
           error: error instanceof Error ? error.message : String(error),
         }),
       ),
@@ -1737,6 +1794,7 @@ export const initialCommands = (
                 LoadPublicKhalaTokensServed(),
                 LoadPublicKhalaTokensServedHistory(),
                 LoadPublicKhalaTokensServedModelMix(),
+                LoadPublicKhalaTokensServedChannelMix(),
                 LoadPublicForumLaunchStatus(),
                 LoadPublicForumTipLeaderboards(),
                 LoadSettledFeedSnapshot(),
@@ -2120,6 +2178,27 @@ export const update = (model: Model, message: Message): UpdateReturn =>
           : evo(model, {
               publicKhalaTokensServedModelMix: () =>
                 FailedPublicKhalaTokensServedModelMix({ error }),
+            }),
+        [],
+      ],
+      RequestedPollKhalaTokensServedChannelMix: () => [
+        model,
+        [LoadPublicKhalaTokensServedChannelMix()],
+      ],
+      SucceededLoadPublicKhalaTokensServedChannelMix: ({ mix }) => [
+        evo(model, {
+          publicKhalaTokensServedChannelMix: () =>
+            LoadedPublicKhalaTokensServedChannelMix({ mix }),
+        }),
+        [],
+      ],
+      FailedLoadPublicKhalaTokensServedChannelMix: ({ error }) => [
+        model.publicKhalaTokensServedChannelMix._tag ===
+        'PublicKhalaTokensServedChannelMixLoaded'
+          ? model
+          : evo(model, {
+              publicKhalaTokensServedChannelMix: () =>
+                FailedPublicKhalaTokensServedChannelMix({ error }),
             }),
         [],
       ],

@@ -14,6 +14,7 @@ import {
   IdlePublicForumLaunchStatus,
   IdlePublicForumTipLeaderboards,
   IdlePublicKhalaTokensServed,
+  IdlePublicKhalaTokensServedChannelMix,
   IdlePublicKhalaTokensServedHistory,
   IdlePublicKhalaTokensServedModelMix,
   LoadedPublicKhalaTokensServed,
@@ -89,6 +90,7 @@ const homeInputWithTokens = (tokensServed: number) => ({
     history: sampleHistory,
   }),
   publicKhalaTokensServedModelMix: IdlePublicKhalaTokensServedModelMix(),
+  publicKhalaTokensServedChannelMix: IdlePublicKhalaTokensServedChannelMix(),
   publicPylonStats: LoadingPublicPylonStats(),
   settledFeed: initSettledFeedModel(),
 })
@@ -140,7 +142,7 @@ const statsInputWithHistory = (
   publicKhalaTokensServedHistoryGraphMetric: graphMetric,
 })
 
-describe('Khala Tokens Served counter (#6227)', () => {
+describe('Tokens Served counter (#6227)', () => {
   test('a poll tick issues the public-read command without flashing the model', () => {
     const [model, commands] = update(
       init(HomeRoute()),
@@ -177,11 +179,11 @@ describe('Khala Tokens Served counter (#6227)', () => {
         view: () => Home.view(homeInputWithTokens(1_250_000)),
       },
       Scene.with(LoggedOut.init(HomeRoute())),
-      Scene.expect(Scene.text('Khala Tokens Served')).toExist(),
+      Scene.expect(Scene.text('Tokens Served')).toExist(),
       Scene.expect(Scene.text('1,250,000')).toExist(),
       Scene.expect(
         Scene.text(
-          'All real input + output tokens served across the network, including internal and external demand.',
+          'All real input + output tokens served across OpenAgents products, including Khala API and opted-in direct local Codex usage.',
         ),
       ).toExist(),
     )
@@ -210,12 +212,14 @@ describe('Khala Tokens Served counter (#6227)', () => {
               IdlePublicKhalaTokensServedHistory(),
             publicKhalaTokensServedModelMix:
               IdlePublicKhalaTokensServedModelMix(),
+            publicKhalaTokensServedChannelMix:
+              IdlePublicKhalaTokensServedChannelMix(),
             publicPylonStats: LoadingPublicPylonStats(),
             settledFeed: initSettledFeedModel(),
           }),
       },
       Scene.with(LoggedOut.init(HomeRoute())),
-      Scene.expect(Scene.text('Khala Tokens Served')).toExist(),
+      Scene.expect(Scene.text('Tokens Served')).toExist(),
     )
   })
 
@@ -234,7 +238,7 @@ describe('Khala Tokens Served counter (#6227)', () => {
   })
 })
 
-describe('Khala Tokens Served history chart (#6227)', () => {
+describe('Tokens Served history chart (#6227)', () => {
   test('a history poll tick issues the public-read command without flashing', () => {
     const [model, commands] = update(
       init(HomeRoute()),
@@ -367,7 +371,7 @@ describe('Khala Tokens Served history chart (#6227)', () => {
       },
       Scene.with(LoggedOut.init(HomeRoute())),
       Scene.expect(Scene.text('Network Stats')).toExist(),
-      Scene.expect(Scene.text('Khala Tokens Served')).toExist(),
+      Scene.expect(Scene.text('Tokens Served')).toExist(),
       Scene.expect(Scene.text('Tokens Served / Day')).toExist(),
       Scene.expect(Scene.text('Daily')).toExist(),
       Scene.expect(Scene.text('Cumulative')).toExist(),
@@ -386,7 +390,7 @@ describe('Khala Tokens Served history chart (#6227)', () => {
     expect(markup).toContain('GLM family')
     expect(markup).toContain('Pylon-Codex')
     expect(markup).toContain('headline tokens served')
-    expect(markup).toContain('external, internal, unlabeled')
+    expect(markup).toContain('Khala API and opted-in direct local Codex')
     expect(markup).toContain('not revenue or external-demand proof')
     expect(markup).not.toContain('gpt-')
     expect(markup).not.toContain('provider')
@@ -414,6 +418,8 @@ describe('Khala Tokens Served history chart (#6227)', () => {
             ),
             publicKhalaTokensServedModelMix:
               IdlePublicKhalaTokensServedModelMix(),
+            publicKhalaTokensServedChannelMix:
+              IdlePublicKhalaTokensServedChannelMix(),
             publicPylonStats: LoadingPublicPylonStats(),
             settledFeed: initSettledFeedModel(),
           }),
@@ -436,6 +442,8 @@ describe('Khala Tokens Served history chart (#6227)', () => {
               LoadingPublicKhalaTokensServedHistory(),
             publicKhalaTokensServedModelMix:
               IdlePublicKhalaTokensServedModelMix(),
+            publicKhalaTokensServedChannelMix:
+              IdlePublicKhalaTokensServedChannelMix(),
             publicPylonStats: LoadingPublicPylonStats(),
             settledFeed: initSettledFeedModel(),
           }),

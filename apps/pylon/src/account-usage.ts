@@ -131,7 +131,18 @@ export type PylonAccountsUsageArgs = {
   provider: PylonAccountProvider | null
   all: boolean
   refresh: boolean
+  reportLocalCodexUsage: boolean
   json: boolean
+}
+
+export type PylonDirectLocalCodexUsageReportStatus = {
+  requested: boolean
+  performed: boolean
+  sentCount: number
+  insertedCount: number
+  duplicateCount: number
+  skippedCount: number
+  blockerRefs: string[]
 }
 
 export type PylonAccountsStatusArgs = Pick<PylonAccountsUsageArgs, "accountRef" | "provider" | "all" | "json"> & {
@@ -196,6 +207,7 @@ export type PylonAccountsUsageProjection = {
     requested: boolean
     performed: boolean
     costStatement: string | null
+    directLocalCodexReport: PylonDirectLocalCodexUsageReportStatus
     blockerRefs: string[]
   }
   accounts: Array<{
@@ -634,6 +646,7 @@ export function parsePylonAccountsUsageArgs(args: string[]): PylonAccountsUsageA
     provider: null,
     all: false,
     refresh: false,
+    reportLocalCodexUsage: false,
     json: false,
   }
   for (let index = 0; index < args.length; index += 1) {
@@ -642,6 +655,8 @@ export function parsePylonAccountsUsageArgs(args: string[]): PylonAccountsUsageA
       parsed.json = true
     } else if (arg === "--refresh") {
       parsed.refresh = true
+    } else if (arg === "--report-local-codex-usage") {
+      parsed.reportLocalCodexUsage = true
     } else if (arg === "--all") {
       parsed.all = true
     } else if (arg === "--account") {
@@ -664,6 +679,21 @@ export function parsePylonAccountsUsageArgs(args: string[]): PylonAccountsUsageA
   if (selectorCount > 1) throw new Error("Use only one of --account, --provider, or --all")
   return parsed
 }
+
+export const defaultDirectLocalCodexUsageReportStatus = (
+  requested: boolean,
+  blockerRefs: string[] = requested
+    ? ["blocker.pylon.codex_direct_local_usage.not_performed"]
+    : ["blocker.pylon.codex_direct_local_usage.opt_in_required"],
+): PylonDirectLocalCodexUsageReportStatus => ({
+  requested,
+  performed: false,
+  sentCount: 0,
+  insertedCount: 0,
+  duplicateCount: 0,
+  skippedCount: 0,
+  blockerRefs,
+})
 
 export function parsePylonAccountsStatusArgs(args: string[]): PylonAccountsStatusArgs {
   const parsed: PylonAccountsStatusArgs = {
@@ -1364,6 +1394,9 @@ export async function collectPylonAccountsUsage(
       requested: args.refresh,
       performed: false,
       costStatement: args.refresh ? costStatement : null,
+      directLocalCodexReport: defaultDirectLocalCodexUsageReportStatus(
+        args.reportLocalCodexUsage,
+      ),
       blockerRefs: refreshBlockers,
     },
     accounts,
