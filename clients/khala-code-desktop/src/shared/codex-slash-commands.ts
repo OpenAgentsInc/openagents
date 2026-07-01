@@ -135,7 +135,10 @@ export const KHALA_CODE_DESKTOP_SLASH_COMMANDS = [
     availableInSideConversation: true,
     availableDuringTask: true,
     group: "settings",
-    dispatch: gap("Codex IDE integration settings are still TUI-local and need an app-server settings surface."),
+    dispatch: appServer("config/read", {
+      appServerDependency:
+        "Khala projects IDE integration status from Codex app-server config; richer IDE mutation remains upstream-owned.",
+    }),
   }),
   command({
     enumName: "Permissions",
@@ -436,7 +439,7 @@ export const KHALA_CODE_DESKTOP_SLASH_COMMANDS = [
     availableInSideConversation: true,
     availableDuringTask: true,
     group: "turn_task",
-    dispatch: gap("Codex git diff viewing needs a desktop diff adapter or upstream app-server diff read method."),
+    dispatch: appServer("gitDiffToRemote"),
   }),
   command({
     enumName: "Mention",
@@ -446,7 +449,7 @@ export const KHALA_CODE_DESKTOP_SLASH_COMMANDS = [
     availableInSideConversation: true,
     availableDuringTask: true,
     group: "turn_task",
-    dispatch: gap("Codex mention insertion needs a desktop mention picker wired to app-server file/symbol APIs."),
+    dispatch: appServer("fuzzyFileSearch"),
   }),
   command({
     enumName: "Status",

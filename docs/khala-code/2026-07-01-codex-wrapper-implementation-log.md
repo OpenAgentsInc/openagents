@@ -526,3 +526,25 @@ Validation:
 - `bun run --cwd clients/khala-code-desktop typecheck`
 - `bun test clients/khala-code-desktop/tests/codex-app-server-gap-matrix.test.ts clients/khala-code-desktop/tests/codex-parity-contract.test.ts clients/khala-code-desktop/tests/codex-slash-commands.test.ts`
 - `bun run --cwd clients/khala-code-desktop verify`
+
+## Issue #7805: IDE Mention And Diff Wrapper Parity
+
+Status: implemented
+
+Khala Code now maps `/mention`, `/diff`, and `/ide` to Codex app-server instead
+of treating them as open parity gaps. `/mention <query>` and the
+`codexMentionCandidates` composer RPC call `fuzzyFileSearch` with the current
+workspace root and return bounded candidate lists; bare `/mention` and empty
+composer mention queries use `fs/readDirectory` for bounded directory browsing.
+`/diff` calls `gitDiffToRemote` and renders the returned patch through the
+existing diff transcript renderer, with an explicit empty-diff state. `/ide`
+reads `config/read` and reports app-server/config-derived IDE status, or a
+typed unsupported state when the pinned Codex build has no IDE metadata.
+
+The gap matrix now marks `ide-file-mention-and-diff` as app-server-covered for
+this wrapper slice. The remaining upstream gap is narrower: richer IDE mutation
+and metadata beyond the bounded read/status behavior implemented here.
+
+Validation:
+
+- `bun test clients/khala-code-desktop/tests/codex-slash-commands.test.ts clients/khala-code-desktop/tests/rpc-handlers.test.ts clients/khala-code-desktop/tests/codex-app-server-gap-matrix.test.ts`

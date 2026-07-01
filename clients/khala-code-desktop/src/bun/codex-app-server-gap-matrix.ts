@@ -317,7 +317,7 @@ export const KHALA_CODE_CODEX_APP_SERVER_GAP_MATRIX: readonly KhalaCodeCodexAppS
   {
     id: "ide-file-mention-and-diff",
     area: "IDE context, file mention insertion, and diff viewers",
-    decision: "upstream_app_server_gap",
+    decision: "covered_by_app_server",
     codexSourceRefs: [
       "codex-rs/tui/src/slash_command.rs",
       "codex-rs/tui/src/bottom_pane/mentions_v2",
@@ -337,19 +337,21 @@ export const KHALA_CODE_CODEX_APP_SERVER_GAP_MATRIX: readonly KhalaCodeCodexAppS
     ],
     upstreamGapId: "codex.app_server.gap.ide_mentions_diff",
     khalaAdapter:
-      "Khala can build richer browser pickers, but must source candidates and diff content from app-server methods or request missing APIs.",
+      "Khala projects bounded mention candidates, remote diff content, and IDE status from app-server methods; richer IDE mutation remains upstream-owned.",
     rationale:
-      "Mention and diff UI are attractive desktop advantages, but Codex owns workspace interpretation, ignored files, and diff semantics.",
+      "Codex exposes the search, filesystem, diff, and config reads needed for the current wrapper slice. Khala can render richer desktop UI, but Codex remains the source of truth for workspace interpretation, ignored files, and diff semantics.",
     linkedIssues: [
       "https://github.com/OpenAgentsInc/openagents/issues/7785",
       "https://github.com/OpenAgentsInc/openagents/issues/7795",
+      "https://github.com/OpenAgentsInc/openagents/issues/7805",
     ],
     testRefs: [
       "clients/khala-code-desktop/tests/codex-slash-commands.test.ts",
+      "clients/khala-code-desktop/tests/rpc-handlers.test.ts",
       "clients/khala-code-desktop/tests/codex-app-server-gap-matrix.test.ts",
     ],
     updateTrigger:
-      "Update when Codex exposes full local diff, IDE context, or mention metadata through app-server.",
+      "Update when Codex changes fuzzy search, fs read, remote diff, config, IDE metadata, or mention semantics.",
   },
   {
     id: "windows-sandbox-setup-and-readable-roots",

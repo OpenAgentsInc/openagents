@@ -394,6 +394,27 @@ export type KhalaCodeDesktopCodexBackgroundTerminalsTerminateRequest = {
   readonly threadId: string
 }
 
+export type KhalaCodeDesktopCodexMentionCandidate = {
+  readonly fileName: string
+  readonly kind: "directory" | "file"
+  readonly path: string
+  readonly root?: string
+  readonly score?: number
+}
+
+export type KhalaCodeDesktopCodexMentionCandidatesRequest = {
+  readonly cwd?: string
+  readonly query?: string
+}
+
+export type KhalaCodeDesktopCodexMentionCandidatesResult = {
+  readonly ok: boolean
+  readonly candidates: readonly KhalaCodeDesktopCodexMentionCandidate[]
+  readonly source: "fs/readDirectory" | "fuzzyFileSearch"
+  readonly truncated: boolean
+  readonly error?: string
+}
+
 export type KhalaCodeDesktopCodexSkillsExtraRootsSetRequest = {
   readonly extraRoots: readonly string[]
 }
@@ -829,6 +850,7 @@ export type KhalaCodeDesktopRPCSchema = {
     codexMarketplaceAdd(request: KhalaCodeDesktopCodexMarketplaceAddRequest): Promise<KhalaCodeDesktopCodexAppServerActionResult>
     codexMarketplaceRemove(request: KhalaCodeDesktopCodexMarketplaceRemoveRequest): Promise<KhalaCodeDesktopCodexAppServerActionResult>
     codexMarketplaceUpgrade(request?: KhalaCodeDesktopCodexMarketplaceUpgradeRequest): Promise<KhalaCodeDesktopCodexAppServerActionResult>
+    codexMentionCandidates(request?: KhalaCodeDesktopCodexMentionCandidatesRequest): Promise<KhalaCodeDesktopCodexMentionCandidatesResult>
     codexMcpOauthLogin(request: KhalaCodeDesktopCodexMcpOauthLoginRequest): Promise<KhalaCodeDesktopCodexAppServerActionResult>
     codexMcpResourceRead(request: KhalaCodeDesktopCodexMcpResourceReadRequest): Promise<KhalaCodeDesktopCodexAppServerActionResult>
     codexMcpServerReload(): Promise<KhalaCodeDesktopCodexAppServerActionResult>
