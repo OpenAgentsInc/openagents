@@ -10,6 +10,7 @@ import type {
   KhalaCodeDesktopMessageRole,
   KhalaCodeDesktopThreadTokenSummary,
 } from "../shared/rpc.js"
+import { khalaCodeConfigFromRuntimeEnv } from "./khala-code-config.js"
 
 export type KhalaCodeDesktopCodexTokenUsageCounts = {
   readonly cachedInputTokens: number
@@ -438,7 +439,7 @@ export const readKhalaCodeDesktopCodexStateThreadTokenSnapshot = (options: {
   readonly tokens: number
   readonly updatedAt: string | null
 } => {
-  const env = options.env ?? process.env
+  const env = options.env ?? khalaCodeConfigFromRuntimeEnv().env
   const dbPath = options.dbPath ?? defaultCodexStateDbPath(env)
   let db: Database | null = null
   try {
@@ -468,7 +469,7 @@ export async function readKhalaCodeDesktopThreadTokenSummary(options: {
   readonly localMessageAuditLedgerPath?: string
   readonly threadId?: string | null
 }): Promise<KhalaCodeDesktopThreadTokenSummary> {
-  const env = options.env ?? process.env
+  const env = options.env ?? khalaCodeConfigFromRuntimeEnv().env
   const config = resolveConfig(
     env,
     options.localLedgerPath,
@@ -863,7 +864,7 @@ const syncPendingTokenUsageReports = async (
 export async function syncKhalaCodeDesktopPendingTokenUsageReports(
   options: SyncKhalaCodeDesktopPendingTokenUsageReportsOptions = {},
 ): Promise<KhalaCodeDesktopTokenUsageSyncResult> {
-  const env = options.env ?? process.env
+  const env = options.env ?? khalaCodeConfigFromRuntimeEnv().env
   const config = resolveConfig(env, options.localLedgerPath)
   const fetchImpl: FetchLike = options.fetch ?? ((url, init) => globalThis.fetch(url, init))
   const endpoint = new URL("/api/stats/token-usage/events", config.baseUrl)
@@ -873,7 +874,7 @@ export async function syncKhalaCodeDesktopPendingTokenUsageReports(
 export function startKhalaCodeDesktopTokenUsageBackgroundSync(
   options: StartKhalaCodeDesktopTokenUsageBackgroundSyncOptions = {},
 ): KhalaCodeDesktopTokenUsageBackgroundSync {
-  const env = options.env ?? process.env
+  const env = options.env ?? khalaCodeConfigFromRuntimeEnv().env
   const intervalMs = options.intervalMs ?? defaultTokenUsageSyncIntervalMs(env)
   const setIntervalImpl = options.setInterval ??
     ((callback: () => void, milliseconds: number) =>
@@ -921,7 +922,7 @@ export function startKhalaCodeDesktopTokenUsageBackgroundSync(
 export function createKhalaCodeDesktopCodexTokenUsageReporter(
   options: CreateKhalaCodeDesktopCodexTokenUsageReporterOptions = {},
 ): KhalaCodeDesktopCodexTokenUsageReporter {
-  const env = options.env ?? process.env
+  const env = options.env ?? khalaCodeConfigFromRuntimeEnv().env
   const config = resolveConfig(env, options.localLedgerPath)
   const fetchImpl: FetchLike = options.fetch ?? ((url, init) => globalThis.fetch(url, init))
 
@@ -944,7 +945,7 @@ export function createKhalaCodeDesktopCodexTokenUsageReporter(
 export function createKhalaCodeDesktopCodexMessageTokenAuditRecorder(
   options: CreateKhalaCodeDesktopCodexMessageTokenAuditRecorderOptions = {},
 ): KhalaCodeDesktopCodexMessageTokenAuditRecorder {
-  const env = options.env ?? process.env
+  const env = options.env ?? khalaCodeConfigFromRuntimeEnv().env
   const config = resolveConfig(
     env,
     undefined,

@@ -9,6 +9,7 @@ import {
   type CodexAppServerHost,
 } from "./codex-app-server-client.js"
 import { inspectCodexHarnessStatus } from "./codex-harness-status.js"
+import { khalaCodeConfigFromRuntimeEnv } from "./khala-code-config.js"
 
 export const KHALA_CODE_CODEX_PARITY_LIVE_SMOKE_HARNESS = "codex_app_server_live_parity"
 
@@ -53,7 +54,7 @@ const notRequested = (): KhalaCodeCodexParityLiveSmokeResult => ({
 export async function runKhalaCodeCodexParityLiveSmoke(
   input: RunKhalaCodeCodexParityLiveSmokeInput = {},
 ): Promise<KhalaCodeCodexParityLiveSmokeResult> {
-  const env = input.env ?? process.env
+  const env = input.env ?? khalaCodeConfigFromRuntimeEnv().env
   const requireLive = input.requireLive === true ||
     env.KHALA_CODE_DESKTOP_CODEX_PARITY_LIVE_SMOKE === "1"
   if (!requireLive) return notRequested()

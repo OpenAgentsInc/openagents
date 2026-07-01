@@ -3,6 +3,8 @@ import { readFile } from "node:fs/promises"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 
+import { khalaCodeConfigFromRuntimeEnv } from "./khala-code-config.js"
+
 export const KHALA_CODE_CODEX_PARITY_REFERENCE_COMMIT =
   "db887d03e1f907467e33271572dffb73bceecd6b"
 
@@ -334,7 +336,7 @@ const codexReferenceCheckoutMissing = (reason: string): KhalaCodeCodexReferenceR
 
 export function inspectCodexReferenceRoot(
   startDir = dirname(fileURLToPath(import.meta.url)),
-  env: KhalaCodeCodexReferenceRootInspectionEnv = process.env,
+  env: KhalaCodeCodexReferenceRootInspectionEnv = khalaCodeConfigFromRuntimeEnv().env,
 ): KhalaCodeCodexReferenceRootStatus {
   const explicit = env.KHALA_CODE_CODEX_REFERENCE_ROOT?.trim()
   if (explicit !== undefined && explicit.length > 0) {

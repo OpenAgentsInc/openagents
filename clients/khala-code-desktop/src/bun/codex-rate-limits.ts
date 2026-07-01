@@ -10,6 +10,7 @@ import type {
   KhalaCodexRateLimitResetOutcome,
   KhalaCodexRateLimitWindow,
 } from "../shared/codex-rate-limits.js"
+import { khalaCodeConfigFromRuntimeEnv } from "./khala-code-config.js"
 
 const CODEX_RPC_TIMEOUT_MS = 10_000
 const CODEX_RATE_LIMIT_RESET_CREDITS_URL =
@@ -122,7 +123,7 @@ const isoNow = (now: () => Date = () => new Date()): string => now().toISOString
 
 export function resolveCodexHomePath(
   codexHomePath?: string | null,
-  env: NodeJS.ProcessEnv = process.env,
+  env: NodeJS.ProcessEnv = khalaCodeConfigFromRuntimeEnv().env,
 ): string {
   const configured = codexHomePath ?? env.CODEX_HOME
   return configured && configured.trim().length > 0
@@ -293,7 +294,7 @@ async function fetchViaRpc(
   ], {
     stdio: ["pipe", "pipe", "pipe"],
     env: {
-      ...(options.env ?? process.env),
+      ...(options.env ?? khalaCodeConfigFromRuntimeEnv().env),
       CODEX_HOME: codexHomePath,
     },
   })

@@ -40,6 +40,7 @@ import {
   readKhalaCodeDesktopCodexStateThreadTokenSnapshot,
 } from "./codex-token-usage-telemetry.js"
 import { createCodexThreadItemEventProjector } from "./codex-thread-item-projector.js"
+import { khalaCodeConfigFromRuntimeEnv } from "./khala-code-config.js"
 import { projectKhalaCodeDesktopCodexThreadList } from "../shared/codex-threads.js"
 
 const CODEX_SESSION_STATE_SCHEMA = "khala-code-desktop.codex-sessions.v1"
@@ -481,7 +482,7 @@ const normalizedThreadId = (threadId: string | undefined): string | null => {
 export function createCodexAppServerChatRuntime(
   options: CreateCodexAppServerChatRuntimeOptions,
 ): CodexAppServerChatRuntime {
-  const env = options.env ?? process.env
+  const env = options.env ?? khalaCodeConfigFromRuntimeEnv().env
   const host = options.host
   const statePath = options.statePath ?? defaultStatePath(env)
   const turnTimeoutMs = options.turnTimeoutMs ?? DEFAULT_TURN_TIMEOUT_MS

@@ -6,6 +6,7 @@ import type {
   KhalaCodeDesktopCodexAppServerStatus,
 } from "../shared/rpc.js"
 import { resolveCodexHomePath } from "./codex-rate-limits.js"
+import { khalaCodeConfigFromRuntimeEnv } from "./khala-code-config.js"
 
 export const KHALA_CODE_CODEX_APP_SERVER_ADAPTER_VERSION =
   "codex-app-server-v2-2026-07-01"
@@ -192,7 +193,7 @@ const diagnosticErrorMessage = (error: unknown): string => {
 export function createCodexAppServerHost(
   options: CreateCodexAppServerHostOptions = {},
 ): CodexAppServerHost {
-  const env = options.env ?? process.env
+  const env = options.env ?? khalaCodeConfigFromRuntimeEnv().env
   const codexLaunch = configuredLaunch(env, options.codexCommand, options.codexArgs)
   const codexCommand = codexLaunch.command
   const codexArgs = codexLaunch.args

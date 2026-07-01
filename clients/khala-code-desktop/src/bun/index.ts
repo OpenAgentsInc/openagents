@@ -27,11 +27,15 @@ import {
   startKhalaCodeDesktopTokenUsageBackgroundSync,
 } from "./codex-token-usage-telemetry.js"
 import { createOnDeviceDeciderHost } from "./on-device-decider-host.js"
+import { khalaCodeConfigFromRuntimeEnv } from "./khala-code-config.js"
 import { createKhalaCodeDesktopRpcRequestHandlers } from "./rpc-handlers.js"
+
+const khalaCodeConfig = khalaCodeConfigFromRuntimeEnv()
+const khalaCodeEnv = khalaCodeConfig.env
 
 const previewPort = (): number => {
   const parsed = Number(
-    Bun.env.KHALA_CODE_DESKTOP_PREVIEW_PORT ??
+    khalaCodeEnv.KHALA_CODE_DESKTOP_PREVIEW_PORT ??
       String(KHALA_CODE_DESKTOP_DEFAULT_PREVIEW_PORT),
   )
   return Number.isInteger(parsed) && parsed > 0
@@ -212,7 +216,7 @@ const previewFetch = async (request: Request): Promise<Response> => {
 }
 
 const startPreviewServer = (): void => {
-  if (Bun.env.KHALA_CODE_DESKTOP_PREVIEW_SERVER === "0") return
+  if (khalaCodeEnv.KHALA_CODE_DESKTOP_PREVIEW_SERVER === "0") return
   const requestedPort = previewPort()
   for (let offset = 0; offset < 10; offset += 1) {
     const port = requestedPort + offset
@@ -252,23 +256,23 @@ if (argv.includes("--json")) {
     process.stderr.write("khala code --json requires a prompt argument or stdin.\n")
     process.exit(2)
   }
-  const workingDirectory = resolveToolWorkingDirectory(Bun.env)
-  const headlessCodexAppServerHost = createCodexAppServerHost({ env: Bun.env })
-  const interruptAfterMs = headlessInterruptAfterMs(Bun.env)
+  const workingDirectory = resolveToolWorkingDirectory(khalaCodeEnv)
+  const headlessCodexAppServerHost = createCodexAppServerHost({ env: khalaCodeEnv })
+  const interruptAfterMs = headlessInterruptAfterMs(khalaCodeEnv)
   let exitCode = 0
   try {
     await runKhalaCodeDesktopHeadlessJsonl({
       createCodexChatRuntime: ({ onEvent }) =>
         createCodexAppServerChatRuntime({
-          env: Bun.env,
+          env: khalaCodeEnv,
           host: headlessCodexAppServerHost,
           onEvent,
           messageTokenAuditRecorder:
-            createKhalaCodeDesktopCodexMessageTokenAuditRecorder({ env: Bun.env }),
-          tokenUsageReporter: createKhalaCodeDesktopCodexTokenUsageReporter({ env: Bun.env }),
+            createKhalaCodeDesktopCodexMessageTokenAuditRecorder({ env: khalaCodeEnv }),
+          tokenUsageReporter: createKhalaCodeDesktopCodexTokenUsageReporter({ env: khalaCodeEnv }),
           workingDirectory,
         }),
-      env: Bun.env,
+      env: khalaCodeEnv,
       ...(interruptAfterMs === undefined ? {} : { interruptAfterMs }),
       prompt,
       workingDirectory,
@@ -324,9 +328,9 @@ const appleFmReadiness = () =>
   buildKhalaAppleFmDisabledReadiness({
     platform: { platform: process.platform, arch: process.arch },
   })
-const codexAppServerHost = createCodexAppServerHost({ env: Bun.env })
+const codexAppServerHost = createCodexAppServerHost({ env: khalaCodeEnv })
 const tokenUsageBackgroundSync = startKhalaCodeDesktopTokenUsageBackgroundSync({
-  env: Bun.env,
+  env: khalaCodeEnv,
   onError: error => {
     console.warn(
       `Khala Code token usage sync failed: ${
@@ -339,17 +343,17 @@ const tokenUsageBackgroundSync = startKhalaCodeDesktopTokenUsageBackgroundSync({
 // Optional on-device decider: a small local model that selects a
 // platform-appropriate backend. Apple FM is omitted for launch unless a future
 // host deliberately opts it back in.
-const onDeviceDecider = createOnDeviceDeciderHost({ env: Bun.env })
+const onDeviceDecider = createOnDeviceDeciderHost({ env: khalaCodeEnv })
 
 rpcRequestHandlers = createKhalaCodeDesktopRpcRequestHandlers({
   appleFmReadiness,
   codexAppServerHost,
   enableFleetMcpBridge: true,
   emitChatTurnEvent: event => emitChatTurnEvent(event),
-  env: Bun.env,
+  env: khalaCodeEnv,
   fleetMcpBridgeRepoRoot: resolveSourceRepositoryRoot(),
   onDeviceDeciderStatus: () => onDeviceDecider.select(),
-  workingDirectory: resolveToolWorkingDirectory(Bun.env),
+  workingDirectory: resolveToolWorkingDirectory(khalaCodeEnv),
 })
 
 const disposeRuntime = (): void => {
@@ -391,7 +395,7 @@ const resolveMainViewUrl = async (): Promise<string> => {
   return "views://khala-code-desktop/index.html"
 }
 
-if (Bun.env.KHALA_CODE_DESKTOP_OPEN_WINDOW !== "0") {
+if (khalaCodeEnv.KHALA_CODE_DESKTOP_OPEN_WINDOW !== "0") {
   ApplicationMenu.setApplicationMenu(khalaCodeDesktopApplicationMenu)
 
   new BrowserWindow({
