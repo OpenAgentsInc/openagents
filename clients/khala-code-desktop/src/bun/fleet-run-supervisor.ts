@@ -170,7 +170,10 @@ const liveClaimsForRun = (store: PylonOrchestrationStore, runRef: string, now: D
 
 const activeByAccount = (claims: readonly WorkClaim[]): Map<string, number> => {
   const counts = new Map<string, number>()
-  for (const claim of claims) counts.set(claim.workerAccountRef, (counts.get(claim.workerAccountRef) ?? 0) + 1)
+  for (const claim of claims) {
+    if (claim.state === "closeout") continue
+    counts.set(claim.workerAccountRef, (counts.get(claim.workerAccountRef) ?? 0) + 1)
+  }
   return counts
 }
 
@@ -197,8 +200,8 @@ const taskIdFor = (runRef: string, claimRef: string): string =>
 const contextIdFor = (accountRef: string, taskId: string): string =>
   `${accountRef}.ctx.${taskId}`.replace(/[^a-zA-Z0-9_.-]/g, "_")
 
-const claimRefFor = (runRef: string, workUnitRef: string, now: Date): string =>
-  `${runRef}.claim.${workUnitRef.replace(/[^a-zA-Z0-9_.-]/g, "_")}.${now.getTime()}`
+const claimRefFor = (runRef: string, workUnitRef: string, now: Date, ordinal: number): string =>
+  `${runRef}.claim.${workUnitRef.replace(/[^a-zA-Z0-9_.-]/g, "_")}.${now.getTime()}.${ordinal}`
 
 const emit = async (
   sink: FleetRunSupervisorOptions["onLifecycle"],
@@ -220,7 +223,19 @@ export async function tickFleetRunSupervisor(
   const claimTtlMs = options.claimTtlMs ?? 30 * 60 * 1000
 
   store.reconcileWorkClaims({ now })
-  const run = store.reconcileFleetRun(options.runRef, now)
+  const expectedWorkUnitsTotal = store.getFleetRun(options.runRef)?.counters.workUnitsTotal ?? 0
+  let run = store.reconcileFleetRun(options.runRef, now)
+  if (run.state !== "running" && run.counters.workUnitsTotal < expectedWorkUnitsTotal) {
+    run = store.upsertFleetRun({
+      ...run,
+      state: "running",
+      counters: {
+        ...run.counters,
+        workUnitsTotal: expectedWorkUnitsTotal,
+      },
+      updatedAt: now.toISOString(),
+    })
+  }
   if (run.state !== "running") {
     return {
       activeAssignments: activeAssignmentsForRun(store, run.runRef),
@@ -254,15 +269,17 @@ export async function tickFleetRunSupervisor(
   }
 
   const plan = await options.planner.plan({ run, now })
+  const plannedWorkUnitsTotal = Math.max(expectedWorkUnitsTotal, run.counters.workUnitsTotal)
   let claimed = 0
   let dispatched = 0
+  const claimOrdinalBase = store.listWorkClaims({ runRef: run.runRef }).length
 
   for (const workUnit of plan.claimable) {
     if (dispatched >= freeSlots) break
     const account = pickAccount(accounts, activeCounts, now)
     if (account === null) break
     const claim = store.tryClaimWorkUnit({
-      claimRef: claimRefFor(run.runRef, workUnit.workUnitRef, now),
+      claimRef: claimRefFor(run.runRef, workUnit.workUnitRef, now, claimOrdinalBase + claimed),
       workUnitRef: workUnit.workUnitRef,
       runRef: run.runRef,
       workerAccountRef: account.accountRef,
@@ -301,8 +318,36 @@ export async function tickFleetRunSupervisor(
     store.markDispatched(taskId, contextId, now)
     store.updateWorkClaimState(claim.claimRef, "in_progress", now)
 
-    const result = await options.runner.dispatch({ accountRef: account.accountRef, claim, run, taskId, workUnit })
-    dispatched += 1
+    let result: FleetRunSupervisorDispatchResult
+    try {
+      result = await options.runner.dispatch({ accountRef: account.accountRef, claim, run, taskId, workUnit })
+      dispatched += 1
+    } catch (error) {
+      dispatched += 1
+      store.recordWorkerDone({
+        contextId,
+        taskId,
+        status: "failed",
+        result: JSON.stringify({
+          assignmentRef: null,
+          summary: error instanceof Error ? error.message : String(error),
+        }),
+        now,
+      })
+      store.releaseWorkClaim(claim.claimRef, now)
+      activeCounts.set(account.accountRef, Math.max(0, (activeCounts.get(account.accountRef) ?? 1) - 1))
+      await emit(options.onLifecycle, {
+        kind: "dispatch",
+        runRef: run.runRef,
+        taskId,
+        claimRef: claim.claimRef,
+        workUnitRef: workUnit.workUnitRef,
+        accountRef: account.accountRef,
+        assignmentRef: null,
+        status: "failed",
+      })
+      continue
+    }
 
     for (const event of result.lifecycle) {
       await emit(options.onLifecycle, {
@@ -357,7 +402,21 @@ export async function tickFleetRunSupervisor(
     })
   }
 
-  const reconciled = store.reconcileFleetRun(run.runRef, clock.now())
+  let reconciled = store.reconcileFleetRun(run.runRef, clock.now())
+  const hasClaimableBacklog = plan.claimable.length > claimed
+  if (reconciled.counters.workUnitsTotal < plannedWorkUnitsTotal) {
+    reconciled = store.upsertFleetRun({
+      ...reconciled,
+      state: hasClaimableBacklog ? "running" : reconciled.state,
+      counters: {
+        ...reconciled.counters,
+        workUnitsTotal: plannedWorkUnitsTotal,
+      },
+      updatedAt: clock.now().toISOString(),
+    })
+  } else if (reconciled.state !== "running" && hasClaimableBacklog) {
+    reconciled = store.updateFleetRunState(run.runRef, "running", clock.now())
+  }
   if (reconciled.state === "completed") {
     await emit(options.onLifecycle, { kind: "completed", runRef: run.runRef, reason: "drained" })
   }
@@ -392,7 +451,7 @@ export function makeFleetRunSupervisor(
 ): Effect.Effect<FleetRunSupervisorHandle, FleetRunSupervisorError> {
   return Effect.sync(() => {
     const existing = activeSupervisors.get(options.pylonRef)
-    if (existing !== undefined && existing !== options.runRef) {
+    if (existing !== undefined) {
       throw new FleetRunSupervisorError(`fleet run supervisor already active for pylon ${options.pylonRef}: ${existing}`)
     }
     activeSupervisors.set(options.pylonRef, options.runRef)
@@ -423,15 +482,26 @@ export function startFleetRunSupervisor(
   return Effect.gen(function* () {
     const handle = yield* makeFleetRunSupervisor(options)
     const scope = yield* Effect.scope
-    yield* Scope.addFinalizer(scope, handle.stop())
-    yield* Effect.forkScoped(
-      Effect.forever(
-        Effect.gen(function* () {
-          yield* handle.tick()
-          yield* Effect.promise(() => ({ ...defaultClock, ...options.clock }).sleep(options.tickIntervalMs ?? 1000))
-        }),
-      ),
+    let loopStopped = false
+    yield* Scope.addFinalizer(
+      scope,
+      Effect.gen(function* () {
+        loopStopped = true
+        yield* handle.stop()
+      }),
     )
+    // tickFleetRunSupervisor intentionally bypasses the one-supervisor guard as the direct test seam.
+    void (async () => {
+      const clock = { ...defaultClock, ...options.clock }
+      while (!loopStopped) {
+        try {
+          await Effect.runPromise(handle.tick())
+        } catch {
+          // Keep the scoped supervisor alive; individual dispatch failures are recorded by tick.
+        }
+        if (!loopStopped) await clock.sleep(options.tickIntervalMs ?? 1000)
+      }
+    })()
     return handle
   })
 }
