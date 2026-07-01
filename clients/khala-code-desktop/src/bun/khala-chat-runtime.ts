@@ -38,6 +38,7 @@ import {
   type KhalaCodeDesktopChatTurnRequest,
   type KhalaCodeDesktopChatTurnResponse,
   type KhalaCodeDesktopMessage,
+  type KhalaCodeDesktopRuntimeMode,
   type KhalaCodeDesktopToolCatalogResponse,
   type KhalaCodeDesktopUsage,
 } from "../shared/rpc.js"
@@ -71,6 +72,8 @@ const DEFAULT_CONTEXT_MAX_TOKENS = 24_000
 const DEFAULT_CONTEXT_KEEP_TAIL_COUNT = 12
 const DEFAULT_HOSTED_TOKEN_MESSAGE =
   "Khala Code routes model traffic through hosted Khala, but this desktop process does not have an OPENAGENTS_AGENT_TOKEN. Set OPENAGENTS_AGENT_TOKEN for hosted Khala; OPENROUTER_API_KEY alone cannot run the Khala system locally."
+const LEGACY_RUNTIME_MODE: KhalaCodeDesktopRuntimeMode = "khala_native_runtime"
+const CODEX_HARNESS_RUNTIME_MODE: KhalaCodeDesktopRuntimeMode = "codex_harness"
 
 type ChatEnv = Readonly<Record<string, string | undefined>>
 
@@ -154,6 +157,10 @@ export function createKhalaCodeDesktopToolRegistry(): KhalaToolRegistry {
   return makeKhalaToolRegistry(createKhalaCodeDesktopTools())
 }
 
+export function createKhalaCodeDesktopSupplementalToolRegistry(): KhalaToolRegistry {
+  return makeKhalaToolRegistry(createKhalaCodeDesktopSupplementalTools())
+}
+
 export function createKhalaCodeDesktopTools(): ReadonlyArray<RegisteredKhalaTool> {
   return [
     createReadTool(),
@@ -168,14 +175,34 @@ export function createKhalaCodeDesktopTools(): ReadonlyArray<RegisteredKhalaTool
   ]
 }
 
-export function khalaCodeDesktopToolCatalog(): KhalaCodeDesktopToolCatalogResponse {
-  const tools = createKhalaCodeDesktopToolRegistry().list()
+export function createKhalaCodeDesktopSupplementalTools(): ReadonlyArray<RegisteredKhalaTool> {
+  return createKhalaCodexFleetTools()
+}
+
+export function khalaCodeDesktopToolCatalog(
+  input: {
+    readonly runtimeMode?: KhalaCodeDesktopRuntimeMode
+  } = {},
+): KhalaCodeDesktopToolCatalogResponse {
+  const runtimeMode = input.runtimeMode ?? CODEX_HARNESS_RUNTIME_MODE
+  const legacy = runtimeMode === LEGACY_RUNTIME_MODE
+  const tools = legacy
+    ? createKhalaCodeDesktopToolRegistry().list()
+    : createKhalaCodeDesktopSupplementalToolRegistry().list()
   return {
+    catalogKind: legacy ? "khala_native_legacy" : "codex_harness_supplemental",
     defaultEnabled: true,
+    description: legacy
+      ? "Explicit legacy Khala-native runtime tools, including Codex-equivalent filesystem, shell, patch, and search helpers."
+      : "Supplemental Khala swarm/Pylon tools for the default Codex harness; Codex owns filesystem, shell, patch, MCP, approvals, and session tools.",
+    runtimeMode,
     toolCount: tools.length,
     tools: tools.map(tool => ({
       authority: tool.authority,
       name: tool.name,
+      role: legacy && !expectedKhalaCodeDesktopSupplementalToolNames().includes(tool.name)
+        ? "legacy_codex_equivalent" as const
+        : "supplemental_swarm" as const,
     })),
   }
 }
@@ -1606,10 +1633,20 @@ function projectBackend(backend: KhalaBackendSelection): KhalaCodeDesktopBackend
   return {
     kind: backend.kind,
     model: backend.model,
+    runtimeMode: LEGACY_RUNTIME_MODE,
+    toolCatalogKind: "khala_native_legacy",
     ...(backend.baseUrl === undefined ? {} : { baseUrl: backend.baseUrl }),
     ...(backend.credentialSource === undefined ? {} : { credentialSource: backend.credentialSource }),
     ...(backend.provider === undefined ? {} : { provider: backend.provider }),
   }
+}
+
+export function expectedKhalaCodeDesktopSupplementalToolNames(): readonly string[] {
+  return [
+    "pylon_ensure",
+    "codex_fleet_status",
+    "codex_spawn",
+  ]
 }
 
 export function expectedKhalaCodeDesktopToolNames(): readonly string[] {
@@ -1631,6 +1668,12 @@ export function expectedKhalaCodeDesktopToolNames(): readonly string[] {
 export function assertAllDefaultToolsRegistered(definitions: readonly KhalaToolDefinition[]): boolean {
   const actual = definitions.map(tool => tool.name)
   const expected = expectedKhalaCodeDesktopToolNames()
+  return expected.every(name => actual.includes(name)) && actual.length === expected.length
+}
+
+export function assertAllSupplementalToolsRegistered(definitions: readonly KhalaToolDefinition[]): boolean {
+  const actual = definitions.map(tool => tool.name)
+  const expected = expectedKhalaCodeDesktopSupplementalToolNames()
   return expected.every(name => actual.includes(name)) && actual.length === expected.length
 }
 

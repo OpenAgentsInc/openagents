@@ -676,7 +676,9 @@ export function createCodexAppServerChatRuntime(
       backend: {
         kind: "codex_app_server",
         model: thread.model ?? "codex",
+        runtimeMode: "codex_harness",
         threadId: thread.threadId,
+        toolCatalogKind: "codex_app_server",
         ...(codexTurnId === null ? {} : { turnId: codexTurnId }),
         turnStatus,
       },

@@ -35,6 +35,14 @@ export const KHALA_CODE_DESKTOP_DEFAULT_PREVIEW_PORT = 50021
 
 export type KhalaCodeDesktopMessageRole = "user" | "assistant" | "system" | "tool"
 
+export type KhalaCodeDesktopRuntimeMode =
+  | "codex_harness"
+  | "khala_native_runtime"
+
+export type KhalaCodeDesktopToolCatalogKind =
+  | "codex_harness_supplemental"
+  | "khala_native_legacy"
+
 export type KhalaCodeDesktopCodexItemCard = {
   readonly approval?: KhalaCodeDesktopCodexApprovalProjection
   readonly itemId: string
@@ -101,7 +109,9 @@ export type KhalaCodeDesktopBackendProjection = {
   readonly kind: "codex_app_server" | "hosted_openagents" | "mock"
   readonly model: string
   readonly provider?: "openrouter"
+  readonly runtimeMode?: KhalaCodeDesktopRuntimeMode
   readonly threadId?: string
+  readonly toolCatalogKind?: KhalaCodeDesktopToolCatalogKind | "codex_app_server"
   readonly turnId?: string
   readonly turnStatus?: "completed" | "failed" | "inProgress" | "interrupted" | string
 }
@@ -116,11 +126,15 @@ export type KhalaCodeDesktopChatTurnResponse = {
 }
 
 export type KhalaCodeDesktopToolCatalogResponse = {
-  readonly defaultEnabled: true
+  readonly catalogKind: KhalaCodeDesktopToolCatalogKind
+  readonly defaultEnabled: boolean
+  readonly description: string
+  readonly runtimeMode: KhalaCodeDesktopRuntimeMode
   readonly toolCount: number
   readonly tools: readonly {
     readonly authority: string
     readonly name: string
+    readonly role: "legacy_codex_equivalent" | "supplemental_swarm"
   }[]
 }
 

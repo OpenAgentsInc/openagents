@@ -16,6 +16,7 @@ import {
   type KhalaCodeDesktopAppInfo,
   type KhalaCodeDesktopCodexAppServerActionResult,
   type KhalaCodeDesktopChatTurnEvent,
+  type KhalaCodeDesktopChatTurnResponse,
   type KhalaCodeDesktopCodexConfigValueWriteRequest,
   type KhalaCodeDesktopCodexEcosystemReadRequest,
   type KhalaCodeDesktopCodexEcosystemReadResult,
@@ -202,6 +203,36 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
   const useLegacyKhalaNativeRuntime = (): boolean =>
     input.env.KHALA_CODE_DESKTOP_RUNTIME === "khala_native_runtime" ||
     input.env.KHALA_CODE_DESKTOP_LEGACY_KHALA_NATIVE_RUNTIME === "1"
+
+  const labelLegacyRuntimeResponse = (
+    response: KhalaCodeDesktopChatTurnResponse,
+  ): KhalaCodeDesktopChatTurnResponse => ({
+    ...response,
+    backend: {
+      ...response.backend,
+      runtimeMode: "khala_native_runtime",
+      toolCatalogKind: "khala_native_legacy",
+    },
+    messages: [
+      {
+        id: `legacy-runtime-${Date.now().toString(36)}`,
+        role: "system",
+        body: "Legacy Khala native runtime handled this turn. The default Khala Code path wraps the local Codex harness.",
+      },
+      ...response.messages,
+    ],
+  })
+
+  const labelCodexHarnessResponse = (
+    response: KhalaCodeDesktopChatTurnResponse,
+  ): KhalaCodeDesktopChatTurnResponse => ({
+    ...response,
+    backend: {
+      ...response.backend,
+      runtimeMode: "codex_harness",
+      toolCatalogKind: response.backend.toolCatalogKind ?? "codex_app_server",
+    },
+  })
 
   const ecosystemNotifications: CodexAppServerNotification[] = []
   const ecosystemNotificationMethods = new Set([
@@ -1082,17 +1113,17 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
     },
     async submitChatMessage(request) {
       if (!useLegacyKhalaNativeRuntime()) {
-        return requireCodexChatRuntime().startTurn({
+        return labelCodexHarnessResponse(await requireCodexChatRuntime().startTurn({
           ...request,
           cwd: input.workingDirectory,
-        })
+        }))
       }
-      return legacyChatTurn({
+      return labelLegacyRuntimeResponse(await legacyChatTurn({
         env: input.env,
         ...(input.emitChatTurnEvent === undefined ? {} : { onEvent: input.emitChatTurnEvent }),
         request,
         workingDirectory: input.workingDirectory,
-      })
+      }))
     },
     async consumeCodexRateLimitResetCredit(): Promise<KhalaCodeDesktopCodexRateLimitResetResult> {
       const observedAt = new Date().toISOString()
@@ -1130,7 +1161,11 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
       })
     },
     async toolCatalog() {
-      return khalaCodeDesktopToolCatalog()
+      return khalaCodeDesktopToolCatalog({
+        runtimeMode: useLegacyKhalaNativeRuntime()
+          ? "khala_native_runtime"
+          : "codex_harness",
+      })
     },
   }
 }

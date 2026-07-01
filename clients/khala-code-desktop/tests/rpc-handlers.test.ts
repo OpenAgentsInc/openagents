@@ -465,7 +465,9 @@ describe("Khala Code desktop RPC handlers", () => {
     })).resolves.toMatchObject({
       backend: {
         kind: "codex_app_server",
+        runtimeMode: "codex_harness",
         threadId: "thread-codex-default",
+        toolCatalogKind: "codex_app_server",
       },
       messages: [{ body: "Codex default path" }],
       ok: true,
@@ -510,11 +512,84 @@ describe("Khala Code desktop RPC handlers", () => {
       backend: {
         kind: "mock",
         model: "legacy-khala-native",
+        runtimeMode: "khala_native_runtime",
+        toolCatalogKind: "khala_native_legacy",
       },
-      messages: [{ body: "Legacy runtime" }],
+      messages: [
+        { body: "Legacy Khala native runtime handled this turn. The default Khala Code path wraps the local Codex harness." },
+        { body: "Legacy runtime" },
+      ],
       ok: true,
     })
     expect(legacyTurnStarted).toBe(true)
+  })
+
+  test("does not fall back to the legacy Khala runtime when Codex is unavailable", async () => {
+    let legacyTurnStarted = false
+    const handlers = createKhalaCodeDesktopRpcRequestHandlers({
+      appleFmReadiness: () => {
+        throw new Error("not used")
+      },
+      env: {},
+      legacyChatTurn: async (): Promise<KhalaCodeDesktopChatTurnResponse> => {
+        legacyTurnStarted = true
+        throw new Error("legacy runtime should not be called")
+      },
+      onDeviceDeciderStatus: () => {
+        throw new Error("not used")
+      },
+      workingDirectory: process.cwd(),
+    })
+
+    await expect(handlers.submitChatMessage({
+      messages: [{ id: "user-1", role: "user", body: "Run tests" }],
+      sessionId: "desktop-session-no-codex",
+    })).rejects.toThrow("Codex app-server chat runtime is not configured.")
+    expect(legacyTurnStarted).toBe(false)
+  })
+
+  test("returns supplemental tool catalog by default and full catalog only in legacy mode", async () => {
+    const defaultHandlers = createKhalaCodeDesktopRpcRequestHandlers({
+      appleFmReadiness: () => {
+        throw new Error("not used")
+      },
+      codexChatRuntime: throwingCodexChatRuntime(),
+      env: {},
+      onDeviceDeciderStatus: () => {
+        throw new Error("not used")
+      },
+      workingDirectory: process.cwd(),
+    })
+    const legacyHandlers = createKhalaCodeDesktopRpcRequestHandlers({
+      appleFmReadiness: () => {
+        throw new Error("not used")
+      },
+      codexChatRuntime: throwingCodexChatRuntime(),
+      env: { KHALA_CODE_DESKTOP_RUNTIME: "khala_native_runtime" },
+      onDeviceDeciderStatus: () => {
+        throw new Error("not used")
+      },
+      workingDirectory: process.cwd(),
+    })
+
+    await expect(defaultHandlers.toolCatalog()).resolves.toMatchObject({
+      catalogKind: "codex_harness_supplemental",
+      runtimeMode: "codex_harness",
+      toolCount: 3,
+      tools: [
+        { name: "pylon_ensure", role: "supplemental_swarm" },
+        { name: "codex_fleet_status", role: "supplemental_swarm" },
+        { name: "codex_spawn", role: "supplemental_swarm" },
+      ],
+    })
+    const legacyCatalog = await legacyHandlers.toolCatalog()
+    expect(legacyCatalog).toMatchObject({
+      catalogKind: "khala_native_legacy",
+      runtimeMode: "khala_native_runtime",
+      toolCount: 11,
+    })
+    expect(legacyCatalog.tools.find(tool => tool.name === "exec_command")?.role)
+      .toBe("legacy_codex_equivalent")
   })
 
   test("lists Codex slash commands with desktop availability rules", async () => {

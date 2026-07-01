@@ -548,6 +548,20 @@ describe("khala code desktop app shell", () => {
     expect(css).toContain(".codex-approval-controls")
   })
 
+  test("documents Khala tools as supplemental by default and legacy by flag", async () => {
+    const readme = await Bun.file(new URL("../README.md", import.meta.url)).text()
+    const handlers = await Bun.file(new URL("../src/bun/rpc-handlers.ts", import.meta.url)).text()
+
+    expect(readme).toContain("default desktop `toolCatalog()`")
+    expect(readme).toContain("only Khala's supplemental swarm/Pylon tools")
+    expect(readme).toContain("KHALA_CODE_DESKTOP_RUNTIME=khala_native_runtime")
+    expect(readme).toContain("legacy turns are labeled")
+    expect(readme).toContain("in the transcript")
+    expect(readme).toContain("Codex owns those local coding capabilities")
+    expect(handlers).toContain("Legacy Khala native runtime handled this turn")
+    expect(readme).not.toContain("The current Khala tool presets remain available only for legacy/fallback")
+  })
+
   test("wires the Codex settings panel to app-server config and catalog RPCs", async () => {
     const html = await Bun.file(new URL("../src/ui/index.html", import.meta.url)).text()
     const sidebar = await Bun.file(new URL("../src/ui/sidebar.ts", import.meta.url)).text()

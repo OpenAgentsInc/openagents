@@ -16,7 +16,10 @@ import {
 
 import {
   assertAllDefaultToolsRegistered,
+  assertAllSupplementalToolsRegistered,
+  createKhalaCodeDesktopSupplementalToolRegistry,
   createKhalaCodeDesktopToolRegistry,
+  expectedKhalaCodeDesktopSupplementalToolNames,
   expectedKhalaCodeDesktopToolNames,
   khalaCodeDesktopToolCatalog,
   runKhalaCodeDesktopChatTurn as runKhalaCodeDesktopChatTurnWithDefaultRedaction,
@@ -143,27 +146,48 @@ async function runBunJson<T>(script: string, cwd: string): Promise<T> {
 }
 
 describe("Khala Code desktop chat runtime", () => {
-  test("enables every Khala tool by default", () => {
-    const registry = createKhalaCodeDesktopToolRegistry()
+  test("exposes only supplemental swarm tools in the default Codex harness catalog", () => {
+    const registry = createKhalaCodeDesktopSupplementalToolRegistry()
     const definitions = registry.list()
     const catalog = khalaCodeDesktopToolCatalog()
 
-    expect(assertAllDefaultToolsRegistered(definitions)).toBe(true)
+    expect(assertAllSupplementalToolsRegistered(definitions)).toBe(true)
+    expect(catalog.runtimeMode).toBe("codex_harness")
+    expect(catalog.catalogKind).toBe("codex_harness_supplemental")
     expect(catalog.defaultEnabled).toBe(true)
-    expect(catalog.toolCount).toBe(11)
-    expect(catalog.tools.map(tool => tool.name)).toEqual([...expectedKhalaCodeDesktopToolNames()])
+    expect(catalog.toolCount).toBe(3)
+    expect(catalog.tools.map(tool => tool.name)).toEqual([...expectedKhalaCodeDesktopSupplementalToolNames()])
     expect(catalog.tools.find(tool => tool.name === "codex_spawn")?.authority).toBe("owner_full_access")
-    expect(catalog.tools.find(tool => tool.name === "exec_command")?.authority).toBe("shell")
+    expect(catalog.tools.every(tool => tool.role === "supplemental_swarm")).toBe(true)
+    expect(catalog.description).toContain("Codex owns filesystem, shell, patch, MCP, approvals, and session tools")
+    expect(catalog.tools.map(tool => tool.name)).not.toContain("exec_command")
+    expect(catalog.tools.map(tool => tool.name)).not.toContain("read")
+    expect(catalog.tools.map(tool => tool.name)).not.toContain("apply_patch")
     for (const disabledName of disabledDefaultChatToolNames) {
       expect(catalog.tools.map(tool => tool.name)).not.toContain(disabledName)
     }
+  })
+
+  test("keeps Codex-equivalent Khala tools in the explicit legacy native catalog", () => {
+    const registry = createKhalaCodeDesktopToolRegistry()
+    const definitions = registry.list()
+    const catalog = khalaCodeDesktopToolCatalog({ runtimeMode: "khala_native_runtime" })
+
+    expect(assertAllDefaultToolsRegistered(definitions)).toBe(true)
+    expect(catalog.runtimeMode).toBe("khala_native_runtime")
+    expect(catalog.catalogKind).toBe("khala_native_legacy")
+    expect(catalog.toolCount).toBe(11)
+    expect(catalog.tools.map(tool => tool.name)).toEqual([...expectedKhalaCodeDesktopToolNames()])
+    expect(catalog.tools.find(tool => tool.name === "exec_command")?.authority).toBe("shell")
+    expect(catalog.tools.find(tool => tool.name === "exec_command")?.role).toBe("legacy_codex_equivalent")
+    expect(catalog.tools.find(tool => tool.name === "codex_spawn")?.role).toBe("supplemental_swarm")
   })
 
   test("does not locally time-limit long chat-turn RPC requests", () => {
     expect(KHALA_CODE_DESKTOP_RPC_MAX_REQUEST_TIME_MS).toBe(Number.POSITIVE_INFINITY)
   })
 
-  test("uses hosted OpenAgents chat completions by default with the full tool catalog", async () => {
+  test("uses hosted OpenAgents chat completions only in the legacy Khala-native runtime", async () => {
     const { calls, fetchFn } = captureFetch([
       { choices: [{ message: { content: "Hosted answer" } }] },
     ])
@@ -179,6 +203,8 @@ describe("Khala Code desktop chat runtime", () => {
 
     expect(result.ok).toBe(true)
     expect(result.backend.kind).toBe("hosted_openagents")
+    expect(result.backend.runtimeMode).toBe("khala_native_runtime")
+    expect(result.backend.toolCatalogKind).toBe("khala_native_legacy")
     expect(result.messages[0]?.body).toBe("Hosted answer")
     expect(calls).toHaveLength(1)
     expect(calls[0]?.url).toBe("https://openagents.com/api/v1/chat/completions")

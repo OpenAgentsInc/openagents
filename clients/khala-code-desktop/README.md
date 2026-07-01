@@ -39,9 +39,18 @@ OPENAGENTS_AGENT_TOKEN=... OPENROUTER_API_KEY=... bun run dev
 ## Tools
 
 The Codex-parity path should use Codex app-server tools, approvals, sandboxing,
-MCP, plugins, skills, and session state. The current Khala tool presets remain
-available only for legacy/fallback and Khala swarm orchestration while the pivot
-lands:
+MCP, plugins, skills, and session state. The default desktop `toolCatalog()`
+therefore exposes only Khala's supplemental swarm/Pylon tools around Codex:
+
+- `pylon_ensure`
+- `codex_fleet_status`
+- `codex_spawn`
+
+The older Khala-native tool runtime is explicitly legacy/fallback. It is enabled
+only with `KHALA_CODE_DESKTOP_RUNTIME=khala_native_runtime` or
+`KHALA_CODE_DESKTOP_LEGACY_KHALA_NATIVE_RUNTIME=1`, and legacy turns are labeled
+in the transcript. That legacy mode may still register Codex-equivalent
+`@openagentsinc/khala-tools` helpers for testing and fallback work:
 
 - workspace inspection and edits: `read`, `ls`, `glob`, `grep`, `edit`,
   `write`, `apply_patch`
@@ -53,9 +62,8 @@ lands:
   `browser_screenshot`
 
 Tool calls are executed by the Bun host through `@openagentsinc/khala-tools`.
-The chat model only sees bounded model-visible tool output; private artifacts,
-browser state, screenshots, and local file contents stay on the local tool
-result lanes owned by the host.
+In default Codex-harness mode, Codex owns those local coding capabilities and
+Khala tools stay supplemental rather than becoming a second coding harness.
 
 ## Local Checks
 

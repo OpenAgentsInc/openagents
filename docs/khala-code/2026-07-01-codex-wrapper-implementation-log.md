@@ -322,3 +322,42 @@ Validation:
 - `bun test clients/khala-code-desktop/tests/codex-ecosystem.test.ts clients/khala-code-desktop/tests/rpc-handlers.test.ts clients/khala-code-desktop/tests/app-shell.test.ts`
 - `bun run --cwd clients/khala-code-desktop typecheck`
 - `bun run --cwd clients/khala-code-desktop verify`
+
+## Issue #7790: Demote Legacy Khala Native Runtime And Khala Tools
+
+Status: implemented
+
+Khala Code Desktop now makes the runtime split explicit in the desktop RPC
+contract. Backend projections carry `runtimeMode`, and tool catalogs carry both
+`runtimeMode` and `catalogKind`:
+
+- default: `codex_harness` with `codex_harness_supplemental`;
+- opt-in legacy: `khala_native_runtime` with `khala_native_legacy`;
+- Codex turn responses are labeled `codex_app_server`.
+
+The default `toolCatalog()` no longer exposes Codex-equivalent Khala tools. It
+returns only the supplemental Pylon/Codex fleet tools that remain useful around
+the Codex harness:
+
+- `pylon_ensure`
+- `codex_fleet_status`
+- `codex_spawn`
+
+The full Khala-native registry still exists for explicit legacy/fallback mode
+and tests, but filesystem, shell, patch, and local search helpers are labeled
+`legacy_codex_equivalent`. Normal desktop chat submit does not fall back to that
+runtime when Codex app-server is missing; it fails on the Codex path instead.
+When the user explicitly sets `KHALA_CODE_DESKTOP_RUNTIME=khala_native_runtime`
+or `KHALA_CODE_DESKTOP_LEGACY_KHALA_NATIVE_RUNTIME=1`, the returned transcript
+starts with a visible system banner explaining that the legacy Khala-native
+runtime handled the turn.
+
+The README Tools section now documents the default supplemental catalog first
+and moves the Codex-equivalent Khala tools under the explicit legacy/fallback
+mode.
+
+Validation:
+
+- `bun test clients/khala-code-desktop/tests/khala-chat-runtime.test.ts clients/khala-code-desktop/tests/rpc-handlers.test.ts clients/khala-code-desktop/tests/headless.test.ts clients/khala-code-desktop/tests/codex-app-server-chat-runtime.test.ts`
+- `bun run --cwd clients/khala-code-desktop typecheck`
+- `bun run --cwd clients/khala-code-desktop verify`
