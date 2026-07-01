@@ -1,5 +1,9 @@
 import { Effect } from 'effect'
 
+import {
+  authorizeDiagnosisRemediation,
+  authorizeMergeDeployLiveReport,
+} from '@openagentsinc/blueprint-contracts'
 import { TASSADAR_EXECUTOR_CAPABILITY_REF } from '@openagentsinc/tassadar-executor'
 
 import {
@@ -207,6 +211,62 @@ const autonomousKhalaLoopPlan = (
   ],
   recurringSourceRefs: AUTONOMOUS_KHALA_LOOP_SOURCE_REFS,
 })
+
+const scheduledDiagnosisRemediationGate = (
+  refs: ReadonlyArray<string>,
+) => {
+  const has = (ref: string): boolean => refs.includes(ref)
+  return authorizeDiagnosisRemediation(
+    {
+      blockedReason: has('api.operator.khala.trace_review')
+        ? null
+        : 'operator trace-review evidence was not loaded',
+      canProposeRemediation:
+        has('state.public.artanis.persistence') &&
+        has('api.operator.khala.trace_review') &&
+        has('api.public.khala_served_count'),
+      identity: { claimedRootCause: 'khala burndown backlog requires continued own-capacity dispatch' },
+      missingEvidence: [
+        ...(has('state.public.artanis.persistence') ? [] : ['state.public.artanis.persistence']),
+        ...(has('api.operator.khala.trace_review') ? [] : ['api.operator.khala.trace_review']),
+        ...(has('api.public.khala_served_count') ? [] : ['api.public.khala_served_count']),
+      ],
+      satisfiedEvidence: refs.filter(ref =>
+        [
+          'state.public.artanis.persistence',
+          'api.operator.khala.trace_review',
+          'api.public.khala_served_count',
+        ].includes(ref),
+      ),
+      state:
+        has('state.public.artanis.persistence') &&
+        has('api.operator.khala.trace_review') &&
+        has('api.public.khala_served_count')
+          ? 'GROUNDED'
+          : 'UNGROUNDED',
+    },
+    'continue no-spend Khala burndown work proposal',
+  )
+}
+
+const scheduledDeploymentLiveReport = (
+  scheduleSuffix: string,
+) =>
+  authorizeMergeDeployLiveReport({
+    blockedReason: 'scheduled tick has no merge, deploy, or smoke receipts',
+    identity: {
+      mergeCommitHashes: [],
+      prNumbers: [],
+    },
+    isLive: false,
+    missingEvidence: [
+      'evidence://merge/check-deploy-pass',
+      'evidence://deploy/exit-code',
+      'evidence://deploy/smoke-tests',
+    ],
+    satisfiedEvidence: [`action.public.artanis.deployment.${scheduleSuffix}`],
+    state: 'MERGED',
+  })
 
 const emptyKhalaFeedbackTriage: ArtanisKhalaFeedbackTriageResult = {
   actionRefs: [],
@@ -622,6 +682,7 @@ const scheduledLoop = (
     `approval.public.artanis.tassadar_executor_paid_sample.${scheduleSuffix}`
   const authorityRef = 'authority.public.artanis.operator_spend_enable'
   const khalaLoopPlan = autonomousKhalaLoopPlan(scheduleSuffix)
+  const deploymentLiveReport = scheduledDeploymentLiveReport(scheduleSuffix)
   const publicEvidenceRefs = uniqueRefs([
     ...selectedContextRefs,
     ...khalaLoopPlan.recurringSourceRefs,
@@ -788,6 +849,24 @@ const scheduledLoop = (
         kind: 'wallet_spend',
         risk: 'approval_required',
       }),
+      ...(deploymentLiveReport.ok
+        ? [
+            new ArtanisActionProposalRecord({
+              actionRef:
+                `action.public.artanis.deployment_live_report.${scheduleSuffix}`,
+              approvalRequirementRefs: [],
+              artifactRefs: [],
+              authorityReceiptRefs: deploymentLiveReport.evidenceRefs,
+              caveatRefs: [],
+              evidenceRefs: [
+                ...deploymentLiveReport.evidenceRefs,
+                ...deploymentLiveReport.action.mergeCommitHashes,
+              ],
+              kind: 'status_projection',
+              risk: 'safe',
+            }),
+          ]
+        : []),
     ],
     approvalRequirements: [
       ...feedbackApprovalRequirements,
@@ -1308,10 +1387,15 @@ export const runArtanisScheduledTick = Effect.fn('runArtanisScheduledTick')(
       tick,
       assignmentRef,
     )
-    const khalaBurndownWorkProposal = scheduledKhalaBurndownWorkProposal(
-      input,
-      tick,
+    const diagnosisRemediation = scheduledDiagnosisRemediationGate(
+      publicLoadedContextRefs,
     )
+    const khalaBurndownWorkProposal = diagnosisRemediation.ok
+      ? scheduledKhalaBurndownWorkProposal(
+          input,
+          tick,
+        )
+      : null
     const khalaFeedbackWorkProposals = khalaFeedbackTriage.items.map(item =>
       scheduledKhalaFeedbackWorkProposal(input, item)
     )
@@ -1352,12 +1436,13 @@ export const runArtanisScheduledTick = Effect.fn('runArtanisScheduledTick')(
       workProposal,
       input.nowIso,
     )
-    const khalaBurndownWorkProposalReceipt =
-      yield* saveArtanisWorkRoutingProposal(
-        input.db,
-        khalaBurndownWorkProposal,
-        input.nowIso,
-      )
+    const khalaBurndownWorkProposalReceipt = khalaBurndownWorkProposal === null
+      ? null
+      : yield* saveArtanisWorkRoutingProposal(
+          input.db,
+          khalaBurndownWorkProposal,
+          input.nowIso,
+        )
     const khalaFeedbackWorkProposalReceipts = yield* Effect.forEach(
       khalaFeedbackWorkProposals,
       proposal =>
@@ -1389,7 +1474,7 @@ export const runArtanisScheduledTick = Effect.fn('runArtanisScheduledTick')(
       tickReceipt,
       healthReceipt,
       workProposalReceipt,
-      khalaBurndownWorkProposalReceipt,
+      ...(khalaBurndownWorkProposalReceipt === null ? [] : [khalaBurndownWorkProposalReceipt]),
       ...khalaFeedbackWorkProposalReceipts,
       approvalGateReceipt,
       forumIntentReceipt,
@@ -1420,7 +1505,9 @@ export const runArtanisScheduledTick = Effect.fn('runArtanisScheduledTick')(
       tickRef: tick.tickRef,
       workProposalRefs: [
         workProposal.proposalRef,
-        khalaBurndownWorkProposal.proposalRef,
+        ...(khalaBurndownWorkProposal === null
+          ? []
+          : [khalaBurndownWorkProposal.proposalRef]),
         ...khalaFeedbackWorkProposals.map(proposal => proposal.proposalRef),
       ],
     }

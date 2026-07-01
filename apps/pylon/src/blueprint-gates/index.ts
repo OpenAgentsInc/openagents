@@ -8,10 +8,13 @@
  * consequential action; a missing required evidence ref makes the action
  * structurally impossible.
  *
- * These modules expose pure evaluators plus enforced action authorizers. The
- * authorizers return the consequential action payload only from the signature's
- * terminal state, so Artanis tick/operator call sites cannot structurally take
- * the action from a partial gate.
+ * These modules expose pure evaluators plus enforced action authorizers. Fleet
+ * liveness is wired into Pylon status reporting. The issue-close authorizer is
+ * wired into the Pylon PR publisher's closing-keyword edit path, and the
+ * diagnosis, command-proposal, and merge-deploy authorizers are wired into the
+ * Artanis scheduled/operator dispatch call sites that construct those
+ * consequential actions. Other consumers must still call an authorizer at the
+ * acting site before treating a non-terminal gate as action authority.
  */
 
 export * from "./enforced-actions.js"

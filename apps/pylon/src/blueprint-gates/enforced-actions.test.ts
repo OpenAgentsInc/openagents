@@ -78,8 +78,6 @@ describe("Blueprint enforced action authorizers", () => {
         prNumber: 9001,
         prBody: "Closes #7886",
       }),
-      7886,
-      9001,
     )
     expect(blocked.ok).toBe(false)
 
@@ -91,10 +89,12 @@ describe("Blueprint enforced action authorizers", () => {
         prNumber: 9001,
         prBody: "Closes #7886",
       }),
-      7886,
-      9001,
     )
     expect(allowed.ok).toBe(true)
+    if (allowed.ok) {
+      expect(allowed.action.issueNumber).toBe(7886)
+      expect(allowed.action.prNumber).toBe(9001)
+    }
   })
 
   test("command proposal is exposed only from SAFE_TO_PROPOSE", () => {
@@ -107,7 +107,6 @@ describe("Blueprint enforced action authorizers", () => {
         declaredFlags: [],
         dryRunExitCode: 0,
       }),
-      "bun scripts/tool.ts --flag",
     )
     expect(blocked.ok).toBe(false)
 
@@ -120,9 +119,12 @@ describe("Blueprint enforced action authorizers", () => {
         declaredFlags: ["--flag"],
         dryRunExitCode: 0,
       }),
-      "bun scripts/tool.ts --flag",
     )
     expect(allowed.ok).toBe(true)
+    if (allowed.ok) {
+      expect(allowed.action.commandString).toBe("bun scripts/tool.ts --flag")
+      expect(allowed.action.scriptPath).toBe("scripts/tool.ts")
+    }
   })
 
   test("merge deploy live report is exposed only from LIVE", () => {
@@ -135,7 +137,6 @@ describe("Blueprint enforced action authorizers", () => {
         deployExitCode: null,
         smokeTestResults: [],
       }),
-      [7886],
     )
     expect(blocked.ok).toBe(false)
 
@@ -148,9 +149,12 @@ describe("Blueprint enforced action authorizers", () => {
         deployExitCode: 0,
         smokeTestResults: [{ name: "home", passed: true }],
       }),
-      [7886],
     )
     expect(allowed.ok).toBe(true)
+    if (allowed.ok) {
+      expect(allowed.action.prNumbers).toEqual([7886])
+      expect(allowed.action.mergeCommitHashes).toEqual(["abc123"])
+    }
   })
 
   test("stale liveness stays blocked even with evidence", () => {

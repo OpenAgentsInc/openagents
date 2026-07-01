@@ -48,6 +48,7 @@ export interface DiagnosisGroundingInputs {
 export interface DiagnosisGroundingResult {
   readonly state: DiagnosisGroundingState
   readonly canProposeRemediation: boolean
+  readonly identity: Readonly<{ readonly claimedRootCause: string }>
   readonly satisfiedEvidence: ReadonlyArray<DiagnosisGroundingEvidenceRef>
   readonly missingEvidence: ReadonlyArray<DiagnosisGroundingEvidenceRef>
   readonly locked: boolean
@@ -81,6 +82,7 @@ export function evaluateDiagnosisGrounding(
   inputs: DiagnosisGroundingInputs,
 ): DiagnosisGroundingResult {
   const satisfied: Array<DiagnosisGroundingEvidenceRef> = []
+  const identity = { claimedRootCause: inputs.claimedRootCause }
 
   const lock = (
     state: DiagnosisGroundingState,
@@ -90,6 +92,7 @@ export function evaluateDiagnosisGrounding(
   ): DiagnosisGroundingResult => ({
     state,
     canProposeRemediation: false,
+    identity,
     satisfiedEvidence: satisfied,
     missingEvidence: missing,
     locked: true,
@@ -133,6 +136,7 @@ export function evaluateDiagnosisGrounding(
   return {
     state: "GROUNDED",
     canProposeRemediation: true,
+    identity,
     satisfiedEvidence: satisfied,
     missingEvidence: [],
     locked: false,

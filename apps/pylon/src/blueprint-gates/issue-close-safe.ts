@@ -49,7 +49,7 @@ export type IssueCloseSafeEvidenceRef =
 export interface IssueCloseSafeInputs {
   readonly issueNumber: number
   /** evidence://issue/labels — the full label set read from the issue. */
-  readonly issueLabels: ReadonlyArray<string>
+  readonly issueLabels: ReadonlyArray<string> | null
   /** Parent EPIC issue number, or null when this issue has no parent EPIC. */
   readonly parentEpicNumber: number | null
   readonly prNumber: number
@@ -77,6 +77,10 @@ export interface IssueCloseSafeResult {
   readonly state: IssueCloseSafeState
   /** True only when the terminal state SAFE_TO_CLOSE is reached. */
   readonly canClose: boolean
+  readonly identity: Readonly<{
+    readonly issueNumber: number
+    readonly prNumber: number
+  }>
   /** Whether THIS issue was treated as an EPIC. */
   readonly isEpic: boolean
   readonly satisfiedEvidence: ReadonlyArray<IssueCloseSafeEvidenceRef>
@@ -119,6 +123,9 @@ export function issueIsEpic(inputs: IssueCloseSafeInputs): boolean {
   if (typeof inputs.isEpic === "boolean") {
     return inputs.isEpic
   }
+  if (!Array.isArray(inputs.issueLabels)) {
+    return false
+  }
   return inputs.issueLabels.some((label) => label.trim().toLowerCase() === "epic")
 }
 
@@ -131,6 +138,10 @@ export function evaluateIssueCloseSafe(
 ): IssueCloseSafeResult {
   const satisfied: Array<IssueCloseSafeEvidenceRef> = []
   const isEpic = issueIsEpic(inputs)
+  const identity = {
+    issueNumber: inputs.issueNumber,
+    prNumber: inputs.prNumber,
+  }
 
   const lock = (
     state: IssueCloseSafeState,
@@ -140,6 +151,7 @@ export function evaluateIssueCloseSafe(
   ): IssueCloseSafeResult => ({
     state,
     canClose: false,
+    identity,
     isEpic,
     satisfiedEvidence: satisfied,
     missingEvidence: missing,
@@ -198,6 +210,7 @@ export function evaluateIssueCloseSafe(
   return {
     state: "SAFE_TO_CLOSE",
     canClose: true,
+    identity,
     isEpic,
     satisfiedEvidence: satisfied,
     missingEvidence: [],

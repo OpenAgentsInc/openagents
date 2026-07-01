@@ -247,6 +247,32 @@ describe('Artanis scheduled runner', () => {
     ).not.toMatch(/context\.private|evidence\.private|receipt\.operator|wallet_secret|raw_log/i)
   })
 
+  test('diagnosis-gate denial means Khala burndown remediation proposal is not persisted', async () => {
+    const store = new ArtanisPersistenceTestStore()
+    const db = artanisPersistenceTestDb(store)
+
+    const result = await Effect.runPromise(
+      runArtanisScheduledTick({
+        context: {
+          persistedStateRefs: [],
+        },
+        db,
+        enabled: true,
+        nowIso,
+        scheduleRef: 'cron.public.artanis.no_diagnosis_evidence',
+      }),
+    )
+
+    expect(result.workProposalRefs).toEqual([
+      'work.public.artanis.tassadar_executor_trace.cron_public_artanis_no_diagnosis_evidence',
+    ])
+    const persisted = store.rows('artanis_work_routing_proposals')
+    expect(persisted).toHaveLength(1)
+    expect(JSON.stringify(persisted)).not.toContain(
+      'work.public.artanis.khala_burndown.cron_public_artanis_no_diagnosis_evidence',
+    )
+  })
+
   test('persists a green Khala no-spend readiness observation', async () => {
     const store = new ArtanisPersistenceTestStore()
     const db = artanisPersistenceTestDb(store)

@@ -613,6 +613,35 @@ describe('#6366 dispatch_codex_task (gated; LIVE execution behind the gate)', ()
     expect(result.reason).toBe('no_eligible_linked_pylon')
   })
 
+  test('approved but command-source gate denied -> never calls the create seam', async () => {
+    const createCalls: Array<unknown> = []
+    const tool = makeArtanisDispatchCodexTaskTool({
+      execution: {
+        createCodexAssignment: plan => {
+          createCalls.push(plan)
+          return Effect.succeed({
+            assignmentRef: 'assignment.public.khala_coding.should_not_happen',
+            durableRequestId: null,
+            kind: 'created',
+            pylonRef: 'pylon.owner.alpha',
+          } as const)
+        },
+        isOwnerApproved: () => Effect.succeed(true),
+      },
+    })
+
+    const result = await Effect.runPromise(
+      tool.run({
+        objective: 'Burn down public issue work per the roadmap.',
+        verify: 'bun scripts/unknown.ts --fabricated-flag',
+      }),
+    )
+    expect(result.outcome).toBe('deferred')
+    if (result.outcome !== 'deferred') return
+    expect(result.reason).toBe('command_source_not_verified')
+    expect(createCalls).toHaveLength(0)
+  })
+
   test('a non-public-safe objective never reaches the seam', async () => {
     const createCalls: Array<unknown> = []
     const approvalCalls: Array<unknown> = []

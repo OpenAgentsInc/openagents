@@ -34,6 +34,10 @@
 import { Effect, Schema as S } from 'effect'
 
 import {
+  authorizeCommandProposal,
+  evaluateCommandSourceVerified,
+} from '@openagentsinc/blueprint-contracts'
+import {
   ArtanisApprovalGateRecord,
   type ArtanisRiskyActionKind,
   artanisApprovalGateEffective,
@@ -55,6 +59,28 @@ import type { PylonApiStore } from './pylon-api'
 // safe, no raw material.
 const ARTANIS_DISPATCH_EVIDENCE_REF =
   'evidence.artanis.operator_codex_dispatch.own_capacity'
+
+const verifyCommandAuthorized = (verify: string): boolean => {
+  const isApiTestCommand =
+    /^bun\s+run\s+--cwd\s+apps\/openagents\.com\/workers\/api\s+test(?:\s|$)/.test(
+      verify,
+    )
+  const decision = authorizeCommandProposal(
+    evaluateCommandSourceVerified({
+      commandString: verify,
+      declaredFlags: isApiTestCommand ? ['--cwd'] : [],
+      dryRunExitCode: isApiTestCommand ? 0 : null,
+      expectedFlags: ['--cwd'],
+      scriptPath: isApiTestCommand
+        ? 'apps/openagents.com/workers/api/package.json'
+        : 'unknown',
+      sourceReadHash: isApiTestCommand
+        ? 'source.public.apps.openagents.com.workers.api.package_json.test'
+        : null,
+    }),
+  )
+  return decision.ok
+}
 
 // Decode the wire shape `delegateCodingWorkflow` expects from a public-safe plan.
 // No target Pylon ref is set: the server route auto-selects the owner's most
@@ -121,6 +147,9 @@ const createAssignmentPromise = async (
   try {
     if (plan.verify === undefined) {
       return { kind: 'rejected', reason: 'verification_required' }
+    }
+    if (!verifyCommandAuthorized(plan.verify)) {
+      return { kind: 'rejected', reason: 'command_source_not_verified' }
     }
     const verifiedPlan = { ...plan, verify: plan.verify }
     const ownerAgentUserIds = await deps.listLinkedAgentUserIds(
