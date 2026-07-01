@@ -196,8 +196,8 @@ export const normalizeIssueListCandidate = (repo: string, item: number | IssueLi
     title: issue.title ?? `${kind === "github_pr" ? "PR" : "Issue"} #${issue.number}`,
     state: normalizeState(issue.state),
     labels: [...(issue.labels ?? [])],
-    body: issue.body,
-    url: issue.url,
+    ...(issue.body === undefined ? {} : { body: issue.body }),
+    ...(issue.url === undefined ? {} : { url: issue.url }),
   }
 }
 
@@ -232,8 +232,8 @@ const ghIssueRecordToCandidate = (repo: string, record: GhIssueRecord): WorkPlan
     title: typeof record.title === "string" && record.title.trim() ? record.title : `Issue #${record.number}`,
     state: normalizeState(record.state),
     labels: normalizeLabels(record.labels),
-    body: typeof record.body === "string" ? record.body : undefined,
-    url: typeof record.url === "string" ? record.url : undefined,
+    ...(typeof record.body === "string" ? { body: record.body } : {}),
+    ...(typeof record.url === "string" ? { url: record.url } : {}),
   }
 }
 
@@ -249,8 +249,8 @@ const ghPullRequestRecordToCandidate = (repo: string, record: GhPullRequestRecor
     title: typeof record.title === "string" && record.title.trim() ? record.title : `PR #${record.number}`,
     state,
     labels: normalizeLabels(record.labels),
-    body: typeof record.body === "string" ? record.body : undefined,
-    url: typeof record.url === "string" ? record.url : undefined,
+    ...(typeof record.body === "string" ? { body: record.body } : {}),
+    ...(typeof record.url === "string" ? { url: record.url } : {}),
   }
 }
 

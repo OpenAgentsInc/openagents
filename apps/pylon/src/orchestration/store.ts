@@ -1452,9 +1452,9 @@ export class PylonOrchestrationStore {
           state: "idle",
           stateStartedAt: iso(now),
           updatedAt: iso(now),
-          supportedControlVerbs: live.supportedControlVerbs,
-          refs: live.refs,
-          stateHistory: live.stateHistory,
+          ...(live.supportedControlVerbs === undefined ? {} : { supportedControlVerbs: live.supportedControlVerbs }),
+          ...(live.refs === undefined ? {} : { refs: live.refs }),
+          ...(live.stateHistory === undefined ? {} : { stateHistory: live.stateHistory }),
         },
         now,
       }))
