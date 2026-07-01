@@ -1,3 +1,4 @@
+import { readRequestJsonEffect } from '@openagentsinc/effect-boundary'
 import { badRequest } from '@openagentsinc/sync-worker'
 import { Effect, Match as M, Schema as S } from 'effect'
 
@@ -12,7 +13,6 @@ import {
   serverError,
   unauthorized,
 } from './http/responses'
-import { readJsonObject } from './json-boundary'
 import { currentIsoTimestamp } from './runtime-primitives'
 import {
   type TeamWorkspaceInviteAcceptResult,
@@ -108,11 +108,19 @@ const decodeBody = <A>(
   schema: S.Decoder<A>,
   request: Request,
 ): Effect.Effect<A, HttpResponse> =>
-  Effect.tryPromise({
-    catch: error =>
-      badRequest(error instanceof Error ? error.message : String(error)),
-    try: async () => S.decodeUnknownSync(schema)(await readJsonObject(request)),
-  })
+  readRequestJsonEffect(
+    schema,
+    request,
+    'team_workspace_invite.body',
+  ).pipe(
+    Effect.mapError(error =>
+      badRequest(
+        error.reasonRef === 'boundary.json.malformed'
+          ? 'Malformed JSON request body.'
+          : 'Team workspace invite request did not match the expected schema.',
+      ),
+    ),
+  )
 
 const dependencyPromise = <A>(
   tryPromise: () => Promise<A>,

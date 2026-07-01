@@ -24,6 +24,7 @@
 //   import { makeNativeListsRoutes } from './native-lists-routes'
 //   import { makeNativeListsService } from './native-lists'
 
+import { readRequestJsonEffect } from '@openagentsinc/effect-boundary'
 import { Effect, Match as M, Schema as S } from 'effect'
 
 import {
@@ -31,7 +32,6 @@ import {
   methodNotAllowed,
   noStoreJsonResponse,
 } from './http/responses'
-import { readJsonObject } from './json-boundary'
 import type { NativeListsServiceShape } from './native-lists'
 import { currentIsoTimestamp } from './runtime-primitives'
 
@@ -87,12 +87,19 @@ const listIdFromListPath = (pathname: string): string | undefined => {
 const decodeLeadCaptureRequest = (
   request: Request,
 ): Effect.Effect<LeadCaptureRequest, HttpResponse> =>
-  Effect.tryPromise({
-    catch: error =>
-      badRequest(error instanceof Error ? error.message : String(error)),
-    try: async () =>
-      S.decodeUnknownSync(LeadCaptureRequest)(await readJsonObject(request)),
-  })
+  readRequestJsonEffect(
+    LeadCaptureRequest,
+    request,
+    'native_lists.lead_capture.body',
+  ).pipe(
+    Effect.mapError(error =>
+      badRequest(
+        error.reasonRef === 'boundary.json.malformed'
+          ? 'Malformed JSON request body.'
+          : 'Lead capture request did not match the expected schema.',
+      ),
+    ),
+  )
 
 // Public lead-capture endpoint: POST /api/lists/:listId/subscribers
 const captureLead = <Bindings extends NativeListsRouteEnv>(

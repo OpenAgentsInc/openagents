@@ -1,3 +1,4 @@
+import { readRequestJsonEffect } from '@openagentsinc/effect-boundary'
 import { badRequest } from '@openagentsinc/sync-worker'
 import { Effect, Match as M, Schema as S } from 'effect'
 
@@ -10,7 +11,6 @@ import {
   serverError,
   unauthorized,
 } from './http/responses'
-import { readJsonObject } from './json-boundary'
 import type {
   CreatePrefilledWorkspaceInput,
   PrefilledWorkspaceRecord,
@@ -379,11 +379,19 @@ const decodeBody = <A>(
   schema: S.Decoder<A>,
   request: Request,
 ): Effect.Effect<A, HttpResponse> =>
-  Effect.tryPromise({
-    catch: error =>
-      badRequest(error instanceof Error ? error.message : String(error)),
-    try: async () => S.decodeUnknownSync(schema)(await readJsonObject(request)),
-  })
+  readRequestJsonEffect(
+    schema,
+    request,
+    'private_project_workspace.body',
+  ).pipe(
+    Effect.mapError(error =>
+      badRequest(
+        error.reasonRef === 'boundary.json.malformed'
+          ? 'Malformed JSON request body.'
+          : 'Private project workspace request did not match the expected schema.',
+      ),
+    ),
+  )
 
 const dependencyPromise = <A>(
   tryPromise: () => Promise<A>,

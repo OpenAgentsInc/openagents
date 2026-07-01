@@ -284,6 +284,19 @@ const operatorCreateRequest = (body: unknown, token = 'admin-token'): Request =>
     method: 'POST',
   })
 
+const rawOperatorCreateRequest = (
+  body: string,
+  token = 'admin-token',
+): Request =>
+  new Request('https://openagents.com/api/operator/team-workspace-invites', {
+    body,
+    headers: {
+      authorization: `Bearer ${token}`,
+      'content-type': 'application/json',
+    },
+    method: 'POST',
+  })
+
 describe('team workspace invite routes', () => {
   test('requires an operator token to create a private workspace invite', async () => {
     const response = await routeRequest(
@@ -295,6 +308,36 @@ describe('team workspace invite routes', () => {
     )
 
     expect(response.status).toBe(401)
+  })
+
+  test('rejects malformed create-invite JSON through the Effect boundary', async () => {
+    const store = new MemoryInviteStore()
+    const response = await routeRequest(
+      store,
+      rawOperatorCreateRequest('{"email":'),
+    )
+
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toEqual({
+      error: 'bad_request',
+      reason: 'Malformed JSON request body.',
+    })
+    expect(store.invites.size).toBe(0)
+  })
+
+  test('rejects schema-invalid create-invite bodies through the Effect boundary', async () => {
+    const store = new MemoryInviteStore()
+    const response = await routeRequest(
+      store,
+      operatorCreateRequest({ email: 42, teamId: 'team_1' }),
+    )
+
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toEqual({
+      error: 'bad_request',
+      reason: 'Team workspace invite request did not match the expected schema.',
+    })
+    expect(store.invites.size).toBe(0)
   })
 
   test('creates an operator invite without echoing the target email', async () => {

@@ -318,6 +318,19 @@ const operatorRequest = (body: unknown, token = 'admin-token'): Request =>
     },
   )
 
+const rawOperatorRequest = (body: string, token = 'admin-token'): Request =>
+  new Request(
+    'https://openagents.com/api/operator/private-project-workspaces',
+    {
+      body,
+      headers: {
+        authorization: `Bearer ${token}`,
+        'content-type': 'application/json',
+      },
+      method: 'POST',
+    },
+  )
+
 const baseRequest = () => ({
   invitations: [
     {
@@ -348,6 +361,42 @@ describe('private project workspace routes', () => {
     )
 
     expect(response.status).toBe(401)
+  })
+
+  test('rejects malformed JSON through the Effect boundary', async () => {
+    const testStores = stores()
+    const response = await routeRequest(
+      rawOperatorRequest('{"project":'),
+      { resend: testResendConfig() },
+      testStores,
+    )
+
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toEqual({
+      error: 'bad_request',
+      reason: 'Malformed JSON request body.',
+    })
+    expect(testStores.privateProjects.projects.size).toBe(0)
+    expect(testStores.invites.invites.size).toBe(0)
+    expect(testStores.workspaces.workspaces.size).toBe(0)
+  })
+
+  test('rejects schema-invalid bodies through the Effect boundary', async () => {
+    const testStores = stores()
+    const response = await routeRequest(
+      operatorRequest({ invitations: [] }),
+      { resend: testResendConfig() },
+      testStores,
+    )
+
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toEqual({
+      error: 'bad_request',
+      reason: 'Private project workspace request did not match the expected schema.',
+    })
+    expect(testStores.privateProjects.projects.size).toBe(0)
+    expect(testStores.invites.invites.size).toBe(0)
+    expect(testStores.workspaces.workspaces.size).toBe(0)
   })
 
   test('creates a private project workspace and fans out invites with operator copies by default', async () => {

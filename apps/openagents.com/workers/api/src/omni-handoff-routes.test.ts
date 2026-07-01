@@ -251,6 +251,13 @@ const jsonPost = (path: string, body: unknown): Request =>
     method: 'POST',
   })
 
+const rawPost = (path: string, body: string): Request =>
+  new Request(`https://openagents.com${path}`, {
+    body,
+    headers: { 'content-type': 'application/json' },
+    method: 'POST',
+  })
+
 const get = (path: string): Request =>
   new Request(`https://openagents.com${path}`, { method: 'GET' })
 
@@ -305,6 +312,46 @@ describe('Omni handoff routes', () => {
       ),
     )
     expect(response.status).toBe(401)
+    expect(store.evidence).toHaveLength(0)
+    expect(store.proofs).toHaveLength(0)
+  })
+
+  test('rejects malformed JSON through the Effect boundary', async () => {
+    const store = new HandoffStore()
+    const routes = makeRoutes(store, true)
+
+    const response = await run(
+      routes.routeOmniHandoffRequest(
+        rawPost(HANDOFF_PATH, '{"evidence":'),
+        { store },
+        ctx,
+      ),
+    )
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toEqual({
+      error: 'omni_handoff_request_error',
+      reason: 'Malformed JSON request body.',
+    })
+    expect(store.evidence).toHaveLength(0)
+    expect(store.proofs).toHaveLength(0)
+  })
+
+  test('rejects schema-invalid handoff bodies through the Effect boundary', async () => {
+    const store = new HandoffStore()
+    const routes = makeRoutes(store, true)
+
+    const response = await run(
+      routes.routeOmniHandoffRequest(
+        jsonPost(HANDOFF_PATH, { evidence: {} }),
+        { store },
+        ctx,
+      ),
+    )
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toEqual({
+      error: 'omni_handoff_request_error',
+      reason: 'Omni handoff request did not match the expected schema.',
+    })
     expect(store.evidence).toHaveLength(0)
     expect(store.proofs).toHaveLength(0)
   })

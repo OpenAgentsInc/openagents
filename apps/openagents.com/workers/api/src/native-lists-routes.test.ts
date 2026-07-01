@@ -176,6 +176,52 @@ describe('native lists routes', () => {
     expect(response.status).toBe(400)
   })
 
+  test('lead capture rejects malformed JSON through the Effect boundary', async () => {
+    const store = new MemoryNativeListsStore()
+    store.seedList(activeListRecord())
+    const routes = makeRoutes(store)
+
+    const response = await run(
+      routes.routeNativeListsRequest(
+        new Request('https://openagents.com/api/lists/subscriber_list_1/subscribers', {
+          method: 'POST',
+          body: '{"email":',
+        }),
+        {},
+        ctx,
+      ),
+    )
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toEqual({
+      error: 'native_lists_validation_error',
+      reason: 'Malformed JSON request body.',
+    })
+    expect(store.subscribers.size).toBe(0)
+  })
+
+  test('lead capture rejects schema-invalid bodies through the Effect boundary', async () => {
+    const store = new MemoryNativeListsStore()
+    store.seedList(activeListRecord())
+    const routes = makeRoutes(store)
+
+    const response = await run(
+      routes.routeNativeListsRequest(
+        new Request('https://openagents.com/api/lists/subscriber_list_1/subscribers', {
+          method: 'POST',
+          body: JSON.stringify({ email: 42 }),
+        }),
+        {},
+        ctx,
+      ),
+    )
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toEqual({
+      error: 'native_lists_validation_error',
+      reason: 'Lead capture request did not match the expected schema.',
+    })
+    expect(store.subscribers.size).toBe(0)
+  })
+
   test('lead capture 404s on unknown or inactive list', async () => {
     const store = new MemoryNativeListsStore()
     store.seedList({ ...activeListRecord(), status: 'paused' })

@@ -23,10 +23,10 @@
 //       return await runEffectProgram(omniHandoffResponse)
 //     }
 
+import { readRequestJsonEffect } from '@openagentsinc/effect-boundary'
 import { Effect, Match as M, Schema as S } from 'effect'
 
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
-import { readJsonObject } from './json-boundary'
 import { OmniAcceptedOutcomeWorkKind } from './omni-accepted-outcome-contracts'
 import {
   type OmniHandoffInput,
@@ -204,12 +204,20 @@ const handoffDefectResponse = (defect: unknown): HttpResponse => {
 const decodeBody = (
   request: Request,
 ): Effect.Effect<OmniHandoffRequest, OmniHandoffRequestError> =>
-  Effect.tryPromise({
-    catch: error =>
-      requestError(400, error instanceof Error ? error.message : String(error)),
-    try: async () =>
-      S.decodeUnknownSync(OmniHandoffRequest)(await readJsonObject(request)),
-  })
+  readRequestJsonEffect(
+    OmniHandoffRequest,
+    request,
+    'omni_handoff.body',
+  ).pipe(
+    Effect.mapError(error =>
+      requestError(
+        400,
+        error.reasonRef === 'boundary.json.malformed'
+          ? 'Malformed JSON request body.'
+          : 'Omni handoff request did not match the expected schema.',
+      ),
+    ),
+  )
 
 const requireOperatorAuth = <Bindings extends OmniHandoffRouteEnv>(
   dependencies: OmniHandoffRoutesDependencies<Bindings>,
