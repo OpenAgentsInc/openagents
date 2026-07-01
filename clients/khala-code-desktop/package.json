@@ -41,6 +41,7 @@
     "bun-types": "^1.0.0",
     "concurrently": "^9.2.1",
     "fast-check": "^4.8.0",
+    "happy-dom": "^20.9.0",
     "tailwindcss": "^4.2.4",
     "typescript": "catalog:",
     "vite": "^8.0.10"
