@@ -464,7 +464,9 @@ const completedTurnStatus = (turn: JsonObject | null): string =>
 
 const isNoRolloutError = (error: unknown): boolean => {
   const message = error instanceof Error ? error.message : String(error)
-  return message.toLowerCase().includes("no rollout found for thread id")
+  const normalized = message.toLowerCase()
+  return normalized.includes("no rollout found for thread id") ||
+    normalized.includes("thread not found")
 }
 
 const normalizedThreadId = (threadId: string | undefined): string | null => {

@@ -768,6 +768,85 @@ describe("Codex app-server chat runtime", () => {
     expect(await readFile(fixture.statePath, "utf8")).toContain("thread-recovered")
   })
 
+  test("recovers when a loaded Codex thread is reported missing before turn start", async () => {
+    const fixture = await stateFixture()
+    const records: RequestRecord[] = []
+    let replacementStarted = false
+    const host = createFakeHost({
+      records,
+      onRequest: (method, params, subscribers) => {
+        if (method === "thread/start") {
+          if (!replacementStarted) {
+            replacementStarted = true
+            return {
+              thread: { id: "thread-not-found-before-turn", status: "running" },
+              model: "gpt-5.1-codex",
+              modelProvider: "openai",
+              cwd: fixture.root,
+            }
+          }
+          return {
+            thread: { id: "thread-not-found-recovered", status: "running" },
+            model: "gpt-5.1-codex",
+            modelProvider: "openai",
+            cwd: fixture.root,
+          }
+        }
+        if (method === "thread/resume") {
+          expect(params).toMatchObject({ threadId: "thread-not-found-before-turn" })
+          throw new Error("thread not found: thread-not-found-before-turn")
+        }
+        if (method === "turn/start") {
+          if ((params as { threadId?: string }).threadId === "thread-not-found-before-turn") {
+            throw new Error("thread not found: thread-not-found-before-turn")
+          }
+          expect(params).toMatchObject({ threadId: "thread-not-found-recovered" })
+          queueMicrotask(() => {
+            emit(subscribers, {
+              method: "turn/completed",
+              params: {
+                threadId: "thread-not-found-recovered",
+                turn: { id: "turn-not-found-recovered", status: "completed" },
+              },
+            })
+          })
+          return { turn: { id: "turn-not-found-recovered", status: "inProgress" } }
+        }
+        throw new Error(`unexpected request ${method}`)
+      },
+    })
+    const runtime = createCodexAppServerChatRuntime({
+      host,
+      statePath: fixture.statePath,
+      turnTimeoutMs: 1_000,
+      workingDirectory: fixture.root,
+    })
+
+    const thread = await runtime.startThread({ sessionId: "desktop-session-not-found" })
+    expect(thread.threadId).toBe("thread-not-found-before-turn")
+    records.splice(0)
+
+    const response = await runtime.startTurn({
+      messages: [{ id: "user-not-found", role: "user", body: "Recover missing" }],
+      sessionId: "desktop-session-not-found",
+      threadId: "thread-not-found-before-turn",
+      turnId: "desktop-turn-not-found",
+    })
+
+    expect(records.map(record => record.method)).toEqual([
+      "turn/start",
+      "thread/resume",
+      "thread/start",
+      "turn/start",
+    ])
+    expect(response.backend).toMatchObject({
+      threadId: "thread-not-found-recovered",
+      turnId: "turn-not-found-recovered",
+      turnStatus: "completed",
+    })
+    expect(await readFile(fixture.statePath, "utf8")).toContain("thread-not-found-recovered")
+  })
+
   test("resumes a persisted Codex thread for the same desktop session", async () => {
     const fixture = await stateFixture()
     const records: RequestRecord[] = []
