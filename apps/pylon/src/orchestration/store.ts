@@ -1,5 +1,10 @@
 import type { Database } from "bun:sqlite"
 import { createHash } from "node:crypto"
+import { existsSync } from "node:fs"
+import { mkdir, readFile, writeFile } from "node:fs/promises"
+import { join } from "node:path"
+import { Schema as S } from "effect"
+import type { PylonPaths } from "../state.js"
 import {
   isAgentRunnerKind,
   normalizeAgentRunnerKind,
@@ -7,7 +12,7 @@ import {
   type LegacyAgentRunnerKind,
 } from "../agent-runner-registry.js"
 
-export const ORCHESTRATION_SCHEMA_VERSION = 1
+export const ORCHESTRATION_SCHEMA_VERSION = 2
 
 export type OrchestrationTaskStatus =
   | "pending"
@@ -26,6 +31,7 @@ export type OrchestrationTaskSpec = {
   branch?: string
   baseCommit?: string
   issueRef?: string
+  fleetRunRef?: string
 }
 
 export type OrchestrationTask = {
@@ -51,8 +57,88 @@ export type PublicOrchestrationTask = {
   branch: string | null
   baseCommit: string | null
   issueRef: string | null
+  fleetRunRef: string | null
   createdAt: string
   updatedAt: string
+}
+
+export const FLEET_RUN_SCHEMA = "openagents.khala_code.fleet_run.v1" as const
+export const FLEET_RUN_OWNER_LOCAL_STATE_SCHEMA = "openagents.khala_code.fleet_runs.owner_local.v1" as const
+
+export const FleetRunWorkSourceSchema = S.Literals(["github_backlog", "issue_list", "fixture"])
+export type FleetRunWorkSource = typeof FleetRunWorkSourceSchema.Type
+
+export const FleetRunWorkerKindSchema = S.Literals(["codex", "claude", "auto"])
+export type FleetRunWorkerKind = typeof FleetRunWorkerKindSchema.Type
+
+export const FleetRunDispatchKindSchema = S.Literals(["handoff", "supervised_dispatch"])
+export type FleetRunDispatchKind = typeof FleetRunDispatchKindSchema.Type
+
+export const FleetRunStateSchema = S.Literals([
+  "draft",
+  "running",
+  "paused",
+  "draining",
+  "stopped",
+  "completed",
+])
+export type FleetRunState = typeof FleetRunStateSchema.Type
+
+export const FleetRunStopConditionSchema = S.Literals(["backlog_empty", "target_reached", "manual_stop"])
+export type FleetRunStopCondition = typeof FleetRunStopConditionSchema.Type
+
+export const FleetRunRefillPolicySchema = S.Struct({
+  maxPerAccount: S.Number,
+  cooldownAware: S.Boolean,
+  stopCondition: FleetRunStopConditionSchema,
+})
+export type FleetRunRefillPolicy = typeof FleetRunRefillPolicySchema.Type
+
+export const FleetRunCountersSchema = S.Struct({
+  workUnitsTotal: S.Number,
+  activeAssignments: S.Number,
+  completedAssignments: S.Number,
+  failedAssignments: S.Number,
+  blockedAssignments: S.Number,
+})
+export type FleetRunCounters = typeof FleetRunCountersSchema.Type
+
+export const FleetRunSchema = S.Struct({
+  schema: S.Literal(FLEET_RUN_SCHEMA),
+  runRef: S.String,
+  objective: S.String,
+  workSource: FleetRunWorkSourceSchema,
+  targetConcurrency: S.Number,
+  workerKind: FleetRunWorkerKindSchema,
+  refillPolicy: FleetRunRefillPolicySchema,
+  state: FleetRunStateSchema,
+  dispatchKind: FleetRunDispatchKindSchema,
+  dagTracked: S.Boolean,
+  startedAt: S.NullOr(S.String),
+  counters: FleetRunCountersSchema,
+  createdAt: S.String,
+  updatedAt: S.String,
+})
+export type FleetRun = typeof FleetRunSchema.Type
+
+export const FleetRunOwnerLocalStateSchema = S.Struct({
+  schema: S.Literal(FLEET_RUN_OWNER_LOCAL_STATE_SCHEMA),
+  runs: S.Array(FleetRunSchema),
+})
+export type FleetRunOwnerLocalState = typeof FleetRunOwnerLocalStateSchema.Type
+
+export type CreateFleetRunInput = {
+  runRef: string
+  objective: string
+  workSource: FleetRunWorkSource
+  targetConcurrency: number
+  workerKind: FleetRunWorkerKind
+  refillPolicy?: Partial<FleetRunRefillPolicy>
+  state?: FleetRunState
+  dispatchKind?: FleetRunDispatchKind
+  startedAt?: Date | string | null
+  counters?: Partial<FleetRunCounters>
+  now?: Date
 }
 
 export type VirtualHead = {
@@ -167,6 +253,20 @@ type SqliteDatabase = Pick<Database, "exec" | "query" | "run">
 
 const iso = (date: Date = new Date()): string => date.toISOString()
 
+const DEFAULT_FLEET_RUN_COUNTERS: FleetRunCounters = {
+  workUnitsTotal: 0,
+  activeAssignments: 0,
+  completedAssignments: 0,
+  failedAssignments: 0,
+  blockedAssignments: 0,
+}
+
+const DEFAULT_FLEET_RUN_REFILL_POLICY: FleetRunRefillPolicy = {
+  maxPerAccount: 1,
+  cooldownAware: true,
+  stopCondition: "backlog_empty",
+}
+
 const parseJsonArray = (value: string): string[] => {
   const parsed: unknown = JSON.parse(value)
   return Array.isArray(parsed) ? parsed.filter((entry): entry is string => typeof entry === "string") : []
@@ -189,6 +289,71 @@ const normalizeTaskSpec = (spec: OrchestrationTaskSpec): OrchestrationTaskSpec =
   ...spec,
   ...(spec.runnerKind === undefined ? {} : { runnerKind: normalizeOrchestrationRunnerKind(spec.runnerKind) }),
 })
+
+const assertWholePositive = (field: string, value: number): void => {
+  if (!Number.isInteger(value) || value < 1) throw new Error(`fleet run ${field} must be a positive integer`)
+}
+
+const assertWholeNonNegative = (field: string, value: number): void => {
+  if (!Number.isInteger(value) || value < 0) throw new Error(`fleet run ${field} must be a non-negative integer`)
+}
+
+export function decodeFleetRun(input: unknown): FleetRun {
+  const run = S.decodeUnknownSync(FleetRunSchema)(input)
+  if (!run.runRef.trim()) throw new Error("fleet run runRef is required")
+  if (!run.objective.trim()) throw new Error("fleet run objective is required")
+  assertWholePositive("targetConcurrency", run.targetConcurrency)
+  assertWholePositive("refillPolicy.maxPerAccount", run.refillPolicy.maxPerAccount)
+  for (const [key, value] of Object.entries(run.counters) as Array<[keyof FleetRunCounters, number]>) {
+    assertWholeNonNegative(`counters.${key}`, value)
+  }
+  if (run.dispatchKind === "handoff" && run.dagTracked) {
+    throw new Error("fleet run handoff records must not be DAG-tracked")
+  }
+  if (run.dispatchKind === "supervised_dispatch" && !run.dagTracked) {
+    throw new Error("fleet run supervised dispatch records must be DAG-tracked")
+  }
+  if (run.startedAt !== null && Number.isNaN(Date.parse(run.startedAt))) {
+    throw new Error("fleet run startedAt must be ISO-compatible or null")
+  }
+  if (Number.isNaN(Date.parse(run.createdAt)) || Number.isNaN(Date.parse(run.updatedAt))) {
+    throw new Error("fleet run timestamps must be ISO-compatible")
+  }
+  return run
+}
+
+export function buildFleetRun(input: CreateFleetRunInput): FleetRun {
+  const now = input.now ?? new Date()
+  const state = input.state ?? "draft"
+  const dispatchKind = input.dispatchKind ?? "supervised_dispatch"
+  const run: FleetRun = {
+    schema: FLEET_RUN_SCHEMA,
+    runRef: input.runRef,
+    objective: input.objective,
+    workSource: input.workSource,
+    targetConcurrency: input.targetConcurrency,
+    workerKind: input.workerKind,
+    refillPolicy: {
+      ...DEFAULT_FLEET_RUN_REFILL_POLICY,
+      ...input.refillPolicy,
+    },
+    state,
+    dispatchKind,
+    dagTracked: dispatchKind === "supervised_dispatch",
+    startedAt: input.startedAt === undefined
+      ? state === "running" ? iso(now) : null
+      : input.startedAt instanceof Date ? iso(input.startedAt) : input.startedAt,
+    counters: {
+      ...DEFAULT_FLEET_RUN_COUNTERS,
+      ...input.counters,
+    },
+    createdAt: iso(now),
+    updatedAt: iso(now),
+  }
+  return decodeFleetRun(run)
+}
+
+const fleetRunFromJson = (value: string): FleetRun => decodeFleetRun(JSON.parse(value))
 
 export function normalizeOrchestrationRunnerKind(
   kind: OrchestrationRunnerKind | LegacyAgentRunnerKind,
@@ -238,6 +403,17 @@ type VirtualHeadRow = {
   updated_at: string
 }
 
+type FleetRunRow = {
+  run_ref: string
+  record_json: string
+  state: FleetRunState
+  dispatch_kind: FleetRunDispatchKind
+  worker_kind: FleetRunWorkerKind
+  created_at: string
+  updated_at: string
+  started_at: string | null
+}
+
 type MessageRow = {
   id: string
   thread_id: string
@@ -271,6 +447,7 @@ export const publicOrchestrationTaskFrom = (task: OrchestrationTask): PublicOrch
   branch: task.spec.branch ?? null,
   baseCommit: task.spec.baseCommit ?? null,
   issueRef: task.spec.issueRef ?? null,
+  fleetRunRef: task.spec.fleetRunRef ?? null,
   createdAt: task.createdAt,
   updatedAt: task.updatedAt,
 })
@@ -388,10 +565,116 @@ export class PylonOrchestrationStore {
         updated_at TEXT NOT NULL,
         PRIMARY KEY (repo, branch)
       );
+      CREATE TABLE IF NOT EXISTS pylon_orchestration_fleet_runs (
+        run_ref TEXT PRIMARY KEY,
+        record_json TEXT NOT NULL,
+        state TEXT NOT NULL CHECK (state IN ('draft', 'running', 'paused', 'draining', 'stopped', 'completed')),
+        dispatch_kind TEXT NOT NULL CHECK (dispatch_kind IN ('handoff', 'supervised_dispatch')),
+        worker_kind TEXT NOT NULL CHECK (worker_kind IN ('codex', 'claude', 'auto')),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        started_at TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_pylon_orchestration_fleet_runs_state
+        ON pylon_orchestration_fleet_runs(state, updated_at);
+      CREATE INDEX IF NOT EXISTS idx_pylon_orchestration_fleet_runs_dispatch
+        ON pylon_orchestration_fleet_runs(dispatch_kind, updated_at);
     `)
     this.db
       .query("INSERT OR REPLACE INTO pylon_orchestration_meta (key, value) VALUES ('schema_version', $version)")
       .run({ $version: String(ORCHESTRATION_SCHEMA_VERSION) })
+  }
+
+  createFleetRun(input: CreateFleetRunInput): FleetRun {
+    const run = buildFleetRun(input)
+    return this.upsertFleetRun(run)
+  }
+
+  upsertFleetRun(input: FleetRun, now?: Date): FleetRun {
+    const current = decodeFleetRun(input)
+    const updatedAt = now === undefined ? current.updatedAt : iso(now)
+    const run = decodeFleetRun({ ...current, updatedAt })
+    this.db
+      .query(`
+        INSERT INTO pylon_orchestration_fleet_runs
+          (run_ref, record_json, state, dispatch_kind, worker_kind, created_at, updated_at, started_at)
+        VALUES
+          ($runRef, $recordJson, $state, $dispatchKind, $workerKind, $createdAt, $updatedAt, $startedAt)
+        ON CONFLICT(run_ref) DO UPDATE SET
+          record_json = excluded.record_json,
+          state = excluded.state,
+          dispatch_kind = excluded.dispatch_kind,
+          worker_kind = excluded.worker_kind,
+          updated_at = excluded.updated_at,
+          started_at = excluded.started_at
+      `)
+      .run({
+        $runRef: run.runRef,
+        $recordJson: JSON.stringify(run),
+        $state: run.state,
+        $dispatchKind: run.dispatchKind,
+        $workerKind: run.workerKind,
+        $createdAt: run.createdAt,
+        $updatedAt: run.updatedAt,
+        $startedAt: run.startedAt,
+      })
+    const stored = this.getFleetRun(run.runRef)
+    if (stored === null) throw new Error(`failed to persist fleet run ${run.runRef}`)
+    return stored
+  }
+
+  getFleetRun(runRef: string): FleetRun | null {
+    const row = this.db
+      .query("SELECT * FROM pylon_orchestration_fleet_runs WHERE run_ref = $runRef")
+      .get({ $runRef: runRef }) as FleetRunRow | null
+    return row === null ? null : fleetRunFromJson(row.record_json)
+  }
+
+  listFleetRuns(state?: FleetRunState): FleetRun[] {
+    const rows = state === undefined
+      ? this.db.query("SELECT * FROM pylon_orchestration_fleet_runs ORDER BY created_at ASC").all()
+      : this.db
+        .query("SELECT * FROM pylon_orchestration_fleet_runs WHERE state = $state ORDER BY created_at ASC")
+        .all({ $state: state })
+    return (rows as FleetRunRow[]).map((row) => fleetRunFromJson(row.record_json))
+  }
+
+  updateFleetRunState(runRef: string, state: FleetRunState, now: Date = new Date()): FleetRun {
+    const current = this.getFleetRun(runRef)
+    if (current === null) throw new Error(`unknown fleet run: ${runRef}`)
+    return this.upsertFleetRun({
+      ...current,
+      state,
+      startedAt: state === "running" && current.startedAt === null ? iso(now) : current.startedAt,
+      updatedAt: iso(now),
+    })
+  }
+
+  reconcileFleetRun(runRef: string, now: Date = new Date()): FleetRun {
+    const run = this.getFleetRun(runRef)
+    if (run === null) throw new Error(`unknown fleet run: ${runRef}`)
+    const tasks = this.listTasks().filter((task) => task.spec.fleetRunRef === runRef)
+    const counters: FleetRunCounters = {
+      workUnitsTotal: tasks.length,
+      activeAssignments: tasks.filter((task) => task.status === "dispatched").length,
+      completedAssignments: tasks.filter((task) => task.status === "completed").length,
+      failedAssignments: tasks.filter((task) => task.status === "failed").length,
+      blockedAssignments: tasks.filter((task) => task.status === "blocked").length,
+    }
+    const terminalCount = counters.completedAssignments + counters.failedAssignments + counters.blockedAssignments
+    const shouldClose =
+      tasks.length > 0 &&
+      terminalCount === tasks.length &&
+      counters.activeAssignments === 0 &&
+      (run.state === "running" || run.state === "draining")
+    const state: FleetRunState = shouldClose && counters.failedAssignments === 0 && counters.blockedAssignments === 0
+      ? "completed"
+      : shouldClose ? "stopped" : run.state
+    return this.upsertFleetRun({ ...run, state, counters, updatedAt: iso(now) })
+  }
+
+  reconcileFleetRuns(now: Date = new Date()): FleetRun[] {
+    return this.listFleetRuns().map((run) => this.reconcileFleetRun(run.runRef, now))
   }
 
   createTask(input: CreateTaskInput): OrchestrationTask {
@@ -847,6 +1130,55 @@ export class PylonOrchestrationStore {
       dispatchContexts: this.listDispatchContexts().map(publicDispatchContextFrom),
     }
   }
+}
+
+export const fleetRunOwnerLocalStatePath = (paths: Pick<PylonPaths, "home">): string =>
+  join(paths.home, "fleet-runs.json")
+
+export async function loadFleetRunOwnerLocalState(
+  paths: Pick<PylonPaths, "home">,
+): Promise<FleetRunOwnerLocalState> {
+  const path = fleetRunOwnerLocalStatePath(paths)
+  if (!existsSync(path)) return { schema: FLEET_RUN_OWNER_LOCAL_STATE_SCHEMA, runs: [] }
+  const parsed: unknown = JSON.parse(await readFile(path, "utf8"))
+  const state = S.decodeUnknownSync(FleetRunOwnerLocalStateSchema)(parsed)
+  return { ...state, runs: state.runs.map(decodeFleetRun) }
+}
+
+export async function saveFleetRunOwnerLocalState(
+  paths: Pick<PylonPaths, "home">,
+  state: FleetRunOwnerLocalState,
+): Promise<void> {
+  const decoded = S.decodeUnknownSync(FleetRunOwnerLocalStateSchema)(state)
+  const validated = { ...decoded, runs: decoded.runs.map(decodeFleetRun) }
+  await mkdir(paths.home, { recursive: true })
+  await writeFile(fleetRunOwnerLocalStatePath(paths), `${JSON.stringify(validated, null, 2)}\n`, { mode: 0o600 })
+}
+
+export async function syncFleetRunsToOwnerLocalState(
+  store: PylonOrchestrationStore,
+  paths: Pick<PylonPaths, "home">,
+): Promise<FleetRunOwnerLocalState> {
+  const state: FleetRunOwnerLocalState = {
+    schema: FLEET_RUN_OWNER_LOCAL_STATE_SCHEMA,
+    runs: store.listFleetRuns(),
+  }
+  await saveFleetRunOwnerLocalState(paths, state)
+  return state
+}
+
+export async function reconcileFleetRunsFromOwnerLocalState(
+  store: PylonOrchestrationStore,
+  paths: Pick<PylonPaths, "home">,
+  input: { now?: Date } = {},
+): Promise<FleetRun[]> {
+  const localState = await loadFleetRunOwnerLocalState(paths)
+  for (const run of localState.runs) {
+    store.upsertFleetRun(run, input.now)
+  }
+  const reconciled = store.reconcileFleetRuns(input.now)
+  await syncFleetRunsToOwnerLocalState(store, paths)
+  return reconciled
 }
 
 export const createPylonOrchestrationStore = (db: SqliteDatabase): PylonOrchestrationStore => {

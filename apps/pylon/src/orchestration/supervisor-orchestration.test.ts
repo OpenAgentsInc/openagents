@@ -1,13 +1,22 @@
 import { describe, expect, test } from "bun:test"
 import { Database } from "bun:sqlite"
+import { mkdtemp, readFile } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 
 import { dispatchEligibility, dispatchLiveness, dispatchReadySupervisorTasks } from "./coordinator.js"
 import { parseOrchestrationGroupAddress, resolveOrchestrationGroup } from "./groups.js"
 import { encodeAgentRunnerStatusEventForDispatchContext } from "./status-control.js"
 import {
+  FLEET_RUN_SCHEMA,
   createPylonOrchestrationStore,
+  fleetRunOwnerLocalStatePath,
   isStoredOrchestrationRunnerKind,
+  loadFleetRunOwnerLocalState,
   normalizeOrchestrationRunnerKind,
+  reconcileFleetRunsFromOwnerLocalState,
+  saveFleetRunOwnerLocalState,
+  syncFleetRunsToOwnerLocalState,
 } from "./store.js"
 
 const baseTaskSpec = {
@@ -266,6 +275,7 @@ describe("Pylon supervisor orchestration store", () => {
         branch: "main",
         baseCommit: "abc123",
         issueRef: "issue.7808",
+        fleetRunRef: null,
         createdAt: "2026-06-27T12:00:00.000Z",
         updatedAt: "2026-06-27T12:00:00.000Z",
       },
@@ -273,6 +283,209 @@ describe("Pylon supervisor orchestration store", () => {
     expect(JSON.stringify(snapshot)).not.toContain("Public issue prompt")
     expect(JSON.stringify(snapshot)).not.toContain("/private/local/worktree/path")
     expect(snapshot.dispatchContexts[0]?.worktreePath).toBeNull()
+  })
+
+  test("persists FleetRun records on the orchestration store with supervised-dispatch taxonomy", () => {
+    const now = new Date("2026-07-01T12:00:00.000Z")
+    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const run = store.createFleetRun({
+      runRef: "fleet_run.t2_1",
+      objective: "Burn down the public Fable fixture backlog.",
+      workSource: "fixture",
+      targetConcurrency: 25,
+      workerKind: "codex",
+      state: "running",
+      refillPolicy: {
+        maxPerAccount: 3,
+        cooldownAware: true,
+        stopCondition: "backlog_empty",
+      },
+      now,
+    })
+
+    expect(run).toMatchObject({
+      schema: FLEET_RUN_SCHEMA,
+      runRef: "fleet_run.t2_1",
+      workSource: "fixture",
+      targetConcurrency: 25,
+      workerKind: "codex",
+      state: "running",
+      dispatchKind: "supervised_dispatch",
+      dagTracked: true,
+      startedAt: "2026-07-01T12:00:00.000Z",
+      counters: {
+        workUnitsTotal: 0,
+        activeAssignments: 0,
+        completedAssignments: 0,
+        failedAssignments: 0,
+        blockedAssignments: 0,
+      },
+    })
+    expect(store.getFleetRun("fleet_run.t2_1")).toEqual(run)
+    expect(store.listFleetRuns("running").map((entry) => entry.runRef)).toEqual(["fleet_run.t2_1"])
+  })
+
+  test("rejects FleetRun handoffs that claim DAG tracking", () => {
+    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const handoff = store.createFleetRun({
+      runRef: "fleet_run.handoff",
+      objective: "One-shot handoff.",
+      workSource: "fixture",
+      targetConcurrency: 1,
+      workerKind: "codex",
+      dispatchKind: "handoff",
+    })
+
+    expect(handoff.dispatchKind).toBe("handoff")
+    expect(handoff.dagTracked).toBe(false)
+    expect(() => store.upsertFleetRun({ ...handoff, dagTracked: true })).toThrow(
+      "fleet run handoff records must not be DAG-tracked",
+    )
+  })
+
+  test("reconciles FleetRun counters from existing orchestration tasks", () => {
+    const now = new Date("2026-07-01T12:00:00.000Z")
+    const doneAt = new Date("2026-07-01T12:05:00.000Z")
+    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    store.createFleetRun({
+      runRef: "fleet_run.reconcile",
+      objective: "Run three fixture work units.",
+      workSource: "fixture",
+      targetConcurrency: 2,
+      workerKind: "codex",
+      state: "running",
+      now,
+    })
+    store.createTask({
+      id: "task.completed",
+      spec: { ...baseTaskSpec, title: "completed", fleetRunRef: "fleet_run.reconcile" },
+      now,
+    })
+    store.createTask({
+      id: "task.dispatched",
+      spec: { ...baseTaskSpec, title: "dispatched", fleetRunRef: "fleet_run.reconcile" },
+      now,
+    })
+    store.createTask({
+      id: "task.blocked",
+      spec: { ...baseTaskSpec, title: "blocked", fleetRunRef: "fleet_run.reconcile" },
+      now,
+    })
+    store.createDispatchContext({
+      id: "ctx.codex.reconcile",
+      assigneeHandle: "codex-1",
+      runnerKind: "codex",
+      lastHeartbeatAt: now,
+      now,
+    })
+    store.markDispatched("task.dispatched", "ctx.codex.reconcile", now)
+    store.completeTask("task.completed", JSON.stringify({ ok: true }), doneAt)
+    store.updateTaskSpec("task.blocked", { ...baseTaskSpec, title: "blocked", fleetRunRef: "fleet_run.reconcile" }, doneAt)
+    store.recordWorkerDone({
+      contextId: "ctx.codex.reconcile",
+      taskId: "task.dispatched",
+      status: "completed",
+      now: doneAt,
+    })
+    store.updateFleetRunState("fleet_run.reconcile", "running", doneAt)
+
+    const reconciled = store.reconcileFleetRun("fleet_run.reconcile", doneAt)
+
+    expect(reconciled.counters).toEqual({
+      workUnitsTotal: 3,
+      activeAssignments: 0,
+      completedAssignments: 2,
+      failedAssignments: 0,
+      blockedAssignments: 0,
+    })
+    expect(reconciled.state).toBe("running")
+  })
+
+  test("reconciles completed FleetRuns when every DAG-tracked work unit is terminal", () => {
+    const now = new Date("2026-07-01T12:00:00.000Z")
+    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    store.createFleetRun({
+      runRef: "fleet_run.completed",
+      objective: "Finish a fixture work unit.",
+      workSource: "fixture",
+      targetConcurrency: 1,
+      workerKind: "codex",
+      state: "running",
+      now,
+    })
+    store.createTask({
+      id: "task.done",
+      spec: { ...baseTaskSpec, title: "done", fleetRunRef: "fleet_run.completed" },
+      now,
+    })
+    store.completeTask("task.done", JSON.stringify({ ok: true }), now)
+
+    const reconciled = store.reconcileFleetRun("fleet_run.completed", now)
+
+    expect(reconciled.state).toBe("completed")
+    expect(reconciled.counters.completedAssignments).toBe(1)
+  })
+
+  test("mirrors FleetRun records to owner-local state and rehydrates a fresh store", async () => {
+    const now = new Date("2026-07-01T12:00:00.000Z")
+    const home = await mkdtemp(join(tmpdir(), "pylon-fleet-runs-"))
+    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const run = store.createFleetRun({
+      runRef: "fleet_run.owner_local",
+      objective: "Resume fixture work after restart.",
+      workSource: "fixture",
+      targetConcurrency: 4,
+      workerKind: "auto",
+      state: "paused",
+      now,
+    })
+
+    await syncFleetRunsToOwnerLocalState(store, { home })
+    const statePath = fleetRunOwnerLocalStatePath({ home })
+    const file = JSON.parse(await readFile(statePath, "utf8")) as { runs: unknown[] }
+    expect(file.runs).toHaveLength(1)
+    expect(file.runs[0]).toMatchObject({ runRef: run.runRef, schema: FLEET_RUN_SCHEMA })
+
+    const freshStore = createPylonOrchestrationStore(new Database(":memory:"))
+    const rehydrated = await reconcileFleetRunsFromOwnerLocalState(freshStore, { home }, { now })
+
+    expect(rehydrated.map((entry) => entry.runRef)).toEqual(["fleet_run.owner_local"])
+    expect(freshStore.getFleetRun("fleet_run.owner_local")?.state).toBe("paused")
+    expect(await loadFleetRunOwnerLocalState({ home })).toMatchObject({
+      runs: [{ runRef: "fleet_run.owner_local" }],
+    })
+  })
+
+  test("owner-local FleetRun state rejects malformed persisted records", async () => {
+    const home = await mkdtemp(join(tmpdir(), "pylon-fleet-runs-bad-"))
+
+    await expect(saveFleetRunOwnerLocalState({ home }, {
+      schema: "openagents.khala_code.fleet_runs.owner_local.v1",
+      runs: [
+        {
+          schema: FLEET_RUN_SCHEMA,
+          runRef: "fleet_run.bad",
+          objective: "bad",
+          workSource: "fixture",
+          targetConcurrency: 0,
+          workerKind: "codex",
+          refillPolicy: { maxPerAccount: 1, cooldownAware: true, stopCondition: "backlog_empty" },
+          state: "draft",
+          dispatchKind: "supervised_dispatch",
+          dagTracked: true,
+          startedAt: null,
+          counters: {
+            workUnitsTotal: 0,
+            activeAssignments: 0,
+            completedAssignments: 0,
+            failedAssignments: 0,
+            blockedAssignments: 0,
+          },
+          createdAt: "2026-07-01T12:00:00.000Z",
+          updatedAt: "2026-07-01T12:00:00.000Z",
+        },
+      ],
+    })).rejects.toThrow("fleet run targetConcurrency must be a positive integer")
   })
 
   test("refuses an otherwise healthy idle context when the ready task requires another runner", () => {
