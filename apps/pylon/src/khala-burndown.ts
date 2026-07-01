@@ -232,7 +232,9 @@ export function buildPylonKhalaBurndownPlan(input: {
     ),
   )
   const iterations = Math.max(1, Math.floor(input.iterations ?? 1))
-  const selectedParallel = Math.min(maxParallel, accounts.length, advertisedCodexAvailability)
+  const selectedParallel = accounts.length === 0 || advertisedCodexAvailability === 0
+    ? 0
+    : Math.min(maxParallel, advertisedCodexAvailability)
   const selectedAccounts = weightedKhalaAccountPool(accounts, advertisedAccountCapacity, selectedParallel)
   const requestedIssueNumbers = uniqueIssueNumbers(input.issueNumbers)
   const issueNumbers = requestedIssueNumbers.slice(0, selectedParallel * iterations)
