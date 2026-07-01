@@ -1166,6 +1166,15 @@ describe("khala code desktop app shell", () => {
     expect(css).not.toContain("cursor: wait")
   })
 
+  test("focuses the composer after starting a new thread from the sidebar", async () => {
+    const main = await Bun.file(new URL("../src/ui/main.ts", import.meta.url)).text()
+    const sidebar = await Bun.file(new URL("../src/ui/codex-thread-sidebar.ts", import.meta.url)).text()
+
+    expect(sidebar).toContain("readonly onThreadStarted?: () => void")
+    expect(sidebar).toContain("await refresh()\n      options.onThreadStarted?.()")
+    expect(main).toContain("onThreadStarted: () => requestAnimationFrame(focusComposerInput)")
+  })
+
   test("keeps transcript scrolling user-controlled during streaming updates", async () => {
     const main = await Bun.file(new URL("../src/ui/main.ts", import.meta.url)).text()
     const css = await Bun.file(new URL("../src/ui/styles.css", import.meta.url)).text()

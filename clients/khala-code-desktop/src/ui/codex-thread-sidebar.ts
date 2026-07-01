@@ -36,6 +36,7 @@ export type CodexThreadSidebarOptions = {
   readonly sessionId: string
   readonly startThread: () => Promise<KhalaCodeDesktopCodexThreadResult>
   readonly unarchiveThread: (threadId: string) => Promise<KhalaCodeDesktopCodexThreadMutationResult>
+  readonly onThreadStarted?: () => void
   readonly onThreadSelected: (
     input: {
       readonly messages: readonly KhalaCodeDesktopMessage[]
@@ -165,7 +166,8 @@ export const mountCodexThreadSidebar = (
         threadId: result.threadId,
         messages: messagesForResult(result),
       })
-      void refresh()
+      await refresh()
+      options.onThreadStarted?.()
     } catch (error) {
       setStatusError(error)
     }

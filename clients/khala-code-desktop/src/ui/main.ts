@@ -2199,6 +2199,7 @@ const threadSidebar =
         sessionId,
         startThread: () => controls.codexThreadStart({ sessionId }),
         unarchiveThread: threadId => controls.codexThreadUnarchive({ threadId }),
+        onThreadStarted: () => requestAnimationFrame(focusComposerInput),
         onThreadSelected: activateCodexThread,
       })
 
