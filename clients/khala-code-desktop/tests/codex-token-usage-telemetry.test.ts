@@ -12,6 +12,7 @@ import {
   khalaCodeDesktopCodexTokenUsageEventRefs,
   khalaCodeDesktopTokenUsageTelemetryStatus,
   readKhalaCodeDesktopThreadTokenSummary,
+  startKhalaCodeDesktopTokenUsageBackgroundSync,
   syncKhalaCodeDesktopPendingTokenUsageReports,
 } from "../src/bun/codex-token-usage-telemetry"
 
@@ -270,6 +271,85 @@ describe("Codex token usage telemetry", () => {
       "utf8",
     )).trim().split("\n")
     expect(successRows).toHaveLength(1)
+  })
+
+  test("background sync replays pending Khala usage rows on startup and interval ticks", async () => {
+    const root = await tempLedgerRoot()
+    const localLedgerPath = join(root, "token-usage-events.jsonl")
+    const firstEvent = khalaCodeDesktopCodexTokenUsageEvent({
+      ...sampleReport(),
+      codexThreadId: "thread-background-sync",
+      codexTurnId: "turn-background-sync-1",
+      desktopTurnId: "desktop-turn-background-sync-1",
+    })
+    const secondEvent = khalaCodeDesktopCodexTokenUsageEvent({
+      ...sampleReport(),
+      codexThreadId: "thread-background-sync",
+      codexTurnId: "turn-background-sync-2",
+      desktopTurnId: "desktop-turn-background-sync-2",
+    })
+    await appendFile(localLedgerPath, `${JSON.stringify({
+      schemaVersion: "khala-code-desktop.codex-token-usage.local.v1",
+      recordedAt: "2026-07-01T16:29:00.000Z",
+      event: firstEvent,
+    })}\n`, "utf8")
+
+    const posts: Array<{ readonly body: unknown, readonly url: string }> = []
+    const resultResolvers: Array<(result: unknown) => void> = []
+    const nextResult = () => new Promise(resolve => resultResolvers.push(resolve))
+    const intervalRef: { callback?: () => void } = {}
+    let intervalMs = 0
+    let cleared = false
+    const firstResult = nextResult()
+    const backgroundSync = startKhalaCodeDesktopTokenUsageBackgroundSync({
+      env: {
+        KHALA_CODE_TOKEN_USAGE_BASE_URL: "https://openagents.example",
+        KHALA_CODE_TOKEN_USAGE_BEARER_TOKEN: "test-token",
+      },
+      fetch: async (url, init) => {
+        posts.push({
+          body: JSON.parse(String(init?.body)),
+          url: String(url),
+        })
+        return new Response(JSON.stringify({ inserted: true }), { status: 201 })
+      },
+      intervalMs: 1_000,
+      localLedgerPath,
+      onResult: result => resultResolvers.shift()?.(result),
+      setInterval: (callback, milliseconds) => {
+        intervalRef.callback = callback
+        intervalMs = milliseconds
+        return "timer"
+      },
+      clearInterval: timer => {
+        cleared = timer === "timer"
+      },
+    })
+
+    await firstResult
+    expect(intervalMs).toBe(1_000)
+    expect(posts.map(post => (post.body as { eventId?: string }).eventId)).toEqual([
+      String(firstEvent.eventId),
+    ])
+
+    await appendFile(localLedgerPath, `${JSON.stringify({
+      schemaVersion: "khala-code-desktop.codex-token-usage.local.v1",
+      recordedAt: "2026-07-01T16:30:00.000Z",
+      event: secondEvent,
+    })}\n`, "utf8")
+    const secondResult = nextResult()
+    if (intervalRef.callback === undefined) {
+      throw new Error("background sync did not register an interval callback")
+    }
+    intervalRef.callback()
+    await secondResult
+
+    expect(posts.map(post => (post.body as { eventId?: string }).eventId)).toEqual([
+      String(firstEvent.eventId),
+      String(secondEvent.eventId),
+    ])
+    backgroundSync.dispose()
+    expect(cleared).toBe(true)
   })
 
   test("stores local message provenance with exact turn token refs for reconciliation", async () => {

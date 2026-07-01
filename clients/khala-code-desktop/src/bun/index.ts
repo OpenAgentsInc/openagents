@@ -18,6 +18,7 @@ import { createCodexAppServerHost } from "./codex-app-server-client.js"
 import {
   createKhalaCodeDesktopCodexMessageTokenAuditRecorder,
   createKhalaCodeDesktopCodexTokenUsageReporter,
+  startKhalaCodeDesktopTokenUsageBackgroundSync,
 } from "./codex-token-usage-telemetry.js"
 import { createOnDeviceDeciderHost } from "./on-device-decider-host.js"
 import { createKhalaCodeDesktopRpcRequestHandlers } from "./rpc-handlers.js"
@@ -279,6 +280,16 @@ const appleFmReadiness = () =>
     platform: { platform: process.platform, arch: process.arch },
   })
 const codexAppServerHost = createCodexAppServerHost({ env: Bun.env })
+const tokenUsageBackgroundSync = startKhalaCodeDesktopTokenUsageBackgroundSync({
+  env: Bun.env,
+  onError: error => {
+    console.warn(
+      `Khala Code token usage sync failed: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    )
+  },
+})
 
 // Optional on-device decider: a small local model that selects a
 // platform-appropriate backend. Apple FM is omitted for launch unless a future
@@ -294,13 +305,18 @@ rpcRequestHandlers = createKhalaCodeDesktopRpcRequestHandlers({
   workingDirectory: resolveToolWorkingDirectory(Bun.env),
 })
 
-process.once("exit", () => codexAppServerHost.dispose())
-process.once("SIGINT", () => {
+const disposeRuntime = (): void => {
+  tokenUsageBackgroundSync.dispose()
   codexAppServerHost.dispose()
+}
+
+process.once("exit", disposeRuntime)
+process.once("SIGINT", () => {
+  disposeRuntime()
   process.exit(130)
 })
 process.once("SIGTERM", () => {
-  codexAppServerHost.dispose()
+  disposeRuntime()
   process.exit(143)
 })
 

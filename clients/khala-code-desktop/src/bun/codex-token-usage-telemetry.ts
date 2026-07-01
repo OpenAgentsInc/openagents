@@ -133,6 +133,20 @@ export type SyncKhalaCodeDesktopPendingTokenUsageReportsOptions = {
   readonly localLedgerPath?: string
 }
 
+export type StartKhalaCodeDesktopTokenUsageBackgroundSyncOptions =
+  SyncKhalaCodeDesktopPendingTokenUsageReportsOptions & {
+    readonly clearInterval?: (timer: unknown) => void
+    readonly intervalMs?: number
+    readonly onError?: (error: unknown) => void
+    readonly onResult?: (result: KhalaCodeDesktopTokenUsageSyncResult) => void
+    readonly setInterval?: (callback: () => void, milliseconds: number) => unknown
+  }
+
+export type KhalaCodeDesktopTokenUsageBackgroundSync = {
+  readonly dispose: () => void
+  readonly syncNow: () => Promise<KhalaCodeDesktopTokenUsageSyncResult | null>
+}
+
 export type CreateKhalaCodeDesktopCodexMessageTokenAuditRecorderOptions = {
   readonly env?: Readonly<Record<string, string | undefined>>
   readonly localMessageAuditLedgerPath?: string
@@ -207,6 +221,16 @@ const defaultCodexStateDbPath = (
   nonEmpty(env.KHALA_CODE_CODEX_STATE_DB_PATH) ??
   nonEmpty(env.CODEX_STATE_DB_PATH) ??
   join(homedir(), ".codex", "state_5.sqlite")
+
+const defaultTokenUsageSyncIntervalMs = (
+  env: Readonly<Record<string, string | undefined>>,
+): number => {
+  if (boolEnv(env.KHALA_CODE_TOKEN_USAGE_BACKGROUND_SYNC_DISABLED)) return 0
+  const explicit = nonEmpty(env.KHALA_CODE_TOKEN_USAGE_SYNC_INTERVAL_MS)
+  if (explicit === null) return 60_000
+  const parsed = Number.parseInt(explicit, 10)
+  return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : 60_000
+}
 
 const unquoteEnvValue = (value: string): string => {
   const trimmed = value.trim()
@@ -826,6 +850,54 @@ export async function syncKhalaCodeDesktopPendingTokenUsageReports(
   const fetchImpl: FetchLike = options.fetch ?? ((url, init) => globalThis.fetch(url, init))
   const endpoint = new URL("/api/stats/token-usage/events", config.baseUrl)
   return syncPendingTokenUsageReports(config, fetchImpl, endpoint)
+}
+
+export function startKhalaCodeDesktopTokenUsageBackgroundSync(
+  options: StartKhalaCodeDesktopTokenUsageBackgroundSyncOptions = {},
+): KhalaCodeDesktopTokenUsageBackgroundSync {
+  const env = options.env ?? process.env
+  const intervalMs = options.intervalMs ?? defaultTokenUsageSyncIntervalMs(env)
+  const setIntervalImpl = options.setInterval ??
+    ((callback: () => void, milliseconds: number) =>
+      globalThis.setInterval(callback, milliseconds))
+  const clearIntervalImpl = options.clearInterval ??
+    ((timer: unknown) =>
+      globalThis.clearInterval(timer as ReturnType<typeof globalThis.setInterval>))
+  let disposed = false
+  let inFlight: Promise<KhalaCodeDesktopTokenUsageSyncResult | null> | null = null
+
+  const syncNow = (): Promise<KhalaCodeDesktopTokenUsageSyncResult | null> => {
+    if (disposed) return Promise.resolve(null)
+    if (inFlight !== null) return inFlight
+    inFlight = syncKhalaCodeDesktopPendingTokenUsageReports(options)
+      .then(result => {
+        options.onResult?.(result)
+        return result
+      })
+      .catch(error => {
+        options.onError?.(error)
+        return null
+      })
+      .finally(() => {
+        inFlight = null
+      })
+    return inFlight
+  }
+
+  const timer = intervalMs > 0
+    ? setIntervalImpl(() => {
+      void syncNow()
+    }, intervalMs)
+    : null
+  void syncNow()
+
+  return {
+    dispose: () => {
+      disposed = true
+      if (timer !== null) clearIntervalImpl(timer)
+    },
+    syncNow,
+  }
 }
 
 export function createKhalaCodeDesktopCodexTokenUsageReporter(
