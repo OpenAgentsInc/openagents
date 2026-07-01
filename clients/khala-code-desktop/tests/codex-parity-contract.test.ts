@@ -6,7 +6,8 @@ import {
   codexSchemaPath,
   extractAppServerMethodsFromGeneratedType,
   extractThreadItemTypesFromGeneratedType,
-  findCodexReferenceRoot,
+  inspectCodexReferenceRoot,
+  KHALA_CODE_CODEX_REFERENCE_CHECKOUT_MISSING_BLOCKER_REF,
   KHALA_CODE_CODEX_PARITY_COVERAGE,
   KHALA_CODE_CODEX_PARITY_REFERENCE_COMMIT,
   KHALA_CODE_CODEX_PARITY_REQUIRED_CLIENT_METHODS,
@@ -22,9 +23,36 @@ import {
   khalaCodeDesktopSlashCommandDispatchCoverage,
 } from "../src/shared/codex-slash-commands"
 
+const expectCodexReferenceRootOrBlocker = (): string | null => {
+  const status = inspectCodexReferenceRoot()
+  if (status.ok) return status.root
+
+  expect(status).toMatchObject({
+    blockerRef: KHALA_CODE_CODEX_REFERENCE_CHECKOUT_MISSING_BLOCKER_REF,
+    ok: false,
+    status: "blocked",
+  })
+  expect(status.reason.length).toBeGreaterThan(0)
+  return null
+}
+
 describe("Khala Code Codex parity contract", () => {
+  test("reports blocker.codex_reference_checkout_missing when the reference checkout is absent", () => {
+    const status = inspectCodexReferenceRoot("/private/tmp/khala-code-missing-codex-reference", {})
+
+    expect(status).toMatchObject({
+      blockerRef: KHALA_CODE_CODEX_REFERENCE_CHECKOUT_MISSING_BLOCKER_REF,
+      ok: false,
+      status: "blocked",
+    })
+    if (status.ok) return
+
+    expect(status.reason).toContain("projects/repos/codex")
+  })
+
   test("pins the Codex reference checkout used for fixture parity", async () => {
-    const root = findCodexReferenceRoot()
+    const root = expectCodexReferenceRootOrBlocker()
+    if (root === null) return
 
     expect(await readCodexReferenceCommit(root)).toBe(KHALA_CODE_CODEX_PARITY_REFERENCE_COMMIT)
     expect(existsSync(`${root}/codex-rs/tui/src/slash_command.rs`)).toBe(true)
@@ -33,7 +61,9 @@ describe("Khala Code Codex parity contract", () => {
   })
 
   test("requires generated app-server schema files and parity-critical methods", async () => {
-    const root = findCodexReferenceRoot()
+    const root = expectCodexReferenceRootOrBlocker()
+    if (root === null) return
+
     const missingFiles = KHALA_CODE_CODEX_PARITY_REQUIRED_SCHEMA_FILES
       .filter(relative => !existsSync(codexSchemaPath(root, relative)))
 
@@ -61,7 +91,9 @@ describe("Khala Code Codex parity contract", () => {
   })
 
   test("tracks upstream ThreadItem variants with fixture coverage", async () => {
-    const root = findCodexReferenceRoot()
+    const root = expectCodexReferenceRootOrBlocker()
+    if (root === null) return
+
     const upstreamTypes = extractThreadItemTypesFromGeneratedType(
       await readCodexSchemaFile(root, "v2/ThreadItem.ts"),
     )

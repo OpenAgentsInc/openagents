@@ -5,6 +5,10 @@ import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 
 import {
+  inspectCodexReferenceRoot,
+  KHALA_CODE_CODEX_REFERENCE_CHECKOUT_MISSING_BLOCKER_REF,
+} from "../src/bun/codex-parity-contract"
+import {
   KHALA_CODE_DESKTOP_SLASH_COMMANDS,
   evaluateKhalaCodeDesktopSlashCommandAvailability,
   findKhalaCodeDesktopSlashCommand,
@@ -19,28 +23,71 @@ type ParsedCodexSlashCommand = {
   readonly enumName: string
 }
 
+type CodexSlashCommandSourceStatus =
+  | {
+      readonly ok: true
+      readonly path: string
+      readonly status: "ready"
+    }
+  | {
+      readonly blockerRef: typeof KHALA_CODE_CODEX_REFERENCE_CHECKOUT_MISSING_BLOCKER_REF
+      readonly ok: false
+      readonly reason: string
+      readonly status: "blocked"
+    }
+
 const kebabCase = (value: string): string =>
   value.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase()
 
-const codexSlashCommandSourcePath = (): string => {
+const codexSlashCommandSourceBlocked = (reason: string): CodexSlashCommandSourceStatus => ({
+  blockerRef: KHALA_CODE_CODEX_REFERENCE_CHECKOUT_MISSING_BLOCKER_REF,
+  ok: false,
+  reason,
+  status: "blocked",
+})
+
+const inspectCodexSlashCommandSourcePath = (): CodexSlashCommandSourceStatus => {
   const explicit = process.env.KHALA_CODE_CODEX_SLASH_COMMAND_SOURCE?.trim()
-  if (explicit !== undefined && explicit.length > 0 && existsSync(explicit)) return explicit
-  const explicitRoot = process.env.KHALA_CODE_CODEX_REFERENCE_ROOT?.trim()
-  if (explicitRoot !== undefined && explicitRoot.length > 0) {
-    const candidate = join(explicitRoot, "codex-rs/tui/src/slash_command.rs")
-    if (existsSync(candidate)) return candidate
+  if (explicit !== undefined && explicit.length > 0) {
+    if (existsSync(explicit)) {
+      return {
+        ok: true,
+        path: explicit,
+        status: "ready",
+      }
+    }
+    return codexSlashCommandSourceBlocked(
+      `KHALA_CODE_CODEX_SLASH_COMMAND_SOURCE does not exist: ${explicit}`,
+    )
   }
 
-  let current = dirname(fileURLToPath(import.meta.url))
-  for (let depth = 0; depth < 10; depth += 1) {
-    const candidate = join(
-      current,
-      "projects/repos/codex/codex-rs/tui/src/slash_command.rs",
-    )
-    if (existsSync(candidate)) return candidate
-    current = dirname(current)
+  const reference = inspectCodexReferenceRoot(dirname(fileURLToPath(import.meta.url)))
+  if (!reference.ok) return reference
+
+  const candidate = join(reference.root, "codex-rs/tui/src/slash_command.rs")
+  if (existsSync(candidate)) {
+    return {
+      ok: true,
+      path: candidate,
+      status: "ready",
+    }
   }
-  throw new Error("Could not locate projects/repos/codex/codex-rs/tui/src/slash_command.rs")
+  return codexSlashCommandSourceBlocked(
+    `Codex reference checkout is missing codex-rs/tui/src/slash_command.rs: ${candidate}`,
+  )
+}
+
+const expectCodexSlashCommandSourcePathOrBlocker = (): string | null => {
+  const status = inspectCodexSlashCommandSourcePath()
+  if (status.ok) return status.path
+
+  expect(status).toMatchObject({
+    blockerRef: KHALA_CODE_CODEX_REFERENCE_CHECKOUT_MISSING_BLOCKER_REF,
+    ok: false,
+    status: "blocked",
+  })
+  expect(status.reason.length).toBeGreaterThan(0)
+  return null
 }
 
 const parseCodexSlashCommands = (source: string): readonly ParsedCodexSlashCommand[] => {
@@ -76,7 +123,10 @@ const parseCodexSlashCommands = (source: string): readonly ParsedCodexSlashComma
 
 describe("Khala Code Codex slash command registry", () => {
   test("tracks the upstream Codex SlashCommand enum and aliases", async () => {
-    const source = await readFile(codexSlashCommandSourcePath(), "utf8")
+    const sourcePath = expectCodexSlashCommandSourcePathOrBlocker()
+    if (sourcePath === null) return
+
+    const source = await readFile(sourcePath, "utf8")
     const upstream = parseCodexSlashCommands(source)
     const khala = KHALA_CODE_DESKTOP_SLASH_COMMANDS.map(command => ({
       aliases: command.aliases,
