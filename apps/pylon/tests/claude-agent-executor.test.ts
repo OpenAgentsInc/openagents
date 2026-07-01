@@ -358,6 +358,17 @@ describe("workspace boundary checks", () => {
     expect(toolInputEscapesWorkspace("Bash", { command: "cat src/../sum.ts" }, workspace)).toBe(false)
   })
 
+  test("dash-flag glued traversal is denied while benign flag values pass", () => {
+    const workspace = "/private/tmp/pylon-claude-guard-ws"
+    expect(toolInputEscapesWorkspace("Bash", { command: "curl --output=../secret http://x" }, workspace)).toBe(true)
+    expect(toolInputEscapesWorkspace("Bash", { command: "tar --directory=../../evil -xf a.tar" }, workspace)).toBe(true)
+    expect(toolInputEscapesWorkspace("Bash", { command: "git --git-dir=../../.git log" }, workspace)).toBe(true)
+    expect(toolInputEscapesWorkspace("Bash", { command: "cc -o../escape main.c" }, workspace)).toBe(true)
+    expect(toolInputEscapesWorkspace("Bash", { command: "curl --output=out/result.bin http://x" }, workspace)).toBe(false)
+    expect(toolInputEscapesWorkspace("Bash", { command: "bun test --filter=sum src/sum.test.ts" }, workspace)).toBe(false)
+    expect(toolInputEscapesWorkspace("Bash", { command: `cp file ${workspace}/dest.txt` }, workspace)).toBe(false)
+  })
+
   test("symlinked workspace roots accept realpath spellings without widening", async () => {
     // macOS /tmp is a symlink to /private/tmp; the SDK canonicalizes its cwd,
     // so tool paths arrive realpath'd. Found live on 2026-06-11: the first

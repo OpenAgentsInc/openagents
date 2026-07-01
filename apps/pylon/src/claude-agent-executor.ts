@@ -311,6 +311,11 @@ function shellPathTokenFrom(rawToken: string): string | null {
     .replace(/^[;|&(){}[\]<>]+/, "")
     .replace(/[;|&(){}[\]<>]+$/, "")
     .replace(/^[A-Za-z_][A-Za-z0-9_]*=/, "")
+    // A dash-flag glued to a value (`--output=../x`, `-o../x`) executes with
+    // the flag prefix stripped, so evaluate the value as the path candidate;
+    // resolving the literal `--output=..` segment would hide the traversal.
+    .replace(/^-{1,2}[A-Za-z0-9][\w-]*=/, "")
+    .replace(/^-[A-Za-z](?=\.{1,2}\/)/, "")
   if (token.length === 0) return null
   if (token === "." || token === "..") return token
   if (token.startsWith("/") || token.startsWith("./") || token.startsWith("../")) return token
