@@ -1,6 +1,7 @@
 import { appendFile, mkdtemp, readFile, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { Database } from "bun:sqlite"
 import { afterEach, describe, expect, test } from "bun:test"
 
 import {
@@ -313,6 +314,7 @@ describe("Codex token usage telemetry", () => {
 
     expect(summary).toMatchObject({
       auditRows: 1,
+      codexStateTokens: 0,
       leaderboardSyncedTokens: 135,
       missingUsageTurns: 0,
       pendingSyncTokens: 5,
@@ -321,5 +323,43 @@ describe("Codex token usage telemetry", () => {
       totalTokens: 140,
       usageEventRows: 2,
     })
+  })
+
+  test("falls back to Codex state tokens when a visible thread has no Khala audit row", async () => {
+    const root = await tempLedgerRoot()
+    const codexStateDbPath = join(root, "state_5.sqlite")
+    const db = new Database(codexStateDbPath)
+    db.exec(`
+      create table threads (
+        id text primary key,
+        tokens_used integer not null default 0,
+        updated_at integer,
+        updated_at_ms integer
+      );
+      insert into threads (id, tokens_used, updated_at, updated_at_ms)
+      values ('thread-visible-before-audit', 2439775, 1782926387, 1782926387386);
+    `)
+    db.close()
+
+    const summary = await readKhalaCodeDesktopThreadTokenSummary({
+      env: {
+        KHALA_CODE_CODEX_STATE_DB_PATH: codexStateDbPath,
+        KHALA_CODE_MESSAGE_TOKEN_AUDIT_LOCAL_LEDGER_PATH: join(root, "message-token-audit.jsonl"),
+        KHALA_CODE_TOKEN_USAGE_LOCAL_LEDGER_PATH: join(root, "token-usage-events.jsonl"),
+      },
+      threadId: "thread-visible-before-audit",
+    })
+
+    expect(summary).toMatchObject({
+      auditRows: 0,
+      codexStateDbPath,
+      codexStateTokens: 2_439_775,
+      leaderboardSyncedTokens: 0,
+      pendingSyncTokens: 2_439_775,
+      threadId: "thread-visible-before-audit",
+      totalTokens: 2_439_775,
+      usageEventRows: 0,
+    })
+    expect(summary.updatedAt).toBe("2026-07-01T17:19:47.386Z")
   })
 })

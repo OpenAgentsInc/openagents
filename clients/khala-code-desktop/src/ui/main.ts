@@ -486,6 +486,8 @@ const emptyThreadTokenSummary = (
   threadId: string | null,
 ): KhalaCodeDesktopThreadTokenSummary => ({
   auditRows: 0,
+  codexStateDbPath: "",
+  codexStateTokens: 0,
   leaderboardLabel: "OpenAgents Stats",
   leaderboardSyncedTokens: 0,
   localLedgerPath: "",
@@ -722,6 +724,13 @@ const renderThreadTokenCounter = (): void => {
   appendThreadTokenRow(rows, "Pending sync", formatExactTokens(summary.pendingSyncTokens))
   appendThreadTokenRow(rows, "Audit turns", exactTokenFormatter.format(summary.auditRows))
   appendThreadTokenRow(rows, "Usage events", exactTokenFormatter.format(summary.usageEventRows))
+  if (summary.codexStateTokens > 0) {
+    appendThreadTokenRow(
+      rows,
+      "Codex state",
+      formatExactTokens(summary.codexStateTokens),
+    )
+  }
   if (summary.missingUsageTurns > 0) {
     appendThreadTokenRow(
       rows,

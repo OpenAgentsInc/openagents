@@ -2,6 +2,7 @@ import { createHash } from "node:crypto"
 import { appendFile, mkdir, readFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import { dirname, join } from "node:path"
+import { Database } from "bun:sqlite"
 
 import type {
   KhalaCodeDesktopMessage,
@@ -104,6 +105,7 @@ type FetchLike = (url: URL, init: RequestInit) => Promise<Response>
 type TokenUsageTelemetryConfig = {
   readonly baseUrl: string
   readonly bearerToken: string | null
+  readonly codexStateDbPath: string
   readonly localMessageAuditLedgerPath: string
   readonly localLedgerPath: string
   readonly remoteDisabled: boolean
@@ -183,6 +185,13 @@ const defaultLocalMessageAuditLedgerPath = (
   nonEmpty(env.KHALA_CODE_MESSAGE_AUDIT_LOCAL_LEDGER_PATH) ??
   join(homedir(), ".khala-code", "message-token-audit.jsonl")
 
+const defaultCodexStateDbPath = (
+  env: Readonly<Record<string, string | undefined>>,
+): string =>
+  nonEmpty(env.KHALA_CODE_CODEX_STATE_DB_PATH) ??
+  nonEmpty(env.CODEX_STATE_DB_PATH) ??
+  join(homedir(), ".codex", "state_5.sqlite")
+
 const resolveConfig = (
   env: Readonly<Record<string, string | undefined>>,
   localLedgerPath?: string,
@@ -200,6 +209,7 @@ const resolveConfig = (
       nonEmpty(env.OPENAGENTS_ADMIN_API_TOKEN) ??
       nonEmpty(env.PROBE_TOKEN_USAGE_BEARER_TOKEN) ??
       nonEmpty(env.PROBE_OMEGA_BEARER_TOKEN),
+    codexStateDbPath: defaultCodexStateDbPath(env),
     localLedgerPath: localLedgerPath ?? defaultLocalLedgerPath(env),
     localMessageAuditLedgerPath:
       localMessageAuditLedgerPath ?? defaultLocalMessageAuditLedgerPath(env),
@@ -319,6 +329,45 @@ const newerIso = (left: string | null, right: string | null): string | null => {
   return rightTime > leftTime ? right : left
 }
 
+const isoFromUnixMs = (value: unknown): string | null => {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return null
+  return new Date(Math.trunc(value)).toISOString()
+}
+
+const isoFromUnixSeconds = (value: unknown): string | null => {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return null
+  return new Date(Math.trunc(value * 1_000)).toISOString()
+}
+
+const readCodexStateThreadTokenSnapshot = (options: {
+  readonly dbPath: string
+  readonly threadId: string
+}): {
+  readonly tokens: number
+  readonly updatedAt: string | null
+} => {
+  let db: Database | null = null
+  try {
+    db = new Database(options.dbPath, { readonly: true })
+    const row = db.query<{
+      readonly tokens_used: number
+      readonly updated_at: number | null
+      readonly updated_at_ms: number | null
+    }, [string]>(
+      "select tokens_used, updated_at, updated_at_ms from threads where id = ?",
+    ).get(options.threadId)
+    if (row === null) return { tokens: 0, updatedAt: null }
+    return {
+      tokens: boundedCount(row.tokens_used),
+      updatedAt: isoFromUnixMs(row.updated_at_ms) ?? isoFromUnixSeconds(row.updated_at),
+    }
+  } catch {
+    return { tokens: 0, updatedAt: null }
+  } finally {
+    db?.close()
+  }
+}
+
 export async function readKhalaCodeDesktopThreadTokenSummary(options: {
   readonly env?: Readonly<Record<string, string | undefined>>
   readonly localLedgerPath?: string
@@ -335,6 +384,8 @@ export async function readKhalaCodeDesktopThreadTokenSummary(options: {
   const remoteConfigured = config.bearerToken !== null && !config.remoteDisabled
   const emptySummary = (): KhalaCodeDesktopThreadTokenSummary => ({
     auditRows: 0,
+    codexStateDbPath: config.codexStateDbPath,
+    codexStateTokens: 0,
     leaderboardLabel: "OpenAgents Stats",
     leaderboardSyncedTokens: 0,
     localLedgerPath: config.localLedgerPath,
@@ -364,6 +415,10 @@ export async function readKhalaCodeDesktopThreadTokenSummary(options: {
   let totalTokens = 0
   let leaderboardSyncedTokens = 0
   let updatedAt: string | null = null
+  const codexState = readCodexStateThreadTokenSnapshot({
+    dbPath: config.codexStateDbPath,
+    threadId,
+  })
 
   for (const row of auditRows) {
     const record = objectField(row, "record")
@@ -422,8 +477,13 @@ export async function readKhalaCodeDesktopThreadTokenSummary(options: {
     }
   }
 
+  totalTokens = Math.max(totalTokens, codexState.tokens)
+  updatedAt = newerIso(updatedAt, codexState.updatedAt)
+
   return {
     auditRows: auditRowCount,
+    codexStateDbPath: config.codexStateDbPath,
+    codexStateTokens: codexState.tokens,
     leaderboardLabel: "OpenAgents Stats",
     leaderboardSyncedTokens,
     localLedgerPath: config.localLedgerPath,

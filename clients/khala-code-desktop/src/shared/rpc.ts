@@ -167,6 +167,8 @@ export type KhalaCodeDesktopThreadTokenSummaryRequest = {
 
 export type KhalaCodeDesktopThreadTokenSummary = {
   readonly auditRows: number
+  readonly codexStateDbPath: string
+  readonly codexStateTokens: number
   readonly leaderboardLabel: "OpenAgents Stats"
   readonly leaderboardSyncedTokens: number
   readonly localLedgerPath: string
