@@ -708,6 +708,24 @@ describe("khala code desktop app shell", () => {
     )
   })
 
+  test("wires the transcript 245 Part 2 recording smoke through UI actions", async () => {
+    const readme = await Bun.file(new URL("../README.md", import.meta.url)).text()
+    const packageJson = await Bun.file(new URL("../package.json", import.meta.url)).text()
+    const smoke = await Bun.file(new URL("../scripts/part2-ui-recording-smoke.ts", import.meta.url)).text()
+
+    expect(packageJson).toContain('"smoke:part2-ui"')
+    expect(readme).toContain("bun run smoke:part2-ui")
+    expect(readme).toContain("without URL flags or console helpers")
+    expect(smoke).toContain("PART2_UI_RECORDING_SMOKE_HARNESS")
+    expect(smoke).toContain("codexFleetDelegateRun")
+    expect(smoke).toContain("Optimize delegation policy")
+    expect(smoke).toContain("Run delegate")
+    expect(smoke).toContain("candidate manifest")
+    expect(smoke).toContain("Gym ingest")
+    expect(smoke).toContain("legacyDeadEndPattern")
+    expect(smoke).toContain("part2UiUnsafeTextPattern")
+  })
+
   test("does not seed dummy code or diff messages on first load", async () => {
     const main = await Bun.file(new URL("../src/ui/main.ts", import.meta.url)).text()
 

@@ -13,41 +13,49 @@ Record the part-two follow-up to transcript 245:
 1. show Khala Code can steer the Codex Fleet;
 2. show the old `0/1 available` `codex_spawn` dead-end no longer appears;
 3. show the deterministic `khala.fleet.delegate` module path;
-4. feed a Mutalisk candidate into the no-UI Gym bridge and show the
-   admission-ready Action Submission proposal ref.
+4. start the Mutalisk/Gym optimization path from the UI and show the
+   admission-ready Action Submission proposal ref in Gym.
 
-This runbook covers the minimum #7755 recording slice: #7752 deterministic
-delegation smoke, #7753 token-rate status, Mutalisk #10 candidate emission, and
-#7754 no-UI Gym/admission ingest.
+This runbook now starts with the transcript-245 Part 2 UI smoke. The older
+shell-only delegation and bridge scripts remain useful diagnostics, but they are
+no longer the primary recording path.
 
-## Preflight Smoke
+## UI Recording Smoke
 
-Run this before recording. It uses a fake Pylon runner, so it does not touch
-real Codex credentials, spend tokens, or call the network. It fails if the
-desktop path regresses to the old opaque `0/1 available` dead-end.
+Run this before recording. It launches the Khala Code preview, mocks only the
+preview RPC boundary with public-safe transcript-245 fixtures, and drives the
+real UI: Fleet hotbar, Fleet panel, deterministic delegate runner, optimization
+action, and Gym pane. It does not touch real Codex credentials, spend tokens, or
+call the network. It fails if the path still depends on shell choreography, URL
+fixture flags, console helpers, private/raw text, or the old opaque `0/1
+available` dead-end.
 
 ```sh
 cd /Users/christopherdavid/work/openagents
-bun clients/khala-code-desktop/scripts/part2-delegation-smoke.ts
+bun run --cwd clients/khala-code-desktop smoke:part2-ui
 ```
 
 Expected output:
 
 ```text
-Part 2 delegation smoke: PASS
-assignmentRef=assignment.public.codex_agent_task.part2_demo
-pylonRef=pylon.local.part2
-delegate=khala.fleet.delegate status=completed
-- ensure_pylon: satisfied
-- advertise_capacity: satisfied
-- select_account: satisfied
-- prepare_work: recovered
-- dispatch: satisfied
-- verify_closeout: satisfied
+Part 2 UI recording smoke: PASS
+- desktop: fleet hotbar and panel rendered -> deterministic delegate recovery rendered -> Gym candidate, ingest, and admission proof rendered
+- mobile: fleet hotbar and panel rendered -> deterministic delegate recovery rendered -> Gym candidate, ingest, and admission proof rendered
 ```
 
-If this fails, do not record the live flow. Fix the deterministic desktop seam
-first.
+Screenshots and the JSON summary are written under ignored
+`clients/khala-code-desktop/var/khala-code-desktop/part2-ui-recording-smoke`.
+If this fails, do not record the live flow. Fix the UI representation first.
+
+## Shell Diagnostic Smoke
+
+Use this only when the UI smoke points at a deterministic delegation regression.
+It uses a fake Pylon runner and checks the underlying module sequence without
+opening the UI.
+
+```sh
+bun clients/khala-code-desktop/scripts/part2-delegation-smoke.ts
+```
 
 ## Live Setup
 
@@ -293,9 +301,9 @@ The URL fixture remains available for direct pane checks:
 http://127.0.0.1:50121/?gymProof=fixture&view=gym
 ```
 
-For generated bridge proofs, prefer producing the proof file through the bridge
-script and loading it through a UI control wired to the same proof loader. The
-debug console helpers remain available for local triage:
+For generated bridge proofs, prefer the UI smoke or a UI control wired to the
+same proof loader. Manual bridge files and console helpers are local triage
+only, not the recording path:
 
 ```sh
 cd /Users/christopherdavid/work/openagents
@@ -337,12 +345,14 @@ than an admission-ready proposal.
 Before recording, the focused checks are:
 
 ```sh
+bun run --cwd clients/khala-code-desktop smoke:part2-ui
 bun clients/khala-code-desktop/scripts/part2-delegation-smoke.ts
 bun clients/khala-code-desktop/scripts/part2-gepa-manifest-bridge.ts --summary /Users/christopherdavid/work/mutalisk/out/khala-fleet-delegation-summary.json --out out/khala-gepa-bridge-proof.json
 bun clients/khala-code-desktop/scripts/part2-gepa-manifest-bridge.ts --summary /Users/christopherdavid/work/mutalisk/out/khala-fleet-delegation-summary.json --api-base https://openagents.com --operator-token-env OPENAGENTS_OPERATOR_BEARER_TOKEN --out out/khala-gepa-worker-proof.json
 bun run typecheck:khala-code-desktop
 bun test clients/khala-code-desktop/tests/gym-proof-loader.test.ts clients/khala-code-desktop/tests/gym-graph-renderer.test.ts
 bun test clients/khala-code-desktop/tests/part2-fleet-gym-visual-smoke.test.ts
+bun test clients/khala-code-desktop/tests/part2-ui-recording-smoke.test.ts
 bun run --cwd clients/khala-code-desktop smoke:part2-fleet-gym-visual
 bun test clients/khala-code-desktop/tests/khala-codex-fleet-tools.test.ts
 bun run --cwd apps/openagents.com/workers/api test -- src/inference/gym/mutalisk-khala-delegation-bridge.test.ts src/inference/gym/mutalisk-khala-delegation-routes.test.ts src/worker-exact-routes.test.ts src/probe-gepa-standing-optimization-loop.test.ts

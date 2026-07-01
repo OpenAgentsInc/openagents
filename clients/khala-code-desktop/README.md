@@ -92,6 +92,16 @@ Submission proposal ref. The active-parameter readout stays on
 `openagents.khala.fleet_delegation.parameters.v0` `source=default` until an
 owner-approved admitted candidate can become live delegation input.
 
+For the transcript-245 Part 2 recording path, run the UI-first smoke:
+
+```sh
+bun run smoke:part2-ui
+```
+
+It launches the preview UI, mocks only safe preview RPC responses, clicks the
+Fleet hotbar, runs the deterministic delegate form, starts **Optimize delegation
+policy**, and validates the Gym proof pane without URL flags or console helpers.
+
 The legacy hosted Khala/OpenRouter runtime is a fallback/prototype path, not the
 Codex-parity default and not the local coding engine. When it is explicitly
 enabled, OpenRouter BYOK is passed to hosted Khala instead of being used as a
@@ -173,6 +183,7 @@ Artifacts are written under ignored `var/khala-code-desktop/composer-visual-smok
 bun run smoke:composer-visual
 bun run smoke:composer-visual-preview
 bun run smoke:part2-fleet-gym-visual
+bun run smoke:part2-ui
 ```
 
 Live delegation coverage is the guarded Codex spawn lane. It exercises

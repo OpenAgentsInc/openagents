@@ -16,6 +16,7 @@
     "smoke:composer-visual": "bun scripts/composer-visual-smoke.ts",
     "smoke:composer-visual-preview": "bun scripts/composer-visual-smoke.ts",
     "smoke:part2-fleet-gym-visual": "bun scripts/part2-fleet-gym-visual-smoke.ts",
+    "smoke:part2-ui": "bun scripts/part2-ui-recording-smoke.ts",
     "verify": "bun run typecheck && bun test tests/*.test.ts && bun run build:ui && bun build src/bun/index.ts --outdir /tmp/khala-code-desktop-bun-build --target bun",
     "dev:hmr": "concurrently \"vite --port 5173 --strictPort\" \"bun run dev\""
   },
