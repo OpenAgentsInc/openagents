@@ -91,7 +91,7 @@ run with refill.
 | --- | --- | --- | --- |
 | T3.1 | `FleetRunSupervisor` in the Bun host: Effect + `Scope`d tick loop (count active → claim → dispatch `khala.fleet.delegate` per free slot → stream lifecycle into counters); arbitrary N via refill across ticks; one supervisor per Pylon; built on `PylonService` when T7.3 lands (start on existing seams, do not wait) | T2.1, T2.2 | MED |
 | T3.2 | `khala_fleet` MCP verbs: `fleet_run_start`, `fleet_run_status`, `fleet_run_control` (pause/resume/drain/stop); approval mode stays `prompt`; `codex_spawn` remains the bounded one-shot | T3.1 | HIGH |
-| T3.3 | Fleet panel "Start fleet run" form: objective, work source, target concurrency, workerKind enum (`codex\|claude\|auto` accepted now, `codex` wired), dry-run preview of the first wave | T3.1 | HIGH |
+| T3.3 | **Done in PR "T3.3: Start fleet run form"**: Fleet panel "Start fleet run" form captures objective, work source, target concurrency, and workerKind enum (`codex\|claude\|auto` accepted; `codex` wired), renders a public-safe dry-run first-wave preview from current fleet status, and starts through `fleetRunStart` with form-state + mocked-RPC coverage | T3.1 | HIGH |
 | T3.4 | RPC parity: `fleetRunStart/Status/Control/List` methods + schemas (rides T1.1's contract) | T3.1, T1.1 | HIGH |
 | T3.5 | Fixture acceptance: target-25 fixture run reaches 25 simulated concurrent assignments via refill, drains cleanly, survives host restart; MCP verbs round-trip against scripted app-server fixture | T3.1–T3.4 | HIGH |
 

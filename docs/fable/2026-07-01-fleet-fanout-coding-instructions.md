@@ -160,11 +160,12 @@ Build:
    (pause/resume/drain/stop) so the single casual message works in default
    Codex mode. Keep approval mode `prompt`. `codex_spawn` stays as the
    bounded one-shot; the new verbs own sustained mode.
-4. **Fleet panel entry**: a "Start fleet run" form beside the existing
-   delegate runner: objective, work source, target concurrency, worker kind
-   (`codex | claude | auto` — wire `codex` now, accept the enum so Lane B of
-   the episode-245 doc lands without schema churn), dry-run preview showing
-   the planned first wave (accounts × slots × first claims) before starting.
+4. **Fleet panel entry**: **Done in PR "T3.3: Start fleet run form"**. The
+   Fleet panel renders a "Start fleet run" form beside the existing delegate
+   runner: objective, work source, target concurrency, worker kind
+   (`codex | claude | auto` accepted in the UI; `codex` wired to
+   `fleetRunStart`), and a public-safe dry-run preview showing the planned
+   first wave (accounts × slots × first claims) before starting.
 5. **RPC parity**: `fleetRunStart`, `fleetRunStatus`, `fleetRunControl`,
    `fleetRunList` methods; everything the UI can do, the bridge can do.
 
