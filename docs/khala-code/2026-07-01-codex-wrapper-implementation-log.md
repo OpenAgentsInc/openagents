@@ -238,3 +238,42 @@ Validation:
 - `bun test clients/khala-code-desktop/tests/codex-settings.test.ts clients/khala-code-desktop/tests/rpc-handlers.test.ts clients/khala-code-desktop/tests/app-shell.test.ts`
 - `bun run --cwd clients/khala-code-desktop typecheck`
 - `bun run --cwd clients/khala-code-desktop verify`
+
+## Issue #7788: Codex Session Sidebar And Thread Navigation
+
+Status: implemented
+
+Khala Code Desktop now has a Codex-backed thread navigator for the Chat surface.
+The top-level Khala sections remain `Chat`, `Inbox`, `Fleet status`, `Gym`, and
+`Settings`, while the Chat view gets an adjacent Codex thread rail backed by
+app-server thread APIs.
+
+The desktop runtime now supports:
+
+- `thread/list` with search, archived filtering, active-thread projection, and
+  cwd/project grouping;
+- `thread/read` with optional turn loading;
+- `thread/resume` transcript restoration through the Codex ThreadItem
+  projector;
+- `thread/fork` with forked thread id persistence for the active desktop
+  session;
+- `thread/archive`, `thread/unarchive`, `thread/delete`, and `thread/name/set`
+  lifecycle operations.
+
+The shared thread projector preserves Codex thread ids, session ids,
+fork/parent relationships, model provider, source, cwd grouping, runtime
+status, recency timestamps, and derived badges for running, failed, forked,
+child, and git-backed threads. Search and grouping are read-only projections
+over `thread/list`; they do not mutate Codex state.
+
+Selecting a thread calls `thread/resume`, persists the active Codex thread id,
+and replaces the visible transcript with messages replayed from Codex turns.
+New ordinary chat turns also update the active thread id from the Codex turn
+response, so reload keeps the selected Codex thread identity instead of falling
+back to a synthetic local chat.
+
+Validation:
+
+- `bun test clients/khala-code-desktop/tests/codex-threads.test.ts clients/khala-code-desktop/tests/codex-app-server-chat-runtime.test.ts clients/khala-code-desktop/tests/rpc-handlers.test.ts clients/khala-code-desktop/tests/app-shell.test.ts`
+- `bun run --cwd clients/khala-code-desktop typecheck`
+- `bun run --cwd clients/khala-code-desktop verify`

@@ -131,8 +131,17 @@ function throwingCodexChatRuntime(
   overrides: Partial<CodexAppServerChatRuntime> = {},
 ): CodexAppServerChatRuntime {
   return {
+    archiveThread: async () => {
+      throw new Error("codex archive should not be called")
+    },
     compactThread: async () => {
       throw new Error("codex compact should not be called")
+    },
+    deleteThread: async () => {
+      throw new Error("codex delete should not be called")
+    },
+    forkThread: async () => {
+      throw new Error("codex fork should not be called")
     },
     interruptTurn: async () => {
       throw new Error("codex interrupt should not be called")
@@ -142,6 +151,12 @@ function throwingCodexChatRuntime(
     },
     resumeThread: async () => {
       throw new Error("codex resume should not be called")
+    },
+    readThread: async () => {
+      throw new Error("codex read should not be called")
+    },
+    renameThread: async () => {
+      throw new Error("codex rename should not be called")
     },
     startThread: async () => {
       throw new Error("codex start should not be called")
@@ -153,6 +168,9 @@ function throwingCodexChatRuntime(
       throw new Error("codex steer should not be called")
     },
     threadIdForSession: async () => null,
+    unarchiveThread: async () => {
+      throw new Error("codex unarchive should not be called")
+    },
     ...overrides,
   }
 }

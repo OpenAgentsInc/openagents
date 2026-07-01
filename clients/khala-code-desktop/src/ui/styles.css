@@ -61,6 +61,8 @@ button {
 }
 
 .khala-code-shell {
+  --sidebar-width: 15rem;
+  --thread-sidebar-width: 18rem;
   position: relative;
   display: grid;
   grid-template-rows: minmax(0, 1fr) auto;
@@ -937,8 +939,13 @@ button {
   .composer-dock,
   .khala-code-inbox,
   .khala-code-fleet,
-  .khala-code-gym {
+  .khala-code-gym,
+  .khala-code-settings {
     margin-left: var(--sidebar-width);
+  }
+  .khala-code-thread-sidebar:not([hidden]) ~ .khala-code-thread-shell,
+  .khala-code-thread-sidebar:not([hidden]) ~ .composer-dock {
+    margin-left: calc(var(--sidebar-width) + var(--thread-sidebar-width));
   }
 }
 .khala-code-sidebar [data-slot="sidebar-group-label"] {
@@ -966,6 +973,177 @@ button {
   background: var(--oa-color-component-surface-active);
   color: var(--oa-color-accent);
   box-shadow: inset 2px 0 0 var(--oa-color-accent);
+}
+
+.khala-code-thread-sidebar {
+  position: fixed;
+  z-index: 3;
+  top: 0;
+  bottom: 0;
+  left: var(--sidebar-width);
+  width: var(--thread-sidebar-width);
+  overflow-y: auto;
+  padding: 0.85rem 0.7rem;
+  border-right: 1px solid var(--oa-color-component-border);
+  background: color-mix(in srgb, var(--oa-color-component-surface) 92%, #000);
+  color: var(--oa-color-component-text);
+}
+.khala-thread-sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.khala-thread-sidebar-title {
+  margin: 0;
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+.khala-thread-sidebar-new,
+.khala-thread-sidebar-refresh,
+.khala-thread-sidebar-action {
+  font: inherit;
+  border: 1px solid var(--oa-color-component-border);
+  background: var(--oa-color-component-surface);
+  color: var(--oa-color-component-text);
+  cursor: pointer;
+}
+.khala-thread-sidebar-new,
+.khala-thread-sidebar-refresh {
+  border-radius: 0.4rem;
+  padding: 0.3rem 0.55rem;
+  font-size: 0.74rem;
+}
+.khala-thread-sidebar-action {
+  border-radius: 0.32rem;
+  padding: 0.18rem 0.35rem;
+  font-size: 0.64rem;
+}
+.khala-thread-sidebar-new:hover,
+.khala-thread-sidebar-refresh:hover,
+.khala-thread-sidebar-action:hover {
+  background: var(--oa-color-component-surface-active);
+}
+.khala-thread-sidebar-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.45rem;
+  margin-top: 0.8rem;
+}
+.khala-thread-sidebar-search {
+  grid-column: 1 / -1;
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--oa-color-component-border);
+  border-radius: 0.42rem;
+  background: rgba(0, 0, 0, 0.22);
+  color: var(--oa-color-component-text);
+  font: inherit;
+  font-size: 0.76rem;
+  padding: 0.38rem 0.5rem;
+}
+.khala-thread-sidebar-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: color-mix(in srgb, var(--oa-color-component-text) 65%, transparent);
+  font-size: 0.72rem;
+}
+.khala-thread-sidebar-empty,
+.khala-thread-sidebar-error {
+  color: color-mix(in srgb, var(--oa-color-component-text) 55%, transparent);
+  font-size: 0.76rem;
+  line-height: 1.45;
+}
+.khala-thread-sidebar-error {
+  color: #fca5a5;
+}
+.khala-thread-sidebar-group {
+  display: grid;
+  gap: 0.45rem;
+  margin-top: 0.9rem;
+}
+.khala-thread-sidebar-group-title {
+  margin: 0;
+  overflow: hidden;
+  color: color-mix(in srgb, var(--oa-color-component-text) 48%, transparent);
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.khala-thread-sidebar-list {
+  display: grid;
+  gap: 0.38rem;
+}
+.khala-thread-sidebar-item {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  gap: 0.35rem;
+  padding: 0.55rem;
+  border: 1px solid var(--oa-color-component-border);
+  border-radius: 0.45rem;
+  background: rgba(0, 0, 0, 0.16);
+  color: var(--oa-color-component-text);
+  text-align: left;
+  cursor: pointer;
+}
+.khala-thread-sidebar-item:hover,
+.khala-thread-sidebar-item[data-active="true"] {
+  border-color: color-mix(in srgb, var(--oa-color-accent) 58%, var(--oa-color-component-border));
+  background: var(--oa-color-component-surface-active);
+}
+.khala-thread-sidebar-item-main,
+.khala-thread-sidebar-item-meta,
+.khala-thread-sidebar-badges,
+.khala-thread-sidebar-actions {
+  display: flex;
+  min-width: 0;
+  gap: 0.35rem;
+}
+.khala-thread-sidebar-item-main {
+  flex-direction: column;
+}
+.khala-thread-sidebar-item-title,
+.khala-thread-sidebar-item-preview {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.khala-thread-sidebar-item-title {
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+.khala-thread-sidebar-item-preview,
+.khala-thread-sidebar-item-meta {
+  color: color-mix(in srgb, var(--oa-color-component-text) 55%, transparent);
+  font-size: 0.68rem;
+}
+.khala-thread-sidebar-item-meta {
+  justify-content: space-between;
+}
+.khala-thread-sidebar-badges,
+.khala-thread-sidebar-actions {
+  flex-wrap: wrap;
+}
+.khala-thread-sidebar-badge {
+  border: 1px solid color-mix(in srgb, var(--oa-color-accent) 35%, transparent);
+  border-radius: 999px;
+  color: #93c5fd;
+  font-size: 0.58rem;
+  line-height: 1;
+  padding: 0.16rem 0.34rem;
+  text-transform: uppercase;
+}
+
+@media (max-width: 767px) {
+  .khala-code-thread-sidebar {
+    display: none;
+  }
 }
 
 /* Unified Inbox — one operator queue for human attention items projected from

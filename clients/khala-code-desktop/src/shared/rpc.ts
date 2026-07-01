@@ -19,6 +19,10 @@ import type {
   KhalaCodeDesktopCodexJsonValue,
   KhalaCodeDesktopCodexSettingsProjection,
 } from "./codex-settings.js"
+import type {
+  KhalaCodeDesktopCodexThreadGroup,
+  KhalaCodeDesktopCodexThreadSummary,
+} from "./codex-threads.js"
 import type { OnDeviceDeciderSelection } from "./on-device-decider.js"
 
 // Electrobun treats Infinity as no local request timeout; chat turns stream progress
@@ -210,12 +214,14 @@ export type KhalaCodeDesktopCodexThreadListRequest = {
   readonly cwd?: string
   readonly limit?: number
   readonly searchTerm?: string
+  readonly sessionId?: string
 }
 
 export type KhalaCodeDesktopCodexThreadResult = {
   readonly ok: true
   readonly cwd?: string
   readonly desktopSessionId?: string
+  readonly messages?: readonly KhalaCodeDesktopMessage[]
   readonly model?: string
   readonly modelProvider?: string
   readonly thread: unknown
@@ -226,7 +232,41 @@ export type KhalaCodeDesktopCodexThreadListResult = {
   readonly ok: true
   readonly backwardsCursor?: string | null
   readonly data: readonly unknown[]
+  readonly groups?: readonly KhalaCodeDesktopCodexThreadGroup[]
   readonly nextCursor?: string | null
+  readonly threads?: readonly KhalaCodeDesktopCodexThreadSummary[]
+}
+
+export type KhalaCodeDesktopCodexThreadReadRequest = {
+  readonly includeTurns?: boolean
+  readonly threadId: string
+}
+
+export type KhalaCodeDesktopCodexThreadForkRequest = {
+  readonly cwd?: string
+  readonly lastTurnId?: string
+  readonly sessionId?: string
+  readonly threadId: string
+}
+
+export type KhalaCodeDesktopCodexThreadIdRequest = {
+  readonly threadId: string
+}
+
+export type KhalaCodeDesktopCodexThreadRenameRequest = {
+  readonly name: string
+  readonly threadId: string
+}
+
+export type KhalaCodeDesktopCodexThreadMutationResult = {
+  readonly action: "archive" | "delete" | "fork" | "rename" | "unarchive"
+  readonly ok: boolean
+  readonly messages?: readonly KhalaCodeDesktopMessage[]
+  readonly response?: unknown
+  readonly thread?: unknown
+  readonly threadId: string
+  readonly error?: string
+  readonly newThreadId?: string
 }
 
 export type KhalaCodeDesktopCodexTurnStartRequest =
@@ -470,10 +510,16 @@ export type KhalaCodeDesktopRPCSchema = {
     codexApprovalRespond(request: KhalaCodeDesktopCodexApprovalRespondRequest): Promise<KhalaCodeDesktopCodexApprovalRespondResult>
     codexConfigValueWrite(request: KhalaCodeDesktopCodexConfigValueWriteRequest): Promise<KhalaCodeDesktopCodexConfigValueWriteResult>
     codexSettingsRead(request?: KhalaCodeDesktopCodexSettingsReadRequest): Promise<KhalaCodeDesktopCodexSettingsReadResult>
+    codexThreadArchive(request: KhalaCodeDesktopCodexThreadIdRequest): Promise<KhalaCodeDesktopCodexThreadMutationResult>
     codexThreadCompact(request: KhalaCodeDesktopCodexThreadCompactRequest): Promise<KhalaCodeDesktopCodexTurnActionResult>
+    codexThreadDelete(request: KhalaCodeDesktopCodexThreadIdRequest): Promise<KhalaCodeDesktopCodexThreadMutationResult>
+    codexThreadFork(request: KhalaCodeDesktopCodexThreadForkRequest): Promise<KhalaCodeDesktopCodexThreadMutationResult>
     codexThreadList(request?: KhalaCodeDesktopCodexThreadListRequest): Promise<KhalaCodeDesktopCodexThreadListResult>
+    codexThreadRead(request: KhalaCodeDesktopCodexThreadReadRequest): Promise<KhalaCodeDesktopCodexThreadResult>
+    codexThreadRename(request: KhalaCodeDesktopCodexThreadRenameRequest): Promise<KhalaCodeDesktopCodexThreadMutationResult>
     codexThreadResume(request: KhalaCodeDesktopCodexThreadResumeRequest): Promise<KhalaCodeDesktopCodexThreadResult>
     codexThreadStart(request?: KhalaCodeDesktopCodexThreadStartRequest): Promise<KhalaCodeDesktopCodexThreadResult>
+    codexThreadUnarchive(request: KhalaCodeDesktopCodexThreadIdRequest): Promise<KhalaCodeDesktopCodexThreadMutationResult>
     codexTurnInterrupt(request: KhalaCodeDesktopCodexTurnInterruptRequest): Promise<KhalaCodeDesktopCodexTurnActionResult>
     codexTurnStart(request: KhalaCodeDesktopCodexTurnStartRequest): Promise<KhalaCodeDesktopChatTurnResponse>
     codexTurnSteer(request: KhalaCodeDesktopCodexTurnSteerRequest): Promise<KhalaCodeDesktopCodexTurnActionResult>

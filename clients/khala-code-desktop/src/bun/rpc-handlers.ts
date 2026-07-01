@@ -818,11 +818,26 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
     async codexSettingsRead(request = {}) {
       return readCodexSettings(request)
     },
+    async codexThreadArchive(request) {
+      return requireCodexChatRuntime().archiveThread(request)
+    },
     async codexThreadCompact(request) {
       return requireCodexChatRuntime().compactThread(request)
     },
+    async codexThreadDelete(request) {
+      return requireCodexChatRuntime().deleteThread(request)
+    },
+    async codexThreadFork(request) {
+      return requireCodexChatRuntime().forkThread(request)
+    },
     async codexThreadList(request) {
       return requireCodexChatRuntime().listThreads(request)
+    },
+    async codexThreadRead(request) {
+      return requireCodexChatRuntime().readThread(request)
+    },
+    async codexThreadRename(request) {
+      return requireCodexChatRuntime().renameThread(request)
     },
     async codexThreadResume(request) {
       return requireCodexChatRuntime().resumeThread(request)
@@ -832,6 +847,9 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
         cwd: input.workingDirectory,
         ...request,
       })
+    },
+    async codexThreadUnarchive(request) {
+      return requireCodexChatRuntime().unarchiveThread(request)
     },
     async codexTurnInterrupt(request) {
       return requireCodexChatRuntime().interruptTurn(request)

@@ -274,6 +274,167 @@ describe("Codex app-server chat runtime", () => {
     expect(records.map(record => record.method)).toEqual(["thread/resume", "turn/start"])
   })
 
+  test("lists, reads, renames, forks, archives, unarchives, and deletes Codex threads", async () => {
+    const fixture = await stateFixture()
+    const records: RequestRecord[] = []
+    const threadWithTurns = {
+      id: "thread-history",
+      sessionId: "thread-history",
+      name: "History",
+      preview: "Hello",
+      cwd: fixture.root,
+      modelProvider: "openai",
+      source: "appServer",
+      forkedFromId: null,
+      parentThreadId: null,
+      createdAt: 1,
+      updatedAt: 2,
+      recencyAt: 2,
+      status: { type: "idle" },
+      gitInfo: null,
+      turns: [
+        {
+          id: "turn-history",
+          status: "completed",
+          items: [
+            {
+              id: "item-user-history",
+              type: "userMessage",
+              content: [{ type: "text", text: "Hello", textElements: [] }],
+            },
+            {
+              id: "item-agent-history",
+              type: "agentMessage",
+              text: "Hi from stored Codex history",
+            },
+          ],
+        },
+      ],
+    }
+    const host = createFakeHost({
+      records,
+      onRequest: (method, params) => {
+        if (method === "thread/list") {
+          return {
+            data: [threadWithTurns],
+            nextCursor: null,
+            backwardsCursor: null,
+          }
+        }
+        if (method === "thread/read" || method === "thread/resume") {
+          return {
+            thread: threadWithTurns,
+            model: "gpt-5.1-codex",
+            modelProvider: "openai",
+            cwd: fixture.root,
+          }
+        }
+        if (method === "thread/name/set") return {}
+        if (method === "thread/archive") return {}
+        if (method === "thread/delete") return {}
+        if (method === "thread/unarchive") return { thread: threadWithTurns }
+        if (method === "thread/fork") {
+          return {
+            thread: {
+              ...threadWithTurns,
+              id: "thread-forked",
+              sessionId: "thread-forked",
+              forkedFromId: (params as { threadId?: string }).threadId ?? null,
+            },
+            model: "gpt-5.1-codex",
+            modelProvider: "openai",
+            cwd: fixture.root,
+          }
+        }
+        throw new Error(`unexpected request ${method}`)
+      },
+    })
+    const runtime = createCodexAppServerChatRuntime({
+      host,
+      statePath: fixture.statePath,
+      workingDirectory: fixture.root,
+    })
+
+    const list = await runtime.listThreads({
+      archived: false,
+      limit: 20,
+      searchTerm: "Hello",
+      sessionId: "desktop-session-history",
+    })
+    expect(list.threads).toEqual([expect.objectContaining({
+      id: "thread-history",
+      title: "History",
+      projectLabel: fixture.root.split("/").at(-1),
+      status: "idle",
+    })])
+    expect(list.groups?.[0]?.threadIds).toEqual(["thread-history"])
+
+    const read = await runtime.readThread({
+      threadId: "thread-history",
+      includeTurns: true,
+    })
+    expect(read.messages?.map(message => [message.id, message.role, message.body])).toEqual([
+      ["item-user-history", "user", "Hello"],
+      ["item-agent-history", "assistant", "Hi from stored Codex history"],
+    ])
+
+    const resume = await runtime.resumeThread({
+      sessionId: "desktop-session-history",
+      threadId: "thread-history",
+    })
+    expect(resume.messages?.map(message => message.id)).toEqual([
+      "item-user-history",
+      "item-agent-history",
+    ])
+    expect(await runtime.threadIdForSession("desktop-session-history")).toBe("thread-history")
+
+    await expect(runtime.renameThread({
+      threadId: "thread-history",
+      name: "Renamed",
+    })).resolves.toMatchObject({ ok: true, action: "rename" })
+    const fork = await runtime.forkThread({
+      sessionId: "desktop-session-history",
+      threadId: "thread-history",
+    })
+    expect(fork).toMatchObject({
+      ok: true,
+      action: "fork",
+      threadId: "thread-history",
+      newThreadId: "thread-forked",
+    })
+    expect(await runtime.threadIdForSession("desktop-session-history")).toBe("thread-forked")
+    await expect(runtime.archiveThread({ threadId: "thread-history" }))
+      .resolves.toMatchObject({ ok: true, action: "archive" })
+    await expect(runtime.unarchiveThread({ threadId: "thread-history" }))
+      .resolves.toMatchObject({ ok: true, action: "unarchive" })
+    await expect(runtime.deleteThread({ threadId: "thread-history" }))
+      .resolves.toMatchObject({ ok: true, action: "delete" })
+
+    expect(records.map(record => record.method)).toEqual([
+      "thread/list",
+      "thread/read",
+      "thread/resume",
+      "thread/name/set",
+      "thread/fork",
+      "thread/archive",
+      "thread/unarchive",
+      "thread/delete",
+    ])
+    expect(records[0]?.params).toMatchObject({
+      archived: false,
+      limit: 20,
+      searchTerm: "Hello",
+    })
+    expect(records[1]?.params).toEqual({
+      threadId: "thread-history",
+      includeTurns: true,
+    })
+    expect(records[3]?.params).toEqual({
+      threadId: "thread-history",
+      name: "Renamed",
+    })
+  })
+
   test("interrupts the active Codex turn by desktop turn id", async () => {
     const fixture = await stateFixture()
     const records: RequestRecord[] = []

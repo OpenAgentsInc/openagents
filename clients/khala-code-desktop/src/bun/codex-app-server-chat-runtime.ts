@@ -6,9 +6,15 @@ import type {
   KhalaCodeDesktopChatTurnEvent,
   KhalaCodeDesktopChatTurnRequest,
   KhalaCodeDesktopChatTurnResponse,
+  KhalaCodeDesktopMessage,
   KhalaCodeDesktopCodexThreadCompactRequest,
+  KhalaCodeDesktopCodexThreadForkRequest,
+  KhalaCodeDesktopCodexThreadIdRequest,
   KhalaCodeDesktopCodexThreadListRequest,
   KhalaCodeDesktopCodexThreadListResult,
+  KhalaCodeDesktopCodexThreadMutationResult,
+  KhalaCodeDesktopCodexThreadReadRequest,
+  KhalaCodeDesktopCodexThreadRenameRequest,
   KhalaCodeDesktopCodexThreadResumeRequest,
   KhalaCodeDesktopCodexThreadResult,
   KhalaCodeDesktopCodexThreadStartRequest,
@@ -21,6 +27,7 @@ import type {
   CodexAppServerNotification,
 } from "./codex-app-server-client.js"
 import { createCodexThreadItemEventProjector } from "./codex-thread-item-projector.js"
+import { projectKhalaCodeDesktopCodexThreadList } from "../shared/codex-threads.js"
 
 const CODEX_SESSION_STATE_SCHEMA = "khala-code-desktop.codex-sessions.v1"
 const DEFAULT_TURN_TIMEOUT_MS = 30 * 60 * 1_000
@@ -49,9 +56,24 @@ export type CodexAppServerChatRuntime = Readonly<{
   compactThread: (
     request: KhalaCodeDesktopCodexThreadCompactRequest,
   ) => Promise<KhalaCodeDesktopCodexTurnActionResult>
+  archiveThread: (
+    request: KhalaCodeDesktopCodexThreadIdRequest,
+  ) => Promise<KhalaCodeDesktopCodexThreadMutationResult>
+  deleteThread: (
+    request: KhalaCodeDesktopCodexThreadIdRequest,
+  ) => Promise<KhalaCodeDesktopCodexThreadMutationResult>
+  forkThread: (
+    request: KhalaCodeDesktopCodexThreadForkRequest,
+  ) => Promise<KhalaCodeDesktopCodexThreadMutationResult>
   listThreads: (
     request?: KhalaCodeDesktopCodexThreadListRequest,
   ) => Promise<KhalaCodeDesktopCodexThreadListResult>
+  readThread: (
+    request: KhalaCodeDesktopCodexThreadReadRequest,
+  ) => Promise<KhalaCodeDesktopCodexThreadResult>
+  renameThread: (
+    request: KhalaCodeDesktopCodexThreadRenameRequest,
+  ) => Promise<KhalaCodeDesktopCodexThreadMutationResult>
   resumeThread: (
     request: KhalaCodeDesktopCodexThreadResumeRequest,
   ) => Promise<KhalaCodeDesktopCodexThreadResult>
@@ -68,6 +90,9 @@ export type CodexAppServerChatRuntime = Readonly<{
     request: KhalaCodeDesktopCodexTurnSteerRequest,
   ) => Promise<KhalaCodeDesktopCodexTurnActionResult>
   threadIdForSession: (sessionId: string) => Promise<string | null>
+  unarchiveThread: (
+    request: KhalaCodeDesktopCodexThreadIdRequest,
+  ) => Promise<KhalaCodeDesktopCodexThreadMutationResult>
 }>
 
 export type CreateCodexAppServerChatRuntimeOptions = {
@@ -105,6 +130,34 @@ const arrayField = (value: unknown, field: string): readonly unknown[] | null =>
   if (!isObject(value)) return null
   const candidate = value[field]
   return Array.isArray(candidate) ? candidate : null
+}
+
+const messagesFromThread = (
+  thread: JsonObject | null,
+): readonly KhalaCodeDesktopMessage[] => {
+  if (thread === null) return []
+  const threadId = stringField(thread, "id")
+  if (threadId === null) return []
+  const messages: KhalaCodeDesktopMessage[] = []
+  for (const turn of arrayField(thread, "turns") ?? []) {
+    if (!isObject(turn)) continue
+    const turnId = stringField(turn, "id")
+    if (turnId === null) continue
+    const projector = createCodexThreadItemEventProjector({
+      desktopTurnId: `codex-history-${turnId}`,
+      renderUserMessages: true,
+    })
+    for (const item of arrayField(turn, "items") ?? []) {
+      if (!isObject(item)) continue
+      projector.accept({
+        method: "item/completed",
+        params: { threadId, turnId, item },
+        receivedAt: isoNow(),
+      })
+    }
+    messages.push(...projector.messages())
+  }
+  return messages
 }
 
 const defaultStatePath = (env: Readonly<Record<string, string | undefined>>): string => {
@@ -175,11 +228,13 @@ const extractThreadResult = (
   if (thread === null || threadId === null) {
     throw new Error("Codex app-server returned a thread response without thread.id")
   }
+  const messages = messagesFromThread(thread)
   return {
     ok: true,
     thread,
     threadId,
     ...(desktopSessionId === undefined ? {} : { desktopSessionId }),
+    ...(messages.length === 0 ? {} : { messages }),
     ...(stringField(response, "cwd") === null ? {} : { cwd: stringField(response, "cwd") ?? "" }),
     ...(stringField(response, "model") === null ? {} : { model: stringField(response, "model") ?? "" }),
     ...(stringField(response, "modelProvider") === null ? {} : { modelProvider: stringField(response, "modelProvider") ?? "" }),
@@ -280,6 +335,9 @@ export function createCodexAppServerChatRuntime(
     request: KhalaCodeDesktopCodexThreadListRequest = {},
   ): Promise<KhalaCodeDesktopCodexThreadListResult> => {
     await ensureStarted()
+    const activeThreadId = request.sessionId === undefined
+      ? null
+      : (await readState(statePath)).sessions[request.sessionId]?.threadId ?? null
     const response = await host.request("thread/list", {
       ...(request.archived === undefined ? {} : { archived: request.archived }),
       ...(request.cursor === undefined ? {} : { cursor: request.cursor }),
@@ -287,11 +345,141 @@ export function createCodexAppServerChatRuntime(
       ...(request.limit === undefined ? {} : { limit: request.limit }),
       ...(request.searchTerm === undefined ? {} : { searchTerm: request.searchTerm }),
     })
+    const projection = projectKhalaCodeDesktopCodexThreadList({
+      activeThreadId,
+      response,
+      ...(request.archived === undefined ? {} : { archived: request.archived }),
+      ...(request.searchTerm === undefined ? {} : { searchTerm: request.searchTerm }),
+    })
     return {
       ok: true,
       data: arrayField(response, "data") ?? [],
       backwardsCursor: isObject(response) ? (response.backwardsCursor as string | null | undefined) ?? null : null,
       nextCursor: isObject(response) ? (response.nextCursor as string | null | undefined) ?? null : null,
+      groups: projection.groups,
+      threads: projection.threads,
+    }
+  }
+
+  const readThread = async (
+    request: KhalaCodeDesktopCodexThreadReadRequest,
+  ): Promise<KhalaCodeDesktopCodexThreadResult> => {
+    await ensureStarted()
+    const response = await host.request("thread/read", {
+      threadId: request.threadId,
+      includeTurns: request.includeTurns === true,
+    })
+    return extractThreadResult(response)
+  }
+
+  const renameThread = async (
+    request: KhalaCodeDesktopCodexThreadRenameRequest,
+  ): Promise<KhalaCodeDesktopCodexThreadMutationResult> => {
+    await ensureStarted()
+    try {
+      const response = await host.request("thread/name/set", {
+        threadId: request.threadId,
+        name: request.name,
+      })
+      return { ok: true, action: "rename", threadId: request.threadId, response }
+    } catch (error) {
+      return {
+        ok: false,
+        action: "rename",
+        threadId: request.threadId,
+        error: error instanceof Error ? error.message : String(error),
+      }
+    }
+  }
+
+  const archiveThread = async (
+    request: KhalaCodeDesktopCodexThreadIdRequest,
+  ): Promise<KhalaCodeDesktopCodexThreadMutationResult> => {
+    await ensureStarted()
+    try {
+      const response = await host.request("thread/archive", { threadId: request.threadId })
+      return { ok: true, action: "archive", threadId: request.threadId, response }
+    } catch (error) {
+      return {
+        ok: false,
+        action: "archive",
+        threadId: request.threadId,
+        error: error instanceof Error ? error.message : String(error),
+      }
+    }
+  }
+
+  const deleteThread = async (
+    request: KhalaCodeDesktopCodexThreadIdRequest,
+  ): Promise<KhalaCodeDesktopCodexThreadMutationResult> => {
+    await ensureStarted()
+    try {
+      const response = await host.request("thread/delete", { threadId: request.threadId })
+      return { ok: true, action: "delete", threadId: request.threadId, response }
+    } catch (error) {
+      return {
+        ok: false,
+        action: "delete",
+        threadId: request.threadId,
+        error: error instanceof Error ? error.message : String(error),
+      }
+    }
+  }
+
+  const unarchiveThread = async (
+    request: KhalaCodeDesktopCodexThreadIdRequest,
+  ): Promise<KhalaCodeDesktopCodexThreadMutationResult> => {
+    await ensureStarted()
+    try {
+      const response = await host.request("thread/unarchive", { threadId: request.threadId })
+      const result = extractThreadResult(response)
+      return {
+        ok: true,
+        action: "unarchive",
+        threadId: request.threadId,
+        thread: result.thread,
+        response,
+      }
+    } catch (error) {
+      return {
+        ok: false,
+        action: "unarchive",
+        threadId: request.threadId,
+        error: error instanceof Error ? error.message : String(error),
+      }
+    }
+  }
+
+  const forkThread = async (
+    request: KhalaCodeDesktopCodexThreadForkRequest,
+  ): Promise<KhalaCodeDesktopCodexThreadMutationResult> => {
+    await ensureStarted()
+    try {
+      const response = await host.request("thread/fork", {
+        threadId: request.threadId,
+        ...(request.lastTurnId === undefined ? {} : { lastTurnId: request.lastTurnId }),
+        cwd: request.cwd ?? options.workingDirectory,
+      })
+      const result = extractThreadResult(response, request.sessionId)
+      if (request.sessionId !== undefined) {
+        await persistSession(statePath, request.sessionId, { threadId: result.threadId })
+      }
+      return {
+        ok: true,
+        action: "fork",
+        threadId: request.threadId,
+        newThreadId: result.threadId,
+        thread: result.thread,
+        response,
+        ...(result.messages === undefined ? {} : { messages: result.messages }),
+      }
+    } catch (error) {
+      return {
+        ok: false,
+        action: "fork",
+        threadId: request.threadId,
+        error: error instanceof Error ? error.message : String(error),
+      }
     }
   }
 
@@ -508,13 +696,19 @@ export function createCodexAppServerChatRuntime(
   }
 
   return {
+    archiveThread,
     compactThread,
+    deleteThread,
+    forkThread,
     interruptTurn,
     listThreads,
+    readThread,
+    renameThread,
     resumeThread,
     startThread,
     startTurn,
     steerTurn,
     threadIdForSession,
+    unarchiveThread,
   }
 }

@@ -45,6 +45,7 @@ import { renderMessageBody } from "./transcript-render"
 import { mountFleetPanel } from "./fleet-status"
 import { mountUnifiedInboxPanel } from "./inbox"
 import { mountCodexSettingsPanel } from "./codex-settings-panel"
+import { mountCodexThreadSidebar } from "./codex-thread-sidebar"
 import {
   gymPaneStateFromBridgeProof,
   gymPaneStateFromLocation,
@@ -125,14 +126,34 @@ const previewRpc = (): DesktopRpc => ({
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["codexSettingsRead"]>>
       >("codexSettingsRead", request),
+    codexThreadArchive: request =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["codexThreadArchive"]>>
+      >("codexThreadArchive", request),
     codexThreadCompact: request =>
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["codexThreadCompact"]>>
       >("codexThreadCompact", request),
+    codexThreadDelete: request =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["codexThreadDelete"]>>
+      >("codexThreadDelete", request),
+    codexThreadFork: request =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["codexThreadFork"]>>
+      >("codexThreadFork", request),
     codexThreadList: (request?: Parameters<DesktopRpcRequests["codexThreadList"]>[0]) =>
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["codexThreadList"]>>
       >("codexThreadList", request),
+    codexThreadRead: request =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["codexThreadRead"]>>
+      >("codexThreadRead", request),
+    codexThreadRename: request =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["codexThreadRename"]>>
+      >("codexThreadRename", request),
     codexThreadResume: request =>
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["codexThreadResume"]>>
@@ -141,6 +162,10 @@ const previewRpc = (): DesktopRpc => ({
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["codexThreadStart"]>>
       >("codexThreadStart", request),
+    codexThreadUnarchive: request =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["codexThreadUnarchive"]>>
+      >("codexThreadUnarchive", request),
     codexTurnInterrupt: request =>
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["codexTurnInterrupt"]>>
@@ -275,12 +300,14 @@ const activeTurnIds = new Set<string>()
 const objectUrls = new Set<string>()
 const localTextAttachments = new Map<string, string>()
 const sessionIdStorageKey = "khala-code-desktop.session-id.v1"
+const activeThreadIdStorageKey = "khala-code-desktop.active-thread-id.v1"
 const storedSessionId = localStorage.getItem(sessionIdStorageKey)
 const sessionId =
   storedSessionId?.startsWith("khala-code-desktop-") === true
     ? storedSessionId
     : `khala-code-desktop-${Date.now().toString(36)}`
 localStorage.setItem(sessionIdStorageKey, sessionId)
+let activeCodexThreadId = localStorage.getItem(activeThreadIdStorageKey)
 
 const prefersReducedMotion =
   typeof matchMedia === "function"
@@ -1140,6 +1167,10 @@ const submitComposer = async (): Promise<KhalaCodeDesktopMessage | null> => {
     }
     const response = await rpc.request.submitChatMessage(request)
     if (activeTurnIds.has(turnId)) {
+      if (response.backend.threadId !== undefined) {
+        setActiveCodexThreadId(response.backend.threadId)
+        void threadSidebar?.refresh()
+      }
       if (thinkingTurnId === turnId) thinkingTurnId = null
       appendMessages(response.messages)
     }
@@ -1417,14 +1448,26 @@ const controls = {
     rpc.request.codexConfigValueWrite(request),
   codexSettingsRead: (request?: Parameters<DesktopRpcRequests["codexSettingsRead"]>[0]) =>
     rpc.request.codexSettingsRead(request),
+  codexThreadArchive: (request: Parameters<DesktopRpcRequests["codexThreadArchive"]>[0]) =>
+    rpc.request.codexThreadArchive(request),
   codexThreadCompact: (request: Parameters<DesktopRpcRequests["codexThreadCompact"]>[0]) =>
     rpc.request.codexThreadCompact(request),
+  codexThreadDelete: (request: Parameters<DesktopRpcRequests["codexThreadDelete"]>[0]) =>
+    rpc.request.codexThreadDelete(request),
+  codexThreadFork: (request: Parameters<DesktopRpcRequests["codexThreadFork"]>[0]) =>
+    rpc.request.codexThreadFork(request),
   codexThreadList: (request?: Parameters<DesktopRpcRequests["codexThreadList"]>[0]) =>
     rpc.request.codexThreadList(request),
+  codexThreadRead: (request: Parameters<DesktopRpcRequests["codexThreadRead"]>[0]) =>
+    rpc.request.codexThreadRead(request),
+  codexThreadRename: (request: Parameters<DesktopRpcRequests["codexThreadRename"]>[0]) =>
+    rpc.request.codexThreadRename(request),
   codexThreadResume: (request: Parameters<DesktopRpcRequests["codexThreadResume"]>[0]) =>
     rpc.request.codexThreadResume(request),
   codexThreadStart: (request?: Parameters<DesktopRpcRequests["codexThreadStart"]>[0]) =>
     rpc.request.codexThreadStart(request),
+  codexThreadUnarchive: (request: Parameters<DesktopRpcRequests["codexThreadUnarchive"]>[0]) =>
+    rpc.request.codexThreadUnarchive(request),
   codexTurnInterrupt: (request: Parameters<DesktopRpcRequests["codexTurnInterrupt"]>[0]) =>
     rpc.request.codexTurnInterrupt(request),
   codexTurnStart: (request: Parameters<DesktopRpcRequests["codexTurnStart"]>[0]) =>
@@ -1517,6 +1560,7 @@ void controls.appInfo().catch(() => undefined)
 mountComposerHud()
 
 const sidebarRoot = document.getElementById("sidebar-root")
+const threadSidebarEl = document.getElementById("thread-sidebar")
 const fleetPanelEl = document.getElementById("fleet-panel")
 const inboxPanelEl = document.getElementById("inbox-panel")
 const gymPanelEl = document.getElementById("gym-panel")
@@ -1525,6 +1569,29 @@ const threadShell = document.querySelector<HTMLElement>(".khala-code-thread-shel
 const composerDock = document.querySelector<HTMLElement>(".composer-dock")
 const initialGymState = gymPaneStateFromLocation(globalThis.location)
 const initialView = initialKhalaCodeViewFromLocation(globalThis.location)
+
+const setActiveCodexThreadId = (threadId: string | null): void => {
+  activeCodexThreadId = threadId
+  if (threadId === null) {
+    localStorage.removeItem(activeThreadIdStorageKey)
+  } else {
+    localStorage.setItem(activeThreadIdStorageKey, threadId)
+  }
+  threadSidebar?.setActiveThreadId(threadId)
+}
+
+const activateCodexThread = (input: {
+  readonly messages: readonly KhalaCodeDesktopMessage[]
+  readonly threadId: string
+}): void => {
+  setActiveCodexThreadId(input.threadId)
+  messages = [...input.messages]
+  pendingTurn = false
+  thinkingTurnId = null
+  lastTurnFailed = false
+  render()
+  requestAnimationFrame(focusComposerInput)
+}
 
 const fleetPanel =
   fleetPanelEl === null
@@ -1570,11 +1637,35 @@ const settingsPanel =
         write: request => controls.codexConfigValueWrite(request),
       })
 
+const threadSidebar =
+  threadSidebarEl === null
+    ? null
+    : mountCodexThreadSidebar(threadSidebarEl, {
+        activeThreadId: () => activeCodexThreadId,
+        archiveThread: threadId => controls.codexThreadArchive({ threadId }),
+        deleteThread: threadId => controls.codexThreadDelete({ threadId }),
+        forkThread: threadId => controls.codexThreadFork({ sessionId, threadId }),
+        listThreads: request => controls.codexThreadList({
+          archived: request.archived,
+          limit: 50,
+          searchTerm: request.searchTerm,
+          sessionId,
+        }),
+        renameThread: (threadId, name) => controls.codexThreadRename({ name, threadId }),
+        resumeThread: threadId => controls.codexThreadResume({ sessionId, threadId }),
+        sessionId,
+        startThread: () => controls.codexThreadStart({ sessionId }),
+        unarchiveThread: threadId => controls.codexThreadUnarchive({ threadId }),
+        onThreadSelected: activateCodexThread,
+      })
+
 const setActiveView = (value: string): void => {
+  const showChat = value === "chat"
   const showInbox = value === "inbox"
   const showFleet = value === "fleet"
   const showGym = value === "gym"
   const showSettings = value === "settings"
+  if (threadSidebarEl !== null) threadSidebarEl.hidden = !showChat
   if (inboxPanelEl !== null) inboxPanelEl.hidden = !showInbox
   if (fleetPanelEl !== null) fleetPanelEl.hidden = !showFleet
   if (settingsPanelEl !== null) settingsPanelEl.hidden = !showSettings
@@ -1585,6 +1676,7 @@ const setActiveView = (value: string): void => {
   inboxPanel?.setVisible(showInbox)
   fleetPanel?.setVisible(showFleet)
   settingsPanel?.setVisible(showSettings)
+  threadSidebar?.setVisible(showChat)
   if (!showInbox && !showFleet && !showGym && !showSettings && value === "chat") {
     requestAnimationFrame(focusComposerInput)
   }
