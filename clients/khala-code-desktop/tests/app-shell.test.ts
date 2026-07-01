@@ -669,6 +669,7 @@ describe("khala code desktop app shell", () => {
     expect(css).not.toContain(".khala-code-fleet-summary")
     expect(css).not.toContain(".khala-code-fleet-strip")
     expect(css).not.toContain(".khala-code-fleet-session")
+    expect(css).toContain("padding: 1.2rem 0.58rem 0.75rem")
     expect(css).toContain("width: 1.3rem")
     expect(css).toContain("height: 1.3rem")
   })
