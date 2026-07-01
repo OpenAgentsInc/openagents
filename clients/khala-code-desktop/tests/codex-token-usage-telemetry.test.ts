@@ -135,6 +135,62 @@ describe("Codex token usage telemetry", () => {
     })
   })
 
+  test("does not treat a Probe Omega bearer as a Stats token usage producer token", () => {
+    expect(khalaCodeDesktopTokenUsageTelemetryStatus({
+      PROBE_OMEGA_BEARER_TOKEN: "agent-token-that-cannot-post-token-usage",
+    })).toMatchObject({
+      remoteConfigured: false,
+      remoteDisabled: false,
+    })
+  })
+
+  test("retries failed local token usage events when Stats mirroring is configured", async () => {
+    const root = await tempLedgerRoot()
+    const localLedgerPath = join(root, "token-usage-events.jsonl")
+    const failurePath = join(root, "token-usage-report-failures.jsonl")
+    const oldEvent = khalaCodeDesktopCodexTokenUsageEvent({
+      ...sampleReport(),
+      codexThreadId: "thread-previous-failure",
+      codexTurnId: "turn-previous-failure",
+      desktopTurnId: "desktop-turn-previous-failure",
+    })
+    await appendFile(localLedgerPath, `${JSON.stringify({
+      schemaVersion: "khala-code-desktop.codex-token-usage.local.v1",
+      recordedAt: "2026-07-01T16:29:00.000Z",
+      event: oldEvent,
+    })}\n`, "utf8")
+    await appendFile(failurePath, `${JSON.stringify({
+      eventId: oldEvent.eventId,
+      idempotencyKey: oldEvent.idempotencyKey,
+      observedAt: "2026-07-01T16:29:00.000Z",
+      status: 401,
+    })}\n`, "utf8")
+
+    const posts: Array<{ readonly body: unknown, readonly url: string }> = []
+    const reporter = createKhalaCodeDesktopCodexTokenUsageReporter({
+      env: {
+        KHALA_CODE_TOKEN_USAGE_BASE_URL: "https://openagents.example",
+        KHALA_CODE_TOKEN_USAGE_BEARER_TOKEN: "test-token",
+      },
+      fetch: async (url, init) => {
+        posts.push({
+          body: JSON.parse(String(init?.body)),
+          url: String(url),
+        })
+        return new Response(JSON.stringify({ inserted: true }), { status: 201 })
+      },
+      localLedgerPath,
+    })
+
+    await reporter(sampleReport())
+
+    expect(posts.map(post => (post.body as { eventId?: string }).eventId)).toEqual([
+      String(oldEvent.eventId),
+      String(khalaCodeDesktopCodexTokenUsageEvent(sampleReport()).eventId),
+    ])
+    expect(await readFile(failurePath, "utf8")).toBe("")
+  })
+
   test("stores local message provenance with exact turn token refs for reconciliation", async () => {
     const ledgerPath = await tempLedgerPath()
     const recorder = createKhalaCodeDesktopCodexMessageTokenAuditRecorder({

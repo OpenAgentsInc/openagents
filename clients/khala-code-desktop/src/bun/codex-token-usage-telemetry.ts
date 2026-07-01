@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto"
-import { appendFile, mkdir, readFile } from "node:fs/promises"
+import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import { dirname, join } from "node:path"
 import { Database } from "bun:sqlite"
@@ -207,8 +207,7 @@ const resolveConfig = (
       DEFAULT_BASE_URL,
     bearerToken: nonEmpty(env.KHALA_CODE_TOKEN_USAGE_BEARER_TOKEN) ??
       nonEmpty(env.OPENAGENTS_ADMIN_API_TOKEN) ??
-      nonEmpty(env.PROBE_TOKEN_USAGE_BEARER_TOKEN) ??
-      nonEmpty(env.PROBE_OMEGA_BEARER_TOKEN),
+      nonEmpty(env.PROBE_TOKEN_USAGE_BEARER_TOKEN),
     codexStateDbPath: defaultCodexStateDbPath(env),
     localLedgerPath: localLedgerPath ?? defaultLocalLedgerPath(env),
     localMessageAuditLedgerPath:
@@ -601,12 +600,85 @@ const appendJsonLine = async (path: string, value: unknown): Promise<void> => {
   await appendFile(path, `${JSON.stringify(value)}\n`, "utf8")
 }
 
+const failureLedgerPath = (localLedgerPath: string): string =>
+  join(dirname(localLedgerPath), "token-usage-report-failures.jsonl")
+
 const appendFailure = async (
   localLedgerPath: string,
   value: Record<string, unknown>,
 ): Promise<void> => {
-  const failurePath = join(dirname(localLedgerPath), "token-usage-report-failures.jsonl")
-  await appendJsonLine(failurePath, value)
+  await appendJsonLine(failureLedgerPath(localLedgerPath), value)
+}
+
+const postTokenUsageEvent = async (
+  fetchImpl: FetchLike,
+  endpoint: URL,
+  bearerToken: string,
+  event: JsonRecord,
+): Promise<Response> =>
+  fetchImpl(endpoint, {
+    body: JSON.stringify(event),
+    headers: {
+      authorization: `Bearer ${bearerToken}`,
+      "content-type": "application/json",
+    },
+    method: "POST",
+  })
+
+const rewriteJsonLines = async (
+  path: string,
+  rows: readonly JsonRecord[],
+): Promise<void> => {
+  await mkdir(dirname(path), { recursive: true })
+  await writeFile(
+    path,
+    rows.length === 0 ? "" : `${rows.map(row => JSON.stringify(row)).join("\n")}\n`,
+    "utf8",
+  )
+}
+
+const retryFailedTokenUsageReports = async (
+  config: TokenUsageTelemetryConfig,
+  fetchImpl: FetchLike,
+  endpoint: URL,
+): Promise<void> => {
+  if (config.remoteDisabled || config.bearerToken === null) return
+
+  const failurePath = failureLedgerPath(config.localLedgerPath)
+  const failureRows = await readJsonLines(failurePath)
+  if (failureRows.length === 0) return
+
+  const failedRefs = refSetFromRows(failureRows)
+  const usageRows = await readJsonLines(config.localLedgerPath)
+  const remainingFailedRefs = new Set(failedRefs)
+
+  for (const row of usageRows) {
+    const event = objectField(row, "event")
+    if (event === null) continue
+    const refs = refsFromEventLike(event)
+    if (!refs.some(ref => failedRefs.has(ref))) continue
+
+    try {
+      const response = await postTokenUsageEvent(
+        fetchImpl,
+        endpoint,
+        config.bearerToken,
+        event,
+      )
+      if (response.ok) {
+        for (const ref of refs) remainingFailedRefs.delete(ref)
+      }
+    } catch {
+      // Leave the failure marker in place for the next configured reporter call.
+    }
+  }
+
+  await rewriteJsonLines(
+    failurePath,
+    failureRows.filter(row =>
+      refsFromEventLike(row).some(ref => remainingFailedRefs.has(ref))
+    ),
+  )
 }
 
 export function createKhalaCodeDesktopCodexTokenUsageReporter(
@@ -630,15 +702,9 @@ export function createKhalaCodeDesktopCodexTokenUsageReporter(
     if (config.remoteDisabled || config.bearerToken === null) return
 
     const endpoint = new URL("/api/stats/token-usage/events", config.baseUrl)
+    await retryFailedTokenUsageReports(config, fetchImpl, endpoint)
     try {
-      const response = await fetchImpl(endpoint, {
-        body: JSON.stringify(event),
-        headers: {
-          authorization: `Bearer ${config.bearerToken}`,
-          "content-type": "application/json",
-        },
-        method: "POST",
-      })
+      const response = await postTokenUsageEvent(fetchImpl, endpoint, config.bearerToken, event)
       if (!response.ok) {
         await appendFailure(config.localLedgerPath, {
           schemaVersion: "khala-code-desktop.codex-token-usage.remote-failure.v1",
