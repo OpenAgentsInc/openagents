@@ -14,6 +14,7 @@ import {
   tickFleetRunSupervisor,
   type FleetRunSupervisorAccount,
   type FleetRunSupervisorObservedEvent,
+  type FleetRunSupervisorDispatchInput,
   type FleetRunSupervisorRunner,
 } from "../src/bun/fleet-run-supervisor.js"
 
@@ -60,7 +61,7 @@ const capacity = (accounts: readonly FleetRunSupervisorAccount[]) => ({
 })
 
 const acceptingRunner = (dispatched: string[] = []): FleetRunSupervisorRunner => ({
-  dispatch: async input => {
+  dispatch: async (input: FleetRunSupervisorDispatchInput) => {
     dispatched.push(input.workUnit.workUnitRef)
     return {
       assignmentRef: `assignment.${input.claim.claimRef}`,
@@ -134,7 +135,7 @@ describe("FleetRunSupervisor", () => {
       runRef: run.runRef,
       planner: fixturePlannerWithClaims(store, 3),
       runner: {
-        dispatch: async input => ({
+        dispatch: async (input: FleetRunSupervisorDispatchInput) => ({
           assignmentRef: `assignment.${input.claim.claimRef}`,
           lifecycle: [
             { event: "assignment.accepted", status: "accepted" },
@@ -183,7 +184,7 @@ describe("FleetRunSupervisor", () => {
       runRef: run.runRef,
       planner: fixturePlannerWithClaims(store, 4),
       runner: {
-        dispatch: async input => {
+        dispatch: async (input: FleetRunSupervisorDispatchInput) => {
           dispatched.push(input.workUnit.workUnitRef)
           return {
             assignmentRef: `assignment.${input.claim.claimRef}`,
@@ -218,7 +219,7 @@ describe("FleetRunSupervisor", () => {
       runRef: run.runRef,
       planner: fixturePlannerWithClaims(store, 2),
       runner: {
-        dispatch: async input => {
+        dispatch: async (input: FleetRunSupervisorDispatchInput) => {
           dispatched.push(input.workUnit.workUnitRef)
           return {
             assignmentRef: `assignment.${input.claim.claimRef}`,
@@ -250,7 +251,7 @@ describe("FleetRunSupervisor", () => {
       runRef: run.runRef,
       planner: fixturePlannerWithClaims(store, 2),
       runner: {
-        dispatch: async input => {
+        dispatch: async (input: FleetRunSupervisorDispatchInput) => {
           calls += 1
           if (calls === 1) throw new Error("dispatch exploded")
           return {
