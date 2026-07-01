@@ -919,7 +919,9 @@ const renderThreadTokenCounter = (): void => {
   if (summary.codexStateTokens > 0) {
     appendThreadTokenRow(
       rows,
-      "Codex state",
+      summary.totalTokens === 0 && summary.auditRows === 0 && summary.usageEventRows === 0
+        ? "Codex state only"
+        : "Codex state",
       formatExactTokens(summary.codexStateTokens),
     )
   }
@@ -933,7 +935,14 @@ const renderThreadTokenCounter = (): void => {
 
   const meta = document.createElement("div")
   meta.className = "khala-thread-token-popover-meta"
-  meta.textContent = summary.remoteDisabled
+  const codexOnlyState =
+    summary.codexStateTokens > 0 &&
+    summary.totalTokens === 0 &&
+    summary.auditRows === 0 &&
+    summary.usageEventRows === 0
+  meta.textContent = codexOnlyState
+    ? "Not Khala Code usage"
+    : summary.remoteDisabled
     ? "Sync disabled"
     : summary.remoteConfigured
       ? `Updated ${formatThreadTokenUpdatedAt(summary.updatedAt)}`

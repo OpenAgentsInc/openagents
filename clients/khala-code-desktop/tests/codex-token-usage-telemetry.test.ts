@@ -466,7 +466,7 @@ describe("Codex token usage telemetry", () => {
     })
   })
 
-  test("falls back to Codex state tokens when a visible thread has no Khala audit row", async () => {
+  test("does not count Codex-only state tokens as Khala local or pending usage", async () => {
     const root = await tempLedgerRoot()
     const codexStateDbPath = join(root, "state_5.sqlite")
     const db = new Database(codexStateDbPath)
@@ -497,11 +497,11 @@ describe("Codex token usage telemetry", () => {
       codexStateDbPath,
       codexStateTokens: 2_439_775,
       leaderboardSyncedTokens: 0,
-      pendingSyncTokens: 2_439_775,
+      pendingSyncTokens: 0,
       threadId: "thread-visible-before-audit",
-      totalTokens: 2_439_775,
+      totalTokens: 0,
       usageEventRows: 0,
     })
-    expect(summary.updatedAt).toBe("2026-07-01T17:19:47.386Z")
+    expect(summary.updatedAt).toBe(null)
   })
 })

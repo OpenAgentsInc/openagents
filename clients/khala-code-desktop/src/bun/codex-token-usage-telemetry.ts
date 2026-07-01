@@ -547,8 +547,12 @@ export async function readKhalaCodeDesktopThreadTokenSummary(options: {
     }
   }
 
-  totalTokens = Math.max(totalTokens, codexState.tokens)
-  updatedAt = newerIso(updatedAt, codexState.updatedAt)
+  // Codex state is global Codex history for the thread. It is useful as a
+  // diagnostic, but it is not Khala Code provenance. Only rows that Khala
+  // recorded locally may count as local/pending leaderboard usage.
+  if (auditRowCount > 0 || usageEventRowCount > 0) {
+    updatedAt = newerIso(updatedAt, codexState.updatedAt)
+  }
 
   return {
     auditRows: auditRowCount,
