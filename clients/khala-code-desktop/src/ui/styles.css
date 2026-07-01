@@ -113,6 +113,123 @@ button {
   padding: 0;
 }
 
+.khala-thread-token-meter {
+  position: absolute;
+  top: 12px;
+  right: 18px;
+  z-index: 4;
+  display: grid;
+  justify-items: end;
+  pointer-events: none;
+}
+
+.khala-thread-token-counter {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 92px;
+  height: 30px;
+  border: 1px solid color-mix(in srgb, var(--oa-color-khala-energy-cyan) 42%, transparent);
+  border-radius: 4px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--oa-color-khala-energy-cyan) 8%, transparent), transparent 62%),
+    color-mix(in srgb, var(--oa-color-khala-void) 74%, transparent);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--oa-color-khala-energy-blue) 12%, transparent) inset,
+    0 12px 36px color-mix(in srgb, var(--oa-color-khala-void) 38%, transparent);
+  color: var(--oa-color-khala-text-primary);
+  cursor: pointer;
+  font-family: var(--oa-font-code);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  line-height: 1;
+  padding: 0 9px;
+  pointer-events: auto;
+  text-transform: uppercase;
+}
+
+.khala-thread-token-counter:hover,
+.khala-thread-token-counter:focus-visible {
+  border-color: color-mix(in srgb, var(--oa-color-khala-energy-cyan) 92%, transparent);
+  outline: none;
+}
+
+.khala-thread-token-counter-label {
+  color: color-mix(in srgb, var(--oa-color-khala-text-muted) 78%, transparent);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.khala-thread-token-popover {
+  display: grid;
+  gap: 8px;
+  width: min(278px, calc(100vw - var(--sidebar-width) - 36px));
+  margin-top: 8px;
+  border: 1px solid color-mix(in srgb, var(--oa-color-khala-energy-blue) 38%, transparent);
+  border-radius: 6px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--oa-color-khala-surface-raised) 62%, transparent), color-mix(in srgb, var(--oa-color-khala-void) 90%, transparent)),
+    var(--oa-color-khala-surface);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--oa-color-khala-energy-cyan) 8%, transparent) inset,
+    0 20px 64px color-mix(in srgb, var(--oa-color-khala-void) 52%, transparent);
+  color: var(--oa-color-khala-text-primary);
+  font-family: var(--oa-font-code);
+  font-size: 0.8125rem;
+  line-height: 1.35;
+  padding: 10px;
+  pointer-events: auto;
+}
+
+.khala-thread-token-popover[hidden] {
+  display: none;
+}
+
+.khala-thread-token-popover-title {
+  color: var(--oa-color-khala-energy-text-strong);
+  font-weight: 700;
+}
+
+.khala-thread-token-popover-grid {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+}
+
+.khala-thread-token-popover-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: baseline;
+}
+
+.khala-thread-token-popover-row dt,
+.khala-thread-token-popover-row dd {
+  margin: 0;
+}
+
+.khala-thread-token-popover-row dt {
+  min-width: 0;
+  overflow: hidden;
+  color: color-mix(in srgb, var(--oa-color-khala-text-muted) 82%, transparent);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.khala-thread-token-popover-row dd {
+  color: var(--oa-color-khala-text-primary);
+  font-weight: 700;
+  text-align: right;
+}
+
+.khala-thread-token-popover-meta {
+  color: color-mix(in srgb, var(--oa-color-khala-text-muted) 76%, transparent);
+  font-size: 0.75rem;
+  overflow-wrap: anywhere;
+}
+
 .message-list {
   display: flex;
   flex-direction: column;

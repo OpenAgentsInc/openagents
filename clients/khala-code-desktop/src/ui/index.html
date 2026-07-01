@@ -18,6 +18,25 @@
       </aside>
       <div class="khala-code-scene" aria-hidden="true"></div>
       <section class="khala-code-thread-shell" aria-label="Khala Code transcript">
+        <div class="khala-thread-token-meter" id="thread-token-meter">
+          <button
+            id="thread-token-counter"
+            class="khala-thread-token-counter"
+            type="button"
+            aria-expanded="false"
+            aria-controls="thread-token-popover"
+            title="Thread tokens"
+          >
+            <span id="thread-token-counter-value">0</span>
+            <span class="khala-thread-token-counter-label">tokens</span>
+          </button>
+          <div
+            id="thread-token-popover"
+            class="khala-thread-token-popover"
+            role="status"
+            hidden
+          ></div>
+        </div>
         <div
           id="message-list"
           class="message-list"

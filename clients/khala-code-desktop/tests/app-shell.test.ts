@@ -77,6 +77,8 @@ describe("khala code desktop app shell", () => {
     expect(html).toContain('id="sidebar-root" class="khala-code-sidebar-shell"')
     expect(html).toContain('id="sidebar-nav-root" class="khala-code-sidebar"')
     expect(html).toContain('id="message-list"')
+    expect(html).toContain('id="thread-token-counter"')
+    expect(html).toContain('id="thread-token-popover"')
     expect(html).toContain('id="thread-sidebar"')
     expect(html).toContain('id="composer-form"')
     expect(html).toContain("oa-ai-command-composer")
@@ -104,11 +106,29 @@ describe("khala code desktop app shell", () => {
     expect(css).not.toContain("@font-face")
     expect(css).toContain("font-family: var(--oa-font-sans)")
     expect(css).toContain(".message-prose")
+    expect(css).toContain(".khala-thread-token-meter")
+    expect(css).toContain(".khala-thread-token-popover-row")
     expect(css).toContain("font-family: var(--oa-font-code)")
     expect(css).toContain("var(--oa-color-khala-energy-cyan)")
     expect(css).toContain("var(--oa-color-khala-surface)")
     expect(css).not.toMatch(/#[0-9a-fA-F]{3,8}\b|rgba?\(/)
     expect(css).not.toMatch(/oa-color-(accent|warning|primary|bg|danger|success|info|review|hud)/)
+  })
+
+  test("wires an active-thread token meter to local token accounting ledgers", async () => {
+    const main = await Bun.file(new URL("../src/ui/main.ts", import.meta.url)).text()
+    const rpc = await Bun.file(new URL("../src/shared/rpc.ts", import.meta.url)).text()
+    const handlers = await Bun.file(new URL("../src/bun/rpc-handlers.ts", import.meta.url)).text()
+    const telemetry = await Bun.file(new URL("../src/bun/codex-token-usage-telemetry.ts", import.meta.url)).text()
+
+    expect(rpc).toContain("KhalaCodeDesktopThreadTokenSummary")
+    expect(rpc).toContain("threadTokenSummary")
+    expect(handlers).toContain("readKhalaCodeDesktopThreadTokenSummary")
+    expect(telemetry).toContain("message-token-audit.jsonl")
+    expect(telemetry).toContain("token-usage-report-failures.jsonl")
+    expect(main).toContain("refreshThreadTokenSummary")
+    expect(main).toContain("Leaderboard synced")
+    expect(main).toContain('event.type === "thread_ready"')
   })
 
   test("hides the Unified Inbox shell and keeps local-safe projection logic", async () => {

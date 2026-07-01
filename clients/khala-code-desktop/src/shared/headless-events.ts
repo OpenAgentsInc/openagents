@@ -148,6 +148,8 @@ export function projectKhalaCodeDesktopEventToThreadEvents(
   event: KhalaCodeDesktopChatTurnEvent,
 ): readonly KhalaCodeHeadlessThreadEvent[] {
   switch (event.type) {
+    case "thread_ready":
+      return []
     case "message_start":
       return [messageStarted(event.turnId, event.message)]
     case "message_delta":

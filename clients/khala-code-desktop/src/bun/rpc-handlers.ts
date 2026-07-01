@@ -15,6 +15,7 @@ import {
   createKhalaCodeDesktopCodexMessageTokenAuditRecorder,
   createKhalaCodeDesktopCodexTokenUsageReporter,
   khalaCodeDesktopTokenUsageTelemetryStatus,
+  readKhalaCodeDesktopThreadTokenSummary,
 } from "./codex-token-usage-telemetry.js"
 import type { KhalaAppleFmReadiness } from "../shared/apple-fm-readiness.js"
 import type { OnDeviceDeciderSelection } from "../shared/on-device-decider.js"
@@ -53,6 +54,7 @@ import {
   type KhalaCodeDesktopFleetStatus,
   type KhalaCodeDesktopRPCSchema,
   type KhalaCodeDesktopRuntimeStatus,
+  type KhalaCodeDesktopThreadTokenSummaryRequest,
 } from "../shared/rpc.js"
 import {
   khalaCodeDesktopCodexApprovalResponsePayload,
@@ -1861,6 +1863,12 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
           ? "Codex app-server token accounting and message audit records are stored locally and mirrored to OpenAgents Stats."
           : "Codex app-server token accounting and message audit records are stored locally; set a token usage bearer to mirror counts to OpenAgents Stats.",
         status: "ready",
+      })
+    },
+    async threadTokenSummary(request?: KhalaCodeDesktopThreadTokenSummaryRequest) {
+      return readKhalaCodeDesktopThreadTokenSummary({
+        env: input.env,
+        threadId: request?.threadId ?? null,
       })
     },
     async toolCatalog() {

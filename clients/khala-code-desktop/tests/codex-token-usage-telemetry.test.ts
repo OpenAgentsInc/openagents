@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises"
+import { appendFile, mkdtemp, readFile, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, describe, expect, test } from "bun:test"
@@ -10,6 +10,7 @@ import {
   khalaCodeDesktopCodexTokenUsageEvent,
   khalaCodeDesktopCodexTokenUsageEventRefs,
   khalaCodeDesktopTokenUsageTelemetryStatus,
+  readKhalaCodeDesktopThreadTokenSummary,
 } from "../src/bun/codex-token-usage-telemetry"
 
 const tempDirs: string[] = []
@@ -22,6 +23,12 @@ async function tempLedgerPath(): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), "khala-code-token-usage-"))
   tempDirs.push(root)
   return join(root, "token-usage-events.jsonl")
+}
+
+async function tempLedgerRoot(): Promise<string> {
+  const root = await mkdtemp(join(tmpdir(), "khala-code-token-usage-"))
+  tempDirs.push(root)
+  return root
 }
 
 const sampleReport = () => ({
@@ -202,5 +209,117 @@ describe("Codex token usage telemetry", () => {
       },
     })
     expect(row.record.clientUserMessage.bodySha256).toHaveLength(64)
+  })
+
+  test("summarizes active-thread tokens from audited turns and live usage events", async () => {
+    const root = await tempLedgerRoot()
+    const localLedgerPath = join(root, "token-usage-events.jsonl")
+    const localMessageAuditLedgerPath = join(root, "message-token-audit.jsonl")
+    const env = {
+      KHALA_CODE_MESSAGE_TOKEN_AUDIT_LOCAL_LEDGER_PATH: localMessageAuditLedgerPath,
+      KHALA_CODE_TOKEN_USAGE_BEARER_TOKEN: "test-token",
+      KHALA_CODE_TOKEN_USAGE_LOCAL_LEDGER_PATH: localLedgerPath,
+    }
+    const recorder = createKhalaCodeDesktopCodexMessageTokenAuditRecorder({
+      env,
+      localMessageAuditLedgerPath,
+    })
+    const report = {
+      ...sampleReport(),
+      codexThreadId: "thread-token-meter",
+      codexTurnId: "turn-audited",
+      usage: {
+        cachedInputTokens: 0,
+        inputTokens: 100,
+        outputTokens: 25,
+        reasoningOutputTokens: 0,
+        totalTokens: 125,
+      },
+    }
+
+    await recorder({
+      clientUserMessage: khalaCodeDesktopCodexMessageTokenAuditMessage({
+        body: "Measure this thread",
+        id: "user-token-meter",
+        role: "user",
+      }, "khala_code_client"),
+      codexMessages: [
+        khalaCodeDesktopCodexMessageTokenAuditMessage({
+          body: "Measured.",
+          id: "assistant-token-meter",
+          role: "assistant",
+        }, "codex_app_server"),
+      ],
+      codexThreadId: report.codexThreadId,
+      codexTurnId: report.codexTurnId,
+      completedAt: "2026-07-01T16:30:04.000Z",
+      desktopSessionId: report.desktopSessionId,
+      desktopTurnId: report.desktopTurnId,
+      model: report.model,
+      reconciliation: {
+        aggregateBackfillEventId: "token_usage_event.khala_code_direct_local.backfill",
+        aggregateBackfillIdempotencyKey: "khala-code-desktop:backfill:thread-token-meter",
+        globalCountedTokens: 125,
+        globalCounterRoute: "/api/stats/token-usage/events",
+        status: "global_count_backfilled_aggregate",
+        tokenAccountingRequired: true,
+        tokenScope: "codex_turn_provider_reported",
+        usageTruth: "exact",
+      },
+      submittedAt: "2026-07-01T16:30:00.000Z",
+      turnStatus: "completed",
+      usage: report.usage,
+      usageEvents: [],
+    })
+    await appendFile(localLedgerPath, `${JSON.stringify({
+      schemaVersion: "khala-code-desktop.codex-token-usage.local.v1",
+      recordedAt: "2026-07-01T16:31:00.000Z",
+      event: {
+        eventId: "token_usage_event.live.ok",
+        idempotencyKey: "khala-code-desktop:live:ok",
+        observedAt: "2026-07-01T16:31:00.000Z",
+        safeMetadata: { codexThreadId: report.codexThreadId },
+        tokenCounts: {
+          inputTokens: 7,
+          outputTokens: 3,
+          totalTokens: 10,
+        },
+      },
+    })}\n`, "utf8")
+    await appendFile(localLedgerPath, `${JSON.stringify({
+      schemaVersion: "khala-code-desktop.codex-token-usage.local.v1",
+      recordedAt: "2026-07-01T16:31:02.000Z",
+      event: {
+        eventId: "token_usage_event.live.failed",
+        idempotencyKey: "khala-code-desktop:live:failed",
+        observedAt: "2026-07-01T16:31:02.000Z",
+        safeMetadata: { codexThreadId: report.codexThreadId },
+        tokenCounts: {
+          inputTokens: 4,
+          outputTokens: 1,
+          totalTokens: 5,
+        },
+      },
+    })}\n`, "utf8")
+    await appendFile(join(root, "token-usage-report-failures.jsonl"), `${JSON.stringify({
+      eventId: "token_usage_event.live.failed",
+      idempotencyKey: "khala-code-desktop:live:failed",
+    })}\n`, "utf8")
+
+    const summary = await readKhalaCodeDesktopThreadTokenSummary({
+      env,
+      threadId: report.codexThreadId,
+    })
+
+    expect(summary).toMatchObject({
+      auditRows: 1,
+      leaderboardSyncedTokens: 135,
+      missingUsageTurns: 0,
+      pendingSyncTokens: 5,
+      remoteConfigured: true,
+      threadId: report.codexThreadId,
+      totalTokens: 140,
+      usageEventRows: 2,
+    })
   })
 })

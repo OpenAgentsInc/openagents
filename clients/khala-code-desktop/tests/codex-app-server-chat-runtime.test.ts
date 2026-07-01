@@ -198,6 +198,7 @@ describe("Codex app-server chat runtime", () => {
       ok: true,
     })
     expect(events.map(event => event.type)).toEqual([
+      "thread_ready",
       "message_start",
       "message_delta",
       "message_replace",

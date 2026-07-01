@@ -47,6 +47,7 @@ import {
   type KhalaCodeDesktopMessage,
   type KhalaCodeDesktopMessageRole,
   type KhalaCodeDesktopRPCSchema,
+  type KhalaCodeDesktopThreadTokenSummary,
 } from "../shared/rpc"
 import { renderMessageBody } from "./transcript-render"
 import { mountFleetPanel } from "./fleet-status"
@@ -325,6 +326,10 @@ const previewRpc = (): DesktopRpc => ({
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["tokenAccountingStatus"]>>
       >("tokenAccountingStatus"),
+    threadTokenSummary: request =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["threadTokenSummary"]>>
+      >("threadTokenSummary", request),
     toolCatalog: () =>
       postPreviewRpc<Awaited<ReturnType<DesktopRpcRequests["toolCatalog"]>>>(
         "toolCatalog",
@@ -434,6 +439,10 @@ const requireElement = <T extends Element>(selector: string): T => {
 }
 
 const messageList = requireElement<HTMLElement>("#message-list")
+const threadTokenMeter = requireElement<HTMLElement>("#thread-token-meter")
+const threadTokenCounter = requireElement<HTMLButtonElement>("#thread-token-counter")
+const threadTokenCounterValue = requireElement<HTMLElement>("#thread-token-counter-value")
+const threadTokenPopover = requireElement<HTMLElement>("#thread-token-popover")
 const composerForm = requireElement<HTMLFormElement>("#composer-form")
 const composerFrame = requireElement<HTMLElement>("#composer-frame")
 const composerHudMount = requireElement<HTMLElement>("#composer-hud")
@@ -472,6 +481,42 @@ const sessionId =
 localStorage.setItem(sessionIdStorageKey, sessionId)
 localStorage.removeItem(activeThreadIdStorageKey)
 let activeCodexThreadId: string | null = null
+
+const emptyThreadTokenSummary = (
+  threadId: string | null,
+): KhalaCodeDesktopThreadTokenSummary => ({
+  auditRows: 0,
+  leaderboardLabel: "OpenAgents Stats",
+  leaderboardSyncedTokens: 0,
+  localLedgerPath: "",
+  localMessageAuditLedgerPath: "",
+  missingUsageTurns: 0,
+  ok: true,
+  pendingSyncTokens: 0,
+  remoteConfigured: false,
+  remoteDisabled: false,
+  threadId,
+  totalTokens: 0,
+  updatedAt: null,
+  usageEventRows: 0,
+})
+
+let threadTokenSummary = emptyThreadTokenSummary(null)
+let threadTokenPopoverOpen = false
+let threadTokenRefreshInFlight = false
+let threadTokenRefreshQueued = false
+
+const compactTokenFormatter = new Intl.NumberFormat("en-US", {
+  maximumFractionDigits: 1,
+  notation: "compact",
+})
+const exactTokenFormatter = new Intl.NumberFormat("en-US")
+const tokenTimestampFormatter = new Intl.DateTimeFormat("en-US", {
+  hour: "numeric",
+  minute: "2-digit",
+  month: "short",
+  day: "numeric",
+})
 
 const prefersReducedMotion =
   typeof matchMedia === "function"
@@ -616,6 +661,122 @@ const formatBytes = (bytes: number): string => {
   }
   const digits = value >= 10 || unit === 0 ? 0 : 1
   return `${value.toFixed(digits)} ${units[unit]}`
+}
+
+const formatCompactTokens = (tokens: number): string =>
+  tokens >= 10_000
+    ? compactTokenFormatter.format(tokens)
+    : exactTokenFormatter.format(Math.max(0, Math.trunc(tokens)))
+
+const formatExactTokens = (tokens: number): string =>
+  exactTokenFormatter.format(Math.max(0, Math.trunc(tokens)))
+
+const formatThreadTokenUpdatedAt = (value: string | null): string => {
+  if (value === null) return "Not recorded"
+  const date = new Date(value)
+  if (!Number.isFinite(date.getTime())) return "Not recorded"
+  return tokenTimestampFormatter.format(date)
+}
+
+const appendThreadTokenRow = (
+  root: HTMLElement,
+  label: string,
+  value: string,
+): void => {
+  const row = document.createElement("div")
+  row.className = "khala-thread-token-popover-row"
+
+  const term = document.createElement("dt")
+  term.textContent = label
+
+  const definition = document.createElement("dd")
+  definition.textContent = value
+
+  row.append(term, definition)
+  root.append(row)
+}
+
+const renderThreadTokenCounter = (): void => {
+  const summary = threadTokenSummary
+  threadTokenCounterValue.textContent = formatCompactTokens(summary.totalTokens)
+  threadTokenCounter.setAttribute(
+    "aria-label",
+    `${formatExactTokens(summary.totalTokens)} thread tokens, ${formatExactTokens(summary.leaderboardSyncedTokens)} synced to leaderboard`,
+  )
+  threadTokenCounter.setAttribute("aria-expanded", String(threadTokenPopoverOpen))
+  threadTokenPopover.hidden = !threadTokenPopoverOpen
+  if (!threadTokenPopoverOpen) return
+
+  const title = document.createElement("div")
+  title.className = "khala-thread-token-popover-title"
+  title.textContent = summary.threadId === null ? "No active thread" : "Thread tokens"
+
+  const rows = document.createElement("dl")
+  rows.className = "khala-thread-token-popover-grid"
+  appendThreadTokenRow(rows, "Total local", formatExactTokens(summary.totalTokens))
+  appendThreadTokenRow(
+    rows,
+    "Leaderboard synced",
+    formatExactTokens(summary.leaderboardSyncedTokens),
+  )
+  appendThreadTokenRow(rows, "Pending sync", formatExactTokens(summary.pendingSyncTokens))
+  appendThreadTokenRow(rows, "Audit turns", exactTokenFormatter.format(summary.auditRows))
+  appendThreadTokenRow(rows, "Usage events", exactTokenFormatter.format(summary.usageEventRows))
+  if (summary.missingUsageTurns > 0) {
+    appendThreadTokenRow(
+      rows,
+      "Missing usage",
+      exactTokenFormatter.format(summary.missingUsageTurns),
+    )
+  }
+
+  const meta = document.createElement("div")
+  meta.className = "khala-thread-token-popover-meta"
+  meta.textContent = summary.remoteDisabled
+    ? "Sync disabled"
+    : summary.remoteConfigured
+      ? `Updated ${formatThreadTokenUpdatedAt(summary.updatedAt)}`
+      : "Remote sync not configured"
+
+  threadTokenPopover.replaceChildren(title, rows, meta)
+}
+
+const refreshThreadTokenSummary = async (): Promise<void> => {
+  const threadId = activeCodexThreadId
+  if (threadId === null) {
+    threadTokenSummary = emptyThreadTokenSummary(null)
+    renderThreadTokenCounter()
+    return
+  }
+  if (threadTokenRefreshInFlight) {
+    threadTokenRefreshQueued = true
+    return
+  }
+
+  threadTokenRefreshInFlight = true
+  try {
+    const summary = await rpc.request.threadTokenSummary({ threadId })
+    if (activeCodexThreadId === threadId) {
+      threadTokenSummary = summary
+      renderThreadTokenCounter()
+    }
+  } catch {
+    if (activeCodexThreadId === threadId) {
+      threadTokenSummary = {
+        ...emptyThreadTokenSummary(threadId),
+        totalTokens: threadTokenSummary.threadId === threadId
+          ? threadTokenSummary.totalTokens
+          : 0,
+      }
+      renderThreadTokenCounter()
+    }
+  } finally {
+    threadTokenRefreshInFlight = false
+    if (threadTokenRefreshQueued) {
+      threadTokenRefreshQueued = false
+      void refreshThreadTokenSummary()
+    }
+  }
 }
 
 const attachmentPropsFor = (
@@ -1231,6 +1392,11 @@ const appendMessages = (nextMessages: readonly KhalaCodeDesktopMessage[]): void 
 
 function applyChatTurnEvent(event: KhalaCodeDesktopChatTurnEvent): void {
   if (!activeTurnIds.has(event.turnId)) return
+  if (event.type === "thread_ready") {
+    setActiveCodexThreadId(event.threadId)
+    void refreshThreadTokenSummary()
+    return
+  }
   if (
     event.type === "message_start" ||
     event.type === "message_delta" ||
@@ -1731,8 +1897,31 @@ messageList.addEventListener("click", event => {
 messageList.addEventListener("scroll", () => {
   transcriptPinnedToEnd = isNearTranscriptEnd()
 }, { passive: true })
+threadTokenCounter.addEventListener("click", () => {
+  threadTokenPopoverOpen = !threadTokenPopoverOpen
+  renderThreadTokenCounter()
+  if (threadTokenPopoverOpen) void refreshThreadTokenSummary()
+})
+document.addEventListener("click", event => {
+  if (!threadTokenPopoverOpen) return
+  const target = event.target
+  if (target instanceof Node && threadTokenMeter.contains(target)) return
+  threadTokenPopoverOpen = false
+  renderThreadTokenCounter()
+})
 window.addEventListener("wheel", proxyTranscriptWheel, { passive: false })
-window.addEventListener("keydown", proxyTranscriptKeyScroll)
+window.addEventListener("keydown", event => {
+  if (event.key === "Escape" && threadTokenPopoverOpen) {
+    threadTokenPopoverOpen = false
+    renderThreadTokenCounter()
+    return
+  }
+  proxyTranscriptKeyScroll(event)
+})
+window.setInterval(() => {
+  if (document.hidden || activeCodexThreadId === null) return
+  void refreshThreadTokenSummary()
+}, 2_000)
 window.addEventListener("beforeunload", () => {
   for (const url of objectUrls) URL.revokeObjectURL(url)
   composerHudRuntime?.dispose()
@@ -1904,6 +2093,8 @@ const controls = {
   stopTurn: stopActiveTurn,
   submitComposer,
   tokenAccountingStatus: () => rpc.request.tokenAccountingStatus(),
+  threadTokenSummary: (request?: Parameters<DesktopRpcRequests["threadTokenSummary"]>[0]) =>
+    rpc.request.threadTokenSummary(request),
   toolCatalog: () => rpc.request.toolCatalog(),
 }
 
@@ -1925,11 +2116,17 @@ const initialGymState = gymPaneStateFromLocation(globalThis.location)
 const initialView = initialKhalaCodeViewFromLocation(globalThis.location)
 
 const setActiveCodexThreadId = (threadId: string | null): void => {
+  const changed = activeCodexThreadId !== threadId
   activeCodexThreadId = threadId
   if (threadId === null) {
     localStorage.removeItem(activeThreadIdStorageKey)
   } else {
     localStorage.setItem(activeThreadIdStorageKey, threadId)
+  }
+  if (changed) {
+    threadTokenSummary = emptyThreadTokenSummary(threadId)
+    renderThreadTokenCounter()
+    void refreshThreadTokenSummary()
   }
   threadSidebar?.setActiveThreadId(threadId)
 }
@@ -2031,5 +2228,7 @@ if (sidebarNavRoot !== null) {
   })
 }
 setActiveView(initialView)
+renderThreadTokenCounter()
+void refreshThreadTokenSummary()
 render()
 requestAnimationFrame(focusComposerInput)

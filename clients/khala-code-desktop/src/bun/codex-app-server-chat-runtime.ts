@@ -819,6 +819,11 @@ export function createCodexAppServerChatRuntime(
     }
 
     let thread = await ensureThreadForSession(request.sessionId, request.cwd, request.threadId)
+    options.onEvent?.({
+      threadId: thread.threadId,
+      turnId: desktopTurnId,
+      type: "thread_ready",
+    })
     const projector = createCodexThreadItemEventProjector({ desktopTurnId })
     let capturedUsage = emptyCodexUsage()
     let codexTurnId: string | null = null

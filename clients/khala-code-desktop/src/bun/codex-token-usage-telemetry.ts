@@ -1,11 +1,12 @@
 import { createHash } from "node:crypto"
-import { appendFile, mkdir } from "node:fs/promises"
+import { appendFile, mkdir, readFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import { dirname, join } from "node:path"
 
 import type {
   KhalaCodeDesktopMessage,
   KhalaCodeDesktopMessageRole,
+  KhalaCodeDesktopThreadTokenSummary,
 } from "../shared/rpc.js"
 
 export type KhalaCodeDesktopCodexTokenUsageCounts = {
@@ -215,6 +216,227 @@ export function khalaCodeDesktopTokenUsageTelemetryStatus(
     localLedgerPath: config.localLedgerPath,
     remoteConfigured: config.bearerToken !== null && !config.remoteDisabled,
     remoteDisabled: config.remoteDisabled,
+  }
+}
+
+type JsonRecord = Record<string, unknown>
+
+const isJsonRecord = (value: unknown): value is JsonRecord =>
+  typeof value === "object" && value !== null && !Array.isArray(value)
+
+const objectField = (
+  value: JsonRecord,
+  key: string,
+): JsonRecord | null => isJsonRecord(value[key]) ? value[key] : null
+
+const arrayField = (
+  value: JsonRecord,
+  key: string,
+): readonly unknown[] => Array.isArray(value[key]) ? value[key] : []
+
+const stringField = (
+  value: JsonRecord,
+  key: string,
+): string | null => typeof value[key] === "string" ? value[key] : null
+
+const numberField = (
+  value: JsonRecord,
+  key: string,
+): number => typeof value[key] === "number" ? boundedCount(value[key]) : 0
+
+const readJsonLines = async (path: string): Promise<readonly JsonRecord[]> => {
+  let text = ""
+  try {
+    text = await readFile(path, "utf8")
+  } catch (error) {
+    if (
+      isJsonRecord(error) &&
+      typeof error.code === "string" &&
+      error.code === "ENOENT"
+    ) {
+      return []
+    }
+    throw error
+  }
+
+  const rows: JsonRecord[] = []
+  for (const line of text.split(/\r?\n/)) {
+    if (line.trim().length === 0) continue
+    try {
+      const parsed = JSON.parse(line)
+      if (isJsonRecord(parsed)) rows.push(parsed)
+    } catch {
+      // Keep the counter usable if a local ledger has a partial trailing write.
+    }
+  }
+  return rows
+}
+
+const refSetFromRows = (rows: readonly JsonRecord[]): ReadonlySet<string> => {
+  const refs = new Set<string>()
+  for (const row of rows) {
+    const eventId = stringField(row, "eventId")
+    const idempotencyKey = stringField(row, "idempotencyKey")
+    if (eventId !== null) refs.add(eventId)
+    if (idempotencyKey !== null) refs.add(idempotencyKey)
+  }
+  return refs
+}
+
+const refsFromEventLike = (value: JsonRecord): readonly string[] => {
+  const refs: string[] = []
+  const eventId = stringField(value, "eventId")
+  const idempotencyKey = stringField(value, "idempotencyKey")
+  if (eventId !== null) refs.push(eventId)
+  if (idempotencyKey !== null) refs.push(idempotencyKey)
+  return refs
+}
+
+const usageLedgerCountedTokens = (tokenCounts: JsonRecord): number => {
+  const inputTokens = numberField(tokenCounts, "inputTokens")
+  const outputTokens = numberField(tokenCounts, "outputTokens")
+  const countedTokens = inputTokens + outputTokens
+  if (countedTokens > 0) return countedTokens
+  return numberField(tokenCounts, "totalTokens")
+}
+
+const isSyncedUsageRef = (
+  refs: readonly string[],
+  failedRefs: ReadonlySet<string>,
+  remoteConfigured: boolean,
+): boolean =>
+  remoteConfigured &&
+  refs.length > 0 &&
+  refs.every(ref => !failedRefs.has(ref))
+
+const newerIso = (left: string | null, right: string | null): string | null => {
+  if (right === null) return left
+  if (left === null) return right
+  const leftTime = Date.parse(left)
+  const rightTime = Date.parse(right)
+  if (!Number.isFinite(leftTime)) return right
+  if (!Number.isFinite(rightTime)) return left
+  return rightTime > leftTime ? right : left
+}
+
+export async function readKhalaCodeDesktopThreadTokenSummary(options: {
+  readonly env?: Readonly<Record<string, string | undefined>>
+  readonly localLedgerPath?: string
+  readonly localMessageAuditLedgerPath?: string
+  readonly threadId?: string | null
+}): Promise<KhalaCodeDesktopThreadTokenSummary> {
+  const env = options.env ?? process.env
+  const config = resolveConfig(
+    env,
+    options.localLedgerPath,
+    options.localMessageAuditLedgerPath,
+  )
+  const threadId = nonEmpty(options.threadId ?? undefined)
+  const remoteConfigured = config.bearerToken !== null && !config.remoteDisabled
+  const emptySummary = (): KhalaCodeDesktopThreadTokenSummary => ({
+    auditRows: 0,
+    leaderboardLabel: "OpenAgents Stats",
+    leaderboardSyncedTokens: 0,
+    localLedgerPath: config.localLedgerPath,
+    localMessageAuditLedgerPath: config.localMessageAuditLedgerPath,
+    missingUsageTurns: 0,
+    ok: true,
+    pendingSyncTokens: 0,
+    remoteConfigured,
+    remoteDisabled: config.remoteDisabled,
+    threadId,
+    totalTokens: 0,
+    updatedAt: null,
+    usageEventRows: 0,
+  })
+  if (threadId === null) return emptySummary()
+
+  const [auditRows, usageRows, failureRows] = await Promise.all([
+    readJsonLines(config.localMessageAuditLedgerPath),
+    readJsonLines(config.localLedgerPath),
+    readJsonLines(join(dirname(config.localLedgerPath), "token-usage-report-failures.jsonl")),
+  ])
+  const failedRefs = refSetFromRows(failureRows)
+  const auditedUsageRefs = new Set<string>()
+  let auditRowCount = 0
+  let usageEventRowCount = 0
+  let missingUsageTurns = 0
+  let totalTokens = 0
+  let leaderboardSyncedTokens = 0
+  let updatedAt: string | null = null
+
+  for (const row of auditRows) {
+    const record = objectField(row, "record")
+    if (record === null || stringField(record, "codexThreadId") !== threadId) continue
+
+    auditRowCount += 1
+    updatedAt = newerIso(
+      updatedAt,
+      stringField(record, "completedAt") ?? stringField(row, "recordedAt"),
+    )
+
+    const reconciliation = objectField(record, "reconciliation")
+    const countedTokens = reconciliation === null
+      ? 0
+      : numberField(reconciliation, "globalCountedTokens")
+    totalTokens += countedTokens
+
+    const usageEventRefs = arrayField(record, "usageEvents")
+      .filter(isJsonRecord)
+      .flatMap(refsFromEventLike)
+    for (const ref of usageEventRefs) auditedUsageRefs.add(ref)
+
+    const status = reconciliation === null
+      ? null
+      : stringField(reconciliation, "status")
+    if (status === "missing_token_usage_update") missingUsageTurns += 1
+    if (status === "global_count_backfilled_aggregate") {
+      leaderboardSyncedTokens += countedTokens
+    } else if (isSyncedUsageRef(usageEventRefs, failedRefs, remoteConfigured)) {
+      leaderboardSyncedTokens += countedTokens
+    }
+  }
+
+  for (const row of usageRows) {
+    const event = objectField(row, "event")
+    if (event === null) continue
+    const metadata = objectField(event, "safeMetadata")
+    if (metadata === null || stringField(metadata, "codexThreadId") !== threadId) continue
+
+    usageEventRowCount += 1
+    const refs = refsFromEventLike(event)
+    if (refs.some(ref => auditedUsageRefs.has(ref))) continue
+
+    const tokenCounts = objectField(event, "tokenCounts")
+    if (tokenCounts === null) continue
+    const countedTokens = usageLedgerCountedTokens(tokenCounts)
+    if (countedTokens === 0) continue
+
+    totalTokens += countedTokens
+    updatedAt = newerIso(
+      updatedAt,
+      stringField(event, "observedAt") ?? stringField(row, "recordedAt"),
+    )
+    if (isSyncedUsageRef(refs, failedRefs, remoteConfigured)) {
+      leaderboardSyncedTokens += countedTokens
+    }
+  }
+
+  return {
+    auditRows: auditRowCount,
+    leaderboardLabel: "OpenAgents Stats",
+    leaderboardSyncedTokens,
+    localLedgerPath: config.localLedgerPath,
+    localMessageAuditLedgerPath: config.localMessageAuditLedgerPath,
+    missingUsageTurns,
+    ok: true,
+    pendingSyncTokens: Math.max(0, totalTokens - leaderboardSyncedTokens),
+    remoteConfigured,
+    remoteDisabled: config.remoteDisabled,
+    threadId,
+    totalTokens,
+    updatedAt,
+    usageEventRows: usageEventRowCount,
   }
 }
 

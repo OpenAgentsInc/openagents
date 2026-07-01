@@ -64,6 +64,11 @@ export type KhalaCodeDesktopMessage = {
 
 export type KhalaCodeDesktopChatTurnEvent =
   | {
+      readonly threadId: string
+      readonly turnId: string
+      readonly type: "thread_ready"
+    }
+  | {
       readonly message: KhalaCodeDesktopMessage
       readonly turnId: string
       readonly type: "message_start"
@@ -154,6 +159,27 @@ export type KhalaCodeDesktopRuntimeStatus = {
   readonly observedAt: string
   readonly reason: string
   readonly status: "error" | "not_configured" | "ready" | "unavailable"
+}
+
+export type KhalaCodeDesktopThreadTokenSummaryRequest = {
+  readonly threadId?: string | null
+}
+
+export type KhalaCodeDesktopThreadTokenSummary = {
+  readonly auditRows: number
+  readonly leaderboardLabel: "OpenAgents Stats"
+  readonly leaderboardSyncedTokens: number
+  readonly localLedgerPath: string
+  readonly localMessageAuditLedgerPath: string
+  readonly missingUsageTurns: number
+  readonly ok: true
+  readonly pendingSyncTokens: number
+  readonly remoteConfigured: boolean
+  readonly remoteDisabled: boolean
+  readonly threadId: string | null
+  readonly totalTokens: number
+  readonly updatedAt: string | null
+  readonly usageEventRows: number
 }
 
 export type KhalaCodeDesktopCodexHarnessStatus =
@@ -890,6 +916,7 @@ export type KhalaCodeDesktopRPCSchema = {
     slashCommandList(request?: KhalaCodeDesktopSlashCommandListRequest): Promise<KhalaCodeDesktopSlashCommandListResponse>
     submitChatMessage(request: KhalaCodeDesktopChatTurnRequest): Promise<KhalaCodeDesktopChatTurnResponse>
     tokenAccountingStatus(): Promise<KhalaCodeDesktopRuntimeStatus>
+    threadTokenSummary(request?: KhalaCodeDesktopThreadTokenSummaryRequest): Promise<KhalaCodeDesktopThreadTokenSummary>
     toolCatalog(): Promise<KhalaCodeDesktopToolCatalogResponse>
   }
   messages: {
