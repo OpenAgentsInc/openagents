@@ -4,6 +4,7 @@ import { join } from "node:path"
 
 import type { KhalaCodeDesktopCodexHarnessStatus } from "../shared/rpc.js"
 import { resolveCodexHomePath } from "./codex-rate-limits.js"
+import { khalaCodeConfigFromRuntimeEnv } from "./khala-code-config.js"
 
 const CODEX_VERSION_TIMEOUT_MS = 5_000
 
@@ -106,7 +107,7 @@ async function probeCodexVersion(
 ): Promise<VersionProbe> {
   const spawnFn = options.spawnFn ?? spawn
   const child = spawnFn(command, ["--version"], {
-    env: options.env ?? process.env,
+    env: options.env ?? khalaCodeConfigFromRuntimeEnv().env,
     stdio: ["ignore", "pipe", "pipe"],
   })
 
@@ -250,7 +251,7 @@ const readAuthState = async (
 export async function inspectCodexHarnessStatus(
   options: InspectCodexHarnessStatusOptions = {},
 ): Promise<KhalaCodeDesktopCodexHarnessStatus> {
-  const env = options.env ?? process.env
+  const env = options.env ?? khalaCodeConfigFromRuntimeEnv().env
   const now = options.now ?? (() => new Date())
   const observedAt = isoNow(now)
   const { command, source } = configuredCodexCommand(env, options.codexCommand)

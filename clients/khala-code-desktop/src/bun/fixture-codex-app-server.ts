@@ -1,6 +1,8 @@
 import { readFile } from "node:fs/promises"
 import { createInterface } from "node:readline"
 
+import { khalaCodeConfigFromRuntimeEnv } from "./khala-code-config.js"
+
 type JsonRpcId = number | string
 type JsonObject = Record<string, unknown>
 
@@ -614,7 +616,7 @@ export async function runFixtureCodexAppServer(
     readonly env?: Readonly<Record<string, string | undefined>>
   } = {},
 ): Promise<void> {
-  const env = input.env ?? process.env
+  const env = input.env ?? khalaCodeConfigFromRuntimeEnv().env
   const args = parseArgs(input.argv ?? Bun.argv.slice(2), env)
   const script = await readFixtureScript(args.scriptPath)
   const server = new FixtureCodexAppServer(script, env)

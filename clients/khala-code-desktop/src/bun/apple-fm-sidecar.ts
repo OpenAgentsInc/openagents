@@ -9,6 +9,7 @@ import {
   type KhalaAppleFmReadiness,
   type PylonAppleFmStatusPublicInput,
 } from "../shared/apple-fm-readiness.js"
+import { khalaCodeConfigFromRuntimeEnv } from "./khala-code-config.js"
 
 type SidecarLaunchState = "idle" | "launching" | "running" | "failed" | "stopped" | "adopted"
 type HelperSource = "env" | "source-wrapper" | "source-build" | "packaged-resource"
@@ -145,7 +146,7 @@ async function fetchPylonAppleFmStatus(input: {
 export function createAppleFmSidecarHost(
   options: AppleFmSidecarHostOptions = {},
 ): AppleFmSidecarHost {
-  const env = options.env ?? Bun.env
+  const env = options.env ?? khalaCodeConfigFromRuntimeEnv().env
   const platform = options.platform ?? process.platform
   const arch = options.arch ?? process.arch
   const resourcesDir = options.resourcesDir ?? (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath

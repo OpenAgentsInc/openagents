@@ -5,6 +5,7 @@
 import { createAppleFmSidecarHost } from "./apple-fm-sidecar.js"
 import { createAppleFmDeciderBackend } from "./apple-fm-decider-backend.js"
 import { createGptOssDeciderBackend } from "./gpt-oss-decider-backend.js"
+import { khalaCodeConfigFromRuntimeEnv } from "./khala-code-config.js"
 import {
   createOnDeviceDecider,
   type OnDeviceDeciderBackend,
@@ -26,7 +27,7 @@ export function createOnDeviceDeciderHost(
     platform: process.platform,
     arch: process.arch,
   }
-  const env = options.env ?? Bun.env
+  const env = options.env ?? khalaCodeConfigFromRuntimeEnv().env
   const backends: Partial<Record<"apple_fm" | "gpt_oss", OnDeviceDeciderBackend>> = {
     gpt_oss: createGptOssDeciderBackend({ env }),
   }

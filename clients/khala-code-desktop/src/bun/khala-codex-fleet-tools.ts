@@ -32,6 +32,7 @@ import {
   type KhalaToolResult,
   type RegisteredKhalaTool,
 } from "@openagentsinc/khala-tools"
+import { khalaCodeConfigFromRuntimeEnv } from "./khala-code-config.js"
 
 type ChatEnv = Readonly<Record<string, string | undefined>>
 
@@ -496,7 +497,7 @@ export async function ensureLocalPylon(
   },
   options: KhalaCodexFleetToolOptions = {},
 ): Promise<KhalaPylonEnsureResult> {
-  const env = options.env ?? process.env
+  const env = options.env ?? khalaCodeConfigFromRuntimeEnv().env
   const paths = resolvePylonPaths(env)
   const timeoutMs = boundedPositiveInteger(input.timeoutMs, DEFAULT_COMMAND_TIMEOUT_MS, 1_000, 120_000)
   const waitMs = boundedPositiveInteger(input.waitMs, DEFAULT_ENSURE_WAIT_MS, 0, 60_000)
@@ -614,7 +615,7 @@ export async function inspectCodexFleet(
   } = {},
   options: KhalaCodexFleetToolOptions = {},
 ): Promise<FleetStatusResult> {
-  const env = options.env ?? process.env
+  const env = options.env ?? khalaCodeConfigFromRuntimeEnv().env
   const paths = resolvePylonPaths(env)
   const ensure = await ensureLocalPylon({ start: input.startPylon ?? false }, { ...options, env })
   const baseUrl = resolveOpenAgentsBaseUrl(env)
@@ -672,7 +673,7 @@ export async function spawnCodexInstances(
   raw: SpawnCodexInstancesInput,
   options: KhalaCodexFleetToolOptions = {},
 ): Promise<SpawnCodexInstancesResult> {
-  const baseEnv = options.env ?? process.env
+  const baseEnv = options.env ?? khalaCodeConfigFromRuntimeEnv().env
   const delegationParameters = options.delegationParameters ??
     khalaFleetDelegationParametersFromEnv(baseEnv)
   const input = decodeSpawnInput(raw, delegationParameters)
@@ -817,7 +818,7 @@ export async function spawnCodexInstances(
   throw new Error("Khala fleet delegate completed without a dispatch result.")
 }
 
-export function resolvePylonHome(env: ChatEnv = process.env): string {
+export function resolvePylonHome(env: ChatEnv = khalaCodeConfigFromRuntimeEnv().env): string {
   const explicit = env.PYLON_HOME?.trim()
   if (explicit !== undefined && explicit.length > 0) return resolve(explicit)
   const candidates = pylonHomeCandidates(env)
@@ -1059,7 +1060,7 @@ async function readProviderProjection(
 }
 
 function pylonCommandEnv(env: ChatEnv, pylonHome: string): ChatEnv {
-  const mergedEnv = { ...process.env, ...env }
+  const mergedEnv = { ...khalaCodeConfigFromRuntimeEnv().env, ...env }
   const configuredBaseUrl = configuredOpenAgentsBaseUrl(mergedEnv)
   return {
     ...mergedEnv,
@@ -1213,7 +1214,7 @@ function collectStreamLines(
 
 function cleanEnv(env: ChatEnv | undefined): NodeJS.ProcessEnv {
   const clean: NodeJS.ProcessEnv = {}
-  for (const [key, value] of Object.entries(env ?? process.env)) {
+  for (const [key, value] of Object.entries(env ?? khalaCodeConfigFromRuntimeEnv().env)) {
     if (value !== undefined) clean[key] = value
   }
   return clean
@@ -2850,7 +2851,7 @@ export async function removeCodexAccount(
   accountRef: string,
   options: KhalaCodexFleetToolOptions = {},
 ): Promise<RemoveCodexAccountResult> {
-  const env = options.env ?? process.env
+  const env = options.env ?? khalaCodeConfigFromRuntimeEnv().env
   const pylonHome = resolvePylonHome(env)
   const configPath = join(pylonHome, "config.json")
 
@@ -2978,7 +2979,7 @@ export async function collectCodexAccountEmails(
   accountRefs: ReadonlyArray<string>,
   options: KhalaCodexFleetToolOptions = {},
 ): Promise<Record<string, string | null>> {
-  const env = options.env ?? process.env
+  const env = options.env ?? khalaCodeConfigFromRuntimeEnv().env
   const pylonHome = resolvePylonHome(env)
   const siblingRoot = (env.PYLON_ACCOUNT_HOME_ROOT ?? "").trim() || homedir()
   const defaultHome = (env.CODEX_HOME ?? "").trim() || join(homedir(), ".codex")
@@ -3049,7 +3050,7 @@ export async function beginCodexConnect(
       error: "invalid account ref",
     }
   }
-  const env = options.env ?? process.env
+  const env = options.env ?? khalaCodeConfigFromRuntimeEnv().env
   const paths = resolvePylonPaths(env)
   let child: ReturnType<typeof Bun.spawn>
   try {

@@ -4,6 +4,7 @@ import {
   type KhalaCodexFleetProgressPayload,
   type KhalaCodexFleetToolOptions,
 } from "./khala-codex-fleet-tools.js"
+import { khalaCodeConfigFromRuntimeEnv } from "./khala-code-config.js"
 
 export const TWO_CODEX_READONLY_SMOKE_COUNT = 2
 export const TWO_CODEX_READONLY_SMOKE_DEFAULT_TIMEOUT_MS = 600_000
@@ -68,7 +69,7 @@ export async function runTwoCodexReadOnlySmoke(
   const prompt = options.prompt ?? twoCodexReadOnlySmokePrompt()
   const timeoutMs = options.timeoutMs ?? TWO_CODEX_READONLY_SMOKE_DEFAULT_TIMEOUT_MS
   const startedAt = new Date().toISOString()
-  const baseEnv = options.env ?? process.env
+  const baseEnv = options.env ?? khalaCodeConfigFromRuntimeEnv().env
   const env = {
     ...baseEnv,
     OPENAGENTS_PYLON_DISABLE_ASSIGNMENT_PR: "1",
