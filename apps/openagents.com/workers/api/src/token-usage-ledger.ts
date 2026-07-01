@@ -1345,29 +1345,18 @@ const readPublicTokensServedHistoryFromDailyRollups = (
 }
 
 const utcDayKeyFromTimestamp = (timestamp: string): string | undefined => {
-  const date = new Date(timestamp)
-  return Number.isFinite(date.getTime())
-    ? date.toISOString().slice(0, 10)
-    : undefined
+  return dayKeyInTimezone(timestamp, 'UTC')
 }
 
 const utcDayStartIso = (day: string): string | undefined => {
-  const date = new Date(`${day}T00:00:00.000Z`)
-  return Number.isFinite(date.getTime()) ? date.toISOString() : undefined
+  return startOfCalendarDayIsoTimestampInTimezone(day, 'UTC')
 }
 
 const utcCalendarDayAfter = (
   day: string,
   days: number,
 ): string | undefined => {
-  const startIso = utcDayStartIso(day)
-  if (startIso === undefined) {
-    return undefined
-  }
-
-  const date = new Date(startIso)
-  date.setUTCDate(date.getUTCDate() + days)
-  return date.toISOString().slice(0, 10)
+  return calendarDayKeyAfter(day, days)
 }
 
 const publicMixRollupWindow = (
