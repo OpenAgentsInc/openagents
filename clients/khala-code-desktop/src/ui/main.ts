@@ -53,7 +53,10 @@ import {
 import { renderMessageBody } from "./transcript-render"
 import { mountFleetPanel } from "./fleet-status"
 import { mountCodexSettingsPanel } from "./codex-settings-panel"
-import { mountCodexThreadSidebar } from "./codex-thread-sidebar"
+import {
+  mountCodexThreadSidebar,
+  type CodexThreadSelectionSource,
+} from "./codex-thread-sidebar"
 import {
   gymPaneStateFromBridgeProof,
   gymOptimizationRunFromBridgeProof,
@@ -65,9 +68,11 @@ import {
 import type { KhalaGymBridgeProofLike } from "./gym-graph-projection"
 import { mountGymPane, type GymPaneState } from "./gym-pane"
 import { mountKhalaCodeSidebar } from "./sidebar"
+import type { KhalaCodeDesktopCodexThreadSummary } from "../shared/codex-threads"
 import {
   type RecentThreadCycleDirection,
   recentThreadIndexForDigitKey,
+  recentThreadsForHotkeys,
 } from "./thread-hotkeys"
 import "./styles.css"
 
@@ -487,6 +492,29 @@ localStorage.setItem(sessionIdStorageKey, sessionId)
 localStorage.removeItem(activeThreadIdStorageKey)
 let activeCodexThreadId: string | null = null
 
+type ThreadSwitchPerformanceSample = {
+  cacheHit: boolean
+  fullMessageCount?: number
+  fullRenderMs?: number
+  hydratedRenderMs?: number
+  optimisticMessageCount: number
+  optimisticRenderMs?: number
+  rpcMs?: number
+  selectionId: number
+  source: CodexThreadSelectionSource
+  startedAt: number
+  threadId: string
+}
+
+const THREAD_MESSAGE_CACHE_LIMIT = 16
+const THREAD_PREFETCH_LIMIT = 4
+const THREAD_SWITCH_INITIAL_MESSAGE_LIMIT = 80
+const THREAD_SWITCH_PERFORMANCE_SAMPLE_LIMIT = 60
+const threadMessageCache = new Map<string, readonly KhalaCodeDesktopMessage[]>()
+const threadPrefetches = new Map<string, Promise<void>>()
+const threadSwitchPerformanceSamples: ThreadSwitchPerformanceSample[] = []
+const pendingThreadSwitches = new Map<number, ThreadSwitchPerformanceSample>()
+
 const emptyThreadTokenSummary = (
   threadId: string | null,
 ): KhalaCodeDesktopThreadTokenSummary => ({
@@ -507,6 +535,134 @@ const emptyThreadTokenSummary = (
   updatedAt: null,
   usageEventRows: 0,
 })
+
+const cloneMessages = (
+  value: readonly KhalaCodeDesktopMessage[],
+): KhalaCodeDesktopMessage[] =>
+  value.map(message => ({ ...message }))
+
+const cacheThreadMessages = (
+  threadId: string,
+  value: readonly KhalaCodeDesktopMessage[],
+): void => {
+  if (value.length === 0) return
+  threadMessageCache.delete(threadId)
+  threadMessageCache.set(threadId, cloneMessages(value))
+  while (threadMessageCache.size > THREAD_MESSAGE_CACHE_LIMIT) {
+    const oldest = threadMessageCache.keys().next().value
+    if (typeof oldest !== "string") break
+    threadMessageCache.delete(oldest)
+  }
+}
+
+const cachedThreadMessages = (
+  threadId: string,
+): KhalaCodeDesktopMessage[] | null => {
+  const cached = threadMessageCache.get(threadId)
+  if (cached === undefined) return null
+  cacheThreadMessages(threadId, cached)
+  return cloneMessages(cached)
+}
+
+const cacheVisibleThreadMessages = (): void => {
+  if (activeCodexThreadId === null) return
+  cacheThreadMessages(activeCodexThreadId, messages)
+}
+
+const recentMessagesForInitialThreadRender = (
+  value: readonly KhalaCodeDesktopMessage[],
+): KhalaCodeDesktopMessage[] => {
+  if (value.length <= THREAD_SWITCH_INITIAL_MESSAGE_LIMIT) return cloneMessages(value)
+  return cloneMessages(value.slice(-THREAD_SWITCH_INITIAL_MESSAGE_LIMIT))
+}
+
+const pushThreadSwitchPerformanceSample = (
+  sample: ThreadSwitchPerformanceSample,
+): void => {
+  threadSwitchPerformanceSamples.push(sample)
+  while (threadSwitchPerformanceSamples.length > THREAD_SWITCH_PERFORMANCE_SAMPLE_LIMIT) {
+    threadSwitchPerformanceSamples.shift()
+  }
+}
+
+const markThreadSwitchPaint = (
+  selectionId: number,
+  field: "fullRenderMs" | "hydratedRenderMs" | "optimisticRenderMs",
+): void => {
+  requestAnimationFrame(() => {
+    const sample = pendingThreadSwitches.get(selectionId)
+    if (sample === undefined) return
+    sample[field] = performance.now() - sample.startedAt
+    if (field !== "hydratedRenderMs") return
+    pendingThreadSwitches.delete(selectionId)
+  })
+}
+
+const beginThreadSwitchPerformanceSample = (
+  input: {
+    readonly cacheHit: boolean
+    readonly optimisticMessageCount: number
+    readonly selectionId: number
+    readonly source: CodexThreadSelectionSource
+    readonly threadId: string
+  },
+): void => {
+  const sample: ThreadSwitchPerformanceSample = {
+    cacheHit: input.cacheHit,
+    optimisticMessageCount: input.optimisticMessageCount,
+    selectionId: input.selectionId,
+    source: input.source,
+    startedAt: performance.now(),
+    threadId: input.threadId,
+  }
+  pendingThreadSwitches.set(input.selectionId, sample)
+  pushThreadSwitchPerformanceSample(sample)
+  markThreadSwitchPaint(input.selectionId, "optimisticRenderMs")
+}
+
+const completeThreadSwitchPerformanceSample = (
+  input: {
+    readonly fullMessageCount: number
+    readonly selectionId?: number
+  },
+): void => {
+  if (input.selectionId === undefined) return
+  const sample = pendingThreadSwitches.get(input.selectionId)
+  if (sample === undefined) return
+  sample.fullMessageCount = input.fullMessageCount
+  sample.rpcMs = performance.now() - sample.startedAt
+  markThreadSwitchPaint(input.selectionId, "fullRenderMs")
+}
+
+const scheduleFullThreadHydration = (
+  input: {
+    readonly fullMessages: readonly KhalaCodeDesktopMessage[]
+    readonly selectionId?: number
+    readonly threadId: string
+    readonly visibleMessages: readonly KhalaCodeDesktopMessage[]
+  },
+): void => {
+  if (input.fullMessages.length === input.visibleMessages.length) {
+    if (input.selectionId !== undefined) {
+      const selectionId = input.selectionId
+      requestAnimationFrame(() => pendingThreadSwitches.delete(selectionId))
+    }
+    return
+  }
+  const hydrate = (): void => {
+    if (activeCodexThreadId !== input.threadId || messages !== input.visibleMessages) return
+    messages = cloneMessages(input.fullMessages)
+    render()
+    if (input.selectionId !== undefined) {
+      markThreadSwitchPaint(input.selectionId, "hydratedRenderMs")
+    }
+  }
+  if (typeof requestIdleCallback === "function") {
+    requestIdleCallback(hydrate, { timeout: 700 })
+  } else {
+    window.setTimeout(hydrate, 80)
+  }
+}
 
 let threadTokenSummary = emptyThreadTokenSummary(null)
 let threadTokenPopoverOpen = false
@@ -864,6 +1020,7 @@ const canSubmitComposer = (): boolean =>
   (lastTurnFailed && lastSubmittedDraft.trim() !== "")
 
 const renderMessages = (): void => {
+  cacheVisibleThreadMessages()
   const stickToEnd = transcriptPinnedToEnd && isNearTranscriptEnd()
   const previousScrollTop = messageList.scrollTop
   const thinking = renderThinkingIndicator()
@@ -2179,6 +2336,16 @@ const controls = {
   tokenAccountingStatus: () => rpc.request.tokenAccountingStatus(),
   threadTokenSummary: (request?: Parameters<DesktopRpcRequests["threadTokenSummary"]>[0]) =>
     rpc.request.threadTokenSummary(request),
+  threadSwitchPerformance: () => ({
+    cachedThreadIds: [...threadMessageCache.keys()],
+    latest: threadSwitchPerformanceSamples.at(-1) ?? null,
+    pendingSelectionIds: [...pendingThreadSwitches.keys()],
+    samples: threadSwitchPerformanceSamples.map(sample => ({ ...sample })),
+  }),
+  resetThreadSwitchPerformance: () => {
+    threadSwitchPerformanceSamples.splice(0)
+    pendingThreadSwitches.clear()
+  },
   toolCatalog: () => rpc.request.toolCatalog(),
 }
 
@@ -2215,17 +2382,54 @@ const setActiveCodexThreadId = (threadId: string | null): void => {
   threadSidebar?.setActiveThreadId(threadId)
 }
 
-const activateCodexThread = (input: {
-  readonly messages: readonly KhalaCodeDesktopMessage[]
+const beginCodexThreadSwitch = (input: {
+  readonly selectionId: number
+  readonly source: CodexThreadSelectionSource
   readonly threadId: string
 }): void => {
+  cacheVisibleThreadMessages()
+  const cached = cachedThreadMessages(input.threadId)
   setActiveCodexThreadId(input.threadId)
-  messages = [...input.messages]
+  messages = cached ?? []
   activeTurnIds.clear()
   pendingTurn = false
   thinkingTurnId = null
   lastTurnFailed = false
   render()
+  beginThreadSwitchPerformanceSample({
+    cacheHit: cached !== null,
+    optimisticMessageCount: cached?.length ?? 0,
+    selectionId: input.selectionId,
+    source: input.source,
+    threadId: input.threadId,
+  })
+  requestAnimationFrame(focusComposerInput)
+}
+
+const activateCodexThread = (input: {
+  readonly messages: readonly KhalaCodeDesktopMessage[]
+  readonly selectionId?: number
+  readonly threadId: string
+}): void => {
+  setActiveCodexThreadId(input.threadId)
+  cacheThreadMessages(input.threadId, input.messages)
+  const visibleMessages = recentMessagesForInitialThreadRender(input.messages)
+  messages = visibleMessages
+  activeTurnIds.clear()
+  pendingTurn = false
+  thinkingTurnId = null
+  lastTurnFailed = false
+  render()
+  completeThreadSwitchPerformanceSample({
+    fullMessageCount: input.messages.length,
+    ...(input.selectionId === undefined ? {} : { selectionId: input.selectionId }),
+  })
+  scheduleFullThreadHydration({
+    fullMessages: input.messages,
+    ...(input.selectionId === undefined ? {} : { selectionId: input.selectionId }),
+    threadId: input.threadId,
+    visibleMessages,
+  })
   requestAnimationFrame(focusComposerInput)
 }
 
@@ -2275,6 +2479,23 @@ const settingsPanel =
         write: request => controls.codexConfigValueWrite(request),
       })
 
+const prefetchRecentThreadMessages = (
+  threads: readonly KhalaCodeDesktopCodexThreadSummary[],
+): void => {
+  for (const thread of recentThreadsForHotkeys(threads).slice(0, THREAD_PREFETCH_LIMIT)) {
+    if (threadMessageCache.has(thread.id) || threadPrefetches.has(thread.id)) continue
+    const prefetch = controls.codexThreadRead({
+      includeTurns: true,
+      threadId: thread.id,
+    }).then(result => {
+      cacheThreadMessages(result.threadId, result.messages ?? [])
+    }).catch(() => undefined).finally(() => {
+      threadPrefetches.delete(thread.id)
+    })
+    threadPrefetches.set(thread.id, prefetch)
+  }
+}
+
 const threadSidebar =
   threadSidebarEl === null
     ? null
@@ -2283,18 +2504,23 @@ const threadSidebar =
         archiveThread: threadId => controls.codexThreadArchive({ threadId }),
         deleteThread: threadId => controls.codexThreadDelete({ threadId }),
         forkThread: threadId => controls.codexThreadFork({ sessionId, threadId }),
-        listThreads: request => controls.codexThreadList({
-          archived: request.archived,
-          limit: 50,
-          searchTerm: request.searchTerm,
-          sessionId,
-          useStateDbOnly: true,
-        }),
+        listThreads: async request => {
+          const result = await controls.codexThreadList({
+            archived: request.archived,
+            limit: 50,
+            searchTerm: request.searchTerm,
+            sessionId,
+            useStateDbOnly: true,
+          })
+          prefetchRecentThreadMessages(result.threads ?? [])
+          return result
+        },
         renameThread: (threadId, name) => controls.codexThreadRename({ name, threadId }),
         resumeThread: threadId => controls.codexThreadResume({ sessionId, threadId }),
         sessionId,
         unarchiveThread: threadId => controls.codexThreadUnarchive({ threadId }),
         onNewThreadRequested: beginNewCodexThread,
+        onThreadSelectionStarted: beginCodexThreadSwitch,
         onThreadSelected: activateCodexThread,
       })
 

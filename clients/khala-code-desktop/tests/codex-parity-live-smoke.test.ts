@@ -251,7 +251,7 @@ describe("Khala Code Codex parity live smoke", () => {
     expect(result.reason).toContain("Codex auth.json is missing")
   })
 
-  test("runs a Codex app-server thread, resume, turn, and interrupt path with a fake host", async () => {
+  test("runs a Codex app-server thread, cached resume, turn, and interrupt path with a fake host", async () => {
     const records: RequestRecord[] = []
     const result = await runKhalaCodeCodexParityLiveSmoke({
       createHost: () => createFakeHost(records),
@@ -274,7 +274,6 @@ describe("Khala Code Codex parity live smoke", () => {
     })
     expect(records.map(record => record.method)).toEqual([
       "thread/start",
-      "thread/resume",
       "turn/start",
       "turn/interrupt",
     ])

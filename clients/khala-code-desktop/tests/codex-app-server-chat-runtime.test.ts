@@ -1022,6 +1022,10 @@ describe("Codex app-server chat runtime", () => {
       "item-user-history",
       "item-agent-history",
     ])
+    expect(records.map(record => record.method)).toEqual([
+      "thread/list",
+      "thread/read",
+    ])
     expect(await runtime.threadIdForSession("desktop-session-history")).toBe("thread-history")
 
     await expect(runtime.renameThread({
@@ -1049,7 +1053,6 @@ describe("Codex app-server chat runtime", () => {
     expect(records.map(record => record.method)).toEqual([
       "thread/list",
       "thread/read",
-      "thread/resume",
       "thread/name/set",
       "thread/fork",
       "thread/archive",
@@ -1066,7 +1069,7 @@ describe("Codex app-server chat runtime", () => {
       threadId: "thread-history",
       includeTurns: true,
     })
-    expect(records[3]?.params).toEqual({
+    expect(records[2]?.params).toEqual({
       threadId: "thread-history",
       name: "Renamed",
     })

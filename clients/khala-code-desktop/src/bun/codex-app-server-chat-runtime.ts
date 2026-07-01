@@ -44,6 +44,7 @@ import { projectKhalaCodeDesktopCodexThreadList } from "../shared/codex-threads.
 
 const CODEX_SESSION_STATE_SCHEMA = "khala-code-desktop.codex-sessions.v1"
 const DEFAULT_TURN_TIMEOUT_MS = 30 * 60 * 1_000
+const LOADED_THREAD_CACHE_TTL_MS = 45_000
 
 type JsonObject = Readonly<Record<string, unknown>>
 
@@ -63,6 +64,11 @@ type ActiveCodexTurn = {
   readonly codexTurnId: string
   readonly desktopSessionId: string
   readonly desktopTurnId: string
+}
+
+type LoadedThreadCacheEntry = {
+  readonly loadedAt: number
+  readonly result: KhalaCodeDesktopCodexThreadResult
 }
 
 type CodexAppServerTurnInput =
@@ -476,29 +482,32 @@ export function createCodexAppServerChatRuntime(
   const messageTokenAuditRecorder = options.messageTokenAuditRecorder ?? null
   const tokenUsageReporter = options.tokenUsageReporter ?? null
   const activeTurnsByDesktopId = new Map<string, ActiveCodexTurn>()
-  const loadedThreadsById = new Map<string, KhalaCodeDesktopCodexThreadResult>()
+  const loadedThreadsById = new Map<string, LoadedThreadCacheEntry>()
 
   const markThreadLoaded = (
     result: KhalaCodeDesktopCodexThreadResult,
   ): KhalaCodeDesktopCodexThreadResult => {
-    loadedThreadsById.set(result.threadId, result)
+    loadedThreadsById.set(result.threadId, {
+      loadedAt: Date.now(),
+      result,
+    })
     return result
   }
 
   const loadedThreadResult = (
     threadId: string,
     desktopSessionId?: string,
-  ): KhalaCodeDesktopCodexThreadResult => {
+  ): KhalaCodeDesktopCodexThreadResult | null => {
     const cached = loadedThreadsById.get(threadId)
+    if (cached !== undefined && Date.now() - cached.loadedAt <= LOADED_THREAD_CACHE_TTL_MS) {
+      return desktopSessionId === undefined
+        ? cached.result
+        : { ...cached.result, desktopSessionId }
+    }
     if (cached !== undefined) {
-      return desktopSessionId === undefined ? cached : { ...cached, desktopSessionId }
+      loadedThreadsById.delete(threadId)
     }
-    return {
-      ok: true,
-      thread: { id: threadId },
-      threadId,
-      ...(desktopSessionId === undefined ? {} : { desktopSessionId }),
-    }
+    return null
   }
 
   const ensureStarted = async (): Promise<void> => {
@@ -525,6 +534,13 @@ export function createCodexAppServerChatRuntime(
   const resumeThread = async (
     request: KhalaCodeDesktopCodexThreadResumeRequest,
   ): Promise<KhalaCodeDesktopCodexThreadResult> => {
+    const cached = loadedThreadResult(request.threadId, request.sessionId)
+    if (cached !== null) {
+      if (request.sessionId !== undefined) {
+        await persistSession(statePath, request.sessionId, { threadId: cached.threadId })
+      }
+      return cached
+    }
     await ensureStarted()
     const response = await host.request("thread/resume", {
       threadId: request.threadId,
@@ -545,9 +561,10 @@ export function createCodexAppServerChatRuntime(
   ): Promise<KhalaCodeDesktopCodexThreadResult> => {
     const explicitThreadId = normalizedThreadId(requestedThreadId)
     if (explicitThreadId !== null) {
-      if (loadedThreadsById.has(explicitThreadId)) {
+      const cached = loadedThreadResult(explicitThreadId, desktopSessionId)
+      if (cached !== null) {
         await persistSession(statePath, desktopSessionId, { threadId: explicitThreadId })
-        return loadedThreadResult(explicitThreadId, desktopSessionId)
+        return cached
       }
       try {
         return await resumeThread({
@@ -574,8 +591,9 @@ export function createCodexAppServerChatRuntime(
     const state = await readState(statePath)
     const stored = state.sessions[desktopSessionId]
     if (stored !== undefined) {
-      if (loadedThreadsById.has(stored.threadId)) {
-        return loadedThreadResult(stored.threadId, desktopSessionId)
+      const cached = loadedThreadResult(stored.threadId, desktopSessionId)
+      if (cached !== null) {
+        return cached
       }
       try {
         return await resumeThread({
@@ -636,7 +654,8 @@ export function createCodexAppServerChatRuntime(
       threadId: request.threadId,
       includeTurns: request.includeTurns === true,
     })
-    return extractThreadResult(response)
+    const result = extractThreadResult(response)
+    return request.includeTurns === true ? markThreadLoaded(result) : result
   }
 
   const renameThread = async (

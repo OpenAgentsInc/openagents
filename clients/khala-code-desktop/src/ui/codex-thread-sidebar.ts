@@ -29,6 +29,8 @@ export type CodexThreadSidebarHandle = {
   readonly setVisible: (visible: boolean) => void
 }
 
+export type CodexThreadSelectionSource = "hotkey" | "sidebar"
+
 export type CodexThreadSidebarOptions = {
   readonly activeThreadId: () => string | null
   readonly archiveThread: (threadId: string) => Promise<KhalaCodeDesktopCodexThreadMutationResult>
@@ -43,9 +45,19 @@ export type CodexThreadSidebarOptions = {
   readonly sessionId: string
   readonly unarchiveThread: (threadId: string) => Promise<KhalaCodeDesktopCodexThreadMutationResult>
   readonly onNewThreadRequested: () => void
+  readonly onThreadSelectionStarted?: (
+    input: {
+      readonly selectionId: number
+      readonly source: CodexThreadSelectionSource
+      readonly threadId: string
+    },
+  ) => void
   readonly onThreadSelected: (
     input: {
       readonly messages: readonly KhalaCodeDesktopMessage[]
+      readonly requestedThreadId?: string
+      readonly selectionId?: number
+      readonly source?: CodexThreadSelectionSource
       readonly threadId: string
     },
   ) => void
@@ -122,6 +134,7 @@ export const mountCodexThreadSidebar = (
   let renamingThreadId: string | null = null
   let renamingThreadDraft = ""
   let refreshSequence = 0
+  let selectionSequence = 0
   const threadMenu = createBasecoatContextMenu({
     id: "khala-thread-sidebar-thread-menu",
     ownerDocument: container.ownerDocument,
@@ -133,18 +146,31 @@ export const mountCodexThreadSidebar = (
     render()
   }
 
-  const selectThread = async (threadId: string): Promise<boolean> => {
+  const selectThread = async (
+    threadId: string,
+    source: CodexThreadSelectionSource,
+  ): Promise<boolean> => {
     threadMenu.close()
+    if (activeThreadId === threadId) return true
+    const selectionId = ++selectionSequence
+    activeThreadId = threadId
+    options.onThreadSelectionStarted?.({ selectionId, source, threadId })
+    render()
     try {
       const result = await options.resumeThread(threadId)
+      if (selectionId !== selectionSequence) return false
       activeThreadId = result.threadId
       options.onThreadSelected({
         threadId: result.threadId,
+        requestedThreadId: threadId,
+        selectionId,
+        source,
         messages: messagesForResult(result),
       })
       render()
       return true
     } catch (error) {
+      if (selectionId !== selectionSequence) return false
       setStatusError(error)
       return false
     }
@@ -216,7 +242,7 @@ export const mountCodexThreadSidebar = (
       const data = await loadRecentThreadData()
       const thread = recentThreadsForHotkeys(data.threads ?? [])[index]
       if (thread === undefined) return false
-      return await selectThread(thread.id)
+      return await selectThread(thread.id, "hotkey")
     } catch (error) {
       setStatusError(error)
       return false
@@ -236,7 +262,7 @@ export const mountCodexThreadSidebar = (
       if (index === null) return false
       const thread = recentThreadsForHotkeys(data.threads ?? [])[index]
       if (thread === undefined) return false
-      return await selectThread(thread.id)
+      return await selectThread(thread.id, "hotkey")
     } catch (error) {
       setStatusError(error)
       return false
@@ -432,7 +458,7 @@ export const mountCodexThreadSidebar = (
     row.type = "button"
     row.title = `${thread.title} — ${thread.preview || thread.id}`
     row.setAttribute("aria-haspopup", "menu")
-    row.addEventListener("click", () => void selectThread(thread.id))
+    row.addEventListener("click", () => void selectThread(thread.id, "sidebar"))
     row.addEventListener("keydown", event => {
       if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return
       event.preventDefault()
