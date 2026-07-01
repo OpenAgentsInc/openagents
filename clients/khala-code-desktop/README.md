@@ -50,6 +50,17 @@ bun test tests/*.test.ts
 bun run verify
 ```
 
+Composer HUD visual regression coverage is a local warning-only lane because it
+requires a working Chromium + WebGL stack. It launches the Khala Code desktop
+Vite preview and the OpenAgents web Vite preview, types only a fixed synthetic
+prompt, captures desktop/mobile screenshots, and asserts composer framing,
+footer non-overlap, reduced-motion geometry, and nonblank HUD/canvas pixels.
+Artifacts are written under ignored `var/khala-code-desktop/composer-visual-smoke`.
+
+```sh
+bun run smoke:composer-visual
+```
+
 For a browser-driven smoke without opening the native window:
 
 ```sh
