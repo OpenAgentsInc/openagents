@@ -747,7 +747,7 @@ const RpcCodexConfigValueWriteRequest = S.Struct({
   expectedVersion: S.optional(S.String),
   filePath: S.optional(S.String),
   keyPath: S.String,
-  mergeStrategy: S.optional(S.String),
+  mergeStrategy: S.optional(S.Literals(["replace", "upsert"])),
   value: RpcJson,
 })
 const RpcCodexConfigValueWriteResult = S.Struct({
