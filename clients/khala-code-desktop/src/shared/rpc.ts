@@ -8,7 +8,6 @@ import type {
 import type {
   KhalaCodeDesktopCodexApprovalAction,
   KhalaCodeDesktopCodexApprovalMethod,
-  KhalaCodeDesktopCodexApprovalProjection,
   KhalaCodeDesktopCodexNetworkPolicyAmendment,
   KhalaCodeDesktopCodexPermissionProfile,
   KhalaCodeDesktopJsonRpcId,
@@ -20,9 +19,6 @@ import type {
   KhalaCodeDesktopCodexJsonValue,
   KhalaCodeDesktopCodexSettingsProjection,
 } from "./codex-settings.js"
-import type {
-  KhalaCodeDesktopCodexEcosystemProjection,
-} from "./codex-ecosystem.js"
 import type {
   KhalaCodeDesktopCodexThreadGroup,
   KhalaCodeDesktopCodexThreadSummary,
@@ -95,7 +91,8 @@ export const KhalaCodeDesktopRpcBridgeFailure = S.Union([
 export type KhalaCodeDesktopRpcBridgeFailure =
   typeof KhalaCodeDesktopRpcBridgeFailure.Type
 
-export type KhalaCodeDesktopMessageRole = "user" | "assistant" | "system" | "tool"
+export type KhalaCodeDesktopMessageRole =
+  typeof KhalaCodeDesktopMessageSchema.Type["role"]
 
 export type KhalaCodeDesktopRuntimeMode =
   | "codex_harness"
@@ -105,57 +102,14 @@ export type KhalaCodeDesktopToolCatalogKind =
   | "codex_harness_supplemental"
   | "khala_native_legacy"
 
-export type KhalaCodeDesktopCodexItemCard = {
-  readonly approval?: KhalaCodeDesktopCodexApprovalProjection
-  readonly itemId: string
-  readonly itemType: string
-  readonly status: string
-  readonly title: string
-  readonly requestId?: string
-  readonly subtitle?: string
-  readonly threadId?: string
-  readonly turnId?: string
-}
+export type KhalaCodeDesktopCodexItemCard =
+  typeof RpcCodexItemCard.Type
 
-export type KhalaCodeDesktopMessage = {
-  readonly codexItem?: KhalaCodeDesktopCodexItemCard
-  readonly id: string
-  readonly role: KhalaCodeDesktopMessageRole
-  readonly body: string
-}
+export type KhalaCodeDesktopMessage =
+  typeof KhalaCodeDesktopMessageSchema.Type
 
 export type KhalaCodeDesktopChatTurnEvent =
-  | {
-      readonly threadId: string
-      readonly turnId: string
-      readonly type: "thread_ready"
-    }
-  | {
-      readonly message: KhalaCodeDesktopMessage
-      readonly turnId: string
-      readonly type: "message_start"
-    }
-  | {
-      readonly delta: string
-      readonly messageId: string
-      readonly turnId: string
-      readonly type: "message_delta"
-    }
-  | {
-      readonly message: KhalaCodeDesktopMessage
-      readonly turnId: string
-      readonly type: "message_replace"
-    }
-  | {
-      readonly messageId: string
-      readonly turnId: string
-      readonly type: "message_done"
-    }
-  | {
-      readonly event: KhalaToolEvent
-      readonly turnId: string
-      readonly type: "tool_event"
-    }
+  typeof KhalaCodeDesktopChatTurnEventSchema.Type
 
 export type KhalaCodeDesktopUsage = {
   readonly input: number
@@ -446,7 +400,7 @@ export type KhalaCodeDesktopCodexSettingsReadRequest = {
 }
 
 export type KhalaCodeDesktopCodexSettingsReadResult =
-  KhalaCodeDesktopCodexSettingsProjection
+  typeof RpcCodexSettingsProjection.Type
 
 export type KhalaCodeDesktopCodexConfigValueWriteRequest = {
   readonly cwd?: string
@@ -473,7 +427,7 @@ export type KhalaCodeDesktopCodexEcosystemReadRequest = {
 }
 
 export type KhalaCodeDesktopCodexEcosystemReadResult =
-  KhalaCodeDesktopCodexEcosystemProjection
+  typeof RpcCodexEcosystemProjection.Type
 
 export type KhalaCodeDesktopCodexAppServerActionResult = {
   readonly ok: boolean
@@ -801,71 +755,20 @@ export type KhalaCodeDesktopFleetStatus = {
   readonly processes: readonly KhalaCodeDesktopFleetProcess[]
 }
 
-export type KhalaCodeDesktopFleetPromotionContextBoundary = {
-  readonly allowedRefs: readonly string[]
-  readonly includeTranscript: false
-  readonly mode: "explicit_objective" | "summary_only"
-  readonly summary: string | null
-}
+export type KhalaCodeDesktopFleetPromotionContextBoundary =
+  typeof RpcFleetPromotionContextBoundary.Type
 
-export type KhalaCodeDesktopFleetPromotionRequest = {
-  readonly accountRef?: string
-  readonly branch?: string
-  readonly commit?: string
-  readonly contextBoundary: KhalaCodeDesktopFleetPromotionContextBoundary
-  readonly count?: number
-  readonly fixture?: boolean
-  readonly noRun?: boolean
-  readonly objective: string
-  readonly repo?: string
-  readonly sessionId: string
-  readonly threadId: string
-  readonly timeoutMs?: number
-  readonly verify?: string
-}
+export type KhalaCodeDesktopFleetPromotionRequest =
+  typeof RpcFleetPromotionRequest.Type
 
-export type KhalaCodeDesktopFleetPromotionResult = {
-  readonly ok: boolean
-  readonly acceptedCount: number
-  readonly contextBoundary: KhalaCodeDesktopFleetPromotionContextBoundary
-  readonly origin: {
-    readonly role: "main_local_codex_session"
-    readonly sessionId: string
-    readonly threadId: string
-  }
-  readonly pylonRef: string | null
-  readonly requestedCount: number
-  readonly workerRuntime: {
-    readonly assignmentTool: "codex_spawn"
-    readonly homeRole: "pylon_isolated_worker_codex_home"
-    readonly role: "swarm_worker_codex_session"
-    readonly runtime: "codex_harness"
-  }
-  readonly results: readonly {
-    readonly accountRef: string | null
-    readonly assignmentRef: string | null
-    readonly closeoutStatus: string | null
-    readonly status: "accepted" | "failed"
-    readonly summary: string
-    readonly tokensVerified: number | null
-    readonly transcriptRef: string | null
-  }[]
-}
+export type KhalaCodeDesktopFleetPromotionResult =
+  typeof RpcFleetPromotionResult.Type
 
-export type KhalaCodeDesktopFleetDelegateRunMode = "fixture" | "real_work"
+export type KhalaCodeDesktopFleetDelegateRunMode =
+  typeof RpcFleetDelegateRunRequest.Type["mode"]
 
-export type KhalaCodeDesktopFleetDelegateRunRequest = {
-  readonly accountRef?: string
-  readonly branch?: string
-  readonly commit?: string
-  readonly count?: number
-  readonly mode: KhalaCodeDesktopFleetDelegateRunMode
-  readonly noRun?: boolean
-  readonly objective: string
-  readonly repo?: string
-  readonly timeoutMs?: number
-  readonly verify?: string
-}
+export type KhalaCodeDesktopFleetDelegateRunRequest =
+  typeof RpcFleetDelegateRunRequest.Type
 
 export type KhalaCodeDesktopFleetDelegateRunStep = {
   readonly blockerCode: string | null
@@ -877,42 +780,8 @@ export type KhalaCodeDesktopFleetDelegateRunStep = {
   readonly summary: string
 }
 
-export type KhalaCodeDesktopFleetDelegateRunResult = {
-  readonly ok: boolean
-  readonly acceptedCount: number
-  readonly delegateSignature: "khala.fleet.delegate"
-  readonly delegateStatus: "blocked" | "completed"
-  readonly mode: KhalaCodeDesktopFleetDelegateRunMode
-  readonly projection: {
-    readonly localPathsProjected: false
-    readonly objectiveProjected: false
-    readonly providerPayloadProjected: false
-    readonly rawTraceMessagesProjected: false
-  }
-  readonly pylonRef: string | null
-  readonly requestedCount: number
-  readonly results: readonly {
-    readonly accountRef: string | null
-    readonly assignmentRef: string | null
-    readonly blockerRefs: readonly string[]
-    readonly closeoutStatus: string | null
-    readonly slot: number
-    readonly status: "accepted" | "failed"
-    readonly tokensVerified: number | null
-    readonly transcriptRef: string | null
-  }[]
-  readonly trace: readonly KhalaCodeDesktopFleetDelegateRunStep[]
-  readonly validation: {
-    readonly fixture: boolean
-    readonly repoPinsComplete: boolean
-  }
-  readonly workerRuntime: {
-    readonly assignmentTool: "codex_spawn"
-    readonly homeRole: "pylon_isolated_worker_codex_home"
-    readonly role: "swarm_worker_codex_session"
-    readonly runtime: "codex_harness"
-  }
-}
+export type KhalaCodeDesktopFleetDelegateRunResult =
+  typeof RpcFleetDelegateRunResult.Type
 
 export type KhalaCodeDesktopRemoveAccountResult = {
   readonly ok: boolean
@@ -940,13 +809,13 @@ const RpcToolEvent = S.Struct({
   eventId: S.String,
   invocationId: S.optional(S.String),
   kind: S.String,
-  payload: RpcJson,
+  payload: S.Unknown,
   sessionId: S.String,
-})
+}) as S.Schema<KhalaToolEvent>
 
 const RpcCodexPermissionProfile = S.Struct({
   fileSystem: S.optional(S.Struct({
-    entries: S.optional(S.Array(RpcJson)),
+    entries: S.optional(S.Array(S.Unknown)),
     globScanMaxDepth: S.optional(S.Number),
     read: S.optional(S.NullOr(RpcStringArray)),
     write: S.optional(S.NullOr(RpcStringArray)),
@@ -957,13 +826,17 @@ const RpcCodexPermissionProfile = S.Struct({
 })
 
 const RpcCodexApprovalProjection = S.Struct({
-  additionalPermissions: S.optional(RpcJson),
-  availableDecisions: S.optional(S.Array(RpcJson)),
+  additionalPermissions: S.optional(S.Unknown),
+  availableDecisions: S.optional(S.Array(S.Unknown)),
   command: S.optional(S.String),
   cwd: S.optional(S.String),
   grantRoot: S.optional(S.String),
-  method: S.String,
-  networkApprovalContext: S.optional(RpcJson),
+  method: S.Literals([
+    "item/commandExecution/requestApproval",
+    "item/fileChange/requestApproval",
+    "item/permissions/requestApproval",
+  ]),
+  networkApprovalContext: S.optional(S.Unknown),
   permissions: S.optional(RpcCodexPermissionProfile),
   proposedExecpolicyAmendment: S.optional(RpcStringArray),
   proposedNetworkPolicyAmendments: S.optional(S.Array(S.Struct({
@@ -992,8 +865,6 @@ export const KhalaCodeDesktopMessageSchema = S.Struct({
   role: S.Literals(["user", "assistant", "system", "tool"]),
   body: S.String,
 })
-export type KhalaCodeDesktopMessageFromSchema =
-  typeof KhalaCodeDesktopMessageSchema.Type
 
 export const KhalaCodeDesktopChatTurnEventSchema = S.Union([
   S.Struct({
@@ -1028,8 +899,6 @@ export const KhalaCodeDesktopChatTurnEventSchema = S.Union([
     type: S.Literal("tool_event"),
   }),
 ])
-export type KhalaCodeDesktopChatTurnEventFromSchema =
-  typeof KhalaCodeDesktopChatTurnEventSchema.Type
 
 const RpcUsage = S.Struct({
   input: S.Number,
@@ -1124,23 +993,23 @@ const RpcCodexHarnessStatus = S.Struct({
   capability: S.Literal("codex_harness"),
   observedAt: S.String,
   reason: S.String,
-  status: S.String,
+  status: S.Literals(["error", "not_configured", "ready", "unavailable"]),
   binary: S.Struct({
     command: S.String,
-    source: S.String,
+    source: S.Literals(["PATH", "env:KHALA_CODE_CODEX_BINARY", "env:KHALA_CODE_CODEX_COMMAND", "input"]),
     available: S.Boolean,
     version: RpcStringNull,
     error: RpcStringNull,
   }),
   home: S.Struct({
     path: S.String,
-    source: S.String,
+    source: S.Literals(["default:~/.codex", "env:CODEX_HOME", "input"]),
     role: S.Literal("main_user_codex_home"),
     authPath: S.String,
     fleetIsolation: S.Literal("fleet_accounts_use_pylon_isolated_homes"),
   }),
   auth: S.Struct({
-    state: S.String,
+    state: S.Literals(["credentials_missing", "error", "invalid", "ready"]),
     blockerRefs: RpcStringArray,
     accessTokenPresent: S.Boolean,
     accountIdPresent: S.Boolean,
@@ -1217,13 +1086,13 @@ const RpcCodexAppServerStatus = S.Struct({
   lastError: RpcStringNull,
   pendingRequestCount: S.Number,
   pid: S.NullOr(S.Number),
-  state: S.String,
+  state: S.Literals(["errored", "running", "starting", "stopped"]),
   transport: S.Literal("stdio"),
 })
 
 const RpcCodexAppServerControlResult = S.Struct({
   ok: S.Boolean,
-  action: S.String,
+  action: S.Literals(["restart", "start", "stop"]),
   changed: S.Boolean,
   status: RpcCodexAppServerStatus,
   error: S.optional(S.String),
@@ -1302,7 +1171,7 @@ const RpcThreadListResult = S.Struct({
   threads: S.optional(S.Array(RpcThreadSummary)),
 })
 const RpcThreadMutationResult = S.Struct({
-  action: S.String,
+  action: S.Literals(["archive", "delete", "fork", "rename", "unarchive"]),
   ok: S.Boolean,
   messages: S.optional(S.Array(KhalaCodeDesktopMessageSchema)),
   response: S.optional(RpcJson),
@@ -1365,7 +1234,114 @@ const RpcCodexSettingsReadRequest = S.Struct({
   cwd: S.optional(S.String),
   includeHiddenModels: S.optional(S.Boolean),
 })
-const RpcCodexSettingsProjection = RpcJsonObject
+const RpcCodexSettingsModelOption = S.Struct({
+  id: S.String,
+  model: S.String,
+  displayName: S.String,
+  description: RpcStringNull,
+  hidden: S.Boolean,
+  isDefault: S.Boolean,
+  supportsPersonality: S.Boolean,
+  defaultReasoningEffort: RpcStringNull,
+  supportedReasoningEfforts: S.Array(S.Struct({
+    value: S.String,
+    description: RpcStringNull,
+  })),
+  serviceTiers: S.Array(S.Struct({
+    id: S.String,
+    name: S.String,
+    description: RpcStringNull,
+  })),
+  defaultServiceTier: RpcStringNull,
+})
+const RpcCodexSettingsProjection = S.Struct({
+  ok: S.Boolean,
+  observedAt: S.String,
+  cwd: RpcStringNull,
+  errors: RpcStringArray,
+  config: S.Struct({
+    model: RpcStringNull,
+    modelProvider: RpcStringNull,
+    reasoningEffort: RpcStringNull,
+    reasoningSummary: RpcStringNull,
+    verbosity: RpcStringNull,
+    serviceTier: RpcStringNull,
+    approvalPolicy: S.Unknown,
+    approvalsReviewer: S.Unknown,
+    sandboxMode: RpcStringNull,
+    defaultPermissions: RpcStringNull,
+    webSearch: RpcStringNull,
+    personality: RpcStringNull,
+    layersAvailable: S.Boolean,
+    originKeys: RpcStringArray,
+  }),
+  appearance: S.Struct({
+    keymap: RpcJson,
+    keyPaths: S.Struct({
+      keymap: S.Literal("tui.keymap"),
+      pet: S.Literal("tui.pet"),
+      petAnchor: S.Literal("tui.pet_anchor"),
+      personality: S.Literal("personality"),
+      statusLine: S.Literal("tui.status_line"),
+      statusLineUseColors: S.Literal("tui.status_line_use_colors"),
+      theme: S.Literal("tui.theme"),
+      vimModeDefault: S.Literal("tui.vim_mode_default"),
+    }),
+    pet: RpcStringNull,
+    petAnchor: RpcStringNull,
+    personality: RpcStringNull,
+    statusLine: S.NullOr(RpcStringArray),
+    statusLineUseColors: S.NullOr(S.Boolean),
+    theme: RpcStringNull,
+    vimModeDefault: S.NullOr(S.Boolean),
+  }),
+  models: S.Struct({
+    selected: S.NullOr(RpcCodexSettingsModelOption),
+    options: S.Array(RpcCodexSettingsModelOption),
+    serviceTierCommands: RpcStringArray,
+  }),
+  providerCapabilities: S.Struct({
+    namespaceTools: S.NullOr(S.Boolean),
+    imageGeneration: S.NullOr(S.Boolean),
+    webSearch: S.NullOr(S.Boolean),
+  }),
+  permissions: S.Struct({
+    selectedProfile: RpcStringNull,
+    profiles: S.Array(S.Struct({
+      id: S.String,
+      description: RpcStringNull,
+      allowed: S.Boolean,
+      selected: S.Boolean,
+    })),
+    blockedProfileIds: RpcStringArray,
+  }),
+  requirements: S.Struct({
+    managed: S.Boolean,
+    allowedApprovalPolicies: S.NullOr(S.Array(S.Unknown)),
+    allowedSandboxModes: S.NullOr(RpcStringArray),
+    allowedPermissionProfiles: S.NullOr(RpcStringArray),
+    defaultPermissions: RpcStringNull,
+    blockers: S.Array(S.Struct({
+      key: S.String,
+      message: S.String,
+    })),
+  }),
+  usage: S.Struct({
+    summary: S.Unknown,
+    dailyUsageBuckets: S.NullOr(S.Array(S.Unknown)),
+    available: S.Boolean,
+  }),
+  collaboration: S.Struct({
+    modes: S.Array(S.Struct({
+      name: S.String,
+      mode: RpcStringNull,
+      model: RpcStringNull,
+      reasoningEffort: RpcStringNull,
+    })),
+    currentMode: RpcStringNull,
+    personality: RpcStringNull,
+  }),
+})
 const RpcCodexConfigValueWriteRequest = S.Struct({
   cwd: S.optional(S.String),
   expectedVersion: S.optional(S.String),
@@ -1387,7 +1363,86 @@ const RpcCodexEcosystemReadRequest = S.Struct({
   forceReloadSkills: S.optional(S.Boolean),
   threadId: S.optional(S.String),
 })
-const RpcCodexEcosystemProjection = RpcJsonObject
+const RpcCodexEcosystemSource = S.Literals([
+  "apps",
+  "hooks",
+  "imports",
+  "khala",
+  "marketplace",
+  "mcp",
+  "plugins",
+  "skills",
+])
+const RpcCodexEcosystemState = S.Literals([
+  "auth_required",
+  "desktop_extension",
+  "disabled",
+  "disabled_by_admin",
+  "error",
+  "install_required",
+  "managed",
+  "ready",
+  "unknown",
+])
+const RpcCodexEcosystemSeverity = S.Literals(["critical", "info", "warning"])
+const RpcCodexEcosystemItem = S.Struct({
+  id: S.String,
+  name: S.String,
+  source: RpcCodexEcosystemSource,
+  state: RpcCodexEcosystemState,
+  detail: S.String,
+  authRequired: S.Boolean,
+  enabled: S.NullOr(S.Boolean),
+  installed: S.NullOr(S.Boolean),
+  managed: S.Boolean,
+  marketplaceName: S.optional(S.String),
+  pluginId: S.optional(S.String),
+})
+const RpcCodexEcosystemSection = S.Struct({
+  source: RpcCodexEcosystemSource,
+  label: S.String,
+  count: S.Number,
+  readyCount: S.Number,
+  disabledCount: S.Number,
+  managedCount: S.Number,
+  authRequiredCount: S.Number,
+  installRequiredCount: S.Number,
+  errorCount: S.Number,
+  unknownCount: S.Number,
+  items: S.Array(RpcCodexEcosystemItem),
+})
+const RpcCodexEcosystemProjection = S.Struct({
+  ok: S.Boolean,
+  cwd: RpcStringNull,
+  observedAt: S.String,
+  errors: RpcStringArray,
+  notifications: S.Array(S.Struct({
+    method: S.String,
+    receivedAt: S.String,
+    summary: S.String,
+    severity: RpcCodexEcosystemSeverity,
+  })),
+  sections: S.Struct({
+    apps: RpcCodexEcosystemSection,
+    hooks: RpcCodexEcosystemSection,
+    imports: RpcCodexEcosystemSection,
+    khala: RpcCodexEcosystemSection,
+    marketplace: RpcCodexEcosystemSection,
+    mcp: RpcCodexEcosystemSection,
+    plugins: RpcCodexEcosystemSection,
+    skills: RpcCodexEcosystemSection,
+  }),
+  diagnostics: S.Array(S.Struct({
+    ref: S.String,
+    source: RpcCodexEcosystemSource,
+    severity: RpcCodexEcosystemSeverity,
+    title: S.String,
+    detail: S.String,
+    action: S.Literals(["authenticate", "install", "open_settings", "refresh", "review"]),
+    itemId: S.optional(S.String),
+    observedAt: S.String,
+  })),
+})
 const RpcCodexAppServerActionResult = S.Struct({
   ok: S.Boolean,
   method: S.String,
@@ -1636,7 +1691,7 @@ const RpcFleetStatus = S.Struct({
 const RpcFleetPromotionContextBoundary = S.Struct({
   allowedRefs: RpcStringArray,
   includeTranscript: S.Literal(false),
-  mode: S.String,
+  mode: S.Literals(["explicit_objective", "summary_only"]),
   summary: RpcStringNull,
 })
 const RpcFleetPromotionRequest = S.Struct({
@@ -1654,7 +1709,34 @@ const RpcFleetPromotionRequest = S.Struct({
   timeoutMs: S.optional(S.Number),
   verify: S.optional(S.String),
 })
-const RpcFleetPromotionResult = RpcJsonObject
+const RpcFleetWorkerRuntime = S.Struct({
+  assignmentTool: S.Literal("codex_spawn"),
+  homeRole: S.Literal("pylon_isolated_worker_codex_home"),
+  role: S.Literal("swarm_worker_codex_session"),
+  runtime: S.Literal("codex_harness"),
+})
+const RpcFleetPromotionResult = S.Struct({
+  ok: S.Boolean,
+  acceptedCount: S.Number,
+  contextBoundary: RpcFleetPromotionContextBoundary,
+  origin: S.Struct({
+    role: S.Literal("main_local_codex_session"),
+    sessionId: S.String,
+    threadId: S.String,
+  }),
+  pylonRef: RpcStringNull,
+  requestedCount: S.Number,
+  workerRuntime: RpcFleetWorkerRuntime,
+  results: S.Array(S.Struct({
+    accountRef: RpcStringNull,
+    assignmentRef: RpcStringNull,
+    closeoutStatus: RpcStringNull,
+    status: S.Literals(["accepted", "failed"]),
+    summary: S.String,
+    tokensVerified: RpcNumberNull,
+    transcriptRef: RpcStringNull,
+  })),
+})
 const RpcFleetDelegateRunRequest = S.Struct({
   accountRef: S.optional(S.String),
   branch: S.optional(S.String),
@@ -1667,7 +1749,46 @@ const RpcFleetDelegateRunRequest = S.Struct({
   timeoutMs: S.optional(S.Number),
   verify: S.optional(S.String),
 })
-const RpcFleetDelegateRunResult = RpcJsonObject
+const RpcFleetDelegateRunProjection = S.Struct({
+  localPathsProjected: S.Literal(false),
+  objectiveProjected: S.Literal(false),
+  providerPayloadProjected: S.Literal(false),
+  rawTraceMessagesProjected: S.Literal(false),
+})
+const RpcFleetDelegateRunResult = S.Struct({
+  ok: S.Boolean,
+  acceptedCount: S.Number,
+  delegateSignature: S.Literal("khala.fleet.delegate"),
+  delegateStatus: S.Literals(["blocked", "completed"]),
+  mode: S.Literals(["fixture", "real_work"]),
+  projection: RpcFleetDelegateRunProjection,
+  pylonRef: RpcStringNull,
+  requestedCount: S.Number,
+  results: S.Array(S.Struct({
+    accountRef: RpcStringNull,
+    assignmentRef: RpcStringNull,
+    blockerRefs: RpcStringArray,
+    closeoutStatus: RpcStringNull,
+    slot: S.Number,
+    status: S.Literals(["accepted", "failed"]),
+    tokensVerified: RpcNumberNull,
+    transcriptRef: RpcStringNull,
+  })),
+  trace: S.Array(S.Struct({
+    blockerCode: RpcStringNull,
+    fallbackModule: RpcStringNull,
+    module: S.String,
+    precondition: S.String,
+    refs: RpcStringArray,
+    status: S.String,
+    summary: S.String,
+  })),
+  validation: S.Struct({
+    fixture: S.Boolean,
+    repoPinsComplete: S.Boolean,
+  }),
+  workerRuntime: RpcFleetWorkerRuntime,
+})
 
 const RpcConnectStart = S.Struct({
   ok: S.Boolean,
@@ -1706,6 +1827,14 @@ const noParams = () => [] as const
 const param = <A>(schema: S.Schema<A>) => ({ optional: false, schema }) as const
 const optionalParam = <A>(schema: S.Schema<A>) =>
   ({ optional: true, schema }) as const
+
+type KhalaCodeDesktopRpcMethodSchemaSpec = {
+  readonly parameters: readonly {
+    readonly optional: boolean
+    readonly schema: S.Schema<unknown>
+  }[]
+  readonly result: S.Schema<unknown>
+}
 
 export const KhalaCodeDesktopRpcMethodSchemas = {
   appInfo: { parameters: noParams(), result: RpcAppInfo },
@@ -1770,10 +1899,16 @@ export const KhalaCodeDesktopRpcMethodSchemas = {
   tokenAccountingStatus: { parameters: noParams(), result: RpcRuntimeStatus },
   threadTokenSummary: { parameters: [optionalParam(RpcThreadTokenSummaryRequest)], result: RpcThreadTokenSummary },
   toolCatalog: { parameters: noParams(), result: RpcToolCatalogResponse },
-} as const
+} as const satisfies Record<
+  keyof KhalaCodeDesktopRPCSchema["requests"],
+  KhalaCodeDesktopRpcMethodSchemaSpec
+>
 
 export type KhalaCodeDesktopRpcMethodName =
   keyof typeof KhalaCodeDesktopRpcMethodSchemas
+
+export const KhalaCodeDesktopRpcMethodNames =
+  Object.keys(KhalaCodeDesktopRpcMethodSchemas) as KhalaCodeDesktopRpcMethodName[]
 
 const isRpcMethodName = (method: string): method is KhalaCodeDesktopRpcMethodName =>
   Object.hasOwn(KhalaCodeDesktopRpcMethodSchemas, method)

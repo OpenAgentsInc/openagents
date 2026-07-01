@@ -86,6 +86,17 @@ type DesktopRpcRequests = KhalaCodeDesktopRPCSchema["requests"]
 type SlashCommandEntry =
   Awaited<ReturnType<DesktopRpcRequests["slashCommandList"]>>["commands"][number]
 
+const rpcFailureDetail = (payload: unknown): string => {
+  if (payload !== null && typeof payload === "object") {
+    const record = payload as Record<string, unknown>
+    if (typeof record.detail === "string" && record.detail.length > 0) return record.detail
+    if (typeof record.error === "string" && record.error.length > 0) return record.error
+    if (typeof record.message === "string" && record.message.length > 0) return record.message
+  }
+  if (typeof payload === "string" && payload.length > 0) return payload
+  return "unknown error"
+}
+
 const postPreviewRpc = async <Result>(
   method: KhalaCodeDesktopRpcMethodName,
   ...args: readonly unknown[]
@@ -99,7 +110,15 @@ const postPreviewRpc = async <Result>(
   const payload = await response.json() as unknown
   if (!response.ok) {
     const failure = S.decodeUnknownSync(KhalaCodeDesktopRpcBridgeFailure)
-    throw new Error(`${method} failed with ${response.status}: ${failure(payload).tag}`)
+    try {
+      const decodedFailure = failure(payload)
+      throw new Error(`${method} failed with ${response.status}: ${decodedFailure.tag}: ${decodedFailure.error}`)
+    } catch (error) {
+      if (error instanceof Error && error.message.startsWith(`${method} failed with ${response.status}:`)) {
+        throw error
+      }
+      throw new Error(`${method} failed with ${response.status}: ${rpcFailureDetail(payload)}`)
+    }
   }
   return decodeKhalaCodeDesktopRpcResult(method, payload) as Result
 }
