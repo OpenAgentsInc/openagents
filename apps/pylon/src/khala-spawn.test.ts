@@ -292,6 +292,7 @@ describe("Khala spawn per-account planning", () => {
 
 const requestResult: PylonKhalaRequestResult = {
   assignmentRef: "assignment.public.khala_coding.test",
+  diagnostics: [],
   durableRequestId: "durable.test",
   durableStreamUrl: null,
   frames: [],
