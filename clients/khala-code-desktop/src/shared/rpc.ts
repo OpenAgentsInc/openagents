@@ -63,9 +63,12 @@ export type KhalaCodeDesktopChatTurnRequest = {
 export type KhalaCodeDesktopBackendProjection = {
   readonly baseUrl?: string
   readonly credentialSource?: "env:OPENROUTER_API_KEY" | "khala-provider-key"
-  readonly kind: "hosted_openagents" | "mock"
+  readonly kind: "codex_app_server" | "hosted_openagents" | "mock"
   readonly model: string
   readonly provider?: "openrouter"
+  readonly threadId?: string
+  readonly turnId?: string
+  readonly turnStatus?: "completed" | "failed" | "inProgress" | "interrupted" | string
 }
 
 export type KhalaCodeDesktopChatTurnResponse = {
@@ -160,6 +163,74 @@ export type KhalaCodeDesktopCodexAppServerControlResult = {
   readonly changed: boolean
   readonly status: KhalaCodeDesktopCodexAppServerStatus
   readonly error?: string
+}
+
+export type KhalaCodeDesktopCodexThreadStartRequest = {
+  readonly cwd?: string
+  readonly sessionId?: string
+}
+
+export type KhalaCodeDesktopCodexThreadResumeRequest = {
+  readonly cwd?: string
+  readonly sessionId?: string
+  readonly threadId: string
+}
+
+export type KhalaCodeDesktopCodexThreadListRequest = {
+  readonly archived?: boolean
+  readonly cursor?: string
+  readonly cwd?: string
+  readonly limit?: number
+  readonly searchTerm?: string
+}
+
+export type KhalaCodeDesktopCodexThreadResult = {
+  readonly ok: true
+  readonly cwd?: string
+  readonly desktopSessionId?: string
+  readonly model?: string
+  readonly modelProvider?: string
+  readonly thread: unknown
+  readonly threadId: string
+}
+
+export type KhalaCodeDesktopCodexThreadListResult = {
+  readonly ok: true
+  readonly backwardsCursor?: string | null
+  readonly data: readonly unknown[]
+  readonly nextCursor?: string | null
+}
+
+export type KhalaCodeDesktopCodexTurnStartRequest =
+  KhalaCodeDesktopChatTurnRequest & {
+    readonly cwd?: string
+  }
+
+export type KhalaCodeDesktopCodexTurnSteerRequest = {
+  readonly clientUserMessageId?: string
+  readonly sessionId: string
+  readonly text: string
+  readonly turnId?: string
+}
+
+export type KhalaCodeDesktopCodexTurnInterruptRequest = {
+  readonly sessionId: string
+  readonly turnId?: string
+}
+
+export type KhalaCodeDesktopCodexTurnActionResult = {
+  readonly ok: boolean
+  readonly codexTurnId?: string
+  readonly desktopSessionId: string
+  readonly desktopTurnId?: string
+  readonly error?: string
+  readonly response?: unknown
+  readonly threadId?: string
+}
+
+export type KhalaCodeDesktopCodexThreadCompactRequest = {
+  readonly sessionId?: string
+  readonly threadId?: string
 }
 
 export type KhalaCodeDesktopCodexAccountStatus = {
@@ -290,6 +361,13 @@ export type KhalaCodeDesktopRPCSchema = {
     codexAppServerStop(): Promise<KhalaCodeDesktopCodexAppServerControlResult>
     codexFleetStatus(): Promise<KhalaCodeDesktopFleetStatus>
     codexHarnessStatus(): Promise<KhalaCodeDesktopCodexHarnessStatus>
+    codexThreadCompact(request: KhalaCodeDesktopCodexThreadCompactRequest): Promise<KhalaCodeDesktopCodexTurnActionResult>
+    codexThreadList(request?: KhalaCodeDesktopCodexThreadListRequest): Promise<KhalaCodeDesktopCodexThreadListResult>
+    codexThreadResume(request: KhalaCodeDesktopCodexThreadResumeRequest): Promise<KhalaCodeDesktopCodexThreadResult>
+    codexThreadStart(request?: KhalaCodeDesktopCodexThreadStartRequest): Promise<KhalaCodeDesktopCodexThreadResult>
+    codexTurnInterrupt(request: KhalaCodeDesktopCodexTurnInterruptRequest): Promise<KhalaCodeDesktopCodexTurnActionResult>
+    codexTurnStart(request: KhalaCodeDesktopCodexTurnStartRequest): Promise<KhalaCodeDesktopChatTurnResponse>
+    codexTurnSteer(request: KhalaCodeDesktopCodexTurnSteerRequest): Promise<KhalaCodeDesktopCodexTurnActionResult>
     connectCodexAccount(accountRef: string): Promise<KhalaCodeDesktopConnectStart>
     openExternalUrl(url: string): Promise<boolean>
     removeCodexAccount(accountRef: string): Promise<KhalaCodeDesktopRemoveAccountResult>

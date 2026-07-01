@@ -63,3 +63,35 @@ Validation:
 - `bun run --cwd clients/khala-code-desktop typecheck`
 - `bun run --cwd clients/khala-code-desktop test`
 - `bun run --cwd clients/khala-code-desktop verify`
+
+## Issue #7783: Codex Thread And Turn Runtime
+
+Status: implemented
+
+Khala Code Desktop now routes the default chat submit path through the local
+Codex app-server thread and turn lifecycle. The existing Khala-native hosted
+runtime remains available only behind `KHALA_CODE_DESKTOP_RUNTIME=khala_native_runtime`
+or `KHALA_CODE_DESKTOP_LEGACY_KHALA_NATIVE_RUNTIME=1`.
+
+The desktop host now has a Codex chat runtime that:
+
+- starts `thread/start` for new desktop sessions;
+- persists desktop `sessionId` to Codex `threadId` mappings in
+  `~/.khala-code/codex-sessions.json` by default;
+- resumes persisted sessions with `thread/resume`;
+- sends user prompts through `turn/start`;
+- streams `item/agentMessage/delta`, `item/started`, `item/completed`, and
+  `turn/completed` notifications back into the existing transcript event model;
+- exposes RPC methods for `codexThreadStart`, `codexThreadResume`,
+  `codexThreadList`, `codexTurnStart`, `codexTurnSteer`,
+  `codexTurnInterrupt`, and `codexThreadCompact`;
+- maps the desktop stop action to Codex `turn/interrupt`.
+
+The browser shell now keeps the desktop session id stable in local storage so a
+reloaded app can use the persisted Codex thread mapping on the next turn.
+
+Validation:
+
+- `bun test clients/khala-code-desktop/tests/codex-app-server-chat-runtime.test.ts clients/khala-code-desktop/tests/rpc-handlers.test.ts clients/khala-code-desktop/tests/app-shell.test.ts`
+- `bun run --cwd clients/khala-code-desktop typecheck`
+- `bun run --cwd clients/khala-code-desktop verify`

@@ -110,6 +110,34 @@ const previewRpc = (): DesktopRpc => ({
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["codexHarnessStatus"]>>
       >("codexHarnessStatus"),
+    codexThreadCompact: request =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["codexThreadCompact"]>>
+      >("codexThreadCompact", request),
+    codexThreadList: (request?: Parameters<DesktopRpcRequests["codexThreadList"]>[0]) =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["codexThreadList"]>>
+      >("codexThreadList", request),
+    codexThreadResume: request =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["codexThreadResume"]>>
+      >("codexThreadResume", request),
+    codexThreadStart: (request?: Parameters<DesktopRpcRequests["codexThreadStart"]>[0]) =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["codexThreadStart"]>>
+      >("codexThreadStart", request),
+    codexTurnInterrupt: request =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["codexTurnInterrupt"]>>
+      >("codexTurnInterrupt", request),
+    codexTurnStart: request =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["codexTurnStart"]>>
+      >("codexTurnStart", request),
+    codexTurnSteer: request =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["codexTurnSteer"]>>
+      >("codexTurnSteer", request),
     codingStatus: () =>
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["codingStatus"]>>
@@ -220,7 +248,13 @@ let transcriptPinnedToEnd = true
 const activeTurnIds = new Set<string>()
 const objectUrls = new Set<string>()
 const localTextAttachments = new Map<string, string>()
-const sessionId = `khala-code-desktop-${Date.now().toString(36)}`
+const sessionIdStorageKey = "khala-code-desktop.session-id.v1"
+const storedSessionId = localStorage.getItem(sessionIdStorageKey)
+const sessionId =
+  storedSessionId?.startsWith("khala-code-desktop-") === true
+    ? storedSessionId
+    : `khala-code-desktop-${Date.now().toString(36)}`
+localStorage.setItem(sessionIdStorageKey, sessionId)
 
 const prefersReducedMotion =
   typeof matchMedia === "function"
@@ -812,12 +846,16 @@ const resetComposerDraft = (): void => {
 
 const stopActiveTurn = (): void => {
   if (!pendingTurn) return
+  const stoppedTurnIds = [...activeTurnIds]
+  for (const turnId of stoppedTurnIds) {
+    void rpc.request.codexTurnInterrupt({ sessionId, turnId }).catch(() => undefined)
+  }
   activeTurnIds.clear()
   pendingTurn = false
   thinkingTurnId = null
   appendMessages([
     {
-      body: "Stopped the active turn locally. You can keep typing.",
+      body: "Requested Codex interrupt for the active turn. You can keep typing.",
       id: nextMessageId("system"),
       role: "system",
     },
@@ -1118,6 +1156,20 @@ const controls = {
   codexAppServerStop: () => rpc.request.codexAppServerStop(),
   codexFleetStatus: () => rpc.request.codexFleetStatus(),
   codexHarnessStatus: () => rpc.request.codexHarnessStatus(),
+  codexThreadCompact: (request: Parameters<DesktopRpcRequests["codexThreadCompact"]>[0]) =>
+    rpc.request.codexThreadCompact(request),
+  codexThreadList: (request?: Parameters<DesktopRpcRequests["codexThreadList"]>[0]) =>
+    rpc.request.codexThreadList(request),
+  codexThreadResume: (request: Parameters<DesktopRpcRequests["codexThreadResume"]>[0]) =>
+    rpc.request.codexThreadResume(request),
+  codexThreadStart: (request?: Parameters<DesktopRpcRequests["codexThreadStart"]>[0]) =>
+    rpc.request.codexThreadStart(request),
+  codexTurnInterrupt: (request: Parameters<DesktopRpcRequests["codexTurnInterrupt"]>[0]) =>
+    rpc.request.codexTurnInterrupt(request),
+  codexTurnStart: (request: Parameters<DesktopRpcRequests["codexTurnStart"]>[0]) =>
+    rpc.request.codexTurnStart(request),
+  codexTurnSteer: (request: Parameters<DesktopRpcRequests["codexTurnSteer"]>[0]) =>
+    rpc.request.codexTurnSteer(request),
   codingStatus: () => rpc.request.codingStatus(),
   connectCodexAccount: (accountRef: string) =>
     rpc.request.connectCodexAccount(accountRef),

@@ -4,11 +4,13 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 
 import { createKhalaCodeDesktopRpcRequestHandlers } from "../src/bun/rpc-handlers"
+import type { CodexAppServerChatRuntime } from "../src/bun/codex-app-server-chat-runtime"
 import type {
   KhalaCodexFleetCommandInput,
   KhalaCodexFleetCommandResult,
 } from "../src/bun/khala-codex-fleet-tools"
 import type {
+  KhalaCodeDesktopChatTurnResponse,
   KhalaCodeDesktopCodexAppServerControlResult,
   KhalaCodeDesktopCodexAppServerStatus,
   KhalaCodeDesktopCodexHarnessStatus,
@@ -124,6 +126,35 @@ const stoppedAppServerStatus = (): KhalaCodeDesktopCodexAppServerStatus => ({
   state: "stopped",
   transport: "stdio",
 })
+
+function throwingCodexChatRuntime(
+  overrides: Partial<CodexAppServerChatRuntime> = {},
+): CodexAppServerChatRuntime {
+  return {
+    compactThread: async () => {
+      throw new Error("codex compact should not be called")
+    },
+    interruptTurn: async () => {
+      throw new Error("codex interrupt should not be called")
+    },
+    listThreads: async () => {
+      throw new Error("codex list should not be called")
+    },
+    resumeThread: async () => {
+      throw new Error("codex resume should not be called")
+    },
+    startThread: async () => {
+      throw new Error("codex start should not be called")
+    },
+    startTurn: async () => {
+      throw new Error("codex turn should not be called")
+    },
+    steerTurn: async () => {
+      throw new Error("codex steer should not be called")
+    },
+    ...overrides,
+  }
+}
 
 describe("Khala Code desktop RPC handlers", () => {
   test("answers native desktop status probes instead of falling through", async () => {
@@ -368,6 +399,101 @@ describe("Khala Code desktop RPC handlers", () => {
         status: "unavailable",
       },
     })
+  })
+
+  test("routes chat submits to the Codex app-server runtime by default", async () => {
+    let codexTurnStarted = false
+    let legacyTurnStarted = false
+    const handlers = createKhalaCodeDesktopRpcRequestHandlers({
+      appleFmReadiness: () => {
+        throw new Error("not used")
+      },
+      codexChatRuntime: throwingCodexChatRuntime({
+        startTurn: async request => {
+          codexTurnStarted = true
+          expect(request.cwd).toBe(process.cwd())
+          return {
+            backend: {
+              kind: "codex_app_server",
+              model: "gpt-5.1-codex",
+              threadId: "thread-codex-default",
+              turnId: "turn-codex-default",
+            },
+            messages: [{ id: "agent-1", role: "assistant", body: "Codex default path" }],
+            ok: true,
+            toolNames: [],
+            usedTools: [],
+          }
+        },
+      }),
+      env: {},
+      legacyChatTurn: async (): Promise<KhalaCodeDesktopChatTurnResponse> => {
+        legacyTurnStarted = true
+        throw new Error("legacy runtime should not be the default")
+      },
+      onDeviceDeciderStatus: () => {
+        throw new Error("not used")
+      },
+      workingDirectory: process.cwd(),
+    })
+
+    await expect(handlers.submitChatMessage({
+      messages: [{ id: "user-1", role: "user", body: "Run tests" }],
+      sessionId: "desktop-session-1",
+      turnId: "desktop-turn-1",
+    })).resolves.toMatchObject({
+      backend: {
+        kind: "codex_app_server",
+        threadId: "thread-codex-default",
+      },
+      messages: [{ body: "Codex default path" }],
+      ok: true,
+    })
+    expect(codexTurnStarted).toBe(true)
+    expect(legacyTurnStarted).toBe(false)
+  })
+
+  test("keeps the Khala-native chat runtime behind the explicit legacy flag", async () => {
+    let legacyTurnStarted = false
+    const handlers = createKhalaCodeDesktopRpcRequestHandlers({
+      appleFmReadiness: () => {
+        throw new Error("not used")
+      },
+      codexChatRuntime: throwingCodexChatRuntime(),
+      env: { KHALA_CODE_DESKTOP_RUNTIME: "khala_native_runtime" },
+      legacyChatTurn: async input => {
+        legacyTurnStarted = true
+        expect(input.request.sessionId).toBe("desktop-session-legacy")
+        return {
+          backend: {
+            kind: "mock",
+            model: "legacy-khala-native",
+          },
+          messages: [{ id: "legacy-1", role: "assistant", body: "Legacy runtime" }],
+          ok: true,
+          toolNames: [],
+          usedTools: [],
+        }
+      },
+      onDeviceDeciderStatus: () => {
+        throw new Error("not used")
+      },
+      workingDirectory: process.cwd(),
+    })
+
+    await expect(handlers.submitChatMessage({
+      messages: [{ id: "user-1", role: "user", body: "Use legacy" }],
+      sessionId: "desktop-session-legacy",
+      turnId: "desktop-turn-legacy",
+    })).resolves.toMatchObject({
+      backend: {
+        kind: "mock",
+        model: "legacy-khala-native",
+      },
+      messages: [{ body: "Legacy runtime" }],
+      ok: true,
+    })
+    expect(legacyTurnStarted).toBe(true)
   })
 
   test("projects Fleet Status capacity and token evidence through RPC", async () => {

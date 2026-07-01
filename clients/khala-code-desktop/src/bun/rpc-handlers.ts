@@ -5,6 +5,10 @@ import type {
   KhalaCodexRateLimitResetOutcome,
 } from "../shared/codex-rate-limits.js"
 import type { CodexAppServerHost } from "./codex-app-server-client.js"
+import {
+  createCodexAppServerChatRuntime,
+  type CodexAppServerChatRuntime,
+} from "./codex-app-server-chat-runtime.js"
 import type { KhalaAppleFmReadiness } from "../shared/apple-fm-readiness.js"
 import type { OnDeviceDeciderSelection } from "../shared/on-device-decider.js"
 import {
@@ -42,6 +46,7 @@ type MaybePromise<T> = T | Promise<T>
 export type KhalaCodeDesktopRpcHandlersInput = {
   readonly appleFmReadiness: () => MaybePromise<KhalaAppleFmReadiness>
   readonly codexAppServerHost?: CodexAppServerHost
+  readonly codexChatRuntime?: CodexAppServerChatRuntime
   readonly codexRateLimitStatus?: () => MaybePromise<KhalaCodexRateLimitProviderStatus>
   readonly codexHarnessStatus?: () => MaybePromise<KhalaCodeDesktopCodexHarnessStatus>
   readonly consumeCodexRateLimitResetCredit?: (input: {
@@ -50,6 +55,7 @@ export type KhalaCodeDesktopRpcHandlersInput = {
   readonly codexFleetToolOptions?: KhalaCodexFleetToolOptions
   readonly env: ChatEnv
   readonly emitChatTurnEvent?: (event: KhalaCodeDesktopChatTurnEvent) => void
+  readonly legacyChatTurn?: typeof runKhalaCodeDesktopChatTurn
   readonly onDeviceDeciderStatus: () => MaybePromise<OnDeviceDeciderSelection>
   readonly workingDirectory: string
 }
@@ -156,6 +162,27 @@ const unavailableRateLimits = (
 export function createKhalaCodeDesktopRpcRequestHandlers(
   input: KhalaCodeDesktopRpcHandlersInput,
 ): KhalaCodeDesktopRPCSchema["requests"] {
+  const codexChatRuntime =
+    input.codexChatRuntime ??
+    (input.codexAppServerHost === undefined
+      ? null
+      : createCodexAppServerChatRuntime({
+        env: input.env,
+        host: input.codexAppServerHost,
+        ...(input.emitChatTurnEvent === undefined ? {} : { onEvent: input.emitChatTurnEvent }),
+        workingDirectory: input.workingDirectory,
+      }))
+  const legacyChatTurn = input.legacyChatTurn ?? runKhalaCodeDesktopChatTurn
+  const requireCodexChatRuntime = (): CodexAppServerChatRuntime => {
+    if (codexChatRuntime === null) {
+      throw new Error("Codex app-server chat runtime is not configured.")
+    }
+    return codexChatRuntime
+  }
+  const useLegacyKhalaNativeRuntime = (): boolean =>
+    input.env.KHALA_CODE_DESKTOP_RUNTIME === "khala_native_runtime" ||
+    input.env.KHALA_CODE_DESKTOP_LEGACY_KHALA_NATIVE_RUNTIME === "1"
+
   const codexHarnessStatus = async (): Promise<KhalaCodeDesktopCodexHarnessStatus> =>
     input.codexHarnessStatus?.() ??
     inspectCodexHarnessStatus({ env: input.env as NodeJS.ProcessEnv })
@@ -311,6 +338,33 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
     async codexHarnessStatus() {
       return codexHarnessStatus()
     },
+    async codexThreadCompact(request) {
+      return requireCodexChatRuntime().compactThread(request)
+    },
+    async codexThreadList(request) {
+      return requireCodexChatRuntime().listThreads(request)
+    },
+    async codexThreadResume(request) {
+      return requireCodexChatRuntime().resumeThread(request)
+    },
+    async codexThreadStart(request = {}) {
+      return requireCodexChatRuntime().startThread({
+        cwd: input.workingDirectory,
+        ...request,
+      })
+    },
+    async codexTurnInterrupt(request) {
+      return requireCodexChatRuntime().interruptTurn(request)
+    },
+    async codexTurnStart(request) {
+      return requireCodexChatRuntime().startTurn({
+        ...request,
+        cwd: request.cwd ?? input.workingDirectory,
+      })
+    },
+    async codexTurnSteer(request) {
+      return requireCodexChatRuntime().steerTurn(request)
+    },
     async codingStatus() {
       const harness = await codexHarnessStatus()
       if (!harness.available) {
@@ -360,7 +414,13 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
       })
     },
     async submitChatMessage(request) {
-      return runKhalaCodeDesktopChatTurn({
+      if (!useLegacyKhalaNativeRuntime()) {
+        return requireCodexChatRuntime().startTurn({
+          ...request,
+          cwd: input.workingDirectory,
+        })
+      }
+      return legacyChatTurn({
         env: input.env,
         ...(input.emitChatTurnEvent === undefined ? {} : { onEvent: input.emitChatTurnEvent }),
         request,
