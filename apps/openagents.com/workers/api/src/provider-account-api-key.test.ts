@@ -2,6 +2,7 @@ import { Effect } from 'effect'
 import { describe, expect, test } from 'vitest'
 
 import {
+  type ApiKeyConnectProvider,
   PROVIDER_API_KEY_CONNECT_POLICIES,
   connectProviderApiKeyAccount,
   probeProviderApiKey,
@@ -139,7 +140,7 @@ const dependencies = (probeStatus: number) => ({
   storeConnectedApiKey: (
     input: Readonly<{
       providerAccountRef: string
-      provider: 'anthropic_claude' | 'google_gemini'
+      provider: ApiKeyConnectProvider
       apiKey: string
     }>,
   ) => {
@@ -158,7 +159,10 @@ describe('provider api key connect policy', () => {
   test('exposes exactly the ToS-cleared API-key BYOK providers', () => {
     expect(
       PROVIDER_API_KEY_CONNECT_POLICIES.map(policy => policy.provider),
-    ).toEqual(['anthropic_claude', 'google_gemini'])
+    ).toEqual(['openrouter', 'anthropic_claude', 'google_gemini'])
+    expect(
+      providerApiKeyConnectPolicyForRouteSegment('openrouter')?.provider,
+    ).toBe('openrouter')
     expect(
       providerApiKeyConnectPolicyForRouteSegment('anthropic')?.provider,
     ).toBe('anthropic_claude')

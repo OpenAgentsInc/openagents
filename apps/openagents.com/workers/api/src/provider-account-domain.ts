@@ -21,6 +21,7 @@ import {
 export const CHATGPT_CODEX_PROVIDER = 'chatgpt_codex' as const
 export const GOOGLE_GEMINI_PROVIDER = 'google_gemini' as const
 export const ANTHROPIC_CLAUDE_PROVIDER = 'anthropic_claude' as const
+export const OPENROUTER_PROVIDER = 'openrouter' as const
 export const CHATGPT_CODEX_VERIFICATION_URL =
   'https://auth.openai.com/codex/device'
 export const PROVIDER_ACCOUNT_PUBLIC_COLLECTIONS = {
@@ -74,6 +75,7 @@ export type ProviderAccountProvider =
   | typeof CHATGPT_CODEX_PROVIDER
   | typeof GOOGLE_GEMINI_PROVIDER
   | typeof ANTHROPIC_CLAUDE_PROVIDER
+  | typeof OPENROUTER_PROVIDER
 
 export const providerDisplayName = (
   provider: ProviderAccountProvider,
@@ -82,7 +84,9 @@ export const providerDisplayName = (
     ? 'ChatGPT/Codex'
     : provider === GOOGLE_GEMINI_PROVIDER
       ? 'Google Gemini'
-      : 'Anthropic Claude'
+      : provider === ANTHROPIC_CLAUDE_PROVIDER
+        ? 'Anthropic Claude'
+        : 'OpenRouter'
 
 export type ProviderConnectionAttemptStatus =
   | 'pending'

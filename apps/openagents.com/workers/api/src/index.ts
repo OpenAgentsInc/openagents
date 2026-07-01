@@ -6612,12 +6612,16 @@ const storeConnectedProviderApiKey =
   async (
     input: Readonly<{
       providerAccountRef: string
-      provider: 'anthropic_claude' | 'google_gemini'
+      provider: 'anthropic_claude' | 'google_gemini' | 'openrouter'
       apiKey: string
     }>,
   ): Promise<void> => {
     const providerField =
-      input.provider === 'anthropic_claude' ? 'anthropic' : 'google'
+      input.provider === 'anthropic_claude'
+        ? 'anthropic'
+        : input.provider === 'google_gemini'
+          ? 'google'
+          : 'openrouter'
 
     await kv.put(
       providerAuthSecretKey(input.providerAccountRef),
@@ -6686,6 +6690,31 @@ const readConnectedCodexAuthMaterial = async (
     authContentEnv: 'OPENCODE_AUTH_CONTENT',
     authContentJson: JSON.stringify(parsed),
   }
+}
+
+const readConnectedOpenRouterApiKey = async (
+  kv: KVNamespace,
+  providerAccountRef: string,
+): Promise<Redacted.Redacted<string> | undefined> => {
+  const raw = await kv.get(providerAuthSecretKey(providerAccountRef), 'text')
+
+  if (raw === null) {
+    return undefined
+  }
+
+  const parsed = safeJsonRecord(raw)
+  const openrouter = isRecord(parsed) ? parsed.openrouter : undefined
+
+  if (!isRecord(openrouter) || optionalString(openrouter.type) !== 'api_key') {
+    return undefined
+  }
+
+  const key = optionalString(openrouter.key)?.trim()
+  if (key === undefined || key === '') {
+    return undefined
+  }
+
+  return Redacted.make(key)
 }
 
 export const handleProgrammaticAgentRegistration = async (
@@ -12495,6 +12524,68 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         // `demand_kind=internal` (header-independent), keeping our own dogfood
         // out of the external trace corpus + demand ledger. Empty => no-op.
         internalAccountRefs,
+        resolveAccountByok: async accountRef => {
+          const agentUserId = accountRef.startsWith('agent:')
+            ? accountRef.slice('agent:'.length)
+            : undefined
+          if (agentUserId === undefined || agentUserId === '') {
+            return undefined
+          }
+          const db = openAgentsDatabase(env)
+          const openauthCredential = await db
+            .prepare(
+              `SELECT openauth_user_id
+                 FROM agent_credentials
+                WHERE user_id = ?
+                  AND openauth_user_id IS NOT NULL
+                  AND status = 'active'
+                  AND revoked_at IS NULL
+                ORDER BY last_used_at DESC
+                LIMIT 1`,
+            )
+            .bind(agentUserId)
+            .first<{ openauth_user_id: string | null }>()
+          const openauthUserId =
+            openauthCredential?.openauth_user_id ??
+            (
+              await db
+                .prepare(
+                  `SELECT openauth_user_id
+                     FROM openauth_agent_links
+                    WHERE agent_user_id = ?
+                      AND status = 'active'
+                      AND revoked_at IS NULL
+                    ORDER BY updated_at DESC
+                    LIMIT 1`,
+                )
+                .bind(agentUserId)
+                .first<{ openauth_user_id: string | null }>()
+            )?.openauth_user_id
+          if (openauthUserId === undefined || openauthUserId === null) {
+            return undefined
+          }
+          const accounts = await makeD1ProviderAccountRepository(
+            db,
+          ).listAccountsForUser(openauthUserId)
+          const account = accounts.find(
+            candidate =>
+              candidate.provider === 'openrouter' &&
+              candidate.authMode === 'api_key' &&
+              candidate.status === 'connected' &&
+              candidate.health !== 'requires_reauth' &&
+              candidate.secretRef !== null,
+          )
+          if (account === undefined) {
+            return undefined
+          }
+          const apiKey = await readConnectedOpenRouterApiKey(
+            env.AUTH_STORAGE,
+            account.providerAccountRef,
+          )
+          return apiKey === undefined
+            ? undefined
+            : { apiKey, provider: 'openrouter' as const }
+        },
         codingDelegation: {
           agentStore: makeD1AgentRegistrationStore(openAgentsDatabase(env)),
           pylonStore: makeD1PylonApiStore(openAgentsDatabase(env)),

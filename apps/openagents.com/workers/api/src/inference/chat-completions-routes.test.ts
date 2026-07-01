@@ -1570,6 +1570,112 @@ describe('POST /v1/chat/completions', () => {
     })
   })
 
+  test('routes account-attached OpenRouter BYOK when no request key is provided', async () => {
+    let capturedRequest: InferenceRequest | undefined
+    const registry = new InferenceProviderRegistry()
+    registry.register({
+      complete: request =>
+        Effect.sync(() => {
+          capturedRequest = request
+          return {
+            content: 'account BYOK response',
+            finishReason: 'stop',
+            servedModel: 'openrouter/account-model',
+            usage: { completionTokens: 2, promptTokens: 4, totalTokens: 6 },
+          }
+        }),
+      id: OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
+      stream: () => Effect.sync(() => []),
+    })
+    const metered: Array<MeteringContext> = []
+
+    const response = await run(
+      handleChatCompletions(
+        chatRequest(helloBody),
+        baseDeps({
+          lanePlan: selectAdapterPlan,
+          meteringHook: context =>
+            Effect.sync(() => {
+              metered.push(context)
+              return { metered: true, receiptRef: 'must-not-run' }
+            }),
+          readAvailableMsat: async () => {
+            throw new Error('account BYOK must not require credit balance')
+          },
+          registry,
+          resolveAccountByok: async () => ({
+            apiKey: Redacted.make('sk-or-account-owned-key'),
+            provider: 'openrouter',
+          }),
+        }),
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get(KHALA_BYOK_ACK_HEADER)).toBe('routed')
+    expect(capturedRequest?.model).toBe(KHALA_MODEL_ID)
+    expect(capturedRequest?.callerProviderKey?.provider).toBe('openrouter')
+    expect(
+      capturedRequest?.callerProviderKey === undefined
+        ? undefined
+        : Redacted.value(capturedRequest.callerProviderKey.apiKey),
+    ).toBe('sk-or-account-owned-key')
+    expect(metered).toEqual([])
+    const text = await response.text()
+    expect(text).toContain('openagents/khala')
+    expect(text).not.toContain('sk-or-account-owned-key')
+  })
+
+  test('prefers request-specific BYOK over account-attached OpenRouter BYOK', async () => {
+    let capturedRequest: InferenceRequest | undefined
+    const registry = new InferenceProviderRegistry()
+    registry.register({
+      complete: request =>
+        Effect.sync(() => {
+          capturedRequest = request
+          return {
+            content: 'request BYOK response',
+            finishReason: 'stop',
+            servedModel: 'openrouter/request-model',
+            usage: { completionTokens: 2, promptTokens: 4, totalTokens: 6 },
+          }
+        }),
+      id: OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
+      stream: () => Effect.sync(() => []),
+    })
+    let accountResolverCalled = false
+
+    const response = await run(
+      handleChatCompletions(
+        chatRequest(helloBody, {
+          headers: {
+            [KHALA_BYOK_PROVIDER_HEADER]: 'openrouter',
+            [KHALA_BYOK_PROVIDER_KEY_HEADER]: 'sk-or-request-owned-key',
+          },
+        }),
+        baseDeps({
+          lanePlan: selectAdapterPlan,
+          registry,
+          resolveAccountByok: async () => {
+            accountResolverCalled = true
+            return {
+              apiKey: Redacted.make('sk-or-account-owned-key'),
+              provider: 'openrouter',
+            }
+          },
+        }),
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    expect(accountResolverCalled).toBe(false)
+    expect(
+      capturedRequest?.callerProviderKey === undefined
+        ? undefined
+        : Redacted.value(capturedRequest.callerProviderKey.apiKey),
+    ).toBe('sk-or-request-owned-key')
+  })
+
   test('rejects malformed BYOK provider keys before dispatch', async () => {
     let dispatched = false
     const registry = new InferenceProviderRegistry()
