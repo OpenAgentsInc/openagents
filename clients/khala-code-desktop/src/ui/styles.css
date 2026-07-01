@@ -1720,6 +1720,10 @@ button {
   background: var(--oa-color-component-surface);
   color: var(--oa-color-component-text);
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.42rem;
+  min-height: 2rem;
 }
 .khala-fleet-refresh:hover {
   background: var(--oa-color-component-surface-active);
@@ -1727,6 +1731,16 @@ button {
 .khala-fleet-refresh:disabled {
   opacity: 0.5;
   cursor: default;
+}
+.khala-fleet-button-icon {
+  display: inline-flex;
+  width: 1rem;
+  height: 1rem;
+  flex: 0 0 auto;
+}
+.khala-fleet-button-icon svg {
+  width: 100%;
+  height: 100%;
 }
 .khala-fleet-body {
   display: flex;
@@ -1888,6 +1902,180 @@ button {
   background: var(--oa-color-component-surface);
 }
 
+.khala-fleet-delegate {
+  gap: 0.7rem;
+  padding: 0.85rem 0.95rem;
+  border: 1px solid color-mix(in srgb, var(--oa-color-khala-energy-cyan) 24%, transparent);
+  border-radius: 0.55rem;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--oa-color-khala-energy-cyan) 4%, transparent), transparent 58%),
+    var(--oa-color-component-surface);
+}
+.khala-fleet-delegate-form {
+  display: grid;
+  gap: 0.6rem;
+}
+.khala-fleet-delegate-objective,
+.khala-fleet-delegate-input {
+  width: 100%;
+  min-width: 0;
+  font: inherit;
+  font-size: 0.78rem;
+  border: 1px solid var(--oa-color-component-border);
+  border-radius: 0.4rem;
+  background: color-mix(in srgb, var(--oa-color-khala-void) 12%, transparent);
+  color: var(--oa-color-component-text);
+}
+.khala-fleet-delegate-objective {
+  resize: vertical;
+  min-height: 4.2rem;
+  padding: 0.55rem 0.65rem;
+  line-height: 1.45;
+}
+.khala-fleet-delegate-input {
+  height: 2rem;
+  padding: 0 0.55rem;
+}
+.khala-fleet-delegate-objective::placeholder,
+.khala-fleet-delegate-input::placeholder {
+  color: color-mix(in srgb, var(--oa-color-component-text) 48%, transparent);
+}
+.khala-fleet-delegate-objective:focus,
+.khala-fleet-delegate-input:focus {
+  border-color: color-mix(in srgb, var(--oa-color-khala-energy-cyan) 58%, transparent);
+  outline: 2px solid color-mix(in srgb, var(--oa-color-khala-energy-cyan) 42%, transparent);
+  outline-offset: 0;
+}
+.khala-fleet-delegate-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+.khala-fleet-delegate-pins {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.khala-fleet-delegate-pins[data-disabled="true"] {
+  opacity: 0.58;
+}
+.khala-fleet-delegate-field {
+  display: grid;
+  gap: 0.25rem;
+  min-width: 0;
+}
+.khala-fleet-delegate-footer,
+.khala-fleet-delegate-summary {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+.khala-fleet-delegate-footer {
+  justify-content: space-between;
+}
+.khala-fleet-delegate-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.42rem;
+  color: color-mix(in srgb, var(--oa-color-component-text) 68%, transparent);
+  font-size: 0.76rem;
+}
+.khala-fleet-delegate-check input {
+  width: 0.95rem;
+  height: 0.95rem;
+  accent-color: var(--oa-color-khala-energy-cyan);
+}
+.khala-fleet-run {
+  font: inherit;
+  font-size: 0.78rem;
+  min-height: 2rem;
+  padding: 0.35rem 0.75rem;
+  border-radius: 0.4rem;
+  border: 1px solid color-mix(in srgb, var(--oa-color-khala-energy-cyan) 56%, transparent);
+  background: color-mix(in srgb, var(--oa-color-khala-energy-cyan) 13%, transparent);
+  color: var(--oa-color-khala-energy-text-strong);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.42rem;
+}
+.khala-fleet-run:hover {
+  background: color-mix(in srgb, var(--oa-color-khala-energy-cyan) 18%, transparent);
+}
+.khala-fleet-run:disabled {
+  cursor: default;
+  opacity: 0.58;
+}
+.khala-fleet-delegate-output {
+  display: grid;
+  gap: 0.65rem;
+  padding-top: 0.65rem;
+  border-top: 1px solid color-mix(in srgb, var(--oa-color-khala-neutral-line) 18%, transparent);
+}
+.khala-fleet-delegate-steps {
+  display: grid;
+  gap: 0.45rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.khala-fleet-delegate-step {
+  display: grid;
+  gap: 0.3rem;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid color-mix(in srgb, var(--oa-color-khala-neutral-line) 16%, transparent);
+  border-radius: 0.45rem;
+  background: color-mix(in srgb, var(--oa-color-khala-void) 14%, transparent);
+}
+.khala-fleet-delegate-step[data-status="satisfied"] {
+  border-color: color-mix(in srgb, var(--oa-color-khala-success) 22%, transparent);
+}
+.khala-fleet-delegate-step[data-status="recovered"] {
+  border-color: color-mix(in srgb, var(--oa-color-khala-energy-cyan) 28%, transparent);
+}
+.khala-fleet-delegate-step[data-status="blocked"] {
+  border-color: color-mix(in srgb, var(--oa-color-khala-danger) 35%, transparent);
+}
+.khala-fleet-delegate-step-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.khala-fleet-delegate-step-top strong {
+  color: var(--oa-color-khala-text-primary);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+.khala-fleet-delegate-step p {
+  margin: 0;
+  color: color-mix(in srgb, var(--oa-color-component-text) 68%, transparent);
+  font-size: 0.74rem;
+  line-height: 1.4;
+}
+.khala-fleet-delegate-slots {
+  display: grid;
+  gap: 0.45rem;
+}
+@media (max-width: 840px) {
+  .khala-fleet-delegate-grid,
+  .khala-fleet-delegate-pins {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 560px) {
+  .khala-fleet-delegate-grid,
+  .khala-fleet-delegate-pins {
+    grid-template-columns: 1fr;
+  }
+  .khala-fleet-delegate-footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .khala-fleet-run {
+    justify-content: center;
+  }
+}
+
 .khala-fleet-board {
   display: grid;
   gap: 0.8rem;
@@ -2035,7 +2223,7 @@ button {
   }
 }
 
-/* Account rows get a delete (✕) button: identity | badge | delete. */
+/* Account rows get an icon delete button: identity | badge | delete. */
 .khala-fleet-account {
   grid-template-columns: minmax(0, 1fr) auto auto;
 }
@@ -2045,15 +2233,25 @@ button {
   line-height: 1;
   width: 1.65rem;
   height: 1.65rem;
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 0.25rem;
   border-radius: 0.35rem;
   border: 1px solid var(--oa-color-component-border);
   background: transparent;
   color: color-mix(in srgb, var(--oa-color-component-text) 50%, transparent);
   cursor: pointer;
   transition: color 120ms ease, border-color 120ms ease, background 120ms ease;
+}
+.khala-fleet-delete .khala-fleet-button-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
 }
 .khala-fleet-delete:hover {
   border-color: color-mix(in srgb, var(--oa-color-khala-danger) 50%, transparent);
@@ -2068,6 +2266,14 @@ button {
   border-color: color-mix(in srgb, var(--oa-color-khala-danger) 60%, transparent);
   color: var(--oa-color-khala-danger);
   background: color-mix(in srgb, var(--oa-color-khala-danger) 12%, transparent);
+}
+.khala-fleet-delete[data-armed="true"] .khala-fleet-button-label {
+  position: static;
+  width: auto;
+  height: auto;
+  overflow: visible;
+  clip: auto;
+  white-space: nowrap;
 }
 
 .khala-fleet-account-top {
@@ -2108,6 +2314,9 @@ button {
   background: color-mix(in srgb, var(--oa-color-khala-energy-cyan) 10%, transparent);
   color: var(--oa-color-khala-energy-text);
   white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
 }
 .khala-fleet-reconnect:hover {
   background: color-mix(in srgb, var(--oa-color-khala-energy-cyan) 18%, transparent);

@@ -113,6 +113,10 @@ const previewRpc = (): DesktopRpc => ({
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["codexAppServerStop"]>>
       >("codexAppServerStop"),
+    codexFleetDelegateRun: request =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["codexFleetDelegateRun"]>>
+      >("codexFleetDelegateRun", request),
     codexFleetStatus: () =>
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["codexFleetStatus"]>>
@@ -1707,6 +1711,8 @@ const controls = {
   codexAppServerStart: () => rpc.request.codexAppServerStart(),
   codexAppServerStatus: () => rpc.request.codexAppServerStatus(),
   codexAppServerStop: () => rpc.request.codexAppServerStop(),
+  codexFleetDelegateRun: (request: Parameters<DesktopRpcRequests["codexFleetDelegateRun"]>[0]) =>
+    rpc.request.codexFleetDelegateRun(request),
   codexFleetStatus: () => rpc.request.codexFleetStatus(),
   codexFleetPromoteThread: (request: Parameters<DesktopRpcRequests["codexFleetPromoteThread"]>[0]) =>
     rpc.request.codexFleetPromoteThread(request),
@@ -1889,6 +1895,7 @@ const fleetPanel =
   fleetPanelEl === null
     ? null
     : mountFleetPanel(fleetPanelEl, {
+        delegateRun: request => controls.codexFleetDelegateRun(request),
         fetch: () => controls.codexFleetStatus(),
         removeAccount: accountRef => controls.removeCodexAccount(accountRef),
         connectAccount: accountRef => controls.connectCodexAccount(accountRef),

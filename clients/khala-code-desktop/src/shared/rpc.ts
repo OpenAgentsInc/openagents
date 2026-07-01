@@ -672,6 +672,68 @@ export type KhalaCodeDesktopFleetPromotionResult = {
   }[]
 }
 
+export type KhalaCodeDesktopFleetDelegateRunMode = "fixture" | "real_work"
+
+export type KhalaCodeDesktopFleetDelegateRunRequest = {
+  readonly accountRef?: string
+  readonly branch?: string
+  readonly commit?: string
+  readonly count?: number
+  readonly mode: KhalaCodeDesktopFleetDelegateRunMode
+  readonly noRun?: boolean
+  readonly objective: string
+  readonly repo?: string
+  readonly timeoutMs?: number
+  readonly verify?: string
+}
+
+export type KhalaCodeDesktopFleetDelegateRunStep = {
+  readonly blockerCode: string | null
+  readonly fallbackModule: string | null
+  readonly module: string
+  readonly precondition: string
+  readonly refs: readonly string[]
+  readonly status: "blocked" | "recovered" | "satisfied" | string
+  readonly summary: string
+}
+
+export type KhalaCodeDesktopFleetDelegateRunResult = {
+  readonly ok: boolean
+  readonly acceptedCount: number
+  readonly delegateSignature: "khala.fleet.delegate"
+  readonly delegateStatus: "blocked" | "completed"
+  readonly mode: KhalaCodeDesktopFleetDelegateRunMode
+  readonly projection: {
+    readonly localPathsProjected: false
+    readonly objectiveProjected: false
+    readonly providerPayloadProjected: false
+    readonly rawTraceMessagesProjected: false
+  }
+  readonly pylonRef: string | null
+  readonly requestedCount: number
+  readonly results: readonly {
+    readonly accountRef: string | null
+    readonly assignmentRef: string | null
+    readonly blockerRefs: readonly string[]
+    readonly closeoutStatus: string | null
+    readonly slot: number
+    readonly status: "accepted" | "failed"
+    readonly tokensVerified: number | null
+    readonly transcriptRef: string | null
+  }[]
+  readonly trace: readonly KhalaCodeDesktopFleetDelegateRunStep[]
+  readonly validation: {
+    readonly fixture: boolean
+    readonly repoPinsComplete: boolean
+  }
+  readonly workerRuntime: {
+    readonly assignmentTool: "codex_spawn"
+    readonly homeRole: "pylon_isolated_worker_codex_home"
+    readonly role: "swarm_worker_codex_session"
+    readonly runtime: "codex_harness"
+  }
+}
+
 export type KhalaCodeDesktopRemoveAccountResult = {
   readonly ok: boolean
   readonly removed: boolean
@@ -697,6 +759,7 @@ export type KhalaCodeDesktopRPCSchema = {
     codexAppServerStart(): Promise<KhalaCodeDesktopCodexAppServerControlResult>
     codexAppServerStatus(): Promise<KhalaCodeDesktopCodexAppServerStatus>
     codexAppServerStop(): Promise<KhalaCodeDesktopCodexAppServerControlResult>
+    codexFleetDelegateRun(request: KhalaCodeDesktopFleetDelegateRunRequest): Promise<KhalaCodeDesktopFleetDelegateRunResult>
     codexFleetStatus(): Promise<KhalaCodeDesktopFleetStatus>
     codexFleetPromoteThread(request: KhalaCodeDesktopFleetPromotionRequest): Promise<KhalaCodeDesktopFleetPromotionResult>
     codexHarnessStatus(): Promise<KhalaCodeDesktopCodexHarnessStatus>

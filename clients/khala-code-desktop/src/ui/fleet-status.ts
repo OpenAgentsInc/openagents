@@ -1,6 +1,10 @@
+import { iconElement } from "@openagentsinc/ui/icon-dom"
+import type { IconName } from "@openagentsinc/ui/icon"
 import type {
   KhalaCodeDesktopConnectStart,
   KhalaCodeDesktopFleetAccount,
+  KhalaCodeDesktopFleetDelegateRunRequest,
+  KhalaCodeDesktopFleetDelegateRunResult,
   KhalaCodeDesktopFleetStatus,
 } from "../shared/rpc"
 import { buildKhalaFleetBoardProjection } from "./fleet-board-projection"
@@ -17,6 +21,9 @@ export type FleetPanelHandle = Readonly<{
 }>
 
 export type FleetPanelOptions = Readonly<{
+  delegateRun: (
+    request: KhalaCodeDesktopFleetDelegateRunRequest,
+  ) => Promise<KhalaCodeDesktopFleetDelegateRunResult>
   fetch: () => Promise<KhalaCodeDesktopFleetStatus>
   removeAccount: (
     accountRef: string,
@@ -26,6 +33,8 @@ export type FleetPanelOptions = Readonly<{
 }>
 
 type Handlers = Readonly<{
+  onDelegateField: (field: keyof FleetDelegateFormState, value: string | boolean) => void
+  onDelegateRun: () => void
   onRefresh: () => void
   onRemove: (accountRef: string) => void
   onConnect: (accountRef: string) => void
@@ -37,6 +46,24 @@ type ConnectView = Readonly<{
   accountRef: string
   start: KhalaCodeDesktopConnectStart | null
 }>
+
+type FleetDelegateFormState = Readonly<{
+  accountRef: string
+  branch: string
+  commit: string
+  count: string
+  mode: KhalaCodeDesktopFleetDelegateRunRequest["mode"]
+  noRun: boolean
+  objective: string
+  repo: string
+  verify: string
+}>
+
+type DelegateRunView =
+  | { readonly phase: "idle" }
+  | { readonly phase: "loading" }
+  | { readonly phase: "error"; readonly message: string }
+  | { readonly phase: "ready"; readonly result: KhalaCodeDesktopFleetDelegateRunResult }
 
 type FleetView =
   | { readonly phase: "loading" }
@@ -86,6 +113,35 @@ const detailChip = (label: string, value: string): HTMLElement => {
     el("span", "khala-fleet-chip-value", value),
   )
   return chip
+}
+
+const iconButton = (
+  label: string,
+  icon: IconName,
+  className = "khala-fleet-refresh",
+): HTMLButtonElement => {
+  const button = el("button", className) as HTMLButtonElement
+  button.type = "button"
+  button.append(
+    iconElement(icon, {
+      className: "khala-fleet-button-icon",
+      dataIcon: label.toLowerCase().replace(/\s+/g, "-"),
+    }),
+    el("span", "khala-fleet-button-label", label),
+  )
+  return button
+}
+
+const setIconButtonLabel = (
+  button: HTMLButtonElement,
+  label: string,
+): void => {
+  const labelNode = button.querySelector<HTMLElement>(".khala-fleet-button-label")
+  if (labelNode === null) {
+    button.append(el("span", "khala-fleet-button-label", label))
+    return
+  }
+  labelNode.textContent = label
 }
 
 const unknownNumber = (value: number | null): string =>
@@ -188,6 +244,205 @@ const appendFleetBoard = (
   container.append(template.content.cloneNode(true))
 }
 
+const optionalText = (value: string): string | undefined => {
+  const trimmed = value.trim()
+  return trimmed.length === 0 ? undefined : trimmed
+}
+
+const delegateRunStatusLabel = (
+  result: KhalaCodeDesktopFleetDelegateRunResult,
+): string => `${result.acceptedCount}/${result.requestedCount} accepted`
+
+const delegateStepState = (
+  status: KhalaCodeDesktopFleetDelegateRunResult["trace"][number]["status"],
+): "blocked" | "recovered" | "satisfied" => {
+  if (status === "blocked") return "blocked"
+  if (status === "recovered") return "recovered"
+  return "satisfied"
+}
+
+const textInput = (
+  name: keyof FleetDelegateFormState,
+  label: string,
+  value: string,
+  handlers: Handlers,
+  options: Readonly<{
+    disabled?: boolean
+    placeholder?: string
+    type?: "number" | "text"
+  }> = {},
+): HTMLElement => {
+  const wrapper = el("label", "khala-fleet-delegate-field")
+  wrapper.append(el("span", "khala-fleet-chip-label", label))
+  const input = el("input", "khala-fleet-delegate-input") as HTMLInputElement
+  input.name = String(name)
+  input.type = options.type ?? "text"
+  input.value = value
+  input.disabled = options.disabled === true
+  if (options.placeholder !== undefined) input.placeholder = options.placeholder
+  if (input.type === "number") {
+    input.min = "1"
+    input.max = "10"
+  }
+  input.addEventListener("input", () => handlers.onDelegateField(name, input.value))
+  wrapper.append(input)
+  return wrapper
+}
+
+const renderDelegateResult = (
+  container: HTMLElement,
+  run: DelegateRunView,
+): void => {
+  if (run.phase === "idle") return
+  const output = el("div", "khala-fleet-delegate-output")
+  if (run.phase === "loading") {
+    output.dataset.state = "loading"
+    output.append(
+      badge("online", "Running"),
+      el("p", "khala-fleet-empty", "Executing khala.fleet.delegate…"),
+    )
+    container.append(output)
+    return
+  }
+  if (run.phase === "error") {
+    output.dataset.state = "blocked"
+    output.append(
+      badge("missing", "Blocked"),
+      el("p", "khala-fleet-error", run.message),
+    )
+    container.append(output)
+    return
+  }
+
+  const { result } = run
+  output.dataset.state = result.ok ? "completed" : "blocked"
+  const summary = el("div", "khala-fleet-delegate-summary")
+  summary.append(
+    badge(result.ok ? "online" : "missing", result.delegateStatus),
+    detailChip("signature", result.delegateSignature),
+    detailChip("accepted", delegateRunStatusLabel(result)),
+  )
+  if (result.pylonRef !== null) summary.append(detailChip("pylon", result.pylonRef))
+  output.append(summary)
+
+  const steps = el("ol", "khala-fleet-delegate-steps")
+  for (const step of result.trace) {
+    const item = el("li", "khala-fleet-delegate-step")
+    item.dataset.status = delegateStepState(step.status)
+    const top = el("div", "khala-fleet-delegate-step-top")
+    top.append(
+      el("strong", undefined, step.module),
+      el("span", "khala-fleet-section-meta", step.status),
+    )
+    item.append(top)
+    item.append(el("p", undefined, step.summary))
+    const chips = el("div", "khala-fleet-chips")
+    chips.append(detailChip("precondition", step.precondition))
+    if (step.fallbackModule !== null) chips.append(detailChip("fallback", step.fallbackModule))
+    if (step.blockerCode !== null) chips.append(detailChip("blocker", step.blockerCode))
+    if (step.refs.length > 0) chips.append(detailChip("refs", step.refs.slice(0, 3).join(", ")))
+    item.append(chips)
+    steps.append(item)
+  }
+  output.append(steps)
+
+  if (result.results.length > 0) {
+    const slots = el("div", "khala-fleet-delegate-slots")
+    for (const slot of result.results) {
+      const chips = el("div", "khala-fleet-chips")
+      chips.append(detailChip(`slot ${slot.slot}`, slot.status))
+      if (slot.accountRef !== null) chips.append(detailChip("account", slot.accountRef))
+      if (slot.assignmentRef !== null) chips.append(detailChip("assignment", slot.assignmentRef))
+      if (slot.closeoutStatus !== null) chips.append(detailChip("closeout", slot.closeoutStatus))
+      if (slot.transcriptRef !== null) chips.append(detailChip("transcript", slot.transcriptRef))
+      if (slot.blockerRefs.length > 0) chips.append(detailChip("blockers", slot.blockerRefs.slice(0, 3).join(", ")))
+      if (slot.tokensVerified !== null) chips.append(detailChip("tokens", String(slot.tokensVerified)))
+      slots.append(chips)
+    }
+    output.append(slots)
+  }
+
+  container.append(output)
+}
+
+const renderDelegateRunner = (
+  container: HTMLElement,
+  form: FleetDelegateFormState,
+  run: DelegateRunView,
+  handlers: Handlers,
+): void => {
+  const section = el("section", "khala-fleet-section khala-fleet-delegate")
+  section.append(sectionHeader("Delegate run", "khala.fleet.delegate"))
+
+  const formEl = el("form", "khala-fleet-delegate-form") as HTMLFormElement
+  formEl.setAttribute("aria-label", "Khala fleet delegate runner")
+  formEl.addEventListener("submit", event => {
+    event.preventDefault()
+    handlers.onDelegateRun()
+  })
+
+  const objective = el("textarea", "khala-fleet-delegate-objective") as HTMLTextAreaElement
+  objective.name = "objective"
+  objective.value = form.objective
+  objective.rows = 2
+  objective.placeholder = "Bounded objective for a worker Codex session"
+  objective.setAttribute("aria-label", "Delegation objective")
+  objective.addEventListener("input", () => handlers.onDelegateField("objective", objective.value))
+  formEl.append(objective)
+
+  const controls = el("div", "khala-fleet-delegate-grid")
+  const mode = el("label", "khala-fleet-delegate-field")
+  mode.append(el("span", "khala-fleet-chip-label", "mode"))
+  const select = el("select", "khala-fleet-delegate-input") as HTMLSelectElement
+  select.name = "mode"
+  for (const [value, label] of [["fixture", "Fixture smoke"], ["real_work", "Real pinned"]] as const) {
+    const option = el("option") as HTMLOptionElement
+    option.value = value
+    option.textContent = label
+    option.selected = form.mode === value
+    select.append(option)
+  }
+  select.addEventListener("change", () =>
+    handlers.onDelegateField("mode", select.value === "real_work" ? "real_work" : "fixture"),
+  )
+  mode.append(select)
+  controls.append(
+    mode,
+    textInput("count", "count", form.count, handlers, { placeholder: "1", type: "number" }),
+    textInput("accountRef", "account", form.accountRef, handlers, { placeholder: "auto" }),
+  )
+  formEl.append(controls)
+
+  const repoPinsDisabled = form.mode === "fixture"
+  const pins = el("div", "khala-fleet-delegate-grid khala-fleet-delegate-pins")
+  pins.dataset.disabled = repoPinsDisabled ? "true" : "false"
+  pins.append(
+    textInput("repo", "repo", form.repo, handlers, { disabled: repoPinsDisabled, placeholder: "OpenAgentsInc/openagents" }),
+    textInput("commit", "commit", form.commit, handlers, { disabled: repoPinsDisabled, placeholder: "required SHA" }),
+    textInput("branch", "branch", form.branch, handlers, { disabled: repoPinsDisabled, placeholder: "optional" }),
+    textInput("verify", "verify", form.verify, handlers, { disabled: repoPinsDisabled, placeholder: "test or proof command" }),
+  )
+  formEl.append(pins)
+
+  const footer = el("div", "khala-fleet-delegate-footer")
+  const dryRun = el("label", "khala-fleet-delegate-check")
+  const checkbox = el("input") as HTMLInputElement
+  checkbox.name = "noRun"
+  checkbox.type = "checkbox"
+  checkbox.checked = form.noRun
+  checkbox.addEventListener("change", () => handlers.onDelegateField("noRun", checkbox.checked))
+  dryRun.append(checkbox, el("span", undefined, "Dry run"))
+  const runButton = iconButton(run.phase === "loading" ? "Running" : "Run delegate", "Play", "khala-fleet-run")
+  runButton.type = "submit"
+  runButton.disabled = run.phase === "loading"
+  footer.append(dryRun, runButton)
+  formEl.append(footer)
+
+  section.append(formEl)
+  renderDelegateResult(section, run)
+  container.append(section)
+}
+
 const accountCard = (
   account: KhalaCodeDesktopFleetAccount,
   handlers: Handlers,
@@ -214,16 +469,14 @@ const accountCard = (
   if (state === "ready") {
     card.append(badge("ready", "Ready"))
   } else {
-    const reconnect = el("button", "khala-fleet-reconnect", "Reconnect")
-    reconnect.type = "button"
+    const reconnect = iconButton("Reconnect", "Reload", "khala-fleet-reconnect")
     reconnect.dataset.state = state
     reconnect.title = `Reconnect ${account.accountRef}`
     reconnect.addEventListener("click", () => handlers.onConnect(account.accountRef))
     card.append(reconnect)
   }
 
-  const remove = el("button", "khala-fleet-delete", "✕")
-  remove.type = "button"
+  const remove = iconButton("Remove", "Trash", "khala-fleet-delete")
   remove.title = `Remove ${account.accountRef}`
   remove.setAttribute("aria-label", `Remove account ${account.accountRef}`)
   let armed = false
@@ -231,11 +484,17 @@ const accountCard = (
   remove.addEventListener("click", () => {
     if (!armed) {
       armed = true
-      remove.textContent = "Remove?"
+      remove.replaceChildren(el("span", "khala-fleet-button-label", "Remove?"))
       remove.dataset.armed = "true"
       armTimer = window.setTimeout(() => {
         armed = false
-        remove.textContent = "✕"
+        remove.replaceChildren(
+          iconElement("Trash", {
+            className: "khala-fleet-button-icon",
+            dataIcon: "remove-account",
+          }),
+          el("span", "khala-fleet-button-label", "Remove"),
+        )
         delete remove.dataset.armed
       }, 3000)
       return
@@ -478,22 +737,23 @@ const render = (
   view: FleetView,
   handlers: Handlers,
   activeConnect: ConnectView | null,
+  delegateForm: FleetDelegateFormState,
+  delegateRun: DelegateRunView,
 ): void => {
   container.replaceChildren()
 
   const header = el("header", "khala-fleet-header")
   header.append(el("h2", "khala-fleet-title", "Fleet status"))
   const actions = el("div", "khala-fleet-actions")
-  const connectBtn = el("button", "khala-fleet-refresh", "Connect account")
-  connectBtn.type = "button"
+  const connectBtn = iconButton("Connect account", "Plus")
   connectBtn.disabled = activeConnect !== null
   connectBtn.addEventListener("click", () => {
     // Auto-assign a short, unique ref — no name prompt.
     handlers.onConnect(`codex-${crypto.randomUUID().slice(0, 8)}`)
   })
   actions.append(connectBtn)
-  const refresh = el("button", "khala-fleet-refresh", "Refresh")
-  refresh.type = "button"
+  const refresh = iconButton("Refresh", "Reload")
+  refresh.dataset.fleetAction = "refresh"
   refresh.disabled = view.phase === "loading"
   refresh.addEventListener("click", handlers.onRefresh)
   actions.append(refresh)
@@ -504,6 +764,7 @@ const render = (
   // The connect device-auth card renders inline at the top; the fleet list stays
   // visible and live below it.
   if (activeConnect !== null) renderConnecting(body, activeConnect, handlers)
+  renderDelegateRunner(body, delegateForm, delegateRun, handlers)
   if (view.phase === "loading") {
     body.append(el("p", "khala-fleet-empty", "Inspecting Codex fleet…"))
   } else if (view.phase === "error") {
@@ -521,6 +782,19 @@ export const mountFleetPanel = (
   options: FleetPanelOptions,
 ): FleetPanelHandle => {
   let inFlight = false
+  let delegateInFlight = false
+  let delegateForm: FleetDelegateFormState = {
+    accountRef: "",
+    branch: "",
+    commit: "",
+    count: "1",
+    mode: "fixture",
+    noRun: true,
+    objective: "Test delegating a bounded analysis task to one Codex worker. Do not change code.",
+    repo: "",
+    verify: "",
+  }
+  let delegateRun: DelegateRunView = { phase: "idle" }
   let lastData: KhalaCodeDesktopFleetStatus | null = null
   let connectPoll = 0
   let activeConnect: ConnectView | null = null
@@ -528,12 +802,10 @@ export const mountFleetPanel = (
   let pollTimer = 0
 
   const setRefreshBusy = (busy: boolean): void => {
-    const buttons = container.querySelectorAll<HTMLButtonElement>(".khala-fleet-refresh")
+    const buttons = container.querySelectorAll<HTMLButtonElement>('[data-fleet-action="refresh"]')
     for (const button of buttons) {
-      if (button.textContent === "Refresh") {
-        button.disabled = busy
-        button.textContent = busy ? "Refreshing…" : "Refresh"
-      }
+      button.disabled = busy
+      setIconButtonLabel(button, busy ? "Refreshing" : "Refresh")
     }
   }
 
@@ -542,9 +814,62 @@ export const mountFleetPanel = (
       ? { phase: "ready", data: lastData }
       : { phase: "loading" }
 
-  const paint = (): void => render(container, currentView(), handlers, activeConnect)
+  const paint = (): void =>
+    render(container, currentView(), handlers, activeConnect, delegateForm, delegateRun)
+
+  const delegateRequest = (): KhalaCodeDesktopFleetDelegateRunRequest | string => {
+    const objective = delegateForm.objective.trim()
+    if (objective.length === 0) return "Delegate run requires an objective."
+    const count = Number.parseInt(delegateForm.count, 10)
+    if (!Number.isInteger(count) || count < 1 || count > 10) {
+      return "Delegate run count must be between 1 and 10."
+    }
+    const accountRef = optionalText(delegateForm.accountRef)
+    const branch = optionalText(delegateForm.branch)
+    const commit = optionalText(delegateForm.commit)
+    const repo = optionalText(delegateForm.repo)
+    const verify = optionalText(delegateForm.verify)
+    const request: KhalaCodeDesktopFleetDelegateRunRequest = {
+      ...(accountRef === undefined ? {} : { accountRef }),
+      ...(branch === undefined ? {} : { branch }),
+      ...(commit === undefined ? {} : { commit }),
+      count,
+      mode: delegateForm.mode,
+      noRun: delegateForm.noRun,
+      objective,
+      ...(repo === undefined ? {} : { repo }),
+      ...(verify === undefined ? {} : { verify }),
+    }
+    if (request.mode === "real_work") {
+      const missing = [
+        request.repo === undefined ? "repo" : null,
+        request.commit === undefined ? "commit" : null,
+        request.verify === undefined ? "verify" : null,
+      ].filter((value): value is string => value !== null)
+      if (missing.length > 0) {
+        return `Real-work mode requires repo, commit, and verify pins before dispatch; missing ${missing.join(", ")}.`
+      }
+    }
+    return request
+  }
 
   const handlers: Handlers = {
+    onDelegateField: (field, value) => {
+      if (field === "noRun") {
+        delegateForm = {
+          ...delegateForm,
+          noRun: value === true,
+        }
+        return
+      }
+      if (typeof value !== "string") return
+      delegateForm = {
+        ...delegateForm,
+        [field]: value,
+      } as FleetDelegateFormState
+      if (field === "mode") paint()
+    },
+    onDelegateRun: () => onDelegateRun(),
     onRefresh: () => void refresh(),
     onRemove: (accountRef: string) => onRemove(accountRef),
     onConnect: (accountRef: string) => onConnect(accountRef),
@@ -556,6 +881,34 @@ export const mountFleetPanel = (
     },
   }
 
+  const onDelegateRun = (): void => {
+    if (delegateInFlight) return
+    const request = delegateRequest()
+    if (typeof request === "string") {
+      delegateRun = { phase: "error", message: request }
+      paint()
+      return
+    }
+    delegateInFlight = true
+    delegateRun = { phase: "loading" }
+    paint()
+    void (async () => {
+      try {
+        const result = await options.delegateRun(request)
+        delegateRun = { phase: "ready", result }
+        await refresh()
+      } catch (error) {
+        delegateRun = {
+          phase: "error",
+          message: error instanceof Error ? error.message : String(error),
+        }
+        paint()
+      } finally {
+        delegateInFlight = false
+      }
+    })()
+  }
+
   const onRemove = (accountRef: string): void => {
     container
       .querySelector(`[data-account-ref="${CSS.escape(accountRef)}"]`)
@@ -563,7 +916,14 @@ export const mountFleetPanel = (
     void (async () => {
       const result = await options.removeAccount(accountRef)
       if (!result.ok) {
-        render(container, { phase: "error", message: result.error ?? "remove failed" }, handlers, activeConnect)
+        render(
+          container,
+          { phase: "error", message: result.error ?? "remove failed" },
+          handlers,
+          activeConnect,
+          delegateForm,
+          delegateRun,
+        )
         return
       }
       await refresh()
@@ -617,7 +977,14 @@ export const mountFleetPanel = (
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       if (lastData === null) {
-        render(container, { phase: "error", message }, handlers, activeConnect)
+        render(
+          container,
+          { phase: "error", message },
+          handlers,
+          activeConnect,
+          delegateForm,
+          delegateRun,
+        )
       } else {
         setRefreshBusy(false)
       }

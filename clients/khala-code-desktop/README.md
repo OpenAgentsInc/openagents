@@ -76,6 +76,14 @@ delegation request only with explicit context boundaries. It carries the origin
 user-written summary; it does not copy the local transcript into the worker
 prompt.
 
+The Fleet screen also exposes a direct `khala.fleet.delegate` runner for
+operator smoke tests and pinned real-work dispatches. Fixture mode can run a
+single bounded worker delegation without shell access; real-work mode is
+locally refused until `repo`, `commit`, and `verify` pins are complete. The UI
+projection shows module/precondition/status/fallback/blocker/public refs only:
+it does not echo the raw objective, raw trace messages, local paths, provider
+payloads, credentials, or bearer material.
+
 The legacy hosted Khala/OpenRouter runtime is a fallback/prototype path, not the
 Codex-parity default and not the local coding engine. When it is explicitly
 enabled, OpenRouter BYOK is passed to hosted Khala instead of being used as a

@@ -575,6 +575,11 @@ describe("khala code desktop app shell", () => {
     expect(fleetPanel).toContain("accountCapacityLabel")
     expect(fleetPanel).toContain("fleetTokenRateLabel")
     expect(fleetPanel).toContain("assignmentTokenRateLabel")
+    expect(fleetPanel).toContain("renderDelegateRunner")
+    expect(fleetPanel).toContain("Real-work mode requires repo, commit, and verify pins before dispatch")
+    expect(fleetPanel).toContain("iconElement")
+    expect(fleetPanel).toContain('"Trash"')
+    expect(fleetPanel).toContain('"Play"')
     expect(fleetPanel).toContain("Codex session boundaries")
     expect(fleetPanel).toContain("primary user plus isolated workers")
     expect(fleetPanel).toContain("Worker Codex accounts")
@@ -595,6 +600,12 @@ describe("khala code desktop app shell", () => {
     expect(fleetPanel).toContain('appendChip(chips, "tokens"')
     expect(css).toContain(".khala-fleet-card-details")
     expect(css).toContain(".khala-fleet-session")
+    expect(css).toContain(".khala-fleet-delegate")
+    expect(css).toContain(".khala-fleet-delegate-steps")
+    expect(`${rpc}\n${handlers}\n${fleetPanel}`).toContain("codexFleetDelegateRun")
+    expect(`${rpc}\n${handlers}\n${fleetPanel}`).not.toMatch(
+      /raw[_-]?(prompt|trace).*Projected:\s*true|localPathsProjected:\s*true|providerPayloadProjected:\s*true/i,
+    )
   })
 
   test("renders Fleet status with a board graph and run timeline mount", async () => {

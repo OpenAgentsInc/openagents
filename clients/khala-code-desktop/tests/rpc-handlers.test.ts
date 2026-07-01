@@ -802,6 +802,166 @@ describe("Khala Code desktop RPC handlers", () => {
     expect(requestPrompts).toHaveLength(1)
   })
 
+  test("runs the deterministic fleet delegate through a public-safe RPC projection", async () => {
+    const fixture = await tempPylonFixture()
+    const calls: KhalaCodexFleetCommandInput[] = []
+    let advertised = false
+    const runner = async (input: KhalaCodexFleetCommandInput): Promise<KhalaCodexFleetCommandResult> => {
+      calls.push(input)
+      const args = pylonArgs(input)
+      const joined = args.join(" ")
+      if (joined === "provider go-online --json") {
+        return advertised
+          ? ok({
+              ok: true,
+              ownCapacityDispatch: {
+                availableCodexAssignments: 4,
+                codexAccounts: [{
+                  accountKey: "4db4cc18ebc55f39fb4da894",
+                  available: 4,
+                  busy: 1,
+                  queued: 0,
+                  ready: 5,
+                }],
+                maxCodexAssignments: 5,
+              },
+              pylonRef: "pylon.local.delegate",
+            })
+          : ok({
+              ok: true,
+              ownCapacityDispatch: {
+                availableCodexAssignments: 0,
+                maxCodexAssignments: 1,
+              },
+              pylonRef: "pylon.local.delegate",
+            })
+      }
+      if (joined === "codex accounts list --json") {
+        return ok({
+          accounts: [{
+            accountRef: "codex-worker",
+            accountRefHash: "account.pylon.codex.4db4cc18ebc55f39fb4da894",
+            homeState: "present",
+            provider: "codex",
+            readiness: { state: "ready" },
+          }],
+          schema: "openagents.pylon.accounts_list.v0.3",
+        })
+      }
+      if (joined === "accounts status --provider codex --json") {
+        return ok({
+          accounts: [],
+          schema: "openagents.pylon.accounts_status.v0.1",
+        })
+      }
+      if (joined === "presence heartbeat --base-url https://openagents.com --json") {
+        advertised = true
+        return ok({
+          heartbeatRef: "heartbeat.pylon.local.delegate.1",
+          pylonRef: "pylon.local.delegate",
+        })
+      }
+      if (args[0] === "khala" && args[1] === "spawn") {
+        return ok({
+          aggregate: {
+            acceptedCount: 1,
+            assignmentRefs: ["assignment.public.codex_agent_task.delegate"],
+            durableRequestIds: ["durable.public.delegate"],
+            ownerOnlyRawEventCount: 1,
+            ownerOnlyTraceCount: 1,
+            totalTokenRows: 1,
+            totalVerifiedTokens: 100,
+          },
+          counter: { expectedMinimumDelta: 0, state: "not_checked" },
+          ok: true,
+          plan: {
+            requestedCount: 1,
+            slots: [{ account: { accountRef: "codex-worker" }, slotIndex: 0 }],
+            targetPylonRef: "pylon.local.delegate",
+          },
+          results: [{
+            assignmentRef: "assignment.public.codex_agent_task.delegate",
+            blockerRefs: [],
+            closeoutStatus: "accepted",
+            ok: true,
+            proof: { rawEventCount: 1, tokenRows: 1, totalTokens: 100, traceCount: 1 },
+            runAccepted: true,
+            slotIndex: 0,
+            state: "completed",
+          }],
+          schema: "openagents.pylon.khala_spawn_run.v0.1",
+        })
+      }
+      return failed(`unexpected command: ${joined}`)
+    }
+
+    const handlers = createKhalaCodeDesktopRpcRequestHandlers({
+      appleFmReadiness: () => {
+        throw new Error("not used")
+      },
+      codexFleetToolOptions: { runner },
+      codexHarnessStatus: () => readyHarness(),
+      env: fixture.env,
+      onDeviceDeciderStatus: () => {
+        throw new Error("not used")
+      },
+      workingDirectory: process.cwd(),
+    })
+
+    const result = await handlers.codexFleetDelegateRun({
+      count: 1,
+      mode: "fixture",
+      objective: "Run the public fixture without exposing this objective in the UI projection.",
+    })
+
+    expect(result).toMatchObject({
+      acceptedCount: 1,
+      delegateSignature: "khala.fleet.delegate",
+      delegateStatus: "completed",
+      mode: "fixture",
+      ok: true,
+      projection: {
+        localPathsProjected: false,
+        objectiveProjected: false,
+        providerPayloadProjected: false,
+        rawTraceMessagesProjected: false,
+      },
+      requestedCount: 1,
+      results: [{
+        accountRef: "codex-worker",
+        assignmentRef: "assignment.public.codex_agent_task.delegate",
+        status: "accepted",
+      }],
+      validation: {
+        fixture: true,
+        repoPinsComplete: true,
+      },
+    })
+    expect(result.trace.map(step => step.module)).toEqual([
+      "ensure_pylon",
+      "advertise_capacity",
+      "select_account",
+      "prepare_work",
+      "dispatch",
+      "verify_closeout",
+    ])
+    expect(result.trace.find(step => step.module === "advertise_capacity")?.summary)
+      .toContain("Codex capacity advertisement")
+    const serialized = JSON.stringify(result)
+    expect(serialized).not.toContain("Run the public fixture without exposing")
+    expect(result.projection.providerPayloadProjected).toBe(false)
+    expect(result.projection.rawTraceMessagesProjected).toBe(false)
+    expect(serialized).not.toMatch(/\/Users\/|auth\.json|bearer|credential|sk-[a-z0-9]/i)
+    const commandOrder = calls.map(call => pylonArgs(call).join(" "))
+    expect(commandOrder.indexOf("presence heartbeat --base-url https://openagents.com --json"))
+      .toBeLessThan(commandOrder.findIndex(command => command.startsWith("khala spawn ")))
+
+    await expect(handlers.codexFleetDelegateRun({
+      mode: "real_work",
+      objective: "Missing repo pins should never dispatch.",
+    })).rejects.toThrow("requires repo, commit, and verify pins")
+  })
+
   test("lists Codex slash commands with desktop availability rules", async () => {
     const handlers = createKhalaCodeDesktopRpcRequestHandlers({
       appleFmReadiness: () => {

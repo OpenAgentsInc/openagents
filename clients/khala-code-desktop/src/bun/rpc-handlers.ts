@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto"
 
+import type { KhalaFleetDelegateStep } from "@openagentsinc/khala-tools"
 import type {
   KhalaCodexRateLimitProviderStatus,
   KhalaCodexRateLimitResetOutcome,
@@ -29,6 +30,9 @@ import {
   type KhalaCodeDesktopCodexRateLimitResetResult,
   type KhalaCodeDesktopFleetAccount,
   type KhalaCodeDesktopFleetAssignment,
+  type KhalaCodeDesktopFleetDelegateRunRequest,
+  type KhalaCodeDesktopFleetDelegateRunResult,
+  type KhalaCodeDesktopFleetDelegateRunStep,
   type KhalaCodeDesktopFleetHomeRole,
   type KhalaCodeDesktopFleetPromotionRequest,
   type KhalaCodeDesktopFleetPromotionResult,
@@ -248,6 +252,103 @@ const promoteThreadResult = (
     tokensVerified: slot.tokensVerified,
     transcriptRef: slot.transcriptRef,
   })),
+  workerRuntime: {
+    assignmentTool: "codex_spawn",
+    homeRole: "pylon_isolated_worker_codex_home",
+    role: "swarm_worker_codex_session",
+    runtime: "codex_harness",
+  },
+})
+
+const missingDelegateRunPins = (
+  request: KhalaCodeDesktopFleetDelegateRunRequest,
+): readonly string[] => [
+  request.repo?.trim() ? null : "repo",
+  request.commit?.trim() ? null : "commit",
+  request.verify?.trim() ? null : "verify",
+].filter((value): value is string => value !== null)
+
+const sanitizeDelegateRunRef = (ref: string): string => {
+  if (/^repo:/iu.test(ref)) return "repo:pinned"
+  if (/^commit:/iu.test(ref)) return "commit:pinned"
+  if (/\/Users\/|auth\.json|bearer|credential|provider[_-]?payload|raw[_-]?(prompt|trace)|sk-[a-z0-9]/iu.test(ref)) {
+    return "ref:redacted"
+  }
+  return ref
+}
+
+const delegateRunStepSummary = (
+  step: KhalaFleetDelegateStep,
+  mode: KhalaCodeDesktopFleetDelegateRunRequest["mode"],
+): string => {
+  const status = step.status === "blocked"
+    ? "blocked"
+    : step.status === "recovered"
+      ? "recovered"
+      : "satisfied"
+  switch (step.module) {
+    case "ensure_pylon":
+      return `Pylon online gate ${status}.`
+    case "advertise_capacity":
+      return `Codex capacity advertisement ${status}.`
+    case "select_account":
+      return `Worker account selection ${status}.`
+    case "prepare_work":
+      return mode === "fixture"
+        ? `Fixture work preparation ${status}.`
+        : `Repo-pinned work preparation ${status}.`
+    case "dispatch":
+      return `Codex spawn dispatch ${status}.`
+    case "verify_closeout":
+      return `Closeout verification ${status}.`
+  }
+}
+
+const projectDelegateRunStep = (
+  step: KhalaFleetDelegateStep,
+  mode: KhalaCodeDesktopFleetDelegateRunRequest["mode"],
+): KhalaCodeDesktopFleetDelegateRunStep => ({
+  blockerCode: step.blockerCode ?? null,
+  fallbackModule: step.fallbackModule ?? null,
+  module: step.module,
+  precondition: step.precondition,
+  refs: step.refs.map(sanitizeDelegateRunRef),
+  status: step.status,
+  summary: delegateRunStepSummary(step, mode),
+})
+
+const projectFleetDelegateRunResult = (
+  request: KhalaCodeDesktopFleetDelegateRunRequest,
+  spawn: Awaited<ReturnType<typeof spawnCodexInstances>>,
+): KhalaCodeDesktopFleetDelegateRunResult => ({
+  acceptedCount: spawn.acceptedCount,
+  delegateSignature: spawn.delegateSignature ?? "khala.fleet.delegate",
+  delegateStatus: spawn.delegateStatus ?? "completed",
+  mode: request.mode,
+  ok: spawn.acceptedCount === spawn.requestedCount && (spawn.delegateStatus ?? "completed") === "completed",
+  projection: {
+    localPathsProjected: false,
+    objectiveProjected: false,
+    providerPayloadProjected: false,
+    rawTraceMessagesProjected: false,
+  },
+  pylonRef: spawn.pylonRef,
+  requestedCount: spawn.requestedCount,
+  results: spawn.results.map(slot => ({
+    accountRef: slot.accountRef,
+    assignmentRef: slot.assignmentRef,
+    blockerRefs: slot.blockerRefs.map(sanitizeDelegateRunRef),
+    closeoutStatus: slot.closeoutStatus,
+    slot: slot.slot,
+    status: slot.status,
+    tokensVerified: slot.tokensVerified,
+    transcriptRef: slot.transcriptRef,
+  })),
+  trace: (spawn.delegateTrace ?? []).map(step => projectDelegateRunStep(step, request.mode)),
+  validation: {
+    fixture: request.mode === "fixture",
+    repoPinsComplete: request.mode === "fixture" || missingDelegateRunPins(request).length === 0,
+  },
   workerRuntime: {
     assignmentTool: "codex_spawn",
     homeRole: "pylon_isolated_worker_codex_home",
@@ -1043,6 +1144,34 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
     },
     async codexAccountsStatus() {
       return codexAccountsStatus()
+    },
+    async codexFleetDelegateRun(request): Promise<KhalaCodeDesktopFleetDelegateRunResult> {
+      if (request.objective.trim().length === 0) {
+        throw new Error("codexFleetDelegateRun requires an objective")
+      }
+      if (request.mode !== "fixture" && request.mode !== "real_work") {
+        throw new Error("codexFleetDelegateRun requires mode fixture or real_work")
+      }
+      const missingPins = missingDelegateRunPins(request)
+      if (request.mode === "real_work" && missingPins.length > 0) {
+        throw new Error(`codexFleetDelegateRun real-work mode requires repo, commit, and verify pins; missing ${missingPins.join(", ")}`)
+      }
+      const spawn = await spawnCodexInstances({
+        accountRef: request.accountRef,
+        branch: request.mode === "fixture" ? undefined : request.branch,
+        commit: request.mode === "fixture" ? undefined : request.commit,
+        count: request.count,
+        fixture: request.mode === "fixture",
+        noRun: request.noRun,
+        prompt: request.objective,
+        repo: request.mode === "fixture" ? undefined : request.repo,
+        timeoutMs: request.timeoutMs,
+        verify: request.mode === "fixture" ? undefined : request.verify,
+      }, {
+        ...input.codexFleetToolOptions,
+        env: input.env,
+      })
+      return projectFleetDelegateRunResult(request, spawn)
     },
     async codexFleetStatus(): Promise<KhalaCodeDesktopFleetStatus> {
       const fleet = await inspectCodexFleet(
