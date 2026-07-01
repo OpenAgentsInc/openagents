@@ -4,6 +4,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import {
   runTwoCodexReadOnlySmoke,
+  TWO_CODEX_READONLY_SMOKE_CLAIM_REF,
   TWO_CODEX_READONLY_SMOKE_COUNT,
   TWO_CODEX_READONLY_SMOKE_READONLY_VERIFY,
 } from "../src/bun/khala-codex-live-smoke"
@@ -76,6 +77,9 @@ describe("Khala Code live two-Codex smoke harness", () => {
 
     const runner = async (input: KhalaCodexFleetCommandInput): Promise<KhalaCodexFleetCommandResult> => {
       calls.push(input)
+      if (input.cmd[0] === "git" && input.cmd[1] === "ls-remote") {
+        return ok("0123456789abcdef0123456789abcdef01234567\trefs/heads/main\n")
+      }
       const args = pylonArgs(input)
       const joined = args.join(" ")
       if (joined === "provider go-online --json") {
@@ -160,7 +164,9 @@ describe("Khala Code live two-Codex smoke harness", () => {
         expect(args).toContain(TWO_CODEX_READONLY_SMOKE_READONLY_VERIFY)
         expect(args).not.toContain("--fixture")
         expect(args).toContain("--objective")
-        expect(args[args.indexOf("--objective") + 1] ?? "").toContain("Do not edit")
+        const objective = args[args.indexOf("--objective") + 1] ?? ""
+        expect(objective).toContain("Do not edit")
+        expect(objective).toContain(`Claim: ${TWO_CODEX_READONLY_SMOKE_CLAIM_REF}.`)
         expect(input.env?.OPENAGENTS_PYLON_DISABLE_ASSIGNMENT_PR).toBe("1")
 
         for (const [slotIndex, assignmentRef] of [ASSIGNMENT_ONE, ASSIGNMENT_TWO].entries()) {

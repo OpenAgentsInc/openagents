@@ -8,6 +8,7 @@ import { khalaCodeConfigFromRuntimeEnv } from "./khala-code-config.js"
 
 export const TWO_CODEX_READONLY_SMOKE_COUNT = 2
 export const TWO_CODEX_READONLY_SMOKE_DEFAULT_TIMEOUT_MS = 600_000
+export const TWO_CODEX_READONLY_SMOKE_CLAIM_REF = "claim.public.khala_code.readonly_live_smoke"
 export const TWO_CODEX_READONLY_SMOKE_READONLY_VERIFY = "bun scripts/khala-code-readonly-verify.ts"
 
 type SpawnResult = Awaited<ReturnType<typeof spawnCodexInstances>>
@@ -16,6 +17,7 @@ export type TwoCodexReadOnlySmokeWork =
   | { readonly kind: "fixture" }
   | {
       readonly branch?: string | undefined
+      readonly claimRef?: string | undefined
       readonly commit: string
       readonly kind: "repository"
       readonly repo: string
@@ -82,6 +84,7 @@ export async function runTwoCodexReadOnlySmoke(
   const spawnInput = work.kind === "repository"
     ? {
         branch: work.branch ?? "main",
+        claimRef: work.claimRef ?? TWO_CODEX_READONLY_SMOKE_CLAIM_REF,
         commit: work.commit,
         count: TWO_CODEX_READONLY_SMOKE_COUNT,
         fixture: false,
