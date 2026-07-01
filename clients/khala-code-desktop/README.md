@@ -124,6 +124,17 @@ JSON summary `pylon_codex_spawn_live`.
 KHALA_CODE_DESKTOP_LIVE_CODEX_SPAWN_SMOKE=1 bun run smoke:codex-spawn-live -- --fixture
 ```
 
+Codex parity live smoke is skip-safe by default. It exits successfully with a
+`skipped` JSON result unless explicitly required. When required, it verifies the
+main Codex install/auth gate, starts `codex app-server`, creates and resumes a
+temporary thread, submits a harmless prompt, attempts interruption, and shuts the
+host down cleanly.
+
+```sh
+bun run smoke:codex-parity-live
+KHALA_CODE_DESKTOP_CODEX_PARITY_LIVE_SMOKE=1 bun run smoke:codex-parity-live -- --require-live
+```
+
 For a browser-driven smoke without opening the native window:
 
 ```sh

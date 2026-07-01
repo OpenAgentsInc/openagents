@@ -430,3 +430,35 @@ Validation:
 - `bun run --cwd clients/khala-code-desktop typecheck`
 - `bun test clients/khala-code-desktop/tests/headless.test.ts clients/khala-code-desktop/tests/headless-events.test.ts clients/khala-code-desktop/tests/composer-visual-smoke.test.ts clients/khala-code-desktop/tests/app-shell.test.ts clients/khala-code-desktop/tests/rpc-handlers.test.ts`
 - `bun run --cwd clients/khala-code-desktop verify`
+
+## Issue #7793: Parity Contract Tests, Fixtures, And Live Smoke Suite
+
+Status: implemented
+
+Khala Code now has a first-class Codex parity contract in
+`src/bun/codex-parity-contract.ts` and
+`docs/khala-code/2026-07-01-codex-parity-contract.md`. The contract pins the
+reference Codex checkout at `db887d03e1f907467e33271572dffb73bceecd6b`, records
+the generated app-server schema files required for parity, and lists the
+client-request methods, server-request methods, notifications, and `ThreadItem`
+variants that must remain covered.
+
+The new `codex-parity-contract.test.ts` suite verifies the pinned reference
+checkout, schema files, app-server method inventory, server requests,
+notifications, ThreadItem variants, slash-command dispatch mapping, and the
+coverage matrix that distinguishes Codex-wrapper fixture tests from the legacy
+Khala-native fallback guard.
+
+The new guarded live smoke is exposed as `smoke:codex-parity-live`. By default it
+returns a structured skip result without touching Codex. With
+`KHALA_CODE_DESKTOP_CODEX_PARITY_LIVE_SMOKE=1` or `--require-live`, it fails
+loudly if Codex is missing or unauthenticated; otherwise it starts app-server,
+creates and resumes a temporary thread, starts a harmless turn, attempts
+`turn/interrupt`, and shuts down cleanly.
+
+Validation:
+
+- `bun run --cwd clients/khala-code-desktop typecheck`
+- `bun test clients/khala-code-desktop/tests/codex-parity-contract.test.ts clients/khala-code-desktop/tests/codex-parity-live-smoke.test.ts clients/khala-code-desktop/tests/codex-slash-commands.test.ts clients/khala-code-desktop/tests/codex-app-server-chat-runtime.test.ts clients/khala-code-desktop/tests/codex-thread-item-projector.test.ts clients/khala-code-desktop/tests/codex-approval-decisions.test.ts`
+- `bun run --cwd clients/khala-code-desktop smoke:codex-parity-live`
+- `bun run --cwd clients/khala-code-desktop verify`

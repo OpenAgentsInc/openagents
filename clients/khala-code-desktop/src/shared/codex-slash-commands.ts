@@ -777,11 +777,17 @@ export const khalaCodeDesktopSlashCommandDispatchCoverage = (): readonly {
   readonly command: string
   readonly dispatchKind: KhalaCodeDesktopSlashCommandDispatch["kind"]
   readonly dependency?: string
+  readonly experimental?: boolean
   readonly method?: string
 }[] =>
   KHALA_CODE_DESKTOP_SLASH_COMMANDS.map(command => ({
     command: command.command,
     dispatchKind: command.dispatch.kind,
-    ...(command.dispatch.kind === "app_server" ? { method: command.dispatch.method } : {}),
+    ...(command.dispatch.kind === "app_server"
+      ? {
+        experimental: command.dispatch.experimental === true,
+        method: command.dispatch.method,
+      }
+      : {}),
     ...(command.dispatch.kind === "gap" ? { dependency: command.dispatch.dependency } : {}),
   }))

@@ -11,6 +11,7 @@
     "build": "bun run prepare:apple-fm-bridge && bun run build:ui && electrobun build && bun run verify:apple-fm-bridge",
     "typecheck": "tsc -p tsconfig.typecheck.json --noEmit",
     "test": "bun test tests/*.test.ts",
+    "smoke:codex-parity-live": "bun scripts/codex-parity-live-smoke.ts",
     "smoke:codex-spawn-live": "bun scripts/live-two-codex-readonly-smoke.ts",
     "smoke:composer-visual": "bun scripts/composer-visual-smoke.ts",
     "smoke:composer-visual-preview": "bun scripts/composer-visual-smoke.ts",
