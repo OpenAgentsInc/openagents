@@ -125,8 +125,8 @@ describe("typed work planner", () => {
     const result = await planGithubBacklogWork({ kind: "github_backlog", repo }, gh, { now })
 
     expect(called).toEqual([
-      ["issue", "list", "--repo", repo, "--state", "all", "--json", "number,title,state,labels,body,url"],
-      ["pr", "list", "--repo", repo, "--state", "all", "--json", "number,title,state,labels,body,url,mergedAt"],
+      ["issue", "list", "--repo", repo, "--state", "all", "--limit", "1000", "--json", "number,title,state,labels,body,url"],
+      ["pr", "list", "--repo", repo, "--state", "all", "--limit", "1000", "--json", "number,title,state,labels,body,url,mergedAt"],
     ])
     expect(result.units).toHaveLength(7)
     expect(result.claimable.map((unit) => unit.workUnitRef)).toEqual([

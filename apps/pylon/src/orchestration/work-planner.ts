@@ -99,6 +99,9 @@ export type FixtureWorkUnit = {
 export type GithubBacklogWorkSource = {
   readonly kind: "github_backlog"
   readonly repo: string
+  // gh defaults to 30 items, which silently truncates a real backlog; the
+  // planner must see the whole candidate set (no silent drops).
+  readonly limit?: number
 }
 
 export type GithubBacklogGhRunner = (args: readonly string[]) => Promise<string>
@@ -261,6 +264,7 @@ export const githubBacklogCandidates = async (
   source: GithubBacklogWorkSource,
   gh: GithubBacklogGhRunner,
 ): Promise<WorkPlannerCandidate[]> => {
+  const limit = String(source.limit ?? 1000)
   const issueArgs = [
     "issue",
     "list",
@@ -268,6 +272,8 @@ export const githubBacklogCandidates = async (
     source.repo,
     "--state",
     "all",
+    "--limit",
+    limit,
     "--json",
     "number,title,state,labels,body,url",
   ]
@@ -278,6 +284,8 @@ export const githubBacklogCandidates = async (
     source.repo,
     "--state",
     "all",
+    "--limit",
+    limit,
     "--json",
     "number,title,state,labels,body,url,mergedAt",
   ]
