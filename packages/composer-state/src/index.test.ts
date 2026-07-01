@@ -309,7 +309,7 @@ describe("composer state core", () => {
       {
         _tag: "UpdateAttachment",
         attachmentId,
-        patch: { status: "uploading", errorText: null },
+        patch: { status: "uploading", errorText: null, uploadAttempt: 1 },
       },
     ])
     expect(planned.plan.tasks.map((task) => task.kind)).toEqual([
@@ -320,7 +320,9 @@ describe("composer state core", () => {
     expect(planned.plan.receipt).toMatchObject({
       kind: "composer_attachment_privacy_receipt",
       surface: "web-hosted",
+      event: "planned",
       status: "uploading",
+      uploadAttempt: 1,
       name: "screen.png",
       mime: "image/png",
       sizeBytes: 2048,
@@ -345,6 +347,7 @@ describe("composer state core", () => {
     const ready = apply(uploading, readyTx!)
     expect(ready.doc.attachments[0]).toMatchObject({
       status: "ready",
+      uploadAttempt: 1,
       digest: "sha256:ABCDEF",
       contentRef:
         "attachment.web-hosted.sha256.abcdef.screen.png",
@@ -357,9 +360,12 @@ describe("composer state core", () => {
       attachment: ready.doc.attachments[0]!,
       surface: "web-hosted",
       observedAt: 12,
+      event: "ready",
     })
     expect(receipt).toMatchObject({
+      event: "ready",
       status: "ready",
+      uploadAttempt: 1,
       digest: "sha256:ABCDEF",
       contentRef:
         "attachment.web-hosted.sha256.abcdef.screen.png",
@@ -391,12 +397,15 @@ describe("composer state core", () => {
     expect(badType.errorCode).toBe("mime_not_allowed")
     expect(badType.receipt).toMatchObject({
       status: "error",
+      event: "error",
+      uploadAttempt: 1,
       errorCode: "mime_not_allowed",
       surface: "web-hosted",
     })
     const erroredType = apply(state, badType.transaction)
     expect(erroredType.doc.attachments[0]).toMatchObject({
       status: "error",
+      uploadAttempt: 1,
       errorText: "Attachment type is not supported.",
     })
 
@@ -462,6 +471,64 @@ describe("composer state core", () => {
     expect(localRef).toBe("attachment.desktop-local.sha256.feed.notes.md")
     expect(hostedRef).toBe("attachment.web-hosted.sha256.feed.notes.md")
     expect(localRef).not.toBe(hostedRef)
+  })
+
+  test("emits retry and removal receipts without local-only refs", () => {
+    const staged = stageComposerDroppedFiles(
+      [
+        {
+          name: "secret.txt",
+          type: "text/plain",
+          size: 128,
+          contentRef: "local-file:/private/tmp/secret.txt",
+        },
+      ],
+      { idPrefix: "receipt" },
+    )
+    const state = apply(emptyComposerState(), staged.transaction)
+    const attachmentId = composerAttachmentId("receipt-1")
+    const errorTx = setComposerAttachmentStatusTransaction(state, attachmentId, {
+      status: "error",
+      errorText: "Scan failed",
+      uploadAttempt: 1,
+    })
+    expect(errorTx).not.toBe(null)
+    const errored = apply(state, errorTx!)
+
+    const retryTx = retryComposerAttachmentTransaction(errored, attachmentId, 40)
+    expect(retryTx).not.toBe(null)
+    const retried = apply(errored, retryTx!)
+    expect(retried.doc.attachments[0]).toMatchObject({
+      status: "staged",
+      uploadAttempt: 1,
+    })
+
+    const retryReceipt = projectComposerAttachmentUploadReceipt({
+      attachment: retried.doc.attachments[0]!,
+      surface: "desktop-local",
+      observedAt: 41,
+      event: "retry",
+    })
+    expect(retryReceipt).toMatchObject({
+      event: "retry",
+      status: "staged",
+      uploadAttempt: 1,
+    })
+    expect(JSON.stringify(retryReceipt)).not.toContain("/private/tmp")
+    expect(JSON.stringify(retryReceipt)).not.toContain("local-file:")
+
+    const removalReceipt = projectComposerAttachmentUploadReceipt({
+      attachment: retried.doc.attachments[0]!,
+      surface: "desktop-local",
+      observedAt: 42,
+      event: "removed",
+    })
+    expect(removalReceipt).toMatchObject({
+      event: "removed",
+      status: "staged",
+      uploadAttempt: 1,
+    })
+    expect(JSON.stringify(removalReceipt)).not.toContain("/private/tmp")
   })
 
   test("moves keyboard selection across attachment refs", () => {

@@ -1,8 +1,12 @@
 import {
+  DEFAULT_DESKTOP_LOCAL_ATTACHMENT_UPLOAD_POLICY,
   applyComposerTransaction,
   composerAttachmentId,
   emptyComposerState,
   offerComposerLargeTextPaste,
+  planComposerAttachmentUpload,
+  projectComposerAttachmentUploadReceipt,
+  readyComposerAttachmentTransaction,
   retryComposerAttachmentTransaction,
   setComposerAttachmentStatusTransaction,
   stageComposerAttachmentFiles,
@@ -10,6 +14,7 @@ import {
   stageComposerPastedFiles,
   type ComposerAttachment,
   type ComposerAttachmentSource,
+  type ComposerAttachmentUploadReceipt,
   type ComposerFileLike,
   type ComposerState,
   type ComposerTransaction,
@@ -411,6 +416,8 @@ let slashCommandLoadInFlight: Promise<void> | null = null
 const activeTurnIds = new Set<string>()
 const objectUrls = new Set<string>()
 const localTextAttachments = new Map<string, string>()
+const localAttachmentFiles = new Map<string, File>()
+let composerAttachmentReceipts: ComposerAttachmentUploadReceipt[] = []
 const sessionIdStorageKey = "khala-code-desktop.session-id.v1"
 const activeThreadIdStorageKey = "khala-code-desktop.active-thread-id.v1"
 const storedSessionId = localStorage.getItem(sessionIdStorageKey)
@@ -702,6 +709,106 @@ const applyComposerStateTransaction = (
   return true
 }
 
+const hexFromBytes = (bytes: ArrayBuffer): string =>
+  [...new Uint8Array(bytes)]
+    .map(byte => byte.toString(16).padStart(2, "0"))
+    .join("")
+
+const sha256DigestForBytes = async (bytes: ArrayBuffer): Promise<string> => {
+  const digest = await crypto.subtle.digest("SHA-256", bytes)
+  return `sha256:${hexFromBytes(digest)}`
+}
+
+const arrayBufferForText = (text: string): ArrayBuffer => {
+  const bytes = new TextEncoder().encode(text)
+  return bytes.buffer.slice(
+    bytes.byteOffset,
+    bytes.byteOffset + bytes.byteLength,
+  ) as ArrayBuffer
+}
+
+const pushAttachmentReceipt = (
+  receipt: ComposerAttachmentUploadReceipt,
+): void => {
+  composerAttachmentReceipts = [...composerAttachmentReceipts, receipt]
+}
+
+const attachmentById = (attachmentId: string): ComposerAttachment | undefined =>
+  composerState.doc.attachments.find(attachment => attachment.id === attachmentId)
+
+const failLocalAttachmentUpload = (
+  attachmentId: string,
+  errorText: string,
+): void => {
+  const transaction = setComposerAttachmentStatusTransaction(
+    composerState,
+    composerAttachmentId(attachmentId),
+    { status: "error", errorText },
+  )
+  if (transaction !== null) applyComposerStateTransaction(transaction)
+  const attachment = attachmentById(attachmentId)
+  if (attachment !== undefined) {
+    pushAttachmentReceipt(projectComposerAttachmentUploadReceipt({
+      attachment,
+      surface: "desktop-local",
+      event: "error",
+      errorCode: "local_register_failed",
+    }))
+  }
+}
+
+const runDesktopLocalAttachmentUpload = async (
+  attachmentId: string,
+  bytes: () => Promise<ArrayBuffer>,
+): Promise<void> => {
+  const planned = planComposerAttachmentUpload(
+    composerState,
+    composerAttachmentId(attachmentId),
+    DEFAULT_DESKTOP_LOCAL_ATTACHMENT_UPLOAD_POLICY,
+  )
+  if (!planned.ok) {
+    pushAttachmentReceipt(planned.receipt)
+    applyComposerStateTransaction(planned.transaction)
+    return
+  }
+
+  pushAttachmentReceipt(planned.plan.receipt)
+  if (!applyComposerStateTransaction(planned.plan.transaction)) return
+
+  try {
+    const digest = await sha256DigestForBytes(await bytes())
+    const current = attachmentById(attachmentId)
+    if (current === undefined) return
+    const readyTransaction = readyComposerAttachmentTransaction(
+      composerState,
+      composerAttachmentId(attachmentId),
+      {
+        surface: "desktop-local",
+        digest,
+        ...(current.kind === "image" ? { thumbnailDigest: digest } : {}),
+        ...(current.dimensions === undefined
+          ? {}
+          : { dimensions: current.dimensions }),
+      },
+    )
+    if (readyTransaction === null) return
+    if (!applyComposerStateTransaction(readyTransaction)) return
+    const readyAttachment = attachmentById(attachmentId)
+    if (readyAttachment !== undefined) {
+      pushAttachmentReceipt(projectComposerAttachmentUploadReceipt({
+        attachment: readyAttachment,
+        surface: "desktop-local",
+        event: "ready",
+      }))
+    }
+  } catch (error) {
+    failLocalAttachmentUpload(
+      attachmentId,
+      error instanceof Error ? error.message : "Attachment upload failed.",
+    )
+  }
+}
+
 const removeAttachment = (attachmentId: string): void => {
   const attachment = composerState.doc.attachments.find(
     item => item.id === attachmentId,
@@ -712,6 +819,14 @@ const removeAttachment = (attachmentId: string): void => {
   }
   if (attachment?.contentRef !== undefined) {
     localTextAttachments.delete(attachment.contentRef)
+  }
+  localAttachmentFiles.delete(attachmentId)
+  if (attachment !== undefined) {
+    pushAttachmentReceipt(projectComposerAttachmentUploadReceipt({
+      attachment,
+      surface: "desktop-local",
+      event: "removed",
+    }))
   }
   applyComposerStateTransaction({
     steps: [
@@ -725,12 +840,33 @@ const removeAttachment = (attachmentId: string): void => {
 }
 
 const retryAttachment = (attachmentId: string): void => {
+  const attachment = attachmentById(attachmentId)
   const transaction = retryComposerAttachmentTransaction(
     composerState,
     composerAttachmentId(attachmentId),
   )
   if (transaction !== null) {
     applyComposerStateTransaction(transaction)
+    const retried = attachmentById(attachmentId)
+    if (retried !== undefined) {
+      pushAttachmentReceipt(projectComposerAttachmentUploadReceipt({
+        attachment: retried,
+        surface: "desktop-local",
+        event: "retry",
+      }))
+      const file = localAttachmentFiles.get(attachmentId)
+      if (file !== undefined) {
+        void runDesktopLocalAttachmentUpload(attachmentId, () => file.arrayBuffer())
+      } else if (retried.contentRef !== undefined) {
+        const text = localTextAttachments.get(retried.contentRef)
+        if (text !== undefined) {
+          void runDesktopLocalAttachmentUpload(
+            attachmentId,
+            () => Promise.resolve(arrayBufferForText(text)),
+          )
+        }
+      }
+    }
     return
   }
   const fallback = setComposerAttachmentStatusTransaction(
@@ -739,6 +875,13 @@ const retryAttachment = (attachmentId: string): void => {
     { status: "staged", errorText: null },
   )
   if (fallback !== null) applyComposerStateTransaction(fallback)
+  if (attachment !== undefined) {
+    pushAttachmentReceipt(projectComposerAttachmentUploadReceipt({
+      attachment: { ...attachment, status: "staged" },
+      surface: "desktop-local",
+      event: "retry",
+    }))
+  }
 }
 
 const renderAttachment = (
@@ -1141,6 +1284,10 @@ const submittedBody = (
 }
 
 const resetComposerDraft = (): void => {
+  for (const url of objectUrls) URL.revokeObjectURL(url)
+  objectUrls.clear()
+  localAttachmentFiles.clear()
+  localTextAttachments.clear()
   composerInput.value = ""
   composerState = emptyComposerState()
   renderComposer()
@@ -1326,7 +1473,13 @@ const stageFiles = (
       : source === "drop"
         ? stageComposerDroppedFiles(fileLikes)
         : stageComposerAttachmentFiles(fileLikes, { source: "manual" })
-  applyComposerStateTransaction(staged.transaction)
+  if (!applyComposerStateTransaction(staged.transaction)) return
+  staged.attachments.forEach((attachment, index) => {
+    const file = files[index]
+    if (file === undefined) return
+    localAttachmentFiles.set(attachment.id, file)
+    void runDesktopLocalAttachmentUpload(attachment.id, () => file.arrayBuffer())
+  })
 }
 
 const stageLargeTextPaste = (text: string): boolean => {
@@ -1337,7 +1490,14 @@ const stageLargeTextPaste = (text: string): boolean => {
   if (offer.attachment.contentRef !== undefined) {
     localTextAttachments.set(offer.attachment.contentRef, text)
   }
-  return applyComposerStateTransaction(offer.transaction)
+  const applied = applyComposerStateTransaction(offer.transaction)
+  if (applied) {
+    void runDesktopLocalAttachmentUpload(
+      offer.attachment.id,
+      () => Promise.resolve(arrayBufferForText(text)),
+    )
+  }
+  return applied
 }
 
 const setDragActive = (active: boolean): void => {
@@ -1536,6 +1696,7 @@ const controls = {
   addMessage,
   appInfo: () => rpc.request.appInfo(),
   attachments: () => composerState.doc.attachments.map(attachment => ({ ...attachment })),
+  attachmentReceipts: () => composerAttachmentReceipts.map(receipt => ({ ...receipt })),
   clearGymProof: (): GymPaneState => {
     const state = gymPaneStateFromBridgeProof(null)
     gymPanel?.setState(state)

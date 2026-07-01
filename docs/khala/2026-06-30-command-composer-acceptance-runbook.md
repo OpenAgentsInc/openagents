@@ -28,6 +28,10 @@ Supported v1 behavior:
 * Inline preview coverage for strong, emphasis, inline code, and safe links.
 * Typed attachment metadata for pasted/dropped images, files, text snippets, and
   large pasted text offers.
+* Attachment upload lifecycle planning for desktop-local and web-hosted
+  authority surfaces, including file-size/type policy checks, scan/parse worker
+  task descriptors, content-addressed refs, thumbnail refs, retry attempts,
+  removal receipts, and public-safe privacy receipts.
 * Large pasted text handling as an attachment offer instead of silently rewriting
   the prompt body.
 * Gapcursor/dropcursor hooks around attachment chips.
@@ -45,8 +49,6 @@ Deferred from v1:
 
 * Full rich inline editing, collaborative rebasing, and contentEditable or
   ProseMirror-view embedding: #7647.
-* Hosted/local attachment upload storage, scan/parse workers, and public-safe
-  attachment receipts: #7648.
 No v1 visual-regression deferrals remain for the composer/HUD lane. The
 automated Playwright smoke is warning-only for pre-push because it needs local
 browser dependencies and two Vite dev servers, but its assertions are
@@ -66,6 +68,15 @@ Attachment state stores metadata and references:
   or public projections.
 * Large pasted text may be offered as a staged text attachment, but public-safe
   records must use metadata/digest/redacted summaries.
+* Desktop-local attachment execution may hold `File` objects, object URLs, and
+  pasted text in local app memory while hashing/registering the attachment.
+  Those executor refs are never transcript or receipt fields; receipts expose
+  only metadata, lifecycle event, upload attempt, digest, dimensions, and
+  content-addressed `attachment.desktop-local.sha256.*` /
+  `attachment_thumbnail.desktop-local.sha256.*` refs after readiness.
+* Web-hosted attachments use the same state contract with `web-hosted` refs, but
+  hosted storage and worker authority remain separate from the desktop-local
+  executor.
 
 No product-promise record was added for this work because the public product
 claim did not broaden. The work replaced and hardened existing input surfaces.
@@ -74,10 +85,10 @@ claim did not broaden. The work replaced and hardened existing input surfaces.
 
 | Surface | Evidence | Coverage |
 | --- | --- | --- |
-| Pure state | `packages/composer-state/src/index.test.ts` | Typed transactions, undo/redo, resize, attachment insert/remove/retry/status, gapcursor selection, shortcuts, input rules, Markdown round-trip, large text offer. |
+| Pure state | `packages/composer-state/src/index.test.ts` | Typed transactions, undo/redo, resize, attachment insert/remove/retry/status, upload attempts, desktop-local/web-hosted upload plans, content-addressed refs, retry/removal receipts, gapcursor selection, shortcuts, input rules, Markdown round-trip, large text offer. |
 | Shared UI | `packages/ui/test/command-composer.test.ts` | Native textarea contract, autofocus/focus-after-submit hooks, attachments, Markdown preview, error retry action, submitted-state editability, 100k-character prompt rendering. |
 | Shared CSS | `packages/ui/src/ai-elements/command-composer.css` plus UI tests | Existing-border focus styling, reduced-motion transition cutoff, stable footer lanes for controls/status/resize/send. |
-| Khala desktop | `clients/khala-code-desktop/tests/app-shell.test.ts` and `bun run --cwd clients/khala-code-desktop verify` | Chat-only shell, no dummy fixture messages, plural Khala voice, Markdown transcript rendering, native edit menu accelerators, pending-turn editability, attachments/large paste/HUD wiring, footer layout. |
+| Khala desktop | `clients/khala-code-desktop/tests/app-shell.test.ts` and `bun run --cwd clients/khala-code-desktop verify` | Chat-only shell, no dummy fixture messages, plural Khala voice, Markdown transcript rendering, native edit menu accelerators, pending-turn editability, desktop-local attachment hashing/receipts, attachments/large paste/HUD wiring, footer layout. |
 | OpenAgents web | `apps/openagents.com/apps/web/src/main.test.ts`, `apps/openagents.com/apps/web/src/page/loggedOut/update.test.ts`, and local Playwright smoke | Public `/chat` uses the shared composer, native edit/focus hooks are present, preview/expanded state stays local, Enter submits, Shift+Enter remains textarea input. |
 | three-effect HUD | `clients/khala-code-desktop/src/ui/main.ts`, `clients/khala-code-desktop/tests/app-shell.test.ts`, and issue #7643/#7645 smoke evidence | Khala desktop consumes `createCommandComposerHud`, mounts `#composer-hud`, projects focus/attachment/preview state, passes reduced-motion preference, and hides the HUD on renderer failure rather than blocking text entry. |
 | Automated visual regression | `clients/khala-code-desktop/scripts/composer-visual-smoke.ts` and `clients/khala-code-desktop/tests/composer-visual-smoke.test.ts` | Launches Khala Code desktop and OpenAgents web Vite previews, captures desktop/mobile screenshots for Khala Code, `/chat`, and `/autopilot`, asserts nonblank canvas/HUD pixels, focus border framing, footer child non-overlap, viewport geometry, reduced-motion media behavior, and synthetic prompt privacy. |

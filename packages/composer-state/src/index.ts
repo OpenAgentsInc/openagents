@@ -157,6 +157,16 @@ export const ComposerAttachmentUploadReceiptKind = S.Literal(
 export type ComposerAttachmentUploadReceiptKind =
   typeof ComposerAttachmentUploadReceiptKind.Type
 
+export const ComposerAttachmentUploadReceiptEvent = S.Literals([
+  "planned",
+  "ready",
+  "error",
+  "retry",
+  "removed",
+])
+export type ComposerAttachmentUploadReceiptEvent =
+  typeof ComposerAttachmentUploadReceiptEvent.Type
+
 export const ComposerAttachmentDimensions = S.Struct({
   width: S.Number,
   height: S.Number,
@@ -177,6 +187,7 @@ export const ComposerAttachment = S.Struct({
   thumbnailRef: S.optional(S.String),
   source: S.optional(ComposerAttachmentSource),
   status: ComposerAttachmentStatus,
+  uploadAttempt: S.optional(S.Number),
   errorText: S.optional(S.String),
 })
 export type ComposerAttachment = typeof ComposerAttachment.Type
@@ -189,6 +200,7 @@ export const ComposerAttachmentPatch = S.Struct({
   contentRef: S.optional(S.NullOr(S.String)),
   thumbnailRef: S.optional(S.NullOr(S.String)),
   source: S.optional(S.NullOr(ComposerAttachmentSource)),
+  uploadAttempt: S.optional(S.Number),
   errorText: S.optional(S.NullOr(S.String)),
 })
 export type ComposerAttachmentPatch = typeof ComposerAttachmentPatch.Type
@@ -228,7 +240,9 @@ export const ComposerAttachmentUploadReceipt = S.Struct({
   schemaVersion: ComposerSchemaVersion,
   attachmentId: ComposerAttachmentId,
   surface: ComposerAttachmentSurface,
+  event: S.optional(ComposerAttachmentUploadReceiptEvent),
   status: ComposerAttachmentStatus,
+  uploadAttempt: S.optional(S.Number),
   name: S.String,
   mime: S.String,
   sizeBytes: S.Number,
@@ -670,6 +684,7 @@ export const createComposerAttachment = (input: {
   dimensions?: ComposerAttachmentDimensions
   contentRef?: string
   thumbnailRef?: string
+  uploadAttempt?: number
   errorText?: string
 }): ComposerAttachment => ({
   id: input.id,
@@ -686,6 +701,9 @@ export const createComposerAttachment = (input: {
   ...(input.thumbnailRef === undefined
     ? {}
     : { thumbnailRef: input.thumbnailRef }),
+  ...(input.uploadAttempt === undefined
+    ? {}
+    : { uploadAttempt: Math.max(0, Math.trunc(input.uploadAttempt)) }),
   ...(input.errorText === undefined ? {} : { errorText: input.errorText }),
 })
 
@@ -874,6 +892,7 @@ export const projectComposerAttachmentUploadReceipt = (input: {
   surface: ComposerAttachmentSurface
   observedAt?: number
   errorCode?: string
+  event?: ComposerAttachmentUploadReceiptEvent
 }): ComposerAttachmentUploadReceipt => {
   const contentRef = publicSafeAttachmentContentRef(
     input.surface,
@@ -898,7 +917,11 @@ export const projectComposerAttachmentUploadReceipt = (input: {
     }),
     attachmentId: input.attachment.id,
     surface: input.surface,
+    ...(input.event === undefined ? {} : { event: input.event }),
     status: input.attachment.status,
+    ...(input.attachment.uploadAttempt === undefined
+      ? {}
+      : { uploadAttempt: input.attachment.uploadAttempt }),
     name: input.attachment.name,
     mime: input.attachment.mime,
     sizeBytes: input.attachment.sizeBytes,
@@ -934,12 +957,13 @@ const attachmentUploadFailure = (input: {
   errorText: string
   time: number
 }): ComposerAttachmentUploadPlanResult => {
+  const uploadAttempt = (input.attachment.uploadAttempt ?? 0) + 1
   const transaction: ComposerTransaction = {
     steps: [
       {
         _tag: "UpdateAttachment",
         attachmentId: input.attachment.id,
-        patch: { status: "error", errorText: input.errorText },
+        patch: { status: "error", errorText: input.errorText, uploadAttempt },
       },
     ],
     meta: { source: "program", time: input.time },
@@ -952,11 +976,13 @@ const attachmentUploadFailure = (input: {
       attachment: {
         ...input.attachment,
         status: "error",
+        uploadAttempt,
         errorText: input.errorText,
       },
       surface: input.policy.surface,
       observedAt: input.time,
       errorCode: input.errorCode,
+      event: "error",
     }),
   }
 }
@@ -990,6 +1016,7 @@ export const planComposerAttachmentUpload = (
         }),
         attachmentId,
         surface: policy.surface,
+        event: "error",
         status: "error",
         name: "",
         mime: "",
@@ -1020,12 +1047,13 @@ export const planComposerAttachmentUpload = (
     })
   }
 
+  const uploadAttempt = (attachment.uploadAttempt ?? 0) + 1
   const transaction: ComposerTransaction = {
     steps: [
       {
         _tag: "UpdateAttachment",
         attachmentId,
-        patch: { status: "uploading", errorText: null },
+        patch: { status: "uploading", errorText: null, uploadAttempt },
       },
     ],
     meta: { source: "program", time },
@@ -1060,9 +1088,10 @@ export const planComposerAttachmentUpload = (
       transaction,
       tasks,
       receipt: projectComposerAttachmentUploadReceipt({
-        attachment: { ...attachment, status: "uploading" },
+        attachment: { ...attachment, status: "uploading", uploadAttempt },
         surface: policy.surface,
         observedAt: time,
+        event: "planned",
       }),
     },
   }
@@ -1088,6 +1117,7 @@ export const readyComposerAttachmentTransaction = (
     digest: input.digest,
     name: attachment.name,
   })
+  const uploadAttempt = attachment.uploadAttempt ?? 1
   return {
     steps: [
       {
@@ -1098,6 +1128,7 @@ export const readyComposerAttachmentTransaction = (
           digest: input.digest,
           contentRef,
           errorText: null,
+          uploadAttempt,
           ...(input.thumbnailDigest === undefined
             ? {}
             : {
@@ -1682,6 +1713,9 @@ const applyAttachmentPatch = (
     if (patch.source === null) delete next.source
     else if (patch.source !== undefined) next.source = patch.source
   }
+  if (patch.uploadAttempt !== undefined) {
+    next.uploadAttempt = Math.max(0, Math.trunc(patch.uploadAttempt))
+  }
   if (patchHas(patch, "errorText")) {
     if (patch.errorText === null) delete next.errorText
     else if (patch.errorText !== undefined) next.errorText = patch.errorText
@@ -1710,6 +1744,9 @@ const inverseAttachmentPatch = (
     ? { thumbnailRef: attachment.thumbnailRef ?? null }
     : {}),
   ...(patchHas(patch, "source") ? { source: attachment.source ?? null } : {}),
+  ...(patchHas(patch, "uploadAttempt")
+    ? { uploadAttempt: attachment.uploadAttempt ?? 0 }
+    : {}),
   ...(patchHas(patch, "errorText")
     ? { errorText: attachment.errorText ?? null }
     : {}),

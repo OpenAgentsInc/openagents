@@ -206,6 +206,13 @@ The implementation should land as a sequence:
   runbook in `docs/khala/2026-06-30-command-composer-acceptance-runbook.md`,
   a deploy-gated composer privacy fixture guard, final desktop/web smoke
   evidence, and explicit follow-up issues #7647, #7648, and #7649.
+* 2026-07-01: Issue #7648 promoted attachment handling from metadata staging to
+  a typed upload lifecycle: desktop-local and web-hosted policy surfaces,
+  content-addressed refs, thumbnail refs, scan/parse worker task descriptors,
+  retry attempts, removal receipts, and public-safe privacy receipts. Khala Code
+  desktop now hashes/registers local attachments in local app memory and exposes
+  only redacted receipt metadata, not file bytes, object URLs, local handles, or
+  pasted text.
 
 ## Confirmation And Deferrals
 
