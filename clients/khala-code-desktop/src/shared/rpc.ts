@@ -135,12 +135,47 @@ export type KhalaCodeDesktopFleetAccount = {
   readonly readiness: string
   readonly quotaState: string | null
   readonly accountKey: string | null
+  readonly capacity: KhalaCodeDesktopFleetCapacity | null
   readonly email: string | null
+}
+
+export type KhalaCodeDesktopFleetCapacity = {
+  readonly available: number | null
+  readonly busy: number | null
+  readonly queued: number | null
+  readonly ready: number | null
+}
+
+export type KhalaCodeDesktopFleetTokenMeasurementStatus =
+  | "exact"
+  | "estimated"
+  | "not_measured"
+  | "pending"
+
+export type KhalaCodeDesktopFleetAssignmentTokenRate = {
+  readonly source: string
+  readonly status: KhalaCodeDesktopFleetTokenMeasurementStatus
+  readonly tokenCountKind: string | null
+  readonly tokens: number | null
+  readonly tokensPerMinute: number | null
+}
+
+export type KhalaCodeDesktopFleetTokenRate = {
+  readonly activeAdjustedTokensPerMinute: number | null
+  readonly completedStatus: KhalaCodeDesktopFleetTokenMeasurementStatus
+  readonly completedTokenRows: number | null
+  readonly completedTokensPerMinute: number | null
+  readonly inFlightTokens: number | null
+  readonly inFlightTokensPerMinute: number | null
+  readonly source: "pylon_khala_apm" | "unavailable"
+  readonly unavailableReason: string | null
 }
 
 export type KhalaCodeDesktopFleetAssignment = {
   readonly assignmentRef: string | null
+  readonly elapsedMs: number | null
   readonly issueRef: string | null
+  readonly tokenRate: KhalaCodeDesktopFleetAssignmentTokenRate
   readonly updatedAt: string | null
 }
 
@@ -160,6 +195,7 @@ export type KhalaCodeDesktopFleetStatus = {
   }
   readonly availableCodexAssignments: number | null
   readonly maxCodexAssignments: number | null
+  readonly tokenRate: KhalaCodeDesktopFleetTokenRate
   readonly accounts: readonly KhalaCodeDesktopFleetAccount[]
   readonly activeAssignments: readonly KhalaCodeDesktopFleetAssignment[]
   readonly processes: readonly KhalaCodeDesktopFleetProcess[]

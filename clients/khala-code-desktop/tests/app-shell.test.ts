@@ -72,8 +72,19 @@ describe("khala code desktop app shell", () => {
         },
         availableCodexAssignments: null,
         maxCodexAssignments: null,
+        tokenRate: {
+          activeAdjustedTokensPerMinute: null,
+          completedStatus: "not_measured",
+          completedTokenRows: null,
+          completedTokensPerMinute: null,
+          inFlightTokens: null,
+          inFlightTokensPerMinute: null,
+          source: "unavailable",
+          unavailableReason: "Pylon offline",
+        },
         accounts: [{
           accountRef: "codex-2",
+          capacity: null,
           provider: "codex",
           readiness: "credentials_missing",
           quotaState: null,
@@ -82,7 +93,15 @@ describe("khala code desktop app shell", () => {
         }],
         activeAssignments: [{
           assignmentRef: "assignment.khala.demo",
+          elapsedMs: null,
           issueRef: "github.issue.openagents.7760",
+          tokenRate: {
+            source: "unavailable",
+            status: "not_measured",
+            tokenCountKind: null,
+            tokens: null,
+            tokensPerMinute: null,
+          },
           updatedAt: "2026-06-30T00:01:00.000Z",
         }],
         processes: [],
@@ -134,6 +153,29 @@ describe("khala code desktop app shell", () => {
       status: "not_connected",
       summary: "Pylon permission prompts are not exposed through the desktop RPC yet.",
     })
+  })
+
+  test("renders Fleet Status capacity and token evidence chips", async () => {
+    const handlers = await Bun.file(new URL("../src/bun/rpc-handlers.ts", import.meta.url)).text()
+    const rpc = await Bun.file(new URL("../src/shared/rpc.ts", import.meta.url)).text()
+    const fleetPanel = await Bun.file(new URL("../src/ui/fleet-status.ts", import.meta.url)).text()
+    const css = await Bun.file(new URL("../src/ui/styles.css", import.meta.url)).text()
+
+    expect(rpc).toContain("readonly capacity: KhalaCodeDesktopFleetCapacity | null")
+    expect(handlers).toContain("capacity: account.capacity")
+    expect(fleetPanel).toContain("isDisplayOnlyDefaultAccountRef")
+    expect(fleetPanel).toContain("accountCapacityLabel")
+    expect(fleetPanel).toContain("fleetTokenRateLabel")
+    expect(fleetPanel).toContain("assignmentTokenRateLabel")
+    expect(fleetPanel).toContain('appendChip(details, "routing", "default slot")')
+    expect(fleetPanel).toContain('appendChip(details, "slots", accountCapacityLabel(account.capacity))')
+    expect(fleetPanel).toContain('"busy"')
+    expect(fleetPanel).toContain("account.capacity.busy")
+    expect(fleetPanel).toContain('"queued"')
+    expect(fleetPanel).toContain("account.capacity.queued")
+    expect(fleetPanel).toContain('appendChip(pylonDetails, "token rate"')
+    expect(fleetPanel).toContain('appendChip(chips, "tokens"')
+    expect(css).toContain(".khala-fleet-card-details")
   })
 
   test("renders a visible Gym pane entry without seeded private proof data", async () => {

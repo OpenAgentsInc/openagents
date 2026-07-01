@@ -67,6 +67,9 @@ const titleize = (value: string): string =>
 const summaryLine = (parts: ReadonlyArray<string | null>): string =>
   parts.filter((part): part is string => Boolean(part)).join("  ·  ")
 
+const isDisplayOnlyDefaultAccountRef = (accountRef: string): boolean =>
+  /^(?:\(default\)|default)$/iu.test(accountRef.trim())
+
 const badge = (state: string, label: string): HTMLElement => {
   const node = el("span", "khala-fleet-badge")
   node.dataset.state = state
@@ -81,6 +84,62 @@ const detailChip = (label: string, value: string): HTMLElement => {
     el("span", "khala-fleet-chip-value", value),
   )
   return chip
+}
+
+const unknownNumber = (value: number | null): string =>
+  value === null ? "?" : String(value)
+
+const formatElapsedMs = (elapsedMs: number | null): string | null => {
+  if (elapsedMs === null) return null
+  const seconds = Math.max(0, Math.round(elapsedMs / 1000))
+  const minutes = Math.floor(seconds / 60)
+  const remainder = seconds % 60
+  return minutes === 0 ? `${remainder}s` : `${minutes}m ${remainder}s`
+}
+
+const accountCapacityLabel = (
+  capacity: KhalaCodeDesktopFleetAccount["capacity"],
+): string | null => {
+  if (capacity === null) return null
+  return `${unknownNumber(capacity.available)}/${unknownNumber(capacity.ready)} free`
+}
+
+const fleetTokenRateLabel = (
+  tokenRate: KhalaCodeDesktopFleetStatus["tokenRate"],
+): string => {
+  if (tokenRate.source === "unavailable") return "not measured"
+  if (tokenRate.completedStatus === "pending") return "pending exact rows"
+  if (tokenRate.completedStatus === "not_measured") return "not measured"
+  if (tokenRate.completedTokensPerMinute === null) return titleize(tokenRate.completedStatus)
+  return `${tokenRate.completedTokensPerMinute}/min ${tokenRate.completedStatus}`
+}
+
+const fleetInFlightLabel = (
+  tokenRate: KhalaCodeDesktopFleetStatus["tokenRate"],
+): string | null => {
+  if (tokenRate.inFlightTokens === null) return null
+  const rate = tokenRate.inFlightTokensPerMinute === null
+    ? ""
+    : `, ${tokenRate.inFlightTokensPerMinute}/min`
+  return `${tokenRate.inFlightTokens} token(s)${rate}`
+}
+
+const assignmentTokenRateLabel = (
+  tokenRate: KhalaCodeDesktopFleetStatus["activeAssignments"][number]["tokenRate"],
+): string => {
+  if (tokenRate.status === "pending") return "pending exact rows"
+  if (tokenRate.status === "not_measured") return "not measured"
+  const tokens = tokenRate.tokens === null ? "unknown" : `${tokenRate.tokens}`
+  const rate = tokenRate.tokensPerMinute === null ? "" : `, ${tokenRate.tokensPerMinute}/min`
+  return `${tokens} ${tokenRate.status}${rate}`
+}
+
+const appendChip = (
+  container: HTMLElement,
+  label: string,
+  value: string | null,
+): void => {
+  if (value !== null) container.append(detailChip(label, value))
 }
 
 const sectionHeader = (title: string, meta?: string): HTMLElement => {
@@ -101,7 +160,13 @@ const accountCard = (
 
   const identity = el("div", "khala-fleet-account-identity")
   const top = el("div", "khala-fleet-account-top")
-  top.append(el("strong", undefined, account.accountRef))
+  top.append(
+    el(
+      "strong",
+      undefined,
+      isDisplayOnlyDefaultAccountRef(account.accountRef) ? "default" : account.accountRef,
+    ),
+  )
   top.append(el("span", "khala-fleet-provider", account.provider))
   identity.append(top)
   identity.append(el("span", "khala-fleet-email", account.email ?? "not signed in"))
@@ -141,6 +206,27 @@ const accountCard = (
   })
   card.append(remove)
 
+  const details = el("div", "khala-fleet-card-details")
+  if (isDisplayOnlyDefaultAccountRef(account.accountRef)) {
+    appendChip(details, "routing", "default slot")
+  }
+  appendChip(details, "readiness", titleize(account.readiness))
+  appendChip(details, "slots", accountCapacityLabel(account.capacity))
+  if (account.capacity !== null) {
+    appendChip(
+      details,
+      "busy",
+      account.capacity.busy === null ? null : String(account.capacity.busy),
+    )
+    appendChip(
+      details,
+      "queued",
+      account.capacity.queued === null ? null : String(account.capacity.queued),
+    )
+  }
+  appendChip(details, "quota", account.quotaState)
+  card.append(details)
+
   return card
 }
 
@@ -171,9 +257,11 @@ const renderReady = (
   )
   pylonCard.append(pylonId)
   pylonCard.append(badge(pylonState, titleize(data.pylon.status)))
-  if (capacity !== null) {
-    pylonCard.append(el("span", "khala-fleet-capacity", capacity))
-  }
+  const pylonDetails = el("div", "khala-fleet-card-details")
+  appendChip(pylonDetails, "slots", capacity)
+  appendChip(pylonDetails, "token rate", fleetTokenRateLabel(data.tokenRate))
+  appendChip(pylonDetails, "in flight", fleetInFlightLabel(data.tokenRate))
+  pylonCard.append(pylonDetails)
   pylonSection.append(pylonCard)
   container.append(pylonSection)
 
@@ -217,6 +305,8 @@ const renderReady = (
       if (marker.assignmentRef !== null) {
         chips.append(detailChip("assignment", marker.assignmentRef))
       }
+      appendChip(chips, "elapsed", formatElapsedMs(marker.elapsedMs))
+      appendChip(chips, "tokens", assignmentTokenRateLabel(marker.tokenRate))
       row.append(chips)
       list.append(row)
     }

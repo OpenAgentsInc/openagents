@@ -610,11 +610,11 @@ describe("Khala Code desktop chat runtime", () => {
         execute: (_input, context) =>
           Effect.gen(function* () {
             yield* context.emitProgress({
-              events: [{ event: "assignment_run.started", phase: "dispatch" }],
+              events: [{ event: "assignment_run.runtime_started", phase: "runtime_starting" }],
               kind: "codex_spawn_lifecycle",
               lines: [
                 "lifecycle:",
-                "  - assignment_run.started (phase=dispatch)",
+                "  - assignment_run.runtime_started (phase=runtime_starting)",
               ],
               schema: "openagents.khala_code.codex_spawn_progress.v0.1",
               toolName: "codex_spawn",
@@ -622,13 +622,13 @@ describe("Khala Code desktop chat runtime", () => {
             yield* Effect.promise(() => sleep(230))
             yield* context.emitProgress({
               events: [
-                { event: "assignment_run.started", phase: "dispatch" },
+                { event: "assignment_run.runtime_started", phase: "runtime_starting" },
                 { event: "assignment_run.runtime_progress", phase: "runtime_active" },
               ],
               kind: "codex_spawn_lifecycle",
               lines: [
                 "lifecycle:",
-                "  - assignment_run.started (phase=dispatch)",
+                "  - assignment_run.runtime_started (phase=runtime_starting)",
                 "  - assignment_run.runtime_progress (phase=runtime_active)",
               ],
               schema: "openagents.khala_code.codex_spawn_progress.v0.1",
@@ -688,7 +688,7 @@ describe("Khala Code desktop chat runtime", () => {
     const firstProgressIndex = toolReplacements.findIndex(event =>
       event.type === "message_replace" &&
       event.message.body.includes("codex_spawn: running") &&
-      event.message.body.includes("assignment_run.started")
+      event.message.body.includes("assignment_run.runtime_started")
     )
     const secondProgressIndex = toolReplacements.findIndex(event =>
       event.type === "message_replace" &&
@@ -703,6 +703,9 @@ describe("Khala Code desktop chat runtime", () => {
 
     expect(result.ok).toBe(true)
     expect(progressReplacements).toHaveLength(2)
+    expect(progressReplacements[0]?.message.body).toContain("assignment_run.runtime_started")
+    expect(progressReplacements[0]?.message.body).not.toContain("assignment_run.runtime_progress")
+    expect(progressReplacements[1]?.message.body).toContain("assignment_run.runtime_progress")
     expect(firstProgressIndex).toBeGreaterThanOrEqual(0)
     expect(secondProgressIndex).toBeGreaterThan(firstProgressIndex)
     expect(finalIndex).toBeGreaterThan(secondProgressIndex)

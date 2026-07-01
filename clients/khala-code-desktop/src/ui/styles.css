@@ -1168,6 +1168,13 @@ button {
   font-size: 0.72rem;
   color: color-mix(in srgb, var(--oa-color-component-text) 55%, transparent);
 }
+.khala-fleet-card-details {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  min-width: 0;
+}
 .khala-fleet-capacity {
   grid-column: 1 / -1;
   font-size: 0.74rem;
