@@ -2,6 +2,8 @@ import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Effect } from "effect"
+import { KhalaToolRuntimeError } from "./index.js"
+import { makeKhalaToolRuntimeService, type KhalaToolRuntimeServiceShape } from "./runtime.js"
 import type {
   KhalaProcessEvent,
   KhalaProcessExecInput,
@@ -15,6 +17,7 @@ import type {
 export type MacosSeatbeltProcessServiceOptions = Readonly<{
   deniedReadPaths?: ReadonlyArray<string>
   fallback?: KhalaProcessService
+  runtime?: KhalaToolRuntimeServiceShape
   sandboxExecPath?: string
 }>
 
@@ -26,90 +29,107 @@ export function createMacosSeatbeltKhalaProcessService(
   const sessions = new Map<string, MacosSeatbeltProcessSession>()
   const sandboxExecPath = options.sandboxExecPath ?? "/usr/bin/sandbox-exec"
   const fallback = options.fallback
+  const runtime = options.runtime ?? makeKhalaToolRuntimeService()
 
   return {
     execCommand: input =>
-      Effect.promise(async () => {
+      Effect.gen(function* () {
         if (process.platform !== "darwin") {
-          if (fallback !== undefined) return await Effect.runPromise(fallback.execCommand(input))
-          throw new Error("macOS Seatbelt sandbox is only available on Darwin")
+          if (fallback !== undefined) return yield* fallback.execCommand(input)
+          return yield* processRuntimeError("process_sandbox_unavailable", "macOS Seatbelt sandbox is only available on Darwin")
         }
-        return runSandboxedCommand(input, sandboxExecPath, options.deniedReadPaths ?? [])
+        return yield* runSandboxedCommand(input, sandboxExecPath, options.deniedReadPaths ?? [], runtime)
       }),
     marker: "khala.process_service",
     startSession: input =>
-      Effect.promise(async () => {
+      Effect.gen(function* () {
         if (process.platform !== "darwin") {
-          if (fallback !== undefined) return await Effect.runPromise(fallback.startSession(input))
-          throw new Error("macOS Seatbelt sandbox is only available on Darwin")
+          if (fallback !== undefined) return yield* fallback.startSession(input)
+          return yield* processRuntimeError("process_sandbox_unavailable", "macOS Seatbelt sandbox is only available on Darwin")
         }
-        return startSandboxedSession(input, sandboxExecPath, options.deniedReadPaths ?? [], sessions)
+        return yield* startSandboxedSession(input, sandboxExecPath, options.deniedReadPaths ?? [], sessions, runtime)
       }),
     writeStdin: input =>
-      Effect.promise(async () => {
+      Effect.gen(function* () {
         const session = sessions.get(input.sessionId)
         if (session === undefined) {
-          if (fallback !== undefined) return await Effect.runPromise(fallback.writeStdin(input))
-          throw new Error(`unknown process session: ${input.sessionId}`)
+          if (fallback !== undefined) return yield* fallback.writeStdin(input)
+          return yield* processRuntimeError("process_session_unknown", `unknown process session: ${input.sessionId}`)
         }
         if (session.khalaSessionId !== input.khalaSessionId) {
-          throw new Error("process session does not belong to the active Khala session")
+          return yield* processRuntimeError("process_session_mismatch", "process session does not belong to the active Khala session")
         }
         if (input.chars !== undefined && input.chars.length > 0) {
-          if (session.exitCode !== null) throw new Error(`process session is closed: ${input.sessionId}`)
+          if (session.exitCode !== null) {
+            return yield* processRuntimeError("process_session_closed", `process session is closed: ${input.sessionId}`)
+          }
           if (input.chars === "\u0003") {
             session.cancelled = true
             killSandboxedProcessGroup(session.proc)
           } else {
             const stdin = session.proc.stdin as unknown as BunFileSink | undefined
-            if (stdin === undefined) throw new Error(`process session stdin is closed: ${input.sessionId}`)
+            if (stdin === undefined) {
+              return yield* processRuntimeError("process_session_stdin_closed", `process session stdin is closed: ${input.sessionId}`)
+            }
             stdin.write(input.chars)
             stdin.flush()
           }
-          session.events.push({ channel: "stdin", text: input.chars, timestampMs: Date.now() })
+          session.events.push({ channel: "stdin", text: input.chars, timestampMs: yield* runtime.currentTimeMillis })
         }
-        await sleep(input.yieldTimeMs)
-        return sessionSnapshot(session, Date.now() - session.createdAtMs)
+        yield* runtime.sleep(input.yieldTimeMs)
+        return sessionSnapshot(session, (yield* runtime.currentTimeMillis) - session.createdAtMs)
       }),
   }
 }
 
-async function runSandboxedCommand(
+function runSandboxedCommand(
   input: KhalaProcessExecInput,
   sandboxExecPath: string,
   deniedReadPaths: ReadonlyArray<string>,
-): Promise<KhalaProcessExecResult> {
-  const started = Date.now()
-  let timedOut = false
-  let cancelled = false
-  const sandbox = await makeSandboxArgs(input, sandboxExecPath, deniedReadPaths)
-  try {
-    const proc = Bun.spawn([...sandbox.prefix, ...commandArgs(input)], {
-      cwd: input.cwd,
-      detached: true,
-      stderr: "pipe",
-      stdout: "pipe",
-    })
+  runtime: KhalaToolRuntimeServiceShape,
+): Effect.Effect<KhalaProcessExecResult, KhalaToolRuntimeError> {
+  return Effect.scoped(Effect.gen(function* () {
+    const started = yield* runtime.currentTimeMillis
+    let timedOut = false
+    let cancelled = false
+    const sandbox = yield* Effect.acquireRelease(
+      Effect.tryPromise({
+        catch: error => processRuntimeFailure("process_sandbox_profile_failed", error),
+        try: () => makeSandboxArgs(input, sandboxExecPath, deniedReadPaths),
+      }),
+      sandbox => Effect.promise(() => sandbox.cleanup()).pipe(Effect.orDie),
+    )
+    const proc = yield* Effect.acquireRelease(
+      Effect.sync(() => Bun.spawn([...sandbox.prefix, ...commandArgs(input)], {
+        cwd: input.cwd,
+        detached: true,
+        stderr: "pipe",
+        stdout: "pipe",
+      })),
+      proc => Effect.sync(() => killSandboxedProcessGroup(proc)),
+    )
     const kill = (reason: "cancelled" | "timedOut"): void => {
       if (reason === "cancelled") cancelled = true
       else timedOut = true
       killSandboxedProcessGroup(proc)
     }
-    const timeout = setTimeout(() => kill("timedOut"), input.timeoutMs)
+    yield* Effect.forkScoped(runtime.sleep(input.timeoutMs).pipe(Effect.tap(() => Effect.sync(() => kill("timedOut")))))
     const cancel = input.cancelAfterMs === undefined
       ? undefined
-      : setTimeout(() => kill("cancelled"), input.cancelAfterMs)
+      : yield* Effect.forkScoped(runtime.sleep(input.cancelAfterMs).pipe(Effect.tap(() => Effect.sync(() => kill("cancelled")))))
+    void cancel
     const events: KhalaProcessEvent[] = []
-    const [stdout, stderr, exitCode] = await Promise.all([
-      readProcessStream(proc.stdout, "stdout", input.maxCaptureBytes, events, () => killSandboxedProcessGroup(proc)),
-      readProcessStream(proc.stderr, "stderr", input.maxCaptureBytes, events, () => killSandboxedProcessGroup(proc)),
-      proc.exited.catch(() => null),
-    ])
-    clearTimeout(timeout)
-    if (cancel !== undefined) clearTimeout(cancel)
+    const [stdout, stderr, exitCode] = yield* Effect.tryPromise({
+      catch: error => processRuntimeFailure("process_exec_failed", error),
+      try: () => Promise.all([
+        readProcessStream(proc.stdout, "stdout", input.maxCaptureBytes, events, () => killSandboxedProcessGroup(proc), runtime),
+        readProcessStream(proc.stderr, "stderr", input.maxCaptureBytes, events, () => killSandboxedProcessGroup(proc), runtime),
+        proc.exited.catch(() => null),
+      ]),
+    })
     return {
       cancelled,
-      durationMs: Date.now() - started,
+      durationMs: (yield* runtime.currentTimeMillis) - started,
       events: events.sort((a, b) => a.timestampMs - b.timestampMs),
       exitCode,
       sandbox: {
@@ -124,19 +144,22 @@ async function runSandboxedCommand(
       stdoutTruncated: stdout.truncated,
       timedOut,
     }
-  } finally {
-    await sandbox.cleanup()
-  }
+  }))
 }
 
-async function startSandboxedSession(
+function startSandboxedSession(
   input: KhalaProcessSessionStartInput,
   sandboxExecPath: string,
   deniedReadPaths: ReadonlyArray<string>,
   sessions: Map<string, MacosSeatbeltProcessSession>,
-): Promise<KhalaProcessSessionResult> {
-  const started = Date.now()
-  const sandbox = await makeSandboxArgs(input, sandboxExecPath, deniedReadPaths)
+  runtime: KhalaToolRuntimeServiceShape,
+): Effect.Effect<KhalaProcessSessionResult, KhalaToolRuntimeError> {
+  return Effect.gen(function* () {
+  const started = yield* runtime.currentTimeMillis
+  const sandbox = yield* Effect.tryPromise({
+    catch: error => processRuntimeFailure("process_sandbox_profile_failed", error),
+    try: () => makeSandboxArgs(input, sandboxExecPath, deniedReadPaths),
+  })
   const proc = Bun.spawn([...sandbox.prefix, ...commandArgs(input)], {
     cwd: input.cwd,
     detached: true,
@@ -144,7 +167,7 @@ async function startSandboxedSession(
     stdin: "pipe",
     stdout: "pipe",
   })
-  const sessionId = `khala.proc.${Date.now().toString(36)}.${Math.random().toString(36).slice(2)}`
+  const sessionId = yield* runtime.eventId("khala.proc")
   const session: MacosSeatbeltProcessSession = {
     cancelled: false,
     cleanup: sandbox.cleanup,
@@ -163,8 +186,8 @@ async function startSandboxedSession(
     timedOut: false,
   }
   sessions.set(sessionId, session)
-  void pumpSessionStream(session, proc.stdout, "stdout")
-  void pumpSessionStream(session, proc.stderr, "stderr")
+  void pumpSessionStream(session, proc.stdout, "stdout", runtime)
+  void pumpSessionStream(session, proc.stderr, "stderr", runtime)
   void proc.exited.then(exitCode => {
     session.exitCode = exitCode
     void session.cleanup()
@@ -172,14 +195,15 @@ async function startSandboxedSession(
     session.exitCode = null
     void session.cleanup()
   })
-  setTimeout(() => {
+  yield* Effect.forkDetach(runtime.sleep(input.timeoutMs).pipe(Effect.tap(() => Effect.sync(() => {
     if (session.exitCode === null) {
       session.timedOut = true
       killSandboxedProcessGroup(proc)
     }
-  }, input.timeoutMs)
-  await sleep(input.yieldTimeMs)
-  return sessionSnapshot(session, Date.now() - started)
+  }))))
+  yield* runtime.sleep(input.yieldTimeMs)
+  return sessionSnapshot(session, (yield* runtime.currentTimeMillis) - started)
+  })
 }
 
 async function makeSandboxArgs(
@@ -223,6 +247,17 @@ function commandArgs(input: KhalaProcessExecInput): ReadonlyArray<string> {
 
 function quoteSeatbeltString(value: string): string {
   return JSON.stringify(value)
+}
+
+function processRuntimeError(code: string, reason: string): Effect.Effect<never, KhalaToolRuntimeError> {
+  return Effect.fail(new KhalaToolRuntimeError({ code, reason }))
+}
+
+function processRuntimeFailure(code: string, error: unknown): KhalaToolRuntimeError {
+  return new KhalaToolRuntimeError({
+    code,
+    reason: error instanceof Error ? error.message : String(error),
+  })
 }
 
 type MacosSeatbeltProcessSession = {
@@ -273,13 +308,14 @@ async function pumpSessionStream(
   session: MacosSeatbeltProcessSession,
   stream: ReadableStream<Uint8Array>,
   channel: "stdout" | "stderr",
+  runtime: KhalaToolRuntimeServiceShape = makeKhalaToolRuntimeService(),
 ): Promise<void> {
   const reader = stream.getReader()
   while (true) {
     const read = await reader.read()
     if (read.done) break
     const chunk = Buffer.from(read.value).toString("utf8")
-    session.events.push({ channel, text: chunk, timestampMs: Date.now() })
+    session.events.push({ channel, text: chunk, timestampMs: await Effect.runPromise(runtime.currentTimeMillis) })
     if (channel === "stdout") {
       if (Buffer.byteLength(session.stdout + chunk, "utf8") > session.maxCaptureBytes) {
         session.stdoutTruncated = true
@@ -302,6 +338,7 @@ async function readProcessStream(
   maxBytes: number,
   events: KhalaProcessEvent[],
   onTruncate: () => void,
+  runtime: KhalaToolRuntimeServiceShape = makeKhalaToolRuntimeService(),
 ): Promise<Readonly<{ text: string; truncated: boolean }>> {
   const reader = stream.getReader()
   const chunks: Buffer[] = []
@@ -316,7 +353,7 @@ async function readProcessStream(
       if (remaining > 0) {
         const kept = chunk.slice(0, remaining)
         chunks.push(Buffer.from(kept))
-        events.push({ channel, text: Buffer.from(kept).toString("utf8"), timestampMs: Date.now() })
+        events.push({ channel, text: Buffer.from(kept).toString("utf8"), timestampMs: await Effect.runPromise(runtime.currentTimeMillis) })
       }
       truncated = true
       onTruncate()
@@ -324,7 +361,7 @@ async function readProcessStream(
     }
     bytes += chunk.byteLength
     chunks.push(Buffer.from(chunk))
-    events.push({ channel, text: Buffer.from(chunk).toString("utf8"), timestampMs: Date.now() })
+    events.push({ channel, text: Buffer.from(chunk).toString("utf8"), timestampMs: await Effect.runPromise(runtime.currentTimeMillis) })
   }
   return {
     text: Buffer.concat(chunks).toString("utf8"),
@@ -344,8 +381,4 @@ function killSandboxedProcessGroup(proc: ReturnType<typeof Bun.spawn>, signal: N
   } catch {
     proc.kill(signal)
   }
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms))
 }

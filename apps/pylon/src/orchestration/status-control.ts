@@ -9,7 +9,9 @@ import {
 import type { DispatchContext, OrchestrationTask } from "./store.js"
 
 const stableRef = (prefix: string, value: string): string =>
-  `${prefix}.${createHash("sha256").update(value).digest("hex").slice(0, 24)}`
+  value.startsWith(`${prefix}.`)
+    ? value
+    : `${prefix}.${createHash("sha256").update(value).digest("hex").slice(0, 24)}`
 
 export function neutralStateForDispatchContext(
   context: DispatchContext,
@@ -34,6 +36,8 @@ export function agentRunnerStatusEventForDispatchContext(input: {
   const updatedAt = (input.now ?? new Date(input.context.updatedAt)).toISOString()
   const state = neutralStateForDispatchContext(input.context, input.task)
   const taskId = input.task?.id ?? input.context.currentTaskId ?? undefined
+  const publicTaskId = taskId === undefined ? undefined : stableRef("task.public.pylon", taskId)
+  const publicDispatchContextId = stableRef("dispatch-context.public.pylon", input.context.id)
   const runnerRef = stableRef(
     "runner.public.pylon",
     `${input.pylonRef ?? "pylon.local"}:${input.context.id}:${input.context.runnerKind}`,
@@ -49,12 +53,12 @@ export function agentRunnerStatusEventForDispatchContext(input: {
     state,
     stateStartedAt: input.context.updatedAt,
     updatedAt,
-    ...(input.assignmentRef === undefined ? {} : { assignmentRef: input.assignmentRef }),
-    ...(taskId === undefined ? {} : { taskId }),
-    dispatchContextId: input.context.id,
-    assigneeHandle: input.context.assigneeHandle,
-    ...(input.pylonRef === undefined ? {} : { pylonRef: input.pylonRef }),
-    ...(input.context.worktreeId === null ? {} : { worktreeId: input.context.worktreeId }),
+    ...(input.assignmentRef === undefined
+      ? {}
+      : { assignmentRef: stableRef("assignment.public.pylon", input.assignmentRef) }),
+    ...(publicTaskId === undefined ? {} : { taskId: publicTaskId }),
+    dispatchContextId: publicDispatchContextId,
+    ...(input.pylonRef === undefined ? {} : { pylonRef: stableRef("pylon.public", input.pylonRef) }),
     ...(input.context.worktreePath === null
       ? {}
       : { worktreeRef: stableRef("worktree.public.pylon", `${input.context.id}:${input.context.worktreePath}`) }),

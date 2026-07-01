@@ -158,17 +158,20 @@ progress callbacks.
 
 ### 3.3 khala-tools substrate debt
 
-- Services/layers: only `redaction.ts` is a real `Context.Service` + `Layer`
-  (`redaction.ts:48-55`); `makeKhalaToolServices` assembles a plain record
-  with `??` fallbacks (`index.ts:1078`).
-- **Zero `Clock` usage package-wide**: `Date.now()` in the dispatcher's
-  duration accounting and event IDs (`dispatcher.ts:134,611` — IDs also use
-  `Math.random()`), exec, sandbox, session-rollout. Nothing is
-  TestClock-able or seed-reproducible.
-- **Zero `Scope`/`acquireRelease` package-wide**: `process-sandbox-macos.ts`
-  spawns detached process groups guarded by manual `setTimeout`s
-  (L98-180) with cleanup on `.then(...)`; interrupt leaks the process group
-  and the mkdtemp seatbelt profile.
+**T7.4 update (2026-07-01):** the first substrate pass landed for
+`packages/khala-tools`. `KhalaToolRuntimeService` now provides injected
+Clock/random for dispatcher duration accounting and event IDs, with a
+deterministic runtime used by tests. `makeKhalaToolServices` now exposes a
+Layer-backed `KhalaToolServicesService` while preserving the plain factory for
+existing callers. The one-shot unsandboxed and macOS Seatbelt exec paths wrap
+process groups and mkdtemp seatbelt profiles in `Effect.acquireRelease`, and
+`exec-command.ts` keeps permission, workdir, process, and artifact calls in the
+Effect chain instead of nesting `Effect.runPromise` inside `Effect.promise`.
+
+Remaining debt in this subsection is outside T7.4's landed slice: older
+helpers such as todo/network timestamps and some long-lived session pumps still
+need deeper service migration, and `session-rollout.ts` still uses direct
+wall-clock/UUID helpers.
 - The bright spots to grow from: `permission-policy.ts:54-98` (real
   `Effect.gen` + `catchTag` composition) and `fleet-delegate-program.ts`
   (typed `KhalaFleetDelegateModuleError`, Schema-class parameters, pure
@@ -297,13 +300,13 @@ migration they de-risk.
    subprocess service and the shared schema from phase 1, replacing
    argv+stdout string coupling. Stub layer for fixtures; this is also what
    the fleet-fan-out instructions' supervisor should consume.
-8. **khala-tools substrate fixes**: inject `Clock` (dispatcher durations,
-   IDs from injected random — copy
-   `apps/autopilot-desktop/src/testing/deterministic-env.ts`); wrap
-   sandbox/exec process groups in `acquireRelease`; delete the
-   `runPromise`-inside-`Effect.promise` nesting by keeping permission/
-   process calls in the Effect chain (mirror `permission-policy.ts`);
-   layerize `makeKhalaToolServices` following `redaction.ts`.
+8. **khala-tools substrate fixes** (T7.4 landed 2026-07-01): dispatcher
+   durations and event IDs now use injected runtime Clock/random; one-shot
+   sandbox/exec process groups use `acquireRelease`; `exec-command.ts` keeps
+   permission/process/artifact calls in the Effect chain; and
+   `makeKhalaToolServices` has a Layer-backed service form following
+   `redaction.ts`. Follow-up work should migrate the remaining older helpers
+   called out in §3.3.
 9. **Make token reporting an Effect with retry + typed failure** (
    `Effect.retry(Schedule.exponential(...))`, escalate persistent failure to
    an Inbox flag) — closes #5 and #18 against the exact-accounting

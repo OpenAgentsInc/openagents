@@ -1,10 +1,11 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process"
 import { existsSync } from "node:fs"
-import { Effect, Schema as S } from "effect"
+import { Context, Effect, Layer, Schema as S } from "effect"
 import { makeKhalaToolDispatcher, type KhalaToolDispatcherOptions } from "./dispatcher.js"
 import { makeKhalaPermissionPolicyService } from "./permission-policy.js"
 import { createMacosSeatbeltKhalaProcessService } from "./process-sandbox-macos.js"
 import { redactKhalaPublicText } from "./redaction.js"
+import { makeKhalaToolRuntimeService, type KhalaToolRuntimeServiceShape } from "./runtime.js"
 
 export {
   approvalCacheKeysFor,
@@ -138,6 +139,14 @@ export {
   type KhalaRampartGuard,
   type KhalaRampartGuardFactory,
 } from "./redaction.js"
+
+export {
+  KhalaToolRuntimeLive,
+  KhalaToolRuntimeService,
+  makeDeterministicKhalaToolRuntimeService,
+  makeKhalaToolRuntimeService,
+  type KhalaToolRuntimeServiceShape,
+} from "./runtime.js"
 
 export const KhalaToolAuthority = S.Literals([
   "read",
@@ -587,6 +596,7 @@ export interface KhalaToolServices {
   readonly outputStore: KhalaOutputStore
   readonly permission: KhalaPermissionService
   readonly process: KhalaProcessService
+  readonly runtime: KhalaToolRuntimeServiceShape
   readonly search: KhalaWebSearchService
   readonly todo: KhalaTodoService
   readonly workspace: KhalaWorkspaceService
@@ -942,11 +952,14 @@ export const inMemoryKhalaOutputStore = (): KhalaOutputStore & {
   }
 }
 
-export const nonInteractiveKhalaInteractionService: KhalaInteractionService = {
-  askUser: input =>
-    Effect.sync(() => {
-      const requestId = createInteractionRequestId(input.invocationId)
-      const requestedAt = Date.now()
+export function makeNonInteractiveKhalaInteractionService(
+  runtime: KhalaToolRuntimeServiceShape = makeKhalaToolRuntimeService(),
+): KhalaInteractionService {
+  return {
+    askUser: input =>
+      Effect.gen(function* () {
+        const requestId = yield* createInteractionRequestId(input.invocationId, runtime)
+        const requestedAt = yield* runtime.currentTimeMillis
       return {
         events: [
           {
@@ -967,9 +980,12 @@ export const nonInteractiveKhalaInteractionService: KhalaInteractionService = {
         requestId,
         status: "unavailable",
       }
-    }),
-  marker: "khala.interaction_service",
+      }),
+    marker: "khala.interaction_service",
+  }
 }
+
+export const nonInteractiveKhalaInteractionService: KhalaInteractionService = makeNonInteractiveKhalaInteractionService()
 
 export function inMemoryKhalaTodoService(): KhalaTodoService {
   const sessions = new Map<string, Readonly<{ revision: number; todos: ReadonlyArray<KhalaTodoItem> }>>()
@@ -1075,24 +1091,40 @@ export const unconfiguredKhalaBrowserService: KhalaBrowserService = {
   waitFor: () => browserUnavailable(),
 }
 
-export function makeKhalaToolServices(input: {
+export type KhalaToolServicesInput = {
   readonly browser?: KhalaBrowserService
   readonly interaction?: KhalaInteractionService
   readonly network?: KhalaNetworkService
   readonly permission?: KhalaPermissionService
   readonly process?: KhalaProcessService
+  readonly runtime?: KhalaToolRuntimeServiceShape
   readonly search?: KhalaWebSearchService
   readonly todo?: KhalaTodoService
   readonly workingDirectory?: string
-} = {}): KhalaToolServices {
-  const interaction = input.interaction ?? nonInteractiveKhalaInteractionService
+}
+
+export class KhalaToolServicesService extends Context.Service<
+  KhalaToolServicesService,
+  KhalaToolServices
+>()("@openagentsinc/khala-tools/KhalaToolServicesService") {
+  static readonly Default = Layer.effect(KhalaToolServicesService, Effect.sync(() => makeKhalaToolServices()))
+}
+
+export function makeKhalaToolServicesLayer(input: KhalaToolServicesInput = {}): Layer.Layer<KhalaToolServicesService> {
+  return Layer.succeed(KhalaToolServicesService, makeKhalaToolServices(input))
+}
+
+export function makeKhalaToolServices(input: KhalaToolServicesInput = {}): KhalaToolServices {
+  const runtime = input.runtime ?? makeKhalaToolRuntimeService()
+  const interaction = input.interaction ?? makeNonInteractiveKhalaInteractionService(runtime)
   return {
     browser: input.browser ?? unconfiguredKhalaBrowserService,
     interaction,
     network: input.network ?? createFetchKhalaNetworkService(),
     outputStore: inMemoryKhalaOutputStore(),
     permission: input.permission ?? makeKhalaPermissionPolicyService({ interaction }),
-    process: input.process ?? defaultKhalaProcessService,
+    process: input.process ?? (input.runtime === undefined ? defaultKhalaProcessService : createDefaultKhalaProcessService(runtime)),
+    runtime,
     search: input.search ?? unconfiguredKhalaWebSearchService,
     todo: input.todo ?? inMemoryKhalaTodoService(),
     workspace: { workingDirectory: input.workingDirectory ?? process.cwd() },
@@ -1106,9 +1138,12 @@ function browserUnavailable(): Effect.Effect<never, KhalaToolRuntimeError> {
   }))
 }
 
-function createInteractionRequestId(invocationId: string): string {
+function createInteractionRequestId(
+  invocationId: string,
+  runtime: KhalaToolRuntimeServiceShape = makeKhalaToolRuntimeService(),
+): Effect.Effect<string, never> {
   const safeInvocation = invocationId.replace(/[^A-Za-z0-9_.-]/gu, "_").slice(0, 80) || "request"
-  return `khala.ask.${safeInvocation}.${Date.now().toString(36)}`
+  return runtime.eventId(`khala.ask.${safeInvocation}`)
 }
 
 function interactionRequestPayload(
@@ -1175,34 +1210,46 @@ async function readNetworkResponseBody(
   }
 }
 
-export const unsandboxedKhalaProcessService: KhalaProcessService = {
-  execCommand: input =>
-    Effect.promise(async () => {
-      const started = Date.now()
+export function createUnsandboxedKhalaProcessService(
+  runtime: KhalaToolRuntimeServiceShape = makeKhalaToolRuntimeService(),
+): KhalaProcessService {
+  return {
+    execCommand: input =>
+      Effect.scoped(Effect.gen(function* () {
+        const started = yield* runtime.currentTimeMillis
       let timedOut = false
       let cancelled = false
-      const proc = spawnProcessGroup(input, "pipes")
+      const proc = yield* Effect.acquireRelease(
+        Effect.sync(() => spawnProcessGroup(input, "pipes")),
+        proc => Effect.sync(() => killProcessGroup(proc)),
+      )
       const kill = (reason: "cancelled" | "timedOut"): void => {
         if (reason === "cancelled") cancelled = true
         else timedOut = true
         killProcessGroup(proc)
       }
-      const timeout = setTimeout(() => kill("timedOut"), input.timeoutMs)
+      const timeout = yield* Effect.forkScoped(runtime.sleep(input.timeoutMs).pipe(Effect.tap(() => Effect.sync(() => kill("timedOut")))))
       const cancel = input.cancelAfterMs === undefined
         ? undefined
-        : setTimeout(() => kill("cancelled"), input.cancelAfterMs)
+        : yield* Effect.forkScoped(runtime.sleep(input.cancelAfterMs).pipe(Effect.tap(() => Effect.sync(() => kill("cancelled")))))
+      void cancel
       const events: KhalaProcessEvent[] = []
-      const exit = waitForChildExit(proc)
-      const [stdout, stderr, exitResult] = await Promise.all([
-        readNodeProcessStream(proc.stdout, "stdout", input.maxCaptureBytes, events, () => killProcessGroup(proc)),
-        readNodeProcessStream(proc.stderr, "stderr", input.maxCaptureBytes, events, () => killProcessGroup(proc)),
-        exit,
-      ])
-      clearTimeout(timeout)
-      if (cancel !== undefined) clearTimeout(cancel)
+      const [stdout, stderr, exitResult] = yield* Effect.tryPromise({
+        catch: error => new KhalaToolRuntimeError({
+          code: "process_exec_failed",
+          reason: error instanceof Error ? error.message : String(error),
+        }),
+        try: () =>
+          Promise.all([
+            readNodeProcessStream(proc.stdout, "stdout", input.maxCaptureBytes, events, () => killProcessGroup(proc), runtime),
+            readNodeProcessStream(proc.stderr, "stderr", input.maxCaptureBytes, events, () => killProcessGroup(proc), runtime),
+            waitForChildExit(proc),
+          ]),
+      })
+      void timeout
       return {
         cancelled,
-        durationMs: Date.now() - started,
+        durationMs: (yield* runtime.currentTimeMillis) - started,
         events,
         exitCode: exitResult.exitCode,
         sandbox: {
@@ -1217,15 +1264,15 @@ export const unsandboxedKhalaProcessService: KhalaProcessService = {
         stdoutTruncated: stdout.truncated,
         timedOut,
       }
-    }),
-  marker: "khala.process_service",
-  startSession: input =>
-    Effect.promise(async () => {
-      const started = Date.now()
+      })),
+    marker: "khala.process_service",
+    startSession: input =>
+      Effect.gen(function* () {
+        const started = yield* runtime.currentTimeMillis
       let timedOut = false
       let cancelled = false
       const proc = spawnProcessGroup(input, "pty")
-      const sessionId = `khala.proc.${Date.now().toString(36)}.${Math.random().toString(36).slice(2)}`
+      const sessionId = yield* runtime.eventId("khala.proc")
       const session: DefaultKhalaProcessSession = {
         cancelled: false,
         command: input.command,
@@ -1245,26 +1292,28 @@ export const unsandboxedKhalaProcessService: KhalaProcessService = {
         timedOut: false,
       }
       defaultProcessSessions.set(sessionId, session)
-      void pumpSessionStream(session, proc.stdout, "stdout")
-      void pumpSessionStream(session, proc.stderr, "stderr")
+      void pumpSessionStream(session, proc.stdout, "stdout", runtime)
+      void pumpSessionStream(session, proc.stderr, "stderr", runtime)
       void waitForChildExit(proc).then(exit => {
         session.exitCode = exit.exitCode
         session.signal = exit.signal
       })
-      setTimeout(() => {
-        if (session.exitCode === null) {
-          timedOut = true
-          session.timedOut = true
-          killProcessGroup(proc)
-        }
-      }, input.timeoutMs)
-      await sleep(input.yieldTimeMs)
+      yield* Effect.forkDetach(runtime.sleep(input.timeoutMs).pipe(
+        Effect.tap(() => Effect.sync(() => {
+          if (session.exitCode === null) {
+            timedOut = true
+            session.timedOut = true
+            killProcessGroup(proc)
+          }
+        })),
+      ))
+      yield* runtime.sleep(input.yieldTimeMs)
       timedOut = session.timedOut
       cancelled = session.cancelled
-      return sessionSnapshot(session, Date.now() - started, timedOut, cancelled)
-    }),
-  writeStdin: input =>
-    Effect.promise(async () => {
+      return sessionSnapshot(session, (yield* runtime.currentTimeMillis) - started, timedOut, cancelled)
+      }),
+    writeStdin: input =>
+      Effect.gen(function* () {
       const session = defaultProcessSessions.get(input.sessionId)
       if (session === undefined) throw new Error(`unknown process session: ${input.sessionId}`)
       if (session.khalaSessionId !== input.khalaSessionId) {
@@ -1279,21 +1328,31 @@ export const unsandboxedKhalaProcessService: KhalaProcessService = {
           if (session.proc.stdin.destroyed) throw new Error(`process session stdin is closed: ${input.sessionId}`)
           session.proc.stdin.write(input.chars)
         }
-        session.events.push({ channel: "stdin", text: input.chars, timestampMs: Date.now() })
+        session.events.push({ channel: "stdin", text: input.chars, timestampMs: yield* runtime.currentTimeMillis })
       }
-      await sleep(input.yieldTimeMs)
+      yield* runtime.sleep(input.yieldTimeMs)
       return sessionSnapshot(
         session,
-        Date.now() - session.createdAtMs,
+        (yield* runtime.currentTimeMillis) - session.createdAtMs,
         session.timedOut,
         session.cancelled,
       )
-    }),
+      }),
+  }
 }
 
-export const defaultKhalaProcessService: KhalaProcessService = process.platform === "darwin"
-  ? createMacosSeatbeltKhalaProcessService({ fallback: unsandboxedKhalaProcessService })
-  : unsandboxedKhalaProcessService
+export const unsandboxedKhalaProcessService: KhalaProcessService = createUnsandboxedKhalaProcessService()
+
+export function createDefaultKhalaProcessService(
+  runtime: KhalaToolRuntimeServiceShape = makeKhalaToolRuntimeService(),
+): KhalaProcessService {
+  const unsandboxed = createUnsandboxedKhalaProcessService(runtime)
+  return process.platform === "darwin"
+    ? createMacosSeatbeltKhalaProcessService({ fallback: unsandboxed, runtime })
+    : unsandboxed
+}
+
+export const defaultKhalaProcessService: KhalaProcessService = createDefaultKhalaProcessService()
 
 type DefaultKhalaProcessSession = {
   cancelled: boolean
@@ -1320,10 +1379,11 @@ async function pumpSessionStream(
   session: DefaultKhalaProcessSession,
   stream: NodeJS.ReadableStream,
   channel: "stdout" | "stderr",
+  runtime: KhalaToolRuntimeServiceShape = makeKhalaToolRuntimeService(),
 ): Promise<void> {
   for await (const value of stream) {
     const chunk = Buffer.from(value as Buffer).toString("utf8")
-    session.events.push({ channel, text: chunk, timestampMs: Date.now() })
+    session.events.push({ channel, text: chunk, timestampMs: await Effect.runPromise(runtime.currentTimeMillis) })
     if (channel === "stdout") {
       if (Buffer.byteLength(session.stdout + chunk, "utf8") > session.maxCaptureBytes) {
         session.stdoutTruncated = true
@@ -1370,10 +1430,6 @@ function tailByBytes(text: string, maxBytes: number): string {
   const bytes = Buffer.from(text, "utf8")
   if (bytes.byteLength <= maxBytes) return text
   return bytes.subarray(bytes.byteLength - maxBytes).toString("utf8")
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms))
 }
 
 type ChildExitResult = Readonly<{
@@ -1508,6 +1564,7 @@ async function readNodeProcessStream(
   maxBytes: number,
   events: KhalaProcessEvent[],
   onTruncate: () => void,
+  runtime: KhalaToolRuntimeServiceShape = makeKhalaToolRuntimeService(),
 ): Promise<Readonly<{ text: string; truncated: boolean }>> {
   const chunks: Buffer[] = []
   let bytes = 0
@@ -1519,7 +1576,7 @@ async function readNodeProcessStream(
       if (remaining > 0) {
         const kept = chunk.slice(0, remaining)
         chunks.push(Buffer.from(kept))
-        events.push({ channel, text: Buffer.from(kept).toString("utf8"), timestampMs: Date.now() })
+        events.push({ channel, text: Buffer.from(kept).toString("utf8"), timestampMs: await Effect.runPromise(runtime.currentTimeMillis) })
       }
       truncated = true
       onTruncate()
@@ -1527,7 +1584,7 @@ async function readNodeProcessStream(
     }
     bytes += chunk.byteLength
     chunks.push(Buffer.from(chunk))
-    events.push({ channel, text: Buffer.from(chunk).toString("utf8"), timestampMs: Date.now() })
+    events.push({ channel, text: Buffer.from(chunk).toString("utf8"), timestampMs: await Effect.runPromise(runtime.currentTimeMillis) })
   }
   return {
     text: Buffer.concat(chunks).toString("utf8"),

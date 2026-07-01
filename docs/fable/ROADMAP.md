@@ -151,7 +151,7 @@ Source: Effect integration audit §5 Phase 2. Feeds WS-3/5/8 as it lands.
 | T7.1 | `KhalaProcess` scoped subprocess service on `effect/unstable/process` (kill-on-scope-close, stdin Sink / stdout Stream, one timeout/kill policy); replace all five hand-rolled spawn implementations | T1.3 soft | MED |
 | T7.2 | `CodexAppServer` as `Context.Service`: typed tagged errors, Schema-decoded responses/notifications (generate candidates from `codex app-server generate-ts`), notifications as `Stream` (subscriber isolation by construction), timeout policy that fires `turn/interrupt`, scoped supervision | T7.1 | MED |
 | T7.3 | Typed `PylonService` (`request`, `runAssignment`, `lifecycle: Stream`), backed by T7.1 + T1.2 schemas; stub layer for fixtures; the supervisor (T3.1) migrates onto it | T7.1, T1.2 | MED |
-| T7.4 | khala-tools substrate: inject `Clock` (durations, IDs), `acquireRelease` for sandbox/exec process groups, delete `runPromise`-inside-`Effect.promise` nesting, layerize `makeKhalaToolServices` | — | MED |
+| T7.4 | **Done in PR "T7.4: khala-tools substrate fixes"**: khala-tools substrate now injects runtime `Clock`/random for dispatcher durations and IDs, wraps one-shot sandbox/exec process groups in `acquireRelease`, removes `runPromise`-inside-`Effect.promise` nesting from `exec-command.ts`, and exposes a Layer-backed `KhalaToolServicesService` while keeping tool-result errors as data | — | MED |
 | T7.5 | Token reporting as Effect with `Schedule.exponential` retry + Inbox flag on persistent failure; attachment temp files as scoped resources; corrupt session-state file recovery (no rethrow-brick) | T7.2 soft | HIGH |
 
 ### WS-8 — Claude chat harness (Claude-parity Phases 0–3, = Axis A)

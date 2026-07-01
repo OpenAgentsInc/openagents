@@ -4,6 +4,14 @@ import { existsSync } from "node:fs"
 import { mkdir, readFile, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { Schema as S } from "effect"
+import {
+  PYLON_AGENT_RUNNER_CONTROL_VERBS,
+  PYLON_AGENT_RUNNER_STATUS_EVENT_SCHEMA_VERSION,
+  type AgentRunnerControlVerb,
+  type AgentRunnerNeutralState,
+  type AgentRunnerStatusEvent,
+  type AgentRunnerStatusHistoryEntry,
+} from "../agent-status-reporter.js"
 
 export const ORCHESTRATION_SCHEMA_VERSION = 2
 
@@ -228,6 +236,25 @@ export type PublicDispatchContext = Omit<DispatchContext, "worktreePath"> & {
   worktreePath: null
 }
 
+export type AgentRunnerStatusRetentionState = "live" | "retained"
+
+export type OrchestrationAgentRunnerStatusEntry = AgentRunnerStatusEvent & {
+  schemaVersion: typeof PYLON_AGENT_RUNNER_STATUS_EVENT_SCHEMA_VERSION
+  retentionState: AgentRunnerStatusRetentionState
+  retainedAt: string | null
+}
+
+export type IngestAgentRunnerStatusEventInput = {
+  event: AgentRunnerStatusEvent
+  now?: Date
+  historyLimit?: number
+}
+
+export type DecayAgentRunnerStatusesInput = {
+  now?: Date
+  staleAfterMs?: number
+}
+
 export type OrchestrationMessageKind =
   | "dispatch"
   | "worker_done"
@@ -308,6 +335,23 @@ const DEFAULT_FLEET_RUN_REFILL_POLICY: FleetRunRefillPolicy = {
 const parseJsonArray = (value: string): string[] => {
   const parsed: unknown = JSON.parse(value)
   return Array.isArray(parsed) ? parsed.filter((entry): entry is string => typeof entry === "string") : []
+}
+
+const parseControlVerbs = (value: string): AgentRunnerControlVerb[] =>
+  parseJsonArray(value).filter((verb): verb is AgentRunnerControlVerb =>
+    PYLON_AGENT_RUNNER_CONTROL_VERBS.includes(verb as AgentRunnerControlVerb),
+  )
+
+const parseStateHistory = (value: string): AgentRunnerStatusHistoryEntry[] => {
+  const parsed: unknown = JSON.parse(value)
+  if (!Array.isArray(parsed)) return []
+  return parsed.flatMap((entry): AgentRunnerStatusHistoryEntry[] => {
+    if (typeof entry !== "object" || entry === null) return []
+    const candidate = entry as Partial<AgentRunnerStatusHistoryEntry>
+    return typeof candidate.state === "string" && typeof candidate.stateStartedAt === "string"
+      ? [{ state: candidate.state as AgentRunnerNeutralState, stateStartedAt: candidate.stateStartedAt }]
+      : []
+  })
 }
 
 const parsePendingTaskIds = (value: string): string[] => [...new Set(parseJsonArray(value))]
@@ -476,6 +520,27 @@ type DispatchContextRow = {
   updated_at: string
 }
 
+type AgentRunnerStatusRow = {
+  event_ref: string
+  runner_ref: string
+  runner_kind: string
+  state: AgentRunnerNeutralState
+  state_started_at: string
+  updated_at: string
+  assignment_ref: string | null
+  task_id: string | null
+  dispatch_context_id: string | null
+  pylon_ref: string | null
+  worktree_ref: string | null
+  capability_refs_json: string
+  supported_control_verbs_json: string
+  refs_json: string
+  blocker_refs_json: string
+  state_history_json: string
+  retention_state: AgentRunnerStatusRetentionState
+  retained_at: string | null
+}
+
 type VirtualHeadRow = {
   repo: string
   branch: string
@@ -620,6 +685,101 @@ const isLiveClaimUniqueConstraintError = (error: unknown): boolean =>
   (error.message.includes("idx_pylon_orchestration_work_claims_live_unit") ||
     error.message.includes("pylon_orchestration_work_claims.work_unit_ref"))
 
+const stablePublicRef = (prefix: string, value: string): string =>
+  value.startsWith(`${prefix}.`)
+    ? value
+    : `${prefix}.${createHash("sha256").update(value).digest("hex").slice(0, 24)}`
+
+const rollingStateHistory = (
+  previous: ReadonlyArray<AgentRunnerStatusHistoryEntry>,
+  state: AgentRunnerNeutralState,
+  stateStartedAt: string,
+  limit: number,
+): AgentRunnerStatusHistoryEntry[] => {
+  const history = [...previous]
+  const last = history.at(-1)
+  if (last === undefined || last.state !== state || last.stateStartedAt !== stateStartedAt) {
+    history.push({ state, stateStartedAt })
+  }
+  return history.slice(-Math.max(1, limit))
+}
+
+const publicRefArray = (prefix: string, values: ReadonlyArray<string> | undefined): string[] =>
+  [...new Set((values ?? []).map((value) => stablePublicRef(prefix, value)))].slice(0, 64)
+
+const publicStatusEventFrom = (
+  event: AgentRunnerStatusEvent,
+  previous: OrchestrationAgentRunnerStatusEntry | null,
+  historyLimit: number,
+): AgentRunnerStatusEvent => {
+  const stateChanged = previous === null || previous.state !== event.state
+  const stateStartedAt = stateChanged ? event.stateStartedAt : previous.stateStartedAt
+  const previousHistory = event.stateHistory ?? previous?.stateHistory ?? []
+  return {
+    eventRef: stablePublicRef("event.public.pylon.runner_status", event.eventRef),
+    runnerRef: stablePublicRef("runner.public.pylon", event.runnerRef),
+    runnerKind: event.runnerKind,
+    state: event.state,
+    stateStartedAt,
+    updatedAt: event.updatedAt,
+    ...(event.assignmentRef === undefined
+      ? {}
+      : { assignmentRef: stablePublicRef("assignment.public.pylon", event.assignmentRef) }),
+    ...(event.taskId === undefined ? {} : { taskId: stablePublicRef("task.public.pylon", event.taskId) }),
+    ...(event.dispatchContextId === undefined
+      ? {}
+      : { dispatchContextId: stablePublicRef("dispatch-context.public.pylon", event.dispatchContextId) }),
+    ...(event.pylonRef === undefined ? {} : { pylonRef: stablePublicRef("pylon.public", event.pylonRef) }),
+    ...(event.worktreeRef === undefined
+      ? event.worktreeId === undefined
+        ? {}
+        : { worktreeRef: stablePublicRef("worktree.public.pylon", event.worktreeId) }
+      : { worktreeRef: stablePublicRef("worktree.public.pylon", event.worktreeRef) }),
+    capabilityRefs: publicRefArray("capability.public.pylon", event.capabilityRefs),
+    supportedControlVerbs: (event.supportedControlVerbs ?? PYLON_AGENT_RUNNER_CONTROL_VERBS)
+      .filter((verb): verb is AgentRunnerControlVerb =>
+        PYLON_AGENT_RUNNER_CONTROL_VERBS.includes(verb as AgentRunnerControlVerb),
+      ),
+    refs: publicRefArray("ref.public.pylon", event.refs),
+    blockerRefs: publicRefArray("blocker.public.pylon", event.blockerRefs),
+    stateHistory: rollingStateHistory(previousHistory, event.state, stateStartedAt, historyLimit),
+  }
+}
+
+const statusEntryFromRow = (row: AgentRunnerStatusRow): OrchestrationAgentRunnerStatusEntry => ({
+  schemaVersion: PYLON_AGENT_RUNNER_STATUS_EVENT_SCHEMA_VERSION,
+  eventRef: row.event_ref,
+  runnerRef: row.runner_ref,
+  runnerKind: row.runner_kind,
+  state: row.state,
+  stateStartedAt: row.state_started_at,
+  updatedAt: row.updated_at,
+  ...(row.assignment_ref === null ? {} : { assignmentRef: row.assignment_ref }),
+  ...(row.task_id === null ? {} : { taskId: row.task_id }),
+  ...(row.dispatch_context_id === null ? {} : { dispatchContextId: row.dispatch_context_id }),
+  ...(row.pylon_ref === null ? {} : { pylonRef: row.pylon_ref }),
+  ...(row.worktree_ref === null ? {} : { worktreeRef: row.worktree_ref }),
+  capabilityRefs: parseJsonArray(row.capability_refs_json),
+  supportedControlVerbs: parseControlVerbs(row.supported_control_verbs_json),
+  refs: parseJsonArray(row.refs_json),
+  blockerRefs: parseJsonArray(row.blocker_refs_json),
+  stateHistory: parseStateHistory(row.state_history_json),
+  retentionState: row.retention_state,
+  retainedAt: row.retained_at,
+})
+
+const dispatchStatusForNeutralState = (state: AgentRunnerNeutralState): DispatchContextStatus => {
+  if (state === "blocked") return "blocked"
+  if (state === "failed") return "failed"
+  if (state === "done") return "completed"
+  if (state === "offline") return "circuit_broken"
+  if (state === "working" || state === "waiting") return "dispatched"
+  return "idle"
+}
+
+const shouldDecayRunnerState = (state: AgentRunnerNeutralState): boolean =>
+  state === "queued" || state === "working" || state === "waiting"
+
 export class PylonOrchestrationStore {
   constructor(private readonly db: SqliteDatabase) {}
 
@@ -663,6 +823,30 @@ export class PylonOrchestrationStore {
         ON pylon_orchestration_dispatch_contexts(status, updated_at);
       CREATE INDEX IF NOT EXISTS idx_pylon_orchestration_contexts_worktree
         ON pylon_orchestration_dispatch_contexts(worktree_id);
+      CREATE TABLE IF NOT EXISTS pylon_orchestration_runner_statuses (
+        event_ref TEXT PRIMARY KEY,
+        runner_ref TEXT NOT NULL,
+        runner_kind TEXT NOT NULL,
+        state TEXT NOT NULL CHECK (state IN ('idle', 'queued', 'working', 'waiting', 'blocked', 'done', 'failed', 'offline')),
+        state_started_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        assignment_ref TEXT,
+        task_id TEXT,
+        dispatch_context_id TEXT,
+        pylon_ref TEXT,
+        worktree_ref TEXT,
+        capability_refs_json TEXT NOT NULL,
+        supported_control_verbs_json TEXT NOT NULL,
+        refs_json TEXT NOT NULL,
+        blocker_refs_json TEXT NOT NULL,
+        state_history_json TEXT NOT NULL,
+        retention_state TEXT NOT NULL CHECK (retention_state IN ('live', 'retained')),
+        retained_at TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_pylon_orchestration_runner_statuses_live
+        ON pylon_orchestration_runner_statuses(runner_ref, retention_state, updated_at);
+      CREATE INDEX IF NOT EXISTS idx_pylon_orchestration_runner_statuses_state
+        ON pylon_orchestration_runner_statuses(state, retention_state, updated_at);
       CREATE TABLE IF NOT EXISTS pylon_orchestration_messages (
         id TEXT PRIMARY KEY,
         thread_id TEXT NOT NULL,
@@ -1112,6 +1296,170 @@ export class PylonOrchestrationStore {
         .query("SELECT * FROM pylon_orchestration_dispatch_contexts WHERE status = $status ORDER BY created_at ASC")
         .all({ $status: status })
     return (rows as DispatchContextRow[]).map(contextFromRow)
+  }
+
+  getAgentRunnerStatusEvent(eventRef: string): OrchestrationAgentRunnerStatusEntry | null {
+    const row = this.db
+      .query("SELECT * FROM pylon_orchestration_runner_statuses WHERE event_ref = $eventRef")
+      .get({ $eventRef: eventRef }) as AgentRunnerStatusRow | null
+    return row === null ? null : statusEntryFromRow(row)
+  }
+
+  getLiveAgentRunnerStatusByRunnerRef(runnerRef: string): OrchestrationAgentRunnerStatusEntry | null {
+    const publicRunnerRef = stablePublicRef("runner.public.pylon", runnerRef)
+    const row = this.db
+      .query(`
+        SELECT * FROM pylon_orchestration_runner_statuses
+         WHERE runner_ref = $runnerRef AND retention_state = 'live'
+         ORDER BY updated_at DESC, event_ref DESC
+         LIMIT 1
+      `)
+      .get({ $runnerRef: publicRunnerRef }) as AgentRunnerStatusRow | null
+    return row === null ? null : statusEntryFromRow(row)
+  }
+
+  listAgentRunnerStatusEvents(input: {
+    retentionState?: AgentRunnerStatusRetentionState
+    runnerRef?: string
+  } = {}): OrchestrationAgentRunnerStatusEntry[] {
+    const runnerRef = input.runnerRef === undefined ? undefined : stablePublicRef("runner.public.pylon", input.runnerRef)
+    if (input.retentionState === undefined && runnerRef === undefined) {
+      return (this.db
+        .query("SELECT * FROM pylon_orchestration_runner_statuses ORDER BY updated_at ASC, event_ref ASC")
+        .all() as AgentRunnerStatusRow[]).map(statusEntryFromRow)
+    }
+    if (input.retentionState !== undefined && runnerRef === undefined) {
+      return (this.db
+        .query(`
+          SELECT * FROM pylon_orchestration_runner_statuses
+           WHERE retention_state = $retentionState
+           ORDER BY updated_at ASC, event_ref ASC
+        `)
+        .all({ $retentionState: input.retentionState }) as AgentRunnerStatusRow[]).map(statusEntryFromRow)
+    }
+    if (input.retentionState === undefined && runnerRef !== undefined) {
+      return (this.db
+        .query(`
+          SELECT * FROM pylon_orchestration_runner_statuses
+           WHERE runner_ref = $runnerRef
+           ORDER BY updated_at ASC, event_ref ASC
+        `)
+        .all({ $runnerRef: runnerRef }) as AgentRunnerStatusRow[]).map(statusEntryFromRow)
+    }
+    if (input.retentionState === undefined || runnerRef === undefined) return []
+    const rows = this.db
+      .query(`
+        SELECT * FROM pylon_orchestration_runner_statuses
+         WHERE runner_ref = $runnerRef AND retention_state = $retentionState
+         ORDER BY updated_at ASC, event_ref ASC
+      `)
+      .all({ $runnerRef: runnerRef, $retentionState: input.retentionState })
+    return (rows as AgentRunnerStatusRow[]).map(statusEntryFromRow)
+  }
+
+  ingestAgentRunnerStatusEvent(input: IngestAgentRunnerStatusEventInput): OrchestrationAgentRunnerStatusEntry {
+    const now = input.now ?? new Date(input.event.updatedAt)
+    const at = iso(now)
+    const historyLimit = input.historyLimit ?? 20
+    const existing = this.getAgentRunnerStatusEvent(stablePublicRef("event.public.pylon.runner_status", input.event.eventRef))
+    if (existing !== null) return existing
+    const previous = this.getLiveAgentRunnerStatusByRunnerRef(input.event.runnerRef)
+    const event = publicStatusEventFrom(input.event, previous, historyLimit)
+
+    this.db.run("BEGIN IMMEDIATE")
+    try {
+      this.db
+        .query(`
+          UPDATE pylon_orchestration_runner_statuses
+             SET retention_state = 'retained',
+                 retained_at = $retainedAt
+           WHERE runner_ref = $runnerRef AND retention_state = 'live'
+        `)
+        .run({ $runnerRef: event.runnerRef, $retainedAt: at })
+      this.db
+        .query(`
+          INSERT INTO pylon_orchestration_runner_statuses
+            (event_ref, runner_ref, runner_kind, state, state_started_at, updated_at,
+             assignment_ref, task_id, dispatch_context_id, pylon_ref, worktree_ref,
+             capability_refs_json, supported_control_verbs_json, refs_json,
+             blocker_refs_json, state_history_json, retention_state, retained_at)
+          VALUES
+            ($eventRef, $runnerRef, $runnerKind, $state, $stateStartedAt, $updatedAt,
+             $assignmentRef, $taskId, $dispatchContextId, $pylonRef, $worktreeRef,
+             $capabilityRefs, $supportedControlVerbs, $refs, $blockerRefs,
+             $stateHistory, 'live', NULL)
+        `)
+        .run({
+          $eventRef: event.eventRef,
+          $runnerRef: event.runnerRef,
+          $runnerKind: event.runnerKind,
+          $state: event.state,
+          $stateStartedAt: event.stateStartedAt,
+          $updatedAt: event.updatedAt,
+          $assignmentRef: event.assignmentRef ?? null,
+          $taskId: event.taskId ?? null,
+          $dispatchContextId: event.dispatchContextId ?? null,
+          $pylonRef: event.pylonRef ?? null,
+          $worktreeRef: event.worktreeRef ?? null,
+          $capabilityRefs: JSON.stringify(event.capabilityRefs ?? []),
+          $supportedControlVerbs: JSON.stringify(event.supportedControlVerbs ?? []),
+          $refs: JSON.stringify(event.refs ?? []),
+          $blockerRefs: JSON.stringify(event.blockerRefs ?? []),
+          $stateHistory: JSON.stringify(event.stateHistory ?? []),
+        })
+      if (input.event.dispatchContextId !== undefined && this.getDispatchContext(input.event.dispatchContextId) !== null) {
+        const contextStatus = dispatchStatusForNeutralState(input.event.state)
+        const taskId = contextStatus === "dispatched" ? input.event.taskId ?? null : null
+        this.db
+          .query(`
+            UPDATE pylon_orchestration_dispatch_contexts
+               SET status = $status,
+                   current_task_id = $taskId,
+                   last_heartbeat_at = $updatedAt,
+                   updated_at = $updatedAt
+             WHERE id = $contextId
+          `)
+          .run({
+            $contextId: input.event.dispatchContextId,
+            $status: contextStatus,
+            $taskId: taskId,
+            $updatedAt: input.event.updatedAt,
+          })
+      }
+      this.db.run("COMMIT")
+    } catch (error) {
+      this.db.run("ROLLBACK")
+      throw error
+    }
+
+    const stored = this.getAgentRunnerStatusEvent(event.eventRef)
+    if (stored === null) throw new Error(`failed to ingest agent runner status event ${event.eventRef}`)
+    return stored
+  }
+
+  decayAgentRunnerStatuses(input: DecayAgentRunnerStatusesInput = {}): OrchestrationAgentRunnerStatusEntry[] {
+    const now = input.now ?? new Date()
+    const staleAfterMs = input.staleAfterMs ?? 5 * 60 * 1000
+    const decayed: OrchestrationAgentRunnerStatusEntry[] = []
+    for (const live of this.listAgentRunnerStatusEvents({ retentionState: "live" })) {
+      if (!shouldDecayRunnerState(live.state)) continue
+      if (now.getTime() - Date.parse(live.updatedAt) < staleAfterMs) continue
+      decayed.push(this.ingestAgentRunnerStatusEvent({
+        event: {
+          eventRef: `${live.eventRef}.decay.${now.getTime()}`,
+          runnerRef: live.runnerRef,
+          runnerKind: live.runnerKind,
+          state: "idle",
+          stateStartedAt: iso(now),
+          updatedAt: iso(now),
+          supportedControlVerbs: live.supportedControlVerbs,
+          refs: live.refs,
+          stateHistory: live.stateHistory,
+        },
+        now,
+      }))
+    }
+    return decayed
   }
 
   recordHeartbeat(id: string, input: { at?: Date; baseBehindBy?: number; status?: DispatchContextStatus } = {}): DispatchContext {

@@ -4,6 +4,7 @@ import {
   createKhalaToolTurnAccounting,
   executeKhalaTool,
   khalaToolOk,
+  makeDeterministicKhalaToolRuntimeService,
   makeKhalaToolDispatcher,
   makeKhalaToolRegistry,
   makeKhalaToolServices,
@@ -84,6 +85,43 @@ describe("KhalaToolDispatcher", () => {
       toolName: "echo",
       turnId: "turn_1",
     })
+  })
+
+  test("uses injected runtime for event ids and duration accounting", async () => {
+    const runtime = makeDeterministicKhalaToolRuntimeService({ nowMs: 1_000, seed: "dispatcher" })
+    const afterDurations: number[] = []
+    const dispatcher = makeKhalaToolDispatcher({
+      hooks: {
+        afterTool: context => Effect.sync(() => {
+          afterDurations.push(context.durationMs)
+        }),
+      },
+    })
+
+    const dispatched = await Effect.runPromise(
+      dispatcher.dispatch({
+        invocation: { arguments: { text: "hello" }, id: "call_clock", name: "echo", sessionId: "session_1" },
+        registry: makeKhalaToolRegistry([
+          {
+            definition: echoDefinition,
+            execute: (_input, context) =>
+              Effect.gen(function* () {
+                yield* context.services.runtime.sleep(125)
+                return khalaToolOk({ modelText: "done" })
+              }),
+          },
+        ]),
+        services: makeKhalaToolServices({ runtime }),
+      }),
+    )
+
+    expect(afterDurations).toEqual([125])
+    expect(dispatched.events.map(event => event.eventId)).toEqual([
+      "khala.tool.tool_started.rs.fmdonmx0",
+      "khala.tool.tool_progress.rs.j6tor2dg",
+      "khala.tool.tool_progress.rs.nip47e1g",
+      "khala.tool.tool_completed.v9.rixc72xg",
+    ])
   })
 
   test("returns typed model-visible errors for dispatcher failures", async () => {
