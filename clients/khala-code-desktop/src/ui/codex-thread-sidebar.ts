@@ -36,6 +36,7 @@ export type CodexThreadSidebarOptions = {
   readonly archiveThread: (threadId: string) => Promise<KhalaCodeDesktopCodexThreadMutationResult>
   readonly deleteThread: (threadId: string) => Promise<KhalaCodeDesktopCodexThreadMutationResult>
   readonly forkThread: (threadId: string) => Promise<KhalaCodeDesktopCodexThreadMutationResult>
+  readonly isThreadStreaming?: (threadId: string) => boolean
   readonly listThreads: (input: {
     readonly archived: boolean
     readonly searchTerm: string
@@ -90,6 +91,36 @@ const sidebarIcon = (icon: IconName, label: string): HTMLSpanElement =>
     className: "khala-thread-sidebar-icon",
     dataIcon: label,
   })
+
+const isThreadStreaming = (
+  thread: KhalaCodeDesktopCodexThreadSummary,
+  options: Pick<CodexThreadSidebarOptions, "isThreadStreaming">,
+): boolean =>
+  thread.status === "active" || options.isThreadStreaming?.(thread.id) === true
+
+const threadStreamingIndicator = (): HTMLSpanElement => {
+  const indicator = el("span", "khala-thread-sidebar-item-spinner")
+  indicator.setAttribute("aria-hidden", "true")
+  return indicator
+}
+
+const threadTimeContent = (
+  thread: KhalaCodeDesktopCodexThreadSummary,
+  options: Pick<CodexThreadSidebarOptions, "isThreadStreaming">,
+): HTMLSpanElement => {
+  const time = el("span", "khala-thread-sidebar-item-time")
+  if (isThreadStreaming(thread, options)) {
+    time.dataset.streaming = "true"
+    time.title = "Streaming response"
+    time.setAttribute("aria-label", "Streaming response")
+    time.replaceChildren(threadStreamingIndicator(), srOnly("Streaming response"))
+    return time
+  }
+
+  time.textContent =
+    formatCompactThreadTimestamp(thread.recencyAt ?? thread.updatedAt) || thread.statusLabel
+  return time
+}
 
 const groupThreads = (
   data: KhalaCodeDesktopCodexThreadListResult,
@@ -468,11 +499,7 @@ export const mountCodexThreadSidebar = (
     })
     row.append(
       el("span", "khala-thread-sidebar-item-title", thread.title),
-      el(
-        "span",
-        "khala-thread-sidebar-item-time",
-        formatCompactThreadTimestamp(thread.recencyAt ?? thread.updatedAt) || thread.statusLabel,
-      ),
+      threadTimeContent(thread, options),
     )
 
     item.append(renamingThreadId === thread.id ? threadRenameForm(thread) : row)

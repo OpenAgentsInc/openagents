@@ -1484,6 +1484,21 @@ button {
   font-size: 0.62rem;
   font-family: var(--oa-font-code);
 }
+.khala-thread-sidebar-item-time[data-streaming="true"] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 1rem;
+  overflow: visible;
+}
+.khala-thread-sidebar-item-spinner {
+  width: 0.7rem;
+  height: 0.7rem;
+  border: 1px solid color-mix(in srgb, var(--oa-color-khala-energy-cyan) 72%, transparent);
+  border-top-color: transparent;
+  border-radius: 999px;
+  animation: khala-thread-sidebar-item-spinner 680ms linear infinite;
+}
 .khala-thread-sidebar-menu-summary {
   display: grid;
   min-width: 0;
@@ -1523,6 +1538,19 @@ button {
   line-height: 1;
   padding: 0.14rem 0.32rem;
   text-transform: uppercase;
+}
+
+@keyframes khala-thread-sidebar-item-spinner {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .khala-thread-sidebar-item-spinner {
+    animation: none;
+    border-top-color: color-mix(in srgb, var(--oa-color-khala-energy-cyan) 18%, transparent);
+  }
 }
 
 @media (max-width: 767px) {

@@ -1749,6 +1749,7 @@ const stopActiveTurn = (): void => {
   activeTurnIds.clear()
   pendingTurn = false
   thinkingTurnId = null
+  threadSidebar?.setActiveThreadId(activeCodexThreadId)
   appendMessages([
     {
       body: "Requested Codex interrupt for the active turn. You can keep typing.",
@@ -1858,6 +1859,7 @@ const submitComposer = async (): Promise<KhalaCodeDesktopMessage | null> => {
   activeTurnIds.add(turnId)
   pendingTurn = true
   thinkingTurnId = turnId
+  threadSidebar?.setActiveThreadId(activeCodexThreadId)
   render()
   requestAnimationFrame(focusComposerInput)
   try {
@@ -1892,6 +1894,7 @@ const submitComposer = async (): Promise<KhalaCodeDesktopMessage | null> => {
     activeTurnIds.delete(turnId)
     if (thinkingTurnId === turnId) thinkingTurnId = null
     pendingTurn = activeTurnIds.size > 0
+    threadSidebar?.setActiveThreadId(activeCodexThreadId)
     renderComposer()
     requestAnimationFrame(focusComposerInput)
   }
@@ -2504,6 +2507,7 @@ const threadSidebar =
         archiveThread: threadId => controls.codexThreadArchive({ threadId }),
         deleteThread: threadId => controls.codexThreadDelete({ threadId }),
         forkThread: threadId => controls.codexThreadFork({ sessionId, threadId }),
+        isThreadStreaming: threadId => activeCodexThreadId === threadId && pendingTurn,
         listThreads: async request => {
           const result = await controls.codexThreadList({
             archived: request.archived,
