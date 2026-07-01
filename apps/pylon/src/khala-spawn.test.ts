@@ -561,4 +561,86 @@ describe("Khala spawn proof gate", () => {
       "failure.khala_spawn.request_public_safety_blocked",
     )
   })
+
+  test("retries transient HTTP 409 assignment creation and reports recovery", async () => {
+    const tokenCounts = [5000, 5016]
+    const sleeps: number[] = []
+    let requestAttempts = 0
+    const result = await runPylonKhalaSpawnPlan({
+      deps: {
+        readProof: async () => exactProof,
+        readTokensServed: async () => tokenCounts.shift() ?? 5016,
+        requestAssignment: async () => {
+          requestAttempts += 1
+          if (requestAttempts < 3) {
+            throw new Error("pylon khala request failed (409): assignment slot conflict")
+          }
+          return requestResult
+        },
+        runAssignment: async () => ({
+          closeout: { status: "accepted" },
+          ok: true,
+        }),
+        sleep: async (ms) => {
+          sleeps.push(ms)
+        },
+      },
+      network: {
+        agentToken: "agent.public.test",
+        baseUrl: "https://openagents.example",
+      },
+      plan,
+      summary: {} as never,
+    })
+
+    const statuses = result.results[0]?.lifecycleEvents.flatMap((event) =>
+      event.status === undefined ? [] : [event.status]
+    )
+    expect(result.ok).toBe(true)
+    expect(requestAttempts).toBe(3)
+    expect(sleeps).toEqual([750, 2000])
+    expect(statuses).toContain("retry.khala_spawn.assignment_http_409")
+    expect(statuses).toContain("retry.khala_spawn.assignment_http_409_recovered")
+    expect(statuses).toContain("retry.khala_spawn.assignment_http_409_succeeded")
+    expect(result.results[0]?.failure).toBeNull()
+    expect(result.results[0]?.state).toBe("accepted")
+  })
+
+  test("exhausts bounded HTTP 409 assignment creation retries with public-safe blocker", async () => {
+    const sleeps: number[] = []
+    let requestAttempts = 0
+    const result = await runPylonKhalaSpawnPlan({
+      deps: {
+        readTokensServed: async () => null,
+        requestAssignment: async () => {
+          requestAttempts += 1
+          throw new Error("pylon khala request failed (409): assignment slot conflict")
+        },
+        sleep: async (ms) => {
+          sleeps.push(ms)
+        },
+      },
+      network: {
+        agentToken: "agent.public.test",
+        baseUrl: "https://openagents.example",
+      },
+      plan,
+      summary: {} as never,
+    })
+
+    const statuses = result.results[0]?.lifecycleEvents.flatMap((event) =>
+      event.status === undefined ? [] : [event.status]
+    )
+    expect(result.ok).toBe(false)
+    expect(requestAttempts).toBe(4)
+    expect(sleeps).toEqual([750, 2000, 4000])
+    expect(statuses).toContain("retry.khala_spawn.assignment_http_409")
+    expect(statuses).toContain("failure.khala_spawn.assignment_http_409_retry_exhausted")
+    expect(result.blockerRefs).toContain("blocker.khala_spawn.slot_http_409")
+    expect(result.results[0]?.failure).toEqual({
+      message: "worker failed because the OpenAgents API returned HTTP 409",
+      phase: "requesting",
+      ref: "failure.khala_spawn.http_409",
+    })
+  })
 })
