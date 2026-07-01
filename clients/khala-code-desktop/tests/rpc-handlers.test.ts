@@ -1206,6 +1206,55 @@ describe("Khala Code desktop RPC handlers", () => {
     ])
   })
 
+  test("steers the active Codex turn for BTW slash notes", async () => {
+    const steerCalls: {
+      readonly clientUserMessageId?: string
+      readonly sessionId: string
+      readonly text: string
+    }[] = []
+    const handlers = createKhalaCodeDesktopRpcRequestHandlers({
+      appleFmReadiness: () => {
+        throw new Error("not used")
+      },
+      codexChatRuntime: throwingCodexChatRuntime({
+        steerTurn: async request => {
+          steerCalls.push(request)
+          return {
+            ok: true,
+            codexTurnId: "turn-codex-btw",
+            desktopSessionId: request.sessionId,
+            desktopTurnId: "desktop-turn-btw",
+            response: { accepted: true },
+            threadId: "thread-session-btw",
+          }
+        },
+      }),
+      env: {},
+      onDeviceDeciderStatus: () => {
+        throw new Error("not used")
+      },
+      workingDirectory: process.cwd(),
+    })
+
+    await expect(handlers.slashCommandDispatch({
+      activeTurn: true,
+      raw: "/btw keep the existing Codex plan authority",
+      sessionId: "desktop-session-btw",
+    })).resolves.toMatchObject({
+      ok: true,
+      command: "btw",
+      method: "turn/steer",
+      status: "dispatched",
+      threadId: "thread-session-btw",
+    })
+
+    expect(steerCalls).toEqual([expect.objectContaining({
+      sessionId: "desktop-session-btw",
+      text: "keep the existing Codex plan authority",
+    })])
+    expect(steerCalls[0]?.clientUserMessageId).toStartWith("khala-code-slash-btw-")
+  })
+
   test("returns blocked and gap results for unavailable slash commands", async () => {
     const handlers = createKhalaCodeDesktopRpcRequestHandlers({
       appleFmReadiness: () => {
@@ -1237,6 +1286,19 @@ describe("Khala Code desktop RPC handlers", () => {
       ok: false,
       command: "init",
       status: "gap",
+    })
+
+    await expect(handlers.slashCommandDispatch({
+      raw: "/side investigate in a side conversation",
+      sessionId: "desktop-session-slash",
+    })).resolves.toMatchObject({
+      ok: false,
+      command: "side",
+      gap: {
+        kind: "upstream_app_server_gap",
+        gapId: "codex.app_server.gap.side_agent_plan_controls",
+      },
+      status: "unavailable",
     })
   })
 

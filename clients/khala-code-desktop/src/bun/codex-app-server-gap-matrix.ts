@@ -301,17 +301,19 @@ export const KHALA_CODE_CODEX_APP_SERVER_GAP_MATRIX: readonly KhalaCodeCodexAppS
     ],
     upstreamGapId: "codex.app_server.gap.side_agent_plan_controls",
     khalaAdapter:
-      "Khala can add sidebar affordances, but side-thread, subagent, plan-edit, and auto-review semantics must stay aligned to Codex app-server events.",
+      "Khala dispatches /btw through Codex turn/steer for active-turn side notes and returns typed unavailable gap state for side-thread, subagent, plan-edit, and auto-review controls until Codex exposes narrower app-server methods.",
     rationale:
-      "The TUI currently combines command parsing, popup state, and turn/server-request state. Khala should request narrower app-server methods before cloning that behavior.",
+      "BTW steering can reuse Codex's active turn authority directly. The remaining TUI controls combine command parsing, popup state, and turn/server-request state, so Khala should request narrower app-server methods before cloning that behavior.",
     linkedIssues: [
       "https://github.com/OpenAgentsInc/openagents/issues/7785",
       "https://github.com/OpenAgentsInc/openagents/issues/7795",
+      "https://github.com/OpenAgentsInc/openagents/issues/7807",
     ],
     testRefs: [
       "clients/khala-code-desktop/tests/codex-approval-decisions.test.ts",
       "clients/khala-code-desktop/tests/codex-slash-commands.test.ts",
       "clients/khala-code-desktop/tests/codex-app-server-gap-matrix.test.ts",
+      "clients/khala-code-desktop/tests/rpc-handlers.test.ts",
     ],
     updateTrigger:
       "Update when Codex stabilizes multi-agent, side-conversation, plan-edit, or auto-review app-server APIs.",

@@ -30,6 +30,10 @@ export type KhalaCodeDesktopSlashCommandDispatch =
   | {
       readonly kind: "gap"
       readonly dependency: string
+      readonly unavailable?: {
+        readonly gapId: string
+        readonly kind: "upstream_app_server_gap"
+      }
       readonly issueRef: string
     }
 
@@ -95,15 +99,31 @@ const client = (action: string): KhalaCodeDesktopSlashCommandDispatch => ({
   action,
 })
 
-const gap = (dependency: string): KhalaCodeDesktopSlashCommandDispatch => ({
+const SIDE_AGENT_PLAN_CONTROLS_GAP = "codex.app_server.gap.side_agent_plan_controls"
+
+const gap = (
+  dependency: string,
+  options: {
+    readonly unavailable?: Extract<KhalaCodeDesktopSlashCommandDispatch, { kind: "gap" }>["unavailable"]
+  } = {},
+): KhalaCodeDesktopSlashCommandDispatch => ({
   kind: "gap",
   dependency,
+  ...(options.unavailable === undefined ? {} : { unavailable: options.unavailable }),
   issueRef: GAP_ISSUE_REF,
 })
 
 const codexConfigPreference = (preference: string): KhalaCodeDesktopSlashCommandDispatch =>
   appServer("config/read", {
     appServerDependency: `${preference} is backed by Codex config/read and config/value/write; Khala only renders the desktop control.`,
+  })
+
+const sideAgentPlanControlsGap = (dependency: string): KhalaCodeDesktopSlashCommandDispatch =>
+  gap(dependency, {
+    unavailable: {
+      gapId: SIDE_AGENT_PLAN_CONTROLS_GAP,
+      kind: "upstream_app_server_gap",
+    },
   })
 
 const command = (
@@ -218,7 +238,7 @@ export const KHALA_CODE_DESKTOP_SLASH_COMMANDS = [
     availableInSideConversation: false,
     availableDuringTask: true,
     group: "turn_task",
-    dispatch: gap("Codex auto-approval review currently arrives as item/server-request state and needs a desktop review adapter."),
+    dispatch: sideAgentPlanControlsGap("Codex auto-approval review currently arrives as item/server-request state and needs a desktop review adapter."),
   }),
   command({
     enumName: "Memories",
@@ -373,7 +393,7 @@ export const KHALA_CODE_DESKTOP_SLASH_COMMANDS = [
     availableInSideConversation: false,
     availableDuringTask: false,
     group: "turn_task",
-    dispatch: gap("Codex plan editing is currently represented by turn plan updates and needs a desktop plan adapter."),
+    dispatch: sideAgentPlanControlsGap("Codex plan editing is currently represented by turn plan updates and needs a desktop plan adapter."),
   }),
   command({
     enumName: "Goal",
@@ -393,7 +413,7 @@ export const KHALA_CODE_DESKTOP_SLASH_COMMANDS = [
     availableInSideConversation: false,
     availableDuringTask: true,
     group: "turn_task",
-    dispatch: gap("Codex agent delegation needs the desktop multi-agent RPC bridge and UI from the later swarm issues."),
+    dispatch: sideAgentPlanControlsGap("Codex agent delegation needs the desktop multi-agent RPC bridge and UI from the later swarm issues."),
   }),
   command({
     enumName: "Side",
@@ -403,7 +423,7 @@ export const KHALA_CODE_DESKTOP_SLASH_COMMANDS = [
     availableInSideConversation: false,
     availableDuringTask: true,
     group: "turn_task",
-    dispatch: gap("Codex side conversations need a desktop side-thread surface and app-server mapping."),
+    dispatch: sideAgentPlanControlsGap("Codex side conversations need a desktop side-thread surface and app-server mapping."),
   }),
   command({
     enumName: "Btw",
@@ -413,7 +433,7 @@ export const KHALA_CODE_DESKTOP_SLASH_COMMANDS = [
     availableInSideConversation: false,
     availableDuringTask: true,
     group: "turn_task",
-    dispatch: gap("Codex BTW side-note steering needs a desktop adapter over turn/steer semantics."),
+    dispatch: appServer("turn/steer", { requiresArgs: true }),
   }),
   command({
     enumName: "Copy",
@@ -676,7 +696,7 @@ export const KHALA_CODE_DESKTOP_SLASH_COMMANDS = [
     availableInSideConversation: false,
     availableDuringTask: true,
     group: "turn_task",
-    dispatch: gap("Codex subagent management needs the desktop multi-agent RPC bridge from the later swarm issues."),
+    dispatch: sideAgentPlanControlsGap("Codex subagent management needs the desktop multi-agent RPC bridge from the later swarm issues."),
   }),
   command({
     enumName: "MemoryDrop",

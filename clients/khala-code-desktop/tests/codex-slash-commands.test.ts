@@ -241,4 +241,24 @@ describe("Khala Code Codex slash command registry", () => {
     }
     expect(findKhalaCodeDesktopSlashCommand("/pet")?.command).toBe("pets")
   })
+
+  test("maps BTW steering while keeping side-agent plan gaps typed", () => {
+    const btw = findKhalaCodeDesktopSlashCommand("/btw")!
+    expect(btw.dispatch).toMatchObject({
+      kind: "app_server",
+      method: "turn/steer",
+      requiresArgs: true,
+    })
+
+    for (const raw of ["/approve", "/plan", "/agent", "/subagents", "/side"]) {
+      const command = findKhalaCodeDesktopSlashCommand(raw)!
+      expect(command.dispatch).toMatchObject({
+        kind: "gap",
+        unavailable: {
+          kind: "upstream_app_server_gap",
+          gapId: "codex.app_server.gap.side_agent_plan_controls",
+        },
+      })
+    }
+  })
 })
