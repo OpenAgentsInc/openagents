@@ -1333,9 +1333,10 @@ describe("Khala Code desktop RPC handlers", () => {
 
   test("steers the active Codex turn for BTW slash notes", async () => {
     const steerCalls: {
-      readonly clientUserMessageId?: string
+      readonly clientUserMessageId?: string | undefined
       readonly sessionId: string
       readonly text: string
+      readonly turnId?: string | undefined
     }[] = []
     const handlers = createKhalaCodeDesktopRpcRequestHandlers({
       appleFmReadiness: () => {

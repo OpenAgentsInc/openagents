@@ -37,11 +37,16 @@ import {
   type CommandComposerHudHandle,
 } from "@openagentsinc/three-effect/core"
 import { Electroview } from "electrobun/view"
+import { Schema as S } from "effect"
 import * as Three from "three"
 
 import {
   KHALA_CODE_DESKTOP_DEFAULT_PREVIEW_PORT,
   KHALA_CODE_DESKTOP_RPC_MAX_REQUEST_TIME_MS,
+  KhalaCodeDesktopRpcBridgeFailure,
+  decodeKhalaCodeDesktopRpcParameters,
+  decodeKhalaCodeDesktopRpcResult,
+  type KhalaCodeDesktopRpcMethodName,
   type KhalaCodeDesktopChatTurnAttachment,
   type KhalaCodeDesktopChatTurnEvent,
   type KhalaCodeDesktopChatTurnRequest,
@@ -81,17 +86,48 @@ type DesktopRpcRequests = KhalaCodeDesktopRPCSchema["requests"]
 type SlashCommandEntry =
   Awaited<ReturnType<DesktopRpcRequests["slashCommandList"]>>["commands"][number]
 
+const rpcFailureDetail = (payload: unknown): string => {
+  if (payload !== null && typeof payload === "object") {
+    const record = payload as Record<string, unknown>
+    if (typeof record.detail === "string" && record.detail.length > 0) return record.detail
+    if (typeof record.error === "string" && record.error.length > 0) return record.error
+    if (typeof record.message === "string" && record.message.length > 0) return record.message
+  }
+  if (typeof payload === "string" && payload.length > 0) return payload
+  return "unknown error"
+}
+
 const postPreviewRpc = async <Result>(
-  method: string,
+  method: KhalaCodeDesktopRpcMethodName,
   ...args: readonly unknown[]
 ): Promise<Result> => {
+  const decodedArgs = decodeKhalaCodeDesktopRpcParameters(method, args)
   const response = await fetch(`/rpc/${encodeURIComponent(method)}`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ args }),
+    body: JSON.stringify({ args: decodedArgs }),
   })
-  if (!response.ok) throw new Error(`${method} failed with ${response.status}`)
-  return await response.json() as Result
+  if (!response.ok) {
+    const text = await response.text()
+    let payload: unknown = text
+    try {
+      payload = text.length === 0 ? "" : JSON.parse(text) as unknown
+    } catch {
+      payload = text
+    }
+    const failure = S.decodeUnknownSync(KhalaCodeDesktopRpcBridgeFailure)
+    try {
+      const decodedFailure = failure(payload)
+      throw new Error(`${method} failed with ${response.status}: ${decodedFailure.tag}: ${decodedFailure.error}`)
+    } catch (error) {
+      if (error instanceof Error && error.message.startsWith(`${method} failed with ${response.status}:`)) {
+        throw error
+      }
+      throw new Error(`${method} failed with ${response.status}: ${rpcFailureDetail(payload)}`)
+    }
+  }
+  const payload = await response.json() as unknown
+  return decodeKhalaCodeDesktopRpcResult(method, payload) as Result
 }
 
 const previewRpc = (): DesktopRpc => ({
@@ -2475,7 +2511,13 @@ const fleetPanel =
         loadGymDemoProof: () => loadGymDemoOptimization(),
         startDelegationOptimization: async () => loadGymDemoOptimization(),
         fetch: () => controls.codexFleetStatus(),
-        removeAccount: accountRef => controls.removeCodexAccount(accountRef),
+        removeAccount: async accountRef => {
+          const result = await controls.removeCodexAccount(accountRef)
+          return {
+            ok: result.ok,
+            ...(result.error === undefined ? {} : { error: result.error }),
+          }
+        },
         connectAccount: accountRef => controls.connectCodexAccount(accountRef),
         openExternal: url => controls.openExternalUrl(url),
       })
@@ -2488,7 +2530,14 @@ const settingsPanel =
     ? null
     : mountCodexSettingsPanel(settingsPanelEl, {
         fetch: () => controls.codexSettingsRead({ includeHiddenModels: true }),
-        write: request => controls.codexConfigValueWrite(request),
+        write: async request => {
+          const result = await controls.codexConfigValueWrite(request)
+          return {
+            ok: result.ok,
+            ...(result.settings === undefined ? {} : { settings: result.settings }),
+            ...(result.error === undefined ? {} : { error: result.error }),
+          }
+        },
       })
 
 const prefetchRecentThreadMessages = (
