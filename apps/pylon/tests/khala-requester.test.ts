@@ -54,6 +54,10 @@ async function runPylonCli(args: string[], env: Record<string, string>) {
       PYLON_DISABLE_DAEMON_ROUTING: "1",
       PYLON_DISABLE_OPENCODE_STARTUP: "1",
       PYLON_SPARK_BACKUP_DISABLED: "1",
+      OPENAGENTS_PYLON_CODEX_BUSY: "",
+      OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY: "",
+      OPENAGENTS_PYLON_CODEX_CONCURRENCY: "",
+      OPENAGENTS_PYLON_CODEX_QUEUED: "",
       ...env,
     },
     stderr: "pipe",
@@ -149,6 +153,7 @@ function completeTraceStatus(overrides: Record<string, unknown> = {}) {
     },
     tokenUsage: {
       rowCount: 1,
+      refs: ["event.inference.served-tokens.pylon-codex.001"],
       provider: "pylon-codex-own-capacity",
       model: "openagents/pylon-codex",
       usageTruth: "exact",
@@ -215,6 +220,7 @@ function completeProof(overrides: Record<string, unknown> = {}) {
     },
     tokenUsage: {
       rowCount: 1,
+      refs: ["event.inference.served-tokens.pylon-codex.001"],
       provider: "pylon-codex-own-capacity",
       model: "openagents/pylon-codex",
       usageTruth: "exact",
@@ -806,6 +812,7 @@ describe("pylon khala requester API", () => {
               },
               tokenUsage: {
                 rowCount: 0,
+                refs: [],
                 provider: "pylon-codex-own-capacity",
                 model: "openagents/pylon-codex",
                 usageTruth: "exact",
@@ -906,6 +913,10 @@ describe("pylon khala requester API", () => {
               },
               tokenUsage: {
                 rowCount: 2,
+                refs: [
+                  "event.inference.served-tokens.pylon-codex.001",
+                  "event.inference.served-tokens.pylon-codex.002",
+                ],
                 provider: "pylon-codex-own-capacity",
                 model: "openagents/pylon-codex",
                 usageTruth: "exact",
@@ -996,6 +1007,7 @@ describe("pylon khala requester API", () => {
         outputTokens: 0,
         provider: "pylon-codex-own-capacity",
         reasoningTokens: 0,
+        refs: [],
         rowCount: 0,
         totalTokens: 0,
         usageTruth: "exact",
@@ -1051,6 +1063,7 @@ describe("pylon khala requester API", () => {
       },
       tokenUsage: {
         ...completeProof().tokenUsage,
+        refs: [],
         rowCount: 0,
         totalTokens: 0,
       },
@@ -1084,6 +1097,7 @@ describe("pylon khala requester API", () => {
         },
         tokenUsage: {
           ...completeTraceStatus().tokenUsage,
+          refs: [],
           rowCount: 0,
           status: "pending",
           totalTokens: 0,
@@ -1124,6 +1138,10 @@ describe("pylon khala requester API", () => {
     const proofPayload = completeProof({
       tokenUsage: {
         ...completeProof().tokenUsage,
+        refs: [
+          "event.inference.served-tokens.pylon-codex.001",
+          "event.inference.served-tokens.pylon-codex.002",
+        ],
         rowCount: 2,
         totalTokens: 280,
       },
@@ -1137,6 +1155,23 @@ describe("pylon khala requester API", () => {
     expect(checklist.ok).toBe(false)
     expect(checklist.blockerRefs).toContain(
       "blocker.khala_closeout.token_usage_totals_consistent",
+    )
+    expect(checklist.blockerRefs).toContain(
+      "blocker.khala_closeout.token_usage_refs_consistent",
+    )
+  })
+
+  test("proof checklist fails closed when exact token row refs are missing", () => {
+    const proofPayload = completeProof()
+    const { refs: _refs, ...tokenUsageWithoutRefs } = proofPayload.tokenUsage
+    const checklist = evaluatePylonKhalaProofChecklist({
+      ...proofPayload,
+      tokenUsage: tokenUsageWithoutRefs,
+    } as unknown as ProofPayload)
+
+    expect(checklist.ok).toBe(false)
+    expect(checklist.blockerRefs).toContain(
+      "blocker.khala_proof.token_usage.rows_and_tokens_present",
     )
   })
 
@@ -1321,6 +1356,7 @@ describe("pylon khala requester API", () => {
             },
             tokenUsage: {
               rowCount: 1,
+              refs: ["event.inference.served-tokens.pylon-codex.001"],
               provider: "pylon-codex-own-capacity",
               model: "openagents/pylon-codex",
               usageTruth: "exact",
@@ -1482,6 +1518,7 @@ describe("pylon khala requester API", () => {
             },
             tokenUsage: {
               rowCount: 0,
+              refs: [],
               provider: "pylon-codex-own-capacity",
               model: "openagents/pylon-codex",
               usageTruth: "exact",

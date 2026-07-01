@@ -209,6 +209,7 @@ export type PylonCodexAssignmentProof = Readonly<{
   }>
   tokenUsage: Readonly<{
     rowCount: number
+    refs: ReadonlyArray<string>
     provider: typeof PYLON_CODEX_PROVIDER
     model: typeof PYLON_CODEX_MODEL_NAME
     usageTruth: 'exact'
@@ -456,6 +457,10 @@ type PylonCodexTokenProofRow = Readonly<{
   total_tokens: number | null
 }>
 
+type PylonCodexTokenUsageRefRow = Readonly<{
+  id: string
+}>
+
 type PylonCodexTraceProofRow = Readonly<{
   trace_uuid: string
   trajectory_id?: string
@@ -581,6 +586,34 @@ export const makeD1PylonCodexAssignmentProofStore = (
       )
       .first<PylonCodexTokenProofRow>()
 
+    const tokenRows = await db
+      .prepare(
+        `
+          SELECT id
+          FROM token_usage_events
+          WHERE provider = ?
+            AND model = ?
+            AND usage_truth = 'exact'
+            AND demand_kind = ?
+            AND demand_source = ?
+            AND task_ref = ?
+            AND account_ref = ?
+            AND actor_user_id = ?
+          ORDER BY observed_at ASC, id ASC
+          LIMIT 100
+        `,
+      )
+      .bind(
+        PYLON_CODEX_PROVIDER,
+        PYLON_CODEX_MODEL_NAME,
+        PYLON_CODEX_DEMAND_KIND,
+        PYLON_CODEX_DEMAND_SOURCE,
+        input.assignmentRef,
+        `agent:${input.ownerAgentUserId}`,
+        input.ownerUserId,
+      )
+      .all<PylonCodexTokenUsageRefRow>()
+
     const traceTrajectoryPrefix = `pylon_codex:${input.assignmentRef}:`
     const traceFilter = `
       owner_user_id = ?
@@ -663,6 +696,7 @@ export const makeD1PylonCodexAssignmentProofStore = (
 
     const traces = traceRows.results ?? []
     const rawEvents = rawRows.results ?? []
+    const tokenRefs = tokenRows.results ?? []
 
     return {
       schemaVersion: 'openagents.pylon.codex_assignment_proof.v1',
@@ -674,6 +708,7 @@ export const makeD1PylonCodexAssignmentProofStore = (
       },
       tokenUsage: {
         rowCount: Number(tokenRow?.row_count ?? 0),
+        refs: boundedProofRefs(tokenRefs, 'id'),
         provider: PYLON_CODEX_PROVIDER,
         model: PYLON_CODEX_MODEL_NAME,
         usageTruth: 'exact',
@@ -734,6 +769,34 @@ export const makeD1PylonCodexAssignmentProofStore = (
         input.ownerUserId,
       )
       .first<PylonCodexTokenProofRow>()
+
+    const tokenRows = await db
+      .prepare(
+        `
+          SELECT id
+          FROM token_usage_events
+          WHERE provider = ?
+            AND model = ?
+            AND usage_truth = 'exact'
+            AND demand_kind = ?
+            AND demand_source = ?
+            AND task_ref = ?
+            AND account_ref = ?
+            AND actor_user_id = ?
+          ORDER BY observed_at ASC, id ASC
+          LIMIT 100
+        `,
+      )
+      .bind(
+        PYLON_CODEX_PROVIDER,
+        PYLON_CODEX_MODEL_NAME,
+        PYLON_CODEX_DEMAND_KIND,
+        PYLON_CODEX_DEMAND_SOURCE,
+        input.assignment.assignmentRef,
+        `agent:${input.ownerAgentUserId}`,
+        input.ownerUserId,
+      )
+      .all<PylonCodexTokenUsageRefRow>()
 
     const eventRow = await db
       .prepare(
@@ -912,6 +975,7 @@ export const makeD1PylonCodexAssignmentProofStore = (
 
     const traces = traceRows.results ?? []
     const rawEvents = rawRows.results ?? []
+    const tokenRefs = tokenRows.results ?? []
     const finalTraceUuid =
       traces.find(row => !String(row.trajectory_id ?? '').includes(':chunk:'))
         ?.trace_uuid ?? null
@@ -975,6 +1039,7 @@ export const makeD1PylonCodexAssignmentProofStore = (
       },
       tokenUsage: {
         rowCount: tokenRowCount,
+        refs: boundedProofRefs(tokenRefs, 'id'),
         provider: PYLON_CODEX_PROVIDER,
         model: PYLON_CODEX_MODEL_NAME,
         usageTruth: 'exact',
