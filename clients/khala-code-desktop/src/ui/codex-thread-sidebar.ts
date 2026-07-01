@@ -15,9 +15,11 @@ import {
   type BasecoatMenuDomPoint,
 } from "@openagentsinc/ui/menu-dom"
 import { formatCompactThreadTimestamp } from "./thread-time"
+import { recentThreadsForHotkeys } from "./thread-hotkeys"
 
 export type CodexThreadSidebarHandle = {
   readonly refresh: () => Promise<void>
+  readonly selectRecentThread: (index: number) => Promise<boolean>
   readonly setActiveThreadId: (threadId: string | null) => void
   readonly setVisible: (visible: boolean) => void
 }
@@ -125,7 +127,7 @@ export const mountCodexThreadSidebar = (
     render()
   }
 
-  const selectThread = async (threadId: string): Promise<void> => {
+  const selectThread = async (threadId: string): Promise<boolean> => {
     threadMenu.close()
     try {
       const result = await options.resumeThread(threadId)
@@ -135,8 +137,10 @@ export const mountCodexThreadSidebar = (
         messages: messagesForResult(result),
       })
       render()
+      return true
     } catch (error) {
       setStatusError(error)
+      return false
     }
   }
 
@@ -188,6 +192,29 @@ export const mountCodexThreadSidebar = (
     render()
     if (name.length === 0 || name === thread.title.trim()) return
     void runMutation(() => options.renameThread(thread.id, name))
+  }
+
+  const loadRecentThreadData = async (): Promise<KhalaCodeDesktopCodexThreadListResult> => {
+    const requestSequence = ++refreshSequence
+    const data = await options.listThreads({ archived: false, searchTerm: "" })
+    if (requestSequence !== refreshSequence) return data
+    state = { phase: "ready", data }
+    activeThreadId = data.threads?.find(thread => thread.id === activeThreadId)?.id ?? activeThreadId
+    render()
+    return data
+  }
+
+  const selectRecentThread = async (index: number): Promise<boolean> => {
+    if (!Number.isInteger(index) || index < 0 || index >= 10) return false
+    try {
+      const data = await loadRecentThreadData()
+      const thread = recentThreadsForHotkeys(data.threads ?? [])[index]
+      if (thread === undefined) return false
+      return await selectThread(thread.id)
+    } catch (error) {
+      setStatusError(error)
+      return false
+    }
   }
 
   const threadMenuHeader = (
@@ -489,6 +516,7 @@ export const mountCodexThreadSidebar = (
 
   return {
     refresh,
+    selectRecentThread,
     setActiveThreadId(threadId) {
       activeThreadId = threadId
       render()

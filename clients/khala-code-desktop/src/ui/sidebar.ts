@@ -51,9 +51,9 @@ type NavigatorWithUserAgentData = Navigator & {
 }
 
 type HotbarShortcut = Readonly<{
-  ariaModifier: "Control" | "Meta"
-  label: "Command" | "Ctrl"
-  modifierKey: "ctrlKey" | "metaKey"
+  ariaModifier: "Alt"
+  label: "Alt" | "Option"
+  modifierKey: "altKey"
 }>
 
 const platformName = (): string => {
@@ -71,19 +71,15 @@ const isApplePlatform = (): boolean =>
 const hotbarShortcut = (): HotbarShortcut =>
   isApplePlatform()
     ? {
-        ariaModifier: "Meta",
-        label: "Command",
-        modifierKey: "metaKey",
+        ariaModifier: "Alt",
+        label: "Option",
+        modifierKey: "altKey",
       }
     : {
-        ariaModifier: "Control",
-        label: "Ctrl",
-        modifierKey: "ctrlKey",
+        ariaModifier: "Alt",
+        label: "Alt",
+        modifierKey: "altKey",
       }
-
-const isEditableTarget = (target: EventTarget | null): boolean =>
-  target instanceof Element &&
-  target.closest("input, textarea, select, [contenteditable='true']") !== null
 
 export const mountKhalaCodeSidebar = (
   container: HTMLElement,
@@ -161,19 +157,12 @@ export const mountKhalaCodeSidebar = (
     const slot = KHALA_CODE_HOTBAR_SLOTS.find(item => item.hotkey === event.key)
     if (slot === undefined) return
 
-    const editable = isEditableTarget(event.target)
     const explicitHotkey =
       event[shortcut.modifierKey] &&
-      !event.altKey &&
       !event.shiftKey &&
-      (shortcut.modifierKey === "metaKey" ? !event.ctrlKey : !event.metaKey)
-    const ambientHotkey =
-      !editable &&
-      !event.altKey &&
-      !event.metaKey &&
       !event.ctrlKey &&
-      !event.shiftKey
-    if (!explicitHotkey && !ambientHotkey) return
+      !event.metaKey
+    if (!explicitHotkey) return
 
     event.preventDefault()
     activate(slot)

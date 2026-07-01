@@ -65,6 +65,7 @@ import {
 import type { KhalaGymBridgeProofLike } from "./gym-graph-projection"
 import { mountGymPane, type GymPaneState } from "./gym-pane"
 import { mountKhalaCodeSidebar } from "./sidebar"
+import { recentThreadIndexForDigitKey } from "./thread-hotkeys"
 import "./styles.css"
 
 type DesktopRpc = ReturnType<typeof Electroview.defineRPC<KhalaCodeDesktopRPCSchema>>
@@ -638,6 +639,20 @@ const proxyTranscriptKeyScroll = (event: KeyboardEvent): void => {
   const before = messageList.scrollTop
   setTranscriptScrollTop(before + delta)
   if (messageList.scrollTop !== before) event.preventDefault()
+}
+
+const recentThreadHotkeyIndexForEvent = (event: KeyboardEvent): number | null => {
+  if (
+    event.defaultPrevented ||
+    event.altKey ||
+    event.ctrlKey ||
+    event.metaKey ||
+    event.shiftKey ||
+    isComposerScrollTarget(event.target)
+  ) {
+    return null
+  }
+  return recentThreadIndexForDigitKey(event.key)
 }
 
 const statusForComposer = (): CommandComposerStatus => {
@@ -2262,6 +2277,17 @@ const threadSidebar =
         onNewThreadRequested: beginNewCodexThread,
         onThreadSelected: activateCodexThread,
       })
+
+window.addEventListener("keydown", event => {
+  const recentThreadIndex = recentThreadHotkeyIndexForEvent(event)
+  if (recentThreadIndex === null) return
+  if (threadSidebar === null) return
+
+  event.preventDefault()
+  void threadSidebar.selectRecentThread(recentThreadIndex).then(selected => {
+    if (selected) setActiveView("chat")
+  })
+})
 
 const setActiveView = (value: string): void => {
   const activeValue = value === "fleet" || value === "settings" ? value : "chat"
