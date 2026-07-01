@@ -133,6 +133,10 @@ const TOOL_KIND_MAP: Record<string, string[]> = {
   grep: ["Grep"],
 }
 
+// A model that guesses one wrong absolute path should get the denial and
+// recover; only repeated boundary offenses abort the run (issue #7914).
+const WORKSPACE_ESCAPE_DENIAL_BUDGET = 3
+
 const DEFAULT_ALLOWED_TOOLS = ["Read", "Edit", "Write", "Bash", "Glob", "Grep"]
 const DEFAULT_MAX_TURNS = 16
 const MAX_MAX_TURNS = 50
@@ -165,7 +169,9 @@ const CLAUDE_AGENT_FIXTURES: Record<string, ClaudeAgentFixture> = {
       ].join("\n"),
     },
     instructions: [
-      "You are working in a bounded fixture workspace.",
+      "You are working in a bounded fixture workspace; your current working",
+      "directory IS that workspace — use relative paths (./sum.ts), never",
+      "assumed absolute paths.",
       "The test in sum.test.ts fails because sum.ts has a bug.",
       "Fix the implementation in sum.ts so the test passes, then run",
       "`bun test sum.test.ts` to confirm. Only modify files inside this",
@@ -353,7 +359,9 @@ async function materializeClaudeAgentWorkspace(input: {
       acceptanceResultRef: "git_checkout_verified",
       artifactSourceRef: materialized.sourceRef,
       instructions: [
-        "You are working in a bounded public repository checkout.",
+        "You are working in a bounded public repository checkout; your",
+        "current working directory IS that checkout — use relative paths,",
+        "never assumed absolute paths.",
         `Task objective: ${input.task.objectiveSummary ?? "complete the referenced Autopilot task"}.`,
         "Only modify files inside this checkout.",
         `Run the verification command ref ${input.task.workspace.verificationCommand.commandRef} before finishing.`,
@@ -432,6 +440,7 @@ export async function runWithClaudeAgentSdk(
   const abort = new AbortController()
   const timer = setTimeout(() => abort.abort(), input.timeoutMs)
   let escaped = false
+  let escapeDenials = 0
   let editedFileCount = 0
   let commandCount = 0
   let turnCount = 0
@@ -442,13 +451,30 @@ export async function runWithClaudeAgentSdk(
   const guard = async (hookInput: unknown) => {
     const record = hookInput as { tool_name?: string; tool_input?: unknown }
     if (toolInputEscapesWorkspace(record.tool_name, record.tool_input, input.cwd)) {
-      escaped = true
-      abort.abort()
+      escapeDenials += 1
+      if (Bun.env.PYLON_CLAUDE_GUARD_DEBUG === "1") {
+        // Owner-local diagnostic only; tool_input may carry local paths so it
+        // must never reach public projections or closeout refs.
+        console.error(
+          `[claude-guard] denied ${record.tool_name ?? "unknown"} (${escapeDenials}/${WORKSPACE_ESCAPE_DENIAL_BUDGET}):`,
+          JSON.stringify(record.tool_input)?.slice(0, 400),
+        )
+      }
+      // Every offending call is denied (containment), but a model that
+      // guesses a wrong absolute path (seen live: Read /root/task/sum.ts in
+      // the fixture, issue #7914) gets the denial reason back and can
+      // recover with the correct cwd-relative path. Only repeated offenses
+      // abort the run.
+      if (escapeDenials >= WORKSPACE_ESCAPE_DENIAL_BUDGET) {
+        escaped = true
+        abort.abort()
+      }
       return {
         hookSpecificOutput: {
           hookEventName: "PreToolUse" as const,
           permissionDecision: "deny" as const,
-          permissionDecisionReason: "claude_agent.workspace_boundary",
+          permissionDecisionReason:
+            "claude_agent.workspace_boundary: path is outside the assignment workspace; use paths relative to the working directory",
         },
       }
     }
