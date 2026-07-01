@@ -404,7 +404,7 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
         method: 'GET',
         auth: 'public',
         description:
-          'Public-safe Tokens Served model/provider mix for /stats: schemaVersion openagents.public_khala_model_mix.v1, window (today/7d/30d/all, default 30d), totalTokens, and canonical aggregate groups { family, label, tokens, reqs, pct }, plus generatedAt and the live_at_read staleness contract. Raw provider ids and model ids are collapsed into glm, fireworks_deepseek, pylon_codex, codex_direct, pylon_claude, gpt_oss, gemini, or other before serving; all real served-token rows count so the mix reconciles with the headline counter. No per-user, per-team, demand label, raw provider/model, or secret material. Read-only stats projection; grants no payout, settlement, routing, provider, or public-claim authority.',
+          'Public-safe Tokens Served model/provider mix for /stats: schemaVersion openagents.public_khala_model_mix.v1, window (today/7d/30d/all, default 30d), totalTokens, and canonical aggregate groups { family, label, tokens, reqs, pct }, plus generatedAt and a rebuilt_on_transition staleness contract maintained on token ledger inserts. Raw provider ids and model ids are collapsed into glm, fireworks_deepseek, pylon_codex, codex_direct, pylon_claude, gpt_oss, gemini, or other before serving; all real served-token rows count so the mix reconciles with the headline counter. No per-user, per-team, demand label, raw provider/model, or secret material. Read-only stats projection; grants no payout, settlement, routing, provider, or public-claim authority.',
       },
       {
         id: 'public_khala_tokens_served_channel_mix',
@@ -412,7 +412,7 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
         method: 'GET',
         auth: 'public',
         description:
-          'Public-safe Tokens Served channel mix for /stats: schemaVersion openagents.public_khala_channel_mix.v1, window (today/7d/30d/all, default 30d), totalTokens, and aggregate groups { channel, label, tokens, reqs, pct }, plus generatedAt and the live_at_read staleness contract. Channel is bounded to khala_api or direct_local, with legacy rows defaulted to khala_api. No per-user, per-team, account, raw provider/model, prompt, completion, trace, or secret material. Read-only stats projection; grants no payout, settlement, routing, provider, or public-claim authority.',
+          'Public-safe Tokens Served channel mix for /stats: schemaVersion openagents.public_khala_channel_mix.v1, window (today/7d/30d/all, default 30d), totalTokens, and aggregate groups { channel, label, tokens, reqs, pct }, plus generatedAt and a rebuilt_on_transition staleness contract maintained on token ledger inserts. Channel is bounded to khala_api or direct_local, with legacy rows defaulted to khala_api. No per-user, per-team, account, raw provider/model, prompt, completion, trace, or secret material. Read-only stats projection; grants no payout, settlement, routing, provider, or public-claim authority.',
       },
       {
         id: 'public_pylon_capacity_funnel',

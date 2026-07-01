@@ -289,6 +289,118 @@ const makeMemoryD1 = (
           )
         }
 
+        if (
+          query.includes(
+            'FROM public_khala_tokens_served_model_daily_rollups',
+          )
+        ) {
+          const hasDayBounds = query.includes('WHERE day >= ?')
+          const startDay = hasDayBounds ? String(values[0]) : undefined
+          const endDay = hasDayBounds ? String(values[1]) : undefined
+          const rollups = store.rows.reduce(
+            (groups, row) => {
+              const day = String(row.observed_at).slice(0, 10)
+              if (
+                (startDay !== undefined && day < startDay) ||
+                (endDay !== undefined && day > endDay)
+              ) {
+                return groups
+              }
+              const provider = String(row.provider ?? '')
+              const model = String(row.model ?? '')
+              const key = `${provider}\u0000${model}`
+              const previous = groups.get(key) ?? {
+                model,
+                provider,
+                tokens: 0,
+                usage_events: 0,
+              }
+              groups.set(key, {
+                ...previous,
+                tokens:
+                  previous.tokens +
+                  Number(row.input_tokens ?? 0) +
+                  Number(row.output_tokens ?? 0),
+                usage_events: previous.usage_events + 1,
+              })
+
+              return groups
+            },
+            new Map<
+              string,
+              {
+                model: string
+                provider: string
+                tokens: number
+                usage_events: number
+              }
+            >(),
+          )
+
+          return Promise.resolve(
+            makeResult<T>(
+              [...rollups.values()].map(row => ({
+                model: row.model === '' ? null : row.model,
+                provider: row.provider === '' ? null : row.provider,
+                tokens: row.tokens,
+                usage_events: row.usage_events,
+              })) as Array<T>,
+            ),
+          )
+        }
+
+        if (
+          query.includes(
+            'FROM public_khala_tokens_served_channel_daily_rollups',
+          )
+        ) {
+          const hasDayBounds = query.includes('WHERE day >= ?')
+          const startDay = hasDayBounds ? String(values[0]) : undefined
+          const endDay = hasDayBounds ? String(values[1]) : undefined
+          const rollups = store.rows.reduce(
+            (groups, row) => {
+              const day = String(row.observed_at).slice(0, 10)
+              if (
+                (startDay !== undefined && day < startDay) ||
+                (endDay !== undefined && day > endDay)
+              ) {
+                return groups
+              }
+              const demandChannel =
+                String(row.demand_channel ?? '') === 'direct_local'
+                  ? 'direct_local'
+                  : 'khala_api'
+              const previous = groups.get(demandChannel) ?? {
+                demand_channel: demandChannel,
+                tokens: 0,
+                usage_events: 0,
+              }
+              groups.set(demandChannel, {
+                ...previous,
+                tokens:
+                  previous.tokens +
+                  Number(row.input_tokens ?? 0) +
+                  Number(row.output_tokens ?? 0),
+                usage_events: previous.usage_events + 1,
+              })
+
+              return groups
+            },
+            new Map<
+              string,
+              {
+                demand_channel: string
+                tokens: number
+                usage_events: number
+              }
+            >(),
+          )
+
+          return Promise.resolve(
+            makeResult<T>([...rollups.values()] as Array<T>),
+          )
+        }
+
         const rows = filteredRows(store.rows, query, values, store.preferences)
 
         if (query.includes('GROUP BY COALESCE(provider')) {
@@ -908,6 +1020,20 @@ describe('token usage ledger', () => {
     expect(demandChannelMigration).toContain("'direct_local'")
     expect(demandChannelMigration).toContain(
       'idx_token_usage_events_demand_channel',
+    )
+
+    const publicStatsMixRollupMigration = await readFile(
+      new URL(
+        '../migrations/0265_public_khala_tokens_served_mix_rollups.sql',
+        import.meta.url,
+      ),
+      'utf8',
+    )
+    expect(publicStatsMixRollupMigration).toContain(
+      'public_khala_tokens_served_model_daily_rollups',
+    )
+    expect(publicStatsMixRollupMigration).toContain(
+      'public_khala_tokens_served_channel_daily_rollups',
     )
   })
 

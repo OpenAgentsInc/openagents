@@ -7,7 +7,7 @@ import { Effect, Schema as S } from 'effect'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
 import {
   PublicProjectionStalenessContract,
-  liveAtReadStaleness,
+  rebuiltOnTransitionStaleness,
 } from './public-projection-staleness'
 import { currentIsoTimestamp } from './runtime-primitives'
 import {
@@ -68,7 +68,9 @@ export const handlePublicKhalaTokensServedChannelMixApi = (
           pct: group.pct,
         })),
         generatedAt: nowIso(),
-        staleness: liveAtReadStaleness(['token_usage_events']),
+        staleness: rebuiltOnTransitionStaleness(0, [
+          'token_usage_events_insert',
+        ]),
       }
 
       return noStoreJsonResponse(payload)

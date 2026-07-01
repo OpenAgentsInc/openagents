@@ -242,6 +242,19 @@ type TokenUsageGroupRow = TokenUsageCountRow &
     label: string | null
   }>
 
+type PublicTokensServedModelMixRow = Readonly<{
+  model: string | null
+  provider: string | null
+  tokens: number | null
+  usage_events: number | null
+}>
+
+type PublicTokensServedChannelMixRow = Readonly<{
+  demand_channel: string | null
+  tokens: number | null
+  usage_events: number | null
+}>
+
 type TokenUsageActorGroupRow = TokenUsageCountRow &
   Readonly<{
     account_ref: string | null
@@ -1331,6 +1344,281 @@ const readPublicTokensServedHistoryFromDailyRollups = (
   })
 }
 
+const utcDayKeyFromTimestamp = (timestamp: string): string | undefined => {
+  const date = new Date(timestamp)
+  return Number.isFinite(date.getTime())
+    ? date.toISOString().slice(0, 10)
+    : undefined
+}
+
+const utcDayStartIso = (day: string): string | undefined => {
+  const date = new Date(`${day}T00:00:00.000Z`)
+  return Number.isFinite(date.getTime()) ? date.toISOString() : undefined
+}
+
+const utcCalendarDayAfter = (
+  day: string,
+  days: number,
+): string | undefined => {
+  const startIso = utcDayStartIso(day)
+  if (startIso === undefined) {
+    return undefined
+  }
+
+  const date = new Date(startIso)
+  date.setUTCDate(date.getUTCDate() + days)
+  return date.toISOString().slice(0, 10)
+}
+
+const publicMixRollupWindow = (
+  input: Readonly<{ nowIso: string; since: string | undefined }>,
+): Readonly<
+  | {
+      mode: 'all'
+    }
+  | {
+      firstDay: string
+      firstDayEndIso: string
+      firstDayIsPartial: boolean
+      lastDay: string
+      mode: 'window'
+      rollupStartDay: string
+      since: string
+    }
+> => {
+  if (input.since === undefined) {
+    return { mode: 'all' }
+  }
+
+  const firstDay = utcDayKeyFromTimestamp(input.since)
+  const lastDay = utcDayKeyFromTimestamp(input.nowIso)
+  if (firstDay === undefined || lastDay === undefined) {
+    return { mode: 'all' }
+  }
+
+  const firstDayStartIso = utcDayStartIso(firstDay)
+  const nextDay = utcCalendarDayAfter(firstDay, 1)
+  const firstDayEndIso =
+    nextDay === undefined ? undefined : utcDayStartIso(nextDay)
+  if (
+    firstDayStartIso === undefined ||
+    nextDay === undefined ||
+    firstDayEndIso === undefined
+  ) {
+    return { mode: 'all' }
+  }
+
+  const firstDayIsPartial = input.since > firstDayStartIso
+  const rollupStartDay = firstDayIsPartial ? nextDay : firstDay
+
+  return {
+    firstDay,
+    firstDayEndIso,
+    firstDayIsPartial,
+    lastDay,
+    mode: 'window',
+    rollupStartDay,
+    since: input.since,
+  }
+}
+
+const readPublicTokensServedModelMixRaw = (
+  db: D1Database,
+  input: Readonly<{
+    before: string | undefined
+    since: string | undefined
+  }>,
+): Effect.Effect<
+  ReadonlyArray<PublicTokensServedModelMixRow>,
+  TokenUsageLedgerStorageError
+> => {
+  const bounds = [
+    ...(input.since === undefined ? [] : ['observed_at >= ?']),
+    ...(input.before === undefined ? [] : ['observed_at < ?']),
+  ]
+  const where =
+    bounds.length === 0
+      ? publicTokensServedDemandWhere
+      : `${bounds.join(' AND ')} AND ${publicTokensServedDemandWhere}`
+  const values = [
+    ...(input.since === undefined ? [] : [input.since]),
+    ...(input.before === undefined ? [] : [input.before]),
+  ]
+
+  return d1Effect('tokenUsageEvents.publicTokensServedModelMix.raw', () =>
+    db
+      .prepare(
+        `SELECT
+            provider,
+            model,
+            COALESCE(SUM(input_tokens), 0) + COALESCE(SUM(output_tokens), 0)
+              AS tokens,
+            COUNT(*) AS usage_events
+           FROM token_usage_events
+          WHERE ${where}
+          GROUP BY provider, model`,
+      )
+      .bind(...values)
+      .all<PublicTokensServedModelMixRow>(),
+  ).pipe(Effect.map(rows => rows.results))
+}
+
+const readPublicTokensServedModelMixRollups = (
+  db: D1Database,
+  input: Readonly<{
+    nowIso: string
+    since: string | undefined
+  }>,
+): Effect.Effect<
+  ReadonlyArray<PublicTokensServedModelMixRow>,
+  TokenUsageLedgerStorageError
+> => {
+  const window = publicMixRollupWindow(input)
+  const rollupRead =
+    window.mode === 'all'
+      ? d1Effect('tokenUsageEvents.publicTokensServedModelMix.rollups', () =>
+          db
+            .prepare(
+              `SELECT
+                  NULLIF(provider, '') AS provider,
+                  NULLIF(model, '') AS model,
+                  COALESCE(SUM(tokens_served), 0) AS tokens,
+                  COALESCE(SUM(usage_events), 0) AS usage_events
+                 FROM public_khala_tokens_served_model_daily_rollups
+                GROUP BY provider, model`,
+            )
+            .all<PublicTokensServedModelMixRow>(),
+        ).pipe(Effect.map(rows => rows.results))
+      : window.rollupStartDay > window.lastDay
+        ? Effect.succeed<ReadonlyArray<PublicTokensServedModelMixRow>>([])
+        : d1Effect('tokenUsageEvents.publicTokensServedModelMix.rollups', () =>
+            db
+              .prepare(
+                `SELECT
+                    NULLIF(provider, '') AS provider,
+                    NULLIF(model, '') AS model,
+                    COALESCE(SUM(tokens_served), 0) AS tokens,
+                    COALESCE(SUM(usage_events), 0) AS usage_events
+                   FROM public_khala_tokens_served_model_daily_rollups
+                  WHERE day >= ?
+                    AND day <= ?
+                  GROUP BY provider, model`,
+              )
+              .bind(window.rollupStartDay, window.lastDay)
+              .all<PublicTokensServedModelMixRow>(),
+          ).pipe(Effect.map(rows => rows.results))
+
+  return Effect.gen(function* () {
+    const partialRows =
+      window.mode === 'window' && window.firstDayIsPartial
+        ? yield* readPublicTokensServedModelMixRaw(db, {
+            before: window.firstDayEndIso,
+            since: window.since,
+          })
+        : []
+    const rollupRows = yield* rollupRead
+
+    return [...partialRows, ...rollupRows]
+  })
+}
+
+const readPublicTokensServedChannelMixRaw = (
+  db: D1Database,
+  input: Readonly<{
+    before: string | undefined
+    since: string | undefined
+  }>,
+): Effect.Effect<
+  ReadonlyArray<PublicTokensServedChannelMixRow>,
+  TokenUsageLedgerStorageError
+> => {
+  const bounds = [
+    ...(input.since === undefined ? [] : ['observed_at >= ?']),
+    ...(input.before === undefined ? [] : ['observed_at < ?']),
+  ]
+  const where =
+    bounds.length === 0
+      ? publicTokensServedDemandWhere
+      : `${bounds.join(' AND ')} AND ${publicTokensServedDemandWhere}`
+  const values = [
+    ...(input.since === undefined ? [] : [input.since]),
+    ...(input.before === undefined ? [] : [input.before]),
+  ]
+
+  return d1Effect('tokenUsageEvents.publicTokensServedChannelMix.raw', () =>
+    db
+      .prepare(
+        `SELECT
+            COALESCE(NULLIF(demand_channel, ''), 'khala_api') AS demand_channel,
+            COALESCE(SUM(input_tokens), 0) + COALESCE(SUM(output_tokens), 0)
+              AS tokens,
+            COUNT(*) AS usage_events
+           FROM token_usage_events
+          WHERE ${where}
+          GROUP BY demand_channel`,
+      )
+      .bind(...values)
+      .all<PublicTokensServedChannelMixRow>(),
+  ).pipe(Effect.map(rows => rows.results))
+}
+
+const readPublicTokensServedChannelMixRollups = (
+  db: D1Database,
+  input: Readonly<{
+    nowIso: string
+    since: string | undefined
+  }>,
+): Effect.Effect<
+  ReadonlyArray<PublicTokensServedChannelMixRow>,
+  TokenUsageLedgerStorageError
+> => {
+  const window = publicMixRollupWindow(input)
+  const rollupRead =
+    window.mode === 'all'
+      ? d1Effect('tokenUsageEvents.publicTokensServedChannelMix.rollups', () =>
+          db
+            .prepare(
+              `SELECT
+                  demand_channel,
+                  COALESCE(SUM(tokens_served), 0) AS tokens,
+                  COALESCE(SUM(usage_events), 0) AS usage_events
+                 FROM public_khala_tokens_served_channel_daily_rollups
+                GROUP BY demand_channel`,
+            )
+            .all<PublicTokensServedChannelMixRow>(),
+        ).pipe(Effect.map(rows => rows.results))
+      : window.rollupStartDay > window.lastDay
+        ? Effect.succeed<ReadonlyArray<PublicTokensServedChannelMixRow>>([])
+        : d1Effect('tokenUsageEvents.publicTokensServedChannelMix.rollups', () =>
+            db
+              .prepare(
+                `SELECT
+                    demand_channel,
+                    COALESCE(SUM(tokens_served), 0) AS tokens,
+                    COALESCE(SUM(usage_events), 0) AS usage_events
+                   FROM public_khala_tokens_served_channel_daily_rollups
+                  WHERE day >= ?
+                    AND day <= ?
+                  GROUP BY demand_channel`,
+              )
+              .bind(window.rollupStartDay, window.lastDay)
+              .all<PublicTokensServedChannelMixRow>(),
+          ).pipe(Effect.map(rows => rows.results))
+
+  return Effect.gen(function* () {
+    const partialRows =
+      window.mode === 'window' && window.firstDayIsPartial
+        ? yield* readPublicTokensServedChannelMixRaw(db, {
+            before: window.firstDayEndIso,
+            since: window.since,
+          })
+        : []
+    const rollupRows = yield* rollupRead
+
+    return [...partialRows, ...rollupRows]
+  })
+}
+
 const readPublicTokensServedHistoryForTimezone = (
   db: D1Database,
   input: Readonly<{
@@ -1474,7 +1762,7 @@ const insertEventRow = (
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(...insertBindings(row))
-    const rollupStatements = publicTokensServedDailyRollupStatements(db, row)
+    const rollupStatements = publicTokensServedRollupStatements(db, row)
     const results = await db.batch([insertStatement, ...rollupStatements])
 
     if (!results.every(result => result.success)) {
@@ -1526,6 +1814,68 @@ const publicTokensServedDailyRollupStatements = (
       ),
   ]
 }
+
+const publicTokensServedMixRollupStatements = (
+  db: D1Database,
+  row: TokenUsageEventRow,
+): ReadonlyArray<D1PreparedStatement> => {
+  const day = utcDayKeyFromTimestamp(row.observed_at)
+  if (day === undefined) {
+    return []
+  }
+
+  const tokensServed = Math.max(
+    0,
+    Math.trunc(row.input_tokens ?? 0) + Math.trunc(row.output_tokens ?? 0),
+  )
+  const demandChannel = demandChannelFromText(row.demand_channel)
+
+  return [
+    db
+      .prepare(
+        `INSERT INTO public_khala_tokens_served_model_daily_rollups (
+            day,
+            provider,
+            model,
+            tokens_served,
+            usage_events,
+            updated_at
+          ) VALUES (?, ?, ?, ?, 1, ?)
+          ON CONFLICT(day, provider, model) DO UPDATE SET
+            tokens_served = public_khala_tokens_served_model_daily_rollups.tokens_served
+              + excluded.tokens_served,
+            usage_events = public_khala_tokens_served_model_daily_rollups.usage_events
+              + excluded.usage_events,
+            updated_at = excluded.updated_at`,
+      )
+      .bind(day, row.provider ?? '', row.model ?? '', tokensServed, row.ingested_at),
+    db
+      .prepare(
+        `INSERT INTO public_khala_tokens_served_channel_daily_rollups (
+            day,
+            demand_channel,
+            tokens_served,
+            usage_events,
+            updated_at
+          ) VALUES (?, ?, ?, 1, ?)
+          ON CONFLICT(day, demand_channel) DO UPDATE SET
+            tokens_served = public_khala_tokens_served_channel_daily_rollups.tokens_served
+              + excluded.tokens_served,
+            usage_events = public_khala_tokens_served_channel_daily_rollups.usage_events
+              + excluded.usage_events,
+            updated_at = excluded.updated_at`,
+      )
+      .bind(day, demandChannel, tokensServed, row.ingested_at),
+  ]
+}
+
+const publicTokensServedRollupStatements = (
+  db: D1Database,
+  row: TokenUsageEventRow,
+): ReadonlyArray<D1PreparedStatement> => [
+  ...publicTokensServedDailyRollupStatements(db, row),
+  ...publicTokensServedMixRollupStatements(db, row),
+]
 
 const aggregateWhere = (
   filters: TokenUsageLedgerFilters,
@@ -2721,41 +3071,19 @@ export const makeD1TokenUsageLedger = (
       )
       const since = leaderboardWindowSince(window, nowIso, runtime)
 
-      const rows = yield* d1Effect(
-        'tokenUsageEvents.publicTokensServedModelMix',
-        () =>
-          db
-            .prepare(
-              since === undefined
-                ? `SELECT
-                      provider,
-                      model,
-                      COALESCE(SUM(input_tokens), 0) + COALESCE(SUM(output_tokens), 0)
-                        AS tokens,
-                      COUNT(*) AS usage_events
-                     FROM token_usage_events
-                    WHERE ${publicTokensServedDemandWhere}
-                    GROUP BY provider, model`
-                : `SELECT
-                      provider,
-                      model,
-                      COALESCE(SUM(input_tokens), 0) + COALESCE(SUM(output_tokens), 0)
-                        AS tokens,
-                      COUNT(*) AS usage_events
-                     FROM token_usage_events
-                    WHERE observed_at >= ? AND ${publicTokensServedDemandWhere}
-                    GROUP BY provider, model`,
-            )
-            .bind(...(since === undefined ? [] : [since]))
-            .all<{
-              model: string | null
-              provider: string | null
-              tokens: number | null
-              usage_events: number | null
-            }>(),
+      const rows = yield* readPublicTokensServedModelMixRollups(db, {
+        nowIso,
+        since,
+      }).pipe(
+        Effect.catch(() =>
+          readPublicTokensServedModelMixRaw(db, {
+            before: undefined,
+            since,
+          }),
+        ),
       )
 
-      const grouped = rows.results.reduce(
+      const grouped = rows.reduce(
         (families, row) => {
           const family = publicModelFamilyFromProviderAndModel(
             row.provider,
@@ -2897,46 +3225,43 @@ export const makeD1TokenUsageLedger = (
       )
       const since = leaderboardWindowSince(window, nowIso, runtime)
 
-      const rows = yield* d1Effect(
-        'tokenUsageEvents.publicTokensServedChannelMix',
-        () =>
-          db
-            .prepare(
-              since === undefined
-                ? `SELECT
-                      COALESCE(NULLIF(demand_channel, ''), 'khala_api') AS demand_channel,
-                      COALESCE(SUM(input_tokens), 0) + COALESCE(SUM(output_tokens), 0)
-                        AS tokens,
-                      COUNT(*) AS usage_events
-                     FROM token_usage_events
-                    WHERE ${publicTokensServedDemandWhere}
-                    GROUP BY demand_channel`
-                : `SELECT
-                      COALESCE(NULLIF(demand_channel, ''), 'khala_api') AS demand_channel,
-                      COALESCE(SUM(input_tokens), 0) + COALESCE(SUM(output_tokens), 0)
-                        AS tokens,
-                      COUNT(*) AS usage_events
-                     FROM token_usage_events
-                    WHERE observed_at >= ? AND ${publicTokensServedDemandWhere}
-                    GROUP BY demand_channel`,
-            )
-            .bind(...(since === undefined ? [] : [since]))
-            .all<{
-              demand_channel: string | null
-              tokens: number | null
-              usage_events: number | null
-            }>(),
+      const rows = yield* readPublicTokensServedChannelMixRollups(db, {
+        nowIso,
+        since,
+      }).pipe(
+        Effect.catch(() =>
+          readPublicTokensServedChannelMixRaw(db, {
+            before: undefined,
+            since,
+          }),
+        ),
       )
 
-      const groupsWithoutPct = rows.results.map(row => {
-        const channel = demandChannelFromText(row.demand_channel)
-        return {
+      const groupsByChannel = rows.reduce(
+        (channels, row) => {
+          const channel = demandChannelFromText(row.demand_channel)
+          const previous = channels.get(channel) ?? {
+            reqs: 0,
+            tokens: 0,
+          }
+          channels.set(channel, {
+            reqs:
+              previous.reqs + Math.max(0, Math.trunc(row.usage_events ?? 0)),
+            tokens: previous.tokens + Math.max(0, Math.trunc(row.tokens ?? 0)),
+          })
+
+          return channels
+        },
+        new Map<TokenUsageDemandChannel, { reqs: number; tokens: number }>(),
+      )
+      const groupsWithoutPct = [...groupsByChannel.entries()].map(
+        ([channel, row]) => ({
           channel,
           label: publicDemandChannelLabel(channel),
-          reqs: Math.max(0, Math.trunc(row.usage_events ?? 0)),
-          tokens: Math.max(0, Math.trunc(row.tokens ?? 0)),
-        }
-      })
+          reqs: row.reqs,
+          tokens: row.tokens,
+        }),
+      )
       const totalTokens = groupsWithoutPct.reduce(
         (sum, row) => sum + row.tokens,
         0,

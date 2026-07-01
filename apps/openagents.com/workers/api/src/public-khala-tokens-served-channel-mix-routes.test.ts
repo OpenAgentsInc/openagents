@@ -23,10 +23,16 @@ type ChannelMixRow = {
 }
 
 const fakeChannelMixDb = (rows: ReadonlyArray<ChannelMixRow>): D1Database => {
-  const prepare = () => ({
-    bind: () => prepare(),
+  const prepare = (query = '') => ({
+    bind: () => prepare(query),
     all: <T>(): Promise<{ results: ReadonlyArray<T> }> =>
-      Promise.resolve({ results: rows as ReadonlyArray<T> }),
+      Promise.resolve({
+        results: query.includes(
+          'public_khala_tokens_served_channel_daily_rollups',
+        )
+          ? (rows as ReadonlyArray<T>)
+          : [],
+      }),
   })
 
   return { prepare } as unknown as D1Database
@@ -75,8 +81,9 @@ describe('GET /api/public/khala-tokens-served/channel-mix', () => {
     expect(body.totalTokens).toBe(2_000)
     expect(body.generatedAt).toBe(nowIso)
     expect(body.staleness).toMatchObject({
-      composition: 'live_at_read',
+      composition: 'rebuilt_on_transition',
       maxStalenessSeconds: 0,
+      rebuildsOn: ['token_usage_events_insert'],
     })
     expect(body.groups).toEqual([
       {

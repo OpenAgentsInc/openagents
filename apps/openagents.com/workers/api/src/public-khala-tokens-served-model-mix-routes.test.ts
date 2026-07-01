@@ -25,10 +25,16 @@ type ModelMixRow = {
 }
 
 const fakeModelMixDb = (rows: ReadonlyArray<ModelMixRow>): D1Database => {
-  const prepare = () => ({
-    bind: () => prepare(),
+  const prepare = (query = '') => ({
+    bind: () => prepare(query),
     all: <T>(): Promise<{ results: ReadonlyArray<T> }> =>
-      Promise.resolve({ results: rows as ReadonlyArray<T> }),
+      Promise.resolve({
+        results: query.includes(
+          'public_khala_tokens_served_model_daily_rollups',
+        )
+          ? (rows as ReadonlyArray<T>)
+          : [],
+      }),
   })
 
   return { prepare } as unknown as D1Database
@@ -86,10 +92,10 @@ describe('GET /api/public/khala-tokens-served/model-mix', () => {
     expect(body.generatedAt).toBe(nowIso)
     expect(body.liveAt).toBe(nowIso)
     expect(body.staleness).toMatchObject({
-      composition: 'live_at_read',
+      composition: 'rebuilt_on_transition',
       contractVersion: 'projection_staleness.v1',
       maxStalenessSeconds: 0,
-      rebuildsOn: ['token_usage_events'],
+      rebuildsOn: ['token_usage_events_insert'],
     })
     expect(body.groups).toEqual([
       {
