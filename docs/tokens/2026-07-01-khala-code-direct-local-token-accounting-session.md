@@ -148,6 +148,51 @@ The active turn
 backfill because that turn was running via Codex, not Khala Code Desktop. It
 should not be counted as Khala Code Desktop direct-local usage.
 
+## Follow-up reconciliation: Codex Desktop originator thread
+
+After the top-right thread token meter was added, the Khala Code UI showed one
+thread as fully pending even though the earlier manual aggregate backfill had
+completed. The thread was:
+
+- Codex thread id: `019f1e71-d86a-7da1-aafe-761ad6bb2a6a`
+- Title: `The chat composer does not expand vertically with tall text...`
+- Counted tokens: `10,249,823`
+- Count basis: `10,219,044` input tokens + `30,779` output tokens
+
+The cause was not the UI counter. The Codex rollout for that thread carried
+exact `token_count` events, but its `session_meta.originator` was
+`Codex Desktop`, not `khala_code_desktop`, so the original historical backfill
+intentionally skipped it.
+
+A narrow script override was added for manual reconciliation of known
+Khala-owned threads whose upstream originator label does not say
+`khala_code_desktop`:
+
+```sh
+bun run --cwd clients/khala-code-desktop backfill:message-token-audit -- \
+  --sessions-root ~/.codex/sessions/2026/07/01 \
+  --include-session-id 019f1e71-d86a-7da1-aafe-761ad6bb2a6a \
+  --only-session-id 019f1e71-d86a-7da1-aafe-761ad6bb2a6a \
+  --aggregate-backfill-event-id token_usage_event.khala_code_direct_local_thread_reconcile.20260701.019f1e71 \
+  --aggregate-backfill-idempotency-key khala-code-desktop:direct-local-codex:thread-reconcile:2026-07-01:019f1e71-d86a-7da1-aafe-761ad6bb2a6a-v1
+```
+
+This wrote three local audit rows for the thread and tied them to the production
+Stats aggregate event:
+
+- event id:
+  `token_usage_event.khala_code_direct_local_thread_reconcile.20260701.019f1e71`
+- idempotency key:
+  `khala-code-desktop:direct-local-codex:thread-reconcile:2026-07-01:019f1e71-d86a-7da1-aafe-761ad6bb2a6a-v1`
+- `/stats` counted tokens: `10,249,823`
+
+The local thread-token summary for that thread then reported:
+
+- total local: `10,249,823`
+- leaderboard synced: `10,249,823`
+- pending sync: `0`
+- audit rows: `3`
+
 ## Current invariant
 
 Every future message sent through Khala Code Desktop must create two local

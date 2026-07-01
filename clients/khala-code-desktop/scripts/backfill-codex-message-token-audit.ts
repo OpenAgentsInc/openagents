@@ -37,6 +37,8 @@ type BackfillConfig = {
   aggregateBackfillIdempotencyKeys: readonly string[]
   dryRun: boolean
   excludeTurnIds: ReadonlySet<string>
+  includeSessionIds: ReadonlySet<string>
+  onlySessionIds: ReadonlySet<string>
   outputPath: string
   sessionsRoot: string
 }
@@ -172,6 +174,14 @@ const parseArgs = (): BackfillConfig => {
     ],
     dryRun: args.includes("--dry-run"),
     excludeTurnIds: new Set(valuesAfter("--exclude-turn-id")),
+    includeSessionIds: new Set([
+      ...valuesAfter("--include-session-id"),
+      ...envList("KHALA_CODE_HISTORICAL_INCLUDE_SESSION_ID"),
+    ]),
+    onlySessionIds: new Set([
+      ...valuesAfter("--only-session-id"),
+      ...envList("KHALA_CODE_HISTORICAL_ONLY_SESSION_ID"),
+    ]),
     outputPath: valueAfter("--output") ??
       Bun.env.KHALA_CODE_MESSAGE_TOKEN_AUDIT_LOCAL_LEDGER_PATH?.trim() ??
       defaultOutputPath(),
@@ -223,6 +233,7 @@ const updateCompletedAt = (turn: HistoricalTurn, timestamp: string): void => {
 
 const parseHistoricalSession = async (
   filePath: string,
+  config: BackfillConfig,
 ): Promise<HistoricalSession | null> => {
   const lines = (await readFile(filePath, "utf8")).split("\n").filter(Boolean)
   let sessionId: string | null = null
@@ -247,9 +258,13 @@ const parseHistoricalSession = async (
 
     if (type === "session_meta") {
       const originator = stringField(payload, "originator")
-      isKhalaCodeDesktop = originator === "khala_code_desktop"
       sessionId = stringField(payload, "session_id") ?? stringField(payload, "id")
       session.sessionId = sessionId ?? session.sessionId
+      const selectedSession = config.onlySessionIds.size === 0 ||
+        (sessionId !== null && config.onlySessionIds.has(sessionId))
+      isKhalaCodeDesktop = selectedSession && (originator === "khala_code_desktop" ||
+        (sessionId !== null && config.includeSessionIds.has(sessionId))
+      )
       continue
     }
     if (!isKhalaCodeDesktop) continue
@@ -434,7 +449,7 @@ const main = async (): Promise<void> => {
   let totalUsage = emptyUsage()
 
   for (const file of files) {
-    const session = await parseHistoricalSession(file)
+    const session = await parseHistoricalSession(file, config)
     if (session === null) continue
     scannedSessions += 1
     for (const turn of session.turns.values()) {
