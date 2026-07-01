@@ -76,6 +76,7 @@ export async function runKhalaCodeDesktopHeadlessJsonl(
     const response = await codexChatRuntime.startTurn({
       messages: [{ body: input.prompt, id: "headless-user-1", role: "user" }],
       sessionId,
+      ...(threadId === undefined ? {} : { threadId }),
       turnId,
       ...(input.workingDirectory === undefined ? {} : { cwd: input.workingDirectory }),
     })

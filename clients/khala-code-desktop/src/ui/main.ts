@@ -1215,6 +1215,7 @@ const submitComposer = async (): Promise<KhalaCodeDesktopMessage | null> => {
     const request: KhalaCodeDesktopChatTurnRequest = {
       messages,
       sessionId,
+      ...(activeCodexThreadId === null ? {} : { threadId: activeCodexThreadId }),
       turnId,
     }
     const response = await rpc.request.submitChatMessage(request)

@@ -433,6 +433,7 @@ describe("Khala Code desktop RPC handlers", () => {
         startTurn: async request => {
           codexTurnStarted = true
           expect(request.cwd).toBe(process.cwd())
+          expect(request.threadId).toBe("thread-active")
           return {
             backend: {
               kind: "codex_app_server",
@@ -461,6 +462,7 @@ describe("Khala Code desktop RPC handlers", () => {
     await expect(handlers.submitChatMessage({
       messages: [{ id: "user-1", role: "user", body: "Run tests" }],
       sessionId: "desktop-session-1",
+      threadId: "thread-active",
       turnId: "desktop-turn-1",
     })).resolves.toMatchObject({
       backend: {

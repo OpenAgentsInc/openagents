@@ -275,7 +275,6 @@ describe("Khala Code Codex parity live smoke", () => {
     expect(records.map(record => record.method)).toEqual([
       "thread/start",
       "thread/resume",
-      "thread/resume",
       "turn/start",
       "turn/interrupt",
     ])

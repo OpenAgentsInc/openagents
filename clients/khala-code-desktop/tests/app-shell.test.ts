@@ -766,6 +766,9 @@ describe("khala code desktop app shell", () => {
     expect(main).toContain("codexThreadUnarchive")
     expect(main).toContain("activateCodexThread")
     expect(main).toContain("response.backend.threadId")
+    expect(main).toContain(
+      "const request: KhalaCodeDesktopChatTurnRequest = {\n      messages,\n      sessionId,\n      ...(activeCodexThreadId === null ? {} : { threadId: activeCodexThreadId }),\n      turnId,\n    }",
+    )
     expect(panel).toContain("Search Codex threads")
     expect(panel).toContain("options.resumeThread(threadId)")
     expect(panel).toContain("options.forkThread(thread.id)")

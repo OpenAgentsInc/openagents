@@ -206,6 +206,206 @@ describe("Codex app-server chat runtime", () => {
     expect(await readFile(fixture.statePath, "utf8")).toContain("thread-codex-1")
   })
 
+  test("starts turns on freshly created Codex threads without resuming an unmaterialized rollout", async () => {
+    const fixture = await stateFixture()
+    const records: RequestRecord[] = []
+    const host = createFakeHost({
+      records,
+      onRequest: (method, params, subscribers) => {
+        if (method === "thread/start") {
+          return {
+            thread: { id: "thread-new-empty", status: "running" },
+            model: "gpt-5.1-codex",
+            modelProvider: "openai",
+            cwd: fixture.root,
+          }
+        }
+        if (method === "thread/resume") {
+          throw new Error("no rollout found for thread id thread-new-empty")
+        }
+        if (method === "turn/start") {
+          expect(params).toMatchObject({ threadId: "thread-new-empty" })
+          queueMicrotask(() => {
+            emit(subscribers, {
+              method: "turn/completed",
+              params: {
+                threadId: "thread-new-empty",
+                turn: { id: "turn-new-empty", status: "completed" },
+              },
+            })
+          })
+          return { turn: { id: "turn-new-empty", status: "inProgress" } }
+        }
+        throw new Error(`unexpected request ${method}`)
+      },
+    })
+    const runtime = createCodexAppServerChatRuntime({
+      host,
+      statePath: fixture.statePath,
+      turnTimeoutMs: 1_000,
+      workingDirectory: fixture.root,
+    })
+
+    const thread = await runtime.startThread({ sessionId: "desktop-session-new" })
+    expect(thread.threadId).toBe("thread-new-empty")
+    records.splice(0)
+
+    const response = await runtime.startTurn({
+      messages: [{ id: "user-new", role: "user", body: "Hello" }],
+      sessionId: "desktop-session-new",
+      threadId: thread.threadId,
+      turnId: "desktop-turn-new",
+    })
+
+    expect(records.map(record => record.method)).toEqual(["turn/start"])
+    expect(response.backend).toMatchObject({
+      threadId: "thread-new-empty",
+      turnId: "turn-new-empty",
+      turnStatus: "completed",
+    })
+    expect(await readFile(fixture.statePath, "utf8")).toContain("thread-new-empty")
+  })
+
+  test("replaces stale unmaterialized thread ids with a fresh Codex thread for the turn", async () => {
+    const fixture = await stateFixture()
+    const records: RequestRecord[] = []
+    const host = createFakeHost({
+      records,
+      onRequest: (method, params, subscribers) => {
+        if (method === "thread/resume") {
+          expect(params).toMatchObject({ threadId: "thread-stale-empty" })
+          throw new Error("thread/resume failed: no rollout found for thread id thread-stale-empty")
+        }
+        if (method === "thread/start") {
+          return {
+            thread: { id: "thread-replacement", status: "running" },
+            model: "gpt-5.1-codex",
+            modelProvider: "openai",
+            cwd: fixture.root,
+          }
+        }
+        if (method === "turn/start") {
+          expect(params).toMatchObject({ threadId: "thread-replacement" })
+          queueMicrotask(() => {
+            emit(subscribers, {
+              method: "turn/completed",
+              params: {
+                threadId: "thread-replacement",
+                turn: { id: "turn-replacement", status: "completed" },
+              },
+            })
+          })
+          return { turn: { id: "turn-replacement", status: "inProgress" } }
+        }
+        throw new Error(`unexpected request ${method}`)
+      },
+    })
+    const runtime = createCodexAppServerChatRuntime({
+      host,
+      statePath: fixture.statePath,
+      turnTimeoutMs: 1_000,
+      workingDirectory: fixture.root,
+    })
+
+    const response = await runtime.startTurn({
+      messages: [{ id: "user-stale", role: "user", body: "Hello after restart" }],
+      sessionId: "desktop-session-stale",
+      threadId: "thread-stale-empty",
+      turnId: "desktop-turn-stale",
+    })
+
+    expect(records.map(record => record.method)).toEqual([
+      "thread/resume",
+      "thread/start",
+      "turn/start",
+    ])
+    expect(response.backend).toMatchObject({
+      threadId: "thread-replacement",
+      turnId: "turn-replacement",
+      turnStatus: "completed",
+    })
+    expect(await readFile(fixture.statePath, "utf8")).toContain("thread-replacement")
+  })
+
+  test("recovers when a loaded Codex thread loses its rollout before turn start", async () => {
+    const fixture = await stateFixture()
+    const records: RequestRecord[] = []
+    let replacementStarted = false
+    const host = createFakeHost({
+      records,
+      onRequest: (method, params, subscribers) => {
+        if (method === "thread/start") {
+          if (!replacementStarted) {
+            replacementStarted = true
+            return {
+              thread: { id: "thread-lost-rollout", status: "running" },
+              model: "gpt-5.1-codex",
+              modelProvider: "openai",
+              cwd: fixture.root,
+            }
+          }
+          return {
+            thread: { id: "thread-recovered", status: "running" },
+            model: "gpt-5.1-codex",
+            modelProvider: "openai",
+            cwd: fixture.root,
+          }
+        }
+        if (method === "thread/resume") {
+          expect(params).toMatchObject({ threadId: "thread-lost-rollout" })
+          throw new Error("thread/resume failed: no rollout found for thread id thread-lost-rollout")
+        }
+        if (method === "turn/start") {
+          if ((params as { threadId?: string }).threadId === "thread-lost-rollout") {
+            throw new Error("turn/start failed: no rollout found for thread id thread-lost-rollout")
+          }
+          expect(params).toMatchObject({ threadId: "thread-recovered" })
+          queueMicrotask(() => {
+            emit(subscribers, {
+              method: "turn/completed",
+              params: {
+                threadId: "thread-recovered",
+                turn: { id: "turn-recovered", status: "completed" },
+              },
+            })
+          })
+          return { turn: { id: "turn-recovered", status: "inProgress" } }
+        }
+        throw new Error(`unexpected request ${method}`)
+      },
+    })
+    const runtime = createCodexAppServerChatRuntime({
+      host,
+      statePath: fixture.statePath,
+      turnTimeoutMs: 1_000,
+      workingDirectory: fixture.root,
+    })
+
+    const thread = await runtime.startThread({ sessionId: "desktop-session-recover" })
+    expect(thread.threadId).toBe("thread-lost-rollout")
+    records.splice(0)
+
+    const response = await runtime.startTurn({
+      messages: [{ id: "user-recover", role: "user", body: "Recover" }],
+      sessionId: "desktop-session-recover",
+      threadId: "thread-lost-rollout",
+      turnId: "desktop-turn-recover",
+    })
+
+    expect(records.map(record => record.method)).toEqual([
+      "turn/start",
+      "thread/resume",
+      "thread/start",
+      "turn/start",
+    ])
+    expect(response.backend).toMatchObject({
+      threadId: "thread-recovered",
+      turnId: "turn-recovered",
+      turnStatus: "completed",
+    })
+    expect(await readFile(fixture.statePath, "utf8")).toContain("thread-recovered")
+  })
+
   test("resumes a persisted Codex thread for the same desktop session", async () => {
     const fixture = await stateFixture()
     const records: RequestRecord[] = []

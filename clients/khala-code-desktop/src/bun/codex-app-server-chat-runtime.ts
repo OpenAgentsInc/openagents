@@ -267,6 +267,16 @@ const threadIdFromNotification = (notification: CodexAppServerNotification): str
 const completedTurnStatus = (turn: JsonObject | null): string =>
   stringField(turn, "status") ?? "completed"
 
+const isNoRolloutError = (error: unknown): boolean => {
+  const message = error instanceof Error ? error.message : String(error)
+  return message.toLowerCase().includes("no rollout found for thread id")
+}
+
+const normalizedThreadId = (threadId: string | undefined): string | null => {
+  const trimmed = threadId?.trim()
+  return trimmed === undefined || trimmed.length === 0 ? null : trimmed
+}
+
 export function createCodexAppServerChatRuntime(
   options: CreateCodexAppServerChatRuntimeOptions,
 ): CodexAppServerChatRuntime {
@@ -275,6 +285,30 @@ export function createCodexAppServerChatRuntime(
   const statePath = options.statePath ?? defaultStatePath(env)
   const turnTimeoutMs = options.turnTimeoutMs ?? DEFAULT_TURN_TIMEOUT_MS
   const activeTurnsByDesktopId = new Map<string, ActiveCodexTurn>()
+  const loadedThreadsById = new Map<string, KhalaCodeDesktopCodexThreadResult>()
+
+  const markThreadLoaded = (
+    result: KhalaCodeDesktopCodexThreadResult,
+  ): KhalaCodeDesktopCodexThreadResult => {
+    loadedThreadsById.set(result.threadId, result)
+    return result
+  }
+
+  const loadedThreadResult = (
+    threadId: string,
+    desktopSessionId?: string,
+  ): KhalaCodeDesktopCodexThreadResult => {
+    const cached = loadedThreadsById.get(threadId)
+    if (cached !== undefined) {
+      return desktopSessionId === undefined ? cached : { ...cached, desktopSessionId }
+    }
+    return {
+      ok: true,
+      thread: { id: threadId },
+      threadId,
+      ...(desktopSessionId === undefined ? {} : { desktopSessionId }),
+    }
+  }
 
   const ensureStarted = async (): Promise<void> => {
     const start = await host.start()
@@ -290,7 +324,7 @@ export function createCodexAppServerChatRuntime(
     const response = await host.request("thread/start", {
       cwd: request.cwd ?? options.workingDirectory,
     })
-    const result = extractThreadResult(response, request.sessionId)
+    const result = markThreadLoaded(extractThreadResult(response, request.sessionId))
     if (request.sessionId !== undefined) {
       await persistSession(statePath, request.sessionId, { threadId: result.threadId })
     }
@@ -305,7 +339,7 @@ export function createCodexAppServerChatRuntime(
       threadId: request.threadId,
       cwd: request.cwd ?? options.workingDirectory,
     })
-    const result = extractThreadResult(response, request.sessionId)
+    const result = markThreadLoaded(extractThreadResult(response, request.sessionId))
     if (request.sessionId !== undefined) {
       await persistSession(statePath, request.sessionId, { threadId: result.threadId })
     }
@@ -315,15 +349,48 @@ export function createCodexAppServerChatRuntime(
   const ensureThreadForSession = async (
     desktopSessionId: string,
     cwd?: string,
+    requestedThreadId?: string,
   ): Promise<KhalaCodeDesktopCodexThreadResult> => {
+    const explicitThreadId = normalizedThreadId(requestedThreadId)
+    if (explicitThreadId !== null) {
+      if (loadedThreadsById.has(explicitThreadId)) {
+        await persistSession(statePath, desktopSessionId, { threadId: explicitThreadId })
+        return loadedThreadResult(explicitThreadId, desktopSessionId)
+      }
+      try {
+        return await resumeThread({
+          cwd: cwd ?? options.workingDirectory,
+          sessionId: desktopSessionId,
+          threadId: explicitThreadId,
+        })
+      } catch (error) {
+        if (!isNoRolloutError(error)) throw error
+        return startThread({
+          cwd: cwd ?? options.workingDirectory,
+          sessionId: desktopSessionId,
+        })
+      }
+    }
+
     const state = await readState(statePath)
     const stored = state.sessions[desktopSessionId]
     if (stored !== undefined) {
-      return resumeThread({
-        cwd: cwd ?? options.workingDirectory,
-        sessionId: desktopSessionId,
-        threadId: stored.threadId,
-      })
+      if (loadedThreadsById.has(stored.threadId)) {
+        return loadedThreadResult(stored.threadId, desktopSessionId)
+      }
+      try {
+        return await resumeThread({
+          cwd: cwd ?? options.workingDirectory,
+          sessionId: desktopSessionId,
+          threadId: stored.threadId,
+        })
+      } catch (error) {
+        if (!isNoRolloutError(error)) throw error
+        return startThread({
+          cwd: cwd ?? options.workingDirectory,
+          sessionId: desktopSessionId,
+        })
+      }
     }
     return startThread({
       cwd: cwd ?? options.workingDirectory,
@@ -460,7 +527,7 @@ export function createCodexAppServerChatRuntime(
         ...(request.lastTurnId === undefined ? {} : { lastTurnId: request.lastTurnId }),
         cwd: request.cwd ?? options.workingDirectory,
       })
-      const result = extractThreadResult(response, request.sessionId)
+      const result = markThreadLoaded(extractThreadResult(response, request.sessionId))
       if (request.sessionId !== undefined) {
         await persistSession(statePath, request.sessionId, { threadId: result.threadId })
       }
@@ -600,7 +667,7 @@ export function createCodexAppServerChatRuntime(
       throw new Error("Codex turn requires a non-empty user message.")
     }
 
-    const thread = await ensureThreadForSession(request.sessionId, request.cwd)
+    let thread = await ensureThreadForSession(request.sessionId, request.cwd, request.threadId)
     const projector = createCodexThreadItemEventProjector({ desktopTurnId })
     let codexTurnId: string | null = null
     let turnStatus = "completed"
@@ -643,16 +710,38 @@ export function createCodexAppServerChatRuntime(
 
     try {
       await ensureStarted()
-      const turnStartResponse = await host.request("turn/start", {
-        threadId: thread.threadId,
-        clientUserMessageId: userMessage.id,
-        input: [{ type: "text", text: userMessage.body, textElements: [] }],
-        cwd: request.cwd ?? options.workingDirectory,
-        responsesapiClientMetadata: {
-          khalaDesktopSessionId: request.sessionId,
-          khalaDesktopTurnId: desktopTurnId,
-        },
-      })
+      const requestTurnStart = async (): Promise<unknown> =>
+        host.request("turn/start", {
+          threadId: thread.threadId,
+          clientUserMessageId: userMessage.id,
+          input: [{ type: "text", text: userMessage.body, textElements: [] }],
+          cwd: request.cwd ?? options.workingDirectory,
+          responsesapiClientMetadata: {
+            khalaDesktopSessionId: request.sessionId,
+            khalaDesktopTurnId: desktopTurnId,
+          },
+        })
+      let turnStartResponse: unknown
+      try {
+        turnStartResponse = await requestTurnStart()
+      } catch (error) {
+        if (!isNoRolloutError(error)) throw error
+        loadedThreadsById.delete(thread.threadId)
+        try {
+          thread = await resumeThread({
+            cwd: request.cwd ?? options.workingDirectory,
+            sessionId: request.sessionId,
+            threadId: thread.threadId,
+          })
+        } catch (resumeError) {
+          if (!isNoRolloutError(resumeError)) throw resumeError
+          thread = await startThread({
+            cwd: request.cwd ?? options.workingDirectory,
+            sessionId: request.sessionId,
+          })
+        }
+        turnStartResponse = await requestTurnStart()
+      }
       codexTurnId = extractTurnId(turnStartResponse)
       activeTurnsByDesktopId.set(desktopTurnId, {
         codexThreadId: thread.threadId,
