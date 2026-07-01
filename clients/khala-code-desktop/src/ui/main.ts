@@ -471,7 +471,8 @@ const sessionId =
     ? storedSessionId
     : `khala-code-desktop-${Date.now().toString(36)}`
 localStorage.setItem(sessionIdStorageKey, sessionId)
-let activeCodexThreadId = localStorage.getItem(activeThreadIdStorageKey)
+localStorage.removeItem(activeThreadIdStorageKey)
+let activeCodexThreadId: string | null = null
 
 const prefersReducedMotion =
   typeof matchMedia === "function"
@@ -1363,6 +1364,7 @@ const handleSlashCommandClientAction = async (
   switch (result.action) {
     case "clear_visible_transcript":
       messages = []
+      activeTurnIds.clear()
       render()
       return "Cleared the visible transcript."
     case "copy_last_assistant_message": {
@@ -1868,6 +1870,7 @@ const controls = {
     rpc.request.slashCommandList(request),
   reset: () => {
     messages = []
+    activeTurnIds.clear()
     resetComposerDraft()
     pendingTurn = false
     thinkingTurnId = null
@@ -1939,6 +1942,7 @@ const activateCodexThread = (input: {
 }): void => {
   setActiveCodexThreadId(input.threadId)
   messages = [...input.messages]
+  activeTurnIds.clear()
   pendingTurn = false
   thinkingTurnId = null
   lastTurnFailed = false

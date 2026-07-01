@@ -296,15 +296,29 @@ button {
   box-shadow: 0 0 22px -12px color-mix(in srgb, var(--oa-color-khala-success-accent) 55%, transparent);
 }
 
+.tool-card:not([data-expanded="true"]) {
+  box-shadow: none;
+}
+
 .tool-card-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  min-height: 30px;
-  padding: 6px 10px;
+  gap: 8px;
+  min-height: 28px;
+  padding: 4px 8px;
   border-bottom: 1px solid color-mix(in srgb, var(--oa-color-khala-success-accent) 16%, transparent);
   background: color-mix(in srgb, var(--oa-color-khala-surface-raised) 94%, transparent);
+}
+
+.tool-card:not([data-expanded="true"]) .tool-card-header {
+  border-bottom-color: transparent;
+}
+
+.tool-card-icon {
+  width: 0.875rem;
+  height: 0.875rem;
+  color: color-mix(in srgb, var(--oa-color-khala-energy-cyan) 72%, var(--oa-color-khala-text-muted));
 }
 
 .tool-card-name {
@@ -313,6 +327,18 @@ button {
   color: var(--oa-color-khala-success-text);
   font-size: 0.73rem;
   font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tool-card-summary {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: color-mix(in srgb, var(--oa-color-khala-text-muted) 82%, transparent);
+  font-family: var(--oa-font-code);
+  font-size: 0.68rem;
+  line-height: 1.2;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -383,10 +409,20 @@ button {
 
 .codex-item-card-header {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto auto auto;
+  grid-template-columns: auto minmax(4rem, 12rem) minmax(0, 1fr) auto auto;
+  justify-content: stretch;
+}
+
+.codex-item-card[data-expanded="true"] .codex-item-card-header {
+  grid-template-columns: auto minmax(0, 1fr) auto auto auto auto;
+}
+
+.codex-item-card[data-expanded="true"] .codex-item-card-summary {
+  display: none;
 }
 
 .codex-item-card-meta {
+  display: none;
   min-width: 0;
   overflow: hidden;
   color: var(--oa-color-khala-code-meta);
@@ -396,7 +432,9 @@ button {
 }
 
 .codex-item-card-copy {
+  display: none;
   flex: none;
+  align-items: center;
   border: 1px solid color-mix(in srgb, var(--oa-color-khala-energy-line) 24%, transparent);
   border-radius: 4px;
   background: color-mix(in srgb, var(--oa-color-khala-surface-muted) 92%, transparent);
@@ -408,28 +446,44 @@ button {
   padding: 4px 7px;
 }
 
+.codex-item-card[data-expanded="true"] .codex-item-card-meta {
+  display: inline;
+}
+
+.codex-item-card[data-expanded="true"] .codex-item-card-copy {
+  display: inline-flex;
+}
+
 .codex-item-card-copy:hover {
   border-color: color-mix(in srgb, var(--oa-color-khala-energy-line) 50%, transparent);
   background: color-mix(in srgb, var(--oa-color-khala-surface-active) 96%, transparent);
 }
 
 .codex-item-card-body {
-  display: grid;
+  display: none;
   gap: 10px;
-  max-height: 14rem;
   overflow: auto;
   padding: 10px;
 }
 
+.codex-item-card:not([data-expanded="true"]) .codex-item-card-body {
+  display: none;
+}
+
 .codex-item-card[data-expanded="true"] .codex-item-card-body {
+  display: grid;
   max-height: 38rem;
 }
 
 .codex-approval-controls {
-  display: flex;
+  display: none;
   flex-wrap: wrap;
   gap: 6px;
   padding: 0 10px 10px;
+}
+
+.codex-item-card[data-expanded="true"] .codex-approval-controls {
+  display: flex;
 }
 
 .codex-approval-button {
@@ -458,6 +512,7 @@ button {
 }
 
 .tool-card-output {
+  display: none;
   margin: 0;
   max-height: 7rem;
   overflow-y: auto;
@@ -2905,6 +2960,10 @@ button {
 .tool-card-header--toggle {
   cursor: pointer;
 }
+.tool-card-header--toggle:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--oa-color-khala-energy-cyan) 76%, transparent);
+  outline-offset: -2px;
+}
 .tool-card-chevron::before {
   content: "\25B8";
   display: inline-block;
@@ -2915,6 +2974,7 @@ button {
   transform: rotate(90deg);
 }
 .tool-card[data-expanded="true"] .tool-card-output {
+  display: block;
   max-height: 32rem;
 }
 

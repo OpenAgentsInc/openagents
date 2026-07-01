@@ -256,7 +256,7 @@ describe("Khala Code Codex parity live smoke", () => {
     const result = await runKhalaCodeCodexParityLiveSmoke({
       createHost: () => createFakeHost(records),
       inspectHarness: async () => readyHarnessStatus(),
-      interruptAfterMs: 0,
+      interruptAfterMs: 10,
       requireLive: true,
       workingDirectory: "/tmp/khala-code-parity",
     })

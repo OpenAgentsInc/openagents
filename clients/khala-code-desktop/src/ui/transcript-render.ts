@@ -10,6 +10,8 @@ import {
   parseMarkdownInline,
   type MarkdownInlinePart,
 } from "@openagentsinc/ui/ai-elements/markdown"
+import { iconElement } from "@openagentsinc/ui/icon-dom"
+import type { IconName } from "@openagentsinc/ui/icon"
 import type {
   KhalaCodeDesktopCodexItemCard,
   KhalaCodeDesktopMessageRole,
@@ -47,6 +49,98 @@ export type ToolTranscriptParts = {
 }
 
 type MarkdownBlock = ReturnType<typeof parseMarkdownBlocks>[number]
+
+const MAX_COMPACT_SUMMARY_CHARS = 160
+
+const compactLine = (text: string): string =>
+  text.replace(/`{3,}/g, "").replace(/\s+/g, " ").trim()
+
+const compactSummaryLineSkipped = (line: string): boolean => {
+  const normalized = line.trim()
+  if (normalized.length === 0) return true
+  if (/^```/u.test(normalized)) return true
+  if (/^[{}[\],]$/u.test(normalized)) return true
+  return /^(cwd:|Output|Arguments|Result|Error|Content|Network|Permissions|Available decisions|Agent states|Review|JSON|BASH)$/iu
+    .test(normalized)
+}
+
+const truncateCompactSummary = (summary: string, fallback: string): string => {
+  const compact = compactLine(summary)
+  const value = compact.length === 0 ? compactLine(fallback) : compact
+  if (value.length <= MAX_COMPACT_SUMMARY_CHARS) return value
+  return `${value.slice(0, MAX_COMPACT_SUMMARY_CHARS - 3)}...`
+}
+
+export const compactToolSummary = (text: string, fallback = "Details available"): string => {
+  const normalized = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n")
+  const command = /```(?:bash|sh|zsh)\n([\s\S]*?)\n```/u.exec(normalized)
+  if (command?.[1] !== undefined) return truncateCompactSummary(command[1], fallback)
+
+  for (const rawLine of normalized.split("\n")) {
+    const line = rawLine.trim().replace(/^#{1,6}\s+/u, "")
+    if (compactSummaryLineSkipped(line)) continue
+    return truncateCompactSummary(line, fallback)
+  }
+
+  return truncateCompactSummary("", fallback)
+}
+
+const setToolCardExpanded = (
+  root: HTMLElement,
+  header: HTMLElement,
+  expanded: boolean,
+): void => {
+  root.dataset.expanded = expanded ? "true" : "false"
+  header.setAttribute("aria-expanded", expanded ? "true" : "false")
+}
+
+const bindExpandableToolCard = (
+  root: HTMLElement,
+  header: HTMLElement,
+  title = "Click to expand",
+): void => {
+  header.classList.add("tool-card-header--toggle")
+  header.setAttribute("role", "button")
+  header.setAttribute("tabindex", "0")
+  header.setAttribute("aria-expanded", "false")
+  header.title = title
+
+  const toggle = (): void => {
+    setToolCardExpanded(root, header, root.dataset.expanded !== "true")
+  }
+
+  header.addEventListener("click", toggle)
+  header.addEventListener("keydown", event => {
+    if (event.key !== "Enter" && event.key !== " ") return
+    event.preventDefault()
+    toggle()
+  })
+}
+
+const iconForCodexItem = (itemType: string): IconName => {
+  switch (itemType) {
+    case "commandExecution":
+      return "Terminal"
+    case "mcpToolCall":
+    case "dynamicToolCall":
+    case "collabAgentToolCall":
+      return "Tools"
+    case "fileChange":
+      return "FileCode"
+    case "webSearch":
+      return "Globe"
+    case "imageGeneration":
+    case "imageView":
+      return "ImageSquare"
+    case "sleep":
+      return "Sleep"
+    case "approval":
+    case "approvalReview":
+      return "CheckCircle"
+    default:
+      return "Code"
+  }
+}
 
 const languageForFilename = (filename: string | undefined): string | undefined => {
   if (filename === undefined) return undefined
@@ -413,16 +507,25 @@ const toolTranscriptElement = (text: string): HTMLElement => {
   const header = document.createElement("div")
   header.className = "tool-card-header"
 
+  const icon = iconElement("Tools", {
+    ariaHidden: true,
+    className: "tool-card-icon",
+  })
+
   const name = document.createElement("span")
   name.className = "tool-card-name"
   name.textContent = parts.toolName
+
+  const summary = document.createElement("span")
+  summary.className = "tool-card-summary"
+  summary.textContent = compactToolSummary(parts.output, parts.status)
 
   const status = document.createElement("span")
   status.className = "tool-card-status"
   status.textContent = parts.status
   status.title = parts.status
 
-  header.append(name, status)
+  header.append(icon, name, summary, status)
   root.append(header)
 
   if (parts.output.trim().length > 0) {
@@ -430,12 +533,7 @@ const toolTranscriptElement = (text: string): HTMLElement => {
     chevron.className = "tool-card-chevron"
     chevron.setAttribute("aria-hidden", "true")
     header.append(chevron)
-    header.classList.add("tool-card-header--toggle")
-    header.setAttribute("role", "button")
-    header.title = "Click to expand"
-    header.addEventListener("click", () => {
-      root.dataset.expanded = root.dataset.expanded === "true" ? "false" : "true"
-    })
+    bindExpandableToolCard(root, header)
 
     const pre = document.createElement("pre")
     pre.className = "tool-card-output"
@@ -465,12 +563,20 @@ const codexItemElement = (input: {
 
   const header = document.createElement("div")
   header.className = "tool-card-header codex-item-card-header tool-card-header--toggle"
-  header.setAttribute("role", "button")
   header.title = input.codexItem.title
+
+  const icon = iconElement(iconForCodexItem(input.codexItem.itemType), {
+    ariaHidden: true,
+    className: "tool-card-icon codex-item-card-icon",
+  })
 
   const title = document.createElement("span")
   title.className = "tool-card-name codex-item-card-title"
   title.textContent = input.codexItem.title
+
+  const summary = document.createElement("span")
+  summary.className = "tool-card-summary codex-item-card-summary"
+  summary.textContent = compactToolSummary(input.text, input.codexItem.subtitle ?? input.codexItem.itemType)
 
   const meta = document.createElement("span")
   meta.className = "codex-item-card-meta"
@@ -495,10 +601,8 @@ const codexItemElement = (input: {
   chevron.className = "tool-card-chevron"
   chevron.setAttribute("aria-hidden", "true")
 
-  header.append(title, meta, status, copy, chevron)
-  header.addEventListener("click", () => {
-    root.dataset.expanded = root.dataset.expanded === "true" ? "false" : "true"
-  })
+  header.append(icon, title, summary, meta, status, copy, chevron)
+  bindExpandableToolCard(root, header, input.codexItem.title)
   root.append(header)
 
   if (input.text.trim().length > 0) {

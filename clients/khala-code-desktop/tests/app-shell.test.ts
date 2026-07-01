@@ -7,6 +7,7 @@ import {
 import config from "../electrobun.config.js"
 import { khalaCodeDesktopApplicationMenu } from "../src/bun/application-menu"
 import {
+  compactToolSummary,
   parseMessageSegments,
   parseToolTranscript,
 } from "../src/ui/transcript-render"
@@ -868,6 +869,11 @@ describe("khala code desktop app shell", () => {
     expect(html).toContain('aria-label="Codex threads"')
     expect(main).toContain("mountCodexThreadSidebar")
     expect(main).toContain("khala-code-desktop.active-thread-id.v1")
+    expect(main).toContain("localStorage.removeItem(activeThreadIdStorageKey)")
+    expect(main).toContain("let activeCodexThreadId: string | null = null")
+    expect(main).toContain("activeTurnIds.clear()")
+    expect(main).not.toContain("threadSidebar?.upsertDraftThread")
+    expect(main).not.toContain("threadSidebar?.clearDraftThread")
     expect(main).toContain("codexThreadArchive")
     expect(main).toContain("codexThreadDelete")
     expect(main).toContain("codexThreadFork")
@@ -883,6 +889,12 @@ describe("khala code desktop app shell", () => {
     expect(panel).toContain("Search Codex threads")
     expect(panel).toContain('from "@openagentsinc/ui/menu-dom"')
     expect(panel).toContain("createBasecoatContextMenu")
+    expect(panel).not.toContain("readonly clearDraftThread")
+    expect(panel).not.toContain("readonly upsertDraftThread")
+    expect(panel).not.toContain("const draftThreadSummary =")
+    expect(panel).not.toContain("const dataWithDraftThreads =")
+    expect(panel).not.toContain('label: "Drafts"')
+    expect(panel).not.toContain('statusLabel: "draft"')
     expect(panel).toContain("options.resumeThread(threadId)")
     expect(panel).toContain("options.forkThread(thread.id)")
     expect(panel).toContain('item.addEventListener("contextmenu"')
@@ -1113,6 +1125,23 @@ describe("khala code desktop app shell", () => {
     expect(css).toContain("max-height: 7rem")
   })
 
+  test("collapses tool cards to one-line summaries until expanded", async () => {
+    const css = await Bun.file(new URL("../src/ui/styles.css", import.meta.url)).text()
+    const renderer = await Bun.file(new URL("../src/ui/transcript-render.ts", import.meta.url)).text()
+
+    expect(renderer).toContain("@openagentsinc/ui/icon-dom")
+    expect(renderer).toContain("tool-card-summary")
+    expect(renderer).toContain("bindExpandableToolCard")
+    expect(renderer).toContain('header.setAttribute("aria-expanded", "false")')
+    expect(css).toContain(".tool-card-summary")
+    expect(css).toContain(".tool-card-icon")
+    expect(css).toContain('.tool-card:not([data-expanded="true"]) .tool-card-header')
+    expect(css).toContain(".codex-item-card:not([data-expanded=\"true\"]) .codex-item-card-body")
+    expect(css).toContain(".tool-card[data-expanded=\"true\"] .tool-card-output")
+    expect(css).toContain(".codex-item-card[data-expanded=\"true\"] .codex-item-card-body")
+    expect(css).toContain(".codex-item-card[data-expanded=\"true\"] .codex-item-card-copy")
+  })
+
   test("shows a Thinking shimmer until the first streamed response event", async () => {
     const main = await Bun.file(new URL("../src/ui/main.ts", import.meta.url)).text()
     const css = await Bun.file(new URL("../src/ui/styles.css", import.meta.url)).text()
@@ -1239,6 +1268,33 @@ describe("khala code desktop app shell", () => {
       status: "failed",
       toolName: "codex_spawn",
     })
+  })
+
+  test("summarizes tool card details for compact rows", () => {
+    expect(compactToolSummary([
+      "cwd: /tmp/project",
+      "",
+      "```bash",
+      "bun test clients/khala-code-desktop/tests/app-shell.test.ts",
+      "```",
+      "",
+      "Output",
+      "",
+      "```",
+      "ok",
+      "```",
+    ].join("\n"))).toBe("bun test clients/khala-code-desktop/tests/app-shell.test.ts")
+    expect(compactToolSummary([
+      "Arguments",
+      "",
+      "```json",
+      "{",
+      "  \"uri\": \"uidotsh://ui\"",
+      "}",
+      "```",
+    ].join("\n"))).toBe("\"uri\": \"uidotsh://ui\"")
+    expect(compactToolSummary("")).toBe("Details available")
+    expect(compactToolSummary("x".repeat(200))).toHaveLength(160)
   })
 
   test("wraps long tool output instead of clipping errors offscreen", async () => {
