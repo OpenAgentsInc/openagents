@@ -8,6 +8,7 @@ import {
   type KhalaPermissionRequest,
   type KhalaProcessEvent,
   type KhalaProcessExecResult,
+  type KhalaToolRuntimeError,
   type KhalaToolArtifact,
   type KhalaToolDefinition,
   type KhalaToolExecuteContext,
@@ -120,60 +121,59 @@ function executeExecCommandTool(
   context: KhalaToolExecuteContext,
   options: KhalaExecCommandToolOptions,
 ): Effect.Effect<KhalaToolResult, never> {
-  return Effect.promise(async () => {
-    try {
+  return Effect.gen(function* () {
       const args = decodeExecInput(input, options)
-      const cwd = await resolveWorkdir(args.workdir, context)
+      const cwd = yield* resolveWorkdir(args.workdir, context)
       if (cwd._tag === "denied") {
         return khalaToolDenied("exec_external_cwd_denied", "command working directory outside the workspace was denied")
       }
-      const shellDecision = await Effect.runPromise(
-        context.services.permission.decide(shellPermission(args, cwd.displayPath, context)),
-      )
+      const shellDecision = yield* context.services.permission.decide(shellPermission(args, cwd.displayPath, context))
       if (shellDecision === "deny") return khalaToolDenied("exec_shell_denied", "shell command approval was denied")
       if (networkLikeCommand(args.command)) {
-        const networkDecision = await Effect.runPromise(
-          context.services.permission.decide(networkPermission(args, cwd.displayPath, context)),
-        )
+        const networkDecision = yield* context.services.permission.decide(networkPermission(args, cwd.displayPath, context))
         if (networkDecision === "deny") return khalaToolDenied("exec_network_denied", "network command approval was denied")
       }
 
-      const result = await Effect.runPromise(
-        args.tty
-          ? context.services.process.startSession({
-              ...(args.argv === undefined ? {} : { argv: args.argv }),
-              ...(args.cancelAfterMs === undefined ? {} : { cancelAfterMs: args.cancelAfterMs }),
-              command: args.command,
-              cwd: cwd.realPath,
-              khalaSessionId: context.invocation.sessionId,
-              maxCaptureBytes: options.maxCaptureBytes ?? 256 * 1024,
-              timeoutMs: args.timeoutMs,
-              workspaceRoot: await realpath(context.services.workspace.workingDirectory),
-              yieldTimeMs: args.yieldTimeMs ?? 250,
-            })
-          : context.services.process.execCommand({
-              ...(args.argv === undefined ? {} : { argv: args.argv }),
-              ...(args.cancelAfterMs === undefined ? {} : { cancelAfterMs: args.cancelAfterMs }),
-              command: args.command,
-              cwd: cwd.realPath,
-              maxCaptureBytes: options.maxCaptureBytes ?? 256 * 1024,
-              timeoutMs: args.timeoutMs,
-              workspaceRoot: await realpath(context.services.workspace.workingDirectory),
-            }),
-      )
-      return await renderExecResult(args, cwd.displayPath, result, context)
-    } catch (error) {
-      return khalaToolError("exec_command_failed", error instanceof Error ? error.message : String(error))
-    }
-  })
+      const workspaceRoot = yield* Effect.promise(() => realpath(context.services.workspace.workingDirectory))
+      const result = yield* (args.tty
+        ? context.services.process.startSession({
+            ...(args.argv === undefined ? {} : { argv: args.argv }),
+            ...(args.cancelAfterMs === undefined ? {} : { cancelAfterMs: args.cancelAfterMs }),
+            command: args.command,
+            cwd: cwd.realPath,
+            khalaSessionId: context.invocation.sessionId,
+            maxCaptureBytes: options.maxCaptureBytes ?? 256 * 1024,
+            timeoutMs: args.timeoutMs,
+            workspaceRoot,
+            yieldTimeMs: args.yieldTimeMs ?? 250,
+          })
+        : context.services.process.execCommand({
+            ...(args.argv === undefined ? {} : { argv: args.argv }),
+            ...(args.cancelAfterMs === undefined ? {} : { cancelAfterMs: args.cancelAfterMs }),
+            command: args.command,
+            cwd: cwd.realPath,
+            maxCaptureBytes: options.maxCaptureBytes ?? 256 * 1024,
+            timeoutMs: args.timeoutMs,
+            workspaceRoot,
+          }))
+      return yield* renderExecResult(args, cwd.displayPath, result, context)
+  }).pipe(
+    Effect.catchTag("KhalaToolRuntimeError", error =>
+      Effect.succeed(khalaToolError("exec_command_failed", error.reason)),
+    ),
+    Effect.catchDefect(defect =>
+      Effect.succeed(khalaToolError("exec_command_failed", defect instanceof Error ? defect.message : String(defect))),
+    ),
+  )
 }
 
-async function renderExecResult(
+function renderExecResult(
   args: ExecCommandInput,
   cwd: string,
   result: KhalaProcessExecResult,
   context: KhalaToolExecuteContext,
-): Promise<KhalaToolResult> {
+): Effect.Effect<KhalaToolResult, never> {
+  return Effect.gen(function* () {
   const sessionId = "sessionId" in result ? result.sessionId : undefined
   const stdoutBytes = Buffer.byteLength(result.stdout, "utf8")
   const stderrBytes = Buffer.byteLength(result.stderr, "utf8")
@@ -185,13 +185,19 @@ async function renderExecResult(
   const shouldSpill = preview.truncated || result.stdoutTruncated || result.stderrTruncated
   const artifacts: KhalaToolArtifact[] = []
   if (shouldSpill) {
-    const artifact = await Effect.runPromise(
-      context.services.outputStore.writeArtifact({
+    const artifact = yield* context.services.outputStore.writeArtifact({
         bytes: Buffer.from(combined, "utf8"),
         mediaType: "text/plain; charset=utf-8",
         summary: `exec_command output for ${args.command}`,
-      }),
-    )
+      }).pipe(
+        Effect.catchTag("KhalaToolRuntimeError", error =>
+          Effect.succeed({
+            artifactRef: `artifact.unavailable.${context.invocation.id}`,
+            private: true,
+            summary: `artifact write failed: ${error.reason}`,
+          }),
+        ),
+      )
     artifacts.push(artifact)
   }
 
@@ -235,6 +241,7 @@ async function renderExecResult(
     publicSafety: "private",
   })
   return failed ? { ...ok, status: "failed" } : ok
+  })
 }
 
 function decodeExecInput(input: Readonly<Record<string, unknown>>, options: KhalaExecCommandToolOptions): ExecCommandInput {
@@ -272,20 +279,19 @@ function decodeArgv(value: unknown): ReadonlyArray<string> | undefined {
   return value
 }
 
-async function resolveWorkdir(
+function resolveWorkdir(
   rawWorkdir: string,
   context: KhalaToolExecuteContext,
-): Promise<Readonly<{ _tag: "ok"; displayPath: string; realPath: string }> | Readonly<{ _tag: "denied" }>> {
-  const workspaceRoot = await realpath(context.services.workspace.workingDirectory)
+): Effect.Effect<Readonly<{ _tag: "ok"; displayPath: string; realPath: string }> | Readonly<{ _tag: "denied" }>, KhalaToolRuntimeError> {
+  return Effect.gen(function* () {
+  const workspaceRoot = yield* Effect.promise(() => realpath(context.services.workspace.workingDirectory))
   const candidate = isAbsolute(rawWorkdir) ? rawWorkdir : resolve(workspaceRoot, rawWorkdir)
-  const target = await realpath(candidate)
-  const info = await stat(target)
+  const target = yield* Effect.promise(() => realpath(candidate))
+  const info = yield* Effect.promise(() => stat(target))
   if (!info.isDirectory()) throw new Error("exec_command workdir must be a directory")
   const inside = pathIsInside(workspaceRoot, target)
   if (!inside) {
-    const decision = await Effect.runPromise(
-      context.services.permission.decide(externalDirectoryPermission(rawWorkdir, context)),
-    )
+    const decision = yield* context.services.permission.decide(externalDirectoryPermission(rawWorkdir, context))
     if (decision === "deny") return { _tag: "denied" }
   }
   return {
@@ -293,6 +299,7 @@ async function resolveWorkdir(
     displayPath: inside ? toWorkspaceRelative(workspaceRoot, target) : rawWorkdir,
     realPath: target,
   }
+  })
 }
 
 function shellPermission(args: ExecCommandInput, cwd: string, context: KhalaToolExecuteContext): KhalaPermissionRequest {

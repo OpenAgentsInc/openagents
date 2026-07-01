@@ -103,9 +103,17 @@ function executeWriteStdinTool(
       )
       return await renderWriteStdinResult(args, result, context)
     } catch (error) {
-      return khalaToolError("write_stdin_failed", error instanceof Error ? error.message : String(error))
+      return khalaToolError("write_stdin_failed", runtimeErrorReason(error))
     }
   })
+}
+
+function runtimeErrorReason(error: unknown): string {
+  if (error instanceof Error && error.message.length > 0) return error.message
+  if (typeof error === "object" && error !== null && "reason" in error && typeof error.reason === "string") {
+    return error.reason
+  }
+  return String(error)
 }
 
 async function renderWriteStdinResult(
