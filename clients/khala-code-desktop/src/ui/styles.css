@@ -1272,16 +1272,21 @@ button {
   font-size: 0.92rem;
   font-weight: 600;
 }
+.khala-thread-sidebar-header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
 .khala-thread-sidebar-new,
-.khala-thread-sidebar-refresh {
+.khala-thread-sidebar-refresh,
+.khala-thread-sidebar-search-toggle {
   font: inherit;
-  border: 1px solid var(--oa-color-component-border);
-  background: var(--oa-color-component-surface);
   color: var(--oa-color-component-text);
   cursor: pointer;
 }
 .khala-thread-sidebar-new,
-.khala-thread-sidebar-refresh {
+.khala-thread-sidebar-refresh,
+.khala-thread-sidebar-search-toggle {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1291,19 +1296,36 @@ button {
   padding: 0;
   font-size: 0.74rem;
 }
+.khala-thread-sidebar-new,
+.khala-thread-sidebar-refresh {
+  border: 1px solid var(--oa-color-component-border);
+  background: var(--oa-color-component-surface);
+}
+.khala-thread-sidebar-search-toggle {
+  border: 0;
+  background: transparent;
+  color: color-mix(in srgb, var(--oa-color-component-text) 68%, transparent);
+}
 .khala-thread-sidebar-new:hover,
-.khala-thread-sidebar-refresh:hover {
+.khala-thread-sidebar-refresh:hover,
+.khala-thread-sidebar-search-toggle:hover,
+.khala-thread-sidebar-search-toggle[aria-expanded="true"],
+.khala-thread-sidebar-search-toggle[data-active="true"] {
   background: var(--oa-color-component-surface-active);
+  color: var(--oa-color-component-text);
   opacity: 1;
 }
-.khala-thread-sidebar-controls {
+.khala-thread-sidebar-search-flyout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 0.45rem;
-  margin-top: 0.8rem;
+  margin-top: 0.6rem;
+  padding: 0.4rem;
+  border: 1px solid color-mix(in srgb, var(--oa-color-component-border) 75%, transparent);
+  border-radius: 0.5rem;
+  background: color-mix(in srgb, var(--oa-color-khala-void) 14%, transparent);
 }
 .khala-thread-sidebar-search {
-  grid-column: 1 / -1;
   width: 100%;
   min-width: 0;
   border: 1px solid var(--oa-color-component-border);
@@ -1313,13 +1335,6 @@ button {
   font: inherit;
   font-size: 0.76rem;
   padding: 0.38rem 0.5rem;
-}
-.khala-thread-sidebar-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  color: color-mix(in srgb, var(--oa-color-component-text) 65%, transparent);
-  font-size: 0.72rem;
 }
 .khala-thread-sidebar-empty,
 .khala-thread-sidebar-error {

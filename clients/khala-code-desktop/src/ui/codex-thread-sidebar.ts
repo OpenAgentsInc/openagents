@@ -108,7 +108,8 @@ export const mountCodexThreadSidebar = (
   container: HTMLElement,
   options: CodexThreadSidebarOptions,
 ): CodexThreadSidebarHandle => {
-  let archived = false
+  let searchOpen = false
+  let searchShouldFocus = false
   let searchTerm = ""
   let state: ViewState = { phase: "idle" }
   let visible = false
@@ -278,21 +279,13 @@ export const mountCodexThreadSidebar = (
       {
         label: "Lifecycle",
         items: [
-          archived
-            ? {
-                id: "unarchive-thread",
-                label: "Unarchive thread",
-                description: "Return to active threads",
-                icon: "Unarchive",
-                onSelect: () => void runMutation(() => options.unarchiveThread(thread.id)),
-              }
-            : {
-                id: "archive-thread",
-                label: "Archive thread",
-                description: "Move out of active threads",
-                icon: "Archive",
-                onSelect: () => void runMutation(() => options.archiveThread(thread.id)),
-              },
+          {
+            id: "archive-thread",
+            label: "Archive thread",
+            description: "Move out of active threads",
+            icon: "Archive",
+            onSelect: () => void runMutation(() => options.archiveThread(thread.id)),
+          },
           {
             id: "delete-thread",
             label: "Delete thread",
@@ -379,6 +372,24 @@ export const mountCodexThreadSidebar = (
     return form
   }
 
+  const toggleSearch = (): void => {
+    threadMenu.close()
+    if (searchOpen) {
+      searchOpen = false
+      searchShouldFocus = false
+      if (searchTerm.length === 0) {
+        render()
+        return
+      }
+      searchTerm = ""
+      void refresh()
+      return
+    }
+    searchOpen = true
+    searchShouldFocus = true
+    render()
+  }
+
   const threadButton = (
     thread: KhalaCodeDesktopCodexThreadSummary,
   ): HTMLElement => {
@@ -422,41 +433,75 @@ export const mountCodexThreadSidebar = (
     container.replaceChildren()
     const header = el("div", "khala-thread-sidebar-header")
     header.append(el("h2", "khala-thread-sidebar-title", "Chat"))
+
+    const headerActions = el("div", "khala-thread-sidebar-header-actions")
+    const searchToggle = el("button", "khala-thread-sidebar-search-toggle")
+    searchToggle.type = "button"
+    searchToggle.title = searchOpen ? "Close thread search" : "Search threads"
+    searchToggle.setAttribute("aria-label", searchOpen ? "Close thread search" : "Search threads")
+    searchToggle.setAttribute("aria-expanded", searchOpen ? "true" : "false")
+    searchToggle.setAttribute("aria-controls", "khala-thread-sidebar-search-flyout")
+    if (searchTerm.length > 0) searchToggle.dataset.active = "true"
+    searchToggle.replaceChildren(sidebarIcon("Search", "Search threads"), srOnly("Search threads"))
+    searchToggle.addEventListener("click", toggleSearch)
+
     const newThread = el("button", "khala-thread-sidebar-new")
     newThread.type = "button"
     newThread.title = "New thread"
     newThread.setAttribute("aria-label", "New thread")
     newThread.replaceChildren(sidebarIcon("Plus", "New thread"), srOnly("New thread"))
     newThread.addEventListener("click", startNewChat)
-    header.append(newThread)
+    headerActions.append(searchToggle, newThread)
+    header.append(headerActions)
+    container.append(header)
 
-    const controls = el("div", "khala-thread-sidebar-controls")
-    const search = el("input", "khala-thread-sidebar-search")
-    search.type = "search"
-    search.value = searchTerm
-    search.placeholder = "Search threads"
-    search.setAttribute("aria-label", "Search Codex threads")
-    search.addEventListener("change", () => {
-      searchTerm = search.value
-      void refresh()
-    })
-    const archiveLabel = el("label", "khala-thread-sidebar-toggle")
-    const archiveInput = el("input")
-    archiveInput.type = "checkbox"
-    archiveInput.checked = archived
-    archiveInput.addEventListener("change", () => {
-      archived = archiveInput.checked
-      void refresh()
-    })
-    archiveLabel.append(archiveInput, el("span", undefined, "Archived"))
-    const refreshButton = el("button", "khala-thread-sidebar-refresh")
-    refreshButton.type = "button"
-    refreshButton.title = "Refresh threads"
-    refreshButton.setAttribute("aria-label", "Refresh threads")
-    refreshButton.replaceChildren(sidebarIcon("Reload", "Refresh threads"), srOnly("Refresh threads"))
-    refreshButton.addEventListener("click", () => void refresh())
-    controls.append(search, archiveLabel, refreshButton)
-    container.append(header, controls)
+    if (searchOpen) {
+      const searchFlyout = el("div", "khala-thread-sidebar-search-flyout")
+      searchFlyout.id = "khala-thread-sidebar-search-flyout"
+
+      const search = el("input", "khala-thread-sidebar-search")
+      search.type = "search"
+      search.name = "threadSearch"
+      search.value = searchTerm
+      search.placeholder = "Search threads"
+      search.autocomplete = "off"
+      search.setAttribute("aria-label", "Search Codex threads")
+      search.addEventListener("change", () => {
+        searchTerm = search.value.trim()
+        void refresh()
+      })
+      search.addEventListener("search", () => {
+        searchTerm = search.value.trim()
+        void refresh()
+      })
+      search.addEventListener("keydown", event => {
+        if (event.key !== "Escape") return
+        event.preventDefault()
+        searchOpen = false
+        searchShouldFocus = false
+        if (searchTerm.length === 0) {
+          render()
+          return
+        }
+        searchTerm = ""
+        void refresh()
+      })
+
+      if (searchShouldFocus) {
+        searchShouldFocus = false
+        requestAnimationFrame(() => search.focus({ preventScroll: true }))
+      }
+
+      const refreshButton = el("button", "khala-thread-sidebar-refresh")
+      refreshButton.type = "button"
+      refreshButton.title = "Refresh threads"
+      refreshButton.setAttribute("aria-label", "Refresh threads")
+      refreshButton.replaceChildren(sidebarIcon("Reload", "Refresh threads"), srOnly("Refresh threads"))
+      refreshButton.addEventListener("click", () => void refresh())
+
+      searchFlyout.append(search, refreshButton)
+      container.append(searchFlyout)
+    }
 
     const data = dataForState(currentState)
     if (currentState.phase === "idle" || data === undefined) {
@@ -491,7 +536,7 @@ export const mountCodexThreadSidebar = (
       : { phase: "loading", data: previousData }
     render()
     try {
-      const data = await options.listThreads({ archived, searchTerm })
+      const data = await options.listThreads({ archived: false, searchTerm })
       if (requestSequence !== refreshSequence) return
       state = { phase: "ready", data }
       activeThreadId = data.threads?.find(thread => thread.id === activeThreadId)?.id ?? activeThreadId
