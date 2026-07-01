@@ -50,7 +50,6 @@ import {
 } from "../shared/rpc"
 import { renderMessageBody } from "./transcript-render"
 import { mountFleetPanel } from "./fleet-status"
-import { mountUnifiedInboxPanel } from "./inbox"
 import { mountCodexSettingsPanel } from "./codex-settings-panel"
 import { mountCodexThreadSidebar } from "./codex-thread-sidebar"
 import {
@@ -1918,7 +1917,6 @@ mountComposerHud()
 const sidebarNavRoot = document.getElementById("sidebar-nav-root")
 const threadSidebarEl = document.getElementById("thread-sidebar")
 const fleetPanelEl = document.getElementById("fleet-panel")
-const inboxPanelEl = document.getElementById("inbox-panel")
 const gymPanelEl = document.getElementById("gym-panel")
 const settingsPanelEl = document.getElementById("settings-panel")
 const threadShell = document.querySelector<HTMLElement>(".khala-code-thread-shell")
@@ -1957,7 +1955,6 @@ const loadGymDemoOptimization = () => {
     sourceRef: "fixture.khala_code.gym.part2_demo",
   })
   gymPanel?.setState(state)
-  setActiveView("gym")
   return gymOptimizationRunFromBridgeProof(khalaCodeGymDemoBridgeProof)
 }
 
@@ -1974,37 +1971,6 @@ const fleetPanel =
         openExternal: url => controls.openExternalUrl(url),
       })
 
-const showFleetPanel = (): void => {
-  setActiveView("fleet")
-}
-
-const showSettingsPanel = (): void => {
-  setActiveView("settings")
-}
-
-const inboxPanel =
-  inboxPanelEl === null
-    ? null
-    : mountUnifiedInboxPanel(inboxPanelEl, {
-        fetch: async () => ({
-          codexHarness: await controls.codexHarnessStatus(),
-          ecosystem: await controls.codexEcosystemRead(
-            activeCodexThreadId === null ? {} : { threadId: activeCodexThreadId },
-          ),
-          fleet: await controls.codexFleetStatus(),
-          pylon: await controls.pylonStatus(),
-          coding: await controls.codingStatus(),
-          tokenAccounting: await controls.tokenAccountingStatus(),
-        }),
-        onOpenFleet: showFleetPanel,
-        onOpenSettings: showSettingsPanel,
-        onReconnectAccount: accountRef => {
-          showFleetPanel()
-          void controls.connectCodexAccount(accountRef)
-          void fleetPanel?.refresh()
-        },
-      })
-
 const gymPanel =
   gymPanelEl === null ? null : mountGymPane(gymPanelEl, initialGymState)
 
@@ -2013,9 +1979,6 @@ const settingsPanel =
     ? null
     : mountCodexSettingsPanel(settingsPanelEl, {
         fetch: () => controls.codexSettingsRead({ includeHiddenModels: true }),
-        fetchEcosystem: () => controls.codexEcosystemRead(
-          activeCodexThreadId === null ? {} : { threadId: activeCodexThreadId },
-        ),
         write: request => controls.codexConfigValueWrite(request),
       })
 
@@ -2043,24 +2006,20 @@ const threadSidebar =
       })
 
 const setActiveView = (value: string): void => {
-  const showChat = value === "chat"
-  const showInbox = value === "inbox"
-  const showFleet = value === "fleet"
-  const showGym = value === "gym"
-  const showSettings = value === "settings"
+  const activeValue = value === "fleet" || value === "settings" ? value : "chat"
+  const showChat = activeValue === "chat"
+  const showFleet = activeValue === "fleet"
+  const showSettings = activeValue === "settings"
   if (threadSidebarEl !== null) threadSidebarEl.hidden = !showChat
-  if (inboxPanelEl !== null) inboxPanelEl.hidden = !showInbox
   if (fleetPanelEl !== null) fleetPanelEl.hidden = !showFleet
   if (settingsPanelEl !== null) settingsPanelEl.hidden = !showSettings
-  gymPanel?.setVisible(showGym)
-  if (threadShell !== null) threadShell.hidden = showInbox || showFleet || showGym || showSettings
-  if (composerDock !== null) composerDock.hidden = showInbox || showFleet || showGym || showSettings
-  // setVisible starts/stops the live 5s poll so the panel updates on its own.
-  inboxPanel?.setVisible(showInbox)
+  gymPanel?.setVisible(false)
+  if (threadShell !== null) threadShell.hidden = showFleet || showSettings
+  if (composerDock !== null) composerDock.hidden = showFleet || showSettings
   fleetPanel?.setVisible(showFleet)
   settingsPanel?.setVisible(showSettings)
   threadSidebar?.setVisible(showChat)
-  if (!showInbox && !showFleet && !showGym && !showSettings && value === "chat") {
+  if (showChat) {
     requestAnimationFrame(focusComposerInput)
   }
 }

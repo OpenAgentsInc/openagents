@@ -131,7 +131,7 @@ describe("Khala Code Gym proof loader", () => {
     ])
   })
 
-  test("URL fixture proof is opt-in and can open directly to Gym", () => {
+  test("URL fixture proof is opt-in without opening a top-level Gym screen", () => {
     const empty = gymPaneStateFromLocation({ search: "", hash: "" })
     const fixture = gymPaneStateFromLocation({
       search: "?gymProof=fixture",
@@ -142,14 +142,24 @@ describe("Khala Code Gym proof loader", () => {
       hash: "",
     })
     const chatView = initialKhalaCodeViewFromLocation({ search: "", hash: "" })
+    const legacyGymView = initialKhalaCodeViewFromLocation({
+      search: "?view=gym",
+      hash: "",
+    })
+    const legacyInboxView = initialKhalaCodeViewFromLocation({
+      search: "?view=inbox",
+      hash: "",
+    })
 
     expect(empty).toEqual({
       activeParameters: defaultKhalaFleetDelegationActiveParameters,
       phase: "empty",
     })
     expect(fixture.phase).toBe("loaded")
-    expect(fixtureView).toBe("gym")
+    expect(fixtureView).toBe("chat")
     expect(chatView).toBe("chat")
+    expect(legacyGymView).toBe("chat")
+    expect(legacyInboxView).toBe("chat")
   })
 
   test("Worker optimization projection maps into the same Gym pane state", () => {

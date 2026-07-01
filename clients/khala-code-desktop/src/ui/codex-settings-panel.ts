@@ -444,7 +444,7 @@ export const mountCodexSettingsPanel = (
       renderCollaborationSection(settings),
       renderUsageSection(settings),
       renderRequirementsSection(settings),
-      renderEcosystemSection(ecosystem),
+      ...(options.fetchEcosystem === undefined ? [] : [renderEcosystemSection(ecosystem)]),
     )
   }
 

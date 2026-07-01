@@ -1,12 +1,7 @@
 import { iconElement } from "@openagentsinc/ui/icon-dom"
 import type { IconName } from "@openagentsinc/ui/icon"
 
-export type KhalaCodeHotbarValue =
-  | "chat"
-  | "inbox"
-  | "fleet"
-  | "gym"
-  | "settings"
+export type KhalaCodeHotbarValue = "chat" | "fleet" | "settings"
 
 export type KhalaCodeHotbarSlot = Readonly<{
   actionId: `action_bar.slot_${number}`
@@ -29,33 +24,17 @@ export const KHALA_CODE_HOTBAR_SLOTS: ReadonlyArray<KhalaCodeHotbarSlot> = [
   {
     actionId: "action_bar.slot_2",
     hotkey: "2",
-    icon: "NotificationBell",
-    label: "Inbox",
+    icon: "Robot",
+    label: "Fleet",
     slot: 2,
-    value: "inbox",
+    value: "fleet",
   },
   {
     actionId: "action_bar.slot_3",
     hotkey: "3",
-    icon: "Robot",
-    label: "Fleet",
-    slot: 3,
-    value: "fleet",
-  },
-  {
-    actionId: "action_bar.slot_4",
-    hotkey: "4",
-    icon: "Dumbbell",
-    label: "Gym",
-    slot: 4,
-    value: "gym",
-  },
-  {
-    actionId: "action_bar.slot_5",
-    hotkey: "5",
     icon: "Settings",
     label: "Settings",
-    slot: 5,
+    slot: 3,
     value: "settings",
   },
 ]
