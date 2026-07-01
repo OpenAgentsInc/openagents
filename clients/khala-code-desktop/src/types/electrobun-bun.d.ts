@@ -41,6 +41,8 @@ declare module "electrobun/bun" {
         readonly height?: number
       }
       readonly rpc?: unknown
+      readonly titleBarStyle?: "hidden" | "hiddenInset" | "default"
+      readonly trafficLightOffset?: Readonly<{ x: number; y: number }>
     })
   }
 

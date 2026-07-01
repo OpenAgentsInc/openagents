@@ -31,12 +31,13 @@ describe("khala code desktop app shell", () => {
     })
   })
 
-  test("opens the desktop window to the primary display work area without fullscreen", async () => {
+  test("opens the desktop window with full-bleed titlebar content", async () => {
     const source = await Bun.file(new URL("../src/bun/index.ts", import.meta.url)).text()
 
     expect(source).toContain("Screen.getPrimaryDisplay().workArea")
     expect(source).toContain("resolveMainWindowFrame()")
     expect(source).toContain("frame: resolveMainWindowFrame()")
+    expect(source).toContain('titleBarStyle: "hiddenInset"')
     expect(source).toContain("FALLBACK_MAIN_WINDOW_FRAME")
     expect(source).not.toContain("setFullScreen(true)")
     expect(source).not.toContain("FullScreen: true")

@@ -328,6 +328,7 @@ if (Bun.env.KHALA_CODE_DESKTOP_OPEN_WINDOW !== "0") {
     title: "Khala Code",
     url: await resolveMainViewUrl(),
     frame: resolveMainWindowFrame(),
+    titleBarStyle: "hiddenInset",
     rpc,
   })
 }
