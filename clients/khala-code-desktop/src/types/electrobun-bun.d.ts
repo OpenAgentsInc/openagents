@@ -44,7 +44,29 @@ declare module "electrobun/bun" {
     })
   }
 
+  export type Rectangle = {
+    readonly x: number
+    readonly y: number
+    readonly width: number
+    readonly height: number
+  }
+
+  export type Display = {
+    readonly id: number
+    readonly bounds: Rectangle
+    readonly workArea: Rectangle
+    readonly scaleFactor: number
+    readonly isPrimary: boolean
+  }
+
   export const ApplicationMenu: Readonly<{
     setApplicationMenu: (menu: unknown) => void
+  }>
+
+  export const Screen: Readonly<{
+    getPrimaryDisplay: () => Display
+    getAllDisplays: () => readonly Display[]
+    getCursorScreenPoint: () => Readonly<{ x: number; y: number }>
+    getMouseButtons: () => bigint
   }>
 }

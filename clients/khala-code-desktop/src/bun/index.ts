@@ -228,7 +228,42 @@ if (argv.includes("--json")) {
   process.exit(exitCode)
 }
 
-const { ApplicationMenu, BrowserView, BrowserWindow } = await import("electrobun/bun")
+const { ApplicationMenu, BrowserView, BrowserWindow, Screen } = await import("electrobun/bun")
+
+type KhalaCodeDesktopWindowFrame = {
+  readonly x: number
+  readonly y: number
+  readonly width: number
+  readonly height: number
+}
+
+const FALLBACK_MAIN_WINDOW_FRAME: KhalaCodeDesktopWindowFrame = {
+  x: 96,
+  y: 56,
+  width: 1180,
+  height: 820,
+}
+
+const isUsableWindowFrame = (
+  frame: Readonly<Partial<KhalaCodeDesktopWindowFrame>>,
+): frame is KhalaCodeDesktopWindowFrame =>
+  Number.isFinite(frame.x) &&
+  Number.isFinite(frame.y) &&
+  Number.isFinite(frame.width) &&
+  Number.isFinite(frame.height) &&
+  Number(frame.width) > 0 &&
+  Number(frame.height) > 0
+
+const resolveMainWindowFrame = (): KhalaCodeDesktopWindowFrame => {
+  const workArea = Screen.getPrimaryDisplay().workArea
+  if (!isUsableWindowFrame(workArea)) return FALLBACK_MAIN_WINDOW_FRAME
+  return {
+    x: Math.round(workArea.x),
+    y: Math.round(workArea.y),
+    width: Math.round(workArea.width),
+    height: Math.round(workArea.height),
+  }
+}
 
 // Optional on-device Apple Foundation Models sidecar (Mac/Apple-Silicon only).
 // Off by default and fails soft: readiness reports unavailability rather than
@@ -290,7 +325,7 @@ if (Bun.env.KHALA_CODE_DESKTOP_OPEN_WINDOW !== "0") {
   new BrowserWindow({
     title: "Khala Code",
     url: await resolveMainViewUrl(),
-    frame: { x: 96, y: 56, width: 1180, height: 820 },
+    frame: resolveMainWindowFrame(),
     rpc,
   })
 }
