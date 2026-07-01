@@ -3,6 +3,7 @@ import type {
   SessionSummary,
 } from "@openagentsinc/autopilot-control-protocol"
 import type { PublicActivityTimelineEnvelope } from "@openagentsinc/public-activity-timeline"
+import { Schema as S } from "effect"
 import type { InstallReadinessResponse } from "./install-readiness.js"
 import type { OnboardingStatusResponse } from "./onboarding-status.js"
 import type {
@@ -1049,363 +1050,431 @@ export type AutoApprovalAuditEntry = {
   readonly reason: string
 }
 
+const EmptyParams = S.Record(S.String, S.Never)
+const StringArray = S.Array(S.String)
+const OptionalString = S.optional(S.String)
+const OptionalNumber = S.optional(S.Number)
+const OptionalBoolean = S.optional(S.Boolean)
+
+const schemaFor = <Type>() => S.Unknown as S.Schema<Type>
+
+const OkResponse = S.Struct({ ok: S.Boolean })
+const DeployCloudParams = S.Struct({
+  target: S.Literals(["cloudrun", "workers"]),
+  ref: S.String,
+  env: S.optional(S.Literals(["production", "preview"])),
+})
+const SubmitIntentParams = S.Struct({
+  title: S.String,
+  body: S.String,
+})
+const ShellTurnParams = S.Struct({ prompt: S.String })
+const KhalaTurnParams = S.Struct({
+  prompt: S.String,
+  model: S.optional(S.Literal("openagents/khala")),
+  turnId: OptionalString,
+})
+const ChooseIdentityParamsSchema = S.Union([
+  S.Struct({ kind: S.Literal("use_existing") }),
+  S.Struct({ kind: S.Literal("create_new"), displayName: S.String }),
+])
+const TrainingRunRefParams = S.Struct({ trainingRunRef: S.String })
+const TrainingWindowRefParams = S.Struct({ windowRef: S.String })
+const ResolveApprovalParams = S.Struct({
+  approvalRef: S.String,
+  decision: S.Literals(["approve", "deny"]),
+})
+const SetCoordinatorPausedParams = S.Struct({ paused: S.Boolean })
+const CancelSessionParams = S.Struct({ sessionRef: S.String })
+const RepoRefSchema = S.Struct({
+  provider: S.Literal("github"),
+  visibility: S.Literal("public"),
+  fullName: S.String,
+  branch: S.String,
+  commitSha: S.String,
+})
+const SpawnSessionParams = S.Struct({
+  adapter: S.Literals(["codex", "claude_agent"]),
+  objective: S.String,
+  verify: S.optional(StringArray),
+  lane: S.optional(S.Literals(["auto", "local", "cloud-gcp", "cloud-shc"])),
+  timeoutSeconds: OptionalNumber,
+  worktreePath: OptionalString,
+  useDefaultWorktree: OptionalBoolean,
+  repoRef: S.optional(RepoRefSchema),
+  accountRef: OptionalString,
+})
+const ResolveManagedWorktreeParams = S.Struct({
+  fullName: S.String,
+  baseRef: S.String,
+  branch: S.String,
+})
+const SpawnAppleFmSessionParams = S.Struct({
+  objective: S.String,
+  worktreePath: OptionalString,
+})
+const AccountRefParams = S.Struct({ accountRef: S.String })
+const ManagedAccountProvider = S.Literals(["codex", "claude_agent"])
+const AddManagedAccountParams = S.Struct({
+  ref: S.String,
+  provider: ManagedAccountProvider,
+  home: S.String,
+  priority: OptionalNumber,
+})
+const ManagedAccountRefParams = S.Struct({
+  ref: S.String,
+  provider: ManagedAccountProvider,
+})
+const SetManagedAccountPriorityParams = S.Struct({
+  ref: S.String,
+  provider: ManagedAccountProvider,
+  priority: S.Number,
+})
+
+export const DesktopRpcHandlerFailure = S.TaggedStruct("DesktopRpcHandlerFailure", {
+  ok: S.Literal(false),
+  method: S.String,
+  error: S.String,
+})
+export type DesktopRpcHandlerFailure = typeof DesktopRpcHandlerFailure.Type
+
+type RpcMethodSchemas<Params, Response> = {
+  readonly params: S.Schema<Params>
+  readonly response: S.Schema<Response>
+}
+
+const method = <Params, Response>(
+  params: S.Schema<Params>,
+  response: S.Schema<Response>,
+): RpcMethodSchemas<Params, Response | DesktopRpcHandlerFailure> => ({
+  params,
+  response: S.Union([response, DesktopRpcHandlerFailure]),
+})
+
+export const DesktopRpcRequestSchemas = {
+  openExternal: method(S.Struct({ url: S.String }), OkResponse),
+  deployCloud: method(DeployCloudParams, schemaFor<DeployResultRow>()),
+  submitIntent: method(
+    SubmitIntentParams,
+    S.Struct({ ok: S.Boolean, status: S.String, error: OptionalString }),
+  ),
+  builtinAgentReadiness: method(
+    EmptyParams,
+    schemaFor<BuiltInAgentReadinessResponse>(),
+  ),
+  startBuiltInAgent: method(
+    EmptyParams,
+    schemaFor<BuiltInAgentStartResponse>(),
+  ),
+  appleFmReadiness: method(EmptyParams, schemaFor<AppleFmReadinessResponse>()),
+  startAppleFmSession: method(
+    EmptyParams,
+    schemaFor<AppleFmSessionStartResponse>(),
+  ),
+  inferenceGatewayReadiness: method(
+    EmptyParams,
+    schemaFor<InferenceGatewayReadinessResponse>(),
+  ),
+  shellTurn: method(ShellTurnParams, schemaFor<ShellTurnResponse>()),
+  khalaTurn: method(KhalaTurnParams, schemaFor<KhalaTurnResponse>()),
+  verseTurn: method(ShellTurnParams, schemaFor<VerseTurnResponse>()),
+  installReadiness: method(EmptyParams, schemaFor<InstallReadinessResponse>()),
+  onboardingStatus: method(
+    EmptyParams,
+    schemaFor<OnboardingStatusResponse>(),
+  ),
+  identityChoiceState: method(
+    EmptyParams,
+    schemaFor<IdentityChoiceStateResponse>(),
+  ),
+  chooseIdentity: method(
+    ChooseIdentityParamsSchema,
+    schemaFor<ChooseIdentityResponse>(),
+  ),
+  promiseSurfacingReadiness: method(
+    EmptyParams,
+    schemaFor<PromiseSurfacingReadinessResponse>(),
+  ),
+  surfacePromiseGap: method(
+    schemaFor<PromiseSurfacingInput>(),
+    schemaFor<PromiseSurfacingResponse>(),
+  ),
+  listTrainingRuns: method(EmptyParams, schemaFor<TrainingRunsResponse>()),
+  listTrainingDashboard: method(
+    EmptyParams,
+    schemaFor<TrainingDashboardSummaryResponse>(),
+  ),
+  listTrainingPromiseGates: method(
+    EmptyParams,
+    schemaFor<TrainingPromiseGatesResponse>(),
+  ),
+  listTrainingOperatorReadiness: method(
+    EmptyParams,
+    schemaFor<TrainingOperatorReadinessResponse>(),
+  ),
+  listTrainingEvidencePacketSummary: method(
+    EmptyParams,
+    schemaFor<TrainingEvidencePacketSummaryResponse>(),
+  ),
+  listPublicActivityTimeline: method(
+    EmptyParams,
+    schemaFor<PublicActivityTimelineResponse>(),
+  ),
+  buildTrainingEvidencePacket: method(
+    TrainingRunRefParams,
+    schemaFor<TrainingEvidencePacketBuildResponse>(),
+  ),
+  planTrainingRunWindow: method(EmptyParams, schemaFor<TrainingPlanResponse>()),
+  activateTrainingWindow: method(
+    TrainingWindowRefParams,
+    schemaFor<TrainingWindowActionResponse>(),
+  ),
+  reconcileTrainingWindow: method(
+    TrainingWindowRefParams,
+    schemaFor<TrainingWindowActionResponse>(),
+  ),
+  claimTrainingWindowLease: method(
+    EmptyParams,
+    schemaFor<TrainingWindowLeaseResponse>(),
+  ),
+  requestTrainingBootstrapGrant: method(
+    TrainingRunRefParams,
+    schemaFor<TrainingBootstrapGrantResponse>(),
+  ),
+  admitTrainingRealGradientEvidence: method(
+    TrainingRunRefParams,
+    schemaFor<TrainingEvidenceAdmissionResponse>(),
+  ),
+  resolveApproval: method(
+    ResolveApprovalParams,
+    S.Struct({
+      applied: S.Boolean,
+      duplicate: S.Boolean,
+      decision: S.String,
+    }),
+  ),
+  setCoordinatorPaused: method(
+    SetCoordinatorPausedParams,
+    S.Struct({ paused: S.Boolean }),
+  ),
+  cancelSession: method(
+    CancelSessionParams,
+    S.Struct({ ok: S.Boolean, state: S.String }),
+  ),
+  spawnSession: method(
+    SpawnSessionParams,
+    S.Struct({ ok: S.Boolean, sessionRef: S.String, error: OptionalString }),
+  ),
+  resolveManagedWorktree: method(
+    ResolveManagedWorktreeParams,
+    S.Union([
+      S.Struct({ ok: S.Literal(true), repoRef: RepoRefSchema }),
+      S.Struct({ ok: S.Literal(false), error: S.String }),
+    ]),
+  ),
+  spawnAppleFmSession: method(
+    SpawnAppleFmSessionParams,
+    schemaFor<AppleFmSessionStartResponse>(),
+  ),
+  listManagedAccounts: method(EmptyParams, schemaFor<ManagedAccountsResponse>()),
+  getAccountStatus: method(EmptyParams, schemaFor<AccountStatusResponse>()),
+  resetAccountStatus: method(AccountRefParams, schemaFor<AccountStatusResponse>()),
+  addManagedAccount: method(
+    AddManagedAccountParams,
+    schemaFor<ManagedAccountMutationResponse>(),
+  ),
+  removeManagedAccount: method(
+    ManagedAccountRefParams,
+    schemaFor<ManagedAccountMutationResponse>(),
+  ),
+  setManagedAccountPriority: method(
+    SetManagedAccountPriorityParams,
+    schemaFor<ManagedAccountMutationResponse>(),
+  ),
+} as const
+
+export const DesktopRpcWebviewMessageSchemas = {
+  nodeState: schemaFor<NodeStateMessage>(),
+  pylonStats: S.Unknown,
+  notifications: schemaFor<NotificationCenterView>(),
+  nodeLaunchStatus: S.Struct({ status: S.String }),
+  shellControl: S.Struct({
+    action: S.Literals(["set-input", "submit"]),
+    value: OptionalString,
+  }),
+  khalaToken: S.Struct({
+    turnId: S.String,
+    delta: S.String,
+  }),
+} as const
+
+type RequestSchemaMap = typeof DesktopRpcRequestSchemas
+type WebviewMessageSchemaMap = typeof DesktopRpcWebviewMessageSchemas
+
+type RpcSpecFromSchema<
+  Entry extends {
+    readonly params: S.Schema<unknown>
+    readonly response: S.Schema<unknown>
+  },
+> = {
+  readonly params: S.Schema.Type<Entry["params"]>
+  readonly response: S.Schema.Type<Entry["response"]>
+}
+
+type RpcMessageMapFromSchemas<
+  Schemas extends Record<string, S.Schema<unknown>>,
+> = {
+  readonly [Message in keyof Schemas]: S.Schema.Type<Schemas[Message]>
+}
+
+export type DesktopRpcRequestMethod = keyof RequestSchemaMap
+export type DesktopRpcWebviewMessage = keyof WebviewMessageSchemaMap
+
+export const decodeDesktopRpcRequestParams = <
+  Method extends DesktopRpcRequestMethod,
+>(
+  methodName: Method,
+  input: unknown,
+): S.Schema.Type<(typeof DesktopRpcRequestSchemas)[Method]["params"]> =>
+  S.decodeUnknownSync(
+    DesktopRpcRequestSchemas[methodName].params as never,
+  )(input) as S.Schema.Type<(typeof DesktopRpcRequestSchemas)[Method]["params"]>
+
+export const decodeDesktopRpcResponse = <Method extends DesktopRpcRequestMethod>(
+  methodName: Method,
+  input: unknown,
+): S.Schema.Type<(typeof DesktopRpcRequestSchemas)[Method]["response"]> =>
+  S.decodeUnknownSync(
+    DesktopRpcRequestSchemas[methodName].response as never,
+  )(input) as S.Schema.Type<
+    (typeof DesktopRpcRequestSchemas)[Method]["response"]
+  >
+
+export const decodeDesktopRpcWebviewMessage = <
+  Message extends DesktopRpcWebviewMessage,
+>(
+  messageName: Message,
+  input: unknown,
+): S.Schema.Type<(typeof DesktopRpcWebviewMessageSchemas)[Message]> =>
+  S.decodeUnknownSync(
+    DesktopRpcWebviewMessageSchemas[messageName] as never,
+  )(input) as S.Schema.Type<
+    (typeof DesktopRpcWebviewMessageSchemas)[Message]
+  >
+
+const rpcFailureMessage = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error)
+
+export const desktopRpcHandlerFailure = (
+  methodName: string,
+  error: unknown,
+): DesktopRpcHandlerFailure => ({
+  _tag: "DesktopRpcHandlerFailure",
+  ok: false,
+  method: methodName,
+  error: rpcFailureMessage(error),
+})
+
+export type DesktopRpcRequestHandlers = {
+  readonly [Method in DesktopRpcRequestMethod]?: (
+    params: S.Schema.Type<(typeof DesktopRpcRequestSchemas)[Method]["params"]>,
+  ) =>
+    | S.Schema.Type<(typeof DesktopRpcRequestSchemas)[Method]["response"]>
+    | Promise<S.Schema.Type<(typeof DesktopRpcRequestSchemas)[Method]["response"]>>
+}
+
+export const withDesktopRpcRequestDecoding = <
+  Handlers extends DesktopRpcRequestHandlers,
+>(
+  handlers: Handlers,
+): Handlers => {
+  const wrapped: Partial<Record<DesktopRpcRequestMethod, unknown>> = {}
+  for (const methodName of Object.keys(handlers) as DesktopRpcRequestMethod[]) {
+    const handler = handlers[methodName]
+    if (handler === undefined) continue
+    wrapped[methodName] = async (params: unknown) => {
+      const decodedParams = decodeDesktopRpcRequestParams(methodName, params)
+      try {
+        const response = await handler(decodedParams as never)
+        return decodeDesktopRpcResponse(methodName, response)
+      } catch (error) {
+        return decodeDesktopRpcResponse(
+          methodName,
+          desktopRpcHandlerFailure(methodName, error),
+        )
+      }
+    }
+  }
+  return wrapped as Handlers
+}
+
+export type DesktopRpcRequestClient = {
+  readonly [Method in DesktopRpcRequestMethod]: (
+    params: S.Schema.Type<(typeof DesktopRpcRequestSchemas)[Method]["params"]>,
+  ) => Promise<
+    S.Schema.Type<(typeof DesktopRpcRequestSchemas)[Method]["response"]>
+  >
+}
+
+export const withDesktopRpcClientDecoding = <Client extends object>(
+  client: Client,
+): Client =>
+  new Proxy(client, {
+    get(target, property, receiver) {
+      if (
+        typeof property !== "string" ||
+        !(property in DesktopRpcRequestSchemas)
+      ) {
+        return Reflect.get(target, property, receiver)
+      }
+      const methodName = property as DesktopRpcRequestMethod
+      const request = Reflect.get(target, property, receiver)
+      if (typeof request !== "function") return request
+      return async (params: unknown) => {
+        const decodedParams = decodeDesktopRpcRequestParams(methodName, params)
+        const response = await request.call(target, decodedParams)
+        return decodeDesktopRpcResponse(methodName, response)
+      }
+    },
+  })
+
+export type DesktopRpcWebviewMessageHandlers = {
+  readonly [Message in DesktopRpcWebviewMessage]?: (
+    payload: S.Schema.Type<(typeof DesktopRpcWebviewMessageSchemas)[Message]>,
+  ) => void
+}
+
+export const withDesktopRpcWebviewMessageDecoding = <
+  Handlers extends DesktopRpcWebviewMessageHandlers,
+>(
+  handlers: Handlers,
+): Handlers => {
+  const wrapped: Partial<Record<DesktopRpcWebviewMessage, unknown>> = {}
+  for (const messageName of Object.keys(handlers) as DesktopRpcWebviewMessage[]) {
+    const handler = handlers[messageName]
+    if (handler === undefined) continue
+    wrapped[messageName] = (payload: unknown) => {
+      handler(decodeDesktopRpcWebviewMessage(messageName, payload) as never)
+    }
+  }
+  return wrapped as Handlers
+}
+
 export type DesktopRPCSchema = {
   readonly bun: {
     readonly requests: {
-      // Open an external URL in the system browser. The webview must NEVER
-      // navigate to external URLs itself — doing so strands the user off the
-      // local app (e.g. on github.com) with no way back. The webview click
-      // guard routes every external anchor here instead.
-      readonly openExternal: {
-        readonly params: { url: string }
-        readonly response: { ok: boolean }
-      }
-      // CL-26: trigger a deploy of the node's own cloud service. The node
-      // fail-safe-gates execution behind OA_DEPLOY_ENABLE=1.
-      readonly deployCloud: {
-        readonly params: { target: "cloudrun" | "workers"; ref: string; env?: "production" | "preview" }
-        readonly response: DeployResultRow
-      }
-      // CL-47: submit an "ask" (work intent) to the node.
-      readonly submitIntent: {
-        readonly params: { title: string; body: string }
-        readonly response: { ok: boolean; status: string; error?: string }
-      }
-      // #5063: read the packaged no-user-key built-in agent readiness. The Bun
-      // host keeps cloud control credentials; the webview sees only booleans,
-      // labels, bounds, and blocker refs.
-      readonly builtinAgentReadiness: {
-        readonly params: Record<string, never>
-        readonly response: BuiltInAgentReadinessResponse
-      }
-      // #5063: start the built-in hosted-compute agent from the Bun host. The
-      // webview cannot choose credentials, worktree, or bounds.
-      readonly startBuiltInAgent: {
-        readonly params: Record<string, never>
-        readonly response: BuiltInAgentStartResponse
-      }
-      // #5071: public-safe local Apple FM readiness. Bun/Pylon own the control
-      // token and bridge details; the webview receives status, labels, and
-      // blocker refs only.
-      readonly appleFmReadiness: {
-        readonly params: Record<string, never>
-        readonly response: AppleFmReadinessResponse
-      }
-      // #5072: start the bounded local Apple FM chat/tool loop from Bun. The
-      // webview supplies no prompt, callback URL, token, helper path, or tool
-      // authority; Bun/Pylon own those details and return a normal sessionRef.
-      readonly startAppleFmSession: {
-        readonly params: Record<string, never>
-        readonly response: AppleFmSessionStartResponse
-      }
-      // #5485: public-safe OpenAgents inference-gateway readiness (server-flag
-      // state + API-key presence + credit balance) so the desktop can route
-      // coding-session inference through the gateway when the user has no own
-      // auth. Bun owns the API key + balance read; the webview never sees the
-      // raw key. No spawn-side wire-contract change — gateway routing rides the
-      // node's existing session.spawn lane selection once the flag is on.
-      readonly inferenceGatewayReadiness: {
-        readonly params: Record<string, never>
-        readonly response: InferenceGatewayReadinessResponse
-      }
-      // HUD H5 (#5503): one zero-base shell turn — the Bun host sends the
-      // prompt to the live OpenAgents inference gateway
-      // (`POST /api/v1/chat/completions`, Gemini 3.5 Flash on the free per-agent
-      // allowance) using the desktop's configured agent token and returns ONLY
-      // the plain Autopilot text. The raw token never crosses this boundary.
-      // No-token / failure returns `ok:false` with an honest plain-language
-      // message (never a fabricated answer).
-      readonly shellTurn: {
-        readonly params: { prompt: string }
-        readonly response: ShellTurnResponse
-      }
-      // M1 (#6009, EPIC #6017): one Khala cockpit turn. The Bun host submits the
-      // prompt to the single public `openagents/khala` model on the gateway and
-      // returns the plain answer PLUS the public-safe `openagents` receipt
-      // projection. `live` is gated on a real receipt ref. Works against
-      // local/stub or staging; the raw token never crosses this boundary. The old
-      // khala-mini / khala-code split ids are deprecated (gateway returns
-      // model_unavailable for them); the host normalizes any value to the single id.
-      readonly khalaTurn: {
-        readonly params: {
-          readonly prompt: string
-          readonly model?: "openagents/khala"
-          // M8 streaming (#6027): correlates this turn to its live token push
-          // (`webview.messages.khalaToken`). Omitted by callers that do not want
-          // live tokens; the Bun host then streams server-side without pushing.
-          readonly turnId?: string
-        }
-        readonly response: KhalaTurnResponse
-      }
-      // #5821: one default Verse/Tassadar turn. The Bun host builds a bounded
-      // public context pack from /api/public/tassadar-run-summary,
-      // /api/public/pylon-stats, /api/public/activity-timeline, and the
-      // product-promise registry, then calls the same OpenAgents model gateway
-      // token path as shellTurn. Missing auth/credits returns one clean Verse
-      // blocker; it never spawns a Codex/Claude/session turn.
-      readonly verseTurn: {
-        readonly params: { prompt: string }
-        readonly response: VerseTurnResponse
-      }
-      // #5064: one public-safe first-run health projection for normal installs.
-      readonly installReadiness: {
-        readonly params: Record<string, never>
-        readonly response: InstallReadinessResponse
-      }
-      // AO-4 (#5445): the live onboarding chain status for the first-run wizard
-      // (identity → registered → online → wallet → payout → presence → Tassadar
-      // → claimed → earned). Public-safe; reflects real node/registration state.
-      readonly onboardingStatus: {
-        readonly params: Record<string, never>
-        readonly response: OnboardingStatusResponse
-      }
-      // AO-3 (#5444): read the first-run identity-choice state (detect existing
-      // Pylon vs needs-choice). Public-safe (npub/refs only; never the seed).
-      readonly identityChoiceState: {
-        readonly params: Record<string, never>
-        readonly response: IdentityChoiceStateResponse
-      }
-      // AO-3 (#5444): record the user's first-run identity choice. The Bun host
-      // re-verifies an existing home's seed marker before adopting it and never
-      // overwrites a different home.
-      readonly chooseIdentity: {
-        readonly params: ChooseIdentityParams
-        readonly response: ChooseIdentityResponse
-      }
-      // #5065: build and optionally post an Orrery-style Product Promises Forum
-      // report. Bun owns the registered-agent token; the webview sends only
-      // public-safe report fields and receives the generated draft/result.
-      readonly promiseSurfacingReadiness: {
-        readonly params: Record<string, never>
-        readonly response: PromiseSurfacingReadinessResponse
-      }
-      readonly surfacePromiseGap: {
-        readonly params: PromiseSurfacingInput
-        readonly response: PromiseSurfacingResponse
-      }
-      // Read public Worker-authoritative training run projections. This is a
-      // read-only desktop projection; admin mutations stay out of the webview.
-      readonly listTrainingRuns: {
-        readonly params: Record<string, never>
-        readonly response: TrainingRunsResponse
-      }
-      readonly listTrainingDashboard: {
-        readonly params: Record<string, never>
-        readonly response: TrainingDashboardSummaryResponse
-      }
-      readonly listTrainingPromiseGates: {
-        readonly params: Record<string, never>
-        readonly response: TrainingPromiseGatesResponse
-      }
-      readonly listTrainingOperatorReadiness: {
-        readonly params: Record<string, never>
-        readonly response: TrainingOperatorReadinessResponse
-      }
-      readonly listTrainingEvidencePacketSummary: {
-        readonly params: Record<string, never>
-        readonly response: TrainingEvidencePacketSummaryResponse
-      }
-      // Read the public activity spine directly from the Worker. This is
-      // observation-only and remains usable without a local node connection.
-      readonly listPublicActivityTimeline: {
-        readonly params: Record<string, never>
-        readonly response: PublicActivityTimelineResponse
-      }
-      readonly buildTrainingEvidencePacket: {
-        readonly params: { trainingRunRef: string }
-        readonly response: TrainingEvidencePacketBuildResponse
-      }
-      // Admin planning stays in Bun. The webview receives only the public-safe
-      // run/window refs and projections that the Worker returns.
-      readonly planTrainingRunWindow: {
-        readonly params: Record<string, never>
-        readonly response: TrainingPlanResponse
-      }
-      readonly activateTrainingWindow: {
-        readonly params: { windowRef: string }
-        readonly response: TrainingWindowActionResponse
-      }
-      readonly reconcileTrainingWindow: {
-        readonly params: { windowRef: string }
-        readonly response: TrainingWindowActionResponse
-      }
-      readonly claimTrainingWindowLease: {
-        readonly params: Record<string, never>
-        readonly response: TrainingWindowLeaseResponse
-      }
-      readonly requestTrainingBootstrapGrant: {
-        readonly params: { trainingRunRef: string }
-        readonly response: TrainingBootstrapGrantResponse
-      }
-      readonly admitTrainingRealGradientEvidence: {
-        readonly params: { trainingRunRef: string }
-        readonly response: TrainingEvidenceAdmissionResponse
-      }
-      // CL-48: resolve a pending approval (approve/deny). Node enforces
-      // exactly-once; a duplicate resolve returns duplicate:true.
-      readonly resolveApproval: {
-        readonly params: { approvalRef: string; decision: "approve" | "deny" }
-        readonly response: { applied: boolean; duplicate: boolean; decision: string }
-      }
-      // CL-51: pause/resume the node's autonomous coordinator loop.
-      readonly setCoordinatorPaused: {
-        readonly params: { paused: boolean }
-        readonly response: { paused: boolean }
-      }
-      // CL-52: cancel a running/queued session.
-      readonly cancelSession: {
-        readonly params: { sessionRef: string }
-        readonly response: { ok: boolean; state: string }
-      }
-      // CL-57: directly spawn a bounded session on the node.
-      // #4998: `lane` selects the execution lane (auto|local|cloud-gcp|cloud-shc,
-      // default auto = own-Pylon-first then cloud-gcp). Optional for backward
-      // compat; omitted means the node defaults to auto.
-      readonly spawnSession: {
-        readonly params: {
-          adapter: "codex" | "claude_agent"
-          objective: string
-          verify?: string[]
-          lane?: "auto" | "local" | "cloud-gcp" | "cloud-shc"
-          timeoutSeconds?: number
-          worktreePath?: string
-          // Desktop shell coding turns do not expose the full composer workspace
-          // picker. When set, Bun may fill an omitted worktreePath with a safe
-          // local git checkout from config / dev checkout discovery.
-          useDefaultWorktree?: boolean
-          // #5471: managed-worktree selector. Mutually exclusive with
-          // `worktreePath`; when present the node's workspace-materializer
-          // checks out `commitSha`. No new wire contract — `session.spawn`
-          // already accepts `repoRef`.
-          repoRef?: {
-            provider: "github"
-            visibility: "public"
-            fullName: string
-            branch: string
-            commitSha: string
-          }
-          // CS-A1: run this session under a specific provider account. The
-          // node resolves it against its registry and rejects an unknown ref;
-          // omitted means the node's default account selection. No new wire
-          // contract — `session.spawn` already accepts `accountRef` (#4868).
-          accountRef?: string
-        }
-        readonly response: { ok: boolean; sessionRef: string; error?: string }
-      }
-      // #5471: resolve a managed-worktree request to a concrete repoRef. Bun
-      // owns the `git ls-remote` SHA resolution; the webview only sends the
-      // GitHub owner/name + base ref + stripped branch and receives a
-      // public-safe repoRef it then passes to spawnSession.
-      readonly resolveManagedWorktree: {
-        readonly params: {
-          fullName: string
-          baseRef: string
-          branch: string
-        }
-        readonly response:
-          | {
-              ok: true
-              repoRef: {
-                provider: "github"
-                visibility: "public"
-                fullName: string
-                branch: string
-                commitSha: string
-              }
-            }
-          | { ok: false; error: string }
-      }
-      // CS-A1: spawn a bounded local Apple Foundation Models coding session,
-      // exposed as a spawn-adapter option alongside codex/claude. The webview
-      // supplies an objective + optional worktree; Bun/Pylon own the prompt
-      // policy, control token, and bridge details (the existing
-      // apple_fm.session.start verb — no new contract).
-      readonly spawnAppleFmSession: {
-        readonly params: { objective: string; worktreePath?: string }
-        readonly response: AppleFmSessionStartResponse
-      }
-      // CS-A1 account management — read/add/remove/set-priority against the
-      // node's local `dev.accounts` config the runtime already reads. Bun owns
-      // the node home + config path; the webview only sees public-safe refs.
-      readonly listManagedAccounts: {
-        readonly params: Record<string, never>
-        readonly response: ManagedAccountsResponse
-      }
-      readonly getAccountStatus: {
-        readonly params: Record<string, never>
-        readonly response: AccountStatusResponse
-      }
-      readonly resetAccountStatus: {
-        readonly params: { accountRef: string }
-        readonly response: AccountStatusResponse
-      }
-      readonly addManagedAccount: {
-        readonly params: {
-          ref: string
-          provider: "codex" | "claude_agent"
-          home: string
-          priority?: number
-        }
-        readonly response: ManagedAccountMutationResponse
-      }
-      readonly removeManagedAccount: {
-        readonly params: { ref: string; provider: "codex" | "claude_agent" }
-        readonly response: ManagedAccountMutationResponse
-      }
-      readonly setManagedAccountPriority: {
-        readonly params: {
-          ref: string
-          provider: "codex" | "claude_agent"
-          priority: number
-        }
-        readonly response: ManagedAccountMutationResponse
-      }
+      readonly [Method in keyof RequestSchemaMap]: RpcSpecFromSchema<
+        RequestSchemaMap[Method]
+      >
     }
     readonly messages: Record<string, never>
   }
   readonly webview: {
     readonly requests: Record<string, never>
-    readonly messages: {
-      readonly nodeState: NodeStateMessage
-      // #5049: public pylon-network stats snapshot (GET /api/public/pylon-stats),
-      // polled on the Bun side and pushed to drive the home network scene.
-      // `unknown` (opaque) — the webview projects it via projectPylonNetworkScene.
-      readonly pylonStats: unknown
-      // CL-30: in-app notification center (unread count + recent items),
-      // derived from newly notify-worthy sessions on the Bun side.
-      readonly notifications: NotificationCenterView
-      // #5025: honest node-launch lifecycle status from the Bun supervisor
-      // (superviseManagedNode), surfaced as a badge in the webview. Distinct
-      // from the live node-state poll: this reflects whether the app launched /
-      // adopted / failed to bring up the local node. No fake "online".
-      readonly nodeLaunchStatus: { readonly status: NodeLaunchStatus }
-      // ZERO-BASE SHELL programmatic control (owner directive, 2026-06-19): a
-      // Bun→webview push that drives the dead-simple shell's text bar so an
-      // operator / headless control path (autopilotctl, the Bun control surface)
-      // can set the input and submit it WITHOUT a human at the keyboard. The
-      // webview routes this to the SAME inbound messages the UI dispatches
-      // (ChangedShellInput / SubmittedShell), so a driver sees exactly the state
-      // the owner sees. Public-safe: it carries only the literal text the owner
-      // could type. `set-input` replaces the bar; `submit` sends the current bar.
-      readonly shellControl: {
-        readonly action: "set-input" | "submit"
-        readonly value?: string
-      }
-      // M8 streaming (#6027, EPIC #6017): Bun→webview live token push for a Khala
-      // cockpit turn. The `khalaTurn` RPC submits `stream:true` and consumes the
-      // SSE stream server-side (each chunk resets the Cloudflare edge idle timer —
-      // the 524 fix), pushing each content delta here so the cockpit renders
-      // tokens live. The terminal `openagents` receipt block is NOT pushed here;
-      // it rides on the `khalaTurn` RPC response, attached on stream close.
-      // `turnId` correlates a delta stream to its turn so concurrent/!stale turns
-      // don't cross-render. Public-safe: token text only, no token/credentials.
-      readonly khalaToken: {
-        readonly turnId: string
-        readonly delta: string
-      }
-    }
+    readonly messages: RpcMessageMapFromSchemas<WebviewMessageSchemaMap>
   }
 }
+
 
 // #5025: launch-lifecycle status the Bun supervisor emits. Defined here (shared,
 // electrobun-free) so both the Bun launcher and the webview agree; node-launcher

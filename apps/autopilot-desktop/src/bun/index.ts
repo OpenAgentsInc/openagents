@@ -114,6 +114,7 @@ import {
   type OnboardingStatusResponse,
   type TrainingOperatorReadinessPylonRefSource,
   type TrainingOperatorReadinessResponse,
+  withDesktopRpcRequestDecoding,
 } from "../shared/rpc.js"
 
 const controlBaseUrl = Bun.env.PYLON_CONTROL_BASE_URL ?? "http://127.0.0.1:4716"
@@ -949,7 +950,7 @@ async function startComposerAppleFmSession(input: {
 const rpc = BrowserView.defineRPC<DesktopRPCSchema>({
   maxRequestTime: DESKTOP_RPC_MAX_REQUEST_TIME_MS,
   handlers: {
-    requests: {
+    requests: withDesktopRpcRequestDecoding({
       // Open an external URL in the system browser. The webview routes every
       // external anchor click here so it can never navigate the app away from
       // the local UI (which would strand the user off-app, e.g. on github.com).
@@ -1215,7 +1216,7 @@ const rpc = BrowserView.defineRPC<DesktopRPCSchema>({
           token,
           adapter: params.adapter,
           objective: params.objective,
-          ...(params.verify ? { verify: params.verify } : {}),
+          ...(params.verify ? { verify: [...params.verify] } : {}),
           // #4998: thread the requested execution lane through to the node.
           ...(params.lane ? { lane: params.lane } : {}),
           ...(params.timeoutSeconds ? { timeoutSeconds: params.timeoutSeconds } : {}),
@@ -1248,7 +1249,12 @@ const rpc = BrowserView.defineRPC<DesktopRPCSchema>({
       // Apple FM uses its own control verb (apple_fm.session.start), so it is
       // its own spawn-adapter path rather than a session.spawn adapter.
       async spawnAppleFmSession(params) {
-        return startComposerAppleFmSession(params)
+        return startComposerAppleFmSession({
+          objective: params.objective,
+          ...(params.worktreePath === undefined
+            ? {}
+            : { worktreePath: params.worktreePath }),
+        })
       },
       // CS-A1 account management — read/add/remove/set-priority against the
       // node's local dev.accounts config. Bun owns the home + config path.
@@ -1294,7 +1300,7 @@ const rpc = BrowserView.defineRPC<DesktopRPCSchema>({
           priority: params.priority,
         })
       },
-    },
+    }),
     messages: {},
   },
 })

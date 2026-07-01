@@ -20,6 +20,8 @@ import { html } from "foldkit/html"
 import {
   DESKTOP_RPC_MAX_REQUEST_TIME_MS,
   type DesktopRPCSchema,
+  withDesktopRpcClientDecoding,
+  withDesktopRpcWebviewMessageDecoding,
 } from "../shared/rpc.js"
 import { type DesktopRequests, pushInbound, setRequest } from "./bridge.js"
 import { initialRuntimeState } from "./initial-state.js"
@@ -131,7 +133,7 @@ const rpc = Electroview.defineRPC<DesktopRPCSchema>({
   maxRequestTime: DESKTOP_RPC_MAX_REQUEST_TIME_MS,
   handlers: {
     requests: {},
-    messages: {
+    messages: withDesktopRpcWebviewMessageDecoding({
       nodeState(message) {
         pushInbound(GotNodeState({ node: message }))
       },
@@ -163,14 +165,18 @@ const rpc = Electroview.defineRPC<DesktopRPCSchema>({
           GotVerseKhalaToken({ turnId: message.turnId, delta: message.delta }),
         )
       },
-    },
+    }),
   },
 })
 
 new Electroview({ rpc })
 
 // rpc.request mirrors the DesktopRequests surface (webview → Bun verbs).
-setRequest(rpc.request as unknown as DesktopRequests)
+setRequest(
+  withDesktopRpcClientDecoding(
+    rpc.request as unknown as Partial<DesktopRequests>,
+  ) as DesktopRequests,
+)
 
 const smokePaneIds = new Set<PaneId>([
   "agent-stream",

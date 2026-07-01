@@ -35,7 +35,7 @@
     "smoke:forum-verse-reflection": "bun scripts/forum-verse-reflection-smoke.ts",
     "test:verse-launch": "bun test tests/verse-launch-checklist.test.ts tests/verse-toggle.test.ts tests/chat-world-visualization.test.ts tests/chat-world-cloudflare.test.ts tests/chat-world-subscriptions.test.ts tests/forum-tipping-multiplayer-integration.test.ts tests/verse-training-visualization.test.ts tests/verse-bulletin-board.test.ts tests/verse-scene-helpers.test.ts tests/verse-turn.test.ts",
     "verify:training": "bun test tests/cl-53-foldkit.test.ts tests/cl-53-sanitize.test.ts && bun run build:css && bun build src/ui/main.ts --outdir /tmp/autopilot-desktop-ui-build --target browser && bun build src/bun/index.ts --outdir /tmp/autopilot-desktop-bun-build --target bun && bun run smoke:training-scene",
-    "verify:deploy": "bun run typecheck && bun test tests/electrobun-config.test.ts && bun run verify:training && bun run test:verse-launch && bun run build && bun scripts/verify-packaged-moksha-asset.ts && bun run smoke:verse-launch",
+    "verify:deploy": "bun run typecheck && bun test tests/electrobun-config.test.ts tests/rpc-schema.test.ts && bun run verify:training && bun run test:verse-launch && bun run build && bun scripts/verify-packaged-moksha-asset.ts && bun run smoke:verse-launch",
     "test": "bash scripts/run-tests.sh",
     "notarize:macos": "bash scripts/notarize-macos.sh"
   },

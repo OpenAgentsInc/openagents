@@ -380,13 +380,15 @@ describe("update reducer (CL-53)", () => {
     expect(model.pane).toBe("settings")
     expect(model.expandedEvents).toEqual([])
     expect(model.installReadinessPending).toBe(true)
-    // CS-A1: Settings also surfaces accounts, so it loads install readiness +
-    // the managed-account registry. #5485: + the inference-gateway readiness.
+    // CS-A1: Settings also surfaces accounts, so it loads install readiness,
+    // managed-account registry/status, and #5485 inference-gateway readiness.
     expect(model.managedAccountsPending).toBe(true)
-    expect(commands).toHaveLength(3)
-    expect(commands.map(command => command.name)).toContain(
+    expect(commands.map(command => command.name)).toEqual([
+      "LoadInstallReadiness",
+      "LoadManagedAccounts",
+      "LoadAccountStatus",
       "LoadInferenceGatewayReadiness",
-    )
+    ])
   })
 
   test("NavigatedTo fullscreen training pane refreshes training projections", () => {
