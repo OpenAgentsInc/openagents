@@ -18,6 +18,7 @@ import type {
   KhalaCodeDesktopCodexAppServerControlResult,
   KhalaCodeDesktopCodexAppServerStatus,
   KhalaCodeDesktopCodexHarnessStatus,
+  KhalaCodeDesktopFleetRunProjection,
 } from "../src/shared/rpc"
 
 const tempDirs: string[] = []
@@ -131,6 +132,39 @@ const stoppedAppServerStatus = (): KhalaCodeDesktopCodexAppServerStatus => ({
   transport: "stdio",
 })
 
+const fleetRunProjection = (
+  input: Partial<KhalaCodeDesktopFleetRunProjection> = {},
+): KhalaCodeDesktopFleetRunProjection => ({
+  counters: {
+    activeAssignments: 0,
+    blockedAssignments: 0,
+    completedAssignments: 0,
+    failedAssignments: 0,
+    workUnitsTotal: 25,
+  },
+  createdAt: "2026-07-01T12:00:00.000Z",
+  dispatchKind: "supervised_dispatch",
+  objectiveProjected: false,
+  pylonRef: "pylon.owner",
+  refillPolicy: {
+    cooldownAware: true,
+    maxPerAccount: 1,
+    stopCondition: "backlog_empty",
+  },
+  runRef: "fleet_run.test",
+  startedAt: "2026-07-01T12:00:00.000Z",
+  state: "running",
+  targetConcurrency: 25,
+  updatedAt: "2026-07-01T12:00:00.000Z",
+  workerKind: "codex",
+  workSource: {
+    kind: "issue_list",
+    repo: "OpenAgentsInc/openagents",
+    issues: [7832],
+  },
+  ...input,
+})
+
 function codexAppServerHost(
   request: CodexAppServerHost["request"],
 ): CodexAppServerHost {
@@ -210,6 +244,202 @@ function throwingCodexChatRuntime(
 }
 
 describe("Khala Code desktop RPC handlers", () => {
+  test("starts fleet runs through the supervisor RPC port", async () => {
+    const calls: unknown[] = []
+    const run = fleetRunProjection()
+    const handlers = createKhalaCodeDesktopRpcRequestHandlers({
+      appleFmReadiness: () => {
+        throw new Error("not used")
+      },
+      env: {},
+      fleetRunSupervisor: {
+        control: async () => {
+          throw new Error("not used")
+        },
+        list: async () => {
+          throw new Error("not used")
+        },
+        start: async request => {
+          calls.push(request)
+          return { run, supervisorStarted: true }
+        },
+        status: async () => {
+          throw new Error("not used")
+        },
+      },
+      onDeviceDeciderStatus: () => {
+        throw new Error("not used")
+      },
+      workingDirectory: process.cwd(),
+    })
+
+    await expect(handlers.fleetRunStart({
+      objective: "Burn down public issue backlog.",
+      targetConcurrency: 25,
+      workSource: {
+        kind: "issue_list",
+        repo: "OpenAgentsInc/openagents",
+        issues: [7832],
+      },
+    })).resolves.toEqual({
+      ok: true,
+      run,
+      supervisorStarted: true,
+    })
+    expect(calls).toHaveLength(1)
+  })
+
+  test("reads fleet run status through a public-safe projection", async () => {
+    const run = fleetRunProjection({
+      counters: {
+        activeAssignments: 3,
+        blockedAssignments: 1,
+        completedAssignments: 20,
+        failedAssignments: 1,
+        workUnitsTotal: 25,
+      },
+      state: "draining",
+    })
+    const handlers = createKhalaCodeDesktopRpcRequestHandlers({
+      appleFmReadiness: () => {
+        throw new Error("not used")
+      },
+      env: {},
+      fleetRunSupervisor: {
+        control: async () => {
+          throw new Error("not used")
+        },
+        list: async () => {
+          throw new Error("not used")
+        },
+        start: async () => {
+          throw new Error("not used")
+        },
+        status: async request => ({
+          run: request.runRef === run.runRef ? run : null,
+          supervisorActive: true,
+        }),
+      },
+      onDeviceDeciderStatus: () => {
+        throw new Error("not used")
+      },
+      workingDirectory: process.cwd(),
+    })
+
+    const result = await handlers.fleetRunStatus({ runRef: run.runRef })
+
+    expect(result).toEqual({ ok: true, run, supervisorActive: true })
+    expect(result.run).not.toHaveProperty("objective")
+  })
+
+  test("controls fleet run pause resume drain and stop transitions through the supervisor", async () => {
+    const calls: string[] = []
+    let current = fleetRunProjection({ state: "running" })
+    const handlers = createKhalaCodeDesktopRpcRequestHandlers({
+      appleFmReadiness: () => {
+        throw new Error("not used")
+      },
+      env: {},
+      fleetRunSupervisor: {
+        control: async request => {
+          calls.push(request.verb)
+          const previousState = current.state
+          const nextState = request.verb === "pause"
+            ? "paused"
+            : request.verb === "resume"
+              ? "running"
+              : request.verb === "drain"
+                ? "draining"
+                : "stopped"
+          current = fleetRunProjection({ state: nextState })
+          return { previousState, run: current, supervisorActive: nextState === "running" }
+        },
+        list: async () => {
+          throw new Error("not used")
+        },
+        start: async () => {
+          throw new Error("not used")
+        },
+        status: async () => ({ run: current, supervisorActive: current.state === "running" }),
+      },
+      onDeviceDeciderStatus: () => {
+        throw new Error("not used")
+      },
+      workingDirectory: process.cwd(),
+    })
+
+    await expect(handlers.fleetRunControl({ runRef: current.runRef, verb: "pause" }))
+      .resolves.toMatchObject({ previousState: "running", run: { state: "paused" }, verb: "pause" })
+    await expect(handlers.fleetRunControl({ runRef: current.runRef, verb: "resume" }))
+      .resolves.toMatchObject({ previousState: "paused", run: { state: "running" }, verb: "resume" })
+    await expect(handlers.fleetRunControl({ runRef: current.runRef, verb: "drain" }))
+      .resolves.toMatchObject({ previousState: "running", run: { state: "draining" }, verb: "drain" })
+    await expect(handlers.fleetRunControl({ runRef: current.runRef, verb: "stop" }))
+      .resolves.toMatchObject({ previousState: "draining", run: { state: "stopped" }, verb: "stop" })
+
+    expect(calls).toEqual(["pause", "resume", "drain", "stop"])
+  })
+
+  test("rejects invalid fleet run control transitions before mutation", async () => {
+    const run = fleetRunProjection({ state: "completed" })
+    let mutated = false
+    const handlers = createKhalaCodeDesktopRpcRequestHandlers({
+      appleFmReadiness: () => {
+        throw new Error("not used")
+      },
+      env: {},
+      fleetRunSupervisor: {
+        control: async () => {
+          mutated = true
+          return { previousState: "completed", run, supervisorActive: false }
+        },
+        list: async () => [run],
+        start: async () => ({ run, supervisorStarted: false }),
+        status: async () => ({ run, supervisorActive: false }),
+      },
+      onDeviceDeciderStatus: () => {
+        throw new Error("not used")
+      },
+      workingDirectory: process.cwd(),
+    })
+
+    await expect(handlers.fleetRunControl({ runRef: run.runRef, verb: "pause" }))
+      .rejects.toThrow("fleetRunControl cannot pause a completed fleet run")
+    expect(mutated).toBe(false)
+  })
+
+  test("lists fleet runs through the supervisor RPC port", async () => {
+    const running = fleetRunProjection({ runRef: "fleet_run.running", state: "running" })
+    const paused = fleetRunProjection({ runRef: "fleet_run.paused", state: "paused" })
+    const handlers = createKhalaCodeDesktopRpcRequestHandlers({
+      appleFmReadiness: () => {
+        throw new Error("not used")
+      },
+      env: {},
+      fleetRunSupervisor: {
+        control: async () => {
+          throw new Error("not used")
+        },
+        list: async request => [running, paused].filter(run => request?.state === undefined || run.state === request.state),
+        start: async () => {
+          throw new Error("not used")
+        },
+        status: async () => {
+          throw new Error("not used")
+        },
+      },
+      onDeviceDeciderStatus: () => {
+        throw new Error("not used")
+      },
+      workingDirectory: process.cwd(),
+    })
+
+    await expect(handlers.fleetRunList({ state: "paused" })).resolves.toEqual({
+      ok: true,
+      runs: [paused],
+    })
+  })
+
   test("answers native desktop status probes instead of falling through", async () => {
     const handlers = createKhalaCodeDesktopRpcRequestHandlers({
       appleFmReadiness: () => {
