@@ -11,6 +11,9 @@ import {
   parseToolTranscript,
 } from "../src/ui/transcript-render"
 import { projectUnifiedInbox } from "../src/ui/inbox"
+import {
+  projectKhalaCodeDesktopCodexEcosystem,
+} from "../src/shared/codex-ecosystem"
 
 describe("khala code desktop app shell", () => {
   test("registers the Khala Code desktop view", () => {
@@ -61,6 +64,8 @@ describe("khala code desktop app shell", () => {
     expect(main).toContain("mountUnifiedInboxPanel")
     expect(main).toContain("codexAppServerStatus")
     expect(main).toContain("codexAppServerStart")
+    expect(main).toContain("codexEcosystemRead")
+    expect(main).toContain("codexMcpToolCall")
     expect(main).toContain("codexTurnInterrupt")
     expect(main).toContain("khala-code-desktop.session-id.v1")
     expect(main).toContain("Requested Codex interrupt for the active turn")
@@ -72,6 +77,7 @@ describe("khala code desktop app shell", () => {
     expect(css).toContain(".codex-item-card")
     expect(css).toContain(".codex-item-card-copy")
     expect(css).toContain(".khala-inbox-coverage-row[data-status=\"not_connected\"]")
+    expect(css).toContain(".khala-settings-ecosystem-grid")
 
     const projection = projectUnifiedInbox({
       codexHarness: {
@@ -305,6 +311,101 @@ describe("khala code desktop app shell", () => {
       title: "Codex setup required",
       source: "runtime",
       severity: "critical",
+    })
+  })
+
+  test("projects Codex ecosystem diagnostics into the Unified Inbox", () => {
+    const observedAt = "2026-07-01T00:00:00.000Z"
+    const ecosystem = projectKhalaCodeDesktopCodexEcosystem({
+      observedAt,
+      mcpServerStatusList: {
+        data: [{
+          name: "github",
+          serverInfo: null,
+          tools: {},
+          resources: [],
+          resourceTemplates: [],
+          authStatus: "notLoggedIn",
+        }],
+        nextCursor: null,
+      },
+      notifications: [{
+        method: "skills/changed",
+        params: {},
+        receivedAt: "2026-07-01T00:01:00.000Z",
+      }],
+    })
+    const projection = projectUnifiedInbox({
+      ecosystem,
+      fleet: {
+        ok: true,
+        observedAt,
+        pylon: {
+          status: "started",
+          pylonRef: "pylon.local",
+          message: "Pylon ready",
+        },
+        availableCodexAssignments: 0,
+        maxCodexAssignments: 0,
+        tokenRate: {
+          activeAdjustedTokensPerMinute: null,
+          completedStatus: "not_measured",
+          completedTokenRows: null,
+          completedTokensPerMinute: null,
+          inFlightTokens: null,
+          inFlightTokensPerMinute: null,
+          source: "unavailable",
+          unavailableReason: null,
+        },
+        accounts: [],
+        activeAssignments: [],
+        processes: [],
+      },
+      pylon: {
+        ok: true,
+        app: "Khala Code Desktop",
+        available: true,
+        capability: "pylon",
+        observedAt,
+        reason: "Pylon ready",
+        status: "ready",
+      },
+      coding: {
+        ok: true,
+        app: "Khala Code Desktop",
+        available: true,
+        capability: "coding",
+        observedAt,
+        reason: "ready",
+        status: "ready",
+      },
+      tokenAccounting: {
+        ok: true,
+        app: "Khala Code Desktop",
+        available: false,
+        capability: "token_accounting",
+        observedAt,
+        reason: "not configured",
+        status: "not_configured",
+      },
+    })
+
+    expect(projection.items.map(item => item.kind)).toEqual([
+      "mcp_failed",
+      "codex_ecosystem",
+    ])
+    expect(projection.items[0]).toMatchObject({
+      source: "mcp",
+      actions: ["open_settings", "refresh"],
+    })
+    expect(projection.items[1]).toMatchObject({
+      source: "codex_ecosystem",
+      actions: ["refresh"],
+    })
+    expect(projection.coverage).toContainEqual({
+      source: "MCP failures",
+      status: "connected",
+      summary: "1 Codex MCP servers projected with 1 auth blockers.",
     })
   })
 

@@ -5,6 +5,7 @@ import { join } from "node:path"
 
 import { createKhalaCodeDesktopRpcRequestHandlers } from "../src/bun/rpc-handlers"
 import type { CodexAppServerChatRuntime } from "../src/bun/codex-app-server-chat-runtime"
+import type { CodexAppServerNotificationHandler } from "../src/bun/codex-app-server-client"
 import type {
   KhalaCodexFleetCommandInput,
   KhalaCodexFleetCommandResult,
@@ -1007,6 +1008,248 @@ describe("Khala Code desktop RPC handlers", () => {
       ok: false,
       keyPath: "model",
       error: "Invalid configuration: model is managed",
+    })
+  })
+
+  test("reads Codex ecosystem state through app-server catalog APIs", async () => {
+    const requests: {
+      readonly method: string
+      readonly params: unknown
+    }[] = []
+    const subscribers: CodexAppServerNotificationHandler[] = []
+    const handlers = createKhalaCodeDesktopRpcRequestHandlers({
+      appleFmReadiness: () => {
+        throw new Error("not used")
+      },
+      codexAppServerHost: {
+        dispose: () => undefined,
+        request: async <Result>(method: string, params: unknown = {}): Promise<Result> => {
+          requests.push({ method, params })
+          if (method === "skills/list") {
+            return {
+              data: [{
+                cwd: "/repo",
+                skills: [{
+                  name: "github",
+                  description: "GitHub skill",
+                  path: "/home/user/.codex/skills/github/SKILL.md",
+                  scope: "user",
+                  enabled: true,
+                }],
+                errors: [],
+              }],
+            } as Result
+          }
+          if (method === "hooks/list") {
+            return { data: [{ cwd: "/repo", hooks: [], warnings: [], errors: [] }] } as Result
+          }
+          if (method === "plugin/list" || method === "plugin/installed") {
+            return {
+              marketplaces: [{
+                name: "curated",
+                path: null,
+                interface: null,
+                plugins: [{
+                  id: "github@curated",
+                  name: "github",
+                  installed: true,
+                  enabled: true,
+                  installPolicy: "AVAILABLE",
+                  authPolicy: "ON_USE",
+                  availability: "AVAILABLE",
+                  source: { type: "remote" },
+                  keywords: [],
+                }],
+              }],
+              marketplaceLoadErrors: [],
+              featuredPluginIds: [],
+            } as Result
+          }
+          if (method === "app/list") {
+            return {
+              data: [{
+                id: "linear",
+                name: "Linear",
+                isAccessible: true,
+                isEnabled: true,
+                pluginDisplayNames: [],
+              }],
+              nextCursor: null,
+            } as Result
+          }
+          if (method === "mcpServerStatus/list") {
+            return {
+              data: [{
+                name: "github",
+                tools: {},
+                resources: [],
+                resourceTemplates: [],
+                authStatus: "notLoggedIn",
+              }],
+              nextCursor: null,
+            } as Result
+          }
+          throw new Error(`unexpected request ${method}`)
+        },
+        respondToServerRequest: () => undefined,
+        restart: async () => ({
+          ok: true,
+          action: "restart",
+          changed: false,
+          status: stoppedAppServerStatus(),
+        }),
+        start: async () => ({
+          ok: true,
+          action: "start",
+          changed: false,
+          status: stoppedAppServerStatus(),
+        }),
+        status: stoppedAppServerStatus,
+        stop: async () => ({
+          ok: true,
+          action: "stop",
+          changed: false,
+          status: stoppedAppServerStatus(),
+        }),
+        subscribe: handler => {
+          subscribers.push(handler)
+          return () => undefined
+        },
+      },
+      codexChatRuntime: throwingCodexChatRuntime(),
+      env: {},
+      onDeviceDeciderStatus: () => {
+        throw new Error("not used")
+      },
+      workingDirectory: "/repo",
+    })
+
+    const emit = subscribers[0]
+    expect(emit).toBeDefined()
+    if (emit === undefined) throw new Error("ecosystem notification subscriber was not registered")
+    emit({
+      method: "skills/changed",
+      params: {},
+      receivedAt: "2026-07-01T12:00:00.000Z",
+    })
+    const result = await handlers.codexEcosystemRead({
+      cwd: "/repo",
+      forceRefetchApps: true,
+      forceReloadSkills: true,
+      threadId: "thread-1",
+    })
+
+    expect(requests.map(request => request.method)).toEqual([
+      "skills/list",
+      "hooks/list",
+      "plugin/list",
+      "plugin/installed",
+      "app/list",
+      "mcpServerStatus/list",
+    ])
+    expect(requests[0].params).toEqual({
+      cwds: ["/repo"],
+      forceReload: true,
+    })
+    expect(requests[4].params).toEqual({
+      threadId: "thread-1",
+      forceRefetch: true,
+    })
+    expect(requests[5].params).toEqual({
+      detail: "full",
+      threadId: "thread-1",
+    })
+    expect(result.sections.skills.count).toBe(1)
+    expect(result.sections.mcp.authRequiredCount).toBe(1)
+    expect(result.notifications.map(notification => notification.method)).toContain("skills/changed")
+  })
+
+  test("passes Codex ecosystem mutations and MCP calls directly to app-server", async () => {
+    const requests: {
+      readonly method: string
+      readonly params: unknown
+    }[] = []
+    const handlers = createKhalaCodeDesktopRpcRequestHandlers({
+      appleFmReadiness: () => {
+        throw new Error("not used")
+      },
+      codexAppServerHost: {
+        dispose: () => undefined,
+        request: async <Result>(method: string, params: unknown = {}): Promise<Result> => {
+          requests.push({ method, params })
+          return { method, params } as Result
+        },
+        respondToServerRequest: () => undefined,
+        restart: async () => ({
+          ok: true,
+          action: "restart",
+          changed: false,
+          status: stoppedAppServerStatus(),
+        }),
+        start: async () => ({
+          ok: true,
+          action: "start",
+          changed: false,
+          status: stoppedAppServerStatus(),
+        }),
+        status: stoppedAppServerStatus,
+        stop: async () => ({
+          ok: true,
+          action: "stop",
+          changed: false,
+          status: stoppedAppServerStatus(),
+        }),
+        subscribe: () => () => undefined,
+      },
+      codexChatRuntime: throwingCodexChatRuntime(),
+      env: {},
+      onDeviceDeciderStatus: () => {
+        throw new Error("not used")
+      },
+      workingDirectory: "/repo",
+    })
+
+    await handlers.codexSkillsExtraRootsSet({ extraRoots: ["/repo/skills"] })
+    await handlers.codexSkillsConfigWrite({ name: "github", enabled: false })
+    await handlers.codexMarketplaceAdd({ source: "https://github.com/acme/plugins", refName: "main" })
+    await handlers.codexMarketplaceRemove({ marketplaceName: "acme" })
+    await handlers.codexMarketplaceUpgrade({ marketplaceName: "acme" })
+    await handlers.codexPluginInstall({ remoteMarketplaceName: "curated", pluginName: "github" })
+    await handlers.codexPluginUninstall({ pluginId: "github@curated" })
+    await handlers.codexMcpOauthLogin({ server: "github", threadId: "thread-1", scopes: ["repo"], timeoutSecs: 15 })
+    await handlers.codexMcpResourceRead({ server: "github", threadId: "thread-1", uri: "repo://OpenAgentsInc/openagents" })
+    const toolResult = await handlers.codexMcpToolCall({
+      threadId: "thread-1",
+      server: "github",
+      tool: "list_issues",
+      arguments: { owner: "OpenAgentsInc", repo: "openagents" },
+      meta: { source: "khala-code-ui" },
+    })
+    await handlers.codexMcpServerReload()
+
+    expect(requests.map(request => request.method)).toEqual([
+      "skills/extraRoots/set",
+      "skills/config/write",
+      "marketplace/add",
+      "marketplace/remove",
+      "marketplace/upgrade",
+      "plugin/install",
+      "plugin/uninstall",
+      "mcpServer/oauth/login",
+      "mcpServer/resource/read",
+      "mcpServer/tool/call",
+      "config/mcpServer/reload",
+    ])
+    expect(requests[9].params).toEqual({
+      threadId: "thread-1",
+      server: "github",
+      tool: "list_issues",
+      arguments: { owner: "OpenAgentsInc", repo: "openagents" },
+      _meta: { source: "khala-code-ui" },
+    })
+    expect(toolResult).toMatchObject({
+      ok: true,
+      method: "mcpServer/tool/call",
     })
   })
 

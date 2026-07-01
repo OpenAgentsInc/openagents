@@ -277,3 +277,48 @@ Validation:
 - `bun test clients/khala-code-desktop/tests/codex-threads.test.ts clients/khala-code-desktop/tests/codex-app-server-chat-runtime.test.ts clients/khala-code-desktop/tests/rpc-handlers.test.ts clients/khala-code-desktop/tests/app-shell.test.ts`
 - `bun run --cwd clients/khala-code-desktop typecheck`
 - `bun run --cwd clients/khala-code-desktop verify`
+
+## Issue #7789: Plugins, Skills, MCP, Apps, Hooks, And Inbox Diagnostics
+
+Status: implemented
+
+Khala Code Desktop now reads Codex ecosystem state from Codex app-server
+instead of maintaining a parallel plugin, skill, app, hook, or MCP registry.
+The desktop RPC exposes `codexEcosystemRead()` as a fan-out across:
+
+- `skills/list`
+- `hooks/list`
+- `plugin/list`
+- `plugin/installed`
+- `app/list`
+- `mcpServerStatus/list`
+
+The same RPC projection records recent app-server invalidation/auth events from
+`skills/changed`, `app/list/updated`, `mcpServer/startupStatus/updated`, and
+`mcpServer/oauthLogin/completed`. The projection keeps Khala-only swarm and
+fleet helpers in a separate `Khala desktop extensions` section so Codex
+connectors remain visibly distinct from desktop advantages.
+
+Direct pass-through RPCs now cover Codex ecosystem actions without a Khala-side
+runtime fork:
+
+- skill roots and enablement: `skills/extraRoots/set`,
+  `skills/config/write`;
+- marketplace and plugin operations: `marketplace/add`,
+  `marketplace/remove`, `marketplace/upgrade`, `plugin/install`, and
+  `plugin/uninstall`;
+- MCP operations: `mcpServer/resource/read`, `mcpServer/tool/call`,
+  `mcpServer/oauth/login`, and `config/mcpServer/reload`.
+
+Settings now renders Codex ecosystem health counts for skills, hooks, plugins,
+marketplaces, apps, MCP servers, and Khala desktop extensions. Unified Inbox
+turns ecosystem diagnostics into actionable rows, including MCP auth failures,
+MCP startup/login failures, disabled/admin-managed plugin state, install/auth
+requirements, disabled connectors, unknown app-server states, and skill-change
+invalidation notices.
+
+Validation:
+
+- `bun test clients/khala-code-desktop/tests/codex-ecosystem.test.ts clients/khala-code-desktop/tests/rpc-handlers.test.ts clients/khala-code-desktop/tests/app-shell.test.ts`
+- `bun run --cwd clients/khala-code-desktop typecheck`
+- `bun run --cwd clients/khala-code-desktop verify`

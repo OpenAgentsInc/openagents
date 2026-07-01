@@ -5,6 +5,7 @@ import type {
   KhalaCodexRateLimitResetOutcome,
 } from "../shared/codex-rate-limits.js"
 import type { CodexAppServerHost } from "./codex-app-server-client.js"
+import type { CodexAppServerNotification } from "./codex-app-server-client.js"
 import {
   createCodexAppServerChatRuntime,
   type CodexAppServerChatRuntime,
@@ -13,8 +14,11 @@ import type { KhalaAppleFmReadiness } from "../shared/apple-fm-readiness.js"
 import type { OnDeviceDeciderSelection } from "../shared/on-device-decider.js"
 import {
   type KhalaCodeDesktopAppInfo,
+  type KhalaCodeDesktopCodexAppServerActionResult,
   type KhalaCodeDesktopChatTurnEvent,
   type KhalaCodeDesktopCodexConfigValueWriteRequest,
+  type KhalaCodeDesktopCodexEcosystemReadRequest,
+  type KhalaCodeDesktopCodexEcosystemReadResult,
   type KhalaCodeDesktopCodexSettingsReadRequest,
   type KhalaCodeDesktopCodexSettingsReadResult,
   type KhalaCodeDesktopSlashCommandDispatchRequest,
@@ -31,6 +35,7 @@ import {
   type KhalaCodeDesktopJsonRpcId,
 } from "../shared/codex-approval-decisions.js"
 import { projectKhalaCodeDesktopCodexSettings } from "../shared/codex-settings.js"
+import { projectKhalaCodeDesktopCodexEcosystem } from "../shared/codex-ecosystem.js"
 import {
   evaluateKhalaCodeDesktopSlashCommandAvailability,
   khalaCodeDesktopSlashCommandsWithAvailability,
@@ -198,6 +203,21 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
     input.env.KHALA_CODE_DESKTOP_RUNTIME === "khala_native_runtime" ||
     input.env.KHALA_CODE_DESKTOP_LEGACY_KHALA_NATIVE_RUNTIME === "1"
 
+  const ecosystemNotifications: CodexAppServerNotification[] = []
+  const ecosystemNotificationMethods = new Set([
+    "app/list/updated",
+    "mcpServer/oauthLogin/completed",
+    "mcpServer/startupStatus/updated",
+    "skills/changed",
+  ])
+  input.codexAppServerHost?.subscribe(notification => {
+    if (!ecosystemNotificationMethods.has(notification.method)) return
+    ecosystemNotifications.push(notification)
+    if (ecosystemNotifications.length > 50) {
+      ecosystemNotifications.splice(0, ecosystemNotifications.length - 50)
+    }
+  })
+
   const codexHarnessStatus = async (): Promise<KhalaCodeDesktopCodexHarnessStatus> =>
     input.codexHarnessStatus?.() ??
     inspectCodexHarnessStatus({ env: input.env as NodeJS.ProcessEnv })
@@ -255,6 +275,88 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
       throw new Error("Codex app-server host is not configured.")
     }
     return input.codexAppServerHost.request(method, params)
+  }
+
+  const codexAppServerAction = async (
+    method: string,
+    params?: unknown,
+  ): Promise<KhalaCodeDesktopCodexAppServerActionResult> => {
+    try {
+      return {
+        ok: true,
+        method,
+        response: await requestCodexAppServer(method, params),
+      }
+    } catch (error) {
+      return {
+        ok: false,
+        method,
+        error: error instanceof Error ? error.message : String(error),
+      }
+    }
+  }
+
+  const readCodexEcosystem = async (
+    request: KhalaCodeDesktopCodexEcosystemReadRequest = {},
+  ): Promise<KhalaCodeDesktopCodexEcosystemReadResult> => {
+    const cwd = request.cwd ?? input.workingDirectory
+    if (input.codexAppServerHost === undefined) {
+      return projectKhalaCodeDesktopCodexEcosystem({
+        cwd,
+        errors: ["Codex app-server host is not configured."],
+      })
+    }
+
+    const errors: string[] = []
+    const capture = async <Result>(
+      label: string,
+      method: string,
+      params?: unknown,
+    ): Promise<Result | undefined> => {
+      try {
+        return await input.codexAppServerHost!.request<Result>(method, params)
+      } catch (error) {
+        errors.push(`${label}: ${error instanceof Error ? error.message : String(error)}`)
+        return undefined
+      }
+    }
+
+    const [
+      skillsList,
+      hooksList,
+      pluginList,
+      pluginInstalled,
+      appsList,
+      mcpServerStatusList,
+    ] = await Promise.all([
+      capture("skills/list", "skills/list", {
+        cwds: [cwd],
+        ...(request.forceReloadSkills === undefined ? {} : { forceReload: request.forceReloadSkills }),
+      }),
+      capture("hooks/list", "hooks/list", { cwds: [cwd] }),
+      capture("plugin/list", "plugin/list", { cwds: [cwd] }),
+      capture("plugin/installed", "plugin/installed", { cwds: [cwd] }),
+      capture("app/list", "app/list", {
+        ...(request.threadId === undefined ? {} : { threadId: request.threadId }),
+        ...(request.forceRefetchApps === undefined ? {} : { forceRefetch: request.forceRefetchApps }),
+      }),
+      capture("mcpServerStatus/list", "mcpServerStatus/list", {
+        detail: "full",
+        ...(request.threadId === undefined ? {} : { threadId: request.threadId }),
+      }),
+    ])
+
+    return projectKhalaCodeDesktopCodexEcosystem({
+      cwd,
+      errors,
+      skillsList,
+      hooksList,
+      pluginList,
+      pluginInstalled,
+      appsList,
+      mcpServerStatusList,
+      notifications: ecosystemNotifications.slice(-25),
+    })
   }
 
   const readCodexSettings = async (
@@ -815,8 +917,61 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
     async codexConfigValueWrite(request) {
       return writeCodexConfigValue(request)
     },
+    async codexEcosystemRead(request = {}) {
+      return readCodexEcosystem(request)
+    },
+    async codexMarketplaceAdd(request) {
+      return codexAppServerAction("marketplace/add", {
+        source: request.source,
+        ...(request.refName === undefined ? {} : { refName: request.refName }),
+        ...(request.sparsePaths === undefined ? {} : { sparsePaths: request.sparsePaths }),
+      })
+    },
+    async codexMarketplaceRemove(request) {
+      return codexAppServerAction("marketplace/remove", request)
+    },
+    async codexMarketplaceUpgrade(request = {}) {
+      return codexAppServerAction("marketplace/upgrade", request)
+    },
+    async codexMcpOauthLogin(request) {
+      return codexAppServerAction("mcpServer/oauth/login", {
+        name: request.server,
+        ...(request.threadId === undefined ? {} : { threadId: request.threadId }),
+        ...(request.scopes === undefined ? {} : { scopes: request.scopes }),
+        ...(request.timeoutSecs === undefined ? {} : { timeoutSecs: request.timeoutSecs }),
+      })
+    },
+    async codexMcpResourceRead(request) {
+      return codexAppServerAction("mcpServer/resource/read", request)
+    },
+    async codexMcpServerReload() {
+      return codexAppServerAction("config/mcpServer/reload")
+    },
+    async codexMcpToolCall(request) {
+      return codexAppServerAction("mcpServer/tool/call", {
+        threadId: request.threadId,
+        server: request.server,
+        tool: request.tool,
+        ...(request.arguments === undefined ? {} : { arguments: request.arguments }),
+        ...(request.meta === undefined ? {} : { _meta: request.meta }),
+      })
+    },
+    async codexPluginInstall(request) {
+      return codexAppServerAction("plugin/install", request)
+    },
+    async codexPluginUninstall(request) {
+      return codexAppServerAction("plugin/uninstall", request)
+    },
     async codexSettingsRead(request = {}) {
       return readCodexSettings(request)
+    },
+    async codexSkillsConfigWrite(request) {
+      return codexAppServerAction("skills/config/write", request)
+    },
+    async codexSkillsExtraRootsSet(request) {
+      return codexAppServerAction("skills/extraRoots/set", {
+        extraRoots: request.extraRoots,
+      })
     },
     async codexThreadArchive(request) {
       return requireCodexChatRuntime().archiveThread(request)

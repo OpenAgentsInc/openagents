@@ -122,10 +122,58 @@ const previewRpc = (): DesktopRpc => ({
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["codexConfigValueWrite"]>>
       >("codexConfigValueWrite", request),
+    codexEcosystemRead: request =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["codexEcosystemRead"]>>
+      >("codexEcosystemRead", request),
+    codexMarketplaceAdd: request =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["codexMarketplaceAdd"]>>
+      >("codexMarketplaceAdd", request),
+    codexMarketplaceRemove: request =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["codexMarketplaceRemove"]>>
+      >("codexMarketplaceRemove", request),
+    codexMarketplaceUpgrade: request =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["codexMarketplaceUpgrade"]>>
+      >("codexMarketplaceUpgrade", request),
+    codexMcpOauthLogin: request =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["codexMcpOauthLogin"]>>
+      >("codexMcpOauthLogin", request),
+    codexMcpResourceRead: request =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["codexMcpResourceRead"]>>
+      >("codexMcpResourceRead", request),
+    codexMcpServerReload: () =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["codexMcpServerReload"]>>
+      >("codexMcpServerReload"),
+    codexMcpToolCall: request =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["codexMcpToolCall"]>>
+      >("codexMcpToolCall", request),
+    codexPluginInstall: request =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["codexPluginInstall"]>>
+      >("codexPluginInstall", request),
+    codexPluginUninstall: request =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["codexPluginUninstall"]>>
+      >("codexPluginUninstall", request),
     codexSettingsRead: (request?: Parameters<DesktopRpcRequests["codexSettingsRead"]>[0]) =>
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["codexSettingsRead"]>>
       >("codexSettingsRead", request),
+    codexSkillsConfigWrite: request =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["codexSkillsConfigWrite"]>>
+      >("codexSkillsConfigWrite", request),
+    codexSkillsExtraRootsSet: request =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["codexSkillsExtraRootsSet"]>>
+      >("codexSkillsExtraRootsSet", request),
     codexThreadArchive: request =>
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["codexThreadArchive"]>>
@@ -1446,8 +1494,31 @@ const controls = {
     rpc.request.codexApprovalRespond(request),
   codexConfigValueWrite: (request: Parameters<DesktopRpcRequests["codexConfigValueWrite"]>[0]) =>
     rpc.request.codexConfigValueWrite(request),
+  codexEcosystemRead: (request?: Parameters<DesktopRpcRequests["codexEcosystemRead"]>[0]) =>
+    rpc.request.codexEcosystemRead(request),
+  codexMarketplaceAdd: (request: Parameters<DesktopRpcRequests["codexMarketplaceAdd"]>[0]) =>
+    rpc.request.codexMarketplaceAdd(request),
+  codexMarketplaceRemove: (request: Parameters<DesktopRpcRequests["codexMarketplaceRemove"]>[0]) =>
+    rpc.request.codexMarketplaceRemove(request),
+  codexMarketplaceUpgrade: (request?: Parameters<DesktopRpcRequests["codexMarketplaceUpgrade"]>[0]) =>
+    rpc.request.codexMarketplaceUpgrade(request),
+  codexMcpOauthLogin: (request: Parameters<DesktopRpcRequests["codexMcpOauthLogin"]>[0]) =>
+    rpc.request.codexMcpOauthLogin(request),
+  codexMcpResourceRead: (request: Parameters<DesktopRpcRequests["codexMcpResourceRead"]>[0]) =>
+    rpc.request.codexMcpResourceRead(request),
+  codexMcpServerReload: () => rpc.request.codexMcpServerReload(),
+  codexMcpToolCall: (request: Parameters<DesktopRpcRequests["codexMcpToolCall"]>[0]) =>
+    rpc.request.codexMcpToolCall(request),
+  codexPluginInstall: (request: Parameters<DesktopRpcRequests["codexPluginInstall"]>[0]) =>
+    rpc.request.codexPluginInstall(request),
+  codexPluginUninstall: (request: Parameters<DesktopRpcRequests["codexPluginUninstall"]>[0]) =>
+    rpc.request.codexPluginUninstall(request),
   codexSettingsRead: (request?: Parameters<DesktopRpcRequests["codexSettingsRead"]>[0]) =>
     rpc.request.codexSettingsRead(request),
+  codexSkillsConfigWrite: (request: Parameters<DesktopRpcRequests["codexSkillsConfigWrite"]>[0]) =>
+    rpc.request.codexSkillsConfigWrite(request),
+  codexSkillsExtraRootsSet: (request: Parameters<DesktopRpcRequests["codexSkillsExtraRootsSet"]>[0]) =>
+    rpc.request.codexSkillsExtraRootsSet(request),
   codexThreadArchive: (request: Parameters<DesktopRpcRequests["codexThreadArchive"]>[0]) =>
     rpc.request.codexThreadArchive(request),
   codexThreadCompact: (request: Parameters<DesktopRpcRequests["codexThreadCompact"]>[0]) =>
@@ -1607,18 +1678,26 @@ const showFleetPanel = (): void => {
   setActiveView("fleet")
 }
 
+const showSettingsPanel = (): void => {
+  setActiveView("settings")
+}
+
 const inboxPanel =
   inboxPanelEl === null
     ? null
     : mountUnifiedInboxPanel(inboxPanelEl, {
         fetch: async () => ({
           codexHarness: await controls.codexHarnessStatus(),
+          ecosystem: await controls.codexEcosystemRead(
+            activeCodexThreadId === null ? {} : { threadId: activeCodexThreadId },
+          ),
           fleet: await controls.codexFleetStatus(),
           pylon: await controls.pylonStatus(),
           coding: await controls.codingStatus(),
           tokenAccounting: await controls.tokenAccountingStatus(),
         }),
         onOpenFleet: showFleetPanel,
+        onOpenSettings: showSettingsPanel,
         onReconnectAccount: accountRef => {
           showFleetPanel()
           void controls.connectCodexAccount(accountRef)
@@ -1634,6 +1713,9 @@ const settingsPanel =
     ? null
     : mountCodexSettingsPanel(settingsPanelEl, {
         fetch: () => controls.codexSettingsRead({ includeHiddenModels: true }),
+        fetchEcosystem: () => controls.codexEcosystemRead(
+          activeCodexThreadId === null ? {} : { threadId: activeCodexThreadId },
+        ),
         write: request => controls.codexConfigValueWrite(request),
       })
 

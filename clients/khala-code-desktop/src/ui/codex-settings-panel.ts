@@ -4,6 +4,10 @@ import type {
 import type {
   KhalaCodeDesktopCodexSettingsProjection,
 } from "../shared/codex-settings"
+import type {
+  KhalaCodeDesktopCodexEcosystemProjection,
+  KhalaCodeDesktopCodexEcosystemSection,
+} from "../shared/codex-ecosystem"
 
 export type CodexSettingsPanelHandle = {
   readonly refresh: () => Promise<void>
@@ -12,6 +16,7 @@ export type CodexSettingsPanelHandle = {
 
 export type CodexSettingsPanelOptions = {
   readonly fetch: () => Promise<KhalaCodeDesktopCodexSettingsProjection>
+  readonly fetchEcosystem?: () => Promise<KhalaCodeDesktopCodexEcosystemProjection>
   readonly write: (
     request: KhalaCodeDesktopCodexConfigValueWriteRequest,
   ) => Promise<{
@@ -103,6 +108,7 @@ export const mountCodexSettingsPanel = (
   options: CodexSettingsPanelOptions,
 ): CodexSettingsPanelHandle => {
   let settings: KhalaCodeDesktopCodexSettingsProjection | null = null
+  let ecosystem: KhalaCodeDesktopCodexEcosystemProjection | null = null
   let loading = false
   let visible = false
   let status = ""
@@ -248,6 +254,72 @@ export const mountCodexSettingsPanel = (
     ])
   }
 
+  const renderEcosystemMetric = (
+    summary: KhalaCodeDesktopCodexEcosystemSection,
+  ): HTMLElement => {
+    const node = el("div", "khala-settings-ecosystem-card")
+    node.dataset.source = summary.source
+    node.append(
+      el("strong", "khala-settings-ecosystem-label", summary.label),
+      el("span", "khala-settings-ecosystem-value", `${summary.readyCount}/${summary.count} ready`),
+      el(
+        "span",
+        "khala-settings-ecosystem-detail",
+        [
+          summary.authRequiredCount > 0 ? `${summary.authRequiredCount} auth` : null,
+          summary.disabledCount > 0 ? `${summary.disabledCount} disabled` : null,
+          summary.managedCount > 0 ? `${summary.managedCount} managed` : null,
+          summary.installRequiredCount > 0 ? `${summary.installRequiredCount} install` : null,
+          summary.errorCount > 0 ? `${summary.errorCount} errors` : null,
+          summary.unknownCount > 0 ? `${summary.unknownCount} unknown` : null,
+        ].filter(Boolean).join(", ") || "healthy",
+      ),
+    )
+    return node
+  }
+
+  const renderEcosystemSection = (
+    current: KhalaCodeDesktopCodexEcosystemProjection | null,
+  ): HTMLElement => {
+    if (current === null) {
+      return section("Codex Ecosystem", [
+        el("p", "khala-settings-empty", "Ecosystem state has not been loaded yet."),
+      ])
+    }
+    const grid = el("div", "khala-settings-ecosystem-grid")
+    for (const summary of [
+      current.sections.skills,
+      current.sections.hooks,
+      current.sections.plugins,
+      current.sections.marketplace,
+      current.sections.apps,
+      current.sections.mcp,
+      current.sections.khala,
+    ]) {
+      grid.append(renderEcosystemMetric(summary))
+    }
+
+    const diagnostics = el("ul", "khala-settings-diagnostic-list")
+    const diagnosticItems = current.diagnostics.slice(0, 8)
+    if (diagnosticItems.length === 0) {
+      diagnostics.append(el("li", "khala-settings-diagnostic", "No Codex ecosystem diagnostics."))
+    } else {
+      for (const diagnostic of diagnosticItems) {
+        const item = el("li", "khala-settings-diagnostic")
+        item.dataset.severity = diagnostic.severity
+        item.textContent = `${diagnostic.title}: ${diagnostic.detail}`
+        diagnostics.append(item)
+      }
+    }
+
+    return section("Codex Ecosystem", [
+      metric("Snapshot", current.ok ? "ready" : "needs attention"),
+      metric("Recent changes", current.notifications.length),
+      grid,
+      diagnostics,
+    ])
+  }
+
   function render(): void {
     container.replaceChildren()
     const header = el("header", "khala-settings-header")
@@ -285,6 +357,7 @@ export const mountCodexSettingsPanel = (
       renderCollaborationSection(settings),
       renderUsageSection(settings),
       renderRequirementsSection(settings),
+      renderEcosystemSection(ecosystem),
     )
   }
 
@@ -292,8 +365,16 @@ export const mountCodexSettingsPanel = (
     loading = true
     render()
     try {
-      settings = await options.fetch()
-      status = settings.ok ? "" : settings.errors.join("\n")
+      const [nextSettings, nextEcosystem] = await Promise.all([
+        options.fetch(),
+        options.fetchEcosystem?.() ?? Promise.resolve(null),
+      ])
+      settings = nextSettings
+      ecosystem = nextEcosystem
+      status = [
+        ...(settings.ok ? [] : settings.errors),
+        ...(ecosystem === null || ecosystem.ok ? [] : ecosystem.errors),
+      ].join("\n")
     } catch (error) {
       status = error instanceof Error ? error.message : String(error)
     } finally {

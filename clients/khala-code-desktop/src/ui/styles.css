@@ -2261,6 +2261,59 @@ button {
   line-height: 1.45;
   overflow-wrap: anywhere;
 }
+.khala-settings-ecosystem-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
+  gap: 0.55rem;
+}
+.khala-settings-ecosystem-card {
+  display: grid;
+  gap: 0.22rem;
+  min-width: 0;
+  padding: 0.55rem 0.6rem;
+  border: 1px solid color-mix(in srgb, var(--oa-color-component-border) 78%, transparent);
+  border-radius: 0.45rem;
+  background: color-mix(in srgb, var(--oa-color-component-surface) 84%, transparent);
+}
+.khala-settings-ecosystem-label,
+.khala-settings-ecosystem-value,
+.khala-settings-ecosystem-detail {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.khala-settings-ecosystem-label {
+  color: color-mix(in srgb, var(--oa-color-component-text) 80%, transparent);
+  font-size: 0.76rem;
+}
+.khala-settings-ecosystem-value {
+  color: var(--oa-color-component-text);
+  font-size: 0.78rem;
+}
+.khala-settings-ecosystem-detail {
+  color: color-mix(in srgb, var(--oa-color-component-text) 54%, transparent);
+  font-size: 0.7rem;
+}
+.khala-settings-diagnostic-list {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0.1rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+.khala-settings-diagnostic {
+  color: color-mix(in srgb, var(--oa-color-component-text) 68%, transparent);
+  font-size: 0.75rem;
+  line-height: 1.42;
+  overflow-wrap: anywhere;
+}
+.khala-settings-diagnostic[data-severity="critical"] {
+  color: #fca5a5;
+}
+.khala-settings-diagnostic[data-severity="warning"] {
+  color: #fbbf24;
+}
 
 @media (max-width: 760px) {
   .khala-settings-header {

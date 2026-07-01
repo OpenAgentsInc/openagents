@@ -1,4 +1,8 @@
 import type {
+  KhalaCodeDesktopCodexEcosystemProjection,
+  KhalaCodeDesktopCodexEcosystemSeverity,
+} from "../shared/codex-ecosystem"
+import type {
   KhalaCodeDesktopCodexHarnessStatus,
   KhalaCodeDesktopFleetStatus,
   KhalaCodeDesktopRuntimeStatus,
@@ -9,6 +13,7 @@ export type UnifiedInboxItemKind =
   | "run_blocked"
   | "ready_for_review"
   | "mcp_failed"
+  | "codex_ecosystem"
   | "missing_credential"
   | "memory_update_pending"
 
@@ -22,6 +27,7 @@ export type UnifiedInboxItemAction =
   | "resume"
   | "reconnect"
   | "open_fleet"
+  | "open_settings"
   | "refresh"
 
 export type UnifiedInboxItem = Readonly<{
@@ -29,7 +35,7 @@ export type UnifiedInboxItem = Readonly<{
   kind: UnifiedInboxItemKind
   title: string
   summary: string
-  source: "fleet" | "runtime" | "assignment" | "permission" | "mcp" | "memory"
+  source: "fleet" | "runtime" | "assignment" | "permission" | "mcp" | "memory" | "codex_ecosystem"
   severity: "info" | "warning" | "critical"
   observedAt: string
   accountRef?: string
@@ -52,6 +58,7 @@ export type UnifiedInboxProjection = Readonly<{
 
 export type UnifiedInboxSource = Readonly<{
   codexHarness?: KhalaCodeDesktopCodexHarnessStatus
+  ecosystem?: KhalaCodeDesktopCodexEcosystemProjection
   fleet: KhalaCodeDesktopFleetStatus
   pylon: KhalaCodeDesktopRuntimeStatus
   coding: KhalaCodeDesktopRuntimeStatus
@@ -66,6 +73,7 @@ export type UnifiedInboxPanelHandle = Readonly<{
 export type UnifiedInboxPanelOptions = Readonly<{
   fetch: () => Promise<UnifiedInboxSource>
   onOpenFleet: () => void
+  onOpenSettings: () => void
   onReconnectAccount: (accountRef: string) => void
 }>
 
@@ -77,6 +85,7 @@ type InboxView =
 type Handlers = Readonly<{
   onRefresh: () => void
   onOpenFleet: () => void
+  onOpenSettings: () => void
   onReconnectAccount: (accountRef: string) => void
 }>
 
@@ -85,8 +94,9 @@ const itemPriority: Record<UnifiedInboxItemKind, number> = {
   run_blocked: 1,
   missing_credential: 2,
   mcp_failed: 3,
-  ready_for_review: 4,
-  memory_update_pending: 5,
+  codex_ecosystem: 4,
+  ready_for_review: 5,
+  memory_update_pending: 6,
 }
 
 const el = <K extends keyof HTMLElementTagNameMap>(
@@ -113,6 +123,11 @@ const readinessNeedsHuman = (readiness: string): boolean => {
 
 const assignmentResumeCommand = (assignmentRef: string): string =>
   `khala closeout ${assignmentRef} --json`
+
+const inboxSeverity = (
+  severity: KhalaCodeDesktopCodexEcosystemSeverity,
+): UnifiedInboxItem["severity"] =>
+  severity === "critical" ? "critical" : severity === "warning" ? "warning" : "info"
 
 export const projectUnifiedInbox = (
   source: UnifiedInboxSource,
@@ -190,6 +205,21 @@ export const projectUnifiedInbox = (
     })
   }
 
+  for (const diagnostic of source.ecosystem?.diagnostics ?? []) {
+    items.push({
+      ref: `inbox.codex_ecosystem.${diagnostic.ref}`,
+      kind: diagnostic.source === "mcp" ? "mcp_failed" : "codex_ecosystem",
+      title: diagnostic.title,
+      summary: diagnostic.detail,
+      source: diagnostic.source === "mcp" ? "mcp" : "codex_ecosystem",
+      severity: inboxSeverity(diagnostic.severity),
+      observedAt: diagnostic.observedAt,
+      actions: diagnostic.action === "refresh"
+        ? ["refresh"]
+        : ["open_settings", "refresh"],
+    })
+  }
+
   if (source.coding.status === "error" || source.coding.status === "unavailable") {
     items.push({
       ref: "inbox.runtime.coding.blocked",
@@ -218,13 +248,17 @@ export const projectUnifiedInbox = (
     },
     {
       source: "MCP failures",
-      status: "not_connected" as const,
-      summary: "MCP tool failure routing needs a desktop projection before it can create Inbox items.",
+      status: source.ecosystem === undefined ? "not_connected" as const : "connected" as const,
+      summary: source.ecosystem === undefined
+        ? "MCP tool failure routing needs a desktop projection before it can create Inbox items."
+        : `${source.ecosystem.sections.mcp.count} Codex MCP servers projected with ${source.ecosystem.sections.mcp.authRequiredCount} auth blockers.`,
     },
     {
       source: "memory and skill updates",
-      status: "not_connected" as const,
-      summary: "Staged worker memory/skill diffs are not persisted as desktop queue rows yet.",
+      status: source.ecosystem === undefined ? "not_connected" as const : "connected" as const,
+      summary: source.ecosystem === undefined
+        ? "Staged worker memory/skill diffs are not persisted as desktop queue rows yet."
+        : `${source.ecosystem.notifications.length} recent Codex skill/app/MCP invalidation events are available.`,
     },
     {
       source: "fleet readiness",
@@ -261,6 +295,7 @@ const renderAction = (
   button.dataset.action = action
   button.addEventListener("click", () => {
     if (action === "open_fleet") handlers.onOpenFleet()
+    if (action === "open_settings") handlers.onOpenSettings()
     if (action === "reconnect" && item.accountRef !== undefined) {
       handlers.onReconnectAccount(item.accountRef)
     }
@@ -327,6 +362,7 @@ const renderReady = (
     "approval_required",
     "run_blocked",
     "missing_credential",
+    "codex_ecosystem",
     "ready_for_review",
   ] as const) {
     chips.append(el("span", "khala-inbox-chip", `${readable(kind)} ${countByKind(data.items, kind)}`))
@@ -405,6 +441,7 @@ export const mountUnifiedInboxPanel = (
   const handlers: Handlers = {
     onRefresh: () => void refresh(),
     onOpenFleet: options.onOpenFleet,
+    onOpenSettings: options.onOpenSettings,
     onReconnectAccount: options.onReconnectAccount,
   }
 

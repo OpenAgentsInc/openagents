@@ -20,6 +20,9 @@ import type {
   KhalaCodeDesktopCodexSettingsProjection,
 } from "./codex-settings.js"
 import type {
+  KhalaCodeDesktopCodexEcosystemProjection,
+} from "./codex-ecosystem.js"
+import type {
   KhalaCodeDesktopCodexThreadGroup,
   KhalaCodeDesktopCodexThreadSummary,
 } from "./codex-threads.js"
@@ -343,6 +346,78 @@ export type KhalaCodeDesktopCodexConfigValueWriteResult = {
   readonly error?: string
 }
 
+export type KhalaCodeDesktopCodexEcosystemReadRequest = {
+  readonly cwd?: string
+  readonly forceRefetchApps?: boolean
+  readonly forceReloadSkills?: boolean
+  readonly threadId?: string
+}
+
+export type KhalaCodeDesktopCodexEcosystemReadResult =
+  KhalaCodeDesktopCodexEcosystemProjection
+
+export type KhalaCodeDesktopCodexAppServerActionResult = {
+  readonly ok: boolean
+  readonly method: string
+  readonly response?: unknown
+  readonly error?: string
+}
+
+export type KhalaCodeDesktopCodexSkillsExtraRootsSetRequest = {
+  readonly extraRoots: readonly string[]
+}
+
+export type KhalaCodeDesktopCodexSkillsConfigWriteRequest = {
+  readonly enabled: boolean
+  readonly name?: string | null
+  readonly path?: string | null
+}
+
+export type KhalaCodeDesktopCodexMcpResourceReadRequest = {
+  readonly server: string
+  readonly threadId?: string | null
+  readonly uri: string
+}
+
+export type KhalaCodeDesktopCodexMcpToolCallRequest = {
+  readonly arguments?: KhalaCodeDesktopCodexJsonValue
+  readonly meta?: KhalaCodeDesktopCodexJsonValue
+  readonly server: string
+  readonly threadId: string
+  readonly tool: string
+}
+
+export type KhalaCodeDesktopCodexMcpOauthLoginRequest = {
+  readonly scopes?: readonly string[] | null
+  readonly server: string
+  readonly threadId?: string | null
+  readonly timeoutSecs?: number | null
+}
+
+export type KhalaCodeDesktopCodexMarketplaceAddRequest = {
+  readonly refName?: string | null
+  readonly source: string
+  readonly sparsePaths?: readonly string[] | null
+}
+
+export type KhalaCodeDesktopCodexMarketplaceRemoveRequest = {
+  readonly marketplaceName: string
+}
+
+export type KhalaCodeDesktopCodexMarketplaceUpgradeRequest = {
+  readonly marketplaceName?: string | null
+}
+
+export type KhalaCodeDesktopCodexPluginInstallRequest = {
+  readonly marketplacePath?: string | null
+  readonly pluginName: string
+  readonly remoteMarketplaceName?: string | null
+}
+
+export type KhalaCodeDesktopCodexPluginUninstallRequest = {
+  readonly pluginId: string
+}
+
 export type KhalaCodeDesktopSlashCommandListRequest = {
   readonly activeTurn?: boolean
   readonly debug?: boolean
@@ -509,7 +584,19 @@ export type KhalaCodeDesktopRPCSchema = {
     codexHarnessStatus(): Promise<KhalaCodeDesktopCodexHarnessStatus>
     codexApprovalRespond(request: KhalaCodeDesktopCodexApprovalRespondRequest): Promise<KhalaCodeDesktopCodexApprovalRespondResult>
     codexConfigValueWrite(request: KhalaCodeDesktopCodexConfigValueWriteRequest): Promise<KhalaCodeDesktopCodexConfigValueWriteResult>
+    codexEcosystemRead(request?: KhalaCodeDesktopCodexEcosystemReadRequest): Promise<KhalaCodeDesktopCodexEcosystemReadResult>
+    codexMarketplaceAdd(request: KhalaCodeDesktopCodexMarketplaceAddRequest): Promise<KhalaCodeDesktopCodexAppServerActionResult>
+    codexMarketplaceRemove(request: KhalaCodeDesktopCodexMarketplaceRemoveRequest): Promise<KhalaCodeDesktopCodexAppServerActionResult>
+    codexMarketplaceUpgrade(request?: KhalaCodeDesktopCodexMarketplaceUpgradeRequest): Promise<KhalaCodeDesktopCodexAppServerActionResult>
+    codexMcpOauthLogin(request: KhalaCodeDesktopCodexMcpOauthLoginRequest): Promise<KhalaCodeDesktopCodexAppServerActionResult>
+    codexMcpResourceRead(request: KhalaCodeDesktopCodexMcpResourceReadRequest): Promise<KhalaCodeDesktopCodexAppServerActionResult>
+    codexMcpServerReload(): Promise<KhalaCodeDesktopCodexAppServerActionResult>
+    codexMcpToolCall(request: KhalaCodeDesktopCodexMcpToolCallRequest): Promise<KhalaCodeDesktopCodexAppServerActionResult>
+    codexPluginInstall(request: KhalaCodeDesktopCodexPluginInstallRequest): Promise<KhalaCodeDesktopCodexAppServerActionResult>
+    codexPluginUninstall(request: KhalaCodeDesktopCodexPluginUninstallRequest): Promise<KhalaCodeDesktopCodexAppServerActionResult>
     codexSettingsRead(request?: KhalaCodeDesktopCodexSettingsReadRequest): Promise<KhalaCodeDesktopCodexSettingsReadResult>
+    codexSkillsConfigWrite(request: KhalaCodeDesktopCodexSkillsConfigWriteRequest): Promise<KhalaCodeDesktopCodexAppServerActionResult>
+    codexSkillsExtraRootsSet(request: KhalaCodeDesktopCodexSkillsExtraRootsSetRequest): Promise<KhalaCodeDesktopCodexAppServerActionResult>
     codexThreadArchive(request: KhalaCodeDesktopCodexThreadIdRequest): Promise<KhalaCodeDesktopCodexThreadMutationResult>
     codexThreadCompact(request: KhalaCodeDesktopCodexThreadCompactRequest): Promise<KhalaCodeDesktopCodexTurnActionResult>
     codexThreadDelete(request: KhalaCodeDesktopCodexThreadIdRequest): Promise<KhalaCodeDesktopCodexThreadMutationResult>
