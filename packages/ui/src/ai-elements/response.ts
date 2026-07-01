@@ -55,7 +55,7 @@ export const responseH3Class = clsx(
   'text-[0.875rem] uppercase tracking-[0.04em] text-white/80',
 )
 export const responseParagraphClass = 'm-0 text-[0.8125rem] leading-[1.5]'
-export const responseListClass = 'm-0 grid gap-1 pl-4'
+export const responseListClass = 'm-0 pl-4 [&>li+li]:mt-1'
 export const responseOrderedListClass = clsx(responseListClass, 'list-decimal')
 export const responseUnorderedListClass = clsx(responseListClass, 'list-disc')
 export const responseListItemClass =

@@ -345,13 +345,24 @@ button {
 }
 
 .message-markdown .md-list {
-  display: grid;
-  gap: 4px;
   padding-left: 1.15rem;
+  list-style-position: outside;
+}
+
+.message-markdown .md-list--unordered {
+  list-style-type: disc;
+}
+
+.message-markdown .md-list--ordered {
+  list-style-type: decimal;
 }
 
 .message-markdown .md-list-item {
   padding-left: 0.15rem;
+}
+
+.message-markdown .md-list-item + .md-list-item {
+  margin-top: 4px;
 }
 
 .message-markdown .md-list-item::marker {

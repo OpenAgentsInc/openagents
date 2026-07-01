@@ -70,10 +70,16 @@ describe('response markdown — block structure', () => {
   test('renders unordered and ordered lists', () => {
     const ul = render('- one\n- two\n- three')
     expect(ul).toContain('<ul')
+    expect(ul).toContain('list-disc')
+    expect(ul).toContain('[&>li+li]:mt-1')
+    expect(ul).not.toContain('grid gap-1')
     expect((ul.match(/<li/g) ?? []).length).toBe(3)
 
     const ol = render('1. first\n2. second')
     expect(ol).toContain('<ol')
+    expect(ol).toContain('list-decimal')
+    expect(ol).toContain('[&>li+li]:mt-1')
+    expect(ol).not.toContain('grid gap-1')
     expect((ol.match(/<li/g) ?? []).length).toBe(2)
   })
 

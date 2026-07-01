@@ -1378,6 +1378,20 @@ describe("khala code desktop app shell", () => {
     expect(inline.some(part => part.kind === "link" && part.href.startsWith("javascript:"))).toBe(false)
   })
 
+  test("keeps markdown list markers visible in desktop prose", async () => {
+    const css = await Bun.file(new URL("../src/ui/styles.css", import.meta.url)).text()
+    const blocks = parseMarkdownBlocks("1. First\n2. Second\n\n- Alpha\n- Beta")
+
+    expect(blocks.map(block => block.kind)).toEqual([
+      "ordered-list",
+      "unordered-list",
+    ])
+    expect(css).toContain(".message-markdown .md-list--ordered {\n  list-style-type: decimal;")
+    expect(css).toContain(".message-markdown .md-list--unordered {\n  list-style-type: disc;")
+    expect(css).toContain(".message-markdown .md-list-item + .md-list-item")
+    expect(css).not.toContain(".message-markdown .md-list {\n  display: grid;")
+  })
+
   test("keeps tool names with underscores literal in markdown prose", () => {
     const inline = parseMarkdownInline(
       "Tools include exec_command, codex_spawn, pylon_ensure, and codex_fleet_status.",
