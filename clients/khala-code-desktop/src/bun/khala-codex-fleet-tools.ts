@@ -4,7 +4,12 @@ import { readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises
 import { homedir } from "node:os"
 import { dirname, join, resolve } from "node:path"
 import type { Readable } from "node:stream"
-import { Effect, Schema as S, Stream } from "effect"
+import { Effect, Stream } from "effect"
+import {
+  decodePylonLifecycleWireEvent,
+  decodePylonLifecycleWireEventJson,
+  type PylonLifecycleWireEvent,
+} from "@openagentsinc/agent-runtime-schema"
 import {
   KhalaFleetDelegateModuleError,
   khalaFleetDelegationParametersFromEnv,
@@ -247,8 +252,6 @@ type AssignmentLifecycleEvent = {
   readonly status?: string | undefined
 }
 
-type PylonLifecycleWireEvent = typeof PylonLifecycleWireEvent.Type
-
 const MAX_SPAWN_COUNT = 10
 const DEFAULT_COMMAND_TIMEOUT_MS = 45_000
 const DEFAULT_SPAWN_TIMEOUT_MS = 1_800_000
@@ -257,35 +260,6 @@ const DEFAULT_CODEX_ACCOUNT_CONCURRENCY = MAX_SPAWN_COUNT
 const DEFAULT_OPENAGENTS_BASE_URL = "https://openagents.com"
 const MAX_MODEL_OUTPUT_BYTES = 4_000
 const MAX_STREAMED_LIFECYCLE_EVENTS = 200
-
-const PylonAssignmentLifecycleWireEvent = S.Struct({
-  schema: S.Literal("openagents.pylon.assignment_run_lifecycle_event.v0.1"),
-  event: S.String,
-  observedAt: S.String,
-  assignmentRef: S.optional(S.String),
-  leaseRef: S.optional(S.String),
-  phase: S.optional(S.String),
-  status: S.optional(S.String),
-})
-
-const PylonSpawnWorkerLifecycleWireEvent = S.Struct({
-  schema: S.Literal("openagents.pylon.khala_spawn_worker_event.v0.1"),
-  message: S.String,
-  observedAt: S.String,
-  slotIndex: S.Number,
-  state: S.String,
-  assignmentEvent: S.optional(S.String),
-  assignmentRef: S.optional(S.String),
-  leaseRef: S.optional(S.String),
-  phase: S.optional(S.String),
-  status: S.optional(S.String),
-})
-
-const PylonLifecycleWireEvent = S.Union([
-  PylonAssignmentLifecycleWireEvent,
-  PylonSpawnWorkerLifecycleWireEvent,
-])
-const decodePylonLifecycleWireEvent = S.decodeUnknownSync(PylonLifecycleWireEvent)
 
 const pylonEnsureToolDefinition: KhalaToolDefinition = {
   authority: "owner_full_access",
@@ -2678,7 +2652,7 @@ export function parsePylonLifecycleNdjsonLine(line: string): Record<string, unkn
   const trimmed = line.trim()
   if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) return null
   try {
-    const decoded: PylonLifecycleWireEvent = decodePylonLifecycleWireEvent(JSON.parse(trimmed) as unknown)
+    const decoded: PylonLifecycleWireEvent = decodePylonLifecycleWireEventJson(trimmed)
     return record(decoded)
   } catch {
     return null
@@ -2686,36 +2660,25 @@ export function parsePylonLifecycleNdjsonLine(line: string): Record<string, unkn
 }
 
 function lifecycleEventFromUnknown(value: unknown): AssignmentLifecycleEvent | null {
-  let event = record(value)
-  if (event === null) return null
   try {
-    const decoded: PylonLifecycleWireEvent = decodePylonLifecycleWireEvent(event)
-    event = record(decoded)
-    if (event === null) return null
+    const decoded: PylonLifecycleWireEvent = decodePylonLifecycleWireEvent(value)
+    if (decoded.schema === "openagents.pylon.assignment_run_lifecycle_event.v0.1") {
+      return {
+        ...(decoded.assignmentRef === undefined ? {} : { assignmentRef: decoded.assignmentRef }),
+        event: decoded.event,
+        ...(decoded.leaseRef === undefined ? {} : { leaseRef: decoded.leaseRef }),
+        ...(decoded.phase === undefined ? {} : { phase: decoded.phase }),
+        ...(decoded.status === undefined ? {} : { status: decoded.status }),
+      }
+    }
+    return {
+      ...(decoded.assignmentRef === undefined ? {} : { assignmentRef: decoded.assignmentRef }),
+      event: decoded.assignmentEvent ?? decoded.state,
+      ...(decoded.leaseRef === undefined ? {} : { leaseRef: decoded.leaseRef }),
+      ...(decoded.status === undefined ? {} : { status: decoded.status }),
+    }
   } catch {
     return null
-  }
-  const schema = stringField(event, "schema")
-  if (
-    schema !== "openagents.pylon.assignment_run_lifecycle_event.v0.1" &&
-    schema !== "openagents.pylon.khala_spawn_worker_event.v0.1"
-  ) return null
-  const eventName =
-    stringField(event, "event") ??
-    stringField(event, "assignmentEvent") ??
-    stringField(event, "state") ??
-    stringField(event, "message")
-  if (eventName === null) return null
-  const assignmentRef = stringField(event, "assignmentRef")
-  const leaseRef = stringField(event, "leaseRef")
-  const phase = stringField(event, "phase")
-  const status = stringField(event, "status")
-  return {
-    ...(assignmentRef === null ? {} : { assignmentRef }),
-    event: eventName,
-    ...(leaseRef === null ? {} : { leaseRef }),
-    ...(phase === null ? {} : { phase }),
-    ...(status === null ? {} : { status }),
   }
 }
 

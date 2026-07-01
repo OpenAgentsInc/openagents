@@ -22,6 +22,7 @@
     "dev:hmr": "concurrently \"vite --port 5173 --strictPort\" \"bun run dev\""
   },
   "dependencies": {
+    "@openagentsinc/agent-runtime-schema": "workspace:*",
     "@openagentsinc/arbiter-effect": "workspace:*",
     "@openagentsinc/composer-state": "workspace:*",
     "@openagentsinc/khala-tools": "workspace:*",

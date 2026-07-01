@@ -1,3 +1,9 @@
+import {
+  encodePylonKhalaSpawnWorkerEvent,
+  PylonKhalaSpawnWorkerEventSchemaLiteral,
+  type PylonKhalaSpawnWorkerEvent as SharedPylonKhalaSpawnWorkerEvent,
+  type PylonKhalaSpawnWorkerState,
+} from "@openagentsinc/agent-runtime-schema"
 import type { BootstrapSummary } from "./bootstrap.js"
 import type { AssignmentClientOptions, AssignmentRunLifecycleEvent } from "./assignment.js"
 import { runNoSpendAssignment } from "./assignment.js"
@@ -15,19 +21,7 @@ import { assertPublicProjectionSafe } from "./state.js"
 
 export const PYLON_KHALA_SPAWN_PLAN_SCHEMA = "openagents.pylon.khala_spawn_plan.v0.1"
 export const PYLON_KHALA_SPAWN_RUN_SCHEMA = "openagents.pylon.khala_spawn_run.v0.1"
-export const PYLON_KHALA_SPAWN_WORKER_EVENT_SCHEMA = "openagents.pylon.khala_spawn_worker_event.v0.1"
-
-export type PylonKhalaSpawnWorkerState =
-  | "queued"
-  | "requesting"
-  | "assignment_created"
-  | "running"
-  | "closeout_submitted"
-  | "proof_checked"
-  | "accepted"
-  | "rejected"
-  | "failed"
-  | "cancelled"
+export const PYLON_KHALA_SPAWN_WORKER_EVENT_SCHEMA = PylonKhalaSpawnWorkerEventSchemaLiteral
 
 export type PylonKhalaSpawnAccount = {
   accountRef: string | null
@@ -87,18 +81,7 @@ export type PylonKhalaSpawnPlanLike<Slot extends PylonKhalaSpawnSlotLike = Pylon
     slots: readonly Slot[]
   }
 
-export type PylonKhalaSpawnWorkerEvent = {
-  schema: typeof PYLON_KHALA_SPAWN_WORKER_EVENT_SCHEMA
-  assignmentEvent?: AssignmentRunLifecycleEvent["event"]
-  assignmentRef?: string
-  closeoutRef?: string
-  leaseRef?: string
-  message: string
-  observedAt: string
-  slotIndex: number
-  state: PylonKhalaSpawnWorkerState
-  status?: string
-}
+export type PylonKhalaSpawnWorkerEvent = SharedPylonKhalaSpawnWorkerEvent
 
 export type PylonKhalaSpawnProofProjection = {
   cacheReadTokens: number
@@ -631,8 +614,9 @@ async function backfillMissingProofs<Slot extends PylonKhalaSpawnSlotLike>(input
         state: "proof_checked",
         status: "proof.khala_spawn.backfilled",
       }
-      assertPublicProjectionSafe(event)
-      await input.deps?.onWorkerLifecycle?.(event, slot)
+      const encodedEvent = encodePylonKhalaSpawnWorkerEvent(event)
+      assertPublicProjectionSafe(encodedEvent)
+      await input.deps?.onWorkerLifecycle?.(encodedEvent, slot)
       const state =
         proofBlockers.length > 0
           ? "failed"
@@ -772,9 +756,10 @@ async function runPylonKhalaSpawnSlot<Slot extends PylonKhalaSpawnSlotLike>(inpu
       state,
       ...patch,
     }
-    assertPublicProjectionSafe(event)
-    events.push(event)
-    await input.deps?.onWorkerLifecycle?.(event, input.slot)
+    const encodedEvent = encodePylonKhalaSpawnWorkerEvent(event)
+    assertPublicProjectionSafe(encodedEvent)
+    events.push(encodedEvent)
+    await input.deps?.onWorkerLifecycle?.(encodedEvent, input.slot)
   }
 
   const blockerRefs: string[] = []

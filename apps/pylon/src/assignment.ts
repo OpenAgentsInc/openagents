@@ -9,6 +9,10 @@ import {
   TASSADAR_EXECUTOR_TRACE_HOMEWORK_JOB_KIND,
   TASSADAR_EXECUTOR_TRACE_JOB_KIND,
 } from "@openagentsinc/tassadar-executor"
+import {
+  encodePylonAssignmentRunLifecycleEvent,
+  type PylonAssignmentRunLifecycleEvent,
+} from "@openagentsinc/agent-runtime-schema"
 import type { BootstrapSummary } from "./bootstrap.js"
 import {
   loadClaudeAgentConfig,
@@ -190,37 +194,7 @@ export type AssignmentClientOptions = {
   runtimeProgressIntervalMs?: number
 }
 
-export type AssignmentRunLifecycleEvent = {
-  schema: "openagents.pylon.assignment_run_lifecycle_event.v0.1"
-  event:
-    | "assignment_run.poll_complete"
-    | "assignment_run.accepted"
-    | "assignment_run.runtime_started"
-    | "assignment_run.runtime_progress"
-    | "assignment_run.runtime_failed"
-    | "assignment_run.progress_submitted"
-    | "assignment_run.artifacts_submitted"
-    | "assignment_run.closeout_submitted"
-    | "assignment_run.completed"
-    | "assignment_run.no_assignment"
-  observedAt: string
-  assignmentRef?: string
-  leaseRef?: string
-  leaseCount?: number
-  candidateCount?: number
-  status?: AssignmentStatus | AssignmentProgress["status"]
-  statusRef?: string
-  progressRef?: string
-  artifactRef?: string
-  closeoutRef?: string
-  accountRefHash?: string
-  elapsedMs?: number
-  phase?: "runtime_active" | CodexAgentRuntimePhase
-  tokensSoFar?: number
-  tokenCountKind?: "exact" | "estimated"
-  lastProgressEvent?: AssignmentRunLifecycleEvent["event"] | string
-  blockerRefs?: string[]
-}
+export type AssignmentRunLifecycleEvent = PylonAssignmentRunLifecycleEvent
 
 export type AssignmentRecoveryDiagnostic = {
   schema: "openagents.pylon.assignment_recovery_diagnostic.v0.1"
@@ -1691,8 +1665,9 @@ export async function runNoSpendAssignment(summary: BootstrapSummary, options: A
         observedAt: (options.now?.() ?? new Date()).toISOString(),
         ...event,
       }
-      assertPublicProjectionSafe(lifecycleEvent)
-      await options.onLifecycleEvent(lifecycleEvent)
+      const encodedLifecycleEvent = encodePylonAssignmentRunLifecycleEvent(lifecycleEvent)
+      assertPublicProjectionSafe(encodedLifecycleEvent)
+      await options.onLifecycleEvent(encodedLifecycleEvent)
       if (event.event !== "assignment_run.runtime_progress") {
         lastProgressEvent = event.event
       }

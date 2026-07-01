@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
 import { afterEach, describe, expect, test } from "bun:test"
+import { decodePylonLifecycleWireEventJson } from "@openagentsinc/agent-runtime-schema"
 import { createBootstrapSummary, parseBootstrapArgs } from "../src/bootstrap"
 import {
   acceptAssignment,
@@ -469,7 +470,7 @@ describe("Pylon assignment lease flow", () => {
       expect(result.lease.assignmentRef).toBe(cliLease.assignmentRef)
       expect(stdout).not.toContain("assignment_run.")
 
-      const events = stderr.trim().split("\n").map((line) => JSON.parse(line))
+      const events = stderr.trim().split("\n").map((line) => decodePylonLifecycleWireEventJson(line))
       expect(events.map((event) => event.event)).toEqual([
         "assignment_run.poll_complete",
         "assignment_run.accepted",
