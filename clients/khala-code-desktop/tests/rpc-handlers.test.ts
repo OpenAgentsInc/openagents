@@ -478,6 +478,71 @@ describe("Khala Code desktop RPC handlers", () => {
     expect(legacyTurnStarted).toBe(false)
   })
 
+  test("adds typed Codex auth blocker refs to failed Codex app-server chat turns", async () => {
+    const handlers = createKhalaCodeDesktopRpcRequestHandlers({
+      appleFmReadiness: () => {
+        throw new Error("not used")
+      },
+      codexChatRuntime: throwingCodexChatRuntime({
+        startTurn: async () => ({
+          backend: {
+            kind: "codex_app_server",
+            model: "gpt-5.1-codex",
+            threadId: "thread-codex-auth-missing",
+            turnId: "turn-codex-auth-missing",
+            turnStatus: "failed",
+          },
+          messages: [{
+            id: "turn-codex-auth-missing-status",
+            role: "system",
+            body: "Codex completed the turn with status: failed.",
+          }],
+          ok: false,
+          toolNames: [],
+          usedTools: [],
+        }),
+      }),
+      codexHarnessStatus: () => readyHarness({
+        available: false,
+        reason: "Codex auth.json is missing.",
+        status: "unavailable",
+        auth: {
+          state: "credentials_missing",
+          blockerRefs: ["blocker.codex.credentials_missing"],
+          accessTokenPresent: false,
+          accountIdPresent: false,
+          refreshTokenPresent: false,
+          error: "Codex auth.json is missing.",
+        },
+        signIn: {
+          required: true,
+          command: "codex login",
+          warning: "Run codex login yourself for the primary user Codex session; Khala Code uses separate device-auth only for isolated Pylon worker homes.",
+        },
+      }),
+      env: {},
+      onDeviceDeciderStatus: () => {
+        throw new Error("not used")
+      },
+      workingDirectory: process.cwd(),
+    })
+
+    await expect(handlers.submitChatMessage({
+      messages: [{ id: "user-1", role: "user", body: "Say hello" }],
+      sessionId: "desktop-session-1",
+      turnId: "desktop-turn-1",
+    })).resolves.toMatchObject({
+      backend: {
+        kind: "codex_app_server",
+        blockerRefs: ["blocker.codex.credentials_missing"],
+        runtimeMode: "codex_harness",
+        toolCatalogKind: "codex_app_server",
+        turnStatus: "failed",
+      },
+      ok: false,
+    })
+  })
+
   test("keeps the Khala-native chat runtime behind the explicit legacy flag", async () => {
     let legacyTurnStarted = false
     const handlers = createKhalaCodeDesktopRpcRequestHandlers({
