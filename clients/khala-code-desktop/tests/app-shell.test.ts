@@ -950,7 +950,9 @@ describe("khala code desktop app shell", () => {
     expect(main).toContain("useStateDbOnly: true")
     expect(main).toContain("recentThreadIndexForDigitKey")
     expect(main).toContain("recentThreadHotkeyIndexForEvent")
+    expect(main).toContain("recentThreadCycleDirectionForEvent")
     expect(main).toContain("threadSidebar.selectRecentThread(recentThreadIndex)")
+    expect(main).toContain("threadSidebar.selectAdjacentRecentThread(recentThreadCycleDirection)")
     expect(main).toContain(
       "const request: KhalaCodeDesktopChatTurnRequest = {\n      ...(imageAttachments.length === 0 ? {} : { attachments: imageAttachments }),\n      messages,\n      sessionId,\n      ...(activeCodexThreadId === null ? { startNewThread: true } : { threadId: activeCodexThreadId }),\n      turnId,\n    }",
     )
@@ -985,7 +987,9 @@ describe("khala code desktop app shell", () => {
     expect(panel).not.toContain('statusLabel: "draft"')
     expect(panel).toContain("options.resumeThread(threadId)")
     expect(panel).toContain("readonly selectRecentThread")
+    expect(panel).toContain("readonly selectAdjacentRecentThread")
     expect(panel).toContain('options.listThreads({ archived: false, searchTerm: "" })')
+    expect(panel).toContain("recentThreadCycleIndex")
     expect(panel).toContain("recentThreadsForHotkeys")
     expect(panel).toContain("options.forkThread(thread.id)")
     expect(panel).toContain("let renamingThreadId: string | null = null")

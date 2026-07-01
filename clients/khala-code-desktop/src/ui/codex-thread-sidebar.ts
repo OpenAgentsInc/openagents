@@ -15,10 +15,15 @@ import {
   type BasecoatMenuDomPoint,
 } from "@openagentsinc/ui/menu-dom"
 import { formatCompactThreadTimestamp } from "./thread-time"
-import { recentThreadsForHotkeys } from "./thread-hotkeys"
+import {
+  type RecentThreadCycleDirection,
+  recentThreadCycleIndex,
+  recentThreadsForHotkeys,
+} from "./thread-hotkeys"
 
 export type CodexThreadSidebarHandle = {
   readonly refresh: () => Promise<void>
+  readonly selectAdjacentRecentThread: (direction: RecentThreadCycleDirection) => Promise<boolean>
   readonly selectRecentThread: (index: number) => Promise<boolean>
   readonly setActiveThreadId: (threadId: string | null) => void
   readonly setVisible: (visible: boolean) => void
@@ -209,6 +214,26 @@ export const mountCodexThreadSidebar = (
     if (!Number.isInteger(index) || index < 0 || index >= 10) return false
     try {
       const data = await loadRecentThreadData()
+      const thread = recentThreadsForHotkeys(data.threads ?? [])[index]
+      if (thread === undefined) return false
+      return await selectThread(thread.id)
+    } catch (error) {
+      setStatusError(error)
+      return false
+    }
+  }
+
+  const selectAdjacentRecentThread = async (
+    direction: RecentThreadCycleDirection,
+  ): Promise<boolean> => {
+    try {
+      const data = await loadRecentThreadData()
+      const index = recentThreadCycleIndex({
+        activeThreadId,
+        direction,
+        threads: data.threads ?? [],
+      })
+      if (index === null) return false
       const thread = recentThreadsForHotkeys(data.threads ?? [])[index]
       if (thread === undefined) return false
       return await selectThread(thread.id)
@@ -561,6 +586,7 @@ export const mountCodexThreadSidebar = (
 
   return {
     refresh,
+    selectAdjacentRecentThread,
     selectRecentThread,
     setActiveThreadId(threadId) {
       activeThreadId = threadId

@@ -65,7 +65,10 @@ import {
 import type { KhalaGymBridgeProofLike } from "./gym-graph-projection"
 import { mountGymPane, type GymPaneState } from "./gym-pane"
 import { mountKhalaCodeSidebar } from "./sidebar"
-import { recentThreadIndexForDigitKey } from "./thread-hotkeys"
+import {
+  type RecentThreadCycleDirection,
+  recentThreadIndexForDigitKey,
+} from "./thread-hotkeys"
 import "./styles.css"
 
 type DesktopRpc = ReturnType<typeof Electroview.defineRPC<KhalaCodeDesktopRPCSchema>>
@@ -653,6 +656,23 @@ const recentThreadHotkeyIndexForEvent = (event: KeyboardEvent): number | null =>
     return null
   }
   return recentThreadIndexForDigitKey(event.key)
+}
+
+const recentThreadCycleDirectionForEvent = (
+  event: KeyboardEvent,
+): RecentThreadCycleDirection | null => {
+  if (
+    event.defaultPrevented ||
+    event.altKey ||
+    event.ctrlKey ||
+    !event.metaKey ||
+    event.shiftKey
+  ) {
+    return null
+  }
+  if (event.key === "ArrowUp") return "newer"
+  if (event.key === "ArrowDown") return "older"
+  return null
 }
 
 const statusForComposer = (): CommandComposerStatus => {
@@ -2280,11 +2300,17 @@ const threadSidebar =
 
 window.addEventListener("keydown", event => {
   const recentThreadIndex = recentThreadHotkeyIndexForEvent(event)
-  if (recentThreadIndex === null) return
+  const recentThreadCycleDirection = recentThreadCycleDirectionForEvent(event)
+  if (recentThreadIndex === null && recentThreadCycleDirection === null) return
   if (threadSidebar === null) return
 
   event.preventDefault()
-  void threadSidebar.selectRecentThread(recentThreadIndex).then(selected => {
+  const selection = recentThreadIndex !== null
+    ? threadSidebar.selectRecentThread(recentThreadIndex)
+    : recentThreadCycleDirection === null
+      ? Promise.resolve(false)
+      : threadSidebar.selectAdjacentRecentThread(recentThreadCycleDirection)
+  void selection.then(selected => {
     if (selected) setActiveView("chat")
   })
 })

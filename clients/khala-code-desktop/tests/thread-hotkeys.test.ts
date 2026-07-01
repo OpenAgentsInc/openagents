@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 
 import type { KhalaCodeDesktopCodexThreadSummary } from "../src/shared/codex-threads"
 import {
+  recentThreadCycleIndex,
   recentThreadIndexForDigitKey,
   recentThreadsForHotkeys,
 } from "../src/ui/thread-hotkeys"
@@ -53,5 +54,50 @@ describe("Khala Code recent-thread hotkeys", () => {
       "thread-4",
       "thread-3",
     ])
+  })
+
+  test("cycles newer and older relative to the active recent chat", () => {
+    const threads = Array.from({ length: 4 }, (_, index) =>
+      thread(`thread-${index + 1}`, index + 1)
+    )
+
+    expect(recentThreadsForHotkeys(threads).map(item => item.id)).toEqual([
+      "thread-4",
+      "thread-3",
+      "thread-2",
+      "thread-1",
+    ])
+    expect(recentThreadCycleIndex({
+      activeThreadId: "thread-3",
+      direction: "newer",
+      threads,
+    })).toBe(0)
+    expect(recentThreadCycleIndex({
+      activeThreadId: "thread-3",
+      direction: "older",
+      threads,
+    })).toBe(2)
+  })
+
+  test("wraps recent chat cycling at both ends", () => {
+    const threads = Array.from({ length: 3 }, (_, index) =>
+      thread(`thread-${index + 1}`, index + 1)
+    )
+
+    expect(recentThreadCycleIndex({
+      activeThreadId: "thread-3",
+      direction: "newer",
+      threads,
+    })).toBe(2)
+    expect(recentThreadCycleIndex({
+      activeThreadId: "thread-1",
+      direction: "older",
+      threads,
+    })).toBe(0)
+    expect(recentThreadCycleIndex({
+      activeThreadId: null,
+      direction: "older",
+      threads,
+    })).toBe(0)
   })
 })
