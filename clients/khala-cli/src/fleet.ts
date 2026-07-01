@@ -585,8 +585,10 @@ const defaultClaudeSetupTokenRunner: KhalaClaudeSetupTokenRunner = async input =
 }
 
 function extractClaudeSetupToken(stdout: string | undefined): string | null {
+  // Only a token-shaped line may become the stored credential; falling back
+  // to an arbitrary trailing status line would persist junk as "ready" auth.
   const lines = (stdout ?? "").split(/\r?\n/).map(line => line.trim()).filter(Boolean)
-  return lines.find(line => /^sk-ant-oat-[A-Za-z0-9._-]+$/.test(line)) ?? lines.at(-1) ?? null
+  return lines.find(line => /^sk-ant-oat-[A-Za-z0-9._-]+$/.test(line)) ?? null
 }
 
 async function writeClaudeSetupToken(home: string, token: string): Promise<void> {

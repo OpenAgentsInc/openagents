@@ -10,6 +10,7 @@ import {
   nextFleetSupervisorDelay,
   parseFleetIssueList,
   plannedReplenishmentRounds,
+  readyFleetAccountRefs,
   runKhalaFleetSupervisor,
   shouldDispatchReplenishment,
   validateFleetRunVerify,
@@ -254,5 +255,55 @@ describe("fleet run dry-run", () => {
       "codex-2:#6384",
     ])
     expect(result.rounds.every(round => round.workKind === "issue")).toBe(true)
+  })
+})
+
+describe("fleet run harness filtering", () => {
+  test("a ready Claude account contributes no Codex slot", () => {
+    const mixed: KhalaFleetStatus = {
+      accounts: [
+        {
+          accountRef: "codex-2",
+          email: null,
+          harness: "codex",
+          home: "/tmp/codex-2",
+          lastLinkedAt: null,
+          provider: "codex",
+          readiness: "ready",
+        },
+        {
+          accountRef: "claude",
+          email: null,
+          harness: "claude",
+          home: "/tmp/claude",
+          lastLinkedAt: null,
+          provider: "claude_agent",
+          readiness: "ready",
+        },
+      ],
+      configPath: "/tmp/pylon/config.json",
+      pylonHome: "/tmp/pylon",
+      readyCount: 2,
+    }
+    expect(readyFleetAccountRefs(mixed)).toEqual(["codex-2"])
+    const plan = buildFleetRunPlan({
+      commit,
+      issues: [6384, 6408],
+      mode: "dry_run",
+      readyAccounts: readyFleetAccountRefs(mixed),
+      repo: "OpenAgentsInc/openagents",
+      verify: "bun run --cwd apps/pylon test",
+    })
+    expect(plan.readyAccounts).toEqual(["codex-2"])
+    const codexOnly = buildFleetRunPlan({
+      commit,
+      issues: [6384, 6408],
+      mode: "dry_run",
+      readyAccounts: ["codex-2"],
+      repo: "OpenAgentsInc/openagents",
+      verify: "bun run --cwd apps/pylon test",
+    })
+    expect(plan.targetSlots).toBe(codexOnly.targetSlots)
+    expect(fleetRunCapacityEnv({}, plan).OPENAGENTS_PYLON_CODEX_CONCURRENCY).toBe(String(plan.targetSlots))
   })
 })

@@ -405,3 +405,17 @@ describe("operator fleet live status", () => {
     expect(rendered).toContain("[Brain]")
   })
 })
+
+describe("claude setup-token output guard", () => {
+  test("fails loudly when no token-shaped line is present instead of storing junk", async () => {
+    const base = await mkdtemp(join(tmpdir(), "khala-fleet-claude-junk-"))
+    const pylonHome = join(base, ".openagents", "pylon")
+    await expect(
+      connectFleetAccount({
+        env: { PYLON_HOME: pylonHome },
+        harness: "claude",
+        runClaudeSetupToken: async () => ({ exitCode: 0, stdout: "Login successful\n" }),
+      }),
+    ).rejects.toThrow(/claude-oauth-token was not written/)
+  })
+})

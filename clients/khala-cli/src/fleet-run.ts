@@ -214,8 +214,11 @@ export async function runKhalaFleetSupervisor(options: KhalaFleetRunOptions): Pr
     PYLON_OPENAGENTS_BASE_URL: options.baseUrl ?? env.PYLON_OPENAGENTS_BASE_URL ?? DEFAULT_BASE_URL,
   }
   const status = options.status ?? await listFleetAccounts({ env: commandEnv })
+  // Fleet-run slot planning dispatches codex_agent_task work and advertises
+  // Codex concurrency, so only Codex-harness accounts may contribute slots;
+  // a ready Claude account must never inflate the advertised Codex capacity.
   const readyAccounts = status.accounts
-    .filter(account => account.readiness === "ready")
+    .filter(account => account.readiness === "ready" && account.harness === "codex")
     .map(account => account.accountRef)
   const mode: KhalaFleetRunMode = options.dryRun ? "dry_run" : options.once ? "once" : "supervise"
   const pylonCommand = options.pylonCommand ?? pylonCommandFromEnv(env)
@@ -565,5 +568,5 @@ export function readyFleetAccountRefs(status: KhalaFleetStatus): readonly string
 }
 
 function isReadyFleetAccount(account: KhalaFleetAccount): boolean {
-  return account.readiness === "ready"
+  return account.readiness === "ready" && account.harness === "codex"
 }
