@@ -136,6 +136,36 @@ describe("Codex app-server client", () => {
     host.dispose()
   })
 
+  test("continues notification delivery when one subscriber throws", async () => {
+    const notifications: string[] = []
+    const host = createCodexAppServerHost({
+      spawnFn: () => makeChild((message, child) => {
+        if (message.method === "initialize") {
+          respond(child, message.id, {})
+          queueMicrotask(() => {
+            child.stdout.emit("data", Buffer.from(`${JSON.stringify({
+              method: "thread/status/changed",
+              params: { threadId: "thread-1", status: "running" },
+            })}\n`))
+          })
+        }
+      }),
+    })
+    host.subscribe(() => {
+      throw new Error("broken subscriber")
+    })
+    host.subscribe(notification => notifications.push(notification.method))
+
+    await host.start()
+    await Promise.resolve()
+
+    expect(notifications).toEqual(["thread/status/changed"])
+    expect(host.status().diagnostics).toContain(
+      "notification subscriber failed for thread/status/changed: broken subscriber",
+    )
+    host.dispose()
+  })
+
   test("dispatches server-to-client requests with ids as notifications", async () => {
     const notifications: { readonly id?: number | string; readonly method: string }[] = []
     const host = createCodexAppServerHost({
