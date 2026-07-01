@@ -105,9 +105,9 @@ describe("khala code desktop app shell", () => {
     expect(html).toContain("autofocus")
     expect(html).toContain('id="send-button"')
     expect(html).toContain('id="fleet-panel"')
+    expect(html).toContain('id="gym-panel"')
     expect(html).toContain('id="settings-panel"')
     expect(html).not.toContain('id="inbox-panel"')
-    expect(html).not.toContain('id="gym-panel"')
     expect(html).not.toContain("Pylons")
   })
 
@@ -743,7 +743,7 @@ describe("khala code desktop app shell", () => {
     expect(css).toContain("height: 1.3rem")
   })
 
-  test("keeps Gym proof helpers available without a top-level Gym screen", async () => {
+  test("keeps Gym proof pane available without a top-level Gym screen", async () => {
     const html = await Bun.file(new URL("../src/ui/index.html", import.meta.url)).text()
     const sidebar = await Bun.file(new URL("../src/ui/sidebar.ts", import.meta.url)).text()
     const main = await Bun.file(new URL("../src/ui/main.ts", import.meta.url)).text()
@@ -753,6 +753,8 @@ describe("khala code desktop app shell", () => {
 
     expect(sidebar).not.toContain('value: "gym"')
     expect(sidebar).not.toContain('icon: "Dumbbell"')
+    expect(html).toContain('id="gym-panel"')
+    expect(html).toContain('aria-label="Gym proof"')
     expect(html).not.toContain('aria-label="Gym delegation graph"')
     expect(main).toContain("mountGymPane")
     expect(main).toContain("gymPaneStateFromLocation")

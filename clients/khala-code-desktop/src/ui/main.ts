@@ -1944,6 +1944,7 @@ const controls = {
   clearGymProof: (): GymPaneState => {
     const state = gymPaneStateFromBridgeProof(null)
     gymPanel?.setState(state)
+    gymPanel?.setVisible(false)
     return state
   },
   codexAccountsStatus: () => rpc.request.codexAccountsStatus(),
@@ -2044,6 +2045,7 @@ const controls = {
       sourceRef: "fixture.khala_code.gym.part2_demo",
     })
     gymPanel?.setState(state)
+    showGymProofPane()
     return state
   },
   loadGymProof: (
@@ -2055,6 +2057,7 @@ const controls = {
         : input
     const state = gymPaneStateFromBridgeProof(parsed)
     gymPanel?.setState(state)
+    showGymProofPane()
     return state
   },
   messages: () => messages.map(message => ({ ...message })),
@@ -2161,6 +2164,7 @@ const loadGymDemoOptimization = () => {
     sourceRef: "fixture.khala_code.gym.part2_demo",
   })
   gymPanel?.setState(state)
+  showGymProofPane()
   return gymOptimizationRunFromBridgeProof(khalaCodeGymDemoBridgeProof)
 }
 
@@ -2229,6 +2233,18 @@ const setActiveView = (value: string): void => {
   if (showChat) {
     requestAnimationFrame(focusComposerInput)
   }
+}
+
+function showGymProofPane(): void {
+  if (threadSidebarEl !== null) threadSidebarEl.hidden = true
+  if (fleetPanelEl !== null) fleetPanelEl.hidden = true
+  if (settingsPanelEl !== null) settingsPanelEl.hidden = true
+  if (threadShell !== null) threadShell.hidden = true
+  if (composerDock !== null) composerDock.hidden = true
+  gymPanel?.setVisible(true)
+  fleetPanel?.setVisible(false)
+  settingsPanel?.setVisible(false)
+  threadSidebar?.setVisible(false)
 }
 
 if (sidebarNavRoot !== null) {

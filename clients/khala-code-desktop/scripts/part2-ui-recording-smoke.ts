@@ -162,10 +162,10 @@ async function capturePart2Ui(
   }
 
   await page.goto(`${input.baseUrl}/`, { waitUntil: "domcontentloaded" })
-  await page.locator('[data-hotbar-action="action_bar.slot_3"]').waitFor({
+  await page.locator('[data-khala-code-hotbar-value="fleet"]').waitFor({
     state: "visible",
   })
-  await page.locator('[data-hotbar-action="action_bar.slot_3"]').click()
+  await page.locator('[data-khala-code-hotbar-value="fleet"]').click()
   await page.locator("#fleet-panel").waitFor({ state: "visible" })
   await expectText(page, "#fleet-panel", "Delegation optimization")
   await expectText(page, "#fleet-panel", "Worker Codex accounts")
