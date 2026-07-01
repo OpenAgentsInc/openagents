@@ -245,7 +245,12 @@ function createRegisteredAgentRuntimeAdapter(
       closeoutToEvents(
         runner.adapterKind,
         request,
-        await runner.execute(request.state, request.lease, request.now, options),
+        await runner.run({
+          state: request.state,
+          lease: request.lease,
+          now: request.now,
+          options,
+        }),
       ),
   })
 }
