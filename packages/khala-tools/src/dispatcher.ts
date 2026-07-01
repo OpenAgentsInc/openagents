@@ -1,6 +1,7 @@
 import { Buffer } from "node:buffer"
 import { Effect } from "effect"
 import { redactKhalaPublicText } from "./redaction.js"
+import { makeKhalaToolRuntimeService, type KhalaToolRuntimeServiceShape } from "./runtime.js"
 import type {
   KhalaPermissionRequest,
   KhalaPublicSafety,
@@ -131,7 +132,8 @@ function dispatchKhalaTool(
   options: KhalaToolDispatcherOptions,
 ): Effect.Effect<KhalaToolDispatchResult, never> {
   return Effect.gen(function* () {
-    const startedAt = Date.now()
+    const runtime = input.services.runtime ?? makeKhalaToolRuntimeService()
+    const startedAt = yield* runtime.currentTimeMillis
     const localEvents: KhalaToolEvent[] = []
     const baseTelemetryTags = telemetryTagsFor(input, options)
     const accounting = options.turnAccounting === undefined
@@ -152,9 +154,8 @@ function dispatchKhalaTool(
       phase: KhalaToolDispatchPhase,
       definition: KhalaToolDefinition | undefined = undefined,
     ) =>
-      finalize({
+      finalizeWithDuration(runtime, startedAt, {
         definition,
-        durationMs: Date.now() - startedAt,
         events: localEvents,
         input,
         options,
@@ -253,7 +254,7 @@ function dispatchKhalaTool(
       })
       return yield* finalize({
         definition,
-        durationMs: Date.now() - startedAt,
+        durationMs: (yield* runtime.currentTimeMillis) - startedAt,
         events: localEvents,
         input,
         options,
@@ -287,7 +288,7 @@ function dispatchKhalaTool(
       })
       return yield* finalize({
         definition,
-        durationMs: Date.now() - startedAt,
+        durationMs: (yield* runtime.currentTimeMillis) - startedAt,
         events: localEvents,
         input,
         options,
@@ -344,7 +345,7 @@ function dispatchKhalaTool(
     })
     return yield* finalize({
       definition,
-      durationMs: Date.now() - startedAt,
+      durationMs: (yield* runtime.currentTimeMillis) - startedAt,
       events: localEvents,
       input,
       options,
@@ -435,7 +436,7 @@ function emitToolEvent(input: Readonly<{
 }>): Effect.Effect<void, never> {
   return Effect.gen(function* () {
     const event: KhalaToolEvent = {
-      eventId: nextToolEventId(input.kind),
+      eventId: yield* nextToolEventId(input.input.services.runtime, input.kind),
       invocationId: input.input.invocation.id,
       kind: input.kind,
       payload: {
@@ -446,6 +447,25 @@ function emitToolEvent(input: Readonly<{
     }
     input.events.push(event)
     yield* (input.options.hooks?.onEvent?.({ event, telemetryTags: input.telemetryTags }) ?? Effect.void)
+  })
+}
+
+function finalizeWithDuration(inputRuntime: KhalaToolRuntimeServiceShape, startedAt: number, input: Readonly<{
+  definition: KhalaToolDefinition | undefined
+  events: KhalaToolEvent[]
+  input: KhalaToolDispatchInput
+  options: KhalaToolDispatcherOptions
+  phase: KhalaToolDispatchPhase
+  result: KhalaToolResult
+  telemetryTags: KhalaToolTelemetryTags
+  tool: RegisteredKhalaTool | undefined
+}>): Effect.Effect<KhalaToolDispatchResult, never> {
+  return Effect.gen(function* () {
+    const finishedAt = yield* inputRuntime.currentTimeMillis
+    return yield* finalize({
+      ...input,
+      durationMs: finishedAt - startedAt,
+    })
   })
 }
 
@@ -607,6 +627,9 @@ function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
 }
 
-function nextToolEventId(kind: KhalaToolEventKind): string {
-  return `khala.tool.${kind}.${Date.now().toString(36)}.${Math.random().toString(36).slice(2, 10)}`
+function nextToolEventId(
+  runtime: KhalaToolRuntimeServiceShape | undefined,
+  kind: KhalaToolEventKind,
+): Effect.Effect<string, never> {
+  return (runtime ?? makeKhalaToolRuntimeService()).eventId(`khala.tool.${kind}`)
 }
