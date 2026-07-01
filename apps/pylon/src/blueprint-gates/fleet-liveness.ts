@@ -26,9 +26,28 @@
  * watcher owns the restart decision.
  */
 
+import { readdir } from "node:fs/promises"
+
 export const FLEET_LIVENESS_STATES = ["healthy", "wedged", "unknown"] as const
+export const FLEET_LIVENESS_GATE_STATES = [
+  "BLOCKED",
+  "DISPATCH_ATTEMPT_SEEN",
+  "QUOTA_CHECKED",
+  "PROVEN_ALIVE",
+] as const
 
 export type FleetLivenessStatus = (typeof FLEET_LIVENESS_STATES)[number]
+export type FleetLivenessGateState =
+  (typeof FLEET_LIVENESS_GATE_STATES)[number]
+
+export const FLEET_LIVENESS_EVIDENCE = {
+  lastDispatchAttempt: "evidence://supervisor/last-dispatch-attempt",
+  quotaLedgerSnapshot: "evidence://supervisor/quota-ledger-snapshot",
+  heartbeatPayload: "evidence://supervisor/heartbeat-payload",
+} as const
+
+export type FleetLivenessEvidenceRef =
+  (typeof FLEET_LIVENESS_EVIDENCE)[keyof typeof FLEET_LIVENESS_EVIDENCE]
 
 /** Default wedge threshold: alive but no dispatch attempt in 10 minutes. */
 export const DEFAULT_WEDGE_THRESHOLD_MS = 10 * 60 * 1000
@@ -49,14 +68,22 @@ export interface FleetLivenessInputs {
   readonly now: number
   /** Override the wedge threshold (ms). Non-positive values are ignored. */
   readonly wedgeThresholdMs?: number
+  /** evidence://supervisor/quota-ledger-snapshot */
+  readonly quotaLedgerSnapshot?: unknown
+  /** evidence://supervisor/heartbeat-payload */
+  readonly heartbeatPayload?: unknown
 }
 
 export interface FleetLivenessResult {
   readonly status: FleetLivenessStatus
+  readonly gateState: FleetLivenessGateState
+  readonly canReportHealthy: boolean
   /** True only when alive AND last dispatch attempt is older than threshold. */
   readonly wedged: boolean
   /** True only when alive AND last dispatch attempt is within threshold. */
   readonly healthy: boolean
+  readonly satisfiedEvidence: ReadonlyArray<FleetLivenessEvidenceRef>
+  readonly missingEvidence: ReadonlyArray<FleetLivenessEvidenceRef>
   /** Age of the last dispatch attempt in ms (null when unknown). */
   readonly ageMs: number | null
   readonly wedgeThresholdMs: number
@@ -80,52 +107,114 @@ export function evaluateFleetLiveness(
       ? inputs.wedgeThresholdMs
       : DEFAULT_WEDGE_THRESHOLD_MS
 
+  const satisfied: Array<FleetLivenessEvidenceRef> = []
+  const missing: Array<FleetLivenessEvidenceRef> = []
+
+  const finish = (partial: {
+    status: FleetLivenessStatus
+    gateState: FleetLivenessGateState
+    wedged: boolean
+    healthy: boolean
+    ageMs: number | null
+    reason: string
+  }): FleetLivenessResult => ({
+    ...partial,
+    canReportHealthy: partial.gateState === "PROVEN_ALIVE",
+    satisfiedEvidence: satisfied,
+    missingEvidence: missing,
+    wedgeThresholdMs: threshold,
+  })
+
   if (!inputs.pidAlive) {
-    return {
+    missing.push(
+      FLEET_LIVENESS_EVIDENCE.lastDispatchAttempt,
+      FLEET_LIVENESS_EVIDENCE.quotaLedgerSnapshot,
+      FLEET_LIVENESS_EVIDENCE.heartbeatPayload,
+    )
+    return finish({
       status: "unknown",
+      gateState: "BLOCKED",
       wedged: false,
       healthy: false,
       ageMs: null,
-      wedgeThresholdMs: threshold,
       reason: "supervisor process is not alive",
-    }
+    })
   }
 
   if (
     inputs.lastDispatchTime === null ||
     !Number.isFinite(inputs.lastDispatchTime)
   ) {
-    return {
+    missing.push(
+      FLEET_LIVENESS_EVIDENCE.lastDispatchAttempt,
+      FLEET_LIVENESS_EVIDENCE.quotaLedgerSnapshot,
+      FLEET_LIVENESS_EVIDENCE.heartbeatPayload,
+    )
+    return finish({
       status: "unknown",
+      gateState: "BLOCKED",
       wedged: false,
       healthy: false,
       ageMs: null,
-      wedgeThresholdMs: threshold,
       reason: "no dispatch attempt recorded yet",
-    }
+    })
   }
 
   const ageMs = inputs.now - inputs.lastDispatchTime
+  satisfied.push(FLEET_LIVENESS_EVIDENCE.lastDispatchAttempt)
 
   if (ageMs > threshold) {
-    return {
+    missing.push(
+      FLEET_LIVENESS_EVIDENCE.quotaLedgerSnapshot,
+      FLEET_LIVENESS_EVIDENCE.heartbeatPayload,
+    )
+    return finish({
       status: "wedged",
+      gateState: "DISPATCH_ATTEMPT_SEEN",
       wedged: true,
       healthy: false,
       ageMs,
-      wedgeThresholdMs: threshold,
       reason: `alive but last dispatch attempt was ${ageMs}ms ago (> ${threshold}ms threshold)`,
-    }
+    })
   }
 
-  return {
+  if (inputs.quotaLedgerSnapshot === undefined || inputs.quotaLedgerSnapshot === null) {
+    missing.push(
+      FLEET_LIVENESS_EVIDENCE.quotaLedgerSnapshot,
+      FLEET_LIVENESS_EVIDENCE.heartbeatPayload,
+    )
+    return finish({
+      status: "unknown",
+      gateState: "DISPATCH_ATTEMPT_SEEN",
+      wedged: false,
+      healthy: false,
+      ageMs,
+      reason: "dispatch attempt is fresh but quota ledger snapshot evidence is missing",
+    })
+  }
+  satisfied.push(FLEET_LIVENESS_EVIDENCE.quotaLedgerSnapshot)
+
+  if (inputs.heartbeatPayload === undefined || inputs.heartbeatPayload === null) {
+    missing.push(FLEET_LIVENESS_EVIDENCE.heartbeatPayload)
+    return finish({
+      status: "unknown",
+      gateState: "QUOTA_CHECKED",
+      wedged: false,
+      healthy: false,
+      ageMs,
+      reason: "dispatch attempt and quota evidence exist but heartbeat payload evidence is missing",
+    })
+  }
+  satisfied.push(FLEET_LIVENESS_EVIDENCE.heartbeatPayload)
+
+  return finish({
     status: "healthy",
+    gateState: "PROVEN_ALIVE",
     wedged: false,
     healthy: true,
     ageMs,
-    wedgeThresholdMs: threshold,
     reason: `alive and last dispatch attempt was ${ageMs}ms ago (<= ${threshold}ms threshold)`,
-  }
+  })
 }
 
 /**
@@ -166,6 +255,41 @@ async function readTextOrNull(path: string): Promise<string | null> {
   }
 }
 
+async function readJsonOrNull(path: string): Promise<unknown | null> {
+  const raw = await readTextOrNull(path)
+  if (raw === null) {
+    return null
+  }
+  try {
+    return JSON.parse(raw)
+  } catch {
+    return null
+  }
+}
+
+async function readQuotaLedgerSnapshot(home: string): Promise<unknown | null> {
+  if (home.length === 0) {
+    return null
+  }
+  const quotaDir = `${home}/.pylon/account-quota`
+  try {
+    const names = await readdir(quotaDir)
+    const entries: Array<unknown> = []
+    for (const name of names.sort()) {
+      if (!name.endsWith(".json")) {
+        continue
+      }
+      const parsed = await readJsonOrNull(`${quotaDir}/${name}`)
+      if (parsed !== null) {
+        entries.push(parsed)
+      }
+    }
+    return { quotaDir, entries }
+  } catch {
+    return null
+  }
+}
+
 /**
  * CLI: read the supervisor pid + last_dispatch_time from `$SUP_STATE_DIR`,
  * evaluate liveness, print a JSON verdict, and exit with FLEET_LIVENESS_EXIT.
@@ -180,6 +304,7 @@ export async function runFleetLivenessCli(): Promise<number> {
       : `${home}/.codex-supervisor`
   const pidPath = `${stateDir}/supervisor.pid`
   const lastDispatchPath = `${stateDir}/last_dispatch_time`
+  const heartbeatPayloadPath = `${stateDir}/heartbeat_payload.json`
   const thresholdMs =
     parsePositiveInt(process.env.SUP_WEDGE_THRESHOLD_MS) ??
     DEFAULT_WEDGE_THRESHOLD_MS
@@ -206,12 +331,16 @@ export async function runFleetLivenessCli(): Promise<number> {
   const lastDispatchTime = parseLastDispatchTime(
     await readTextOrNull(lastDispatchPath),
   )
+  const quotaLedgerSnapshot = await readQuotaLedgerSnapshot(home)
+  const heartbeatPayload = await readJsonOrNull(heartbeatPayloadPath)
 
   const result = evaluateFleetLiveness({
     pidAlive,
     lastDispatchTime,
     now: Date.now(),
     wedgeThresholdMs: thresholdMs,
+    quotaLedgerSnapshot,
+    heartbeatPayload,
   })
 
   console.log(

@@ -27,8 +27,12 @@ describe("evaluateFleetLiveness (#6646 wedge detection)", () => {
       pidAlive: true,
       lastDispatchTime: now - 30_000,
       now,
+      quotaLedgerSnapshot: { accounts: [] },
+      heartbeatPayload: { last_dispatch_time: now - 30_000 },
     })
     expect(r.status).toBe("healthy")
+    expect(r.gateState).toBe("PROVEN_ALIVE")
+    expect(r.canReportHealthy).toBe(true)
     expect(r.healthy).toBe(true)
     expect(r.wedged).toBe(false)
     expect(FLEET_LIVENESS_EXIT[r.status]).toBe(0)
@@ -39,6 +43,8 @@ describe("evaluateFleetLiveness (#6646 wedge detection)", () => {
       pidAlive: true,
       lastDispatchTime: now - DEFAULT_WEDGE_THRESHOLD_MS,
       now,
+      quotaLedgerSnapshot: { accounts: [] },
+      heartbeatPayload: { last_dispatch_time: now - DEFAULT_WEDGE_THRESHOLD_MS },
     })
     expect(r.status).toBe("healthy")
   })
@@ -60,6 +66,7 @@ describe("evaluateFleetLiveness (#6646 wedge detection)", () => {
     })
     expect(r.status).toBe("unknown")
     expect(r.wedged).toBe(false)
+    expect(r.gateState).toBe("BLOCKED")
     expect(FLEET_LIVENESS_EXIT[r.status]).toBe(4)
   })
 
@@ -71,6 +78,30 @@ describe("evaluateFleetLiveness (#6646 wedge detection)", () => {
     })
     expect(r.status).toBe("unknown")
     expect(r.wedged).toBe(false)
+  })
+
+  test("fresh dispatch without quota evidence cannot report fleet healthy", () => {
+    const r = evaluateFleetLiveness({
+      pidAlive: true,
+      lastDispatchTime: now - 30_000,
+      now,
+    })
+    expect(r.status).toBe("unknown")
+    expect(r.gateState).toBe("DISPATCH_ATTEMPT_SEEN")
+    expect(r.canReportHealthy).toBe(false)
+    expect(r.healthy).toBe(false)
+  })
+
+  test("fresh dispatch and quota evidence without heartbeat payload reaches QUOTA_CHECKED only", () => {
+    const r = evaluateFleetLiveness({
+      pidAlive: true,
+      lastDispatchTime: now - 30_000,
+      now,
+      quotaLedgerSnapshot: { accounts: [] },
+    })
+    expect(r.status).toBe("unknown")
+    expect(r.gateState).toBe("QUOTA_CHECKED")
+    expect(r.canReportHealthy).toBe(false)
   })
 
   test("a custom wedge threshold is honored", () => {
@@ -90,6 +121,8 @@ describe("evaluateFleetLiveness (#6646 wedge detection)", () => {
       lastDispatchTime: now - 30_000,
       now,
       wedgeThresholdMs: 0,
+      quotaLedgerSnapshot: { accounts: [] },
+      heartbeatPayload: { last_dispatch_time: now - 30_000 },
     })
     expect(r.wedgeThresholdMs).toBe(DEFAULT_WEDGE_THRESHOLD_MS)
     expect(r.status).toBe("healthy")

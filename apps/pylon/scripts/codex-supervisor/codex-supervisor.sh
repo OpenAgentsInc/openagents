@@ -158,6 +158,7 @@ PAUSE_FILE="$SUP_STATE_DIR/paused"
 # ATTEMPT (pick+dispatch cycle). The liveness check + watcher read this to tell
 # "alive but stalled" (wedged) from "alive and dispatching" (healthy).
 LAST_DISPATCH_FILE="$SUP_STATE_DIR/last_dispatch_time"
+HEARTBEAT_PAYLOAD_FILE="$SUP_STATE_DIR/heartbeat_payload.json"
 echo 0 > "$DESIRED_FILE"
 rm -f "$PAUSE_FILE"
 
@@ -279,10 +280,31 @@ heartbeater_loop() {
     while IFS= read -r slot_acc; do account_slots+=("$slot_acc"); done < <(sup_expand_account_slots $(ready_codex_account_refs))
     desired="${#account_slots[@]}"
     echo "$desired" > "$DESIRED_FILE"
-    OPENAGENTS_PYLON_CODEX_CONCURRENCY="$desired" \
-    OPENAGENTS_PYLON_CODEX_BUSY=0 \
-    OPENAGENTS_PYLON_CODEX_QUEUED=0 \
-      sup_run_timeout "$SUP_PYLON_TIMEOUT_SECS" "${PYLON[@]}" presence heartbeat --json >> "$SUP_LOG" 2>&1 || true
+    heartbeat_tmp="$SUP_STATE_DIR/heartbeat_payload.tmp"
+    if OPENAGENTS_PYLON_CODEX_CONCURRENCY="$desired" \
+      OPENAGENTS_PYLON_CODEX_BUSY=0 \
+      OPENAGENTS_PYLON_CODEX_QUEUED=0 \
+      sup_run_timeout "$SUP_PYLON_TIMEOUT_SECS" "${PYLON[@]}" presence heartbeat --json > "$heartbeat_tmp" 2>> "$SUP_LOG"; then
+      python3 - "$heartbeat_tmp" "$HEARTBEAT_PAYLOAD_FILE" "$(read_last_dispatch_time)" <<'PY' 2>> "$SUP_LOG" || mv "$heartbeat_tmp" "$HEARTBEAT_PAYLOAD_FILE" 2>/dev/null || true
+import json
+import sys
+
+src, dst, last_dispatch_time = sys.argv[1], sys.argv[2], sys.argv[3]
+with open(src, "r", encoding="utf-8") as handle:
+    payload = json.load(handle)
+if isinstance(payload, dict):
+    payload["last_dispatch_time"] = last_dispatch_time
+with open(dst, "w", encoding="utf-8") as handle:
+    json.dump(payload, handle, sort_keys=True)
+    handle.write("\n")
+PY
+      rm -f "$heartbeat_tmp" 2>/dev/null || true
+      cat "$HEARTBEAT_PAYLOAD_FILE" >> "$SUP_LOG" 2>/dev/null || true
+      printf '\n' >> "$SUP_LOG" 2>/dev/null || true
+    else
+      cat "$heartbeat_tmp" >> "$SUP_LOG" 2>/dev/null || true
+      rm -f "$heartbeat_tmp" 2>/dev/null || true
+    fi
     # last_dispatch_time telemetry (#6646): emitted on the heartbeat line so a
     # wedged loop (heartbeat firing, dispatch stalled) is visible in the log and
     # the watcher's liveness check has a fresh value to read.
