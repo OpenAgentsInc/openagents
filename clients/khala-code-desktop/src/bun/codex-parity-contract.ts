@@ -120,6 +120,17 @@ export const KHALA_CODE_CODEX_PARITY_COVERAGE: readonly KhalaCodeCodexParityCove
     ],
   },
   {
+    id: "fixture-app-server-process",
+    harness: "codex_wrapper_fixture",
+    testFile: "clients/khala-code-desktop/tests/fixture-codex-app-server.test.ts",
+    covers: [
+      "spawned fixture Codex app-server stdio process",
+      "recorded notification script replay",
+      "server-to-client approval request and resolution",
+      "background terminal command output",
+    ],
+  },
+  {
     id: "headless-jsonl",
     harness: "codex_wrapper_fixture",
     testFile: "clients/khala-code-desktop/tests/headless.test.ts",

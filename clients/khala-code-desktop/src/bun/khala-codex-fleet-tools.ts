@@ -1052,10 +1052,18 @@ async function runPylonCommand(
     readonly timeoutMs: number
   },
 ): Promise<KhalaCodexFleetCommandResult> {
+  const commandEnv = pylonCommandEnv(input.env, input.paths.pylonHome)
+  const runnerEnv = args.includes("--base-url")
+    ? Object.fromEntries(
+        Object.entries(commandEnv).filter(([key]) =>
+          key !== "PYLON_OPENAGENTS_BASE_URL" && key !== "OPENAGENTS_BASE_URL"
+        ),
+      )
+    : commandEnv
   return (input.runner ?? defaultCommandRunner)({
     cmd: [input.paths.bunExecutable, "src/index.ts", ...args],
     cwd: input.paths.appPath,
-    env: pylonCommandEnv(input.env, input.paths.pylonHome),
+    env: runnerEnv,
     maxOutputBytes: input.maxOutputBytes ?? 80_000,
     onStderrLine: input.onStderrLine,
     timeoutMs: input.timeoutMs,
