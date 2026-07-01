@@ -31,7 +31,8 @@ source under `projects/repos/codex`.
   permissions paths.
 - `clients/khala-code-desktop/tests/rpc-handlers.test.ts` covers Codex model,
   permission profile, config read/write, feature flags, usage/status, MCP,
-  plugin, skill, app, and hook RPC pass-through.
+  plugin, skill, app, hook, external config import, and workspace fs RPC
+  pass-through.
 - `clients/khala-code-desktop/tests/headless.test.ts` covers Codex-backed
   headless JSONL mode and missing-Codex errors.
 - `clients/khala-code-desktop/tests/khala-chat-runtime.test.ts` is explicitly

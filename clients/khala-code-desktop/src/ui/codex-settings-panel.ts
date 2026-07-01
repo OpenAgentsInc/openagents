@@ -297,6 +297,7 @@ export const mountCodexSettingsPanel = (
     for (const summary of [
       current.sections.skills,
       current.sections.hooks,
+      current.sections.imports,
       current.sections.plugins,
       current.sections.marketplace,
       current.sections.apps,

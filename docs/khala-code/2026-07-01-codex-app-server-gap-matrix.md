@@ -32,7 +32,7 @@ the behavior small.
 | `settings-ecosystem-account-surfaces` | `covered_by_app_server` | `/model`, `/permissions`, `/experimental`, `/usage`, `/mcp`, `/app`, `/apps`, `/plugins`, `/logout` | `model/list`, `modelProvider/capabilities/read`, `permissionProfile/list`, `experimentalFeature/list`, `experimentalFeature/enablement/set`, `account/usage/read`, `account/rateLimits/read`, `account/rateLimitResetCredit/consume`, `account/read`, `mcpServerStatus/list`, `mcpServer/resource/read`, `mcpServer/tool/call`, `mcpServer/oauth/login`, `config/mcpServer/reload`, `app/list`, `plugin/list`, `plugin/read`, `plugin/installed`, `account/logout`, `config/read`, `config/value/write`, `config/batchWrite`, `configRequirements/read` | None | Khala owns the web settings panels, but values and mutations remain Codex app-server state. |
 | `desktop-local-ui-adapters` | `khala_adapter_with_test` | `/copy`, `/raw`, `/status`, `/debug-config`, `/title`, `/quit`, `/exit`, `/feedback`, `/rollout`, `/clear`, `/test-approval` | `config/read`, `account/usage/read`, `feedback/upload`, `getAuthStatus`, `getConversationSummary` | None | Tiny desktop adapters for browser selection, window title, visible transcript, local status, and debug diagnostics. |
 | `tui-preferences-and-appearance` | `upstream_app_server_gap` | `/keymap`, `/vim`, `/statusline`, `/theme`, `/pets`, `/personality` | `config/read`, `config/value/write`, `config/batchWrite` | None | `codex.app_server.gap.tui_preferences` |
-| `workspace-knowledge-memory-and-import` | `upstream_app_server_gap` | `/memories`, `/skills`, `/import`, `/hooks`, `/init`, `/debug-m-drop`, `/debug-m-update` | `skills/list`, `skills/config/write`, `skills/extraRoots/set`, `hooks/list`, `externalAgentConfig/detect`, `externalAgentConfig/import`, `externalAgentConfig/import/readHistories`, `fs/readFile`, `fs/writeFile`, `fs/getMetadata` | None | `codex.app_server.gap.memory_and_import_management` |
+| `workspace-knowledge-memory-and-import` | `upstream_app_server_gap` | `/memories`, `/skills`, `/import`, `/hooks`, `/init`, `/debug-m-drop`, `/debug-m-update` | `skills/list`, `skills/config/write`, `skills/extraRoots/set`, `hooks/list`, `externalAgentConfig/detect`, `externalAgentConfig/import`, `externalAgentConfig/import/readHistories`, `fs/readFile`, `fs/writeFile`, `fs/getMetadata` | None | Khala now wraps the stable app-server methods for settings/actions and import diagnostics. Remaining gap: `codex.app_server.gap.memory_and_import_management` for TUI-owned `/memories`, `/init`, and debug memory semantics. |
 | `multi-agent-side-conversation-and-plan` | `upstream_app_server_gap` | `/approve`, `/plan`, `/agent`, `/subagents`, `/side`, `/btw` | `turn/steer`, `thread/fork`, `thread/inject_items`, `thread/approveGuardianDeniedAction`, `thread/metadata/update`, `thread/read` | None | `codex.app_server.gap.side_agent_plan_controls` |
 | `ide-file-mention-and-diff` | `upstream_app_server_gap` | `/ide`, `/diff`, `/mention` | `fuzzyFileSearch`, `gitDiffToRemote`, `fs/readDirectory`, `fs/readFile`, `config/read` | None | `codex.app_server.gap.ide_mentions_diff` |
 | `windows-sandbox-setup-and-readable-roots` | `upstream_app_server_gap` | `/setup-default-sandbox`, `/sandbox-add-read-dir` | `windowsSandbox/setupStart`, `windowsSandbox/readiness`, `config/read`, `config/value/write` | None | `codex.app_server.gap.windows_sandbox_read_roots` |
@@ -45,9 +45,11 @@ GitHub issues, or protocol notes:
 
 - `codex.app_server.gap.tui_preferences`: expose preference metadata and
   mutation semantics for keymap, Vim, statusline, theme, pets, and personality.
-- `codex.app_server.gap.memory_and_import_management`: expose memory list,
-  memory mutation, import, and `AGENTS.md` init semantics instead of relying on
-  TUI-only flows.
+- `codex.app_server.gap.memory_and_import_management`: Khala Code now wraps
+  Codex app-server skills, hooks, external config detect/import/history, and
+  fs read/write/metadata methods. Remaining upstream work is memory list,
+  memory mutation, and full `AGENTS.md` init slash-command semantics instead of
+  relying on TUI-only flows.
 - `codex.app_server.gap.side_agent_plan_controls`: expose side-conversation,
   subagent, plan-edit, and auto-review controls as app-server methods or
   metadata.

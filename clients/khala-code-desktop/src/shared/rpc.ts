@@ -389,6 +389,42 @@ export type KhalaCodeDesktopCodexSkillsConfigWriteRequest = {
   readonly path?: string | null
 }
 
+export type KhalaCodeDesktopCodexExternalAgentConfigDetectRequest = {
+  readonly cwds?: readonly string[] | null
+  readonly includeHome?: boolean
+}
+
+export type KhalaCodeDesktopCodexExternalAgentConfigMigrationItem = {
+  readonly itemType:
+    | "AGENTS_MD"
+    | "COMMANDS"
+    | "CONFIG"
+    | "HOOKS"
+    | "MCP_SERVER_CONFIG"
+    | "PLUGINS"
+    | "SESSIONS"
+    | "SKILLS"
+    | "SUBAGENTS"
+    | string
+  readonly description: string
+  readonly cwd: string | null
+  readonly details?: KhalaCodeDesktopCodexJsonValue | null
+}
+
+export type KhalaCodeDesktopCodexExternalAgentConfigImportRequest = {
+  readonly migrationItems: readonly KhalaCodeDesktopCodexExternalAgentConfigMigrationItem[]
+  readonly source?: string | null
+}
+
+export type KhalaCodeDesktopCodexFsPathRequest = {
+  readonly path: string
+}
+
+export type KhalaCodeDesktopCodexFsWriteFileRequest = {
+  readonly dataBase64: string
+  readonly path: string
+}
+
 export type KhalaCodeDesktopCodexMcpResourceReadRequest = {
   readonly server: string
   readonly threadId?: string | null
@@ -766,6 +802,12 @@ export type KhalaCodeDesktopRPCSchema = {
     codexApprovalRespond(request: KhalaCodeDesktopCodexApprovalRespondRequest): Promise<KhalaCodeDesktopCodexApprovalRespondResult>
     codexConfigValueWrite(request: KhalaCodeDesktopCodexConfigValueWriteRequest): Promise<KhalaCodeDesktopCodexConfigValueWriteResult>
     codexEcosystemRead(request?: KhalaCodeDesktopCodexEcosystemReadRequest): Promise<KhalaCodeDesktopCodexEcosystemReadResult>
+    codexExternalAgentConfigDetect(request?: KhalaCodeDesktopCodexExternalAgentConfigDetectRequest): Promise<KhalaCodeDesktopCodexAppServerActionResult>
+    codexExternalAgentConfigImport(request: KhalaCodeDesktopCodexExternalAgentConfigImportRequest): Promise<KhalaCodeDesktopCodexAppServerActionResult>
+    codexExternalAgentConfigImportHistoriesRead(): Promise<KhalaCodeDesktopCodexAppServerActionResult>
+    codexFsGetMetadata(request: KhalaCodeDesktopCodexFsPathRequest): Promise<KhalaCodeDesktopCodexAppServerActionResult>
+    codexFsReadFile(request: KhalaCodeDesktopCodexFsPathRequest): Promise<KhalaCodeDesktopCodexAppServerActionResult>
+    codexFsWriteFile(request: KhalaCodeDesktopCodexFsWriteFileRequest): Promise<KhalaCodeDesktopCodexAppServerActionResult>
     codexMarketplaceAdd(request: KhalaCodeDesktopCodexMarketplaceAddRequest): Promise<KhalaCodeDesktopCodexAppServerActionResult>
     codexMarketplaceRemove(request: KhalaCodeDesktopCodexMarketplaceRemoveRequest): Promise<KhalaCodeDesktopCodexAppServerActionResult>
     codexMarketplaceUpgrade(request?: KhalaCodeDesktopCodexMarketplaceUpgradeRequest): Promise<KhalaCodeDesktopCodexAppServerActionResult>

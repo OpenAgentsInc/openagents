@@ -1488,6 +1488,31 @@ describe("Khala Code desktop RPC handlers", () => {
           if (method === "hooks/list") {
             return { data: [{ cwd: "/repo", hooks: [], warnings: [], errors: [] }] } as Result
           }
+          if (method === "externalAgentConfig/detect") {
+            return {
+              items: [{
+                itemType: "AGENTS_MD",
+                description: "Import AGENTS.md from another agent",
+                cwd: "/repo",
+                details: null,
+              }],
+            } as Result
+          }
+          if (method === "externalAgentConfig/import/readHistories") {
+            return {
+              data: [{
+                importId: "import-1",
+                completedAtMs: 1782926400000,
+                successes: [{
+                  itemType: "AGENTS_MD",
+                  cwd: "/repo",
+                  source: "CLAUDE.md",
+                  target: "AGENTS.md",
+                }],
+                failures: [],
+              }],
+            } as Result
+          }
           if (method === "plugin/list" || method === "plugin/installed") {
             return {
               marketplaces: [{
@@ -1587,6 +1612,8 @@ describe("Khala Code desktop RPC handlers", () => {
     expect(requests.map(request => request.method)).toEqual([
       "skills/list",
       "hooks/list",
+      "externalAgentConfig/detect",
+      "externalAgentConfig/import/readHistories",
       "plugin/list",
       "plugin/installed",
       "app/list",
@@ -1596,15 +1623,20 @@ describe("Khala Code desktop RPC handlers", () => {
       cwds: ["/repo"],
       forceReload: true,
     })
-    expect(requests[4].params).toEqual({
+    expect(requests[2].params).toEqual({
+      cwds: ["/repo"],
+      includeHome: true,
+    })
+    expect(requests[6].params).toEqual({
       threadId: "thread-1",
       forceRefetch: true,
     })
-    expect(requests[5].params).toEqual({
+    expect(requests[7].params).toEqual({
       detail: "full",
       threadId: "thread-1",
     })
     expect(result.sections.skills.count).toBe(1)
+    expect(result.sections.imports.installRequiredCount).toBe(1)
     expect(result.sections.mcp.authRequiredCount).toBe(1)
     expect(result.notifications.map(notification => notification.method)).toContain("skills/changed")
   })
@@ -1656,6 +1688,20 @@ describe("Khala Code desktop RPC handlers", () => {
 
     await handlers.codexSkillsExtraRootsSet({ extraRoots: ["/repo/skills"] })
     await handlers.codexSkillsConfigWrite({ name: "github", enabled: false })
+    await handlers.codexExternalAgentConfigDetect({ cwds: ["/repo"], includeHome: true })
+    await handlers.codexExternalAgentConfigImport({
+      source: "claude",
+      migrationItems: [{
+        itemType: "AGENTS_MD",
+        description: "Import AGENTS.md",
+        cwd: "/repo",
+        details: null,
+      }],
+    })
+    await handlers.codexExternalAgentConfigImportHistoriesRead()
+    await handlers.codexFsReadFile({ path: "/repo/AGENTS.md" })
+    await handlers.codexFsWriteFile({ path: "/repo/AGENTS.md", dataBase64: "IyBBR0VOVFMK" })
+    await handlers.codexFsGetMetadata({ path: "/repo/AGENTS.md" })
     await handlers.codexMarketplaceAdd({ source: "https://github.com/acme/plugins", refName: "main" })
     await handlers.codexMarketplaceRemove({ marketplaceName: "acme" })
     await handlers.codexMarketplaceUpgrade({ marketplaceName: "acme" })
@@ -1675,6 +1721,12 @@ describe("Khala Code desktop RPC handlers", () => {
     expect(requests.map(request => request.method)).toEqual([
       "skills/extraRoots/set",
       "skills/config/write",
+      "externalAgentConfig/detect",
+      "externalAgentConfig/import",
+      "externalAgentConfig/import/readHistories",
+      "fs/readFile",
+      "fs/writeFile",
+      "fs/getMetadata",
       "marketplace/add",
       "marketplace/remove",
       "marketplace/upgrade",
@@ -1685,7 +1737,7 @@ describe("Khala Code desktop RPC handlers", () => {
       "mcpServer/tool/call",
       "config/mcpServer/reload",
     ])
-    expect(requests[9].params).toEqual({
+    expect(requests[15].params).toEqual({
       threadId: "thread-1",
       server: "github",
       tool: "list_issues",

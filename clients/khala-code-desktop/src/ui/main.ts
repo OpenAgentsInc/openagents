@@ -141,6 +141,30 @@ const previewRpc = (): DesktopRpc => ({
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["codexEcosystemRead"]>>
       >("codexEcosystemRead", request),
+    codexExternalAgentConfigDetect: request =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["codexExternalAgentConfigDetect"]>>
+      >("codexExternalAgentConfigDetect", request),
+    codexExternalAgentConfigImport: request =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["codexExternalAgentConfigImport"]>>
+      >("codexExternalAgentConfigImport", request),
+    codexExternalAgentConfigImportHistoriesRead: () =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["codexExternalAgentConfigImportHistoriesRead"]>>
+      >("codexExternalAgentConfigImportHistoriesRead"),
+    codexFsGetMetadata: request =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["codexFsGetMetadata"]>>
+      >("codexFsGetMetadata", request),
+    codexFsReadFile: request =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["codexFsReadFile"]>>
+      >("codexFsReadFile", request),
+    codexFsWriteFile: request =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["codexFsWriteFile"]>>
+      >("codexFsWriteFile", request),
     codexMarketplaceAdd: request =>
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["codexMarketplaceAdd"]>>
@@ -1723,6 +1747,18 @@ const controls = {
     rpc.request.codexConfigValueWrite(request),
   codexEcosystemRead: (request?: Parameters<DesktopRpcRequests["codexEcosystemRead"]>[0]) =>
     rpc.request.codexEcosystemRead(request),
+  codexExternalAgentConfigDetect: (request?: Parameters<DesktopRpcRequests["codexExternalAgentConfigDetect"]>[0]) =>
+    rpc.request.codexExternalAgentConfigDetect(request),
+  codexExternalAgentConfigImport: (request: Parameters<DesktopRpcRequests["codexExternalAgentConfigImport"]>[0]) =>
+    rpc.request.codexExternalAgentConfigImport(request),
+  codexExternalAgentConfigImportHistoriesRead: () =>
+    rpc.request.codexExternalAgentConfigImportHistoriesRead(),
+  codexFsGetMetadata: (request: Parameters<DesktopRpcRequests["codexFsGetMetadata"]>[0]) =>
+    rpc.request.codexFsGetMetadata(request),
+  codexFsReadFile: (request: Parameters<DesktopRpcRequests["codexFsReadFile"]>[0]) =>
+    rpc.request.codexFsReadFile(request),
+  codexFsWriteFile: (request: Parameters<DesktopRpcRequests["codexFsWriteFile"]>[0]) =>
+    rpc.request.codexFsWriteFile(request),
   codexMarketplaceAdd: (request: Parameters<DesktopRpcRequests["codexMarketplaceAdd"]>[0]) =>
     rpc.request.codexMarketplaceAdd(request),
   codexMarketplaceRemove: (request: Parameters<DesktopRpcRequests["codexMarketplaceRemove"]>[0]) =>

@@ -256,9 +256,9 @@ export const KHALA_CODE_CODEX_APP_SERVER_GAP_MATRIX: readonly KhalaCodeCodexAppS
     ],
     upstreamGapId: "codex.app_server.gap.memory_and_import_management",
     khalaAdapter:
-      "Khala can render skills/hooks/import state from app-server, but memory mutation and AGENTS.md authoring need Codex-owned semantics or a tiny tested adapter.",
+      "Implemented wrapper coverage reads skills, hooks, importable external config, import histories, and fs metadata through Codex app-server, and passes skill/import/fs mutations through unchanged. Memory mutation and rich slash-command flows still need Codex-owned semantics.",
     rationale:
-      "Some primitives exist, but TUI memory and init flows still contain product decisions that should not be recreated freely in Khala.",
+      "The stable app-server primitives are now wrapped for desktop settings and diagnostics. The row remains an upstream gap because /memories, /init, and debug memory slash-command semantics are still TUI-owned and should not become a second Khala implementation.",
     linkedIssues: [
       "https://github.com/OpenAgentsInc/openagents/issues/7785",
       "https://github.com/OpenAgentsInc/openagents/issues/7795",
@@ -266,6 +266,7 @@ export const KHALA_CODE_CODEX_APP_SERVER_GAP_MATRIX: readonly KhalaCodeCodexAppS
     testRefs: [
       "clients/khala-code-desktop/tests/codex-slash-commands.test.ts",
       "clients/khala-code-desktop/tests/codex-ecosystem.test.ts",
+      "clients/khala-code-desktop/tests/rpc-handlers.test.ts",
       "clients/khala-code-desktop/tests/codex-app-server-gap-matrix.test.ts",
     ],
     updateTrigger:

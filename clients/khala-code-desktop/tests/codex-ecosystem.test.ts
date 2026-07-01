@@ -57,6 +57,27 @@ describe("Khala Code Codex ecosystem projection", () => {
           errors: [],
         }],
       },
+      externalAgentConfigDetect: {
+        items: [{
+          itemType: "AGENTS_MD",
+          description: "Import workspace instructions from another agent",
+          cwd: "/workspace/openagents",
+          details: null,
+        }],
+      },
+      externalAgentConfigImportHistories: {
+        data: [{
+          importId: "import-ok",
+          completedAtMs: 1782926400000,
+          successes: [{
+            itemType: "AGENTS_MD",
+            cwd: "/workspace/openagents",
+            source: "CLAUDE.md",
+            target: "AGENTS.md",
+          }],
+          failures: [],
+        }],
+      },
       pluginList: {
         marketplaces: [{
           name: "curated",
@@ -184,6 +205,18 @@ describe("Khala Code Codex ecosystem projection", () => {
           },
           receivedAt: "2026-07-01T12:02:00.000Z",
         },
+        {
+          method: "externalAgentConfig/import/completed",
+          params: {
+            importId: "import-ok",
+            itemTypeResults: [{
+              itemType: "AGENTS_MD",
+              successes: [],
+              failures: [],
+            }],
+          },
+          receivedAt: "2026-07-01T12:03:00.000Z",
+        },
       ],
     })
 
@@ -194,10 +227,13 @@ describe("Khala Code Codex ecosystem projection", () => {
     expect(projection.sections.plugins.disabledCount).toBe(1)
     expect(projection.sections.apps.authRequiredCount).toBe(1)
     expect(projection.sections.apps.disabledCount).toBe(1)
+    expect(projection.sections.imports.installRequiredCount).toBe(1)
     expect(projection.sections.mcp.authRequiredCount).toBe(1)
     expect(projection.sections.khala.count).toBe(2)
     expect(projection.notifications.map(notification => notification.method)).toContain("skills/changed")
+    expect(projection.notifications.map(notification => notification.method)).toContain("externalAgentConfig/import/completed")
     expect(projection.diagnostics.map(diagnostic => diagnostic.title)).toContain("Codex skills changed")
+    expect(projection.diagnostics.map(diagnostic => diagnostic.title)).toContain("AGENTS_MD config can be imported")
     expect(projection.diagnostics.some(diagnostic =>
       diagnostic.title === "github MCP server needs login"
     )).toBe(true)
@@ -249,6 +285,29 @@ describe("Khala Code Codex ecosystem projection", () => {
         }],
         nextCursor: null,
       },
+      externalAgentConfigDetect: {
+        items: [{
+          itemType: "CONFIG",
+          description: "Import config",
+          cwd: "/workspace",
+          details: { token: "SECRET_VALUE" },
+        }],
+      },
+      externalAgentConfigImportHistories: {
+        data: [{
+          importId: "import-secret",
+          completedAtMs: 1782926400000,
+          successes: [],
+          failures: [{
+            itemType: "CONFIG",
+            errorType: "secret",
+            failureStage: "read",
+            message: "SECRET_VALUE",
+            cwd: "/workspace",
+            source: "/private/config.json",
+          }],
+        }],
+      },
       mcpServerStatusList: {
         data: [{
           name: "mystery-mcp",
@@ -265,6 +324,7 @@ describe("Khala Code Codex ecosystem projection", () => {
     expect(projection.sections.skills.unknownCount).toBe(1)
     expect(projection.sections.apps.unknownCount).toBe(1)
     expect(projection.sections.mcp.unknownCount).toBe(1)
+    expect(projection.sections.imports.errorCount).toBe(1)
     expect(projection.diagnostics.some(diagnostic =>
       diagnostic.title.includes("Unknown")
     )).toBe(true)
