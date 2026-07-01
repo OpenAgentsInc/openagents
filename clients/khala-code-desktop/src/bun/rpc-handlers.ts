@@ -24,6 +24,9 @@ import {
   type KhalaCodeDesktopCodexBackgroundTerminalsTerminateRequest,
   type KhalaCodeDesktopCodexEcosystemReadRequest,
   type KhalaCodeDesktopCodexEcosystemReadResult,
+  type KhalaCodeDesktopCodexMentionCandidate,
+  type KhalaCodeDesktopCodexMentionCandidatesRequest,
+  type KhalaCodeDesktopCodexMentionCandidatesResult,
   type KhalaCodeDesktopCodexSettingsReadRequest,
   type KhalaCodeDesktopCodexSettingsReadResult,
   type KhalaCodeDesktopSlashCommandDispatchRequest,
@@ -102,6 +105,109 @@ const appInfo = (): KhalaCodeDesktopAppInfo => ({
   app: "Khala Code Desktop",
   observedAt: new Date().toISOString(),
 })
+
+const MAX_MENTION_CANDIDATES = 20
+const MAX_DIRECTORY_CANDIDATES = 20
+const MAX_DIFF_DISPLAY_CHARS = 80_000
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null
+
+const stringValue = (value: unknown): string | null =>
+  typeof value === "string" ? value : null
+
+const numberValue = (value: unknown): number | undefined =>
+  typeof value === "number" && Number.isFinite(value) ? value : undefined
+
+const normalizeMentionCandidate = (value: unknown): KhalaCodeDesktopCodexMentionCandidate | null => {
+  if (!isRecord(value)) return null
+  const path = stringValue(value.path)
+  const fileName = stringValue(value.file_name) ?? stringValue(value.fileName) ?? path
+  if (path === null || fileName === null || path.length === 0 || fileName.length === 0) return null
+  const matchType = stringValue(value.match_type) ?? stringValue(value.matchType)
+  const candidate: KhalaCodeDesktopCodexMentionCandidate = {
+    fileName,
+    kind: matchType === "directory" ? "directory" : "file",
+    path,
+  }
+  const root = stringValue(value.root)
+  const score = numberValue(value.score)
+  return {
+    ...candidate,
+    ...(root === null ? {} : { root }),
+    ...(score === undefined ? {} : { score }),
+  }
+}
+
+const normalizeDirectoryCandidate = (value: unknown): KhalaCodeDesktopCodexMentionCandidate | null => {
+  if (!isRecord(value)) return null
+  const fileName = stringValue(value.fileName)
+  if (fileName === null || fileName.length === 0) return null
+  return {
+    fileName,
+    kind: value.isDirectory === true ? "directory" : "file",
+    path: fileName,
+  }
+}
+
+const mentionMessage = (input: {
+  readonly candidates: readonly KhalaCodeDesktopCodexMentionCandidate[]
+  readonly source: "fs/readDirectory" | "fuzzyFileSearch"
+  readonly truncated: boolean
+}): string => {
+  if (input.candidates.length === 0) {
+    return `Codex ${input.source} returned no mention candidates.`
+  }
+  const lines = input.candidates.map(candidate =>
+    `- ${candidate.kind === "directory" ? "dir" : "file"} ${candidate.path}`,
+  )
+  return [
+    `Codex ${input.source} mention candidates${input.truncated ? " (truncated)" : ""}:`,
+    ...lines,
+  ].join("\n")
+}
+
+const diffMessage = (response: unknown): { readonly message: string, readonly response: unknown } => {
+  const record = isRecord(response) ? response : {}
+  const diff = stringValue(record.diff) ?? ""
+  const sha = stringValue(record.sha)
+  if (diff.length === 0) {
+    return {
+      message: "Codex gitDiffToRemote returned no diff.",
+      response,
+    }
+  }
+  const truncated = diff.length > MAX_DIFF_DISPLAY_CHARS
+  const displayDiff = truncated ? diff.slice(0, MAX_DIFF_DISPLAY_CHARS) : diff
+  return {
+    message: [
+      `Codex gitDiffToRemote${sha === null ? "" : ` at ${sha}`}${truncated ? " (truncated)" : ""}:`,
+      "```diff",
+      displayDiff,
+      "```",
+    ].join("\n"),
+    response: {
+      sha,
+      diff: displayDiff,
+      truncated,
+      originalLength: diff.length,
+    },
+  }
+}
+
+const ideMessage = (response: unknown): string => {
+  const config = isRecord(response) && isRecord(response.config) ? response.config : {}
+  const ide = config.ide ?? config.ide_integration ?? config.ideIntegration
+  if (ide === undefined || ide === null) {
+    return "Codex app-server config has no IDE integration status; IDE controls are unsupported by this Codex build."
+  }
+  return [
+    "Codex app-server IDE integration status:",
+    "```json",
+    JSON.stringify(ide, null, 2),
+    "```",
+  ].join("\n")
+}
 
 const runtimeStatus = (input: {
   readonly available: boolean
@@ -585,6 +691,48 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
     return input.codexAppServerHost.request(method, params)
   }
 
+  const readCodexMentionCandidates = async (
+    request: KhalaCodeDesktopCodexMentionCandidatesRequest = {},
+  ): Promise<KhalaCodeDesktopCodexMentionCandidatesResult> => {
+    const cwd = request.cwd ?? input.workingDirectory
+    const query = request.query?.trim() ?? ""
+    if (query.length === 0) {
+      const response = await requestCodexAppServer("fs/readDirectory", { path: cwd })
+      const entries = isRecord(response) && Array.isArray(response.entries)
+        ? response.entries
+        : []
+      const candidates = entries
+        .map(normalizeDirectoryCandidate)
+        .filter((candidate): candidate is KhalaCodeDesktopCodexMentionCandidate => candidate !== null)
+        .slice(0, MAX_DIRECTORY_CANDIDATES)
+      return {
+        ok: true,
+        candidates,
+        source: "fs/readDirectory",
+        truncated: entries.length > MAX_DIRECTORY_CANDIDATES,
+      }
+    }
+
+    const response = await requestCodexAppServer("fuzzyFileSearch", {
+      query,
+      roots: [cwd],
+      cancellationToken: null,
+    })
+    const files = isRecord(response) && Array.isArray(response.files)
+      ? response.files
+      : []
+    const candidates = files
+      .map(normalizeMentionCandidate)
+      .filter((candidate): candidate is KhalaCodeDesktopCodexMentionCandidate => candidate !== null)
+      .slice(0, MAX_MENTION_CANDIDATES)
+    return {
+      ok: true,
+      candidates,
+      source: "fuzzyFileSearch",
+      truncated: files.length > MAX_MENTION_CANDIDATES,
+    }
+  }
+
   const codexAppServerAction = async (
     method: string,
     params?: unknown,
@@ -977,6 +1125,46 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
             message: "Started a Codex review turn.",
             response,
             ...(threadId === null ? {} : { threadId }),
+          })
+        }
+        case "mention": {
+          const response = await readCodexMentionCandidates({
+            ...(request.cwd === undefined ? {} : { cwd: request.cwd }),
+            query: args,
+          })
+          return dispatchedSlashCommand({
+            command: command.command,
+            method: response.source,
+            message: mentionMessage({
+              candidates: response.candidates,
+              source: response.source,
+              truncated: response.truncated,
+            }),
+            response,
+          })
+        }
+        case "diff": {
+          const response = await requestCodexAppServer(dispatch.method, {
+            cwd: request.cwd ?? input.workingDirectory,
+          })
+          const projected = diffMessage(response)
+          return dispatchedSlashCommand({
+            command: command.command,
+            method: dispatch.method,
+            message: projected.message,
+            response: projected.response,
+          })
+        }
+        case "ide": {
+          const response = await requestCodexAppServer(dispatch.method, {
+            cwd: request.cwd ?? input.workingDirectory,
+            includeLayers: true,
+          })
+          return dispatchedSlashCommand({
+            command: command.command,
+            method: dispatch.method,
+            message: ideMessage(response),
+            response,
           })
         }
         case "ps":
@@ -1390,6 +1578,19 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
     },
     async codexMarketplaceUpgrade(request = {}) {
       return codexAppServerAction("marketplace/upgrade", request)
+    },
+    async codexMentionCandidates(request = {}) {
+      try {
+        return await readCodexMentionCandidates(request)
+      } catch (error) {
+        return {
+          ok: false,
+          candidates: [],
+          source: request.query?.trim() ? "fuzzyFileSearch" : "fs/readDirectory",
+          truncated: false,
+          error: error instanceof Error ? error.message : String(error),
+        }
+      }
     },
     async codexMcpOauthLogin(request) {
       return codexAppServerAction("mcpServer/oauth/login", {

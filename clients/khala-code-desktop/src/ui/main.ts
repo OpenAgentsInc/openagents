@@ -190,6 +190,10 @@ const previewRpc = (): DesktopRpc => ({
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["codexMarketplaceUpgrade"]>>
       >("codexMarketplaceUpgrade", request),
+    codexMentionCandidates: request =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["codexMentionCandidates"]>>
+      >("codexMentionCandidates", request),
     codexMcpOauthLogin: request =>
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["codexMcpOauthLogin"]>>
@@ -1778,6 +1782,8 @@ const controls = {
     rpc.request.codexMarketplaceRemove(request),
   codexMarketplaceUpgrade: (request?: Parameters<DesktopRpcRequests["codexMarketplaceUpgrade"]>[0]) =>
     rpc.request.codexMarketplaceUpgrade(request),
+  codexMentionCandidates: (request?: Parameters<DesktopRpcRequests["codexMentionCandidates"]>[0]) =>
+    rpc.request.codexMentionCandidates(request),
   codexMcpOauthLogin: (request: Parameters<DesktopRpcRequests["codexMcpOauthLogin"]>[0]) =>
     rpc.request.codexMcpOauthLogin(request),
   codexMcpResourceRead: (request: Parameters<DesktopRpcRequests["codexMcpResourceRead"]>[0]) =>

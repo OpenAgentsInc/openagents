@@ -5,7 +5,10 @@ import { join } from "node:path"
 
 import { createKhalaCodeDesktopRpcRequestHandlers } from "../src/bun/rpc-handlers"
 import type { CodexAppServerChatRuntime } from "../src/bun/codex-app-server-chat-runtime"
-import type { CodexAppServerNotificationHandler } from "../src/bun/codex-app-server-client"
+import type {
+  CodexAppServerHost,
+  CodexAppServerNotificationHandler,
+} from "../src/bun/codex-app-server-client"
 import type {
   KhalaCodexFleetCommandInput,
   KhalaCodexFleetCommandResult,
@@ -127,6 +130,36 @@ const stoppedAppServerStatus = (): KhalaCodeDesktopCodexAppServerStatus => ({
   state: "stopped",
   transport: "stdio",
 })
+
+function codexAppServerHost(
+  request: CodexAppServerHost["request"],
+): CodexAppServerHost {
+  return {
+    dispose: () => undefined,
+    request,
+    respondToServerRequest: () => undefined,
+    restart: async () => ({
+      ok: true,
+      action: "restart",
+      changed: false,
+      status: stoppedAppServerStatus(),
+    }),
+    start: async () => ({
+      ok: true,
+      action: "start",
+      changed: false,
+      status: stoppedAppServerStatus(),
+    }),
+    status: stoppedAppServerStatus,
+    stop: async () => ({
+      ok: true,
+      action: "stop",
+      changed: false,
+      status: stoppedAppServerStatus(),
+    }),
+    subscribe: () => () => undefined,
+  }
+}
 
 function throwingCodexChatRuntime(
   overrides: Partial<CodexAppServerChatRuntime> = {},
@@ -1204,6 +1237,240 @@ describe("Khala Code desktop RPC handlers", () => {
       ok: false,
       command: "init",
       status: "gap",
+    })
+  })
+
+  test("dispatches mention candidates through bounded Codex app-server file search", async () => {
+    const requests: { method: string, params: unknown }[] = []
+    const files = Array.from({ length: 25 }, (_, index) => ({
+      root: "/repo",
+      path: `src/file-${index}.ts`,
+      match_type: index % 2 === 0 ? "file" : "directory",
+      file_name: `file-${index}.ts`,
+      score: 100 - index,
+      indices: [0],
+    }))
+    const handlers = createKhalaCodeDesktopRpcRequestHandlers({
+      appleFmReadiness: () => {
+        throw new Error("not used")
+      },
+      codexAppServerHost: codexAppServerHost(async <Result>(method: string, params?: unknown) => {
+        requests.push({ method, params })
+        return { files } as Result
+      }),
+      codexChatRuntime: throwingCodexChatRuntime(),
+      env: {},
+      onDeviceDeciderStatus: () => {
+        throw new Error("not used")
+      },
+      workingDirectory: "/repo",
+    })
+
+    const result = await handlers.slashCommandDispatch({
+      cwd: "/repo/workspace",
+      raw: "/mention worker",
+      sessionId: "desktop-session-slash",
+    })
+    const composerResult = await handlers.codexMentionCandidates({
+      cwd: "/repo/workspace",
+      query: "worker",
+    })
+
+    expect(result).toMatchObject({
+      ok: true,
+      command: "mention",
+      method: "fuzzyFileSearch",
+      status: "dispatched",
+    })
+    expect(composerResult).toMatchObject({
+      ok: true,
+      source: "fuzzyFileSearch",
+      truncated: true,
+    })
+    expect(requests).toEqual([
+      {
+        method: "fuzzyFileSearch",
+        params: {
+          query: "worker",
+          roots: ["/repo/workspace"],
+          cancellationToken: null,
+        },
+      },
+      {
+        method: "fuzzyFileSearch",
+        params: {
+          query: "worker",
+          roots: ["/repo/workspace"],
+          cancellationToken: null,
+        },
+      },
+    ])
+    expect(result.message).toContain("Codex fuzzyFileSearch mention candidates (truncated)")
+    expect(JSON.stringify(result.response)).toContain('"truncated":true')
+    expect((result.response as { candidates: unknown[] }).candidates).toHaveLength(20)
+    expect(composerResult.candidates).toHaveLength(20)
+  })
+
+  test("dispatches empty mention browsing through Codex fs/readDirectory", async () => {
+    const requests: { method: string, params: unknown }[] = []
+    const handlers = createKhalaCodeDesktopRpcRequestHandlers({
+      appleFmReadiness: () => {
+        throw new Error("not used")
+      },
+      codexAppServerHost: codexAppServerHost(async <Result>(method: string, params?: unknown) => {
+        requests.push({ method, params })
+        return { entries: [] } as Result
+      }),
+      codexChatRuntime: throwingCodexChatRuntime(),
+      env: {},
+      onDeviceDeciderStatus: () => {
+        throw new Error("not used")
+      },
+      workingDirectory: "/repo",
+    })
+
+    await expect(handlers.slashCommandDispatch({
+      raw: "/mention",
+      sessionId: "desktop-session-slash",
+    })).resolves.toMatchObject({
+      ok: true,
+      command: "mention",
+      method: "fs/readDirectory",
+      message: "Codex fs/readDirectory returned no mention candidates.",
+      status: "dispatched",
+    })
+    await expect(handlers.codexMentionCandidates()).resolves.toMatchObject({
+      ok: true,
+      candidates: [],
+      source: "fs/readDirectory",
+      truncated: false,
+    })
+    expect(requests).toEqual([
+      {
+        method: "fs/readDirectory",
+        params: { path: "/repo" },
+      },
+      {
+        method: "fs/readDirectory",
+        params: { path: "/repo" },
+      },
+    ])
+  })
+
+  test("dispatches diff and IDE status through Codex app-server", async () => {
+    const requests: { method: string, params: unknown }[] = []
+    const handlers = createKhalaCodeDesktopRpcRequestHandlers({
+      appleFmReadiness: () => {
+        throw new Error("not used")
+      },
+      codexAppServerHost: codexAppServerHost(async <Result>(method: string, params?: unknown) => {
+        requests.push({ method, params })
+        if (method === "gitDiffToRemote") {
+          return {
+            sha: "abc123",
+            diff: "diff --git a/a.ts b/a.ts\n+added\n",
+          } as Result
+        }
+        return {
+          config: {
+            ide_integration: {
+              status: "connected",
+              editor: "vscode",
+            },
+          },
+        } as Result
+      }),
+      codexChatRuntime: throwingCodexChatRuntime(),
+      env: {},
+      onDeviceDeciderStatus: () => {
+        throw new Error("not used")
+      },
+      workingDirectory: "/repo",
+    })
+
+    await expect(handlers.slashCommandDispatch({
+      cwd: "/repo/project",
+      raw: "/diff",
+      sessionId: "desktop-session-slash",
+    })).resolves.toMatchObject({
+      ok: true,
+      command: "diff",
+      method: "gitDiffToRemote",
+      message: expect.stringContaining("```diff"),
+      status: "dispatched",
+    })
+    await expect(handlers.slashCommandDispatch({
+      cwd: "/repo/project",
+      raw: "/ide",
+      sessionId: "desktop-session-slash",
+    })).resolves.toMatchObject({
+      ok: true,
+      command: "ide",
+      method: "config/read",
+      message: expect.stringContaining("connected"),
+      status: "dispatched",
+    })
+    expect(requests).toEqual([
+      {
+        method: "gitDiffToRemote",
+        params: { cwd: "/repo/project" },
+      },
+      {
+        method: "config/read",
+        params: { cwd: "/repo/project", includeLayers: true },
+      },
+    ])
+  })
+
+  test("returns typed diff empty and error states", async () => {
+    const emptyHandlers = createKhalaCodeDesktopRpcRequestHandlers({
+      appleFmReadiness: () => {
+        throw new Error("not used")
+      },
+      codexAppServerHost: codexAppServerHost(async <Result>() => ({
+        sha: "abc123",
+        diff: "",
+      } as Result)),
+      codexChatRuntime: throwingCodexChatRuntime(),
+      env: {},
+      onDeviceDeciderStatus: () => {
+        throw new Error("not used")
+      },
+      workingDirectory: "/repo",
+    })
+    await expect(emptyHandlers.slashCommandDispatch({
+      raw: "/diff",
+      sessionId: "desktop-session-slash",
+    })).resolves.toMatchObject({
+      ok: true,
+      command: "diff",
+      message: "Codex gitDiffToRemote returned no diff.",
+      status: "dispatched",
+    })
+
+    const errorHandlers = createKhalaCodeDesktopRpcRequestHandlers({
+      appleFmReadiness: () => {
+        throw new Error("not used")
+      },
+      codexAppServerHost: codexAppServerHost(async () => {
+        throw new Error("gitDiffToRemote unavailable")
+      }),
+      codexChatRuntime: throwingCodexChatRuntime(),
+      env: {},
+      onDeviceDeciderStatus: () => {
+        throw new Error("not used")
+      },
+      workingDirectory: "/repo",
+    })
+    await expect(errorHandlers.slashCommandDispatch({
+      raw: "/diff",
+      sessionId: "desktop-session-slash",
+    })).resolves.toMatchObject({
+      ok: false,
+      command: "diff",
+      message: "gitDiffToRemote unavailable",
+      method: "gitDiffToRemote",
+      status: "blocked",
     })
   })
 

@@ -35,7 +35,7 @@ the behavior small.
 | `tui-preferences-and-appearance` | `upstream_app_server_gap` | `/keymap`, `/vim`, `/statusline`, `/theme`, `/pets`, `/personality` | `config/read`, `config/value/write`, `config/batchWrite` | None | `codex.app_server.gap.tui_preferences` |
 | `workspace-knowledge-memory-and-import` | `upstream_app_server_gap` | `/memories`, `/skills`, `/import`, `/hooks`, `/init`, `/debug-m-drop`, `/debug-m-update` | `skills/list`, `skills/config/write`, `skills/extraRoots/set`, `hooks/list`, `externalAgentConfig/detect`, `externalAgentConfig/import`, `externalAgentConfig/import/readHistories`, `fs/readFile`, `fs/writeFile`, `fs/getMetadata` | None | Khala now wraps the stable app-server methods for settings/actions and import diagnostics. Remaining gap: `codex.app_server.gap.memory_and_import_management` for TUI-owned `/memories`, `/init`, and debug memory semantics. |
 | `multi-agent-side-conversation-and-plan` | `upstream_app_server_gap` | `/approve`, `/plan`, `/agent`, `/subagents`, `/side`, `/btw` | `turn/steer`, `thread/fork`, `thread/inject_items`, `thread/approveGuardianDeniedAction`, `thread/metadata/update`, `thread/read` | None | `codex.app_server.gap.side_agent_plan_controls` |
-| `ide-file-mention-and-diff` | `upstream_app_server_gap` | `/ide`, `/diff`, `/mention` | `fuzzyFileSearch`, `gitDiffToRemote`, `fs/readDirectory`, `fs/readFile`, `config/read` | None | `codex.app_server.gap.ide_mentions_diff` |
+| `ide-file-mention-and-diff` | `covered_by_app_server` | `/ide`, `/diff`, `/mention` | `fuzzyFileSearch`, `gitDiffToRemote`, `fs/readDirectory`, `fs/readFile`, `config/read` | None | Khala now projects bounded mention candidates, remote diff content, and IDE status from app-server methods; `codex.app_server.gap.ide_mentions_diff` remains only for richer IDE mutation/metadata beyond the current wrapper slice. |
 | `windows-sandbox-setup-and-readable-roots` | `upstream_app_server_gap` | `/setup-default-sandbox`, `/sandbox-add-read-dir` | `windowsSandbox/setupStart`, `windowsSandbox/readiness`, `config/read`, `config/value/write` | None | `codex.app_server.gap.windows_sandbox_read_roots` |
 | `background-terminal-management` | `khala_adapter_with_test` | `/ps`, `/stop` | None | `thread/backgroundTerminals/list`, `thread/backgroundTerminals/clean`, `thread/backgroundTerminals/terminate` | Khala wraps Codex's experimental background terminal methods directly: `/ps` lists with bounded pagination, `/stop` and `/clean` request cleanup, and the RPC action path can terminate an explicit app-server `processId`. Stable product copy still tracks `codex.app_server.gap.background_terminals` until Codex stabilizes the methods. |
 
@@ -54,8 +54,9 @@ GitHub issues, or protocol notes:
 - `codex.app_server.gap.side_agent_plan_controls`: expose side-conversation,
   subagent, plan-edit, and auto-review controls as app-server methods or
   metadata.
-- `codex.app_server.gap.ide_mentions_diff`: expose IDE integration state,
-  mention candidates, and diff-read semantics through app-server.
+- `codex.app_server.gap.ide_mentions_diff`: expose richer IDE mutation and
+  metadata beyond the current bounded app-server-backed mention/diff/status
+  wrapper.
 - `codex.app_server.gap.windows_sandbox_read_roots`: expose readable-root
   mutation in the Windows sandbox contract.
 - `codex.app_server.gap.background_terminals`: stabilize the existing

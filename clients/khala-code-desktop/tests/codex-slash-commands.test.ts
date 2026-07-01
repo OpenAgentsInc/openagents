@@ -210,4 +210,19 @@ describe("Khala Code Codex slash command registry", () => {
       }
     }
   })
+
+  test("maps IDE, diff, and mention parity commands to Codex app-server methods", () => {
+    expect(findKhalaCodeDesktopSlashCommand("/ide")?.dispatch).toMatchObject({
+      kind: "app_server",
+      method: "config/read",
+    })
+    expect(findKhalaCodeDesktopSlashCommand("/diff")?.dispatch).toMatchObject({
+      kind: "app_server",
+      method: "gitDiffToRemote",
+    })
+    expect(findKhalaCodeDesktopSlashCommand("/mention")?.dispatch).toMatchObject({
+      kind: "app_server",
+      method: "fuzzyFileSearch",
+    })
+  })
 })
