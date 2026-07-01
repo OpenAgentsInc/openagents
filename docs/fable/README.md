@@ -54,3 +54,18 @@ Contents:
   `clients/khala-code-desktop` (the only active desktop target;
   autopilot-desktop is postponed reference material) → @effect/vitest
   + TestClock + guardrails.
+- `2026-07-01-orca-analysis-and-adoption-plan.md` — how to think about Orca
+  (`stablyai/orca`, MIT reference at `projects/repos/orca`): a terminal
+  multiplexer + worktree manager + SQLite message bus whose breadth comes
+  from PTY/glyph heuristics, versus our typed/verified/exact-accounted
+  spine. Audits the five-port adoption scoreboard (runner registry live;
+  the orchestration task-DAG store built+tested but dormant; dashboard
+  mock-only; Artanis verbs partial; mobile companion never filed) and lays
+  out the adoption order: wire the dormant orchestration store as the
+  FleetRun spine, unify on the runner-neutral status contract end to end,
+  build the mobile companion as an E2EE-paired DO-relayed allowlisted
+  projection (observe/notify/approve/steer; rough desktop parity minus
+  terminals/design-mode/local execution), then the annotate-diff review
+  loop — while explicitly not copying PTY status detection,
+  trust-the-summary completion, unclaimed parallelism, or 30-harness
+  breadth.
