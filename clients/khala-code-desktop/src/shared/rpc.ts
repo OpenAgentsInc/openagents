@@ -4,6 +4,9 @@ import type {
   KhalaCodexRateLimitProviderStatus,
   KhalaCodexRateLimitResetOutcome,
 } from "./codex-rate-limits.js"
+import type {
+  KhalaCodeDesktopSlashCommandWithAvailability,
+} from "./codex-slash-commands.js"
 import type { OnDeviceDeciderSelection } from "./on-device-decider.js"
 
 // Electrobun treats Infinity as no local request timeout; chat turns stream progress
@@ -245,6 +248,42 @@ export type KhalaCodeDesktopCodexThreadCompactRequest = {
   readonly threadId?: string
 }
 
+export type KhalaCodeDesktopSlashCommandListRequest = {
+  readonly activeTurn?: boolean
+  readonly debug?: boolean
+  readonly platform?: string
+  readonly sideConversation?: boolean
+}
+
+export type KhalaCodeDesktopSlashCommandListResponse = {
+  readonly commands: readonly KhalaCodeDesktopSlashCommandWithAvailability[]
+  readonly ok: true
+}
+
+export type KhalaCodeDesktopSlashCommandDispatchRequest =
+  KhalaCodeDesktopSlashCommandListRequest & {
+    readonly cwd?: string
+    readonly raw: string
+    readonly sessionId: string
+    readonly threadId?: string
+  }
+
+export type KhalaCodeDesktopSlashCommandDispatchResult = {
+  readonly action?: string
+  readonly command?: string
+  readonly message: string
+  readonly method?: string
+  readonly ok: boolean
+  readonly response?: unknown
+  readonly status:
+    | "blocked"
+    | "client_action"
+    | "dispatched"
+    | "gap"
+    | "not_found"
+  readonly threadId?: string
+}
+
 export type KhalaCodeDesktopCodexAccountStatus = {
   readonly provider: "codex"
   readonly accountRef: "default"
@@ -387,6 +426,8 @@ export type KhalaCodeDesktopRPCSchema = {
     consumeCodexRateLimitResetCredit(): Promise<KhalaCodeDesktopCodexRateLimitResetResult>
     onDeviceDeciderStatus(): Promise<OnDeviceDeciderSelection>
     pylonStatus(): Promise<KhalaCodeDesktopRuntimeStatus>
+    slashCommandDispatch(request: KhalaCodeDesktopSlashCommandDispatchRequest): Promise<KhalaCodeDesktopSlashCommandDispatchResult>
+    slashCommandList(request?: KhalaCodeDesktopSlashCommandListRequest): Promise<KhalaCodeDesktopSlashCommandListResponse>
     submitChatMessage(request: KhalaCodeDesktopChatTurnRequest): Promise<KhalaCodeDesktopChatTurnResponse>
     tokenAccountingStatus(): Promise<KhalaCodeDesktopRuntimeStatus>
     toolCatalog(): Promise<KhalaCodeDesktopToolCatalogResponse>

@@ -58,6 +58,8 @@ import "./styles.css"
 
 type DesktopRpc = ReturnType<typeof Electroview.defineRPC<KhalaCodeDesktopRPCSchema>>
 type DesktopRpcRequests = KhalaCodeDesktopRPCSchema["requests"]
+type SlashCommandEntry =
+  Awaited<ReturnType<DesktopRpcRequests["slashCommandList"]>>["commands"][number]
 
 const postPreviewRpc = async <Result>(
   method: string,
@@ -166,6 +168,14 @@ const previewRpc = (): DesktopRpc => ({
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["removeCodexAccount"]>>
       >("removeCodexAccount", accountRef),
+    slashCommandDispatch: request =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["slashCommandDispatch"]>>
+      >("slashCommandDispatch", request),
+    slashCommandList: request =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["slashCommandList"]>>
+      >("slashCommandList", request),
     submitChatMessage: request =>
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["submitChatMessage"]>>
@@ -230,6 +240,7 @@ const composerFrame = requireElement<HTMLElement>("#composer-frame")
 const composerHudMount = requireElement<HTMLElement>("#composer-hud")
 const composerInput = requireElement<HTMLTextAreaElement>("#composer-input")
 const composerRail = requireElement<HTMLElement>("#composer-rail")
+const slashCommandPalette = requireElement<HTMLElement>("#slash-command-palette")
 const composerPreview = requireElement<HTMLElement>("#composer-preview")
 const composerStatus = requireElement<HTMLElement>("#composer-status")
 const composerA11y = requireElement<HTMLElement>("#composer-a11y")
@@ -245,6 +256,8 @@ let lastTurnFailed = false
 let lastSubmittedDraft = ""
 let dragActive = false
 let transcriptPinnedToEnd = true
+let slashCommands: SlashCommandEntry[] = []
+let slashCommandLoadInFlight: Promise<void> | null = null
 const activeTurnIds = new Set<string>()
 const objectUrls = new Set<string>()
 const localTextAttachments = new Map<string, string>()
@@ -698,6 +711,100 @@ const renderComposerPreview = (): void => {
   composerPreview.replaceChildren()
 }
 
+const slashCommandPlatform = (): string => {
+  const userAgent = navigator.userAgent.toLowerCase()
+  const platform = navigator.platform.toLowerCase()
+  if (userAgent.includes("android")) return "android"
+  if (platform.includes("win")) return "win32"
+  if (platform.includes("mac")) return "darwin"
+  if (platform.includes("linux")) return "linux"
+  return "unknown"
+}
+
+const slashCommandLoadKey = (): string =>
+  `${slashCommandPlatform()}:${pendingTurn ? "active" : "idle"}`
+
+let loadedSlashCommandKey = ""
+
+const ensureSlashCommandsLoaded = (): void => {
+  const key = slashCommandLoadKey()
+  if (loadedSlashCommandKey === key && slashCommands.length > 0) return
+  if (slashCommandLoadInFlight !== null) return
+  slashCommandLoadInFlight = rpc.request.slashCommandList({
+    activeTurn: pendingTurn,
+    platform: slashCommandPlatform(),
+    sideConversation: false,
+  }).then(response => {
+    slashCommands = [...response.commands]
+    loadedSlashCommandKey = key
+  }).catch(() => {
+    slashCommands = []
+    loadedSlashCommandKey = key
+  }).finally(() => {
+    slashCommandLoadInFlight = null
+    renderSlashCommandPalette()
+  })
+}
+
+const slashCommandQuery = (): string | null => {
+  const value = composerInput.value.trimStart()
+  if (!value.startsWith("/")) return null
+  return value.slice(1).split(/\s+/)[0]?.toLowerCase() ?? ""
+}
+
+const matchingSlashCommands = (): readonly SlashCommandEntry[] => {
+  const query = slashCommandQuery()
+  if (query === null) return []
+  return slashCommands.filter(command =>
+    command.command.includes(query) ||
+    command.aliases.some(alias => alias.includes(query))
+  ).slice(0, 8)
+}
+
+const selectSlashCommand = (command: SlashCommandEntry): void => {
+  composerInput.value = command.supportsInlineArgs ? `/${command.command} ` : `/${command.command}`
+  composerInput.focus({ preventScroll: true })
+  const position = composerInput.value.length
+  composerInput.setSelectionRange(position, position)
+  renderComposer()
+}
+
+function renderSlashCommandPalette(): void {
+  const query = slashCommandQuery()
+  if (query === null) {
+    slashCommandPalette.hidden = true
+    slashCommandPalette.replaceChildren()
+    return
+  }
+  ensureSlashCommandsLoaded()
+  const matches = matchingSlashCommands()
+  slashCommandPalette.hidden = matches.length === 0
+  slashCommandPalette.replaceChildren(
+    ...matches.map(command => {
+      const button = document.createElement("button")
+      button.type = "button"
+      button.className = "khala-code-slash-command-option"
+      button.disabled = !command.availability.available
+      button.dataset.commandGroup = command.group
+      button.setAttribute("role", "option")
+      button.title = command.availability.reason ?? command.description
+      button.addEventListener("mousedown", event => event.preventDefault())
+      button.addEventListener("click", () => selectSlashCommand(command))
+
+      const name = document.createElement("span")
+      name.className = "khala-code-slash-command-name"
+      name.textContent = `/${command.command}`
+
+      const description = document.createElement("span")
+      description.className = "khala-code-slash-command-description"
+      description.textContent = command.availability.reason ?? command.description
+
+      button.replaceChildren(name, description)
+      return button
+    }),
+  )
+}
+
 function renderComposer(): void {
   const status = statusForComposer()
   const sendLabel = buttonLabel(status)
@@ -738,6 +845,7 @@ function renderComposer(): void {
 
   renderAttachmentRail()
   renderComposerPreview()
+  renderSlashCommandPalette()
   updateComposerHudProjection()
 }
 
@@ -868,6 +976,79 @@ const stopActiveTurn = (): void => {
   requestAnimationFrame(focusComposerInput)
 }
 
+const handleSlashCommandClientAction = async (
+  result: Awaited<ReturnType<DesktopRpcRequests["slashCommandDispatch"]>>,
+): Promise<string> => {
+  switch (result.action) {
+    case "clear_visible_transcript":
+      messages = []
+      render()
+      return "Cleared the visible transcript."
+    case "copy_last_assistant_message": {
+      const assistant = [...messages].reverse().find(message => message.role === "assistant")
+      if (assistant === undefined) return "No assistant message is available to copy."
+      await navigator.clipboard?.writeText(assistant.body)
+      return "Copied the last assistant message."
+    }
+    case "show_desktop_status": {
+      const [harness, appServer] = await Promise.all([
+        rpc.request.codexHarnessStatus(),
+        rpc.request.codexAppServerStatus(),
+      ])
+      return [
+        `Codex harness: ${harness.status}`,
+        `Codex app-server: ${appServer.state}`,
+        `Codex auth: ${harness.auth.state}`,
+      ].join("\n")
+    }
+    default:
+      return result.message
+  }
+}
+
+const appendSlashCommandResult = async (
+  result: Awaited<ReturnType<DesktopRpcRequests["slashCommandDispatch"]>>,
+): Promise<void> => {
+  const body =
+    result.status === "client_action"
+      ? await handleSlashCommandClientAction(result)
+      : result.message
+  appendMessages([{
+    body,
+    id: nextMessageId("system"),
+    role: "system",
+  }])
+}
+
+const submitSlashCommand = async (
+  draftText: string,
+  body: string,
+): Promise<KhalaCodeDesktopMessage> => {
+  lastSubmittedDraft = draftText
+  lastTurnFailed = false
+  resetComposerDraft()
+  const message = addMessage("user", body)
+  try {
+    const result = await rpc.request.slashCommandDispatch({
+      activeTurn: pendingTurn,
+      platform: slashCommandPlatform(),
+      raw: draftText,
+      sessionId,
+      sideConversation: false,
+    })
+    await appendSlashCommandResult(result)
+  } catch (error) {
+    appendMessages([{
+      body: `Slash command failed: ${error instanceof Error ? error.message : String(error)}`,
+      id: nextMessageId("system"),
+      role: "system",
+    }])
+  } finally {
+    requestAnimationFrame(focusComposerInput)
+  }
+  return message
+}
+
 const submitComposer = async (): Promise<KhalaCodeDesktopMessage | null> => {
   if (pendingTurn) {
     stopActiveTurn()
@@ -881,6 +1062,9 @@ const submitComposer = async (): Promise<KhalaCodeDesktopMessage | null> => {
 
   const attachments = [...composerState.doc.attachments]
   const body = submittedBody(draftText, attachments)
+  if (draftText.startsWith("/")) {
+    return submitSlashCommand(draftText, body)
+  }
   lastSubmittedDraft = draftText
   lastTurnFailed = false
   resetComposerDraft()
@@ -1210,6 +1394,10 @@ const controls = {
   pylonStatus: () => rpc.request.pylonStatus(),
   removeCodexAccount: (accountRef: string) =>
     rpc.request.removeCodexAccount(accountRef),
+  slashCommandDispatch: (request: Parameters<DesktopRpcRequests["slashCommandDispatch"]>[0]) =>
+    rpc.request.slashCommandDispatch(request),
+  slashCommandList: (request?: Parameters<DesktopRpcRequests["slashCommandList"]>[0]) =>
+    rpc.request.slashCommandList(request),
   reset: () => {
     messages = []
     resetComposerDraft()

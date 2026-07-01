@@ -152,6 +152,7 @@ function throwingCodexChatRuntime(
     steerTurn: async () => {
       throw new Error("codex steer should not be called")
     },
+    threadIdForSession: async () => null,
     ...overrides,
   }
 }
@@ -494,6 +495,135 @@ describe("Khala Code desktop RPC handlers", () => {
       ok: true,
     })
     expect(legacyTurnStarted).toBe(true)
+  })
+
+  test("lists Codex slash commands with desktop availability rules", async () => {
+    const handlers = createKhalaCodeDesktopRpcRequestHandlers({
+      appleFmReadiness: () => {
+        throw new Error("not used")
+      },
+      codexChatRuntime: throwingCodexChatRuntime(),
+      env: {},
+      onDeviceDeciderStatus: () => {
+        throw new Error("not used")
+      },
+      workingDirectory: process.cwd(),
+    })
+
+    const response = await handlers.slashCommandList({
+      activeTurn: true,
+      platform: "darwin",
+    })
+    const byCommand = new Map(response.commands.map(command => [command.command, command]))
+
+    expect(response.ok).toBe(true)
+    expect(byCommand.get("app")).toBeDefined()
+    expect(byCommand.get("sandbox-add-read-dir")).toBeUndefined()
+    expect(byCommand.get("plan")?.availability).toMatchObject({
+      available: false,
+      reason: "/plan is not available while Codex is working.",
+    })
+    expect(byCommand.get("raw")?.availability).toEqual({ available: true })
+  })
+
+  test("dispatches thread-scoped slash commands through Codex app-server", async () => {
+    const requests: { method: string, params: unknown }[] = []
+    const handlers = createKhalaCodeDesktopRpcRequestHandlers({
+      appleFmReadiness: () => {
+        throw new Error("not used")
+      },
+      codexAppServerHost: {
+        dispose: () => undefined,
+        request: async <Result>(method: string, params?: unknown) => {
+          requests.push({ method, params })
+          return { ok: true } as Result
+        },
+        restart: async () => ({
+          ok: true,
+          action: "restart",
+          changed: false,
+          status: stoppedAppServerStatus(),
+        }),
+        start: async () => ({
+          ok: true,
+          action: "start",
+          changed: false,
+          status: stoppedAppServerStatus(),
+        }),
+        status: stoppedAppServerStatus,
+        stop: async () => ({
+          ok: true,
+          action: "stop",
+          changed: false,
+          status: stoppedAppServerStatus(),
+        }),
+        subscribe: () => () => undefined,
+      },
+      codexChatRuntime: throwingCodexChatRuntime({
+        threadIdForSession: async sessionId => {
+          expect(sessionId).toBe("desktop-session-slash")
+          return "thread-session-slash"
+        },
+      }),
+      env: {},
+      onDeviceDeciderStatus: () => {
+        throw new Error("not used")
+      },
+      workingDirectory: process.cwd(),
+    })
+
+    await expect(handlers.slashCommandDispatch({
+      raw: "/rename Sharp New Name",
+      sessionId: "desktop-session-slash",
+    })).resolves.toMatchObject({
+      ok: true,
+      command: "rename",
+      method: "thread/name/set",
+      status: "dispatched",
+      threadId: "thread-session-slash",
+    })
+
+    expect(requests).toEqual([{
+      method: "thread/name/set",
+      params: {
+        threadId: "thread-session-slash",
+        name: "Sharp New Name",
+      },
+    }])
+  })
+
+  test("returns blocked and gap results for unavailable slash commands", async () => {
+    const handlers = createKhalaCodeDesktopRpcRequestHandlers({
+      appleFmReadiness: () => {
+        throw new Error("not used")
+      },
+      codexChatRuntime: throwingCodexChatRuntime(),
+      env: {},
+      onDeviceDeciderStatus: () => {
+        throw new Error("not used")
+      },
+      workingDirectory: process.cwd(),
+    })
+
+    await expect(handlers.slashCommandDispatch({
+      activeTurn: true,
+      raw: "/plan tighten the implementation",
+      sessionId: "desktop-session-slash",
+    })).resolves.toMatchObject({
+      ok: false,
+      command: "plan",
+      status: "blocked",
+      message: "/plan is not available while Codex is working.",
+    })
+
+    await expect(handlers.slashCommandDispatch({
+      raw: "/init",
+      sessionId: "desktop-session-slash",
+    })).resolves.toMatchObject({
+      ok: false,
+      command: "init",
+      status: "gap",
+    })
   })
 
   test("projects Fleet Status capacity and token evidence through RPC", async () => {

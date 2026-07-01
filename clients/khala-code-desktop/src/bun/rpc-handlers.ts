@@ -14,6 +14,8 @@ import type { OnDeviceDeciderSelection } from "../shared/on-device-decider.js"
 import {
   type KhalaCodeDesktopAppInfo,
   type KhalaCodeDesktopChatTurnEvent,
+  type KhalaCodeDesktopSlashCommandDispatchRequest,
+  type KhalaCodeDesktopSlashCommandDispatchResult,
   type KhalaCodeDesktopCodexAccountsStatus,
   type KhalaCodeDesktopCodexHarnessStatus,
   type KhalaCodeDesktopCodexRateLimitResetResult,
@@ -21,6 +23,11 @@ import {
   type KhalaCodeDesktopRPCSchema,
   type KhalaCodeDesktopRuntimeStatus,
 } from "../shared/rpc.js"
+import {
+  evaluateKhalaCodeDesktopSlashCommandAvailability,
+  khalaCodeDesktopSlashCommandsWithAvailability,
+  parseKhalaCodeDesktopSlashCommand,
+} from "../shared/codex-slash-commands.js"
 import { inspectCodexHarnessStatus } from "./codex-harness-status.js"
 import {
   consumeKhalaCodexRateLimitResetCredit,
@@ -195,6 +202,345 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
     const rateLimits = await (input.codexRateLimitStatus?.() ??
       fetchKhalaCodexRateLimitStatus({ env: input.env as NodeJS.ProcessEnv }))
     return codexStatusFromRateLimits(rateLimits, harness, input.env)
+  }
+
+  const threadIdForSlashCommand = async (
+    request: KhalaCodeDesktopSlashCommandDispatchRequest,
+  ): Promise<string | null> => {
+    const explicit = request.threadId?.trim()
+    if (explicit !== undefined && explicit.length > 0) return explicit
+    return await codexChatRuntime?.threadIdForSession(request.sessionId) ?? null
+  }
+
+  const blockedSlashCommand = (
+    request: {
+      readonly command?: string
+      readonly message: string
+      readonly method?: string
+      readonly threadId?: string
+    },
+  ): KhalaCodeDesktopSlashCommandDispatchResult => ({
+    ok: false,
+    status: "blocked",
+    ...request,
+  })
+
+  const dispatchedSlashCommand = (
+    request: {
+      readonly command: string
+      readonly message: string
+      readonly method: string
+      readonly response?: unknown
+      readonly threadId?: string
+    },
+  ): KhalaCodeDesktopSlashCommandDispatchResult => ({
+    ok: true,
+    status: "dispatched",
+    ...request,
+  })
+
+  const requestCodexAppServer = async (
+    method: string,
+    params?: unknown,
+  ): Promise<unknown> => {
+    if (input.codexAppServerHost === undefined) {
+      throw new Error("Codex app-server host is not configured.")
+    }
+    return input.codexAppServerHost.request(method, params)
+  }
+
+  const dispatchSlashAppServerCommand = async (
+    request: KhalaCodeDesktopSlashCommandDispatchRequest,
+  ): Promise<KhalaCodeDesktopSlashCommandDispatchResult> => {
+    const parsed = parseKhalaCodeDesktopSlashCommand(request.raw, {
+      ...(request.debug === undefined ? {} : { debug: request.debug }),
+      ...(request.platform === undefined ? {} : { platform: request.platform }),
+    })
+    if (parsed === null) {
+      return {
+        ok: false,
+        status: "not_found",
+        message: "Unknown Codex slash command.",
+      }
+    }
+    const command = parsed.command
+    const availability = evaluateKhalaCodeDesktopSlashCommandAvailability(command, request)
+    if (!availability.available) {
+      return blockedSlashCommand({
+        command: command.command,
+        message: availability.reason ?? `/${command.command} is not available here.`,
+      })
+    }
+    const dispatch = command.dispatch
+    if (dispatch.kind === "gap") {
+      return {
+        ok: false,
+        status: "gap",
+        command: command.command,
+        message: dispatch.dependency,
+      }
+    }
+    if (dispatch.kind === "client") {
+      return {
+        ok: true,
+        status: "client_action",
+        action: dispatch.action,
+        command: command.command,
+        message: `/${command.command} is handled by the Khala Code desktop shell.`,
+      }
+    }
+
+    const args = parsed.args
+    if (dispatch.requiresArgs === true && args.length === 0) {
+      return blockedSlashCommand({
+        command: command.command,
+        message: `/${command.command} requires inline arguments.`,
+        method: dispatch.method,
+      })
+    }
+
+    const threadId = await threadIdForSlashCommand(request)
+    if (dispatch.requiresThread === true && threadId === null) {
+      return blockedSlashCommand({
+        command: command.command,
+        message: `/${command.command} requires an active Codex thread.`,
+        method: dispatch.method,
+      })
+    }
+
+    try {
+      switch (command.command) {
+        case "new": {
+          const response = await requireCodexChatRuntime().startThread({
+            cwd: request.cwd ?? input.workingDirectory,
+            sessionId: request.sessionId,
+          })
+          return dispatchedSlashCommand({
+            command: command.command,
+            method: dispatch.method,
+            message: "Started a new Codex thread.",
+            response,
+            threadId: response.threadId,
+          })
+        }
+        case "resume": {
+          const resumeThreadId = args.split(/\s+/)[0]?.trim()
+          if (resumeThreadId === undefined || resumeThreadId.length === 0) {
+            return blockedSlashCommand({
+              command: command.command,
+              message: "/resume requires a Codex thread id until the desktop picker lands.",
+              method: dispatch.method,
+            })
+          }
+          const response = await requireCodexChatRuntime().resumeThread({
+            cwd: request.cwd ?? input.workingDirectory,
+            sessionId: request.sessionId,
+            threadId: resumeThreadId,
+          })
+          return dispatchedSlashCommand({
+            command: command.command,
+            method: dispatch.method,
+            message: `Resumed Codex thread ${resumeThreadId}.`,
+            response,
+            threadId: response.threadId,
+          })
+        }
+        case "compact": {
+          const response = await requireCodexChatRuntime().compactThread({
+            sessionId: request.sessionId,
+            ...(threadId === null ? {} : { threadId }),
+          })
+          return {
+            ok: response.ok,
+            status: response.ok ? "dispatched" : "blocked",
+            command: command.command,
+            method: dispatch.method,
+            message: response.ok
+              ? "Requested Codex context compaction."
+              : response.error ?? "Codex context compaction could not start.",
+            response,
+            ...(response.threadId === undefined ? {} : { threadId: response.threadId }),
+          }
+        }
+        case "archive":
+        case "delete":
+        case "fork": {
+          const response = await requestCodexAppServer(dispatch.method, { threadId })
+          return dispatchedSlashCommand({
+            command: command.command,
+            method: dispatch.method,
+            message: `/${command.command} was sent to Codex.`,
+            response,
+            ...(threadId === null ? {} : { threadId }),
+          })
+        }
+        case "rename": {
+          const response = await requestCodexAppServer(dispatch.method, {
+            threadId,
+            name: args,
+          })
+          return dispatchedSlashCommand({
+            command: command.command,
+            method: dispatch.method,
+            message: `Renamed the Codex thread to "${args}".`,
+            response,
+            ...(threadId === null ? {} : { threadId }),
+          })
+        }
+        case "goal": {
+          const method =
+            args.length === 0
+              ? "thread/goal/get"
+              : args.toLowerCase() === "clear"
+                ? "thread/goal/clear"
+                : dispatch.method
+          const params = args.length === 0 || args.toLowerCase() === "clear"
+            ? { threadId }
+            : { threadId, objective: args, status: "active" }
+          const response = await requestCodexAppServer(method, params)
+          return dispatchedSlashCommand({
+            command: command.command,
+            method,
+            message: args.length === 0
+              ? "Loaded the current Codex goal."
+              : args.toLowerCase() === "clear"
+                ? "Cleared the current Codex goal."
+                : "Updated the current Codex goal.",
+            response,
+            ...(threadId === null ? {} : { threadId }),
+          })
+        }
+        case "review": {
+          const response = await requestCodexAppServer(dispatch.method, {
+            threadId,
+            target: args.length === 0
+              ? { type: "uncommittedChanges" }
+              : { type: "custom", instructions: args },
+          })
+          return dispatchedSlashCommand({
+            command: command.command,
+            method: dispatch.method,
+            message: "Started a Codex review turn.",
+            response,
+            ...(threadId === null ? {} : { threadId }),
+          })
+        }
+        case "ps":
+        case "stop": {
+          const response = await requestCodexAppServer(dispatch.method, { threadId })
+          return dispatchedSlashCommand({
+            command: command.command,
+            method: dispatch.method,
+            message: command.command === "ps"
+              ? "Loaded Codex background terminal commands."
+              : "Requested cleanup of Codex background terminal commands.",
+            response,
+            ...(threadId === null ? {} : { threadId }),
+          })
+        }
+        case "mcp": {
+          const response = await requestCodexAppServer(dispatch.method, {
+            ...(threadId === null ? {} : { threadId }),
+            detail: "full",
+          })
+          return dispatchedSlashCommand({
+            command: command.command,
+            method: dispatch.method,
+            message: "Loaded Codex MCP server status.",
+            response,
+            ...(threadId === null ? {} : { threadId }),
+          })
+        }
+        case "app":
+        case "apps": {
+          const response = await requestCodexAppServer(dispatch.method, {
+            ...(threadId === null ? {} : { threadId }),
+            forceRefetch: args.toLowerCase() === "refresh",
+          })
+          return dispatchedSlashCommand({
+            command: command.command,
+            method: dispatch.method,
+            message: "Loaded Codex app integrations.",
+            response,
+            ...(threadId === null ? {} : { threadId }),
+          })
+        }
+        case "plugins": {
+          const response = await requestCodexAppServer(dispatch.method, {
+            cwds: [request.cwd ?? input.workingDirectory],
+          })
+          return dispatchedSlashCommand({
+            command: command.command,
+            method: dispatch.method,
+            message: "Loaded Codex plugins.",
+            response,
+          })
+        }
+        case "model": {
+          const response = await requestCodexAppServer(dispatch.method, {
+            includeHidden: args.toLowerCase() === "all",
+          })
+          return dispatchedSlashCommand({
+            command: command.command,
+            method: dispatch.method,
+            message: "Loaded Codex models.",
+            response,
+          })
+        }
+        case "permissions": {
+          const response = await requestCodexAppServer(dispatch.method, {
+            cwd: request.cwd ?? input.workingDirectory,
+          })
+          return dispatchedSlashCommand({
+            command: command.command,
+            method: dispatch.method,
+            message: "Loaded Codex permission profiles.",
+            response,
+          })
+        }
+        case "experimental": {
+          const response = await requestCodexAppServer(dispatch.method, {
+            ...(threadId === null ? {} : { threadId }),
+          })
+          return dispatchedSlashCommand({
+            command: command.command,
+            method: dispatch.method,
+            message: "Loaded Codex experimental features.",
+            response,
+            ...(threadId === null ? {} : { threadId }),
+          })
+        }
+        case "usage":
+        case "logout": {
+          const response = await requestCodexAppServer(dispatch.method)
+          return dispatchedSlashCommand({
+            command: command.command,
+            method: dispatch.method,
+            message: command.command === "usage"
+              ? "Loaded Codex token usage."
+              : "Requested Codex sign-out.",
+            response,
+          })
+        }
+        default: {
+          const response = await requestCodexAppServer(dispatch.method)
+          return dispatchedSlashCommand({
+            command: command.command,
+            method: dispatch.method,
+            message: `/${command.command} was sent to Codex.`,
+            response,
+            ...(threadId === null ? {} : { threadId }),
+          })
+        }
+      }
+    } catch (error) {
+      return blockedSlashCommand({
+        command: command.command,
+        message: error instanceof Error ? error.message : String(error),
+        method: dispatch.method,
+        ...(threadId === null ? {} : { threadId }),
+      })
+    }
   }
 
   return {
@@ -412,6 +758,20 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
           : `${status.message}${status.unavailableReason ? ` ${status.unavailableReason}` : ""}`,
         status: status.ok ? "ready" : "unavailable",
       })
+    },
+    async slashCommandDispatch(request) {
+      return dispatchSlashAppServerCommand(request)
+    },
+    async slashCommandList(request = {}) {
+      return {
+        ok: true,
+        commands: khalaCodeDesktopSlashCommandsWithAvailability({
+          ...(request.activeTurn === undefined ? {} : { activeTurn: request.activeTurn }),
+          ...(request.debug === undefined ? {} : { debug: request.debug }),
+          ...(request.platform === undefined ? {} : { platform: request.platform }),
+          ...(request.sideConversation === undefined ? {} : { sideConversation: request.sideConversation }),
+        }),
+      }
     },
     async submitChatMessage(request) {
       if (!useLegacyKhalaNativeRuntime()) {

@@ -131,3 +131,38 @@ Validation:
 - `bun test clients/khala-code-desktop/tests/codex-thread-item-projector.test.ts clients/khala-code-desktop/tests/codex-app-server-client.test.ts clients/khala-code-desktop/tests/codex-app-server-chat-runtime.test.ts clients/khala-code-desktop/tests/rpc-handlers.test.ts clients/khala-code-desktop/tests/app-shell.test.ts`
 - `bun run --cwd clients/khala-code-desktop typecheck`
 - `bun run --cwd clients/khala-code-desktop verify`
+
+## Issue #7785: Slash Command And Command Palette Parity
+
+Status: implemented
+
+Khala Code Desktop now has a typed Codex slash-command registry whose inventory
+matches `codex-rs/tui/src/slash_command.rs`, including aliases such as
+`/pet` -> `/pets` and `/clean` -> `/stop`. The registry records Codex
+availability rules for active turns, side conversations, debug gates, platform
+gates, inline arguments, grouping, and dispatch coverage.
+
+The desktop RPC now exposes:
+
+- `slashCommandList()` for palette/autocomplete metadata with availability;
+- `slashCommandDispatch()` for executing slash commands as commands instead of
+  prompt text.
+
+Commands with direct app-server backing dispatch through the Codex app-server
+where possible, including thread lifecycle, thread rename, goal, review, MCP,
+apps, plugins, models, permissions, experimental features, usage, logout, and
+background terminal list/cleanup. Commands still owned by Codex TUI popups or
+missing upstream app-server methods return structured gap results with the
+tracked dependency instead of silently degrading to chat prompts.
+
+The browser composer now shows a compact slash-command palette when the draft
+starts with `/`, disables commands unavailable in the current Codex-equivalent
+state, and intercepts slash command submit before ordinary chat turn startup.
+Client-owned commands such as copy, clear, and status run in the desktop shell;
+the rest use the app-server or report their explicit dependency.
+
+Validation:
+
+- `bun test clients/khala-code-desktop/tests/codex-slash-commands.test.ts clients/khala-code-desktop/tests/rpc-handlers.test.ts clients/khala-code-desktop/tests/app-shell.test.ts`
+- `bun run --cwd clients/khala-code-desktop typecheck`
+- `bun run --cwd clients/khala-code-desktop verify`

@@ -38,6 +38,7 @@ describe("khala code desktop app shell", () => {
     expect(html).toContain('id="composer-rail"')
     expect(html).toContain('id="composer-hud"')
     expect(html).toContain('id="composer-input"')
+    expect(html).toContain('id="slash-command-palette"')
     expect(html).toContain("data-oa-command-composer-native-editing")
     expect(html).toContain("autofocus")
     expect(html).toContain('id="send-button"')
@@ -416,6 +417,19 @@ describe("khala code desktop app shell", () => {
 
     expect(css).toContain(".khala-code-composer:focus-within .oa-ai-command-composer-frame")
     expect(css).not.toContain("#composer-input:focus-visible")
+  })
+
+  test("wires Codex slash command palette and dispatch affordances", async () => {
+    const html = await Bun.file(new URL("../src/ui/index.html", import.meta.url)).text()
+    const css = await Bun.file(new URL("../src/ui/styles.css", import.meta.url)).text()
+    const main = await Bun.file(new URL("../src/ui/main.ts", import.meta.url)).text()
+
+    expect(html).toContain('class="khala-code-slash-command-palette"')
+    expect(css).toContain(".khala-code-slash-command-option")
+    expect(css).toContain(".khala-code-slash-command-palette[hidden]")
+    expect(main).toContain("slashCommandList")
+    expect(main).toContain("slashCommandDispatch")
+    expect(main).toContain("draftText.startsWith(\"/\")")
   })
 
   test("keeps the composer footer controls in a clean inline strip", async () => {

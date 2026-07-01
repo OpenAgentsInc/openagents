@@ -67,6 +67,7 @@ export type CodexAppServerChatRuntime = Readonly<{
   steerTurn: (
     request: KhalaCodeDesktopCodexTurnSteerRequest,
   ) => Promise<KhalaCodeDesktopCodexTurnActionResult>
+  threadIdForSession: (sessionId: string) => Promise<string | null>
 }>
 
 export type CreateCodexAppServerChatRuntimeOptions = {
@@ -365,6 +366,9 @@ export function createCodexAppServerChatRuntime(
     }
   }
 
+  const threadIdForSession = async (sessionId: string): Promise<string | null> =>
+    (await readState(statePath)).sessions[sessionId]?.threadId ?? null
+
   const compactThread = async (
     request: KhalaCodeDesktopCodexThreadCompactRequest,
   ): Promise<KhalaCodeDesktopCodexTurnActionResult> => {
@@ -511,5 +515,6 @@ export function createCodexAppServerChatRuntime(
     startThread,
     startTurn,
     steerTurn,
+    threadIdForSession,
   }
 }
