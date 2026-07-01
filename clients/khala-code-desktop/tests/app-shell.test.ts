@@ -208,8 +208,143 @@ describe("khala code desktop app shell", () => {
     })
     expect(projection.coverage).toContainEqual({
       source: "approval queue",
-      status: "not_connected",
-      summary: "Pylon permission prompts are not exposed through the desktop RPC yet.",
+      status: "connected",
+      summary: "Worker approval, blocker, and review events are projected from Fleet assignment metadata into Inbox.",
+    })
+  })
+
+  test("routes worker approval and blocker events into the Unified Inbox", () => {
+    const projection = projectUnifiedInbox({
+      fleet: {
+        ok: true,
+        observedAt: "2026-07-01T00:00:00.000Z",
+        pylon: {
+          status: "online",
+          pylonRef: "pylon.local",
+          message: "Pylon ready",
+        },
+        availableCodexAssignments: 0,
+        maxCodexAssignments: 1,
+        tokenRate: {
+          activeAdjustedTokensPerMinute: null,
+          completedStatus: "pending",
+          completedTokenRows: null,
+          completedTokensPerMinute: null,
+          inFlightTokens: 128,
+          inFlightTokensPerMinute: 64,
+          source: "pylon_khala_apm",
+          unavailableReason: null,
+        },
+        accounts: [{
+          accountRef: "codex-worker",
+          accountKey: "worker.public",
+          capacity: {
+            available: 0,
+            busy: 1,
+            queued: 1,
+            ready: 1,
+          },
+          email: null,
+          homeRole: "pylon_isolated_worker_codex_home",
+          provider: "codex",
+          queuePolicy: {
+            admission: "pylon_capacity_gate",
+            cooldown: "ready",
+            refill: "pylon_presence_heartbeat",
+            queued: 1,
+          },
+          quotaState: "available",
+          readiness: "ready",
+          sessionRole: "swarm_worker_codex_session",
+        }],
+        activeAssignments: [{
+          assignmentRef: "assignment.public.approval",
+          blockerRefs: ["blocker.public.worker.approval_required"],
+          closeoutStatus: null,
+          elapsedMs: 10_000,
+          issueRef: "github.issue.openagents.7791",
+          tokenRate: {
+            source: "token_usage_events",
+            status: "pending",
+            tokenCountKind: null,
+            tokens: null,
+            tokensPerMinute: null,
+          },
+          updatedAt: "2026-07-01T00:01:00.000Z",
+          workerSession: {
+            approvalState: "approval_required",
+            blockerRefs: ["blocker.public.worker.approval_required"],
+            closeoutStatus: null,
+            executionRuntime: "codex_harness",
+            homeRole: "pylon_isolated_worker_codex_home",
+            queuePolicy: {
+              admission: "pylon_capacity_gate",
+              cooldown: "unknown",
+              refill: "pylon_presence_heartbeat",
+              queued: null,
+            },
+            reviewState: "blocked",
+            role: "swarm_worker_codex_session",
+            transcriptRef: "transcript.public.approval",
+          },
+        }],
+        processes: [],
+        sessionLayers: {
+          main: {
+            homeRole: "main_user_codex_home_display_only",
+            label: "Main local Codex session",
+            mutationPolicy: "codex_app_server_owned",
+            role: "main_local_codex_session",
+            runtime: "codex_harness",
+            transcriptSurface: "chat",
+          },
+          workers: {
+            homeRole: "pylon_isolated_worker_codex_home",
+            label: "Khala swarm worker Codex sessions",
+            mutationPolicy: "pylon_isolated_home_only",
+            role: "swarm_worker_codex_session",
+            runtime: "codex_harness",
+            transcriptSurface: "fleet",
+          },
+        },
+      },
+      pylon: {
+        ok: true,
+        app: "Khala Code Desktop",
+        available: true,
+        capability: "pylon",
+        observedAt: "2026-07-01T00:00:00.000Z",
+        reason: "ready",
+        status: "ready",
+      },
+      coding: {
+        ok: true,
+        app: "Khala Code Desktop",
+        available: true,
+        capability: "coding",
+        observedAt: "2026-07-01T00:00:00.000Z",
+        reason: "ready",
+        status: "ready",
+      },
+      tokenAccounting: {
+        ok: true,
+        app: "Khala Code Desktop",
+        available: true,
+        capability: "token_accounting",
+        observedAt: "2026-07-01T00:00:00.000Z",
+        reason: "ready",
+        status: "ready",
+      },
+    })
+
+    expect(projection.items).toHaveLength(1)
+    expect(projection.items[0]).toMatchObject({
+      actions: ["open_fleet", "refresh"],
+      assignmentRef: "assignment.public.approval",
+      kind: "approval_required",
+      severity: "critical",
+      source: "assignment",
+      title: "github.issue.openagents.7791 needs approval",
     })
   })
 
@@ -421,6 +556,13 @@ describe("khala code desktop app shell", () => {
     expect(fleetPanel).toContain("accountCapacityLabel")
     expect(fleetPanel).toContain("fleetTokenRateLabel")
     expect(fleetPanel).toContain("assignmentTokenRateLabel")
+    expect(fleetPanel).toContain("Codex sessions")
+    expect(fleetPanel).toContain("Worker Codex accounts")
+    expect(fleetPanel).toContain("sessionRoleLabel")
+    expect(fleetPanel).toContain("homeRoleLabel")
+    expect(fleetPanel).toContain("queuePolicyLabel")
+    expect(fleetPanel).toContain('"transcript"')
+    expect(fleetPanel).toContain('"closeout"')
     expect(fleetPanel).toContain('appendChip(details, "routing", "default slot")')
     expect(fleetPanel).toContain('appendChip(details, "slots", accountCapacityLabel(account.capacity))')
     expect(fleetPanel).toContain('"busy"')
@@ -430,6 +572,7 @@ describe("khala code desktop app shell", () => {
     expect(fleetPanel).toContain('appendChip(pylonDetails, "token rate"')
     expect(fleetPanel).toContain('appendChip(chips, "tokens"')
     expect(css).toContain(".khala-fleet-card-details")
+    expect(css).toContain(".khala-fleet-session")
   })
 
   test("renders Fleet status with a board graph and run timeline mount", async () => {
@@ -444,6 +587,8 @@ describe("khala code desktop app shell", () => {
     expect(panel).toContain("buildKhalaFleetBoardProjection")
     expect(panel).toContain("renderKhalaFleetBoardHtml")
     expect(projection).toContain("openagents.khala_code.fleet_board_projection.v0")
+    expect(projection).toContain("main-codex-session")
+    expect(projection).toContain("caveat.khala_fleet.main_session_not_worker")
     expect(renderer).toContain("Fleet board graph and run timeline")
     expect(css).toContain(".khala-fleet-board-summary")
     expect(css).toContain(".khala-fleet-timeline-event")

@@ -94,6 +94,7 @@ describe("Khala Code Fleet board projection", () => {
     expect(projection.graph.status).toBe("active")
     expect(projection.graph.nodes.map(node => node.id)).toEqual([
       "khala-code",
+      "main-codex-session",
       "local-pylon",
       "capacity-gate",
       "codex-workers",
@@ -103,15 +104,20 @@ describe("Khala Code Fleet board projection", () => {
     ])
     expect(
       projection.graph.links.map(link => [link.id, link.status]),
+    ).toContainEqual(["khala-to-main-codex", "evidence_backed"])
+    expect(
+      projection.graph.links.map(link => [link.id, link.status]),
     ).toContainEqual(["workers-to-assignments", "evidence_backed"])
     expect(projection.timeline.map(event => event.id)).toEqual([
       "account-1",
       "account-2",
       "capacity",
+      "main-codex-session",
       "process-1",
       "pylon-status",
       "assignment-1",
     ])
+    expect(projection.caveatRefs).toContain("caveat.khala_fleet.main_session_not_worker")
     expect(projection.timeline.some(event => event.label === "Assignment active"))
       .toBe(true)
     expect(projection.timeline.some(event => event.detail.includes("github.issue.openagents.7768")))

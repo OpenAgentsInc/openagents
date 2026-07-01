@@ -1455,7 +1455,8 @@ button {
   gap: 0.5rem;
 }
 .khala-fleet-account,
-.khala-fleet-pylon {
+.khala-fleet-pylon,
+.khala-fleet-session {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;

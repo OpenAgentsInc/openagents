@@ -361,3 +361,39 @@ Validation:
 - `bun test clients/khala-code-desktop/tests/khala-chat-runtime.test.ts clients/khala-code-desktop/tests/rpc-handlers.test.ts clients/khala-code-desktop/tests/headless.test.ts clients/khala-code-desktop/tests/codex-app-server-chat-runtime.test.ts`
 - `bun run --cwd clients/khala-code-desktop typecheck`
 - `bun run --cwd clients/khala-code-desktop verify`
+
+## Issue #7791: Re-layer Pylon/Khala Swarm Delegation On Codex Sessions
+
+Status: implemented
+
+The Fleet surface now projects Khala Code as a Codex-wrapper hierarchy instead
+of a second local coding harness. `codexFleetStatus()` returns `sessionLayers`
+that distinguish the main local Codex session from Khala swarm worker Codex
+sessions. Worker accounts carry `sessionRole`, `homeRole`, queue/refill policy,
+cooldown state, readiness, and capacity. Active assignments carry worker
+session metadata with Codex-harness runtime, isolated-home policy, transcript
+refs, closeout status, blocker refs, review state, and token proof.
+
+The Fleet board graph adds a `main-codex-session` node and caveat so the graph
+shows the main Codex chat path separately from the Pylon capacity gate and
+worker pool. The Fleet list adds a `Codex sessions` section and renames linked
+accounts as `Worker Codex accounts`.
+
+`codex_spawn` copy now describes delegation from the main Codex-backed task to
+isolated Pylon worker homes. The new `codexFleetPromoteThread()` RPC wraps
+`spawnCodexInstances()` for promotion from a current Codex thread into a swarm
+fanout request. The request requires an origin `sessionId`/`threadId`, an
+explicit objective, and `includeTranscript: false`; it only carries allowed
+public refs and an optional user-written summary into the worker prompt.
+
+Inbox assignment routing now uses worker metadata: approval blockers become
+`approval_required`, blocker refs become `run_blocked`, and normal closeout /
+proof review remains `ready_for_review`. The Fleet connect path also has a
+focused regression asserting display-only default account refs are rejected
+before any Codex login can touch the main user home.
+
+Validation:
+
+- `bun run --cwd clients/khala-code-desktop typecheck`
+- `bun test clients/khala-code-desktop/tests/rpc-handlers.test.ts clients/khala-code-desktop/tests/khala-codex-fleet-tools.test.ts clients/khala-code-desktop/tests/fleet-board-projection.test.ts clients/khala-code-desktop/tests/app-shell.test.ts`
+- `bun run --cwd clients/khala-code-desktop verify`

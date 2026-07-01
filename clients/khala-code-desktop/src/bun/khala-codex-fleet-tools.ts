@@ -123,6 +123,8 @@ type FleetStatusResult = {
 type ActiveAssignmentMarker = {
   readonly accountRefHash: string | null
   readonly assignmentRef: string | null
+  readonly blockerRefs: readonly string[]
+  readonly closeoutStatus: string | null
   readonly elapsedMs: number | null
   readonly issueRef: string | null
   readonly refreshedAt: string | null
@@ -130,6 +132,7 @@ type ActiveAssignmentMarker = {
   readonly service: string | null
   readonly startedAt: string | null
   readonly tokenRate: AssignmentTokenRateProjection
+  readonly transcriptRef: string | null
   readonly updatedAt: string | null
 }
 
@@ -211,11 +214,14 @@ type SpawnSlotResult = {
   readonly accountRef: string | null
   readonly assignmentRef: string | null
   readonly autoRunOk: boolean | null
+  readonly blockerRefs: readonly string[]
+  readonly closeoutStatus: string | null
   readonly exitCode: number | null
   readonly slot: number
   readonly status: "accepted" | "failed"
   readonly summary: string
   readonly tokensVerified: number | null
+  readonly transcriptRef: string | null
 }
 
 type BatchSpawnSlotProjection = {
@@ -386,7 +392,7 @@ const codexSpawnToolDefinition: KhalaToolDefinition = {
   authority: "owner_full_access",
   availability: ["owner_local_full", "coding"],
   description:
-    "Dispatch one or more Codex agent assignments through the local Pylon bridge and the hosted Khala system.",
+    "Delegate one or more Codex-backed assignments from the main Khala Code session to isolated Pylon worker homes.",
   executionMode: "local",
   inputSchema: {
     additionalProperties: false,
@@ -468,8 +474,9 @@ const codexSpawnToolDefinition: KhalaToolDefinition = {
   },
   permissionMode: "allow",
   prompt:
-    "Use when the user asks Khala to spin up, launch, fan out, or assign Codex instances through Desktop.",
+    "Use when the user asks Khala to fan out or delegate the current Codex-backed task to swarm worker sessions through Desktop.",
   promptGuidelines: [
+    "The primary local chat loop remains the Codex harness; this tool only delegates bounded worker assignments around it.",
     "When the user asks for a smoke test or omits repo pins, call this without repo pins; the tool will use the public fixture.",
     "Require complete repo, commit, and verify pins only for real repository work.",
     "Do not run Codex login. If no ready Pylon Codex account exists, tell the user to connect one first.",
@@ -1410,6 +1417,8 @@ async function collectActiveAssignmentMarkers(pylonHome: string): Promise<readon
         return {
           accountRefHash: stringField(parsed, "accountRefHash"),
           assignmentRef: stringField(parsed, "assignmentRef"),
+          blockerRefs: assignmentBlockerRefsFromRecord(parsed),
+          closeoutStatus: assignmentCloseoutStatusFromRecord(parsed),
           elapsedMs: elapsedMsSince(startedAt, nowMs),
           issueRef: issueRefFromMarker(parsed, entry.name),
           refreshedAt,
@@ -1417,6 +1426,11 @@ async function collectActiveAssignmentMarkers(pylonHome: string): Promise<readon
           service: stringField(parsed, "service"),
           startedAt,
           tokenRate: assignmentTokenRateProjectionFromRecord(parsed, elapsedMsSince(startedAt, nowMs), true),
+          transcriptRef:
+            stringField(parsed, "transcriptRef") ??
+            stringField(parsed, "durableRequestId") ??
+            stringField(parsed, "runRef") ??
+            stringField(parsed, "assignmentRef"),
           updatedAt: refreshedAt,
         }
       }))
@@ -1538,6 +1552,24 @@ function mergeActiveAssignmentTokenRates(
       tokenRate: server.tokenRate.status === "not_measured" ? marker.tokenRate : server.tokenRate,
     }
   })
+}
+
+function assignmentBlockerRefsFromRecord(source: Record<string, unknown> | null): readonly string[] {
+  const closeout = recordField(source, "closeout")
+  const assignmentRun = recordField(source, "assignmentRun")
+  return dedupePlain([
+    ...stringArrayField(source, "blockerRefs"),
+    ...stringArrayField(closeout, "blockerRefs"),
+    ...stringArrayField(recordField(assignmentRun, "closeout"), "blockerRefs"),
+  ]).slice(0, 8)
+}
+
+function assignmentCloseoutStatusFromRecord(source: Record<string, unknown> | null): string | null {
+  const closeout = recordField(source, "closeout")
+  const assignmentRun = recordField(source, "assignmentRun")
+  return stringField(source, "closeoutStatus") ??
+    stringField(closeout, "status") ??
+    stringField(recordField(assignmentRun, "closeout"), "status")
 }
 
 function assignmentTokenRateProjectionFromRecord(
@@ -1804,11 +1836,14 @@ function spawnResultFromBatchCommand(input: {
         accountRef: input.accountHints[0]?.accountRef ?? null,
         assignmentRef: null,
         autoRunOk: null,
+        blockerRefs: ["blocker.public.khala_fleet_delegate.dispatch_failed"],
+        closeoutStatus: null,
         exitCode: input.command.exitCode,
         slot: 1,
         status: "failed",
         summary: safeFailureReason(input.command),
         tokensVerified: null,
+        transcriptRef: null,
       }],
     }
   }
@@ -1832,11 +1867,14 @@ function spawnResultFromBatchCommand(input: {
       accountRef,
       assignmentRef: slot.assignmentRef,
       autoRunOk: slot.runAccepted,
+      blockerRefs: slot.blockerRefs,
+      closeoutStatus: slot.closeoutStatus,
       exitCode: input.command.exitCode,
       slot: slot.slotIndex + 1,
       status: accepted ? "accepted" : "failed",
       summary: acceptedBatchSpawnSummary(slot, payload),
       tokensVerified: numberField(slot.proof, "totalTokens"),
+      transcriptRef: slot.durableRequestId ?? slot.assignmentRef,
     }
   })
 
@@ -2120,6 +2158,8 @@ async function runDelegatedNoRunRequests(input: {
       accountRef: selectedAccount.accountRef,
       assignmentRef,
       autoRunOk,
+      blockerRefs: hasAssignmentProjection ? blockerRefsFromSpawnPayload(json) : ["blocker.public.khala_fleet_delegate.dispatch_failed"],
+      closeoutStatus: hasAssignmentProjection ? closeoutStatusFromSpawnPayload(json) : null,
       exitCode: result.exitCode,
       slot: index + 1,
       status: accepted ? "accepted" : "failed",
@@ -2129,6 +2169,7 @@ async function runDelegatedNoRunRequests(input: {
       tokensVerified: hasAssignmentProjection
         ? numberField(recordField(json, "proof"), "totalTokens")
         : null,
+      transcriptRef: hasAssignmentProjection ? transcriptRefFromSpawnPayload(assignmentRef, json) : null,
     }
   }))
 
@@ -2367,6 +2408,37 @@ function acceptedSpawnSummary(
   if (lifecycleLines.length > 0) lines.push(...lifecycleLines)
   lines.push("next: summarize this status; no local output path was returned")
   return lines.join("\n")
+}
+
+function closeoutStatusFromSpawnPayload(payload: Record<string, unknown> | null): string | null {
+  const assignmentRun = recordField(payload, "assignmentRun")
+  const closeout = recordField(assignmentRun, "closeout")
+  return stringField(payload, "closeoutStatus") ??
+    stringField(closeout, "status") ??
+    stringField(recordField(payload, "closeout"), "status")
+}
+
+function blockerRefsFromSpawnPayload(payload: Record<string, unknown> | null): readonly string[] {
+  const assignmentRun = recordField(payload, "assignmentRun")
+  const closeout = recordField(assignmentRun, "closeout")
+  return dedupePlain([
+    ...stringArrayField(payload, "blockerRefs"),
+    ...stringArrayField(closeout, "blockerRefs"),
+    ...stringArrayField(recordField(payload, "closeout"), "blockerRefs"),
+  ]).slice(0, 8)
+}
+
+function transcriptRefFromSpawnPayload(
+  assignmentRef: string,
+  payload: Record<string, unknown> | null,
+): string | null {
+  const assignmentRun = recordField(payload, "assignmentRun")
+  const closeoutReceipt = recordField(assignmentRun, "closeoutReceipt")
+  return stringField(payload, "transcriptRef") ??
+    stringField(payload, "durableRequestId") ??
+    stringField(assignmentRun, "runRef") ??
+    stringField(closeoutReceipt, "closeoutRef") ??
+    assignmentRef
 }
 
 function readyAccountCount(accounts: readonly AccountRow[]): number {
@@ -2783,6 +2855,10 @@ function errorResult(error: unknown): KhalaCodexFleetCommandResult {
 
 function dedupe(values: readonly string[]): readonly string[] {
   return [...new Set(values.map(value => resolve(value)))]
+}
+
+function dedupePlain(values: readonly string[]): readonly string[] {
+  return [...new Set(values.map(value => value.trim()).filter(value => value.length > 0))]
 }
 
 function delay(ms: number): Promise<void> {

@@ -110,6 +110,10 @@ const previewRpc = (): DesktopRpc => ({
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["codexFleetStatus"]>>
       >("codexFleetStatus"),
+    codexFleetPromoteThread: request =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["codexFleetPromoteThread"]>>
+      >("codexFleetPromoteThread", request),
     codexHarnessStatus: () =>
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["codexHarnessStatus"]>>
@@ -1489,6 +1493,8 @@ const controls = {
   codexAppServerStatus: () => rpc.request.codexAppServerStatus(),
   codexAppServerStop: () => rpc.request.codexAppServerStop(),
   codexFleetStatus: () => rpc.request.codexFleetStatus(),
+  codexFleetPromoteThread: (request: Parameters<DesktopRpcRequests["codexFleetPromoteThread"]>[0]) =>
+    rpc.request.codexFleetPromoteThread(request),
   codexHarnessStatus: () => rpc.request.codexHarnessStatus(),
   codexApprovalRespond: (request: Parameters<DesktopRpcRequests["codexApprovalRespond"]>[0]) =>
     rpc.request.codexApprovalRespond(request),

@@ -27,6 +27,14 @@ import {
   type KhalaCodeDesktopCodexAccountsStatus,
   type KhalaCodeDesktopCodexHarnessStatus,
   type KhalaCodeDesktopCodexRateLimitResetResult,
+  type KhalaCodeDesktopFleetAccount,
+  type KhalaCodeDesktopFleetAssignment,
+  type KhalaCodeDesktopFleetHomeRole,
+  type KhalaCodeDesktopFleetPromotionRequest,
+  type KhalaCodeDesktopFleetPromotionResult,
+  type KhalaCodeDesktopFleetQueuePolicy,
+  type KhalaCodeDesktopFleetSessionRole,
+  type KhalaCodeDesktopFleetWorkerSession,
   type KhalaCodeDesktopFleetStatus,
   type KhalaCodeDesktopRPCSchema,
   type KhalaCodeDesktopRuntimeStatus,
@@ -56,6 +64,7 @@ import {
   collectCodexAccountEmails,
   ensureLocalPylon,
   inspectCodexFleet,
+  spawnCodexInstances,
   type KhalaCodexFleetToolOptions,
   openExternalUrl,
   removeCodexAccount,
@@ -100,6 +109,151 @@ const runtimeStatus = (input: {
   observedAt: new Date().toISOString(),
   reason: input.reason,
   status: input.status,
+})
+
+const isDisplayOnlyDefaultAccountRef = (accountRef: string): boolean =>
+  /^(?:\(default\)|default)$/iu.test(accountRef.trim())
+
+const accountSessionRole = (
+  accountRef: string,
+): KhalaCodeDesktopFleetSessionRole =>
+  isDisplayOnlyDefaultAccountRef(accountRef)
+    ? "main_local_codex_session"
+    : "swarm_worker_codex_session"
+
+const accountHomeRole = (
+  accountRef: string,
+): KhalaCodeDesktopFleetHomeRole =>
+  isDisplayOnlyDefaultAccountRef(accountRef)
+    ? "main_user_codex_home_display_only"
+    : "pylon_isolated_worker_codex_home"
+
+const fleetQueuePolicy = (
+  capacity: KhalaCodeDesktopFleetAccount["capacity"],
+  readiness: string,
+): KhalaCodeDesktopFleetQueuePolicy => {
+  const value = readiness.toLowerCase()
+  const cooldown =
+    value.includes("cooldown") || value.includes("cooling")
+      ? "cooling_down"
+      : value === "ready" || value === "available"
+        ? "ready"
+        : value === "unknown"
+          ? "unknown"
+          : "none_reported"
+  return {
+    admission: "pylon_capacity_gate",
+    cooldown,
+    refill: "pylon_presence_heartbeat",
+    queued: capacity?.queued ?? null,
+  }
+}
+
+const sessionLayers = (): NonNullable<KhalaCodeDesktopFleetStatus["sessionLayers"]> => ({
+  main: {
+    homeRole: "main_user_codex_home_display_only",
+    label: "Main local Codex session",
+    mutationPolicy: "codex_app_server_owned",
+    role: "main_local_codex_session",
+    runtime: "codex_harness",
+    transcriptSurface: "chat",
+  },
+  workers: {
+    homeRole: "pylon_isolated_worker_codex_home",
+    label: "Khala swarm worker Codex sessions",
+    mutationPolicy: "pylon_isolated_home_only",
+    role: "swarm_worker_codex_session",
+    runtime: "codex_harness",
+    transcriptSurface: "fleet",
+  },
+})
+
+const workerSessionForAssignment = (
+  marker: {
+    readonly assignmentRef: string | null
+    readonly blockerRefs: readonly string[]
+    readonly closeoutStatus: string | null
+    readonly tokenRate: KhalaCodeDesktopFleetAssignment["tokenRate"]
+    readonly transcriptRef: string | null
+  },
+): KhalaCodeDesktopFleetWorkerSession => {
+  const hasBlocker = marker.blockerRefs.length > 0
+  const hasCloseout = marker.closeoutStatus !== null
+  const approvalRequired = marker.blockerRefs.some(ref => /approval|permission/iu.test(ref))
+  return {
+    approvalState: approvalRequired
+      ? "approval_required"
+      : hasBlocker
+        ? "blocked"
+        : hasCloseout
+          ? "ready_for_review"
+          : "none",
+    blockerRefs: marker.blockerRefs,
+    closeoutStatus: marker.closeoutStatus,
+    executionRuntime: "codex_harness",
+    homeRole: "pylon_isolated_worker_codex_home",
+    queuePolicy: {
+      admission: "pylon_capacity_gate",
+      cooldown: hasBlocker ? "unknown" : "ready",
+      refill: "pylon_presence_heartbeat",
+      queued: null,
+    },
+    reviewState: hasBlocker
+      ? "blocked"
+      : hasCloseout || marker.tokenRate.status === "exact"
+        ? "ready_for_review"
+        : "active",
+    role: "swarm_worker_codex_session",
+    transcriptRef: marker.transcriptRef ?? marker.assignmentRef,
+  }
+}
+
+const renderFleetPromotionObjective = (
+  request: KhalaCodeDesktopFleetPromotionRequest,
+): string => {
+  const allowedRefs = request.contextBoundary.allowedRefs.length === 0
+    ? "none"
+    : request.contextBoundary.allowedRefs.join(", ")
+  return [
+    "Khala swarm delegation from a main local Codex thread.",
+    `Origin thread: ${request.threadId}`,
+    `Context boundary: ${request.contextBoundary.mode}; transcript included: false; allowed refs: ${allowedRefs}.`,
+    request.contextBoundary.summary === null
+      ? null
+      : `User summary: ${request.contextBoundary.summary}`,
+    `Objective: ${request.objective.trim()}`,
+  ].filter((line): line is string => line !== null).join("\n")
+}
+
+const promoteThreadResult = (
+  request: KhalaCodeDesktopFleetPromotionRequest,
+  spawn: Awaited<ReturnType<typeof spawnCodexInstances>>,
+): KhalaCodeDesktopFleetPromotionResult => ({
+  acceptedCount: spawn.acceptedCount,
+  contextBoundary: request.contextBoundary,
+  ok: spawn.acceptedCount === spawn.requestedCount,
+  origin: {
+    role: "main_local_codex_session",
+    sessionId: request.sessionId,
+    threadId: request.threadId,
+  },
+  pylonRef: spawn.pylonRef,
+  requestedCount: spawn.requestedCount,
+  results: spawn.results.map(slot => ({
+    accountRef: slot.accountRef,
+    assignmentRef: slot.assignmentRef,
+    closeoutStatus: slot.closeoutStatus,
+    status: slot.status,
+    summary: slot.summary,
+    tokensVerified: slot.tokensVerified,
+    transcriptRef: slot.transcriptRef,
+  })),
+  workerRuntime: {
+    assignmentTool: "codex_spawn",
+    homeRole: "pylon_isolated_worker_codex_home",
+    role: "swarm_worker_codex_session",
+    runtime: "codex_harness",
+  },
 })
 
 const codexStatusFromRateLimits = (
@@ -885,6 +1039,7 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
       return {
         ok: fleet.ensure.ok,
         observedAt: fleet.observedAt,
+        sessionLayers: sessionLayers(),
         pylon: {
           status: fleet.ensure.status,
           pylonRef: fleet.ensure.pylonRef,
@@ -899,13 +1054,19 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
           quotaState: account.quotaState,
           accountKey: account.accountKey,
           capacity: account.capacity,
+          homeRole: accountHomeRole(account.accountRef),
+          queuePolicy: fleetQueuePolicy(account.capacity, account.readiness),
+          sessionRole: accountSessionRole(account.accountRef),
           email: emails[account.accountRef] ?? null,
         })),
         activeAssignments: fleet.activeAssignments.map(marker => ({
           assignmentRef: marker.assignmentRef,
+          blockerRefs: marker.blockerRefs,
+          closeoutStatus: marker.closeoutStatus,
           elapsedMs: marker.elapsedMs,
           issueRef: marker.issueRef,
           tokenRate: marker.tokenRate,
+          workerSession: workerSessionForAssignment(marker),
           updatedAt: marker.updatedAt,
         })),
         tokenRate: fleet.tokenRate,
@@ -915,6 +1076,36 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
           elapsed: process.elapsed,
         })),
       }
+    },
+    async codexFleetPromoteThread(request): Promise<KhalaCodeDesktopFleetPromotionResult> {
+      if (request.sessionId.trim().length === 0) {
+        throw new Error("codexFleetPromoteThread requires a sessionId")
+      }
+      if (request.threadId.trim().length === 0) {
+        throw new Error("codexFleetPromoteThread requires a threadId")
+      }
+      if (request.objective.trim().length === 0) {
+        throw new Error("codexFleetPromoteThread requires an explicit objective")
+      }
+      if (request.contextBoundary.includeTranscript !== false) {
+        throw new Error("codexFleetPromoteThread requires includeTranscript: false")
+      }
+      const spawn = await spawnCodexInstances({
+        accountRef: request.accountRef,
+        branch: request.branch,
+        commit: request.commit,
+        count: request.count,
+        fixture: request.fixture,
+        noRun: request.noRun,
+        prompt: renderFleetPromotionObjective(request),
+        repo: request.repo,
+        timeoutMs: request.timeoutMs,
+        verify: request.verify,
+      }, {
+        ...input.codexFleetToolOptions,
+        env: input.env,
+      })
+      return promoteThreadResult(request, spawn)
     },
     async codexHarnessStatus() {
       return codexHarnessStatus()

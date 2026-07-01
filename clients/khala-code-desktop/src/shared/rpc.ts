@@ -504,6 +504,9 @@ export type KhalaCodeDesktopFleetAccount = {
   readonly quotaState: string | null
   readonly accountKey: string | null
   readonly capacity: KhalaCodeDesktopFleetCapacity | null
+  readonly homeRole?: KhalaCodeDesktopFleetHomeRole
+  readonly queuePolicy?: KhalaCodeDesktopFleetQueuePolicy
+  readonly sessionRole?: KhalaCodeDesktopFleetSessionRole
   readonly email: string | null
 }
 
@@ -539,10 +542,53 @@ export type KhalaCodeDesktopFleetTokenRate = {
   readonly unavailableReason: string | null
 }
 
+export type KhalaCodeDesktopFleetSessionRole =
+  | "main_local_codex_session"
+  | "swarm_worker_codex_session"
+
+export type KhalaCodeDesktopFleetHomeRole =
+  | "main_user_codex_home_display_only"
+  | "pylon_isolated_worker_codex_home"
+
+export type KhalaCodeDesktopFleetQueuePolicy = {
+  readonly admission: "pylon_capacity_gate"
+  readonly cooldown: "none_reported" | "ready" | "cooling_down" | "unknown"
+  readonly refill: "pylon_presence_heartbeat"
+  readonly queued: number | null
+}
+
+export type KhalaCodeDesktopFleetSessionLayer = {
+  readonly label: string
+  readonly role: KhalaCodeDesktopFleetSessionRole
+  readonly homeRole: KhalaCodeDesktopFleetHomeRole
+  readonly runtime: "codex_harness"
+  readonly transcriptSurface: "chat" | "fleet"
+  readonly mutationPolicy: "codex_app_server_owned" | "pylon_isolated_home_only"
+}
+
+export type KhalaCodeDesktopFleetWorkerSession = {
+  readonly approvalState:
+    | "approval_required"
+    | "blocked"
+    | "none"
+    | "ready_for_review"
+  readonly blockerRefs: readonly string[]
+  readonly closeoutStatus: string | null
+  readonly executionRuntime: "codex_harness"
+  readonly homeRole: KhalaCodeDesktopFleetHomeRole
+  readonly queuePolicy: KhalaCodeDesktopFleetQueuePolicy
+  readonly reviewState: "active" | "blocked" | "pending_closeout" | "ready_for_review"
+  readonly role: "swarm_worker_codex_session"
+  readonly transcriptRef: string | null
+}
+
 export type KhalaCodeDesktopFleetAssignment = {
   readonly assignmentRef: string | null
+  readonly blockerRefs?: readonly string[]
+  readonly closeoutStatus?: string | null
   readonly elapsedMs: number | null
   readonly issueRef: string | null
+  readonly workerSession?: KhalaCodeDesktopFleetWorkerSession
   readonly tokenRate: KhalaCodeDesktopFleetAssignmentTokenRate
   readonly updatedAt: string | null
 }
@@ -556,6 +602,10 @@ export type KhalaCodeDesktopFleetProcess = {
 export type KhalaCodeDesktopFleetStatus = {
   readonly ok: boolean
   readonly observedAt: string
+  readonly sessionLayers?: {
+    readonly main: KhalaCodeDesktopFleetSessionLayer
+    readonly workers: KhalaCodeDesktopFleetSessionLayer
+  }
   readonly pylon: {
     readonly status: "online" | "started" | "unavailable"
     readonly pylonRef: string | null
@@ -567,6 +617,57 @@ export type KhalaCodeDesktopFleetStatus = {
   readonly accounts: readonly KhalaCodeDesktopFleetAccount[]
   readonly activeAssignments: readonly KhalaCodeDesktopFleetAssignment[]
   readonly processes: readonly KhalaCodeDesktopFleetProcess[]
+}
+
+export type KhalaCodeDesktopFleetPromotionContextBoundary = {
+  readonly allowedRefs: readonly string[]
+  readonly includeTranscript: false
+  readonly mode: "explicit_objective" | "summary_only"
+  readonly summary: string | null
+}
+
+export type KhalaCodeDesktopFleetPromotionRequest = {
+  readonly accountRef?: string
+  readonly branch?: string
+  readonly commit?: string
+  readonly contextBoundary: KhalaCodeDesktopFleetPromotionContextBoundary
+  readonly count?: number
+  readonly fixture?: boolean
+  readonly noRun?: boolean
+  readonly objective: string
+  readonly repo?: string
+  readonly sessionId: string
+  readonly threadId: string
+  readonly timeoutMs?: number
+  readonly verify?: string
+}
+
+export type KhalaCodeDesktopFleetPromotionResult = {
+  readonly ok: boolean
+  readonly acceptedCount: number
+  readonly contextBoundary: KhalaCodeDesktopFleetPromotionContextBoundary
+  readonly origin: {
+    readonly role: "main_local_codex_session"
+    readonly sessionId: string
+    readonly threadId: string
+  }
+  readonly pylonRef: string | null
+  readonly requestedCount: number
+  readonly workerRuntime: {
+    readonly assignmentTool: "codex_spawn"
+    readonly homeRole: "pylon_isolated_worker_codex_home"
+    readonly role: "swarm_worker_codex_session"
+    readonly runtime: "codex_harness"
+  }
+  readonly results: readonly {
+    readonly accountRef: string | null
+    readonly assignmentRef: string | null
+    readonly closeoutStatus: string | null
+    readonly status: "accepted" | "failed"
+    readonly summary: string
+    readonly tokensVerified: number | null
+    readonly transcriptRef: string | null
+  }[]
 }
 
 export type KhalaCodeDesktopRemoveAccountResult = {
@@ -595,6 +696,7 @@ export type KhalaCodeDesktopRPCSchema = {
     codexAppServerStatus(): Promise<KhalaCodeDesktopCodexAppServerStatus>
     codexAppServerStop(): Promise<KhalaCodeDesktopCodexAppServerControlResult>
     codexFleetStatus(): Promise<KhalaCodeDesktopFleetStatus>
+    codexFleetPromoteThread(request: KhalaCodeDesktopFleetPromotionRequest): Promise<KhalaCodeDesktopFleetPromotionResult>
     codexHarnessStatus(): Promise<KhalaCodeDesktopCodexHarnessStatus>
     codexApprovalRespond(request: KhalaCodeDesktopCodexApprovalRespondRequest): Promise<KhalaCodeDesktopCodexApprovalRespondResult>
     codexConfigValueWrite(request: KhalaCodeDesktopCodexConfigValueWriteRequest): Promise<KhalaCodeDesktopCodexConfigValueWriteResult>

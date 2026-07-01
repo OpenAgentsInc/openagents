@@ -592,6 +592,149 @@ describe("Khala Code desktop RPC handlers", () => {
       .toBe("legacy_codex_equivalent")
   })
 
+  test("promotes a main Codex thread into a bounded swarm delegation request", async () => {
+    const fixture = await tempPylonFixture()
+    const accountKey = "4db4cc18ebc55f39fb4da894"
+    const accountRefHash = `account.pylon.codex.${accountKey}`
+    const requestPrompts: string[] = []
+    const runner = async (input: KhalaCodexFleetCommandInput): Promise<KhalaCodexFleetCommandResult> => {
+      const args = pylonArgs(input)
+      const joined = args.join(" ")
+      if (joined === "provider go-online --json") {
+        return ok({
+          ok: true,
+          ownCapacityDispatch: {
+            availableCodexAssignments: 1,
+            codexAccounts: [{
+              accountKey,
+              available: 1,
+              busy: 0,
+              queued: 0,
+              ready: 1,
+            }],
+            maxCodexAssignments: 1,
+          },
+          pylonRef: "pylon.local.promote",
+        })
+      }
+      if (joined === "codex accounts list --json") {
+        return ok({
+          accounts: [{
+            accountRef: "codex-worker",
+            accountRefHash,
+            homeState: "present",
+            provider: "codex",
+          }],
+          schema: "openagents.pylon.accounts_list.v0.3",
+        })
+      }
+      if (joined === "accounts status --provider codex --json") {
+        return ok({
+          accounts: [{
+            accountRef: "codex-worker",
+            accountRefHash,
+            provider: "codex",
+            readiness: { state: "ready" },
+          }],
+          schema: "openagents.pylon.accounts_status.v0.1",
+        })
+      }
+      if (joined === "presence heartbeat --base-url https://openagents.com --json") {
+        return ok({
+          heartbeatRef: "heartbeat.promote.1",
+          pylonRef: "pylon.local.promote",
+        })
+      }
+      if (joined === "khala apm --base-url https://openagents.com --json") {
+        return ok({
+          active: { serverAssignmentCount: 0, serverAssignments: [] },
+          counted: { completedTokenRows: 0, completedTokensPerMinute: 0 },
+          schema: "openagents.pylon.khala_apm.v0.1",
+        })
+      }
+      if (args[0] === "khala" && args[1] === "request") {
+        const prompt = args[args.indexOf("--prompt") + 1] ?? ""
+        requestPrompts.push(prompt)
+        expect(args).toContain("--workflow")
+        expect(args).toContain("codex_agent_task")
+        expect(args).toContain("--account-ref")
+        expect(args).toContain("codex-worker")
+        expect(args).toContain("--fixture")
+        expect(args).toContain("--no-run")
+        expect(prompt).toContain("Khala swarm delegation from a main local Codex thread.")
+        expect(prompt).toContain("Origin thread: thread-main-1")
+        expect(prompt).toContain("transcript included: false")
+        expect(prompt).toContain("allowed refs: repo.OpenAgentsInc.openagents, issue.7791")
+        expect(prompt).toContain("Objective: Split the failing test matrix across workers.")
+        expect(prompt).not.toContain("full private transcript")
+        return ok({
+          assignmentRef: "assignment.public.promoted",
+          autoRun: {
+            attempted: false,
+            reason: "disabled_by_no_run",
+          },
+          durableRequestId: "durable.public.promoted",
+        })
+      }
+      return failed(`unexpected command: ${joined}`)
+    }
+
+    const handlers = createKhalaCodeDesktopRpcRequestHandlers({
+      appleFmReadiness: () => {
+        throw new Error("not used")
+      },
+      codexFleetToolOptions: { runner },
+      codexHarnessStatus: () => readyHarness(),
+      env: fixture.env,
+      onDeviceDeciderStatus: () => {
+        throw new Error("not used")
+      },
+      workingDirectory: process.cwd(),
+    })
+
+    await expect(handlers.codexFleetPromoteThread({
+      contextBoundary: {
+        allowedRefs: ["repo.OpenAgentsInc.openagents", "issue.7791"],
+        includeTranscript: false,
+        mode: "summary_only",
+        summary: "Use only the current failing test names.",
+      },
+      count: 1,
+      fixture: true,
+      noRun: true,
+      objective: "Split the failing test matrix across workers.",
+      sessionId: "desktop-session-main",
+      threadId: "thread-main-1",
+    })).resolves.toMatchObject({
+      acceptedCount: 1,
+      contextBoundary: {
+        includeTranscript: false,
+        mode: "summary_only",
+      },
+      ok: true,
+      origin: {
+        role: "main_local_codex_session",
+        sessionId: "desktop-session-main",
+        threadId: "thread-main-1",
+      },
+      pylonRef: "pylon.local.promote",
+      requestedCount: 1,
+      results: [{
+        accountRef: "codex-worker",
+        assignmentRef: "assignment.public.promoted",
+        status: "accepted",
+        transcriptRef: "durable.public.promoted",
+      }],
+      workerRuntime: {
+        assignmentTool: "codex_spawn",
+        homeRole: "pylon_isolated_worker_codex_home",
+        role: "swarm_worker_codex_session",
+        runtime: "codex_harness",
+      },
+    })
+    expect(requestPrompts).toHaveLength(1)
+  })
+
   test("lists Codex slash commands with desktop availability rules", async () => {
     const handlers = createKhalaCodeDesktopRpcRequestHandlers({
       appleFmReadiness: () => {
@@ -1337,10 +1480,12 @@ describe("Khala Code desktop RPC handlers", () => {
     await writeFile(join(markerRoot, "assignment.public.rpc.json"), JSON.stringify({
       accountRefHash,
       assignmentRef: "assignment.public.rpc",
+      closeoutStatus: "accepted",
       refreshedAt: "2026-06-30T18:00:00.000Z",
       schema: "openagents.pylon.active_assignment_run.v0.1",
       service: "codex",
       startedAt: "2026-06-30T17:58:00.000Z",
+      transcriptRef: "transcript.public.rpc",
     }))
 
     const runner = async (input: KhalaCodexFleetCommandInput): Promise<KhalaCodexFleetCommandResult> => {
@@ -1436,16 +1581,27 @@ describe("Khala Code desktop RPC handlers", () => {
           queued: 0,
           ready: 3,
         },
+        homeRole: "pylon_isolated_worker_codex_home",
         quotaState: "available",
         readiness: "ready",
+        sessionRole: "swarm_worker_codex_session",
       }],
       activeAssignments: [{
         assignmentRef: "assignment.public.rpc",
+        closeoutStatus: "accepted",
         tokenRate: {
           status: "exact",
           tokenCountKind: "exact",
           tokens: 630,
           tokensPerMinute: 315,
+        },
+        workerSession: {
+          closeoutStatus: "accepted",
+          executionRuntime: "codex_harness",
+          homeRole: "pylon_isolated_worker_codex_home",
+          reviewState: "ready_for_review",
+          role: "swarm_worker_codex_session",
+          transcriptRef: "transcript.public.rpc",
         },
       }],
       availableCodexAssignments: 2,
@@ -1453,6 +1609,17 @@ describe("Khala Code desktop RPC handlers", () => {
       pylon: {
         pylonRef: "pylon.local.rpc",
         status: "online",
+      },
+      sessionLayers: {
+        main: {
+          role: "main_local_codex_session",
+          transcriptSurface: "chat",
+        },
+        workers: {
+          homeRole: "pylon_isolated_worker_codex_home",
+          role: "swarm_worker_codex_session",
+          transcriptSurface: "fleet",
+        },
       },
       tokenRate: {
         completedStatus: "exact",

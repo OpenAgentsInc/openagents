@@ -349,6 +349,16 @@ const buildTimeline = (
 ): ReadonlyArray<KhalaFleetTimelineEvent> => {
   const events: KhalaFleetTimelineEvent[] = [
     timelineEvent({
+      id: "main-codex-session",
+      label: "Main Codex session",
+      status: "complete",
+      observedAt: status.observedAt,
+      subjectRef: "session.khala_code.main_codex",
+      detail: "Primary chat runs on the local Codex harness; swarm workers stay outside it.",
+      evidenceRefs: ["session.khala_code.main_codex"],
+      caveatRefs: ["caveat.khala_fleet.main_session_not_worker"],
+    }),
+    timelineEvent({
       id: "pylon-status",
       label: "Pylon status",
       status: status.pylon.status === "unavailable" ? "blocked" : "complete",
@@ -434,6 +444,7 @@ export const buildKhalaFleetBoardProjection = (
   const { status } = input
   const generatedAt = input.generatedAt ?? status.observedAt
   const readyAccountCount = readyAccounts(status.accounts)
+  const mainSessionRef = "session.khala_code.main_codex"
   const pylonRef = refOrFallback(status.pylon.pylonRef, "pylon.khala_fleet.local")
   const accountRefs = status.accounts.map(accountRef)
   const assignmentRefs = status.activeAssignments.map(assignmentRef)
@@ -459,6 +470,7 @@ export const buildKhalaFleetBoardProjection = (
       : undefined,
   ])
   const caveatRefs = publicRefs([
+    "caveat.khala_fleet.main_session_not_worker",
     "caveat.khala_fleet.tool_scope_projection_pending",
     status.maxCodexAssignments === null
       ? "caveat.khala_fleet.capacity_not_reported"
@@ -466,6 +478,7 @@ export const buildKhalaFleetBoardProjection = (
   ])
   const allEvidenceRefs = publicRefs([
     pylonRef,
+    mainSessionRef,
     ...accountRefs,
     ...assignmentRefs,
     ...status.activeAssignments.map(issueRef),
@@ -482,11 +495,27 @@ export const buildKhalaFleetBoardProjection = (
       label: "Khala Code",
       kind: "operator_surface",
       status: status.ok ? "complete" : "blocked",
-      outputs: [pin("output", "fleet-status", "fleet status", "khala.fleet.status")],
+      outputs: [
+        pin("output", "main-session", "main session", "codex.main.session"),
+        pin("output", "fleet-status", "fleet status", "khala.fleet.status"),
+      ],
       datum: datum("observed", generatedAt, [pylonRef]),
       evidenceRefs: [pylonRef],
       x: 40,
       y: 70,
+    }),
+    node({
+      id: "main-codex-session",
+      label: "Main Codex session",
+      kind: "main_codex_session",
+      status: status.ok ? "complete" : "blocked",
+      inputs: [pin("input", "main-session", "main session", "codex.main.session")],
+      outputs: [pin("output", "chat", "chat", "codex.app_server.thread")],
+      datum: datum("home", "main user Codex home", [mainSessionRef]),
+      evidenceRefs: [mainSessionRef],
+      caveatRefs: ["caveat.khala_fleet.main_session_not_worker"],
+      x: 255,
+      y: 250,
     }),
     node({
       id: "local-pylon",
@@ -568,7 +597,7 @@ export const buildKhalaFleetBoardProjection = (
         pin("input", "timeline", "timeline", "khala.fleet.timeline"),
         pin("input", "processes", "processes", "codex.exec.process"),
       ],
-      datum: datum("events", 2 + status.accounts.length + activeCount + processCount, allEvidenceRefs),
+      datum: datum("events", 3 + status.accounts.length + activeCount + processCount, allEvidenceRefs),
       evidenceRefs: allEvidenceRefs,
       caveatRefs,
       x: 1115,
@@ -577,6 +606,15 @@ export const buildKhalaFleetBoardProjection = (
   ]
 
   const links: ReadonlyArray<GraphLink> = [
+    link({
+      id: "khala-to-main-codex",
+      label: "wraps",
+      fromNodeId: "khala-code",
+      fromPinId: "main-session",
+      toNodeId: "main-codex-session",
+      toPinId: "main-session",
+      evidenceRefs: [mainSessionRef],
+    }),
     link({
       id: "khala-to-pylon",
       label: "status",

@@ -9,6 +9,7 @@ import {
 } from "@openagentsinc/khala-tools"
 import {
   createKhalaCodexFleetTools,
+  beginCodexConnect,
   ensureLocalPylon,
   inspectCodexFleet,
   parsePylonLifecycleNdjsonLine,
@@ -222,6 +223,14 @@ describe("Khala Code Codex fleet tools", () => {
     expect(calls.some(call => call.detached === true && pylonArgs(call).length === 0)).toBe(true)
     expect(goOnlineCalls).toBe(2)
     expect(calls.some(call => call.env?.PYLON_HOME !== undefined)).toBe(true)
+  })
+
+  test("beginCodexConnect rejects display-only default refs before Codex login can touch the main home", async () => {
+    await expect(beginCodexConnect("(default)")).resolves.toMatchObject({
+      accountRef: "(default)",
+      error: "invalid account ref",
+      ok: false,
+    })
   })
 
   test("inspectCodexFleet reports capacity from provider go-online", async () => {

@@ -106,6 +106,29 @@ const accountCapacityLabel = (
   return `${unknownNumber(capacity.available)}/${unknownNumber(capacity.ready)} free`
 }
 
+const sessionRoleLabel = (
+  role: KhalaCodeDesktopFleetAccount["sessionRole"],
+): string | null => {
+  if (role === undefined) return null
+  return role === "main_local_codex_session" ? "main session" : "worker session"
+}
+
+const homeRoleLabel = (
+  role: KhalaCodeDesktopFleetAccount["homeRole"],
+): string | null => {
+  if (role === undefined) return null
+  return role === "main_user_codex_home_display_only"
+    ? "main home display-only"
+    : "isolated worker home"
+}
+
+const queuePolicyLabel = (
+  policy: KhalaCodeDesktopFleetAccount["queuePolicy"],
+): string | null => {
+  if (policy === undefined) return null
+  return `refill ${titleize(policy.refill)}, queued ${unknownNumber(policy.queued)}`
+}
+
 const fleetTokenRateLabel = (
   tokenRate: KhalaCodeDesktopFleetStatus["tokenRate"],
 ): string => {
@@ -228,6 +251,10 @@ const accountCard = (
   }
   appendChip(details, "readiness", titleize(account.readiness))
   appendChip(details, "slots", accountCapacityLabel(account.capacity))
+  appendChip(details, "role", sessionRoleLabel(account.sessionRole))
+  appendChip(details, "home", homeRoleLabel(account.homeRole))
+  appendChip(details, "queue", queuePolicyLabel(account.queuePolicy))
+  appendChip(details, "cooldown", account.queuePolicy?.cooldown ?? null)
   if (account.capacity !== null) {
     appendChip(
       details,
@@ -262,6 +289,29 @@ const renderReady = (
 
   appendFleetBoard(container, data)
 
+  if (data.sessionLayers !== undefined) {
+    const sessionSection = el("section", "khala-fleet-section")
+    sessionSection.append(sectionHeader("Codex sessions", "main plus swarm workers"))
+    const list = el("div", "khala-fleet-account-list")
+    for (const layer of [data.sessionLayers.main, data.sessionLayers.workers]) {
+      const row = el("article", "khala-fleet-session")
+      row.dataset.role = layer.role
+      const top = el("div", "khala-fleet-account-top")
+      top.append(el("strong", undefined, layer.label))
+      top.append(el("span", "khala-fleet-provider", titleize(layer.role)))
+      row.append(top)
+      const details = el("div", "khala-fleet-card-details")
+      appendChip(details, "runtime", titleize(layer.runtime))
+      appendChip(details, "home", titleize(layer.homeRole))
+      appendChip(details, "transcripts", titleize(layer.transcriptSurface))
+      appendChip(details, "policy", titleize(layer.mutationPolicy))
+      row.append(details)
+      list.append(row)
+    }
+    sessionSection.append(list)
+    container.append(sessionSection)
+  }
+
   // Pylon
   const pylonSection = el("section", "khala-fleet-section")
   pylonSection.append(sectionHeader("Pylon"))
@@ -287,7 +337,7 @@ const renderReady = (
   const accountsSection = el("section", "khala-fleet-section")
   accountsSection.append(
     sectionHeader(
-      "Codex accounts",
+      "Worker Codex accounts",
       summaryLine([
         `${readyAccounts} ready`,
         needsReconnect > 0 ? `${needsReconnect} need reconnect` : null,
@@ -322,6 +372,13 @@ const renderReady = (
       if (marker.issueRef !== null) chips.append(detailChip("issue", marker.issueRef))
       if (marker.assignmentRef !== null) {
         chips.append(detailChip("assignment", marker.assignmentRef))
+      }
+      appendChip(chips, "closeout", marker.closeoutStatus ?? marker.workerSession?.closeoutStatus ?? null)
+      appendChip(chips, "review", marker.workerSession?.reviewState ?? null)
+      appendChip(chips, "approval", marker.workerSession?.approvalState ?? null)
+      appendChip(chips, "transcript", marker.workerSession?.transcriptRef ?? null)
+      if ((marker.blockerRefs ?? marker.workerSession?.blockerRefs ?? []).length > 0) {
+        chips.append(detailChip("blockers", (marker.blockerRefs ?? marker.workerSession?.blockerRefs ?? []).slice(0, 3).join(", ")))
       }
       appendChip(chips, "elapsed", formatElapsedMs(marker.elapsedMs))
       appendChip(chips, "tokens", assignmentTokenRateLabel(marker.tokenRate))

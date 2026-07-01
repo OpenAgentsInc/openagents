@@ -182,17 +182,38 @@ export const projectUnifiedInbox = (
 
   for (const assignment of source.fleet.activeAssignments) {
     const assignmentRef = assignment.assignmentRef
+    const worker = assignment.workerSession
+    const blocked = (assignment.blockerRefs ?? worker?.blockerRefs ?? []).length > 0 ||
+      worker?.approvalState === "blocked"
+    const approvalRequired = worker?.approvalState === "approval_required"
+    const kind: UnifiedInboxItemKind = approvalRequired
+      ? "approval_required"
+      : blocked
+        ? "run_blocked"
+        : "ready_for_review"
     items.push({
       ref: `inbox.assignment.${stableRefText(assignmentRef)}.${stableRefText(assignment.issueRef)}`,
-      kind: "ready_for_review",
+      kind,
       title: assignment.issueRef === null
-        ? "Assignment needs review"
-        : `${assignment.issueRef} needs review`,
+        ? approvalRequired
+          ? "Worker approval required"
+          : blocked
+            ? "Worker run blocked"
+            : "Assignment needs review"
+        : approvalRequired
+          ? `${assignment.issueRef} needs approval`
+          : blocked
+            ? `${assignment.issueRef} is blocked`
+            : `${assignment.issueRef} needs review`,
       summary: assignmentRef === null
-        ? "An active assignment was reported without a public assignment ref."
-        : "Review the closeout/proof projection before accepting the next step.",
+        ? "An active worker assignment was reported without a public assignment ref."
+        : approvalRequired
+          ? "A worker Codex session is waiting on an approval routed through the fleet projection."
+          : blocked
+            ? "A worker Codex session reported blockers; inspect Fleet before resuming."
+            : "Review the worker transcript, closeout, and token proof projection before accepting the next step.",
       source: "assignment",
-      severity: "info",
+      severity: approvalRequired || blocked ? "critical" : "info",
       observedAt: assignment.updatedAt ?? observedAt,
       ...(assignmentRef === null ? {} : {
         assignmentRef,
@@ -201,7 +222,9 @@ export const projectUnifiedInbox = (
       ...(assignment.issueRef === null ? {} : { issueRef: assignment.issueRef }),
       actions: assignmentRef === null
         ? ["open_fleet", "refresh"]
-        : ["resume", "open_fleet", "refresh"],
+        : approvalRequired
+          ? ["open_fleet", "refresh"]
+          : ["resume", "open_fleet", "refresh"],
     })
   }
 
@@ -243,8 +266,8 @@ export const projectUnifiedInbox = (
     },
     {
       source: "approval queue",
-      status: "not_connected" as const,
-      summary: "Pylon permission prompts are not exposed through the desktop RPC yet.",
+      status: "connected" as const,
+      summary: "Worker approval, blocker, and review events are projected from Fleet assignment metadata into Inbox.",
     },
     {
       source: "MCP failures",

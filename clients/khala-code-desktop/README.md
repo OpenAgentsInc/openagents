@@ -26,6 +26,21 @@ under the Pylon account directory. The desktop app must not run `codex login`
 against the user's default home automatically and must not reuse the main user
 home for worker accounts.
 
+## Swarm Delegation
+
+Khala's swarm layer sits outside the main local Codex session. The chat loop is
+the Codex app-server harness; `codex_spawn` means "delegate this bounded
+Codex-backed task to isolated Khala/Pylon worker sessions." Fleet shows the main
+Codex session separately from worker sessions, including worker readiness,
+capacity, queue/refill policy, cooldown state, active assignments, transcript
+refs, closeout state, and token proof.
+
+`codexFleetPromoteThread()` promotes a current Codex thread into a swarm
+delegation request only with explicit context boundaries. It carries the origin
+`sessionId`/`threadId`, an explicit objective, optional public refs, and a
+user-written summary; it does not copy the local transcript into the worker
+prompt.
+
 The legacy hosted Khala/OpenRouter runtime is a fallback/prototype path, not the
 Codex-parity default. When it is explicitly enabled, OpenRouter BYOK is passed to
 hosted Khala instead of being used as a local model backend:
