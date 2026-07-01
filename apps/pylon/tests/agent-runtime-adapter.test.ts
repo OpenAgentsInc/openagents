@@ -24,10 +24,13 @@ import {
   AGENT_RUNNER_NEUTRAL_TASK_KEY,
   AGENT_RUNNER_REGISTRY,
   agentRunnerAccountRefHashForLease,
+  agentRunnerForAgentKind,
+  agentRunnerForKind,
   agentRunnerForLease,
   agentRunnerResolutionForLease,
   agentRunnerServiceForLease,
   agentRunnerTaskPayloadForLease,
+  agentTaskPayloadFromAssignment,
   isAgentRunnerKind,
   normalizeAgentRunnerKind,
 } from "../src/agent-runner-registry"
@@ -234,6 +237,14 @@ describe("AgentRuntimeAdapter", () => {
     expect(agentRunnerServiceForLease(claudeLease)).toBe("claude")
     expect(agentRunnerForLease(codexLease)?.adapterKind).toBe("codex")
     expect(agentRunnerServiceForLease(codexLease)).toBe("codex")
+    expect(agentRunnerForKind("claude_agent").adapterKind).toBe("claude_code")
+    expect(agentRunnerForKind("codex").adapterKind).toBe("codex")
+    expect(agentRunnerForAgentKind("claude_agent_sdk").kind).toBe("claude_agent")
+    expect(agentRunnerForAgentKind("codex_sdk").kind).toBe("codex")
+    expect(agentTaskPayloadFromAssignment(claudeLease.codingAssignment, agentRunnerForKind("claude_agent").task))
+      .toMatchObject({ agentKind: "claude_agent_sdk", schema: CLAUDE_AGENT_TASK_SCHEMA })
+    expect(agentTaskPayloadFromAssignment(codexLease.codingAssignment, agentRunnerForKind("codex").task))
+      .toMatchObject({ agentKind: "codex_sdk", schema: CODEX_AGENT_TASK_SCHEMA })
   })
 
   test("neutral agent payload envelopes resolve through the registry without runner-specific assignment branches", () => {

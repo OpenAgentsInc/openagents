@@ -8,6 +8,7 @@ import {
   type ClaudeAgentProbeOptions,
 } from "./claude-agent.js"
 import {
+  CLAUDE_AGENT_TASK_SCHEMA,
   CLAUDE_AGENT_TASK_AGENT_KIND,
   CLAUDE_AGENT_TASK_SCHEMA,
   claudeAgentTaskFrom,
@@ -24,6 +25,7 @@ import {
 import {
   CODEX_AGENT_OWNER_LOCAL_APPROVAL_POLICY,
   CODEX_AGENT_OWNER_LOCAL_SANDBOX_MODE,
+  CODEX_AGENT_TASK_SCHEMA,
   CODEX_AGENT_TASK_AGENT_KIND,
   CODEX_AGENT_TASK_SCHEMA,
   codexAgentTaskFrom,
@@ -250,6 +252,13 @@ export function agentRunnerAccountRefHashForLease(lease: PylonAssignmentLease): 
   return matched === null ? null : accountRefHashFromPayload(matched.payload)
 }
 
+export function agentTaskPayloadFromAssignment(
+  codingAssignment: unknown,
+  task: AgentRunnerTaskContract,
+): Record<string, unknown> | null {
+  return agentRunnerTaskPayloadFromAssignment(task, codingAssignment)?.payload ?? null
+}
+
 function commonExecutionOptions(options: AgentRunnerExecutionOptions) {
   return {
     ...(options.account === undefined ? {} : { account: options.account }),
@@ -351,10 +360,34 @@ export function normalizeAgentRunnerKind(kind: AgentRunnerKind | LegacyAgentRunn
   return kind === "claude" ? "claude_agent" : kind
 }
 
+export const AGENT_RUNNER_REGISTRY_BY_KIND = Object.freeze(
+  Object.fromEntries(AGENT_RUNNER_REGISTRY.map((runner) => [runner.kind, runner])) as Record<
+    AgentRunnerKind,
+    AgentRunnerDescriptor
+  >,
+)
+
+export const AGENT_RUNNER_REGISTRY_BY_AGENT_KIND = Object.freeze(
+  Object.fromEntries(AGENT_RUNNER_REGISTRY.map((runner) => [runner.agentKind, runner])) as Record<
+    AgentRunnerTaskAgentKind,
+    AgentRunnerDescriptor
+  >,
+)
+
 export function agentRunnerForAdapterKind(
   adapterKind: AgentRuntimeAdapterKind,
 ): AgentRunnerDescriptor | null {
   return AGENT_RUNNER_REGISTRY.find((runner) => runner.adapterKind === adapterKind) ?? null
+}
+
+export function agentRunnerForKind(kind: AgentRunnerKind): AgentRunnerDescriptor {
+  return AGENT_RUNNER_REGISTRY_BY_KIND[kind]
+}
+
+export function agentRunnerForAgentKind(
+  agentKind: AgentRunnerTaskAgentKind,
+): AgentRunnerDescriptor {
+  return AGENT_RUNNER_REGISTRY_BY_AGENT_KIND[agentKind]
 }
 
 export function agentRunnerResolutionForLease(lease: PylonAssignmentLease): AgentRunnerResolution {
@@ -381,9 +414,10 @@ export function agentRunnerServiceForLease(lease: PylonAssignmentLease): AgentRu
   const codingAssignment = lease.codingAssignment
   const legacyRunner = AGENT_RUNNER_REGISTRY.find((candidate) => {
     if (lease.capabilityRefs.includes(candidate.capabilityRef)) return true
-    if (candidate.kind === "codex") return hasObjectField(codingAssignment, "codex")
-    if (candidate.kind === "claude_agent") return hasObjectField(codingAssignment, "claudeAgent")
-    return false
+    return (
+      hasObjectField(codingAssignment, candidate.task.payloadKey) ||
+      hasObjectField(codingAssignment, candidate.task.neutralPayloadKey)
+    )
   })
   return legacyRunner?.serviceRef ?? null
 }

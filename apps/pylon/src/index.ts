@@ -4618,6 +4618,13 @@ async function main() {
             schema: "openagents.pylon.khala_request_auto_run.v0.1",
           },
         })
+        await new Promise<void>((resolve, reject) => {
+          process.stdout.write("", (error) => {
+            if (error) reject(error)
+            else resolve()
+          })
+        })
+        process.exit(0)
         return
       }
 

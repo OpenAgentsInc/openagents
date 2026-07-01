@@ -1585,9 +1585,13 @@ async function resolveAgentAccountForAssignment(
   options: AssignmentClientOptions,
   now: Date,
 ): Promise<AssignmentCodexAccountSelection> {
+  const runner = agentRunnerForLease(lease)
+  const codingService = codingRunServiceForLease(lease)
+  if (runner === null && codingService === null) return { account: null }
+
   const provider: PylonAccountProvider =
-    agentRunnerForLease(lease)?.accountProvider ??
-    (codingRunServiceForLease(lease) === "claude" ? "claude_agent" : "codex")
+    runner?.accountProvider ??
+    (codingService === "claude" ? "claude_agent" : "codex")
 
   if (options.accountRef !== undefined || options.accountHome !== undefined) {
     const account = await resolvePylonAccountSelection(summary, {
