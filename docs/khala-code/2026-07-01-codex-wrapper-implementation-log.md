@@ -278,6 +278,40 @@ Validation:
 - `bun run --cwd clients/khala-code-desktop typecheck`
 - `bun run --cwd clients/khala-code-desktop verify`
 
+## Issue #7806: Preferences And Appearance Settings Parity
+
+Status: implemented
+
+Khala Code Desktop now treats the Codex app-server config surface as the source
+of truth for TUI preference and appearance state. The shared settings projection
+adds a Codex-owned `appearance` block for:
+
+- `tui.keymap`;
+- `tui.vim_mode_default`;
+- `tui.status_line`;
+- `tui.status_line_use_colors`;
+- `tui.theme`;
+- `tui.pet`;
+- `tui.pet_anchor`;
+- `personality`.
+
+The settings panel renders these controls alongside the existing model and
+permission controls, and every mutation uses the existing
+`codexConfigValueWrite()` path over `config/value/write` before re-reading
+Codex settings. Khala-specific desktop styling remains separate from Codex
+theme preference state.
+
+Slash-command parity for `/keymap`, `/vim`, `/statusline`, `/theme`, `/pets`,
+`/pet`, and `/personality` now resolves to Codex config calls instead of gap
+results. No-arg commands load `config/read`; `/pet <id>` writes `tui.pet`; and
+`/keymap <json>` writes `tui.keymap` through `config/value/write`.
+
+Validation:
+
+- `bun test clients/khala-code-desktop/tests/codex-settings.test.ts clients/khala-code-desktop/tests/codex-slash-commands.test.ts clients/khala-code-desktop/tests/rpc-handlers.test.ts clients/khala-code-desktop/tests/codex-app-server-gap-matrix.test.ts`
+- `bun run --cwd clients/khala-code-desktop typecheck`
+- `bun run --cwd clients/khala-code-desktop verify`
+
 ## Issue #7789: Plugins, Skills, MCP, Apps, Hooks, And Inbox Diagnostics
 
 Status: implemented

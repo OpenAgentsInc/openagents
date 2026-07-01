@@ -1010,6 +1010,7 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
       })
     }
 
+    let attemptedMethod = dispatch.method
     try {
       switch (command.command) {
         case "new": {
@@ -1262,6 +1263,50 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
             ...(threadId === null ? {} : { threadId }),
           })
         }
+        case "keymap":
+        case "pets": {
+          if (args.length > 0) {
+            const keyPath = command.command === "keymap" ? "tui.keymap" : "tui.pet"
+            const value = command.command === "keymap" ? JSON.parse(args) : args
+            attemptedMethod = "config/value/write"
+            const response = await requestCodexAppServer("config/value/write", {
+              keyPath,
+              value,
+              mergeStrategy: "replace",
+            })
+            return dispatchedSlashCommand({
+              command: command.command,
+              method: "config/value/write",
+              message: `Updated Codex ${command.command === "keymap" ? "keymap" : "pet"} preference.`,
+              response,
+            })
+          }
+          const response = await requestCodexAppServer(dispatch.method, {
+            cwd: request.cwd ?? input.workingDirectory,
+            includeLayers: true,
+          })
+          return dispatchedSlashCommand({
+            command: command.command,
+            method: dispatch.method,
+            message: `Loaded Codex ${command.command === "keymap" ? "keymap" : "pet"} preferences.`,
+            response,
+          })
+        }
+        case "vim":
+        case "statusline":
+        case "theme":
+        case "personality": {
+          const response = await requestCodexAppServer(dispatch.method, {
+            cwd: request.cwd ?? input.workingDirectory,
+            includeLayers: true,
+          })
+          return dispatchedSlashCommand({
+            command: command.command,
+            method: dispatch.method,
+            message: `Loaded Codex /${command.command} preferences.`,
+            response,
+          })
+        }
         case "usage":
         case "logout": {
           const response = await requestCodexAppServer(dispatch.method)
@@ -1289,7 +1334,7 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
       return blockedSlashCommand({
         command: command.command,
         message: error instanceof Error ? error.message : String(error),
-        method: dispatch.method,
+        method: attemptedMethod,
         ...(threadId === null ? {} : { threadId }),
       })
     }

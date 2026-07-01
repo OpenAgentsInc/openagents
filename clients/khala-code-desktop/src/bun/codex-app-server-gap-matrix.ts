@@ -188,7 +188,7 @@ export const KHALA_CODE_CODEX_APP_SERVER_GAP_MATRIX: readonly KhalaCodeCodexAppS
   {
     id: "tui-preferences-and-appearance",
     area: "keymap, vim mode, statusline, theme, pets, and personality",
-    decision: "upstream_app_server_gap",
+    decision: "covered_by_app_server",
     codexSourceRefs: [
       "codex-rs/tui/src/slash_command.rs",
       "codex-rs/tui/src/theme_picker.rs",
@@ -210,15 +210,17 @@ export const KHALA_CODE_CODEX_APP_SERVER_GAP_MATRIX: readonly KhalaCodeCodexAppS
     ],
     upstreamGapId: "codex.app_server.gap.tui_preferences",
     khalaAdapter:
-      "Khala may show desktop controls only after mapping each control to app-server config keys or a new upstream processor.",
+      "Khala renders desktop controls and slash-command entry points over Codex config/read, config/value/write, and config/batchWrite key paths; richer picker metadata remains an upstream gap.",
     rationale:
-      "The TUI owns picker behavior and visual preferences today. Khala should not invent durable config semantics without a Codex-owned method or tested config-key mapping.",
+      "Codex owns the persisted preference state in config.toml. Khala now writes only the documented config keys and keeps Khala-specific styling out of Codex preference state.",
     linkedIssues: [
       "https://github.com/OpenAgentsInc/openagents/issues/7785",
       "https://github.com/OpenAgentsInc/openagents/issues/7795",
     ],
     testRefs: [
       "clients/khala-code-desktop/tests/codex-slash-commands.test.ts",
+      "clients/khala-code-desktop/tests/codex-settings.test.ts",
+      "clients/khala-code-desktop/tests/rpc-handlers.test.ts",
       "clients/khala-code-desktop/tests/codex-app-server-gap-matrix.test.ts",
     ],
     updateTrigger:

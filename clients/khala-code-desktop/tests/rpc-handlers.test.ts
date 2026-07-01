@@ -1422,6 +1422,63 @@ describe("Khala Code desktop RPC handlers", () => {
     ])
   })
 
+  test("dispatches preference slash commands through Codex config methods", async () => {
+    const requests: { method: string, params: unknown }[] = []
+    const handlers = createKhalaCodeDesktopRpcRequestHandlers({
+      appleFmReadiness: () => {
+        throw new Error("not used")
+      },
+      codexAppServerHost: codexAppServerHost(async <Result>(method: string, params?: unknown) => {
+        requests.push({ method, params })
+        return { ok: true } as Result
+      }),
+      codexChatRuntime: throwingCodexChatRuntime(),
+      env: {},
+      onDeviceDeciderStatus: () => {
+        throw new Error("not used")
+      },
+      workingDirectory: "/repo",
+    })
+
+    await expect(handlers.slashCommandDispatch({
+      raw: "/theme",
+      sessionId: "desktop-session-slash",
+      cwd: "/repo/project",
+    })).resolves.toMatchObject({
+      ok: true,
+      command: "theme",
+      method: "config/read",
+      status: "dispatched",
+    })
+    await expect(handlers.slashCommandDispatch({
+      raw: "/pet spark",
+      sessionId: "desktop-session-slash",
+    })).resolves.toMatchObject({
+      ok: true,
+      command: "pets",
+      method: "config/value/write",
+      status: "dispatched",
+    })
+
+    expect(requests).toEqual([
+      {
+        method: "config/read",
+        params: {
+          cwd: "/repo/project",
+          includeLayers: true,
+        },
+      },
+      {
+        method: "config/value/write",
+        params: {
+          keyPath: "tui.pet",
+          value: "spark",
+          mergeStrategy: "replace",
+        },
+      },
+    ])
+  })
+
   test("returns typed diff empty and error states", async () => {
     const emptyHandlers = createKhalaCodeDesktopRpcRequestHandlers({
       appleFmReadiness: () => {
@@ -1471,6 +1528,37 @@ describe("Khala Code desktop RPC handlers", () => {
       message: "gitDiffToRemote unavailable",
       method: "gitDiffToRemote",
       status: "blocked",
+    })
+  })
+
+  test("returns blocked preference writes when Codex config is unavailable", async () => {
+    const handlers = createKhalaCodeDesktopRpcRequestHandlers({
+      appleFmReadiness: () => {
+        throw new Error("not used")
+      },
+      codexAppServerHost: codexAppServerHost(async <Result>(method: string) => {
+        if (method === "config/value/write") {
+          throw new Error("Invalid configuration: tui.pet is managed")
+        }
+        return {} as Result
+      }),
+      codexChatRuntime: throwingCodexChatRuntime(),
+      env: {},
+      onDeviceDeciderStatus: () => {
+        throw new Error("not used")
+      },
+      workingDirectory: "/repo",
+    })
+
+    await expect(handlers.slashCommandDispatch({
+      raw: "/pet spark",
+      sessionId: "desktop-session-slash",
+    })).resolves.toMatchObject({
+      ok: false,
+      command: "pets",
+      method: "config/value/write",
+      status: "blocked",
+      message: "Invalid configuration: tui.pet is managed",
     })
   })
 

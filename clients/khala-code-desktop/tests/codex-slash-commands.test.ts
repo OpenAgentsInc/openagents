@@ -225,4 +225,20 @@ describe("Khala Code Codex slash command registry", () => {
       method: "fuzzyFileSearch",
     })
   })
+
+  test("maps preference and appearance commands to Codex config methods", () => {
+    const coverage = new Map(
+      khalaCodeDesktopSlashCommandDispatchCoverage()
+        .map(entry => [entry.command, entry]),
+    )
+
+    for (const command of ["keymap", "vim", "statusline", "theme", "pets", "personality"]) {
+      expect(coverage.get(command)).toMatchObject({
+        command,
+        dispatchKind: "app_server",
+        method: "config/read",
+      })
+    }
+    expect(findKhalaCodeDesktopSlashCommand("/pet")?.command).toBe("pets")
+  })
 })

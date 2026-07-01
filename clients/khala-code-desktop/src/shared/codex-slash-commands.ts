@@ -101,6 +101,11 @@ const gap = (dependency: string): KhalaCodeDesktopSlashCommandDispatch => ({
   issueRef: GAP_ISSUE_REF,
 })
 
+const codexConfigPreference = (preference: string): KhalaCodeDesktopSlashCommandDispatch =>
+  appServer("config/read", {
+    appServerDependency: `${preference} is backed by Codex config/read and config/value/write; Khala only renders the desktop control.`,
+  })
+
 const command = (
   input: Omit<KhalaCodeDesktopSlashCommand, "aliases" | "debug" | "visibility"> & {
     readonly aliases?: readonly string[]
@@ -160,7 +165,7 @@ export const KHALA_CODE_DESKTOP_SLASH_COMMANDS = [
     availableInSideConversation: false,
     availableDuringTask: false,
     group: "settings",
-    dispatch: gap("Codex keymap editing is currently a TUI/editor setting and needs a desktop settings adapter."),
+    dispatch: codexConfigPreference("Codex TUI keymap"),
   }),
   command({
     enumName: "Vim",
@@ -170,7 +175,7 @@ export const KHALA_CODE_DESKTOP_SLASH_COMMANDS = [
     availableInSideConversation: false,
     availableDuringTask: false,
     group: "settings",
-    dispatch: gap("Codex vim-mode toggling is currently a TUI config mutation and needs a desktop settings adapter."),
+    dispatch: codexConfigPreference("Codex Vim mode"),
   }),
   command({
     enumName: "ElevateSandbox",
@@ -499,7 +504,7 @@ export const KHALA_CODE_DESKTOP_SLASH_COMMANDS = [
     availableInSideConversation: false,
     availableDuringTask: true,
     group: "settings",
-    dispatch: gap("Codex statusline configuration is currently TUI-local and needs a desktop settings adapter."),
+    dispatch: codexConfigPreference("Codex statusline"),
   }),
   command({
     enumName: "Theme",
@@ -509,7 +514,7 @@ export const KHALA_CODE_DESKTOP_SLASH_COMMANDS = [
     availableInSideConversation: false,
     availableDuringTask: false,
     group: "settings",
-    dispatch: gap("Codex theme selection needs a desktop settings adapter."),
+    dispatch: codexConfigPreference("Codex theme"),
   }),
   command({
     enumName: "Pets",
@@ -520,7 +525,7 @@ export const KHALA_CODE_DESKTOP_SLASH_COMMANDS = [
     availableInSideConversation: false,
     availableDuringTask: false,
     group: "settings",
-    dispatch: gap("Codex pet UI is currently TUI-local and needs a desktop Easter-egg adapter."),
+    dispatch: codexConfigPreference("Codex pet"),
   }),
   command({
     enumName: "Mcp",
@@ -649,7 +654,7 @@ export const KHALA_CODE_DESKTOP_SLASH_COMMANDS = [
     availableInSideConversation: false,
     availableDuringTask: true,
     group: "settings",
-    dispatch: gap("Codex personality configuration is currently TUI-local and needs a desktop settings adapter."),
+    dispatch: codexConfigPreference("Codex personality"),
   }),
   command({
     enumName: "TestApproval",

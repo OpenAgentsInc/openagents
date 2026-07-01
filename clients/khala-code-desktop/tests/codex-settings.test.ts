@@ -20,6 +20,19 @@ describe("Codex settings projection", () => {
           sandbox_mode: "workspace-write",
           default_permissions: ":workspace",
           personality: "pragmatic",
+          tui: {
+            keymap: {
+              global: {
+                "ctrl-j": "move-down",
+              },
+            },
+            vim_mode_default: true,
+            status_line: ["model-with-reasoning", "current-dir"],
+            status_line_use_colors: false,
+            theme: "github-dark",
+            pet: "spark",
+            pet_anchor: "screen-bottom",
+          },
         },
         origins: {
           model: { source: "user" },
@@ -97,6 +110,15 @@ describe("Codex settings projection", () => {
         defaultPermissions: ":workspace",
         personality: "pragmatic",
       },
+      appearance: {
+        pet: "spark",
+        petAnchor: "screen-bottom",
+        personality: "pragmatic",
+        statusLine: ["model-with-reasoning", "current-dir"],
+        statusLineUseColors: false,
+        theme: "github-dark",
+        vimModeDefault: true,
+      },
       models: {
         selected: {
           id: "gpt-5.1-codex",
@@ -125,6 +147,19 @@ describe("Codex settings projection", () => {
       .toEqual(["medium", "high"])
     expect(projection.collaboration.modes.map(mode => mode.name)).toEqual(["Default", "Plan"])
     expect(projection.config.originKeys).toEqual(["model", "sandbox_mode"])
+    expect(projection.appearance.keyPaths).toMatchObject({
+      keymap: "tui.keymap",
+      pet: "tui.pet",
+      personality: "personality",
+      statusLine: "tui.status_line",
+      theme: "tui.theme",
+      vimModeDefault: "tui.vim_mode_default",
+    })
+    expect(projection.appearance.keymap).toEqual({
+      global: {
+        "ctrl-j": "move-down",
+      },
+    })
   })
 
   test("carries endpoint errors and managed blockers without leaking raw config", () => {
