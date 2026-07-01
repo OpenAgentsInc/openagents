@@ -1169,6 +1169,7 @@ const RpcFleetPromotionContextBoundary = S.Struct({
 const RpcFleetPromotionRequest = S.Struct({
   accountRef: S.optional(S.String),
   branch: S.optional(S.String),
+  claimRef: S.optional(S.String),
   commit: S.optional(S.String),
   contextBoundary: RpcFleetPromotionContextBoundary,
   count: S.optional(S.Number),
@@ -1212,6 +1213,7 @@ const RpcFleetPromotionResult = S.Struct({
 const RpcFleetDelegateRunRequest = S.Struct({
   accountRef: S.optional(S.String),
   branch: S.optional(S.String),
+  claimRef: S.optional(S.String),
   commit: S.optional(S.String),
   count: S.optional(S.Number),
   mode: S.Literals(["fixture", "real_work"]),
