@@ -1779,18 +1779,16 @@ describe('Pylon API routes', () => {
     expect(wallet.status).toBe(201)
     expect(assignment.status).toBe(201)
 
-    await Promise.all(
-      writes.map(async ([path, body]) => {
-        const response = await route(store, path, {
-          body,
-          idempotencyKey: `key-${path}`,
-          method: 'POST',
-          tokenUserId: 'agent-one',
-        })
+    for (const [path, body] of writes) {
+      const response = await route(store, path, {
+        body,
+        idempotencyKey: `key-${path}`,
+        method: 'POST',
+        tokenUserId: 'agent-one',
+      })
 
-        expect(response.status).toBe(201)
-      }),
-    )
+      expect(response.status).toBe(201)
+    }
 
     const detail = await responseJson<PylonRouteJson>(
       await route(store, '/api/pylons/pylon.test.one'),
@@ -3290,6 +3288,14 @@ describe('Pylon API routes', () => {
 
   test('leases, accepts, runs, proves, and closes accepted Pylon work', async () => {
     const store = new MemoryPylonApiStore()
+    const assignmentRef = 'assignment.public.issue502.echo'
+    const readAssignmentLeaseExpiresAt = async () => {
+      const assignment = await store.readAssignment(assignmentRef)
+      expect(assignment).toBeDefined()
+
+      return assignment?.leaseExpiresAt ?? ''
+    }
+
     await registerPylon(store)
     await markOnline(store)
     await markWalletReady(store)
@@ -3299,6 +3305,7 @@ describe('Pylon API routes', () => {
     const list = await route(store, '/api/pylons/pylon.test.one/assignments', {
       tokenUserId: 'agent-one',
     })
+    const createdLeaseExpiresAt = await readAssignmentLeaseExpiresAt()
     const accept = await route(
       store,
       '/api/pylons/pylon.test.one/assignments/assignment.public.issue502.echo/accept',
@@ -3309,9 +3316,11 @@ describe('Pylon API routes', () => {
         },
         idempotencyKey: 'accept-echo',
         method: 'POST',
+        nowIso: '2026-06-07T00:10:30.000Z',
         tokenUserId: 'agent-one',
       },
     )
+    const acceptedLeaseExpiresAt = await readAssignmentLeaseExpiresAt()
     const acceptReplay = await route(
       store,
       '/api/pylons/pylon.test.one/assignments/assignment.public.issue502.echo/accept',
@@ -3322,6 +3331,7 @@ describe('Pylon API routes', () => {
         },
         idempotencyKey: 'accept-echo',
         method: 'POST',
+        nowIso: '2026-06-07T00:10:30.000Z',
         tokenUserId: 'agent-one',
       },
     )
@@ -3349,9 +3359,11 @@ describe('Pylon API routes', () => {
         },
         idempotencyKey: 'progress-echo',
         method: 'POST',
+        nowIso: '2026-06-07T00:21:00.000Z',
         tokenUserId: 'agent-one',
       },
     )
+    const progressLeaseExpiresAt = await readAssignmentLeaseExpiresAt()
     const artifacts = await route(
       store,
       '/api/pylons/pylon.test.one/assignments/assignment.public.issue502.echo/artifacts',
@@ -3362,9 +3374,11 @@ describe('Pylon API routes', () => {
         },
         idempotencyKey: 'artifact-echo',
         method: 'POST',
+        nowIso: '2026-06-07T00:35:00.000Z',
         tokenUserId: 'agent-one',
       },
     )
+    const artifactsLeaseExpiresAt = await readAssignmentLeaseExpiresAt()
     const workerCloseout = await route(
       store,
       '/api/pylons/pylon.test.one/assignments/assignment.public.issue502.echo/closeout',
@@ -3380,9 +3394,11 @@ describe('Pylon API routes', () => {
         },
         idempotencyKey: 'worker-closeout-echo',
         method: 'POST',
+        nowIso: '2026-06-07T00:36:00.000Z',
         tokenUserId: 'agent-one',
       },
     )
+    const workerCloseoutLeaseExpiresAt = await readAssignmentLeaseExpiresAt()
     const workerCloseoutBody =
       await responseJson<PylonRouteJson>(workerCloseout)
     const listAfterWorkerCloseout = await route(
@@ -3469,9 +3485,19 @@ describe('Pylon API routes', () => {
     expect(duplicateAcceptBody.error).toBe('pylon_api_conflict')
     expect(progress.status).toBe(201)
     expect(progressBody.assignment?.state).toBe('running')
+    expect(Date.parse(acceptedLeaseExpiresAt)).toBeGreaterThan(
+      Date.parse(createdLeaseExpiresAt),
+    )
+    expect(Date.parse(progressLeaseExpiresAt)).toBeGreaterThan(
+      Date.parse(acceptedLeaseExpiresAt),
+    )
     expect(artifacts.status).toBe(201)
     expect(artifactsBody.assignment?.state).toBe('proof_submitted')
+    expect(Date.parse(artifactsLeaseExpiresAt)).toBeGreaterThan(
+      Date.parse(progressLeaseExpiresAt),
+    )
     expect(workerCloseout.status).toBe(201)
+    expect(workerCloseoutLeaseExpiresAt).toBe('2026-06-07T00:36:00.000Z')
     expect(workerCloseoutBody.assignment).toMatchObject({
       acceptedWorkRefs: [],
       closeoutRefs: ['closeout.public.worker_echo_summary'],

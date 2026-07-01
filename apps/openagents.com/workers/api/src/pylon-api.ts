@@ -1806,6 +1806,23 @@ const leaseSecondsForRequest = (
   return Math.floor(leaseSeconds)
 }
 
+const assignmentLeaseRenewalMs = 15 * 60 * 1000
+
+const renewedAssignmentLeaseExpiresAt = (
+  assignment: PylonApiAssignmentRecord,
+  nowIso: string,
+): string => {
+  const renewedLeaseExpiresAt = isoTimestampAfterIso(
+    nowIso,
+    assignmentLeaseRenewalMs,
+  )
+
+  return Date.parse(assignment.leaseExpiresAt) >
+    Date.parse(renewedLeaseExpiresAt)
+    ? assignment.leaseExpiresAt
+    : renewedLeaseExpiresAt
+}
+
 export const buildPylonApiAssignmentRecord = (
   input: Readonly<{
     idempotencyKeyHash: string
@@ -1875,12 +1892,17 @@ export const nextAssignmentForEvent = (
     event.eventKind === 'assignment_acceptance'
       ? {
           ...assignment,
+          leaseExpiresAt:
+            body.accepted === false
+              ? nowIso
+              : renewedAssignmentLeaseExpiresAt(assignment, nowIso),
           state: body.accepted === false ? 'rejected' : 'accepted',
           updatedAt: nowIso,
         }
       : event.eventKind === 'assignment_progress'
         ? {
             ...assignment,
+            leaseExpiresAt: renewedAssignmentLeaseExpiresAt(assignment, nowIso),
             state: event.status === 'blocked' ? 'blocked' : 'running',
             updatedAt: nowIso,
           }
@@ -1900,6 +1922,10 @@ export const nextAssignmentForEvent = (
                   'proofRefs',
                   assignment.proofRefs,
                 ),
+              ),
+              leaseExpiresAt: renewedAssignmentLeaseExpiresAt(
+                assignment,
+                nowIso,
               ),
               state: 'proof_submitted',
               updatedAt: nowIso,

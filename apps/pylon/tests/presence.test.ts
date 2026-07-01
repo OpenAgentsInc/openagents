@@ -231,6 +231,8 @@ async function runPresenceCli(input: {
     stderr: "pipe",
     stdout: "pipe",
   })
+  const stdout = new Response(proc.stdout).text()
+  const stderr = new Response(proc.stderr).text()
   let timeout: ReturnType<typeof setTimeout> | undefined
   const exit = await Promise.race([
     proc.exited.then((exitCode) => ({ exitCode, timedOut: false as const })),
@@ -242,11 +244,8 @@ async function runPresenceCli(input: {
     }),
   ])
   if (timeout !== undefined) clearTimeout(timeout)
-  const [stdout, stderr] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-  ])
-  return { ...exit, stderr, stdout }
+  const [stdoutText, stderrText] = await Promise.all([stdout, stderr])
+  return { ...exit, stderr: stderrText, stdout: stdoutText }
 }
 
 async function runProviderCli(input: {
@@ -266,6 +265,8 @@ async function runProviderCli(input: {
     stderr: "pipe",
     stdout: "pipe",
   })
+  const stdout = new Response(proc.stdout).text()
+  const stderr = new Response(proc.stderr).text()
   let timeout: ReturnType<typeof setTimeout> | undefined
   const exit = await Promise.race([
     proc.exited.then((exitCode) => ({ exitCode, timedOut: false as const })),
@@ -277,11 +278,8 @@ async function runProviderCli(input: {
     }),
   ])
   if (timeout !== undefined) clearTimeout(timeout)
-  const [stdout, stderr] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-  ])
-  return { ...exit, stderr, stdout }
+  const [stdoutText, stderrText] = await Promise.all([stdout, stderr])
+  return { ...exit, stderr: stderrText, stdout: stdoutText }
 }
 
 describe("Pylon presence registration and heartbeat", () => {
