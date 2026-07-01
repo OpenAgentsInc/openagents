@@ -5,6 +5,7 @@ import {
 } from '@openagentsinc/composer-state'
 import type { Html } from 'foldkit/html'
 
+import './setup'
 import { AiElements } from '../src/index'
 
 type VNodeLike = {
