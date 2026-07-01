@@ -1326,7 +1326,7 @@ type ActiveFleetRun = {
   readonly scope: Scope.Scope
 }
 
-class DefaultKhalaFleetRunSupervisorManager implements KhalaFleetRunSupervisorManager {
+export class DefaultKhalaFleetRunSupervisorManager implements KhalaFleetRunSupervisorManager {
   private readonly store: PylonOrchestrationStore
   private readonly active = new Map<string, ActiveFleetRun>()
   private readonly planConfigs = new Map<string, FleetRunPlanConfig>()
@@ -1336,6 +1336,7 @@ class DefaultKhalaFleetRunSupervisorManager implements KhalaFleetRunSupervisorMa
   }
 
   async start(input: KhalaFleetRunStartInput): Promise<KhalaFleetRunSnapshot> {
+    await this.reapTerminalActives()
     const now = new Date()
     const runRef = input.runRef ?? fleetRunRef(now)
     if (this.store.getFleetRun(runRef) !== null) throw new Error(`fleet run already exists: ${runRef}`)
@@ -1389,8 +1390,9 @@ class DefaultKhalaFleetRunSupervisorManager implements KhalaFleetRunSupervisorMa
 
     const pylonRef = input.pylonRef ?? (await resolveLocalPylonRef(this.options)) ?? "pylon.local"
     const scope = Effect.runSync(Scope.make())
-    const active: ActiveFleetRun = {
-      handle: await Effect.runPromise(Effect.provideService(
+    let handle: FleetRunSupervisorHandle
+    try {
+      handle = await Effect.runPromise(Effect.provideService(
         startFleetRunSupervisor({
           store: this.store,
           pylonRef,
@@ -1402,11 +1404,19 @@ class DefaultKhalaFleetRunSupervisorManager implements KhalaFleetRunSupervisorMa
           onLifecycle: event => {
             const existing = this.active.get(runRef)
             existing?.lifecycle.push(event)
+            if (event.kind === "completed") void this.releaseActive(runRef)
           },
         }),
         Scope.Scope,
         scope,
-      )),
+      ))
+    } catch (error) {
+      this.store.updateFleetRunState(runRef, "stopped", new Date())
+      await Effect.runPromise(Scope.close(scope, Exit.void))
+      throw error
+    }
+    const active: ActiveFleetRun = {
+      handle,
       lastTick: null,
       lifecycle: [],
       pylonRef,
@@ -1418,6 +1428,8 @@ class DefaultKhalaFleetRunSupervisorManager implements KhalaFleetRunSupervisorMa
     } catch {
       // The background supervisor remains active; status/control expose the run record.
     }
+    const reconciled = this.store.reconcileFleetRun(runRef)
+    if (reconciled.state === "completed" || reconciled.state === "stopped") await this.releaseActive(runRef)
     return this.snapshot(runRef)
   }
 
@@ -1435,14 +1447,26 @@ class DefaultKhalaFleetRunSupervisorManager implements KhalaFleetRunSupervisorMa
       "stopped"
     this.store.updateFleetRunState(input.runRef, nextState, now)
     if (input.verb === "stop") {
-      const active = this.active.get(input.runRef)
-      if (active !== undefined) {
-        await Effect.runPromise(Effect.exit(active.handle.stop()))
-        await Effect.runPromise(Scope.close(active.scope, Exit.void))
-        this.active.delete(input.runRef)
-      }
+      await this.releaseActive(input.runRef)
     }
     return { ...this.snapshot(input.runRef), verb: input.verb }
+  }
+
+  private async reapTerminalActives(): Promise<void> {
+    for (const [runRef, active] of this.active) {
+      const run = this.store.reconcileFleetRun(runRef)
+      if (run.state === "completed" || run.state === "stopped") {
+        await this.releaseActive(runRef, active)
+      }
+    }
+  }
+
+  private async releaseActive(runRef: string, knownActive?: ActiveFleetRun): Promise<void> {
+    const active = knownActive ?? this.active.get(runRef)
+    if (active === undefined) return
+    this.active.delete(runRef)
+    await Effect.runPromise(Effect.exit(active.handle.stop()))
+    await Effect.runPromise(Scope.close(active.scope, Exit.void))
   }
 
   private plannerFor(runRef: string): FleetRunSupervisorOptions["planner"] {
@@ -1495,15 +1519,17 @@ class DefaultKhalaFleetRunSupervisorManager implements KhalaFleetRunSupervisorMa
         }, this.options)
         const first = result.results[0]
         const accepted = result.acceptedCount >= 1 && first?.status === "accepted"
+        const completed = accepted && (first?.autoRunOk === true || first.closeoutStatus === "accepted")
+        const status = completed ? "completed" : accepted ? "accepted" : "failed"
         return {
           assignmentRef: first?.assignmentRef ?? null,
           lifecycle: [{
             assignmentRef: first?.assignmentRef ?? null,
-            event: accepted ? "assignment.accepted" : "assignment.failed",
+            event: completed ? "assignment.completed" : accepted ? "assignment.accepted" : "assignment.failed",
             phase: "codex_spawn",
-            status: accepted ? "accepted" : "failed",
+            status,
           }],
-          status: accepted ? "accepted" : "failed",
+          status,
           summary: first?.summary ?? renderSpawnResult(result),
         }
       },
