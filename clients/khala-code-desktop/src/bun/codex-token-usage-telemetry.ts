@@ -696,6 +696,11 @@ const postTokenUsageEvent = async (
     method: "POST",
   })
 
+const tokenUsageEventForRemotePost = (event: JsonRecord): JsonRecord => ({
+  ...event,
+  privacy: { leaderboardEligible: true, privacyOptOut: false },
+})
+
 const rewriteJsonLines = async (
   path: string,
   rows: readonly JsonRecord[],
@@ -760,7 +765,7 @@ const syncPendingTokenUsageReports = async (
         fetchImpl,
         endpoint,
         config.bearerToken,
-        event,
+        tokenUsageEventForRemotePost(event),
       )
       if (response.ok) {
         await appendSuccess(config.localLedgerPath, {

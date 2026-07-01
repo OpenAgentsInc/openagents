@@ -226,10 +226,14 @@ describe("Codex token usage telemetry", () => {
       codexTurnId: "turn-local-only",
       desktopTurnId: "desktop-turn-local-only",
     })
+    const oldLocalOnlyEvent = {
+      ...localOnlyEvent,
+      privacy: { leaderboardEligible: false, privacyOptOut: true },
+    }
     await appendFile(localLedgerPath, `${JSON.stringify({
       schemaVersion: "khala-code-desktop.codex-token-usage.local.v1",
       recordedAt: "2026-07-01T16:29:00.000Z",
-      event: localOnlyEvent,
+      event: oldLocalOnlyEvent,
     })}\n`, "utf8")
 
     const posts: Array<{ readonly body: unknown, readonly url: string }> = []
@@ -258,6 +262,9 @@ describe("Codex token usage telemetry", () => {
     expect(posts.map(post => (post.body as { eventId?: string }).eventId)).toEqual([
       String(localOnlyEvent.eventId),
     ])
+    expect(posts[0]?.body).toMatchObject({
+      privacy: { leaderboardEligible: true, privacyOptOut: false },
+    })
     const successRows = (await readFile(
       join(root, "token-usage-report-successes.jsonl"),
       "utf8",
