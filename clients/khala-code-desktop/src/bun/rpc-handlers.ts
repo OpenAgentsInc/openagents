@@ -14,6 +14,9 @@ import type { OnDeviceDeciderSelection } from "../shared/on-device-decider.js"
 import {
   type KhalaCodeDesktopAppInfo,
   type KhalaCodeDesktopChatTurnEvent,
+  type KhalaCodeDesktopCodexConfigValueWriteRequest,
+  type KhalaCodeDesktopCodexSettingsReadRequest,
+  type KhalaCodeDesktopCodexSettingsReadResult,
   type KhalaCodeDesktopSlashCommandDispatchRequest,
   type KhalaCodeDesktopSlashCommandDispatchResult,
   type KhalaCodeDesktopCodexAccountsStatus,
@@ -27,6 +30,7 @@ import {
   khalaCodeDesktopCodexApprovalResponsePayload,
   type KhalaCodeDesktopJsonRpcId,
 } from "../shared/codex-approval-decisions.js"
+import { projectKhalaCodeDesktopCodexSettings } from "../shared/codex-settings.js"
 import {
   evaluateKhalaCodeDesktopSlashCommandAvailability,
   khalaCodeDesktopSlashCommandsWithAvailability,
@@ -251,6 +255,100 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
       throw new Error("Codex app-server host is not configured.")
     }
     return input.codexAppServerHost.request(method, params)
+  }
+
+  const readCodexSettings = async (
+    request: KhalaCodeDesktopCodexSettingsReadRequest = {},
+  ): Promise<KhalaCodeDesktopCodexSettingsReadResult> => {
+    const cwd = request.cwd ?? input.workingDirectory
+    if (input.codexAppServerHost === undefined) {
+      return projectKhalaCodeDesktopCodexSettings({
+        cwd,
+        errors: ["Codex app-server host is not configured."],
+      })
+    }
+
+    const errors: string[] = []
+    const capture = async <Result>(
+      label: string,
+      method: string,
+      params?: unknown,
+    ): Promise<Result | undefined> => {
+      try {
+        return await input.codexAppServerHost!.request<Result>(method, params)
+      } catch (error) {
+        errors.push(`${label}: ${error instanceof Error ? error.message : String(error)}`)
+        return undefined
+      }
+    }
+
+    const [
+      configRead,
+      modelList,
+      providerCapabilities,
+      permissionProfileList,
+      requirementsRead,
+      usageRead,
+      collaborationModeList,
+    ] = await Promise.all([
+      capture("config/read", "config/read", { cwd, includeLayers: true }),
+      capture("model/list", "model/list", {
+        includeHidden: request.includeHiddenModels === true,
+      }),
+      capture("modelProvider/capabilities/read", "modelProvider/capabilities/read", {}),
+      capture("permissionProfile/list", "permissionProfile/list", { cwd }),
+      capture("configRequirements/read", "configRequirements/read"),
+      capture("account/usage/read", "account/usage/read"),
+      capture("collaborationMode/list", "collaborationMode/list", {}),
+    ])
+
+    return projectKhalaCodeDesktopCodexSettings({
+      cwd,
+      errors,
+      configRead,
+      modelList,
+      providerCapabilities,
+      permissionProfileList,
+      requirementsRead,
+      usageRead,
+      collaborationModeList,
+    })
+  }
+
+  const writeCodexConfigValue = async (
+    request: KhalaCodeDesktopCodexConfigValueWriteRequest,
+  ) => {
+    if (input.codexAppServerHost === undefined) {
+      return {
+        ok: false,
+        keyPath: request.keyPath,
+        error: "Codex app-server host is not configured.",
+      }
+    }
+    try {
+      const response = await input.codexAppServerHost.request("config/value/write", {
+        keyPath: request.keyPath,
+        value: request.value,
+        mergeStrategy: request.mergeStrategy ?? "replace",
+        ...(request.filePath === undefined ? {} : { filePath: request.filePath }),
+        ...(request.expectedVersion === undefined ? {} : { expectedVersion: request.expectedVersion }),
+      })
+      return {
+        ok: true,
+        keyPath: request.keyPath,
+        response,
+        settings: await readCodexSettings({
+          includeHiddenModels: true,
+          ...(request.cwd === undefined ? {} : { cwd: request.cwd }),
+        }),
+      }
+    } catch (error) {
+      return {
+        ok: false,
+        keyPath: request.keyPath,
+        error: error instanceof Error ? error.message : String(error),
+      }
+    }
   }
 
   const dispatchSlashAppServerCommand = async (
@@ -713,6 +811,12 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
           error: error instanceof Error ? error.message : String(error),
         }
       }
+    },
+    async codexConfigValueWrite(request) {
+      return writeCodexConfigValue(request)
+    },
+    async codexSettingsRead(request = {}) {
+      return readCodexSettings(request)
     },
     async codexThreadCompact(request) {
       return requireCodexChatRuntime().compactThread(request)

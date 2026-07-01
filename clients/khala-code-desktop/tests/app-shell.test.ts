@@ -45,6 +45,7 @@ describe("khala code desktop app shell", () => {
     expect(html).toContain('id="inbox-panel"')
     expect(html).toContain('id="fleet-panel"')
     expect(html).toContain('id="gym-panel"')
+    expect(html).toContain('id="settings-panel"')
     expect(html).not.toContain("Pylons")
   })
 
@@ -443,6 +444,34 @@ describe("khala code desktop app shell", () => {
     expect(main).toContain("respondToCodexApproval")
     expect(main).not.toContain("allowAllKhalaPermissionService")
     expect(css).toContain(".codex-approval-controls")
+  })
+
+  test("wires the Codex settings panel to app-server config and catalog RPCs", async () => {
+    const html = await Bun.file(new URL("../src/ui/index.html", import.meta.url)).text()
+    const sidebar = await Bun.file(new URL("../src/ui/sidebar.ts", import.meta.url)).text()
+    const main = await Bun.file(new URL("../src/ui/main.ts", import.meta.url)).text()
+    const panel = await Bun.file(new URL("../src/ui/codex-settings-panel.ts", import.meta.url)).text()
+    const handlers = await Bun.file(new URL("../src/bun/rpc-handlers.ts", import.meta.url)).text()
+    const css = await Bun.file(new URL("../src/ui/styles.css", import.meta.url)).text()
+
+    expect(sidebar).toContain('{ value: "settings", children: ["Settings"] }')
+    expect(html).toContain('aria-label="Codex settings"')
+    expect(main).toContain("mountCodexSettingsPanel")
+    expect(main).toContain("codexSettingsRead")
+    expect(main).toContain("codexConfigValueWrite")
+    expect(main).toContain('const showSettings = value === "settings"')
+    expect(main).toContain("settingsPanel?.setVisible(showSettings)")
+    expect(panel).toContain("model_reasoning_effort")
+    expect(panel).toContain("service_tier")
+    expect(panel).toContain("default_permissions")
+    expect(handlers).toContain('"model/list"')
+    expect(handlers).toContain('"modelProvider/capabilities/read"')
+    expect(handlers).toContain('"permissionProfile/list"')
+    expect(handlers).toContain('"config/read"')
+    expect(handlers).toContain('"config/value/write"')
+    expect(handlers).toContain('"account/usage/read"')
+    expect(css).toContain(".khala-code-settings")
+    expect(css).toContain(".khala-settings-select")
   })
 
   test("keeps the composer footer controls in a clean inline strip", async () => {

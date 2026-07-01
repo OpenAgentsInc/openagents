@@ -202,3 +202,39 @@ Validation:
 - `bun test clients/khala-code-desktop/tests/codex-approval-decisions.test.ts clients/khala-code-desktop/tests/codex-app-server-client.test.ts clients/khala-code-desktop/tests/codex-thread-item-projector.test.ts clients/khala-code-desktop/tests/rpc-handlers.test.ts clients/khala-code-desktop/tests/app-shell.test.ts`
 - `bun run --cwd clients/khala-code-desktop typecheck`
 - `bun run --cwd clients/khala-code-desktop verify`
+
+## Issue #7787: Models, Config, Usage, Personality, And Collaboration Settings
+
+Status: implemented
+
+Khala Code Desktop now treats Codex app-server as the source of truth for the
+default wrapper settings surface instead of duplicating model or permission
+state in Khala preferences.
+
+The desktop RPC exposes:
+
+- `codexSettingsRead()` to fan out across `config/read`, `model/list`,
+  `modelProvider/capabilities/read`, `permissionProfile/list`,
+  `configRequirements/read`, `account/usage/read`, and
+  `collaborationMode/list`;
+- `codexConfigValueWrite()` to persist a single Codex config key through
+  `config/value/write` and then re-read the app-server settings projection.
+
+The shared settings projector preserves the Codex model catalog, reasoning
+effort options, model-advertised service tiers, provider capability flags,
+permission profile allowance state, managed requirements, config origins,
+usage summary, and collaboration-mode presets. It intentionally projects only
+safe setting fields instead of returning the raw Codex config object.
+
+The desktop shell now has a `Settings` sidebar view with Codex-backed controls
+for model, reasoning effort, service tier, permission profile, and personality,
+plus readouts for provider capabilities, approval policy, reviewer, sandbox
+mode, usage, and managed requirements. Writes go through app-server config
+mutation only; denial responses surface as local status instead of falling back
+to a Khala-local preference cache.
+
+Validation:
+
+- `bun test clients/khala-code-desktop/tests/codex-settings.test.ts clients/khala-code-desktop/tests/rpc-handlers.test.ts clients/khala-code-desktop/tests/app-shell.test.ts`
+- `bun run --cwd clients/khala-code-desktop typecheck`
+- `bun run --cwd clients/khala-code-desktop verify`

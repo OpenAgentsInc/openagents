@@ -15,6 +15,10 @@ import type {
 import type {
   KhalaCodeDesktopSlashCommandWithAvailability,
 } from "./codex-slash-commands.js"
+import type {
+  KhalaCodeDesktopCodexJsonValue,
+  KhalaCodeDesktopCodexSettingsProjection,
+} from "./codex-settings.js"
 import type { OnDeviceDeciderSelection } from "./on-device-decider.js"
 
 // Electrobun treats Infinity as no local request timeout; chat turns stream progress
@@ -274,6 +278,31 @@ export type KhalaCodeDesktopCodexApprovalRespondResult = {
   readonly error?: string
 }
 
+export type KhalaCodeDesktopCodexSettingsReadRequest = {
+  readonly cwd?: string
+  readonly includeHiddenModels?: boolean
+}
+
+export type KhalaCodeDesktopCodexSettingsReadResult =
+  KhalaCodeDesktopCodexSettingsProjection
+
+export type KhalaCodeDesktopCodexConfigValueWriteRequest = {
+  readonly cwd?: string
+  readonly expectedVersion?: string
+  readonly filePath?: string
+  readonly keyPath: string
+  readonly mergeStrategy?: "replace" | "upsert"
+  readonly value: KhalaCodeDesktopCodexJsonValue
+}
+
+export type KhalaCodeDesktopCodexConfigValueWriteResult = {
+  readonly ok: boolean
+  readonly keyPath: string
+  readonly response?: unknown
+  readonly settings?: KhalaCodeDesktopCodexSettingsProjection
+  readonly error?: string
+}
+
 export type KhalaCodeDesktopSlashCommandListRequest = {
   readonly activeTurn?: boolean
   readonly debug?: boolean
@@ -439,6 +468,8 @@ export type KhalaCodeDesktopRPCSchema = {
     codexFleetStatus(): Promise<KhalaCodeDesktopFleetStatus>
     codexHarnessStatus(): Promise<KhalaCodeDesktopCodexHarnessStatus>
     codexApprovalRespond(request: KhalaCodeDesktopCodexApprovalRespondRequest): Promise<KhalaCodeDesktopCodexApprovalRespondResult>
+    codexConfigValueWrite(request: KhalaCodeDesktopCodexConfigValueWriteRequest): Promise<KhalaCodeDesktopCodexConfigValueWriteResult>
+    codexSettingsRead(request?: KhalaCodeDesktopCodexSettingsReadRequest): Promise<KhalaCodeDesktopCodexSettingsReadResult>
     codexThreadCompact(request: KhalaCodeDesktopCodexThreadCompactRequest): Promise<KhalaCodeDesktopCodexTurnActionResult>
     codexThreadList(request?: KhalaCodeDesktopCodexThreadListRequest): Promise<KhalaCodeDesktopCodexThreadListResult>
     codexThreadResume(request: KhalaCodeDesktopCodexThreadResumeRequest): Promise<KhalaCodeDesktopCodexThreadResult>

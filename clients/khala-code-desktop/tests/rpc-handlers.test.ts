@@ -699,6 +699,299 @@ describe("Khala Code desktop RPC handlers", () => {
     }])
   })
 
+  test("reads Codex settings from app-server config, model, profile, usage, and collaboration APIs", async () => {
+    const requests: { method: string, params: unknown }[] = []
+    const handlers = createKhalaCodeDesktopRpcRequestHandlers({
+      appleFmReadiness: () => {
+        throw new Error("not used")
+      },
+      codexAppServerHost: {
+        dispose: () => undefined,
+        request: async <Result>(method: string, params?: unknown) => {
+          requests.push({ method, params })
+          const responses: Record<string, unknown> = {
+            "config/read": {
+              config: {
+                model: "gpt-5.1-codex",
+                model_provider: "openai",
+                model_reasoning_effort: "high",
+                service_tier: "priority",
+                default_permissions: ":workspace",
+              },
+              origins: { model: { source: "user" } },
+              layers: [],
+            },
+            "model/list": {
+              data: [
+                {
+                  id: "gpt-5.1-codex",
+                  model: "gpt-5.1-codex",
+                  displayName: "GPT-5.1 Codex",
+                  description: "Codex",
+                  hidden: false,
+                  isDefault: true,
+                  supportsPersonality: true,
+                  defaultReasoningEffort: "medium",
+                  supportedReasoningEfforts: [{ reasoningEffort: "high", description: "deep" }],
+                  serviceTiers: [{ id: "priority", name: "Priority", description: "fast" }],
+                  defaultServiceTier: "priority",
+                },
+              ],
+            },
+            "modelProvider/capabilities/read": {
+              namespaceTools: true,
+              imageGeneration: false,
+              webSearch: true,
+            },
+            "permissionProfile/list": {
+              data: [{ id: ":workspace", description: "Workspace", allowed: true }],
+            },
+            "configRequirements/read": {
+              requirements: { allowedPermissionProfiles: { ":workspace": true } },
+            },
+            "account/usage/read": {
+              summary: { lifetimeTokens: 99 },
+              dailyUsageBuckets: [],
+            },
+            "collaborationMode/list": {
+              data: [{ name: "Plan", mode: "plan", model: null, reasoning_effort: "medium" }],
+            },
+          }
+          return responses[method] as Result
+        },
+        respondToServerRequest: () => undefined,
+        restart: async () => ({
+          ok: true,
+          action: "restart",
+          changed: false,
+          status: stoppedAppServerStatus(),
+        }),
+        start: async () => ({
+          ok: true,
+          action: "start",
+          changed: false,
+          status: stoppedAppServerStatus(),
+        }),
+        status: stoppedAppServerStatus,
+        stop: async () => ({
+          ok: true,
+          action: "stop",
+          changed: false,
+          status: stoppedAppServerStatus(),
+        }),
+        subscribe: () => () => undefined,
+      },
+      codexChatRuntime: throwingCodexChatRuntime(),
+      env: {},
+      onDeviceDeciderStatus: () => {
+        throw new Error("not used")
+      },
+      workingDirectory: "/repo",
+    })
+
+    const settings = await handlers.codexSettingsRead({
+      cwd: "/repo/project",
+      includeHiddenModels: true,
+    })
+
+    expect(settings).toMatchObject({
+      ok: true,
+      cwd: "/repo/project",
+      config: {
+        model: "gpt-5.1-codex",
+        modelProvider: "openai",
+        reasoningEffort: "high",
+        serviceTier: "priority",
+        defaultPermissions: ":workspace",
+      },
+      models: {
+        selected: {
+          id: "gpt-5.1-codex",
+        },
+        serviceTierCommands: ["priority"],
+      },
+      providerCapabilities: {
+        namespaceTools: true,
+        imageGeneration: false,
+        webSearch: true,
+      },
+      usage: {
+        available: true,
+      },
+    })
+    expect(requests.map(request => request.method)).toEqual([
+      "config/read",
+      "model/list",
+      "modelProvider/capabilities/read",
+      "permissionProfile/list",
+      "configRequirements/read",
+      "account/usage/read",
+      "collaborationMode/list",
+    ])
+    expect(requests[0]?.params).toEqual({ cwd: "/repo/project", includeLayers: true })
+    expect(requests[1]?.params).toEqual({ includeHidden: true })
+    expect(requests[3]?.params).toEqual({ cwd: "/repo/project" })
+  })
+
+  test("writes Codex config values through app-server and reloads settings projection", async () => {
+    const requests: { method: string, params: unknown }[] = []
+    const handlers = createKhalaCodeDesktopRpcRequestHandlers({
+      appleFmReadiness: () => {
+        throw new Error("not used")
+      },
+      codexAppServerHost: {
+        dispose: () => undefined,
+        request: async <Result>(method: string, params?: unknown) => {
+          requests.push({ method, params })
+          if (method === "config/value/write") {
+            return { status: "changed", version: "v2", filePath: "/home/user/.codex/config.toml" } as Result
+          }
+          if (method === "config/read") {
+            return {
+              config: {
+                model: "gpt-5.1-codex",
+                default_permissions: ":workspace",
+              },
+              origins: {},
+              layers: [],
+            } as Result
+          }
+          if (method === "model/list") {
+            return {
+              data: [
+                {
+                  id: "gpt-5.1-codex",
+                  model: "gpt-5.1-codex",
+                  displayName: "GPT-5.1 Codex",
+                  description: "",
+                  hidden: false,
+                  isDefault: true,
+                  supportsPersonality: false,
+                  defaultReasoningEffort: "medium",
+                  supportedReasoningEfforts: [],
+                  serviceTiers: [],
+                  defaultServiceTier: null,
+                },
+              ],
+            } as Result
+          }
+          return {} as Result
+        },
+        respondToServerRequest: () => undefined,
+        restart: async () => ({
+          ok: true,
+          action: "restart",
+          changed: false,
+          status: stoppedAppServerStatus(),
+        }),
+        start: async () => ({
+          ok: true,
+          action: "start",
+          changed: false,
+          status: stoppedAppServerStatus(),
+        }),
+        status: stoppedAppServerStatus,
+        stop: async () => ({
+          ok: true,
+          action: "stop",
+          changed: false,
+          status: stoppedAppServerStatus(),
+        }),
+        subscribe: () => () => undefined,
+      },
+      codexChatRuntime: throwingCodexChatRuntime(),
+      env: {},
+      onDeviceDeciderStatus: () => {
+        throw new Error("not used")
+      },
+      workingDirectory: "/repo",
+    })
+
+    const result = await handlers.codexConfigValueWrite({
+      cwd: "/repo",
+      keyPath: "model",
+      value: "gpt-5.1-codex",
+    })
+
+    expect(result).toMatchObject({
+      ok: true,
+      keyPath: "model",
+      settings: {
+        config: {
+          model: "gpt-5.1-codex",
+        },
+      },
+    })
+    expect(requests[0]).toEqual({
+      method: "config/value/write",
+      params: {
+        keyPath: "model",
+        value: "gpt-5.1-codex",
+        mergeStrategy: "replace",
+      },
+    })
+    expect(requests.slice(1).map(request => request.method)).toEqual([
+      "config/read",
+      "model/list",
+      "modelProvider/capabilities/read",
+      "permissionProfile/list",
+      "configRequirements/read",
+      "account/usage/read",
+      "collaborationMode/list",
+    ])
+  })
+
+  test("returns config write denials without mutating Khala-local state", async () => {
+    const handlers = createKhalaCodeDesktopRpcRequestHandlers({
+      appleFmReadiness: () => {
+        throw new Error("not used")
+      },
+      codexAppServerHost: {
+        dispose: () => undefined,
+        request: async <Result>(method: string) => {
+          if (method === "config/value/write") throw new Error("Invalid configuration: model is managed")
+          throw new Error(`unexpected request ${method}`)
+        },
+        respondToServerRequest: () => undefined,
+        restart: async () => ({
+          ok: true,
+          action: "restart",
+          changed: false,
+          status: stoppedAppServerStatus(),
+        }),
+        start: async () => ({
+          ok: true,
+          action: "start",
+          changed: false,
+          status: stoppedAppServerStatus(),
+        }),
+        status: stoppedAppServerStatus,
+        stop: async () => ({
+          ok: true,
+          action: "stop",
+          changed: false,
+          status: stoppedAppServerStatus(),
+        }),
+        subscribe: () => () => undefined,
+      },
+      codexChatRuntime: throwingCodexChatRuntime(),
+      env: {},
+      onDeviceDeciderStatus: () => {
+        throw new Error("not used")
+      },
+      workingDirectory: "/repo",
+    })
+
+    await expect(handlers.codexConfigValueWrite({
+      keyPath: "model",
+      value: "gpt-5.1-codex",
+    })).resolves.toEqual({
+      ok: false,
+      keyPath: "model",
+      error: "Invalid configuration: model is managed",
+    })
+  })
+
   test("projects Fleet Status capacity and token evidence through RPC", async () => {
     const fixture = await tempPylonFixture()
     const accountKey = "4db4cc18ebc55f39fb4da894"

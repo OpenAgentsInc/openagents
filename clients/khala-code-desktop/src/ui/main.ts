@@ -44,6 +44,7 @@ import {
 import { renderMessageBody } from "./transcript-render"
 import { mountFleetPanel } from "./fleet-status"
 import { mountUnifiedInboxPanel } from "./inbox"
+import { mountCodexSettingsPanel } from "./codex-settings-panel"
 import {
   gymPaneStateFromBridgeProof,
   gymPaneStateFromLocation,
@@ -116,6 +117,14 @@ const previewRpc = (): DesktopRpc => ({
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["codexApprovalRespond"]>>
       >("codexApprovalRespond", request),
+    codexConfigValueWrite: request =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["codexConfigValueWrite"]>>
+      >("codexConfigValueWrite", request),
+    codexSettingsRead: (request?: Parameters<DesktopRpcRequests["codexSettingsRead"]>[0]) =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["codexSettingsRead"]>>
+      >("codexSettingsRead", request),
     codexThreadCompact: request =>
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["codexThreadCompact"]>>
@@ -1404,6 +1413,10 @@ const controls = {
   codexHarnessStatus: () => rpc.request.codexHarnessStatus(),
   codexApprovalRespond: (request: Parameters<DesktopRpcRequests["codexApprovalRespond"]>[0]) =>
     rpc.request.codexApprovalRespond(request),
+  codexConfigValueWrite: (request: Parameters<DesktopRpcRequests["codexConfigValueWrite"]>[0]) =>
+    rpc.request.codexConfigValueWrite(request),
+  codexSettingsRead: (request?: Parameters<DesktopRpcRequests["codexSettingsRead"]>[0]) =>
+    rpc.request.codexSettingsRead(request),
   codexThreadCompact: (request: Parameters<DesktopRpcRequests["codexThreadCompact"]>[0]) =>
     rpc.request.codexThreadCompact(request),
   codexThreadList: (request?: Parameters<DesktopRpcRequests["codexThreadList"]>[0]) =>
@@ -1507,6 +1520,7 @@ const sidebarRoot = document.getElementById("sidebar-root")
 const fleetPanelEl = document.getElementById("fleet-panel")
 const inboxPanelEl = document.getElementById("inbox-panel")
 const gymPanelEl = document.getElementById("gym-panel")
+const settingsPanelEl = document.getElementById("settings-panel")
 const threadShell = document.querySelector<HTMLElement>(".khala-code-thread-shell")
 const composerDock = document.querySelector<HTMLElement>(".composer-dock")
 const initialGymState = gymPaneStateFromLocation(globalThis.location)
@@ -1548,19 +1562,30 @@ const inboxPanel =
 const gymPanel =
   gymPanelEl === null ? null : mountGymPane(gymPanelEl, initialGymState)
 
+const settingsPanel =
+  settingsPanelEl === null
+    ? null
+    : mountCodexSettingsPanel(settingsPanelEl, {
+        fetch: () => controls.codexSettingsRead({ includeHiddenModels: true }),
+        write: request => controls.codexConfigValueWrite(request),
+      })
+
 const setActiveView = (value: string): void => {
   const showInbox = value === "inbox"
   const showFleet = value === "fleet"
   const showGym = value === "gym"
+  const showSettings = value === "settings"
   if (inboxPanelEl !== null) inboxPanelEl.hidden = !showInbox
   if (fleetPanelEl !== null) fleetPanelEl.hidden = !showFleet
+  if (settingsPanelEl !== null) settingsPanelEl.hidden = !showSettings
   gymPanel?.setVisible(showGym)
-  if (threadShell !== null) threadShell.hidden = showInbox || showFleet || showGym
-  if (composerDock !== null) composerDock.hidden = showInbox || showFleet || showGym
+  if (threadShell !== null) threadShell.hidden = showInbox || showFleet || showGym || showSettings
+  if (composerDock !== null) composerDock.hidden = showInbox || showFleet || showGym || showSettings
   // setVisible starts/stops the live 5s poll so the panel updates on its own.
   inboxPanel?.setVisible(showInbox)
   fleetPanel?.setVisible(showFleet)
-  if (!showInbox && !showFleet && !showGym && value === "chat") {
+  settingsPanel?.setVisible(showSettings)
+  if (!showInbox && !showFleet && !showGym && !showSettings && value === "chat") {
     requestAnimationFrame(focusComposerInput)
   }
 }
