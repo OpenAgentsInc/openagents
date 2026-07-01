@@ -210,13 +210,168 @@ describe("Pylon supervisor orchestration store", () => {
     expect(event).toMatchObject({
       runnerKind: "codex",
       state: "working",
-      taskId: "task.7809",
-      dispatchContextId: "ctx.codex.7809",
-      pylonRef: "pylon.public.runner-status",
       supportedControlVerbs: ["status.list", "task.list", "task.update", "task.dispatch", "dispatch.cancel"],
     })
+    expect(String(event.taskId)).toStartWith("task.public.pylon.")
+    expect(String(event.dispatchContextId)).toStartWith("dispatch-context.public.pylon.")
+    expect(String(event.pylonRef)).toStartWith("pylon.public.")
     expect(String(event.worktreeRef)).toStartWith("worktree.public.pylon.")
+    expect(JSON.stringify(event)).not.toContain("ctx.codex.7809")
     expect(JSON.stringify(event)).not.toContain("/Users/private/worktree")
+  })
+
+  test("ingests agent runner status events as live status and updates dispatch contexts", () => {
+    const now = new Date("2026-07-01T12:00:00.000Z")
+    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    store.createTask({
+      id: "task.status-spine",
+      spec: { ...baseTaskSpec, title: "Status spine", runnerKind: "codex" },
+      now,
+    })
+    store.createDispatchContext({
+      id: "ctx.status-spine",
+      assigneeHandle: "codex-1",
+      runnerKind: "codex",
+      worktreeId: "wt-status-spine",
+      worktreePath: "/Users/private/status-spine",
+      lastHeartbeatAt: now,
+      now,
+    })
+
+    const status = store.ingestAgentRunnerStatusEvent({
+      event: {
+        eventRef: "event.raw.status-spine.1",
+        runnerRef: "runner.raw.codex-1",
+        runnerKind: "codex",
+        state: "working",
+        stateStartedAt: "2026-07-01T12:01:00.000Z",
+        updatedAt: "2026-07-01T12:01:00.000Z",
+        assignmentRef: "assignment.secret.local",
+        taskId: "task.status-spine",
+        dispatchContextId: "ctx.status-spine",
+        pylonRef: "pylon.local.secret",
+        worktreeId: "wt-status-spine",
+        refs: ["local:/Users/private/status-spine"],
+      },
+      now: new Date("2026-07-01T12:01:00.000Z"),
+    })
+
+    expect(status.retentionState).toBe("live")
+    expect(status.state).toBe("working")
+    expect(String(status.assignmentRef)).toStartWith("assignment.public.pylon.")
+    expect(String(status.taskId)).toStartWith("task.public.pylon.")
+    expect(String(status.dispatchContextId)).toStartWith("dispatch-context.public.pylon.")
+    expect(String(status.refs?.[0])).toStartWith("ref.public.pylon.")
+    expect(status.stateStartedAt).toBe("2026-07-01T12:01:00.000Z")
+    expect(status.updatedAt).toBe("2026-07-01T12:01:00.000Z")
+    expect(store.getDispatchContext("ctx.status-spine")).toMatchObject({
+      status: "dispatched",
+      currentTaskId: "task.status-spine",
+      lastHeartbeatAt: "2026-07-01T12:01:00.000Z",
+    })
+    expect(JSON.stringify(status)).not.toContain("/Users/private")
+    expect(JSON.stringify(status)).not.toContain("assignment.secret.local")
+  })
+
+  test("retains previous live status entries and rolls state history", () => {
+    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const base = {
+      runnerRef: "runner.raw.codex-history",
+      runnerKind: "codex",
+      dispatchContextId: "ctx.history",
+    }
+
+    const working = store.ingestAgentRunnerStatusEvent({
+      event: {
+        ...base,
+        eventRef: "event.history.working",
+        state: "working",
+        stateStartedAt: "2026-07-01T12:00:00.000Z",
+        updatedAt: "2026-07-01T12:00:00.000Z",
+      },
+      now: new Date("2026-07-01T12:00:00.000Z"),
+    })
+    const waiting = store.ingestAgentRunnerStatusEvent({
+      event: {
+        ...base,
+        eventRef: "event.history.waiting",
+        state: "waiting",
+        stateStartedAt: "2026-07-01T12:02:00.000Z",
+        updatedAt: "2026-07-01T12:02:00.000Z",
+      },
+      now: new Date("2026-07-01T12:02:00.000Z"),
+    })
+
+    expect(store.getAgentRunnerStatusEvent(working.eventRef)?.retentionState).toBe("retained")
+    expect(store.getAgentRunnerStatusEvent(working.eventRef)?.retainedAt).toBe("2026-07-01T12:02:00.000Z")
+    expect(waiting.retentionState).toBe("live")
+    expect(waiting.stateHistory).toEqual([
+      { state: "working", stateStartedAt: "2026-07-01T12:00:00.000Z" },
+      { state: "waiting", stateStartedAt: "2026-07-01T12:02:00.000Z" },
+    ])
+    expect(store.listAgentRunnerStatusEvents({ retentionState: "live" })).toHaveLength(1)
+    expect(store.listAgentRunnerStatusEvents({ retentionState: "retained" })).toHaveLength(1)
+  })
+
+  test("caps runner status history at the requested rolling limit", () => {
+    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    let latest = null as ReturnType<typeof store.ingestAgentRunnerStatusEvent> | null
+    for (let index = 0; index < 25; index += 1) {
+      const state = index % 2 === 0 ? "working" : "waiting"
+      const at = new Date(Date.UTC(2026, 6, 1, 12, index, 0))
+      latest = store.ingestAgentRunnerStatusEvent({
+        event: {
+          eventRef: `event.rolling.${index}`,
+          runnerRef: "runner.raw.rolling",
+          runnerKind: "codex",
+          state,
+          stateStartedAt: at.toISOString(),
+          updatedAt: at.toISOString(),
+        },
+        now: at,
+        historyLimit: 20,
+      })
+    }
+
+    expect(latest?.stateHistory).toHaveLength(20)
+    expect(latest?.stateHistory?.[0]).toEqual({
+      state: "waiting",
+      stateStartedAt: "2026-07-01T12:05:00.000Z",
+    })
+    expect(latest?.stateHistory?.at(-1)).toEqual({
+      state: "working",
+      stateStartedAt: "2026-07-01T12:24:00.000Z",
+    })
+  })
+
+  test("decays stale live runner statuses to idle while retaining the active entry", () => {
+    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const working = store.ingestAgentRunnerStatusEvent({
+      event: {
+        eventRef: "event.decay.working",
+        runnerRef: "runner.raw.decay",
+        runnerKind: "codex",
+        state: "working",
+        stateStartedAt: "2026-07-01T12:00:00.000Z",
+        updatedAt: "2026-07-01T12:00:00.000Z",
+      },
+      now: new Date("2026-07-01T12:00:00.000Z"),
+    })
+
+    const decayed = store.decayAgentRunnerStatuses({
+      now: new Date("2026-07-01T12:06:00.000Z"),
+      staleAfterMs: 5 * 60 * 1000,
+    })
+
+    expect(decayed).toHaveLength(1)
+    expect(decayed[0]?.state).toBe("idle")
+    expect(decayed[0]?.stateStartedAt).toBe("2026-07-01T12:06:00.000Z")
+    expect(store.getAgentRunnerStatusEvent(working.eventRef)?.retentionState).toBe("retained")
+    expect(store.listAgentRunnerStatusEvents({ retentionState: "live" }).map((entry) => entry.state)).toEqual(["idle"])
+    expect(decayed[0]?.stateHistory?.at(-1)).toEqual({
+      state: "idle",
+      stateStartedAt: "2026-07-01T12:06:00.000Z",
+    })
   })
 
   test("normalizes legacy runner aliases through the AgentRunner registry vocabulary", () => {
