@@ -3,6 +3,11 @@ import { appendFile, mkdir } from "node:fs/promises"
 import { homedir } from "node:os"
 import { dirname, join } from "node:path"
 
+import type {
+  KhalaCodeDesktopMessage,
+  KhalaCodeDesktopMessageRole,
+} from "../shared/rpc.js"
+
 export type KhalaCodeDesktopCodexTokenUsageCounts = {
   readonly cachedInputTokens: number
   readonly inputTokens: number
@@ -12,6 +17,7 @@ export type KhalaCodeDesktopCodexTokenUsageCounts = {
 }
 
 export type KhalaCodeDesktopCodexTokenUsageReport = {
+  readonly clientUserMessageId?: string
   readonly codexThreadId: string
   readonly codexTurnId: string
   readonly desktopSessionId: string
@@ -23,11 +29,70 @@ export type KhalaCodeDesktopCodexTokenUsageReport = {
   readonly usage: KhalaCodeDesktopCodexTokenUsageCounts
 }
 
+export type KhalaCodeDesktopCodexTokenUsageEventRefs = {
+  readonly anonymizedSourceRef: string
+  readonly eventId: string
+  readonly idempotencyKey: string
+}
+
 export type KhalaCodeDesktopCodexTokenUsageReporter = (
   report: KhalaCodeDesktopCodexTokenUsageReport,
 ) => Promise<void>
 
+export type KhalaCodeDesktopCodexMessageTokenAuditMessage = {
+  readonly body: string
+  readonly bodyChars: number
+  readonly bodySha256: string
+  readonly id: string
+  readonly role: KhalaCodeDesktopMessageRole
+  readonly source: "codex_app_server" | "khala_code_client"
+}
+
+export type KhalaCodeDesktopCodexMessageTokenAuditUsageEvent = {
+  readonly eventId: string
+  readonly idempotencyKey: string
+  readonly observedAt: string
+  readonly sequence: number
+  readonly usage: KhalaCodeDesktopCodexTokenUsageCounts
+}
+
+export type KhalaCodeDesktopCodexMessageTokenAuditRecord = {
+  readonly clientUserMessage: KhalaCodeDesktopCodexMessageTokenAuditMessage
+  readonly codexMessages: readonly KhalaCodeDesktopCodexMessageTokenAuditMessage[]
+  readonly codexThreadId: string
+  readonly codexTurnId?: string
+  readonly completedAt: string
+  readonly desktopSessionId: string
+  readonly desktopTurnId: string
+  readonly error?: string
+  readonly model: string
+  readonly reconciliation: {
+    readonly aggregateBackfillEventId?: string
+    readonly aggregateBackfillEventIds?: readonly string[]
+    readonly aggregateBackfillIdempotencyKey?: string
+    readonly aggregateBackfillIdempotencyKeys?: readonly string[]
+    readonly globalCountedTokens: number
+    readonly globalCounterRoute: "/api/stats/token-usage/events"
+    readonly status:
+      | "global_count_backfilled_aggregate"
+      | "global_count_event_recorded"
+      | "missing_token_usage_update"
+    readonly tokenAccountingRequired: true
+    readonly tokenScope: "codex_turn_provider_reported"
+    readonly usageTruth: "exact"
+  }
+  readonly submittedAt: string
+  readonly turnStatus: string
+  readonly usage: KhalaCodeDesktopCodexTokenUsageCounts
+  readonly usageEvents: readonly KhalaCodeDesktopCodexMessageTokenAuditUsageEvent[]
+}
+
+export type KhalaCodeDesktopCodexMessageTokenAuditRecorder = (
+  record: KhalaCodeDesktopCodexMessageTokenAuditRecord,
+) => Promise<void>
+
 export type KhalaCodeDesktopTokenUsageTelemetryStatus = {
+  readonly localMessageAuditLedgerPath: string
   readonly localLedgerPath: string
   readonly remoteConfigured: boolean
   readonly remoteDisabled: boolean
@@ -38,6 +103,7 @@ type FetchLike = (url: URL, init: RequestInit) => Promise<Response>
 type TokenUsageTelemetryConfig = {
   readonly baseUrl: string
   readonly bearerToken: string | null
+  readonly localMessageAuditLedgerPath: string
   readonly localLedgerPath: string
   readonly remoteDisabled: boolean
 }
@@ -46,6 +112,11 @@ export type CreateKhalaCodeDesktopCodexTokenUsageReporterOptions = {
   readonly env?: Readonly<Record<string, string | undefined>>
   readonly fetch?: FetchLike
   readonly localLedgerPath?: string
+}
+
+export type CreateKhalaCodeDesktopCodexMessageTokenAuditRecorderOptions = {
+  readonly env?: Readonly<Record<string, string | undefined>>
+  readonly localMessageAuditLedgerPath?: string
 }
 
 const DEFAULT_BASE_URL = "https://openagents.com"
@@ -77,6 +148,9 @@ const stableJson = (value: unknown): string => {
 const digest = (value: unknown): string =>
   createHash("sha256").update(stableJson(value)).digest("hex")
 
+const textDigest = (value: string): string =>
+  createHash("sha256").update(value).digest("hex")
+
 const boundedCount = (value: number): number =>
   Number.isFinite(value) && value > 0 ? Math.trunc(value) : 0
 
@@ -101,9 +175,17 @@ const defaultLocalLedgerPath = (
 ): string => nonEmpty(env.KHALA_CODE_TOKEN_USAGE_LOCAL_LEDGER_PATH) ??
   join(homedir(), ".khala-code", "token-usage-events.jsonl")
 
+const defaultLocalMessageAuditLedgerPath = (
+  env: Readonly<Record<string, string | undefined>>,
+): string =>
+  nonEmpty(env.KHALA_CODE_MESSAGE_TOKEN_AUDIT_LOCAL_LEDGER_PATH) ??
+  nonEmpty(env.KHALA_CODE_MESSAGE_AUDIT_LOCAL_LEDGER_PATH) ??
+  join(homedir(), ".khala-code", "message-token-audit.jsonl")
+
 const resolveConfig = (
   env: Readonly<Record<string, string | undefined>>,
   localLedgerPath?: string,
+  localMessageAuditLedgerPath?: string,
 ): TokenUsageTelemetryConfig => {
   const remoteDisabled = boolEnv(env.KHALA_CODE_TOKEN_USAGE_REMOTE_DISABLED) ||
     boolEnv(env.KHALA_CODE_TOKEN_USAGE_DISABLED)
@@ -118,6 +200,8 @@ const resolveConfig = (
       nonEmpty(env.PROBE_TOKEN_USAGE_BEARER_TOKEN) ??
       nonEmpty(env.PROBE_OMEGA_BEARER_TOKEN),
     localLedgerPath: localLedgerPath ?? defaultLocalLedgerPath(env),
+    localMessageAuditLedgerPath:
+      localMessageAuditLedgerPath ?? defaultLocalMessageAuditLedgerPath(env),
     remoteDisabled,
   }
 }
@@ -127,13 +211,16 @@ export function khalaCodeDesktopTokenUsageTelemetryStatus(
 ): KhalaCodeDesktopTokenUsageTelemetryStatus {
   const config = resolveConfig(env)
   return {
+    localMessageAuditLedgerPath: config.localMessageAuditLedgerPath,
     localLedgerPath: config.localLedgerPath,
     remoteConfigured: config.bearerToken !== null && !config.remoteDisabled,
     remoteDisabled: config.remoteDisabled,
   }
 }
 
-const eventRefs = (report: KhalaCodeDesktopCodexTokenUsageReport) => {
+export const khalaCodeDesktopCodexTokenUsageEventRefs = (
+  report: KhalaCodeDesktopCodexTokenUsageReport,
+): KhalaCodeDesktopCodexTokenUsageEventRefs => {
   const eventDigest = digest({
     codexThreadId: report.codexThreadId,
     codexTurnId: report.codexTurnId,
@@ -158,7 +245,7 @@ export function khalaCodeDesktopCodexTokenUsageEvent(
   report: KhalaCodeDesktopCodexTokenUsageReport,
 ): Record<string, unknown> {
   const usage = normalizeUsage(report.usage)
-  const refs = eventRefs({ ...report, usage })
+  const refs = khalaCodeDesktopCodexTokenUsageEventRefs({ ...report, usage })
   return {
     schemaVersion: "openagents.token_usage_event.v1",
     backendProfile: "codex-app-server",
@@ -180,6 +267,9 @@ export function khalaCodeDesktopCodexTokenUsageEvent(
     safeMetadata: {
       agentSurface: "khala_code_desktop",
       captureMethod: "thread_token_usage_updated",
+      ...(report.clientUserMessageId === undefined
+        ? {}
+        : { clientUserMessageId: report.clientUserMessageId }),
       codexThreadId: report.codexThreadId,
       codexTurnId: report.codexTurnId,
       desktopTurnId: report.desktopTurnId,
@@ -204,6 +294,20 @@ export function khalaCodeDesktopCodexTokenUsageEvent(
       totalTokens: usage.totalTokens,
     },
     usageTruth: "exact",
+  }
+}
+
+export function khalaCodeDesktopCodexMessageTokenAuditMessage(
+  message: KhalaCodeDesktopMessage,
+  source: KhalaCodeDesktopCodexMessageTokenAuditMessage["source"],
+): KhalaCodeDesktopCodexMessageTokenAuditMessage {
+  return {
+    body: message.body,
+    bodyChars: message.body.length,
+    bodySha256: textDigest(message.body),
+    id: message.id,
+    role: message.role,
+    source,
   }
 }
 
@@ -268,5 +372,23 @@ export function createKhalaCodeDesktopCodexTokenUsageReporter(
         reason: error instanceof Error ? error.message : String(error),
       })
     }
+  }
+}
+
+export function createKhalaCodeDesktopCodexMessageTokenAuditRecorder(
+  options: CreateKhalaCodeDesktopCodexMessageTokenAuditRecorderOptions = {},
+): KhalaCodeDesktopCodexMessageTokenAuditRecorder {
+  const env = options.env ?? process.env
+  const config = resolveConfig(
+    env,
+    undefined,
+    options.localMessageAuditLedgerPath,
+  )
+  return async record => {
+    await appendJsonLine(config.localMessageAuditLedgerPath, {
+      schemaVersion: "khala-code-desktop.codex-message-token-audit.local.v1",
+      recordedAt: new Date().toISOString(),
+      record,
+    })
   }
 }

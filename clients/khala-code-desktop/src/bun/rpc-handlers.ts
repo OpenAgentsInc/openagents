@@ -12,6 +12,7 @@ import {
   type CodexAppServerChatRuntime,
 } from "./codex-app-server-chat-runtime.js"
 import {
+  createKhalaCodeDesktopCodexMessageTokenAuditRecorder,
   createKhalaCodeDesktopCodexTokenUsageReporter,
   khalaCodeDesktopTokenUsageTelemetryStatus,
 } from "./codex-token-usage-telemetry.js"
@@ -559,6 +560,8 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
         env: input.env,
         host: input.codexAppServerHost,
         ...(input.emitChatTurnEvent === undefined ? {} : { onEvent: input.emitChatTurnEvent }),
+        messageTokenAuditRecorder:
+          createKhalaCodeDesktopCodexMessageTokenAuditRecorder({ env: input.env }),
         tokenUsageReporter: createKhalaCodeDesktopCodexTokenUsageReporter({ env: input.env }),
         workingDirectory: input.workingDirectory,
       }))
@@ -1855,8 +1858,8 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
         available: true,
         capability: "token_accounting",
         reason: status.remoteConfigured
-          ? "Codex app-server token accounting is stored locally and mirrored to OpenAgents Stats."
-          : "Codex app-server token accounting is stored locally; set a token usage bearer to mirror it to OpenAgents Stats.",
+          ? "Codex app-server token accounting and message audit records are stored locally and mirrored to OpenAgents Stats."
+          : "Codex app-server token accounting and message audit records are stored locally; set a token usage bearer to mirror counts to OpenAgents Stats.",
         status: "ready",
       })
     },

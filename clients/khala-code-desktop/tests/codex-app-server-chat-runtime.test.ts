@@ -210,6 +210,7 @@ describe("Codex app-server chat runtime", () => {
     const fixture = await stateFixture()
     const records: RequestRecord[] = []
     const reports: unknown[] = []
+    const messageAudits: unknown[] = []
     const host = createFakeHost({
       records,
       onRequest: (method, _params, subscribers) => {
@@ -297,6 +298,9 @@ describe("Codex app-server chat runtime", () => {
     })
     const runtime = createCodexAppServerChatRuntime({
       host,
+      messageTokenAuditRecorder: async record => {
+        messageAudits.push(record)
+      },
       statePath: fixture.statePath,
       tokenUsageReporter: async report => {
         reports.push(report)
@@ -327,6 +331,7 @@ describe("Codex app-server chat runtime", () => {
     expect(reports[0]).toMatchObject({
       codexThreadId: "thread-usage",
       codexTurnId: "turn-usage",
+      clientUserMessageId: "user-usage",
       desktopTurnId: "desktop-turn-usage",
       model: "gpt-5.5",
       sequence: 1,
@@ -347,6 +352,44 @@ describe("Codex app-server chat runtime", () => {
         reasoningOutputTokens: 0,
         totalTokens: 12,
       },
+    })
+    expect(messageAudits).toHaveLength(1)
+    expect(messageAudits[0]).toMatchObject({
+      clientUserMessage: {
+        body: "Count this",
+        id: "user-usage",
+        source: "khala_code_client",
+      },
+      codexThreadId: "thread-usage",
+      codexTurnId: "turn-usage",
+      desktopSessionId: "desktop-session-usage",
+      desktopTurnId: "desktop-turn-usage",
+      reconciliation: {
+        status: "global_count_event_recorded",
+        tokenScope: "codex_turn_provider_reported",
+      },
+      turnStatus: "interrupted",
+      usage: {
+        cachedInputTokens: 5,
+        inputTokens: 15,
+        outputTokens: 10,
+        reasoningOutputTokens: 2,
+        totalTokens: 25,
+      },
+      usageEvents: [
+        {
+          sequence: 1,
+          usage: {
+            totalTokens: 13,
+          },
+        },
+        {
+          sequence: 2,
+          usage: {
+            totalTokens: 12,
+          },
+        },
+      ],
     })
   })
 

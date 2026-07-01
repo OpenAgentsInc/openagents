@@ -4,8 +4,11 @@ import { join } from "node:path"
 import { afterEach, describe, expect, test } from "bun:test"
 
 import {
+  createKhalaCodeDesktopCodexMessageTokenAuditRecorder,
   createKhalaCodeDesktopCodexTokenUsageReporter,
+  khalaCodeDesktopCodexMessageTokenAuditMessage,
   khalaCodeDesktopCodexTokenUsageEvent,
+  khalaCodeDesktopCodexTokenUsageEventRefs,
   khalaCodeDesktopTokenUsageTelemetryStatus,
 } from "../src/bun/codex-token-usage-telemetry"
 
@@ -22,6 +25,7 @@ async function tempLedgerPath(): Promise<string> {
 }
 
 const sampleReport = () => ({
+  clientUserMessageId: "user-direct-local",
   codexThreadId: "thread-direct-local",
   codexTurnId: "turn-direct-local",
   desktopSessionId: "desktop-session-direct-local",
@@ -54,6 +58,12 @@ describe("Codex token usage telemetry", () => {
       model: "gpt-5.5",
       producerSystem: "pylon",
       provider: "pylon-codex-direct-local",
+      safeMetadata: {
+        clientUserMessageId: "user-direct-local",
+        codexThreadId: "thread-direct-local",
+        codexTurnId: "turn-direct-local",
+        desktopTurnId: "desktop-turn-direct-local",
+      },
       sourceRoute: "pylon_codex_direct_local",
       tokenCounts: {
         cacheReadTokens: 456,
@@ -111,8 +121,86 @@ describe("Codex token usage telemetry", () => {
 
   test("reports local accounting as ready even when remote mirroring is not configured", () => {
     expect(khalaCodeDesktopTokenUsageTelemetryStatus({})).toMatchObject({
+      localMessageAuditLedgerPath: expect.stringContaining("message-token-audit.jsonl"),
       remoteConfigured: false,
       remoteDisabled: false,
     })
+  })
+
+  test("stores local message provenance with exact turn token refs for reconciliation", async () => {
+    const ledgerPath = await tempLedgerPath()
+    const recorder = createKhalaCodeDesktopCodexMessageTokenAuditRecorder({
+      env: {},
+      localMessageAuditLedgerPath: ledgerPath,
+    })
+    const report = sampleReport()
+    const refs = khalaCodeDesktopCodexTokenUsageEventRefs(report)
+
+    await recorder({
+      clientUserMessage: khalaCodeDesktopCodexMessageTokenAuditMessage({
+        body: "Count this exact Khala client message",
+        id: "user-direct-local",
+        role: "user",
+      }, "khala_code_client"),
+      codexMessages: [
+        khalaCodeDesktopCodexMessageTokenAuditMessage({
+          body: "Codex answered this exact message",
+          id: "assistant-direct-local",
+          role: "assistant",
+        }, "codex_app_server"),
+      ],
+      codexThreadId: report.codexThreadId,
+      codexTurnId: report.codexTurnId,
+      completedAt: "2026-07-01T16:30:04.000Z",
+      desktopSessionId: report.desktopSessionId,
+      desktopTurnId: report.desktopTurnId,
+      model: report.model,
+      reconciliation: {
+        globalCountedTokens: 1290,
+        globalCounterRoute: "/api/stats/token-usage/events",
+        status: "global_count_event_recorded",
+        tokenAccountingRequired: true,
+        tokenScope: "codex_turn_provider_reported",
+        usageTruth: "exact",
+      },
+      submittedAt: "2026-07-01T16:30:00.000Z",
+      turnStatus: "completed",
+      usage: report.usage,
+      usageEvents: [{
+        eventId: refs.eventId,
+        idempotencyKey: refs.idempotencyKey,
+        observedAt: report.observedAt,
+        sequence: report.sequence,
+        usage: report.usage,
+      }],
+    })
+
+    const lines = (await readFile(ledgerPath, "utf8")).trim().split("\n")
+    expect(lines).toHaveLength(1)
+    const row = JSON.parse(lines[0] ?? "{}")
+    expect(row).toMatchObject({
+      schemaVersion: "khala-code-desktop.codex-message-token-audit.local.v1",
+      record: {
+        clientUserMessage: {
+          body: "Count this exact Khala client message",
+          id: "user-direct-local",
+          source: "khala_code_client",
+        },
+        codexMessages: [{
+          body: "Codex answered this exact message",
+          id: "assistant-direct-local",
+          source: "codex_app_server",
+        }],
+        reconciliation: {
+          status: "global_count_event_recorded",
+          tokenScope: "codex_turn_provider_reported",
+        },
+        usageEvents: [{
+          eventId: refs.eventId,
+          idempotencyKey: refs.idempotencyKey,
+        }],
+      },
+    })
+    expect(row.record.clientUserMessage.bodySha256).toHaveLength(64)
   })
 })

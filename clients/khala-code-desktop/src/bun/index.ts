@@ -15,7 +15,10 @@ import {
 } from "./headless.js"
 import { createCodexAppServerChatRuntime } from "./codex-app-server-chat-runtime.js"
 import { createCodexAppServerHost } from "./codex-app-server-client.js"
-import { createKhalaCodeDesktopCodexTokenUsageReporter } from "./codex-token-usage-telemetry.js"
+import {
+  createKhalaCodeDesktopCodexMessageTokenAuditRecorder,
+  createKhalaCodeDesktopCodexTokenUsageReporter,
+} from "./codex-token-usage-telemetry.js"
 import { createOnDeviceDeciderHost } from "./on-device-decider-host.js"
 import { createKhalaCodeDesktopRpcRequestHandlers } from "./rpc-handlers.js"
 
@@ -214,6 +217,8 @@ if (argv.includes("--json")) {
           env: Bun.env,
           host: headlessCodexAppServerHost,
           onEvent,
+          messageTokenAuditRecorder:
+            createKhalaCodeDesktopCodexMessageTokenAuditRecorder({ env: Bun.env }),
           tokenUsageReporter: createKhalaCodeDesktopCodexTokenUsageReporter({ env: Bun.env }),
           workingDirectory,
         }),
