@@ -37,6 +37,7 @@ import type {
 import {
   khalaCodeDesktopCodexMessageTokenAuditMessage,
   khalaCodeDesktopCodexTokenUsageEventRefs,
+  readKhalaCodeDesktopCodexStateThreadTokenSnapshot,
 } from "./codex-token-usage-telemetry.js"
 import { createCodexThreadItemEventProjector } from "./codex-thread-item-projector.js"
 import { projectKhalaCodeDesktopCodexThreadList } from "../shared/codex-threads.js"
@@ -210,6 +211,23 @@ const codexUsageHasTokens = (
   usage.outputTokens > 0 ||
   usage.reasoningOutputTokens > 0 ||
   usage.totalTokens > 0
+
+const countedCodexUsageTokens = (
+  usage: KhalaCodeDesktopCodexTokenUsageCounts,
+): number => {
+  const directCountedTokens = usage.inputTokens + usage.outputTokens
+  return directCountedTokens > 0 ? directCountedTokens : usage.totalTokens
+}
+
+const codexUsageFromTotalDelta = (
+  totalTokens: number,
+): KhalaCodeDesktopCodexTokenUsageCounts => ({
+  cachedInputTokens: 0,
+  inputTokens: 0,
+  outputTokens: 0,
+  reasoningOutputTokens: 0,
+  totalTokens: numericUsage(totalTokens),
+})
 
 const codexUsageKey = (usage: KhalaCodeDesktopCodexTokenUsageCounts): string =>
   [
@@ -867,6 +885,10 @@ export function createCodexAppServerChatRuntime(
     let lastTotalUsage: KhalaCodeDesktopCodexTokenUsageCounts | null = null
     let lastTotalUsageKey: string | null = null
     let tokenUsageSequence = 0
+    let codexStateTokensBeforeTurn = readKhalaCodeDesktopCodexStateThreadTokenSnapshot({
+      env,
+      threadId: thread.threadId,
+    }).tokens
     const submittedAt = isoNow()
     const tokenUsageAuditEvents: KhalaCodeDesktopCodexMessageTokenAuditUsageEvent[] = []
     const pendingTokenUsageReports: Promise<void>[] = []
@@ -899,6 +921,39 @@ export function createCodexAppServerChatRuntime(
       return notificationTurnId === codexTurnId
     }
 
+    const recordTokenUsage = (
+      delta: KhalaCodeDesktopCodexTokenUsageCounts,
+      observedAt: string,
+    ): void => {
+      if (!codexUsageHasTokens(delta)) return
+      tokenUsageSequence += 1
+      capturedUsage = addCodexUsage(capturedUsage, delta)
+      if (codexTurnId === null) return
+      const tokenUsageReport = {
+        clientUserMessageId: userMessage.id,
+        codexThreadId: thread.threadId,
+        codexTurnId,
+        desktopSessionId: request.sessionId,
+        desktopTurnId,
+        model: thread.model ?? "openagents/codex-direct-local",
+        observedAt,
+        sequence: tokenUsageSequence,
+        turnStatus,
+        usage: delta,
+      }
+      const refs = khalaCodeDesktopCodexTokenUsageEventRefs(tokenUsageReport)
+      tokenUsageAuditEvents.push({
+        eventId: refs.eventId,
+        idempotencyKey: refs.idempotencyKey,
+        observedAt,
+        sequence: tokenUsageSequence,
+        usage: delta,
+      })
+      if (tokenUsageReporter === null) return
+      const report = tokenUsageReporter(tokenUsageReport).catch(() => undefined)
+      pendingTokenUsageReports.push(report)
+    }
+
     const captureTokenUsage = (notification: CodexAppServerNotification): void => {
       const info = tokenUsageInfoFromNotification(notification)
       if (info === null) return
@@ -914,33 +969,22 @@ export function createCodexAppServerChatRuntime(
         lastTotalUsageKey = totalKey
       }
 
-      if (delta === null || !codexUsageHasTokens(delta)) return
-      tokenUsageSequence += 1
-      capturedUsage = addCodexUsage(capturedUsage, delta)
-      if (codexTurnId === null) return
-      const tokenUsageReport = {
-        clientUserMessageId: userMessage.id,
-        codexThreadId: thread.threadId,
-        codexTurnId,
-        desktopSessionId: request.sessionId,
-        desktopTurnId,
-        model: thread.model ?? "openagents/codex-direct-local",
-        observedAt: notification.receivedAt,
-        sequence: tokenUsageSequence,
-        turnStatus,
-        usage: delta,
-      }
-      const refs = khalaCodeDesktopCodexTokenUsageEventRefs(tokenUsageReport)
-      tokenUsageAuditEvents.push({
-        eventId: refs.eventId,
-        idempotencyKey: refs.idempotencyKey,
-        observedAt: notification.receivedAt,
-        sequence: tokenUsageSequence,
-        usage: delta,
+      if (delta === null) return
+      recordTokenUsage(delta, notification.receivedAt)
+    }
+
+    const captureCodexStateTokenFallback = (): void => {
+      if (tokenUsageAuditEvents.length > 0 || codexTurnId === null) return
+      const stateSnapshot = readKhalaCodeDesktopCodexStateThreadTokenSnapshot({
+        env,
+        threadId: thread.threadId,
       })
-      if (tokenUsageReporter === null) return
-      const report = tokenUsageReporter(tokenUsageReport).catch(() => undefined)
-      pendingTokenUsageReports.push(report)
+      const delta = Math.max(0, stateSnapshot.tokens - codexStateTokensBeforeTurn)
+      if (delta === 0) return
+      recordTokenUsage(
+        codexUsageFromTotalDelta(delta),
+        stateSnapshot.updatedAt ?? isoNow(),
+      )
     }
 
     const unsubscribe = host.subscribe(notification => {
@@ -957,8 +1001,12 @@ export function createCodexAppServerChatRuntime(
 
     try {
       await ensureStarted()
-      const requestTurnStart = async (): Promise<unknown> =>
-        host.request("turn/start", {
+      const requestTurnStart = async (): Promise<unknown> => {
+        codexStateTokensBeforeTurn = readKhalaCodeDesktopCodexStateThreadTokenSnapshot({
+          env,
+          threadId: thread.threadId,
+        }).tokens
+        return host.request("turn/start", {
           threadId: thread.threadId,
           clientUserMessageId: userMessage.id,
           input: codexTurnInputFor(userMessage.body, request.attachments),
@@ -968,6 +1016,7 @@ export function createCodexAppServerChatRuntime(
             khalaDesktopTurnId: desktopTurnId,
           },
         })
+      }
       let turnStartResponse: unknown
       try {
         turnStartResponse = await requestTurnStart()
@@ -1005,6 +1054,7 @@ export function createCodexAppServerChatRuntime(
       clearTimeout(timeout)
       unsubscribe()
       activeTurnsByDesktopId.delete(desktopTurnId)
+      captureCodexStateTokenFallback()
       await Promise.allSettled(pendingTokenUsageReports)
       if (messageTokenAuditRecorder !== null) {
         const messages = projector.messages()
@@ -1023,7 +1073,7 @@ export function createCodexAppServerChatRuntime(
           desktopTurnId,
           model: thread.model ?? "openagents/codex-direct-local",
           reconciliation: {
-            globalCountedTokens: capturedUsage.inputTokens + capturedUsage.outputTokens,
+            globalCountedTokens: countedCodexUsageTokens(capturedUsage),
             globalCounterRoute: "/api/stats/token-usage/events",
             status: tokenUsageAuditEvents.length > 0
               ? "global_count_event_recorded"

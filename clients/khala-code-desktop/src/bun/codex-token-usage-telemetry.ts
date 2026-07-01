@@ -339,16 +339,19 @@ const isoFromUnixSeconds = (value: unknown): string | null => {
   return new Date(Math.trunc(value * 1_000)).toISOString()
 }
 
-const readCodexStateThreadTokenSnapshot = (options: {
-  readonly dbPath: string
+export const readKhalaCodeDesktopCodexStateThreadTokenSnapshot = (options: {
+  readonly env?: Readonly<Record<string, string | undefined>>
+  readonly dbPath?: string
   readonly threadId: string
 }): {
   readonly tokens: number
   readonly updatedAt: string | null
 } => {
+  const env = options.env ?? process.env
+  const dbPath = options.dbPath ?? defaultCodexStateDbPath(env)
   let db: Database | null = null
   try {
-    db = new Database(options.dbPath, { readonly: true })
+    db = new Database(dbPath, { readonly: true })
     const row = db.query<{
       readonly tokens_used: number
       readonly updated_at: number | null
@@ -415,7 +418,7 @@ export async function readKhalaCodeDesktopThreadTokenSummary(options: {
   let totalTokens = 0
   let leaderboardSyncedTokens = 0
   let updatedAt: string | null = null
-  const codexState = readCodexStateThreadTokenSnapshot({
+  const codexState = readKhalaCodeDesktopCodexStateThreadTokenSnapshot({
     dbPath: config.codexStateDbPath,
     threadId,
   })

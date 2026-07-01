@@ -1,6 +1,7 @@
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { Database } from "bun:sqlite"
 import { afterEach, describe, expect, test } from "bun:test"
 
 import {
@@ -451,6 +452,119 @@ describe("Codex app-server chat runtime", () => {
           },
         },
       ],
+    })
+  })
+
+  test("records a Codex state token delta when app-server usage notifications are missing", async () => {
+    const fixture = await stateFixture()
+    const codexStateDbPath = join(fixture.root, "state_5.sqlite")
+    const db = new Database(codexStateDbPath)
+    db.exec(`
+      create table threads (
+        id text primary key,
+        tokens_used integer not null default 0,
+        updated_at integer,
+        updated_at_ms integer
+      );
+      insert into threads (id, tokens_used, updated_at, updated_at_ms)
+      values ('thread-state-fallback', 100, 1782928800, 1782928800000);
+    `)
+    db.close()
+    const records: RequestRecord[] = []
+    const reports: unknown[] = []
+    const messageAudits: unknown[] = []
+    const host = createFakeHost({
+      records,
+      onRequest: (method, _params, subscribers) => {
+        if (method === "thread/start") {
+          return {
+            thread: { id: "thread-state-fallback", status: "running" },
+            model: "gpt-5.5",
+            modelProvider: "openai",
+            cwd: fixture.root,
+          }
+        }
+        if (method === "turn/start") {
+          queueMicrotask(() => {
+            const updateDb = new Database(codexStateDbPath)
+            updateDb
+              .query("update threads set tokens_used = ?, updated_at_ms = ? where id = ?")
+              .run(550, 1782928805000, "thread-state-fallback")
+            updateDb.close()
+            emit(subscribers, {
+              method: "turn/started",
+              params: {
+                threadId: "thread-state-fallback",
+                turn: { id: "turn-state-fallback", status: "inProgress" },
+              },
+            })
+            emit(subscribers, {
+              method: "turn/completed",
+              params: {
+                threadId: "thread-state-fallback",
+                turn: { id: "turn-state-fallback", status: "completed" },
+              },
+            })
+          })
+          return { turn: { id: "turn-state-fallback", status: "inProgress" } }
+        }
+        throw new Error(`unexpected request ${method}`)
+      },
+    })
+    const runtime = createCodexAppServerChatRuntime({
+      env: { KHALA_CODE_CODEX_STATE_DB_PATH: codexStateDbPath },
+      host,
+      messageTokenAuditRecorder: async record => {
+        messageAudits.push(record)
+      },
+      statePath: fixture.statePath,
+      tokenUsageReporter: async report => {
+        reports.push(report)
+      },
+      turnTimeoutMs: 1_000,
+      workingDirectory: fixture.root,
+    })
+
+    const response = await runtime.startTurn({
+      messages: [{ id: "user-state-fallback", role: "user", body: "Count this from state" }],
+      sessionId: "desktop-session-state-fallback",
+      turnId: "desktop-turn-state-fallback",
+    })
+
+    expect(records.map(record => record.method)).toEqual(["thread/start", "turn/start"])
+    expect(reports).toHaveLength(1)
+    expect(reports[0]).toMatchObject({
+      codexThreadId: "thread-state-fallback",
+      codexTurnId: "turn-state-fallback",
+      desktopTurnId: "desktop-turn-state-fallback",
+      observedAt: "2026-07-01T18:00:05.000Z",
+      sequence: 1,
+      usage: {
+        inputTokens: 0,
+        outputTokens: 0,
+        totalTokens: 450,
+      },
+    })
+    expect(messageAudits).toHaveLength(1)
+    expect(messageAudits[0]).toMatchObject({
+      codexThreadId: "thread-state-fallback",
+      reconciliation: {
+        globalCountedTokens: 450,
+        status: "global_count_event_recorded",
+      },
+      usage: {
+        inputTokens: 0,
+        outputTokens: 0,
+        totalTokens: 450,
+      },
+      usageEvents: [{
+        sequence: 1,
+        usage: { totalTokens: 450 },
+      }],
+    })
+    expect(response.usage).toMatchObject({
+      input: 0,
+      output: 0,
     })
   })
 
