@@ -82,3 +82,18 @@ Contents:
   methods, SDKMessage→Schema, canUseTool→bridged callback), and the
   synergies: Fable/Claude plan-mode decomposition + review delegating
   coding to Codex through the deterministic delegation program and fleet.
+- `2026-07-01-artanis-fleet-administrator-audit.md` — audit of Artanis (the
+  autonomous operator/administrator persona): its split architecture (Khala
+  operator chat + Gemini cron ticks), current see-vs-do capability (the
+  #6359 "see-but-not-act gap" closed for the bounded no-spend lane), the two
+  visions (Vision A: administrator of the shared org fleet; Vision B:
+  per-user fleet manager / Artanis-as-a-Service), the owner-intent history
+  reconstructed from past sessions (birth → first autonomy → rebirth on
+  Khala → the "Artanis is your boss" inversion → the 10×-tokens mission),
+  recorded challenges (headless fabrication → Blueprint-signature
+  governance, truncation → RLM composition, duplicate forum identities), and
+  a five-priority path to fleet administrator: make authority scope
+  first-class, finish the Blueprint-signature gates, wire onto the one
+  orchestration/status spine, resolve identity + raise autonomy
+  deliberately, then productize AaaS — dovetailing with the fan-out, Orca,
+  and Claude-parity plans.
