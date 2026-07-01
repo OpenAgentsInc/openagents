@@ -876,6 +876,7 @@ describe("khala code desktop app shell", () => {
     expect(main).toContain("codexThreadUnarchive")
     expect(main).toContain("activateCodexThread")
     expect(main).toContain("response.backend.threadId")
+    expect(main).toContain("useStateDbOnly: true")
     expect(main).toContain(
       "const request: KhalaCodeDesktopChatTurnRequest = {\n      messages,\n      sessionId,\n      ...(activeCodexThreadId === null ? {} : { threadId: activeCodexThreadId }),\n      turnId,\n    }",
     )
@@ -886,6 +887,13 @@ describe("khala code desktop app shell", () => {
     expect(panel).toContain("options.forkThread(thread.id)")
     expect(panel).toContain('item.addEventListener("contextmenu"')
     expect(panel).toContain("threadMenu.openAt")
+    expect(panel).toContain("const dataForState =")
+    expect(panel).toContain("let refreshSequence = 0")
+    expect(panel).toContain("const previousData = dataForState(state)")
+    expect(panel).toContain("? { phase: \"loading\" }")
+    expect(panel).toContain(": { phase: \"loading\", data: previousData }")
+    expect(panel).toContain("if (requestSequence !== refreshSequence) return")
+    expect(panel).toContain("void refresh()")
     expect(panel).toContain("khala-thread-sidebar-item-row")
     expect(panel).toContain("khala-thread-sidebar-menu-button")
     expect(panel).toContain("khala-thread-sidebar-menu-summary")

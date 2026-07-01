@@ -560,6 +560,7 @@ describe("Codex app-server chat runtime", () => {
       limit: 20,
       searchTerm: "Hello",
       sessionId: "desktop-session-history",
+      useStateDbOnly: true,
     })
     expect(list.threads).toEqual([expect.objectContaining({
       id: "thread-history",
@@ -624,6 +625,7 @@ describe("Codex app-server chat runtime", () => {
       archived: false,
       limit: 20,
       searchTerm: "Hello",
+      useStateDbOnly: true,
     })
     expect(records[1]?.params).toEqual({
       threadId: "thread-history",

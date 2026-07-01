@@ -44,8 +44,9 @@ export type CodexThreadSidebarOptions = {
 }
 
 type ViewState =
-  | { readonly phase: "idle" | "loading" }
-  | { readonly phase: "error"; readonly message: string }
+  | { readonly phase: "idle" }
+  | { readonly data?: KhalaCodeDesktopCodexThreadListResult; readonly phase: "loading" }
+  | { readonly data?: KhalaCodeDesktopCodexThreadListResult; readonly message: string; readonly phase: "error" }
   | { readonly phase: "ready"; readonly data: KhalaCodeDesktopCodexThreadListResult }
 
 const el = <Tag extends keyof HTMLElementTagNameMap>(
@@ -105,6 +106,13 @@ const messagesForResult = (
 ): readonly KhalaCodeDesktopMessage[] =>
   result.messages ?? []
 
+const dataForState = (
+  state: ViewState,
+): KhalaCodeDesktopCodexThreadListResult | undefined =>
+  state.phase === "ready" || state.phase === "loading" || state.phase === "error"
+    ? state.data
+    : undefined
+
 export const mountCodexThreadSidebar = (
   container: HTMLElement,
   options: CodexThreadSidebarOptions,
@@ -114,6 +122,7 @@ export const mountCodexThreadSidebar = (
   let state: ViewState = { phase: "idle" }
   let visible = false
   let activeThreadId = options.activeThreadId()
+  let refreshSequence = 0
   const threadMenu = createBasecoatContextMenu({
     id: "khala-thread-sidebar-thread-menu",
     ownerDocument: container.ownerDocument,
@@ -167,7 +176,7 @@ export const mountCodexThreadSidebar = (
         threadId: result.threadId,
         messages: messagesForResult(result),
       })
-      await refresh()
+      void refresh()
     } catch (error) {
       setStatusError(error)
     }
@@ -344,16 +353,14 @@ export const mountCodexThreadSidebar = (
     controls.append(search, archiveLabel, refreshButton)
     container.append(header, controls)
 
-    if (currentState.phase === "idle" || currentState.phase === "loading") {
+    const data = dataForState(currentState)
+    if (currentState.phase === "idle" || data === undefined) {
       container.append(el("p", "khala-thread-sidebar-empty", "Loading threads"))
       return
     }
     if (currentState.phase === "error") {
       container.append(el("p", "khala-thread-sidebar-error", currentState.message))
-      return
     }
-    if (currentState.phase !== "ready") return
-    const data = currentState.data
     if ((data.threads ?? []).length === 0) {
       container.append(el("p", "khala-thread-sidebar-empty", "No threads"))
       return
@@ -372,14 +379,23 @@ export const mountCodexThreadSidebar = (
 
   async function refresh(): Promise<void> {
     threadMenu.close()
-    state = { phase: "loading" }
+    const requestSequence = ++refreshSequence
+    const previousData = dataForState(state)
+    state = previousData === undefined
+      ? { phase: "loading" }
+      : { phase: "loading", data: previousData }
     render()
     try {
       const data = await options.listThreads({ archived, searchTerm })
+      if (requestSequence !== refreshSequence) return
       state = { phase: "ready", data }
       activeThreadId = data.threads?.find(thread => thread.id === activeThreadId)?.id ?? activeThreadId
     } catch (error) {
-      state = { phase: "error", message: error instanceof Error ? error.message : String(error) }
+      if (requestSequence !== refreshSequence) return
+      const message = error instanceof Error ? error.message : String(error)
+      state = previousData === undefined
+        ? { phase: "error", message }
+        : { phase: "error", message, data: previousData }
     }
     render()
   }

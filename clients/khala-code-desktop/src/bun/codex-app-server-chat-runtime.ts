@@ -411,6 +411,7 @@ export function createCodexAppServerChatRuntime(
       ...(request.cwd === undefined ? {} : { cwd: request.cwd }),
       ...(request.limit === undefined ? {} : { limit: request.limit }),
       ...(request.searchTerm === undefined ? {} : { searchTerm: request.searchTerm }),
+      ...(request.useStateDbOnly === undefined ? {} : { useStateDbOnly: request.useStateDbOnly }),
     })
     const projection = projectKhalaCodeDesktopCodexThreadList({
       activeThreadId,

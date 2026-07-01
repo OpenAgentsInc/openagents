@@ -234,6 +234,7 @@ export type KhalaCodeDesktopCodexThreadListRequest = {
   readonly limit?: number
   readonly searchTerm?: string
   readonly sessionId?: string
+  readonly useStateDbOnly?: boolean
 }
 
 export type KhalaCodeDesktopCodexThreadResult = {

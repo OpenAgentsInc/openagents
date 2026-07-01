@@ -2028,6 +2028,7 @@ const threadSidebar =
           limit: 50,
           searchTerm: request.searchTerm,
           sessionId,
+          useStateDbOnly: true,
         }),
         renameThread: (threadId, name) => controls.codexThreadRename({ name, threadId }),
         resumeThread: threadId => controls.codexThreadResume({ sessionId, threadId }),
