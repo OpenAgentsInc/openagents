@@ -103,6 +103,9 @@ const humanize = (value: string): string =>
     .trim()
     .replace(/^./, char => char.toUpperCase())
 
+const shouldRenderCodexItemCard = (itemType: string): boolean =>
+  itemType !== "agentMessage" && itemType !== "userMessage"
+
 const safeJson = (value: unknown): string => {
   try {
     return JSON.stringify(value, null, 2)
@@ -189,6 +192,7 @@ const projectionForItem = (
   const type = itemType(item)
   const id = itemId(item)
   if (id === null) return null
+  if (type === "reasoning") return null
   const status = normalizeStatus(stringField(item, "status"), fallbackStatus)
   let role: KhalaCodeDesktopMessageRole = "tool"
   let title = humanize(type)
@@ -304,6 +308,16 @@ const projectionForItem = (
       break
   }
 
+  const boundedBody = bounded(body)
+  if (!shouldRenderCodexItemCard(type)) {
+    if (boundedBody.trim().length === 0) return null
+    return {
+      id,
+      role,
+      body: boundedBody,
+    }
+  }
+
   const codexItem: KhalaCodeDesktopCodexItemCard = {
     itemId: id,
     itemType: type,
@@ -318,7 +332,7 @@ const projectionForItem = (
   return {
     id,
     role,
-    body: bounded(body),
+    body: boundedBody,
     codexItem,
   }
 }
@@ -426,22 +440,26 @@ export function createCodexThreadItemEventProjector(
     delta: string,
     notification: CodexAppServerNotification,
   ): KhalaCodeDesktopChatTurnEvent[] => {
+    if (item.itemType === "reasoning") return []
     const previous = messages.get(item.itemId)
     if (previous === undefined) {
+      const codexItem = shouldRenderCodexItemCard(item.itemType)
+        ? {
+            itemId: item.itemId,
+            itemType: item.itemType,
+            status: "running",
+            title: item.title,
+            ...cardContext({
+              threadId: threadIdFromParams(notification.params),
+              turnId: turnIdFromParams(notification.params),
+            }),
+          }
+        : undefined
       const message: KhalaCodeDesktopMessage = {
         id: item.itemId,
         role: item.role,
         body: "",
-        codexItem: {
-          itemId: item.itemId,
-          itemType: item.itemType,
-          status: "running",
-          title: item.title,
-          ...cardContext({
-            threadId: threadIdFromParams(notification.params),
-            turnId: turnIdFromParams(notification.params),
-          }),
-        },
+        ...(codexItem === undefined ? {} : { codexItem }),
       }
       messages.set(item.itemId, {
         ...message,

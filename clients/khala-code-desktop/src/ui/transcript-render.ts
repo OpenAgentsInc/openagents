@@ -637,7 +637,9 @@ export const renderMessageBody = (
   role: KhalaCodeDesktopMessageRole = "assistant",
   codexItem?: KhalaCodeDesktopCodexItemCard,
 ): readonly HTMLElement[] => {
-  if (codexItem !== undefined) return [codexItemElement({ codexItem, role, text })]
+  if (codexItem !== undefined && codexItem.itemType !== "agentMessage" && codexItem.itemType !== "userMessage") {
+    return [codexItemElement({ codexItem, role, text })]
+  }
   if (role === "tool") return [toolTranscriptElement(text)]
   if (role === "system") return [plainTextElement(text)]
   return parseMessageSegments(text).map(segment => {

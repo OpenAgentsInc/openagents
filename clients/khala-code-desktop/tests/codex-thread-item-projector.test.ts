@@ -133,11 +133,19 @@ describe("Codex ThreadItem projector", () => {
     ]
 
     const events = variants.flatMap(variant => [...projector.accept(item(variant))])
-    const cards = messageEvents(events).map(event => event.message)
+    const visibleVariants = variants.filter(variant => variant.type !== "reasoning")
+    const projectedMessages = messageEvents(events).map(event => event.message)
 
-    expect(cards).toHaveLength(variants.length)
-    expect(cards.map(card => card.codexItem?.itemType)).toEqual(variants.map(variant => String(variant.type)))
-    expect(projector.messages().map(message => message.id)).toEqual(variants.map(variant => String(variant.id)))
+    expect(projectedMessages).toHaveLength(visibleVariants.length)
+    expect(projectedMessages.map(message => message.codexItem?.itemType ?? null)).toEqual(
+      visibleVariants.map(variant =>
+        variant.type === "agentMessage" || variant.type === "userMessage" ? null : String(variant.type)
+      ),
+    )
+    expect(projector.messages().map(message => message.id)).toEqual(visibleVariants.map(variant => String(variant.id)))
+    expect(projector.messages().find(message => message.id === "item-agent")?.codexItem).toBeUndefined()
+    expect(projector.messages().find(message => message.id === "item-user")?.codexItem).toBeUndefined()
+    expect(projector.messages().find(message => message.id === "item-reasoning")).toBeUndefined()
     expect(projector.messages().find(message => message.id === "item-file")?.body).toContain("```diff")
     expect(projector.messages().find(message => message.id === "item-command")?.codexItem).toMatchObject({
       itemId: "item-command",
@@ -188,8 +196,33 @@ describe("Codex ThreadItem projector", () => {
     ])
     expect(projector.messages()).toHaveLength(3)
     expect(projector.messages().find(message => message.id === "item-agent")?.body).toBe("Hello")
+    expect(projector.messages().find(message => message.id === "item-agent")?.codexItem).toBeUndefined()
     expect(projector.messages().find(message => message.id === "item-command")?.body).toContain("ok")
     expect(projector.messages().find(message => message.id === "item-file")?.body).toContain("+new")
+  })
+
+  test("suppresses Codex reasoning items so only the transient Thinking shimmer represents waiting", () => {
+    const projector = createCodexThreadItemEventProjector({ desktopTurnId: "desktop-turn-fixture" })
+
+    const events = [
+      ...projector.accept(note("item/reasoning/summaryTextDelta", {
+        itemId: "item-reasoning",
+        delta: "summary",
+      })),
+      ...projector.accept(note("item/reasoning/textDelta", {
+        itemId: "item-reasoning",
+        delta: "hidden thought",
+      })),
+      ...projector.accept(item({
+        type: "reasoning",
+        id: "item-reasoning",
+        summary: ["summary"],
+        content: ["hidden thought"],
+      })),
+    ]
+
+    expect(events).toEqual([])
+    expect(projector.messages()).toEqual([])
   })
 
   test("renders approvals and resolves them by server request id", () => {
