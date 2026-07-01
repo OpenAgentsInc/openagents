@@ -10,6 +10,7 @@ import {
   khalaCodeDesktopRpcDecodeFailure,
   khalaCodeDesktopRpcHandlerFailure,
 } from "../src/shared/rpc"
+import { createKhalaCodeDesktopRpcRequestHandlers } from "../src/bun/rpc-handlers"
 
 describe("Khala Code desktop schema-first RPC contract", () => {
   test("decodes request parameters and response results by method", () => {
@@ -82,8 +83,21 @@ describe("Khala Code desktop schema-first RPC contract", () => {
   })
 
   test("covers every current request method with a schema entry", () => {
-    expect(KhalaCodeDesktopRpcMethodNames.sort()).toEqual(
-      (Object.keys(KhalaCodeDesktopRpcMethodSchemas) as typeof KhalaCodeDesktopRpcMethodNames).sort(),
-    )
+    const handlers = createKhalaCodeDesktopRpcRequestHandlers({
+      appleFmReadiness: () => {
+        throw new Error("not used")
+      },
+      env: {},
+      onDeviceDeciderStatus: () => {
+        throw new Error("not used")
+      },
+      workingDirectory: process.cwd(),
+    })
+    const handlerNames = Object.keys(handlers).sort()
+    const schemaNames = Object.keys(KhalaCodeDesktopRpcMethodSchemas).sort()
+
+    const rpcMethodNames = KhalaCodeDesktopRpcMethodNames as readonly string[]
+    expect([...rpcMethodNames].sort()).toEqual(schemaNames)
+    expect(schemaNames).toEqual(handlerNames)
   })
 })

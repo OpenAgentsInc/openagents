@@ -2,27 +2,8 @@ import { Schema as S } from "effect"
 import type { KhalaToolEvent } from "@openagentsinc/khala-tools"
 import type { KhalaAppleFmReadiness } from "./apple-fm-readiness.js"
 import type {
-  KhalaCodexRateLimitProviderStatus,
-  KhalaCodexRateLimitResetOutcome,
-} from "./codex-rate-limits.js"
-import type {
-  KhalaCodeDesktopCodexApprovalAction,
-  KhalaCodeDesktopCodexApprovalMethod,
-  KhalaCodeDesktopCodexNetworkPolicyAmendment,
-  KhalaCodeDesktopCodexPermissionProfile,
-  KhalaCodeDesktopJsonRpcId,
-} from "./codex-approval-decisions.js"
-import type {
   KhalaCodeDesktopSlashCommandWithAvailability,
 } from "./codex-slash-commands.js"
-import type {
-  KhalaCodeDesktopCodexJsonValue,
-  KhalaCodeDesktopCodexSettingsProjection,
-} from "./codex-settings.js"
-import type {
-  KhalaCodeDesktopCodexThreadGroup,
-  KhalaCodeDesktopCodexThreadSummary,
-} from "./codex-threads.js"
 import type { OnDeviceDeciderSelection } from "./on-device-decider.js"
 
 // Electrobun treats Infinity as no local request timeout; chat turns stream progress
@@ -94,13 +75,9 @@ export type KhalaCodeDesktopRpcBridgeFailure =
 export type KhalaCodeDesktopMessageRole =
   typeof KhalaCodeDesktopMessageSchema.Type["role"]
 
-export type KhalaCodeDesktopRuntimeMode =
-  | "codex_harness"
-  | "khala_native_runtime"
+export type KhalaCodeDesktopRuntimeMode = typeof RpcRuntimeMode.Type
 
-export type KhalaCodeDesktopToolCatalogKind =
-  | "codex_harness_supplemental"
-  | "khala_native_legacy"
+export type KhalaCodeDesktopToolCatalogKind = typeof RpcToolCatalogKind.Type
 
 export type KhalaCodeDesktopCodexItemCard =
   typeof RpcCodexItemCard.Type
@@ -111,699 +88,102 @@ export type KhalaCodeDesktopMessage =
 export type KhalaCodeDesktopChatTurnEvent =
   typeof KhalaCodeDesktopChatTurnEventSchema.Type
 
-export type KhalaCodeDesktopUsage = {
-  readonly input: number
-  readonly cachedInput: number
-  readonly output: number
-  readonly reasoningOutput: number
-}
-
-export type KhalaCodeDesktopChatTurnRequest = {
-  readonly attachments?: readonly KhalaCodeDesktopChatTurnAttachment[]
-  readonly messages: readonly KhalaCodeDesktopMessage[]
-  readonly sessionId: string
-  readonly startNewThread?: boolean
-  readonly threadId?: string
-  readonly turnId?: string
-}
-
-export type KhalaCodeDesktopChatTurnAttachment = {
-  readonly dataBase64?: string
-  readonly id: string
-  readonly kind: "image"
-  readonly mime: string
-  readonly name: string
-  readonly path?: string
-  readonly sizeBytes: number
-}
-
-export type KhalaCodeDesktopBackendProjection = {
-  readonly baseUrl?: string
-  readonly blockerRefs?: readonly string[]
-  readonly credentialSource?: "env:OPENROUTER_API_KEY" | "khala-provider-key"
-  readonly kind: "codex_app_server" | "hosted_openagents" | "mock"
-  readonly model: string
-  readonly provider?: "openrouter"
-  readonly runtimeMode?: KhalaCodeDesktopRuntimeMode
-  readonly threadId?: string
-  readonly toolCatalogKind?: KhalaCodeDesktopToolCatalogKind | "codex_app_server"
-  readonly turnId?: string
-  readonly turnStatus?: "completed" | "failed" | "inProgress" | "interrupted" | string
-}
-
-export type KhalaCodeDesktopChatTurnResponse = {
-  readonly backend: KhalaCodeDesktopBackendProjection
-  readonly messages: readonly KhalaCodeDesktopMessage[]
-  readonly ok: boolean
-  readonly toolNames: readonly string[]
-  readonly usage?: KhalaCodeDesktopUsage
-  readonly usedTools: readonly string[]
-}
-
-export type KhalaCodeDesktopToolCatalogResponse = {
-  readonly catalogKind: KhalaCodeDesktopToolCatalogKind
-  readonly defaultEnabled: boolean
-  readonly description: string
-  readonly runtimeMode: KhalaCodeDesktopRuntimeMode
-  readonly toolCount: number
-  readonly tools: readonly {
-    readonly authority: string
-    readonly name: string
-    readonly role: "legacy_codex_equivalent" | "supplemental_swarm"
-  }[]
-}
-
-export type KhalaCodeDesktopAppInfo = {
-  readonly ok: true
-  readonly app: "Khala Code Desktop"
-  readonly observedAt: string
-}
-
-export type KhalaCodeDesktopRuntimeStatus = {
-  readonly ok: true
-  readonly app: "Khala Code Desktop"
-  readonly available: boolean
-  readonly capability: "codex_accounts" | "codex_harness" | "coding" | "pylon" | "token_accounting"
-  readonly observedAt: string
-  readonly reason: string
-  readonly status: "error" | "not_configured" | "ready" | "unavailable"
-}
-
-export type KhalaCodeDesktopThreadTokenSummaryRequest = {
-  readonly threadId?: string | null
-}
-
-export type KhalaCodeDesktopThreadTokenSummary = {
-  readonly auditRows: number
-  readonly codexStateDbPath: string
-  readonly codexStateTokens: number
-  readonly leaderboardLabel: "OpenAgents Stats"
-  readonly leaderboardSyncedTokens: number
-  readonly localLedgerPath: string
-  readonly localMessageAuditLedgerPath: string
-  readonly missingUsageTurns: number
-  readonly ok: true
-  readonly pendingSyncTokens: number
-  readonly remoteConfigured: boolean
-  readonly remoteDisabled: boolean
-  readonly threadId: string | null
-  readonly totalTokens: number
-  readonly updatedAt: string | null
-  readonly usageEventRows: number
-}
-
-export type KhalaCodeDesktopCodexHarnessStatus =
-  KhalaCodeDesktopRuntimeStatus & {
-    readonly capability: "codex_harness"
-    readonly binary: {
-      readonly command: string
-      readonly source:
-        | "PATH"
-        | "env:KHALA_CODE_CODEX_BINARY"
-        | "env:KHALA_CODE_CODEX_COMMAND"
-        | "input"
-      readonly available: boolean
-      readonly version: string | null
-      readonly error: string | null
-    }
-    readonly home: {
-      readonly path: string
-      readonly source: "default:~/.codex" | "env:CODEX_HOME" | "input"
-      readonly role: "main_user_codex_home"
-      readonly authPath: string
-      readonly fleetIsolation: "fleet_accounts_use_pylon_isolated_homes"
-    }
-    readonly auth: {
-      readonly state: "credentials_missing" | "error" | "invalid" | "ready"
-      readonly blockerRefs: readonly string[]
-      readonly accessTokenPresent: boolean
-      readonly accountIdPresent: boolean
-      readonly refreshTokenPresent: boolean
-      readonly error?: string
-    }
-    readonly signIn: {
-      readonly required: boolean
-      readonly command: "codex login"
-      readonly warning: string
-    }
-  }
-
-export type KhalaCodeDesktopCodexAppServerStatus = {
-  readonly ok: true
-  readonly app: "Khala Code Desktop"
-  readonly adapterVersion: string
-  readonly codexCommand: string
-  readonly codexHome: string
-  readonly diagnostics: readonly string[]
-  readonly initialized: boolean
-  readonly initializeResult: unknown
-  readonly lastError: string | null
-  readonly pendingRequestCount: number
-  readonly pid: number | null
-  readonly state: "errored" | "running" | "starting" | "stopped"
-  readonly transport: "stdio"
-}
-
-export type KhalaCodeDesktopCodexAppServerControlResult = {
-  readonly ok: boolean
-  readonly action: "restart" | "start" | "stop"
-  readonly changed: boolean
-  readonly status: KhalaCodeDesktopCodexAppServerStatus
-  readonly error?: string
-}
-
-export type KhalaCodeDesktopCodexThreadStartRequest = {
-  readonly cwd?: string
-  readonly sessionId?: string
-}
-
-export type KhalaCodeDesktopCodexThreadResumeRequest = {
-  readonly cwd?: string
-  readonly sessionId?: string
-  readonly threadId: string
-}
-
-export type KhalaCodeDesktopCodexThreadListRequest = {
-  readonly archived?: boolean
-  readonly cursor?: string
-  readonly cwd?: string
-  readonly limit?: number
-  readonly searchTerm?: string
-  readonly sessionId?: string
-  readonly useStateDbOnly?: boolean
-}
-
-export type KhalaCodeDesktopCodexThreadResult = {
-  readonly ok: true
-  readonly cwd?: string
-  readonly desktopSessionId?: string
-  readonly messages?: readonly KhalaCodeDesktopMessage[]
-  readonly model?: string
-  readonly modelProvider?: string
-  readonly thread: unknown
-  readonly threadId: string
-}
-
-export type KhalaCodeDesktopCodexThreadListResult = {
-  readonly ok: true
-  readonly backwardsCursor?: string | null
-  readonly data: readonly unknown[]
-  readonly groups?: readonly KhalaCodeDesktopCodexThreadGroup[]
-  readonly nextCursor?: string | null
-  readonly threads?: readonly KhalaCodeDesktopCodexThreadSummary[]
-}
-
-export type KhalaCodeDesktopCodexThreadReadRequest = {
-  readonly includeTurns?: boolean
-  readonly threadId: string
-}
-
-export type KhalaCodeDesktopCodexThreadForkRequest = {
-  readonly cwd?: string
-  readonly lastTurnId?: string
-  readonly sessionId?: string
-  readonly threadId: string
-}
-
-export type KhalaCodeDesktopCodexThreadIdRequest = {
-  readonly threadId: string
-}
-
-export type KhalaCodeDesktopCodexThreadRenameRequest = {
-  readonly name: string
-  readonly threadId: string
-}
-
-export type KhalaCodeDesktopCodexThreadMutationResult = {
-  readonly action: "archive" | "delete" | "fork" | "rename" | "unarchive"
-  readonly ok: boolean
-  readonly messages?: readonly KhalaCodeDesktopMessage[]
-  readonly response?: unknown
-  readonly thread?: unknown
-  readonly threadId: string
-  readonly error?: string
-  readonly newThreadId?: string
-}
-
-export type KhalaCodeDesktopCodexTurnStartRequest =
-  KhalaCodeDesktopChatTurnRequest & {
-    readonly cwd?: string
-  }
-
-export type KhalaCodeDesktopCodexTurnSteerRequest = {
-  readonly clientUserMessageId?: string
-  readonly sessionId: string
-  readonly text: string
-  readonly turnId?: string
-}
-
-export type KhalaCodeDesktopCodexTurnInterruptRequest = {
-  readonly sessionId: string
-  readonly turnId?: string
-}
-
-export type KhalaCodeDesktopCodexTurnActionResult = {
-  readonly ok: boolean
-  readonly codexTurnId?: string
-  readonly desktopSessionId: string
-  readonly desktopTurnId?: string
-  readonly error?: string
-  readonly response?: unknown
-  readonly threadId?: string
-}
-
-export type KhalaCodeDesktopCodexThreadCompactRequest = {
-  readonly sessionId?: string
-  readonly threadId?: string
-}
-
-export type KhalaCodeDesktopCodexApprovalRespondRequest = {
-  readonly action: KhalaCodeDesktopCodexApprovalAction
-  readonly execpolicyAmendment?: readonly string[]
-  readonly method: KhalaCodeDesktopCodexApprovalMethod
-  readonly networkPolicyAmendment?: KhalaCodeDesktopCodexNetworkPolicyAmendment
-  readonly permissions?: KhalaCodeDesktopCodexPermissionProfile
-  readonly requestId: KhalaCodeDesktopJsonRpcId
-}
-
-export type KhalaCodeDesktopCodexApprovalRespondResult = {
-  readonly method: KhalaCodeDesktopCodexApprovalMethod
-  readonly ok: boolean
-  readonly payload?: unknown
-  readonly requestId: KhalaCodeDesktopJsonRpcId
-  readonly error?: string
-}
-
-export type KhalaCodeDesktopCodexSettingsReadRequest = {
-  readonly cwd?: string
-  readonly includeHiddenModels?: boolean
-}
-
-export type KhalaCodeDesktopCodexSettingsReadResult =
-  typeof RpcCodexSettingsProjection.Type
-
-export type KhalaCodeDesktopCodexConfigValueWriteRequest = {
-  readonly cwd?: string
-  readonly expectedVersion?: string
-  readonly filePath?: string
-  readonly keyPath: string
-  readonly mergeStrategy?: "replace" | "upsert"
-  readonly value: KhalaCodeDesktopCodexJsonValue
-}
-
-export type KhalaCodeDesktopCodexConfigValueWriteResult = {
-  readonly ok: boolean
-  readonly keyPath: string
-  readonly response?: unknown
-  readonly settings?: KhalaCodeDesktopCodexSettingsProjection
-  readonly error?: string
-}
-
-export type KhalaCodeDesktopCodexEcosystemReadRequest = {
-  readonly cwd?: string
-  readonly forceRefetchApps?: boolean
-  readonly forceReloadSkills?: boolean
-  readonly threadId?: string
-}
-
-export type KhalaCodeDesktopCodexEcosystemReadResult =
-  typeof RpcCodexEcosystemProjection.Type
-
-export type KhalaCodeDesktopCodexAppServerActionResult = {
-  readonly ok: boolean
-  readonly method: string
-  readonly response?: unknown
-  readonly error?: string
-}
-
-export type KhalaCodeDesktopCodexBackgroundTerminalsListRequest = {
-  readonly cursor?: string | null
-  readonly limit?: number | null
-  readonly threadId: string
-}
-
-export type KhalaCodeDesktopCodexBackgroundTerminalsCleanRequest = {
-  readonly threadId: string
-}
-
-export type KhalaCodeDesktopCodexBackgroundTerminalsTerminateRequest = {
-  readonly processId: string
-  readonly threadId: string
-}
-
-export type KhalaCodeDesktopCodexMentionCandidate = {
-  readonly fileName: string
-  readonly kind: "directory" | "file"
-  readonly path: string
-  readonly root?: string
-  readonly score?: number
-}
-
-export type KhalaCodeDesktopCodexMentionCandidatesRequest = {
-  readonly cwd?: string
-  readonly query?: string
-}
-
-export type KhalaCodeDesktopCodexMentionCandidatesResult = {
-  readonly ok: boolean
-  readonly candidates: readonly KhalaCodeDesktopCodexMentionCandidate[]
-  readonly source: "fs/readDirectory" | "fuzzyFileSearch"
-  readonly truncated: boolean
-  readonly error?: string
-}
-
-export type KhalaCodeDesktopCodexSkillsExtraRootsSetRequest = {
-  readonly extraRoots: readonly string[]
-}
-
-export type KhalaCodeDesktopCodexSkillsConfigWriteRequest = {
-  readonly enabled: boolean
-  readonly name?: string | null
-  readonly path?: string | null
-}
-
-export type KhalaCodeDesktopCodexExternalAgentConfigDetectRequest = {
-  readonly cwds?: readonly string[] | null
-  readonly includeHome?: boolean
-}
-
-export type KhalaCodeDesktopCodexExternalAgentConfigMigrationItem = {
-  readonly itemType:
-    | "AGENTS_MD"
-    | "COMMANDS"
-    | "CONFIG"
-    | "HOOKS"
-    | "MCP_SERVER_CONFIG"
-    | "PLUGINS"
-    | "SESSIONS"
-    | "SKILLS"
-    | "SUBAGENTS"
-    | string
-  readonly description: string
-  readonly cwd: string | null
-  readonly details?: KhalaCodeDesktopCodexJsonValue | null
-}
-
-export type KhalaCodeDesktopCodexExternalAgentConfigImportRequest = {
-  readonly migrationItems: readonly KhalaCodeDesktopCodexExternalAgentConfigMigrationItem[]
-  readonly source?: string | null
-}
-
-export type KhalaCodeDesktopCodexFsPathRequest = {
-  readonly path: string
-}
-
-export type KhalaCodeDesktopCodexFsWriteFileRequest = {
-  readonly dataBase64: string
-  readonly path: string
-}
-
-export type KhalaCodeDesktopCodexMcpResourceReadRequest = {
-  readonly server: string
-  readonly threadId?: string | null
-  readonly uri: string
-}
-
-export type KhalaCodeDesktopCodexMcpToolCallRequest = {
-  readonly arguments?: KhalaCodeDesktopCodexJsonValue
-  readonly meta?: KhalaCodeDesktopCodexJsonValue
-  readonly server: string
-  readonly threadId: string
-  readonly tool: string
-}
-
-export type KhalaCodeDesktopCodexMcpOauthLoginRequest = {
-  readonly scopes?: readonly string[] | null
-  readonly server: string
-  readonly threadId?: string | null
-  readonly timeoutSecs?: number | null
-}
-
-export type KhalaCodeDesktopCodexMarketplaceAddRequest = {
-  readonly refName?: string | null
-  readonly source: string
-  readonly sparsePaths?: readonly string[] | null
-}
-
-export type KhalaCodeDesktopCodexMarketplaceRemoveRequest = {
-  readonly marketplaceName: string
-}
-
-export type KhalaCodeDesktopCodexMarketplaceUpgradeRequest = {
-  readonly marketplaceName?: string | null
-}
-
-export type KhalaCodeDesktopCodexPluginInstallRequest = {
-  readonly marketplacePath?: string | null
-  readonly pluginName: string
-  readonly remoteMarketplaceName?: string | null
-}
-
-export type KhalaCodeDesktopCodexPluginUninstallRequest = {
-  readonly pluginId: string
-}
-
-export type KhalaCodeDesktopSlashCommandListRequest = {
-  readonly activeTurn?: boolean
-  readonly debug?: boolean
-  readonly platform?: string
-  readonly sideConversation?: boolean
-}
-
-export type KhalaCodeDesktopSlashCommandListResponse = {
-  readonly commands: readonly KhalaCodeDesktopSlashCommandWithAvailability[]
-  readonly ok: true
-}
-
-export type KhalaCodeDesktopSlashCommandDispatchRequest =
-  KhalaCodeDesktopSlashCommandListRequest & {
-    readonly cwd?: string
-    readonly raw: string
-    readonly sessionId: string
-    readonly threadId?: string
-  }
-
-export type KhalaCodeDesktopSlashCommandDispatchResult = {
-  readonly action?: string
-  readonly command?: string
-  readonly gap?: {
-    readonly gapId: string
-    readonly kind: "upstream_app_server_gap"
-  }
-  readonly message: string
-  readonly method?: string
-  readonly ok: boolean
-  readonly response?: unknown
-  readonly status:
-    | "blocked"
-    | "client_action"
-    | "dispatched"
-    | "gap"
-    | "not_found"
-    | "unavailable"
-  readonly threadId?: string
-}
-
-export type KhalaCodeDesktopCodexAccountStatus = {
-  readonly provider: "codex"
-  readonly accountRef: "default"
-  readonly credentialSource: "CODEX_HOME" | "default_home"
-  readonly homeRef: "env:CODEX_HOME" | "default:~/.codex"
-  readonly homeRole: "main_user_codex_home"
-  readonly readiness: {
-    readonly state: "error" | "ready" | "credentials_missing" | "invalid"
-    readonly blockerRefs: readonly string[]
-  }
-  readonly rateLimits: KhalaCodexRateLimitProviderStatus
-}
-
-export type KhalaCodeDesktopCodexAccountsStatus =
-  KhalaCodeDesktopRuntimeStatus & {
-    readonly capability: "codex_accounts"
-    readonly accounts: readonly KhalaCodeDesktopCodexAccountStatus[]
-    readonly harness: KhalaCodeDesktopCodexHarnessStatus
-    readonly rateLimits: KhalaCodexRateLimitProviderStatus
-  }
-
-export type KhalaCodeDesktopCodexRateLimitResetResult = {
-  readonly ok: boolean
-  readonly observedAt: string
-  readonly outcome: KhalaCodexRateLimitResetOutcome | null
-  readonly status: KhalaCodeDesktopCodexAccountsStatus
-  readonly error?: string
-}
-
-export type KhalaCodeDesktopFleetAccount = {
-  readonly accountRef: string
-  readonly provider: "codex"
-  readonly readiness: string
-  readonly quotaState: string | null
-  readonly accountKey: string | null
-  readonly capacity: KhalaCodeDesktopFleetCapacity | null
-  readonly homeRole?: KhalaCodeDesktopFleetHomeRole
-  readonly queuePolicy?: KhalaCodeDesktopFleetQueuePolicy
-  readonly sessionRole?: KhalaCodeDesktopFleetSessionRole
-  readonly email: string | null
-}
-
-export type KhalaCodeDesktopFleetCapacity = {
-  readonly available: number | null
-  readonly busy: number | null
-  readonly queued: number | null
-  readonly ready: number | null
-}
-
+export type KhalaCodeDesktopUsage = typeof RpcUsage.Type
+export type KhalaCodeDesktopChatTurnAttachment = typeof RpcChatAttachment.Type
+export type KhalaCodeDesktopChatTurnRequest = typeof RpcChatTurnRequest.Type
+export type KhalaCodeDesktopBackendProjection = typeof RpcBackendProjection.Type
+export type KhalaCodeDesktopChatTurnResponse = typeof RpcChatTurnResponse.Type
+export type KhalaCodeDesktopToolCatalogResponse = typeof RpcToolCatalogResponse.Type
+export type KhalaCodeDesktopAppInfo = typeof RpcAppInfo.Type
+export type KhalaCodeDesktopRuntimeStatus = typeof RpcRuntimeStatus.Type
+export type KhalaCodeDesktopThreadTokenSummaryRequest = typeof RpcThreadTokenSummaryRequest.Type
+export type KhalaCodeDesktopThreadTokenSummary = typeof RpcThreadTokenSummary.Type
+export type KhalaCodeDesktopCodexHarnessStatus = typeof RpcCodexHarnessStatus.Type
+export type KhalaCodeDesktopCodexAppServerStatus = typeof RpcCodexAppServerStatus.Type
+export type KhalaCodeDesktopCodexAppServerControlResult = typeof RpcCodexAppServerControlResult.Type
+export type KhalaCodeDesktopCodexThreadStartRequest = typeof RpcThreadStartRequest.Type
+export type KhalaCodeDesktopCodexThreadResumeRequest = typeof RpcThreadResumeRequest.Type
+export type KhalaCodeDesktopCodexThreadListRequest = typeof RpcThreadListRequest.Type
+export type KhalaCodeDesktopCodexThreadResult = typeof RpcThreadResult.Type
+export type KhalaCodeDesktopCodexThreadListResult = typeof RpcThreadListResult.Type
+export type KhalaCodeDesktopCodexThreadReadRequest = typeof RpcThreadReadRequest.Type
+export type KhalaCodeDesktopCodexThreadForkRequest = typeof RpcThreadForkRequest.Type
+export type KhalaCodeDesktopCodexThreadIdRequest = typeof RpcThreadIdRequest.Type
+export type KhalaCodeDesktopCodexThreadRenameRequest = typeof RpcThreadRenameRequest.Type
+export type KhalaCodeDesktopCodexThreadMutationResult = typeof RpcThreadMutationResult.Type
+export type KhalaCodeDesktopCodexTurnStartRequest = typeof RpcTurnStartRequest.Type
+export type KhalaCodeDesktopCodexTurnSteerRequest = typeof RpcTurnSteerRequest.Type
+export type KhalaCodeDesktopCodexTurnInterruptRequest = typeof RpcTurnInterruptRequest.Type
+export type KhalaCodeDesktopCodexTurnActionResult = typeof RpcTurnActionResult.Type
+export type KhalaCodeDesktopCodexThreadCompactRequest = typeof RpcThreadCompactRequest.Type
+export type KhalaCodeDesktopCodexApprovalRespondRequest = typeof RpcApprovalRespondRequest.Type
+export type KhalaCodeDesktopCodexApprovalRespondResult = typeof RpcApprovalRespondResult.Type
+export type KhalaCodeDesktopCodexSettingsReadRequest = typeof RpcCodexSettingsReadRequest.Type
+export type KhalaCodeDesktopCodexSettingsReadResult = typeof RpcCodexSettingsProjection.Type
+export type KhalaCodeDesktopCodexConfigValueWriteRequest = typeof RpcCodexConfigValueWriteRequest.Type
+export type KhalaCodeDesktopCodexConfigValueWriteResult = typeof RpcCodexConfigValueWriteResult.Type
+export type KhalaCodeDesktopCodexEcosystemReadRequest = typeof RpcCodexEcosystemReadRequest.Type
+export type KhalaCodeDesktopCodexEcosystemReadResult = typeof RpcCodexEcosystemProjection.Type
+export type KhalaCodeDesktopCodexAppServerActionResult = typeof RpcCodexAppServerActionResult.Type
+export type KhalaCodeDesktopCodexBackgroundTerminalsListRequest = typeof RpcBackgroundTerminalsListRequest.Type
+export type KhalaCodeDesktopCodexBackgroundTerminalsCleanRequest = typeof RpcBackgroundTerminalsCleanRequest.Type
+export type KhalaCodeDesktopCodexBackgroundTerminalsTerminateRequest = typeof RpcBackgroundTerminalsTerminateRequest.Type
+export type KhalaCodeDesktopCodexMentionCandidate = typeof RpcMentionCandidate.Type
+export type KhalaCodeDesktopCodexMentionCandidatesRequest = typeof RpcMentionCandidatesRequest.Type
+export type KhalaCodeDesktopCodexMentionCandidatesResult = typeof RpcMentionCandidatesResult.Type
+export type KhalaCodeDesktopCodexSkillsExtraRootsSetRequest = typeof RpcSkillsExtraRootsSetRequest.Type
+export type KhalaCodeDesktopCodexSkillsConfigWriteRequest = typeof RpcSkillsConfigWriteRequest.Type
+export type KhalaCodeDesktopCodexExternalAgentConfigDetectRequest = typeof RpcExternalAgentConfigDetectRequest.Type
+export type KhalaCodeDesktopCodexExternalAgentConfigMigrationItem = typeof RpcExternalAgentConfigMigrationItem.Type
+export type KhalaCodeDesktopCodexExternalAgentConfigImportRequest = typeof RpcExternalAgentConfigImportRequest.Type
+export type KhalaCodeDesktopCodexFsPathRequest = typeof RpcFsPathRequest.Type
+export type KhalaCodeDesktopCodexFsWriteFileRequest = typeof RpcFsWriteFileRequest.Type
+export type KhalaCodeDesktopCodexMcpResourceReadRequest = typeof RpcMcpResourceReadRequest.Type
+export type KhalaCodeDesktopCodexMcpToolCallRequest = typeof RpcMcpToolCallRequest.Type
+export type KhalaCodeDesktopCodexMcpOauthLoginRequest = typeof RpcMcpOauthLoginRequest.Type
+export type KhalaCodeDesktopCodexMarketplaceAddRequest = typeof RpcMarketplaceAddRequest.Type
+export type KhalaCodeDesktopCodexMarketplaceRemoveRequest = typeof RpcMarketplaceRemoveRequest.Type
+export type KhalaCodeDesktopCodexMarketplaceUpgradeRequest = typeof RpcMarketplaceUpgradeRequest.Type
+export type KhalaCodeDesktopCodexPluginInstallRequest = typeof RpcPluginInstallRequest.Type
+export type KhalaCodeDesktopCodexPluginUninstallRequest = typeof RpcPluginUninstallRequest.Type
+export type KhalaCodeDesktopSlashCommandListRequest = typeof RpcSlashCommandListRequest.Type
+export type KhalaCodeDesktopSlashCommandListResponse = typeof RpcSlashCommandListResponse.Type
+export type KhalaCodeDesktopSlashCommandDispatchRequest = typeof RpcSlashCommandDispatchRequest.Type
+export type KhalaCodeDesktopSlashCommandDispatchResult = typeof RpcSlashCommandDispatchResult.Type
+export type KhalaCodeDesktopCodexAccountStatus = typeof RpcCodexAccountStatus.Type
+export type KhalaCodeDesktopCodexAccountsStatus = typeof RpcCodexAccountsStatus.Type
+export type KhalaCodeDesktopCodexRateLimitResetResult = typeof RpcRateLimitResetResult.Type
+export type KhalaCodeDesktopFleetAccount = typeof RpcFleetAccount.Type
+export type KhalaCodeDesktopFleetCapacity = typeof RpcFleetCapacity.Type
+export type KhalaCodeDesktopFleetAssignmentTokenRate = typeof RpcFleetAssignmentTokenRate.Type
+export type KhalaCodeDesktopFleetTokenRate = typeof RpcFleetTokenRate.Type
 export type KhalaCodeDesktopFleetTokenMeasurementStatus =
-  | "exact"
-  | "estimated"
-  | "not_measured"
-  | "pending"
-
-export type KhalaCodeDesktopFleetAssignmentTokenRate = {
-  readonly source: string
-  readonly status: KhalaCodeDesktopFleetTokenMeasurementStatus
-  readonly tokenCountKind: string | null
-  readonly tokens: number | null
-  readonly tokensPerMinute: number | null
-}
-
-export type KhalaCodeDesktopFleetTokenRate = {
-  readonly activeAdjustedTokensPerMinute: number | null
-  readonly completedStatus: KhalaCodeDesktopFleetTokenMeasurementStatus
-  readonly completedTokenRows: number | null
-  readonly completedTokensPerMinute: number | null
-  readonly inFlightTokens: number | null
-  readonly inFlightTokensPerMinute: number | null
-  readonly source: "pylon_khala_apm" | "unavailable"
-  readonly unavailableReason: string | null
-}
-
-export type KhalaCodeDesktopFleetSessionRole =
-  | "main_local_codex_session"
-  | "swarm_worker_codex_session"
-
-export type KhalaCodeDesktopFleetHomeRole =
-  | "main_user_codex_home_display_only"
-  | "pylon_isolated_worker_codex_home"
-
-export type KhalaCodeDesktopFleetQueuePolicy = {
-  readonly admission: "pylon_capacity_gate"
-  readonly cooldown: "none_reported" | "ready" | "cooling_down" | "unknown"
-  readonly refill: "pylon_presence_heartbeat"
-  readonly queued: number | null
-}
-
-export type KhalaCodeDesktopFleetSessionLayer = {
-  readonly label: string
-  readonly role: KhalaCodeDesktopFleetSessionRole
-  readonly homeRole: KhalaCodeDesktopFleetHomeRole
-  readonly runtime: "codex_harness"
-  readonly transcriptSurface: "chat" | "fleet"
-  readonly mutationPolicy: "codex_app_server_owned" | "pylon_isolated_home_only"
-}
-
-export type KhalaCodeDesktopFleetWorkerSession = {
-  readonly approvalState:
-    | "approval_required"
-    | "blocked"
-    | "none"
-    | "ready_for_review"
-  readonly blockerRefs: readonly string[]
-  readonly closeoutStatus: string | null
-  readonly executionRuntime: "codex_harness"
-  readonly homeRole: KhalaCodeDesktopFleetHomeRole
-  readonly queuePolicy: KhalaCodeDesktopFleetQueuePolicy
-  readonly reviewState: "active" | "blocked" | "pending_closeout" | "ready_for_review"
-  readonly role: "swarm_worker_codex_session"
-  readonly transcriptRef: string | null
-}
-
-export type KhalaCodeDesktopFleetAssignment = {
-  readonly assignmentRef: string | null
-  readonly blockerRefs?: readonly string[]
-  readonly closeoutStatus?: string | null
-  readonly elapsedMs: number | null
-  readonly issueRef: string | null
-  readonly workerSession?: KhalaCodeDesktopFleetWorkerSession
-  readonly tokenRate: KhalaCodeDesktopFleetAssignmentTokenRate
-  readonly updatedAt: string | null
-}
-
-export type KhalaCodeDesktopFleetProcess = {
-  readonly pid: string
-  readonly parentPid: string
-  readonly elapsed: string
-}
-
-export type KhalaCodeDesktopFleetStatus = {
-  readonly ok: boolean
-  readonly observedAt: string
-  readonly sessionLayers?: {
-    readonly main: KhalaCodeDesktopFleetSessionLayer
-    readonly workers: KhalaCodeDesktopFleetSessionLayer
-  }
-  readonly pylon: {
-    readonly status: "online" | "started" | "unavailable"
-    readonly pylonRef: string | null
-    readonly message: string
-  }
-  readonly availableCodexAssignments: number | null
-  readonly maxCodexAssignments: number | null
-  readonly tokenRate: KhalaCodeDesktopFleetTokenRate
-  readonly accounts: readonly KhalaCodeDesktopFleetAccount[]
-  readonly activeAssignments: readonly KhalaCodeDesktopFleetAssignment[]
-  readonly processes: readonly KhalaCodeDesktopFleetProcess[]
-}
-
-export type KhalaCodeDesktopFleetPromotionContextBoundary =
-  typeof RpcFleetPromotionContextBoundary.Type
-
-export type KhalaCodeDesktopFleetPromotionRequest =
-  typeof RpcFleetPromotionRequest.Type
-
-export type KhalaCodeDesktopFleetPromotionResult =
-  typeof RpcFleetPromotionResult.Type
-
-export type KhalaCodeDesktopFleetDelegateRunMode =
-  typeof RpcFleetDelegateRunRequest.Type["mode"]
-
-export type KhalaCodeDesktopFleetDelegateRunRequest =
-  typeof RpcFleetDelegateRunRequest.Type
-
-export type KhalaCodeDesktopFleetDelegateRunStep = {
-  readonly blockerCode: string | null
-  readonly fallbackModule: string | null
-  readonly module: string
-  readonly precondition: string
-  readonly refs: readonly string[]
-  readonly status: "blocked" | "recovered" | "satisfied" | string
-  readonly summary: string
-}
-
-export type KhalaCodeDesktopFleetDelegateRunResult =
-  typeof RpcFleetDelegateRunResult.Type
-
-export type KhalaCodeDesktopRemoveAccountResult = {
-  readonly ok: boolean
-  readonly removed: boolean
-  readonly accountRef: string
-  readonly error?: string
-}
-
-export type KhalaCodeDesktopConnectStart = {
-  readonly ok: boolean
-  readonly accountRef: string
-  readonly verificationUrl: string | null
-  readonly userCode: string | null
-  readonly output: string
-  readonly error?: string
-}
+  typeof RpcFleetTokenMeasurementStatus.Type
+export type KhalaCodeDesktopFleetSessionRole = typeof RpcFleetSessionRole.Type
+export type KhalaCodeDesktopFleetHomeRole = typeof RpcFleetHomeRole.Type
+export type KhalaCodeDesktopFleetQueuePolicy = typeof RpcFleetQueuePolicy.Type
+export type KhalaCodeDesktopFleetSessionLayer = typeof RpcFleetSessionLayer.Type
+export type KhalaCodeDesktopFleetWorkerSession = typeof RpcFleetWorkerSession.Type
+export type KhalaCodeDesktopFleetAssignment = typeof RpcFleetAssignment.Type
+export type KhalaCodeDesktopFleetProcess = typeof RpcFleetProcess.Type
+export type KhalaCodeDesktopFleetStatus = typeof RpcFleetStatus.Type
+export type KhalaCodeDesktopFleetPromotionContextBoundary = typeof RpcFleetPromotionContextBoundary.Type
+export type KhalaCodeDesktopFleetPromotionRequest = typeof RpcFleetPromotionRequest.Type
+export type KhalaCodeDesktopFleetPromotionResult = typeof RpcFleetPromotionResult.Type
+export type KhalaCodeDesktopFleetDelegateRunMode = typeof RpcFleetDelegateRunRequest.Type["mode"]
+export type KhalaCodeDesktopFleetDelegateRunRequest = typeof RpcFleetDelegateRunRequest.Type
+export type KhalaCodeDesktopFleetDelegateRunStep = typeof RpcFleetDelegateRunStep.Type
+export type KhalaCodeDesktopFleetDelegateRunResult = typeof RpcFleetDelegateRunResult.Type
+export type KhalaCodeDesktopRemoveAccountResult = typeof RpcRemoveAccountResult.Type
+export type KhalaCodeDesktopConnectStart = typeof RpcConnectStart.Type
 
 const RpcJson = KhalaCodeDesktopRpcJsonValue
 const RpcStringArray = S.Array(S.String)
 const RpcJsonObject = S.Record(S.String, RpcJson)
 const RpcStringNull = S.NullOr(S.String)
 const RpcNumberNull = S.NullOr(S.Number)
+const RpcRuntimeMode = S.Literals(["codex_harness", "khala_native_runtime"])
+const RpcToolCatalogKind = S.Literals(["codex_harness_supplemental", "khala_native_legacy"])
 
 const RpcToolEvent = S.Struct({
   eventId: S.String,
@@ -929,13 +309,13 @@ const RpcChatTurnRequest = S.Struct({
 const RpcBackendProjection = S.Struct({
   baseUrl: S.optional(S.String),
   blockerRefs: S.optional(RpcStringArray),
-  credentialSource: S.optional(S.String),
-  kind: S.String,
+  credentialSource: S.optional(S.Literals(["env:OPENROUTER_API_KEY", "khala-provider-key"])),
+  kind: S.Literals(["codex_app_server", "hosted_openagents", "mock"]),
   model: S.String,
-  provider: S.optional(S.String),
-  runtimeMode: S.optional(S.String),
+  provider: S.optional(S.Literal("openrouter")),
+  runtimeMode: S.optional(RpcRuntimeMode),
   threadId: S.optional(S.String),
-  toolCatalogKind: S.optional(S.String),
+  toolCatalogKind: S.optional(S.Union([RpcToolCatalogKind, S.Literal("codex_app_server")])),
   turnId: S.optional(S.String),
   turnStatus: S.optional(S.String),
 })
@@ -953,10 +333,10 @@ const RpcRuntimeStatus = S.Struct({
   ok: S.Literal(true),
   app: S.Literal("Khala Code Desktop"),
   available: S.Boolean,
-  capability: S.String,
+  capability: S.Literals(["codex_accounts", "codex_harness", "coding", "pylon", "token_accounting"]),
   observedAt: S.String,
   reason: S.String,
-  status: S.String,
+  status: S.Literals(["error", "not_configured", "ready", "unavailable"]),
 })
 
 const RpcAppInfo = S.Struct({
@@ -1050,6 +430,19 @@ const RpcRateLimitStatus = S.Struct({
   status: S.String,
 })
 
+const RpcCodexAccountStatus = S.Struct({
+  provider: S.Literal("codex"),
+  accountRef: S.Literal("default"),
+  credentialSource: S.Literals(["CODEX_HOME", "default_home"]),
+  homeRef: S.Literals(["env:CODEX_HOME", "default:~/.codex"]),
+  homeRole: S.Literal("main_user_codex_home"),
+  readiness: S.Struct({
+    state: S.Literals(["error", "ready", "credentials_missing", "invalid"]),
+    blockerRefs: RpcStringArray,
+  }),
+  rateLimits: RpcRateLimitStatus,
+})
+
 const RpcCodexAccountsStatus = S.Struct({
   ok: S.Literal(true),
   app: S.Literal("Khala Code Desktop"),
@@ -1057,19 +450,8 @@ const RpcCodexAccountsStatus = S.Struct({
   capability: S.Literal("codex_accounts"),
   observedAt: S.String,
   reason: S.String,
-  status: S.String,
-  accounts: S.Array(S.Struct({
-    provider: S.Literal("codex"),
-    accountRef: S.Literal("default"),
-    credentialSource: S.String,
-    homeRef: S.String,
-    homeRole: S.Literal("main_user_codex_home"),
-    readiness: S.Struct({
-      state: S.String,
-      blockerRefs: RpcStringArray,
-    }),
-    rateLimits: RpcRateLimitStatus,
-  })),
+  status: S.Literals(["error", "not_configured", "ready", "unavailable"]),
+  accounts: S.Array(RpcCodexAccountStatus),
   harness: RpcCodexHarnessStatus,
   rateLimits: RpcRateLimitStatus,
 })
@@ -1082,7 +464,7 @@ const RpcCodexAppServerStatus = S.Struct({
   codexHome: S.String,
   diagnostics: RpcStringArray,
   initialized: S.Boolean,
-  initializeResult: RpcJson,
+  initializeResult: S.Unknown,
   lastError: RpcStringNull,
   pendingRequestCount: S.Number,
   pid: S.NullOr(S.Number),
@@ -1159,13 +541,13 @@ const RpcThreadResult = S.Struct({
   messages: S.optional(S.Array(KhalaCodeDesktopMessageSchema)),
   model: S.optional(S.String),
   modelProvider: S.optional(S.String),
-  thread: RpcJson,
+  thread: S.Unknown,
   threadId: S.String,
 })
 const RpcThreadListResult = S.Struct({
   ok: S.Literal(true),
   backwardsCursor: S.optional(RpcStringNull),
-  data: S.Array(RpcJson),
+  data: S.Array(S.Unknown),
   groups: S.optional(S.Array(RpcThreadGroup)),
   nextCursor: S.optional(RpcStringNull),
   threads: S.optional(S.Array(RpcThreadSummary)),
@@ -1174,8 +556,8 @@ const RpcThreadMutationResult = S.Struct({
   action: S.Literals(["archive", "delete", "fork", "rename", "unarchive"]),
   ok: S.Boolean,
   messages: S.optional(S.Array(KhalaCodeDesktopMessageSchema)),
-  response: S.optional(RpcJson),
-  thread: S.optional(RpcJson),
+  response: S.optional(S.Unknown),
+  thread: S.optional(S.Unknown),
   threadId: S.String,
   error: S.optional(S.String),
   newThreadId: S.optional(S.String),
@@ -1206,7 +588,7 @@ const RpcTurnActionResult = S.Struct({
   desktopSessionId: S.String,
   desktopTurnId: S.optional(S.String),
   error: S.optional(S.String),
-  response: S.optional(RpcJson),
+  response: S.optional(S.Unknown),
   threadId: S.optional(S.String),
 })
 const RpcThreadCompactRequest = S.Struct({
@@ -1215,17 +597,35 @@ const RpcThreadCompactRequest = S.Struct({
 })
 
 const RpcApprovalRespondRequest = S.Struct({
-  action: S.String,
+  action: S.Literals([
+    "accept",
+    "acceptForSession",
+    "acceptWithExecpolicyAmendment",
+    "applyNetworkPolicyAmendment",
+    "cancel",
+    "decline",
+    "grantPermissions",
+    "grantPermissionsForSession",
+    "grantPermissionsWithStrictReview",
+  ]),
   execpolicyAmendment: S.optional(RpcStringArray),
-  method: S.String,
+  method: S.Literals([
+    "item/commandExecution/requestApproval",
+    "item/fileChange/requestApproval",
+    "item/permissions/requestApproval",
+  ]),
   networkPolicyAmendment: S.optional(S.Struct({ action: S.String, host: S.String })),
   permissions: S.optional(RpcCodexPermissionProfile),
   requestId: S.Union([S.String, S.Number]),
 })
 const RpcApprovalRespondResult = S.Struct({
-  method: S.String,
+  method: S.Literals([
+    "item/commandExecution/requestApproval",
+    "item/fileChange/requestApproval",
+    "item/permissions/requestApproval",
+  ]),
   ok: S.Boolean,
-  payload: S.optional(RpcJson),
+  payload: S.optional(S.Unknown),
   requestId: S.Union([S.String, S.Number]),
   error: S.optional(S.String),
 })
@@ -1353,7 +753,7 @@ const RpcCodexConfigValueWriteRequest = S.Struct({
 const RpcCodexConfigValueWriteResult = S.Struct({
   ok: S.Boolean,
   keyPath: S.String,
-  response: S.optional(RpcJson),
+  response: S.optional(S.Unknown),
   settings: S.optional(RpcCodexSettingsProjection),
   error: S.optional(S.String),
 })
@@ -1446,7 +846,7 @@ const RpcCodexEcosystemProjection = S.Struct({
 const RpcCodexAppServerActionResult = S.Struct({
   ok: S.Boolean,
   method: S.String,
-  response: S.optional(RpcJson),
+  response: S.optional(S.Unknown),
   error: S.optional(S.String),
 })
 
@@ -1474,7 +874,7 @@ const RpcMentionCandidate = S.Struct({
 const RpcMentionCandidatesResult = S.Struct({
   ok: S.Boolean,
   candidates: S.Array(RpcMentionCandidate),
-  source: S.String,
+  source: S.Literals(["fs/readDirectory", "fuzzyFileSearch"]),
   truncated: S.Boolean,
   error: S.optional(S.String),
 })
@@ -1535,6 +935,63 @@ const RpcPluginInstallRequest = S.Struct({
 })
 const RpcPluginUninstallRequest = S.Struct({ pluginId: S.String })
 
+const RpcSlashCommandAvailability = S.Struct({
+  available: S.Boolean,
+  reason: S.optional(S.String),
+})
+const RpcSlashCommandVisibility = S.Union([
+  S.Struct({ kind: S.Literal("always") }),
+  S.Struct({ kind: S.Literal("debug") }),
+  S.Struct({ kind: S.Literal("not_android") }),
+  S.Struct({ kind: S.Literal("platform"), platforms: RpcStringArray }),
+])
+const RpcSlashCommandDispatch = S.Union([
+  S.Struct({
+    kind: S.Literal("app_server"),
+    method: S.String,
+    appServerDependency: S.optional(S.String),
+    experimental: S.optional(S.Boolean),
+    requiresArgs: S.optional(S.Boolean),
+    requiresThread: S.optional(S.Boolean),
+  }),
+  S.Struct({
+    kind: S.Literal("client"),
+    action: S.String,
+  }),
+  S.Struct({
+    kind: S.Literal("gap"),
+    dependency: S.String,
+    unavailable: S.optional(S.Struct({
+      gapId: S.String,
+      kind: S.Literal("upstream_app_server_gap"),
+    })),
+    issueRef: S.String,
+  }),
+])
+const RpcSlashCommandWithAvailability = S.Struct({
+  aliases: RpcStringArray,
+  availability: RpcSlashCommandAvailability,
+  availableDuringTask: S.Boolean,
+  availableInSideConversation: S.Boolean,
+  command: S.String,
+  debug: S.Boolean,
+  description: S.String,
+  dispatch: RpcSlashCommandDispatch,
+  enumName: S.String,
+  group: S.Literals([
+    "background",
+    "diagnostics",
+    "ecosystem",
+    "exit",
+    "session",
+    "settings",
+    "turn_task",
+    "workspace",
+  ]),
+  supportsInlineArgs: S.Boolean,
+  visibility: RpcSlashCommandVisibility,
+}) as S.Schema<KhalaCodeDesktopSlashCommandWithAvailability>
+
 const RpcSlashCommandListRequest = S.Struct({
   activeTurn: S.optional(S.Boolean),
   debug: S.optional(S.Boolean),
@@ -1552,7 +1009,7 @@ const RpcSlashCommandDispatchRequest = S.Struct({
   threadId: S.optional(S.String),
 })
 const RpcSlashCommandListResponse = S.Struct({
-  commands: S.Array(RpcJsonObject),
+  commands: S.Array(RpcSlashCommandWithAvailability),
   ok: S.Literal(true),
 })
 const RpcSlashCommandDispatchResult = S.Struct({
@@ -1565,8 +1022,8 @@ const RpcSlashCommandDispatchResult = S.Struct({
   message: S.String,
   method: S.optional(S.String),
   ok: S.Boolean,
-  response: S.optional(RpcJson),
-  status: S.String,
+  response: S.optional(S.Unknown),
+  status: S.Literals(["blocked", "client_action", "dispatched", "gap", "not_found", "unavailable"]),
   threadId: S.optional(S.String),
 })
 
@@ -1593,15 +1050,15 @@ const RpcThreadTokenSummary = S.Struct({
 })
 
 const RpcToolCatalogResponse = S.Struct({
-  catalogKind: S.String,
+  catalogKind: RpcToolCatalogKind,
   defaultEnabled: S.Boolean,
   description: S.String,
-  runtimeMode: S.String,
+  runtimeMode: RpcRuntimeMode,
   toolCount: S.Number,
   tools: S.Array(S.Struct({
     authority: S.String,
     name: S.String,
-    role: S.String,
+    role: S.Literals(["legacy_codex_equivalent", "supplemental_swarm"]),
   })),
 })
 
@@ -1611,11 +1068,22 @@ const RpcFleetCapacity = S.Struct({
   queued: RpcNumberNull,
   ready: RpcNumberNull,
 })
+const RpcFleetTokenMeasurementStatus = S.Literals(["exact", "estimated", "not_measured", "pending"])
+const RpcFleetSessionRole = S.Literals(["main_local_codex_session", "swarm_worker_codex_session"])
+const RpcFleetHomeRole = S.Literals(["main_user_codex_home_display_only", "pylon_isolated_worker_codex_home"])
 const RpcFleetQueuePolicy = S.Struct({
   admission: S.Literal("pylon_capacity_gate"),
-  cooldown: S.String,
+  cooldown: S.Literals(["none_reported", "ready", "cooling_down", "unknown"]),
   refill: S.Literal("pylon_presence_heartbeat"),
   queued: RpcNumberNull,
+})
+const RpcFleetSessionLayer = S.Struct({
+  label: S.String,
+  role: RpcFleetSessionRole,
+  homeRole: RpcFleetHomeRole,
+  runtime: S.Literal("codex_harness"),
+  transcriptSurface: S.Literals(["chat", "fleet"]),
+  mutationPolicy: S.Literals(["codex_app_server_owned", "pylon_isolated_home_only"]),
 })
 const RpcFleetAccount = S.Struct({
   accountRef: S.String,
@@ -1624,36 +1092,36 @@ const RpcFleetAccount = S.Struct({
   quotaState: RpcStringNull,
   accountKey: RpcStringNull,
   capacity: S.NullOr(RpcFleetCapacity),
-  homeRole: S.optional(S.String),
+  homeRole: S.optional(RpcFleetHomeRole),
   queuePolicy: S.optional(RpcFleetQueuePolicy),
-  sessionRole: S.optional(S.String),
+  sessionRole: S.optional(RpcFleetSessionRole),
   email: RpcStringNull,
 })
 const RpcFleetAssignmentTokenRate = S.Struct({
   source: S.String,
-  status: S.String,
+  status: RpcFleetTokenMeasurementStatus,
   tokenCountKind: RpcStringNull,
   tokens: RpcNumberNull,
   tokensPerMinute: RpcNumberNull,
 })
 const RpcFleetTokenRate = S.Struct({
   activeAdjustedTokensPerMinute: RpcNumberNull,
-  completedStatus: S.String,
+  completedStatus: RpcFleetTokenMeasurementStatus,
   completedTokenRows: RpcNumberNull,
   completedTokensPerMinute: RpcNumberNull,
   inFlightTokens: RpcNumberNull,
   inFlightTokensPerMinute: RpcNumberNull,
-  source: S.String,
+  source: S.Literals(["pylon_khala_apm", "unavailable"]),
   unavailableReason: RpcStringNull,
 })
 const RpcFleetWorkerSession = S.Struct({
-  approvalState: S.String,
+  approvalState: S.Literals(["approval_required", "blocked", "none", "ready_for_review"]),
   blockerRefs: RpcStringArray,
   closeoutStatus: RpcStringNull,
   executionRuntime: S.Literal("codex_harness"),
-  homeRole: S.String,
+  homeRole: RpcFleetHomeRole,
   queuePolicy: RpcFleetQueuePolicy,
-  reviewState: S.String,
+  reviewState: S.Literals(["active", "blocked", "pending_closeout", "ready_for_review"]),
   role: S.Literal("swarm_worker_codex_session"),
   transcriptRef: RpcStringNull,
 })
@@ -1667,12 +1135,20 @@ const RpcFleetAssignment = S.Struct({
   tokenRate: RpcFleetAssignmentTokenRate,
   updatedAt: RpcStringNull,
 })
+const RpcFleetProcess = S.Struct({
+  pid: S.String,
+  parentPid: S.String,
+  elapsed: S.String,
+})
 const RpcFleetStatus = S.Struct({
   ok: S.Boolean,
   observedAt: S.String,
-  sessionLayers: S.optional(RpcJsonObject),
+  sessionLayers: S.optional(S.Struct({
+    main: RpcFleetSessionLayer,
+    workers: RpcFleetSessionLayer,
+  })),
   pylon: S.Struct({
-    status: S.String,
+    status: S.Literals(["online", "started", "unavailable"]),
     pylonRef: RpcStringNull,
     message: S.String,
   }),
@@ -1681,11 +1157,7 @@ const RpcFleetStatus = S.Struct({
   tokenRate: RpcFleetTokenRate,
   accounts: S.Array(RpcFleetAccount),
   activeAssignments: S.Array(RpcFleetAssignment),
-  processes: S.Array(S.Struct({
-    pid: S.String,
-    parentPid: S.String,
-    elapsed: S.String,
-  })),
+  processes: S.Array(RpcFleetProcess),
 })
 
 const RpcFleetPromotionContextBoundary = S.Struct({
@@ -1755,6 +1227,15 @@ const RpcFleetDelegateRunProjection = S.Struct({
   providerPayloadProjected: S.Literal(false),
   rawTraceMessagesProjected: S.Literal(false),
 })
+const RpcFleetDelegateRunStep = S.Struct({
+  blockerCode: RpcStringNull,
+  fallbackModule: RpcStringNull,
+  module: S.String,
+  precondition: S.String,
+  refs: RpcStringArray,
+  status: S.String,
+  summary: S.String,
+})
 const RpcFleetDelegateRunResult = S.Struct({
   ok: S.Boolean,
   acceptedCount: S.Number,
@@ -1774,15 +1255,7 @@ const RpcFleetDelegateRunResult = S.Struct({
     tokensVerified: RpcNumberNull,
     transcriptRef: RpcStringNull,
   })),
-  trace: S.Array(S.Struct({
-    blockerCode: RpcStringNull,
-    fallbackModule: RpcStringNull,
-    module: S.String,
-    precondition: S.String,
-    refs: RpcStringArray,
-    status: S.String,
-    summary: S.String,
-  })),
+  trace: S.Array(RpcFleetDelegateRunStep),
   validation: S.Struct({
     fixture: S.Boolean,
     repoPinsComplete: S.Boolean,
