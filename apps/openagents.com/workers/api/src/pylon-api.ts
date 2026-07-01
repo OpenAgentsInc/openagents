@@ -1454,8 +1454,12 @@ export const publicPylonApiEventProjection = (
 const terminalAssignmentStates: ReadonlyArray<PylonApiAssignmentState> = [
   'accepted_work',
   'cancelled',
+  'closeout_submitted',
   'rejected',
 ]
+
+const activeLeaseAssignmentStateSql =
+  "('accepted', 'blocked', 'offered', 'proof_submitted', 'running')"
 
 const assignmentLeaseState = (
   record: PylonApiAssignmentRecord,
@@ -1924,6 +1928,7 @@ export const nextAssignmentForEvent = (
                     assignment.proofRefs,
                   ),
                 ),
+                leaseExpiresAt: nowIso,
                 state: 'closeout_submitted',
                 updatedAt: nowIso,
               }
@@ -1982,6 +1987,7 @@ export const closeoutPylonApiAssignmentRecord = (
     ...input.assignment,
     acceptedWorkRefs: input.request.accepted ? acceptedWorkRefs : [],
     closeoutRefs,
+    leaseExpiresAt: input.nowIso,
     rejectionRefs: input.request.accepted ? [] : rejectionRefs,
     state: input.request.accepted ? 'accepted_work' : 'rejected',
     updatedAt: input.nowIso,
@@ -2451,6 +2457,7 @@ export const makeD1PylonApiStore = (db: D1Database): PylonApiStore => ({
         `SELECT *
            FROM pylon_api_assignments
           WHERE pylon_ref = ?
+            AND state IN ${activeLeaseAssignmentStateSql}
             AND archived_at IS NULL
           ORDER BY updated_at DESC
           LIMIT ?`,
@@ -2511,8 +2518,9 @@ export const makeD1PylonApiStore = (db: D1Database): PylonApiStore => ({
       const result = await db
         .prepare(
           `SELECT *
-             FROM pylon_api_assignments
+            FROM pylon_api_assignments
             WHERE pylon_ref IN (${placeholders})
+              AND state IN ${activeLeaseAssignmentStateSql}
               AND archived_at IS NULL
             ORDER BY updated_at DESC
             LIMIT ?`,
@@ -2716,6 +2724,7 @@ export const makeD1PylonApiStore = (db: D1Database): PylonApiStore => ({
         `UPDATE pylon_api_assignments
             SET state = ?,
                 payment_mode = ?,
+                lease_expires_at = ?,
                 artifact_refs_json = ?,
                 proof_refs_json = ?,
                 accepted_work_refs_json = ?,
@@ -2731,6 +2740,7 @@ export const makeD1PylonApiStore = (db: D1Database): PylonApiStore => ({
       .bind(
         record.state,
         pylonApiAssignmentPaymentMode(record),
+        record.leaseExpiresAt,
         JSON.stringify(record.artifactRefs),
         JSON.stringify(record.proofRefs),
         JSON.stringify(record.acceptedWorkRefs),
@@ -2770,6 +2780,7 @@ export const makeD1PylonApiStore = (db: D1Database): PylonApiStore => ({
         `UPDATE pylon_api_assignments
             SET state = ?,
                 payment_mode = ?,
+                lease_expires_at = ?,
                 artifact_refs_json = ?,
                 proof_refs_json = ?,
                 accepted_work_refs_json = ?,
@@ -2786,6 +2797,7 @@ export const makeD1PylonApiStore = (db: D1Database): PylonApiStore => ({
       .bind(
         record.state,
         pylonApiAssignmentPaymentMode(record),
+        record.leaseExpiresAt,
         JSON.stringify(record.artifactRefs),
         JSON.stringify(record.proofRefs),
         JSON.stringify(record.acceptedWorkRefs),

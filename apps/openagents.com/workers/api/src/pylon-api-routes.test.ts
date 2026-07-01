@@ -129,6 +129,14 @@ type PylonRouteJson = Readonly<{
   }>
 }>
 
+const activeLeaseAssignmentStates = new Set<PylonApiAssignmentRecord['state']>([
+  'accepted',
+  'blocked',
+  'offered',
+  'proof_submitted',
+  'running',
+])
+
 class MemoryPylonApiStore implements PylonApiStore {
   assignments = new Map<string, PylonApiAssignmentRecord>()
   assignmentsByIdempotency = new Map<string, PylonApiAssignmentRecord>()
@@ -183,6 +191,7 @@ class MemoryPylonApiStore implements PylonApiStore {
   listAssignmentsForPylon = async (pylonRef: string, limit: number) =>
     Array.from(this.assignments.values())
       .filter(assignment => assignment.pylonRef === pylonRef)
+      .filter(assignment => activeLeaseAssignmentStates.has(assignment.state))
       .slice(0, limit)
 
   sweepStaleAssignmentLeases = async (
@@ -1168,9 +1177,17 @@ describe('Pylon API routes', () => {
     await store.listRegistrationsForOwnerAgentUserIds?.(ownerIds, 200)
 
     expect(db.bindCounts).toEqual([81, 26, 81, 26, 81, 26])
+    const assignmentQueries = db.queries.filter(query =>
+      query.includes('FROM pylon_api_assignments'),
+    )
+    expect(assignmentQueries).toHaveLength(2)
     expect(
-      db.queries.filter(query => query.includes('FROM pylon_api_assignments')),
-    ).toHaveLength(2)
+      assignmentQueries.every(query =>
+        query.includes(
+          "state IN ('accepted', 'blocked', 'offered', 'proof_submitted', 'running')",
+        ),
+      ),
+    ).toBe(true)
     expect(
       db.queries.filter(query =>
         query.includes('FROM pylon_provider_job_lifecycle'),
@@ -3366,6 +3383,15 @@ describe('Pylon API routes', () => {
         tokenUserId: 'agent-one',
       },
     )
+    const workerCloseoutBody =
+      await responseJson<PylonRouteJson>(workerCloseout)
+    const listAfterWorkerCloseout = await route(
+      store,
+      '/api/pylons/pylon.test.one/assignments',
+      {
+        tokenUserId: 'agent-one',
+      },
+    )
     const closeout = await route(
       store,
       '/api/operator/pylons/assignments/assignment.public.issue502.echo/closeout',
@@ -3413,8 +3439,9 @@ describe('Pylon API routes', () => {
       await responseJson<PylonRouteJson>(duplicateAccept)
     const progressBody = await responseJson<PylonRouteJson>(progress)
     const artifactsBody = await responseJson<PylonRouteJson>(artifacts)
-    const workerCloseoutBody =
-      await responseJson<PylonRouteJson>(workerCloseout)
+    const listAfterWorkerCloseoutBody = await responseJson<PylonRouteJson>(
+      listAfterWorkerCloseout,
+    )
     const closeoutBody = await responseJson<PylonRouteJson>(closeout)
     const paymentReceiptBody =
       await responseJson<PylonRouteJson>(paymentReceipt)
@@ -3448,8 +3475,11 @@ describe('Pylon API routes', () => {
     expect(workerCloseoutBody.assignment).toMatchObject({
       acceptedWorkRefs: [],
       closeoutRefs: ['closeout.public.worker_echo_summary'],
+      leaseState: 'terminal',
       state: 'closeout_submitted',
     })
+    expect(listAfterWorkerCloseout.status).toBe(200)
+    expect(listAfterWorkerCloseoutBody.assignments).toEqual([])
     expect(closeout.status).toBe(200)
     expect(closeoutBody.assignment?.state).toBe('accepted_work')
     expect(paymentReceipt.status).toBe(201)
@@ -3725,10 +3755,20 @@ describe('Pylon API routes', () => {
         method: 'POST',
       },
     )
+    const listAfterRejected = await route(
+      store,
+      '/api/pylons/pylon.test.one/assignments',
+      {
+        nowIso: '2026-06-07T00:11:04.000Z',
+        tokenUserId: 'agent-one',
+      },
+    )
     const staleBody = await responseJson<PylonRouteJson>(staleAccept)
     const wrongPylonBody = await responseJson<PylonRouteJson>(wrongPylon)
     const invalidProofBody = await responseJson<PylonRouteJson>(invalidProof)
     const rejectedBody = await responseJson<PylonRouteJson>(rejected)
+    const listAfterRejectedBody =
+      await responseJson<PylonRouteJson>(listAfterRejected)
 
     expect(staleAccept.status).toBe(409)
     expect(staleBody.error).toBe('pylon_api_conflict')
@@ -3738,6 +3778,9 @@ describe('Pylon API routes', () => {
     expect(invalidProofBody.error).toBe('pylon_api_validation_error')
     expect(rejected.status).toBe(200)
     expect(rejectedBody.assignment?.state).toBe('rejected')
+    expect(rejectedBody.assignment?.leaseState).toBe('terminal')
+    expect(listAfterRejected.status).toBe(200)
+    expect(listAfterRejectedBody.assignments).toEqual([])
   })
 
   test('scopes event idempotency keys by owner, Pylon, event kind, and assignment', async () => {

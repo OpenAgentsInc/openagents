@@ -1513,14 +1513,28 @@ const routeListAssignments = <Bindings extends PylonApiRouteEnv>(
     const session = yield* requireAgent(dependencies, request, env)
     yield* requireOwnedRegistration(dependencies, env, pylonRef, session)
     const nowIso = routeNowIso(dependencies)
-    const assignments = yield* Effect.tryPromise({
+    const store = routeStore(dependencies, env)
+    yield* Effect.tryPromise({
       catch: pylonApiStoreErrorFromUnknown,
       try: () =>
-        routeStore(dependencies, env).listAssignmentsForPylon(pylonRef, 25),
+        sweepStalePylonAssignmentLeases({
+          nowIso,
+          pylonRef,
+          store,
+        }),
     })
+    const assignments = yield* Effect.tryPromise({
+      catch: pylonApiStoreErrorFromUnknown,
+      try: () => store.listAssignmentsForPylon(pylonRef, 25),
+    })
+    const activeAssignments = assignments.filter(
+      assignment =>
+        publicPylonApiAssignmentProjection(assignment, nowIso).leaseState ===
+        'active',
+    )
 
     return noStoreJsonResponse({
-      assignments: assignments.map(assignment =>
+      assignments: activeAssignments.map(assignment =>
         publicPylonApiAssignmentProjection(assignment, nowIso),
       ),
     })
