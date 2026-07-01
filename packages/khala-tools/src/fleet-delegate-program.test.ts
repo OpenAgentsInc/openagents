@@ -10,6 +10,7 @@ import {
   khalaFleetDelegationParametersFromEnv,
   prepareKhalaFleetDelegateWork,
   renderKhalaFleetDelegationObjective,
+  renderDefaultKhalaFleetDelegationObjective,
   runKhalaFleetDelegateProgram,
   selectKhalaFleetDelegateAccount,
   type KhalaFleetDelegateAccount,
@@ -328,6 +329,7 @@ describe("khala.fleet.delegate deterministic program", () => {
         "Optimized issue 7736: Wire admitted parameters. Repo=OpenAgentsInc/openagents. Verify with bun test packages/khala-tools.",
       )
       expect(prepareKhalaFleetDelegateWork({
+        claimRef: "claim.public.t4_2.test",
         commit: "0123456789abcdef0123456789abcdef01234567",
         objective: "Wire admitted parameters.",
         repo: "OpenAgentsInc/openagents",
@@ -466,7 +468,45 @@ describe("khala.fleet.delegate deterministic program", () => {
         objective: "Run real work.",
         repo: "OpenAgentsInc/openagents",
       }),
-    ).toThrow("missing commit, verify")
+    ).toThrow("missing commit, verify, claimRef")
+  })
+
+  test("prepare_work requires claimRef for real work and preserves issue metadata", () => {
+    expect(prepareKhalaFleetDelegateWork({
+      claimRef: "claim.public.t4_2.issue_7835",
+      commit: "0123456789abcdef0123456789abcdef01234567",
+      issue: 7835,
+      objective: "Implement public issue #7835.",
+      repo: "OpenAgentsInc/openagents",
+      verify: "command.public.pylon_khala.verify.28484fe0b746db06b92c2eb2",
+    })).toEqual({
+      branch: "main",
+      claimRef: "claim.public.t4_2.issue_7835",
+      commit: "0123456789abcdef0123456789abcdef01234567",
+      issue: 7835,
+      kind: "repo",
+      repo: "OpenAgentsInc/openagents",
+      verify: "command.public.pylon_khala.verify.28484fe0b746db06b92c2eb2",
+    })
+  })
+
+  test("default real-work prompt cites issue, claim, verification ref, and PR convention", () => {
+    const prompt = renderDefaultKhalaFleetDelegationObjective({
+      branch: "main",
+      claimRef: "claim.public.t4_2.issue_7835",
+      commit: "0123456789abcdef0123456789abcdef01234567",
+      issue: 7835,
+      objective: "Implement T4.2 prompt/pin discipline.",
+      repo: "OpenAgentsInc/openagents",
+      verify: "command.public.pylon_khala.verify.28484fe0b746db06b92c2eb2",
+    })
+
+    expect(prompt).toContain("Public issue: #7835.")
+    expect(prompt).toContain("Claim: claim.public.t4_2.issue_7835.")
+    expect(prompt).toContain("Verification command ref: command.public.pylon_khala.verify.28484fe0b746db06b92c2eb2.")
+    expect(prompt).toContain('include "Closes #7835" in the PR body')
+    expect(prompt).toContain("ready non-draft PR")
+    expect(prompt).toContain("do not merge it")
   })
 
   test("dispatch refreshes stale heartbeat capacity and retries once", async () => {

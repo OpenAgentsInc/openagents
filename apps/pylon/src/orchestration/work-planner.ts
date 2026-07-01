@@ -56,6 +56,16 @@ export type WorkPlannerOutput = {
   readonly skipped: readonly WorkPlannerSkippedUnit[]
 }
 
+export type WorkPlannerRealWorkDispatch = {
+  readonly branch: string
+  readonly claimRef: string
+  readonly commit: string
+  readonly issue: number
+  readonly prompt: string
+  readonly repo: string
+  readonly verify: string
+}
+
 export type WorkPlannerClaimRegistry = Pick<PylonOrchestrationStore, "getLiveWorkClaim">
 
 export type WorkPlannerOptions = {
@@ -64,6 +74,14 @@ export type WorkPlannerOptions = {
   readonly excludedLabels?: readonly string[]
   readonly needsOwnerLabels?: readonly string[]
   readonly pullRequests?: readonly WorkPlannerCandidate[]
+}
+
+export type WorkPlannerDispatchOptions = {
+  readonly branch?: string
+  readonly claimRef: string
+  readonly commit: string
+  readonly objective?: string
+  readonly verify: string
 }
 
 export type IssueListWorkSource = {
@@ -359,4 +377,37 @@ export const planGithubBacklogWork = async (
 ): Promise<WorkPlannerOutput> => {
   const candidates = await githubBacklogCandidates(source, gh)
   return planWorkCandidates(source.kind, candidates, options)
+}
+
+export const buildWorkPlannerRealWorkDispatch = (
+  unit: WorkPlannerClaimableUnit,
+  options: WorkPlannerDispatchOptions,
+): WorkPlannerRealWorkDispatch => {
+  if (unit.kind === "fixture") {
+    throw new Error("fixture work units cannot be converted into real-work claimed dispatches")
+  }
+  if (unit.repo === undefined || unit.number === undefined) {
+    throw new Error("real-work dispatch requires a GitHub repo and issue/PR number from planner output")
+  }
+  const branch = options.branch?.trim() || "main"
+  const objective = (options.objective ?? `Implement public issue #${unit.number}: ${unit.title}`).trim()
+  return {
+    branch,
+    claimRef: options.claimRef,
+    commit: options.commit,
+    issue: unit.number,
+    prompt: [
+      objective,
+      "",
+      `Public issue: #${unit.number}.`,
+      `Claim: ${options.claimRef}.`,
+      `Repository: ${unit.repo}.`,
+      `Base branch: ${branch} at ${options.commit}.`,
+      `Verification command ref: ${options.verify}.`,
+      `Open a ready non-draft PR for this claim, include "Closes #${unit.number}" in the PR body, and do not merge it.`,
+      "Use a task branch name that clearly identifies the issue and claim.",
+    ].join("\n"),
+    repo: unit.repo,
+    verify: options.verify,
+  }
 }

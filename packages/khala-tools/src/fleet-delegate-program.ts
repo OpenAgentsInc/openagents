@@ -121,7 +121,9 @@ export type KhalaFleetDelegateWork =
   }>
   | Readonly<{
     branch: string
+    claimRef: string
     commit: string
+    issue?: number | undefined
     kind: "repo"
     repo: string
     verify: string
@@ -130,8 +132,10 @@ export type KhalaFleetDelegateWork =
 export type KhalaFleetDelegateInput = Readonly<{
   accountRef?: string | undefined
   branch?: string | undefined
+  claimRef?: string | undefined
   commit?: string | undefined
   fixture?: boolean | undefined
+  issue?: number | undefined
   objective: string
   repo?: string | undefined
   verify?: string | undefined
@@ -318,6 +322,9 @@ export function khalaFleetDelegationDuplicateBackoffMs(
 
 export function renderKhalaFleetDelegationObjective(
   input: Readonly<{
+    claimRef?: string | undefined
+    branch?: string | undefined
+    commit?: string | undefined
     issue?: number | null | undefined
     objective: string
     repo?: string | undefined
@@ -329,16 +336,66 @@ export function renderKhalaFleetDelegationObjective(
   const objective = input.objective.trim()
   const template = resolved.objectiveTemplate?.trim()
   if (template === undefined || template.length === 0) {
-    return objective
+    return renderDefaultKhalaFleetDelegationObjective(input)
   }
   const rendered = template
     .replaceAll("{objective}", objective)
+    .replaceAll("{claim}", input.claimRef ?? "claim.unspecified")
+    .replaceAll("{claimRef}", input.claimRef ?? "claim.unspecified")
+    .replaceAll("{branch}", input.branch ?? "main")
+    .replaceAll("{commit}", input.commit ?? "commit.unspecified")
     .replaceAll("{issue}", input.issue === null || input.issue === undefined ? "unassigned" : String(input.issue))
     .replaceAll("{repo}", input.repo ?? "repo.unspecified")
     .replaceAll("{verify}", input.verify ?? resolved.verifyCriteria?.defaultVerify ?? "verify.unspecified")
     .trim()
 
-  return rendered.length === 0 ? objective : rendered
+  const base = rendered.length === 0 ? objective : rendered
+  if (input.claimRef === undefined) return base
+  return `${base}\n\n${renderKhalaFleetDelegationDiscipline(input)}`
+}
+
+export function renderDefaultKhalaFleetDelegationObjective(input: Readonly<{
+  branch?: string | undefined
+  claimRef?: string | undefined
+  commit?: string | undefined
+  issue?: number | null | undefined
+  objective: string
+  repo?: string | undefined
+  verify?: string | undefined
+}>): string {
+  const objective = input.objective.trim()
+  if (input.claimRef === undefined) return objective
+  const lines = [
+    objective,
+    "",
+    renderKhalaFleetDelegationDiscipline(input),
+  ]
+  return lines.join("\n")
+}
+
+function renderKhalaFleetDelegationDiscipline(input: Readonly<{
+  branch?: string | undefined
+  claimRef?: string | undefined
+  commit?: string | undefined
+  issue?: number | null | undefined
+  repo?: string | undefined
+  verify?: string | undefined
+}>): string {
+  const issueText = input.issue === null || input.issue === undefined ? "unassigned" : `#${input.issue}`
+  const branch = input.branch ?? "main"
+  return [
+    `Public issue: ${issueText}.`,
+    input.claimRef === undefined ? "Claim: claim.unspecified." : `Claim: ${input.claimRef}.`,
+    input.repo === undefined ? "Repository: repo.unspecified." : `Repository: ${input.repo}.`,
+    input.commit === undefined ? `Base branch: ${branch}.` : `Base branch: ${branch} at ${input.commit}.`,
+    input.verify === undefined
+      ? "Verification command ref: verify.unspecified."
+      : `Verification command ref: ${input.verify}.`,
+    input.issue === null || input.issue === undefined
+      ? "Open a ready non-draft PR for this claim when the work is complete. Do not merge it."
+      : `Open a ready non-draft PR for this claim, include "Closes #${input.issue}" in the PR body, and do not merge it.`,
+    "Use a task branch name that clearly identifies the issue and claim.",
+  ].join("\n")
 }
 
 export const runKhalaFleetDelegateProgram = (
@@ -515,19 +572,23 @@ export function prepareKhalaFleetDelegateWork(
   }
   const repo = input.repo
   const commit = input.commit
+  const claimRef = input.claimRef
   const resolvedParameters = resolveKhalaFleetDelegationParameters(parameters)
   const verify = input.verify ?? resolvedParameters.verifyCriteria?.defaultVerify
   const missing = [
     repo === undefined ? "repo" : null,
     commit === undefined ? "commit" : null,
     verify === undefined ? "verify" : null,
+    claimRef === undefined ? "claimRef" : null,
   ].filter((value): value is string => value !== null)
-  if (repo === undefined || commit === undefined || verify === undefined) {
+  if (repo === undefined || commit === undefined || verify === undefined || claimRef === undefined) {
     throw new Error(`khala.fleet.delegate requires fixture or complete work pins; missing ${missing.join(", ")}`)
   }
   return {
     branch: input.branch ?? "main",
+    claimRef,
     commit,
+    ...(input.issue === undefined ? {} : { issue: input.issue }),
     kind: "repo",
     repo,
     verify,

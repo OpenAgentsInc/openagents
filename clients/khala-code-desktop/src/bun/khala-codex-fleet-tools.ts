@@ -179,9 +179,11 @@ type SpawnCodexInstancesInput = {
   readonly accountRef?: string | undefined
   readonly baseUrl?: string | undefined
   readonly branch?: string | undefined
+  readonly claimRef?: string | undefined
   readonly commit?: string | undefined
   readonly count?: number | undefined
   readonly fixture?: boolean | undefined
+  readonly issue?: number | undefined
   readonly noRun?: boolean | undefined
   readonly prompt: string
   readonly pylonRef?: string | undefined
@@ -194,9 +196,11 @@ type NormalizedSpawnInput = {
   readonly accountRef?: string | undefined
   readonly baseUrl?: string | undefined
   readonly branch?: string | undefined
+  readonly claimRef?: string | undefined
   readonly commit?: string | undefined
   readonly count: number
   readonly fixture: boolean
+  readonly issue?: number | undefined
   readonly noRun: boolean
   readonly prompt: string
   readonly pylonRef?: string | undefined
@@ -380,11 +384,15 @@ const codexSpawnToolDefinition: KhalaToolDefinition = {
         type: "string",
       },
       branch: {
-        description: "Optional branch name paired with repo/commit/verify workspace pins.",
+        description: "Base branch name paired with repo/commit/verify workspace pins. Defaults to main.",
+        type: "string",
+      },
+      claim_ref: {
+        description: "Live work-claim ref for real repository work. Required when fixture is false.",
         type: "string",
       },
       commit: {
-        description: "Pinned 40-character commit SHA for real repository work.",
+        description: "Pinned 40-character commit SHA for real repository work. If omitted, Desktop resolves the live branch tip before dispatch.",
         type: "string",
       },
       count: {
@@ -403,6 +411,11 @@ const codexSpawnToolDefinition: KhalaToolDefinition = {
         default: false,
         description: "Create the hosted assignment but do not auto-run the local no-spend assignment.",
         type: "boolean",
+      },
+      issue: {
+        description: "Public GitHub issue number for the worker prompt and PR convention.",
+        minimum: 1,
+        type: "integer",
       },
       prompt: {
         description: "Public-safe assignment objective for Codex.",
@@ -452,7 +465,7 @@ const codexSpawnToolDefinition: KhalaToolDefinition = {
   promptGuidelines: [
     "The primary local chat loop remains the Codex harness; this tool only delegates bounded worker assignments around it.",
     "When the user asks for a smoke test or omits repo pins, call this without repo pins; the tool will use the public fixture.",
-    "Require complete repo, commit, and verify pins only for real repository work.",
+    "Require complete repo, branch, verify, and claim_ref pins only for real repository work; Desktop resolves or validates the live commit pin before dispatch.",
     "Do not run Codex login. If no ready Pylon Codex account exists, tell the user to connect one first.",
     "Omit account_ref unless the user names a specific non-default account; Desktop prefers named ready accounts over the display-only default account.",
     "This MVP exposes only pylon_ensure, codex_fleet_status, and codex_spawn for Codex fleet control. Do not invent codex_terminate or other Codex fleet tools.",
@@ -679,6 +692,11 @@ export async function spawnCodexInstances(
   const env = withCodexCapacityAdvertisementEnv(baseEnv, input.count, delegationParameters)
   const paths = resolvePylonPaths(env)
   const baseUrl = resolveOpenAgentsBaseUrl(env, input.baseUrl)
+  const preparedInput = await resolveRealWorkCommitPin(input, {
+    env,
+    paths,
+    runner: options.runner,
+  })
   let fleetStatus: FleetStatusResult | null = null
   let providerProjection: Record<string, unknown> | null = null
   let accountAvailability: ReadonlyMap<string, number> = new Map()
@@ -723,13 +741,15 @@ export async function spawnCodexInstances(
   }
 
   const delegate = await Effect.runPromise(runKhalaFleetDelegateProgram({
-    accountRef: input.accountRef,
-    branch: input.branch,
-    commit: input.commit,
-    fixture: input.fixture,
-    objective: input.prompt,
-    repo: input.repo,
-    verify: input.verify,
+    accountRef: preparedInput.accountRef,
+    branch: preparedInput.branch,
+    claimRef: preparedInput.claimRef,
+    commit: preparedInput.commit,
+    fixture: preparedInput.fixture,
+    issue: preparedInput.issue,
+    objective: preparedInput.prompt,
+    repo: preparedInput.repo,
+    verify: preparedInput.verify,
   }, {
     ensurePylon: () =>
       Effect.promise(async () => {
@@ -767,7 +787,7 @@ export async function spawnCodexInstances(
           ? await runDelegatedNoRunRequests({
               baseUrl,
               env,
-              input,
+              input: preparedInput,
               paths,
               plannedAccounts: planned.accounts,
               parameters: delegationParameters,
@@ -777,7 +797,7 @@ export async function spawnCodexInstances(
           : await runDelegatedBatchSpawn({
               baseUrl,
               env,
-              input,
+              input: preparedInput,
               onProgress: options.onProgress,
               paths,
               plannedAccounts: planned.accounts,
@@ -787,7 +807,7 @@ export async function spawnCodexInstances(
               work,
             })
         const firstAssignmentRef = firstSpawnAssignmentRef(dispatchedResult)
-        if (dispatchedResult.acceptedCount === input.count && firstAssignmentRef !== null) {
+        if (dispatchedResult.acceptedCount === preparedInput.count && firstAssignmentRef !== null) {
           return { assignmentRef: firstAssignmentRef, ok: true }
         }
         return {
@@ -799,8 +819,8 @@ export async function spawnCodexInstances(
       }),
     verifyCloseout: () =>
       Effect.succeed({
-        ok: dispatchedResult !== null && dispatchedResult.acceptedCount === input.count,
-        ...(dispatchedResult === null || dispatchedResult.acceptedCount === input.count
+        ok: dispatchedResult !== null && dispatchedResult.acceptedCount === preparedInput.count,
+        ...(dispatchedResult === null || dispatchedResult.acceptedCount === preparedInput.count
           ? {}
           : { message: renderSpawnResult(dispatchedResult) }),
       }),
@@ -919,9 +939,11 @@ function executeCodexSpawnTool(
         accountRef: optionalString(input.account_ref),
         baseUrl: optionalString(input.base_url),
         branch: optionalString(input.branch),
+        claimRef: optionalString(input.claim_ref),
         commit: optionalString(input.commit),
         count: optionalInteger(input.count),
         fixture: optionalBoolean(input.fixture),
+        issue: optionalInteger(input.issue),
         noRun: optionalBoolean(input.no_run),
         prompt: requiredString(input.prompt, "codex_spawn requires prompt"),
         pylonRef: optionalString(input.pylon_ref),
@@ -1671,18 +1693,22 @@ function decodeSpawnInput(
   if (prompt.length === 0) throw new Error("codex_spawn requires a non-empty prompt")
   const count = boundedPositiveInteger(raw.count, 1, 1, MAX_SPAWN_COUNT)
   const timeoutMs = boundedPositiveInteger(raw.timeoutMs, DEFAULT_SPAWN_TIMEOUT_MS, 10_000, 3_600_000)
-  const hasAnyPin = raw.repo !== undefined || raw.commit !== undefined || raw.verify !== undefined
+  const hasAnyPin = raw.repo !== undefined ||
+    raw.commit !== undefined ||
+    raw.verify !== undefined ||
+    raw.claimRef !== undefined ||
+    raw.issue !== undefined
   const fixture = raw.fixture ?? !hasAnyPin
   const verify = raw.verify ?? (!fixture && (raw.repo !== undefined || raw.commit !== undefined)
     ? delegationParameters.verifyCriteria?.defaultVerify
     : undefined)
   const missingPins = [
     raw.repo === undefined ? "repo" : null,
-    raw.commit === undefined ? "commit" : null,
     verify === undefined ? "verify" : null,
+    raw.claimRef === undefined ? "claimRef" : null,
   ].filter((value): value is string => value !== null)
   if (fixture && hasAnyPin) {
-    throw new Error("codex_spawn fixture cannot be combined with repo, commit, or verify pins")
+    throw new Error("codex_spawn fixture cannot be combined with repo, commit, verify, issue, or claimRef pins")
   }
   if (!fixture && missingPins.length > 0) {
     throw new Error(`codex_spawn requires fixture: true or complete real-work pins; missing ${missingPins.join(", ")}`)
@@ -1690,13 +1716,87 @@ function decodeSpawnInput(
   return {
     ...raw,
     accountRef: normalizeRequestedAccountRef(raw.accountRef),
+    branch: raw.branch?.trim() || "main",
+    claimRef: raw.claimRef?.trim(),
     count,
     fixture,
+    issue: raw.issue === undefined ? undefined : Math.max(1, Math.floor(raw.issue)),
     noRun: raw.noRun ?? false,
     prompt,
     timeoutMs,
     verify,
   }
+}
+
+async function resolveRealWorkCommitPin(
+  input: NormalizedSpawnInput,
+  options: {
+    readonly env: ChatEnv
+    readonly paths: PylonPaths
+    readonly runner?: KhalaCodexFleetCommandRunner | undefined
+  },
+): Promise<NormalizedSpawnInput> {
+  if (input.fixture) return input
+  if (input.repo === undefined || input.verify === undefined || input.claimRef === undefined) return input
+  const branch = input.branch ?? "main"
+  const resolved = await resolveGithubBranchTip({
+    branch,
+    env: options.env,
+    paths: options.paths,
+    repo: input.repo,
+    runner: options.runner,
+  })
+  if (input.commit !== undefined && input.commit.toLowerCase() !== resolved.commit.toLowerCase()) {
+    throw new Error(
+      `codex_spawn stale commit pin for ${input.repo} ${branch}: provided ${input.commit}, live remote tip is ${resolved.commit}`,
+    )
+  }
+  return {
+    ...input,
+    branch,
+    commit: resolved.commit,
+  }
+}
+
+async function resolveGithubBranchTip(input: {
+  readonly branch: string
+  readonly env: ChatEnv
+  readonly paths: PylonPaths
+  readonly repo: string
+  readonly runner?: KhalaCodexFleetCommandRunner | undefined
+}): Promise<{ readonly commit: string }> {
+  const remote = githubRemoteUrl(input.repo)
+  const ref = `refs/heads/${input.branch}`
+  const result = await (input.runner ?? defaultCommandRunner)({
+    cmd: ["git", "ls-remote", remote, ref],
+    cwd: input.paths.appPath,
+    env: pylonCommandEnv(input.env, input.paths.pylonHome),
+    maxOutputBytes: 8_000,
+    timeoutMs: DEFAULT_COMMAND_TIMEOUT_MS,
+  })
+  const commit = parseGitLsRemoteCommit(result.stdout, ref)
+  if (result.exitCode !== 0 || commit === null) {
+    throw new Error(`codex_spawn could not resolve live remote tip for ${input.repo} ${input.branch}: ${safeFailureReason(result)}`)
+  }
+  return { commit }
+}
+
+function githubRemoteUrl(repo: string): string {
+  const normalized = repo.trim().replace(/^https:\/\/github\.com\//iu, "").replace(/\.git$/iu, "")
+  if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u.test(normalized)) {
+    throw new Error("codex_spawn repo must be owner/repo or a public GitHub URL")
+  }
+  return `https://github.com/${normalized}.git`
+}
+
+function parseGitLsRemoteCommit(stdout: string, ref: string): string | null {
+  for (const line of stdout.split(/\r?\n/u)) {
+    const [sha, resolvedRef] = line.trim().split(/\s+/u)
+    if (resolvedRef === ref && sha !== undefined && /^[a-f0-9]{40}$/iu.test(sha)) {
+      return sha.toLowerCase()
+    }
+  }
+  return null
 }
 
 function workspacePinArgs(input: NormalizedSpawnInput): readonly string[] {
@@ -2049,6 +2149,10 @@ async function runDelegatedBatchSpawn(input: {
         input.work.verify,
       ]
   const objective = renderKhalaFleetDelegationObjective({
+    branch: input.work.kind === "fixture" ? undefined : input.work.branch,
+    claimRef: input.work.kind === "fixture" ? undefined : input.work.claimRef,
+    commit: input.work.kind === "fixture" ? undefined : input.work.commit,
+    issue: input.work.kind === "fixture" ? undefined : input.work.issue,
     objective: input.input.prompt,
     repo: input.work.kind === "fixture" ? undefined : input.work.repo,
     verify: input.work.kind === "fixture" ? undefined : input.work.verify,
@@ -2104,9 +2208,13 @@ async function runDelegatedNoRunRequests(input: {
   readonly targetPylonRef: string
 }): Promise<SpawnCodexInstancesResult> {
   const objective = renderKhalaFleetDelegationObjective({
+    branch: input.input.fixture ? undefined : input.input.branch,
+    claimRef: input.input.fixture ? undefined : input.input.claimRef,
+    commit: input.input.fixture ? undefined : input.input.commit,
+    issue: input.input.fixture ? undefined : input.input.issue,
     objective: input.input.prompt,
-    repo: input.input.repo,
-    verify: input.input.verify,
+    repo: input.input.fixture ? undefined : input.input.repo,
+    verify: input.input.fixture ? undefined : input.input.verify,
   }, input.parameters)
   const results = await Promise.all(input.plannedAccounts.map(async (selectedAccount, index): Promise<SpawnSlotResult> => {
     const selectedCommandAccount = commandAccountRef(selectedAccount.accountRef)
