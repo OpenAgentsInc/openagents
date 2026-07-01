@@ -19,6 +19,18 @@ const sourceFiles = ['workers/api/src', 'packages', 'apps/web/src']
   .filter(path => !/\.scene\.test\.tsx?$/.test(path))
   .filter(path => !path.includes('workers/api/src/test/'))
 
+const khalaArchitectureScanFiles = [
+  '../../clients/khala-code-desktop',
+  '../../packages/khala-tools',
+]
+  .flatMap(listFiles)
+  .filter(path => /\.tsx?$/.test(path))
+  .filter(path => !/\.d\.ts$/.test(path))
+  .filter(path => !/\.test\.tsx?$/.test(path))
+  .filter(path => !/\.test-support\.tsx?$/.test(path))
+  .filter(path => !/\.story\.test\.tsx?$/.test(path))
+  .filter(path => !/\.scene\.test\.tsx?$/.test(path))
+
 const workerFiles = sourceFiles.filter(path =>
   path.startsWith('workers/api/src/'),
 )
@@ -99,6 +111,14 @@ const lineCount = path => {
 
 const formatDetails = results =>
   results.map(result => `${result.path}: ${result.count}`).join('\n')
+
+const formatRepoRootDetails = results =>
+  results
+    .map(
+      result =>
+        `${result.path.replace(/^\.\.\/\.\.\//, '')}: ${result.count}`,
+    )
+    .join('\n')
 
 const budgetChecks = [
   {
@@ -710,6 +730,60 @@ const deletedFileChecks = [
       'The deleted local login demo story must not return with the removed simulated auth flow.',
     name: 'loggedOut/page/login.story.test.ts deleted',
     path: 'apps/web/src/page/loggedOut/page/login.story.test.ts',
+  },
+]
+
+const reportOnlyArchitectureChecks = [
+  {
+    description:
+      'Khala desktop/tools modules should parse untyped JSON through Schema or named boundaries before casting.',
+    details: countByFile(
+      khalaArchitectureScanFiles,
+      /JSON\.parse\([\s\S]{0,240}?\)\s+as\b/g,
+    ),
+    name: 'Khala JSON.parse casts',
+  },
+  {
+    description:
+      'Khala desktop/tools modules should preserve failure information instead of swallowing empty catch blocks.',
+    details: countByFile(
+      khalaArchitectureScanFiles,
+      /\bcatch\s*(?:\([^)]*\)\s*)?\{\s*\}/g,
+    ),
+    name: 'Khala bare catch blocks',
+  },
+  {
+    description:
+      'Khala desktop/tools modules should route environment reads through config services or explicit boundaries.',
+    details: countByFile(
+      khalaArchitectureScanFiles,
+      /\b(?:process|Bun)\.env\b|\bimport\.meta\.env\b/g,
+    ),
+    name: 'Khala direct env reads',
+  },
+  {
+    description:
+      'Khala desktop/tools logic should use injected Clock/time services instead of Date.now().',
+    details: countByFile(khalaArchitectureScanFiles, /\bDate\.now\(\)/g),
+    name: 'Khala Date.now calls',
+  },
+  {
+    description:
+      'Khala desktop/tools modules should keep Effect.runPromise at named executable edges.',
+    details: countByFile(
+      khalaArchitectureScanFiles,
+      /\bEffect\.runPromise\(/g,
+    ),
+    name: 'Khala Effect.runPromise calls',
+  },
+  {
+    description:
+      'Khala desktop/tools process cleanup should use supervised lifecycles instead of setTimeout kill paths.',
+    details: countByFile(
+      khalaArchitectureScanFiles,
+      /\bsetTimeout\s*\([\s\S]{0,400}\b(?:killTree|process\.kill|kill|\.kill)\b/g,
+    ),
+    name: 'Khala setTimeout process kills',
   },
 ]
 
@@ -1421,6 +1495,17 @@ publicProjectionSurfaces.forEach(surface => {
   console.log(`  ${surface.status}: ${surface.route} (${surface.module})`)
 })
 console.log('')
+
+console.log(
+  'Khala architecture report-only scan (clients/khala-code-desktop + packages/khala-tools):',
+)
+reportOnlyArchitectureChecks.forEach(check => {
+  const count = totalCount(check.details)
+  console.log(`${check.name}: ${count} finding(s)`)
+  console.log(`  ${check.description}`)
+  console.log(formatRepoRootDetails(check.details) || '  none')
+  console.log('')
+})
 
 const problems = [
   ...budgetProblems,
