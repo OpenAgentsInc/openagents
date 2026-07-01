@@ -212,6 +212,12 @@
   -ms-overflow-style: none;
 }
 
+.oa-ui-workroom-tool-output::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
 .oa-ui-workroom-tool-output-pre {
   margin: 0;
   padding: 0;
@@ -244,6 +250,12 @@
   max-height: 240px;
   scrollbar-width: none;
   -ms-overflow-style: none;
+}
+
+.oa-ui-workroom-bash-scroll::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 .oa-ui-workroom-bash-pre {
@@ -384,4 +396,10 @@
   overflow-y: visible;
   scrollbar-width: none;
   -ms-overflow-style: none;
+}
+
+.oa-ui-workroom-write-content::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
 }
