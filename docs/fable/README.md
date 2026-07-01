@@ -30,3 +30,12 @@ Contents:
   (fixture Codex app-server, TestClock), property/model-based and bounded
   TLA+ tiers, GEPA optimization loops, and the productization path built on
   the shipped `apps/qa-runner` (@openagentsinc/qa-runner) substrate.
+- `2026-07-01-fleet-fanout-coding-instructions.md` — implementation handoff
+  for bulletproof fleet fan-out steered from Khala Code: one command starts a
+  sustained N-worker run (FleetRun record + refill supervisor + `khala_fleet`
+  MCP verbs), a claim registry and typed work planner kill the June 29
+  duplicate-PR class, the Fleet screen becomes a cockpit
+  (pause/resume/drain/stop, worker cards with live lifecycle, account cards
+  with ticking rate limits and reconnect, throughput gauges, Inbox flags),
+  full RPC/QA parity per the QA framework doc, and a "clean 2B-token day"
+  live acceptance protocol with a definition-of-done checklist.
