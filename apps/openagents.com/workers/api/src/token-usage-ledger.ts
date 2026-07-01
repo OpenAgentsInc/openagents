@@ -1097,6 +1097,11 @@ type PublicTokensServedHistoryDayWindow = Readonly<{
   startIso: string
 }>
 
+type PublicTokensServedDailyRollupRow = Readonly<{
+  day: string | null
+  tokens_served: number | null
+}>
+
 const chunkReadonlyArray = <A>(
   values: ReadonlyArray<A>,
   size: number,
@@ -1190,6 +1195,140 @@ const publicTokensServedHistorySqlForWindows = (
              WHERE day IS NOT NULL
              GROUP BY day
              ORDER BY day ASC`
+}
+
+const readPublicTokensServedPartialHistoryDay = (
+  db: D1Database,
+  input: PublicTokensServedHistoryDayWindow,
+): Effect.Effect<
+  ReadonlyArray<{ day: string; tokensServed: number }>,
+  TokenUsageLedgerStorageError
+> =>
+  d1Effect('tokenUsageEvents.publicTokensServedHistory.partialDay', () =>
+    db
+      .prepare(
+        `SELECT
+            '${input.day}' AS day,
+            COALESCE(SUM(input_tokens), 0) + COALESCE(SUM(output_tokens), 0)
+              AS tokens,
+            COUNT(*) AS usage_events
+           FROM token_usage_events
+          WHERE observed_at >= ?
+            AND observed_at < ?
+            AND ${publicTokensServedDemandWhere}`,
+      )
+      .bind(input.startIso, input.endIso)
+      .first<{
+        day: string | null
+        tokens: number | null
+        usage_events: number | null
+      }>(),
+  ).pipe(
+    Effect.map(row =>
+      row === null || Math.max(0, Math.trunc(row.usage_events ?? 0)) === 0
+        ? []
+        : [
+            {
+              day: input.day,
+              tokensServed: Math.max(0, Math.trunc(row.tokens ?? 0)),
+            },
+          ],
+    ),
+  )
+
+const readPublicTokensServedDailyRollups = (
+  db: D1Database,
+  input: Readonly<{
+    endDay: string
+    startDay: string
+    timezone: string
+  }>,
+): Effect.Effect<
+  ReadonlyArray<{ day: string; tokensServed: number }>,
+  TokenUsageLedgerStorageError
+> =>
+  d1Effect('tokenUsageEvents.publicTokensServedHistory.dailyRollups', () =>
+    db
+      .prepare(
+        `SELECT day, tokens_served
+           FROM public_khala_tokens_served_daily_rollups
+          WHERE timezone = ?
+            AND day >= ?
+            AND day <= ?
+          ORDER BY day ASC`,
+      )
+      .bind(input.timezone, input.startDay, input.endDay)
+      .all<PublicTokensServedDailyRollupRow>(),
+  ).pipe(
+    Effect.map(rows =>
+      rows.results
+        .filter(
+          (row): row is PublicTokensServedDailyRollupRow & { day: string } =>
+            typeof row.day === 'string' && row.day !== '',
+        )
+        .map(row => ({
+          day: row.day,
+          tokensServed: Math.max(0, Math.trunc(row.tokens_served ?? 0)),
+        })),
+    ),
+  )
+
+const readPublicTokensServedHistoryFromDailyRollups = (
+  db: D1Database,
+  input: Readonly<{
+    nowIso: string
+    since: string | undefined
+    startAtIso: string | undefined
+    timezone: string
+  }>,
+): Effect.Effect<
+  ReadonlyArray<{ day: string; tokensServed: number }>,
+  TokenUsageLedgerStorageError
+> => {
+  if (input.startAtIso === undefined) {
+    return Effect.succeed([])
+  }
+
+  const startAtIso = input.startAtIso
+  const windows = publicTokensServedHistoryDayWindows({
+    ...input,
+    startAtIso,
+  })
+  const firstWindow = windows[0]
+  const lastWindow = windows[windows.length - 1]
+  if (firstWindow === undefined || lastWindow === undefined) {
+    return Effect.succeed([])
+  }
+
+  const firstDayStartIso = startOfCalendarDayIsoTimestampInTimezone(
+    firstWindow.day,
+    input.timezone,
+  )
+  const firstDayIsPartial =
+    input.since !== undefined &&
+    firstDayStartIso !== undefined &&
+    input.since > firstDayStartIso
+  const rollupStartDay = firstDayIsPartial
+    ? calendarDayKeyAfter(firstWindow.day, 1)
+    : firstWindow.day
+
+  return Effect.gen(function* () {
+    const partialFirstDay = firstDayIsPartial
+      ? yield* readPublicTokensServedPartialHistoryDay(db, firstWindow)
+      : []
+    const rollupDays =
+      rollupStartDay === undefined || rollupStartDay > lastWindow.day
+        ? []
+        : yield* readPublicTokensServedDailyRollups(db, {
+            endDay: lastWindow.day,
+            startDay: rollupStartDay,
+            timezone: input.timezone,
+          })
+
+    return [...partialFirstDay, ...rollupDays].sort((left, right) =>
+      left.day.localeCompare(right.day),
+    )
+  })
 }
 
 const readPublicTokensServedHistoryForTimezone = (
@@ -1295,7 +1434,7 @@ const insertEventRow = (
   row: TokenUsageEventRow,
 ): Effect.Effect<void, TokenUsageLedgerStorageError> =>
   d1Effect('tokenUsageEvents.insert', async () => {
-    const result = await db
+    const insertStatement = db
       .prepare(
         `INSERT INTO token_usage_events (
           id,
@@ -1335,14 +1474,58 @@ const insertEventRow = (
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(...insertBindings(row))
-      .run()
+    const rollupStatements = publicTokensServedDailyRollupStatements(db, row)
+    const results = await db.batch([insertStatement, ...rollupStatements])
 
-    if (!result.success) {
+    if (!results.every(result => result.success)) {
       return Promise.reject({
         reason: 'd1_token_usage_events_insert_success_false',
       })
     }
   }).pipe(Effect.asVoid)
+
+const publicTokensServedDailyRollupStatements = (
+  db: D1Database,
+  row: TokenUsageEventRow,
+): ReadonlyArray<D1PreparedStatement> => {
+  const day = dayKeyInTimezone(
+    row.observed_at,
+    PUBLIC_KHALA_TOKENS_SERVED_TIMEZONE,
+  )
+  if (day === undefined) {
+    return []
+  }
+
+  const tokensServed = Math.max(
+    0,
+    Math.trunc(row.input_tokens ?? 0) + Math.trunc(row.output_tokens ?? 0),
+  )
+
+  return [
+    db
+      .prepare(
+        `INSERT INTO public_khala_tokens_served_daily_rollups (
+            timezone,
+            day,
+            tokens_served,
+            usage_events,
+            updated_at
+          ) VALUES (?, ?, ?, 1, ?)
+          ON CONFLICT(timezone, day) DO UPDATE SET
+            tokens_served = public_khala_tokens_served_daily_rollups.tokens_served
+              + excluded.tokens_served,
+            usage_events = public_khala_tokens_served_daily_rollups.usage_events
+              + excluded.usage_events,
+            updated_at = excluded.updated_at`,
+      )
+      .bind(
+        PUBLIC_KHALA_TOKENS_SERVED_TIMEZONE,
+        day,
+        tokensServed,
+        row.ingested_at,
+      ),
+  ]
+}
 
 const aggregateWhere = (
   filters: TokenUsageLedgerFilters,
@@ -2457,12 +2640,20 @@ export const makeD1TokenUsageLedger = (
                 )
               )?.first_observed_at ?? undefined
             : since
-        const series = yield* readPublicTokensServedHistoryForTimezone(db, {
+        const historyInput = {
           nowIso,
           since,
           startAtIso: firstObservedAt,
           timezone,
-        })
+        }
+        const series = yield* readPublicTokensServedHistoryFromDailyRollups(
+          db,
+          historyInput,
+        ).pipe(
+          Effect.catch(() =>
+            readPublicTokensServedHistoryForTimezone(db, historyInput),
+          ),
+        )
 
         return yield* decodePublicTokensServedHistory({
           bucket,

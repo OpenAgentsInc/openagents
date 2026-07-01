@@ -2,6 +2,7 @@ import { Effect } from 'effect'
 import { describe, expect, test } from 'vitest'
 
 import { handlePublicKhalaTokensServedHistoryApi } from './public-khala-tokens-served-history-routes'
+import { dayKeyInTimezone } from './runtime-primitives'
 import {
   makeD1TokenUsageLedger,
   type TokenUsageLedgerRuntime,
@@ -42,11 +43,15 @@ const fakeHistoryDb = (
       },
       all: <T>(): Promise<{ results: ReadonlyArray<T> }> =>
         Promise.resolve({
-          results: sql.includes('WITH bounded_token_usage_events AS')
-            ? (groupRawRowsByBoundedDays(rows, values) as ReadonlyArray<T>)
-            : sql.includes('date(observed_at)')
-              ? (groupRawRowsByUtcDay(rows) as ReadonlyArray<T>)
-              : (rows as ReadonlyArray<T>),
+          results: sql.includes(
+            'FROM public_khala_tokens_served_daily_rollups',
+          )
+            ? (groupRowsByRollupDays(rows, values) as ReadonlyArray<T>)
+            : sql.includes('WITH bounded_token_usage_events AS')
+              ? (groupRawRowsByBoundedDays(rows, values) as ReadonlyArray<T>)
+              : sql.includes('date(observed_at)')
+                ? (groupRawRowsByUtcDay(rows) as ReadonlyArray<T>)
+                : (rows as ReadonlyArray<T>),
         }),
       first: <T>(): Promise<T | null> =>
         Promise.resolve(
@@ -59,6 +64,10 @@ const fakeHistoryDb = (
                     .sort((left, right) => left.localeCompare(right))[0] ??
                   null,
               } as T)
+            : sql.includes(' AS day') &&
+                sql.includes(' AS tokens') &&
+                sql.includes('COUNT(*) AS usage_events')
+              ? (partialDayRow(rows, sql, values) as T)
             : null,
         ),
     }
@@ -67,6 +76,65 @@ const fakeHistoryDb = (
   }
 
   return { prepare } as unknown as D1Database
+}
+
+const groupRowsByRollupDays = (
+  rows: ReadonlyArray<HistoryRow | RawTokenRow>,
+  values: ReadonlyArray<unknown>,
+): ReadonlyArray<{ day: string; tokens_served: number }> => {
+  const timezone = String(values[0])
+  const startDay = String(values[1])
+  const endDay = String(values[2])
+  const historyRows = rows.filter((row): row is HistoryRow => 'day' in row)
+  if (historyRows.length > 0) {
+    return historyRows
+      .filter(row => row.day >= startDay && row.day <= endDay)
+      .map(row => ({ day: row.day, tokens_served: row.tokens }))
+  }
+
+  const grouped = rows
+    .filter((row): row is RawTokenRow => !('day' in row))
+    .reduce((days, row) => {
+      const day = dayKeyInTimezone(row.observed_at, timezone)
+      if (day === undefined || day < startDay || day > endDay) {
+        return days
+      }
+
+      days.set(
+        day,
+        (days.get(day) ?? 0) + row.input_tokens + row.output_tokens,
+      )
+      return days
+    }, new Map<string, number>())
+
+  return [...grouped.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([day, tokens]) => ({ day, tokens_served: tokens }))
+}
+
+const partialDayRow = (
+  rows: ReadonlyArray<HistoryRow | RawTokenRow>,
+  sql: string,
+  values: ReadonlyArray<unknown>,
+): { day: string | null; tokens: number; usage_events: number } => {
+  const day = sql.match(/SELECT\s+'([^']+)'\s+AS day/)?.[1] ?? null
+  const startIso = String(values[0])
+  const endIso = String(values[1])
+  const matchingRows = rows.filter(
+    (row): row is RawTokenRow =>
+      !('day' in row) &&
+      row.observed_at >= startIso &&
+      row.observed_at < endIso,
+  )
+
+  return {
+    day,
+    tokens: matchingRows.reduce(
+      (sum, row) => sum + row.input_tokens + row.output_tokens,
+      0,
+    ),
+    usage_events: matchingRows.length,
+  }
 }
 
 const groupRawRowsByBoundedDays = (
@@ -181,8 +249,9 @@ describe('GET /api/public/khala-tokens-served/history', () => {
     expect(body.bucket).toBe('day')
     expect(body.generatedAt).toBe(nowIso)
     expect(body.staleness).toMatchObject({
-      composition: 'live_at_read',
+      composition: 'rebuilt_on_transition',
       maxStalenessSeconds: 0,
+      rebuildsOn: ['token_usage_events_insert'],
     })
     expect(body.series).toEqual([
       { day: '2026-06-22', tokensServed: 1_000 },

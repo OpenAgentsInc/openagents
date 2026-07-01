@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises'
 import { describe, expect, test } from 'vitest'
 
 import {
+  dayKeyInTimezone,
   isoTimestampAfterIso,
   utcStartOfDayIsoTimestamp,
 } from './runtime-primitives'
@@ -255,6 +256,39 @@ const makeMemoryD1 = (
 
     const statement: D1PreparedStatement = {
       all: <T = Record<string, unknown>>() => {
+        if (
+          query.includes('FROM public_khala_tokens_served_daily_rollups')
+        ) {
+          const timezone = String(values[0])
+          const startDay = String(values[1])
+          const endDay = String(values[2])
+          const grouped = store.rows.reduce((days, row) => {
+            const day = dayKeyInTimezone(String(row.observed_at), timezone)
+            if (day === undefined || day < startDay || day > endDay) {
+              return days
+            }
+
+            days.set(
+              day,
+              (days.get(day) ?? 0) +
+                asNumber(row.input_tokens) +
+                asNumber(row.output_tokens),
+            )
+            return days
+          }, new Map<string, number>())
+
+          return Promise.resolve(
+            makeResult<T>(
+              [...grouped.entries()]
+                .sort(([left], [right]) => left.localeCompare(right))
+                .map(([day, tokens_served]) => ({
+                  day,
+                  tokens_served,
+                })) as Array<T>,
+            ),
+          )
+        }
+
         const rows = filteredRows(store.rows, query, values, store.preferences)
 
         if (query.includes('GROUP BY COALESCE(provider')) {
@@ -593,6 +627,22 @@ const makeMemoryD1 = (
 
           return Promise.resolve({
             first_observed_at: first ?? null,
+          } as T)
+        }
+
+        if (
+          query.includes(' AS day') &&
+          query.includes(' AS tokens') &&
+          query.includes('COUNT(*) AS usage_events')
+        ) {
+          const rows = filteredRows(store.rows, query, values, store.preferences)
+          const count = countRow(rows)
+          const day = query.match(/SELECT\s+'([^']+)'\s+AS day/)?.[1] ?? null
+
+          return Promise.resolve({
+            day,
+            tokens: count.input_tokens + count.output_tokens,
+            usage_events: count.usage_events,
           } as T)
         }
 
@@ -1328,7 +1378,7 @@ describe('public tokens-served history', () => {
     ).toBe(false)
     expect(
       queryLog.some(query =>
-        query.includes('WITH bounded_token_usage_events AS'),
+        query.includes('FROM public_khala_tokens_served_daily_rollups'),
       ),
     ).toBe(true)
   })

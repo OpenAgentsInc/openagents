@@ -7,20 +7,19 @@ import { Effect, Schema as S } from 'effect'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
 import {
   PublicProjectionStalenessContract,
-  liveAtReadStaleness,
+  rebuiltOnTransitionStaleness,
 } from './public-projection-staleness'
-import { currentEpochMillis, currentIsoTimestamp } from './runtime-primitives'
+import { currentIsoTimestamp } from './runtime-primitives'
 import {
-  PUBLIC_KHALA_TOKENS_SERVED_TIMEZONE,
   type TokenUsageLedgerShape,
   makeD1TokenUsageLedger,
 } from './token-usage-ledger'
 
 // The served history projection: the requested window + bucket, the per-day
 // series, plus the shared public-projection staleness contract
-// (generatedAt + staleness). Like the scalar counter, the series is composed
-// LIVE from the ledger at request time (`live_at_read`); the short in-isolate
-// cache below is a perf detail under that contract, not a stored snapshot.
+// (generatedAt + staleness). The series is maintained as a daily aggregate
+// projection on each successful token ledger insert, with the rolling-window
+// boundary day read from the raw ledger when needed.
 // Public-safe: each point is a bare day + sum — no per-user, per-team,
 // provider, or secret material.
 export const PublicKhalaTokensServedHistoryPoint = S.Struct({
@@ -45,18 +44,7 @@ type PublicKhalaTokensServedHistoryRouteInput = Readonly<{
   // Tests inject an in-memory ledger; production builds the D1-backed one.
   ledger?: TokenUsageLedgerShape
   nowIso?: () => string
-  nowUnixMs?: () => number
 }>
-
-// The /stats history graph polls this on the same short interval as the
-// scalar counter (subscriptions.ts), and the per-day GROUP BY scan over the
-// ledger is heavier than the single SUM. Cache the computed series in-isolate
-// for a few seconds keyed on (window, bucket); reads are then instant and at
-// most a few seconds stale. The response stays `no-store` so each poll gets the
-// latest cached value, never a frozen browser copy. (Same shape as
-// public-khala-tokens-served-routes.ts.)
-const HISTORY_CACHE_TTL_MS = 4_000
-const historyCache = new Map<string, { at: number; payload: unknown }>()
 
 export const handlePublicKhalaTokensServedHistoryApi = (
   request: Request,
@@ -66,7 +54,6 @@ export const handlePublicKhalaTokensServedHistoryApi = (
     return Effect.succeed(methodNotAllowed(['GET']))
   }
 
-  const nowUnixMs = input.nowUnixMs ?? currentEpochMillis
   const nowIso = input.nowIso ?? currentIsoTimestamp
 
   const url = new URL(request.url)
@@ -74,19 +61,6 @@ export const handlePublicKhalaTokensServedHistoryApi = (
   const bucket = url.searchParams.get('bucket') ?? undefined
   const timezone =
     url.searchParams.get('timezone') ?? url.searchParams.get('tz') ?? undefined
-
-  // Only cache the real (D1-backed) production path. Tests inject their own
-  // ledger and must each see their own snapshot, so they bypass the cache.
-  const cacheable = input.ledger === undefined
-  const cacheKey = `${window ?? '30d'}|${bucket ?? 'day'}|${timezone ?? PUBLIC_KHALA_TOKENS_SERVED_TIMEZONE}`
-
-  const cached = cacheable ? historyCache.get(cacheKey) : undefined
-  if (
-    cached !== undefined &&
-    nowUnixMs() - cached.at < HISTORY_CACHE_TTL_MS
-  ) {
-    return Effect.succeed(noStoreJsonResponse(cached.payload))
-  }
 
   const ledger =
     input.ledger ?? makeD1TokenUsageLedger(input.OPENAGENTS_DB as D1Database)
@@ -103,10 +77,9 @@ export const handlePublicKhalaTokensServedHistoryApi = (
           tokensServed: point.tokensServed,
         })),
         generatedAt: nowIso(),
-        staleness: liveAtReadStaleness(['token_usage_events']),
-      }
-      if (cacheable) {
-        historyCache.set(cacheKey, { at: nowUnixMs(), payload })
+        staleness: rebuiltOnTransitionStaleness(0, [
+          'token_usage_events_insert',
+        ]),
       }
       return noStoreJsonResponse(payload)
     }),
