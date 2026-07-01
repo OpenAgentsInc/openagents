@@ -184,6 +184,11 @@ const appendDiagnostic = (
   return lines
 }
 
+const diagnosticErrorMessage = (error: unknown): string => {
+  const message = error instanceof Error ? error.message : String(error)
+  return message.slice(0, 240)
+}
+
 export function createCodexAppServerHost(
   options: CreateCodexAppServerHostOptions = {},
 ): CodexAppServerHost {
@@ -328,7 +333,15 @@ export function createCodexAppServerHost(
       receivedAt: isoNow(),
       ...(message.id === undefined ? {} : { id: message.id }),
     }
-    for (const subscriber of subscribers) subscriber(notification)
+    for (const subscriber of subscribers) {
+      try {
+        subscriber(notification)
+      } catch (error) {
+        const diagnostic = `notification subscriber failed for ${notification.method}: ${diagnosticErrorMessage(error)}`
+        appendDiagnostic(diagnostics, diagnostic)
+        if (env.KHALA_CODE_DEBUG_APP_SERVER === "1") console.debug(diagnostic)
+      }
+    }
   }
 
   function onStdoutData(chunk: Buffer): void {
