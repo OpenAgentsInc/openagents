@@ -493,3 +493,36 @@ Validation:
 - `bun run --cwd clients/khala-code-desktop typecheck`
 - `bun test clients/khala-code-desktop/tests/codex-harness-status.test.ts clients/khala-code-desktop/tests/app-shell.test.ts clients/khala-code-desktop/tests/rpc-handlers.test.ts clients/khala-code-desktop/tests/fleet-board-projection.test.ts clients/khala-code-desktop/tests/codex-parity-live-smoke.test.ts`
 - `bun run --cwd clients/khala-code-desktop verify`
+
+## Issue #7795: Codex App-server Gap Matrix For TUI-local Behavior
+
+Status: implemented
+
+Khala Code now has a checked app-server gap matrix in
+`clients/khala-code-desktop/src/bun/codex-app-server-gap-matrix.ts` plus the
+human-readable companion doc at
+`docs/khala-code/2026-07-01-codex-app-server-gap-matrix.md`. The matrix is tied
+to the same pinned Codex reference commit as the broader parity contract and
+splits every slash command into one of three decisions:
+
+- stable Codex app-server coverage;
+- a tiny Khala desktop adapter with tests;
+- a named upstream app-server gap.
+
+The new `codex-app-server-gap-matrix.test.ts` fixture enforces that every Codex
+slash command appears exactly once, every stable method exists in the generated
+Codex app-server schema, experimental background terminal methods remain marked
+experimental, and this doc set is updated when the pinned Codex reference
+changes.
+
+The parity contract now includes the gap-matrix fixture and expands the
+required app-server method inventory to cover the stable methods used by the
+matrix, including goal read/clear, metadata updates, settings and ecosystem
+methods, external config import, filesystem read/write helpers, Windows sandbox
+setup/readiness, status helpers, and desktop feedback upload.
+
+Validation:
+
+- `bun run --cwd clients/khala-code-desktop typecheck`
+- `bun test clients/khala-code-desktop/tests/codex-app-server-gap-matrix.test.ts clients/khala-code-desktop/tests/codex-parity-contract.test.ts clients/khala-code-desktop/tests/codex-slash-commands.test.ts`
+- `bun run --cwd clients/khala-code-desktop verify`

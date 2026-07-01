@@ -17,6 +17,10 @@ source under `projects/repos/codex`.
   methods, server request methods, notifications, and `ThreadItem` variants.
 - `clients/khala-code-desktop/tests/codex-slash-commands.test.ts` parses the
   upstream Codex `SlashCommand` enum and compares it to Khala's registry.
+- `clients/khala-code-desktop/tests/codex-app-server-gap-matrix.test.ts`
+  checks `docs/khala-code/2026-07-01-codex-app-server-gap-matrix.md` and the
+  typed gap matrix so every slash command maps to a real app-server method, a
+  tested Khala desktop adapter, or a named upstream app-server gap.
 - `clients/khala-code-desktop/tests/codex-app-server-chat-runtime.test.ts`
   covers thread start, resume, list, read, rename, fork, archive, unarchive,
   delete, turn start, and turn interrupt over app-server methods.
@@ -35,10 +39,11 @@ source under `projects/repos/codex`.
 
 If the pinned Codex checkout changes, update
 `KHALA_CODE_CODEX_PARITY_REFERENCE_COMMIT` and any schema/method/variant rows in
-`src/bun/codex-parity-contract.ts` in the same change. A new upstream slash
-command, app-server method removal, server request change, notification change,
-or `ThreadItem` variant creates a fixture failure until Khala explicitly maps it
-or records it as a gap.
+`src/bun/codex-parity-contract.ts` and
+`src/bun/codex-app-server-gap-matrix.ts` in the same change. A new upstream
+slash command, app-server method removal, server request change, notification
+change, or `ThreadItem` variant creates a fixture failure until Khala explicitly
+maps it or records it as a gap with a linked rationale.
 
 ## Live Smoke
 
