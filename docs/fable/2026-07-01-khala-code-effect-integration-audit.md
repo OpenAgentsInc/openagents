@@ -43,6 +43,15 @@ its `package.json`, `@openagentsinc/ui` is a full Foldkit component library
 repo** — the exact template, down to `src/ui/{main,model,message,view,
 subscriptions}.ts` and a deterministic Effect test harness.
 
+> **Clarification (owner direction, 2026-07-01):** `clients/khala-code-desktop`
+> is the ONLY active desktop development target. `apps/autopilot-desktop` and
+> the other desktop surfaces are postponed — do not route new desktop feature
+> work there. Every reference to `apps/autopilot-desktop` in this audit means
+> "source material / pattern template to copy FROM", never "surface to develop
+> ON". Port its Foldkit program layout, subscriptions pattern, and
+> deterministic test harness into `clients/khala-code-desktop` (or shared
+> packages); leave the autopilot-desktop app itself untouched.
+
 One layer down, `packages/khala-tools` has excellent Schema contracts and two
 genuinely idiomatic modules (`permission-policy`, `fleet-delegate-program`),
 but its execution substrate is Effect-flavored Promise glue: exactly one real
@@ -302,7 +311,9 @@ migration they de-risk.
 
 ### Phase 3 — The UI becomes a Foldkit program (the big one, staged)
 
-10. **Adopt the `apps/autopilot-desktop` template**: `src/ui/{main,model,
+10. **Adopt the `apps/autopilot-desktop` template — in
+    `clients/khala-code-desktop`** (autopilot-desktop itself stays postponed;
+    it is copy-from material only): `src/ui/{main,model,
     message,view,subscriptions}.ts`, `Runtime.run`. The state mapping is
     textbook TEA: `messages`/`pendingTurn`/`thinkingTurnId`/
     `activeCodexThreadId`/`transcriptPinnedToEnd` become the Model; the

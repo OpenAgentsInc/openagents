@@ -50,5 +50,7 @@ Contents:
   best-practices baseline, ranked debt with failure modes, and a four-phase
   plan: Schema-first contracts → scoped process/protocol services
   (ChildProcess, CodexAppServer, PylonService, config) → staged Foldkit
-  shell migration on the `apps/autopilot-desktop` template → @effect/vitest
+  shell migration copying the `apps/autopilot-desktop` patterns into
+  `clients/khala-code-desktop` (the only active desktop target;
+  autopilot-desktop is postponed reference material) → @effect/vitest
   + TestClock + guardrails.
