@@ -40,6 +40,21 @@ export type OrchestrationTask = {
   updatedAt: string
 }
 
+export type PublicOrchestrationTask = {
+  id: string
+  parentId: string | null
+  threadId: string
+  status: OrchestrationTaskStatus
+  deps: string[]
+  runnerKind: OrchestrationRunnerKind | null
+  repo: string | null
+  branch: string | null
+  baseCommit: string | null
+  issueRef: string | null
+  createdAt: string
+  updatedAt: string
+}
+
 export type VirtualHead = {
   repo: string
   branch: string
@@ -84,6 +99,10 @@ export type DispatchContext = {
   maxConcurrentSlots: number
   createdAt: string
   updatedAt: string
+}
+
+export type PublicDispatchContext = Omit<DispatchContext, "worktreePath"> & {
+  worktreePath: null
 }
 
 export type OrchestrationMessageKind =
@@ -136,6 +155,11 @@ const parseSpec = (value: string): OrchestrationTaskSpec => {
     ...(runnerKind === undefined ? {} : { runnerKind: normalizeOrchestrationRunnerKind(runnerKind) }),
   }
 }
+
+const normalizeTaskSpec = (spec: OrchestrationTaskSpec): OrchestrationTaskSpec => ({
+  ...spec,
+  ...(spec.runnerKind === undefined ? {} : { runnerKind: normalizeOrchestrationRunnerKind(spec.runnerKind) }),
+})
 
 export function normalizeOrchestrationRunnerKind(
   kind: OrchestrationRunnerKind | LegacyAgentRunnerKind,
@@ -197,6 +221,21 @@ const taskFromRow = (row: TaskRow): OrchestrationTask => ({
   updatedAt: row.updated_at,
 })
 
+export const publicOrchestrationTaskFrom = (task: OrchestrationTask): PublicOrchestrationTask => ({
+  id: task.id,
+  parentId: task.parentId,
+  threadId: task.threadId,
+  status: task.status,
+  deps: task.deps,
+  runnerKind: task.spec.runnerKind ?? null,
+  repo: task.spec.repo ?? null,
+  branch: task.spec.branch ?? null,
+  baseCommit: task.spec.baseCommit ?? null,
+  issueRef: task.spec.issueRef ?? null,
+  createdAt: task.createdAt,
+  updatedAt: task.updatedAt,
+})
+
 const contextFromRow = (row: DispatchContextRow): DispatchContext => ({
   id: row.id,
   assigneeHandle: row.assignee_handle,
@@ -211,6 +250,11 @@ const contextFromRow = (row: DispatchContextRow): DispatchContext => ({
   maxConcurrentSlots: row.max_concurrent_slots,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
+})
+
+export const publicDispatchContextFrom = (context: DispatchContext): PublicDispatchContext => ({
+  ...context,
+  worktreePath: null,
 })
 
 const virtualHeadFromRow = (row: VirtualHeadRow): VirtualHead => ({
@@ -317,7 +361,7 @@ export class PylonOrchestrationStore {
         $id: input.id,
         $parentId: input.parentId ?? null,
         $threadId: threadId,
-        $spec: JSON.stringify(input.spec),
+        $spec: JSON.stringify(normalizeTaskSpec(input.spec)),
         $status: status,
         $deps: JSON.stringify(deps),
         $createdAt: now,
@@ -345,7 +389,7 @@ export class PylonOrchestrationStore {
   updateTaskSpec(id: string, spec: OrchestrationTaskSpec, now: Date = new Date()): OrchestrationTask {
     this.db
       .query("UPDATE pylon_orchestration_tasks SET spec_json = $spec, updated_at = $now WHERE id = $id")
-      .run({ $id: id, $spec: JSON.stringify(spec), $now: iso(now) })
+      .run({ $id: id, $spec: JSON.stringify(normalizeTaskSpec(spec)), $now: iso(now) })
     const task = this.getTask(id)
     if (task === null) throw new Error(`unknown orchestration task: ${id}`)
     return task
@@ -416,7 +460,10 @@ export class PylonOrchestrationStore {
     return (rows as DispatchContextRow[]).map(contextFromRow)
   }
 
-  recordHeartbeat(id: string, input: { at?: Date; baseBehindBy?: number; status?: DispatchContextStatus } = {}): void {
+  recordHeartbeat(id: string, input: { at?: Date; baseBehindBy?: number; status?: DispatchContextStatus } = {}): DispatchContext {
+    const current = this.getDispatchContext(id)
+    if (current === null) throw new Error(`unknown dispatch context: ${id}`)
+    const status = current.status === "circuit_broken" ? "circuit_broken" : input.status ?? null
     this.db
       .query(`
         UPDATE pylon_orchestration_dispatch_contexts
@@ -426,7 +473,8 @@ export class PylonOrchestrationStore {
                updated_at = $at
          WHERE id = $id
       `)
-      .run({ $id: id, $at: iso(input.at), $baseBehindBy: input.baseBehindBy ?? null, $status: input.status ?? null })
+      .run({ $id: id, $at: iso(input.at), $baseBehindBy: input.baseBehindBy ?? null, $status: status })
+    return this.getDispatchContext(id) ?? current
   }
 
   markDispatched(taskId: string, contextId: string, now: Date = new Date()): void {
@@ -565,16 +613,32 @@ export class PylonOrchestrationStore {
     if (current === null) throw new Error(`unknown dispatch context: ${id}`)
     const failureCount = current.failureCount + 1
     const status: DispatchContextStatus = failureCount >= maxFailures ? "circuit_broken" : "idle"
-    this.db
-      .query(`
-        UPDATE pylon_orchestration_dispatch_contexts
-           SET failure_count = $failureCount,
-               status = $status,
-               current_task_id = NULL,
-               updated_at = $now
-         WHERE id = $id
-      `)
-      .run({ $id: id, $failureCount: failureCount, $status: status, $now: iso(now) })
+    const at = iso(now)
+    this.db.run("BEGIN IMMEDIATE")
+    try {
+      if (current.currentTaskId !== null) {
+        this.db
+          .query("UPDATE pylon_orchestration_tasks SET status = 'failed', updated_at = $now WHERE id = $taskId")
+          .run({ $taskId: current.currentTaskId, $now: at })
+      }
+      this.db
+        .query(`
+          UPDATE pylon_orchestration_dispatch_contexts
+             SET failure_count = $failureCount,
+                 status = $status,
+                 current_task_id = NULL,
+                 updated_at = $now
+           WHERE id = $id
+        `)
+        .run({ $id: id, $failureCount: failureCount, $status: status, $now: at })
+      if (current.currentTaskId !== null) {
+        this.releaseVirtualHeadTask(current.currentTaskId, now)
+      }
+      this.db.run("COMMIT")
+    } catch (error) {
+      this.db.run("ROLLBACK")
+      throw error
+    }
     return this.getDispatchContext(id) ?? current
   }
 
@@ -603,6 +667,13 @@ export class PylonOrchestrationStore {
         $body: input.body,
         $createdAt: iso(input.now),
       })
+  }
+
+  publicSnapshot(): { tasks: PublicOrchestrationTask[]; dispatchContexts: PublicDispatchContext[] } {
+    return {
+      tasks: this.listTasks().map(publicOrchestrationTaskFrom),
+      dispatchContexts: this.listDispatchContexts().map(publicDispatchContextFrom),
+    }
   }
 }
 
