@@ -86,6 +86,21 @@ describe("Khala Code QA GEPA explore policy loop", () => {
     ).toThrow(/Gym-admitted/)
   })
 
+  test("blocks blank scenario refs after Gym admission normalization", () => {
+    const blocked = admitKhalaCodeQaGepaExplorePolicyToGym({
+      baselineScore: 0,
+      candidateScore: 1,
+      evaluatedScenarioIds: [" ", ""],
+      offline: true,
+      runRef: "  gym.run.with-spaces  ",
+    })
+
+    expect(blocked.state).toBe("blocked")
+    expect(blocked.runRef).toBe("gym.run.with-spaces")
+    expect(blocked.evaluatedScenarioIds).toEqual([])
+    expect(blocked.blockerRefs).toEqual(["blocker.khala_qa_gepa.no_evaluated_scenarios"])
+  })
+
   test("admitted policy brain remains offline and selects frontier-weighted actions", async () => {
     const candidate = admittedCandidate()
     const brain = makeKhalaCodeQaGepaExplorePolicyBrain(candidate)

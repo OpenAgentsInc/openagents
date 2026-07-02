@@ -286,10 +286,12 @@ export const admitKhalaCodeQaGepaExplorePolicyToGym = (input: {
   readonly offline: boolean
   readonly runRef: string
 }): KhalaCodeQaGepaGymAdmission => {
+  const evaluatedScenarioIds = dedupe(input.evaluatedScenarioIds)
+  const runRef = input.runRef.trim()
   const blockerRefs = [
     ...(input.offline ? [] : ["blocker.khala_qa_gepa.live_input"]),
-    ...(input.runRef.trim() === "" ? ["blocker.khala_qa_gepa.missing_gym_run_ref"] : []),
-    ...(input.evaluatedScenarioIds.length === 0 ? ["blocker.khala_qa_gepa.no_evaluated_scenarios"] : []),
+    ...(runRef === "" ? ["blocker.khala_qa_gepa.missing_gym_run_ref"] : []),
+    ...(evaluatedScenarioIds.length === 0 ? ["blocker.khala_qa_gepa.no_evaluated_scenarios"] : []),
     ...(input.candidateScore > input.baselineScore ? [] : ["blocker.khala_qa_gepa.metric_not_improved"]),
   ]
   return {
@@ -297,9 +299,9 @@ export const admitKhalaCodeQaGepaExplorePolicyToGym = (input: {
     baselineScore: roundMetric(input.baselineScore),
     blockerRefs,
     candidateScore: roundMetric(input.candidateScore),
-    evaluatedScenarioIds: dedupe(input.evaluatedScenarioIds),
+    evaluatedScenarioIds,
     metric: "confirmed_bugs_and_new_coverage_per_action",
-    runRef: input.runRef,
+    runRef,
     schema: KHALA_CODE_QA_GEPA_GYM_ADMISSION_SCHEMA,
     state: blockerRefs.length === 0 ? "admitted" : "blocked",
   }
