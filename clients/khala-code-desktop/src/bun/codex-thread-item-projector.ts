@@ -479,6 +479,7 @@ const projectionForItem = (
     role,
     body: boundedBody,
     codexItem,
+    harnessItem: codexItem,
   }
 }
 
@@ -501,49 +502,51 @@ const approvalMessage = (
     jsonSection("Permissions", params.permissions ?? params.additionalPermissions, context),
     jsonSection("Available decisions", params.availableDecisions, context),
   ].filter(Boolean).join("\n\n") || "Codex is waiting for approval.", context)
+  const codexItem: KhalaCodeDesktopCodexItemCard = {
+    itemId: item,
+    itemType: "approval",
+    status,
+    title,
+    ...(requestIdValue === undefined ? {} : {
+      approval: {
+        method: notification.method as KhalaCodeDesktopCodexApprovalMethod,
+        requestId: requestIdValue,
+        ...(arrayField(params, "availableDecisions").length === 0
+          ? {}
+          : { availableDecisions: arrayField(params, "availableDecisions") }),
+        ...(stringField(params, "command") === null ? {} : { command: stringField(params, "command")! }),
+        ...(stringField(params, "cwd") === null ? {} : { cwd: stringField(params, "cwd")! }),
+        ...(stringField(params, "grantRoot") === null ? {} : { grantRoot: stringField(params, "grantRoot")! }),
+        ...(objectField(params, "networkApprovalContext") === null
+          ? {}
+          : { networkApprovalContext: objectField(params, "networkApprovalContext")! }),
+        ...(objectField(params, "permissions") === null
+          ? {}
+          : { permissions: objectField(params, "permissions")! as KhalaCodeDesktopCodexPermissionProfile }),
+        ...(objectField(params, "additionalPermissions") === null
+          ? {}
+          : { additionalPermissions: objectField(params, "additionalPermissions")! }),
+        ...(stringArrayField(params, "proposedExecpolicyAmendment") === undefined
+          ? {}
+          : { proposedExecpolicyAmendment: stringArrayField(params, "proposedExecpolicyAmendment")! }),
+        ...(networkPolicyAmendments(params) === undefined
+          ? {}
+          : { proposedNetworkPolicyAmendments: networkPolicyAmendments(params)! }),
+        ...(stringField(params, "reason") === null ? {} : { reason: stringField(params, "reason")! }),
+      },
+    }),
+    ...cardContext({
+      ...(requestId === undefined ? {} : { requestId }),
+      threadId: threadIdFromParams(params),
+      turnId: turnIdFromParams(params),
+    }),
+  }
   return {
     id: `approval-${requestId ?? item}`,
     role: "tool",
     body,
-    codexItem: {
-      itemId: item,
-      itemType: "approval",
-      status,
-      title,
-      ...(requestIdValue === undefined ? {} : {
-        approval: {
-          method: notification.method as KhalaCodeDesktopCodexApprovalMethod,
-          requestId: requestIdValue,
-          ...(arrayField(params, "availableDecisions").length === 0
-            ? {}
-            : { availableDecisions: arrayField(params, "availableDecisions") }),
-          ...(stringField(params, "command") === null ? {} : { command: stringField(params, "command")! }),
-          ...(stringField(params, "cwd") === null ? {} : { cwd: stringField(params, "cwd")! }),
-          ...(stringField(params, "grantRoot") === null ? {} : { grantRoot: stringField(params, "grantRoot")! }),
-          ...(objectField(params, "networkApprovalContext") === null
-            ? {}
-            : { networkApprovalContext: objectField(params, "networkApprovalContext")! }),
-          ...(objectField(params, "permissions") === null
-            ? {}
-            : { permissions: objectField(params, "permissions")! as KhalaCodeDesktopCodexPermissionProfile }),
-          ...(objectField(params, "additionalPermissions") === null
-            ? {}
-            : { additionalPermissions: objectField(params, "additionalPermissions")! }),
-          ...(stringArrayField(params, "proposedExecpolicyAmendment") === undefined
-            ? {}
-            : { proposedExecpolicyAmendment: stringArrayField(params, "proposedExecpolicyAmendment")! }),
-          ...(networkPolicyAmendments(params) === undefined
-            ? {}
-            : { proposedNetworkPolicyAmendments: networkPolicyAmendments(params)! }),
-          ...(stringField(params, "reason") === null ? {} : { reason: stringField(params, "reason")! }),
-        },
-      }),
-      ...cardContext({
-        ...(requestId === undefined ? {} : { requestId }),
-        threadId: threadIdFromParams(params),
-        turnId: turnIdFromParams(params),
-      }),
-    },
+    codexItem,
+    harnessItem: codexItem,
   }
 }
 
@@ -608,7 +611,7 @@ export function createCodexThreadItemEventProjector(
         id: item.itemId,
         role: item.role,
         body: "",
-        ...(codexItem === undefined ? {} : { codexItem }),
+        ...(codexItem === undefined ? {} : { codexItem, harnessItem: codexItem }),
       }
       messages.set(item.itemId, {
         ...message,
@@ -696,20 +699,22 @@ export function createCodexThreadItemEventProjector(
     if (notification.method === "item/fileChange/patchUpdated") {
       const id = stringField(params, "itemId")
       if (id === null) return []
+      const codexItem: KhalaCodeDesktopCodexItemCard = {
+        itemId: id,
+        itemType: "fileChange",
+        status: "running",
+        title: fileChangesTitle(arrayField(params, "changes"), options),
+        ...cardContext({
+          threadId: threadIdFromParams(params),
+          turnId: turnIdFromParams(params),
+        }),
+      }
       return upsert({
         id,
         role: "tool",
         body: fileChangesBody(arrayField(params, "changes"), options),
-        codexItem: {
-          itemId: id,
-          itemType: "fileChange",
-          status: "running",
-          title: fileChangesTitle(arrayField(params, "changes"), options),
-          ...cardContext({
-            threadId: threadIdFromParams(params),
-            turnId: turnIdFromParams(params),
-          }),
-        },
+        codexItem,
+        harnessItem: codexItem,
       })
     }
 
@@ -745,6 +750,17 @@ export function createCodexThreadItemEventProjector(
       notification.method === "item/autoApprovalReview/completed"
     ) {
       const reviewId = stringField(params, "reviewId") ?? "auto-review"
+      const codexItem: KhalaCodeDesktopCodexItemCard = {
+        itemId: stringField(params, "targetItemId") ?? reviewId,
+        itemType: "approvalReview",
+        status: notification.method.endsWith("/completed") ? "completed" : "running",
+        title: "Approval review",
+        ...cardContext({
+          requestId: reviewId,
+          threadId: threadIdFromParams(params),
+          turnId: turnIdFromParams(params),
+        }),
+      }
       return upsert({
         id: `approval-review-${reviewId}`,
         role: "tool",
@@ -752,17 +768,8 @@ export function createCodexThreadItemEventProjector(
           jsonSection("Review", params.review, options).trim() || "Auto-approval review is running.",
           options,
         ),
-        codexItem: {
-          itemId: stringField(params, "targetItemId") ?? reviewId,
-          itemType: "approvalReview",
-          status: notification.method.endsWith("/completed") ? "completed" : "running",
-          title: "Approval review",
-          ...cardContext({
-            requestId: reviewId,
-            threadId: threadIdFromParams(params),
-            turnId: turnIdFromParams(params),
-          }),
-        },
+        codexItem,
+        harnessItem: codexItem,
       }, notification.method.endsWith("/completed"))
     }
 
@@ -775,6 +782,10 @@ export function createCodexThreadItemEventProjector(
         ...existing,
         body: existing.body.length === 0 ? "Approval resolved." : `${existing.body}\n\nApproval resolved.`,
         codexItem: {
+          ...existing.codexItem,
+          status: "completed",
+        },
+        harnessItem: {
           ...existing.codexItem,
           status: "completed",
         },

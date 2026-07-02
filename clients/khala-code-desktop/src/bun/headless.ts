@@ -12,15 +12,17 @@ import type {
 } from "../shared/rpc.js"
 import type { CodexAppServerChatRuntime } from "./codex-app-server-chat-runtime.js"
 
-export type KhalaCodeDesktopHeadlessCodexRuntime = Pick<
+export type KhalaCodeDesktopHeadlessChatRuntime = Pick<
   CodexAppServerChatRuntime,
   "interruptTurn" | "startThread" | "startTurn"
 >
 
+export type KhalaCodeDesktopHeadlessCodexRuntime = KhalaCodeDesktopHeadlessChatRuntime
+
 export type KhalaCodeDesktopHeadlessRunInput = {
   readonly createCodexChatRuntime: (input: {
     readonly onEvent: (event: KhalaCodeDesktopChatTurnEvent) => void
-  }) => KhalaCodeDesktopHeadlessCodexRuntime
+  }) => KhalaCodeDesktopHeadlessChatRuntime
   readonly env: Readonly<Record<string, string | undefined>>
   readonly interruptAfterMs?: number
   readonly prompt: string
