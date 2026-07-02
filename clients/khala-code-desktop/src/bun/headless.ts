@@ -20,7 +20,10 @@ export type KhalaCodeDesktopHeadlessChatRuntime = Pick<
 export type KhalaCodeDesktopHeadlessCodexRuntime = KhalaCodeDesktopHeadlessChatRuntime
 
 export type KhalaCodeDesktopHeadlessRunInput = {
-  readonly createCodexChatRuntime: (input: {
+  readonly createChatRuntime?: (input: {
+    readonly onEvent: (event: KhalaCodeDesktopChatTurnEvent) => void
+  }) => KhalaCodeDesktopHeadlessChatRuntime
+  readonly createCodexChatRuntime?: (input: {
     readonly onEvent: (event: KhalaCodeDesktopChatTurnEvent) => void
   }) => KhalaCodeDesktopHeadlessChatRuntime
   readonly env: Readonly<Record<string, string | undefined>>
@@ -55,13 +58,15 @@ export async function runKhalaCodeDesktopHeadlessJsonl(
       emitJsonl(threadEvent)
     }
   }
-  const codexChatRuntime = input.createCodexChatRuntime({ onEvent })
+  const createRuntime = input.createChatRuntime ?? input.createCodexChatRuntime
+  if (createRuntime === undefined) throw new Error("Headless chat runtime factory is not configured.")
+  const chatRuntime = createRuntime({ onEvent })
 
   let threadId: string | undefined
   let interruptTimer: ReturnType<typeof setTimeout> | undefined
 
   try {
-    const thread = await codexChatRuntime.startThread({
+    const thread = await chatRuntime.startThread({
       sessionId,
       ...(input.workingDirectory === undefined ? {} : { cwd: input.workingDirectory }),
     })
@@ -71,11 +76,11 @@ export async function runKhalaCodeDesktopHeadlessJsonl(
 
     if (input.interruptAfterMs !== undefined && input.interruptAfterMs >= 0) {
       interruptTimer = setTimeout(() => {
-        void codexChatRuntime.interruptTurn({ sessionId, turnId }).catch(() => undefined)
+        void chatRuntime.interruptTurn({ sessionId, turnId }).catch(() => undefined)
       }, input.interruptAfterMs)
     }
 
-    const response = await codexChatRuntime.startTurn({
+    const response = await chatRuntime.startTurn({
       messages: [{ body: input.prompt, id: "headless-user-1", role: "user" }],
       sessionId,
       ...(threadId === undefined ? {} : { threadId }),

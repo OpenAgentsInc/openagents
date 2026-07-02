@@ -21,6 +21,7 @@ import {
   runKhalaCodeDesktopHeadlessJsonl,
 } from "./headless.js"
 import { createCodexAppServerChatRuntime } from "./codex-app-server-chat-runtime.js"
+import { createClaudeAppSdkChatRuntime } from "./claude-app-sdk-chat-runtime.js"
 import { createCodexAppServerHost } from "./codex-app-server-client.js"
 import {
   createKhalaCodeDesktopCodexMessageTokenAuditRecorder,
@@ -419,16 +420,22 @@ if (argv.includes("--json")) {
   let exitCode = 0
   try {
     await runKhalaCodeDesktopHeadlessJsonl({
-      createCodexChatRuntime: ({ onEvent }) =>
-        createCodexAppServerChatRuntime({
-          env: khalaCodeEnv,
-          host: headlessCodexAppServerHost,
-          onEvent,
-          messageTokenAuditRecorder:
-            createKhalaCodeDesktopCodexMessageTokenAuditRecorder({ env: khalaCodeEnv }),
-          tokenUsageReporter: createKhalaCodeDesktopCodexTokenUsageReporter({ env: khalaCodeEnv }),
-          workingDirectory,
-        }),
+      createChatRuntime: ({ onEvent }) =>
+        khalaCodeEnv.KHALA_CODE_DESKTOP_RUNTIME === "claude_runtime"
+          ? createClaudeAppSdkChatRuntime({
+            env: khalaCodeEnv,
+            onEvent,
+            workingDirectory,
+          })
+          : createCodexAppServerChatRuntime({
+            env: khalaCodeEnv,
+            host: headlessCodexAppServerHost,
+            onEvent,
+            messageTokenAuditRecorder:
+              createKhalaCodeDesktopCodexMessageTokenAuditRecorder({ env: khalaCodeEnv }),
+            tokenUsageReporter: createKhalaCodeDesktopCodexTokenUsageReporter({ env: khalaCodeEnv }),
+            workingDirectory,
+          }),
       env: khalaCodeEnv,
       ...(interruptAfterMs === undefined ? {} : { interruptAfterMs }),
       prompt,

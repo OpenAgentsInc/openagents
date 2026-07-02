@@ -839,11 +839,29 @@ describe("Khala Code desktop RPC handlers", () => {
     expect(codexTurnStarted).toBe(true)
   })
 
-  test("returns a typed unsupported response for the Claude runtime seam", async () => {
+  test("routes chat turns through the Claude runtime seam", async () => {
+    const claudeRuntime = throwingCodexChatRuntime({
+      startTurn: async request => ({
+        backend: {
+          kind: "claude_app_sdk",
+          model: "claude-app-sdk",
+          runtimeMode: "claude_runtime",
+          threadId: request.threadId ?? "claude-session-selected",
+          toolCatalogKind: "codex_harness_supplemental",
+          turnId: request.turnId ?? "claude-turn-selected",
+          turnStatus: "completed",
+        },
+        messages: [{ id: "claude-message-selected", role: "assistant", body: "selected claude" }],
+        ok: true,
+        toolNames: [],
+        usedTools: [],
+      }),
+    })
     const handlers = createKhalaCodeDesktopRpcRequestHandlers({
       appleFmReadiness: () => {
         throw new Error("not used")
       },
+      claudeChatRuntime: claudeRuntime,
       codexChatRuntime: throwingCodexChatRuntime(),
       env: { KHALA_CODE_DESKTOP_RUNTIME: "claude_runtime" },
       legacyChatTurn: async (): Promise<KhalaCodeDesktopChatTurnResponse> => {
@@ -861,13 +879,12 @@ describe("Khala Code desktop RPC handlers", () => {
       turnId: "desktop-turn-claude",
     })).resolves.toMatchObject({
       backend: {
-        blockerRefs: ["blocker.claude_app_sdk.unsupported_until_t8_2"],
         kind: "claude_app_sdk",
         runtimeMode: "claude_runtime",
-        turnStatus: "unsupported",
+        turnStatus: "completed",
       },
-      messages: [{ body: "Claude app SDK chat runtime is not supported until T8.2." }],
-      ok: false,
+      messages: [{ body: "selected claude" }],
+      ok: true,
     })
 
     await expect(handlers.codexTurnStart({
@@ -878,17 +895,35 @@ describe("Khala Code desktop RPC handlers", () => {
       backend: {
         kind: "claude_app_sdk",
         runtimeMode: "claude_runtime",
-        turnStatus: "unsupported",
+        turnStatus: "completed",
       },
-      ok: false,
+      ok: true,
     })
   })
 
   test("routes thread lifecycle RPCs through the selected Claude seam", async () => {
+    let started = false
+    let listed = false
+    const claudeRuntime = throwingCodexChatRuntime({
+      startThread: async request => {
+        started = true
+        return {
+          ok: true,
+          desktopSessionId: request.sessionId,
+          thread: { id: "claude-thread-selected" },
+          threadId: "claude-thread-selected",
+        }
+      },
+      listThreads: async () => {
+        listed = true
+        return { ok: true, threads: [] }
+      },
+    })
     const handlers = createKhalaCodeDesktopRpcRequestHandlers({
       appleFmReadiness: () => {
         throw new Error("not used")
       },
+      claudeChatRuntime: claudeRuntime,
       codexChatRuntime: throwingCodexChatRuntime(),
       env: { KHALA_CODE_DESKTOP_RUNTIME: "claude_runtime" },
       onDeviceDeciderStatus: () => {
@@ -898,9 +933,11 @@ describe("Khala Code desktop RPC handlers", () => {
     })
 
     await expect(handlers.codexThreadStart({ sessionId: "desktop-session-claude" }))
-      .rejects.toThrow("Claude app SDK chat runtime is not supported until T8.2.")
+      .resolves.toMatchObject({ ok: true, threadId: "claude-thread-selected" })
     await expect(handlers.codexThreadList({ sessionId: "desktop-session-claude" }))
-      .rejects.toThrow("Claude app SDK chat runtime is not supported until T8.2.")
+      .resolves.toMatchObject({ ok: true, threads: [] })
+    expect(started).toBe(true)
+    expect(listed).toBe(true)
   })
 
   test("registers the Khala Fleet MCP bridge before default Codex chat turns", async () => {

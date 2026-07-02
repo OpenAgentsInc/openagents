@@ -91,6 +91,8 @@ import {
   parseKhalaCodeDesktopSlashCommand,
 } from "../shared/codex-slash-commands.js"
 import { inspectCodexHarnessStatus } from "./codex-harness-status.js"
+import { createClaudeAppSdkChatRuntime } from "./claude-app-sdk-chat-runtime.js"
+import { inspectClaudeHarnessStatus } from "./claude-harness-status.js"
 import {
   consumeKhalaCodexRateLimitResetCredit,
   fetchKhalaCodexRateLimitStatus,
@@ -127,7 +129,6 @@ type ChatRuntimeSelection =
     readonly kind: "legacy"
   }
 
-const claudeRuntimeUnsupportedMessage = "Claude app SDK chat runtime is not supported until T8.2."
 const legacyThreadLifecycleUnsupportedMessage =
   "Legacy Khala native runtime does not support thread lifecycle RPCs."
 
@@ -160,6 +161,7 @@ export type KhalaCodeDesktopRpcHandlersInput = {
   readonly appleFmReadiness: () => MaybePromise<KhalaAppleFmReadiness>
   readonly codexAppServerHost?: CodexAppServerHost
   readonly codexChatRuntime?: CodexAppServerChatRuntime
+  readonly claudeChatRuntime?: CodexAppServerChatRuntime
   readonly enableFleetMcpBridge?: boolean
   readonly codexRateLimitStatus?: () => MaybePromise<KhalaCodexRateLimitProviderStatus>
   readonly codexHarnessStatus?: () => MaybePromise<KhalaCodeDesktopCodexHarnessStatus>
@@ -765,27 +767,11 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
     }
     return codexChatRuntime
   }
-  const unsupportedClaudeRuntime = (): ChatRuntime => {
-    const unsupported = async (): Promise<never> => {
-      throw new Error(claudeRuntimeUnsupportedMessage)
-    }
-    return {
-      archiveThread: unsupported,
-      compactThread: unsupported,
-      deleteThread: unsupported,
-      forkThread: unsupported,
-      interruptTurn: unsupported,
-      listThreads: unsupported,
-      readThread: unsupported,
-      renameThread: unsupported,
-      resumeThread: unsupported,
-      startThread: unsupported,
-      startTurn: unsupported,
-      steerTurn: unsupported,
-      threadIdForSession: async () => null,
-      unarchiveThread: unsupported,
-    }
-  }
+  const claudeChatRuntime = input.claudeChatRuntime ?? createClaudeAppSdkChatRuntime({
+    env: input.env,
+    ...(input.emitChatTurnEvent === undefined ? {} : { onEvent: input.emitChatTurnEvent }),
+    workingDirectory: input.workingDirectory,
+  })
   const requireFleetRunSupervisor = (): KhalaCodeDesktopFleetRunSupervisorRpc => {
     if (input.fleetRunSupervisor === undefined) {
       throw new Error("Fleet run supervisor is not configured.")
@@ -794,7 +780,7 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
   }
   const selectChatRuntime = (): ChatRuntimeSelection => {
     if (input.env.KHALA_CODE_DESKTOP_RUNTIME === "claude_runtime") {
-      return { kind: "claude", runtime: unsupportedClaudeRuntime() }
+      return { kind: "claude", runtime: claudeChatRuntime }
     }
     if (
       input.env.KHALA_CODE_DESKTOP_RUNTIME === "khala_native_runtime" ||
@@ -889,25 +875,6 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
     }
   }
 
-  const unsupportedClaudeChatResponse = (): KhalaCodeDesktopChatTurnResponse => ({
-    backend: {
-      blockerRefs: ["blocker.claude_app_sdk.unsupported_until_t8_2"],
-      kind: "claude_app_sdk",
-      model: "claude-app-sdk",
-      runtimeMode: "claude_runtime",
-      toolCatalogKind: "codex_harness_supplemental",
-      turnStatus: "unsupported",
-    },
-    messages: [{
-      id: `claude-runtime-unsupported-${Date.now().toString(36)}`,
-      role: "system",
-      body: claudeRuntimeUnsupportedMessage,
-    }],
-    ok: false,
-    toolNames: [],
-    usedTools: [],
-  })
-
   const unsupportedLegacyThreadLifecycle = async (): Promise<never> => {
     throw new Error(legacyThreadLifecycleUnsupportedMessage)
   }
@@ -932,6 +899,8 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
   const codexHarnessStatus = async (): Promise<KhalaCodeDesktopCodexHarnessStatus> =>
     input.codexHarnessStatus?.() ??
     inspectCodexHarnessStatus({ env: input.env as NodeJS.ProcessEnv })
+  const claudeHarnessStatus = async () =>
+    inspectClaudeHarnessStatus({ env: input.env })
 
   const codexAccountsStatus = async (): Promise<KhalaCodeDesktopCodexAccountsStatus> => {
     const harness = await codexHarnessStatus()
@@ -2114,7 +2083,6 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
           workingDirectory: request.cwd ?? input.workingDirectory,
         }))
       }
-      if (selection.kind === "claude") return unsupportedClaudeChatResponse()
       return selection.runtime.startTurn({
         ...request,
         cwd: request.cwd ?? input.workingDirectory,
@@ -2126,6 +2094,15 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
       return selection.runtime.steerTurn(request)
     },
     async codingStatus() {
+      if (selectChatRuntime().kind === "claude") {
+        const harness = await claudeHarnessStatus()
+        return runtimeStatus({
+          available: harness.available,
+          capability: "coding",
+          reason: harness.reason,
+          status: harness.available ? "ready" : "unavailable",
+        })
+      }
       const harness = await codexHarnessStatus()
       if (!harness.available) {
         return runtimeStatus({
@@ -2199,7 +2176,12 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
               cwd: input.workingDirectory,
             })), bridge)
           }
-          if (selection.kind === "claude") return unsupportedClaudeChatResponse()
+          if (selection.kind === "claude") {
+            return selection.runtime.startTurn({
+              ...materializedRequest,
+              cwd: input.workingDirectory,
+            })
+          }
           return labelLegacyRuntimeResponse(await legacyChatTurn({
             env: input.env,
             ...(input.emitChatTurnEvent === undefined ? {} : { onEvent: input.emitChatTurnEvent }),
