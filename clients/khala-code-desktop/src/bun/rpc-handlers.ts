@@ -73,6 +73,7 @@ import {
   type KhalaCodeDesktopFleetRunStatusResult,
   type KhalaCodeDesktopFleetSessionRole,
   type KhalaCodeDesktopFleetWorkerSession,
+  type KhalaCodeDesktopFleetWorkerControlRequest,
   type KhalaCodeDesktopFleetWorkerControlResult,
   type KhalaCodeDesktopFleetStatus,
   type KhalaCodeDesktopRPCSchema,
@@ -155,6 +156,9 @@ export type KhalaCodeDesktopFleetRunSupervisorRpc = {
     readonly run: KhalaCodeDesktopFleetRunProjection | null
     readonly supervisorActive: boolean
   }>
+  readonly workerControl?: (
+    request: KhalaCodeDesktopFleetWorkerControlRequest,
+  ) => MaybePromise<KhalaCodeDesktopFleetWorkerControlResult>
 }
 
 export type KhalaCodeDesktopRpcHandlersInput = {
@@ -1911,18 +1915,11 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
       if (request.verb !== "flag") {
         requireNonEmpty("fleetWorkerControl", "assignmentRef", request.assignmentRef ?? "")
       }
-      const inboxItemRef = request.verb === "flag"
-        ? `inbox.assignment.${request.workerRefHash}.manual_flag`
-        : null
-      return {
-        accepted: true,
-        assignmentRef: request.assignmentRef,
-        inboxItemRef,
-        ok: true,
-        runRef: request.runRef,
-        verb: request.verb,
-        workerRefHash: request.workerRefHash,
+      const supervisor = requireFleetRunSupervisor()
+      if (supervisor.workerControl === undefined) {
+        throw new Error("fleetWorkerControl requires fleet-run supervisor worker control")
       }
+      return supervisor.workerControl(request)
     },
     async codexHarnessStatus() {
       return codexHarnessStatus()

@@ -11,6 +11,7 @@ import {
   khalaCodeDesktopRpcHandlerFailure,
   khalaCodeDesktopRpcMethodSchema,
   type KhalaCodeDesktopChatTurnEvent,
+  type KhalaCodeDesktopFleetLifecycleEvent,
   type KhalaCodeDesktopRpcMethodName,
   type KhalaCodeDesktopRPCSchema,
 } from "../shared/rpc.js"
@@ -242,6 +243,7 @@ const previewEventsResponse = (request: Request): Response => {
 }
 
 let emitChatTurnEvent = (_event: KhalaCodeDesktopChatTurnEvent): void => {}
+let emitFleetLifecycleEvent = (_event: KhalaCodeDesktopFleetLifecycleEvent): void => {}
 let rpcRequestHandlers: KhalaCodeDesktopRPCSchema["requests"]
 
 const previewRpcResponse = async (
@@ -508,7 +510,13 @@ rpcRequestHandlers = createKhalaCodeDesktopRpcRequestHandlers({
   enableFleetMcpBridge: true,
   emitChatTurnEvent: event => emitChatTurnEvent(event),
   env: khalaCodeEnv,
-  fleetRunSupervisor: createKhalaCodeDesktopFleetRunSupervisorRpcAdapter({ env: khalaCodeEnv }),
+  fleetRunSupervisor: createKhalaCodeDesktopFleetRunSupervisorRpcAdapter({
+    env: khalaCodeEnv,
+    onLifecycleNdjson: line => emitFleetLifecycleEvent({
+      line,
+      observedAt: new Date().toISOString(),
+    }),
+  }),
   fleetMcpBridgeRepoRoot: resolveSourceRepositoryRoot(),
   onDeviceDeciderStatus: () => onDeviceDecider.select(),
   workingDirectory: resolveToolWorkingDirectory(khalaCodeEnv),
@@ -547,6 +555,19 @@ emitChatTurnEvent = event => {
     event,
     observedAt: new Date().toISOString(),
     type: "chatTurnEvent",
+  })
+}
+
+emitFleetLifecycleEvent = event => {
+  try {
+    rpc.send.fleetLifecycleEvent(event)
+  } catch {
+    // Headless preview runs have no native window transport; SSE remains active.
+  }
+  publishPreviewBridgeEvent({
+    detail: event,
+    observedAt: event.observedAt,
+    type: "fleetLifecycleEvent",
   })
 }
 

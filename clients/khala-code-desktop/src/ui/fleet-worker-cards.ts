@@ -192,26 +192,33 @@ export const createKhalaFleetWorkerCardThrottler = (input: {
 }): KhalaFleetWorkerCardThrottler => {
   const setTimer = input.setTimeout ?? ((callback, ms) => window.setTimeout(callback, ms))
   const clearTimer = input.clearTimeout ?? (handle => window.clearTimeout(handle))
-  const frames: KhalaFleetWorkerLifecycleFrame[] = []
-  let pending: KhalaFleetWorkerLifecycleFrame | null = null
+  const framesByAssignment = new Map<string, KhalaFleetWorkerLifecycleFrame>()
+  const pendingByAssignment = new Map<string, KhalaFleetWorkerLifecycleFrame>()
   let timer: number | null = null
+  const assignmentKey = (frame: KhalaFleetWorkerLifecycleFrame): string =>
+    frame.assignmentRef ?? `__unassigned__:${frame.observedAt}:${frame.event}`
 
   const flush = (): void => {
     if (timer !== null) {
       clearTimer(timer)
       timer = null
     }
-    if (pending === null) return
-    const frame = pending
-    pending = null
-    frames.push(frame)
-    input.onUpdate({ frame, frames: [...frames] })
+    if (pendingByAssignment.size === 0) return
+    const pending = [...pendingByAssignment.values()]
+    pendingByAssignment.clear()
+    for (const frame of pending) {
+      framesByAssignment.set(assignmentKey(frame), frame)
+    }
+    const frames = [...framesByAssignment.values()]
+    for (const frame of pending) {
+      input.onUpdate({ frame, frames })
+    }
   }
 
   return {
     flush,
     push: frame => {
-      pending = frame
+      pendingByAssignment.set(assignmentKey(frame), frame)
       if (timer !== null) return
       timer = setTimer(flush, Math.max(0, input.intervalMs))
     },

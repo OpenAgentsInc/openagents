@@ -87,6 +87,10 @@ export type KhalaCodeDesktopMessage =
 
 export type KhalaCodeDesktopChatTurnEvent =
   typeof KhalaCodeDesktopChatTurnEventSchema.Type
+export type KhalaCodeDesktopFleetLifecycleEvent = Readonly<{
+  line: string
+  observedAt: string
+}>
 
 export type KhalaCodeDesktopUsage = typeof RpcUsage.Type
 export type KhalaCodeDesktopChatTurnAttachment = typeof RpcChatAttachment.Type
@@ -1646,5 +1650,6 @@ export type KhalaCodeDesktopRPCSchema = {
   }
   messages: {
     chatTurnEvent(event: KhalaCodeDesktopChatTurnEvent): void
+    fleetLifecycleEvent(event: KhalaCodeDesktopFleetLifecycleEvent): void
   }
 }

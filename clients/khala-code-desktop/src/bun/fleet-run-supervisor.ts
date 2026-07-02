@@ -262,6 +262,9 @@ const recordTerminalAssignment = async (
       event,
     })
   }
+  if (result.assignmentRef !== null) {
+    options.store.updateWorkClaimAssignmentRef(assignment.claim.claimRef, result.assignmentRef, now)
+  }
   options.store.recordWorkerDone({
     contextId: assignment.contextId,
     taskId: assignment.taskId,
@@ -470,6 +473,9 @@ export async function tickFleetRunSupervisor(
         accountRef: account.accountRef,
         event,
       })
+    }
+    if (result.assignmentRef !== null) {
+      store.updateWorkClaimAssignmentRef(claim.claimRef, result.assignmentRef, now)
     }
 
     const terminalStatus = terminalStatusForDispatch(result)

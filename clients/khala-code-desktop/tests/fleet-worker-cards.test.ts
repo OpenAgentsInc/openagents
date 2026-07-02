@@ -110,10 +110,13 @@ describe("Khala Fleet worker cards", () => {
 
   test("throttles worker card updates and flushes the latest frame", () => {
     const callbacks: Array<() => void> = []
-    const updates: string[] = []
+    const updates: Array<{ readonly event: string; readonly frames: readonly string[] }> = []
     const throttler = createKhalaFleetWorkerCardThrottler({
       intervalMs: 200,
-      onUpdate: update => updates.push(update.frame.event),
+      onUpdate: update => updates.push({
+        event: update.frame.event,
+        frames: update.frames.map(frame => `${frame.assignmentRef}:${frame.event}`),
+      }),
       setTimeout: callback => {
         callbacks.push(callback)
         return callbacks.length
@@ -139,10 +142,41 @@ describe("Khala Fleet worker cards", () => {
       tokenCountKind: null,
       tokensSoFar: null,
     })
+    throttler.push({
+      assignmentRef: "assignment.public.worker-card-b",
+      elapsedMs: null,
+      event: "assignment_run.completed",
+      line: "assignment_run.completed",
+      observedAt: "2026-07-01T00:00:02.000Z",
+      tokenCountKind: null,
+      tokensSoFar: null,
+    })
 
     expect(updates).toEqual([])
     callbacks[0]?.()
-    expect(updates).toEqual(["assignment_run.runtime_progress"])
+    expect(updates.map(update => update.event)).toEqual([
+      "assignment_run.runtime_progress",
+      "assignment_run.completed",
+    ])
+    expect(updates.at(-1)?.frames).toEqual([
+      "assignment.public.worker-card:assignment_run.runtime_progress",
+      "assignment.public.worker-card-b:assignment_run.completed",
+    ])
+
+    throttler.push({
+      assignmentRef: "assignment.public.worker-card",
+      elapsedMs: null,
+      event: "assignment_run.completed",
+      line: "assignment_run.completed",
+      observedAt: "2026-07-01T00:00:03.000Z",
+      tokenCountKind: null,
+      tokensSoFar: null,
+    })
+    callbacks[1]?.()
+    expect(updates.at(-1)?.frames).toEqual([
+      "assignment.public.worker-card:assignment_run.completed",
+      "assignment.public.worker-card-b:assignment_run.completed",
+    ])
   })
 
   test("renders worker controls through mocked RPC without exposing raw refs in the card", async () => {

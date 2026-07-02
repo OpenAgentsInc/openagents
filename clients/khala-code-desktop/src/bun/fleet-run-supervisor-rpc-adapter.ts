@@ -1,9 +1,10 @@
 import { spawn } from "node:child_process"
 import { randomUUID } from "node:crypto"
 import { mkdirSync } from "node:fs"
+import { appendFile, mkdir } from "node:fs/promises"
 import { Database } from "bun:sqlite"
 import { Effect, Exit, Scope } from "effect"
-import { join } from "node:path"
+import { dirname, join } from "node:path"
 
 import {
   createPylonOrchestrationStore,
@@ -36,6 +37,8 @@ import {
   startFleetRunSupervisor,
   type FleetRunSupervisorCapacity,
   type FleetRunSupervisorHandle,
+  type FleetRunSupervisorLifecycleEvent,
+  type FleetRunSupervisorObservedEvent,
   type FleetRunSupervisorPlanner,
   type FleetRunSupervisorRunner,
 } from "./fleet-run-supervisor.js"
@@ -44,6 +47,8 @@ import type {
   KhalaCodeDesktopFleetRunListRequest,
   KhalaCodeDesktopFleetRunProjection,
   KhalaCodeDesktopFleetRunStartRequest,
+  KhalaCodeDesktopFleetWorkerControlRequest,
+  KhalaCodeDesktopFleetWorkerControlResult,
 } from "../shared/rpc.js"
 
 type ChatEnv = Readonly<Record<string, string | undefined>>
@@ -64,6 +69,7 @@ type RpcIssueListItem = Exclude<
 export type KhalaCodeDesktopFleetRunSupervisorRpcAdapterOptions = {
   readonly capacity?: FleetRunSupervisorCapacity
   readonly env?: ChatEnv
+  readonly onLifecycleNdjson?: (line: string) => void | Promise<void>
   readonly pylonRef?: string | null
   readonly runner?: FleetRunSupervisorRunner
   readonly store?: PylonOrchestrationStore
@@ -265,6 +271,22 @@ const defaultStore = (env: ChatEnv): PylonOrchestrationStore => {
   return createPylonOrchestrationStore(new Database(join(home, "orchestration.sqlite")))
 }
 
+const manualInboxLedgerPath = (home: string): string =>
+  join(home, "fleet-worker-inbox.jsonl")
+
+const inboxRefFor = (request: KhalaCodeDesktopFleetWorkerControlRequest, observedAt: string): string =>
+  `inbox.assignment.${request.workerRefHash}.${request.verb}.${observedAt.replace(/[^0-9TZ]/g, "")}`
+
+const lifecycleEventLine = (event: FleetRunSupervisorLifecycleEvent): string =>
+  `${JSON.stringify({
+    schema: "openagents.pylon.assignment_run_lifecycle_event.v0.1",
+    event: event.event,
+    observedAt: new Date().toISOString(),
+    ...(event.assignmentRef === undefined || event.assignmentRef === null ? {} : { assignmentRef: event.assignmentRef }),
+    ...(event.phase === undefined || event.phase === null ? {} : { phase: event.phase }),
+    ...(event.status === undefined || event.status === null ? {} : { status: event.status }),
+  })}\n`
+
 export function createKhalaCodeDesktopFleetRunSupervisorRpcAdapter(
   options: KhalaCodeDesktopFleetRunSupervisorRpcAdapterOptions = {},
 ): KhalaCodeDesktopFleetRunSupervisorRpc {
@@ -278,6 +300,11 @@ export function createKhalaCodeDesktopFleetRunSupervisorRpcAdapter(
 
   const sync = async (): Promise<void> => {
     await syncFleetRunsToOwnerLocalState(store, paths)
+  }
+
+  const publishLifecycle = async (event: FleetRunSupervisorObservedEvent): Promise<void> => {
+    if (event.kind !== "lifecycle") return
+    await options.onLifecycleNdjson?.(lifecycleEventLine(event.event))
   }
 
   const projectionInput = (
@@ -306,6 +333,7 @@ export function createKhalaCodeDesktopFleetRunSupervisorRpcAdapter(
           runRef,
           runner: options.runner ?? runnerFor({ pylonRef, toolOptions }),
           store,
+          onLifecycle: publishLifecycle,
           ...(options.tickIntervalMs === undefined ? {} : { tickIntervalMs: options.tickIntervalMs }),
         }),
         Scope.Scope,
@@ -316,6 +344,114 @@ export function createKhalaCodeDesktopFleetRunSupervisorRpcAdapter(
     } catch (error) {
       await Effect.runPromise(Scope.close(scope, Exit.void))
       throw error
+    }
+  }
+
+  const claimForWorkerControl = (
+    request: KhalaCodeDesktopFleetWorkerControlRequest,
+  ) => {
+    const claims = store.listWorkClaims({
+      ...(request.runRef === null ? {} : { runRef: request.runRef }),
+    })
+    if (request.assignmentRef !== null) {
+      return claims.find(claim => claim.assignmentRef === request.assignmentRef) ?? null
+    }
+    if (request.issueRef !== null) {
+      return claims.find(claim => claim.workUnitRef.includes(request.issueRef ?? "")) ?? null
+    }
+    return null
+  }
+
+  const appendManualFlag = async (
+    request: KhalaCodeDesktopFleetWorkerControlRequest,
+  ): Promise<string> => {
+    const observedAt = new Date().toISOString()
+    const ref = inboxRefFor(request, observedAt)
+    const row = {
+      schemaVersion: "khala-code-desktop.fleet-worker-inbox.v1",
+      ref,
+      assignmentRef: request.assignmentRef,
+      issueRef: request.issueRef,
+      note: request.note ?? null,
+      observedAt,
+      runRef: request.runRef,
+      verb: request.verb,
+      workerRefHash: request.workerRefHash,
+    }
+    const path = manualInboxLedgerPath(paths.home)
+    await mkdir(dirname(path), { recursive: true })
+    await appendFile(path, `${JSON.stringify(row)}\n`, "utf8")
+    return ref
+  }
+
+  const closeClaimTask = (
+    claimRef: string,
+    status: "blocked" | "failed",
+    summary: string,
+  ): void => {
+    const task = store.listTasks("dispatched").find(candidate =>
+      candidate.id.includes(claimRef.replace(/[^a-zA-Z0-9_.-]/g, "_"))
+    )
+    if (task === undefined) return
+    const context = store.listDispatchContexts("dispatched").find(candidate =>
+      candidate.currentTaskId === task.id
+    )
+    if (context === undefined) return
+    store.recordWorkerDone({
+      contextId: context.id,
+      taskId: task.id,
+      status,
+      result: JSON.stringify({ assignmentRef: null, summary }),
+      maxFailures: Number.MAX_SAFE_INTEGER,
+    })
+  }
+
+  const workerControl = async (
+    request: KhalaCodeDesktopFleetWorkerControlRequest,
+  ): Promise<KhalaCodeDesktopFleetWorkerControlResult> => {
+    const claim = claimForWorkerControl(request)
+    if (request.verb === "flag") {
+      return {
+        accepted: true,
+        assignmentRef: request.assignmentRef,
+        inboxItemRef: await appendManualFlag(request),
+        ok: true,
+        runRef: request.runRef,
+        verb: request.verb,
+        workerRefHash: request.workerRefHash,
+      }
+    }
+    if (claim === null) {
+      throw new Error(`fleetWorkerControl could not find active claim for ${request.assignmentRef ?? request.issueRef ?? request.workerRefHash}`)
+    }
+    if (request.verb === "interrupt") {
+      if (request.runRef !== null) await closeSupervisor(request.runRef)
+      closeClaimTask(claim.claimRef, "blocked", "manual interrupt requested from fleet worker card")
+      store.releaseWorkClaim(claim.claimRef)
+    } else {
+      closeClaimTask(claim.claimRef, "failed", "manual retry requested from fleet worker card")
+      store.releaseLiveWorkClaim(claim.workUnitRef)
+      const runRef = request.runRef ?? claim.runRef
+      const run = store.updateFleetRunState(runRef, "running")
+      store.upsertFleetRun({
+        ...run,
+        counters: {
+          ...run.counters,
+          workUnitsTotal: run.counters.workUnitsTotal + 1,
+        },
+      })
+      await startSupervisor(runRef)
+      await Effect.runPromise(active.get(runRef)?.handle.tick() ?? Effect.void)
+    }
+    await sync()
+    return {
+      accepted: true,
+      assignmentRef: request.assignmentRef,
+      inboxItemRef: null,
+      ok: true,
+      runRef: request.runRef ?? claim.runRef,
+      verb: request.verb,
+      workerRefHash: request.workerRefHash,
     }
   }
 
@@ -375,5 +511,6 @@ export function createKhalaCodeDesktopFleetRunSupervisorRpcAdapter(
         supervisorActive: active.has(request.runRef),
       }
     },
+    workerControl,
   }
 }
