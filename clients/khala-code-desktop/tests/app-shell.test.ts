@@ -118,8 +118,8 @@ describe("khala code desktop app shell", () => {
     expect(html).toContain('id="inbox-panel"')
     expect(html).toContain('id="gym-panel"')
     expect(html).toContain('id="settings-panel"')
-    expect(html).toContain('id="foldkit-demo-panel"')
-    expect(html).toContain("Foldkit embedding skeleton")
+    expect(html).not.toContain('id="foldkit-demo-panel"')
+    expect(html).not.toContain("Foldkit embedding skeleton")
     expect(html).not.toContain("Pylons")
   })
 
@@ -828,11 +828,16 @@ describe("khala code desktop app shell", () => {
   test("renders Fleet status with a board graph and run timeline mount", async () => {
     const main = await Bun.file(new URL("../src/ui/main.ts", import.meta.url)).text()
     const panel = await Bun.file(new URL("../src/ui/fleet-status.ts", import.meta.url)).text()
+    const foldkitRuntime = await Bun.file(new URL("../src/ui/foldkit/runtime.ts", import.meta.url)).text()
     const projection = await Bun.file(new URL("../src/ui/fleet-board-projection.ts", import.meta.url)).text()
     const renderer = await Bun.file(new URL("../src/ui/fleet-board-renderer.ts", import.meta.url)).text()
     const css = await Bun.file(new URL("../src/ui/styles.css", import.meta.url)).text()
 
     expect(main).toContain("mountFleetPanel")
+    expect(main).not.toContain("foldkitDemoPanelEl")
+    expect(panel).toContain("mountKhalaCodeFleetCockpit")
+    expect(panel).toContain("HostFleetCockpitStatus")
+    expect(foldkitRuntime).toContain("embedKhalaCodeFleetCockpitProgram")
     expect(panel).toContain("appendFleetBoard(container, data)")
     expect(panel).toContain("buildKhalaFleetBoardProjection")
     expect(panel).toContain("renderKhalaFleetBoardHtml")
