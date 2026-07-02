@@ -11,6 +11,11 @@ import {
   readLatestArtanisPersistedRows,
 } from './artanis-persistence'
 import {
+  ArtanisForumIdentityError,
+  isArtanisForumPostActor,
+  resolveRegisteredArtanisForumIdentityFromD1,
+} from './artanis-forum-identity'
+import {
   type ForumPostSummary,
   ForumPublicProjection,
   ForumPublicProjectionUnsafe,
@@ -18,9 +23,7 @@ import {
   type ForumRepositoryError,
   type ForumRepositoryRuntime,
   ForumStorageError,
-  type ForumStoredActorSummary,
   ForumValidationError,
-  type ForumWriterActorInput,
   ForumWriterAuthFailure,
   ForumWriterGrant,
   buildForumWriterContext,
@@ -87,6 +90,7 @@ export class ArtanisForumDeliveryError extends S.TaggedErrorClass<ArtanisForumDe
     kind: S.Literals([
       'existing_post_conflict',
       'idempotency_key_missing',
+      'identity_unavailable',
       'persistence_error',
       'storage_error',
       'target_blocked',
@@ -141,37 +145,6 @@ const topicRefAliases: Readonly<Record<string, ArtanisCanonicalTopicKey>> = {
   'topic.public.forum.artanis.status': 'status',
   'topic.public.forum.artanis.work_routing': 'work_routing',
 }
-
-const artanisActor: ForumStoredActorSummary = {
-  actorId: 'agent_artanis',
-  actorRef: 'agent:agent_artanis',
-  displayName: 'Artanis',
-  groupRefs: ['agents', 'openagents'],
-  isAgent: true,
-  slug: 'artanis',
-}
-
-const artanisActorInput = (nowIso: string): ForumWriterActorInput => ({
-  _tag: 'Agent',
-  session: {
-    credential: {
-      id: 'credential.internal.artanis.forum_delivery',
-      lastUsedAt: nowIso,
-      profileMetadataJson: '{}',
-      tokenPrefix: 'internal_artanis_forum',
-    },
-    user: {
-      avatarUrl: null,
-      createdAt: nowIso,
-      displayName: 'Artanis',
-      id: 'agent_artanis',
-      kind: 'agent',
-      primaryEmail: null,
-      status: 'active',
-      updatedAt: nowIso,
-    },
-  },
-})
 
 const deliveryRuntime = (
   runtime: Partial<DeliveryRuntime> | undefined,
@@ -255,6 +228,10 @@ const mapDependencyError = (error: unknown): ArtanisForumDeliveryError => {
 
   if (error instanceof ArtanisPersistenceError) {
     return deliveryError('persistence_error', error.reason)
+  }
+
+  if (error instanceof ArtanisForumIdentityError) {
+    return deliveryError('identity_unavailable', error.reason)
   }
 
   if (error instanceof ForumPublicProjectionUnsafe) {
@@ -398,6 +375,11 @@ export const deliverArtanisForumPublicationIntent = (
       )
     }
 
+    const identity = yield* resolveRegisteredArtanisForumIdentityFromD1(
+      db,
+      nowIso,
+    ).pipe(Effect.mapError(mapDependencyError))
+
     const existingPost = yield* readForumPostByIdempotencyKey(
       db,
       intent.idempotencyKey,
@@ -406,7 +388,7 @@ export const deliverArtanisForumPublicationIntent = (
     if (existingPost !== null) {
       if (
         existingPost.topicId !== topic.topicId ||
-        existingPost.author.actorRef !== artanisActor.actorRef ||
+        !isArtanisForumPostActor(existingPost.author.actorRef, identity) ||
         (existingPost.bodyText ?? '').trim() !== intent.bodyText.trim()
       ) {
         return yield* deliveryError(
@@ -424,19 +406,19 @@ export const deliverArtanisForumPublicationIntent = (
     const grant = decodeForumWriterGrant({
       expiresAtEpochMillis: runtime.nowEpochMillis() + 1000 * 60 * 60,
       forumIds: [forum.forumId],
-      ownerUserId: 'agent_artanis',
+      ownerUserId: identity.userId,
       scopes: ['forum.write'],
       status: 'active',
       teamId: null,
     })
     const writer = yield* buildForumWriterContext({
-      actor: artanisActorInput(nowIso),
+      actor: identity.actor,
       grant,
       nowEpochMillis: runtime.nowEpochMillis,
       paymentProofRef: null,
       requiredScope: 'forum.write',
       targetForumId: forum.forumId,
-      targetOwnerUserId: 'agent_artanis',
+      targetOwnerUserId: identity.userId,
       targetTeamId: null,
     }).pipe(Effect.mapError(mapDependencyError))
     const repositoryRuntime: ForumRepositoryRuntime = {

@@ -149,8 +149,10 @@ Artanis maintains, for the duration of the execution run:
 
 - a dispatch ledger (issue ↔ assignmentRef ↔ worker account ↔ state) — in
   the orchestration store once T2.1 lands, scratchpad-file before that;
-- periodic public-safe progress updates to the Forum as Raynor per the
-  standing practice, and `NEEDS_OWNER.md` entries for anything owner-gated;
+- periodic public-safe progress updates to the Forum as the registered
+  `slug=artanis` Forum identity; the old Raynor-token workaround is retired
+  debt, not normal operating practice, and `NEEDS_OWNER.md` entries for
+  anything owner-gated;
 - the running counter evidence (§4) per merged issue;
 - an after-action section per wave: what the fleet system broke, what got
   fixed, what became a fixture — this is the stress-test deliverable that
