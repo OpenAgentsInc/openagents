@@ -12,6 +12,7 @@
     "test": "bun test tests/*.test.ts",
     "smoke:codex-parity-live": "bun scripts/codex-parity-live-smoke.ts",
     "smoke:codex-spawn-live": "bun scripts/live-two-codex-readonly-smoke.ts",
+    "smoke:claude-live": "bun scripts/claude-live-smoke.ts",
     "smoke:composer-visual": "bun scripts/composer-visual-smoke.ts",
     "smoke:composer-visual-preview": "bun scripts/composer-visual-smoke.ts",
     "smoke:cockpit-visual": "bun scripts/cockpit-visual-smoke.ts",
