@@ -45,6 +45,11 @@ import type {
   ArtanisRiskyActionKind,
 } from './artanis-operator'
 import {
+  ARTANIS_OWNER_OPERATOR_AUTHORITY_SCOPE,
+  ARTANIS_OWNER_SELF_AUTHORITY_SCOPE,
+  type ArtanisAuthorityScope,
+} from './artanis-authority-scope'
+import {
   type ArtanisGetNetworkStatsConfig,
   type ArtanisNetworkStats,
   fetchArtanisNetworkStats,
@@ -226,6 +231,7 @@ export const makeArtanisReadRepoFileTool = (
         }
         return text
       }),
+    authorityScope: ARTANIS_OWNER_SELF_AUTHORITY_SCOPE,
     kind: 'read',
   }
 }
@@ -312,6 +318,7 @@ export const makeArtanisListRepoDirTool = (
           ...entries.map(line => `- ${line}`),
         ].join('\n')
       }),
+    authorityScope: ARTANIS_OWNER_SELF_AUTHORITY_SCOPE,
     kind: 'read',
   }
 }
@@ -505,6 +512,7 @@ export const makeArtanisRepoPathExistsTool = (
         }
         return `(could not parse the existence check for "${path}"; existence UNGROUNDED)`
       }),
+    authorityScope: ARTANIS_OWNER_SELF_AUTHORITY_SCOPE,
     kind: 'read',
   }
 }
@@ -608,6 +616,7 @@ export const makeArtanisRepoGrepTool = (
           ...matches,
         ].join('\n')
       }),
+    authorityScope: ARTANIS_OWNER_SELF_AUTHORITY_SCOPE,
     kind: 'read',
   }
 }
@@ -797,6 +806,7 @@ export const makeArtanisRouteExistsTool = (
             : [...methodsForPath].sort().join(', ')
         return `GROUNDING: the path ${matchedLabel} exists in the OpenAPI registry, but ${method.toUpperCase()} is NOT registered on it (registered: ${methodList}). Treat ${method.toUpperCase()} ${path} as UNGROUNDED.`
       }),
+    authorityScope: ARTANIS_OWNER_SELF_AUTHORITY_SCOPE,
     kind: 'read',
   }
 }
@@ -1036,6 +1046,7 @@ export const makeArtanisReadGithubIssueTool = (
 
         return lines.join('\n')
       }),
+    authorityScope: ARTANIS_OWNER_SELF_AUTHORITY_SCOPE,
     kind: 'read',
   }
 }
@@ -1344,6 +1355,7 @@ export const makeArtanisListGithubIssuesTool = (
         const header = `${stateLabel} in ${owner}/${repo}${labelLabel} (${lines.length}):`
         return [header, ...lines].join('\n')
       }),
+    authorityScope: ARTANIS_OWNER_SELF_AUTHORITY_SCOPE,
     kind: 'read',
   }
 }
@@ -1583,6 +1595,7 @@ export const makeArtanisGetPylonJobStatusTool = (
         )
         return lines.join('\n')
       }),
+    authorityScope: ARTANIS_OWNER_SELF_AUTHORITY_SCOPE,
     kind: 'read',
   }
 }
@@ -1783,6 +1796,7 @@ export const makeArtanisListPylonAssignmentsTool = (
             : `Recent Pylon/Codex assignments with state "${stateFilter}" (${safe.length}):`
         return [header, ...safe.map(formatAssignmentSummaryLine)].join('\n')
       }),
+    authorityScope: ARTANIS_OWNER_SELF_AUTHORITY_SCOPE,
     kind: 'read',
   }
 }
@@ -2037,6 +2051,7 @@ export const makeArtanisPostForumUpdateTool = (
         type: 'object',
       },
     },
+    authorityScope: ARTANIS_OWNER_OPERATOR_AUTHORITY_SCOPE,
     kind: 'gated',
     riskyActionKind: ARTANIS_FORUM_POST_RISKY_ACTION_KIND,
     run: (args: unknown) =>
@@ -2292,6 +2307,7 @@ export const makeArtanisGetKhalaFeedbackTool = (
           ...safe.map(record => formatFeedbackRecordLine(record, maxTextChars)),
         ].join('\n')
       }),
+    authorityScope: ARTANIS_OWNER_OPERATOR_AUTHORITY_SCOPE,
     kind: 'read',
   }
 }
@@ -2567,6 +2583,7 @@ export const makeArtanisGetUnsupportedRequestsTool = (
           ),
         ].join('\n')
       }),
+    authorityScope: ARTANIS_OWNER_OPERATOR_AUTHORITY_SCOPE,
     kind: 'read',
   }
 }
@@ -2985,6 +3002,7 @@ export const makeArtanisUpdateUnsupportedRequestTool = (
         }
         return formatUpdatedUnsupportedRequest(updated)
       }),
+    authorityScope: ARTANIS_OWNER_OPERATOR_AUTHORITY_SCOPE,
     kind: 'write',
   }
 }
@@ -3062,6 +3080,7 @@ export const makeArtanisOpenUnsupportedRequestIssueTool = (
         type: 'object',
       },
     },
+    authorityScope: ARTANIS_OWNER_OPERATOR_AUTHORITY_SCOPE,
     kind: 'gated',
     riskyActionKind: ARTANIS_UNSUPPORTED_REQUEST_ISSUE_OPEN_RISKY_ACTION_KIND,
     run: (args: unknown): Effect.Effect<ArtanisOperatorGatedResult> =>
@@ -3254,6 +3273,7 @@ const commandProposalGateForVerify = (
 // The validated, public-safe plan input the gated tool hands to the execution
 // seam. Every field has already passed the public-safety gate.
 export type ArtanisDispatchPlanInput = Readonly<{
+  authorityScope: ArtanisAuthorityScope
   objective: string
   branch: string
   verify: string | undefined
@@ -3280,7 +3300,7 @@ export type ArtanisDispatchCreateResult =
 // no-spend assignment via the server coding-delegation route, targeting the
 // OWNER's linked Pylon. When absent, the tool stays plan-only (defers).
 export type ArtanisDispatchExecution = Readonly<{
-  isOwnerApproved: () => Effect.Effect<boolean>
+  isOwnerApproved: (authorityScope: ArtanisAuthorityScope) => Effect.Effect<boolean>
   createCodexAssignment: (
     plan: ArtanisDispatchPlanInput,
   ) => Effect.Effect<ArtanisDispatchCreateResult>
@@ -3292,6 +3312,7 @@ export type ArtanisDispatchExecution = Readonly<{
 const buildArtanisDispatchPlan = (
   args: unknown,
   defaultBranch: string,
+  authorityScope: ArtanisAuthorityScope,
 ):
   | Readonly<{ ok: true; input: ArtanisDispatchPlanInput; planText: string }>
   | Readonly<{ ok: false; message: string }> => {
@@ -3352,7 +3373,9 @@ const buildArtanisDispatchPlan = (
   const prompt = promptParts.join(' ')
 
   const lines: Array<string> = [
-    'Planned Khala -> Pylon -> Codex dispatch (own-capacity only, no spend):',
+    `Planned Khala -> Pylon -> Codex dispatch (${authorityScope}, own-capacity only, no spend):`,
+    '',
+    `  authorityScope: ${authorityScope}`,
     '',
     '  pylon khala request \\',
     `    --prompt "${prompt}" \\`,
@@ -3377,7 +3400,7 @@ const buildArtanisDispatchPlan = (
   }
 
   return {
-    input: { branch, filePaths, issue, objective, prompt, verify },
+    input: { authorityScope, branch, filePaths, issue, objective, prompt, verify },
     ok: true,
     planText: lines.join('\n'),
   }
@@ -3394,10 +3417,13 @@ const buildArtanisDispatchPlan = (
 // pooled/third-party capacity.
 export const makeArtanisDispatchCodexTaskTool = (
   config: Readonly<{
+    authorityScope?: ArtanisAuthorityScope | undefined
     defaultBranch?: string | undefined
     execution?: ArtanisDispatchExecution | undefined
   }> = {},
 ): ArtanisOperatorGatedTool => {
+  const authorityScope =
+    config.authorityScope ?? ARTANIS_OWNER_SELF_AUTHORITY_SCOPE
   const defaultBranch = config.defaultBranch ?? 'main'
   const execution = config.execution
 
@@ -3437,11 +3463,12 @@ export const makeArtanisDispatchCodexTaskTool = (
         type: 'object',
       },
     },
+    authorityScope,
     kind: 'gated',
     riskyActionKind: 'pylon_job_dispatch',
     run: (args: unknown): Effect.Effect<ArtanisOperatorGatedResult> =>
       Effect.gen(function* () {
-        const built = buildArtanisDispatchPlan(args, defaultBranch)
+        const built = buildArtanisDispatchPlan(args, defaultBranch, authorityScope)
         if (!built.ok) {
           // Invalid/blocked args never execute; defer with the honest message.
           return {
@@ -3463,7 +3490,7 @@ export const makeArtanisDispatchCodexTaskTool = (
         // Owner-approval gate. Default conservative: any failure reads as
         // "not approved" and defers — never an accidental execution.
         const approved = yield* execution
-          .isOwnerApproved()
+          .isOwnerApproved(built.input.authorityScope)
           .pipe(Effect.orElseSucceed(() => false))
         if (!approved) {
           return {
@@ -3507,6 +3534,7 @@ export const makeArtanisDispatchCodexTaskTool = (
 
         const summary = [
           `assignmentRef: ${created.assignmentRef}`,
+          `authorityScope: ${built.input.authorityScope}`,
           `pylonRef: ${created.pylonRef}`,
           `durableRequestId: ${created.durableRequestId ?? '(none)'}`,
           'paymentMode: unpaid_smoke (no spend, own_capacity)',
@@ -3576,6 +3604,7 @@ export const makeArtanisGetNetworkStatsTool = (
         ].join('\n')
       }),
     ),
+  authorityScope: ARTANIS_OWNER_OPERATOR_AUTHORITY_SCOPE,
   kind: 'read',
 })
 
@@ -3755,6 +3784,7 @@ export const makeArtanisGetFleetStatusTool = (
         formatFleetBrainLine(traceReview),
       ].join('\n')
     }),
+  authorityScope: ARTANIS_OWNER_OPERATOR_AUTHORITY_SCOPE,
   kind: 'read',
 })
 
@@ -3939,6 +3969,7 @@ export const makeArtanisGetGlmFleetStatusTool = (
         }
         return formatGlmFleetStatusLine(normalized)
       }),
+    authorityScope: ARTANIS_OWNER_OPERATOR_AUTHORITY_SCOPE,
     kind: 'read',
   }
 }
@@ -4295,6 +4326,7 @@ export const makeArtanisGetTraceReviewTool = (
         }
         return formatTraceReviewSummary(normalized)
       }),
+    authorityScope: ARTANIS_OWNER_OPERATOR_AUTHORITY_SCOPE,
     kind: 'read',
   }
 }
@@ -4494,6 +4526,7 @@ export const makeArtanisTriggerSyntheticLoadTool = (
         type: 'object',
       },
     },
+    authorityScope: ARTANIS_OWNER_OPERATOR_AUTHORITY_SCOPE,
     kind: 'risky',
     plan: (args: unknown) =>
       Effect.succeed(
@@ -4670,6 +4703,7 @@ export const makeArtanisGetSyntheticLoadStatusTool = (
           '\n',
         )
       }),
+    authorityScope: ARTANIS_OWNER_OPERATOR_AUTHORITY_SCOPE,
     kind: 'read',
   }
 }

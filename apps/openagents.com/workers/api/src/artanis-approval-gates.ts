@@ -1,5 +1,10 @@
 import { Schema as S } from 'effect'
 
+import {
+  ARTANIS_OWNER_OPERATOR_AUTHORITY_SCOPE,
+  ARTANIS_OWNER_SELF_AUTHORITY_SCOPE,
+  ArtanisAuthorityScope,
+} from './artanis-authority-scope'
 import { friendlyBlueprintMissionBriefingTime } from './blueprint/services/continuation-mission-briefing'
 
 export const ArtanisApprovalGateAudience = S.Literals([
@@ -61,6 +66,7 @@ export class ArtanisApprovalGateRecord extends S.Class<ArtanisApprovalGateRecord
   'ArtanisApprovalGateRecord',
 )({
   actionRef: S.String,
+  authorityScope: ArtanisAuthorityScope,
   authorityReceiptRefs: S.Array(S.String),
   authoritySourceKinds: S.Array(ArtanisApprovalAuthoritySourceKind),
   caveatRefs: S.Array(S.String),
@@ -97,6 +103,7 @@ export class ArtanisApprovalGateProjection extends S.Class<ArtanisApprovalGatePr
   'ArtanisApprovalGateProjection',
 )({
   actionRef: S.String,
+  authorityScope: ArtanisAuthorityScope,
   authorityReceiptRefs: S.Array(S.String),
   authoritySourceKinds: S.Array(ArtanisApprovalAuthoritySourceKind),
   caveatRefs: S.Array(S.String),
@@ -319,6 +326,16 @@ const assertGate = (gate: ArtanisApprovalGateRecord): void => {
   }
 
   if (
+    gate.kind === 'pylon_job_dispatch' &&
+    gate.authorityScope !== ARTANIS_OWNER_SELF_AUTHORITY_SCOPE
+  ) {
+    throw new ArtanisApprovalGateUnsafe({
+      reason:
+        'Artanis pylon_job_dispatch gates must be scoped to owner_self until shared-fleet capacity is explicitly wired.',
+    })
+  }
+
+  if (
     !hasAny(gate.operatorReceiptRefs) ||
     !hasAny(gate.policyRefs) ||
     !hasAny(gate.caveatRefs) ||
@@ -413,6 +430,7 @@ const projectGate = (
           audience,
         )
       : [],
+    authorityScope: gate.authorityScope,
     authoritySourceKinds: audience === 'operator'
       ? [...gate.authoritySourceKinds].sort()
       : [],
@@ -592,6 +610,7 @@ export const exampleArtanisApprovalGateLedger =
     gates: [
       gate({
         actionRefSuffix: 'pylon_job_dispatch',
+        authorityScope: ARTANIS_OWNER_SELF_AUTHORITY_SCOPE,
         authorityReceiptRefs: ['authority.public.artanis.pylon_dispatch.approved'],
         authoritySourceKinds: ['operator_approval', 'operator_policy'],
         caveatRefs: ['caveat.public.dispatch_scope_limited'],
@@ -617,6 +636,7 @@ export const exampleArtanisApprovalGateLedger =
       }),
       gate({
         actionRefSuffix: 'bitcoin_spend_review',
+        authorityScope: ARTANIS_OWNER_OPERATOR_AUTHORITY_SCOPE,
         authorityReceiptRefs: [],
         authoritySourceKinds: ['operator_policy'],
         caveatRefs: ['caveat.public.no_live_bitcoin_spend'],
@@ -638,6 +658,7 @@ export const exampleArtanisApprovalGateLedger =
       }),
       gate({
         actionRefSuffix: 'training_launch',
+        authorityScope: ARTANIS_OWNER_OPERATOR_AUTHORITY_SCOPE,
         authorityReceiptRefs: [],
         authoritySourceKinds: ['operator_policy'],
         caveatRefs: ['caveat.public.training_launch_window_expired'],
@@ -659,6 +680,7 @@ export const exampleArtanisApprovalGateLedger =
       }),
       gate({
         actionRefSuffix: 'runtime_promotion',
+        authorityScope: ARTANIS_OWNER_OPERATOR_AUTHORITY_SCOPE,
         authorityReceiptRefs: [],
         authoritySourceKinds: ['operator_policy'],
         caveatRefs: ['caveat.public.runtime_promotion_superseded'],
@@ -680,6 +702,7 @@ export const exampleArtanisApprovalGateLedger =
       }),
       gate({
         actionRefSuffix: 'l402_redemption',
+        authorityScope: ARTANIS_OWNER_OPERATOR_AUTHORITY_SCOPE,
         authorityReceiptRefs: [],
         authoritySourceKinds: ['operator_policy'],
         caveatRefs: ['caveat.public.l402_redemption_pending'],

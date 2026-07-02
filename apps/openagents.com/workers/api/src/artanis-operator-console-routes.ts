@@ -5,6 +5,7 @@ import {
   ArtanisApprovalGateRecord,
   projectArtanisApprovalGateLedger,
 } from './artanis-approval-gates'
+import { ARTANIS_OWNER_SELF_AUTHORITY_SCOPE } from './artanis-authority-scope'
 import {
   ArtanisForumPublicationIntentRecord,
   ArtanisForumPublicationQueueRecord,
@@ -492,6 +493,7 @@ const armedPylonDispatchGateRecord = (input: {
 
   return new ArtanisApprovalGateRecord({
     actionRef: 'action.public.artanis.arm_pylon_dispatch',
+    authorityScope: ARTANIS_OWNER_SELF_AUTHORITY_SCOPE,
     // Documents the owner directive ("arm it now", 2026-06-27). Operator-only;
     // excluded from the public projection.
     authorityReceiptRefs: [
@@ -571,6 +573,7 @@ const approvalActionRecord = (input: {
 
   return new ArtanisApprovalGateRecord({
     actionRef: input.source.actionRef,
+    authorityScope: input.source.authorityScope,
     authorityReceiptRefs: [
       `authority.public.artanis.operator_${input.action}.${suffix}`,
     ],

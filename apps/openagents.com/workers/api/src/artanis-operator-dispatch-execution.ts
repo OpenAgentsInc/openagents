@@ -42,6 +42,12 @@ import {
   type ArtanisRiskyActionKind,
   artanisApprovalGateEffective,
 } from './artanis-approval-gates'
+import {
+  ARTANIS_OWNER_SELF_AUTHORITY_SCOPE,
+  artanisAuthorityScopeAllowsOwnerLinkedCapacity,
+  artanisAuthorityScopeEvidenceRef,
+  type ArtanisAuthorityScope,
+} from './artanis-authority-scope'
 import type {
   ArtanisDispatchCreateResult,
   ArtanisDispatchExecution,
@@ -94,6 +100,7 @@ const buildDelegationBody = (
   commitSha: string,
 ): Record<string, unknown> => {
   const coding: Record<string, unknown> = {
+    authorityScope: plan.authorityScope,
     objectiveSummary: plan.objective,
   }
   coding.workspace = {
@@ -114,6 +121,7 @@ const buildDelegationBody = (
     messages: [{ content: plan.prompt, role: 'user' }],
     model: 'openagents/khala',
     openagents: {
+      authorityScope: plan.authorityScope,
       coding,
       workflowClass: 'codex_agent_task',
     },
@@ -131,7 +139,9 @@ export type ArtanisDispatchExecutionDeps = Readonly<{
     ownerOpenAuthUserId: string,
   ) => Promise<ReadonlyArray<string>>
   // True iff an effective owner approval for `pylon_job_dispatch` exists now.
-  readEffectivePylonDispatchApproval: () => Promise<boolean>
+  readEffectivePylonDispatchApproval: (
+    authorityScope: ArtanisAuthorityScope,
+  ) => Promise<boolean>
   // Deterministic id + clock seams (testable).
   makeId: () => string
   nowIso: () => string
@@ -152,6 +162,9 @@ const createAssignmentPromise = async (
       return { kind: 'rejected', reason: 'command_source_not_verified' }
     }
     const verifiedPlan = { ...plan, verify: plan.verify }
+    if (!artanisAuthorityScopeAllowsOwnerLinkedCapacity(plan.authorityScope)) {
+      return { kind: 'rejected', reason: 'authority_scope_capacity_unavailable' }
+    }
     const ownerAgentUserIds = await deps.listLinkedAgentUserIds(
       deps.ownerOpenAuthUserId,
     )
@@ -173,9 +186,13 @@ const createAssignmentPromise = async (
     const result = await delegateCodingWorkflow({
       classification: {
         confidence: 1,
-        evidenceRefs: [ARTANIS_DISPATCH_EVIDENCE_REF],
+        evidenceRefs: [
+          ARTANIS_DISPATCH_EVIDENCE_REF,
+          artanisAuthorityScopeEvidenceRef(verifiedPlan.authorityScope),
+        ],
         workflowClass: 'codex_agent_task',
       },
+      authorityScope: verifiedPlan.authorityScope,
       linkedAgents,
       makeId: deps.makeId,
       nowIso,
@@ -217,10 +234,10 @@ export const makeArtanisDispatchExecution = (
         () => ({ kind: 'rejected', reason: 'dispatch_execution_error' }) as const,
       ),
     ),
-  isOwnerApproved: () =>
+  isOwnerApproved: (authorityScope: ArtanisAuthorityScope) =>
     Effect.tryPromise({
       catch: () => false,
-      try: () => deps.readEffectivePylonDispatchApproval(),
+      try: () => deps.readEffectivePylonDispatchApproval(authorityScope),
     }).pipe(Effect.orElseSucceed(() => false)),
 })
 
@@ -234,6 +251,7 @@ export const makeArtanisDispatchExecution = (
 export const readEffectiveArtanisPylonDispatchApproval = async (
   db: D1Database,
   nowIso: string,
+  authorityScope: ArtanisAuthorityScope = ARTANIS_OWNER_SELF_AUTHORITY_SCOPE,
 ): Promise<boolean> => {
   // `artanis_approval_gates` is the persisted Artanis approval-gate table
   // (`tableSpecs.approval_gate` in `artanis-persistence.ts`); `record_json`
@@ -254,6 +272,7 @@ export const readEffectiveArtanisPylonDispatchApproval = async (
       const record = S.decodeUnknownSync(ArtanisApprovalGateRecord)(parsed)
       if (
         record.kind === 'pylon_job_dispatch' &&
+        record.authorityScope === authorityScope &&
         artanisApprovalGateEffective(record, nowIso)
       ) {
         return true
@@ -269,6 +288,7 @@ export const readEffectiveArtanisApproval = async (
   db: D1Database,
   nowIso: string,
   kind: ArtanisRiskyActionKind,
+  authorityScope?: ArtanisAuthorityScope | undefined,
 ): Promise<boolean> => {
   const result = await db
     .prepare(
@@ -284,7 +304,11 @@ export const readEffectiveArtanisApproval = async (
     try {
       const parsed = parseJsonUnknown(row.record_json)
       const record = S.decodeUnknownSync(ArtanisApprovalGateRecord)(parsed)
-      if (record.kind === kind && artanisApprovalGateEffective(record, nowIso)) {
+      if (
+        record.kind === kind &&
+        (authorityScope === undefined || record.authorityScope === authorityScope) &&
+        artanisApprovalGateEffective(record, nowIso)
+      ) {
         return true
       }
     } catch {
@@ -317,12 +341,16 @@ export const readEffectiveArtanisPylonDispatchApprovalForOwner = async (
   db: D1Database,
   nowIso: string,
   ownerOpenAuthUserId: string,
+  authorityScope: ArtanisAuthorityScope = ARTANIS_OWNER_SELF_AUTHORITY_SCOPE,
 ): Promise<boolean> => {
+  if (!artanisAuthorityScopeAllowsOwnerLinkedCapacity(authorityScope)) {
+    return false
+  }
   // (a) Standing per-tenant approval — scoped to pylon_job_dispatch only. The
   // owner-promoted Artanis identity is included by this tenant-wide rule.
   if (ownerOpenAuthUserId.trim() !== '') {
     return true
   }
   // (b) Otherwise fall back to the armed D1 approval-gate path.
-  return readEffectiveArtanisPylonDispatchApproval(db, nowIso)
+  return readEffectiveArtanisPylonDispatchApproval(db, nowIso, authorityScope)
 }

@@ -7,6 +7,7 @@ import {
   artanisApprovalGateProjectionHasPrivateMaterial,
   projectArtanisApprovalGateLedger,
 } from './artanis-approval-gates'
+import { ARTANIS_SHARED_FLEET_AUTHORITY_SCOPE } from './artanis-authority-scope'
 import {
   artanisHealthProjectionHasPrivateMaterial,
   ArtanisHealthSignalRecord,
@@ -477,6 +478,7 @@ const approvalGateFor = (
 
   return new ArtanisApprovalGateRecord({
     actionRef: `action.public.artanis.fleet_overseer.${suffix}`,
+    authorityScope: ARTANIS_SHARED_FLEET_AUTHORITY_SCOPE,
     authorityReceiptRefs: [],
     authoritySourceKinds: ['operator_policy'],
     caveatRefs: [

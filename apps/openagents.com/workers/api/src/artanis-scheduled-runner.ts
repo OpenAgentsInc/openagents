@@ -28,6 +28,7 @@ import {
 import {
   ArtanisApprovalGateRecord,
 } from './artanis-approval-gates'
+import { ARTANIS_OWNER_OPERATOR_AUTHORITY_SCOPE } from './artanis-authority-scope'
 import {
   ArtanisForumPublicationIntentRecord,
   exampleArtanisForumPublicationQueue,
@@ -1195,6 +1196,7 @@ const scheduledSpendApprovalGate = (
 
   return new ArtanisApprovalGateRecord({
     actionRef: approval.actionRef,
+    authorityScope: ARTANIS_OWNER_OPERATOR_AUTHORITY_SCOPE,
     authorityReceiptRefs: [],
     authoritySourceKinds: ['operator_policy'],
     caveatRefs: approval.caveatRefs,
