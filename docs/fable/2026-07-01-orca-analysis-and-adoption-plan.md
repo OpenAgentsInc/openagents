@@ -85,6 +85,14 @@ Inspector polls a *bespoke* `/api/operator/fleet/status` snapshot instead.
 The two halves of our own status story have not been introduced to each
 other, and the missing middle is exactly Port 2's unwired store.
 
+T10.3 compatibility note (2026-07-02): `/api/operator/fleet/status` is now a
+deprecated admin-only compatibility envelope for the current iOS Fleet
+Inspector. It preserves the legacy `operator.fleet_status.v1` response shape
+but reads from the `pylon_agent_runner_status_events` spine used by
+`/api/operator/pro/status`; there is no separate fleet-status source of truth.
+Remove the route after T11.1 ships mobile pairing/transport and replaces this
+bespoke poll.
+
 Also confirmed: **we deliberately do not have Orca's compare-N-merge-winner
 flow**, and every layer of our system enforces the opposite invariant (one
 worker per distinct work unit; the fan-out instructions make the claim

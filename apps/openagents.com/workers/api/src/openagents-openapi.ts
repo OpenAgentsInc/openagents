@@ -65,6 +65,8 @@ type OpenApiOperationInput = Readonly<{
   tags: ReadonlyArray<string>
   security: ReadonlyArray<Readonly<Record<string, ReadonlyArray<string>>>>
   responses: Readonly<Record<string, JsonSchema>>
+  deprecated?: boolean
+  xOpenAgentsRemovalCondition?: string
   requestBody?: JsonSchema
   parameters?: ReadonlyArray<JsonSchema>
 }>
@@ -150,6 +152,10 @@ const operation = (input: OpenApiOperationInput): JsonSchema => ({
   description: input.description,
   tags: input.tags,
   security: input.security,
+  ...(input.deprecated === undefined ? {} : { deprecated: input.deprecated }),
+  ...(input.xOpenAgentsRemovalCondition === undefined
+    ? {}
+    : { 'x-openagents-removal-condition': input.xOpenAgentsRemovalCondition }),
   ...(input.parameters === undefined ? {} : { parameters: input.parameters }),
   ...(input.requestBody === undefined
     ? {}
@@ -1608,6 +1614,18 @@ const schemaComponents = (): JsonSchema => ({
       reason: { type: 'string' },
     },
   },
+  OperatorFleetStatusProjection: objectSummary(
+    'Operator fleet-status compatibility envelope, schemaVersion operator.fleet_status.v1. T10.3 derives this projection from pylon_agent_runner_status_events instead of the retired bespoke fleet snapshot tables. /api/operator/fleet/status is deprecated for the iOS compatibility window until T11.1; /api/operator/fleet/state remains the owner-scoped CLI/operator compatibility read. The envelope preserves authority flags and grants no dispatch, spend, payout, settlement, or deployment authority.',
+  ),
+  OperatorProStatusProjection: objectSummary(
+    'Operator runner status spine projection with generatedAt, liveEntries, retainedEntries, and diffComments. Rows are derived from public-safe openagents.pylon.agent_runner_status_event.v1 records in pylon_agent_runner_status_events.',
+  ),
+  OperatorRunnerStatusEvent: objectSummary(
+    'Public-safe openagents.pylon.agent_runner_status_event.v1 ingest payload. Includes eventRef, runnerRef, runnerKind, state, stateStartedAt, updatedAt, optional assignment/task/dispatch/pylon/worktree refs, capability refs, blocker refs, control verbs, and bounded state history. Raw prompts, logs, local paths, auth files, tokens, wallet material, and private payloads are rejected.',
+  ),
+  OperatorRunnerStatusIngestResult: objectSummary(
+    'Runner status ingest result containing ok, eventRef, and retentionState.',
+  ),
   ForgeCoordinationWorkRecordEnvelope: envelope(
     'workRecord',
     '#/components/schemas/ForgeCoordinationWorkRecord',
@@ -5136,6 +5154,79 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'OpenAPI document.',
           '#/components/schemas/OpenAgentsCapabilityManifest',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/operator/pro/status': {
+    get: operation({
+      operationId: 'getOperatorProStatus',
+      summary: 'Read operator runner status spine projection',
+      description:
+        'Reads the owner/admin operator status projection backed by pylon_agent_runner_status_events, the single source of truth for live and retained runner status. It grants no dispatch, spend, settlement, payout, or deployment authority.',
+      tags: ['Operator'],
+      security: browserSessionOrAgentBearer,
+      responses: {
+        '200': okJson(
+          'Operator runner status projection.',
+          '#/components/schemas/OperatorProStatusProjection',
+        ),
+        ...errorResponses(),
+      },
+    }),
+    post: operation({
+      operationId: 'ingestOperatorProStatus',
+      summary: 'Ingest public-safe runner status event',
+      description:
+        'Registered-agent ingest for openagents.pylon.agent_runner_status_event.v1. The server validates public-safe refs and ISO timestamps, binds the event to the owner scope, and stores it in pylon_agent_runner_status_events.',
+      tags: ['Operator'],
+      security: agentBearer,
+      requestBody: {
+        required: true,
+        ...jsonContent('#/components/schemas/OperatorRunnerStatusEvent'),
+      },
+      responses: {
+        '200': okJson(
+          'Runner status event accepted.',
+          '#/components/schemas/OperatorRunnerStatusIngestResult',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/operator/fleet/state': {
+    get: operation({
+      operationId: 'getOperatorFleetState',
+      summary: 'Read spine-derived operator fleet state',
+      description:
+        'Owner/admin compatibility fleet-state envelope derived from the operator runner status spine. This route preserves the existing fleet-status JSON shape for CLI/operator consumers while reading only pylon_agent_runner_status_events.',
+      tags: ['Operator'],
+      security: [{ adminBearer: [] }, { agentBearer: [] }],
+      responses: {
+        '200': okJson(
+          'Spine-derived fleet state.',
+          '#/components/schemas/OperatorFleetStatusProjection',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/operator/fleet/status': {
+    get: operation({
+      operationId: 'getDeprecatedOperatorFleetStatus',
+      summary: 'Read deprecated operator fleet status compatibility snapshot',
+      description:
+        'Deprecated admin-only compatibility route for the Khala iOS Fleet Inspector. It preserves the legacy operator.fleet_status.v1 response envelope but derives it from the operator runner status spine; /api/operator/pro/status is the source-of-truth route. Remove after T11.1 mobile pairing/transport replaces the iOS fleet-status poll.',
+      deprecated: true,
+      xOpenAgentsRemovalCondition:
+        'Remove after T11.1 mobile pairing/transport replaces the iOS fleet-status poll.',
+      tags: ['Operator'],
+      security: adminBearer,
+      responses: {
+        '200': okJson(
+          'Deprecated spine-derived fleet status compatibility envelope.',
+          '#/components/schemas/OperatorFleetStatusProjection',
         ),
         ...errorResponses(),
       },
