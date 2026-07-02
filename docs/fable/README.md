@@ -121,7 +121,10 @@ each source doc.
   (the Khala Code launch video; the fleet-demo transcript the other fable
   docs call "245" is now the unreleased draft `24X1.md`). Maps every 245
   claim to its registry record, traces the "coding agent pays you"
-  escalation across episodes 235–244, proposes the owner-gated
+  escalation across episodes 220–244 (Ep 228 "Get Paid to Code" is the
+  direct ancestor of the 245 economics loop; Ep 222's launch-truth-contract
+  header is the claim-sheet pattern 245 should repeat), proposes the
+  owner-gated
   `khala_code.*` promise family (wrapper product yellow; plans, trace
   capture, plugins, and revenue-share planned), four stale-record
   reconciliations (incl. withdrawing the retired-Expo mobile record), the
