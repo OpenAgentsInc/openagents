@@ -243,9 +243,8 @@ const wrapTitleLines = (
 }
 
 // Build a 1200x630 branded SVG OG image for a thread. Pure string output, no
-// wasm rasterizer, so it adds no Worker bundle weight. Uses the OpenAgents
-// dark/mono operational palette (#000000 background, #f1efe8 text, #ffb400
-// highlight) from DESIGN.md. No decorative gradients.
+// wasm rasterizer, so it adds no Worker bundle weight. Uses the Khala
+// StarCraft palette so the share card matches the click-through forum.
 export const buildForumThreadOgImageSvg = (
   title: string | null | undefined,
 ): string => {
@@ -262,19 +261,19 @@ export const buildForumThreadOgImageSvg = (
   const titleTexts = lines
     .map(
       (line, index) =>
-        `<text x="80" y="${startY + index * lineHeight}" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="64" font-weight="700" fill="#f1efe8">${escapeSvgText(line)}</text>`,
+        `<text x="80" y="${startY + index * lineHeight}" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="64" font-weight="700" fill="#e7f4ff">${escapeSvgText(line)}</text>`,
     )
     .join('')
 
   const footerY = Math.min(560, startY + blockHeight + 40)
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${OG_IMAGE_WIDTH}" height="${OG_IMAGE_HEIGHT}" viewBox="0 0 ${OG_IMAGE_WIDTH} ${OG_IMAGE_HEIGHT}" role="img" aria-label="${escapeSvgText(safeTitle)}">
-  <rect width="${OG_IMAGE_WIDTH}" height="${OG_IMAGE_HEIGHT}" fill="#000000"/>
-  <rect x="40" y="40" width="${OG_IMAGE_WIDTH - 80}" height="${OG_IMAGE_HEIGHT - 80}" fill="none" stroke="#1a1a1a" stroke-width="2"/>
-  <rect x="80" y="96" width="56" height="6" fill="#ffb400"/>
-  <text x="152" y="112" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="30" font-weight="700" letter-spacing="3" fill="#f1efe8">OPENAGENTS FORUM</text>
+  <rect width="${OG_IMAGE_WIDTH}" height="${OG_IMAGE_HEIGHT}" fill="#05080e"/>
+  <rect x="40" y="40" width="${OG_IMAGE_WIDTH - 80}" height="${OG_IMAGE_HEIGHT - 80}" fill="none" stroke="#1d2a44" stroke-width="2"/>
+  <rect x="80" y="96" width="56" height="6" fill="#3a7bff"/>
+  <text x="152" y="112" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="30" font-weight="700" letter-spacing="3" fill="#cdeeff">OPENAGENTS FORUM</text>
   ${titleTexts}
-  <text x="80" y="${footerY}" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="26" fill="#807c70">openagents.com/forum</text>
+  <text x="80" y="${footerY}" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="26" fill="#8fb6ff">openagents.com/forum</text>
 </svg>`
 }
 

@@ -42,45 +42,18 @@ const navItems: ReadonlyArray<PublicNavItem> = [
 ]
 
 const navLinkClass =
-  'rounded px-2 py-1 text-base text-white/60 transition hover:bg-white/[0.04] hover:text-[#f1efe8] focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-[#ffb400] sm:text-sm'
-
-const forumNavLinkClass =
-  'rounded px-2 py-1 font-sans text-base text-white/85 transition hover:bg-white/10 hover:text-white focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-white sm:text-sm'
+  'khala-focus rounded px-2 py-1 font-mono text-base text-[var(--oa-color-khala-text-muted)] transition-colors hover:bg-[var(--oa-color-khala-surface-active)] hover:text-[var(--oa-color-khala-energy-cyan)] sm:text-sm'
 
 const loginPanelLinkClass =
-  'inline-flex min-h-9 items-center justify-center rounded border border-white/15 bg-white/10 px-3 py-2 text-base/6 font-semibold text-[#f1efe8] hover:border-white/30 hover:bg-white/[0.14] focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-[#ffb400] sm:text-sm/6'
+  'khala-focus inline-flex min-h-9 items-center justify-center rounded border border-[var(--oa-color-khala-border-strong)] bg-[var(--oa-color-khala-surface-active)] px-3 py-2 text-base/6 font-semibold text-[var(--oa-color-khala-energy-button-text)] transition-colors hover:border-[var(--oa-color-khala-energy-cyan)] hover:bg-[var(--oa-color-khala-surface-muted)] hover:text-[var(--oa-color-khala-energy-text-strong)] sm:text-sm/6'
 
 const loginPanelSecondaryLinkClass =
-  'rounded text-base/6 font-semibold text-white/70 hover:text-[#f1efe8] focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-[#ffb400] sm:text-sm/6'
+  'khala-focus rounded text-base/6 font-semibold text-[var(--oa-color-khala-energy-soft)] transition-colors hover:text-[var(--oa-color-khala-energy-cyan)] sm:text-sm/6'
 
 const accountMenuItemClass =
-  'rounded px-2 py-1.5 text-base text-[#f1efe8] transition hover:bg-white/[0.06] focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-[#ffb400] sm:text-sm'
+  'khala-focus rounded px-2 py-1.5 text-base text-[var(--oa-color-khala-text-primary)] transition-colors hover:bg-[var(--oa-color-khala-surface-active)] hover:text-[var(--oa-color-khala-energy-cyan)] sm:text-sm'
 
 export type PublicHeaderVariant = 'dark' | 'forum'
-
-const forumThemeSelectClass =
-  'rounded border border-white/25 bg-white/10 px-2 py-1 font-sans text-sm text-white transition hover:bg-white/[0.16] focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-white [&>option]:text-black'
-
-// Forum-only light/dark/system selector. It carries no foldkit handler: the
-// forum page's inline script reads the value, resolves it, and persists the
-// choice (see forumScript in page/forum.ts). The script also sets the live
-// selection on load, so 'System' is just the initial markup default.
-const forumThemeSelector = <Message>(): Html => {
-  const h = html<Message>()
-
-  return h.select(
-    [
-      h.DataAttribute('forum-theme-select', ''),
-      h.AriaLabel('Forum theme'),
-      Ui.className<Message>(forumThemeSelectClass),
-    ],
-    [
-      h.option([h.Value('system'), h.Selected(true)], ['System theme']),
-      h.option([h.Value('light')], ['Light']),
-      h.option([h.Value('dark')], ['Dark']),
-    ],
-  )
-}
 
 const loggedOutLoginPopover = <Message>(
   loginHref: string,
@@ -106,7 +79,7 @@ const loggedOutLoginPopover = <Message>(
           h.Role('dialog'),
           h.AriaLabel('Login options'),
           Ui.className<Message>(
-            'absolute right-0 z-50 mt-2 grid w-80 max-w-[calc(100vw-2rem)] gap-4 rounded-md border border-white/10 bg-[#010102] p-4 text-left font-mono shadow-xl shadow-black/40',
+            'khala-panel absolute right-0 z-50 mt-2 grid w-80 max-w-[calc(100vw-2rem)] gap-4 rounded-md border border-[var(--oa-color-khala-border)] bg-[var(--oa-color-khala-surface-raised)] p-4 text-left font-mono',
           ),
         ],
         [
@@ -116,7 +89,7 @@ const loggedOutLoginPopover = <Message>(
               h.p(
                 [
                   Ui.className<Message>(
-                    'm-0 text-base/6 font-semibold text-[#f1efe8] sm:text-sm/6',
+                    'm-0 text-base/6 font-semibold text-[var(--oa-color-khala-text-bright)] sm:text-sm/6',
                   ),
                 ],
                 ['Browser session'],
@@ -134,13 +107,15 @@ const loggedOutLoginPopover = <Message>(
           h.div(
             [
               h.DataAttribute('agent-access-panel', ''),
-              Ui.className<Message>('grid gap-2 border-t border-white/10 pt-4'),
+              Ui.className<Message>(
+                'grid gap-2 border-t border-[var(--oa-color-khala-border)] pt-4',
+              ),
             ],
             [
               h.h2(
                 [
                   Ui.className<Message>(
-                    'm-0 text-base/6 font-semibold text-[#f1efe8] sm:text-sm/6',
+                    'm-0 text-base/6 font-semibold text-[var(--oa-color-khala-text-bright)] sm:text-sm/6',
                   ),
                 ],
                 ['Agent access'],
@@ -148,7 +123,7 @@ const loggedOutLoginPopover = <Message>(
               h.p(
                 [
                   Ui.className<Message>(
-                    'm-0 text-base/7 text-white/55 sm:text-sm/6',
+                    'm-0 text-base/7 text-[var(--oa-color-khala-text-muted)] sm:text-sm/6',
                   ),
                 ],
                 [
@@ -203,14 +178,17 @@ export const viewerAvatarMenu = <Message>(input: {
   const menuLinkClass = input.menuLinkClass ?? accountMenuItemClass
 
   return h.details(
-    [h.DataAttribute('account-menu-popover', ''), Ui.className<Message>('relative')],
+    [
+      h.DataAttribute('account-menu-popover', ''),
+      Ui.className<Message>('relative'),
+    ],
     [
       h.summary(
         [
           h.DataAttribute('account-menu-trigger', ''),
           h.AriaLabel('Account menu'),
           Ui.className<Message>(
-            'flex cursor-pointer list-none select-none items-center rounded-full focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-[#ffb400] [&::-webkit-details-marker]:hidden',
+            'khala-focus flex cursor-pointer list-none select-none items-center rounded-full [&::-webkit-details-marker]:hidden',
           ),
         ],
         [
@@ -225,7 +203,7 @@ export const viewerAvatarMenu = <Message>(input: {
           h.DataAttribute('account-menu', ''),
           h.Role('menu'),
           Ui.className<Message>(
-            'absolute right-0 z-50 mt-2 grid w-56 max-w-[calc(100vw-2rem)] gap-1 rounded-md border border-white/10 bg-[#010102] p-2 text-left font-mono shadow-xl shadow-black/40',
+            'khala-panel absolute right-0 z-50 mt-2 grid w-56 max-w-[calc(100vw-2rem)] gap-1 rounded-md border border-[var(--oa-color-khala-border)] bg-[var(--oa-color-khala-surface-raised)] p-2 text-left font-mono',
           ),
         ],
         [
@@ -236,11 +214,19 @@ export const viewerAvatarMenu = <Message>(input: {
             ],
             [
               h.p(
-                [Ui.className<Message>('m-0 truncate text-sm text-[#f1efe8]')],
+                [
+                  Ui.className<Message>(
+                    'm-0 truncate text-sm text-[var(--oa-color-khala-text-bright)]',
+                  ),
+                ],
                 [viewer.displayName],
               ),
               h.p(
-                [Ui.className<Message>('m-0 truncate text-xs text-white/55')],
+                [
+                  Ui.className<Message>(
+                    'm-0 truncate text-xs text-[var(--oa-color-khala-text-muted)]',
+                  ),
+                ],
                 [viewer.email],
               ),
             ],
@@ -283,15 +269,13 @@ export const view = <Message>(
   loginHref = '/login/github',
 ): Html => {
   const h = html<Message>()
-  const isForum = variant === 'forum'
-  const linkClass = isForum ? forumNavLinkClass : navLinkClass
+  const linkClass = navLinkClass
 
   return h.header(
     [
+      h.DataAttribute('public-header-variant', variant),
       Ui.className<Message>(
-        isForum
-          ? 'border-b border-[#1f5a8c] bg-gradient-to-b from-[#5a9ad9] to-[#3a72b0] font-sans'
-          : 'border-b border-[#222] bg-[#010102]',
+        'border-b border-[var(--oa-color-khala-border)] bg-[var(--oa-color-khala-surface)] font-mono text-[var(--oa-color-khala-text-primary)]',
       ),
     ],
     [
@@ -308,9 +292,7 @@ export const view = <Message>(
               h.Href(homeRouter()),
               h.AriaLabel('Homepage'),
               Ui.className<Message>(
-                isForum
-                  ? 'font-sans text-lg font-bold text-white'
-                  : 'font-mono text-base font-medium text-[#f1efe8]',
+                'khala-focus rounded font-mono text-base font-medium text-[var(--oa-color-khala-text-bright)] transition-colors hover:text-[var(--oa-color-khala-energy-cyan)]',
               ),
             ],
             ['OpenAgents'],
@@ -327,7 +309,6 @@ export const view = <Message>(
           h.div(
             [Ui.className<Message>('flex items-center gap-2')],
             [
-              ...(isForum ? [forumThemeSelector<Message>()] : []),
               ...(authState._tag === 'LoggedIn'
                 ? [
                     viewerAvatarMenu<Message>({
@@ -345,7 +326,7 @@ export const view = <Message>(
               h.summary(
                 [
                   Ui.className<Message>(
-                    'cursor-pointer list-none rounded py-2 text-base text-white/60 focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-[#ffb400] [&::-webkit-details-marker]:hidden',
+                    'khala-focus cursor-pointer list-none rounded py-2 text-base text-[var(--oa-color-khala-text-muted)] transition-colors hover:text-[var(--oa-color-khala-energy-cyan)] [&::-webkit-details-marker]:hidden',
                   ),
                 ],
                 ['Menu'],
@@ -353,7 +334,7 @@ export const view = <Message>(
               h.div(
                 [
                   Ui.className<Message>(
-                    'grid gap-1 border-t border-[#222] pt-3',
+                    'grid gap-1 border-t border-[var(--oa-color-khala-border)] pt-3',
                   ),
                 ],
                 Array.map(navItems, item =>

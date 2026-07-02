@@ -509,9 +509,7 @@ describe('Forum routes', () => {
       "'/api/forum/posts/' + encodeURIComponent(postId) + '/tips/ladder'",
     )
     expect(script).toContain('amountSat: amount')
-    expect(script).toContain(
-      "result.receiptRef ? 'success' : 'failed'",
-    )
+    expect(script).toContain("result.receiptRef ? 'success' : 'failed'")
     expect(script).toContain('Payment recorded · <a')
     expect(script).toContain("setTipPanel(postId, 'failed'")
     expect(script).not.toContain('raw_invoice')
@@ -524,8 +522,9 @@ describe('Forum routes', () => {
   test('browser topic UI posts forum tips to the ladder endpoint', async () => {
     const topicId = '55555555-5555-4555-8555-555555555555'
     const postId = '66666666-6666-4666-8666-666666666666'
-    const calls: Array<Readonly<{ body: unknown; method: string; path: string }>> =
-      []
+    const calls: Array<
+      Readonly<{ body: unknown; method: string; path: string }>
+    > = []
     document.body.innerHTML =
       '<div data-forum-app><main data-forum-main></main></div>'
 
@@ -538,7 +537,7 @@ describe('Forum routes', () => {
           body:
             typeof init?.body === 'string'
               ? JSON.parse(init.body)
-              : init?.body ?? null,
+              : (init?.body ?? null),
           method,
           path,
         })
@@ -744,7 +743,9 @@ describe('Forum routes', () => {
     expect(script).toContain('<div class="flex items-start gap-2">')
     expect(script).toContain('md:grid-cols-[12rem_minmax(0,1fr)]')
     expect(script).toContain('renderAuthorProfile(post) + renderPostBody(post)')
-    expect(script).toContain('actionBar(\'<a class="min-h-8 rounded')
+    expect(script).toContain(
+      'actionBar(\'<a class="khala-focus min-h-8 rounded',
+    )
     expect(script).toContain("pageSummary(posts.length, 'post')")
   })
 })

@@ -28,24 +28,22 @@
   --color-text-strong: var(--text-strong);
   --color-border-weak-base: var(--border-weak-base);
   --color-border-weaker-base: var(--border-weaker-base);
-  --color-forum-alert: #d41142;
-  --color-forum-heading: #29303d;
-  --color-forum-header: #4688ce;
-  --color-forum-link: #0f4d8a;
-  --color-forum-link-hover: #d41142;
-  --color-forum-navbar: #c9dee8;
-  --color-forum-online: #85de39;
-  --color-forum-page: #f5f5f5;
-  --color-forum-panel: #f0f3f5;
-  --color-forum-payment: #b45309;
-  --color-forum-post-link: #2d80d2;
-  --color-forum-post-link-hover-bg: #d4e6f7;
-  --color-forum-row-a: #edf4f7;
-  --color-forum-row-b: #dbe9f0;
-  --color-forum-row-c: #c9dee8;
-  --color-forum-text: #47536b;
-  --color-forum-wrap: #ffffff;
-  --color-forum-wrap-border: #ededed;
+  --color-forum-heading: var(--oa-color-khala-text-bright);
+  --color-forum-header: var(--oa-color-khala-surface-active);
+  --color-forum-link: var(--oa-color-khala-energy-soft);
+  --color-forum-link-hover: var(--oa-color-khala-energy-cyan);
+  --color-forum-navbar: var(--oa-color-khala-surface-muted);
+  --color-forum-page: var(--oa-color-khala-surface);
+  --color-forum-panel: var(--oa-color-khala-surface-raised);
+  --color-forum-payment: var(--oa-color-khala-energy-line);
+  --color-forum-post-link: var(--oa-color-khala-energy-blue);
+  --color-forum-post-link-hover-bg: var(--oa-color-khala-surface-active);
+  --color-forum-row-a: var(--oa-color-khala-surface);
+  --color-forum-row-b: var(--oa-color-khala-surface-muted);
+  --color-forum-row-c: var(--oa-color-khala-border);
+  --color-forum-text: var(--oa-color-khala-text-muted);
+  --color-forum-wrap: var(--oa-color-khala-surface);
+  --color-forum-wrap-border: var(--oa-color-khala-border);
   --color-public-landing-accent: #8a5a00;
   --color-public-landing-border: #d8dde5;
   --color-public-landing-faint: #8a93a3;
@@ -61,53 +59,16 @@
   --font-sans: var(--font-family-sans);
 }
 
-/*
- * Forum theme switching (light / dark).
- *
- * The forum's --color-forum-* tokens default to light (defined in @theme
- * above). The theme selector in the public header writes the resolved theme
- * to <html data-forum-theme="light|dark">; the "System" option resolves to
- * one of those via prefers-color-scheme before being written. Dark mode just
- * re-points the same tokens, so every bg-forum-* / text-forum-* utility
- * follows automatically. color-scheme is scoped to the forum shell so the
- * dark-only core app is never affected by a forum theme choice.
- */
+/* Forum is pinned to the uniform Khala / StarCraft blue theme. */
+[data-forum-shell],
+html:has([data-forum-shell]),
+body:has([data-forum-shell]),
+body:has([data-forum-shell]) #root {
+  background: var(--oa-color-khala-surface);
+}
+
 [data-forum-shell] {
-  color-scheme: light;
-}
-
-:root[data-forum-theme='dark'] [data-forum-shell] {
   color-scheme: dark;
-}
-
-:root[data-forum-theme='dark'] {
-  --color-forum-alert: #ff6088;
-  --color-forum-heading: #e6edf3;
-  --color-forum-header: #3a6ea5;
-  --color-forum-link: #6cb0f5;
-  --color-forum-link-hover: #ff6088;
-  --color-forum-navbar: #1c3346;
-  --color-forum-online: #85de39;
-  --color-forum-page: #0e1217;
-  --color-forum-panel: #161c24;
-  --color-forum-payment: #d9942f;
-  --color-forum-post-link: #5aa6ef;
-  --color-forum-post-link-hover-bg: #213447;
-  --color-forum-row-a: #161d26;
-  --color-forum-row-b: #1b2531;
-  --color-forum-row-c: #2b3744;
-  --color-forum-text: #9aa7b8;
-  --color-forum-wrap: #151a21;
-  --color-forum-wrap-border: #262e39;
-}
-
-/*
- * The forum container paints a 1px light ring via an arbitrary shadow
- * utility; re-point it to the themed border colour so it doesn't glow in
- * dark mode.
- */
-:root[data-forum-theme='dark'] [data-forum-app] {
-  box-shadow: 0 0 0 1px var(--color-forum-wrap-border);
 }
 
 /*
@@ -228,11 +189,7 @@
 
   *::-webkit-scrollbar-track {
     background:
-      linear-gradient(
-        180deg,
-        rgba(6, 18, 42, 0.92),
-        rgba(0, 0, 0, 0.9)
-      ),
+      linear-gradient(180deg, rgba(6, 18, 42, 0.92), rgba(0, 0, 0, 0.9)),
       var(--oa-scrollbar-track);
     border: 1px solid var(--oa-scrollbar-track-border);
   }

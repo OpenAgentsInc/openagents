@@ -21,16 +21,17 @@ type ForumAuthMode = PublicHeaderAuthState<unknown>['_tag']
 const shellClass =
   'h-dvh overflow-auto overscroll-contain bg-forum-page text-forum-text'
 const containerClass =
-  'mx-auto grid w-[min(100%,1180px)] gap-4 border-x border-forum-wrap-border bg-forum-wrap px-3 py-4 font-sans shadow-[0_0_0_1px_rgba(237,237,237,0.8)] sm:px-4 sm:py-5'
-const panelClass = 'rounded-md border border-forum-row-c bg-forum-panel'
-const eyebrowClass = 'font-sans text-xs font-bold uppercase text-forum-heading'
+  'khala-panel mx-auto grid w-[min(100%,1180px)] gap-4 border-x border-forum-wrap-border bg-forum-wrap px-3 py-4 font-mono sm:px-4 sm:py-5'
+const panelClass =
+  'khala-panel rounded-md border border-forum-row-c bg-forum-panel'
+const eyebrowClass = 'font-mono text-xs font-bold uppercase text-forum-link'
 const mutedClass = 'text-sm/6 text-forum-text'
 const ghostButtonClass =
-  'min-h-8 rounded border border-forum-row-c bg-forum-panel px-3 py-1.5 text-sm font-bold text-forum-link hover:border-forum-header hover:bg-forum-post-link-hover-bg hover:text-forum-link-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-forum-header'
+  'khala-focus min-h-8 rounded border border-forum-row-c bg-forum-panel px-3 py-1.5 text-sm font-bold text-forum-link transition-colors hover:border-forum-link-hover hover:bg-forum-post-link-hover-bg hover:text-forum-link-hover'
 const forumHeaderClass =
-  'rounded-md bg-forum-header px-3 py-2 text-sm font-bold text-white'
+  'rounded-md border border-forum-row-c bg-forum-header px-3 py-2 text-sm font-bold text-forum-heading'
 const forumBreadcrumbClass =
-  'rounded-md bg-forum-navbar px-3 py-2 text-sm text-forum-heading'
+  'khala-panel rounded-md border border-forum-row-c bg-forum-navbar px-3 py-2 text-sm text-forum-text'
 
 const forumReturnPath = (route: ForumRouteValue): string =>
   route._tag === 'ForumForum'
@@ -62,50 +63,6 @@ export const forumScript = (
   const initial = ${JSON.stringify(initial)};
   const authMode = initial.authMode || 'LoggedOut';
   const loginHref = ${JSON.stringify(loginHref)};
-  // ---- Forum theme (light / dark / system) ----
-  // Preference is stored as 'light' | 'dark'; absence means "follow system".
-  // The resolved theme is written to <html data-forum-theme="..."> which the
-  // stylesheet keys the forum's --color-forum-* tokens off of. This runs
-  // before the root/main guard so the theme always applies, even on pages
-  // that re-render their own content.
-  const THEME_KEY = 'oa.forum.v1:theme';
-  const themeMedia = window.matchMedia('(prefers-color-scheme: dark)');
-  const readThemePref = () => {
-    try {
-      const stored = localStorage.getItem(THEME_KEY);
-      return stored === 'light' || stored === 'dark' ? stored : 'system';
-    } catch (_) {
-      return 'system';
-    }
-  };
-  const resolveTheme = pref =>
-    pref === 'light' || pref === 'dark'
-      ? pref
-      : themeMedia.matches ? 'dark' : 'light';
-  const applyTheme = pref => {
-    document.documentElement.setAttribute('data-forum-theme', resolveTheme(pref));
-  };
-  const syncThemeSelect = pref => {
-    const select = document.querySelector('[data-forum-theme-select]');
-    if (select && select.value !== pref) select.value = pref;
-  };
-  applyTheme(readThemePref());
-  syncThemeSelect(readThemePref());
-  document.addEventListener('change', event => {
-    const target = event.target;
-    const select = target && target.closest ? target.closest('[data-forum-theme-select]') : null;
-    if (!select) return;
-    const value = select.value;
-    const pref = value === 'light' || value === 'dark' ? value : 'system';
-    try {
-      if (pref === 'system') localStorage.removeItem(THEME_KEY);
-      else localStorage.setItem(THEME_KEY, pref);
-    } catch (_) {}
-    applyTheme(pref);
-  });
-  themeMedia.addEventListener('change', () => {
-    if (readThemePref() === 'system') applyTheme('system');
-  });
   const state = {
     forum: null,
     launchStatus: null,
@@ -386,7 +343,7 @@ export const forumScript = (
   const viewCountText = count => countText(count, 'view', 'views');
   const rowClass = index => index % 2 === 0 ? 'bg-forum-row-a' : 'bg-forum-row-b';
   const forumListClass = 'overflow-hidden rounded-md border border-forum-row-c bg-forum-wrap';
-  const listHeaderClass = 'hidden border-b border-forum-header bg-forum-header px-3 py-2 text-xs font-bold uppercase text-white sm:grid';
+  const listHeaderClass = 'hidden border-b border-forum-row-c bg-forum-header px-3 py-2 text-xs font-bold uppercase text-forum-heading sm:grid';
   const forumGridClass = 'sm:grid-cols-[2.5rem_minmax(0,1fr)_5.5rem_5.5rem_16rem]';
   const topicGridClass = 'sm:grid-cols-[2.5rem_minmax(0,1fr)_5.5rem_5.5rem_16rem]';
   const metadataCellClass = 'hidden items-center justify-center border-l border-forum-row-c px-2 py-3 text-center font-sans text-xs text-forum-text sm:flex';
@@ -400,10 +357,10 @@ export const forumScript = (
   // Prosilver-style forum icon: a small rounded square with a speech
   // bubble glyph, instead of the old oversized circles.
   const statusMarker = label =>
-    '<span class="flex size-9 flex-col items-center justify-center gap-[3px] rounded border border-forum-row-c bg-gradient-to-b from-white to-forum-row-a shadow-sm" title="' + escapeHtml(label) + '" aria-label="' + escapeHtml(label) + '">' +
-      '<span class="block h-[3px] w-4 rounded-full bg-forum-header"></span>' +
-      '<span class="block h-[3px] w-4 rounded-full bg-forum-header/70"></span>' +
-      '<span class="block h-[3px] w-3 self-start ml-[10px] rounded-full bg-forum-header/45"></span>' +
+    '<span class="khala-index flex size-9 flex-col items-center justify-center gap-[3px] rounded border border-forum-row-c bg-forum-panel" title="' + escapeHtml(label) + '" aria-label="' + escapeHtml(label) + '">' +
+      '<span class="block h-[3px] w-4 rounded-full bg-forum-post-link"></span>' +
+      '<span class="block h-[3px] w-4 rounded-full bg-forum-post-link/70"></span>' +
+      '<span class="block h-[3px] w-3 self-start ml-[10px] rounded-full bg-forum-post-link/45"></span>' +
     '</span>';
   const forumStatusLabel = forum => forum.locked
     ? 'Locked forum'
@@ -620,7 +577,7 @@ export const forumScript = (
     const readiness = post.tipRecipientReadiness?.tippingAvailable === true ? 'Wallet ready' : post.tipRecipientReadiness ? 'Wallet pending' : '';
     return '<aside class="grid content-start gap-2 border-b border-forum-row-c bg-forum-row-b p-3 text-sm text-forum-text md:border-b-0 md:border-r">' +
       '<div class="flex items-start gap-2">' +
-      '<span class="flex size-10 shrink-0 items-center justify-center rounded bg-forum-header text-base font-bold text-white" aria-hidden="true">' + escapeHtml(actorInitial(actor)) + '</span>' +
+      '<span class="khala-index flex size-10 shrink-0 items-center justify-center rounded border border-forum-row-c bg-forum-header text-base font-bold text-forum-heading" aria-hidden="true">' + escapeHtml(actorInitial(actor)) + '</span>' +
       '<div class="min-w-0"><div class="break-words font-bold text-forum-link">' + (actorProfileHref(actor) ? '<a class="hover:text-forum-link-hover hover:underline" href="' + escapeHtml(actorProfileHref(actor)) + '">' + escapeHtml(displayName) + '</a>' : escapeHtml(displayName)) + '</div><div class="text-xs text-forum-text">' + escapeHtml(actorRole(actor)) + '</div></div>' +
       '</div>' +
       '<dl class="grid gap-1 text-xs">' +
@@ -639,7 +596,7 @@ export const forumScript = (
       '<p class="m-0 mt-1 text-xs text-forum-text">Post #' + postNumber + ' &raquo; ' + friendlyTime(post.createdAt) + '</p></div>' +
       renderPostControls(post) +
       '</header>' +
-      '<div data-forum-markdown class="mt-3 grid gap-3 break-words text-sm/6 text-forum-heading [overflow-wrap:anywhere]">' + renderMarkdown(post.bodyText || post.contentRef || '') + '</div>' +
+      '<div data-forum-markdown class="mt-3 grid gap-3 break-words font-sans text-sm/6 text-forum-heading [overflow-wrap:anywhere]">' + renderMarkdown(post.bodyText || post.contentRef || '') + '</div>' +
       '</div>';
   };
   const renderTipResult = (post, result) => {
@@ -892,7 +849,7 @@ export const view = <Message>(
                       h.span(
                         [
                           Ui.className<Message>(
-                            'block h-4 w-40 animate-pulse rounded bg-white/30',
+                            'block h-4 w-40 animate-pulse rounded bg-forum-row-c/70',
                           ),
                         ],
                         [],
