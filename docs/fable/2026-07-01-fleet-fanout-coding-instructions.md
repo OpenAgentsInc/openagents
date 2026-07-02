@@ -169,6 +169,13 @@ Build:
 5. **RPC parity**: `fleetRunStart`, `fleetRunStatus`, `fleetRunControl`,
    `fleetRunList` methods; everything the UI can do, the bridge can do.
 
+T9.4 extends the same FleetRun entry point with a fourth work source,
+`plan_dag`, for Claude/Fable plan-mode decomposition. It is still supervised
+dispatch: Claude emits typed DAG data, the planner exposes dependency-ready
+nodes as work units, and the supervisor/claim registry decide what runs.
+Claude review verdicts stay advisory; verify and merge gates remain the
+authority.
+
 Acceptance:
 
 - Fixture tier: a fixture FleetRun with target 25 on a mocked Pylon runner

@@ -465,6 +465,31 @@ describe("Khala Code fleet tools", () => {
     expect(second.active).toBe(false)
   })
 
+  test("DefaultKhalaFleetRunSupervisorManager rejects invalid plan DAGs before creating a run", async () => {
+    const manager = new DefaultKhalaFleetRunSupervisorManager({
+      runner: async () => failed("unexpected pylon command"),
+    })
+
+    await expect(manager.start({
+      commit: "0123456789abcdef0123456789abcdef01234567",
+      objective: "Execute an invalid Claude plan-mode DAG.",
+      planNodes: [{
+        ref: "dependent",
+        title: "Dependent node",
+        objective: "Run the dependent plan node.",
+        dependsOn: ["missing"],
+      }],
+      planRef: "plan.t9_4.invalid",
+      runRef: "fleet_run.test.invalid_plan_dag",
+      targetConcurrency: 1,
+      verify: "bun test clients/khala-code-desktop/tests/khala-fleet-tools.test.ts",
+      workSource: "plan_dag",
+    })).rejects.toThrow(/unknown node/)
+
+    await expect(manager.status({ runRef: "fleet_run.test.invalid_plan_dag" }))
+      .rejects.toThrow(/unknown fleet run/)
+  })
+
   test("DefaultKhalaFleetRunSupervisorManager stops a failed start record and closes the leaked scope", async () => {
     const fixture = await tempPylonFixture()
     const runner = async (input: KhalaCodexFleetCommandInput): Promise<KhalaCodexFleetCommandResult> => {

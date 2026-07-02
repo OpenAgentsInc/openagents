@@ -13,16 +13,21 @@ import {
   type FleetRunState,
   type FleetRunStopCondition,
   type FleetRunWorkSource,
+  type WorkClaim,
   type PylonOrchestrationStore,
 } from "../../../../apps/pylon/src/orchestration/store.js"
 import {
+  planDagWork,
   planFixtureWork,
   planGithubBacklogWork,
   planIssueListWork,
+  validatePlanDagWorkSource,
   type FixtureWorkSource,
   type GithubBacklogWorkSource,
   type IssueListItem,
   type IssueListWorkSource,
+  type PlanDagWorkSource,
+  type PlanDagWorkUnit,
   type WorkPlannerOutput,
 } from "../../../../apps/pylon/src/orchestration/work-planner.js"
 import type { KhalaCodeDesktopFleetRunSupervisorRpc } from "./rpc-handlers.js"
@@ -58,13 +63,25 @@ type ActiveSupervisor = {
   readonly scope: Scope.Scope
 }
 
-type RpcIssueListItem = Exclude<
-  NonNullable<Extract<
-    KhalaCodeDesktopFleetRunStartRequest["workSource"],
-    { readonly kind: "issue_list" }
-  >["issues"]>[number],
-  number
->
+type RpcFleetRunWorkSource = KhalaCodeDesktopFleetRunStartRequest["workSource"]
+
+type RpcIssueListEntry = NonNullable<RpcFleetRunWorkSource["issues"]>[number]
+type RpcIssueListItem = Exclude<RpcIssueListEntry, number>
+
+type RpcPlanDagNode = NonNullable<RpcFleetRunWorkSource["nodes"]>[number]
+
+type SupervisorWorkSource = IssueListWorkSource | FixtureWorkSource | GithubBacklogWorkSource | PlanDagWorkSource
+
+const trimRequired = (field: string, value: string): string => {
+  const trimmed = value.trim()
+  if (trimmed.length === 0) throw new Error(`fleetRunStart plan_dag ${field} is required`)
+  return trimmed
+}
+
+const trimOptional = (value: string | undefined): string | undefined => {
+  const trimmed = value?.trim()
+  return trimmed === undefined || trimmed.length === 0 ? undefined : trimmed
+}
 
 export type KhalaCodeDesktopFleetRunSupervisorRpcAdapterOptions = {
   readonly capacity?: FleetRunSupervisorCapacity
@@ -108,15 +125,26 @@ const normalizeIssueItem = (item: number | RpcIssueListItem | IssueListItem): nu
 }
 
 const normalizeRpcIssueItem = (
-  item: NonNullable<Extract<
-    KhalaCodeDesktopFleetRunStartRequest["workSource"],
-    { readonly kind: "issue_list" }
-  >["issues"]>[number],
+  item: RpcIssueListEntry,
 ): number | IssueListItem => normalizeIssueItem(item as number | RpcIssueListItem)
+
+const normalizePlanDagNode = (node: RpcPlanDagNode): PlanDagWorkUnit => ({
+  ref: trimRequired("node ref", node.ref),
+  title: trimRequired("node title", node.title),
+  objective: trimRequired("node objective", node.objective),
+  ...(node.dependsOn === undefined ? {} : { dependsOn: node.dependsOn.map(ref => ref.trim()) }),
+  ...(trimOptional(node.repo) === undefined ? {} : { repo: trimOptional(node.repo)! }),
+  ...(trimOptional(node.branch) === undefined ? {} : { branch: trimOptional(node.branch)! }),
+  ...(trimOptional(node.baseCommit) === undefined ? {} : { baseCommit: trimOptional(node.baseCommit)! }),
+  ...(trimOptional(node.verify) === undefined ? {} : { verify: trimOptional(node.verify)! }),
+  ...(node.issue === undefined ? {} : { issue: node.issue }),
+  ...(node.labels === undefined ? {} : { labels: [...node.labels] }),
+  ...(trimOptional(node.url) === undefined ? {} : { url: trimOptional(node.url)! }),
+})
 
 const normalizeWorkSource = (
   source: KhalaCodeDesktopFleetRunStartRequest["workSource"],
-): IssueListWorkSource | FixtureWorkSource | GithubBacklogWorkSource => {
+): SupervisorWorkSource => {
   if (source.kind === "issue_list") {
     if (source.repo === undefined || source.repo.trim().length === 0) {
       throw new Error("fleetRunStart issue_list workSource requires repo")
@@ -137,6 +165,23 @@ const normalizeWorkSource = (
       ...(source.limit === undefined ? {} : { limit: Math.max(1, Math.trunc(source.limit)) }),
     }
   }
+  if (source.kind === "plan_dag") {
+    if (source.planRef === undefined || source.planRef.trim().length === 0) {
+      throw new Error("fleetRunStart plan_dag workSource requires planRef")
+    }
+    if (source.nodes === undefined || source.nodes.length === 0) {
+      throw new Error("fleetRunStart plan_dag workSource requires at least one node")
+    }
+    return validatePlanDagWorkSource({
+      kind: "plan_dag",
+      planRef: source.planRef.trim(),
+      nodes: source.nodes.map(normalizePlanDagNode),
+      ...(trimOptional(source.repo) === undefined ? {} : { repo: trimOptional(source.repo)! }),
+      ...(trimOptional(source.branch) === undefined ? {} : { branch: trimOptional(source.branch)! }),
+      ...(trimOptional(source.baseCommit) === undefined ? {} : { baseCommit: trimOptional(source.baseCommit)! }),
+      ...(trimOptional(source.verify) === undefined ? {} : { verify: trimOptional(source.verify)! }),
+    })
+  }
   return {
     kind: "fixture",
     ...(source.count === undefined ? {} : { count: Math.max(1, Math.trunc(source.count)) }),
@@ -144,13 +189,13 @@ const normalizeWorkSource = (
 }
 
 const workSourceKind = (
-  source: IssueListWorkSource | FixtureWorkSource | GithubBacklogWorkSource,
+  source: SupervisorWorkSource,
 ): FleetRunWorkSource => source.kind
 
 const runRefFor = (): string => `fleet_run.${randomUUID()}`
 
 const projectWorkSource = (
-  source: IssueListWorkSource | FixtureWorkSource | GithubBacklogWorkSource | undefined,
+  source: SupervisorWorkSource | undefined,
   fallback: FleetRunWorkSource,
 ): KhalaCodeDesktopFleetRunProjection["workSource"] => {
   if (source === undefined) return { kind: fallback }
@@ -158,7 +203,7 @@ const projectWorkSource = (
     return {
       kind: "issue_list",
       repo: source.repo,
-        issues: source.issues.map(issue => typeof issue === "number" ? issue : normalizeIssueItem(issue)),
+      issues: source.issues.map(issue => typeof issue === "number" ? issue : normalizeIssueItem(issue)),
     }
   }
   if (source.kind === "github_backlog") {
@@ -166,6 +211,29 @@ const projectWorkSource = (
       kind: "github_backlog",
       repo: source.repo,
       ...(source.limit === undefined ? {} : { limit: source.limit }),
+    }
+  }
+  if (source.kind === "plan_dag") {
+    return {
+      kind: "plan_dag",
+      planRef: source.planRef,
+      nodes: source.nodes.map(node => ({
+        ref: node.ref,
+        title: node.title,
+        objective: node.objective,
+        ...(node.dependsOn === undefined ? {} : { dependsOn: [...node.dependsOn] }),
+        ...(node.repo === undefined ? {} : { repo: node.repo }),
+        ...(node.branch === undefined ? {} : { branch: node.branch }),
+        ...(node.baseCommit === undefined ? {} : { baseCommit: node.baseCommit }),
+        ...(node.verify === undefined ? {} : { verify: node.verify }),
+        ...(node.issue === undefined ? {} : { issue: node.issue }),
+        ...(node.labels === undefined ? {} : { labels: [...node.labels] }),
+        ...(node.url === undefined ? {} : { url: node.url }),
+      })),
+      ...(source.repo === undefined ? {} : { repo: source.repo }),
+      ...(source.branch === undefined ? {} : { branch: source.branch }),
+      ...(source.baseCommit === undefined ? {} : { baseCommit: source.baseCommit }),
+      ...(source.verify === undefined ? {} : { verify: source.verify }),
     }
   }
   return {
@@ -178,7 +246,7 @@ const projectRun = (
   run: FleetRun,
   input: {
     readonly pylonRef: string | null
-    readonly workSource?: IssueListWorkSource | FixtureWorkSource | GithubBacklogWorkSource
+    readonly workSource?: SupervisorWorkSource
   },
 ): KhalaCodeDesktopFleetRunProjection => ({
   counters: run.counters,
@@ -204,15 +272,35 @@ const ghJson = async (args: readonly string[]): Promise<string> => {
   throw new Error(`gh ${args.join(" ")} failed: ${result.stderr.trim()}`)
 }
 
+const completedWorkUnitRefsForRun = (claims: readonly WorkClaim[]): readonly string[] =>
+  [...new Set(claims.filter(claim => claim.state === "closeout").map(claim => claim.workUnitRef))]
+
+const failedWorkUnitRefsForRun = (claims: readonly WorkClaim[]): readonly string[] => {
+  const completed = new Set(completedWorkUnitRefsForRun(claims))
+  return [...new Set(claims
+    .filter(claim => !completed.has(claim.workUnitRef))
+    .filter(claim => claim.state === "released" || claim.state === "expired")
+    .map(claim => claim.workUnitRef))]
+}
+
 const plannerFor = (
   store: PylonOrchestrationStore,
-  sources: ReadonlyMap<string, IssueListWorkSource | FixtureWorkSource | GithubBacklogWorkSource>,
+  sources: ReadonlyMap<string, SupervisorWorkSource>,
 ): FleetRunSupervisorPlanner => ({
   plan: async ({ run, now }): Promise<WorkPlannerOutput> => {
     const source = sources.get(run.runRef)
     if (source === undefined) return planFixtureWork({ kind: "fixture", count: 0 }, { now })
     if (source.kind === "fixture") return planFixtureWork(source, { now })
     if (source.kind === "issue_list") return planIssueListWork(source, { claimRegistry: store, now })
+    if (source.kind === "plan_dag") {
+      const claims = store.listWorkClaims({ runRef: run.runRef })
+      return planDagWork(source, {
+        claimRegistry: store,
+        completedWorkUnitRefs: completedWorkUnitRefsForRun(claims),
+        failedWorkUnitRefs: failedWorkUnitRefsForRun(claims),
+        now,
+      })
+    }
     return planGithubBacklogWork(source, ghJson, { claimRegistry: store, now })
   },
 })
@@ -255,11 +343,13 @@ const runnerFor = (input: {
     })
     return await Effect.runPromise(service.runAssignment({
       accountRef: dispatch.accountRef,
+      branch: dispatch.workUnit.branch,
+      commit: dispatch.workUnit.baseCommit,
       fixture,
-      objective: dispatch.run.objective,
+      objective: dispatch.workUnit.body ?? dispatch.run.objective,
       pylonRef: input.pylonRef ?? undefined,
       repo: dispatch.workUnit.repo,
-      verify: fixture ? undefined : DEFAULT_VERIFY,
+      verify: fixture ? undefined : dispatch.workUnit.verify ?? DEFAULT_VERIFY,
       workerKind: dispatch.run.workerKind,
     }))
   },
@@ -286,7 +376,7 @@ export function createKhalaCodeDesktopFleetRunSupervisorRpcAdapter(
   const env = options.env ?? {}
   const store = options.store ?? defaultStore(env)
   const pylonRef = options.pylonRef ?? null
-  const sources = new Map<string, IssueListWorkSource | FixtureWorkSource | GithubBacklogWorkSource>()
+  const sources = new Map<string, SupervisorWorkSource>()
   const active = new Map<string, ActiveSupervisor>()
   const paths = { home: resolvePylonHome(env) }
   const toolOptions = { ...options.toolOptions, env: { ...env, ...options.toolOptions?.env } }
@@ -302,7 +392,7 @@ export function createKhalaCodeDesktopFleetRunSupervisorRpcAdapter(
 
   const projectionInput = (
     runRef: string,
-  ): { readonly pylonRef: string | null; readonly workSource?: IssueListWorkSource | FixtureWorkSource | GithubBacklogWorkSource } => {
+  ): { readonly pylonRef: string | null; readonly workSource?: SupervisorWorkSource } => {
     const workSource = sources.get(runRef)
     return workSource === undefined ? { pylonRef } : { pylonRef, workSource }
   }

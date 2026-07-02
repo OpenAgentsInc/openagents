@@ -114,6 +114,103 @@ describe("Khala Code fleet run supervisor RPC adapter", () => {
     expect(dispatched).toEqual([{ accountRef: "claude-a", workerKind: "claude" }])
   })
 
+  test("starts plan_dag runs as Codex dispatches with node objectives", async () => {
+    const dispatched: Array<{ readonly objective: string; readonly workUnitRef: string; readonly verify: string | undefined }> = []
+    const { adapter, store } = adapterFixture({
+      advertisedCapacity: 2,
+      runner: {
+        dispatch: async input => {
+          dispatched.push({
+            objective: input.workUnit.body ?? input.run.objective,
+            workUnitRef: input.workUnit.workUnitRef,
+            verify: input.workUnit.verify,
+          })
+          return {
+            assignmentRef: "assignment.plan.root",
+            lifecycle: [],
+            status: "accepted",
+            summary: null,
+          }
+        },
+      },
+    })
+
+    const result = await adapter.start({
+      objective: "Execute a Claude plan-mode DAG.",
+      runRef: "fleet_run.adapter.plan_dag",
+      targetConcurrency: 2,
+      tickImmediately: true,
+      workSource: {
+        kind: "plan_dag",
+        planRef: "plan.t9_4.adapter",
+        repo: "OpenAgentsInc/openagents",
+        baseCommit: "0123456789abcdef0123456789abcdef01234567",
+        verify: "bun test clients/khala-code-desktop/tests/fleet-run-supervisor-rpc-adapter.test.ts",
+        nodes: [
+          {
+            ref: "root",
+            title: "Root node",
+            objective: "Run the root plan node.",
+            issue: 7873,
+          },
+          {
+            ref: "dependent",
+            title: "Dependent node",
+            objective: "Run the dependent plan node.",
+            dependsOn: ["root"],
+          },
+        ],
+      },
+    })
+
+    expect(result.run.workerKind).toBe("codex")
+    expect(result.run.workSource).toMatchObject({
+      kind: "plan_dag",
+      planRef: "plan.t9_4.adapter",
+      nodes: [
+        { ref: "root", objective: "Run the root plan node." },
+        { ref: "dependent", dependsOn: ["root"] },
+      ],
+    })
+    expect(dispatched).toEqual([{
+      objective: "Run the root plan node.",
+      workUnitRef: "plan_dag:plan.t9_4.adapter:node:root",
+      verify: "bun test clients/khala-code-desktop/tests/fleet-run-supervisor-rpc-adapter.test.ts",
+    }])
+    expect(store.listTasks("dispatched")[0]?.spec).toMatchObject({
+      fleetRunRef: "fleet_run.adapter.plan_dag",
+      issueRef: "#7873",
+      prompt: "Run the root plan node.",
+      runnerKind: "codex",
+    })
+  })
+
+  test("rejects invalid plan_dag work sources before creating a run", async () => {
+    const { adapter, store } = adapterFixture({ advertisedCapacity: 2 })
+
+    await expect(adapter.start({
+      objective: "Execute an invalid Claude plan-mode DAG.",
+      runRef: "fleet_run.adapter.invalid_plan_dag",
+      targetConcurrency: 2,
+      tickImmediately: true,
+      workSource: {
+        kind: "plan_dag",
+        planRef: "plan.t9_4.invalid",
+        repo: "OpenAgentsInc/openagents",
+        baseCommit: "0123456789abcdef0123456789abcdef01234567",
+        verify: "bun test clients/khala-code-desktop/tests/fleet-run-supervisor-rpc-adapter.test.ts",
+        nodes: [{
+          ref: "dependent",
+          title: "Dependent node",
+          objective: "Run the dependent plan node.",
+          dependsOn: ["missing"],
+        }],
+      },
+    })).rejects.toThrow(/unknown node/)
+
+    expect(store.getFleetRun("fleet_run.adapter.invalid_plan_dag")).toBeNull()
+  })
+
   test("accepts target_reached stop conditions in projections", async () => {
     const { adapter } = adapterFixture()
 

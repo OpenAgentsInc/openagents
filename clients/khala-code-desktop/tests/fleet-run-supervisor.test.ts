@@ -10,7 +10,7 @@ import {
   createPylonOrchestrationStore,
   type FleetRun,
 } from "../../../apps/pylon/src/orchestration/store.js"
-import { fixtureCandidates, planFixtureWork, planWorkCandidates } from "../../../apps/pylon/src/orchestration/work-planner.js"
+import { fixtureCandidates, planDagWork, planFixtureWork, planWorkCandidates } from "../../../apps/pylon/src/orchestration/work-planner.js"
 import {
   FLEET_RUN_SUPERVISOR_MAX_SPAWN_COUNT,
   makeFleetRunSupervisor,
@@ -501,6 +501,85 @@ describe("FleetRunSupervisor", () => {
     expect(store.listTasks("completed")).toHaveLength(4)
     expect(store.getFleetRun(run.runRef)?.state).toBe("completed")
     expect(store.getFleetRun(run.runRef)?.counters.workUnitsTotal).toBe(4)
+  })
+
+  test("plan DAG dispatches dependent nodes only after prerequisite closeout", async () => {
+    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const run = store.createFleetRun({
+      runRef: "fleet_run.plan_dag",
+      objective: "Execute a Claude plan-mode DAG.",
+      workSource: "plan_dag",
+      targetConcurrency: 2,
+      workerKind: "codex",
+      state: "running",
+      startedAt: fixedNow,
+      now: fixedNow,
+      counters: { workUnitsTotal: 2 },
+    })
+    const source = {
+      kind: "plan_dag" as const,
+      planRef: "plan.t9_4.supervisor",
+      repo: "OpenAgentsInc/openagents",
+      nodes: [
+        { ref: "root", title: "Root node", objective: "Run root node." },
+        { ref: "adapter", title: "Wire adapter", objective: "Run adapter node.", dependsOn: ["root"] },
+      ],
+    }
+    const dispatched: string[] = []
+    const planner = {
+      plan: async ({ now }: { readonly now: Date }) => {
+        const claims = store.listWorkClaims({ runRef: run.runRef })
+        return planDagWork(source, {
+          now,
+          claimRegistry: store,
+          completedWorkUnitRefs: claims.filter(claim => claim.state === "closeout").map(claim => claim.workUnitRef),
+          failedWorkUnitRefs: claims
+            .filter(claim => claim.state === "released" || claim.state === "expired")
+            .map(claim => claim.workUnitRef),
+        })
+      },
+    }
+    const runner: FleetRunSupervisorRunner = {
+      dispatch: async (input) => {
+        dispatched.push(input.workUnit.workUnitRef)
+        return {
+          assignmentRef: `assignment.${input.claim.claimRef}`,
+          lifecycle: [lifecycleEvent("assignment_run.completed", { status: "closed" })],
+          status: "completed",
+        }
+      },
+    }
+
+    const first = await tickFleetRunSupervisor({
+      store,
+      pylonRef: "pylon.owner.plan",
+      runRef: run.runRef,
+      planner,
+      runner,
+      capacity: capacity([{ accountRef: "codex", advertisedCapacity: 2 }]),
+      clock: { now: () => fixedNow },
+    })
+    const second = await tickFleetRunSupervisor({
+      store,
+      pylonRef: "pylon.owner.plan",
+      runRef: run.runRef,
+      planner,
+      runner,
+      capacity: capacity([{ accountRef: "codex", advertisedCapacity: 2 }]),
+      clock: { now: () => new Date(fixedNow.getTime() + 1_000) },
+    })
+
+    expect(first.dispatched).toBe(1)
+    expect(first.run.state).toBe("running")
+    expect(second.dispatched).toBe(1)
+    expect(second.run.state).toBe("completed")
+    expect(dispatched).toEqual([
+      "plan_dag:plan.t9_4.supervisor:node:root",
+      "plan_dag:plan.t9_4.supervisor:node:adapter",
+    ])
+    const adapterTask = store.listTasks().find(task => task.spec.title === "Wire adapter")
+    expect(adapterTask?.deps).toHaveLength(1)
+    expect(adapterTask?.spec.prompt).toBe("Run adapter node.")
   })
 
   test("closeout claims do not consume account capacity on the next tick", async () => {

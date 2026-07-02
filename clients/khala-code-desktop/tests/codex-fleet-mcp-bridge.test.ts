@@ -328,6 +328,54 @@ describe("Codex Fleet MCP bridge", () => {
     expect(mock.calls.controls).toEqual([{ runRef: "fleet_run.mock", verb: "pause" }])
   })
 
+  test("Fleet MCP run start accepts structured plan DAG inputs", async () => {
+    const mock = mockFleetRunSupervisor()
+    const registry = createKhalaCodeDesktopFleetMcpRegistry({
+      fleetRunSupervisor: mock.manager,
+    })
+
+    const start = await handleKhalaMcpRequest(
+      {
+        id: "start-plan",
+        jsonrpc: "2.0",
+        method: "tools/call",
+        params: {
+          arguments: {
+            commit: "0123456789abcdef0123456789abcdef01234567",
+            objective: "Execute Claude plan-mode DAG.",
+            plan_nodes: [
+              { ref: "root", title: "Root", objective: "Run root." },
+              { ref: "dependent", title: "Dependent", objective: "Run dependent.", dependsOn: ["root"] },
+            ],
+            plan_ref: "plan.t9_4.mcp",
+            repo: "OpenAgentsInc/openagents",
+            target_concurrency: 2,
+            verify: "bun test clients/khala-code-desktop/tests/codex-fleet-mcp-bridge.test.ts",
+            work_source: "plan_dag",
+          },
+          name: "fleet_run_start",
+        },
+      },
+      { policy: khalaCodeDesktopFleetMcpPolicy, registry },
+    )
+
+    expect(start.result?.content).toEqual([expect.objectContaining({
+      text: expect.stringContaining("FleetRun fleet_run.mock: running"),
+      type: "text",
+    })])
+    expect(mock.calls.starts).toEqual([expect.objectContaining({
+      objective: "Execute Claude plan-mode DAG.",
+      planRef: "plan.t9_4.mcp",
+      repo: "OpenAgentsInc/openagents",
+      verify: "bun test clients/khala-code-desktop/tests/codex-fleet-mcp-bridge.test.ts",
+      workSource: "plan_dag",
+    })])
+    expect(mock.calls.starts[0]?.planNodes?.map(node => ({ ref: node.ref, dependsOn: node.dependsOn }))).toEqual([
+      { ref: "root", dependsOn: undefined },
+      { ref: "dependent", dependsOn: ["root"] },
+    ])
+  })
+
   test("Fleet MCP run verbs round-trip through the scripted Codex app-server fixture", async () => {
     const root = await mkdtemp(join(tmpdir(), "khala-fleet-mcp-app-server-"))
     const host = createCodexAppServerHost({

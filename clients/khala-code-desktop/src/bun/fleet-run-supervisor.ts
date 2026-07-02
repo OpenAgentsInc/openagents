@@ -244,6 +244,21 @@ const contextIdFor = (accountRef: string, taskId: string): string =>
 const claimRefFor = (runRef: string, workUnitRef: string, now: Date, ordinal: number): string =>
   `${runRef}.claim.${workUnitRef.replace(/[^a-zA-Z0-9_.-]/g, "_")}.${now.getTime()}.${ordinal}`
 
+const dependencyTaskIdsFor = (
+  store: PylonOrchestrationStore,
+  runRef: string,
+  workUnit: WorkPlannerClaimableUnit,
+): readonly string[] => {
+  if (workUnit.dependsOn === undefined || workUnit.dependsOn.length === 0) return []
+  const claimsByWorkUnit = new Map(
+    store.listWorkClaims({ runRef }).map(claim => [claim.workUnitRef, claim]),
+  )
+  return workUnit.dependsOn.flatMap((depRef) => {
+    const claim = claimsByWorkUnit.get(depRef)
+    return claim === undefined ? [] : [taskIdFor(runRef, claim.claimRef)]
+  })
+}
+
 const emit = async (
   sink: FleetRunSupervisorOptions["onLifecycle"],
   event: FleetRunSupervisorObservedEvent,
@@ -405,7 +420,8 @@ export async function tickFleetRunSupervisor(
   }
 
   const plan = await options.planner.plan({ run, now })
-  const plannedWorkUnitsTotal = Math.max(expectedWorkUnitsTotal, run.counters.workUnitsTotal)
+  const dependencyPending = plan.skipped.some(unit => unit.skipReason === "dependency_pending")
+  const plannedWorkUnitsTotal = Math.max(expectedWorkUnitsTotal, run.counters.workUnitsTotal, plan.units.length)
   let claimed = 0
   let dispatched = 0
   const claimOrdinalBase = store.listWorkClaims({ runRef: run.runRef }).length
@@ -440,11 +456,15 @@ export async function tickFleetRunSupervisor(
     }
     store.createTask({
       id: taskId,
+      deps: dependencyTaskIdsFor(store, run.runRef, workUnit),
       spec: {
         title: workUnit.title,
-        prompt: run.objective,
+        prompt: workUnit.body ?? run.objective,
         runnerKind: run.workerKind === "claude" ? "claude_agent" : "codex",
+        ...(workUnit.branch === undefined ? {} : { branch: workUnit.branch }),
+        ...(workUnit.baseCommit === undefined ? {} : { baseCommit: workUnit.baseCommit }),
         ...(workUnit.repo === undefined ? {} : { repo: workUnit.repo }),
+        ...(workUnit.verify === undefined ? {} : { verifyCommand: workUnit.verify }),
         issueRef: workUnit.number === undefined ? workUnit.workUnitRef : `#${workUnit.number}`,
         fleetRunRef: run.runRef,
       },
@@ -542,7 +562,7 @@ export async function tickFleetRunSupervisor(
   }
 
   let reconciled = store.reconcileFleetRun(run.runRef, clock.now())
-  const hasClaimableBacklog = plan.claimable.length > claimed
+  const hasClaimableBacklog = plan.claimable.length > claimed || dependencyPending
   const reviveForBacklog = hasClaimableBacklog &&
     (reconciled.state === "running" || isAutoRevivableFleetRun(reconciled))
   if (reconciled.counters.workUnitsTotal < plannedWorkUnitsTotal) {
@@ -564,6 +584,7 @@ export async function tickFleetRunSupervisor(
   if (
     reconciled.state === "running" &&
     plan.claimable.length === 0 &&
+    !dependencyPending &&
     activeAssignmentsForRun(store, run.runRef) === 0 &&
     reconciled.refillPolicy.stopCondition === "backlog_empty"
   ) {

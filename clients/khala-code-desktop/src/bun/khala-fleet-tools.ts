@@ -47,10 +47,14 @@ import {
 } from "../../../../apps/pylon/src/orchestration/store.js"
 import {
   fixtureCandidates,
+  planDagWork,
   planGithubBacklogWork,
   planIssueListWork,
   planWorkCandidates,
+  validatePlanDagWorkSource,
   type GithubBacklogGhRunner,
+  type PlanDagWorkSource,
+  type PlanDagWorkUnit,
 } from "../../../../apps/pylon/src/orchestration/work-planner.js"
 import {
   startFleetRunSupervisor,
@@ -122,6 +126,8 @@ export type KhalaFleetRunStartInput = {
   readonly fixtureCount?: number | undefined
   readonly issues?: readonly number[] | undefined
   readonly objective: string
+  readonly planRef?: string | undefined
+  readonly planNodes?: readonly PlanDagWorkUnit[] | undefined
   readonly pylonRef?: string | undefined
   readonly repo?: string | undefined
   readonly runRef?: string | undefined
@@ -653,6 +659,29 @@ const fleetRunStartToolDefinition: KhalaToolDefinition = {
         type: "array",
       },
       objective: { description: "Public-safe FleetRun objective.", type: "string" },
+      plan_nodes: {
+        description: "Typed Claude plan-mode DAG nodes when work_source is plan_dag.",
+        items: {
+          additionalProperties: false,
+          properties: {
+            baseCommit: { type: "string" },
+            branch: { type: "string" },
+            dependsOn: { items: { type: "string" }, type: "array" },
+            issue: { minimum: 1, type: "integer" },
+            labels: { items: { type: "string" }, type: "array" },
+            objective: { type: "string" },
+            ref: { type: "string" },
+            repo: { type: "string" },
+            title: { type: "string" },
+            url: { type: "string" },
+            verify: { type: "string" },
+          },
+          required: ["ref", "title", "objective"],
+          type: "object",
+        },
+        type: "array",
+      },
+      plan_ref: { description: "Claude plan-mode DAG ref when work_source is plan_dag.", type: "string" },
       pylon_ref: { description: "Optional target Pylon ref. Defaults to the local Pylon.", type: "string" },
       repo: { description: "Repository owner/name for issue_list or github_backlog work.", type: "string" },
       run_ref: { description: "Optional caller-provided run ref.", type: "string" },
@@ -673,7 +702,7 @@ const fleetRunStartToolDefinition: KhalaToolDefinition = {
       work_source: {
         default: "fixture",
         description: "Work source for the run.",
-        enum: ["github_backlog", "issue_list", "fixture"],
+        enum: ["github_backlog", "issue_list", "fixture", "plan_dag"],
         type: "string",
       },
     },
@@ -1326,6 +1355,8 @@ function executeFleetRunStartTool(
 ): Effect.Effect<KhalaToolResult, never> {
   return Effect.promise(async () => {
     try {
+      const planNodes = optionalPlanDagNodes(input.plan_nodes)
+      const planRef = optionalString(input.plan_ref)
       const result = await fleetRunSupervisorManager(options).start({
         baseUrl: optionalString(input.base_url),
         branch: optionalString(input.branch),
@@ -1333,6 +1364,8 @@ function executeFleetRunStartTool(
         fixtureCount: optionalInteger(input.fixture_count),
         issues: optionalIntegerArray(input.issues),
         objective: requiredString(input.objective, "fleet_run_start requires objective"),
+        ...(planNodes === undefined ? {} : { planNodes }),
+        ...(planRef === undefined ? {} : { planRef }),
         pylonRef: optionalString(input.pylon_ref),
         repo: optionalString(input.repo),
         runRef: optionalString(input.run_ref),
@@ -1419,6 +1452,7 @@ type FleetRunPlanConfig = {
   readonly commit?: string | undefined
   readonly fixtureCount: number
   readonly issues: readonly number[]
+  readonly planSource?: PlanDagWorkSource | undefined
   readonly repo?: string | undefined
   readonly timeoutMs?: number | undefined
   readonly verify?: string | undefined
@@ -1468,12 +1502,25 @@ export class DefaultKhalaFleetRunSupervisorManager implements KhalaFleetRunSuper
     if (workSource === "issue_list" && (input.issues ?? []).length === 0) {
       throw new Error("fleet_run_start issue_list requires at least one issue number")
     }
+    if (workSource === "plan_dag" && (input.planRef === undefined || input.planNodes === undefined || input.planNodes.length === 0)) {
+      throw new Error("fleet_run_start plan_dag requires plan_ref and plan_nodes")
+    }
     if (workSource !== "fixture" && (input.commit === undefined || input.verify === undefined)) {
       throw new Error(`fleet_run_start ${workSource} requires commit and verify pins`)
     }
+    const planSource: PlanDagWorkSource | undefined = workSource === "plan_dag" ? validatePlanDagWorkSource({
+      kind: "plan_dag",
+      planRef: input.planRef!,
+      nodes: input.planNodes!,
+      ...(input.repo === undefined ? {} : { repo: input.repo }),
+      ...(input.branch === undefined ? {} : { branch: input.branch }),
+      ...(input.commit === undefined ? {} : { baseCommit: input.commit }),
+      ...(input.verify === undefined ? {} : { verify: input.verify }),
+    }) : undefined
     const expectedWorkUnits =
       workSource === "fixture" ? fixtureCount :
       workSource === "issue_list" ? input.issues?.length ?? 0 :
+      workSource === "plan_dag" ? input.planNodes?.length ?? 0 :
       0
     this.store.createFleetRun({
       runRef,
@@ -1493,6 +1540,7 @@ export class DefaultKhalaFleetRunSupervisorManager implements KhalaFleetRunSuper
       commit: input.commit,
       fixtureCount,
       issues: [...(input.issues ?? [])],
+      planSource,
       repo: input.repo,
       timeoutMs: input.timeoutMs,
       verify: input.verify,
@@ -1603,6 +1651,15 @@ export class DefaultKhalaFleetRunSupervisorManager implements KhalaFleetRunSuper
             issues: config.issues,
           }, { now, claimRegistry: this.store })
         }
+        if (run.workSource === "plan_dag") {
+          if (config.planSource === undefined) throw new Error(`missing plan DAG for fleet run: ${runRef}`)
+          return planDagWork(config.planSource, {
+            now,
+            claimRegistry: this.store,
+            completedWorkUnitRefs: this.completedWorkUnitRefsFor(runRef),
+            failedWorkUnitRefs: this.failedWorkUnitRefsFor(runRef),
+          })
+        }
         if (config.repo === undefined) throw new Error(`missing repo for fleet run: ${runRef}`)
         return planGithubBacklogWork(
           { kind: "github_backlog", repo: config.repo },
@@ -1622,14 +1679,14 @@ export class DefaultKhalaFleetRunSupervisorManager implements KhalaFleetRunSuper
         return await Effect.runPromise(this.pylonService.runAssignment({
           accountRef,
           baseUrl: config.baseUrl,
-          branch: config.branch,
-          commit: fixture ? undefined : config.commit,
+          branch: workUnit.branch ?? config.branch,
+          commit: fixture ? undefined : workUnit.baseCommit ?? config.commit,
           fixture,
-          objective: renderFleetRunDispatchPrompt(run, workUnit),
+          objective: workUnit.body ?? renderFleetRunDispatchPrompt(run, workUnit),
           pylonRef,
-          repo: fixture ? undefined : config.repo,
+          repo: fixture ? undefined : workUnit.repo ?? config.repo,
           timeoutMs: config.timeoutMs,
-          verify: fixture ? undefined : config.verify,
+          verify: fixture ? undefined : workUnit.verify ?? config.verify,
           workerKind: run.workerKind,
         }))
       },
@@ -1672,6 +1729,24 @@ export class DefaultKhalaFleetRunSupervisorManager implements KhalaFleetRunSuper
       pylonRef: active?.pylonRef ?? this.retainedPylonRefs.get(runRef) ?? null,
       run,
     }
+  }
+
+  private completedWorkUnitRefsFor(runRef: string): readonly string[] {
+    return [...new Set(
+      this.store.listWorkClaims({ runRef })
+        .filter(claim => claim.state === "closeout")
+        .map(claim => claim.workUnitRef),
+    )]
+  }
+
+  private failedWorkUnitRefsFor(runRef: string): readonly string[] {
+    const completed = new Set(this.completedWorkUnitRefsFor(runRef))
+    return [...new Set(
+      this.store.listWorkClaims({ runRef })
+        .filter(claim => !completed.has(claim.workUnitRef))
+        .filter(claim => claim.state === "released" || claim.state === "expired")
+        .map(claim => claim.workUnitRef),
+    )]
   }
 }
 
@@ -3860,8 +3935,47 @@ function optionalIntegerArray(value: unknown): readonly number[] | undefined {
   return integers.length === value.length ? integers : undefined
 }
 
+function optionalStringArray(value: unknown): readonly string[] | undefined {
+  if (!Array.isArray(value)) return undefined
+  const strings = value.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+  return strings.length === value.length ? strings.map(item => item.trim()) : undefined
+}
+
+function optionalPlanDagNodes(value: unknown): readonly PlanDagWorkUnit[] | undefined {
+  if (!Array.isArray(value)) return undefined
+  return value.map((item, index): PlanDagWorkUnit => {
+    if (typeof item !== "object" || item === null || Array.isArray(item)) {
+      throw new Error(`plan_nodes[${index}] must be an object`)
+    }
+    const record = item as Readonly<Record<string, unknown>>
+    const baseCommit = optionalString(record.baseCommit)
+    const branch = optionalString(record.branch)
+    const dependsOn = optionalStringArray(record.dependsOn)
+    const issue = optionalInteger(record.issue)
+    const labels = optionalStringArray(record.labels)
+    const repo = optionalString(record.repo)
+    const url = optionalString(record.url)
+    const verify = optionalString(record.verify)
+    return {
+      ref: requiredString(record.ref, `plan_nodes[${index}] requires ref`),
+      title: requiredString(record.title, `plan_nodes[${index}] requires title`),
+      objective: requiredString(record.objective, `plan_nodes[${index}] requires objective`),
+      ...(dependsOn === undefined ? {} : { dependsOn }),
+      ...(repo === undefined ? {} : { repo }),
+      ...(branch === undefined ? {} : { branch }),
+      ...(baseCommit === undefined ? {} : { baseCommit }),
+      ...(verify === undefined ? {} : { verify }),
+      ...(issue === undefined ? {} : { issue }),
+      ...(labels === undefined ? {} : { labels }),
+      ...(url === undefined ? {} : { url }),
+    }
+  })
+}
+
 function optionalWorkSource(value: unknown): FleetRunWorkSource | undefined {
-  return value === "github_backlog" || value === "issue_list" || value === "fixture" ? value : undefined
+  return value === "github_backlog" || value === "issue_list" || value === "fixture" || value === "plan_dag"
+    ? value
+    : undefined
 }
 
 function optionalWorkerKind(value: unknown): FleetRunWorkerKind | undefined {

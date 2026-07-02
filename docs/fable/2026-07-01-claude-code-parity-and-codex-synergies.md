@@ -290,6 +290,19 @@ parameters tune confidence threshold, classifier bonus, and tie-breaker. This
 keeps Claude/Fable planning as advisory structure while `khala.fleet.delegate`
 continues to own deterministic control flow.
 
+**T9.4 update (2026-07-02):** the plan-then-fan-out contract is now typed at
+the desktop/Pylon seam. Claude plan-mode output is decoded as
+`openagents.khala_code.claude_plan_fanout_dag.v1`, validated for public-safe
+refs, unknown deps, duplicate nodes, and cycles, then converted into a
+`plan_dag` FleetRun work source. The supervisor dispatches dependency-free
+nodes to Codex first, records task-DAG deps in the orchestration store, and
+releases dependent nodes only after predecessor closeout. Claude review output
+has a sibling typed verdict contract
+`openagents.khala_code.claude_plan_fanout_review.v1` with
+`accept | request_changes | replan`; it produces an advisory signal only, so
+verify commands and the deterministic FleetRun/delegation program remain the
+authority.
+
 ### 4.2 Claude as reviewer / verifier-adjacent
 
 Claude's review quality pairs with our verification gates. After a Codex worker's
