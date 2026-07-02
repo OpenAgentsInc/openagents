@@ -163,6 +163,8 @@ const approvedExactRoutePaths = [
   '/lander2',
   '/lander3',
   '/lander4',
+  '/lander5',
+  '/business-new',
   '/install.md',
   '/surfaces.md',
   '/pylon.md',

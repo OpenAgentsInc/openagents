@@ -16,25 +16,57 @@ import {
   makeD1TokenUsageLedger,
 } from './token-usage-ledger'
 
-// `/lander4` — the business-facing landing experiment from the site-speed
-// lane ("Agents that work.", ROADMAP_AFTER AW-0), v2 after the impeccable
-// design pass: headlines in the house Berkeley Mono Bold (the licensed
-// webfonts the SPA already serves from /fonts/), the blue terminal period as
-// the one brand mark, and a promise-registry-style capability register
-// instead of a card grid. Server-rendered, edge-cached for 20 s (the browser
-// never caches; the inline refresher keeps the counter live).
-//
-// Copy discipline: headline, subhead, trust paragraph, register bodies, and
-// the footer line reuse the LIVE /business page copy verbatim. "Talk to
-// Sales" is the owner-directed (2026-07-02) label for the business intake.
-// Unlisted, noindex measurement surface.
+// `/lander5` — lander4's business page with lander3's lazy Three.js hero,
+// dimmed: the real landing-squares scene loads after `load`+idle and fades in
+// BEHIND a ~90% near-black scrim, so the constellation reads as a quiet
+// living texture under the business copy — the "we build this" pop without
+// stealing focus from "Agents that work." Same SSR speed properties: the
+// scene never touches the paint path; reduced-motion / Save-Data users keep
+// the static grid.
 
-type Lander4RouteInput = Readonly<{
+type Lander5RouteInput = Readonly<{
   OPENAGENTS_DB?: D1Database
   ledger?: TokenUsageLedgerShape
 }>
 
-export const renderLander4Html = (tokensServed: number | null): string => {
+// The scene layer sits above the static grid backdrop and below all content.
+// The scrim is part of the layer, so the fade-in reveals an already-dimmed
+// scene — never a bright flash.
+const LANDER5_SCENE_CSS = `
+#scene{position:fixed;inset:0;z-index:0;opacity:0;transition:opacity 1200ms ease}
+#scene.ready{opacity:1}
+#scene-mount{position:absolute;inset:0}
+#scene .scrim{position:absolute;inset:0;background:rgba(7,10,15,0.9);pointer-events:none}
+@media (prefers-reduced-motion:reduce){#scene{transition:none}}
+`.trim()
+
+const LANDER5_SCENE_SCRIPT = `
+(function(){
+  try{
+    if(window.matchMedia&&matchMedia("(prefers-reduced-motion: reduce)").matches)return;
+    if(navigator.connection&&navigator.connection.saveData)return;
+  }catch(e){}
+  function boot(){
+    var idle=window.requestIdleCallback||function(f){setTimeout(f,250)};
+    idle(function(){
+      import("/assets/lander3-scene.js").then(function(m){
+        var mount=document.getElementById("scene-mount");
+        if(!mount)return null;
+        performance.mark("oa:hero:import-done");
+        return m.mountLander3Scene(mount);
+      }).then(function(handle){
+        if(!handle)return;
+        performance.mark("oa:hero:first-frame");
+        document.getElementById("scene").classList.add("ready");
+      }).catch(function(){})
+    });
+  }
+  if(document.readyState==="complete")boot();
+  else addEventListener("load",boot);
+})();
+`.trim()
+
+export const renderLander5Html = (tokensServed: number | null): string => {
   const display = formatLanderTokens(tokensServed)
   return `<!doctype html>
 <html lang="en">
@@ -45,10 +77,12 @@ export const renderLander4Html = (tokensServed: number | null): string => {
 <title>OpenAgents — Agents that work.</title>
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 ${LANDER_HEAD_FONT_PRELOAD}
-<style>${LANDER_SHELL_CSS}</style>
+<style>${LANDER_SHELL_CSS}
+${LANDER5_SCENE_CSS}</style>
 </head>
 <body>
 <div class="backdrop" aria-hidden="true"></div>
+<div id="scene" aria-hidden="true"><div id="scene-mount"></div><div class="scrim"></div></div>
 ${renderLanderHeader('home', display)}
 <main class="shell">
 <h1 class="rise">Agents that work<span class="mark">.</span></h1>
@@ -84,14 +118,15 @@ ${renderLanderHeader('home', display)}
 </main>
 ${renderLanderFooter()}
 <script>${LANDER_COUNTER_SCRIPT}</script>
+<script>${LANDER5_SCENE_SCRIPT}</script>
 </body>
 </html>
 `
 }
 
-export const handleLander4Page = (
+export const handleLander5Page = (
   request: Request,
-  input: Lander4RouteInput,
+  input: Lander5RouteInput,
   ctx?: OpenAgentsWorkerExecutionContext,
 ) => {
   if (request.method !== 'GET') {
@@ -100,10 +135,8 @@ export const handleLander4Page = (
   const ledger =
     input.ledger ?? makeD1TokenUsageLedger(input.OPENAGENTS_DB as D1Database)
   const render = ledger.readPublicTokensServed().pipe(
-    Effect.map(aggregate => renderLander4Html(aggregate.tokensServed)),
-    // Ledger failure renders the placeholder page rather than a 500; the
-    // inline refresher fills the number as soon as the endpoint answers.
-    Effect.catch(() => Effect.succeed(renderLander4Html(null))),
+    Effect.map(aggregate => renderLander5Html(aggregate.tokensServed)),
+    Effect.catch(() => Effect.succeed(renderLander5Html(null))),
   )
   return edgeCachedLanderHtml(request, ctx, render)
 }

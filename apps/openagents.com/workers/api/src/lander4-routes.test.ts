@@ -23,7 +23,14 @@ describe('lander4 business landing page', () => {
     expect(html).toContain('delivered with verifiable receipts')
     expect(html).toContain('a human-review gate sits before anything ships, sends, or spends')
     expect(html).toContain('>Talk to Sales</a>')
-    expect(html).toContain('href="/business"')
+    expect(html).toContain('href="/business-new"')
+    // v2 design system: house mono headline with the blue terminal period,
+    // shared nav, promise-registry-style register instead of a card grid.
+    expect(html).toContain('Agents that work<span class="mark">.</span>')
+    expect(html).toContain('BerkeleyMono-Bold.woff2')
+    expect(html).toContain('aria-label="Primary"')
+    expect(html).toContain('business.coding_quick_win.v1')
+    expect(html).toContain('class="chip live"')
     expect(html).toContain('href="/docs/product-promises"')
     expect(html).toContain('7,714,151,995')
     expect(html).toContain('name="robots" content="noindex"')

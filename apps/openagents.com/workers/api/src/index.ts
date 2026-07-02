@@ -848,6 +848,8 @@ import { handlePublicKhalaTokensServedModelMixApi } from './public-khala-tokens-
 import { handleLander2Page } from './lander2-routes'
 import { handleLander3Page } from './lander3-routes'
 import { handleLander4Page } from './lander4-routes'
+import { handleLander5Page } from './lander5-routes'
+import { handleBusinessNewPage } from './business-new-routes'
 import { handlePublicKhalaTokensServedApi } from './public-khala-tokens-served-routes'
 import { recordPublicKhalaChatServedTokens } from './public-khala-chat-served-tokens'
 import { handlePublicLaunchDashboardApi } from './public-launch-dashboard-routes'
@@ -12254,7 +12256,17 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
   // Business-facing "Agents that work." landing experiment (site-speed lane).
   {
     path: '/lander4',
-    handler: (request, env) => handleLander4Page(request, env),
+    handler: (request, env, ctx) => handleLander4Page(request, env, ctx),
+  },
+  // lander4 + the dimmed lazy Three.js hero (site-speed lane).
+  {
+    path: '/lander5',
+    handler: (request, env, ctx) => handleLander5Page(request, env, ctx),
+  },
+  // /business restructured in the lander-family system (site-speed lane).
+  {
+    path: '/business-new',
+    handler: (request, env, ctx) => handleBusinessNewPage(request, env, ctx),
   },
   // Lowercase aliases for the served agent-doc set. Cloudflare static assets
   // are case-sensitive, so a typed /install.md previously fell through to the
