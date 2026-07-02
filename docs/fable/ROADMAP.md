@@ -11,6 +11,11 @@ specified the same work, it appears once here with both citations. This doc
 flips no promise state and broadens no public copy. The delivery process
 (issues, PRs, worktrees, review, counters) is [`EXECUTION.md`](./EXECUTION.md).
 
+Owner trim (2026-07-02): the current push is desktop fleet working ASAP.
+Mobile companion / push (WS-11), episode/public-promise ops (WS-16),
+GEPA optimizer lanes (T6.15/T9.3), and mobile-dependent AaaS
+productization (T12.6) are postponed / not planned for this push.
+
 ## 0. Reading Guide
 
 - **WS-n** = workstream. Workstreams are the parallelization unit: each can
@@ -39,20 +44,23 @@ WS-1 Contracts spine (Effect P1)          WS-2 Orchestration store live
         |                     WS-5 Cockpit UI ---- WS-10 Status spine
         |                            |                    |
    WS-6 rest (monkey,           WS-15 Review loop    WS-11 Mobile companion
-   live smokes, TLA+)                |
+   live smokes, TLA+)                |                (postponed)
+                                     |
                                      |
 WS-7 Effect process spine (P2) --- feeds WS-3/5/8 as it lands (soft)
 WS-8 Claude chat harness (P0 gates the rest of WS-8; else parallel)
 WS-9 Multi-harness routing (needs WS-4 workerKind + WS-8 P0)
-WS-12 Artanis (P1/P2 parallel now; P3 needs WS-2+WS-10; P5 needs WS-9/11)
+WS-12 Artanis (P1/P2 parallel now; P3 needs WS-2+WS-10; P5 postponed)
 WS-13 Foldkit migration (rides behind; cockpit panel first)
 WS-14 Guardrails (continuous from day 1)
-WS-16 Episode 245 (owner ops; needs nothing new — rehearse now)
+WS-16 Episode 245 (postponed / not planned for current push)
 WS-17 Clean 2B day (needs WS-3,4,5 core + WS-6 live smokes)
 ```
 
 The two foundations — **WS-1** and **WS-2** — land first and unblock nearly
 everything. They are deliberately small. Everything else fans out.
+Postponed lanes stay documented here for later revival, but they are not on
+the active dependency path for the desktop fleet push.
 
 ## 2. Workstreams And Tasks
 
@@ -141,7 +149,7 @@ Source: QA framework design §11 (G1–G6, P0–P4); fleet fan-out Lane D.
 | T6.12 | Model-based tier: Effect Schema state machines (thread, approval, delegate program, supervisor) + fast-check model-based commands against Mode P | T6.2 | MED |
 | T6.13 | Formal tier (TLA+, bounded): `khala.fleet.delegate` + supervisor spec (no dead-end, termination, no oversubscription, claim uniqueness under racing supervisors, paused-claims-nothing, drain terminates); approval protocol; session/thread mapping; counterexamples → fixtures | T3.1, T2.2 | MED |
 | T6.14 | Perf metrics registry + budgets: `qaMetrics()` window API exposes real thread-switch, turn-start, first-render, panel-open, and cache-hit samples; the `qaMetrics` RPC exposes the registry/budget contract (a bun-side sample bridge is a follow-up — webview samples are not yet reachable from the RPC in real runs); budgets encoded as data (cockpit <100ms @50 cards, lifecycle→card p95 <500ms, tick <1s @25) and consumed by scenario perf oracles; nightly trends | T6.3 | HIGH |
-| T6.15 | GEPA explore-policy loop (offline, Gym-admitted, never auto-promote) + scenario portfolio pruning by yield | T6.8, T6.9 | LOW |
+| T6.15 | **POSTPONED / not planned for current desktop-fleet push (owner 2026-07-02):** GEPA explore-policy loop (offline, Gym-admitted, never auto-promote) + scenario portfolio pruning by yield | T6.8, T6.9 | POSTPONED |
 
 ### WS-7 — Effect process/protocol spine (Effect audit Phase 2)
 
@@ -176,7 +184,7 @@ Source: episode-245 §3.2–3.3; Claude-parity §4.
 | --- | --- | --- | --- |
 | T9.1 | `khala fleet connect --harness claude`: wrap `claude setup-token` into an isolated `.claude-*` home; readiness in `khala fleet status` | — | HIGH |
 | T9.2 | `auto` workerKind v1: local free-slot rule in the delegate program (prefer kind with free advertised slots) | T4.4 | HIGH |
-| T9.3 | `auto` v2: server classifier (`coding-workflow-classifier.ts` seam), then GEPA-optimizable routing *parameters* (never control flow), Gym-admitted | T9.2, T6.15 soft | LOW |
+| T9.3 | **POSTPONED / not planned for current desktop-fleet push (owner 2026-07-02):** `auto` v2 server classifier (`coding-workflow-classifier.ts` seam), GEPA-optimizable routing *parameters* (never control flow), Gym-admitted | T9.2, T6.15 soft | POSTPONED |
 | T9.4 | Plan-then-fan-out: Claude plan-mode session (Fable, `permissionMode:'plan'`) emits a typed task DAG → FleetRun work units → Codex dispatch; Claude reviews returned diffs (accept / request-changes / re-plan); deterministic program stays control-flow authority | T8.2, T3.1, T4.1 | MED |
 | T9.5 | Claude second-pass reviewer: structured verdict (`outputFormat: json_schema`) after verify-green, feeding merge policy as advisory signal (verify command remains authority) | T4.3, T8.2 | MED |
 | T9.6 | Cross-harness session catalog: shared local `SessionStore`-style catalog for Khala Code Desktop, merging `codex-sessions.json` + Codex thread list with `claude-sessions.json` + Claude SDK `listSessions`; entries carry harness kind, refs, timestamps, and exact reported totals only, with schema-first RPC/sidebar rendering | T8.2 | MED |
@@ -192,18 +200,19 @@ Source: Orca adoption plan Priority 2.
 | T10.2 | Un-mock the `/pro` operator dashboard with live ingest from the spine | T10.1 | HIGH |
 | T10.3 | Retire the bespoke `/api/operator/fleet/status` snapshot in favor of the spine projection (keep a compat window for iOS until T11.1) | T10.1 | MED |
 
-### WS-11 — Mobile companion (Orca P3; file Port 4 now)
+### WS-11 — Mobile companion — POSTPONED (owner-directed 2026-07-02)
 
 Source: Orca adoption plan Priority 3. Native SwiftUI, no OTA, phone =
-observe/notify/approve/steer, never hosts work.
+observe/notify/approve/steer, never hosts work. Closed as not planned for
+the current desktop-fleet push; revisit after desktop fleet works.
 
 | Task | Description | Deps | Delegable |
 | --- | --- | --- | --- |
-| T11.1 | Pairing + transport: QR pairing offer (endpoint + per-device token + public key), keychain-held per-device bearer, NaCl-box E2EE at app layer, Durable-Object relay transport; read-only fleet status subscription replaces the bespoke poll | T10.1 | MED |
-| T11.2 | Allowlisted mobile RPC surface + the enforcing test (every mobile-callable method explicitly registered) — copy Orca's discipline exactly | T11.1 | HIGH |
-| T11.3 | Push notifications (APNs): finish / blocked / approval-needed | T11.1 | MED |
-| T11.4 | Approve/reject + steer from the phone (Inbox typed responses; send follow-up/objective to a run or worker) | T11.1, T5.5 | MED |
-| T11.5 | Bounded diff/PR review on mobile | T11.4, T15.1 | MED |
+| T11.1 | **POSTPONED / not planned for current desktop-fleet push (owner 2026-07-02):** Pairing + transport: QR pairing offer (endpoint + per-device token + public key), keychain-held per-device bearer, NaCl-box E2EE at app layer, Durable-Object relay transport; read-only fleet status subscription replaces the bespoke poll | T10.1 | POSTPONED |
+| T11.2 | **POSTPONED / not planned for current desktop-fleet push (owner 2026-07-02):** Allowlisted mobile RPC surface + the enforcing test (every mobile-callable method explicitly registered) — copy Orca's discipline exactly | T11.1 | POSTPONED |
+| T11.3 | **POSTPONED / not planned for current desktop-fleet push (owner 2026-07-02):** Push notifications (APNs): finish / blocked / approval-needed | T11.1 | POSTPONED |
+| T11.4 | **POSTPONED / not planned for current desktop-fleet push (owner 2026-07-02):** Approve/reject + steer from the phone (Inbox typed responses; send follow-up/objective to a run or worker) | T11.1, T5.5 | POSTPONED |
+| T11.5 | **POSTPONED / not planned for current desktop-fleet push (owner 2026-07-02):** Bounded diff/PR review on mobile | T11.4, T15.1 | POSTPONED |
 
 ### WS-12 — Artanis: from bounded operator to fleet administrator
 
@@ -216,7 +225,7 @@ Source: Artanis audit §6 Priorities 1–5.
 | T12.3 | **P3** Artanis on the orchestration/status spine: `get_fleet_status`/`dispatch_codex_task`/fleet-overseer tick read/write the store; `dispatch_codex_task` grows into "start/steer a FleetRun" | T2.1, T10.1, T3.2 | MED |
 | T12.4 | **P4a** Consolidate the duplicate Artanis forum identity (admin re-register override; retire the Raynor-token workaround as tracked debt) | — | MED |
 | T12.5 | **P4b** Autonomy ladder: raise one gate at a time, gated on signatures enforced + scope typed + clean-tick track record; treasury stays envelope-bounded | T12.1, T12.2 | LOW |
-| T12.6 | **P5** AaaS productization: `owner_self`-scoped Artanis through the cockpit + mobile companion; onboarding = `khala fleet connect`; "Artanis, Fleet Commander" demo flow | T12.1, T12.3, T11.4 | MED |
+| T12.6 | **POSTPONED while WS-11 is postponed (owner 2026-07-02):** **P5** AaaS productization: `owner_self`-scoped Artanis through the cockpit + mobile companion; onboarding = `khala fleet connect`; "Artanis, Fleet Commander" demo flow | T12.1, T12.3, T11.4 | POSTPONED |
 | T12.7 | Verify/file the multi-user read-only Artanis chat issue the owner ordered (Jun 27) | — | HIGH |
 
 ### WS-13 — Foldkit shell migration (Effect audit Phase 3; staged, never blocking)
@@ -244,13 +253,16 @@ Source: Artanis audit §6 Priorities 1–5.
 | T15.1 | Annotate-AI-diff-and-ship-back: comment on diff lines, return comments to the agent as steering input; desktop diff renderer first | T5.2 | MED |
 | T15.2 | Source-control AI actions (commit-message / PR-body / fix-checks prompts) in the same surface | T15.1 | HIGH |
 
-### WS-16 — Episode 245 completion + docs upkeep (owner-facing ops)
+### WS-16 — Episode 245 completion + docs upkeep — POSTPONED (owner-directed 2026-07-02)
+
+Owner-facing episode/public-promise ops are closed as not planned for the
+current desktop-fleet push.
 
 | Task | Description | Deps | Delegable |
 | --- | --- | --- | --- |
-| T16.1 | Run the §2.1 rehearsal checklist (fixture smokes; live fleet preconditions; THE decisive casual-prompt rehearsal through the `khala_fleet` MCP bridge); pick shots by what it proves; record | — (owner + supervisor) | LOW |
-| T16.2 | Docs upkeep: keep the §1.1 naming disambiguation near the front of public copy; refresh pre-pivot framing notes (fleet spec, porting audit, ops runbook); file the six `codex.app_server.gap.*` items upstream | — | HIGH |
-| T16.3 | Public promise record for "Khala Code wraps your Codex" (through `docs/promises/`, copy-gated) | — | LOW (owner-gated copy) |
+| T16.1 | **POSTPONED / not planned for current desktop-fleet push (owner 2026-07-02):** Run the §2.1 rehearsal checklist (fixture smokes; live fleet preconditions; THE decisive casual-prompt rehearsal through the `khala_fleet` MCP bridge); pick shots by what it proves; record | — (owner + supervisor) | POSTPONED |
+| T16.2 | **POSTPONED / not planned for current desktop-fleet push (owner 2026-07-02):** Docs upkeep: keep the §1.1 naming disambiguation near the front of public copy; refresh pre-pivot framing notes (fleet spec, porting audit, ops runbook); file the six `codex.app_server.gap.*` items upstream | — | POSTPONED |
+| T16.3 | **POSTPONED / not planned for current desktop-fleet push (owner 2026-07-02):** Public promise record for "Khala Code wraps your Codex" (through `docs/promises/`, copy-gated) | — | POSTPONED |
 
 ### WS-17 — Throughput restoration: the clean 2B day (Lane E; final gate)
 
@@ -265,23 +277,24 @@ Source: Artanis audit §6 Priorities 1–5.
 Wave structure for fleet delegation (each bullet = independently delegable
 lane; lanes inside a wave run in parallel):
 
+Owner-directed 2026-07-02 trim: exclude postponed WS-11, WS-16, T6.15,
+T9.3, and T12.6 from active waves until explicitly reopened.
+
 - **Wave 0 (now, 6 lanes):** T1.1 · T1.2 · T1.3 · T1.4 · T2.1 · T2.2 —
   plus, independent of everything: T6.4 (fixture app-server), T12.1
   (authority scope), T12.2 (signatures), T12.4 (identity), T12.7, T9.1
-  (claude connect), T14.2 (arch scan), T16.2 (docs upkeep). Up to ~13
+  (claude connect), T14.2 (arch scan). Up to ~13
   concurrent workers with zero interference.
 - **Wave 1 (foundations merged):** T3.1 · T4.1 · T4.2 · T4.4 · T6.1 · T6.2 ·
   T7.1 · T8.1 · T10.1 · T2.3 · T13.1.
 - **Wave 2:** T3.2 · T3.3 · T3.4 · T4.3 · T5.1–T5.5 · T5.7 (six lanes;
   T5.7 has no hard deps and may start any time) · T6.3 ·
-  T7.2 · T7.3 · T7.4 · T7.5 · T8.2 · T8.5 · T10.2 · T10.3 · T11.1 · T12.3 ·
+  T7.2 · T7.3 · T7.4 · T7.5 · T8.2 · T8.5 · T10.2 · T10.3 · T12.3 ·
   T6.11 · T6.12 · T14.1.
 - **Wave 3:** T3.5 · T4.5 · T5.6 · T6.5–T6.9 · T6.13 · T6.14 · T8.3 · T8.4 ·
-  T9.2 · T9.4 · T9.5 · T9.6 · T11.2 · T11.3 · T13.2 · T13.3 · T15.1 · T14.3.
-- **Wave 4:** T6.10 · T9.3 · T9.7 · T11.4 · T11.5 · T12.5 · T12.6 · T13.4 ·
-  T15.2 · T6.15.
-- **Gate:** T17.1 → T17.2 → T17.3 (the clean 2B day), with T16.1 (episode
-  recording) schedulable any time — it needs nothing from the waves.
+  T9.2 · T9.4 · T9.5 · T9.6 · T13.2 · T13.3 · T15.1 · T14.3.
+- **Wave 4:** T6.10 · T9.7 · T12.5 · T13.4 · T15.2.
+- **Gate:** T17.1 → T17.2 → T17.3 (the clean 2B day).
 
 Coordination rules (same as epic #7651's fanout): shared seams (T1.1, T2.1,
 T2.2, T8.1) land first and alone; everything downstream codes against their
@@ -299,8 +312,9 @@ get the strongest worker plus mandatory supervisor review.
 - **M4 — Proof tier**: monkey night green, sustained live smoke green, TLA+
   supervisor properties checked, perf budgets enforced.
 - **M5 — The clean 2B day** (T17.2) with after-action.
-- **M6 — Reach**: mobile companion notify/approve/steer, plan-then-fan-out
-  crossover, Artanis on the spine with authority scopes, AaaS demo flow.
+- **M6 — Reach**: plan-then-fan-out crossover and Artanis on the spine with
+  authority scopes. Mobile companion notify/approve/steer and AaaS demo flow
+  remain postponed until explicitly revived after desktop fleet works.
 
 ## 5. Invariants (Merged, Non-Negotiable Across All Workstreams)
 
