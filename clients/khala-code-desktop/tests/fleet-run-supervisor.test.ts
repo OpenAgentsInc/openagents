@@ -1,3 +1,6 @@
+import { mkdtemp, rm } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import { describe, expect, test } from "bun:test"
 import { Database } from "bun:sqlite"
 import { Effect, Exit, Scope } from "effect"
@@ -13,6 +16,7 @@ import {
   startFleetRunSupervisor,
   tickFleetRunSupervisor,
   type FleetRunSupervisorAccount,
+  type FleetRunSupervisorActiveAssignment,
   type FleetRunSupervisorObservedEvent,
   type FleetRunSupervisorDispatchInput,
   type FleetRunSupervisorRunner,
@@ -71,7 +75,147 @@ const acceptingRunner = (dispatched: string[] = []): FleetRunSupervisorRunner =>
   },
 })
 
+function drainingRunner(input: {
+  readonly completeAfterPeak?: number
+  readonly completePerTick: number
+  readonly dispatched?: string[]
+  readonly onActive?: (assignments: readonly FleetRunSupervisorActiveAssignment[]) => void
+}): FleetRunSupervisorRunner {
+  let peakActive = 0
+  return {
+    dispatch: async (assignment: FleetRunSupervisorDispatchInput) => {
+      input.dispatched?.push(assignment.workUnit.workUnitRef)
+      return {
+        assignmentRef: `assignment.${assignment.claim.claimRef}`,
+        lifecycle: [{ event: "assignment.accepted", status: "accepted" }],
+        status: "accepted",
+      }
+    },
+    reconcile: async ({ activeAssignments }) => {
+      peakActive = Math.max(peakActive, activeAssignments.length)
+      input.onActive?.(activeAssignments)
+      if (peakActive < (input.completeAfterPeak ?? 1)) return []
+      return activeAssignments.slice(0, input.completePerTick).map(assignment => ({
+        assignmentRef: `assignment.${assignment.claim.claimRef}`,
+        lifecycle: [{ event: "assignment.closeout", status: "completed" }],
+        status: "completed" as const,
+        summary: "fixture assignment completed",
+        taskId: assignment.taskId,
+      }))
+    },
+  }
+}
+
 describe("FleetRunSupervisor", () => {
+  test("target-25 fixture acceptance reaches 25 simulated concurrent assignments and drains", async () => {
+    const { store, run } = createStoreWithRun({ runRef: "fleet_run.acceptance.target_25", targetConcurrency: 25, workUnits: 25 })
+    const dispatched: string[] = []
+    const activeCounts: number[] = []
+    let nowMs = fixedNow.getTime()
+    const options = {
+      store,
+      pylonRef: "pylon.owner.acceptance",
+      runRef: run.runRef,
+      planner: fixturePlannerWithClaims(store, 25),
+      runner: drainingRunner({
+        completeAfterPeak: 25,
+        completePerTick: 6,
+        dispatched,
+        onActive: assignments => activeCounts.push(assignments.length),
+      }),
+      capacity: capacity([
+        { accountRef: "codex", advertisedCapacity: 10 },
+        { accountRef: "codex-2", advertisedCapacity: 10 },
+        { accountRef: "codex-3", advertisedCapacity: 10 },
+      ]),
+      clock: { now: () => new Date(nowMs) },
+    }
+
+    for (let tick = 0; tick < 20; tick += 1) {
+      await tickFleetRunSupervisor(options)
+      nowMs += 1_000
+      if (store.getFleetRun(run.runRef)?.state === "completed") break
+    }
+
+    expect(activeCounts).toContain(25)
+    expect(new Set(dispatched).size).toBe(25)
+    expect(store.getFleetRun(run.runRef)?.state).toBe("completed")
+    expect(store.getFleetRun(run.runRef)?.counters).toMatchObject({
+      activeAssignments: 0,
+      completedAssignments: 25,
+      failedAssignments: 0,
+      blockedAssignments: 0,
+      workUnitsTotal: 25,
+    })
+    expect(store.listWorkClaims({ runRef: run.runRef, state: "closeout" })).toHaveLength(25)
+  })
+
+  test("fixture run survives host restart over the same sqlite file and continues refilling", async () => {
+    const root = await mkdtemp(join(tmpdir(), "khala-fleet-run-restart-"))
+    try {
+      const dbPath = join(root, "orchestration.sqlite")
+      const firstDb = new Database(dbPath)
+      const firstStore = createPylonOrchestrationStore(firstDb)
+      const run = firstStore.createFleetRun({
+        runRef: "fleet_run.acceptance.restart",
+        objective: "Run restart fixture fleet units.",
+        workSource: "fixture",
+        targetConcurrency: 10,
+        workerKind: "codex",
+        state: "running",
+        startedAt: fixedNow,
+        now: fixedNow,
+        counters: { workUnitsTotal: 15 },
+      })
+      const firstDispatched: string[] = []
+      await tickFleetRunSupervisor({
+        store: firstStore,
+        pylonRef: "pylon.owner.restart",
+        runRef: run.runRef,
+        planner: fixturePlannerWithClaims(firstStore, 15),
+        runner: acceptingRunner(firstDispatched),
+        capacity: capacity([{ accountRef: "codex", advertisedCapacity: 10 }]),
+        clock: { now: () => fixedNow },
+      })
+      expect(firstStore.listTasks("dispatched")).toHaveLength(10)
+      firstDb.close()
+
+      const secondDb = new Database(dbPath)
+      const secondStore = createPylonOrchestrationStore(secondDb)
+      const secondDispatched: string[] = []
+      const activeCounts: number[] = []
+      let nowMs = fixedNow.getTime() + 1_000
+      const options = {
+        store: secondStore,
+        pylonRef: "pylon.owner.restart",
+        runRef: run.runRef,
+        planner: fixturePlannerWithClaims(secondStore, 15),
+        runner: drainingRunner({
+          completePerTick: 5,
+          dispatched: secondDispatched,
+          onActive: assignments => activeCounts.push(assignments.length),
+        }),
+        capacity: capacity([{ accountRef: "codex", advertisedCapacity: 10 }]),
+        clock: { now: () => new Date(nowMs) },
+      }
+
+      for (let tick = 0; tick < 10; tick += 1) {
+        await tickFleetRunSupervisor(options)
+        nowMs += 1_000
+        if (secondStore.getFleetRun(run.runRef)?.state === "completed") break
+      }
+
+      expect(activeCounts[0]).toBe(10)
+      expect(new Set([...firstDispatched, ...secondDispatched]).size).toBe(15)
+      expect(secondStore.getFleetRun(run.runRef)?.state).toBe("completed")
+      expect(secondStore.getFleetRun(run.runRef)?.counters.completedAssignments).toBe(15)
+      expect(secondStore.listWorkClaims({ runRef: run.runRef, state: "released" })).toHaveLength(0)
+      secondDb.close()
+    } finally {
+      await rm(root, { force: true, recursive: true })
+    }
+  })
+
   test("refills arbitrary target concurrency across ticks while keeping MAX_SPAWN_COUNT per tick", async () => {
     const { store, run } = createStoreWithRun({ targetConcurrency: 25, workUnits: 25 })
     const dispatched: string[] = []

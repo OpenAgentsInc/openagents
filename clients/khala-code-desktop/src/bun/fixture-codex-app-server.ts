@@ -57,6 +57,14 @@ type ActiveTurn = {
   turnId: string
 }
 
+type FixtureFleetRun = {
+  objective: string
+  runRef: string
+  state: "running"
+  targetConcurrency: number
+  workSource: string
+}
+
 type TemplateContext = Readonly<{
   approvalResponse?: unknown
   cwd: string
@@ -178,6 +186,7 @@ const applyTemplate = (
 
 class FixtureCodexAppServer {
   private readonly activeTurns = new Map<string, ActiveTurn>()
+  private readonly fleetRuns = new Map<string, FixtureFleetRun>()
   private readonly pendingServerResponses = new Map<JsonRpcId, (value: unknown) => void>()
   private readonly threads = new Map<string, ThreadRecord>()
   private nextThread = 0
@@ -230,6 +239,10 @@ class FixtureCodexAppServer {
       case "config/value/write":
       case "config/mcpServer/reload":
         return { ok: true, fixture: true }
+      case "mcpServerStatus/list":
+        return this.mcpServerStatusList()
+      case "mcpServer/tool/call":
+        return this.mcpServerToolCall(params)
       case "thread/start":
         return this.threadStart(params)
       case "thread/resume":
@@ -299,6 +312,87 @@ class FixtureCodexAppServer {
           network: { enabled: false },
         },
       }],
+    }
+  }
+
+  private mcpServerStatusList(): JsonObject {
+    return {
+      data: [{
+        name: "khala_fleet",
+        authStatus: "notRequired",
+        resources: [],
+        resourceTemplates: [],
+        tools: {
+          fleet_run_start: { name: "fleet_run_start" },
+          fleet_run_status: { name: "fleet_run_status" },
+        },
+      }],
+      nextCursor: null,
+    }
+  }
+
+  private mcpServerToolCall(params: unknown): JsonObject {
+    const server = stringField(params, "server")
+    if (server !== "khala_fleet") {
+      throw new Error(`Fixture MCP server not found: ${server ?? "(missing)"}.`)
+    }
+    const tool = stringField(params, "tool")
+    const args = objectField(params, "arguments") ?? {}
+    if (tool === "fleet_run_start") return this.fleetRunStart(args)
+    if (tool === "fleet_run_status") return this.fleetRunStatus(args)
+    throw new Error(`Fixture khala_fleet tool not found: ${tool ?? "(missing)"}.`)
+  }
+
+  private fleetRunStart(args: JsonObject): JsonObject {
+    const runRef = stringField(args, "run_ref") ?? `fleet_run.fixture.${this.fleetRuns.size + 1}`
+    const objective = stringField(args, "objective") ?? "Run fixture fleet units."
+    const targetConcurrency = numberField(args, "target_concurrency") ?? 1
+    const workSource = stringField(args, "work_source") ?? "fixture"
+    const run: FixtureFleetRun = {
+      objective,
+      runRef,
+      state: "running",
+      targetConcurrency,
+      workSource,
+    }
+    this.fleetRuns.set(runRef, run)
+    return this.fleetRunToolResult(run, "fleet_run_start")
+  }
+
+  private fleetRunStatus(args: JsonObject): JsonObject {
+    const runRef = stringField(args, "run_ref") ?? [...this.fleetRuns.keys()][0]
+    if (runRef === undefined) {
+      return {
+        content: [{ type: "text", text: "No fleet runs found." }],
+        isError: false,
+        structuredContent: { kind: "fleet_run_status", runs: [] },
+      }
+    }
+    const run = this.fleetRuns.get(runRef)
+    if (run === undefined) throw new Error(`unknown fixture FleetRun: ${runRef}`)
+    return this.fleetRunToolResult(run, "fleet_run_status")
+  }
+
+  private fleetRunToolResult(run: FixtureFleetRun, kind: "fleet_run_start" | "fleet_run_status"): JsonObject {
+    return {
+      content: [{
+        type: "text",
+        text: [
+          `FleetRun ${run.runRef}: ${run.state} (supervisor active)`,
+          `Objective: ${run.objective}`,
+          `Source: ${run.workSource}; concurrency=${run.targetConcurrency}`,
+        ].join("\n"),
+      }],
+      isError: false,
+      structuredContent: {
+        kind,
+        run: {
+          runRef: run.runRef,
+          state: run.state,
+          targetConcurrency: run.targetConcurrency,
+          workSource: run.workSource,
+        },
+      },
     }
   }
 
