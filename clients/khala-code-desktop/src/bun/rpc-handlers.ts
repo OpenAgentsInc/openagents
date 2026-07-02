@@ -73,6 +73,7 @@ import {
   type KhalaCodeDesktopFleetRunStatusResult,
   type KhalaCodeDesktopFleetSessionRole,
   type KhalaCodeDesktopFleetWorkerSession,
+  type KhalaCodeDesktopFleetWorkerControlResult,
   type KhalaCodeDesktopFleetStatus,
   type KhalaCodeDesktopRPCSchema,
   type KhalaCodeDesktopRuntimeStatus,
@@ -1903,6 +1904,24 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
       return {
         ok: true,
         runs: [...runs],
+      }
+    },
+    async fleetWorkerControl(request): Promise<KhalaCodeDesktopFleetWorkerControlResult> {
+      requireNonEmpty("fleetWorkerControl", "workerRefHash", request.workerRefHash)
+      if (request.verb !== "flag") {
+        requireNonEmpty("fleetWorkerControl", "assignmentRef", request.assignmentRef ?? "")
+      }
+      const inboxItemRef = request.verb === "flag"
+        ? `inbox.assignment.${request.workerRefHash}.manual_flag`
+        : null
+      return {
+        accepted: true,
+        assignmentRef: request.assignmentRef,
+        inboxItemRef,
+        ok: true,
+        runRef: request.runRef,
+        verb: request.verb,
+        workerRefHash: request.workerRefHash,
       }
     },
     async codexHarnessStatus() {

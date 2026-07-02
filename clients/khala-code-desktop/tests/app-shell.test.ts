@@ -719,7 +719,7 @@ describe("khala code desktop app shell", () => {
     expect(fleetPanel).toContain("isDisplayOnlyDefaultAccountRef")
     expect(fleetPanel).toContain("accountCapacityLabel")
     expect(fleetPanel).toContain("fleetTokenRateLabel")
-    expect(fleetPanel).toContain("assignmentTokenRateLabel")
+    expect(fleetPanel).toContain("buildKhalaFleetWorkerCards")
     expect(fleetPanel).toContain("renderDelegateRunner")
     expect(fleetPanel).toContain("renderOptimizationRunner")
     expect(fleetPanel).toContain("defaultKhalaFleetDelegationActiveParameters")

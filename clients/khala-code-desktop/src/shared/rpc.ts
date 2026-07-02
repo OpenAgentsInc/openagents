@@ -185,6 +185,8 @@ export type KhalaCodeDesktopFleetRunControlRequest = typeof RpcFleetRunControlRe
 export type KhalaCodeDesktopFleetRunControlResult = typeof RpcFleetRunControlResult.Type
 export type KhalaCodeDesktopFleetRunListRequest = typeof RpcFleetRunListRequest.Type
 export type KhalaCodeDesktopFleetRunListResult = typeof RpcFleetRunListResult.Type
+export type KhalaCodeDesktopFleetWorkerControlRequest = typeof RpcFleetWorkerControlRequest.Type
+export type KhalaCodeDesktopFleetWorkerControlResult = typeof RpcFleetWorkerControlResult.Type
 export type KhalaCodeDesktopRemoveAccountResult = typeof RpcRemoveAccountResult.Type
 export type KhalaCodeDesktopConnectStart = typeof RpcConnectStart.Type
 
@@ -1366,6 +1368,24 @@ const RpcFleetRunListResult = S.Struct({
   ok: S.Boolean,
   runs: S.Array(RpcFleetRunProjection),
 })
+const RpcFleetWorkerControlVerb = S.Literals(["interrupt", "retry", "flag"])
+const RpcFleetWorkerControlRequest = S.Struct({
+  assignmentRef: RpcStringNull,
+  issueRef: RpcStringNull,
+  note: S.optional(S.String),
+  runRef: RpcStringNull,
+  verb: RpcFleetWorkerControlVerb,
+  workerRefHash: S.String,
+})
+const RpcFleetWorkerControlResult = S.Struct({
+  accepted: S.Boolean,
+  assignmentRef: RpcStringNull,
+  inboxItemRef: RpcStringNull,
+  ok: S.Boolean,
+  runRef: RpcStringNull,
+  verb: RpcFleetWorkerControlVerb,
+  workerRefHash: S.String,
+})
 
 const RpcConnectStart = S.Struct({
   ok: S.Boolean,
@@ -1428,6 +1448,7 @@ export const KhalaCodeDesktopRpcMethodSchemas = {
   fleetRunList: { parameters: [optionalParam(RpcFleetRunListRequest)], result: RpcFleetRunListResult },
   fleetRunStart: { parameters: [param(RpcFleetRunStartRequest)], result: RpcFleetRunStartResult },
   fleetRunStatus: { parameters: [param(RpcFleetRunStatusRequest)], result: RpcFleetRunStatusResult },
+  fleetWorkerControl: { parameters: [param(RpcFleetWorkerControlRequest)], result: RpcFleetWorkerControlResult },
   codexHarnessStatus: { parameters: noParams(), result: RpcCodexHarnessStatus },
   codexApprovalRespond: { parameters: [param(RpcApprovalRespondRequest)], result: RpcApprovalRespondResult },
   codexBackgroundTerminalsClean: { parameters: [param(RpcBackgroundTerminalsCleanRequest)], result: RpcCodexAppServerActionResult },
@@ -1569,6 +1590,7 @@ export type KhalaCodeDesktopRPCSchema = {
     fleetRunList(request?: KhalaCodeDesktopFleetRunListRequest): Promise<KhalaCodeDesktopFleetRunListResult>
     fleetRunStart(request: KhalaCodeDesktopFleetRunStartRequest): Promise<KhalaCodeDesktopFleetRunStartResult>
     fleetRunStatus(request: KhalaCodeDesktopFleetRunStatusRequest): Promise<KhalaCodeDesktopFleetRunStatusResult>
+    fleetWorkerControl(request: KhalaCodeDesktopFleetWorkerControlRequest): Promise<KhalaCodeDesktopFleetWorkerControlResult>
     codexHarnessStatus(): Promise<KhalaCodeDesktopCodexHarnessStatus>
     codexApprovalRespond(request: KhalaCodeDesktopCodexApprovalRespondRequest): Promise<KhalaCodeDesktopCodexApprovalRespondResult>
     codexBackgroundTerminalsClean(request: KhalaCodeDesktopCodexBackgroundTerminalsCleanRequest): Promise<KhalaCodeDesktopCodexAppServerActionResult>

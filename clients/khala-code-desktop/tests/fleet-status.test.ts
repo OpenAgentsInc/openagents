@@ -178,6 +178,9 @@ describe("Fleet status panel", () => {
         activeRun = result.run
         return result
       },
+      fleetWorkerControl: async () => {
+        throw new Error("fleet worker control should not be called")
+      },
       loadGymDemoProof: () => {
         throw new Error("gym proof should not be called")
       },
@@ -263,6 +266,9 @@ describe("Fleet status panel", () => {
       },
       fleetRunList: async () => ({ ok: true, runs: [activeRun] }),
       fleetRunStart: async request => runStartResult(request),
+      fleetWorkerControl: async () => {
+        throw new Error("fleet worker control should not be called")
+      },
       loadGymDemoProof: () => {
         throw new Error("gym proof should not be called")
       },
@@ -338,6 +344,9 @@ describe("Fleet status panel", () => {
         runs: currentRun.state === "stopped" ? [] : [currentRun],
       }),
       fleetRunStart: async request => runStartResult(request),
+      fleetWorkerControl: async () => {
+        throw new Error("fleet worker control should not be called")
+      },
       loadGymDemoProof: () => {
         throw new Error("gym proof should not be called")
       },

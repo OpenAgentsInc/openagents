@@ -188,6 +188,10 @@ const previewRpc = (): DesktopRpc => ({
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["fleetRunStatus"]>>
       >("fleetRunStatus", request),
+    fleetWorkerControl: request =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["fleetWorkerControl"]>>
+      >("fleetWorkerControl", request),
     codexHarnessStatus: () =>
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["codexHarnessStatus"]>>
@@ -2256,6 +2260,8 @@ const controls = {
     rpc.request.fleetRunList(request),
   fleetRunStart: (request: Parameters<DesktopRpcRequests["fleetRunStart"]>[0]) =>
     rpc.request.fleetRunStart(request),
+  fleetWorkerControl: (request: Parameters<DesktopRpcRequests["fleetWorkerControl"]>[0]) =>
+    rpc.request.fleetWorkerControl(request),
   codexHarnessStatus: () => rpc.request.codexHarnessStatus(),
   codexApprovalRespond: (request: Parameters<DesktopRpcRequests["codexApprovalRespond"]>[0]) =>
     rpc.request.codexApprovalRespond(request),
@@ -2533,6 +2539,7 @@ const fleetPanel =
         fleetRunControl: request => controls.fleetRunControl(request),
         fleetRunList: request => controls.fleetRunList(request),
         fleetRunStart: request => controls.fleetRunStart(request),
+        fleetWorkerControl: request => controls.fleetWorkerControl(request),
         loadGymDemoProof: () => loadGymDemoOptimization(),
         startDelegationOptimization: async () => loadGymDemoOptimization(),
         fetch: () => controls.codexFleetStatus(),

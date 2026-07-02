@@ -1876,7 +1876,8 @@ button {
   color: var(--oa-color-khala-danger-strong);
 }
 .khala-fleet-account-list,
-.khala-fleet-assignment-list {
+.khala-fleet-assignment-list,
+.khala-fleet-worker-card-list {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
@@ -1995,6 +1996,36 @@ button {
   border-radius: 0.5rem;
   border: 1px solid var(--oa-color-component-border);
   background: var(--oa-color-component-surface);
+}
+.khala-fleet-worker-card {
+  display: grid;
+  gap: 0.6rem;
+  padding: 0.7rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--oa-color-component-border);
+  background: var(--oa-color-component-surface);
+}
+.khala-fleet-worker-card-top,
+.khala-fleet-worker-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
+}
+.khala-fleet-worker-lifecycle {
+  margin: 0;
+  min-height: 2rem;
+  padding: 0.45rem 0.55rem;
+  border-radius: 0.4rem;
+  border: 1px solid color-mix(in srgb, var(--oa-color-component-border) 80%, transparent);
+  color: color-mix(in srgb, var(--oa-color-component-text) 84%, transparent);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 0.72rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.khala-fleet-worker-lifecycle[data-has-frame="false"] {
+  color: color-mix(in srgb, var(--oa-color-component-text) 52%, transparent);
 }
 
 .khala-fleet-delegate {
