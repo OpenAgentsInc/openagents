@@ -81,6 +81,7 @@
     "demo:byo": "bun run src/byo.ts run --fake-model --url https://example.test --out ./runs/byo-fake",
     "demo:login": "bun run src/demo-login.ts",
     "demo:khala": "bun run src/demo-khala.ts",
+    "khala:packaged-native-smoke": "bun run src/khala-packaged-native-smoke.ts",
     "compose": "bun run src/compose/cli.ts",
     "evals": "bun run src/evals-run.ts",
     "pr-comment": "bun run src/pr-comment-run.ts",

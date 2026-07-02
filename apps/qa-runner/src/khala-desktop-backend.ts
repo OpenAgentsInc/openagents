@@ -6,9 +6,17 @@
 // access header already configured. Fixture mode is the default and uses the
 // fixture Codex app-server so qa-runner smokes do not require live login/spend.
 
-import { mkdirSync, writeFileSync } from "node:fs";
+import {
+  accessSync,
+  constants,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { createServer } from "node:net";
-import { join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { randomBytes } from "node:crypto";
 import { Effect } from "effect";
 import {
@@ -27,10 +35,10 @@ import {
   type LocalBackendOptions,
 } from "./backend";
 import {
-  nativeDesktopExample,
   runNativeDesktopScenario,
   type NativeDesktopBackendOptions,
   type NativeDesktopOutcome,
+  type NativeDesktopScenario,
 } from "./native-desktop-backend";
 import type { Target } from "./target";
 
@@ -38,11 +46,16 @@ const DEFAULT_DESKTOP_CWD = resolve(import.meta.dir, "../../../clients/khala-cod
 const DESKTOP_STDOUT_FILE = "khala-desktop-stdout.jsonl";
 const DESKTOP_STDERR_FILE = "khala-desktop-stderr.jsonl";
 const HARNESS_REPORT_FILE = "khala-desktop-harness-report.json";
+const PACKAGED_NATIVE_SMOKE_REPORT_FILE = "khala-packaged-native-smoke.json";
+const KHALA_CODE_APP_NAME = "Khala Code";
+const DEFAULT_PACKAGED_NATIVE_PROMPT = "Run the public fixture smoke.";
+const ELECTROBUN_LAUNCHER_EXECUTABLE = "launcher";
 const CHILD_TERM_GRACE_MS = 1_000;
 
 export type KhalaDesktopBackendTier = "fixture" | "live_codex";
 
 export type KhalaDesktopChildProcess = {
+  readonly pid?: number;
   readonly stdout?: ReadableStream<Uint8Array> | null;
   readonly stderr?: ReadableStream<Uint8Array> | null;
   readonly exited: Promise<number>;
@@ -64,6 +77,32 @@ export interface KhalaDesktopBackendOptions extends LocalBackendOptions {
   readonly previewPort?: number;
   readonly spawn?: KhalaDesktopSpawn;
   readonly waitTimeoutMs?: number;
+}
+
+export interface KhalaPackagedNativeSmokeSelectors {
+  readonly composer?: string;
+  readonly hotbar?: string;
+  readonly send?: string;
+}
+
+export interface KhalaPackagedNativeSmokeOptions {
+  readonly appProcessName?: string;
+  readonly appPath?: string;
+  readonly artifactDir: string;
+  readonly desktopCwd?: string;
+  readonly env?: Readonly<Record<string, string | undefined>>;
+  readonly launchWaitMs?: number;
+  readonly native?: NativeDesktopBackendOptions;
+  readonly promptText?: string;
+  readonly selectors?: KhalaPackagedNativeSmokeSelectors;
+  readonly spawn?: KhalaDesktopSpawn;
+  readonly target: Target;
+}
+
+export interface KhalaPackagedNativeSmokeOutcome extends NativeDesktopOutcome {
+  readonly appPath: string;
+  readonly executablePath: string;
+  readonly smokeReportPath: string;
 }
 
 export interface KhalaDesktopBackendSession extends BackendSession {
@@ -175,6 +214,116 @@ const shutdownChild = async (
   await Promise.allSettled(logFlushes);
 };
 
+const discoverChildProcessPid = async (parentPid: number | undefined): Promise<number | undefined> => {
+  if (parentPid === undefined || process.platform !== "darwin") return undefined;
+  try {
+    const child = Bun.spawn(["pgrep", "-P", String(parentPid)], {
+      stderr: "ignore",
+      stdout: "pipe",
+    });
+    const output = await new Response(child.stdout).text();
+    await child.exited.catch(() => undefined);
+    const pid = output
+      .split(/\s+/)
+      .map((value) => Number.parseInt(value, 10))
+      .find((value) => Number.isInteger(value) && value > 0);
+    return pid;
+  } catch {
+    return undefined;
+  }
+};
+
+const executableFile = (path: string): boolean => {
+  try {
+    const stat = statSync(path);
+    if (!stat.isFile()) return false;
+    accessSync(path, constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const walkForKhalaCodeApp = (
+  root: string,
+  depth: number,
+): string | undefined => {
+  if (depth < 0 || !existsSync(root)) return undefined;
+  const entries = readdirSync(root, { withFileTypes: true })
+    .sort((left, right) => left.name.localeCompare(right.name));
+  for (const entry of entries) {
+    const path = join(root, entry.name);
+    if (
+      entry.isDirectory() &&
+      entry.name.startsWith(KHALA_CODE_APP_NAME) &&
+      entry.name.endsWith(".app")
+    ) {
+      return path;
+    }
+  }
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const path = join(root, entry.name);
+    const found = walkForKhalaCodeApp(path, depth - 1);
+    if (found !== undefined) return found;
+  }
+  return undefined;
+};
+
+export const resolveKhalaCodePackagedAppPath = (input: {
+  readonly appPath?: string;
+  readonly desktopCwd?: string;
+  readonly env?: Readonly<Record<string, string | undefined>>;
+} = {}): string => {
+  const env = input.env ?? process.env;
+  const explicit = input.appPath ?? env.QA_KHALA_CODE_APP_PATH;
+  if (explicit !== undefined && explicit.trim().length > 0) {
+    const resolved = resolve(explicit);
+    if (!existsSync(resolved)) throw new KhalaDesktopBackendBootError(`Packaged Khala Code app not found: ${resolved}`);
+    return resolved;
+  }
+
+  const desktopCwd = input.desktopCwd ?? DEFAULT_DESKTOP_CWD;
+  for (const candidateRoot of [
+    join(desktopCwd, "build"),
+    join(desktopCwd, ".electrobun", "build"),
+    join(desktopCwd, "out"),
+  ]) {
+    const found = walkForKhalaCodeApp(candidateRoot, 6);
+    if (found !== undefined) return found;
+  }
+  throw new KhalaDesktopBackendBootError(
+    `Packaged Khala Code app was not found under ${desktopCwd}. Run ` +
+      "`bun run --cwd clients/khala-code-desktop build` first, or set QA_KHALA_CODE_APP_PATH.",
+  );
+};
+
+export const resolveKhalaCodePackagedExecutablePath = (appPath: string): string => {
+  const macOsDir = join(appPath, "Contents", "MacOS");
+  for (const preferredName of [
+    ELECTROBUN_LAUNCHER_EXECUTABLE,
+    basename(appPath, ".app"),
+    KHALA_CODE_APP_NAME,
+  ]) {
+    const preferred = join(macOsDir, preferredName);
+    if (executableFile(preferred)) return preferred;
+  }
+  const fallback = existsSync(macOsDir)
+    ? readdirSync(macOsDir)
+        .map((name) => join(macOsDir, name))
+        .find((path) => !basename(path).endsWith(".dylib") && executableFile(path))
+    : undefined;
+  if (fallback !== undefined) return fallback;
+  throw new KhalaDesktopBackendBootError(`No executable was found in ${macOsDir}`);
+};
+
+export const resolveKhalaCodePackagedAppProcessName = (appPath: string): string => {
+  const appBundleName = basename(appPath);
+  return appBundleName.endsWith(".app")
+    ? appBundleName.slice(0, -".app".length)
+    : appBundleName || KHALA_CODE_APP_NAME;
+};
+
 const fixtureDefaultEnv = (
   env: Readonly<Record<string, string | undefined>>,
   artifactDir: string,
@@ -198,6 +347,62 @@ const fixtureDefaultEnv = (
   KHALA_CODE_TOKEN_USAGE_DISABLED:
     allowOverrides && env.KHALA_CODE_TOKEN_USAGE_DISABLED !== undefined ? env.KHALA_CODE_TOKEN_USAGE_DISABLED : "1",
 });
+
+const selectorFromEnv = (
+  env: Readonly<Record<string, string | undefined>>,
+  key: string,
+): string | undefined => {
+  const value = env[key]?.trim();
+  return value === undefined || value.length === 0 ? undefined : value;
+};
+
+export const khalaCodePackagedFixtureNativeScenario = (input: {
+  readonly appPid?: number;
+  readonly appProcessName?: string;
+  readonly env?: Readonly<Record<string, string | undefined>>;
+  readonly promptText?: string;
+  readonly selectors?: KhalaPackagedNativeSmokeSelectors;
+} = {}): NativeDesktopScenario => {
+  const env = input.env ?? process.env;
+  const appProcessName = input.appProcessName ?? KHALA_CODE_APP_NAME;
+  const promptText = input.promptText ?? DEFAULT_PACKAGED_NATIVE_PROMPT;
+  const hotbarSelector =
+    input.selectors?.hotbar ??
+    selectorFromEnv(env, "QA_KHALA_CODE_PACKAGED_HOTBAR_SELECTOR") ??
+    "AXButton:Fleet";
+  const composerSelector =
+    input.selectors?.composer ??
+    selectorFromEnv(env, "QA_KHALA_CODE_PACKAGED_COMPOSER_SELECTOR") ??
+    "AXTextArea:Message Khala Code";
+  const sendSelector =
+    input.selectors?.send ??
+    selectorFromEnv(env, "QA_KHALA_CODE_PACKAGED_SEND_SELECTOR") ??
+    "AXButton:Send message";
+
+  return {
+    app: appProcessName,
+    ...(input.appPid === undefined ? {} : { appPid: input.appPid }),
+    name: "khala-code-packaged-fixture-native-smoke",
+    steps: [
+      { kind: "focus", label: "focus packaged Khala Code" },
+      { durationMs: 1_500, kind: "wait", label: "wait for packaged window boot" },
+      { kind: "ax-snapshot", label: "read boot AX tree" },
+      { kind: "assert-ax-contains", value: "AXWindow", label: "packaged app exposes a window" },
+      { kind: "screenshot", label: "packaged boot screenshot" },
+      { kind: "click", label: "open Fleet from hotbar", selector: hotbarSelector },
+      { durationMs: 350, kind: "wait", label: "wait for Fleet panel paint" },
+      { kind: "ax-snapshot", label: "read Fleet AX tree" },
+      { kind: "screenshot", label: "Fleet hotbar screenshot" },
+      { kind: "click", label: "focus composer", selector: composerSelector },
+      { kind: "type", label: "type fixture prompt into composer", text: promptText },
+      { durationMs: 150, kind: "wait", label: "wait for composer echo" },
+      { kind: "click", label: "submit fixture prompt", selector: sendSelector },
+      { durationMs: 1_500, kind: "wait", label: "wait for fixture turn render" },
+      { kind: "ax-snapshot", label: "read submitted turn AX tree" },
+      { kind: "screenshot", label: "submitted fixture turn screenshot" },
+    ],
+  };
+};
 
 export function khalaDesktopBackend(options: KhalaDesktopBackendOptions = {}): Backend {
   const env = options.env ?? process.env;
@@ -304,17 +509,79 @@ export async function runKhalaDesktopHarnessScenario(input: {
   }
 }
 
-export async function runKhalaDesktopHeadedNativeSmoke(input: {
-  readonly artifactDir: string;
-  readonly native?: NativeDesktopBackendOptions;
-  readonly target: Target;
-}): Promise<NativeDesktopOutcome> {
-  return runNativeDesktopScenario(
-    {
-      artifactDir: input.artifactDir,
-      scenario: nativeDesktopExample("Khala Code"),
-      target: input.target,
-    },
-    input.native,
-  );
+export async function runKhalaDesktopHeadedNativeSmoke(
+  input: KhalaPackagedNativeSmokeOptions,
+): Promise<KhalaPackagedNativeSmokeOutcome> {
+  const env = input.env ?? process.env;
+  const desktopCwd = input.desktopCwd ?? DEFAULT_DESKTOP_CWD;
+  const appPathSource = input.appPath !== undefined || env.QA_KHALA_CODE_APP_PATH !== undefined ? "explicit" : "auto";
+  const appPath = resolveKhalaCodePackagedAppPath({
+    ...(input.appPath === undefined ? {} : { appPath: input.appPath }),
+    desktopCwd,
+    env,
+  });
+  const executablePath = resolveKhalaCodePackagedExecutablePath(appPath);
+  const appProcessName =
+    input.appProcessName ??
+    selectorFromEnv(env, "QA_KHALA_CODE_APP_PROCESS_NAME") ??
+    resolveKhalaCodePackagedAppProcessName(appPath);
+  const fixtureEnv = fixtureDefaultEnv(env, input.artifactDir, input.env !== undefined);
+  const childEnv: Record<string, string | undefined> = {
+    ...env,
+    ...fixtureEnv,
+    KHALA_CODE_CODEX_APP_SERVER_FIXTURE: fixtureEnv.KHALA_CODE_CODEX_APP_SERVER_FIXTURE,
+    KHALA_CODE_DESKTOP_OPEN_WINDOW: "1",
+    KHALA_CODE_TOKEN_USAGE_BACKGROUND_SYNC_DISABLED: fixtureEnv.KHALA_CODE_TOKEN_USAGE_BACKGROUND_SYNC_DISABLED,
+    KHALA_CODE_TOKEN_USAGE_DISABLED: fixtureEnv.KHALA_CODE_TOKEN_USAGE_DISABLED,
+  };
+  const spawn = input.spawn ?? defaultSpawn;
+  mkdirSync(input.artifactDir, { recursive: true });
+  const child = spawn({
+    cmd: [executablePath],
+    cwd: dirname(executablePath),
+    env: childEnv,
+  });
+  const logFlushes = [
+    appendStreamToFile(child.stdout, join(input.artifactDir, DESKTOP_STDOUT_FILE)),
+    appendStreamToFile(child.stderr, join(input.artifactDir, DESKTOP_STDERR_FILE)),
+  ];
+
+  try {
+    await sleep(input.launchWaitMs ?? 2_500);
+    const appPid = await discoverChildProcessPid(child.pid);
+    const scenario = khalaCodePackagedFixtureNativeScenario({
+      ...(appPid === undefined ? {} : { appPid }),
+      appProcessName,
+      env,
+      ...(input.promptText === undefined ? {} : { promptText: input.promptText }),
+      ...(input.selectors === undefined ? {} : { selectors: input.selectors }),
+    });
+    const outcome = await runNativeDesktopScenario(
+      {
+        artifactDir: input.artifactDir,
+        scenario,
+        target: input.target,
+      },
+      input.native,
+    );
+    const smokeReportPath = join(input.artifactDir, PACKAGED_NATIVE_SMOKE_REPORT_FILE);
+    writeFileSync(
+      smokeReportPath,
+      `${JSON.stringify({
+        schemaVersion: "openagents.qa_runner.khala_packaged_native_smoke.v1",
+        appBundle: basename(appPath),
+        appProcessName,
+        appPathSource,
+        executable: basename(executablePath),
+        result: "result.json",
+        scenario: scenario.name,
+        screenshots: outcome.result.artifacts.screenshots,
+        status: outcome.result.status,
+        targetProcess: appPid === undefined ? "app-name" : "spawned-child",
+      }, null, 2)}\n`,
+    );
+    return { ...outcome, appPath, executablePath, smokeReportPath };
+  } finally {
+    await shutdownChild(child, logFlushes);
+  }
 }

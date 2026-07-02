@@ -79,6 +79,7 @@ A `NativeDesktopScenario` names an `app` and a list of steps:
 | `screenshot` | capture a PNG into the run dir, recorded in the timeline |
 | `click` | AX-press a `AXRole:Name` node, or `point:x,y` pointer fallback |
 | `type` | keystroke text into the focused element (only the LENGTH is recorded — never the raw text, which may be a credential) |
+| `wait` | bounded settle delay between live UI actions (clamped to 30 seconds, injectable in tests) |
 | `assert-ax-contains` / `assert-ax-not-contains` | assert on the latest AX snapshot's roles/titles/values |
 
 A failed assertion is a **real red**: `status = "fail"`, the failure reason is
@@ -113,6 +114,14 @@ the armed / un-armed / unavailable branches and the credential-redaction rule.
 When macOS Accessibility permission **is** granted on the host, one real proof
 focuses Finder, reads its real AX tree, screenshots it, and asserts a window
 (otherwise it skip-lives and says the permission is owner-grantable).
+
+## Khala Code packaged smoke
+
+The first real Khala Code packaged-app drive is documented in
+[`docs/qa/khala-code-packaged-native-ax-runbook.md`](../../../docs/qa/khala-code-packaged-native-ax-runbook.md).
+It launches the built Electrobun `Khala Code.app`, uses fixture/no-spend
+desktop env, drives hotbar -> composer -> send through this backend, and writes
+boot/hotbar/submitted screenshots.
 
 ## Artifact contract is unchanged
 

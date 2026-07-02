@@ -1,6 +1,14 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Effect } from "effect";
 
@@ -9,6 +17,10 @@ import { makeFakeChromium } from "./fake-chromium";
 import {
   KhalaDesktopBackendBootError,
   khalaDesktopBackend,
+  khalaCodePackagedFixtureNativeScenario,
+  resolveKhalaCodePackagedAppPath,
+  resolveKhalaCodePackagedAppProcessName,
+  resolveKhalaCodePackagedExecutablePath,
   runKhalaDesktopHarnessScenario,
   runKhalaDesktopHeadedNativeSmoke,
   type KhalaDesktopSpawn,
@@ -17,6 +29,7 @@ import { decodeQaRunResult } from "./result";
 import { runQaSession } from "./runner";
 import { makeTarget } from "./target";
 import { NativeDesktopNotArmedError } from "./native-desktop-backend";
+import type { AxTreeSnapshot, NativeDesktopRuntime } from "./native-desktop-runtime";
 
 let dir: string;
 
@@ -60,6 +73,62 @@ const fakeSpawn = (seen: Array<{ cmd: readonly string[]; env: Readonly<Record<st
       }),
     };
   };
+
+const materializeFakePackagedApp = (root: string): {
+  readonly appPath: string;
+  readonly executablePath: string;
+} => {
+  const appPath = join(root, "build", "dev-macos-arm64", "Khala Code-dev.app");
+  const executablePath = join(appPath, "Contents", "MacOS", "launcher");
+  mkdirSync(dirname(executablePath), { recursive: true });
+  writeFileSync(executablePath, "#!/bin/sh\n");
+  chmodSync(executablePath, 0o755);
+  writeFileSync(join(appPath, "Contents", "MacOS", "libNativeWrapper.dylib"), "DYLIBPLACEHOLDER");
+  return { appPath, executablePath };
+};
+
+const makeFakeNativeRuntime = (events: string[]): NativeDesktopRuntime => {
+  const tree: AxTreeSnapshot = {
+    app: "Khala Code",
+    nodes: [
+      {
+        role: "AXWindow",
+        title: "Khala Code",
+        children: [
+          { role: "AXButton", title: "Fleet" },
+          { role: "AXTextArea", title: "Message Khala Code" },
+          { role: "AXButton", title: "Send message" },
+        ],
+      },
+    ],
+  };
+  return {
+    name: "fake-native",
+    os: "macos",
+    available: async () => true,
+    focus: async ({ app }) => {
+      events.push(`focus:${app}`);
+    },
+    accessibilityTree: async ({ app }) => {
+      events.push(`ax:${app}`);
+      return tree;
+    },
+    click: async (_target, selector) => {
+      events.push(`click:${selector}`);
+    },
+    type: async (_target, text) => {
+      events.push(`type:${text.length}`);
+    },
+    screenshot: async (_target, path) => {
+      events.push(`screenshot:${path}`);
+      writeFileSync(path, "PNGPLACEHOLDER");
+      return path;
+    },
+    teardown: async ({ app }) => {
+      events.push(`teardown:${app}`);
+    },
+  };
+};
 
 describe("khalaDesktopBackend", () => {
   test("boots fixture desktop headless and drives a scripted browser scenario with flushed artifacts", async () => {
@@ -240,11 +309,81 @@ describe("khalaDesktopBackend", () => {
     expect(existsSync(join(dir, "khala-desktop-harness-report.json"))).toBe(true);
   });
 
+  test("resolves the packaged app and drives the fixture native smoke", async () => {
+    const { appPath, executablePath } = materializeFakePackagedApp(dir);
+    expect(resolveKhalaCodePackagedAppPath({ desktopCwd: dir })).toBe(appPath);
+    expect(resolveKhalaCodePackagedExecutablePath(appPath)).toBe(executablePath);
+    expect(resolveKhalaCodePackagedAppProcessName(appPath)).toBe("Khala Code-dev");
+    expect(khalaCodePackagedFixtureNativeScenario().name).toBe("khala-code-packaged-fixture-native-smoke");
+
+    const spawns: Array<{ cmd: readonly string[]; env: Readonly<Record<string, string | undefined>> }> = [];
+    const nativeEvents: string[] = [];
+    const artifactDir = join(dir, "artifacts");
+    const outcome = await runKhalaDesktopHeadedNativeSmoke({
+      appPath,
+      artifactDir,
+      launchWaitMs: 0,
+      native: {
+        env: { QA_NATIVE_DESKTOP: "1" },
+        runtime: makeFakeNativeRuntime(nativeEvents),
+        sleep: async () => undefined,
+      },
+      promptText: "Fixture prompt",
+      selectors: {
+        composer: "AXTextArea:Message Khala Code",
+        hotbar: "AXButton:Fleet",
+        send: "AXButton:Send message",
+      },
+      spawn: fakeSpawn(spawns),
+      target,
+    });
+
+    expect(outcome.result.status).toBe("pass");
+    expect(spawns[0]?.cmd).toEqual([executablePath]);
+    expect(spawns[0]?.env.KHALA_CODE_DESKTOP_OPEN_WINDOW).toBe("1");
+    expect(spawns[0]?.env.KHALA_CODE_CODEX_APP_SERVER_FIXTURE).toBe("1");
+    expect(spawns[0]?.env.CODEX_HOME).toBe(join(artifactDir, "fixture-codex-home"));
+    expect(spawns[0]?.env.KHALA_CODE_DESKTOP_WORKSPACE).toBe(join(artifactDir, "fixture-workspace"));
+    expect(spawns[0]?.env.KHALA_CODE_TOKEN_USAGE_DISABLED).toBe("1");
+    expect(spawns[0]?.env.KHALA_CODE_TOKEN_USAGE_BACKGROUND_SYNC_DISABLED).toBe("1");
+
+    const decoded = decodeQaRunResult(JSON.parse(readFileSync(outcome.resultPath, "utf8")));
+    expect(decoded.artifacts.screenshots.filter((path) => path.endsWith(".png")).length).toBe(3);
+    expect(existsSync(join(artifactDir, "native-desktop-0.png"))).toBe(true);
+    expect(existsSync(join(artifactDir, "native-desktop-1.png"))).toBe(true);
+    expect(existsSync(join(artifactDir, "native-desktop-2.png"))).toBe(true);
+    expect(existsSync(join(artifactDir, "khala-desktop-stdout.jsonl"))).toBe(true);
+    expect(existsSync(join(artifactDir, "khala-desktop-stderr.jsonl"))).toBe(true);
+
+    const smokeReportText = readFileSync(outcome.smokeReportPath, "utf8");
+    expect(smokeReportText).not.toContain(appPath);
+    expect(smokeReportText).not.toContain(executablePath);
+    const smokeReport = JSON.parse(smokeReportText);
+    expect(smokeReport.appBundle).toBe("Khala Code-dev.app");
+    expect(smokeReport.appProcessName).toBe("Khala Code-dev");
+    expect(smokeReport.executable).toBe("launcher");
+    expect(smokeReport.status).toBe("pass");
+    expect(smokeReport.screenshots).toContain("native-desktop-2.png");
+
+    expect(nativeEvents).toContain("click:AXButton:Fleet");
+    expect(nativeEvents).toContain("click:AXButton:Send message");
+    expect(nativeEvents).toContain("type:14");
+    expect(nativeEvents.at(-1)).toBe("teardown:Khala Code-dev");
+  });
+
   test("headed native smoke is skip-safe unless QA_NATIVE_DESKTOP is armed", async () => {
+    const { appPath } = materializeFakePackagedApp(dir);
     await expect(
       runKhalaDesktopHeadedNativeSmoke({
+        appPath,
         artifactDir: dir,
-        native: { env: {} },
+        launchWaitMs: 0,
+        native: {
+          env: {},
+          runtime: makeFakeNativeRuntime([]),
+          sleep: async () => undefined,
+        },
+        spawn: fakeSpawn([]),
         target,
       }),
     ).rejects.toBeInstanceOf(NativeDesktopNotArmedError);

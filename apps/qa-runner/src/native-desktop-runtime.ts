@@ -71,6 +71,8 @@ export interface AxTreeSnapshot {
 export interface NativeAppTarget {
   /** Application name as the OS knows it (e.g. "TextEdit", "Finder"). */
   readonly app: string;
+  /** Optional OS process id when multiple app instances share the same name. */
+  readonly pid?: number;
 }
 
 /**
@@ -173,14 +175,19 @@ async function runOsa(script: string): Promise<string> {
  * plaintext value of a secure-text field via System Events, and the backend's
  * tripwire (`assertPublicSafeResult`) re-checks the serialized result.
  */
-export function axTreeScript(app: string): string {
-  const a = JSON.stringify(app);
+const processRef = (target: NativeAppTarget): string =>
+  target.pid === undefined
+    ? `process ${JSON.stringify(target.app)}`
+    : `(first process whose unix id is ${target.pid})`;
+
+export function axTreeScript(target: NativeAppTarget): string {
+  const proc = processRef(target);
   // Lines emitted, tab-separated: depth<TAB>role<TAB>title<TAB>value
   return [
     `set out to ""`,
     `tell application "System Events"`,
-    `  if not (exists process ${a}) then return "ERR\tno-process"`,
-    `  tell process ${a}`,
+    `  if not (exists ${proc}) then return "ERR\tno-process"`,
+    `  tell ${proc}`,
     `    repeat with w in windows`,
     `      set wTitle to ""`,
     `      try`,
@@ -288,15 +295,30 @@ export function macosNativeDesktopRuntime(
         return false;
       }
     },
-    focus: async ({ app }) => {
+    focus: async (target) => {
+      if (target.pid !== undefined) {
+        const out = await runOsa(
+          [
+            `tell application "System Events"`,
+            `  if not (exists ${processRef(target)}) then return "ERR\tno-process"`,
+            `  set frontmost of ${processRef(target)} to true`,
+            `  return "OK"`,
+            `end tell`,
+          ].join("\n"),
+        );
+        if (out.startsWith("ERR")) {
+          throw new NativeDesktopRuntimeError(`focus: ${out.split("\t")[1] ?? "error"}`);
+        }
+        return;
+      }
       // `activate` launches the app if needed and brings it to the foreground.
-      await runOsa(`tell application ${JSON.stringify(app)} to activate`);
+      await runOsa(`tell application ${JSON.stringify(target.app)} to activate`);
     },
-    accessibilityTree: async ({ app }) => {
-      const dump = await runOsa(axTreeScript(app));
-      return parseAxDump(app, dump);
+    accessibilityTree: async (target) => {
+      const dump = await runOsa(axTreeScript(target));
+      return parseAxDump(target.app, dump);
     },
-    click: async ({ app }, selector) => {
+    click: async (target, selector) => {
       // selector forms:
       //   "AXRole:Name"  -> AX press of the first matching element by role+title
       //   "point:x,y"    -> synthesized pointer click via cliclick (fallback)
@@ -316,10 +338,10 @@ export function macosNativeDesktopRuntime(
       }
       const role = selector.slice(0, sep);
       const name = selector.slice(sep + 1);
-      const a = JSON.stringify(app);
+      const proc = processRef(target);
       const script = [
         `tell application "System Events"`,
-        `  tell process ${a}`,
+        `  tell ${proc}`,
         `    set theEl to missing value`,
         `    repeat with w in windows`,
         `      try`,
@@ -338,14 +360,26 @@ export function macosNativeDesktopRuntime(
         throw new NativeDesktopRuntimeError(`click: AX element not found for selector ${JSON.stringify(selector)}`);
       }
     },
-    type: async ({ app }, text) => {
-      const a = JSON.stringify(app);
+    type: async (target, text) => {
       // keystroke into the focused element of the (re-activated) app.
-      const script = [
-        `tell application ${a} to activate`,
-        `tell application "System Events" to keystroke ${JSON.stringify(text)}`,
-      ].join("\n");
-      await runOsa(script);
+      const script =
+        target.pid === undefined
+          ? [
+              `tell application ${JSON.stringify(target.app)} to activate`,
+              `tell application "System Events" to keystroke ${JSON.stringify(text)}`,
+            ].join("\n")
+          : [
+              `tell application "System Events"`,
+              `  if not (exists ${processRef(target)}) then return "ERR\tno-process"`,
+              `  set frontmost of ${processRef(target)} to true`,
+              `  keystroke ${JSON.stringify(text)}`,
+              `  return "OK"`,
+              `end tell`,
+            ].join("\n");
+      const out = await runOsa(script);
+      if (out.startsWith("ERR")) {
+        throw new NativeDesktopRuntimeError(`type: ${out.split("\t")[1] ?? "error"}`);
+      }
     },
     screenshot: async (_target, path) => {
       // `screencapture -x` = silent, `-o` = omit window shadow. We capture the

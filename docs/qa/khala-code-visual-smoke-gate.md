@@ -55,3 +55,10 @@ OA_FORCE_KHALA_VISUAL_SMOKE_GATE=1 bun scripts/qa-visual-smoke-gate.ts
 class: a landed `clients/khala-code-desktop/src/ui/main.ts` change cannot skip
 the visual tier. In hard-fail mode, a failing first fixture smoke blocks the
 push.
+
+## Packaged Native AX Follow-Up
+
+The Tier-1 visual gate still covers deterministic fixture screenshots from the
+desktop source tree. The headed packaged-window lane is separate and owner-armed:
+see [`khala-code-packaged-native-ax-runbook.md`](./khala-code-packaged-native-ax-runbook.md)
+for the `QA_NATIVE_DESKTOP=1` Electrobun `.app` smoke.

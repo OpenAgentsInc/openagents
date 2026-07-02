@@ -43,13 +43,20 @@ export {
 export { localBackend, type Backend, type BackendSession, type LocalBackendOptions } from "./backend";
 export {
   khalaDesktopBackend,
+  khalaCodePackagedFixtureNativeScenario,
   isKhalaDesktopBackendSession,
+  resolveKhalaCodePackagedAppPath,
+  resolveKhalaCodePackagedAppProcessName,
+  resolveKhalaCodePackagedExecutablePath,
   runKhalaDesktopHarnessScenario,
   runKhalaDesktopHeadedNativeSmoke,
   KhalaDesktopBackendBootError,
   type KhalaDesktopBackendOptions,
   type KhalaDesktopBackendSession,
   type KhalaDesktopBackendTier,
+  type KhalaPackagedNativeSmokeOptions,
+  type KhalaPackagedNativeSmokeOutcome,
+  type KhalaPackagedNativeSmokeSelectors,
 } from "./khala-desktop-backend";
 
 // The fixed-step runner (runQaSession) and the autonomous model-driven runner.

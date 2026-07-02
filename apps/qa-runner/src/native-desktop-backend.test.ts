@@ -220,6 +220,30 @@ describe("runNativeDesktopScenario (fake runtime)", () => {
     expect(serialized).toContain('"length":20');
   });
 
+  test("wait steps use the injected sleep hook and record bounded duration", async () => {
+    const waits: number[] = [];
+    const runtime = makeFakeRuntime({ available: true });
+    const scenario: NativeDesktopScenario = {
+      name: "wait-step",
+      app: "FakeApp",
+      steps: [
+        { kind: "focus" },
+        { durationMs: 42, kind: "wait", label: "settle app" },
+        { durationMs: 60_000, kind: "wait", label: "clamped wait" },
+      ],
+    };
+    const outcome = await runNativeDesktopScenario(
+      { target, scenario, artifactDir: dir },
+      { armed: true, runtime, sleep: async (ms) => { waits.push(ms); } },
+    );
+    expect(outcome.result.status).toBe("pass");
+    expect(waits).toEqual([42, 30_000]);
+    expect(outcome.result.steps.filter((step) => step.kind === "wait").map((step) => step.detail)).toEqual([
+      { durationMs: 42 },
+      { durationMs: 30_000 },
+    ]);
+  });
+
   test("a click that cannot be addressed FAILS honestly (no silent no-op)", async () => {
     const runtime = makeFakeRuntime({ available: true, clickThrows: "AX element not found" });
     const scenario: NativeDesktopScenario = {

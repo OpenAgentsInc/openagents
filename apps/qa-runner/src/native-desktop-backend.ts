@@ -58,6 +58,7 @@ export type NativeDesktopStep =
   | { readonly kind: "screenshot"; readonly label?: string }
   | { readonly kind: "click"; readonly selector: string; readonly label?: string }
   | { readonly kind: "type"; readonly text: string; readonly label?: string }
+  | { readonly durationMs: number; readonly kind: "wait"; readonly label?: string }
   | {
       /** Assert the latest AX snapshot contains a node whose title/value matches `value`. */
       readonly kind: "assert-ax-contains";
@@ -75,6 +76,8 @@ export interface NativeDesktopScenario {
   readonly name: string;
   /** The desktop app to drive (e.g. "TextEdit"). */
   readonly app: string;
+  /** Optional app process id when a smoke launched a specific app instance. */
+  readonly appPid?: number;
   /** The ordered steps to replay. */
   readonly steps: ReadonlyArray<NativeDesktopStep>;
 }
@@ -126,6 +129,8 @@ export interface NativeDesktopBackendOptions {
   readonly os?: NativeDesktopOs;
   /** Injectable clock for deterministic result timestamps. */
   readonly now?: () => number;
+  /** Injectable wait hook for deterministic tests; production uses setTimeout. */
+  readonly sleep?: (ms: number) => Promise<void>;
 }
 
 /** True when the env arms the native-desktop backend. */
@@ -162,6 +167,9 @@ function flattenAxText(tree: AxTreeSnapshot): string {
   return out.join("\n");
 }
 
+const sleep = (ms: number): Promise<void> =>
+  new Promise((resolveSleep) => setTimeout(resolveSleep, ms));
+
 /**
  * Run a native-desktop scenario through the injected runtime and emit artifacts.
  * Owner-gated (armed) + honest about helper/permission availability. Resolves
@@ -190,10 +198,14 @@ export async function runNativeDesktopScenario(
   }
 
   const now = options.now ?? (() => Date.now());
+  const sleepImpl = options.sleep ?? sleep;
   const startedAt = new Date(now());
   mkdirSync(input.artifactDir, { recursive: true });
 
-  const appTarget: NativeAppTarget = { app: input.scenario.app };
+  const appTarget: NativeAppTarget = {
+    app: input.scenario.app,
+    ...(input.scenario.appPid === undefined ? {} : { pid: input.scenario.appPid }),
+  };
   const steps: QaRunStep[] = [];
   const frames: NativeDesktopFrame[] = [];
   let lastTree: AxTreeSnapshot | undefined;
@@ -242,6 +254,12 @@ export async function runNativeDesktopScenario(
             // NEVER record the raw typed text (may be a credential); length only.
             record(index, "type", "ok", step.label ?? "type", { length: step.text.length });
             break;
+          case "wait": {
+            const durationMs = Math.max(0, Math.min(30_000, step.durationMs));
+            await sleepImpl(durationMs);
+            record(index, "wait", "ok", step.label ?? `wait ${durationMs}ms`, { durationMs });
+            break;
+          }
           case "assert-ax-contains": {
             const hay = lastTree ? flattenAxText(lastTree) : "";
             if (!lastTree) {
