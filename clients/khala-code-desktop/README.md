@@ -57,6 +57,7 @@ visible words as stand-ins for icon controls.
 Tracking context:
 
 - Audit: [docs/khala-code/2026-07-01-codex-harness-wrapper-port-audit.md](../../docs/khala-code/2026-07-01-codex-harness-wrapper-port-audit.md)
+- Effect patterns: [docs/khala-code/effect-patterns.md](../../docs/khala-code/effect-patterns.md)
 - Parity contract: [docs/khala-code/2026-07-01-codex-parity-contract.md](../../docs/khala-code/2026-07-01-codex-parity-contract.md)
 - Product positioning: [docs/khala-code/2026-07-01-codex-required-product-positioning.md](../../docs/khala-code/2026-07-01-codex-required-product-positioning.md)
 - Tracking epic: [OpenAgentsInc/openagents#7780](https://github.com/OpenAgentsInc/openagents/issues/7780)
