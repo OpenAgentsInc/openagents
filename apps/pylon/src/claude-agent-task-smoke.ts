@@ -96,7 +96,14 @@ const ciFixingRunner: ClaudeAgentRunner = async (input) => {
     join(input.cwd, "sum.ts"),
     "export const sum = (left: number, right: number) => left + right\n",
   )
-  return { outcome: "completed", turnCount: 3, editedFileCount: 1, commandCount: 1, sessionRef: null , usage: null }
+  return {
+    outcome: "completed",
+    turnCount: 3,
+    editedFileCount: 1,
+    commandCount: 1,
+    sessionRef: null,
+    usage: { cachedInputTokens: 0, inputTokens: 1200, outputTokens: 340 },
+  }
 }
 
 function ciHarness(lease: PylonAssignmentLease) {
@@ -129,6 +136,9 @@ function ciHarness(lease: PylonAssignmentLease) {
       if (url.pathname.endsWith("/closeout")) {
         return Response.json({ closeoutRef: `assignment.closeout.${lease.leaseRef}` })
       }
+      if (url.pathname === "/api/pylon/claude/turns") {
+        return Response.json({ tokenUsageEventRef: `token_usage_event.pylon_claude.${lease.leaseRef}` })
+      }
       return Response.json({ errorRef: "error.not_found" }, { status: 404 })
     },
   })
@@ -149,6 +159,7 @@ function smokeResult(
   const ok =
     run.ok === true &&
     closeout?.status === "accepted" &&
+    closeout.blockerRefs.length === 0 &&
     closeout.payoutClaimAllowed === false &&
     closeout.settlementState === "not_applicable" &&
     redactionScan.violations.length === 0
@@ -201,6 +212,7 @@ export async function runClaudeAgentTaskCiSmoke(): Promise<ClaudeAgentTaskSmokeR
     await sendHeartbeat(summary, { baseUrl: harness.baseUrl })
 
     const run = await runNoSpendAssignment(summary, {
+      agentToken: "agent.public.claude_smoke",
       baseUrl: harness.baseUrl,
       claudeAgentRunner: ciFixingRunner,
       claudeAgentProbe: {

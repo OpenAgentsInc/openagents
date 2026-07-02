@@ -219,9 +219,22 @@ Deferrable (bounded lane is fine without them):
 3. Execution posture — Claude delegated runs are bounded-workspace
    deny-by-default; only Codex has the owner-local full-access posture.
 4. No PR publisher analogue; local-verification closeouts only.
-5. Observability — no raw-event chunks, no ATIF trace ingest, one
-   cumulative token row per assignment rather than per-turn.
-6. No Claude own-capacity burn runbook.
+5. Observability — no raw-event chunks and no ATIF trace ingest yet. The
+   bounded Pylon-Claude lane does emit an exact assignment-turn token row to
+   `/api/pylon/claude/turns`; closeout now exposes whether that row was
+   reported, missing, unconfigured, or failed to post.
+
+**T9.7 landing note (2026-07-02):** the desktop-fleet slice of Claude closeout
+depth is shipped. `apps/pylon/src/claude-agent-executor.ts` accepts both
+snake_case and camelCase SDK usage fields, attempts the Claude turn reporter for
+every completed SDK session before terminal closeout, and adds public-safe refs
+such as `result.public.pylon.claude_agent_task.token_usage_reported` plus typed
+blockers for `token_usage_missing`, `token_usage_report_failed`, and
+`token_usage_reporter_unconfigured`. The CI smoke now requires the reporter
+route. The posture decision is intentionally conservative: public/fleet Claude
+assignments do not use `bypassPermissions`; PR publishing and raw-event/ATIF
+ingest remain deferred until Claude workers graduate from bounded
+local-verification work to PR delivery.
 
 ### 3.2 Recommended shape: one selector per axis
 

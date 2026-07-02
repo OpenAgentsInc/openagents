@@ -40,8 +40,9 @@ verification runs in the workspace) → progress → artifacts → closeout —
 then scans every retained request and the closeout for redaction
 violations. Exit 0 requires: closeout `accepted`,
 `fixture_repair_passed` result ref, `payoutClaimAllowed: false`,
-`settlementState: not_applicable`, `redacted: true`, zero scan
-violations.
+`settlementState: not_applicable`, `redacted: true`,
+`result.public.pylon.claude_agent_task.token_usage_reported`, no
+token-accounting blocker refs, and zero scan violations.
 
 The same leg runs inside `bun test` (`tests/claude-agent-task-smoke.test.ts`),
 so the release gate covers it on every run.
@@ -104,3 +105,10 @@ promise; nobody flips their own.
 - `blocker.assignment.claude_agent_workspace_escape_blocked` or
   `…budget_exceeded`: the sandbox or budget stopped the session; both
   are typed, terminal, and reportable as-is.
+- `blocker.assignment.claude_agent_token_usage_missing`: the SDK result did
+  not surface positive exact usage, so no fabricated row was posted.
+- `blocker.assignment.claude_agent_token_usage_reporter_unconfigured` or
+  `…report_failed`: the local code may have passed, but the exact
+  `/api/pylon/claude/turns` row is not proven. Treat this as an accounting
+  closeout blocker and rerun after fixing the agent token/base URL or ingest
+  route.
