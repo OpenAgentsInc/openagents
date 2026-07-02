@@ -7,6 +7,12 @@ import { join } from "node:path"
 
 import { dispatchEligibility, dispatchLiveness, dispatchReadySupervisorTasks } from "./coordinator.js"
 import { parseOrchestrationGroupAddress, resolveOrchestrationGroup } from "./groups.js"
+import {
+  createMergeWaveResolverJob,
+  decideMergePolicy,
+  evaluateCloseoutReviewGate,
+  type VerifyCommandEvidence,
+} from "./merge-policy.js"
 import { encodeAgentRunnerStatusEventForDispatchContext } from "./status-control.js"
 import {
   FLEET_RUN_SCHEMA,
@@ -29,6 +35,14 @@ const baseTaskSpec = {
   branch: "main",
   baseCommit: "abc123",
 }
+
+const greenVerifyEvidence = (commandRef = "command.public.pylon_khala.verify.28484fe0b746db06b92c2eb2"): VerifyCommandEvidence => ({
+  commandRef,
+  status: "green",
+  exitCode: 0,
+  workspaceKind: "worker_workspace",
+  evidenceRef: "verify.public.fixture.green",
+})
 
 describe("Pylon supervisor orchestration store", () => {
   test("persists a dependency DAG and promotes dependents when prerequisites complete", () => {
@@ -795,6 +809,151 @@ describe("Pylon supervisor orchestration store", () => {
       }),
       { numRuns: 200 },
     )
+  })
+
+  test("closeout gate refuses ready_for_review without verify-green evidence", () => {
+    const now = new Date("2026-07-01T12:00:00.000Z")
+    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const claim = store.tryClaimWorkUnit({
+      claimRef: "claim.t4_3.verify",
+      workUnitRef: "issue.7836",
+      runRef: "fleet_run.t4_3",
+      workerAccountRef: "codex-1",
+      ttl: 60_000,
+      now,
+    })
+
+    const gate = evaluateCloseoutReviewGate({
+      pinnedVerifyCommandRef: "command.public.pylon_khala.verify.28484fe0b746db06b92c2eb2",
+      claim,
+      verify: { ...greenVerifyEvidence(), status: "red", exitCode: 1 },
+      now,
+    })
+
+    expect(gate).toMatchObject({
+      status: "blocked",
+      readyForReview: false,
+      blockerRefs: ["blocker.public.pylon.closeout.verify_not_green"],
+    })
+  })
+
+  test("closeout gate refuses ready_for_review when the claim expired", () => {
+    const now = new Date("2026-07-01T12:00:00.000Z")
+    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const claim = store.tryClaimWorkUnit({
+      claimRef: "claim.t4_3.expired",
+      workUnitRef: "issue.7836",
+      runRef: "fleet_run.t4_3",
+      workerAccountRef: "codex-1",
+      ttl: 1_000,
+      now,
+    })
+    const afterTtl = new Date("2026-07-01T12:00:01.001Z")
+    store.expireWorkClaims(afterTtl)
+
+    const gate = evaluateCloseoutReviewGate({
+      pinnedVerifyCommandRef: "command.public.pylon_khala.verify.28484fe0b746db06b92c2eb2",
+      claim: store.getWorkClaim(claim?.claimRef ?? ""),
+      verify: greenVerifyEvidence(),
+      now: afterTtl,
+    })
+
+    expect(gate).toMatchObject({
+      status: "blocked",
+      readyForReview: false,
+      blockerRefs: ["blocker.public.pylon.closeout.claim_not_live"],
+    })
+  })
+
+  test("merge policy defaults to manual review and auto-merges only clean owner-toggled closeouts", () => {
+    const now = new Date("2026-07-01T12:00:00.000Z")
+    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const claim = store.tryClaimWorkUnit({
+      claimRef: "claim.t4_3.policy",
+      workUnitRef: "issue.7836",
+      runRef: "fleet_run.t4_3",
+      workerAccountRef: "codex-1",
+      ttl: 60_000,
+      now,
+    })
+    const closeout = evaluateCloseoutReviewGate({
+      pinnedVerifyCommandRef: "command.public.pylon_khala.verify.28484fe0b746db06b92c2eb2",
+      claim,
+      verify: greenVerifyEvidence(),
+      now,
+    })
+
+    expect(decideMergePolicy({
+      closeout,
+      mergeable: true,
+      verifyGreen: true,
+      hasConflicts: false,
+      diffWithinScope: true,
+    })).toMatchObject({
+      mode: "manual_review",
+      action: "manual_review",
+      ownerToggleRequired: false,
+    })
+
+    expect(decideMergePolicy({
+      mode: "auto_merge_clean",
+      closeout,
+      mergeable: true,
+      verifyGreen: true,
+      hasConflicts: false,
+      diffWithinScope: true,
+    })).toMatchObject({
+      mode: "auto_merge_clean",
+      action: "auto_merge",
+      ownerToggleRequired: true,
+    })
+
+    expect(decideMergePolicy({
+      mode: "auto_merge_clean",
+      closeout,
+      mergeable: false,
+      verifyGreen: true,
+      hasConflicts: true,
+      diffWithinScope: true,
+      siblingConflictRefs: ["pr.1", "pr.2"],
+    })).toMatchObject({
+      action: "merge_wave_resolver",
+      ownerToggleRequired: true,
+    })
+  })
+
+  test("merge-wave resolver has one live claim per wave work unit", () => {
+    const now = new Date("2026-07-01T12:00:00.000Z")
+    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const job = createMergeWaveResolverJob({
+      waveRef: "wave.t4_3.conflicts",
+      runRef: "fleet_run.t4_3",
+      siblingRefs: ["pr.101", "pr.102"],
+      workerAccountRef: "codex-merge",
+      ttl: 60_000,
+      now,
+    })
+    const duplicate = createMergeWaveResolverJob({
+      waveRef: "wave.t4_3.conflicts",
+      runRef: "fleet_run.t4_3",
+      siblingRefs: ["pr.101", "pr.102"],
+      workerAccountRef: "codex-merge-2",
+      claimRef: "claim.public.pylon.merge_wave.duplicate",
+      ttl: 60_000,
+      now,
+    })
+
+    expect(job).toMatchObject({
+      sequential: true,
+      execution: "owner_toggle_required",
+      taskSpec: {
+        runnerKind: "codex",
+        fleetRunRef: "fleet_run.t4_3",
+      },
+    })
+    expect(store.tryClaimWorkUnit(job.claim)?.workUnitRef).toBe(job.workUnitRef)
+    expect(store.tryClaimWorkUnit(duplicate.claim)).toBeNull()
+    expect(store.listLiveWorkClaims(now).map((claim) => claim.claimRef)).toEqual([job.claim.claimRef])
   })
 
   test("refuses an otherwise healthy idle context when the ready task requires another runner", () => {

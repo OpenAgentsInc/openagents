@@ -41,8 +41,24 @@ export type FleetRunSupervisorDispatchResult = {
   readonly summary?: string | null
 }
 
+export type FleetRunSupervisorActiveAssignment = {
+  readonly accountRef: string
+  readonly claim: WorkClaim
+  readonly contextId: string
+  readonly taskId: string
+}
+
+export type FleetRunSupervisorReconcileResult = FleetRunSupervisorDispatchResult & {
+  readonly taskId: string
+}
+
 export type FleetRunSupervisorRunner = {
   readonly dispatch: (input: FleetRunSupervisorDispatchInput) => Promise<FleetRunSupervisorDispatchResult>
+  readonly reconcile?: (input: {
+    readonly activeAssignments: readonly FleetRunSupervisorActiveAssignment[]
+    readonly now: Date
+    readonly run: FleetRun
+  }) => Promise<readonly FleetRunSupervisorReconcileResult[]>
 }
 
 export type FleetRunSupervisorPlanner = {
@@ -177,6 +193,24 @@ const activeByAccount = (claims: readonly WorkClaim[]): Map<string, number> => {
   return counts
 }
 
+const collectActiveAssignments = (
+  store: PylonOrchestrationStore,
+  runRef: string,
+): FleetRunSupervisorActiveAssignment[] => {
+  const tasks = store.listTasks("dispatched").filter(task => task.spec.fleetRunRef === runRef)
+  const claims = new Map(store.listWorkClaims({ runRef }).map(claim => [taskIdFor(runRef, claim.claimRef), claim]))
+  return tasks.flatMap(task => {
+    const claim = claims.get(task.id)
+    if (claim === undefined || claim.state !== "in_progress") return []
+    return [{
+      accountRef: claim.workerAccountRef,
+      claim,
+      contextId: contextIdFor(claim.workerAccountRef, task.id),
+      taskId: task.id,
+    }]
+  })
+}
+
 const pickAccount = (
   accounts: readonly FleetRunSupervisorAccount[],
   activeCounts: Map<string, number>,
@@ -208,6 +242,52 @@ const emit = async (
   event: FleetRunSupervisorObservedEvent,
 ): Promise<void> => {
   if (sink !== undefined) await sink(event)
+}
+
+const recordTerminalAssignment = async (
+  options: FleetRunSupervisorOptions,
+  assignment: FleetRunSupervisorActiveAssignment,
+  result: FleetRunSupervisorDispatchResult,
+  now: Date,
+): Promise<boolean> => {
+  const terminalStatus = terminalStatusForDispatch(result)
+  if (terminalStatus === null) return false
+  for (const event of result.lifecycle) {
+    await emit(options.onLifecycle, {
+      kind: "lifecycle",
+      runRef: options.runRef,
+      taskId: assignment.taskId,
+      claimRef: assignment.claim.claimRef,
+      accountRef: assignment.accountRef,
+      event,
+    })
+  }
+  options.store.recordWorkerDone({
+    contextId: assignment.contextId,
+    taskId: assignment.taskId,
+    status: terminalStatus,
+    result: JSON.stringify({
+      assignmentRef: result.assignmentRef,
+      summary: result.summary ?? null,
+    }),
+    now,
+  })
+  options.store.updateWorkClaimState(
+    assignment.claim.claimRef,
+    terminalStatus === "completed" ? "closeout" : "released",
+    now,
+  )
+  await emit(options.onLifecycle, {
+    kind: "dispatch",
+    runRef: options.runRef,
+    taskId: assignment.taskId,
+    claimRef: assignment.claim.claimRef,
+    workUnitRef: assignment.claim.workUnitRef,
+    accountRef: assignment.accountRef,
+    assignmentRef: result.assignmentRef,
+    status: result.status,
+  })
+  return true
 }
 
 export async function tickFleetRunSupervisor(
@@ -243,6 +323,38 @@ export async function tickFleetRunSupervisor(
       dispatched: 0,
       freeSlots: 0,
       run,
+    }
+  }
+
+  const activeBeforeReconcile = collectActiveAssignments(store, run.runRef)
+  if (options.runner.reconcile !== undefined && activeBeforeReconcile.length > 0) {
+    const activeByTask = new Map(activeBeforeReconcile.map(assignment => [assignment.taskId, assignment]))
+    const reconciled = await options.runner.reconcile({ activeAssignments: activeBeforeReconcile, now, run })
+    for (const result of reconciled) {
+      const assignment = activeByTask.get(result.taskId)
+      if (assignment === undefined) continue
+      await recordTerminalAssignment(options, assignment, result, now)
+    }
+    run = store.reconcileFleetRun(options.runRef, now)
+    if (run.state !== "running" && run.counters.workUnitsTotal < expectedWorkUnitsTotal) {
+      run = store.upsertFleetRun({
+        ...run,
+        state: "running",
+        counters: {
+          ...run.counters,
+          workUnitsTotal: expectedWorkUnitsTotal,
+        },
+        updatedAt: now.toISOString(),
+      })
+    }
+    if (run.state !== "running") {
+      return {
+        activeAssignments: activeAssignmentsForRun(store, run.runRef),
+        claimed: 0,
+        dispatched: 0,
+        freeSlots: 0,
+        run,
+      }
     }
   }
 
@@ -491,11 +603,12 @@ export function startFleetRunSupervisor(
       }),
     )
     // tickFleetRunSupervisor intentionally bypasses the one-supervisor guard as the direct test seam.
+    const context = yield* Effect.context<never>()
     void (async () => {
       const clock = { ...defaultClock, ...options.clock }
       while (!loopStopped) {
         try {
-          await Effect.runPromise(handle.tick())
+          await Effect.runPromiseWith(context)(handle.tick())
         } catch {
           // Keep the scoped supervisor alive; individual dispatch failures are recorded by tick.
         }
