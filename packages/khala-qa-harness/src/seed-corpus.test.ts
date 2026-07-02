@@ -5,7 +5,7 @@ import {
   KHALA_CODE_CODEX_PARITY_REQUIRED_THREAD_ITEM_TYPES,
 } from "../../../clients/khala-code-desktop/src/bun/codex-parity-contract.js"
 import {
-  khalaCodeDesktopSlashCommandsWithAvailability,
+  KHALA_CODE_DESKTOP_SLASH_COMMANDS,
 } from "../../../clients/khala-code-desktop/src/shared/codex-slash-commands.js"
 
 import {
@@ -65,10 +65,32 @@ describe("Khala Code QA seed scenario corpus", () => {
     expect(KHALA_CODE_QA_THREAD_ITEM_VARIANTS).toEqual(KHALA_CODE_CODEX_PARITY_REQUIRED_THREAD_ITEM_TYPES)
 
     const slashCommandIds = idsForGroup("rpc.slash_commands")
-    for (const command of khalaCodeDesktopSlashCommandsWithAvailability({ debug: true, platform: "darwin" })) {
+    expect(KHALA_CODE_QA_SEED_CORPUS_MANIFEST.coverage.slashCommands).toEqual(
+      KHALA_CODE_DESKTOP_SLASH_COMMANDS.map((command) => command.command),
+    )
+    for (const command of KHALA_CODE_DESKTOP_SLASH_COMMANDS) {
       expect(slashCommandIds).toContain(
         `scenario.khala_code.seed.slash_command_${command.command.replace(/[^a-z0-9]+/g, "_")}.v1`,
       )
+      const scenario = KHALA_CODE_QA_SEED_SCENARIOS.find((candidate) =>
+        candidate.id === `scenario.khala_code.seed.slash_command_${command.command.replace(/[^a-z0-9]+/g, "_")}.v1`
+      )
+      expect(scenario?.phases.map((phase) => phase.name)).toContain("list-slash-command-availability")
+      expect(scenario?.phases.map((phase) => phase.name)).toContain("dispatch-slash-command")
+      expect(KHALA_CODE_QA_SEED_CORPUS_MANIFEST.coverage.slashCommandAvailabilityStates[command.command]?.length)
+        .toBeGreaterThan(0)
+      if (!command.availableDuringTask) {
+        expect(scenario?.phases.map((phase) => phase.name)).toContain("dispatch-while-task-active")
+      }
+      if (!command.availableInSideConversation) {
+        expect(scenario?.phases.map((phase) => phase.name)).toContain("dispatch-from-side-conversation")
+      }
+      if (command.dispatch.kind === "app_server" && command.dispatch.requiresArgs === true) {
+        expect(scenario?.phases.map((phase) => phase.name)).toContain("dispatch-without-required-args")
+      }
+      if (command.dispatch.kind === "app_server" && command.dispatch.requiresThread === true) {
+        expect(scenario?.phases.map((phase) => phase.name)).toContain("dispatch-without-required-thread")
+      }
     }
   })
 

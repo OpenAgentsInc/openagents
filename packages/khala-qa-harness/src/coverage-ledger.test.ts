@@ -44,6 +44,12 @@ describe("Khala Code QA coverage ledger", () => {
     expect(ledger.hotbarPanelsOpened).toEqual(["chat", "fleet", "settings"])
     for (const command of KHALA_CODE_QA_SEED_CORPUS_MANIFEST.coverage.slashCommands) {
       expect(ledger.slashCommands[command]?.dispatches).toBeGreaterThan(0)
+      expect(ledger.slashCommands[command]?.availabilityStateCount).toBe(
+        ledger.slashCommands[command]?.availabilityStates.length,
+      )
+      expect(ledger.slashCommands[command]?.availabilityStates).toEqual(
+        expect.arrayContaining(KHALA_CODE_QA_SEED_CORPUS_MANIFEST.coverage.slashCommandAvailabilityStates[command] ?? []),
+      )
     }
     for (const variant of KHALA_CODE_QA_SEED_CORPUS_MANIFEST.coverage.threadItemVariants) {
       expect(ledger.threadItemVariantsRendered).toContain(variant)
@@ -155,6 +161,7 @@ describe("Khala Code QA coverage ledger", () => {
     expect(frontier.missing.settingsKeys).toContain("model")
     expect(frontier.missing.approvalDecisionKinds).toContain("accept")
     expect(frontier.missing.slashCommands.length).toBeGreaterThan(0)
+    expect(frontier.missing.slashCommandAvailabilityStates.length).toBeGreaterThan(0)
     expect(frontier.zeroForAWeekIssueCandidates).toEqual(["hotbarPanels:fleet"])
   })
 })

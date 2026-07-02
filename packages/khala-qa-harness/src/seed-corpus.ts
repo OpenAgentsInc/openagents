@@ -2,10 +2,12 @@ import { KHALA_CODE_HOTBAR_SLOTS } from "../../../clients/khala-code-desktop/src
 import { KHALA_CODE_CODEX_APPROVAL_ACTIONS } from "../../../clients/khala-code-desktop/src/shared/codex-approval-decisions.js"
 import { KHALA_CODE_CODEX_PARITY_REQUIRED_THREAD_ITEM_TYPES } from "../../../clients/khala-code-desktop/src/bun/codex-parity-contract.js"
 import {
+  KHALA_CODE_DESKTOP_SLASH_COMMANDS,
   khalaCodeDesktopSlashCommandsWithAvailability,
-  type KhalaCodeDesktopSlashCommandWithAvailability,
+  type KhalaCodeDesktopSlashCommand,
 } from "../../../clients/khala-code-desktop/src/shared/codex-slash-commands.js"
 
+import type { KhalaCodeQaCoverageAvailability } from "./coverage-ledger.js"
 import type { KhalaCodeRpcFetch } from "./rpc-client.js"
 import type { KhalaCodeQaScenario } from "./scenario.js"
 
@@ -38,6 +40,7 @@ export type KhalaCodeQaSeedCorpusManifest = Readonly<{
     hotbarPanels: readonly string[]
     selectors: readonly string[]
     settingsKeys: readonly string[]
+    slashCommandAvailabilityStates: Readonly<Record<string, readonly KhalaCodeQaCoverageAvailability[]>>
     slashCommands: readonly string[]
     threadItemVariants: readonly string[]
   }>
@@ -383,10 +386,13 @@ export const KHALA_CODE_QA_SEED_HOTBAR_PANELS = KHALA_CODE_HOTBAR_SLOTS.map((slo
 export const KHALA_CODE_QA_SEED_SETTINGS_KEYS = ["model"] as const
 export const KHALA_CODE_QA_SEED_APPROVAL_DECISION_KINDS = KHALA_CODE_CODEX_APPROVAL_ACTIONS
 export const KHALA_CODE_QA_SEED_SELECTORS = [] as const
-export const KHALA_CODE_QA_SEED_SLASH_COMMANDS = khalaCodeDesktopSlashCommandsWithAvailability({
-  debug: true,
-  platform: "darwin",
-}).map((command) => command.command)
+export const KHALA_CODE_QA_SEED_SLASH_COMMANDS = KHALA_CODE_DESKTOP_SLASH_COMMANDS.map((command) => command.command)
+
+export const KHALA_CODE_QA_SEED_SLASH_COMMAND_AVAILABILITY_STATES =
+  Object.fromEntries(KHALA_CODE_DESKTOP_SLASH_COMMANDS.map((command) => [
+    command.command,
+    slashCommandExpectedAvailabilityStates(command),
+  ])) as Readonly<Record<string, readonly KhalaCodeQaCoverageAvailability[]>>
 
 const groupedThreadItemScenarios: readonly GroupedScenario[] =
   KHALA_CODE_QA_THREAD_ITEM_VARIANTS.map((variant) =>
@@ -406,21 +412,14 @@ const groupedThreadItemScenarios: readonly GroupedScenario[] =
   )
 
 const groupedSlashCommandScenarios: readonly GroupedScenario[] =
-  khalaCodeDesktopSlashCommandsWithAvailability({ debug: true, platform: "darwin" }).map((command) =>
+  KHALA_CODE_DESKTOP_SLASH_COMMANDS.map((command) =>
     groupedFixtureScenario(
       "rpc.slash_commands",
       `scenario.khala_code.seed.slash_command_${command.command.replace(/[^a-z0-9]+/g, "_")}.v1`,
-      [{
-        name: "dispatch-slash-command",
-        act: [{
-          kind: "rpc_call",
-          method: "slashCommandDispatch",
-          args: [slashCommandDispatchRequest(command)],
-        }],
-        expect: [schema("slashCommandDispatch"), crash()],
-      }],
+      slashCommandScenarioPhases(command),
       [
         commitment(`seed.slash_command.${command.command}.schema`, `/${command.command} dispatch response decodes`, "schema"),
+        commitment(`seed.slash_command.${command.command}.availability`, `/${command.command} availability states are counted`, "schema"),
         runPass(`seed.slash_command.${command.command}.pass`, `/${command.command} scenario passes`),
       ],
     )
@@ -444,6 +443,7 @@ export const KHALA_CODE_QA_SEED_CORPUS_MANIFEST: KhalaCodeQaSeedCorpusManifest =
     hotbarPanels: KHALA_CODE_QA_SEED_HOTBAR_PANELS,
     selectors: KHALA_CODE_QA_SEED_SELECTORS,
     settingsKeys: KHALA_CODE_QA_SEED_SETTINGS_KEYS,
+    slashCommandAvailabilityStates: KHALA_CODE_QA_SEED_SLASH_COMMAND_AVAILABILITY_STATES,
     slashCommands: KHALA_CODE_QA_SEED_SLASH_COMMANDS,
     threadItemVariants: KHALA_CODE_QA_THREAD_ITEM_VARIANTS,
   },
@@ -452,7 +452,13 @@ export const KHALA_CODE_QA_SEED_CORPUS_MANIFEST: KhalaCodeQaSeedCorpusManifest =
 }
 
 function slashCommandDispatchRequest(
-  command: KhalaCodeDesktopSlashCommandWithAvailability,
+  command: KhalaCodeDesktopSlashCommand,
+  options: {
+    readonly activeTurn?: boolean
+    readonly includeArgs?: boolean
+    readonly includeThread?: boolean
+    readonly sideConversation?: boolean
+  } = {},
 ): {
   readonly activeTurn: boolean
   readonly debug: boolean
@@ -462,23 +468,159 @@ function slashCommandDispatchRequest(
   readonly sideConversation: boolean
   readonly threadId?: string
 } {
+  const includeThread = options.includeThread ?? true
   return {
-    activeTurn: command.availableDuringTask,
-    debug: command.debug,
-    platform: "darwin",
-    raw: slashCommandRaw(command),
+    activeTurn: options.activeTurn ?? false,
+    debug: true,
+    platform: slashCommandVisiblePlatform(command),
+    raw: slashCommandRaw(command, { includeArgs: options.includeArgs ?? true }),
     sessionId: desktopSessionId,
-    sideConversation: false,
-    ...(command.dispatch.kind === "app_server" && command.dispatch.requiresThread === true ? { threadId } : {}),
+    sideConversation: options.sideConversation ?? false,
+    ...(includeThread && command.dispatch.kind === "app_server" && command.dispatch.requiresThread === true ? { threadId } : {}),
   }
 }
 
 function slashCommandRaw(
-  command: KhalaCodeDesktopSlashCommandWithAvailability,
+  command: KhalaCodeDesktopSlashCommand,
+  options: { readonly includeArgs?: boolean } = {},
 ): string {
-  return command.supportsInlineArgs || command.dispatch.kind === "app_server" && command.dispatch.requiresArgs === true
+  const includeArgs = options.includeArgs ?? true
+  return includeArgs && (command.supportsInlineArgs || command.dispatch.kind === "app_server" && command.dispatch.requiresArgs === true)
     ? `/${command.command} fixture`
     : `/${command.command}`
+}
+
+function slashCommandListRequest(
+  command: KhalaCodeDesktopSlashCommand,
+  options: {
+    readonly activeTurn?: boolean
+    readonly sideConversation?: boolean
+  } = {},
+): {
+  readonly activeTurn?: boolean
+  readonly debug: boolean
+  readonly platform: string
+  readonly sideConversation?: boolean
+} {
+  return {
+    ...(options.activeTurn === undefined ? {} : { activeTurn: options.activeTurn }),
+    debug: true,
+    platform: slashCommandVisiblePlatform(command),
+    ...(options.sideConversation === undefined ? {} : { sideConversation: options.sideConversation }),
+  }
+}
+
+function slashCommandVisiblePlatform(
+  command: KhalaCodeDesktopSlashCommand,
+): string {
+  return command.visibility.kind === "platform"
+    ? command.visibility.platforms[0] ?? "darwin"
+    : "darwin"
+}
+
+function sortedAvailabilityStates(
+  states: Iterable<KhalaCodeQaCoverageAvailability>,
+): readonly KhalaCodeQaCoverageAvailability[] {
+  return [...new Set(states)].sort() as readonly KhalaCodeQaCoverageAvailability[]
+}
+
+function slashCommandExpectedAvailabilityStates(
+  command: KhalaCodeDesktopSlashCommand,
+): readonly KhalaCodeQaCoverageAvailability[] {
+  const states = new Set<KhalaCodeQaCoverageAvailability>()
+  if (command.debug === true || command.visibility.kind === "debug") states.add("debug")
+  if (command.availableDuringTask === true) states.add("task")
+  if (command.availableInSideConversation === true) states.add("side_conversation")
+  if (command.availableDuringTask === false || command.availableInSideConversation === false) states.add("unavailable")
+  if (command.dispatch.kind === "app_server") {
+    if (command.dispatch.requiresArgs === true) {
+      states.add("args")
+      states.add("unavailable")
+    }
+    if (command.dispatch.requiresThread === true) {
+      states.add("thread")
+      states.add("unavailable")
+    }
+  }
+  if (command.dispatch.kind === "gap") {
+    states.add("gap")
+    if (command.dispatch.unavailable !== undefined) states.add("unavailable")
+  }
+  return states.size === 0 ? ["always"] : sortedAvailabilityStates(states)
+}
+
+function slashCommandScenarioPhases(
+  command: KhalaCodeDesktopSlashCommand,
+): KhalaCodeQaScenario["phases"] {
+  const disabledDispatches: KhalaCodeQaScenario["phases"][number][] = []
+  if (!command.availableDuringTask) {
+    disabledDispatches.push({
+      name: "dispatch-while-task-active",
+      act: [{
+        kind: "rpc_call",
+        method: "slashCommandDispatch",
+        args: [slashCommandDispatchRequest(command, { activeTurn: true })],
+      }],
+      expect: [schema("slashCommandDispatch"), crash()],
+    })
+  }
+  if (!command.availableInSideConversation) {
+    disabledDispatches.push({
+      name: "dispatch-from-side-conversation",
+      act: [{
+        kind: "rpc_call",
+        method: "slashCommandDispatch",
+        args: [slashCommandDispatchRequest(command, { sideConversation: true })],
+      }],
+      expect: [schema("slashCommandDispatch"), crash()],
+    })
+  }
+  if (command.dispatch.kind === "app_server" && command.dispatch.requiresArgs === true) {
+    disabledDispatches.push({
+      name: "dispatch-without-required-args",
+      act: [{
+        kind: "rpc_call",
+        method: "slashCommandDispatch",
+        args: [slashCommandDispatchRequest(command, { includeArgs: false })],
+      }],
+      expect: [schema("slashCommandDispatch"), crash()],
+    })
+  }
+  if (command.dispatch.kind === "app_server" && command.dispatch.requiresThread === true) {
+    disabledDispatches.push({
+      name: "dispatch-without-required-thread",
+      act: [{
+        kind: "rpc_call",
+        method: "slashCommandDispatch",
+        args: [slashCommandDispatchRequest(command, { includeThread: false })],
+      }],
+      expect: [schema("slashCommandDispatch"), crash()],
+    })
+  }
+  return [
+    {
+      name: "list-slash-command-availability",
+      act: [
+        { kind: "rpc_call", method: "slashCommandList", args: [slashCommandListRequest(command)] },
+        { kind: "rpc_call", method: "slashCommandList", args: [slashCommandListRequest(command, { activeTurn: true })] },
+        { kind: "rpc_call", method: "slashCommandList", args: [slashCommandListRequest(command, { sideConversation: true })] },
+      ],
+      expect: [
+        schema("slashCommandList"),
+        crash(),
+      ],
+    },
+    {
+      name: "dispatch-slash-command",
+      act: [{
+        kind: "rpc_call",
+        method: "slashCommandDispatch",
+        args: [slashCommandDispatchRequest(command)],
+      }],
+      expect: [schema("slashCommandDispatch"), crash()],
+    },
+    ...disabledDispatches,
+  ]
 }
 
 const response = (payload: unknown): Response =>
@@ -633,14 +775,41 @@ const fixtureRpcPayload = (
       return actionResult("thread/backgroundTerminals/list", { processes: [] })
     case "codexMcpServerReload":
       return actionResult("config/mcpServer/reload", { reloaded: true })
-    case "slashCommandList":
-      return { ok: true, commands: khalaCodeDesktopSlashCommandsWithAvailability({ debug: true, platform: "darwin" }) }
+    case "slashCommandList": {
+      const request = args[0] as {
+        readonly activeTurn?: boolean
+        readonly debug?: boolean
+        readonly platform?: string
+        readonly sideConversation?: boolean
+      } | undefined
+      return {
+        ok: true,
+        commands: khalaCodeDesktopSlashCommandsWithAvailability({
+          ...(request?.activeTurn === undefined ? {} : { activeTurn: request.activeTurn }),
+          debug: request?.debug ?? true,
+          platform: request?.platform ?? "darwin",
+          ...(request?.sideConversation === undefined ? {} : { sideConversation: request.sideConversation }),
+        }),
+      }
+    }
     case "slashCommandDispatch": {
-      const request = args[0] as { readonly raw?: string } | undefined
+      const request = args[0] as {
+        readonly activeTurn?: boolean
+        readonly debug?: boolean
+        readonly platform?: string
+        readonly raw?: string
+        readonly sideConversation?: boolean
+        readonly threadId?: string
+      } | undefined
       const raw = request?.raw ?? "/status"
-      const command = khalaCodeDesktopSlashCommandsWithAvailability({ debug: true, platform: "darwin" })
+      const command = khalaCodeDesktopSlashCommandsWithAvailability({
+        ...(request?.activeTurn === undefined ? {} : { activeTurn: request.activeTurn }),
+        debug: request?.debug ?? true,
+        platform: request?.platform ?? "darwin",
+        ...(request?.sideConversation === undefined ? {} : { sideConversation: request.sideConversation }),
+      })
         .find((item) => raw.replace(/^\/+/, "").split(/\s+/)[0] === item.command)
-      return slashCommandDispatchResult(command, raw)
+      return slashCommandDispatchResult(command, raw, request)
     }
     default:
       return actionResult(method, { fixture: true })
@@ -1118,22 +1287,44 @@ const actionResult = (method: string, response?: unknown) => ({
 })
 
 const slashCommandDispatchResult = (
-  command: KhalaCodeDesktopSlashCommandWithAvailability | undefined,
+  command: ReturnType<typeof khalaCodeDesktopSlashCommandsWithAvailability>[number] | undefined,
   raw: string,
+  request?: {
+    readonly threadId?: string
+  },
 ) => {
   if (command === undefined) {
     return { message: `Unknown slash command: ${raw}`, ok: false, status: "not_found" }
   }
+  const args = raw.trim().split(/\s+/).slice(1).join(" ").trim()
   if (!command.availability.available) {
     return {
       command: command.command,
       message: command.availability.reason ?? `/${command.command} unavailable`,
       ok: false,
-      status: "unavailable",
+      status: "blocked",
     }
   }
   switch (command.dispatch.kind) {
-    case "app_server":
+    case "app_server": {
+      if (command.dispatch.requiresArgs === true && args.length === 0) {
+        return {
+          command: command.command,
+          message: `/${command.command} requires inline arguments.`,
+          method: command.dispatch.method,
+          ok: false,
+          status: "blocked",
+        }
+      }
+      if (command.dispatch.requiresThread === true && (request?.threadId ?? "").trim().length === 0) {
+        return {
+          command: command.command,
+          message: `/${command.command} requires an active Codex thread.`,
+          method: command.dispatch.method,
+          ok: false,
+          status: "blocked",
+        }
+      }
       return {
         command: command.command,
         message: `Dispatched /${command.command}`,
@@ -1141,8 +1332,9 @@ const slashCommandDispatchResult = (
         ok: true,
         response: { fixture: true },
         status: "dispatched",
-        threadId,
+        ...(request?.threadId === undefined ? {} : { threadId: request.threadId }),
       }
+    }
     case "client":
       return {
         action: command.dispatch.action,
@@ -1154,13 +1346,10 @@ const slashCommandDispatchResult = (
     case "gap":
       return {
         command: command.command,
-        gap: command.dispatch.unavailable ?? {
-          gapId: `fixture.${command.command}`,
-          kind: "upstream_app_server_gap",
-        },
+        ...(command.dispatch.unavailable === undefined ? {} : { gap: command.dispatch.unavailable }),
         message: command.dispatch.dependency,
-        ok: true,
-        status: "gap",
+        ok: false,
+        status: command.dispatch.unavailable === undefined ? "gap" : "unavailable",
       }
   }
 }
