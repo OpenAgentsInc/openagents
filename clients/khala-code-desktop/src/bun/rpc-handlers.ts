@@ -801,8 +801,8 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
   // Memoized: interrupt must see the SAME runtime instance (and its
   // activeTurns map) that started the turn — a fresh instance per RPC call
   // makes stop a no-op in claude_runtime mode.
-  let lazyClaudeChatRuntime: ChatRuntime | undefined
-  const requireClaudeChatRuntime = (): ChatRuntime => {
+  let lazyClaudeChatRuntime: ClaudeAppSdkChatRuntime | undefined
+  const requireClaudeChatRuntime = (): ClaudeAppSdkChatRuntime => {
     if (input.claudeChatRuntime !== undefined) return input.claudeChatRuntime
     lazyClaudeChatRuntime ??= createClaudeAppSdkChatRuntime({
       approvalService: claudeApprovalService,

@@ -18,10 +18,10 @@ import type {
   KhalaCodeDesktopCodexTurnActionResult,
   KhalaCodeDesktopCodexTurnInterruptRequest,
   KhalaCodeDesktopCodexTurnSteerRequest,
-  type KhalaCodeDesktopSlashCommandDispatchRequest,
-  type KhalaCodeDesktopSlashCommandDispatchResult,
-  type KhalaCodeDesktopSlashCommandListRequest,
-  type KhalaCodeDesktopSlashCommandListResponse,
+  KhalaCodeDesktopSlashCommandDispatchRequest,
+  KhalaCodeDesktopSlashCommandDispatchResult,
+  KhalaCodeDesktopSlashCommandListRequest,
+  KhalaCodeDesktopSlashCommandListResponse,
 } from "../shared/rpc.js"
 import type { KhalaCodeDesktopSlashCommandWithAvailability } from "../shared/codex-slash-commands.js"
 import type { CodexAppServerChatRuntime } from "./codex-app-server-chat-runtime.js"
@@ -189,7 +189,8 @@ const firstArray = (value: unknown): readonly unknown[] => {
 const commandNameFrom = (value: unknown): string | null =>
   stringField(value, "name") ??
   stringField(value, "command")?.replace(/^\/+/u, "") ??
-  stringField(value, "id")?.replace(/^\/+/u, "")
+  stringField(value, "id")?.replace(/^\/+/u, "") ??
+  null
 
 const commandDescriptionFrom = (value: unknown, name: string): string =>
   stringField(value, "description") ??
@@ -460,8 +461,8 @@ export function createClaudeAppSdkChatRuntime(
         : undefined
       if (failure instanceof KhalaCodeDesktopTokenUsagePersistentFailure) {
         tokenUsageFailureFlags = [{
-          eventId: failure.eventId,
-          idempotencyKey: failure.idempotencyKey,
+          eventId: failure.eventId ?? "",
+          idempotencyKey: failure.idempotencyKey ?? "",
           inboxFlagRef: failure.inboxFlagRef,
           reason: failure.reason,
         }]
@@ -655,6 +656,10 @@ export function createClaudeAppSdkChatRuntime(
     return {
       action: "claude_prompt_slash",
       command,
+      message: `Dispatched Claude /${command}.`,
+      ok: true,
+      status: "dispatched",
+      ...(request.threadId === undefined ? {} : { threadId: request.threadId }),
     }
   }
 

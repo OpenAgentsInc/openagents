@@ -8,7 +8,6 @@ import type { OnDeviceDeciderSelection } from "./on-device-decider.js"
 import type {
   KhalaCodeQaMetricsSnapshot,
 } from "./qa-metrics.js"
-import type { KhalaCodeDesktopClaudeSettingsProjection } from "./claude-settings.js"
 
 // Electrobun treats Infinity as no local request timeout; chat turns stream progress
 // over events while hosted model calls and local tools can legitimately exceed 30s.
@@ -791,7 +790,7 @@ const RpcClaudeSettingsProjection = S.Struct({
     options: S.Array(RpcClaudeSettingsModel),
     selected: S.NullOr(RpcClaudeSettingsModel),
   }),
-}) as S.Schema<KhalaCodeDesktopClaudeSettingsProjection>
+})
 
 const RpcCodexSettingsReadRequest = S.Struct({
   cwd: S.optional(S.String),

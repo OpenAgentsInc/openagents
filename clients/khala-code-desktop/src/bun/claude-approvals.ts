@@ -145,13 +145,7 @@ export const createClaudeHeadlessAutoDenyApprovalService = (
   },
   pending: () => [],
   respond: async () => false,
-  take: async () => ({
-    deferred: Effect.runSync(Deferred.make<ClaudeApprovalDecision>()),
-    request: {
-      id: "claude-headless-auto-deny",
-      input: {},
-      options: { decisionReason: reason },
-      toolName: "unknown",
-    },
-  }),
+  take: async () => {
+    throw new Error(`${reason} Headless approval queue is unavailable.`)
+  },
 })

@@ -3,7 +3,6 @@ import { mkdtemp, readFile, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Effect } from "effect"
-import { Schema as S } from "effect"
 
 import { createClaudeAppSdkChatRuntime } from "../src/bun/claude-app-sdk-chat-runtime"
 import { CLAUDE_APP_SDK_GAP_MATRIX } from "../src/bun/claude-app-sdk-gap-matrix"
@@ -22,7 +21,7 @@ import {
 import { createClaudeSessionStore } from "../src/bun/claude-session-store"
 import { createClaudeThreadItemProjector } from "../src/bun/claude-thread-item-projector"
 import {
-  KhalaCodeDesktopRpcMethodSchemas,
+  decodeKhalaCodeDesktopRpcResult,
   type KhalaCodeDesktopChatTurnEvent,
 } from "../src/shared/rpc"
 
@@ -674,16 +673,29 @@ describe("Claude Agent SDK chat runtime", () => {
       ok: true,
     })
 
-    await runtime.slashCommandDispatch({
+    const dispatchResult = await runtime.slashCommandDispatch({
       raw: "/review src",
       sessionId: "desktop-slash",
+      threadId: "claude-slash-session",
+    })
+    expect(decodeKhalaCodeDesktopRpcResult("slashCommandDispatch", dispatchResult)).toEqual({
+      action: "claude_prompt_slash",
+      command: "review",
+      message: "Dispatched Claude /review.",
+      ok: true,
+      status: "dispatched",
       threadId: "claude-slash-session",
     })
     expect(prompts.at(-1)).toBe("/review src")
   })
 
-  test("pins the Claude parity contract to the installed SDK range", () => {
-    expect(CLAUDE_AGENT_SDK_PARITY_VERSION).toBe("^0.3.172")
+  test("pins the Claude parity contract to the installed SDK range", async () => {
+    const packageJson = JSON.parse(await Bun.file(new URL("../package.json", import.meta.url)).text()) as {
+      readonly dependencies?: Record<string, string>
+    }
+    const installedRange = packageJson.dependencies?.["@anthropic-ai/claude-agent-sdk"]
+    if (installedRange === undefined) throw new Error("package.json is missing @anthropic-ai/claude-agent-sdk.")
+    expect(CLAUDE_AGENT_SDK_PARITY_VERSION).toBe(installedRange)
     expect(CLAUDE_PARITY_CONTRACT.map(row => row.id)).toEqual([
       "claude.phase1.query_stream",
       "claude.phase2.approvals",
@@ -745,8 +757,7 @@ describe("Claude Agent SDK chat runtime", () => {
       observedAt: "2026-07-01T12:00:00.000Z",
       ok: true,
     }
-    const schema = KhalaCodeDesktopRpcMethodSchemas.claudeSettingsRead.result
-    expect(S.decodeUnknownSync(schema)(projection)).toEqual(projection)
+    expect(decodeKhalaCodeDesktopRpcResult("claudeSettingsRead", projection)).toEqual(projection)
   })
 
   test("records Claude token persistent failures as Inbox flags", async () => {
