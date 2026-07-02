@@ -3514,6 +3514,94 @@ describe('Pylon API routes', () => {
     expect(progressAfterCloseoutBody.error).toBe('pylon_api_conflict')
   })
 
+  test('#7921: runtime progress renews long-running assignment leases through worker closeout', async () => {
+    const store = new MemoryPylonApiStore()
+    const assignmentRef = 'assignment.public.issue7921.long_running'
+    const readAssignmentLeaseExpiresAt = async () => {
+      const assignment = await store.readAssignment(assignmentRef)
+      expect(assignment).toBeDefined()
+
+      return assignment?.leaseExpiresAt ?? ''
+    }
+
+    await registerPylon(store)
+    await markOnline(store, { nowIso: '2026-06-07T00:00:00.000Z' })
+    await markWalletReady(store)
+
+    const create = await createAssignment(store, {
+      assignmentRef,
+      idempotencyKey: 'assignment-create-issue7921-long-running',
+      leaseSeconds: 900,
+      nowIso: '2026-06-07T00:00:00.000Z',
+    })
+    const accept = await route(
+      store,
+      `/api/pylons/pylon.test.one/assignments/${assignmentRef}/accept`,
+      {
+        body: {
+          acceptanceRefs: ['acceptance.public.issue7921.long_running'],
+          accepted: true,
+        },
+        idempotencyKey: 'accept-issue7921-long-running',
+        method: 'POST',
+        nowIso: '2026-06-07T00:00:10.000Z',
+        tokenUserId: 'agent-one',
+      },
+    )
+    const acceptedLeaseExpiresAt = await readAssignmentLeaseExpiresAt()
+    const progress = await route(
+      store,
+      `/api/pylons/pylon.test.one/assignments/${assignmentRef}/progress`,
+      {
+        body: {
+          elapsedMs: 860_000,
+          phase: 'running',
+          progressRefs: ['progress.public.issue7921.runtime_heartbeat'],
+          status: 'running',
+        },
+        idempotencyKey: 'progress-issue7921-runtime-heartbeat',
+        method: 'POST',
+        nowIso: '2026-06-07T00:14:30.000Z',
+        tokenUserId: 'agent-one',
+      },
+    )
+    const progressLeaseExpiresAt = await readAssignmentLeaseExpiresAt()
+    const workerCloseout = await route(
+      store,
+      `/api/pylons/pylon.test.one/assignments/${assignmentRef}/closeout`,
+      {
+        body: {
+          artifactRefs: ['artifact.public.issue7921.long_running'],
+          buildRefs: ['build.public.issue7921.verified'],
+          closeoutRefs: ['closeout.public.issue7921.long_running'],
+          proofRefs: ['proof.public.issue7921.verified'],
+          resultRefs: ['result.public.issue7921.done'],
+          status: 'closeout_submitted',
+          testRefs: ['test.public.issue7921.verify_green'],
+        },
+        idempotencyKey: 'worker-closeout-issue7921-long-running',
+        method: 'POST',
+        nowIso: '2026-06-07T00:28:30.000Z',
+        tokenUserId: 'agent-one',
+      },
+    )
+    const workerCloseoutBody =
+      await responseJson<PylonRouteJson>(workerCloseout)
+
+    expect(create.status).toBe(201)
+    expect(accept.status).toBe(201)
+    expect(progress.status).toBe(201)
+    expect(Date.parse(progressLeaseExpiresAt)).toBeGreaterThan(
+      Date.parse(acceptedLeaseExpiresAt),
+    )
+    expect(workerCloseout.status).toBe(201)
+    expect(workerCloseoutBody.assignment).toMatchObject({
+      closeoutRefs: ['closeout.public.issue7921.long_running'],
+      leaseState: 'terminal',
+      state: 'closeout_submitted',
+    })
+  })
+
   test('records a settled paid GEPA-style assignment receipt after accepted closeout', async () => {
     const store = new MemoryPylonApiStore()
     await registerPylon(store, {
