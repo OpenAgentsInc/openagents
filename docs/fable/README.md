@@ -32,6 +32,12 @@ each source doc.
   use-case scenario corpus, owner-armed live tiers, the explorer/distill
   learning loop, and hard-fail guardrails. Eight workstreams, 39 issues
   (#8012–#8050) under epic #8051, with the issue map in its §12.
+- [`2026-07-02-qa-swarm-product-plan.md`](./2026-07-02-qa-swarm-product-plan.md)
+  — the QA Swarm product plan: the ROADMAP_QA machine packaged as a sellable
+  autonomous-QA product (swarm runs, committed distilled tests, honest
+  verdicts, the shareable StarCraft-blue evidence board via arbiter-effect +
+  three-effect, customer #1 = Khala Code Desktop, the named-first-customer
+  demo-PR sales motion). Workstream QS1–QS10, issues #8061–#8070, epic #8071.
 - [`EXECUTION.md`](./EXECUTION.md) — how the roadmap is executed: Artanis
   (fleet-manager role) supervises; **Khala Code fleet delegation is the
   primary mechanism**; one GitHub issue per roadmap task, closed only via a

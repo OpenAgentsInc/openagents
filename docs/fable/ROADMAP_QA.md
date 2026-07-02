@@ -53,6 +53,8 @@ QA-5 Live tiers (armed NOW; weekly cadence lands after QA-1)
 QA-7 Product fixes the QA run already found (cockpit degradation, flake hunt)
         |
 QA-9 Planner/Coder/Judge workflow (build + test; role registry first)
+        |
+QA-10 QA Swarm productization (epic #8071; consumes Q1/Q2/Q6 outputs)
 ```
 
 QA-1.1 (the nightly job) and Q2.1 (the perf bridge) are the two
@@ -191,6 +193,17 @@ weakened — advisors and judges are advisory data under it.
 | Q9.5 | **Per-role economics surface** (adapts omp §2.7): `role_ref` attribution on exact token rows (desktop telemetry + Pylon turn reports), API-metered roles priced from the model catalog, per-session honest rendering — "coder: subscription-covered · architect+judge: $X.YZ"; projections from exact rows only, `not_measured` when a rail's pricing is unknown. | Q9.1 | HIGH |
 | Q9.6 | **One-command preset + promise record**: `khala code --preset architect-coder-judge` and a Settings preset card — coder = the user's existing Codex login, architect/judge = the user's own Anthropic auth (API key or Claude login via the SDK; never a proxy), advisor optional-on; candidate promise `khala_code.architect_coder_judge.v1` filed through `docs/promises/` (copy-gated; no public copy until the flow is verifiable end-to-end). | Q9.1–Q9.5 | HIGH |
 | Q9.7 | **The workflow under the QA regime — prove it exists**: scenario-corpus additions for every new surface (role-registry RPC group, plan card approve/reject, judge verdict card incl. every verdict kind, advisor advisories incl. the interrupt budget and dedupe guard) on the fixture tier (fixture Codex app-server + fixture Claude); coverage-ledger counting for the new surfaces; cross-mode consistency; and a skip-safe env-armed `smoke:architect-coder-judge-live` that runs one real plan → coder turn → judge verdict end-to-end with per-role exact token rows and public-safe projections. Green in the nightly = the workflow demonstrably exists and keeps existing. | Q9.2–Q9.5, Q4.1 | MED |
+
+## 9c. QA-10 — QA Swarm productization (pointer)
+
+The machine this roadmap builds is also a sellable product. The product plan
+— packages, the shareable evidence URL, the arbiter-effect swarm board, the
+three-effect 3D scene, customer-one dogfood at Khala Code, the named-first-
+customer sales motion, and third-party onboarding — lives in
+[`2026-07-02-qa-swarm-product-plan.md`](./2026-07-02-qa-swarm-product-plan.md)
+(workstream QS1–QS10, issues #8061–#8070 under epic #8071). QS consumes this
+roadmap's outputs (Q1.1 nightly, Q1.5 status surface, Q2 budgets, Q6
+explorers); it never duplicates them.
 
 ## 10. Milestones
 
