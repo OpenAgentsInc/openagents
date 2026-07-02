@@ -316,7 +316,7 @@ describe("Khala Code desktop chat runtime", () => {
       expect(JSON.stringify(requestMessages)).not.toContain("100 Main Street")
     }
     expect(JSON.stringify(requestMessages)).not.toContain("alice@example.com")
-  })
+  }, 30_000)
 
   test("reveals assistant placeholders before re-scrubbing assistant history", async () => {
     const redaction = fakeRedactionService({

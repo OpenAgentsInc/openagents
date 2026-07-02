@@ -131,3 +131,21 @@ export const createClaudeApprovalService = (): ClaudeApprovalService => {
     take: () => Effect.runPromise(Queue.take(queue)),
   }
 }
+
+export const createClaudeHeadlessAutoDenyApprovalService = (
+  reason = "Claude tool approval denied because Khala Code headless mode cannot ask a human.",
+): ClaudeApprovalService => ({
+  async canUseTool(toolName) {
+    return {
+      behavior: "deny",
+      decisionClassification: "headless_auto_deny",
+      interrupt: false,
+      message: `${reason} Tool: ${toolName}.`,
+    }
+  },
+  pending: () => [],
+  respond: async () => false,
+  take: async () => {
+    throw new Error(`${reason} Headless approval queue is unavailable.`)
+  },
+})

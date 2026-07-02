@@ -97,13 +97,19 @@ import {
   parseKhalaCodeDesktopSlashCommand,
 } from "../shared/codex-slash-commands.js"
 import { inspectCodexHarnessStatus } from "./codex-harness-status.js"
-import { createClaudeAppSdkChatRuntime } from "./claude-app-sdk-chat-runtime.js"
+import {
+  createClaudeAppSdkChatRuntime,
+  type ClaudeAppSdkChatRuntime,
+} from "./claude-app-sdk-chat-runtime.js"
 import { inspectClaudeHarnessStatus } from "./claude-harness-status.js"
 import {
   createClaudeApprovalService,
   type ClaudeApprovalService,
 } from "./claude-approvals.js"
-import { createKhalaCodeDesktopClaudeTokenUsageReporter } from "./claude-token-usage-telemetry.js"
+import {
+  createKhalaCodeDesktopClaudeTokenUsageReporter,
+  readKhalaCodeDesktopClaudeTokenUsageInboxFlags,
+} from "./claude-token-usage-telemetry.js"
 import {
   khalaCodeDesktopRuntimeEnvOverride,
   readKhalaCodeDesktopHarnessSetting,
@@ -137,7 +143,7 @@ type ChatRuntime = CodexAppServerChatRuntime
 type ChatRuntimeSelection =
   | {
     readonly kind: "claude"
-    readonly runtime: ChatRuntime
+    readonly runtime: ClaudeAppSdkChatRuntime
   }
   | {
     readonly kind: "codex"
@@ -183,7 +189,7 @@ export type KhalaCodeDesktopRpcHandlersInput = {
   readonly appleFmReadiness: () => MaybePromise<KhalaAppleFmReadiness>
   readonly codexAppServerHost?: CodexAppServerHost
   readonly codexChatRuntime?: CodexAppServerChatRuntime
-  readonly claudeChatRuntime?: CodexAppServerChatRuntime
+  readonly claudeChatRuntime?: ClaudeAppSdkChatRuntime
   readonly claudeApprovalService?: ClaudeApprovalService
   readonly enableFleetMcpBridge?: boolean
   readonly codexRateLimitStatus?: () => MaybePromise<KhalaCodexRateLimitProviderStatus>
@@ -839,8 +845,8 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
   // Memoized: interrupt must see the SAME runtime instance (and its
   // activeTurns map) that started the turn — a fresh instance per RPC call
   // makes stop a no-op in claude_runtime mode.
-  let lazyClaudeChatRuntime: ChatRuntime | undefined
-  const requireClaudeChatRuntime = (): ChatRuntime => {
+  let lazyClaudeChatRuntime: ClaudeAppSdkChatRuntime | undefined
+  const requireClaudeChatRuntime = (): ClaudeAppSdkChatRuntime => {
     if (input.claudeChatRuntime !== undefined) return input.claudeChatRuntime
     lazyClaudeChatRuntime ??= createClaudeAppSdkChatRuntime({
       approvalService: claudeApprovalService,
@@ -2328,9 +2334,13 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
       return input.qaMetrics?.() ?? emptyKhalaCodeQaMetricsSnapshot()
     },
     async slashCommandDispatch(request) {
+      const selection = await selectChatRuntime()
+      if (selection.kind === "claude") return selection.runtime.slashCommandDispatch(request)
       return dispatchSlashAppServerCommand(request)
     },
     async slashCommandList(request = {}) {
+      const selection = await selectChatRuntime()
+      if (selection.kind === "claude") return selection.runtime.slashCommandList(request)
       return {
         ok: true,
         commands: khalaCodeDesktopSlashCommandsWithAvailability({
@@ -2403,7 +2413,10 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
     },
     async tokenAccountingStatus() {
       const status = khalaCodeDesktopTokenUsageTelemetryStatus(input.env)
-      const flags = await readKhalaCodeDesktopTokenUsageInboxFlags({ env: input.env })
+      const flags = [
+        ...await readKhalaCodeDesktopTokenUsageInboxFlags({ env: input.env }),
+        ...await readKhalaCodeDesktopClaudeTokenUsageInboxFlags({ env: input.env }),
+      ]
       if (flags.length > 0) {
         return runtimeStatus({
           available: false,

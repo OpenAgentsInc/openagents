@@ -1,4 +1,4 @@
-import { Data, Effect, Stream } from "effect"
+import { Cause, Data, Effect, Exit, Stream } from "effect"
 
 import type {
   KhalaCodeDesktopChatTurnEvent,
@@ -18,7 +18,12 @@ import type {
   KhalaCodeDesktopCodexTurnActionResult,
   KhalaCodeDesktopCodexTurnInterruptRequest,
   KhalaCodeDesktopCodexTurnSteerRequest,
+  KhalaCodeDesktopSlashCommandDispatchRequest,
+  KhalaCodeDesktopSlashCommandDispatchResult,
+  KhalaCodeDesktopSlashCommandListRequest,
+  KhalaCodeDesktopSlashCommandListResponse,
 } from "../shared/rpc.js"
+import type { KhalaCodeDesktopSlashCommandWithAvailability } from "../shared/codex-slash-commands.js"
 import type { CodexAppServerChatRuntime } from "./codex-app-server-chat-runtime.js"
 import {
   createClaudeSessionStore,
@@ -33,6 +38,7 @@ import {
   createKhalaCodeDesktopClaudeTokenUsageReporter,
   type KhalaCodeDesktopClaudeTokenUsageReporter,
 } from "./claude-token-usage-telemetry.js"
+import { KhalaCodeDesktopTokenUsagePersistentFailure } from "./codex-token-usage-telemetry.js"
 import { withClaudeFleetMcpBridgeOptions } from "./claude-fleet-mcp-bridge.js"
 import {
   projectKhalaCodeDesktopClaudeSettings,
@@ -42,8 +48,11 @@ import {
 type ClaudeQuery = AsyncIterable<unknown> & {
   readonly accountInfo?: () => Promise<unknown>
   readonly close?: () => Promise<void> | void
+  readonly getSessionMessages?: (sessionId: string) => Promise<unknown>
   readonly initializationResult?: () => Promise<unknown>
   readonly interrupt?: () => Promise<void> | void
+  readonly listSessions?: () => Promise<unknown>
+  readonly supportedCommands?: () => Promise<unknown>
   readonly supportedModels?: () => Promise<unknown>
 }
 
@@ -54,7 +63,10 @@ type ClaudeQueryFn = (input: {
 
 type ClaudeSdkModule = {
   readonly accountInfo?: () => Promise<unknown>
+  readonly getSessionMessages?: (sessionId: string) => Promise<unknown>
+  readonly listSessions?: () => Promise<unknown>
   readonly query: ClaudeQueryFn
+  readonly supportedCommands?: () => Promise<unknown>
   readonly supportedModels?: () => Promise<unknown>
 }
 
@@ -83,16 +95,18 @@ export type CreateClaudeAppSdkChatRuntimeOptions = {
 
 export type ClaudeAppSdkChatRuntime = CodexAppServerChatRuntime & {
   readonly claudeSettingsRead: () => Promise<KhalaCodeDesktopClaudeSettingsProjection>
+  readonly slashCommandDispatch: (
+    request: KhalaCodeDesktopSlashCommandDispatchRequest,
+  ) => Promise<KhalaCodeDesktopSlashCommandDispatchResult>
+  readonly slashCommandList: (
+    request?: KhalaCodeDesktopSlashCommandListRequest,
+  ) => Promise<KhalaCodeDesktopSlashCommandListResponse>
 }
 
 type ActiveClaudeTurn = {
   readonly controller: AbortController
   readonly query: ClaudeQuery
   readonly sessionId: string
-}
-
-const unsupported = async (): Promise<never> => {
-  throw new Error("Claude app SDK chat runtime does not support this thread operation until a later parity phase.")
 }
 
 const textFromRequest = (request: KhalaCodeDesktopChatTurnRequest): string =>
@@ -106,6 +120,23 @@ const sdkSessionId = (value: unknown): string | null => {
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value)
+
+const stringField = (value: unknown, field: string): string | null => {
+  if (!isRecord(value)) return null
+  const candidate = value[field]
+  return typeof candidate === "string" && candidate.length > 0 ? candidate : null
+}
+
+const stringArrayField = (value: unknown, field: string): readonly string[] =>
+  isRecord(value) && Array.isArray(value[field])
+    ? value[field].filter((item): item is string => typeof item === "string" && item.length > 0)
+    : []
+
+const numberFieldOrNull = (value: unknown, field: string): number | null => {
+  if (!isRecord(value)) return null
+  const candidate = value[field]
+  return typeof candidate === "number" && Number.isFinite(candidate) ? candidate : null
+}
 
 const numberField = (value: Record<string, unknown>, field: string): number | undefined => {
   const candidate = value[field]
@@ -138,6 +169,83 @@ const loadQuery = async (
   return mod.query
 }
 
+const loadSdkModule = async (
+  options: CreateClaudeAppSdkChatRuntimeOptions,
+): Promise<Partial<ClaudeSdkModule>> => {
+  const importer = options.importer ?? ((specifier: string) => import(specifier))
+  return await importer("@anthropic-ai/claude-agent-sdk") as Partial<ClaudeSdkModule>
+}
+
+const firstArray = (value: unknown): readonly unknown[] => {
+  if (Array.isArray(value)) return value
+  if (!isRecord(value)) return []
+  for (const field of ["sessions", "data", "items", "messages", "commands", "slash_commands", "slashCommands"]) {
+    const candidate = value[field]
+    if (Array.isArray(candidate)) return candidate
+  }
+  return []
+}
+
+const commandNameFrom = (value: unknown): string | null =>
+  stringField(value, "name") ??
+  stringField(value, "command")?.replace(/^\/+/u, "") ??
+  stringField(value, "id")?.replace(/^\/+/u, "") ??
+  null
+
+const commandDescriptionFrom = (value: unknown, name: string): string =>
+  stringField(value, "description") ??
+  stringField(value, "summary") ??
+  `Claude /${name}`
+
+const claudeSlashCommandFrom = (
+  value: unknown,
+): KhalaCodeDesktopSlashCommandWithAvailability | null => {
+  const name = commandNameFrom(value)
+  if (name === null) return null
+  return {
+    aliases: stringArrayField(value, "aliases").map(alias => alias.replace(/^\/+/u, "")),
+    availability: { available: true },
+    availableDuringTask: true,
+    availableInSideConversation: true,
+    command: name,
+    debug: false,
+    description: commandDescriptionFrom(value, name),
+    dispatch: { action: "claude_prompt_slash", kind: "client" },
+    enumName: `Claude${name.slice(0, 1).toUpperCase()}${name.slice(1).replace(/[^A-Za-z0-9]+/g, "")}`,
+    group: "session",
+    supportsInlineArgs: true,
+    visibility: { kind: "always" },
+  }
+}
+
+const sessionTitleFrom = (value: unknown, fallback: string): string =>
+  stringField(value, "title") ??
+  stringField(value, "summary") ??
+  stringField(value, "name") ??
+  fallback
+
+const sessionIdFrom = (value: unknown): string | null =>
+  stringField(value, "session_id") ?? stringField(value, "sessionId") ?? stringField(value, "id")
+
+const messageBodyFrom = (value: unknown): string => {
+  if (!isRecord(value)) return ""
+  const message = isRecord(value.message) ? value.message : value
+  const content = message.content
+  if (typeof content === "string") return content
+  if (!Array.isArray(content)) return stringField(message, "text") ?? ""
+  return content.flatMap(item => {
+    if (typeof item === "string") return [item]
+    const text = stringField(item, "text")
+    return text === null ? [] : [text]
+  }).join("\n")
+}
+
+const messageRoleFrom = (value: unknown): "user" | "assistant" | "system" | "tool" => {
+  const raw = stringField(isRecord(value) && isRecord(value.message) ? value.message : value, "role") ??
+    stringField(value, "type")
+  return raw === "user" || raw === "assistant" || raw === "tool" ? raw : "system"
+}
+
 const runScoped = async <A>(effect: Effect.Effect<A, unknown, never>): Promise<A> =>
   Effect.runPromise(effect)
 
@@ -155,7 +263,47 @@ export function createClaudeAppSdkChatRuntime(
   const activeTurns = new Map<string, ActiveClaudeTurn>()
   let lastAccountInfo: unknown
   let lastInitializationResult: unknown
+  let lastSlashCommands: readonly unknown[] = []
   let lastSupportedModels: unknown
+  let tokenUsageFailureFlags: readonly {
+    readonly eventId: string
+    readonly idempotencyKey: string
+    readonly inboxFlagRef: string
+    readonly reason: string
+  }[] = []
+
+  const mergeSlashCommands = (commands: readonly unknown[]): void => {
+    if (commands.length === 0) return
+    const byName = new Map<string, unknown>()
+    for (const command of lastSlashCommands) {
+      const name = commandNameFrom(command)
+      if (name !== null) byName.set(name, command)
+    }
+    for (const command of commands) {
+      const name = commandNameFrom(command)
+      if (name !== null) byName.set(name, command)
+    }
+    lastSlashCommands = [...byName.values()]
+  }
+
+  const refreshSlashCommands = async (handle?: ClaudeQuery): Promise<void> => {
+    const fromHandle = await handle?.supportedCommands?.()
+      .catch(error => ({ error: error instanceof Error ? error.message : String(error) }))
+    if (fromHandle !== undefined) {
+      mergeSlashCommands(firstArray(fromHandle))
+      return
+    }
+    const mod = await loadSdkModule(options)
+    const fromModule = await mod.supportedCommands?.()
+      .catch(error => ({ error: error instanceof Error ? error.message : String(error) }))
+    if (fromModule !== undefined) mergeSlashCommands(firstArray(fromModule))
+  }
+
+  const mergeInitSlashCommands = (value: unknown): void => {
+    if (!isRecord(value)) return
+    const slashCommands = firstArray(value.slash_commands ?? value.slashCommands)
+    mergeSlashCommands(slashCommands)
+  }
 
   const startThread = async (
     request: KhalaCodeDesktopCodexThreadStartRequest = {},
@@ -251,8 +399,10 @@ export function createClaudeAppSdkChatRuntime(
               handle.accountInfo?.().catch(error => ({ error: error instanceof Error ? error.message : String(error) })),
             ])
             if (initializationResult !== undefined) lastInitializationResult = initializationResult
+            if (initializationResult !== undefined) mergeInitSlashCommands(initializationResult)
             if (supportedModels !== undefined) lastSupportedModels = supportedModels
             if (accountInfo !== undefined) lastAccountInfo = accountInfo
+            await refreshSlashCommands(handle)
           })),
         ),
         handle => Effect.promise(async () => {
@@ -273,6 +423,10 @@ export function createClaudeAppSdkChatRuntime(
                 if (isRecord(message) && message.type === "result") resultMessage = message
                 if (isRecord(message) && message.type === "system" && message.subtype === "init") {
                   lastInitializationResult = message
+                  mergeInitSlashCommands(message)
+                }
+                if (isRecord(message) && message.type === "commands_changed") {
+                  void refreshSlashCommands(handle)
                 }
                 const projected = projector.project(message)
                 for (const event of projected.events) options.onEvent?.(event)
@@ -291,7 +445,7 @@ export function createClaudeAppSdkChatRuntime(
     const usage = projector.usage()
     if (usage !== undefined) {
       const totalCostUsd = resultTotalCostUsd(resultMessage)
-      await Effect.runPromise(tokenUsageReporter({
+      const tokenExit = await Effect.runPromiseExit(tokenUsageReporter({
         claudeSessionId: finalThreadId,
         desktopSessionId: request.sessionId,
         desktopTurnId,
@@ -301,7 +455,20 @@ export function createClaudeAppSdkChatRuntime(
         ...(totalCostUsd === undefined ? {} : { totalCostUsd }),
         turnStatus: projector.status(),
         usage,
-      }).pipe(Effect.catchCause(() => Effect.void)))
+      }))
+      const failure = Exit.isFailure(tokenExit)
+        ? tokenExit.cause.reasons.find(Cause.isFailReason)?.error
+        : undefined
+      if (failure instanceof KhalaCodeDesktopTokenUsagePersistentFailure) {
+        tokenUsageFailureFlags = [{
+          eventId: failure.eventId ?? "",
+          idempotencyKey: failure.idempotencyKey ?? "",
+          inboxFlagRef: failure.inboxFlagRef,
+          reason: failure.reason,
+        }]
+      } else {
+        tokenUsageFailureFlags = []
+      }
     }
     const messages = projector.messages()
     return {
@@ -376,10 +543,125 @@ export function createClaudeAppSdkChatRuntime(
   const claudeSettingsRead = async (): Promise<KhalaCodeDesktopClaudeSettingsProjection> =>
     projectKhalaCodeDesktopClaudeSettings({
       accountInfo: lastAccountInfo,
+      errors: tokenUsageFailureFlags.map(flag => `token_usage_reporting:${flag.inboxFlagRef}:${flag.reason}`),
       initializationResult: lastInitializationResult,
       permissionMode: options.env?.KHALA_CODE_DESKTOP_CLAUDE_PERMISSION_MODE ?? "acceptEdits",
       supportedModels: lastSupportedModels,
     })
+
+  const listThreads = async (
+    request: KhalaCodeDesktopCodexThreadListRequest = {},
+  ): Promise<KhalaCodeDesktopCodexThreadListResult> => {
+    const mod = await loadSdkModule(options)
+    if (typeof mod.listSessions !== "function") {
+      throw new Error("Claude Agent SDK did not expose listSessions().")
+    }
+    const raw = await mod.listSessions()
+    const searchTerm = request.searchTerm?.trim().toLowerCase()
+    const sessions = firstArray(raw)
+    const threads = sessions.flatMap((session, index) => {
+      const id = sessionIdFrom(session)
+      if (id === null) return []
+      const title = sessionTitleFrom(session, `Claude session ${index + 1}`)
+      const preview = stringField(session, "preview") ?? stringField(session, "last_message") ?? ""
+      if (searchTerm !== undefined && searchTerm.length > 0) {
+        const haystack = `${title}\n${preview}\n${id}`.toLowerCase()
+        if (!haystack.includes(searchTerm)) return []
+      }
+      const createdAt = numberFieldOrNull(session, "created_at") ?? numberFieldOrNull(session, "createdAt")
+      const updatedAt = numberFieldOrNull(session, "updated_at") ?? numberFieldOrNull(session, "updatedAt")
+      return [{
+        badges: ["Claude"],
+        createdAt,
+        cwd: stringField(session, "cwd"),
+        forkedFromId: null,
+        id,
+        modelProvider: "claude",
+        parentThreadId: null,
+        preview,
+        projectLabel: stringField(session, "project") ?? "Claude",
+        recencyAt: updatedAt ?? createdAt,
+        sessionId: id,
+        source: "claude_agent_sdk",
+        status: stringField(session, "status") ?? "ready",
+        statusLabel: stringField(session, "statusLabel") ?? "Claude session",
+        title,
+        updatedAt,
+      }]
+    }).slice(0, request.limit ?? undefined)
+    return {
+      ok: true,
+      data: sessions,
+      groups: [{ key: "claude", label: "Claude", threadIds: threads.map(thread => thread.id) }],
+      threads,
+    }
+  }
+
+  const readThread = async (
+    request: KhalaCodeDesktopCodexThreadReadRequest,
+  ): Promise<KhalaCodeDesktopCodexThreadResult> => {
+    const mod = await loadSdkModule(options)
+    if (typeof mod.getSessionMessages !== "function") {
+      throw new Error("Claude Agent SDK did not expose getSessionMessages().")
+    }
+    const raw = await mod.getSessionMessages(request.threadId)
+    const rawMessages = firstArray(raw)
+    const messages = request.includeTurns === false
+      ? []
+      : rawMessages.flatMap((message, index) => {
+        const body = messageBodyFrom(message)
+        if (body.length === 0) return []
+        return [{
+          body,
+          id: stringField(message, "uuid") ?? stringField(message, "id") ?? `${request.threadId}-message-${index}`,
+          role: messageRoleFrom(message),
+        }]
+      })
+    return {
+      ok: true,
+      messages,
+      modelProvider: "claude",
+      thread: raw,
+      threadId: request.threadId,
+    }
+  }
+
+  const slashCommandList = async (
+    _request: KhalaCodeDesktopSlashCommandListRequest = {},
+  ): Promise<KhalaCodeDesktopSlashCommandListResponse> => {
+    await refreshSlashCommands()
+    return {
+      ok: true,
+      commands: lastSlashCommands.flatMap(command => {
+        const projected = claudeSlashCommandFrom(command)
+        return projected === null ? [] : [projected]
+      }),
+    }
+  }
+
+  const slashCommandDispatch = async (
+    request: KhalaCodeDesktopSlashCommandDispatchRequest,
+  ): Promise<KhalaCodeDesktopSlashCommandDispatchResult> => {
+    const raw = request.raw.trim()
+    const slash = raw.startsWith("/") ? raw : `/${raw}`
+    const space = slash.indexOf(" ")
+    const command = (space === -1 ? slash.slice(1) : slash.slice(1, space)).trim()
+    const args = space === -1 ? "" : slash.slice(space + 1).trim()
+    await startTurn({
+      ...(request.cwd === undefined ? {} : { cwd: request.cwd }),
+      messages: [{ body: `/${command}${args.length === 0 ? "" : ` ${args}`}`, id: `claude-slash-${command}`, role: "user" }],
+      sessionId: request.sessionId,
+      ...(request.threadId === undefined ? {} : { threadId: request.threadId }),
+    })
+    return {
+      action: "claude_prompt_slash",
+      command,
+      message: `Dispatched Claude /${command}.`,
+      ok: true,
+      status: "dispatched",
+      ...(request.threadId === undefined ? {} : { threadId: request.threadId }),
+    }
+  }
 
   return {
     archiveThread: request => mutationUnsupported("archive", request),
@@ -387,8 +669,8 @@ export function createClaudeAppSdkChatRuntime(
     deleteThread: request => mutationUnsupported("delete", request),
     forkThread: async (request: KhalaCodeDesktopCodexThreadForkRequest) => mutationUnsupported("fork", request),
     interruptTurn,
-    listThreads: async (_request?: KhalaCodeDesktopCodexThreadListRequest): Promise<KhalaCodeDesktopCodexThreadListResult> => unsupported(),
-    readThread: async (_request: KhalaCodeDesktopCodexThreadReadRequest) => unsupported(),
+    listThreads,
+    readThread,
     renameThread: async (request: KhalaCodeDesktopCodexThreadRenameRequest) => mutationUnsupported("rename", request),
     resumeThread,
     startThread,
@@ -396,6 +678,8 @@ export function createClaudeAppSdkChatRuntime(
     steerTurn: actionUnsupported,
     threadIdForSession,
     claudeSettingsRead,
+    slashCommandDispatch,
+    slashCommandList,
     unarchiveThread: request => mutationUnsupported("unarchive", request),
   }
 }

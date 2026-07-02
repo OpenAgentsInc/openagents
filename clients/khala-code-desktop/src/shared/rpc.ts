@@ -8,7 +8,6 @@ import type { OnDeviceDeciderSelection } from "./on-device-decider.js"
 import type {
   KhalaCodeQaMetricsSnapshot,
 } from "./qa-metrics.js"
-import type { KhalaCodeDesktopClaudeSettingsProjection } from "./claude-settings.js"
 
 // Electrobun treats Infinity as no local request timeout; chat turns stream progress
 // over events while hosted model calls and local tools can legitimately exceed 30s.
@@ -763,7 +762,37 @@ const RpcClaudeApprovalRespondResult = S.Struct({
   decision: RpcClaudeApprovalDecision,
   error: S.optional(S.String),
 })
-const RpcClaudeSettingsProjection = S.Unknown as S.Schema<KhalaCodeDesktopClaudeSettingsProjection>
+const RpcClaudeSettingsModel = S.Struct({
+  description: RpcStringNull,
+  displayName: S.String,
+  selected: S.Boolean,
+  supportsAdaptiveThinking: S.NullOr(S.Boolean),
+  supportsEffort: S.NullOr(S.Boolean),
+  supportedEffortLevels: RpcStringArray,
+  value: S.String,
+})
+const RpcClaudeSettingsProjection = S.Struct({
+  ok: S.Boolean,
+  observedAt: S.String,
+  errors: RpcStringArray,
+  account: S.Struct({
+    apiProvider: RpcStringNull,
+    apiKeySource: RpcStringNull,
+    email: RpcStringNull,
+    organization: RpcStringNull,
+    subscriptionType: RpcStringNull,
+    tokenSource: RpcStringNull,
+  }),
+  init: S.Struct({
+    permissionMode: RpcStringNull,
+    model: RpcStringNull,
+    system: S.Unknown,
+  }),
+  models: S.Struct({
+    options: S.Array(RpcClaudeSettingsModel),
+    selected: S.NullOr(RpcClaudeSettingsModel),
+  }),
+})
 
 const RpcCodexSettingsReadRequest = S.Struct({
   cwd: S.optional(S.String),
