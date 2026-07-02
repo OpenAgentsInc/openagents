@@ -59,7 +59,23 @@ A promise is **assaultable** when ALL of:
    promise whose blockers are ONLY owner-gated is not assaultable — write
    its `NEEDS_OWNER.md` entry (if missing) and skip it.
 3. Not currently claimed (§4).
-4. Not explicitly postponed or descoped by an owner decision recorded in
+4. **Not already mapped by other work.** Search GitHub for open issues,
+   epics, and PRs referencing the promiseId, its blockerRefs, or its
+   obvious surface (`gh issue list --state open --search "<promiseId>"`,
+   plus the blocker slugs), and check whether a ROADMAP task or active
+   fleet lane already covers it (the roadmap pairings in the
+   launch-alignment doc §5 name several). If the work is mapped, it is
+   OWNED — steer clear; do not PROMISSORY-claim it, do not duplicate it,
+   and do not "help" inside someone else's lane. PROMISSORY exists to hunt
+   the **hidden and overlooked** promises: the neglected tail nobody has
+   filed anything against. (Exception: the mapping issue is stale — open
+   \>14 days with no linked commits/PR and no active claim — in which case
+   comment on it first, wait 6h, then claim per §4 with the takeover
+   noted.) This whole filter is defeasible by explicit owner direction:
+   if the owner points PROMISSORY at a specific promise or set, that
+   direction wins over the already-mapped exclusion — note the override
+   in the claim issue.
+5. Not explicitly postponed or descoped by an owner decision recorded in
    the registry notes/caveats (e.g. "out of scope by owner decision" —
    search the record and notes for postpone language before claiming).
 
@@ -68,7 +84,7 @@ A promise is **assaultable** when ALL of:
 Score every assaultable promise; claim the highest score you can win.
 
 ```text
-score = 3·throughline + proximity + clearability + leverage + freshness − scope
+score = 3·throughline + proximity + clearability + leverage + freshness + neglect − scope
 ```
 
 - **throughline (0–3, weight ×3).** Alignment with the current campaign.
@@ -97,6 +113,11 @@ score = 3·throughline + proximity + clearability + leverage + freshness − sco
   in ROADMAP pairings); 0 if a leaf.
 - **freshness (0–1).** 1 if the record's evidence/copy is visibly stale
   against `main` (cheap wins that also protect greens).
+- **neglect (0–1).** 1 if nothing anywhere references this promise — no
+  issues ever filed, no roadmap task, no recent registry note, no active
+  lane. The overlooked record that everyone scrolled past is exactly the
+  PROMISSORY specialty; mapped-and-active work is excluded upstream by
+  the §2.4 filter, so this bonus rewards the truly forgotten.
 - **scope (0–3, subtract).** Honest size estimate: 0 = a day of one agent;
   3 = multi-week/multi-seam. Prefer many completed medium assaults over
   one heroic stall. If your top pick scores high only because of
