@@ -70,10 +70,6 @@ async function tempWorkspace(): Promise<string> {
   return dir
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms))
-}
-
 function jsonResponse(body: unknown, init?: ResponseInit): Response {
   return new Response(JSON.stringify(body), {
     ...init,
@@ -683,7 +679,6 @@ describe("Khala Code desktop chat runtime", () => {
               schema: "openagents.khala_code.codex_spawn_progress.v0.1",
               toolName: "codex_spawn",
             })
-            yield* Effect.promise(() => sleep(230))
             yield* context.emitProgress({
               events: [
                 { event: "assignment_run.runtime_started", phase: "runtime_starting" },
@@ -698,7 +693,6 @@ describe("Khala Code desktop chat runtime", () => {
               schema: "openagents.khala_code.codex_spawn_progress.v0.1",
               toolName: "codex_spawn",
             })
-            yield* Effect.promise(() => sleep(230))
             return khalaToolOk({
               modelText: "Codex spawn: accepted 1/1\n- slot 0: accepted",
               publicSummary: "Codex spawn accepted 1/1 request(s).",
@@ -729,6 +723,13 @@ describe("Khala Code desktop chat runtime", () => {
     const result = await runKhalaCodeDesktopChatTurn({
       env: { OPENAGENTS_AGENT_TOKEN: "agent-token" },
       fetchFn,
+      liveProgressClock: {
+        setTimeout: callback => {
+          callback()
+          return { unref() {} } as ReturnType<typeof setTimeout>
+        },
+        clearTimeout: () => undefined,
+      },
       onEvent: event => events.push(event),
       registry,
       request: {

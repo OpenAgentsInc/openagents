@@ -11,6 +11,7 @@ export type KhalaQaStartViteServerOptions = Readonly<{
 export type KhalaQaWaitForHttpOptions = Readonly<{
   fetch?: typeof fetch
   intervalMs?: number
+  now?: () => number
   sleep?: (ms: number) => Promise<void>
   timeoutMs?: number
 }>
@@ -76,10 +77,11 @@ export const waitForKhalaQaHttp = async (
 ): Promise<void> => {
   const fetchLike = options.fetch ?? fetch
   const intervalMs = options.intervalMs ?? 250
+  const now = options.now ?? Date.now
   const sleep = options.sleep ?? Bun.sleep
-  const deadline = Date.now() + (options.timeoutMs ?? 30_000)
+  const deadline = now() + (options.timeoutMs ?? 30_000)
   let lastError: unknown = null
-  while (Date.now() < deadline) {
+  while (now() < deadline) {
     try {
       const response = await fetchLike(url)
       if (response.ok) return

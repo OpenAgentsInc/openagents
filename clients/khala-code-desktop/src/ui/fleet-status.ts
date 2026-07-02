@@ -74,6 +74,10 @@ export type FleetPanelOptions = Readonly<{
   openExternal: (url: string) => Promise<boolean>
   lifecycleNdjson?: () => AsyncIterable<string | Uint8Array>
   lifecycleUpdateThrottleMs?: number
+  lifecycleUpdateClock?: {
+    readonly setTimeout?: (callback: () => void, ms: number) => number
+    readonly clearTimeout?: (handle: number) => void
+  }
   now?: () => Date
 }>
 
@@ -1645,6 +1649,12 @@ export const mountFleetPanel = (
       lifecycleFrames = update.frames
       paint()
     },
+    ...(options.lifecycleUpdateClock?.setTimeout === undefined
+      ? {}
+      : { setTimeout: options.lifecycleUpdateClock.setTimeout }),
+    ...(options.lifecycleUpdateClock?.clearTimeout === undefined
+      ? {}
+      : { clearTimeout: options.lifecycleUpdateClock.clearTimeout }),
   })
 
   const startLifecycleStream = (): void => {

@@ -585,13 +585,17 @@ describe("Khala Code QA RPC driver and runner", () => {
 describe("desktop smoke helper extraction", () => {
   test("waitForKhalaQaHttp uses injectable fetch and sleep", async () => {
     let calls = 0
+    let now = 0
     await waitForKhalaQaHttp("http://fixture.local", {
       fetch: (() => {
         calls += 1
         return Promise.resolve(new Response("ok", { status: calls === 1 ? 503 : 200 }))
       }) as unknown as typeof fetch,
       intervalMs: 1,
-      sleep: () => Promise.resolve(),
+      now: () => now,
+      sleep: async ms => {
+        now += ms
+      },
       timeoutMs: 100,
     })
 

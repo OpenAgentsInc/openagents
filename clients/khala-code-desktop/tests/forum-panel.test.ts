@@ -26,9 +26,8 @@ const installDom = (): HTMLElement => {
 }
 
 const flushForumPanel = async (): Promise<void> => {
-  for (let index = 0; index < 4; index += 1) {
+  for (let index = 0; index < 50; index += 1) {
     await Promise.resolve()
-    await new Promise(resolve => setTimeout(resolve, 0))
   }
 }
 

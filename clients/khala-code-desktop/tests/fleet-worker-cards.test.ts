@@ -194,6 +194,7 @@ describe("Khala Fleet worker cards", () => {
 
     const requests: KhalaCodeDesktopFleetWorkerControlRequest[] = []
     const container = document.createElement("div")
+    const lifecycleUpdateCallbacks: Array<() => void> = []
     const lifecycleNdjson = async function* (): AsyncIterable<string> {
       yield `${assignmentEvent({
         elapsedMs: 3_000,
@@ -232,6 +233,13 @@ describe("Khala Fleet worker cards", () => {
         }
       },
       lifecycleNdjson,
+      lifecycleUpdateClock: {
+        setTimeout: callback => {
+          lifecycleUpdateCallbacks.push(callback)
+          return lifecycleUpdateCallbacks.length
+        },
+        clearTimeout: () => undefined,
+      },
       lifecycleUpdateThrottleMs: 0,
       loadGymDemoProof: async () => {
         throw new Error("not used")
@@ -247,10 +255,11 @@ describe("Khala Fleet worker cards", () => {
 
     try {
       panel.setVisible(true)
-      for (let index = 0; index < 20; index += 1) {
-        if (container.querySelector<HTMLElement>(".khala-fleet-worker-lifecycle")?.textContent?.includes("assignment_run.runtime_progress")) break
-        await new Promise(resolve => setTimeout(resolve, 10))
+      for (let index = 0; index < 50 && lifecycleUpdateCallbacks.length === 0; index += 1) {
+        await Promise.resolve()
       }
+      lifecycleUpdateCallbacks.splice(0).forEach(callback => callback())
+      await Promise.resolve()
       expect(container.innerHTML).toContain("khala-fleet-worker-card")
       const cardHtml = container.querySelector<HTMLElement>(".khala-fleet-worker-card")?.innerHTML ?? ""
       expect(cardHtml).not.toContain("assignment.public.worker-card")

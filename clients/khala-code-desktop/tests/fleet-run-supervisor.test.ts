@@ -612,6 +612,11 @@ describe("FleetRunSupervisor", () => {
     let tickCount = 0
     let scopeClosed = false
     const scope = Effect.runSync(Scope.make())
+    const sleepResolvers: Array<() => void> = []
+    let firstTickResolve: (() => void) | null = null
+    const firstTick = new Promise<void>(resolve => {
+      firstTickResolve = resolve
+    })
 
     const handle = await Effect.runPromise(Effect.provideService(
       startFleetRunSupervisor({
@@ -624,29 +629,26 @@ describe("FleetRunSupervisor", () => {
         tickIntervalMs: 1,
         clock: {
           now: () => fixedNow,
-          sleep: () => Promise.resolve(),
+          sleep: () => new Promise<void>(resolve => {
+            sleepResolvers.push(resolve)
+          }),
         },
         onLifecycle: event => {
-          if (event.kind === "tick" && !scopeClosed) tickCount += 1
+          if (event.kind !== "tick" || scopeClosed) return
+          tickCount += 1
+          firstTickResolve?.()
         },
       }),
       Scope.Scope,
       scope,
     ))
 
-    await new Promise<void>((resolve, reject) => {
-      const started = Date.now()
-      const poll = () => {
-        if (tickCount > 0) return resolve()
-        if (Date.now() - started > 1000) return reject(new Error("supervisor did not tick"))
-        setTimeout(poll, 1)
-      }
-      poll()
-    })
+    await firstTick
     await Effect.runPromise(Scope.close(scope, Exit.void))
     scopeClosed = true
     const ticksAtClose = tickCount
-    await new Promise(resolve => setTimeout(resolve, 5))
+    for (const resolve of sleepResolvers.splice(0)) resolve()
+    await Promise.resolve()
 
     expect(ticksAtClose).toBeGreaterThan(0)
     expect(tickCount).toBe(ticksAtClose)

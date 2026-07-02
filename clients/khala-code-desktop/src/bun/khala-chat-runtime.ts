@@ -125,6 +125,13 @@ type ChatTransport = {
 
 type ChatTurnEmitter = (event: KhalaCodeDesktopChatTurnEvent) => void
 
+type KhalaChatTimerHandle = number | ReturnType<typeof setTimeout>
+
+type KhalaChatTimerClock = {
+  readonly setTimeout: (callback: () => void, ms: number) => KhalaChatTimerHandle
+  readonly clearTimeout: (handle: KhalaChatTimerHandle) => void
+}
+
 type ContextCompactionPolicy = {
   readonly keepTailCount: number
   readonly maxTokens: number
@@ -143,6 +150,7 @@ type LocalGroundingCorrection = {
 export type RunKhalaCodeDesktopChatTurnInput = {
   readonly env: ChatEnv
   readonly fetchFn?: typeof fetch
+  readonly liveProgressClock?: Partial<KhalaChatTimerClock>
   readonly request: KhalaCodeDesktopChatTurnRequest
   readonly onEvent?: (event: KhalaCodeDesktopChatTurnEvent) => void
   readonly redaction?: KhalaPrivacyRedactionServiceShape
@@ -274,6 +282,11 @@ export async function runKhalaCodeDesktopChatTurn(
     input.onEvent?.(event)
   }
   const liveToolProgress = new Map<string, LiveToolProgressCard>()
+  const liveProgressClock = {
+    clearTimeout,
+    setTimeout,
+    ...input.liveProgressClock,
+  }
   const toolDispatcher = makeKhalaToolDispatcher({
     hooks: {
       onEvent: context => Effect.sync(() => {
@@ -453,6 +466,7 @@ export async function runKhalaCodeDesktopChatTurn(
       const toolTranscript = hostMessage("tool", toolTranscriptRunningBody(call.function.name))
       emit({ message: toolTranscript, turnId, type: "message_start" })
       const progressCard = createLiveToolProgressCard({
+        clock: liveProgressClock,
         emit,
         toolName: call.function.name,
         toolTranscript,
@@ -1425,13 +1439,15 @@ function turnScopedToolEventId(turnId: string, event: KhalaToolEvent): string {
 }
 
 function createLiveToolProgressCard(input: {
+  readonly clock?: KhalaChatTimerClock
   readonly emit: ChatTurnEmitter
   readonly toolName: string
   readonly toolTranscript: KhalaCodeDesktopMessage
   readonly turnId: string
 }): LiveToolProgressCard {
   let pendingBody: string | null = null
-  let timer: ReturnType<typeof setTimeout> | null = null
+  let timer: KhalaChatTimerHandle | null = null
+  const clock = input.clock ?? { clearTimeout, setTimeout }
   const emitReplace = () => {
     if (pendingBody === null) return
     const body = pendingBody
@@ -1447,7 +1463,7 @@ function createLiveToolProgressCard(input: {
   }
   const flush = () => {
     if (timer !== null) {
-      clearTimeout(timer)
+      clock.clearTimeout(timer)
       timer = null
     }
     emitReplace()
@@ -1458,14 +1474,14 @@ function createLiveToolProgressCard(input: {
       if (body === null) return
       pendingBody = body
       if (timer !== null) return
-      timer = setTimeout(() => {
+      timer = clock.setTimeout(() => {
         timer = null
         emitReplace()
       }, 200)
-      timer.unref?.()
+      if (typeof timer === "object") timer.unref?.()
     },
     dispose: () => {
-      if (timer !== null) clearTimeout(timer)
+      if (timer !== null) clock.clearTimeout(timer)
       timer = null
       pendingBody = null
     },

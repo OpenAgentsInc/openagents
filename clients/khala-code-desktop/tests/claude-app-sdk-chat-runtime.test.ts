@@ -322,7 +322,7 @@ describe("Claude Agent SDK chat runtime", () => {
       turnId: "turn-interrupt",
     })
     await started
-    await new Promise(resolve => setTimeout(resolve, 0))
+    await Promise.resolve()
     const interruptedResult = await runtime.interruptTurn({
       sessionId: "desktop-session-interrupt",
       turnId: "turn-interrupt",
@@ -369,7 +369,7 @@ describe("Claude Agent SDK chat runtime", () => {
       turnId: "turn-no-interrupt",
     })
     await started
-    await new Promise(resolve => setTimeout(resolve, 0))
+    await Promise.resolve()
     const interruptedResult = await runtime.interruptTurn({
       sessionId: "desktop-session-no-interrupt",
       turnId: "turn-no-interrupt",
@@ -402,6 +402,10 @@ describe("Claude Agent SDK chat runtime", () => {
     const approvalService = createClaudeApprovalService()
     const statePath = await tempPath("claude-approval-state.json")
     let decision: unknown
+    let approvalRequested!: () => void
+    const approvalReady = new Promise<void>(resolve => {
+      approvalRequested = resolve
+    })
     const runtime = createClaudeAppSdkChatRuntime({
       approvalService,
       query: input => ({
@@ -411,11 +415,13 @@ describe("Claude Agent SDK chat runtime", () => {
             toolInput: Record<string, unknown>,
             options: Record<string, unknown>,
           ) => Promise<unknown>
-          decision = await canUseTool("Bash", { command: "pwd" }, {
+          const decisionPromise = canUseTool("Bash", { command: "pwd" }, {
             signal: new AbortController().signal,
             suggestions: [{ toolName: "Bash", rule: "allow" }],
             title: "Claude wants to run pwd",
           })
+          approvalRequested()
+          decision = await decisionPromise
           yield { type: "result", subtype: "success", session_id: "claude-approval-session" }
         },
       }),
@@ -428,7 +434,7 @@ describe("Claude Agent SDK chat runtime", () => {
       sessionId: "desktop-approval",
       turnId: "turn-approval",
     })
-    while (approvalService.pending().length === 0) await new Promise(resolve => setTimeout(resolve, 0))
+    await approvalReady
     const pending = approvalService.pending()[0]
     expect(pending).toMatchObject({
       toolName: "Bash",
