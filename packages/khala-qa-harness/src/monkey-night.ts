@@ -3,6 +3,7 @@ import { dirname, join } from "node:path"
 import { Effect } from "effect"
 
 import {
+  createEmptyKhalaCodeQaCoverageLedger,
   makeKhalaCodeQaSeedCorpusFixtureFetch,
   makeKhalaCodeRpcQaDriver,
   mergeKhalaCodeQaMonkeyCoverage,
@@ -52,6 +53,7 @@ export const runKhalaCodeQaMonkeyNight = async (options: {
   const seedPrefix = options.seedPrefix ?? "t6.8-night"
   const steps = options.steps ?? 64
   const reports: KhalaCodeQaMonkeyRunReport[] = []
+  let threadedCoverageLedger = createEmptyKhalaCodeQaCoverageLedger()
 
   for (let index = 0; index < runs; index += 1) {
     const seed = seedFor(seedPrefix, index)
@@ -64,15 +66,17 @@ export const runKhalaCodeQaMonkeyNight = async (options: {
         }),
         options: {
           mode: "fleet_cockpit_night",
+          previousCoverageLedger: threadedCoverageLedger,
           seed,
           steps,
         },
       }),
     )
     reports.push(report)
+    threadedCoverageLedger = mergeKhalaCodeQaMonkeyCoverage(reports)
   }
 
-  const coverageLedger = mergeKhalaCodeQaMonkeyCoverage(reports)
+  const coverageLedger = threadedCoverageLedger
   const generatedAt = new Date().toISOString()
   const coverageLedgerPath = join(artifactDir, "monkey-night-coverage-ledger.json")
   const summaryPath = join(artifactDir, "monkey-night-report.json")

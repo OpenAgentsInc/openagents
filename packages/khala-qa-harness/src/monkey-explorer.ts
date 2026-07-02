@@ -1,8 +1,19 @@
 import { Effect } from "effect"
 
 import { KHALA_CODE_QA_SEED_CORPUS_MANIFEST } from "./seed-corpus.js"
-import { mergeKhalaCodeQaCoverageLedgers, type KhalaCodeQaCoverageLedger } from "./coverage-ledger.js"
+import {
+  collectKhalaCodeQaCoverageLedger,
+  createEmptyKhalaCodeQaCoverageLedger,
+  mergeKhalaCodeQaCoverageLedgers,
+  type KhalaCodeQaCoverageLedger,
+} from "./coverage-ledger.js"
 import type { KhalaCodeQaDriver } from "./driver.js"
+import {
+  khalaCodeQaFrontierFromLedger,
+  makeKhalaCodeQaDeterministicFixtureBrain,
+  type KhalaCodeQaExplorerBrain,
+  type KhalaCodeQaExplorerBrainDecision,
+} from "./explorer-brain.js"
 import {
   KhalaCodeRpcMethodNames,
   type KhalaCodeRpcMethodName,
@@ -23,6 +34,8 @@ export type KhalaCodeQaMonkeyActionLogEntry = {
   readonly index: number
   readonly prngState: number
   readonly action: KhalaCodeQaAction
+  readonly frontierRef?: string
+  readonly rationale?: string
 }
 
 export type KhalaCodeQaMonkeyRunPlan = {
@@ -39,6 +52,7 @@ export type KhalaCodeQaMonkeyRunReport = {
   readonly actionLog: readonly KhalaCodeQaMonkeyActionLogEntry[]
   readonly coverageLedger: KhalaCodeQaCoverageLedger
   readonly mode: KhalaCodeQaMonkeyMode
+  readonly scenario: KhalaCodeQaScenario
   readonly seed: string
   readonly status: "pass" | "fail"
   readonly scenarioReports: readonly KhalaCodeQaScenarioRunReport[]
@@ -46,8 +60,25 @@ export type KhalaCodeQaMonkeyRunReport = {
 
 export type KhalaCodeQaMonkeyOptions = {
   readonly mode?: KhalaCodeQaMonkeyMode
+  readonly previousCoverageLedger?: KhalaCodeQaCoverageLedger
   readonly seed: string
   readonly steps: number
+}
+
+export type KhalaCodeQaExplorerTrace = {
+  readonly schema: "khala_code_qa_explorer_trace.v1"
+  readonly actionLog: readonly KhalaCodeQaMonkeyActionLogEntry[]
+  readonly explorer: "seeded_monkey" | "llm"
+  readonly oracleExpectations: readonly KhalaCodeQaOracleExpectation[]
+  readonly runId: string
+  readonly status: "pass" | "fail"
+}
+
+export type KhalaCodeQaDistilledScenario = {
+  readonly schema: "khala_code_qa_distilled_scenario.v1"
+  readonly sourceRunId: string
+  readonly sourceStatus: KhalaCodeQaExplorerTrace["status"]
+  readonly scenario: KhalaCodeQaScenario
 }
 
 const desktopSessionId = "desktop-session-fixture"
@@ -192,6 +223,20 @@ export const khalaCodeQaMonkeyEnabledActionSpace = (
   ]
 }
 
+const ledgerForActionLog = (
+  runId: string,
+  actionLog: readonly KhalaCodeQaMonkeyActionLogEntry[],
+): KhalaCodeQaCoverageLedger =>
+  collectKhalaCodeQaCoverageLedger({
+    generatedAt: "1970-01-01T00:00:00.000Z",
+    observations: actionLog.map((entry) => ({
+      action: entry.action,
+      label: entry.action.kind,
+      ok: true,
+    })),
+    runId,
+  })
+
 const expectationsForActions = (
   actions: readonly KhalaCodeQaAction[],
   mode: KhalaCodeQaMonkeyMode,
@@ -213,7 +258,15 @@ const expectationsForActions = (
 
 export const buildKhalaCodeQaSeededMonkeyPlan = (
   options: KhalaCodeQaMonkeyOptions,
-): KhalaCodeQaMonkeyRunPlan => {
+): KhalaCodeQaMonkeyRunPlan =>
+  Effect.runSync(buildKhalaCodeQaSeededMonkeyPlanEffect({ options }))
+
+export const buildKhalaCodeQaSeededMonkeyPlanEffect = (input: {
+  readonly brain?: KhalaCodeQaExplorerBrain
+  readonly options: KhalaCodeQaMonkeyOptions
+}): Effect.Effect<KhalaCodeQaMonkeyRunPlan, never> => Effect.gen(function* () {
+  const options = input.options
+  const brain = input.brain ?? makeKhalaCodeQaDeterministicFixtureBrain()
   const mode = options.mode ?? "fixture_smoke"
   const steps = Math.max(1, Math.trunc(options.steps))
   const actionSpace = khalaCodeQaMonkeyEnabledActionSpace(mode)
@@ -226,17 +279,41 @@ export const buildKhalaCodeQaSeededMonkeyPlan = (
     ]
     : []
   let state = fnv1a32(options.seed)
+  const initialLedger = options.previousCoverageLedger ?? createEmptyKhalaCodeQaCoverageLedger()
   const actionLog: KhalaCodeQaMonkeyActionLogEntry[] = mandatoryActions.slice(0, steps).map((action, index) => ({
     action,
     index,
     prngState: state,
+    rationale: "mandatory fleet cockpit smoke surface",
   }))
   for (let index = actionLog.length; index < steps; index += 1) {
     state = nextPrngState(state)
+    const planningLedger = mergeKhalaCodeQaCoverageLedgers([
+      initialLedger,
+      ledgerForActionLog(`scenario.khala_code.monkey.plan.${mode}.${options.seed}.v1`, actionLog),
+    ])
+    const decision = yield* brain.nextAction({
+      actionLog,
+      actionSpace,
+      frontier: khalaCodeQaFrontierFromLedger(planningLedger),
+      prngState: state,
+      stepIndex: index,
+    }).pipe(
+      Effect.catch(() =>
+        Effect.succeed({
+          action: pick(actionSpace, state),
+          rationale: "brain failed; seeded fallback",
+          tier: "deterministic_fixture" as const,
+        } satisfies KhalaCodeQaExplorerBrainDecision)
+      ),
+    )
+    const typedDecision = decision as KhalaCodeQaExplorerBrainDecision
     actionLog.push({
-      action: pick(actionSpace, state),
+      action: typedDecision.action,
+      ...(typedDecision.frontierRef === undefined ? {} : { frontierRef: typedDecision.frontierRef }),
       index,
       prngState: state,
+      rationale: typedDecision.rationale,
     })
   }
   const actions = actionLog.map((entry) => entry.action)
@@ -273,7 +350,7 @@ export const buildKhalaCodeQaSeededMonkeyPlan = (
     schema: "khala_code_qa_seeded_monkey_plan.v1",
     seed: options.seed,
   }
-}
+})
 
 export const replayKhalaCodeQaSeededMonkeyPlan = (input: {
   readonly driver: KhalaCodeQaDriver
@@ -285,6 +362,7 @@ export const replayKhalaCodeQaSeededMonkeyPlan = (input: {
       actionLog: input.plan.actionLog,
       coverageLedger: report.coverageLedger,
       mode: input.plan.mode,
+      scenario: input.plan.scenario,
       scenarioReports: [report],
       schema: "khala_code_qa_seeded_monkey_report.v1",
       seed: input.plan.seed,
@@ -293,14 +371,69 @@ export const replayKhalaCodeQaSeededMonkeyPlan = (input: {
   )
 
 export const runKhalaCodeQaSeededMonkey = (input: {
+  readonly brain?: KhalaCodeQaExplorerBrain
   readonly driver: KhalaCodeQaDriver
   readonly options: KhalaCodeQaMonkeyOptions
-}): Effect.Effect<KhalaCodeQaMonkeyRunReport, never> => {
-  const plan = buildKhalaCodeQaSeededMonkeyPlan(input.options)
-  return replayKhalaCodeQaSeededMonkeyPlan({ driver: input.driver, plan })
-}
+}): Effect.Effect<KhalaCodeQaMonkeyRunReport, never> =>
+  buildKhalaCodeQaSeededMonkeyPlanEffect({
+    options: input.options,
+    ...(input.brain === undefined ? {} : { brain: input.brain }),
+  }).pipe(
+    Effect.flatMap((plan) => replayKhalaCodeQaSeededMonkeyPlan({ driver: input.driver, plan })),
+  )
 
 export const mergeKhalaCodeQaMonkeyCoverage = (
   reports: readonly KhalaCodeQaMonkeyRunReport[],
 ): KhalaCodeQaCoverageLedger =>
   mergeKhalaCodeQaCoverageLedgers(reports.map((report) => report.coverageLedger))
+
+export const khalaCodeQaExplorerTraceFromMonkeyReport = (
+  report: KhalaCodeQaMonkeyRunReport,
+): KhalaCodeQaExplorerTrace => ({
+  actionLog: report.actionLog,
+  explorer: "seeded_monkey",
+  oracleExpectations: report.scenario.phases.flatMap((phase) => phase.expect),
+  runId: `monkey.${report.mode}.${report.seed}`,
+  schema: "khala_code_qa_explorer_trace.v1",
+  status: report.status,
+})
+
+const expectationsForDistilledReport = (
+  report: KhalaCodeQaMonkeyRunReport,
+): readonly KhalaCodeQaOracleExpectation[] =>
+  report.scenario.phases.flatMap((phase) => phase.expect)
+
+export const distillKhalaCodeQaMonkeyReportToScenario = (
+  report: KhalaCodeQaMonkeyRunReport,
+): KhalaCodeQaDistilledScenario => {
+  const expectations = expectationsForDistilledReport(report)
+  return {
+    scenario: {
+      backend: "fixture",
+      commitments: [{
+        claim: "distilled explorer trace replays deterministically",
+        evidence: "run-pass",
+        id: "distilled.replay_pass",
+      }],
+      id: `scenario.khala_code.distilled.${report.mode}.${report.seed}.v1`,
+      modes: ["rpc"],
+      phases: [{
+        act: report.actionLog.map((entry) => entry.action),
+        expect: expectations.length === 0 ? [{ oracle: "crash" }] : expectations,
+        name: "distilled-replay",
+      }],
+    },
+    schema: "khala_code_qa_distilled_scenario.v1",
+    sourceRunId: `monkey.${report.mode}.${report.seed}`,
+    sourceStatus: report.status,
+  }
+}
+
+export const regressKhalaCodeQaDistilledScenario = (input: {
+  readonly distilled: KhalaCodeQaDistilledScenario
+  readonly driver: KhalaCodeQaDriver
+}): Effect.Effect<KhalaCodeQaScenarioRunReport, never> =>
+  runKhalaCodeQaScenario({
+    driver: input.driver,
+    scenario: input.distilled.scenario,
+  })
