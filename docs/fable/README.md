@@ -141,6 +141,18 @@ each source doc.
   pass), strict state-flip rules (never green — make green a five-minute
   owner decision), a concurrent-safe registry edit protocol, and the fleet
   mass-dispatch template with refill and stop conditions.
+- `2026-07-02-openagents-com-blog-docs-starcraft-theme-reset-audit.md` —
+  audit of the `/blog` and `/docs` surfaces on `openagents.com`: both still
+  render the old flat Vortex-era shell (hardcoded hex, amber accent, no
+  `khala-*` energy layer, no `packages/ui` primitives) despite the
+  StarCraft-theme centralization pass covering the hero/scene pages. Lays
+  out the zero-based reset: delist all five legacy blog posts and nine of
+  ten docs pages via a render-time `listed` filter (URLs stay live for
+  direct links), replace the blog index with a single placeholder post
+  "Introducing Khala Code" (July 2, 2026), reduce docs to a Khala
+  Code-oriented Overview, and restyle both pages onto the Protoss energy
+  layer with token-backed `packages/ui` components — one implementation
+  issue, one swoop.
 - `2026-07-01-artanis-fleet-administrator-audit.md` — audit of Artanis (the
   autonomous operator/administrator persona): its split architecture (Khala
   operator chat + Gemini cron ticks), current see-vs-do capability (the
