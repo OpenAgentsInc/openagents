@@ -676,6 +676,15 @@ describe("Pylon supervisor orchestration store", () => {
     })
     expect(duplicate).toBeNull()
     expect(store.listLiveWorkClaims(now).map((claim) => claim.claimRef)).toEqual(["claim.1"])
+    expect(store.refreshLiveWorkClaim("issue.7827", new Date("2026-07-01T12:00:30.000Z"))).toMatchObject({
+      claimRef: "claim.1",
+      expiresAt: "2026-07-01T12:01:30.000Z",
+    })
+    expect(store.releaseLiveWorkClaim("issue.7827", new Date("2026-07-01T12:00:31.000Z"))).toMatchObject({
+      claimRef: "claim.1",
+      state: "released",
+    })
+    expect(store.listLiveWorkClaims(new Date("2026-07-01T12:00:31.000Z"))).toEqual([])
 
     const afterTtl = new Date("2026-07-01T12:01:00.001Z")
     const replacement = store.tryClaimWorkUnit({
@@ -688,7 +697,7 @@ describe("Pylon supervisor orchestration store", () => {
       now: afterTtl,
     })
 
-    expect(store.getWorkClaim("claim.1")?.state).toBe("expired")
+    expect(store.getWorkClaim("claim.1")?.state).toBe("released")
     expect(replacement?.claimRef).toBe("claim.3")
     expect(store.listLiveWorkClaims(afterTtl).map((claim) => claim.claimRef)).toEqual(["claim.3"])
   })

@@ -252,22 +252,10 @@ pick_unlocked_issue() {
 # backed off and the fleet under-filled (e.g. ~10 turns instead of 12+, with the
 # same 1-2 issues hammered dozens of times).
 #
-# FIX: a shared on-disk claim registry under the state dir. Before a slot
-# dispatches an issue it must ATOMICALLY acquire that issue's claim; another slot
-# that already holds a fresh claim is skipped. So N concurrent slots resolve to
-# up to N DISTINCT unlocked issues, restoring same-account parallelism across
-# different issues. A claim is held for SUP_CLAIM_TTL_SECS (defaults to the
-# dispatch timeout) so it covers the whole in-flight assignment; a refused/busy
-# issue stays parked for the TTL (the fleet moves on to other work instead of
-# re-hammering the stuck #6661/#6662-style issue), while a transiently
-# rate-limited/errored issue is released immediately so other accounts can retry
-# it. Stale claims (TTL elapsed) are garbage-collected so finished/abandoned work
-# frees the issue for a later retry.
-#
-# Atomicity: `mkdir` is the POSIX atomic create primitive — exactly one slot wins
-# the create. Staleness is handled by a separate GC sweep (sup_gc_stale_claims)
-# rather than an in-acquire delete+create, so there is never a window where two
-# slots both believe they own the same issue.
+# Store contract: active run/claim state belongs to
+# apps/pylon/src/orchestration. This shell remains a process launcher and
+# GitHub/open-PR cache reader only; all live claim acquire/refresh/release calls
+# go through the Bun state entrypoint in SUP_ORCHESTRATION_STATE_BIN.
 
 # Claim TTL: cover the full in-flight assignment so concurrent slots never grab
 # an issue another slot is actively working. Defaults to the dispatch timeout
@@ -275,71 +263,34 @@ pick_unlocked_issue() {
 : "${SUP_CLAIM_TTL_SECS:=${SUP_DISPATCH_TIMEOUT_SECS:-1800}}"
 : "${SUP_NON_DISPATCH_CLAIM_LABELS:=standing-task,epic}"
 
-sup_claims_dir() {
-  local d="${SUP_LOCKOUT_CACHE_DIR:-$SUP_STATE_DIR}/claims"
-  mkdir -p "$d" 2>/dev/null || true
-  printf '%s' "$d"
+sup_claim_store() {
+  if [ -z "${SUP_ORCHESTRATION_STATE_BIN:-}" ]; then
+    printf 'SUP_ORCHESTRATION_STATE_BIN is required for live supervisor claims\n' >&2
+    return 2
+  fi
+  "$SUP_ORCHESTRATION_STATE_BIN" "$@"
 }
 
 # sup_gc_stale_claims
-#   Remove claim entries whose age has reached SUP_CLAIM_TTL_SECS. A claim that
-#   old means its dispatch (bounded by SUP_DISPATCH_TIMEOUT_SECS <= TTL) has
-#   ended, so freeing it cannot race a live dispatch. Idempotent; safe to run
-#   concurrently from every slot (rm is a no-op on an already-removed entry).
+#   Store-backed expiry/reconciliation. Idempotent; safe to run concurrently.
 sup_gc_stale_claims() {
-  local dir; dir="$(sup_claims_dir)"
-  local now claim age
-  now=$(date +%s)
-  for claim in "$dir"/claim.*; do
-    [ -e "$claim" ] || continue
-    age=$(( now - $(sup_file_mtime "$claim") ))
-    if [ "$age" -lt 0 ] || [ "$age" -ge "$SUP_CLAIM_TTL_SECS" ]; then
-      rm -rf "$claim" 2>/dev/null || true
-    fi
-  done
-}
-
-sup_claim_owner_pid() {
-  local claim="$1"
-  awk 'NR==1 {print $1}' "$claim/meta" 2>/dev/null
-}
-
-sup_claim_owner_is_live() {
-  local claim="$1"
-  local owner; owner="$(sup_claim_owner_pid "$claim")"
-  case "$owner" in
-    ''|*[!0-9]*) return 1 ;;
-  esac
-  kill -0 "$owner" 2>/dev/null
+  sup_claim_store reconcile >/dev/null 2>&1 || true
 }
 
 # sup_gc_orphaned_claims
-#   Startup/restart sweep for claims left behind by a killed supervisor. Active
-#   claims are tied to the worker shell's PID (BASHPID); if that process no
-#   longer exists, there is no live local owner refreshing the claim, so keeping
-#   it would wedge the next run until the full TTL expires.
+#   Startup/restart sweep for claims left behind by a killed supervisor. The
+#   orchestration store releases claims without fresh worker heartbeat evidence.
 sup_gc_orphaned_claims() {
-  local dir; dir="$(sup_claims_dir)"
-  local claim
-  for claim in "$dir"/claim.*; do
-    [ -e "$claim" ] || continue
-    if ! sup_claim_owner_is_live "$claim"; then
-      rm -rf "$claim" 2>/dev/null || true
-    fi
-  done
+  sup_claim_store reconcile >/dev/null 2>&1 || true
 }
 
 # sup_claim_is_active <issue>
 #   rc 0 if a FRESH claim is held for the issue (reserved by some slot), rc 1
 #   otherwise. Does not mutate; GC of stale entries is sup_gc_stale_claims's job.
 sup_claim_is_active() {
-  local issue="$1"; [ -n "$issue" ] || return 1
-  local f; f="$(sup_claims_dir)/claim.$issue"
-  [ -e "$f" ] || return 1
-  local now age
-  now=$(date +%s)
-  age=$(( now - $(sup_file_mtime "$f") ))
-  [ "$age" -ge 0 ] && [ "$age" -lt "$SUP_CLAIM_TTL_SECS" ]
+  # Store acquire is the atomic authority now; keep this legacy read hook
+  # non-mutating and let sup_try_claim_issue decide contention.
+  return 1
 }
 
 # sup_try_claim_issue <issue> [owner]
@@ -348,12 +299,11 @@ sup_claim_is_active() {
 #   rc 1 if another slot already holds a fresh claim. Relies on the caller (or a
 #   preceding sup_gc_stale_claims) to have cleared expired claims first.
 sup_try_claim_issue() {
-  local issue="$1"; local owner="${2:-${BASHPID:-$$}}"
+  local issue="$1"; local owner="${SUP_CLAIM_ACCOUNT_REF:-${2:-${BASHPID:-$$}}}"
   [ -n "$issue" ] || return 1
-  local dir; dir="$(sup_claims_dir)"
-  local claim="$dir/claim.$issue"
-  if mkdir "$claim" 2>/dev/null; then
-    printf '%s %s\n' "$owner" "$(date +%s)" > "$claim/meta" 2>/dev/null || true
+  local out
+  out="$(sup_claim_store try-claim --issue "$issue" --account-ref "$owner" --ttl-secs "$SUP_CLAIM_TTL_SECS" 2>/dev/null)" || return 1
+  if printf '%s' "$out" | grep -q '"claimed":true'; then
     return 0
   fi
   return 1
@@ -365,13 +315,7 @@ sup_try_claim_issue() {
 #   the claim does not exist.
 sup_refresh_claim() {
   local issue="$1"; [ -n "$issue" ] || return 0
-  local claim; claim="$(sup_claims_dir)/claim.$issue"
-  [ -e "$claim" ] || return 0
-  # Bump the claim DIRECTORY's mtime (the value sup_claim_is_active /
-  # sup_gc_stale_claims read); overwriting an existing inner file does not
-  # reliably update the directory mtime on all filesystems.
-  touch "$claim" 2>/dev/null || true
-  printf '%s %s\n' "${2:-${BASHPID:-$$}}" "$(date +%s)" > "$claim/meta" 2>/dev/null || true
+  sup_claim_store refresh-claim --issue "$issue" >/dev/null 2>&1 || true
 }
 
 # sup_release_claim <issue>
@@ -380,7 +324,7 @@ sup_refresh_claim() {
 #   the TTL to elapse.
 sup_release_claim() {
   local issue="$1"; [ -n "$issue" ] || return 0
-  rm -rf "$(sup_claims_dir)/claim.$issue" 2>/dev/null || true
+  sup_claim_store release-claim --issue "$issue" >/dev/null 2>&1 || true
 }
 
 sup_label_list_has_exact() {
@@ -450,8 +394,9 @@ pick_and_claim_unlocked_issue() {
     if issue_has_open_pr "$issue"; then
       continue
     fi
-    # Atomic acquire: only the winning slot proceeds; a loser falls through to
-    # the next candidate so concurrent slots never collide on one issue.
+    # Atomic store acquire: only the winning slot proceeds; a loser falls
+    # through to the next candidate so concurrent slots never collide on one
+    # issue.
     if sup_try_claim_issue "$issue"; then
       printf '%s' "$issue"
       return 0

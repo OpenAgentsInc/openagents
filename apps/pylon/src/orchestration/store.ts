@@ -1156,6 +1156,31 @@ export class PylonOrchestrationStore {
     return this.updateWorkClaimState(claimRef, "released", now)
   }
 
+  refreshLiveWorkClaim(workUnitRef: string, now: Date = new Date()): WorkClaim | null {
+    const current = this.getLiveWorkClaim(workUnitRef, now)
+    if (current === null) return null
+    this.db
+      .query(`
+        UPDATE pylon_orchestration_work_claims
+           SET expires_at = $expiresAt,
+               updated_at = $updatedAt
+         WHERE claim_ref = $claimRef
+           AND state IN ('claimed', 'in_progress', 'closeout')
+      `)
+      .run({
+        $claimRef: current.claimRef,
+        $expiresAt: iso(new Date(now.getTime() + current.ttl)),
+        $updatedAt: iso(now),
+      })
+    return this.getWorkClaim(current.claimRef)
+  }
+
+  releaseLiveWorkClaim(workUnitRef: string, now: Date = new Date()): WorkClaim | null {
+    const current = this.getLiveWorkClaim(workUnitRef, now)
+    if (current === null) return null
+    return this.releaseWorkClaim(current.claimRef, now)
+  }
+
   expireWorkClaims(now: Date = new Date()): WorkClaim[] {
     const at = iso(now)
     const rows = this.db
