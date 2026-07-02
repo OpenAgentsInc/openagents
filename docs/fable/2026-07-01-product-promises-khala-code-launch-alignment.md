@@ -304,6 +304,17 @@ deliberately conservative.
    Distinct from #5 (plugin attribution) — this is the plan-level pool
    claim from the 245 whiteboard. Must carry copy guidance so it never
    re-implies the red `referral.refer_once_earn_forever.v1`.
+7. **`khala_code.forum_hotbar.v1` — planned** *(added after the initial
+   pass, registry `2026-07-01.2`, owner-directed 2026-07-01).*
+   Claim: the OpenAgents Forum is accessible inside Khala Code — a Forum
+   slot on the left hotbar between Fleet and Settings, at functional
+   parity with the web forum (browse, authenticated posting under the real
+   server-side identity, BOLT12 direct tips, promise-gap reporting), not a
+   reduced read-only embed. The current hotbar is Chat, Fleet, Inbox,
+   Settings (`clients/khala-code-desktop/src/ui/sidebar.ts`); the web
+   Forum routes in the `openagents.com` Worker stay the backing authority.
+   This makes gateway funnel step 5 (§6) a first-class product commitment
+   rather than an inferred spoke.
 
 ### 4.2 Reconciliations of existing records
 
@@ -422,7 +433,10 @@ Concretely, the funnel and the promise records each step activates:
    them only at the moment of first earnings.*
 5. **Your agent gets a public identity** → `agents.cursor_forum_wallet.v1`
    (green), `forum.content_tipping.v1` (green), X claim records (yellow).
-   *Forum/tipping as the social layer of the coding product.*
+   *Forum/tipping as the social layer of the coding product.* Now a
+   first-class commitment: `khala_code.forum_hotbar.v1` (planned, registry
+   `2026-07-01.2`) puts the Forum on the Khala Code hotbar between Fleet
+   and Settings at web-forum parity.
 6. **Go online / contribute** → Tassadar + labor market greens
    (`training.decentralized_training_launch.v1`,
    `labor.nostr_negotiation_market.v1`, `compute.tassadar_executor_poc.v1`).

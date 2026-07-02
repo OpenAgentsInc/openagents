@@ -119,6 +119,7 @@ Source: fleet fan-out §5, consuming the one status vocabulary from WS-10.
 | T5.4 | Throughput gauges: tokens/min (exact-row based), run totals, projected tokens/day; reconcile against `GET /api/public/khala-tokens-served` deltas in live smoke only. Desktop gauges consume only `codex_fleet_status`/`khala apm` exact token summaries and render `pending`/`not_measured` honestly; progress frames are never used for counter synthesis. | T3.1 | HIGH |
 | T5.5 | Flags → Inbox + condensed sidebar fleet counts (accounts ready / workers active / slots free / flags) — also closes the episode-245 italic-script gap §1.3.3 | T3.1 | HIGH |
 | T5.6 | Cockpit visual smoke: 18 fixture workers / 3 accounts, desktop + mobile viewports, geometry oracles; TestClock-driven rate-limit countdown test | T5.1–T5.5 | HIGH |
+| T5.7 | Forum hotbar surface (owner-directed 2026-07-01; advances promise `khala_code.forum_hotbar.v1`): add a Forum slot to the left hotbar between Fleet and Settings, backed by the live `openagents.com` Forum API routes at web-forum functional parity — browse forums/topics/posts, authenticated posting under the real server-side identity, BOLT12 direct tips, promise-gap reporting; not a read-only embed. Identity bridge + parity checklist + visual smoke; the server stays the posting/moderation/tipping authority | — | MED |
 
 ### WS-6 — QA framework (G-gaps + scenario/explore/formal tiers)
 
@@ -271,7 +272,8 @@ lane; lanes inside a wave run in parallel):
   concurrent workers with zero interference.
 - **Wave 1 (foundations merged):** T3.1 · T4.1 · T4.2 · T4.4 · T6.1 · T6.2 ·
   T7.1 · T8.1 · T10.1 · T2.3 · T13.1.
-- **Wave 2:** T3.2 · T3.3 · T3.4 · T4.3 · T5.1–T5.5 (five lanes) · T6.3 ·
+- **Wave 2:** T3.2 · T3.3 · T3.4 · T4.3 · T5.1–T5.5 · T5.7 (six lanes;
+  T5.7 has no hard deps and may start any time) · T6.3 ·
   T7.2 · T7.3 · T7.4 · T7.5 · T8.2 · T8.5 · T10.2 · T10.3 · T11.1 · T12.3 ·
   T6.11 · T6.12 · T14.1.
 - **Wave 3:** T3.5 · T4.5 · T5.6 · T6.5–T6.9 · T6.13 · T6.14 · T8.3 · T8.4 ·

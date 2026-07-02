@@ -1,5 +1,17 @@
 # Promise Registry
 
+> Registry `2026-07-01.2` adds `khala_code.forum_hotbar.v1` (planned) on
+> owner direction and flips NO promise state (green stays exactly 34). The
+> commitment: the OpenAgents Forum becomes accessible inside Khala Code as a
+> left-hotbar slot between Fleet and Settings, at functional parity with the
+> web forum — browse forums/topics/posts, authenticated posting under the
+> real server-side identity, BOLT12 direct tips, and product-promise gap
+> reporting — explicitly not a reduced read-only embed. No desktop Forum
+> surface exists today (the current hotbar is Chat, Fleet, Inbox, Settings);
+> the record enters planned with surface, web-parity, and identity-bridge
+> blockers, and the web Forum routes in the `openagents.com` Worker remain
+> the backing authority.
+>
 > Registry `2026-07-01.1` is the Episode 245 / Khala Code launch alignment
 > pass (analysis:
 > `docs/fable/2026-07-01-product-promises-khala-code-launch-alignment.md`)

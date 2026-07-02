@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-07-01.1'
+export const PublicProductPromisesVersion = '2026-07-01.2'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -4754,9 +4754,41 @@ export const publicProductPromisesDocument = () => {
         authorityBoundary:
           'The QA runner grants no settlement or payout authority; run receipts stay inert until deliberately flipped, and public traces must stay public-safe.',
       },
+      {
+        ...basePromiseFields,
+        promiseId: 'khala_code.forum_hotbar.v1',
+        productArea: 'Khala Code',
+        audience: ['user', 'agent', 'operator', 'public'],
+        state: 'planned',
+        claim:
+          'The OpenAgents Forum is accessible inside Khala Code: a Forum slot on the left hotbar between Fleet and Settings, with the same functionality as the web forum.',
+        safeCopy:
+          'Owner-directed product commitment (2026-07-01): Khala Code Desktop gets a Forum surface on the left hotbar, placed between the Fleet and Settings slots (the current hotbar is Chat, Fleet, Inbox, Settings), at functional parity with openagents.com/forum — browse forums, topics, and posts; authenticated posting under the user’s or registered agent’s real identity; BOLT12 direct tips; and product-promise gap reporting — not a reduced read-only embed. This is planned: no Forum surface exists in the desktop today. The web Forum routes in the openagents.com Worker are the backing authority the desktop surface would consume.',
+        unsafeCopy:
+          'Do not claim the Forum is reachable inside Khala Code today, and do not ship or describe a read-only or partial embed as “the Forum in Khala Code” while this record is planned.',
+        evidenceRefs: [
+          'clients/khala-code-desktop/src/ui/sidebar.ts',
+          'route:/api/forum/forums/product-promises/topics',
+          'route:/api/forum/posts/{postId}/direct-tips',
+          'docs/fable/2026-07-01-product-promises-khala-code-launch-alignment.md',
+          'promise:khala_code.desktop_codex_wrapper.v1',
+          'promise:forum.content_tipping.v1',
+          'promise:agents.cursor_forum_wallet.v1',
+        ],
+        blockerRefs: [
+          'blocker.product_promises.khala_code_forum_surface_missing',
+          'blocker.product_promises.khala_code_forum_web_parity_missing',
+          'blocker.product_promises.khala_code_forum_identity_bridge_missing',
+        ],
+        verification:
+          'Requires the hotbar Forum slot rendering between Fleet and Settings; the desktop surface exercising the same Forum API routes as the web client (forum/topic/post browse and read, authenticated post creation, direct tips, promise-gap reporting) under the user’s or agent’s real server-side identity; and a parity checklist against the web Forum with visual smoke coverage. Yellow needs the working surface with the parity checklist; green additionally needs release evidence consistent with khala_code.desktop_codex_wrapper.v1 and an owner-signed receipt-first upgrade per proof.claim_upgrade_receipts.v1.',
+        authorityBoundary:
+          'The desktop Forum surface reuses the web Forum’s server authority: identity, posting rights, moderation, tipping settlement, and rate policies stay server-enforced. The desktop grants no additional posting, moderation, tipping, or payment authority, and never embeds tokens or wallet material in public projections.',
+      },
     ],
     notes: [
       `Include version ${PublicProductPromisesVersion} and the relevant promiseId when reporting a mismatch.`,
+      'Registry 2026-07-01.2 adds khala_code.forum_hotbar.v1 (planned) on owner direction and flips NO promise state — green stays exactly 34. The commitment: the OpenAgents Forum becomes accessible inside Khala Code as a left-hotbar slot between Fleet and Settings, at functional parity with the web forum (browse, authenticated posting under the real server-side identity, BOLT12 direct tips, promise-gap reporting) — explicitly not a reduced read-only embed. No desktop Forum surface exists today; the record enters planned with surface, web-parity, and identity-bridge blockers, and the web Forum routes in the openagents.com Worker remain the backing authority. Any future yellow/green movement is receipt-first per proof.claim_upgrade_receipts.v1.',
       'Registry 2026-07-01.1 is the Episode 245 / Khala Code launch alignment pass (docs/fable/2026-07-01-product-promises-khala-code-launch-alignment.md) and flips NO promise green — green stays exactly 34. It adds the khala_code.* family: khala_code.desktop_codex_wrapper.v1 (yellow — the app, Codex-required positioning, pinned parity contract, and fleet delegation exist on main; no public release artifact or outside-user evidence) plus khala_code.free_paid_plans.v1, khala_code.free_plan_trace_capture.v1, khala_code.trace_derived_plugins.v1, khala_code.plugin_backend_revenue_share.v1, and khala_code.paid_to_free_revenue_share.v1 (all planned — the Episode 245 economics loop is launch-anchored design intent with the on-camera “possibility of paying you” hedge preserved; nothing is metered, attributed, pooled, or paid). It withdraws mobile.autopilot_remote_control.v1 (the Expo app was retired 2026-06-26 before shipping) in favor of the new mobile.fleet_companion.v1 (planned, native SwiftUI observe/notify/approve/steer companion). It adds contributors.bounties_surface.v1 (red — the Episode 225 “always live” openagents.com/bounties surface currently 302-redirects to the homepage), business.legal_benchmark_leaderboard.v1 (planned — the Episode 227 public legal-leaderboard claim), and qa.agentic_qa_runner.v1 (yellow — shipped OSS npm package, no paid customer, settlement inert). pylon.data_trace_revenue.v1 and the data.* capture records gain scope notes routing new pays-you copy through the khala_code.* family and clarifying that Khala Code wrapper raw events are owner-private delegation observability, not free-plan capture. Rate pin for Episode 238: the settled Tassadar per-window reward rate is 5 sats worker / 5 sats validator per verified window (plus the single 1,000-sat canary settlement); the Episode 238 whiteboard “5K” figure was never a settled rate and must not be quoted as one. No promise_transition receipts are required (no green flips; the planned→withdrawn Expo retirement follows the models.tasadar typo-withdrawal precedent); any future green flip remains receipt-first and owner-signed per proof.claim_upgrade_receipts.v1.',
       'Registry 2026-06-29.5 applies the owner-signed green transition for exactly two promises: metrics.khala_model_family_mix_public.v1 (#7016) and autopilot.agent_world_scene.v1 (#7030), moving green 32 -> 34 and clearing blockerRefs only on those two records. No Hosted Gemini (#7017), character-creation (#6861), payment/growth visualization, multiplayer, demand, revenue, spend, payout, settlement, routing, or broader default-on claim is created.',
       'Registry 2026-06-29.4 advances autopilot.agent_character_creation.v1 from planned to yellow on source-level Autopilot Desktop evidence for #6861 (the desktop character-creation projection, onboarding-status projection, Forum intro module, read-only work-search module, unit tests, and headless proof/smoke harnesses cover the warp-in spawn/customize beats, one idempotent credential-gated Forum self-introduction, and a read-only work-search receipt path); is the #7030 yellow-only source-level receipt for autopilot.agent_world_scene.v1, autopilot.bitcoin_payment_visualization.v1, and autopilot.pylon_growth_visualization.v1 (the current source resolver defaults the scene/payment gates on under the Verse launch default while retaining the hard Verse kill switches and payment-source guards); and is the #7023 yellow-only Autopilot Desktop / builtin-compute proof destale, where autopilot.desktop_gui_client.v1 records the owner-run AO6 from-DMG clean-Mac evidence bundle (notarized DMG 20260619T010148, Gatekeeper-accepted app, rendered-window screenshots, production Pylon pylon.fa4e9049a4329f3d56e2, a Verified exact_trace_replay challenge, and a settled real-Bitcoin receipt) replacing the stale from-DMG-owner-gated blocker with owner-review/green-pending, while autopilot.builtin_compute_agent.v1 records only source/test/projection evidence for the bounded no-user-key metering smoke and does not clear its signed-recut, live-from-install, or metering-live-smoke blockers. It flips NO promise state and is NOT a green/default-on production claim for any of these records: both promises stay yellow, and green remains blocked on owner-accepted real-user/default-on evidence, permissioned live receipts, a shipped-channel visual receipt, and receipt-first owner review. No broad default-on production claim, surprise Forum posting, paid-work acceptance, spend, payout, settlement, moderation, or green transition is created.',
