@@ -1816,11 +1816,19 @@ const appendMessages = (nextMessages: readonly KhalaCodeDesktopMessage[]): void 
   render()
 }
 
+const latestUserMessagePreview = (): string =>
+  [...messages].reverse().find(message => message.role === "user")?.body.trim() ?? ""
+
 function applyChatTurnEvent(event: KhalaCodeDesktopChatTurnEvent): void {
   if (!activeTurnIds.has(event.turnId)) return
   if (event.type === "thread_ready") {
     setActiveCodexThreadId(event.threadId)
+    threadSidebar?.upsertPendingThread({
+      preview: latestUserMessagePreview(),
+      threadId: event.threadId,
+    })
     void refreshThreadTokenSummary()
+    void threadSidebar?.refresh()
     return
   }
   if (
@@ -2091,6 +2099,10 @@ const submitComposer = async (): Promise<KhalaCodeDesktopMessage | null> => {
       }
       if (response.backend.threadId !== undefined) {
         setActiveCodexThreadId(response.backend.threadId)
+        threadSidebar?.upsertPendingThread({
+          preview: message.body,
+          threadId: response.backend.threadId,
+        })
         void threadSidebar?.refresh()
       }
       if (thinkingTurnId === turnId) thinkingTurnId = null
@@ -2112,6 +2124,7 @@ const submitComposer = async (): Promise<KhalaCodeDesktopMessage | null> => {
     if (thinkingTurnId === turnId) thinkingTurnId = null
     pendingTurn = activeTurnIds.size > 0
     threadSidebar?.setActiveThreadId(activeCodexThreadId)
+    void threadSidebar?.refresh()
     renderComposer()
     requestAnimationFrame(focusComposerInput)
   }

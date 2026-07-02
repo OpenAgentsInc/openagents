@@ -288,6 +288,54 @@ describe("Codex ThreadItem projector", () => {
     expect(projector.messages()).toEqual([])
   })
 
+  test("projects raw rollout response function calls and output into one visible tool card", () => {
+    const projector = createCodexThreadItemEventProjector({
+      desktopTurnId: "desktop-turn-fixture",
+      displayRoot: "/workspace",
+    })
+
+    const callEvents = projector.accept(item({
+      type: "response_item",
+      payload: {
+        type: "function_call",
+        id: "fc-fixture",
+        call_id: "call-fixture",
+        name: "exec_command",
+        arguments: "{\"cmd\":\"git status --short\"}",
+        status: "completed",
+      },
+    }))
+    const outputEvents = projector.accept(item({
+      type: "response_item",
+      payload: {
+        type: "function_call_output",
+        call_id: "call-fixture",
+        output: "Exit code: 0\nOutput:\n M src/app.ts",
+      },
+    }))
+
+    expect(messageEvents(callEvents)[0]?.message).toMatchObject({
+      id: "call-fixture",
+      codexItem: {
+        itemId: "call-fixture",
+        itemType: "function_call",
+        title: "Exec command",
+      },
+    })
+    expect(messageEvents(outputEvents)[0]?.message).toMatchObject({
+      id: "call-fixture",
+      codexItem: {
+        itemId: "call-fixture",
+        itemType: "function_call",
+        status: "completed",
+      },
+    })
+    expect(projector.messages()).toHaveLength(1)
+    expect(projector.messages()[0]?.body).toContain("git status --short")
+    expect(projector.messages()[0]?.body).toContain("Exit code: 0")
+    expect(projector.messages()[0]?.body).toContain("M src/app.ts")
+  })
+
   test("renders approvals and resolves them by server request id", () => {
     const projector = createCodexThreadItemEventProjector({ desktopTurnId: "desktop-turn-fixture" })
 

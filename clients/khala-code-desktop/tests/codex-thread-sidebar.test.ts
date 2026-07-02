@@ -2,7 +2,10 @@ import { describe, expect, test } from "bun:test"
 
 import type { KhalaCodeDesktopCodexThreadSummary } from "../src/shared/codex-threads"
 import type { KhalaCodeDesktopCodexThreadListResult } from "../src/shared/rpc"
-import { renameThreadInListData } from "../src/ui/codex-thread-sidebar"
+import {
+  renameThreadInListData,
+  upsertPendingThreadInListData,
+} from "../src/ui/codex-thread-sidebar"
 
 const thread = (
   id: string,
@@ -59,5 +62,31 @@ describe("Khala Code thread sidebar", () => {
 
     expect(renameThreadInListData(data, "thread-a", "Current name")).toBe(data)
     expect(renameThreadInListData(data, "missing-thread", "New name")).toBe(data)
+  })
+
+  test("prepends a pending active thread until persisted thread metadata catches up", () => {
+    const data: KhalaCodeDesktopCodexThreadListResult = {
+      ok: true,
+      data: [],
+      groups: [{ key: "/repo/app", label: "app", threadIds: ["thread-a"] }],
+      threads: [thread("thread-a", "Existing")],
+    }
+    const pending = {
+      ...thread("thread-new", "hi"),
+      cwd: null,
+      projectLabel: "Current chat",
+      recencyAt: 10,
+    }
+
+    const next = upsertPendingThreadInListData(data, pending)
+
+    expect(next).not.toBe(data)
+    expect(next.threads?.map(item => item.id)).toEqual(["thread-new", "thread-a"])
+    expect(next.groups?.[0]).toEqual({
+      key: "cwd:none",
+      label: "Current chat",
+      threadIds: ["thread-new"],
+    })
+    expect(upsertPendingThreadInListData(next, pending)).toBe(next)
   })
 })
