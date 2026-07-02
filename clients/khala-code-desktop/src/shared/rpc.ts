@@ -200,6 +200,8 @@ export type KhalaCodeDesktopFleetRunListRequest = typeof RpcFleetRunListRequest.
 export type KhalaCodeDesktopFleetRunListResult = typeof RpcFleetRunListResult.Type
 export type KhalaCodeDesktopFleetWorkerControlRequest = typeof RpcFleetWorkerControlRequest.Type
 export type KhalaCodeDesktopFleetWorkerControlResult = typeof RpcFleetWorkerControlResult.Type
+export type KhalaCodeDesktopForumRequest = typeof RpcForumRequest.Type
+export type KhalaCodeDesktopForumResponse = typeof RpcForumResponse.Type
 export type KhalaCodeDesktopRemoveAccountResult = typeof RpcRemoveAccountResult.Type
 export type KhalaCodeDesktopConnectStart = typeof RpcConnectStart.Type
 
@@ -1528,6 +1530,18 @@ const RpcFleetWorkerControlResult = S.Struct({
   verb: RpcFleetWorkerControlVerb,
   workerRefHash: S.String,
 })
+const RpcForumRequest = S.Struct({
+  body: S.optional(KhalaCodeDesktopRpcJsonValue),
+  headers: S.optional(S.Record(S.String, S.String)),
+  method: S.optional(S.Literals(["GET", "POST"])),
+  path: S.String,
+})
+const RpcForumResponse = S.Struct({
+  ok: S.Boolean,
+  payload: KhalaCodeDesktopRpcJsonValue,
+  status: S.Number,
+  error: S.optional(S.String),
+})
 
 const RpcConnectStart = S.Struct({
   ok: S.Boolean,
@@ -1591,6 +1605,7 @@ export const KhalaCodeDesktopRpcMethodSchemas = {
   fleetRunStart: { parameters: [param(RpcFleetRunStartRequest)], result: RpcFleetRunStartResult },
   fleetRunStatus: { parameters: [param(RpcFleetRunStatusRequest)], result: RpcFleetRunStatusResult },
   fleetWorkerControl: { parameters: [param(RpcFleetWorkerControlRequest)], result: RpcFleetWorkerControlResult },
+  forumRequest: { parameters: [param(RpcForumRequest)], result: RpcForumResponse },
   claudeApprovalPending: { parameters: noParams(), result: RpcClaudeApprovalPendingResult },
   claudeApprovalRespond: { parameters: [param(RpcClaudeApprovalRespondRequest)], result: RpcClaudeApprovalRespondResult },
   claudeSettingsRead: { parameters: noParams(), result: RpcClaudeSettingsProjection },
@@ -1740,6 +1755,7 @@ export type KhalaCodeDesktopRPCSchema = {
     fleetRunStart(request: KhalaCodeDesktopFleetRunStartRequest): Promise<KhalaCodeDesktopFleetRunStartResult>
     fleetRunStatus(request: KhalaCodeDesktopFleetRunStatusRequest): Promise<KhalaCodeDesktopFleetRunStatusResult>
     fleetWorkerControl(request: KhalaCodeDesktopFleetWorkerControlRequest): Promise<KhalaCodeDesktopFleetWorkerControlResult>
+    forumRequest(request: KhalaCodeDesktopForumRequest): Promise<KhalaCodeDesktopForumResponse>
     claudeApprovalPending(): Promise<KhalaCodeDesktopClaudeApprovalPendingResult>
     claudeApprovalRespond(request: KhalaCodeDesktopClaudeApprovalRespondRequest): Promise<KhalaCodeDesktopClaudeApprovalRespondResult>
     claudeSettingsRead(): Promise<KhalaCodeDesktopClaudeSettingsReadResult>

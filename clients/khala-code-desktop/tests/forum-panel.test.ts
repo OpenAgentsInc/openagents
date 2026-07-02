@@ -33,6 +33,41 @@ const flushForumPanel = async (): Promise<void> => {
 }
 
 describe("khala code forum panel", () => {
+  test("loads through the desktop host Forum transport without renderer fetch", async () => {
+    const container = installDom()
+    const requests: unknown[] = []
+    const panel = mountKhalaCodeForumPanel(container, {
+      openExternal: async () => true,
+      request: async request => {
+        requests.push(request)
+        if (request.path === "/api/forum/forums/product-promises") {
+          return { forumId: "forum.product-promises", slug: "product-promises", title: "Product Promises" }
+        }
+        if (request.path === "/api/forum/forums/product-promises/topics") {
+          return { topics: [{ topicId: "topic.host", title: "Loaded by host transport" }] }
+        }
+        throw new Error(`unexpected ${request.path}`)
+      },
+    })
+
+    panel.setVisible(true)
+    await panel.refresh()
+
+    expect(container.textContent).toContain("Loaded by host transport")
+    expect(requests).toEqual([
+      {
+        headers: {},
+        method: "GET",
+        path: "/api/forum/forums/product-promises",
+      },
+      {
+        headers: {},
+        method: "GET",
+        path: "/api/forum/forums/product-promises/topics",
+      },
+    ])
+  })
+
   test("browses, posts, replies, tips, and reports through OpenAgents Forum routes", async () => {
     const container = installDom()
     const requests: Array<{

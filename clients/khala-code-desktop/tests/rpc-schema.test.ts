@@ -151,6 +151,40 @@ describe("Khala Code desktop schema-first RPC contract", () => {
     })
   })
 
+  test("decodes Forum RPC requests and rejects non-Forum proxy paths", async () => {
+    expect(decodeKhalaCodeDesktopRpcParameters("forumRequest", [{
+      body: { amountSat: 21 },
+      headers: { "Idempotency-Key": "test-key" },
+      method: "POST",
+      path: "/api/forum/posts/post.1/tips/ladder",
+    }])[0]).toMatchObject({
+      method: "POST",
+      path: "/api/forum/posts/post.1/tips/ladder",
+    })
+
+    expect(decodeKhalaCodeDesktopRpcResult("forumRequest", {
+      ok: true,
+      payload: { topics: [] },
+      status: 200,
+    })).toMatchObject({ ok: true, status: 200 })
+
+    const handlers = createKhalaCodeDesktopRpcRequestHandlers({
+      appleFmReadiness: () => {
+        throw new Error("not used")
+      },
+      env: {},
+      onDeviceDeciderStatus: () => {
+        throw new Error("not used")
+      },
+      workingDirectory: process.cwd(),
+    })
+
+    await expect(handlers.forumRequest({
+      method: "GET",
+      path: "/api/not-forum",
+    })).rejects.toThrow("Forum RPC path must stay under /api/forum")
+  })
+
   test("models handler failures as distinct tagged bridge errors", () => {
     const failure = khalaCodeDesktopRpcHandlerFailure(
       "appInfo",

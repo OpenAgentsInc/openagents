@@ -3,10 +3,26 @@ export type KhalaCodeForumPanelHandle = Readonly<{
   setVisible: (visible: boolean) => void
 }>
 
+type ForumJson =
+  | string
+  | number
+  | boolean
+  | null
+  | readonly ForumJson[]
+  | { readonly [key: string]: ForumJson }
+
+export type KhalaCodeForumPanelRequest = Readonly<{
+  body?: ForumJson
+  headers?: Readonly<Record<string, string>>
+  method?: "GET" | "POST"
+  path: string
+}>
+
 export type KhalaCodeForumPanelOptions = Readonly<{
   baseUrl?: string
   fetch?: typeof fetch
   openExternal: (url: string) => Promise<boolean>
+  request?: (request: KhalaCodeForumPanelRequest) => Promise<unknown>
 }>
 
 type ForumView =
@@ -146,6 +162,25 @@ const setInputValue = (root: HTMLElement, selector: string, value: string): void
   if (input !== null) input.value = value
 }
 
+const headersRecord = (headers: HeadersInit | undefined): Readonly<Record<string, string>> => {
+  if (headers === undefined) return {}
+  if (headers instanceof Headers) return Object.fromEntries(headers.entries())
+  if (Array.isArray(headers)) return Object.fromEntries(headers)
+  return headers
+}
+
+const requestMethod = (method: string | undefined): "GET" | "POST" => {
+  if (method === undefined || method === "GET") return "GET"
+  if (method === "POST") return "POST"
+  throw new Error(`Unsupported Forum method: ${method}`)
+}
+
+const requestBody = (body: BodyInit | null | undefined): ForumJson | undefined => {
+  if (body === undefined || body === null) return undefined
+  if (typeof body !== "string") throw new Error("Forum panel only sends JSON request bodies.")
+  return JSON.parse(body) as ForumJson
+}
+
 export const mountKhalaCodeForumPanel = (
   container: HTMLElement,
   options: KhalaCodeForumPanelOptions,
@@ -161,6 +196,15 @@ export const mountKhalaCodeForumPanel = (
     path: string,
     init: RequestInit = {},
   ): Promise<T> => {
+    if (options.request !== undefined) {
+      const body = requestBody(init.body)
+      return await options.request({
+        ...(body === undefined ? {} : { body }),
+        headers: headersRecord(init.headers),
+        method: requestMethod(init.method),
+        path,
+      }) as T
+    }
     const response = await fetchFn(externalPath(baseUrl, path), {
       ...init,
       credentials: "include",

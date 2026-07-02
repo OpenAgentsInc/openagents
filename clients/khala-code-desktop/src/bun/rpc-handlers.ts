@@ -76,6 +76,8 @@ import {
   type KhalaCodeDesktopFleetWorkerControlRequest,
   type KhalaCodeDesktopFleetWorkerControlResult,
   type KhalaCodeDesktopFleetStatus,
+  type KhalaCodeDesktopForumRequest,
+  type KhalaCodeDesktopForumResponse,
   type KhalaCodeDesktopQaMetricsSnapshot,
   type KhalaCodeDesktopRPCSchema,
   type KhalaCodeDesktopRuntimeStatus,
@@ -147,6 +149,7 @@ type ChatRuntimeSelection =
 
 const legacyThreadLifecycleUnsupportedMessage =
   "Legacy Khala native runtime does not support thread lifecycle RPCs."
+const OPENAGENTS_FORUM_BASE_URL = "https://openagents.com"
 
 export type KhalaCodeDesktopFleetRunSupervisorRpc = {
   readonly control: (
@@ -220,6 +223,47 @@ const stringValue = (value: unknown): string | null =>
 
 const numberValue = (value: unknown): number | undefined =>
   typeof value === "number" && Number.isFinite(value) ? value : undefined
+
+const forumFailureReason = (payload: unknown, fallback: string): string => {
+  if (isRecord(payload)) {
+    const reason = stringValue(payload.reason) ?? stringValue(payload.error)
+    if (reason !== null && reason.trim().length > 0) return reason
+  }
+  return fallback
+}
+
+const forumRequestUrl = (path: string): URL => {
+  if (!path.startsWith("/api/forum")) {
+    throw new Error("Forum RPC path must stay under /api/forum.")
+  }
+  const url = new URL(path, OPENAGENTS_FORUM_BASE_URL)
+  if (url.origin !== OPENAGENTS_FORUM_BASE_URL || !url.pathname.startsWith("/api/forum")) {
+    throw new Error("Forum RPC path must stay on openagents.com /api/forum.")
+  }
+  return url
+}
+
+const fetchOpenAgentsForum = async (
+  request: KhalaCodeDesktopForumRequest,
+): Promise<KhalaCodeDesktopForumResponse> => {
+  const method = request.method ?? "GET"
+  const response = await fetch(forumRequestUrl(request.path), {
+    method,
+    headers: {
+      accept: "application/json",
+      ...(request.body === undefined ? {} : { "content-type": "application/json" }),
+      ...(request.headers ?? {}),
+    },
+    ...(request.body === undefined ? {} : { body: JSON.stringify(request.body) }),
+  })
+  const payload = await response.json().catch(() => ({})) as unknown
+  return {
+    ok: response.ok,
+    payload: payload as never,
+    status: response.status,
+    ...(response.ok ? {} : { error: forumFailureReason(payload, `Forum request failed with ${response.status}`) }),
+  }
+}
 
 const safePathSegment = (value: string, fallback: string): string => {
   const sanitized = value.replace(/[^A-Za-z0-9._-]+/g, "_").replace(/^_+|_+$/g, "")
@@ -1937,6 +1981,9 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
         throw new Error("fleetWorkerControl requires fleet-run supervisor worker control")
       }
       return supervisor.workerControl(request)
+    },
+    async forumRequest(request): Promise<KhalaCodeDesktopForumResponse> {
+      return fetchOpenAgentsForum(request)
     },
     async claudeApprovalPending() {
       return {
