@@ -161,6 +161,24 @@ type HostedAssignmentProgressBody = {
   tokenCountKind?: "exact" | "estimated"
 }
 
+type HostedAssignmentWorkerCloseoutBody = {
+  artifactRefs: string[]
+  authorityReceiptRefs: string[]
+  blockerRefs: string[]
+  buildRefs: string[]
+  changeCaptureRefs: string[]
+  closeoutRefs: string[]
+  deliveryReadinessRefs: string[]
+  previewRefs: string[]
+  proofRefs: string[]
+  resultRefs: string[]
+  reviewCaveatRefs: string[]
+  status: string
+  summaryRefs: string[]
+  testRefs: string[]
+  verificationRefs: string[]
+}
+
 export type AssignmentCloseout = {
   schema: "openagents.pylon.assignment_closeout.v0.3"
   assignmentRef: string
@@ -357,6 +375,26 @@ const hostedAssignmentProgressBody = (
     ...(progress.tokenCountKind === undefined ? {} : { tokenCountKind: progress.tokenCountKind }),
   }
 }
+
+const hostedAssignmentWorkerCloseoutBody = (
+  closeout: AssignmentCloseout,
+): HostedAssignmentWorkerCloseoutBody => ({
+  artifactRefs: [...closeout.artifactRefs],
+  authorityReceiptRefs: [...closeout.receiptRefs],
+  blockerRefs: [...closeout.blockerRefs],
+  buildRefs: [...closeout.buildRefs],
+  changeCaptureRefs: [],
+  closeoutRefs: [...closeout.closeoutRefs],
+  deliveryReadinessRefs: [...closeout.resultRefs],
+  previewRefs: [...closeout.previewRefs],
+  proofRefs: [...closeout.proofRefs],
+  resultRefs: [...closeout.resultRefs],
+  reviewCaveatRefs: [...closeout.blockerRefs],
+  status: closeout.status === "accepted" ? "closeout_submitted" : closeout.status,
+  summaryRefs: [...closeout.summaryRefs],
+  testRefs: [...closeout.testRefs],
+  verificationRefs: [...closeout.testRefs],
+})
 
 const publicTrainingRef = (value: unknown): string | null => {
   if (typeof value !== "string") return null
@@ -1490,7 +1528,7 @@ export async function submitAssignmentCloseout(
   const response = await postJson(
     options,
     `/api/pylons/${encodeURIComponent(state.identity.pylonRef)}/assignments/${encodeURIComponent(closeout.leaseRef)}/closeout`,
-    closeout,
+    hostedAssignmentWorkerCloseoutBody(closeout),
     state,
   )
   const closeoutRef = String(response.closeoutRef ?? stableRef("assignment.closeout", closeout.leaseRef))

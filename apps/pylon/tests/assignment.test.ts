@@ -200,12 +200,19 @@ function fakeAssignmentServer(input: {
         return Response.json({ artifactRef: `assignment.artifacts.${url.pathname.split("/").at(-2)}` })
       }
       if (url.pathname.endsWith("/closeout")) {
-        expect(body.paymentMode).toBe("no-spend")
-        expect(body.settlementState).toBe("not_applicable")
-        expect(body.payoutClaimAllowed).toBe(false)
-        expect(body.redacted).toBe(true)
         expect(body.closeoutRefs.length).toBeGreaterThan(0)
-        return Response.json({ closeoutRef: `assignment.closeout.${body.leaseRef}` })
+        expect(body.status).toBeTruthy()
+        expect(body).not.toHaveProperty("assignmentRef")
+        expect(body).not.toHaveProperty("completedAt")
+        expect(body).not.toHaveProperty("leaseRef")
+        expect(body).not.toHaveProperty("paymentMode")
+        expect(body).not.toHaveProperty("payoutClaimAllowed")
+        expect(body).not.toHaveProperty("receiptRefs")
+        expect(body).not.toHaveProperty("redacted")
+        expect(body).not.toHaveProperty("schema")
+        expect(body).not.toHaveProperty("settlementState")
+        const assignmentRef = decodeURIComponent(url.pathname.split("/").at(-2) ?? "")
+        return Response.json({ closeoutRef: `assignment.closeout.${assignmentRef}` })
       }
       return Response.json({ errorRef: "error.not_found" }, { status: 404 })
     },
@@ -359,6 +366,24 @@ describe("Pylon assignment lease flow", () => {
       expect(finalProgress).not.toHaveProperty("proofRefs")
       expect(finalProgress).not.toHaveProperty("schema")
       expect(finalProgress).not.toHaveProperty("sequence")
+      const closeoutRequest = fake.requests.find((request) => request.path === expectedCloseoutPath)
+      expect(closeoutRequest?.body).toMatchObject({
+        artifactRefs: result.closeout.artifactRefs,
+        authorityReceiptRefs: result.closeout.receiptRefs,
+        blockerRefs: [],
+        buildRefs: result.closeout.buildRefs,
+        closeoutRefs: result.closeout.closeoutRefs,
+        proofRefs: result.closeout.proofRefs,
+        resultRefs: result.closeout.resultRefs,
+        status: "closeout_submitted",
+        summaryRefs: result.closeout.summaryRefs,
+        testRefs: result.closeout.testRefs,
+      })
+      expect(closeoutRequest?.body).not.toHaveProperty("assignmentRef")
+      expect(closeoutRequest?.body).not.toHaveProperty("leaseRef")
+      expect(closeoutRequest?.body).not.toHaveProperty("paymentMode")
+      expect(closeoutRequest?.body).not.toHaveProperty("settlementState")
+      expect(closeoutRequest?.body).not.toHaveProperty("payoutClaimAllowed")
       expect(fake.requests.map((request) => request.path).filter((path) => path.endsWith("/assignments"))).toEqual([
         `/api/pylons/${encodeURIComponent(pylonRef)}/assignments`,
       ])
@@ -1430,7 +1455,7 @@ describe("Pylon assignment lease flow", () => {
       expect(result.ok).toBe(true)
       if (!result.ok) throw new Error("expected fresh assignment to run")
       expect(result.lease.leaseRef).toBe(freshLease.leaseRef)
-      expect(closeouts.map((request) => request.body.leaseRef)).toEqual([
+      expect(closeouts.map((request) => decodeURIComponent(request.path.split("/").at(-2) ?? ""))).toEqual([
         freshLease.leaseRef,
       ])
       expect(assignmentState.leases[renewedLease.leaseRef]).toMatchObject({
@@ -1494,15 +1519,15 @@ describe("Pylon assignment lease flow", () => {
       expect(result.ok).toBe(true)
       if (!result.ok) throw new Error("expected fresh assignment to run")
       expect(result.lease.leaseRef).toBe(freshLease.leaseRef)
-      expect(closeouts.map((request) => request.body.leaseRef)).toEqual([
+      expect(closeouts.map((request) => decodeURIComponent(request.path.split("/").at(-2) ?? ""))).toEqual([
         interruptedLease.leaseRef,
         freshLease.leaseRef,
       ])
       expect(closeouts[0]?.body).toMatchObject({
-        leaseRef: interruptedLease.leaseRef,
         status: "stale",
         blockerRefs: ["blocker.assignment.local_run_interrupted"],
       })
+      expect(closeouts[0]?.body).not.toHaveProperty("leaseRef")
       expect(assignmentState.leases[interruptedLease.leaseRef]).toMatchObject({
         assignmentRef: interruptedLease.assignmentRef,
         status: "stale",
@@ -1563,7 +1588,7 @@ describe("Pylon assignment lease flow", () => {
       expect(result.ok).toBe(true)
       if (!result.ok) throw new Error("expected fresh assignment to run")
       expect(result.lease.leaseRef).toBe(freshLease.leaseRef)
-      expect(closeouts.map((request) => request.body.leaseRef)).toEqual([
+      expect(closeouts.map((request) => decodeURIComponent(request.path.split("/").at(-2) ?? ""))).toEqual([
         staleLease.leaseRef,
         freshLease.leaseRef,
       ])
@@ -1844,6 +1869,15 @@ describe("Pylon assignment lease flow", () => {
         now: () => new Date("2026-06-09T00:00:30.000Z"),
       })
       expect(result.closeoutRef).toBe("assignment.closeout.lease.public.timeout")
+      const closeoutRequest = fake.requests.find((request) => request.path.endsWith("/closeout"))
+      expect(closeoutRequest?.body).toMatchObject({
+        artifactRefs: [],
+        blockerRefs: ["blocker.assignment.timeout"],
+        closeoutRefs: ["assignment.closeout.timeout"],
+        proofRefs: ["assignment.proof.timeout"],
+        status: "timed-out",
+        summaryRefs: ["assignment.summary.timeout"],
+      })
     })
   })
 
@@ -1905,6 +1939,16 @@ describe("Pylon assignment lease flow", () => {
         "blocker.assignment.progress_or_artifact_rejected",
         "blocker.assignment.progress_or_artifact_http_400",
       ])
+      const closeoutRequest = fake.requests.find((request) => request.path.endsWith("/closeout"))
+      expect(closeoutRequest?.body).toMatchObject({
+        blockerRefs: result.closeout.blockerRefs,
+        closeoutRefs: result.closeout.closeoutRefs,
+        proofRefs: result.closeout.proofRefs,
+        status: "rejected",
+      })
+      expect(closeoutRequest?.body).not.toHaveProperty("assignmentRef")
+      expect(closeoutRequest?.body).not.toHaveProperty("leaseRef")
+      expect(closeoutRequest?.body).not.toHaveProperty("paymentMode")
       assertPublicProjectionSafe(result.closeout)
     })
   })

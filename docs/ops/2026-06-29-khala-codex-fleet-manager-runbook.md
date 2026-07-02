@@ -493,6 +493,10 @@ evidence in both places operators need it:
   generic `blocker.assignment.progress_or_artifact_rejected` ref and adds
   `blocker.assignment.progress_or_artifact_http_<status>` when the server
   returned an HTTP status.
+- The local closeout receipt remains the owner trace, but the HTTP closeout
+  submit is a hosted `worker_closeout` event. Current Pylon strips local-only
+  fields such as `assignmentRef`, `leaseRef`, `paymentMode`, and `completedAt`
+  before posting to the public assignment API.
 - Khala Code Desktop parses both the final array and the stderr JSONL fallback.
   Timeout summaries should show `command timed out` plus the last lifecycle
   state, for example `assignment_run.runtime_started (phase=runtime_active)`.
