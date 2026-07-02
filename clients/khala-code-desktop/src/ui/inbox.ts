@@ -1,8 +1,6 @@
+import type { KhalaCodeDesktopCodexEcosystemSeverity } from "../shared/codex-ecosystem"
 import type {
-  KhalaCodeDesktopCodexEcosystemProjection,
-  KhalaCodeDesktopCodexEcosystemSeverity,
-} from "../shared/codex-ecosystem"
-import type {
+  KhalaCodeDesktopCodexEcosystemReadResult,
   KhalaCodeDesktopCodexHarnessStatus,
   KhalaCodeDesktopFleetStatus,
   KhalaCodeDesktopRuntimeStatus,
@@ -59,7 +57,7 @@ export type UnifiedInboxProjection = Readonly<{
 
 export type UnifiedInboxSource = Readonly<{
   codexHarness?: KhalaCodeDesktopCodexHarnessStatus
-  ecosystem?: KhalaCodeDesktopCodexEcosystemProjection
+  ecosystem?: KhalaCodeDesktopCodexEcosystemReadResult
   fleet: KhalaCodeDesktopFleetStatus
   pylon: KhalaCodeDesktopRuntimeStatus
   coding: KhalaCodeDesktopRuntimeStatus

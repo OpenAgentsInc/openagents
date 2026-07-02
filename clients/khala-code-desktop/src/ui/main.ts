@@ -2732,9 +2732,9 @@ const inboxPanel =
   inboxPanelEl === null
     ? null
     : mountUnifiedInboxPanel(inboxPanelEl, {
-        fetch: async () => ({
+        fetch: async (): Promise<import("./inbox.js").UnifiedInboxSource> => ({
           codexHarness: await controls.codexHarnessStatus(),
-          ecosystem: await controls.codexEcosystemRead({ includeFilesystemScan: false }),
+          ecosystem: await controls.codexEcosystemRead({}),
           fleet: await controls.codexFleetStatus(),
           pylon: await controls.pylonStatus(),
           coding: await controls.codingStatus(),
