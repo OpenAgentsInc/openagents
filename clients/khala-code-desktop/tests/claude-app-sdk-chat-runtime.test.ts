@@ -3,14 +3,28 @@ import { mkdtemp, readFile, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Effect } from "effect"
+import { Schema as S } from "effect"
 
 import { createClaudeAppSdkChatRuntime } from "../src/bun/claude-app-sdk-chat-runtime"
 import { CLAUDE_APP_SDK_GAP_MATRIX } from "../src/bun/claude-app-sdk-gap-matrix"
-import { createClaudeApprovalService } from "../src/bun/claude-approvals"
-import { khalaCodeDesktopClaudeTokenUsageEvent } from "../src/bun/claude-token-usage-telemetry"
+import {
+  CLAUDE_AGENT_SDK_PARITY_VERSION,
+  CLAUDE_PARITY_CONTRACT,
+} from "../src/bun/claude-parity-contract"
+import {
+  createClaudeApprovalService,
+  createClaudeHeadlessAutoDenyApprovalService,
+} from "../src/bun/claude-approvals"
+import {
+  khalaCodeDesktopClaudeTokenUsageEvent,
+  readKhalaCodeDesktopClaudeTokenUsageInboxFlags,
+} from "../src/bun/claude-token-usage-telemetry"
 import { createClaudeSessionStore } from "../src/bun/claude-session-store"
 import { createClaudeThreadItemProjector } from "../src/bun/claude-thread-item-projector"
-import type { KhalaCodeDesktopChatTurnEvent } from "../src/shared/rpc"
+import {
+  KhalaCodeDesktopRpcMethodSchemas,
+  type KhalaCodeDesktopChatTurnEvent,
+} from "../src/shared/rpc"
 
 const tempDirs: string[] = []
 
@@ -378,9 +392,11 @@ describe("Claude Agent SDK chat runtime", () => {
       "claude.phase2.approvals",
       "claude.phase2.telemetry_ingest",
       "claude.phase3.sidebar_catalog",
+      "claude.phase3.slash_registry",
+      "claude.phase3.parity_contract",
     ])
     expect(CLAUDE_APP_SDK_GAP_MATRIX.filter(row => row.status === "covered").map(row => row.phase))
-      .toEqual(["phase_1", "phase_1", "phase_1", "phase_2", "phase_2"])
+      .toEqual(["phase_1", "phase_1", "phase_1", "phase_2", "phase_2", "phase_3", "phase_3", "phase_3"])
   })
 
   test("bridges canUseTool through the Claude approval queue with native decision shapes", async () => {
@@ -572,5 +588,192 @@ describe("Claude Agent SDK chat runtime", () => {
       },
       ok: true,
     })
+  })
+
+  test("backs the Claude sidebar with listSessions and getSessionMessages", async () => {
+    const statePath = await tempPath("claude-sidebar-state.json")
+    const runtime = createClaudeAppSdkChatRuntime({
+      importer: async () => ({
+        getSessionMessages: async (sessionId: string) => ({
+          messages: [{
+            message: { content: [{ type: "text", text: "Recovered transcript" }], role: "assistant" },
+            session_id: sessionId,
+            uuid: "message-1",
+          }],
+        }),
+        listSessions: async () => ({
+          sessions: [{
+            createdAt: 10,
+            cwd: "/repo",
+            id: "claude-sidebar-session",
+            preview: "Recovered",
+            title: "Sidebar session",
+            updatedAt: 20,
+          }],
+        }),
+        query: () => messages([]),
+      }),
+      sessionStore: createClaudeSessionStore({ path: statePath }),
+      workingDirectory: "/repo",
+    })
+
+    await expect(runtime.listThreads({ searchTerm: "sidebar" })).resolves.toMatchObject({
+      ok: true,
+      groups: [{ key: "claude", threadIds: ["claude-sidebar-session"] }],
+      threads: [{
+        id: "claude-sidebar-session",
+        preview: "Recovered",
+        source: "claude_agent_sdk",
+        title: "Sidebar session",
+      }],
+    })
+    await expect(runtime.readThread({ threadId: "claude-sidebar-session" })).resolves.toMatchObject({
+      messages: [{ body: "Recovered transcript", role: "assistant" }],
+      modelProvider: "claude",
+      threadId: "claude-sidebar-session",
+    })
+  })
+
+  test("builds Claude slash registry from supportedCommands init slash_commands and dispatches as prompt", async () => {
+    const statePath = await tempPath("claude-slash-state.json")
+    const prompts: string[] = []
+    const runtime = createClaudeAppSdkChatRuntime({
+      importer: async () => ({
+        query: () => messages([]),
+        supportedCommands: async () => [{ name: "compact", description: "Compact session" }],
+      }),
+      query: input => {
+        prompts.push(input.prompt)
+        return {
+          async *[Symbol.asyncIterator]() {
+            yield {
+              slash_commands: [{ name: "init", description: "Init-provided command" }],
+              subtype: "init",
+              type: "system",
+            }
+            yield { type: "commands_changed" }
+            yield { type: "result", subtype: "success", session_id: "claude-slash-session" }
+          },
+          supportedCommands: async () => [{ name: "review", description: "Review changes" }],
+        }
+      },
+      sessionStore: createClaudeSessionStore({ path: statePath }),
+      workingDirectory: "/repo",
+    })
+
+    await runtime.startTurn({
+      messages: [{ body: "prime commands", id: "user-slash-prime", role: "user" }],
+      sessionId: "desktop-slash",
+      turnId: "turn-slash-prime",
+    })
+    await expect(runtime.slashCommandList()).resolves.toMatchObject({
+      commands: expect.arrayContaining([
+        expect.objectContaining({ command: "init" }),
+        expect.objectContaining({ command: "review" }),
+      ]),
+      ok: true,
+    })
+
+    await runtime.slashCommandDispatch({
+      raw: "/review src",
+      sessionId: "desktop-slash",
+      threadId: "claude-slash-session",
+    })
+    expect(prompts.at(-1)).toBe("/review src")
+  })
+
+  test("pins the Claude parity contract to the installed SDK range", () => {
+    expect(CLAUDE_AGENT_SDK_PARITY_VERSION).toBe("^0.3.172")
+    expect(CLAUDE_PARITY_CONTRACT.map(row => row.id)).toEqual([
+      "claude.phase1.query_stream",
+      "claude.phase2.approvals",
+      "claude.phase2.telemetry",
+      "claude.phase3.sidebar",
+      "claude.phase3.slash",
+    ])
+    expect(CLAUDE_APP_SDK_GAP_MATRIX.filter(row => row.phase === "phase_3").map(row => row.status))
+      .toEqual(["covered", "covered", "covered"])
+  })
+
+  test("auto-denies Claude approvals in headless mode with a typed reason", async () => {
+    const service = createClaudeHeadlessAutoDenyApprovalService("headless cannot prompt")
+    await expect(service.canUseTool("Bash", { command: "pwd" }, {})).resolves.toEqual({
+      behavior: "deny",
+      decisionClassification: "headless_auto_deny",
+      interrupt: false,
+      message: "headless cannot prompt Tool: Bash.",
+    })
+    expect(service.pending()).toEqual([])
+  })
+
+  test("decodes Claude settings through the concrete RPC schema", async () => {
+    const projection = {
+      account: {
+        apiKeySource: null,
+        apiProvider: "firstParty",
+        email: "operator@example.com",
+        organization: null,
+        subscriptionType: "pro",
+        tokenSource: null,
+      },
+      errors: [],
+      init: {
+        model: "claude-sonnet-4",
+        permissionMode: "plan",
+        system: { model: "claude-sonnet-4" },
+      },
+      models: {
+        options: [{
+          description: null,
+          displayName: "Claude Sonnet 4",
+          selected: true,
+          supportsAdaptiveThinking: null,
+          supportsEffort: true,
+          supportedEffortLevels: ["low"],
+          value: "claude-sonnet-4",
+        }],
+        selected: {
+          description: null,
+          displayName: "Claude Sonnet 4",
+          selected: true,
+          supportsAdaptiveThinking: null,
+          supportsEffort: true,
+          supportedEffortLevels: ["low"],
+          value: "claude-sonnet-4",
+        },
+      },
+      observedAt: "2026-07-01T12:00:00.000Z",
+      ok: true,
+    }
+    const schema = KhalaCodeDesktopRpcMethodSchemas.claudeSettingsRead.result
+    expect(S.decodeUnknownSync(schema)(projection)).toEqual(projection)
+  })
+
+  test("records Claude token persistent failures as Inbox flags", async () => {
+    const ledgerPath = await tempPath("claude-token-failure-events.jsonl")
+    const reporter = (await import("../src/bun/claude-token-usage-telemetry")).createKhalaCodeDesktopClaudeTokenUsageReporter({
+      env: {
+        KHALA_CODE_TOKEN_USAGE_BEARER_TOKEN: "test-token",
+        KHALA_CODE_TOKEN_USAGE_BASE_URL: "https://example.invalid",
+      },
+      fetch: async () => new Response("nope", { status: 503 }),
+      localLedgerPath: ledgerPath,
+    })
+
+    const exit = await Effect.runPromiseExit(reporter({
+      claudeSessionId: "claude-failure-session",
+      desktopSessionId: "desktop-failure",
+      desktopTurnId: "turn-failure",
+      model: "claude-sonnet-4",
+      observedAt: "2026-07-01T12:00:00.000Z",
+      sequence: 1,
+      usage: { cachedInput: 0, input: 1, output: 2, reasoningOutput: 0 },
+    }))
+    expect(exit._tag).toBe("Failure")
+    await expect(readKhalaCodeDesktopClaudeTokenUsageInboxFlags({ localLedgerPath: ledgerPath }))
+      .resolves.toMatchObject([{
+        idempotencyKey: "khala-code-desktop:direct-local-claude:claude-failure-session:turn-failure:1",
+        reason: "Claude token usage reporting failed (503)",
+      }])
   })
 })
