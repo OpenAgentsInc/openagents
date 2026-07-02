@@ -19,7 +19,8 @@
 // it returns null (done), executing each step against the browser surface and
 // recording assertions into the result.
 
-import type { BrowserSurface, WaitForCondition } from "@openagentsinc/probe-runtime";
+import type { BrowserSurface } from "@openagentsinc/probe-runtime/computer-use/browser";
+import type { WaitForCondition } from "@openagentsinc/probe-runtime/computer-use/page";
 
 export type BrainStep =
   | { readonly kind: "navigate"; readonly url: string; readonly label?: string }

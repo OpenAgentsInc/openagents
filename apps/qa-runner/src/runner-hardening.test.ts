@@ -13,7 +13,9 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Effect, Fiber } from "effect";
 
-import type { AcquiredBrowser, ComputerUsePage, PlaywrightArtifacts } from "@openagentsinc/probe-runtime";
+import type { AcquiredBrowser } from "@openagentsinc/probe-runtime/computer-use/browser";
+import type { ComputerUsePage } from "@openagentsinc/probe-runtime/computer-use/page";
+import type { PlaywrightArtifacts } from "@openagentsinc/probe-runtime/computer-use/playwright-page";
 import type { Backend } from "./backend";
 import type { BrainStep } from "./brain";
 import { scriptedBrain } from "./brain";

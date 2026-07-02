@@ -5,7 +5,14 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./computer-use": "./src/computer-use/index.ts"
+    "./computer-use": "./src/computer-use/index.ts",
+    "./computer-use/browser": "./src/computer-use/browser.ts",
+    "./computer-use/node-pty": "./src/computer-use/node-pty.ts",
+    "./computer-use/page": "./src/computer-use/page.ts",
+    "./computer-use/playwright-page": "./src/computer-use/playwright-page.ts",
+    "./computer-use/terminal": "./src/computer-use/terminal.ts",
+    "./computer-use/terminal-snapshot": "./src/computer-use/terminal-snapshot.ts",
+    "./openrouter": "./src/llm/openrouter.ts"
   },
   "bin": {
     "probe": "./src/cli.ts"

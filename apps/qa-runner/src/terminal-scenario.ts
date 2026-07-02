@@ -11,7 +11,7 @@
 // FAILS honestly: an assertion against text the terminal never shows is a real
 // red, recorded in the snapshot timeline.
 
-import type { TerminalCondition } from "@openagentsinc/probe-runtime";
+import type { TerminalCondition } from "@openagentsinc/probe-runtime/computer-use/terminal-snapshot";
 
 /** One step in a terminal scenario. */
 export type TerminalStep =

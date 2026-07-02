@@ -56,8 +56,9 @@
 
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import type { AcquiredBrowser } from "@openagentsinc/probe-runtime";
-import type { ComputerUsePage, PlaywrightArtifacts, WaitForCondition } from "@openagentsinc/probe-runtime";
+import type { AcquiredBrowser } from "@openagentsinc/probe-runtime/computer-use/browser";
+import type { ComputerUsePage, WaitForCondition } from "@openagentsinc/probe-runtime/computer-use/page";
+import type { PlaywrightArtifacts } from "@openagentsinc/probe-runtime/computer-use/playwright-page";
 import type { Backend, BackendSession } from "./backend";
 import {
   CF_FRAMES_DIRNAME,

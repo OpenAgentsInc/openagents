@@ -13,7 +13,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 
-import type { Pty, PtySession } from "@openagentsinc/probe-runtime";
+import type { Pty, PtySession } from "@openagentsinc/probe-runtime/computer-use/terminal";
 import { decodeQaRunResult } from "./result";
 import { makeTarget } from "./target";
 import { runTerminalScenario } from "./terminal-backend";

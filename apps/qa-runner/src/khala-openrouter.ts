@@ -26,7 +26,7 @@ import {
   type OpenRouterError,
   type OpenRouterMessage,
   type OpenRouterMockOptions,
-} from "@openagentsinc/probe-runtime";
+} from "@openagentsinc/probe-runtime/openrouter";
 import type { ChatClient, ChatMessage } from "./khala-driver";
 
 /** A larger default token budget for the agentic loop: a reasoning model spends

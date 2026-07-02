@@ -7,7 +7,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { makeOpenRouterClientMock } from "@openagentsinc/probe-runtime";
+import { makeOpenRouterClientMock } from "@openagentsinc/probe-runtime/openrouter";
 import { makeKhalaChatClient, resolveKhalaConfig } from "./khala-config";
 
 let secretsDir: string;

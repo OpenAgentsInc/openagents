@@ -13,9 +13,9 @@
 
 import {
   acquirePlaywrightBrowser,
-  type AcquiredBrowser,
   type PlaywrightArtifacts,
-} from "@openagentsinc/probe-runtime";
+} from "@openagentsinc/probe-runtime/computer-use/playwright-page";
+import type { AcquiredBrowser } from "@openagentsinc/probe-runtime/computer-use/browser";
 import type {
   NativeAppTarget,
   NativeDesktopRuntime,

@@ -13,7 +13,7 @@ import {
   OpenRouterClient,
   OpenRouterRateLimitError,
   makeOpenRouterClientMock,
-} from "@openagentsinc/probe-runtime";
+} from "@openagentsinc/probe-runtime/openrouter";
 import { makeKhalaDriver } from "./khala-driver";
 import {
   OPENROUTER_DEFAULT_MODEL,
