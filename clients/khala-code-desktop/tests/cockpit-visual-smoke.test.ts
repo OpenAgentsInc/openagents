@@ -29,7 +29,6 @@ describe("T5.6 cockpit visual smoke", () => {
         { x: 24, y: 412, width: 720, height: 80 },
         { x: 24, y: 504, width: 720, height: 80 },
       ],
-      fleetCounts: { x: 12, y: 72, width: 52, height: 20 },
       fleetPanel: { x: 0, y: 0, width: 780, height: 2_400 },
       gauges: [
         { x: 24, y: 90, width: 230, height: 90 },
@@ -53,7 +52,6 @@ describe("T5.6 cockpit visual smoke", () => {
           { x: 24, y: 360, width: 720, height: 80 },
           { x: 24, y: 504, width: 720, height: 80 },
         ],
-        fleetCounts: { x: 12, y: 72, width: 52, height: 20 },
         fleetPanel: { x: 0, y: 0, width: 780, height: 2_400 },
         gauges: [
           { x: 24, y: 90, width: 230, height: 90 },

@@ -129,6 +129,12 @@ async function installPart2RpcMocks(page: Page): Promise<void> {
           body: JSON.stringify(fleetStatusFixture()),
         })
         return
+      case "fleetRunList":
+        await route.fulfill({
+          contentType: "application/json",
+          body: JSON.stringify({ ok: true, runs: [] }),
+        })
+        return
       case "codexFleetDelegateRun":
         assertDelegateRequestSafe(args)
         await route.fulfill({

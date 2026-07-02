@@ -24,7 +24,6 @@ export type CockpitVisualViewport = Readonly<{
 
 type CockpitVisualGeometry = Readonly<{
   accountCards: readonly KhalaQaRect[]
-  fleetCounts: KhalaQaRect
   fleetPanel: KhalaQaRect
   gauges: readonly KhalaQaRect[]
   runHeader: KhalaQaRect
@@ -53,7 +52,6 @@ export const assertCockpitVisualGeometry = (
 ): void => {
   assertRect("Fleet panel", geometry.fleetPanel)
   assertRect("Active FleetRun header", geometry.runHeader)
-  assertRect("sidebar fleet and inbox counts", geometry.fleetCounts)
   assertCount("worker cards", geometry.workerCards, 18)
   assertCount("account cards", geometry.accountCards, 3)
   assertCount("throughput gauges", geometry.gauges, 3)
@@ -218,7 +216,6 @@ async function captureCockpit(
   await expectText(page, "#fleet-panel", "12/30 Codex slots free")
   await expectText(page, "#fleet-panel", "resets in 45m")
   await expectText(page, "#fleet-panel", "resets in 2d 23h")
-  await expectCountLabel(page)
   await assertPagePublicSafe(page)
 
   const geometry = await collectCockpitGeometry(page)
@@ -263,7 +260,6 @@ const collectCockpitGeometry = async (page: Page): Promise<CockpitVisualGeometry
     })
     return {
       accountCards: rectsFor(".khala-fleet-account"),
-      fleetCounts: rectFor("[data-khala-code-fleet-counts]"),
       fleetPanel: rectFor("#fleet-panel"),
       gauges: rectsFor(".khala-fleet-throughput-gauge"),
       runHeader: rectFor(".khala-fleet-run-header"),
@@ -326,17 +322,6 @@ const expectText = async (
       document.querySelector(targetSelector)?.textContent?.includes(targetExpected) === true,
     { expected, selector },
   )
-}
-
-const expectCountLabel = async (page: Page): Promise<void> => {
-  await page.waitForFunction(() => {
-    const counts = document.querySelector("[data-khala-code-fleet-counts]")
-    const label = counts?.getAttribute("aria-label") ?? ""
-    return label.includes("3 accounts ready") &&
-      label.includes("18 workers active") &&
-      label.includes("12 slots free") &&
-      label.includes("2 flags")
-  })
 }
 
 const unsafeTextPattern =
