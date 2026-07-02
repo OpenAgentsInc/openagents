@@ -114,6 +114,19 @@ each source doc.
   methods, SDKMessage→Schema, canUseTool→bridged callback), and the
   synergies: Fable/Claude plan-mode decomposition + review delegating
   coding to Codex through the deterministic delegation program and fleet.
+- `2026-07-01-product-promises-khala-code-launch-alignment.md` — registry
+  audit + launch alignment: reconciles the product-promise registry
+  (`2026-06-29.5`, 120 records — versioned before the Khala Code arc
+  existed) against the unified roadmap and the **released Episode 245**
+  (the Khala Code launch video; the fleet-demo transcript the other fable
+  docs call "245" is now the unreleased draft `24X1.md`). Maps every 245
+  claim to its registry record, traces the "coding agent pays you"
+  escalation across episodes 235–244, proposes the owner-gated
+  `khala_code.*` promise family (wrapper product yellow; plans, trace
+  capture, plugins, and revenue-share planned), four stale-record
+  reconciliations (incl. withdrawing the retired-Expo mobile record), the
+  roadmap↔promise pairings, and the Khala-Code-as-gateway funnel across
+  the registry's green substrate.
 - `2026-07-01-artanis-fleet-administrator-audit.md` — audit of Artanis (the
   autonomous operator/administrator persona): its split architecture (Khala
   operator chat + Gemini cron ticks), current see-vs-do capability (the
