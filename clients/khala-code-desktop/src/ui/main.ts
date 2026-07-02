@@ -356,10 +356,10 @@ const previewRpc = (): DesktopRpc => ({
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["openExternalUrl"]>>
       >("openExternalUrl", url),
-    consumeCodexRateLimitResetCredit: () =>
+    consumeCodexRateLimitResetCredit: request =>
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["consumeCodexRateLimitResetCredit"]>>
-      >("consumeCodexRateLimitResetCredit"),
+      >("consumeCodexRateLimitResetCredit", request),
     onDeviceDeciderStatus: () =>
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["onDeviceDeciderStatus"]>>
@@ -372,6 +372,10 @@ const previewRpc = (): DesktopRpc => ({
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["removeCodexAccount"]>>
       >("removeCodexAccount", accountRef),
+    setCodexAccountPaused: request =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["setCodexAccountPaused"]>>
+      >("setCodexAccountPaused", request),
     slashCommandDispatch: request =>
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["slashCommandDispatch"]>>
@@ -2332,8 +2336,8 @@ const controls = {
   gymState: (): GymPaneState | null => gymPanel?.snapshot() ?? null,
   openExternalUrl: (url: string) => rpc.request.openExternalUrl(url),
   composerStatus: statusForComposer,
-  consumeCodexRateLimitResetCredit: () =>
-    rpc.request.consumeCodexRateLimitResetCredit(),
+  consumeCodexRateLimitResetCredit: request =>
+    rpc.request.consumeCodexRateLimitResetCredit(request),
   focusComposer: focusComposerInput,
   isComposerFocused: () => document.activeElement === composerInput,
   isPending: () => pendingTurn,
@@ -2363,6 +2367,8 @@ const controls = {
   pylonStatus: () => rpc.request.pylonStatus(),
   removeCodexAccount: (accountRef: string) =>
     rpc.request.removeCodexAccount(accountRef),
+  setCodexAccountPaused: (request: { accountRef: string; paused: boolean }) =>
+    rpc.request.setCodexAccountPaused(request),
   slashCommandDispatch: (request: Parameters<DesktopRpcRequests["slashCommandDispatch"]>[0]) =>
     rpc.request.slashCommandDispatch(request),
   slashCommandList: (request?: Parameters<DesktopRpcRequests["slashCommandList"]>[0]) =>
@@ -2538,6 +2544,20 @@ const fleetPanel =
         fetch: () => controls.codexFleetStatus(),
         removeAccount: async accountRef => {
           const result = await controls.removeCodexAccount(accountRef)
+          return {
+            ok: result.ok,
+            ...(result.error === undefined ? {} : { error: result.error }),
+          }
+        },
+        setAccountPaused: async request => {
+          const result = await controls.setCodexAccountPaused(request)
+          return {
+            ok: result.ok,
+            ...(result.error === undefined ? {} : { error: result.error }),
+          }
+        },
+        consumeResetCredit: async request => {
+          const result = await controls.consumeCodexRateLimitResetCredit(request)
           return {
             ok: result.ok,
             ...(result.error === undefined ? {} : { error: result.error }),

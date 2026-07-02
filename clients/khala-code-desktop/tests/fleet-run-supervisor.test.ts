@@ -269,6 +269,28 @@ describe("FleetRunSupervisor", () => {
     ])
   })
 
+  test("never claims a paused ready account during a supervisor tick", async () => {
+    const { store, run } = createStoreWithRun({ targetConcurrency: 2, workUnits: 2 })
+
+    const result = await tickFleetRunSupervisor({
+      store,
+      pylonRef: "pylon.owner",
+      runRef: run.runRef,
+      planner: fixturePlannerWithClaims(store, 2),
+      runner: acceptingRunner(),
+      capacity: capacity([
+        { accountRef: "codex-a", advertisedCapacity: 1, paused: true },
+        { accountRef: "codex-b", advertisedCapacity: 1 },
+      ]),
+      clock: { now: () => fixedNow },
+    })
+
+    expect(result.dispatched).toBe(1)
+    expect(store.listWorkClaims({ runRef: run.runRef }).map(claim => claim.workerAccountRef)).toEqual([
+      "codex-b",
+    ])
+  })
+
   test("streams terminal lifecycle into counters and drains cleanly when backlog is empty", async () => {
     const { store, run } = createStoreWithRun({ targetConcurrency: 3, workUnits: 3 })
     const observed: FleetRunSupervisorObservedEvent[] = []

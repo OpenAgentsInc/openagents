@@ -8,7 +8,7 @@ import type {
   KhalaCodeDesktopFleetRunStartResult,
   KhalaCodeDesktopFleetStatus,
 } from "../src/shared/rpc"
-import { mountFleetPanel } from "../src/ui/fleet-status"
+import { khalaFleetCountdownLabel, mountFleetPanel } from "../src/ui/fleet-status"
 
 let previousDocument: typeof globalThis.document | undefined
 let previousWindow: typeof globalThis.window | undefined
@@ -45,8 +45,33 @@ const status = (): KhalaCodeDesktopFleetStatus => ({
         ready: 2,
       },
       email: "operator-a@example.com",
+      paused: false,
       provider: "codex",
       quotaState: "available",
+      rateLimits: {
+        provider: "codex",
+        session: {
+          remainingPercent: 75,
+          resetDescription: null,
+          resetsAtIso: "2026-07-01T19:00:00.000Z",
+          usedPercent: 25,
+          windowMinutes: 300,
+        },
+        weekly: {
+          remainingPercent: 40,
+          resetDescription: null,
+          resetsAtIso: "2026-07-03T18:00:00.000Z",
+          usedPercent: 60,
+          windowMinutes: 10_080,
+        },
+        rateLimitResetCredits: {
+          availableCount: 1,
+          nextExpiresAtIso: "2026-07-02T18:00:00.000Z",
+        },
+        updatedAtIso: "2026-07-01T18:00:00.000Z",
+        error: null,
+        status: "ok",
+      },
       readiness: "ready",
     },
     {
@@ -59,6 +84,7 @@ const status = (): KhalaCodeDesktopFleetStatus => ({
         ready: 1,
       },
       email: "operator-b@example.com",
+      paused: false,
       provider: "codex",
       quotaState: "available",
       readiness: "ready",
@@ -151,6 +177,104 @@ describe("Fleet status panel", () => {
   beforeEach(installDom)
   afterEach(restoreDom)
 
+  test("renders account cards with rate-limit countdown data and account actions", async () => {
+    expect(khalaFleetCountdownLabel(
+      "2026-07-01T19:30:00.000Z",
+      new Date("2026-07-01T18:00:00.000Z"),
+    )).toBe("1h 30m")
+
+    const root = document.createElement("div")
+    const connected: string[] = []
+    const paused: { accountRef: string; paused: boolean }[] = []
+    const resetCredits: string[] = []
+    let data = status()
+    data = {
+      ...data,
+      accounts: data.accounts.map(account =>
+        account.accountRef === "codex-b"
+          ? {
+              ...account,
+              readiness: "credentials_missing",
+              quotaState: "credentials_missing",
+              email: null,
+            }
+          : account,
+      ),
+    }
+
+    const panel = mountFleetPanel(root, {
+      connectAccount: async accountRef => {
+        connected.push(accountRef)
+        return {
+          ok: true,
+          accountRef,
+          output: "device auth started",
+          userCode: "ABCD-1234",
+          verificationUrl: "https://example.com/device",
+        }
+      },
+      delegateRun: async () => {
+        throw new Error("delegate runner should not be called")
+      },
+      fetch: async () => data,
+      fleetRunControl: async () => {
+        throw new Error("fleet run control should not be called")
+      },
+      fleetRunList: async () => ({ ok: true, runs: [] }),
+      fleetRunStart: async request => runStartResult(request),
+      loadGymDemoProof: () => {
+        throw new Error("gym proof should not be called")
+      },
+      openExternal: async () => true,
+      removeAccount: async () => ({ ok: true }),
+      setAccountPaused: async request => {
+        paused.push(request)
+        data = {
+          ...data,
+          accounts: data.accounts.map(account =>
+            account.accountRef === request.accountRef
+              ? { ...account, paused: request.paused }
+              : account,
+          ),
+        }
+        return { ok: true }
+      },
+      consumeResetCredit: async request => {
+        resetCredits.push(request.accountRef)
+        return { ok: true }
+      },
+      startDelegationOptimization: async () => {
+        throw new Error("optimization should not be called")
+      },
+    })
+
+    await panel.refresh()
+
+    expect(root.textContent).toContain("codex-a")
+    expect(root.textContent).toContain("2/2 free")
+    expect(root.textContent).toContain("25% used / 75% remaining")
+    expect(root.textContent).toContain("60% used / 40% remaining")
+    expect(root.textContent).toContain("reset credits1")
+    expect(root.textContent).toContain("Pause account")
+    expect(root.textContent).toContain("Reconnect")
+
+    clickButton(root, "Pause account")
+    await flushPanelWork()
+    expect(paused).toEqual([{ accountRef: "codex-a", paused: true }])
+    expect(root.textContent).toContain("Resume planning")
+
+    clickButton(root, "Reset credits")
+    await flushPanelWork()
+    expect(resetCredits).toEqual(["codex-a"])
+
+    clickButton(root, "Reconnect")
+    await flushPanelWork()
+    expect(connected).toEqual(["codex-b"])
+    expect(root.textContent).toContain("ABCD-1234")
+    clickButton(root, "Cancel")
+    await flushPanelWork()
+  })
+
   test("previews the first FleetRun wave and starts through the mocked RPC", async () => {
     const root = document.createElement("div")
     const requests: KhalaCodeDesktopFleetRunStartRequest[] = []
@@ -183,6 +307,8 @@ describe("Fleet status panel", () => {
       },
       openExternal: async () => false,
       removeAccount: async () => ({ ok: true }),
+      setAccountPaused: async () => ({ ok: true }),
+      consumeResetCredit: async () => ({ ok: true }),
       startDelegationOptimization: async () => {
         throw new Error("optimization should not be called")
       },
@@ -268,6 +394,8 @@ describe("Fleet status panel", () => {
       },
       openExternal: async () => false,
       removeAccount: async () => ({ ok: true }),
+      setAccountPaused: async () => ({ ok: true }),
+      consumeResetCredit: async () => ({ ok: true }),
       startDelegationOptimization: async () => {
         throw new Error("optimization should not be called")
       },
@@ -343,6 +471,8 @@ describe("Fleet status panel", () => {
       },
       openExternal: async () => false,
       removeAccount: async () => ({ ok: true }),
+      setAccountPaused: async () => ({ ok: true }),
+      consumeResetCredit: async () => ({ ok: true }),
       startDelegationOptimization: async () => {
         throw new Error("optimization should not be called")
       },

@@ -218,9 +218,13 @@ const plannerFor = (
 
 const capacityFor = (options: KhalaCodexFleetToolOptions | undefined): FleetRunSupervisorCapacity => ({
   accounts: async () => {
-    const status = await inspectCodexFleet({ includeProcesses: false, startPylon: true }, options)
+    const status = await inspectCodexFleet({
+      includeProcesses: false,
+      includeRateLimits: false,
+      startPylon: true,
+    }, options)
     return status.accounts
-      .filter(account => account.provider === "codex")
+      .filter(account => account.provider === "codex" && !account.paused)
       .map(account => ({
         accountRef: account.accountRef,
         advertisedCapacity: Math.max(0, Math.trunc(

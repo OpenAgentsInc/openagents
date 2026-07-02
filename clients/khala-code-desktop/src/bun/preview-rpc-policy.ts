@@ -41,6 +41,7 @@ export const mutatingPreviewRpcMethods = new Set<KhalaCodeDesktopRpcMethodName>(
   "fleetRunStart",
   "openExternalUrl",
   "removeCodexAccount",
+  "setCodexAccountPaused",
   "slashCommandDispatch",
   "submitChatMessage",
 ])

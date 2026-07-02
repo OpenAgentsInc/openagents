@@ -52,6 +52,12 @@ export type FleetPanelOptions = Readonly<{
   removeAccount: (
     accountRef: string,
   ) => Promise<{ readonly ok: boolean; readonly error?: string }>
+  setAccountPaused: (
+    request: { readonly accountRef: string; readonly paused: boolean },
+  ) => Promise<{ readonly ok: boolean; readonly error?: string }>
+  consumeResetCredit: (
+    request: { readonly accountRef: string },
+  ) => Promise<{ readonly ok: boolean; readonly error?: string }>
   connectAccount: (accountRef: string) => Promise<KhalaCodeDesktopConnectStart>
   openExternal: (url: string) => Promise<boolean>
 }>
@@ -68,6 +74,8 @@ type Handlers = Readonly<{
   onRefresh: () => void
   onRemove: (accountRef: string) => void
   onConnect: (accountRef: string) => void
+  onPauseAccount: (accountRef: string, paused: boolean) => void
+  onConsumeResetCredit: (accountRef: string) => void
   onOpenUrl: (url: string) => void
   onCancelConnect: () => void
 }>
@@ -286,6 +294,31 @@ const accountCapacityLabel = (
 ): string | null => {
   if (capacity === null) return null
   return `${unknownNumber(capacity.available)}/${unknownNumber(capacity.ready)} free`
+}
+
+export const khalaFleetCountdownLabel = (resetsAtIso: string | null, now: Date): string | null => {
+  if (resetsAtIso === null) return null
+  const deltaMs = Date.parse(resetsAtIso) - now.getTime()
+  if (!Number.isFinite(deltaMs)) return null
+  if (deltaMs <= 0) return "now"
+  const totalMinutes = Math.ceil(deltaMs / 60_000)
+  const days = Math.floor(totalMinutes / 1440)
+  const hours = Math.floor((totalMinutes % 1440) / 60)
+  const minutes = totalMinutes % 60
+  if (days > 0) return hours === 0 ? `${days}d` : `${days}d ${hours}h`
+  if (hours > 0) return minutes === 0 ? `${hours}h` : `${hours}h ${minutes}m`
+  return `${minutes}m`
+}
+
+const rateLimitWindowLabel = (
+  window: NonNullable<KhalaCodeDesktopFleetAccount["rateLimits"]>["session"],
+  now: Date,
+): string | null => {
+  if (window === null) return null
+  const reset = khalaFleetCountdownLabel(window.resetsAtIso, now)
+  return `${Math.round(window.usedPercent)}% used / ${Math.round(window.remainingPercent)}% remaining${
+    reset === null ? "" : `, resets in ${reset}`
+  }`
 }
 
 const sessionRoleLabel = (
@@ -920,6 +953,7 @@ const accountCard = (
   account: KhalaCodeDesktopFleetAccount,
   handlers: Handlers,
 ): HTMLElement => {
+  const now = new Date()
   const state = accountReadinessState(account.readiness)
   const card = el("article", "khala-fleet-account")
   card.dataset.state = state
@@ -939,7 +973,9 @@ const accountCard = (
   identity.append(el("span", "khala-fleet-email", account.email ?? "not signed in"))
   card.append(identity)
 
-  if (state === "ready") {
+  if (account.paused) {
+    card.append(badge("degraded", "Paused"))
+  } else if (state === "ready") {
     card.append(badge("ready", "Ready"))
   } else {
     const reconnect = iconButton("Reconnect", "Reload", "khala-fleet-reconnect")
@@ -977,6 +1013,19 @@ const accountCard = (
   })
   card.append(remove)
 
+  if (!isDisplayOnlyDefaultAccountRef(account.accountRef)) {
+    const pause = iconButton(
+      account.paused ? "Resume planning" : "Pause account",
+      account.paused ? "Play" : "Pause",
+      "khala-fleet-reconnect khala-fleet-pause",
+    )
+    pause.title = account.paused
+      ? `Include ${account.accountRef} in planning`
+      : `Exclude ${account.accountRef} from planning without disconnecting`
+    pause.addEventListener("click", () => handlers.onPauseAccount(account.accountRef, !account.paused))
+    card.append(pause)
+  }
+
   const details = el("div", "khala-fleet-card-details")
   if (isDisplayOnlyDefaultAccountRef(account.accountRef)) {
     appendChip(details, "routing", "default slot")
@@ -987,6 +1036,12 @@ const accountCard = (
   appendChip(details, "home", homeRoleLabel(account.homeRole))
   appendChip(details, "queue", queuePolicyLabel(account.queuePolicy))
   appendChip(details, "cooldown", account.queuePolicy?.cooldown ?? null)
+  appendChip(details, "session limit", rateLimitWindowLabel(account.rateLimits?.session ?? null, now))
+  appendChip(details, "weekly limit", rateLimitWindowLabel(account.rateLimits?.weekly ?? null, now))
+  if (account.rateLimits?.rateLimitResetCredits !== undefined) {
+    const credits = account.rateLimits.rateLimitResetCredits
+    appendChip(details, "reset credits", credits === null ? "unavailable" : String(credits.availableCount))
+  }
   if (account.capacity !== null) {
     appendChip(
       details,
@@ -1001,6 +1056,17 @@ const accountCard = (
   }
   appendChip(details, "quota", account.quotaState)
   card.append(details)
+
+  if (
+    account.rateLimits?.rateLimitResetCredits !== undefined &&
+    account.rateLimits.rateLimitResetCredits !== null &&
+    account.rateLimits.rateLimitResetCredits.availableCount > 0
+  ) {
+    const reset = iconButton("Reset credits", "Reload", "khala-fleet-reconnect")
+    reset.title = "Consume an available Codex rate-limit reset credit"
+    reset.addEventListener("click", () => handlers.onConsumeResetCredit(account.accountRef))
+    card.append(reset)
+  }
 
   return card
 }
@@ -1332,7 +1398,7 @@ export const mountFleetPanel = (
     }
     if (lastData === null) return "Fleet status must load before previewing a run."
     const accounts = lastData.accounts.filter(
-      account => accountReadinessState(account.readiness) === "ready",
+      account => accountReadinessState(account.readiness) === "ready" && account.paused !== true,
     )
     if (accounts.length === 0) return "No ready worker accounts are available for the first wave."
     const slots: FleetRunPreviewSlot[] = []
@@ -1449,6 +1515,8 @@ export const mountFleetPanel = (
     onRefresh: () => void refresh(),
     onRemove: (accountRef: string) => onRemove(accountRef),
     onConnect: (accountRef: string) => onConnect(accountRef),
+    onPauseAccount: (accountRef: string, paused: boolean) => onPauseAccount(accountRef, paused),
+    onConsumeResetCredit: accountRef => onConsumeResetCredit(accountRef),
     onOpenUrl: (url: string) => void options.openExternal(url),
     onCancelConnect: () => {
       window.clearTimeout(connectPoll)
@@ -1603,6 +1671,59 @@ export const mountFleetPanel = (
         render(
           container,
           { phase: "error", message: result.error ?? "remove failed" },
+          handlers,
+          activeConnect,
+          delegateForm,
+          delegateRun,
+          activeRun,
+          fleetRunForm,
+          fleetRun,
+          optimizationRun,
+        )
+        return
+      }
+      await refresh()
+    })()
+  }
+
+  const onPauseAccount = (accountRef: string, paused: boolean): void => {
+    if (lastData !== null) {
+      lastData = {
+        ...lastData,
+        accounts: lastData.accounts.map(account =>
+          account.accountRef === accountRef ? { ...account, paused } : account,
+        ),
+      }
+      paint()
+    }
+    void (async () => {
+      const result = await options.setAccountPaused({ accountRef, paused })
+      if (!result.ok) {
+        render(
+          container,
+          { phase: "error", message: result.error ?? "pause failed" },
+          handlers,
+          activeConnect,
+          delegateForm,
+          delegateRun,
+          activeRun,
+          fleetRunForm,
+          fleetRun,
+          optimizationRun,
+        )
+        return
+      }
+      await refresh()
+    })()
+  }
+
+  const onConsumeResetCredit = (accountRef: string): void => {
+    void (async () => {
+      const result = await options.consumeResetCredit({ accountRef })
+      if (!result.ok) {
+        render(
+          container,
+          { phase: "error", message: result.error ?? "reset credit failed" },
           handlers,
           activeConnect,
           delegateForm,
