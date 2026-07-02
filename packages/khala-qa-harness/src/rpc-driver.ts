@@ -87,6 +87,16 @@ export class KhalaCodeRpcQaDriver implements KhalaCodeQaDriver {
     }
 
     if (action.kind !== "rpc_call") {
+      if (["click", "hotbar", "slash_command", "approve"].includes(action.kind)) {
+        return Effect.succeed(
+          this.record({
+            action,
+            data: { target: action.target, value: action.value },
+            label: `${action.kind}:${action.target ?? action.value ?? ""}`,
+            ok: true,
+          }),
+        )
+      }
       return Effect.fail(
         khalaCodeQaDriverFailure(`RPC QA driver does not support ${action.kind} actions`, { action }),
       )

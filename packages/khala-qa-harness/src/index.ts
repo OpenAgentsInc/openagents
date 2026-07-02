@@ -1,4 +1,5 @@
 export * from "./desktop-smoke-helpers.js"
+export * from "./coverage-ledger.js"
 export * from "./driver.js"
 export * from "./rpc-client.js"
 export * from "./rpc-driver.js"

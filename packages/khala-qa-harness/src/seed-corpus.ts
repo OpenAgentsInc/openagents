@@ -31,6 +31,14 @@ type GroupedScenario = Readonly<{
 export type KhalaCodeQaSeedCorpusManifest = Readonly<{
   schema: "khala_code_qa_seed_corpus_manifest.v1"
   backend: "fixture"
+  coverage: Readonly<{
+    approvalDecisionKinds: readonly string[]
+    hotbarPanels: readonly string[]
+    selectors: readonly string[]
+    settingsKeys: readonly string[]
+    slashCommands: readonly string[]
+    threadItemVariants: readonly string[]
+  }>
   scenarioIdsByGroup: readonly ScenarioGroupEntry[]
   scenarioCount: number
 }>
@@ -323,7 +331,7 @@ const groupedHotbarScenarios: readonly GroupedScenario[] = [
     "scenario.khala_code.seed.hotbar_chat_panel.v1",
     [{
       name: "chat-panel-rpc",
-      act: [{ kind: "rpc_call", method: "codingStatus" }, { kind: "rpc_call", method: "appInfo" }],
+      act: [{ kind: "hotbar", target: "chat" }, { kind: "rpc_call", method: "codingStatus" }, { kind: "rpc_call", method: "appInfo" }],
       expect: [schema("codingStatus"), schema("appInfo"), crash()],
     }],
     [
@@ -336,7 +344,7 @@ const groupedHotbarScenarios: readonly GroupedScenario[] = [
     "scenario.khala_code.seed.hotbar_fleet_panel.v1",
     [{
       name: "fleet-panel-rpc",
-      act: [{ kind: "rpc_call", method: "codexFleetStatus" }, { kind: "rpc_call", method: "fleetRunList", args: [{}] }],
+      act: [{ kind: "hotbar", target: "fleet" }, { kind: "rpc_call", method: "codexFleetStatus" }, { kind: "rpc_call", method: "fleetRunList", args: [{}] }],
       expect: [schema("codexFleetStatus"), schema("fleetRunList"), crash()],
     }],
     [
@@ -349,7 +357,7 @@ const groupedHotbarScenarios: readonly GroupedScenario[] = [
     "scenario.khala_code.seed.hotbar_settings_panel.v1",
     [{
       name: "settings-panel-rpc",
-      act: [{ kind: "rpc_call", method: "codexSettingsRead", args: [{}] }, { kind: "rpc_call", method: "codexEcosystemRead", args: [{}] }],
+      act: [{ kind: "hotbar", target: "settings" }, { kind: "rpc_call", method: "codexSettingsRead", args: [{}] }, { kind: "rpc_call", method: "codexEcosystemRead", args: [{}] }],
       expect: [schema("codexSettingsRead"), schema("codexEcosystemRead"), crash()],
     }],
     [
@@ -360,6 +368,14 @@ const groupedHotbarScenarios: readonly GroupedScenario[] = [
 ]
 
 export const KHALA_CODE_QA_THREAD_ITEM_VARIANTS = KHALA_CODE_CODEX_PARITY_REQUIRED_THREAD_ITEM_TYPES
+export const KHALA_CODE_QA_SEED_HOTBAR_PANELS = ["chat", "fleet", "settings"] as const
+export const KHALA_CODE_QA_SEED_SETTINGS_KEYS = ["model"] as const
+export const KHALA_CODE_QA_SEED_APPROVAL_DECISION_KINDS = ["accept"] as const
+export const KHALA_CODE_QA_SEED_SELECTORS = [] as const
+export const KHALA_CODE_QA_SEED_SLASH_COMMANDS = khalaCodeDesktopSlashCommandsWithAvailability({
+  debug: true,
+  platform: "darwin",
+}).map((command) => command.command)
 
 const groupedThreadItemScenarios: readonly GroupedScenario[] =
   KHALA_CODE_QA_THREAD_ITEM_VARIANTS.map((variant) =>
@@ -412,6 +428,14 @@ export const KHALA_CODE_QA_SEED_SCENARIOS: readonly KhalaCodeQaScenario[] =
 export const KHALA_CODE_QA_SEED_CORPUS_MANIFEST: KhalaCodeQaSeedCorpusManifest = {
   schema: "khala_code_qa_seed_corpus_manifest.v1",
   backend: "fixture",
+  coverage: {
+    approvalDecisionKinds: KHALA_CODE_QA_SEED_APPROVAL_DECISION_KINDS,
+    hotbarPanels: KHALA_CODE_QA_SEED_HOTBAR_PANELS,
+    selectors: KHALA_CODE_QA_SEED_SELECTORS,
+    settingsKeys: KHALA_CODE_QA_SEED_SETTINGS_KEYS,
+    slashCommands: KHALA_CODE_QA_SEED_SLASH_COMMANDS,
+    threadItemVariants: KHALA_CODE_QA_THREAD_ITEM_VARIANTS,
+  },
   scenarioIdsByGroup: scenarioIdsByGroup(groupedSeedScenarios),
   scenarioCount: KHALA_CODE_QA_SEED_SCENARIOS.length,
 }
