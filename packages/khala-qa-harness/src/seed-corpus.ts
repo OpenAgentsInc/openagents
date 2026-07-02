@@ -1,6 +1,11 @@
 import { KHALA_CODE_HOTBAR_SLOTS } from "../../../clients/khala-code-desktop/src/ui/sidebar.js"
 import { KHALA_CODE_CODEX_APPROVAL_ACTIONS } from "../../../clients/khala-code-desktop/src/shared/codex-approval-decisions.js"
-import { KHALA_CODE_CODEX_PARITY_REQUIRED_THREAD_ITEM_TYPES } from "../../../clients/khala-code-desktop/src/bun/codex-parity-contract.js"
+import {
+  KHALA_CODE_CODEX_THREAD_ITEM_FIXTURES,
+  KHALA_CODE_CODEX_THREAD_ITEM_FIXTURE_SOURCE,
+  KHALA_CODE_CODEX_THREAD_ITEM_FIXTURE_VARIANTS,
+  type KhalaCodeCodexThreadItemFixture,
+} from "../../../clients/khala-code-desktop/src/bun/codex-thread-item-fixtures.js"
 import {
   KHALA_CODE_DESKTOP_SLASH_COMMANDS,
   khalaCodeDesktopSlashCommandsWithAvailability,
@@ -67,6 +72,12 @@ export type KhalaCodeQaSeedCorpusManifest = Readonly<{
     settingsKeys: readonly string[]
     slashCommandAvailabilityStates: Readonly<Record<string, readonly KhalaCodeQaCoverageAvailability[]>>
     slashCommands: readonly string[]
+    threadItemFixtureSource: typeof KHALA_CODE_CODEX_THREAD_ITEM_FIXTURE_SOURCE
+    threadItemFixtures: readonly {
+      readonly fixtureId: string
+      readonly rendersVisible: boolean
+      readonly variant: string
+    }[]
     threadItemVariants: readonly string[]
   }>
   scenarioIdsByGroup: readonly ScenarioGroupEntry[]
@@ -969,7 +980,14 @@ const groupedHotbarScenarios: readonly GroupedScenario[] = [
   ),
 ]
 
-export const KHALA_CODE_QA_THREAD_ITEM_VARIANTS = KHALA_CODE_CODEX_PARITY_REQUIRED_THREAD_ITEM_TYPES
+export const KHALA_CODE_QA_THREAD_ITEM_VARIANTS = KHALA_CODE_CODEX_THREAD_ITEM_FIXTURE_VARIANTS
+export const KHALA_CODE_QA_THREAD_ITEM_FIXTURE_SOURCE = KHALA_CODE_CODEX_THREAD_ITEM_FIXTURE_SOURCE
+export const KHALA_CODE_QA_THREAD_ITEM_FIXTURES =
+  KHALA_CODE_CODEX_THREAD_ITEM_FIXTURES.map((fixture) => ({
+    fixtureId: String(fixture.item.id ?? fixture.variant),
+    rendersVisible: fixture.rendersVisible,
+    variant: fixture.variant,
+  }))
 export const KHALA_CODE_QA_SEED_HOTBAR_PANELS = KHALA_CODE_HOTBAR_SLOTS.map((slot) => slot.value)
 export const KHALA_CODE_QA_SEED_SETTINGS_KEYS = ["model", "personality"] as const
 export const KHALA_CODE_QA_SEED_APPROVAL_DECISION_KINDS = KHALA_CODE_CODEX_APPROVAL_ACTIONS
@@ -983,18 +1001,18 @@ export const KHALA_CODE_QA_SEED_SLASH_COMMAND_AVAILABILITY_STATES =
   ])) as Readonly<Record<string, readonly KhalaCodeQaCoverageAvailability[]>>
 
 const groupedThreadItemScenarios: readonly GroupedScenario[] =
-  KHALA_CODE_QA_THREAD_ITEM_VARIANTS.map((variant) =>
+  KHALA_CODE_CODEX_THREAD_ITEM_FIXTURES.map((fixture) =>
     groupedFixtureScenario(
       "thread_items",
-      `scenario.khala_code.seed.thread_item_${variant.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`)}.v1`,
+      `scenario.khala_code.seed.thread_item_${fixture.variant.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`)}.v1`,
       [{
         name: "read-thread-item",
-        act: [{ kind: "rpc_call", method: "codexThreadRead", args: [{ threadId: `thread-item-${variant}`, includeTurns: true }] }],
+        act: [{ kind: "rpc_call", method: "codexThreadRead", args: [{ threadId: threadItemThreadId(fixture.variant), includeTurns: true }] }],
         expect: [schema("codexThreadRead"), crash()],
       }],
       [
-        commitment(`seed.thread_item.${variant}.schema`, `${variant} ThreadItem replay decodes`, "schema"),
-        runPass(`seed.thread_item.${variant}.pass`, `${variant} ThreadItem replay scenario passes`),
+        commitment(`seed.thread_item.${fixture.variant}.schema`, `${fixture.variant} ThreadItem pinned fixture replay decodes`, "schema"),
+        runPass(`seed.thread_item.${fixture.variant}.pass`, `${fixture.variant} ThreadItem pinned fixture scenario passes`),
       ],
     )
   )
@@ -1038,6 +1056,8 @@ export const KHALA_CODE_QA_SEED_CORPUS_MANIFEST: KhalaCodeQaSeedCorpusManifest =
     settingsKeys: KHALA_CODE_QA_SEED_SETTINGS_KEYS,
     slashCommandAvailabilityStates: KHALA_CODE_QA_SEED_SLASH_COMMAND_AVAILABILITY_STATES,
     slashCommands: KHALA_CODE_QA_SEED_SLASH_COMMANDS,
+    threadItemFixtureSource: KHALA_CODE_QA_THREAD_ITEM_FIXTURE_SOURCE,
+    threadItemFixtures: KHALA_CODE_QA_THREAD_ITEM_FIXTURES,
     threadItemVariants: KHALA_CODE_QA_THREAD_ITEM_VARIANTS,
   },
   scenarioIdsByGroup: scenarioIdsByGroup(groupedSeedScenarios),
@@ -1115,6 +1135,18 @@ function sortedAvailabilityStates(
   states: Iterable<KhalaCodeQaCoverageAvailability>,
 ): readonly KhalaCodeQaCoverageAvailability[] {
   return [...new Set(states)].sort() as readonly KhalaCodeQaCoverageAvailability[]
+}
+
+function threadItemThreadId(variant: string): string {
+  return `thread-item-${variant}`
+}
+
+function threadItemFixtureForThreadId(
+  id: string,
+): KhalaCodeCodexThreadItemFixture | undefined {
+  if (!id.startsWith("thread-item-")) return undefined
+  const variant = id.slice("thread-item-".length)
+  return KHALA_CODE_CODEX_THREAD_ITEM_FIXTURES.find((fixture) => fixture.variant === variant)
 }
 
 function slashCommandExpectedAvailabilityStates(
@@ -1678,29 +1710,38 @@ const toolCatalog = () => ({
   }],
 })
 
-const threadMessage = (id: string, body: string, itemType?: string) => ({
+const fixtureItemStatus = (fixture: KhalaCodeCodexThreadItemFixture): string =>
+  typeof fixture.item.status === "string" ? fixture.item.status : fixture.rendersVisible ? "completed" : "suppressed"
+
+const threadItemCard = (
+  fixture: KhalaCodeCodexThreadItemFixture,
+  fallbackId: string,
+) => {
+  const itemId = typeof fixture.item.id === "string" ? fixture.item.id : fallbackId
+  return {
+    itemId,
+    itemType: fixture.variant,
+    status: fixtureItemStatus(fixture),
+    subtitle: KHALA_CODE_CODEX_THREAD_ITEM_FIXTURE_SOURCE.referenceLabel,
+    title: `${fixture.variant} fixture`,
+    threadId,
+    turnId,
+  }
+}
+
+const threadMessage = (
+  id: string,
+  body: string,
+  fixture?: KhalaCodeCodexThreadItemFixture,
+) => ({
   body,
   id,
   role: "assistant",
-  ...(itemType === undefined
+  ...(fixture === undefined
     ? {}
     : {
-      codexItem: {
-        itemId: id,
-        itemType,
-        status: "completed",
-        title: `${itemType} fixture`,
-        threadId,
-        turnId,
-      },
-      harnessItem: {
-        itemId: id,
-        itemType,
-        status: "completed",
-        title: `${itemType} fixture`,
-        threadId,
-        turnId,
-      },
+      codexItem: threadItemCard(fixture, id),
+      harnessItem: threadItemCard(fixture, id),
     }),
 })
 
@@ -1710,15 +1751,34 @@ const threadResult = (id: string, state: FixtureThreadState = {
   forked: false,
   title: "Fixture thread",
 }) => {
-  const itemType = id.startsWith("thread-item-") ? id.slice("thread-item-".length) : undefined
+  const fixture = threadItemFixtureForThreadId(id)
   return {
     cwd: "/workspace",
     desktopSessionId,
-    messages: [threadMessage(`message-${id}`, "fixture message", itemType)],
+    messages: [threadMessage(
+      `message-${id}`,
+      fixture === undefined
+        ? "fixture message"
+        : `Pinned ThreadItem fixture replay: ${fixture.variant}`,
+      fixture,
+    )],
     model: "gpt-5.1-codex",
     modelProvider: "openai",
     ok: true,
-    thread: { archived: state.archived, deleted: state.deleted, id, title: state.title },
+    thread: {
+      archived: state.archived,
+      deleted: state.deleted,
+      id,
+      parityFixture: fixture === undefined
+        ? null
+        : {
+          item: fixture.item,
+          rendersVisible: fixture.rendersVisible,
+          source: KHALA_CODE_CODEX_THREAD_ITEM_FIXTURE_SOURCE,
+          variant: fixture.variant,
+        },
+      title: fixture === undefined ? state.title : `${fixture.variant} fixture`,
+    },
     threadId: id,
   }
 }

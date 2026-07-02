@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { Effect } from "effect"
 
 import {
+  KHALA_CODE_CODEX_PARITY_REFERENCE_COMMIT,
   KHALA_CODE_CODEX_PARITY_REQUIRED_THREAD_ITEM_TYPES,
 } from "../../../clients/khala-code-desktop/src/bun/codex-parity-contract.js"
 import {
@@ -12,6 +13,8 @@ import {
   decodeKhalaCodeQaScenario,
   KHALA_CODE_QA_SEED_CORPUS_MANIFEST,
   KHALA_CODE_QA_SEED_SCENARIOS,
+  KHALA_CODE_QA_THREAD_ITEM_FIXTURES,
+  KHALA_CODE_QA_THREAD_ITEM_FIXTURE_SOURCE,
   KHALA_CODE_QA_THREAD_ITEM_VARIANTS,
   KHALA_CODE_QA_ROADMAP_RPC_METHOD_GROUPS,
   loadKhalaCodeQaScenario,
@@ -69,7 +72,15 @@ describe("Khala Code QA seed scenario corpus", () => {
       return `scenario.khala_code.seed.thread_item_${normalized}.v1`
     })
     expect(idsForGroup("thread_items")).toEqual(expectedThreadItemScenarioIds)
-    expect(KHALA_CODE_QA_THREAD_ITEM_VARIANTS).toEqual(KHALA_CODE_CODEX_PARITY_REQUIRED_THREAD_ITEM_TYPES)
+    expect([...KHALA_CODE_QA_THREAD_ITEM_VARIANTS]).toEqual([...KHALA_CODE_CODEX_PARITY_REQUIRED_THREAD_ITEM_TYPES])
+    expect(KHALA_CODE_QA_THREAD_ITEM_FIXTURE_SOURCE.referenceCommit).toBe(KHALA_CODE_CODEX_PARITY_REFERENCE_COMMIT)
+    expect(KHALA_CODE_QA_SEED_CORPUS_MANIFEST.coverage.threadItemFixtureSource).toEqual(KHALA_CODE_QA_THREAD_ITEM_FIXTURE_SOURCE)
+    expect(KHALA_CODE_QA_SEED_CORPUS_MANIFEST.coverage.threadItemFixtures).toEqual(KHALA_CODE_QA_THREAD_ITEM_FIXTURES)
+    expect(KHALA_CODE_QA_THREAD_ITEM_FIXTURES.map((fixture) => fixture.variant)).toEqual(
+      [...KHALA_CODE_CODEX_PARITY_REQUIRED_THREAD_ITEM_TYPES],
+    )
+    expect(new Set(KHALA_CODE_QA_THREAD_ITEM_FIXTURES.map((fixture) => fixture.fixtureId)).size)
+      .toBe(KHALA_CODE_QA_THREAD_ITEM_FIXTURES.length)
 
     const slashCommandIds = idsForGroup("rpc.slash_commands")
     expect(KHALA_CODE_QA_SEED_CORPUS_MANIFEST.coverage.slashCommands).toEqual(

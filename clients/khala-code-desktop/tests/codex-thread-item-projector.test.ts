@@ -3,6 +3,15 @@ import { describe, expect, test } from "bun:test"
 import {
   createCodexThreadItemEventProjector,
 } from "../src/bun/codex-thread-item-projector"
+import {
+  KHALA_CODE_CODEX_THREAD_ITEM_FIXTURES,
+  KHALA_CODE_CODEX_THREAD_ITEM_FIXTURE_SOURCE,
+  KHALA_CODE_CODEX_THREAD_ITEM_FIXTURE_VARIANTS,
+} from "../src/bun/codex-thread-item-fixtures"
+import {
+  KHALA_CODE_CODEX_PARITY_REFERENCE_COMMIT,
+  KHALA_CODE_CODEX_PARITY_REQUIRED_THREAD_ITEM_TYPES,
+} from "../src/bun/codex-parity-contract"
 import type { CodexAppServerNotification } from "../src/bun/codex-app-server-client"
 import type { KhalaCodeDesktopChatTurnEvent } from "../src/shared/rpc"
 
@@ -31,118 +40,31 @@ const messageEvents = (
     event.type === "message_start" || event.type === "message_replace")
 
 describe("Codex ThreadItem projector", () => {
+  test("pins shared ThreadItem fixtures to the parity contract", () => {
+    expect(KHALA_CODE_CODEX_THREAD_ITEM_FIXTURE_SOURCE.referenceCommit)
+      .toBe(KHALA_CODE_CODEX_PARITY_REFERENCE_COMMIT)
+    expect([...KHALA_CODE_CODEX_THREAD_ITEM_FIXTURE_VARIANTS])
+      .toEqual([...KHALA_CODE_CODEX_PARITY_REQUIRED_THREAD_ITEM_TYPES])
+  })
+
   test("projects every supported ThreadItem variant into stable transcript cards", () => {
     const projector = createCodexThreadItemEventProjector({
       desktopTurnId: "desktop-turn-fixture",
       renderUserMessages: true,
     })
-    const variants: readonly Record<string, unknown>[] = [
-      {
-        type: "userMessage",
-        id: "item-user",
-        clientId: "client-user",
-        content: [{ type: "text", text: "hello", textElements: [] }],
-      },
-      {
-        type: "hookPrompt",
-        id: "item-hook",
-        fragments: [{ text: "hook says hi", hookRunId: "hook-1" }],
-      },
-      { type: "agentMessage", id: "item-agent", text: "assistant text" },
-      { type: "plan", id: "item-plan", text: "- step one" },
-      { type: "reasoning", id: "item-reasoning", summary: ["summary"], content: ["hidden-ish thought"] },
-      {
-        type: "commandExecution",
-        id: "item-command",
-        command: "bun test",
-        cwd: "/workspace",
-        source: "agent",
-        status: "completed",
-        commandActions: [],
-        aggregatedOutput: "pass",
-        exitCode: 0,
-        durationMs: 42,
-      },
-      {
-        type: "fileChange",
-        id: "item-file",
-        status: "completed",
-        changes: [{
-          path: "src/app.ts",
-          kind: "update",
-          diff: "--- a/src/app.ts\n+++ b/src/app.ts\n@@ -1 +1 @@\n-old\n+new\n",
-        }],
-      },
-      {
-        type: "mcpToolCall",
-        id: "item-mcp",
-        server: "github",
-        tool: "issue_comment",
-        status: "completed",
-        arguments: { number: 7784 },
-        appContext: null,
-        pluginId: null,
-        result: { content: [{ type: "text", text: "ok" }] },
-        error: null,
-        durationMs: 10,
-      },
-      {
-        type: "dynamicToolCall",
-        id: "item-dynamic",
-        namespace: "figma",
-        tool: "search",
-        arguments: { q: "button" },
-        status: "completed",
-        contentItems: [{ type: "inputText", text: "found" }],
-        success: true,
-        durationMs: 9,
-      },
-      {
-        type: "collabAgentToolCall",
-        id: "item-collab",
-        tool: "spawnAgent",
-        status: "completed",
-        senderThreadId: "thread-fixture",
-        receiverThreadIds: ["thread-child"],
-        prompt: "review this",
-        model: "gpt-5.1-codex",
-        reasoningEffort: "medium",
-        agentsStates: { "thread-child": { status: "completed", message: "done" } },
-      },
-      {
-        type: "subAgentActivity",
-        id: "item-subactivity",
-        kind: "started",
-        agentThreadId: "thread-child",
-        agentPath: "/tmp/agent",
-      },
-      { type: "webSearch", id: "item-web", query: "codex app-server", action: null },
-      { type: "imageView", id: "item-image", path: "/tmp/screenshot.png" },
-      { type: "sleep", id: "item-sleep", durationMs: 1000 },
-      {
-        type: "imageGeneration",
-        id: "item-image-generation",
-        status: "completed",
-        revisedPrompt: "a precise UI card",
-        result: "generated",
-        savedPath: "/tmp/image.png",
-      },
-      { type: "enteredReviewMode", id: "item-review-enter", review: "reviewing" },
-      { type: "exitedReviewMode", id: "item-review-exit", review: "done" },
-      { type: "contextCompaction", id: "item-compact" },
-    ]
+    const variants = KHALA_CODE_CODEX_THREAD_ITEM_FIXTURES.map((fixture) => fixture.item)
 
     const events = variants.flatMap(variant => [...projector.accept(item(variant))])
-    const visibleVariants = variants.filter(variant => variant.type !== "reasoning")
+    const visibleVariants = KHALA_CODE_CODEX_THREAD_ITEM_FIXTURES.filter((fixture) => fixture.rendersVisible)
     const projectedMessages = messageEvents(events).map(event => event.message)
 
     expect(projectedMessages).toHaveLength(visibleVariants.length)
     expect(projectedMessages.map(message => message.codexItem?.itemType ?? null)).toEqual(
-      visibleVariants.map(variant =>
-        variant.type === "agentMessage" || variant.type === "userMessage" ? null : String(variant.type)
+      visibleVariants.map(fixture =>
+        fixture.variant === "agentMessage" || fixture.variant === "userMessage" ? null : fixture.variant
       ),
     )
-    expect(projector.messages().map(message => message.id)).toEqual(visibleVariants.map(variant => String(variant.id)))
+    expect(projector.messages().map(message => message.id)).toEqual(visibleVariants.map(fixture => String(fixture.item.id)))
     expect(projector.messages().find(message => message.id === "item-agent")?.codexItem).toBeUndefined()
     expect(projector.messages().find(message => message.id === "item-user")?.codexItem).toBeUndefined()
     expect(projector.messages().find(message => message.id === "item-reasoning")).toBeUndefined()

@@ -274,6 +274,11 @@ Rules:
   `KHALA_CODE_QA_SEED_CORPUS_MANIFEST` grouped by RPC area, hotbar panel,
   `ThreadItem` variant, and slash command so the coverage ledger can count
   coverage directly. See `docs/qa/khala-code-mechanical-corpus.md`.
+- **Q4.2 implementation artifact**: `clients/khala-code-desktop/src/bun/codex-thread-item-fixtures.ts`
+  pins one shared render fixture per parity-contract `ThreadItem` variant.
+  The seed corpus replays those fixtures through the `thread_items` group and
+  records the fixture source in the manifest. See
+  `docs/qa/khala-code-thread-item-coverage.md`.
 
 ## 5. Explore Mode: The Free-For-All That Cannot Lie
 
