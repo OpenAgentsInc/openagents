@@ -9,9 +9,11 @@ import {
   KHALA_CODE_QA_SEED_CORPUS_MANIFEST,
   KHALA_CODE_QA_SEED_SCENARIOS,
   loadKhalaCodeQaScenario,
+  makeKhalaCodeDomFixtureQaDriver,
   makeKhalaCodeQaSeedCorpusFixtureFetch,
   makeKhalaCodeRpcQaDriver,
   mergeKhalaCodeQaCoverageLedgers,
+  runKhalaCodeQaCrossModeScenario,
   runKhalaCodeQaScenario,
 } from "./index.js"
 
@@ -19,6 +21,27 @@ describe("Khala Code QA coverage ledger", () => {
   test("emits mergeable coverage from a seed corpus run", async () => {
     const reports = []
     for (const scenario of KHALA_CODE_QA_SEED_SCENARIOS) {
+      const loaded = loadKhalaCodeQaScenario(scenario)
+      if (loaded.modes.includes("dom")) {
+        const report = await Effect.runPromise(
+          runKhalaCodeQaCrossModeScenario({
+            makeDriver: (mode) => mode === "rpc"
+              ? makeKhalaCodeRpcQaDriver({
+                baseUrl: "http://fixture.local",
+                fetch: makeKhalaCodeQaSeedCorpusFixtureFetch(),
+                now: () => "2026-07-01T00:00:00.000Z",
+              })
+              : makeKhalaCodeDomFixtureQaDriver({
+                baseUrl: "http://fixture.local",
+                fetch: makeKhalaCodeQaSeedCorpusFixtureFetch(),
+                now: () => "2026-07-01T00:00:00.000Z",
+              }),
+            scenario: loaded,
+          }),
+        )
+        reports.push(...Object.values(report.modeReports))
+        continue
+      }
       const report = await Effect.runPromise(
         runKhalaCodeQaScenario({
           driver: makeKhalaCodeRpcQaDriver({
@@ -26,7 +49,7 @@ describe("Khala Code QA coverage ledger", () => {
             fetch: makeKhalaCodeQaSeedCorpusFixtureFetch(),
             now: () => "2026-07-01T00:00:00.000Z",
           }),
-          scenario: loadKhalaCodeQaScenario(scenario),
+          scenario: loaded,
         }),
       )
       reports.push(report)
@@ -37,7 +60,7 @@ describe("Khala Code QA coverage ledger", () => {
     expect(ledger.schema).toBe("khala_code_qa_coverage_ledger.v1")
     expect(ledger.runIds).toHaveLength(KHALA_CODE_QA_SEED_CORPUS_MANIFEST.scenarioCount)
     expect(ledger.rpcMethods.codexThreadList).toMatchObject({
-      calls: 2,
+      calls: 4,
       distinctArgumentShapeCount: 1,
     })
     expect(ledger.rpcMethods.codexConfigValueWrite?.argumentShapes).toEqual(["[{keyPath:string,value:string}]"])
@@ -54,6 +77,9 @@ describe("Khala Code QA coverage ledger", () => {
     expect(ledger.fleetRunControlVerbs).toEqual([...KHALA_CODE_QA_SEED_CORPUS_MANIFEST.coverage.fleetRunControlVerbs].sort())
     expect(ledger.inboxRoutingFlagKinds).toEqual([...KHALA_CODE_QA_SEED_CORPUS_MANIFEST.coverage.inboxRoutingFlagKinds].sort())
     expect(ledger.errorStateCasesExercised).toEqual([...KHALA_CODE_QA_ERROR_STATE_CASE_IDS].sort())
+    expect(ledger.crossModeSurfacesExercised).toEqual(
+      [...KHALA_CODE_QA_SEED_CORPUS_MANIFEST.coverage.crossModeSurfaces].sort(),
+    )
     expect(ledger.hotbarPanelsOpened).toEqual(["chat", "fleet", "settings"])
     for (const command of KHALA_CODE_QA_SEED_CORPUS_MANIFEST.coverage.slashCommands) {
       expect(ledger.slashCommands[command]?.dispatches).toBeGreaterThan(0)
@@ -178,6 +204,9 @@ describe("Khala Code QA coverage ledger", () => {
     expect(frontier.missing.fleetRunControlVerbs).toEqual(["drain", "pause", "resume", "stop"])
     expect(frontier.missing.inboxRoutingFlagKinds).toEqual(["flag", "interrupt", "retry"])
     expect(frontier.missing.errorStateCases).toEqual([...KHALA_CODE_QA_ERROR_STATE_CASE_IDS].sort())
+    expect(frontier.missing.crossModeSurfaces).toEqual(
+      [...KHALA_CODE_QA_SEED_CORPUS_MANIFEST.coverage.crossModeSurfaces].sort(),
+    )
     expect(frontier.missing.hotbarPanels).toContain("fleet")
     expect(frontier.missing.settingsKeys).toContain("model")
     expect(frontier.missing.approvalDecisionKinds).toContain("accept")

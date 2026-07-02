@@ -22,6 +22,10 @@ import {
   KHALA_CODE_QA_ROADMAP_RPC_METHOD_GROUPS,
   type KhalaCodeQaCoverageAvailability,
 } from "./coverage-ledger.js"
+import {
+  KHALA_CODE_QA_CROSS_MODE_SURFACES,
+  khalaCodeQaProjectionQuery,
+} from "./mode-projection.js"
 import type { KhalaCodeRpcFetch, KhalaCodeRpcMethodName } from "./rpc-client.js"
 import type { KhalaCodeQaScenario } from "./scenario.js"
 
@@ -46,6 +50,7 @@ export type SeedCorpusGroup =
   | "rpc.headless_events"
   | "rpc.qa_metrics"
   | "hotbar"
+  | "cross_mode"
   | "error_states"
   | "thread_items"
 
@@ -64,6 +69,7 @@ export type KhalaCodeQaSeedCorpusManifest = Readonly<{
   backend: "fixture"
   coverage: Readonly<{
     approvalDecisionKinds: readonly string[]
+    crossModeSurfaces: readonly string[]
     errorStateCases: readonly string[]
     fleetRunControlVerbs: readonly string[]
     hotbarPanels: readonly string[]
@@ -169,6 +175,21 @@ const groupedFixtureScenario = (
     commitments,
     id,
     modes: ["rpc"],
+    phases,
+  },
+})
+
+const groupedCrossModeFixtureScenario = (
+  id: string,
+  phases: KhalaCodeQaScenario["phases"],
+  commitments: KhalaCodeQaScenario["commitments"],
+): GroupedScenario => ({
+  group: "cross_mode",
+  scenario: {
+    backend: "fixture",
+    commitments,
+    id,
+    modes: ["rpc", "dom"],
     phases,
   },
 })
@@ -1052,6 +1073,7 @@ export const KHALA_CODE_QA_SEED_SETTINGS_KEYS = ["model", "personality"] as cons
 export const KHALA_CODE_QA_SEED_APPROVAL_DECISION_KINDS = KHALA_CODE_CODEX_APPROVAL_ACTIONS
 export const KHALA_CODE_QA_SEED_SELECTORS = [] as const
 export const KHALA_CODE_QA_SEED_SLASH_COMMANDS = KHALA_CODE_DESKTOP_SLASH_COMMANDS.map((command) => command.command)
+export const KHALA_CODE_QA_SEED_CROSS_MODE_SURFACES = KHALA_CODE_QA_CROSS_MODE_SURFACES
 
 export const KHALA_CODE_QA_SEED_SLASH_COMMAND_AVAILABILITY_STATES =
   Object.fromEntries(KHALA_CODE_DESKTOP_SLASH_COMMANDS.map((command) => [
@@ -1219,10 +1241,110 @@ const groupedSlashCommandScenarios: readonly GroupedScenario[] =
     )
   )
 
+const projectionRead = (
+  surface: typeof KHALA_CODE_QA_CROSS_MODE_SURFACES[number],
+) => ({
+  kind: "read" as const,
+  query: khalaCodeQaProjectionQuery(surface),
+})
+
+const crossModeConsistency = (
+  surface: typeof KHALA_CODE_QA_CROSS_MODE_SURFACES[number],
+) =>
+  consistency(
+    `rpc:${khalaCodeQaProjectionQuery(surface)}`,
+    `dom:${khalaCodeQaProjectionQuery(surface)}`,
+  )
+
+const groupedCrossModeScenarios: readonly GroupedScenario[] = [
+  groupedCrossModeFixtureScenario(
+    "scenario.khala_code.seed.cross_mode_consistency.v1",
+    [
+      {
+        name: "thread-list-cross-mode",
+        act: [
+          { kind: "rpc_call", method: "codexThreadList", args: [{ sessionId: desktopSessionId }] },
+          projectionRead("thread_list"),
+        ],
+        expect: [
+          schema("codexThreadList"),
+          crossModeConsistency("thread_list"),
+          crash(),
+        ],
+      },
+      {
+        name: "fleet-counts-cross-mode",
+        act: [
+          { kind: "rpc_call", method: "codexFleetStatus" },
+          projectionRead("fleet_counts"),
+        ],
+        expect: [
+          schema("codexFleetStatus"),
+          crossModeConsistency("fleet_counts"),
+          crash(),
+        ],
+      },
+      {
+        name: "gym-state-cross-mode",
+        act: [
+          {
+            kind: "rpc_call",
+            method: "fleetRunStart",
+            args: [{
+              objective: "fixture sustained run",
+              runRef,
+              targetConcurrency: 1,
+              workerKind: "codex",
+              workSource: { kind: "fixture", count: 1 },
+            }],
+          },
+          { kind: "rpc_call", method: "fleetRunStatus", args: [{ runRef }] },
+          { kind: "rpc_call", method: "fleetRunList", args: [{}] },
+          { kind: "rpc_call", method: "codexFleetStatus" },
+          projectionRead("gym_state"),
+        ],
+        expect: [
+          schema("fleetRunStatus"),
+          schema("fleetRunList"),
+          schema("codexFleetStatus"),
+          crossModeConsistency("gym_state"),
+          crash(),
+        ],
+      },
+      {
+        name: "runtime-badges-cross-mode",
+        act: [
+          { kind: "rpc_call", method: "codingStatus" },
+          { kind: "rpc_call", method: "pylonStatus" },
+          { kind: "rpc_call", method: "codexHarnessStatus" },
+          { kind: "rpc_call", method: "tokenAccountingStatus" },
+          projectionRead("runtime_badges"),
+        ],
+        expect: [
+          schema("codingStatus"),
+          schema("pylonStatus"),
+          schema("codexHarnessStatus"),
+          schema("tokenAccountingStatus"),
+          crossModeConsistency("runtime_badges"),
+          crash(),
+        ],
+      },
+    ],
+    [
+      commitment("seed.cross_mode.thread_list", "Mode P and Mode D thread-list projections agree", "consistency"),
+      commitment("seed.cross_mode.fleet_counts", "Mode P and Mode D fleet-count projections agree", "consistency"),
+      commitment("seed.cross_mode.gym_state", "Mode P and Mode D gym-state projections agree", "consistency"),
+      commitment("seed.cross_mode.runtime_badges", "Mode P and Mode D runtime badges agree", "consistency"),
+      runPass("seed.cross_mode.pass", "cross-mode consistency scenario passes"),
+    ],
+  ),
+]
+
 const groupedSeedScenarios: readonly GroupedScenario[] = [
   ...groupedRpcScenarios,
   ...groupedQ41RpcScenarios,
   ...groupedHotbarScenarios,
+  ...groupedCrossModeScenarios,
   ...groupedThreadItemScenarios,
   ...groupedErrorStateScenarios,
   ...groupedSlashCommandScenarios,
@@ -1236,6 +1358,7 @@ export const KHALA_CODE_QA_SEED_CORPUS_MANIFEST: KhalaCodeQaSeedCorpusManifest =
   backend: "fixture",
   coverage: {
     approvalDecisionKinds: KHALA_CODE_QA_SEED_APPROVAL_DECISION_KINDS,
+    crossModeSurfaces: KHALA_CODE_QA_SEED_CROSS_MODE_SURFACES,
     errorStateCases: KHALA_CODE_QA_ERROR_STATE_CASE_IDS,
     fleetRunControlVerbs: KHALA_CODE_QA_SEED_FLEET_RUN_CONTROL_VERBS,
     hotbarPanels: KHALA_CODE_QA_SEED_HOTBAR_PANELS,

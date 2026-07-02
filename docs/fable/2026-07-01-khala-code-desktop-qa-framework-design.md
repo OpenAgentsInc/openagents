@@ -284,6 +284,12 @@ Rules:
   named degradation case, plus invariant oracles for typed degraded state,
   no console errors, and no data loss. See
   `docs/qa/khala-code-error-state-corpus.md`.
+- **Q4.5 implementation artifact**: `packages/khala-qa-harness/src/cross-mode.ts`
+  runs one `modes: ["rpc", "dom"]` scenario document through Mode P and
+  deterministic fixture Mode D, evaluates per-phase `consistency` oracles for
+  thread list, fleet counts, Gym state, and runtime badges, and emits a
+  first-disagreement bug payload with both mode states attached. See
+  `docs/qa/khala-code-cross-mode-consistency.md`.
 
 ## 5. Explore Mode: The Free-For-All That Cannot Lie
 

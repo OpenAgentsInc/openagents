@@ -14,14 +14,17 @@ import {
   KHALA_CODE_QA_ERROR_STATE_CASES,
   KHALA_CODE_QA_ERROR_STATE_CASE_IDS,
   KHALA_CODE_QA_SEED_CORPUS_MANIFEST,
+  KHALA_CODE_QA_SEED_CROSS_MODE_SURFACES,
   KHALA_CODE_QA_SEED_SCENARIOS,
   KHALA_CODE_QA_THREAD_ITEM_FIXTURES,
   KHALA_CODE_QA_THREAD_ITEM_FIXTURE_SOURCE,
   KHALA_CODE_QA_THREAD_ITEM_VARIANTS,
   KHALA_CODE_QA_ROADMAP_RPC_METHOD_GROUPS,
   loadKhalaCodeQaScenario,
+  makeKhalaCodeDomFixtureQaDriver,
   makeKhalaCodeQaSeedCorpusFixtureFetch,
   makeKhalaCodeRpcQaDriver,
+  runKhalaCodeQaCrossModeScenario,
   runKhalaCodeQaScenario,
 } from "./index.js"
 
@@ -56,7 +59,7 @@ describe("Khala Code QA seed scenario corpus", () => {
   test("covers the mechanical seed groups requested by Q4.1", () => {
     const expectedRpcGroups = Object.keys(KHALA_CODE_QA_ROADMAP_RPC_METHOD_GROUPS)
     expect(KHALA_CODE_QA_SEED_CORPUS_MANIFEST.coverage.rpcGroups).toEqual(expectedRpcGroups)
-    for (const group of [...expectedRpcGroups, "hotbar", "thread_items", "error_states"]) {
+    for (const group of [...expectedRpcGroups, "hotbar", "thread_items", "cross_mode", "error_states"]) {
       expect(idsForGroup(group).length).toBeGreaterThan(0)
     }
     for (const [group, methods] of Object.entries(KHALA_CODE_QA_ROADMAP_RPC_METHOD_GROUPS)) {
@@ -83,6 +86,30 @@ describe("Khala Code QA seed scenario corpus", () => {
     )
     expect(new Set(KHALA_CODE_QA_THREAD_ITEM_FIXTURES.map((fixture) => fixture.fixtureId)).size)
       .toBe(KHALA_CODE_QA_THREAD_ITEM_FIXTURES.length)
+
+    expect(KHALA_CODE_QA_SEED_CORPUS_MANIFEST.coverage.crossModeSurfaces).toEqual(
+      KHALA_CODE_QA_SEED_CROSS_MODE_SURFACES,
+    )
+    expect(idsForGroup("cross_mode")).toEqual([
+      "scenario.khala_code.seed.cross_mode_consistency.v1",
+    ])
+    const crossModeScenario = KHALA_CODE_QA_SEED_SCENARIOS.find((candidate) =>
+      candidate.id === "scenario.khala_code.seed.cross_mode_consistency.v1"
+    )
+    expect(crossModeScenario?.modes).toEqual(["rpc", "dom"])
+    expect(crossModeScenario?.phases.map((phase) => phase.name)).toEqual([
+      "thread-list-cross-mode",
+      "fleet-counts-cross-mode",
+      "gym-state-cross-mode",
+      "runtime-badges-cross-mode",
+    ])
+    for (const surface of KHALA_CODE_QA_SEED_CROSS_MODE_SURFACES) {
+      expect(crossModeScenario?.phases.flatMap((phase) => phase.expect)).toContainEqual({
+        left: `rpc:projection:${surface}`,
+        oracle: "consistency",
+        right: `dom:projection:${surface}`,
+      })
+    }
 
     const slashCommandIds = idsForGroup("rpc.slash_commands")
     expect(KHALA_CODE_QA_SEED_CORPUS_MANIFEST.coverage.slashCommands).toEqual(
@@ -174,18 +201,38 @@ describe("Khala Code QA seed scenario corpus", () => {
     }
   })
 
-  test("runs the complete corpus against the fixture RPC backend", async () => {
+  test("runs the complete corpus against the fixture backend", async () => {
     const reports = []
     for (const scenario of KHALA_CODE_QA_SEED_SCENARIOS) {
-      const driver = makeKhalaCodeRpcQaDriver({
-        baseUrl: "http://fixture.local",
-        fetch: makeKhalaCodeQaSeedCorpusFixtureFetch(),
-        now: () => "2026-07-01T00:00:00.000Z",
-      })
+      const loaded = loadKhalaCodeQaScenario(scenario)
+      if (loaded.modes.includes("dom")) {
+        const report = await Effect.runPromise(
+          runKhalaCodeQaCrossModeScenario({
+            makeDriver: (mode) => mode === "rpc"
+              ? makeKhalaCodeRpcQaDriver({
+                baseUrl: "http://fixture.local",
+                fetch: makeKhalaCodeQaSeedCorpusFixtureFetch(),
+                now: () => "2026-07-01T00:00:00.000Z",
+              })
+              : makeKhalaCodeDomFixtureQaDriver({
+                baseUrl: "http://fixture.local",
+                fetch: makeKhalaCodeQaSeedCorpusFixtureFetch(),
+                now: () => "2026-07-01T00:00:00.000Z",
+              }),
+            scenario: loaded,
+          }),
+        )
+        reports.push(report)
+        continue
+      }
       const report = await Effect.runPromise(
         runKhalaCodeQaScenario({
-          driver,
-          scenario: loadKhalaCodeQaScenario(scenario),
+          driver: makeKhalaCodeRpcQaDriver({
+            baseUrl: "http://fixture.local",
+            fetch: makeKhalaCodeQaSeedCorpusFixtureFetch(),
+            now: () => "2026-07-01T00:00:00.000Z",
+          }),
+          scenario: loaded,
         }),
       )
       reports.push(report)
@@ -195,6 +242,8 @@ describe("Khala Code QA seed scenario corpus", () => {
     expect(reports.map((report) => [report.scenarioId, report.status])).toEqual(
       scenarioIds.map((id) => [id, "pass"]),
     )
-    expect(reports.every((report) => report.commitments.verdict === "CONFIRMED")).toBe(true)
+    expect(reports.every((report) =>
+      "commitments" in report ? report.commitments.verdict === "CONFIRMED" : report.status === "pass"
+    )).toBe(true)
   })
 })

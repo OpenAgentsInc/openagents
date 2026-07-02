@@ -33,6 +33,7 @@ export type KhalaCodeQaCoverageLedger = {
   readonly hotbarPanelsOpened: readonly string[]
   readonly settingsKeysWritten: readonly string[]
   readonly approvalDecisionKinds: readonly string[]
+  readonly crossModeSurfacesExercised: readonly string[]
   readonly fleetRunControlVerbs: readonly string[]
   readonly inboxRoutingFlagKinds: readonly string[]
   readonly errorStateCasesExercised: readonly string[]
@@ -52,6 +53,7 @@ export type KhalaCodeQaCoverageFrontierReport = {
     readonly hotbarPanels: readonly string[]
     readonly settingsKeys: readonly string[]
     readonly approvalDecisionKinds: readonly string[]
+    readonly crossModeSurfaces: readonly string[]
     readonly fleetRunControlVerbs: readonly string[]
     readonly inboxRoutingFlagKinds: readonly string[]
     readonly errorStateCases: readonly string[]
@@ -315,10 +317,16 @@ const collectArmedErrorStateCases = (args: readonly unknown[] | undefined): read
   return typeof sample.context.errorStateCase === "string" ? [sample.context.errorStateCase] : []
 }
 
+const crossModeSurfaceForReadQuery = (query: string): string | null => {
+  const prefix = "projection:"
+  return query.startsWith(prefix) ? query.slice(prefix.length) : null
+}
+
 export const createEmptyKhalaCodeQaCoverageLedger = (
   options: { readonly generatedAt?: string; readonly runId?: string } = {},
 ): KhalaCodeQaCoverageLedger => ({
   approvalDecisionKinds: [],
+  crossModeSurfacesExercised: [],
   fleetRunControlVerbs: [],
   generatedAt: options.generatedAt ?? emptyGeneratedAt,
   hotbarPanelsOpened: [],
@@ -347,6 +355,7 @@ export const collectKhalaCodeQaCoverageLedger = (input: {
   const hotbarPanelsOpened = new Set<string>()
   const settingsKeysWritten = new Set<string>()
   const approvalDecisionKinds = new Set<string>()
+  const crossModeSurfacesExercised = new Set<string>()
   const fleetRunControlVerbs = new Set<string>()
   const inboxRoutingFlagKinds = new Set<string>()
   const errorStateCasesExercised = new Set<string>()
@@ -424,10 +433,15 @@ export const collectKhalaCodeQaCoverageLedger = (input: {
     if (action.kind === "read" && action.query.startsWith("screenshot:")) {
       screensScreenshotted.add(action.query.slice("screenshot:".length))
     }
+    if (action.kind === "read") {
+      const surface = crossModeSurfaceForReadQuery(action.query)
+      if (surface !== null) crossModeSurfacesExercised.add(surface)
+    }
   }
 
   return {
     approvalDecisionKinds: sorted(approvalDecisionKinds),
+    crossModeSurfacesExercised: sorted(crossModeSurfacesExercised),
     fleetRunControlVerbs: sorted(fleetRunControlVerbs),
     generatedAt: input.generatedAt ?? new Date().toISOString(),
     hotbarPanelsOpened: sorted(hotbarPanelsOpened),
@@ -485,6 +499,7 @@ export const mergeKhalaCodeQaCoverageLedgers = (
 
   return {
     approvalDecisionKinds: sorted(addSet("approvalDecisionKinds")),
+    crossModeSurfacesExercised: sorted(addSet("crossModeSurfacesExercised")),
     fleetRunControlVerbs: sorted(addSet("fleetRunControlVerbs")),
     generatedAt,
     hotbarPanelsOpened: sorted(addSet("hotbarPanelsOpened")),
@@ -512,6 +527,9 @@ export const khalaCodeQaCoverageFrontierReport = (input: {
   const missing = {
     approvalDecisionKinds: sorted(input.manifest.coverage.approvalDecisionKinds.filter((item) =>
       !input.ledger.approvalDecisionKinds.includes(item)
+    )),
+    crossModeSurfaces: sorted(input.manifest.coverage.crossModeSurfaces.filter((item) =>
+      !input.ledger.crossModeSurfacesExercised.includes(item)
     )),
     fleetRunControlVerbs: sorted(input.manifest.coverage.fleetRunControlVerbs.filter((item) =>
       !input.ledger.fleetRunControlVerbs.includes(item)

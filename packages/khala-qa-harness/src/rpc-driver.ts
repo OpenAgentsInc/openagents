@@ -19,6 +19,7 @@ import {
   type KhalaCodeQaObservation,
   type KhalaCodeQaStateSnapshot,
 } from "./driver.js"
+import { projectKhalaCodeQaModeState } from "./mode-projection.js"
 import type { KhalaCodeQaAction } from "./scenario.js"
 
 const isRpcMethodName = (method: string): method is KhalaCodeRpcMethodName =>
@@ -38,11 +39,12 @@ const errorMessage = (cause: unknown): string =>
       })()
 
 export type KhalaCodeRpcQaDriverOptions = KhalaCodeRpcClientOptions & {
+  readonly mode?: "rpc" | "dom"
   readonly now?: () => string
 }
 
 export class KhalaCodeRpcQaDriver implements KhalaCodeQaDriver {
-  readonly mode = "rpc" as const
+  readonly mode: "rpc" | "dom"
   readonly client: KhalaCodeRpcClient
   readonly now: () => string
   private handle: KhalaCodeQaAppHandle | undefined
@@ -52,6 +54,7 @@ export class KhalaCodeRpcQaDriver implements KhalaCodeQaDriver {
 
   constructor(options: KhalaCodeRpcQaDriverOptions = {}) {
     this.client = new KhalaCodeRpcClient(options)
+    this.mode = options.mode ?? "rpc"
     this.now = options.now ?? (() => new Date().toISOString())
   }
 
@@ -61,7 +64,7 @@ export class KhalaCodeRpcQaDriver implements KhalaCodeQaDriver {
     return Effect.sync(() => {
       this.handle = {
         backend: opts.backend,
-        mode: "rpc",
+        mode: this.mode,
         startedAt: this.now(),
       }
       return this.handle
@@ -132,7 +135,8 @@ export class KhalaCodeRpcQaDriver implements KhalaCodeQaDriver {
 
     const occurrence = (this.rpcCallCounts.get(action.method) ?? 0) + 1
     this.rpcCallCounts.set(action.method, occurrence)
-    const occurrenceLabel = `rpc:${action.method}#${occurrence}`
+    const modePrefix = this.mode === "rpc" ? "rpc" : "dom:rpc"
+    const occurrenceLabel = `${modePrefix}:${action.method}#${occurrence}`
     const callWithOracle = this.client.callWithOracle.bind(this.client) as (
       method: KhalaCodeRpcMethodName,
       ...args: ReadonlyArray<unknown>
@@ -155,6 +159,7 @@ export class KhalaCodeRpcQaDriver implements KhalaCodeQaDriver {
         onSuccess: (result) =>
           Effect.sync(() => {
             this.rpcOracleByQuery.set(`rpc:${action.method}`, result)
+            this.rpcOracleByQuery.set(`${this.mode}:rpc:${action.method}`, result)
             this.rpcOracleByQuery.set(action.method, result)
             this.rpcOracleByQuery.set(occurrenceLabel, result)
             return this.record({
@@ -172,6 +177,14 @@ export class KhalaCodeRpcQaDriver implements KhalaCodeQaDriver {
     const observed = this.rpcOracleByQuery.get(query)
     if (observed !== undefined) {
       return Effect.succeed({ label: query, value: observed.value })
+    }
+    const projected = projectKhalaCodeQaModeState(query, (method) =>
+      this.rpcOracleByQuery.get(method)?.value ??
+      this.rpcOracleByQuery.get(`rpc:${method}`)?.value ??
+      this.rpcOracleByQuery.get(`${this.mode}:rpc:${method}`)?.value
+    )
+    if (projected !== undefined) {
+      return Effect.succeed({ label: query, value: projected })
     }
     return Effect.fail(khalaCodeQaDriverFailure(`RPC QA driver has no state snapshot for query: ${query}`))
   }
@@ -192,7 +205,7 @@ export class KhalaCodeRpcQaDriver implements KhalaCodeQaDriver {
     return Effect.succeed({
       refs: [],
       summary: {
-        mode: "rpc",
+        mode: this.mode,
         observations: this.observations.length,
       },
     })
@@ -207,3 +220,7 @@ export class KhalaCodeRpcQaDriver implements KhalaCodeQaDriver {
 export const makeKhalaCodeRpcQaDriver = (
   options?: KhalaCodeRpcQaDriverOptions,
 ): KhalaCodeRpcQaDriver => new KhalaCodeRpcQaDriver(options)
+
+export const makeKhalaCodeDomFixtureQaDriver = (
+  options?: Omit<KhalaCodeRpcQaDriverOptions, "mode">,
+): KhalaCodeRpcQaDriver => new KhalaCodeRpcQaDriver({ ...options, mode: "dom" })
