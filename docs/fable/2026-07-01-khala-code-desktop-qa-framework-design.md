@@ -265,6 +265,10 @@ Rules:
   one per hotbar panel, one per `ThreadItem` card variant (replayed from the
   parity fixtures), one per slash command (the registry already enumerates
   them — coverage is a loop, not a wishlist).
+- **T6.7 implementation artifact**: `packages/khala-qa-harness/src/seed-corpus.ts`
+  exports `KHALA_CODE_QA_SEED_SCENARIOS`, a fixture RPC fetch, and
+  `KHALA_CODE_QA_SEED_CORPUS_MANIFEST` grouped by RPC area, hotbar panel,
+  `ThreadItem` variant, and slash command so T6.6 can count coverage directly.
 
 ## 5. Explore Mode: The Free-For-All That Cannot Lie
 
