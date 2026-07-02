@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test"
+import { Window } from "happy-dom"
 
 import type { KhalaCodeDesktopCodexThreadSummary } from "../src/shared/codex-threads"
 import type { KhalaCodeDesktopCodexThreadListResult } from "../src/shared/rpc"
 import {
+  mountCodexThreadSidebar,
   renameThreadInListData,
   upsertPendingThreadInListData,
 } from "../src/ui/codex-thread-sidebar"
@@ -88,5 +90,74 @@ describe("Khala Code thread sidebar", () => {
       threadIds: ["thread-new"],
     })
     expect(upsertPendingThreadInListData(next, pending)).toBe(next)
+  })
+
+  test("renders mixed Codex and Claude catalog entries with harness badges", async () => {
+    const window = new Window()
+    const previousDocument = globalThis.document
+    const previousNavigator = globalThis.navigator
+    Object.defineProperty(globalThis, "document", {
+      configurable: true,
+      value: window.document,
+    })
+    Object.defineProperty(globalThis, "navigator", {
+      configurable: true,
+      value: window.navigator,
+    })
+    try {
+      const container = document.createElement("aside")
+      document.body.append(container)
+      const data: KhalaCodeDesktopCodexThreadListResult = {
+        ok: true,
+        data: [],
+        groups: [{ key: "all", label: "All sessions", threadIds: ["codex-thread", "claude-session"] }],
+        threads: [
+          { ...thread("codex-thread", "Codex work"), badges: ["Codex"] },
+          {
+            ...thread("claude-session", "Claude plan"),
+            badges: ["Claude"],
+            modelProvider: "claude",
+            source: "claude_sdk_list_sessions",
+          },
+        ],
+      }
+
+      const sidebar = mountCodexThreadSidebar(container, {
+        activeThreadId: () => null,
+        archiveThread: async threadId => ({ action: "archive", ok: true, threadId }),
+        deleteThread: async threadId => ({ action: "delete", ok: true, threadId }),
+        forkThread: async threadId => ({ action: "fork", ok: true, threadId }),
+        listThreads: async () => data,
+        renameThread: async threadId => ({ action: "rename", ok: true, threadId }),
+        resumeThread: async threadId => ({
+          ok: true,
+          thread: {},
+          threadId,
+          messages: [],
+        }),
+        sessionId: "desktop-session",
+        unarchiveThread: async threadId => ({ action: "unarchive", ok: true, threadId }),
+        onNewThreadRequested: () => undefined,
+        onThreadSelected: () => undefined,
+      })
+
+      sidebar.setVisible(true)
+      await sidebar.refresh()
+
+      expect([...container.querySelectorAll(".khala-thread-sidebar-harness-badge")]
+        .map(node => node.textContent)).toEqual(["Codex", "Claude"])
+      expect(container.textContent).toContain("Codex work")
+      expect(container.textContent).toContain("Claude plan")
+    } finally {
+      Object.defineProperty(globalThis, "document", {
+        configurable: true,
+        value: previousDocument,
+      })
+      Object.defineProperty(globalThis, "navigator", {
+        configurable: true,
+        value: previousNavigator,
+      })
+      window.close()
+    }
   })
 })

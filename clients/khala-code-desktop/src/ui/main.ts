@@ -91,6 +91,7 @@ import {
 } from "./sidebar"
 import { mountUnifiedInboxPanel } from "./inbox"
 import type { KhalaCodeDesktopCodexThreadSummary } from "../shared/codex-threads"
+import { sessionCatalogEntryToThreadSummary } from "../shared/session-catalog"
 import {
   type RecentThreadCycleDirection,
   recentThreadIndexForDigitKey,
@@ -381,6 +382,10 @@ const previewRpc = (): DesktopRpc => ({
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["codexThreadUnarchive"]>>
       >("codexThreadUnarchive", request),
+    sessionCatalog: (request?: Parameters<DesktopRpcRequests["sessionCatalog"]>[0]) =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["sessionCatalog"]>>
+      >("sessionCatalog", request),
     codexTurnInterrupt: request =>
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["codexTurnInterrupt"]>>
@@ -2656,6 +2661,8 @@ const controls = {
     rpc.request.codexThreadStart(request),
   codexThreadUnarchive: (request: Parameters<DesktopRpcRequests["codexThreadUnarchive"]>[0]) =>
     rpc.request.codexThreadUnarchive(request),
+  sessionCatalog: (request?: Parameters<DesktopRpcRequests["sessionCatalog"]>[0]) =>
+    rpc.request.sessionCatalog(request),
   codexTurnInterrupt: (request: Parameters<DesktopRpcRequests["codexTurnInterrupt"]>[0]) =>
     rpc.request.codexTurnInterrupt(request),
   codexTurnStart: (request: Parameters<DesktopRpcRequests["codexTurnStart"]>[0]) =>
@@ -3014,13 +3021,23 @@ const threadSidebar =
         forkThread: threadId => controls.codexThreadFork({ sessionId, threadId }),
         isThreadStreaming: threadId => activeCodexThreadId === threadId && pendingTurn,
         listThreads: async request => {
-          const result = await controls.codexThreadList({
-            archived: request.archived,
+          const catalog = await controls.sessionCatalog({
             limit: 50,
             searchTerm: request.searchTerm,
-            sessionId,
-            useStateDbOnly: true,
           })
+          const threads = catalog.entries.map(sessionCatalogEntryToThreadSummary)
+          const result = {
+            ok: true as const,
+            data: catalog.entries,
+            groups: [
+              {
+                key: "all-harnesses",
+                label: "All sessions",
+                threadIds: threads.map(thread => thread.id),
+              },
+            ],
+            threads,
+          }
           prefetchRecentThreadMessages(result.threads ?? [])
           return result
         },
