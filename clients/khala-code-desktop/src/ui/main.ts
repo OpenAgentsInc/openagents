@@ -115,6 +115,7 @@ import {
 import {
   initialKhalaCodeMainShellModel,
   updateKhalaCodeMainShellModel,
+  type KhalaCodeFollowUpDraft,
   type KhalaCodeMainShellMessage,
   type KhalaCodeMainShellSlashCommand,
 } from "./main-shell-model"
@@ -605,11 +606,17 @@ type ComposerIconName =
   | "code"
   | "file"
   | "image"
+  | "menu"
+  | "microphone"
+  | "model"
+  | "plus"
   | "preview"
   | "remove"
   | "retry"
   | "send"
+  | "settings"
   | "stop"
+  | "steer"
   | "text"
 
 const composerIconCatalog = {
@@ -617,11 +624,17 @@ const composerIconCatalog = {
   code: "Code",
   file: "File",
   image: "FileImage",
+  menu: "DotsHorizontalMoreMenu",
+  microphone: "Mic",
+  model: "Bolt",
+  plus: "Plus",
   preview: "Eye",
   remove: "Trash",
   retry: "ArrowRotateCcw",
   send: "ArrowUp",
+  settings: "Settings",
   stop: "Stop",
+  steer: "Reply",
   text: "Text",
 } satisfies Record<ComposerIconName, IconName>
 
@@ -672,10 +685,12 @@ const threadTokenPopover = requireElement<HTMLElement>("#thread-token-popover")
 const composerForm = requireElement<HTMLFormElement>("#composer-form")
 const composerFrame = requireElement<HTMLElement>("#composer-frame")
 const composerHudMount = requireElement<HTMLElement>("#composer-hud")
+const composerFollowUpQueue = requireElement<HTMLElement>("#composer-follow-up-queue")
 const composerInput = requireElement<HTMLTextAreaElement>("#composer-input")
 const composerRail = requireElement<HTMLElement>("#composer-rail")
 const slashCommandPalette = requireElement<HTMLElement>("#slash-command-palette")
 const composerPreview = requireElement<HTMLElement>("#composer-preview")
+const composerControls = requireElement<HTMLElement>("#composer-controls")
 const composerStatus = requireElement<HTMLElement>("#composer-status")
 const composerA11y = requireElement<HTMLElement>("#composer-a11y")
 const sendButton = requireElement<HTMLButtonElement>("#send-button")
@@ -1000,6 +1015,10 @@ const setShellComposerState = (
   state: typeof mainShellStore.model.composerState,
 ): void => dispatchMainShell({ _tag: "ComposerStateChanged", state })
 
+const setShellFollowUpDrafts = (
+  drafts: readonly KhalaCodeFollowUpDraft[],
+): void => dispatchMainShell({ _tag: "FollowUpDraftsChanged", drafts })
+
 const compactTokenFormatter = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 1,
   notation: "compact",
@@ -1082,12 +1101,21 @@ const renderHarnessPill = (): HTMLElement => {
   pill.className = "khala-harness-pill"
   pill.dataset.envOverride = shellModel().harnessEnvOverride === null ? "false" : "true"
   pill.setAttribute("role", "group")
+  pill.setAttribute("aria-label", "Composer mode")
   for (const option of harnessOptions) {
     const button = document.createElement("button")
     button.type = "button"
     button.className = "khala-harness-pill-button"
     button.dataset.active = shellModel().selectedHarnessMode === option.mode ? "true" : "false"
-    button.textContent = option.label
+    button.title = `Use ${option.label} runtime`
+    button.setAttribute("aria-label", `Use ${option.label} runtime`)
+    const label = document.createElement("span")
+    label.className = "khala-harness-pill-label"
+    label.textContent = option.mode === "codex_harness" ? "Custom" : option.label
+    const chevron = document.createElement("span")
+    chevron.className = "khala-selector-chevron"
+    chevron.setAttribute("aria-hidden", "true")
+    button.replaceChildren(composerIconElement("settings"), label, chevron)
     button.disabled = shellModel().harnessEnvOverride !== null
     button.addEventListener("click", () => void setHarnessMode(option.mode))
     pill.append(button)
@@ -1099,8 +1127,23 @@ const renderRuntimeBadge = (): HTMLElement => {
   const badge = document.createElement("span")
   badge.className = "khala-runtime-badge"
   badge.dataset.runtimeMode = shellModel().lastResponseRuntimeMode
-  badge.textContent = harnessLabel(shellModel().lastResponseRuntimeMode)
+  badge.title = `Runtime: ${harnessLabel(shellModel().lastResponseRuntimeMode)}`
+  const label = document.createElement("span")
+  label.textContent = "5.5 Light"
+  const chevron = document.createElement("span")
+  chevron.className = "khala-selector-chevron"
+  chevron.setAttribute("aria-hidden", "true")
+  badge.replaceChildren(composerIconElement("model"), label, chevron)
   return badge
+}
+
+const renderMicrophoneIndicator = (): HTMLElement => {
+  const indicator = document.createElement("span")
+  indicator.className = "khala-microphone-indicator"
+  indicator.title = "Voice input"
+  indicator.setAttribute("aria-label", "Voice input")
+  indicator.replaceChildren(composerIconElement("microphone"))
+  return indicator
 }
 
 const renderThinkingIndicator = (): HTMLElement | null => {
@@ -1486,6 +1529,103 @@ const renderAttachmentAction = (
   button.dataset.attachmentId = attachment.id
   button.replaceChildren(composerIconElement(action))
   return button
+}
+
+const removeFollowUpDraft = (id: string): void => {
+  setShellFollowUpDrafts(shellModel().followUpDrafts.filter(draft => draft.id !== id))
+  renderComposer()
+}
+
+const editFollowUpDraft = (draft: KhalaCodeFollowUpDraft): void => {
+  composerInput.value = draft.text
+  removeFollowUpDraft(draft.id)
+  requestAnimationFrame(focusComposerInput)
+}
+
+const steerFollowUpDraft = async (draft: KhalaCodeFollowUpDraft): Promise<void> => {
+  if (!shellModel().pendingTurn) {
+    editFollowUpDraft(draft)
+    return
+  }
+  const turnIds = [...activeTurnIds]
+  const targets = turnIds.length === 0 ? [undefined] : turnIds
+  try {
+    const results = await Promise.all(targets.map(turnId =>
+      rpc.request.codexTurnSteer({
+        clientUserMessageId: draft.id,
+        sessionId,
+        text: draft.text,
+        ...(turnId === undefined ? {} : { turnId }),
+      })))
+    const failed = results.find(result => !result.ok)
+    if (failed !== undefined) {
+      appendMessages([{
+        body: `Follow-up steering failed: ${failed.error ?? "unknown error"}`,
+        id: nextMessageId("system"),
+        role: "system",
+      }])
+      return
+    }
+    removeFollowUpDraft(draft.id)
+  } catch (error) {
+    appendMessages([{
+      body: `Follow-up steering failed: ${error instanceof Error ? error.message : String(error)}`,
+      id: nextMessageId("system"),
+      role: "system",
+    }])
+  } finally {
+    requestAnimationFrame(focusComposerInput)
+  }
+}
+
+const renderFollowUpDraft = (draft: KhalaCodeFollowUpDraft): HTMLElement => {
+  const row = document.createElement("div")
+  row.className = "khala-code-composer-follow-up"
+  row.dataset.followUpDraftId = draft.id
+  row.setAttribute("role", "listitem")
+
+  const icon = document.createElement("span")
+  icon.className = "khala-code-composer-follow-up-icon"
+  icon.setAttribute("aria-hidden", "true")
+  icon.append(composerIconElement("steer"))
+
+  const text = document.createElement("span")
+  text.className = "khala-code-composer-follow-up-text"
+  text.textContent = draft.text
+
+  const steer = document.createElement("button")
+  steer.type = "button"
+  steer.className = "khala-code-composer-follow-up-action"
+  steer.title = "Steer this follow-up into the active turn"
+  steer.setAttribute("aria-label", `Steer follow-up: ${draft.text}`)
+  steer.replaceChildren(composerIconElement("steer"), document.createTextNode("Steer"))
+  steer.addEventListener("click", () => void steerFollowUpDraft(draft))
+
+  const remove = document.createElement("button")
+  remove.type = "button"
+  remove.className = "khala-code-composer-follow-up-icon-button"
+  remove.title = "Remove follow-up"
+  remove.setAttribute("aria-label", `Remove follow-up: ${draft.text}`)
+  remove.replaceChildren(composerIconElement("remove"))
+  remove.addEventListener("click", () => removeFollowUpDraft(draft.id))
+
+  const edit = document.createElement("button")
+  edit.type = "button"
+  edit.className = "khala-code-composer-follow-up-icon-button"
+  edit.title = "Edit follow-up"
+  edit.setAttribute("aria-label", `Edit follow-up: ${draft.text}`)
+  edit.replaceChildren(composerIconElement("menu"))
+  edit.addEventListener("click", () => editFollowUpDraft(draft))
+
+  row.replaceChildren(icon, text, steer, remove, edit)
+  return row
+}
+
+const renderFollowUpQueue = (): void => {
+  const drafts = shellModel().followUpDrafts
+  composerFollowUpQueue.hidden = drafts.length === 0
+  composerFollowUpQueue.setAttribute("role", drafts.length === 0 ? "presentation" : "list")
+  composerFollowUpQueue.replaceChildren(...drafts.map(renderFollowUpDraft))
 }
 
 const openAttachmentPreview = (attachment: CommandComposerAttachmentProps): void => {
@@ -1914,6 +2054,7 @@ function renderComposer(): void {
   const status = statusForComposer()
   const sendLabel = buttonLabel(status)
   const attachmentCount = shellModel().composerState.doc.attachments.length
+  const followUpCount = shellModel().followUpDrafts.length
 
   composerForm.dataset.oaCommandComposerStatus = status
   composerFrame.dataset.oaCommandComposerFrame = ""
@@ -1924,9 +2065,10 @@ function renderComposer(): void {
   sendButton.dataset.oaCommandComposerSubmit = shellModel().pendingTurn ? "stop" : "send"
   sendButton.dataset.status = status
   setButtonIcon(sendButton, shellModel().pendingTurn ? "stop" : "send")
-  setButtonIcon(attachButton, "attach")
+  setButtonIcon(attachButton, "plus")
   sendButton.querySelector(".oa-ai-command-composer-submit-label")!.textContent =
     sendLabel
+  composerControls.replaceChildren(attachButton, renderHarnessPill())
 
   const details = [
     statusLabelFor(status),
@@ -1936,8 +2078,8 @@ function renderComposer(): void {
   composerStatus.className = composerClasses.status
   composerStatus.dataset.oaCommandComposerStatusLabel = status
   composerStatus.replaceChildren(
-    renderHarnessPill(),
     renderRuntimeBadge(),
+    renderMicrophoneIndicator(),
     ...details.map((detail, index) => {
       const span = document.createElement("span")
       span.dataset.slot = index === 0 ? "status" : "detail"
@@ -1948,8 +2090,10 @@ function renderComposer(): void {
   )
   composerA11y.textContent =
     `${statusLabelFor(status)}. ${attachmentCount} attachments. ` +
+    `${followUpCount} queued follow-ups. ` +
     `${composerInput.value.length} characters.`
 
+  renderFollowUpQueue()
   renderAttachmentRail()
   renderComposerPreview()
   renderSlashCommandPalette()
@@ -1971,6 +2115,9 @@ const nextMessageId = (role: KhalaCodeDesktopMessageRole): string =>
 
 const nextTurnId = (): string =>
   `turn-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+
+const nextFollowUpDraftId = (): string =>
+  `follow-up-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
 
 const addMessage = (
   role: KhalaCodeDesktopMessageRole,
@@ -2377,6 +2524,7 @@ const stopActiveTurn = (): void => {
     turnFirstVisibleEventRecorded.delete(turnId)
   }
   activeTurnIds.clear()
+  setShellFollowUpDrafts([])
   shellModel().pendingTurn = false
   shellModel().thinkingTurnId = null
   threadSidebar?.setActiveThreadId(shellModel().activeCodexThreadId)
@@ -2396,6 +2544,7 @@ const handleSlashCommandClientAction = async (
   switch (result.action) {
     case "clear_visible_transcript":
       setShellMessages([])
+      setShellFollowUpDrafts([])
       activeTurnIds.clear()
       render()
       return "Cleared the visible transcript."
@@ -2464,9 +2613,31 @@ const submitSlashCommand = async (
   return message
 }
 
+const queueFollowUpDraft = (text: string): void => {
+  setShellFollowUpDrafts([
+    ...shellModel().followUpDrafts,
+    { id: nextFollowUpDraftId(), text },
+  ])
+  resetComposerDraft()
+  requestAnimationFrame(focusComposerInput)
+}
+
 const submitComposer = async (): Promise<KhalaCodeDesktopMessage | null> => {
   if (shellModel().pendingTurn) {
-    stopActiveTurn()
+    const draftText = composerInput.value.trim()
+    if (draftText === "" && shellModel().composerState.doc.attachments.length === 0) return null
+    if (shellModel().composerState.doc.attachments.length > 0) {
+      appendMessages([{
+        body: "Finish the active turn before sending attachments. Text follow-ups can be queued now.",
+        id: nextMessageId("system"),
+        role: "system",
+      }])
+      return null
+    }
+    if (draftText.startsWith("/")) {
+      return submitSlashCommand(draftText, draftText)
+    }
+    queueFollowUpDraft(draftText)
     return null
   }
   const draftText =
@@ -2729,7 +2900,6 @@ composerInput.addEventListener("keydown", event => {
   if (
     event.key === "Enter" &&
     !event.shiftKey &&
-    !shellModel().pendingTurn &&
     canSubmitComposer()
   ) {
     event.preventDefault()
@@ -2952,6 +3122,7 @@ const controls = {
   consumeCodexRateLimitResetCredit: (request: Parameters<DesktopRpcRequests["consumeCodexRateLimitResetCredit"]>[0]) =>
     rpc.request.consumeCodexRateLimitResetCredit(request),
   focusComposer: focusComposerInput,
+  followUpDrafts: () => shellModel().followUpDrafts.map(draft => ({ ...draft })),
   isComposerFocused: () => document.activeElement === composerInput,
   isPending: () => shellModel().pendingTurn,
   loadGymDemoProof: (): GymPaneState => {
@@ -2990,6 +3161,7 @@ const controls = {
   reset: () => {
     setShellMessages([])
     activeTurnIds.clear()
+    setShellFollowUpDrafts([])
     resetComposerDraft()
     shellModel().pendingTurn = false
     shellModel().thinkingTurnId = null
@@ -3090,6 +3262,7 @@ const beginCodexThreadSwitch = (input: {
     setShellMessages(optimisticMessages)
   }
   activeTurnIds.clear()
+  setShellFollowUpDrafts([])
   shellModel().pendingTurn = false
   shellModel().thinkingTurnId = null
   shellModel().lastTurnFailed = false
@@ -3115,6 +3288,7 @@ const activateCodexThread = (input: {
   setShellMessages(visibleMessages)
   const hydratedVisibleMessages = shellModel().messages
   activeTurnIds.clear()
+  setShellFollowUpDrafts([])
   shellModel().pendingTurn = false
   shellModel().thinkingTurnId = null
   shellModel().lastTurnFailed = false
@@ -3136,6 +3310,7 @@ const beginNewCodexThread = (): void => {
   setActiveCodexThreadId(null)
   setShellMessages([])
   activeTurnIds.clear()
+  setShellFollowUpDrafts([])
   shellModel().pendingTurn = false
   shellModel().thinkingTurnId = null
   shellModel().lastTurnFailed = false

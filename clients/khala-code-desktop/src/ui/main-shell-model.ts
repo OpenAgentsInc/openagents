@@ -15,12 +15,18 @@ type DesktopRpcRequests = KhalaCodeDesktopRPCSchema["requests"]
 export type KhalaCodeMainShellSlashCommand =
   Awaited<ReturnType<DesktopRpcRequests["slashCommandList"]>>["commands"][number]
 
+export type KhalaCodeFollowUpDraft = {
+  id: string
+  text: string
+}
+
 export type KhalaCodeMainShellModel = {
   activeCodexThreadId: string | null
   claudeApprovalDialogOpen: boolean
   composerAttachmentReceipts: ComposerAttachmentUploadReceipt[]
   composerState: ComposerState
   dragActive: boolean
+  followUpDrafts: KhalaCodeFollowUpDraft[]
   harnessEnvOverride: KhalaCodeDesktopRuntimeMode | null
   lastResponseRuntimeMode: KhalaCodeDesktopRuntimeMode
   lastSubmittedDraft: string
@@ -49,6 +55,10 @@ export type KhalaCodeMainShellMessage =
   | { readonly _tag: "ComposerReceiptsReset" }
   | { readonly _tag: "ComposerStateChanged"; readonly state: ComposerState }
   | { readonly _tag: "DragActiveChanged"; readonly active: boolean }
+  | {
+      readonly _tag: "FollowUpDraftsChanged"
+      readonly drafts: readonly KhalaCodeFollowUpDraft[]
+    }
   | {
       readonly _tag: "HarnessSettingChanged"
       readonly envOverride: KhalaCodeDesktopRuntimeMode | null
@@ -96,6 +106,7 @@ export const initialKhalaCodeMainShellModel = (
   composerAttachmentReceipts: [],
   composerState: emptyComposerState(),
   dragActive: false,
+  followUpDrafts: [],
   harnessEnvOverride: null,
   lastResponseRuntimeMode: "codex_harness",
   lastSubmittedDraft: "",
@@ -137,6 +148,8 @@ export const updateKhalaCodeMainShellModel = (
       return { ...model, composerState: message.state }
     case "DragActiveChanged":
       return { ...model, dragActive: message.active }
+    case "FollowUpDraftsChanged":
+      return { ...model, followUpDrafts: [...message.drafts] }
     case "HarnessSettingChanged":
       return {
         ...model,

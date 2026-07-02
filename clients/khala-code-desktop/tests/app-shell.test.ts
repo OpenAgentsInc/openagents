@@ -108,6 +108,7 @@ describe("khala code desktop app shell", () => {
     expect(html).toContain("data-oa-command-composer")
     expect(html).toContain('id="composer-rail"')
     expect(html).toContain('id="composer-hud"')
+    expect(html).toContain('id="composer-follow-up-queue"')
     expect(html).toContain('id="composer-input"')
     expect(html).toContain('id="slash-command-palette"')
     expect(html).toContain("data-oa-command-composer-native-editing")
@@ -1405,7 +1406,7 @@ describe("khala code desktop app shell", () => {
     expect(html).not.toContain('id="resize-button"')
     expect(html).not.toContain('data-oa-command-composer-control="Preview"')
     expect(html).not.toContain("data-oa-command-composer-resize")
-    expect(css).toContain("grid-template-columns: minmax(0, 1fr) minmax(0, auto) 32px")
+    expect(css).toContain("grid-template-columns: minmax(0, 1fr) auto auto")
     expect(css).not.toContain("grid-template-columns: minmax(0, 1fr) minmax(0, auto) 32px 32px")
     expect(css).toContain(".khala-code-composer .oa-ai-command-composer-submit-label")
     expect(main).not.toContain("previewButton")
@@ -1509,24 +1510,31 @@ describe("khala code desktop app shell", () => {
     }
   })
 
-  test("starts the composer compact with the placeholder near the top edge", async () => {
+  test("renders the rounded follow-up composer from the reference design", async () => {
     const html = await Bun.file(new URL("../src/ui/index.html", import.meta.url)).text()
+    const main = await Bun.file(new URL("../src/ui/main.ts", import.meta.url)).text()
     const css = await Bun.file(new URL("../src/ui/styles.css", import.meta.url)).text()
 
     expect(html).toContain('rows="2"')
-    expect(css).toContain("--oa-command-composer-height: 6rem")
-    expect(css).toContain("padding: 8px 10px")
-    expect(css).toContain("min-height: 2.5rem")
+    expect(html).toContain('id="composer-follow-up-queue"')
+    expect(html).toContain('placeholder="Ask for follow-up changes"')
+    expect(main).toContain("queueFollowUpDraft")
+    expect(main).toContain("steerFollowUpDraft")
+    expect(main).toContain('setButtonIcon(attachButton, "plus")')
+    expect(css).toContain("--oa-command-composer-height: 12.25rem")
+    expect(css).toContain("border-radius: 28px")
+    expect(css).toContain("padding: 30px 26px 16px")
+    expect(css).toContain("min-height: 5.9rem")
+    expect(css).toContain(".khala-code-composer-follow-up-queue")
     expect(css).toContain("#composer-input")
     expect(css).toContain("padding: 0")
-    expect(css).not.toContain("--oa-command-composer-height: 8rem")
-    expect(css).not.toContain("--oa-command-composer-height: 10.25rem")
+    expect(css).not.toContain("--oa-command-composer-height: 6rem")
     expect(css).not.toContain("min-height: 4.25rem")
     expect(css).not.toContain("min-height: 9rem")
     expect(css).not.toContain("padding: 16px 46px 48px 0")
   })
 
-  test("keeps transcript scrolling full width while messages and composer stay on the 768px rail", async () => {
+  test("keeps transcript scrolling full width while messages stay narrow and composer spans the dock", async () => {
     const css = await Bun.file(new URL("../src/ui/styles.css", import.meta.url)).text()
 
     expect(css).toContain(".message-list")
@@ -1535,7 +1543,7 @@ describe("khala code desktop app shell", () => {
     expect(css).toContain("margin-left: max(4px, calc((100% - 768px) / 2))")
     expect(css).toContain("margin-right: max(4px, calc((100% - 768px) / 2))")
     expect(css).toContain(".khala-code-composer")
-    expect(css).toContain("max-width: 768px")
+    expect(css).toContain("max-width: min(92rem, calc(100vw - var(--sidebar-width) - 28px))")
     expect(css).not.toContain("width: min(100%, 48rem)")
   })
 
@@ -1585,6 +1593,7 @@ describe("khala code desktop app shell", () => {
     expect(main).toContain("sendButton.disabled = !shellModel().pendingTurn && !canSubmitComposer()")
     expect(main).toContain('sendButton.type = shellModel().pendingTurn ? "button" : "submit"')
     expect(main).toContain("stopActiveTurn")
+    expect(main).toContain("queueFollowUpDraft(draftText)")
     expect(main).not.toContain("composerInput.disabled = pendingTurn")
     expect(main).toContain("requestAnimationFrame(focusComposerInput)")
     expect(css).not.toContain("#composer-input:disabled")

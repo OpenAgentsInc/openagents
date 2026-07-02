@@ -57,6 +57,12 @@
             class="khala-code-composer-hud"
             aria-hidden="true"
           ></div>
+          <div
+            id="composer-follow-up-queue"
+            class="khala-code-composer-follow-up-queue"
+            aria-label="Queued follow-up changes"
+            hidden
+          ></div>
           <div id="composer-frame" class="oa-ai-command-composer-frame">
           <label for="composer-input" class="oa-ai-command-composer-label">
             Message Khala Code
@@ -79,7 +85,7 @@
             autocomplete="off"
             autofocus
             spellcheck="true"
-            placeholder="Send a message"
+            placeholder="Ask for follow-up changes"
             aria-label="Message Khala Code"
             aria-describedby="composer-a11y"
             data-oa-command-composer-textarea
