@@ -2,7 +2,15 @@ import { KhalaCodeRpcMethodNames, type KhalaCodeRpcMethodName } from "./rpc-clie
 import type { KhalaCodeQaObservation } from "./driver.js"
 import type { KhalaCodeQaSeedCorpusManifest } from "./seed-corpus.js"
 
-export type KhalaCodeQaCoverageAvailability = "always" | "debug" | "task" | "thread" | "args" | "unavailable"
+export type KhalaCodeQaCoverageAvailability =
+  | "always"
+  | "args"
+  | "debug"
+  | "gap"
+  | "side_conversation"
+  | "task"
+  | "thread"
+  | "unavailable"
 
 export type KhalaCodeQaCoverageLedger = {
   readonly schema: "khala_code_qa_coverage_ledger.v1"
@@ -14,6 +22,7 @@ export type KhalaCodeQaCoverageLedger = {
     readonly argumentShapes: readonly string[]
   }>>
   readonly slashCommands: Readonly<Record<string, {
+    readonly availabilityStateCount: number
     readonly dispatches: number
     readonly availabilityStates: readonly KhalaCodeQaCoverageAvailability[]
   }>>
@@ -36,6 +45,7 @@ export type KhalaCodeQaCoverageFrontierReport = {
     readonly approvalDecisionKinds: readonly string[]
     readonly threadItemVariants: readonly string[]
     readonly selectors: readonly string[]
+    readonly slashCommandAvailabilityStates: readonly string[]
   }
   readonly zeroForAWeekIssueCandidates: readonly string[]
 }
@@ -71,13 +81,17 @@ const rpcCoverageToObject = (
 const slashCoverageToObject = (
   coverage: MutableSlashCoverage,
 ): KhalaCodeQaCoverageLedger["slashCommands"] =>
-  Object.fromEntries([...coverage.entries()].sort(([left], [right]) => left.localeCompare(right)).map(([command, entry]) => [
-    command,
-    {
-      availabilityStates: sorted(entry.availabilityStates) as readonly KhalaCodeQaCoverageAvailability[],
-      dispatches: entry.dispatches,
-    },
-  ]))
+  Object.fromEntries([...coverage.entries()].sort(([left], [right]) => left.localeCompare(right)).map(([command, entry]) => {
+    const availabilityStates = sorted(entry.availabilityStates) as readonly KhalaCodeQaCoverageAvailability[]
+    return [
+      command,
+      {
+        availabilityStateCount: availabilityStates.length,
+        availabilityStates,
+        dispatches: entry.dispatches,
+      },
+    ]
+  }))
 
 const parseSlashRaw = (raw: unknown): string | undefined => {
   if (typeof raw !== "string") return undefined
@@ -87,13 +101,35 @@ const parseSlashRaw = (raw: unknown): string | undefined => {
 
 const availabilityStatesForCommand = (command: Record<string, unknown>): readonly KhalaCodeQaCoverageAvailability[] => {
   const states: KhalaCodeQaCoverageAvailability[] = []
-  if (command.available === false) states.push("unavailable")
+  const availability = isRecord(command.availability) ? command.availability : undefined
+  if (availability?.available === false) states.push("unavailable")
   if (command.debug === true) states.push("debug")
   if (command.availableDuringTask === true) states.push("task")
+  if (command.availableInSideConversation === true) states.push("side_conversation")
   const dispatch = command.dispatch
+  if (isRecord(dispatch) && dispatch.kind === "gap") states.push("gap")
   if (isRecord(dispatch) && dispatch.requiresThread === true) states.push("thread")
   if (isRecord(dispatch) && dispatch.requiresArgs === true) states.push("args")
-  return states.length === 0 ? ["always"] : states
+  const canBecomeUnavailable =
+    command.availableDuringTask === false ||
+    command.availableInSideConversation === false ||
+    isRecord(dispatch) && (dispatch.requiresThread === true || dispatch.requiresArgs === true)
+  return states.length === 0 && !canBecomeUnavailable ? ["always"] : states
+}
+
+const availabilityStatesForDispatchResult = (
+  result: unknown,
+): readonly KhalaCodeQaCoverageAvailability[] => {
+  if (!isRecord(result)) return []
+  switch (result.status) {
+    case "blocked":
+    case "unavailable":
+      return ["unavailable"]
+    case "gap":
+      return ["gap"]
+    default:
+      return []
+  }
 }
 
 const recordRpc = (
@@ -170,7 +206,15 @@ export const collectKhalaCodeQaCoverageLedger = (input: {
       const firstArg = action.args?.[0]
       if (action.method === "slashCommandDispatch" && isRecord(firstArg)) {
         const command = parseSlashRaw(firstArg.raw)
-        if (command !== undefined) recordSlash(slashCommands, command, { dispatched: true })
+        const value = isRecord(observation.data) && isRecord(observation.data.value)
+          ? observation.data.value
+          : undefined
+        if (command !== undefined) {
+          recordSlash(slashCommands, command, {
+            availabilityStates: availabilityStatesForDispatchResult(value),
+            dispatched: true,
+          })
+        }
       }
       if (action.method === "slashCommandList") {
         const value = isRecord(observation.data) && isRecord(observation.data.value)
@@ -284,6 +328,13 @@ export const khalaCodeQaCoverageFrontierReport = (input: {
     selectors: sorted(input.manifest.coverage.selectors.filter((item) =>
       !input.ledger.selectorsClicked.includes(item)
     )),
+    slashCommandAvailabilityStates: sorted(
+      Object.entries(input.manifest.coverage.slashCommandAvailabilityStates).flatMap(([command, states]) =>
+        states
+          .filter((state) => !input.ledger.slashCommands[command]?.availabilityStates.includes(state))
+          .map((state) => `${command}:${state}`)
+      ),
+    ),
     settingsKeys: sorted(input.manifest.coverage.settingsKeys.filter((item) =>
       !input.ledger.settingsKeysWritten.includes(item)
     )),
