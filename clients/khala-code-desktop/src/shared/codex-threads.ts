@@ -39,8 +39,19 @@ const asRecord = (value: unknown): Record<string, unknown> =>
 const optionalString = (value: unknown): string | null =>
   typeof value === "string" && value.length > 0 ? value : null
 
-const optionalNumber = (value: unknown): number | null =>
-  typeof value === "number" && Number.isFinite(value) ? value : null
+export const normalizeThreadTimestampSeconds = (value: unknown): number | null => {
+  const numeric = typeof value === "number"
+    ? value
+    : typeof value === "string" && value.trim().length > 0
+      ? Number(value)
+      : Number.NaN
+  if (Number.isFinite(numeric)) {
+    return Math.trunc(numeric > 10_000_000_000 ? numeric / 1000 : numeric)
+  }
+  if (typeof value !== "string") return null
+  const parsed = Date.parse(value)
+  return Number.isFinite(parsed) ? Math.trunc(parsed / 1000) : null
+}
 
 const dataArray = (value: unknown): readonly unknown[] =>
   Array.isArray(asRecord(value).data) ? asRecord(value).data as readonly unknown[] : []
@@ -109,9 +120,9 @@ export const projectKhalaCodeDesktopCodexThread = (
     source: sourceLabel(thread.source),
     forkedFromId: optionalString(thread.forkedFromId),
     parentThreadId: optionalString(thread.parentThreadId),
-    createdAt: optionalNumber(thread.createdAt),
-    updatedAt: optionalNumber(thread.updatedAt),
-    recencyAt: optionalNumber(thread.recencyAt),
+    createdAt: normalizeThreadTimestampSeconds(thread.createdAt),
+    updatedAt: normalizeThreadTimestampSeconds(thread.updatedAt),
+    recencyAt: normalizeThreadTimestampSeconds(thread.recencyAt),
     badges: badgesFor(thread, status),
   }
 }

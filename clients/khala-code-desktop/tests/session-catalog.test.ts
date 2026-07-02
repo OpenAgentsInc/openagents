@@ -96,6 +96,10 @@ describe("Khala Code cross-harness session catalog", () => {
       ["claude", "claude-session-1", "desktop-claude"],
       ["codex", "codex-thread-1", "desktop-codex"],
     ])
+    expect(catalog.entries.map(entry => entry.updatedAt)).toEqual([
+      1782910100,
+      1782910000,
+    ])
     expect(catalog.entries.find(entry => entry.harnessKind === "codex")?.exactTotals).toMatchObject({
       totalTokens: 120,
       inputTokens: 70,
@@ -154,9 +158,14 @@ describe("Khala Code cross-harness session catalog", () => {
       "Codex session",
       "Claude session",
     ])
+    expect(catalog.entries.map(entry => entry.updatedAt)).toEqual([
+      Date.parse("2026-07-01T11:00:00.000Z") / 1000,
+      Date.parse("2026-07-01T10:30:00.000Z") / 1000,
+      Date.parse("2026-07-01T10:00:00.000Z") / 1000,
+    ])
   })
 
-  test("uses Codex session UUIDs for sidebar resume when app-server row ids are opaque", async () => {
+  test("uses Codex thread ids for sidebar resume even when session ids are UUIDs", async () => {
     const codexRuntime = {
       listThreads: async () => ({
         ok: true as const,
@@ -165,6 +174,7 @@ describe("Khala Code cross-harness session catalog", () => {
           sessionId: "018f1d59-1a9f-7c40-b4d1-7b0706c531ad",
           title: "Most recent chat",
           preview: "Resume me",
+          createdAt: "2026-07-01T10:00:00.000Z",
           updatedAt: 1782910000000,
         }],
         threads: [],
@@ -184,9 +194,12 @@ describe("Khala Code cross-harness session catalog", () => {
       harnessKind: "codex",
       sessionRef: "018f1d59-1a9f-7c40-b4d1-7b0706c531ad",
       threadRef: "id-recent-chat-row",
+      createdAt: Date.parse("2026-07-01T10:00:00.000Z") / 1000,
+      updatedAt: 1782910000,
+      recencyAt: 1782910000,
     })
     expect(sessionCatalogEntryToThreadSummary(catalog.entries[0]!).id)
-      .toBe("018f1d59-1a9f-7c40-b4d1-7b0706c531ad")
+      .toBe("id-recent-chat-row")
   })
 
   test("keeps legacy non-UUID Codex thread ids when no UUID session ref exists", async () => {

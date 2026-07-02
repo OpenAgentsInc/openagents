@@ -3,8 +3,9 @@ export const formatCompactThreadTimestamp = (
   nowMs: number = Date.now(),
 ): string => {
   if (seconds === null || !Number.isFinite(seconds)) return ""
+  const normalizedSeconds = seconds > 10_000_000_000 ? seconds / 1000 : seconds
 
-  const elapsedSeconds = Math.max(0, Math.floor((nowMs - seconds * 1000) / 1000))
+  const elapsedSeconds = Math.max(0, Math.floor((nowMs - normalizedSeconds * 1000) / 1000))
   if (elapsedSeconds < 60) return "now"
 
   const minutes = Math.floor(elapsedSeconds / 60)

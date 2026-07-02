@@ -17,4 +17,8 @@ describe("thread sidebar compact timestamps", () => {
     expect(formatCompactThreadTimestamp(null, nowMs)).toBe("")
     expect(formatCompactThreadTimestamp(nowMs / 1000, nowMs)).toBe("now")
   })
+
+  test("defensively formats millisecond timestamps", () => {
+    expect(formatCompactThreadTimestamp(nowMs - 2 * 60 * 60 * 1000, nowMs)).toBe("2h")
+  })
 })

@@ -4,6 +4,7 @@ import { join } from "node:path"
 
 import type { CodexAppServerChatRuntime } from "./codex-app-server-chat-runtime.js"
 import type { ClaudeAppSdkChatRuntime } from "./claude-app-sdk-chat-runtime.js"
+import { normalizeThreadTimestampSeconds } from "../shared/codex-threads.js"
 import type {
   KhalaCodeDesktopSessionCatalogEntry,
   KhalaCodeDesktopSessionCatalogResult,
@@ -42,8 +43,10 @@ const numberField = (value: unknown, field: string): number | undefined => {
     : undefined
 }
 
-const numberFieldOrNull = (value: unknown, field: string): number | null =>
-  numberField(value, field) ?? null
+const timestampFieldOrNull = (value: unknown, field: string): number | null => {
+  if (!isRecord(value)) return null
+  return normalizeThreadTimestampSeconds(value[field])
+}
 
 const objectField = (value: unknown, field: string): JsonRecord | null => {
   if (!isRecord(value)) return null
@@ -143,9 +146,9 @@ const entryFromThread = (
   const sessionRef = sessionIdFrom(thread) ?? threadIdFrom(thread)
   if (sessionRef === null) return null
   const threadRef = threadIdFrom(thread)
-  const createdAt = numberFieldOrNull(thread, "createdAt") ?? numberFieldOrNull(thread, "created_at")
-  const updatedAt = numberFieldOrNull(thread, "updatedAt") ?? numberFieldOrNull(thread, "updated_at")
-  const recencyAt = numberFieldOrNull(thread, "recencyAt") ?? updatedAt ?? createdAt
+  const createdAt = timestampFieldOrNull(thread, "createdAt") ?? timestampFieldOrNull(thread, "created_at")
+  const updatedAt = timestampFieldOrNull(thread, "updatedAt") ?? timestampFieldOrNull(thread, "updated_at")
+  const recencyAt = timestampFieldOrNull(thread, "recencyAt") ?? updatedAt ?? createdAt
   const exactTotals = reportedTotals(thread, source)
   return {
     catalogEntryId: catalogEntryId(harnessKind, threadRef ?? sessionRef),
@@ -177,9 +180,7 @@ const entryFromStoredSession = (
   const threadRef = threadIdFrom(stored) ?? sessionRef
   const ref = threadRef ?? sessionRef
   if (ref === null) return null
-  const updatedAtIso = stringField(stored, "updatedAt")
-  const updatedAt = updatedAtIso === null ? null : Date.parse(updatedAtIso)
-  const normalizedUpdatedAt = updatedAt === null || Number.isNaN(updatedAt) ? null : updatedAt
+  const normalizedUpdatedAt = timestampFieldOrNull(stored, "updatedAt")
   return {
     catalogEntryId: catalogEntryId(harnessKind, ref),
     harnessKind,
@@ -226,6 +227,9 @@ const mergeEntry = (
     ...entry,
     desktopSessionRef: entry.desktopSessionRef ?? existing.desktopSessionRef,
     lastTurnRef: entry.lastTurnRef ?? existing.lastTurnRef,
+    createdAt: entry.createdAt ?? existing.createdAt,
+    updatedAt: entry.updatedAt ?? existing.updatedAt,
+    recencyAt: entry.recencyAt ?? existing.recencyAt,
     ...(exactTotals === undefined ? {} : { exactTotals }),
   })
 }

@@ -1291,7 +1291,7 @@ describe("khala code desktop app shell", () => {
     expect(css).toContain(".khala-thread-sidebar-item-spinner")
     expect(css).toContain("@keyframes khala-thread-sidebar-item-spinner")
     expect(css).not.toContain(".khala-thread-sidebar-menu-button")
-    expect(css).toContain("height: 2.25rem")
+    expect(css).toContain("height: 2rem")
     expect(css).toContain(".khala-thread-sidebar-header-actions")
     expect(css).toContain(".khala-thread-sidebar-search-toggle")
     expect(css).toContain(".khala-thread-sidebar-search-flyout")

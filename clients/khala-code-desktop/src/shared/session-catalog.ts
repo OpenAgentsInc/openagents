@@ -41,21 +41,10 @@ export type KhalaCodeDesktopSessionCatalogResult = {
 const harnessLabel = (kind: KhalaCodeDesktopSessionHarnessKind): string =>
   kind === "codex" ? "Codex" : "Claude"
 
-const codexSessionIdPattern =
-  /^(?:urn:uuid:)?[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/u
-
 const resumableThreadIdFor = (
   entry: KhalaCodeDesktopSessionCatalogEntry,
-): string => {
-  if (
-    entry.harnessKind === "codex" &&
-    codexSessionIdPattern.test(entry.sessionRef) &&
-    (entry.threadRef === null || !codexSessionIdPattern.test(entry.threadRef))
-  ) {
-    return entry.sessionRef
-  }
-  return entry.threadRef ?? entry.sessionRef
-}
+): string =>
+  entry.threadRef ?? entry.sessionRef
 
 export const sessionCatalogEntryToThreadSummary = (
   entry: KhalaCodeDesktopSessionCatalogEntry,
