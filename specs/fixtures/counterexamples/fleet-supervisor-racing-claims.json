@@ -1,0 +1,17 @@
+{
+  "fixture": "counterexample.khala_fleet_delegate.racing_supervisors.v1",
+  "sourceSpec": "specs/khala-fleet-delegate/FleetDelegateSupervisor.tla",
+  "blockedBy": [
+    "ClaimUniquenessUnderRacingSupervisors",
+    "ActiveAssignmentsNeverExceedAdvertisedCapacity"
+  ],
+  "summary": "Two supervisors start against one Pylon without the one-controller lease and both claim the same work unit.",
+  "trace": [
+    { "step": 0, "runState": "running", "supervisorLease": [], "claims": { "w1": [] }, "active": [] },
+    { "step": 1, "action": "BadStartSupervisor(s1)", "supervisorLease": ["s1"] },
+    { "step": 2, "action": "BadStartSupervisor(s2)", "supervisorLease": ["s1", "s2"] },
+    { "step": 3, "action": "BadDispatch(s1,w1)", "claims": { "w1": ["s1"] }, "active": ["w1"] },
+    { "step": 4, "action": "BadDispatch(s2,w1)", "claims": { "w1": ["s1", "s2"] }, "active": ["w1"] }
+  ],
+  "fixtureUse": "Port to the fleet-run fixture tier as a duplicate-temptation scenario: the second supervisor must be refused before it can claim."
+}

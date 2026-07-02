@@ -1,0 +1,13 @@
+{
+  "fixture": "counterexample.session_thread_mapping.double_bind_after_reload.v1",
+  "sourceSpec": "specs/session-thread-mapping/SessionThreadMapping.tla",
+  "blockedBy": ["NoOrphanThreadBinding", "NoDoubleBind", "PersistedMappingConsistent"],
+  "summary": "Crash/reload restores a persisted thread to one session while an in-memory bind attaches the same thread to another session.",
+  "trace": [
+    { "step": 0, "sessionThread": { "s1": "none", "s2": "none" }, "threadSession": { "t1": "none" }, "persisted": [] },
+    { "step": 1, "action": "Bind(s1,t1)", "sessionThread": { "s1": "t1" }, "threadSession": { "t1": "s1" }, "persisted": [["s1", "t1"]] },
+    { "step": 2, "action": "Crash", "crashed": true },
+    { "step": 3, "action": "BadBindWithoutThreadCheck(s2,t1)", "sessionThread": { "s1": "t1", "s2": "t1" }, "threadSession": { "t1": "s2" } }
+  ],
+  "fixtureUse": "Port to session persistence scenarios: reload must reconcile from the bidirectional persisted map and reject duplicate thread binding."
+}
