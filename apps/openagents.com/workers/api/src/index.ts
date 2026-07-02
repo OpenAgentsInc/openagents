@@ -12238,6 +12238,29 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     handler: (request, env) =>
       handleOpenAgentsCompanionFile(request, env.ASSETS, '/skill.json'),
   },
+  // Lowercase aliases for the served agent-doc set. Cloudflare static assets
+  // are case-sensitive, so a typed /install.md previously fell through to the
+  // SPA shell and rendered the homepage. Redirect to the canonical uppercase
+  // path. /agents.md is intentionally absent — it is the compact generated
+  // discovery surface registered below, not an alias of /AGENTS.md.
+  ...(
+    [
+      ['/install.md', '/INSTALL.md'],
+      ['/surfaces.md', '/SURFACES.md'],
+      ['/pylon.md', '/PYLON.md'],
+      ['/sites.md', '/SITES.md'],
+      ['/rules.md', '/RULES.md'],
+      ['/heartbeat.md', '/HEARTBEAT.md'],
+      ['/agents-core.md', '/AGENTS-CORE.md'],
+      ['/qa-runner.md', '/QA-RUNNER.md'],
+    ] as const
+  ).map(([aliasPath, canonicalPath]) => ({
+    handler: (request: Request) =>
+      Effect.sync(() =>
+        Response.redirect(new URL(canonicalPath, request.url).toString(), 301),
+      ),
+    path: aliasPath,
+  })),
   // Agent-discovery surfaces for Khala + the OpenAgents Agent Cloud (EPIC #6049,
   // Phase 1). Ship-ready, UNCONDITIONAL (no flag): plain-language, machine-
   // readable docs that describe the live Khala inference API so agents — and the
