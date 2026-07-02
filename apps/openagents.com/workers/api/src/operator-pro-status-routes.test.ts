@@ -209,6 +209,40 @@ describe('operator pro status route', () => {
     expect(body.liveEntries[0]?.stateHistory).toHaveLength(2)
   })
 
+  test('accepts public refs emitted by the Pylon status-control producer', async () => {
+    const db = new FakeD1()
+    const routes = makeOperatorProStatusRoutes({
+      authenticateAgentToken: async () => ({ userId: 'agent_user.owner' }),
+      currentIsoTimestamp: () => '2026-07-01T12:03:00.000Z',
+    })
+    const refs = [
+      'assignment-event.pylon.assignment-run-accepted',
+      'assignment-status.pylon.accepted',
+      'runner-kind.pylon.codex_sdk',
+      'dispatch-context-status.pylon.dispatched',
+      'task-status.pylon.running',
+      'capacity.coding.codex.available=2',
+      'capacity.coding.codex.ready=3',
+      'load.coding.codex.busy=1',
+      'load.coding.codex.queued=0',
+    ]
+
+    const response = await routes.handleOperatorProStatusApi(
+      request('POST', statusEvent({
+        eventRef: 'event.public.runner_status.pylon_status_control',
+        refs,
+      })),
+      { OPENAGENTS_DB: db as unknown as D1Database },
+      {} as ExecutionContext,
+    )
+    const stored = JSON.parse(db.statuses[0]?.event_json ?? '{}') as {
+      refs?: ReadonlyArray<string>
+    }
+
+    expect(response.status).toBe(200)
+    expect(stored.refs).toEqual(refs)
+  })
+
   test('moves previous live event to retained when the runner posts a new state', async () => {
     const db = new FakeD1()
     const routes = makeOperatorProStatusRoutes({
