@@ -1,0 +1,14 @@
+{
+  "fixture": "counterexample.session_thread_mapping.reload_reverse_map_loss.v2",
+  "sourceSpec": "specs/mutations/session-crash-divergence/SessionCrashDivergence.tla",
+  "checkedBy": "specs/mutations/session-crash-divergence/SessionCrashDivergence.cfg",
+  "violatedProperty": "NoOrphanThreadBinding",
+  "summary": "Crash/reload restores session-to-thread state without restoring the reverse thread-to-session map.",
+  "trace": [
+    { "step": 0, "sessionThread": { "s1": "none" }, "threadSession": { "t1": "none" }, "persisted": [] },
+    { "step": 1, "action": "BindAndPersist(s1,t1)", "sessionThread": { "s1": "t1" }, "threadSession": { "t1": "s1" }, "persisted": [["s1", "t1"]] },
+    { "step": 2, "action": "Crash", "crashed": true },
+    { "step": 3, "action": "ReloadDropsReverseMap", "sessionThread": { "s1": "t1" }, "threadSession": { "t1": "none" } }
+  ],
+  "fixtureUse": "Port to session persistence scenarios: reload must preserve the bidirectional persisted map."
+}
