@@ -1671,6 +1671,23 @@ describe("khala code desktop app shell", () => {
     ])
   })
 
+  test("wires desktop diff line comments back as review steering input", async () => {
+    const main = await Bun.file(new URL("../src/ui/main.ts", import.meta.url)).text()
+    const renderer = await Bun.file(new URL("../src/ui/transcript-render.ts", import.meta.url)).text()
+    const shared = await Bun.file(new URL("../src/shared/diff-review.ts", import.meta.url)).text()
+    const css = await Bun.file(new URL("../src/ui/styles.css", import.meta.url)).text()
+
+    expect(shared).toContain("openagents.khala_code.diff_review_comment.v1")
+    expect(renderer).toContain("cb-diff-comment-button")
+    expect(renderer).toContain("KHALA_CODE_DIFF_REVIEW_SUBMIT_EVENT")
+    expect(main).toContain("KhalaCodeDiffReviewSubmitDetailSchema")
+    expect(main).toContain("khalaCodeDiffReviewSteeringNote")
+    expect(main).toContain("rpc.request.codexTurnSteer")
+    expect(main).toContain("stageDiffReviewNoteInComposer")
+    expect(css).toContain(".cb-diff-review-editor")
+    expect(css).toContain(".cb-diff-review-textarea")
+  })
+
   test("parses assistant prose as markdown instead of literal asterisks", () => {
     const blocks = parseMarkdownBlocks(
       "We can:\n\n- **Explore** files\n- Run `tests`\n\n[Docs](/docs) [bad](javascript:alert(1))",
