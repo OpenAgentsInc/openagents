@@ -108,6 +108,7 @@ import {
   createClaudeAppSdkChatRuntime,
   type ClaudeAppSdkChatRuntime,
 } from "./claude-app-sdk-chat-runtime.js"
+import { readKhalaCodeDesktopSessionCatalog } from "./session-catalog.js"
 import { inspectClaudeHarnessStatus } from "./claude-harness-status.js"
 import {
   createClaudeApprovalService,
@@ -2379,6 +2380,14 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
       const selection = await selectChatRuntime()
       if (selection.kind === "legacy") return unsupportedLegacyThreadLifecycle()
       return selection.runtime.unarchiveThread(request)
+    },
+    async sessionCatalog(request = {}) {
+      return readKhalaCodeDesktopSessionCatalog(request, {
+        claudeRuntime: requireClaudeChatRuntime(),
+        codexRuntime: codexChatRuntime,
+        env: input.env,
+        limit: 100,
+      })
     },
     async codexTurnInterrupt(request) {
       const selection = await selectChatRuntime()

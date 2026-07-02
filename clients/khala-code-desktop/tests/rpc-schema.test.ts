@@ -117,6 +117,46 @@ describe("Khala Code desktop schema-first RPC contract", () => {
     })
   })
 
+  test("decodes the schema-first cross-harness session catalog RPC", () => {
+    expect(decodeKhalaCodeDesktopRpcParameters("sessionCatalog", [{
+      limit: 20,
+      searchTerm: "plan",
+    }])).toEqual([{ limit: 20, searchTerm: "plan" }])
+
+    expect(decodeKhalaCodeDesktopRpcResult("sessionCatalog", {
+      ok: true,
+      schemaVersion: "khala-code-desktop.session-catalog.v1",
+      diagnostics: [],
+      entries: [{
+        catalogEntryId: "claude:session-1",
+        harnessKind: "claude",
+        sessionRef: "session-1",
+        threadRef: "session-1",
+        desktopSessionRef: "desktop-1",
+        lastTurnRef: null,
+        title: "Claude plan",
+        preview: "Plan",
+        cwd: "/repo",
+        projectLabel: "repo",
+        status: "ready",
+        statusLabel: "Claude session",
+        source: "claude_sdk_list_sessions",
+        createdAt: null,
+        updatedAt: 1782910100000,
+        recencyAt: 1782910100000,
+        exactTotals: {
+          totalTokens: 80,
+          source: "claude_sdk_list_sessions",
+        },
+      }],
+    })).toMatchObject({
+      entries: [{
+        harnessKind: "claude",
+        exactTotals: { totalTokens: 80 },
+      }],
+    })
+  })
+
   test("decodes optional real-work claim refs on fleet RPC requests", () => {
     expect(decodeKhalaCodeDesktopRpcParameters("codexFleetDelegateRun", [{
       branch: "main",

@@ -1553,7 +1553,7 @@ button {
 }
 .khala-thread-sidebar-item-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: center;
   min-width: 0;
   height: 100%;
@@ -1611,6 +1611,7 @@ button {
   outline: none;
 }
 .khala-thread-sidebar-item-title,
+.khala-thread-sidebar-harness-badge,
 .khala-thread-sidebar-item-time {
   min-width: 0;
   overflow: hidden;
@@ -1620,6 +1621,19 @@ button {
 .khala-thread-sidebar-item-title {
   font-size: 0.72rem;
   font-weight: 600;
+}
+.khala-thread-sidebar-harness-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.7rem;
+  height: 1.1rem;
+  border: 1px solid color-mix(in srgb, var(--oa-color-component-border) 78%, transparent);
+  border-radius: 0.25rem;
+  color: color-mix(in srgb, var(--oa-color-component-text) 68%, transparent);
+  font-size: 0.58rem;
+  font-weight: 700;
+  line-height: 1;
 }
 .khala-thread-sidebar-item-time {
   color: color-mix(in srgb, var(--oa-color-component-text) 55%, transparent);

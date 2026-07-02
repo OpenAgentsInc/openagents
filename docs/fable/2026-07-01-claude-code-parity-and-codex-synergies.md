@@ -302,6 +302,14 @@ uniform exact-token rows — the substrate the mobile companion and the fleet
 cockpit both read. This is where the Orca-doc's "one status spine" and the
 fan-out doc's FleetRun record meet the two-harness reality.
 
+Khala Code Desktop now exposes the local version of this spine as a
+schema-first `sessionCatalog` RPC. It merges the Codex local mapping file and
+thread list with the Claude local mapping file and SDK `listSessions`, labels
+each entry by harness, preserves public-safe refs/timestamps, and carries
+per-session token totals only when the source explicitly reports exact totals.
+The chat sidebar consumes that catalog so mixed Codex/Claude history renders in
+one list with harness badges.
+
 ## 5. Effect-Wrapping Cheat Sheet (For The Implementer)
 
 Per the integration audit's v4 baseline:

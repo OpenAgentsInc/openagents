@@ -114,6 +114,8 @@ export type KhalaCodeDesktopCodexThreadResumeRequest = typeof RpcThreadResumeReq
 export type KhalaCodeDesktopCodexThreadListRequest = typeof RpcThreadListRequest.Type
 export type KhalaCodeDesktopCodexThreadResult = typeof RpcThreadResult.Type
 export type KhalaCodeDesktopCodexThreadListResult = typeof RpcThreadListResult.Type
+export type KhalaCodeDesktopSessionCatalogRequest = typeof RpcSessionCatalogRequest.Type
+export type KhalaCodeDesktopSessionCatalogResult = typeof RpcSessionCatalogResult.Type
 export type KhalaCodeDesktopCodexThreadReadRequest = typeof RpcThreadReadRequest.Type
 export type KhalaCodeDesktopCodexThreadForkRequest = typeof RpcThreadForkRequest.Type
 export type KhalaCodeDesktopCodexThreadIdRequest = typeof RpcThreadIdRequest.Type
@@ -321,6 +323,47 @@ const RpcUsage = S.Struct({
   cachedInput: S.Number,
   output: S.Number,
   reasoningOutput: S.Number,
+})
+
+const RpcSessionExactTotals = S.Struct({
+  cachedInputTokens: S.optional(S.Number),
+  inputTokens: S.optional(S.Number),
+  outputTokens: S.optional(S.Number),
+  reasoningOutputTokens: S.optional(S.Number),
+  totalTokens: S.Number,
+  source: S.String,
+})
+
+const RpcSessionCatalogEntry = S.Struct({
+  catalogEntryId: S.String,
+  harnessKind: S.Literals(["claude", "codex"]),
+  sessionRef: S.String,
+  threadRef: RpcStringNull,
+  desktopSessionRef: RpcStringNull,
+  lastTurnRef: RpcStringNull,
+  title: S.String,
+  preview: S.String,
+  cwd: RpcStringNull,
+  projectLabel: S.String,
+  status: S.String,
+  statusLabel: S.String,
+  source: S.String,
+  createdAt: RpcNumberNull,
+  updatedAt: RpcNumberNull,
+  recencyAt: RpcNumberNull,
+  exactTotals: S.optional(RpcSessionExactTotals),
+})
+
+const RpcSessionCatalogRequest = S.Struct({
+  limit: S.optional(S.Number),
+  searchTerm: S.optional(S.String),
+})
+
+const RpcSessionCatalogResult = S.Struct({
+  ok: S.Literal(true),
+  schemaVersion: S.Literal("khala-code-desktop.session-catalog.v1"),
+  entries: S.Array(RpcSessionCatalogEntry),
+  diagnostics: S.Array(S.String),
 })
 
 const RpcChatAttachment = S.Struct({
@@ -1759,6 +1802,7 @@ export const KhalaCodeDesktopRpcMethodSchemas = {
   codexThreadResume: { parameters: [param(RpcThreadResumeRequest)], result: RpcThreadResult },
   codexThreadStart: { parameters: [optionalParam(RpcThreadStartRequest)], result: RpcThreadResult },
   codexThreadUnarchive: { parameters: [param(RpcThreadIdRequest)], result: RpcThreadMutationResult },
+  sessionCatalog: { parameters: [optionalParam(RpcSessionCatalogRequest)], result: RpcSessionCatalogResult },
   codexTurnInterrupt: { parameters: [param(RpcTurnInterruptRequest)], result: RpcTurnActionResult },
   codexTurnStart: { parameters: [param(RpcTurnStartRequest)], result: RpcChatTurnResponse },
   codexTurnSteer: { parameters: [param(RpcTurnSteerRequest)], result: RpcTurnActionResult },
@@ -1912,6 +1956,7 @@ export type KhalaCodeDesktopRPCSchema = {
     codexThreadResume(request: KhalaCodeDesktopCodexThreadResumeRequest): Promise<KhalaCodeDesktopCodexThreadResult>
     codexThreadStart(request?: KhalaCodeDesktopCodexThreadStartRequest): Promise<KhalaCodeDesktopCodexThreadResult>
     codexThreadUnarchive(request: KhalaCodeDesktopCodexThreadIdRequest): Promise<KhalaCodeDesktopCodexThreadMutationResult>
+    sessionCatalog(request?: KhalaCodeDesktopSessionCatalogRequest): Promise<KhalaCodeDesktopSessionCatalogResult>
     codexTurnInterrupt(request: KhalaCodeDesktopCodexTurnInterruptRequest): Promise<KhalaCodeDesktopCodexTurnActionResult>
     codexTurnStart(request: KhalaCodeDesktopCodexTurnStartRequest): Promise<KhalaCodeDesktopChatTurnResponse>
     codexTurnSteer(request: KhalaCodeDesktopCodexTurnSteerRequest): Promise<KhalaCodeDesktopCodexTurnActionResult>
