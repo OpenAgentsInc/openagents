@@ -24,6 +24,12 @@ import {
   type KhalaCodeDiffReviewLineSide,
   type KhalaCodeDiffReviewSubmitDetail,
 } from "../shared/diff-review"
+import {
+  KHALA_CODE_SOURCE_CONTROL_ACTION_SUBMIT_EVENT,
+  khalaCodeSourceControlActionLabel,
+  type KhalaCodeSourceControlActionKind,
+  type KhalaCodeSourceControlActionSubmitDetail,
+} from "../shared/source-control-action"
 import { displayLocalPathsForKhalaCode } from "../shared/display-paths"
 
 const EXT_LANGUAGE: Readonly<Record<string, string>> = {
@@ -392,6 +398,97 @@ const diffReviewButton = (
   return button
 }
 
+const sourceControlActionButtons: ReadonlyArray<{
+  readonly action: KhalaCodeSourceControlActionKind
+  readonly icon: IconName
+  readonly label: string
+  readonly title: string
+}> = [
+  {
+    action: "commit_message",
+    icon: "Commit",
+    label: "Commit",
+    title: "Draft a commit message",
+  },
+  {
+    action: "pr_body",
+    icon: "PullRequestOpen",
+    label: "PR body",
+    title: "Draft a pull request body",
+  },
+  {
+    action: "fix_checks",
+    icon: "Bug",
+    label: "Fix checks",
+    title: "Prompt a check-fix pass",
+  },
+]
+
+const sourceControlActionButton = (
+  root: HTMLElement,
+  detail: KhalaCodeSourceControlActionSubmitDetail,
+  buttonConfig: typeof sourceControlActionButtons[number],
+): HTMLButtonElement => {
+  const button = document.createElement("button")
+  button.type = "button"
+  button.className = "cb-diff-source-action-button"
+  button.title = buttonConfig.title
+  button.setAttribute(
+    "aria-label",
+    `${buttonConfig.title} for ${detail.filePath ?? "this diff"}`,
+  )
+  button.dataset.action = buttonConfig.action
+  button.dataset.sourceRef = detail.sourceRef
+
+  const label = document.createElement("span")
+  label.className = "cb-diff-source-action-label"
+  label.textContent = buttonConfig.label
+  button.replaceChildren(
+    iconElement(buttonConfig.icon, { className: "cb-diff-source-action-icon" }),
+    label,
+  )
+
+  button.addEventListener("click", event => {
+    event.preventDefault()
+    event.stopPropagation()
+    root.dispatchEvent(new CustomEvent<KhalaCodeSourceControlActionSubmitDetail>(
+      KHALA_CODE_SOURCE_CONTROL_ACTION_SUBMIT_EVENT,
+      {
+        bubbles: true,
+        detail: {
+          ...detail,
+          action: buttonConfig.action,
+        },
+      },
+    ))
+  })
+
+  return button
+}
+
+const sourceControlActions = (
+  root: HTMLElement,
+  filePath: string,
+): HTMLElement => {
+  const actions = document.createElement("span")
+  actions.className = "cb-diff-source-actions"
+  actions.setAttribute("aria-label", "Source-control AI actions")
+  const baseDetail = {
+    filePath,
+    sourceRef: `diff.${filePath}`,
+  }
+  for (const button of sourceControlActionButtons) {
+    actions.append(sourceControlActionButton(root, {
+      ...baseDetail,
+      action: button.action,
+    }, button))
+  }
+  actions.title = sourceControlActionButtons
+    .map(button => khalaCodeSourceControlActionLabel(button.action))
+    .join(", ")
+  return actions
+}
+
 export const diffElement = (input: {
   readonly patch: string
   readonly language?: string
@@ -402,12 +499,15 @@ export const diffElement = (input: {
 
   const root = document.createElement("div")
   root.className = "cb cb-diff"
+  const filePath = parsed.filename ?? "diff"
 
   const header = document.createElement("div")
   header.className = "cb-header cb-diff-header"
   const file = document.createElement("span")
   file.className = "cb-file"
-  file.textContent = parsed.filename ?? "diff"
+  file.textContent = filePath
+  const meta = document.createElement("span")
+  meta.className = "cb-diff-header-meta"
   const stats = document.createElement("span")
   stats.className = "cb-diff-stats"
   const add = document.createElement("span")
@@ -417,7 +517,8 @@ export const diffElement = (input: {
   rem.className = "cb-stat-rem"
   rem.textContent = `-${parsed.removed}`
   stats.append(add, rem)
-  header.append(file, stats)
+  meta.append(sourceControlActions(root, filePath), stats)
+  header.append(file, meta)
   root.append(header)
 
   const pre = document.createElement("pre")
@@ -453,7 +554,6 @@ export const diffElement = (input: {
     const lineNo = diffReviewLineNo(row)
     const lineKind = diffReviewKind(row)
     if (lineNo !== null && lineKind !== null) {
-      const filePath = parsed.filename ?? "diff"
       line.append(diffReviewButton(root, line, {
         filePath,
         lineKind,

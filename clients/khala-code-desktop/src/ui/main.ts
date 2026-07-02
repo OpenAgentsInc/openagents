@@ -104,6 +104,13 @@ import {
   khalaCodeDiffReviewSteeringNote,
 } from "../shared/diff-review"
 import {
+  KHALA_CODE_SOURCE_CONTROL_ACTION_SUBMIT_EVENT,
+  KhalaCodeSourceControlActionSubmitDetailSchema,
+  khalaCodeSourceControlActionLabel,
+  khalaCodeSourceControlActionPrompt,
+  khalaCodeSourceControlActionPromptText,
+} from "../shared/source-control-action"
+import {
   initialKhalaCodeMainShellModel,
   updateKhalaCodeMainShellModel,
   type KhalaCodeMainShellMessage,
@@ -2030,6 +2037,17 @@ const stageDiffReviewNoteInComposer = (note: string): void => {
   requestAnimationFrame(focusComposerInput)
 }
 
+const nextSourceControlActionRef = (): string =>
+  `source_control_action.${Date.now().toString(36)}.${Math.random().toString(36).slice(2, 8)}`
+
+const stageSourceControlActionPromptInComposer = (prompt: string): void => {
+  const existing = composerInput.value.trimEnd()
+  composerInput.value = existing.length === 0 ? prompt : `${existing}\n\n${prompt}`
+  shellModel().lastTurnFailed = false
+  renderComposer()
+  requestAnimationFrame(focusComposerInput)
+}
+
 const handleDiffReviewSubmit = async (event: Event): Promise<void> => {
   const rawDetail = "detail" in event
     ? (event as CustomEvent<unknown>).detail
@@ -2083,6 +2101,66 @@ const handleDiffReviewSubmit = async (event: Event): Promise<void> => {
   } catch (error) {
     appendMessages([{
       body: `Diff review steering failed: ${error instanceof Error ? error.message : String(error)}`,
+      id: nextMessageId("system"),
+      role: "system",
+    }])
+  }
+}
+
+const handleSourceControlActionSubmit = async (event: Event): Promise<void> => {
+  const rawDetail = "detail" in event
+    ? (event as CustomEvent<unknown>).detail
+    : undefined
+  let detail: typeof KhalaCodeSourceControlActionSubmitDetailSchema.Type
+  try {
+    detail = S.decodeUnknownSync(KhalaCodeSourceControlActionSubmitDetailSchema)(rawDetail)
+  } catch (error) {
+    appendMessages([{
+      body: `Source-control action failed schema validation: ${error instanceof Error ? error.message : String(error)}`,
+      id: nextMessageId("system"),
+      role: "system",
+    }])
+    return
+  }
+
+  const prompt = khalaCodeSourceControlActionPrompt({
+    ...detail,
+    actionRef: nextSourceControlActionRef(),
+  })
+  const promptText = khalaCodeSourceControlActionPromptText(prompt)
+  const label = khalaCodeSourceControlActionLabel(prompt.action)
+
+  if (!shellModel().pendingTurn) {
+    stageSourceControlActionPromptInComposer(promptText)
+    appendMessages([{
+      body: `Staged source-control ${label} prompt in the composer.`,
+      id: nextMessageId("system"),
+      role: "system",
+    }])
+    return
+  }
+
+  const turnIds = [...activeTurnIds]
+  const targets = turnIds.length === 0 ? [undefined] : turnIds
+  try {
+    const results = await Promise.all(targets.map(turnId =>
+      rpc.request.codexTurnSteer({
+        clientUserMessageId: prompt.actionRef,
+        sessionId,
+        text: promptText,
+        ...(turnId === undefined ? {} : { turnId }),
+      })))
+    const failed = results.find(result => !result.ok)
+    appendMessages([{
+      body: failed === undefined
+        ? `Sent source-control ${label} prompt to the active Codex turn.`
+        : `Source-control ${label} steering failed: ${failed.error ?? "unknown error"}`,
+      id: nextMessageId("system"),
+      role: "system",
+    }])
+  } catch (error) {
+    appendMessages([{
+      body: `Source-control ${label} steering failed: ${error instanceof Error ? error.message : String(error)}`,
       id: nextMessageId("system"),
       role: "system",
     }])
@@ -2615,6 +2693,11 @@ messageList.addEventListener(KHALA_CODE_DIFF_REVIEW_SUBMIT_EVENT, event => {
   event.preventDefault()
   event.stopPropagation()
   void handleDiffReviewSubmit(event)
+})
+messageList.addEventListener(KHALA_CODE_SOURCE_CONTROL_ACTION_SUBMIT_EVENT, event => {
+  event.preventDefault()
+  event.stopPropagation()
+  void handleSourceControlActionSubmit(event)
 })
 messageList.addEventListener("scroll", () => {
   shellModel().transcriptPinnedToEnd = isNearTranscriptEnd()
