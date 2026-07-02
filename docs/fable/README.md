@@ -141,6 +141,18 @@ each source doc.
   pass), strict state-flip rules (never green — make green a five-minute
   owner decision), a concurrent-safe registry edit protocol, and the fleet
   mass-dispatch template with refill and stop conditions.
+- `2026-07-02-khala-code-install-path-audit.md` — audit of the install story
+  under the Khala Code reorientation: the heavy-clone failure (agents told to
+  build Khala Code from source full-clone the ~460 MB monorepo history when a
+  ~40 MB `--depth 1` clone suffices), the Pylon-only served
+  `openagents.com/INSTALL.md`, and the absence of any root install file.
+  Implemented in the same change: a canonical root `INSTALL.md` (Khala Code
+  and Pylon only, per owner direction) linked prominently from the README, a
+  Khala-Code-first rewrite of the served INSTALL.md, an install-first
+  AGENTS.md callout, and an AGENTS.md slim-down that moves the Pylon and
+  Sites/commerce reference blocks into new served companion files `PYLON.md`
+  and `SITES.md` (SURFACES.md pattern) with sync-script, SHA-pin, and
+  copy/redaction-gate coverage updated.
 - `2026-07-02-forum-starcraft-theme-consolidation-audit.md` — audit of the
   Forum surface across web and Khala Code Desktop under the owner mandate
   "uniform StarCraft blue everywhere, no light/dark mode." Finds the desktop

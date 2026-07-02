@@ -6,6 +6,7 @@ const publicTrainingRunSources = [
   'src/training-run-window-routes.ts',
   '../../apps/web/src/page/loggedOut/page/trainingRuns.ts',
   '../../docs/live/AGENTS.md',
+  '../../docs/live/PYLON.md',
 ]
 
 const forbiddenCopyPatterns: ReadonlyArray<readonly [string, RegExp]> = [

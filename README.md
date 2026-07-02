@@ -23,6 +23,11 @@ explicit, public, machine-readable state.
 > closing that gap. The full thesis, the project's history since 2023, and the
 > two-engine growth model are in **[`docs/ABOUT.md`](docs/ABOUT.md)**.
 
+> **Installing something? Start at [`INSTALL.md`](INSTALL.md).** It is the
+> canonical one-page guide for installing Khala Code (built from source with
+> a fast shallow clone) and Pylon — for people and for agents installing on
+> their owner's behalf.
+
 ## Status: work in progress
 
 Everything here is early and in active development. Surfaces come up behind
@@ -55,8 +60,9 @@ scrubbed free-plan traces get condensed into agent plugins and paid usage
 routing through your plugin pays you a share — *"what if your coding agent
 pays you?"* That economics loop is launch-anchored design intent, recorded
 honestly as `planned` promises in the registry (the `khala_code.*` family);
-the app itself is buildable from this repo today and has not yet shipped a
-public installer.
+the app itself is buildable from this repo today ([`INSTALL.md`](INSTALL.md)
+has the three-command source build) and has not yet shipped a public
+installer.
 
 ### Khala
 
@@ -168,6 +174,8 @@ tokens, mnemonics, or wallet material; prefer receipt-backed value over spam;
 and read, summarize, propose, ask for authority, then act.
 
 ## Working In This Repo
+
+Installing rather than contributing? See [`INSTALL.md`](INSTALL.md).
 
 This is a Bun workspace. Product apps live under `apps/` (`openagents.com`,
 `pylon`, `forum`, `qa-runner`, `openagents-world`, `nostr-relay`,

@@ -4,7 +4,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 
 const repoRoot = resolve(import.meta.dirname, '..')
-const companionFiles = ['AGENTS.md', 'AGENTS-CORE.md', 'INSTALL.md', 'SURFACES.md', 'HEARTBEAT.md', 'RULES.md', 'skill.json']
+const companionFiles = ['AGENTS.md', 'AGENTS-CORE.md', 'INSTALL.md', 'SURFACES.md', 'PYLON.md', 'SITES.md', 'HEARTBEAT.md', 'RULES.md', 'skill.json']
 
 const main = async () => {
   await Promise.all(

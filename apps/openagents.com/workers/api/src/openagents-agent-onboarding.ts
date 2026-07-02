@@ -4,7 +4,7 @@ import { Effect, Schema as S } from 'effect'
 export const OpenAgentsAgentOnboardingCanonicalPath = '/AGENTS.md'
 export const OpenAgentsAgentCorePath = '/AGENTS-CORE.md'
 export const OpenAgentsAgentOnboardingVersion = '0.1.0'
-export const OpenAgentsAgentOnboardingLastUpdated = '2026-06-20'
+export const OpenAgentsAgentOnboardingLastUpdated = '2026-07-02'
 export const OpenAgentsAgentOnboardingCanonicalUrl =
   'https://openagents.com/AGENTS.md'
 export const OpenAgentsAgentCoreUrl =
@@ -14,9 +14,9 @@ export const OpenAgentsAgentOnboardingSourceRef =
 export const OpenAgentsAgentCoreSourceRef =
   'https://github.com/OpenAgentsInc/openagents/blob/main/apps/openagents.com/docs/live/AGENTS-CORE.md'
 export const OpenAgentsAgentOnboardingSha256 =
-  '924201bd1f0b61db83428c0d60d7a6569499eb24794410ce8e529996040ef8fb'
+  '56e5b3e7d2a25857f38fab480675d9e8be24cff90af97b304e9dff821d2f8529'
 export const OpenAgentsAgentCoreSha256 =
-  'c0bc97ae132334026ee578e44e1d70d55301413b3aa210ed6da760eb265e839a'
+  '7f51fc9abf1a92e9a5153b0295d6b473efaddfdbff3ca6a0efcb0b89f39af17e'
 
 export class OpenAgentsAgentOnboardingUnsafe extends S.TaggedErrorClass<OpenAgentsAgentOnboardingUnsafe>()(
   'OpenAgentsAgentOnboardingUnsafe',

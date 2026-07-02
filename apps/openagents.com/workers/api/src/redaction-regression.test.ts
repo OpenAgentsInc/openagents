@@ -296,6 +296,8 @@ const paymentPrivateMaterialGuards: ReadonlyArray<
 
 const committedPublicPaymentFiles = [
   { label: 'AGENTS.md', path: '../../docs/live/AGENTS.md' },
+  { label: 'PYLON.md', path: '../../docs/live/PYLON.md' },
+  { label: 'SITES.md', path: '../../docs/live/SITES.md' },
   {
     label: 'OpenAPI source',
     path: 'src/openagents-openapi.ts',
