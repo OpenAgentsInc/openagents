@@ -291,6 +291,67 @@ describe("FleetRunSupervisor", () => {
     ])
   })
 
+  test("never auto-revives a paused run mid-backlog (#7975)", async () => {
+    const { store, run } = createStoreWithRun({ targetConcurrency: 2, workUnits: 3 })
+    store.controlFleetRun(run.runRef, "pause", fixedNow)
+
+    const result = await tickFleetRunSupervisor({
+      store,
+      pylonRef: "pylon.owner",
+      runRef: run.runRef,
+      planner: fixturePlannerWithClaims(store, 3),
+      runner: acceptingRunner(),
+      capacity: capacity([{ accountRef: "codex-a", advertisedCapacity: 2 }]),
+      clock: { now: () => fixedNow },
+    })
+
+    expect(result.run.state).toBe("paused")
+    expect(result.claimed).toBe(0)
+    expect(result.dispatched).toBe(0)
+    expect(store.listWorkClaims({ runRef: run.runRef })).toEqual([])
+    expect(store.getFleetRun(run.runRef)?.state).toBe("paused")
+  })
+
+  test("still revives a prematurely auto-closed running run with pending backlog", async () => {
+    const { store, run } = createStoreWithRun({ targetConcurrency: 1, workUnits: 3 })
+    const dispatched: string[] = []
+
+    const first = await tickFleetRunSupervisor({
+      store,
+      pylonRef: "pylon.owner",
+      runRef: run.runRef,
+      planner: fixturePlannerWithClaims(store, 1),
+      runner: {
+        dispatch: async (input: FleetRunSupervisorDispatchInput) => {
+          dispatched.push(input.workUnit.workUnitRef)
+          return {
+            assignmentRef: `assignment.${input.claim.claimRef}`,
+            lifecycle: [{ event: "assignment.completed", status: "completed" }],
+            status: "completed" as const,
+          }
+        },
+      },
+      capacity: capacity([{ accountRef: "codex-a", advertisedCapacity: 1 }]),
+      clock: { now: () => fixedNow },
+    })
+    expect(first.dispatched).toBe(1)
+
+    // All created tasks are terminal while the planner backlog still has
+    // units, so reconciliation auto-closes the running run; the next tick
+    // must undo exactly that auto-close and keep working.
+    const second = await tickFleetRunSupervisor({
+      store,
+      pylonRef: "pylon.owner",
+      runRef: run.runRef,
+      planner: fixturePlannerWithClaims(store, 2),
+      runner: acceptingRunner(dispatched),
+      capacity: capacity([{ accountRef: "codex-a", advertisedCapacity: 1 }]),
+      clock: { now: () => fixedNow },
+    })
+    expect(second.run.state).toBe("running")
+    expect(second.dispatched).toBe(1)
+  })
+
   test("streams terminal lifecycle into counters and drains cleanly when backlog is empty", async () => {
     const { store, run } = createStoreWithRun({ targetConcurrency: 3, workUnits: 3 })
     const observed: FleetRunSupervisorObservedEvent[] = []
