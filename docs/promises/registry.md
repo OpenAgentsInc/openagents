@@ -1,5 +1,28 @@
 # Promise Registry
 
+> Registry `2026-07-01.3` is the #7966 PROMISSORY pass on
+> `khala_code.free_paid_plans.v1` and flips NO promise state (green stays
+> exactly 34; the record stays planned). Cleared with source+test evidence:
+> `khala_code_plan_selection_surface_missing` — the public plan catalog
+> `GET /api/public/khala-code/plans` projects the honest Episode 245
+> two-plan structure (Free pay-with-data / Paid private-data) with real
+> purchasability state from the fail-closed `KHALA_CODE_PAID_PLANS_ENABLED`
+> read (default OFF); `GET /v1/khala-code/plan` resolves the caller's
+> current plan server-side from the privacy-entitlement seam (paid only on
+> a real entitlement row; confidential-compute mode reports capture-excluded
+> free; entitlement read errors return 503 instead of fabricating a plan);
+> and the Khala Code desktop settings surface renders the plan cards and
+> current plan through host RPCs with the same honest not-purchasable state.
+> Remaining blocker: `khala_code_paid_plan_not_purchasable` —
+> `POST /v1/khala-code/plans/purchases` exists but is flag-gated default
+> OFF, fail-closed, and collects no payment; when armed it grants the
+> EXISTING paid-privacy entitlement idempotently with a dereferenceable
+> receipt at `/api/public/inference/privacy-receipts/{receiptRef}` rather
+> than forking entitlement truth. Arming, the payment-collection leg,
+> pricing, and owner-approved public copy are owner decisions
+> (`NEEDS_OWNER.md`). No plan is selectable-as-live or purchasable today
+> and no capture behavior changed.
+>
 > Registry `2026-07-01.2` adds `khala_code.forum_hotbar.v1` (planned) on
 > owner direction and flips NO promise state (green stays exactly 34). The
 > commitment: the OpenAgents Forum becomes accessible inside Khala Code as a

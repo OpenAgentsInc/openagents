@@ -202,6 +202,14 @@ export type KhalaCodeDesktopFleetWorkerControlRequest = typeof RpcFleetWorkerCon
 export type KhalaCodeDesktopFleetWorkerControlResult = typeof RpcFleetWorkerControlResult.Type
 export type KhalaCodeDesktopForumRequest = typeof RpcForumRequest.Type
 export type KhalaCodeDesktopForumResponse = typeof RpcForumResponse.Type
+export type KhalaCodeDesktopPlanKind = typeof RpcKhalaCodePlanKind.Type
+export type KhalaCodeDesktopPlan = typeof RpcKhalaCodePlan.Type
+export type KhalaCodeDesktopPlanCatalog = typeof RpcKhalaCodePlanCatalog.Type
+export type KhalaCodeDesktopPlanCatalogResult = typeof RpcKhalaCodePlanCatalogResult.Type
+export type KhalaCodeDesktopPlanStatusPlan = typeof RpcKhalaCodePlanStatusPlan.Type
+export type KhalaCodeDesktopPlanStatusResult = typeof RpcKhalaCodePlanStatusResult.Type
+export type KhalaCodeDesktopPlanPurchaseRequest = typeof RpcKhalaCodePlanPurchaseRequest.Type
+export type KhalaCodeDesktopPlanPurchaseResult = typeof RpcKhalaCodePlanPurchaseResult.Type
 export type KhalaCodeDesktopRemoveAccountResult = typeof RpcRemoveAccountResult.Type
 export type KhalaCodeDesktopConnectStart = typeof RpcConnectStart.Type
 
@@ -1543,6 +1551,80 @@ const RpcForumResponse = S.Struct({
   error: S.optional(S.String),
 })
 
+// Khala Code plans (promise khala_code.free_paid_plans.v1). The desktop app is a
+// read-and-render surface: the current plan is resolved server-side and the paid
+// plan purchase seam stays honest about being flag-gated default-OFF.
+const RpcKhalaCodePlanKind = S.Literals(["free", "paid"])
+const RpcKhalaCodePlanPurchaseSeam = S.Struct({
+  armed: S.Boolean,
+  envFlag: S.String,
+  route: S.String,
+})
+const RpcKhalaCodePlan = S.Struct({
+  captureExcluded: S.Boolean,
+  isDefault: S.Boolean,
+  kind: RpcKhalaCodePlanKind,
+  label: S.String,
+  planId: S.String,
+  priceLabel: S.String,
+  purchase: S.optional(RpcKhalaCodePlanPurchaseSeam),
+  tagline: S.String,
+  terms: RpcStringArray,
+})
+const RpcKhalaCodePlanCatalog = S.Struct({
+  authorityBoundary: S.String,
+  blockerRefs: RpcStringArray,
+  catalogVersion: S.String,
+  plans: S.Array(RpcKhalaCodePlan),
+  promiseId: S.String,
+  relatedPromiseIds: RpcStringArray,
+  schemaVersion: S.Literal("openagents.khala_code.plan_catalog.v1"),
+  summary: S.String,
+})
+const RpcKhalaCodePlanCatalogResult = S.Union([
+  S.Struct({ ok: S.Literal(true), catalog: RpcKhalaCodePlanCatalog }),
+  S.Struct({ ok: S.Literal(false), error: S.Literal("catalog_unavailable") }),
+])
+const RpcKhalaCodePlanStatusPlan = S.Struct({
+  captureExcluded: S.Boolean,
+  kind: RpcKhalaCodePlanKind,
+  planId: S.String,
+  reasonRef: S.optional(S.String),
+})
+const RpcKhalaCodePlanStatusResult = S.Union([
+  S.Struct({ state: S.Literal("ok"), plan: RpcKhalaCodePlanStatusPlan }),
+  S.Struct({ state: S.Literal("unauthenticated") }),
+  S.Struct({ state: S.Literal("unavailable") }),
+])
+const RpcKhalaCodePlanPurchaseRequest = S.Struct({
+  idempotencyKey: S.optional(S.String),
+})
+const RpcKhalaCodePlanPurchaseSuccess = S.Struct({
+  ok: S.Literal(true),
+  captureExcluded: S.Boolean,
+  entitlementRef: S.String,
+  planId: S.String,
+  receiptRef: S.String,
+  receiptUrl: S.optional(S.String),
+})
+const RpcKhalaCodePlanPurchaseResult = S.Union([
+  RpcKhalaCodePlanPurchaseSuccess,
+  S.Struct({
+    ok: S.Literal(false),
+    error: S.Literals([
+      "khala_code_paid_plans_not_enabled",
+      "unauthenticated",
+      "purchase_unavailable",
+    ]),
+  }),
+])
+
+// Exported for the bun-side RPC handlers so wire payloads are schema-validated
+// before they are surfaced as typed plan results.
+export const KhalaCodeDesktopPlanCatalogSchema = RpcKhalaCodePlanCatalog
+export const KhalaCodeDesktopPlanStatusPlanSchema = RpcKhalaCodePlanStatusPlan
+export const KhalaCodeDesktopPlanPurchaseSuccessSchema = RpcKhalaCodePlanPurchaseSuccess
+
 const RpcConnectStart = S.Struct({
   ok: S.Boolean,
   accountRef: S.String,
@@ -1606,6 +1688,9 @@ export const KhalaCodeDesktopRpcMethodSchemas = {
   fleetRunStatus: { parameters: [param(RpcFleetRunStatusRequest)], result: RpcFleetRunStatusResult },
   fleetWorkerControl: { parameters: [param(RpcFleetWorkerControlRequest)], result: RpcFleetWorkerControlResult },
   forumRequest: { parameters: [param(RpcForumRequest)], result: RpcForumResponse },
+  khalaCodePlanCatalog: { parameters: noParams(), result: RpcKhalaCodePlanCatalogResult },
+  khalaCodePlanStatus: { parameters: noParams(), result: RpcKhalaCodePlanStatusResult },
+  khalaCodePlanPurchase: { parameters: [optionalParam(RpcKhalaCodePlanPurchaseRequest)], result: RpcKhalaCodePlanPurchaseResult },
   claudeApprovalPending: { parameters: noParams(), result: RpcClaudeApprovalPendingResult },
   claudeApprovalRespond: { parameters: [param(RpcClaudeApprovalRespondRequest)], result: RpcClaudeApprovalRespondResult },
   claudeSettingsRead: { parameters: noParams(), result: RpcClaudeSettingsProjection },
@@ -1756,6 +1841,9 @@ export type KhalaCodeDesktopRPCSchema = {
     fleetRunStatus(request: KhalaCodeDesktopFleetRunStatusRequest): Promise<KhalaCodeDesktopFleetRunStatusResult>
     fleetWorkerControl(request: KhalaCodeDesktopFleetWorkerControlRequest): Promise<KhalaCodeDesktopFleetWorkerControlResult>
     forumRequest(request: KhalaCodeDesktopForumRequest): Promise<KhalaCodeDesktopForumResponse>
+    khalaCodePlanCatalog(): Promise<KhalaCodeDesktopPlanCatalogResult>
+    khalaCodePlanStatus(): Promise<KhalaCodeDesktopPlanStatusResult>
+    khalaCodePlanPurchase(request?: KhalaCodeDesktopPlanPurchaseRequest): Promise<KhalaCodeDesktopPlanPurchaseResult>
     claudeApprovalPending(): Promise<KhalaCodeDesktopClaudeApprovalPendingResult>
     claudeApprovalRespond(request: KhalaCodeDesktopClaudeApprovalRespondRequest): Promise<KhalaCodeDesktopClaudeApprovalRespondResult>
     claudeSettingsRead(): Promise<KhalaCodeDesktopClaudeSettingsReadResult>

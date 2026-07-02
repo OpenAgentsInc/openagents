@@ -3291,3 +3291,267 @@ describe("Khala Code desktop RPC handlers", () => {
     })
   })
 })
+
+describe("khala code plan RPC handlers", () => {
+  type RecordedPlanRequest = {
+    readonly body: string | undefined
+    readonly headers: Record<string, string>
+    readonly method: string
+    readonly url: string
+  }
+
+  const planFetchStub = (
+    respond: (request: RecordedPlanRequest) => Response,
+  ): { readonly fetch: typeof fetch; readonly requests: RecordedPlanRequest[] } => {
+    const requests: RecordedPlanRequest[] = []
+    const stub = Object.assign(async (input: RequestInfo | URL, init: RequestInit = {}) => {
+      const headers = Object.fromEntries(
+        Object.entries((init.headers ?? {}) as Record<string, string>)
+          .map(([key, value]) => [key.toLowerCase(), value]),
+      )
+      const request: RecordedPlanRequest = {
+        body: typeof init.body === "string" ? init.body : undefined,
+        headers,
+        method: init.method ?? "GET",
+        url: String(input),
+      }
+      requests.push(request)
+      return respond(request)
+    }, { preconnect: () => {} }) as typeof fetch
+    return { fetch: stub, requests }
+  }
+
+  const json = (status: number, payload: unknown): Response =>
+    new Response(JSON.stringify(payload), {
+      headers: { "content-type": "application/json" },
+      status,
+    })
+
+  const planCatalogPayload = {
+    catalog: {
+      authorityBoundary: "Worker-owned plan authority.",
+      blockerRefs: ["blocker.product_promises.khala_code_paid_plan_not_purchasable"],
+      catalogVersion: "2026-07-01.1",
+      plans: [
+        {
+          captureExcluded: false,
+          isDefault: true,
+          kind: "free",
+          label: "Free",
+          planId: "khala_code.plan.free.v1",
+          priceLabel: "Free",
+          tagline: "Pay with data",
+          terms: ["Sessions may be captured for training."],
+        },
+        {
+          captureExcluded: true,
+          isDefault: false,
+          kind: "paid",
+          label: "Paid",
+          planId: "khala_code.plan.paid.v1",
+          priceLabel: "Not yet purchasable",
+          purchase: {
+            armed: false,
+            envFlag: "KHALA_CODE_PAID_PLANS_ENABLED",
+            route: "/v1/khala-code/plans/purchases",
+          },
+          tagline: "Private data",
+          terms: ["Capture opt-out."],
+        },
+      ],
+      promiseId: "khala_code.free_paid_plans.v1",
+      relatedPromiseIds: [],
+      schemaVersion: "openagents.khala_code.plan_catalog.v1",
+      summary: "Two plans: Free pays with data; Paid keeps data private.",
+    },
+  }
+
+  const planHandlers = (input: {
+    readonly env?: Record<string, string>
+    readonly fetch: typeof fetch
+  }) =>
+    createKhalaCodeDesktopRpcRequestHandlers({
+      appleFmReadiness: () => {
+        throw new Error("not used")
+      },
+      env: input.env ?? {},
+      fetch: input.fetch,
+      onDeviceDeciderStatus: () => {
+        throw new Error("not used")
+      },
+      workingDirectory: process.cwd(),
+    })
+
+  test("khalaCodePlanCatalog fetches the pinned public route and decodes the catalog", async () => {
+    const { fetch: fetchStub, requests } = planFetchStub(() => json(200, planCatalogPayload))
+    const handlers = planHandlers({ fetch: fetchStub })
+
+    const result = await handlers.khalaCodePlanCatalog()
+
+    expect(requests).toHaveLength(1)
+    expect(requests[0]?.url).toBe("https://openagents.com/api/public/khala-code/plans")
+    expect(requests[0]?.method).toBe("GET")
+    expect(requests[0]?.headers.authorization).toBeUndefined()
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.catalog.promiseId).toBe("khala_code.free_paid_plans.v1")
+      expect(result.catalog.plans).toHaveLength(2)
+      expect(result.catalog.plans[1]?.purchase?.armed).toBe(false)
+    }
+  })
+
+  test("khalaCodePlanCatalog honors the OPENAGENTS_BASE_URL override", async () => {
+    const { fetch: fetchStub, requests } = planFetchStub(() => json(200, planCatalogPayload))
+    const handlers = planHandlers({
+      env: { OPENAGENTS_BASE_URL: "https://openagents.test" },
+      fetch: fetchStub,
+    })
+
+    const result = await handlers.khalaCodePlanCatalog()
+
+    expect(requests[0]?.url).toBe("https://openagents.test/api/public/khala-code/plans")
+    expect(result.ok).toBe(true)
+  })
+
+  test("khalaCodePlanCatalog maps failures and malformed payloads to catalog_unavailable", async () => {
+    const failing = planFetchStub(() => json(500, { error: "boom" }))
+    expect(await planHandlers({ fetch: failing.fetch }).khalaCodePlanCatalog())
+      .toEqual({ ok: false, error: "catalog_unavailable" })
+
+    const malformed = planFetchStub(() => json(200, { catalog: { nope: true } }))
+    expect(await planHandlers({ fetch: malformed.fetch }).khalaCodePlanCatalog())
+      .toEqual({ ok: false, error: "catalog_unavailable" })
+
+    const network = Object.assign(async () => {
+      throw new Error("offline")
+    }, { preconnect: () => {} }) as typeof fetch
+    expect(await planHandlers({ fetch: network }).khalaCodePlanCatalog())
+      .toEqual({ ok: false, error: "catalog_unavailable" })
+  })
+
+  test("khalaCodePlanStatus returns unauthenticated without a token and never calls the network", async () => {
+    const { fetch: fetchStub, requests } = planFetchStub(() => json(200, {}))
+    const handlers = planHandlers({ fetch: fetchStub })
+
+    expect(await handlers.khalaCodePlanStatus()).toEqual({ state: "unauthenticated" })
+    expect(requests).toHaveLength(0)
+  })
+
+  test("khalaCodePlanStatus sends the bearer token and returns the server-resolved plan without leaking it", async () => {
+    const { fetch: fetchStub, requests } = planFetchStub(() =>
+      json(200, {
+        ok: true,
+        plan: {
+          captureExcluded: true,
+          kind: "paid",
+          planId: "khala_code.plan.paid.v1",
+          reasonRef: "entitlement.test",
+        },
+      }))
+    const handlers = planHandlers({
+      env: { OPENAGENTS_AGENT_TOKEN: "secret-agent-token" },
+      fetch: fetchStub,
+    })
+
+    const result = await handlers.khalaCodePlanStatus()
+
+    expect(requests[0]?.url).toBe("https://openagents.com/v1/khala-code/plan")
+    expect(requests[0]?.headers.authorization).toBe("Bearer secret-agent-token")
+    expect(result).toEqual({
+      state: "ok",
+      plan: {
+        captureExcluded: true,
+        kind: "paid",
+        planId: "khala_code.plan.paid.v1",
+        reasonRef: "entitlement.test",
+      },
+    })
+    expect(JSON.stringify(result)).not.toContain("secret-agent-token")
+  })
+
+  test("khalaCodePlanStatus maps 401 to unauthenticated and network failure to unavailable", async () => {
+    const unauthorized = planFetchStub(() => json(401, { error: "unauthorized" }))
+    expect(await planHandlers({
+      env: { OPENAGENTS_AGENT_TOKEN: "expired" },
+      fetch: unauthorized.fetch,
+    }).khalaCodePlanStatus()).toEqual({ state: "unauthenticated" })
+
+    const network = Object.assign(async () => {
+      throw new Error("offline")
+    }, { preconnect: () => {} }) as typeof fetch
+    expect(await planHandlers({
+      env: { OPENAGENTS_AGENT_TOKEN: "token" },
+      fetch: network,
+    }).khalaCodePlanStatus()).toEqual({ state: "unavailable" })
+
+    const serverError = planFetchStub(() => json(500, {}))
+    expect(await planHandlers({
+      env: { OPENAGENTS_AGENT_TOKEN: "token" },
+      fetch: serverError.fetch,
+    }).khalaCodePlanStatus()).toEqual({ state: "unavailable" })
+  })
+
+  test("khalaCodePlanPurchase maps the flag-gated 503 to the typed not-enabled error", async () => {
+    const { fetch: fetchStub, requests } = planFetchStub(() =>
+      json(503, { error: "khala_code_paid_plans_not_enabled" }))
+    const handlers = planHandlers({
+      env: { OPENAGENTS_AGENT_TOKEN: "secret-agent-token" },
+      fetch: fetchStub,
+    })
+
+    const result = await handlers.khalaCodePlanPurchase({ idempotencyKey: "purchase-1" })
+
+    expect(requests[0]?.url).toBe("https://openagents.com/v1/khala-code/plans/purchases")
+    expect(requests[0]?.method).toBe("POST")
+    expect(requests[0]?.headers.authorization).toBe("Bearer secret-agent-token")
+    expect(requests[0]?.body).toBe(JSON.stringify({ idempotencyKey: "purchase-1" }))
+    expect(result).toEqual({ ok: false, error: "khala_code_paid_plans_not_enabled" })
+    expect(JSON.stringify(result)).not.toContain("secret-agent-token")
+  })
+
+  test("khalaCodePlanPurchase requires a token and maps 401/network failures honestly", async () => {
+    const untouched = planFetchStub(() => json(201, {}))
+    expect(await planHandlers({ fetch: untouched.fetch }).khalaCodePlanPurchase())
+      .toEqual({ ok: false, error: "unauthenticated" })
+    expect(untouched.requests).toHaveLength(0)
+
+    const unauthorized = planFetchStub(() => json(401, { error: "unauthorized" }))
+    expect(await planHandlers({
+      env: { OPENAGENTS_AGENT_TOKEN: "expired" },
+      fetch: unauthorized.fetch,
+    }).khalaCodePlanPurchase()).toEqual({ ok: false, error: "unauthenticated" })
+
+    const network = Object.assign(async () => {
+      throw new Error("offline")
+    }, { preconnect: () => {} }) as typeof fetch
+    expect(await planHandlers({
+      env: { OPENAGENTS_AGENT_TOKEN: "token" },
+      fetch: network,
+    }).khalaCodePlanPurchase()).toEqual({ ok: false, error: "purchase_unavailable" })
+  })
+
+  test("khalaCodePlanPurchase decodes an armed-server success receipt", async () => {
+    const { fetch: fetchStub } = planFetchStub(() =>
+      json(201, {
+        ok: true,
+        captureExcluded: true,
+        entitlementRef: "entitlement.khala_code.paid.1",
+        planId: "khala_code.plan.paid.v1",
+        receiptRef: "receipt.khala_code.paid.1",
+        receiptUrl: "https://openagents.com/receipts/receipt.khala_code.paid.1",
+      }))
+    const handlers = planHandlers({
+      env: { OPENAGENTS_AGENT_TOKEN: "token" },
+      fetch: fetchStub,
+    })
+
+    expect(await handlers.khalaCodePlanPurchase({ idempotencyKey: "purchase-2" })).toEqual({
+      ok: true,
+      captureExcluded: true,
+      entitlementRef: "entitlement.khala_code.paid.1",
+      planId: "khala_code.plan.paid.v1",
+      receiptRef: "receipt.khala_code.paid.1",
+      receiptUrl: "https://openagents.com/receipts/receipt.khala_code.paid.1",
+    })
+  })
+})

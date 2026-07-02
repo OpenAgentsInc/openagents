@@ -485,6 +485,34 @@ This is the invariant ledger for `openagents`.
   `workers/api/src/inference/khala-chat-trace-emitter.test.ts`,
   `workers/api/src/inference/inference-privacy-entitlement.test.ts`.
 
+## Khala Code Plan Seam (catalog honest, purchase default-off)
+
+- The Khala Code plan surfaces (`khala_code.free_paid_plans.v1`, #7966:
+  `workers/api/src/inference/khala-code-plan-catalog.ts`,
+  `khala-code-plan-routes.ts`) are projections over the EXISTING
+  privacy-entitlement truth — they never fork it. The paid plan's substance is
+  the capture opt-out entitlement (`inference_privacy_entitlements`); the
+  purchase seam grants it via `grantPaidPrivacyEntitlement` and the receipt
+  dereferences at `/api/public/inference/privacy-receipts/{receiptRef}`. No
+  parallel plan/entitlement store may be introduced.
+- The purchase route (`POST /v1/khala-code/plans/purchases`) is FLAG-GATED,
+  DEFAULT OFF, FAIL-CLOSED on `KHALA_CODE_PAID_PLANS_ENABLED`: unarmed it
+  returns 503 `khala_code_paid_plans_not_enabled` and grants nothing. It
+  collects NO payment in either state; arming, the payment-collection leg,
+  pricing, and public plan copy are owner decisions.
+- The public catalog (`GET /api/public/khala-code/plans`) must report the REAL
+  purchasability state from the fail-closed flag read — never hardcoded
+  purchasable/live copy — and grants no capture, billing, payout, or
+  settlement authority.
+- The plan-status read (`GET /v1/khala-code/plan`) never fabricates a plan: a
+  paid plan is reported only on a real per-account entitlement row;
+  deployment-wide confidential-compute mode reports capture-excluded WITHOUT
+  claiming a purchased plan; an entitlement read error returns 503 rather than
+  guessing (the status surface's analogue of fail-closed-to-private).
+- Regression coverage:
+  `workers/api/src/inference/khala-code-plan-catalog.test.ts`,
+  `workers/api/src/inference/khala-code-plan-routes.test.ts`.
+
 ## Captured Trace Demand-Origin Segmentation
 
 - A captured trace is auto-tagged with its DEMAND ORIGIN (#6298, migration
@@ -2326,6 +2354,12 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     public-safe run/candidate projections only; grants no promotion
     authority — optimizer candidates stay admission-gated with
     `decisionGrade: false`). `staleness_declared`.
+  - `GET /api/public/khala-code/plans` — live at read over static catalog
+    text plus one deployment-config input (the fail-closed
+    `KHALA_CODE_PAID_PLANS_ENABLED` read; khala_code.free_paid_plans.v1,
+    #7966) — compliant (`generatedAt`, `live_at_read` contract rebuilt on
+    the catalog module / flag change; catalog text only, grants no capture,
+    billing, payout, or settlement authority). `staleness_declared`.
   - `GET /api/public/artanis/report` — live at read over tick rows rebuilt on
     closeout — compliant (`generatedAtUnixMs`, report + loop contracts, stale
     and example-fallback flags with caveat refs).

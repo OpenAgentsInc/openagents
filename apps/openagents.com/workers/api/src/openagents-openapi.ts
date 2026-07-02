@@ -4225,6 +4225,110 @@ const requestSchemas = (): JsonSchema => ({
       references: { type: 'array', items: { type: 'string' } },
     },
   },
+  KhalaCodePlanCatalog: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['catalog'],
+    description:
+      'Khala Code plan catalog (khala_code.free_paid_plans.v1, #7966). Public-safe catalog text and bounded policy facts only: the honest two-plan structure with real purchasability state from the fail-closed KHALA_CODE_PAID_PLANS_ENABLED read, carrying generatedAt plus the shared live_at_read staleness contract. Grants no capture, billing, payout, or settlement authority.',
+    properties: {
+      catalog: {
+        type: 'object',
+        additionalProperties: false,
+        required: [
+          'schemaVersion',
+          'catalogVersion',
+          'promiseId',
+          'summary',
+          'plans',
+          'blockerRefs',
+          'authorityBoundary',
+          'relatedPromiseIds',
+          'generatedAt',
+          'staleness',
+        ],
+        properties: {
+          schemaVersion: {
+            type: 'string',
+            enum: ['openagents.khala_code.plan_catalog.v1'],
+          },
+          catalogVersion: { type: 'string' },
+          promiseId: {
+            type: 'string',
+            enum: ['khala_code.free_paid_plans.v1'],
+          },
+          summary: { type: 'string' },
+          plans: {
+            type: 'array',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              required: [
+                'planId',
+                'kind',
+                'label',
+                'tagline',
+                'priceLabel',
+                'isDefault',
+                'captureExcluded',
+                'terms',
+              ],
+              properties: {
+                planId: { type: 'string' },
+                kind: { type: 'string', enum: ['free', 'paid'] },
+                label: { type: 'string' },
+                tagline: { type: 'string' },
+                priceLabel: { type: 'string' },
+                isDefault: { type: 'boolean' },
+                captureExcluded: { type: 'boolean' },
+                terms: { type: 'array', items: { type: 'string' } },
+                purchase: {
+                  type: 'object',
+                  additionalProperties: false,
+                  required: ['armed', 'envFlag', 'route'],
+                  description:
+                    'Real purchasability state for the paid plan; armed=false is the shipped default and means the purchase route fails closed.',
+                  properties: {
+                    armed: { type: 'boolean' },
+                    envFlag: {
+                      type: 'string',
+                      enum: ['KHALA_CODE_PAID_PLANS_ENABLED'],
+                    },
+                    route: {
+                      type: 'string',
+                      enum: ['/v1/khala-code/plans/purchases'],
+                    },
+                  },
+                },
+              },
+            },
+          },
+          blockerRefs: { type: 'array', items: { type: 'string' } },
+          authorityBoundary: { type: 'string' },
+          relatedPromiseIds: { type: 'array', items: { type: 'string' } },
+          generatedAt: { type: 'string', format: 'date-time' },
+          staleness: {
+            type: 'object',
+            additionalProperties: false,
+            required: [
+              'composition',
+              'contractVersion',
+              'maxStalenessSeconds',
+              'rebuildsOn',
+            ],
+            description:
+              'Shared public-projection staleness contract (live_at_read: static catalog text plus the deployment flag read).',
+            properties: {
+              composition: { type: 'string', enum: ['live_at_read'] },
+              contractVersion: { type: 'string' },
+              maxStalenessSeconds: { type: 'integer' },
+              rebuildsOn: { type: 'array', items: { type: 'string' } },
+            },
+          },
+        },
+      },
+    },
+  },
   FreeApiKeyMintResponse: {
     type: 'object',
     additionalProperties: false,
@@ -5708,6 +5812,23 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Free-tier data-sharing disclosure.',
           '#/components/schemas/FreeTierDataSharingDisclosure',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/public/khala-code/plans': {
+    get: operation({
+      operationId: 'getKhalaCodePlanCatalog',
+      summary: 'Read the Khala Code plan catalog',
+      description:
+        'Returns the honest Khala Code plan catalog (khala_code.free_paid_plans.v1): the Episode 245 two-plan structure — Free (pay with data) and Paid (private data: capture opt-out) — with code-accurate terms and the REAL purchasability state. The shipped default: the free plan is the default for everyone, free-plan desktop trace capture is NOT live, and the paid plan is NOT yet purchasable (the purchase seam is flag-gated off and collects no payment). Read-only, no auth, no secrets; grants no capture, billing, payout, or settlement authority.',
+      tags: ['Public Proof', 'Agents'],
+      security: publicRead,
+      responses: {
+        '200': okJson(
+          'Khala Code plan catalog.',
+          '#/components/schemas/KhalaCodePlanCatalog',
         ),
         ...errorResponses(),
       },

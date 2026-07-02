@@ -534,6 +534,12 @@ import {
   isKhalaChatTraceEmitEnabled,
   isKhalaFreeTierTraceCaptureDefaultEnabled,
 } from './inference/khala-chat-trace-emitter'
+import { isKhalaCodePaidPlansEnabled } from './inference/khala-code-plan-catalog'
+import {
+  handleKhalaCodePlanCatalogApi,
+  handleKhalaCodePlanPurchase,
+  handleKhalaCodePlanStatus,
+} from './inference/khala-code-plan-routes'
 import { isComponentChannelEnabled } from './inference/khala-component-channel'
 import {
   type KhalaSettlementDispatch,
@@ -10608,6 +10614,21 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     handler: request => handleFreeTierDataSharingDisclosureApi(request),
   },
   {
+    // Khala Code plan catalog (khala_code.free_paid_plans.v1, #7966). Public,
+    // agent-readable: the honest two-plan structure (Free pay-with-data /
+    // Paid private-data) with real purchasability state from the fail-closed
+    // KHALA_CODE_PAID_PLANS_ENABLED read. Read-only, no auth, no DB, no
+    // secrets; catalog text grants no capture/billing/payout authority.
+    path: '/api/public/khala-code/plans',
+    handler: (request, env) =>
+      handleKhalaCodePlanCatalogApi(request, {
+        nowIso: currentIsoTimestamp,
+        paidPlanPurchaseArmed: isKhalaCodePaidPlansEnabled(
+          env.KHALA_CODE_PAID_PLANS_ENABLED,
+        ),
+      }),
+  },
+  {
     path: '/api/public/product-promises/transitions',
     handler: (request, env) =>
       handlePublicPromiseTransitionsApi(request, {
@@ -12330,6 +12351,70 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         ),
         db: openAgentsDatabase(env),
         nowIso: currentIsoTimestamp,
+      }),
+  },
+  {
+    // Current Khala Code plan for the calling agent account, resolved
+    // server-side from the privacy-entitlement seam (khala_code.
+    // free_paid_plans.v1, #7966). Fail-closed: an entitlement read error
+    // returns 503 instead of fabricating a plan.
+    path: '/v1/khala-code/plan',
+    handler: (request, env) =>
+      handleKhalaCodePlanStatus(request, {
+        authenticate: async authRequest => {
+          const token = readBearerToken(authRequest)
+          if (token === undefined) {
+            return undefined
+          }
+          const session = await authenticateProgrammaticAgent(
+            makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+            token,
+          )
+          return session === undefined
+            ? undefined
+            : { accountRef: `agent:${session.user.id}` }
+        },
+        confidentialComputeEnabled: isConfidentialComputeEnabled(
+          env.INFERENCE_CONFIDENTIAL_COMPUTE_ENABLED,
+        ),
+        db: openAgentsDatabase(env),
+        nowIso: currentIsoTimestamp,
+        paidPlanPurchaseArmed: isKhalaCodePaidPlansEnabled(
+          env.KHALA_CODE_PAID_PLANS_ENABLED,
+        ),
+      }),
+  },
+  {
+    // Khala Code paid-plan purchase seam (khala_code.free_paid_plans.v1,
+    // #7966). FLAG-GATED, DEFAULT OFF, FAIL-CLOSED: 503 while
+    // KHALA_CODE_PAID_PLANS_ENABLED is unarmed; when armed it grants the
+    // idempotent paid-privacy entitlement (the plan's substance) and returns
+    // the publicly dereferenceable privacy receipt. Collects NO payment in
+    // either state — the payment leg is the owner-gated promise remainder.
+    path: '/v1/khala-code/plans/purchases',
+    handler: (request, env) =>
+      handleKhalaCodePlanPurchase(request, {
+        authenticate: async authRequest => {
+          const token = readBearerToken(authRequest)
+          if (token === undefined) {
+            return undefined
+          }
+          const session = await authenticateProgrammaticAgent(
+            makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+            token,
+          )
+          return session === undefined
+            ? undefined
+            : { accountRef: `agent:${session.user.id}` }
+        },
+        confidentialComputeEnabled: isConfidentialComputeEnabled(
+          env.INFERENCE_CONFIDENTIAL_COMPUTE_ENABLED,
+        ),
+        db: openAgentsDatabase(env),
+        nowIso: currentIsoTimestamp,
+        paidPlanPurchaseArmed: isKhalaCodePaidPlansEnabled(
+          env.KHALA_CODE_PAID_PLANS_ENABLED,
+        ),
       }),
   },
   {

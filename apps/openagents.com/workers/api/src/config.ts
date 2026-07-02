@@ -204,6 +204,13 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   // — NOTHING is auto-captured, regardless of the capture-default flag or the
   // per-account privacy entitlement. The explicit deployment-wide exclusion.
   INFERENCE_CONFIDENTIAL_COMPUTE_ENABLED?: string | undefined
+  // Khala Code paid-plan purchase seam flag (khala_code.free_paid_plans.v1,
+  // #7966). DEFAULT OFF, fail-closed: while unarmed the purchase route returns
+  // 503 khala_code_paid_plans_not_enabled and grants nothing, and the public
+  // plan catalog reports the paid plan as not purchasable. Arming is an owner
+  // decision; the seam collects no payment even when armed (the payment leg is
+  // the remaining owner-gated promise blocker).
+  KHALA_CODE_PAID_PLANS_ENABLED?: string | undefined
   // Async batch-job consumer feature flag (Khala, EPIC #6017 / #6028). Default
   // OFF: the queue handler does NOT route batch-job messages to the consumer
   // (`batch-job-consumer.ts executeBatchJob`) on the live Worker until the
