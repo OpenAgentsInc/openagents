@@ -243,6 +243,18 @@ const setIconButtonLabel = (
 const unknownNumber = (value: number | null): string =>
   value === null ? "?" : String(value)
 
+const compactNumberFormatter = new Intl.NumberFormat("en-US", {
+  maximumFractionDigits: 1,
+  notation: "compact",
+})
+
+const exactNumberFormatter = new Intl.NumberFormat("en-US")
+
+const formatGaugeNumber = (value: number): string => {
+  const safe = Math.max(0, Math.trunc(value))
+  return safe >= 10_000 ? compactNumberFormatter.format(safe) : exactNumberFormatter.format(safe)
+}
+
 const formatElapsedMs = (elapsedMs: number | null): string | null => {
   if (elapsedMs === null) return null
   const seconds = Math.max(0, Math.round(elapsedMs / 1000))
@@ -380,6 +392,92 @@ const fleetInFlightLabel = (
     ? ""
     : `, ${tokenRate.inFlightTokensPerMinute}/min`
   return `${tokenRate.inFlightTokens} token(s)${rate}`
+}
+
+type ThroughputGaugeState = "exact" | "not_measured" | "pending"
+
+export type KhalaFleetThroughputGauge = Readonly<{
+  detail: string
+  label: string
+  state: ThroughputGaugeState
+  value: string
+}>
+
+export const buildKhalaFleetThroughputGauges = (
+  tokenRate: KhalaCodeDesktopFleetStatus["tokenRate"],
+): readonly KhalaFleetThroughputGauge[] => {
+  if (tokenRate.source === "unavailable" || tokenRate.completedStatus === "not_measured") {
+    const detail = tokenRate.unavailableReason === null
+      ? "Exact token rows are not available yet."
+      : `Exact token rows are not available: ${tokenRate.unavailableReason}`
+    return [
+      { detail, label: "Tokens/min", state: "not_measured", value: "not measured" },
+      { detail, label: "10-min total", state: "not_measured", value: "not measured" },
+      { detail, label: "Projected/day", state: "not_measured", value: "not measured" },
+    ]
+  }
+
+  if (
+    tokenRate.completedStatus === "pending" ||
+    tokenRate.completedTokensPerMinute === null ||
+    tokenRate.tokensWindow === undefined ||
+    tokenRate.tokensWindow === null
+  ) {
+    const detail = "Waiting for completed exact token_usage_events rows."
+    return [
+      { detail, label: "Tokens/min", state: "pending", value: "pending" },
+      { detail, label: "10-min total", state: "pending", value: "pending" },
+      { detail, label: "Projected/day", state: "pending", value: "pending" },
+    ]
+  }
+
+  const tokensPerMinute = Math.max(0, Math.trunc(tokenRate.completedTokensPerMinute))
+  const tokensWindow = Math.max(0, Math.trunc(tokenRate.tokensWindow))
+  const rows = tokenRate.completedTokenRows === null
+    ? "exact token rows"
+    : `${formatGaugeNumber(tokenRate.completedTokenRows)} exact row(s)`
+  const detail = `Exact token_usage_events window, ${rows}.`
+
+  return [
+    {
+      detail,
+      label: "Tokens/min",
+      state: "exact",
+      value: `${formatGaugeNumber(tokensPerMinute)}/min`,
+    },
+    {
+      detail,
+      label: "10-min total",
+      state: "exact",
+      value: formatGaugeNumber(tokensWindow),
+    },
+    {
+      detail,
+      label: "Projected/day",
+      state: "exact",
+      value: formatGaugeNumber(tokensPerMinute * 1_440),
+    },
+  ]
+}
+
+const renderThroughputGauges = (
+  data: KhalaCodeDesktopFleetStatus,
+): HTMLElement => {
+  const section = el("section", "khala-fleet-section")
+  section.append(sectionHeader("Throughput", "exact-row token gauges"))
+  const grid = el("div", "khala-fleet-throughput-gauges")
+  for (const gauge of buildKhalaFleetThroughputGauges(data.tokenRate)) {
+    const card = el("article", "khala-fleet-throughput-gauge")
+    card.dataset.state = gauge.state
+    card.append(
+      el("span", "khala-fleet-throughput-label", gauge.label),
+      el("strong", "khala-fleet-throughput-value", gauge.value),
+      el("span", "khala-fleet-throughput-detail", gauge.detail),
+    )
+    grid.append(card)
+  }
+  section.append(grid)
+  return section
 }
 
 const workerStateBadge = (
@@ -1158,6 +1256,7 @@ const renderReady = (
       : `${data.availableCodexAssignments}/${data.maxCodexAssignments} Codex slots free`
 
   appendFleetBoard(container, data)
+  container.append(renderThroughputGauges(data))
 
   if (data.sessionLayers !== undefined) {
     const sessionSection = el("section", "khala-fleet-section")
@@ -1806,6 +1905,7 @@ export const mountFleetPanel = (
           delegateForm,
           delegateRun,
           activeRun,
+          lifecycleFrames,
           fleetRunForm,
           fleetRun,
           optimizationRun,
@@ -1828,6 +1928,7 @@ export const mountFleetPanel = (
           delegateForm,
           delegateRun,
           activeRun,
+          lifecycleFrames,
           fleetRunForm,
           fleetRun,
           optimizationRun,

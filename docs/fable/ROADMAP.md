@@ -116,7 +116,7 @@ Source: fleet fan-out §5, consuming the one status vocabulary from WS-10.
 | T5.1 | Run header + controls: Pause/Resume/Drain/Stop wired through `fleetRunControl` to orchestration control verbs | T3.1, T3.4 | HIGH |
 | T5.2 | Worker cards + live lifecycle streaming: implement the NDJSON consumer per the 2026-06-30 streaming audit (Effect `Stream` → throttled card updates); per-worker Interrupt/Retry/Flag; no fabricated progress | T3.1, T1.2 | MED |
 | T5.3 | Account cards: readiness, slots, rate-limit meters counting down (`resetsAt`, reset credits), cooldowns, Reconnect via isolated-home device login (never `~/.codex`), Pause-account | T3.1 | HIGH |
-| T5.4 | Throughput gauges: tokens/min (exact-row based), run totals, projected tokens/day; reconcile against `GET /api/public/khala-tokens-served` deltas in live smoke only | T3.1 | HIGH |
+| T5.4 | Throughput gauges: tokens/min (exact-row based), run totals, projected tokens/day; reconcile against `GET /api/public/khala-tokens-served` deltas in live smoke only. Desktop gauges consume only `codex_fleet_status`/`khala apm` exact token summaries and render `pending`/`not_measured` honestly; progress frames are never used for counter synthesis. | T3.1 | HIGH |
 | T5.5 | Flags → Inbox + condensed sidebar fleet counts (accounts ready / workers active / slots free / flags) — also closes the episode-245 italic-script gap §1.3.3 | T3.1 | HIGH |
 | T5.6 | Cockpit visual smoke: 18 fixture workers / 3 accounts, desktop + mobile viewports, geometry oracles; TestClock-driven rate-limit countdown test | T5.1–T5.5 | HIGH |
 
@@ -165,7 +165,7 @@ real greenfield Effect service.
 | T8.2 | **Phase 1** minimal Claude chat: `claude-app-sdk-chat-runtime.ts` (query() → Stream, Query → acquireRelease, own AbortController), `claude-thread-item-projector.ts` (SDKMessage Schema union → neutral turn events), `claude-session-store.ts`, `claude-harness-status.ts` (wrap Pylon probes), wire into index/handlers/headless | T8.1 | MED |
 | T8.3 | **Phase 2** approvals (`canUseTool` → Deferred/Queue approval service, Claude-native shapes), token telemetry (exact-only, decide ingest route deliberately), `claude-fleet-mcp-bridge.ts` (inject `khala_fleet` via `options.mcpServers`), Claude settings panel | T8.2 | MED |
 | T8.4 | **Phase 3** sidebar via `listSessions()`/`getSessionMessages()`, slash registry from `supportedCommands()`, `claude-parity-contract.ts` + gap matrix pinned to SDK version | T8.2 | HIGH |
-| T8.5 | Harness pill UI ("Codex \| Claude \| Khala") in composer HUD + persisted setting + runtime badge rendering (= episode-245 P1 toggle, generalized) | T8.1 | HIGH |
+| T8.5 | **SHIPPED** Harness pill UI ("Codex \| Claude \| Khala") in composer HUD + persisted setting + runtime badge rendering (= episode-245 P1 toggle, generalized) | T8.1 | HIGH |
 
 ### WS-9 — Multi-harness routing and synergies (Axis B + crossovers)
 

@@ -28,11 +28,28 @@ export type TwoCodexReadOnlySmokeOptions = Pick<
   KhalaCodexFleetToolOptions,
   "delegationParameters" | "env" | "runner" | "sleep"
 > & {
+  readonly fetch?: ((input: string | URL, init?: RequestInit) => Promise<Response>) | undefined
   readonly onProgress?: KhalaCodexFleetToolOptions["onProgress"] | undefined
   readonly prompt?: string | undefined
+  readonly reconcilePublicCounter?: boolean | undefined
   readonly timeoutMs?: number | undefined
   readonly work?: TwoCodexReadOnlySmokeWork | undefined
 }
+
+export type KhalaPublicCounterReconciliation =
+  | {
+      readonly afterTokensServed: number
+      readonly beforeTokensServed: number
+      readonly delta: number
+      readonly expectedMinimumDelta: number
+      readonly ok: boolean
+      readonly state: "checked"
+      readonly url: string
+    }
+  | {
+      readonly reason: string
+      readonly state: "skipped"
+    }
 
 export type TwoCodexReadOnlySmokeSummary = {
   readonly acceptedCount: number
@@ -45,6 +62,7 @@ export type TwoCodexReadOnlySmokeSummary = {
   readonly perSlotTokens: readonly number[]
   readonly progressEventCount: number
   readonly progressPayloadCount: number
+  readonly publicCounterReconciliation: KhalaPublicCounterReconciliation
   readonly pylonRef: string | null
   readonly readOnlyVerify: string | null
   readonly requestedCount: number
@@ -80,6 +98,13 @@ export async function runTwoCodexReadOnlySmoke(
   const readOnlyVerify = work.kind === "repository"
     ? work.verify ?? TWO_CODEX_READONLY_SMOKE_READONLY_VERIFY
     : null
+  const shouldReconcilePublicCounter =
+    options.reconcilePublicCounter === true ||
+    (env as Record<string, string | undefined>)["KHALA_CODE_DESKTOP_LIVE_PUBLIC_COUNTER_RECONCILIATION"] === "1"
+  const counterUrl = publicKhalaTokensServedUrl(env)
+  const beforeCounter = shouldReconcilePublicCounter
+    ? await fetchPublicKhalaTokensServed(counterUrl, options.fetch)
+    : null
 
   const spawnInput = work.kind === "repository"
     ? {
@@ -110,11 +135,18 @@ export async function runTwoCodexReadOnlySmoke(
     runner: options.runner,
     sleep: options.sleep,
   })
+  const tokensVerified = spawnVerifiedTokenTotal(result)
+  const afterCounter = shouldReconcilePublicCounter
+    ? await fetchPublicKhalaTokensServed(counterUrl, options.fetch)
+    : null
 
   return summarizeTwoCodexReadOnlySmoke({
     finishedAt: new Date().toISOString(),
     mode: work.kind,
     progressPayloads,
+    publicCounterReconciliation: shouldReconcilePublicCounter
+      ? publicCounterReconciliation(counterUrl, beforeCounter, afterCounter, tokensVerified)
+      : { state: "skipped", reason: "set KHALA_CODE_DESKTOP_LIVE_PUBLIC_COUNTER_RECONCILIATION=1 to reconcile GET /api/public/khala-tokens-served" },
     readOnlyVerify,
     result,
     startedAt,
@@ -125,6 +157,7 @@ export function summarizeTwoCodexReadOnlySmoke(input: {
   readonly finishedAt: string
   readonly mode: TwoCodexReadOnlySmokeWork["kind"]
   readonly progressPayloads: readonly KhalaCodexFleetProgressPayload[]
+  readonly publicCounterReconciliation?: KhalaPublicCounterReconciliation | undefined
   readonly readOnlyVerify: string | null
   readonly result: SpawnResult
   readonly startedAt: string
@@ -147,11 +180,16 @@ export function summarizeTwoCodexReadOnlySmoke(input: {
   const slotSummaries = input.result.results.map(slot =>
     `slot ${slot.slot}: ${slot.status}${slot.assignmentRef === null ? "" : ` ${slot.assignmentRef}`}\n${slot.summary}`
   )
+  const publicCounter = input.publicCounterReconciliation ?? {
+    state: "skipped" as const,
+    reason: "public counter reconciliation is live-smoke only",
+  }
   const failures = twoCodexReadOnlySmokeFailures({
     assignmentRefs,
     perSlotTokens,
     progressEventCount,
     progressPayloadCount: input.progressPayloads.length,
+    publicCounterReconciliation: publicCounter,
     result: input.result,
     streamedAssignmentRefs,
     tokensVerified,
@@ -168,6 +206,7 @@ export function summarizeTwoCodexReadOnlySmoke(input: {
     perSlotTokens,
     progressEventCount,
     progressPayloadCount: input.progressPayloads.length,
+    publicCounterReconciliation: publicCounter,
     pylonRef: input.result.pylonRef,
     readOnlyVerify: input.readOnlyVerify,
     requestedCount: input.result.requestedCount,
@@ -178,11 +217,63 @@ export function summarizeTwoCodexReadOnlySmoke(input: {
   }
 }
 
+function publicKhalaTokensServedUrl(env: Record<string, string | undefined>): string {
+  const baseUrl = env.KHALA_CODE_TOKEN_USAGE_BASE_URL?.trim() ||
+    env.PYLON_OPENAGENTS_BASE_URL?.trim() ||
+    "https://openagents.com"
+  return new URL("/api/public/khala-tokens-served", baseUrl).toString()
+}
+
+async function fetchPublicKhalaTokensServed(
+  url: string,
+  fetchImpl: (input: string | URL, init?: RequestInit) => Promise<Response> = fetch,
+): Promise<number | Error> {
+  try {
+    const response = await fetchImpl(url, { headers: { accept: "application/json" } })
+    if (!response.ok) return new Error(`counter query failed (${response.status})`)
+    const payload = await response.json() as Record<string, unknown>
+    const value = payload.tokensServed
+    return typeof value === "number" && Number.isFinite(value)
+      ? Math.max(0, Math.trunc(value))
+      : new Error("counter payload missing numeric tokensServed")
+  } catch (error) {
+    return error instanceof Error ? error : new Error(String(error))
+  }
+}
+
+function publicCounterReconciliation(
+  url: string,
+  before: number | Error | null,
+  after: number | Error | null,
+  expectedMinimumDelta: number,
+): KhalaPublicCounterReconciliation {
+  if (before instanceof Error) {
+    return { state: "skipped", reason: before.message }
+  }
+  if (after instanceof Error) {
+    return { state: "skipped", reason: after.message }
+  }
+  if (before === null || after === null) {
+    return { state: "skipped", reason: "public counter reconciliation was not armed" }
+  }
+  const delta = Math.max(0, after - before)
+  return {
+    afterTokensServed: after,
+    beforeTokensServed: before,
+    delta,
+    expectedMinimumDelta,
+    ok: delta >= expectedMinimumDelta,
+    state: "checked",
+    url,
+  }
+}
+
 function twoCodexReadOnlySmokeFailures(input: {
   readonly assignmentRefs: readonly string[]
   readonly perSlotTokens: readonly number[]
   readonly progressEventCount: number
   readonly progressPayloadCount: number
+  readonly publicCounterReconciliation: KhalaPublicCounterReconciliation
   readonly result: SpawnResult
   readonly streamedAssignmentRefs: readonly string[]
   readonly tokensVerified: number
@@ -208,6 +299,14 @@ function twoCodexReadOnlySmokeFailures(input: {
   }
   if (input.streamedAssignmentRefs.length < TWO_CODEX_READONLY_SMOKE_COUNT) {
     failures.push(`expected streamed lifecycle refs for ${TWO_CODEX_READONLY_SMOKE_COUNT} Codex assignments, got ${input.streamedAssignmentRefs.length}`)
+  }
+  if (
+    input.publicCounterReconciliation.state === "checked" &&
+    !input.publicCounterReconciliation.ok
+  ) {
+    failures.push(
+      `expected public Khala tokens-served counter delta >= ${input.publicCounterReconciliation.expectedMinimumDelta}, got ${input.publicCounterReconciliation.delta}`,
+    )
   }
   return failures
 }

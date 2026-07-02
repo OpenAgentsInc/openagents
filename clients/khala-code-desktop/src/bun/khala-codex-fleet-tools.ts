@@ -240,6 +240,7 @@ type FleetTokenRateProjection = {
   readonly completedStatus: TokenMeasurementStatus
   readonly completedTokenRows: number | null
   readonly completedTokensPerMinute: number | null
+  readonly tokensWindow: number | null
   readonly inFlightTokens: number | null
   readonly inFlightTokensPerMinute: number | null
   readonly source: "pylon_khala_apm" | "unavailable"
@@ -2242,6 +2243,7 @@ function fleetTokenRateProjectionFromApm(
       }),
       completedTokenRows,
       completedTokensPerMinute,
+      tokensWindow: numberField(counted, "tokensWindow"),
       inFlightTokens: numberField(active, "inFlightTokens"),
       inFlightTokensPerMinute: numberField(active, "inFlightTokensPerMinute"),
       source: "pylon_khala_apm",
@@ -2256,6 +2258,7 @@ function unavailableFleetTokenRate(reason: string): FleetTokenRateProjection {
     completedStatus: "not_measured",
     completedTokenRows: null,
     completedTokensPerMinute: null,
+    tokensWindow: null,
     inFlightTokens: null,
     inFlightTokensPerMinute: null,
     source: "unavailable",
@@ -2627,13 +2630,14 @@ function renderFleetTokenRate(tokenRate: FleetTokenRateProjection): string {
     ? `${tokenRate.completedStatus} exact token rows`
     : `${tokenRate.completedStatus} ${tokenRate.completedTokensPerMinute} tokens/min completed window`
   const rows = tokenRate.completedTokenRows === null ? "" : ` across ${tokenRate.completedTokenRows} exact row(s)`
+  const total = tokenRate.tokensWindow === null ? "" : `; exact-window total ${tokenRate.tokensWindow} token(s)`
   const active = tokenRate.activeAdjustedTokensPerMinute === null
     ? ""
     : `; active-adjusted ${tokenRate.activeAdjustedTokensPerMinute} tokens/min`
   const inFlight = tokenRate.inFlightTokens === null
     ? ""
     : `; in-flight ${tokenRate.inFlightTokens} token(s)`
-  return `Token rate: ${completed}${rows}${active}${inFlight}`
+  return `Token rate: ${completed}${rows}${total}${active}${inFlight}`
 }
 
 function renderAccountStatusLine(account: AccountRow): string {
