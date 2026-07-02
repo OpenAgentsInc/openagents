@@ -1432,7 +1432,9 @@ export class DefaultKhalaFleetRunSupervisorManager implements KhalaFleetRunSuper
         scope,
       ))
     } catch (error) {
-      this.store.updateFleetRunState(runRef, "stopped", new Date())
+      // Machine stop on supervisor-startup failure: stamp reconcile so a
+      // later supervisor may reopen the run; operator stop stays authority.
+      this.store.updateFleetRunState(runRef, "stopped", new Date(), "reconcile")
       await Effect.runPromise(Scope.close(scope, Exit.void))
       throw error
     }

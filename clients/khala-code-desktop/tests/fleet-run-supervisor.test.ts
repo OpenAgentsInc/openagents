@@ -312,6 +312,57 @@ describe("FleetRunSupervisor", () => {
     expect(store.getFleetRun(run.runRef)?.state).toBe("paused")
   })
 
+  test("never auto-revives a drained run after drain completes mid-backlog (#7975)", async () => {
+    const { store, run } = createStoreWithRun({ targetConcurrency: 1, workUnits: 3 })
+    store.createTask({
+      id: "task.drain.inflight",
+      spec: {
+        title: "in-flight unit",
+        prompt: run.objective,
+        runnerKind: "codex",
+        issueRef: "work_unit.fixture.drain",
+        fleetRunRef: run.runRef,
+      },
+      now: fixedNow,
+    })
+    store.createDispatchContext({
+      id: "ctx.codex.drain",
+      assigneeHandle: "codex-a",
+      runnerKind: "codex",
+      lastHeartbeatAt: fixedNow,
+      now: fixedNow,
+    })
+    store.markDispatched("task.drain.inflight", "ctx.codex.drain", fixedNow)
+
+    // Operator drains while the unit is still in flight, then the unit
+    // finishes. Reconciliation closes the drain — that close completes the
+    // operator's decision, so later ticks must not reopen the run for the
+    // remaining planner backlog.
+    store.controlFleetRun(run.runRef, "drain", fixedNow)
+    store.recordWorkerDone({
+      contextId: "ctx.codex.drain",
+      taskId: "task.drain.inflight",
+      status: "completed",
+      now: fixedNow,
+    })
+    const drained = store.reconcileFleetRun(run.runRef, fixedNow)
+    expect(drained.state).toBe("completed")
+    expect(drained.stateSource).toBe("operator")
+
+    const after = await tickFleetRunSupervisor({
+      store,
+      pylonRef: "pylon.owner",
+      runRef: run.runRef,
+      planner: fixturePlannerWithClaims(store, 3),
+      runner: acceptingRunner(),
+      capacity: capacity([{ accountRef: "codex-a", advertisedCapacity: 1 }]),
+      clock: { now: () => fixedNow },
+    })
+    expect(after.run.state).toBe("completed")
+    expect(after.claimed).toBe(0)
+    expect(after.dispatched).toBe(0)
+  })
+
   test("still revives a prematurely auto-closed running run with pending backlog", async () => {
     const { store, run } = createStoreWithRun({ targetConcurrency: 1, workUnits: 3 })
     const dispatched: string[] = []

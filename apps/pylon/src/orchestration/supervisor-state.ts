@@ -144,6 +144,7 @@ try {
         const updated = store.upsertFleetRun({
           ...run,
           state: pausedFlag === "1" ? "paused" : pausedFlag === "0" ? "running" : run.state,
+          ...(pausedFlag === "1" || pausedFlag === "0" ? { stateSource: "operator" as const } : {}),
           targetConcurrency: Math.max(1, desiredSlots),
           counters: {
             ...run.counters,

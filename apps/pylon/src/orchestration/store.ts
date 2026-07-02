@@ -1059,10 +1059,17 @@ export class PylonOrchestrationStore {
     const state: FleetRunState = shouldClose && counters.failedAssignments === 0 && counters.blockedAssignments === 0
       ? "completed"
       : shouldClose ? "stopped" : run.state
+    // Closing a running run is a machine decision and may be undone by the
+    // supervisor when planner backlog remains. Closing a draining run is the
+    // completion of an operator drain: keep operator provenance so the closed
+    // run is never auto-revived (#7975).
+    const stateSource = shouldClose
+      ? (run.state === "draining" ? ("operator" as const) : ("reconcile" as const))
+      : run.stateSource
     return this.upsertFleetRun({
       ...run,
       state,
-      ...(shouldClose ? { stateSource: "reconcile" as const } : {}),
+      ...(stateSource === undefined ? {} : { stateSource }),
       counters,
       updatedAt: iso(now),
     })
