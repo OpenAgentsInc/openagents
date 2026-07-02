@@ -5,6 +5,7 @@ import { dirname, join, resolve } from "node:path"
 import { chromium, type Browser, type Page } from "playwright"
 import {
   findKhalaQaAvailablePort as findAvailablePort,
+  installKhalaQaConsoleErrorOracle,
   startKhalaQaViteServer as startViteServer,
   waitForKhalaQaHttp as waitForHttp,
 } from "@openagentsinc/khala-qa-harness/desktop-smoke-helpers"
@@ -17,6 +18,7 @@ import {
   khalaCodeVisualBaselineOptionsFromArgs,
   type KhalaCodeVisualBaselineOptions,
 } from "./visual-baseline-options"
+import { installKhalaCodeVisualSmokeRpcMocks } from "./visual-smoke-rpc-mocks"
 
 export type ComposerVisualViewport = Readonly<{
   name: "desktop" | "mobile"
@@ -299,7 +301,13 @@ export async function runComposerVisualSmoke(
           colorScheme: "dark",
           reducedMotion: reducedMotion ? "reduce" : "no-preference",
         })
+        const consoleOracle = installKhalaQaConsoleErrorOracle(page, {
+          label: `${COMPOSER_VISUAL_SMOKE_HARNESS}.${target.name}.${viewport.name}`,
+        })
         try {
+          if (target.app === "khala-code-desktop") {
+            await installKhalaCodeVisualSmokeRpcMocks(page)
+          }
           const result = await captureTarget(page, {
             baseUrl,
             outDir: options.outDir,
@@ -309,7 +317,11 @@ export async function runComposerVisualSmoke(
             visualBaseline,
             viewport,
           })
+          consoleOracle.assertNoUnexpected()
           results.push(result)
+        } catch (error) {
+          consoleOracle.assertNoUnexpected()
+          throw error
         } finally {
           await page.close()
         }

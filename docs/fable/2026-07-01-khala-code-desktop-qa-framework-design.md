@@ -290,6 +290,12 @@ Rules:
   thread list, fleet counts, Gym state, and runtime badges, and emits a
   first-disagreement bug payload with both mode states attached. See
   `docs/qa/khala-code-cross-mode-consistency.md`.
+- **Q4.6 implementation artifact**: `packages/khala-qa-harness/src/desktop-smoke-helpers.ts`
+  exports `installKhalaQaConsoleErrorOracle`, the Mode D console/pageerror
+  tripwire with explicit allowlists. The fixture visual smokes use the shared
+  seed-backed Playwright RPC mock bridge so boot-time RPCs, including
+  `/rpc/events`, are deliberately mocked instead of becoming 500 console noise.
+  See `docs/qa/khala-code-mode-d-console-oracle.md`.
 
 ## 5. Explore Mode: The Free-For-All That Cannot Lie
 

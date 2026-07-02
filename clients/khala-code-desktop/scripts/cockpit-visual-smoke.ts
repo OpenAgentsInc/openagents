@@ -5,6 +5,7 @@ import { dirname, join, resolve } from "node:path"
 import { chromium, type Browser, type Page } from "playwright"
 import {
   findKhalaQaAvailablePort as findAvailablePort,
+  installKhalaQaConsoleErrorOracle,
   khalaQaRectsOverlap as rectsOverlap,
   startKhalaQaViteServer as startViteServer,
   waitForKhalaQaHttp as waitForHttp,
@@ -25,6 +26,7 @@ import {
   khalaCodeVisualBaselineOptionsFromArgs,
   type KhalaCodeVisualBaselineOptions,
 } from "./visual-baseline-options"
+import { installKhalaCodeVisualSmokeRpcMocks } from "./visual-smoke-rpc-mocks"
 
 export type CockpitVisualViewport = Readonly<{
   name: "desktop" | "mobile"
@@ -113,16 +115,22 @@ export async function runCockpitVisualSmoke(
         reducedMotion: viewport.name === "mobile" ? "reduce" : "no-preference",
         viewport: { height: viewport.height, width: viewport.width },
       })
+      const consoleOracle = installKhalaQaConsoleErrorOracle(page, {
+        label: `${COCKPIT_VISUAL_SMOKE_HARNESS}.${viewport.name}`,
+      })
       try {
         await installCockpitRpcMocks(page)
-        captures.push(
-          await captureCockpit(page, {
-            baseUrl: `http://127.0.0.1:${port}`,
-            outDir: options.outDir,
-            visualBaseline,
-            viewport,
-          }),
-        )
+        const capture = await captureCockpit(page, {
+          baseUrl: `http://127.0.0.1:${port}`,
+          outDir: options.outDir,
+          visualBaseline,
+          viewport,
+        })
+        consoleOracle.assertNoUnexpected()
+        captures.push(capture)
+      } catch (error) {
+        consoleOracle.assertNoUnexpected()
+        throw error
       } finally {
         await page.close()
       }
@@ -172,44 +180,18 @@ async function installCockpitRpcMocks(page: Page): Promise<void> {
     Object.defineProperty(window, "Date", { configurable: true, value: FixtureDate })
   }, cockpitClockIso)
 
-  await page.route("**/rpc/*", async route => {
-    const method = decodeURIComponent(new URL(route.request().url()).pathname.split("/").at(-1) ?? "")
-    switch (method) {
-      case "appInfo":
-        await route.fulfill({
-          contentType: "application/json",
-          body: JSON.stringify({
-            app: "Khala Code Desktop",
-            observedAt: cockpitClockIso,
-            ok: true,
-          }),
-        })
-        return
-      case "codexFleetStatus":
-        await route.fulfill({
-          contentType: "application/json",
-          body: JSON.stringify(cockpitFleetStatusFixture()),
-        })
-        return
-      case "fleetRunList":
-        await route.fulfill({
-          contentType: "application/json",
-          body: JSON.stringify(cockpitFleetRunListFixture()),
-        })
-        return
-      case "openExternalUrl":
-        await route.fulfill({
-          contentType: "application/json",
-          body: JSON.stringify(true),
-        })
-        return
-      default:
-        await route.fulfill({
-          contentType: "application/json",
-          status: 500,
-          body: JSON.stringify({ error: `unexpected cockpit visual smoke RPC: ${method}` }),
-        })
-    }
+  await installKhalaCodeVisualSmokeRpcMocks(page, {
+    observedAt: cockpitClockIso,
+    overrides: {
+      appInfo: () => ({
+        app: "Khala Code Desktop",
+        observedAt: cockpitClockIso,
+        ok: true,
+      }),
+      codexFleetStatus: () => cockpitFleetStatusFixture(),
+      fleetRunList: () => cockpitFleetRunListFixture(),
+      openExternalUrl: () => true,
+    },
   })
 }
 

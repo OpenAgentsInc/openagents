@@ -59,6 +59,16 @@ pixel difference fails the smoke and writes a `deltas/*.delta.png` image under
 the baseline store. Use `--bless-baselines` to update the store deliberately and
 `--require-baselines` when missing entries should fail locally.
 
+## Console Oracle
+
+The fixture visual smokes install the shared Mode D console/pageerror oracle
+documented in
+[`khala-code-mode-d-console-oracle.md`](./khala-code-mode-d-console-oracle.md).
+Unexpected `console.error` and Playwright `pageerror` diagnostics fail the smoke.
+Khala Code `/rpc/*` calls are routed through a seed-backed fixture bridge, with
+explicit smoke overrides only for custom visual states, so newly added boot RPCs
+do not regress into hard-500 fixture noise.
+
 ## Regression Coverage
 
 `scripts/qa-visual-smoke-gate.test.ts` covers the July 2, 2026 regression

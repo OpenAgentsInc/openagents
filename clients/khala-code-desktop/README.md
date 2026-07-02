@@ -109,7 +109,8 @@ bun run smoke:part2-ui
 
 It launches the preview UI, mocks only safe preview RPC responses, clicks the
 Fleet hotbar, runs the deterministic delegate form, starts **Optimize delegation
-policy**, and validates the Gym proof pane without URL flags or console helpers.
+policy**, validates the Gym proof pane without URL flags, and asserts the shared
+console/pageerror oracle.
 
 The legacy hosted Khala/OpenRouter runtime is a fallback/prototype path, not the
 Codex-parity default and not the local coding engine. When it is explicitly
@@ -181,7 +182,10 @@ Fleet/Gym source-level tests also assert the delegation-optimization UI hooks,
 active-parameter readout, and public-safe proof-loading path. The Part 2
 Fleet/Gym visual smoke clicks Fleet, starts **Optimize delegation policy** into
 Gym, captures desktop/mobile screenshots, and checks the proof graph plus
-active-parameter cards for visible, non-overlapping geometry.
+active-parameter cards for visible, non-overlapping geometry. Each Mode D
+fixture visual smoke installs the shared console/pageerror oracle and uses the
+seed-backed RPC mock bridge so boot-time preview RPCs do not surface as 500
+console noise.
 This is a preview UI geometry smoke only; it does not submit a model turn and
 does not exercise the legacy Khala-native shell/process runtime. The composer
 JSON summary is labeled `preview_ui_codex_harness_shell`; the Fleet/Gym summary

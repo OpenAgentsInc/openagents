@@ -35,4 +35,26 @@ describe("Part 2 UI recording smoke", () => {
       assertPart2UiPublicSafeText("No Pylon capacity (0/1 available)."),
     ).toThrow("legacy")
   })
+
+  test("wires every Mode D visual smoke through console oracles and seed RPC mocks", async () => {
+    const scriptUrls = [
+      "../scripts/part2-ui-recording-smoke.ts",
+      "../scripts/cockpit-visual-smoke.ts",
+      "../scripts/composer-visual-smoke.ts",
+      "../scripts/part2-fleet-gym-visual-smoke.ts",
+    ].map(path => new URL(path, import.meta.url))
+
+    for (const scriptUrl of scriptUrls) {
+      const source = await Bun.file(scriptUrl).text()
+      expect(source).toContain("installKhalaQaConsoleErrorOracle")
+      expect(source).toContain("installKhalaCodeVisualSmokeRpcMocks")
+    }
+
+    const rpcMocks = await Bun.file(
+      new URL("../scripts/visual-smoke-rpc-mocks.ts", import.meta.url),
+    ).text()
+    expect(rpcMocks).toContain("makeKhalaCodeQaSeedCorpusFixtureFetch")
+    expect(rpcMocks).toContain('method === "events"')
+    expect(rpcMocks).not.toContain("status: 500")
+  })
 })

@@ -6,6 +6,7 @@ import { chromium, type Browser, type Page } from "playwright"
 import {
   assertKhalaQaVisibleRect as assertVisibleRect,
   findKhalaQaAvailablePort as findAvailablePort,
+  installKhalaQaConsoleErrorOracle,
   khalaQaRectsOverlap as rectsOverlap,
   startKhalaQaViteServer as startViteServer,
   waitForKhalaQaHttp as waitForHttp,
@@ -19,6 +20,7 @@ import {
   khalaCodeVisualBaselineOptionsFromArgs,
   type KhalaCodeVisualBaselineOptions,
 } from "./visual-baseline-options"
+import { installKhalaCodeVisualSmokeRpcMocks } from "./visual-smoke-rpc-mocks"
 
 export type Part2VisualViewport = Readonly<{
   name: "desktop" | "mobile"
@@ -118,15 +120,22 @@ async function runPart2FleetGymVisualSmoke(
         reducedMotion: viewport.name === "mobile" ? "reduce" : "no-preference",
         viewport: { height: viewport.height, width: viewport.width },
       })
+      const consoleOracle = installKhalaQaConsoleErrorOracle(page, {
+        label: `${PART2_FLEET_GYM_VISUAL_SMOKE_HARNESS}.${viewport.name}`,
+      })
       try {
-        results.push(
-          await capturePart2FleetGym(page, {
-            baseUrl: `http://127.0.0.1:${port}`,
-            outDir: options.outDir,
-            visualBaseline,
-            viewport,
-          }),
-        )
+        await installKhalaCodeVisualSmokeRpcMocks(page)
+        const result = await capturePart2FleetGym(page, {
+          baseUrl: `http://127.0.0.1:${port}`,
+          outDir: options.outDir,
+          visualBaseline,
+          viewport,
+        })
+        consoleOracle.assertNoUnexpected()
+        results.push(result)
+      } catch (error) {
+        consoleOracle.assertNoUnexpected()
+        throw error
       } finally {
         await page.close()
       }
@@ -169,7 +178,7 @@ async function capturePart2FleetGym(
     state: "visible",
   })
   await page.locator(".khala-gym-parameters").waitFor({ state: "visible" })
-  await page.locator(".khala-gym-graph").scrollIntoViewIfNeeded()
+  await page.locator("#gym-panel .khala-gym-graph").scrollIntoViewIfNeeded()
   await page.waitForTimeout(input.viewport.name === "mobile" ? 150 : 250)
 
   const capture = await page.evaluate(() => {
@@ -190,7 +199,7 @@ async function capturePart2FleetGym(
     const parameters = document.querySelector(".khala-gym-parameters")
     return {
       geometry: {
-        graph: rectFor(".khala-gym-graph"),
+        graph: rectFor("#gym-panel .khala-gym-graph"),
         gymPanel: rectFor("#gym-panel"),
         loadedState: rectFor(".khala-gym-state[data-state=\"loaded\"]"),
         parameters: rectFor(".khala-gym-parameters"),

@@ -1032,7 +1032,7 @@ describe("khala code desktop app shell", () => {
 
     expect(packageJson).toContain('"smoke:part2-ui"')
     expect(readme).toContain("bun run smoke:part2-ui")
-    expect(readme).toContain("without URL flags or console helpers")
+    expect(readme).toContain("shared console/pageerror oracle")
     expect(smoke).toContain("PART2_UI_RECORDING_SMOKE_HARNESS")
     expect(smoke).toContain("codexFleetDelegateRun")
     expect(smoke).toContain("Optimize delegation policy")

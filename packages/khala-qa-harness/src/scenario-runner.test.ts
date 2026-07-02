@@ -8,6 +8,7 @@ import {
   buildKhalaCodeQaShutdownOracle,
   decodeKhalaCodeQaScenario,
   findKhalaQaAvailablePort,
+  installKhalaQaConsoleErrorOracle,
   khalaQaRectsOverlap,
   loadKhalaCodeQaScenario,
   makeKhalaCodeRpcQaDriver,
@@ -743,4 +744,75 @@ describe("desktop smoke helper extraction", () => {
       assertKhalaQaVisibleRect("panel", { height: 50, width: 50, x: 190, y: 10 }, viewport),
     ).toThrow("overflows")
   })
+
+  test("console oracle fails unexpected console errors and page errors", () => {
+    const page = makeFakeConsolePage()
+    const oracle = installKhalaQaConsoleErrorOracle(page, { label: "fixture smoke" })
+
+    expect(() => oracle.assertNoUnexpected()).not.toThrow()
+    page.emitConsole("warning", "fixture warning")
+    expect(() => oracle.assertNoUnexpected()).not.toThrow()
+
+    page.emitConsole("error", "unexpected fixture console error")
+    expect(() => oracle.assertNoUnexpected()).toThrow("unexpected fixture console error")
+
+    const pageError = makeFakeConsolePage()
+    const pageErrorOracle = installKhalaQaConsoleErrorOracle(pageError)
+    pageError.emitPageError(new Error("fixture page crashed"))
+    expect(pageErrorOracle.unexpectedDiagnostics()[0]?.kind).toBe("pageerror")
+    expect(() => pageErrorOracle.assertNoUnexpected()).toThrow("fixture page crashed")
+  })
+
+  test("console oracle supports explicit allowlists for expected errors", () => {
+    const page = makeFakeConsolePage()
+    const oracle = installKhalaQaConsoleErrorOracle(page, {
+      allowlist: [
+        { kind: "console", pattern: /known fixture console error/, reason: "intentional test path" },
+        diagnostic => diagnostic.message.includes("expected page rejection"),
+      ],
+    })
+
+    page.emitConsole("error", "known fixture console error")
+    page.emitPageError(new Error("expected page rejection"))
+    expect(oracle.unexpectedDiagnostics()).toEqual([])
+    expect(() => oracle.assertNoUnexpected()).not.toThrow()
+  })
 })
+
+const makeFakeConsolePage = () => {
+  const consoleHandlers: Array<(message: {
+    location: () => { columnNumber: number; lineNumber: number; url: string }
+    text: () => string
+    type: () => string
+  }) => void> = []
+  const pageErrorHandlers: Array<(error: Error) => void> = []
+
+  return {
+    emitConsole: (type: string, text: string): void => {
+      const message = {
+        location: () => ({
+          columnNumber: 9,
+          lineNumber: 7,
+          url: "http://fixture.local/app.js",
+        }),
+        text: () => text,
+        type: () => type,
+      }
+      for (const handler of consoleHandlers) handler(message)
+    },
+    emitPageError: (error: Error): void => {
+      for (const handler of pageErrorHandlers) handler(error)
+    },
+    on: (event: "console" | "pageerror", handler: unknown): void => {
+      if (event === "console") {
+        consoleHandlers.push(handler as (message: {
+          location: () => { columnNumber: number; lineNumber: number; url: string }
+          text: () => string
+          type: () => string
+        }) => void)
+      } else {
+        pageErrorHandlers.push(handler as (error: Error) => void)
+      }
+    },
+  }
+}

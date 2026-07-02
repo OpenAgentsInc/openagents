@@ -2,9 +2,10 @@
 import { mkdir, rm, writeFile } from "node:fs/promises"
 import { dirname, join, resolve } from "node:path"
 
-import { chromium, type Browser, type Page, type Route } from "playwright"
+import { chromium, type Browser, type Page } from "playwright"
 import {
   findKhalaQaAvailablePort as findAvailablePort,
+  installKhalaQaConsoleErrorOracle,
   startKhalaQaViteServer as startViteServer,
   waitForKhalaQaHttp as waitForHttp,
 } from "@openagentsinc/khala-qa-harness/desktop-smoke-helpers"
@@ -22,6 +23,7 @@ import {
   khalaCodeVisualBaselineOptionsFromArgs,
   type KhalaCodeVisualBaselineOptions,
 } from "./visual-baseline-options"
+import { installKhalaCodeVisualSmokeRpcMocks } from "./visual-smoke-rpc-mocks"
 
 export type Part2UiSmokeViewport = Readonly<{
   name: "desktop" | "mobile"
@@ -101,16 +103,22 @@ async function runPart2UiRecordingSmoke(
         reducedMotion: viewport.name === "mobile" ? "reduce" : "no-preference",
         viewport: { height: viewport.height, width: viewport.width },
       })
+      const consoleOracle = installKhalaQaConsoleErrorOracle(page, {
+        label: `${PART2_UI_RECORDING_SMOKE_HARNESS}.${viewport.name}`,
+      })
       try {
         await installPart2RpcMocks(page)
-        captures.push(
-          await capturePart2Ui(page, {
-            baseUrl: `http://127.0.0.1:${port}`,
-            outDir: options.outDir,
-            visualBaseline,
-            viewport,
-          }),
-        )
+        const capture = await capturePart2Ui(page, {
+          baseUrl: `http://127.0.0.1:${port}`,
+          outDir: options.outDir,
+          visualBaseline,
+          viewport,
+        })
+        consoleOracle.assertNoUnexpected()
+        captures.push(capture)
+      } catch (error) {
+        consoleOracle.assertNoUnexpected()
+        throw error
       } finally {
         await page.close()
       }
@@ -130,52 +138,16 @@ async function runPart2UiRecordingSmoke(
 }
 
 async function installPart2RpcMocks(page: Page): Promise<void> {
-  await page.route("**/rpc/*", async route => {
-    const method = decodeURIComponent(new URL(route.request().url()).pathname.split("/").at(-1) ?? "")
-    const args = await requestArgs(route)
-    switch (method) {
-      case "appInfo":
-        await route.fulfill({
-          contentType: "application/json",
-          body: JSON.stringify({
-            app: "Khala Code Desktop",
-            observedAt: "2026-07-01T00:00:00.000Z",
-            ok: true,
-          }),
-        })
-        return
-      case "codexFleetStatus":
-        await route.fulfill({
-          contentType: "application/json",
-          body: JSON.stringify(fleetStatusFixture()),
-        })
-        return
-      case "fleetRunList":
-        await route.fulfill({
-          contentType: "application/json",
-          body: JSON.stringify({ ok: true, runs: [] }),
-        })
-        return
-      case "codexFleetDelegateRun":
+  await installKhalaCodeVisualSmokeRpcMocks(page, {
+    overrides: {
+      codexFleetDelegateRun: ({ args }) => {
         assertDelegateRequestSafe(args)
-        await route.fulfill({
-          contentType: "application/json",
-          body: JSON.stringify(delegateRunResultFixture()),
-        })
-        return
-      case "openExternalUrl":
-        await route.fulfill({
-          contentType: "application/json",
-          body: JSON.stringify(true),
-        })
-        return
-      default:
-        await route.fulfill({
-          contentType: "application/json",
-          status: 500,
-          body: JSON.stringify({ error: `unexpected Part 2 smoke RPC: ${method}` }),
-        })
-    }
+        return delegateRunResultFixture()
+      },
+      codexFleetStatus: () => fleetStatusFixture(),
+      fleetRunList: () => ({ ok: true, runs: [] }),
+      openExternalUrl: () => true,
+    },
   })
 }
 
@@ -324,13 +296,6 @@ const expectText = async (
 const assertPagePublicSafe = async (page: Page): Promise<void> => {
   const text = await page.locator("body").textContent()
   assertPart2UiPublicSafeText(text ?? "")
-}
-
-const requestArgs = async (route: Route): Promise<readonly unknown[]> => {
-  const postData = route.request().postData()
-  if (postData === null || postData.trim() === "") return []
-  const parsed = JSON.parse(postData) as { args?: readonly unknown[] }
-  return parsed.args ?? []
 }
 
 const assertDelegateRequestSafe = (args: readonly unknown[]): void => {
