@@ -15,7 +15,7 @@
 import { mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { Effect } from "effect";
-import { withBrowserSurface, type BrowserSurface } from "@openagentsinc/probe-runtime";
+import { withBrowserSurface, type BrowserSurface } from "@openagentsinc/probe-runtime/computer-use/browser";
 import type { Backend, BackendSession } from "./backend";
 import type { Brain, BrainStep } from "./brain";
 import { assertPublicSafeResult, type QaRunResult, type QaRunStep } from "./result";

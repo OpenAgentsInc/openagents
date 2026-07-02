@@ -22,10 +22,12 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   makeNodePty,
+} from "@openagentsinc/probe-runtime/computer-use/node-pty";
+import type { Pty } from "@openagentsinc/probe-runtime/computer-use/terminal";
+import {
   makeTerminalView,
-  type Pty,
   type TerminalView,
-} from "@openagentsinc/probe-runtime";
+} from "@openagentsinc/probe-runtime/computer-use/terminal-snapshot";
 import { assertPublicSafeResult, type QaRunResult, type QaRunStep } from "./result";
 import type { Target } from "./target";
 import type { TerminalScenario, TerminalStep } from "./terminal-scenario";

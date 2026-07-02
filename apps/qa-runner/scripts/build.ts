@@ -12,13 +12,13 @@
 // and NO OpenAgents login.
 //
 // Two important properties:
-//   1. We alias `@openagentsinc/probe-runtime` to its `computer-use` entry. The
-//      BYO CLI only reaches the computer-use surface (browser tools +
-//      playwright adapter); the giant barrel `index.ts` `export *`s heavy,
-//      unrelated modules (terminal `@opentui/core` native binaries, backends,
-//      benchmark, OpenRouter) that the BYO path never touches and that do not
-//      bundle for a generic `node` target. The alias keeps the bundle small and
-//      honest while leaving the source imports (and the barrel) untouched.
+//   1. The source imports narrow `@openagentsinc/probe-runtime` subpaths. The BYO
+//      CLI only reaches the computer-use surface (browser tools + playwright
+//      adapter); the giant barrel `index.ts` `export *`s heavy, unrelated modules
+//      (terminal `@opentui/core` native binaries, backends, benchmark,
+//      OpenRouter) that the BYO path never touches and that do not bundle for a
+//      generic `node` target. The alias below is kept as a compatibility guard
+//      for any lingering bare imports.
 //   2. `playwright` is kept EXTERNAL: it is a real runtime dependency declared
 //      in `package.json` (with its own postinstall browser download), so we let
 //      the standalone install resolve it normally rather than inlining a
@@ -38,8 +38,8 @@ const pkgRoot = resolve(here, "..");
 const entry = resolve(pkgRoot, "src/byo.ts");
 const outFile = resolve(pkgRoot, "dist/qa.js");
 
-// Absolute path to probe-runtime's computer-use entry (the only surface the BYO
-// CLI reaches). Aliasing the bare specifier here avoids pulling the heavy barrel.
+// Absolute path to probe-runtime's computer-use entry. Aliasing the bare
+// specifier here avoids pulling the heavy barrel if a legacy import comes back.
 const computerUseEntry = resolve(
   pkgRoot,
   "../../packages/probe/packages/runtime/src/computer-use/index.ts",

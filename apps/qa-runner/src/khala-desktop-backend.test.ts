@@ -128,7 +128,7 @@ describe("khalaDesktopBackend", () => {
         KHALA_CODE_TOKEN_USAGE_BACKGROUND_SYNC_DISABLED: "0",
         KHALA_CODE_TOKEN_USAGE_DISABLED: "0",
       },
-      fetch: (() => Promise.resolve(jsonResponse({ ok: true }))) as typeof fetch,
+      fetch: (() => Promise.resolve(jsonResponse({ ok: true }))) as unknown as typeof fetch,
       spawn: fakeSpawn(spawns),
     });
 
@@ -146,7 +146,7 @@ describe("khalaDesktopBackend", () => {
     let resolveExited!: (code: number) => void;
     const backend = khalaDesktopBackend({
       chromium: makeFakeChromium(),
-      fetch: (() => Promise.resolve(jsonResponse({ ok: false }, { status: 503 }))) as typeof fetch,
+      fetch: (() => Promise.resolve(jsonResponse({ ok: false }, { status: 503 }))) as unknown as typeof fetch,
       previewPort: 50133,
       spawn: () => ({
         exited: new Promise<number>((resolve) => {
@@ -182,7 +182,7 @@ describe("khalaDesktopBackend", () => {
   test("health wait fails fast when the child exits before preview health is ready", async () => {
     const backend = khalaDesktopBackend({
       chromium: makeFakeChromium(),
-      fetch: (() => new Promise<Response>(() => undefined)) as typeof fetch,
+      fetch: (() => new Promise<Response>(() => undefined)) as unknown as typeof fetch,
       previewPort: 50134,
       spawn: () => ({
         exited: Promise.resolve(42),

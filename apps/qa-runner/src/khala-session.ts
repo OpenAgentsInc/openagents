@@ -15,7 +15,7 @@
 import { mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { Effect } from "effect";
-import { withBrowserSurface, type BrowserSurface } from "@openagentsinc/probe-runtime";
+import { withBrowserSurface, type BrowserSurface } from "@openagentsinc/probe-runtime/computer-use/browser";
 import type { Backend } from "./backend";
 import type { ChatClient, KhalaExecutableAction } from "./khala-driver";
 import { makeKhalaDriver, type KhalaTurnRecord } from "./khala-driver";
