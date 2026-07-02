@@ -4,6 +4,7 @@ import { Effect } from "effect"
 import {
   collectKhalaCodeQaCoverageLedger,
   khalaCodeQaCoverageFrontierReport,
+  KHALA_CODE_QA_ERROR_STATE_CASE_IDS,
   KHALA_CODE_QA_ROADMAP_RPC_METHOD_GROUPS,
   KHALA_CODE_QA_SEED_CORPUS_MANIFEST,
   KHALA_CODE_QA_SEED_SCENARIOS,
@@ -52,6 +53,7 @@ describe("Khala Code QA coverage ledger", () => {
     }
     expect(ledger.fleetRunControlVerbs).toEqual([...KHALA_CODE_QA_SEED_CORPUS_MANIFEST.coverage.fleetRunControlVerbs].sort())
     expect(ledger.inboxRoutingFlagKinds).toEqual([...KHALA_CODE_QA_SEED_CORPUS_MANIFEST.coverage.inboxRoutingFlagKinds].sort())
+    expect(ledger.errorStateCasesExercised).toEqual([...KHALA_CODE_QA_ERROR_STATE_CASE_IDS].sort())
     expect(ledger.hotbarPanelsOpened).toEqual(["chat", "fleet", "settings"])
     for (const command of KHALA_CODE_QA_SEED_CORPUS_MANIFEST.coverage.slashCommands) {
       expect(ledger.slashCommands[command]?.dispatches).toBeGreaterThan(0)
@@ -175,6 +177,7 @@ describe("Khala Code QA coverage ledger", () => {
     expect(frontier.missing.rpcGroups).toContain("rpc.fleet")
     expect(frontier.missing.fleetRunControlVerbs).toEqual(["drain", "pause", "resume", "stop"])
     expect(frontier.missing.inboxRoutingFlagKinds).toEqual(["flag", "interrupt", "retry"])
+    expect(frontier.missing.errorStateCases).toEqual([...KHALA_CODE_QA_ERROR_STATE_CASE_IDS].sort())
     expect(frontier.missing.hotbarPanels).toContain("fleet")
     expect(frontier.missing.settingsKeys).toContain("model")
     expect(frontier.missing.approvalDecisionKinds).toContain("accept")

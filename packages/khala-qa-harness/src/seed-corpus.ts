@@ -22,7 +22,7 @@ import {
   KHALA_CODE_QA_ROADMAP_RPC_METHOD_GROUPS,
   type KhalaCodeQaCoverageAvailability,
 } from "./coverage-ledger.js"
-import type { KhalaCodeRpcFetch } from "./rpc-client.js"
+import type { KhalaCodeRpcFetch, KhalaCodeRpcMethodName } from "./rpc-client.js"
 import type { KhalaCodeQaScenario } from "./scenario.js"
 
 export type SeedCorpusGroup =
@@ -46,6 +46,7 @@ export type SeedCorpusGroup =
   | "rpc.headless_events"
   | "rpc.qa_metrics"
   | "hotbar"
+  | "error_states"
   | "thread_items"
 
 type ScenarioGroupEntry = Readonly<{
@@ -63,6 +64,7 @@ export type KhalaCodeQaSeedCorpusManifest = Readonly<{
   backend: "fixture"
   coverage: Readonly<{
     approvalDecisionKinds: readonly string[]
+    errorStateCases: readonly string[]
     fleetRunControlVerbs: readonly string[]
     hotbarPanels: readonly string[]
     inboxRoutingFlagKinds: readonly string[]
@@ -99,6 +101,61 @@ type FixtureThreadState = {
   readonly forked: boolean
   readonly title: string
 }
+
+export const KHALA_CODE_QA_ERROR_STATE_CASES = [
+  {
+    caseId: "codex_binary_missing",
+    description: "Codex binary missing before the desktop claims harness readiness",
+    targetMethod: "codexHarnessStatus",
+  },
+  {
+    caseId: "auth_expired",
+    description: "Codex auth expired or invalid in the primary user Codex home",
+    targetMethod: "codexHarnessStatus",
+  },
+  {
+    caseId: "pylon_offline",
+    description: "Pylon unavailable while the fleet panel preserves account/session context",
+    targetMethod: "codexFleetStatus",
+  },
+  {
+    caseId: "single_rpc_failure_partial_degradation",
+    description: "A single FleetRun RPC failure degrades that section without blanking prior data",
+    targetMethod: "fleetRunList",
+  },
+  {
+    caseId: "corrupt_session_state_recovery",
+    description: "Corrupt session-state recovery keeps a usable catalog entry and diagnostics",
+    targetMethod: "sessionCatalog",
+  },
+  {
+    caseId: "mcp_server_down",
+    description: "MCP server down renders typed ecosystem diagnostics and retry affordance data",
+    targetMethod: "codexEcosystemRead",
+  },
+  {
+    caseId: "network_loss_mid_turn",
+    description: "Network loss mid-turn returns a recoverable turn failure without losing messages",
+    targetMethod: "codexTurnStart",
+  },
+  {
+    caseId: "interrupt_mid_tool_call",
+    description: "Interrupt mid-tool-call returns a typed interrupt result and preserves the thread",
+    targetMethod: "codexTurnInterrupt",
+  },
+  {
+    caseId: "app_server_crash_restart",
+    description: "App-server crash, restart, and thread resume preserve the active thread",
+    targetMethod: "codexAppServerStatus",
+  },
+] as const satisfies readonly {
+  readonly caseId: string
+  readonly description: string
+  readonly targetMethod: KhalaCodeRpcMethodName
+}[]
+
+export type KhalaCodeQaErrorStateCaseId =
+  typeof KHALA_CODE_QA_ERROR_STATE_CASES[number]["caseId"]
 
 const groupedFixtureScenario = (
   group: SeedCorpusGroup,
@@ -988,6 +1045,8 @@ export const KHALA_CODE_QA_THREAD_ITEM_FIXTURES =
     rendersVisible: fixture.rendersVisible,
     variant: fixture.variant,
   }))
+export const KHALA_CODE_QA_ERROR_STATE_CASE_IDS =
+  KHALA_CODE_QA_ERROR_STATE_CASES.map((entry) => entry.caseId)
 export const KHALA_CODE_QA_SEED_HOTBAR_PANELS = KHALA_CODE_HOTBAR_SLOTS.map((slot) => slot.value)
 export const KHALA_CODE_QA_SEED_SETTINGS_KEYS = ["model", "personality"] as const
 export const KHALA_CODE_QA_SEED_APPROVAL_DECISION_KINDS = KHALA_CODE_CODEX_APPROVAL_ACTIONS
@@ -1017,6 +1076,135 @@ const groupedThreadItemScenarios: readonly GroupedScenario[] =
     )
   )
 
+const errorStateArmAction = (caseId: KhalaCodeQaErrorStateCaseId) => ({
+  kind: "rpc_call" as const,
+  method: "qaMetricSample",
+  args: [{
+    ...qaMetricSample("startup.interactive_ms", 0),
+    context: {
+      errorStateCase: caseId,
+      surface: "seed-corpus",
+    },
+  }],
+})
+
+const degradedState = (caseId: KhalaCodeQaErrorStateCaseId) => ({
+  id: "typed-degraded-state",
+  match: caseId,
+  oracle: "invariant" as const,
+})
+
+const noConsoleErrors = () => ({
+  id: "no-console-errors",
+  oracle: "invariant" as const,
+})
+
+const noDataLoss = (caseId: KhalaCodeQaErrorStateCaseId) => ({
+  id: "no-data-loss",
+  match: caseId,
+  oracle: "invariant" as const,
+})
+
+const errorStateExpectations = (
+  caseId: KhalaCodeQaErrorStateCaseId,
+  method: KhalaCodeRpcMethodName,
+): KhalaCodeQaScenario["phases"][number]["expect"] => [
+  schema(method),
+  degradedState(caseId),
+  noConsoleErrors(),
+  noDataLoss(caseId),
+  crash(),
+]
+
+const errorStateAction = (
+  caseId: KhalaCodeQaErrorStateCaseId,
+  method: KhalaCodeRpcMethodName,
+): KhalaCodeQaScenario["phases"][number]["act"][number] => {
+  switch (method) {
+    case "codexFleetStatus":
+    case "codexHarnessStatus":
+    case "codexAppServerStatus":
+      return { kind: "rpc_call", method }
+    case "fleetRunList":
+      return { kind: "rpc_call", method, args: [{}] }
+    case "sessionCatalog":
+      return { kind: "rpc_call", method, args: [{ limit: 10, searchTerm: "fixture" }] }
+    case "codexEcosystemRead":
+      return { kind: "rpc_call", method, args: [{ cwd: "/workspace", threadId }] }
+    case "codexTurnStart":
+      return {
+        kind: "rpc_call",
+        method,
+        args: [fixtureChatTurnRequest({ turnId: `turn-error-${caseId}` })],
+      }
+    case "codexTurnInterrupt":
+      return {
+        kind: "rpc_call",
+        method,
+        args: [{ sessionId: desktopSessionId, turnId: `turn-error-${caseId}` }],
+      }
+    default:
+      return { kind: "rpc_call", method }
+  }
+}
+
+const errorStateScenarioPhases = (
+  entry: typeof KHALA_CODE_QA_ERROR_STATE_CASES[number],
+): KhalaCodeQaScenario["phases"] => {
+  if (entry.caseId === "app_server_crash_restart") {
+    return [
+      {
+        name: "observe-app-server-crash",
+        act: [
+          errorStateArmAction(entry.caseId),
+          { kind: "rpc_call", method: "codexAppServerStatus" },
+        ],
+        expect: errorStateExpectations(entry.caseId, "codexAppServerStatus"),
+      },
+      {
+        name: "restart-and-resume-thread",
+        act: [
+          errorStateArmAction(entry.caseId),
+          { kind: "rpc_call", method: "codexAppServerRestart" },
+          { kind: "rpc_call", method: "codexThreadResume", args: [{ cwd: "/workspace", sessionId: desktopSessionId, threadId }] },
+        ],
+        expect: [
+          schema("codexAppServerRestart"),
+          schema("codexThreadResume"),
+          degradedState(entry.caseId),
+          noConsoleErrors(),
+          noDataLoss(entry.caseId),
+          crash(),
+        ],
+      },
+    ]
+  }
+  return [{
+    name: `exercise-${entry.caseId.replace(/_/g, "-")}`,
+    act: [
+      errorStateArmAction(entry.caseId),
+      errorStateAction(entry.caseId, entry.targetMethod),
+    ],
+    expect: errorStateExpectations(entry.caseId, entry.targetMethod),
+  }]
+}
+
+const groupedErrorStateScenarios: readonly GroupedScenario[] =
+  KHALA_CODE_QA_ERROR_STATE_CASES.map((entry) =>
+    groupedFixtureScenario(
+      "error_states",
+      `scenario.khala_code.seed.error_state_${entry.caseId}.v1`,
+      errorStateScenarioPhases(entry),
+      [
+        commitment(`seed.error_state.${entry.caseId}.schema`, `${entry.description} decodes at the RPC boundary`, "schema"),
+        commitment(`seed.error_state.${entry.caseId}.degraded`, `${entry.description} has a typed degraded state`, "invariant"),
+        commitment(`seed.error_state.${entry.caseId}.console`, `${entry.description} emits no console errors`, "invariant"),
+        commitment(`seed.error_state.${entry.caseId}.data`, `${entry.description} preserves data`, "invariant"),
+        runPass(`seed.error_state.${entry.caseId}.pass`, `${entry.description} scenario passes`),
+      ],
+    )
+  )
+
 const groupedSlashCommandScenarios: readonly GroupedScenario[] =
   KHALA_CODE_DESKTOP_SLASH_COMMANDS.map((command) =>
     groupedFixtureScenario(
@@ -1036,6 +1224,7 @@ const groupedSeedScenarios: readonly GroupedScenario[] = [
   ...groupedQ41RpcScenarios,
   ...groupedHotbarScenarios,
   ...groupedThreadItemScenarios,
+  ...groupedErrorStateScenarios,
   ...groupedSlashCommandScenarios,
 ]
 
@@ -1047,6 +1236,7 @@ export const KHALA_CODE_QA_SEED_CORPUS_MANIFEST: KhalaCodeQaSeedCorpusManifest =
   backend: "fixture",
   coverage: {
     approvalDecisionKinds: KHALA_CODE_QA_SEED_APPROVAL_DECISION_KINDS,
+    errorStateCases: KHALA_CODE_QA_ERROR_STATE_CASE_IDS,
     fleetRunControlVerbs: KHALA_CODE_QA_SEED_FLEET_RUN_CONTROL_VERBS,
     hotbarPanels: KHALA_CODE_QA_SEED_HOTBAR_PANELS,
     inboxRoutingFlagKinds: KHALA_CODE_QA_SEED_INBOX_ROUTING_FLAG_KINDS,
@@ -1263,7 +1453,33 @@ const parseArgs = async (init?: RequestInit): Promise<readonly unknown[]> => {
   return parsed.args ?? []
 }
 
+const errorStateDataPreservedRef = (caseId: KhalaCodeQaErrorStateCaseId): string =>
+  `qa.error_state.${caseId}.data_preserved`
+
+const errorStateMarker = (
+  caseId: KhalaCodeQaErrorStateCaseId,
+  state: "degraded" | "recovering" | "recovered" = "degraded",
+) => ({
+  caseId,
+  dataLoss: false,
+  kind: "khala_code_qa_error_state",
+  preservesData: true,
+  recoverable: true,
+  ref: errorStateDataPreservedRef(caseId),
+  state,
+})
+
+const errorStateCaseFromMetricSample = (
+  sample: KhalaCodeQaMetricSample,
+): KhalaCodeQaErrorStateCaseId | null => {
+  const caseId = sample.context?.errorStateCase
+  return typeof caseId === "string" && (KHALA_CODE_QA_ERROR_STATE_CASE_IDS as readonly string[]).includes(caseId)
+    ? caseId as KhalaCodeQaErrorStateCaseId
+    : null
+}
+
 export const makeKhalaCodeQaSeedCorpusFixtureFetch = (): KhalaCodeRpcFetch => {
+  let activeErrorStateCase: KhalaCodeQaErrorStateCaseId | null = null
   let fleetRunState: FixtureFleetRunState = "draft"
   let appServerState: FixtureAppServerState = "stopped"
   const qaMetricSamples: KhalaCodeQaMetricSample[] = []
@@ -1277,11 +1493,15 @@ export const makeKhalaCodeQaSeedCorpusFixtureFetch = (): KhalaCodeRpcFetch => {
     const method = parseMethod(input)
     const args = await parseArgs(init)
     return response(fixtureRpcPayload(method, args, {
+      activeErrorStateCase,
       appServerState,
       fleetRunState,
       qaMetricSamples,
       appendQaMetricSample: (sample) => {
         qaMetricSamples.push(sample)
+      },
+      setActiveErrorStateCase: (caseId) => {
+        activeErrorStateCase = caseId
       },
       setAppServerState: (state) => {
         appServerState = state
@@ -1301,10 +1521,12 @@ const fixtureRpcPayload = (
   method: string,
   args: readonly unknown[],
   state: {
+    readonly activeErrorStateCase: KhalaCodeQaErrorStateCaseId | null
     readonly appServerState: FixtureAppServerState
     readonly fleetRunState: FixtureFleetRunState
     readonly qaMetricSamples: readonly KhalaCodeQaMetricSample[]
     readonly appendQaMetricSample: (sample: KhalaCodeQaMetricSample) => void
+    readonly setActiveErrorStateCase: (caseId: KhalaCodeQaErrorStateCaseId | null) => void
     readonly setAppServerState: (state: FixtureAppServerState) => void
     readonly setFleetRunState: (state: FixtureFleetRunState) => void
     readonly setThreadState: (patch: Partial<FixtureThreadState>) => void
@@ -1317,22 +1539,36 @@ const fixtureRpcPayload = (
     case "appleFmReadiness":
       return appleFmReadiness()
     case "codexHarnessStatus":
-      return codexHarnessStatus()
+      return codexHarnessStatus(state.activeErrorStateCase)
     case "codexAppServerStatus":
-      return appServerStatus(state.appServerState)
+      return appServerStatus(
+        state.activeErrorStateCase === "app_server_crash_restart" ? "errored" : state.appServerState,
+        state.activeErrorStateCase === "app_server_crash_restart" ? state.activeErrorStateCase : null,
+      )
     case "codexAppServerStart":
       state.setAppServerState("running")
       return appServerControl("start", state.appServerState, "running")
     case "codexAppServerRestart":
       state.setAppServerState("running")
-      return appServerControl("restart", state.appServerState, "running")
+      return appServerControl(
+        "restart",
+        state.activeErrorStateCase === "app_server_crash_restart" ? "errored" : state.appServerState,
+        "running",
+        state.activeErrorStateCase === "app_server_crash_restart" ? state.activeErrorStateCase : null,
+      )
     case "codexAppServerStop":
       state.setAppServerState("stopped")
       return appServerControl("stop", state.appServerState, "stopped")
     case "codingStatus":
       return runtimeStatus("coding", "ready")
     case "pylonStatus":
-      return runtimeStatus("pylon", "ready")
+      return runtimeStatus(
+        "pylon",
+        state.activeErrorStateCase === "pylon_offline" ? "unavailable" : "ready",
+        state.activeErrorStateCase === "pylon_offline"
+          ? errorStateDataPreservedRef(state.activeErrorStateCase)
+          : undefined,
+      )
     case "tokenAccountingStatus":
       return runtimeStatus("token_accounting", "ready")
     case "onDeviceDeciderStatus":
@@ -1369,17 +1605,28 @@ const fixtureRpcPayload = (
       return { ...threadMutation("fork", threadId), newThreadId: forkThreadId }
     case "codexThreadResume": {
       const request = args[0] as { readonly threadId?: string } | undefined
-      return threadResult(request?.threadId ?? threadId, state.threadState)
+      return threadResult(
+        request?.threadId ?? threadId,
+        state.threadState,
+        state.activeErrorStateCase === "app_server_crash_restart" ? state.activeErrorStateCase : null,
+      )
     }
     case "codexTurnStart":
     case "submitChatMessage":
-      return chatTurnResponse()
+      return chatTurnResponse(
+        state.activeErrorStateCase === "network_loss_mid_turn" ? state.activeErrorStateCase : null,
+      )
     case "codexTurnSteer":
-    case "codexTurnInterrupt":
     case "codexThreadCompact":
       return turnActionResult()
+    case "codexTurnInterrupt":
+      return turnActionResult(
+        state.activeErrorStateCase === "interrupt_mid_tool_call" ? state.activeErrorStateCase : null,
+      )
     case "codexFleetStatus":
-      return fleetStatus()
+      return fleetStatus(
+        state.activeErrorStateCase === "pylon_offline" ? state.activeErrorStateCase : null,
+      )
     case "codexFleetDelegateRun":
       return fleetDelegateRunResult()
     case "codexFleetPromoteThread":
@@ -1390,7 +1637,12 @@ const fixtureRpcPayload = (
     case "fleetRunStatus":
       return { ok: true, run: fleetRun(state.fleetRunState), supervisorActive: state.fleetRunState === "running" }
     case "fleetRunList":
-      return { ok: true, runs: [fleetRun(state.fleetRunState)] }
+      return state.activeErrorStateCase === "single_rpc_failure_partial_degradation"
+        ? {
+          ok: false,
+          runs: [fleetRun(state.fleetRunState, { dataPreservedCase: state.activeErrorStateCase })],
+        }
+        : { ok: true, runs: [fleetRun(state.fleetRunState)] }
     case "fleetRunControl": {
       const request = args[0] as { readonly verb?: "pause" | "resume" | "drain" | "stop" } | undefined
       const previousState = state.fleetRunState
@@ -1461,7 +1713,9 @@ const fixtureRpcPayload = (
       return harnessSetting(request?.mode ?? "codex_harness", true)
     }
     case "codexEcosystemRead":
-      return ecosystemProjection()
+      return ecosystemProjection(
+        state.activeErrorStateCase === "mcp_server_down" ? state.activeErrorStateCase : null,
+      )
     case "toolCatalog":
       return toolCatalog()
     case "codexMentionCandidates":
@@ -1509,7 +1763,9 @@ const fixtureRpcPayload = (
     case "threadTokenSummary":
       return threadTokenSummary(args[0])
     case "sessionCatalog":
-      return sessionCatalog()
+      return sessionCatalog(
+        state.activeErrorStateCase === "corrupt_session_state_recovery" ? state.activeErrorStateCase : null,
+      )
     case "forumRequest":
       return forumResponse(args[0])
     case "khalaCodePlanCatalog":
@@ -1521,6 +1777,7 @@ const fixtureRpcPayload = (
     case "qaMetricSample": {
       const sample = args[0] as KhalaCodeQaMetricSample
       state.appendQaMetricSample(sample)
+      state.setActiveErrorStateCase(errorStateCaseFromMetricSample(sample))
       return { ok: true, observedAt: sample.observedAt }
     }
     case "qaMetrics":
@@ -1582,15 +1839,22 @@ const fleetRunStateForVerb = (
   }
 }
 
-const appServerStatus = (state: FixtureAppServerState) => ({
+const appServerStatus = (
+  state: FixtureAppServerState,
+  errorCase: KhalaCodeQaErrorStateCaseId | null = null,
+) => ({
   adapterVersion: "fixture",
   app: "Khala Code Desktop",
   codexCommand: "codex",
   codexHome: "/fixture/codex-home",
-  diagnostics: [],
+  diagnostics: errorCase === null ? [] : [errorStateDataPreservedRef(errorCase)],
   initialized: state === "running",
-  initializeResult: state === "running" ? { ok: true, fixture: true } : null,
-  lastError: state === "errored" ? "fixture app-server error" : null,
+  initializeResult: errorCase === null
+    ? state === "running" ? { ok: true, fixture: true } : null
+    : { degradedState: errorStateMarker(errorCase, state === "running" ? "recovered" : "degraded") },
+  lastError: state === "errored"
+    ? `fixture app-server error; ${errorCase === null ? "data preserved" : errorStateDataPreservedRef(errorCase)}`
+    : null,
   ok: true,
   pendingRequestCount: 0,
   pid: state === "running" ? 12345 : null,
@@ -1602,55 +1866,69 @@ const appServerControl = (
   action: "restart" | "start" | "stop",
   previousState: FixtureAppServerState,
   nextState: FixtureAppServerState,
+  errorCase: KhalaCodeQaErrorStateCaseId | null = null,
 ) => ({
   action,
   changed: previousState !== nextState || action === "restart",
   ok: true,
-  status: appServerStatus(nextState),
+  status: appServerStatus(nextState, errorCase),
 })
 
 const runtimeStatus = (
   capability: "codex_accounts" | "codex_harness" | "coding" | "pylon" | "token_accounting",
   status: "error" | "not_configured" | "ready" | "unavailable",
+  reason = "fixture backend",
 ) => ({
   app: "Khala Code Desktop",
   available: status === "ready",
   capability,
   observedAt,
   ok: true,
-  reason: "fixture backend",
+  reason,
   status,
 })
 
-const codexHarnessStatus = () => ({
-  ...runtimeStatus("codex_harness", "ready"),
-  auth: {
-    accessTokenPresent: true,
-    accountIdPresent: true,
-    blockerRefs: [],
-    refreshTokenPresent: true,
-    state: "ready",
-  },
-  binary: {
-    available: true,
-    command: "codex",
-    error: null,
-    source: "PATH",
-    version: "fixture",
-  },
-  home: {
-    authPath: "/fixture/codex-home/auth.json",
-    fleetIsolation: "fleet_accounts_use_pylon_isolated_homes",
-    path: "/fixture/codex-home",
-    role: "main_user_codex_home",
-    source: "input",
-  },
-  signIn: {
-    command: "codex login",
-    required: false,
-    warning: "fixture sign-in not required",
-  },
-})
+const codexHarnessStatus = (
+  errorCase: KhalaCodeQaErrorStateCaseId | null = null,
+) => {
+  const binaryMissing = errorCase === "codex_binary_missing"
+  const authExpired = errorCase === "auth_expired"
+  return {
+    ...runtimeStatus("codex_harness", "ready"),
+    ...(binaryMissing || authExpired
+      ? runtimeStatus("codex_harness", "unavailable", `${errorStateDataPreservedRef(errorCase)}; existing threads and session metadata remain readable`)
+      : {}),
+    auth: {
+      accessTokenPresent: !authExpired,
+      accountIdPresent: !authExpired,
+      blockerRefs: authExpired ? [errorStateDataPreservedRef(errorCase)] : [],
+      refreshTokenPresent: !authExpired,
+      state: authExpired ? "invalid" : "ready",
+      ...(authExpired ? { error: "Codex auth expired; data preserved" } : {}),
+    },
+    binary: {
+      available: !binaryMissing,
+      command: "codex",
+      error: binaryMissing ? "Codex CLI not found; data preserved" : null,
+      source: "PATH",
+      version: binaryMissing ? null : "fixture",
+    },
+    home: {
+      authPath: "/fixture/codex-home/auth.json",
+      fleetIsolation: "fleet_accounts_use_pylon_isolated_homes",
+      path: "/fixture/codex-home",
+      role: "main_user_codex_home",
+      source: "input",
+    },
+    signIn: {
+      command: "codex login",
+      required: authExpired,
+      warning: authExpired
+        ? "Sign in again; isolated worker homes and existing transcript data are preserved."
+        : "fixture sign-in not required",
+    },
+  }
+}
 
 const appleFmReadiness = () => ({
   available: false,
@@ -1750,7 +2028,7 @@ const threadResult = (id: string, state: FixtureThreadState = {
   deleted: false,
   forked: false,
   title: "Fixture thread",
-}) => {
+}, errorCase: KhalaCodeQaErrorStateCaseId | null = null) => {
   const fixture = threadItemFixtureForThreadId(id)
   return {
     cwd: "/workspace",
@@ -1777,6 +2055,7 @@ const threadResult = (id: string, state: FixtureThreadState = {
           source: KHALA_CODE_CODEX_THREAD_ITEM_FIXTURE_SOURCE,
           variant: fixture.variant,
         },
+      ...(errorCase === null ? {} : { degradedState: errorStateMarker(errorCase, "recovered") }),
       title: fixture === undefined ? state.title : `${fixture.variant} fixture`,
     },
     threadId: id,
@@ -1827,25 +2106,37 @@ const threadMutation = (action: "archive" | "delete" | "fork" | "rename" | "unar
   threadId: id,
 })
 
-const turnActionResult = () => ({
+const turnActionResult = (
+  errorCase: KhalaCodeQaErrorStateCaseId | null = null,
+) => ({
   codexTurnId: turnId,
   desktopSessionId,
   desktopTurnId: turnId,
   ok: true,
+  ...(errorCase === null ? {} : { response: { degradedState: errorStateMarker(errorCase, "recovering") } }),
   threadId,
 })
 
-const chatTurnResponse = () => ({
+const chatTurnResponse = (
+  errorCase: KhalaCodeQaErrorStateCaseId | null = null,
+) => ({
   backend: {
-    kind: "mock",
+    kind: errorCase === "network_loss_mid_turn" ? "codex_app_server" : "mock",
     model: "fixture-model",
     threadId,
     turnId,
+    ...(errorCase === null ? {} : { turnStatus: `qa.error_state.${errorCase}.data_preserved` }),
   },
   messages: [
-    { body: "fixture turn response", id: "msg-assistant", role: "assistant" },
+    {
+      body: errorCase === null
+        ? "fixture turn response"
+        : `${errorStateDataPreservedRef(errorCase)}: turn degraded; draft and prior messages preserved`,
+      id: "msg-assistant",
+      role: "assistant",
+    },
   ],
-  ok: true,
+  ok: errorCase === null,
   toolNames: [],
   usedTools: [],
   usage: {
@@ -1856,18 +2147,22 @@ const chatTurnResponse = () => ({
   },
 })
 
-const fleetStatus = () => ({
+const fleetStatus = (
+  errorCase: KhalaCodeQaErrorStateCaseId | null = null,
+) => ({
   accounts: [],
   activeAssignments: [],
-  availableCodexAssignments: 1,
+  availableCodexAssignments: errorCase === "pylon_offline" ? 0 : 1,
   maxCodexAssignments: 1,
   observedAt,
   ok: true,
   processes: [],
   pylon: {
-    message: "fixture pylon",
-    pylonRef: "pylon-fixture",
-    status: "online",
+    message: errorCase === "pylon_offline"
+      ? `${errorStateDataPreservedRef(errorCase)}; fleet context preserved while Pylon is offline`
+      : "fixture pylon",
+    pylonRef: errorCase === "pylon_offline" ? null : "pylon-fixture",
+    status: errorCase === "pylon_offline" ? "unavailable" : "online",
   },
   sessionLayers: {
     main: {
@@ -1895,7 +2190,7 @@ const fleetStatus = () => ({
     inFlightTokens: null,
     inFlightTokensPerMinute: null,
     source: "unavailable",
-    unavailableReason: "fixture",
+    unavailableReason: errorCase === null ? "fixture" : errorStateDataPreservedRef(errorCase),
   },
 })
 
@@ -2027,7 +2322,10 @@ const fleetPromotionResult = (request: unknown) => {
   }
 }
 
-const fleetRun = (state: "draft" | "running" | "paused" | "draining" | "completed" | "stopped") => ({
+const fleetRun = (
+  state: "draft" | "running" | "paused" | "draining" | "completed" | "stopped",
+  options: { readonly dataPreservedCase?: KhalaCodeQaErrorStateCaseId } = {},
+) => ({
   counters: {
     activeAssignments: state === "running" ? 1 : 0,
     blockedAssignments: 0,
@@ -2050,7 +2348,13 @@ const fleetRun = (state: "draft" | "running" | "paused" | "draining" | "complete
   targetConcurrency: 1,
   updatedAt: observedAt,
   workerKind: "codex",
-  workSource: { kind: "fixture", count: 1 },
+  workSource: {
+    kind: "fixture",
+    count: 1,
+    ...(options.dataPreservedCase === undefined
+      ? {}
+      : { planRef: errorStateDataPreservedRef(options.dataPreservedCase) }),
+  },
 })
 
 const settingsProjection = () => {
@@ -2144,44 +2448,67 @@ const settingsProjection = () => {
   }
 }
 
-const ecosystemSection = (source: "apps" | "hooks" | "imports" | "khala" | "marketplace" | "mcp" | "plugins" | "skills", label: string) => ({
+const ecosystemSection = (
+  source: "apps" | "hooks" | "imports" | "khala" | "marketplace" | "mcp" | "plugins" | "skills",
+  label: string,
+  options: { readonly errorCase?: KhalaCodeQaErrorStateCaseId } = {},
+) => ({
   authRequiredCount: 0,
   count: 1,
   disabledCount: 0,
-  errorCount: 0,
+  errorCount: options.errorCase === undefined ? 0 : 1,
   installRequiredCount: 0,
   items: [{
     authRequired: false,
-    detail: "fixture ready",
-    enabled: true,
+    detail: options.errorCase === undefined ? "fixture ready" : errorStateDataPreservedRef(options.errorCase),
+    enabled: options.errorCase === undefined,
     id: `${source}-fixture`,
     installed: true,
     managed: false,
     name: label,
     source,
-    state: "ready",
+    state: options.errorCase === undefined ? "ready" : "error",
   }],
   label,
   managedCount: 0,
-  readyCount: 1,
+  readyCount: options.errorCase === undefined ? 1 : 0,
   source,
   unknownCount: 0,
 })
 
-const ecosystemProjection = () => ({
+const ecosystemProjection = (
+  errorCase: KhalaCodeQaErrorStateCaseId | null = null,
+) => ({
   cwd: "/workspace",
-  diagnostics: [],
-  errors: [],
-  notifications: [],
+  diagnostics: errorCase === "mcp_server_down"
+    ? [{
+      action: "refresh",
+      detail: `${errorStateDataPreservedRef(errorCase)}; existing ecosystem sections remain visible`,
+      observedAt,
+      ref: errorStateDataPreservedRef(errorCase),
+      severity: "warning",
+      source: "mcp",
+      title: "Fixture MCP server down",
+    }]
+    : [],
+  errors: errorCase === "mcp_server_down" ? [errorStateDataPreservedRef(errorCase)] : [],
+  notifications: errorCase === "mcp_server_down"
+    ? [{
+      method: "mcpServer/reload",
+      receivedAt: observedAt,
+      severity: "warning",
+      summary: errorStateDataPreservedRef(errorCase),
+    }]
+    : [],
   observedAt,
-  ok: true,
+  ok: errorCase !== "mcp_server_down",
   sections: {
     apps: ecosystemSection("apps", "Apps"),
     hooks: ecosystemSection("hooks", "Hooks"),
     imports: ecosystemSection("imports", "Imports"),
     khala: ecosystemSection("khala", "Khala"),
     marketplace: ecosystemSection("marketplace", "Marketplace"),
-    mcp: ecosystemSection("mcp", "MCP"),
+    mcp: ecosystemSection("mcp", "MCP", errorCase === "mcp_server_down" ? { errorCase } : {}),
     plugins: ecosystemSection("plugins", "Plugins"),
     skills: ecosystemSection("skills", "Skills"),
   },
@@ -2206,8 +2533,12 @@ const threadTokenSummary = (request: unknown) => ({
   usageEventRows: 1,
 })
 
-const sessionCatalog = () => ({
-  diagnostics: [],
+const sessionCatalog = (
+  errorCase: KhalaCodeQaErrorStateCaseId | null = null,
+) => ({
+  diagnostics: errorCase === "corrupt_session_state_recovery"
+    ? [errorStateDataPreservedRef(errorCase)]
+    : [],
   entries: [{
     catalogEntryId: "catalog-fixture",
     createdAt: 1,
@@ -2228,8 +2559,8 @@ const sessionCatalog = () => ({
     recencyAt: 1,
     sessionRef: desktopSessionId,
     source: "fixture",
-    status: "ready",
-    statusLabel: "Ready",
+    status: errorCase === "corrupt_session_state_recovery" ? "degraded_recovered" : "ready",
+    statusLabel: errorCase === "corrupt_session_state_recovery" ? "Recovered" : "Ready",
     threadRef: threadId,
     title: "Fixture session",
     updatedAt: 1,

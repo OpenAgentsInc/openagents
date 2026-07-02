@@ -35,6 +35,7 @@ export type KhalaCodeQaCoverageLedger = {
   readonly approvalDecisionKinds: readonly string[]
   readonly fleetRunControlVerbs: readonly string[]
   readonly inboxRoutingFlagKinds: readonly string[]
+  readonly errorStateCasesExercised: readonly string[]
   readonly threadItemVariantRenderCounts: Readonly<Record<string, number>>
   readonly threadItemVariantsRendered: readonly string[]
   readonly selectorsClicked: readonly string[]
@@ -53,6 +54,7 @@ export type KhalaCodeQaCoverageFrontierReport = {
     readonly approvalDecisionKinds: readonly string[]
     readonly fleetRunControlVerbs: readonly string[]
     readonly inboxRoutingFlagKinds: readonly string[]
+    readonly errorStateCases: readonly string[]
     readonly threadItemVariants: readonly string[]
     readonly selectors: readonly string[]
     readonly slashCommandAvailabilityStates: readonly string[]
@@ -288,6 +290,31 @@ const collectThreadItemVariants = (value: unknown): readonly string[] => {
   return [...variants, ...Object.values(value).flatMap(collectThreadItemVariants)]
 }
 
+const collectErrorStateCaseIds = (value: unknown): readonly string[] => {
+  if (Array.isArray(value)) return value.flatMap(collectErrorStateCaseIds)
+  if (!isRecord(value)) return []
+  const direct = [
+    isRecord(value.degradedState) && typeof value.degradedState.caseId === "string"
+      ? value.degradedState.caseId
+      : undefined,
+    typeof value.caseId === "string" && value.kind === "khala_code_qa_error_state"
+      ? value.caseId
+      : undefined,
+  ].filter((caseId): caseId is string => caseId !== undefined)
+  const refs = Object.values(value).flatMap((entry) => {
+    if (typeof entry !== "string") return collectErrorStateCaseIds(entry)
+    const match = entry.match(/qa\.error_state\.([a-z0-9_]+)/)
+    return match?.[1] === undefined ? [] : [match[1]]
+  })
+  return [...direct, ...refs]
+}
+
+const collectArmedErrorStateCases = (args: readonly unknown[] | undefined): readonly string[] => {
+  const sample = args?.[0]
+  if (!isRecord(sample) || !isRecord(sample.context)) return []
+  return typeof sample.context.errorStateCase === "string" ? [sample.context.errorStateCase] : []
+}
+
 export const createEmptyKhalaCodeQaCoverageLedger = (
   options: { readonly generatedAt?: string; readonly runId?: string } = {},
 ): KhalaCodeQaCoverageLedger => ({
@@ -296,6 +323,7 @@ export const createEmptyKhalaCodeQaCoverageLedger = (
   generatedAt: options.generatedAt ?? emptyGeneratedAt,
   hotbarPanelsOpened: [],
   inboxRoutingFlagKinds: [],
+  errorStateCasesExercised: [],
   rpcGroups: {},
   rpcMethods: {},
   runIds: options.runId === undefined ? [] : [options.runId],
@@ -321,6 +349,7 @@ export const collectKhalaCodeQaCoverageLedger = (input: {
   const approvalDecisionKinds = new Set<string>()
   const fleetRunControlVerbs = new Set<string>()
   const inboxRoutingFlagKinds = new Set<string>()
+  const errorStateCasesExercised = new Set<string>()
   const threadItemVariantRenderCounts: MutableCountCoverage = new Map()
   const threadItemVariantsRendered = new Set<string>()
   const selectorsClicked = new Set<string>()
@@ -372,6 +401,12 @@ export const collectKhalaCodeQaCoverageLedger = (input: {
       if (action.method === "fleetWorkerControl" && isRecord(firstArg) && typeof firstArg.verb === "string") {
         inboxRoutingFlagKinds.add(firstArg.verb)
       }
+      for (const caseId of collectArmedErrorStateCases(action.args)) {
+        errorStateCasesExercised.add(caseId)
+      }
+      for (const caseId of collectErrorStateCaseIds(observation.data)) {
+        errorStateCasesExercised.add(caseId)
+      }
       for (const variant of collectThreadItemVariants(observation.data)) {
         recordCount(threadItemVariantRenderCounts, variant)
         threadItemVariantsRendered.add(variant)
@@ -397,6 +432,7 @@ export const collectKhalaCodeQaCoverageLedger = (input: {
     generatedAt: input.generatedAt ?? new Date().toISOString(),
     hotbarPanelsOpened: sorted(hotbarPanelsOpened),
     inboxRoutingFlagKinds: sorted(inboxRoutingFlagKinds),
+    errorStateCasesExercised: sorted(errorStateCasesExercised),
     rpcGroups: rpcGroupCoverageToObject(rpcGroups),
     rpcMethods: rpcCoverageToObject(rpcMethods),
     runIds: [input.runId],
@@ -453,6 +489,7 @@ export const mergeKhalaCodeQaCoverageLedgers = (
     generatedAt,
     hotbarPanelsOpened: sorted(addSet("hotbarPanelsOpened")),
     inboxRoutingFlagKinds: sorted(addSet("inboxRoutingFlagKinds")),
+    errorStateCasesExercised: sorted(addSet("errorStateCasesExercised")),
     rpcGroups: rpcGroupCoverageToObject(rpcGroups),
     rpcMethods: rpcCoverageToObject(rpcMethods),
     runIds: sorted(runIds),
@@ -484,6 +521,9 @@ export const khalaCodeQaCoverageFrontierReport = (input: {
     )),
     inboxRoutingFlagKinds: sorted(input.manifest.coverage.inboxRoutingFlagKinds.filter((item) =>
       !input.ledger.inboxRoutingFlagKinds.includes(item)
+    )),
+    errorStateCases: sorted(input.manifest.coverage.errorStateCases.filter((item) =>
+      !input.ledger.errorStateCasesExercised.includes(item)
     )),
     rpcGroups: sorted(input.manifest.coverage.rpcGroups.filter((item) =>
       input.ledger.rpcGroups[item] === undefined

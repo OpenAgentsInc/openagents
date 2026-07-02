@@ -138,6 +138,85 @@ const findQaMetricsSnapshot = (
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value)
 
+const collectStrings = (value: unknown): readonly string[] => {
+  if (typeof value === "string") return [value]
+  if (Array.isArray(value)) return value.flatMap(collectStrings)
+  if (!isRecord(value)) return []
+  return Object.values(value).flatMap(collectStrings)
+}
+
+const collectRecords = (value: unknown): readonly Record<string, unknown>[] => {
+  if (Array.isArray(value)) return value.flatMap(collectRecords)
+  if (!isRecord(value)) return []
+  return [value, ...Object.values(value).flatMap(collectRecords)]
+}
+
+const armedErrorStateCases = (
+  observations: ReadonlyArray<KhalaCodeQaObservation>,
+): ReadonlySet<string> =>
+  new Set(observations.flatMap((observation) => {
+    if (observation.action.kind !== "rpc_call" || observation.action.method !== "qaMetricSample") return []
+    const sample = observation.action.args?.[0]
+    if (!isRecord(sample) || !isRecord(sample.context)) return []
+    return typeof sample.context.errorStateCase === "string" ? [sample.context.errorStateCase] : []
+  }))
+
+const hasErrorStateCaseString = (value: unknown, caseId: string): boolean =>
+  collectStrings(value).some((text) =>
+    text.includes(`qa.error_state.${caseId}`) ||
+    text.includes(`error_state.${caseId}`) ||
+    text.includes(caseId)
+  )
+
+const hasExplicitDegradedRecord = (value: unknown, caseId: string): boolean =>
+  collectRecords(value).some((record) => {
+    if (isRecord(record.degradedState) && record.degradedState.caseId === caseId) return true
+    if (record.kind === "khala_code_qa_error_state" && record.caseId === caseId) return true
+    return false
+  })
+
+const hasGenericDegradedShape = (value: unknown): boolean =>
+  collectRecords(value).some((record) => {
+    if (record.ok === false) return true
+    if (record.available === false && typeof record.reason === "string") return true
+    if (record.status === "error" || record.status === "unavailable") return true
+    if (record.state === "errored") return true
+    if (isRecord(record.binary) && record.binary.available === false) return true
+    if (isRecord(record.auth) && record.auth.state !== "ready") return true
+    if (isRecord(record.pylon) && record.pylon.status === "unavailable") return true
+    if (Array.isArray(record.errors) && record.errors.length > 0) return true
+    if (Array.isArray(record.diagnostics) && record.diagnostics.length > 0) return true
+    return false
+  })
+
+const hasDataPreservedEvidence = (value: unknown, caseId: string): boolean =>
+  collectRecords(value).some((record) => {
+    if (isRecord(record.degradedState) && record.degradedState.caseId === caseId) {
+      return record.degradedState.dataLoss === false || record.degradedState.preservesData === true
+    }
+    if (record.kind === "khala_code_qa_error_state" && record.caseId === caseId) {
+      return record.dataLoss === false || record.preservesData === true
+    }
+    return false
+  }) ||
+  collectStrings(value).some((text) =>
+    text.includes(`qa.error_state.${caseId}.data_preserved`) ||
+    text.includes("data preserved")
+  )
+
+const hasDataLossEvidence = (value: unknown): boolean =>
+  collectRecords(value).some((record) =>
+    record.dataLoss === true ||
+    isRecord(record.degradedState) && record.degradedState.dataLoss === true
+  )
+
+const collectConsoleErrorEvidence = (value: unknown): readonly unknown[] =>
+  collectRecords(value).flatMap((record) => {
+    const consoleErrors = record.consoleErrors
+    if (Array.isArray(consoleErrors)) return consoleErrors
+    return []
+  })
+
 const safeFailureDetail = (failure: unknown): string => {
   if (failure instanceof Error) return failure.message
   if (typeof failure === "string") return failure
@@ -255,6 +334,94 @@ const evaluateClaimInvariant = (
   }
 }
 
+const evaluateTypedDegradedStateInvariant = (
+  phaseName: string,
+  expectation: KhalaCodeQaOracleExpectation,
+  observations: ReadonlyArray<KhalaCodeQaObservation>,
+): KhalaCodeQaOracleOutcome => {
+  const caseId = expectation.match
+  if (caseId === undefined) {
+    return {
+      ok: false,
+      oracle: "invariant",
+      phaseName,
+      summary: "typed degraded-state invariant requires match=<error-state-case-id>",
+      verdict: "REFUTED",
+    }
+  }
+  const armedCases = armedErrorStateCases(observations)
+  const values = observedValues(observations)
+  const typedEvidence = values.some((value) =>
+    hasExplicitDegradedRecord(value, caseId) ||
+    hasErrorStateCaseString(value, caseId) ||
+    armedCases.has(caseId) && hasGenericDegradedShape(value)
+  )
+  const ok = armedCases.has(caseId) && typedEvidence
+  return {
+    data: { armedCases: [...armedCases].sort(), caseId, typedEvidence },
+    ok,
+    oracle: "invariant",
+    phaseName,
+    summary: ok
+      ? `${caseId} produced a typed degraded-state projection`
+      : `${caseId} did not produce a typed degraded-state projection`,
+    verdict: ok ? "CONFIRMED" : "REFUTED",
+  }
+}
+
+const evaluateNoConsoleErrorsInvariant = (
+  phaseName: string,
+  observations: ReadonlyArray<KhalaCodeQaObservation>,
+): KhalaCodeQaOracleOutcome => {
+  const driverErrors = observations.flatMap((observation) =>
+    observation.ok ? [] : [observation.error ?? `${observation.label} failed`]
+  )
+  const consoleErrors = observedValues(observations).flatMap(collectConsoleErrorEvidence)
+  const ok = driverErrors.length === 0 && consoleErrors.length === 0
+  return {
+    data: { consoleErrors, driverErrors },
+    ok,
+    oracle: "invariant",
+    phaseName,
+    summary: ok
+      ? "no driver or console errors were observed"
+      : "driver or console errors were observed",
+    verdict: ok ? "CONFIRMED" : "REFUTED",
+  }
+}
+
+const evaluateNoDataLossInvariant = (
+  phaseName: string,
+  expectation: KhalaCodeQaOracleExpectation,
+  observations: ReadonlyArray<KhalaCodeQaObservation>,
+): KhalaCodeQaOracleOutcome => {
+  const caseId = expectation.match
+  if (caseId === undefined) {
+    return {
+      ok: false,
+      oracle: "invariant",
+      phaseName,
+      summary: "no-data-loss invariant requires match=<error-state-case-id>",
+      verdict: "REFUTED",
+    }
+  }
+  const armedCases = armedErrorStateCases(observations)
+  const values = observedValues(observations)
+  const dataLoss = values.some(hasDataLossEvidence)
+  const preserved = values.some((value) => hasDataPreservedEvidence(value, caseId))
+  const ok = armedCases.has(caseId) && preserved && !dataLoss && observations.every((observation) => observation.ok)
+  return {
+    data: { armedCases: [...armedCases].sort(), caseId, dataLoss, preserved },
+    ok,
+    oracle: "invariant",
+    phaseName,
+    summary: ok
+      ? `${caseId} preserved fixture data while degraded`
+      : `${caseId} did not prove data preservation`,
+    verdict: ok ? "CONFIRMED" : "REFUTED",
+  }
+}
+
 const verifyCommitments = (input: {
   readonly commitments: ReadonlyArray<KhalaCodeQaCommitment>
   readonly phaseOutcomes: ReadonlyArray<KhalaCodeQaPhaseOutcome>
@@ -367,6 +534,18 @@ const evaluateOracle = (
 
   if (expectation.oracle === "invariant" && expectation.id === "claim-invariant") {
     return evaluateClaimInvariant(phaseName, observations)
+  }
+
+  if (expectation.oracle === "invariant" && expectation.id === "typed-degraded-state") {
+    return evaluateTypedDegradedStateInvariant(phaseName, expectation, observations)
+  }
+
+  if (expectation.oracle === "invariant" && expectation.id === "no-console-errors") {
+    return evaluateNoConsoleErrorsInvariant(phaseName, observations)
+  }
+
+  if (expectation.oracle === "invariant" && expectation.id === "no-data-loss") {
+    return evaluateNoDataLossInvariant(phaseName, expectation, observations)
   }
 
   if (expectation.oracle === "consistency") {

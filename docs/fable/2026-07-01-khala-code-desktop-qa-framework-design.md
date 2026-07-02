@@ -279,6 +279,11 @@ Rules:
   The seed corpus replays those fixtures through the `thread_items` group and
   records the fixture source in the manifest. See
   `docs/qa/khala-code-thread-item-coverage.md`.
+- **Q4.4 implementation artifact**: `packages/khala-qa-harness/src/seed-corpus.ts`
+  exports `KHALA_CODE_QA_ERROR_STATE_CASES`, one fixture-tier scenario per
+  named degradation case, plus invariant oracles for typed degraded state,
+  no console errors, and no data loss. See
+  `docs/qa/khala-code-error-state-corpus.md`.
 
 ## 5. Explore Mode: The Free-For-All That Cannot Lie
 

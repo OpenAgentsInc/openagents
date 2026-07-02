@@ -11,6 +11,8 @@ import {
 
 import {
   decodeKhalaCodeQaScenario,
+  KHALA_CODE_QA_ERROR_STATE_CASES,
+  KHALA_CODE_QA_ERROR_STATE_CASE_IDS,
   KHALA_CODE_QA_SEED_CORPUS_MANIFEST,
   KHALA_CODE_QA_SEED_SCENARIOS,
   KHALA_CODE_QA_THREAD_ITEM_FIXTURES,
@@ -54,7 +56,7 @@ describe("Khala Code QA seed scenario corpus", () => {
   test("covers the mechanical seed groups requested by Q4.1", () => {
     const expectedRpcGroups = Object.keys(KHALA_CODE_QA_ROADMAP_RPC_METHOD_GROUPS)
     expect(KHALA_CODE_QA_SEED_CORPUS_MANIFEST.coverage.rpcGroups).toEqual(expectedRpcGroups)
-    for (const group of [...expectedRpcGroups, "hotbar", "thread_items"]) {
+    for (const group of [...expectedRpcGroups, "hotbar", "thread_items", "error_states"]) {
       expect(idsForGroup(group).length).toBeGreaterThan(0)
     }
     for (const [group, methods] of Object.entries(KHALA_CODE_QA_ROADMAP_RPC_METHOD_GROUPS)) {
@@ -110,6 +112,40 @@ describe("Khala Code QA seed scenario corpus", () => {
         expect(scenario?.phases.map((phase) => phase.name)).toContain("dispatch-without-required-thread")
       }
     }
+
+    expect(KHALA_CODE_QA_SEED_CORPUS_MANIFEST.coverage.errorStateCases).toEqual(KHALA_CODE_QA_ERROR_STATE_CASE_IDS)
+    expect(idsForGroup("error_states")).toEqual(
+      KHALA_CODE_QA_ERROR_STATE_CASE_IDS.map((caseId) => `scenario.khala_code.seed.error_state_${caseId}.v1`),
+    )
+    for (const errorCase of KHALA_CODE_QA_ERROR_STATE_CASES) {
+      const scenario = KHALA_CODE_QA_SEED_SCENARIOS.find((candidate) =>
+        candidate.id === `scenario.khala_code.seed.error_state_${errorCase.caseId}.v1`
+      )
+      expect(scenario).toBeDefined()
+      expect(scenario?.phases.flatMap((phase) => phase.act).some((action) =>
+        action.kind === "rpc_call" && action.method === errorCase.targetMethod
+      )).toBe(true)
+      expect(scenario?.phases.flatMap((phase) => phase.expect)).toEqual(
+        expect.arrayContaining([
+          { id: "typed-degraded-state", match: errorCase.caseId, oracle: "invariant" },
+          { id: "no-console-errors", oracle: "invariant" },
+          { id: "no-data-loss", match: errorCase.caseId, oracle: "invariant" },
+        ]),
+      )
+    }
+    const restartScenario = KHALA_CODE_QA_SEED_SCENARIOS.find((candidate) =>
+      candidate.id === "scenario.khala_code.seed.error_state_app_server_crash_restart.v1"
+    )
+    expect(restartScenario?.phases.map((phase) => phase.name)).toEqual([
+      "observe-app-server-crash",
+      "restart-and-resume-thread",
+    ])
+    expect(restartScenario?.phases[1]?.act).toEqual(
+      expect.arrayContaining([
+        { kind: "rpc_call", method: "codexAppServerRestart" },
+        { kind: "rpc_call", method: "codexThreadResume", args: [{ cwd: "/workspace", sessionId: "desktop-session-fixture", threadId: "thread-fixture" }] },
+      ]),
+    )
   })
 
   test("loads every seed scenario and rejects phases without expectations by construction", () => {
