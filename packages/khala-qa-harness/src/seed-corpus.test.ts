@@ -2,6 +2,9 @@ import { describe, expect, test } from "bun:test"
 import { Effect } from "effect"
 
 import {
+  KHALA_CODE_CODEX_PARITY_REQUIRED_THREAD_ITEM_TYPES,
+} from "../../../clients/khala-code-desktop/src/bun/codex-parity-contract.js"
+import {
   khalaCodeDesktopSlashCommandsWithAvailability,
 } from "../../../clients/khala-code-desktop/src/shared/codex-slash-commands.js"
 
@@ -60,6 +63,7 @@ describe("Khala Code QA seed scenario corpus", () => {
         `scenario.khala_code.seed.thread_item_${normalized}.v1`,
       )
     }
+    expect(KHALA_CODE_QA_THREAD_ITEM_VARIANTS).toEqual(KHALA_CODE_CODEX_PARITY_REQUIRED_THREAD_ITEM_TYPES)
 
     const slashCommandIds = idsForGroup("rpc.slash_commands")
     for (const command of khalaCodeDesktopSlashCommandsWithAvailability({ debug: true, platform: "darwin" })) {

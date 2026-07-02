@@ -1,3 +1,4 @@
+import { KHALA_CODE_CODEX_PARITY_REQUIRED_THREAD_ITEM_TYPES } from "../../../clients/khala-code-desktop/src/bun/codex-parity-contract.js"
 import {
   khalaCodeDesktopSlashCommandsWithAvailability,
   type KhalaCodeDesktopSlashCommandWithAvailability,
@@ -22,6 +23,11 @@ type ScenarioGroupEntry = Readonly<{
   scenarioIds: readonly string[]
 }>
 
+type GroupedScenario = Readonly<{
+  group: SeedCorpusGroup
+  scenario: KhalaCodeQaScenario
+}>
+
 export type KhalaCodeQaSeedCorpusManifest = Readonly<{
   schema: "khala_code_qa_seed_corpus_manifest.v1"
   backend: "fixture"
@@ -36,17 +42,21 @@ const forkThreadId = "thread-fork-fixture"
 const turnId = "turn-fixture"
 const runRef = "fleet-run-fixture"
 
-const groupScenarioIds = new Map<SeedCorpusGroup, string[]>()
-
-const track = <A extends KhalaCodeQaScenario>(
+const groupedFixtureScenario = (
   group: SeedCorpusGroup,
-  scenario: A,
-): A => {
-  const current = groupScenarioIds.get(group) ?? []
-  current.push(scenario.id)
-  groupScenarioIds.set(group, current)
-  return scenario
-}
+  id: string,
+  phases: KhalaCodeQaScenario["phases"],
+  commitments: KhalaCodeQaScenario["commitments"],
+): GroupedScenario => ({
+  group,
+  scenario: {
+    backend: "fixture",
+    commitments,
+    id,
+    modes: ["rpc"],
+    phases,
+  },
+})
 
 const schema = (query: string) => ({ oracle: "schema" as const, query })
 const crash = () => ({ oracle: "crash" as const })
@@ -69,22 +79,19 @@ const runPass = (id: string, claim: string) => ({
   id,
 })
 
-const fixtureScenario = (
-  group: SeedCorpusGroup,
-  id: string,
-  phases: KhalaCodeQaScenario["phases"],
-  commitments: KhalaCodeQaScenario["commitments"],
-): KhalaCodeQaScenario =>
-  track(group, {
-    backend: "fixture",
-    commitments,
-    id,
-    modes: ["rpc"],
-    phases,
-  })
+const scenarioIdsByGroup = (
+  scenarios: readonly GroupedScenario[],
+): readonly ScenarioGroupEntry[] =>
+  [...scenarios.reduce((groups, entry) => {
+    groups.set(entry.group, [...(groups.get(entry.group) ?? []), entry.scenario.id])
+    return groups
+  }, new Map<SeedCorpusGroup, string[]>()).entries()].map(([group, scenarioIds]) => ({
+    group,
+    scenarioIds,
+  }))
 
-const rpcGroupScenarios: readonly KhalaCodeQaScenario[] = [
-  fixtureScenario(
+const groupedRpcScenarios: readonly GroupedScenario[] = [
+  groupedFixtureScenario(
     "rpc.threads",
     "scenario.khala_code.seed.rpc_threads_lifecycle.v1",
     [
@@ -103,7 +110,7 @@ const rpcGroupScenarios: readonly KhalaCodeQaScenario[] = [
         expect: [
           schema("codexThreadList"),
           schema("codexThreadRead"),
-          consistency("rpc:codexThreadList", "codexThreadList"),
+          consistency("rpc:codexThreadList#1", "rpc:codexThreadList#2"),
           crash(),
         ],
       },
@@ -124,7 +131,7 @@ const rpcGroupScenarios: readonly KhalaCodeQaScenario[] = [
       runPass("seed.rpc_threads.pass", "thread lifecycle scenario passes"),
     ],
   ),
-  fixtureScenario(
+  groupedFixtureScenario(
     "rpc.turns",
     "scenario.khala_code.seed.rpc_turns_lifecycle.v1",
     [
@@ -159,7 +166,7 @@ const rpcGroupScenarios: readonly KhalaCodeQaScenario[] = [
       runPass("seed.rpc_turns.pass", "turn lifecycle scenario passes"),
     ],
   ),
-  fixtureScenario(
+  groupedFixtureScenario(
     "rpc.fleet",
     "scenario.khala_code.seed.rpc_fleet_lifecycle.v1",
     [
@@ -204,7 +211,7 @@ const rpcGroupScenarios: readonly KhalaCodeQaScenario[] = [
       runPass("seed.rpc_fleet.pass", "fleet lifecycle scenario passes"),
     ],
   ),
-  fixtureScenario(
+  groupedFixtureScenario(
     "rpc.approvals",
     "scenario.khala_code.seed.rpc_approvals_lifecycle.v1",
     [
@@ -227,7 +234,7 @@ const rpcGroupScenarios: readonly KhalaCodeQaScenario[] = [
       runPass("seed.rpc_approvals.pass", "approval lifecycle scenario passes"),
     ],
   ),
-  fixtureScenario(
+  groupedFixtureScenario(
     "rpc.settings",
     "scenario.khala_code.seed.rpc_settings_lifecycle.v1",
     [
@@ -239,7 +246,7 @@ const rpcGroupScenarios: readonly KhalaCodeQaScenario[] = [
         ],
         expect: [
           schema("codexSettingsRead"),
-          consistency("rpc:codexSettingsRead", "codexSettingsRead"),
+          consistency("rpc:codexSettingsRead#1", "rpc:codexSettingsRead#2"),
           crash(),
         ],
       },
@@ -259,7 +266,7 @@ const rpcGroupScenarios: readonly KhalaCodeQaScenario[] = [
       runPass("seed.rpc_settings.pass", "settings lifecycle scenario passes"),
     ],
   ),
-  fixtureScenario(
+  groupedFixtureScenario(
     "rpc.ecosystem",
     "scenario.khala_code.seed.rpc_ecosystem_lifecycle.v1",
     [
@@ -285,7 +292,7 @@ const rpcGroupScenarios: readonly KhalaCodeQaScenario[] = [
       runPass("seed.rpc_ecosystem.pass", "ecosystem lifecycle scenario passes"),
     ],
   ),
-  fixtureScenario(
+  groupedFixtureScenario(
     "rpc.slash_commands",
     "scenario.khala_code.seed.rpc_slash_commands_registry.v1",
     [
@@ -297,7 +304,7 @@ const rpcGroupScenarios: readonly KhalaCodeQaScenario[] = [
         ],
         expect: [
           schema("slashCommandList"),
-          consistency("rpc:slashCommandList", "slashCommandList"),
+          consistency("rpc:slashCommandList#1", "rpc:slashCommandList#2"),
           crash(),
         ],
       },
@@ -310,8 +317,8 @@ const rpcGroupScenarios: readonly KhalaCodeQaScenario[] = [
   ),
 ]
 
-const hotbarScenarios: readonly KhalaCodeQaScenario[] = [
-  fixtureScenario(
+const groupedHotbarScenarios: readonly GroupedScenario[] = [
+  groupedFixtureScenario(
     "hotbar",
     "scenario.khala_code.seed.hotbar_chat_panel.v1",
     [{
@@ -324,7 +331,7 @@ const hotbarScenarios: readonly KhalaCodeQaScenario[] = [
       runPass("seed.hotbar.chat.pass", "chat hotbar scenario passes"),
     ],
   ),
-  fixtureScenario(
+  groupedFixtureScenario(
     "hotbar",
     "scenario.khala_code.seed.hotbar_fleet_panel.v1",
     [{
@@ -337,7 +344,7 @@ const hotbarScenarios: readonly KhalaCodeQaScenario[] = [
       runPass("seed.hotbar.fleet.pass", "fleet hotbar scenario passes"),
     ],
   ),
-  fixtureScenario(
+  groupedFixtureScenario(
     "hotbar",
     "scenario.khala_code.seed.hotbar_settings_panel.v1",
     [{
@@ -352,29 +359,11 @@ const hotbarScenarios: readonly KhalaCodeQaScenario[] = [
   ),
 ]
 
-export const KHALA_CODE_QA_THREAD_ITEM_VARIANTS = [
-  "hookPrompt",
-  "plan",
-  "commandExecution",
-  "fileChange",
-  "mcpToolCall",
-  "dynamicToolCall",
-  "collabAgentToolCall",
-  "subAgentActivity",
-  "webSearch",
-  "imageView",
-  "sleep",
-  "imageGeneration",
-  "enteredReviewMode",
-  "exitedReviewMode",
-  "contextCompaction",
-  "approval",
-  "approvalReview",
-] as const
+export const KHALA_CODE_QA_THREAD_ITEM_VARIANTS = KHALA_CODE_CODEX_PARITY_REQUIRED_THREAD_ITEM_TYPES
 
-const threadItemScenarios: readonly KhalaCodeQaScenario[] =
+const groupedThreadItemScenarios: readonly GroupedScenario[] =
   KHALA_CODE_QA_THREAD_ITEM_VARIANTS.map((variant) =>
-    fixtureScenario(
+    groupedFixtureScenario(
       "thread_items",
       `scenario.khala_code.seed.thread_item_${variant.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`)}.v1`,
       [{
@@ -389,9 +378,9 @@ const threadItemScenarios: readonly KhalaCodeQaScenario[] =
     )
   )
 
-const slashCommandScenarios: readonly KhalaCodeQaScenario[] =
+const groupedSlashCommandScenarios: readonly GroupedScenario[] =
   khalaCodeDesktopSlashCommandsWithAvailability({ debug: true, platform: "darwin" }).map((command) =>
-    fixtureScenario(
+    groupedFixtureScenario(
       "rpc.slash_commands",
       `scenario.khala_code.seed.slash_command_${command.command.replace(/[^a-z0-9]+/g, "_")}.v1`,
       [{
@@ -410,20 +399,20 @@ const slashCommandScenarios: readonly KhalaCodeQaScenario[] =
     )
   )
 
-export const KHALA_CODE_QA_SEED_SCENARIOS: readonly KhalaCodeQaScenario[] = [
-  ...rpcGroupScenarios,
-  ...hotbarScenarios,
-  ...threadItemScenarios,
-  ...slashCommandScenarios,
+const groupedSeedScenarios: readonly GroupedScenario[] = [
+  ...groupedRpcScenarios,
+  ...groupedHotbarScenarios,
+  ...groupedThreadItemScenarios,
+  ...groupedSlashCommandScenarios,
 ]
+
+export const KHALA_CODE_QA_SEED_SCENARIOS: readonly KhalaCodeQaScenario[] =
+  groupedSeedScenarios.map((entry) => entry.scenario)
 
 export const KHALA_CODE_QA_SEED_CORPUS_MANIFEST: KhalaCodeQaSeedCorpusManifest = {
   schema: "khala_code_qa_seed_corpus_manifest.v1",
   backend: "fixture",
-  scenarioIdsByGroup: [...groupScenarioIds.entries()].map(([group, scenarioIds]) => ({
-    group,
-    scenarioIds,
-  })),
+  scenarioIdsByGroup: scenarioIdsByGroup(groupedSeedScenarios),
   scenarioCount: KHALA_CODE_QA_SEED_SCENARIOS.length,
 }
 
@@ -565,8 +554,6 @@ const fixtureRpcPayload = (
       return actionResult("thread/backgroundTerminals/list", { processes: [] })
     case "codexMcpServerReload":
       return actionResult("config/mcpServer/reload", { reloaded: true })
-    case "fleetWorkerControl":
-      return { accepted: true, assignmentRef: "assignment-fixture", inboxItemRef: "inbox-fixture", ok: true, runRef, verb: "flag", workerRefHash: "worker-fixture" }
     case "slashCommandList":
       return { ok: true, commands: khalaCodeDesktopSlashCommandsWithAvailability({ debug: true, platform: "darwin" }) }
     case "slashCommandDispatch": {
