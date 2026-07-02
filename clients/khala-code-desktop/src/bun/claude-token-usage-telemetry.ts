@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto"
 import { readFileSync } from "node:fs"
-import { appendFile, mkdir, writeFile } from "node:fs/promises"
+import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import { dirname, join } from "node:path"
 import { Effect } from "effect"
@@ -165,6 +165,46 @@ export const khalaCodeDesktopClaudeTokenUsageEvent = (
 const appendJsonLine = async (path: string, value: unknown): Promise<void> => {
   await mkdir(dirname(path), { recursive: true })
   await appendFile(path, `${JSON.stringify(value)}\n`, "utf8")
+}
+
+export type KhalaCodeDesktopClaudeTokenUsageInboxFlag = {
+  readonly eventId: string
+  readonly idempotencyKey: string
+  readonly inboxFlagRef: string
+  readonly reason: string
+}
+
+export async function readKhalaCodeDesktopClaudeTokenUsageInboxFlags(
+  options: {
+    readonly env?: Readonly<Record<string, string | undefined>>
+    readonly localLedgerPath?: string
+  } = {},
+): Promise<readonly KhalaCodeDesktopClaudeTokenUsageInboxFlag[]> {
+  const env = options.env ?? khalaCodeConfigFromRuntimeEnv().env
+  const config = resolveConfig(env, options.localLedgerPath)
+  const failurePath = join(dirname(config.localLedgerPath), "claude-token-usage-report-failures.jsonl")
+  try {
+    const text = await readFile(failurePath, "utf8")
+    return text.split(/\r?\n/u).flatMap(line => {
+      if (line.trim().length === 0) return []
+      try {
+        const row = JSON.parse(line) as Record<string, unknown>
+        const eventId = typeof row.eventId === "string" ? row.eventId : "unknown"
+        const idempotencyKey = typeof row.idempotencyKey === "string" ? row.idempotencyKey : "unknown"
+        const reason = typeof row.reason === "string" ? row.reason : "unknown failure"
+        return [{
+          eventId,
+          idempotencyKey,
+          inboxFlagRef: `inbox.token_usage_reporting.claude.${digest({ eventId, idempotencyKey }).slice(0, 16)}`,
+          reason,
+        }]
+      } catch {
+        return []
+      }
+    })
+  } catch {
+    return []
+  }
 }
 
 export function createKhalaCodeDesktopClaudeTokenUsageReporter(

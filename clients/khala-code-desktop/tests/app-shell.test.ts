@@ -354,6 +354,8 @@ describe("khala code desktop app shell", () => {
     expect(main).toContain("mountKhalaCodeForumPanel")
     expect(main).toContain('const showForum = activeValue === "forum"')
     expect(main).toContain("forumPanel?.setVisible(showForum)")
+    expect(main).toContain("forumRequest: request =>")
+    expect(main).toContain("const result = await controls.forumRequest(request)")
     expect(forumPanel).toContain('const ProductPromisesForumRef = "product-promises"')
     expect(forumPanel).toContain('"/api/forum/launch-status"')
     expect(forumPanel).toContain('`/api/forum/forums/${encodeURIComponent(forumRef)}/topics`')

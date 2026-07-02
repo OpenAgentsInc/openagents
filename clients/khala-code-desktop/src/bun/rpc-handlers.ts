@@ -76,6 +76,8 @@ import {
   type KhalaCodeDesktopFleetWorkerControlRequest,
   type KhalaCodeDesktopFleetWorkerControlResult,
   type KhalaCodeDesktopFleetStatus,
+  type KhalaCodeDesktopForumRequest,
+  type KhalaCodeDesktopForumResponse,
   type KhalaCodeDesktopQaMetricsSnapshot,
   type KhalaCodeDesktopRPCSchema,
   type KhalaCodeDesktopRuntimeStatus,
@@ -95,13 +97,19 @@ import {
   parseKhalaCodeDesktopSlashCommand,
 } from "../shared/codex-slash-commands.js"
 import { inspectCodexHarnessStatus } from "./codex-harness-status.js"
-import { createClaudeAppSdkChatRuntime } from "./claude-app-sdk-chat-runtime.js"
+import {
+  createClaudeAppSdkChatRuntime,
+  type ClaudeAppSdkChatRuntime,
+} from "./claude-app-sdk-chat-runtime.js"
 import { inspectClaudeHarnessStatus } from "./claude-harness-status.js"
 import {
   createClaudeApprovalService,
   type ClaudeApprovalService,
 } from "./claude-approvals.js"
-import { createKhalaCodeDesktopClaudeTokenUsageReporter } from "./claude-token-usage-telemetry.js"
+import {
+  createKhalaCodeDesktopClaudeTokenUsageReporter,
+  readKhalaCodeDesktopClaudeTokenUsageInboxFlags,
+} from "./claude-token-usage-telemetry.js"
 import {
   khalaCodeDesktopRuntimeEnvOverride,
   readKhalaCodeDesktopHarnessSetting,
@@ -135,7 +143,7 @@ type ChatRuntime = CodexAppServerChatRuntime
 type ChatRuntimeSelection =
   | {
     readonly kind: "claude"
-    readonly runtime: ChatRuntime
+    readonly runtime: ClaudeAppSdkChatRuntime
   }
   | {
     readonly kind: "codex"
@@ -147,6 +155,7 @@ type ChatRuntimeSelection =
 
 const legacyThreadLifecycleUnsupportedMessage =
   "Legacy Khala native runtime does not support thread lifecycle RPCs."
+const OPENAGENTS_FORUM_BASE_URL = "https://openagents.com"
 
 export type KhalaCodeDesktopFleetRunSupervisorRpc = {
   readonly control: (
@@ -180,7 +189,7 @@ export type KhalaCodeDesktopRpcHandlersInput = {
   readonly appleFmReadiness: () => MaybePromise<KhalaAppleFmReadiness>
   readonly codexAppServerHost?: CodexAppServerHost
   readonly codexChatRuntime?: CodexAppServerChatRuntime
-  readonly claudeChatRuntime?: CodexAppServerChatRuntime
+  readonly claudeChatRuntime?: ClaudeAppSdkChatRuntime
   readonly claudeApprovalService?: ClaudeApprovalService
   readonly enableFleetMcpBridge?: boolean
   readonly codexRateLimitStatus?: () => MaybePromise<KhalaCodexRateLimitProviderStatus>
@@ -220,6 +229,47 @@ const stringValue = (value: unknown): string | null =>
 
 const numberValue = (value: unknown): number | undefined =>
   typeof value === "number" && Number.isFinite(value) ? value : undefined
+
+const forumFailureReason = (payload: unknown, fallback: string): string => {
+  if (isRecord(payload)) {
+    const reason = stringValue(payload.reason) ?? stringValue(payload.error)
+    if (reason !== null && reason.trim().length > 0) return reason
+  }
+  return fallback
+}
+
+const forumRequestUrl = (path: string): URL => {
+  if (!path.startsWith("/api/forum")) {
+    throw new Error("Forum RPC path must stay under /api/forum.")
+  }
+  const url = new URL(path, OPENAGENTS_FORUM_BASE_URL)
+  if (url.origin !== OPENAGENTS_FORUM_BASE_URL || !url.pathname.startsWith("/api/forum")) {
+    throw new Error("Forum RPC path must stay on openagents.com /api/forum.")
+  }
+  return url
+}
+
+const fetchOpenAgentsForum = async (
+  request: KhalaCodeDesktopForumRequest,
+): Promise<KhalaCodeDesktopForumResponse> => {
+  const method = request.method ?? "GET"
+  const response = await fetch(forumRequestUrl(request.path), {
+    method,
+    headers: {
+      accept: "application/json",
+      ...(request.body === undefined ? {} : { "content-type": "application/json" }),
+      ...(request.headers ?? {}),
+    },
+    ...(request.body === undefined ? {} : { body: JSON.stringify(request.body) }),
+  })
+  const payload = await response.json().catch(() => ({})) as unknown
+  return {
+    ok: response.ok,
+    payload: payload as never,
+    status: response.status,
+    ...(response.ok ? {} : { error: forumFailureReason(payload, `Forum request failed with ${response.status}`) }),
+  }
+}
 
 const safePathSegment = (value: string, fallback: string): string => {
   const sanitized = value.replace(/[^A-Za-z0-9._-]+/g, "_").replace(/^_+|_+$/g, "")
@@ -795,8 +845,8 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
   // Memoized: interrupt must see the SAME runtime instance (and its
   // activeTurns map) that started the turn — a fresh instance per RPC call
   // makes stop a no-op in claude_runtime mode.
-  let lazyClaudeChatRuntime: ChatRuntime | undefined
-  const requireClaudeChatRuntime = (): ChatRuntime => {
+  let lazyClaudeChatRuntime: ClaudeAppSdkChatRuntime | undefined
+  const requireClaudeChatRuntime = (): ClaudeAppSdkChatRuntime => {
     if (input.claudeChatRuntime !== undefined) return input.claudeChatRuntime
     lazyClaudeChatRuntime ??= createClaudeAppSdkChatRuntime({
       approvalService: claudeApprovalService,
@@ -1938,6 +1988,9 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
       }
       return supervisor.workerControl(request)
     },
+    async forumRequest(request): Promise<KhalaCodeDesktopForumResponse> {
+      return fetchOpenAgentsForum(request)
+    },
     async claudeApprovalPending() {
       return {
         ok: true,
@@ -2281,9 +2334,13 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
       return input.qaMetrics?.() ?? emptyKhalaCodeQaMetricsSnapshot()
     },
     async slashCommandDispatch(request) {
+      const selection = await selectChatRuntime()
+      if (selection.kind === "claude") return selection.runtime.slashCommandDispatch(request)
       return dispatchSlashAppServerCommand(request)
     },
     async slashCommandList(request = {}) {
+      const selection = await selectChatRuntime()
+      if (selection.kind === "claude") return selection.runtime.slashCommandList(request)
       return {
         ok: true,
         commands: khalaCodeDesktopSlashCommandsWithAvailability({
@@ -2356,7 +2413,10 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
     },
     async tokenAccountingStatus() {
       const status = khalaCodeDesktopTokenUsageTelemetryStatus(input.env)
-      const flags = await readKhalaCodeDesktopTokenUsageInboxFlags({ env: input.env })
+      const flags = [
+        ...await readKhalaCodeDesktopTokenUsageInboxFlags({ env: input.env }),
+        ...await readKhalaCodeDesktopClaudeTokenUsageInboxFlags({ env: input.env }),
+      ]
       if (flags.length > 0) {
         return runtimeStatus({
           available: false,

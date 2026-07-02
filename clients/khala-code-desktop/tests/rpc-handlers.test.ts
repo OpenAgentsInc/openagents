@@ -4,6 +4,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 
 import { createKhalaCodeDesktopRpcRequestHandlers } from "../src/bun/rpc-handlers"
+import type { ClaudeAppSdkChatRuntime } from "../src/bun/claude-app-sdk-chat-runtime"
 import type { CodexAppServerChatRuntime } from "../src/bun/codex-app-server-chat-runtime"
 import type {
   CodexAppServerHost,
@@ -238,6 +239,24 @@ function throwingCodexChatRuntime(
     threadIdForSession: async () => null,
     unarchiveThread: async () => {
       throw new Error("codex unarchive should not be called")
+    },
+    ...overrides,
+  }
+}
+
+function throwingClaudeChatRuntime(
+  overrides: Partial<ClaudeAppSdkChatRuntime> = {},
+): ClaudeAppSdkChatRuntime {
+  return {
+    ...throwingCodexChatRuntime(overrides),
+    claudeSettingsRead: async () => {
+      throw new Error("claude settings should not be called")
+    },
+    slashCommandDispatch: async () => {
+      throw new Error("claude slash dispatch should not be called")
+    },
+    slashCommandList: async () => {
+      throw new Error("claude slash list should not be called")
     },
     ...overrides,
   }
@@ -804,7 +823,7 @@ describe("Khala Code desktop RPC handlers", () => {
       appleFmReadiness: () => {
         throw new Error("not used")
       },
-      claudeChatRuntime: throwingCodexChatRuntime({
+      claudeChatRuntime: throwingClaudeChatRuntime({
         startTurn: async request => {
           claudeTurnStarted = true
           expect(request.cwd).toBe(process.cwd())
@@ -979,7 +998,7 @@ describe("Khala Code desktop RPC handlers", () => {
   })
 
   test("routes chat turns through the Claude runtime seam", async () => {
-    const claudeRuntime = throwingCodexChatRuntime({
+    const claudeRuntime = throwingClaudeChatRuntime({
       startTurn: async request => ({
         backend: {
           kind: "claude_app_sdk",
@@ -1043,7 +1062,7 @@ describe("Khala Code desktop RPC handlers", () => {
   test("routes thread lifecycle RPCs through the selected Claude seam", async () => {
     let started = false
     let listed = false
-    const claudeRuntime = throwingCodexChatRuntime({
+    const claudeRuntime = throwingClaudeChatRuntime({
       startThread: async request => {
         started = true
         return {

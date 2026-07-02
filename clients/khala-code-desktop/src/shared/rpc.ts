@@ -8,7 +8,6 @@ import type { OnDeviceDeciderSelection } from "./on-device-decider.js"
 import type {
   KhalaCodeQaMetricsSnapshot,
 } from "./qa-metrics.js"
-import type { KhalaCodeDesktopClaudeSettingsProjection } from "./claude-settings.js"
 
 // Electrobun treats Infinity as no local request timeout; chat turns stream progress
 // over events while hosted model calls and local tools can legitimately exceed 30s.
@@ -200,6 +199,8 @@ export type KhalaCodeDesktopFleetRunListRequest = typeof RpcFleetRunListRequest.
 export type KhalaCodeDesktopFleetRunListResult = typeof RpcFleetRunListResult.Type
 export type KhalaCodeDesktopFleetWorkerControlRequest = typeof RpcFleetWorkerControlRequest.Type
 export type KhalaCodeDesktopFleetWorkerControlResult = typeof RpcFleetWorkerControlResult.Type
+export type KhalaCodeDesktopForumRequest = typeof RpcForumRequest.Type
+export type KhalaCodeDesktopForumResponse = typeof RpcForumResponse.Type
 export type KhalaCodeDesktopRemoveAccountResult = typeof RpcRemoveAccountResult.Type
 export type KhalaCodeDesktopConnectStart = typeof RpcConnectStart.Type
 
@@ -761,7 +762,37 @@ const RpcClaudeApprovalRespondResult = S.Struct({
   decision: RpcClaudeApprovalDecision,
   error: S.optional(S.String),
 })
-const RpcClaudeSettingsProjection = S.Unknown as S.Schema<KhalaCodeDesktopClaudeSettingsProjection>
+const RpcClaudeSettingsModel = S.Struct({
+  description: RpcStringNull,
+  displayName: S.String,
+  selected: S.Boolean,
+  supportsAdaptiveThinking: S.NullOr(S.Boolean),
+  supportsEffort: S.NullOr(S.Boolean),
+  supportedEffortLevels: RpcStringArray,
+  value: S.String,
+})
+const RpcClaudeSettingsProjection = S.Struct({
+  ok: S.Boolean,
+  observedAt: S.String,
+  errors: RpcStringArray,
+  account: S.Struct({
+    apiProvider: RpcStringNull,
+    apiKeySource: RpcStringNull,
+    email: RpcStringNull,
+    organization: RpcStringNull,
+    subscriptionType: RpcStringNull,
+    tokenSource: RpcStringNull,
+  }),
+  init: S.Struct({
+    permissionMode: RpcStringNull,
+    model: RpcStringNull,
+    system: S.Unknown,
+  }),
+  models: S.Struct({
+    options: S.Array(RpcClaudeSettingsModel),
+    selected: S.NullOr(RpcClaudeSettingsModel),
+  }),
+})
 
 const RpcCodexSettingsReadRequest = S.Struct({
   cwd: S.optional(S.String),
@@ -1528,6 +1559,18 @@ const RpcFleetWorkerControlResult = S.Struct({
   verb: RpcFleetWorkerControlVerb,
   workerRefHash: S.String,
 })
+const RpcForumRequest = S.Struct({
+  body: S.optional(KhalaCodeDesktopRpcJsonValue),
+  headers: S.optional(S.Record(S.String, S.String)),
+  method: S.optional(S.Literals(["GET", "POST"])),
+  path: S.String,
+})
+const RpcForumResponse = S.Struct({
+  ok: S.Boolean,
+  payload: KhalaCodeDesktopRpcJsonValue,
+  status: S.Number,
+  error: S.optional(S.String),
+})
 
 const RpcConnectStart = S.Struct({
   ok: S.Boolean,
@@ -1591,6 +1634,7 @@ export const KhalaCodeDesktopRpcMethodSchemas = {
   fleetRunStart: { parameters: [param(RpcFleetRunStartRequest)], result: RpcFleetRunStartResult },
   fleetRunStatus: { parameters: [param(RpcFleetRunStatusRequest)], result: RpcFleetRunStatusResult },
   fleetWorkerControl: { parameters: [param(RpcFleetWorkerControlRequest)], result: RpcFleetWorkerControlResult },
+  forumRequest: { parameters: [param(RpcForumRequest)], result: RpcForumResponse },
   claudeApprovalPending: { parameters: noParams(), result: RpcClaudeApprovalPendingResult },
   claudeApprovalRespond: { parameters: [param(RpcClaudeApprovalRespondRequest)], result: RpcClaudeApprovalRespondResult },
   claudeSettingsRead: { parameters: noParams(), result: RpcClaudeSettingsProjection },
@@ -1740,6 +1784,7 @@ export type KhalaCodeDesktopRPCSchema = {
     fleetRunStart(request: KhalaCodeDesktopFleetRunStartRequest): Promise<KhalaCodeDesktopFleetRunStartResult>
     fleetRunStatus(request: KhalaCodeDesktopFleetRunStatusRequest): Promise<KhalaCodeDesktopFleetRunStatusResult>
     fleetWorkerControl(request: KhalaCodeDesktopFleetWorkerControlRequest): Promise<KhalaCodeDesktopFleetWorkerControlResult>
+    forumRequest(request: KhalaCodeDesktopForumRequest): Promise<KhalaCodeDesktopForumResponse>
     claudeApprovalPending(): Promise<KhalaCodeDesktopClaudeApprovalPendingResult>
     claudeApprovalRespond(request: KhalaCodeDesktopClaudeApprovalRespondRequest): Promise<KhalaCodeDesktopClaudeApprovalRespondResult>
     claudeSettingsRead(): Promise<KhalaCodeDesktopClaudeSettingsReadResult>

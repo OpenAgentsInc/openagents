@@ -208,6 +208,10 @@ const previewRpc = (): DesktopRpc => ({
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["fleetWorkerControl"]>>
       >("fleetWorkerControl", request),
+    forumRequest: request =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["forumRequest"]>>
+      >("forumRequest", request),
     claudeApprovalPending: () =>
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["claudeApprovalPending"]>>
@@ -2565,6 +2569,8 @@ const controls = {
     rpc.request.fleetRunStart(request),
   fleetWorkerControl: (request: Parameters<DesktopRpcRequests["fleetWorkerControl"]>[0]) =>
     rpc.request.fleetWorkerControl(request),
+  forumRequest: (request: Parameters<DesktopRpcRequests["forumRequest"]>[0]) =>
+    rpc.request.forumRequest(request),
   claudeApprovalPending: () => rpc.request.claudeApprovalPending(),
   claudeApprovalRespond: (request: Parameters<DesktopRpcRequests["claudeApprovalRespond"]>[0]) =>
     rpc.request.claudeApprovalRespond(request),
@@ -2917,6 +2923,13 @@ const forumPanel =
   forumPanelEl === null
     ? null
     : mountKhalaCodeForumPanel(forumPanelEl, {
+        request: async request => {
+          const result = await controls.forumRequest(request)
+          if (!result.ok) {
+            throw new Error(result.error ?? `Forum request failed with ${result.status}`)
+          }
+          return result.payload
+        },
         openExternal: url => controls.openExternalUrl(url),
       })
 

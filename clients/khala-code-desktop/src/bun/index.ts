@@ -23,6 +23,7 @@ import {
 } from "./headless.js"
 import { createCodexAppServerChatRuntime } from "./codex-app-server-chat-runtime.js"
 import { createClaudeAppSdkChatRuntime } from "./claude-app-sdk-chat-runtime.js"
+import { createClaudeHeadlessAutoDenyApprovalService } from "./claude-approvals.js"
 import { createKhalaCodeDesktopClaudeTokenUsageReporter } from "./claude-token-usage-telemetry.js"
 import { createCodexAppServerHost } from "./codex-app-server-client.js"
 import {
@@ -426,6 +427,7 @@ if (argv.includes("--json")) {
       createChatRuntime: ({ onEvent }) =>
         khalaCodeEnv.KHALA_CODE_DESKTOP_RUNTIME === "claude_runtime"
           ? createClaudeAppSdkChatRuntime({
+            approvalService: createClaudeHeadlessAutoDenyApprovalService(),
             env: khalaCodeEnv,
             onEvent,
             repoRoot: resolveSourceRepositoryRoot(),
