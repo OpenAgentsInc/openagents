@@ -3,46 +3,72 @@
   "sourceSpec": "specs/mutations/approval-stale-forgery/ApprovalStaleForgery.tla",
   "checkedBy": "specs/mutations/approval-stale-forgery/ApprovalStaleForgery.cfg",
   "violatedProperty": "NoStaleApproveApplication",
-  "summary": "A client answers an approval id after the turn was interrupted and the request epoch changed.",
+  "summary": "A client answers an older approval id after another request advanced the turn epoch.",
   "trace": [
     {
       "step": 0,
       "epoch": 0,
       "requestState": {
-        "r1": "never"
+        "r1": "never",
+        "r2": "never"
       },
       "response": {
-        "r1": "none"
-      },
-      "forgedStaleResponse": false
+        "r1": "none",
+        "r2": "none"
+      }
     },
     {
       "step": 1,
       "action": "IssueRequest(r1)",
       "requestState": {
-        "r1": "requested"
+        "r1": "requested",
+        "r2": "never"
       },
       "requestEpoch": {
-        "r1": 0
+        "r1": 0,
+        "r2": 0
       }
     },
     {
       "step": 2,
-      "action": "InterruptTurn(r1)",
-      "epoch": 1,
+      "action": "IssueRequest(r2)",
       "requestState": {
-        "r1": "interrupted"
+        "r1": "requested",
+        "r2": "requested"
       },
-      "response": {
-        "r1": "interrupt"
+      "requestEpoch": {
+        "r1": 0,
+        "r2": 0
       }
     },
     {
       "step": 3,
-      "action": "StaleApproveForged(r1)",
-      "forgedStaleResponse": true,
+      "action": "InterruptTurn(r1)",
+      "epoch": 1,
+      "requestState": {
+        "r1": "interrupted",
+        "r2": "requested"
+      },
       "response": {
-        "r1": "approve"
+        "r1": "interrupt",
+        "r2": "none"
+      }
+    },
+    {
+      "step": 4,
+      "action": "Approve(r2) with the epoch guard removed",
+      "epoch": 1,
+      "requestState": {
+        "r1": "interrupted",
+        "r2": "approved"
+      },
+      "response": {
+        "r1": "interrupt",
+        "r2": "approve"
+      },
+      "requestEpoch": {
+        "r1": 0,
+        "r2": 0
       }
     }
   ],
