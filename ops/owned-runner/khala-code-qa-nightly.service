@@ -1,0 +1,20 @@
+[Unit]
+Description=OpenAgents Khala Code QA nightly matrix
+Documentation=docs/qa/khala-code-nightly-matrix.md
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/srv/openagents/openagents
+Environment=OA_QA_NIGHTLY_ARTIFACT_DIR=/var/lib/openagents/qa-nightly
+Environment=OA_QA_NIGHTLY_FILE_ISSUE=1
+Environment=OA_QA_NIGHTLY_MONKEY_RUNS=16
+Environment=OA_QA_NIGHTLY_MONKEY_STEPS=64
+ExecStart=/usr/bin/env bash -lc 'git fetch origin main && git checkout --detach origin/main && bun install --frozen-lockfile && bun run qa:nightly'
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=read-only
+ProtectSystem=strict
+ReadWritePaths=/srv/openagents/openagents /var/lib/openagents/qa-nightly

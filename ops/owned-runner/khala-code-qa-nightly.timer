@@ -1,0 +1,12 @@
+[Unit]
+Description=Run OpenAgents Khala Code QA nightly matrix
+Documentation=docs/qa/khala-code-nightly-matrix.md
+
+[Timer]
+OnCalendar=*-*-* 07:17:00 UTC
+Persistent=true
+RandomizedDelaySec=10m
+Unit=khala-code-qa-nightly.service
+
+[Install]
+WantedBy=timers.target
