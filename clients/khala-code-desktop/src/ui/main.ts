@@ -59,6 +59,7 @@ import {
 } from "../shared/rpc"
 import { renderMessageBody } from "./transcript-render"
 import { mountFleetPanel } from "./fleet-status"
+import { mountKhalaCodeForumPanel } from "./forum-panel"
 import { mountCodexSettingsPanel } from "./codex-settings-panel"
 import { mountClaudeSettingsSection } from "./claude-settings-panel"
 import {
@@ -2678,6 +2679,7 @@ mountComposerHud()
 const sidebarNavRoot = document.getElementById("sidebar-nav-root")
 const threadSidebarEl = document.getElementById("thread-sidebar")
 const fleetPanelEl = document.getElementById("fleet-panel")
+const forumPanelEl = document.getElementById("forum-panel")
 const inboxPanelEl = document.getElementById("inbox-panel")
 const gymPanelEl = document.getElementById("gym-panel")
 const settingsPanelEl = document.getElementById("settings-panel")
@@ -2844,6 +2846,13 @@ const inboxPanel =
         },
       })
 
+const forumPanel =
+  forumPanelEl === null
+    ? null
+    : mountKhalaCodeForumPanel(forumPanelEl, {
+        openExternal: url => controls.openExternalUrl(url),
+      })
+
 const gymPanel =
   gymPanelEl === null ? null : mountGymPane(gymPanelEl, initialGymState)
 
@@ -2936,19 +2945,25 @@ window.addEventListener("keydown", event => {
 })
 
 const setActiveView = (value: string): void => {
-  const activeValue = value === "fleet" || value === "inbox" || value === "settings" ? value : "chat"
+  const activeValue =
+    value === "fleet" || value === "forum" || value === "inbox" || value === "settings"
+      ? value
+      : "chat"
   const showChat = activeValue === "chat"
   const showFleet = activeValue === "fleet"
+  const showForum = activeValue === "forum"
   const showInbox = activeValue === "inbox"
   const showSettings = activeValue === "settings"
   if (threadSidebarEl !== null) threadSidebarEl.hidden = !showChat
   if (fleetPanelEl !== null) fleetPanelEl.hidden = !showFleet
+  if (forumPanelEl !== null) forumPanelEl.hidden = !showForum
   if (inboxPanelEl !== null) inboxPanelEl.hidden = !showInbox
   if (settingsPanelEl !== null) settingsPanelEl.hidden = !showSettings
   gymPanel?.setVisible(false)
-  if (threadShell !== null) threadShell.hidden = showFleet || showInbox || showSettings
-  if (composerDock !== null) composerDock.hidden = showFleet || showInbox || showSettings
+  if (threadShell !== null) threadShell.hidden = showFleet || showForum || showInbox || showSettings
+  if (composerDock !== null) composerDock.hidden = showFleet || showForum || showInbox || showSettings
   fleetPanel?.setVisible(showFleet)
+  forumPanel?.setVisible(showForum)
   inboxPanel?.setVisible(showInbox)
   settingsPanel?.setVisible(showSettings)
   if (showSettings) void claudeSettingsSection?.refresh()
@@ -2961,12 +2976,14 @@ const setActiveView = (value: string): void => {
 function showGymProofPane(): void {
   if (threadSidebarEl !== null) threadSidebarEl.hidden = true
   if (fleetPanelEl !== null) fleetPanelEl.hidden = true
+  if (forumPanelEl !== null) forumPanelEl.hidden = true
   if (inboxPanelEl !== null) inboxPanelEl.hidden = true
   if (settingsPanelEl !== null) settingsPanelEl.hidden = true
   if (threadShell !== null) threadShell.hidden = true
   if (composerDock !== null) composerDock.hidden = true
   gymPanel?.setVisible(true)
   fleetPanel?.setVisible(false)
+  forumPanel?.setVisible(false)
   inboxPanel?.setVisible(false)
   settingsPanel?.setVisible(false)
   threadSidebar?.setVisible(false)
