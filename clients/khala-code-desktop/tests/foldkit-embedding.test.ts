@@ -11,25 +11,62 @@ import { FoldkitDemoReceivedHostPort } from "../src/ui/foldkit/message"
 import { initialKhalaCodeFoldkitModel } from "../src/ui/foldkit/model"
 import { makeKhalaCodeFoldkitUpdate } from "../src/ui/foldkit/update"
 
-const installDom = (): Window => {
+const installDom = (): {
+  readonly flushAnimationFrame: () => void
+  readonly window: Window
+} => {
   const window = new Window({
     url: "https://khala-code-desktop.test/",
   })
-  const raf = (callback: FrameRequestCallback): number =>
-    Number(setTimeout(() => callback(performance.now()), 0))
-  const caf = (handle: number): void => clearTimeout(handle)
+  const animationFrames = new Map<number, FrameRequestCallback>()
+  let nextFrame = 0
+  const raf = (callback: FrameRequestCallback): number => {
+    nextFrame += 1
+    animationFrames.set(nextFrame, callback)
+    return nextFrame
+  }
+  const caf = (handle: number): void => {
+    animationFrames.delete(handle)
+  }
+  const defineGlobal = (key: keyof typeof globalThis, value: unknown): void => {
+    Object.defineProperty(globalThis, key, {
+      configurable: true,
+      value,
+      writable: true,
+    })
+  }
 
-  Object.assign(globalThis, {
-    cancelAnimationFrame: caf,
-    document: window.document,
-    location: window.location,
-    navigator: window.navigator,
-    requestAnimationFrame: raf,
+  defineGlobal("cancelAnimationFrame", caf)
+  defineGlobal("document", window.document)
+  defineGlobal("location", window.location)
+  defineGlobal("navigator", window.navigator)
+  defineGlobal("requestAnimationFrame", raf)
+  defineGlobal("window", window)
+  window.requestAnimationFrame = raf as unknown as typeof window.requestAnimationFrame
+  window.cancelAnimationFrame = caf as unknown as typeof window.cancelAnimationFrame
+
+  return {
+    flushAnimationFrame: () => {
+      const callbacks = [...animationFrames.values()]
+      animationFrames.clear()
+      for (const callback of callbacks) callback(performance.now())
+    },
     window,
-  })
-
-  return window
+  }
 }
+
+const flushDomWork = async (
+  dom: ReturnType<typeof installDom>,
+  count = 20,
+): Promise<void> => {
+  for (let index = 0; index < count; index += 1) {
+    dom.flushAnimationFrame()
+    await yieldTask()
+  }
+}
+
+const yieldTask = (): Promise<void> =>
+  new Promise(resolve => setTimeout(resolve, 0))
 
 describe("khala code Foldkit embedding skeleton", () => {
   test("keeps program update pure until returned commands run", async () => {
@@ -81,7 +118,7 @@ describe("khala code Foldkit embedding skeleton", () => {
   })
 
   test("mounts, round-trips ports, and unmounts from a designated container", async () => {
-    installDom()
+    const dom = installDom()
     const { embedKhalaCodeFoldkitProgram } = await import("../src/ui/foldkit/runtime")
     const container = document.createElement("section")
     container.id = "foldkit-demo-fixture"
@@ -94,7 +131,7 @@ describe("khala code Foldkit embedding skeleton", () => {
       mountId: "foldkit-demo-fixture-runtime",
       ports,
     })
-    await new Promise(resolve => setTimeout(resolve, 20))
+    await flushDomWork(dom)
 
     expect(container.querySelector("[data-foldkit-mount-id='foldkit-demo-fixture-runtime']")).not.toBeNull()
     expect(container.textContent ?? "").toContain("Foldkit skeleton")
@@ -104,7 +141,7 @@ describe("khala code Foldkit embedding skeleton", () => {
     })
 
     handle.send({ _tag: "HostPing", nonce: "host-fixture" })
-    await new Promise(resolve => setTimeout(resolve, 20))
+    await flushDomWork(dom)
 
     expect(container.textContent ?? "").toContain("Ping 1")
     expect(emitted).toContainEqual({

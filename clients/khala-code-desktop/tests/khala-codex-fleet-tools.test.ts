@@ -190,6 +190,7 @@ async function waitForFleetRunSnapshot(
   manager: DefaultKhalaFleetRunSupervisorManager,
   runRef: string,
   predicate: (snapshot: Awaited<ReturnType<DefaultKhalaFleetRunSupervisorManager["start"]>>) => boolean,
+  sleep: (ms: number) => Promise<void> = Bun.sleep,
 ): Promise<Awaited<ReturnType<DefaultKhalaFleetRunSupervisorManager["start"]>>> {
   // Array.isArray does not narrow readonly arrays out of a union, so use an
   // explicit guard for the single-snapshot shape.
@@ -202,7 +203,7 @@ async function waitForFleetRunSnapshot(
   for (let attempt = 0; attempt < 50; attempt += 1) {
     const snapshot = singleSnapshot(await manager.status({ runRef }))
     if (predicate(snapshot)) return snapshot
-    await Bun.sleep(10)
+    await sleep(10)
   }
   const snapshot = singleSnapshot(await manager.status({ runRef }))
   throw new Error(`fleet run ${runRef} did not reach expected state; last state=${snapshot.run.state} active=${snapshot.active}`)
@@ -425,7 +426,13 @@ describe("Khala Code Codex fleet tools", () => {
       }
       return failed(`unexpected command: ${joined}`)
     }
-    const manager = new DefaultKhalaFleetRunSupervisorManager({ env: fixture.env, runner })
+    const manager = new DefaultKhalaFleetRunSupervisorManager({
+      env: fixture.env,
+      runner,
+      sleep: async () => {
+        await new Promise(resolve => setTimeout(resolve, 0))
+      },
+    })
 
     await manager.start({
       fixtureCount: 1,
@@ -439,6 +446,9 @@ describe("Khala Code Codex fleet tools", () => {
       manager,
       "fleet_run.test.completed_one",
       snapshot => snapshot.run.state === "completed" && !snapshot.active,
+      async () => {
+        await new Promise(resolve => setTimeout(resolve, 0))
+      },
     )
     const second = await manager.start({
       fixtureCount: 1,
@@ -1661,6 +1671,11 @@ describe("Khala Code Codex fleet tools", () => {
     let inFlightRequests = 0
     let maxInFlightRequests = 0
     let requestCount = 0
+    let bothRequestsInFlight: (() => void) | null = null
+    const bothRequestsInFlightPromise = new Promise<void>(resolve => {
+      bothRequestsInFlight = resolve
+    })
+    const releaseRequests: Array<() => void> = []
     const runner = async (input: KhalaCodexFleetCommandInput): Promise<KhalaCodexFleetCommandResult> => {
       const args = pylonArgs(input)
       const joined = args.join(" ")
@@ -1716,7 +1731,10 @@ describe("Khala Code Codex fleet tools", () => {
         const slot = requestCount
         inFlightRequests += 1
         maxInFlightRequests = Math.max(maxInFlightRequests, inFlightRequests)
-        await new Promise(resolve => setTimeout(resolve, 25))
+        if (inFlightRequests === 2) bothRequestsInFlight?.()
+        await new Promise<void>(resolve => {
+          releaseRequests.push(resolve)
+        })
         inFlightRequests -= 1
         return ok({
           assignmentRef: `assignment.public.codex_agent_task.concurrent_${slot}`,
@@ -1729,7 +1747,7 @@ describe("Khala Code Codex fleet tools", () => {
       return failed(`unexpected command: ${joined}`)
     }
 
-    const result = await spawnCodexInstances({
+    const resultPromise = spawnCodexInstances({
       count: 2,
       noRun: true,
       prompt: "Run the public fixture.",
@@ -1737,6 +1755,9 @@ describe("Khala Code Codex fleet tools", () => {
       env: fixture.env,
       runner,
     })
+    await bothRequestsInFlightPromise
+    for (const release of releaseRequests.splice(0)) release()
+    const result = await resultPromise
 
     expect(result).toMatchObject({
       acceptedCount: 2,
