@@ -168,8 +168,9 @@ no long-string pasting:
   the resolved plan first, or `--once` to run one refill round and exit. In
   supervisor mode, sustained all-slot lockout triggers a bounded deduped
   replenishment set instead of escalating into the long refused-work backoff:
-  the standing GEPA/DSPy loop, source audits over Pylon/clients/Worker code, and
-  test/lint/typecheck sweeps.
+  desktop-fleet readiness audits, source audits over Pylon/clients/Worker code,
+  and test/lint/typecheck sweeps. GEPA/DSPy optimizer work is not part of the
+  current desktop-fleet replenishment set.
 - `khala fleet status --live` polls the owner-only
   `/api/operator/fleet/state` endpoint about every five seconds and renders the
   Pace, Fleet, Watchdog, GLM, and Brain/Artanis blocks as a terminal dashboard.

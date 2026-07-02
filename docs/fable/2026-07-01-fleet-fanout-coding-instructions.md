@@ -36,6 +36,13 @@ When you are done, all of the following are true and proven:
 4. A supervised overnight acceptance run produces ≥ 2B tokens/day of exact
    accounted usage with **zero duplicate PRs** and 100% verified closeouts.
 
+**July 2 scope correction:** the owner-directed desktop-fleet push closes on
+readiness proof, not a fabricated overnight run. Mobile/push, public-promise,
+AaaS, and GEPA optimizer lanes are postponed. The clean-2B-day target remains
+the future live-capacity gate, but it requires a real >=30-unit claimable
+backlog, an explicitly armed same-day live smoke, and owner approval for the
+overnight spend window.
+
 ## 1. Learn From June 29 Before Writing Code
 
 The stats page (2026-07-01) tells the story: 06/27 1.9B → 06/28 1.7B →
@@ -339,6 +346,13 @@ prerequisites; implement them here if not already landed):
 
 The final acceptance is operational, run by the owner with you supervising:
 
+For the July 2 desktop-fleet closeout, Lane E stops before this overnight run:
+the current tracker was deliberately trimmed below the >=30 claimable-unit
+floor. Treat that as a blocked/postponed acceptance precondition, not as a
+reason to invent replenishment work. The regression fixture to add when the
+acceptance runner becomes first-class is
+`blocker.fleet_run_acceptance.claimable_units_below_floor`.
+
 1. Preflight: `khala fleet status` shows ≥ 3 ready accounts; rate-limit
    meters show fresh budgets; backlog source lists ≥ 30 claimable units;
    `smoke:fleet-run-live` green the same day.
@@ -400,8 +414,9 @@ Check every box before calling this complete:
   approval per run-start, not silent standing authority.
 - Live test tiers are skip-safe by default and env-armed; fixture tiers
   never spend or claim real work.
-- Optimizer candidates (refill/routing parameters are GEPA targets later)
-  never auto-promote; owner-gated admission via the existing Gym path.
+- Optimizer candidates are postponed for the current desktop-fleet push; when
+  reopened later, they never auto-promote and remain owner-gated through the
+  existing Gym path.
 - No GitHub-hosted CI; Tier-1 pre-push + Tier-2 owned-runner patterns.
 
 ## 10. Suggested Issue Breakdown

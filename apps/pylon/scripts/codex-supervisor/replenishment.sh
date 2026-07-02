@@ -5,9 +5,9 @@
 # When every backlog issue is locked (closed, already has an open PR, or claimed
 # by another slot), the supervisor must not sit in a long idle backoff. This
 # helper creates or reuses a small fixed set of public, valuable replenishment
-# issues: continual-learning over recent traces, broad codebase audit/review,
-# and test/lint/typecheck sweep work. Dedupe is by exact open issue title under
-# a dedicated label, so repeated LOCKOUT cycles do not spam duplicate issues.
+# issues: desktop-fleet readiness, broad codebase audit/review, and
+# test/lint/typecheck sweep work. Dedupe is by exact open issue title under a
+# dedicated label, so repeated LOCKOUT cycles do not spam duplicate issues.
 #
 # This file performs no work at source time; it only defines functions.
 
@@ -54,7 +54,7 @@ sup_replenishment_label_args() {
 
 sup_replenishment_templates() {
   cat <<'TEMPLATES'
-SG-2 replenish: run GEPA/DSPy continual-learning trace review|#6707|Run the standing GEPA/DSPy continual-learning loop over recent public-safe traces. Inspect current trace/evaluation code and produce a bounded implementation or review improvement. Do not use apps/pylon/scripts/multi-session-campaign.ts. Run the named verification before closeout.
+SG-2 replenish: desktop fleet readiness audit|desktop-fleet|Audit the current desktop-fleet dispatch path end to end: Khala Code fleet tools, Pylon heartbeat/capacity, closeout proof, and exact token accounting. Fix one concrete desktop-fleet blocker if found; otherwise add a focused regression test or public-safe audit note. Run the named verification before closeout.
 SG-2 replenish: audit Pylon clients and Worker API for dispatch waste|audit|Perform a big-context codebase audit over apps/pylon, clients, and apps/openagents.com/workers/api. Look for real dispatch waste, duplicate-work, lockout, stale-base, timeout, and verification gaps. Implement a bounded fix when clear; otherwise add a focused regression test or public-safe audit note. Run the named verification before closeout.
 SG-2 replenish: test lint typecheck sweep for owner-capacity lane|sweep|Run a focused test/lint/typecheck sweep on the owner-capacity Pylon and Worker API lane. Fix real failures in touched code without broad refactors. Do not use apps/pylon/scripts/multi-session-campaign.ts. Run the named verification before closeout.
 TEMPLATES

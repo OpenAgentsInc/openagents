@@ -169,8 +169,9 @@ describe("fleet run planning", () => {
     const first = plannedReplenishmentRounds(plan)
     expect(first).toHaveLength(2)
     expect(first.map(round => round.workKind)).toEqual(["replenishment", "replenishment"])
-    expect(first.map(round => round.dedupeKey)).toEqual(["gepa-dspy-6707", "bounded-codebase-audit"])
-    expect(first[0]?.issue).toBe(6707)
+    expect(first.map(round => round.dedupeKey)).toEqual(["desktop-fleet-readiness-audit", "bounded-codebase-audit"])
+    expect(first[0]?.issue).toBeNull()
+    expect(first[0]?.objective).toContain("desktop-fleet dispatch path")
     expect(first[1]?.issue).toBeNull()
     expect(first[1]?.objective).toContain("apps/pylon")
 
@@ -193,7 +194,7 @@ describe("fleet run planning", () => {
       verify: "bun test",
     })
     const dispatched = new Set([
-      "gepa-dspy-6707",
+      "desktop-fleet-readiness-audit",
       "bounded-codebase-audit",
       "test-lint-typecheck-sweep",
     ])
