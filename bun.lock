@@ -343,6 +343,7 @@
       },
       "dependencies": {
         "@openagentsinc/atif": "workspace:*",
+        "@openagentsinc/khala-qa-harness": "workspace:*",
         "effect": "catalog:",
         "playwright": "^1.61.0",
       },

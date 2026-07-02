@@ -41,6 +41,16 @@ export {
 
 // Backends — the isolation abstraction; localBackend is the OSS default.
 export { localBackend, type Backend, type BackendSession, type LocalBackendOptions } from "./backend";
+export {
+  khalaDesktopBackend,
+  isKhalaDesktopBackendSession,
+  runKhalaDesktopHarnessScenario,
+  runKhalaDesktopHeadedNativeSmoke,
+  KhalaDesktopBackendBootError,
+  type KhalaDesktopBackendOptions,
+  type KhalaDesktopBackendSession,
+  type KhalaDesktopBackendTier,
+} from "./khala-desktop-backend";
 
 // The fixed-step runner (runQaSession) and the autonomous model-driven runner.
 export { runQaSession, type RunInput, type RunOutcome } from "./runner";

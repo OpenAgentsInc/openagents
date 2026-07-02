@@ -57,6 +57,7 @@ result and watching the video — *no local run*.
 | session → committed executor-style e2e scenario **distiller** (spec §E.2) | **real now** — `distill(trace)` emits `generated/<slug>.e2e.test.ts` |
 | skill emitter (NIP-SKL marketplace candidate, spec §E.1) | **typed seam + TODO, FUTURE/owner-gated** |
 | `localBackend` (real chromium on this host) | **real now** — the default |
+| `khalaDesktopBackend` (Khala Code Desktop preview + typed RPC) | **real now** — boots headless with fixture Codex app-server by default; live/headed paths remain explicitly armed |
 | `cloudVmBackend` (per-run OpenAgents Cloud firecracker / sek8s microVM) | **interface-only, owner-gated** — throws "not armed" unless an injected provisioner is supplied |
 | video (mp4 via ffmpeg, webm fallback) + trace + screenshots + `result.json` | **real now** |
 | run = verified receipt / settlement wrapper | **follow-up, owner-gated (settlement INERT)** |
