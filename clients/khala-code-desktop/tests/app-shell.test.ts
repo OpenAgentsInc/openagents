@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import { Window } from "happy-dom"
 import {
   parseMarkdownBlocks,
   parseMarkdownInline,
@@ -12,6 +13,10 @@ import {
   parseToolTranscript,
 } from "../src/ui/transcript-render"
 import { projectUnifiedInbox } from "../src/ui/inbox"
+import {
+  mountKhalaCodeSidebar,
+  projectKhalaCodeSidebarFleetCounts,
+} from "../src/ui/sidebar"
 import {
   projectKhalaCodeDesktopCodexEcosystem,
 } from "../src/shared/codex-ecosystem"
@@ -109,9 +114,9 @@ describe("khala code desktop app shell", () => {
     expect(html).toContain("autofocus")
     expect(html).toContain('id="send-button"')
     expect(html).toContain('id="fleet-panel"')
+    expect(html).toContain('id="inbox-panel"')
     expect(html).toContain('id="gym-panel"')
     expect(html).toContain('id="settings-panel"')
-    expect(html).not.toContain('id="inbox-panel"')
     expect(html).not.toContain("Pylons")
   })
 
@@ -171,20 +176,20 @@ describe("khala code desktop app shell", () => {
     expect(main).toContain('event.type === "thread_ready"')
   })
 
-  test("hides the Unified Inbox shell and keeps local-safe projection logic", async () => {
+  test("mounts the Unified Inbox shell and keeps local-safe projection logic", async () => {
     const html = await Bun.file(new URL("../src/ui/index.html", import.meta.url)).text()
     const sidebar = await Bun.file(new URL("../src/ui/sidebar.ts", import.meta.url)).text()
     const main = await Bun.file(new URL("../src/ui/main.ts", import.meta.url)).text()
     const css = await Bun.file(new URL("../src/ui/styles.css", import.meta.url)).text()
 
-    expect(sidebar).not.toContain('value: "inbox"')
-    expect(sidebar).not.toContain('icon: "NotificationBell"')
-    expect(html).not.toContain('aria-label="Unified Inbox"')
-    expect(main).not.toContain("mountUnifiedInboxPanel")
-    expect(main).not.toContain('const showInbox = value === "inbox"')
-    expect(main).not.toContain("inboxPanel?.setVisible(showInbox)")
-    expect(main).not.toContain("ecosystem: await controls.codexEcosystemRead")
-    expect(main).not.toContain("fetchEcosystem: () => controls.codexEcosystemRead")
+    expect(sidebar).toContain('value: "inbox"')
+    expect(sidebar).toContain('icon: "NotificationBell"')
+    expect(html).toContain('aria-label="Unified Inbox"')
+    expect(main).toContain("mountUnifiedInboxPanel")
+    expect(main).toContain('const showInbox = activeValue === "inbox"')
+    expect(main).toContain("inboxPanel?.setVisible(showInbox)")
+    expect(main).toContain("ecosystem: await controls.codexEcosystemRead")
+    expect(main).toContain("await controls.fleetRunControl({ runRef, verb: \"resume\" })")
     expect(main).toContain("codexAppServerStatus")
     expect(main).toContain("codexAppServerStart")
     expect(main).toContain("codexMcpToolCall")
@@ -308,15 +313,15 @@ describe("khala code desktop app shell", () => {
     })
 
     expect(projection.items.map(item => item.kind)).toEqual([
+      "credentials_missing",
       "run_blocked",
-      "missing_credential",
       "ready_for_review",
     ])
-    expect(projection.items[1]).toMatchObject({
+    expect(projection.items.find(item => item.kind === "credentials_missing")).toMatchObject({
       accountRef: "codex-2",
       actions: ["reconnect", "open_fleet"],
     })
-    expect(projection.items[2]).toMatchObject({
+    expect(projection.items.find(item => item.kind === "ready_for_review")).toMatchObject({
       assignmentRef: "assignment.khala.demo",
       resumeCommand: "khala closeout assignment.khala.demo --json",
     })
@@ -561,7 +566,7 @@ describe("khala code desktop app shell", () => {
 
     expect(projection.items.find(item => item.ref === "inbox.runtime.codex_harness.unavailable")).toMatchObject({
       ref: "inbox.runtime.codex_harness.unavailable",
-      kind: "missing_credential",
+      kind: "credentials_missing",
       title: "Codex install or sign-in required",
       source: "runtime",
       severity: "critical",
@@ -806,7 +811,7 @@ describe("khala code desktop app shell", () => {
     expect(css).toContain(".khala-fleet-timeline-event")
   })
 
-  test("keeps Fleet as a hotbar button without sidebar status chrome", async () => {
+  test("renders condensed Fleet sidebar counts from fixture status", async () => {
     const main = await Bun.file(new URL("../src/ui/main.ts", import.meta.url)).text()
     const sidebar = await Bun.file(new URL("../src/ui/sidebar.ts", import.meta.url)).text()
     const css = await Bun.file(new URL("../src/ui/styles.css", import.meta.url)).text()
@@ -817,23 +822,107 @@ describe("khala code desktop app shell", () => {
     expect(sidebar).toContain('actionId: "action_bar.slot_2"')
     expect(sidebar).toContain('hotkey: "2"')
     expect(sidebar).toContain('label: "Settings"')
+    expect(sidebar).toContain('label: "Inbox"')
     expect(sidebar).toContain('actionId: "action_bar.slot_3"')
     expect(sidebar).toContain('hotkey: "3"')
+    expect(sidebar).toContain('actionId: "action_bar.slot_4"')
+    expect(sidebar).toContain('hotkey: "4"')
     expect(sidebar).toContain("options.onActivate?.(slot.value)")
-    expect(main).toContain("mountKhalaCodeSidebar(sidebarNavRoot, {\n    selectedValue: initialView")
-    expect(main).not.toContain("fetchFleet: () => controls.codexFleetStatus()")
-    expect(sidebar).not.toContain("projectKhalaCodeSidebarFleetSummary")
+    expect(main).toContain("mountKhalaCodeSidebar(sidebarNavRoot, {")
+    expect(main).toContain("sidebar.setFleetCounts(projectKhalaCodeSidebarFleetCounts(await controls.codexFleetStatus()))")
+    expect(sidebar).toContain("projectKhalaCodeSidebarFleetCounts")
+    expect(sidebar).toContain("data-khala-code-fleet-counts")
     expect(sidebar).not.toContain("window.setInterval(() => void refreshFleetSummary(), 7000)")
     expect(sidebar).not.toContain("button.dataset.fleetSession = session.ref")
     expect(sidebar).not.toContain('"idle"')
-    expect(css).not.toContain(".khala-code-fleet-summary")
-    expect(css).not.toContain(".khala-code-fleet-strip")
+    expect(css).toContain(".khala-code-hotbar-fleet-counts")
     expect(css).not.toContain(".khala-code-fleet-session")
     expect(css).not.toContain(".khala-code-fleet-empty")
     expect(css).toContain("--khala-code-hotbar-titlebar-clearance: 2.75rem")
     expect(css).toContain("env(safe-area-inset-top, 0px)")
     expect(css).toContain("width: 1.3rem")
     expect(css).toContain("height: 1.3rem")
+
+    const counts = projectKhalaCodeSidebarFleetCounts({
+      ok: true,
+      observedAt: "2026-07-01T18:00:00.000Z",
+      pylon: {
+        message: "online",
+        pylonRef: "pylon.public.fleet",
+        status: "online",
+      },
+      availableCodexAssignments: 2,
+      maxCodexAssignments: 4,
+      tokenRate: {
+        activeAdjustedTokensPerMinute: null,
+        completedStatus: "not_measured",
+        completedTokenRows: null,
+        completedTokensPerMinute: null,
+        inFlightTokens: null,
+        inFlightTokensPerMinute: null,
+        source: "unavailable",
+        unavailableReason: null,
+      },
+      accounts: [
+        {
+          accountKey: null,
+          accountRef: "codex",
+          capacity: null,
+          email: null,
+          provider: "codex",
+          quotaState: null,
+          readiness: "ready",
+        },
+        {
+          accountKey: null,
+          accountRef: "codex-2",
+          capacity: null,
+          email: null,
+          provider: "codex",
+          quotaState: null,
+          readiness: "credentials_missing",
+        },
+      ],
+      activeAssignments: [{
+        assignmentRef: "assignment.public.sidebar",
+        blockerRefs: ["blocker.public.worker.merge_conflict_wave"],
+        elapsedMs: null,
+        issueRef: "github.issue.openagents.7843",
+        runRef: "fleet.run.public.sidebar",
+        tokenRate: {
+          source: "token_usage_events",
+          status: "pending",
+          tokenCountKind: null,
+          tokens: null,
+          tokensPerMinute: null,
+        },
+        updatedAt: "2026-07-01T18:01:00.000Z",
+      }],
+      processes: [],
+    })
+    expect(counts).toEqual({
+      accountsReady: 1,
+      workersActive: 1,
+      slotsFree: 2,
+      flags: 2,
+    })
+
+    const window = new Window()
+    const previousWindow = globalThis.window
+    const previousDocument = globalThis.document
+    Object.defineProperty(globalThis, "window", { configurable: true, value: window })
+    Object.defineProperty(globalThis, "document", { configurable: true, value: window.document })
+    try {
+      const container = document.createElement("div")
+      mountKhalaCodeSidebar(container, { fleetCounts: counts, selectedValue: "fleet" })
+      expect(container.textContent).toContain("1 acct / 1 work / 2 free / 2 flag")
+      expect(
+        container.querySelector<HTMLElement>("[data-khala-code-fleet-counts]")?.getAttribute("aria-label"),
+      ).toBe("1 accounts ready, 1 workers active, 2 slots free, 2 flags")
+    } finally {
+      Object.defineProperty(globalThis, "window", { configurable: true, value: previousWindow })
+      Object.defineProperty(globalThis, "document", { configurable: true, value: previousDocument })
+    }
   })
 
   test("keeps Gym proof pane available without a top-level Gym screen", async () => {
@@ -1247,7 +1336,7 @@ describe("khala code desktop app shell", () => {
     expect(sidebar).toContain("export const KHALA_CODE_HOTBAR_SLOTS")
     expect(sidebar).toContain('actionId: "action_bar.slot_1"')
     expect(sidebar).toContain('actionId: "action_bar.slot_3"')
-    expect(sidebar).not.toContain('actionId: "action_bar.slot_4"')
+    expect(sidebar).toContain('actionId: "action_bar.slot_4"')
     expect(sidebar).not.toContain('actionId: "action_bar.slot_5"')
     expect(sidebar).toContain('button.dataset.hotbarAction = slot.actionId')
     expect(sidebar).toContain('button.dataset.hotkey = slot.hotkey')

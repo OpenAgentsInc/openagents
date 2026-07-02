@@ -861,7 +861,7 @@ describe("Pylon supervisor orchestration store", () => {
     expect(gate).toMatchObject({
       status: "blocked",
       readyForReview: false,
-      blockerRefs: ["blocker.public.pylon.closeout.claim_not_live"],
+      blockerRefs: ["blocker.public.pylon.closeout.claim_expired"],
     })
   })
 
@@ -919,6 +919,7 @@ describe("Pylon supervisor orchestration store", () => {
     })).toMatchObject({
       action: "merge_wave_resolver",
       ownerToggleRequired: true,
+      blockerRefs: ["blocker.public.pylon.merge_conflict_wave"],
     })
   })
 
@@ -946,6 +947,7 @@ describe("Pylon supervisor orchestration store", () => {
     expect(job).toMatchObject({
       sequential: true,
       execution: "owner_toggle_required",
+      refs: expect.arrayContaining(["blocker.public.pylon.merge_conflict_wave"]),
       taskSpec: {
         runnerKind: "codex",
         fleetRunRef: "fleet_run.t4_3",

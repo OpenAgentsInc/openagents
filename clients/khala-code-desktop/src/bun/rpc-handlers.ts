@@ -1831,6 +1831,7 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
           closeoutStatus: marker.closeoutStatus,
           elapsedMs: marker.elapsedMs,
           issueRef: marker.issueRef,
+          runRef: marker.runRef,
           tokenRate: marker.tokenRate,
           workerSession: workerSessionForAssignment(marker),
           updatedAt: marker.updatedAt,

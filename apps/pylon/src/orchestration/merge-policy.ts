@@ -100,7 +100,11 @@ export function evaluateCloseoutReviewGate(input: CloseoutReviewGateInput): Clos
   } else {
     refs.push(publicRef("claim.public.pylon", input.claim.claimRef))
     if (!isLiveClaim(input.claim, now)) {
-      blockerRefs.push("blocker.public.pylon.closeout.claim_not_live")
+      blockerRefs.push(
+        input.claim.state === "expired"
+          ? "blocker.public.pylon.closeout.claim_expired"
+          : "blocker.public.pylon.closeout.claim_not_live",
+      )
     }
   }
 
@@ -158,7 +162,7 @@ export function decideMergePolicy(input: MergePolicyInput): MergePolicyDecision 
       action: "merge_wave_resolver",
       ownerToggleRequired: true,
       refs: [...refs, "merge-wave.public.pylon.required"],
-      blockerRefs,
+      blockerRefs: [...blockerRefs, "blocker.public.pylon.merge_conflict_wave"],
     }
   }
 
@@ -226,6 +230,12 @@ export function createMergeWaveResolverJob(input: {
       now: input.now,
     },
     taskSpec,
-    refs: [waveRef, workUnitRef, claimRef, "merge-wave-semantics.public.pylon.sequential"],
+    refs: [
+      waveRef,
+      workUnitRef,
+      claimRef,
+      "merge-wave-semantics.public.pylon.sequential",
+      "blocker.public.pylon.merge_conflict_wave",
+    ],
   }
 }

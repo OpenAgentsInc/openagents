@@ -1380,6 +1380,20 @@ button {
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
 }
+.khala-code-hotbar-fleet-counts {
+  position: absolute;
+  inset-inline: 0.18rem;
+  bottom: 0.18rem;
+  overflow: hidden;
+  color: var(--oa-color-khala-energy-soft);
+  font-family: var(--oa-font-code);
+  font-size: 0.42rem;
+  font-weight: 800;
+  line-height: 1.05;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 .khala-code-thread-sidebar {
   grid-column: 1;
