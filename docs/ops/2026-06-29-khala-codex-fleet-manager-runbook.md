@@ -27,6 +27,33 @@ included because they are the bridge the current Desktop process uses under the
 hood, and because they are the emergency fallback when a manager must get work
 moving before a UI control is finished.
 
+**July 2 WS-17 closeout:** after the owner trim, the active target is desktop
+fleet working ASAP. The mobile/push, T16 public-promise, AaaS, and GEPA
+optimizer lanes are postponed. The current WS-17 preflight evidence is:
+
+- `khala fleet status` found three ready Codex accounts: `codex-2`,
+  `codex-b7d4438c`, and `codex-dbbb1972`.
+- `pylon presence heartbeat --base-url https://openagents.com --json` reported
+  registered, linked, and not stale for `pylon.33afd48282a649047e3a`.
+- `bun run --cwd apps/pylon smoke:fleet-run-live` stayed skip-safe while
+  unarmed; no dispatch or spend occurred.
+- Read-only `khala fleet status --live` showed a healthy watchdog with zero
+  active live slots.
+- The dry-run planner over `#7956,#7955,#7953,#7931` resolved three target slots
+  across three accounts:
+
+```sh
+khala fleet run --repo OpenAgentsInc/openagents \
+  --issues 7956,7955,7953,7931 \
+  --commit 84880c527bcd38d2ed1ae3f821c2ed78e660b30a \
+  --verify "bun run check:deploy" \
+  --dry-run
+```
+
+Do not run the old target-15/18 overnight acceptance gate unless a real
+>=30-unit claimable backlog exists, `smoke:fleet-run-live` is explicitly armed
+and green the same day, and the owner approves the overnight spend window.
+
 ## Current Quick Start: Get Khala Code Desktop Moving
 
 From a clean, current `main` checkout:
@@ -581,6 +608,11 @@ budget, not OpenAgents settlement.
   raw process count, is the gate — check `availableCodexAssignments`, not `ps`.
 
 ## GEPA Delegation Dataset
+
+This section is retained as historical substrate. GEPA delegation optimization
+is postponed for the current desktop-fleet push, and replenishment paths must
+not create or dispatch GEPA/DSPy optimizer work unless the owner explicitly
+reopens that lane.
 
 GD-0 is now a typed public-safe export, not a handwritten scrape. The Worker
 module `apps/openagents.com/workers/api/src/khala-delegation-example-dataset.ts`

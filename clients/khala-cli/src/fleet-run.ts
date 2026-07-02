@@ -82,10 +82,10 @@ type FleetRunSlot = Omit<KhalaFleetRunRound, "ok" | "status" | "assignmentRef">
 
 const REPLENISHMENT_OBJECTIVES = [
   {
-    dedupeKey: "gepa-dspy-6707",
-    issue: 6707,
+    dedupeKey: "desktop-fleet-readiness-audit",
+    issue: null,
     objective:
-      "Advance the standing GEPA/DSPy continual-learning loop from public issue #6707 over recent public-safe traces. Keep the work bounded, avoid duplicate open PRs, and run the named verification.",
+      "Audit the current desktop-fleet dispatch path end to end: Khala Code fleet tools, Pylon heartbeat/capacity, closeout proof, and exact token accounting. Fix one concrete desktop-fleet blocker if found, avoid duplicate open PRs, and run the named verification.",
   },
   {
     dedupeKey: "bounded-codebase-audit",

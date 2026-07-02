@@ -14,7 +14,9 @@ flips no promise state and broadens no public copy. The delivery process
 Owner trim (2026-07-02): the current push is desktop fleet working ASAP.
 Mobile companion / push (WS-11), episode/public-promise ops (WS-16),
 GEPA optimizer lanes (T6.15/T9.3), and mobile-dependent AaaS
-productization (T12.6) are postponed / not planned for this push.
+productization (T12.6) are postponed / not planned for this push. WS-17 is
+closed for this push as a desktop-fleet readiness gate, not as a fabricated
+overnight 2B-token run.
 
 ## 0. Reading Guide
 
@@ -54,7 +56,7 @@ WS-12 Artanis (P1/P2 parallel now; P3 needs WS-2+WS-10; P5 postponed)
 WS-13 Foldkit migration (rides behind; cockpit panel first)
 WS-14 Guardrails (continuous from day 1)
 WS-16 Episode 245 (postponed / not planned for current push)
-WS-17 Clean 2B day (needs WS-3,4,5 core + WS-6 live smokes)
+WS-17 Desktop fleet closeout (clean 2B day postponed until backlog returns)
 ```
 
 The two foundations — **WS-1** and **WS-2** — land first and unblock nearly
@@ -264,13 +266,21 @@ current desktop-fleet push.
 | T16.2 | **POSTPONED / not planned for current desktop-fleet push (owner 2026-07-02):** Docs upkeep: keep the §1.1 naming disambiguation near the front of public copy; refresh pre-pivot framing notes (fleet spec, porting audit, ops runbook); file the six `codex.app_server.gap.*` items upstream | — | POSTPONED |
 | T16.3 | **POSTPONED / not planned for current desktop-fleet push (owner 2026-07-02):** Public promise record for "Khala Code wraps your Codex" (through `docs/promises/`, copy-gated) | — | POSTPONED |
 
-### WS-17 — Throughput restoration: the clean 2B day (Lane E; final gate)
+### WS-17 — Throughput restoration: desktop fleet closeout (Lane E; final gate)
+
+Owner-directed closeout (2026-07-02): the old clean-2B-day gate needs a real
+>=30-unit claimable backlog plus owner-approved overnight spend. After the
+desktop-fleet trim, the tracker had only nine open issues total and four
+actionable desktop issues in the dry-run target set. The current push therefore
+closes WS-17 on readiness evidence and postpones the overnight 2B run until the
+backlog exists again. See
+`docs/afteraction/2026-07-02-fable-ws17-desktop-fleet-closeout.md`.
 
 | Task | Description | Deps | Delegable |
 | --- | --- | --- | --- |
-| T17.1 | Preflight: ≥3 ready accounts, fresh budgets, ≥30 claimable units, `smoke:fleet-run-live` green same-day | T6.10 | supervisor |
-| T17.2 | The acceptance run: one chat message, target 15–18, overnight refill window, flags→Inbox; success = ≥2.0B exact tokens/day, ≥15 concurrency ≥6h, duplicate-PR rate 0, 100% closeout coverage, zero unverified merges, Pylon-Claude meaningfully >0 | T17.1 + WS-3/4/5 core | supervisor + owner |
-| T17.3 | After-action doc either way; regressions become fixtures; update fleet-management spec status table + cockpit runbook + FleetRun schema doc | T17.2 | HIGH |
+| T17.1 | **SHIPPED for current desktop-fleet push:** readiness preflight proved 3 ready Codex accounts (`codex-2`, `codex-b7d4438c`, `codex-dbbb1972`), fresh hosted heartbeat for `pylon.33afd48282a649047e3a`, skip-safe unarmed `smoke:fleet-run-live`, healthy read-only live status, and a no-dispatch `khala fleet run` dry-run resolving 3 slots across the actionable issues. The old `>=30 claimable units` bound is postponed because the tracker was deliberately trimmed below that floor. | T6.10 | SHIPPED |
+| T17.2 | **POSTPONED / not planned for current desktop-fleet push:** the old acceptance run (one chat message, target 15–18, overnight refill window, flags->Inbox, >=2.0B exact tokens/day, >=15 concurrency >=6h, duplicate-PR rate 0, 100% closeout coverage, zero unverified merges, Pylon-Claude meaningfully >0) must not run without a real >=30-unit backlog, same-day armed live smoke, and owner approval for overnight spend. | T17.1 + WS-3/4/5 core | POSTPONED |
+| T17.3 | **SHIPPED for current desktop-fleet push:** after-action added; the backlog-floor mismatch is captured as a future acceptance fixture (`blocker.fleet_run_acceptance.claimable_units_below_floor`); fleet-management spec, cockpit runbook, and FleetRun schema/fan-out doc updated; active GEPA replenishment targets removed from desktop-fleet refill paths. | T17.2 revised/postponed | SHIPPED |
 
 ## 3. Parallelization Plan (Who Runs What, Concurrently)
 
@@ -294,7 +304,9 @@ T9.3, and T12.6 from active waves until explicitly reopened.
 - **Wave 3:** T3.5 · T4.5 · T5.6 · T6.5–T6.9 · T6.13 · T6.14 · T8.3 · T8.4 ·
   T9.2 · T9.4 · T9.5 · T9.6 · T13.2 · T13.3 · T15.1 · T14.3.
 - **Wave 4:** T6.10 · T9.7 · T12.5 · T13.4 · T15.2.
-- **Gate:** T17.1 → T17.2 → T17.3 (the clean 2B day).
+- **Gate:** T17.1 → T17.3 closes the current desktop-fleet push; T17.2 clean
+  2B day is postponed until a real backlog and owner-approved overnight window
+  return.
 
 Coordination rules (same as epic #7651's fanout): shared seams (T1.1, T2.1,
 T2.2, T8.1) land first and alone; everything downstream codes against their
@@ -311,7 +323,8 @@ get the strongest worker plus mandatory supervisor review.
   chat behind the pill, status spine end-to-end, `/pro` un-mocked.
 - **M4 — Proof tier**: monkey night green, sustained live smoke green, TLA+
   supervisor properties checked, perf budgets enforced.
-- **M5 — The clean 2B day** (T17.2) with after-action.
+- **M5 — Desktop fleet closeout** (T17.1/T17.3) with after-action now; the
+  clean 2B day (T17.2) remains the later live-capacity milestone.
 - **M6 — Reach**: plan-then-fan-out crossover and Artanis on the spine with
   authority scopes. Mobile companion notify/approve/steer and AaaS demo flow
   remain postponed until explicitly revived after desktop fleet works.

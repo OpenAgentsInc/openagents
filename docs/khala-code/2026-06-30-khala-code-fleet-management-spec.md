@@ -14,6 +14,14 @@ delegation remains the owner-local capacity layer for linked Codex accounts.
 The native `@openagentsinc/khala-tools` runtime is now legacy/fallback for coding
 work, not the center of the default Khala Code execution path.
 
+**July 2 desktop-fleet closeout:** the current implementation push is scoped to
+getting Fleet working in Khala Code Desktop. Mobile/push, public-promise ops,
+mobile-dependent AaaS, and GEPA optimizer lanes are postponed. WS-17 closes on
+desktop-fleet readiness evidence (3 ready Codex accounts, fresh Pylon heartbeat,
+skip-safe live smoke, healthy read-only live status, and dry-run slot planning);
+the old clean-2B-day overnight run waits for a real >=30-unit backlog and owner
+approval.
+
 ## 0. Identity note (read first)
 
 External landscape research conflated two unrelated projects both called
@@ -149,9 +157,9 @@ by advertised slots + system load, not raw process count.
 
 **Gap:** promote the watcher/merge-resolver/refill loop from an operator script
 (`docs/ops/...runbook.md`) into a **first-class, supervised orchestration surface**
-inside Khala Code (start/stop, queue view, per-slot status, refill policy), and
-add the GEPA self-optimization loop for the delegation policy
-(`docs/gepa/2026-06-30-gepa-usage-and-fleet-delegation-optimization-loop.md`).
+inside Khala Code (start/stop, queue view, per-slot status, refill policy).
+GEPA self-optimization for delegation policy is postponed for the current
+desktop-fleet push.
 
 ### 3.5 Local-first adoption ("adopt, don't import")
 
@@ -218,7 +226,8 @@ naming explicitly — most map onto primitives we already have.
   own instructions/memory is powerful but risky; default to **staged write →
   human diff review → approve/reject**, with an explicit per-worker toggle to
   allow auto-memory. This is the safe self-improvement pattern; it pairs with the
-  GEPA delegation loop (offline) for policy-level improvement.
+  future offline delegation-optimization loop after desktop fleet is working and
+  the owner reopens optimizer work.
 - **Event-triggered background workers.** Workers that run on events/schedules in
   the background (not just on demand), surfaced and unblocked through the Inbox.
   We have scheduling + work-intake (`tas/work-intake.ts`); the trigger→run→inbox
@@ -240,8 +249,9 @@ The engine is built; the gaps are surfaces and one orchestration promotion.
 3. **Worker cards** (§3.2) — human-readable scope/credential/tooling/cost/recent-
    runs card over the existing capability + quota + authority data.
 4. **Supervised orchestration surface** (§3.4) — promote the watcher / merge-
-   resolver / refill loop into a first-class start/stop/queue UI; wire the GEPA
-   delegation-optimization loop.
+   resolver / refill loop into a first-class start/stop/queue UI. GEPA
+   delegation optimization is explicitly postponed until desktop fleet is
+   working and the owner reopens that lane.
 5. **Config scanner / adopt-in-place** (§3.5) — scan and adopt skills / MCP /
    instruction files across harnesses, reference-by-default, never clobber.
 6. **Run timeline / trace viewer** (§3.6) — operator view over exact token rows +
