@@ -425,11 +425,11 @@ export async function tickFleetRunSupervisor(
   const dependencyPending = plan.skipped.some(unit => unit.skipReason === "dependency_pending")
   const plannedWorkUnitsTotal = Math.max(expectedWorkUnitsTotal, run.counters.workUnitsTotal, plan.units.length)
   let claimed = 0
-  let dispatched = 0
   const claimOrdinalBase = store.listWorkClaims({ runRef: run.runRef }).length
+  const dispatches: Promise<void>[] = []
 
   for (const workUnit of plan.claimable) {
-    if (dispatched >= freeSlots) break
+    if (dispatches.length >= freeSlots) break
     const account = pickAccount(accounts, activeCounts, now)
     if (account === null) break
     const claim = store.tryClaimWorkUnit({
@@ -476,54 +476,82 @@ export async function tickFleetRunSupervisor(
     store.markDispatched(taskId, contextId, now)
     store.updateWorkClaimState(claim.claimRef, "in_progress", now)
 
-    let result: FleetRunSupervisorDispatchResult
-    try {
-      result = await options.runner.dispatch({ accountRef: account.accountRef, claim, run, taskId, workUnit })
-      dispatched += 1
-    } catch (error) {
-      dispatched += 1
+    dispatches.push((async () => {
+      let result: FleetRunSupervisorDispatchResult
+      try {
+        result = await options.runner.dispatch({ accountRef: account.accountRef, claim, run, taskId, workUnit })
+      } catch (error) {
+        store.recordWorkerDone({
+          contextId,
+          taskId,
+          status: "failed",
+          result: JSON.stringify({
+            assignmentRef: null,
+            summary: error instanceof Error ? error.message : String(error),
+          }),
+          now,
+        })
+        store.releaseWorkClaim(claim.claimRef, now)
+        activeCounts.set(account.accountRef, Math.max(0, (activeCounts.get(account.accountRef) ?? 1) - 1))
+        await emit(options.onLifecycle, {
+          kind: "dispatch",
+          runRef: run.runRef,
+          taskId,
+          claimRef: claim.claimRef,
+          workUnitRef: workUnit.workUnitRef,
+          accountRef: account.accountRef,
+          assignmentRef: null,
+          status: "failed",
+          summary: error instanceof Error ? error.message : String(error),
+        })
+        return
+      }
+
+      for (const event of result.lifecycle) {
+        await emit(options.onLifecycle, {
+          kind: "lifecycle",
+          runRef: run.runRef,
+          taskId,
+          claimRef: claim.claimRef,
+          accountRef: account.accountRef,
+          event,
+        })
+      }
+      if (result.assignmentRef !== null) {
+        store.updateWorkClaimAssignmentRef(claim.claimRef, result.assignmentRef, now)
+      }
+
+      const terminalStatus = terminalStatusForDispatch(result)
+      if (terminalStatus === null) {
+        await emit(options.onLifecycle, {
+          kind: "dispatch",
+          runRef: run.runRef,
+          taskId,
+          claimRef: claim.claimRef,
+          workUnitRef: workUnit.workUnitRef,
+          accountRef: account.accountRef,
+          assignmentRef: result.assignmentRef,
+          status: result.status,
+          summary: result.summary ?? null,
+        })
+        return
+      }
+
       store.recordWorkerDone({
         contextId,
         taskId,
-        status: "failed",
+        status: terminalStatus,
         result: JSON.stringify({
-          assignmentRef: null,
-          summary: error instanceof Error ? error.message : String(error),
+          assignmentRef: result.assignmentRef,
+          summary: result.summary ?? null,
         }),
         now,
       })
-      store.releaseWorkClaim(claim.claimRef, now)
-      activeCounts.set(account.accountRef, Math.max(0, (activeCounts.get(account.accountRef) ?? 1) - 1))
-      await emit(options.onLifecycle, {
-        kind: "dispatch",
-        runRef: run.runRef,
-        taskId,
-        claimRef: claim.claimRef,
-        workUnitRef: workUnit.workUnitRef,
-        accountRef: account.accountRef,
-        assignmentRef: null,
-        status: "failed",
-        summary: error instanceof Error ? error.message : String(error),
-      })
-      continue
-    }
-
-    for (const event of result.lifecycle) {
-      await emit(options.onLifecycle, {
-        kind: "lifecycle",
-        runRef: run.runRef,
-        taskId,
-        claimRef: claim.claimRef,
-        accountRef: account.accountRef,
-        event,
-      })
-    }
-    if (result.assignmentRef !== null) {
-      store.updateWorkClaimAssignmentRef(claim.claimRef, result.assignmentRef, now)
-    }
-
-    const terminalStatus = terminalStatusForDispatch(result)
-    if (terminalStatus === null) {
+      store.updateWorkClaimState(
+        claim.claimRef,
+        terminalStatus === "completed" ? "closeout" : "released",
+        now,
+      )
       await emit(options.onLifecycle, {
         kind: "dispatch",
         runRef: run.runRef,
@@ -535,36 +563,10 @@ export async function tickFleetRunSupervisor(
         status: result.status,
         summary: result.summary ?? null,
       })
-      continue
-    }
-
-    store.recordWorkerDone({
-      contextId,
-      taskId,
-      status: terminalStatus,
-      result: JSON.stringify({
-        assignmentRef: result.assignmentRef,
-        summary: result.summary ?? null,
-      }),
-      now,
-    })
-    store.updateWorkClaimState(
-      claim.claimRef,
-      terminalStatus === "completed" ? "closeout" : "released",
-      now,
-    )
-    await emit(options.onLifecycle, {
-      kind: "dispatch",
-      runRef: run.runRef,
-      taskId,
-      claimRef: claim.claimRef,
-      workUnitRef: workUnit.workUnitRef,
-      accountRef: account.accountRef,
-      assignmentRef: result.assignmentRef,
-      status: result.status,
-      summary: result.summary ?? null,
-    })
+    })())
   }
+
+  await Promise.all(dispatches)
 
   let reconciled = store.reconcileFleetRun(run.runRef, clock.now())
   const hasClaimableBacklog = plan.claimable.length > claimed || dependencyPending
@@ -598,7 +600,7 @@ export async function tickFleetRunSupervisor(
     return {
       activeAssignments: activeAssignmentsForRun(store, run.runRef),
       claimed,
-      dispatched,
+      dispatched: dispatches.length,
       freeSlots,
       run: completed,
     }
@@ -607,7 +609,7 @@ export async function tickFleetRunSupervisor(
   return {
     activeAssignments: activeAssignmentsForRun(store, run.runRef),
     claimed,
-    dispatched,
+    dispatched: dispatches.length,
     freeSlots,
     run: reconciled,
   }

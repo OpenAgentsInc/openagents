@@ -122,6 +122,52 @@ function drainingRunner(input: {
 }
 
 describe("FleetRunSupervisor", () => {
+  test("starts the target wave before waiting for long-running dispatches", async () => {
+    const { store, run } = createStoreWithRun({ runRef: "fleet_run.acceptance.target_wave", targetConcurrency: 5, workUnits: 5 })
+    const started: string[] = []
+    const waiters: (() => void)[] = []
+    let released = false
+    const releaseAll = () => {
+      released = true
+      while (waiters.length > 0) waiters.shift()?.()
+    }
+    const runner: FleetRunSupervisorRunner = {
+      dispatch: async (input) => {
+        started.push(input.workUnit.workUnitRef)
+        if (!released) {
+          await new Promise<void>(resolve => waiters.push(resolve))
+        }
+        return {
+          assignmentRef: `assignment.${input.claim.claimRef}`,
+          lifecycle: [lifecycleEvent("assignment_run.accepted", { status: "accepted" })],
+          status: "accepted",
+        }
+      },
+    }
+
+    const tick = tickFleetRunSupervisor({
+      store,
+      pylonRef: "pylon.owner.target_wave",
+      runRef: run.runRef,
+      planner: fixturePlannerWithClaims(store, 5),
+      runner,
+      capacity: capacity([{ accountRef: "codex", advertisedCapacity: 5 }]),
+      clock: { now: () => fixedNow },
+    })
+
+    for (let attempt = 0; attempt < 20 && started.length < 5; attempt += 1) {
+      await Bun.sleep(5)
+    }
+    const targetWaveStartedBeforeRelease = started.length === 5
+    releaseAll()
+    const result = await tick
+
+    expect(targetWaveStartedBeforeRelease).toBe(true)
+    expect(result.dispatched).toBe(5)
+    expect(new Set(started).size).toBe(5)
+    expect(store.listTasks("dispatched")).toHaveLength(5)
+  })
+
   test("target-25 fixture acceptance reaches 25 simulated concurrent assignments and drains", async () => {
     const { store, run } = createStoreWithRun({ runRef: "fleet_run.acceptance.target_25", targetConcurrency: 25, workUnits: 25 })
     const dispatched: string[] = []
