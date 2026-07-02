@@ -658,7 +658,8 @@ bun run --cwd clients/khala-code-desktop smoke:composer-visual
 bun run --cwd apps/pylon smoke:fleet-run-live          # skip-safe until armed
 ```
 
-What "starting for real" requires, in leverage order:
+What "starting for real" requires, in leverage order — now executed as
+[`ROADMAP_QA.md`](./ROADMAP_QA.md) (epic #8051, issues #8012–#8050):
 
 1. **Schedule the loop** (the cheapest, highest-value step): a nightly
    owned-runner job (Tier-2 pattern, no GitHub-hosted CI) running the

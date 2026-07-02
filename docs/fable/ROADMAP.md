@@ -135,6 +135,11 @@ Source: fleet fan-out §5, consuming the one status vocabulary from WS-10.
 
 Source: QA framework design §11 (G1–G6, P0–P4); fleet fan-out Lane D.
 
+> **Successor (2026-07-02):** the WS-6 machine shipped; running it as a
+> fully automated cycle (nightly loop, gates, real-run latency, headed
+> Mode V, live tiers, explorers) is now [`ROADMAP_QA.md`](./ROADMAP_QA.md)
+> (epic #8051, issues #8012–#8050).
+
 | Task | Description | Deps | Delegable |
 | --- | --- | --- | --- |
 | T6.1 | **G1** Bridge auth + events: loopback bearer (+ optional read-only mode) and `GET /rpc/events` SSE carrying chat turn events, fleet lifecycle, run counters, console errors | T1.1 soft | MED |

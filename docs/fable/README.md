@@ -25,6 +25,13 @@ each source doc.
   status spine, the mobile companion, Artanis elevation, the staged Foldkit
   migration, and continuous guardrails — gated at the end by the "clean
   2B-token day" acceptance run.
+- [`ROADMAP_QA.md`](./ROADMAP_QA.md) — the active QA execution roadmap
+  (2026-07-02): everything needed to run the fully automated Khala Code QA
+  cycle — the scheduled nightly loop and merge gates, the real-run latency
+  budget family and lag burndown, headed native Mode V, the complete
+  use-case scenario corpus, owner-armed live tiers, the explorer/distill
+  learning loop, and hard-fail guardrails. Eight workstreams, 39 issues
+  (#8012–#8050) under epic #8051, with the issue map in its §12.
 - [`EXECUTION.md`](./EXECUTION.md) — how the roadmap is executed: Artanis
   (fleet-manager role) supervises; **Khala Code fleet delegation is the
   primary mechanism**; one GitHub issue per roadmap task, closed only via a
