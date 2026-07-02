@@ -332,4 +332,74 @@ describe("Khala Code thread sidebar", () => {
       window.close()
     }
   })
+
+  test("selects recent visible threads without refetching the catalog", async () => {
+    const window = new Window()
+    const previousDocument = globalThis.document
+    const previousNavigator = globalThis.navigator
+    Object.defineProperty(globalThis, "document", {
+      configurable: true,
+      value: window.document,
+    })
+    Object.defineProperty(globalThis, "navigator", {
+      configurable: true,
+      value: window.navigator,
+    })
+    try {
+      const container = document.createElement("aside")
+      document.body.append(container)
+      const data: KhalaCodeDesktopCodexThreadListResult = {
+        ok: true,
+        data: [],
+        groups: [{ key: "all", label: "All sessions", threadIds: ["thread-a", "thread-b"] }],
+        threads: [
+          { ...thread("thread-a", "Newest work"), recencyAt: 20 },
+          { ...thread("thread-b", "Older work"), recencyAt: 10 },
+        ],
+      }
+
+      let listCalls = 0
+      const selectedThreadIds: string[] = []
+      const sidebar = mountCodexThreadSidebar(container, {
+        activeThreadId: () => null,
+        archiveThread: async threadId => ({ action: "archive", ok: true, threadId }),
+        deleteThread: async threadId => ({ action: "delete", ok: true, threadId }),
+        forkThread: async threadId => ({ action: "fork", ok: true, threadId }),
+        listThreads: async () => {
+          listCalls += 1
+          return data
+        },
+        renameThread: async threadId => ({ action: "rename", ok: true, threadId }),
+        resumeThread: async threadId => ({
+          ok: true,
+          thread: {},
+          threadId,
+          messages: [],
+        }),
+        sessionId: "desktop-session",
+        unarchiveThread: async threadId => ({ action: "unarchive", ok: true, threadId }),
+        onNewThreadRequested: () => undefined,
+        onThreadSelected: input => selectedThreadIds.push(input.threadId),
+      })
+
+      sidebar.setVisible(true)
+      await Promise.resolve()
+      expect(listCalls).toBe(1)
+
+      await expect(sidebar.selectRecentThread(0)).resolves.toBe(true)
+
+      expect(listCalls).toBe(1)
+      expect(selectedThreadIds).toEqual(["thread-a"])
+    } finally {
+      Object.defineProperty(globalThis, "document", {
+        configurable: true,
+        value: previousDocument,
+      })
+      Object.defineProperty(globalThis, "navigator", {
+        configurable: true,
+        value: previousNavigator,
+      })
+      window.close()
+    }
+  })
 })

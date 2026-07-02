@@ -20,6 +20,9 @@ const tempRoot = async (): Promise<string> => {
   return root
 }
 
+const delay = (ms: number): Promise<void> =>
+  new Promise(resolve => setTimeout(resolve, ms))
+
 describe("Khala Code cross-harness session catalog", () => {
   test("merges Codex and Claude local stores with runtime-reported exact totals", async () => {
     const root = await tempRoot()
@@ -208,5 +211,53 @@ describe("Khala Code cross-harness session catalog", () => {
     })
 
     expect(sessionCatalogEntryToThreadSummary(nextCatalog.entries[0]!).id).toBe("thread-history")
+  })
+
+  test("queries Codex and Claude thread sources concurrently", async () => {
+    const root = await tempRoot()
+    const codexStatePath = join(root, "codex-sessions.json")
+    const claudeStatePath = join(root, "claude-sessions.json")
+    await writeFile(codexStatePath, JSON.stringify({
+      schema: "khala-code-desktop.codex-sessions.v1",
+      sessions: {},
+    }))
+    await writeFile(claudeStatePath, JSON.stringify({
+      schema: "khala-code-desktop.claude-sessions.v1",
+      sessions: {},
+    }))
+
+    const codexStartedAt: number[] = []
+    const claudeStartedAt: number[] = []
+    const codexRuntime = {
+      listThreads: async () => {
+        codexStartedAt.push(performance.now())
+        await delay(40)
+        return { ok: true as const, data: [], threads: [] }
+      },
+    } as Partial<CodexAppServerChatRuntime> as CodexAppServerChatRuntime
+    const claudeRuntime = {
+      listThreads: async () => {
+        claudeStartedAt.push(performance.now())
+        await delay(40)
+        return { ok: true as const, data: [], threads: [] }
+      },
+    } as Partial<ClaudeAppSdkChatRuntime> as ClaudeAppSdkChatRuntime
+
+    const started = performance.now()
+    const catalog = await readKhalaCodeDesktopSessionCatalog({}, {
+      claudeRuntime,
+      codexRuntime,
+      env: {
+        KHALA_CODE_DESKTOP_CLAUDE_STATE_PATH: claudeStatePath,
+        KHALA_CODE_DESKTOP_CODEX_STATE_PATH: codexStatePath,
+      },
+    })
+    const elapsed = performance.now() - started
+
+    expect(catalog.ok).toBe(true)
+    expect(codexStartedAt).toHaveLength(1)
+    expect(claudeStartedAt).toHaveLength(1)
+    expect(Math.abs(codexStartedAt[0]! - claudeStartedAt[0]!)).toBeLessThan(20)
+    expect(elapsed).toBeLessThan(75)
   })
 })

@@ -415,7 +415,9 @@ export const mountCodexThreadSidebar = (
   const selectRecentThread = async (index: number): Promise<boolean> => {
     if (!Number.isInteger(index) || index < 0 || index >= 10) return false
     try {
-      const data = await loadRecentThreadData()
+      const data = searchTerm.length === 0
+        ? dataForState(state) ?? await loadRecentThreadData()
+        : await loadRecentThreadData()
       const thread = recentThreadsForHotkeys(data.threads ?? [])[index]
       if (thread === undefined) return false
       return await selectThread(thread.id, "hotkey")
@@ -429,7 +431,9 @@ export const mountCodexThreadSidebar = (
     direction: RecentThreadCycleDirection,
   ): Promise<boolean> => {
     try {
-      const data = await loadRecentThreadData()
+      const data = searchTerm.length === 0
+        ? dataForState(state) ?? await loadRecentThreadData()
+        : await loadRecentThreadData()
       const index = recentThreadCycleIndex({
         activeThreadId,
         direction,

@@ -705,11 +705,17 @@ type ThreadSwitchPerformanceSample = {
 
 const THREAD_MESSAGE_CACHE_LIMIT = 16
 const THREAD_PREFETCH_LIMIT = 4
+const THREAD_LIST_CACHE_TTL_MS = 2000
 const THREAD_SWITCH_INITIAL_MESSAGE_LIMIT = 80
 const THREAD_SWITCH_PERFORMANCE_SAMPLE_LIMIT = 60
 const QA_METRIC_SAMPLE_LIMIT = 240
 const threadMessageCache = new Map<string, readonly KhalaCodeDesktopMessage[]>()
 const threadPrefetches = new Map<string, Promise<void>>()
+const threadListCache = new Map<string, {
+  readonly cachedAt: number
+  readonly result: Awaited<ReturnType<DesktopRpcRequests["sessionCatalog"]>>
+}>()
+const threadListRequests = new Map<string, Promise<Awaited<ReturnType<DesktopRpcRequests["sessionCatalog"]>>>>()
 const threadSwitchPerformanceSamples: ThreadSwitchPerformanceSample[] = []
 const pendingThreadSwitches = new Map<number, ThreadSwitchPerformanceSample>()
 const qaMetricSamples: KhalaCodeQaMetricSample[] = []
@@ -3000,6 +3006,51 @@ plansSection = settingsPanelEl === null
       status: () => controls.khalaCodePlanStatus(),
     })
 
+const threadListCacheKey = (
+  request: {
+    readonly limit?: number | undefined
+    readonly searchTerm?: string | undefined
+  },
+): string => JSON.stringify({
+  limit: request.limit ?? null,
+  searchTerm: request.searchTerm?.trim() ?? "",
+})
+
+const clearThreadListCache = (): void => {
+  threadListCache.clear()
+  threadListRequests.clear()
+}
+
+const cachedSessionCatalog = async (
+  request: Parameters<DesktopRpcRequests["sessionCatalog"]>[0],
+): Promise<Awaited<ReturnType<DesktopRpcRequests["sessionCatalog"]>>> => {
+  const key = threadListCacheKey(request ?? {})
+  const cached = threadListCache.get(key)
+  if (cached !== undefined && performance.now() - cached.cachedAt < THREAD_LIST_CACHE_TTL_MS) {
+    return cached.result
+  }
+
+  const inFlight = threadListRequests.get(key)
+  if (inFlight !== undefined) return inFlight
+
+  const promise = controls.sessionCatalog(request).then(result => {
+    threadListCache.set(key, { cachedAt: performance.now(), result })
+    return result
+  }).finally(() => {
+    threadListRequests.delete(key)
+  })
+  threadListRequests.set(key, promise)
+  return promise
+}
+
+const scheduleIdle = (task: () => void): void => {
+  if (typeof requestIdleCallback === "function") {
+    requestIdleCallback(task, { timeout: 450 })
+    return
+  }
+  window.setTimeout(task, 80)
+}
+
 const prefetchRecentThreadMessages = (
   threads: readonly KhalaCodeDesktopCodexThreadSummary[],
 ): void => {
@@ -3017,17 +3068,32 @@ const prefetchRecentThreadMessages = (
   }
 }
 
+const schedulePrefetchRecentThreadMessages = (
+  threads: readonly KhalaCodeDesktopCodexThreadSummary[],
+): void => {
+  scheduleIdle(() => prefetchRecentThreadMessages(threads))
+}
+
 const threadSidebar =
   threadSidebarEl === null
     ? null
     : mountCodexThreadSidebar(threadSidebarEl, {
         activeThreadId: () => activeCodexThreadId,
-        archiveThread: threadId => controls.codexThreadArchive({ threadId }),
-        deleteThread: threadId => controls.codexThreadDelete({ threadId }),
-        forkThread: threadId => controls.codexThreadFork({ sessionId, threadId }),
+        archiveThread: async threadId => {
+          clearThreadListCache()
+          return controls.codexThreadArchive({ threadId })
+        },
+        deleteThread: async threadId => {
+          clearThreadListCache()
+          return controls.codexThreadDelete({ threadId })
+        },
+        forkThread: async threadId => {
+          clearThreadListCache()
+          return controls.codexThreadFork({ sessionId, threadId })
+        },
         isThreadStreaming: threadId => activeCodexThreadId === threadId && pendingTurn,
         listThreads: async request => {
-          const catalog = await controls.sessionCatalog({
+          const catalog = await cachedSessionCatalog({
             limit: 50,
             searchTerm: request.searchTerm,
           })
@@ -3044,13 +3110,19 @@ const threadSidebar =
             ],
             threads,
           }
-          prefetchRecentThreadMessages(result.threads ?? [])
+          schedulePrefetchRecentThreadMessages(result.threads ?? [])
           return result
         },
-        renameThread: (threadId, name) => controls.codexThreadRename({ name, threadId }),
+        renameThread: async (threadId, name) => {
+          clearThreadListCache()
+          return controls.codexThreadRename({ name, threadId })
+        },
         resumeThread: threadId => controls.codexThreadResume({ sessionId, threadId }),
         sessionId,
-        unarchiveThread: threadId => controls.codexThreadUnarchive({ threadId }),
+        unarchiveThread: async threadId => {
+          clearThreadListCache()
+          return controls.codexThreadUnarchive({ threadId })
+        },
         onNewThreadRequested: beginNewCodexThread,
         onThreadSelectionStarted: beginCodexThreadSwitch,
         onThreadSelected: activateCodexThread,

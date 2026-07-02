@@ -259,9 +259,32 @@ export const readKhalaCodeDesktopSessionCatalog = async (
   const entries = new Map<string, KhalaCodeDesktopSessionCatalogEntry>()
   const env = options.env ?? Bun.env
 
-  for (const [desktopSessionRef, stored] of Object.entries(
-    await sessionsRecord(resolveCodexSessionCatalogStorePath(env)),
-  )) {
+  const [
+    codexStoredSessions,
+    claudeStoredSessions,
+    codexThreadList,
+    claudeThreadList,
+  ] = await Promise.all([
+    sessionsRecord(resolveCodexSessionCatalogStorePath(env)),
+    sessionsRecord(resolveClaudeSessionCatalogStorePath(env)),
+    options.codexRuntime === undefined || options.codexRuntime === null
+      ? Promise.resolve(null)
+      : options.codexRuntime.listThreads({
+        limit: options.limit ?? request.limit ?? 100,
+        searchTerm: request.searchTerm,
+        useStateDbOnly: true,
+      }).then(result => ({ ok: true as const, result }))
+        .catch(error => ({ ok: false as const, error })),
+    options.claudeRuntime === undefined
+      ? Promise.resolve(null)
+      : options.claudeRuntime.listThreads({
+        limit: options.limit ?? request.limit ?? 100,
+        searchTerm: request.searchTerm,
+      }).then(result => ({ ok: true as const, result }))
+        .catch(error => ({ ok: false as const, error })),
+  ])
+
+  for (const [desktopSessionRef, stored] of Object.entries(codexStoredSessions)) {
     const entry = entryFromStoredSession(
       storedSessionHarnessKind("codex", stored),
       desktopSessionRef,
@@ -269,9 +292,7 @@ export const readKhalaCodeDesktopSessionCatalog = async (
     )
     if (entry !== null) mergeEntry(entries, entry)
   }
-  for (const [desktopSessionRef, stored] of Object.entries(
-    await sessionsRecord(resolveClaudeSessionCatalogStorePath(env)),
-  )) {
+  for (const [desktopSessionRef, stored] of Object.entries(claudeStoredSessions)) {
     const entry = entryFromStoredSession(
       storedSessionHarnessKind("claude", stored),
       desktopSessionRef,
@@ -280,13 +301,9 @@ export const readKhalaCodeDesktopSessionCatalog = async (
     if (entry !== null) mergeEntry(entries, entry)
   }
 
-  if (options.codexRuntime !== undefined && options.codexRuntime !== null) {
-    try {
-      const result = await options.codexRuntime.listThreads({
-        limit: options.limit ?? request.limit ?? 100,
-        searchTerm: request.searchTerm,
-        useStateDbOnly: true,
-      })
+  if (codexThreadList !== null) {
+    if (codexThreadList.ok) {
+      const result = codexThreadList.result
       for (const value of result.data) {
         if (!isRecord(value)) continue
         const entry = entryFromThread("codex", value, "codex_app_server_thread_list")
@@ -296,17 +313,15 @@ export const readKhalaCodeDesktopSessionCatalog = async (
         const entry = entryFromThread("codex", thread, "codex_app_server_thread_projection")
         if (entry !== null) mergeEntry(entries, entry)
       }
-    } catch (error) {
+    } else {
+      const error = codexThreadList.error
       diagnostics.push(`codex_catalog_unavailable:${error instanceof Error ? error.message : String(error)}`)
     }
   }
 
-  if (options.claudeRuntime !== undefined) {
-    try {
-      const result = await options.claudeRuntime.listThreads({
-        limit: options.limit ?? request.limit ?? 100,
-        searchTerm: request.searchTerm,
-      })
+  if (claudeThreadList !== null) {
+    if (claudeThreadList.ok) {
+      const result = claudeThreadList.result
       for (const value of result.data) {
         if (!isRecord(value)) continue
         const entry = entryFromThread("claude", value, "claude_sdk_list_sessions")
@@ -316,7 +331,8 @@ export const readKhalaCodeDesktopSessionCatalog = async (
         const entry = entryFromThread("claude", thread, "claude_thread_projection")
         if (entry !== null) mergeEntry(entries, entry)
       }
-    } catch (error) {
+    } else {
+      const error = claudeThreadList.error
       diagnostics.push(`claude_catalog_unavailable:${error instanceof Error ? error.message : String(error)}`)
     }
   }
