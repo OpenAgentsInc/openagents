@@ -140,6 +140,93 @@ describe('logged-in sync projection helpers', () => {
     expect(nextRun?.metadata.eventCursor).toBe(3)
   })
 
+  test('rehydrates older snake-case runner event snapshots with tool payloads intact', () => {
+    const response = agentRunResponseFromSyncCollections(
+      {
+        agent_runs: {
+          agent_run_1: {
+            ...runResponse.run,
+          },
+        },
+        agent_run_events: {
+          event_tool_started: {
+            id: 'event_tool_started',
+            run_id: 'agent_run_1',
+            sequence: 3,
+            type: 'runner.event',
+            summary: 'Runner event received.',
+            status: 'running',
+            source: 'opencode',
+            payload_json: JSON.stringify({
+              type: 'message.part.updated',
+              properties: {
+                part: {
+                  id: 'tool-part-1',
+                  type: 'tool',
+                  tool: 'bash',
+                  state: {
+                    input: { command: 'git status --short' },
+                    status: 'running',
+                  },
+                },
+              },
+            }),
+            artifact_refs: ['artifact.public.tool.started'],
+            external_event_id: 'runner-event-tool-started',
+            createdAt: '2026-06-03T00:00:03.000Z',
+          },
+          event_tool_completed: {
+            id: 'event_tool_completed',
+            run_id: 'agent_run_1',
+            sequence: 4,
+            type: 'runner.event',
+            summary: 'Runner event received.',
+            status: 'completed',
+            source: 'opencode',
+            payload_json: JSON.stringify({
+              type: 'message.part.updated',
+              properties: {
+                part: {
+                  id: 'tool-part-1',
+                  type: 'tool',
+                  tool: 'bash',
+                  state: {
+                    output: '## main...origin/main',
+                    status: 'completed',
+                  },
+                },
+              },
+            }),
+            artifact_refs: ['artifact.public.tool.completed'],
+            external_event_id: 'runner-event-tool-completed',
+            createdAt: '2026-06-03T00:00:04.000Z',
+          },
+        },
+      },
+      'agent_run_1',
+    )
+
+    expect(response).toBeDefined()
+    if (response === undefined) {
+      throw new Error('expected sync snapshot to decode')
+    }
+
+    expect(response.events.map(event => event.payloadJson)).toEqual([
+      expect.stringContaining('message.part.updated'),
+      expect.stringContaining('message.part.updated'),
+    ])
+    expect(response.events[0]?.artifactRefs).toEqual([
+      'artifact.public.tool.started',
+    ])
+    expect(response.events[1]?.externalEventId).toBe(
+      'runner-event-tool-completed',
+    )
+    expect(activeChatRunFromResponse(response).events[1]).toMatchObject({
+      payloadJson: expect.any(Object),
+      artifactRefs: ['artifact.public.tool.completed'],
+    })
+  })
+
   test('applies active run sync patches without replacing events', () => {
     const chatRun = activeChatRunFromResponse(runResponse)
     const runPatch = new SyncPatch({

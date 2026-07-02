@@ -42,6 +42,13 @@ const recordFromUnknown = (
 const textFromUnknown = (value: unknown): string | undefined =>
   typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined
 
+const firstTextFromUnknown = (
+  ...values: ReadonlyArray<unknown>
+): string | undefined =>
+  values
+    .map(textFromUnknown)
+    .find((value): value is string => value !== undefined)
+
 const numberFromUnknown = (value: unknown): number => {
   if (typeof value === 'number' && Number.isFinite(value)) {
     return Math.max(0, Math.trunc(value))
@@ -60,6 +67,11 @@ const stringArrayFromUnknown = (value: unknown): ReadonlyArray<string> =>
   Array.isArray(value)
     ? value.filter((item): item is string => typeof item === 'string')
     : []
+
+const stringArrayFromAny = (
+  ...values: ReadonlyArray<unknown>
+): ReadonlyArray<string> =>
+  values.flatMap(value => stringArrayFromUnknown(value))
 
 const agentRunStatusFromUnknown = (
   value: unknown,
@@ -545,7 +557,12 @@ const agentRunEventFromSyncRecord = (
   }
 
   const id = textFromUnknown(record.id)
-  const parentId = textFromUnknown(record.runId)
+  const parentId = firstTextFromUnknown(
+    record.runId,
+    record.run_id,
+    record.parentId,
+    record.parent_id,
+  )
   const type = textFromUnknown(record.type)
   const summary = textFromUnknown(record.summary)
   const source = textFromUnknown(record.source)
@@ -570,9 +587,12 @@ const agentRunEventFromSyncRecord = (
     summary,
     status: textFromUnknown(record.status) ?? null,
     source,
-    payloadJson: textFromUnknown(record.payloadJson) ?? null,
-    artifactRefs: stringArrayFromUnknown(record.artifactRefs),
-    externalEventId: textFromUnknown(record.externalEventId) ?? null,
+    payloadJson:
+      firstTextFromUnknown(record.payloadJson, record.payload_json) ?? null,
+    artifactRefs: stringArrayFromAny(record.artifactRefs, record.artifact_refs),
+    externalEventId:
+      firstTextFromUnknown(record.externalEventId, record.external_event_id) ??
+      null,
     createdAt,
   }
 }
