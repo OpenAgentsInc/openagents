@@ -412,7 +412,7 @@ export const buildKhalaFleetThroughputGauges = (
       : `Exact token rows are not available: ${tokenRate.unavailableReason}`
     return [
       { detail, label: "Tokens/min", state: "not_measured", value: "not measured" },
-      { detail, label: "Run total", state: "not_measured", value: "not measured" },
+      { detail, label: "10-min total", state: "not_measured", value: "not measured" },
       { detail, label: "Projected/day", state: "not_measured", value: "not measured" },
     ]
   }
@@ -426,7 +426,7 @@ export const buildKhalaFleetThroughputGauges = (
     const detail = "Waiting for completed exact token_usage_events rows."
     return [
       { detail, label: "Tokens/min", state: "pending", value: "pending" },
-      { detail, label: "Run total", state: "pending", value: "pending" },
+      { detail, label: "10-min total", state: "pending", value: "pending" },
       { detail, label: "Projected/day", state: "pending", value: "pending" },
     ]
   }
@@ -447,7 +447,7 @@ export const buildKhalaFleetThroughputGauges = (
     },
     {
       detail,
-      label: "Run total",
+      label: "10-min total",
       state: "exact",
       value: formatGaugeNumber(tokensWindow),
     },

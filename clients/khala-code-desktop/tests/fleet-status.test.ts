@@ -202,7 +202,7 @@ describe("Fleet status panel", () => {
       },
       {
         detail: "Exact token_usage_events window, 3 exact row(s).",
-        label: "Run total",
+        label: "10-min total",
         state: "exact",
         value: "2,500",
       },
@@ -228,7 +228,7 @@ describe("Fleet status panel", () => {
       unavailableReason: null,
     }).map(gauge => `${gauge.label}:${gauge.state}:${gauge.value}`)).toEqual([
       "Tokens/min:pending:pending",
-      "Run total:pending:pending",
+      "10-min total:pending:pending",
       "Projected/day:pending:pending",
     ])
 
@@ -244,7 +244,7 @@ describe("Fleet status panel", () => {
       unavailableReason: "missing OPENAGENTS_AGENT_TOKEN",
     }).map(gauge => `${gauge.label}:${gauge.state}:${gauge.value}`)).toEqual([
       "Tokens/min:not_measured:not measured",
-      "Run total:not_measured:not measured",
+      "10-min total:not_measured:not measured",
       "Projected/day:not_measured:not measured",
     ])
   })

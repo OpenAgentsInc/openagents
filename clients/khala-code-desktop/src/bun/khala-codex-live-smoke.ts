@@ -28,7 +28,7 @@ export type TwoCodexReadOnlySmokeOptions = Pick<
   KhalaCodexFleetToolOptions,
   "delegationParameters" | "env" | "runner" | "sleep"
 > & {
-  readonly fetch?: typeof fetch | undefined
+  readonly fetch?: ((input: string | URL, init?: RequestInit) => Promise<Response>) | undefined
   readonly onProgress?: KhalaCodexFleetToolOptions["onProgress"] | undefined
   readonly prompt?: string | undefined
   readonly reconcilePublicCounter?: boolean | undefined
@@ -100,7 +100,7 @@ export async function runTwoCodexReadOnlySmoke(
     : null
   const shouldReconcilePublicCounter =
     options.reconcilePublicCounter === true ||
-    env.KHALA_CODE_DESKTOP_LIVE_PUBLIC_COUNTER_RECONCILIATION === "1"
+    (env as Record<string, string | undefined>)["KHALA_CODE_DESKTOP_LIVE_PUBLIC_COUNTER_RECONCILIATION"] === "1"
   const counterUrl = publicKhalaTokensServedUrl(env)
   const beforeCounter = shouldReconcilePublicCounter
     ? await fetchPublicKhalaTokensServed(counterUrl, options.fetch)
@@ -226,7 +226,7 @@ function publicKhalaTokensServedUrl(env: Record<string, string | undefined>): st
 
 async function fetchPublicKhalaTokensServed(
   url: string,
-  fetchImpl: typeof fetch = fetch,
+  fetchImpl: (input: string | URL, init?: RequestInit) => Promise<Response> = fetch,
 ): Promise<number | Error> {
   try {
     const response = await fetchImpl(url, { headers: { accept: "application/json" } })
