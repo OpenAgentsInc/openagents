@@ -83,6 +83,9 @@ run can distinguish "budget passed" from "workload did not collect evidence".
 Rows with `status: "offender"` are copied into `offenders` in descending
 p95/threshold ratio order.
 
+The Q2.6 burn-down record for fixed offenders and benchmark evidence lives in
+[`khala-code-lag-offender-burndown.md`](./khala-code-lag-offender-burndown.md).
+
 ## Verification
 
 Focused checks:

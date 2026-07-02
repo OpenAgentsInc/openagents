@@ -22,6 +22,7 @@ export type ThreadSwitchBenchmarkOptions = Readonly<{
 export type ThreadSwitchBenchmarkClickResult = Readonly<{
   cacheHit: boolean
   clickToFullRenderMs: number
+  clickToHydratedRenderMs: number | null
   clickToOptimisticRenderMs: number
   fullMessageCount: number
   optimisticMessageCount: number
@@ -110,6 +111,34 @@ const threadSummary = (
   badges: [],
 })
 
+const sessionCatalogEntry = (
+  fixture: ThreadFixture,
+): Record<string, unknown> => ({
+  catalogEntryId: `benchmark:${fixture.id}`,
+  createdAt: fixture.recencyAt - 60_000,
+  cwd: khalaCodeDesktopRoot(),
+  desktopSessionRef: fixture.id,
+  harnessKind: "codex",
+  lastTurnRef: null,
+  preview: `${fixture.name} preview`,
+  projectLabel: "khala-code-desktop",
+  recencyAt: fixture.recencyAt,
+  sessionRef: fixture.id,
+  source: "appServer",
+  status: "idle",
+  statusLabel: "idle",
+  threadRef: fixture.id,
+  title: fixture.name,
+  updatedAt: fixture.recencyAt,
+})
+
+export const buildThreadSwitchBenchmarkSessionCatalog = (): Record<string, unknown> => ({
+  diagnostics: [],
+  entries: threadFixtures().map(sessionCatalogEntry),
+  ok: true,
+  schemaVersion: "khala-code-desktop.session-catalog.v1",
+})
+
 const messagesForThread = (
   threadId: string,
 ): readonly Record<string, string>[] =>
@@ -196,6 +225,12 @@ async function installBenchmarkRpcMocks(
           }),
         })
         return
+      case "sessionCatalog":
+        await route.fulfill({
+          contentType: "application/json",
+          body: JSON.stringify(buildThreadSwitchBenchmarkSessionCatalog()),
+        })
+        return
       case "codexThreadRead": {
         const request = args[0] as { threadId?: string } | undefined
         const threadId = request?.threadId ?? "thread-a"
@@ -267,6 +302,7 @@ async function clickThreadAndMeasure(
       const latest = api?.threadSwitchPerformance?.().latest as
         | {
             fullRenderMs?: number
+            hydratedRenderMs?: number
             optimisticRenderMs?: number
             threadId?: string
           }
@@ -283,6 +319,22 @@ async function clickThreadAndMeasure(
   await page.locator("#message-list")
     .getByText(`${threadId} benchmark message 119`)
     .waitFor({ timeout: 5_000 })
+  await page.waitForFunction(
+    id => {
+      const api = (globalThis as typeof globalThis & {
+        khalaCodeDesktop?: { threadSwitchPerformance?: () => { latest: unknown } }
+      }).khalaCodeDesktop
+      const latest = api?.threadSwitchPerformance?.().latest as
+        | {
+            hydratedRenderMs?: number
+            threadId?: string
+          }
+        | null
+        | undefined
+      return latest?.threadId === id && typeof latest.hydratedRenderMs === "number"
+    },
+    threadId,
+  )
   const endedAt = await page.evaluate(() => performance.now())
   const latest = await page.evaluate(() => {
     const api = (globalThis as typeof globalThis & {
@@ -292,6 +344,7 @@ async function clickThreadAndMeasure(
             cacheHit: boolean
             fullMessageCount?: number
             fullRenderMs?: number
+            hydratedRenderMs?: number
             optimisticMessageCount: number
             optimisticRenderMs?: number
             threadId: string
@@ -307,6 +360,9 @@ async function clickThreadAndMeasure(
   return {
     cacheHit: latest.cacheHit,
     clickToFullRenderMs: Number((latest.fullRenderMs ?? 0).toFixed(1)),
+    clickToHydratedRenderMs: latest.hydratedRenderMs === undefined
+      ? null
+      : Number(latest.hydratedRenderMs.toFixed(1)),
     clickToOptimisticRenderMs: Number((latest.optimisticRenderMs ?? 0).toFixed(1)),
     fullMessageCount: latest.fullMessageCount ?? 0,
     optimisticMessageCount: latest.optimisticMessageCount,

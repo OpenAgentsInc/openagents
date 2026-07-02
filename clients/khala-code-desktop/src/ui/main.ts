@@ -712,6 +712,7 @@ const THREAD_MESSAGE_CACHE_LIMIT = 16
 const THREAD_PREFETCH_LIMIT = 4
 const THREAD_LIST_CACHE_TTL_MS = 2000
 const THREAD_SWITCH_INITIAL_MESSAGE_LIMIT = 80
+const THREAD_SWITCH_FULL_HYDRATION_TIMEOUT_MS = 80
 const THREAD_SWITCH_PERFORMANCE_SAMPLE_LIMIT = 60
 const QA_METRIC_SAMPLE_LIMIT = 240
 const threadMessageCache = new Map<string, readonly KhalaCodeDesktopMessage[]>()
@@ -917,11 +918,17 @@ const scheduleFullThreadHydration = (
       markThreadSwitchPaint(input.selectionId, "hydratedRenderMs")
     }
   }
-  if (typeof requestIdleCallback === "function") {
-    requestIdleCallback(hydrate, { timeout: 700 })
-  } else {
-    window.setTimeout(hydrate, 80)
+  let hydrated = false
+  const hydrateOnce = (): void => {
+    if (hydrated) return
+    hydrated = true
+    hydrate()
   }
+  const deadline = window.setTimeout(hydrateOnce, THREAD_SWITCH_FULL_HYDRATION_TIMEOUT_MS)
+  requestAnimationFrame(() => {
+    window.clearTimeout(deadline)
+    hydrateOnce()
+  })
 }
 
 const mainShellStore = {
@@ -2989,9 +2996,12 @@ const beginCodexThreadSwitch = (input: {
 }): void => {
   cacheVisibleThreadMessages()
   const cached = cachedThreadMessages(input.threadId)
+  const optimisticMessages = cached === null
+    ? null
+    : recentMessagesForInitialThreadRender(cached)
   setActiveCodexThreadId(input.threadId)
-  if (cached !== null) {
-    setShellMessages(cached)
+  if (optimisticMessages !== null) {
+    setShellMessages(optimisticMessages)
   }
   activeTurnIds.clear()
   shellModel().pendingTurn = false
@@ -3000,7 +3010,7 @@ const beginCodexThreadSwitch = (input: {
   render()
   beginThreadSwitchPerformanceSample({
     cacheHit: cached !== null,
-    optimisticMessageCount: cached?.length ?? 0,
+    optimisticMessageCount: optimisticMessages?.length ?? 0,
     selectionId: input.selectionId,
     source: input.source,
     threadId: input.threadId,
