@@ -64,7 +64,8 @@
     "smoke:codex-agent-task": "bun scripts/codex-agent-task-smoke.ts",
     "build:apple-fm-bridge": "bash swift/foundation-bridge/build.sh",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "bun test --max-concurrency=1",
+    "test": "bun run check:supervisor-store && bun test --max-concurrency=1",
+    "check:supervisor-store": "bun scripts/check-supervisor-store-bypass.mjs",
     "release:gate": "bash scripts/release-gate.sh",
     "build:rc-binaries": "bash scripts/build-rc-binaries.sh"
   },
