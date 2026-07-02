@@ -98,7 +98,9 @@ type OptimizationRunView =
 
 type FleetRunPreviewSlot = Readonly<{
   accountRef: string
-  claimRef: string
+  // Projected wave label only — real claim refs are minted by the
+  // supervisor at claim time and look nothing like this.
+  plannedClaimLabel: string
   slot: number
   workerKind: FleetRunFormState["workerKind"]
 }>
@@ -582,7 +584,7 @@ const renderFleetRunResult = (
       const row = el("article", "khala-fleet-run-preview-slot")
       row.append(
         detailChip(`slot ${slot.slot}`, slot.accountRef),
-        detailChip("claim", slot.claimRef),
+        detailChip("planned", slot.plannedClaimLabel),
         detailChip("worker", slot.workerKind),
       )
       list.append(row)
@@ -1182,12 +1184,12 @@ export const mountFleetPanel = (
     const slots: FleetRunPreviewSlot[] = []
     for (const account of accounts) {
       const available = account.capacity?.available ?? 1
-      const slotCount = Math.max(0, available === null ? 1 : available)
+      const slotCount = Math.max(0, available)
       for (let index = 0; index < slotCount && slots.length < targetConcurrency; index += 1) {
         const slot = slots.length + 1
         slots.push({
           accountRef: account.accountRef,
-          claimRef: `claim.${fleetRunForm.workSource}.${String(slot).padStart(2, "0")}`,
+          plannedClaimLabel: `planned claim #${slot} (${fleetRunForm.workSource})`,
           slot,
           workerKind: fleetRunForm.workerKind,
         })
@@ -1211,7 +1213,6 @@ export const mountFleetPanel = (
     return {
       objective,
       targetConcurrency,
-      tickImmediately: false,
       workerKind: "codex",
       workSource: {
         kind: fleetRunForm.workSource,

@@ -171,9 +171,9 @@ describe("Fleet status panel", () => {
     previewButton!.click()
 
     expect(root.textContent).toContain("Planned first wave before starting.")
-    expect(root.textContent).toContain("claim.fixture.01")
-    expect(root.textContent).toContain("claim.fixture.02")
-    expect(root.textContent).toContain("claim.fixture.03")
+    expect(root.textContent).toContain("planned claim #1 (fixture)")
+    expect(root.textContent).toContain("planned claim #2 (fixture)")
+    expect(root.textContent).toContain("planned claim #3 (fixture)")
     expect(root.textContent).toContain("codex-a")
     expect(root.textContent).toContain("codex-b")
 
@@ -185,8 +185,7 @@ describe("Fleet status panel", () => {
       {
         objective: "Burn down public fixture tasks.",
         targetConcurrency: 3,
-        tickImmediately: false,
-        workerKind: "codex",
+                workerKind: "codex",
         workSource: { kind: "fixture" },
       },
     ])

@@ -160,7 +160,7 @@ Build:
    (pause/resume/drain/stop) so the single casual message works in default
    Codex mode. Keep approval mode `prompt`. `codex_spawn` stays as the
    bounded one-shot; the new verbs own sustained mode.
-4. **Fleet panel entry**: **Done in PR "T3.3: Start fleet run form"**. The
+4. **Fleet panel entry**: The
    Fleet panel renders a "Start fleet run" form beside the existing delegate
    runner: objective, work source, target concurrency, worker kind
    (`codex | claude | auto` accepted in the UI; `codex` wired to
