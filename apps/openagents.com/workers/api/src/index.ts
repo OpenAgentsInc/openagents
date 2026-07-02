@@ -9061,6 +9061,13 @@ const operatorProStatusRoutes = makeOperatorProStatusRoutes({
     )
     return session === undefined ? undefined : { userId: session.user.id }
   },
+  isOpenAgentsAdminEmail,
+  listLinkedAgentsForOpenAuthUser: (openauthUserId, limit, env) => {
+    const agentStore = makeD1AgentRegistrationStore(openAgentsDatabase(env))
+    return agentStore.listLinkedAgentsForOpenAuthUser === undefined
+      ? Promise.resolve([])
+      : agentStore.listLinkedAgentsForOpenAuthUser(openauthUserId, limit)
+  },
   requireAdminApiToken,
   requireBrowserSession,
 })

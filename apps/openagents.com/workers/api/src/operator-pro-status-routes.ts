@@ -47,6 +47,11 @@ type OperatorProStatusDependencies<
   ) => Promise<{ userId: string } | undefined>
   currentIsoTimestamp?: () => string
   isOpenAgentsAdminEmail?: (email: string) => boolean
+  listLinkedAgentsForOpenAuthUser?: (
+    openauthUserId: string,
+    limit: number,
+    env: Bindings,
+  ) => Promise<ReadonlyArray<{ agentUserId: string; openauthUserId?: string | null }>>
   requireAdminApiToken?: (request: Request, env: Bindings) => Promise<boolean>
   requireBrowserSession?: (
     request: Request,
@@ -124,7 +129,7 @@ type PylonOwnerRow = Readonly<{
 
 type ReadScope<Session extends OperatorProSession> =
   | Readonly<{ kind: 'admin' }>
-  | Readonly<{ kind: 'browser'; session: Session }>
+  | Readonly<{ kind: 'browser'; ownerAgentUserIds: ReadonlyArray<string>; session: Session }>
   | Readonly<{ kind: 'agent'; userId: string }>
 
 const unsafeProjectionValue =
@@ -175,6 +180,30 @@ const validatePublicSafeEvent = (event: AgentRunnerStatusEvent): string | null =
 
   const unsafeText = textFields.find(value => !isSafeText(value))
   return unsafeText === undefined ? null : 'unsafe public projection text'
+}
+
+const isoTimestampPattern =
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/
+
+const isIsoTimestamp = (value: string): boolean => {
+  if (!isoTimestampPattern.test(value)) {
+    return false
+  }
+  const parsed = Date.parse(value)
+  return Number.isFinite(parsed) && new Date(parsed).toISOString() === value
+}
+
+const validateIsoTimestamps = (event: AgentRunnerStatusEvent): string | null => {
+  const fields: ReadonlyArray<readonly [string, string]> = [
+    ['stateStartedAt', event.stateStartedAt],
+    ['updatedAt', event.updatedAt],
+    ...(event.stateHistory ?? []).map((entry, index): readonly [string, string] => [
+      `stateHistory[${index}].stateStartedAt`,
+      entry.stateStartedAt,
+    ]),
+  ]
+  const invalid = fields.find(([, value]) => !isIsoTimestamp(value))
+  return invalid === undefined ? null : `invalid ISO timestamp: ${invalid[0]}`
 }
 
 const proStateFromRunnerState = (state: string): ProAgentState =>
@@ -286,8 +315,18 @@ const listRows = async (
   scope: ReadScope<OperatorProSession>,
   retentionState: 'live' | 'retained',
 ): Promise<ReadonlyArray<StatusRow>> => {
-  const ownerClause = scope.kind === 'admin' ? '' : 'AND owner_agent_user_id = ?'
-  const bindings = scope.kind === 'admin' ? [] : [scope.kind === 'agent' ? scope.userId : scope.session.user.userId]
+  if (scope.kind === 'browser' && scope.ownerAgentUserIds.length === 0) {
+    return []
+  }
+  const ownerAgentUserIds =
+    scope.kind === 'admin'
+      ? []
+      : scope.kind === 'agent'
+        ? [scope.userId]
+        : scope.ownerAgentUserIds
+  const ownerClause = scope.kind === 'admin'
+    ? ''
+    : `AND owner_agent_user_id IN (${ownerAgentUserIds.map(() => '?').join(', ')})`
   return readRows<StatusRow>(
     db,
     `SELECT event_ref, owner_agent_user_id, runner_ref, runner_kind, pylon_ref,
@@ -300,8 +339,38 @@ const listRows = async (
       ORDER BY updated_at DESC
       LIMIT 100`,
     retentionState,
-    ...bindings,
+    ...ownerAgentUserIds,
   )
+}
+
+const resolveBrowserOwnerAgentUserIds = async <
+  Session extends OperatorProSession,
+  Bindings extends OperatorProStatusEnv,
+>(
+  dependencies: OperatorProStatusDependencies<Session, Bindings>,
+  env: Bindings,
+  session: Session,
+): Promise<ReadonlyArray<string>> => {
+  const linkedAgents = await dependencies.listLinkedAgentsForOpenAuthUser?.(
+    session.user.userId,
+    100,
+    env,
+  )
+  if (linkedAgents === undefined) {
+    return []
+  }
+  return [
+    ...new Set(
+      linkedAgents
+        .filter(agent =>
+          agent.openauthUserId === undefined ||
+          agent.openauthUserId === null ||
+          agent.openauthUserId === session.user.userId,
+        )
+        .map(agent => agent.agentUserId)
+        .filter(agentUserId => agentUserId.trim() !== ''),
+    ),
+  ]
 }
 
 const buildSnapshot = async (
@@ -352,7 +421,11 @@ const authorizeRead = async <
     return forbidden()
   }
 
-  return { kind: 'browser', session }
+  return {
+    kind: 'browser',
+    ownerAgentUserIds: await resolveBrowserOwnerAgentUserIds(dependencies, env, session),
+    session,
+  }
 }
 
 const ownerForPylon = async (
@@ -415,7 +488,8 @@ const ingestEvent = async (
        updated_at = excluded.updated_at,
        retention_state = excluded.retention_state,
        event_json = excluded.event_json,
-       retained_at = excluded.retained_at`,
+       retained_at = excluded.retained_at
+     WHERE owner_agent_user_id = ?`,
     event.eventRef,
     ownerUserId,
     event.runnerRef,
@@ -435,6 +509,7 @@ const ingestEvent = async (
     }),
     nowIso,
     retentionState === 'retained' ? event.updatedAt : null,
+    ownerUserId,
   )
 }
 
@@ -495,6 +570,14 @@ export const makeOperatorProStatusRoutes = <
     if (safetyError !== null) {
       return jsonResponse(
         { error: 'unsafe_agent_runner_status_projection', message: safetyError },
+        { status: 400 },
+      )
+    }
+
+    const timestampError = validateIsoTimestamps(event)
+    if (timestampError !== null) {
+      return jsonResponse(
+        { error: 'invalid_agent_runner_status_event', message: timestampError },
         { status: 400 },
       )
     }

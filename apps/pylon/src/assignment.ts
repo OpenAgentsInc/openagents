@@ -13,6 +13,7 @@ import {
   encodePylonAssignmentRunLifecycleEvent,
   type PylonAssignmentRunLifecycleEvent,
 } from "@openagentsinc/agent-runtime-schema"
+import { encodeAgentRunnerStatusEventForAssignmentLifecycleEvent } from "./orchestration/status-control.js"
 import type { BootstrapSummary } from "./bootstrap.js"
 import {
   loadClaudeAgentConfig,
@@ -276,6 +277,7 @@ type PublicPylonAssignmentProjection = Readonly<{
 }>
 
 const DEFAULT_ASSIGNMENT_REQUEST_TIMEOUT_MS = 30_000
+const OPERATOR_PRO_STATUS_PATH = "/api/operator/pro/status"
 
 function stableRef(prefix: string, value: string) {
   return `${prefix}.${createHash("sha256").update(value).digest("hex").slice(0, 24)}`
@@ -1167,6 +1169,43 @@ async function postJson(
   return json
 }
 
+export async function postAssignmentRunnerStatusEvent(input: {
+  agentToken?: string
+  baseUrl: string
+  event: AssignmentRunLifecycleEvent
+  fetch?: typeof fetch
+  pylonRef: string
+  requestTimeoutMs?: number
+  runnerKind?: string
+}): Promise<boolean> {
+  if (input.agentToken === undefined || input.agentToken.trim() === "") {
+    return false
+  }
+  const body = encodeAgentRunnerStatusEventForAssignmentLifecycleEvent({
+    event: input.event,
+    pylonRef: input.pylonRef,
+    ...(input.runnerKind === undefined ? {} : { runnerKind: input.runnerKind }),
+  })
+  assertPublicProjectionSafe(body)
+  const fetchImpl = input.fetch ?? fetch
+  const response = await fetchImpl(
+    new URL(OPERATOR_PRO_STATUS_PATH, input.baseUrl).toString(),
+    {
+      body: JSON.stringify(body),
+      headers: {
+        authorization: `Bearer ${input.agentToken}`,
+        "content-type": "application/json",
+      },
+      method: "POST",
+      signal: assignmentRequestSignal({
+        baseUrl: input.baseUrl,
+        ...(input.requestTimeoutMs === undefined ? {} : { requestTimeoutMs: input.requestTimeoutMs }),
+      }),
+    },
+  )
+  return response.ok
+}
+
 async function getJson(options: AssignmentClientOptions, path: string, state: PylonLocalState) {
   const fetchImpl = options.fetch ?? fetch
   const url = new URL(path, options.baseUrl).toString()
@@ -1655,10 +1694,26 @@ export async function runNoSpendAssignment(summary: BootstrapSummary, options: A
   let lastProgressEvent: AssignmentRunLifecycleEvent["event"] | undefined
   let latestRuntimeTokensSoFar: number | undefined
   let latestRuntimeTokenCountKind: "exact" | "estimated" | undefined
+  let localPylonRef: string | undefined
+  const publishRunnerStatusEvent = async (event: AssignmentRunLifecycleEvent) => {
+    if (localPylonRef === undefined) return
+    try {
+      await postAssignmentRunnerStatusEvent({
+        ...(options.agentToken === undefined ? {} : { agentToken: options.agentToken }),
+        baseUrl: options.baseUrl,
+        event,
+        ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
+        pylonRef: localPylonRef,
+        ...(options.requestTimeoutMs === undefined ? {} : { requestTimeoutMs: options.requestTimeoutMs }),
+      })
+    } catch {
+      // Status spine publication is operator observability. Assignment
+      // execution and closeout remain source-of-truth if the route is down.
+    }
+  }
   const emitLifecycleEvent = async (
     event: Omit<AssignmentRunLifecycleEvent, "schema" | "observedAt">,
   ) => {
-    if (options.onLifecycleEvent === undefined) return
     try {
       const lifecycleEvent: AssignmentRunLifecycleEvent = {
         schema: "openagents.pylon.assignment_run_lifecycle_event.v0.1",
@@ -1667,7 +1722,10 @@ export async function runNoSpendAssignment(summary: BootstrapSummary, options: A
       }
       const encodedLifecycleEvent = encodePylonAssignmentRunLifecycleEvent(lifecycleEvent)
       assertPublicProjectionSafe(encodedLifecycleEvent)
-      await options.onLifecycleEvent(encodedLifecycleEvent)
+      await publishRunnerStatusEvent(encodedLifecycleEvent)
+      if (options.onLifecycleEvent !== undefined) {
+        await options.onLifecycleEvent(encodedLifecycleEvent)
+      }
       if (event.event !== "assignment_run.runtime_progress") {
         lastProgressEvent = event.event
       }
@@ -1741,12 +1799,20 @@ export async function runNoSpendAssignment(summary: BootstrapSummary, options: A
     })
   }
   const state = await ensurePylonLocalState(summary)
+  localPylonRef = state.identity.pylonRef
   const observedAtDate = options.now?.() ?? new Date()
   await closeoutInterruptedNoSpendLeases(summary, state, options, observedAtDate)
   const store = await loadPrunedAssignmentStore(state, observedAtDate, options)
   let presenceRefreshError: unknown
   try {
     await heartbeatRefresh()
+    await publishRunnerStatusEvent({
+      schema: "openagents.pylon.assignment_run_lifecycle_event.v0.1",
+      event: "assignment_run.poll_complete",
+      observedAt: (options.now?.() ?? new Date()).toISOString(),
+      leaseCount: 0,
+      candidateCount: 0,
+    })
   } catch (error) {
     presenceRefreshError = error
   }
