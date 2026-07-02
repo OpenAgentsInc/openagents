@@ -719,7 +719,7 @@ describe("khala code desktop app shell", () => {
     expect(fleetPanel).toContain("isDisplayOnlyDefaultAccountRef")
     expect(fleetPanel).toContain("accountCapacityLabel")
     expect(fleetPanel).toContain("fleetTokenRateLabel")
-    expect(fleetPanel).toContain("assignmentTokenRateLabel")
+    expect(fleetPanel).toContain("buildKhalaFleetWorkerCards")
     expect(fleetPanel).toContain("renderDelegateRunner")
     expect(fleetPanel).toContain("renderOptimizationRunner")
     expect(fleetPanel).toContain("defaultKhalaFleetDelegationActiveParameters")
@@ -758,6 +758,7 @@ describe("khala code desktop app shell", () => {
     expect(css).toContain(".khala-fleet-parameter-readout")
     expect(main).toContain("loadGymDemoOptimization")
     expect(main).toContain("startDelegationOptimization")
+    expect(main).toContain("lifecycleNdjson: fleetLifecycleLines.iterable")
     expect(`${rpc}\n${handlers}\n${fleetPanel}\n${main}`).toContain("codexFleetDelegateRun")
     expect(`${rpc}\n${handlers}\n${fleetPanel}\n${main}`).not.toMatch(
       /raw[_-]?(prompt|trace).*Projected:\s*true|localPathsProjected:\s*true|providerPayloadProjected:\s*true/i,

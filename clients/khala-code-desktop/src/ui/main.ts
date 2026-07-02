@@ -49,6 +49,7 @@ import {
   type KhalaCodeDesktopRpcMethodName,
   type KhalaCodeDesktopChatTurnAttachment,
   type KhalaCodeDesktopChatTurnEvent,
+  type KhalaCodeDesktopFleetLifecycleEvent,
   type KhalaCodeDesktopChatTurnRequest,
   type KhalaCodeDesktopMessage,
   type KhalaCodeDesktopMessageRole,
@@ -188,6 +189,10 @@ const previewRpc = (): DesktopRpc => ({
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["fleetRunStatus"]>>
       >("fleetRunStatus", request),
+    fleetWorkerControl: request =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["fleetWorkerControl"]>>
+      >("fleetWorkerControl", request),
     codexHarnessStatus: () =>
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["codexHarnessStatus"]>>
@@ -403,8 +408,63 @@ const previewRpc = (): DesktopRpc => ({
   },
   send: {
     chatTurnEvent: () => undefined,
+    fleetLifecycleEvent: () => undefined,
   },
 })
+
+const createAsyncLineQueue = (): {
+  readonly iterable: () => AsyncIterable<string>
+  readonly push: (line: string) => void
+} => {
+  const values: string[] = []
+  const waiters: Array<(value: IteratorResult<string>) => void> = []
+  const push = (line: string): void => {
+    const waiter = waiters.shift()
+    if (waiter === undefined) {
+      values.push(line)
+      return
+    }
+    waiter({ done: false, value: line })
+  }
+  return {
+    iterable: async function* () {
+      while (true) {
+        if (values.length > 0) {
+          yield values.shift()!
+          continue
+        }
+        yield await new Promise<string>(resolve => {
+          waiters.push(result => {
+            if (!result.done) resolve(result.value)
+          })
+        })
+      }
+    },
+    push,
+  }
+}
+
+const fleetLifecycleLines = createAsyncLineQueue()
+const applyFleetLifecycleEvent = (event: KhalaCodeDesktopFleetLifecycleEvent): void => {
+  fleetLifecycleLines.push(event.line)
+}
+
+const startPreviewFleetLifecycleEvents = (): void => {
+  if (!isKhalaPreviewWindow) return
+  const eventSource = new EventSource("/rpc/events")
+  eventSource.addEventListener("fleetLifecycleEvent", event => {
+    try {
+      const payload = JSON.parse((event as MessageEvent<string>).data) as {
+        readonly detail?: { readonly line?: unknown }
+      }
+      if (typeof payload.detail?.line === "string") {
+        fleetLifecycleLines.push(payload.detail.line)
+      }
+    } catch {
+      // Ignore malformed preview diagnostics; lifecycle decoding is lossy-safe.
+    }
+  })
+}
 
 const nativeRpc = Electroview.defineRPC<KhalaCodeDesktopRPCSchema>({
   maxRequestTime: KHALA_CODE_DESKTOP_RPC_MAX_REQUEST_TIME_MS,
@@ -413,6 +473,9 @@ const nativeRpc = Electroview.defineRPC<KhalaCodeDesktopRPCSchema>({
     messages: {
       chatTurnEvent(event) {
         applyChatTurnEvent(event)
+      },
+      fleetLifecycleEvent(event) {
+        applyFleetLifecycleEvent(event)
       },
     },
   },
@@ -429,6 +492,7 @@ const isKhalaPreviewWindow =
 // Electrobun internal ports also run on localhost, but they only accept socket
 // RPC and will log noisy fallthroughs for /rpc/* requests.
 const rpc = isKhalaPreviewWindow ? previewRpc() : nativeRpc
+startPreviewFleetLifecycleEvents()
 if (!isKhalaPreviewWindow) {
   new Electroview({ rpc: nativeRpc })
 }
@@ -2260,6 +2324,8 @@ const controls = {
     rpc.request.fleetRunList(request),
   fleetRunStart: (request: Parameters<DesktopRpcRequests["fleetRunStart"]>[0]) =>
     rpc.request.fleetRunStart(request),
+  fleetWorkerControl: (request: Parameters<DesktopRpcRequests["fleetWorkerControl"]>[0]) =>
+    rpc.request.fleetWorkerControl(request),
   codexHarnessStatus: () => rpc.request.codexHarnessStatus(),
   codexApprovalRespond: (request: Parameters<DesktopRpcRequests["codexApprovalRespond"]>[0]) =>
     rpc.request.codexApprovalRespond(request),
@@ -2539,6 +2605,8 @@ const fleetPanel =
         fleetRunControl: request => controls.fleetRunControl(request),
         fleetRunList: request => controls.fleetRunList(request),
         fleetRunStart: request => controls.fleetRunStart(request),
+        fleetWorkerControl: request => controls.fleetWorkerControl(request),
+        lifecycleNdjson: fleetLifecycleLines.iterable,
         loadGymDemoProof: () => loadGymDemoOptimization(),
         startDelegationOptimization: async () => loadGymDemoOptimization(),
         fetch: () => controls.codexFleetStatus(),

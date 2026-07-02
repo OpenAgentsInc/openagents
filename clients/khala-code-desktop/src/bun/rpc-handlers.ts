@@ -73,6 +73,8 @@ import {
   type KhalaCodeDesktopFleetRunStatusResult,
   type KhalaCodeDesktopFleetSessionRole,
   type KhalaCodeDesktopFleetWorkerSession,
+  type KhalaCodeDesktopFleetWorkerControlRequest,
+  type KhalaCodeDesktopFleetWorkerControlResult,
   type KhalaCodeDesktopFleetStatus,
   type KhalaCodeDesktopRPCSchema,
   type KhalaCodeDesktopRuntimeStatus,
@@ -155,6 +157,9 @@ export type KhalaCodeDesktopFleetRunSupervisorRpc = {
     readonly run: KhalaCodeDesktopFleetRunProjection | null
     readonly supervisorActive: boolean
   }>
+  readonly workerControl?: (
+    request: KhalaCodeDesktopFleetWorkerControlRequest,
+  ) => MaybePromise<KhalaCodeDesktopFleetWorkerControlResult>
 }
 
 export type KhalaCodeDesktopRpcHandlersInput = {
@@ -1921,6 +1926,17 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
         ok: true,
         runs: [...runs],
       }
+    },
+    async fleetWorkerControl(request): Promise<KhalaCodeDesktopFleetWorkerControlResult> {
+      requireNonEmpty("fleetWorkerControl", "workerRefHash", request.workerRefHash)
+      if (request.verb !== "flag") {
+        requireNonEmpty("fleetWorkerControl", "assignmentRef", request.assignmentRef ?? "")
+      }
+      const supervisor = requireFleetRunSupervisor()
+      if (supervisor.workerControl === undefined) {
+        throw new Error("fleetWorkerControl requires fleet-run supervisor worker control")
+      }
+      return supervisor.workerControl(request)
     },
     async codexHarnessStatus() {
       return codexHarnessStatus()

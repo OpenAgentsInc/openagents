@@ -39,6 +39,7 @@ export const mutatingPreviewRpcMethods = new Set<KhalaCodeDesktopRpcMethodName>(
   "consumeCodexRateLimitResetCredit",
   "fleetRunControl",
   "fleetRunStart",
+  "fleetWorkerControl",
   "openExternalUrl",
   "removeCodexAccount",
   "setCodexAccountPaused",

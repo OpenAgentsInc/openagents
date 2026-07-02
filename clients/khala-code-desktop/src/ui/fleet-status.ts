@@ -13,9 +13,18 @@ import type {
   KhalaCodeDesktopFleetRunStartRequest,
   KhalaCodeDesktopFleetRunStartResult,
   KhalaCodeDesktopFleetStatus,
+  KhalaCodeDesktopFleetWorkerControlRequest,
+  KhalaCodeDesktopFleetWorkerControlResult,
 } from "../shared/rpc"
 import { buildKhalaFleetBoardProjection } from "./fleet-board-projection"
 import { renderKhalaFleetBoardHtml } from "./fleet-board-renderer"
+import {
+  buildKhalaFleetWorkerCards,
+  consumeKhalaFleetWorkerLifecycleNdjson,
+  createKhalaFleetWorkerCardThrottler,
+  type KhalaFleetWorkerLifecycleFrame,
+  type KhalaFleetWorkerCard,
+} from "./fleet-worker-cards"
 import {
   defaultKhalaFleetDelegationActiveParameters,
   type KhalaGymDelegationOptimizationRun,
@@ -41,6 +50,9 @@ export type FleetPanelOptions = Readonly<{
   fleetRunControl: (
     request: KhalaCodeDesktopFleetRunControlRequest,
   ) => Promise<KhalaCodeDesktopFleetRunControlResult>
+  fleetWorkerControl: (
+    request: KhalaCodeDesktopFleetWorkerControlRequest,
+  ) => Promise<KhalaCodeDesktopFleetWorkerControlResult>
   fleetRunList: (
     request?: KhalaCodeDesktopFleetRunListRequest,
   ) => Promise<KhalaCodeDesktopFleetRunListResult>
@@ -60,6 +72,8 @@ export type FleetPanelOptions = Readonly<{
   ) => Promise<{ readonly ok: boolean; readonly error?: string }>
   connectAccount: (accountRef: string) => Promise<KhalaCodeDesktopConnectStart>
   openExternal: (url: string) => Promise<boolean>
+  lifecycleNdjson?: () => AsyncIterable<string | Uint8Array>
+  lifecycleUpdateThrottleMs?: number
 }>
 
 type Handlers = Readonly<{
@@ -67,6 +81,10 @@ type Handlers = Readonly<{
   onDelegateRun: () => void
   onFleetRunField: (field: keyof FleetRunFormState, value: string) => void
   onFleetRunControl: (verb: KhalaCodeDesktopFleetRunControlRequest["verb"]) => void
+  onFleetWorkerControl: (
+    card: KhalaFleetWorkerCard,
+    verb: KhalaCodeDesktopFleetWorkerControlRequest["verb"],
+  ) => void
   onFleetRunPreview: () => void
   onFleetRunStart: () => void
   onLoadGymDemoProof: () => void
@@ -364,14 +382,66 @@ const fleetInFlightLabel = (
   return `${tokenRate.inFlightTokens} token(s)${rate}`
 }
 
-const assignmentTokenRateLabel = (
-  tokenRate: KhalaCodeDesktopFleetStatus["activeAssignments"][number]["tokenRate"],
-): string => {
-  if (tokenRate.status === "pending") return "pending exact rows"
-  if (tokenRate.status === "not_measured") return "not measured"
-  const tokens = tokenRate.tokens === null ? "unknown" : `${tokenRate.tokens}`
-  const rate = tokenRate.tokensPerMinute === null ? "" : `, ${tokenRate.tokensPerMinute}/min`
-  return `${tokens} ${tokenRate.status}${rate}`
+const workerStateBadge = (
+  state: KhalaFleetWorkerCard["neutralState"],
+): "ready" | "online" | "missing" | "degraded" => {
+  if (state === "done") return "ready"
+  if (state === "working" || state === "queued") return "online"
+  if (state === "failed" || state === "offline") return "missing"
+  return "degraded"
+}
+
+const renderWorkerCard = (
+  card: KhalaFleetWorkerCard,
+  activeRun: ActiveFleetRunView,
+  handlers: Handlers,
+): HTMLElement => {
+  const row = el("article", "khala-fleet-worker-card")
+  row.dataset.state = card.neutralState
+  row.dataset.workerRefHash = card.workerRefHash
+
+  const top = el("div", "khala-fleet-worker-card-top")
+  top.append(
+    badge(workerStateBadge(card.neutralState), titleize(card.neutralState)),
+    detailChip("worker", card.workerRefHash),
+  )
+  row.append(top)
+
+  const chips = el("div", "khala-fleet-chips")
+  chips.append(detailChip("work", card.claimedWorkUnit))
+  appendChip(chips, "assignment", card.assignmentRefHash)
+  appendChip(chips, "issue", card.issueRefHash)
+  appendChip(chips, "elapsed", formatElapsedMs(card.elapsedMs))
+  appendChip(chips, "tokens", card.tokenLabel)
+  appendChip(chips, "closeout", card.closeoutStatus)
+  if (card.blockerRefs.length > 0) {
+    chips.append(detailChip("blockers", card.blockerRefs.slice(0, 3).join(", ")))
+  }
+  row.append(chips)
+
+  const lifecycle = el("p", "khala-fleet-worker-lifecycle")
+  lifecycle.dataset.hasFrame = card.lifecycle === null ? "false" : "true"
+  lifecycle.textContent = card.lifecycle?.line ?? "No lifecycle frame received yet."
+  row.append(lifecycle)
+
+  const controls = el("div", "khala-fleet-worker-controls")
+  const actionSpecs: ReadonlyArray<readonly [
+    KhalaCodeDesktopFleetWorkerControlRequest["verb"],
+    IconName,
+  ]> = [
+    ["interrupt", "Stop"],
+    ["retry", "Reload"],
+    ["flag", "Flag"],
+  ]
+  for (const [verb, icon] of actionSpecs) {
+    const button = iconButton(titleize(verb), icon, verb === "interrupt" ? "khala-fleet-run khala-fleet-run-danger" : "khala-fleet-run")
+    button.dataset.fleetWorkerControl = verb
+    button.disabled = activeRun.run === null || (card.assignmentRef === null && verb !== "flag")
+    button.addEventListener("click", () => handlers.onFleetWorkerControl(card, verb))
+    controls.append(button)
+  }
+  row.append(controls)
+  return row
 }
 
 const appendChip = (
@@ -1075,6 +1145,8 @@ const renderReady = (
   container: HTMLElement,
   data: KhalaCodeDesktopFleetStatus,
   handlers: Handlers,
+  activeRun: ActiveFleetRunView,
+  lifecycleFrames: readonly KhalaFleetWorkerLifecycleFrame[],
 ): void => {
   const readyAccounts = data.accounts.filter(
     account => accountReadinessState(account.readiness) === "ready",
@@ -1155,34 +1227,17 @@ const renderReady = (
 
   // Active assignments
   const activeSection = el("section", "khala-fleet-section")
+  const workerCards = buildKhalaFleetWorkerCards(data, lifecycleFrames)
   activeSection.append(
-    sectionHeader("Active assignments", `${data.activeAssignments.length} active`),
+    sectionHeader("Worker cards", `${workerCards.length} active`),
   )
-  if (data.activeAssignments.length === 0) {
+  if (workerCards.length === 0) {
     activeSection.append(
       el("p", "khala-fleet-empty", "No active Codex assignments right now."),
     )
   } else {
-    const list = el("div", "khala-fleet-assignment-list")
-    for (const marker of data.activeAssignments) {
-      const row = el("article", "khala-fleet-assignment")
-      const chips = el("div", "khala-fleet-chips")
-      if (marker.issueRef !== null) chips.append(detailChip("issue", marker.issueRef))
-      if (marker.assignmentRef !== null) {
-        chips.append(detailChip("assignment", marker.assignmentRef))
-      }
-      appendChip(chips, "closeout", marker.closeoutStatus ?? marker.workerSession?.closeoutStatus ?? null)
-      appendChip(chips, "review", marker.workerSession?.reviewState ?? null)
-      appendChip(chips, "approval", marker.workerSession?.approvalState ?? null)
-      appendChip(chips, "transcript", marker.workerSession?.transcriptRef ?? null)
-      if ((marker.blockerRefs ?? marker.workerSession?.blockerRefs ?? []).length > 0) {
-        chips.append(detailChip("blockers", (marker.blockerRefs ?? marker.workerSession?.blockerRefs ?? []).slice(0, 3).join(", ")))
-      }
-      appendChip(chips, "elapsed", formatElapsedMs(marker.elapsedMs))
-      appendChip(chips, "tokens", assignmentTokenRateLabel(marker.tokenRate))
-      row.append(chips)
-      list.append(row)
-    }
+    const list = el("div", "khala-fleet-worker-card-list")
+    for (const card of workerCards) list.append(renderWorkerCard(card, activeRun, handlers))
     activeSection.append(list)
   }
   container.append(activeSection)
@@ -1279,6 +1334,7 @@ const render = (
   delegateForm: FleetDelegateFormState,
   delegateRun: DelegateRunView,
   activeRun: ActiveFleetRunView,
+  lifecycleFrames: readonly KhalaFleetWorkerLifecycleFrame[],
   fleetRunForm: FleetRunFormState,
   fleetRun: FleetRunView,
   optimizationRun: OptimizationRunView,
@@ -1318,7 +1374,7 @@ const render = (
       el("p", "khala-fleet-error", `Could not load fleet status: ${view.message}`),
     )
   } else {
-    renderReady(body, view.data, handlers)
+    renderReady(body, view.data, handlers, activeRun, lifecycleFrames)
   }
   container.append(body)
 }
@@ -1359,6 +1415,8 @@ export const mountFleetPanel = (
   let optimizationInFlight = false
   let optimizationRun: OptimizationRunView = { phase: "idle" }
   let lastData: KhalaCodeDesktopFleetStatus | null = null
+  let lifecycleFrames: readonly KhalaFleetWorkerLifecycleFrame[] = []
+  let lifecycleStarted = false
   let connectPoll = 0
   let activeConnect: ConnectView | null = null
   let visible = false
@@ -1386,6 +1444,7 @@ export const mountFleetPanel = (
       delegateForm,
       delegateRun,
       activeRun,
+      lifecycleFrames,
       fleetRunForm,
       fleetRun,
       optimizationRun,
@@ -1476,6 +1535,23 @@ export const mountFleetPanel = (
     return request
   }
 
+  const lifecycleThrottler = createKhalaFleetWorkerCardThrottler({
+    intervalMs: options.lifecycleUpdateThrottleMs ?? 200,
+    onUpdate: update => {
+      lifecycleFrames = update.frames
+      paint()
+    },
+  })
+
+  const startLifecycleStream = (): void => {
+    if (lifecycleStarted || options.lifecycleNdjson === undefined) return
+    lifecycleStarted = true
+    void consumeKhalaFleetWorkerLifecycleNdjson(
+      options.lifecycleNdjson(),
+      frame => lifecycleThrottler.push(frame),
+    )
+  }
+
   const handlers: Handlers = {
     onDelegateField: (field, value) => {
       if (field === "noRun") {
@@ -1502,6 +1578,7 @@ export const mountFleetPanel = (
       paint()
     },
     onFleetRunControl: verb => onFleetRunControl(verb),
+    onFleetWorkerControl: (card, verb) => onFleetWorkerControl(card, verb),
     onFleetRunPreview: () => {
       const preview = fleetRunPreview()
       fleetRun = typeof preview === "string"
@@ -1623,6 +1700,27 @@ export const mountFleetPanel = (
     })()
   }
 
+  const onFleetWorkerControl = (
+    card: KhalaFleetWorkerCard,
+    verb: KhalaCodeDesktopFleetWorkerControlRequest["verb"],
+  ): void => {
+    void (async () => {
+      try {
+        await options.fleetWorkerControl({
+          assignmentRef: card.assignmentRef,
+          issueRef: card.issueRef,
+          runRef: activeRun.run?.runRef ?? null,
+          verb,
+          workerRefHash: card.workerRefHash,
+        })
+        await refresh()
+      } catch {
+        // The card control is best-effort UI plumbing; the next refresh keeps
+        // the visible state authoritative from Fleet status.
+      }
+    })()
+  }
+
   const onLoadGymDemoProof = (): void => {
     if (optimizationInFlight) return
     void (async () => {
@@ -1676,6 +1774,7 @@ export const mountFleetPanel = (
           delegateForm,
           delegateRun,
           activeRun,
+          lifecycleFrames,
           fleetRunForm,
           fleetRun,
           optimizationRun,
@@ -1808,6 +1907,7 @@ export const mountFleetPanel = (
           delegateForm,
           delegateRun,
           activeRun,
+          lifecycleFrames,
           fleetRunForm,
           fleetRun,
           optimizationRun,
@@ -1829,6 +1929,7 @@ export const mountFleetPanel = (
     visible = next
     window.clearInterval(pollTimer)
     if (!next) return
+    startLifecycleStream()
     void refresh()
     // Live updates: poll while the panel is visible (skipping in-flight loads).
     // The list stays live even during an active connect.

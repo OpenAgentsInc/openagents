@@ -1156,6 +1156,22 @@ export class PylonOrchestrationStore {
     return this.updateWorkClaimState(claimRef, "released", now)
   }
 
+  updateWorkClaimAssignmentRef(claimRef: string, assignmentRef: string | null, now: Date = new Date()): WorkClaim {
+    const current = this.getWorkClaim(claimRef)
+    if (current === null) throw new Error(`unknown work claim: ${claimRef}`)
+    this.db
+      .query(`
+        UPDATE pylon_orchestration_work_claims
+           SET assignment_ref = $assignmentRef,
+               updated_at = $updatedAt
+         WHERE claim_ref = $claimRef
+      `)
+      .run({ $claimRef: claimRef, $assignmentRef: assignmentRef, $updatedAt: iso(now) })
+    const updated = this.getWorkClaim(claimRef)
+    if (updated === null) throw new Error(`failed to update work claim assignment: ${claimRef}`)
+    return updated
+  }
+
   refreshLiveWorkClaim(workUnitRef: string, now: Date = new Date()): WorkClaim | null {
     const current = this.getLiveWorkClaim(workUnitRef, now)
     if (current === null) return null
