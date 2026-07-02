@@ -33,6 +33,7 @@ import type {
   PublicHeaderViewer,
 } from './page/publicHeader'
 import * as PylonCodexAssignmentStatus from './page/pylonCodexAssignmentStatus'
+import * as QaSwarm from './page/qa-swarm'
 import * as Run from './page/run'
 import * as SiteCheckoutDemo from './page/siteCheckoutDemo'
 import * as Terms from './page/terms'
@@ -437,6 +438,8 @@ const title = (model: Model): string => {
       )
     case 'TraceCompare':
       return TraceCompare.title(model.route)
+    case 'QaSwarm':
+      return QaSwarm.title(model.route)
     case 'PylonCodexAssignmentStatus':
       return PylonCodexAssignmentStatus.title(model.route)
     default:
@@ -645,6 +648,7 @@ const publicRouteBody = (model: Model): Document['body'] | undefined => {
       model.route._tag !== 'TassadarReplay' &&
       model.route._tag !== 'Trace' &&
       model.route._tag !== 'TraceCompare' &&
+      model.route._tag !== 'QaSwarm' &&
       model.route._tag !== 'ArtanisTraceTree' &&
       model.route._tag !== 'PylonCodexAssignmentStatus'
     ) {
@@ -712,6 +716,10 @@ const publicRouteBody = (model: Model): Document['body'] | undefined => {
 
   if (model.route._tag === 'TraceCompare') {
     return TraceCompare.view<Message>(model.route, authState)
+  }
+
+  if (model.route._tag === 'QaSwarm') {
+    return QaSwarm.view<Message>(model.route, authState)
   }
 
   if (model.route._tag === 'PylonCodexAssignmentStatus') {

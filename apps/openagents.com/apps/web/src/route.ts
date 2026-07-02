@@ -96,6 +96,7 @@ export const TraceRoute = r('Trace', { uuid: S.String })
 // #6211 — the real "chill-evals"). `ids` is a comma-separated list of trace
 // uuids (the first is the baseline). Same public, no-auth posture as `/trace`.
 export const TraceCompareRoute = r('TraceCompare', { ids: S.String })
+export const QaSwarmRoute = r('QaSwarm', { runRef: S.String })
 export const PylonCodexAssignmentStatusRoute = r('PylonCodexAssignmentStatus', {
   assignmentRef: S.String,
 })
@@ -209,6 +210,7 @@ export type ArtanisTraceTreeRoute = typeof ArtanisTraceTreeRoute.Type
 export type ShareRoute = typeof ShareRoute.Type
 export type TraceRoute = typeof TraceRoute.Type
 export type TraceCompareRoute = typeof TraceCompareRoute.Type
+export type QaSwarmRoute = typeof QaSwarmRoute.Type
 export type PylonCodexAssignmentStatusRoute =
   typeof PylonCodexAssignmentStatusRoute.Type
 export type MokshaRoute = typeof MokshaRoute.Type
@@ -288,6 +290,7 @@ export const LoggedOutRoute = S.Union([
   ShareRoute,
   TraceRoute,
   TraceCompareRoute,
+  QaSwarmRoute,
   PylonCodexAssignmentStatusRoute,
   MokshaRoute,
   Moksha2Route,
@@ -352,6 +355,7 @@ export const LoggedInRoute = S.Union([
   ArtanisTraceTreeRoute,
   TraceRoute,
   TraceCompareRoute,
+  QaSwarmRoute,
   PylonCodexAssignmentStatusRoute,
   DashboardRoute,
   ProRoute,
@@ -423,6 +427,7 @@ export const AppRoute = S.Union([
   ShareRoute,
   TraceRoute,
   TraceCompareRoute,
+  QaSwarmRoute,
   PylonCodexAssignmentStatusRoute,
   MokshaRoute,
   Moksha2Route,
@@ -722,6 +727,11 @@ export const traceCompareRouter = pipe(
   slash(string('ids')),
   Route.mapTo(TraceCompareRoute),
 )
+export const qaSwarmRouter = pipe(
+  literal('qa'),
+  slash(string('runRef')),
+  Route.mapTo(QaSwarmRoute),
+)
 export const pylonCodexAssignmentStatusRouter = pipe(
   literal('pylon'),
   slash(literal('codex')),
@@ -1008,6 +1018,7 @@ const orderedParserRouters = [
   // first so the literal `compare` segment wins (#6211).
   traceCompareRouter,
   traceRouter,
+  qaSwarmRouter,
   pylonCodexAssignmentStatusRouter,
   moksha2Router,
   mokshaRouter,

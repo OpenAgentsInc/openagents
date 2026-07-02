@@ -145,6 +145,7 @@ const SETTINGS = /^\/settings(?:\/[^/]+)?$/
 const SITES_DEMO_CHECKOUT = /^\/sites\/demo-checkout(?:\/[^/]+)?$/
 // Public shareable agent traces (#6209/#6211): /trace/{uuid} + /trace/compare/{ids}.
 const TRACE = /^\/trace(?:\/.*)?$/
+const QA_SWARM = /^\/qa\/[^/]+$/
 const PYLON_CODEX_ASSIGNMENTS = /^\/pylon\/codex\/assignments\/[^/]+$/
 const TEAMS =
   /^\/teams\/[^/]+(?:\/chat|\/files(?:\/[^/]+)?|\/projects\/[^/]+\/chat)$/
@@ -736,6 +737,16 @@ export const routeTable = {
     surface: 'spaDocument',
     serverDocument: TRACE,
     examplePaths: ['/trace/compare/a,b,c'],
+    requiresAuthBootstrap: false,
+    loggedInGate: 'open',
+    inLoggedOutUnion: true,
+    inLoggedInUnion: true,
+    render: 'statelessShell',
+  },
+  QaSwarm: {
+    surface: 'spaDocument',
+    serverDocument: QA_SWARM,
+    examplePaths: ['/qa/qa-run.khala-code-nightly.2026-07-02'],
     requiresAuthBootstrap: false,
     loggedInGate: 'open',
     inLoggedOutUnion: true,

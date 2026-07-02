@@ -45,6 +45,7 @@ import {
   proRouter,
   publicAgentRouter,
   pylonCodexAssignmentStatusRouter,
+  qaSwarmRouter,
   traceRouter,
   traceCompareRouter,
   publicTrainingRunRouter,
@@ -153,6 +154,7 @@ const currentHref = (model: Model): string =>
       ArtanisTraceTree: () => artanisTraceTreeRouter(),
       Trace: ({ uuid }) => traceRouter({ uuid }),
       TraceCompare: ({ ids }) => traceCompareRouter({ ids }),
+      QaSwarm: ({ runRef }) => qaSwarmRouter({ runRef }),
       PylonCodexAssignmentStatus: ({ assignmentRef }) =>
         pylonCodexAssignmentStatusRouter({ assignmentRef }),
       PublicTrainingRuns: () => publicTrainingRunsRouter(),
@@ -226,6 +228,7 @@ const routeKey = (model: Model): string =>
       ArtanisTraceTree: () => 'ArtanisTraceTree',
       Trace: ({ uuid }) => `Trace:${uuid}`,
       TraceCompare: ({ ids }) => `TraceCompare:${ids}`,
+      QaSwarm: ({ runRef }) => `QaSwarm:${runRef}`,
       PylonCodexAssignmentStatus: ({ assignmentRef }) =>
         `PylonCodexAssignmentStatus:${assignmentRef}`,
       PublicTrainingRuns: () => 'PublicTrainingRuns',
@@ -656,6 +659,10 @@ const routeView = (model: Model): Html => {
                 chatRouter(),
                 'Go to Chat',
               ),
+            ]),
+          QaSwarm: ({ runRef }) =>
+            Ui.workroomScrollableRoute<Message>([
+              notFoundView(qaSwarmRouter({ runRef }), chatRouter(), 'Go to Chat'),
             ]),
           // /pylon/codex/assignments/{assignmentRef} is resolved by the
           // top-level `publicRouteBody` in view.ts; this branch is unreachable
