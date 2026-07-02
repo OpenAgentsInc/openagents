@@ -2191,6 +2191,11 @@ async function collectKhalaApmProjection(input: {
   const localRuns = await activeCodingRuns(input.state.paths)
   const localCodexRuns = localRuns.filter(run => run.service === "codex")
   const completedTokensPerMinute = numberFromRecord(pace, "liveBurnRateTokensPerMinute")
+  const ownCapacityCodex =
+    pace.ownCapacityCodex !== null && typeof pace.ownCapacityCodex === "object"
+      ? pace.ownCapacityCodex as Record<string, unknown>
+      : {}
+  const completedTokensWindow = numberFromRecord(ownCapacityCodex, "tokensWindow")
   const derivedInFlightTokens = derivedServerAssignments
     .reduce((sum, assignment) => sum + assignment.tokens, 0)
   const derivedInFlightTokensPerMinute = derivedServerAssignments
@@ -2222,6 +2227,7 @@ async function collectKhalaApmProjection(input: {
       timezone,
       todayTokens,
       completedTokensPerMinute,
+      tokensWindow: completedTokensWindow,
       sourceRefs: ["d1:token_usage_events"],
     },
     active: {

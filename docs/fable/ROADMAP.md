@@ -116,7 +116,7 @@ Source: fleet fan-out §5, consuming the one status vocabulary from WS-10.
 | T5.1 | Run header + controls: Pause/Resume/Drain/Stop wired through `fleetRunControl` to orchestration control verbs | T3.1, T3.4 | HIGH |
 | T5.2 | Worker cards + live lifecycle streaming: implement the NDJSON consumer per the 2026-06-30 streaming audit (Effect `Stream` → throttled card updates); per-worker Interrupt/Retry/Flag; no fabricated progress | T3.1, T1.2 | MED |
 | T5.3 | Account cards: readiness, slots, rate-limit meters counting down (`resetsAt`, reset credits), cooldowns, Reconnect via isolated-home device login (never `~/.codex`), Pause-account | T3.1 | HIGH |
-| T5.4 | Throughput gauges: tokens/min (exact-row based), run totals, projected tokens/day; reconcile against `GET /api/public/khala-tokens-served` deltas in live smoke only | T3.1 | HIGH |
+| T5.4 | Throughput gauges: tokens/min (exact-row based), run totals, projected tokens/day; reconcile against `GET /api/public/khala-tokens-served` deltas in live smoke only. Desktop gauges consume only `codex_fleet_status`/`khala apm` exact token summaries and render `pending`/`not_measured` honestly; progress frames are never used for counter synthesis. | T3.1 | HIGH |
 | T5.5 | Flags → Inbox + condensed sidebar fleet counts (accounts ready / workers active / slots free / flags) — also closes the episode-245 italic-script gap §1.3.3 | T3.1 | HIGH |
 | T5.6 | Cockpit visual smoke: 18 fixture workers / 3 accounts, desktop + mobile viewports, geometry oracles; TestClock-driven rate-limit countdown test | T5.1–T5.5 | HIGH |
 

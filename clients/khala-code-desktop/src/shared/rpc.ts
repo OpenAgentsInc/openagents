@@ -1152,6 +1152,7 @@ const RpcFleetTokenRate = S.Struct({
   completedStatus: RpcFleetTokenMeasurementStatus,
   completedTokenRows: RpcNumberNull,
   completedTokensPerMinute: RpcNumberNull,
+  tokensWindow: S.optional(RpcNumberNull),
   inFlightTokens: RpcNumberNull,
   inFlightTokensPerMinute: RpcNumberNull,
   source: S.Literals(["pylon_khala_apm", "unavailable"]),
