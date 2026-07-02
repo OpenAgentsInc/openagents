@@ -440,12 +440,12 @@ describe('khala chat route', () => {
     const messages = captured?.messages ?? []
     // First message is a system prompt with the first-person-plural identity and
     // the non-leakage instruction (it explicitly tells Khala never to reveal an
-    // underlying provider — the forbidden-provider list lives INSIDE that
+    // backing provider — the forbidden-provider list lives INSIDE that
     // instruction, which is correct).
     expect(messages[0]?.role).toBe('system')
     expect(messages[0]?.content).toContain('we are Khala')
     expect(messages[0]?.content).toContain(
-      'NEVER reveal, name, claim, or imply the underlying model',
+      'NEVER reveal, name, claim, or imply the backing model',
     )
     // It is the GENERIC chat instruction, not the concierge intake interview.
     expect(messages[0]?.content).toContain('Do not run an intake interview')

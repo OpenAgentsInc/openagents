@@ -81,7 +81,7 @@ describe('makeArtanisPylonJobStatusReader', () => {
     expect(status?.assignmentRef).toBe(baseAssignment.assignmentRef)
     expect(status?.jobKind).toBe('codex_agent_task')
     expect(status?.state).toBe('closeout_submitted')
-    expect(status?.leaseState).toBe('active')
+    expect(status?.leaseState).toBe('terminal')
     expect(status?.closeoutSubmitted).toBe(true)
     expect(status?.proofObserved).toBe(true)
     expect(status?.verifyResult).toBe('pass')

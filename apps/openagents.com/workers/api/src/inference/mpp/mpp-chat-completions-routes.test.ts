@@ -7,6 +7,7 @@ import { describe, expect, test } from 'vitest'
 import { readAgentBalance } from '../../payments-ledger'
 import { makeLedgerMeteringHook, type MeteringContext } from '../metering-hook'
 import {
+  FIREWORKS_ADAPTER_ID,
   HYDRALISK_ADAPTER_ID,
   HYDRALISK_GPT_OSS_120B_ADAPTER_ID,
   selectAdapterPlan,
@@ -169,6 +170,7 @@ const echoAdapter = (id: string): InferenceProviderAdapter => ({
 
 const khalaRegistry = (): InferenceProviderRegistry => {
   const registry = new InferenceProviderRegistry()
+  registry.register(echoAdapter(FIREWORKS_ADAPTER_ID))
   registry.register(echoAdapter(HYDRALISK_GPT_OSS_120B_ADAPTER_ID))
   registry.register(echoAdapter(HYDRALISK_ADAPTER_ID))
   return registry
@@ -210,6 +212,10 @@ const completionDeps = (
   overrides: Partial<MppChatCompletionsDeps['completionDeps']> = {},
 ): MppChatCompletionsDeps['completionDeps'] => ({
   enabled: true,
+  laneArming: resolveSupplyLaneArming({
+    FIREWORKS_API_KEY: 'secret-route-token',
+    KHALA_BACKING_MODEL: 'deepseek-v4-flash',
+  }),
   lanePlan: selectAdapterPlan,
   meteringHook: makeLedgerMeteringHook({ db }),
   registry: khalaRegistry(),

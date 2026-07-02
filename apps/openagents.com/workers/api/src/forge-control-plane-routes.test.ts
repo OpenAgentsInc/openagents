@@ -388,7 +388,7 @@ const importCanonicalMain = async (
     receivePackRef: `receive-pack.forge.promoted.${objectId.slice(0, 12)}`,
     refName: 'refs/heads/main',
     repositoryRef: 'repo.openagents.openagents',
-    sourceDigestSha256: `digest.${objectId}`,
+    sourceDigestSha256: objectId.padEnd(64, '0').slice(0, 64),
     sourceRefs: ['github:OpenAgentsInc/openagents#6796'],
     tenantRef: 'tenant.openagents',
     nowIso: now,

@@ -72,6 +72,12 @@ export class PylonInstallToBitcoinSmokeInput extends S.Class<PylonInstallToBitco
   payoutReadinessRefs: S.Array(S.String),
   registrationRefs: S.Array(S.String),
   routeStateRef: S.String,
+  sendReadinessCapacityRef: S.optionalKey(
+    S.Literals([
+      'capacity.mdk_agent_wallet.send.sufficient_for_scoped_smoke',
+      'capacity.mdk_agent_wallet.send.unproven',
+    ]),
+  ),
   settlementReceiptRefs: S.Array(S.String),
   spendCapSats: S.Number,
   tokenCacheRef: S.String,
@@ -187,6 +193,7 @@ const inputRefGroups = (
   [
     input.mdkEndpointRef,
     input.routeStateRef,
+    input.sendReadinessCapacityRef ?? '',
     input.tokenCacheRef,
     input.walletHomeRef,
   ],
@@ -239,6 +246,9 @@ const mdkSmokeInputFor = (
         : 'live_blocked',
   operatorApprovedPayment: input.operatorApprovedLiveSpend,
   routeStateRef: input.routeStateRef,
+  ...(input.sendReadinessCapacityRef === undefined
+    ? {}
+    : { sendReadinessCapacityRef: input.sendReadinessCapacityRef }),
   spendCapBitcoinSatoshis: Math.max(0, Math.trunc(input.spendCapSats)),
   tokenCacheRef: input.tokenCacheRef,
   walletHomeMode: input.walletHomeMode,
@@ -371,6 +381,9 @@ const smokeBundleRefsFor = (
     ...input.closeoutRefs,
     ...input.acceptedWorkRefs,
     ...input.paymentReceiptRefs,
+    ...(input.sendReadinessCapacityRef === undefined
+      ? []
+      : [input.sendReadinessCapacityRef]),
     ...input.settlementReceiptRefs,
     ...input.publicProjectionRefs,
   ])
