@@ -160,6 +160,17 @@ describe("Khala Code QA seed scenario corpus", () => {
         ]),
       )
     }
+    const partialDegradationScenario = KHALA_CODE_QA_SEED_SCENARIOS.find((candidate) =>
+      candidate.id === "scenario.khala_code.seed.error_state_single_rpc_failure_partial_degradation.v1"
+    )
+    expect(partialDegradationScenario?.phases[0]?.name).toBe("fleet-panel-partial-degradation")
+    expect(partialDegradationScenario?.phases[0]?.act).toEqual(
+      expect.arrayContaining([
+        { kind: "hotbar", target: "fleet" },
+        { kind: "rpc_call", method: "codexFleetStatus" },
+        { kind: "rpc_call", method: "fleetRunList", args: [{}] },
+      ]),
+    )
     const restartScenario = KHALA_CODE_QA_SEED_SCENARIOS.find((candidate) =>
       candidate.id === "scenario.khala_code.seed.error_state_app_server_crash_restart.v1"
     )

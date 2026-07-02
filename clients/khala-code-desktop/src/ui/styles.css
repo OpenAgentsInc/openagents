@@ -2867,6 +2867,29 @@ button {
   font-size: 0.82rem;
   color: var(--oa-color-khala-danger-strong);
 }
+.khala-fleet-section-error {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  min-width: 0;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid color-mix(in srgb, var(--oa-color-khala-warning) 34%, transparent);
+  border-radius: 0.45rem;
+  background: color-mix(in srgb, var(--oa-color-khala-warning) 8%, var(--oa-color-component-surface));
+}
+.khala-fleet-section-error-message {
+  flex: 1 1 14rem;
+  min-width: 0;
+  margin: 0;
+  color: color-mix(in srgb, var(--oa-color-component-text) 78%, transparent);
+  font-size: 0.78rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.khala-fleet-section-retry {
+  margin-left: auto;
+}
 .khala-fleet-account-list,
 .khala-fleet-assignment-list,
 .khala-fleet-worker-card-list {
