@@ -25,6 +25,17 @@ each source doc.
   status spine, the mobile companion, Artanis elevation, the staged Foldkit
   migration, and continuous guardrails — gated at the end by the "clean
   2B-token day" acceptance run.
+- [`ROADMAP_BIZ.md`](./ROADMAP_BIZ.md) — the consolidated business
+  fulfillment engine roadmap (2026-07-02): the end-to-end funnel from simple
+  intake at `/business` through qualify, convert (rate card,
+  payment→workspace→service-promise), provision (corpus ingestion + redaction
+  + private compute tier), fulfill (workroom surfacing, review gates,
+  document/site/email/campaign pipelines, fulfillment agents), prove (KPI
+  dashboards, handoff portal, case studies), retain, and multiply
+  (white-label, referral). Nine workstreams, 45 issues (#8074–#8118) under
+  epic #8073, harmonized with ROADMAP_AFTER (this roadmap is the plumbing
+  under AW-0). Meditation source:
+  [`2026-07-02-business-fulfillment-engine-meditations.md`](./2026-07-02-business-fulfillment-engine-meditations.md).
 - [`ROADMAP_QA.md`](./ROADMAP_QA.md) — the active QA execution roadmap
   (2026-07-02): everything needed to run the fully automated Khala Code QA
   cycle — the scheduled nightly loop and merge gates, the real-run latency
