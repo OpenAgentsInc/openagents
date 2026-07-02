@@ -1,5 +1,6 @@
 import { Effect } from "effect"
 
+import { collectKhalaCodeQaCoverageLedger, type KhalaCodeQaCoverageLedger } from "./coverage-ledger.js"
 import type { KhalaCodeQaDriver, KhalaCodeQaObservation } from "./driver.js"
 import { compareKhalaCodeRpcConsistency } from "./rpc-client.js"
 import type {
@@ -41,6 +42,7 @@ export type KhalaCodeQaCommitmentReport = {
 export type KhalaCodeQaScenarioRunReport = {
   readonly backend: KhalaCodeQaScenario["backend"]
   readonly commitments: KhalaCodeQaCommitmentReport
+  readonly coverageLedger: KhalaCodeQaCoverageLedger
   readonly mode: KhalaCodeQaDriver["mode"]
   readonly phaseOutcomes: ReadonlyArray<KhalaCodeQaPhaseOutcome>
   readonly scenarioId: string
@@ -336,6 +338,10 @@ export const runKhalaCodeQaScenario = (input: {
     return {
       backend: input.scenario.backend,
       commitments,
+      coverageLedger: collectKhalaCodeQaCoverageLedger({
+        observations: phaseOutcomes.flatMap((phase) => phase.observations),
+        runId: input.scenario.id,
+      }),
       mode: input.driver.mode,
       phaseOutcomes,
       scenarioId: input.scenario.id,

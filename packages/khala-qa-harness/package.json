@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./coverage-ledger": "./src/coverage-ledger.ts",
     "./desktop-smoke-helpers": "./src/desktop-smoke-helpers.ts",
     "./driver": "./src/driver.ts",
     "./rpc-driver": "./src/rpc-driver.ts",
