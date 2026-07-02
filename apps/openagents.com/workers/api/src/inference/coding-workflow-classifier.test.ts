@@ -1,6 +1,9 @@
 import { describe, expect, test } from 'vitest'
 
-import { classifyCodingWorkflow } from './coding-workflow-classifier'
+import {
+  classifyCodingWorkflow,
+  fleetWorkerKindForCodingWorkflowClass,
+} from './coding-workflow-classifier'
 
 describe('coding workflow classifier', () => {
   test('classifies explicit structured workflow markers', () => {
@@ -47,5 +50,18 @@ describe('coding workflow classifier', () => {
       confidence: 0,
       workflowClass: 'none',
     })
+  })
+
+  test('projects workflow classes into fleet worker-kind hints without prose inference', () => {
+    expect(fleetWorkerKindForCodingWorkflowClass('claude_agent_task')).toBe(
+      'claude',
+    )
+    expect(fleetWorkerKindForCodingWorkflowClass('codex_agent_task')).toBe(
+      'codex',
+    )
+    expect(fleetWorkerKindForCodingWorkflowClass('cloud_coding_session')).toBe(
+      'codex',
+    )
+    expect(fleetWorkerKindForCodingWorkflowClass('none')).toBe('none')
   })
 })

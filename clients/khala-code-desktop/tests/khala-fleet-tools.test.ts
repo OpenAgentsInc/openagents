@@ -1048,6 +1048,130 @@ describe("Khala Code fleet tools", () => {
     expect(calls.every(call => pylonArgs(call).join(" ") !== "codex accounts list --json")).toBe(true)
   })
 
+  test("spawnCodexInstances auto v2 prefers structured classifier worker kind on tied capacity", async () => {
+    const fixture = await tempPylonFixture()
+    const calls: KhalaCodexFleetCommandInput[] = []
+    const codexAccountKey = "aaaaaaaaaaaaaaaa"
+    const claudeAccountKey = "bbbbbbbbbbbbbbbb"
+    const providerProjection = {
+      ok: true,
+      ownCapacityDispatch: {
+        claudeAccounts: [{ accountKey: claudeAccountKey, available: 1, busy: 0, queued: 0, ready: 1 }],
+        codexAccounts: [{ accountKey: codexAccountKey, available: 1, busy: 0, queued: 0, ready: 1 }],
+        totalAvailableClaudeAssignments: 1,
+        totalAvailableCodexAssignments: 1,
+      },
+      pylonRef: "pylon.local.test",
+    }
+    const runner = async (input: KhalaCodexFleetCommandInput): Promise<KhalaCodexFleetCommandResult> => {
+      calls.push(input)
+      const args = pylonArgs(input)
+      const joined = args.join(" ")
+      if (joined === "provider go-online --json") {
+        return ok(providerProjection)
+      }
+      if (joined === "accounts list --json") {
+        return ok({
+          accounts: [
+            {
+              accountRef: "codex",
+              accountRefHash: `account.pylon.codex.${codexAccountKey}`,
+              homeState: "present",
+              provider: "codex",
+            },
+            {
+              accountRef: "claude",
+              accountRefHash: `account.pylon.claude_agent.${claudeAccountKey}`,
+              homeState: "present",
+              provider: "claude_agent",
+            },
+          ],
+          schema: "openagents.pylon.accounts_list.v0.3",
+        })
+      }
+      if (joined === "accounts status --provider codex --json") {
+        return ok({
+          accounts: [
+            {
+              accountRef: "codex",
+              accountRefHash: `account.pylon.codex.${codexAccountKey}`,
+              provider: "codex",
+              quota: { state: "available" },
+              readiness: { state: "ready" },
+            },
+          ],
+          schema: "openagents.pylon.accounts_status.v0.1",
+        })
+      }
+      if (joined === "accounts status --provider claude_agent --json") {
+        return ok({
+          accounts: [
+            {
+              accountRef: "claude",
+              accountRefHash: `account.pylon.claude_agent.${claudeAccountKey}`,
+              provider: "claude_agent",
+              quota: { state: "available" },
+              readiness: { state: "ready" },
+            },
+          ],
+          schema: "openagents.pylon.accounts_status.v0.1",
+        })
+      }
+      if (joined === "khala apm --base-url https://openagents.com --json") {
+        return ok({ assignments: [] })
+      }
+      if (joined === "presence heartbeat --base-url https://openagents.com --json") {
+        return ok({
+          heartbeatRef: "heartbeat.pylon.local.test.1",
+          pylonRef: "pylon.local.test",
+        })
+      }
+      if (args[0] === "khala" && args[1] === "request") {
+        expect(args).toContain("--workflow")
+        expect(args).toContain("claude_agent_task")
+        expect(args).toContain("--account-ref")
+        expect(args).toContain("claude")
+        return ok({
+          assignmentRef: "assignment.public.claude_agent_task.auto_v2",
+          autoRun: {
+            attempted: false,
+            reason: "disabled_by_no_run",
+          },
+        })
+      }
+      return failed(`unexpected command: ${joined}`)
+    }
+
+    const result = await spawnCodexInstances({
+      count: 1,
+      noRun: true,
+      prompt: "Run the public fixture.",
+      workerKind: "auto",
+      workflowClassification: {
+        confidence: 1,
+        evidenceRefs: ["evidence.coding_workflow.structured_body"],
+        workflowClass: "claude_agent_task",
+      },
+    }, {
+      env: fixture.env,
+      runner,
+    })
+
+    expect(result).toMatchObject({
+      acceptedCount: 1,
+      pylonRef: "pylon.local.test",
+      requestedCount: 1,
+    })
+    expect(result.results[0]).toMatchObject({
+      accountRef: "claude",
+      assignmentRef: "assignment.public.claude_agent_task.auto_v2",
+      status: "accepted",
+    })
+    expect(result.delegateTrace?.some(step =>
+      step.refs.includes("workflow.public.khala_coding.claude_agent_task")
+    )).toBe(true)
+  })
+
   test("spawnCodexInstances resolves live commit pins and renders claim-aware real-work prompts", async () => {
     const fixture = await tempPylonFixture()
     const liveCommit = "abcdef0123456789abcdef0123456789abcdef01"

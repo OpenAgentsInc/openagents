@@ -283,6 +283,13 @@ accepts, requests changes (the annotate-diff loop from the Orca doc), or
 re-plans. The deterministic delegation program stays the control-flow authority;
 Claude supplies decomposition and review judgment, not per-call control.
 
+**T9.3 update (2026-07-02):** the `auto` target now has a classifier-aware
+parameter layer. A typed workflow-classification hint can bias `auto` toward
+Codex or Claude only when that lane has advertised free slots; admitted
+parameters tune confidence threshold, classifier bonus, and tie-breaker. This
+keeps Claude/Fable planning as advisory structure while `khala.fleet.delegate`
+continues to own deterministic control flow.
+
 ### 4.2 Claude as reviewer / verifier-adjacent
 
 Claude's review quality pairs with our verification gates. After a Codex worker's
