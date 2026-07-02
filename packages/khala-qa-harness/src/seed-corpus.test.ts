@@ -9,9 +9,11 @@ import {
 } from "../../../clients/khala-code-desktop/src/shared/codex-slash-commands.js"
 
 import {
+  decodeKhalaCodeQaScenario,
   KHALA_CODE_QA_SEED_CORPUS_MANIFEST,
   KHALA_CODE_QA_SEED_SCENARIOS,
   KHALA_CODE_QA_THREAD_ITEM_VARIANTS,
+  KHALA_CODE_QA_ROADMAP_RPC_METHOD_GROUPS,
   loadKhalaCodeQaScenario,
   makeKhalaCodeQaSeedCorpusFixtureFetch,
   makeKhalaCodeRpcQaDriver,
@@ -23,6 +25,16 @@ const scenarioIds = KHALA_CODE_QA_SEED_SCENARIOS.map((scenario) => scenario.id)
 const idsForGroup = (group: string): readonly string[] =>
   KHALA_CODE_QA_SEED_CORPUS_MANIFEST.scenarioIdsByGroup.find((entry) => entry.group === group)
     ?.scenarioIds ?? []
+
+const rpcMethodsForGroup = (group: string): readonly string[] => {
+  const ids = new Set(idsForGroup(group))
+  return [...new Set(KHALA_CODE_QA_SEED_SCENARIOS
+    .filter((scenario) => ids.has(scenario.id))
+    .flatMap((scenario) => scenario.phases)
+    .flatMap((phase) => phase.act)
+    .flatMap((action) => action.kind === "rpc_call" ? [action.method] : []))]
+    .sort()
+}
 
 describe("Khala Code QA seed scenario corpus", () => {
   test("emits a manifest grouped for coverage counting", () => {
@@ -36,19 +48,14 @@ describe("Khala Code QA seed scenario corpus", () => {
       .toEqual([...scenarioIds].sort())
   })
 
-  test("covers the mechanical seed groups requested by T6.7", () => {
-    for (const group of [
-      "rpc.threads",
-      "rpc.turns",
-      "rpc.fleet",
-      "rpc.approvals",
-      "rpc.settings",
-      "rpc.ecosystem",
-      "rpc.slash_commands",
-      "hotbar",
-      "thread_items",
-    ]) {
+  test("covers the mechanical seed groups requested by Q4.1", () => {
+    const expectedRpcGroups = Object.keys(KHALA_CODE_QA_ROADMAP_RPC_METHOD_GROUPS)
+    expect(KHALA_CODE_QA_SEED_CORPUS_MANIFEST.coverage.rpcGroups).toEqual(expectedRpcGroups)
+    for (const group of [...expectedRpcGroups, "hotbar", "thread_items"]) {
       expect(idsForGroup(group).length).toBeGreaterThan(0)
+    }
+    for (const [group, methods] of Object.entries(KHALA_CODE_QA_ROADMAP_RPC_METHOD_GROUPS)) {
+      expect(rpcMethodsForGroup(group)).toEqual(expect.arrayContaining(methods))
     }
 
     expect(idsForGroup("hotbar")).toEqual([
@@ -102,6 +109,21 @@ describe("Khala Code QA seed scenario corpus", () => {
       expect(loaded.phases.length).toBeGreaterThan(0)
       expect(loaded.phases.every((phase) => phase.expect.length > 0)).toBe(true)
       expect(loaded.commitments.length).toBeGreaterThan(0)
+    }
+
+    const invalid = decodeKhalaCodeQaScenario({
+      ...KHALA_CODE_QA_SEED_SCENARIOS[0],
+      phases: [{
+        act: [{ kind: "rpc_call", method: "appInfo" }],
+        expect: [],
+        name: "oracle-less-phase",
+      }],
+    })
+
+    expect("_tag" in invalid).toBe(true)
+    if ("_tag" in invalid) {
+      expect(invalid.phaseName).toBe("oracle-less-phase")
+      expect(invalid.message).toContain("has no oracle expectations")
     }
   })
 

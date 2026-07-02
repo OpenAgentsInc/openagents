@@ -1,6 +1,6 @@
 import { KhalaCodeRpcMethodNames, type KhalaCodeRpcMethodName } from "./rpc-client.js"
 import type { KhalaCodeQaObservation } from "./driver.js"
-import type { KhalaCodeQaSeedCorpusManifest } from "./seed-corpus.js"
+import type { KhalaCodeQaSeedCorpusManifest, SeedCorpusGroup } from "./seed-corpus.js"
 
 export type KhalaCodeQaCoverageAvailability =
   | "always"
@@ -16,6 +16,10 @@ export type KhalaCodeQaCoverageLedger = {
   readonly schema: "khala_code_qa_coverage_ledger.v1"
   readonly generatedAt: string
   readonly runIds: readonly string[]
+  readonly rpcGroups: Readonly<Record<string, {
+    readonly calls: number
+    readonly methods: readonly string[]
+  }>>
   readonly rpcMethods: Readonly<Record<string, {
     readonly calls: number
     readonly distinctArgumentShapeCount: number
@@ -29,6 +33,8 @@ export type KhalaCodeQaCoverageLedger = {
   readonly hotbarPanelsOpened: readonly string[]
   readonly settingsKeysWritten: readonly string[]
   readonly approvalDecisionKinds: readonly string[]
+  readonly fleetRunControlVerbs: readonly string[]
+  readonly inboxRoutingFlagKinds: readonly string[]
   readonly threadItemVariantRenderCounts: Readonly<Record<string, number>>
   readonly threadItemVariantsRendered: readonly string[]
   readonly selectorsClicked: readonly string[]
@@ -39,11 +45,14 @@ export type KhalaCodeQaCoverageFrontierReport = {
   readonly schema: "khala_code_qa_coverage_frontier.v1"
   readonly generatedAt: string
   readonly missing: {
+    readonly rpcGroups: readonly string[]
     readonly rpcMethods: readonly string[]
     readonly slashCommands: readonly string[]
     readonly hotbarPanels: readonly string[]
     readonly settingsKeys: readonly string[]
     readonly approvalDecisionKinds: readonly string[]
+    readonly fleetRunControlVerbs: readonly string[]
+    readonly inboxRoutingFlagKinds: readonly string[]
     readonly threadItemVariants: readonly string[]
     readonly selectors: readonly string[]
     readonly slashCommandAvailabilityStates: readonly string[]
@@ -52,10 +61,86 @@ export type KhalaCodeQaCoverageFrontierReport = {
 }
 
 type MutableRpcCoverage = Map<string, { calls: number; argumentShapes: Set<string> }>
+type MutableRpcGroupCoverage = Map<string, { calls: number; methods: Set<string> }>
 type MutableSlashCoverage = Map<string, { dispatches: number; availabilityStates: Set<KhalaCodeQaCoverageAvailability> }>
 type MutableCountCoverage = Map<string, number>
 
 const emptyGeneratedAt = "1970-01-01T00:00:00.000Z"
+
+type RoadmapRpcGroup = Extract<SeedCorpusGroup, `rpc.${string}`>
+
+export const KHALA_CODE_QA_ROADMAP_RPC_METHOD_GROUPS = {
+  "rpc.threads": [
+    "codexThreadStart",
+    "codexThreadList",
+    "codexThreadRead",
+    "codexThreadRename",
+    "codexThreadArchive",
+    "codexThreadUnarchive",
+    "codexThreadDelete",
+    "codexThreadFork",
+    "codexThreadCompact",
+    "codexThreadResume",
+  ],
+  "rpc.turns": ["codexTurnStart", "codexTurnSteer", "codexTurnInterrupt"],
+  "rpc.approvals": ["claudeApprovalPending", "claudeApprovalRespond", "codexApprovalRespond"],
+  "rpc.settings_config": ["codexSettingsRead", "codexConfigValueWrite", "harnessSettingRead", "harnessSettingWrite"],
+  "rpc.models_personality": ["codexSettingsRead", "codexConfigValueWrite", "onDeviceDeciderStatus", "appleFmReadiness"],
+  "rpc.ecosystem": [
+    "codexEcosystemRead",
+    "toolCatalog",
+    "codexMcpServerReload",
+    "codexMcpResourceRead",
+    "codexMcpToolCall",
+    "codexMcpOauthLogin",
+    "codexSkillsExtraRootsSet",
+    "codexSkillsConfigWrite",
+    "codexMarketplaceAdd",
+    "codexMarketplaceUpgrade",
+    "codexMarketplaceRemove",
+    "codexPluginInstall",
+    "codexPluginUninstall",
+    "codexExternalAgentConfigDetect",
+    "codexExternalAgentConfigImport",
+    "codexExternalAgentConfigImportHistoriesRead",
+  ],
+  "rpc.fs_mentions_attachments": [
+    "codexMentionCandidates",
+    "codexFsGetMetadata",
+    "codexFsReadFile",
+    "codexFsWriteFile",
+    "submitChatMessage",
+  ],
+  "rpc.background_terminals": [
+    "codexBackgroundTerminalsList",
+    "codexBackgroundTerminalsClean",
+    "codexBackgroundTerminalsTerminate",
+  ],
+  "rpc.slash_commands": ["slashCommandList", "slashCommandDispatch"],
+  "rpc.token_summaries": ["tokenAccountingStatus", "threadTokenSummary"],
+  "rpc.fleet": ["codexFleetStatus", "codexFleetDelegateRun", "codexFleetPromoteThread"],
+  "rpc.fleet_run": ["fleetRunStart", "fleetRunStatus", "fleetRunList", "fleetRunControl"],
+  "rpc.session_catalog": ["sessionCatalog"],
+  "rpc.forum_panel": ["forumRequest"],
+  "rpc.inbox_routing": [
+    "codexFleetStatus",
+    "pylonStatus",
+    "codingStatus",
+    "tokenAccountingStatus",
+    "codexHarnessStatus",
+    "codexEcosystemRead",
+    "fleetWorkerControl",
+  ],
+  "rpc.gym_pane": ["fleetRunStatus", "fleetRunList", "codexFleetStatus"],
+  "rpc.plans_billing": ["khalaCodePlanCatalog", "khalaCodePlanStatus", "khalaCodePlanPurchase"],
+  "rpc.headless_events": ["submitChatMessage", "fleetRunStatus"],
+  "rpc.qa_metrics": ["qaMetricSample", "qaMetrics"],
+} as const satisfies Record<RoadmapRpcGroup, readonly KhalaCodeRpcMethodName[]>
+
+const rpcGroupsForMethod = (method: string): readonly string[] =>
+  Object.entries(KHALA_CODE_QA_ROADMAP_RPC_METHOD_GROUPS).flatMap(([group, methods]) =>
+    (methods as readonly string[]).includes(method) ? [group] : []
+  )
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value)
@@ -77,6 +162,17 @@ const rpcCoverageToObject = (
       argumentShapes: sorted(entry.argumentShapes),
       calls: entry.calls,
       distinctArgumentShapeCount: entry.argumentShapes.size,
+    },
+  ]))
+
+const rpcGroupCoverageToObject = (
+  coverage: MutableRpcGroupCoverage,
+): KhalaCodeQaCoverageLedger["rpcGroups"] =>
+  Object.fromEntries([...coverage.entries()].sort(([left], [right]) => left.localeCompare(right)).map(([group, entry]) => [
+    group,
+    {
+      calls: entry.calls,
+      methods: sorted(entry.methods),
     },
   ]))
 
@@ -150,6 +246,17 @@ const recordRpc = (
   coverage.set(method, entry)
 }
 
+const recordRpcGroup = (
+  coverage: MutableRpcGroupCoverage,
+  group: string,
+  method: string,
+): void => {
+  const entry = coverage.get(group) ?? { calls: 0, methods: new Set<string>() }
+  entry.calls += 1
+  entry.methods.add(method)
+  coverage.set(group, entry)
+}
+
 const recordSlash = (
   coverage: MutableSlashCoverage,
   command: string,
@@ -185,8 +292,11 @@ export const createEmptyKhalaCodeQaCoverageLedger = (
   options: { readonly generatedAt?: string; readonly runId?: string } = {},
 ): KhalaCodeQaCoverageLedger => ({
   approvalDecisionKinds: [],
+  fleetRunControlVerbs: [],
   generatedAt: options.generatedAt ?? emptyGeneratedAt,
   hotbarPanelsOpened: [],
+  inboxRoutingFlagKinds: [],
+  rpcGroups: {},
   rpcMethods: {},
   runIds: options.runId === undefined ? [] : [options.runId],
   schema: "khala_code_qa_coverage_ledger.v1",
@@ -203,11 +313,14 @@ export const collectKhalaCodeQaCoverageLedger = (input: {
   readonly observations: ReadonlyArray<KhalaCodeQaObservation>
   readonly runId: string
 }): KhalaCodeQaCoverageLedger => {
+  const rpcGroups: MutableRpcGroupCoverage = new Map()
   const rpcMethods: MutableRpcCoverage = new Map()
   const slashCommands: MutableSlashCoverage = new Map()
   const hotbarPanelsOpened = new Set<string>()
   const settingsKeysWritten = new Set<string>()
   const approvalDecisionKinds = new Set<string>()
+  const fleetRunControlVerbs = new Set<string>()
+  const inboxRoutingFlagKinds = new Set<string>()
   const threadItemVariantRenderCounts: MutableCountCoverage = new Map()
   const threadItemVariantsRendered = new Set<string>()
   const selectorsClicked = new Set<string>()
@@ -218,6 +331,9 @@ export const collectKhalaCodeQaCoverageLedger = (input: {
     const action = observation.action
     if (action.kind === "rpc_call") {
       recordRpc(rpcMethods, action.method, action.args ?? [])
+      for (const group of rpcGroupsForMethod(action.method)) {
+        recordRpcGroup(rpcGroups, group, action.method)
+      }
       const firstArg = action.args?.[0]
       if (action.method === "slashCommandDispatch" && isRecord(firstArg)) {
         const command = parseSlashRaw(firstArg.raw)
@@ -250,6 +366,12 @@ export const collectKhalaCodeQaCoverageLedger = (input: {
       if (action.method === "codexApprovalRespond" && isRecord(firstArg) && typeof firstArg.action === "string") {
         approvalDecisionKinds.add(firstArg.action)
       }
+      if (action.method === "fleetRunControl" && isRecord(firstArg) && typeof firstArg.verb === "string") {
+        fleetRunControlVerbs.add(firstArg.verb)
+      }
+      if (action.method === "fleetWorkerControl" && isRecord(firstArg) && typeof firstArg.verb === "string") {
+        inboxRoutingFlagKinds.add(firstArg.verb)
+      }
       for (const variant of collectThreadItemVariants(observation.data)) {
         recordCount(threadItemVariantRenderCounts, variant)
         threadItemVariantsRendered.add(variant)
@@ -271,8 +393,11 @@ export const collectKhalaCodeQaCoverageLedger = (input: {
 
   return {
     approvalDecisionKinds: sorted(approvalDecisionKinds),
+    fleetRunControlVerbs: sorted(fleetRunControlVerbs),
     generatedAt: input.generatedAt ?? new Date().toISOString(),
     hotbarPanelsOpened: sorted(hotbarPanelsOpened),
+    inboxRoutingFlagKinds: sorted(inboxRoutingFlagKinds),
+    rpcGroups: rpcGroupCoverageToObject(rpcGroups),
     rpcMethods: rpcCoverageToObject(rpcMethods),
     runIds: [input.runId],
     schema: "khala_code_qa_coverage_ledger.v1",
@@ -288,6 +413,7 @@ export const collectKhalaCodeQaCoverageLedger = (input: {
 export const mergeKhalaCodeQaCoverageLedgers = (
   ledgers: ReadonlyArray<KhalaCodeQaCoverageLedger>,
 ): KhalaCodeQaCoverageLedger => {
+  const rpcGroups: MutableRpcGroupCoverage = new Map()
   const rpcMethods: MutableRpcCoverage = new Map()
   const slashCommands: MutableSlashCoverage = new Map()
   const threadItemVariantRenderCounts: MutableCountCoverage = new Map()
@@ -298,6 +424,12 @@ export const mergeKhalaCodeQaCoverageLedgers = (
 
   for (const ledger of ledgers) {
     for (const runId of ledger.runIds) runIds.add(runId)
+    for (const [group, entry] of Object.entries(ledger.rpcGroups ?? {})) {
+      const target = rpcGroups.get(group) ?? { calls: 0, methods: new Set<string>() }
+      target.calls += entry.calls
+      for (const method of entry.methods) target.methods.add(method)
+      rpcGroups.set(group, target)
+    }
     for (const [method, entry] of Object.entries(ledger.rpcMethods)) {
       const target = rpcMethods.get(method) ?? { calls: 0, argumentShapes: new Set<string>() }
       target.calls += entry.calls
@@ -317,8 +449,11 @@ export const mergeKhalaCodeQaCoverageLedgers = (
 
   return {
     approvalDecisionKinds: sorted(addSet("approvalDecisionKinds")),
+    fleetRunControlVerbs: sorted(addSet("fleetRunControlVerbs")),
     generatedAt,
     hotbarPanelsOpened: sorted(addSet("hotbarPanelsOpened")),
+    inboxRoutingFlagKinds: sorted(addSet("inboxRoutingFlagKinds")),
+    rpcGroups: rpcGroupCoverageToObject(rpcGroups),
     rpcMethods: rpcCoverageToObject(rpcMethods),
     runIds: sorted(runIds),
     schema: "khala_code_qa_coverage_ledger.v1",
@@ -341,8 +476,17 @@ export const khalaCodeQaCoverageFrontierReport = (input: {
     approvalDecisionKinds: sorted(input.manifest.coverage.approvalDecisionKinds.filter((item) =>
       !input.ledger.approvalDecisionKinds.includes(item)
     )),
+    fleetRunControlVerbs: sorted(input.manifest.coverage.fleetRunControlVerbs.filter((item) =>
+      !input.ledger.fleetRunControlVerbs.includes(item)
+    )),
     hotbarPanels: sorted(input.manifest.coverage.hotbarPanels.filter((item) =>
       !input.ledger.hotbarPanelsOpened.includes(item)
+    )),
+    inboxRoutingFlagKinds: sorted(input.manifest.coverage.inboxRoutingFlagKinds.filter((item) =>
+      !input.ledger.inboxRoutingFlagKinds.includes(item)
+    )),
+    rpcGroups: sorted(input.manifest.coverage.rpcGroups.filter((item) =>
+      input.ledger.rpcGroups[item] === undefined
     )),
     rpcMethods: sorted(KhalaCodeRpcMethodNames.filter((method: KhalaCodeRpcMethodName) =>
       input.ledger.rpcMethods[method] === undefined

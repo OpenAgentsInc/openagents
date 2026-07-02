@@ -261,15 +261,19 @@ Rules:
   (pre-push, CI); `live_codex` is skip-safe-by-default with env arming
   (exactly like `smoke:codex-parity-live` today); `live_fleet` requires a
   live Pylon and is the recording-rehearsal tier.
-- **The seed corpus is mechanical**: one lifecycle scenario per RPC group
-  (threads, turns, fleet, approvals, settings, ecosystem, slash commands),
-  one per hotbar panel, one per `ThreadItem` card variant (replayed from the
-  parity fixtures), one per slash command (the registry already enumerates
-  them — coverage is a loop, not a wishlist).
-- **T6.7 implementation artifact**: `packages/khala-qa-harness/src/seed-corpus.ts`
+- **The seed corpus is mechanical**: one lifecycle scenario per roadmap RPC
+  group (threads, turns, approvals, settings/config, models/personality,
+  ecosystem, fs/mentions/attachments, background terminals, slash commands,
+  token summaries, fleet, FleetRun, sessionCatalog, forum panel, inbox
+  routing, gym source projections, plans/billing, headless event sources, and
+  qaMetrics), one per hotbar panel, one per `ThreadItem` card variant
+  (replayed from the parity fixtures), one per slash command (the registry
+  already enumerates them — coverage is a loop, not a wishlist).
+- **Q4.1 implementation artifact**: `packages/khala-qa-harness/src/seed-corpus.ts`
   exports `KHALA_CODE_QA_SEED_SCENARIOS`, a fixture RPC fetch, and
   `KHALA_CODE_QA_SEED_CORPUS_MANIFEST` grouped by RPC area, hotbar panel,
-  `ThreadItem` variant, and slash command so T6.6 can count coverage directly.
+  `ThreadItem` variant, and slash command so the coverage ledger can count
+  coverage directly. See `docs/qa/khala-code-mechanical-corpus.md`.
 
 ## 5. Explore Mode: The Free-For-All That Cannot Lie
 

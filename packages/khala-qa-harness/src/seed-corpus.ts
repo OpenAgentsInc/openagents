@@ -6,19 +6,40 @@ import {
   khalaCodeDesktopSlashCommandsWithAvailability,
   type KhalaCodeDesktopSlashCommand,
 } from "../../../clients/khala-code-desktop/src/shared/codex-slash-commands.js"
+import {
+  evaluateKhalaCodeQaMetricBudgets,
+  khalaCodeQaMetricBudgets,
+  khalaCodeQaMetricDefinitions,
+  type KhalaCodeQaMetricSample,
+} from "../../../clients/khala-code-desktop/src/shared/qa-metrics.js"
 
-import type { KhalaCodeQaCoverageAvailability } from "./coverage-ledger.js"
+import {
+  KHALA_CODE_QA_ROADMAP_RPC_METHOD_GROUPS,
+  type KhalaCodeQaCoverageAvailability,
+} from "./coverage-ledger.js"
 import type { KhalaCodeRpcFetch } from "./rpc-client.js"
 import type { KhalaCodeQaScenario } from "./scenario.js"
 
-type SeedCorpusGroup =
+export type SeedCorpusGroup =
   | "rpc.threads"
   | "rpc.turns"
-  | "rpc.fleet"
   | "rpc.approvals"
-  | "rpc.settings"
+  | "rpc.settings_config"
+  | "rpc.models_personality"
   | "rpc.ecosystem"
+  | "rpc.fs_mentions_attachments"
+  | "rpc.background_terminals"
   | "rpc.slash_commands"
+  | "rpc.token_summaries"
+  | "rpc.fleet"
+  | "rpc.fleet_run"
+  | "rpc.session_catalog"
+  | "rpc.forum_panel"
+  | "rpc.inbox_routing"
+  | "rpc.gym_pane"
+  | "rpc.plans_billing"
+  | "rpc.headless_events"
+  | "rpc.qa_metrics"
   | "hotbar"
   | "thread_items"
 
@@ -37,7 +58,11 @@ export type KhalaCodeQaSeedCorpusManifest = Readonly<{
   backend: "fixture"
   coverage: Readonly<{
     approvalDecisionKinds: readonly string[]
+    fleetRunControlVerbs: readonly string[]
     hotbarPanels: readonly string[]
+    inboxRoutingFlagKinds: readonly string[]
+    rpcGroups: readonly string[]
+    rpcMethodsByGroup: Readonly<Record<string, readonly string[]>>
     selectors: readonly string[]
     settingsKeys: readonly string[]
     slashCommandAvailabilityStates: Readonly<Record<string, readonly KhalaCodeQaCoverageAvailability[]>>
@@ -86,6 +111,11 @@ const consistency = (left: string, right: string) => ({
   left,
   oracle: "consistency" as const,
   right,
+})
+const perf = (metric: string, budget: number) => ({
+  budget,
+  metric,
+  oracle: "perf" as const,
 })
 
 const commitment = (id: string, claim: string, match: string) => ({
@@ -257,7 +287,7 @@ const groupedRpcScenarios: readonly GroupedScenario[] = [
     ],
   ),
   groupedFixtureScenario(
-    "rpc.settings",
+    "rpc.settings_config",
     "scenario.khala_code.seed.rpc_settings_lifecycle.v1",
     [
       {
@@ -274,12 +304,21 @@ const groupedRpcScenarios: readonly GroupedScenario[] = [
       },
       {
         name: "write-config",
-        act: [{
-          kind: "rpc_call",
-          method: "codexConfigValueWrite",
-          args: [{ keyPath: "model", value: "gpt-5.1-codex" }],
-        }],
-        expect: [schema("codexConfigValueWrite"), crash()],
+        act: [
+          {
+            kind: "rpc_call",
+            method: "codexConfigValueWrite",
+            args: [{ keyPath: "model", value: "gpt-5.1-codex" }],
+          },
+          { kind: "rpc_call", method: "harnessSettingRead" },
+          { kind: "rpc_call", method: "harnessSettingWrite", args: [{ mode: "codex_harness" }] },
+        ],
+        expect: [
+          schema("codexConfigValueWrite"),
+          schema("harnessSettingRead"),
+          schema("harnessSettingWrite"),
+          crash(),
+        ],
       },
     ],
     [
@@ -339,6 +378,555 @@ const groupedRpcScenarios: readonly GroupedScenario[] = [
   ),
 ]
 
+export const KHALA_CODE_QA_SEED_FLEET_RUN_CONTROL_VERBS = ["pause", "resume", "drain", "stop"] as const
+export const KHALA_CODE_QA_SEED_INBOX_ROUTING_FLAG_KINDS = ["interrupt", "retry", "flag"] as const
+
+const approvalRespondRequest = (
+  action: string,
+  index: number,
+) => ({
+  action,
+  method: action.startsWith("grantPermissions")
+    ? "item/permissions/requestApproval"
+    : action === "applyNetworkPolicyAmendment"
+      ? "item/commandExecution/requestApproval"
+      : "item/commandExecution/requestApproval",
+  requestId: `approval-fixture-${index}-${action}`,
+  ...(action === "acceptWithExecpolicyAmendment"
+    ? { execpolicyAmendment: ["allow fixture command"] }
+    : {}),
+  ...(action === "applyNetworkPolicyAmendment"
+    ? { networkPolicyAmendment: { action: "allow", host: "fixture.local" } }
+    : {}),
+  ...(action.startsWith("grantPermissions")
+    ? {
+      permissions: {
+        fileSystem: { read: ["/workspace"], write: ["/workspace"] },
+        network: { enabled: true },
+      },
+    }
+    : {}),
+})
+
+const fixtureImageAttachment = () => ({
+  dataBase64: "iVBORw0KGgo=",
+  id: "attachment-image-fixture",
+  kind: "image",
+  mime: "image/png",
+  name: "fixture.png",
+  sizeBytes: 68,
+})
+
+const fixtureChatTurnRequest = (
+  options: {
+    readonly attachments?: boolean
+    readonly startNewThread?: boolean
+    readonly turnId?: string
+  } = {},
+) => ({
+  ...(options.attachments === true ? { attachments: [fixtureImageAttachment()] } : {}),
+  messages: [{ body: "fixture chat turn", id: "msg-user", role: "user" }],
+  sessionId: desktopSessionId,
+  ...(options.startNewThread === undefined ? { threadId } : { startNewThread: options.startNewThread }),
+  turnId: options.turnId ?? turnId,
+})
+
+const qaMetricSample = (
+  metric = "startup.interactive_ms",
+  value = 1,
+): KhalaCodeQaMetricSample => ({
+  context: { surface: "seed-corpus" },
+  metric: metric as KhalaCodeQaMetricSample["metric"],
+  observedAt,
+  unit: "ms",
+  value,
+})
+
+const groupedQ41RpcScenarios: readonly GroupedScenario[] = [
+  groupedFixtureScenario(
+    "rpc.threads",
+    "scenario.khala_code.seed.rpc_threads_q41_completion.v1",
+    [
+      {
+        name: "compact-resume-delete-thread",
+        act: [
+          { kind: "rpc_call", method: "codexThreadCompact", args: [{ sessionId: desktopSessionId, threadId }] },
+          { kind: "rpc_call", method: "codexThreadResume", args: [{ cwd: "/workspace", sessionId: desktopSessionId, threadId }] },
+          { kind: "rpc_call", method: "codexThreadDelete", args: [{ threadId }] },
+        ],
+        expect: [
+          schema("codexThreadCompact"),
+          schema("codexThreadResume"),
+          schema("codexThreadDelete"),
+          crash(),
+        ],
+      },
+    ],
+    [
+      commitment("seed.rpc_threads.q41_schema", "thread compact, resume, and delete RPCs decode", "schema"),
+      runPass("seed.rpc_threads.q41_pass", "Q4.1 thread completion scenario passes"),
+    ],
+  ),
+  groupedFixtureScenario(
+    "rpc.approvals",
+    "scenario.khala_code.seed.rpc_approvals_every_decision.v1",
+    [
+      {
+        name: "approval-request-projection",
+        act: [
+          { kind: "rpc_call", method: "claudeApprovalPending" },
+          {
+            kind: "rpc_call",
+            method: "claudeApprovalRespond",
+            args: [{ decision: { behavior: "allow", decisionClassification: "fixture_allow" }, requestId: "claude-approval-fixture" }],
+          },
+          {
+            kind: "rpc_call",
+            method: "claudeApprovalRespond",
+            args: [{ decision: { behavior: "deny", decisionClassification: "fixture_deny", message: "fixture deny" }, requestId: "claude-approval-fixture" }],
+          },
+        ],
+        expect: [
+          schema("claudeApprovalPending"),
+          schema("claudeApprovalRespond"),
+          crash(),
+        ],
+      },
+      ...KHALA_CODE_CODEX_APPROVAL_ACTIONS.map((action, index) => ({
+        name: `codex-approval-${action}`,
+        act: [{
+          kind: "rpc_call" as const,
+          method: "codexApprovalRespond",
+          args: [approvalRespondRequest(action, index)],
+        }],
+        expect: [schema("codexApprovalRespond"), crash()],
+      })),
+    ],
+    [
+      commitment("seed.rpc_approvals.every_decision_schema", "every Codex approval decision kind decodes", "schema"),
+      runPass("seed.rpc_approvals.every_decision_pass", "approval decision corpus scenario passes"),
+    ],
+  ),
+  groupedFixtureScenario(
+    "rpc.models_personality",
+    "scenario.khala_code.seed.rpc_models_personality_lifecycle.v1",
+    [
+      {
+        name: "read-models-and-write-personality",
+        act: [
+          { kind: "rpc_call", method: "codexSettingsRead", args: [{ cwd: "/workspace", includeHiddenModels: true }] },
+          { kind: "rpc_call", method: "codexConfigValueWrite", args: [{ keyPath: "personality", value: "concise" }] },
+          { kind: "rpc_call", method: "onDeviceDeciderStatus" },
+          { kind: "rpc_call", method: "appleFmReadiness" },
+        ],
+        expect: [
+          schema("codexSettingsRead"),
+          schema("codexConfigValueWrite"),
+          schema("onDeviceDeciderStatus"),
+          schema("appleFmReadiness"),
+          crash(),
+        ],
+      },
+    ],
+    [
+      commitment("seed.rpc_models_personality.schema", "model, personality, and local decider projections decode", "schema"),
+      runPass("seed.rpc_models_personality.pass", "models/personality scenario passes"),
+    ],
+  ),
+  groupedFixtureScenario(
+    "rpc.ecosystem",
+    "scenario.khala_code.seed.rpc_ecosystem_full_lifecycle.v1",
+    [
+      {
+        name: "read-ecosystem-and-tool-catalog",
+        act: [
+          { kind: "rpc_call", method: "codexEcosystemRead", args: [{ cwd: "/workspace", forceReloadSkills: true, forceRefetchApps: true, threadId }] },
+          { kind: "rpc_call", method: "toolCatalog" },
+        ],
+        expect: [schema("codexEcosystemRead"), schema("toolCatalog"), crash()],
+      },
+      {
+        name: "mcp-resource-tool-and-oauth",
+        act: [
+          { kind: "rpc_call", method: "codexMcpServerReload" },
+          { kind: "rpc_call", method: "codexMcpResourceRead", args: [{ server: "fixture", threadId, uri: "resource://fixture/readme" }] },
+          {
+            kind: "rpc_call",
+            method: "codexMcpToolCall",
+            args: [{ arguments: { query: "ping" }, meta: { source: "seed-corpus" }, server: "fixture", threadId, tool: "fixtureTool" }],
+          },
+          { kind: "rpc_call", method: "codexMcpOauthLogin", args: [{ scopes: ["read"], server: "fixture", threadId, timeoutSecs: 1 }] },
+        ],
+        expect: [
+          schema("codexMcpServerReload"),
+          schema("codexMcpResourceRead"),
+          schema("codexMcpToolCall"),
+          schema("codexMcpOauthLogin"),
+          crash(),
+        ],
+      },
+      {
+        name: "skills-plugins-marketplaces",
+        act: [
+          { kind: "rpc_call", method: "codexSkillsExtraRootsSet", args: [{ extraRoots: ["/workspace/.khala/skills"] }] },
+          { kind: "rpc_call", method: "codexSkillsConfigWrite", args: [{ enabled: true, name: "fixture-skill", path: "/workspace/.khala/skills/fixture" }] },
+          { kind: "rpc_call", method: "codexMarketplaceAdd", args: [{ refName: "fixture", source: "https://github.com/OpenAgentsInc/fixture-marketplace", sparsePaths: ["plugins/fixture"] }] },
+          { kind: "rpc_call", method: "codexMarketplaceUpgrade", args: [{ marketplaceName: "fixture-marketplace" }] },
+          { kind: "rpc_call", method: "codexMarketplaceRemove", args: [{ marketplaceName: "fixture-marketplace" }] },
+          { kind: "rpc_call", method: "codexPluginInstall", args: [{ marketplacePath: "plugins/fixture", pluginName: "fixture-plugin", remoteMarketplaceName: "fixture-marketplace" }] },
+          { kind: "rpc_call", method: "codexPluginUninstall", args: [{ pluginId: "plugin-fixture" }] },
+        ],
+        expect: [
+          schema("codexSkillsExtraRootsSet"),
+          schema("codexSkillsConfigWrite"),
+          schema("codexMarketplaceAdd"),
+          schema("codexMarketplaceUpgrade"),
+          schema("codexMarketplaceRemove"),
+          schema("codexPluginInstall"),
+          schema("codexPluginUninstall"),
+          crash(),
+        ],
+      },
+      {
+        name: "external-agent-hooks-imports",
+        act: [
+          { kind: "rpc_call", method: "codexExternalAgentConfigDetect", args: [{ cwds: ["/workspace"], includeHome: false }] },
+          {
+            kind: "rpc_call",
+            method: "codexExternalAgentConfigImport",
+            args: [{ migrationItems: [{ cwd: "/workspace", description: "fixture hook import", details: { hook: true }, itemType: "hook" }], source: "fixture" }],
+          },
+          { kind: "rpc_call", method: "codexExternalAgentConfigImportHistoriesRead" },
+        ],
+        expect: [
+          schema("codexExternalAgentConfigDetect"),
+          schema("codexExternalAgentConfigImport"),
+          schema("codexExternalAgentConfigImportHistoriesRead"),
+          crash(),
+        ],
+      },
+    ],
+    [
+      commitment("seed.rpc_ecosystem.full_schema", "ecosystem MCP, skill, plugin, app, hook, and marketplace RPCs decode", "schema"),
+      runPass("seed.rpc_ecosystem.full_pass", "full ecosystem scenario passes"),
+    ],
+  ),
+  groupedFixtureScenario(
+    "rpc.fs_mentions_attachments",
+    "scenario.khala_code.seed.rpc_fs_mentions_attachments_lifecycle.v1",
+    [
+      {
+        name: "fs-and-mentions",
+        act: [
+          { kind: "rpc_call", method: "codexMentionCandidates", args: [{ cwd: "/workspace", query: "README" }] },
+          { kind: "rpc_call", method: "codexFsGetMetadata", args: [{ path: "/workspace/README.md" }] },
+          { kind: "rpc_call", method: "codexFsReadFile", args: [{ path: "/workspace/README.md" }] },
+          { kind: "rpc_call", method: "codexFsWriteFile", args: [{ dataBase64: "Zml4dHVyZQ==", path: "/workspace/tmp/fixture.txt" }] },
+        ],
+        expect: [
+          schema("codexMentionCandidates"),
+          schema("codexFsGetMetadata"),
+          schema("codexFsReadFile"),
+          schema("codexFsWriteFile"),
+          crash(),
+        ],
+      },
+      {
+        name: "chat-attachment",
+        act: [{ kind: "rpc_call", method: "submitChatMessage", args: [fixtureChatTurnRequest({ attachments: true, turnId: "turn-attachment-fixture" })] }],
+        expect: [schema("submitChatMessage"), crash()],
+      },
+    ],
+    [
+      commitment("seed.rpc_fs_mentions_attachments.schema", "fs, mentions, and attachment RPCs decode", "schema"),
+      runPass("seed.rpc_fs_mentions_attachments.pass", "fs/mentions/attachments scenario passes"),
+    ],
+  ),
+  groupedFixtureScenario(
+    "rpc.background_terminals",
+    "scenario.khala_code.seed.rpc_background_terminals_lifecycle.v1",
+    [
+      {
+        name: "list-clean-terminate-background-terminals",
+        act: [
+          { kind: "rpc_call", method: "codexBackgroundTerminalsList", args: [{ cursor: null, limit: 10, threadId }] },
+          { kind: "rpc_call", method: "codexBackgroundTerminalsClean", args: [{ threadId }] },
+          { kind: "rpc_call", method: "codexBackgroundTerminalsTerminate", args: [{ processId: "process-fixture", threadId }] },
+        ],
+        expect: [
+          schema("codexBackgroundTerminalsList"),
+          schema("codexBackgroundTerminalsClean"),
+          schema("codexBackgroundTerminalsTerminate"),
+          crash(),
+        ],
+      },
+    ],
+    [
+      commitment("seed.rpc_background_terminals.schema", "background terminal RPCs decode", "schema"),
+      runPass("seed.rpc_background_terminals.pass", "background terminal scenario passes"),
+    ],
+  ),
+  groupedFixtureScenario(
+    "rpc.token_summaries",
+    "scenario.khala_code.seed.rpc_token_summaries_lifecycle.v1",
+    [
+      {
+        name: "read-token-status-and-thread-summary",
+        act: [
+          { kind: "rpc_call", method: "tokenAccountingStatus" },
+          { kind: "rpc_call", method: "threadTokenSummary", args: [{ threadId }] },
+        ],
+        expect: [schema("tokenAccountingStatus"), schema("threadTokenSummary"), crash()],
+      },
+    ],
+    [
+      commitment("seed.rpc_token_summaries.schema", "token status and thread summary RPCs decode", "schema"),
+      runPass("seed.rpc_token_summaries.pass", "token summaries scenario passes"),
+    ],
+  ),
+  groupedFixtureScenario(
+    "rpc.fleet",
+    "scenario.khala_code.seed.rpc_fleet_status_delegate_promote.v1",
+    [
+      {
+        name: "fleet-status-delegate-promote",
+        act: [
+          { kind: "rpc_call", method: "codexFleetStatus" },
+          { kind: "rpc_call", method: "codexFleetDelegateRun", args: [{ count: 1, mode: "fixture", noRun: true, objective: "fixture delegation" }] },
+          {
+            kind: "rpc_call",
+            method: "codexFleetPromoteThread",
+            args: [{
+              contextBoundary: { allowedRefs: [threadId], includeTranscript: false, mode: "summary_only", summary: "fixture thread summary" },
+              count: 1,
+              fixture: true,
+              noRun: true,
+              objective: "fixture promotion",
+              sessionId: desktopSessionId,
+              threadId,
+            }],
+          },
+        ],
+        expect: [schema("codexFleetStatus"), schema("codexFleetDelegateRun"), schema("codexFleetPromoteThread"), crash()],
+      },
+    ],
+    [
+      commitment("seed.rpc_fleet.promote_schema", "fleet status, delegate, and promote RPCs decode", "schema"),
+      runPass("seed.rpc_fleet.promote_pass", "fleet status/delegate/promote scenario passes"),
+    ],
+  ),
+  groupedFixtureScenario(
+    "rpc.fleet_run",
+    "scenario.khala_code.seed.rpc_fleet_run_lifecycle.v1",
+    [
+      {
+        name: "start-status-list-control-fleet-run",
+        act: [
+          {
+            kind: "rpc_call",
+            method: "fleetRunStart",
+            args: [{
+              objective: "fixture sustained run",
+              runRef,
+              targetConcurrency: 1,
+              workerKind: "codex",
+              workSource: { kind: "fixture", count: 1 },
+            }],
+          },
+          { kind: "rpc_call", method: "fleetRunStatus", args: [{ runRef }] },
+          { kind: "rpc_call", method: "fleetRunList", args: [{}] },
+          ...KHALA_CODE_QA_SEED_FLEET_RUN_CONTROL_VERBS.map((verb) => ({
+            kind: "rpc_call" as const,
+            method: "fleetRunControl",
+            args: [{ runRef, verb }],
+          })),
+        ],
+        expect: [
+          schema("fleetRunStart"),
+          schema("fleetRunStatus"),
+          schema("fleetRunList"),
+          schema("fleetRunControl"),
+          crash(),
+        ],
+      },
+    ],
+    [
+      commitment("seed.rpc_fleet_run.schema", "FleetRun start/status/list/control RPCs decode", "schema"),
+      runPass("seed.rpc_fleet_run.pass", "FleetRun lifecycle scenario passes"),
+    ],
+  ),
+  groupedFixtureScenario(
+    "rpc.session_catalog",
+    "scenario.khala_code.seed.rpc_session_catalog_lifecycle.v1",
+    [
+      {
+        name: "search-session-catalog",
+        act: [
+          { kind: "rpc_call", method: "sessionCatalog", args: [{ limit: 10, searchTerm: "fixture" }] },
+          { kind: "rpc_call", method: "sessionCatalog", args: [{ limit: 10, searchTerm: "fixture" }] },
+        ],
+        expect: [
+          schema("sessionCatalog"),
+          consistency("rpc:sessionCatalog#1", "rpc:sessionCatalog#2"),
+          crash(),
+        ],
+      },
+    ],
+    [
+      commitment("seed.rpc_session_catalog.schema", "session catalog RPC responses decode", "schema"),
+      commitment("seed.rpc_session_catalog.consistency", "session catalog search is stable", "consistency"),
+      runPass("seed.rpc_session_catalog.pass", "session catalog scenario passes"),
+    ],
+  ),
+  groupedFixtureScenario(
+    "rpc.forum_panel",
+    "scenario.khala_code.seed.rpc_forum_panel_lifecycle.v1",
+    [
+      {
+        name: "browse-post-tip-forum",
+        act: [
+          { kind: "rpc_call", method: "forumRequest", args: [{ method: "GET", path: "/forum" }] },
+          { kind: "rpc_call", method: "forumRequest", args: [{ body: { body: "fixture post", title: "Fixture" }, method: "POST", path: "/forum/posts" }] },
+          { kind: "rpc_call", method: "forumRequest", args: [{ body: { amountSats: 1 }, method: "POST", path: "/forum/posts/post-fixture/tips" }] },
+        ],
+        expect: [schema("forumRequest"), crash()],
+      },
+    ],
+    [
+      commitment("seed.rpc_forum_panel.schema", "forum browse, post, and tip proxy RPCs decode", "schema"),
+      runPass("seed.rpc_forum_panel.pass", "forum panel scenario passes"),
+    ],
+  ),
+  groupedFixtureScenario(
+    "rpc.inbox_routing",
+    "scenario.khala_code.seed.rpc_inbox_routing_lifecycle.v1",
+    [
+      {
+        name: "read-inbox-source-rpcs",
+        act: [
+          { kind: "rpc_call", method: "codexFleetStatus" },
+          { kind: "rpc_call", method: "pylonStatus" },
+          { kind: "rpc_call", method: "codingStatus" },
+          { kind: "rpc_call", method: "tokenAccountingStatus" },
+          { kind: "rpc_call", method: "codexHarnessStatus" },
+          { kind: "rpc_call", method: "codexEcosystemRead", args: [{ cwd: "/workspace", threadId }] },
+        ],
+        expect: [
+          schema("codexFleetStatus"),
+          schema("pylonStatus"),
+          schema("codingStatus"),
+          schema("tokenAccountingStatus"),
+          schema("codexHarnessStatus"),
+          schema("codexEcosystemRead"),
+          crash(),
+        ],
+      },
+      {
+        name: "route-worker-control-flags",
+        act: KHALA_CODE_QA_SEED_INBOX_ROUTING_FLAG_KINDS.map((verb) => ({
+          kind: "rpc_call" as const,
+          method: "fleetWorkerControl",
+          args: [{
+            assignmentRef: "assignment-fixture",
+            issueRef: "#8027",
+            note: `fixture ${verb}`,
+            runRef,
+            verb,
+            workerRefHash: "worker-fixture",
+          }],
+        })),
+        expect: [schema("fleetWorkerControl"), crash()],
+      },
+    ],
+    [
+      commitment("seed.rpc_inbox_routing.schema", "inbox source and worker-control routing RPCs decode", "schema"),
+      runPass("seed.rpc_inbox_routing.pass", "inbox routing scenario passes"),
+    ],
+  ),
+  groupedFixtureScenario(
+    "rpc.gym_pane",
+    "scenario.khala_code.seed.rpc_gym_pane_lifecycle.v1",
+    [
+      {
+        name: "read-gym-source-projections",
+        act: [
+          { kind: "rpc_call", method: "fleetRunStatus", args: [{ runRef }] },
+          { kind: "rpc_call", method: "fleetRunList", args: [{}] },
+          { kind: "rpc_call", method: "codexFleetStatus" },
+        ],
+        expect: [schema("fleetRunStatus"), schema("fleetRunList"), schema("codexFleetStatus"), crash()],
+      },
+    ],
+    [
+      commitment("seed.rpc_gym_pane.schema", "Gym source projections decode at the RPC boundary", "schema"),
+      runPass("seed.rpc_gym_pane.pass", "Gym pane source scenario passes"),
+    ],
+  ),
+  groupedFixtureScenario(
+    "rpc.plans_billing",
+    "scenario.khala_code.seed.rpc_plans_billing_lifecycle.v1",
+    [
+      {
+        name: "read-status-and-purchase-plan",
+        act: [
+          { kind: "rpc_call", method: "khalaCodePlanCatalog" },
+          { kind: "rpc_call", method: "khalaCodePlanStatus" },
+          { kind: "rpc_call", method: "khalaCodePlanPurchase", args: [{ idempotencyKey: "fixture-purchase" }] },
+        ],
+        expect: [schema("khalaCodePlanCatalog"), schema("khalaCodePlanStatus"), schema("khalaCodePlanPurchase"), crash()],
+      },
+    ],
+    [
+      commitment("seed.rpc_plans_billing.schema", "plan catalog, status, and purchase RPCs decode", "schema"),
+      runPass("seed.rpc_plans_billing.pass", "plans/billing scenario passes"),
+    ],
+  ),
+  groupedFixtureScenario(
+    "rpc.headless_events",
+    "scenario.khala_code.seed.rpc_headless_events_lifecycle.v1",
+    [
+      {
+        name: "headless-chat-event-source",
+        act: [{ kind: "rpc_call", method: "submitChatMessage", args: [fixtureChatTurnRequest({ startNewThread: false, turnId: "turn-headless-fixture" })] }],
+        expect: [schema("submitChatMessage"), crash()],
+      },
+      {
+        name: "headless-fleet-event-source",
+        act: [{ kind: "rpc_call", method: "fleetRunStatus", args: [{ runRef }] }],
+        expect: [schema("fleetRunStatus"), crash()],
+      },
+    ],
+    [
+      commitment("seed.rpc_headless_events.schema", "headless chat and fleet event source RPCs decode", "schema"),
+      runPass("seed.rpc_headless_events.pass", "headless events source scenario passes"),
+    ],
+  ),
+  groupedFixtureScenario(
+    "rpc.qa_metrics",
+    "scenario.khala_code.seed.rpc_qa_metrics_lifecycle.v1",
+    [
+      {
+        name: "sample-and-read-qa-metrics",
+        act: [
+          { kind: "rpc_call", method: "qaMetricSample", args: [qaMetricSample()] },
+          { kind: "rpc_call", method: "qaMetrics" },
+        ],
+        expect: [
+          schema("qaMetricSample"),
+          schema("qaMetrics"),
+          perf("startup.interactive_ms", 2000),
+          crash(),
+        ],
+      },
+    ],
+    [
+      commitment("seed.rpc_qa_metrics.schema", "QA metric sample and snapshot RPCs decode", "schema"),
+      commitment("seed.rpc_qa_metrics.perf", "fixture QA metrics satisfy a budget oracle", "perf"),
+      runPass("seed.rpc_qa_metrics.pass", "QA metrics scenario passes"),
+    ],
+  ),
+]
+
 const groupedHotbarScenarios: readonly GroupedScenario[] = [
   groupedFixtureScenario(
     "hotbar",
@@ -383,7 +971,7 @@ const groupedHotbarScenarios: readonly GroupedScenario[] = [
 
 export const KHALA_CODE_QA_THREAD_ITEM_VARIANTS = KHALA_CODE_CODEX_PARITY_REQUIRED_THREAD_ITEM_TYPES
 export const KHALA_CODE_QA_SEED_HOTBAR_PANELS = KHALA_CODE_HOTBAR_SLOTS.map((slot) => slot.value)
-export const KHALA_CODE_QA_SEED_SETTINGS_KEYS = ["model"] as const
+export const KHALA_CODE_QA_SEED_SETTINGS_KEYS = ["model", "personality"] as const
 export const KHALA_CODE_QA_SEED_APPROVAL_DECISION_KINDS = KHALA_CODE_CODEX_APPROVAL_ACTIONS
 export const KHALA_CODE_QA_SEED_SELECTORS = [] as const
 export const KHALA_CODE_QA_SEED_SLASH_COMMANDS = KHALA_CODE_DESKTOP_SLASH_COMMANDS.map((command) => command.command)
@@ -427,6 +1015,7 @@ const groupedSlashCommandScenarios: readonly GroupedScenario[] =
 
 const groupedSeedScenarios: readonly GroupedScenario[] = [
   ...groupedRpcScenarios,
+  ...groupedQ41RpcScenarios,
   ...groupedHotbarScenarios,
   ...groupedThreadItemScenarios,
   ...groupedSlashCommandScenarios,
@@ -440,7 +1029,11 @@ export const KHALA_CODE_QA_SEED_CORPUS_MANIFEST: KhalaCodeQaSeedCorpusManifest =
   backend: "fixture",
   coverage: {
     approvalDecisionKinds: KHALA_CODE_QA_SEED_APPROVAL_DECISION_KINDS,
+    fleetRunControlVerbs: KHALA_CODE_QA_SEED_FLEET_RUN_CONTROL_VERBS,
     hotbarPanels: KHALA_CODE_QA_SEED_HOTBAR_PANELS,
+    inboxRoutingFlagKinds: KHALA_CODE_QA_SEED_INBOX_ROUTING_FLAG_KINDS,
+    rpcGroups: Object.keys(KHALA_CODE_QA_ROADMAP_RPC_METHOD_GROUPS),
+    rpcMethodsByGroup: KHALA_CODE_QA_ROADMAP_RPC_METHOD_GROUPS,
     selectors: KHALA_CODE_QA_SEED_SELECTORS,
     settingsKeys: KHALA_CODE_QA_SEED_SETTINGS_KEYS,
     slashCommandAvailabilityStates: KHALA_CODE_QA_SEED_SLASH_COMMAND_AVAILABILITY_STATES,
@@ -641,6 +1234,7 @@ const parseArgs = async (init?: RequestInit): Promise<readonly unknown[]> => {
 export const makeKhalaCodeQaSeedCorpusFixtureFetch = (): KhalaCodeRpcFetch => {
   let fleetRunState: FixtureFleetRunState = "draft"
   let appServerState: FixtureAppServerState = "stopped"
+  const qaMetricSamples: KhalaCodeQaMetricSample[] = []
   let threadState: FixtureThreadState = {
     archived: false,
     deleted: false,
@@ -653,6 +1247,10 @@ export const makeKhalaCodeQaSeedCorpusFixtureFetch = (): KhalaCodeRpcFetch => {
     return response(fixtureRpcPayload(method, args, {
       appServerState,
       fleetRunState,
+      qaMetricSamples,
+      appendQaMetricSample: (sample) => {
+        qaMetricSamples.push(sample)
+      },
       setAppServerState: (state) => {
         appServerState = state
       },
@@ -673,6 +1271,8 @@ const fixtureRpcPayload = (
   state: {
     readonly appServerState: FixtureAppServerState
     readonly fleetRunState: FixtureFleetRunState
+    readonly qaMetricSamples: readonly KhalaCodeQaMetricSample[]
+    readonly appendQaMetricSample: (sample: KhalaCodeQaMetricSample) => void
     readonly setAppServerState: (state: FixtureAppServerState) => void
     readonly setFleetRunState: (state: FixtureFleetRunState) => void
     readonly setThreadState: (patch: Partial<FixtureThreadState>) => void
@@ -682,6 +1282,10 @@ const fixtureRpcPayload = (
   switch (method) {
     case "appInfo":
       return { app: "Khala Code Desktop", ok: true, observedAt }
+    case "appleFmReadiness":
+      return appleFmReadiness()
+    case "codexHarnessStatus":
+      return codexHarnessStatus()
     case "codexAppServerStatus":
       return appServerStatus(state.appServerState)
     case "codexAppServerStart":
@@ -695,6 +1299,12 @@ const fixtureRpcPayload = (
       return appServerControl("stop", state.appServerState, "stopped")
     case "codingStatus":
       return runtimeStatus("coding", "ready")
+    case "pylonStatus":
+      return runtimeStatus("pylon", "ready")
+    case "tokenAccountingStatus":
+      return runtimeStatus("token_accounting", "ready")
+    case "onDeviceDeciderStatus":
+      return onDeviceDeciderStatus()
     case "codexThreadStart":
       state.setThreadState({
         archived: false,
@@ -725,7 +1335,12 @@ const fixtureRpcPayload = (
     case "codexThreadFork":
       state.setThreadState({ forked: true })
       return { ...threadMutation("fork", threadId), newThreadId: forkThreadId }
+    case "codexThreadResume": {
+      const request = args[0] as { readonly threadId?: string } | undefined
+      return threadResult(request?.threadId ?? threadId, state.threadState)
+    }
     case "codexTurnStart":
+    case "submitChatMessage":
       return chatTurnResponse()
     case "codexTurnSteer":
     case "codexTurnInterrupt":
@@ -735,6 +1350,8 @@ const fixtureRpcPayload = (
       return fleetStatus()
     case "codexFleetDelegateRun":
       return fleetDelegateRunResult()
+    case "codexFleetPromoteThread":
+      return fleetPromotionResult(args[0])
     case "fleetRunStart":
       state.setFleetRunState("running")
       return { ok: true, run: fleetRun("running"), supervisorStarted: true }
@@ -755,6 +1372,24 @@ const fixtureRpcPayload = (
         verb: request?.verb ?? "stop",
       }
     }
+    case "fleetWorkerControl": {
+      const request = args[0] as {
+        readonly assignmentRef?: string | null
+        readonly issueRef?: string | null
+        readonly runRef?: string | null
+        readonly verb?: "interrupt" | "retry" | "flag"
+        readonly workerRefHash?: string
+      } | undefined
+      return {
+        accepted: true,
+        assignmentRef: request?.assignmentRef ?? null,
+        inboxItemRef: `inbox.fixture.${request?.verb ?? "flag"}`,
+        ok: true,
+        runRef: request?.runRef ?? null,
+        verb: request?.verb ?? "flag",
+        workerRefHash: request?.workerRefHash ?? "worker-fixture",
+      }
+    }
     case "codexApprovalRespond": {
       const request = args[0] as { readonly method?: string; readonly requestId?: string | number } | undefined
       return {
@@ -763,18 +1398,101 @@ const fixtureRpcPayload = (
         requestId: request?.requestId ?? "approval-fixture",
       }
     }
+    case "claudeApprovalPending":
+      return {
+        ok: true,
+        requests: [{
+          id: "claude-approval-fixture",
+          input: { command: "echo fixture" },
+          options: { title: "Fixture approval", description: "Fixture approval request" },
+          toolName: "Bash",
+        }],
+      }
+    case "claudeApprovalRespond": {
+      const request = args[0] as { readonly decision?: unknown; readonly requestId?: string } | undefined
+      return {
+        decision: request?.decision ?? { behavior: "allow" },
+        ok: true,
+        requestId: request?.requestId ?? "claude-approval-fixture",
+      }
+    }
     case "codexSettingsRead":
       return settingsProjection()
-    case "codexConfigValueWrite":
-      return { ok: true, keyPath: "model", response: { applied: true }, settings: settingsProjection() }
+    case "codexConfigValueWrite": {
+      const request = args[0] as { readonly keyPath?: string } | undefined
+      return { ok: true, keyPath: request?.keyPath ?? "model", response: { applied: true }, settings: settingsProjection() }
+    }
+    case "harnessSettingRead":
+      return harnessSetting("codex_harness")
+    case "harnessSettingWrite": {
+      const request = args[0] as { readonly mode?: "claude_runtime" | "codex_harness" | "khala_native_runtime" } | undefined
+      return harnessSetting(request?.mode ?? "codex_harness", true)
+    }
     case "codexEcosystemRead":
       return ecosystemProjection()
+    case "toolCatalog":
+      return toolCatalog()
     case "codexMentionCandidates":
       return { ok: true, candidates: [{ fileName: "README.md", kind: "file", path: "/workspace/README.md" }], source: "fuzzyFileSearch", truncated: false }
     case "codexBackgroundTerminalsList":
       return actionResult("thread/backgroundTerminals/list", { processes: [] })
+    case "codexBackgroundTerminalsClean":
+      return actionResult("thread/backgroundTerminals/clean", { cleaned: true })
+    case "codexBackgroundTerminalsTerminate":
+      return actionResult("thread/backgroundTerminals/terminate", { terminated: true })
+    case "codexFsGetMetadata":
+      return actionResult("fs/getMetadata", { kind: "file", path: "/workspace/README.md", sizeBytes: 123 })
+    case "codexFsReadFile":
+      return actionResult("fs/readFile", { dataBase64: "Zml4dHVyZQ==", path: "/workspace/README.md" })
+    case "codexFsWriteFile":
+      return actionResult("fs/writeFile", { bytesWritten: 7 })
+    case "codexExternalAgentConfigDetect":
+      return actionResult("config/externalAgent/detect", { items: [] })
+    case "codexExternalAgentConfigImport":
+      return actionResult("config/externalAgent/import", { imported: 1 })
+    case "codexExternalAgentConfigImportHistoriesRead":
+      return actionResult("config/externalAgent/importHistories/read", { histories: [] })
+    case "codexMarketplaceAdd":
+      return actionResult("marketplace/add", { marketplaceName: "fixture-marketplace" })
+    case "codexMarketplaceRemove":
+      return actionResult("marketplace/remove", { marketplaceName: "fixture-marketplace" })
+    case "codexMarketplaceUpgrade":
+      return actionResult("marketplace/upgrade", { marketplaceName: "fixture-marketplace" })
+    case "codexMcpResourceRead":
+      return actionResult("mcp/resource/read", { text: "fixture resource" })
+    case "codexMcpToolCall":
+      return actionResult("mcp/tool/call", { content: [{ text: "fixture tool result", type: "text" }] })
+    case "codexMcpOauthLogin":
+      return actionResult("mcp/oauth/login", { status: "completed" })
     case "codexMcpServerReload":
       return actionResult("config/mcpServer/reload", { reloaded: true })
+    case "codexPluginInstall":
+      return actionResult("plugin/install", { pluginId: "plugin-fixture" })
+    case "codexPluginUninstall":
+      return actionResult("plugin/uninstall", { pluginId: "plugin-fixture" })
+    case "codexSkillsConfigWrite":
+      return actionResult("skills/config/write", { written: true })
+    case "codexSkillsExtraRootsSet":
+      return actionResult("skills/extraRoots/set", { extraRoots: ["/workspace/.khala/skills"] })
+    case "threadTokenSummary":
+      return threadTokenSummary(args[0])
+    case "sessionCatalog":
+      return sessionCatalog()
+    case "forumRequest":
+      return forumResponse(args[0])
+    case "khalaCodePlanCatalog":
+      return { ok: true, catalog: planCatalog() }
+    case "khalaCodePlanStatus":
+      return { state: "ok", plan: { captureExcluded: false, kind: "free", planId: "khala-code-free", reasonRef: "fixture.default_free" } }
+    case "khalaCodePlanPurchase":
+      return { ok: false, error: "khala_code_paid_plans_not_enabled" }
+    case "qaMetricSample": {
+      const sample = args[0] as KhalaCodeQaMetricSample
+      state.appendQaMetricSample(sample)
+      return { ok: true, observedAt: sample.observedAt }
+    }
+    case "qaMetrics":
+      return qaMetricsSnapshot(state.qaMetricSamples)
     case "slashCommandList": {
       const request = args[0] as {
         readonly activeTurn?: boolean
@@ -870,6 +1588,94 @@ const runtimeStatus = (
   ok: true,
   reason: "fixture backend",
   status,
+})
+
+const codexHarnessStatus = () => ({
+  ...runtimeStatus("codex_harness", "ready"),
+  auth: {
+    accessTokenPresent: true,
+    accountIdPresent: true,
+    blockerRefs: [],
+    refreshTokenPresent: true,
+    state: "ready",
+  },
+  binary: {
+    available: true,
+    command: "codex",
+    error: null,
+    source: "PATH",
+    version: "fixture",
+  },
+  home: {
+    authPath: "/fixture/codex-home/auth.json",
+    fleetIsolation: "fleet_accounts_use_pylon_isolated_homes",
+    path: "/fixture/codex-home",
+    role: "main_user_codex_home",
+    source: "input",
+  },
+  signIn: {
+    command: "codex login",
+    required: false,
+    warning: "fixture sign-in not required",
+  },
+})
+
+const appleFmReadiness = () => ({
+  available: false,
+  backendKind: "apple_foundation_models",
+  blockerRefs: ["fixture.apple_fm.unavailable"],
+  capability: "local_decider",
+  contentRedacted: true,
+  demandKind: "own_capacity",
+  demandSource: "khala_code_fixture",
+  kind: "khala_desktop_apple_fm_readiness",
+  model: "fixture-apple-fm",
+  observedAt,
+  profileId: "fixture-profile",
+  provider: "apple",
+  pylon: null,
+  pylonControlConfigured: false,
+  schema: "openagents.khala_code.apple_fm_readiness.v1",
+  state: "unavailable",
+  supported: true,
+  usageTruth: "estimated",
+})
+
+const onDeviceDeciderStatus = () => ({
+  preferred: "hosted_openagents",
+  readiness: [{
+    available: false,
+    backend: "apple_foundation_models",
+    detail: "fixture unavailable",
+    model: "fixture-apple-fm",
+  }],
+  reason: "fixture backend",
+  selected: null,
+})
+
+const harnessSetting = (
+  mode: "claude_runtime" | "codex_harness" | "khala_native_runtime",
+  saved?: boolean,
+) => ({
+  envOverride: null,
+  mode,
+  ok: true,
+  path: "/fixture/khala-code-runtime-mode.json",
+  persistedMode: mode,
+  ...(saved === undefined ? {} : { saved }),
+})
+
+const toolCatalog = () => ({
+  catalogKind: "codex_harness_supplemental",
+  defaultEnabled: true,
+  description: "Fixture tool catalog",
+  runtimeMode: "codex_harness",
+  toolCount: 1,
+  tools: [{
+    authority: "fixture",
+    name: "fixture_tool",
+    role: "supplemental_swarm",
+  }],
 })
 
 const threadMessage = (id: string, body: string, itemType?: string) => ({
@@ -1120,6 +1926,47 @@ const fleetDelegateRunResult = () => ({
   workerRuntime,
 })
 
+const fleetPromotionResult = (request: unknown) => {
+  const input = request as {
+    readonly contextBoundary?: {
+      readonly allowedRefs?: readonly string[]
+      readonly includeTranscript?: false
+      readonly mode?: "explicit_objective" | "summary_only"
+      readonly summary?: string | null
+    }
+    readonly count?: number
+    readonly sessionId?: string
+    readonly threadId?: string
+  } | undefined
+  return {
+    acceptedCount: input?.count ?? 1,
+    contextBoundary: {
+      allowedRefs: input?.contextBoundary?.allowedRefs ?? [threadId],
+      includeTranscript: false,
+      mode: input?.contextBoundary?.mode ?? "summary_only",
+      summary: input?.contextBoundary?.summary ?? "fixture summary",
+    },
+    ok: true,
+    origin: {
+      role: "main_local_codex_session",
+      sessionId: input?.sessionId ?? desktopSessionId,
+      threadId: input?.threadId ?? threadId,
+    },
+    pylonRef: "pylon-fixture",
+    requestedCount: input?.count ?? 1,
+    results: [{
+      accountRef: "codex",
+      assignmentRef: "assignment-fixture",
+      closeoutStatus: "not_applicable",
+      status: "accepted",
+      summary: "fixture promotion accepted",
+      tokensVerified: 0,
+      transcriptRef: null,
+    }],
+    workerRuntime,
+  }
+}
+
 const fleetRun = (state: "draft" | "running" | "paused" | "draining" | "completed" | "stopped") => ({
   counters: {
     activeAssignments: state === "running" ? 1 : 0,
@@ -1278,6 +2125,124 @@ const ecosystemProjection = () => ({
     plugins: ecosystemSection("plugins", "Plugins"),
     skills: ecosystemSection("skills", "Skills"),
   },
+})
+
+const threadTokenSummary = (request: unknown) => ({
+  auditRows: 1,
+  codexStateDbPath: "/fixture/codex-state.db",
+  codexStateTokens: 1,
+  leaderboardLabel: "OpenAgents Stats",
+  leaderboardSyncedTokens: 1,
+  localLedgerPath: "/fixture/token-usage.jsonl",
+  localMessageAuditLedgerPath: "/fixture/message-audit.jsonl",
+  missingUsageTurns: 0,
+  ok: true,
+  pendingSyncTokens: 0,
+  remoteConfigured: false,
+  remoteDisabled: true,
+  threadId: (request as { readonly threadId?: string | null } | undefined)?.threadId ?? threadId,
+  totalTokens: 2,
+  updatedAt: observedAt,
+  usageEventRows: 1,
+})
+
+const sessionCatalog = () => ({
+  diagnostics: [],
+  entries: [{
+    catalogEntryId: "catalog-fixture",
+    createdAt: 1,
+    cwd: "/workspace",
+    desktopSessionRef: desktopSessionId,
+    exactTotals: {
+      cachedInputTokens: 0,
+      inputTokens: 1,
+      outputTokens: 1,
+      reasoningOutputTokens: 0,
+      source: "fixture",
+      totalTokens: 2,
+    },
+    harnessKind: "codex",
+    lastTurnRef: turnId,
+    preview: "fixture session",
+    projectLabel: "workspace",
+    recencyAt: 1,
+    sessionRef: desktopSessionId,
+    source: "fixture",
+    status: "ready",
+    statusLabel: "Ready",
+    threadRef: threadId,
+    title: "Fixture session",
+    updatedAt: 1,
+  }],
+  ok: true,
+  schemaVersion: "khala-code-desktop.session-catalog.v1",
+})
+
+const forumResponse = (request: unknown) => {
+  const input = request as {
+    readonly body?: unknown
+    readonly method?: "GET" | "POST"
+    readonly path?: string
+  } | undefined
+  return {
+    ok: true,
+    payload: {
+      body: input?.body ?? null,
+      method: input?.method ?? "GET",
+      path: input?.path ?? "/forum",
+      ref: "forum-fixture",
+    },
+    status: input?.method === "POST" ? 201 : 200,
+  }
+}
+
+const planCatalog = () => ({
+  authorityBoundary: "server_resolved_fixture",
+  blockerRefs: ["khala_code_paid_plans_not_enabled"],
+  catalogVersion: "fixture.1",
+  plans: [
+    {
+      captureExcluded: false,
+      isDefault: true,
+      kind: "free",
+      label: "Free",
+      planId: "khala-code-free",
+      priceLabel: "$0",
+      tagline: "Pay with data",
+      terms: ["Fixture free plan"],
+    },
+    {
+      captureExcluded: true,
+      isDefault: false,
+      kind: "paid",
+      label: "Paid",
+      planId: "khala-code-paid",
+      priceLabel: "$20/mo",
+      purchase: {
+        armed: false,
+        envFlag: "KHALA_CODE_PAID_PLANS_ENABLED",
+        route: "/api/khala-code/plans/purchase",
+      },
+      tagline: "Private data",
+      terms: ["Fixture paid plan"],
+    },
+  ],
+  promiseId: "khala_code.free_paid_plans.v1",
+  relatedPromiseIds: [],
+  schemaVersion: "openagents.khala_code.plan_catalog.v1",
+  summary: "Fixture free and paid plan catalog.",
+})
+
+const qaMetricsSnapshot = (
+  samples: readonly KhalaCodeQaMetricSample[],
+) => ({
+  budgets: khalaCodeQaMetricBudgets,
+  definitions: khalaCodeQaMetricDefinitions,
+  evaluations: evaluateKhalaCodeQaMetricBudgets(samples),
+  ok: true,
+  observedAt,
+  samples,
+  schema: "openagents.khala_code.qa_metrics.v1",
 })
 
 const actionResult = (method: string, response?: unknown) => ({
