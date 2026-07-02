@@ -58,8 +58,8 @@ the reconciliations, and the gateway map that close those gaps.
 4. **The Fable roadmap** (`docs/fable/ROADMAP.md`): 17 workstreams executed
    per `EXECUTION.md`, currently being burned down live by the fleet (T5.x,
    T8.x, T2.x tasks merging today).
-5. **Episode arc 235 → 244** (transcripts): the promise escalation that
-   Episode 245 caps — detailed in §3.
+5. **Episode arc 220 → 244** (transcripts): the promise substrate and
+   escalation that Episode 245 caps — detailed in §3.
 
 ## 2. What Episode 245 Promises (And Where Each Stands In The Registry)
 
@@ -93,10 +93,104 @@ risk: the video is out, the registry governs claims (Episode 243, on
 camera: "the product promise registry governs claims"), and today the
 registry is silent on the thing the video promises.
 
-## 3. The Escalation Arc: 235 → 245
+## 3. The Escalation Arc: 220 → 245
 
 The Episode 245 promises did not appear from nowhere — they cap a
-ten-episode escalation the registry should track as one thread:
+twenty-five-episode escalation the registry should track as one thread.
+
+### 3.1 The deep substrate: episodes 220–233
+
+The OAPN era (episode 220 onward) laid down the claims the current
+registry was largely built to track. The ones that matter for Khala Code
+alignment:
+
+- **Ep 220/221** (OAPN launch / Introducing Pylon): compute mining — paste
+  one instruction sheet to any agent, Pylon installs with a wallet, sats
+  stream ("we give you a button that you press and it makes you money");
+  run-your-own-Nexus; the moat statement ("contributors get paid the most
+  Bitcoin"); "largest decentralized AI lab this year." Registry:
+  `agents.one_instruction_sheet.v1` (green),
+  `pylon.install_without_wallet_knowledge.v1` (green),
+  `pylon.consumer_compute_earns_bitcoin_self_serve.v1` (red — the
+  fully-self-serve version is honestly blocked).
+- **Ep 222** established a pattern worth repeating: the transcript carries a
+  header note that it is *not* the claim contract — the canonical glossary
+  and claim sheet lived in `docs/plans/transcript-222-launch-truth-contract.md`.
+  (That file was deleted in the monorepo rebuild `f5919c7669`, so 222's
+  header pointer now dangles — a small reconciliation of its own.)
+  **Episode 245 has no equivalent launch-truth contract**; the §4.1 promise
+  family is effectively that document and should be linked from the
+  transcript the same way.
+- **Ep 223** (Pay the People): OpenAI's $0 of promised rev-share vs our paid
+  contributors; "rebuild Anthropic's entire product suite on this compute"
+  with revenue flowing to contributors; fine-tuning API, continual-learning
+  as a service, image gen, embeddings "all going to be in here." Registry:
+  the `cloud.*` records carry this honestly as planned/red
+  (`cloud.fine_tuning_service.v1` red, `cloud.primitives_suite.v1` planned).
+- **Ep 224** (Distributed Training 101): "we're no longer paying you for
+  being online, we're paying you for real work"; the eventual "completely
+  self-serve platform, open protocol, pay and go" for third-party training
+  runs. Registry: the `training.*` planned family.
+- **Ep 225** (bounties): "we will keep an updated list of what bounties are
+  available at `openagents.com/bounties`, **no matter when you watch this
+  video**" — an unusually strong standing-surface claim with **no promise
+  record**, and as of this audit `openagents.com/bounties` 302-redirects to
+  the homepage (the claim is lapsed in practice).
+  Reconcile: either revive the surface, record it as a promise with honest
+  state, or note it as lapsed. Also from 225: Autopilot as superapp,
+  business Autopilot as a Microsoft Copilot replacement, Probe as a
+  Claude Code/Cursor drop-in, Forge software factory, and the mobile
+  companion — each now tracked (or deliberately deprecated) elsewhere.
+- **Ep 227** (legal): fine-tune Qwen on the Harvey legal benchmark, publish
+  our scores, the code, and "our own dashboard"/leaderboard; the PII
+  redaction → RAG → per-firm fine-tune pipeline at near-compute cost; the
+  "last agent" neutral-provider positioning. Registry:
+  `business.legal_workspace_pack.v1` (yellow) covers the workspace pack but
+  **the public legal-leaderboard claim has no record**. Note 245's response
+  box re-surfaces "legal brief" as a Khala output lane.
+- **Ep 228** (Get Paid to Code) — **the direct ancestor of Episode 245's
+  entire economics loop.** A free cloud coding agent (Autopilot) plus: "if
+  you use it to do useful work and generate stuff that's usable in paid
+  workflows, we're going to pay you on the back end proportional to
+  revenue-share usage." Even the anti-Anthropic framing ("happy to have
+  10,000 companies pay 10,000 times for the same code — we only need to
+  build one graph") is the same argument 245 makes at the whiteboard. What
+  changed by 245: the surface (Autopilot cloud → Khala Code desktop), the
+  mechanism (public traces on the website → scrubbed traces condensed into
+  agent plugins), and the hedge (228's "maybe" → 245's "possibility").
+  Registry: `autopilot.cloud_coding_sessions.v1` is red;
+  `pylon.data_trace_revenue.v1` is planned — neither names this lineage.
+- **Ep 229** (Autopilot Sites): free sites; permanent referrer attribution
+  with "a piece of any paid workflow paid by people that he refers…
+  You paid zero and it's going to get you paid." Registry:
+  `sites.referral_bitcoin_stream.v1` (yellow),
+  `referral.refer_once_earn_forever.v1` (red) — the red record exists
+  precisely because this class of claim outran evidence.
+- **Ep 230** (Calling All Agents): the five agent markets; `agents.md` as
+  the permanent front door; and the **data-market claim that prefigures
+  Khala Code's free plan**: "those Claude Code or Codex conversations
+  sitting on your computer are highly valuable. Redact the sensitive info,
+  anonymize any of it you want, and sell the rest" — including agents
+  negotiating trace sales on the user's behalf. Registry:
+  `markets.open_protocol_markets.v1` (planned),
+  `pylon.data_trace_revenue.v1` (planned).
+- **Ep 231** (Forum): Stacker-News-style Bitcoin ranking "porting over";
+  agent wallets via MDK; "earn some Bitcoin right away without needing to
+  buy anything." Registry: `forum.content_tipping.v1` (green),
+  `agents.cursor_forum_wallet.v1` (green),
+  `payments.reliable_tips_sweepable_balances.v1` (green) — this cluster
+  delivered.
+- **Ep 232** (energy orchestration): the "accepted outcomes per
+  kilowatt-hour" north-star metric and the energy/compute co-optimization
+  ambition. Registry: `metrics.accepted_outcomes_per_kwh.v1` (yellow),
+  `energy.flexible_load_proof.v1` (planned).
+- **Ep 233/234**: the monorepo consolidation ("everything open source in
+  one repo") and the Product Promises launch itself — episode 234 is where
+  the registry was announced as the thing agents can query to know "what's
+  actually live," with the stated intent to audit every episode claim back
+  to ~200 into a record. This doc extends that audit forward through 245.
+
+### 3.2 The pays-you escalation: 235 → 245
 
 - **Ep 237** (Autopilot 1.0 / Tassadar launch): first on-camera plugins
   revenue-share claim ("reusable plugins that earn their authors a revenue
@@ -183,6 +277,12 @@ deliberately conservative.
    ledger with dereferenceable receipts (the Ep 237 standard: "a payment
    the recipient cannot dereference is not a payment"), and settlement
    armed (QA doc: settlement seams INERT until deliberately flipped).
+   The record's sourceRefs should cite the full claim lineage — Ep 228
+   ("Get Paid to Code", the same loop on Autopilot cloud) → Ep 230 (sell
+   redacted Claude Code/Codex traces) → Ep 237 (plugins revenue share) →
+   Ep 243/244 (Khala aspiration/escalation) → Ep 245 (launch whiteboard) —
+   so the four-month-old public promise is tracked as one thread, not
+   re-invented per surface.
 6. **`khala_code.paid_to_free_revenue_share.v1` — planned.**
    Claim: a portion of paid-plan revenue funds free-plan user payouts.
    Distinct from #5 (plugin attribution) — this is the plan-level pool
@@ -220,6 +320,25 @@ deliberately conservative.
     (`@openagentsinc/qa-runner@0.1.0`, epic #6181 "out-ship Factory",
     named first prospective customer) has no promise record; if we keep
     talking about it publicly, it needs one (likely yellow).
+13. **Bounties surface (Ep 225)** — the standing on-camera claim that
+    `openagents.com/bounties` will "always" list current bounties has no
+    promise record, and the URL currently 302-redirects to the homepage.
+    Revive it, record it honestly, or record it as lapsed — a
+    permanent-surface claim should never be silently unresolved. (If
+    revived, it is also a natural Khala Code gateway spoke: bounty work
+    dispatched through the fleet.)
+14. **Public legal leaderboard (Ep 227)** — the promised Harvey-benchmark
+    scores/dashboard/code publication is registry-silent;
+    `business.legal_workspace_pack.v1` (yellow) covers the pack, not the
+    leaderboard claim. Add a record or fold the claim into the pack record's
+    scope notes. 245's response box re-surfaces "legal brief" as a Khala
+    output lane, so this claim is back in play.
+15. **Episode 245 launch-truth link (Ep 222 precedent)** — Episode 222's
+    transcript opens with a note deferring all claim language to
+    `docs/plans/transcript-222-launch-truth-contract.md`. Add the same
+    header note to `docs/transcripts/245.md` pointing at the `khala_code.*`
+    registry family (once landed) as the canonical claim contract for the
+    launch video.
 
 ### 4.3 Registry mechanics
 
@@ -300,6 +419,19 @@ Concretely, the funnel and the promise records each step activates:
 9. **Upgrade to paid (private data)** → `privacy.khala_paid_capture_optout.v1`
    (yellow) + MPP rails. *The business tier that funds step 3.*
 
+Beyond the funnel spine, the 245 whiteboard's **response box** (text, code,
+full software, website deployment, legal brief, research paper) names the
+gateway's outbound spokes, each with an existing promise lane: website
+deployment → the Sites records (`autopilot_sites.site_build_and_host.v1`
+yellow) and the Ep 229 referral mechanics (kept honest against the red
+`referral.refer_once_earn_forever.v1`); legal brief → the Ep 227 legal lane
+(`business.legal_workspace_pack.v1` yellow, plus the unrecorded leaderboard
+claim in §4.2.14); full software → `business.coding_quick_win.v1` (yellow)
+and, if revived, the Ep 225 bounties surface as fleet-dispatchable work.
+Khala Code doesn't have to *implement* these lanes to be their gateway — it
+has to route to them through the same Khala API and keep each claim pinned
+to its record's actual state.
+
 Reading the funnel against the registry: **steps 1, 2, 4, 5, 6 stand on
 green records today; steps 3, 7, 8, 9 are planned.** That is a coherent
 launch story — the gateway works now for "use it, connect your Codex, get
@@ -316,8 +448,10 @@ live feature — until the §4.1 records earn yellow/green through receipts.
    family to `product-promises.ts` + `docs/promises/registry.md`, bump the
    registry version, and group under a new `khala_code` product area. The
    video is public; the registry should speak to it within days, not weeks.
-2. Reconcile the four stale/overlapping records (§4.2: 7–9) in the same
-   version bump; withdraw the Expo mobile record.
+2. Reconcile the stale/overlapping/unrecorded items (§4.2: 7–15) in the
+   same version bump: withdraw the Expo mobile record, resolve the Ep 225
+   bounties and Ep 227 leaderboard claims, and add the Ep 222-style
+   launch-truth header note to `docs/transcripts/245.md`.
 3. Fix the fable-doc "episode 245" references (§5) so future readers do not
    conflate the released launch video with the unreleased fleet-demo draft
    (`24X1.md`); re-point WS-16/T16.1 and expand T16.3.
@@ -334,7 +468,8 @@ live feature — until the §4.1 records earn yellow/green through receipts.
 
 - Released transcript: `docs/transcripts/245.md`; unreleased drafts
   `docs/transcripts/24X1.md`, `docs/transcripts/24X2.md`; arc
-  `docs/transcripts/235.md`–`244.md`; registry episode `234.md`.
+  `docs/transcripts/220.md`–`244.md` (registry episode `234.md`; the Ep 222
+  claim-contract precedent is `docs/plans/transcript-222-launch-truth-contract.md`).
 - Registry: `apps/openagents.com/workers/api/src/product-promises.ts`,
   `promise-transition-receipt-routes.ts`, `promise-transition-audit-routes.ts`,
   migration `0148_promise_transition_receipts.sql`;
