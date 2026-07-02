@@ -78,13 +78,13 @@ const composerFuzzCorpus = [
   "multi word composer fuzz input",
 ] as const
 
-const dataSelectors = [
+const fleetSelectors = [
   ...KHALA_CODE_QA_SEED_CORPUS_MANIFEST.coverage.selectors,
-  "[data-testid=fleet-run-card]",
-  "[data-testid=fleet-worker-card]",
+  ".khala-fleet-run-header",
+  ".khala-fleet-worker-card",
 ] as const
 
-const rpcArgsByMethod: Partial<Record<KhalaCodeRpcMethodName, readonly unknown[]>> = {
+export const rpcArgsByMethod: Partial<Record<KhalaCodeRpcMethodName, readonly unknown[]>> = {
   appInfo: [],
   codingStatus: [],
   codexApprovalRespond: [{
@@ -97,7 +97,7 @@ const rpcArgsByMethod: Partial<Record<KhalaCodeRpcMethodName, readonly unknown[]
   codexEcosystemRead: [{ section: "mcp" }],
   codexFleetDelegateRun: [{ objective: "fixture monkey delegation", mode: "fixture", count: 1, noRun: true }],
   codexFleetStatus: [],
-  codexMcpServerReload: [{}],
+  codexMcpServerReload: [],
   codexMentionCandidates: [{ query: "fixture" }],
   codexSettingsRead: [{}],
   codexThreadArchive: [{ threadId }],
@@ -160,7 +160,7 @@ export const khalaCodeQaMonkeyEnabledActionSpace = (
     kind: "hotbar",
     target,
   }))
-  const selectorActions = dataSelectors.map((target): KhalaCodeQaAction => ({
+  const selectorActions = fleetSelectors.map((target): KhalaCodeQaAction => ({
     kind: "click",
     target,
   }))

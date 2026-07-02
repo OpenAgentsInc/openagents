@@ -7,6 +7,7 @@ import {
   khalaQaRectsOverlap,
   loadKhalaCodeQaScenario,
   makeKhalaCodeRpcQaDriver,
+  makeKhalaCodeQaSeedCorpusFixtureFetch,
   runKhalaCodeQaScenario,
   unsupportedKhalaCodeQaDriver,
   waitForKhalaQaHttp,
@@ -52,6 +53,9 @@ const jsonResponse = (payload: unknown, init?: ResponseInit): Response =>
     headers: { "content-type": "application/json" },
     status: init?.status ?? 200,
   })
+
+const methodName = (input: RequestInfo | URL): string =>
+  new URL(String(input)).pathname.split("/").pop() ?? ""
 
 describe("Khala Code QA scenario DSL", () => {
   test("loads typed fixture-tier scenarios", () => {
@@ -476,6 +480,83 @@ describe("Khala Code QA RPC driver and runner", () => {
     expect(report.phaseOutcomes[0]?.oracles[0]?.summary).toContain("observedAt")
     expect(report.status).toBe("fail")
     expect(report.commitments.verdict).toBe("REFUTED")
+  })
+
+  test("does not refute claim invariant when the same claimant is re-observed", async () => {
+    const scenario = loadKhalaCodeQaScenario({
+      backend: "fixture",
+      commitments: [{ claim: "claim invariant holds", evidence: "run-pass", id: "claim.pass" }],
+      id: "scenario.khala_code.fixture_claim_reobservation.v1",
+      modes: ["rpc"],
+      phases: [{
+        act: [
+          { kind: "rpc_call", method: "codexFleetDelegateRun", args: [{ objective: "fixture", mode: "fixture", count: 1, noRun: true }] },
+          { kind: "rpc_call", method: "codexFleetDelegateRun", args: [{ objective: "fixture", mode: "fixture", count: 1, noRun: true }] },
+        ],
+        expect: [{ id: "claim-invariant", oracle: "invariant" }, { oracle: "crash" }],
+        name: "claims",
+      }],
+    })
+    const driver = makeKhalaCodeRpcQaDriver({ fetch: makeKhalaCodeQaSeedCorpusFixtureFetch() })
+
+    const report = await Effect.runPromise(runKhalaCodeQaScenario({ driver, scenario }))
+
+    expect(report.status).toBe("pass")
+    expect(report.phaseOutcomes[0]?.oracles[0]).toMatchObject({
+      ok: true,
+      oracle: "invariant",
+      verdict: "CONFIRMED",
+    })
+  })
+
+  test("refutes claim invariant for duplicate refs within one observation or conflicting claimants", async () => {
+    const baseFetch = makeKhalaCodeQaSeedCorpusFixtureFetch()
+    let call = 0
+    const fetch = (async (input, init) => {
+      if (methodName(input) !== "codexFleetDelegateRun") return baseFetch(input, init)
+      call += 1
+      const response = await baseFetch(input, init)
+      const payload = await response.json() as Record<string, unknown>
+      const results = Array.isArray(payload.results) ? payload.results : []
+      if (call === 1) return jsonResponse({ ...payload, results: [results[0], results[0]] })
+      return jsonResponse({
+        ...payload,
+        results: [{
+          ...(results[0] as Record<string, unknown>),
+          accountRef: "codex-2",
+        }],
+      })
+    }) as KhalaCodeRpcFetch
+    const scenario = loadKhalaCodeQaScenario({
+      backend: "fixture",
+      commitments: [{ claim: "claim invariant fails", evidence: "run-pass", id: "claim.fail" }],
+      id: "scenario.khala_code.fixture_claim_duplicate.v1",
+      modes: ["rpc"],
+      phases: [{
+        act: [
+          { kind: "rpc_call", method: "codexFleetDelegateRun", args: [{ objective: "fixture", mode: "fixture", count: 1, noRun: true }] },
+          { kind: "rpc_call", method: "codexFleetDelegateRun", args: [{ objective: "fixture", mode: "fixture", count: 1, noRun: true }] },
+        ],
+        expect: [{ id: "claim-invariant", oracle: "invariant" }],
+        name: "claims",
+      }],
+    })
+
+    const report = await Effect.runPromise(runKhalaCodeQaScenario({
+      driver: makeKhalaCodeRpcQaDriver({ fetch }),
+      scenario,
+    }))
+
+    expect(report.status).toBe("fail")
+    expect(report.phaseOutcomes[0]?.oracles[0]).toMatchObject({
+      data: {
+        conflictingClaimants: [{ assignmentRef: "assignment-fixture", claimants: ["codex", "codex-2"] }],
+        duplicateRefs: ["assignment-fixture"],
+      },
+      ok: false,
+      oracle: "invariant",
+      verdict: "REFUTED",
+    })
   })
 
   test("records boot failures as failed runs without synthesizing a handle", async () => {

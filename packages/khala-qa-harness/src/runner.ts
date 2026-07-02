@@ -132,6 +132,16 @@ const findQaMetricsSnapshot = (
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value)
 
+const safeFailureDetail = (failure: unknown): string => {
+  if (failure instanceof Error) return failure.message
+  if (typeof failure === "string") return failure
+  try {
+    return JSON.stringify(failure)
+  } catch {
+    return String(failure)
+  }
+}
+
 const observedValues = (
   observations: ReadonlyArray<KhalaCodeQaObservation>,
 ): readonly unknown[] =>
@@ -151,17 +161,50 @@ const fleetRunProjectionValues = (
     return candidates.filter(isRecord)
   })
 
-const activeAssignmentRefs = (
-  observations: ReadonlyArray<KhalaCodeQaObservation>,
-): readonly string[] =>
-  observedValues(observations).flatMap((value) => {
+type ActiveAssignmentClaim = {
+  readonly assignmentRef: string
+  readonly claimantRef: string | null
+  readonly observationIndex: number
+}
+
+const claimantRefFor = (entry: Record<string, unknown>): string | null => {
+  const candidates = [
+    entry.workerAccountRef,
+    entry.accountRef,
+    entry.claimingWorkerRef,
+    entry.workerRef,
+    entry.workerRefHash,
+    entry.pylonRef,
+  ]
+  const candidate = candidates.find((value): value is string =>
+    typeof value === "string" && value.length > 0
+  )
+  return candidate ?? null
+}
+
+const activeAssignmentClaimsForValue = (
+  value: unknown,
+  observationIndex: number,
+): readonly ActiveAssignmentClaim[] => {
     if (!isRecord(value)) return []
     const activeAssignments = Array.isArray(value.activeAssignments) ? value.activeAssignments : []
     const results = Array.isArray(value.results) ? value.results : []
-    return [...activeAssignments, ...results].flatMap((entry) =>
-      isRecord(entry) && typeof entry.assignmentRef === "string" ? [entry.assignmentRef] : []
-    )
-  })
+    return [...activeAssignments, ...results].flatMap((entry) => {
+      if (!isRecord(entry) || typeof entry.assignmentRef !== "string") return []
+      return [{
+        assignmentRef: entry.assignmentRef,
+        claimantRef: claimantRefFor(entry),
+        observationIndex,
+      }]
+    })
+}
+
+const activeAssignmentClaimsByObservation = (
+  observations: ReadonlyArray<KhalaCodeQaObservation>,
+): readonly (readonly ActiveAssignmentClaim[])[] =>
+  observations.map((observation, observationIndex) =>
+    activeAssignmentClaimsForValue(observationValue(observation), observationIndex)
+  )
 
 const evaluateClaimInvariant = (
   phaseName: string,
@@ -176,16 +219,31 @@ const evaluateClaimInvariant = (
       ? [{ activeAssignments, runRef: run.runRef, targetConcurrency }]
       : []
   })
-  const refs = activeAssignmentRefs(observations)
-  const duplicateRefs = [...new Set(refs.filter((ref, index) => refs.indexOf(ref) !== index))].sort()
-  const ok = oversubscribedRuns.length === 0 && duplicateRefs.length === 0
+  const claimsByObservation = activeAssignmentClaimsByObservation(observations)
+  const duplicateRefs = [...new Set(claimsByObservation.flatMap((claims) => {
+    const refs = claims.map((claim) => claim.assignmentRef)
+    return refs.filter((ref, index) => refs.indexOf(ref) !== index)
+  }))].sort()
+  const claimantsByAssignment = new Map<string, Set<string>>()
+  for (const claim of claimsByObservation.flat()) {
+    if (claim.claimantRef === null) continue
+    const claimants = claimantsByAssignment.get(claim.assignmentRef) ?? new Set<string>()
+    claimants.add(claim.claimantRef)
+    claimantsByAssignment.set(claim.assignmentRef, claimants)
+  }
+  const conflictingClaimants = [...claimantsByAssignment.entries()]
+    .flatMap(([assignmentRef, claimants]) =>
+      claimants.size > 1 ? [{ assignmentRef, claimants: [...claimants].sort() }] : []
+    )
+    .sort((left, right) => left.assignmentRef.localeCompare(right.assignmentRef))
+  const ok = oversubscribedRuns.length === 0 && duplicateRefs.length === 0 && conflictingClaimants.length === 0
   return {
-    data: { duplicateRefs, oversubscribedRuns },
+    data: { conflictingClaimants, duplicateRefs, oversubscribedRuns },
     ok,
     oracle: "invariant",
     phaseName,
     summary: ok
-      ? "fleet claim invariant held: no duplicate assignment refs or oversubscribed FleetRun counters"
+      ? "fleet claim invariant held: no duplicate assignment refs, conflicting claimants, or oversubscribed FleetRun counters"
       : "fleet claim invariant failed",
     verdict: ok ? "CONFIRMED" : "REFUTED",
   }
@@ -427,7 +485,7 @@ export const runKhalaCodeQaScenario = (input: {
               headless: true,
               kind: "boot",
             },
-            error: bootFailure.message,
+            error: safeFailureDetail(bootFailure),
             label: "boot",
             ok: false,
           },
@@ -443,7 +501,7 @@ export const runKhalaCodeQaScenario = (input: {
           Effect.catch((cause) =>
             Effect.succeed({
               action,
-              error: cause.message,
+              error: safeFailureDetail(cause),
               label: action.kind,
               ok: false,
             } satisfies KhalaCodeQaObservation),
@@ -456,7 +514,7 @@ export const runKhalaCodeQaScenario = (input: {
           Effect.match({
             onFailure: (failure) => ({
               action: { kind: "read", query: "qaMetrics" } as const,
-              error: failure.message,
+              error: safeFailureDetail(failure),
               label: "read:qaMetrics",
               ok: false,
             } satisfies KhalaCodeQaObservation),

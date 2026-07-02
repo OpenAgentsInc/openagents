@@ -1,11 +1,14 @@
 import { describe, expect, test } from "bun:test"
 import { Effect } from "effect"
+import { Schema as S } from "effect"
 
 import {
   buildKhalaCodeQaSeededMonkeyPlan,
+  KhalaCodeRpcMethodSchemas,
   khalaCodeQaMonkeyEnabledActionSpace,
   makeKhalaCodeQaSeedCorpusFixtureFetch,
   makeKhalaCodeRpcQaDriver,
+  rpcArgsByMethod,
   replayKhalaCodeQaSeededMonkeyPlan,
   runKhalaCodeQaSeededMonkey,
 } from "./index.js"
@@ -43,11 +46,25 @@ describe("Khala Code QA seeded monkey explorer", () => {
   test("exposes the enabled action space categories required by T6.8", () => {
     const actions = khalaCodeQaMonkeyEnabledActionSpace("fleet_cockpit_night")
 
-    expect(actions.some((action) => action.kind === "click" && action.target?.includes("data-"))).toBe(true)
+    expect(actions.some((action) => action.kind === "click" && action.target?.startsWith(".khala-fleet-"))).toBe(true)
     expect(actions.some((action) => action.kind === "slash_command")).toBe(true)
     expect(actions.some((action) => action.kind === "hotbar" && action.target === "fleet")).toBe(true)
     expect(actions.some((action) => action.kind === "type" && action.target === "composer")).toBe(true)
     expect(actions.some((action) => action.kind === "rpc_call" && action.method === "fleetRunStart")).toBe(true)
+  })
+
+  test("decodes every monkey RPC argument fixture against the desktop parameter schemas", () => {
+    for (const [method, args] of Object.entries(rpcArgsByMethod)) {
+      const parameters = KhalaCodeRpcMethodSchemas[method as keyof typeof KhalaCodeRpcMethodSchemas].parameters
+      expect(args.length, method).toBeLessThanOrEqual(parameters.length)
+      for (const [index, parameter] of parameters.entries()) {
+        const value = args[index]
+        if (parameter.optional && (value === undefined || value === null)) continue
+        expect(() => S.decodeUnknownSync(parameter.schema as never)(value), `${method}[${index}]`).not.toThrow()
+      }
+    }
+
+    expect(rpcArgsByMethod.codexMcpServerReload).toEqual([])
   })
 
   test("runs the bounded fixture smoke and emits a coverage ledger", async () => {

@@ -15,7 +15,7 @@
     "./scenario": "./src/scenario.ts"
   },
   "scripts": {
-    "monkey:night": "bun test src/monkey-explorer.test.ts --test-name-pattern 'fleet cockpit night entry'",
+    "monkey:night": "bun src/monkey-night.ts --runs 100 --steps 64",
     "monkey:smoke": "bun test src/monkey-explorer.test.ts --test-name-pattern 'bounded fixture smoke'",
     "test": "bun test src/*.test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
