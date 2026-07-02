@@ -76,10 +76,12 @@ import {
   type KhalaCodeDesktopFleetWorkerControlRequest,
   type KhalaCodeDesktopFleetWorkerControlResult,
   type KhalaCodeDesktopFleetStatus,
+  type KhalaCodeDesktopQaMetricsSnapshot,
   type KhalaCodeDesktopRPCSchema,
   type KhalaCodeDesktopRuntimeStatus,
   type KhalaCodeDesktopThreadTokenSummaryRequest,
 } from "../shared/rpc.js"
+import { emptyKhalaCodeQaMetricsSnapshot } from "../shared/qa-metrics.js"
 import {
   khalaCodeDesktopCodexApprovalResponsePayload,
   type KhalaCodeDesktopCodexApprovalResponseInput,
@@ -195,6 +197,7 @@ export type KhalaCodeDesktopRpcHandlersInput = {
   readonly emitChatTurnEvent?: (event: KhalaCodeDesktopChatTurnEvent) => void
   readonly legacyChatTurn?: typeof runKhalaCodeDesktopChatTurn
   readonly onDeviceDeciderStatus: () => MaybePromise<OnDeviceDeciderSelection>
+  readonly qaMetrics?: () => MaybePromise<KhalaCodeDesktopQaMetricsSnapshot>
   readonly workingDirectory: string
 }
 
@@ -2273,6 +2276,9 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
           : `${status.message}${status.unavailableReason ? ` ${status.unavailableReason}` : ""}`,
         status: status.ok ? "ready" : "unavailable",
       })
+    },
+    async qaMetrics() {
+      return input.qaMetrics?.() ?? emptyKhalaCodeQaMetricsSnapshot()
     },
     async slashCommandDispatch(request) {
       return dispatchSlashAppServerCommand(request)

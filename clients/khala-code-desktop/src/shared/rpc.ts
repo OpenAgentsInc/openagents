@@ -5,6 +5,9 @@ import type {
   KhalaCodeDesktopSlashCommandWithAvailability,
 } from "./codex-slash-commands.js"
 import type { OnDeviceDeciderSelection } from "./on-device-decider.js"
+import type {
+  KhalaCodeQaMetricsSnapshot,
+} from "./qa-metrics.js"
 import type { KhalaCodeDesktopClaudeSettingsProjection } from "./claude-settings.js"
 
 // Electrobun treats Infinity as no local request timeout; chat turns stream progress
@@ -101,6 +104,7 @@ export type KhalaCodeDesktopChatTurnResponse = typeof RpcChatTurnResponse.Type
 export type KhalaCodeDesktopToolCatalogResponse = typeof RpcToolCatalogResponse.Type
 export type KhalaCodeDesktopAppInfo = typeof RpcAppInfo.Type
 export type KhalaCodeDesktopRuntimeStatus = typeof RpcRuntimeStatus.Type
+export type KhalaCodeDesktopQaMetricsSnapshot = KhalaCodeQaMetricsSnapshot
 export type KhalaCodeDesktopThreadTokenSummaryRequest = typeof RpcThreadTokenSummaryRequest.Type
 export type KhalaCodeDesktopThreadTokenSummary = typeof RpcThreadTokenSummary.Type
 export type KhalaCodeDesktopCodexHarnessStatus = typeof RpcCodexHarnessStatus.Type
@@ -366,6 +370,66 @@ const RpcAppInfo = S.Struct({
   ok: S.Literal(true),
   app: S.Literal("Khala Code Desktop"),
   observedAt: S.String,
+})
+
+const RpcQaMetricName = S.Literals([
+  "cache.hit",
+  "cockpit.render_ms",
+  "first_render.ms",
+  "lifecycle_event_to_card.ms",
+  "panel.open_ms",
+  "supervisor.tick_ms",
+  "thread_switch.full_render_ms",
+  "thread_switch.hydrated_render_ms",
+  "thread_switch.optimistic_render_ms",
+  "thread_switch.rpc_ms",
+  "turn_start.latency_ms",
+])
+const RpcQaMetricUnit = S.Literals(["count", "ms"])
+const RpcQaMetricContext = S.Record(
+  S.String,
+  S.Union([S.String, S.Number, S.Boolean]),
+)
+const RpcQaMetricSample = S.Struct({
+  context: S.optional(RpcQaMetricContext),
+  metric: RpcQaMetricName,
+  observedAt: S.String,
+  unit: RpcQaMetricUnit,
+  value: S.Number,
+})
+const RpcQaMetricDefinition = S.Struct({
+  description: S.String,
+  kind: S.Literals(["counter", "timer"]),
+  name: RpcQaMetricName,
+  unit: RpcQaMetricUnit,
+})
+const RpcQaMetricBudget = S.Struct({
+  budgetId: S.String,
+  description: S.String,
+  metric: RpcQaMetricName,
+  operator: S.Literal("lte"),
+  percentile: S.optional(S.Number),
+  requiredContext: S.optional(RpcQaMetricContext),
+  threshold: S.Number,
+  unit: S.Literal("ms"),
+})
+const RpcQaMetricBudgetEvaluation = S.Struct({
+  actual: RpcNumberNull,
+  budgetId: S.String,
+  metric: RpcQaMetricName,
+  ok: S.Boolean,
+  sampleCount: S.Number,
+  status: S.Literals(["pass", "fail", "inconclusive"]),
+  threshold: S.Number,
+})
+const RpcQaMetricsSnapshot = S.Struct({
+  budgets: S.Array(RpcQaMetricBudget),
+  definitions: S.Array(RpcQaMetricDefinition),
+  evaluations: S.Array(RpcQaMetricBudgetEvaluation),
+  ok: S.Literal(true),
+  observedAt: S.String,
+  samples: S.Array(RpcQaMetricSample),
+  schema: S.Literal("openagents.khala_code.qa_metrics.v1"),
 })
 
 const RpcAppleFmReadiness = S.Struct({
@@ -1579,6 +1643,7 @@ export const KhalaCodeDesktopRpcMethodSchemas = {
   consumeCodexRateLimitResetCredit: { parameters: [param(RpcRateLimitResetConsumeRequest)], result: RpcRateLimitResetResult },
   onDeviceDeciderStatus: { parameters: noParams(), result: RpcOnDeviceDeciderSelection },
   pylonStatus: { parameters: noParams(), result: RpcRuntimeStatus },
+  qaMetrics: { parameters: noParams(), result: RpcQaMetricsSnapshot },
   slashCommandDispatch: { parameters: [param(RpcSlashCommandDispatchRequest)], result: RpcSlashCommandDispatchResult },
   slashCommandList: { parameters: [optionalParam(RpcSlashCommandListRequest)], result: RpcSlashCommandListResponse },
   submitChatMessage: { parameters: [param(RpcChatTurnRequest)], result: RpcChatTurnResponse },
@@ -1727,6 +1792,7 @@ export type KhalaCodeDesktopRPCSchema = {
     consumeCodexRateLimitResetCredit(request: { accountRef: string }): Promise<KhalaCodeDesktopCodexRateLimitResetResult>
     onDeviceDeciderStatus(): Promise<OnDeviceDeciderSelection>
     pylonStatus(): Promise<KhalaCodeDesktopRuntimeStatus>
+    qaMetrics(): Promise<KhalaCodeDesktopQaMetricsSnapshot>
     slashCommandDispatch(request: KhalaCodeDesktopSlashCommandDispatchRequest): Promise<KhalaCodeDesktopSlashCommandDispatchResult>
     slashCommandList(request?: KhalaCodeDesktopSlashCommandListRequest): Promise<KhalaCodeDesktopSlashCommandListResponse>
     submitChatMessage(request: KhalaCodeDesktopChatTurnRequest): Promise<KhalaCodeDesktopChatTurnResponse>

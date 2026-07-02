@@ -57,6 +57,14 @@ import {
   type KhalaCodeDesktopRuntimeMode,
   type KhalaCodeDesktopThreadTokenSummary,
 } from "../shared/rpc"
+import {
+  evaluateKhalaCodeQaMetricBudgets,
+  khalaCodeQaMetricBudgets,
+  khalaCodeQaMetricDefinitions,
+  type KhalaCodeQaMetricName,
+  type KhalaCodeQaMetricSample,
+  type KhalaCodeQaMetricsSnapshot,
+} from "../shared/qa-metrics"
 import { renderMessageBody } from "./transcript-render"
 import { mountFleetPanel } from "./fleet-status"
 import { mountKhalaCodeForumPanel } from "./forum-panel"
@@ -400,6 +408,10 @@ const previewRpc = (): DesktopRpc => ({
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["pylonStatus"]>>
       >("pylonStatus"),
+    qaMetrics: () =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["qaMetrics"]>>
+      >("qaMetrics"),
     removeCodexAccount: accountRef =>
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["removeCodexAccount"]>>
@@ -672,10 +684,36 @@ const THREAD_MESSAGE_CACHE_LIMIT = 16
 const THREAD_PREFETCH_LIMIT = 4
 const THREAD_SWITCH_INITIAL_MESSAGE_LIMIT = 80
 const THREAD_SWITCH_PERFORMANCE_SAMPLE_LIMIT = 60
+const QA_METRIC_SAMPLE_LIMIT = 240
 const threadMessageCache = new Map<string, readonly KhalaCodeDesktopMessage[]>()
 const threadPrefetches = new Map<string, Promise<void>>()
 const threadSwitchPerformanceSamples: ThreadSwitchPerformanceSample[] = []
 const pendingThreadSwitches = new Map<number, ThreadSwitchPerformanceSample>()
+const qaMetricSamples: KhalaCodeQaMetricSample[] = []
+
+const pushQaMetricSample = (
+  metric: KhalaCodeQaMetricName,
+  value: number,
+  context?: KhalaCodeQaMetricSample["context"],
+): void => {
+  if (!Number.isFinite(value)) return
+  qaMetricSamples.push({
+    ...(context === undefined ? {} : { context }),
+    metric,
+    observedAt: new Date().toISOString(),
+    unit: metric === "cache.hit" ? "count" : "ms",
+    value,
+  })
+  while (qaMetricSamples.length > QA_METRIC_SAMPLE_LIMIT) qaMetricSamples.shift()
+}
+
+const markQaTimer = (
+  metric: KhalaCodeQaMetricName,
+  startedAt: number,
+  context?: KhalaCodeQaMetricSample["context"],
+): void => {
+  requestAnimationFrame(() => pushQaMetricSample(metric, performance.now() - startedAt, context))
+}
 
 const emptyThreadTokenSummary = (
   threadId: string | null,
@@ -754,7 +792,15 @@ const markThreadSwitchPaint = (
   requestAnimationFrame(() => {
     const sample = pendingThreadSwitches.get(selectionId)
     if (sample === undefined) return
-    sample[field] = performance.now() - sample.startedAt
+    const durationMs = performance.now() - sample.startedAt
+    sample[field] = durationMs
+    const metric =
+      field === "fullRenderMs"
+        ? "thread_switch.full_render_ms"
+        : field === "hydratedRenderMs"
+          ? "thread_switch.hydrated_render_ms"
+          : "thread_switch.optimistic_render_ms"
+    pushQaMetricSample(metric, durationMs, { threadId: sample.threadId })
     if (field !== "hydratedRenderMs") return
     pendingThreadSwitches.delete(selectionId)
   })
@@ -779,6 +825,7 @@ const beginThreadSwitchPerformanceSample = (
   }
   pendingThreadSwitches.set(input.selectionId, sample)
   pushThreadSwitchPerformanceSample(sample)
+  if (input.cacheHit) pushQaMetricSample("cache.hit", 1, { threadId: input.threadId })
   markThreadSwitchPaint(input.selectionId, "optimisticRenderMs")
 }
 
@@ -793,7 +840,21 @@ const completeThreadSwitchPerformanceSample = (
   if (sample === undefined) return
   sample.fullMessageCount = input.fullMessageCount
   sample.rpcMs = performance.now() - sample.startedAt
+  pushQaMetricSample("thread_switch.rpc_ms", sample.rpcMs, { threadId: sample.threadId })
   markThreadSwitchPaint(input.selectionId, "fullRenderMs")
+}
+
+const qaMetricsSnapshot = (): KhalaCodeQaMetricsSnapshot => {
+  const samples = [...qaMetricSamples]
+  return {
+    budgets: khalaCodeQaMetricBudgets,
+    definitions: khalaCodeQaMetricDefinitions,
+    evaluations: evaluateKhalaCodeQaMetricBudgets(samples),
+    ok: true,
+    observedAt: new Date().toISOString(),
+    samples,
+    schema: "openagents.khala_code.qa_metrics.v1",
+  }
 }
 
 const scheduleFullThreadHydration = (
@@ -2154,6 +2215,7 @@ const submitComposer = async (): Promise<KhalaCodeDesktopMessage | null> => {
   threadSidebar?.setActiveThreadId(activeCodexThreadId)
   render()
   requestAnimationFrame(focusComposerInput)
+  const turnStartedAt = performance.now()
   try {
     const request: KhalaCodeDesktopChatTurnRequest = {
       ...(imageAttachments.length === 0 ? {} : { attachments: imageAttachments }),
@@ -2163,6 +2225,9 @@ const submitComposer = async (): Promise<KhalaCodeDesktopMessage | null> => {
       turnId,
     }
     const response = await rpc.request.submitChatMessage(request)
+    pushQaMetricSample("turn_start.latency_ms", performance.now() - turnStartedAt, {
+      runtimeMode: response.backend.runtimeMode ?? lastResponseRuntimeMode,
+    })
     if (activeTurnIds.has(turnId)) {
       if (response.backend.runtimeMode !== undefined) {
         lastResponseRuntimeMode = response.backend.runtimeMode
@@ -2609,6 +2674,7 @@ const controls = {
   },
   messages: () => messages.map(message => ({ ...message })),
   pylonStatus: () => rpc.request.pylonStatus(),
+  qaMetrics: qaMetricsSnapshot,
   removeCodexAccount: (accountRef: string) =>
     rpc.request.removeCodexAccount(accountRef),
   setCodexAccountPaused: (request: { accountRef: string; paused: boolean }) =>
@@ -2665,6 +2731,7 @@ const controls = {
   resetThreadSwitchPerformance: () => {
     threadSwitchPerformanceSamples.splice(0)
     pendingThreadSwitches.clear()
+    qaMetricSamples.splice(0)
   },
   toolCatalog: () => rpc.request.toolCatalog(),
 }
@@ -2945,6 +3012,7 @@ window.addEventListener("keydown", event => {
 })
 
 const setActiveView = (value: string): void => {
+  const panelOpenStartedAt = performance.now()
   const activeValue =
     value === "fleet" || value === "forum" || value === "inbox" || value === "settings"
       ? value
@@ -2968,6 +3036,7 @@ const setActiveView = (value: string): void => {
   settingsPanel?.setVisible(showSettings)
   if (showSettings) void claudeSettingsSection?.refresh()
   threadSidebar?.setVisible(showChat)
+  if (!showChat) markQaTimer("panel.open_ms", panelOpenStartedAt, { panel: activeValue })
   if (showChat) {
     requestAnimationFrame(focusComposerInput)
   }
@@ -3012,5 +3081,7 @@ if (sidebarNavRoot !== null) {
 setActiveView(initialView)
 renderThreadTokenCounter()
 void refreshThreadTokenSummary()
+const firstRenderStartedAt = performance.now()
 render()
+markQaTimer("first_render.ms", firstRenderStartedAt, { view: initialView })
 requestAnimationFrame(focusComposerInput)

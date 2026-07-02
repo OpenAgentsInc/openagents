@@ -1155,6 +1155,11 @@ describe("khala code desktop app shell", () => {
     expect(main).toContain("THREAD_MESSAGE_CACHE_LIMIT")
     expect(main).toContain("THREAD_PREFETCH_LIMIT")
     expect(main).toContain("threadSwitchPerformance")
+    expect(main).toContain("qaMetrics: qaMetricsSnapshot")
+    expect(main).toContain("turn_start.latency_ms")
+    expect(main).toContain("first_render.ms")
+    expect(main).toContain("panel.open_ms")
+    expect(main).toContain("cache.hit")
     expect(main).toContain("beginCodexThreadSwitch")
     expect(main).toContain("prefetchRecentThreadMessages")
     expect(main).toContain("activeTurnIds.clear()")
@@ -1288,6 +1293,23 @@ describe("khala code desktop app shell", () => {
     expect(css).not.toContain(".khala-thread-sidebar-toggle")
     expect(css).not.toContain(".khala-thread-sidebar-menu-summary")
     expect(css).not.toContain(".khala-thread-sidebar-actions")
+  })
+
+  test("registers QA metrics RPC and budget definitions", async () => {
+    const rpc = await Bun.file(new URL("../src/shared/rpc.ts", import.meta.url)).text()
+    const handlers = await Bun.file(new URL("../src/bun/rpc-handlers.ts", import.meta.url)).text()
+    const metrics = await Bun.file(new URL("../src/shared/qa-metrics.ts", import.meta.url)).text()
+    const previewPolicy = await Bun.file(new URL("../src/bun/preview-rpc-policy.ts", import.meta.url)).text()
+    const main = await Bun.file(new URL("../src/ui/main.ts", import.meta.url)).text()
+
+    expect(rpc).toContain("qaMetrics")
+    expect(rpc).toContain("RpcQaMetricsSnapshot")
+    expect(handlers).toContain("emptyKhalaCodeQaMetricsSnapshot")
+    expect(previewPolicy).toContain('"qaMetrics"')
+    expect(main).toContain('>("qaMetrics")')
+    expect(metrics).toContain("budget.khala_code.cockpit_render.50_cards.v1")
+    expect(metrics).toContain("budget.khala_code.lifecycle_event_to_card.p95.v1")
+    expect(metrics).toContain("budget.khala_code.supervisor_tick.25_target.v1")
   })
 
   test("keeps Khala Code to one sidebar shell", async () => {

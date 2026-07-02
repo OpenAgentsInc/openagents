@@ -158,13 +158,11 @@ export class KhalaCodeRpcQaDriver implements KhalaCodeQaDriver {
   }
 
   metrics(): Effect.Effect<KhalaCodeQaMetricsSnapshot, KhalaCodeQaDriverFailure> {
-    return Effect.succeed({
-      counters: {
-        observations: this.observations.length,
-        rpcCalls: this.observations.filter((observation) => observation.action.kind === "rpc_call").length,
-      },
-      timings: {},
-    })
+    return this.client.request.qaMetrics().pipe(
+      Effect.mapError((cause) =>
+        khalaCodeQaDriverFailure("RPC QA driver could not read qaMetrics", { cause })
+      ),
+    )
   }
 
   shutdown(): Effect.Effect<KhalaCodeQaArtifacts, KhalaCodeQaDriverFailure> {
