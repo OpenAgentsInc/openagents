@@ -33,6 +33,7 @@ import { LoadMulletBootstrap } from './mullet/transitions'
 import { notificationInitialCommands } from './notifications/transitions'
 import { LoadOnboardingRepositories } from './onboarding/transitions'
 import { LoadProviderAccountPool } from './providers/commands'
+import { LoadProAgentDashboard } from './pro/transitions'
 import { LoadTokenUsageStats } from './stats/transitions'
 import { LoadSyncSnapshot } from './sync/commands'
 import { syncSnapshotHref } from './sync/projection'
@@ -133,6 +134,10 @@ export const initialCommands = (
 
   if (model.route._tag === 'Mullet') {
     return [InstallAccountMenuOutsideClick(), LoadMulletBootstrap()]
+  }
+
+  if (model.route._tag === 'Pro') {
+    return [InstallAccountMenuOutsideClick(), LoadProAgentDashboard()]
   }
 
   const baseCommands = [

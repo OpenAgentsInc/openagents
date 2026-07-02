@@ -506,6 +506,74 @@ export const TokenUsageStatsState = S.Union([
 ])
 export type TokenUsageStatsState = typeof TokenUsageStatsState.Type
 
+export const ProAgentState = S.Literals([
+  'working',
+  'blocked',
+  'waiting',
+  'done',
+])
+export type ProAgentState = typeof ProAgentState.Type
+
+export const ProAgentStateHistoryEntry = S.Struct({
+  state: ProAgentState,
+  label: S.String,
+  at: S.String,
+})
+export type ProAgentStateHistoryEntry =
+  typeof ProAgentStateHistoryEntry.Type
+
+export const ProAgentStatusEntry = S.Struct({
+  id: S.String,
+  agentLabel: S.String,
+  worktreeLabel: S.String,
+  state: ProAgentState,
+  prompt: S.String,
+  updatedAt: S.String,
+  stateStartedAt: S.String,
+  acknowledgedAt: S.String,
+  unread: S.Boolean,
+  toolName: S.String,
+  lastAssistantMessage: S.String,
+  stateHistory: S.Array(ProAgentStateHistoryEntry),
+})
+export type ProAgentStatusEntry = typeof ProAgentStatusEntry.Type
+
+export const ProDiffComment = S.Struct({
+  id: S.String,
+  filePath: S.String,
+  lineLabel: S.String,
+  body: S.String,
+  selectedText: S.String,
+  targetAgentLabel: S.String,
+  sentAt: S.String,
+})
+export type ProDiffComment = typeof ProDiffComment.Type
+
+export const ProAgentDashboardResponse = S.Struct({
+  generatedAt: S.String,
+  liveEntries: S.Array(ProAgentStatusEntry),
+  retainedEntries: S.Array(ProAgentStatusEntry),
+  diffComments: S.Array(ProDiffComment),
+})
+export type ProAgentDashboardResponse =
+  typeof ProAgentDashboardResponse.Type
+
+export const ProAgentDashboardIdle = ts('ProAgentDashboardIdle', {})
+export const ProAgentDashboardLoading = ts('ProAgentDashboardLoading', {})
+export const ProAgentDashboardLoaded = ts('ProAgentDashboardLoaded', {
+  response: ProAgentDashboardResponse,
+})
+export const ProAgentDashboardFailed = ts('ProAgentDashboardFailed', {
+  error: S.String,
+})
+export const ProAgentDashboardState = S.Union([
+  ProAgentDashboardIdle,
+  ProAgentDashboardLoading,
+  ProAgentDashboardLoaded,
+  ProAgentDashboardFailed,
+])
+export type ProAgentDashboardState = typeof ProAgentDashboardState.Type
+
 export const PrefilledWorkspaceStatus = S.Literals([
   'draft',
   'invited',
@@ -7087,6 +7155,7 @@ export const Model = ts('LoggedIn', {
   onboarding: OnboardingFlowModel,
   providerAccountPool: ProviderAccountPoolState,
   providerConnectionAction: ProviderConnectionAction,
+  proAgentDashboard: ProAgentDashboardState,
   prefilledWorkspace: PrefilledWorkspaceState,
   runMetadataDialog: RunMetadataDialog,
   route: LoggedInRoute,
@@ -7646,6 +7715,7 @@ export const init = (route: LoggedInRoute, auth: AuthBootstrap): Model =>
     prefilledWorkspace: PrefilledWorkspaceIdle(),
     providerAccountPool: ProviderAccountPoolIdle(),
     providerConnectionAction: IdleProviderConnectionAction(),
+    proAgentDashboard: ProAgentDashboardIdle(),
     runMetadataDialog: ClosedRunMetadataDialog(),
     route,
     session: auth.session,

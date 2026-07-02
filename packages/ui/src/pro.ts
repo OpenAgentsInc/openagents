@@ -761,7 +761,7 @@ const proDashboardSummary = <Message>(
         ],
       ),
       h.p([h.Class('m-0 text-xs text-white/35 md:col-span-2')], [
-        `Generated ${snapshot.generatedAt}. Public-safe sample data only; no private prompts, raw logs, wallet material, or provider payloads are rendered.`,
+        `Generated ${snapshot.generatedAt}. Public-safe owner-scoped status data only; no private prompts, raw logs, wallet material, or provider payloads are rendered.`,
       ]),
     ],
   )
