@@ -1,7 +1,7 @@
 # Khala Code QA Nightly Matrix
 
 Status: implementation note for ROADMAP_QA Q1.1 / issue #8012, Q1.3 /
-issue #8014, and Q1.4 / issue #8015.
+issue #8014, Q1.4 / issue #8015, and Q1.5 / issue #8016.
 
 `bun run qa:nightly` is the owned-runner Tier-2 loop for the fully automated
 Khala Code QA cycle. It does not use GitHub-hosted CI. The committed systemd
@@ -28,6 +28,8 @@ Each run writes:
 
 - `qa-nightly-report.json`
 - `qa-nightly-report.md`
+- `qa-status-surface.json`
+- `qa-status-surface.md`
 - one log per step under `logs/`
 - the flake quarantine ledger under
   `quarantine/flake-quarantine-ledger.json`
@@ -77,6 +79,14 @@ frontier reports, the nightly marks it in `zeroForAWeekIssueCandidates`. With
 `OA_QA_NIGHTLY_FILE_COVERAGE_ISSUE=1`, the runner files a strict-form issue
 with public-safe refs to the report, union ledger, frontier report, and steering
 input.
+
+## Status Surface
+
+The owner-facing summary lives in `qa-status-surface.json` and
+`qa-status-surface.md`. See
+[`khala-code-qa-status-surface.md`](./khala-code-qa-status-surface.md) for the
+schema, public-safety contract, coverage counts, step-duration trend semantics,
+and live-tier status rules.
 
 Key environment switches:
 

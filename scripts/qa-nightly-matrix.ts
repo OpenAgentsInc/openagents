@@ -5,6 +5,7 @@ import { basename, dirname, join, relative, resolve } from "node:path"
 
 import {
   KHALA_CODE_QA_SEED_CORPUS_MANIFEST,
+  KhalaCodeRpcMethodNames,
   createEmptyKhalaCodeQaCoverageLedger,
   khalaCodeQaCoverageFrontierReport,
   mergeKhalaCodeQaCoverageLedgers,
@@ -14,6 +15,8 @@ import {
 
 export const QA_NIGHTLY_MATRIX_SCHEMA =
   "openagents.khala_code.qa_nightly_matrix.v1"
+export const QA_STATUS_SURFACE_SCHEMA =
+  "openagents.khala_code.qa_status_surface.v1"
 
 export const QA_NIGHTLY_DEFAULT_RUNS = 16
 export const QA_NIGHTLY_DEFAULT_STEPS = 64
@@ -71,6 +74,8 @@ export type QaNightlyReport = Readonly<{
   coverageFrontierReportPath: string
   coverageSteeringInputPath: string
   quarantineLedgerPath: string
+  statusSurfaceJsonPath: string
+  statusSurfaceMarkdownPath: string
   issueStatus?: QaNightlyIssueStatus | undefined
   quarantineIssueStatus?: QaNightlyIssueStatus | undefined
   zeroCoverageIssueStatus?: QaNightlyIssueStatus | undefined
@@ -102,6 +107,71 @@ export type QaNightlyIssueFiler = (
     title: string
   }>,
 ) => Promise<QaNightlyIssueStatus>
+
+export type QaNightlyCoverageDimensionCount = Readonly<{
+  covered: number
+  coveredPercent: number
+  missing: number
+  total: number
+}>
+
+export type QaNightlyCoverageDimension =
+  | "approvalDecisionKinds"
+  | "hotbarPanels"
+  | "rpcMethods"
+  | "selectors"
+  | "settingsKeys"
+  | "slashCommandAvailabilityStates"
+  | "slashCommands"
+  | "threadItemVariants"
+
+export type QaNightlyPerfTrend = Readonly<{
+  deltaMs?: number | undefined
+  latestDurationMs: number
+  previousDurationMs?: number | undefined
+  sampleCount: number
+  stepId: QaNightlyStepId
+  trend: "first_sample" | "flat" | "improved" | "regressed"
+}>
+
+export type QaNightlyStatusSurface = Readonly<{
+  schema: typeof QA_STATUS_SURFACE_SCHEMA
+  generatedAt: string
+  runId: string
+  status: QaNightlyReport["status"]
+  statusSummary: "blocked" | "healthy"
+  reportJsonPath: string
+  reportMarkdownPath: string
+  coverage: Readonly<{
+    artifactRefs: Readonly<{
+      frontierReportPath: string
+      steeringInputPath: string
+      unionLedgerPath: string
+    }>
+    counts: Readonly<Record<QaNightlyCoverageDimension, QaNightlyCoverageDimensionCount>>
+    frontierRefCount: number
+    sourceLedgerCount: number
+    unionRunCount: number
+    zeroForAWeekCount: number
+  }>
+  issueStatuses: Readonly<{
+    nightly: QaNightlyIssueStatus | undefined
+    quarantine: QaNightlyIssueStatus | undefined
+    zeroCoverage: QaNightlyIssueStatus | undefined
+  }>
+  liveTier: Readonly<{
+    evidenceRefs: readonly string[]
+    reason: string
+    status: "not_in_matrix"
+  }>
+  perfTrends: Readonly<{
+    basis: "nightly_step_duration_ms"
+    status: "trend_only_until_q2_budget_family_lands"
+    steps: readonly QaNightlyPerfTrend[]
+  }>
+  surfaceMarkdownPath: string
+  surfaceJsonPath: string
+}>
 
 export type QaNightlyCoverageSteeringInput = Readonly<{
   schema: "openagents.khala_code.coverage_frontier_steering_input.v1"
@@ -222,6 +292,50 @@ const isCoverageFrontierReport = (value: unknown): value is KhalaCodeQaCoverageF
   typeof value.generatedAt === "string" &&
   isRecord(value.missing)
 
+export type QaNightlyReportHistoryEntry = Readonly<{
+  generatedAt: string
+  runId: string
+  status: QaNightlyReport["status"]
+  steps: ReadonlyArray<Readonly<{
+    durationMs: number
+    id: QaNightlyStepId
+    status: QaNightlyStepResult["status"]
+  }>>
+}>
+
+const QA_NIGHTLY_STEP_IDS = new Set<QaNightlyStepId>([
+  "harness-suite",
+  "desktop-verify",
+  "visual-part2-ui",
+  "visual-cockpit",
+  "visual-composer",
+  "monkey-night",
+  "model-based",
+  "property-tier",
+])
+
+const isQaNightlyStepId = (value: unknown): value is QaNightlyStepId =>
+  typeof value === "string" && QA_NIGHTLY_STEP_IDS.has(value as QaNightlyStepId)
+
+const isQaNightlyReportHistoryEntry = (value: unknown): value is QaNightlyReportHistoryEntry =>
+  isRecord(value) &&
+  value.schema === QA_NIGHTLY_MATRIX_SCHEMA &&
+  typeof value.generatedAt === "string" &&
+  typeof value.runId === "string" &&
+  (value.status === "passed" || value.status === "failed") &&
+  Array.isArray(value.steps) &&
+  value.steps.every(step =>
+    isRecord(step) &&
+    isQaNightlyStepId(step.id) &&
+    typeof step.durationMs === "number" &&
+    (
+      step.status === "passed" ||
+      step.status === "failed" ||
+      step.status === "timed_out" ||
+      step.status === "flaky"
+    ),
+  )
+
 export const khalaCoverageFrontierRefs = (
   frontier: KhalaCodeQaCoverageFrontierReport,
 ): readonly string[] => sorted([
@@ -312,6 +426,155 @@ const readCoverageFrontierHistory = async (
   }
   return frontiers
 }
+
+const collectQaNightlyReportPaths = async (
+  artifactRoot: string,
+): Promise<readonly string[]> =>
+  (await walkFiles(artifactRoot))
+    .filter(path => basename(path) === "qa-nightly-report.json")
+    .sort((left, right) => left.localeCompare(right))
+
+const readQaNightlyReportHistory = async (
+  artifactRoot: string,
+): Promise<readonly QaNightlyReportHistoryEntry[]> => {
+  const reports: QaNightlyReportHistoryEntry[] = []
+  for (const path of await collectQaNightlyReportPaths(artifactRoot)) {
+    const value = await readJsonFile(path)
+    if (isQaNightlyReportHistoryEntry(value)) reports.push(value)
+  }
+  return reports.sort((left, right) => left.generatedAt.localeCompare(right.generatedAt))
+}
+
+const countCoverageDimension = (
+  total: number,
+  missing: number,
+): QaNightlyCoverageDimensionCount => {
+  const boundedMissing = Math.max(0, Math.min(missing, total))
+  const covered = Math.max(0, total - boundedMissing)
+  return {
+    covered,
+    coveredPercent: total === 0 ? 100 : Math.round((covered / total) * 1000) / 10,
+    missing: boundedMissing,
+    total,
+  }
+}
+
+const coverageDimensionCounts = (
+  frontier: KhalaCodeQaCoverageFrontierReport,
+): Readonly<Record<QaNightlyCoverageDimension, QaNightlyCoverageDimensionCount>> => {
+  const manifest = KHALA_CODE_QA_SEED_CORPUS_MANIFEST.coverage
+  const slashCommandAvailabilityStateTotal = Object.values(manifest.slashCommandAvailabilityStates)
+    .reduce((sum, states) => sum + states.length, 0)
+  return {
+    approvalDecisionKinds: countCoverageDimension(
+      manifest.approvalDecisionKinds.length,
+      frontier.missing.approvalDecisionKinds.length,
+    ),
+    hotbarPanels: countCoverageDimension(
+      manifest.hotbarPanels.length,
+      frontier.missing.hotbarPanels.length,
+    ),
+    rpcMethods: countCoverageDimension(
+      KhalaCodeRpcMethodNames.length,
+      frontier.missing.rpcMethods.length,
+    ),
+    selectors: countCoverageDimension(
+      manifest.selectors.length,
+      frontier.missing.selectors.length,
+    ),
+    settingsKeys: countCoverageDimension(
+      manifest.settingsKeys.length,
+      frontier.missing.settingsKeys.length,
+    ),
+    slashCommandAvailabilityStates: countCoverageDimension(
+      slashCommandAvailabilityStateTotal,
+      frontier.missing.slashCommandAvailabilityStates.length,
+    ),
+    slashCommands: countCoverageDimension(
+      manifest.slashCommands.length,
+      frontier.missing.slashCommands.length,
+    ),
+    threadItemVariants: countCoverageDimension(
+      manifest.threadItemVariants.length,
+      frontier.missing.threadItemVariants.length,
+    ),
+  }
+}
+
+const computeQaNightlyPerfTrends = (
+  report: QaNightlyReport,
+  history: readonly QaNightlyReportHistoryEntry[],
+): readonly QaNightlyPerfTrend[] =>
+  report.steps.map(step => {
+    const prior = history
+      .filter(entry => entry.runId !== report.runId)
+      .flatMap(entry => entry.steps.filter(candidate => candidate.id === step.id))
+    const previous = prior.at(-1)
+    const deltaMs = previous === undefined ? undefined : step.durationMs - previous.durationMs
+    return {
+      ...(deltaMs === undefined ? {} : { deltaMs }),
+      latestDurationMs: step.durationMs,
+      ...(previous === undefined ? {} : { previousDurationMs: previous.durationMs }),
+      sampleCount: prior.length + 1,
+      stepId: step.id,
+      trend: previous === undefined
+        ? "first_sample"
+        : deltaMs === 0
+          ? "flat"
+          : deltaMs < 0
+            ? "improved"
+            : "regressed",
+    }
+  })
+
+export const buildQaNightlyStatusSurface = (input: Readonly<{
+  frontierReport: KhalaCodeQaCoverageFrontierReport
+  history: readonly QaNightlyReportHistoryEntry[]
+  report: QaNightlyReport
+  statusSurfaceJsonPath: string
+  statusSurfaceMarkdownPath: string
+  unionLedger: KhalaCodeQaCoverageLedger
+}>): QaNightlyStatusSurface => ({
+  coverage: {
+    artifactRefs: {
+      frontierReportPath: input.report.coverageFrontierReportPath,
+      steeringInputPath: input.report.coverageSteeringInputPath,
+      unionLedgerPath: input.report.coverageLedgerPath,
+    },
+    counts: coverageDimensionCounts(input.frontierReport),
+    frontierRefCount: khalaCoverageFrontierRefs(input.frontierReport).length,
+    sourceLedgerCount: input.report.coverageLedgerSourcePaths.length,
+    unionRunCount: input.unionLedger.runIds.length,
+    zeroForAWeekCount: input.frontierReport.zeroForAWeekIssueCandidates.length,
+  },
+  generatedAt: input.report.generatedAt,
+  issueStatuses: {
+    nightly: input.report.issueStatus,
+    quarantine: input.report.quarantineIssueStatus,
+    zeroCoverage: input.report.zeroCoverageIssueStatus,
+  },
+  liveTier: {
+    evidenceRefs: [
+      "docs/fable/ROADMAP_QA.md",
+      "https://github.com/OpenAgentsInc/openagents/issues/8037",
+    ],
+    reason: "Live-tier Q5 smokes are not part of the Q1 nightly matrix yet; fixture tiers remain no-spend and account-isolated.",
+    status: "not_in_matrix",
+  },
+  perfTrends: {
+    basis: "nightly_step_duration_ms",
+    status: "trend_only_until_q2_budget_family_lands",
+    steps: computeQaNightlyPerfTrends(input.report, input.history),
+  },
+  reportJsonPath: input.report.reportJsonPath,
+  reportMarkdownPath: input.report.reportMarkdownPath,
+  runId: input.report.runId,
+  schema: QA_STATUS_SURFACE_SCHEMA,
+  status: input.report.status,
+  statusSummary: input.report.status === "passed" ? "healthy" : "blocked",
+  surfaceJsonPath: input.statusSurfaceJsonPath,
+  surfaceMarkdownPath: input.statusSurfaceMarkdownPath,
+})
 
 export const emitQaNightlyCoverageArtifacts = async (input: Readonly<{
   artifactDir: string
@@ -538,12 +801,20 @@ export const runSpawnedQaNightlyCommand: QaNightlyCommandRunner = async (
   })
 }
 
-export const assertQaNightlyReportPublicSafe = (report: QaNightlyReport): void => {
-  const text = JSON.stringify(report)
+const assertPublicSafeArtifact = (artifact: unknown, label: string): void => {
+  const text = JSON.stringify(artifact)
   const unsafe = /\/Users\/|\/home\/|~\/|auth\.json|bearer\s+[a-z0-9._-]+|sk-[a-z0-9]/i
   if (unsafe.test(text)) {
-    throw new Error("QA nightly report contains a private path or credential-shaped value")
+    throw new Error(`${label} contains a private path or credential-shaped value`)
   }
+}
+
+export const assertQaNightlyReportPublicSafe = (report: QaNightlyReport): void => {
+  assertPublicSafeArtifact(report, "QA nightly report")
+}
+
+export const assertQaStatusSurfacePublicSafe = (surface: QaNightlyStatusSurface): void => {
+  assertPublicSafeArtifact(surface, "QA status surface")
 }
 
 export const renderQaNightlyMarkdown = (report: QaNightlyReport): string => {
@@ -573,6 +844,8 @@ export const renderQaNightlyMarkdown = (report: QaNightlyReport): string => {
 - Run: \`${report.runId}\`
 - Generated: \`${report.generatedAt}\`
 - Status: \`${report.status}\`
+- Status surface JSON: \`${report.statusSurfaceJsonPath}\`
+- Status surface markdown: \`${report.statusSurfaceMarkdownPath}\`
 - Flake quarantine ledger: \`${report.quarantineLedgerPath}\`
 - Coverage union ledger: \`${report.coverageLedgerPath}\`
 - Coverage frontier report: \`${report.coverageFrontierReportPath}\`
@@ -604,6 +877,75 @@ Zero-for-seven-days issue status: ${zeroCoverage}
 `
 }
 
+export const renderQaStatusSurfaceMarkdown = (surface: QaNightlyStatusSurface): string => {
+  const coverageRows = Object.entries(surface.coverage.counts)
+    .map(([dimension, count]) =>
+      `| ${dimension} | ${count.covered} | ${count.missing} | ${count.total} | ${count.coveredPercent}% |`
+    )
+    .join("\n")
+  const trendRows = surface.perfTrends.steps
+    .map(step => {
+      const previous = step.previousDurationMs === undefined ? "n/a" : String(step.previousDurationMs)
+      const delta = step.deltaMs === undefined ? "n/a" : String(step.deltaMs)
+      return `| ${step.stepId} | ${step.latestDurationMs} | ${previous} | ${delta} | ${step.trend} | ${step.sampleCount} |`
+    })
+    .join("\n")
+  const issueStatus = (status: QaNightlyIssueStatus | undefined): string => {
+    if (status === undefined) return "not evaluated"
+    if (status.status === "filed") return `filed ${status.issueUrl ?? ""}`.trim()
+    return `${status.status}: ${status.reason}`
+  }
+
+  return `# Khala Code QA Status
+
+- Run: \`${surface.runId}\`
+- Generated: \`${surface.generatedAt}\`
+- Health: \`${surface.statusSummary}\`
+- Matrix status: \`${surface.status}\`
+- Report JSON: \`${surface.reportJsonPath}\`
+- Report markdown: \`${surface.reportMarkdownPath}\`
+
+## Live Tier
+
+Status: \`${surface.liveTier.status}\`
+
+${surface.liveTier.reason}
+
+Evidence refs:
+${surface.liveTier.evidenceRefs.map(ref => `- \`${ref}\``).join("\n")}
+
+## Coverage
+
+- Union runs: \`${surface.coverage.unionRunCount}\`
+- Source ledgers: \`${surface.coverage.sourceLedgerCount}\`
+- Frontier refs: \`${surface.coverage.frontierRefCount}\`
+- Zero for seven days: \`${surface.coverage.zeroForAWeekCount}\`
+- Union ledger: \`${surface.coverage.artifactRefs.unionLedgerPath}\`
+- Frontier report: \`${surface.coverage.artifactRefs.frontierReportPath}\`
+- Steering input: \`${surface.coverage.artifactRefs.steeringInputPath}\`
+
+| Dimension | Covered | Missing | Total | Covered % |
+| --- | ---: | ---: | ---: | ---: |
+${coverageRows}
+
+## Perf Trends
+
+Basis: \`${surface.perfTrends.basis}\`
+
+Status: \`${surface.perfTrends.status}\`
+
+| Step | Latest ms | Previous ms | Delta ms | Trend | Samples |
+| --- | ---: | ---: | ---: | --- | ---: |
+${trendRows}
+
+## Issues
+
+- Nightly: ${issueStatus(surface.issueStatuses.nightly)}
+- Flake quarantine: ${issueStatus(surface.issueStatuses.quarantine)}
+- Zero coverage: ${issueStatus(surface.issueStatuses.zeroCoverage)}
+`
+}
+
 export const buildQaNightlyFailureIssueBody = (report: QaNightlyReport): string => {
   const failed = report.steps.filter(step => step.status !== "passed")
   return `### Affected surface
@@ -631,6 +973,8 @@ The full fixture QA matrix should pass: harness suite, desktop verify, visual sm
 
 - Report JSON: \`${report.reportJsonPath}\`
 - Report markdown: \`${report.reportMarkdownPath}\`
+- Status surface JSON: \`${report.statusSurfaceJsonPath}\`
+- Status surface markdown: \`${report.statusSurfaceMarkdownPath}\`
 - Flake quarantine ledger: \`${report.quarantineLedgerPath}\`
 - Coverage union ledger: \`${report.coverageLedgerPath}\`
 - Coverage frontier report: \`${report.coverageFrontierReportPath}\`
@@ -677,6 +1021,7 @@ The explorer should eventually exercise each manifest coverage class, or the mis
 ### Public-safe evidence
 
 - Report JSON: \`${report.reportJsonPath}\`
+- Status surface JSON: \`${report.statusSurfaceJsonPath}\`
 - Coverage union ledger: \`${report.coverageLedgerPath}\`
 - Coverage frontier report: \`${report.coverageFrontierReportPath}\`
 - Explorer steering input: \`${report.coverageSteeringInputPath}\`
@@ -725,6 +1070,8 @@ The first attempt should pass deterministically. A pass-after-fail must remain t
 
 - Report JSON: \`${report.reportJsonPath}\`
 - Report markdown: \`${report.reportMarkdownPath}\`
+- Status surface JSON: \`${report.statusSurfaceJsonPath}\`
+- Status surface markdown: \`${report.statusSurfaceMarkdownPath}\`
 - Quarantine ledger: \`${report.quarantineLedgerPath}\`
 ${entries.flatMap(entry => entry.evidenceRefs.map(ref => `- Evidence ref: \`${ref}\``)).join("\n")}
 
@@ -901,6 +1248,8 @@ export const runQaNightlyMatrix = async (input: Readonly<{
   const issueBodyPath = join(artifactDir, "qa-nightly-failure-issue.md")
   const zeroCoverageIssueBodyPath = join(artifactDir, "qa-nightly-zero-coverage-issue.md")
   const quarantineIssueBodyPath = join(artifactDir, "qa-nightly-flake-quarantine-issue.md")
+  const statusSurfaceJsonPath = join(artifactDir, "qa-status-surface.json")
+  const statusSurfaceMarkdownPath = join(artifactDir, "qa-status-surface.md")
   const quarantineLedgerPath = join(artifactDir, "quarantine", "flake-quarantine-ledger.json")
   const quarantineLedger: QaNightlyFlakeQuarantineLedger = {
     entries: quarantineEntries,
@@ -933,6 +1282,8 @@ export const runQaNightlyMatrix = async (input: Readonly<{
     runId,
     schema: QA_NIGHTLY_MATRIX_SCHEMA,
     status: results.every(step => step.status === "passed") ? "passed" : "failed",
+    statusSurfaceJsonPath: repoRelative(root, statusSurfaceJsonPath),
+    statusSurfaceMarkdownPath: repoRelative(root, statusSurfaceMarkdownPath),
     steps: results,
   }
 
@@ -989,8 +1340,19 @@ export const runQaNightlyMatrix = async (input: Readonly<{
     ...(zeroCoverageIssueStatus === undefined ? {} : { zeroCoverageIssueStatus }),
   }
   assertQaNightlyReportPublicSafe(report)
+  const statusSurface = buildQaNightlyStatusSurface({
+    frontierReport: coverageArtifacts.frontierReport,
+    history: await readQaNightlyReportHistory(artifactRoot),
+    report,
+    statusSurfaceJsonPath: report.statusSurfaceJsonPath,
+    statusSurfaceMarkdownPath: report.statusSurfaceMarkdownPath,
+    unionLedger: coverageArtifacts.unionLedger,
+  })
+  assertQaStatusSurfacePublicSafe(statusSurface)
   await writeFile(reportJsonPath, `${JSON.stringify(report, null, 2)}\n`)
   await writeFile(reportMarkdownPath, renderQaNightlyMarkdown(report))
+  await writeFile(statusSurfaceJsonPath, `${JSON.stringify(statusSurface, null, 2)}\n`)
+  await writeFile(statusSurfaceMarkdownPath, renderQaStatusSurfaceMarkdown(statusSurface))
   return report
 }
 

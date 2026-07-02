@@ -84,6 +84,64 @@ describe("qa nightly matrix report", () => {
       expect(await readFile(join(root, report.quarantineLedgerPath), "utf8")).toContain(
         "qa_flake_quarantine_ledger",
       )
+      const statusSurface = JSON.parse(await readFile(join(root, report.statusSurfaceJsonPath), "utf8"))
+      const statusMarkdown = await readFile(join(root, report.statusSurfaceMarkdownPath), "utf8")
+      expect(statusSurface.schema).toBe("openagents.khala_code.qa_status_surface.v1")
+      expect(statusSurface.statusSummary).toBe("healthy")
+      expect(statusSurface.liveTier.status).toBe("not_in_matrix")
+      expect(statusSurface.coverage.counts.rpcMethods.total).toBeGreaterThan(0)
+      expect(statusSurface.perfTrends.steps[0]).toMatchObject({
+        latestDurationMs: 7,
+        sampleCount: 1,
+        trend: "first_sample",
+      })
+      expect(statusMarkdown).toContain("Khala Code QA Status")
+      expect(statusMarkdown).toContain("| rpcMethods |")
+      expect(statusMarkdown).toContain("trend_only_until_q2_budget_family_lands")
+    } finally {
+      await rm(root, { force: true, recursive: true })
+    }
+  })
+
+  test("renders step-duration trends from prior public reports", async () => {
+    const root = await mkdtemp(join(tmpdir(), "qa-nightly-status-trend-"))
+    const artifactRoot = join(root, "artifacts")
+    let durationMs = 10
+    const commandRunner: QaNightlyCommandRunner = async () => ({
+      durationMs,
+      exitCode: 0,
+      stderr: "",
+      stdout: "",
+    })
+
+    try {
+      await runQaNightlyMatrix({
+        artifactRoot,
+        commandRunner,
+        env: {},
+        now: () => "2026-07-01T12:00:00.000Z",
+        root,
+      })
+      durationMs = 7
+      const report = await runQaNightlyMatrix({
+        artifactRoot,
+        commandRunner,
+        env: {},
+        now: () => "2026-07-02T12:00:00.000Z",
+        root,
+      })
+      const statusSurface = JSON.parse(await readFile(join(root, report.statusSurfaceJsonPath), "utf8"))
+      const harnessTrend = statusSurface.perfTrends.steps.find(
+        (step: { stepId: string }) => step.stepId === "harness-suite",
+      )
+
+      expect(harnessTrend).toMatchObject({
+        deltaMs: -3,
+        latestDurationMs: 7,
+        previousDurationMs: 10,
+        sampleCount: 2,
+        trend: "improved",
+      })
     } finally {
       await rm(root, { force: true, recursive: true })
     }
@@ -198,6 +256,7 @@ describe("qa nightly matrix report", () => {
         rpcMethods: [],
         selectors: [],
         settingsKeys: [],
+        slashCommandAvailabilityStates: [],
         slashCommands: [],
         threadItemVariants: [],
       },
@@ -295,6 +354,8 @@ describe("qa nightly matrix report", () => {
       runId: "khala-code-qa-nightly-2026-07-02",
       schema: "openagents.khala_code.qa_nightly_matrix.v1",
       status: "failed",
+      statusSurfaceJsonPath: "var/qa-nightly/run/qa-status-surface.json",
+      statusSurfaceMarkdownPath: "var/qa-nightly/run/qa-status-surface.md",
       steps: [
         {
           attempts: [{
