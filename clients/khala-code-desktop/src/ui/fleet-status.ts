@@ -5,6 +5,11 @@ import type {
   KhalaCodeDesktopFleetAccount,
   KhalaCodeDesktopFleetDelegateRunRequest,
   KhalaCodeDesktopFleetDelegateRunResult,
+  KhalaCodeDesktopFleetRunControlRequest,
+  KhalaCodeDesktopFleetRunControlResult,
+  KhalaCodeDesktopFleetRunListRequest,
+  KhalaCodeDesktopFleetRunListResult,
+  KhalaCodeDesktopFleetRunProjection,
   KhalaCodeDesktopFleetRunStartRequest,
   KhalaCodeDesktopFleetRunStartResult,
   KhalaCodeDesktopFleetStatus,
@@ -33,6 +38,12 @@ export type FleetPanelOptions = Readonly<{
   fleetRunStart: (
     request: KhalaCodeDesktopFleetRunStartRequest,
   ) => Promise<KhalaCodeDesktopFleetRunStartResult>
+  fleetRunControl: (
+    request: KhalaCodeDesktopFleetRunControlRequest,
+  ) => Promise<KhalaCodeDesktopFleetRunControlResult>
+  fleetRunList: (
+    request?: KhalaCodeDesktopFleetRunListRequest,
+  ) => Promise<KhalaCodeDesktopFleetRunListResult>
   loadGymDemoProof: () =>
     | KhalaGymDelegationOptimizationRun
     | Promise<KhalaGymDelegationOptimizationRun>
@@ -49,6 +60,7 @@ type Handlers = Readonly<{
   onDelegateField: (field: keyof FleetDelegateFormState, value: string | boolean) => void
   onDelegateRun: () => void
   onFleetRunField: (field: keyof FleetRunFormState, value: string) => void
+  onFleetRunControl: (verb: KhalaCodeDesktopFleetRunControlRequest["verb"]) => void
   onFleetRunPreview: () => void
   onFleetRunStart: () => void
   onLoadGymDemoProof: () => void
@@ -115,6 +127,13 @@ type FleetRunView =
       readonly result: KhalaCodeDesktopFleetRunStartResult
       readonly slots: readonly FleetRunPreviewSlot[]
     }
+
+type ActiveFleetRunView = Readonly<{
+  controlInFlight: KhalaCodeDesktopFleetRunControlRequest["verb"] | null
+  error: string | null
+  objective: string | null
+  run: KhalaCodeDesktopFleetRunProjection | null
+}>
 
 type FleetView =
   | { readonly phase: "loading" }
@@ -205,6 +224,62 @@ const formatElapsedMs = (elapsedMs: number | null): string | null => {
   const remainder = seconds % 60
   return minutes === 0 ? `${remainder}s` : `${minutes}m ${remainder}s`
 }
+
+const elapsedSince = (
+  startedAt: string | null,
+  updatedAt: string,
+  observedAt: string | null,
+): string => {
+  const start = Date.parse(startedAt ?? updatedAt)
+  const observed = Date.parse(observedAt ?? updatedAt)
+  const updated = Date.parse(updatedAt)
+  if (!Number.isFinite(start) || !Number.isFinite(observed) || !Number.isFinite(updated)) return "unknown"
+  const end = Math.max(observed, updated)
+  return formatElapsedMs(Math.max(0, end - start)) ?? "unknown"
+}
+
+const fleetRunStateBadge = (
+  state: KhalaCodeDesktopFleetRunProjection["state"],
+): "online" | "ready" | "missing" | "degraded" => {
+  if (state === "running") return "online"
+  if (state === "completed") return "ready"
+  if (state === "stopped") return "missing"
+  return "degraded"
+}
+
+const activeFleetRunSortScore = (
+  state: KhalaCodeDesktopFleetRunProjection["state"],
+): number => {
+  if (state === "running") return 0
+  if (state === "paused") return 1
+  if (state === "draining") return 2
+  if (state === "draft") return 3
+  return 4
+}
+
+const selectActiveFleetRun = (
+  runs: readonly KhalaCodeDesktopFleetRunProjection[],
+): KhalaCodeDesktopFleetRunProjection | null => {
+  const active = runs
+    .filter(run => run.state === "running" || run.state === "paused" || run.state === "draining")
+    .sort((left, right) => {
+      const score = activeFleetRunSortScore(left.state) - activeFleetRunSortScore(right.state)
+      if (score !== 0) return score
+      return Date.parse(right.updatedAt) - Date.parse(left.updatedAt)
+    })
+  return active[0] ?? null
+}
+
+const runBacklogRemaining = (
+  run: KhalaCodeDesktopFleetRunProjection,
+): number => Math.max(
+  0,
+  run.counters.workUnitsTotal
+    - run.counters.activeAssignments
+    - run.counters.completedAssignments
+    - run.counters.failedAssignments
+    - run.counters.blockedAssignments,
+)
 
 const accountCapacityLabel = (
   capacity: KhalaCodeDesktopFleetAccount["capacity"],
@@ -592,6 +667,75 @@ const renderFleetRunResult = (
     output.append(list)
   }
   container.append(output)
+}
+
+const renderFleetRunHeader = (
+  container: HTMLElement,
+  activeRun: ActiveFleetRunView,
+  observedAt: string | null,
+  handlers: Handlers,
+): void => {
+  const run = activeRun.run
+  if (run === null) return
+
+  const section = el("section", "khala-fleet-section khala-fleet-run-header")
+  section.dataset.state = run.state
+  section.append(sectionHeader("Active FleetRun", "orchestration store"))
+
+  const objective = activeRun.objective ?? (
+    run.objectiveProjected
+      ? "Objective projected by the orchestration store."
+      : "Objective is not projected by the public-safe run status."
+  )
+  const objectiveNode = el("p", "khala-fleet-run-objective", objective)
+
+  const chips = el("div", "khala-fleet-chips")
+  chips.append(
+    badge(fleetRunStateBadge(run.state), titleize(run.state)),
+    detailChip("run", run.runRef),
+    detailChip("target", String(run.targetConcurrency)),
+    detailChip("actual", String(run.counters.activeAssignments)),
+    detailChip("remaining", String(runBacklogRemaining(run))),
+    detailChip("claimed", String(run.counters.activeAssignments)),
+    detailChip("done", String(run.counters.completedAssignments)),
+    detailChip("elapsed", elapsedSince(run.startedAt, run.updatedAt, observedAt)),
+  )
+  if (run.counters.blockedAssignments > 0) {
+    chips.append(detailChip("blocked", String(run.counters.blockedAssignments)))
+  }
+  if (run.counters.failedAssignments > 0) {
+    chips.append(detailChip("failed", String(run.counters.failedAssignments)))
+  }
+
+  const controls = el("div", "khala-fleet-run-controls")
+  const controlSpecs: ReadonlyArray<readonly [
+    KhalaCodeDesktopFleetRunControlRequest["verb"],
+    IconName,
+  ]> = [
+    ["pause", "Pause"],
+    ["resume", "Play"],
+    ["drain", "Circle"],
+    ["stop", "Stop"],
+  ]
+  for (const [verb, icon] of controlSpecs) {
+    const label = titleize(verb)
+    const button = iconButton(
+      activeRun.controlInFlight === verb ? `${label}...` : label,
+      icon,
+      verb === "stop" ? "khala-fleet-run khala-fleet-run-danger" : "khala-fleet-run",
+    )
+    button.dataset.fleetRunControl = verb
+    button.disabled = activeRun.controlInFlight !== null
+    button.addEventListener("click", () => handlers.onFleetRunControl(verb))
+    controls.append(button)
+  }
+
+  section.append(objectiveNode, chips)
+  if (activeRun.error !== null) {
+    section.append(el("p", "khala-fleet-error", activeRun.error))
+  }
+  section.append(controls)
+  container.append(section)
 }
 
 const renderFleetRunStarter = (
@@ -1068,6 +1212,7 @@ const render = (
   activeConnect: ConnectView | null,
   delegateForm: FleetDelegateFormState,
   delegateRun: DelegateRunView,
+  activeRun: ActiveFleetRunView,
   fleetRunForm: FleetRunFormState,
   fleetRun: FleetRunView,
   optimizationRun: OptimizationRunView,
@@ -1097,6 +1242,7 @@ const render = (
   // visible and live below it.
   if (activeConnect !== null) renderConnecting(body, activeConnect, handlers)
   renderDelegateRunner(body, delegateForm, delegateRun, handlers)
+  renderFleetRunHeader(body, activeRun, view.phase === "ready" ? view.data.observedAt : null, handlers)
   renderFleetRunStarter(body, fleetRunForm, fleetRun, handlers)
   renderOptimizationRunner(body, optimizationRun, handlers)
   if (view.phase === "loading") {
@@ -1137,6 +1283,13 @@ export const mountFleetPanel = (
   }
   let fleetRun: FleetRunView = { phase: "idle" }
   let fleetRunInFlight = false
+  let activeRun: ActiveFleetRunView = {
+    controlInFlight: null,
+    error: null,
+    objective: null,
+    run: null,
+  }
+  const objectiveByRunRef = new Map<string, string>()
   let optimizationInFlight = false
   let optimizationRun: OptimizationRunView = { phase: "idle" }
   let lastData: KhalaCodeDesktopFleetStatus | null = null
@@ -1166,6 +1319,7 @@ export const mountFleetPanel = (
       activeConnect,
       delegateForm,
       delegateRun,
+      activeRun,
       fleetRunForm,
       fleetRun,
       optimizationRun,
@@ -1281,6 +1435,7 @@ export const mountFleetPanel = (
       if (fleetRun.phase !== "loading") fleetRun = { phase: "idle" }
       paint()
     },
+    onFleetRunControl: verb => onFleetRunControl(verb),
     onFleetRunPreview: () => {
       const preview = fleetRunPreview()
       fleetRun = typeof preview === "string"
@@ -1350,6 +1505,13 @@ export const mountFleetPanel = (
     void (async () => {
       try {
         const result = await options.fleetRunStart(request)
+        objectiveByRunRef.set(result.run.runRef, request.objective)
+        activeRun = {
+          controlInFlight: null,
+          error: null,
+          objective: request.objective,
+          run: result.run,
+        }
         fleetRun = { phase: "ready", result, slots: preview }
         await refresh()
       } catch (error) {
@@ -1361,6 +1523,34 @@ export const mountFleetPanel = (
         paint()
       } finally {
         fleetRunInFlight = false
+      }
+    })()
+  }
+
+  const onFleetRunControl = (
+    verb: KhalaCodeDesktopFleetRunControlRequest["verb"],
+  ): void => {
+    if (activeRun.run === null || activeRun.controlInFlight !== null) return
+    const runRef = activeRun.run.runRef
+    activeRun = { ...activeRun, controlInFlight: verb, error: null }
+    paint()
+    void (async () => {
+      try {
+        const result = await options.fleetRunControl({ runRef, verb })
+        activeRun = {
+          controlInFlight: null,
+          error: null,
+          objective: objectiveByRunRef.get(result.run.runRef) ?? activeRun.objective,
+          run: result.run,
+        }
+        await refresh()
+      } catch (error) {
+        activeRun = {
+          ...activeRun,
+          controlInFlight: null,
+          error: error instanceof Error ? error.message : String(error),
+        }
+        paint()
       }
     })()
   }
@@ -1417,6 +1607,7 @@ export const mountFleetPanel = (
           activeConnect,
           delegateForm,
           delegateRun,
+          activeRun,
           fleetRunForm,
           fleetRun,
           optimizationRun,
@@ -1468,8 +1659,22 @@ export const mountFleetPanel = (
       setRefreshBusy(true)
     }
     try {
-      const data = await options.fetch()
+      const [data, list] = await Promise.all([
+        options.fetch(),
+        options.fleetRunList(),
+      ])
       lastData = data
+      const selected = selectActiveFleetRun(list.runs)
+      activeRun = {
+        controlInFlight: activeRun.controlInFlight,
+        error: null,
+        objective: selected === null
+          ? null
+          : objectiveByRunRef.get(selected.runRef) ?? (
+              activeRun.run?.runRef === selected.runRef ? activeRun.objective : null
+            ),
+        run: selected,
+      }
       paint()
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
@@ -1481,11 +1686,17 @@ export const mountFleetPanel = (
           activeConnect,
           delegateForm,
           delegateRun,
+          activeRun,
           fleetRunForm,
           fleetRun,
           optimizationRun,
         )
       } else {
+        activeRun = {
+          ...activeRun,
+          controlInFlight: null,
+          error: message,
+        }
         setRefreshBusy(false)
       }
     } finally {
