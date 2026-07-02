@@ -1,4 +1,3 @@
-import { spawn } from "node:child_process"
 import { fileURLToPath } from "node:url"
 
 import type {
@@ -7,6 +6,7 @@ import type {
 } from "../shared/rpc.js"
 import { resolveCodexHomePath } from "./codex-rate-limits.js"
 import { khalaCodeConfigFromRuntimeEnv } from "./khala-code-config.js"
+import { spawnKhalaProcessNodeChild } from "./khala-process.js"
 
 export const KHALA_CODE_CODEX_APP_SERVER_ADAPTER_VERSION =
   "codex-app-server-v2-2026-07-01"
@@ -59,8 +59,12 @@ type CodexAppServerChild = {
 type SpawnFn = (
   command: string,
   args: readonly string[],
-  options: Parameters<typeof spawn>[2],
-) => CodexAppServerChild
+  options: {
+    readonly cwd?: string
+    readonly env?: NodeJS.ProcessEnv
+    readonly stdio?: readonly ["pipe", "pipe", "pipe"]
+  },
+) => CodexAppServerChild | Promise<CodexAppServerChild>
 
 type PendingRequest = {
   readonly method: string
@@ -201,7 +205,11 @@ export function createCodexAppServerHost(
   const spawnFn: SpawnFn =
     options.spawnFn ??
     ((command, args, spawnOptions) =>
-      spawn(command, [...args], spawnOptions) as unknown as CodexAppServerChild)
+      spawnKhalaProcessNodeChild(command, args, {
+        extendEnv: true,
+        ...(spawnOptions.cwd === undefined ? {} : { cwd: spawnOptions.cwd }),
+        ...(spawnOptions.env === undefined ? {} : { env: spawnOptions.env }),
+      }))
   const requestTimeoutMs = options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS
   const initializeTimeoutMs = options.initializeTimeoutMs ?? DEFAULT_INITIALIZE_TIMEOUT_MS
   const clientInfo = options.clientInfo ?? defaultClientInfo
@@ -422,7 +430,7 @@ export function createCodexAppServerHost(
     stdoutBuffer = ""
     stderrBuffer = ""
     try {
-      const spawned = spawnFn(codexCommand, codexArgs, {
+      const spawned = await spawnFn(codexCommand, codexArgs, {
         env: {
           ...env,
           CODEX_HOME: codexHome,

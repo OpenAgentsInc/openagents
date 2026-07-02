@@ -1,4 +1,3 @@
-import { spawn } from "node:child_process"
 import { existsSync } from "node:fs"
 import { readFile } from "node:fs/promises"
 import { homedir } from "node:os"
@@ -11,6 +10,7 @@ import type {
   KhalaCodexRateLimitWindow,
 } from "../shared/codex-rate-limits.js"
 import { khalaCodeConfigFromRuntimeEnv } from "./khala-code-config.js"
+import { spawnKhalaProcessNodeChild } from "./khala-process.js"
 
 const CODEX_RPC_TIMEOUT_MS = 10_000
 const CODEX_RATE_LIMIT_RESET_CREDITS_URL =
@@ -93,8 +93,8 @@ type CodexRateLimitChild = {
 type SpawnFn = (
   command: string,
   args: readonly string[],
-  options: Parameters<typeof spawn>[2],
-) => CodexRateLimitChild
+  options: { readonly env?: NodeJS.ProcessEnv; readonly stdio?: readonly ["pipe", "pipe", "pipe"] },
+) => CodexRateLimitChild | Promise<CodexRateLimitChild>
 
 type ReadTextFileFn = (path: string, encoding: "utf8") => Promise<string>
 
@@ -284,8 +284,12 @@ async function fetchViaRpc(
 ): Promise<KhalaCodexRateLimitProviderStatus> {
   const now = options.now ?? (() => new Date())
   const codexHomePath = resolveCodexHomePath(options.codexHomePath, options.env)
-  const spawnFn = options.spawnFn ?? spawn
-  const child = spawnFn(options.codexCommand ?? "codex", [
+  const spawnFn = options.spawnFn ?? ((command, args, spawnOptions) =>
+    spawnKhalaProcessNodeChild(command, args, {
+      extendEnv: true,
+      ...(spawnOptions.env === undefined ? {} : { env: spawnOptions.env }),
+    }))
+  const child = await spawnFn(options.codexCommand ?? "codex", [
     "-s",
     "read-only",
     "-a",

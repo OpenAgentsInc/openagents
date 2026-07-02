@@ -1,4 +1,3 @@
-import { spawn } from "node:child_process"
 import { Database } from "bun:sqlite"
 import { existsSync } from "node:fs"
 import { readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises"
@@ -60,6 +59,7 @@ import {
 } from "./fleet-run-supervisor.js"
 import { khalaCodeConfigFromRuntimeEnv } from "./khala-code-config.js"
 import { fetchKhalaCodexRateLimitStatus } from "./codex-rate-limits.js"
+import { spawnKhalaProcessNodeChild, type KhalaProcessNodeChild } from "./khala-process.js"
 import type { KhalaCodexRateLimitProviderStatus } from "../shared/codex-rate-limits.js"
 
 type ChatEnv = Readonly<Record<string, string | undefined>>
@@ -1807,11 +1807,11 @@ async function defaultCommandRunner(
 
   if (input.detached) {
     try {
-      const child = spawn(cmd, args, {
-        cwd: input.cwd,
+      const child = await spawnKhalaProcessNodeChild(cmd, args, {
         detached: true,
         env: cleanEnv(input.env),
-        stdio: "ignore",
+        extendEnv: false,
+        ...(input.cwd === undefined ? {} : { cwd: input.cwd }),
       })
       child.unref()
       return { exitCode: null, signal: null, stderr: "", stdout: "", timedOut: false }
@@ -1822,12 +1822,12 @@ async function defaultCommandRunner(
 
   const maxOutputBytes = input.maxOutputBytes ?? 40_000
   let timedOut = false
-  let child: ReturnType<typeof spawn>
+  let child: KhalaProcessNodeChild
   try {
-    child = spawn(cmd, args, {
-      cwd: input.cwd,
+    child = await spawnKhalaProcessNodeChild(cmd, args, {
       env: cleanEnv(input.env),
-      stdio: ["ignore", "pipe", "pipe"],
+      extendEnv: false,
+      ...(input.cwd === undefined ? {} : { cwd: input.cwd }),
     })
   } catch (error) {
     return { exitCode: 127, signal: null, stderr: errorMessage(error), stdout: "", timedOut: false }
@@ -3998,11 +3998,11 @@ export async function beginCodexConnect(
   }
   const env = options.env ?? khalaCodeConfigFromRuntimeEnv().env
   const paths = resolvePylonPaths(env)
-  let child: ReturnType<typeof Bun.spawn>
+  let child: KhalaProcessNodeChild
   try {
-    child = Bun.spawn(
+    child = await spawnKhalaProcessNodeChild(
+      paths.bunExecutable,
       [
-        paths.bunExecutable,
         "src/index.ts",
         "accounts",
         "connect",
@@ -4015,9 +4015,7 @@ export async function beginCodexConnect(
       {
         cwd: paths.appPath,
         env: pylonCommandEnv(env, paths.pylonHome),
-        stdout: "pipe",
-        stderr: "pipe",
-        stdin: "ignore",
+        extendEnv: false,
       },
     )
   } catch (error) {
@@ -4052,36 +4050,29 @@ export async function beginCodexConnect(
   }
 
   const readStream = async (
-    stream: ReadableStream<Uint8Array> | undefined,
+    stream: AsyncIterable<Uint8Array> | undefined,
   ): Promise<void> => {
     if (stream === undefined) return
-    const reader = stream.getReader()
     try {
       // Drain to end-of-stream, NOT until the code is captured. If we stop
       // reading while the child keeps writing (codex login + pylon connect
       // continue after the device prompt), the pipe fills and the child blocks
       // on write — so it never finishes registering the account and the panel
       // poll never sees it ready. The `done` flag only gates when we return.
-      while (true) {
-        const { value, done: streamDone } = await reader.read()
-        if (streamDone) break
-        if (value !== undefined) {
-          buffer += decoder.decode(value, { stream: true })
-          if (buffer.length < 65_536) tryParse()
-        }
+      for await (const value of stream) {
+        buffer += decoder.decode(value, { stream: true })
+        if (buffer.length < 65_536) tryParse()
       }
     } catch {
       // stream interrupted — return whatever we captured
-    } finally {
-      reader.releaseLock()
     }
   }
 
   // Fire the readers in the background (they keep draining until the child
   // exits, so it never blocks on backpressure) and return as soon as the URL +
   // code are captured (~2-3s). The child keeps running until the user authorizes.
-  void readStream(child.stdout as ReadableStream<Uint8Array>)
-  void readStream(child.stderr as ReadableStream<Uint8Array>)
+  void readStream(child.stdout)
+  void readStream(child.stderr)
   const deadline = Date.now() + 25_000
   while (!done && Date.now() < deadline) {
     await new Promise<void>(resolve => setTimeout(resolve, 150))
@@ -4109,7 +4100,9 @@ export function openExternalUrl(url: string): boolean {
         ? ["cmd", "/c", "start", "", url]
         : ["xdg-open", url]
   try {
-    Bun.spawn(command, { stdout: "ignore", stderr: "ignore", stdin: "ignore" })
+    const [cmd, ...args] = command
+    if (cmd === undefined) return false
+    void spawnKhalaProcessNodeChild(cmd, args, { detached: true }).then(child => child.unref()).catch(() => undefined)
     return true
   } catch {
     return false

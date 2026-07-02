@@ -1,10 +1,10 @@
-import { spawn } from "node:child_process"
 import { readFile } from "node:fs/promises"
 import { join } from "node:path"
 
 import type { KhalaCodeDesktopCodexHarnessStatus } from "../shared/rpc.js"
 import { resolveCodexHomePath } from "./codex-rate-limits.js"
 import { khalaCodeConfigFromRuntimeEnv } from "./khala-code-config.js"
+import { spawnKhalaProcessNodeChild } from "./khala-process.js"
 
 const CODEX_VERSION_TIMEOUT_MS = 5_000
 
@@ -30,10 +30,13 @@ type CodexHarnessChild = {
 type SpawnFn = (
   command: string,
   args: readonly string[],
-  options: Parameters<typeof spawn>[2],
-) => CodexHarnessChild
+  options: { readonly env?: NodeJS.ProcessEnv; readonly stdio?: readonly ["ignore", "pipe", "pipe"] },
+) => CodexHarnessChild | Promise<CodexHarnessChild>
 
 type ReadTextFileFn = (path: string, encoding: "utf8") => Promise<string>
+
+const isPromiseLike = (value: unknown): value is Promise<unknown> =>
+  typeof (value as { readonly then?: unknown }).then === "function"
 
 type CodexAuthShape = {
   readonly tokens?: {
@@ -105,11 +108,16 @@ async function probeCodexVersion(
   command: string,
   options: InspectCodexHarnessStatusOptions,
 ): Promise<VersionProbe> {
-  const spawnFn = options.spawnFn ?? spawn
-  const child = spawnFn(command, ["--version"], {
+  const spawnFn = options.spawnFn ?? ((cmd, args, spawnOptions) =>
+    spawnKhalaProcessNodeChild(cmd, args, {
+      extendEnv: true,
+      ...(spawnOptions.env === undefined ? {} : { env: spawnOptions.env }),
+    }))
+  const spawned = spawnFn(command, ["--version"], {
     env: options.env ?? khalaCodeConfigFromRuntimeEnv().env,
     stdio: ["ignore", "pipe", "pipe"],
   })
+  const child = (isPromiseLike(spawned) ? await spawned : spawned) as CodexHarnessChild
 
   return await new Promise<VersionProbe>(resolve => {
     let stdout = ""
