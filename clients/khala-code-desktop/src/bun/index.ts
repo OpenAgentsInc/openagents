@@ -39,6 +39,7 @@ import {
   startKhalaCodeDesktopTokenUsageBackgroundSync,
 } from "./codex-token-usage-telemetry.js"
 import { createOnDeviceDeciderHost } from "./on-device-decider-host.js"
+import { ensureKhalaCodeDesktopBundledSkillsInstalled } from "./khala-bundled-skills.js"
 import { khalaCodeConfigFromRuntimeEnv } from "./khala-code-config.js"
 import { createKhalaCodeDesktopFleetRunSupervisorRpcAdapter } from "./fleet-run-supervisor-rpc-adapter.js"
 import { createKhalaCodeDesktopRpcRequestHandlers } from "./rpc-handlers.js"
@@ -46,6 +47,24 @@ import { mutatingPreviewRpcMethods } from "./preview-rpc-policy.js"
 
 const khalaCodeConfig = khalaCodeConfigFromRuntimeEnv()
 const khalaCodeEnv = khalaCodeConfig.env
+
+// Bundled skills (default-on, KHALA_CODE_DESKTOP_BUNDLED_SKILLS=0 disables):
+// materialize into ~/.agents/skills so the Codex harness discovers them on
+// the next skills/list. Fail-soft — a write failure never blocks startup.
+// Logs go to stderr: headless `khala code --json` owns stdout for JSONL.
+void ensureKhalaCodeDesktopBundledSkillsInstalled({ env: khalaCodeEnv })
+  .then(results => {
+    for (const result of results) {
+      if (result.status === "installed" || result.status === "updated") {
+        process.stderr.write(`[khala-code] bundled skill ${result.name} ${result.status} at ${result.path}\n`)
+      } else if (result.status === "write_failed") {
+        process.stderr.write(`[khala-code] bundled skill ${result.name} write failed at ${result.path}\n`)
+      }
+    }
+  })
+  .catch(error => {
+    process.stderr.write(`[khala-code] bundled skill install failed: ${String(error)}\n`)
+  })
 
 const previewPort = (): number => {
   const parsed = Number(
