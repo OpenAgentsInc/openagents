@@ -14,6 +14,7 @@ import { spawnKhalaProcessNodeChild, type KhalaProcessNodeChild } from "./khala-
 
 type SidecarLaunchState = "idle" | "launching" | "running" | "failed" | "stopped" | "adopted"
 type HelperSource = "env" | "source-wrapper" | "source-build" | "packaged-resource"
+type AppleFmTimerHandle = number | ReturnType<typeof setTimeout>
 type AppleFmSidecarChild = Pick<KhalaProcessNodeChild, "exited" | "kill">
 type AppleFmSidecarSpawn = (
   command: ReadonlyArray<string>,
@@ -39,6 +40,10 @@ type AppleFmSidecarHostOptions = {
   readonly now?: () => string
   readonly maxRestarts?: number
   readonly restartDelayMs?: number
+  readonly clock?: {
+    readonly setTimeout?: (callback: () => void, ms: number) => AppleFmTimerHandle
+    readonly clearTimeout?: (handle: AppleFmTimerHandle) => void
+  }
 }
 
 const APPLE_FM_BRIDGE_DEFAULT_PORT = 11435
@@ -167,6 +172,11 @@ export function createAppleFmSidecarHost(
   const now = options.now ?? (() => new Date().toISOString())
   const maxRestarts = Math.max(0, options.maxRestarts ?? APPLE_FM_BRIDGE_MAX_RESTARTS)
   const restartDelayMs = Math.max(0, options.restartDelayMs ?? APPLE_FM_BRIDGE_RESTART_DELAY_MS)
+  const clock = {
+    clearTimeout,
+    setTimeout,
+    ...options.clock,
+  }
   const discoverOptions = {
     cwd: process.cwd(),
     env,
@@ -178,12 +188,12 @@ export function createAppleFmSidecarHost(
   let launchState: SidecarLaunchState = "idle"
   let child: AppleFmSidecarChild | null = null
   let restartAttempts = 0
-  let restartTimer: ReturnType<typeof setTimeout> | null = null
+  let restartTimer: AppleFmTimerHandle | null = null
   let stopped = false
 
   const clearRestartTimer = () => {
     if (restartTimer !== null) {
-      clearTimeout(restartTimer)
+      clock.clearTimeout(restartTimer)
       restartTimer = null
     }
   }
@@ -216,7 +226,7 @@ export function createAppleFmSidecarHost(
         if (shouldLaunchHelper() && restartAttempts < maxRestarts) {
           restartAttempts += 1
           launchState = "launching"
-          restartTimer = setTimeout(() => {
+          restartTimer = clock.setTimeout(() => {
             restartTimer = null
             void start()
           }, restartDelayMs)

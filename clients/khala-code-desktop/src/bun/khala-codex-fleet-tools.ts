@@ -1422,6 +1422,7 @@ export class DefaultKhalaFleetRunSupervisorManager implements KhalaFleetRunSuper
           runner: this.runnerFor(runRef, pylonRef),
           capacity: this.capacityFor(),
           tickIntervalMs: DEFAULT_FLEET_RUN_TICK_INTERVAL_MS,
+          ...(this.options.sleep === undefined ? {} : { clock: { sleep: this.options.sleep } }),
           onLifecycle: event => {
             const existing = this.active.get(runRef)
             existing?.lifecycle.push(event)

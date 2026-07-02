@@ -126,6 +126,7 @@ describe("Khala Desktop Apple FM sidecar host", () => {
   test("restarts a crashed packaged helper within the bounded supervision policy", async () => {
     const { resourcesDir } = createPackagedHelper()
     const exits: Array<(code: number) => void> = []
+    const restartCallbacks: Array<() => void> = []
     const spawned: Array<ReadonlyArray<string>> = []
     const host = createAppleFmSidecarHost({
       arch: "arm64",
@@ -139,6 +140,13 @@ describe("Khala Desktop Apple FM sidecar host", () => {
       platform: "darwin",
       resourcesDir,
       restartDelayMs: 0,
+      clock: {
+        setTimeout: (callback) => {
+          restartCallbacks.push(callback)
+          return restartCallbacks.length as unknown as ReturnType<typeof setTimeout>
+        },
+        clearTimeout: () => undefined,
+      },
       spawn: ((command: ReadonlyArray<string>) => {
         spawned.push([...command])
         const exited = new Promise<number>((resolve) => exits.push(resolve))
@@ -154,7 +162,8 @@ describe("Khala Desktop Apple FM sidecar host", () => {
       expect(spawned).toHaveLength(1)
 
       exits[0]?.(1)
-      await Bun.sleep(10)
+      await Promise.resolve()
+      restartCallbacks[0]?.()
 
       expect(spawned).toHaveLength(2)
     } finally {
@@ -166,6 +175,8 @@ describe("Khala Desktop Apple FM sidecar host", () => {
   test("stop cancels a pending Apple FM helper restart", async () => {
     const { resourcesDir } = createPackagedHelper()
     const exits: Array<(code: number) => void> = []
+    const restartCallbacks = new Map<number, () => void>()
+    let nextTimer = 0
     const spawned: Array<ReadonlyArray<string>> = []
     const host = createAppleFmSidecarHost({
       arch: "arm64",
@@ -178,6 +189,16 @@ describe("Khala Desktop Apple FM sidecar host", () => {
       platform: "darwin",
       resourcesDir,
       restartDelayMs: 25,
+      clock: {
+        setTimeout: (callback) => {
+          nextTimer += 1
+          restartCallbacks.set(nextTimer, callback)
+          return nextTimer as unknown as ReturnType<typeof setTimeout>
+        },
+        clearTimeout: handle => {
+          restartCallbacks.delete(handle as unknown as number)
+        },
+      },
       spawn: ((command: ReadonlyArray<string>) => {
         spawned.push([...command])
         const exited = new Promise<number>((resolve) => exits.push(resolve))
@@ -191,8 +212,9 @@ describe("Khala Desktop Apple FM sidecar host", () => {
     try {
       await host.readiness()
       exits[0]?.(1)
+      await Promise.resolve()
       host.stop()
-      await Bun.sleep(40)
+      for (const callback of restartCallbacks.values()) callback()
 
       expect(spawned).toHaveLength(1)
     } finally {

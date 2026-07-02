@@ -1,0 +1,13 @@
+{
+  "fixture": "counterexample.khala_fleet_delegate.paused_claim.v2",
+  "sourceSpec": "specs/mutations/fleet-paused-claim/FleetPausedClaim.tla",
+  "checkedBy": "specs/mutations/fleet-paused-claim/FleetPausedClaim.cfg",
+  "violatedProperty": "PausedRunsClaimNothing",
+  "summary": "A supervisor claims work after an operator pause. The accepted fleet spec requires TryClaim to run only while runState is running.",
+  "trace": [
+    { "step": 0, "runState": "running", "claims": { "w1": "none" }, "pausedClaimForged": false },
+    { "step": 1, "action": "PauseRun", "runState": "paused" },
+    { "step": 2, "action": "ClaimWhilePaused(s1,w1)", "claims": { "w1": "claimed" }, "pausedClaimForged": true }
+  ],
+  "fixtureUse": "Port to fleet-run fixture tier: after pause, the supervisor must not create new work claims."
+}

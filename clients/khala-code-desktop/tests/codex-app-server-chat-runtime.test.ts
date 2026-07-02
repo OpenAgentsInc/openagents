@@ -1221,6 +1221,10 @@ describe("Codex app-server chat runtime", () => {
   test("interrupts the active Codex turn by desktop turn id", async () => {
     const fixture = await stateFixture()
     const records: RequestRecord[] = []
+    let turnStartedEmitted!: () => void
+    const turnStartedReady = new Promise<void>(resolve => {
+      turnStartedEmitted = resolve
+    })
     const host = createFakeHost({
       records,
       onRequest: (method, _params, subscribers) => {
@@ -1241,6 +1245,7 @@ describe("Codex app-server chat runtime", () => {
                 turn: { id: "turn-codex-1", status: "inProgress" },
               },
             })
+            turnStartedEmitted()
           })
           return { turn: { id: "turn-codex-1", status: "inProgress" } }
         }
@@ -1270,10 +1275,7 @@ describe("Codex app-server chat runtime", () => {
       sessionId: "desktop-session-1",
       turnId: "desktop-turn-1",
     })
-    for (let index = 0; index < 50 && !records.some(record => record.method === "turn/start"); index += 1) {
-      await Bun.sleep(1)
-    }
-    await Promise.resolve()
+    await turnStartedReady
 
     await expect(runtime.interruptTurn({
       sessionId: "desktop-session-1",
