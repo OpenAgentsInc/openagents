@@ -8,8 +8,9 @@ const OMEGA_EFFECT_VERSION = '4.0.0-beta.70'
 const FOLDKIT_EFFECT_EXCEPTION_VERSION = '4.0.0-beta.66'
 const ISOLATED_NOSTR_RELAY_EFFECT_VERSION = '3.19.8'
 const EFFECT_CF_VERSION = '0.13.1'
+const EFFECT_VITEST_VERSION = OMEGA_EFFECT_VERSION
 const EFFECT_VITEST_DEFERRED_NOTE =
-  '@effect/vitest@0.29.0 peers on effect ^3.21.0 and vitest ^3.2.0; keep it out until it supports the repo Effect line.'
+  '@effect/vitest is allowed only on the repo-aligned 4.0.0-beta.70 line; latest stable 0.29.0 still peers on effect ^3.21.0.'
 
 const workspaceRoots = ['apps', 'workers', 'packages']
 
@@ -67,6 +68,10 @@ const directVersionProblems = dependencyEntries
 
 const effectVitestReferences = dependencyEntries.filter(
   entry => entry.name === '@effect/vitest',
+)
+
+const unexpectedEffectVitestReferences = effectVitestReferences.filter(
+  entry => entry.version !== EFFECT_VITEST_VERSION,
 )
 
 const runBunWhyEffect = () => {
@@ -148,7 +153,7 @@ const trackedInstalledVersions = [
       ? `${OMEGA_EFFECT_VERSION} direct and via resolved Foldkit peer tree`
       : `${OMEGA_EFFECT_VERSION} direct, ${FOLDKIT_EFFECT_EXCEPTION_VERSION} via Foldkit`,
   ],
-  ['@effect/vitest', 'not installed'],
+  ['@effect/vitest', `${EFFECT_VITEST_VERSION} where Effect service tests use it.effect`],
 ]
 
 const requiredOmegaPullers = [
@@ -253,7 +258,7 @@ const problems = [
             `Isolated Nostr relay Effect line ${ISOLATED_NOSTR_RELAY_EFFECT_VERSION} is missing expected puller ${puller}`,
         ),
     ),
-  ...effectVitestReferences.map(
+  ...unexpectedEffectVitestReferences.map(
     entry =>
       `${entry.path} ${entry.section}.${entry.name} is ${entry.version}; ${EFFECT_VITEST_DEFERRED_NOTE}`,
   ),

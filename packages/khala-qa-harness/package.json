@@ -6,6 +6,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./coverage-ledger": "./src/coverage-ledger.ts",
+    "./deterministic-env": "./src/deterministic-env.ts",
     "./desktop-smoke-helpers": "./src/desktop-smoke-helpers.ts",
     "./driver": "./src/driver.ts",
     "./monkey-explorer": "./src/monkey-explorer.ts",
@@ -15,9 +16,9 @@
     "./scenario": "./src/scenario.ts"
   },
   "scripts": {
+    "test": "bun test src/*.test.ts",
     "monkey:night": "bun src/monkey-night.ts --runs 100 --steps 64",
     "monkey:smoke": "bun test src/monkey-explorer.test.ts --test-name-pattern 'bounded fixture smoke'",
-    "test": "bun test src/*.test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
@@ -25,8 +26,10 @@
     "effect": "catalog:"
   },
   "devDependencies": {
+    "@effect/vitest": "4.0.0-beta.70",
     "bun-types": "^1.0.0",
     "fast-check": "^4.8.0",
-    "typescript": "catalog:"
+    "typescript": "catalog:",
+    "vitest": "^4.1.8"
   }
 }

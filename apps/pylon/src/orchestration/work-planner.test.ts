@@ -3,6 +3,10 @@ import { Database } from "bun:sqlite"
 
 import { createPylonOrchestrationStore } from "./store.js"
 import {
+  runDuplicateTemptationAcceptance,
+  runFixtureFleetAcceptance,
+} from "./fleet-run-acceptance.js"
+import {
   buildWorkPlannerRealWorkDispatch,
   githubBacklogCandidates,
   planFixtureWork,
@@ -259,6 +263,49 @@ describe("typed work planner", () => {
       300: "merged",
       930: "merged",
     })
+  })
+
+  test("T4.5 fixture run completes 10 units with 6 workers, no duplicate claims, and typed skips", () => {
+    const store = createPylonOrchestrationStore(new Database(":memory:"))
+
+    const result = runFixtureFleetAcceptance({
+      store,
+      runRef: "fleet_run.t4_5.fixture",
+      workerCount: 6,
+      now,
+    })
+
+    expect(result.totalUnits).toBe(10)
+    expect(result.claims).toHaveLength(10)
+    expect(new Set(result.claims.map((claim) => claim.workUnitRef)).size).toBe(10)
+    expect(result.duplicateWorkUnitRefs).toEqual([])
+    expect(result.allSkipsTyped).toBe(true)
+    expect(result.skipped.every((skip) => skip.skipReason !== undefined)).toBe(true)
+    expect(store.listWorkClaims({ runRef: "fleet_run.t4_5.fixture", state: "released" })).toHaveLength(10)
+  })
+
+  test("T4.5 duplicate temptation skips the second worker with already_claimed", () => {
+    const store = createPylonOrchestrationStore(new Database(":memory:"))
+
+    const result = runDuplicateTemptationAcceptance({
+      store,
+      runRef: "fleet_run.t4_5.duplicate_temptation",
+      now,
+    })
+
+    expect(result.claims.map((claim) => claim.workUnitRef)).toEqual([
+      "github:OpenAgentsInc/openagents:issue:7838",
+    ])
+    expect(result.duplicateWorkUnitRefs).toEqual([])
+    expect(result.skipped).toEqual([
+      {
+        workUnitRef: "github:OpenAgentsInc/openagents:issue:7838",
+        workerAccountRef: "fixture-worker-2",
+        skipReason: "already_claimed",
+        detail: "fleet_run.t4_5.duplicate_temptation.claim.1",
+      },
+    ])
+    expect(result.allSkipsTyped).toBe(true)
   })
 })
 

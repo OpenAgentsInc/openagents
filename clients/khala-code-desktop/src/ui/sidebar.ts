@@ -87,6 +87,7 @@ type NavigatorWithUserAgentData = Navigator & {
 type HotbarShortcut = Readonly<{
   ariaModifier: "Alt"
   label: "Alt" | "Option"
+  visiblePrefix: "Alt+" | "⌥"
   modifierKey: "altKey"
 }>
 
@@ -107,11 +108,13 @@ const hotbarShortcut = (): HotbarShortcut =>
     ? {
         ariaModifier: "Alt",
         label: "Option",
+        visiblePrefix: "⌥",
         modifierKey: "altKey",
       }
     : {
         ariaModifier: "Alt",
         label: "Alt",
+        visiblePrefix: "Alt+",
         modifierKey: "altKey",
       }
 
@@ -175,7 +178,7 @@ export const mountKhalaCodeSidebar = (
     )
     button.setAttribute(
       "aria-label",
-      `${slot.label}, command slot ${slot.hotkey}`,
+      `${slot.label}, ${shortcut.label}+${slot.hotkey}`,
     )
     button.title = `${slot.label} (${shortcut.label}+${slot.hotkey})`
     button.append(
@@ -188,7 +191,7 @@ export const mountKhalaCodeSidebar = (
     const key = document.createElement("span")
     key.className = "khala-code-hotbar-key"
     key.setAttribute("aria-hidden", "true")
-    key.textContent = slot.hotkey
+    key.textContent = `${shortcut.visiblePrefix}${slot.hotkey}`
 
     const label = document.createElement("span")
     label.className = "khala-code-hotbar-label"
@@ -204,7 +207,6 @@ export const mountKhalaCodeSidebar = (
         `${fleetCounts.accountsReady} accounts ready, ${fleetCounts.workersActive} workers active, ${fleetCounts.slotsFree} slots free, ${fleetCounts.flags} flags`,
       )
       counts.textContent = [
-        `${fleetCounts.accountsReady} acct`,
         `${fleetCounts.workersActive} work`,
         `${fleetCounts.slotsFree} free`,
         `${fleetCounts.flags} flag`,
