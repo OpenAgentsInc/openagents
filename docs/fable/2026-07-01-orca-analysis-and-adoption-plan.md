@@ -122,8 +122,11 @@ doc should be implemented *on* `apps/pylon/src/orchestration/` (tasks =
 work units with deps; dispatch contexts = workers with heartbeats, circuit
 breakers, and slots; messages = the lifecycle bus; virtual-head
 reservations = the merge-queue base pinning). The bash supervisors demote
-to process launchers driven by store state, exactly as the report
-recommended. Adopt Orca's **handoff vs supervised-dispatch taxonomy**
+to process launchers driven by store state: live desired-slot, pause,
+dispatch-attempt, completion, and work-claim state is store-backed via
+`apps/pylon/src/orchestration/supervisor-state.ts`, while shell keeps only
+process PID/log/cache files and the launchd wedge telemetry consumed by the
+fleet-liveness gate. Adopt Orca's **handoff vs supervised-dispatch taxonomy**
 verbatim in the FleetRun model: `codex_spawn` one-shots are handoffs (no
 tracking state), fleet runs are supervised dispatches (DAG-tracked). This
 one step converts Port 2 from dormant library to production spine and

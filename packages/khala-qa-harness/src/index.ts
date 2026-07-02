@@ -1,1 +1,6 @@
+export * from "./desktop-smoke-helpers.js"
+export * from "./driver.js"
 export * from "./rpc-client.js"
+export * from "./rpc-driver.js"
+export * from "./runner.js"
+export * from "./scenario.js"

@@ -80,7 +80,7 @@ workers, messages = lifecycle bus, VirtualHead = merge-queue base pinning).
 | --- | --- | --- | --- |
 | T2.1 | FleetRun record (`openagents.khala_code.fleet_run.v1`): Effect Schema, persisted in the orchestration store + desktop owner-local state dir, restart/reconcile semantics (#7593/#7597 patterns); handoff vs supervised-dispatch taxonomy in the model | — | MED |
 | T2.2 | Claim registry (`openagents.khala_code.work_claim.v1`): at most one live claim per workUnitRef (unique key), TTL expiry + reconciler release, fast-check property test over concurrent claim interleavings | — | MED |
-| T2.3 | Demote bash supervisors to store-driven process launchers; repo-wide check that no live fleet path bypasses the store | T2.1 | MED |
+| T2.3 | Demote bash supervisors to store-driven process launchers: live desired-slot, pause, dispatch-attempt, completion, and work-claim state flows through `apps/pylon/src/orchestration/supervisor-state.ts` into the orchestration store; shell remains owner of process PID/log/cache and launchd wedge telemetry. Repo check `apps/pylon/scripts/check-supervisor-store-bypass.mjs` prevents live fleet run/claim state from returning to shell files. | T2.1 | MED |
 
 ### WS-3 — Fan-out engine (fleet fan-out Lane A)
 
