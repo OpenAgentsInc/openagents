@@ -1,11 +1,12 @@
 # Product Promises × Khala Code — Registry Audit And Launch Alignment
 
 Date: 2026-07-01
-Status: analysis + recommendation doc in the Fable lane. Like every doc in
-`docs/fable/`, this **flips no promise state and broadens no public copy** —
-promise-state changes go through the transition-receipt machinery and the
-copy gates in `docs/promises/checks-and-gates.md`, and several recommended
-records are owner-gated copy decisions. This doc is the initial analysis the
+Status: analysis + recommendation doc in the Fable lane; the §4 registry
+changes were subsequently **implemented on owner direction as registry
+`2026-07-01.1`** (see the status banner in §4 — no green flips). The doc
+itself flips no promise state and broadens no public copy — promise-state
+changes go through the transition-receipt machinery and the copy gates in
+`docs/promises/checks-and-gates.md`. This doc is the initial analysis the
 owner asked for: reconcile the product-promise registry against (a) the new
 unified Fable roadmap ([`ROADMAP.md`](./ROADMAP.md) / [`EXECUTION.md`](./EXECUTION.md))
 and (b) the **released Episode 245**, which launches Khala Code publicly with
@@ -230,9 +231,24 @@ green-gates instead of living implicitly inside a Pylon-era planned record
 
 ## 4. Recommended Registry Changes
 
-All owner-gated (copy gates apply; T16.3 in the roadmap already reserves
-the owner-gated slot — this expands its scope from one record to a family).
-Proposed ids follow existing registry style. Recommended initial states are
+> **Status: IMPLEMENTED as registry `2026-07-01.1` (owner-directed,
+> 2026-07-01).** The §4.1 family, the §4.2 reconciliations (items 7–15),
+> and the §4.3 mechanics all landed in
+> `apps/openagents.com/workers/api/src/product-promises.ts`, with the
+> narrative mirror updated in `docs/promises/registry.md`, the Ep 222-style
+> launch-claim header added to `docs/transcripts/245.md`, and 222's dangling
+> pointer fixed. No promise flipped green (green stays exactly 34); the
+> planned→withdrawn Expo retirement follows the models.tasadar
+> typo-withdrawal precedent, so no transition receipts were required. Two
+> deliberate deviations from the text below: the bounties record landed as
+> `contributors.bounties_surface.v1` (red) and the legal-leaderboard claim
+> landed as its own `business.legal_benchmark_leaderboard.v1` (planned)
+> rather than a scope note; the QA-runner record landed as
+> `qa.agentic_qa_runner.v1` (yellow).
+
+All were owner-gated (copy gates apply; T16.3 in the roadmap already
+reserved the owner-gated slot — this expanded its scope from one record to
+a family). Ids follow existing registry style. Initial states are
 deliberately conservative.
 
 ### 4.1 New `khala_code` promise family
@@ -444,25 +460,37 @@ live feature — until the §4.1 records earn yellow/green through receipts.
 
 ## 7. Prioritized Action List
 
-1. **(Owner-gated, highest priority)** Add the §4.1 `khala_code` promise
+1. ~~**(Owner-gated, highest priority)** Add the §4.1 `khala_code` promise
    family to `product-promises.ts` + `docs/promises/registry.md`, bump the
-   registry version, and group under a new `khala_code` product area. The
-   video is public; the registry should speak to it within days, not weeks.
-2. Reconcile the stale/overlapping/unrecorded items (§4.2: 7–15) in the
+   registry version, and group under a new `khala_code` product area.~~
+   **DONE — registry `2026-07-01.1`.**
+2. ~~Reconcile the stale/overlapping/unrecorded items (§4.2: 7–15) in the
    same version bump: withdraw the Expo mobile record, resolve the Ep 225
    bounties and Ep 227 leaderboard claims, and add the Ep 222-style
-   launch-truth header note to `docs/transcripts/245.md`.
+   launch-truth header note to `docs/transcripts/245.md`.~~ **DONE — same
+   version bump; 245.md and 222.md headers updated.**
 3. Fix the fable-doc "episode 245" references (§5) so future readers do not
    conflate the released launch video with the unreleased fleet-demo draft
-   (`24X1.md`); re-point WS-16/T16.1 and expand T16.3.
+   (`24X1.md`); re-point WS-16/T16.1 and expand T16.3 (T16.3's promise
+   record now exists as `khala_code.desktop_codex_wrapper.v1`; what remains
+   of T16.3 is the public release artifact + outside-user evidence that
+   would move it toward green).
 4. Add the promise-record column to the roadmap pairings (§5) as tasks land
    — cheapest as a one-line "advances promise: `<id>`" note per PR that
    touches a paired workstream.
-5. Sync `docs/promises/registry.md` header version; pin the Ep 238 payout
-   rate caveat.
+5. ~~Sync `docs/promises/registry.md` header version; pin the Ep 238 payout
+   rate caveat.~~ **DONE — narrative mirror prepended with `2026-07-01.1`;
+   rate pinned (5 sats worker / 5 sats validator per verified window; the
+   whiteboard "5K" was never a settled rate).**
 6. When the paid plan, plugin pipeline, or revenue share move from planned
    toward yellow, run them through the transition-receipt machinery with
    the Episode 243 claim-boundary list as the copy baseline.
+7. (Found while landing this, pre-existing on `main`, out of scope here):
+   the OpenAPI route-coverage test
+   (`src/openagents-openapi-routes.test.ts`) fails with seven undocumented
+   recently-landed routes (gym/mutalisk-khala-delegation operator+public
+   routes, forum work-request relay-events, openrouter connect). Needs its
+   own fix by the owning lanes.
 
 ## 8. Source Index
 

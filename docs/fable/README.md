@@ -126,10 +126,11 @@ each source doc.
   header is the claim-sheet pattern 245 should repeat), proposes the
   owner-gated
   `khala_code.*` promise family (wrapper product yellow; plans, trace
-  capture, plugins, and revenue-share planned), four stale-record
+  capture, plugins, and revenue-share planned), stale-record
   reconciliations (incl. withdrawing the retired-Expo mobile record), the
   roadmap↔promise pairings, and the Khala-Code-as-gateway funnel across
-  the registry's green substrate.
+  the registry's green substrate. **Implemented as registry `2026-07-01.1`**
+  (owner-directed, no green flips; see the doc's §4 status banner).
 - `2026-07-01-artanis-fleet-administrator-audit.md` — audit of Artanis (the
   autonomous operator/administrator persona): its split architecture (Khala
   operator chat + Gemini cron ticks), current see-vs-do capability (the

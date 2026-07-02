@@ -1,5 +1,38 @@
 # Promise Registry
 
+> Registry `2026-07-01.1` is the Episode 245 / Khala Code launch alignment
+> pass (analysis:
+> `docs/fable/2026-07-01-product-promises-khala-code-launch-alignment.md`)
+> and flips NO promise green (green stays exactly 34). It adds the
+> `khala_code.*` family: `khala_code.desktop_codex_wrapper.v1` (yellow — the
+> app, Codex-required positioning, pinned parity contract, and fleet
+> delegation exist on `main`; no public release artifact or outside-user
+> evidence yet) plus `khala_code.free_paid_plans.v1`,
+> `khala_code.free_plan_trace_capture.v1`,
+> `khala_code.trace_derived_plugins.v1`,
+> `khala_code.plugin_backend_revenue_share.v1`, and
+> `khala_code.paid_to_free_revenue_share.v1` (all planned — the Episode 245
+> "what if your coding agent pays you?" economics loop is launch-anchored
+> design intent with the on-camera "possibility" hedge preserved; nothing is
+> metered, attributed, pooled, or paid). It withdraws
+> `mobile.autopilot_remote_control.v1` (the Expo app was retired 2026-06-26
+> before shipping) in favor of the new `mobile.fleet_companion.v1` (planned,
+> native SwiftUI observe/notify/approve/steer companion). It adds
+> `contributors.bounties_surface.v1` (red — the Episode 225 "always live"
+> `openagents.com/bounties` surface currently 302-redirects to the homepage),
+> `business.legal_benchmark_leaderboard.v1` (planned — the Episode 227 public
+> legal-leaderboard claim), and `qa.agentic_qa_runner.v1` (yellow — shipped
+> OSS npm package, no paid customer, settlement inert).
+> `pylon.data_trace_revenue.v1` and the `data.*` capture records gain scope
+> notes routing new pays-you copy through the `khala_code.*` family and
+> clarifying that Khala Code wrapper raw events are owner-private delegation
+> observability, not free-plan capture. Episode 238 rate pin: the settled
+> Tassadar per-window reward rate is 5 sats worker / 5 sats validator per
+> verified window (plus the single 1,000-sat canary settlement); the
+> whiteboard "5K" figure was never a settled rate. No promise_transition
+> receipts are required (no green flips; the planned→withdrawn Expo
+> retirement follows the models.tasadar typo-withdrawal precedent).
+>
 > Registry `2026-06-29.3` narrows the Apple FM local-mode blockers after #7022
 > and flips NO promise state. Source evidence now covers the Pylon helper
 > supervision policy, status projection, driver, launcher, and opt-in host

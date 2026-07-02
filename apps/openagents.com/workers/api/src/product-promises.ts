@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-29.5'
+export const PublicProductPromisesVersion = '2026-07-01.1'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -53,6 +53,16 @@ const sourceRefs = [
   'docs/transcripts/242.md',
   'docs/transcripts/243.md',
   'docs/transcripts/244.md',
+  'docs/transcripts/245.md',
+  'docs/transcripts/225.md',
+  'docs/transcripts/227.md',
+  'docs/transcripts/228.md',
+  'docs/transcripts/230.md',
+  'docs/fable/2026-07-01-product-promises-khala-code-launch-alignment.md',
+  'docs/khala-code/2026-07-01-codex-required-product-positioning.md',
+  'docs/khala-code/2026-07-01-codex-harness-wrapper-port-audit.md',
+  'docs/khala/2026-06-30-khala-code-desktop-redaction.md',
+  'docs/mobile/2026-06-26-autopilot-remote-control-retirement.md',
   'docs/inference/2026-06-25-khala-inference-gtm-push.md',
   'docs/khala/2026-06-25-pylon-linked-coding-capacity-routing-spec.md',
   'docs/afteraction/2026-06-26-khala-pylon-codex-delegation-afteraction.md',
@@ -181,7 +191,7 @@ export const publicProductPromisesDocument = () => {
     generatedAt: currentIsoTimestamp(),
     maxStalenessSeconds: staleness.maxStalenessSeconds,
     staleness,
-    lastUpdated: '2026-06-29',
+    lastUpdated: '2026-07-01',
     canonicalDocsUrl:
       'https://github.com/OpenAgentsInc/openagents/tree/main/docs/promises',
     sourceRefs,
@@ -1052,7 +1062,7 @@ export const publicProductPromisesDocument = () => {
         claim:
           'Free Khala API usage is captured by default when the owner-gated production capture flag is armed, as redacted, private traces that may be used to improve and train models; pay for privacy to opt out; public sharing is opt-in only.',
         safeCopy:
-          'Free tier: when you use the free Khala API without paying for privacy, your traffic is captured by default when the owner-gated production capture flag is armed, as a redacted, private-by-default (owner_only) trace and may be used to improve and train OpenAgents models. Pay for privacy, or run confidential compute, to opt out of capture (fail-closed to not-captured). A captured trace is shared publicly only if its owner explicitly opts it into public visibility. Capture grants no payout or settlement — the data-market reward marker is inert and owner-gated. The canonical terms are served at GET /api/public/free-tier-data-sharing and embedded in the POST /api/keys/free mint response with explicit blocker/gate refs.',
+          'Free tier: when you use the free Khala API without paying for privacy, your traffic is captured by default when the owner-gated production capture flag is armed, as a redacted, private-by-default (owner_only) trace and may be used to improve and train OpenAgents models. Pay for privacy, or run confidential compute, to opt out of capture (fail-closed to not-captured). A captured trace is shared publicly only if its owner explicitly opts it into public visibility. Capture grants no payout or settlement — the data-market reward marker is inert and owner-gated. The canonical terms are served at GET /api/public/free-tier-data-sharing and embedded in the POST /api/keys/free mint response with explicit blocker/gate refs. Scope note (2026-07-01): this disclosure covers the hosted Khala API capture path only; the Khala Code desktop wrapper’s raw Codex events and ATIF traces are owner-private delegation observability, not free-plan capture, and the consented Khala Code free-plan capture pipeline is tracked separately as khala_code.free_plan_trace_capture.v1 (planned).',
         unsafeCopy:
           'Do not claim free traffic is never captured, do not claim captured traces are public by default, do not claim paid-privacy callers are captured, and do not claim capture earns the user a payout, reward, or settlement.',
         evidenceRefs: [
@@ -1088,7 +1098,7 @@ export const publicProductPromisesDocument = () => {
         claim:
           'Free Khala API usage can be captured as redacted, private-by-default traces for model improvement.',
         safeCopy:
-          'The free-tier trace-capture seams exist and are intentionally private/redacted by default when armed: captured traces are owner_only unless the owner opts into public sharing, and trace capture does not create payout or settlement eligibility. This is yellow because the behavior is owner-gated by KHALA_FREE_TIER_TRACE_CAPTURE_DEFAULT and must remain aligned with the public disclosure and paid-privacy exclusion path.',
+          'The free-tier trace-capture seams exist and are intentionally private/redacted by default when armed: captured traces are owner_only unless the owner opts into public sharing, and trace capture does not create payout or settlement eligibility. This is yellow because the behavior is owner-gated by KHALA_FREE_TIER_TRACE_CAPTURE_DEFAULT and must remain aligned with the public disclosure and paid-privacy exclusion path. Scope note (2026-07-01): this record covers the hosted Khala API path only; Khala Code desktop wrapper raw events and ATIF traces are owner-private delegation observability, not free-plan capture — see khala_code.free_plan_trace_capture.v1 (planned) for the Episode 245 consented desktop pipeline.',
         unsafeCopy:
           'Do not claim all free-tier traffic is currently captured unless the production gate is armed, do not claim captured traces are public by default, and do not claim capture pays users or contributors.',
         evidenceRefs: [
@@ -1151,7 +1161,7 @@ export const publicProductPromisesDocument = () => {
         claim:
           'Data revenue includes mining valuable local traces from Claude Code, Codex, and other agent work.',
         safeCopy:
-          'Data trace marketplace language and gates exist; no public-safe settled trace sale is live.',
+          'Data trace marketplace language and gates exist; no public-safe settled trace sale is live. Scope note (2026-07-01): Episode 245 productizes this promise as the Khala Code free plan — the launch-anchored trace→plugin→revenue-share loop is now tracked by khala_code.free_plan_trace_capture.v1, khala_code.trace_derived_plugins.v1, khala_code.plugin_backend_revenue_share.v1, and khala_code.paid_to_free_revenue_share.v1 (all planned). Treat this record as the Pylon-era ancestor and route new pays-you copy through the khala_code.* family.',
         unsafeCopy:
           'Do not claim local traces are currently bought, valued, paid, or settled.',
         evidenceRefs: [
@@ -1160,6 +1170,10 @@ export const publicProductPromisesDocument = () => {
           'apps/openagents.com/docs/2026-06-08-data-trace-marketplace-gate.md',
           'apps/pylon/src/proof-redaction.ts',
           'docs/promises/2026-06-19-pylon-non-green-promise-assault-assessment.md',
+          'docs/transcripts/245.md',
+          'docs/fable/2026-07-01-product-promises-khala-code-launch-alignment.md',
+          'promise:khala_code.free_plan_trace_capture.v1',
+          'promise:khala_code.plugin_backend_revenue_share.v1',
         ],
         blockerRefs: ['blocker.product_promises.settled_trace_sale_missing'],
         verification:
@@ -2939,7 +2953,7 @@ export const publicProductPromisesDocument = () => {
           'blocker.product_promises.pylon_remote_bridge_transport_missing',
         ],
         verification:
-          'Phase 1 exit proof: with CLOUD_CODING_SESSIONS_ENABLED armed, OA_CODEX_GCE_PROVISIONER=live, and OA_CLOUD_CONTROL_URL/OA_CLOUD_CONTROL_TOKEN configured, a desktop-originated session.spawn{lane:"cloud-gcp"} leases a real Google GCE ephemeral VM through the cloud placement endpoint, runs a real repo-edit Codex session, streams openagents.codex_workroom_event.v1 into the desktop timeline lane-transparently, and produces a content-addressed artifact plus an openagents.resource_usage_receipt.v1. The route must fail closed with cloud_gce_provisioning_not_armed when the live GCE flag is off. The lane selector (#4998), grant endpoint (#4999), Pylon cloud dispatch (#4997), cloud placement + GCE lease (cloud #86/#87/#88/#90), first-party fail-closed Worker launch path (#6830), and codex_workroom_event.v1 full-kind round-trip tests (#6831) have landed; green still requires the real receipt-backed desktop->GCE run and owner sign-off. Remote phone administration is the Phase 2-3 mobile.autopilot_remote_control.v1 path.',
+          'Phase 1 exit proof: with CLOUD_CODING_SESSIONS_ENABLED armed, OA_CODEX_GCE_PROVISIONER=live, and OA_CLOUD_CONTROL_URL/OA_CLOUD_CONTROL_TOKEN configured, a desktop-originated session.spawn{lane:"cloud-gcp"} leases a real Google GCE ephemeral VM through the cloud placement endpoint, runs a real repo-edit Codex session, streams openagents.codex_workroom_event.v1 into the desktop timeline lane-transparently, and produces a content-addressed artifact plus an openagents.resource_usage_receipt.v1. The route must fail closed with cloud_gce_provisioning_not_armed when the live GCE flag is off. The lane selector (#4998), grant endpoint (#4999), Pylon cloud dispatch (#4997), cloud placement + GCE lease (cloud #86/#87/#88/#90), first-party fail-closed Worker launch path (#6830), and codex_workroom_event.v1 full-kind round-trip tests (#6831) have landed; green still requires the real receipt-backed desktop->GCE run and owner sign-off. Remote phone administration is the mobile.fleet_companion.v1 path (the Expo mobile.autopilot_remote_control.v1 record is withdrawn).',
         authorityBoundary:
           'Cloud sessions run under owner-resolved Codex grants on ephemeral VMs; placement honors repo trust tiers (regulated->SHC-only, private->own/verified, public->any). This promise grants no multi-tenant, settlement, or non-owner authority — that is deferred Phase 4 (credits gateway, tenant caps, settlement, microVM isolation).',
       },
@@ -2948,36 +2962,26 @@ export const publicProductPromisesDocument = () => {
         promiseId: 'mobile.autopilot_remote_control.v1',
         productArea: 'mobile and Autopilot',
         audience: ['operator', 'agent', 'user'],
-        state: 'planned',
+        state: 'withdrawn',
         claim:
-          'The Expo mobile app pairs with a Pylon node and lets the owner watch and steer Autopilot coding sessions (local or cloud) from a phone — spawn, observe, approve, cancel, steer.',
+          'Withdrawn: the Expo mobile remote-control app was retired on 2026-06-26 before shipping.',
         safeCopy:
-          'The mobile remote-control surface is the Expo app and is the Coder Cloud Phase 2-3 target (epic #4996): Phase 2 scaffolds a read-only app over a remote-reachable Pylon bridge (#5000/#5001), Phase 3 adds capability-gated write actions, push notifications, and an exactly-once decision queue (#5002-#5004). It shares the Autopilot control protocol with desktop/web. The app scaffold is not built and depends on the Pylon bridge transport (system #39). Per owner direction 2026-06-14 the iOS Swift control app is ignored in favor of Expo; native iOS builds locally and ships via TestFlight with OTA reused from the existing Google infra (no Expo/EAS cloud).',
+          'The Expo app clients/khala-ios/AutopilotRemoteControl was retired and removed from the repository on 2026-06-26 (docs/mobile/2026-06-26-autopilot-remote-control-retirement.md); the standing mobile build/ship policy is native SwiftUI with no Expo/EAS cloud. The successor mobile claim is mobile.fleet_companion.v1 (planned): a native, E2EE-paired, relay-transported, allowlisted observe/notify/approve/steer companion that never hosts work. The remote-decision-queue protocol module remains real shared code and carries over as evidence on the successor record.',
         unsafeCopy:
-          'Do not claim the mobile app is live, downloadable, or can approve or spawn sessions; nothing has shipped to TestFlight, the bridge transport is unbuilt, and the read-only client is the first milestone.',
+          'Do not describe the Expo remote-control app as current roadmap, downloadable, or in development, and do not cite this record for any live mobile capability; route new mobile companion copy to mobile.fleet_companion.v1.',
         evidenceRefs: [
-          'docs/autopilot-coder/2026-06-14-cloud-desktop-mobile-coding-sessions-full-flow-audit.md',
-          'docs/autopilot-coder/2026-06-13-autopilot-clients-roadmap.md',
+          'docs/mobile/2026-06-26-autopilot-remote-control-retirement.md',
           'docs/autopilot-coder/2026-06-13-autopilot-remote-control-mobile-app-audit.md',
-          'clients/khala-ios/AutopilotRemoteControl/README.md',
-          'clients/khala-ios/AutopilotRemoteControl/TESTFLIGHT.md',
           'packages/autopilot-control-protocol/src/remote-decision-queue.ts',
-          'packages/autopilot-control-protocol/src/remote-decision-queue.test.ts',
-          'https://github.com/OpenAgentsInc/openagents/issues/5000',
-          'https://github.com/OpenAgentsInc/openagents/issues/5001',
-          'https://github.com/OpenAgentsInc/openagents/issues/5002',
-          'https://github.com/OpenAgentsInc/openagents/issues/5003',
-          'https://github.com/OpenAgentsInc/openagents/issues/5004',
+          'promise:mobile.fleet_companion.v1',
         ],
         blockerRefs: [
-          'blocker.product_promises.mobile_app_scaffold_not_created',
-          'blocker.product_promises.pylon_remote_bridge_transport_missing',
-          'blocker.product_promises.mobile_testflight_distribution_not_live',
+          'blocker.product_promises.expo_mobile_app_retired',
         ],
         verification:
-          'Green path: finish the Pylon remote bridge transport (#5000), scaffold the read-only Expo app and ship it to TestFlight (#5001), then add capability-gated write actions, APNs push, and exactly-once decisions (#5002-#5004) behind server-side approval. Each phase needs a shipped artifact and passing protocol-conformance tests.',
+          'Compatibility check: public consumers should treat this id as withdrawn and route new mobile companion references to mobile.fleet_companion.v1.',
         authorityBoundary:
-          'Mobile is a client, not execution authority; the Pylon node remains the decision/approval gateway and the app only relays bounded commands under server-side policy.',
+          'A withdrawn record grants no client, pairing, approval, steering, or distribution claim.',
       },
       {
         ...basePromiseFields,
@@ -4467,9 +4471,293 @@ export const publicProductPromisesDocument = () => {
         authorityBoundary:
           'The marketing-agency pack seeds a drafting workspace and composes the Sites surfaces. It grants no publish, send, or spend authority beyond what those backing Sites promises support; pages and emails are drafted under a review gate and never auto-published or auto-sent.',
       },
+      {
+        ...basePromiseFields,
+        promiseId: 'khala_code.desktop_codex_wrapper.v1',
+        productArea: 'Khala Code',
+        audience: ['user', 'agent', 'operator', 'public'],
+        state: 'yellow',
+        claim:
+          'Khala Code is the OpenAgents desktop coding app: a wrapper around the user’s own local Codex install, with Khala swarm/fleet coordination, a Unified Inbox, and exact token accounting layered around it.',
+        safeCopy:
+          'The Khala Code desktop app exists on main (clients/khala-code-desktop, Electrobun + web preview) and is Codex-required by positioning: the default chat, thread, slash-command, approval, MCP, settings, and headless paths run through the user’s own codex app-server install (docs/khala-code/2026-07-01-codex-required-product-positioning.md). Parity with Codex is enforced mechanically against a pinned reference commit (parity contract + gap matrix + fixture suites + skip-safe live smokes), and the Khala layer adds fleet delegation through the deterministic khala.fleet.delegate program with isolated worker homes and exact token_usage_events accounting. Yellow because there is no public release artifact/installer and no outside-user run evidence yet; this is the Episode 245 product-identity record.',
+        unsafeCopy:
+          'Do not claim Khala Code is downloadable, installed by outside users, or usable without a working Codex install and login. Do not describe the free/paid plan economics as live — those are the separate planned khala_code.* records.',
+        evidenceRefs: [
+          'clients/khala-code-desktop/README.md',
+          'docs/khala-code/2026-07-01-codex-required-product-positioning.md',
+          'docs/khala-code/2026-07-01-codex-harness-wrapper-port-audit.md',
+          'docs/khala-code/2026-07-01-codex-parity-contract.md',
+          'docs/khala-code/2026-06-30-khala-code-fleet-management-spec.md',
+          'docs/transcripts/245.md',
+          'docs/fable/2026-07-01-product-promises-khala-code-launch-alignment.md',
+          'promise:khala.own_capacity_codex_delegation.v1',
+        ],
+        blockerRefs: [
+          'blocker.product_promises.khala_code_public_release_artifact_missing',
+          'blocker.product_promises.khala_code_outside_user_evidence_missing',
+        ],
+        verification:
+          'Fixture parity suites and the skip-safe live smokes (smoke:codex-parity-live, smoke:part2-ui) pass from a clean checkout; the delegation path proves exact token rows per the repo runbook. Green requires a public release artifact plus outside-user run evidence and an owner-signed receipt-first upgrade per proof.claim_upgrade_receipts.v1.',
+        authorityBoundary:
+          'The wrapper grants no provider account, capacity resale, or settlement authority. Connect flows never touch the default ~/.codex home; fleet delegation stays owner-scoped under the dispatch gate and advertised-capacity invariants.',
+      },
+      {
+        ...basePromiseFields,
+        promiseId: 'khala_code.free_paid_plans.v1',
+        productArea: 'Khala Code',
+        audience: ['user', 'customer', 'public'],
+        state: 'planned',
+        claim:
+          'Khala Code offers a free plan (pay with data: disclosed, redacted trace capture) and a paid plan (private data: capture opt-out).',
+        safeCopy:
+          'Episode 245 launches Khala Code with a two-plan structure on the whiteboard: Free (pay w/ data) and Paid (private data). This is planned: no plan can be selected or purchased inside Khala Code today. The capture opt-out spine exists as privacy.khala_paid_capture_optout.v1 (yellow) on the hosted API, and payment rails are live for other OpenAgents products, but the Khala Code plan surface, plan-scoped capture behavior, and paid-plan purchase loop are unbuilt.',
+        unsafeCopy:
+          'Do not claim Khala Code plans are selectable or purchasable, that free-plan capture is live on the desktop wrapper path, or that buying the paid plan is currently possible.',
+        evidenceRefs: [
+          'docs/transcripts/245.md',
+          'docs/fable/2026-07-01-product-promises-khala-code-launch-alignment.md',
+          'promise:privacy.khala_paid_capture_optout.v1',
+          'promise:data.free_tier_capture_disclosure.v1',
+          'promise:khala_code.desktop_codex_wrapper.v1',
+        ],
+        blockerRefs: [
+          'blocker.product_promises.khala_code_plan_selection_surface_missing',
+          'blocker.product_promises.khala_code_paid_plan_not_purchasable',
+        ],
+        verification:
+          'Requires a plan-selection surface in the product, plan-scoped capture/opt-out behavior wired to the entitlement seams, a collectable paid-plan purchase with a dereferenceable receipt, and owner-approved public copy.',
+        authorityBoundary:
+          'Plan copy grants no capture, billing, payout, or settlement authority; capture behavior stays governed by the disclosure and privacy-entitlement records.',
+      },
+      {
+        ...basePromiseFields,
+        promiseId: 'khala_code.free_plan_trace_capture.v1',
+        productArea: 'Khala Code',
+        audience: ['user', 'agent', 'public'],
+        state: 'planned',
+        claim:
+          'Free-plan Khala Code coding sessions produce disclosed, consented, redacted usage traces that may feed model and plugin improvement.',
+        safeCopy:
+          'This is the Episode 245 consented desktop capture pipeline, and it is planned, not live. Today the Khala Code default path is Codex wrapper mode whose raw events and ATIF traces are owner-private delegation observability (never free-plan capture), and the shipped default-on Rampart redaction on the desktop chat boundary is a privacy prefilter, not a security boundary. The hosted-API capture records (data.free_tier_capture_disclosure.v1, data.khala_free_tier_trace_capture.v1, both yellow) are the adjacent spine; the desktop free-plan pipeline needs its own disclosure, consent, scrubbing, and scope machinery before any capture claim.',
+        unsafeCopy:
+          'Do not claim Khala Code coding sessions are currently captured for training, that wrapper-mode raw events are shared or sold, or that “scrubbed of any of your sensitive data” is a guaranteed security property rather than a redaction-pipeline design goal.',
+        evidenceRefs: [
+          'docs/khala/2026-06-30-khala-code-desktop-redaction.md',
+          'docs/transcripts/245.md',
+          'docs/fable/2026-07-01-product-promises-khala-code-launch-alignment.md',
+          'promise:data.free_tier_capture_disclosure.v1',
+          'promise:data.khala_free_tier_trace_capture.v1',
+        ],
+        blockerRefs: [
+          'blocker.product_promises.khala_code_consented_capture_pipeline_missing',
+          'blocker.product_promises.trace_capture_reward_marker_inert',
+        ],
+        verification:
+          'Requires a desktop-scoped disclosure and consent surface, plan-scoped capture wiring with paid-plan exclusion fail-closed, redaction/scrubbing evidence with honest boundary language, and owner sign-off before any capture flip.',
+        authorityBoundary:
+          'Capture design intent grants no data sale, publication, payout, or settlement authority; owner-private delegation observability must never be reclassified as free-plan capture.',
+      },
+      {
+        ...basePromiseFields,
+        promiseId: 'khala_code.trace_derived_plugins.v1',
+        productArea: 'Khala Code',
+        audience: ['user', 'agent', 'contributor', 'public'],
+        state: 'planned',
+        claim:
+          'Scrubbed contributor traces are condensed into agent plugins that future agents can route through.',
+        safeCopy:
+          'Episode 245 describes free-plan traces being “condensed into these agent plugins that future agents” use. The trace→plugin distillation pipeline does not exist. The nearest real machinery is direction, not evidence: the offline GEPA/Mutalisk candidate loop with evidence-gated Gym admission (gated_proposal_ready, decisionGrade:false, never auto-promote) and the planned marketplace records (marketplace.wasm_plugins.v1, marketplace.signature_monetization.v1).',
+        unsafeCopy:
+          'Do not claim trace-derived plugins exist, are being generated, or are routable today, and do not present GEPA/Gym admission fixtures as a live plugin pipeline.',
+        evidenceRefs: [
+          'docs/transcripts/245.md',
+          'docs/gepa/2026-06-30-gepa-usage-and-fleet-delegation-optimization-loop.md',
+          'docs/fable/2026-07-01-product-promises-khala-code-launch-alignment.md',
+          'promise:marketplace.wasm_plugins.v1',
+          'promise:marketplace.signature_monetization.v1',
+          'promise:khala_code.free_plan_trace_capture.v1',
+        ],
+        blockerRefs: [
+          'blocker.product_promises.trace_to_plugin_distillation_pipeline_missing',
+          'blocker.product_promises.plugin_registry_missing',
+        ],
+        verification:
+          'Requires a working distillation pipeline from consented scrubbed traces to a registered plugin artifact, a plugin registry with provenance/attribution, and admission evidence before any routing claim.',
+        authorityBoundary:
+          'Plugin distillation grants no publication of private trace content and no payout; optimizer candidates never auto-promote and admission stays evidence-gated with owner approval.',
+      },
+      {
+        ...basePromiseFields,
+        promiseId: 'khala_code.plugin_backend_revenue_share.v1',
+        productArea: 'Khala Code',
+        audience: ['user', 'contributor', 'public'],
+        state: 'planned',
+        claim:
+          'When paid usage routes through a plugin derived from your contributions, you earn a share, paid in Bitcoin.',
+        safeCopy:
+          'This is the Episode 245 headline — “What if your coding agent pays you?” — recorded with its on-camera hedge intact: the free plan “has the possibility of paying you.” The claim lineage is one thread: Episode 228 (Get Paid to Code: backend revenue share on the free Autopilot cloud coding agent) → Episode 230 (sell redacted Claude Code/Codex traces) → Episode 237 (plugins earn their authors a revenue share) → Episodes 243/244 (Khala aspiration → “we should be paying you”) → Episode 245 (Khala Code launch whiteboard). Nothing is metered, attributed, or paid: there is no plugin invocation metering, no attribution ledger, and revenue-share settlement seams stay INERT until deliberately flipped.',
+        unsafeCopy:
+          'Do not claim anyone has been paid via plugin routing, quote the five-cents example as a rate, or imply the withdrawn/red refer-once-earn-forever claim. A payment the recipient cannot dereference is not a payment.',
+        evidenceRefs: [
+          'docs/transcripts/245.md',
+          'docs/transcripts/244.md',
+          'docs/transcripts/243.md',
+          'docs/transcripts/237.md',
+          'docs/transcripts/230.md',
+          'docs/transcripts/228.md',
+          'docs/fable/2026-07-01-product-promises-khala-code-launch-alignment.md',
+          'promise:khala_code.trace_derived_plugins.v1',
+        ],
+        blockerRefs: [
+          'blocker.product_promises.plugin_invocation_metering_missing',
+          'blocker.product_promises.plugin_attribution_ledger_missing',
+          'blocker.product_promises.plugin_revenue_settlement_not_armed',
+        ],
+        verification:
+          'Requires exact plugin-invocation metering with contributor attribution, a payout ledger with dereferenceable receipts, armed settlement under bounded owner-approved authority, and a first real settled contributor payout before any yellow/green movement.',
+        authorityBoundary:
+          'Revenue-share design intent grants no spend, payout, or settlement authority; exact-only accounting and dereferenceable receipts are preconditions, not aspirations.',
+      },
+      {
+        ...basePromiseFields,
+        promiseId: 'khala_code.paid_to_free_revenue_share.v1',
+        productArea: 'Khala Code',
+        audience: ['user', 'customer', 'public'],
+        state: 'planned',
+        claim:
+          'A portion of paid-plan revenue funds payouts to free-plan users.',
+        safeCopy:
+          'Episode 245 states that paid-plan customers fund the free plan: “some of that money will go to pay the users of the free plan.” This plan-level pool claim is distinct from per-plugin attribution (khala_code.plugin_backend_revenue_share.v1). It is planned: no paid Khala Code plan is purchasable, no revenue pool exists, and no payout policy is defined.',
+        unsafeCopy:
+          'Do not claim free-plan users are being paid from paid-plan revenue, do not state a share percentage, and do not imply the withdrawn/red refer-once-earn-forever claim.',
+        evidenceRefs: [
+          'docs/transcripts/245.md',
+          'docs/fable/2026-07-01-product-promises-khala-code-launch-alignment.md',
+          'promise:khala_code.free_paid_plans.v1',
+          'promise:khala_code.plugin_backend_revenue_share.v1',
+        ],
+        blockerRefs: [
+          'blocker.product_promises.paid_plan_revenue_pool_missing',
+          'blocker.product_promises.free_plan_payout_policy_missing',
+        ],
+        verification:
+          'Requires a collectable paid plan, a defined and published pool/payout policy, and first dereferenceable free-plan payout receipts before any yellow/green movement.',
+        authorityBoundary:
+          'Pool language grants no spend or settlement authority; any future payouts run under bounded owner-approved treasury controls with dereferenceable receipts.',
+      },
+      {
+        ...basePromiseFields,
+        promiseId: 'mobile.fleet_companion.v1',
+        productArea: 'mobile and Khala Code',
+        audience: ['operator', 'user'],
+        state: 'planned',
+        claim:
+          'A native SwiftUI mobile companion pairs with the owner’s fleet to observe, get notified, approve, and steer — it never hosts work.',
+        safeCopy:
+          'This is the successor to the withdrawn Expo record (mobile.autopilot_remote_control.v1): per the standing mobile policy the companion is native SwiftUI with no Expo/EAS cloud. The design shape is recorded in the Orca adoption plan and the fable roadmap (WS-11): QR pairing with per-device tokens, app-layer E2EE, a Durable-Object relay transport, an enforced allowlisted mobile RPC surface, APNs push for finished/blocked/approval-needed, then approve/steer and bounded diff review. Today only a read-only iOS fleet-status poll exists; the pairing/relay/push/steer stack is unbuilt.',
+        unsafeCopy:
+          'Do not claim a mobile fleet companion is live, downloadable, or can approve or steer work from a phone; the read-only status poll is not the companion.',
+        evidenceRefs: [
+          'docs/fable/2026-07-01-orca-analysis-and-adoption-plan.md',
+          'docs/fable/ROADMAP.md',
+          'docs/mobile/2026-06-26-autopilot-remote-control-retirement.md',
+          'docs/mobile/2026-06-26-khala-voice-app-spec.md',
+          'packages/autopilot-control-protocol/src/remote-decision-queue.ts',
+        ],
+        blockerRefs: [
+          'blocker.product_promises.mobile_companion_pairing_relay_transport_missing',
+          'blocker.product_promises.mobile_companion_allowlisted_rpc_surface_missing',
+          'blocker.product_promises.mobile_companion_not_shipped',
+        ],
+        verification:
+          'Requires the paired E2EE relay transport, the enforced RPC allowlist test, a shipped TestFlight artifact, and a dereferenceable receipt of a real approval/steer action resolved from a phone against a live fleet run.',
+        authorityBoundary:
+          'The phone is a projection and control relay only: it never hosts work, never holds worker credentials, and every write action is capability-gated and allowlisted with the node as the decision authority.',
+      },
+      {
+        ...basePromiseFields,
+        promiseId: 'contributors.bounties_surface.v1',
+        productArea: 'contributors',
+        audience: ['contributor', 'agent', 'public'],
+        state: 'red',
+        claim:
+          'openagents.com/bounties lists current contributor bounties and how to claim them.',
+        safeCopy:
+          'Episode 225 promised a standing surface: “we will keep an updated list of what bounties are available at openagents.com/bounties … no matter when you watch this video.” As of 2026-07-01 that URL 302-redirects to the homepage and no bounty list is live, so the claim is lapsed in practice and this record enters red: affirmative bounty copy is blocked until the surface is revived with a real bounty list and claim instructions, or the claim is formally withdrawn.',
+        unsafeCopy:
+          'Do not tell users or agents that a live bounties list exists at openagents.com/bounties, and do not cite Episode 225 as evidence of a current bounty program.',
+        evidenceRefs: [
+          'docs/transcripts/225.md',
+          'docs/fable/2026-07-01-product-promises-khala-code-launch-alignment.md',
+        ],
+        blockerRefs: [
+          'blocker.product_promises.bounties_surface_not_live',
+          'blocker.product_promises.bounties_program_process_undefined',
+        ],
+        verification:
+          'Requires openagents.com/bounties serving a real, current bounty list with claim instructions, plus a defined intake/review/payout process, before any affirmative bounty copy.',
+        authorityBoundary:
+          'A bounty listing grants no payment obligation or settlement authority by itself; bounty payouts run under the same receipt-first payment discipline as other contributor payments.',
+      },
+      {
+        ...basePromiseFields,
+        promiseId: 'business.legal_benchmark_leaderboard.v1',
+        productArea: 'business',
+        audience: ['customer', 'public'],
+        state: 'planned',
+        claim:
+          'OpenAgents publishes its agents’ scores, the code behind them, and a public leaderboard on a recognized legal AI benchmark.',
+        safeCopy:
+          'Episode 227 promised a hill-climbing effort on the Harvey legal benchmark with published scores, published code, and “our own dashboard” — daring others to post theirs. This is planned: the upstream benchmark harness is vendored as read-only reference material (projects/harvey-labs lane; owned execution belongs in the owned Rust runner per workspace policy), and no owned-runner scores or public leaderboard surface have been published. The adjacent shipped surface is the review-gated legal workspace pack (business.legal_workspace_pack.v1, yellow). Episode 245 re-surfaces “legal brief” as a Khala output lane, which puts this claim back in play.',
+        unsafeCopy:
+          'Do not claim OpenAgents has published legal benchmark scores, holds a leaderboard position, or outperforms named legal AI vendors; no owned-runner results exist.',
+        evidenceRefs: [
+          'docs/transcripts/227.md',
+          'docs/transcripts/245.md',
+          'docs/fable/2026-07-01-product-promises-khala-code-launch-alignment.md',
+          'promise:business.legal_workspace_pack.v1',
+        ],
+        blockerRefs: [
+          'blocker.product_promises.legal_benchmark_owned_runner_scores_missing',
+          'blocker.product_promises.legal_leaderboard_surface_missing',
+        ],
+        verification:
+          'Requires owned-runner benchmark results with published methodology and code, plus a live public leaderboard/dashboard surface, before any comparative legal-capability copy.',
+        authorityBoundary:
+          'Benchmark publication grants no legal-advice capability claim; the legal pack stays review-gated and gives no legal advice regardless of benchmark results.',
+      },
+      {
+        ...basePromiseFields,
+        promiseId: 'qa.agentic_qa_runner.v1',
+        productArea: 'QA',
+        audience: ['customer', 'operator', 'public'],
+        state: 'yellow',
+        claim:
+          'An open-source agentic QA runner (@openagentsinc/qa-runner) drives real apps through scripted and LLM-driven scenarios and distills live sessions into committed regression tests.',
+        safeCopy:
+          'The QA runner shipped as an OSS npm package (@openagentsinc/qa-runner@0.1.0, MIT) out of epic #6181, with an LLM ReAct brain plus scripted brain, Playwright/terminal/native-macOS backends, a distiller that turns live sessions into committed e2e tests, and a verification discipline where CONFIRMED requires observed evidence from the current run. Yellow because it has no paid customer, run-receipt settlement seams stay INERT until deliberately flipped, and the Khala Code desktop backend integration is design-stage (the fable QA framework doc).',
+        unsafeCopy:
+          'Do not claim paid QA customers, revenue, or settlement exist, and do not present INCONCLUSIVE agent observations as CONFIRMED verification.',
+        evidenceRefs: [
+          'apps/qa-runner/README.md',
+          'https://www.npmjs.com/package/@openagentsinc/qa-runner',
+          'docs/fable/2026-07-01-khala-code-desktop-qa-framework-design.md',
+          'docs/fable/2026-07-01-product-promises-khala-code-launch-alignment.md',
+        ],
+        blockerRefs: [
+          'blocker.product_promises.qa_runner_paid_customer_missing',
+          'blocker.product_promises.qa_runner_settlement_inert',
+        ],
+        verification:
+          'The shipped package installs and runs its scripted and LLM scenario modes with the documented verdict discipline. Green requires a first paid customer engagement with dereferenceable receipts and owner sign-off per proof.claim_upgrade_receipts.v1.',
+        authorityBoundary:
+          'The QA runner grants no settlement or payout authority; run receipts stay inert until deliberately flipped, and public traces must stay public-safe.',
+      },
     ],
     notes: [
       `Include version ${PublicProductPromisesVersion} and the relevant promiseId when reporting a mismatch.`,
+      'Registry 2026-07-01.1 is the Episode 245 / Khala Code launch alignment pass (docs/fable/2026-07-01-product-promises-khala-code-launch-alignment.md) and flips NO promise green — green stays exactly 34. It adds the khala_code.* family: khala_code.desktop_codex_wrapper.v1 (yellow — the app, Codex-required positioning, pinned parity contract, and fleet delegation exist on main; no public release artifact or outside-user evidence) plus khala_code.free_paid_plans.v1, khala_code.free_plan_trace_capture.v1, khala_code.trace_derived_plugins.v1, khala_code.plugin_backend_revenue_share.v1, and khala_code.paid_to_free_revenue_share.v1 (all planned — the Episode 245 economics loop is launch-anchored design intent with the on-camera “possibility of paying you” hedge preserved; nothing is metered, attributed, pooled, or paid). It withdraws mobile.autopilot_remote_control.v1 (the Expo app was retired 2026-06-26 before shipping) in favor of the new mobile.fleet_companion.v1 (planned, native SwiftUI observe/notify/approve/steer companion). It adds contributors.bounties_surface.v1 (red — the Episode 225 “always live” openagents.com/bounties surface currently 302-redirects to the homepage), business.legal_benchmark_leaderboard.v1 (planned — the Episode 227 public legal-leaderboard claim), and qa.agentic_qa_runner.v1 (yellow — shipped OSS npm package, no paid customer, settlement inert). pylon.data_trace_revenue.v1 and the data.* capture records gain scope notes routing new pays-you copy through the khala_code.* family and clarifying that Khala Code wrapper raw events are owner-private delegation observability, not free-plan capture. Rate pin for Episode 238: the settled Tassadar per-window reward rate is 5 sats worker / 5 sats validator per verified window (plus the single 1,000-sat canary settlement); the Episode 238 whiteboard “5K” figure was never a settled rate and must not be quoted as one. No promise_transition receipts are required (no green flips; the planned→withdrawn Expo retirement follows the models.tasadar typo-withdrawal precedent); any future green flip remains receipt-first and owner-signed per proof.claim_upgrade_receipts.v1.',
       'Registry 2026-06-29.5 applies the owner-signed green transition for exactly two promises: metrics.khala_model_family_mix_public.v1 (#7016) and autopilot.agent_world_scene.v1 (#7030), moving green 32 -> 34 and clearing blockerRefs only on those two records. No Hosted Gemini (#7017), character-creation (#6861), payment/growth visualization, multiplayer, demand, revenue, spend, payout, settlement, routing, or broader default-on claim is created.',
       'Registry 2026-06-29.4 advances autopilot.agent_character_creation.v1 from planned to yellow on source-level Autopilot Desktop evidence for #6861 (the desktop character-creation projection, onboarding-status projection, Forum intro module, read-only work-search module, unit tests, and headless proof/smoke harnesses cover the warp-in spawn/customize beats, one idempotent credential-gated Forum self-introduction, and a read-only work-search receipt path); is the #7030 yellow-only source-level receipt for autopilot.agent_world_scene.v1, autopilot.bitcoin_payment_visualization.v1, and autopilot.pylon_growth_visualization.v1 (the current source resolver defaults the scene/payment gates on under the Verse launch default while retaining the hard Verse kill switches and payment-source guards); and is the #7023 yellow-only Autopilot Desktop / builtin-compute proof destale, where autopilot.desktop_gui_client.v1 records the owner-run AO6 from-DMG clean-Mac evidence bundle (notarized DMG 20260619T010148, Gatekeeper-accepted app, rendered-window screenshots, production Pylon pylon.fa4e9049a4329f3d56e2, a Verified exact_trace_replay challenge, and a settled real-Bitcoin receipt) replacing the stale from-DMG-owner-gated blocker with owner-review/green-pending, while autopilot.builtin_compute_agent.v1 records only source/test/projection evidence for the bounded no-user-key metering smoke and does not clear its signed-recut, live-from-install, or metering-live-smoke blockers. It flips NO promise state and is NOT a green/default-on production claim for any of these records: both promises stay yellow, and green remains blocked on owner-accepted real-user/default-on evidence, permissioned live receipts, a shipped-channel visual receipt, and receipt-first owner review. No broad default-on production claim, surprise Forum posting, paid-work acceptance, spend, payout, settlement, moderation, or green transition is created.',
       'Registry 2026-06-29.3 is a receipt-gate tightening pass for autopilot.agent_character_creation.v1 / #6861 and flips NO promise state. The planned character-creation promise now cites the active public issue and names the three concrete closure receipts: built spawn/customize onboarding, automated Forum self-introduction demonstrated end to end, and automated work-search covered by tests. The promise remains planned; no spawn flow, Forum posting authority, work-search automation, spend, payout, settlement, or green claim is created.',
