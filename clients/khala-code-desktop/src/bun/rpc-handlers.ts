@@ -307,9 +307,13 @@ const khalaCodePlanRequestUrl = (baseUrl: string, path: string): URL => {
   if (!KHALA_CODE_PLAN_ALLOWED_PATHS.has(path)) {
     throw new Error("Khala Code plan RPC path is not allowlisted.")
   }
+  // Append after the FULL configured base (the khala-chat-runtime join style)
+  // so a reverse-proxied base with a path prefix keeps its prefix; `new
+  // URL(path, base)` would silently drop it and 404 plan requests only.
   const base = new URL(baseUrl)
-  const url = new URL(path, base)
-  if (url.origin !== base.origin || url.pathname !== path) {
+  const basePath = base.pathname.replace(/\/+$/, "")
+  const url = new URL(`${base.origin}${basePath}${path}`)
+  if (url.origin !== base.origin || !url.pathname.endsWith(path)) {
     throw new Error("Khala Code plan RPC path must stay on the resolved OpenAgents origin.")
   }
   return url

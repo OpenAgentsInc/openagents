@@ -3432,6 +3432,21 @@ describe("khala code plan RPC handlers", () => {
     expect(result.ok).toBe(true)
   })
 
+  test("khalaCodePlanCatalog preserves a reverse-proxied base path prefix", async () => {
+    const { fetch: fetchStub, requests } = planFetchStub(() => json(200, planCatalogPayload))
+    const handlers = planHandlers({
+      env: { OPENAGENTS_BASE_URL: "https://proxy.corp/openagents/" },
+      fetch: fetchStub,
+    })
+
+    const result = await handlers.khalaCodePlanCatalog()
+
+    expect(requests[0]?.url).toBe(
+      "https://proxy.corp/openagents/api/public/khala-code/plans",
+    )
+    expect(result.ok).toBe(true)
+  })
+
   test("khalaCodePlanCatalog maps failures and malformed payloads to catalog_unavailable", async () => {
     const failing = planFetchStub(() => json(500, { error: "boom" }))
     expect(await planHandlers({ fetch: failing.fetch }).khalaCodePlanCatalog())

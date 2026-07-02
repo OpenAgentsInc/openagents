@@ -35,7 +35,10 @@ class PlanFakeDb {
           if (sql.includes('FROM inference_privacy_entitlement_receipts')) {
             return (
               Array.from(this.entitlementReceipts.values()).find(
-                row => row.idempotency_key === values[0],
+                row =>
+                  row.idempotency_key === values[0] &&
+                  (!sql.includes('account_ref = ?') ||
+                    row.account_ref === values[1]),
               ) ?? null
             ) as T | null
           }
@@ -200,6 +203,22 @@ describe('handleKhalaCodePlanStatus', () => {
     expect(body.plan.captureExcluded).toBe(true)
   })
 
+  it('still reports a purchased paid plan under confidential-compute mode', async () => {
+    const db = new PlanFakeDb()
+    db.entitlements.set('agent:user-1', { account_ref: 'agent:user-1' })
+    const response = await Effect.runPromise(
+      handleKhalaCodePlanStatus(
+        request(),
+        authedDeps(db, { confidentialComputeEnabled: true }),
+      ),
+    )
+    const body = (await response.json()) as {
+      plan: { kind: string; captureExcluded: boolean }
+    }
+    expect(body.plan.kind).toBe('paid')
+    expect(body.plan.captureExcluded).toBe(true)
+  })
+
   it('fails closed to 503 on an entitlement read error instead of fabricating a plan', async () => {
     const db = new PlanFakeDb()
     db.failReads = true
@@ -292,6 +311,47 @@ describe('handleKhalaCodePlanPurchase', () => {
     const secondBody = (await second.json()) as { receiptRef: string }
     expect(secondBody.receiptRef).toBe(firstBody.receiptRef)
     expect(db.entitlementReceipts.size).toBe(1)
+  })
+
+  it('rejects a supplied-but-invalid idempotency key instead of silently replacing it', async () => {
+    const db = new PlanFakeDb()
+    const deps = authedDeps(db, { paidPlanPurchaseArmed: true })
+    const response = await Effect.runPromise(
+      handleKhalaCodePlanPurchase(
+        request({ idempotencyKey: 'x'.repeat(200) }),
+        deps,
+      ),
+    )
+    expect(response.status).toBe(400)
+    const body = (await response.json()) as { error: string }
+    expect(body.error).toBe('invalid_idempotency_key')
+    expect(db.entitlementReceipts.size).toBe(0)
+  })
+
+  it('confines a reused client idempotency key to its own account', async () => {
+    const db = new PlanFakeDb()
+    const first = await Effect.runPromise(
+      handleKhalaCodePlanPurchase(
+        request({ idempotencyKey: 'shared-key' }),
+        authedDeps(db, { accountRef: 'agent:user-1', paidPlanPurchaseArmed: true }),
+      ),
+    )
+    const second = await Effect.runPromise(
+      handleKhalaCodePlanPurchase(
+        request({ idempotencyKey: 'shared-key' }),
+        authedDeps(db, { accountRef: 'agent:user-2', paidPlanPurchaseArmed: true }),
+      ),
+    )
+    expect(first.status).toBe(201)
+    expect(second.status).toBe(201)
+    const firstBody = (await first.json()) as { receiptRef: string }
+    const secondBody = (await second.json()) as { receiptRef: string }
+    // Each account gets ITS OWN receipt — a key collision must never return
+    // (or publicly attribute) another account's purchase.
+    expect(secondBody.receiptRef).not.toBe(firstBody.receiptRef)
+    expect(db.entitlementReceipts.size).toBe(2)
+    expect(db.entitlements.has('agent:user-1')).toBe(true)
+    expect(db.entitlements.has('agent:user-2')).toBe(true)
   })
 
   it('rejects malformed bodies', async () => {

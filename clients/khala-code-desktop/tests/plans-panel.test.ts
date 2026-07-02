@@ -224,4 +224,51 @@ describe("khala code plans panel", () => {
     expect(note?.textContent).toContain("paid plan purchases are not enabled on the server yet")
     expect(note?.textContent).toContain("khala_code_paid_plans_not_enabled")
   })
+
+  test("reuses one idempotency key across purchase retries until a confirmed success", async () => {
+    const container = installDom()
+    const purchaseRequests: Array<KhalaCodeDesktopPlanPurchaseRequest | undefined> = []
+    let statusCalls = 0
+    const panel = mountWith(container, {
+      catalog: async () => ({ ok: true, catalog: fixtureCatalog({ paidArmed: true }) }),
+      purchase: async request => {
+        purchaseRequests.push(request)
+        // First attempt looks lost/unavailable; the retry must replay the SAME
+        // key so a server that already committed returns the same receipt
+        // instead of minting a duplicate purchase.
+        return purchaseRequests.length === 1
+          ? { ok: false, error: "purchase_unavailable" }
+          : {
+              ok: true,
+              captureExcluded: true,
+              entitlementRef: "entitlement.inference.paid_privacy.abc",
+              planId: "khala_code.plan.paid.v1",
+              receiptRef: "receipt.inference.privacy_entitlement.khala_code_paid_plan_x",
+              receiptUrl: "/api/public/inference/privacy-receipts/receipt.x",
+            }
+      },
+      status: async () => {
+        statusCalls += 1
+        return { state: "unauthenticated" }
+      },
+    })
+    await panel.refresh()
+    await flushPanel()
+    const statusCallsAfterRefresh = statusCalls
+
+    const clickPurchase = async () => {
+      container
+        .querySelector<HTMLButtonElement>("[data-khala-plans-action='purchase']")
+        ?.dispatchEvent(new MouseEvent("click", { bubbles: true }))
+      await flushPanel()
+    }
+    await clickPurchase()
+    await clickPurchase()
+
+    expect(purchaseRequests).toHaveLength(2)
+    expect(purchaseRequests[0]?.idempotencyKey).toBe(purchaseRequests[1]?.idempotencyKey)
+    // The plan status is re-read after EVERY attempt (a lost response may
+    // still have granted the entitlement server-side).
+    expect(statusCalls).toBe(statusCallsAfterRefresh + 2)
+  })
 })

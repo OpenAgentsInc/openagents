@@ -24,9 +24,10 @@ import {
   khalaCodePlanCatalog,
 } from './khala-code-plan-catalog'
 import {
-  PAID_PRIVACY_REASON_ACCOUNT_ENTITLEMENT,
+  PAID_PRIVACY_REASON_CONFIDENTIAL_COMPUTE,
+  PAID_PRIVACY_REASON_NONE,
   PAID_PRIVACY_REASON_READ_ERROR,
-  makePaidPrivacyResolver,
+  readAccountPaidPrivacy,
 } from './inference-privacy-entitlement'
 import { grantPaidPrivacyEntitlement } from './inference-privacy-receipt-routes'
 
@@ -112,11 +113,13 @@ export const handleKhalaCodePlanCatalogApi = (
       )
 
 // GET /v1/khala-code/plan — the caller's current plan, resolved SERVER-SIDE
-// from the privacy-entitlement seam. Honest mapping:
+// from the privacy-entitlement seam. Honest mapping: the per-account
+// entitlement row is ALWAYS read (deployment-wide confidential-compute mode
+// must not hide a purchased plan), and:
 //   - account entitlement row        => paid plan, captureExcluded
-//   - confidential-compute mode      => free plan, captureExcluded (the
+//   - confidential-compute mode only => free plan, captureExcluded (the
 //     deployment-wide exclusion is not a purchased plan)
-//   - no entitlement                 => free plan, capturable
+//   - neither                        => free plan, capturable
 //   - entitlement read error         => 503 (fail-closed: never fabricate a
 //     plan the caller did or did not buy)
 export const handleKhalaCodePlanStatus = (
@@ -125,7 +128,7 @@ export const handleKhalaCodePlanStatus = (
 ) =>
   Effect.gen(function* () {
     if (request.method !== 'GET') {
-      return noStoreJsonResponse({ error: 'method_not_allowed' }, { status: 405 })
+      return methodNotAllowed(['GET'])
     }
 
     const session = yield* Effect.promise(() => deps.authenticate(request))
@@ -133,12 +136,8 @@ export const handleKhalaCodePlanStatus = (
       return authResponse()
     }
 
-    const resolver = makePaidPrivacyResolver({
-      confidentialComputeEnabled: deps.confidentialComputeEnabled,
-      db: deps.db,
-    })
     const decision = yield* Effect.promise(() =>
-      resolver(session.accountRef),
+      readAccountPaidPrivacy(deps.db, session.accountRef),
     )
 
     if (decision.reasonRef === PAID_PRIVACY_REASON_READ_ERROR) {
@@ -148,14 +147,19 @@ export const handleKhalaCodePlanStatus = (
       )
     }
 
-    const paid = decision.reasonRef === PAID_PRIVACY_REASON_ACCOUNT_ENTITLEMENT
+    const paid = decision.enabled
+    const captureExcluded = paid || deps.confidentialComputeEnabled
     return noStoreJsonResponse({
       ok: true,
       plan: {
         planId: paid ? KHALA_CODE_PAID_PLAN_ID : KHALA_CODE_FREE_PLAN_ID,
         kind: paid ? 'paid' : 'free',
-        captureExcluded: decision.enabled,
-        reasonRef: decision.reasonRef,
+        captureExcluded,
+        reasonRef: paid
+          ? decision.reasonRef
+          : deps.confidentialComputeEnabled
+            ? PAID_PRIVACY_REASON_CONFIDENTIAL_COMPUTE
+            : PAID_PRIVACY_REASON_NONE,
       },
     })
   })
@@ -172,7 +176,7 @@ export const handleKhalaCodePlanPurchase = (
 ) =>
   Effect.gen(function* () {
     if (request.method !== 'POST') {
-      return noStoreJsonResponse({ error: 'method_not_allowed' }, { status: 405 })
+      return methodNotAllowed(['POST'])
     }
 
     if (!deps.paidPlanPurchaseArmed) {
@@ -201,11 +205,24 @@ export const handleKhalaCodePlanPurchase = (
       )
     }
 
+    // A supplied-but-invalid key is REJECTED, never silently replaced: a
+    // silent fallback would make retries with the same (invalid) key mint
+    // duplicate purchase receipts with no signal to the client.
+    const clientKey = boundedIdempotencyKey(body.idempotencyKey)
+    if (body.idempotencyKey !== undefined && clientKey === undefined) {
+      return noStoreJsonResponse(
+        { error: 'invalid_idempotency_key' },
+        { status: 400 },
+      )
+    }
+
     const nowIso = deps.nowIso?.() ?? currentIsoTimestamp()
     const purchaseRef = compactRandomId('khala_code_paid_plan')
-    const idempotencyKey =
-      boundedIdempotencyKey(body.idempotencyKey) ??
-      `khala-code-plan-purchase:${session.accountRef}:${purchaseRef}`
+    // The effective key is ALWAYS namespaced by route and account: the
+    // idempotency_key column is globally unique across purchase surfaces, so a
+    // raw client key could collide with (and read back) another account's
+    // receipt row. Namespacing confines every client key to its own account.
+    const idempotencyKey = `khala-code-plan-purchase:${session.accountRef}:${clientKey ?? purchaseRef}`
     const row = yield* Effect.tryPromise(() =>
       grantPaidPrivacyEntitlement(deps.db, {
         accountRef: session.accountRef,
