@@ -75,6 +75,17 @@ export class KhalaCodeRpcQaDriver implements KhalaCodeQaDriver {
       )
     }
 
+    if (action.kind === "read" && action.query.startsWith("screenshot:")) {
+      return Effect.succeed(
+        this.record({
+          action,
+          data: { value: { backend: this.handle?.backend ?? "fixture", screenshot: action.query.slice("screenshot:".length) } },
+          label: `read:${action.query}`,
+          ok: true,
+        }),
+      )
+    }
+
     if (action.kind === "read") {
       return Effect.map(this.read(action.query), (snapshot) =>
         this.record({
@@ -87,11 +98,11 @@ export class KhalaCodeRpcQaDriver implements KhalaCodeQaDriver {
     }
 
     if (action.kind !== "rpc_call") {
-      if (["click", "hotbar", "slash_command", "approve"].includes(action.kind)) {
+      if (["click", "hotbar", "slash_command", "approve", "type", "submit_composer", "wait_for", "thread_select"].includes(action.kind)) {
         return Effect.succeed(
           this.record({
             action,
-            data: { target: action.target, value: action.value },
+            data: { target: action.target, text: action.text, value: action.value },
             label: `${action.kind}:${action.target ?? action.value ?? ""}`,
             ok: true,
           }),

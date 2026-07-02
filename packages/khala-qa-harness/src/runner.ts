@@ -129,6 +129,68 @@ const findQaMetricsSnapshot = (
   return null
 }
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  value !== null && typeof value === "object" && !Array.isArray(value)
+
+const observedValues = (
+  observations: ReadonlyArray<KhalaCodeQaObservation>,
+): readonly unknown[] =>
+  observations.map(observationValue)
+
+const fleetRunProjectionValues = (
+  observations: ReadonlyArray<KhalaCodeQaObservation>,
+): readonly Record<string, unknown>[] =>
+  observedValues(observations).flatMap((value) => {
+    if (!isRecord(value)) return []
+    const runs = Array.isArray(value.runs) ? value.runs : []
+    const candidates = [
+      value.run,
+      value.projection,
+      ...runs,
+    ]
+    return candidates.filter(isRecord)
+  })
+
+const activeAssignmentRefs = (
+  observations: ReadonlyArray<KhalaCodeQaObservation>,
+): readonly string[] =>
+  observedValues(observations).flatMap((value) => {
+    if (!isRecord(value)) return []
+    const activeAssignments = Array.isArray(value.activeAssignments) ? value.activeAssignments : []
+    const results = Array.isArray(value.results) ? value.results : []
+    return [...activeAssignments, ...results].flatMap((entry) =>
+      isRecord(entry) && typeof entry.assignmentRef === "string" ? [entry.assignmentRef] : []
+    )
+  })
+
+const evaluateClaimInvariant = (
+  phaseName: string,
+  observations: ReadonlyArray<KhalaCodeQaObservation>,
+): KhalaCodeQaOracleOutcome => {
+  const runs = fleetRunProjectionValues(observations)
+  const oversubscribedRuns = runs.flatMap((run) => {
+    const counters = isRecord(run.counters) ? run.counters : {}
+    const activeAssignments = typeof counters.activeAssignments === "number" ? counters.activeAssignments : 0
+    const targetConcurrency = typeof run.targetConcurrency === "number" ? run.targetConcurrency : 0
+    return activeAssignments > targetConcurrency
+      ? [{ activeAssignments, runRef: run.runRef, targetConcurrency }]
+      : []
+  })
+  const refs = activeAssignmentRefs(observations)
+  const duplicateRefs = [...new Set(refs.filter((ref, index) => refs.indexOf(ref) !== index))].sort()
+  const ok = oversubscribedRuns.length === 0 && duplicateRefs.length === 0
+  return {
+    data: { duplicateRefs, oversubscribedRuns },
+    ok,
+    oracle: "invariant",
+    phaseName,
+    summary: ok
+      ? "fleet claim invariant held: no duplicate assignment refs or oversubscribed FleetRun counters"
+      : "fleet claim invariant failed",
+    verdict: ok ? "CONFIRMED" : "REFUTED",
+  }
+}
+
 const verifyCommitments = (input: {
   readonly commitments: ReadonlyArray<KhalaCodeQaCommitment>
   readonly phaseOutcomes: ReadonlyArray<KhalaCodeQaPhaseOutcome>
@@ -237,6 +299,10 @@ const evaluateOracle = (
       summary: "phase actions completed without driver crash",
       verdict: ok ? "CONFIRMED" : "REFUTED",
     }
+  }
+
+  if (expectation.oracle === "invariant" && expectation.id === "claim-invariant") {
+    return evaluateClaimInvariant(phaseName, observations)
   }
 
   if (expectation.oracle === "consistency") {

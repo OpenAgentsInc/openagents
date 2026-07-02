@@ -8,12 +8,15 @@
     "./coverage-ledger": "./src/coverage-ledger.ts",
     "./desktop-smoke-helpers": "./src/desktop-smoke-helpers.ts",
     "./driver": "./src/driver.ts",
+    "./monkey-explorer": "./src/monkey-explorer.ts",
     "./rpc-driver": "./src/rpc-driver.ts",
     "./rpc-client": "./src/rpc-client.ts",
     "./runner": "./src/runner.ts",
     "./scenario": "./src/scenario.ts"
   },
   "scripts": {
+    "monkey:night": "bun test src/monkey-explorer.test.ts --test-name-pattern 'fleet cockpit night entry'",
+    "monkey:smoke": "bun test src/monkey-explorer.test.ts --test-name-pattern 'bounded fixture smoke'",
     "test": "bun test src/*.test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
