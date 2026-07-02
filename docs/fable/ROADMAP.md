@@ -132,7 +132,7 @@ Source: QA framework design §11 (G1–G6, P0–P4); fleet fan-out Lane D.
 | T6.4 | **G5** Fixture Codex app-server process (JSON-RPC from recorded notification scripts incl. approvals + background terminals) — the single biggest flake-killer | — | MED |
 | T6.5 | **G3** qa-runner desktop backend: boots the app headless (fixture or live), composes Chromium + RPC client + JSONL; headed variant arms the native macOS AX backend against the real Electrobun window | T6.2, T6.3 | MED |
 | T6.6 | **G6** Coverage ledger: per-run mergeable JSON (RPC methods, slash commands, panels, settings keys, item variants, selectors); nightly union + frontier report; zero-for-a-week ⇒ auto-issue | T6.3 | HIGH |
-| T6.7 | Mechanical seed scenario corpus: one lifecycle scenario per RPC group, per hotbar panel, per ThreadItem variant, per slash command; every phase has expectations | T6.3 | HIGH |
+| T6.7 | Mechanical seed scenario corpus: one lifecycle scenario per RPC group, per hotbar panel, per ThreadItem variant, per slash command; every phase has expectations. Seed corpus lives in `packages/khala-qa-harness/src/seed-corpus.ts` and emits `KHALA_CODE_QA_SEED_CORPUS_MANIFEST` for T6.6 coverage counting. | T6.3 | HIGH |
 | T6.8 | Seeded monkey explore mode (seeded PRNG over enabled action space, seed+log replay) + fleet-cockpit monkey night with claim-invariant oracle | T6.3, T6.4 | MED |
 | T6.9 | LLM explorer (qa-runner live brain) + explore→distill→regress loop; coverage-frontier steering for both explorers | T6.5, T6.6 | MED |
 | T6.10 | Live smokes: `smoke:fleet-run-live` (target 2, real closeouts, counter reconciliation) and `smoke:fleet-run-sustained` (≥5 workers ≥30min, ≥2 refills, zero duplicate claims) — skip-safe, env-armed | T3.5, T4.5 | MED |

@@ -282,6 +282,66 @@ describe("Khala Code QA RPC driver and runner", () => {
     expect(report.commitments.verdict).toBe("REFUTED")
   })
 
+  test("refutes consistency when successive indexed RPC reads differ", async () => {
+    let calls = 0
+    const scenario = loadKhalaCodeQaScenario({
+      backend: "fixture",
+      commitments: [
+        {
+          claim: "two indexed appInfo reads stay consistent",
+          evidence: "phase-oracle",
+          id: "consistency.app_info",
+          match: "read-twice:consistency",
+        },
+      ],
+      id: "scenario.khala_code.fixture_rpc_app_info_consistency.v1",
+      modes: ["rpc"],
+      phases: [
+        {
+          act: [
+            { kind: "rpc_call", method: "appInfo" },
+            { kind: "rpc_call", method: "appInfo" },
+          ],
+          expect: [
+            {
+              left: "rpc:appInfo#1",
+              oracle: "consistency",
+              right: "rpc:appInfo#2",
+            },
+          ],
+          name: "read-twice",
+        },
+      ],
+    })
+    const driver = makeKhalaCodeRpcQaDriver({
+      fetch: (() => {
+        calls += 1
+        return Promise.resolve(jsonResponse({
+          app: "Khala Code Desktop",
+          ok: true,
+          observedAt: calls === 1
+            ? "2026-07-01T00:00:00.000Z"
+            : "2026-07-01T00:00:01.000Z",
+        }))
+      }) as KhalaCodeRpcFetch,
+    })
+
+    const report = await Effect.runPromise(runKhalaCodeQaScenario({ driver, scenario }))
+
+    expect(report.phaseOutcomes[0]?.observations.map((observation) => observation.label)).toEqual([
+      "rpc:appInfo#1",
+      "rpc:appInfo#2",
+    ])
+    expect(report.phaseOutcomes[0]?.oracles[0]).toMatchObject({
+      ok: false,
+      oracle: "consistency",
+      verdict: "REFUTED",
+    })
+    expect(report.phaseOutcomes[0]?.oracles[0]?.summary).toContain("observedAt")
+    expect(report.status).toBe("fail")
+    expect(report.commitments.verdict).toBe("REFUTED")
+  })
+
   test("records boot failures as failed runs without synthesizing a handle", async () => {
     const scenario = loadKhalaCodeQaScenario({
       ...fixtureScenario,

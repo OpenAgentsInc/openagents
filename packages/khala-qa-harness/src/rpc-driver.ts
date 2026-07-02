@@ -38,6 +38,7 @@ export class KhalaCodeRpcQaDriver implements KhalaCodeQaDriver {
   private handle: KhalaCodeQaAppHandle | undefined
   private observations: KhalaCodeQaObservation[] = []
   private rpcOracleByQuery = new Map<string, KhalaCodeRpcCallOk<KhalaCodeRpcMethodName>>()
+  private rpcCallCounts = new Map<KhalaCodeRpcMethodName, number>()
 
   constructor(options: KhalaCodeRpcQaDriverOptions = {}) {
     this.client = new KhalaCodeRpcClient(options)
@@ -96,6 +97,9 @@ export class KhalaCodeRpcQaDriver implements KhalaCodeQaDriver {
       )
     }
 
+    const occurrence = (this.rpcCallCounts.get(action.method) ?? 0) + 1
+    this.rpcCallCounts.set(action.method, occurrence)
+    const occurrenceLabel = `rpc:${action.method}#${occurrence}`
     const callWithOracle = this.client.callWithOracle.bind(this.client) as (
       method: KhalaCodeRpcMethodName,
       ...args: ReadonlyArray<unknown>
@@ -111,7 +115,7 @@ export class KhalaCodeRpcQaDriver implements KhalaCodeQaDriver {
             this.record({
               action,
               error: errorMessage(cause),
-              label: `rpc:${action.method}`,
+              label: occurrenceLabel,
               ok: false,
             }),
           ),
@@ -119,10 +123,11 @@ export class KhalaCodeRpcQaDriver implements KhalaCodeQaDriver {
           Effect.sync(() => {
             this.rpcOracleByQuery.set(`rpc:${action.method}`, result)
             this.rpcOracleByQuery.set(action.method, result)
+            this.rpcOracleByQuery.set(occurrenceLabel, result)
             return this.record({
               action,
               data: result,
-              label: `rpc:${action.method}`,
+              label: occurrenceLabel,
               ok: true,
             })
           }),
