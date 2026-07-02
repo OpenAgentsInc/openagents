@@ -12,6 +12,7 @@ passing_configs=(
 
 failing_configs=(
   "specs/mutations/fleet-paused-claim/FleetPausedClaim.cfg"
+  "specs/mutations/fleet-operator-revive/FleetOperatorRevive.cfg"
   "specs/mutations/approval-stale-forgery/ApprovalStaleForgery.cfg"
   "specs/mutations/session-crash-divergence/SessionCrashDivergence.cfg"
 )
@@ -43,12 +44,12 @@ for cfg in "${failing_configs[@]}"; do
     echo "expected TLC violation for mutation ${cfg}, but it passed" >&2
     exit 1
   fi
-  if ! grep -Eq "Invariant .* is violated|Temporal properties were violated" "$tmp"; then
+  if ! grep -Eq "Invariant .* is violated|Action property .* is violated|Temporal properties were violated" "$tmp"; then
     cat "$tmp"
     rm -f "$tmp"
     echo "mutation ${cfg} failed without a TLC counterexample violation" >&2
     exit 1
   fi
-  grep -E "Invariant .* is violated|Temporal properties were violated" "$tmp" | head -n 1
+  grep -E "Invariant .* is violated|Action property .* is violated|Temporal properties were violated" "$tmp" | head -n 1
   rm -f "$tmp"
 done

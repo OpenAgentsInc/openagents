@@ -1,14 +1,50 @@
 {
-  "fixture": "counterexample.approval_protocol.stale_request_forgery.v2",
+  "fixture": "counterexample.approval_protocol.stale_approve_application.v3",
   "sourceSpec": "specs/mutations/approval-stale-forgery/ApprovalStaleForgery.tla",
   "checkedBy": "specs/mutations/approval-stale-forgery/ApprovalStaleForgery.cfg",
-  "violatedProperty": "NoStaleRequestForgery",
+  "violatedProperty": "NoStaleApproveApplication",
   "summary": "A client answers an approval id after the turn was interrupted and the request epoch changed.",
   "trace": [
-    { "step": 0, "epoch": 0, "requestState": { "r1": "never" }, "response": { "r1": "none" }, "forgedStaleResponse": false },
-    { "step": 1, "action": "IssueRequest(r1)", "requestState": { "r1": "requested" }, "requestEpoch": { "r1": 0 } },
-    { "step": 2, "action": "InterruptTurn(r1)", "epoch": 1, "requestState": { "r1": "interrupted" }, "response": { "r1": "interrupt" } },
-    { "step": 3, "action": "StaleApproveForged(r1)", "forgedStaleResponse": true, "response": { "r1": "approve" } }
+    {
+      "step": 0,
+      "epoch": 0,
+      "requestState": {
+        "r1": "never"
+      },
+      "response": {
+        "r1": "none"
+      },
+      "forgedStaleResponse": false
+    },
+    {
+      "step": 1,
+      "action": "IssueRequest(r1)",
+      "requestState": {
+        "r1": "requested"
+      },
+      "requestEpoch": {
+        "r1": 0
+      }
+    },
+    {
+      "step": 2,
+      "action": "InterruptTurn(r1)",
+      "epoch": 1,
+      "requestState": {
+        "r1": "interrupted"
+      },
+      "response": {
+        "r1": "interrupt"
+      }
+    },
+    {
+      "step": 3,
+      "action": "StaleApproveForged(r1)",
+      "forgedStaleResponse": true,
+      "response": {
+        "r1": "approve"
+      }
+    }
   ],
   "fixtureUse": "Port to approval RPC/DOM scenarios: a stale approval id must be rejected after interruption or supersession."
 }

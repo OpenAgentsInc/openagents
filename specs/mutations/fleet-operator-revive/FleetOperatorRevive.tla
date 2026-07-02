@@ -1,4 +1,4 @@
------------------------------ MODULE FleetDelegateSupervisor -----------------------------
+----------------------------- MODULE FleetOperatorRevive -----------------------------
 EXTENDS Naturals, FiniteSets, TLC
 
 CONSTANTS Supervisors, WorkUnits, Capacity, ClaimTtl, MaxReleases
@@ -52,8 +52,11 @@ Init ==
 LiveClaims == {w \in WorkUnits : claims[w] \in LiveClaimStates}
 OpenClaims == {w \in WorkUnits : claims[w] \in {"claimed", "in_progress"}}
 Claimable == {w \in WorkUnits : w \notin (LiveClaims \cup terminal) /\ releases[w] <= MaxReleases}
+\* MUTATION: drops the `stateSource # "operator"` conjunct from the real
+\* isAutoRevivableFleetRun guard. TLC must report
+\* SupervisorReviveHonorsAutoRevivableGuard violated.
 AutoRevivable ==
-  (runState = "completed" \/ runState = "stopped") /\ stateSource # "operator"
+  (runState = "completed" \/ runState = "stopped")
 
 ActiveAssignmentsNeverExceedAdvertisedCapacity ==
   Cardinality(active) <= Capacity
