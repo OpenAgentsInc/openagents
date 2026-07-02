@@ -4,14 +4,24 @@ import { dirname, join, resolve } from "node:path"
 
 import { chromium, type Browser, type Page, type Route } from "playwright"
 import {
+  findKhalaQaAvailablePort as findAvailablePort,
   startKhalaQaViteServer as startViteServer,
   waitForKhalaQaHttp as waitForHttp,
 } from "@openagentsinc/khala-qa-harness/desktop-smoke-helpers"
+import {
+  assertKhalaVisualBaseline,
+  type KhalaVisualBaselineResult,
+} from "@openagentsinc/khala-qa-harness/visual-baseline"
 
 import type {
   KhalaCodeDesktopFleetDelegateRunResult,
   KhalaCodeDesktopFleetStatus,
 } from "../src/shared/rpc"
+import {
+  defaultKhalaCodeVisualBaselineOptions,
+  khalaCodeVisualBaselineOptionsFromArgs,
+  type KhalaCodeVisualBaselineOptions,
+} from "./visual-baseline-options"
 
 export type Part2UiSmokeViewport = Readonly<{
   name: "desktop" | "mobile"
@@ -28,6 +38,10 @@ export type Part2UiSmokeCapture = Readonly<{
   fleetScreenshot: string
   gymScreenshot: string
   steps: ReadonlyArray<Part2UiSmokeStep>
+  visualBaselines: Readonly<{
+    fleet: KhalaVisualBaselineResult
+    gym: KhalaVisualBaselineResult
+  }>
   viewport: Part2UiSmokeViewport["name"]
 }>
 
@@ -45,6 +59,10 @@ export const part2UiUnsafeTextPattern =
 const legacyDeadEndPattern =
   /codex_spawn_failed: No Pylon Codex assignment capacity is available right now|0\/1 available/i
 
+const khalaPreviewFallbackPorts = (preferredPort: number): ReadonlyArray<number> =>
+  Array.from({ length: 10 }, (_, index) => 50021 + index)
+    .filter(port => port !== preferredPort)
+
 export const assertPart2UiPublicSafeText = (text: string): void => {
   if (part2UiUnsafeTextPattern.test(text)) {
     throw new Error("Part 2 UI smoke rendered private or raw material")
@@ -58,13 +76,14 @@ async function runPart2UiRecordingSmoke(
   options: Readonly<{
     keepServer?: boolean
     outDir: string
+    visualBaseline?: KhalaCodeVisualBaselineOptions
   }>,
 ): Promise<ReadonlyArray<Part2UiSmokeCapture>> {
   await rm(options.outDir, { force: true, recursive: true })
   await mkdir(options.outDir, { recursive: true })
 
   const repoRoot = resolve(import.meta.dir, "../../..")
-  const port = 50026
+  const port = await findAvailablePort(50026, khalaPreviewFallbackPorts(50026))
   const server = startViteServer({
     cwd: join(repoRoot, "clients/khala-code-desktop"),
     label: "khala-code-desktop-part2-ui",
@@ -75,6 +94,7 @@ async function runPart2UiRecordingSmoke(
     await waitForHttp(`http://127.0.0.1:${port}/`)
     browser = await chromium.launch({ headless: true })
     const captures: Part2UiSmokeCapture[] = []
+    const visualBaseline = options.visualBaseline ?? defaultKhalaCodeVisualBaselineOptions()
     for (const viewport of part2UiSmokeViewports()) {
       const page = await browser.newPage({
         colorScheme: "dark",
@@ -87,6 +107,7 @@ async function runPart2UiRecordingSmoke(
           await capturePart2Ui(page, {
             baseUrl: `http://127.0.0.1:${port}`,
             outDir: options.outDir,
+            visualBaseline,
             viewport,
           }),
         )
@@ -163,6 +184,7 @@ async function capturePart2Ui(
   input: Readonly<{
     baseUrl: string
     outDir: string
+    visualBaseline: KhalaCodeVisualBaselineOptions
     viewport: Part2UiSmokeViewport
   }>,
 ): Promise<Part2UiSmokeCapture> {
@@ -206,7 +228,25 @@ async function capturePart2Ui(
     `part2-ui-fleet-${input.viewport.name}.png`,
   )
   await mkdir(dirname(fleetScreenshot), { recursive: true })
-  await page.screenshot({ fullPage: false, path: fleetScreenshot })
+  await page.screenshot({
+    animations: "disabled",
+    caret: "hide",
+    fullPage: false,
+    path: fleetScreenshot,
+  })
+  const fleetVisualBaseline = await assertKhalaVisualBaseline({
+    baselineDir: input.visualBaseline.baselineDir,
+    bless: input.visualBaseline.bless,
+    capture: {
+      colorScheme: "dark",
+      harness: PART2_UI_RECORDING_SMOKE_HARNESS,
+      id: `part2-ui.fleet.${input.viewport.name}`,
+      reducedMotion: input.viewport.name === "mobile" ? "reduce" : "no-preference",
+      screenshotPath: fleetScreenshot,
+      viewport: input.viewport.name,
+    },
+    requireBaseline: input.visualBaseline.requireBaseline,
+  })
 
   await page
     .locator(".khala-fleet-optimization button")
@@ -237,12 +277,34 @@ async function capturePart2Ui(
     `part2-ui-gym-${input.viewport.name}.png`,
   )
   await mkdir(dirname(gymScreenshot), { recursive: true })
-  await page.screenshot({ fullPage: false, path: gymScreenshot })
+  await page.screenshot({
+    animations: "disabled",
+    caret: "hide",
+    fullPage: false,
+    path: gymScreenshot,
+  })
+  const gymVisualBaseline = await assertKhalaVisualBaseline({
+    baselineDir: input.visualBaseline.baselineDir,
+    bless: input.visualBaseline.bless,
+    capture: {
+      colorScheme: "dark",
+      harness: PART2_UI_RECORDING_SMOKE_HARNESS,
+      id: `part2-ui.gym.${input.viewport.name}`,
+      reducedMotion: input.viewport.name === "mobile" ? "reduce" : "no-preference",
+      screenshotPath: gymScreenshot,
+      viewport: input.viewport.name,
+    },
+    requireBaseline: input.visualBaseline.requireBaseline,
+  })
 
   return {
     fleetScreenshot,
     gymScreenshot,
     steps,
+    visualBaselines: {
+      fleet: fleetVisualBaseline,
+      gym: gymVisualBaseline,
+    },
     viewport: input.viewport.name,
   }
 }
@@ -466,11 +528,15 @@ const delegateRunResultFixture = (): KhalaCodeDesktopFleetDelegateRunResult => (
 })
 
 if (import.meta.main) {
+  const args = Bun.argv.slice(2)
   const outDir =
-    argValue(Bun.argv.slice(2), "--out") ??
+    argValue(args, "--out") ??
     resolve("var/khala-code-desktop/part2-ui-recording-smoke")
   try {
-    const captures = await runPart2UiRecordingSmoke({ outDir })
+    const captures = await runPart2UiRecordingSmoke({
+      outDir,
+      visualBaseline: khalaCodeVisualBaselineOptionsFromArgs(args),
+    })
     console.log("Part 2 UI recording smoke: PASS")
     for (const capture of captures) {
       console.log(`- ${capture.viewport}: ${capture.steps.map(step => step.name).join(" -> ")}`)

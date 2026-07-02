@@ -4,9 +4,19 @@ import { dirname, join, resolve } from "node:path"
 
 import { chromium, type Browser, type Page } from "playwright"
 import {
+  findKhalaQaAvailablePort as findAvailablePort,
   startKhalaQaViteServer as startViteServer,
   waitForKhalaQaHttp as waitForHttp,
 } from "@openagentsinc/khala-qa-harness/desktop-smoke-helpers"
+import {
+  assertKhalaVisualBaseline,
+  type KhalaVisualBaselineResult,
+} from "@openagentsinc/khala-qa-harness/visual-baseline"
+import {
+  defaultKhalaCodeVisualBaselineOptions,
+  khalaCodeVisualBaselineOptionsFromArgs,
+  type KhalaCodeVisualBaselineOptions,
+} from "./visual-baseline-options"
 
 export type ComposerVisualViewport = Readonly<{
   name: "desktop" | "mobile"
@@ -70,6 +80,7 @@ export type ComposerVisualCaptureResult = Readonly<{
   target: string
   viewport: string
   screenshot: string
+  visualBaseline: KhalaVisualBaselineResult
   geometry: GeometryProbe
   focus: FocusProbe
   canvas: CanvasProbe | null
@@ -132,6 +143,10 @@ export const validatePublicSafeComposerPrompt = (prompt: string): boolean => {
     !/[A-Za-z0-9_=-]{32,}/.test(prompt)
   )
 }
+
+const khalaPreviewFallbackPorts = (preferredPort: number): ReadonlyArray<number> =>
+  Array.from({ length: 10 }, (_, index) => 50021 + index)
+    .filter(port => port !== preferredPort)
 
 export const assertComposerGeometry = (probe: GeometryProbe): void => {
   if (probe.composer.width < 280 || probe.composer.height < 72) {
@@ -236,6 +251,7 @@ export async function runComposerVisualSmoke(
   options: Readonly<{
     outDir: string
     keepServers?: boolean
+    visualBaseline?: KhalaCodeVisualBaselineOptions
   }>,
 ): Promise<ReadonlyArray<ComposerVisualCaptureResult>> {
   const plan = composerVisualPlan()
@@ -247,8 +263,8 @@ export async function runComposerVisualSmoke(
   await mkdir(options.outDir, { recursive: true })
 
   const repoRoot = resolve(import.meta.dir, "../../..")
-  const khalaCodePort = 50021
-  const openagentsPort = 5192
+  const khalaCodePort = await findAvailablePort(50021, khalaPreviewFallbackPorts(50021))
+  const openagentsPort = await findAvailablePort(5192)
   const servers = [
     startViteServer({
       cwd: join(repoRoot, "clients/khala-code-desktop"),
@@ -270,6 +286,7 @@ export async function runComposerVisualSmoke(
     ])
     browser = await chromium.launch({ headless: true })
     const results: ComposerVisualCaptureResult[] = []
+    const visualBaseline = options.visualBaseline ?? defaultKhalaCodeVisualBaselineOptions()
     for (const target of plan.targets) {
       for (const viewport of plan.viewports) {
         const baseUrl =
@@ -289,6 +306,7 @@ export async function runComposerVisualSmoke(
             prompt: plan.prompt,
             reducedMotion,
             target,
+            visualBaseline,
             viewport,
           })
           results.push(result)
@@ -319,6 +337,7 @@ async function captureTarget(
     prompt: string
     reducedMotion: boolean
     target: ComposerVisualTarget
+    visualBaseline: KhalaCodeVisualBaselineOptions
     viewport: ComposerVisualViewport
   }>,
 ): Promise<ComposerVisualCaptureResult> {
@@ -550,12 +569,31 @@ async function captureTarget(
     `${input.target.name}-${input.viewport.name}.png`,
   )
   await mkdir(dirname(screenshot), { recursive: true })
-  await page.screenshot({ fullPage: false, path: screenshot })
+  await page.screenshot({
+    animations: "disabled",
+    caret: "hide",
+    fullPage: false,
+    path: screenshot,
+  })
+  const visualBaseline = await assertKhalaVisualBaseline({
+    baselineDir: input.visualBaseline.baselineDir,
+    bless: input.visualBaseline.bless,
+    capture: {
+      colorScheme: "dark",
+      harness: COMPOSER_VISUAL_SMOKE_HARNESS,
+      id: `composer.${input.target.name}.${input.viewport.name}`,
+      reducedMotion: input.reducedMotion ? "reduce" : "no-preference",
+      screenshotPath: screenshot,
+      viewport: input.viewport.name,
+    },
+    requireBaseline: input.visualBaseline.requireBaseline,
+  })
 
   return {
     target: input.target.name,
     viewport: input.viewport.name,
     screenshot,
+    visualBaseline,
     geometry,
     focus,
     canvas,
@@ -568,7 +606,10 @@ async function screenshotPixelProbe(
   page: Page,
   selector: string,
 ): Promise<CanvasProbe> {
-  const buffer = await page.locator(selector).first().screenshot()
+  const buffer = await page.locator(selector).first().screenshot({
+    animations: "disabled",
+    caret: "hide",
+  })
   const dataUrl = `data:image/png;base64,${buffer.toString("base64")}`
   return await page.evaluate(async url => {
     const image = new Image()
@@ -613,11 +654,15 @@ async function screenshotPixelProbe(
 }
 
 if (import.meta.main) {
+  const args = Bun.argv.slice(2)
   const outDir =
-    argValue(Bun.argv.slice(2), "--out") ??
+    argValue(args, "--out") ??
     resolve("var/khala-code-desktop/composer-visual-smoke")
   try {
-    const results = await runComposerVisualSmoke({ outDir })
+    const results = await runComposerVisualSmoke({
+      outDir,
+      visualBaseline: khalaCodeVisualBaselineOptionsFromArgs(args),
+    })
     console.log(JSON.stringify({
       harness: COMPOSER_VISUAL_SMOKE_HARNESS,
       ok: true,

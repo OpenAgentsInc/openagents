@@ -187,6 +187,10 @@ does not exercise the legacy Khala-native shell/process runtime. The composer
 JSON summary is labeled `preview_ui_codex_harness_shell`; the Fleet/Gym summary
 is labeled `khala_code_part2_fleet_gym_visual_smoke`.
 Artifacts are written under ignored `var/khala-code-desktop/composer-visual-smoke`.
+Screenshot baseline comparison is wired through
+[`docs/qa/khala-code-visual-baselines.md`](../../docs/qa/khala-code-visual-baselines.md):
+missing baselines soft-report by default, existing baseline diffs fail and
+write delta PNGs, and `--bless-baselines` updates the committed baseline store.
 
 ```sh
 bun run smoke:composer-visual

@@ -17,7 +17,8 @@
     "./rpc-driver": "./src/rpc-driver.ts",
     "./rpc-client": "./src/rpc-client.ts",
     "./runner": "./src/runner.ts",
-    "./scenario": "./src/scenario.ts"
+    "./scenario": "./src/scenario.ts",
+    "./visual-baseline": "./src/visual-baseline.ts"
   },
   "scripts": {
     "test": "bun test src/*.test.ts",

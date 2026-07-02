@@ -45,6 +45,21 @@ bun run --cwd apps/qa-runner khala:packaged-native-smoke -- \
   --send-selector "AXButton:Send message"
 ```
 
+The smoke can also compare or bless headed screenshots against the shared Khala
+visual baseline store:
+
+```sh
+QA_NATIVE_DESKTOP=1 \
+bun run --cwd apps/qa-runner khala:packaged-native-smoke -- \
+  --out ../../var/qa-8023/packaged-native \
+  --bless-baselines
+```
+
+Use `--require-baselines` to fail on missing entries and `--baseline-dir <dir>`
+for a scratch store. See
+[`khala-code-visual-baselines.md`](./khala-code-visual-baselines.md) for the
+manifest format and diff behavior.
+
 The July 2, 2026 owner-Mac proof needed coordinate fallbacks because the current
 packaged WebKit AX tree exposed unlabeled buttons. This exact command completed
 with three archived screenshots:
@@ -75,6 +90,10 @@ The artifact directory contains:
 - `native-desktop-*.png` - boot, hotbar, and submitted-turn screenshots
 - `khala-packaged-native-smoke.json` - packaged smoke summary with stable artifact names
 - `khala-desktop-stdout.jsonl` / `khala-desktop-stderr.jsonl` - packaged app logs
+
+When baseline comparison is enabled, `khala-packaged-native-smoke.json` also
+records public-safe `visualBaselines` entries with relative baseline and delta
+paths.
 
 Treat `status: "pass"` in `result.json` as the pass/fail source of truth.
 

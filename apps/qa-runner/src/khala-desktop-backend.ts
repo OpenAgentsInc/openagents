@@ -20,12 +20,14 @@ import { basename, dirname, join, resolve } from "node:path";
 import { randomBytes } from "node:crypto";
 import { Effect } from "effect";
 import {
+  assertKhalaVisualBaseline,
   makeKhalaCodeRpcQaDriver,
   runKhalaCodeQaScenario,
   type KhalaCodeQaScenario,
   type KhalaCodeQaScenarioRunReport,
   type KhalaCodeRpcClient,
   type KhalaCodeRpcFetch,
+  type KhalaVisualBaselineResult,
 } from "@openagentsinc/khala-qa-harness";
 
 import {
@@ -40,6 +42,7 @@ import {
   type NativeDesktopOutcome,
   type NativeDesktopScenario,
 } from "./native-desktop-backend";
+import { assertPublicSafeResult } from "./result";
 import type { Target } from "./target";
 
 const DEFAULT_DESKTOP_CWD = resolve(import.meta.dir, "../../../clients/khala-code-desktop");
@@ -97,12 +100,20 @@ export interface KhalaPackagedNativeSmokeOptions {
   readonly selectors?: KhalaPackagedNativeSmokeSelectors;
   readonly spawn?: KhalaDesktopSpawn;
   readonly target: Target;
+  readonly visualBaseline?: KhalaPackagedNativeVisualBaselineOptions;
 }
 
 export interface KhalaPackagedNativeSmokeOutcome extends NativeDesktopOutcome {
   readonly appPath: string;
   readonly executablePath: string;
   readonly smokeReportPath: string;
+  readonly visualBaselines: ReadonlyArray<KhalaVisualBaselineResult>;
+}
+
+export interface KhalaPackagedNativeVisualBaselineOptions {
+  readonly baselineDir: string;
+  readonly bless?: boolean;
+  readonly requireBaseline?: boolean;
 }
 
 export interface KhalaDesktopBackendSession extends BackendSession {
@@ -356,6 +367,32 @@ const selectorFromEnv = (
   return value === undefined || value.length === 0 ? undefined : value;
 };
 
+const comparePackagedNativeVisualBaselines = async (input: {
+  readonly artifactDir: string;
+  readonly options: KhalaPackagedNativeVisualBaselineOptions | undefined;
+  readonly screenshots: ReadonlyArray<string>;
+}): Promise<ReadonlyArray<KhalaVisualBaselineResult>> => {
+  if (input.options === undefined) return [];
+  const results: KhalaVisualBaselineResult[] = [];
+  const pngScreenshots = input.screenshots.filter((screenshot) => screenshot.endsWith(".png"));
+  for (const [index, screenshot] of pngScreenshots.entries()) {
+    results.push(await assertKhalaVisualBaseline({
+      baselineDir: input.options.baselineDir,
+      bless: input.options.bless,
+      capture: {
+        colorScheme: "dark",
+        harness: "khala_code_packaged_native_ax_smoke",
+        id: `packaged-native.${String(index).padStart(2, "0")}`,
+        reducedMotion: "no-preference",
+        screenshotPath: join(input.artifactDir, screenshot),
+        viewport: "desktop",
+      },
+      requireBaseline: input.options.requireBaseline,
+    }));
+  }
+  return results;
+};
+
 export const khalaCodePackagedFixtureNativeScenario = (input: {
   readonly appPid?: number;
   readonly appProcessName?: string;
@@ -564,23 +601,28 @@ export async function runKhalaDesktopHeadedNativeSmoke(
       },
       input.native,
     );
+    const visualBaselines = await comparePackagedNativeVisualBaselines({
+      artifactDir: input.artifactDir,
+      options: input.visualBaseline,
+      screenshots: outcome.result.artifacts.screenshots,
+    });
     const smokeReportPath = join(input.artifactDir, PACKAGED_NATIVE_SMOKE_REPORT_FILE);
-    writeFileSync(
-      smokeReportPath,
-      `${JSON.stringify({
-        schemaVersion: "openagents.qa_runner.khala_packaged_native_smoke.v1",
-        appBundle: basename(appPath),
-        appProcessName,
-        appPathSource,
-        executable: basename(executablePath),
-        result: "result.json",
-        scenario: scenario.name,
-        screenshots: outcome.result.artifacts.screenshots,
-        status: outcome.result.status,
-        targetProcess: appPid === undefined ? "app-name" : "spawned-child",
-      }, null, 2)}\n`,
-    );
-    return { ...outcome, appPath, executablePath, smokeReportPath };
+    const smokeReport = {
+      schemaVersion: "openagents.qa_runner.khala_packaged_native_smoke.v1",
+      appBundle: basename(appPath),
+      appProcessName,
+      appPathSource,
+      executable: basename(executablePath),
+      result: "result.json",
+      scenario: scenario.name,
+      screenshots: outcome.result.artifacts.screenshots,
+      status: outcome.result.status,
+      targetProcess: appPid === undefined ? "app-name" : "spawned-child",
+      visualBaselines,
+    };
+    assertPublicSafeResult(smokeReport);
+    writeFileSync(smokeReportPath, `${JSON.stringify(smokeReport, null, 2)}\n`);
+    return { ...outcome, appPath, executablePath, smokeReportPath, visualBaselines };
   } finally {
     await shutdownChild(child, logFlushes);
   }

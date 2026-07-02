@@ -1,3 +1,5 @@
+import { createServer } from "node:net"
+
 export type KhalaQaViteServer = Readonly<{
   kill: () => void
 }>
@@ -22,6 +24,39 @@ export type KhalaQaRect = Readonly<{
   x: number
   y: number
 }>
+
+export const findKhalaQaAvailablePort = async (
+  preferredPort: number,
+  fallbackPorts: ReadonlyArray<number> = [],
+): Promise<number> => {
+  if (await canListenOnPort(preferredPort)) return preferredPort
+  for (const fallbackPort of fallbackPorts) {
+    if (await canListenOnPort(fallbackPort)) return fallbackPort
+  }
+  return await allocateEphemeralPort()
+}
+
+const canListenOnPort = (port: number): Promise<boolean> =>
+  new Promise(resolvePort => {
+    const server = createServer()
+    server.once("error", () => resolvePort(false))
+    server.listen(port, "127.0.0.1", () => {
+      server.close(() => resolvePort(true))
+    })
+  })
+
+const allocateEphemeralPort = (): Promise<number> =>
+  new Promise((resolvePort, rejectPort) => {
+    const server = createServer()
+    server.once("error", rejectPort)
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address()
+      server.close(() => {
+        if (typeof address === "object" && address !== null) resolvePort(address.port)
+        else rejectPort(new Error("failed to allocate visual smoke port"))
+      })
+    })
+  })
 
 export const startKhalaQaViteServer = (
   input: KhalaQaStartViteServerOptions,

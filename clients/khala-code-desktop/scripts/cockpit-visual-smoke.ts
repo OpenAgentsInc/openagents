@@ -4,17 +4,27 @@ import { dirname, join, resolve } from "node:path"
 
 import { chromium, type Browser, type Page } from "playwright"
 import {
+  findKhalaQaAvailablePort as findAvailablePort,
   khalaQaRectsOverlap as rectsOverlap,
   startKhalaQaViteServer as startViteServer,
   waitForKhalaQaHttp as waitForHttp,
   type KhalaQaRect,
 } from "@openagentsinc/khala-qa-harness/desktop-smoke-helpers"
+import {
+  assertKhalaVisualBaseline,
+  type KhalaVisualBaselineResult,
+} from "@openagentsinc/khala-qa-harness/visual-baseline"
 
 import type {
   KhalaCodeDesktopFleetRunListResult,
   KhalaCodeDesktopFleetRunProjection,
   KhalaCodeDesktopFleetStatus,
 } from "../src/shared/rpc"
+import {
+  defaultKhalaCodeVisualBaselineOptions,
+  khalaCodeVisualBaselineOptionsFromArgs,
+  type KhalaCodeVisualBaselineOptions,
+} from "./visual-baseline-options"
 
 export type CockpitVisualViewport = Readonly<{
   name: "desktop" | "mobile"
@@ -35,6 +45,7 @@ export type CockpitVisualCapture = Readonly<{
   accountCardCount: number
   geometry: CockpitVisualGeometry
   screenshot: string
+  visualBaseline: KhalaVisualBaselineResult
   viewport: CockpitVisualViewport["name"]
   workerCardCount: number
 }>
@@ -77,13 +88,14 @@ export async function runCockpitVisualSmoke(
   options: Readonly<{
     keepServer?: boolean
     outDir: string
+    visualBaseline?: KhalaCodeVisualBaselineOptions
   }>,
 ): Promise<readonly CockpitVisualCapture[]> {
   await rm(options.outDir, { force: true, recursive: true })
   await mkdir(options.outDir, { recursive: true })
 
   const repoRoot = resolve(import.meta.dir, "../../..")
-  const port = 50027
+  const port = await findAvailablePort(50027, khalaPreviewFallbackPorts(50027))
   const server = startViteServer({
     cwd: join(repoRoot, "clients/khala-code-desktop"),
     label: "khala-code-desktop-cockpit",
@@ -94,6 +106,7 @@ export async function runCockpitVisualSmoke(
     await waitForHttp(`http://127.0.0.1:${port}/`)
     browser = await chromium.launch({ headless: true })
     const captures: CockpitVisualCapture[] = []
+    const visualBaseline = options.visualBaseline ?? defaultKhalaCodeVisualBaselineOptions()
     for (const viewport of cockpitVisualSmokeViewports()) {
       const page = await browser.newPage({
         colorScheme: "dark",
@@ -106,6 +119,7 @@ export async function runCockpitVisualSmoke(
           await captureCockpit(page, {
             baseUrl: `http://127.0.0.1:${port}`,
             outDir: options.outDir,
+            visualBaseline,
             viewport,
           }),
         )
@@ -133,6 +147,10 @@ export async function runCockpitVisualSmoke(
 }
 
 const cockpitClockIso = "2026-07-01T18:15:00.000Z"
+
+const khalaPreviewFallbackPorts = (preferredPort: number): ReadonlyArray<number> =>
+  Array.from({ length: 10 }, (_, index) => 50021 + index)
+    .filter(port => port !== preferredPort)
 
 async function installCockpitRpcMocks(page: Page): Promise<void> {
   await page.addInitScript((iso: string) => {
@@ -200,6 +218,7 @@ async function captureCockpit(
   input: Readonly<{
     baseUrl: string
     outDir: string
+    visualBaseline: KhalaCodeVisualBaselineOptions
     viewport: CockpitVisualViewport
   }>,
 ): Promise<CockpitVisualCapture> {
@@ -226,12 +245,31 @@ async function captureCockpit(
     `khala-code-cockpit-${input.viewport.name}.png`,
   )
   await mkdir(dirname(screenshot), { recursive: true })
-  await page.screenshot({ fullPage: true, path: screenshot })
+  await page.screenshot({
+    animations: "disabled",
+    caret: "hide",
+    fullPage: true,
+    path: screenshot,
+  })
+  const visualBaseline = await assertKhalaVisualBaseline({
+    baselineDir: input.visualBaseline.baselineDir,
+    bless: input.visualBaseline.bless,
+    capture: {
+      colorScheme: "dark",
+      harness: COCKPIT_VISUAL_SMOKE_HARNESS,
+      id: `cockpit.${input.viewport.name}`,
+      reducedMotion: input.viewport.name === "mobile" ? "reduce" : "no-preference",
+      screenshotPath: screenshot,
+      viewport: input.viewport.name,
+    },
+    requireBaseline: input.visualBaseline.requireBaseline,
+  })
 
   return {
     accountCardCount: geometry.accountCards.length,
     geometry,
     screenshot,
+    visualBaseline,
     viewport: input.viewport.name,
     workerCardCount: geometry.workerCards.length,
   }
@@ -507,11 +545,15 @@ const accountFixture = (
 })
 
 if (import.meta.main) {
+  const args = Bun.argv.slice(2)
   const outDir =
-    argValue(Bun.argv.slice(2), "--out") ??
+    argValue(args, "--out") ??
     resolve("var/khala-code-desktop/cockpit-visual-smoke")
   try {
-    const captures = await runCockpitVisualSmoke({ outDir })
+    const captures = await runCockpitVisualSmoke({
+      outDir,
+      visualBaseline: khalaCodeVisualBaselineOptionsFromArgs(args),
+    })
     console.log(JSON.stringify({
       captures,
       harness: COCKPIT_VISUAL_SMOKE_HARNESS,

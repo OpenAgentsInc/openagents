@@ -1,3 +1,5 @@
+import { createServer } from "node:net"
+
 import { describe, expect, test } from "bun:test"
 import { Effect } from "effect"
 
@@ -5,6 +7,7 @@ import {
   assertKhalaQaVisibleRect,
   buildKhalaCodeQaShutdownOracle,
   decodeKhalaCodeQaScenario,
+  findKhalaQaAvailablePort,
   khalaQaRectsOverlap,
   loadKhalaCodeQaScenario,
   makeKhalaCodeRpcQaDriver,
@@ -710,6 +713,23 @@ describe("desktop smoke helper extraction", () => {
     })
 
     expect(calls).toBe(2)
+  })
+
+  test("findKhalaQaAvailablePort falls back when the preferred port is occupied", async () => {
+    const server = createServer()
+    await new Promise<void>((resolveListen, rejectListen) => {
+      server.once("error", rejectListen)
+      server.listen(0, "127.0.0.1", () => resolveListen())
+    })
+    try {
+      const address = server.address()
+      if (typeof address !== "object" || address === null) throw new Error("missing test port")
+      const fallbackPort = await findKhalaQaAvailablePort(address.port)
+      expect(fallbackPort).not.toBe(address.port)
+      expect(fallbackPort).toBeGreaterThan(0)
+    } finally {
+      await new Promise<void>(resolveClose => server.close(() => resolveClose()))
+    }
   })
 
   test("probe helpers preserve the existing visible-rect and overlap behavior", () => {

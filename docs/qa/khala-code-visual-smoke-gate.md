@@ -49,6 +49,16 @@ To force a run for a non-desktop change:
 OA_FORCE_KHALA_VISUAL_SMOKE_GATE=1 bun scripts/qa-visual-smoke-gate.ts
 ```
 
+## Screenshot Baselines
+
+The fixture visual smokes now call the PNG-aware baseline oracle documented in
+[`khala-code-visual-baselines.md`](./khala-code-visual-baselines.md). By
+default, a missing baseline soft-reports `status: "missing"` in the smoke
+summary so first-time captures stay useful. When a baseline entry exists, a
+pixel difference fails the smoke and writes a `deltas/*.delta.png` image under
+the baseline store. Use `--bless-baselines` to update the store deliberately and
+`--require-baselines` when missing entries should fail locally.
+
 ## Regression Coverage
 
 `scripts/qa-visual-smoke-gate.test.ts` covers the July 2, 2026 regression

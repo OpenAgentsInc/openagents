@@ -33,6 +33,11 @@ import type { AxTreeSnapshot, NativeDesktopRuntime } from "./native-desktop-runt
 
 let dir: string;
 
+const tinyPng = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+  "base64",
+);
+
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), "qa-khala-desktop-test-"));
 });
@@ -121,7 +126,7 @@ const makeFakeNativeRuntime = (events: string[]): NativeDesktopRuntime => {
     },
     screenshot: async (_target, path) => {
       events.push(`screenshot:${path}`);
-      writeFileSync(path, "PNGPLACEHOLDER");
+      writeFileSync(path, tinyPng);
       return path;
     },
     teardown: async ({ app }) => {
@@ -319,9 +324,14 @@ describe("khalaDesktopBackend", () => {
     const spawns: Array<{ cmd: readonly string[]; env: Readonly<Record<string, string | undefined>> }> = [];
     const nativeEvents: string[] = [];
     const artifactDir = join(dir, "artifacts");
+    const baselineDir = join(dir, "visual-baselines");
     const outcome = await runKhalaDesktopHeadedNativeSmoke({
       appPath,
       artifactDir,
+      visualBaseline: {
+        baselineDir,
+        bless: true,
+      },
       launchWaitMs: 0,
       native: {
         env: { QA_NATIVE_DESKTOP: "1" },
@@ -339,6 +349,11 @@ describe("khalaDesktopBackend", () => {
     });
 
     expect(outcome.result.status).toBe("pass");
+    expect(outcome.visualBaselines.map((result) => result.status)).toEqual([
+      "blessed",
+      "blessed",
+      "blessed",
+    ]);
     expect(spawns[0]?.cmd).toEqual([executablePath]);
     expect(spawns[0]?.env.KHALA_CODE_DESKTOP_OPEN_WINDOW).toBe("1");
     expect(spawns[0]?.env.KHALA_CODE_CODEX_APP_SERVER_FIXTURE).toBe("1");
@@ -358,12 +373,16 @@ describe("khalaDesktopBackend", () => {
     const smokeReportText = readFileSync(outcome.smokeReportPath, "utf8");
     expect(smokeReportText).not.toContain(appPath);
     expect(smokeReportText).not.toContain(executablePath);
+    expect(smokeReportText).not.toContain(baselineDir);
     const smokeReport = JSON.parse(smokeReportText);
     expect(smokeReport.appBundle).toBe("Khala Code-dev.app");
     expect(smokeReport.appProcessName).toBe("Khala Code-dev");
     expect(smokeReport.executable).toBe("launcher");
     expect(smokeReport.status).toBe("pass");
     expect(smokeReport.screenshots).toContain("native-desktop-2.png");
+    expect(smokeReport.visualBaselines).toHaveLength(3);
+    expect(smokeReport.visualBaselines[0].baseline).toBe("screenshots/packaged-native.00.png");
+    expect(existsSync(join(baselineDir, "manifest.json"))).toBe(true);
 
     expect(nativeEvents).toContain("click:AXButton:Fleet");
     expect(nativeEvents).toContain("click:AXButton:Send message");

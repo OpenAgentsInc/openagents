@@ -5,10 +5,20 @@ import { dirname, join, resolve } from "node:path"
 import { chromium, type Browser, type Page } from "playwright"
 import {
   assertKhalaQaVisibleRect as assertVisibleRect,
+  findKhalaQaAvailablePort as findAvailablePort,
   khalaQaRectsOverlap as rectsOverlap,
   startKhalaQaViteServer as startViteServer,
   waitForKhalaQaHttp as waitForHttp,
 } from "@openagentsinc/khala-qa-harness/desktop-smoke-helpers"
+import {
+  assertKhalaVisualBaseline,
+  type KhalaVisualBaselineResult,
+} from "@openagentsinc/khala-qa-harness/visual-baseline"
+import {
+  defaultKhalaCodeVisualBaselineOptions,
+  khalaCodeVisualBaselineOptionsFromArgs,
+  type KhalaCodeVisualBaselineOptions,
+} from "./visual-baseline-options"
 
 export type Part2VisualViewport = Readonly<{
   name: "desktop" | "mobile"
@@ -36,6 +46,7 @@ export type Part2VisualCaptureResult = Readonly<{
   loadedText: string
   parametersText: string
   screenshot: string
+  visualBaseline: KhalaVisualBaselineResult
   viewport: Part2VisualViewport["name"]
 }>
 
@@ -46,6 +57,10 @@ export const part2FleetGymVisualPlan = (): ReadonlyArray<Part2VisualViewport> =>
   { name: "desktop", width: 1280, height: 800 },
   { name: "mobile", width: 390, height: 844 },
 ]
+
+const khalaPreviewFallbackPorts = (preferredPort: number): ReadonlyArray<number> =>
+  Array.from({ length: 10 }, (_, index) => 50021 + index)
+    .filter(port => port !== preferredPort)
 
 export const assertPart2VisualGeometry = (
   geometry: Part2VisualGeometry,
@@ -78,13 +93,14 @@ async function runPart2FleetGymVisualSmoke(
   options: Readonly<{
     keepServer?: boolean
     outDir: string
+    visualBaseline?: KhalaCodeVisualBaselineOptions
   }>,
 ): Promise<ReadonlyArray<Part2VisualCaptureResult>> {
   await rm(options.outDir, { force: true, recursive: true })
   await mkdir(options.outDir, { recursive: true })
 
   const repoRoot = resolve(import.meta.dir, "../../..")
-  const port = 50024
+  const port = await findAvailablePort(50024, khalaPreviewFallbackPorts(50024))
   const server = startViteServer({
     cwd: join(repoRoot, "clients/khala-code-desktop"),
     label: "khala-code-desktop-part2",
@@ -95,6 +111,7 @@ async function runPart2FleetGymVisualSmoke(
     await waitForHttp(`http://127.0.0.1:${port}/`)
     browser = await chromium.launch({ headless: true })
     const results: Part2VisualCaptureResult[] = []
+    const visualBaseline = options.visualBaseline ?? defaultKhalaCodeVisualBaselineOptions()
     for (const viewport of part2FleetGymVisualPlan()) {
       const page = await browser.newPage({
         colorScheme: "dark",
@@ -106,6 +123,7 @@ async function runPart2FleetGymVisualSmoke(
           await capturePart2FleetGym(page, {
             baseUrl: `http://127.0.0.1:${port}`,
             outDir: options.outDir,
+            visualBaseline,
             viewport,
           }),
         )
@@ -132,6 +150,7 @@ async function capturePart2FleetGym(
   input: Readonly<{
     baseUrl: string
     outDir: string
+    visualBaseline: KhalaCodeVisualBaselineOptions
     viewport: Part2VisualViewport
   }>,
 ): Promise<Part2VisualCaptureResult> {
@@ -198,13 +217,32 @@ async function capturePart2FleetGym(
     `khala-code-part2-fleet-gym-${input.viewport.name}.png`,
   )
   await mkdir(dirname(screenshot), { recursive: true })
-  await page.screenshot({ fullPage: false, path: screenshot })
+  await page.screenshot({
+    animations: "disabled",
+    caret: "hide",
+    fullPage: false,
+    path: screenshot,
+  })
+  const visualBaseline = await assertKhalaVisualBaseline({
+    baselineDir: input.visualBaseline.baselineDir,
+    bless: input.visualBaseline.bless,
+    capture: {
+      colorScheme: "dark",
+      harness: PART2_FLEET_GYM_VISUAL_SMOKE_HARNESS,
+      id: `part2-fleet-gym.${input.viewport.name}`,
+      reducedMotion: input.viewport.name === "mobile" ? "reduce" : "no-preference",
+      screenshotPath: screenshot,
+      viewport: input.viewport.name,
+    },
+    requireBaseline: input.visualBaseline.requireBaseline,
+  })
 
   return {
     geometry: capture.geometry,
     loadedText: capture.loadedText,
     parametersText: capture.parametersText,
     screenshot,
+    visualBaseline,
     viewport: input.viewport.name,
   }
 }
@@ -216,11 +254,15 @@ const assertTextIncludes = (text: string, expected: string): void => {
 }
 
 if (import.meta.main) {
+  const args = Bun.argv.slice(2)
   const outDir =
-    argValue(Bun.argv.slice(2), "--out") ??
+    argValue(args, "--out") ??
     resolve("var/khala-code-desktop/part2-fleet-gym-visual-smoke")
   try {
-    const results = await runPart2FleetGymVisualSmoke({ outDir })
+    const results = await runPart2FleetGymVisualSmoke({
+      outDir,
+      visualBaseline: khalaCodeVisualBaselineOptionsFromArgs(args),
+    })
     console.log(JSON.stringify({
       harness: PART2_FLEET_GYM_VISUAL_SMOKE_HARNESS,
       ok: true,
