@@ -38,6 +38,14 @@ each source doc.
   verdicts, the shareable StarCraft-blue evidence board via arbiter-effect +
   three-effect, customer #1 = Khala Code Desktop, the named-first-customer
   demo-PR sales motion). Workstream QS1–QS10, issues #8061–#8070, epic #8071.
+- [`2026-07-02-site-speed-lane-spec.md`](./2026-07-02-site-speed-lane-spec.md)
+  — spec for the standing site-speed lane on the deployed website (landing
+  page first): ground-truth baseline (2.7 KB SPA shell, 4.1 MB/1.07 MB-br
+  monolithic bundle, live-at-read counter API, WebSocket counter feed), the
+  mark taxonomy, a three-mode methodology (lab matrix with isolation
+  experiments incl. block-the-counter, edge probes, Analytics-Engine RUM),
+  ranked hypotheses, named budgets, and phases P0–P5. Separate lane from
+  ROADMAP_QA/QA Swarm.
 - [`EXECUTION.md`](./EXECUTION.md) — how the roadmap is executed: Artanis
   (fleet-manager role) supervises; **Khala Code fleet delegation is the
   primary mechanism**; one GitHub issue per roadmap task, closed only via a
