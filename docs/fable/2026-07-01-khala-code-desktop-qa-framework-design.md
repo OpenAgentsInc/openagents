@@ -6,7 +6,8 @@ Code Desktop programmatically — defined scenarios and free-explore mode,
 headless and headed, computer-use and typed programmatic access — with
 expectations at every phase, plus the formal-verification, measurement, and
 optimization layers around it. Grounded in a fresh audit of what already
-exists. Companion to the other `docs/fable/` analyses. This doc flips no
+exists. **See §15 for the post-roadmap implementation-status addendum
+(2026-07-02).** Companion to the other `docs/fable/` analyses. This doc flips no
 promise state and broadens no public copy.
 
 ## 0. The One-Paragraph Design
@@ -534,3 +535,156 @@ seeded monkey and the LLM explorer climb the coverage frontier every
 night, distill what they find into committed regressions — and the same
 work productizes the QA agent with our own desktop app as its hardest,
 best demo.
+
+## 15. Addendum — Post-Roadmap Status (2026-07-02)
+
+Written after the unified [`ROADMAP.md`](./ROADMAP.md) desktop-fleet push
+closed (WS-17 readiness gate shipped; ROADMAP_AFTER not started). This
+section audits what of the framework above **actually exists on `main`**,
+what a fresh hands-on run of every runnable tier produced today
+(origin/main `63c5c43b26`), what that run caught, and the honest answer to
+"can we start fully automated QA against Khala Code Desktop now?"
+
+### 15.1 What got built (design → main)
+
+Every G-gap and nearly every WS-6 task from §11 is implemented and on
+`main`:
+
+| Design item | Artifact on `main` | Status |
+| --- | --- | --- |
+| G1 bridge auth + events | `clients/khala-code-desktop/src/bun/index.ts` — per-boot bearer (`x-khala-code-preview-token`, printed at boot), typed `rpc_unauthorized` / `rpc_read_only` rejections, `GET /rpc/events` SSE | **Live** (exercised today, §15.2) |
+| G2 typed RPC client + schema/consistency oracles | `packages/khala-qa-harness/src/rpc-client.ts` | **Live** |
+| G3 qa-runner desktop backend | `apps/qa-runner/src/khala-desktop-backend.ts` + `native-desktop-backend.ts` (headed AX, `QA_NATIVE_DESKTOP=1`) | Built; headed variant **never yet pointed at the real packaged app** |
+| G4 scenario DSL + driver + shared package | `packages/khala-qa-harness` (`scenario.ts`, `driver.ts`, `rpc-driver.ts`, `runner.ts`, `desktop-smoke-helpers.ts`, `deterministic-env.ts`) | **Live** |
+| G5 fixture Codex app-server | `src/bun/fixture-codex-app-server.ts` (+ test); harness `real-app-fetch.ts` composes the real RPC handlers over it in-process — Mode P without a browser | **Live** |
+| G6 coverage ledger + frontier | `coverage-ledger.ts`; monkey night emits `artifacts/monkey-night-coverage-ledger.json` (RPC methods × argument shapes, hotbar panels, approval kinds) | **Live**; nightly union + zero-for-a-week auto-issue **not scheduled anywhere** |
+| T6.7 seed corpus | `seed-corpus.ts` + `KHALA_CODE_QA_SEED_CORPUS_MANIFEST` | **Live** |
+| T6.8 seeded monkey | `monkey-explorer.ts`, `monkey-night.ts` CLI | **Live** |
+| T6.9 LLM explorer | `explorer-brain.ts` (`deterministic_fixture` tier proven; `live_llm` tier typed, needs a model) | Partial |
+| T6.10 live smokes | `apps/pylon` `smoke:fleet-run-live` / `smoke:fleet-run-sustained`, skip-safe, full arming contract printed on skip | **Live** (unarmed skip verified today) |
+| T6.11/T6.12 property + model-based | fast-check in harness; `model-based.ts` | **Live** |
+| T6.13 formal tier | `specs/khala-fleet-delegate/FleetDelegateSupervisor.tla`, `specs/approval-protocol/`, `specs/session-thread-mapping/`, + mutation specs | **Live** (bounded) |
+| T6.14 perf registry + budgets | `src/shared/qa-metrics.ts` — `qaMetrics` RPC + the three budgets (`cockpit_render.50_cards`, `lifecycle_event_to_card.p95`, `supervisor_tick.25_target`) | Built; **webview samples still not reachable from the RPC in real runs** (the known T6.14 gap) |
+| T6.15 GEPA explore-policy | `explore-policy-gepa.ts` | Built, postponed lane (owner 2026-07-02) |
+
+### 15.2 Fresh run evidence (all executed 2026-07-02)
+
+- `bun run --cwd packages/khala-qa-harness test` — **50/50 pass**, 8 files,
+  ~2s (scenario runner, seed corpus, coverage ledger, monkey, model-based,
+  RPC client, explore-policy, explorer brain).
+- `bun src/monkey-night.ts --runs 10 --steps 32` — **10/10 pass**, coverage
+  ledger artifact written, seed+log replay refs recorded.
+- `bun test tests/*.test.ts` in the desktop — **495/495 pass**, 64 files,
+  ~5s (one non-reproducing single-test error in one of three suite runs;
+  by principle 2 every flake is a bug — worth chasing when it recurs).
+- `bun test src/khala-desktop-backend.test.ts` in qa-runner — 6/6 pass.
+- **Mode P against the real bridge**: `KHALA_CODE_DESKTOP_OPEN_WINDOW=0
+  bun src/bun/index.ts` boots headless on :50021; `/health` OK; RPC with
+  the boot token succeeds; RPC without it returns typed
+  `rpc_unauthorized`; `GET /rpc/events` streams. G1 is real, not aspirational.
+- `smoke:fleet-run-live` unarmed — clean structured skip naming the full
+  arming contract (`PYLON_FLEET_RUN_LIVE_ARM=1` + pins).
+
+### 15.3 What the run caught (the framework doing its job)
+
+Both Mode D visual smokes were **red on `main`** when this audit started —
+`smoke:part2-ui` and `smoke:cockpit-visual` timed out, despite both being
+green at origin/main on 07-01 (episode-245 doc §1.1). Root causes, found
+by driving the real UI under Playwright with per-step diagnostics:
+
+1. **`smoke:part2-ui`**: the cockpit now requires the `fleetRunList` RPC
+   (WS-3 fleet-run parity). The smoke's mock table predated it; the
+   default-500 made the cockpit render `Could not load fleet status:
+   fleetRunList failed with 500` and `Worker Codex accounts` never
+   appeared. Fixed in this change (mock added).
+2. **`smoke:cockpit-visual`**: the T13.2 Foldkit cockpit embed
+   deliberately removed the condensed sidebar counts element
+   (`data-khala-code-fleet-counts`) — `tests/app-shell.test.ts:877` pins
+   the *absence* — but the smoke's `expectCountLabel` + geometry oracle
+   still required it. Fixed in this change (stale assertions removed,
+   consistent with the pinned removal).
+
+Both smokes are green again, and `bun run verify` (typecheck + 495 tests +
+UI build + bun build) passes from a clean worktree.
+
+Two meta-findings matter more than the individual fixes:
+
+- **Nothing runs Modes D/V on any cadence.** The visual smokes are not in
+  `verify`, not in any pre-push tier, and no nightly/cron exists for them
+  or for the monkey night (repo-wide grep: zero automation references).
+  Two roadmap lanes landed UI changes and the visual tier silently broke
+  within a day. The machine is built; **the loop is not running.**
+- **Cockpit robustness gap (product bug, not test bug):** one failed RPC
+  (`fleetRunList`) blanks the entire cockpit, including account data that
+  arrived successfully from `codexFleetStatus`. The cockpit should render
+  what it has and degrade the run section. This is exactly the §6
+  `consistency`-oracle class the framework exists to catch.
+
+### 15.4 The honest gap: fixture-green ≠ the app the owner uses
+
+The owner-observed reality (laggy app, broken interactions) is consistent
+with this audit: the fixture tiers are green while the tiers that would
+see what the owner sees are either red-until-today, unwired, orunscheduled:
+
+1. **Lag is not yet measurable in real runs.** The `qaMetrics` registry
+   and budgets exist, but webview samples are not reachable from the RPC
+   in real (non-fixture) runs — the T6.14 bun-side sample bridge is the
+   single most leveraged missing piece given the lag complaint. Until it
+   lands, the perf oracle literally cannot see the slowness.
+2. **The headed real window has never been driven.** qa-runner's native
+   macOS AX backend + `khala-desktop-backend.ts` exist, but no run has
+   pointed them at the actual packaged Electrobun window
+   (`QA_NATIVE_DESKTOP=1`). Everything Mode D/V tested so far is the Vite
+   preview, not the WKWebView the owner uses.
+3. **Mode H needs a real Codex login** (structured failure without it) and
+   the live tiers (T6.10) need owner-armed env — both by design, both
+   unexercised in this audit.
+4. **No scheduled loop**: no nightly monkey night, no coverage-frontier
+   union report, no auto-issue on zero-for-a-week coverage classes, no
+   visual smokes in any gate.
+
+### 15.5 Verdict: can fully automated QA start now?
+
+**Yes — the fixture tier can start today, unattended, with commands that
+were all proven in this audit:**
+
+```sh
+bun run --cwd packages/khala-qa-harness test          # scenario/oracle tier
+bun run --cwd packages/khala-qa-harness monkey:night  # seeded monkey + ledger
+bun run --cwd clients/khala-code-desktop verify        # typecheck + suite + build
+bun run --cwd clients/khala-code-desktop smoke:part2-ui
+bun run --cwd clients/khala-code-desktop smoke:cockpit-visual
+bun run --cwd clients/khala-code-desktop smoke:composer-visual
+bun run --cwd apps/pylon smoke:fleet-run-live          # skip-safe until armed
+```
+
+What "starting for real" requires, in leverage order:
+
+1. **Schedule the loop** (the cheapest, highest-value step): a nightly
+   owned-runner job (Tier-2 pattern, no GitHub-hosted CI) running the
+   block above plus the coverage-ledger union/frontier report, and the
+   visual smokes added to the pre-push or merge gate so UI lanes cannot
+   silently break Mode D again. Everything §15.3 caught would have been
+   caught the night it landed.
+2. **Land the T6.14 real-run perf bridge** (webview → bun sample path) so
+   thread-switch, turn-start, panel-open, and cockpit-render samples flow
+   from the app the owner actually uses, against the existing budgets.
+   This converts "it feels laggy" into ranked regression data — the §10
+   optimization loop is inert without it.
+3. **One headed AX run** against the packaged Electrobun app to prove Mode
+   V end-to-end (it is also the productization demo, §12).
+4. **Arm the live tiers** once (owner sitting): `smoke:fleet-run-live`
+   with two real issues, then `smoke:fleet-run-sustained` — the fleet-side
+   half of the framework has never run in anger.
+5. **Wire the LLM explorer's live brain** (qa-runner live mode against the
+   Mode P driver) and start the explore → distill → regress loop with the
+   coverage frontier as steering.
+
+The bottom line restated for this milestone: the marriage contract §0
+called for has been signed — drivers, oracles, corpus, monkey, ledger,
+fixture backend, formal specs all exist and run. What does not yet exist
+is the *ritual*: nothing runs the suite nightly, nothing gates merges on
+the visual tier, and the perf oracle cannot yet see real-app lag. The
+framework caught two real regressions the first time someone actually ran
+it end to end — which is both the proof it works and the proof it must be
+put on a schedule.
