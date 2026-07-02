@@ -108,6 +108,7 @@ export type KhalaCodeRpcConsistencyResult = {
 }
 
 export type KhalaCodeRpcClientOptions = {
+  readonly accessToken?: string
   readonly baseUrl?: string | URL
   readonly fetch?: KhalaCodeRpcFetch
   readonly headers?: HeadersInit
@@ -304,12 +305,14 @@ export const compareKhalaCodeRpcConsistency = (input: {
 }
 
 export class KhalaCodeRpcClient {
+  readonly accessToken: string | undefined
   readonly baseUrl: string | URL
   readonly fetch: KhalaCodeRpcFetch
   readonly headers: HeadersInit | undefined
   readonly request: KhalaCodeRpcRequestSurface
 
   constructor(options: KhalaCodeRpcClientOptions = {}) {
+    this.accessToken = options.accessToken
     this.baseUrl = options.baseUrl ?? "http://127.0.0.1:50021"
     this.fetch = options.fetch ?? globalThis.fetch.bind(globalThis)
     this.headers = options.headers
@@ -347,6 +350,9 @@ export class KhalaCodeRpcClient {
             method: "POST",
             headers: {
               "content-type": "application/json",
+              ...(this.accessToken === undefined
+                ? {}
+                : { "x-khala-code-preview-token": this.accessToken }),
               ...Object.fromEntries(new Headers(this.headers ?? {})),
             },
             body: JSON.stringify({ args: decodedArgs.args }),

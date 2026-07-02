@@ -491,11 +491,12 @@ export function startFleetRunSupervisor(
       }),
     )
     // tickFleetRunSupervisor intentionally bypasses the one-supervisor guard as the direct test seam.
+    const context = yield* Effect.context<never>()
     void (async () => {
       const clock = { ...defaultClock, ...options.clock }
       while (!loopStopped) {
         try {
-          await Effect.runPromise(handle.tick())
+          await Effect.runPromiseWith(context)(handle.tick())
         } catch {
           // Keep the scoped supervisor alive; individual dispatch failures are recorded by tick.
         }
