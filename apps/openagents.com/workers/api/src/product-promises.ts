@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-07-02.1'
+export const PublicProductPromisesVersion = '2026-07-02.2'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -136,6 +136,10 @@ const sourceRefs = [
   'apps/openagents.com/docs/labor/2026-06-19-agentic-labor-product-flow-scaffold.md',
   'docs/business/2026-06-20-openagents-business-intake-spec.md',
   'docs/business/2026-06-20-business-offering-promise-coverage.md',
+  'docs/fable/2026-07-02-qa-swarm-product-plan.md',
+  'docs/feature-requests/2026-06-24-autonomous-qa-e2e-from-computer-use.md',
+  'docs/unit/2026-06-30-arbiter-effect-2d-dataflow-graph-audit.md',
+  'NEEDS_OWNER.md',
 ]
 
 const basePromiseFields = {
@@ -191,7 +195,7 @@ export const publicProductPromisesDocument = () => {
     generatedAt: currentIsoTimestamp(),
     maxStalenessSeconds: staleness.maxStalenessSeconds,
     staleness,
-    lastUpdated: '2026-07-01',
+    lastUpdated: '2026-07-02',
     canonicalDocsUrl:
       'https://github.com/OpenAgentsInc/openagents/tree/main/docs/promises',
     sourceRefs,
@@ -4745,23 +4749,140 @@ export const publicProductPromisesDocument = () => {
         claim:
           'An open-source agentic QA runner (@openagentsinc/qa-runner) drives real apps through scripted and LLM-driven scenarios and distills live sessions into committed regression tests.',
         safeCopy:
-          'The QA runner shipped as an OSS npm package (@openagentsinc/qa-runner@0.1.0, MIT) out of epic #6181, with an LLM ReAct brain plus scripted brain, Playwright/terminal/native-macOS backends, a distiller that turns live sessions into committed e2e tests, and a verification discipline where CONFIRMED requires observed evidence from the current run. Yellow because it has no paid customer, run-receipt settlement seams stay INERT until deliberately flipped, and the Khala Code desktop backend integration is design-stage (the fable QA framework doc).',
+          'The QA runner shipped as an OSS npm package (@openagentsinc/qa-runner@0.1.0, MIT) out of epic #6181, with an LLM ReAct brain plus scripted brain, Playwright/terminal/native-macOS backends, a distiller that turns live sessions into committed e2e tests, and a verification discipline where CONFIRMED requires observed evidence from the current run. Yellow because it has no paid customer, run-receipt settlement seams stay INERT until deliberately flipped, the Khala Code desktop backend integration is design-stage (the fable QA framework doc), and the broader QA Swarm product records below remain operator-assisted/planned rather than self-serve.',
         unsafeCopy:
-          'Do not claim paid QA customers, revenue, or settlement exist, and do not present INCONCLUSIVE agent observations as CONFIRMED verification.',
+          'Do not claim paid QA customers, self-serve hosted QA Swarm runs, revenue, or settlement exist, and do not present INCONCLUSIVE agent observations as CONFIRMED verification.',
         evidenceRefs: [
           'apps/qa-runner/README.md',
           'https://www.npmjs.com/package/@openagentsinc/qa-runner',
           'docs/fable/2026-07-01-khala-code-desktop-qa-framework-design.md',
           'docs/fable/2026-07-01-product-promises-khala-code-launch-alignment.md',
+          'docs/fable/2026-07-02-qa-swarm-product-plan.md',
         ],
         blockerRefs: [
           'blocker.product_promises.qa_runner_paid_customer_missing',
           'blocker.product_promises.qa_runner_settlement_inert',
+          'blocker.product_promises.qa_swarm_self_serve_hosted_runs_missing',
         ],
         verification:
           'The shipped package installs and runs its scripted and LLM scenario modes with the documented verdict discipline. Green requires a first paid customer engagement with dereferenceable receipts and owner sign-off per proof.claim_upgrade_receipts.v1.',
         authorityBoundary:
           'The QA runner grants no settlement or payout authority; run receipts stay inert until deliberately flipped, and public traces must stay public-safe.',
+      },
+      {
+        ...basePromiseFields,
+        promiseId: 'qa_swarm.product_surface.v1',
+        productArea: 'QA Swarm',
+        audience: ['customer', 'operator', 'agent', 'public'],
+        state: 'yellow',
+        claim:
+          'QA Swarm is the named product surface packaging the ROADMAP_QA machine into an operator-assisted QA engagement, with Khala Code Desktop as customer number one.',
+        safeCopy:
+          'QA Swarm is a yellow product definition: it packages the existing qa-runner, trace, coverage, perf, Arbiter, and FleetRun ingredients into an operator-assisted QA engagement. The first customer is OpenAgents itself through the Khala Code Desktop dogfood lane. It is not self-serve, not broadly hosted, and not a priced public offer yet; records for hosted runs, the share surface, and package pricing remain planned/owner-gated.',
+        unsafeCopy:
+          'Do not describe QA Swarm as self-serve, generally available, priced, automated for arbitrary third-party apps, or proven by paid customer receipts.',
+        evidenceRefs: [
+          'docs/fable/2026-07-02-qa-swarm-product-plan.md',
+          'docs/feature-requests/2026-06-24-autonomous-qa-e2e-from-computer-use.md',
+          'promise:qa.agentic_qa_runner.v1',
+        ],
+        blockerRefs: [
+          'blocker.product_promises.qa_swarm_paid_customer_receipt_missing',
+          'blocker.product_promises.qa_swarm_operator_assisted_only',
+          'blocker.product_promises.qa_swarm_share_surface_missing',
+          'blocker.product_promises.qa_swarm_rate_card_owner_signoff_pending',
+        ],
+        verification:
+          'Yellow is limited to the named product definition plus existing runner/trace evidence. Green requires a public-safe customer-one run report, a dereferenceable run-level share URL, first paid or owner-accepted engagement receipts, exact accounting for hosted execution, and owner-signed copy/price approval.',
+        authorityBoundary:
+          'This product-surface record grants no dispatch, spend, settlement, payout, publication, or third-party testing authority. Any external report or sales artifact requires the relevant run, redaction, and owner-review gates.',
+      },
+      {
+        ...basePromiseFields,
+        promiseId: 'qa_swarm.hosted_runs.v1',
+        productArea: 'QA Swarm',
+        audience: ['customer', 'operator', 'agent'],
+        state: 'planned',
+        claim:
+          'A hosted QA Swarm run can be started as one bounded product run over owned runner capacity.',
+        safeCopy:
+          'Hosted QA Swarm runs are planned. The intended path composes qa-runner control APIs, FleetRun parallelism, the nightly-matrix recipe, resource caps, exact accounting, and public-safe run projections, but no one-command hosted run is available to customers today.',
+        unsafeCopy:
+          'Do not claim customers can click, buy, or start hosted QA Swarm runs today; do not imply OpenAgents can test arbitrary apps without an operator-assisted target adapter and redaction review.',
+        evidenceRefs: [
+          'docs/fable/2026-07-02-qa-swarm-product-plan.md',
+          'apps/qa-runner/README.md',
+          'promise:qa.agentic_qa_runner.v1',
+          'promise:qa_swarm.product_surface.v1',
+        ],
+        blockerRefs: [
+          'blocker.product_promises.qa_swarm_hosted_run_command_missing',
+          'blocker.product_promises.qa_swarm_runner_capacity_receipts_missing',
+          'blocker.product_promises.qa_swarm_exact_hosted_accounting_missing',
+          'blocker.product_promises.qa_swarm_third_party_target_adapter_missing',
+        ],
+        verification:
+          'Requires a bounded hosted-run command or API, owned-runner execution receipts, exact token/resource accounting rows, target-adapter policy checks, and a redaction-checked run projection before this can move beyond planned.',
+        authorityBoundary:
+          'This record grants no runner dispatch authority and no customer-data handling authority. Hosted execution stays operator-assisted until target adapters, resource caps, consent, redaction, and accounting are enforced.',
+      },
+      {
+        ...basePromiseFields,
+        promiseId: 'qa_swarm.share_surface.v1',
+        productArea: 'QA Swarm',
+        audience: ['customer', 'operator', 'agent', 'public'],
+        state: 'planned',
+        claim:
+          'A QA Swarm run has a public-safe share URL showing verdicts, coverage, traces, videos, perf budgets, and an evidence-bound swarm board.',
+        safeCopy:
+          'The QA Swarm share URL is planned as openagents.com/qa/{runRef}. The intended projection reuses the shipped /trace/{uuid} pattern and Arbiter graph discipline, but the run-level schema, renderer, redaction gate, and evidence-bound board are not live yet.',
+        unsafeCopy:
+          'Do not link to or describe a live openagents.com/qa/{runRef} customer surface until the route, projection, redaction checks, and evidence-bound board exist.',
+        evidenceRefs: [
+          'docs/fable/2026-07-02-qa-swarm-product-plan.md',
+          'docs/unit/2026-06-30-arbiter-effect-2d-dataflow-graph-audit.md',
+          'route:/trace/{uuid}',
+          'promise:qa_swarm.product_surface.v1',
+        ],
+        blockerRefs: [
+          'blocker.product_promises.qa_swarm_share_route_missing',
+          'blocker.product_promises.qa_swarm_run_projection_schema_missing',
+          'blocker.product_promises.qa_swarm_redaction_gate_missing',
+          'blocker.product_promises.qa_swarm_evidence_bound_board_missing',
+        ],
+        verification:
+          'Requires the /qa/{runRef} route, a public-safe run projection schema, redaction-tripwire tests, trace/video/perf/coverage refs, and an Arbiter board where edges light only from dereferenceable receipts.',
+        authorityBoundary:
+          'The share surface is a projection only. It must not expose raw prompts, local paths, private repo data, customer-sensitive content, credentials, raw videos before redaction, or unpublished provider payloads.',
+      },
+      {
+        ...basePromiseFields,
+        promiseId: 'qa_swarm.service_packages.v1',
+        productArea: 'QA Swarm',
+        audience: ['customer', 'operator', 'public'],
+        state: 'planned',
+        claim:
+          'QA Swarm has operator-assisted service packages for audits, QA-on-every-push retainers, and swarm sprints.',
+        safeCopy:
+          'The package names and deliverable shapes are planned: Swarm Audit, QA-on-every-push, and Swarm Sprint. The modeled rate card is staged in NEEDS_OWNER.md for owner review, and public copy must say operator-assisted until self-serve delivery and hosted-run receipts exist. No prices are published or purchasable today.',
+        unsafeCopy:
+          'Do not publish dollar prices, quote a rate card, present packages as self-serve, or imply purchase/checkout is live before owner sign-off and payment/delivery receipts exist.',
+        evidenceRefs: [
+          'docs/fable/2026-07-02-qa-swarm-product-plan.md',
+          'NEEDS_OWNER.md',
+          'promise:qa_swarm.product_surface.v1',
+          'promise:qa_swarm.hosted_runs.v1',
+        ],
+        blockerRefs: [
+          'blocker.product_promises.qa_swarm_rate_card_owner_signoff_pending',
+          'blocker.product_promises.qa_swarm_checkout_or_intake_receipts_missing',
+          'blocker.product_promises.qa_swarm_first_paid_delivery_receipt_missing',
+          'blocker.product_promises.qa_swarm_self_serve_delivery_missing',
+        ],
+        verification:
+          'Requires owner-approved public package copy and pricing, an intake/checkout or explicit operator-sales path with receipts, at least one paid or owner-accepted delivery receipt, and clear copy that distinguishes operator-assisted delivery from self-serve hosting.',
+        authorityBoundary:
+          'Package records do not authorize quoting, charging, checkout, settlement, payout, or external outreach. The owner must approve public prices and outward-facing artifacts before they are sent or published.',
       },
       {
         ...basePromiseFields,
@@ -4797,6 +4918,7 @@ export const publicProductPromisesDocument = () => {
     ],
     notes: [
       `Include version ${PublicProductPromisesVersion} and the relevant promiseId when reporting a mismatch.`,
+      'Registry 2026-07-02.2 is the QA Swarm QS1 pass (#8061) and flips NO promise green — green stays exactly 34. qa.agentic_qa_runner.v1 remains yellow but now explicitly scopes the broader QA Swarm product as not self-serve. New qa_swarm.* records land conservatively: qa_swarm.product_surface.v1 is yellow for the named operator-assisted product definition and customer-one dogfood scope; qa_swarm.hosted_runs.v1, qa_swarm.share_surface.v1, and qa_swarm.service_packages.v1 are planned. The modeled rate card is staged in NEEDS_OWNER.md for owner review; public copy must not publish prices, imply self-serve delivery, or claim paid customer/hosted-run receipts until the named blockers clear.',
       'Registry 2026-07-02.1 is the owner-directed /business redesign pass and flips NO promise state — green stays exactly 34. business.intake_quick_win_offering.v1 (yellow, unchanged) gains evidence for the rebranded dark-only page (hero: Agents that work.) and the new bounded conversational intake at POST /api/public/business-intake-chat: a stateless server-side interview running the published intake spec (offerings menu with honest availability labels, interview areas A-G, Output Spec Template) over the same gateway serving lane as the free tier, fail-closed 503 when unarmed, per-IP rate limited, exact-only internal token accounting (demand_source business_intake_chat), and the drafted spec hands off into the existing signup form, which remains the single submit authority and the only stored intake artifact. A review-only landing candidate ships at /preview/landing (builders -> /khala, businesses -> /business) with an explicit not-the-homepage banner; the live homepage is untouched. No availability label changed, no offering was added, no pricing was published, and both blockers stand.',
       'Registry 2026-07-01.3 is the #7966 PROMISSORY pass on khala_code.free_paid_plans.v1 and flips NO promise state — green stays exactly 34 and the record stays planned. Cleared with source+test evidence: khala_code_plan_selection_surface_missing — GET /api/public/khala-code/plans projects the honest Episode 245 two-plan structure (Free pay-with-data / Paid private-data) with real purchasability state from the fail-closed KHALA_CODE_PAID_PLANS_ENABLED read (default OFF); GET /v1/khala-code/plan resolves the caller’s current plan server-side from the privacy-entitlement seam (paid only on a real entitlement row, confidential-compute mode reports capture-excluded free, entitlement read errors return 503 instead of fabricating a plan); and the Khala Code desktop settings surface renders the plan cards and current plan through host RPCs with the same honest not-purchasable state (purchase control disabled and fail-closed while unarmed). Remaining blocker: khala_code_paid_plan_not_purchasable — POST /v1/khala-code/plans/purchases exists but is flag-gated default OFF, fail-closed, and collects no payment; when armed it grants the EXISTING paid-privacy entitlement idempotently with a dereferenceable receipt at /api/public/inference/privacy-receipts/{receiptRef} rather than forking entitlement truth. Arming, the payment-collection leg, pricing, and owner-approved public copy are owner decisions (NEEDS_OWNER). No plan is selectable-as-live or purchasable today, no capture behavior changed, and no payout/settlement implication is created.',
       'Registry 2026-07-01.2 adds khala_code.forum_hotbar.v1 (planned) on owner direction and flips NO promise state — green stays exactly 34. The commitment: the OpenAgents Forum becomes accessible inside Khala Code as a left-hotbar slot between Fleet and Settings, at functional parity with the web forum (browse, authenticated posting under the real server-side identity, BOLT12 direct tips, promise-gap reporting) — explicitly not a reduced read-only embed. No desktop Forum surface exists today; the record enters planned with surface, web-parity, and identity-bridge blockers, and the web Forum routes in the openagents.com Worker remain the backing authority. Any future yellow/green movement is receipt-first per proof.claim_upgrade_receipts.v1.',
