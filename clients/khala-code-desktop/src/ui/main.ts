@@ -60,6 +60,7 @@ import {
 import { renderMessageBody } from "./transcript-render"
 import { mountFleetPanel } from "./fleet-status"
 import { mountCodexSettingsPanel } from "./codex-settings-panel"
+import { mountClaudeSettingsSection } from "./claude-settings-panel"
 import {
   mountCodexThreadSidebar,
   type CodexThreadSelectionSource,
@@ -198,6 +199,18 @@ const previewRpc = (): DesktopRpc => ({
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["fleetWorkerControl"]>>
       >("fleetWorkerControl", request),
+    claudeApprovalPending: () =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["claudeApprovalPending"]>>
+      >("claudeApprovalPending"),
+    claudeApprovalRespond: request =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["claudeApprovalRespond"]>>
+      >("claudeApprovalRespond", request),
+    claudeSettingsRead: () =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["claudeSettingsRead"]>>
+      >("claudeSettingsRead"),
     codexHarnessStatus: () =>
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["codexHarnessStatus"]>>
@@ -1905,6 +1918,62 @@ const respondToCodexApproval = async (button: HTMLButtonElement): Promise<void> 
   }])
 }
 
+const handledClaudeApprovals = new Set<string>()
+let claudeApprovalDialogOpen = false
+
+const respondToClaudeApprovalRequest = async (
+  request: Awaited<ReturnType<DesktopRpcRequests["claudeApprovalPending"]>>["requests"][number],
+): Promise<void> => {
+  const title = request.options.title ?? request.options.displayName ?? `Claude wants to use ${request.toolName}`
+  const detail = [
+    title,
+    request.options.description,
+    request.options.decisionReason,
+    request.options.blockedPath === undefined ? null : `Path: ${request.options.blockedPath}`,
+    "",
+    "Type always to allow and remember suggested permissions, allow to allow once, or deny.",
+  ].filter((line): line is string => line !== null && line !== undefined).join("\n")
+  const answer = window.prompt(detail, "allow")?.trim().toLowerCase() ?? "deny"
+  const allow = answer === "allow" || answer === "always"
+  const result = await controls.claudeApprovalRespond({
+    requestId: request.id,
+    decision: allow
+      ? {
+          behavior: "allow",
+          decisionClassification: answer === "always" ? "always_allow" : "allow_once",
+          ...(answer === "always" && request.options.suggestions !== undefined
+            ? { updatedPermissions: request.options.suggestions }
+            : {}),
+        }
+      : {
+          behavior: "deny",
+          decisionClassification: "deny",
+          message: "Denied by the Khala Code Desktop operator.",
+        },
+  })
+  appendMessages([{
+    body: result.ok
+      ? `Sent Claude approval decision: ${allow ? "allow" : "deny"}.`
+      : `Claude approval decision failed: ${result.error ?? "unknown error"}`,
+    id: nextMessageId("system"),
+    role: "system",
+  }])
+}
+
+const pollClaudeApprovals = async (): Promise<void> => {
+  if (claudeApprovalDialogOpen) return
+  const pending = await controls.claudeApprovalPending().catch(() => null)
+  const request = pending?.requests.find(item => !handledClaudeApprovals.has(item.id))
+  if (request === undefined) return
+  handledClaudeApprovals.add(request.id)
+  claudeApprovalDialogOpen = true
+  try {
+    await respondToClaudeApprovalRequest(request)
+  } finally {
+    claudeApprovalDialogOpen = false
+  }
+}
+
 const attachmentSummaryForSubmit = (
   attachments: readonly ComposerAttachment[],
 ): string => {
@@ -2356,6 +2425,9 @@ for (const target of [composerForm, composerRail]) {
 }
 
 window.addEventListener("resize", resizeComposerHud)
+window.setInterval(() => {
+  void pollClaudeApprovals()
+}, 1000)
 messageList.addEventListener("click", event => {
   const target = event.target
   if (!(target instanceof Element)) return
@@ -2427,6 +2499,10 @@ const controls = {
     rpc.request.fleetRunStart(request),
   fleetWorkerControl: (request: Parameters<DesktopRpcRequests["fleetWorkerControl"]>[0]) =>
     rpc.request.fleetWorkerControl(request),
+  claudeApprovalPending: () => rpc.request.claudeApprovalPending(),
+  claudeApprovalRespond: (request: Parameters<DesktopRpcRequests["claudeApprovalRespond"]>[0]) =>
+    rpc.request.claudeApprovalRespond(request),
+  claudeSettingsRead: () => rpc.request.claudeSettingsRead(),
   codexHarnessStatus: () => rpc.request.codexHarnessStatus(),
   codexApprovalRespond: (request: Parameters<DesktopRpcRequests["codexApprovalRespond"]>[0]) =>
     rpc.request.codexApprovalRespond(request),
@@ -2771,11 +2847,16 @@ const inboxPanel =
 const gymPanel =
   gymPanelEl === null ? null : mountGymPane(gymPanelEl, initialGymState)
 
+let claudeSettingsSection: ReturnType<typeof mountClaudeSettingsSection> | null = null
+
 const settingsPanel =
   settingsPanelEl === null
     ? null
     : mountCodexSettingsPanel(settingsPanelEl, {
         fetch: () => controls.codexSettingsRead({ includeHiddenModels: true }),
+        onRender: () => {
+          void claudeSettingsSection?.refresh()
+        },
         write: async request => {
           const result = await controls.codexConfigValueWrite(request)
           return {
@@ -2785,6 +2866,11 @@ const settingsPanel =
           }
         },
       })
+claudeSettingsSection = settingsPanelEl === null
+  ? null
+  : mountClaudeSettingsSection(settingsPanelEl, {
+      fetch: () => controls.claudeSettingsRead(),
+    })
 
 const prefetchRecentThreadMessages = (
   threads: readonly KhalaCodeDesktopCodexThreadSummary[],
@@ -2865,6 +2951,7 @@ const setActiveView = (value: string): void => {
   fleetPanel?.setVisible(showFleet)
   inboxPanel?.setVisible(showInbox)
   settingsPanel?.setVisible(showSettings)
+  if (showSettings) void claudeSettingsSection?.refresh()
   threadSidebar?.setVisible(showChat)
   if (showChat) {
     requestAnimationFrame(focusComposerInput)

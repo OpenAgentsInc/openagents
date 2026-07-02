@@ -2,9 +2,12 @@ import { afterEach, describe, expect, test } from "bun:test"
 import { mkdtemp, readFile, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { Effect } from "effect"
 
 import { createClaudeAppSdkChatRuntime } from "../src/bun/claude-app-sdk-chat-runtime"
 import { CLAUDE_APP_SDK_GAP_MATRIX } from "../src/bun/claude-app-sdk-gap-matrix"
+import { createClaudeApprovalService } from "../src/bun/claude-approvals"
+import { khalaCodeDesktopClaudeTokenUsageEvent } from "../src/bun/claude-token-usage-telemetry"
 import { createClaudeSessionStore } from "../src/bun/claude-session-store"
 import { createClaudeThreadItemProjector } from "../src/bun/claude-thread-item-projector"
 import type { KhalaCodeDesktopChatTurnEvent } from "../src/shared/rpc"
@@ -377,6 +380,197 @@ describe("Claude Agent SDK chat runtime", () => {
       "claude.phase3.sidebar_catalog",
     ])
     expect(CLAUDE_APP_SDK_GAP_MATRIX.filter(row => row.status === "covered").map(row => row.phase))
-      .toEqual(["phase_1", "phase_1", "phase_1"])
+      .toEqual(["phase_1", "phase_1", "phase_1", "phase_2", "phase_2"])
+  })
+
+  test("bridges canUseTool through the Claude approval queue with native decision shapes", async () => {
+    const approvalService = createClaudeApprovalService()
+    const statePath = await tempPath("claude-approval-state.json")
+    let decision: unknown
+    const runtime = createClaudeAppSdkChatRuntime({
+      approvalService,
+      query: input => ({
+        async *[Symbol.asyncIterator]() {
+          const canUseTool = input.options.canUseTool as (
+            toolName: string,
+            toolInput: Record<string, unknown>,
+            options: Record<string, unknown>,
+          ) => Promise<unknown>
+          decision = await canUseTool("Bash", { command: "pwd" }, {
+            signal: new AbortController().signal,
+            suggestions: [{ toolName: "Bash", rule: "allow" }],
+            title: "Claude wants to run pwd",
+          })
+          yield { type: "result", subtype: "success", session_id: "claude-approval-session" }
+        },
+      }),
+      sessionStore: createClaudeSessionStore({ path: statePath }),
+      workingDirectory: "/repo",
+    })
+
+    const turn = runtime.startTurn({
+      messages: [{ body: "run pwd", id: "user-approval", role: "user" }],
+      sessionId: "desktop-approval",
+      turnId: "turn-approval",
+    })
+    while (approvalService.pending().length === 0) await new Promise(resolve => setTimeout(resolve, 0))
+    const pending = approvalService.pending()[0]
+    expect(pending).toMatchObject({
+      toolName: "Bash",
+      options: { title: "Claude wants to run pwd" },
+    })
+    const suggestedPermissions = pending!.options.suggestions ?? []
+    await approvalService.respond(pending!.id, {
+      behavior: "allow",
+      decisionClassification: "always_allow",
+      updatedPermissions: suggestedPermissions,
+    })
+    await turn
+
+    expect(decision).toEqual({
+      behavior: "allow",
+      decisionClassification: "always_allow",
+      updatedPermissions: [{ toolName: "Bash", rule: "allow" }],
+    })
+  })
+
+  test("injects khala_fleet into Claude mcpServers at startTurn without config mutation", async () => {
+    const statePath = await tempPath("claude-mcp-state.json")
+    const queryCalls: unknown[] = []
+    const runtime = createClaudeAppSdkChatRuntime({
+      env: { KHALA_CODE_DESKTOP_BUN_COMMAND: "bun-test" },
+      query: input => {
+        queryCalls.push(input)
+        return messages([{ type: "result", subtype: "success", session_id: "claude-mcp-session" }])
+      },
+      repoRoot: "/repo/openagents",
+      sessionStore: createClaudeSessionStore({ path: statePath }),
+      workingDirectory: "/repo/workspace",
+    })
+
+    await runtime.startTurn({
+      messages: [{ body: "fleet status", id: "user-mcp", role: "user" }],
+      sessionId: "desktop-mcp",
+      turnId: "turn-mcp",
+    })
+
+    expect((queryCalls[0] as { options: Record<string, unknown> }).options).toMatchObject({
+      mcpServers: {
+        khala_fleet: {
+          args: ["/repo/openagents/clients/khala-code-desktop/src/bun/khala-fleet-mcp-server.ts"],
+          command: "bun-test",
+          cwd: "/repo/openagents",
+          type: "stdio",
+        },
+      },
+    })
+  })
+
+  test("reports exact Claude result usage through the desktop token path", async () => {
+    const statePath = await tempPath("claude-token-state.json")
+    const reports: unknown[] = []
+    const runtime = createClaudeAppSdkChatRuntime({
+      query: () => messages([{
+        modelUsage: {
+          "claude-sonnet-4": {
+            cacheReadInputTokens: 3,
+            inputTokens: 10,
+            outputTokens: 7,
+            reasoningOutputTokens: 2,
+          },
+        },
+        session_id: "claude-token-session",
+        subtype: "success",
+        total_cost_usd: 0.01,
+        type: "result",
+      }]),
+      sessionStore: createClaudeSessionStore({ path: statePath }),
+      tokenUsageReporter: report => {
+        reports.push(report)
+        return Effect.void as never
+      },
+      workingDirectory: "/repo",
+    })
+
+    await runtime.startTurn({
+      messages: [{ body: "count tokens", id: "user-token", role: "user" }],
+      sessionId: "desktop-token",
+      turnId: "turn-token",
+    })
+
+    expect(reports).toMatchObject([{
+      claudeSessionId: "claude-token-session",
+      desktopSessionId: "desktop-token",
+      desktopTurnId: "turn-token",
+      model: "claude-sonnet-4",
+      totalCostUsd: 0.01,
+      usage: {
+        cachedInput: 3,
+        input: 10,
+        output: 7,
+        reasoningOutput: 2,
+      },
+    }])
+    expect(khalaCodeDesktopClaudeTokenUsageEvent(reports[0] as never)).toMatchObject({
+      provider: "pylon-claude-direct-local",
+      sourceRoute: "pylon_claude_direct_local",
+      tokenCounts: {
+        totalTokens: 22,
+      },
+      usageTruth: "exact",
+    })
+  })
+
+  test("projects Claude settings from SDK init supportedModels and accountInfo", async () => {
+    const statePath = await tempPath("claude-settings-state.json")
+    const runtime = createClaudeAppSdkChatRuntime({
+      env: { KHALA_CODE_DESKTOP_CLAUDE_PERMISSION_MODE: "plan" },
+      query: () => ({
+        accountInfo: async () => ({
+          apiProvider: "firstParty",
+          email: "operator@example.com",
+          organization: "OpenAgents",
+          subscriptionType: "pro",
+        }),
+        async *[Symbol.asyncIterator]() {
+          yield { subtype: "init", type: "system", model: "claude-sonnet-4" }
+          yield { type: "result", subtype: "success", session_id: "claude-settings-session" }
+        },
+        initializationResult: async () => ({ model: "claude-sonnet-4", permissionMode: "plan" }),
+        supportedModels: async () => [{
+          description: "Fast coding model",
+          displayName: "Claude Sonnet 4",
+          supportsEffort: true,
+          supportedEffortLevels: ["low", "medium", "high"],
+          value: "claude-sonnet-4",
+        }],
+      }),
+      sessionStore: createClaudeSessionStore({ path: statePath }),
+      workingDirectory: "/repo",
+    })
+
+    await runtime.startTurn({
+      messages: [{ body: "settings", id: "user-settings", role: "user" }],
+      sessionId: "desktop-settings",
+      turnId: "turn-settings",
+    })
+
+    await expect(runtime.claudeSettingsRead()).resolves.toMatchObject({
+      account: {
+        email: "operator@example.com",
+        subscriptionType: "pro",
+      },
+      init: {
+        model: "claude-sonnet-4",
+        permissionMode: "plan",
+      },
+      models: {
+        selected: {
+          displayName: "Claude Sonnet 4",
+          value: "claude-sonnet-4",
+        },
+      },
+      ok: true,
+    })
   })
 })

@@ -23,6 +23,7 @@ import {
 } from "./headless.js"
 import { createCodexAppServerChatRuntime } from "./codex-app-server-chat-runtime.js"
 import { createClaudeAppSdkChatRuntime } from "./claude-app-sdk-chat-runtime.js"
+import { createKhalaCodeDesktopClaudeTokenUsageReporter } from "./claude-token-usage-telemetry.js"
 import { createCodexAppServerHost } from "./codex-app-server-client.js"
 import {
   createKhalaCodeDesktopCodexMessageTokenAuditRecorder,
@@ -427,6 +428,8 @@ if (argv.includes("--json")) {
           ? createClaudeAppSdkChatRuntime({
             env: khalaCodeEnv,
             onEvent,
+            repoRoot: resolveSourceRepositoryRoot(),
+            tokenUsageReporter: createKhalaCodeDesktopClaudeTokenUsageReporter({ env: khalaCodeEnv }),
             workingDirectory,
           })
           : createCodexAppServerChatRuntime({
