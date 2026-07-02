@@ -8,10 +8,63 @@
   background: var(--oa-color-khala-void);
   color: var(--oa-color-khala-text-primary);
   font-family: var(--oa-font-sans);
+
+  --oa-scrollbar-track: color-mix(in srgb, var(--oa-color-khala-void) 92%, var(--oa-color-khala-energy-blue));
+  --oa-scrollbar-track-border: color-mix(in srgb, var(--oa-color-khala-energy-cyan) 14%, transparent);
+  --oa-scrollbar-thumb: color-mix(in srgb, var(--oa-color-khala-energy-blue) 82%, var(--oa-color-khala-energy-cyan));
+  --oa-scrollbar-thumb-highlight: var(--oa-color-khala-energy-cyan);
+  --oa-scrollbar-thumb-shadow: color-mix(in srgb, var(--oa-color-khala-energy-blue) 52%, transparent);
+  --oa-scrollbar-thumb-hover: color-mix(in srgb, var(--oa-color-khala-text-primary) 38%, var(--oa-color-khala-energy-blue));
 }
 
 * {
   box-sizing: border-box;
+  scrollbar-width: thin;
+  scrollbar-color: var(--oa-scrollbar-thumb-highlight)
+    var(--oa-scrollbar-track);
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--oa-color-khala-energy-blue) 18%, var(--oa-color-khala-void)),
+      color-mix(in srgb, var(--oa-color-khala-void) 90%, transparent)
+    ),
+    var(--oa-scrollbar-track);
+  border: 1px solid var(--oa-scrollbar-track-border);
+}
+
+*::-webkit-scrollbar-thumb {
+  background: linear-gradient(
+    180deg,
+    var(--oa-scrollbar-thumb-highlight) 0%,
+    var(--oa-scrollbar-thumb) 52%,
+    color-mix(in srgb, var(--oa-color-khala-energy-blue) 46%, var(--oa-color-khala-void)) 100%
+  );
+  border: 2px solid var(--oa-scrollbar-track);
+  border-radius: 0;
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--oa-color-khala-text-primary) 16%, transparent),
+    0 0 12px -2px var(--oa-scrollbar-thumb-shadow);
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(
+    180deg,
+    var(--oa-scrollbar-thumb-hover) 0%,
+    var(--oa-scrollbar-thumb-highlight) 46%,
+    var(--oa-scrollbar-thumb) 100%
+  );
+}
+
+*::-webkit-scrollbar-corner {
+  background: var(--oa-scrollbar-track);
 }
 
 html {
@@ -244,7 +297,6 @@ button {
   padding: 0 14px 32px;
   scroll-padding-bottom: 32px;
   scrollbar-gutter: stable;
-  scrollbar-color: color-mix(in srgb, var(--oa-color-khala-energy-cyan) 38%, transparent) transparent;
   -webkit-overflow-scrolling: touch;
 }
 
@@ -1193,10 +1245,8 @@ button {
   min-height: 0;
   overflow: hidden;
   border-right: 1px solid var(--oa-color-component-border);
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--oa-color-khala-surface-raised) 54%, transparent), color-mix(in srgb, var(--oa-color-khala-void) 88%, transparent)),
-    var(--oa-color-component-surface);
-  color: var(--oa-color-component-text);
+  background: var(--oa-color-khala-void);
+  color: var(--oa-color-khala-text-primary);
 }
 .khala-code-sidebar {
   grid-column: 1;
@@ -1232,34 +1282,31 @@ button {
   height: 100%;
   min-height: 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
   padding:
     calc(var(--khala-code-hotbar-titlebar-clearance) + env(safe-area-inset-top, 0px))
-    0.58rem
+    0.5rem
     0.75rem;
-  border-right: 1px solid color-mix(in srgb, var(--oa-color-khala-energy-cyan) 18%, transparent);
-  background:
-    linear-gradient(90deg, color-mix(in srgb, var(--oa-color-khala-void) 34%, transparent), transparent 46%),
-    color-mix(in srgb, var(--oa-color-khala-surface) 66%, var(--oa-color-khala-void));
+  border-right: 1px solid var(--oa-color-component-border);
+  background: var(--oa-color-khala-void);
 }
 .khala-code-hotbar-slots {
   display: grid;
-  gap: 0.42rem;
+  gap: 0.35rem;
   width: 100%;
 }
 .khala-code-hotbar-slot {
   position: relative;
   display: grid;
   place-items: center;
-  width: 3.6rem;
-  height: 3.6rem;
+  width: 3.5rem;
+  height: 3.5rem;
   margin-inline: auto;
   padding: 0;
-  border: 1px solid color-mix(in srgb, var(--oa-color-khala-energy-cyan) 30%, var(--oa-color-component-border));
-  border-radius: 0.2rem;
-  background:
-    radial-gradient(circle at 50% 18%, color-mix(in srgb, var(--oa-color-khala-energy-cyan) 12%, transparent), transparent 42%),
-    linear-gradient(180deg, color-mix(in srgb, var(--oa-color-khala-surface-raised) 80%, transparent), color-mix(in srgb, var(--oa-color-khala-void) 84%, transparent));
-  color: var(--oa-color-component-text);
+  border: 1px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: color-mix(in srgb, var(--oa-color-khala-text-primary) 55%, transparent);
   cursor: pointer;
   font: inherit;
   transition:
@@ -1273,13 +1320,14 @@ button {
   content: "";
   position: absolute;
   inset: 0.25rem;
-  border: 1px solid color-mix(in srgb, var(--oa-color-khala-text-muted) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--oa-color-khala-text-primary) 8%, transparent);
   pointer-events: none;
 }
 .khala-code-hotbar-slot:hover,
 .khala-code-hotbar-slot:focus-visible {
-  border-color: color-mix(in srgb, var(--oa-color-khala-energy-cyan) 72%, var(--oa-color-component-border));
-  color: var(--oa-color-khala-text-bright);
+  border-color: var(--oa-color-component-border);
+  background: var(--oa-color-khala-surface);
+  color: var(--oa-color-khala-text-primary);
   outline: none;
   filter: brightness(1.16);
 }
@@ -1287,11 +1335,13 @@ button {
   transform: translateY(1px);
 }
 .khala-code-hotbar-slot[data-active="true"] {
-  border-color: color-mix(in srgb, var(--oa-color-khala-energy-cyan) 82%, var(--oa-color-component-border));
-  background:
-    radial-gradient(circle at 50% 18%, color-mix(in srgb, var(--oa-color-khala-energy-cyan) 22%, transparent), transparent 48%),
-    linear-gradient(180deg, color-mix(in srgb, var(--oa-color-khala-surface-active) 92%, transparent), color-mix(in srgb, var(--oa-color-khala-void) 78%, transparent));
+  border-color: var(--oa-color-component-border);
+  background: var(--oa-color-khala-surface);
   color: var(--oa-color-khala-energy-cyan);
+}
+.khala-code-hotbar-slot[data-active="true"]::before {
+  border-color: color-mix(in srgb, var(--oa-color-khala-energy-cyan) 48%, transparent);
+  box-shadow: inset 2px 0 0 var(--oa-color-khala-energy-cyan);
 }
 @media (prefers-reduced-motion: reduce) {
   .khala-code-hotbar-slot {
@@ -1337,9 +1387,10 @@ button {
   min-width: 0;
   min-height: 0;
   overflow-y: auto;
-  padding: 0.85rem 0.7rem;
-  background: transparent;
-  color: var(--oa-color-component-text);
+  overscroll-behavior: contain;
+  padding: 0.75rem 0.5rem;
+  background: var(--oa-color-khala-void);
+  color: var(--oa-color-khala-text-primary);
 }
 @media (min-width: 768px) {
   .khala-code-sidebar-shell:has(.khala-code-thread-sidebar:not([hidden])) .khala-code-thread-sidebar {
@@ -1351,11 +1402,19 @@ button {
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
+  min-height: 3rem;
+  margin: -0.75rem -0.5rem 0.75rem;
+  padding: 0.6rem 0.75rem;
+  border-bottom: 1px solid var(--oa-color-component-border);
 }
 .khala-thread-sidebar-title {
   margin: 0;
-  font-size: 0.92rem;
-  font-weight: 600;
+  overflow: hidden;
+  color: var(--oa-color-khala-text-primary);
+  font-size: 0.875rem;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .khala-thread-sidebar-header-actions {
   display: inline-flex;
@@ -1377,14 +1436,14 @@ button {
   justify-content: center;
   width: 2rem;
   height: 2rem;
-  border-radius: 0.4rem;
+  border-radius: 0;
   padding: 0;
   font-size: 0.74rem;
 }
 .khala-thread-sidebar-new,
 .khala-thread-sidebar-refresh {
   border: 1px solid var(--oa-color-component-border);
-  background: var(--oa-color-component-surface);
+  background: var(--oa-color-khala-surface);
 }
 .khala-thread-sidebar-search-toggle {
   border: 0;
@@ -1396,8 +1455,8 @@ button {
 .khala-thread-sidebar-search-toggle:hover,
 .khala-thread-sidebar-search-toggle[aria-expanded="true"],
 .khala-thread-sidebar-search-toggle[data-active="true"] {
-  background: var(--oa-color-component-surface-active);
-  color: var(--oa-color-component-text);
+  background: var(--oa-color-khala-surface);
+  color: var(--oa-color-khala-text-primary);
   opacity: 1;
 }
 .khala-thread-sidebar-search-flyout {
@@ -1406,15 +1465,15 @@ button {
   gap: 0.45rem;
   margin-top: 0.6rem;
   padding: 0.4rem;
-  border: 1px solid color-mix(in srgb, var(--oa-color-component-border) 75%, transparent);
-  border-radius: 0.5rem;
-  background: color-mix(in srgb, var(--oa-color-khala-void) 14%, transparent);
+  border: 1px solid var(--oa-color-component-border);
+  border-radius: 0;
+  background: color-mix(in srgb, var(--oa-color-khala-void) 86%, var(--oa-color-khala-surface));
 }
 .khala-thread-sidebar-search {
   width: 100%;
   min-width: 0;
   border: 1px solid var(--oa-color-component-border);
-  border-radius: 0.42rem;
+  border-radius: 0;
   background: color-mix(in srgb, var(--oa-color-khala-void) 22%, transparent);
   color: var(--oa-color-component-text);
   font: inherit;
@@ -1448,7 +1507,7 @@ button {
 }
 .khala-thread-sidebar-list {
   display: grid;
-  gap: 0.22rem;
+  gap: 0.15rem;
 }
 .khala-thread-sidebar-item {
   display: grid;
@@ -1459,17 +1518,17 @@ button {
   height: 2.25rem;
   min-height: 2.25rem;
   padding: 0.16rem 0.5rem;
-  border: 1px solid var(--oa-color-component-border);
-  border-radius: 0.36rem;
-  background: color-mix(in srgb, var(--oa-color-khala-void) 16%, transparent);
+  border: 1px solid transparent;
+  border-radius: 0;
+  background: transparent;
   color: var(--oa-color-component-text);
   text-align: left;
   transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
 }
 .khala-thread-sidebar-item:hover,
 .khala-thread-sidebar-item[data-active="true"] {
-  border-color: color-mix(in srgb, var(--oa-color-khala-energy-cyan) 58%, var(--oa-color-component-border));
-  background: var(--oa-color-component-surface-active);
+  border-color: var(--oa-color-component-border);
+  background: var(--oa-color-khala-surface);
 }
 .khala-thread-sidebar-item-row {
   display: grid;
@@ -1497,8 +1556,8 @@ button {
 .khala-thread-sidebar-rename-input {
   min-width: 0;
   height: 1.62rem;
-  border: 1px solid color-mix(in srgb, var(--oa-color-khala-energy-cyan) 45%, var(--oa-color-component-border));
-  border-radius: 0.3rem;
+  border: 1px solid var(--oa-color-component-border);
+  border-radius: 0;
   background: color-mix(in srgb, var(--oa-color-khala-void) 34%, transparent);
   color: var(--oa-color-component-text);
   font: inherit;
@@ -1518,7 +1577,7 @@ button {
   width: 1.5rem;
   height: 1.5rem;
   border: 0;
-  border-radius: 0.3rem;
+  border-radius: 0;
   background: transparent;
   color: color-mix(in srgb, var(--oa-color-component-text) 72%, transparent);
   cursor: pointer;
@@ -1526,7 +1585,7 @@ button {
 }
 .khala-thread-sidebar-rename-action:hover,
 .khala-thread-sidebar-rename-action:focus-visible {
-  background: color-mix(in srgb, var(--oa-color-khala-energy-cyan) 16%, transparent);
+  background: var(--oa-color-khala-surface);
   color: var(--oa-color-khala-energy-cyan);
   outline: none;
 }
