@@ -51,6 +51,8 @@ QA-3 Headed Mode V ──► QA-6 Explorers (LLM brain, distill loop, monkey sca
 QA-5 Live tiers (armed NOW; weekly cadence lands after QA-1)
         |
 QA-7 Product fixes the QA run already found (cockpit degradation, flake hunt)
+        |
+QA-9 Planner/Coder/Judge workflow (build + test; role registry first)
 ```
 
 QA-1.1 (the nightly job) and Q2.1 (the perf bridge) are the two
@@ -156,6 +158,39 @@ the framework (§15.3–15.4).
 | Q8.3 | **TLC in the loop**: bounded TLC model checks for the three specs + mutation specs run in the nightly; the counterexample→fixture pipeline documented and exercised once end-to-end. | Q1.1 | MED |
 | Q8.4 | **Public-safety oracle in every mode**: `assertPublicSafeResult` / the part2 unsafe-text pattern runs on DOM text, traces, JSONL, and screenshot-adjacent metadata in every smoke and scenario, headed included. | — | HIGH |
 | Q8.5 | **Coverage floor gate**: after one week of Q1.3 baselines, enforce "a PR may not reduce the covered-RPC-method count" — soft-warn for a week, then hard. | Q1.3 | MED |
+| Q9.1 | [#8052](https://github.com/OpenAgentsInc/openagents/issues/8052) | Typed model-role registry (architect/coder/judge/advisor) |
+| Q9.2 | [#8053](https://github.com/OpenAgentsInc/openagents/issues/8053) | Plan-first chat flow (/architect plan card) |
+| Q9.3 | [#8054](https://github.com/OpenAgentsInc/openagents/issues/8054) | Judge-on-diff verdict card in chat |
+| Q9.4 | [#8055](https://github.com/OpenAgentsInc/openagents/issues/8055) | Advisor runtime (turn-level second model, bounded) |
+| Q9.5 | [#8057](https://github.com/OpenAgentsInc/openagents/issues/8057) | Per-role economics surface (exact rows, honest dollars) |
+| Q9.6 | [#8058](https://github.com/OpenAgentsInc/openagents/issues/8058) | architect-coder-judge preset + promise record |
+| Q9.7 | [#8059](https://github.com/OpenAgentsInc/openagents/issues/8059) | Planner/Coder/Judge under the QA regime (prove it exists) |
+
+## 9b. QA-9 — Planner/Coder/Judge workflow: build it, wire it, prove it
+
+Source: [`2026-07-02-oh-my-pi-planner-coder-judge-audit.md`](./2026-07-02-oh-my-pi-planner-coder-judge-audit.md)
+(gaps G1–G6, adopted into this roadmap by owner direction 2026-07-02 —
+"the roadmap includes building and testing this workflow and making sure it
+exists"). The fleet-scale halves already landed (T9.4 plan-then-fan-out,
+T9.5 second-pass reviewer, harness pill, workerKind); this workstream builds
+the single-session chat-first expression — Fable/Claude as
+architect and judge, the user's subscription-routed Codex as coder, an
+optional turn-level advisor — and puts the whole trio under the same QA
+regime as everything else in this roadmap. omp is patterns-only reference:
+no vendored code or naming, no gray-proxy provider entries (Fable routes
+through legitimate Anthropic rails only; subscription no-resale stays
+non-waivable), and verify-command/deterministic-program authority is never
+weakened — advisors and judges are advisory data under it.
+
+| Task | Description | Deps | Delegable |
+| --- | --- | --- | --- |
+| Q9.1 | **Typed model-role registry** (adapts omp §2.1): `openagents.khala_code.model_roles.v1` — `{ role: architect\|coder\|judge\|advisor, harness: codex\|claude\|khala, model?, effort?: minimal…xhigh }` as a persisted schema-first setting with a Settings surface; consumed by chat, fleet dispatch, and the reviewer; effort maps harness-natively (Codex app-server config, Claude SDK thinking). The harness pill grows from "which engine chats" to "which engine plays which role". | — | HIGH |
+| Q9.2 | **Plan-first chat flow** (adapts omp §2.4; promotes landed T9.4 into the default surface): a composer plan-mode toggle / `/architect` runs the architect role (Claude plan mode, read-only) against the `claude_plan_fanout_dag.v1` contract and renders an approvable plan card; approval dispatches small plans as in-thread coder turns and large plans as a FleetRun; the plan artifact persists with the session. | Q9.1 | MED |
+| Q9.3 | **Judge-on-diff in chat** (adapts omp §2.5; surfaces landed T9.5): after a coder turn or worker closeout produces a diff, the judge role renders a structured verdict card (`accept\|request_changes\|replan`, P0–P3 findings with file/line anchors and per-finding confidence); "request changes" feeds the annotate-diff steering loop (T15.1). Verify commands remain the only merge authority; the verdict is advisory data. | Q9.1 | MED |
+| Q9.4 | **Advisor runtime** (adapts omp §2.3; the largest new piece): `KhalaAdvisorRuntime` as an Effect service — a Claude session with its own context consuming turn deltas of the active Codex thread, read-only workspace inspection, severity-typed advisories (`nit\|concern\|blocker`); `nit` batches to a transcript card, `concern\|blocker` injects steering via `codexTurnSteer`. Control-theory invariants ported as code, not prompt: emission guard (dedupe + noise filter), `immuneTurns` interrupt budget, reset on compaction/thread-switch, advisor-never-a-peer, separate exact token rows for advisor usage. | Q9.1, WS-8 P2 | MED |
+| Q9.5 | **Per-role economics surface** (adapts omp §2.7): `role_ref` attribution on exact token rows (desktop telemetry + Pylon turn reports), API-metered roles priced from the model catalog, per-session honest rendering — "coder: subscription-covered · architect+judge: $X.YZ"; projections from exact rows only, `not_measured` when a rail's pricing is unknown. | Q9.1 | HIGH |
+| Q9.6 | **One-command preset + promise record**: `khala code --preset architect-coder-judge` and a Settings preset card — coder = the user's existing Codex login, architect/judge = the user's own Anthropic auth (API key or Claude login via the SDK; never a proxy), advisor optional-on; candidate promise `khala_code.architect_coder_judge.v1` filed through `docs/promises/` (copy-gated; no public copy until the flow is verifiable end-to-end). | Q9.1–Q9.5 | HIGH |
+| Q9.7 | **The workflow under the QA regime — prove it exists**: scenario-corpus additions for every new surface (role-registry RPC group, plan card approve/reject, judge verdict card incl. every verdict kind, advisor advisories incl. the interrupt budget and dedupe guard) on the fixture tier (fixture Codex app-server + fixture Claude); coverage-ledger counting for the new surfaces; cross-mode consistency; and a skip-safe env-armed `smoke:architect-coder-judge-live` that runs one real plan → coder turn → judge verdict end-to-end with per-role exact token rows and public-safe projections. Green in the nightly = the workflow demonstrably exists and keeps existing. | Q9.2–Q9.5, Q4.1 | MED |
 
 ## 10. Milestones
 
@@ -172,6 +207,9 @@ the framework (§15.3–15.4).
 - **QM6 — Nothing merges unguarded.** Arch scan, schema oracle, console
   oracle, public-safety oracle, and coverage floor all hard-fail;
   every Q2.2 budget green on the real app for 7 consecutive days. (QA-8, Q2.6)
+- **QM7 — The trio is a surface.** Plan→code→judge green in fixture
+  scenarios and in the armed live smoke; role economics rendered from exact
+  rows; advisor bounded and accounted. (QA-9)
 
 ## 11. Invariants (unchanged, restated for this roadmap)
 

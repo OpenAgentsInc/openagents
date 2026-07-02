@@ -269,8 +269,10 @@ in one terminal window:
 ## 5. Gap Analysis: Making Planner/Coder/Judge A Primary Khala Code Workflow
 
 Ordered by leverage; each gap names the omp mechanism it adapts and the
-existing roadmap seam it extends. These are proposals for roadmap intake, not
-scheduled work.
+existing roadmap seam it extends. **Adopted (owner-directed 2026-07-02):**
+G1–G6 are now scheduled as workstream QA-9 of [`ROADMAP_QA.md`](./ROADMAP_QA.md)
+(issues #8052–#8059 under epic #8051), including the Q9.7 test/live-smoke
+lane that proves the workflow exists and keeps existing.
 
 ### G1 — Typed model-role registry (adapts §2.1; extends WS-8/T8.5, T1.3)
 
