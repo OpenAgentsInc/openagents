@@ -189,3 +189,16 @@ describe("Khala Code preview bridge auth and SSE", () => {
     }
   }, 15_000)
 })
+
+describe("preview rpc read-only classification", () => {
+  test("every RPC method is explicitly classified (fails closed on drift)", async () => {
+    const { KhalaCodeDesktopRpcMethodNames } = await import("../src/shared/rpc.js")
+    const { mutatingPreviewRpcMethods, readOnlySafePreviewRpcMethods } = await import("../src/bun/preview-rpc-policy.js")
+    for (const name of KhalaCodeDesktopRpcMethodNames) {
+      const inMutating = mutatingPreviewRpcMethods.has(name)
+      const inSafe = readOnlySafePreviewRpcMethods.has(name)
+      expect(`${name}:${inMutating || inSafe}`).toBe(`${name}:true`)
+      expect(`${name}:${inMutating && inSafe}`).toBe(`${name}:false`)
+    }
+  })
+})

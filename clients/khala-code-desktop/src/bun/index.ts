@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs"
-import { randomBytes } from "node:crypto"
+import { createHash, randomBytes, timingSafeEqual } from "node:crypto"
 import { resolve } from "node:path"
 
 import {
@@ -31,6 +31,7 @@ import { createOnDeviceDeciderHost } from "./on-device-decider-host.js"
 import { khalaCodeConfigFromRuntimeEnv } from "./khala-code-config.js"
 import { createKhalaCodeDesktopFleetRunSupervisorRpcAdapter } from "./fleet-run-supervisor-rpc-adapter.js"
 import { createKhalaCodeDesktopRpcRequestHandlers } from "./rpc-handlers.js"
+import { mutatingPreviewRpcMethods } from "./preview-rpc-policy.js"
 
 const khalaCodeConfig = khalaCodeConfigFromRuntimeEnv()
 const khalaCodeEnv = khalaCodeConfig.env
@@ -142,51 +143,14 @@ const previewRpcToken = (): string => {
 const previewBridgeAccessToken = previewRpcToken()
 const previewBridgeReadOnly = khalaCodeEnv.KHALA_CODE_DESKTOP_PREVIEW_READONLY === "1"
 
-const isAuthorizedPreviewRpcRequest = (request: Request): boolean =>
-  request.headers.get(KHALA_CODE_DESKTOP_PREVIEW_RPC_TOKEN_HEADER) === previewBridgeAccessToken
+const isAuthorizedPreviewRpcRequest = (request: Request): boolean => {
+  const presented = request.headers.get(KHALA_CODE_DESKTOP_PREVIEW_RPC_TOKEN_HEADER)
+  if (presented === null) return false
+  const a = createHash("sha256").update(presented).digest()
+  const b = createHash("sha256").update(previewBridgeAccessToken).digest()
+  return timingSafeEqual(a, b)
+}
 
-const mutatingPreviewRpcMethods = new Set<KhalaCodeDesktopRpcMethodName>([
-  "codexAppServerRestart",
-  "codexAppServerStart",
-  "codexAppServerStop",
-  "codexFleetDelegateRun",
-  "codexFleetPromoteThread",
-  "fleetRunControl",
-  "fleetRunStart",
-  "codexApprovalRespond",
-  "codexBackgroundTerminalsClean",
-  "codexBackgroundTerminalsTerminate",
-  "codexConfigValueWrite",
-  "codexExternalAgentConfigImport",
-  "codexFsWriteFile",
-  "codexMarketplaceAdd",
-  "codexMarketplaceRemove",
-  "codexMarketplaceUpgrade",
-  "codexMcpOauthLogin",
-  "codexMcpServerReload",
-  "codexMcpToolCall",
-  "codexPluginInstall",
-  "codexPluginUninstall",
-  "codexSkillsConfigWrite",
-  "codexSkillsExtraRootsSet",
-  "codexThreadArchive",
-  "codexThreadCompact",
-  "codexThreadDelete",
-  "codexThreadFork",
-  "codexThreadRename",
-  "codexThreadResume",
-  "codexThreadStart",
-  "codexThreadUnarchive",
-  "codexTurnInterrupt",
-  "codexTurnStart",
-  "codexTurnSteer",
-  "connectCodexAccount",
-  "openExternalUrl",
-  "removeCodexAccount",
-  "consumeCodexRateLimitResetCredit",
-  "slashCommandDispatch",
-  "submitChatMessage",
-])
 
 const isPreviewRpcMutation = (method: KhalaCodeDesktopRpcMethodName): boolean =>
   mutatingPreviewRpcMethods.has(method)
@@ -254,13 +218,17 @@ const previewEventsResponse = (request: Request): Response => {
     }, { status: 401 })
   }
 
+  // ReadableStream cancel() receives the cancellation reason, not the
+  // controller — hold the controller in a closure so disconnects clean up.
+  let eventsController: ReadableStreamDefaultController<Uint8Array> | null = null
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
+      eventsController = controller
       previewEventClients.add(controller)
       controller.enqueue(textEncoder.encode(": khala-code-preview-events\n\n"))
     },
-    cancel(controller) {
-      previewEventClients.delete(controller)
+    cancel() {
+      if (eventsController !== null) previewEventClients.delete(eventsController)
     },
   })
   return new Response(stream, {
@@ -401,12 +369,19 @@ const startPreviewServer = (): void => {
     const port = requestedPort + offset
     try {
       const server = Bun.serve({
+        hostname: "127.0.0.1",
         port,
         fetch: previewFetch,
       })
       console.info(
         `Khala Code desktop web preview: http://localhost:${server.port} ` +
         `(RPC header ${KHALA_CODE_DESKTOP_PREVIEW_RPC_TOKEN_HEADER})`,
+      )
+      // Print the per-boot secret exactly once, strictly to local stdout —
+      // the instrumented console broadcasts to SSE subscribers, so use the
+      // raw stream here.
+      process.stdout.write(
+        `Khala Code preview access token (this boot): ${previewBridgeAccessToken}\n`,
       )
       return
     } catch (error) {
