@@ -54,6 +54,7 @@ import {
   type KhalaCodeDesktopMessage,
   type KhalaCodeDesktopMessageRole,
   type KhalaCodeDesktopRPCSchema,
+  type KhalaCodeDesktopRuntimeMode,
   type KhalaCodeDesktopThreadTokenSummary,
 } from "../shared/rpc"
 import { renderMessageBody } from "./transcript-render"
@@ -357,6 +358,14 @@ const previewRpc = (): DesktopRpc => ({
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["connectCodexAccount"]>>
       >("connectCodexAccount", accountRef),
+    harnessSettingRead: () =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["harnessSettingRead"]>>
+      >("harnessSettingRead"),
+    harnessSettingWrite: request =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["harnessSettingWrite"]>>
+      >("harnessSettingWrite", request),
     openExternalUrl: url =>
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["openExternalUrl"]>>
@@ -611,6 +620,21 @@ const sessionId =
 localStorage.setItem(sessionIdStorageKey, sessionId)
 localStorage.removeItem(activeThreadIdStorageKey)
 let activeCodexThreadId: string | null = null
+let selectedHarnessMode: KhalaCodeDesktopRuntimeMode = "codex_harness"
+let harnessEnvOverride: KhalaCodeDesktopRuntimeMode | null = null
+let lastResponseRuntimeMode: KhalaCodeDesktopRuntimeMode = "codex_harness"
+
+const harnessOptions: readonly {
+  readonly label: string
+  readonly mode: KhalaCodeDesktopRuntimeMode
+}[] = [
+  { label: "Codex", mode: "codex_harness" },
+  { label: "Claude", mode: "claude_runtime" },
+  { label: "Khala", mode: "khala_native_runtime" },
+]
+
+const harnessLabel = (mode: KhalaCodeDesktopRuntimeMode): string =>
+  harnessOptions.find(option => option.mode === mode)?.label ?? "Codex"
 
 type ThreadSwitchPerformanceSample = {
   cacheHit: boolean
@@ -835,6 +859,61 @@ const renderMessage = (message: KhalaCodeDesktopMessage): HTMLElement => {
 
   article.append(body)
   return article
+}
+
+const setHarnessMode = async (mode: KhalaCodeDesktopRuntimeMode): Promise<void> => {
+  selectedHarnessMode = mode
+  renderComposer()
+  try {
+    const setting = await rpc.request.harnessSettingWrite({ mode })
+    selectedHarnessMode = setting.mode
+    harnessEnvOverride = setting.envOverride
+  } catch {
+    selectedHarnessMode = mode
+  }
+  renderComposer()
+}
+
+const refreshHarnessSetting = async (): Promise<void> => {
+  try {
+    const setting = await rpc.request.harnessSettingRead()
+    selectedHarnessMode = setting.mode
+    harnessEnvOverride = setting.envOverride
+    lastResponseRuntimeMode = setting.mode
+  } catch {
+    selectedHarnessMode = "codex_harness"
+    harnessEnvOverride = null
+    lastResponseRuntimeMode = "codex_harness"
+  }
+  renderComposer()
+}
+
+void refreshHarnessSetting()
+
+const renderHarnessPill = (): HTMLElement => {
+  const pill = document.createElement("div")
+  pill.className = "khala-harness-pill"
+  pill.dataset.envOverride = harnessEnvOverride === null ? "false" : "true"
+  pill.setAttribute("role", "group")
+  for (const option of harnessOptions) {
+    const button = document.createElement("button")
+    button.type = "button"
+    button.className = "khala-harness-pill-button"
+    button.dataset.active = selectedHarnessMode === option.mode ? "true" : "false"
+    button.textContent = option.label
+    button.disabled = harnessEnvOverride !== null
+    button.addEventListener("click", () => void setHarnessMode(option.mode))
+    pill.append(button)
+  }
+  return pill
+}
+
+const renderRuntimeBadge = (): HTMLElement => {
+  const badge = document.createElement("span")
+  badge.className = "khala-runtime-badge"
+  badge.dataset.runtimeMode = lastResponseRuntimeMode
+  badge.textContent = harnessLabel(lastResponseRuntimeMode)
+  return badge
 }
 
 const renderThinkingIndicator = (): HTMLElement | null => {
@@ -1666,6 +1745,8 @@ function renderComposer(): void {
   composerStatus.className = composerClasses.status
   composerStatus.dataset.oaCommandComposerStatusLabel = status
   composerStatus.replaceChildren(
+    renderHarnessPill(),
+    renderRuntimeBadge(),
     ...details.map((detail, index) => {
       const span = document.createElement("span")
       span.dataset.slot = index === 0 ? "status" : "detail"
@@ -2001,6 +2082,9 @@ const submitComposer = async (): Promise<KhalaCodeDesktopMessage | null> => {
     }
     const response = await rpc.request.submitChatMessage(request)
     if (activeTurnIds.has(turnId)) {
+      if (response.backend.runtimeMode !== undefined) {
+        lastResponseRuntimeMode = response.backend.runtimeMode
+      }
       if (response.backend.threadId !== undefined) {
         setActiveCodexThreadId(response.backend.threadId)
         void threadSidebar?.refresh()
@@ -2402,7 +2486,7 @@ const controls = {
   gymState: (): GymPaneState | null => gymPanel?.snapshot() ?? null,
   openExternalUrl: (url: string) => rpc.request.openExternalUrl(url),
   composerStatus: statusForComposer,
-  consumeCodexRateLimitResetCredit: request =>
+  consumeCodexRateLimitResetCredit: (request: Parameters<DesktopRpcRequests["consumeCodexRateLimitResetCredit"]>[0]) =>
     rpc.request.consumeCodexRateLimitResetCredit(request),
   focusComposer: focusComposerInput,
   isComposerFocused: () => document.activeElement === composerInput,

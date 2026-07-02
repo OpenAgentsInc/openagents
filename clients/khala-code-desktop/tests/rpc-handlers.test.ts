@@ -794,6 +794,143 @@ describe("Khala Code desktop RPC handlers", () => {
     expect(legacyTurnStarted).toBe(false)
   })
 
+  test("persists the harness pill setting and routes chat submits through Claude", async () => {
+    const root = await mkdtemp(join(tmpdir(), "khala-code-harness-setting-"))
+    tempDirs.push(root)
+    const settingPath = join(root, "desktop-settings.json")
+    let claudeTurnStarted = false
+    let codexTurnStarted = false
+    const handlers = createKhalaCodeDesktopRpcRequestHandlers({
+      appleFmReadiness: () => {
+        throw new Error("not used")
+      },
+      claudeChatRuntime: throwingCodexChatRuntime({
+        startTurn: async request => {
+          claudeTurnStarted = true
+          expect(request.cwd).toBe(process.cwd())
+          return {
+            backend: {
+              kind: "claude_app_sdk",
+              model: "claude-app-sdk",
+              runtimeMode: "claude_runtime",
+              threadId: request.threadId ?? "thread-claude-pill",
+              turnId: request.turnId ?? "turn-claude-pill",
+            },
+            messages: [{ id: "agent-claude-pill", role: "assistant", body: "Claude pill path" }],
+            ok: true,
+            toolNames: [],
+            usedTools: [],
+          }
+        },
+      }),
+      codexChatRuntime: throwingCodexChatRuntime({
+        startTurn: async () => {
+          codexTurnStarted = true
+          throw new Error("codex runtime should not handle Claude pill turns")
+        },
+      }),
+      env: { KHALA_CODE_DESKTOP_HARNESS_SETTING_PATH: settingPath },
+      legacyChatTurn: async (): Promise<KhalaCodeDesktopChatTurnResponse> => {
+        throw new Error("legacy runtime should not handle Claude pill turns")
+      },
+      onDeviceDeciderStatus: () => {
+        throw new Error("not used")
+      },
+      workingDirectory: process.cwd(),
+    })
+
+    await expect(handlers.harnessSettingWrite({ mode: "claude_runtime" })).resolves.toMatchObject({
+      envOverride: null,
+      mode: "claude_runtime",
+      persistedMode: "claude_runtime",
+      saved: true,
+    })
+    expect(JSON.parse(await readFile(settingPath, "utf8"))).toMatchObject({
+      harnessMode: "claude_runtime",
+      schema: "khala-code-desktop.harness-setting.v1",
+    })
+    await expect(handlers.submitChatMessage({
+      messages: [{ id: "user-claude-pill", role: "user", body: "Use Claude" }],
+      sessionId: "desktop-session-claude-pill",
+      turnId: "desktop-turn-claude-pill",
+    })).resolves.toMatchObject({
+      backend: {
+        kind: "claude_app_sdk",
+        runtimeMode: "claude_runtime",
+      },
+      messages: [{ body: "Claude pill path" }],
+      ok: true,
+    })
+    expect(claudeTurnStarted).toBe(true)
+    expect(codexTurnStarted).toBe(false)
+  })
+
+  test("keeps runtime env vars as overrides for persisted harness settings", async () => {
+    const root = await mkdtemp(join(tmpdir(), "khala-code-harness-env-"))
+    tempDirs.push(root)
+    const settingPath = join(root, "desktop-settings.json")
+    await writeFile(settingPath, JSON.stringify({
+      schema: "khala-code-desktop.harness-setting.v1",
+      harnessMode: "khala_native_runtime",
+    }))
+    let codexTurnStarted = false
+    let legacyTurnStarted = false
+    const handlers = createKhalaCodeDesktopRpcRequestHandlers({
+      appleFmReadiness: () => {
+        throw new Error("not used")
+      },
+      codexChatRuntime: throwingCodexChatRuntime({
+        startTurn: async () => {
+          codexTurnStarted = true
+          return {
+            backend: {
+              kind: "codex_app_server",
+              model: "gpt-5.1-codex",
+              runtimeMode: "codex_harness",
+              threadId: "thread-env-codex",
+              turnId: "turn-env-codex",
+            },
+            messages: [{ id: "agent-env-codex", role: "assistant", body: "Env Codex path" }],
+            ok: true,
+            toolNames: [],
+            usedTools: [],
+          }
+        },
+      }),
+      env: {
+        KHALA_CODE_DESKTOP_HARNESS_SETTING_PATH: settingPath,
+        KHALA_CODE_DESKTOP_RUNTIME: "codex_harness",
+      },
+      legacyChatTurn: async (): Promise<KhalaCodeDesktopChatTurnResponse> => {
+        legacyTurnStarted = true
+        throw new Error("legacy runtime should not override env Codex")
+      },
+      onDeviceDeciderStatus: () => {
+        throw new Error("not used")
+      },
+      workingDirectory: process.cwd(),
+    })
+
+    await expect(handlers.harnessSettingRead()).resolves.toMatchObject({
+      envOverride: "codex_harness",
+      mode: "codex_harness",
+      persistedMode: "khala_native_runtime",
+    })
+    await expect(handlers.submitChatMessage({
+      messages: [{ id: "user-env-codex", role: "user", body: "Use Codex" }],
+      sessionId: "desktop-session-env-codex",
+      turnId: "desktop-turn-env-codex",
+    })).resolves.toMatchObject({
+      backend: {
+        runtimeMode: "codex_harness",
+      },
+      messages: [{ body: "Env Codex path" }],
+      ok: true,
+    })
+    expect(codexTurnStarted).toBe(true)
+    expect(legacyTurnStarted).toBe(false)
+  })
+
   test("routes explicit Codex turn starts through the selected Codex chat runtime", async () => {
     let codexTurnStarted = false
     const handlers = createKhalaCodeDesktopRpcRequestHandlers({

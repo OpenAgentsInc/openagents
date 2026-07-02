@@ -96,6 +96,12 @@ import { inspectCodexHarnessStatus } from "./codex-harness-status.js"
 import { createClaudeAppSdkChatRuntime } from "./claude-app-sdk-chat-runtime.js"
 import { inspectClaudeHarnessStatus } from "./claude-harness-status.js"
 import {
+  khalaCodeDesktopRuntimeEnvOverride,
+  readKhalaCodeDesktopHarnessSetting,
+  readKhalaCodeDesktopPersistedHarnessMode,
+  writeKhalaCodeDesktopHarnessSetting,
+} from "./harness-setting.js"
+import {
   consumeKhalaCodexRateLimitResetCredit,
   fetchKhalaCodexRateLimitStatus,
 } from "./codex-rate-limits.js"
@@ -795,14 +801,16 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
     }
     return input.fleetRunSupervisor
   }
-  const selectChatRuntime = (): ChatRuntimeSelection => {
-    if (input.env.KHALA_CODE_DESKTOP_RUNTIME === "claude_runtime") {
+  const selectedRuntimeMode = async () =>
+    khalaCodeDesktopRuntimeEnvOverride(input.env) ??
+      await readKhalaCodeDesktopPersistedHarnessMode(input.env)
+
+  const selectChatRuntime = async (): Promise<ChatRuntimeSelection> => {
+    const runtimeMode = await selectedRuntimeMode()
+    if (runtimeMode === "claude_runtime") {
       return { kind: "claude", runtime: requireClaudeChatRuntime() }
     }
-    if (
-      input.env.KHALA_CODE_DESKTOP_RUNTIME === "khala_native_runtime" ||
-      input.env.KHALA_CODE_DESKTOP_LEGACY_KHALA_NATIVE_RUNTIME === "1"
-    ) {
+    if (runtimeMode === "khala_native_runtime") {
       return { kind: "legacy" }
     }
     return { kind: "codex", runtime: requireCodexChatRuntime() }
@@ -946,7 +954,7 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
   ): Promise<string | null> => {
     const explicit = request.threadId?.trim()
     if (explicit !== undefined && explicit.length > 0) return explicit
-    const selection = selectChatRuntime()
+    const selection = await selectChatRuntime()
     if (selection.kind === "legacy") return null
     return await selection.runtime.threadIdForSession(request.sessionId) ?? null
   }
@@ -2058,47 +2066,47 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
       })
     },
     async codexThreadArchive(request) {
-      const selection = selectChatRuntime()
+      const selection = await selectChatRuntime()
       if (selection.kind === "legacy") return unsupportedLegacyThreadLifecycle()
       return selection.runtime.archiveThread(request)
     },
     async codexThreadCompact(request) {
-      const selection = selectChatRuntime()
+      const selection = await selectChatRuntime()
       if (selection.kind === "legacy") return unsupportedLegacyThreadLifecycle()
       return selection.runtime.compactThread(request)
     },
     async codexThreadDelete(request) {
-      const selection = selectChatRuntime()
+      const selection = await selectChatRuntime()
       if (selection.kind === "legacy") return unsupportedLegacyThreadLifecycle()
       return selection.runtime.deleteThread(request)
     },
     async codexThreadFork(request) {
-      const selection = selectChatRuntime()
+      const selection = await selectChatRuntime()
       if (selection.kind === "legacy") return unsupportedLegacyThreadLifecycle()
       return selection.runtime.forkThread(request)
     },
     async codexThreadList(request) {
-      const selection = selectChatRuntime()
+      const selection = await selectChatRuntime()
       if (selection.kind === "legacy") return unsupportedLegacyThreadLifecycle()
       return selection.runtime.listThreads(request)
     },
     async codexThreadRead(request) {
-      const selection = selectChatRuntime()
+      const selection = await selectChatRuntime()
       if (selection.kind === "legacy") return unsupportedLegacyThreadLifecycle()
       return selection.runtime.readThread(request)
     },
     async codexThreadRename(request) {
-      const selection = selectChatRuntime()
+      const selection = await selectChatRuntime()
       if (selection.kind === "legacy") return unsupportedLegacyThreadLifecycle()
       return selection.runtime.renameThread(request)
     },
     async codexThreadResume(request) {
-      const selection = selectChatRuntime()
+      const selection = await selectChatRuntime()
       if (selection.kind === "legacy") return unsupportedLegacyThreadLifecycle()
       return selection.runtime.resumeThread(request)
     },
     async codexThreadStart(request = {}) {
-      const selection = selectChatRuntime()
+      const selection = await selectChatRuntime()
       if (selection.kind === "legacy") return unsupportedLegacyThreadLifecycle()
       return selection.runtime.startThread({
         cwd: input.workingDirectory,
@@ -2106,17 +2114,17 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
       })
     },
     async codexThreadUnarchive(request) {
-      const selection = selectChatRuntime()
+      const selection = await selectChatRuntime()
       if (selection.kind === "legacy") return unsupportedLegacyThreadLifecycle()
       return selection.runtime.unarchiveThread(request)
     },
     async codexTurnInterrupt(request) {
-      const selection = selectChatRuntime()
+      const selection = await selectChatRuntime()
       if (selection.kind === "legacy") return unsupportedLegacyThreadLifecycle()
       return selection.runtime.interruptTurn(request)
     },
     async codexTurnStart(request) {
-      const selection = selectChatRuntime()
+      const selection = await selectChatRuntime()
       if (selection.kind === "legacy") {
         return labelLegacyRuntimeResponse(await legacyChatTurn({
           env: input.env,
@@ -2131,12 +2139,13 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
       })
     },
     async codexTurnSteer(request) {
-      const selection = selectChatRuntime()
+      const selection = await selectChatRuntime()
       if (selection.kind === "legacy") return unsupportedLegacyThreadLifecycle()
       return selection.runtime.steerTurn(request)
     },
     async codingStatus() {
-      if (input.env.KHALA_CODE_DESKTOP_RUNTIME === "claude_runtime") {
+      const runtimeMode = await selectedRuntimeMode()
+      if (runtimeMode === "claude_runtime") {
         const harness = await claudeHarnessStatus()
         return runtimeStatus({
           available: harness.available,
@@ -2168,6 +2177,12 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
       const result = await beginCodexConnect(accountRef, { env: input.env })
       if (result.verificationUrl !== null) openExternalUrl(result.verificationUrl)
       return result
+    },
+    async harnessSettingRead() {
+      return readKhalaCodeDesktopHarnessSetting(input.env)
+    },
+    async harnessSettingWrite(request) {
+      return writeKhalaCodeDesktopHarnessSetting(request.mode, input.env)
     },
     async openExternalUrl(url: string) {
       return openExternalUrl(url)
@@ -2213,7 +2228,7 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
       return withMaterializedChatAttachments(
         request,
         async materializedRequest => {
-          const selection = selectChatRuntime()
+          const selection = await selectChatRuntime()
           if (selection.kind === "codex") {
             const bridge = await maybeEnsureFleetMcpBridge()
             return withFleetMcpBridgeNote(await labelCodexHarnessResponse(await selection.runtime.startTurn({
@@ -2296,13 +2311,9 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
       })
     },
     async toolCatalog() {
-      const selection = selectChatRuntime()
+      const runtimeMode = await selectedRuntimeMode()
       return khalaCodeDesktopToolCatalog({
-        runtimeMode: selection.kind === "legacy"
-          ? "khala_native_runtime"
-          : selection.kind === "claude"
-            ? "claude_runtime"
-            : "codex_harness",
+        runtimeMode,
       })
     },
   }

@@ -238,6 +238,8 @@ describe("Khala Fleet worker cards", () => {
       },
       openExternal: async () => true,
       removeAccount: async () => ({ ok: true }),
+      setAccountPaused: async () => ({ ok: true }),
+      consumeResetCredit: async () => ({ ok: true }),
       startDelegationOptimization: async () => {
         throw new Error("not used")
       },

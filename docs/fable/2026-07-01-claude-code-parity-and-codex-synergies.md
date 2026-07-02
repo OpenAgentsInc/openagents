@@ -233,11 +233,11 @@ tracked its gaps.
 
 ### The UI switch
 
-`runtimeMode` already rides every response (`backend.runtimeMode`); today there
-is no user-facing toggle. Add a harness pill in the composer HUD (it already
-re-renders per turn and reads the last response's `runtimeMode`), mirrored by a
-setting. This is the **Axis A** chat-harness toggle from the multi-harness doc:
-"Codex | Claude | Khala".
+`runtimeMode` already rides every response (`backend.runtimeMode`). The composer
+HUD now has the mirrored persisted setting for the **Axis A** chat-harness
+toggle from the multi-harness doc: "Codex | Claude | Khala". Env vars remain
+operator overrides, and the visible runtime badge renders from the backend
+`runtimeMode` on the response.
 
 ### Files to touch (ordered)
 

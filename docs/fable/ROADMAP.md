@@ -165,7 +165,7 @@ real greenfield Effect service.
 | T8.2 | **Phase 1** minimal Claude chat: `claude-app-sdk-chat-runtime.ts` (query() → Stream, Query → acquireRelease, own AbortController), `claude-thread-item-projector.ts` (SDKMessage Schema union → neutral turn events), `claude-session-store.ts`, `claude-harness-status.ts` (wrap Pylon probes), wire into index/handlers/headless | T8.1 | MED |
 | T8.3 | **Phase 2** approvals (`canUseTool` → Deferred/Queue approval service, Claude-native shapes), token telemetry (exact-only, decide ingest route deliberately), `claude-fleet-mcp-bridge.ts` (inject `khala_fleet` via `options.mcpServers`), Claude settings panel | T8.2 | MED |
 | T8.4 | **Phase 3** sidebar via `listSessions()`/`getSessionMessages()`, slash registry from `supportedCommands()`, `claude-parity-contract.ts` + gap matrix pinned to SDK version | T8.2 | HIGH |
-| T8.5 | Harness pill UI ("Codex \| Claude \| Khala") in composer HUD + persisted setting + runtime badge rendering (= episode-245 P1 toggle, generalized) | T8.1 | HIGH |
+| T8.5 | **SHIPPED** Harness pill UI ("Codex \| Claude \| Khala") in composer HUD + persisted setting + runtime badge rendering (= episode-245 P1 toggle, generalized) | T8.1 | HIGH |
 
 ### WS-9 — Multi-harness routing and synergies (Axis B + crossovers)
 

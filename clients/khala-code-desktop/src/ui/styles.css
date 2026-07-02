@@ -850,11 +850,73 @@ button {
 }
 
 .khala-code-composer .oa-ai-command-composer-status {
-  max-width: min(18rem, 38vw);
+  max-width: min(30rem, 58vw);
   overflow: hidden;
   flex-wrap: nowrap;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.khala-harness-pill {
+  display: inline-grid;
+  grid-template-columns: repeat(3, minmax(3.15rem, 1fr));
+  align-items: center;
+  gap: 2px;
+  min-width: 10.3rem;
+  height: 1.55rem;
+  padding: 2px;
+  border: 1px solid color-mix(in srgb, var(--oa-color-khala-energy-cyan) 32%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--oa-color-khala-void) 46%, transparent);
+}
+
+.khala-harness-pill-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  height: 100%;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: color-mix(in srgb, var(--oa-color-khala-text-muted) 78%, transparent);
+  cursor: pointer;
+  font: inherit;
+  font-family: var(--oa-font-code);
+  font-size: 0.64rem;
+  font-weight: 700;
+  line-height: 1;
+  padding: 0 0.42rem;
+}
+
+.khala-harness-pill-button[data-active="true"] {
+  background: color-mix(in srgb, var(--oa-color-khala-energy-cyan) 18%, transparent);
+  color: var(--oa-color-khala-energy-text-strong);
+}
+
+.khala-harness-pill-button:disabled {
+  cursor: default;
+  opacity: 0.72;
+}
+
+.khala-harness-pill-button:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--oa-color-khala-energy-cyan) 68%, transparent);
+  outline-offset: 1px;
+}
+
+.khala-runtime-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 3.4rem;
+  height: 1.35rem;
+  border: 1px solid color-mix(in srgb, var(--oa-color-khala-energy-blue) 32%, transparent);
+  border-radius: 999px;
+  color: color-mix(in srgb, var(--oa-color-khala-text-muted) 84%, transparent);
+  font-family: var(--oa-font-code);
+  font-size: 0.62rem;
+  font-weight: 700;
+  line-height: 1;
 }
 
 .khala-code-composer .oa-ai-command-composer-submit-label {

@@ -1084,6 +1084,25 @@ const RpcToolCatalogResponse = S.Struct({
   })),
 })
 
+const RpcHarnessSetting = S.Struct({
+  ok: S.Literal(true),
+  mode: RpcRuntimeMode,
+  persistedMode: RpcRuntimeMode,
+  envOverride: S.NullOr(RpcRuntimeMode),
+  path: S.String,
+})
+const RpcHarnessSettingWriteRequest = S.Struct({
+  mode: RpcRuntimeMode,
+})
+const RpcHarnessSettingWriteResult = S.Struct({
+  ok: S.Literal(true),
+  mode: RpcRuntimeMode,
+  persistedMode: RpcRuntimeMode,
+  envOverride: S.NullOr(RpcRuntimeMode),
+  path: S.String,
+  saved: S.Boolean,
+})
+
 const RpcFleetCapacity = S.Struct({
   available: RpcNumberNull,
   busy: RpcNumberNull,
@@ -1500,6 +1519,8 @@ export const KhalaCodeDesktopRpcMethodSchemas = {
   codexTurnStart: { parameters: [param(RpcTurnStartRequest)], result: RpcChatTurnResponse },
   codexTurnSteer: { parameters: [param(RpcTurnSteerRequest)], result: RpcTurnActionResult },
   connectCodexAccount: { parameters: [param(S.String)], result: RpcConnectStart },
+  harnessSettingRead: { parameters: noParams(), result: RpcHarnessSetting },
+  harnessSettingWrite: { parameters: [param(RpcHarnessSettingWriteRequest)], result: RpcHarnessSettingWriteResult },
   openExternalUrl: { parameters: [param(S.String)], result: S.Boolean },
   removeCodexAccount: { parameters: [param(S.String)], result: RpcRemoveAccountResult },
   setCodexAccountPaused: { parameters: [param(S.Struct({ accountRef: S.String, paused: S.Boolean }))], result: RpcRemoveAccountResult },
@@ -1643,6 +1664,8 @@ export type KhalaCodeDesktopRPCSchema = {
     codexTurnStart(request: KhalaCodeDesktopCodexTurnStartRequest): Promise<KhalaCodeDesktopChatTurnResponse>
     codexTurnSteer(request: KhalaCodeDesktopCodexTurnSteerRequest): Promise<KhalaCodeDesktopCodexTurnActionResult>
     connectCodexAccount(accountRef: string): Promise<KhalaCodeDesktopConnectStart>
+    harnessSettingRead(): Promise<typeof RpcHarnessSetting.Type>
+    harnessSettingWrite(request: typeof RpcHarnessSettingWriteRequest.Type): Promise<typeof RpcHarnessSettingWriteResult.Type>
     openExternalUrl(url: string): Promise<boolean>
     removeCodexAccount(accountRef: string): Promise<KhalaCodeDesktopRemoveAccountResult>
     setCodexAccountPaused(request: { accountRef: string; paused: boolean }): Promise<KhalaCodeDesktopRemoveAccountResult>
