@@ -295,6 +295,15 @@ migration they de-risk.
    (start/restart/dispose) as scoped acquire/release. The chat runtime's
    deferred-promise/turn assembly collapses into `Effect.gen` over that
    service.
+
+   **T7.2 update (2026-07-02):** the first desktop seam now lives at
+   `clients/khala-code-desktop/src/bun/codex-app-server-service.ts`. It
+   wraps the legacy stdio host as a `Context.Service`, exposes tagged
+   Effect errors, caller-provided Schema-decoded responses, decoded
+   notification streams with per-subscriber isolation, timeout-triggered
+   `turn/interrupt`, and a scoped live layer. The legacy host remains the
+   transport compatibility wrapper until the chat runtime migration consumes
+   this service directly.
 7. **A typed `PylonService`.** `request`, `runAssignment`,
    `lifecycle: Stream<AssignmentRunLifecycleEvent>` — backed by the
    subprocess service and the shared schema from phase 1, replacing
