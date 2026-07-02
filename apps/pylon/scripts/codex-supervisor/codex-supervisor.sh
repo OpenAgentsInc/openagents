@@ -151,18 +151,21 @@ SUP_STANDING_TASK_CHECK_SECS="${SUP_STANDING_TASK_CHECK_SECS:-300}"
 SUP_TASK_POOL_FALLBACK_ISSUES="${SUP_TASK_POOL_FALLBACK_ISSUES:-${SUP_ISSUES:-6987 6958 6902 6637 6822 6824 6831 6656 6695 6963}}"
 
 PYLON=(bun "$REPO_ROOT/apps/pylon/src/index.ts")
+SUP_ORCHESTRATION_STATE_BIN="${SUP_ORCHESTRATION_STATE_BIN:-bun $REPO_ROOT/apps/pylon/src/orchestration/supervisor-state.ts --supervisor codex-supervisor --kind codex --pylon-home $PYLON_HOME}"
+export SUP_ORCHESTRATION_STATE_BIN
 mkdir -p "$SUP_STATE_DIR"
-DESIRED_FILE="$SUP_STATE_DIR/desired-slots"
-PAUSE_FILE="$SUP_STATE_DIR/paused"
 # Wedge telemetry (#6646): epoch-ms timestamp of the most recent dispatch
 # ATTEMPT (pick+dispatch cycle). The liveness check + watcher read this to tell
 # "alive but stalled" (wedged) from "alive and dispatching" (healthy).
 LAST_DISPATCH_FILE="$SUP_STATE_DIR/last_dispatch_time"
 HEARTBEAT_PAYLOAD_FILE="$SUP_STATE_DIR/heartbeat_payload.json"
-echo 0 > "$DESIRED_FILE"
-rm -f "$PAUSE_FILE"
 
 log() { printf '%s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" >> "$SUP_LOG"; }
+
+supervisor_state() {
+  # shellcheck disable=SC2086
+  $SUP_ORCHESTRATION_STATE_BIN "$@"
+}
 
 # Epoch milliseconds (portable: python3 is already a dependency here; `date`
 # fallback for environments without it). BSD `date` has no %N, so do not use it.
@@ -179,6 +182,12 @@ record_dispatch_attempt() {
 
 read_last_dispatch_time() {
   cat "$LAST_DISPATCH_FILE" 2>/dev/null || echo ""
+}
+
+desired_slots() {
+  supervisor_state desired-slots 2>>"$SUP_LOG" | python3 -c "import json,sys
+try: print(json.load(sys.stdin).get('desiredSlots', 0))
+except Exception: print(0)" 2>/dev/null
 }
 
 bound_log() {
@@ -213,15 +222,16 @@ owner_session_broken() {
 }
 
 global_pause() {
-  touch "$PAUSE_FILE"
+  supervisor_state pause >> "$SUP_LOG" 2>&1 || true
   log "!!! GLOBAL PAUSE: owner Codex session appears broken; not hammering."
   {
     echo ""
     echo "## NEEDS-OWNER ($(date -u +%Y-%m-%dT%H:%M:%SZ)): Codex login broken"
     echo "codex-supervisor saw 'access token could not be refreshed / sign in again'."
     echo "Re-authenticate the local Codex (~/.codex) yourself (\`codex login\`);"
-    echo "the supervisor will NEVER do this. It is paused until you clear"
-    echo "$PAUSE_FILE."
+    echo "the supervisor will NEVER do this. It is paused in the orchestration"
+    echo "FleetRun state until an operator resumes it."
+    echo "Resume after repair with: $SUP_ORCHESTRATION_STATE_BIN resume"
   } >> "$REPO_ROOT/NEEDS_OWNER.md" 2>/dev/null || true
 }
 
@@ -238,7 +248,6 @@ consecutive_refusals() {
 selfheal_watchdog_loop() {
   while true; do
     sleep "$SUP_SELFHEAL_CHECK_SECS"
-    [ -f "$PAUSE_FILE" ] && continue
     local n; n=$(consecutive_refusals)
     if [ "${n:-0}" -ge "$SUP_STALL_REFUSALS" ]; then
       log "!!!!!! FLEET-STALL: $n consecutive NO-DISPATCH with 0 OK -> self-healing (re-advertise + stale-closeout sweep)"
@@ -261,7 +270,6 @@ selfheal_watchdog_loop() {
 # title: a title that already has an open standing issue is never duplicated.
 standing_task_keeper_loop() {
   while true; do
-    if [ -f "$PAUSE_FILE" ]; then sleep "$SUP_STANDING_TASK_CHECK_SECS"; continue; fi
     local made
     made=$(sup_recreate_closed_standing_tasks 2>>"$SUP_LOG")
     if [ -n "$made" ] && [ "$made" -gt 0 ] 2>/dev/null; then
@@ -274,14 +282,17 @@ standing_task_keeper_loop() {
 # --- Heartbeater: recompute desired slots + advertise capacity on a timer. ---
 heartbeater_loop() {
   while true; do
-    [ -f "$PAUSE_FILE" ] && { sleep "$SUP_HEARTBEAT_SECS"; continue; }
-    local ready desired account_slots=()
+    local ready desired advertised_desired account_slots=()
     ready=$(ready_codex_account_refs | grep -c . || echo 0)
     while IFS= read -r slot_acc; do account_slots+=("$slot_acc"); done < <(sup_expand_account_slots $(ready_codex_account_refs))
     desired="${#account_slots[@]}"
-    echo "$desired" > "$DESIRED_FILE"
+    supervisor_state sync --desired-slots "$desired" >> "$SUP_LOG" 2>&1 || true
+    advertised_desired="$(desired_slots)"
+    case "$advertised_desired" in
+      ''|*[!0-9]*) advertised_desired="$desired" ;;
+    esac
     heartbeat_tmp="$SUP_STATE_DIR/heartbeat_payload.tmp"
-    if OPENAGENTS_PYLON_CODEX_CONCURRENCY="$desired" \
+    if OPENAGENTS_PYLON_CODEX_CONCURRENCY="$advertised_desired" \
       OPENAGENTS_PYLON_CODEX_BUSY=0 \
       OPENAGENTS_PYLON_CODEX_QUEUED=0 \
       sup_run_timeout "$SUP_PYLON_TIMEOUT_SECS" "${PYLON[@]}" presence heartbeat --json > "$heartbeat_tmp" 2>> "$SUP_LOG"; then
@@ -308,7 +319,7 @@ PY
     # last_dispatch_time telemetry (#6646): emitted on the heartbeat line so a
     # wedged loop (heartbeat firing, dispatch stalled) is visible in the log and
     # the watcher's liveness check has a fresh value to read.
-    log "heartbeat ready_codex=$ready desired_slots=$desired tuned_account_slots=${account_slots[*]:-none} last_dispatch_time=$(read_last_dispatch_time)"
+    log "heartbeat ready_codex=$ready desired_slots=$advertised_desired target_slots=$desired tuned_account_slots=${account_slots[*]:-none} last_dispatch_time=$(read_last_dispatch_time)"
     bound_log
     sleep "$SUP_HEARTBEAT_SECS"
   done
@@ -323,8 +334,7 @@ worker_loop() {
   local failure_repeat=0
   local lockout_repeat=0
   while true; do
-    if [ -f "$PAUSE_FILE" ]; then sleep 30; continue; fi
-    local desired; desired=$(cat "$DESIRED_FILE" 2>/dev/null || echo 0)
+    local desired; desired="$(desired_slots)"
     if [ "$slot" -ge "$desired" ]; then sleep 10; continue; fi
 
     # Round-robin account across the live tuned slot set; default omits
@@ -337,6 +347,7 @@ worker_loop() {
     [ "${#account_slots[@]}" -eq 0 ] && { sleep 20; continue; }
     if [ "$slot" -ge "${#account_slots[@]}" ]; then sleep 10; continue; fi
     local acc="${account_slots[$slot]}"
+    export SUP_CLAIM_ACCOUNT_REF="$acc"
     local acc_args=(); [ "$acc" != "default" ] && acc_args=(--account-ref "$acc")
 
     # Refresh the active pool from the unsupported-request ledger, with a short
@@ -474,6 +485,7 @@ worker_loop() {
     # request, so last_dispatch_time advances every pick+dispatch cycle and a
     # wedged loop is detectable as "alive but last_dispatch_time stale".
     record_dispatch_attempt
+    supervisor_state dispatch-attempt --slot "$slot" --account-ref "$acc" --issue "$issue" >> "$SUP_LOG" 2>&1 || true
 
     local out="$SUP_STATE_DIR/slot.$slot.json"
     # Bound the labor dispatch so a hung request can never stall this slot
@@ -502,6 +514,7 @@ worker_loop() {
       # its PR/lockout state settles; the open-PR lockout then takes over and the
       # claim eventually GCs.
       sup_refresh_claim "$issue"
+      supervisor_state worker-done --slot "$slot" --account-ref "$acc" --issue "$issue" --status completed >> "$SUP_LOG" 2>&1 || true
       log "slot=$slot acc=$acc issue=#$issue OK (rc=$rc)"
       continue
     fi
@@ -545,6 +558,7 @@ worker_loop() {
       escalate_backoff=0
     fi
     log "slot=$slot acc=$acc issue=#$issue NO-DISPATCH ($sig rc=$rc repeated=$failure_repeat); backoff ${failure_sleep}s"
+    supervisor_state worker-done --slot "$slot" --account-ref "$acc" --issue "$issue" --status failed >> "$SUP_LOG" 2>&1 || true
     sleep "$failure_sleep"
     if [ "$escalate_backoff" -eq 1 ]; then
       backoff=$(( backoff * 2 )); [ "$backoff" -gt "$SUP_BACKOFF_MAX" ] && backoff="$SUP_BACKOFF_MAX"
@@ -556,6 +570,7 @@ cleanup() {
   log "supervisor stopping (pid $$); terminating children"
   pkill -P $$ 2>/dev/null
   rm -f "$SUP_STATE_DIR/supervisor.pid"
+  supervisor_state reconcile >> "$SUP_LOG" 2>&1 || true
   exit 0
 }
 trap cleanup INT TERM
@@ -571,6 +586,7 @@ echo $$ > "$SUP_STATE_DIR/supervisor.pid"
 # fresh process is not flagged wedged before its first dispatch (#6646).
 record_dispatch_attempt
 log "=== codex-supervisor START pid=$$ repo=$REPO_ROOT pylon=$SUP_PYLON_REF per_account=$SUP_PER_ACCOUNT max_slots=$SUP_MAX_SLOTS account_refs=${SUP_ACCOUNT_REFS:-all} ==="
+supervisor_state sync --desired-slots 1 >> "$SUP_LOG" 2>&1 || true
 sup_gc_orphaned_claims
 log "startup claim GC swept orphaned in-flight claims"
 
@@ -596,6 +612,6 @@ done
 # Periodic public-counter progress line for observability.
 while true; do
   bound_log
-  log "counter tokensServed=$(counter_now) desired_slots=$(cat "$DESIRED_FILE" 2>/dev/null) last_dispatch_time=$(read_last_dispatch_time)"
+  log "counter tokensServed=$(counter_now) desired_slots=$(desired_slots) last_dispatch_time=$(read_last_dispatch_time)"
   sleep 120
 done
