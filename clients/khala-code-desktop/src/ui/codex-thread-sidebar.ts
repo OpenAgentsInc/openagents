@@ -27,6 +27,10 @@ export type CodexThreadSidebarHandle = {
   readonly selectRecentThread: (index: number) => Promise<boolean>
   readonly setActiveThreadId: (threadId: string | null) => void
   readonly setVisible: (visible: boolean) => void
+  readonly upsertPendingThread: (input: {
+    readonly preview: string
+    readonly threadId: string
+  }) => void
 }
 
 export type CodexThreadSelectionSource = "hotkey" | "sidebar"
@@ -167,6 +171,37 @@ export const renameThreadInListData = (
   return renamed ? { ...data, threads } : data
 }
 
+export const upsertPendingThreadInListData = (
+  data: KhalaCodeDesktopCodexThreadListResult,
+  thread: KhalaCodeDesktopCodexThreadSummary,
+): KhalaCodeDesktopCodexThreadListResult => {
+  const existingIds = new Set(data.threads?.map(candidate => candidate.id) ?? [])
+  if (existingIds.has(thread.id)) return data
+
+  const key = thread.cwd ?? "cwd:none"
+  const groups = [...(data.groups ?? [])]
+  const existingGroup = groups.find(group => group.key === key)
+  if (existingGroup === undefined) {
+    groups.unshift({
+      key,
+      label: thread.projectLabel,
+      threadIds: [thread.id],
+    })
+  } else if (!existingGroup.threadIds.includes(thread.id)) {
+    const index = groups.indexOf(existingGroup)
+    groups[index] = {
+      ...existingGroup,
+      threadIds: [thread.id, ...existingGroup.threadIds],
+    }
+  }
+
+  return {
+    ...data,
+    groups,
+    threads: [thread, ...(data.threads ?? [])],
+  }
+}
+
 export const mountCodexThreadSidebar = (
   container: HTMLElement,
   options: CodexThreadSidebarOptions,
@@ -182,13 +217,14 @@ export const mountCodexThreadSidebar = (
   let refreshSequence = 0
   let selectionSequence = 0
   const optimisticThreadTitles = new Map<string, string>()
+  const optimisticThreads = new Map<string, KhalaCodeDesktopCodexThreadSummary>()
   const threadMenu = createBasecoatContextMenu({
     id: "khala-thread-sidebar-thread-menu",
     ownerDocument: container.ownerDocument,
     className: "khala-thread-sidebar-menu",
   })
 
-  const applyOptimisticThreadTitles = (
+  const applyOptimisticThreads = (
     data: KhalaCodeDesktopCodexThreadListResult,
   ): KhalaCodeDesktopCodexThreadListResult => {
     let nextData = data
@@ -199,6 +235,19 @@ export const mountCodexThreadSidebar = (
         continue
       }
       nextData = renameThreadInListData(nextData, threadId, title)
+    }
+    if (optimisticThreads.size === 0) return nextData
+
+    const existingIds = new Set(nextData.threads?.map(thread => thread.id) ?? [])
+    const missingThreads = [...optimisticThreads.values()].filter(thread => {
+      if (!existingIds.has(thread.id)) return true
+      optimisticThreads.delete(thread.id)
+      return false
+    })
+    if (missingThreads.length === 0) return nextData
+
+    for (const thread of missingThreads) {
+      nextData = upsertPendingThreadInListData(nextData, thread)
     }
     return nextData
   }
@@ -332,7 +381,7 @@ export const mountCodexThreadSidebar = (
 
   const loadRecentThreadData = async (): Promise<KhalaCodeDesktopCodexThreadListResult> => {
     const requestSequence = ++refreshSequence
-    const data = applyOptimisticThreadTitles(
+    const data = applyOptimisticThreads(
       await options.listThreads({ archived: false, searchTerm: "" }),
     )
     if (requestSequence !== refreshSequence) return data
@@ -375,78 +424,43 @@ export const mountCodexThreadSidebar = (
     }
   }
 
-  const threadMenuHeader = (
-    thread: KhalaCodeDesktopCodexThreadSummary,
-  ): HTMLElement => {
-    const header = el("div", "khala-thread-sidebar-menu-summary")
-    const title = el("div", "khala-thread-sidebar-menu-title", thread.title)
-    const preview = el("div", "khala-thread-sidebar-menu-preview", thread.preview || thread.id)
-    const meta = el("div", "khala-thread-sidebar-menu-meta")
-    const time = formatCompactThreadTimestamp(thread.recencyAt ?? thread.updatedAt)
-    meta.append(el("span", undefined, thread.statusLabel || thread.status))
-    if (time.length > 0) meta.append(el("span", undefined, time))
-    header.append(title, preview, meta)
-
-    if (thread.badges.length > 0) {
-      const badges = el("div", "khala-thread-sidebar-menu-badges")
-      for (const badge of thread.badges) badges.append(el("span", "khala-thread-sidebar-menu-badge", badge))
-      header.append(badges)
-    }
-
-    return header
-  }
-
   const threadMenuContent = (
     thread: KhalaCodeDesktopCodexThreadSummary,
   ): BasecoatMenuDomContent => ({
     label: `Thread actions for ${thread.title}`,
-    header: threadMenuHeader(thread),
     sections: [
       {
-        label: "Thread",
         items: [
           {
             id: "rename-thread",
             label: "Rename thread",
-            description: "Set display name",
             icon: "Pencil",
             onSelect: () => beginRename(thread),
           },
           {
             id: "fork-thread",
             label: "Fork thread",
-            description: "Create branch thread",
             icon: "BranchAlt",
             onSelect: () => void runMutation(() => options.forkThread(thread.id)),
           },
           {
             id: "copy-session-id",
             label: "Copy session ID",
-            description: thread.sessionId === null
-              ? "Copy thread ID fallback"
-              : "Copy Codex session ref",
             icon: "Copy",
             onSelect: () => {
               const sessionId = thread.sessionId ?? thread.id
               void navigator.clipboard?.writeText(sessionId).catch(() => undefined)
             },
           },
-        ],
-      },
-      {
-        label: "Lifecycle",
-        items: [
           {
             id: "archive-thread",
             label: "Archive thread",
-            description: "Move out of active threads",
             icon: "Archive",
             onSelect: () => void runMutation(() => options.archiveThread(thread.id)),
           },
           {
             id: "delete-thread",
             label: "Delete thread",
-            description: "Remove this thread",
             icon: "Trash",
             destructive: true,
             onSelect: () => {
@@ -689,7 +703,7 @@ export const mountCodexThreadSidebar = (
       : { phase: "loading", data: previousData }
     render()
     try {
-      const data = applyOptimisticThreadTitles(
+      const data = applyOptimisticThreads(
         await options.listThreads({ archived: false, searchTerm }),
       )
       if (requestSequence !== refreshSequence) return
@@ -731,6 +745,41 @@ export const mountCodexThreadSidebar = (
         renamingThreadDraft = ""
       }
       if (visible && state.phase === "idle") void refresh()
+    },
+    upsertPendingThread(input) {
+      const preview = input.preview.trim()
+      if (input.threadId.length === 0 || preview.length === 0) return
+      const now = Date.now()
+      optimisticThreads.set(input.threadId, {
+        id: input.threadId,
+        sessionId: input.threadId,
+        title: preview.split(/\r?\n/u)[0]?.slice(0, 80) ?? input.threadId,
+        preview,
+        cwd: null,
+        projectLabel: "Current chat",
+        status: "active",
+        statusLabel: "active",
+        modelProvider: null,
+        source: "codex",
+        forkedFromId: null,
+        parentThreadId: null,
+        createdAt: now,
+        updatedAt: now,
+        recencyAt: now,
+        badges: [],
+      })
+      const data = dataForState(state)
+      if (data !== undefined) {
+        state = state.phase === "loading"
+          ? { phase: "loading", data: applyOptimisticThreads(data) }
+          : state.phase === "error"
+            ? { phase: "error", message: state.message, data: applyOptimisticThreads(data) }
+            : state.phase === "ready"
+              ? { phase: "ready", data: applyOptimisticThreads(data) }
+              : state
+      }
+      activeThreadId = input.threadId
+      render()
     },
   }
 }

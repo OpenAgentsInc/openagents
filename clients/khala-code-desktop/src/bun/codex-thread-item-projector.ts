@@ -71,8 +71,34 @@ const networkPolicyAmendments = (
   return amendments.length === 0 ? undefined : amendments
 }
 
-const itemId = (item: JsonObject | null): string | null => stringField(item, "id")
 const itemType = (item: JsonObject | null): string => stringField(item, "type") ?? "unknown"
+
+const responseItemPayload = (item: JsonObject): JsonObject =>
+  itemType(item) === "response_item"
+    ? objectField(item, "payload") ?? objectField(item, "item") ?? objectField(item, "responseItem") ?? item
+    : item
+
+const isRawFunctionCall = (type: string): boolean =>
+  type === "function_call" || type === "custom_tool_call"
+
+const isRawFunctionCallOutput = (type: string): boolean =>
+  type === "function_call_output" || type === "custom_tool_call_output"
+
+const itemId = (item: JsonObject | null): string | null => {
+  if (item === null) return null
+  const normalized = responseItemPayload(item)
+  const type = itemType(normalized)
+  if (isRawFunctionCall(type) || isRawFunctionCallOutput(type)) {
+    return stringField(normalized, "call_id") ??
+      stringField(normalized, "callId") ??
+      stringField(normalized, "id") ??
+      stringField(item, "id")
+  }
+  return stringField(normalized, "id") ??
+    stringField(normalized, "call_id") ??
+    stringField(normalized, "callId") ??
+    stringField(item, "id")
+}
 
 const threadIdFromParams = (params: unknown): string | null => stringField(params, "threadId")
 const turnIdFromParams = (params: unknown): string | null =>
@@ -169,6 +195,11 @@ const textList = (values: readonly unknown[]): string =>
 const jsonSection = (title: string, value: unknown, context: DisplayContext): string => {
   if (value === undefined || value === null) return ""
   return `\n\n${title}\n\n\`\`\`json\n${safeJsonForDisplay(value, context)}\n\`\`\``
+}
+
+const textSection = (title: string, value: unknown, context: DisplayContext): string => {
+  if (typeof value !== "string" || value.length === 0) return ""
+  return `\n\n${title}\n\n\`\`\`\n${displayLocalPathsForKhalaCode(value, context.displayRoot)}\n\`\`\``
 }
 
 const displayPath = (value: string, context: DisplayContext): string =>
@@ -282,6 +313,28 @@ const toolCallTitle = (
   return `${toolVerbFor(tool)} ${displayPath(path, context)}`
 }
 
+const rawFunctionCallTitle = (item: JsonObject): string =>
+  humanize(stringField(item, "name") ?? stringField(item, "tool") ?? "function call")
+
+const rawFunctionCallBody = (
+  item: JsonObject,
+  context: DisplayContext,
+): string => boundedForDisplay([
+  jsonSection("Arguments", item.arguments, context),
+  textSection("Input", item.input, context),
+  stringField(item, "status") === null ? "" : `\n\nstatus: ${stringField(item, "status")}`,
+].join("").trim() || "Function call is pending.", context)
+
+const rawFunctionCallOutputBody = (
+  item: JsonObject,
+  context: DisplayContext,
+): string => boundedForDisplay([
+  typeof item.output === "string"
+    ? textSection("Output", item.output, context)
+    : jsonSection("Output", item.output, context),
+  jsonSection("Result", item.result, context),
+].join("").trim() || "Function call output is empty.", context)
+
 const commandBody = (item: JsonObject, context: DisplayContext): string => {
   const command = stringField(item, "command") ?? ""
   const cwd = stringField(item, "cwd")
@@ -329,11 +382,12 @@ const projectionForItem = (
     readonly turnId: string | null
   },
 ): KhalaCodeDesktopMessage | null => {
-  const type = itemType(item)
+  const projectedItem = responseItemPayload(item)
+  const type = itemType(projectedItem)
   const id = itemId(item)
   if (id === null) return null
   if (type === "reasoning") return null
-  const status = normalizeStatus(stringField(item, "status"), fallbackStatus)
+  const status = normalizeStatus(stringField(projectedItem, "status"), fallbackStatus)
   let role: KhalaCodeDesktopMessageRole = "tool"
   let title = humanize(type)
   let subtitle: string | undefined
@@ -343,11 +397,11 @@ const projectionForItem = (
     case "userMessage":
       role = "user"
       title = "User message"
-      body = arrayField(item, "content").map(textFromUserInput).join("\n\n")
+      body = arrayField(projectedItem, "content").map(textFromUserInput).join("\n\n")
       break
     case "hookPrompt":
       title = "Hook prompt"
-      body = arrayField(item, "fragments")
+      body = arrayField(projectedItem, "fragments")
         .map(fragment => isObject(fragment) ? stringField(fragment, "text") ?? "" : "")
         .filter(Boolean)
         .join("\n\n")
@@ -355,101 +409,113 @@ const projectionForItem = (
     case "agentMessage":
       role = "assistant"
       title = "Assistant"
-      body = stringField(item, "text") ?? ""
+      body = stringField(projectedItem, "text") ?? ""
       break
     case "plan":
       role = "assistant"
       title = "Plan"
-      body = stringField(item, "text") ?? ""
+      body = stringField(projectedItem, "text") ?? ""
       break
     case "reasoning":
       role = "assistant"
       title = "Reasoning"
       body = [
-        textList(arrayField(item, "summary")),
-        textList(arrayField(item, "content")),
+        textList(arrayField(projectedItem, "summary")),
+        textList(arrayField(projectedItem, "content")),
       ].filter(Boolean).join("\n\n")
       break
     case "commandExecution":
-      title = commandTitle(item, context)
-      subtitle = stringField(item, "cwd") === null ? undefined : displayPath(stringField(item, "cwd")!, context)
-      body = commandBody(item, context)
+      title = commandTitle(projectedItem, context)
+      subtitle = stringField(projectedItem, "cwd") === null ? undefined : displayPath(stringField(projectedItem, "cwd")!, context)
+      body = commandBody(projectedItem, context)
       break
     case "fileChange":
-      title = fileChangesTitle(arrayField(item, "changes"), context)
-      body = fileChangesBody(arrayField(item, "changes"), context)
+      title = fileChangesTitle(arrayField(projectedItem, "changes"), context)
+      body = fileChangesBody(arrayField(projectedItem, "changes"), context)
       break
     case "mcpToolCall":
-      title = toolCallTitle(item, "tool", context)
-      subtitle = stringField(item, "server") ?? undefined
+      title = toolCallTitle(projectedItem, "tool", context)
+      subtitle = stringField(projectedItem, "server") ?? undefined
       body = boundedForDisplay([
-        jsonSection("Arguments", item.arguments, context),
-        jsonSection("Result", item.result, context),
-        jsonSection("Error", item.error, context),
+        jsonSection("Arguments", projectedItem.arguments, context),
+        jsonSection("Result", projectedItem.result, context),
+        jsonSection("Error", projectedItem.error, context),
       ].join("").trim() || "MCP call is pending.", context)
       break
     case "dynamicToolCall":
-      title = toolCallTitle(item, "tool", context)
-      subtitle = stringField(item, "namespace") ?? undefined
+      title = toolCallTitle(projectedItem, "tool", context)
+      subtitle = stringField(projectedItem, "namespace") ?? undefined
       body = boundedForDisplay([
-        jsonSection("Arguments", item.arguments, context),
-        jsonSection("Content", item.contentItems, context),
-        item.success === undefined || item.success === null ? "" : `\n\nsuccess: ${String(item.success)}`,
+        jsonSection("Arguments", projectedItem.arguments, context),
+        jsonSection("Content", projectedItem.contentItems, context),
+        projectedItem.success === undefined || projectedItem.success === null ? "" : `\n\nsuccess: ${String(projectedItem.success)}`,
       ].join("").trim() || "Dynamic tool call is pending.", context)
       break
     case "collabAgentToolCall":
-      title = `Subagent: ${humanize(stringField(item, "tool") ?? "request")}`
-      subtitle = arrayField(item, "receiverThreadIds").filter(value => typeof value === "string").join(", ") || undefined
+      title = `Subagent: ${humanize(stringField(projectedItem, "tool") ?? "request")}`
+      subtitle = arrayField(projectedItem, "receiverThreadIds").filter(value => typeof value === "string").join(", ") || undefined
       body = bounded([
-        stringField(item, "prompt") ?? "",
-        stringField(item, "model") === null ? "" : `model: ${stringField(item, "model")}`,
-        stringField(item, "reasoningEffort") === null ? "" : `effort: ${stringField(item, "reasoningEffort")}`,
-        statesBody(objectField(item, "agentsStates")),
+        stringField(projectedItem, "prompt") ?? "",
+        stringField(projectedItem, "model") === null ? "" : `model: ${stringField(projectedItem, "model")}`,
+        stringField(projectedItem, "reasoningEffort") === null ? "" : `effort: ${stringField(projectedItem, "reasoningEffort")}`,
+        statesBody(objectField(projectedItem, "agentsStates")),
       ].filter(Boolean).join("\n\n"))
       body = displayLocalPathsForKhalaCode(body, context.displayRoot)
       break
     case "subAgentActivity":
-      title = `Subagent ${humanize(stringField(item, "kind") ?? "activity")}`
-      subtitle = stringField(item, "agentThreadId") ?? undefined
-      body = displayLocalPathsForKhalaCode(stringField(item, "agentPath") ?? "", context.displayRoot)
+      title = `Subagent ${humanize(stringField(projectedItem, "kind") ?? "activity")}`
+      subtitle = stringField(projectedItem, "agentThreadId") ?? undefined
+      body = displayLocalPathsForKhalaCode(stringField(projectedItem, "agentPath") ?? "", context.displayRoot)
       break
     case "webSearch":
       title = "Web search"
-      body = stringField(item, "query") ?? ""
+      body = stringField(projectedItem, "query") ?? ""
       break
     case "imageView":
-      title = stringField(item, "path") === null
+      title = stringField(projectedItem, "path") === null
         ? "Viewed image"
-        : `Viewed ${displayPath(stringField(item, "path")!, context)}`
-      body = displayLocalPathsForKhalaCode(stringField(item, "path") ?? "", context.displayRoot)
+        : `Viewed ${displayPath(stringField(projectedItem, "path")!, context)}`
+      body = displayLocalPathsForKhalaCode(stringField(projectedItem, "path") ?? "", context.displayRoot)
       break
     case "sleep":
       title = "Sleep"
-      body = `${numberField(item, "durationMs") ?? 0}ms`
+      body = `${numberField(projectedItem, "durationMs") ?? 0}ms`
       break
     case "imageGeneration":
       title = "Image generation"
       body = boundedForDisplay([
-        stringField(item, "revisedPrompt") ?? "",
-        stringField(item, "result") ?? "",
-        stringField(item, "savedPath") ?? "",
+        stringField(projectedItem, "revisedPrompt") ?? "",
+        stringField(projectedItem, "result") ?? "",
+        stringField(projectedItem, "savedPath") ?? "",
       ].filter(Boolean).join("\n\n"), context)
       break
     case "enteredReviewMode":
       title = "Review started"
-      body = stringField(item, "review") ?? ""
+      body = stringField(projectedItem, "review") ?? ""
       break
     case "exitedReviewMode":
       title = "Review finished"
-      body = stringField(item, "review") ?? ""
+      body = stringField(projectedItem, "review") ?? ""
       break
     case "contextCompaction":
       title = "Context compaction"
       body = "Compacting conversation history."
       break
+    case "function_call":
+    case "custom_tool_call":
+      title = rawFunctionCallTitle(projectedItem)
+      subtitle = stringField(projectedItem, "call_id") ?? stringField(projectedItem, "callId") ?? undefined
+      body = rawFunctionCallBody(projectedItem, context)
+      break
+    case "function_call_output":
+    case "custom_tool_call_output":
+      title = "Function call output"
+      subtitle = stringField(projectedItem, "call_id") ?? stringField(projectedItem, "callId") ?? undefined
+      body = rawFunctionCallOutputBody(projectedItem, context)
+      break
     default:
       title = `Unknown Codex item: ${type}`
-      body = `Codex emitted an item variant Khala Code does not render yet.\n\n\`\`\`json\n${safeJsonForDisplay(item, context)}\n\`\`\``
+      body = `Codex emitted an item variant Khala Code does not render yet.\n\n\`\`\`json\n${safeJsonForDisplay(projectedItem, context)}\n\`\`\``
       break
   }
 
@@ -640,6 +706,24 @@ export function createCodexThreadItemEventProjector(
       const item = objectField(params, "item")
       if (item === null) return []
       if (itemType(item) === "userMessage" && options.renderUserMessages !== true) return []
+      const projectedItem = responseItemPayload(item)
+      const projectedType = itemType(projectedItem)
+      const projectedId = itemId(item)
+      const existing = projectedId === null ? undefined : messages.get(projectedId)
+      if (isRawFunctionCallOutput(projectedType) && existing !== undefined) {
+        const outputBody = rawFunctionCallOutputBody(projectedItem, options)
+        const codexItem = existing.codexItem === undefined
+          ? undefined
+          : {
+              ...existing.codexItem,
+              status: normalizeStatus(stringField(projectedItem, "status"), "completed"),
+            }
+        return upsert({
+          ...existing,
+          body: boundedForDisplay([existing.body, outputBody].filter(Boolean).join("\n\n"), options),
+          ...(codexItem === undefined ? {} : { codexItem, harnessItem: codexItem }),
+        }, notification.method === "item/completed")
+      }
       const message = projectionForItem(item, notification.method === "item/completed" ? "completed" : "running", {
         ...(options.displayRoot === undefined ? {} : { displayRoot: options.displayRoot }),
         threadId: threadIdFromParams(params),
