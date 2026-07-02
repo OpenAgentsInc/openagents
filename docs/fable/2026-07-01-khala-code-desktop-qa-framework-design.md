@@ -433,6 +433,11 @@ else — the oracle catalog is the broader net.
   cheapest most-catching tests run first (Tier-1 pre-push stays under its
   bound honestly).
 
+Implementation seam: `packages/khala-qa-harness/src/explore-policy-gepa.ts`
+keeps GEPA explore-policy candidates offline, Gym-admitted, and
+non-self-promoting, then ranks the scenario portfolio by confirmed-bug yield
+per runtime cost.
+
 ## 11. Build List (Phased, Minimal-First)
 
 **G-gaps (framework spine):**
