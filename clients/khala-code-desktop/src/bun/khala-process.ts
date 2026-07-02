@@ -1,9 +1,9 @@
+import { EventEmitter } from "node:events"
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process"
 import { Readable } from "node:stream"
 
-import { Context, Data, Duration, Effect, Layer, Sink, Stream } from "effect"
+import { Context, Data, Duration, Effect, Exit, Layer, Scope, Sink, Stream } from "effect"
 import * as PlatformError from "effect/PlatformError"
-import type * as Scope from "effect/Scope"
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process"
 
 export class KhalaProcessSpawnFailure extends Data.TaggedError("KhalaProcessSpawnFailure")<{
@@ -32,6 +32,7 @@ export type KhalaProcessFailure =
 
 export type KhalaProcessSpawnOptions = Readonly<{
   readonly cwd?: string
+  readonly detached?: boolean
   readonly env?: Readonly<Record<string, string | undefined>>
   readonly extendEnv?: boolean
   readonly forceKillAfter?: ChildProcess.KillOptions["forceKillAfter"]
@@ -48,6 +49,8 @@ export type KhalaProcessHandle = Readonly<{
   readonly stderr: Stream.Stream<Uint8Array, KhalaProcessFailure>
   readonly stdin: Sink.Sink<void, Uint8Array, never, KhalaProcessFailure>
   readonly stdout: Stream.Stream<Uint8Array, KhalaProcessFailure>
+  readonly unref: Effect.Effect<Effect.Effect<void, KhalaProcessFailure>, KhalaProcessFailure>
+  readonly writeStdin: (chunk: string | Uint8Array) => Effect.Effect<void, KhalaProcessFailure>
 }>
 
 export type KhalaProcessServiceShape = Readonly<{
@@ -63,6 +66,20 @@ export type KhalaProcessTextResult = Readonly<{
   readonly stderr: string
   readonly stdout: string
 }>
+
+export type KhalaProcessNodeChild = EventEmitter & Readonly<{
+  readonly exited: Promise<number>
+  readonly kill: (signal?: ChildProcess.Signal) => unknown
+  readonly pid: number
+  readonly stderr: Readable
+  readonly stdin: {
+    readonly write: (chunk: string | Uint8Array) => unknown
+  }
+  readonly stdout: Readable
+  readonly unref: () => unknown
+}>
+
+const nodeStdinWriters = new WeakMap<object, (chunk: Uint8Array) => Effect.Effect<void, PlatformError.PlatformError>>()
 
 const platformToSpawnFailure = (command: string, cause: unknown): KhalaProcessSpawnFailure =>
   new KhalaProcessSpawnFailure({
@@ -117,6 +134,9 @@ const writeStdin = (
       resume(Effect.fail(platformToStreamFailure(command, "stdin", error)))
     })
   })
+
+const encodeStdinChunk = (chunk: string | Uint8Array): Uint8Array =>
+  typeof chunk === "string" ? new TextEncoder().encode(chunk) : chunk
 
 const stdinSink = (
   command: string,
@@ -241,34 +261,40 @@ const makeNodeSpawnerService = (): ChildProcessSpawner.ChildProcessSpawner["Serv
       ({ proc }) =>
         killNodeProcess(proc, { killSignal: command.options.killSignal }).pipe(Effect.ignore),
     ).pipe(
-      Effect.map(({ command: commandName, proc }) => ChildProcessSpawner.makeHandle({
-        all: Stream.merge(
-          streamFromNodeReadable(commandName, "stdout", proc.stdout),
-          streamFromNodeReadable(commandName, "stderr", proc.stderr),
-        ).pipe(Stream.mapError(cause => platformError("all", cause))),
-        exitCode: waitForExit(commandName, proc).pipe(
-          Effect.map(code => ChildProcessSpawner.ExitCode(code)),
-          Effect.mapError(cause => platformError("exitCode", cause)),
-        ),
-        getInputFd: () => Sink.drain,
-        getOutputFd: () => Stream.empty,
-        isRunning: Effect.sync(() => proc.exitCode === null && proc.signalCode === null),
-        kill: options => killNodeProcess(proc, options),
-        pid: ChildProcessSpawner.ProcessId(proc.pid ?? -1),
-        stderr: streamFromNodeReadable(commandName, "stderr", proc.stderr).pipe(
-          Stream.mapError(cause => platformError("stderr", cause)),
-        ),
-        stdin: stdinSink(commandName, proc).pipe(
-          Sink.mapError(cause => platformError("stdin", cause)),
-        ),
-        stdout: streamFromNodeReadable(commandName, "stdout", proc.stdout).pipe(
-          Stream.mapError(cause => platformError("stdout", cause)),
-        ),
-        unref: Effect.sync(() => {
-          proc.unref()
-          return Effect.sync(() => proc.ref())
-        }),
-      })),
+      Effect.map(({ command: commandName, proc }) => {
+        const handle = ChildProcessSpawner.makeHandle({
+          all: Stream.merge(
+            streamFromNodeReadable(commandName, "stdout", proc.stdout),
+            streamFromNodeReadable(commandName, "stderr", proc.stderr),
+          ).pipe(Stream.mapError(cause => platformError("all", cause))),
+          exitCode: waitForExit(commandName, proc).pipe(
+            Effect.map(code => ChildProcessSpawner.ExitCode(code)),
+            Effect.mapError(cause => platformError("exitCode", cause)),
+          ),
+          getInputFd: () => Sink.drain,
+          getOutputFd: () => Stream.empty,
+          isRunning: Effect.sync(() => proc.exitCode === null && proc.signalCode === null),
+          kill: options => killNodeProcess(proc, options),
+          pid: ChildProcessSpawner.ProcessId(proc.pid ?? -1),
+          stderr: streamFromNodeReadable(commandName, "stderr", proc.stderr).pipe(
+            Stream.mapError(cause => platformError("stderr", cause)),
+          ),
+          stdin: stdinSink(commandName, proc).pipe(
+            Sink.mapError(cause => platformError("stdin", cause)),
+          ),
+          stdout: streamFromNodeReadable(commandName, "stdout", proc.stdout).pipe(
+            Stream.mapError(cause => platformError("stdout", cause)),
+          ),
+          unref: Effect.sync(() => {
+            proc.unref()
+            return Effect.sync(() => proc.ref())
+          }),
+        })
+        nodeStdinWriters.set(handle, chunk =>
+          writeStdin(commandName, proc, chunk).pipe(Effect.mapError(cause => platformError("stdin", cause)))
+        )
+        return handle
+      }),
     )
   })
 
@@ -278,6 +304,7 @@ export const makeKhalaProcessService = (): KhalaProcessServiceShape => {
     spawn: (command, args = [], options = {}) => {
       const childCommand = ChildProcess.make(command, [...args], {
         cwd: options.cwd,
+        detached: options.detached,
         env: options.env === undefined ? undefined : { ...options.env },
         extendEnv: options.extendEnv ?? true,
         forceKillAfter: options.forceKillAfter,
@@ -329,6 +356,21 @@ export const makeKhalaProcessService = (): KhalaProcessServiceShape => {
           stdout: handle.stdout.pipe(
             Stream.mapError(cause => platformToStreamFailure(command, "stdout", cause)),
           ),
+          unref: handle.unref.pipe(
+            Effect.map(reref =>
+              reref.pipe(Effect.mapError(cause => platformToSpawnFailure(command, cause)))
+            ),
+            Effect.mapError(cause => platformToSpawnFailure(command, cause)),
+          ),
+          writeStdin: chunk => {
+            const writer = nodeStdinWriters.get(handle)
+            if (writer === undefined) {
+              return Effect.fail(platformToStreamFailure(command, "stdin", "stdin writer is unavailable"))
+            }
+            return writer(encodeStdinChunk(chunk)).pipe(
+              Effect.mapError(cause => platformToStreamFailure(command, "stdin", cause)),
+            )
+          },
         })),
       )
     },
@@ -348,6 +390,73 @@ export const spawnKhalaProcess = (
   options: KhalaProcessSpawnOptions = {},
 ): Effect.Effect<KhalaProcessHandle, KhalaProcessSpawnFailure, Scope.Scope> =>
   makeKhalaProcessService().spawn(command, args, options)
+
+export const spawnKhalaProcessNodeChild = async (
+  command: string,
+  args: readonly string[] = [],
+  options: KhalaProcessSpawnOptions = {},
+): Promise<KhalaProcessNodeChild> => {
+  const scope = Effect.runSync(Scope.make())
+  const handle = await Effect.runPromise(
+    Effect.provideService(spawnKhalaProcess(command, args, options), Scope.Scope, scope),
+  )
+  let scopeClosed = false
+  const closeScope = async (): Promise<void> => {
+    if (scopeClosed) return
+    scopeClosed = true
+    await Effect.runPromise(Scope.close(scope, Exit.void).pipe(Effect.ignore))
+  }
+  const bufferedChunks = async function*(
+    stream: Stream.Stream<Uint8Array, KhalaProcessFailure>,
+  ): AsyncIterable<Buffer> {
+    for await (const chunk of Stream.toAsyncIterable(stream)) {
+      yield Buffer.from(chunk)
+    }
+  }
+  const stdout = Readable.from(bufferedChunks(handle.stdout))
+  const stderr = Readable.from(bufferedChunks(handle.stderr))
+  const events = new EventEmitter()
+  const exited = Effect.runPromise(
+    handle.exit.pipe(
+      Effect.match({
+        onFailure: failure =>
+          failure instanceof KhalaProcessNonZeroExit ? failure.exitCode : 127,
+        onSuccess: exitCode => exitCode,
+      }),
+    ),
+  )
+  void exited.then(
+    exitCode => {
+      events.emit("close", exitCode, null)
+      void closeScope()
+    },
+    failure => {
+      events.emit("error", failure)
+      events.emit("close", 127, null)
+      void closeScope()
+    },
+  )
+
+  return Object.assign(events, {
+    exited,
+    kill: (signal: ChildProcess.Signal = "SIGTERM") => {
+      Effect.runFork(handle.kill({ forceKillAfter: "1500 millis", killSignal: signal }).pipe(Effect.ignore))
+      return true
+    },
+    pid: handle.pid,
+    stderr,
+    stdin: {
+      write: (chunk: string | Uint8Array) => {
+        Effect.runFork(handle.writeStdin(chunk).pipe(Effect.ignore))
+        return true
+      },
+    },
+    stdout,
+    unref: () => {
+      Effect.runFork(handle.unref.pipe(Effect.ignore))
+    },
+  }) as KhalaProcessNodeChild
+}
 
 const streamText = (
   stream: Stream.Stream<Uint8Array, KhalaProcessFailure>,

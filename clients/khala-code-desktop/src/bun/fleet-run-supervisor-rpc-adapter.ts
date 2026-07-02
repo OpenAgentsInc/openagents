@@ -1,4 +1,3 @@
-import { spawn } from "node:child_process"
 import { randomUUID } from "node:crypto"
 import { mkdirSync } from "node:fs"
 import { appendFile, mkdir } from "node:fs/promises"
@@ -33,6 +32,7 @@ import {
   spawnCodexInstances,
   type KhalaCodexFleetToolOptions,
 } from "./khala-codex-fleet-tools.js"
+import { collectKhalaProcessText, spawnKhalaProcess } from "./khala-process.js"
 import {
   startFleetRunSupervisor,
   type FleetRunSupervisorCapacity,
@@ -195,19 +195,13 @@ const projectRun = (
   workSource: projectWorkSource(input.workSource, run.workSource),
 })
 
-const ghJson = (args: readonly string[]): Promise<string> =>
-  new Promise((resolve, reject) => {
-    const child = spawn("gh", args, { stdio: ["ignore", "pipe", "pipe"] })
-    const stdout: Buffer[] = []
-    const stderr: Buffer[] = []
-    child.stdout.on("data", chunk => stdout.push(Buffer.from(chunk)))
-    child.stderr.on("data", chunk => stderr.push(Buffer.from(chunk)))
-    child.once("error", reject)
-    child.once("close", code => {
-      if (code === 0) return resolve(Buffer.concat(stdout).toString("utf8"))
-      reject(new Error(`gh ${args.join(" ")} failed: ${Buffer.concat(stderr).toString("utf8").trim()}`))
-    })
-  })
+const ghJson = async (args: readonly string[]): Promise<string> => {
+  const result = await collectKhalaProcessText(
+    spawnKhalaProcess("gh", args, { forceKillAfter: "1500 millis" }),
+  )
+  if (result.exitCode === 0) return result.stdout
+  throw new Error(`gh ${args.join(" ")} failed: ${result.stderr.trim()}`)
+}
 
 const plannerFor = (
   store: PylonOrchestrationStore,

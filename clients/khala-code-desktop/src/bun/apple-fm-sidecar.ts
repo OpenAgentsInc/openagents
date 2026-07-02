@@ -10,9 +10,14 @@ import {
   type PylonAppleFmStatusPublicInput,
 } from "../shared/apple-fm-readiness.js"
 import { khalaCodeConfigFromRuntimeEnv } from "./khala-code-config.js"
+import { spawnKhalaProcessNodeChild, type KhalaProcessNodeChild } from "./khala-process.js"
 
 type SidecarLaunchState = "idle" | "launching" | "running" | "failed" | "stopped" | "adopted"
 type HelperSource = "env" | "source-wrapper" | "source-build" | "packaged-resource"
+type AppleFmSidecarChild = Pick<KhalaProcessNodeChild, "exited" | "kill">
+type AppleFmSidecarSpawn = (
+  command: ReadonlyArray<string>,
+) => AppleFmSidecarChild | Promise<AppleFmSidecarChild>
 
 type DiscoveredAppleFmBridgeHelper = {
   readonly path: string
@@ -30,7 +35,7 @@ type AppleFmSidecarHostOptions = {
   readonly arch?: string
   readonly resourcesDir?: string
   readonly fetchFn?: typeof fetch
-  readonly spawn?: typeof Bun.spawn
+  readonly spawn?: unknown
   readonly now?: () => string
   readonly maxRestarts?: number
   readonly restartDelayMs?: number
@@ -151,7 +156,14 @@ export function createAppleFmSidecarHost(
   const arch = options.arch ?? process.arch
   const resourcesDir = options.resourcesDir ?? (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath
   const fetchFn = options.fetchFn ?? fetch
-  const spawn = options.spawn ?? Bun.spawn
+  const launchHelperProcess: AppleFmSidecarSpawn = options.spawn === undefined ? ((command) => {
+    const [cmd, ...args] = command
+    if (cmd === undefined) throw new Error("empty Apple FM helper command")
+    return spawnKhalaProcessNodeChild(cmd, args, { forceKillAfter: "1500 millis" })
+  }) : (command =>
+    (options.spawn as (command: ReadonlyArray<string>) => AppleFmSidecarChild | Promise<AppleFmSidecarChild>)([
+      ...command,
+    ]))
   const now = options.now ?? (() => new Date().toISOString())
   const maxRestarts = Math.max(0, options.maxRestarts ?? APPLE_FM_BRIDGE_MAX_RESTARTS)
   const restartDelayMs = Math.max(0, options.restartDelayMs ?? APPLE_FM_BRIDGE_RESTART_DELAY_MS)
@@ -164,7 +176,7 @@ export function createAppleFmSidecarHost(
   const supported = platform === "darwin" && arch === "arm64"
   const executable = helper === null ? false : helperExecutable(helper.path)
   let launchState: SidecarLaunchState = "idle"
-  let child: ReturnType<typeof Bun.spawn> | null = null
+  let child: AppleFmSidecarChild | null = null
   let restartAttempts = 0
   let restartTimer: ReturnType<typeof setTimeout> | null = null
   let stopped = false
@@ -182,7 +194,7 @@ export function createAppleFmSidecarHost(
     executable &&
     (helper.source === "packaged-resource" || trim(env.OPENAGENTS_APPLE_FM_BRIDGE_PATH) !== null)
 
-  const start = () => {
+  const start = async () => {
     if (!supported || helper === null || !executable || child !== null || stopped) return
     if (helper.source !== "packaged-resource" && trim(env.OPENAGENTS_APPLE_FM_BRIDGE_PATH) === null) {
       launchState = "adopted"
@@ -191,11 +203,7 @@ export function createAppleFmSidecarHost(
     clearRestartTimer()
     try {
       launchState = "launching"
-      child = spawn([helper.path, "--port", String(APPLE_FM_BRIDGE_DEFAULT_PORT)], {
-        stdin: "ignore",
-        stdout: "ignore",
-        stderr: "ignore",
-      })
+      child = await launchHelperProcess([helper.path, "--port", String(APPLE_FM_BRIDGE_DEFAULT_PORT)])
       launchState = "running"
       void child.exited.then((exitCode) => {
         child = null
@@ -210,7 +218,7 @@ export function createAppleFmSidecarHost(
           launchState = "launching"
           restartTimer = setTimeout(() => {
             restartTimer = null
-            start()
+            void start()
           }, restartDelayMs)
           return
         }
@@ -224,7 +232,7 @@ export function createAppleFmSidecarHost(
 
   return {
     async readiness() {
-      start()
+      await start()
       const token = await controlTokenFromEnv(env)
       const pylonStatus =
         token === null
