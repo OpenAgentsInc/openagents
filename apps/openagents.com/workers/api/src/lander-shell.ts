@@ -65,7 +65,7 @@ nav.site a:focus-visible,.cta a:focus-visible,a.pill:focus-visible{outline:2px s
   box-shadow:0 0 6px rgba(58,123,255,0.8);flex:none}
 .rule{position:relative;z-index:1;height:1px;border:0;background:linear-gradient(90deg,transparent,var(--line-strong) 18%,var(--line-strong) 82%,transparent);
   box-shadow:0 0 12px rgba(58,123,255,0.25);margin:0}
-main{padding:clamp(52px,9vh,96px) 0 clamp(48px,8vh,80px)}
+main.shell{padding-block:clamp(56px,9vh,104px) clamp(48px,8vh,80px)}
 h1{font-family:var(--mono);font-weight:700;font-size:clamp(2.1rem,5.4vw,3.9rem);
   line-height:1.12;letter-spacing:-0.025em;color:#fff;max-width:18ch;text-wrap:balance}
 h1 .mark{color:var(--blue)}
