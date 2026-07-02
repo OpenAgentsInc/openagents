@@ -8,6 +8,7 @@ import {
   loadKhalaCodeQaScenario,
   makeKhalaCodeRpcQaDriver,
   runKhalaCodeQaScenario,
+  unsupportedKhalaCodeQaDriver,
   waitForKhalaQaHttp,
   type KhalaCodeRpcFetch,
 } from "./index.js"
@@ -71,6 +72,30 @@ describe("Khala Code QA scenario DSL", () => {
     if ("_tag" in decoded) {
       expect(decoded.message).toContain("has no oracle expectations")
       expect(decoded.phaseName).toBe("bad")
+    }
+  })
+
+  test("rejects a scenario without phases", () => {
+    const decoded = decodeKhalaCodeQaScenario({
+      ...fixtureScenario,
+      phases: [],
+    })
+
+    expect("_tag" in decoded).toBe(true)
+    if ("_tag" in decoded) {
+      expect(decoded.message).toContain("no phases")
+    }
+  })
+
+  test("rejects a scenario without modes", () => {
+    const decoded = decodeKhalaCodeQaScenario({
+      ...fixtureScenario,
+      modes: [],
+    })
+
+    expect("_tag" in decoded).toBe(true)
+    if ("_tag" in decoded) {
+      expect(decoded.message).toContain("no driver modes")
     }
   })
 })
@@ -163,6 +188,120 @@ describe("Khala Code QA RPC driver and runner", () => {
 
     expect(report.status).toBe("pass")
     expect(report.commitments.verdict).toBe("INCONCLUSIVE")
+  })
+
+  test("surfaces unevaluated perf budget oracles as inconclusive", async () => {
+    const scenario = loadKhalaCodeQaScenario({
+      ...fixtureScenario,
+      commitments: [
+        {
+          claim: "appInfo stays within the perf budget",
+          evidence: "phase-oracle",
+          id: "perf.app_info",
+          match: "boot-rpc:perf",
+        },
+      ],
+      phases: [
+        {
+          act: [{ kind: "rpc_call", method: "appInfo" }],
+          expect: [{ budget: 10, metric: "rpc.duration_ms", oracle: "perf" }],
+          name: "boot-rpc",
+        },
+      ],
+    })
+    const driver = makeKhalaCodeRpcQaDriver({
+      fetch: (() =>
+        Promise.resolve(jsonResponse({
+          app: "Khala Code Desktop",
+          ok: true,
+          observedAt: "2026-07-01T00:00:00.000Z",
+        }))) as KhalaCodeRpcFetch,
+    })
+
+    const report = await Effect.runPromise(runKhalaCodeQaScenario({ driver, scenario }))
+
+    expect(report.status).toBe("fail")
+    expect(report.phaseOutcomes[0]?.oracles[0]).toMatchObject({
+      ok: false,
+      oracle: "perf",
+      verdict: "INCONCLUSIVE",
+    })
+    expect(report.commitments.verdict).toBe("INCONCLUSIVE")
+    expect(report.commitments.observed).toBe(false)
+  })
+
+  test("refutes a commitment when any matching schema oracle fails", async () => {
+    let calls = 0
+    const scenario = loadKhalaCodeQaScenario({
+      ...fixtureScenario,
+      commitments: [
+        {
+          claim: "all schema observations pass",
+          evidence: "phase-oracle",
+          id: "schema.all",
+          match: "schema",
+        },
+      ],
+      phases: [
+        {
+          act: [{ kind: "rpc_call", method: "appInfo" }],
+          expect: [{ oracle: "schema", query: "appInfo" }],
+          name: "first-schema",
+        },
+        {
+          act: [{ kind: "rpc_call", method: "appInfo" }],
+          expect: [{ oracle: "schema", query: "appInfo" }],
+          name: "second-schema",
+        },
+      ],
+    })
+    const driver = makeKhalaCodeRpcQaDriver({
+      fetch: (() => {
+        calls += 1
+        return Promise.resolve(
+          calls === 1
+            ? jsonResponse({
+              app: "Khala Code Desktop",
+              ok: true,
+              observedAt: "2026-07-01T00:00:00.000Z",
+            })
+            : jsonResponse({
+              app: "Khala Code Desktop",
+              ok: true,
+            }),
+        )
+      }) as KhalaCodeRpcFetch,
+    })
+
+    const report = await Effect.runPromise(runKhalaCodeQaScenario({ driver, scenario }))
+
+    expect(report.status).toBe("fail")
+    expect(report.phaseOutcomes.map((phase) => phase.oracles[0]?.ok)).toEqual([true, false])
+    expect(report.commitments.findings[0]?.verdict).toBe("REFUTED")
+    expect(report.commitments.findings[0]?.evidenceSummary).toContain("second-schema:schema=refuted")
+    expect(report.commitments.verdict).toBe("REFUTED")
+  })
+
+  test("records boot failures as failed runs without synthesizing a handle", async () => {
+    const scenario = loadKhalaCodeQaScenario({
+      ...fixtureScenario,
+      modes: ["dom"],
+    })
+
+    const report = await Effect.runPromise(
+      runKhalaCodeQaScenario({
+        driver: unsupportedKhalaCodeQaDriver("dom"),
+        scenario,
+      }),
+    )
+
+    expect(report.status).toBe("fail")
+    expect(report.phaseOutcomes[0]).toMatchObject({
+      name: "boot",
+      status: "fail",
+    })
+    expect(report.phaseOutcomes[0]?.observations[0]?.error).toContain("driver is not implemented")
+    expect(report.commitments.verdict).toBe("REFUTED")
   })
 })
 

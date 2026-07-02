@@ -193,6 +193,18 @@ const parseErrorMessage = (cause: unknown): string =>
 const validateScenario = (
   scenario: KhalaCodeQaScenario,
 ): KhalaCodeQaScenario | KhalaCodeQaScenarioLoadFailure => {
+  if (scenario.modes.length === 0) {
+    return {
+      _tag: "KhalaCodeQaScenarioLoadFailure",
+      message: "Scenario has no driver modes",
+    }
+  }
+  if (scenario.phases.length === 0) {
+    return {
+      _tag: "KhalaCodeQaScenarioLoadFailure",
+      message: "Scenario has no phases",
+    }
+  }
   for (const phase of scenario.phases) {
     if (phase.expect.length === 0) {
       return {

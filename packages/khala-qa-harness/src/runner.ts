@@ -13,6 +13,7 @@ export type KhalaCodeQaOracleOutcome = {
   readonly oracle: KhalaCodeQaOracleExpectation["oracle"]
   readonly phaseName: string
   readonly summary: string
+  readonly verdict: KhalaCodeQaVerdict
   readonly data?: unknown
 }
 
@@ -53,12 +54,23 @@ const runStatus = (phaseOutcomes: ReadonlyArray<KhalaCodeQaPhaseOutcome>): "pass
 
 const rollUp = (
   findings: ReadonlyArray<KhalaCodeQaCommitmentFinding>,
+  status: "pass" | "fail",
 ): KhalaCodeQaVerdict => {
   if (findings.length === 0) return "INCONCLUSIVE"
   if (findings.some((finding) => finding.verdict === "REFUTED")) return "REFUTED"
   if (findings.some((finding) => finding.verdict === "INCONCLUSIVE")) return "INCONCLUSIVE"
+  if (status === "fail") return "REFUTED"
   return "CONFIRMED"
 }
+
+const summarizeOracleLabels = (
+  oracles: ReadonlyArray<KhalaCodeQaOracleOutcome>,
+): string =>
+  oracles
+    .map((oracle) =>
+      `${oracleEvidenceLabel(oracle.phaseName, oracle.oracle)}=${oracle.verdict.toLowerCase()}`
+    )
+    .join(", ")
 
 const verifyCommitments = (input: {
   readonly commitments: ReadonlyArray<KhalaCodeQaCommitment>
@@ -83,12 +95,12 @@ const verifyCommitments = (input: {
           }
     }
 
-    const oracle = allOracles.find((outcome) =>
+    const matchingOracles = allOracles.filter((outcome) =>
       oracleEvidenceLabel(outcome.phaseName, outcome.oracle)
         .toLowerCase()
         .includes(commitment.match.toLowerCase()),
     )
-    if (oracle === undefined) {
+    if (matchingOracles.length === 0) {
       return {
         claim: commitment.claim,
         evidenceSummary: `no oracle outcome matched "${commitment.match}"`,
@@ -96,25 +108,35 @@ const verifyCommitments = (input: {
         verdict: "INCONCLUSIVE",
       }
     }
-    return oracle.ok
-      ? {
-          claim: commitment.claim,
-          evidenceSummary: `observed oracle ${oracleEvidenceLabel(oracle.phaseName, oracle.oracle)} = ok`,
-          id: commitment.id,
-          verdict: "CONFIRMED",
-        }
-      : {
-          claim: commitment.claim,
-          evidenceSummary: `observed oracle ${oracleEvidenceLabel(oracle.phaseName, oracle.oracle)} = failed`,
-          id: commitment.id,
-          verdict: "REFUTED",
-        }
+    const evidenceSummary = `observed oracles: ${summarizeOracleLabels(matchingOracles)}`
+    if (matchingOracles.some((oracle) => oracle.verdict === "REFUTED")) {
+      return {
+        claim: commitment.claim,
+        evidenceSummary,
+        id: commitment.id,
+        verdict: "REFUTED",
+      }
+    }
+    if (matchingOracles.some((oracle) => oracle.verdict === "INCONCLUSIVE")) {
+      return {
+        claim: commitment.claim,
+        evidenceSummary,
+        id: commitment.id,
+        verdict: "INCONCLUSIVE",
+      }
+    }
+    return {
+      claim: commitment.claim,
+      evidenceSummary,
+      id: commitment.id,
+      verdict: "CONFIRMED",
+    }
   })
 
   return {
     findings,
     observed: findings.every((finding) => finding.verdict !== "INCONCLUSIVE"),
-    verdict: rollUp(findings),
+    verdict: rollUp(findings, input.runStatus),
   }
 }
 
@@ -134,9 +156,10 @@ const evaluateOracle = (
       | undefined
     const decoded = data?.oracle?.decoded === true
     const unknownFields = data?.oracle?.unknownFields ?? []
+    const ok = schemaObservation?.ok === true && decoded && unknownFields.length === 0
     return {
       data: data?.oracle,
-      ok: schemaObservation?.ok === true && decoded && unknownFields.length === 0,
+      ok,
       oracle: "schema",
       phaseName,
       summary: schemaObservation === undefined
@@ -144,23 +167,28 @@ const evaluateOracle = (
         : decoded && unknownFields.length === 0
           ? "RPC response decoded with no unknown fields"
           : "RPC response failed schema oracle",
+      verdict: ok ? "CONFIRMED" : "REFUTED",
     }
   }
 
   if (expectation.oracle === "crash") {
+    const ok = observations.every((observation) => observation.ok)
     return {
-      ok: observations.every((observation) => observation.ok),
+      ok,
       oracle: "crash",
       phaseName,
       summary: "phase actions completed without driver crash",
+      verdict: ok ? "CONFIRMED" : "REFUTED",
     }
   }
 
   return {
-    ok: true,
+    data: { expectation },
+    ok: false,
     oracle: expectation.oracle,
     phaseName,
-    summary: `${expectation.oracle} oracle recorded for ${phaseName}`,
+    summary: `${expectation.oracle} oracle is not evaluated by this runner`,
+    verdict: "INCONCLUSIVE",
   }
 }
 
@@ -169,17 +197,33 @@ export const runKhalaCodeQaScenario = (input: {
   readonly scenario: KhalaCodeQaScenario
 }): Effect.Effect<KhalaCodeQaScenarioRunReport, never> =>
   Effect.gen(function* () {
-    yield* input.driver.boot({ backend: input.scenario.backend, headless: true }).pipe(
-      Effect.catch(() =>
-        Effect.succeed({
-          backend: input.scenario.backend,
-          mode: input.driver.mode,
-          startedAt: new Date(0).toISOString(),
-        }),
-      ),
+    const bootFailure = yield* input.driver.boot({ backend: input.scenario.backend, headless: true }).pipe(
+      Effect.match({
+        onFailure: (failure) => failure,
+        onSuccess: () => undefined,
+      }),
     )
 
     const phaseOutcomes: KhalaCodeQaPhaseOutcome[] = []
+    if (bootFailure !== undefined) {
+      phaseOutcomes.push({
+        name: "boot",
+        observations: [
+          {
+            action: {
+              backend: input.scenario.backend,
+              headless: true,
+              kind: "boot",
+            },
+            error: bootFailure.message,
+            label: "boot",
+            ok: false,
+          },
+        ],
+        oracles: [],
+        status: "fail",
+      })
+    }
     for (const phase of input.scenario.phases) {
       const observations: KhalaCodeQaObservation[] = []
       for (const action of phase.act) {
