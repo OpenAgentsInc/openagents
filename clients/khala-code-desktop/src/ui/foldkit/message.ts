@@ -1,21 +1,29 @@
 import { Schema as S } from "effect"
 import { m } from "foldkit/message"
 
-import { KhalaCodeFoldkitHostPortMessage } from "./ports.js"
+import { FleetCockpitControlVerb } from "./model.js"
+import { KhalaCodeFleetCockpitHostPortMessage } from "./ports.js"
 
-export const FoldkitDemoClickedPing = m("FoldkitDemoClickedPing")
-export const FoldkitDemoReceivedHostPort = m("FoldkitDemoReceivedHostPort", {
-  message: KhalaCodeFoldkitHostPortMessage,
+export const FleetCockpitClickedRefresh = m("FleetCockpitClickedRefresh")
+export const FleetCockpitClickedConnectAccount = m("FleetCockpitClickedConnectAccount")
+export const FleetCockpitClickedRunControl = m("FleetCockpitClickedRunControl", {
+  verb: FleetCockpitControlVerb,
 })
-export const FoldkitDemoMounted = m("FoldkitDemoMounted")
-export const FoldkitDemoUnmounted = m("FoldkitDemoUnmounted")
-export const FoldkitDemoCompletedPortEmit = m("FoldkitDemoCompletedPortEmit")
+export const FleetCockpitReceivedHostPort = m("FleetCockpitReceivedHostPort", {
+  message: KhalaCodeFleetCockpitHostPortMessage,
+})
+export const FleetCockpitMounted = m("FleetCockpitMounted")
+export const FleetCockpitUnmounted = m("FleetCockpitUnmounted")
+export const FleetCockpitCompletedPortEmit = m("FleetCockpitCompletedPortEmit")
 
-export const KhalaCodeFoldkitMessage = S.Union([
-  FoldkitDemoClickedPing,
-  FoldkitDemoReceivedHostPort,
-  FoldkitDemoMounted,
-  FoldkitDemoUnmounted,
-  FoldkitDemoCompletedPortEmit,
+export const KhalaCodeFleetCockpitMessage = S.Union([
+  FleetCockpitClickedRefresh,
+  FleetCockpitClickedConnectAccount,
+  FleetCockpitClickedRunControl,
+  FleetCockpitReceivedHostPort,
+  FleetCockpitMounted,
+  FleetCockpitUnmounted,
+  FleetCockpitCompletedPortEmit,
 ])
-export type KhalaCodeFoldkitMessage = typeof KhalaCodeFoldkitMessage.Type
+export type KhalaCodeFleetCockpitMessage =
+  typeof KhalaCodeFleetCockpitMessage.Type

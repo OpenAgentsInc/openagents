@@ -29,6 +29,9 @@ import {
   defaultKhalaFleetDelegationActiveParameters,
   type KhalaGymDelegationOptimizationRun,
 } from "./gym-proof-loader"
+import { mountKhalaCodeFleetCockpit } from "./foldkit/runtime"
+import type { KhalaCodeFleetCockpitEmbedHandle } from "./foldkit/runtime"
+import type { KhalaCodeFleetCockpitSnapshot } from "./foldkit/model"
 
 // Fleet status panel for Khala Code Desktop: current Codex fleet state — all
 // linked accounts (with signed-in email + readiness), local Pylon health +
@@ -94,7 +97,6 @@ type Handlers = Readonly<{
   onFleetRunStart: () => void
   onLoadGymDemoProof: () => void
   onOptimizationStart: () => void
-  onRefresh: () => void
   onRemove: (accountRef: string) => void
   onConnect: (accountRef: string) => void
   onPauseAccount: (accountRef: string, paused: boolean) => void
@@ -201,6 +203,9 @@ const accountReadinessState = (
 const titleize = (value: string): string =>
   value.replace(/[_-]+/g, " ").replace(/\b\w/g, char => char.toUpperCase())
 
+const nextFleetAccountRef = (): string =>
+  `codex-${crypto.randomUUID().slice(0, 8)}`
+
 const summaryLine = (parts: ReadonlyArray<string | null>): string =>
   parts.filter((part): part is string => Boolean(part)).join("  ·  ")
 
@@ -238,18 +243,6 @@ const iconButton = (
     el("span", "khala-fleet-button-label", label),
   )
   return button
-}
-
-const setIconButtonLabel = (
-  button: HTMLButtonElement,
-  label: string,
-): void => {
-  const labelNode = button.querySelector<HTMLElement>(".khala-fleet-button-label")
-  if (labelNode === null) {
-    button.append(el("span", "khala-fleet-button-label", label))
-    return
-  }
-  labelNode.textContent = label
 }
 
 const unknownNumber = (value: number | null): string =>
@@ -404,6 +397,33 @@ const fleetInFlightLabel = (
     ? ""
     : `, ${tokenRate.inFlightTokensPerMinute}/min`
   return `${tokenRate.inFlightTokens} token(s)${rate}`
+}
+
+const fleetCockpitSnapshot = (
+  data: KhalaCodeDesktopFleetStatus,
+  activeRun: ActiveFleetRunView,
+): KhalaCodeFleetCockpitSnapshot => {
+  const readyAccounts = data.accounts.filter(
+    account => accountReadinessState(account.readiness) === "ready",
+  ).length
+  const run = activeRun.run
+  return {
+    activeAssignments: data.activeAssignments.length,
+    activeRunActual: run?.counters.activeAssignments ?? null,
+    activeRunRef: run?.runRef ?? null,
+    activeRunRemaining: run === null ? null : runBacklogRemaining(run),
+    activeRunState: run?.state ?? null,
+    activeRunTarget: run?.targetConcurrency ?? null,
+    freeSlots: data.availableCodexAssignments,
+    inFlightLabel: fleetInFlightLabel(data.tokenRate),
+    maxSlots: data.maxCodexAssignments,
+    observedAt: data.observedAt,
+    pylonLabel: data.pylon.pylonRef ?? "local Pylon",
+    pylonStatus: data.pylon.status,
+    readyAccounts,
+    tokenRateLabel: fleetTokenRateLabel(data.tokenRate),
+    totalAccounts: data.accounts.length,
+  }
 }
 
 type ThroughputGaugeState = "exact" | "not_measured" | "pending"
@@ -1454,24 +1474,6 @@ const render = (
 ): void => {
   container.replaceChildren()
 
-  const header = el("header", "khala-fleet-header")
-  header.append(el("h2", "khala-fleet-title", "Fleet status"))
-  const actions = el("div", "khala-fleet-actions")
-  const connectBtn = iconButton("Connect account", "Plus")
-  connectBtn.disabled = activeConnect !== null
-  connectBtn.addEventListener("click", () => {
-    // Auto-assign a short, unique ref — no name prompt.
-    handlers.onConnect(`codex-${crypto.randomUUID().slice(0, 8)}`)
-  })
-  actions.append(connectBtn)
-  const refresh = iconButton("Refresh", "Reload")
-  refresh.dataset.fleetAction = "refresh"
-  refresh.disabled = view.phase === "loading"
-  refresh.addEventListener("click", handlers.onRefresh)
-  actions.append(refresh)
-  header.append(actions)
-  container.append(header)
-
   const body = el("div", "khala-fleet-body")
   // The connect device-auth card renders inline at the top; the fleet list stays
   // visible and live below it.
@@ -1496,6 +1498,12 @@ export const mountFleetPanel = (
   container: HTMLElement,
   options: FleetPanelOptions,
 ): FleetPanelHandle => {
+  container.replaceChildren()
+  const cockpitHost = el("div", "khala-fleet-cockpit-host")
+  const detailHost = el("div", "khala-fleet-detail-host")
+  container.append(cockpitHost, detailHost)
+
+  let cockpit: KhalaCodeFleetCockpitEmbedHandle | null = null
   let inFlight = false
   let delegateInFlight = false
   let delegateForm: FleetDelegateFormState = {
@@ -1528,6 +1536,7 @@ export const mountFleetPanel = (
   let optimizationInFlight = false
   let optimizationRun: OptimizationRunView = { phase: "idle" }
   let lastData: KhalaCodeDesktopFleetStatus | null = null
+  let fleetLoadError: string | null = null
   let lifecycleFrames: readonly KhalaFleetWorkerLifecycleFrame[] = []
   let lifecycleStarted = false
   let connectPoll = 0
@@ -1536,23 +1545,40 @@ export const mountFleetPanel = (
   let pollTimer = 0
   const now = options.now ?? (() => new Date())
 
-  const setRefreshBusy = (busy: boolean): void => {
-    const buttons = container.querySelectorAll<HTMLButtonElement>('[data-fleet-action="refresh"]')
-    for (const button of buttons) {
-      button.disabled = busy
-      setIconButtonLabel(button, busy ? "Refreshing" : "Refresh")
-    }
-  }
-
   const currentView = (): FleetView =>
     lastData !== null
       ? { phase: "ready", data: lastData }
+      : fleetLoadError !== null
+        ? { phase: "error", message: fleetLoadError }
       : { phase: "loading" }
 
-  const paint = (): void =>
+  const syncCockpit = (view: FleetView = currentView()): void => {
+    cockpit?.send({
+      _tag: "HostFleetCockpitBusy",
+      connectBusy: activeConnect !== null,
+      controlInFlight: activeRun.controlInFlight,
+      refreshBusy: inFlight,
+    })
+    if (view.phase === "loading") {
+      cockpit?.send({ _tag: "HostFleetCockpitLoading" })
+      return
+    }
+    if (view.phase === "error") {
+      cockpit?.send({ _tag: "HostFleetCockpitError", message: view.message })
+      return
+    }
+    cockpit?.send({
+      _tag: "HostFleetCockpitStatus",
+      snapshot: fleetCockpitSnapshot(view.data, activeRun),
+    })
+  }
+
+  const paint = (): void => {
+    const view = currentView()
+    syncCockpit(view)
     render(
-      container,
-      currentView(),
+      detailHost,
+      view,
       handlers,
       activeConnect,
       delegateForm,
@@ -1564,6 +1590,7 @@ export const mountFleetPanel = (
       optimizationRun,
       now(),
     )
+  }
 
   const fleetRunPreview = (): readonly FleetRunPreviewSlot[] | string => {
     const targetConcurrency = Number.parseInt(fleetRunForm.targetConcurrency, 10)
@@ -1710,7 +1737,6 @@ export const mountFleetPanel = (
     onFleetRunStart: () => onFleetRunStart(),
     onLoadGymDemoProof: () => onLoadGymDemoProof(),
     onOptimizationStart: () => onOptimizationStart(),
-    onRefresh: () => void refresh(),
     onRemove: (accountRef: string) => onRemove(accountRef),
     onConnect: (accountRef: string) => onConnect(accountRef),
     onPauseAccount: (accountRef: string, paused: boolean) => onPauseAccount(accountRef, paused),
@@ -1888,7 +1914,7 @@ export const mountFleetPanel = (
       const result = await options.removeAccount(accountRef)
       if (!result.ok) {
         render(
-          container,
+          detailHost,
           { phase: "error", message: result.error ?? "remove failed" },
           handlers,
           activeConnect,
@@ -1921,7 +1947,7 @@ export const mountFleetPanel = (
       const result = await options.setAccountPaused({ accountRef, paused })
       if (!result.ok) {
         render(
-          container,
+          detailHost,
           { phase: "error", message: result.error ?? "pause failed" },
           handlers,
           activeConnect,
@@ -1945,7 +1971,7 @@ export const mountFleetPanel = (
       const result = await options.consumeResetCredit({ accountRef })
       if (!result.ok) {
         render(
-          container,
+          detailHost,
           { phase: "error", message: result.error ?? "reset credit failed" },
           handlers,
           activeConnect,
@@ -1999,10 +2025,11 @@ export const mountFleetPanel = (
   const refresh = async (): Promise<void> => {
     if (inFlight) return
     inFlight = true
+    if (lastData === null) fleetLoadError = null
     if (lastData === null && activeConnect === null) {
       paint()
     } else {
-      setRefreshBusy(true)
+      syncCockpit()
     }
     try {
       const [data, list] = await Promise.all([
@@ -2010,6 +2037,7 @@ export const mountFleetPanel = (
         options.fleetRunList(),
       ])
       lastData = data
+      fleetLoadError = null
       const selected = selectActiveFleetRun(list.runs)
       activeRun = {
         controlInFlight: activeRun.controlInFlight,
@@ -2025,9 +2053,12 @@ export const mountFleetPanel = (
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       if (lastData === null) {
+        fleetLoadError = message
+        const errorView: FleetView = { phase: "error", message }
+        syncCockpit(errorView)
         render(
-          container,
-          { phase: "error", message },
+          detailHost,
+          errorView,
           handlers,
           activeConnect,
           delegateForm,
@@ -2045,10 +2076,11 @@ export const mountFleetPanel = (
           controlInFlight: null,
           error: message,
         }
-        setRefreshBusy(false)
+        paint()
       }
     } finally {
       inFlight = false
+      syncCockpit()
     }
   }
 
@@ -2064,6 +2096,26 @@ export const mountFleetPanel = (
       if (visible && !inFlight) void refresh()
     }, 5000)
   }
+
+  cockpit = mountKhalaCodeFleetCockpit(cockpitHost)
+  cockpit?.ports.program.subscribe(message => {
+    switch (message._tag) {
+      case "ProgramMounted":
+        syncCockpit()
+        break
+      case "ProgramRequestedRefresh":
+        void refresh()
+        break
+      case "ProgramRequestedConnectAccount":
+        onConnect(nextFleetAccountRef())
+        break
+      case "ProgramRequestedFleetRunControl":
+        onFleetRunControl(message.verb)
+        break
+      case "ProgramUnmounted":
+        break
+    }
+  })
 
   paint()
   return { refresh, setVisible }

@@ -1,48 +1,60 @@
 import { Schema as S } from "effect"
 import { ts } from "foldkit/schema"
 
-export const KhalaCodeFoldkitHostPortMessage = S.Union([
-  ts("HostPing", {
-    nonce: S.String,
+import {
+  FleetCockpitControlVerb,
+  KhalaCodeFleetCockpitSnapshot,
+} from "./model.js"
+
+export const KhalaCodeFleetCockpitHostPortMessage = S.Union([
+  ts("HostFleetCockpitLoading", {}),
+  ts("HostFleetCockpitStatus", {
+    snapshot: KhalaCodeFleetCockpitSnapshot,
   }),
-  ts("HostSetLabel", {
-    label: S.String,
+  ts("HostFleetCockpitError", {
+    message: S.String,
+  }),
+  ts("HostFleetCockpitBusy", {
+    connectBusy: S.Boolean,
+    controlInFlight: S.NullOr(FleetCockpitControlVerb),
+    refreshBusy: S.Boolean,
   }),
 ])
-export type KhalaCodeFoldkitHostPortMessage =
-  typeof KhalaCodeFoldkitHostPortMessage.Type
+export type KhalaCodeFleetCockpitHostPortMessage =
+  typeof KhalaCodeFleetCockpitHostPortMessage.Type
 
-export const KhalaCodeFoldkitProgramPortMessage = S.Union([
+export const KhalaCodeFleetCockpitProgramPortMessage = S.Union([
   ts("ProgramMounted", {
     mountId: S.String,
   }),
-  ts("ProgramPong", {
-    nonce: S.String,
-    count: S.Number,
+  ts("ProgramRequestedRefresh", {}),
+  ts("ProgramRequestedConnectAccount", {}),
+  ts("ProgramRequestedFleetRunControl", {
+    verb: FleetCockpitControlVerb,
   }),
   ts("ProgramUnmounted", {
     mountId: S.String,
   }),
 ])
-export type KhalaCodeFoldkitProgramPortMessage =
-  typeof KhalaCodeFoldkitProgramPortMessage.Type
+export type KhalaCodeFleetCockpitProgramPortMessage =
+  typeof KhalaCodeFleetCockpitProgramPortMessage.Type
 
-const decodeHostPortMessage = S.decodeUnknownSync(KhalaCodeFoldkitHostPortMessage)
-const decodeProgramPortMessage = S.decodeUnknownSync(KhalaCodeFoldkitProgramPortMessage)
+const decodeHostPortMessage = S.decodeUnknownSync(KhalaCodeFleetCockpitHostPortMessage)
+const decodeProgramPortMessage = S.decodeUnknownSync(KhalaCodeFleetCockpitProgramPortMessage)
 
-export type KhalaCodeFoldkitPortListener<Message> = (message: Message) => void
+export type KhalaCodeFleetCockpitPortListener<Message> = (message: Message) => void
 
-export type KhalaCodeFoldkitHostPort = Readonly<{
-  send: (message: unknown) => KhalaCodeFoldkitHostPortMessage
+export type KhalaCodeFleetCockpitHostPort = Readonly<{
+  send: (message: unknown) => KhalaCodeFleetCockpitHostPortMessage
   subscribe: (
-    listener: KhalaCodeFoldkitPortListener<KhalaCodeFoldkitHostPortMessage>,
+    listener: KhalaCodeFleetCockpitPortListener<KhalaCodeFleetCockpitHostPortMessage>,
   ) => () => void
 }>
 
-export type KhalaCodeFoldkitProgramPort = Readonly<{
-  emit: (message: unknown) => KhalaCodeFoldkitProgramPortMessage
+export type KhalaCodeFleetCockpitProgramPort = Readonly<{
+  emit: (message: unknown) => KhalaCodeFleetCockpitProgramPortMessage
   subscribe: (
-    listener: KhalaCodeFoldkitPortListener<KhalaCodeFoldkitProgramPortMessage>,
+    listener: KhalaCodeFleetCockpitPortListener<KhalaCodeFleetCockpitProgramPortMessage>,
   ) => () => void
 }>
 
@@ -50,9 +62,9 @@ const makePort = <Message>(
   decode: (message: unknown) => Message,
 ): Readonly<{
   publish: (message: unknown) => Message
-  subscribe: (listener: KhalaCodeFoldkitPortListener<Message>) => () => void
+  subscribe: (listener: KhalaCodeFleetCockpitPortListener<Message>) => () => void
 }> => {
-  const listeners = new Set<KhalaCodeFoldkitPortListener<Message>>()
+  const listeners = new Set<KhalaCodeFleetCockpitPortListener<Message>>()
   return {
     publish: (message) => {
       const decoded = decode(message)
@@ -66,12 +78,12 @@ const makePort = <Message>(
   }
 }
 
-export type KhalaCodeFoldkitPorts = Readonly<{
-  host: KhalaCodeFoldkitHostPort
-  program: KhalaCodeFoldkitProgramPort
+export type KhalaCodeFleetCockpitPorts = Readonly<{
+  host: KhalaCodeFleetCockpitHostPort
+  program: KhalaCodeFleetCockpitProgramPort
 }>
 
-export const makeKhalaCodeFoldkitPorts = (): KhalaCodeFoldkitPorts => {
+export const makeKhalaCodeFleetCockpitPorts = (): KhalaCodeFleetCockpitPorts => {
   const host = makePort(decodeHostPortMessage)
   const program = makePort(decodeProgramPortMessage)
   return {

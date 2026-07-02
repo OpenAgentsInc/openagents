@@ -3,13 +3,13 @@ import { Effect, Schema as S } from "effect"
 import { Window } from "happy-dom"
 
 import {
-  KhalaCodeFoldkitHostPortMessage,
-  KhalaCodeFoldkitProgramPortMessage,
-  makeKhalaCodeFoldkitPorts,
+  KhalaCodeFleetCockpitHostPortMessage,
+  KhalaCodeFleetCockpitProgramPortMessage,
+  makeKhalaCodeFleetCockpitPorts,
 } from "../src/ui/foldkit/ports"
-import { FoldkitDemoReceivedHostPort } from "../src/ui/foldkit/message"
-import { initialKhalaCodeFoldkitModel } from "../src/ui/foldkit/model"
-import { makeKhalaCodeFoldkitUpdate } from "../src/ui/foldkit/update"
+import { FleetCockpitClickedRunControl } from "../src/ui/foldkit/message"
+import { initialKhalaCodeFleetCockpitModel } from "../src/ui/foldkit/model"
+import { makeKhalaCodeFleetCockpitUpdate } from "../src/ui/foldkit/update"
 
 const installDom = (): {
   readonly flushAnimationFrame: () => void
@@ -68,94 +68,113 @@ const flushDomWork = async (
 const yieldTask = (): Promise<void> =>
   new Promise(resolve => setTimeout(resolve, 0))
 
-describe("khala code Foldkit embedding skeleton", () => {
+const fixtureSnapshot = {
+  activeAssignments: 3,
+  activeRunActual: 3,
+  activeRunRef: "fleet.run.fixture",
+  activeRunRemaining: 4,
+  activeRunState: "running",
+  activeRunTarget: 5,
+  freeSlots: 7,
+  inFlightLabel: "120 token(s), 30/min",
+  maxSlots: 10,
+  observedAt: "2026-07-02T00:00:00.000Z",
+  pylonLabel: "pylon.fixture",
+  pylonStatus: "online",
+  readyAccounts: 2,
+  tokenRateLabel: "42/min exact",
+  totalAccounts: 3,
+} as const
+
+describe("khala code Foldkit fleet cockpit", () => {
   test("keeps program update pure until returned commands run", async () => {
-    const ports = makeKhalaCodeFoldkitPorts()
+    const ports = makeKhalaCodeFleetCockpitPorts()
     const emitted: unknown[] = []
     ports.program.subscribe(message => emitted.push(message))
-    const update = makeKhalaCodeFoldkitUpdate(ports.program)
-    const model = initialKhalaCodeFoldkitModel("fixture-foldkit")
+    const update = makeKhalaCodeFleetCockpitUpdate(ports.program)
+    const model = {
+      ...initialKhalaCodeFleetCockpitModel("fixture-cockpit"),
+      activeRunRef: "fleet.run.fixture",
+    }
 
     const [next, commands] = update(
       model,
-      FoldkitDemoReceivedHostPort({
-        message: { _tag: "HostPing", nonce: "fixture-nonce" },
-      }),
+      FleetCockpitClickedRunControl({ verb: "pause" }),
     )
 
-    expect(next).toEqual({
-      label: "Foldkit skeleton",
-      mountId: "fixture-foldkit",
-      pingCount: 1,
-    })
+    expect(next.controlInFlight).toBe("pause")
     expect(emitted).toEqual([])
     expect(commands).toHaveLength(1)
 
     await Effect.runPromise(commands[0]!.effect)
 
     expect(emitted).toEqual([
-      { _tag: "ProgramPong", count: 1, nonce: "fixture-nonce" },
+      { _tag: "ProgramRequestedFleetRunControl", verb: "pause" },
     ])
   })
 
   test("decodes both host and program port schemas", () => {
-    expect(S.decodeUnknownSync(KhalaCodeFoldkitHostPortMessage)({
-      _tag: "HostSetLabel",
-      label: "Mounted",
-    })).toEqual({ _tag: "HostSetLabel", label: "Mounted" })
-    expect(S.decodeUnknownSync(KhalaCodeFoldkitProgramPortMessage)({
-      _tag: "ProgramPong",
-      count: 2,
-      nonce: "round-trip",
-    })).toEqual({ _tag: "ProgramPong", count: 2, nonce: "round-trip" })
+    expect(S.decodeUnknownSync(KhalaCodeFleetCockpitHostPortMessage)({
+      _tag: "HostFleetCockpitStatus",
+      snapshot: fixtureSnapshot,
+    })).toEqual({ _tag: "HostFleetCockpitStatus", snapshot: fixtureSnapshot })
+    expect(S.decodeUnknownSync(KhalaCodeFleetCockpitProgramPortMessage)({
+      _tag: "ProgramRequestedFleetRunControl",
+      verb: "drain",
+    })).toEqual({ _tag: "ProgramRequestedFleetRunControl", verb: "drain" })
 
     expect(() =>
-      S.decodeUnknownSync(KhalaCodeFoldkitHostPortMessage)({
-        _tag: "HostPing",
-        nonce: 42,
+      S.decodeUnknownSync(KhalaCodeFleetCockpitProgramPortMessage)({
+        _tag: "ProgramRequestedFleetRunControl",
+        verb: "restart",
       }),
     ).toThrow()
   })
 
-  test("mounts, round-trips ports, and unmounts from a designated container", async () => {
+  test("mounts, receives status, emits refresh, and unmounts", async () => {
     const dom = installDom()
-    const { embedKhalaCodeFoldkitProgram } = await import("../src/ui/foldkit/runtime")
+    const { embedKhalaCodeFleetCockpitProgram } = await import("../src/ui/foldkit/runtime")
     const container = document.createElement("section")
-    container.id = "foldkit-demo-fixture"
+    container.id = "fleet-cockpit-fixture"
     document.body.append(container)
-    const ports = makeKhalaCodeFoldkitPorts()
+    const ports = makeKhalaCodeFleetCockpitPorts()
     const emitted: unknown[] = []
     ports.program.subscribe(message => emitted.push(message))
 
-    const handle = embedKhalaCodeFoldkitProgram(container, {
-      mountId: "foldkit-demo-fixture-runtime",
+    const handle = embedKhalaCodeFleetCockpitProgram(container, {
+      mountId: "fleet-cockpit-fixture-runtime",
       ports,
     })
     await flushDomWork(dom)
 
-    expect(container.querySelector("[data-foldkit-mount-id='foldkit-demo-fixture-runtime']")).not.toBeNull()
-    expect(container.textContent ?? "").toContain("Foldkit skeleton")
+    expect(container.querySelector("[data-foldkit-mount-id='fleet-cockpit-fixture-runtime']")).not.toBeNull()
+    expect(container.textContent ?? "").toContain("Fleet cockpit")
     expect(emitted).toContainEqual({
       _tag: "ProgramMounted",
-      mountId: "foldkit-demo-fixture-runtime",
+      mountId: "fleet-cockpit-fixture-runtime",
     })
 
-    handle.send({ _tag: "HostPing", nonce: "host-fixture" })
+    handle.send({ _tag: "HostFleetCockpitStatus", snapshot: fixtureSnapshot })
     await flushDomWork(dom)
 
-    expect(container.textContent ?? "").toContain("Ping 1")
-    expect(emitted).toContainEqual({
-      _tag: "ProgramPong",
-      count: 1,
-      nonce: "host-fixture",
-    })
+    expect(container.textContent ?? "").toContain("2/3 accounts ready")
+    expect(container.textContent ?? "").toContain("42/min exact")
+    expect(container.textContent ?? "").toContain("fleet.run.fixture")
+
+    const refresh = [...container.querySelectorAll("button")]
+      .find(button => button.textContent === "Refresh")
+    expect(refresh).not.toBeUndefined()
+    refresh?.click()
+    await flushDomWork(dom)
+
+    expect(emitted).toContainEqual({ _tag: "ProgramRequestedRefresh" })
 
     handle.unmount()
 
     expect(container.childElementCount).toBe(0)
     expect(emitted).toContainEqual({
       _tag: "ProgramUnmounted",
-      mountId: "foldkit-demo-fixture-runtime",
+      mountId: "fleet-cockpit-fixture-runtime",
     })
   })
 })

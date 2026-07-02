@@ -2,64 +2,67 @@ import { Effect, Fiber } from "effect"
 import { Runtime } from "foldkit"
 import type { MakeRuntimeReturn } from "foldkit/runtime"
 
-import { KhalaCodeFoldkitMessage } from "./message.js"
-import { initialKhalaCodeFoldkitModel, KhalaCodeFoldkitModel } from "./model.js"
+import { KhalaCodeFleetCockpitMessage } from "./message.js"
 import {
-  makeKhalaCodeFoldkitPorts,
-  type KhalaCodeFoldkitPorts,
+  initialKhalaCodeFleetCockpitModel,
+  KhalaCodeFleetCockpitModel,
+} from "./model.js"
+import {
+  makeKhalaCodeFleetCockpitPorts,
+  type KhalaCodeFleetCockpitPorts,
 } from "./ports.js"
-import { makeKhalaCodeFoldkitSubscriptions } from "./subscriptions.js"
-import { makeKhalaCodeFoldkitUpdate } from "./update.js"
+import { makeKhalaCodeFleetCockpitSubscriptions } from "./subscriptions.js"
+import { makeKhalaCodeFleetCockpitUpdate } from "./update.js"
 import { view } from "./view.js"
 
-export type KhalaCodeFoldkitEmbedHandle = Readonly<{
+export type KhalaCodeFleetCockpitEmbedHandle = Readonly<{
   mountId: string
-  ports: KhalaCodeFoldkitPorts
-  send: KhalaCodeFoldkitPorts["host"]["send"]
+  ports: KhalaCodeFleetCockpitPorts
+  send: KhalaCodeFleetCockpitPorts["host"]["send"]
   unmount: () => void
 }>
 
-export type KhalaCodeFoldkitEmbedOptions = Readonly<{
+export type KhalaCodeFleetCockpitEmbedOptions = Readonly<{
   mountId?: string
-  ports?: KhalaCodeFoldkitPorts
+  ports?: KhalaCodeFleetCockpitPorts
 }>
 
 const nextMountId = (() => {
   let seq = 0
   return () => {
     seq += 1
-    return `khala-code-foldkit-${seq}`
+    return `khala-code-fleet-cockpit-${seq}`
   }
 })()
 
 const startRuntimeFiber = (program: MakeRuntimeReturn): Fiber.Fiber<void> =>
   Effect.runFork(program.start())
 
-export const embedKhalaCodeFoldkitProgram = (
+export const embedKhalaCodeFleetCockpitProgram = (
   container: HTMLElement,
-  options: KhalaCodeFoldkitEmbedOptions = {},
-): KhalaCodeFoldkitEmbedHandle => {
+  options: KhalaCodeFleetCockpitEmbedOptions = {},
+): KhalaCodeFleetCockpitEmbedHandle => {
   const mountId = options.mountId ?? nextMountId()
-  const ports = options.ports ?? makeKhalaCodeFoldkitPorts()
+  const ports = options.ports ?? makeKhalaCodeFleetCockpitPorts()
   const runtimeContainer = document.createElement("div")
   runtimeContainer.id = mountId
-  runtimeContainer.dataset.khalaCodeFoldkitRuntime = "true"
+  runtimeContainer.dataset.khalaCodeFleetCockpitRuntime = "true"
   container.replaceChildren(runtimeContainer)
 
   const program = Runtime.makeProgram({
-    Model: KhalaCodeFoldkitModel,
-    init: () => [initialKhalaCodeFoldkitModel(mountId), []],
-    update: makeKhalaCodeFoldkitUpdate(ports.program),
+    Model: KhalaCodeFleetCockpitModel,
+    init: () => [initialKhalaCodeFleetCockpitModel(mountId), []],
+    update: makeKhalaCodeFleetCockpitUpdate(ports.program),
     view,
-    subscriptions: makeKhalaCodeFoldkitSubscriptions(ports.host),
+    subscriptions: makeKhalaCodeFleetCockpitSubscriptions(ports.host),
     container: runtimeContainer,
     devTools: {
       show: "Development",
-      Message: KhalaCodeFoldkitMessage,
+      Message: KhalaCodeFleetCockpitMessage,
     },
     crash: {
       report: ({ error }) => {
-        console.error("[khala-code-desktop/foldkit] crash:", error)
+        console.error("[khala-code-desktop/fleet-cockpit] crash:", error)
       },
     },
   })
@@ -81,8 +84,7 @@ export const embedKhalaCodeFoldkitProgram = (
   }
 }
 
-export const mountKhalaCodeFoldkitDemo = (
+export const mountKhalaCodeFleetCockpit = (
   container: HTMLElement | null,
-): KhalaCodeFoldkitEmbedHandle | null =>
-  container === null ? null : embedKhalaCodeFoldkitProgram(container)
-
+): KhalaCodeFleetCockpitEmbedHandle | null =>
+  container === null ? null : embedKhalaCodeFleetCockpitProgram(container)

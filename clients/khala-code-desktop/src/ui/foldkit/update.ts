@@ -1,72 +1,111 @@
 import { Effect } from "effect"
 import type { Command } from "foldkit"
 
-import type { KhalaCodeFoldkitMessage } from "./message.js"
-import { FoldkitDemoCompletedPortEmit } from "./message.js"
-import type { KhalaCodeFoldkitModel } from "./model.js"
+import {
+  FleetCockpitCompletedPortEmit,
+  type KhalaCodeFleetCockpitMessage,
+} from "./message.js"
+import type { KhalaCodeFleetCockpitModel } from "./model.js"
 import type {
-  KhalaCodeFoldkitProgramPort,
-  KhalaCodeFoldkitProgramPortMessage,
+  KhalaCodeFleetCockpitProgramPort,
+  KhalaCodeFleetCockpitProgramPortMessage,
 } from "./ports.js"
 
 type UpdateResult = readonly [
-  KhalaCodeFoldkitModel,
-  ReadonlyArray<Command.Command<KhalaCodeFoldkitMessage>>,
+  KhalaCodeFleetCockpitModel,
+  ReadonlyArray<Command.Command<KhalaCodeFleetCockpitMessage>>,
 ]
 
-const noCommands: ReadonlyArray<Command.Command<KhalaCodeFoldkitMessage>> = []
+const noCommands: ReadonlyArray<Command.Command<KhalaCodeFleetCockpitMessage>> = []
 
 const emitProgramPort = (
-  port: KhalaCodeFoldkitProgramPort,
-  message: KhalaCodeFoldkitProgramPortMessage,
-): Command.Command<KhalaCodeFoldkitMessage> => ({
-  name: "KhalaCodeFoldkitEmitProgramPort",
+  port: KhalaCodeFleetCockpitProgramPort,
+  message: KhalaCodeFleetCockpitProgramPortMessage,
+): Command.Command<KhalaCodeFleetCockpitMessage> => ({
+  name: "KhalaCodeFleetCockpitEmitProgramPort",
   args: { tag: message._tag },
   effect: Effect.sync(() => {
     port.emit(message)
-    return FoldkitDemoCompletedPortEmit()
+    return FleetCockpitCompletedPortEmit()
   }),
 })
 
-export const makeKhalaCodeFoldkitUpdate =
-  (port: KhalaCodeFoldkitProgramPort) =>
+export const makeKhalaCodeFleetCockpitUpdate =
+  (port: KhalaCodeFleetCockpitProgramPort) =>
   (
-    model: KhalaCodeFoldkitModel,
-    message: KhalaCodeFoldkitMessage,
+    model: KhalaCodeFleetCockpitModel,
+    message: KhalaCodeFleetCockpitMessage,
   ): UpdateResult => {
     switch (message._tag) {
-      case "FoldkitDemoClickedPing": {
-        const next = { ...model, pingCount: model.pingCount + 1 }
+      case "FleetCockpitClickedRefresh":
         return [
-          next,
+          { ...model, refreshBusy: true },
           [
             emitProgramPort(port, {
-              _tag: "ProgramPong",
-              count: next.pingCount,
-              nonce: `ui:${next.pingCount}`,
+              _tag: "ProgramRequestedRefresh",
             }),
           ],
         ]
-      }
-      case "FoldkitDemoReceivedHostPort":
-        switch (message.message._tag) {
-          case "HostPing": {
-            const next = { ...model, pingCount: model.pingCount + 1 }
-            return [
-              next,
-              [
-                emitProgramPort(port, {
-                  _tag: "ProgramPong",
-                  count: next.pingCount,
-                  nonce: message.message.nonce,
-                }),
-              ],
-            ]
-          }
-          case "HostSetLabel":
-            return [{ ...model, label: message.message.label }, noCommands]
+      case "FleetCockpitClickedConnectAccount":
+        if (model.connectBusy) return [model, noCommands]
+        return [
+          { ...model, connectBusy: true },
+          [
+            emitProgramPort(port, {
+              _tag: "ProgramRequestedConnectAccount",
+            }),
+          ],
+        ]
+      case "FleetCockpitClickedRunControl":
+        if (model.activeRunRef === null || model.controlInFlight !== null) {
+          return [model, noCommands]
         }
-      case "FoldkitDemoMounted":
+        return [
+          { ...model, controlInFlight: message.verb },
+          [
+            emitProgramPort(port, {
+              _tag: "ProgramRequestedFleetRunControl",
+              verb: message.verb,
+            }),
+          ],
+        ]
+      case "FleetCockpitReceivedHostPort":
+        switch (message.message._tag) {
+          case "HostFleetCockpitLoading":
+            return [{ ...model, error: null, phase: "loading" }, noCommands]
+          case "HostFleetCockpitStatus":
+            return [
+              {
+                ...model,
+                ...message.message.snapshot,
+                error: null,
+                phase: "ready",
+                refreshBusy: false,
+              },
+              noCommands,
+            ]
+          case "HostFleetCockpitError":
+            return [
+              {
+                ...model,
+                error: message.message.message,
+                phase: "error",
+                refreshBusy: false,
+              },
+              noCommands,
+            ]
+          case "HostFleetCockpitBusy":
+            return [
+              {
+                ...model,
+                connectBusy: message.message.connectBusy,
+                controlInFlight: message.message.controlInFlight,
+                refreshBusy: message.message.refreshBusy,
+              },
+              noCommands,
+            ]
+        }
+      case "FleetCockpitMounted":
         return [
           model,
           [
@@ -76,7 +115,7 @@ export const makeKhalaCodeFoldkitUpdate =
             }),
           ],
         ]
-      case "FoldkitDemoUnmounted":
+      case "FleetCockpitUnmounted":
         return [
           model,
           [
@@ -86,7 +125,7 @@ export const makeKhalaCodeFoldkitUpdate =
             }),
           ],
         ]
-      case "FoldkitDemoCompletedPortEmit":
+      case "FleetCockpitCompletedPortEmit":
         return [model, noCommands]
     }
   }
