@@ -1953,10 +1953,21 @@ normalizedPatchDigest | behaviorReceiptDigest)`. Exactly one accepted
   path before any executor treats them as authorized. Owner-Artanis's standing
   approval remains scoped only to `pylon_job_dispatch` over the owner's own
   linked capacity and no-spend coding delegation.
+- Artanis fleet administration reads and writes through the shared runner-status
+  spine, not a private status fork. `get_fleet_status` may read the public-safe
+  operator fleet snapshot backed by `pylon_agent_runner_status_events`; the
+  fleet-overseer tick may append a neutral Artanis runner-status event with
+  public refs/counts only. `dispatch_codex_task` may carry FleetRun start,
+  status, and control intent refs through the existing coding-delegation
+  assignment metadata, but that is orchestration intent only until a separately
+  approved FleetRun executor exists. The live dispatch boundary remains
+  `owner_self`, own-capacity, `unpaid_smoke`, and no payout.
 - Regression coverage lives in
   `workers/api/src/artanis-scheduled-runner.test.ts` for persisted tick source
   refs, Khala burndown work-routing proposal refs, and owner-promotion dispatch
-  caveats, plus the dispatch execution tests named above.
+  caveats, `workers/api/src/artanis-fleet-overseer-tick.test.ts` for the
+  Artanis runner-status spine event, and the dispatch execution tests named
+  above.
 
 ## Spark Address Payout Target Registration
 

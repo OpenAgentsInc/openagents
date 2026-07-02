@@ -3,21 +3,32 @@ type PersistenceRow = Readonly<{
   action_json?: string | undefined
   agent_id: string
   approval_gate_ref?: string | null | undefined
+  archived_at?: string | null | undefined
+  assignment_ref?: string | null | undefined
   closed_at: string | null
   closeout_json: string | null
   context_json?: string | undefined
   content_hash: string
   created_at: string
+  event_json?: string | undefined
+  event_ref?: string | undefined
   health_snapshot_ref?: string | null | undefined
   id: string
   idempotency_key: string
+  owner_agent_user_id?: string | undefined
   parent_ref: string | null
+  pylon_ref?: string | null | undefined
   public_projection_json: string
   record_json: string
   record_ref: string
+  retained_at?: string | null | undefined
+  retention_state?: string | undefined
+  runner_kind?: string | undefined
+  runner_ref?: string | undefined
   scope_ref: string | null
   source_kind: string
   state: string
+  state_started_at?: string | undefined
   updated_at: string
 }>
 
@@ -122,6 +133,42 @@ class ArtanisPersistenceTestStatement implements D1PreparedStatement {
         return Promise.resolve({ success: true } as D1Result<T>)
       }
 
+      if (table === 'pylon_agent_runner_status_events') {
+        rows.push({
+          active: this.values[9] === 'live' ? 1 : 0,
+          agent_id: String(this.values[1]),
+          archived_at: null,
+          assignment_ref:
+            this.values[5] === null ? null : String(this.values[5]),
+          closed_at: null,
+          closeout_json: null,
+          content_hash: String(this.values[10]),
+          created_at: String(this.values[11]),
+          event_json: String(this.values[10]),
+          event_ref: String(this.values[0]),
+          id: String(this.values[0]),
+          idempotency_key: String(this.values[0]),
+          owner_agent_user_id: String(this.values[1]),
+          parent_ref: null,
+          public_projection_json: String(this.values[10]),
+          pylon_ref: this.values[4] === null ? null : String(this.values[4]),
+          record_json: String(this.values[10]),
+          record_ref: String(this.values[0]),
+          retained_at:
+            this.values[12] === null ? null : String(this.values[12]),
+          retention_state: String(this.values[9]),
+          runner_kind: String(this.values[3]),
+          runner_ref: String(this.values[2]),
+          scope_ref: null,
+          source_kind: 'pylon_agent_runner_status_event',
+          state: String(this.values[6]),
+          state_started_at: String(this.values[7]),
+          updated_at: String(this.values[8]),
+        })
+
+        return Promise.resolve({ success: true } as D1Result<T>)
+      }
+
       if (
         rows.every(
           row =>
@@ -148,6 +195,29 @@ class ArtanisPersistenceTestStatement implements D1PreparedStatement {
           state: String(this.values[4]),
           updated_at: String(this.values[14]),
         })
+      }
+
+      return Promise.resolve({ success: true } as D1Result<T>)
+    }
+
+    if (this.query.includes('UPDATE pylon_agent_runner_status_events')) {
+      const ownerAgentUserId = String(this.values[1])
+      const runnerRef = String(this.values[2])
+      const eventRef = String(this.values[3])
+      for (const [index, row] of rows.entries()) {
+        if (
+          row.owner_agent_user_id === ownerAgentUserId &&
+          row.runner_ref === runnerRef &&
+          row.event_ref !== eventRef &&
+          row.retention_state === 'live' &&
+          row.archived_at === null
+        ) {
+          rows[index] = {
+            ...row,
+            retained_at: row.retained_at ?? String(this.values[0]),
+            retention_state: 'retained',
+          }
+        }
       }
 
       return Promise.resolve({ success: true } as D1Result<T>)

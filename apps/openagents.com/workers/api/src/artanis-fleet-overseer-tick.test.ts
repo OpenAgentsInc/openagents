@@ -18,6 +18,13 @@ const context: ArtanisFleetOverseerContext = {
   heartbeatRunRefs: ['heartbeat.hydralisk.glm_52_reap_504b.20260627t1159'],
   readyReplicaCount: 2,
   reclaimedReplicaRefs: ['replica.hydralisk.glm_52_reap_504b.replica-b'],
+  statusSpineActiveAssignmentCount: 1,
+  statusSpineLiveRunnerCount: 2,
+  statusSpineRetainedRunnerCount: 1,
+  statusSpineSourceRefs: [
+    'status.public.operator_fleet_status.spine',
+    'event.public.operator.runner_status.codex_1',
+  ],
   totalReplicaCount: 3,
   warmOrReadyMaxInflight: 2,
 }
@@ -75,6 +82,22 @@ describe('Artanis fleet overseer tick', () => {
       reason: 'schema_invalid_mind_output',
     })
     expect(store.rows('artanis_health_snapshots')).toHaveLength(1)
+    expect(store.rows('pylon_agent_runner_status_events')).toHaveLength(1)
+    const statusEvent = JSON.parse(
+      store.rows('pylon_agent_runner_status_events')[0]!.event_json!,
+    )
+    expect(statusEvent).toMatchObject({
+      runnerRef: 'runner.public.artanis.fleet_overseer',
+      schemaVersion: 'openagents.pylon.agent_runner_status_event.v1',
+      state: 'blocked',
+    })
+    expect(statusEvent.refs).toEqual(
+      expect.arrayContaining([
+        'status.public.artanis.fleet_overseer.on_status_spine',
+        'status.public.operator_fleet_status.spine',
+        'load.coding.codex.busy=1',
+      ]),
+    )
   })
 
   test('risky replica quarantine proposal creates pending approval only', async () => {
@@ -117,5 +140,19 @@ describe('Artanis fleet overseer tick', () => {
       executionAllowed: false,
       kind: 'request_replica_quarantine',
     })
+    expect(store.rows('pylon_agent_runner_status_events')).toHaveLength(1)
+    const statusEvent = JSON.parse(
+      store.rows('pylon_agent_runner_status_events')[0]!.event_json!,
+    )
+    expect(statusEvent).toMatchObject({
+      runnerRef: 'runner.public.artanis.fleet_overseer',
+      state: 'waiting',
+    })
+    expect(statusEvent.refs).toEqual(
+      expect.arrayContaining([
+        'status.public.artanis.fleet_overseer.decision_state.approval_requested',
+        'capacity.coding.codex.ready=2',
+      ]),
+    )
   })
 })

@@ -105,6 +105,23 @@ const plan: ArtanisDispatchPlanInput = {
   authorityScope: 'owner_self',
   branch: 'main',
   filePaths: [],
+  fleetRunPlan: {
+    controlRefs: [
+      'command.public.khala_fleet.fleet_run_start',
+      'command.public.khala_fleet.fleet_run_status',
+      'command.public.khala_fleet.fleet_run_control',
+    ],
+    evidenceRefs: [
+      'dispatch-context.public.artanis.fleet_run.issue_6320',
+      'capacity.public.artanis.own_capacity_only',
+      'status.public.artanis.fleet_run.pending_executor',
+    ],
+    runRef: 'spawn.public.khala_coding.artanis_fleet_run.issue_6320',
+    targetConcurrency: 1,
+    workerKind: 'codex',
+    workerRef: 'worker.public.khala_coding.codex',
+    workSourceRef: 'issue.public.github.openagents.6320',
+  },
   issue: 6320,
   objective: 'Burn down public issue work per the roadmap.',
   prompt: 'Implement public issue #6320. Burn down public issue work.',
@@ -172,6 +189,18 @@ describe('makeArtanisDispatchExecution (#6366 live seam)', () => {
     expect(created[0]?.jobKind).toBe('codex_agent_task')
     expect(created[0]?.ownerAgentUserId).toBe('agent_owner')
     expect(created[0]?.pylonRef).toBe('pylon.owner.codex')
+    expect(created[0]?.taskRefs).toEqual(
+      expect.arrayContaining([
+        'spawn.public.khala_coding.artanis_fleet_run.issue_6320',
+        'worker.public.khala_coding.codex',
+      ]),
+    )
+    expect(created[0]?.acceptanceCriteriaRefs).toEqual(
+      expect.arrayContaining([
+        'dispatch-context.public.artanis.fleet_run.issue_6320',
+        'status.public.artanis.fleet_run.pending_executor',
+      ]),
+    )
     expect(workspaceVerificationCommand(created[0])).toMatchObject({
       commandRef: 'command.public.artanis_dispatch.verify',
     })

@@ -47,7 +47,7 @@ type CacheEntry = Readonly<{
   response: unknown
 }>
 
-type OperatorFleetReadScope =
+export type OperatorFleetReadScope =
   | Readonly<{ kind: 'admin' }>
   | Readonly<{ kind: 'agent'; userId: string }>
 
@@ -119,7 +119,7 @@ const eventRefs = (event: Record<string, unknown>): ReadonlyArray<string> => [
   ...parseJsonStringArray(JSON.stringify(event.capabilityRefs ?? [])),
 ]
 
-const buildFleetStatusSnapshotFromSpine = async (
+export const readOperatorFleetStatusSnapshotFromSpine = async (
   db: D1Database,
   nowIso: string,
   scope: OperatorFleetReadScope,
@@ -443,7 +443,7 @@ export const makeOperatorFleetStatusRoutes = <
       })
     }
 
-    const response = await buildFleetStatusSnapshotFromSpine(
+    const response = await readOperatorFleetStatusSnapshotFromSpine(
       openAgentsDatabase(env),
       nowIso,
       scope,
