@@ -83,24 +83,26 @@ The dogfood engagement is not a demo — it is the standing production run:
 - Per the services doctrine (`AW-0`, A0.4): the engagement's own receipts
   become the sales collateral, opaque refs only when the client isn't us.
 
-## 3. What A Business Buys (packages, modeled — not published copy)
+## 3. What A Business Buys (packages, owner-gated)
 
 Aligned with the services-engine bands
-(`2026-07-02-agents-that-work-business-services-analysis.md` §3); prices are
-modeled recommendations gated on the owner's rate card:
+(`2026-07-02-agents-that-work-business-services-analysis.md` §3), the package
+shape is public-safe but the actual price bands are owner-gated. The modeled
+rate card is staged in `NEEDS_OWNER.md` for the owner sitting and must not be
+published or quoted until signed off.
 
-1. **The Swarm Audit (Quick Win, $1–5k fixed).** Point the swarm at your app
+1. **The Swarm Audit (Quick Win, fixed-scope).** Point the swarm at your app
    for a bounded window: seed-corpus scenarios written for your surfaces, one
    monkey night, one explore night, a perf baseline against budget defaults.
    Deliverable: the share-URL report, every finding as a reproducible seed or
    distilled test, and a committed regression pack PR. The Rhys-style demo PR
    is this package run as a sales motion.
-2. **QA-on-every-push (Retainer, $2–10k/mo).** The Tier-1/Tier-2 pattern
+2. **QA-on-every-push (Retainer).** The Tier-1/Tier-2 pattern
    installed on the customer's repo: bounded pre-push smoke + full async swarm
    on hosted runners per push, PR comments with auto-attached video + verdict
    + share URL, nightly frontier reports, budget regression alerts. This is
    the `docs/qa/2026-06-25` design, productized.
-3. **The Swarm Sprint ($5–15k).** A week of swarm + fleet against a backlog
+3. **The Swarm Sprint.** A week of swarm + fleet against a backlog
    of QA debt: coverage climbed to an agreed floor, flake quarantine emptied,
    perf offenders burned down to budget — the ROADMAP_QA motion executed on
    someone else's product.

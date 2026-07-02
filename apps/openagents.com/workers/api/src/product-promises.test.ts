@@ -137,6 +137,74 @@ describe('public product promises document', () => {
     })
   })
 
+  test('lands QA Swarm QS1 records without self-serve or public price claims', () => {
+    const decoded = S.decodeUnknownSync(ProductPromisesDocument)(
+      publicProductPromisesDocument(),
+    )
+    const promiseById = new Map(
+      decoded.promises.map(promise => [promise.promiseId, promise]),
+    )
+
+    expect(promiseById.get('qa.agentic_qa_runner.v1')).toMatchObject({
+      state: 'yellow',
+      blockerRefs: expect.arrayContaining([
+        'blocker.product_promises.qa_swarm_self_serve_hosted_runs_missing',
+      ]),
+    })
+
+    expect(promiseById.get('qa_swarm.product_surface.v1')).toMatchObject({
+      state: 'yellow',
+      blockerRefs: expect.arrayContaining([
+        'blocker.product_promises.qa_swarm_paid_customer_receipt_missing',
+        'blocker.product_promises.qa_swarm_operator_assisted_only',
+        'blocker.product_promises.qa_swarm_rate_card_owner_signoff_pending',
+      ]),
+      evidenceRefs: expect.arrayContaining([
+        'docs/fable/2026-07-02-qa-swarm-product-plan.md',
+        'docs/feature-requests/2026-06-24-autonomous-qa-e2e-from-computer-use.md',
+        'promise:qa.agentic_qa_runner.v1',
+      ]),
+    })
+    expect(promiseById.get('qa_swarm.hosted_runs.v1')).toMatchObject({
+      state: 'planned',
+      blockerRefs: expect.arrayContaining([
+        'blocker.product_promises.qa_swarm_hosted_run_command_missing',
+        'blocker.product_promises.qa_swarm_exact_hosted_accounting_missing',
+      ]),
+    })
+    expect(promiseById.get('qa_swarm.share_surface.v1')).toMatchObject({
+      state: 'planned',
+      blockerRefs: expect.arrayContaining([
+        'blocker.product_promises.qa_swarm_share_route_missing',
+        'blocker.product_promises.qa_swarm_evidence_bound_board_missing',
+      ]),
+    })
+    expect(promiseById.get('qa_swarm.service_packages.v1')).toMatchObject({
+      state: 'planned',
+      evidenceRefs: expect.arrayContaining(['NEEDS_OWNER.md']),
+      blockerRefs: expect.arrayContaining([
+        'blocker.product_promises.qa_swarm_rate_card_owner_signoff_pending',
+        'blocker.product_promises.qa_swarm_self_serve_delivery_missing',
+      ]),
+    })
+
+    const qaSwarmCopy = [
+      promiseById.get('qa_swarm.product_surface.v1')?.safeCopy,
+      promiseById.get('qa_swarm.hosted_runs.v1')?.safeCopy,
+      promiseById.get('qa_swarm.share_surface.v1')?.safeCopy,
+      promiseById.get('qa_swarm.service_packages.v1')?.safeCopy,
+      promiseById.get('qa_swarm.service_packages.v1')?.unsafeCopy,
+      ...decoded.notes,
+    ].join('\n')
+    expect(qaSwarmCopy).toContain('operator-assisted')
+    expect(qaSwarmCopy).toContain('No prices are published')
+    expect(qaSwarmCopy).toContain('must not publish prices')
+    expect(qaSwarmCopy).toContain('green stays exactly 34')
+    expect(qaSwarmCopy).not.toContain('$1,000')
+    expect(qaSwarmCopy).not.toContain('$2,000')
+    expect(qaSwarmCopy).not.toContain('$5,000')
+  })
+
   test('keeps issue 7023 desktop and builtin compute proof yellow-only', () => {
     const decoded = S.decodeUnknownSync(ProductPromisesDocument)(
       publicProductPromisesDocument(),
