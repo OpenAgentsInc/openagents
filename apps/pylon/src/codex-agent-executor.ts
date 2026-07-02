@@ -1708,11 +1708,47 @@ const EMPTY_CLAUDE_SECOND_PASS_CONTRIBUTION: ClaudeSecondPassCloseoutContributio
   summaryRefs: [],
 }
 
-async function gitDiffForClaudeSecondPass(workspace: string): Promise<string> {
-  const proc = Bun.spawn(["git", "diff", "--", "."], { cwd: workspace, stdout: "pipe", stderr: "pipe" })
+type ClaudeSecondPassDiffCapture =
+  | { state: "captured"; diffText: string }
+  | { state: "skipped"; reason: ClaudeSecondPassSkipReason }
+
+type ClaudeSecondPassSkipReason = "fixture_workspace" | "not_git_workspace" | "empty_diff" | "diff_unavailable"
+
+function skippedClaudeSecondPassContribution(reason: ClaudeSecondPassSkipReason): ClaudeSecondPassCloseoutContribution {
+  return {
+    resultRefs: [`result.public.pylon.codex_agent_task.claude_second_pass_skipped.${reason}`],
+    summaryRefs: [`summary.public.pylon.codex_agent_task.claude_second_pass_skipped.${reason}`],
+  }
+}
+
+async function runGitForClaudeSecondPass(args: string[], workspace: string): Promise<{ stdout: string; exitCode: number }> {
+  const proc = Bun.spawn(args, { cwd: workspace, stdout: "pipe", stderr: "pipe" })
   const [stdout, exitCode] = await Promise.all([new Response(proc.stdout).text(), proc.exited])
-  if (exitCode !== 0) return ""
-  return stdout
+  return { stdout, exitCode }
+}
+
+async function gitDiffForClaudeSecondPass(
+  materialized: Awaited<ReturnType<typeof materializeCodexAgentWorkspace>>,
+): Promise<ClaudeSecondPassDiffCapture> {
+  if (materialized.workspaceStateRoot === undefined) {
+    return { state: "skipped", reason: "fixture_workspace" }
+  }
+  const inside = await runGitForClaudeSecondPass(["git", "rev-parse", "--is-inside-work-tree"], materialized.workspace)
+  if (inside.exitCode !== 0 || inside.stdout.trim() !== "true") {
+    return { state: "skipped", reason: "not_git_workspace" }
+  }
+  const intentToAdd = await runGitForClaudeSecondPass(["git", "add", "-N", "--", "."], materialized.workspace)
+  if (intentToAdd.exitCode !== 0) {
+    return { state: "skipped", reason: "diff_unavailable" }
+  }
+  const diff = await runGitForClaudeSecondPass(["git", "diff", "--", "."], materialized.workspace)
+  if (diff.exitCode !== 0) {
+    return { state: "skipped", reason: "diff_unavailable" }
+  }
+  if (diff.stdout.trim().length === 0) {
+    return { state: "skipped", reason: "empty_diff" }
+  }
+  return { state: "captured", diffText: diff.stdout }
 }
 
 async function maybeRunClaudeSecondPassReview(input: {
@@ -1724,7 +1760,8 @@ async function maybeRunClaudeSecondPassReview(input: {
 }): Promise<ClaudeSecondPassCloseoutContribution> {
   if (!input.passed || input.options?.enabled !== true) return EMPTY_CLAUDE_SECOND_PASS_CONTRIBUTION
   try {
-    const diffText = await gitDiffForClaudeSecondPass(input.materialized.workspace)
+    const diff = await gitDiffForClaudeSecondPass(input.materialized)
+    if (diff.state === "skipped") return skippedClaudeSecondPassContribution(diff.reason)
     const reviewer = input.options.reviewer ?? runClaudeSecondPassReview
     if (input.options.reviewer === undefined && input.options.account?.provider !== "claude_agent") {
       return {
@@ -1735,7 +1772,7 @@ async function maybeRunClaudeSecondPassReview(input: {
     const verdict = await reviewer({
       assignmentRef: input.assignmentRef,
       workspace: input.materialized.workspace,
-      diffText,
+      diffText: diff.diffText,
       verifyCommandRef: input.commandRef,
       verifyCommand: input.materialized.verificationArgs,
       account: input.options.account ?? null,

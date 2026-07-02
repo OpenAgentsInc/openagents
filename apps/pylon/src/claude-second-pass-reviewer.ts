@@ -49,6 +49,8 @@ export type ClaudeSecondPassReviewOptions =
 
 const DEFAULT_TIMEOUT_MS = 120_000
 const MAX_DIFF_CHARS = 40_000
+const REF_SHAPED_PATTERN = /^[a-z][a-z0-9_-]*(?:\.[a-z0-9][a-z0-9_-]*)+$/
+const MAX_PUBLIC_REF_CHARS = 160
 
 export function claudeSecondPassVerdictRef(verdict: ClaudeSecondPassVerdict): string {
   return `review.public.pylon.claude_second_pass.${createHash("sha256")
@@ -60,11 +62,10 @@ export function claudeSecondPassVerdictRef(verdict: ClaudeSecondPassVerdict): st
 export function parseClaudeSecondPassVerdict(value: unknown): ClaudeSecondPassVerdict | null {
   let parsed = value
   if (typeof parsed === "string") {
-    const start = parsed.indexOf("{")
-    const end = parsed.lastIndexOf("}")
-    if (start === -1 || end <= start) return null
+    const sliced = sliceFirstJsonObject(parsed)
+    if (sliced === null) return null
     try {
-      parsed = JSON.parse(parsed.slice(start, end + 1))
+      parsed = JSON.parse(sliced)
     } catch {
       return null
     }
@@ -79,14 +80,59 @@ export function parseClaudeSecondPassVerdict(value: unknown): ClaudeSecondPassVe
   ) return null
   if (record.confidence !== "low" && record.confidence !== "medium" && record.confidence !== "high") return null
   if (typeof record.summary !== "string" || record.summary.trim().length === 0) return null
-  if (!Array.isArray(record.riskRefs) || !record.riskRefs.every((ref) => typeof ref === "string")) return null
+  if (!Array.isArray(record.riskRefs)) return null
+  const riskRefs: string[] = []
+  for (const value of record.riskRefs) {
+    const ref = normalizeClaudeSecondPassRiskRef(value)
+    if (ref === null) return null
+    riskRefs.push(ref)
+  }
   return {
     schema: CLAUDE_SECOND_PASS_REVIEW_SCHEMA,
     recommendation: record.recommendation,
     confidence: record.confidence,
     summary: record.summary.trim().slice(0, 500),
-    riskRefs: record.riskRefs.map((ref) => ref.trim()).filter(Boolean).slice(0, 20),
+    riskRefs: riskRefs.slice(0, 20),
   }
+}
+
+function normalizeClaudeSecondPassRiskRef(value: unknown): string | null {
+  if (typeof value !== "string") return null
+  const ref = value.trim()
+  if (ref.length === 0 || ref.length > MAX_PUBLIC_REF_CHARS) return null
+  if (!REF_SHAPED_PATTERN.test(ref)) return null
+  return ref
+}
+
+function sliceFirstJsonObject(text: string): string | null {
+  const start = text.indexOf("{")
+  if (start === -1) return null
+  let depth = 0
+  let inString = false
+  let escaped = false
+  for (let index = start; index < text.length; index += 1) {
+    const char = text[index]
+    if (inString) {
+      if (escaped) {
+        escaped = false
+      } else if (char === "\\") {
+        escaped = true
+      } else if (char === "\"") {
+        inString = false
+      }
+      continue
+    }
+    if (char === "\"") {
+      inString = true
+      continue
+    }
+    if (char === "{") depth += 1
+    if (char === "}") {
+      depth -= 1
+      if (depth === 0) return text.slice(start, index + 1)
+    }
+  }
+  return null
 }
 
 export function buildClaudeSecondPassReviewPrompt(input: ClaudeSecondPassReviewInput): string {
@@ -146,7 +192,7 @@ export async function runClaudeSecondPassReview(input: ClaudeSecondPassReviewInp
               riskRefs: {
                 type: "array",
                 maxItems: 20,
-                items: { type: "string", minLength: 1, maxLength: 160 },
+                items: { type: "string", minLength: 1, maxLength: MAX_PUBLIC_REF_CHARS, pattern: REF_SHAPED_PATTERN.source },
               },
             },
           },

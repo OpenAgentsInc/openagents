@@ -10,7 +10,7 @@ import type { ResolvedPylonAccountSelection } from "./account-registry.js"
 
 const claudeAccount: ResolvedPylonAccountSelection = {
   provider: "claude_agent",
-  selector: "accountRef",
+  selector: "registry_ref",
   accountRef: "claude-reviewer",
   accountRefHash: "account.pylon.claude_agent.review",
   home: "/tmp/pylon-claude-reviewer-home",
@@ -35,6 +35,24 @@ describe("Claude second-pass reviewer", () => {
       summary: "bad",
       riskRefs: [],
     })).toBeNull()
+    expect(parseClaudeSecondPassVerdict({
+      schema: CLAUDE_SECOND_PASS_REVIEW_SCHEMA,
+      recommendation: "manual_review",
+      confidence: "high",
+      summary: "bad ref",
+      riskRefs: ["not a public ref"],
+    })).toBeNull()
+    expect(parseClaudeSecondPassVerdict([
+      "prefix ",
+      JSON.stringify({
+        schema: CLAUDE_SECOND_PASS_REVIEW_SCHEMA,
+        recommendation: "approve",
+        confidence: "low",
+        summary: "JSON with braces in a string: {ok}",
+        riskRefs: [],
+      }),
+      " trailing {not-json}",
+    ].join(""))).toMatchObject({ recommendation: "approve" })
   })
 
   test("builds a bounded review prompt over the closeout diff", () => {
@@ -51,7 +69,12 @@ describe("Claude second-pass reviewer", () => {
   })
 
   test("runs a mocked Claude SDK session with an isolated Claude account home", async () => {
-    let seenOptions: Record<string, unknown> | null = null
+    type SeenClaudeOptions = {
+      env?: Record<string, string | undefined>
+      outputFormat?: Record<string, unknown>
+      permissionMode?: string
+    }
+    const seenOptions: SeenClaudeOptions[] = []
     const verdict = await runClaudeSecondPassReview({
       assignmentRef: "assignment.public.t9_5",
       workspace: "/tmp/workspace",
@@ -64,7 +87,8 @@ describe("Claude second-pass reviewer", () => {
         expect(specifier).toBe(CLAUDE_AGENT_SDK_PACKAGE)
         return {
           query: (args: unknown) => {
-            seenOptions = (args as { options?: Record<string, unknown> }).options ?? null
+            const options = (args as { options?: SeenClaudeOptions }).options
+            if (options !== undefined) seenOptions.push(options)
             return (async function* () {
               yield {
                 type: "result",
@@ -83,8 +107,9 @@ describe("Claude second-pass reviewer", () => {
     })
 
     expect(verdict.recommendation).toBe("approve")
-    expect(seenOptions?.env).toMatchObject({ CLAUDE_CONFIG_DIR: claudeAccount.home })
-    expect(seenOptions?.outputFormat).toMatchObject({ type: "json_schema" })
-    expect(seenOptions?.permissionMode).toBe("plan")
+    const capturedOptions = seenOptions[0]
+    expect(capturedOptions?.env).toMatchObject({ CLAUDE_CONFIG_DIR: claudeAccount.home })
+    expect(capturedOptions?.outputFormat).toMatchObject({ type: "json_schema" })
+    expect(capturedOptions?.permissionMode).toBe("plan")
   })
 })
