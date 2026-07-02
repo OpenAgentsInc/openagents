@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test"
+import { mkdir, writeFile } from "node:fs/promises"
+import { join } from "node:path"
 import fc, { type AsyncCommand } from "fast-check"
 
 import {
@@ -17,8 +19,9 @@ import {
   initialKhalaCodeQaModelState,
   interruptApprovalModelCommand,
   interruptTurnModelCommand,
-  makeKhalaCodeQaSeedCorpusFixtureFetch,
+  KhalaCodeQaModelDivergenceError,
   makeKhalaCodeRpcQaDriver,
+  makeKhalaCodeRealAppRpcFetch,
   startThreadModelCommand,
   supersedeApprovalModelCommand,
   unarchiveThreadModelCommand,
@@ -31,8 +34,9 @@ type ModelCommand = AsyncCommand<KhalaCodeQaModelState, KhalaCodeQaModelRuntime>
 const command = (
   label: string,
   run: (model: KhalaCodeQaModelState, runtime: KhalaCodeQaModelRuntime) => Promise<void> | void,
+  check: (model: Readonly<KhalaCodeQaModelState>) => boolean = () => true,
 ): ModelCommand => ({
-  check: () => true,
+  check,
   run: async (model, runtime) => {
     await run(model, runtime)
   },
@@ -41,12 +45,36 @@ const command = (
 
 const modelCommands: fc.Arbitrary<ModelCommand>[] = [
   fc.constant(command("thread.start", startThreadModelCommand)),
-  fc.constant(command("thread.turn.complete", completeTurnModelCommand)),
-  fc.constant(command("thread.turn.interrupt", interruptTurnModelCommand)),
-  fc.constant(command("thread.archive", archiveThreadModelCommand)),
-  fc.constant(command("thread.unarchive", unarchiveThreadModelCommand)),
-  fc.constant(command("thread.fork", forkThreadModelCommand)),
-  fc.constant(command("thread.delete", deleteThreadModelCommand)),
+  fc.constant(command(
+    "thread.turn.complete",
+    completeTurnModelCommand,
+    model => model.thread.threadId !== null && !model.thread.deleted,
+  )),
+  fc.constant(command(
+    "thread.turn.interrupt",
+    interruptTurnModelCommand,
+    model => model.thread.threadId !== null && !model.thread.deleted,
+  )),
+  fc.constant(command(
+    "thread.archive",
+    archiveThreadModelCommand,
+    model => model.thread.threadId !== null && !model.thread.deleted && !model.thread.archived,
+  )),
+  fc.constant(command(
+    "thread.unarchive",
+    unarchiveThreadModelCommand,
+    model => model.thread.threadId !== null && !model.thread.deleted && model.thread.archived,
+  )),
+  fc.constant(command(
+    "thread.fork",
+    forkThreadModelCommand,
+    model => model.thread.threadId !== null && !model.thread.deleted,
+  )),
+  fc.constant(command(
+    "thread.delete",
+    deleteThreadModelCommand,
+    model => model.thread.threadId !== null && !model.thread.deleted,
+  )),
   fc.constant(command("approval.accept", (model, runtime) => answerApproval("accept", model, runtime))),
   fc.constant(command("approval.reject", (model, runtime) => answerApproval("reject", model, runtime))),
   fc.constant(command("approval.supersede", supersedeApprovalModelCommand)),
@@ -57,6 +85,17 @@ const modelCommands: fc.Arbitrary<ModelCommand>[] = [
   fc.constant(command("app_server.stop", appServerStopModelCommand)),
 ]
 const answerApproval = answerApprovalModelCommand
+const artifactPath = join(process.cwd(), "artifacts", "model-divergences.jsonl")
+
+const writeDivergenceArtifact = async (
+  reports: readonly ReturnType<typeof initialKhalaCodeQaModelReport>[],
+): Promise<void> => {
+  await mkdir(join(process.cwd(), "artifacts"), { recursive: true })
+  await writeFile(
+    artifactPath,
+    reports.map(report => JSON.stringify(report)).join("\n") + "\n",
+  )
+}
 
 describe("Khala Code QA model-based tier", () => {
   test("exports Effect Schema-decodable models and reports", () => {
@@ -64,39 +103,55 @@ describe("Khala Code QA model-based tier", () => {
     const report = initialKhalaCodeQaModelReport()
 
     expect(decodeKhalaCodeQaModelState(model).delegateProgram.modules.map((step) => step.module)).toEqual([
-      "intake",
-      "preflight",
-      "capacity",
+      "ensure_pylon",
+      "advertise_capacity",
+      "select_account",
+      "prepare_work",
       "dispatch",
-      "closeout",
-      "report",
+      "verify_closeout",
     ])
     expect(decodeKhalaCodeQaModelRunReport(report).schema).toBe("khala_code_qa_model_based_report.v1")
   })
 
-  test("generates fast-check model command sequences against the fixture Mode P RPC driver", async () => {
+  test("generates fast-check model command sequences against the real desktop RPC handlers", async () => {
     const commandSequence = fc.commands(modelCommands, { maxCommands: 32 })
+    const reports: ReturnType<typeof initialKhalaCodeQaModelReport>[] = []
 
-    await fc.assert(
-      fc.asyncProperty(commandSequence, async (commands) => {
-        const report = initialKhalaCodeQaModelReport()
-        const driver = makeKhalaCodeRpcQaDriver({
-          baseUrl: "http://fixture.local",
-          fetch: makeKhalaCodeQaSeedCorpusFixtureFetch(),
-          now: () => "2026-07-01T00:00:00.000Z",
-        })
+    try {
+      await fc.assert(
+        fc.asyncProperty(commandSequence, async (commands) => {
+          const report = initialKhalaCodeQaModelReport()
+          reports.push(report)
+          const realApp = await makeKhalaCodeRealAppRpcFetch()
+          const driver = makeKhalaCodeRpcQaDriver({
+            baseUrl: "http://real-app.local",
+            fetch: realApp.fetch,
+            now: () => "2026-07-01T00:00:00.000Z",
+          })
 
-        await fc.asyncModelRun(
-          () => ({
-            model: initialKhalaCodeQaModelState(),
-            real: { driver, report },
-          }),
-          commands,
-        )
+          try {
+            await fc.asyncModelRun(
+              () => ({
+                model: initialKhalaCodeQaModelState(),
+                real: { driver, report },
+              }),
+              commands,
+            )
 
-        expect(report.divergences).toEqual([])
-      }),
-      { numRuns: 24, seed: 7856 },
-    )
-  })
+            expect(report.divergences).toEqual([])
+          } finally {
+            realApp.dispose()
+          }
+        }),
+        { numRuns: 24, seed: 7856 },
+      )
+    } catch (error) {
+      if (error instanceof KhalaCodeQaModelDivergenceError) {
+        reports.push(error.report)
+      }
+      throw error
+    } finally {
+      await writeDivergenceArtifact(reports)
+    }
+  }, 20_000)
 })
