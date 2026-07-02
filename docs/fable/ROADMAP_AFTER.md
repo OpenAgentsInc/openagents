@@ -13,7 +13,17 @@ the registry gates exactly as before. Delivery mechanics remain
 (`2026-07-01-product-promises-khala-code-launch-alignment.md`), the
 business analysis
 (`2026-07-02-khala-code-business-opportunity-and-openagents-analysis.md`),
-and the registry state as of `2026-07-01.3`.
+the tool/network strategy analysis
+(`2026-07-02-come-for-the-tool-stay-for-the-network.md`), and the
+registry state as of `2026-07-01.3`.
+
+The strategic frame for the whole doc, named once: **come for the tool,
+stay for the network.** The tool phase (AW-1/2/5/7) must be complete,
+excellent, and network-silent; the network phase (AW-3/4/6/9) is entered
+by *graduation*, never by force; and the metrics section treats the
+tool→network graduation funnel as the strategy's only honest test. The
+tool/network doc carries the full argument, including where the analogy
+breaks and the conscious fallback if the network never forms.
 
 ## 0. The Premise Shift
 
@@ -93,8 +103,8 @@ throttled by installs.
 | A1.1 | Signed/notarized macOS artifact + release channel (RC → stable, per `docs/DEPLOYMENT.md` conventions; ed25519 + notarization runbooks already exist) | A stranger downloads and runs it |
 | A1.2 | Auto-update path for the desktop shell (the Electrobun equivalent of the OTA discipline; RCs never take `latest`) | One remote user updates without reinstalling |
 | A1.3 | Install-path plurality: `brew install`, npm launcher parity with `@openagentsinc/khala`, Linux build decision (ship or explicitly scope out à la the Windows/WSL precedent) | Documented, tested install matrix |
-| A1.4 | First-run experience as a product surface: Codex detection, fleet connect inline, honest empty states, the plan cards (already built) as the moment of disclosure | Time-to-first-delegation < 10 min for an outsider |
-| A1.5 | Funnel instrumentation, public-safe: installs → first chat → fleet connected → first delegation → D7 return, as aggregate counters with the same exact-only discipline as tokens-served (no per-user surveillance; counts, not identities) | A dashboard the owner reads weekly |
+| A1.4 | First-run experience as a product surface: Codex detection, fleet connect inline, honest empty states, the plan cards (already built) as the moment of disclosure. **Ship single-player complete, network-silent**: first-run never asks for forum identity, wallet, or capture consent — the tool earns trust first; the network is discovered, not imposed | Time-to-first-delegation < 10 min for an outsider |
+| A1.5 | Funnel instrumentation, public-safe: installs → first chat → fleet connected → first delegation → D7 return, **extended through the graduation stages: consent given → forum identity → first sat earned → first plugin routed** — the tool→network funnel is the strategy's only honest test. Aggregate counters with the same exact-only discipline as tokens-served (no per-user surveillance; counts, not identities) | A dashboard the owner reads weekly |
 | A1.6 | The landing surface: openagents.com routes Khala Code discovery (download, docs, the registry-pinned claims); revive-or-retire decisions for lapsed standing surfaces (`contributors.bounties_surface.v1` red is the named precedent) | Copy passes the gates; no unsafeCopy leakage |
 
 Delegability: A1.2/3/5 HIGH; A1.1/4/6 owner-adjacent (signing identity,
@@ -171,7 +181,7 @@ growth.
 | --- | --- | --- |
 | A6.1 | Drop-in channel motion, systematized: Khala as a one-line provider inside OpenCode/Aider/Cline/etc. (the Ep 243 playbook), with per-channel onboarding docs and counted arrivals | Channel-attributed signups |
 | A6.2 | The content flywheel the episodes already are: launch video → installable product in the same week rhythm; every public claim registry-pinned (the Ep 222/245 header pattern) | Episodes convert to installs measurably |
-| A6.3 | Design partners: 3–10 named outside users/teams with a weekly feedback loop; their fleets, their repos, their acceptance judgments — the first external work-quality dataset | Signed (even informal) partners; repeat weekly usage |
+| A6.3 | Design partners: 3–10 named outside users/teams with a weekly feedback loop; their fleets, their repos, their acceptance judgments — the first external work-quality dataset. **Graduate multiplayer by scope, not by rewrite**: the claim/settlement machinery runs identically for one household, for partners' fleets, and for the open market — own fleet → design partners → open market is the onboarding ladder (the GPUtopia lesson inverted) | Signed (even informal) partners; repeat weekly usage |
 | A6.4 | The business packs as Khala Code output lanes: coding quick-win, Sites, legal — each yellow record needs exactly one first paid delivery receipt; route those engagements *through* Khala Code so product and services evidence compound | First paid `business.*` receipt |
 | A6.5 | Public traction surface: external-vs-internal token split published next to tokens-served (the counter's honesty upgrade — % external becomes the number that matters) | External share > 0 and rising |
 | A6.6 | Community/agent loop: forum-first support, the hotbar Forum surface (shipped lane) as the in-product community door, agents onboarding via AGENTS.md | Measurable forum-sourced retention |
@@ -199,10 +209,11 @@ growth.
 
 | Task | Description | Gate/receipt |
 | --- | --- | --- |
-| A9.1 | The cockpit as the daily-return surface: fleet value visible at a glance (what ran overnight, what merged, what it cost, what it earned) — the "morning briefing" loop | D7/D30 retention measured and improving |
+| A9.1 | The cockpit as the daily-return surface: fleet value visible at a glance (what ran overnight, what merged, what it cost, what it earned) — the "morning briefing" loop. **Let the game be a game**: invest in cockpit delight (the RTS aesthetic, streaks of green closeouts, the visceral pleasure of commanding a fleet) as retention machinery with a straight face — game-grade retention buys the time the network needs to form | D7/D30 retention measured and improving |
 | A9.2 | Cross-harness session catalog + repo memory as switching costs that favor us (the accumulated acceptance/route/scorecard data the moat argument depends on) | Measurable reuse of prior-run context |
 | A9.3 | Earnings visibility: when AW-4 pays anyone anything, the wallet/earnings surface makes it legible (sats earned, receipts linked) — earning is the retention loop no competitor has | First user who returns *because they got paid* |
 | A9.4 | Agent-economy onboarding from inside the product: go-online, forum identity, labor-market discovery as cockpit affordances (the funnel steps that already stand on green records) | Fleet→contributor conversion > 0 |
+| A9.5 | **The graduation bridge sells itself**: a public, honest in-product earnings feed (real settlements only, however small — powered by the same exact-accounting spine) visible *before* any consent ask, so social proof, not friction or default-on capture, pulls users from tool mode into the network. Paired copy discipline: sell the honest earnings distribution ("your best solved problem might earn," never "everyone earns") — the median trace is worth ~0 and the copy must say so before scale makes it a broken promise | Consent rate moves when the feed ships; zero overclaim incidents |
 
 ### AW-10 — Governance/enterprise readiness (parked behind written gates)
 
@@ -239,18 +250,37 @@ were. Opens only when AW-6 produces enterprise pull.
 
 ## 4. Metrics That Matter (and the ones that don't)
 
-Track weekly, publish what's public-safe:
+Track weekly, publish what's public-safe. The tool/network split gives
+the set a two-axis structure — tool health (kindling), graduation (the
+bridge), network health (the moat forming):
 
 1. Installs → activation (first delegation) → D7/D30 return.
 2. Fleets connected; distinct external accounts delegating.
 3. **External token share** (the honesty upgrade to tokens-served).
 4. Dollars collected, split internal/external like everything else.
-5. Free→paid conversion; churn; support minutes per WAU.
-6. Consented traces captured; redaction drop rate; corpus dedup yield.
-7. Plugin invocations metered; sats settled to contributors; contributor
-   retention without subsidy.
-8. Review-minutes per accepted outcome (the verification curve) once
+   Free→paid-privacy conversion is **the Suno number** — tool revenue
+   from people who simply like the thing is not a lesser form of revenue
+   while the network forms; Dixon's kindling can be cash-flow positive.
+5. Churn; support minutes per WAU.
+6. **The graduation funnel** (A1.5's extension): consent rate among
+   active users, forum identities created in-product, first-sat-earned
+   rate, time-to-first-earn, share of 30-day actives with any network
+   surface touched.
+7. Consented traces captured; redaction drop rate; corpus dedup yield.
+8. Plugin invocations metered — **specifically from non-author
+   accounts**; sats settled to contributors; contributor retention
+   without subsidy; share of tool sessions that consume network
+   artifacts (a plugin, a shared skill, another agent's output) without
+   the user asking — the endgame network-health number.
+9. Review-minutes per accepted outcome (the verification curve) once
    external work flows — the metric the whole thesis ultimately bets on.
+
+The single number to watch quarterly: **network-attributable retention**
+— do users who touched the network retain better than pure-tool users?
+If yes, the Dixon flywheel is turning and every tool investment
+compounds into the moat. If no, we are a good game with a paid tier
+(see the Suno review in §5), and we should underwrite ourselves
+accordingly.
 
 Explicitly demoted: raw tokens-served (own-capacity dogfood can 4× it
 any week we choose — it proves capacity, not demand), PR-merge counts,
@@ -272,6 +302,14 @@ narrative:
   are negligible — retire the pays-you copy publicly (the registry makes
   this cheap and credible), keep the privacy plan (it stands alone), and
   let the free plan be plain freemium.
+- **The Suno review (time-box the tool-only era):** set an internal
+  review date when AW-1 ships. If by that date the graduation funnel
+  shows tool-love but zero network pull *despite shipped bridges*
+  (earnings feed live, consent one click, first payouts real), invoke
+  the game-not-network fallback **consciously**: a beloved, self-funding
+  tool/game with paid privacy — a real business, minus the moat — and
+  re-underwrite spend, copy, and registry records to match, instead of
+  drifting there while the deck still says network.
 - **Loop failure:** if plugin routing shows no measurable quality/cost
   lift over baseline routing after real attempts — the amortization
   thesis fails at this layer; redirect the attribution machinery to the
