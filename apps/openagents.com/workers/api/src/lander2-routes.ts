@@ -51,18 +51,18 @@ body{
   background:radial-gradient(ellipse 60% 45% at 50% 45%,transparent 30%,rgba(5,7,11,0.85) 100%)}
 .pill{position:fixed;top:16px;left:16px;z-index:2;display:flex;gap:8px;align-items:baseline;
   border:1px solid rgba(58,123,255,0.35);background:rgba(12,15,19,0.85);
-  padding:8px 14px;font-size:12px;letter-spacing:0.08em;text-transform:uppercase;
+  padding-block:8px;padding-inline:14px;font-size:12px;letter-spacing:0.08em;text-transform:uppercase;
   color:rgba(241,239,232,0.75);text-decoration:none}
 .pill b{font-weight:600;color:#fff;font-variant-numeric:tabular-nums}
 .pill .dot{width:6px;height:6px;border-radius:50%;background:#3a7bff;
   box-shadow:0 0 8px rgba(58,123,255,0.85);align-self:center}
 main{position:relative;z-index:1;display:flex;flex-direction:column;gap:40px;
-  align-items:center;justify-content:center;height:100dvh;text-align:center;padding:24px}
+  align-items:center;justify-content:center;height:100dvh;text-align:center;padding-block:24px;padding-inline:24px}
 h1{font-size:clamp(2.6rem,9vw,6rem);font-weight:600;letter-spacing:-0.02em;color:#fff;
   text-shadow:0 0 42px rgba(58,123,255,0.35)}
 nav{display:flex;flex-wrap:wrap;gap:16px;justify-content:center}
 nav a{border:1px solid rgba(58,123,255,0.5);color:#cfe0ff;background:rgba(12,15,19,0.7);
-  padding:12px 22px;font-size:13px;letter-spacing:0.1em;text-transform:uppercase;
+  padding-block:12px;padding-inline:22px;font-size:13px;letter-spacing:0.1em;text-transform:uppercase;
   text-decoration:none;transition:border-color 120ms ease,color 120ms ease}
 nav a:hover{border-color:#4fd0ff;color:#fff}
 nav a:focus-visible{outline:2px solid #4fd0ff;outline-offset:2px}
