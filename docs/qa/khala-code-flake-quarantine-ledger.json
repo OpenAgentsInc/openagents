@@ -1,0 +1,18 @@
+{
+  "schema": "openagents.khala_code.qa_static_flake_quarantine_ledger.v1",
+  "updatedAt": "2026-07-02T00:00:00.000Z",
+  "policy": "retry_once_then_quarantine_no_silent_green",
+  "entries": [
+    {
+      "id": "khala.desktop_suite.single_test_error.2026-07-02",
+      "status": "open",
+      "firstObservedAt": "2026-07-02",
+      "affectedCommand": "bun test tests/*.test.ts",
+      "affectedNightlyStep": "desktop-verify",
+      "sourceRef": "docs/fable/2026-07-01-khala-code-desktop-qa-framework-design.md#15.2",
+      "trackingIssue": "https://github.com/OpenAgentsInc/openagents/issues/8044",
+      "quarantineIssue": "https://github.com/OpenAgentsInc/openagents/issues/8015",
+      "notes": "One non-reproducing single-test error in one of three desktop suite runs. Q1.4 adds retry-once quarantine wiring; Q7.3 owns reproduction and fix."
+    }
+  ]
+}

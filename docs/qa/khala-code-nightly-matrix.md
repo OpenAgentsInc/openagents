@@ -1,7 +1,7 @@
 # Khala Code QA Nightly Matrix
 
-Status: implementation note for ROADMAP_QA Q1.1 / issue #8012 and Q1.3 /
-issue #8014.
+Status: implementation note for ROADMAP_QA Q1.1 / issue #8012, Q1.3 /
+issue #8014, and Q1.4 / issue #8015.
 
 `bun run qa:nightly` is the owned-runner Tier-2 loop for the fully automated
 Khala Code QA cycle. It does not use GitHub-hosted CI. The committed systemd
@@ -29,6 +29,8 @@ Each run writes:
 - `qa-nightly-report.json`
 - `qa-nightly-report.md`
 - one log per step under `logs/`
+- the flake quarantine ledger under
+  `quarantine/flake-quarantine-ledger.json`
 - the per-run monkey coverage ledger under
   `monkey-night/monkey-night-coverage-ledger.json`
 - the merged coverage union under `coverage/coverage-union-ledger.json`
@@ -39,6 +41,20 @@ If the matrix fails and `OA_QA_NIGHTLY_FILE_ISSUE=1` is set, the runner files a
 strict bug issue through `gh issue create` with public-safe report refs and the
 failed step IDs. Raw command logs stay in the owned-runner artifact directory and
 must be redaction-reviewed before external publication.
+
+## Flake Policy And Quarantine
+
+Every intermittent failure is treated as a product or harness bug. The nightly
+runs each step once. If the first attempt fails or times out, it retries that
+same step exactly once. A pass on retry is recorded as `flaky`, the nightly
+status stays failed, and the run writes a quarantine entry with both attempt log
+refs plus any step artifact refs. This is deliberately not a green retry.
+
+With `OA_QA_NIGHTLY_FILE_QUARANTINE_ISSUE=1`, any pass-after-fail entry files a
+strict-form issue with the quarantine ledger and logs. The static tracked
+quarantine list lives in `docs/qa/khala-code-flake-quarantine-ledger.json`.
+Its first entry is the 2026-07-02 one-in-three desktop-suite single-test error
+from the QA design doc, tracked to fix issue #8044.
 
 ## Coverage Union And Frontier
 
@@ -72,6 +88,7 @@ Key environment switches:
 | `OA_QA_NIGHTLY_STEP_TIMEOUT_MS` | `1800000` | Per-step timeout. |
 | `OA_QA_NIGHTLY_FILE_ISSUE` | unset | File a strict-form issue on matrix failure. |
 | `OA_QA_NIGHTLY_FILE_COVERAGE_ISSUE` | unset | File a strict-form issue when a frontier class stays zero for seven consecutive coverage days. |
+| `OA_QA_NIGHTLY_FILE_QUARANTINE_ISSUE` | unset | File a strict-form issue when a failed step passes on the single retry. |
 
 The timer is scheduled for 07:17 UTC with a small randomized delay. Install on
 the owned runner by copying both unit files into the systemd unit directory and

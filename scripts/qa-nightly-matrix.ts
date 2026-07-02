@@ -42,6 +42,15 @@ export type QaNightlyStepResult = Readonly<{
   label: string
   command: readonly string[]
   cwd: string
+  attempts: readonly QaNightlyStepAttemptResult[]
+  durationMs: number
+  exitCode: number
+  logRef: string
+  status: "passed" | "failed" | "timed_out" | "flaky"
+}>
+
+export type QaNightlyStepAttemptResult = Readonly<{
+  attempt: 1 | 2
   durationMs: number
   exitCode: number
   logRef: string
@@ -61,7 +70,9 @@ export type QaNightlyReport = Readonly<{
   coverageLedgerSourcePaths: readonly string[]
   coverageFrontierReportPath: string
   coverageSteeringInputPath: string
+  quarantineLedgerPath: string
   issueStatus?: QaNightlyIssueStatus | undefined
+  quarantineIssueStatus?: QaNightlyIssueStatus | undefined
   zeroCoverageIssueStatus?: QaNightlyIssueStatus | undefined
 }>
 
@@ -109,6 +120,28 @@ export type QaNightlyCoverageArtifacts = Readonly<{
   steeringInputPath: string
   unionLedger: KhalaCodeQaCoverageLedger
   unionLedgerPath: string
+}>
+
+export type QaNightlyFlakeQuarantineEntry = Readonly<{
+  schema: "openagents.khala_code.qa_flake_quarantine_entry.v1"
+  command: readonly string[]
+  cwd: string
+  evidenceRefs: readonly string[]
+  firstAttempt: QaNightlyStepAttemptResult
+  generatedAt: string
+  reason: "failed_then_passed_retry"
+  retryAttempt: QaNightlyStepAttemptResult
+  runId: string
+  stepId: QaNightlyStepId
+  stepLabel: string
+}>
+
+export type QaNightlyFlakeQuarantineLedger = Readonly<{
+  schema: "openagents.khala_code.qa_flake_quarantine_ledger.v1"
+  entries: readonly QaNightlyFlakeQuarantineEntry[]
+  generatedAt: string
+  policy: "retry_once_then_quarantine_no_silent_green"
+  runId: string
 }>
 
 const sanitizeRunPart = (value: string): string =>
@@ -529,12 +562,18 @@ export const renderQaNightlyMarkdown = (report: QaNightlyReport): string => {
     : report.zeroCoverageIssueStatus.status === "filed"
       ? `Filed: ${report.zeroCoverageIssueStatus.issueUrl ?? "issue URL unavailable"}`
       : `${report.zeroCoverageIssueStatus.status}: ${report.zeroCoverageIssueStatus.reason}`
+  const quarantine = report.quarantineIssueStatus === undefined
+    ? "Not evaluated."
+    : report.quarantineIssueStatus.status === "filed"
+      ? `Filed: ${report.quarantineIssueStatus.issueUrl ?? "issue URL unavailable"}`
+      : `${report.quarantineIssueStatus.status}: ${report.quarantineIssueStatus.reason}`
 
   return `# Khala Code QA Nightly Matrix
 
 - Run: \`${report.runId}\`
 - Generated: \`${report.generatedAt}\`
 - Status: \`${report.status}\`
+- Flake quarantine ledger: \`${report.quarantineLedgerPath}\`
 - Coverage union ledger: \`${report.coverageLedgerPath}\`
 - Coverage frontier report: \`${report.coverageFrontierReportPath}\`
 - Explorer steering input: \`${report.coverageSteeringInputPath}\`
@@ -548,6 +587,12 @@ ${rows}
 ## Failures
 
 ${failedLines}
+
+## Flake Quarantine
+
+Policy: retry once, quarantine pass-after-fail, never silently retry green.
+
+Quarantine issue status: ${quarantine}
 
 ## Coverage Frontier
 
@@ -586,6 +631,7 @@ The full fixture QA matrix should pass: harness suite, desktop verify, visual sm
 
 - Report JSON: \`${report.reportJsonPath}\`
 - Report markdown: \`${report.reportMarkdownPath}\`
+- Flake quarantine ledger: \`${report.quarantineLedgerPath}\`
 - Coverage union ledger: \`${report.coverageLedgerPath}\`
 - Coverage frontier report: \`${report.coverageFrontierReportPath}\`
 - Explorer steering input: \`${report.coverageSteeringInputPath}\`
@@ -646,6 +692,53 @@ Owned runner nightly matrix. Generated at \`${report.generatedAt}\`.
 ### Safety and redaction
 
 The frontier contains coverage class names and repo-relative artifact refs only; it does not include account data, secrets, or raw command logs.
+`
+}
+
+export const buildQaNightlyFlakeQuarantineIssueBody = (
+  report: QaNightlyReport,
+  ledger: QaNightlyFlakeQuarantineLedger,
+): string => {
+  const entries = ledger.entries
+  return `### Affected surface
+
+Khala Code Desktop fully automated QA nightly flake quarantine.
+
+### Actual behavior
+
+Nightly run \`${report.runId}\` observed one or more steps fail once and pass on the single retry. These are quarantined bugs, not green retries:
+${entries.map(entry =>
+  `- \`${entry.stepId}\`: first ${entry.firstAttempt.status} exit ${entry.firstAttempt.exitCode} (\`${entry.firstAttempt.logRef}\`), retry passed (\`${entry.retryAttempt.logRef}\`)`
+).join("\n")}
+
+### Expected behavior
+
+The first attempt should pass deterministically. A pass-after-fail must remain tracked until the underlying product or harness bug is fixed and the quarantine entry is removed.
+
+### Reproduction steps
+
+1. Check out the repository commit used by the owned runner.
+2. Run \`bun run qa:nightly\`.
+3. Inspect \`${report.quarantineLedgerPath}\` and the first-attempt/retry logs listed above.
+
+### Public-safe evidence
+
+- Report JSON: \`${report.reportJsonPath}\`
+- Report markdown: \`${report.reportMarkdownPath}\`
+- Quarantine ledger: \`${report.quarantineLedgerPath}\`
+${entries.flatMap(entry => entry.evidenceRefs.map(ref => `- Evidence ref: \`${ref}\``)).join("\n")}
+
+### Severity
+
+S2 - intermittent failure in the automated QA gate
+
+### Environment
+
+Owned runner nightly matrix. Generated at \`${report.generatedAt}\`.
+
+### Safety and redaction
+
+The quarantine ledger contains step IDs, commands, exit codes, and public-safe artifact refs only. Raw logs remain in the owned-runner artifact directory and must be redaction-reviewed before external publication.
 `
 }
 
@@ -711,15 +804,16 @@ export const runQaNightlyMatrix = async (input: Readonly<{
   const monkeySteps = positiveInt(env.OA_QA_NIGHTLY_MONKEY_STEPS, QA_NIGHTLY_DEFAULT_STEPS)
   const steps = buildQaNightlySteps({ artifactDir, monkeyRuns, monkeySteps })
   const results: QaNightlyStepResult[] = []
+  const quarantineEntries: QaNightlyFlakeQuarantineEntry[] = []
 
   await mkdir(artifactDir, { recursive: true })
-  for (const step of steps) {
-    const logPath = join(artifactDir, "logs", `${step.id}.log`)
+  const runStepAttempt = async (
+    step: QaNightlyStep,
+    absoluteStep: QaNightlyStep,
+    attempt: 1 | 2,
+  ): Promise<QaNightlyStepAttemptResult> => {
+    const logPath = join(artifactDir, "logs", attempt === 1 ? `${step.id}.log` : `${step.id}.retry.log`)
     await mkdir(dirname(logPath), { recursive: true })
-    const absoluteStep = {
-      ...step,
-      cwd: resolve(root, step.cwd),
-    }
     const result = await commandRunner(absoluteStep, timeoutMs)
     const status = result.timedOut === true
       ? "timed_out"
@@ -731,6 +825,7 @@ export const runQaNightlyMatrix = async (input: Readonly<{
       [
         `$ ${quote(step.command)}`,
         `cwd: ${step.cwd}`,
+        `attempt: ${attempt}`,
         `status: ${status}`,
         `exitCode: ${result.exitCode}`,
         `durationMs: ${result.durationMs}`,
@@ -743,14 +838,60 @@ export const runQaNightlyMatrix = async (input: Readonly<{
         "",
       ].join("\n"),
     )
-    results.push({
-      command: step.command,
-      cwd: step.cwd,
+    return {
+      attempt,
       durationMs: result.durationMs,
       exitCode: result.exitCode,
+      logRef: repoRelative(root, logPath),
+      status,
+    }
+  }
+
+  for (const step of steps) {
+    const absoluteStep = {
+      ...step,
+      cwd: resolve(root, step.cwd),
+    }
+    const firstAttempt = await runStepAttempt(step, absoluteStep, 1)
+    const attempts: QaNightlyStepAttemptResult[] = [firstAttempt]
+    if (firstAttempt.status !== "passed") {
+      attempts.push(await runStepAttempt(step, absoluteStep, 2))
+    }
+    const lastAttempt = attempts.at(-1) ?? firstAttempt
+    const status: QaNightlyStepResult["status"] = firstAttempt.status === "passed"
+      ? "passed"
+      : lastAttempt.status === "passed"
+        ? "flaky"
+        : lastAttempt.status
+    const evidenceRefs = [
+      firstAttempt.logRef,
+      ...(attempts.length > 1 ? [lastAttempt.logRef] : []),
+      ...(step.expectedArtifactRefs ?? []).map(ref => repoRelative(root, join(artifactDir, ref))),
+    ]
+    if (status === "flaky") {
+      quarantineEntries.push({
+        command: step.command,
+        cwd: step.cwd,
+        evidenceRefs,
+        firstAttempt,
+        generatedAt,
+        reason: "failed_then_passed_retry",
+        retryAttempt: lastAttempt,
+        runId,
+        schema: "openagents.khala_code.qa_flake_quarantine_entry.v1",
+        stepId: step.id,
+        stepLabel: step.label,
+      })
+    }
+    results.push({
+      attempts,
+      command: step.command,
+      cwd: step.cwd,
+      durationMs: attempts.reduce((sum, attempt) => sum + attempt.durationMs, 0),
+      exitCode: status === "flaky" ? firstAttempt.exitCode : lastAttempt.exitCode,
       id: step.id,
       label: step.label,
-      logRef: repoRelative(root, logPath),
+      logRef: status === "flaky" ? firstAttempt.logRef : lastAttempt.logRef,
       status,
     })
   }
@@ -759,6 +900,17 @@ export const runQaNightlyMatrix = async (input: Readonly<{
   const reportMarkdownPath = join(artifactDir, "qa-nightly-report.md")
   const issueBodyPath = join(artifactDir, "qa-nightly-failure-issue.md")
   const zeroCoverageIssueBodyPath = join(artifactDir, "qa-nightly-zero-coverage-issue.md")
+  const quarantineIssueBodyPath = join(artifactDir, "qa-nightly-flake-quarantine-issue.md")
+  const quarantineLedgerPath = join(artifactDir, "quarantine", "flake-quarantine-ledger.json")
+  const quarantineLedger: QaNightlyFlakeQuarantineLedger = {
+    entries: quarantineEntries,
+    generatedAt,
+    policy: "retry_once_then_quarantine_no_silent_green",
+    runId,
+    schema: "openagents.khala_code.qa_flake_quarantine_ledger.v1",
+  }
+  await mkdir(dirname(quarantineLedgerPath), { recursive: true })
+  await writeFile(quarantineLedgerPath, `${JSON.stringify(quarantineLedger, null, 2)}\n`)
   const monkeyCoverageLedgerPath = join(artifactDir, "monkey-night", "monkey-night-coverage-ledger.json")
   const coverageArtifacts = await emitQaNightlyCoverageArtifacts({
     artifactDir,
@@ -775,6 +927,7 @@ export const runQaNightlyMatrix = async (input: Readonly<{
     coverageLedgerSourcePaths: coverageArtifacts.sourceLedgerPaths.map(path => repoRelative(root, path)),
     coverageSteeringInputPath: repoRelative(root, coverageArtifacts.steeringInputPath),
     generatedAt,
+    quarantineLedgerPath: repoRelative(root, quarantineLedgerPath),
     reportJsonPath: repoRelative(root, reportJsonPath),
     reportMarkdownPath: repoRelative(root, reportMarkdownPath),
     runId,
@@ -798,6 +951,21 @@ export const runQaNightlyMatrix = async (input: Readonly<{
       title: `[Bug]: Khala Code QA nightly failed ${reportBase.runId}`,
     })
   })()
+  const quarantineIssueStatus = await (async (): Promise<QaNightlyIssueStatus | undefined> => {
+    if (quarantineLedger.entries.length === 0) {
+      return { reason: "no pass-after-fail retries were observed", status: "disabled" }
+    }
+    if (env.OA_QA_NIGHTLY_FILE_QUARANTINE_ISSUE !== "1") {
+      return { reason: "OA_QA_NIGHTLY_FILE_QUARANTINE_ISSUE is not set", status: "disabled" }
+    }
+    const body = buildQaNightlyFlakeQuarantineIssueBody(reportBase, quarantineLedger)
+    await writeFile(quarantineIssueBodyPath, body)
+    return (input.issueFiler ?? fileQaNightlyFailureIssueWithGh)({
+      bodyPath: quarantineIssueBodyPath,
+      report: reportBase,
+      title: `[Bug]: Khala Code QA flake quarantined ${quarantineLedger.entries[0]?.stepId ?? reportBase.runId}`,
+    })
+  })()
   const zeroCoverageIssueStatus = await (async (): Promise<QaNightlyIssueStatus | undefined> => {
     if (coverageArtifacts.frontierReport.zeroForAWeekIssueCandidates.length === 0) {
       return { reason: "no coverage class has been zero for seven consecutive days", status: "disabled" }
@@ -817,6 +985,7 @@ export const runQaNightlyMatrix = async (input: Readonly<{
   const report: QaNightlyReport = {
     ...reportBase,
     ...(issueStatus === undefined ? {} : { issueStatus }),
+    ...(quarantineIssueStatus === undefined ? {} : { quarantineIssueStatus }),
     ...(zeroCoverageIssueStatus === undefined ? {} : { zeroCoverageIssueStatus }),
   }
   assertQaNightlyReportPublicSafe(report)

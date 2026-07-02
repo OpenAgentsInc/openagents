@@ -81,6 +81,9 @@ describe("qa nightly matrix report", () => {
       expect(await readFile(join(root, report.coverageSteeringInputPath), "utf8")).toContain(
         "coverage_frontier_steering_input",
       )
+      expect(await readFile(join(root, report.quarantineLedgerPath), "utf8")).toContain(
+        "qa_flake_quarantine_ledger",
+      )
     } finally {
       await rm(root, { force: true, recursive: true })
     }
@@ -124,6 +127,61 @@ describe("qa nightly matrix report", () => {
       expect(filed).toEqual([
         "[Bug]: Khala Code QA nightly failed khala-code-qa-nightly-2026-07-02t123000.000z",
       ])
+    } finally {
+      await rm(root, { force: true, recursive: true })
+    }
+  })
+
+  test("quarantines a fail-then-pass retry without silently turning the nightly green", async () => {
+    const root = await mkdtemp(join(tmpdir(), "qa-nightly-flake-"))
+    const attemptsByStep = new Map<string, number>()
+    const commandRunner: QaNightlyCommandRunner = async step => {
+      const attempt = (attemptsByStep.get(step.id) ?? 0) + 1
+      attemptsByStep.set(step.id, attempt)
+      return {
+        durationMs: 4,
+        exitCode: step.id === "desktop-verify" && attempt === 1 ? 1 : 0,
+        stderr: step.id === "desktop-verify" && attempt === 1 ? "intermittent desktop suite error" : "",
+        stdout: "",
+      }
+    }
+    const filed: string[] = []
+    const issueFiler: QaNightlyIssueFiler = async input => {
+      filed.push(input.title)
+      const body = await readFile(input.bodyPath, "utf8")
+      if (input.title.includes("flake quarantined")) {
+        expect(body).toContain("desktop-verify")
+        expect(body).toContain("desktop-verify.log")
+        expect(body).toContain("desktop-verify.retry.log")
+      }
+      return {
+        issueUrl: `https://github.com/OpenAgentsInc/openagents/issues/${filed.length}`,
+        status: "filed",
+      }
+    }
+
+    try {
+      const report = await runQaNightlyMatrix({
+        artifactRoot: join(root, "artifacts"),
+        commandRunner,
+        env: {
+          OA_QA_NIGHTLY_FILE_ISSUE: "1",
+          OA_QA_NIGHTLY_FILE_QUARANTINE_ISSUE: "1",
+        },
+        issueFiler,
+        now: () => "2026-07-02T13:00:00.000Z",
+        root,
+      })
+      const desktopStep = report.steps.find(step => step.id === "desktop-verify")
+      const quarantine = JSON.parse(await readFile(join(root, report.quarantineLedgerPath), "utf8"))
+
+      expect(report.status).toBe("failed")
+      expect(desktopStep?.status).toBe("flaky")
+      expect(desktopStep?.attempts.map(attempt => attempt.status)).toEqual(["failed", "passed"])
+      expect(quarantine.entries).toHaveLength(1)
+      expect(quarantine.entries[0].stepId).toBe("desktop-verify")
+      expect(report.quarantineIssueStatus?.status).toBe("filed")
+      expect(filed).toContain("[Bug]: Khala Code QA flake quarantined desktop-verify")
     } finally {
       await rm(root, { force: true, recursive: true })
     }
@@ -231,6 +289,7 @@ describe("qa nightly matrix report", () => {
       coverageLedgerSourcePaths: ["var/qa-nightly/run/monkey-night/monkey-night-coverage-ledger.json"],
       coverageSteeringInputPath: "var/qa-nightly/run/coverage/coverage-frontier-steering.json",
       generatedAt: "2026-07-02T12:00:00.000Z",
+      quarantineLedgerPath: "var/qa-nightly/run/quarantine/flake-quarantine-ledger.json",
       reportJsonPath: "var/qa-nightly/run/qa-nightly-report.json",
       reportMarkdownPath: "var/qa-nightly/run/qa-nightly-report.md",
       runId: "khala-code-qa-nightly-2026-07-02",
@@ -238,6 +297,13 @@ describe("qa nightly matrix report", () => {
       status: "failed",
       steps: [
         {
+          attempts: [{
+            attempt: 1,
+            durationMs: 1,
+            exitCode: 1,
+            logRef: "var/qa-nightly/run/logs/harness-suite.log",
+            status: "failed",
+          }],
           command: ["bun", "run", "x"],
           cwd: ".",
           durationMs: 1,
