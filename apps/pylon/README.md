@@ -489,6 +489,30 @@ token-counter evidence. The command reports `mergePolicy:
 "operator_review_required"`; review, commit, push, and close each issue after
 proof. See `docs/khala-burndown-runbook.md`.
 
+The FleetRun live smoke scripts are skip-safe by default and exist for owner
+or release-operator proof runs, not CI. `bun run --cwd apps/pylon
+smoke:fleet-run-live` runs only when `PYLON_FLEET_RUN_LIVE_ARM=1` is present
+with `PYLON_FLEET_RUN_LIVE_PYLON_REF`, exactly two distinct
+`PYLON_FLEET_RUN_LIVE_ISSUES`, `PYLON_FLEET_RUN_LIVE_REPO`,
+`PYLON_FLEET_RUN_LIVE_COMMIT` (40-character SHA),
+`PYLON_FLEET_RUN_LIVE_VERIFY`, and `OPENAGENTS_AGENT_TOKEN`. Armed execution
+starts a supervised issue-list FleetRun at target concurrency 2, then fails
+closed unless both assignment refs close out with green `pylon khala closeout`
+checklists, positive exact `token_usage_events` rows, zero duplicate work-unit
+claims, and a public `/api/public/khala-tokens-served` delta at least as large
+as the exact closeout total. Counter movement alone is never accepted.
+
+`bun run --cwd apps/pylon smoke:fleet-run-sustained` uses the same evidence
+chain behind `PYLON_FLEET_RUN_SUSTAINED_ARM=1`. Defaults are target 5,
+duration 30 minutes, minimum 2 refills, and at least 7 distinct issue numbers
+(`target + minRefills`). Optional knobs are
+`PYLON_FLEET_RUN_SUSTAINED_TARGET`,
+`PYLON_FLEET_RUN_SUSTAINED_DURATION_MINUTES`,
+`PYLON_FLEET_RUN_SUSTAINED_MIN_REFILLS`,
+`PYLON_FLEET_RUN_SUSTAINED_POLL_MS`, and
+`PYLON_FLEET_RUN_SUSTAINED_TIMEOUT_MS`; the script rejects values below the
+documented minimums before dispatching real work.
+
 ### Local multi-session proof runs
 
 For owner-directed local orchestration, `scripts/multi-session-run.ts` runs a
