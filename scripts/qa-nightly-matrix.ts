@@ -13,11 +13,15 @@ import {
   type KhalaCodeQaCoverageLedger,
 } from "../packages/khala-qa-harness/src/index.js"
 import {
+  evaluateKhalaCodeQaMetricBudget,
   evaluateKhalaCodeQaMetricBudgets,
   khalaCodeQaMetricBudgets,
+  type KhalaCodeQaMetricBudget,
   type KhalaCodeQaMetricBudgetEvaluation,
   type KhalaCodeQaMetricBudgetUnit,
   type KhalaCodeQaMetricName,
+  type KhalaCodeQaMetricSample,
+  type KhalaCodeQaMetricsSnapshot,
 } from "../clients/khala-code-desktop/src/shared/qa-metrics.js"
 
 export const QA_NIGHTLY_MATRIX_SCHEMA =
@@ -83,8 +87,10 @@ export type QaNightlyReport = Readonly<{
   quarantineLedgerPath: string
   statusSurfaceJsonPath: string
   statusSurfaceMarkdownPath: string
+  latencyBudgetRun: QaNightlyLatencyBudgetRun
   issueStatus?: QaNightlyIssueStatus | undefined
   quarantineIssueStatus?: QaNightlyIssueStatus | undefined
+  latencyBudgetRegressionIssueStatus?: QaNightlyIssueStatus | undefined
   zeroCoverageIssueStatus?: QaNightlyIssueStatus | undefined
 }>
 
@@ -151,6 +157,46 @@ export type QaNightlyLatencyBudgetCatalogEntry = Readonly<{
   unit: KhalaCodeQaMetricBudgetUnit
 }>
 
+export type QaNightlyLatencyBudgetSampleEvidence = Readonly<{
+  observedAt: string
+  sourceRef: string
+  unit: KhalaCodeQaMetricSample["unit"]
+  value: number
+}>
+
+export type QaNightlyLatencyBudgetRunEntry = Readonly<{
+  actual: number | null
+  budgetId: string
+  evaluationStatus: KhalaCodeQaMetricBudgetEvaluation["status"]
+  metric: KhalaCodeQaMetricName
+  percentile?: number | undefined
+  sampleCount: number
+  sampleEvidence: readonly QaNightlyLatencyBudgetSampleEvidence[]
+  threshold: number
+  unit: KhalaCodeQaMetricBudgetUnit
+}>
+
+export type QaNightlyLatencyBudgetRun = Readonly<{
+  schema: "openagents.khala_code.qa_latency_budget_run.v1"
+  budgetCount: number
+  budgets: readonly QaNightlyLatencyBudgetRunEntry[]
+  generatedAt: string
+  sourceSnapshotRefs: readonly string[]
+}>
+
+export type QaNightlyLatencyBudgetTrend = Readonly<{
+  budgetId: string
+  delta?: number | undefined
+  latestActual: number | null
+  metric: KhalaCodeQaMetricName
+  previousActual?: number | undefined
+  sampleCount: number
+  sampleEvidence: readonly QaNightlyLatencyBudgetSampleEvidence[]
+  threshold: number
+  trend: "no_samples" | "first_sample" | "flat" | "improved" | "regressed"
+  unit: KhalaCodeQaMetricBudgetUnit
+}>
+
 export type QaNightlyStatusSurface = Readonly<{
   schema: typeof QA_STATUS_SURFACE_SCHEMA
   generatedAt: string
@@ -172,6 +218,7 @@ export type QaNightlyStatusSurface = Readonly<{
     zeroForAWeekCount: number
   }>
   issueStatuses: Readonly<{
+    latencyBudgetRegression: QaNightlyIssueStatus | undefined
     nightly: QaNightlyIssueStatus | undefined
     quarantine: QaNightlyIssueStatus | undefined
     zeroCoverage: QaNightlyIssueStatus | undefined
@@ -186,7 +233,9 @@ export type QaNightlyStatusSurface = Readonly<{
     budgetCount: number
     budgets: readonly QaNightlyLatencyBudgetCatalogEntry[]
     evaluatedBy: "packages/khala-qa-harness perf oracle"
-    status: "catalog_active_regression_trends_follow_q2_5"
+    regressionCount: number
+    status: "trend_series_active"
+    trends: readonly QaNightlyLatencyBudgetTrend[]
   }>
   perfTrends: Readonly<{
     basis: "nightly_step_duration_ms"
@@ -333,8 +382,23 @@ const isCoverageFrontierReport = (value: unknown): value is KhalaCodeQaCoverageF
   typeof value.generatedAt === "string" &&
   isRecord(value.missing)
 
+const isQaMetricsSnapshot = (value: unknown): value is KhalaCodeQaMetricsSnapshot =>
+  isRecord(value) &&
+  value.ok === true &&
+  value.schema === "openagents.khala_code.qa_metrics.v1" &&
+  Array.isArray(value.budgets) &&
+  Array.isArray(value.samples)
+
+const isLatencyBudgetRun = (value: unknown): value is QaNightlyLatencyBudgetRun =>
+  isRecord(value) &&
+  value.schema === "openagents.khala_code.qa_latency_budget_run.v1" &&
+  typeof value.generatedAt === "string" &&
+  Array.isArray(value.budgets) &&
+  Array.isArray(value.sourceSnapshotRefs)
+
 export type QaNightlyReportHistoryEntry = Readonly<{
   generatedAt: string
+  latencyBudgetRun?: QaNightlyLatencyBudgetRun | undefined
   runId: string
   status: QaNightlyReport["status"]
   steps: ReadonlyArray<Readonly<{
@@ -375,7 +439,8 @@ const isQaNightlyReportHistoryEntry = (value: unknown): value is QaNightlyReport
       step.status === "timed_out" ||
       step.status === "flaky"
     ),
-  )
+  ) &&
+  (value.latencyBudgetRun === undefined || isLatencyBudgetRun(value.latencyBudgetRun))
 
 export const khalaCoverageFrontierRefs = (
   frontier: KhalaCodeQaCoverageFrontierReport,
@@ -568,18 +633,144 @@ const computeQaNightlyPerfTrends = (
     }
   })
 
-const buildQaNightlyLatencyBudgetCatalog = (): readonly QaNightlyLatencyBudgetCatalogEntry[] => {
+const matchesRequiredContext = (
+  sample: KhalaCodeQaMetricSample,
+  requiredContext: KhalaCodeQaMetricBudget["requiredContext"],
+): boolean => {
+  if (requiredContext === undefined) return true
+  const context = sample.context ?? {}
+  return Object.entries(requiredContext).every(([key, value]) => context[key] === value)
+}
+
+const collectQaMetricSnapshots = async (input: Readonly<{
+  artifactDir: string
+  root: string
+}>): Promise<ReadonlyArray<Readonly<{ path: string; snapshot: KhalaCodeQaMetricsSnapshot }>>> => {
+  const snapshots: Array<{ path: string; snapshot: KhalaCodeQaMetricsSnapshot }> = []
+  for (const path of await walkFiles(input.artifactDir)) {
+    if (!path.endsWith(".json")) continue
+    const value = await readJsonFile(path)
+    if (isQaMetricsSnapshot(value)) {
+      snapshots.push({ path: repoRelative(input.root, path), snapshot: value })
+    }
+  }
+  return snapshots.sort((left, right) => left.path.localeCompare(right.path))
+}
+
+const sampleEvidenceForBudget = (
+  budget: KhalaCodeQaMetricBudget,
+  snapshots: ReadonlyArray<Readonly<{ path: string; snapshot: KhalaCodeQaMetricsSnapshot }>>,
+): readonly QaNightlyLatencyBudgetSampleEvidence[] =>
+  snapshots
+    .flatMap(({ path, snapshot }) =>
+      snapshot.samples
+        .filter((sample) =>
+          sample.metric === budget.metric &&
+          sample.unit === budget.unit &&
+          matchesRequiredContext(sample, budget.requiredContext)
+        )
+        .map((sample) => ({
+          observedAt: sample.observedAt,
+          sourceRef: path,
+          unit: sample.unit,
+          value: sample.value,
+        }))
+    )
+    .sort((left, right) => right.value - left.value)
+    .slice(0, 5)
+
+export const buildQaNightlyLatencyBudgetRun = async (input: Readonly<{
+  artifactDir: string
+  generatedAt: string
+  root: string
+}>): Promise<QaNightlyLatencyBudgetRun> => {
+  const snapshots = await collectQaMetricSnapshots({
+    artifactDir: input.artifactDir,
+    root: input.root,
+  })
+  const samples = snapshots.flatMap(({ snapshot }) => snapshot.samples)
+  return {
+    budgetCount: khalaCodeQaMetricBudgets.length,
+    budgets: khalaCodeQaMetricBudgets.map((budget) => {
+      const evaluation = evaluateKhalaCodeQaMetricBudget(budget, samples)
+      return {
+        actual: evaluation.actual,
+        budgetId: budget.budgetId,
+        evaluationStatus: evaluation.status,
+        metric: budget.metric,
+        ...(budget.percentile === undefined ? {} : { percentile: budget.percentile }),
+        sampleCount: evaluation.sampleCount,
+        sampleEvidence: sampleEvidenceForBudget(budget, snapshots),
+        threshold: budget.threshold,
+        unit: budget.unit,
+      }
+    }),
+    generatedAt: input.generatedAt,
+    schema: "openagents.khala_code.qa_latency_budget_run.v1",
+    sourceSnapshotRefs: snapshots.map(({ path }) => path),
+  }
+}
+
+const computeQaNightlyLatencyBudgetTrends = (
+  current: QaNightlyLatencyBudgetRun,
+  history: readonly QaNightlyReportHistoryEntry[],
+): readonly QaNightlyLatencyBudgetTrend[] =>
+  current.budgets.map((entry) => {
+    const prior = history
+      .filter(item => item.latencyBudgetRun !== undefined)
+      .flatMap(item =>
+        item.latencyBudgetRun?.budgets.filter(candidate => candidate.budgetId === entry.budgetId) ?? []
+      )
+      .filter(candidate => candidate.actual !== null)
+    const previous = prior.at(-1)
+    const previousActual = previous?.actual ?? undefined
+    const delta = entry.actual === null || previousActual === undefined
+      ? undefined
+      : entry.actual - previousActual
+    const trend: QaNightlyLatencyBudgetTrend["trend"] = entry.actual === null
+      ? "no_samples"
+      : previousActual === undefined
+        ? "first_sample"
+        : delta === 0
+          ? "flat"
+          : delta < 0
+            ? "improved"
+            : "regressed"
+    return {
+      budgetId: entry.budgetId,
+      ...(delta === undefined ? {} : { delta }),
+      latestActual: entry.actual,
+      metric: entry.metric,
+      ...(previousActual === undefined ? {} : { previousActual }),
+      sampleCount: entry.sampleCount,
+      sampleEvidence: entry.sampleEvidence,
+      threshold: entry.threshold,
+      trend,
+      unit: entry.unit,
+    }
+  })
+
+const latencyBudgetRegressions = (
+  trends: readonly QaNightlyLatencyBudgetTrend[],
+): readonly QaNightlyLatencyBudgetTrend[] =>
+  trends.filter(trend => trend.trend === "regressed")
+
+const buildQaNightlyLatencyBudgetCatalog = (
+  current?: QaNightlyLatencyBudgetRun | undefined,
+): readonly QaNightlyLatencyBudgetCatalogEntry[] => {
   const evaluations = new Map(
     evaluateKhalaCodeQaMetricBudgets([]).map(evaluation => [evaluation.budgetId, evaluation]),
   )
+  const currentEntries = new Map(current?.budgets.map(entry => [entry.budgetId, entry]) ?? [])
   return khalaCodeQaMetricBudgets.map(budget => {
+    const currentEntry = currentEntries.get(budget.budgetId)
     const evaluation = evaluations.get(budget.budgetId)
     return {
       budgetId: budget.budgetId,
-      evaluationStatus: evaluation?.status ?? "inconclusive",
+      evaluationStatus: currentEntry?.evaluationStatus ?? evaluation?.status ?? "inconclusive",
       metric: budget.metric,
       ...(budget.percentile === undefined ? {} : { percentile: budget.percentile }),
-      sampleCount: evaluation?.sampleCount ?? 0,
+      sampleCount: currentEntry?.sampleCount ?? evaluation?.sampleCount ?? 0,
       threshold: budget.threshold,
       unit: budget.unit,
     }
@@ -593,54 +784,63 @@ export const buildQaNightlyStatusSurface = (input: Readonly<{
   statusSurfaceJsonPath: string
   statusSurfaceMarkdownPath: string
   unionLedger: KhalaCodeQaCoverageLedger
-}>): QaNightlyStatusSurface => ({
-  coverage: {
-    artifactRefs: {
-      frontierReportPath: input.report.coverageFrontierReportPath,
-      steeringInputPath: input.report.coverageSteeringInputPath,
-      unionLedgerPath: input.report.coverageLedgerPath,
+}>): QaNightlyStatusSurface => {
+  const latencyBudgetTrends = computeQaNightlyLatencyBudgetTrends(
+    input.report.latencyBudgetRun,
+    input.history,
+  )
+  return {
+    coverage: {
+      artifactRefs: {
+        frontierReportPath: input.report.coverageFrontierReportPath,
+        steeringInputPath: input.report.coverageSteeringInputPath,
+        unionLedgerPath: input.report.coverageLedgerPath,
+      },
+      counts: coverageDimensionCounts(input.frontierReport),
+      frontierRefCount: khalaCoverageFrontierRefs(input.frontierReport).length,
+      sourceLedgerCount: input.report.coverageLedgerSourcePaths.length,
+      unionRunCount: input.unionLedger.runIds.length,
+      zeroForAWeekCount: input.frontierReport.zeroForAWeekIssueCandidates.length,
     },
-    counts: coverageDimensionCounts(input.frontierReport),
-    frontierRefCount: khalaCoverageFrontierRefs(input.frontierReport).length,
-    sourceLedgerCount: input.report.coverageLedgerSourcePaths.length,
-    unionRunCount: input.unionLedger.runIds.length,
-    zeroForAWeekCount: input.frontierReport.zeroForAWeekIssueCandidates.length,
-  },
-  generatedAt: input.report.generatedAt,
-  issueStatuses: {
-    nightly: input.report.issueStatus,
-    quarantine: input.report.quarantineIssueStatus,
-    zeroCoverage: input.report.zeroCoverageIssueStatus,
-  },
-  liveTier: {
-    evidenceRefs: [
-      "docs/fable/ROADMAP_QA.md",
-      "https://github.com/OpenAgentsInc/openagents/issues/8037",
-    ],
-    reason: "Live-tier Q5 smokes are not part of the Q1 nightly matrix yet; fixture tiers remain no-spend and account-isolated.",
-    status: "not_in_matrix",
-  },
-  latencyBudgets: {
-    basis: "qaMetrics_budget_catalog",
-    budgetCount: khalaCodeQaMetricBudgets.length,
-    budgets: buildQaNightlyLatencyBudgetCatalog(),
-    evaluatedBy: "packages/khala-qa-harness perf oracle",
-    status: "catalog_active_regression_trends_follow_q2_5",
-  },
-  perfTrends: {
-    basis: "nightly_step_duration_ms",
-    status: "step_duration_trends_budget_catalog_active",
-    steps: computeQaNightlyPerfTrends(input.report, input.history),
-  },
-  reportJsonPath: input.report.reportJsonPath,
-  reportMarkdownPath: input.report.reportMarkdownPath,
-  runId: input.report.runId,
-  schema: QA_STATUS_SURFACE_SCHEMA,
-  status: input.report.status,
-  statusSummary: input.report.status === "passed" ? "healthy" : "blocked",
-  surfaceJsonPath: input.statusSurfaceJsonPath,
-  surfaceMarkdownPath: input.statusSurfaceMarkdownPath,
-})
+    generatedAt: input.report.generatedAt,
+    issueStatuses: {
+      latencyBudgetRegression: input.report.latencyBudgetRegressionIssueStatus,
+      nightly: input.report.issueStatus,
+      quarantine: input.report.quarantineIssueStatus,
+      zeroCoverage: input.report.zeroCoverageIssueStatus,
+    },
+    liveTier: {
+      evidenceRefs: [
+        "docs/fable/ROADMAP_QA.md",
+        "https://github.com/OpenAgentsInc/openagents/issues/8037",
+      ],
+      reason: "Live-tier Q5 smokes are not part of the Q1 nightly matrix yet; fixture tiers remain no-spend and account-isolated.",
+      status: "not_in_matrix",
+    },
+    latencyBudgets: {
+      basis: "qaMetrics_budget_catalog",
+      budgetCount: khalaCodeQaMetricBudgets.length,
+      budgets: buildQaNightlyLatencyBudgetCatalog(input.report.latencyBudgetRun),
+      evaluatedBy: "packages/khala-qa-harness perf oracle",
+      regressionCount: latencyBudgetRegressions(latencyBudgetTrends).length,
+      status: "trend_series_active",
+      trends: latencyBudgetTrends,
+    },
+    perfTrends: {
+      basis: "nightly_step_duration_ms",
+      status: "step_duration_trends_budget_catalog_active",
+      steps: computeQaNightlyPerfTrends(input.report, input.history),
+    },
+    reportJsonPath: input.report.reportJsonPath,
+    reportMarkdownPath: input.report.reportMarkdownPath,
+    runId: input.report.runId,
+    schema: QA_STATUS_SURFACE_SCHEMA,
+    status: input.report.status,
+    statusSummary: input.report.status === "passed" ? "healthy" : "blocked",
+    surfaceJsonPath: input.statusSurfaceJsonPath,
+    surfaceMarkdownPath: input.statusSurfaceMarkdownPath,
+  }
+}
 
 export const emitQaNightlyCoverageArtifacts = async (input: Readonly<{
   artifactDir: string
@@ -963,6 +1163,14 @@ export const renderQaStatusSurfaceMarkdown = (surface: QaNightlyStatusSurface): 
       return `| ${budget.budgetId} | ${budget.metric} | ${budget.threshold} | ${budget.unit} | ${percentile} | ${budget.evaluationStatus} | ${budget.sampleCount} |`
     })
     .join("\n")
+  const latencyTrendRows = surface.latencyBudgets.trends
+    .map(trend => {
+      const previous = trend.previousActual === undefined ? "n/a" : String(trend.previousActual)
+      const delta = trend.delta === undefined ? "n/a" : String(trend.delta)
+      const latest = trend.latestActual === null ? "n/a" : String(trend.latestActual)
+      return `| ${trend.budgetId} | ${latest} | ${previous} | ${delta} | ${trend.trend} | ${trend.sampleCount} |`
+    })
+    .join("\n")
   const issueStatus = (status: QaNightlyIssueStatus | undefined): string => {
     if (status === undefined) return "not evaluated"
     if (status.status === "filed") return `filed ${status.issueUrl ?? ""}`.trim()
@@ -1021,14 +1229,23 @@ Evaluated by: \`${surface.latencyBudgets.evaluatedBy}\`
 
 Budget count: \`${surface.latencyBudgets.budgetCount}\`
 
+Regression count: \`${surface.latencyBudgets.regressionCount}\`
+
 | Budget | Metric | Threshold | Unit | Percentile | Evaluation | Samples |
 | --- | --- | ---: | --- | --- | --- | ---: |
 ${latencyBudgetRows}
+
+### Budget Trends
+
+| Budget | Latest | Previous | Delta | Trend | Samples |
+| --- | ---: | ---: | ---: | --- | ---: |
+${latencyTrendRows}
 
 ## Issues
 
 - Nightly: ${issueStatus(surface.issueStatuses.nightly)}
 - Flake quarantine: ${issueStatus(surface.issueStatuses.quarantine)}
+- Latency budget regression: ${issueStatus(surface.issueStatuses.latencyBudgetRegression)}
 - Zero coverage: ${issueStatus(surface.issueStatuses.zeroCoverage)}
 `
 }
@@ -1124,6 +1341,67 @@ Owned runner nightly matrix. Generated at \`${report.generatedAt}\`.
 ### Safety and redaction
 
 The frontier contains coverage class names and repo-relative artifact refs only; it does not include account data, secrets, or raw command logs.
+`
+}
+
+export const buildQaNightlyLatencyBudgetRegressionIssueBody = (
+  report: QaNightlyReport,
+  regressions: readonly QaNightlyLatencyBudgetTrend[],
+): string => {
+  const rows = regressions
+    .map(regression =>
+      `| \`${regression.budgetId}\` | \`${regression.metric}\` | ${regression.previousActual ?? "n/a"} | ${regression.latestActual ?? "n/a"} | ${regression.delta ?? "n/a"} | ${regression.threshold}${regression.unit} |`
+    )
+    .join("\n")
+  const sampleRows = regressions
+    .flatMap(regression =>
+      regression.sampleEvidence.map(sample =>
+        `| \`${regression.budgetId}\` | ${sample.value}${sample.unit} | ${sample.observedAt} | \`${sample.sourceRef}\` |`
+      )
+    )
+    .join("\n")
+  return `### Affected surface
+
+Khala Code Desktop latency budget trend reporting.
+
+### Actual behavior
+
+Nightly run \`${report.runId}\` observed latency budget regressions against the previous persisted nightly samples.
+
+| Budget | Metric | Previous | Latest | Delta | Threshold |
+| --- | --- | ---: | ---: | ---: | ---: |
+${rows}
+
+### Expected behavior
+
+Each budget should stay flat or improve, or a child optimization issue should be opened with the offending samples.
+
+### Reproduction steps
+
+1. Check out the repository commit used by the owned runner.
+2. Run \`bun run qa:nightly\`.
+3. Inspect \`${report.statusSurfaceJsonPath}\` and the \`latencyBudgets.trends\` rows.
+
+### Sample evidence
+
+| Budget | Sample | Observed at | Source |
+| --- | ---: | --- | --- |
+${sampleRows || "| n/a | n/a | n/a | n/a |"}
+
+### Public-safe evidence
+
+- Report JSON: \`${report.reportJsonPath}\`
+- Status surface JSON: \`${report.statusSurfaceJsonPath}\`
+- Status surface markdown: \`${report.statusSurfaceMarkdownPath}\`
+- Source qaMetrics snapshots: ${report.latencyBudgetRun.sourceSnapshotRefs.map(ref => `\`${ref}\``).join(", ") || "none"}
+
+### Severity
+
+S2 - measured latency regression in the automated QA loop
+
+### Safety and redaction
+
+The issue body includes budget IDs, metric names, numeric samples, timestamps, and repo-relative artifact refs only. It does not include raw command logs, local absolute paths, account identifiers, or provider payloads.
 `
 }
 
@@ -1338,6 +1616,7 @@ export const runQaNightlyMatrix = async (input: Readonly<{
   const issueBodyPath = join(artifactDir, "qa-nightly-failure-issue.md")
   const zeroCoverageIssueBodyPath = join(artifactDir, "qa-nightly-zero-coverage-issue.md")
   const quarantineIssueBodyPath = join(artifactDir, "qa-nightly-flake-quarantine-issue.md")
+  const latencyBudgetRegressionIssueBodyPath = join(artifactDir, "qa-nightly-latency-budget-regression-issue.md")
   const statusSurfaceJsonPath = join(artifactDir, "qa-status-surface.json")
   const statusSurfaceMarkdownPath = join(artifactDir, "qa-status-surface.md")
   const quarantineLedgerPath = join(artifactDir, "quarantine", "flake-quarantine-ledger.json")
@@ -1359,6 +1638,13 @@ export const runQaNightlyMatrix = async (input: Readonly<{
     root,
     runId,
   })
+  const latencyBudgetRun = await buildQaNightlyLatencyBudgetRun({
+    artifactDir,
+    generatedAt,
+    root,
+  })
+  const history = (await readQaNightlyReportHistory(artifactRoot))
+    .filter(entry => entry.runId !== runId)
   const reportBase: QaNightlyReport = {
     artifactDir: repoRelative(root, artifactDir),
     coverageFrontierReportPath: repoRelative(root, coverageArtifacts.frontierReportPath),
@@ -1366,6 +1652,7 @@ export const runQaNightlyMatrix = async (input: Readonly<{
     coverageLedgerSourcePaths: coverageArtifacts.sourceLedgerPaths.map(path => repoRelative(root, path)),
     coverageSteeringInputPath: repoRelative(root, coverageArtifacts.steeringInputPath),
     generatedAt,
+    latencyBudgetRun,
     quarantineLedgerPath: repoRelative(root, quarantineLedgerPath),
     reportJsonPath: repoRelative(root, reportJsonPath),
     reportMarkdownPath: repoRelative(root, reportMarkdownPath),
@@ -1422,17 +1709,36 @@ export const runQaNightlyMatrix = async (input: Readonly<{
       title: `[Bug]: Khala Code QA coverage stayed zero ${coverageArtifacts.frontierReport.zeroForAWeekIssueCandidates[0]}`,
     })
   })()
+  const latencyRegressions = latencyBudgetRegressions(
+    computeQaNightlyLatencyBudgetTrends(latencyBudgetRun, history),
+  )
+  const latencyBudgetRegressionIssueStatus = await (async (): Promise<QaNightlyIssueStatus | undefined> => {
+    if (latencyRegressions.length === 0) {
+      return { reason: "no latency budget regression was observed", status: "disabled" }
+    }
+    if (env.OA_QA_NIGHTLY_FILE_PERF_ISSUE !== "1") {
+      return { reason: "OA_QA_NIGHTLY_FILE_PERF_ISSUE is not set", status: "disabled" }
+    }
+    const body = buildQaNightlyLatencyBudgetRegressionIssueBody(reportBase, latencyRegressions)
+    await writeFile(latencyBudgetRegressionIssueBodyPath, body)
+    return (input.issueFiler ?? fileQaNightlyFailureIssueWithGh)({
+      bodyPath: latencyBudgetRegressionIssueBodyPath,
+      report: reportBase,
+      title: `[Bug]: Khala Code latency budget regressed ${latencyRegressions[0]?.budgetId ?? reportBase.runId}`,
+    })
+  })()
 
   const report: QaNightlyReport = {
     ...reportBase,
     ...(issueStatus === undefined ? {} : { issueStatus }),
     ...(quarantineIssueStatus === undefined ? {} : { quarantineIssueStatus }),
+    ...(latencyBudgetRegressionIssueStatus === undefined ? {} : { latencyBudgetRegressionIssueStatus }),
     ...(zeroCoverageIssueStatus === undefined ? {} : { zeroCoverageIssueStatus }),
   }
   assertQaNightlyReportPublicSafe(report)
   const statusSurface = buildQaNightlyStatusSurface({
     frontierReport: coverageArtifacts.frontierReport,
-    history: await readQaNightlyReportHistory(artifactRoot),
+    history,
     report,
     statusSurfaceJsonPath: report.statusSurfaceJsonPath,
     statusSurfaceMarkdownPath: report.statusSurfaceMarkdownPath,

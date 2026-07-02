@@ -101,13 +101,20 @@ describe("qa nightly matrix report", () => {
       expect(statusSurface.latencyBudgets).toMatchObject({
         basis: "qaMetrics_budget_catalog",
         budgetCount: 12,
-        status: "catalog_active_regression_trends_follow_q2_5",
+        regressionCount: 0,
+        status: "trend_series_active",
       })
       expect(statusSurface.latencyBudgets.budgets.map((budget: { budgetId: string }) => budget.budgetId))
         .toContain("budget.khala_code.composer.keystroke_echo.p95.v1")
+      expect(statusSurface.latencyBudgets.trends).toHaveLength(12)
+      expect(statusSurface.latencyBudgets.trends[0]).toMatchObject({
+        latestActual: null,
+        trend: "no_samples",
+      })
       expect(statusMarkdown).toContain("Khala Code QA Status")
       expect(statusMarkdown).toContain("| rpcMethods |")
       expect(statusMarkdown).toContain("Latency Budgets")
+      expect(statusMarkdown).toContain("Budget Trends")
       expect(statusMarkdown).toContain("budget.khala_code.transcript.scroll_dropped_frames.v1")
       expect(statusMarkdown).toContain("step_duration_trends_budget_catalog_active")
     } finally {
@@ -196,6 +203,125 @@ describe("qa nightly matrix report", () => {
       })
       expect(filed).toEqual([
         "[Bug]: Khala Code QA nightly failed khala-code-qa-nightly-2026-07-02t123000.000z",
+      ])
+    } finally {
+      await rm(root, { force: true, recursive: true })
+    }
+  })
+
+  test("persists per-budget latency trends and files regression issues with sample evidence", async () => {
+    const root = await mkdtemp(join(tmpdir(), "qa-nightly-latency-regression-"))
+    const artifactRoot = join(root, "artifacts")
+    const priorDir = join(artifactRoot, "prior")
+    await mkdir(priorDir, { recursive: true })
+    await writeFile(
+      join(priorDir, "qa-nightly-report.json"),
+      `${JSON.stringify({
+        generatedAt: "2026-07-01T01:00:00.000Z",
+        latencyBudgetRun: {
+          budgetCount: 12,
+          budgets: [{
+            actual: 300,
+            budgetId: "budget.khala_code.thread_switch.full.v1",
+            evaluationStatus: "pass",
+            metric: "thread_switch.full_render_ms",
+            sampleCount: 1,
+            sampleEvidence: [],
+            threshold: 400,
+            unit: "ms",
+          }],
+          generatedAt: "2026-07-01T01:00:00.000Z",
+          schema: "openagents.khala_code.qa_latency_budget_run.v1",
+          sourceSnapshotRefs: ["artifacts/prior/qa-metrics-snapshot.json"],
+        },
+        runId: "prior-latency",
+        schema: "openagents.khala_code.qa_nightly_matrix.v1",
+        status: "passed",
+        steps: [{
+          durationMs: 1,
+          id: "monkey-night",
+          status: "passed",
+        }],
+      }, null, 2)}\n`,
+    )
+    const commandRunner: QaNightlyCommandRunner = async step => {
+      if (step.id === "monkey-night") {
+        const artifactDir = step.command[step.command.indexOf("--artifact-dir") + 1]
+        await mkdir(artifactDir, { recursive: true })
+        await writeFile(
+          join(artifactDir, "qa-metrics-snapshot.json"),
+          `${JSON.stringify({
+            budgets: [],
+            definitions: [],
+            evaluations: [],
+            observedAt: "2026-07-02T01:00:00.000Z",
+            ok: true,
+            samples: [{
+              metric: "thread_switch.full_render_ms",
+              observedAt: "2026-07-02T01:00:00.000Z",
+              unit: "ms",
+              value: 350,
+            }],
+            schema: "openagents.khala_code.qa_metrics.v1",
+          }, null, 2)}\n`,
+        )
+      }
+      return {
+        durationMs: 2,
+        exitCode: 0,
+        stderr: "",
+        stdout: "",
+      }
+    }
+    const filed: string[] = []
+    const issueFiler: QaNightlyIssueFiler = async input => {
+      filed.push(input.title)
+      const body = await readFile(input.bodyPath, "utf8")
+      expect(body).toContain("budget.khala_code.thread_switch.full.v1")
+      expect(body).toContain("350ms")
+      expect(body).toContain("Sample evidence")
+      return {
+        issueUrl: "https://github.com/OpenAgentsInc/openagents/issues/10002",
+        status: "filed",
+      }
+    }
+
+    try {
+      const report = await runQaNightlyMatrix({
+        artifactRoot,
+        commandRunner,
+        env: { OA_QA_NIGHTLY_FILE_PERF_ISSUE: "1" },
+        issueFiler,
+        now: () => "2026-07-02T01:00:00.000Z",
+        root,
+      })
+      const statusSurface = JSON.parse(await readFile(join(root, report.statusSurfaceJsonPath), "utf8"))
+      const trend = statusSurface.latencyBudgets.trends.find(
+        (entry: { budgetId: string }) => entry.budgetId === "budget.khala_code.thread_switch.full.v1",
+      )
+
+      expect(report.latencyBudgetRun.sourceSnapshotRefs).toContain(
+        "artifacts/khala-code-qa-nightly-2026-07-02t010000.000z/monkey-night/qa-metrics-snapshot.json",
+      )
+      expect(report.latencyBudgetRegressionIssueStatus).toEqual({
+        issueUrl: "https://github.com/OpenAgentsInc/openagents/issues/10002",
+        status: "filed",
+      })
+      expect(statusSurface.latencyBudgets.regressionCount).toBe(1)
+      expect(statusSurface.latencyBudgets.budgets.find(
+        (entry: { budgetId: string }) => entry.budgetId === "budget.khala_code.thread_switch.full.v1",
+      )).toMatchObject({
+        evaluationStatus: "pass",
+        sampleCount: 1,
+      })
+      expect(trend).toMatchObject({
+        delta: 50,
+        latestActual: 350,
+        previousActual: 300,
+        trend: "regressed",
+      })
+      expect(filed).toEqual([
+        "[Bug]: Khala Code latency budget regressed budget.khala_code.thread_switch.full.v1",
       ])
     } finally {
       await rm(root, { force: true, recursive: true })
@@ -423,6 +549,13 @@ describe("qa nightly matrix report", () => {
       quarantineLedgerPath: "var/qa-nightly/run/quarantine/flake-quarantine-ledger.json",
       reportJsonPath: "var/qa-nightly/run/qa-nightly-report.json",
       reportMarkdownPath: "var/qa-nightly/run/qa-nightly-report.md",
+      latencyBudgetRun: {
+        budgetCount: 0,
+        budgets: [],
+        generatedAt: "2026-07-02T12:00:00.000Z",
+        schema: "openagents.khala_code.qa_latency_budget_run.v1",
+        sourceSnapshotRefs: [],
+      },
       runId: "khala-code-qa-nightly-2026-07-02",
       schema: "openagents.khala_code.qa_nightly_matrix.v1",
       status: "failed",

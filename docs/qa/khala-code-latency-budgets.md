@@ -1,7 +1,7 @@
 # Khala Code Latency Budgets
 
 Date: 2026-07-02
-Status: Q2.2 budget catalog implemented as data.
+Status: Q2.2 budget catalog and Q2.5 trend reporting implemented.
 
 The Khala Code QA budget family lives in
 `clients/khala-code-desktop/src/shared/qa-metrics.ts`. The `qaMetrics` RPC
@@ -37,7 +37,19 @@ The nightly matrix includes the full catalog in `qa-status-surface.json` and
 `qa-status-surface.md` under `latencyBudgets`. Catalog rows are public-safe and
 show the budget ID, metric, threshold, unit, percentile, sample count, and the
 current catalog evaluation status. Runs with no samples are intentionally
-`inconclusive`; Q2.5 owns regression trend reporting and auto-issues.
+`inconclusive`.
+
+Each nightly also persists a `latencyBudgetRun` object inside
+`qa-nightly-report.json`. It records each budget's actual value, evaluation
+status, sample count, and up to five offending public-safe sample refs collected
+from `qaMetrics` snapshots in the current artifact directory. The Q1.5 status
+surface compares that object with prior nightly reports and exposes
+`latencyBudgets.trends` plus `latencyBudgets.regressionCount`.
+
+When a budget regresses and `OA_QA_NIGHTLY_FILE_PERF_ISSUE=1` is armed, the
+owned runner files a strict-form issue with the regressed budget IDs and sample
+evidence. See
+[`khala-code-perf-trend-regressions.md`](./khala-code-perf-trend-regressions.md).
 
 Q2.3 adds a repeatable lag profiling sweep over the same catalog:
 [`khala-code-lag-profiling-sweep.md`](./khala-code-lag-profiling-sweep.md).

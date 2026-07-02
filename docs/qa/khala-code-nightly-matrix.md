@@ -1,7 +1,8 @@
 # Khala Code QA Nightly Matrix
 
 Status: implementation note for ROADMAP_QA Q1.1 / issue #8012, Q1.3 /
-issue #8014, Q1.4 / issue #8015, and Q1.5 / issue #8016.
+issue #8014, Q1.4 / issue #8015, Q1.5 / issue #8016, and Q2.5 /
+issue #8021.
 
 `bun run qa:nightly` is the owned-runner Tier-2 loop for the fully automated
 Khala Code QA cycle. It does not use GitHub-hosted CI. The committed systemd
@@ -26,8 +27,8 @@ the Q1.1 >=1000 action floor. Override with `OA_QA_NIGHTLY_MONKEY_RUNS` and
 
 The status surface emitted by the run includes the Q2 latency budget catalog
 from `qaMetrics`. The harness scenario `perf` oracle evaluates budgeted samples;
-sampleless catalog rows remain inconclusive until Q2.3/Q2.5 add real-run
-samples, trends, and regression auto-issues.
+sampleless catalog rows remain inconclusive, while `latencyBudgets.trends`
+compares any current samples against persisted prior nightly samples.
 
 Each run writes:
 
@@ -35,6 +36,8 @@ Each run writes:
 - `qa-nightly-report.md`
 - `qa-status-surface.json`
 - `qa-status-surface.md`
+- `latencyBudgetRun` inside `qa-nightly-report.json`, derived from current
+  `qaMetrics` snapshots found under the run artifact directory
 - one log per step under `logs/`
 - the flake quarantine ledger under
   `quarantine/flake-quarantine-ledger.json`
@@ -50,6 +53,21 @@ If the matrix fails and `OA_QA_NIGHTLY_FILE_ISSUE=1` is set, the runner files a
 strict bug issue through `gh issue create` with public-safe report refs and the
 failed step IDs. Raw command logs stay in the owned-runner artifact directory and
 must be redaction-reviewed before external publication.
+
+## Perf Trends And Regressions
+
+The runner scans the current dated artifact directory for public-safe
+`qaMetrics` snapshots, evaluates every Q2.2 budget, and stores the result in
+the nightly report as `latencyBudgetRun`. The Q1.5 surface compares each current
+budget with the latest previous persisted value for the same budget and marks
+it as `no_samples`, `first_sample`, `flat`, `improved`, or `regressed`.
+
+With `OA_QA_NIGHTLY_FILE_PERF_ISSUE=1`, any `regressed` budget files a
+strict-form issue with the previous value, latest value, delta, threshold, and
+offending sample refs. The generated issue body is
+`qa-nightly-latency-budget-regression-issue.md` under the current run artifact
+directory. Details live in
+[`khala-code-perf-trend-regressions.md`](./khala-code-perf-trend-regressions.md).
 
 ## Flake Policy And Quarantine
 
@@ -112,6 +130,7 @@ Key environment switches:
 | `OA_QA_NIGHTLY_STEP_TIMEOUT_MS` | `1800000` | Per-step timeout. |
 | `OA_QA_NIGHTLY_FILE_ISSUE` | unset | File a strict-form issue on matrix failure. |
 | `OA_QA_NIGHTLY_FILE_COVERAGE_ISSUE` | unset | File a strict-form issue when a frontier class stays zero for seven consecutive coverage days. |
+| `OA_QA_NIGHTLY_FILE_PERF_ISSUE` | unset | File a strict-form issue when any latency budget regresses against the latest persisted prior sample. |
 | `OA_QA_NIGHTLY_FILE_QUARANTINE_ISSUE` | unset | File a strict-form issue when a failed step passes on the single retry. |
 
 The timer is scheduled for 07:17 UTC with a small randomized delay. Install on
