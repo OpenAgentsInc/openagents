@@ -1,6 +1,7 @@
 import { Effect } from "effect"
 
 import type { KhalaCodeQaDriver, KhalaCodeQaObservation } from "./driver.js"
+import { compareKhalaCodeRpcConsistency } from "./rpc-client.js"
 import type {
   KhalaCodeQaCommitment,
   KhalaCodeQaOracleExpectation,
@@ -71,6 +72,37 @@ const summarizeOracleLabels = (
       `${oracleEvidenceLabel(oracle.phaseName, oracle.oracle)}=${oracle.verdict.toLowerCase()}`
     )
     .join(", ")
+
+const observationMatchesQuery = (
+  observation: KhalaCodeQaObservation,
+  query: string,
+): boolean => {
+  if (observation.label === query || observation.label === `read:${query}`) return true
+  if (observation.action.kind === "rpc_call") {
+    return observation.action.method === query || `rpc:${observation.action.method}` === query
+  }
+  if (observation.action.kind === "read") {
+    return observation.action.query === query || `read:${observation.action.query}` === query
+  }
+  return false
+}
+
+const observationValue = (observation: KhalaCodeQaObservation): unknown => {
+  const data = observation.data as
+    | { readonly value?: unknown }
+    | undefined
+  return data?.value ?? observation.data
+}
+
+const findObservationValue = (
+  observations: ReadonlyArray<KhalaCodeQaObservation>,
+  query: string,
+): unknown | undefined => {
+  const observation = [...observations].reverse().find((item) =>
+    observationMatchesQuery(item, query)
+  )
+  return observation === undefined ? undefined : observationValue(observation)
+}
 
 const verifyCommitments = (input: {
   readonly commitments: ReadonlyArray<KhalaCodeQaCommitment>
@@ -179,6 +211,47 @@ const evaluateOracle = (
       phaseName,
       summary: "phase actions completed without driver crash",
       verdict: ok ? "CONFIRMED" : "REFUTED",
+    }
+  }
+
+  if (expectation.oracle === "consistency") {
+    if (expectation.left === undefined || expectation.right === undefined) {
+      return {
+        data: { expectation },
+        ok: false,
+        oracle: "consistency",
+        phaseName,
+        summary: "consistency oracle requires left and right query labels",
+        verdict: "REFUTED",
+      }
+    }
+    const left = findObservationValue(observations, expectation.left)
+    const right = findObservationValue(observations, expectation.right)
+    if (left === undefined || right === undefined) {
+      return {
+        data: { leftFound: left !== undefined, rightFound: right !== undefined },
+        ok: false,
+        oracle: "consistency",
+        phaseName,
+        summary: "consistency oracle could not find both observed query values",
+        verdict: "REFUTED",
+      }
+    }
+    const result = compareKhalaCodeRpcConsistency({
+      left,
+      leftLabel: expectation.left,
+      right,
+      rightLabel: expectation.right,
+    })
+    return {
+      data: result,
+      ok: result.ok,
+      oracle: "consistency",
+      phaseName,
+      summary: result.ok
+        ? "observed values are consistent"
+        : `observed values differ at ${result.mismatches.map((mismatch) => mismatch.path).join(", ")}`,
+      verdict: result.ok ? "CONFIRMED" : "REFUTED",
     }
   }
 
