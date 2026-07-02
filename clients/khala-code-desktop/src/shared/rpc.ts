@@ -174,6 +174,17 @@ export type KhalaCodeDesktopFleetDelegateRunMode = typeof RpcFleetDelegateRunReq
 export type KhalaCodeDesktopFleetDelegateRunRequest = typeof RpcFleetDelegateRunRequest.Type
 export type KhalaCodeDesktopFleetDelegateRunStep = typeof RpcFleetDelegateRunStep.Type
 export type KhalaCodeDesktopFleetDelegateRunResult = typeof RpcFleetDelegateRunResult.Type
+export type KhalaCodeDesktopFleetRunControlVerb = typeof RpcFleetRunControlVerb.Type
+export type KhalaCodeDesktopFleetRunState = typeof RpcFleetRunState.Type
+export type KhalaCodeDesktopFleetRunStartRequest = typeof RpcFleetRunStartRequest.Type
+export type KhalaCodeDesktopFleetRunStartResult = typeof RpcFleetRunStartResult.Type
+export type KhalaCodeDesktopFleetRunProjection = typeof RpcFleetRunProjection.Type
+export type KhalaCodeDesktopFleetRunStatusRequest = typeof RpcFleetRunStatusRequest.Type
+export type KhalaCodeDesktopFleetRunStatusResult = typeof RpcFleetRunStatusResult.Type
+export type KhalaCodeDesktopFleetRunControlRequest = typeof RpcFleetRunControlRequest.Type
+export type KhalaCodeDesktopFleetRunControlResult = typeof RpcFleetRunControlResult.Type
+export type KhalaCodeDesktopFleetRunListRequest = typeof RpcFleetRunListRequest.Type
+export type KhalaCodeDesktopFleetRunListResult = typeof RpcFleetRunListResult.Type
 export type KhalaCodeDesktopRemoveAccountResult = typeof RpcRemoveAccountResult.Type
 export type KhalaCodeDesktopConnectStart = typeof RpcConnectStart.Type
 
@@ -1265,6 +1276,96 @@ const RpcFleetDelegateRunResult = S.Struct({
   workerRuntime: RpcFleetWorkerRuntime,
 })
 
+const RpcFleetRunState = S.Literals(["draft", "running", "paused", "draining", "completed", "stopped"])
+const RpcFleetRunControlVerb = S.Literals(["pause", "resume", "drain", "stop"])
+const RpcFleetRunRefillPolicy = S.Struct({
+  cooldownAware: S.Boolean,
+  maxPerAccount: S.Number,
+  stopCondition: S.Literals(["backlog_empty", "target_reached", "manual_stop"]),
+})
+const RpcFleetRunRefillPolicyPatch = S.Struct({
+  cooldownAware: S.optional(S.Boolean),
+  maxPerAccount: S.optional(S.Number),
+  stopCondition: S.optional(S.Literals(["backlog_empty", "target_reached", "manual_stop"])),
+})
+const RpcFleetRunCounters = S.Struct({
+  activeAssignments: S.Number,
+  blockedAssignments: S.Number,
+  completedAssignments: S.Number,
+  failedAssignments: S.Number,
+  workUnitsTotal: S.Number,
+})
+const RpcFleetRunWorkSource = S.Struct({
+  kind: S.Literals(["github_backlog", "issue_list", "fixture"]),
+  repo: S.optional(S.String),
+  limit: S.optional(S.Number),
+  count: S.optional(S.Number),
+  issues: S.optional(S.Array(S.Union([
+    S.Number,
+    S.Struct({
+      kind: S.optional(S.Literals(["issue", "pr"])),
+      labels: S.optional(RpcStringArray),
+      number: S.Number,
+      state: S.optional(S.Literals(["open", "closed", "merged", "OPEN", "CLOSED", "MERGED"])),
+      title: S.optional(S.String),
+      url: S.optional(S.String),
+    }),
+  ]))),
+})
+const RpcFleetRunStartRequest = S.Struct({
+  objective: S.String,
+  runRef: S.optional(S.String),
+  targetConcurrency: S.Number,
+  workSource: RpcFleetRunWorkSource,
+  workerKind: S.optional(S.Literal("codex")),
+  refillPolicy: S.optional(RpcFleetRunRefillPolicyPatch),
+  tickImmediately: S.optional(S.Boolean),
+})
+const RpcFleetRunProjection = S.Struct({
+  counters: RpcFleetRunCounters,
+  createdAt: S.String,
+  dispatchKind: S.Literal("supervised_dispatch"),
+  objectiveProjected: S.Literal(false),
+  pylonRef: RpcStringNull,
+  refillPolicy: RpcFleetRunRefillPolicy,
+  runRef: S.String,
+  startedAt: RpcStringNull,
+  state: RpcFleetRunState,
+  targetConcurrency: S.Number,
+  updatedAt: S.String,
+  workerKind: S.Literal("codex"),
+  workSource: RpcFleetRunWorkSource,
+})
+const RpcFleetRunStartResult = S.Struct({
+  ok: S.Boolean,
+  run: RpcFleetRunProjection,
+  supervisorStarted: S.Boolean,
+})
+const RpcFleetRunStatusRequest = S.Struct({ runRef: S.String })
+const RpcFleetRunStatusResult = S.Struct({
+  ok: S.Boolean,
+  run: S.NullOr(RpcFleetRunProjection),
+  supervisorActive: S.Boolean,
+})
+const RpcFleetRunControlRequest = S.Struct({
+  runRef: S.String,
+  verb: RpcFleetRunControlVerb,
+})
+const RpcFleetRunControlResult = S.Struct({
+  ok: S.Boolean,
+  previousState: RpcFleetRunState,
+  run: RpcFleetRunProjection,
+  supervisorActive: S.Boolean,
+  verb: RpcFleetRunControlVerb,
+})
+const RpcFleetRunListRequest = S.Struct({
+  state: S.optional(RpcFleetRunState),
+})
+const RpcFleetRunListResult = S.Struct({
+  ok: S.Boolean,
+  runs: S.Array(RpcFleetRunProjection),
+})
+
 const RpcConnectStart = S.Struct({
   ok: S.Boolean,
   accountRef: S.String,
@@ -1322,6 +1423,10 @@ export const KhalaCodeDesktopRpcMethodSchemas = {
   codexFleetDelegateRun: { parameters: [param(RpcFleetDelegateRunRequest)], result: RpcFleetDelegateRunResult },
   codexFleetStatus: { parameters: noParams(), result: RpcFleetStatus },
   codexFleetPromoteThread: { parameters: [param(RpcFleetPromotionRequest)], result: RpcFleetPromotionResult },
+  fleetRunControl: { parameters: [param(RpcFleetRunControlRequest)], result: RpcFleetRunControlResult },
+  fleetRunList: { parameters: [optionalParam(RpcFleetRunListRequest)], result: RpcFleetRunListResult },
+  fleetRunStart: { parameters: [param(RpcFleetRunStartRequest)], result: RpcFleetRunStartResult },
+  fleetRunStatus: { parameters: [param(RpcFleetRunStatusRequest)], result: RpcFleetRunStatusResult },
   codexHarnessStatus: { parameters: noParams(), result: RpcCodexHarnessStatus },
   codexApprovalRespond: { parameters: [param(RpcApprovalRespondRequest)], result: RpcApprovalRespondResult },
   codexBackgroundTerminalsClean: { parameters: [param(RpcBackgroundTerminalsCleanRequest)], result: RpcCodexAppServerActionResult },
@@ -1459,6 +1564,10 @@ export type KhalaCodeDesktopRPCSchema = {
     codexFleetDelegateRun(request: KhalaCodeDesktopFleetDelegateRunRequest): Promise<KhalaCodeDesktopFleetDelegateRunResult>
     codexFleetStatus(): Promise<KhalaCodeDesktopFleetStatus>
     codexFleetPromoteThread(request: KhalaCodeDesktopFleetPromotionRequest): Promise<KhalaCodeDesktopFleetPromotionResult>
+    fleetRunControl(request: KhalaCodeDesktopFleetRunControlRequest): Promise<KhalaCodeDesktopFleetRunControlResult>
+    fleetRunList(request?: KhalaCodeDesktopFleetRunListRequest): Promise<KhalaCodeDesktopFleetRunListResult>
+    fleetRunStart(request: KhalaCodeDesktopFleetRunStartRequest): Promise<KhalaCodeDesktopFleetRunStartResult>
+    fleetRunStatus(request: KhalaCodeDesktopFleetRunStatusRequest): Promise<KhalaCodeDesktopFleetRunStatusResult>
     codexHarnessStatus(): Promise<KhalaCodeDesktopCodexHarnessStatus>
     codexApprovalRespond(request: KhalaCodeDesktopCodexApprovalRespondRequest): Promise<KhalaCodeDesktopCodexApprovalRespondResult>
     codexBackgroundTerminalsClean(request: KhalaCodeDesktopCodexBackgroundTerminalsCleanRequest): Promise<KhalaCodeDesktopCodexAppServerActionResult>

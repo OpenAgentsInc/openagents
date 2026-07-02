@@ -59,6 +59,16 @@ import {
   type KhalaCodeDesktopFleetPromotionRequest,
   type KhalaCodeDesktopFleetPromotionResult,
   type KhalaCodeDesktopFleetQueuePolicy,
+  type KhalaCodeDesktopFleetRunControlRequest,
+  type KhalaCodeDesktopFleetRunControlResult,
+  type KhalaCodeDesktopFleetRunListRequest,
+  type KhalaCodeDesktopFleetRunListResult,
+  type KhalaCodeDesktopFleetRunProjection,
+  type KhalaCodeDesktopFleetRunStartRequest,
+  type KhalaCodeDesktopFleetRunStartResult,
+  type KhalaCodeDesktopFleetRunState,
+  type KhalaCodeDesktopFleetRunStatusRequest,
+  type KhalaCodeDesktopFleetRunStatusResult,
   type KhalaCodeDesktopFleetSessionRole,
   type KhalaCodeDesktopFleetWorkerSession,
   type KhalaCodeDesktopFleetStatus,
@@ -101,6 +111,31 @@ import {
 type ChatEnv = Readonly<Record<string, string | undefined>>
 type MaybePromise<T> = T | Promise<T>
 
+export type KhalaCodeDesktopFleetRunSupervisorRpc = {
+  readonly control: (
+    request: KhalaCodeDesktopFleetRunControlRequest,
+  ) => MaybePromise<{
+    readonly previousState: KhalaCodeDesktopFleetRunState
+    readonly run: KhalaCodeDesktopFleetRunProjection
+    readonly supervisorActive: boolean
+  }>
+  readonly list: (
+    request?: KhalaCodeDesktopFleetRunListRequest,
+  ) => MaybePromise<readonly KhalaCodeDesktopFleetRunProjection[]>
+  readonly start: (
+    request: KhalaCodeDesktopFleetRunStartRequest,
+  ) => MaybePromise<{
+    readonly run: KhalaCodeDesktopFleetRunProjection
+    readonly supervisorStarted: boolean
+  }>
+  readonly status: (
+    request: KhalaCodeDesktopFleetRunStatusRequest,
+  ) => MaybePromise<{
+    readonly run: KhalaCodeDesktopFleetRunProjection | null
+    readonly supervisorActive: boolean
+  }>
+}
+
 export type KhalaCodeDesktopRpcHandlersInput = {
   readonly appleFmReadiness: () => MaybePromise<KhalaAppleFmReadiness>
   readonly codexAppServerHost?: CodexAppServerHost
@@ -112,6 +147,7 @@ export type KhalaCodeDesktopRpcHandlersInput = {
     readonly idempotencyKey: string
   }) => MaybePromise<KhalaCodexRateLimitResetOutcome>
   readonly codexFleetToolOptions?: KhalaCodexFleetToolOptions
+  readonly fleetRunSupervisor?: KhalaCodeDesktopFleetRunSupervisorRpc
   readonly fleetMcpBridgeRepoRoot?: string
   readonly env: ChatEnv
   readonly emitChatTurnEvent?: (event: KhalaCodeDesktopChatTurnEvent) => void
@@ -222,6 +258,10 @@ const materializeChatAttachments = async (
     attachments,
     turnId,
   }
+}
+
+const requireNonEmpty = (kind: string, field: string, value: string): void => {
+  if (value.trim().length === 0) throw new Error(`${kind} requires ${field}`)
 }
 
 const normalizeMentionCandidate = (value: unknown): KhalaCodeDesktopCodexMentionCandidate | null => {
@@ -672,6 +712,12 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
       throw new Error("Codex app-server chat runtime is not configured.")
     }
     return codexChatRuntime
+  }
+  const requireFleetRunSupervisor = (): KhalaCodeDesktopFleetRunSupervisorRpc => {
+    if (input.fleetRunSupervisor === undefined) {
+      throw new Error("Fleet run supervisor is not configured.")
+    }
+    return input.fleetRunSupervisor
   }
   const useLegacyKhalaNativeRuntime = (): boolean =>
     input.env.KHALA_CODE_DESKTOP_RUNTIME === "khala_native_runtime" ||
@@ -1712,6 +1758,45 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
         env: input.env,
       })
       return promoteThreadResult(request, spawn)
+    },
+    async fleetRunStart(request): Promise<KhalaCodeDesktopFleetRunStartResult> {
+      requireNonEmpty("fleetRunStart", "objective", request.objective)
+      if (!Number.isInteger(request.targetConcurrency) || request.targetConcurrency < 1) {
+        throw new Error("fleetRunStart requires positive integer targetConcurrency")
+      }
+      const result = await requireFleetRunSupervisor().start(request)
+      return {
+        ok: true,
+        run: result.run,
+        supervisorStarted: result.supervisorStarted,
+      }
+    },
+    async fleetRunStatus(request): Promise<KhalaCodeDesktopFleetRunStatusResult> {
+      requireNonEmpty("fleetRunStatus", "runRef", request.runRef)
+      const result = await requireFleetRunSupervisor().status(request)
+      return {
+        ok: true,
+        run: result.run,
+        supervisorActive: result.supervisorActive,
+      }
+    },
+    async fleetRunControl(request): Promise<KhalaCodeDesktopFleetRunControlResult> {
+      requireNonEmpty("fleetRunControl", "runRef", request.runRef)
+      const result = await requireFleetRunSupervisor().control(request)
+      return {
+        ok: true,
+        previousState: result.previousState,
+        run: result.run,
+        supervisorActive: result.supervisorActive,
+        verb: request.verb,
+      }
+    },
+    async fleetRunList(request): Promise<KhalaCodeDesktopFleetRunListResult> {
+      const runs = await requireFleetRunSupervisor().list(request)
+      return {
+        ok: true,
+        runs: [...runs],
+      }
     },
     async codexHarnessStatus() {
       return codexHarnessStatus()
