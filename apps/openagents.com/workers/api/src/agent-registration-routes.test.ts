@@ -350,4 +350,23 @@ describe('admin agent token reissue route (#6370)', () => {
 
     expect(response.status).toBe(400)
   })
+
+  test('supplying both slug and externalId is a bad request', async () => {
+    const store = new MemoryAgentRegistrationStore()
+    await seedAgent(store, {
+      displayName: 'Artanis',
+      externalId: 'artanis-1',
+      slug: 'artanis',
+    })
+
+    const response = await handleAdminReissueAgentToken(
+      reissueRequest({ slug: 'artanis', externalId: 'artanis-1' }),
+      {} as Env,
+      {} as ExecutionContext,
+      { agentRegistrationStore: store, authorize: async () => true },
+    )
+
+    expect(response.status).toBe(400)
+    expect(store.addedCredentials).toHaveLength(0)
+  })
 })

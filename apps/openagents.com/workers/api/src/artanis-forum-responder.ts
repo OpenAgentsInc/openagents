@@ -202,8 +202,13 @@ const readCandidates = async (
       title: String(row.title),
       topicId: String(row.topic_id),
     }))
-    // Never propose responding to Artanis itself.
-    .filter(candidate => !artanisActorRefs.includes(candidate.actorRef))
+    // Never propose responding to Artanis itself, including the legacy seeded
+    // Forum actor that T12.4 keeps only for historical/idempotency reads.
+    .filter(
+      candidate =>
+        !artanisActorRefs.includes(candidate.actorRef) &&
+        classifyAskerProvenance(candidate.actorRef) !== 'artanis_self',
+    )
 }
 
 export const runArtanisResponderScan = async (

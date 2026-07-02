@@ -6,6 +6,7 @@ import { Effect } from 'effect'
 import { describe, expect, test } from 'vitest'
 
 import {
+  ARTANIS_REGISTERED_ACTOR_REF,
   ARTANIS_RESPONDER_KHALA_MODEL,
   runArtanisResponderScan,
 } from './artanis-forum-responder'
@@ -84,7 +85,18 @@ const makeDb = (): D1Database => {
   return new SqliteD1(raw) as unknown as D1Database
 }
 
-const seedTopic = async (db: D1Database): Promise<void> => {
+const seedTopic = async (
+  db: D1Database,
+  input: Readonly<{
+    actorRef?: string
+    bodyText?: string
+    title?: string
+    topicId?: string
+  }> = {},
+): Promise<void> => {
+  const topicId = input.topicId ?? 'topic_pylon_help'
+  const firstPostId = `${topicId}_first_post`
+
   await db
     .prepare(
       `INSERT INTO artanis_responder_state
@@ -104,18 +116,19 @@ const seedTopic = async (db: D1Database): Promise<void> => {
        VALUES (?, 'forum_agents', ?, ?, ?, 'open', ?)`,
     )
     .bind(
-      'topic_pylon_help',
-      'post_first',
-      'Can my Pylon join training runs?',
-      'agent:external_contributor',
+      topicId,
+      firstPostId,
+      input.title ?? 'Can my Pylon join training runs?',
+      input.actorRef ?? 'agent:external_contributor',
       '2026-06-25T01:00:00.000Z',
     )
     .run()
   await db
     .prepare(`INSERT INTO forum_post_bodies (post_id, body_text) VALUES (?, ?)`)
     .bind(
-      'post_first',
-      'I have a GPU Pylon online. How do I know whether it can join a training run?',
+      firstPostId,
+      input.bodyText ??
+        'I have a GPU Pylon online. How do I know whether it can join a training run?',
     )
     .run()
 }
@@ -174,5 +187,42 @@ describe('Artanis forum responder Khala routing', () => {
     expect(JSON.parse(action?.proposal_json ?? '{}')).toMatchObject({
       servedVia: 'openagents_khala',
     })
+  })
+
+  test('filters the legacy seeded Artanis actor before mind classification', async () => {
+    const db = makeDb()
+    await seedTopic(db, {
+      actorRef: 'agent:agent_artanis',
+      bodyText: 'Artanis internal status should not ask Artanis for a reply.',
+      title: 'Artanis internal status',
+      topicId: 'topic_legacy_artanis_self',
+    })
+    const requests: InferenceRequest[] = []
+
+    const outcome = await runArtanisResponderScan(db, {
+      artanisActorRefs: [ARTANIS_REGISTERED_ACTOR_REF],
+      geminiApiKey: null,
+      khalaClient: request => {
+        requests.push(request)
+        return Effect.succeed({
+          content: '{"candidates":[]}',
+          finishReason: 'stop',
+          servedModel: ARTANIS_RESPONDER_KHALA_MODEL,
+          usage: {
+            completionTokens: 0,
+            promptTokens: 0,
+            totalTokens: 0,
+          },
+        } satisfies InferenceResult)
+      },
+      nowIso: '2026-06-25T02:00:00.000Z',
+    })
+
+    expect(outcome).toMatchObject({
+      proposed: 0,
+      scanned: 0,
+      skipped: 0,
+    })
+    expect(requests).toHaveLength(0)
   })
 })

@@ -179,8 +179,9 @@ INVARIANTS-style docs, and should be treated as durable direction:
 - Artanis **outranks the local coding agent** and gates new subagents.
 - **Consolidate the duplicate Artanis forum identities** (a seed
   `agent_artanis` with no wallet vs a registered wallet identity) — flagged
-  Jun 10, still live as of the Jun 27–28 dead-forum-token workaround (replies
-  go out under Raynor's token until an admin re-register override lands).
+  Jun 10, fixed in T12.4 by using the admin re-register override as the
+  recovery path for `slug=artanis` and making Forum publication/update writers
+  resolve that registered identity before posting.
 - **Identity etiquette**: run announcements belong to Artanis, not Tassadar.
 - **Multi-user, read-only Artanis chat** (Blueprint-signature governed, no
   commands) was ordered as an issue Jun 27 — verify it exists.
@@ -285,8 +286,13 @@ notify/approve/steer surface on the phone.
 
 - **Consolidate the forum identity** (the Jun-10-through-Jun-28 blocker): one
   Artanis entity, one wallet-bearing forum identity, via the admin
-  re-register override the owner ordered. Until then the Raynor-token
-  workaround stands but should be tracked as debt, not accepted as normal.
+  re-register override the owner ordered. T12.4 lands that path: the override
+  mints a fresh credential on the existing `slug=artanis` user; Forum
+  publication/update writers now fail closed unless that registered identity
+  is active and use `agent:<registered user id>` for new posts so profile,
+  wallet, and tip state follow one entity. The legacy `agent:agent_artanis`
+  ref remains recognizable only for historical/idempotent reads; the
+  Raynor-token workaround is retired debt, not an accepted posting path.
 - **Raise autonomy one gate at a time, gated on §2's evidence.** The path
   from "no-spend own-capacity only" to "shared-fleet admin with bounded
   spend" runs through: (a) signatures 1–5 enforced, (b) authority scope
@@ -342,7 +348,9 @@ docs specify — it should not be built as a separate system:
 - Exact-only accounting and public-safe projections; org-operated runs are
   not independent-contributor proof.
 - Identity discipline: one Artanis entity, run announcements are Artanis's,
-  no roleplay-Artanis substituting for the grounded operator.
+  no roleplay-Artanis substituting for the grounded operator. New Forum writes
+  use the registered `slug=artanis` actor and fail closed when it cannot be
+  resolved.
 
 ## 9. Bottom Line
 

@@ -110,6 +110,18 @@ export type AgentReissueStore = Readonly<{
   addAgentCredential: (record: AgentCredentialRecord) => Promise<void>
 }>
 
+export type AgentForumIdentityTarget = Readonly<{
+  session: ProgrammaticAgentSession
+  slug: string | null
+}>
+
+export type AgentForumIdentityStore = Readonly<{
+  findAgentForumIdentity: (
+    selector: AgentReissueSelector,
+    now: string,
+  ) => Promise<AgentForumIdentityTarget | undefined>
+}>
+
 export type AgentUserRecord = Readonly<{
   id: string
   kind: 'agent'
@@ -229,6 +241,12 @@ export type AgentRegistrationStore = Readonly<{
   // adds a new active credential so the recovered token authenticates as the
   // same entity.
   addAgentCredential?: (record: AgentCredentialRecord) => Promise<void>
+  // Registered Forum identity lookup. Internal Forum writers use this to speak
+  // as the canonical registered agent actor, never a synthetic duplicate actor.
+  findAgentForumIdentity?: (
+    selector: AgentReissueSelector,
+    now: string,
+  ) => Promise<AgentForumIdentityTarget | undefined>
 }>
 
 export type ProgrammaticAgentRegistration = Readonly<{
@@ -276,6 +294,21 @@ type AgentReissueTargetRow = Readonly<{
   user_id: string
   display_name: string
   slug: string | null
+}>
+
+type AgentForumIdentityRow = Readonly<{
+  user_id: string
+  display_name: string
+  primary_email: string | null
+  avatar_url: string | null
+  status: 'active'
+  user_created_at: string
+  user_updated_at: string
+  slug: string | null
+  metadata_json: string | null
+  credential_id: string
+  openauth_user_id: string | null
+  token_prefix: string
 }>
 
 type LinkedAgentOwnerRow = Readonly<{
@@ -335,7 +368,7 @@ export const timingSafeEqual = async (
 
 export const makeD1AgentRegistrationStore = (
   db: D1Database,
-): AgentRegistrationStore & AgentReissueStore => ({
+): AgentRegistrationStore & AgentReissueStore & AgentForumIdentityStore => ({
   createAgentRegistration: async record => {
     await db.batch([
       db
@@ -665,6 +698,102 @@ export const makeD1AgentRegistrationStore = (
         record.expiresAt,
       )
       .run()
+  },
+
+  findAgentForumIdentity: async (selector, now) => {
+    const activeCredentialClause = `agent_credentials.status = 'active'
+       AND agent_credentials.revoked_at IS NULL
+       AND (
+         agent_credentials.expires_at IS NULL
+         OR agent_credentials.expires_at > ?
+       )`
+    const row =
+      'slug' in selector
+        ? await db
+            .prepare(
+              `SELECT
+                  users.id AS user_id,
+                  users.display_name,
+                  users.primary_email,
+                  users.avatar_url,
+                  users.status,
+                  users.created_at AS user_created_at,
+                  users.updated_at AS user_updated_at,
+                  agent_profiles.slug,
+                  agent_profiles.metadata_json,
+                  agent_credentials.id AS credential_id,
+                  agent_credentials.openauth_user_id,
+                  agent_credentials.token_prefix
+               FROM agent_profiles
+               INNER JOIN users ON users.id = agent_profiles.user_id
+               INNER JOIN agent_credentials ON agent_credentials.user_id = users.id
+               WHERE agent_profiles.slug = ?
+                 AND users.kind = 'agent'
+                 AND users.status = 'active'
+                 AND users.deleted_at IS NULL
+                 AND ${activeCredentialClause}
+               ORDER BY agent_credentials.created_at DESC, agent_credentials.id DESC
+               LIMIT 1`,
+            )
+            .bind(selector.slug, now)
+            .first<AgentForumIdentityRow>()
+        : await db
+            .prepare(
+              `SELECT
+                  users.id AS user_id,
+                  users.display_name,
+                  users.primary_email,
+                  users.avatar_url,
+                  users.status,
+                  users.created_at AS user_created_at,
+                  users.updated_at AS user_updated_at,
+                  agent_profiles.slug,
+                  agent_profiles.metadata_json,
+                  agent_credentials.id AS credential_id,
+                  agent_credentials.openauth_user_id,
+                  agent_credentials.token_prefix
+               FROM auth_identities
+               INNER JOIN users ON users.id = auth_identities.user_id
+               LEFT JOIN agent_profiles ON agent_profiles.user_id = users.id
+               INNER JOIN agent_credentials ON agent_credentials.user_id = users.id
+               WHERE auth_identities.provider = 'agent_programmatic'
+                 AND auth_identities.provider_subject = ?
+                 AND users.kind = 'agent'
+                 AND users.status = 'active'
+                 AND users.deleted_at IS NULL
+                 AND ${activeCredentialClause}
+               ORDER BY agent_credentials.created_at DESC, agent_credentials.id DESC
+               LIMIT 1`,
+            )
+            .bind(selector.externalId, now)
+            .first<AgentForumIdentityRow>()
+
+    if (row === null) {
+      return undefined
+    }
+
+    return {
+      session: {
+        user: {
+          id: row.user_id,
+          kind: 'agent',
+          displayName: row.display_name,
+          primaryEmail: row.primary_email,
+          avatarUrl: row.avatar_url,
+          status: row.status,
+          createdAt: row.user_created_at,
+          updatedAt: row.user_updated_at,
+        },
+        credential: {
+          id: row.credential_id,
+          openauthUserId: row.openauth_user_id,
+          profileMetadataJson: row.metadata_json ?? '{}',
+          tokenPrefix: row.token_prefix,
+          lastUsedAt: now,
+        },
+      },
+      slug: row.slug ?? null,
+    }
   },
 })
 

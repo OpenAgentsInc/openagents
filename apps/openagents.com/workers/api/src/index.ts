@@ -6917,11 +6917,17 @@ export const handleAdminReissueAgentToken = async (
   }
 
   const selector =
-    parsed.slug !== undefined
+    parsed.slug !== undefined && parsed.externalId !== undefined
+      ? 'ambiguous'
+      : parsed.slug !== undefined
       ? ({ slug: parsed.slug } as const)
       : parsed.externalId !== undefined
       ? ({ externalId: parsed.externalId } as const)
       : undefined
+
+  if (selector === 'ambiguous') {
+    return badRequest('provide exactly one of slug or externalId')
+  }
 
   if (selector === undefined) {
     return badRequest('slug or externalId is required')

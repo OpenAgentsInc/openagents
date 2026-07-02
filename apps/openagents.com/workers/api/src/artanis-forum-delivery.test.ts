@@ -38,6 +38,8 @@ const artanisActorJson = JSON.stringify({
   isAgent: true,
   slug: 'artanis',
 })
+const registeredArtanisUserId = 'user_artanis_registered'
+const registeredArtanisActorRef = `agent:${registeredArtanisUserId}`
 
 type ForumRow = Readonly<{
   archived_at: string | null
@@ -98,8 +100,37 @@ type PostRow = Readonly<{
   updated_at: string
 }>
 
+type AgentForumIdentityRow = Readonly<{
+  user_id: string
+  display_name: string
+  primary_email: string | null
+  avatar_url: string | null
+  status: 'active'
+  user_created_at: string
+  user_updated_at: string
+  slug: string | null
+  metadata_json: string | null
+  credential_id: string
+  openauth_user_id: string | null
+  token_prefix: string
+}>
+
 class DeliveryStore {
   readonly artanis = new ArtanisPersistenceTestStore()
+  registeredArtanis: AgentForumIdentityRow | null = {
+    user_id: registeredArtanisUserId,
+    display_name: 'Artanis',
+    primary_email: null,
+    avatar_url: null,
+    status: 'active',
+    user_created_at: '2026-06-26T17:00:00.000Z',
+    user_updated_at: '2026-06-26T18:00:00.000Z',
+    slug: 'artanis',
+    metadata_json: JSON.stringify({ purpose: 'forum_posting' }),
+    credential_id: 'agent_credential_artanis_reissued',
+    openauth_user_id: null,
+    token_prefix: 'oa_agent_artanis_re',
+  }
   forums: Array<ForumRow> = [
     {
       archived_at: null,
@@ -226,6 +257,20 @@ class DeliveryStatement implements D1PreparedStatement {
         ) ?? null
 
       return Promise.resolve(post as T | null)
+    }
+
+    if (
+      this.query.includes('FROM agent_profiles') &&
+      this.query.includes('agent_credentials')
+    ) {
+      const slug = String(this.values[0])
+      const row =
+        this.store.registeredArtanis !== null &&
+        this.store.registeredArtanis.slug === slug
+          ? this.store.registeredArtanis
+          : null
+
+      return Promise.resolve(row as T | null)
     }
 
     if (this.query.includes('FROM forum_tip_recipient_wallets')) {
@@ -409,7 +454,7 @@ describe('Artanis Forum delivery', () => {
     })
     expect(store.posts).toHaveLength(2)
     expect(store.posts[1]).toMatchObject({
-      actor_ref: 'agent:agent_artanis',
+      actor_ref: registeredArtanisActorRef,
       body_text:
         'Artanis status update: Pylon v0.2 release work is active, Model Lab evidence is being gathered, and public proofs will be linked as they are accepted.',
       idempotency_key: 'artanis-forum:status:20260607T0121:v1',
@@ -432,6 +477,22 @@ describe('Artanis Forum delivery', () => {
       deliveryState: 'delivered',
       postRef: 'post.public.forum.artanis.status.2',
     })
+  })
+
+  test('fails closed when the registered Artanis Forum identity is unavailable', async () => {
+    const store = new DeliveryStore()
+    store.registeredArtanis = null
+    const db = deliveryDb(store)
+
+    await persistIntent(store, intentRecord())
+
+    await expect(
+      Effect.runPromise(deliverReadyArtanisForumPublications(db, { runtime })),
+    ).rejects.toMatchObject({
+      _tag: 'ArtanisForumDeliveryError',
+      kind: 'identity_unavailable',
+    })
+    expect(store.posts).toHaveLength(1)
   })
 
   test('collapses duplicate delivery retries to the existing Forum post ref', async () => {
