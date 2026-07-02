@@ -177,7 +177,7 @@ const rawWorkspaceFromBody = (
 }
 
 const unsafeObjectiveSummaryPattern =
-  /(@|\/Users\/|\/home\/|\.env|access[_-]?token|auth\.json|bearer\s+|cookie|gho_[A-Za-z0-9_]+|ghp_[A-Za-z0-9_]+|github[_-]?pat_[A-Za-z0-9_]+|invoice|lnbc|lntb|lnbcrt|lno1|mdk[_-]?(access[_-]?token|mnemonic|webhook[_-]?secret)|mnemonic|oauth|payment[_-]?(hash|preimage|proof)|payout[_-]?(address|destination|target)|preimage|private[_-]?(key|repo)|provider[_-]?(account|credential|grant|payload|secret|token)|raw[_-]?(auth|command|content|payload|prompt|provider|runner|source|trace)|secret|seed[_-]?phrase|sk-[a-z0-9]|ssh:\/\/|wallet[._-]?(key|material|mnemonic|preimage|secret|seed)|xprv)/i
+  /([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}|\/Users\/|\/home\/|\.env|access[_-]?token|auth\.json|bearer\s+(?:oa_agent_|sk-|gho_|ghp_|github_pat_|[A-Za-z0-9._~+/=-]{16,})|cookie|gho_[A-Za-z0-9_]+|ghp_[A-Za-z0-9_]+|github[_-]?pat_[A-Za-z0-9_]+|invoice|lnbc|lntb|lnbcrt|lno1|mdk[_-]?(access[_-]?token|mnemonic|webhook[_-]?secret)|mnemonic|oauth|payment[_-]?(hash|preimage|proof)|payout[_-]?(address|destination|target)|preimage|private[_-]?(key|repo)|provider[_-]?(account|credential|grant|payload|secret|token)|raw[_-]?(auth|command|content|payload|prompt|provider|runner|source|trace)|secret|seed[_-]?phrase|sk-[a-z0-9]|ssh:\/\/|wallet[._-]?(key|material|mnemonic|preimage|secret|seed)|xprv)/i
 
 const objectiveSummaryFromBody = (
   body: unknown,
@@ -756,6 +756,42 @@ const listRegistrationsForLinkedOwnerAgents = async (
   ownerAgentUserIds: ReadonlyArray<string>,
   targetPylonRef: string | null,
 ): Promise<ReadonlyArray<PylonApiRegistrationRecord>> => {
+  const parsedIsoMs = (iso: string | null): number => {
+    const value = iso === null ? Number.NaN : Date.parse(iso)
+    return Number.isFinite(value) ? value : Number.NEGATIVE_INFINITY
+  }
+
+  const registrationFreshnessMs = (
+    registration: PylonApiRegistrationRecord,
+  ): number =>
+    Math.max(
+      parsedIsoMs(registration.latestHeartbeatAt),
+      parsedIsoMs(registration.updatedAt),
+      parsedIsoMs(registration.createdAt),
+    )
+
+  const freshestRegistrationsByPylonRef = (
+    registrations: ReadonlyArray<PylonApiRegistrationRecord>,
+  ): ReadonlyArray<PylonApiRegistrationRecord> =>
+    [
+      ...registrations
+        .reduce((byPylonRef, registration) => {
+          const existing = byPylonRef.get(registration.pylonRef)
+          if (
+            existing === undefined ||
+            registrationFreshnessMs(registration) >
+              registrationFreshnessMs(existing) ||
+            (registrationFreshnessMs(registration) ===
+              registrationFreshnessMs(existing) &&
+              registration.updatedAt > existing.updatedAt)
+          ) {
+            return new Map(byPylonRef).set(registration.pylonRef, registration)
+          }
+          return byPylonRef
+        }, new Map<string, PylonApiRegistrationRecord>())
+        .values(),
+    ]
+
   const readTargetAndFilter = async () => {
     if (targetPylonRef === null) {
       return null
@@ -785,6 +821,19 @@ const listRegistrationsForLinkedOwnerAgents = async (
     }
   }
 
+  const withTargetRegistrationRefresh = async (
+    registrations: ReadonlyArray<PylonApiRegistrationRecord>,
+  ): Promise<ReadonlyArray<PylonApiRegistrationRecord>> => {
+    const targetRegistration = await tryReadTargetAndFilter()
+    if (targetRegistration === null || targetRegistration.length === 0) {
+      return registrations
+    }
+    return freshestRegistrationsByPylonRef([
+      ...registrations,
+      ...targetRegistration,
+    ])
+  }
+
   const listAllAndFilter = async () => {
     try {
       return (await pylonStore.listRegistrations(200)).filter(registration =>
@@ -810,9 +859,11 @@ const listRegistrationsForLinkedOwnerAgents = async (
   }
 
   try {
-    return await pylonStore.listRegistrationsForOwnerAgentUserIds(
-      ownerAgentUserIds,
-      200,
+    return await withTargetRegistrationRefresh(
+      await pylonStore.listRegistrationsForOwnerAgentUserIds(
+        ownerAgentUserIds,
+        200,
+      ),
     )
   } catch {
     const targetRegistration = await tryReadTargetAndFilter()
