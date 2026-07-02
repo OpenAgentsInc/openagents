@@ -11,6 +11,7 @@
     "./driver": "./src/driver.ts",
     "./explore-policy-gepa": "./src/explore-policy-gepa.ts",
     "./explorer-brain": "./src/explorer-brain.ts",
+    "./lag-profiling-sweep": "./src/lag-profiling-sweep.ts",
     "./monkey-explorer": "./src/monkey-explorer.ts",
     "./rpc-driver": "./src/rpc-driver.ts",
     "./rpc-client": "./src/rpc-client.ts",
@@ -19,6 +20,7 @@
   },
   "scripts": {
     "test": "bun test src/*.test.ts",
+    "lag:sweep": "bun src/lag-profiling-sweep.ts",
     "monkey:night": "bun src/monkey-night.ts --runs 100 --steps 64",
     "monkey:smoke": "bun test src/monkey-explorer.test.ts --test-name-pattern 'bounded fixture smoke'",
     "typecheck": "tsc -p tsconfig.json --noEmit"

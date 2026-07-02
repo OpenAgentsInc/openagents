@@ -39,6 +39,12 @@ show the budget ID, metric, threshold, unit, percentile, sample count, and the
 current catalog evaluation status. Runs with no samples are intentionally
 `inconclusive`; Q2.5 owns regression trend reporting and auto-issues.
 
+Q2.3 adds a repeatable lag profiling sweep over the same catalog:
+[`khala-code-lag-profiling-sweep.md`](./khala-code-lag-profiling-sweep.md).
+The sweep consumes Mode P, Mode D, and packaged `qaMetrics` snapshots, ranks
+p95 offenders across every budget, and can env-arm child issue creation from
+the generated sample evidence.
+
 ## Verification
 
 Focused checks:
