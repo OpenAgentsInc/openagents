@@ -844,7 +844,7 @@ describe("khala code desktop app shell", () => {
     expect(css).toContain(".khala-fleet-timeline-event")
   })
 
-  test("renders condensed Fleet sidebar counts from fixture status", async () => {
+  test("keeps Fleet sidebar as hotkey-only chrome while projecting counts for state", async () => {
     const main = await Bun.file(new URL("../src/ui/main.ts", import.meta.url)).text()
     const sidebar = await Bun.file(new URL("../src/ui/sidebar.ts", import.meta.url)).text()
     const css = await Bun.file(new URL("../src/ui/styles.css", import.meta.url)).text()
@@ -869,11 +869,11 @@ describe("khala code desktop app shell", () => {
     expect(main).toContain("mountKhalaCodeSidebar(sidebarNavRoot, {")
     expect(main).toContain("sidebar.setFleetCounts(projectKhalaCodeSidebarFleetCounts(await controls.codexFleetStatus()))")
     expect(sidebar).toContain("projectKhalaCodeSidebarFleetCounts")
-    expect(sidebar).toContain("data-khala-code-fleet-counts")
+    expect(sidebar).not.toContain("data-khala-code-fleet-counts")
     expect(sidebar).not.toContain("window.setInterval(() => void refreshFleetSummary(), 7000)")
     expect(sidebar).not.toContain("button.dataset.fleetSession = session.ref")
     expect(sidebar).not.toContain('"idle"')
-    expect(css).toContain(".khala-code-hotbar-fleet-counts")
+    expect(css).not.toContain(".khala-code-hotbar-fleet-counts")
     expect(css).not.toContain(".khala-code-fleet-session")
     expect(css).not.toContain(".khala-code-fleet-empty")
     expect(css).toContain("--khala-code-hotbar-titlebar-clearance: 2.75rem")
@@ -953,11 +953,12 @@ describe("khala code desktop app shell", () => {
     try {
       const container = document.createElement("div")
       mountKhalaCodeSidebar(container, { fleetCounts: counts, selectedValue: "fleet" })
-      expect(container.textContent).toContain("1 work / 2 free / 2 flag")
+      expect(container.textContent).not.toContain("1 work / 2 free / 2 flag")
+      expect(container.textContent).not.toContain("work")
+      expect(container.textContent).not.toContain("free")
+      expect(container.textContent).not.toContain("flag")
       expect(container.textContent).not.toContain("acct")
-      expect(
-        container.querySelector<HTMLElement>("[data-khala-code-fleet-counts]")?.getAttribute("aria-label"),
-      ).toBe("1 accounts ready, 1 workers active, 2 slots free, 2 flags")
+      expect(container.querySelector<HTMLElement>("[data-khala-code-fleet-counts]")).toBeNull()
     } finally {
       Object.defineProperty(globalThis, "window", { configurable: true, value: previousWindow })
       Object.defineProperty(globalThis, "document", { configurable: true, value: previousDocument })

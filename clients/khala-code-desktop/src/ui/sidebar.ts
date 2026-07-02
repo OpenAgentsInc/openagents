@@ -148,7 +148,6 @@ export const mountKhalaCodeSidebar = (
   options: SidebarMountOptions = {},
 ): KhalaCodeSidebarHandle => {
   let selectedValue = options.selectedValue ?? "chat"
-  let fleetCounts = options.fleetCounts ?? null
   const shortcut = hotbarShortcut()
 
   const activate = (slot: KhalaCodeHotbarSlot): void => {
@@ -198,21 +197,6 @@ export const mountKhalaCodeSidebar = (
     label.textContent = slot.label
 
     button.append(key, label)
-    if (slot.value === "fleet" && fleetCounts !== null) {
-      const counts = document.createElement("span")
-      counts.className = "khala-code-hotbar-fleet-counts"
-      counts.setAttribute("data-khala-code-fleet-counts", "")
-      counts.setAttribute(
-        "aria-label",
-        `${fleetCounts.accountsReady} accounts ready, ${fleetCounts.workersActive} workers active, ${fleetCounts.slotsFree} slots free, ${fleetCounts.flags} flags`,
-      )
-      counts.textContent = [
-        `${fleetCounts.workersActive} work`,
-        `${fleetCounts.slotsFree} free`,
-        `${fleetCounts.flags} flag`,
-      ].join(" / ")
-      button.append(counts)
-    }
     button.addEventListener("click", () => activate(slot))
     return button
   }
@@ -255,7 +239,7 @@ export const mountKhalaCodeSidebar = (
       container.replaceChildren()
     },
     setFleetCounts(next: KhalaCodeSidebarFleetCounts | null): void {
-      fleetCounts = next
+      void next
       render()
     },
   }
