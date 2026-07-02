@@ -230,6 +230,142 @@ describe("Khala Code QA RPC driver and runner", () => {
     expect(report.commitments.observed).toBe(false)
   })
 
+  test("evaluates perf budgets from fixture qaMetrics samples", async () => {
+    const scenario = loadKhalaCodeQaScenario({
+      ...fixtureScenario,
+      commitments: [
+        {
+          claim: "cockpit fixture render stays within budget",
+          evidence: "phase-oracle",
+          id: "perf.cockpit",
+          match: "metrics:perf",
+        },
+      ],
+      phases: [
+        {
+          act: [{ kind: "rpc_call", method: "qaMetrics" }],
+          expect: [
+            {
+              match: "budget.khala_code.cockpit_render.50_cards.v1",
+              oracle: "perf",
+              query: "qaMetrics",
+            },
+          ],
+          name: "metrics",
+        },
+      ],
+    })
+    const driver = makeKhalaCodeRpcQaDriver({
+      fetch: (() =>
+        Promise.resolve(jsonResponse({
+          budgets: [
+            {
+              budgetId: "budget.khala_code.cockpit_render.50_cards.v1",
+              description: "Cockpit renders within 100ms with 50 worker cards.",
+              metric: "cockpit.render_ms",
+              operator: "lte",
+              requiredContext: { cards: 50 },
+              threshold: 100,
+              unit: "ms",
+            },
+          ],
+          definitions: [
+            {
+              description: "Fleet cockpit render duration.",
+              kind: "timer",
+              name: "cockpit.render_ms",
+              unit: "ms",
+            },
+          ],
+          evaluations: [],
+          ok: true,
+          observedAt: "2026-07-01T00:00:00.000Z",
+          samples: [
+            {
+              context: { cards: 50 },
+              metric: "cockpit.render_ms",
+              observedAt: "2026-07-01T00:00:00.000Z",
+              unit: "ms",
+              value: 82,
+            },
+          ],
+          schema: "openagents.khala_code.qa_metrics.v1",
+        }))) as KhalaCodeRpcFetch,
+    })
+
+    const report = await Effect.runPromise(runKhalaCodeQaScenario({ driver, scenario }))
+
+    expect(report.status).toBe("pass")
+    expect(report.phaseOutcomes[0]?.oracles[0]).toMatchObject({
+      ok: true,
+      oracle: "perf",
+      verdict: "CONFIRMED",
+    })
+    expect(report.commitments.verdict).toBe("CONFIRMED")
+  })
+
+  test("refutes perf budget failures from fixture qaMetrics samples", async () => {
+    const scenario = loadKhalaCodeQaScenario({
+      ...fixtureScenario,
+      phases: [
+        {
+          act: [{ kind: "rpc_call", method: "qaMetrics" }],
+          expect: [
+            {
+              metric: "lifecycle_event_to_card.ms",
+              oracle: "perf",
+              query: "qaMetrics",
+            },
+          ],
+          name: "metrics",
+        },
+      ],
+    })
+    const driver = makeKhalaCodeRpcQaDriver({
+      fetch: (() =>
+        Promise.resolve(jsonResponse({
+          budgets: [
+            {
+              budgetId: "budget.khala_code.lifecycle_event_to_card.p95.v1",
+              description: "Lifecycle event to worker card p95 stays below 500ms.",
+              metric: "lifecycle_event_to_card.ms",
+              operator: "lte",
+              percentile: 95,
+              threshold: 500,
+              unit: "ms",
+            },
+          ],
+          definitions: [
+            {
+              description: "Fleet lifecycle event to visible worker-card duration.",
+              kind: "timer",
+              name: "lifecycle_event_to_card.ms",
+              unit: "ms",
+            },
+          ],
+          evaluations: [],
+          ok: true,
+          observedAt: "2026-07-01T00:00:00.000Z",
+          samples: [490, 520, 610].map((value) => ({
+            metric: "lifecycle_event_to_card.ms",
+            observedAt: "2026-07-01T00:00:00.000Z",
+            unit: "ms",
+            value,
+          })),
+          schema: "openagents.khala_code.qa_metrics.v1",
+        }))) as KhalaCodeRpcFetch,
+    })
+
+    const report = await Effect.runPromise(runKhalaCodeQaScenario({ driver, scenario }))
+
+    expect(report.status).toBe("fail")
+    expect(report.phaseOutcomes[0]?.oracles[0]).toMatchObject({
+      ok: false,
+      oracle: "perf",
+      verdict: "REFUTED",
+    })
+  })
+
   test("refutes a commitment when any matching schema oracle fails", async () => {
     let calls = 0
     const scenario = loadKhalaCodeQaScenario({

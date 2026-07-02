@@ -5,6 +5,12 @@ import type {
   KhalaCodeQaBackendTier,
   KhalaCodeQaDriverMode,
 } from "./scenario.js"
+import type {
+  KhalaCodeQaMetricsSnapshot,
+} from "../../../clients/khala-code-desktop/src/shared/qa-metrics.js"
+export type {
+  KhalaCodeQaMetricsSnapshot,
+} from "../../../clients/khala-code-desktop/src/shared/qa-metrics.js"
 
 export type KhalaCodeQaBootOptions = {
   readonly backend: KhalaCodeQaBackendTier
@@ -34,11 +40,6 @@ export type KhalaCodeQaAppEvent = {
   readonly kind: string
   readonly observedAt: string
   readonly payload?: unknown
-}
-
-export type KhalaCodeQaMetricsSnapshot = {
-  readonly counters: Readonly<Record<string, number>>
-  readonly timings: Readonly<Record<string, number>>
 }
 
 export type KhalaCodeQaArtifacts = {
