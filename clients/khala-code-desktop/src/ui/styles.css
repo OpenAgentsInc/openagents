@@ -3390,6 +3390,78 @@ button {
   }
 }
 
+/* Khala Code plan section (settings): honest Free/Paid plan cards. */
+.khala-plans-subtitle,
+.khala-plans-current,
+.khala-plans-summary {
+  margin: 0;
+  color: color-mix(in srgb, var(--oa-color-component-text) 62%, transparent);
+  font-size: 0.78rem;
+}
+.khala-plans-current {
+  color: color-mix(in srgb, var(--oa-color-component-text) 84%, transparent);
+  font-weight: 600;
+}
+.khala-plans-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: 0.65rem;
+}
+.khala-plans-card {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.65rem 0.75rem;
+  background: color-mix(in srgb, var(--oa-color-component-surface) 88%, transparent);
+  border: 1px solid var(--oa-color-component-border);
+  border-radius: 0.5rem;
+}
+.khala-plans-card-title {
+  margin: 0;
+  font-size: 0.86rem;
+}
+.khala-plans-card-tagline {
+  color: color-mix(in srgb, var(--oa-color-component-text) 70%, transparent);
+  font-size: 0.78rem;
+}
+.khala-plans-card-price,
+.khala-plans-card-default {
+  color: color-mix(in srgb, var(--oa-color-component-text) 54%, transparent);
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.khala-plans-card-terms {
+  margin: 0;
+  padding-inline-start: 1rem;
+  color: color-mix(in srgb, var(--oa-color-component-text) 70%, transparent);
+  font-size: 0.76rem;
+}
+.khala-plans-card-availability,
+.khala-plans-purchase-note,
+.khala-plans-empty,
+.khala-plans-error {
+  color: color-mix(in srgb, var(--oa-color-component-text) 62%, transparent);
+  font-size: 0.76rem;
+}
+.khala-plans-error {
+  color: var(--oa-color-khala-danger-text);
+}
+.khala-plans-purchase {
+  justify-self: start;
+  font: inherit;
+  font-size: 0.78rem;
+  color: var(--oa-color-component-text);
+  background: var(--oa-color-component-surface);
+  border: 1px solid var(--oa-color-component-border);
+  border-radius: 0.4rem;
+  padding: 0.3rem 0.7rem;
+  cursor: pointer;
+}
+.khala-plans-purchase[disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 /* Tool cards: compact auto-scrolling live feed; click the header to expand. */
 .tool-card-header--toggle {
   cursor: pointer;

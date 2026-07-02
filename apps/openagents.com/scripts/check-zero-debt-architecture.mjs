@@ -866,6 +866,15 @@ const publicProjectionSurfaces = [
     status: 'staleness_declared',
   },
   {
+    // Khala Code plan catalog (khala_code.free_paid_plans.v1, #7966): static
+    // catalog text plus one deployment-config input (the fail-closed
+    // KHALA_CODE_PAID_PLANS_ENABLED read), recomputed on every read —
+    // live_at_read with generatedAt + the shared staleness contract.
+    module: 'workers/api/src/inference/khala-code-plan-routes.ts',
+    route: '/api/public/khala-code/plans',
+    status: 'staleness_declared',
+  },
+  {
     module: 'workers/api/src/marketing-agency-receipt-public-routes.ts',
     route: '/api/public/marketing-agency/receipts',
     status: 'staleness_declared',

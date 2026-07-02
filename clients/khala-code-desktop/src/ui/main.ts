@@ -68,6 +68,7 @@ import {
 import { renderMessageBody } from "./transcript-render"
 import { mountFleetPanel } from "./fleet-status"
 import { mountKhalaCodeForumPanel } from "./forum-panel"
+import { mountKhalaCodePlansPanel } from "./plans-panel"
 import { mountCodexSettingsPanel } from "./codex-settings-panel"
 import { mountClaudeSettingsSection } from "./claude-settings-panel"
 import {
@@ -212,6 +213,18 @@ const previewRpc = (): DesktopRpc => ({
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["forumRequest"]>>
       >("forumRequest", request),
+    khalaCodePlanCatalog: () =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["khalaCodePlanCatalog"]>>
+      >("khalaCodePlanCatalog"),
+    khalaCodePlanStatus: () =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["khalaCodePlanStatus"]>>
+      >("khalaCodePlanStatus"),
+    khalaCodePlanPurchase: request =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["khalaCodePlanPurchase"]>>
+      >("khalaCodePlanPurchase", request),
     claudeApprovalPending: () =>
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["claudeApprovalPending"]>>
@@ -2571,6 +2584,10 @@ const controls = {
     rpc.request.fleetWorkerControl(request),
   forumRequest: (request: Parameters<DesktopRpcRequests["forumRequest"]>[0]) =>
     rpc.request.forumRequest(request),
+  khalaCodePlanCatalog: () => rpc.request.khalaCodePlanCatalog(),
+  khalaCodePlanStatus: () => rpc.request.khalaCodePlanStatus(),
+  khalaCodePlanPurchase: (request?: Parameters<DesktopRpcRequests["khalaCodePlanPurchase"]>[0]) =>
+    rpc.request.khalaCodePlanPurchase(request),
   claudeApprovalPending: () => rpc.request.claudeApprovalPending(),
   claudeApprovalRespond: (request: Parameters<DesktopRpcRequests["claudeApprovalRespond"]>[0]) =>
     rpc.request.claudeApprovalRespond(request),
@@ -2937,6 +2954,7 @@ const gymPanel =
   gymPanelEl === null ? null : mountGymPane(gymPanelEl, initialGymState)
 
 let claudeSettingsSection: ReturnType<typeof mountClaudeSettingsSection> | null = null
+let plansSection: ReturnType<typeof mountKhalaCodePlansPanel> | null = null
 
 const settingsPanel =
   settingsPanelEl === null
@@ -2945,6 +2963,7 @@ const settingsPanel =
         fetch: () => controls.codexSettingsRead({ includeHiddenModels: true }),
         onRender: () => {
           void claudeSettingsSection?.refresh()
+          void plansSection?.refresh()
         },
         write: async request => {
           const result = await controls.codexConfigValueWrite(request)
@@ -2959,6 +2978,13 @@ claudeSettingsSection = settingsPanelEl === null
   ? null
   : mountClaudeSettingsSection(settingsPanelEl, {
       fetch: () => controls.claudeSettingsRead(),
+    })
+plansSection = settingsPanelEl === null
+  ? null
+  : mountKhalaCodePlansPanel(settingsPanelEl, {
+      catalog: () => controls.khalaCodePlanCatalog(),
+      purchase: request => controls.khalaCodePlanPurchase(request),
+      status: () => controls.khalaCodePlanStatus(),
     })
 
 const prefetchRecentThreadMessages = (
@@ -3047,7 +3073,10 @@ const setActiveView = (value: string): void => {
   forumPanel?.setVisible(showForum)
   inboxPanel?.setVisible(showInbox)
   settingsPanel?.setVisible(showSettings)
-  if (showSettings) void claudeSettingsSection?.refresh()
+  if (showSettings) {
+    void claudeSettingsSection?.refresh()
+    void plansSection?.refresh()
+  }
   threadSidebar?.setVisible(showChat)
   if (!showChat) markQaTimer("panel.open_ms", panelOpenStartedAt, { panel: activeValue })
   if (showChat) {

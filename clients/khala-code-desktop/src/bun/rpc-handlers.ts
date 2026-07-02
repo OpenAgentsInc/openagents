@@ -3,7 +3,7 @@ import { Buffer } from "node:buffer"
 import { mkdir, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { basename, join } from "node:path"
-import { Effect } from "effect"
+import { Effect, Schema as S } from "effect"
 
 import type { KhalaFleetDelegateStep } from "@openagentsinc/khala-tools"
 import type {
@@ -78,6 +78,13 @@ import {
   type KhalaCodeDesktopFleetStatus,
   type KhalaCodeDesktopForumRequest,
   type KhalaCodeDesktopForumResponse,
+  type KhalaCodeDesktopPlanCatalogResult,
+  type KhalaCodeDesktopPlanPurchaseRequest,
+  type KhalaCodeDesktopPlanPurchaseResult,
+  type KhalaCodeDesktopPlanStatusResult,
+  KhalaCodeDesktopPlanCatalogSchema,
+  KhalaCodeDesktopPlanPurchaseSuccessSchema,
+  KhalaCodeDesktopPlanStatusPlanSchema,
   type KhalaCodeDesktopQaMetricsSnapshot,
   type KhalaCodeDesktopRPCSchema,
   type KhalaCodeDesktopRuntimeStatus,
@@ -203,6 +210,9 @@ export type KhalaCodeDesktopRpcHandlersInput = {
   readonly fleetRunSupervisor?: KhalaCodeDesktopFleetRunSupervisorRpc
   readonly fleetMcpBridgeRepoRoot?: string
   readonly env: ChatEnv
+  // Test seam for network-backed handlers (Khala Code plan routes). Defaults to
+  // the global fetch in production.
+  readonly fetch?: typeof fetch
   readonly emitChatTurnEvent?: (event: KhalaCodeDesktopChatTurnEvent) => void
   readonly legacyChatTurn?: typeof runKhalaCodeDesktopChatTurn
   readonly onDeviceDeciderStatus: () => MaybePromise<OnDeviceDeciderSelection>
@@ -269,6 +279,45 @@ const fetchOpenAgentsForum = async (
     status: response.status,
     ...(response.ok ? {} : { error: forumFailureReason(payload, `Forum request failed with ${response.status}`) }),
   }
+}
+
+// Khala Code plan surfaces (promise khala_code.free_paid_plans.v1). The only
+// wire routes the desktop host may touch are the three exact paths below, pinned
+// to the resolved OpenAgents origin. The bearer token never leaves this module:
+// it is read from env, sent as an Authorization header, and never logged or
+// echoed into RPC results.
+const KHALA_CODE_PLAN_CATALOG_PATH = "/api/public/khala-code/plans"
+const KHALA_CODE_PLAN_STATUS_PATH = "/v1/khala-code/plan"
+const KHALA_CODE_PLAN_PURCHASE_PATH = "/v1/khala-code/plans/purchases"
+const KHALA_CODE_PLAN_ALLOWED_PATHS: ReadonlySet<string> = new Set([
+  KHALA_CODE_PLAN_CATALOG_PATH,
+  KHALA_CODE_PLAN_STATUS_PATH,
+  KHALA_CODE_PLAN_PURCHASE_PATH,
+])
+
+const khalaCodePlanBaseUrl = (env: ChatEnv): string => {
+  const configured =
+    env.PYLON_OPENAGENTS_BASE_URL?.trim() || env.OPENAGENTS_BASE_URL?.trim()
+  return configured !== undefined && configured.length > 0
+    ? configured
+    : OPENAGENTS_FORUM_BASE_URL
+}
+
+const khalaCodePlanRequestUrl = (baseUrl: string, path: string): URL => {
+  if (!KHALA_CODE_PLAN_ALLOWED_PATHS.has(path)) {
+    throw new Error("Khala Code plan RPC path is not allowlisted.")
+  }
+  const base = new URL(baseUrl)
+  const url = new URL(path, base)
+  if (url.origin !== base.origin || url.pathname !== path) {
+    throw new Error("Khala Code plan RPC path must stay on the resolved OpenAgents origin.")
+  }
+  return url
+}
+
+const khalaCodeAgentToken = (env: ChatEnv): string | null => {
+  const token = env.OPENAGENTS_AGENT_TOKEN?.trim() || env.OPENAGENTS_API_KEY?.trim()
+  return token !== undefined && token.length > 0 ? token : null
 }
 
 const safePathSegment = (value: string, fallback: string): string => {
@@ -1990,6 +2039,95 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
     },
     async forumRequest(request): Promise<KhalaCodeDesktopForumResponse> {
       return fetchOpenAgentsForum(request)
+    },
+    async khalaCodePlanCatalog(): Promise<KhalaCodeDesktopPlanCatalogResult> {
+      const planFetch = input.fetch ?? fetch
+      try {
+        const response = await planFetch(
+          khalaCodePlanRequestUrl(khalaCodePlanBaseUrl(input.env), KHALA_CODE_PLAN_CATALOG_PATH),
+          { headers: { accept: "application/json" } },
+        )
+        if (!response.ok) return { ok: false, error: "catalog_unavailable" }
+        const payload = await response.json().catch(() => null) as unknown
+        const catalog = isRecord(payload) ? payload.catalog : undefined
+        return {
+          ok: true,
+          catalog: S.decodeUnknownSync(KhalaCodeDesktopPlanCatalogSchema)(catalog),
+        }
+      } catch {
+        return { ok: false, error: "catalog_unavailable" }
+      }
+    },
+    async khalaCodePlanStatus(): Promise<KhalaCodeDesktopPlanStatusResult> {
+      const token = khalaCodeAgentToken(input.env)
+      // No configured agent token means we honestly do not know a server-side
+      // plan; the UI treats this as "Free (default)" without fabricating one.
+      if (token === null) return { state: "unauthenticated" }
+      const planFetch = input.fetch ?? fetch
+      try {
+        const response = await planFetch(
+          khalaCodePlanRequestUrl(khalaCodePlanBaseUrl(input.env), KHALA_CODE_PLAN_STATUS_PATH),
+          {
+            headers: {
+              accept: "application/json",
+              authorization: `Bearer ${token}`,
+            },
+          },
+        )
+        if (response.status === 401 || response.status === 403) {
+          return { state: "unauthenticated" }
+        }
+        if (!response.ok) return { state: "unavailable" }
+        const payload = await response.json().catch(() => null) as unknown
+        if (!isRecord(payload) || payload.ok !== true) return { state: "unavailable" }
+        return {
+          state: "ok",
+          plan: S.decodeUnknownSync(KhalaCodeDesktopPlanStatusPlanSchema)(payload.plan),
+        }
+      } catch {
+        return { state: "unavailable" }
+      }
+    },
+    async khalaCodePlanPurchase(
+      request?: KhalaCodeDesktopPlanPurchaseRequest,
+    ): Promise<KhalaCodeDesktopPlanPurchaseResult> {
+      const token = khalaCodeAgentToken(input.env)
+      if (token === null) return { ok: false, error: "unauthenticated" }
+      const planFetch = input.fetch ?? fetch
+      try {
+        const response = await planFetch(
+          khalaCodePlanRequestUrl(khalaCodePlanBaseUrl(input.env), KHALA_CODE_PLAN_PURCHASE_PATH),
+          {
+            method: "POST",
+            headers: {
+              accept: "application/json",
+              authorization: `Bearer ${token}`,
+              "content-type": "application/json",
+            },
+            body: JSON.stringify(
+              request?.idempotencyKey === undefined
+                ? {}
+                : { idempotencyKey: request.idempotencyKey },
+            ),
+          },
+        )
+        const payload = await response.json().catch(() => null) as unknown
+        if (response.status === 401 || response.status === 403) {
+          return { ok: false, error: "unauthenticated" }
+        }
+        if (!response.ok) {
+          const errorRef = isRecord(payload) ? stringValue(payload.error) : null
+          return {
+            ok: false,
+            error: errorRef === "khala_code_paid_plans_not_enabled"
+              ? "khala_code_paid_plans_not_enabled"
+              : "purchase_unavailable",
+          }
+        }
+        return S.decodeUnknownSync(KhalaCodeDesktopPlanPurchaseSuccessSchema)(payload)
+      } catch {
+        return { ok: false, error: "purchase_unavailable" }
+      }
     },
     async claudeApprovalPending() {
       return {
