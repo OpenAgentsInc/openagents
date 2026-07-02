@@ -1697,12 +1697,15 @@ export class DefaultKhalaFleetRunSupervisorManager implements KhalaFleetRunSuper
     return {
       accounts: async () => {
         const run = this.store.getFleetRun(runRef)
+        const env = run === null || run.workSource === "fixture"
+          ? this.options.env
+          : await this.advertiseFleetRunCapacity(runRef, run)
         const status = await inspectCodexFleet({
           includeProcesses: false,
           includeRateLimits: false,
           startPylon: true,
           workerKind: run?.workerKind ?? "codex",
-        }, this.options)
+        }, env === undefined ? this.options : { ...this.options, env })
         return status.accounts
           .filter(account => account.readiness === "ready" && !account.paused)
           .map(account => ({
@@ -1711,6 +1714,36 @@ export class DefaultKhalaFleetRunSupervisorManager implements KhalaFleetRunSuper
           }))
       },
     }
+  }
+
+  private async advertiseFleetRunCapacity(runRef: string, run: FleetRun): Promise<ChatEnv> {
+    const config = this.planConfigs.get(runRef)
+    if (config === undefined) throw new Error(`missing fleet run plan config: ${runRef}`)
+    const baseEnv = this.options.env ?? khalaCodeConfigFromRuntimeEnv().env
+    const parameters = this.options.delegationParameters ??
+      khalaFleetDelegationParametersFromEnv(baseEnv)
+    const advertisedEnv = withWorkerCapacityAdvertisementEnv(
+      baseEnv,
+      run.targetConcurrency,
+      parameters,
+      run.workerKind,
+    )
+    const baseUrl = resolveOpenAgentsBaseUrl(advertisedEnv, config.baseUrl)
+    const env = {
+      ...advertisedEnv,
+      PYLON_OPENAGENTS_BASE_URL: baseUrl,
+    }
+    const paths = resolvePylonPaths(env)
+    const heartbeat = await runPylonCommand(["presence", "heartbeat", "--base-url", baseUrl, "--json"], {
+      env,
+      paths,
+      runner: this.options.runner,
+      timeoutMs: DEFAULT_COMMAND_TIMEOUT_MS,
+    })
+    if (heartbeat.exitCode !== 0) {
+      throw new Error(`fleet run capacity heartbeat failed before dispatch: ${safeFailureReason(heartbeat)}`)
+    }
+    return env
   }
 
   private snapshot(runRef: string): KhalaFleetRunSnapshot {

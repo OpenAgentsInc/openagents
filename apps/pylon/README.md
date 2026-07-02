@@ -496,11 +496,15 @@ with `PYLON_FLEET_RUN_LIVE_PYLON_REF`, exactly two distinct
 `PYLON_FLEET_RUN_LIVE_ISSUES`, `PYLON_FLEET_RUN_LIVE_REPO`,
 `PYLON_FLEET_RUN_LIVE_COMMIT` (40-character SHA),
 `PYLON_FLEET_RUN_LIVE_VERIFY`, and `OPENAGENTS_AGENT_TOKEN`. Armed execution
-starts a supervised issue-list FleetRun at target concurrency 2, then fails
-closed unless both assignment refs close out with green `pylon khala closeout`
-checklists, positive exact `token_usage_events` rows, zero duplicate work-unit
-claims, and a public `/api/public/khala-tokens-served` delta at least as large
-as the exact closeout total. Counter movement alone is never accepted.
+starts a supervised issue-list FleetRun at target concurrency 2. The
+supervisor publishes a fresh presence heartbeat with the run capacity before
+each real dispatch pass; if server admission still rejects a request, the smoke
+result carries a `dispatchFailures` summary instead of only aggregate counters.
+The smoke fails closed unless both assignment refs close out with green `pylon
+khala closeout` checklists, positive exact `token_usage_events` rows, zero
+duplicate work-unit claims, and a public `/api/public/khala-tokens-served`
+delta at least as large as the exact closeout total. Counter movement alone is
+never accepted.
 
 `bun run --cwd apps/pylon smoke:fleet-run-sustained` uses the same evidence
 chain behind `PYLON_FLEET_RUN_SUSTAINED_ARM=1`. Defaults are target 5,

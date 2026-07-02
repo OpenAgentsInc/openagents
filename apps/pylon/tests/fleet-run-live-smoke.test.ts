@@ -35,26 +35,38 @@ const sustainedEnv = {
 const snapshot = (input: {
   readonly assignmentRefs?: readonly string[]
   readonly completedAssignments?: number
+  readonly dispatchFailures?: readonly string[]
+  readonly failedAssignments?: number
   readonly state?: string
   readonly targetConcurrency?: number
   readonly workUnitRefs?: readonly string[]
 }): FleetRunSmokeSnapshot => ({
   active: input.state !== "completed",
-  lifecycle: (input.assignmentRefs ?? []).map((assignmentRef, index) => ({
-    assignmentRef,
-    claimRef: `claim.test.${index}`,
-    kind: "dispatch",
-    status: "completed",
-    workUnitRef: input.workUnitRefs?.[index] ?? `github.issue.${index}`,
-  })),
+  lifecycle: [
+    ...(input.assignmentRefs ?? []).map((assignmentRef, index) => ({
+      assignmentRef,
+      claimRef: `claim.test.${index}`,
+      kind: "dispatch",
+      status: "completed",
+      workUnitRef: input.workUnitRefs?.[index] ?? `github.issue.${index}`,
+    })),
+    ...(input.dispatchFailures ?? []).map((summary, index) => ({
+      assignmentRef: null,
+      claimRef: `claim.failed.${index}`,
+      kind: "dispatch",
+      status: "failed",
+      summary,
+      workUnitRef: input.workUnitRefs?.[index] ?? `github.issue.failed.${index}`,
+    })),
+  ],
   pylonRef: "pylon.local.test",
   run: {
     counters: {
       activeAssignments: 0,
       blockedAssignments: 0,
       completedAssignments: input.completedAssignments ?? input.assignmentRefs?.length ?? 0,
-      failedAssignments: 0,
-      workUnitsTotal: input.assignmentRefs?.length ?? 0,
+      failedAssignments: input.failedAssignments ?? input.dispatchFailures?.length ?? 0,
+      workUnitsTotal: (input.assignmentRefs?.length ?? 0) + (input.dispatchFailures?.length ?? 0),
     },
     runRef: "fleet_run.test",
     state: input.state ?? "completed",
@@ -197,6 +209,29 @@ describe("fleet run live smoke", () => {
     expect(result.ok).toBe(false)
     expect(result.failures.join("\n")).toContain("expected positive exact token row evidence")
     expect(result.failures.join("\n")).toContain("expected aggregate exact token rows and verified tokens to be positive")
+  })
+
+  test("surfaces failed dispatch summaries in the smoke result", async () => {
+    const result = await runFleetRunSmokeFromEnv("live", {
+      env: liveEnv,
+      fetch: counterFetch([1_000, 1_000]),
+      manager: managerReturning([
+        snapshot({
+          dispatchFailures: [
+            "pylon khala request failed (409): stale heartbeat",
+          ],
+          failedAssignments: 1,
+          state: "stopped",
+          workUnitRefs: ["github:OpenAgentsInc/openagents:issue:8060"],
+        }),
+      ]),
+    })
+
+    expect(result.ok).toBe(false)
+    expect(result.evidence?.dispatchFailures).toContain(
+      "github:OpenAgentsInc/openagents:issue:8060: pylon khala request failed (409): stale heartbeat",
+    )
+    expect(result.failures.join("\n")).toContain("dispatch failure: github:OpenAgentsInc/openagents:issue:8060")
   })
 
   test("enforces sustained thresholds before dispatch", async () => {

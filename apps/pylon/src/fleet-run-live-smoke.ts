@@ -129,6 +129,7 @@ export type FleetRunSmokeEvidence = {
   readonly assignmentRefs: readonly string[]
   readonly closeouts: readonly FleetRunSmokeCloseoutEvidence[]
   readonly completedAt: string | null
+  readonly dispatchFailures: readonly string[]
   readonly duplicateWorkUnitRefs: readonly string[]
   readonly publicCounterReconciliation: FleetRunSmokeCounterReconciliation
   readonly pylonRef: string | null
@@ -619,11 +620,13 @@ function evidenceFromSnapshot(input: {
 }): Omit<FleetRunSmokeEvidence, "closeouts" | "publicCounterReconciliation" | "tokenRows" | "totalTokens"> {
   const lifecycle = input.snapshot?.lifecycle ?? []
   const assignmentRefs = dedupe(lifecycle.flatMap(assignmentRefsFromLifecycleEvent))
+  const dispatchFailures = dedupe(lifecycle.flatMap(dispatchFailureFromLifecycleEvent))
   const workUnitRefs = lifecycle.flatMap(workUnitRefsFromLifecycleEvent)
   const duplicateWorkUnitRefs = duplicateRefs(workUnitRefs)
   return {
     assignmentRefs,
     completedAt: input.completedAt,
+    dispatchFailures,
     duplicateWorkUnitRefs,
     pylonRef: input.snapshot?.pylonRef ?? null,
     refillsObserved: Math.max(0, assignmentRefs.length - input.plan.targetWorkers),
@@ -656,6 +659,9 @@ function preCloseoutEvidenceFailures(
   }
   if (run.counters.blockedAssignments !== 0) {
     failures.push(`expected zero blocked assignments, got ${run.counters.blockedAssignments}`)
+  }
+  for (const failure of evidence.dispatchFailures) {
+    failures.push(`dispatch failure: ${failure}`)
   }
   if (evidence.assignmentRefs.length < plan.requiredCloseouts) {
     failures.push(`expected at least ${plan.requiredCloseouts} assignment refs, got ${evidence.assignmentRefs.length}`)
@@ -723,6 +729,16 @@ function workUnitRefsFromLifecycleEvent(event: FleetRunSmokeLifecycleEvent): rea
   const workUnitRef = stringField(event, "workUnitRef")
   const status = stringField(event, "status")
   return workUnitRef === null || status === "failed" ? [] : [workUnitRef]
+}
+
+function dispatchFailureFromLifecycleEvent(event: FleetRunSmokeLifecycleEvent): readonly string[] {
+  if (event.kind !== "dispatch") return []
+  const status = stringField(event, "status")
+  if (status !== "failed" && status !== "blocked") return []
+  const workUnitRef = stringField(event, "workUnitRef")
+  const summary = stringField(event, "summary")
+  const detail = summary === null ? status : redactSmokeText(summary)
+  return [workUnitRef === null ? detail : `${workUnitRef}: ${detail}`]
 }
 
 function singleSnapshot(value: FleetRunSmokeSnapshot | readonly FleetRunSmokeSnapshot[]): FleetRunSmokeSnapshot {

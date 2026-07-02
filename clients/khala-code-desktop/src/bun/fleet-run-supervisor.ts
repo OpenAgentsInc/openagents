@@ -102,6 +102,7 @@ export type FleetRunSupervisorObservedEvent =
     readonly accountRef: string
     readonly assignmentRef: string | null
     readonly status: FleetRunSupervisorDispatchResult["status"]
+    readonly summary?: string | null
   }
   | {
     readonly kind: "lifecycle"
@@ -311,6 +312,7 @@ const recordTerminalAssignment = async (
     accountRef: assignment.accountRef,
     assignmentRef: result.assignmentRef,
     status: result.status,
+    summary: result.summary ?? null,
   })
   return true
 }
@@ -501,6 +503,7 @@ export async function tickFleetRunSupervisor(
         accountRef: account.accountRef,
         assignmentRef: null,
         status: "failed",
+        summary: error instanceof Error ? error.message : String(error),
       })
       continue
     }
@@ -530,6 +533,7 @@ export async function tickFleetRunSupervisor(
         accountRef: account.accountRef,
         assignmentRef: result.assignmentRef,
         status: result.status,
+        summary: result.summary ?? null,
       })
       continue
     }
@@ -558,6 +562,7 @@ export async function tickFleetRunSupervisor(
       accountRef: account.accountRef,
       assignmentRef: result.assignmentRef,
       status: result.status,
+      summary: result.summary ?? null,
     })
   }
 

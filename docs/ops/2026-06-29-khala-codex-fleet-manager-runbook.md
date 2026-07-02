@@ -111,6 +111,12 @@ Expected:
   and now computes `OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY=5` for its Pylon
   child commands before heartbeat/dispatch. Operators can still set the env var
   explicitly for manual shell smokes.
+- Supervised real FleetRuns (`issue_list`, `github_backlog`, and plan DAGs)
+  also publish a fresh `presence heartbeat --base-url ... --json` from the
+  supervisor capacity probe before dispatch. This is required for
+  `smoke:fleet-run-live`: a manual heartbeat several minutes earlier is not
+  sufficient evidence, and stale-heartbeat admission failures must appear in
+  the smoke JSON under `dispatchFailures`.
 - The regression gate for this bundle is the adverse-condition matrix in
   `packages/khala-tools/src/fleet-delegate-program.test.ts` plus the Desktop
   runner seam in
