@@ -1,7 +1,10 @@
 import { describe, expect, test } from "bun:test"
 
 import { buildKhalaGymGraphProjection } from "../src/ui/gym-graph-projection"
-import { renderKhalaGymGraphHtml } from "../src/ui/gym-graph-renderer"
+import {
+  khalaGymGraphFigure,
+  renderKhalaGymGraphHtml,
+} from "../src/ui/gym-graph-renderer"
 import type { KhalaGymBridgeProofLike } from "../src/ui/gym-graph-projection"
 
 const proof = (extra: Record<string, unknown> = {}): KhalaGymBridgeProofLike =>
@@ -145,11 +148,24 @@ describe("Khala Code Gym graph renderer", () => {
     expect(css).toContain("max-width: 100%")
   })
 
-  test("the Gym pane mounts graph HTML only from loaded projection state", async () => {
+  test("exposes the Gym graph as Foldkit vdom for the pane", () => {
+    const figure = khalaGymGraphFigure({
+      projection: projection(),
+      options: { reducedMotion: true },
+    })
+
+    expect(figure).not.toBeNull()
+    expect(typeof figure).toBe("object")
+  })
+
+  test("the Gym pane mounts graph vdom only from loaded projection state", async () => {
     const pane = await Bun.file(new URL("../src/ui/gym-pane.ts", import.meta.url)).text()
 
-    expect(pane).toContain("graph?: KhalaGymGraphProjection")
-    expect(pane).toContain("renderKhalaGymGraphHtml")
+    expect(pane).toContain("graph: S.optional(GraphSpec)")
+    expect(pane).toContain("khalaGymGraphFigure")
+    expect(pane).toContain("Runtime.makeProgram")
+    expect(pane).not.toContain("renderKhalaGymGraphHtml")
+    expect(pane).not.toContain("innerHTML")
     expect(pane).toContain('matchMedia("(prefers-reduced-motion: reduce)")')
   })
 })
