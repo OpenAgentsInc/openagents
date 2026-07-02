@@ -923,6 +923,66 @@ describe("Pylon supervisor orchestration store", () => {
     })
   })
 
+  test("Claude second-pass review is advisory: it can demote auto_merge_clean but never approve", () => {
+    const now = new Date("2026-07-01T12:00:00.000Z")
+    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const claim = store.tryClaimWorkUnit({
+      claimRef: "claim.t9_5.policy",
+      workUnitRef: "issue.7874",
+      runRef: "fleet_run.t9_5",
+      workerAccountRef: "codex-1",
+      ttl: 60_000,
+      now,
+    })
+    const closeout = evaluateCloseoutReviewGate({
+      pinnedVerifyCommandRef: "command.public.pylon_khala.verify.28484fe0b746db06b92c2eb2",
+      claim,
+      verify: greenVerifyEvidence(),
+      now,
+    })
+
+    expect(decideMergePolicy({
+      mode: "manual_review",
+      closeout,
+      mergeable: true,
+      verifyGreen: true,
+      hasConflicts: false,
+      diffWithinScope: true,
+      advisoryReview: {
+        reviewer: "claude_second_pass",
+        recommendation: "approve",
+        verdictRef: "review.public.pylon.claude_second_pass.clean",
+      },
+    })).toMatchObject({
+      mode: "manual_review",
+      action: "manual_review",
+      ownerToggleRequired: false,
+    })
+
+    expect(decideMergePolicy({
+      mode: "auto_merge_clean",
+      closeout,
+      mergeable: true,
+      verifyGreen: true,
+      hasConflicts: false,
+      diffWithinScope: true,
+      advisoryReview: {
+        reviewer: "claude_second_pass",
+        recommendation: "request_changes",
+        verdictRef: "review.public.pylon.claude_second_pass.risky",
+        riskRefs: ["risk.public.pylon.review.semantic_regression"],
+      },
+    })).toMatchObject({
+      mode: "auto_merge_clean",
+      action: "manual_review",
+      ownerToggleRequired: false,
+      blockerRefs: [
+        "blocker.public.pylon.merge.claude_second_pass_manual_review",
+        "risk.public.pylon.review.semantic_regression",
+      ],
+    })
+  })
+
   test("merge-wave resolver has one live claim per wave work unit", () => {
     const now = new Date("2026-07-01T12:00:00.000Z")
     const store = createPylonOrchestrationStore(new Database(":memory:"))

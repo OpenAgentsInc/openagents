@@ -34,6 +34,11 @@ import {
   workspaceLeaseRecordFor,
 } from "../src/workspace-materializer"
 import {
+  CLAUDE_SECOND_PASS_REVIEW_SCHEMA,
+  parseClaudeSecondPassVerdict,
+  type ClaudeSecondPassReviewer,
+} from "../src/claude-second-pass-reviewer"
+import {
   PylonRuntimeRetrySchedules,
   scopedTimeout,
 } from "../src/effect-runtime-patterns"
@@ -103,6 +108,18 @@ async function withState<T>(fn: (state: Awaited<ReturnType<typeof ensurePylonLoc
   }
 }
 
+async function runGit(args: string[], cwd: string) {
+  const proc = Bun.spawn(["git", ...args], { cwd, stdout: "pipe", stderr: "pipe" })
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ])
+  if (exitCode !== 0) {
+    throw new Error(`git ${args.join(" ")} failed: ${stdout}${stderr}`)
+  }
+}
+
 describe("codex agent task recognition", () => {
   test("recognizes the typed work class and passes everything else through", async () => {
     expect(codexAgentTaskFrom(codexAgentCodingAssignment)).not.toBeNull()
@@ -164,14 +181,70 @@ describe("codex agent task recognition", () => {
     })
   })
 
+  test("parses Claude second-pass structured verdicts and rejects malformed shapes", () => {
+    expect(parseClaudeSecondPassVerdict(JSON.stringify({
+      schema: CLAUDE_SECOND_PASS_REVIEW_SCHEMA,
+      recommendation: "request_changes",
+      confidence: "high",
+      summary: "Diff likely misses an edge case.",
+      riskRefs: ["risk.public.pylon.review.edge_case"],
+    }))).toMatchObject({
+      recommendation: "request_changes",
+      riskRefs: ["risk.public.pylon.review.edge_case"],
+    })
+    expect(parseClaudeSecondPassVerdict({
+      schema: CLAUDE_SECOND_PASS_REVIEW_SCHEMA,
+      recommendation: "merge_now",
+      confidence: "high",
+      summary: "bad",
+      riskRefs: [],
+    })).toBeNull()
+  })
+
+  test("optional Claude second-pass reviewer runs after verify-green and records advisory verdict refs", async () => {
+    await withState(async (state) => {
+      let reviewerCalled = false
+      const reviewer: ClaudeSecondPassReviewer = async (input) => {
+        reviewerCalled = true
+        return {
+          schema: CLAUDE_SECOND_PASS_REVIEW_SCHEMA,
+          recommendation: "manual_review",
+          confidence: "medium",
+          summary: "Fixture passes but reviewer requests human inspection.",
+          riskRefs: ["risk.public.pylon.review.fixture_manual"],
+        }
+      }
+      const record = await executeCodexAgentAssignment(state, lease, now, {
+        codexAgentRunner: fixingRunner,
+        codexAgentProbe: readyProbe,
+        claudeSecondPassReview: { enabled: true, reviewer },
+      })
+      expect(reviewerCalled).toBe(false)
+      expect(record?.status).toBe("accepted")
+      expect(record?.resultRefs).toContain(
+        "result.public.pylon.codex_agent_task.claude_second_pass_skipped.fixture_workspace",
+      )
+      assertPublicProjectionSafe(record)
+    })
+  })
+
   test("rejects with codex_agent_test_failed when the agent does not fix the fixture", async () => {
     await withState(async (state) => {
+      let reviewerCalled = false
       const record = await executeCodexAgentAssignment(state, lease, now, {
         codexAgentRunner: idleRunner,
         codexAgentProbe: readyProbe,
+        claudeSecondPassReview: {
+          enabled: true,
+          reviewer: async () => {
+            reviewerCalled = true
+            throw new Error("should not review verify-red closeout")
+          },
+        },
       })
       expect(record?.status).toBe("rejected")
       expect(record?.blockerRefs).toEqual(["blocker.assignment.codex_agent_test_failed"])
+      expect(reviewerCalled).toBe(false)
       assertPublicProjectionSafe(record)
     })
   })
@@ -827,6 +900,83 @@ describe("codex git_checkout workspace (shared B2 contract)", () => {
       const projected = JSON.stringify(record)
       expect(projected).not.toContain(state.paths.cache)
       expect(projected).not.toContain("Repair the failing sum test.")
+    })
+  })
+
+  test("captures git diffs with intent-to-add before Claude second-pass review", async () => {
+    await withState(async (state) => {
+      const checkoutRunner = async (workspace: string) => {
+        await mkdir(workspace, { recursive: true })
+        await writeFile(
+          join(workspace, "package.json"),
+          `${JSON.stringify({ private: true, type: "module" })}\n`,
+        )
+        await writeFile(
+          join(workspace, "sum.ts"),
+          "export const sum = (left: number, right: number) => left - right\n",
+        )
+        await writeFile(
+          join(workspace, "sum.test.ts"),
+          [
+            'import { describe, expect, test } from "bun:test"',
+            'import { sum } from "./sum"',
+            'describe("sum", () => { test("adds", () => { expect(sum(2, 3)).toBe(5) }) })',
+            "",
+          ].join("\n"),
+        )
+        await runGit(["init"], workspace)
+        await runGit(["config", "user.email", "pylon@example.invalid"], workspace)
+        await runGit(["config", "user.name", "Pylon Test"], workspace)
+        await runGit(["add", "-A"], workspace)
+        await runGit(["commit", "-m", "baseline"], workspace)
+      }
+      const fixingWithUntrackedFile: CodexAgentRunner = async (input) => {
+        await writeFile(
+          join(input.cwd, "sum.ts"),
+          "export const sum = (left: number, right: number) => left + right\n",
+        )
+        await writeFile(join(input.cwd, "notes.md"), "review me\n")
+        return { outcome: "completed", turnCount: 1, editedFileCount: 2, commandCount: 1, sessionRef: null }
+      }
+      let reviewedDiff: string | null = null
+      const reviewer: ClaudeSecondPassReviewer = async (input) => {
+        reviewedDiff = input.diffText
+        expect(input.verifyCommand).toEqual(["bun", "test", "sum.test.ts"])
+        return {
+          schema: CLAUDE_SECOND_PASS_REVIEW_SCHEMA,
+          recommendation: "manual_review",
+          confidence: "medium",
+          summary: "Review captured tracked and untracked changes.",
+          riskRefs: ["risk.public.pylon.review.git_diff"],
+        }
+      }
+
+      const record = await executeCodexAgentAssignment(
+        state,
+        { ...lease, codingAssignment: checkoutAssignment },
+        now,
+        {
+          checkoutRunner,
+          codexAgentRunner: fixingWithUntrackedFile,
+          codexAgentProbe: readyProbe,
+          claudeSecondPassReview: { enabled: true, reviewer },
+          pullRequestPublisher: async () => ({
+            state: "opened",
+            prUrl: "https://github.com/OpenAgentsInc/openagents/pull/99002",
+            prNumber: 99002,
+            branch: "pylon/assignment-cafecafe",
+            changedCount: 2,
+            reused: false,
+          }),
+        },
+      )
+
+      expect(record?.status).toBe("accepted")
+      expect(reviewedDiff).toContain("left + right")
+      expect(reviewedDiff).toContain("diff --git a/notes.md b/notes.md")
+      expect(record?.resultRefs).toContain("result.public.pylon.codex_agent_task.claude_second_pass.manual_review")
+      expect(record?.resultRefs).toContain("risk.public.pylon.review.git_diff")
+      assertPublicProjectionSafe(record)
     })
   })
 

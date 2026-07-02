@@ -52,6 +52,12 @@ export type MergePolicyInput = {
   hasConflicts: boolean
   diffWithinScope: boolean
   siblingConflictRefs?: readonly string[]
+  advisoryReview?: {
+    reviewer: "claude_second_pass"
+    recommendation: "approve" | "manual_review" | "request_changes"
+    verdictRef: string
+    riskRefs?: readonly string[]
+  } | null
 }
 
 export type MergePolicyDecisionAction =
@@ -143,6 +149,10 @@ export function decideMergePolicy(input: MergePolicyInput): MergePolicyDecision 
     ...input.closeout.refs,
   ]
   const blockerRefs = [...input.closeout.blockerRefs]
+  const advisoryReview = input.advisoryReview ?? null
+  if (advisoryReview !== null) {
+    refs.push(advisoryReview.verdictRef, `review-advisory.public.pylon.${advisoryReview.reviewer}.${advisoryReview.recommendation}`)
+  }
 
   if (!input.closeout.readyForReview || !input.verifyGreen) {
     return {
@@ -163,6 +173,21 @@ export function decideMergePolicy(input: MergePolicyInput): MergePolicyDecision 
       ownerToggleRequired: true,
       refs: [...refs, "merge-wave.public.pylon.required"],
       blockerRefs: [...blockerRefs, "blocker.public.pylon.merge_conflict_wave"],
+    }
+  }
+
+  if (advisoryReview !== null && advisoryReview.recommendation !== "approve") {
+    return {
+      schema: MERGE_POLICY_SCHEMA,
+      mode,
+      action: "manual_review",
+      ownerToggleRequired: false,
+      refs,
+      blockerRefs: [
+        ...blockerRefs,
+        "blocker.public.pylon.merge.claude_second_pass_manual_review",
+        ...(advisoryReview.riskRefs ?? []),
+      ],
     }
   }
 
