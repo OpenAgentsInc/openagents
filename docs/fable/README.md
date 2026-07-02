@@ -131,6 +131,16 @@ each source doc.
   roadmap↔promise pairings, and the Khala-Code-as-gateway funnel across
   the registry's green substrate. **Implemented as registry `2026-07-01.1`**
   (owner-directed, no green flips; see the doc's §4 status banner).
+- `2026-07-01-promissory-nongreen-assault-runbook.md` — the PROMISSORY
+  standing runbook: one repeatable formula any agent (or ten concurrently)
+  follows to claim and assault the next non-green product promise. Scoring
+  formula with a swappable campaign throughline (currently Khala Code
+  launch), a race-free claim protocol (GitHub issue `PROMISSORY:
+  <promiseId>` + orchestration-store work claims), the per-promise assault
+  ladder (audit → blocker decomposition → implement → registry evidence
+  pass), strict state-flip rules (never green — make green a five-minute
+  owner decision), a concurrent-safe registry edit protocol, and the fleet
+  mass-dispatch template with refill and stop conditions.
 - `2026-07-01-artanis-fleet-administrator-audit.md` — audit of Artanis (the
   autonomous operator/administrator persona): its split architecture (Khala
   operator chat + Gemini cron ticks), current see-vs-do capability (the
