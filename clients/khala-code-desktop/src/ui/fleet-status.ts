@@ -5,6 +5,8 @@ import type {
   KhalaCodeDesktopFleetAccount,
   KhalaCodeDesktopFleetDelegateRunRequest,
   KhalaCodeDesktopFleetDelegateRunResult,
+  KhalaCodeDesktopFleetRunStartRequest,
+  KhalaCodeDesktopFleetRunStartResult,
   KhalaCodeDesktopFleetStatus,
 } from "../shared/rpc"
 import { buildKhalaFleetBoardProjection } from "./fleet-board-projection"
@@ -28,6 +30,9 @@ export type FleetPanelOptions = Readonly<{
   delegateRun: (
     request: KhalaCodeDesktopFleetDelegateRunRequest,
   ) => Promise<KhalaCodeDesktopFleetDelegateRunResult>
+  fleetRunStart: (
+    request: KhalaCodeDesktopFleetRunStartRequest,
+  ) => Promise<KhalaCodeDesktopFleetRunStartResult>
   loadGymDemoProof: () =>
     | KhalaGymDelegationOptimizationRun
     | Promise<KhalaGymDelegationOptimizationRun>
@@ -43,6 +48,9 @@ export type FleetPanelOptions = Readonly<{
 type Handlers = Readonly<{
   onDelegateField: (field: keyof FleetDelegateFormState, value: string | boolean) => void
   onDelegateRun: () => void
+  onFleetRunField: (field: keyof FleetRunFormState, value: string) => void
+  onFleetRunPreview: () => void
+  onFleetRunStart: () => void
   onLoadGymDemoProof: () => void
   onOptimizationStart: () => void
   onRefresh: () => void
@@ -69,6 +77,13 @@ type FleetDelegateFormState = Readonly<{
   verify: string
 }>
 
+type FleetRunFormState = Readonly<{
+  objective: string
+  workSource: KhalaCodeDesktopFleetRunStartRequest["workSource"]["kind"]
+  targetConcurrency: string
+  workerKind: "codex" | "claude" | "auto"
+}>
+
 type DelegateRunView =
   | { readonly phase: "idle" }
   | { readonly phase: "loading" }
@@ -80,6 +95,26 @@ type OptimizationRunView =
   | { readonly phase: "loading" }
   | { readonly phase: "error"; readonly message: string }
   | { readonly phase: "ready"; readonly result: KhalaGymDelegationOptimizationRun }
+
+type FleetRunPreviewSlot = Readonly<{
+  accountRef: string
+  // Projected wave label only — real claim refs are minted by the
+  // supervisor at claim time and look nothing like this.
+  plannedClaimLabel: string
+  slot: number
+  workerKind: FleetRunFormState["workerKind"]
+}>
+
+type FleetRunView =
+  | { readonly phase: "idle" }
+  | { readonly phase: "preview"; readonly slots: readonly FleetRunPreviewSlot[] }
+  | { readonly phase: "loading"; readonly slots: readonly FleetRunPreviewSlot[] }
+  | { readonly phase: "error"; readonly message: string; readonly slots?: readonly FleetRunPreviewSlot[] }
+  | {
+      readonly phase: "ready"
+      readonly result: KhalaCodeDesktopFleetRunStartResult
+      readonly slots: readonly FleetRunPreviewSlot[]
+    }
 
 type FleetView =
   | { readonly phase: "loading" }
@@ -305,6 +340,52 @@ const textInput = (
   return wrapper
 }
 
+const fleetRunTextInput = (
+  name: keyof FleetRunFormState,
+  label: string,
+  value: string,
+  handlers: Handlers,
+  options: Readonly<{
+    placeholder?: string
+    type?: "number" | "text"
+  }> = {},
+): HTMLElement => {
+  const wrapper = el("label", "khala-fleet-delegate-field")
+  wrapper.append(el("span", "khala-fleet-chip-label", label))
+  const input = el("input", "khala-fleet-delegate-input") as HTMLInputElement
+  input.name = String(name)
+  input.type = options.type ?? "text"
+  input.value = value
+  if (options.placeholder !== undefined) input.placeholder = options.placeholder
+  if (input.type === "number") input.min = "1"
+  input.addEventListener("input", () => handlers.onFleetRunField(name, input.value))
+  wrapper.append(input)
+  return wrapper
+}
+
+const fleetRunSelect = <T extends string>(
+  name: keyof FleetRunFormState,
+  label: string,
+  value: T,
+  options: readonly (readonly [T, string])[],
+  handlers: Handlers,
+): HTMLElement => {
+  const wrapper = el("label", "khala-fleet-delegate-field")
+  wrapper.append(el("span", "khala-fleet-chip-label", label))
+  const select = el("select", "khala-fleet-delegate-input") as HTMLSelectElement
+  select.name = String(name)
+  for (const [optionValue, optionLabel] of options) {
+    const option = el("option") as HTMLOptionElement
+    option.value = optionValue
+    option.textContent = optionLabel
+    option.selected = value === optionValue
+    select.append(option)
+  }
+  select.addEventListener("change", () => handlers.onFleetRunField(name, select.value))
+  wrapper.append(select)
+  return wrapper
+}
+
 const renderDelegateResult = (
   container: HTMLElement,
   run: DelegateRunView,
@@ -456,6 +537,130 @@ const renderDelegateRunner = (
 
   section.append(formEl)
   renderDelegateResult(section, run)
+  container.append(section)
+}
+
+const renderFleetRunResult = (
+  container: HTMLElement,
+  run: FleetRunView,
+): void => {
+  if (run.phase === "idle") return
+  const output = el("div", "khala-fleet-delegate-output")
+  if (run.phase === "error") {
+    output.dataset.state = "blocked"
+    output.append(
+      badge("missing", "Blocked"),
+      el("p", "khala-fleet-error", run.message),
+    )
+  } else if (run.phase === "loading") {
+    output.dataset.state = "loading"
+    output.append(
+      badge("online", "Starting"),
+      el("p", "khala-fleet-empty", "Starting supervised FleetRun…"),
+    )
+  } else if (run.phase === "ready") {
+    output.dataset.state = run.result.run.state
+    const chips = el("div", "khala-fleet-chips")
+    chips.append(
+      badge("online", titleize(run.result.run.state)),
+      detailChip("run", run.result.run.runRef),
+      detailChip("target", String(run.result.run.targetConcurrency)),
+      detailChip("source", run.result.run.workSource.kind),
+      detailChip("supervisor", run.result.supervisorStarted ? "started" : "not started"),
+    )
+    output.append(chips)
+  } else {
+    output.dataset.state = "preview"
+    output.append(
+      badge("ready", "Dry-run preview"),
+      el("p", "khala-fleet-empty", "Planned first wave before starting."),
+    )
+  }
+
+  const slots = "slots" in run ? run.slots : []
+  if (slots.length > 0) {
+    const list = el("div", "khala-fleet-run-preview")
+    for (const slot of slots) {
+      const row = el("article", "khala-fleet-run-preview-slot")
+      row.append(
+        detailChip(`slot ${slot.slot}`, slot.accountRef),
+        detailChip("planned", slot.plannedClaimLabel),
+        detailChip("worker", slot.workerKind),
+      )
+      list.append(row)
+    }
+    output.append(list)
+  }
+  container.append(output)
+}
+
+const renderFleetRunStarter = (
+  container: HTMLElement,
+  form: FleetRunFormState,
+  run: FleetRunView,
+  handlers: Handlers,
+): void => {
+  const section = el("section", "khala-fleet-section khala-fleet-delegate khala-fleet-run-start")
+  section.append(sectionHeader("Start fleet run", "supervised FleetRun"))
+
+  const formEl = el("form", "khala-fleet-delegate-form") as HTMLFormElement
+  formEl.setAttribute("aria-label", "Start fleet run")
+  formEl.addEventListener("submit", event => {
+    event.preventDefault()
+    handlers.onFleetRunStart()
+  })
+
+  const objective = el("textarea", "khala-fleet-delegate-objective") as HTMLTextAreaElement
+  objective.name = "objective"
+  objective.value = form.objective
+  objective.rows = 2
+  objective.placeholder = "Fleet objective for sustained fan-out"
+  objective.setAttribute("aria-label", "Fleet run objective")
+  objective.addEventListener("input", () => handlers.onFleetRunField("objective", objective.value))
+  formEl.append(objective)
+
+  const controls = el("div", "khala-fleet-delegate-grid")
+  controls.append(
+    fleetRunSelect(
+      "workSource",
+      "source",
+      form.workSource,
+      [
+        ["github_backlog", "GitHub backlog"],
+        ["issue_list", "Issue list"],
+        ["fixture", "Fixture"],
+      ],
+      handlers,
+    ),
+    fleetRunTextInput("targetConcurrency", "target", form.targetConcurrency, handlers, {
+      placeholder: "25",
+      type: "number",
+    }),
+    fleetRunSelect(
+      "workerKind",
+      "worker",
+      form.workerKind,
+      [
+        ["codex", "Codex"],
+        ["claude", "Claude"],
+        ["auto", "Auto"],
+      ],
+      handlers,
+    ),
+  )
+  formEl.append(controls)
+
+  const footer = el("div", "khala-fleet-delegate-footer")
+  const preview = iconButton("Preview first wave", "Eye", "khala-fleet-refresh")
+  preview.addEventListener("click", handlers.onFleetRunPreview)
+  const start = iconButton(run.phase === "loading" ? "Starting" : "Start fleet run", "Play", "khala-fleet-run")
+  start.type = "submit"
+  start.disabled = run.phase === "loading"
+  footer.append(preview, start)
+  formEl.append(footer)
+
+  section.append(formEl)
+  renderFleetRunResult(section, run)
   container.append(section)
 }
 
@@ -863,6 +1068,8 @@ const render = (
   activeConnect: ConnectView | null,
   delegateForm: FleetDelegateFormState,
   delegateRun: DelegateRunView,
+  fleetRunForm: FleetRunFormState,
+  fleetRun: FleetRunView,
   optimizationRun: OptimizationRunView,
 ): void => {
   container.replaceChildren()
@@ -890,6 +1097,7 @@ const render = (
   // visible and live below it.
   if (activeConnect !== null) renderConnecting(body, activeConnect, handlers)
   renderDelegateRunner(body, delegateForm, delegateRun, handlers)
+  renderFleetRunStarter(body, fleetRunForm, fleetRun, handlers)
   renderOptimizationRunner(body, optimizationRun, handlers)
   if (view.phase === "loading") {
     body.append(el("p", "khala-fleet-empty", "Inspecting Codex fleet…"))
@@ -921,6 +1129,14 @@ export const mountFleetPanel = (
     verify: "",
   }
   let delegateRun: DelegateRunView = { phase: "idle" }
+  let fleetRunForm: FleetRunFormState = {
+    objective: "Run the public-safe fixture backlog through the Codex fleet.",
+    targetConcurrency: "2",
+    workerKind: "codex",
+    workSource: "fixture",
+  }
+  let fleetRun: FleetRunView = { phase: "idle" }
+  let fleetRunInFlight = false
   let optimizationInFlight = false
   let optimizationRun: OptimizationRunView = { phase: "idle" }
   let lastData: KhalaCodeDesktopFleetStatus | null = null
@@ -950,8 +1166,59 @@ export const mountFleetPanel = (
       activeConnect,
       delegateForm,
       delegateRun,
+      fleetRunForm,
+      fleetRun,
       optimizationRun,
     )
+
+  const fleetRunPreview = (): readonly FleetRunPreviewSlot[] | string => {
+    const targetConcurrency = Number.parseInt(fleetRunForm.targetConcurrency, 10)
+    if (!Number.isInteger(targetConcurrency) || targetConcurrency < 1) {
+      return "Fleet run target concurrency must be a positive integer."
+    }
+    if (lastData === null) return "Fleet status must load before previewing a run."
+    const accounts = lastData.accounts.filter(
+      account => accountReadinessState(account.readiness) === "ready",
+    )
+    if (accounts.length === 0) return "No ready worker accounts are available for the first wave."
+    const slots: FleetRunPreviewSlot[] = []
+    for (const account of accounts) {
+      const available = account.capacity?.available ?? 1
+      const slotCount = Math.max(0, available)
+      for (let index = 0; index < slotCount && slots.length < targetConcurrency; index += 1) {
+        const slot = slots.length + 1
+        slots.push({
+          accountRef: account.accountRef,
+          plannedClaimLabel: `planned claim #${slot} (${fleetRunForm.workSource})`,
+          slot,
+          workerKind: fleetRunForm.workerKind,
+        })
+      }
+      if (slots.length >= targetConcurrency) break
+    }
+    if (slots.length === 0) return "No available worker slots are available for the first wave."
+    return slots
+  }
+
+  const fleetRunRequest = (): KhalaCodeDesktopFleetRunStartRequest | string => {
+    const objective = fleetRunForm.objective.trim()
+    if (objective.length === 0) return "Fleet run requires an objective."
+    const targetConcurrency = Number.parseInt(fleetRunForm.targetConcurrency, 10)
+    if (!Number.isInteger(targetConcurrency) || targetConcurrency < 1) {
+      return "Fleet run target concurrency must be a positive integer."
+    }
+    if (fleetRunForm.workerKind !== "codex") {
+      return `${titleize(fleetRunForm.workerKind)} FleetRun starts are accepted by the form but only Codex is wired in this build.`
+    }
+    return {
+      objective,
+      targetConcurrency,
+      workerKind: "codex",
+      workSource: {
+        kind: fleetRunForm.workSource,
+      },
+    }
+  }
 
   const delegateRequest = (): KhalaCodeDesktopFleetDelegateRunRequest | string => {
     const objective = delegateForm.objective.trim()
@@ -1006,6 +1273,22 @@ export const mountFleetPanel = (
       if (field === "mode") paint()
     },
     onDelegateRun: () => onDelegateRun(),
+    onFleetRunField: (field, value) => {
+      fleetRunForm = {
+        ...fleetRunForm,
+        [field]: value,
+      } as FleetRunFormState
+      if (fleetRun.phase !== "loading") fleetRun = { phase: "idle" }
+      paint()
+    },
+    onFleetRunPreview: () => {
+      const preview = fleetRunPreview()
+      fleetRun = typeof preview === "string"
+        ? { phase: "error", message: preview }
+        : { phase: "preview", slots: preview }
+      paint()
+    },
+    onFleetRunStart: () => onFleetRunStart(),
     onLoadGymDemoProof: () => onLoadGymDemoProof(),
     onOptimizationStart: () => onOptimizationStart(),
     onRefresh: () => void refresh(),
@@ -1043,6 +1326,41 @@ export const mountFleetPanel = (
         paint()
       } finally {
         delegateInFlight = false
+      }
+    })()
+  }
+
+  const onFleetRunStart = (): void => {
+    if (fleetRunInFlight) return
+    const preview = fleetRunPreview()
+    if (typeof preview === "string") {
+      fleetRun = { phase: "error", message: preview }
+      paint()
+      return
+    }
+    const request = fleetRunRequest()
+    if (typeof request === "string") {
+      fleetRun = { phase: "error", message: request, slots: preview }
+      paint()
+      return
+    }
+    fleetRunInFlight = true
+    fleetRun = { phase: "loading", slots: preview }
+    paint()
+    void (async () => {
+      try {
+        const result = await options.fleetRunStart(request)
+        fleetRun = { phase: "ready", result, slots: preview }
+        await refresh()
+      } catch (error) {
+        fleetRun = {
+          phase: "error",
+          message: error instanceof Error ? error.message : String(error),
+          slots: preview,
+        }
+        paint()
+      } finally {
+        fleetRunInFlight = false
       }
     })()
   }
@@ -1099,6 +1417,8 @@ export const mountFleetPanel = (
           activeConnect,
           delegateForm,
           delegateRun,
+          fleetRunForm,
+          fleetRun,
           optimizationRun,
         )
         return
@@ -1161,6 +1481,8 @@ export const mountFleetPanel = (
           activeConnect,
           delegateForm,
           delegateRun,
+          fleetRunForm,
+          fleetRun,
           optimizationRun,
         )
       } else {
