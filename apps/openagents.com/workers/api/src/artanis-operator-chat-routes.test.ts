@@ -336,7 +336,7 @@ describe('POST /api/operator/artanis/chat — grounded Khala-powered reply', () 
 
     const response = await runRoute(
       deps,
-      post({ messages: [{ content: 'give me the full plan', role: 'user' }] }),
+      post({ messages: [{ content: 'give me the full answer', role: 'user' }] }),
     )
     expect(response.status).toBe(200)
     const json = (await response.json()) as Record<string, unknown>

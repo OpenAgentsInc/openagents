@@ -108,6 +108,8 @@ describe('Pylon install-to-bitcoin launch smoke', () => {
         ],
         operatorApprovedLiveSpend: true,
         paymentReceiptRefs: ['payment_receipt.public.live_small_sats.redacted'],
+        sendReadinessCapacityRef:
+          'capacity.mdk_agent_wallet.send.sufficient_for_scoped_smoke',
         settlementReceiptRefs: [
           'settlement.public.live_small_sats.receipt_recorded',
         ],
