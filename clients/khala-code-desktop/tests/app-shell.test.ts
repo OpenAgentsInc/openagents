@@ -1042,9 +1042,12 @@ describe("khala code desktop app shell", () => {
 
   test("starts without a seeded assistant greeting", async () => {
     const main = await Bun.file(new URL("../src/ui/main.ts", import.meta.url)).text()
+    const model = await Bun.file(new URL("../src/ui/main-shell-model.ts", import.meta.url)).text()
 
-    expect(main).toContain("let messages: KhalaCodeDesktopMessage[] = []")
-    expect(main).toContain("messages = []")
+    expect(main).toContain("initialKhalaCodeMainShellModel")
+    expect(main).toContain("setShellMessages([])")
+    expect(main).not.toContain("let messages")
+    expect(model).toContain("messages: []")
     expect(main).not.toContain("initialMessages")
     expect(main).not.toContain("Khala Code is awake")
     expect(main).not.toContain("assistant-wake")
@@ -1155,6 +1158,7 @@ describe("khala code desktop app shell", () => {
   test("wires the Codex thread sidebar to app-server thread lifecycle RPCs", async () => {
     const html = await Bun.file(new URL("../src/ui/index.html", import.meta.url)).text()
     const main = await Bun.file(new URL("../src/ui/main.ts", import.meta.url)).text()
+    const model = await Bun.file(new URL("../src/ui/main-shell-model.ts", import.meta.url)).text()
     const panel = await Bun.file(new URL("../src/ui/codex-thread-sidebar.ts", import.meta.url)).text()
     const runtime = await Bun.file(new URL("../src/bun/codex-app-server-chat-runtime.ts", import.meta.url)).text()
     const css = await Bun.file(new URL("../src/ui/styles.css", import.meta.url)).text()
@@ -1163,7 +1167,7 @@ describe("khala code desktop app shell", () => {
     expect(main).toContain("mountCodexThreadSidebar")
     expect(main).toContain("khala-code-desktop.active-thread-id.v1")
     expect(main).toContain("localStorage.removeItem(activeThreadIdStorageKey)")
-    expect(main).toContain("let activeCodexThreadId: string | null = null")
+    expect(model).toContain("activeCodexThreadId: null")
     expect(main).toContain("THREAD_MESSAGE_CACHE_LIMIT")
     expect(main).toContain("THREAD_PREFETCH_LIMIT")
     expect(main).toContain("threadSwitchPerformance")
@@ -1186,6 +1190,8 @@ describe("khala code desktop app shell", () => {
     expect(main).toContain("sessionCatalog")
     expect(main).toContain("sessionCatalogEntryToThreadSummary")
     expect(main).toContain("activateCodexThread")
+    expect(main).toContain("const hydratedVisibleMessages = shellModel().messages")
+    expect(main).toContain("visibleMessages: hydratedVisibleMessages")
     expect(main).toContain("response.backend.threadId")
     expect(main).toContain("recentThreadIndexForDigitKey")
     expect(main).toContain("recentThreadHotkeyIndexForEvent")
@@ -1194,10 +1200,10 @@ describe("khala code desktop app shell", () => {
     expect(main).toContain("threadSidebar.selectAdjacentRecentThread(recentThreadCycleDirection)")
     expect(main).toContain("codexThreadRead({")
     expect(main).toContain("onThreadSelectionStarted: beginCodexThreadSwitch")
-    expect(main).toContain("isThreadStreaming: threadId => activeCodexThreadId === threadId && pendingTurn")
-    expect(main).toContain("threadSidebar?.setActiveThreadId(activeCodexThreadId)")
+    expect(main).toContain("isThreadStreaming: threadId => shellModel().activeCodexThreadId === threadId && shellModel().pendingTurn")
+    expect(main).toContain("threadSidebar?.setActiveThreadId(shellModel().activeCodexThreadId)")
     expect(main).toContain(
-      "const request: KhalaCodeDesktopChatTurnRequest = {\n      ...(imageAttachments.length === 0 ? {} : { attachments: imageAttachments }),\n      messages,\n      sessionId,\n      ...(activeCodexThreadId === null ? { startNewThread: true } : { threadId: activeCodexThreadId }),\n      turnId,\n    }",
+      "const request: KhalaCodeDesktopChatTurnRequest = {\n      ...(imageAttachments.length === 0 ? {} : { attachments: imageAttachments }),\n      messages: shellModel().messages,\n      sessionId,\n      ...(activeThreadId === null ? { startNewThread: true } : { threadId: activeThreadId }),\n      turnId,\n    }",
     )
     expect(main).toContain("const imageAttachments = await imageAttachmentsForSubmit(attachments)")
     expect(panel).toContain("Search Codex threads")
@@ -1539,8 +1545,8 @@ describe("khala code desktop app shell", () => {
     const main = await Bun.file(new URL("../src/ui/main.ts", import.meta.url)).text()
     const css = await Bun.file(new URL("../src/ui/styles.css", import.meta.url)).text()
 
-    expect(main).toContain("sendButton.disabled = !pendingTurn && !canSubmitComposer()")
-    expect(main).toContain('sendButton.type = pendingTurn ? "button" : "submit"')
+    expect(main).toContain("sendButton.disabled = !shellModel().pendingTurn && !canSubmitComposer()")
+    expect(main).toContain('sendButton.type = shellModel().pendingTurn ? "button" : "submit"')
     expect(main).toContain("stopActiveTurn")
     expect(main).not.toContain("composerInput.disabled = pendingTurn")
     expect(main).toContain("requestAnimationFrame(focusComposerInput)")
@@ -1558,17 +1564,18 @@ describe("khala code desktop app shell", () => {
     expect(sidebar).not.toContain("options.startThread()")
     expect(sidebar).not.toContain("options.onThreadStarted")
     expect(main).toContain("const beginNewCodexThread = (): void => {")
-    expect(main).toContain("setActiveCodexThreadId(null)\n  messages = []")
+    expect(main).toContain("setActiveCodexThreadId(null)\n  setShellMessages([])")
     expect(main).toContain("onNewThreadRequested: beginNewCodexThread")
   })
 
   test("keeps transcript scrolling user-controlled during streaming updates", async () => {
     const main = await Bun.file(new URL("../src/ui/main.ts", import.meta.url)).text()
+    const model = await Bun.file(new URL("../src/ui/main-shell-model.ts", import.meta.url)).text()
     const css = await Bun.file(new URL("../src/ui/styles.css", import.meta.url)).text()
 
     expect(main).toContain("const isNearTranscriptEnd")
-    expect(main).toContain("let transcriptPinnedToEnd = true")
-    expect(main).toContain("const stickToEnd = transcriptPinnedToEnd && isNearTranscriptEnd()")
+    expect(model).toContain("transcriptPinnedToEnd: true")
+    expect(main).toContain("const stickToEnd = shellModel().transcriptPinnedToEnd && isNearTranscriptEnd()")
     expect(main).toContain("const previousScrollTop = messageList.scrollTop")
     expect(main).toContain("setTranscriptScrollTop(previousScrollTop)")
     expect(main).toContain("proxyTranscriptWheel")
@@ -1600,18 +1607,19 @@ describe("khala code desktop app shell", () => {
 
   test("shows a Thinking shimmer until the first streamed response event", async () => {
     const main = await Bun.file(new URL("../src/ui/main.ts", import.meta.url)).text()
+    const model = await Bun.file(new URL("../src/ui/main-shell-model.ts", import.meta.url)).text()
     const css = await Bun.file(new URL("../src/ui/styles.css", import.meta.url)).text()
 
     expect(main).toContain("@openagentsinc/ui/ai-elements/shimmer")
-    expect(main).toContain("let thinkingTurnId: string | null = null")
+    expect(model).toContain("thinkingTurnId: null")
     expect(main).toContain("renderThinkingIndicator")
     expect(main).toContain("message-bubble--thinking")
     expect(main).toContain('shimmer.textContent = "Thinking"')
-    expect(main).toContain("thinkingTurnId = turnId")
+    expect(main).toContain("shellModel().thinkingTurnId = turnId")
     expect(main).toContain('event.type === "message_start"')
     expect(main).toContain('event.type === "message_delta"')
     expect(main).toContain('event.type === "message_replace"')
-    expect(main).toContain("thinkingTurnId = null")
+    expect(main).toContain("shellModel().thinkingTurnId = null")
     expect(css).toContain(".message-bubble--thinking")
     expect(css).toContain(".message-bubble--thinking .oa-ai-shimmer")
     expect(css).toContain("font-size: 0.8125rem")

@@ -16,7 +16,6 @@ import {
   type ComposerAttachmentSource,
   type ComposerAttachmentUploadReceipt,
   type ComposerFileLike,
-  type ComposerState,
   type ComposerTransaction,
 } from "@openagentsinc/composer-state"
 import {
@@ -97,13 +96,16 @@ import {
   recentThreadIndexForDigitKey,
   recentThreadsForHotkeys,
 } from "./thread-hotkeys"
+import {
+  initialKhalaCodeMainShellModel,
+  updateKhalaCodeMainShellModel,
+  type KhalaCodeMainShellMessage,
+  type KhalaCodeMainShellSlashCommand,
+} from "./main-shell-model"
 import "./styles.css"
 
 type DesktopRpc = ReturnType<typeof Electroview.defineRPC<KhalaCodeDesktopRPCSchema>>
 type DesktopRpcRequests = KhalaCodeDesktopRPCSchema["requests"]
-type SlashCommandEntry =
-  Awaited<ReturnType<DesktopRpcRequests["slashCommandList"]>>["commands"][number]
-
 const rpcFailureDetail = (payload: unknown): string => {
   if (payload !== null && typeof payload === "object") {
     const record = payload as Record<string, unknown>
@@ -647,21 +649,10 @@ const sendButton = requireElement<HTMLButtonElement>("#send-button")
 const attachButton = requireElement<HTMLButtonElement>("#attach-button")
 const fileInput = requireElement<HTMLInputElement>("#file-input")
 
-let messages: KhalaCodeDesktopMessage[] = []
-let composerState: ComposerState = emptyComposerState()
-let pendingTurn = false
-let thinkingTurnId: string | null = null
-let lastTurnFailed = false
-let lastSubmittedDraft = ""
-let dragActive = false
-let transcriptPinnedToEnd = true
-let slashCommands: SlashCommandEntry[] = []
-let slashCommandLoadInFlight: Promise<void> | null = null
 const activeTurnIds = new Set<string>()
 const objectUrls = new Set<string>()
 const localTextAttachments = new Map<string, string>()
 const localAttachmentFiles = new Map<string, File>()
-let composerAttachmentReceipts: ComposerAttachmentUploadReceipt[] = []
 const sessionIdStorageKey = "khala-code-desktop.session-id.v1"
 const activeThreadIdStorageKey = "khala-code-desktop.active-thread-id.v1"
 const storedSessionId = localStorage.getItem(sessionIdStorageKey)
@@ -671,10 +662,6 @@ const sessionId =
     : `khala-code-desktop-${Date.now().toString(36)}`
 localStorage.setItem(sessionIdStorageKey, sessionId)
 localStorage.removeItem(activeThreadIdStorageKey)
-let activeCodexThreadId: string | null = null
-let selectedHarnessMode: KhalaCodeDesktopRuntimeMode = "codex_harness"
-let harnessEnvOverride: KhalaCodeDesktopRuntimeMode | null = null
-let lastResponseRuntimeMode: KhalaCodeDesktopRuntimeMode = "codex_harness"
 
 const harnessOptions: readonly {
   readonly label: string
@@ -793,8 +780,9 @@ const cachedThreadMessages = (
 }
 
 const cacheVisibleThreadMessages = (): void => {
-  if (activeCodexThreadId === null) return
-  cacheThreadMessages(activeCodexThreadId, messages)
+  const threadId = shellModel().activeCodexThreadId
+  if (threadId === null) return
+  cacheThreadMessages(threadId, shellModel().messages)
 }
 
 const recentMessagesForInitialThreadRender = (
@@ -901,8 +889,8 @@ const scheduleFullThreadHydration = (
     return
   }
   const hydrate = (): void => {
-    if (activeCodexThreadId !== input.threadId || messages !== input.visibleMessages) return
-    messages = cloneMessages(input.fullMessages)
+    if (shellModel().activeCodexThreadId !== input.threadId || shellModel().messages !== input.visibleMessages) return
+    setShellMessages(cloneMessages(input.fullMessages))
     render()
     if (input.selectionId !== undefined) {
       markThreadSwitchPaint(input.selectionId, "hydratedRenderMs")
@@ -915,10 +903,28 @@ const scheduleFullThreadHydration = (
   }
 }
 
-let threadTokenSummary = emptyThreadTokenSummary(null)
-let threadTokenPopoverOpen = false
-let threadTokenRefreshInFlight = false
-let threadTokenRefreshQueued = false
+const mainShellStore = {
+  model: initialKhalaCodeMainShellModel({
+    threadTokenSummary: emptyThreadTokenSummary(null),
+  }),
+}
+
+const dispatchMainShell = (message: KhalaCodeMainShellMessage): void => {
+  mainShellStore.model = updateKhalaCodeMainShellModel(
+    mainShellStore.model,
+    message,
+  )
+}
+
+const shellModel = (): typeof mainShellStore.model => mainShellStore.model
+
+const setShellMessages = (
+  messages: readonly KhalaCodeDesktopMessage[],
+): void => dispatchMainShell({ _tag: "MessagesChanged", messages })
+
+const setShellComposerState = (
+  state: typeof mainShellStore.model.composerState,
+): void => dispatchMainShell({ _tag: "ComposerStateChanged", state })
 
 const compactTokenFormatter = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 1,
@@ -969,14 +975,14 @@ const renderMessage = (message: KhalaCodeDesktopMessage): HTMLElement => {
 }
 
 const setHarnessMode = async (mode: KhalaCodeDesktopRuntimeMode): Promise<void> => {
-  selectedHarnessMode = mode
+  shellModel().selectedHarnessMode = mode
   renderComposer()
   try {
     const setting = await rpc.request.harnessSettingWrite({ mode })
-    selectedHarnessMode = setting.mode
-    harnessEnvOverride = setting.envOverride
+    shellModel().selectedHarnessMode = setting.mode
+    shellModel().harnessEnvOverride = setting.envOverride
   } catch {
-    selectedHarnessMode = mode
+    shellModel().selectedHarnessMode = mode
   }
   renderComposer()
 }
@@ -984,13 +990,13 @@ const setHarnessMode = async (mode: KhalaCodeDesktopRuntimeMode): Promise<void> 
 const refreshHarnessSetting = async (): Promise<void> => {
   try {
     const setting = await rpc.request.harnessSettingRead()
-    selectedHarnessMode = setting.mode
-    harnessEnvOverride = setting.envOverride
-    lastResponseRuntimeMode = setting.mode
+    shellModel().selectedHarnessMode = setting.mode
+    shellModel().harnessEnvOverride = setting.envOverride
+    shellModel().lastResponseRuntimeMode = setting.mode
   } catch {
-    selectedHarnessMode = "codex_harness"
-    harnessEnvOverride = null
-    lastResponseRuntimeMode = "codex_harness"
+    shellModel().selectedHarnessMode = "codex_harness"
+    shellModel().harnessEnvOverride = null
+    shellModel().lastResponseRuntimeMode = "codex_harness"
   }
   renderComposer()
 }
@@ -1000,15 +1006,15 @@ void refreshHarnessSetting()
 const renderHarnessPill = (): HTMLElement => {
   const pill = document.createElement("div")
   pill.className = "khala-harness-pill"
-  pill.dataset.envOverride = harnessEnvOverride === null ? "false" : "true"
+  pill.dataset.envOverride = shellModel().harnessEnvOverride === null ? "false" : "true"
   pill.setAttribute("role", "group")
   for (const option of harnessOptions) {
     const button = document.createElement("button")
     button.type = "button"
     button.className = "khala-harness-pill-button"
-    button.dataset.active = selectedHarnessMode === option.mode ? "true" : "false"
+    button.dataset.active = shellModel().selectedHarnessMode === option.mode ? "true" : "false"
     button.textContent = option.label
-    button.disabled = harnessEnvOverride !== null
+    button.disabled = shellModel().harnessEnvOverride !== null
     button.addEventListener("click", () => void setHarnessMode(option.mode))
     pill.append(button)
   }
@@ -1018,17 +1024,17 @@ const renderHarnessPill = (): HTMLElement => {
 const renderRuntimeBadge = (): HTMLElement => {
   const badge = document.createElement("span")
   badge.className = "khala-runtime-badge"
-  badge.dataset.runtimeMode = lastResponseRuntimeMode
-  badge.textContent = harnessLabel(lastResponseRuntimeMode)
+  badge.dataset.runtimeMode = shellModel().lastResponseRuntimeMode
+  badge.textContent = harnessLabel(shellModel().lastResponseRuntimeMode)
   return badge
 }
 
 const renderThinkingIndicator = (): HTMLElement | null => {
-  if (thinkingTurnId === null) return null
+  if (shellModel().thinkingTurnId === null) return null
 
   const article = document.createElement("article")
   article.className = `${messageClass("assistant")} message-bubble--thinking`
-  article.dataset.messageId = `thinking-${thinkingTurnId}`
+  article.dataset.messageId = `thinking-${shellModel().thinkingTurnId}`
   article.dataset.khalaThinking = "true"
 
   const body = document.createElement("div")
@@ -1058,7 +1064,7 @@ const canScrollTranscript = (): boolean =>
   maxTranscriptScrollTop() > 1
 
 const scrollToEnd = (behavior: ScrollBehavior = "auto"): void => {
-  transcriptPinnedToEnd = true
+  shellModel().transcriptPinnedToEnd = true
   messageList.scrollTo({
     top: messageList.scrollHeight,
     behavior,
@@ -1067,7 +1073,7 @@ const scrollToEnd = (behavior: ScrollBehavior = "auto"): void => {
 
 const setTranscriptScrollTop = (top: number): void => {
   messageList.scrollTop = Math.max(0, Math.min(top, maxTranscriptScrollTop()))
-  transcriptPinnedToEnd = isNearTranscriptEnd()
+  shellModel().transcriptPinnedToEnd = isNearTranscriptEnd()
 }
 
 const wheelDeltaPixels = (event: WheelEvent): number => {
@@ -1138,8 +1144,8 @@ const recentThreadCycleDirectionForEvent = (
 }
 
 const statusForComposer = (): CommandComposerStatus => {
-  if (pendingTurn) return "streaming"
-  if (lastTurnFailed) return "error"
+  if (shellModel().pendingTurn) return "streaming"
+  if (shellModel().lastTurnFailed) return "error"
   return "ready"
 }
 
@@ -1197,15 +1203,15 @@ const appendThreadTokenRow = (
 }
 
 const renderThreadTokenCounter = (): void => {
-  const summary = threadTokenSummary
+  const summary = shellModel().threadTokenSummary
   threadTokenCounterValue.textContent = formatCompactTokens(summary.totalTokens)
   threadTokenCounter.setAttribute(
     "aria-label",
     `${formatExactTokens(summary.totalTokens)} thread tokens, ${formatExactTokens(summary.leaderboardSyncedTokens)} synced to leaderboard`,
   )
-  threadTokenCounter.setAttribute("aria-expanded", String(threadTokenPopoverOpen))
-  threadTokenPopover.hidden = !threadTokenPopoverOpen
-  if (!threadTokenPopoverOpen) return
+  threadTokenCounter.setAttribute("aria-expanded", String(shellModel().threadTokenPopoverOpen))
+  threadTokenPopover.hidden = !shellModel().threadTokenPopoverOpen
+  if (!shellModel().threadTokenPopoverOpen) return
 
   const title = document.createElement("div")
   title.className = "khala-thread-token-popover-title"
@@ -1258,38 +1264,38 @@ const renderThreadTokenCounter = (): void => {
 }
 
 const refreshThreadTokenSummary = async (): Promise<void> => {
-  const threadId = activeCodexThreadId
+  const threadId = shellModel().activeCodexThreadId
   if (threadId === null) {
-    threadTokenSummary = emptyThreadTokenSummary(null)
+    shellModel().threadTokenSummary = emptyThreadTokenSummary(null)
     renderThreadTokenCounter()
     return
   }
-  if (threadTokenRefreshInFlight) {
-    threadTokenRefreshQueued = true
+  if (shellModel().threadTokenRefreshInFlight) {
+    shellModel().threadTokenRefreshQueued = true
     return
   }
 
-  threadTokenRefreshInFlight = true
+  shellModel().threadTokenRefreshInFlight = true
   try {
     const summary = await rpc.request.threadTokenSummary({ threadId })
-    if (activeCodexThreadId === threadId) {
-      threadTokenSummary = summary
+    if (shellModel().activeCodexThreadId === threadId) {
+      shellModel().threadTokenSummary = summary
       renderThreadTokenCounter()
     }
   } catch {
-    if (activeCodexThreadId === threadId) {
-      threadTokenSummary = {
+    if (shellModel().activeCodexThreadId === threadId) {
+      shellModel().threadTokenSummary = {
         ...emptyThreadTokenSummary(threadId),
-        totalTokens: threadTokenSummary.threadId === threadId
-          ? threadTokenSummary.totalTokens
+        totalTokens: shellModel().threadTokenSummary.threadId === threadId
+          ? shellModel().threadTokenSummary.totalTokens
           : 0,
       }
       renderThreadTokenCounter()
     }
   } finally {
-    threadTokenRefreshInFlight = false
-    if (threadTokenRefreshQueued) {
-      threadTokenRefreshQueued = false
+    shellModel().threadTokenRefreshInFlight = false
+    if (shellModel().threadTokenRefreshQueued) {
+      shellModel().threadTokenRefreshQueued = false
       void refreshThreadTokenSummary()
     }
   }
@@ -1331,16 +1337,16 @@ const statusTextForAttachment = (
 
 const canSubmitComposer = (): boolean =>
   composerInput.value.trim() !== "" ||
-  composerState.doc.attachments.length > 0 ||
-  (lastTurnFailed && lastSubmittedDraft.trim() !== "")
+  shellModel().composerState.doc.attachments.length > 0 ||
+  (shellModel().lastTurnFailed && shellModel().lastSubmittedDraft.trim() !== "")
 
 const renderMessages = (): void => {
   cacheVisibleThreadMessages()
-  const stickToEnd = transcriptPinnedToEnd && isNearTranscriptEnd()
+  const stickToEnd = shellModel().transcriptPinnedToEnd && isNearTranscriptEnd()
   const previousScrollTop = messageList.scrollTop
   const thinking = renderThinkingIndicator()
   messageList.replaceChildren(
-    ...messages.map(renderMessage),
+    ...shellModel().messages.map(renderMessage),
     ...(thinking === null ? [] : [thinking]),
   )
   requestAnimationFrame(() => {
@@ -1361,7 +1367,7 @@ const buttonLabel = (status: CommandComposerStatus): string => {
 const updateComposerHudProjection = (): void => {
   if (composerHudRuntime === null) return
   const attachments: ReadonlyArray<CommandComposerAttachmentProjection> =
-    composerState.doc.attachments.map((attachment) => ({
+    shellModel().composerState.doc.attachments.map((attachment) => ({
       id: attachment.id,
       kind:
         attachment.kind === "snippet"
@@ -1371,17 +1377,17 @@ const updateComposerHudProjection = (): void => {
             : attachment.kind,
       status: attachment.status,
       selected:
-        composerState.selection.selectedAttachmentId === attachment.id,
+        shellModel().composerState.selection.selectedAttachmentId === attachment.id,
     }))
   composerHudRuntime.handle.setProjection({
     focused: document.activeElement === composerInput,
-    dragActive,
+    dragActive: shellModel().dragActive,
     reducedMotion: prefersReducedMotion?.matches === true,
     attachments,
     dropcursor: {
-      visible: dragActive,
+      visible: shellModel().dragActive,
       x: 0,
-      intensity: dragActive ? 0.9 : 0,
+      intensity: shellModel().dragActive ? 0.9 : 0,
     },
   })
 }
@@ -1420,14 +1426,14 @@ const openAttachmentPreview = (attachment: CommandComposerAttachmentProps): void
 const applyComposerStateTransaction = (
   transaction: ComposerTransaction,
 ): boolean => {
-  const result = applyComposerTransaction(composerState, transaction)
+  const result = applyComposerTransaction(shellModel().composerState, transaction)
   if (!result.ok) {
-    lastTurnFailed = true
+    shellModel().lastTurnFailed = true
     renderComposer()
     return false
   }
-  composerState = result.state
-  lastTurnFailed = false
+  setShellComposerState(result.state)
+  shellModel().lastTurnFailed = false
   renderComposer()
   return true
 }
@@ -1463,18 +1469,18 @@ const base64FromArrayBuffer = (bytes: ArrayBuffer): string => {
 const pushAttachmentReceipt = (
   receipt: ComposerAttachmentUploadReceipt,
 ): void => {
-  composerAttachmentReceipts = [...composerAttachmentReceipts, receipt]
+  dispatchMainShell({ _tag: "ComposerAttachmentReceiptPushed", receipt })
 }
 
 const attachmentById = (attachmentId: string): ComposerAttachment | undefined =>
-  composerState.doc.attachments.find(attachment => attachment.id === attachmentId)
+  shellModel().composerState.doc.attachments.find(attachment => attachment.id === attachmentId)
 
 const failLocalAttachmentUpload = (
   attachmentId: string,
   errorText: string,
 ): void => {
   const transaction = setComposerAttachmentStatusTransaction(
-    composerState,
+    shellModel().composerState,
     composerAttachmentId(attachmentId),
     { status: "error", errorText },
   )
@@ -1495,7 +1501,7 @@ const runDesktopLocalAttachmentUpload = async (
   bytes: () => Promise<ArrayBuffer>,
 ): Promise<void> => {
   const planned = planComposerAttachmentUpload(
-    composerState,
+    shellModel().composerState,
     composerAttachmentId(attachmentId),
     DEFAULT_DESKTOP_LOCAL_ATTACHMENT_UPLOAD_POLICY,
   )
@@ -1513,7 +1519,7 @@ const runDesktopLocalAttachmentUpload = async (
     const current = attachmentById(attachmentId)
     if (current === undefined) return
     const readyTransaction = readyComposerAttachmentTransaction(
-      composerState,
+      shellModel().composerState,
       composerAttachmentId(attachmentId),
       {
         surface: "desktop-local",
@@ -1543,7 +1549,7 @@ const runDesktopLocalAttachmentUpload = async (
 }
 
 const removeAttachment = (attachmentId: string): void => {
-  const attachment = composerState.doc.attachments.find(
+  const attachment = shellModel().composerState.doc.attachments.find(
     item => item.id === attachmentId,
   )
   if (attachment?.previewUrl !== undefined && objectUrls.has(attachment.previewUrl)) {
@@ -1575,7 +1581,7 @@ const removeAttachment = (attachmentId: string): void => {
 const retryAttachment = (attachmentId: string): void => {
   const attachment = attachmentById(attachmentId)
   const transaction = retryComposerAttachmentTransaction(
-    composerState,
+    shellModel().composerState,
     composerAttachmentId(attachmentId),
   )
   if (transaction !== null) {
@@ -1603,7 +1609,7 @@ const retryAttachment = (attachmentId: string): void => {
     return
   }
   const fallback = setComposerAttachmentStatusTransaction(
-    composerState,
+    shellModel().composerState,
     composerAttachmentId(attachmentId),
     { status: "staged", errorText: null },
   )
@@ -1712,12 +1718,12 @@ const renderAttachment = (
 }
 
 const renderAttachmentRail = (): void => {
-  const attachments = composerState.doc.attachments.map(attachmentPropsFor)
-  composerRail.hidden = attachments.length === 0 && !dragActive
-  composerRail.dataset.oaCommandComposerDragActive = dragActive ? "true" : "false"
+  const attachments = shellModel().composerState.doc.attachments.map(attachmentPropsFor)
+  composerRail.hidden = attachments.length === 0 && !shellModel().dragActive
+  composerRail.dataset.oaCommandComposerDragActive = shellModel().dragActive ? "true" : "false"
   composerRail.replaceChildren(
     ...attachments.map(renderAttachment),
-    ...(dragActive
+    ...(shellModel().dragActive
       ? [
           Object.assign(document.createElement("div"), {
             className: composerClasses.dropcursor,
@@ -1743,26 +1749,24 @@ const slashCommandPlatform = (): string => {
 }
 
 const slashCommandLoadKey = (): string =>
-  `${slashCommandPlatform()}:${pendingTurn ? "active" : "idle"}`
-
-let loadedSlashCommandKey = ""
+  `${slashCommandPlatform()}:${shellModel().pendingTurn ? "active" : "idle"}`
 
 const ensureSlashCommandsLoaded = (): void => {
   const key = slashCommandLoadKey()
-  if (loadedSlashCommandKey === key && slashCommands.length > 0) return
-  if (slashCommandLoadInFlight !== null) return
-  slashCommandLoadInFlight = rpc.request.slashCommandList({
-    activeTurn: pendingTurn,
+  if (shellModel().loadedSlashCommandKey === key && shellModel().slashCommands.length > 0) return
+  if (shellModel().slashCommandLoadInFlight !== null) return
+  shellModel().slashCommandLoadInFlight = rpc.request.slashCommandList({
+    activeTurn: shellModel().pendingTurn,
     platform: slashCommandPlatform(),
     sideConversation: false,
   }).then(response => {
-    slashCommands = [...response.commands]
-    loadedSlashCommandKey = key
+    shellModel().slashCommands = [...response.commands]
+    shellModel().loadedSlashCommandKey = key
   }).catch(() => {
-    slashCommands = []
-    loadedSlashCommandKey = key
+    shellModel().slashCommands = []
+    shellModel().loadedSlashCommandKey = key
   }).finally(() => {
-    slashCommandLoadInFlight = null
+    shellModel().slashCommandLoadInFlight = null
     renderSlashCommandPalette()
   })
 }
@@ -1773,16 +1777,16 @@ const slashCommandQuery = (): string | null => {
   return value.slice(1).split(/\s+/)[0]?.toLowerCase() ?? ""
 }
 
-const matchingSlashCommands = (): readonly SlashCommandEntry[] => {
+const matchingSlashCommands = (): readonly KhalaCodeMainShellSlashCommand[] => {
   const query = slashCommandQuery()
   if (query === null) return []
-  return slashCommands.filter(command =>
+  return shellModel().slashCommands.filter(command =>
     command.command.includes(query) ||
     command.aliases.some(alias => alias.includes(query))
   ).slice(0, 8)
 }
 
-const selectSlashCommand = (command: SlashCommandEntry): void => {
+const selectSlashCommand = (command: KhalaCodeMainShellSlashCommand): void => {
   composerInput.value = command.supportsInlineArgs ? `/${command.command} ` : `/${command.command}`
   composerInput.focus({ preventScroll: true })
   const position = composerInput.value.length
@@ -1829,17 +1833,17 @@ function renderSlashCommandPalette(): void {
 function renderComposer(): void {
   const status = statusForComposer()
   const sendLabel = buttonLabel(status)
-  const attachmentCount = composerState.doc.attachments.length
+  const attachmentCount = shellModel().composerState.doc.attachments.length
 
   composerForm.dataset.oaCommandComposerStatus = status
   composerFrame.dataset.oaCommandComposerFrame = ""
-  sendButton.disabled = !pendingTurn && !canSubmitComposer()
-  sendButton.type = pendingTurn ? "button" : "submit"
+  sendButton.disabled = !shellModel().pendingTurn && !canSubmitComposer()
+  sendButton.type = shellModel().pendingTurn ? "button" : "submit"
   sendButton.title = sendLabel
   sendButton.setAttribute("aria-label", `${sendLabel} message`)
-  sendButton.dataset.oaCommandComposerSubmit = pendingTurn ? "stop" : "send"
+  sendButton.dataset.oaCommandComposerSubmit = shellModel().pendingTurn ? "stop" : "send"
   sendButton.dataset.status = status
-  setButtonIcon(sendButton, pendingTurn ? "stop" : "send")
+  setButtonIcon(sendButton, shellModel().pendingTurn ? "stop" : "send")
   setButtonIcon(attachButton, "attach")
   sendButton.querySelector(".oa-ai-command-composer-submit-label")!.textContent =
     sendLabel
@@ -1897,14 +1901,14 @@ const addMessage = (
     role,
     body,
   }
-  messages = [...messages, message]
+  setShellMessages([...shellModel().messages, message])
   render()
   return message
 }
 
 const appendMessages = (nextMessages: readonly KhalaCodeDesktopMessage[]): void => {
   if (nextMessages.length === 0) return
-  const merged = [...messages]
+  const merged = [...shellModel().messages]
   const indexById = new Map(merged.map((message, index) => [message.id, index]))
   for (const message of nextMessages) {
     const index = indexById.get(message.id)
@@ -1915,12 +1919,12 @@ const appendMessages = (nextMessages: readonly KhalaCodeDesktopMessage[]): void 
       merged[index] = message
     }
   }
-  messages = merged
+  setShellMessages(merged)
   render()
 }
 
 const latestUserMessagePreview = (): string =>
-  [...messages].reverse().find(message => message.role === "user")?.body.trim() ?? ""
+  [...shellModel().messages].reverse().find(message => message.role === "user")?.body.trim() ?? ""
 
 function applyChatTurnEvent(event: KhalaCodeDesktopChatTurnEvent): void {
   if (!activeTurnIds.has(event.turnId)) return
@@ -1939,19 +1943,19 @@ function applyChatTurnEvent(event: KhalaCodeDesktopChatTurnEvent): void {
     event.type === "message_delta" ||
     event.type === "message_replace"
   ) {
-    thinkingTurnId = null
+    shellModel().thinkingTurnId = null
   }
   switch (event.type) {
     case "message_start":
-      pendingTurn = true
+      shellModel().pendingTurn = true
       appendMessages([event.message])
       break
     case "message_delta":
-      messages = messages.map(message =>
+      setShellMessages(shellModel().messages.map(message =>
         message.id === event.messageId
           ? { ...message, body: `${message.body}${event.delta}` }
           : message
-      )
+      ))
       render()
       break
     case "message_replace":
@@ -2009,8 +2013,6 @@ const respondToCodexApproval = async (button: HTMLButtonElement): Promise<void> 
 }
 
 const handledClaudeApprovals = new Set<string>()
-let claudeApprovalDialogOpen = false
-
 const respondToClaudeApprovalRequest = async (
   request: Awaited<ReturnType<DesktopRpcRequests["claudeApprovalPending"]>>["requests"][number],
 ): Promise<void> => {
@@ -2051,16 +2053,16 @@ const respondToClaudeApprovalRequest = async (
 }
 
 const pollClaudeApprovals = async (): Promise<void> => {
-  if (claudeApprovalDialogOpen) return
+  if (shellModel().claudeApprovalDialogOpen) return
   const pending = await controls.claudeApprovalPending().catch(() => null)
   const request = pending?.requests.find(item => !handledClaudeApprovals.has(item.id))
   if (request === undefined) return
   handledClaudeApprovals.add(request.id)
-  claudeApprovalDialogOpen = true
+  shellModel().claudeApprovalDialogOpen = true
   try {
     await respondToClaudeApprovalRequest(request)
   } finally {
-    claudeApprovalDialogOpen = false
+    shellModel().claudeApprovalDialogOpen = false
   }
 }
 
@@ -2117,20 +2119,20 @@ const resetComposerDraft = (): void => {
   localAttachmentFiles.clear()
   localTextAttachments.clear()
   composerInput.value = ""
-  composerState = emptyComposerState()
+  setShellComposerState(emptyComposerState())
   renderComposer()
 }
 
 const stopActiveTurn = (): void => {
-  if (!pendingTurn) return
+  if (!shellModel().pendingTurn) return
   const stoppedTurnIds = [...activeTurnIds]
   for (const turnId of stoppedTurnIds) {
     void rpc.request.codexTurnInterrupt({ sessionId, turnId }).catch(() => undefined)
   }
   activeTurnIds.clear()
-  pendingTurn = false
-  thinkingTurnId = null
-  threadSidebar?.setActiveThreadId(activeCodexThreadId)
+  shellModel().pendingTurn = false
+  shellModel().thinkingTurnId = null
+  threadSidebar?.setActiveThreadId(shellModel().activeCodexThreadId)
   appendMessages([
     {
       body: "Requested Codex interrupt for the active turn. You can keep typing.",
@@ -2146,12 +2148,12 @@ const handleSlashCommandClientAction = async (
 ): Promise<string> => {
   switch (result.action) {
     case "clear_visible_transcript":
-      messages = []
+      setShellMessages([])
       activeTurnIds.clear()
       render()
       return "Cleared the visible transcript."
     case "copy_last_assistant_message": {
-      const assistant = [...messages].reverse().find(message => message.role === "assistant")
+      const assistant = [...shellModel().messages].reverse().find(message => message.role === "assistant")
       if (assistant === undefined) return "No assistant message is available to copy."
       await navigator.clipboard?.writeText(assistant.body)
       return "Copied the last assistant message."
@@ -2190,13 +2192,13 @@ const submitSlashCommand = async (
   draftText: string,
   body: string,
 ): Promise<KhalaCodeDesktopMessage> => {
-  lastSubmittedDraft = draftText
-  lastTurnFailed = false
+  shellModel().lastSubmittedDraft = draftText
+  shellModel().lastTurnFailed = false
   resetComposerDraft()
   const message = addMessage("user", body)
   try {
     const result = await rpc.request.slashCommandDispatch({
-      activeTurn: pendingTurn,
+      activeTurn: shellModel().pendingTurn,
       platform: slashCommandPlatform(),
       raw: draftText,
       sessionId,
@@ -2216,49 +2218,50 @@ const submitSlashCommand = async (
 }
 
 const submitComposer = async (): Promise<KhalaCodeDesktopMessage | null> => {
-  if (pendingTurn) {
+  if (shellModel().pendingTurn) {
     stopActiveTurn()
     return null
   }
   const draftText =
-    composerInput.value.trim() === "" && lastTurnFailed
-      ? lastSubmittedDraft
+    composerInput.value.trim() === "" && shellModel().lastTurnFailed
+      ? shellModel().lastSubmittedDraft
       : composerInput.value.trim()
-  if (draftText === "" && composerState.doc.attachments.length === 0) return null
+  if (draftText === "" && shellModel().composerState.doc.attachments.length === 0) return null
 
-  const attachments = [...composerState.doc.attachments]
+  const attachments = [...shellModel().composerState.doc.attachments]
   const body = submittedBody(draftText, attachments)
   if (draftText.startsWith("/")) {
     return submitSlashCommand(draftText, body)
   }
   const imageAttachments = await imageAttachmentsForSubmit(attachments)
-  lastSubmittedDraft = draftText
-  lastTurnFailed = false
+  shellModel().lastSubmittedDraft = draftText
+  shellModel().lastTurnFailed = false
   resetComposerDraft()
   const message = addMessage("user", body)
   const turnId = nextTurnId()
   activeTurnIds.add(turnId)
-  pendingTurn = true
-  thinkingTurnId = turnId
-  threadSidebar?.setActiveThreadId(activeCodexThreadId)
+  shellModel().pendingTurn = true
+  shellModel().thinkingTurnId = turnId
+  threadSidebar?.setActiveThreadId(shellModel().activeCodexThreadId)
   render()
   requestAnimationFrame(focusComposerInput)
   const turnStartedAt = performance.now()
   try {
+    const activeThreadId = shellModel().activeCodexThreadId
     const request: KhalaCodeDesktopChatTurnRequest = {
       ...(imageAttachments.length === 0 ? {} : { attachments: imageAttachments }),
-      messages,
+      messages: shellModel().messages,
       sessionId,
-      ...(activeCodexThreadId === null ? { startNewThread: true } : { threadId: activeCodexThreadId }),
+      ...(activeThreadId === null ? { startNewThread: true } : { threadId: activeThreadId }),
       turnId,
     }
     const response = await rpc.request.submitChatMessage(request)
     pushQaMetricSample("turn_start.latency_ms", performance.now() - turnStartedAt, {
-      runtimeMode: response.backend.runtimeMode ?? lastResponseRuntimeMode,
+      runtimeMode: response.backend.runtimeMode ?? shellModel().lastResponseRuntimeMode,
     })
     if (activeTurnIds.has(turnId)) {
       if (response.backend.runtimeMode !== undefined) {
-        lastResponseRuntimeMode = response.backend.runtimeMode
+        shellModel().lastResponseRuntimeMode = response.backend.runtimeMode
       }
       if (response.backend.threadId !== undefined) {
         setActiveCodexThreadId(response.backend.threadId)
@@ -2268,12 +2271,12 @@ const submitComposer = async (): Promise<KhalaCodeDesktopMessage | null> => {
         })
         void threadSidebar?.refresh()
       }
-      if (thinkingTurnId === turnId) thinkingTurnId = null
+      if (shellModel().thinkingTurnId === turnId) shellModel().thinkingTurnId = null
       appendMessages(response.messages)
     }
   } catch (error) {
     if (activeTurnIds.has(turnId)) {
-      lastTurnFailed = true
+      shellModel().lastTurnFailed = true
       appendMessages([
         {
           body: `Khala Code turn failed: ${error instanceof Error ? error.message : String(error)}`,
@@ -2284,9 +2287,9 @@ const submitComposer = async (): Promise<KhalaCodeDesktopMessage | null> => {
     }
   } finally {
     activeTurnIds.delete(turnId)
-    if (thinkingTurnId === turnId) thinkingTurnId = null
-    pendingTurn = activeTurnIds.size > 0
-    threadSidebar?.setActiveThreadId(activeCodexThreadId)
+    if (shellModel().thinkingTurnId === turnId) shellModel().thinkingTurnId = null
+    shellModel().pendingTurn = activeTurnIds.size > 0
+    threadSidebar?.setActiveThreadId(shellModel().activeCodexThreadId)
     void threadSidebar?.refresh()
     renderComposer()
     requestAnimationFrame(focusComposerInput)
@@ -2347,7 +2350,7 @@ const stageLargeTextPaste = (text: string): boolean => {
 }
 
 const setDragActive = (active: boolean): void => {
-  dragActive = active
+  shellModel().dragActive = active
   renderComposer()
 }
 
@@ -2443,7 +2446,7 @@ composerForm.addEventListener("submit", event => {
 })
 
 sendButton.addEventListener("click", event => {
-  if (!pendingTurn) return
+  if (!shellModel().pendingTurn) return
   event.preventDefault()
   stopActiveTurn()
 })
@@ -2459,7 +2462,7 @@ fileInput.addEventListener("change", () => {
 })
 
 composerInput.addEventListener("input", () => {
-  lastTurnFailed = false
+  shellModel().lastTurnFailed = false
   renderComposer()
 })
 
@@ -2471,7 +2474,7 @@ composerInput.addEventListener("keydown", event => {
   if (
     event.key === "Enter" &&
     !event.shiftKey &&
-    !pendingTurn &&
+    !shellModel().pendingTurn &&
     canSubmitComposer()
   ) {
     event.preventDefault()
@@ -2532,31 +2535,31 @@ messageList.addEventListener("click", event => {
   void respondToCodexApproval(button)
 })
 messageList.addEventListener("scroll", () => {
-  transcriptPinnedToEnd = isNearTranscriptEnd()
+  shellModel().transcriptPinnedToEnd = isNearTranscriptEnd()
 }, { passive: true })
 threadTokenCounter.addEventListener("click", () => {
-  threadTokenPopoverOpen = !threadTokenPopoverOpen
+  shellModel().threadTokenPopoverOpen = !shellModel().threadTokenPopoverOpen
   renderThreadTokenCounter()
-  if (threadTokenPopoverOpen) void refreshThreadTokenSummary()
+  if (shellModel().threadTokenPopoverOpen) void refreshThreadTokenSummary()
 })
 document.addEventListener("click", event => {
-  if (!threadTokenPopoverOpen) return
+  if (!shellModel().threadTokenPopoverOpen) return
   const target = event.target
   if (target instanceof Node && threadTokenMeter.contains(target)) return
-  threadTokenPopoverOpen = false
+  shellModel().threadTokenPopoverOpen = false
   renderThreadTokenCounter()
 })
 window.addEventListener("wheel", proxyTranscriptWheel, { passive: false })
 window.addEventListener("keydown", event => {
-  if (event.key === "Escape" && threadTokenPopoverOpen) {
-    threadTokenPopoverOpen = false
+  if (event.key === "Escape" && shellModel().threadTokenPopoverOpen) {
+    shellModel().threadTokenPopoverOpen = false
     renderThreadTokenCounter()
     return
   }
   proxyTranscriptKeyScroll(event)
 })
 window.setInterval(() => {
-  if (document.hidden || activeCodexThreadId === null) return
+  if (document.hidden || shellModel().activeCodexThreadId === null) return
   void refreshThreadTokenSummary()
 }, 2_000)
 window.addEventListener("beforeunload", () => {
@@ -2567,8 +2570,8 @@ window.addEventListener("beforeunload", () => {
 const controls = {
   addMessage,
   appInfo: () => rpc.request.appInfo(),
-  attachments: () => composerState.doc.attachments.map(attachment => ({ ...attachment })),
-  attachmentReceipts: () => composerAttachmentReceipts.map(receipt => ({ ...receipt })),
+  attachments: () => shellModel().composerState.doc.attachments.map(attachment => ({ ...attachment })),
+  attachmentReceipts: () => shellModel().composerAttachmentReceipts.map(receipt => ({ ...receipt })),
   clearGymProof: (): GymPaneState => {
     const state = gymPaneStateFromBridgeProof(null)
     gymPanel?.setState(state)
@@ -2685,7 +2688,7 @@ const controls = {
     rpc.request.consumeCodexRateLimitResetCredit(request),
   focusComposer: focusComposerInput,
   isComposerFocused: () => document.activeElement === composerInput,
-  isPending: () => pendingTurn,
+  isPending: () => shellModel().pendingTurn,
   loadGymDemoProof: (): GymPaneState => {
     const state = gymPaneStateFromBridgeProof({
       proof: khalaCodeGymDemoBridgeProof,
@@ -2708,7 +2711,7 @@ const controls = {
     showGymProofPane()
     return state
   },
-  messages: () => messages.map(message => ({ ...message })),
+  messages: () => shellModel().messages.map(message => ({ ...message })),
   pylonStatus: () => rpc.request.pylonStatus(),
   qaMetrics: qaMetricsSnapshot,
   removeCodexAccount: (accountRef: string) =>
@@ -2720,17 +2723,17 @@ const controls = {
   slashCommandList: (request?: Parameters<DesktopRpcRequests["slashCommandList"]>[0]) =>
     rpc.request.slashCommandList(request),
   reset: () => {
-    messages = []
+    setShellMessages([])
     activeTurnIds.clear()
     resetComposerDraft()
-    pendingTurn = false
-    thinkingTurnId = null
-    lastTurnFailed = false
+    shellModel().pendingTurn = false
+    shellModel().thinkingTurnId = null
+    shellModel().lastTurnFailed = false
     render()
   },
   setComposerDraft: (value: string) => {
     composerInput.value = value
-    lastTurnFailed = false
+    shellModel().lastTurnFailed = false
     renderComposer()
   },
   setGymState: (state: GymPaneState) => gymPanel?.setState(state),
@@ -2792,15 +2795,15 @@ const initialGymState = gymPaneStateFromLocation(globalThis.location)
 const initialView = initialKhalaCodeViewFromLocation(globalThis.location)
 
 const setActiveCodexThreadId = (threadId: string | null): void => {
-  const changed = activeCodexThreadId !== threadId
-  activeCodexThreadId = threadId
+  const changed = shellModel().activeCodexThreadId !== threadId
+  shellModel().activeCodexThreadId = threadId
   if (threadId === null) {
     localStorage.removeItem(activeThreadIdStorageKey)
   } else {
     localStorage.setItem(activeThreadIdStorageKey, threadId)
   }
   if (changed) {
-    threadTokenSummary = emptyThreadTokenSummary(threadId)
+    shellModel().threadTokenSummary = emptyThreadTokenSummary(threadId)
     renderThreadTokenCounter()
     void refreshThreadTokenSummary()
   }
@@ -2816,12 +2819,12 @@ const beginCodexThreadSwitch = (input: {
   const cached = cachedThreadMessages(input.threadId)
   setActiveCodexThreadId(input.threadId)
   if (cached !== null) {
-    messages = cached
+    setShellMessages(cached)
   }
   activeTurnIds.clear()
-  pendingTurn = false
-  thinkingTurnId = null
-  lastTurnFailed = false
+  shellModel().pendingTurn = false
+  shellModel().thinkingTurnId = null
+  shellModel().lastTurnFailed = false
   render()
   beginThreadSwitchPerformanceSample({
     cacheHit: cached !== null,
@@ -2841,11 +2844,12 @@ const activateCodexThread = (input: {
   setActiveCodexThreadId(input.threadId)
   cacheThreadMessages(input.threadId, input.messages)
   const visibleMessages = recentMessagesForInitialThreadRender(input.messages)
-  messages = visibleMessages
+  setShellMessages(visibleMessages)
+  const hydratedVisibleMessages = shellModel().messages
   activeTurnIds.clear()
-  pendingTurn = false
-  thinkingTurnId = null
-  lastTurnFailed = false
+  shellModel().pendingTurn = false
+  shellModel().thinkingTurnId = null
+  shellModel().lastTurnFailed = false
   render()
   completeThreadSwitchPerformanceSample({
     fullMessageCount: input.messages.length,
@@ -2855,18 +2859,18 @@ const activateCodexThread = (input: {
     fullMessages: input.messages,
     ...(input.selectionId === undefined ? {} : { selectionId: input.selectionId }),
     threadId: input.threadId,
-    visibleMessages,
+    visibleMessages: hydratedVisibleMessages,
   })
   requestAnimationFrame(focusComposerInput)
 }
 
 const beginNewCodexThread = (): void => {
   setActiveCodexThreadId(null)
-  messages = []
+  setShellMessages([])
   activeTurnIds.clear()
-  pendingTurn = false
-  thinkingTurnId = null
-  lastTurnFailed = false
+  shellModel().pendingTurn = false
+  shellModel().thinkingTurnId = null
+  shellModel().lastTurnFailed = false
   render()
   requestAnimationFrame(focusComposerInput)
 }
@@ -3074,7 +3078,7 @@ const threadSidebar =
   threadSidebarEl === null
     ? null
     : mountCodexThreadSidebar(threadSidebarEl, {
-        activeThreadId: () => activeCodexThreadId,
+        activeThreadId: () => shellModel().activeCodexThreadId,
         archiveThread: async threadId => {
           clearThreadListCache()
           return controls.codexThreadArchive({ threadId })
@@ -3087,7 +3091,7 @@ const threadSidebar =
           clearThreadListCache()
           return controls.codexThreadFork({ sessionId, threadId })
         },
-        isThreadStreaming: threadId => activeCodexThreadId === threadId && pendingTurn,
+        isThreadStreaming: threadId => shellModel().activeCodexThreadId === threadId && shellModel().pendingTurn,
         listThreads: async request => {
           const catalog = await cachedSessionCatalog({
             limit: 50,
