@@ -179,7 +179,7 @@ describe("Khala Code thread sidebar", () => {
     expect(upsertPendingThreadInListData(next, pending)).toBe(next)
   })
 
-  test("renders mixed Codex and Claude catalog entries with harness badges", async () => {
+  test("renders mixed catalog entries without provider badges", async () => {
     const window = new Window()
     const previousDocument = globalThis.document
     const previousNavigator = globalThis.navigator
@@ -199,9 +199,9 @@ describe("Khala Code thread sidebar", () => {
         data: [],
         groups: [{ key: "all", label: "All sessions", threadIds: ["codex-thread", "claude-session"] }],
         threads: [
-          { ...thread("codex-thread", "Codex work"), badges: ["Codex"] },
+          { ...thread("codex-thread", "Primary work"), badges: ["Codex"] },
           {
-            ...thread("claude-session", "Claude plan"),
+            ...thread("claude-session", "Planning pass"),
             badges: ["Claude"],
             modelProvider: "claude",
             source: "claude_sdk_list_sessions",
@@ -231,10 +231,11 @@ describe("Khala Code thread sidebar", () => {
       sidebar.setVisible(true)
       await sidebar.refresh()
 
-      expect([...container.querySelectorAll(".khala-thread-sidebar-harness-badge")]
-        .map(node => node.textContent)).toEqual(["Codex", "Claude"])
-      expect(container.textContent).toContain("Codex work")
-      expect(container.textContent).toContain("Claude plan")
+      expect(container.querySelectorAll(".khala-thread-sidebar-harness-badge")).toHaveLength(0)
+      expect(container.textContent).toContain("Primary work")
+      expect(container.textContent).toContain("Planning pass")
+      expect(container.textContent).not.toContain("Codex")
+      expect(container.textContent).not.toContain("Claude")
     } finally {
       Object.defineProperty(globalThis, "document", {
         configurable: true,

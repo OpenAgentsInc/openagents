@@ -126,14 +126,6 @@ const threadTimeContent = (
   return time
 }
 
-const harnessBadgeFor = (thread: KhalaCodeDesktopCodexThreadSummary): HTMLSpanElement | null => {
-  const label = thread.badges.find(badge => badge === "Codex" || badge === "Claude")
-  if (label === undefined) return null
-  const badge = el("span", "khala-thread-sidebar-harness-badge", label)
-  badge.dataset.harness = label.toLowerCase()
-  return badge
-}
-
 const groupThreads = (
   data: KhalaCodeDesktopCodexThreadListResult,
 ): readonly {
@@ -620,10 +612,8 @@ export const mountCodexThreadSidebar = (
       const rect = row.getBoundingClientRect()
       openThreadMenu(thread, { x: rect.right, y: rect.top })
     })
-    const harnessBadge = harnessBadgeFor(thread)
     row.append(
       el("span", "khala-thread-sidebar-item-title", thread.title),
-      ...(harnessBadge === null ? [] : [harnessBadge]),
       selecting ? threadStreamingIndicator() : threadTimeContent(thread, options),
     )
 
