@@ -1,4 +1,4 @@
-import { Effect, Stream } from "effect"
+import { Data, Effect, Stream } from "effect"
 
 import type {
   KhalaCodeDesktopChatTurnEvent,
@@ -40,6 +40,17 @@ type ClaudeSdkModule = {
   readonly query: ClaudeQueryFn
 }
 
+class ClaudeSdkRuntimeError extends Data.TaggedError("ClaudeSdkRuntimeError")<{
+  readonly cause: unknown
+  readonly message: string
+}> {}
+
+const claudeSdkRuntimeError = (error: unknown): ClaudeSdkRuntimeError =>
+  new ClaudeSdkRuntimeError({
+    cause: error,
+    message: error instanceof Error ? error.message : String(error),
+  })
+
 export type CreateClaudeAppSdkChatRuntimeOptions = {
   readonly env?: Readonly<Record<string, string | undefined>>
   readonly importer?: (specifier: string) => Promise<unknown>
@@ -50,6 +61,7 @@ export type CreateClaudeAppSdkChatRuntimeOptions = {
 }
 
 type ActiveClaudeTurn = {
+  readonly controller: AbortController
   readonly query: ClaudeQuery
   readonly sessionId: string
 }
@@ -95,7 +107,7 @@ export function createClaudeAppSdkChatRuntime(
   ): Promise<KhalaCodeDesktopCodexThreadResult> => {
     const desktopSessionId = request.sessionId ?? `claude-desktop-${Date.now().toString(36)}`
     const stored = await sessionStore.put(desktopSessionId, {
-      sessionId: crypto.randomUUID(),
+      sessionId: desktopSessionId,
     })
     return {
       ok: true,
@@ -129,8 +141,10 @@ export function createClaudeAppSdkChatRuntime(
     if (prompt.length === 0) {
       throw new Error("Claude app SDK chat runtime requires a non-empty prompt.")
     }
-    const stored = await sessionStore.get(request.sessionId)
-    const threadId = request.threadId ?? (request.startNewThread === true ? undefined : stored?.sessionId)
+    const stored = request.startNewThread === true ? null : await sessionStore.get(request.sessionId)
+    const threadId = request.threadId ?? stored?.sessionId
+    const freshSessionId = request.threadId ?? stored?.sessionId ?? request.sessionId
+    const shouldResume = threadId !== undefined && stored?.lastTurnId !== undefined
     const controller = new AbortController()
     const query = await loadQuery(options)
     const projector = createClaudeThreadItemProjector({
@@ -147,31 +161,38 @@ export function createClaudeAppSdkChatRuntime(
           cwd: request.cwd ?? options.workingDirectory,
           includePartialMessages: true,
           permissionMode: options.env?.KHALA_CODE_DESKTOP_CLAUDE_PERMISSION_MODE ?? "acceptEdits",
-          ...(threadId === undefined ? {} : { resume: threadId, sessionId: threadId }),
+          ...(shouldResume ? { resume: threadId } : { sessionId: freshSessionId }),
           env: {
             ...options.env,
             ...(options.env?.CLAUDE_CONFIG_DIR === undefined ? {} : { CLAUDE_CONFIG_DIR: options.env.CLAUDE_CONFIG_DIR }),
           },
         },
       }),
-      catch: error => error instanceof Error ? error : new Error(String(error)),
+      catch: claudeSdkRuntimeError,
     })
 
-    const queryHandle = await acquireQuery.pipe(Effect.runPromise)
-    activeTurns.set(desktopTurnId, { query: queryHandle, sessionId: request.sessionId })
     await runScoped(
       Effect.acquireRelease(
-        Effect.succeed(queryHandle),
+        acquireQuery.pipe(
+          Effect.tap(handle => Effect.sync(() => {
+            activeTurns.set(desktopTurnId, {
+              controller,
+              query: handle,
+              sessionId: request.sessionId,
+            })
+          })),
+        ),
         handle => Effect.promise(async () => {
           try {
             await handle.close?.()
           } finally {
             controller.abort()
+            activeTurns.delete(desktopTurnId)
           }
         }),
       ).pipe(
         Effect.flatMap(handle =>
-          Stream.fromAsyncIterable(handle, error => error).pipe(
+          Stream.fromAsyncIterable(handle, claudeSdkRuntimeError).pipe(
             Stream.runForEach(message =>
               Effect.sync(() => {
                 const sessionId = sdkSessionId(message)
@@ -182,7 +203,6 @@ export function createClaudeAppSdkChatRuntime(
             ),
           ),
         ),
-        Effect.ensuring(Effect.sync(() => activeTurns.delete(desktopTurnId))),
         Effect.scoped,
       ),
     )
@@ -226,7 +246,18 @@ export function createClaudeAppSdkChatRuntime(
     if (match === undefined) {
       return { ok: false, desktopSessionId: request.sessionId, desktopTurnId: request.turnId }
     }
-    await match[1].query.interrupt?.()
+    if (typeof match[1].query.interrupt !== "function") {
+      match[1].controller.abort()
+      await match[1].query.close?.()
+      return {
+        ok: false,
+        desktopSessionId: request.sessionId,
+        desktopTurnId: match[0],
+        error: "Claude Agent SDK query does not expose interrupt().",
+        threadId: await threadIdForSession(request.sessionId) ?? undefined,
+      }
+    }
+    await match[1].query.interrupt()
     return {
       ok: true,
       desktopSessionId: request.sessionId,

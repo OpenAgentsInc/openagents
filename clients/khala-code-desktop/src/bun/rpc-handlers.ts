@@ -611,6 +611,7 @@ const delegateRunStepSummary = (
     case "verify_closeout":
       return `Closeout verification ${status}.`
   }
+  return `Delegate run step ${status}.`
 }
 
 const projectDelegateRunStep = (
@@ -767,7 +768,7 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
     }
     return codexChatRuntime
   }
-  const claudeChatRuntime = input.claudeChatRuntime ?? createClaudeAppSdkChatRuntime({
+  const requireClaudeChatRuntime = (): ChatRuntime => input.claudeChatRuntime ?? createClaudeAppSdkChatRuntime({
     env: input.env,
     ...(input.emitChatTurnEvent === undefined ? {} : { onEvent: input.emitChatTurnEvent }),
     workingDirectory: input.workingDirectory,
@@ -780,7 +781,7 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
   }
   const selectChatRuntime = (): ChatRuntimeSelection => {
     if (input.env.KHALA_CODE_DESKTOP_RUNTIME === "claude_runtime") {
-      return { kind: "claude", runtime: claudeChatRuntime }
+      return { kind: "claude", runtime: requireClaudeChatRuntime() }
     }
     if (
       input.env.KHALA_CODE_DESKTOP_RUNTIME === "khala_native_runtime" ||
@@ -2094,7 +2095,7 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
       return selection.runtime.steerTurn(request)
     },
     async codingStatus() {
-      if (selectChatRuntime().kind === "claude") {
+      if (input.env.KHALA_CODE_DESKTOP_RUNTIME === "claude_runtime") {
         const harness = await claudeHarnessStatus()
         return runtimeStatus({
           available: harness.available,

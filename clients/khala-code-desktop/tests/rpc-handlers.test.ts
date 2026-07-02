@@ -909,14 +909,14 @@ describe("Khala Code desktop RPC handlers", () => {
         started = true
         return {
           ok: true,
-          desktopSessionId: request.sessionId,
+          desktopSessionId: request?.sessionId ?? "desktop-session-claude",
           thread: { id: "claude-thread-selected" },
           threadId: "claude-thread-selected",
         }
       },
       listThreads: async () => {
         listed = true
-        return { ok: true, threads: [] }
+        return { data: [], ok: true, threads: [] }
       },
     })
     const handlers = createKhalaCodeDesktopRpcRequestHandlers({

@@ -100,6 +100,9 @@ const numberField = (value: Record<string, unknown> | null | undefined, field: s
   return typeof candidate === "number" && Number.isFinite(candidate) ? candidate : 0
 }
 
+const isObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value)
+
 const contentText = (block: Record<string, unknown>): string => {
   const text = block.text
   if (typeof text === "string") return text
@@ -115,8 +118,7 @@ const messageId = (
   index: number,
 ): string => `${stringField(message, "uuid") ?? turnId}-${prefix}-${index}`
 
-const usageFromClaude = (message: Record<string, unknown>): KhalaCodeDesktopUsage | undefined => {
-  const usage = objectField(message, "usage") ?? objectField(message, "modelUsage")
+const usageFromUsageObject = (usage: Record<string, unknown> | null): KhalaCodeDesktopUsage | undefined => {
   if (usage === null) return undefined
   const input = numberField(usage, "input_tokens") + numberField(usage, "cache_creation_input_tokens")
   const cachedInput = numberField(usage, "cache_read_input_tokens")
@@ -124,6 +126,45 @@ const usageFromClaude = (message: Record<string, unknown>): KhalaCodeDesktopUsag
   const reasoningOutput = numberField(usage, "reasoning_output_tokens")
   if (input + cachedInput + output + reasoningOutput === 0) return undefined
   return { input, cachedInput, output, reasoningOutput }
+}
+
+const usageFromClaude = (message: Record<string, unknown>): KhalaCodeDesktopUsage | undefined =>
+  usageFromUsageObject(objectField(message, "usage") ?? objectField(message, "modelUsage"))
+
+const usageObjectsFrom = (value: Record<string, unknown> | null): readonly Record<string, unknown>[] => {
+  if (value === null) return []
+  if (
+    numberField(value, "input_tokens") +
+    numberField(value, "cache_creation_input_tokens") +
+    numberField(value, "cache_read_input_tokens") +
+    numberField(value, "output_tokens") +
+    numberField(value, "reasoning_output_tokens") > 0
+  ) return [value]
+  return Object.values(value).filter(isObject)
+}
+
+const addUsage = (
+  left: KhalaCodeDesktopUsage | undefined,
+  right: KhalaCodeDesktopUsage | undefined,
+): KhalaCodeDesktopUsage | undefined => {
+  if (left === undefined) return right
+  if (right === undefined) return left
+  return {
+    cachedInput: left.cachedInput + right.cachedInput,
+    input: left.input + right.input,
+    output: left.output + right.output,
+    reasoningOutput: left.reasoningOutput + right.reasoningOutput,
+  }
+}
+
+const usageFromClaudeResult = (message: Record<string, unknown>): KhalaCodeDesktopUsage | undefined => {
+  const direct =
+    usageFromClaude(message) ??
+    usageFromClaude(objectField(message, "message") ?? {})
+  const modelUsage = usageObjectsFrom(objectField(message, "modelUsage"))
+    .map(usageFromUsageObject)
+    .reduce(addUsage, undefined)
+  return addUsage(direct, modelUsage)
 }
 
 export function createClaudeThreadItemProjector(input: {
@@ -135,6 +176,8 @@ export function createClaudeThreadItemProjector(input: {
   let status = "running"
   let usage: KhalaCodeDesktopUsage | undefined
   let assistantCount = 0
+  const streamBlockIds = new Map<number, string>()
+  const streamBlockKinds = new Map<number, string>()
 
   const appendMessage = (message: KhalaCodeDesktopMessage): void => {
     const existing = messages.findIndex(candidate => candidate.id === message.id)
@@ -182,7 +225,7 @@ export function createClaudeThreadItemProjector(input: {
           event: {
             eventId: `${toolUseId}-started`,
             invocationId: toolUseId,
-            kind: "tool.started",
+            kind: "tool_started",
             payload: block,
             sessionId: input.desktopSessionId,
           },
@@ -207,7 +250,7 @@ export function createClaudeThreadItemProjector(input: {
           event: {
             eventId: `${toolUseId}-completed`,
             invocationId: toolUseId,
-            kind: "tool.completed",
+            kind: "tool_completed",
             payload: block,
             sessionId: input.desktopSessionId,
           },
@@ -219,16 +262,100 @@ export function createClaudeThreadItemProjector(input: {
     return { events, messages, status, toolNames: [...toolNames], usage }
   }
 
+  const projectStreamEvent = (raw: Record<string, unknown>): ClaudeProjectedMessage => {
+    const event = objectField(raw, "event") ?? raw
+    const eventType = stringField(event, "type") ?? stringField(raw, "event_type") ?? ""
+    const indexValue = event.index ?? raw.index
+    const index = typeof indexValue === "number" && Number.isInteger(indexValue) ? indexValue : 0
+    const events: KhalaCodeDesktopChatTurnEvent[] = []
+
+    if (eventType === "content_block_start") {
+      const block = objectField(event, "content_block") ?? objectField(raw, "content_block") ?? {}
+      const blockType = stringField(block, "type") ?? "text"
+      if (blockType !== "text" && blockType !== "thinking") {
+        return { events, messages, status, toolNames: [...toolNames], usage }
+      }
+      const id = `${input.turnId}-claude-stream-${index}`
+      streamBlockIds.set(index, id)
+      streamBlockKinds.set(index, blockType)
+      const message: KhalaCodeDesktopMessage = {
+        body: "",
+        id,
+        role: "assistant",
+        ...(blockType === "thinking" ? {
+          harnessItem: {
+            itemId: id,
+            itemType: "reasoning",
+            status: "running",
+            title: "Claude reasoning",
+          },
+        } : {}),
+      }
+      appendMessage(message)
+      events.push({ message, turnId: input.turnId, type: "message_start" })
+      return { events, messages, status, toolNames: [...toolNames], usage }
+    }
+
+    if (eventType === "content_block_delta") {
+      const delta = objectField(event, "delta") ?? objectField(raw, "delta") ?? event
+      const text = stringField(delta, "text") ?? ""
+      if (text.length === 0) return { events, messages, status, toolNames: [...toolNames], usage }
+      const id = streamBlockIds.get(index) ?? `${input.turnId}-claude-stream-${index}`
+      const blockType = streamBlockKinds.get(index) ?? "text"
+      if (!streamBlockIds.has(index)) {
+        streamBlockIds.set(index, id)
+        streamBlockKinds.set(index, blockType)
+        const message: KhalaCodeDesktopMessage = {
+          body: "",
+          id,
+          role: "assistant",
+          ...(blockType === "thinking" ? {
+            harnessItem: {
+              itemId: id,
+              itemType: "reasoning",
+              status: "running",
+              title: "Claude reasoning",
+            },
+          } : {}),
+        }
+        appendMessage(message)
+        events.push({ message, turnId: input.turnId, type: "message_start" })
+      }
+      const existing = messages.find(message => message.id === id)
+      appendMessage({
+        ...(existing ?? { id, role: "assistant" as const }),
+        body: `${existing?.body ?? ""}${text}`,
+      })
+      events.push({ delta: text, messageId: id, turnId: input.turnId, type: "message_delta" })
+      return { events, messages, status, toolNames: [...toolNames], usage }
+    }
+
+    if (eventType === "content_block_stop") {
+      const id = streamBlockIds.get(index)
+      if (id !== undefined) events.push({ messageId: id, turnId: input.turnId, type: "message_done" })
+      return { events, messages, status, toolNames: [...toolNames], usage }
+    }
+
+    return { events, messages, status, toolNames: [...toolNames], usage }
+  }
+
   return {
     messages: () => messages,
     project(message) {
-      const decoded = S.decodeUnknownSync(ClaudeSdkMessageSchema as never)(message) as Record<string, unknown>
+      if (!isObject(message)) return { events: [], messages, status, toolNames: [...toolNames], usage }
+      if (message.type === "stream_event") return projectStreamEvent(message)
+      let decoded: Record<string, unknown>
+      try {
+        decoded = S.decodeUnknownSync(ClaudeSdkMessageSchema as never)(message) as Record<string, unknown>
+      } catch {
+        return { events: [], messages, status, toolNames: [...toolNames], usage }
+      }
       if (decoded.type === "assistant") return projectAssistant(decoded as Parameters<typeof projectAssistant>[0])
       if (decoded.type === "user") return projectUser(decoded as Parameters<typeof projectUser>[0])
       if (decoded.type === "result") {
         const subtype = typeof decoded.subtype === "string" ? decoded.subtype : ""
-        status = subtype.startsWith("error") ? "failed" : "completed"
-        usage = usageFromClaude(decoded as Record<string, unknown>)
+        status = subtype.startsWith("error") ? "failed" : subtype === "interrupted" ? "interrupted" : "completed"
+        usage = usageFromClaudeResult(message)
         return { events: [], messages, status, toolNames: [...toolNames], usage }
       }
       if (decoded.type === "system" && decoded.subtype === "session_state_changed") {

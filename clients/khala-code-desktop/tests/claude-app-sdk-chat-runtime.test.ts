@@ -4,6 +4,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 
 import { createClaudeAppSdkChatRuntime } from "../src/bun/claude-app-sdk-chat-runtime"
+import { CLAUDE_APP_SDK_GAP_MATRIX } from "../src/bun/claude-app-sdk-gap-matrix"
 import { createClaudeSessionStore } from "../src/bun/claude-session-store"
 import { createClaudeThreadItemProjector } from "../src/bun/claude-thread-item-projector"
 import type { KhalaCodeDesktopChatTurnEvent } from "../src/shared/rpc"
@@ -74,7 +75,7 @@ describe("Claude Agent SDK chat runtime", () => {
       "tool_event",
     ])
     expect(second.events[0]).toMatchObject({
-      event: { invocationId: "tool-use-1", kind: "tool.completed" },
+      event: { invocationId: "tool-use-1", kind: "tool_completed" },
       type: "tool_event",
     })
     expect(projector.messages().map(message => message.body)).toEqual([
@@ -88,6 +89,87 @@ describe("Claude Agent SDK chat runtime", () => {
       reasoningOutput: 3,
     })
     expect(projector.toolNames()).toEqual(["Bash"])
+  })
+
+  test("skips unmodeled SDK messages and renders stream_event deltas", () => {
+    const projector = createClaudeThreadItemProjector({
+      desktopSessionId: "desktop-session-stream",
+      turnId: "desktop-turn-stream",
+    })
+
+    expect(projector.project({ type: "rate_limit_event", uuid: "rate-limit-1" }).events).toEqual([])
+    projector.project({
+      event: {
+        content_block: { type: "text" },
+        index: 0,
+        type: "content_block_start",
+      },
+      session_id: "claude-session-stream",
+      type: "stream_event",
+      uuid: "stream-start",
+    })
+    const delta = projector.project({
+      event: {
+        delta: { text: "partial text", type: "text_delta" },
+        index: 0,
+        type: "content_block_delta",
+      },
+      session_id: "claude-session-stream",
+      type: "stream_event",
+      uuid: "stream-delta",
+    })
+    const done = projector.project({
+      event: {
+        index: 0,
+        type: "content_block_stop",
+      },
+      session_id: "claude-session-stream",
+      type: "stream_event",
+      uuid: "stream-stop",
+    })
+
+    expect(delta.events).toContainEqual({
+      delta: "partial text",
+      messageId: "desktop-turn-stream-claude-stream-0",
+      turnId: "desktop-turn-stream",
+      type: "message_delta",
+    })
+    expect(done.events).toContainEqual({
+      messageId: "desktop-turn-stream-claude-stream-0",
+      turnId: "desktop-turn-stream",
+      type: "message_done",
+    })
+    expect(projector.messages()).toMatchObject([{ body: "partial text" }])
+  })
+
+  test("captures SDK modelUsage from interrupted results", () => {
+    const projector = createClaudeThreadItemProjector({
+      desktopSessionId: "desktop-session-usage",
+      turnId: "desktop-turn-usage",
+    })
+
+    const result = projector.project({
+      modelUsage: {
+        "claude-opus-4": {
+          cache_read_input_tokens: 5,
+          input_tokens: 10,
+          output_tokens: 7,
+          reasoning_output_tokens: 2,
+        },
+      },
+      session_id: "claude-session-usage",
+      subtype: "interrupted",
+      type: "result",
+      uuid: "result-usage",
+    })
+
+    expect(result.status).toBe("interrupted")
+    expect(result.usage).toEqual({
+      cachedInput: 5,
+      input: 10,
+      output: 7,
+      reasoningOutput: 2,
+    })
   })
 
   test("persists desktop session mapping in the v1 Claude session store", async () => {
@@ -115,7 +197,7 @@ describe("Claude Agent SDK chat runtime", () => {
     })
   })
 
-  test("streams a mocked SDK query and resumes by persisted Claude session id", async () => {
+  test("starts fresh sessions with sessionId and resumes later turns with resume alone", async () => {
     const statePath = await tempPath("claude-runtime-state.json")
     const events: KhalaCodeDesktopChatTurnEvent[] = []
     const queryCalls: unknown[] = []
@@ -156,12 +238,40 @@ describe("Claude Agent SDK chat runtime", () => {
     expect(second.backend.threadId).toBe("claude-session-1")
     expect((queryCalls[1] as { options: Record<string, unknown> }).options).toMatchObject({
       resume: "claude-session-1",
-      sessionId: "claude-session-1",
     })
+    expect((queryCalls[1] as { options: Record<string, unknown> }).options).not.toHaveProperty("sessionId")
     expect(events.map(event => event.type)).toContain("message_delta")
   })
 
+  test("startThread then startTurn sends only the fresh sessionId", async () => {
+    const statePath = await tempPath("claude-start-thread-state.json")
+    const queryCalls: unknown[] = []
+    const runtime = createClaudeAppSdkChatRuntime({
+      query: input => {
+        queryCalls.push(input)
+        return messages([
+          { type: "result", subtype: "success", session_id: "desktop-session-started" },
+        ])
+      },
+      sessionStore: createClaudeSessionStore({ path: statePath }),
+      workingDirectory: "/repo",
+    })
+
+    await runtime.startThread({ sessionId: "desktop-session-started" })
+    await runtime.startTurn({
+      messages: [{ body: "hello", id: "user-started", role: "user" }],
+      sessionId: "desktop-session-started",
+      turnId: "turn-started",
+    })
+
+    expect((queryCalls[0] as { options: Record<string, unknown> }).options).toMatchObject({
+      sessionId: "desktop-session-started",
+    })
+    expect((queryCalls[0] as { options: Record<string, unknown> }).options).not.toHaveProperty("resume")
+  })
+
   test("interrupts the active SDK query handle", async () => {
+    const statePath = await tempPath("claude-interrupt-state.json")
     let interrupted = false
     let release!: () => void
     const released = new Promise<void>(resolve => {
@@ -186,6 +296,7 @@ describe("Claude Agent SDK chat runtime", () => {
           close: async () => undefined,
         }
       },
+      sessionStore: createClaudeSessionStore({ path: statePath }),
       workingDirectory: "/repo",
     })
 
@@ -209,4 +320,63 @@ describe("Claude Agent SDK chat runtime", () => {
     })
   })
 
+  test("does not report interrupt success when the SDK handle has no interrupt method", async () => {
+    const statePath = await tempPath("claude-no-interrupt-state.json")
+    let release!: () => void
+    const released = new Promise<void>(resolve => {
+      release = resolve
+    })
+    let queryStarted!: () => void
+    const started = new Promise<void>(resolve => {
+      queryStarted = resolve
+    })
+    const runtime = createClaudeAppSdkChatRuntime({
+      query: () => {
+        queryStarted()
+        return {
+          async *[Symbol.asyncIterator]() {
+            await released
+            yield { type: "result", subtype: "success", session_id: "claude-session-no-interrupt" }
+          },
+          close: async () => {
+            release()
+          },
+        }
+      },
+      sessionStore: createClaudeSessionStore({ path: statePath }),
+      workingDirectory: "/repo",
+    })
+
+    const turn = runtime.startTurn({
+      messages: [{ body: "wait", id: "user-no-interrupt", role: "user" }],
+      sessionId: "desktop-session-no-interrupt",
+      turnId: "turn-no-interrupt",
+    })
+    await started
+    await new Promise(resolve => setTimeout(resolve, 0))
+    const interruptedResult = await runtime.interruptTurn({
+      sessionId: "desktop-session-no-interrupt",
+      turnId: "turn-no-interrupt",
+    })
+    await turn
+
+    expect(interruptedResult).toMatchObject({
+      ok: false,
+      desktopTurnId: "turn-no-interrupt",
+      error: "Claude Agent SDK query does not expose interrupt().",
+    })
+  })
+
+  test("imports the Claude SDK gap matrix into the checked runtime surface", () => {
+    expect(CLAUDE_APP_SDK_GAP_MATRIX.map(row => row.id)).toEqual([
+      "claude.phase1.chat_stream",
+      "claude.phase1.interrupt",
+      "claude.phase1.session_resume",
+      "claude.phase2.approvals",
+      "claude.phase2.telemetry_ingest",
+      "claude.phase3.sidebar_catalog",
+    ])
+    expect(CLAUDE_APP_SDK_GAP_MATRIX.filter(row => row.status === "covered").map(row => row.phase))
+      .toEqual(["phase_1", "phase_1", "phase_1"])
+  })
 })
