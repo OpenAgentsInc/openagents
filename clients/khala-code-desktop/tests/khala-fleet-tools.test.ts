@@ -398,7 +398,7 @@ describe("Khala Code fleet tools", () => {
       if (joined === "codex accounts list --json") {
         return ok({
           accounts: [{
-            accountRef: "codex-2",
+            accountRef: null,
             accountRefHash: MATRIX_ACCOUNT_REF_HASH,
             homeState: "present",
             provider: "codex",
@@ -409,7 +409,7 @@ describe("Khala Code fleet tools", () => {
       if (joined === "accounts status --provider codex --json") {
         return ok({
           accounts: [{
-            accountRef: "codex-2",
+            accountRef: null,
             accountRefHash: MATRIX_ACCOUNT_REF_HASH,
             provider: "codex",
             readiness: { state: "ready" },
@@ -468,6 +468,7 @@ describe("Khala Code fleet tools", () => {
   test("DefaultKhalaFleetRunSupervisorManager refreshes live issue-list capacity before dispatch", async () => {
     const fixture = await tempPylonFixture()
     const calls: string[] = []
+    let requestArgs: readonly string[] = []
     let heartbeatSeen = false
     const runner = async (input: KhalaCodexFleetCommandInput): Promise<KhalaCodexFleetCommandResult> => {
       const args = pylonArgs(input)
@@ -493,7 +494,7 @@ describe("Khala Code fleet tools", () => {
       if (joined === "codex accounts list --json") {
         return ok({
           accounts: [{
-            accountRef: "codex-2",
+            accountRef: null,
             accountRefHash: MATRIX_ACCOUNT_REF_HASH,
             homeState: "present",
             provider: "codex",
@@ -504,7 +505,7 @@ describe("Khala Code fleet tools", () => {
       if (joined === "accounts status --provider codex --json") {
         return ok({
           accounts: [{
-            accountRef: "codex-2",
+            accountRef: null,
             accountRefHash: MATRIX_ACCOUNT_REF_HASH,
             provider: "codex",
             readiness: { state: "ready" },
@@ -514,6 +515,7 @@ describe("Khala Code fleet tools", () => {
       }
       if (args[0] === "khala" && args[1] === "request") {
         expect(heartbeatSeen).toBe(true)
+        requestArgs = args
         return ok(matrixKhalaRequestCompleted("assignment.public.codex_agent_task.live_issue"))
       }
       return failed(`unexpected command: ${joined}`)
@@ -552,6 +554,8 @@ describe("Khala Code fleet tools", () => {
 
     expect(started.pylonRef).toBe("pylon.local.test")
     expect(final.run.state).toBe("completed")
+    expect(requestArgs).not.toContain("--account-ref")
+    expect(requestArgs).not.toContain("(default)")
     expect(heartbeatIndex).toBeGreaterThanOrEqual(0)
     expect(requestIndex).toBeGreaterThanOrEqual(0)
     expect(heartbeatIndex).toBeLessThan(requestIndex)

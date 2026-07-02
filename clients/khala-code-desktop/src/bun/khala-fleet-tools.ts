@@ -1677,7 +1677,7 @@ export class DefaultKhalaFleetRunSupervisorManager implements KhalaFleetRunSuper
         if (config === undefined) throw new Error(`missing fleet run plan config: ${runRef}`)
         const fixture = run.workSource === "fixture"
         return await Effect.runPromise(this.pylonService.runAssignment({
-          accountRef,
+          accountRef: commandAccountRef(accountRef),
           baseUrl: config.baseUrl,
           branch: workUnit.branch ?? config.branch,
           commit: fixture ? undefined : workUnit.baseCommit ?? config.commit,
