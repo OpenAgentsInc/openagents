@@ -17,6 +17,7 @@ export type FleetRunSupervisorAccount = {
   readonly accountRef: string
   readonly advertisedCapacity: number
   readonly cooldownUntil?: Date | string | null
+  readonly paused?: boolean
 }
 
 export type FleetRunSupervisorLifecycleEvent = {
@@ -218,6 +219,7 @@ const pickAccount = (
 ): FleetRunSupervisorAccount | null => {
   const eligible = accounts
     .filter(account => account.advertisedCapacity > 0)
+    .filter(account => account.paused !== true)
     .filter(account => !isCoolingDown(account, now))
     .map(account => ({
       account,
@@ -364,6 +366,7 @@ export async function tickFleetRunSupervisor(
   const activeAssignments = activeAssignmentsForRun(store, run.runRef)
   const targetFreeSlots = Math.max(0, run.targetConcurrency - activeAssignments)
   const advertisedFreeSlots = accounts.reduce((total, account) => {
+    if (account.paused === true) return total
     if (isCoolingDown(account, now)) return total
     return total + Math.max(0, account.advertisedCapacity - (activeCounts.get(account.accountRef) ?? 0))
   }, 0)

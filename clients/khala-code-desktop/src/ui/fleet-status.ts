@@ -55,7 +55,9 @@ export type FleetPanelOptions = Readonly<{
   setAccountPaused: (
     request: { readonly accountRef: string; readonly paused: boolean },
   ) => Promise<{ readonly ok: boolean; readonly error?: string }>
-  consumeResetCredit: () => Promise<{ readonly ok: boolean; readonly error?: string }>
+  consumeResetCredit: (
+    request: { readonly accountRef: string },
+  ) => Promise<{ readonly ok: boolean; readonly error?: string }>
   connectAccount: (accountRef: string) => Promise<KhalaCodeDesktopConnectStart>
   openExternal: (url: string) => Promise<boolean>
 }>
@@ -73,7 +75,7 @@ type Handlers = Readonly<{
   onRemove: (accountRef: string) => void
   onConnect: (accountRef: string) => void
   onPauseAccount: (accountRef: string, paused: boolean) => void
-  onConsumeResetCredit: () => void
+  onConsumeResetCredit: (accountRef: string) => void
   onOpenUrl: (url: string) => void
   onCancelConnect: () => void
 }>
@@ -1062,7 +1064,7 @@ const accountCard = (
   ) {
     const reset = iconButton("Reset credits", "Reload", "khala-fleet-reconnect")
     reset.title = "Consume an available Codex rate-limit reset credit"
-    reset.addEventListener("click", handlers.onConsumeResetCredit)
+    reset.addEventListener("click", () => handlers.onConsumeResetCredit(account.accountRef))
     card.append(reset)
   }
 
@@ -1514,7 +1516,7 @@ export const mountFleetPanel = (
     onRemove: (accountRef: string) => onRemove(accountRef),
     onConnect: (accountRef: string) => onConnect(accountRef),
     onPauseAccount: (accountRef: string, paused: boolean) => onPauseAccount(accountRef, paused),
-    onConsumeResetCredit: () => onConsumeResetCredit(),
+    onConsumeResetCredit: accountRef => onConsumeResetCredit(accountRef),
     onOpenUrl: (url: string) => void options.openExternal(url),
     onCancelConnect: () => {
       window.clearTimeout(connectPoll)
@@ -1715,9 +1717,9 @@ export const mountFleetPanel = (
     })()
   }
 
-  const onConsumeResetCredit = (): void => {
+  const onConsumeResetCredit = (accountRef: string): void => {
     void (async () => {
-      const result = await options.consumeResetCredit()
+      const result = await options.consumeResetCredit({ accountRef })
       if (!result.ok) {
         render(
           container,

@@ -656,6 +656,8 @@ describe("Khala Code desktop RPC handlers", () => {
         },
       }),
       consumeCodexRateLimitResetCredit: input => {
+        expect(input.accountRef).toBe("default")
+        expect(input.codexHomePath).toBeNull()
         expect(input.idempotencyKey).toBeTruthy()
         return "noCredit"
       },
@@ -666,7 +668,7 @@ describe("Khala Code desktop RPC handlers", () => {
       workingDirectory: process.cwd(),
     })
 
-    await expect(handler.consumeCodexRateLimitResetCredit()).resolves.toMatchObject({
+    await expect(handler.consumeCodexRateLimitResetCredit({ accountRef: "default" })).resolves.toMatchObject({
       ok: true,
       outcome: "noCredit",
       status: {

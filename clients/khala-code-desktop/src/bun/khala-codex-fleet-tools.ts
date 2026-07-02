@@ -409,6 +409,11 @@ const codexFleetStatusToolDefinition: KhalaToolDefinition = {
         description: "Include a bounded local process snapshot for Pylon and Codex.",
         type: "boolean",
       },
+      include_rate_limits: {
+        default: false,
+        description: "Include per-account Codex rate-limit windows. This may start one Codex app-server per account.",
+        type: "boolean",
+      },
       start_pylon: {
         default: false,
         description: "Start Pylon if it is not online before collecting status.",
@@ -865,6 +870,7 @@ export async function ensureLocalPylon(
 export async function inspectCodexFleet(
   input: {
     readonly includeProcesses?: boolean | undefined
+    readonly includeRateLimits?: boolean | undefined
     readonly startPylon?: boolean | undefined
   } = {},
   options: KhalaCodexFleetToolOptions = {},
@@ -902,16 +908,16 @@ export async function inspectCodexFleet(
   const statusProjection = parseJsonObject(statusResult.stdout)
   const apm = fleetTokenRateProjectionFromApm(apmResult, rawActiveAssignments.length)
   const accountConfig = await readCodexAccountConfig(paths.pylonHome)
-  const accounts = await withAccountRateLimits(
-    withAccountConfig(
-      withAccountCapacity(
-        mergeAccountRows(listProjection, statusProjection),
-        [ensure.providerProjection, statusProjection, listProjection],
-      ),
-      accountConfig,
+  const accountsWithConfig = withAccountConfig(
+    withAccountCapacity(
+      mergeAccountRows(listProjection, statusProjection),
+      [ensure.providerProjection, statusProjection, listProjection],
     ),
-    env,
+    accountConfig,
   )
+  const accounts = input.includeRateLimits === true
+    ? await withAccountRateLimits(accountsWithConfig, env)
+    : accountsWithConfig
   const activeAssignments = mergeActiveAssignmentTokenRates(
     rawActiveAssignments,
     apm.serverAssignments,
@@ -1148,6 +1154,7 @@ function executeCodexFleetStatusTool(
     try {
       const result = await inspectCodexFleet({
         includeProcesses: optionalBoolean(input.include_processes) ?? true,
+        includeRateLimits: optionalBoolean(input.include_rate_limits) ?? false,
         startPylon: optionalBoolean(input.start_pylon) ?? false,
       }, options)
       return khalaToolOk({
@@ -1551,9 +1558,13 @@ export class DefaultKhalaFleetRunSupervisorManager implements KhalaFleetRunSuper
   private capacityFor(): FleetRunSupervisorCapacity {
     return {
       accounts: async () => {
-        const status = await inspectCodexFleet({ includeProcesses: false, startPylon: true }, this.options)
+        const status = await inspectCodexFleet({
+          includeProcesses: false,
+          includeRateLimits: false,
+          startPylon: true,
+        }, this.options)
         return status.accounts
-          .filter(account => account.readiness === "ready")
+          .filter(account => account.readiness === "ready" && !account.paused)
           .map(account => ({
             accountRef: account.accountRef,
             advertisedCapacity: Math.max(0, account.capacity?.available ?? account.capacity?.ready ?? 1),

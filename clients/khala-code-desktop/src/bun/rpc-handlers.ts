@@ -165,6 +165,8 @@ export type KhalaCodeDesktopRpcHandlersInput = {
   readonly codexRateLimitStatus?: () => MaybePromise<KhalaCodexRateLimitProviderStatus>
   readonly codexHarnessStatus?: () => MaybePromise<KhalaCodeDesktopCodexHarnessStatus>
   readonly consumeCodexRateLimitResetCredit?: (input: {
+    readonly accountRef: string
+    readonly codexHomePath: string | null
     readonly idempotencyKey: string
   }) => MaybePromise<KhalaCodexRateLimitResetOutcome>
   readonly codexFleetToolOptions?: KhalaCodexFleetToolOptions
@@ -942,6 +944,18 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
     const rateLimits = await (input.codexRateLimitStatus?.() ??
       fetchKhalaCodexRateLimitStatus({ env: input.env as NodeJS.ProcessEnv }))
     return codexStatusFromRateLimits(rateLimits, harness, input.env)
+  }
+
+  const codexHomePathForResetCredit = async (accountRef: string): Promise<string | null> => {
+    if (accountRef === "default" || accountRef === "(default)") return null
+    const fleet = await inspectCodexFleet(
+      { includeProcesses: false, includeRateLimits: false, startPylon: false },
+      { ...input.codexFleetToolOptions, env: input.env as NodeJS.ProcessEnv },
+    )
+    const account = fleet.accounts.find(candidate => candidate.accountRef === accountRef)
+    if (account === undefined) throw new Error(`Codex account ${accountRef} was not found`)
+    if (account.home === null) throw new Error(`Codex account ${accountRef} does not have an isolated home`)
+    return account.home
   }
 
   const threadIdForSlashCommand = async (
@@ -1788,7 +1802,7 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
     },
     async codexFleetStatus(): Promise<KhalaCodeDesktopFleetStatus> {
       const fleet = await inspectCodexFleet(
-        { includeProcesses: true, startPylon: false },
+        { includeProcesses: true, includeRateLimits: false, startPylon: false },
         { ...input.codexFleetToolOptions, env: input.env as NodeJS.ProcessEnv },
       )
       const emails = await collectCodexAccountEmails(
@@ -2215,14 +2229,20 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
         },
       )
     },
-    async consumeCodexRateLimitResetCredit(): Promise<KhalaCodeDesktopCodexRateLimitResetResult> {
+    async consumeCodexRateLimitResetCredit(request): Promise<KhalaCodeDesktopCodexRateLimitResetResult> {
       const observedAt = new Date().toISOString()
       const idempotencyKey = randomUUID()
       try {
+        const accountRef = request.accountRef.trim()
+        if (accountRef.length === 0) throw new Error("Codex reset accountRef is required")
+        const codexHomePath = await codexHomePathForResetCredit(accountRef)
         const outcome = await (input.consumeCodexRateLimitResetCredit?.({
+          accountRef,
+          codexHomePath,
           idempotencyKey,
         }) ??
           consumeKhalaCodexRateLimitResetCredit({
+            codexHomePath,
             env: input.env as NodeJS.ProcessEnv,
             idempotencyKey,
           }))

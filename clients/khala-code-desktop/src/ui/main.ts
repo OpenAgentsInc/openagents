@@ -356,10 +356,10 @@ const previewRpc = (): DesktopRpc => ({
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["openExternalUrl"]>>
       >("openExternalUrl", url),
-    consumeCodexRateLimitResetCredit: () =>
+    consumeCodexRateLimitResetCredit: request =>
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["consumeCodexRateLimitResetCredit"]>>
-      >("consumeCodexRateLimitResetCredit"),
+      >("consumeCodexRateLimitResetCredit", request),
     onDeviceDeciderStatus: () =>
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["onDeviceDeciderStatus"]>>
@@ -2336,8 +2336,8 @@ const controls = {
   gymState: (): GymPaneState | null => gymPanel?.snapshot() ?? null,
   openExternalUrl: (url: string) => rpc.request.openExternalUrl(url),
   composerStatus: statusForComposer,
-  consumeCodexRateLimitResetCredit: () =>
-    rpc.request.consumeCodexRateLimitResetCredit(),
+  consumeCodexRateLimitResetCredit: request =>
+    rpc.request.consumeCodexRateLimitResetCredit(request),
   focusComposer: focusComposerInput,
   isComposerFocused: () => document.activeElement === composerInput,
   isPending: () => pendingTurn,
@@ -2556,8 +2556,8 @@ const fleetPanel =
             ...(result.error === undefined ? {} : { error: result.error }),
           }
         },
-        consumeResetCredit: async () => {
-          const result = await controls.consumeCodexRateLimitResetCredit()
+        consumeResetCredit: async request => {
+          const result = await controls.consumeCodexRateLimitResetCredit(request)
           return {
             ok: result.ok,
             ...(result.error === undefined ? {} : { error: result.error }),

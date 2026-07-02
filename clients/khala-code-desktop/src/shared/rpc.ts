@@ -442,6 +442,10 @@ const RpcRateLimitStatus = S.Struct({
   status: S.String,
 })
 
+const RpcRateLimitResetConsumeRequest = S.Struct({
+  accountRef: S.String,
+})
+
 const RpcCodexAccountStatus = S.Struct({
   provider: S.Literal("codex"),
   accountRef: S.Literal("default"),
@@ -1474,7 +1478,7 @@ export const KhalaCodeDesktopRpcMethodSchemas = {
   removeCodexAccount: { parameters: [param(S.String)], result: RpcRemoveAccountResult },
   setCodexAccountPaused: { parameters: [param(S.Struct({ accountRef: S.String, paused: S.Boolean }))], result: RpcRemoveAccountResult },
   codingStatus: { parameters: noParams(), result: RpcRuntimeStatus },
-  consumeCodexRateLimitResetCredit: { parameters: noParams(), result: RpcRateLimitResetResult },
+  consumeCodexRateLimitResetCredit: { parameters: [param(RpcRateLimitResetConsumeRequest)], result: RpcRateLimitResetResult },
   onDeviceDeciderStatus: { parameters: noParams(), result: RpcOnDeviceDeciderSelection },
   pylonStatus: { parameters: noParams(), result: RpcRuntimeStatus },
   slashCommandDispatch: { parameters: [param(RpcSlashCommandDispatchRequest)], result: RpcSlashCommandDispatchResult },
@@ -1616,7 +1620,7 @@ export type KhalaCodeDesktopRPCSchema = {
     removeCodexAccount(accountRef: string): Promise<KhalaCodeDesktopRemoveAccountResult>
     setCodexAccountPaused(request: { accountRef: string; paused: boolean }): Promise<KhalaCodeDesktopRemoveAccountResult>
     codingStatus(): Promise<KhalaCodeDesktopRuntimeStatus>
-    consumeCodexRateLimitResetCredit(): Promise<KhalaCodeDesktopCodexRateLimitResetResult>
+    consumeCodexRateLimitResetCredit(request: { accountRef: string }): Promise<KhalaCodeDesktopCodexRateLimitResetResult>
     onDeviceDeciderStatus(): Promise<OnDeviceDeciderSelection>
     pylonStatus(): Promise<KhalaCodeDesktopRuntimeStatus>
     slashCommandDispatch(request: KhalaCodeDesktopSlashCommandDispatchRequest): Promise<KhalaCodeDesktopSlashCommandDispatchResult>

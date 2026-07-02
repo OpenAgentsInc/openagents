@@ -186,7 +186,7 @@ describe("Fleet status panel", () => {
     const root = document.createElement("div")
     const connected: string[] = []
     const paused: { accountRef: string; paused: boolean }[] = []
-    let resetCredits = 0
+    const resetCredits: string[] = []
     let data = status()
     data = {
       ...data,
@@ -239,8 +239,8 @@ describe("Fleet status panel", () => {
         }
         return { ok: true }
       },
-      consumeResetCredit: async () => {
-        resetCredits += 1
+      consumeResetCredit: async request => {
+        resetCredits.push(request.accountRef)
         return { ok: true }
       },
       startDelegationOptimization: async () => {
@@ -265,12 +265,14 @@ describe("Fleet status panel", () => {
 
     clickButton(root, "Reset credits")
     await flushPanelWork()
-    expect(resetCredits).toBe(1)
+    expect(resetCredits).toEqual(["codex-a"])
 
     clickButton(root, "Reconnect")
     await flushPanelWork()
     expect(connected).toEqual(["codex-b"])
     expect(root.textContent).toContain("ABCD-1234")
+    clickButton(root, "Cancel")
+    await flushPanelWork()
   })
 
   test("previews the first FleetRun wave and starts through the mocked RPC", async () => {
