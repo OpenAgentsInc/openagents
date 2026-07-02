@@ -97,6 +97,8 @@ describe('Artanis public report', () => {
       reportRef: 'report.public.artanis.status_aggregator',
       runtimeState: 'running',
       authoritySummary: {
+        autonomyLadderCandidateStandingApprovalAllowed: false,
+        autonomyLadderNextGateEligible: false,
         dispatchAuthorityAllowed: false,
         dispatcherGateGreen: false,
         forumAutoPublishAllowed: false,
@@ -327,6 +329,13 @@ describe('Artanis public report', () => {
         'blocker.public.artanis.provider_mutation_not_granted',
         'blocker.public.artanis.settlement_authority_not_granted',
         'blocker.public.artanis.spend_authority_not_granted',
+        'blocker.public.artanis.autonomy.clean_unattended_ticks_not_retained',
+        'blocker.public.artanis.autonomy.signature.command-source-verified.not_terminal',
+        'blocker.public.artanis.autonomy.signature.diagnosis-grounding.not_terminal',
+        'blocker.public.artanis.autonomy.signature.fleet-liveness.not_terminal',
+        'blocker.public.artanis.autonomy.signature.issue-close-safe.not_terminal',
+        'blocker.public.artanis.autonomy.signature.merge-deploy.not_terminal',
+        'blocker.public.artanis.autonomy.treasury_envelope_missing',
       ]),
     )
     expect(report.publicBlockerRefs).not.toContain(
@@ -361,6 +370,21 @@ describe('Artanis public report', () => {
         'blocker.public.artanis.provider_mutation_not_granted',
         'blocker.public.artanis.settlement_authority_not_granted',
         'blocker.public.artanis.spend_authority_not_granted',
+        'blocker.public.artanis.autonomy.standing_approval_not_granted',
+        'blocker.public.artanis.autonomy.treasury_envelope_missing',
+      ]),
+    )
+    expect(report.authoritySummary.autonomyLadderBlockerRefs).toEqual(
+      expect.arrayContaining([
+        'blocker.public.artanis.autonomy.clean_unattended_ticks_not_retained',
+        'blocker.public.artanis.autonomy.standing_approval_not_granted',
+        'blocker.public.artanis.autonomy.treasury_envelope_missing',
+      ]),
+    )
+    expect(report.authoritySummary.autonomyLadderEvidenceRefs).toEqual(
+      expect.arrayContaining([
+        'evidence.khala_coding.authority_scope.owner_operator',
+        'evidence.khala_coding.authority_scope.shared_fleet',
       ]),
     )
     expect(report.authoritySummary.authorityBlockerRefs).not.toContain(

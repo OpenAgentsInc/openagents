@@ -1896,6 +1896,36 @@ normalizedPatchDigest | behaviorReceiptDigest)`. Exactly one accepted
   `workers/api/src/artanis-owner-authority.test.ts` and the owner-promotion
   cases in `workers/api/src/artanis-operator-dispatch-execution.test.ts`.
 
+## Artanis Autonomy Ladder
+
+- Artanis autonomy increases one gate at a time. The typed source of truth is
+  `workers/api/src/artanis-autonomy-ladder.ts`; owner standing approval must go
+  through that ladder before any risky-action kind is treated as standing
+  approved.
+- The only standing approvals today remain the current bounded rungs:
+  `pylon_job_dispatch` in `authorityScope=owner_self` for own-capacity,
+  no-spend Codex dispatch, and `forum_post` in
+  `authorityScope=owner_operator` for public-safe status updates. These rungs do
+  not depend on shared-fleet, wallet, settlement, provider mutation, deployment,
+  or release authority.
+- A `shared_fleet` standing gate is only a next-gate candidate after all five
+  Blueprint signature gates are terminal (`fleet-liveness=PROVEN_ALIVE`,
+  `diagnosis-grounding=GROUNDED`, `issue-close-safe=SAFE_TO_CLOSE`,
+  `command-source-verified=SAFE_TO_PROPOSE`, `merge-deploy=LIVE`) and the
+  clean unattended tick track record is retained. Even then it is only eligible
+  for an explicit owner promotion step; it is not implicitly standing-approved.
+- Treasury autonomy is always envelope-bounded. Wallet spend, settlement, and
+  L402 redemption cannot become standing-approved from the owner promotion
+  alone; they require the same signature and clean-tick evidence plus an active
+  owner cap envelope (`per_payout_cap_sat` and `per_day_cap_sat`) enforced by
+  `artanis_standing_spend_grants` / `runArtanisSpendDecision`. Over-cap or
+  unbounded spend must record/block (`blocked_over_cap` or the public ladder
+  blocker), never silently pay or widen authority.
+- Regression coverage lives in
+  `workers/api/src/artanis-autonomy-ladder.test.ts`,
+  `workers/api/src/artanis-owner-authority.test.ts`, and
+  `workers/api/src/artanis-public-report.test.ts`.
+
 ## Artanis Autonomous Khala Improvement Tick
 
 - The scheduled Artanis tick is the bounded owner loop for #6359. On every

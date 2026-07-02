@@ -43,6 +43,7 @@
 // with the note `ARTANIS_OWNER_PROMOTION_NOTE`. It is documented in
 // `apps/openagents.com/INVARIANTS.md` ("Artanis Owner Promotion").
 
+import { artanisAutonomyLadderAllowsStandingApproval } from './artanis-autonomy-ladder'
 import {
   ARTANIS_OWNER_OPERATOR_AUTHORITY_SCOPE,
   ARTANIS_OWNER_SELF_AUTHORITY_SCOPE,
@@ -128,6 +129,10 @@ export const ownerAgentHasStandingApprovalForRiskyAction = (
   return (
     approvedScope !== null &&
     approvedScope === authorityScope &&
+    artanisAutonomyLadderAllowsStandingApproval({
+      authorityScope,
+      riskyActionKind,
+    }) &&
     OWNER_AGENT_STANDING_APPROVAL_KINDS.includes(riskyActionKind) &&
     isOpenAgentsOwnerAgentOpenAuthUserId(openAuthUserId)
   )

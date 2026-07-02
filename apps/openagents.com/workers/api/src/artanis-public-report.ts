@@ -18,6 +18,14 @@ import {
   projectArtanisForumRewardVisibility,
 } from './artanis-forum-reward-visibility'
 import {
+  defaultArtanisAutonomyLadderInput,
+  evaluateArtanisAutonomyLadder,
+} from './artanis-autonomy-ladder'
+import {
+  ARTANIS_OWNER_OPERATOR_AUTHORITY_SCOPE,
+  ARTANIS_SHARED_FLEET_AUTHORITY_SCOPE,
+} from './artanis-authority-scope'
+import {
   ArtanisGepaProductionSmokeProjection,
   exampleArtanisGepaProductionSmokeRecord,
   projectArtanisGepaProductionSmoke,
@@ -245,6 +253,10 @@ export class ArtanisPublicReportHealthSummary extends S.Class<ArtanisPublicRepor
 export class ArtanisPublicReportAuthoritySummary extends S.Class<ArtanisPublicReportAuthoritySummary>(
   'ArtanisPublicReportAuthoritySummary',
 )({
+  autonomyLadderBlockerRefs: S.Array(S.String),
+  autonomyLadderCandidateStandingApprovalAllowed: S.Boolean,
+  autonomyLadderEvidenceRefs: S.Array(S.String),
+  autonomyLadderNextGateEligible: S.Boolean,
   authorityBlockerRefs: S.Array(S.String),
   dispatchAuthorityAllowed: S.Boolean,
   dispatcherGateGreen: S.Boolean,
@@ -1242,6 +1254,28 @@ export const artanisPublicReportSnapshot = (input: {
   const decisionLog = decisionLogFromTickMonitor(input.tickMonitor, nowIso)
   const productionLaunchGate =
     exampleArtanisProductionLaunchGateProjection(nowIso)
+  const autonomyLadderProjections = [
+    evaluateArtanisAutonomyLadder(
+      defaultArtanisAutonomyLadderInput({
+        actionRef: 'action.public.artanis.shared_fleet_dispatch',
+        authorityScope: ARTANIS_SHARED_FLEET_AUTHORITY_SCOPE,
+        riskyActionKind: 'pylon_job_dispatch',
+      }),
+    ),
+    evaluateArtanisAutonomyLadder(
+      defaultArtanisAutonomyLadderInput({
+        actionRef: 'action.public.artanis.wallet_spend',
+        authorityScope: ARTANIS_OWNER_OPERATOR_AUTHORITY_SCOPE,
+        riskyActionKind: 'wallet_spend',
+      }),
+    ),
+  ]
+  const autonomyLadderBlockerRefs = uniqueRefs(
+    autonomyLadderProjections.flatMap(projection => projection.blockerRefs),
+  )
+  const autonomyLadderEvidenceRefs = uniqueRefs(
+    autonomyLadderProjections.flatMap(projection => projection.evidenceRefs),
+  )
   const health = projectArtanisHealthSnapshot(
     currentArtanisHealthSnapshot({
       modelLab: {
@@ -1370,6 +1404,14 @@ export const artanisPublicReportSnapshot = (input: {
   const greenLaunchCopyAllowed =
     statusProjectionAllowed && healthAllowsGreenLaunchCopy
   const authoritySummary = new ArtanisPublicReportAuthoritySummary({
+    autonomyLadderBlockerRefs,
+    autonomyLadderCandidateStandingApprovalAllowed: autonomyLadderProjections.some(
+      projection => projection.standingApprovalAllowed,
+    ),
+    autonomyLadderEvidenceRefs,
+    autonomyLadderNextGateEligible: autonomyLadderProjections.some(
+      projection => projection.nextGateEligible,
+    ),
     authorityBlockerRefs: uniqueRefs([
       ...(greenLaunchCopyAllowed
         ? []
@@ -1398,6 +1440,7 @@ export const artanisPublicReportSnapshot = (input: {
       ...(productionLaunchGate.forumAutoPublishAllowed
         ? []
         : ['blocker.public.artanis.forum_auto_publish_not_granted']),
+      ...autonomyLadderBlockerRefs,
     ]),
     dispatchAuthorityAllowed: productionLaunchGate.dispatchAuthorityAllowed,
     dispatcherGateGreen: productionLaunchGate.dispatchAuthorityAllowed,
