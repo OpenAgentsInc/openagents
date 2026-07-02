@@ -498,8 +498,10 @@ with `PYLON_FLEET_RUN_LIVE_PYLON_REF`, exactly two distinct
 `PYLON_FLEET_RUN_LIVE_VERIFY`, and `OPENAGENTS_AGENT_TOKEN`. Armed execution
 starts a supervised issue-list FleetRun at target concurrency 2. The
 supervisor publishes a fresh presence heartbeat with the run capacity before
-each real dispatch pass; if server admission still rejects a request, the smoke
-result carries a `dispatchFailures` summary instead of only aggregate counters.
+each real dispatch pass and carries the same advertised capacity environment
+into the `khala request` process; if server admission still rejects a request,
+the smoke result carries a `dispatchFailures` summary instead of only aggregate
+counters.
 Final no-spend progress messages are bounded to the hosted assignment API
 contract, and local `AssignmentCloseout` receipts are translated to the hosted
 worker-closeout event body before submission. Progress/artifact submission

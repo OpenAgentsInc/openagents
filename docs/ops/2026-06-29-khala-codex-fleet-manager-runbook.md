@@ -113,14 +113,16 @@ Expected:
   explicitly for manual shell smokes.
 - Supervised real FleetRuns (`issue_list`, `github_backlog`, and plan DAGs)
   also publish a fresh `presence heartbeat --base-url ... --json` from the
-  supervisor capacity probe before dispatch. This is required for
-  `smoke:fleet-run-live`: a manual heartbeat several minutes earlier is not
-  sufficient evidence, and stale-heartbeat admission failures must appear in
-  the smoke JSON under `dispatchFailures`.
+  supervisor capacity probe before dispatch and pass that same advertised
+  capacity env into the `khala request` child process. This is required for
+  `smoke:fleet-run-live`: a manual heartbeat several minutes earlier, or an
+  assignment request spawned from an unadvertised env, is not sufficient
+  evidence, and stale-heartbeat admission failures must appear in the smoke JSON
+  under `dispatchFailures`.
 - The regression gate for this bundle is the adverse-condition matrix in
   `packages/khala-tools/src/fleet-delegate-program.test.ts` plus the Desktop
   runner seam in
-  `clients/khala-code-desktop/tests/khala-codex-fleet-tools.test.ts`. It covers
+  `clients/khala-code-desktop/tests/khala-fleet-tools.test.ts`. It covers
   `0/1` capacity recovery, stale-heartbeat refresh, duplicate-assignment retry,
   credentials-missing/revoked typed blockers, and high-load typed gating; none
   of those cases may regress to a bare `codex_spawn_failed` capacity dead-end.

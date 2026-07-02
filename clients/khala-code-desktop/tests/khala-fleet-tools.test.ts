@@ -515,6 +515,8 @@ describe("Khala Code fleet tools", () => {
       }
       if (args[0] === "khala" && args[1] === "request") {
         expect(heartbeatSeen).toBe(true)
+        expect(input.env?.OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY).toBe("10")
+        expect(input.env?.OPENAGENTS_PYLON_CODEX_CONCURRENCY).toBe("10")
         requestArgs = args
         return ok(matrixKhalaRequestCompleted("assignment.public.codex_agent_task.live_issue"))
       }

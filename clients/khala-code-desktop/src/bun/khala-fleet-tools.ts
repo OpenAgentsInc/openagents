@@ -1469,6 +1469,7 @@ type ActiveFleetRun = {
 export class DefaultKhalaFleetRunSupervisorManager implements KhalaFleetRunSupervisorManager {
   private readonly store: PylonOrchestrationStore
   private readonly active = new Map<string, ActiveFleetRun>()
+  private readonly advertisedRunEnvs = new Map<string, ChatEnv>()
   private readonly planConfigs = new Map<string, FleetRunPlanConfig>()
   private readonly pylonService: PylonServiceShape
   private readonly retainedLifecycle = new Map<string, readonly FleetRunSupervisorObservedEvent[]>()
@@ -1676,11 +1677,13 @@ export class DefaultKhalaFleetRunSupervisorManager implements KhalaFleetRunSuper
         const config = this.planConfigs.get(runRef)
         if (config === undefined) throw new Error(`missing fleet run plan config: ${runRef}`)
         const fixture = run.workSource === "fixture"
+        const env = this.advertisedRunEnvs.get(runRef) ?? this.options.env
         return await Effect.runPromise(this.pylonService.runAssignment({
           accountRef: commandAccountRef(accountRef),
           baseUrl: config.baseUrl,
           branch: workUnit.branch ?? config.branch,
           commit: fixture ? undefined : workUnit.baseCommit ?? config.commit,
+          env,
           fixture,
           objective: workUnit.body ?? renderFleetRunDispatchPrompt(run, workUnit),
           pylonRef,
@@ -1733,6 +1736,7 @@ export class DefaultKhalaFleetRunSupervisorManager implements KhalaFleetRunSuper
       ...advertisedEnv,
       PYLON_OPENAGENTS_BASE_URL: baseUrl,
     }
+    this.advertisedRunEnvs.set(runRef, env)
     const paths = resolvePylonPaths(env)
     const heartbeat = await runPylonCommand(["presence", "heartbeat", "--base-url", baseUrl, "--json"], {
       env,

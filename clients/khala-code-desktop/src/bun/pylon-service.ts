@@ -48,6 +48,7 @@ export type PylonServiceAssignmentInput = {
   readonly baseUrl?: string | undefined
   readonly branch?: string | undefined
   readonly commit?: string | undefined
+  readonly env?: ChatEnv | undefined
   readonly fixture?: boolean | undefined
   readonly objective: string
   readonly pylonRef?: string | undefined
@@ -589,9 +590,10 @@ export const makePylonService = (
         ),
       ),
     runAssignment: input => {
-      const env = { ...(options.env ?? khalaCodeConfigFromRuntimeEnv().env) }
+      const env = { ...(options.env ?? khalaCodeConfigFromRuntimeEnv().env), ...(input.env ?? {}) }
       return request({
         args: assignmentArgs(input, env),
+        env,
         maxOutputBytes: DEFAULT_ASSIGNMENT_MAX_OUTPUT_BYTES,
         timeoutMs: input.timeoutMs ?? DEFAULT_ASSIGNMENT_TIMEOUT_MS,
       }).pipe(
