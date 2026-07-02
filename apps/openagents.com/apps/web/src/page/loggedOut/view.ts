@@ -14,6 +14,7 @@ import * as ArtanisAccounts from '../artanisAccounts'
 import * as AutopilotOnboardingPage from '../autopilot-onboarding/page'
 import * as Blog from '../blog'
 import * as Business from '../business'
+import * as LandingPreview from '../landingPreview'
 import * as ClientsPreview from '../clientsPreview'
 import * as Components from '../components'
 import * as DemoLegal from '../demoLegal'
@@ -324,6 +325,7 @@ export const view = Submodel.defineView<Model, Message>((model): Html => {
               ComponentsFamily: route =>
                 Components.view({ _tag: 'LoggedOut' }, route.family),
               Business: () => Business.view({ _tag: 'LoggedOut' }),
+              LandingPreview: () => LandingPreview.view(),
               // /autopilot + /autopilot/{vertical} are handled by the persistent
               // scene early-return above (they mount the onboarding HUD over the
               // shared canvas), so the route union here no longer includes them.

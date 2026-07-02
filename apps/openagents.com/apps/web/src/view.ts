@@ -17,6 +17,7 @@ import * as ArtanisTraceTree from './page/artanisTraceTree'
 import * as ArtanisAccounts from './page/artanisAccounts'
 import * as Blog from './page/blog'
 import * as Business from './page/business'
+import * as LandingPreview from './page/landingPreview'
 import * as Components from './page/components'
 import * as DemoLegal from './page/demoLegal'
 import * as Docs from './page/docs'
@@ -391,7 +392,9 @@ const title = (model: Model): string => {
     case 'ComponentsFamily':
       return 'Components - OpenAgents'
     case 'Business':
-      return 'For your business - OpenAgents'
+      return 'Agents that work - OpenAgents'
+    case 'LandingPreview':
+      return 'OpenAgents'
     case 'Autopilot':
     case 'AutopilotVertical':
       return 'Autopilot - OpenAgents'
@@ -627,6 +630,7 @@ const publicRouteBody = (model: Model): Document['body'] | undefined => {
       model.route._tag !== 'Components' &&
       model.route._tag !== 'ComponentsFamily' &&
       model.route._tag !== 'Business' &&
+      model.route._tag !== 'LandingPreview' &&
       model.route._tag !== 'Autopilot' &&
       model.route._tag !== 'AutopilotVertical' &&
       model.route._tag !== 'Terms' &&
@@ -677,6 +681,10 @@ const publicRouteBody = (model: Model): Document['body'] | undefined => {
 
   if (model.route._tag === 'Business') {
     return Business.view<Message>(authState)
+  }
+
+  if (model.route._tag === 'LandingPreview') {
+    return LandingPreview.view<Message>()
   }
 
   // Note: /autopilot and /autopilot/{vertical} are rendered above through the

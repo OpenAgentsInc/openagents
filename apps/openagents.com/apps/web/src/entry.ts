@@ -3,6 +3,7 @@ import { Runtime } from 'foldkit'
 import { Flags, flags, init } from './main'
 import { ChangedUrl, ClickedLink, Message } from './message'
 import { Model } from './model'
+import { installBusinessIntakeChatController } from './page/business-intake-chat-controller'
 import { installKhalaChatLatestButtonController } from './page/khala-chat/latest-button-controller'
 import { installKhalaTokensServedCountUp } from './page/loggedOut/khala-tokens-served-countup-controller'
 import { subscriptions } from './subscriptions'
@@ -37,3 +38,8 @@ installKhalaTokensServedCountUp()
 // Keep the /chat "Latest" jump control honest: it is visible only while the
 // transcript has hidden newer content below the current scroll position.
 installKhalaChatLatestButtonController()
+
+// Wire the /business Khala intake console (bounded server-side interview).
+// Decoupled from the Foldkit loop like the controllers above; a no-op until
+// the business page renders its console root.
+installBusinessIntakeChatController()

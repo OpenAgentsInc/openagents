@@ -537,6 +537,16 @@ export const routeTable = {
     inLoggedInUnion: true,
     render: 'statelessShell',
   },
+  LandingPreview: {
+    surface: 'spaDocument',
+    serverDocument: /^\/preview\/landing$/,
+    examplePaths: ['/preview/landing'],
+    requiresAuthBootstrap: false,
+    loggedInGate: 'open',
+    inLoggedOutUnion: true,
+    inLoggedInUnion: true,
+    render: 'statelessShell',
+  },
   Animations: {
     surface: 'spaDocument',
     serverDocument: /^\/animations$/,

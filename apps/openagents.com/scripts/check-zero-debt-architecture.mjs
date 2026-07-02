@@ -793,17 +793,22 @@ const reportOnlyArchitectureChecks = [
 // route tests where Foldkit rendering is available.
 const publicLandingCompositionChecks = [
   {
-    maxLocalClassCalls: 8,
+    // 2026-07-02 owner-directed redesign: /business is dark-only on the
+    // DESIGN.md operational surface, so the light/system theme selector and
+    // theme script are intentionally gone. The local-class budget covers the
+    // page-local Khala intake console (KHALA · INTAKE strip, transcript,
+    // composer); ratchet it back down if/when the console is extracted into
+    // @openagentsinc/ui as a shared component.
+    maxLocalClassCalls: 14,
     module: 'apps/web/src/page/business.ts',
     requiredSymbols: [
       'Ui.publicLandingThemeShell',
-      'Ui.publicLandingThemeSelector',
-      'Ui.publicLandingThemeScript',
       'Ui.businessLandingHero',
       'Ui.businessOfferingMenu',
       'Ui.quickWinLadder',
       'Ui.businessProjectInvite',
       'Ui.businessIntakeForm',
+      "DataAttribute('business-intake-chat'",
     ],
     route: '/business',
   },
@@ -1082,6 +1087,11 @@ const publicProjectionSurfaces = [
   {
     module: 'workers/api/src/business-signup-routes.ts',
     route: '/api/public/business-signup',
+    status: 'staleness_declared',
+  },
+  {
+    module: 'workers/api/src/business-intake-chat-routes.ts',
+    route: '/api/public/business-intake-chat',
     status: 'staleness_declared',
   },
   {

@@ -235,6 +235,7 @@ import {
   listBlueprintProgramRuns,
   recordBlueprintProgramRun,
 } from './blueprint/repositories/program-runs'
+import { handleBusinessIntakeChatApi } from './business-intake-chat-routes'
 import { handleBusinessSignupApi } from './business-signup-routes'
 import { makeD1BuyModeDispatcherStore } from './buy-mode-dispatcher'
 import { buyModePaymentBridgeForEnv } from './buy-mode-http-payment-bridge'
@@ -442,6 +443,7 @@ import {
 import {
   KHALA_FIREWORKS_BACKING_MODEL_ID,
   fireworksAdapter,
+  makeFireworksAdapter,
 } from './inference/fireworks-adapter'
 import { runFleetBurnStallDetectorScheduled } from './inference/fleet-burn-stall-detector'
 import { freeTierDataSharingDisclosure } from './inference/free-tier-data-sharing-disclosure'
@@ -10573,6 +10575,39 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     path: '/api/public/business-signup',
     handler: (request, env) =>
       handleBusinessSignupApi(request, openAgentsDatabase(env)),
+  },
+  {
+    // OpenAgents Business conversational intake (Khala-run interview from
+    // docs/business/2026-06-20-openagents-business-intake-spec.md). Public,
+    // stateless (the browser holds the transcript), bounded + rate limited,
+    // non-streaming, fixed Khala Fireworks backing model. Gated on the SAME
+    // conditions as the free gateway: INFERENCE_GATEWAY_ENABLED + the
+    // Fireworks key present; otherwise 503. Every served completion records an
+    // exact `token_usage_events` row (demand_kind=internal,
+    // demand_source=business_intake_chat) fail-soft via the canonical
+    // served-tokens recorder.
+    path: '/api/public/business-intake-chat',
+    handler: (request, env) =>
+      handleBusinessIntakeChatApi(request, {
+        complete: inferenceRequest =>
+          makeFireworksAdapter({
+            getApiKey: () => env.FIREWORKS_API_KEY,
+          }).complete(inferenceRequest),
+        enabled: isInferenceGatewayEnabled(env.INFERENCE_GATEWAY_ENABLED),
+        fireworksArmed: resolveSupplyLaneArming(env).fireworks,
+        recordTokensServed: makeD1ServedTokensRecorder(
+          openAgentsDatabase(env),
+          {
+            publishDelta: delta =>
+              Effect.promise(() =>
+                publishKhalaTokensServedDelta(
+                  env,
+                  buildKhalaTokensServedDelta(delta),
+                ).catch(() => undefined),
+              ),
+          },
+        ),
+      }),
   },
   {
     path: '/api/public/tassadar-run-summary',

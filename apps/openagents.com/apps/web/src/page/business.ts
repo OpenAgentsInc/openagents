@@ -5,23 +5,27 @@ import * as Ui from '../ui'
 import type { PublicHeaderAuthState } from './publicHeader'
 import * as PublicHeader from './publicHeader'
 
-// Public `openagents.com/business` landing page + signup form.
+// Public `openagents.com/business` page — "Agents that work."
 //
-// This route intentionally keeps the existing auth-aware public header, then
-// composes the landing body from the shared Foldkit/Tailwind UI component
-// families in `@openagentsinc/ui`. The signup form is a plain server-posted
-// HTML form; the bounded intake endpoint records an intake receipt only.
+// Dark-only operational surface (DESIGN.md): pure black foundation, mono-first
+// type, command-surface panels. The centerpiece is the Khala intake console —
+// a bounded, server-side interview (POST /api/public/business-intake-chat)
+// that intuits what the visitor needs and drafts the intake spec for them. The
+// plain server-posted form remains the no-JS fallback and the final submit
+// surface; the bounded intake endpoint records an intake receipt only.
 //
 // Naming note: keep all copy/code generic product language. Do NOT reference
-// any partner/company/person names anywhere.
+// any partner/company/person names anywhere. Availability copy stays pinned
+// to the public product-promise registry — shipped, operator-assisted, or
+// roadmap, stated plainly.
 
 const intakeAction = '/api/public/business-signup'
-const defaultLandingMode: Ui.PublicLandingThemeMode = 'light'
+const landingMode: Ui.PublicLandingThemeMode = 'dark'
 
 const pageShellClass = 'h-dvh overflow-auto bg-[#000] text-[#f1efe8]'
 
 const pricingNote =
-  'Usage is framed as clear token-based credits where the paid loop is available. The broader card/Bitcoin-to-credit-to-inference path is still being closed for production, so we scope any paid run with an explicit receipt plan before you fund it. No monthly AI subscription.'
+  'Usage is framed as clear token-based credits where the paid loop is available. We scope any paid run with an explicit receipt plan before you fund it. No monthly AI subscription.'
 
 const offerings: ReadonlyArray<Ui.BusinessOffering> = [
   {
@@ -128,64 +132,167 @@ const ladderSteps: ReadonlyArray<Ui.BusinessLadderStep> = [
 // referral spine. No-JS visitors still attribute via the /r/<ref> cookie path.
 const referralCaptureScript = `(function(){try{var p=new URLSearchParams(window.location.search);var ref=(p.get('ref')||'').trim();if(!/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,190}$/.test(ref))return;var el=document.getElementById('business-referral-code');if(el)el.value=ref;}catch(e){}})();`
 
-export const businessLandingShell = <Message>(
-  mode: Ui.PublicLandingThemeMode = defaultLandingMode,
-): Html => {
+// The Khala intake console. The server renders the static shell + honest
+// empty state; `installBusinessIntakeChatController` (entry.ts) wires the
+// transcript, composer, and the bounded intake-chat endpoint at runtime. With
+// JS off, the <noscript> line points at the plain form, which stays the
+// authoritative submit surface either way.
+const intakeConsole = <Message>(): Html => {
   const h = html<Message>()
 
-  return Ui.publicLandingThemeShell<Message>({
-    preference: 'system',
-    mode,
-    className: 'min-h-[calc(100dvh-3.5rem)]',
-    attrs: [h.DataAttribute('business-landing-shell', '')],
-    children: [
+  return h.section(
+    [
+      h.Id('business-intake'),
+      h.AriaLabel('Khala intake'),
+      h.DataAttribute('business-intake-chat', ''),
+      Ui.className<Message>(
+        'grid gap-0 overflow-hidden border border-[#222] bg-[#010102]',
+      ),
+    ],
+    [
+      // Console strip header — a status register, not a marketing card.
       h.div(
         [
           Ui.className<Message>(
-            'mx-auto flex w-[min(100%,1040px)] justify-end px-4 pt-4',
+            'flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-[#222] px-4 py-2.5 font-mono text-xs',
           ),
         ],
         [
-          Ui.publicLandingThemeSelector<Message>({
-            preference: 'system',
-          }),
+          h.span(
+            [Ui.className<Message>('font-medium tracking-wide text-[#f1efe8]')],
+            ['KHALA · INTAKE'],
+          ),
+          h.span(
+            [
+              h.DataAttribute('intake-chat-status', 'idle'),
+              Ui.className<Message>('text-white/60'),
+            ],
+            ['describe what you need — Khala scopes the quick win'],
+          ),
+          h.span(
+            [Ui.className<Message>('ml-auto hidden text-white/35 sm:inline')],
+            ['bounded interview · no credentials · receipt-first'],
+          ),
         ],
       ),
+      // Transcript region. The controller appends role-prefixed rows here.
+      h.div(
+        [
+          h.DataAttribute('intake-chat-transcript', ''),
+          h.AriaLive('polite'),
+          Ui.className<Message>(
+            'grid max-h-[26rem] min-h-[8.5rem] content-start gap-3 overflow-y-auto px-4 py-4 font-mono text-sm leading-relaxed',
+          ),
+        ],
+        [
+          h.p(
+            [
+              h.DataAttribute('intake-chat-empty', ''),
+              Ui.className<Message>('m-0 max-w-[62ch] text-white/60'),
+            ],
+            [
+              'Tell Khala what your business needs — a stuck task, a repetitive grind, software you wish existed. It runs a short interview, matches you to what OpenAgents can honestly deliver today, and drafts your intake spec.',
+            ],
+          ),
+          h.noscript(
+            [],
+            [
+              h.p(
+                [Ui.className<Message>('m-0 text-white/60')],
+                [
+                  'JavaScript is off — use the form below instead. Same intake, same receipt.',
+                ],
+              ),
+            ],
+          ),
+        ],
+      ),
+      // Composer. The controller arms it; it renders inert without JS.
+      h.div(
+        [
+          Ui.className<Message>(
+            'flex items-stretch gap-2 border-t border-[#222] p-2.5',
+          ),
+        ],
+        [
+          h.textarea(
+            [
+              h.DataAttribute('intake-chat-input', ''),
+              h.AriaLabel('Message Khala'),
+              h.Placeholder(
+                'e.g. rebuild our outdated internal dashboard',
+              ),
+              h.Rows(1),
+              Ui.className<Message>(
+                'min-h-[2.5rem] flex-1 resize-none border border-[#222] bg-black px-3 py-2 font-mono text-sm text-[#f1efe8] outline-none transition-colors duration-150 placeholder:text-white/35 focus:border-[#444]',
+              ),
+            ],
+            [],
+          ),
+          h.button(
+            [
+              h.DataAttribute('intake-chat-send', ''),
+              h.Type('button'),
+              Ui.className<Message>(
+                'border border-[#333] bg-[#141414] px-4 font-mono text-sm text-[#f1efe8] transition-colors duration-150 hover:bg-[#1d1d1d] focus-visible:border-[#666] disabled:cursor-not-allowed disabled:text-white/35',
+              ),
+            ],
+            ['Send'],
+          ),
+        ],
+      ),
+    ],
+  )
+}
+
+export const businessLandingShell = <Message>(): Html => {
+  const h = html<Message>()
+
+  return Ui.publicLandingThemeShell<Message>({
+    preference: 'dark',
+    mode: landingMode,
+    className: 'min-h-[calc(100dvh-3.5rem)]',
+    attrs: [h.DataAttribute('business-landing-shell', '')],
+    children: [
       h.main(
         [
           h.AriaLabel('Business'),
           Ui.className<Message>(
-            'mx-auto grid w-[min(100%,1040px)] gap-8 px-4 py-8 lg:grid-cols-[minmax(0,1fr)_minmax(22rem,26rem)]',
+            'mx-auto grid w-[min(100%,1040px)] gap-10 px-4 py-10 lg:grid-cols-[minmax(0,1fr)_minmax(22rem,26rem)]',
           ),
         ],
         [
           h.div(
-            [Ui.className<Message>('grid content-start gap-8')],
+            [Ui.className<Message>('grid content-start gap-10')],
             [
               Ui.businessLandingHero<Message>({
-                title: 'Put an AI workforce to work on your business',
-                body: 'Tell us what you want help with. We set up a workspace seeded with your details so you can hand off work and watch it get done.',
+                eyebrow: 'OpenAgents Business',
+                title: 'Agents that work.',
+                body: 'Hire agents from the OpenAgents network to get real work done — software built fast, campaigns drafted, batches processed — delivered with verifiable receipts.',
                 secondaryBody:
-                  'OpenAgents sells machine work with receipts: agents and compute that do real work, where every accepted outcome ties to verifiable evidence. Start with a fast quick win, then put parts of your business on Autopilot. Payment options are scoped up front, including Bitcoin and credits where the backing rails are proven today.',
-                primaryHref: '#business-signup',
-                primaryLabel: 'Start with a quick win',
-                mode,
+                  'Start with a fast quick win we can deliver in days, then put recurring work on Autopilot as trust builds. Every accepted outcome ties to evidence; every paid run is scoped with a receipt plan up front; a human-review gate sits before anything ships, sends, or spends.',
+                primaryHref: '#business-intake',
+                primaryLabel: 'Talk to Khala',
+                secondaryHref: '#business-signup',
+                secondaryLabel: 'Use the form',
+                mode: landingMode,
               }),
+              intakeConsole<Message>(),
               Ui.businessOfferingMenu<Message>({
                 body: 'An honest menu of what OpenAgents can deliver. Availability is grounded in our public product-promise registry - shipped now, operator-assisted with a caveat, or planned roadmap. We say so in writing and scope the smallest honest version.',
                 offerings,
-                mode,
+                mode: landingMode,
               }),
               Ui.quickWinLadder<Message>({
                 title: 'Quick win -> put your business on Autopilot',
                 body: 'You do not commit to the whole journey up front. We pick one small first win, then grow the relationship only if it works.',
                 steps: ladderSteps,
-                mode,
+                mode: landingMode,
               }),
               Ui.businessProjectInvite<Message>({
                 title: 'We prepare the workspace before you open it',
                 body: 'Your invite opens a named project with seeded notes, starter workflows, and an intro receipt.',
-                mode,
+                mode: landingMode,
               }),
             ],
           ),
@@ -193,7 +300,8 @@ export const businessLandingShell = <Message>(
             action: intakeAction,
             title: 'Tell us what to hand off',
             pricingNote,
-            mode,
+            mode: landingMode,
+            className: 'content-start self-start',
             attrs: [h.Id('business-signup')],
           }),
         ],
@@ -212,7 +320,6 @@ export const view = <Message>(
     [
       PublicHeader.view(authState),
       businessLandingShell<Message>(),
-      h.script([], [Ui.publicLandingThemeScript()]),
       h.script([], [referralCaptureScript]),
     ],
   )

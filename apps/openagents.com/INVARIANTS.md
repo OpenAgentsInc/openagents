@@ -2622,6 +2622,22 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     `accrueCrossCategoryReferral`, never on signups). The public response echoes
     only a `referralAttributed` boolean — never the code or the internal
     attribution id. A referral resolution failure never fails the intake.
+  - `POST /api/public/business-intake-chat` — live-at-read conversational
+    intake turn over one bounded, non-streaming Khala completion (or the
+    deterministic opening constant for an empty transcript) — compliant
+    (`generatedAt`, `live_at_read` contract). Stateless: the browser holds the
+    transcript; the server owns the system prompt and rejects client-supplied
+    `system` roles, over-bound transcripts (max 24 messages / 2,000 chars each
+    / 24,000 total), and non-user-first transcripts with typed 400s. Gated on
+    the same conditions as the free gateway (`INFERENCE_GATEWAY_ENABLED` +
+    Fireworks key presence; otherwise 503 `business_intake_chat_unavailable`)
+    and per-IP rate limited (8/min, 60/day; 429
+    `business_intake_rate_limited`). Every served completion records one exact
+    `token_usage_events` row fail-soft via the canonical served-tokens
+    recorder (`usage_truth='exact'`, `demand_kind='internal'`,
+    `demand_source='business_intake_chat'`); estimated tokens are never
+    counted. The turn grants no work-order, spend, payout, settlement, or
+    agent authority and never requests credentials.
   - `GET /api/public/training/runs/{trainingRunRef}` — live at read over the
     Worker-authoritative training run, window, lease, verification challenge,
     and provider-confirmed settlement receipt rows — compliant (`generatedAt`,

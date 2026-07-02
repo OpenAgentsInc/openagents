@@ -1766,6 +1766,41 @@ const schemaComponents = (): JsonSchema => ({
   BusinessSignupResponse: objectSummary(
     'Public-safe business signup receipt with request id, source route, requestedSlackChannel, slackConnectStatus (not_requested or manual_invite_pending at intake), nextAction, generatedAt, staleness contract, and the explicit authority boundary. It does not echo contact email, phone, website, or private request text.',
   ),
+  BusinessIntakeChatRequest: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['messages'],
+    properties: {
+      messages: {
+        type: 'array',
+        maxItems: 24,
+        description:
+          'The running intake conversation held by the browser. An empty array returns the deterministic Khala opening greeting and first interview question. Roles are limited to user and assistant (the server owns the system prompt), each content is at most 2000 characters, the combined content is at most 24000 characters, and a non-empty transcript must start with a user message.',
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['role', 'content'],
+          properties: {
+            role: {
+              type: 'string',
+              enum: ['user', 'assistant'],
+              description:
+                'Message author. Client-supplied system messages are rejected.',
+            },
+            content: {
+              type: 'string',
+              minLength: 1,
+              maxLength: 2000,
+              description: 'Message text for this turn.',
+            },
+          },
+        },
+      },
+    },
+  },
+  BusinessIntakeChatResponse: objectSummary(
+    'One Khala intake-interview turn with generatedAt and the declared live_at_read staleness contract: ok, the assistant reply text, done (true only once the interview completed and the filled Output Spec was produced), and spec (the completed intake-spec markdown to attach to the business intake submission, or null while the interview is in progress). Bounded and non-streaming; 503 business_intake_chat_unavailable when the serving lane is unarmed, 429 business_intake_rate_limited over the per-IP bounds. The turn grants no work-order, spend, payout, settlement, or agent authority.',
+  ),
   AutopilotWorkRequest: objectSummary(
     'Typed openagents.autopilot_work_request.v1 delegated coding-work request. It carries public-safe task, repository, placement, payment, and forum policy refs only, plus an optional launchPolicy ({kind: scheduled, launchAt UTC ISO, launchWindowMinutes 5-1440}) that queues the order for a later launch with placement decided at launch time. Do not include secrets, raw prompts, private repo archives, raw logs, wallet material, invoices, preimages, or provider credentials.',
   ),
@@ -5872,6 +5907,26 @@ const paths = (): JsonSchema => ({
           },
         },
       },
+    }),
+  },
+  '/api/public/business-intake-chat': {
+    post: operation({
+      operationId: 'createBusinessIntakeChatTurn',
+      summary: 'Run one Khala business-intake interview turn',
+      description:
+        'Runs one bounded turn of the conversational OpenAgents Business intake. The browser holds the transcript and sends the running user/assistant conversation; the server replies as Khala, interviewing per the published intake spec (offerings menu with honest availability labels, one area at a time, quick win first) over the fixed Khala serving lane with fixed params. When the interview completes, done becomes true and spec carries the filled intake-spec markdown to attach to the business intake submission. Empty messages return the opening greeting. Requests are strictly bounded (at most 24 messages, 2000 chars each, 24000 chars total, roles user/assistant only, first message from the user) and per-IP rate limited (429 business_intake_rate_limited); the route returns 503 business_intake_chat_unavailable when the serving lane is not armed. Exact token usage is recorded to the canonical usage ledger as internal demand. The turn grants no work-order, spend, payout, settlement, or agent authority and never requests credentials.',
+      tags: ['Business'],
+      security: publicRead,
+      responses: {
+        '200': okJson(
+          'One Khala intake-interview turn.',
+          '#/components/schemas/BusinessIntakeChatResponse',
+        ),
+        ...errorResponses(),
+      },
+      requestBody: jsonContent(
+        '#/components/schemas/BusinessIntakeChatRequest',
+      ),
     }),
   },
   '/api/public/product-promises': {

@@ -1,5 +1,21 @@
 # Promise Registry
 
+> Registry `2026-07-02.1` is the owner-directed `/business` redesign pass
+> and flips NO promise state (green stays exactly 34).
+> `business.intake_quick_win_offering.v1` (yellow, unchanged) gains
+> evidence for the rebranded dark-only page (hero: "Agents that work.")
+> and the new bounded conversational intake at
+> `POST /api/public/business-intake-chat` — a stateless server-side
+> interview running the published intake spec over the same gateway
+> serving lane as the free tier (fail-closed 503 when unarmed, per-IP
+> rate limited, exact-only internal token accounting with
+> `demand_source=business_intake_chat`); the drafted spec hands off into
+> the existing signup form, which remains the single submit authority. A
+> review-only landing candidate ships at `/preview/landing` with an
+> explicit not-the-homepage banner; the live homepage is untouched. No
+> availability label changed, no pricing was published, and both blockers
+> stand.
+>
 > Registry `2026-07-01.3` is the #7966 PROMISSORY pass on
 > `khala_code.free_paid_plans.v1` and flips NO promise state (green stays
 > exactly 34; the record stays planned). Cleared with source+test evidence:

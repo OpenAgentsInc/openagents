@@ -68,6 +68,7 @@ export const ComponentsFamilyRoute = r('ComponentsFamily', {
   family: S.String,
 })
 export const BusinessRoute = r('Business')
+export const LandingPreviewRoute = r('LandingPreview')
 export const AnimationsRoute = r('Animations')
 export const ActivityRoute = r('Activity')
 export const ArtanisAccountsRoute = r('ArtanisAccounts')
@@ -189,6 +190,7 @@ export type ClientsPreviewRoute = typeof ClientsPreviewRoute.Type
 export type ComponentsRoute = typeof ComponentsRoute.Type
 export type ComponentsFamilyRoute = typeof ComponentsFamilyRoute.Type
 export type BusinessRoute = typeof BusinessRoute.Type
+export type LandingPreviewRoute = typeof LandingPreviewRoute.Type
 export type AnimationsRoute = typeof AnimationsRoute.Type
 export type ActivityRoute = typeof ActivityRoute.Type
 export type ArtanisAccountsRoute = typeof ArtanisAccountsRoute.Type
@@ -267,6 +269,7 @@ export const LoggedOutRoute = S.Union([
   ComponentsRoute,
   ComponentsFamilyRoute,
   BusinessRoute,
+  LandingPreviewRoute,
   AutopilotRoute,
   AutopilotVerticalRoute,
   AnimationsRoute,
@@ -333,6 +336,7 @@ export const LoggedInRoute = S.Union([
   ComponentsRoute,
   ComponentsFamilyRoute,
   BusinessRoute,
+  LandingPreviewRoute,
   AnimationsRoute,
   ActivityRoute,
   ArtanisAccountsRoute,
@@ -400,6 +404,7 @@ export const AppRoute = S.Union([
   ComponentsRoute,
   ComponentsFamilyRoute,
   BusinessRoute,
+  LandingPreviewRoute,
   AnimationsRoute,
   ActivityRoute,
   ArtanisAccountsRoute,
@@ -636,6 +641,11 @@ export const componentsFamilyRouter = pipe(
 export const businessRouter = pipe(
   literal('business'),
   Route.mapTo(BusinessRoute),
+)
+export const landingPreviewRouter = pipe(
+  literal('preview'),
+  slash(literal('landing')),
+  Route.mapTo(LandingPreviewRoute),
 )
 export const animationsRouter = pipe(
   literal('animations'),
@@ -975,6 +985,7 @@ const orderedParserRouters = [
   componentsFamilyRouter,
   componentsRouter,
   businessRouter,
+  landingPreviewRouter,
   animationsRouter,
   activityRouter,
   artanisAccountsRouter,

@@ -121,8 +121,25 @@ describe('business route', () => {
       'Usage is framed as clear token-based credits where the paid loop is available.',
     )
     expect(rendered).toContain(
-      'The broader card/Bitcoin-to-credit-to-inference path is still being closed for production',
+      'We scope any paid run with an explicit receipt plan before you fund it.',
     )
+  })
+
+  test('renders the Khala intake console with honest empty state and no-JS fallback', () => {
+    const rendered = renderHtml(Business.view({ _tag: 'LoggedOut' }))
+
+    expect(rendered).toContain('Agents that work.')
+    expect(rendered).toContain('data-business-intake-chat=""')
+    expect(rendered).toContain('KHALA · INTAKE')
+    expect(rendered).toContain('data-intake-chat-transcript=""')
+    expect(rendered).toContain('data-intake-chat-input=""')
+    expect(rendered).toContain('data-intake-chat-send=""')
+    expect(rendered).toContain('data-intake-chat-empty=""')
+    // Server calls are user-initiated only; the empty state is static copy.
+    expect(rendered).toContain('drafts your intake spec')
+    // No-JS visitors are pointed at the form, which stays the submit authority.
+    expect(rendered).toContain('JavaScript is off — use the form below instead.')
+    expect(rendered).toContain('bounded interview · no credentials · receipt-first')
   })
 
   test('renders the offering menu with honest availability badges', () => {
@@ -166,21 +183,22 @@ describe('business route', () => {
     expect(rendered).toContain('Ongoing - On Autopilot')
   })
 
-  test('renders the public landing theme shell in light and dark variants', () => {
-    const light = renderHtml(Business.view({ _tag: 'LoggedOut' }))
-    const dark = renderHtml(Business.businessLandingShell('dark'))
+  test('renders the dark-only operational landing shell', () => {
+    const rendered = renderHtml(Business.view({ _tag: 'LoggedOut' }))
+    const shell = renderHtml(Business.businessLandingShell())
 
-    expect(light).toContain('data-public-landing-shell=""')
-    expect(light).toContain('data-business-landing-shell=""')
-    expect(light).toContain('data-public-landing-theme="light"')
-    expect(light).toContain('data-public-landing-theme-preference="system"')
-    expect(light).toContain('data-public-landing-theme-select=""')
-    expect(light).toContain('oa.publicLanding.v1:theme')
-    expect(light).toContain("matchMedia('(prefers-color-scheme: dark)')")
+    // Dark-only per DESIGN.md — the page never offers a light variant or a
+    // theme selector; the operational black surface is the brand.
+    expect(rendered).toContain('data-public-landing-shell=""')
+    expect(rendered).toContain('data-business-landing-shell=""')
+    expect(rendered).toContain('data-public-landing-theme="dark"')
+    expect(rendered).toContain('data-public-landing-theme-preference="dark"')
+    expect(rendered).not.toContain('data-public-landing-theme-select=""')
+    expect(rendered).not.toContain('data-public-landing-theme="light"')
 
-    expect(dark).toContain('data-public-landing-theme="dark"')
-    expect(dark).toContain('data-ui-family="business/landing-heroes"')
-    expect(dark).toContain('data-ui-family="business/project-invites"')
+    expect(shell).toContain('data-public-landing-theme="dark"')
+    expect(shell).toContain('data-ui-family="business/landing-heroes"')
+    expect(shell).toContain('data-ui-family="business/project-invites"')
   })
 
   test('renders the hidden referral-code field for referral attribution', () => {
