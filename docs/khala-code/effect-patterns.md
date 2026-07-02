@@ -121,6 +121,8 @@ Approved desktop-native examples:
   `KhalaCodeDesktopTokenUsageReportFailure` and
   `KhalaCodeDesktopTokenUsagePersistentFailure`. The reporter retries with
   `Schedule.exponential(...)` and then returns a typed persistent failure.
+  Those two classes hand-roll `extends Error` + `_tag`; for new failure types
+  prefer `Data.TaggedError` as in `ClaudeSdkRuntimeError` above.
 - `clients/khala-code-desktop/src/bun/claude-app-sdk-chat-runtime.ts` inspects
   the failed `Exit` with `Cause.isFailReason` before projecting token-usage
   failure flags.
