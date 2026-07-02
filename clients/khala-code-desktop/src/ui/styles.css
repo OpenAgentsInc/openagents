@@ -1938,6 +1938,45 @@ button {
   font-size: 0.74rem;
   color: color-mix(in srgb, var(--oa-color-component-text) 65%, transparent);
 }
+.khala-fleet-throughput-gauges {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
+  gap: 0.55rem;
+}
+.khala-fleet-throughput-gauge {
+  display: grid;
+  gap: 0.25rem;
+  min-width: 0;
+  min-height: 5.6rem;
+  padding: 0.65rem 0.7rem;
+  border: 1px solid color-mix(in srgb, var(--oa-color-component-border) 82%, transparent);
+  border-radius: 0.45rem;
+  background: color-mix(in srgb, var(--oa-color-component-surface) 80%, transparent);
+}
+.khala-fleet-throughput-gauge[data-state="exact"] {
+  border-color: color-mix(in srgb, var(--oa-color-khala-success) 28%, transparent);
+}
+.khala-fleet-throughput-gauge[data-state="pending"] {
+  border-color: color-mix(in srgb, var(--oa-color-component-text) 24%, transparent);
+}
+.khala-fleet-throughput-gauge[data-state="not_measured"] {
+  border-color: color-mix(in srgb, var(--oa-color-khala-warning) 30%, transparent);
+}
+.khala-fleet-throughput-label,
+.khala-fleet-throughput-detail {
+  min-width: 0;
+  color: color-mix(in srgb, var(--oa-color-component-text) 62%, transparent);
+  font-size: 0.72rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.khala-fleet-throughput-value {
+  min-width: 0;
+  color: var(--oa-color-component-text);
+  font-size: 1.05rem;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
 .khala-fleet-badge {
   display: inline-flex;
   align-items: center;

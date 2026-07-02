@@ -228,6 +228,9 @@ describe("Khala Code live two-Codex smoke harness", () => {
 
     const summary = await runTwoCodexReadOnlySmoke({
       env: fixture.env,
+      fetch: async () => {
+        throw new Error("fixture tests must not call the live public counter")
+      },
       onProgress: payload => {
         progress.push(payload)
       },
@@ -256,6 +259,7 @@ describe("Khala Code live two-Codex smoke harness", () => {
     expect(summary.slotSummaries[0]).toContain("proof: 19 verified tokens")
     expect(summary.progressPayloadCount).toBe(4)
     expect(summary.progressEventCount).toBe(10)
+    expect(summary.publicCounterReconciliation.state).toBe("skipped")
     expect(summary.blockerRefs).toEqual([])
     expect(progress.at(-1)?.events.some(event => event.assignmentRef === ASSIGNMENT_TWO)).toBe(true)
     expect(calls.some(call => pylonArgs(call)[0] === "khala" && pylonArgs(call)[1] === "spawn")).toBe(true)

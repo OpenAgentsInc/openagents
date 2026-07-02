@@ -270,7 +270,11 @@ and flags; keep every projection public-safe with that in mind.
    states), run-total tokens, and **projected tokens/day** at current pace —
    the in-app mirror of the stats page bar the owner watches. Reconcile
    against `GET /api/public/khala-tokens-served` deltas in the live smoke,
-   never synthesize from progress frames.
+   never synthesize from progress frames. Implementation note: the cockpit
+   gauges consume only the exact token summaries already surfaced by
+   `codex_fleet_status` / `khala apm`; pending or unavailable rows render as
+   `pending` / `not_measured`, and the public counter reconciliation remains
+   env-armed live-smoke evidence.
 5. **Flags → Inbox**: every `run_blocked`, `approval_required`,
    `credentials_missing`, `cooldown_all_accounts`, `merge_conflict_wave`,
    and `claim_expired` becomes an Inbox row with its allowed responses and a

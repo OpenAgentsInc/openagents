@@ -8,7 +8,11 @@ import type {
   KhalaCodeDesktopFleetRunStartResult,
   KhalaCodeDesktopFleetStatus,
 } from "../src/shared/rpc"
-import { khalaFleetCountdownLabel, mountFleetPanel } from "../src/ui/fleet-status"
+import {
+  buildKhalaFleetThroughputGauges,
+  khalaFleetCountdownLabel,
+  mountFleetPanel,
+} from "../src/ui/fleet-status"
 
 let previousDocument: typeof globalThis.document | undefined
 let previousWindow: typeof globalThis.window | undefined
@@ -29,6 +33,7 @@ const status = (): KhalaCodeDesktopFleetStatus => ({
     completedStatus: "not_measured",
     completedTokenRows: null,
     completedTokensPerMinute: null,
+    tokensWindow: null,
     inFlightTokens: null,
     inFlightTokensPerMinute: null,
     source: "unavailable",
@@ -176,6 +181,92 @@ const flushPanelWork = async (): Promise<void> => {
 describe("Fleet status panel", () => {
   beforeEach(installDom)
   afterEach(restoreDom)
+
+  test("computes throughput gauges from exact token rows", () => {
+    expect(buildKhalaFleetThroughputGauges({
+      activeAdjustedTokensPerMinute: 1_001,
+      completedStatus: "exact",
+      completedTokenRows: 3,
+      completedTokensPerMinute: 250,
+      tokensWindow: 2_500,
+      inFlightTokens: 9_999,
+      inFlightTokensPerMinute: 999,
+      source: "pylon_khala_apm",
+      unavailableReason: null,
+    })).toEqual([
+      {
+        detail: "Exact token_usage_events window, 3 exact row(s).",
+        label: "Tokens/min",
+        state: "exact",
+        value: "250/min",
+      },
+      {
+        detail: "Exact token_usage_events window, 3 exact row(s).",
+        label: "Run total",
+        state: "exact",
+        value: "2,500",
+      },
+      {
+        detail: "Exact token_usage_events window, 3 exact row(s).",
+        label: "Projected/day",
+        state: "exact",
+        value: "360K",
+      },
+    ])
+  })
+
+  test("renders pending and not_measured throughput honesty states", () => {
+    expect(buildKhalaFleetThroughputGauges({
+      activeAdjustedTokensPerMinute: 3_000,
+      completedStatus: "pending",
+      completedTokenRows: null,
+      completedTokensPerMinute: null,
+      tokensWindow: null,
+      inFlightTokens: 8_000,
+      inFlightTokensPerMinute: 800,
+      source: "pylon_khala_apm",
+      unavailableReason: null,
+    }).map(gauge => `${gauge.label}:${gauge.state}:${gauge.value}`)).toEqual([
+      "Tokens/min:pending:pending",
+      "Run total:pending:pending",
+      "Projected/day:pending:pending",
+    ])
+
+    expect(buildKhalaFleetThroughputGauges({
+      activeAdjustedTokensPerMinute: null,
+      completedStatus: "not_measured",
+      completedTokenRows: null,
+      completedTokensPerMinute: null,
+      tokensWindow: null,
+      inFlightTokens: null,
+      inFlightTokensPerMinute: null,
+      source: "unavailable",
+      unavailableReason: "missing OPENAGENTS_AGENT_TOKEN",
+    }).map(gauge => `${gauge.label}:${gauge.state}:${gauge.value}`)).toEqual([
+      "Tokens/min:not_measured:not measured",
+      "Run total:not_measured:not measured",
+      "Projected/day:not_measured:not measured",
+    ])
+  })
+
+  test("does not synthesize gauges from active progress or in-flight estimates", () => {
+    const gauges = buildKhalaFleetThroughputGauges({
+      activeAdjustedTokensPerMinute: 50_000,
+      completedStatus: "pending",
+      completedTokenRows: null,
+      completedTokensPerMinute: null,
+      tokensWindow: null,
+      inFlightTokens: 500_000,
+      inFlightTokensPerMinute: 50_000,
+      source: "pylon_khala_apm",
+      unavailableReason: null,
+    })
+
+    expect(gauges.every(gauge => gauge.state === "pending")).toBe(true)
+    expect(gauges.map(gauge => gauge.value)).not.toContain("50K/min")
+    expect(gauges.map(gauge => gauge.value)).not.toContain("72M")
+    expect(gauges.map(gauge => gauge.value)).not.toContain("500K")
+  })
 
   test("renders account cards with rate-limit countdown data and account actions", async () => {
     expect(khalaFleetCountdownLabel(
