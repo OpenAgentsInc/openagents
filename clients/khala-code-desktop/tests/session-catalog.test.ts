@@ -103,4 +103,52 @@ describe("Khala Code cross-harness session catalog", () => {
       source: "claude_sdk_list_sessions",
     })
   })
+
+  test("labels Codex-shaped legacy records from the Claude store as Codex", async () => {
+    const root = await tempRoot()
+    const codexStatePath = join(root, "codex-sessions.json")
+    const claudeStatePath = join(root, "claude-sessions.json")
+    await writeFile(codexStatePath, JSON.stringify({
+      schema: "khala-code-desktop.codex-sessions.v1",
+      sessions: {},
+    }))
+    await writeFile(claudeStatePath, JSON.stringify({
+      schema: "khala-code-desktop.claude-sessions.v1",
+      sessions: {
+        "legacy-codex-desktop": {
+          threadId: "legacy-codex-thread",
+          lastCodexTurnId: "legacy-codex-turn",
+          updatedAt: "2026-07-01T11:00:00.000Z",
+        },
+        "legacy-thread-only-desktop": {
+          threadId: "legacy-thread-only",
+          updatedAt: "2026-07-01T10:30:00.000Z",
+        },
+        "real-claude-desktop": {
+          sessionId: "real-claude-session",
+          lastTurnId: "real-claude-turn",
+          updatedAt: "2026-07-01T10:00:00.000Z",
+        },
+      },
+    }))
+
+    const catalog = await readKhalaCodeDesktopSessionCatalog({}, {
+      codexRuntime: null,
+      env: {
+        KHALA_CODE_DESKTOP_CLAUDE_STATE_PATH: claudeStatePath,
+        KHALA_CODE_DESKTOP_CODEX_STATE_PATH: codexStatePath,
+      },
+    })
+
+    expect(catalog.entries.map(entry => [entry.harnessKind, entry.threadRef, entry.desktopSessionRef])).toEqual([
+      ["codex", "legacy-codex-thread", "legacy-codex-desktop"],
+      ["codex", "legacy-thread-only", "legacy-thread-only-desktop"],
+      ["claude", "real-claude-session", "real-claude-desktop"],
+    ])
+    expect(catalog.entries.map(entry => entry.statusLabel)).toEqual([
+      "Codex session",
+      "Codex session",
+      "Claude session",
+    ])
+  })
 })

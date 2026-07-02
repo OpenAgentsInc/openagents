@@ -200,6 +200,18 @@ const entryFromStoredSession = (
   }
 }
 
+const storedSessionHarnessKind = (
+  fallback: KhalaCodeDesktopSessionHarnessKind,
+  stored: JsonRecord,
+): KhalaCodeDesktopSessionHarnessKind => {
+  const hasCodexTurn = stringField(stored, "lastCodexTurnId") !== null
+  const hasThreadId = stringField(stored, "threadId") !== null || stringField(stored, "thread_id") !== null
+  const hasClaudeSessionId = stringField(stored, "sessionId") !== null || stringField(stored, "session_id") !== null
+  return fallback === "claude" && (hasCodexTurn || (hasThreadId && !hasClaudeSessionId))
+    ? "codex"
+    : fallback
+}
+
 const mergeEntry = (
   map: Map<string, KhalaCodeDesktopSessionCatalogEntry>,
   entry: KhalaCodeDesktopSessionCatalogEntry,
@@ -250,13 +262,21 @@ export const readKhalaCodeDesktopSessionCatalog = async (
   for (const [desktopSessionRef, stored] of Object.entries(
     await sessionsRecord(resolveCodexSessionCatalogStorePath(env)),
   )) {
-    const entry = entryFromStoredSession("codex", desktopSessionRef, stored)
+    const entry = entryFromStoredSession(
+      storedSessionHarnessKind("codex", stored),
+      desktopSessionRef,
+      stored,
+    )
     if (entry !== null) mergeEntry(entries, entry)
   }
   for (const [desktopSessionRef, stored] of Object.entries(
     await sessionsRecord(resolveClaudeSessionCatalogStorePath(env)),
   )) {
-    const entry = entryFromStoredSession("claude", desktopSessionRef, stored)
+    const entry = entryFromStoredSession(
+      storedSessionHarnessKind("claude", stored),
+      desktopSessionRef,
+      stored,
+    )
     if (entry !== null) mergeEntry(entries, entry)
   }
 
