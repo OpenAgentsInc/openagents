@@ -17,6 +17,7 @@ export type CodexSettingsPanelHandle = {
 export type CodexSettingsPanelOptions = {
   readonly fetch: () => Promise<KhalaCodeDesktopCodexSettingsProjection>
   readonly fetchEcosystem?: () => Promise<KhalaCodeDesktopCodexEcosystemProjection>
+  readonly onRender?: () => void
   readonly write: (
     request: KhalaCodeDesktopCodexConfigValueWriteRequest,
   ) => Promise<{
@@ -422,10 +423,12 @@ export const mountCodexSettingsPanel = (
 
     if (loading && settings === null) {
       container.append(el("div", "khala-settings-empty", "Loading Codex settings"))
+      options.onRender?.()
       return
     }
     if (settings === null) {
       container.append(el("div", "khala-settings-empty", "No Codex settings loaded"))
+      options.onRender?.()
       return
     }
 
@@ -446,6 +449,7 @@ export const mountCodexSettingsPanel = (
       renderRequirementsSection(settings),
       ...(options.fetchEcosystem === undefined ? [] : [renderEcosystemSection(ecosystem)]),
     )
+    options.onRender?.()
   }
 
   async function refreshSettings(): Promise<void> {

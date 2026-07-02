@@ -27,14 +27,14 @@ export const CLAUDE_APP_SDK_GAP_MATRIX: readonly ClaudeAppSdkGapMatrixRow[] = [
   {
     id: "claude.phase2.approvals",
     phase: "phase_2",
-    status: "deferred",
-    note: "Claude-native canUseTool approvals are intentionally deferred to T8.3.",
+    status: "covered",
+    note: "canUseTool is bridged through a Deferred/Queue-backed approval service and resolved by renderer Claude-native allow/deny decisions.",
   },
   {
     id: "claude.phase2.telemetry_ingest",
     phase: "phase_2",
-    status: "deferred",
-    note: "Phase 1 returns exact SDK result usage locally; ingest route selection remains a T8.3 decision.",
+    status: "covered",
+    note: "Exact SDK result usage/modelUsage is recorded on the desktop stats token path as pylon-claude-direct-local; khala_fleet MCP is injected via query options, and settings project SDK init/model/account data.",
   },
   {
     id: "claude.phase3.sidebar_catalog",
@@ -43,4 +43,3 @@ export const CLAUDE_APP_SDK_GAP_MATRIX: readonly ClaudeAppSdkGapMatrixRow[] = [
     note: "SDK listSessions()/getSessionMessages() backing for the sidebar is deferred to T8.4.",
   },
 ]
-

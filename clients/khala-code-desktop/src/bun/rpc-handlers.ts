@@ -96,6 +96,11 @@ import { inspectCodexHarnessStatus } from "./codex-harness-status.js"
 import { createClaudeAppSdkChatRuntime } from "./claude-app-sdk-chat-runtime.js"
 import { inspectClaudeHarnessStatus } from "./claude-harness-status.js"
 import {
+  createClaudeApprovalService,
+  type ClaudeApprovalService,
+} from "./claude-approvals.js"
+import { createKhalaCodeDesktopClaudeTokenUsageReporter } from "./claude-token-usage-telemetry.js"
+import {
   khalaCodeDesktopRuntimeEnvOverride,
   readKhalaCodeDesktopHarnessSetting,
   readKhalaCodeDesktopPersistedHarnessMode,
@@ -174,6 +179,7 @@ export type KhalaCodeDesktopRpcHandlersInput = {
   readonly codexAppServerHost?: CodexAppServerHost
   readonly codexChatRuntime?: CodexAppServerChatRuntime
   readonly claudeChatRuntime?: CodexAppServerChatRuntime
+  readonly claudeApprovalService?: ClaudeApprovalService
   readonly enableFleetMcpBridge?: boolean
   readonly codexRateLimitStatus?: () => MaybePromise<KhalaCodexRateLimitProviderStatus>
   readonly codexHarnessStatus?: () => MaybePromise<KhalaCodeDesktopCodexHarnessStatus>
@@ -776,6 +782,7 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
         workingDirectory: input.workingDirectory,
       }))
   const legacyChatTurn = input.legacyChatTurn ?? runKhalaCodeDesktopChatTurn
+  const claudeApprovalService = input.claudeApprovalService ?? createClaudeApprovalService()
   const requireCodexChatRuntime = (): CodexAppServerChatRuntime => {
     if (codexChatRuntime === null) {
       throw new Error("Codex app-server chat runtime is not configured.")
@@ -789,8 +796,11 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
   const requireClaudeChatRuntime = (): ChatRuntime => {
     if (input.claudeChatRuntime !== undefined) return input.claudeChatRuntime
     lazyClaudeChatRuntime ??= createClaudeAppSdkChatRuntime({
+      approvalService: claudeApprovalService,
       env: input.env,
       ...(input.emitChatTurnEvent === undefined ? {} : { onEvent: input.emitChatTurnEvent }),
+      repoRoot: input.fleetMcpBridgeRepoRoot ?? input.workingDirectory,
+      tokenUsageReporter: createKhalaCodeDesktopClaudeTokenUsageReporter({ env: input.env }),
       workingDirectory: input.workingDirectory,
     })
     return lazyClaudeChatRuntime
@@ -1924,6 +1934,59 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
         throw new Error("fleetWorkerControl requires fleet-run supervisor worker control")
       }
       return supervisor.workerControl(request)
+    },
+    async claudeApprovalPending() {
+      return {
+        ok: true,
+        requests: claudeApprovalService.pending(),
+      }
+    },
+    async claudeApprovalRespond(request) {
+      try {
+        const decision = request.decision as unknown as Parameters<ClaudeApprovalService["respond"]>[1]
+        const ok = await claudeApprovalService.respond(request.requestId, decision)
+        return {
+          ok,
+          requestId: request.requestId,
+          decision,
+          ...(ok ? {} : { error: "Claude approval request is not pending." }),
+        }
+      } catch (error) {
+        return {
+          ok: false,
+          requestId: request.requestId,
+          decision: request.decision,
+          error: error instanceof Error ? error.message : String(error),
+        }
+      }
+    },
+    async claudeSettingsRead() {
+      const runtime = requireClaudeChatRuntime()
+      if (!("claudeSettingsRead" in runtime) || typeof runtime.claudeSettingsRead !== "function") {
+        return {
+          ok: false,
+          observedAt: new Date().toISOString(),
+          errors: ["Claude settings are unavailable for the injected runtime."],
+          account: {
+            apiProvider: null,
+            apiKeySource: null,
+            email: null,
+            organization: null,
+            subscriptionType: null,
+            tokenSource: null,
+          },
+          init: {
+            permissionMode: input.env.KHALA_CODE_DESKTOP_CLAUDE_PERMISSION_MODE ?? "acceptEdits",
+            model: null,
+            system: null,
+          },
+          models: {
+            options: [],
+            selected: null,
+          },
+        }
+      }
+      return runtime.claudeSettingsRead()
     },
     async codexHarnessStatus() {
       return codexHarnessStatus()
