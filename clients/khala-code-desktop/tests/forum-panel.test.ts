@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import { readFileSync } from "node:fs"
 import { Window } from "happy-dom"
 
 import { mountKhalaCodeForumPanel } from "../src/ui/forum-panel"
@@ -52,6 +53,10 @@ describe("khala code forum panel", () => {
     panel.setVisible(true)
     await panel.refresh()
 
+    expect(container.dataset.forumShell).toBe("")
+    expect(container.querySelector(".khala-forum-panel")).not.toBeNull()
+    expect(container.querySelector(".khala-forum-list-header")).not.toBeNull()
+    expect(container.querySelector(".khala-forum-index")).not.toBeNull()
     expect(container.textContent).toContain("Loaded by host transport")
     expect(requests).toEqual([
       {
@@ -149,6 +154,9 @@ describe("khala code forum panel", () => {
     await flushForumPanel()
     expect(requests.some(request => request.url === "https://openagents.test/api/forum/topics/topic.1")).toBe(true)
     expect(container.textContent).toContain("Forum slot must match web forum.")
+    expect(container.querySelector(".khala-forum-author-rail")).not.toBeNull()
+    expect(container.querySelector(".khala-forum-post-content")).not.toBeNull()
+    expect(container.querySelector(".khala-forum-tip-label")).not.toBeNull()
 
     container.querySelector<HTMLButtonElement>("[data-khala-forum-action='report-post']")
       ?.dispatchEvent(new MouseEvent("click", { bubbles: true }))
@@ -200,5 +208,33 @@ describe("khala code forum panel", () => {
     container.querySelector<HTMLButtonElement>("[data-khala-forum-action='open-web-forum']")
       ?.dispatchEvent(new MouseEvent("click", { bubbles: true }))
     expect(opened).toEqual(["https://openagents.test/forum/f/product-promises"])
+  })
+
+  test("keeps the desktop Forum on the website Khala Forum surface tokens", () => {
+    const styles = readFileSync(new URL("../src/ui/styles.css", import.meta.url), "utf8")
+    const forumBlockStart = styles.indexOf(".khala-code-forum {")
+    const forumBlockEnd = styles.indexOf("/* Fleet status panel")
+    const forumBlock = styles.slice(forumBlockStart, forumBlockEnd)
+
+    expect(forumBlock).toContain("--khala-forum-heading: var(--oa-color-khala-text-bright);")
+    expect(forumBlock).toContain("--khala-forum-header: var(--oa-color-khala-surface-active);")
+    expect(forumBlock).toContain("--khala-forum-link: var(--oa-color-khala-energy-soft);")
+    expect(forumBlock).toContain("--khala-forum-link-hover: var(--oa-color-khala-energy-cyan);")
+    expect(forumBlock).toContain("--khala-forum-navbar: var(--oa-color-khala-surface-muted);")
+    expect(forumBlock).toContain("--khala-forum-page: var(--oa-color-khala-surface);")
+    expect(forumBlock).toContain("--khala-forum-panel: var(--oa-color-khala-surface-raised);")
+    expect(forumBlock).toContain("--khala-forum-payment: var(--oa-color-khala-energy-line);")
+    expect(forumBlock).toContain("--khala-forum-post-link: var(--oa-color-khala-energy-blue);")
+    expect(forumBlock).toContain("--khala-forum-post-link-hover-bg: var(--oa-color-khala-surface-active);")
+    expect(forumBlock).toContain("--khala-forum-row-a: var(--oa-color-khala-surface);")
+    expect(forumBlock).toContain("--khala-forum-row-b: var(--oa-color-khala-surface-muted);")
+    expect(forumBlock).toContain("--khala-forum-row-c: var(--oa-color-khala-border);")
+    expect(forumBlock).toContain("--khala-forum-text: var(--oa-color-khala-text-muted);")
+    expect(forumBlock).toContain("--khala-forum-wrap: var(--oa-color-khala-surface);")
+    expect(forumBlock).toContain("--khala-forum-wrap-border: var(--oa-color-khala-border);")
+    expect(forumBlock).toContain("background: var(--khala-forum-page);")
+    expect(forumBlock).toContain("grid-template-columns: 2.5rem minmax(0, 1fr) 5.5rem 5.5rem")
+    expect(forumBlock).not.toContain("var(--oa-color-component-surface)")
+    expect(forumBlock).not.toContain("var(--oa-color-component-text)")
   })
 })
