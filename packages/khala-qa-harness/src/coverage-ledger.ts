@@ -20,6 +20,7 @@ export type KhalaCodeQaCoverageLedger = {
   readonly hotbarPanelsOpened: readonly string[]
   readonly settingsKeysWritten: readonly string[]
   readonly approvalDecisionKinds: readonly string[]
+  readonly threadItemVariantRenderCounts: Readonly<Record<string, number>>
   readonly threadItemVariantsRendered: readonly string[]
   readonly selectorsClicked: readonly string[]
   readonly screensScreenshotted: readonly string[]
@@ -42,6 +43,7 @@ export type KhalaCodeQaCoverageFrontierReport = {
 
 type MutableRpcCoverage = Map<string, { calls: number; argumentShapes: Set<string> }>
 type MutableSlashCoverage = Map<string, { dispatches: number; availabilityStates: Set<KhalaCodeQaCoverageAvailability> }>
+type MutableCountCoverage = Map<string, number>
 
 const emptyGeneratedAt = "1970-01-01T00:00:00.000Z"
 
@@ -78,6 +80,11 @@ const slashCoverageToObject = (
       dispatches: entry.dispatches,
     },
   ]))
+
+const countCoverageToObject = (
+  coverage: MutableCountCoverage,
+): Readonly<Record<string, number>> =>
+  Object.fromEntries([...coverage.entries()].sort(([left], [right]) => left.localeCompare(right)))
 
 const parseSlashRaw = (raw: unknown): string | undefined => {
   if (typeof raw !== "string") return undefined
@@ -121,12 +128,18 @@ const recordSlash = (
   coverage.set(command, entry)
 }
 
+const recordCount = (
+  coverage: MutableCountCoverage,
+  key: string,
+  increment = 1,
+): void => {
+  coverage.set(key, (coverage.get(key) ?? 0) + increment)
+}
+
 const collectThreadItemVariants = (value: unknown): readonly string[] => {
   if (Array.isArray(value)) return value.flatMap(collectThreadItemVariants)
   if (!isRecord(value)) return []
   const variants = [
-    isRecord(value.codexItem) && typeof value.codexItem.itemType === "string" ? value.codexItem.itemType : undefined,
-    isRecord(value.harnessItem) && typeof value.harnessItem.itemType === "string" ? value.harnessItem.itemType : undefined,
     typeof value.itemType === "string" ? value.itemType : undefined,
   ].filter((variant): variant is string => variant !== undefined)
   return [...variants, ...Object.values(value).flatMap(collectThreadItemVariants)]
@@ -145,6 +158,7 @@ export const createEmptyKhalaCodeQaCoverageLedger = (
   selectorsClicked: [],
   settingsKeysWritten: [],
   slashCommands: {},
+  threadItemVariantRenderCounts: {},
   threadItemVariantsRendered: [],
 })
 
@@ -158,6 +172,7 @@ export const collectKhalaCodeQaCoverageLedger = (input: {
   const hotbarPanelsOpened = new Set<string>()
   const settingsKeysWritten = new Set<string>()
   const approvalDecisionKinds = new Set<string>()
+  const threadItemVariantRenderCounts: MutableCountCoverage = new Map()
   const threadItemVariantsRendered = new Set<string>()
   const selectorsClicked = new Set<string>()
   const screensScreenshotted = new Set<string>()
@@ -192,6 +207,7 @@ export const collectKhalaCodeQaCoverageLedger = (input: {
         approvalDecisionKinds.add(firstArg.action)
       }
       for (const variant of collectThreadItemVariants(observation.data)) {
+        recordCount(threadItemVariantRenderCounts, variant)
         threadItemVariantsRendered.add(variant)
       }
       continue
@@ -220,6 +236,7 @@ export const collectKhalaCodeQaCoverageLedger = (input: {
     selectorsClicked: sorted(selectorsClicked),
     settingsKeysWritten: sorted(settingsKeysWritten),
     slashCommands: slashCoverageToObject(slashCommands),
+    threadItemVariantRenderCounts: countCoverageToObject(threadItemVariantRenderCounts),
     threadItemVariantsRendered: sorted(threadItemVariantsRendered),
   }
 }
@@ -229,6 +246,7 @@ export const mergeKhalaCodeQaCoverageLedgers = (
 ): KhalaCodeQaCoverageLedger => {
   const rpcMethods: MutableRpcCoverage = new Map()
   const slashCommands: MutableSlashCoverage = new Map()
+  const threadItemVariantRenderCounts: MutableCountCoverage = new Map()
   const runIds = new Set<string>()
   const generatedAt = ledgers.map((ledger) => ledger.generatedAt).sort().at(-1) ?? emptyGeneratedAt
   const addSet = <K extends keyof KhalaCodeQaCoverageLedger>(key: K): Set<string> =>
@@ -248,6 +266,9 @@ export const mergeKhalaCodeQaCoverageLedgers = (
       for (const state of entry.availabilityStates) target.availabilityStates.add(state)
       slashCommands.set(command, target)
     }
+    for (const [variant, count] of Object.entries(ledger.threadItemVariantRenderCounts ?? {})) {
+      recordCount(threadItemVariantRenderCounts, variant, count)
+    }
   }
 
   return {
@@ -261,6 +282,7 @@ export const mergeKhalaCodeQaCoverageLedgers = (
     selectorsClicked: sorted(addSet("selectorsClicked")),
     settingsKeysWritten: sorted(addSet("settingsKeysWritten")),
     slashCommands: slashCoverageToObject(slashCommands),
+    threadItemVariantRenderCounts: countCoverageToObject(threadItemVariantRenderCounts),
     threadItemVariantsRendered: sorted(addSet("threadItemVariantsRendered")),
   }
 }
