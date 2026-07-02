@@ -4,8 +4,10 @@ import { Effect } from "effect"
 import {
   admitKhalaCodeQaGepaExplorePolicyToGym,
   decodeKhalaCodeQaGepaExplorePolicyCandidate,
+  decodeKhalaCodeQaGepaMetricDefinitions,
   decodeKhalaCodeQaScenarioPortfolioPlan,
   evaluateKhalaCodeQaGepaExplorePolicyAutoPromotion,
+  KHALA_CODE_QA_GEPA_EXPLORE_POLICY_METRIC_DEFINITIONS,
   makeKhalaCodeQaGepaExplorePolicyBrain,
   proposeKhalaCodeQaGepaExplorePolicyCandidate,
   rankKhalaCodeQaScenarioPortfolioByYield,
@@ -51,6 +53,10 @@ describe("Khala Code QA GEPA explore policy loop", () => {
 
     expect(decoded.schema).toBe("khala_code_qa_gepa_explore_policy_candidate.v1")
     expect(candidate.admission.state).toBe("admitted")
+    expect(candidate.metricDefinitions.map((metric) => metric.metricRef)).toEqual([
+      "new_coverage_per_action",
+      "confirmed_bugs_per_1000_actions",
+    ])
     expect(candidate.governance).toMatchObject({
       authorityBoundary: "evidence_only",
       autoPromote: false,
@@ -63,6 +69,33 @@ describe("Khala Code QA GEPA explore policy loop", () => {
     expect(promotion).toMatchObject({
       promoted: false,
     })
+  })
+
+  test("commits the explore-policy metric definitions used for candidate scoring", () => {
+    const definitions = decodeKhalaCodeQaGepaMetricDefinitions(
+      KHALA_CODE_QA_GEPA_EXPLORE_POLICY_METRIC_DEFINITIONS,
+    )
+
+    expect(definitions).toEqual([
+      expect.objectContaining({
+        denominator: "total offline explorer actions across admitted source runs",
+        formula: "deduped_new_coverage_refs / total_action_count",
+        metricRef: "new_coverage_per_action",
+        numerator: "deduped coverage refs first reached by the candidate source runs",
+        objective: "maximize",
+        source: "offline_explore_telemetry",
+        unit: "coverage refs per action",
+      }),
+      expect.objectContaining({
+        denominator: "total offline explorer actions across admitted source runs / 1000",
+        formula: "(deduped_confirmed_bug_refs * 1000) / total_action_count",
+        metricRef: "confirmed_bugs_per_1000_actions",
+        numerator: "deduped public-safe confirmed bug refs from the candidate source runs",
+        objective: "maximize",
+        source: "offline_explore_telemetry",
+        unit: "confirmed bugs per 1000 actions",
+      }),
+    ])
   })
 
   test("blocks live or metric-regressed candidates before they can drive exploration", () => {
