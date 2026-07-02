@@ -768,11 +768,19 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
     }
     return codexChatRuntime
   }
-  const requireClaudeChatRuntime = (): ChatRuntime => input.claudeChatRuntime ?? createClaudeAppSdkChatRuntime({
-    env: input.env,
-    ...(input.emitChatTurnEvent === undefined ? {} : { onEvent: input.emitChatTurnEvent }),
-    workingDirectory: input.workingDirectory,
-  })
+  // Memoized: interrupt must see the SAME runtime instance (and its
+  // activeTurns map) that started the turn — a fresh instance per RPC call
+  // makes stop a no-op in claude_runtime mode.
+  let lazyClaudeChatRuntime: ChatRuntime | undefined
+  const requireClaudeChatRuntime = (): ChatRuntime => {
+    if (input.claudeChatRuntime !== undefined) return input.claudeChatRuntime
+    lazyClaudeChatRuntime ??= createClaudeAppSdkChatRuntime({
+      env: input.env,
+      ...(input.emitChatTurnEvent === undefined ? {} : { onEvent: input.emitChatTurnEvent }),
+      workingDirectory: input.workingDirectory,
+    })
+    return lazyClaudeChatRuntime
+  }
   const requireFleetRunSupervisor = (): KhalaCodeDesktopFleetRunSupervisorRpc => {
     if (input.fleetRunSupervisor === undefined) {
       throw new Error("Fleet run supervisor is not configured.")
