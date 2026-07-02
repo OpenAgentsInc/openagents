@@ -1532,17 +1532,18 @@ button {
   height: 2.25rem;
   min-height: 2.25rem;
   padding: 0.16rem 0.5rem;
-  border: 1px solid transparent;
+  border: 0;
   border-radius: 0;
   background: transparent;
   color: var(--oa-color-component-text);
   text-align: left;
-  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+  transition: background 120ms ease, color 120ms ease;
 }
-.khala-thread-sidebar-item:hover,
+.khala-thread-sidebar-item:hover {
+  background: color-mix(in srgb, var(--oa-color-khala-surface) 68%, transparent);
+}
 .khala-thread-sidebar-item[data-active="true"] {
-  border-color: var(--oa-color-component-border);
-  background: var(--oa-color-khala-surface);
+  background: color-mix(in srgb, var(--oa-color-khala-surface) 92%, transparent);
 }
 .khala-thread-sidebar-item-row {
   display: grid;
