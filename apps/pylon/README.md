@@ -514,7 +514,10 @@ The smoke fails closed unless both assignment refs close out with green `pylon
 khala closeout` checklists, positive exact `token_usage_events` rows, zero
 duplicate work-unit claims, and a public `/api/public/khala-tokens-served`
 delta at least as large as the exact closeout total. Counter movement alone is
-never accepted.
+never accepted. Owner-only trace proof may report more rows than the
+public-safe ref projection returns; the closeout checklist accepts the capped
+ref projection only when trace count, final-trace readiness, and owner-only
+visibility are still present.
 
 `bun run --cwd apps/pylon smoke:fleet-run-sustained` uses the same evidence
 chain behind `PYLON_FLEET_RUN_SUSTAINED_ARM=1`. Defaults are target 5,

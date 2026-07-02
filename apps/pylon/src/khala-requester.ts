@@ -498,6 +498,14 @@ const checklistItem = (ref: string, ok: boolean): PylonKhalaProofChecklistItem =
   ref,
 })
 
+const OWNER_ONLY_REF_PROJECTION_LIMIT = 100
+
+const hasProjectedRefsForCount = (
+  count: number,
+  refs: readonly string[],
+): boolean =>
+  count > 0 && refs.length >= Math.min(count, OWNER_ONLY_REF_PROJECTION_LIMIT)
+
 export function evaluatePylonKhalaProofChecklist(
   proof: Omit<PylonKhalaProofResult, "ok" | "proofChecklist">,
 ): PylonKhalaProofChecklist {
@@ -521,8 +529,7 @@ export function evaluatePylonKhalaProofChecklist(
     checklistItem(
       "check.khala_proof.traces.owner_only_present",
       proof.traces.visibility === "owner_only" &&
-        proof.traces.count > 0 &&
-        proof.traces.refs.length >= proof.traces.count,
+        hasProjectedRefsForCount(proof.traces.count, proof.traces.refs),
     ),
     checklistItem(
       "check.khala_proof.raw_events.owner_only_present",
@@ -599,9 +606,8 @@ export function evaluatePylonKhalaCloseoutChecklist(
       "check.khala_closeout.trace_status.final_owner_trace_present",
       status.progress.hasFinalTrace &&
         status.traces.visibility === "owner_only" &&
-        status.traces.count > 0 &&
         status.traces.finalTraceUuid !== null &&
-        status.traces.refs.length >= status.traces.count,
+        hasProjectedRefsForCount(status.traces.count, status.traces.refs),
     ),
     checklistItem(
       "check.khala_closeout.trace_status.raw_events_owner_only_present",

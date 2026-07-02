@@ -502,6 +502,10 @@ evidence in both places operators need it:
 - Final hosted progress uses a generic public-safe message. Detailed runner
   diagnostics stay in local closeout refs and owner-only trace/proof paths so a
   noisy command error cannot trip the hosted Pylon payload scanner.
+- `pylon khala closeout` trace checks accept capped public-safe owner-trace ref
+  projections. Exact token rows remain uncapped assignment proof; trace counts
+  can exceed the first 100 refs as long as final-trace readiness, owner-only
+  visibility, and the capped refs are present.
 - Khala Code Desktop parses both the final array and the stderr JSONL fallback.
   Timeout summaries should show `command timed out` plus the last lifecycle
   state, for example `assignment_run.runtime_started (phase=runtime_active)`.

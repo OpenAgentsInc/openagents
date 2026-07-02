@@ -1053,6 +1053,33 @@ describe("pylon khala requester API", () => {
     })
   })
 
+  test("closeout checklist accepts capped owner trace ref projections", () => {
+    const cappedTraceRefs = Array.from({ length: 100 }, (_, index) => `trace-${index + 1}`)
+    const proofPayload = completeProof({
+      traces: {
+        ...completeProof().traces,
+        count: 123,
+        refs: cappedTraceRefs,
+      },
+    })
+    const proofChecklist = evaluatePylonKhalaProofChecklist(proofPayload as ProofPayload)
+    const checklist = evaluatePylonKhalaCloseoutChecklist(
+      completeTraceStatus({
+        traces: {
+          ...completeTraceStatus().traces,
+          count: 123,
+          finalTraceUuid: "trace-1",
+          latestTraceUuid: "trace-1",
+          refs: cappedTraceRefs,
+        },
+      }) as CloseoutTraceStatus,
+      { ...proofPayload, ok: true, proofChecklist } as CloseoutProofResult,
+    )
+
+    expect(proofChecklist.ok).toBe(true)
+    expect(checklist.ok).toBe(true)
+  })
+
   test("closeout checklist fails closed before final trace and recorded token rows", () => {
     const proofPayload = completeProof({
       closeoutPolicy: {
