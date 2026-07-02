@@ -1,4 +1,5 @@
 import { Effect, Scope } from "effect"
+import type { PylonAssignmentRunLifecycleEvent } from "@openagentsinc/agent-runtime-schema"
 
 import type {
   FleetRun,
@@ -21,12 +22,7 @@ export type FleetRunSupervisorAccount = {
   readonly paused?: boolean
 }
 
-export type FleetRunSupervisorLifecycleEvent = {
-  readonly assignmentRef?: string | null
-  readonly event: string
-  readonly phase?: string | null
-  readonly status?: string | null
-}
+export type FleetRunSupervisorLifecycleEvent = PylonAssignmentRunLifecycleEvent
 
 export type FleetRunSupervisorDispatchInput = {
   readonly accountRef: string
@@ -162,12 +158,20 @@ const terminalStatusForDispatch = (
   if (result.status === "completed") return "completed"
   if (result.status === "failed") return "failed"
   if (result.status === "blocked") return "blocked"
-  const terminal = [...result.lifecycle].reverse().find(event =>
-    event.status === "completed" || event.status === "failed" || event.status === "blocked"
-  )
-  if (terminal?.status === "completed") return "completed"
-  if (terminal?.status === "failed") return "failed"
-  if (terminal?.status === "blocked") return "blocked"
+  const terminal = [...result.lifecycle].reverse().find(event => {
+    if (event.event === "assignment_run.completed" || event.event === "assignment_run.runtime_failed") return true
+    return event.status === "cancelled" || event.status === "rejected" || event.status === "stale" ||
+      event.status === "timed-out" || event.status === "closed"
+  })
+  if (terminal?.event === "assignment_run.completed") return "completed"
+  if (terminal?.event === "assignment_run.runtime_failed") return "failed"
+  if (terminal?.status === "closed") return "completed"
+  if (
+    terminal?.status === "cancelled" ||
+    terminal?.status === "rejected" ||
+    terminal?.status === "stale" ||
+    terminal?.status === "timed-out"
+  ) return "failed"
   return null
 }
 
