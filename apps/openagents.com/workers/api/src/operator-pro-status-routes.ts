@@ -14,7 +14,7 @@ import {
   readJsonObject,
 } from './json-boundary'
 import { openAgentsDatabase } from './runtime'
-import { currentIsoTimestamp } from './runtime-primitives'
+import { currentIsoTimestamp, isoTimestampToDate, normalizeIsoTimestamp } from './runtime-primitives'
 
 export const OPERATOR_PRO_STATUS_PATH = '/api/operator/pro/status'
 export const PYLON_AGENT_RUNNER_STATUS_EVENT_SCHEMA_VERSION =
@@ -189,8 +189,8 @@ const isIsoTimestamp = (value: string): boolean => {
   if (!isoTimestampPattern.test(value)) {
     return false
   }
-  const parsed = Date.parse(value)
-  return Number.isFinite(parsed) && new Date(parsed).toISOString() === value
+  const time = isoTimestampToDate(value).getTime()
+  return Number.isFinite(time) && normalizeIsoTimestamp(value) === value
 }
 
 const validateIsoTimestamps = (event: AgentRunnerStatusEvent): string | null => {
