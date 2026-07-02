@@ -1175,6 +1175,7 @@ const RpcFleetAssignment = S.Struct({
   closeoutStatus: S.optional(RpcStringNull),
   elapsedMs: RpcNumberNull,
   issueRef: RpcStringNull,
+  runRef: S.optional(RpcStringNull),
   workerSession: S.optional(RpcFleetWorkerSession),
   tokenRate: RpcFleetAssignmentTokenRate,
   updatedAt: RpcStringNull,

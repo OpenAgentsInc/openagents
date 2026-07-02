@@ -10,7 +10,11 @@ import type {
 
 export type UnifiedInboxItemKind =
   | "approval_required"
+  | "claim_expired"
+  | "cooldown_all_accounts"
+  | "credentials_missing"
   | "run_blocked"
+  | "merge_conflict_wave"
   | "ready_for_review"
   | "mcp_failed"
   | "codex_ecosystem"
@@ -41,6 +45,7 @@ export type UnifiedInboxItem = Readonly<{
   accountRef?: string
   assignmentRef?: string
   issueRef?: string
+  resumeRunRef?: string
   resumeCommand?: string
   actions: readonly UnifiedInboxItemAction[]
 }>
@@ -75,6 +80,7 @@ export type UnifiedInboxPanelOptions = Readonly<{
   onOpenFleet: () => void
   onOpenSettings: () => void
   onReconnectAccount: (accountRef: string) => void
+  onResumeRun: (runRef: string) => Promise<void> | void
 }>
 
 type InboxView =
@@ -87,16 +93,21 @@ type Handlers = Readonly<{
   onOpenFleet: () => void
   onOpenSettings: () => void
   onReconnectAccount: (accountRef: string) => void
+  onResumeRun: (runRef: string) => Promise<void> | void
 }>
 
 const itemPriority: Record<UnifiedInboxItemKind, number> = {
   approval_required: 0,
-  run_blocked: 1,
-  missing_credential: 2,
-  mcp_failed: 3,
-  codex_ecosystem: 4,
-  ready_for_review: 5,
-  memory_update_pending: 6,
+  credentials_missing: 1,
+  cooldown_all_accounts: 2,
+  merge_conflict_wave: 3,
+  claim_expired: 4,
+  run_blocked: 5,
+  missing_credential: 6,
+  mcp_failed: 7,
+  codex_ecosystem: 8,
+  ready_for_review: 9,
+  memory_update_pending: 10,
 }
 
 const el = <K extends keyof HTMLElementTagNameMap>(
@@ -124,6 +135,44 @@ const readinessNeedsHuman = (readiness: string): boolean => {
 const assignmentResumeCommand = (assignmentRef: string): string =>
   `khala closeout ${assignmentRef} --json`
 
+const refIncludes = (refs: readonly string[], pattern: RegExp): boolean =>
+  refs.some(ref => pattern.test(ref))
+
+const flagKindForAssignment = (
+  refs: readonly string[],
+  approvalRequired: boolean,
+  blocked: boolean,
+): UnifiedInboxItemKind | null => {
+  if (approvalRequired || refIncludes(refs, /approval[_-]?required|permission/iu)) return "approval_required"
+  if (refIncludes(refs, /merge[_-]?conflict/iu)) return "merge_conflict_wave"
+  if (refIncludes(refs, /claim[_-]?expired|expired[_-]?claim/iu)) return "claim_expired"
+  if (blocked) return "run_blocked"
+  return null
+}
+
+const flagActions = (
+  kind: UnifiedInboxItemKind,
+  canResumeRun: boolean,
+  canReconnect = false,
+): readonly UnifiedInboxItemAction[] => {
+  if (kind === "approval_required") return ["approve", "reject", "open_fleet", "refresh"]
+  if (kind === "credentials_missing") return canReconnect ? ["reconnect", "open_fleet"] : ["open_fleet", "refresh"]
+  if (kind === "claim_expired") return canResumeRun ? ["rerun", "resume", "open_fleet", "refresh"] : ["rerun", "open_fleet", "refresh"]
+  if (kind === "run_blocked" || kind === "cooldown_all_accounts" || kind === "merge_conflict_wave") {
+    return canResumeRun ? ["resume", "open_fleet", "refresh"] : ["open_fleet", "refresh"]
+  }
+  return ["open_fleet", "refresh"]
+}
+
+const allReadyAccountsCoolingDown = (
+  fleet: KhalaCodeDesktopFleetStatus,
+): boolean => {
+  const readyAccounts = fleet.accounts.filter(account => account.readiness.toLowerCase() === "ready")
+  return readyAccounts.length > 0 &&
+    fleet.availableCodexAssignments === 0 &&
+    readyAccounts.every(account => account.queuePolicy?.cooldown === "cooling_down")
+}
+
 const inboxSeverity = (
   severity: KhalaCodeDesktopCodexEcosystemSeverity,
 ): UnifiedInboxItem["severity"] =>
@@ -139,7 +188,7 @@ export const projectUnifiedInbox = (
     items.push({
       ref: "inbox.runtime.codex_harness.unavailable",
       kind: source.codexHarness.auth.state === "credentials_missing"
-        ? "missing_credential"
+        ? "credentials_missing"
         : "run_blocked",
       title: "Codex install or sign-in required",
       summary: source.codexHarness.reason,
@@ -167,7 +216,7 @@ export const projectUnifiedInbox = (
     if (!readinessNeedsHuman(account.readiness)) continue
     items.push({
       ref: `inbox.credential.${account.accountRef}`,
-      kind: "missing_credential",
+      kind: "credentials_missing",
       title: `${account.accountRef} needs reconnect`,
       summary: account.email === null
         ? `Worker Codex account ${account.accountRef} is not signed in in its isolated Pylon home.`
@@ -176,55 +225,81 @@ export const projectUnifiedInbox = (
       severity: "critical",
       observedAt,
       accountRef: account.accountRef,
-      actions: ["reconnect", "open_fleet"],
+      actions: flagActions("credentials_missing", false, true),
+    })
+  }
+
+  if (allReadyAccountsCoolingDown(source.fleet)) {
+    items.push({
+      ref: "inbox.fleet.cooldown_all_accounts",
+      kind: "cooldown_all_accounts",
+      title: "All worker accounts are cooling down",
+      summary: "Fleet has no free Codex slots because every ready worker account is in cooldown.",
+      source: "fleet",
+      severity: "warning",
+      observedAt,
+      actions: flagActions("cooldown_all_accounts", false),
     })
   }
 
   for (const assignment of source.fleet.activeAssignments) {
     const assignmentRef = assignment.assignmentRef
     const worker = assignment.workerSession
-    const blocked = (assignment.blockerRefs ?? worker?.blockerRefs ?? []).length > 0 ||
+    const blockerRefs = assignment.blockerRefs ?? worker?.blockerRefs ?? []
+    const blocked = blockerRefs.length > 0 ||
       worker?.approvalState === "blocked"
     const approvalRequired = worker?.approvalState === "approval_required"
-    const kind: UnifiedInboxItemKind = approvalRequired
-      ? "approval_required"
-      : blocked
-        ? "run_blocked"
-        : "ready_for_review"
+    const flagKind = flagKindForAssignment(blockerRefs, approvalRequired, blocked)
+    const kind: UnifiedInboxItemKind = flagKind ?? "ready_for_review"
+    const runRef = assignment.runRef ?? undefined
+    const canResumeRun = runRef !== undefined
     items.push({
       ref: `inbox.assignment.${stableRefText(assignmentRef)}.${stableRefText(assignment.issueRef)}`,
       kind,
       title: assignment.issueRef === null
         ? approvalRequired
           ? "Worker approval required"
-          : blocked
-            ? "Worker run blocked"
+          : kind === "merge_conflict_wave"
+            ? "Worker merge conflict wave"
+            : kind === "claim_expired"
+              ? "Worker claim expired"
+              : blocked
+                ? "Worker run blocked"
             : "Assignment needs review"
         : approvalRequired
           ? `${assignment.issueRef} needs approval`
-          : blocked
-            ? `${assignment.issueRef} is blocked`
+          : kind === "merge_conflict_wave"
+            ? `${assignment.issueRef} has merge conflicts`
+            : kind === "claim_expired"
+              ? `${assignment.issueRef} claim expired`
+              : blocked
+                ? `${assignment.issueRef} is blocked`
             : `${assignment.issueRef} needs review`,
       summary: assignmentRef === null
         ? "An active worker assignment was reported without a public assignment ref."
         : approvalRequired
           ? "A worker Codex session is waiting on an approval routed through the fleet projection."
-          : blocked
-            ? "A worker Codex session reported blockers; inspect Fleet before resuming."
+          : kind === "merge_conflict_wave"
+            ? "One or more worker sessions reported merge conflicts. Inspect Fleet, resolve the public worktree state, then resume the run."
+            : kind === "claim_expired"
+              ? "The worker claim expired before closeout. Re-run the work unit or resume the supervised run after checking Fleet."
+              : blocked
+                ? "A worker Codex session reported blockers; inspect Fleet before resuming."
             : "Review the worker transcript, closeout, and token proof projection before accepting the next step.",
       source: "assignment",
-      severity: approvalRequired || blocked ? "critical" : "info",
+      severity: flagKind === "claim_expired" || flagKind === "merge_conflict_wave" || approvalRequired || blocked ? "critical" : "info",
       observedAt: assignment.updatedAt ?? observedAt,
       ...(assignmentRef === null ? {} : {
         assignmentRef,
         resumeCommand: assignmentResumeCommand(assignmentRef),
       }),
+      ...(runRef === undefined ? {} : { resumeRunRef: runRef }),
       ...(assignment.issueRef === null ? {} : { issueRef: assignment.issueRef }),
       actions: assignmentRef === null
         ? ["open_fleet", "refresh"]
-        : approvalRequired
-          ? ["open_fleet", "refresh"]
-          : ["resume", "open_fleet", "refresh"],
+        : flagKind === null
+          ? ["resume", "open_fleet", "refresh"]
+          : flagActions(flagKind, canResumeRun),
     })
   }
 
@@ -341,7 +416,13 @@ const renderAction = (
       handlers.onReconnectAccount(item.accountRef)
     }
     if (action === "refresh") handlers.onRefresh()
-    if (action === "resume" && item.resumeCommand !== undefined) {
+    if (action === "resume" && item.resumeRunRef !== undefined) {
+      void Promise.resolve(handlers.onResumeRun(item.resumeRunRef))
+      button.textContent = "Resuming"
+      window.setTimeout(() => {
+        button.textContent = readable(action)
+      }, 1400)
+    } else if (action === "resume" && item.resumeCommand !== undefined) {
       void navigator.clipboard?.writeText(item.resumeCommand)
       button.textContent = "Copied"
       window.setTimeout(() => {
@@ -351,7 +432,7 @@ const renderAction = (
   })
   if (
     (action === "reconnect" && item.accountRef === undefined) ||
-    (action === "resume" && item.resumeCommand === undefined)
+    (action === "resume" && item.resumeCommand === undefined && item.resumeRunRef === undefined)
   ) {
     button.disabled = true
   }
@@ -402,7 +483,10 @@ const renderReady = (
   for (const kind of [
     "approval_required",
     "run_blocked",
-    "missing_credential",
+    "credentials_missing",
+    "cooldown_all_accounts",
+    "merge_conflict_wave",
+    "claim_expired",
     "codex_ecosystem",
     "ready_for_review",
   ] as const) {
@@ -484,6 +568,7 @@ export const mountUnifiedInboxPanel = (
     onOpenFleet: options.onOpenFleet,
     onOpenSettings: options.onOpenSettings,
     onReconnectAccount: options.onReconnectAccount,
+    onResumeRun: options.onResumeRun,
   }
 
   const paint = (): void => render(container, currentView(), handlers)

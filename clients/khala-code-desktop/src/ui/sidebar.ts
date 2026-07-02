@@ -1,5 +1,6 @@
 import { iconElement } from "@openagentsinc/ui/icon-dom"
 import type { IconName } from "@openagentsinc/ui/icon"
+import type { KhalaCodeDesktopFleetStatus } from "../shared/rpc"
 
 export type KhalaCodeHotbarValue = "chat" | "fleet" | "settings"
 
@@ -40,8 +41,20 @@ export const KHALA_CODE_HOTBAR_SLOTS: ReadonlyArray<KhalaCodeHotbarSlot> = [
 ]
 
 export type SidebarMountOptions = Readonly<{
+  readonly fleetCounts?: KhalaCodeSidebarFleetCounts | null
   readonly selectedValue?: string | null
   readonly onActivate?: (value: string) => void
+}>
+
+export type KhalaCodeSidebarFleetCounts = Readonly<{
+  accountsReady: number
+  workersActive: number
+  slotsFree: number
+  flags: number
+}>
+
+export type KhalaCodeSidebarHandle = Readonly<{
+  setFleetCounts: (counts: KhalaCodeSidebarFleetCounts | null) => void
 }>
 
 type NavigatorWithUserAgentData = Navigator & {
@@ -81,11 +94,38 @@ const hotbarShortcut = (): HotbarShortcut =>
         modifierKey: "altKey",
       }
 
+const readinessNeedsHuman = (readiness: string): boolean => {
+  const value = readiness.toLowerCase()
+  return value.includes("auth") || value.includes("missing") || value.includes("error")
+}
+
+const blockerNeedsHuman = (refs: readonly string[]): boolean =>
+  refs.some(ref => /approval|blocked|claim[_-]?expired|cooldown|merge[_-]?conflict|permission/iu.test(ref))
+
+export const projectKhalaCodeSidebarFleetCounts = (
+  status: KhalaCodeDesktopFleetStatus,
+): KhalaCodeSidebarFleetCounts => ({
+  accountsReady: status.accounts.filter(account => account.readiness.toLowerCase() === "ready").length,
+  workersActive: status.activeAssignments.length,
+  slotsFree: status.availableCodexAssignments ?? 0,
+  flags: status.accounts.filter(account => readinessNeedsHuman(account.readiness)).length +
+    status.activeAssignments.filter(assignment =>
+      blockerNeedsHuman(assignment.blockerRefs ?? assignment.workerSession?.blockerRefs ?? [])
+    ).length +
+    (
+      status.availableCodexAssignments === 0 &&
+      status.accounts.some(account => account.queuePolicy?.cooldown === "cooling_down")
+        ? 1
+        : 0
+    ),
+})
+
 export const mountKhalaCodeSidebar = (
   container: HTMLElement,
   options: SidebarMountOptions = {},
-): void => {
+): KhalaCodeSidebarHandle => {
   let selectedValue = options.selectedValue ?? "chat"
+  let fleetCounts = options.fleetCounts ?? null
   const shortcut = hotbarShortcut()
 
   const activate = (slot: KhalaCodeHotbarSlot): void => {
@@ -135,6 +175,22 @@ export const mountKhalaCodeSidebar = (
     label.textContent = slot.label
 
     button.append(key, label)
+    if (slot.value === "fleet" && fleetCounts !== null) {
+      const counts = document.createElement("span")
+      counts.className = "khala-code-hotbar-fleet-counts"
+      counts.setAttribute("data-khala-code-fleet-counts", "")
+      counts.setAttribute(
+        "aria-label",
+        `${fleetCounts.accountsReady} accounts ready, ${fleetCounts.workersActive} workers active, ${fleetCounts.slotsFree} slots free, ${fleetCounts.flags} flags`,
+      )
+      counts.textContent = [
+        `${fleetCounts.accountsReady} acct`,
+        `${fleetCounts.workersActive} work`,
+        `${fleetCounts.slotsFree} free`,
+        `${fleetCounts.flags} flag`,
+      ].join(" / ")
+      button.append(counts)
+    }
     button.addEventListener("click", () => activate(slot))
     return button
   }
@@ -169,4 +225,10 @@ export const mountKhalaCodeSidebar = (
   })
 
   render()
+  return {
+    setFleetCounts(next: KhalaCodeSidebarFleetCounts | null): void {
+      fleetCounts = next
+      render()
+    },
+  }
 }
