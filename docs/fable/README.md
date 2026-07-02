@@ -141,6 +141,18 @@ each source doc.
   pass), strict state-flip rules (never green — make green a five-minute
   owner decision), a concurrent-safe registry edit protocol, and the fleet
   mass-dispatch template with refill and stop conditions.
+- `2026-07-02-forum-starcraft-theme-consolidation-audit.md` — audit of the
+  Forum surface across web and Khala Code Desktop under the owner mandate
+  "uniform StarCraft blue everywhere, no light/dark mode." Finds the desktop
+  forum hotbar panel already renders natively on the khala palette
+  (dark-only, `--oa-color-khala-*`), while the website forum still carries
+  the bespoke phpBB-style skin: 18 local `--color-forum-*` tokens with
+  light+dark values, a System/Light/Dark selector (the site's only theme
+  toggle), a hardcoded blue-gradient header, an amber-accent OG image, and
+  zero shared-design-system usage. Plan: repoint the forum tokens to khala
+  values, delete the theme machinery outright, consolidate the header and
+  OG card, add the missing palette-guard test, and verify web/desktop
+  convergence — structure and behavior unchanged, one swoop.
 - `2026-07-02-openagents-com-blog-docs-starcraft-theme-reset-audit.md` —
   audit of the `/blog` and `/docs` surfaces on `openagents.com`: both still
   render the old flat Vortex-era shell (hardcoded hex, amber accent, no

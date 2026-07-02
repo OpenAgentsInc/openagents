@@ -242,8 +242,11 @@ in §7 as follow-ups.
   `pylonCodexAssignmentStatus.ts`, `artanis*.ts`, `demoLegal.ts`,
   `siteCheckoutDemo.ts`) has the same divergence and should get the same
   treatment in a follow-up pass once blog/docs establish the pattern.
-- `/forum`'s intentional light "classic board" theme is a deliberate
-  exception, not drift — leave it.
+- `/forum`'s light "classic board" theme was a deliberate exception at the
+  time of this audit, but the owner directive later the same day supersedes
+  it: **uniform StarCraft blue everywhere, no light/dark mode.** See
+  `2026-07-02-forum-starcraft-theme-consolidation-audit.md` for the forum
+  consolidation audit and its own implementation issue.
 - `apps/openagents.com/DESIGN.md` still documents the amber-accent Vortex
   baseline; it should be reconciled with the root `DESIGN.md` Protoss layer
   (follow-up doc change) so future page work stops inheriting the amber
