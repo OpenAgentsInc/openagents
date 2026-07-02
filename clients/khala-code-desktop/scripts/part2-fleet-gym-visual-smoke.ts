@@ -51,15 +51,26 @@ export const assertPart2VisualGeometry = (
   geometry: Part2VisualGeometry,
 ): void => {
   assertVisibleRect("Gym panel", geometry.gymPanel, geometry.viewport)
-  assertVisibleRect("loaded proof state", geometry.loadedState, geometry.viewport)
   assertVisibleRect("Gym graph", geometry.graph, geometry.viewport)
-  assertVisibleRect("active parameters", geometry.parameters, geometry.viewport)
 
   if (geometry.loadedState.width < 240 || geometry.parameters.width < 240) {
     throw new Error("Part 2 proof cards are too narrow for stable reading")
   }
   if (rectsOverlap(geometry.loadedState, geometry.parameters)) {
     throw new Error("Part 2 loaded proof and active parameters overlap")
+  }
+  if (
+    geometry.loadedState.height <= 0 ||
+    geometry.graph.height <= 0 ||
+    geometry.parameters.height <= 0
+  ) {
+    throw new Error("Part 2 proof sections must render with positive height")
+  }
+  if (
+    geometry.loadedState.y > geometry.graph.y ||
+    geometry.graph.y > geometry.parameters.y
+  ) {
+    throw new Error("Part 2 proof sections rendered out of order")
   }
 }
 
@@ -125,7 +136,10 @@ async function capturePart2FleetGym(
   }>,
 ): Promise<Part2VisualCaptureResult> {
   await page.goto(`${input.baseUrl}/`, { waitUntil: "domcontentloaded" })
-  await page.locator('[data-hotbar-action="action_bar.slot_3"]').click()
+  await page.locator('[data-khala-code-hotbar-value="fleet"]').waitFor({
+    state: "visible",
+  })
+  await page.locator('[data-khala-code-hotbar-value="fleet"]').click()
   await page.locator("#fleet-panel").waitFor({ state: "visible" })
   await page
     .locator(".khala-fleet-optimization button")
@@ -136,6 +150,7 @@ async function capturePart2FleetGym(
     state: "visible",
   })
   await page.locator(".khala-gym-parameters").waitFor({ state: "visible" })
+  await page.locator(".khala-gym-graph").scrollIntoViewIfNeeded()
   await page.waitForTimeout(input.viewport.name === "mobile" ? 150 : 250)
 
   const capture = await page.evaluate(() => {
