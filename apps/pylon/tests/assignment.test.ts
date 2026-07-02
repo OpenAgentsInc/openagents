@@ -71,6 +71,7 @@ function fakeAssignmentServer(input: {
   rejectAcceptRefs?: ReadonlyArray<string>
   cancelOnProgress?: boolean
   rejectLongProgressMessage?: boolean
+  rejectUnsafeProgressMessage?: boolean
   rejectLocalProgressShape?: boolean
   rejectProgressStatus?: number
   authNow?: Date
@@ -165,6 +166,13 @@ function fakeAssignmentServer(input: {
           body.message.length > 240
         ) {
           return Response.json({ errorRef: "error.assignment_progress.message_too_long" }, { status: 400 })
+        }
+        if (
+          input.rejectUnsafeProgressMessage &&
+          typeof body.message === "string" &&
+          /(\/Users\/|token|oauth|secret|\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})/i.test(body.message)
+        ) {
+          return Response.json({ errorRef: "error.assignment_progress.unsafe_message" }, { status: 400 })
         }
         if (
           input.rejectLocalProgressShape &&
@@ -619,7 +627,10 @@ describe("Pylon assignment lease flow", () => {
           },
         },
       })
-      const fake = fakeAssignmentServer({ leases: [codexLease] })
+      const fake = fakeAssignmentServer({
+        leases: [codexLease],
+        rejectUnsafeProgressMessage: true,
+      })
       const summary = await readySummary(home, ["capability.pylon.local_codex"])
       const state = await ensurePylonLocalState(summary)
       const codexHome = join(home, "accounts/codex/codex-a")
@@ -688,7 +699,10 @@ describe("Pylon assignment lease flow", () => {
           },
         },
       })
-      const fake = fakeAssignmentServer({ leases: [codexLease] })
+      const fake = fakeAssignmentServer({
+        leases: [codexLease],
+        rejectUnsafeProgressMessage: true,
+      })
       const summary = await readySummary(home, ["capability.pylon.local_codex"])
       const state = await ensurePylonLocalState(summary)
       const revokedHome = join(home, "accounts/codex/codex-revoked")
@@ -765,7 +779,10 @@ describe("Pylon assignment lease flow", () => {
           },
         },
       })
-      const fake = fakeAssignmentServer({ leases: [codexLease] })
+      const fake = fakeAssignmentServer({
+        leases: [codexLease],
+        rejectUnsafeProgressMessage: true,
+      })
       const summary = await readySummary(home, ["capability.pylon.local_codex"])
       const state = await ensurePylonLocalState(summary)
       const codexHome = join(home, "accounts/codex/codex-live")
@@ -884,7 +901,10 @@ describe("Pylon assignment lease flow", () => {
           },
         },
       })
-      const fake = fakeAssignmentServer({ leases: [codexLease] })
+      const fake = fakeAssignmentServer({
+        leases: [codexLease],
+        rejectUnsafeProgressMessage: true,
+      })
       const summary = await readySummary(home, ["capability.pylon.local_codex"])
       const state = await ensurePylonLocalState(summary)
       const codexHome = join(home, "accounts/codex/codex-timeout")
@@ -906,7 +926,9 @@ describe("Pylon assignment lease flow", () => {
 
       const lifecycleEvents: AssignmentRunLifecycleEvent[] = []
       const timingOutCodexRunner: CodexAgentRunner = async () => {
-        throw new Error("command timed out")
+        throw new Error(
+          "command timed out at /Users/christopherdavid/.codex/auth.json token 2026-06-09T00:00:30",
+        )
       }
 
       const result = await runNoSpendAssignment(summary, {
@@ -936,6 +958,13 @@ describe("Pylon assignment lease flow", () => {
           status: "timed-out",
           blockerRefs: expect.arrayContaining(["blocker.assignment.codex_agent_execution_timed_out"]),
         }),
+      )
+      const finalProgress = fake.requests
+        .filter((request) => request.path.endsWith("/progress"))
+        .map((request) => request.body)
+        .find((body) => body.status === "proof-ready")
+      expect(finalProgress?.message).toBe(
+        "Assignment runtime completed; public-safe closeout evidence is ready.",
       )
       expect(fake.requests.some((request) => request.path.endsWith("/closeout"))).toBe(true)
     })

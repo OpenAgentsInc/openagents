@@ -309,6 +309,8 @@ type PublicPylonAssignmentProjection = Readonly<{
 
 const DEFAULT_ASSIGNMENT_REQUEST_TIMEOUT_MS = 30_000
 const ASSIGNMENT_PROGRESS_MESSAGE_MAX_LENGTH = 240
+const FINAL_ASSIGNMENT_PROGRESS_MESSAGE =
+  "Assignment runtime completed; public-safe closeout evidence is ready."
 const OPERATOR_PRO_STATUS_PATH = "/api/operator/pro/status"
 
 function stableRef(prefix: string, value: string) {
@@ -2134,9 +2136,7 @@ export async function runNoSpendAssignment(summary: BootstrapSummary, options: A
     leaseRef: lease.leaseRef,
     sequence: 1,
     status: "proof-ready",
-    message: boundedAssignmentProgressMessage(
-      runtimeGate?.message ?? "No-spend assignment executed in bounded local Pylon runtime.",
-    ),
+    message: FINAL_ASSIGNMENT_PROGRESS_MESSAGE,
     artifactRefs,
     proofRefs,
     observedAt,

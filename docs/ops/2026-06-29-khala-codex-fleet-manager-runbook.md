@@ -497,6 +497,9 @@ evidence in both places operators need it:
   submit is a hosted `worker_closeout` event. Current Pylon strips local-only
   fields such as `assignmentRef`, `leaseRef`, `paymentMode`, and `completedAt`
   before posting to the public assignment API.
+- Final hosted progress uses a generic public-safe message. Detailed runner
+  diagnostics stay in local closeout refs and owner-only trace/proof paths so a
+  noisy command error cannot trip the hosted Pylon payload scanner.
 - Khala Code Desktop parses both the final array and the stderr JSONL fallback.
   Timeout summaries should show `command timed out` plus the last lifecycle
   state, for example `assignment_run.runtime_started (phase=runtime_active)`.

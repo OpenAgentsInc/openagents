@@ -506,6 +506,8 @@ worker-closeout event body before submission. Progress/artifact submission
 rejections add a
 `blocker.assignment.progress_or_artifact_http_<status>` closeout ref so the
 next operator can distinguish a schema/API refusal from a runtime refusal.
+The final hosted progress message is intentionally generic; detailed runner
+diagnostics stay in the local closeout refs and owner-only trace/proof paths.
 The smoke fails closed unless both assignment refs close out with green `pylon
 khala closeout` checklists, positive exact `token_usage_events` rows, zero
 duplicate work-unit claims, and a public `/api/public/khala-tokens-served`
