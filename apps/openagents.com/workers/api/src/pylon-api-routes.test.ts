@@ -2498,6 +2498,21 @@ describe('Pylon API routes', () => {
     ).toBe(true)
   })
 
+  test('the Pylon payload scanner allows bearer prose without allowing bearer credentials (#7915)', () => {
+    expect(
+      pylonApiPayloadHasPrivateMaterial({
+        objectiveSummary:
+          'Tighten the bearer token guard for public assignment summaries.',
+      }),
+    ).toBe(false)
+
+    expect(
+      pylonApiPayloadHasPrivateMaterial({
+        objectiveSummary: 'Forward Authorization: Bearer abcdef0123456789abcdef',
+      }),
+    ).toBe(true)
+  })
+
   test('the Pylon payload scanner does not mistake hydralisk file paths for sk secrets', () => {
     expect(
       pylonApiPayloadHasPrivateMaterial({

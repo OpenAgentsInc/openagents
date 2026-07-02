@@ -531,6 +531,59 @@ describe('coding workflow delegation', () => {
     })
   })
 
+  test('accepts scoped package names and bearer prose in objective summaries (#7915)', async () => {
+    const objectiveSummary =
+      'Run @effect/vitest for @openagentsinc/pylon and tighten bearer token guard prose.'
+    const result = await delegateCodingWorkflow({
+      classification,
+      linkedAgents: [linkedOwner],
+      makeId: () => 'id1',
+      nowIso,
+      pylonStore: makeStore({ registrations: [registration()] }),
+      rawBody: {
+        openagents: {
+          coding: {
+            objectiveSummary,
+            targetPylonRef: 'pylon.owner.codex',
+          },
+        },
+      },
+      requestId: 'chatcmpl_coding_public_package_objective',
+    })
+    const assigned = expectAssigned(result)
+
+    expect(assigned.assignment.codingAssignment).toMatchObject({
+      objective: {
+        publicSummary: objectiveSummary,
+      },
+    })
+  })
+
+  test('rejects bearer credentials in objective summaries (#7915)', async () => {
+    const result = await delegateCodingWorkflow({
+      classification,
+      linkedAgents: [linkedOwner],
+      makeId: () => 'id1',
+      nowIso,
+      pylonStore: makeStore({ registrations: [registration()] }),
+      rawBody: {
+        openagents: {
+          coding: {
+            objectiveSummary: 'Forward Bearer abcdef0123456789abcdef to the task.',
+            targetPylonRef: 'pylon.owner.codex',
+          },
+        },
+      },
+      requestId: 'chatcmpl_coding_bearer_credential_objective',
+    })
+
+    expect(result).toMatchObject({
+      error: 'invalid_coding_objective_summary',
+      kind: 'rejected',
+      statusCode: 400,
+    })
+  })
+
   test('does not use another OpenAuth user account capacity', async () => {
     const result = await delegateCodingWorkflow({
       classification,
@@ -876,6 +929,40 @@ describe('coding workflow delegation', () => {
       kind: 'rejected',
       statusCode: 409,
     })
+  })
+
+  test('refreshes an explicit target when the owner registration index is stale (#7915)', async () => {
+    const staleIndexedRegistration = registration({
+      latestHeartbeatAt: '2026-06-25T11:00:00.000Z',
+      updatedAt: '2026-06-25T11:00:00.000Z',
+    })
+    const freshTargetRegistration = registration({
+      latestHeartbeatAt: '2026-06-25T11:59:30.000Z',
+      updatedAt: '2026-06-25T11:59:30.000Z',
+    })
+    const staleIndexStore = {
+      ...makeStore({ registrations: [staleIndexedRegistration] }),
+      readRegistration: async pylonRef =>
+        pylonRef === 'pylon.owner.codex' ? freshTargetRegistration : undefined,
+    } satisfies PylonApiStore
+
+    const result = await delegateCodingWorkflow({
+      classification,
+      linkedAgents: [linkedOwner],
+      makeId: () => 'id1',
+      nowIso,
+      pylonStore: staleIndexStore,
+      rawBody: {
+        openagents: { coding: { targetPylonRef: 'pylon.owner.codex' } },
+      },
+      requestId: 'chatcmpl_coding_stale_index_fresh_target',
+    })
+    const assigned = expectAssigned(result)
+
+    expect(assigned.pylon.latestHeartbeatAt).toBe(
+      freshTargetRegistration.latestHeartbeatAt,
+    )
+    expect(assigned.assignment.pylonRef).toBe('pylon.owner.codex')
   })
 
   test('admits a fresh Codex-capable target that advertises codex capacity (#6354)', async () => {
