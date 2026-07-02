@@ -1,6 +1,10 @@
 import { describe, expect, test } from 'vitest'
 
 import {
+  ARTANIS_OWNER_SELF_AUTHORITY_SCOPE,
+  ARTANIS_SHARED_FLEET_AUTHORITY_SCOPE,
+} from './artanis-authority-scope'
+import {
   ARTANIS_RISKY_ACTION_KINDS,
   ArtanisApprovalGateLedgerRecord,
   ArtanisApprovalGateRecord,
@@ -58,6 +62,7 @@ describe('Artanis approval gates', () => {
     expect(publicArtanis.effectiveGateRefs).toEqual([])
     expect(publicForum.effectiveGateRefs).toEqual([])
     expect(publicArtanis.gates[0]).toMatchObject({
+      authorityScope: ARTANIS_OWNER_SELF_AUTHORITY_SCOPE,
       authorityReceiptRefs: [],
       authoritySourceKinds: [],
       effective: false,
@@ -141,6 +146,23 @@ describe('Artanis approval gates', () => {
     ).toThrow(ArtanisApprovalGateUnsafe)
   })
 
+  test('requires pylon dispatch approval gates to stay owner_self scoped', () => {
+    const sharedFleetDispatch = new ArtanisApprovalGateRecord({
+      ...approvedGate,
+      authorityScope: ARTANIS_SHARED_FLEET_AUTHORITY_SCOPE,
+      gateRef: 'gate.public.artanis.shared_fleet_pylon_dispatch',
+      idempotencyKey: 'artanis-approval:shared-fleet-pylon-dispatch:v1',
+    })
+
+    expect(() =>
+      projectArtanisApprovalGateLedger(
+        ledgerWithGate(sharedFleetDispatch),
+        'operator',
+        nowIso,
+      ),
+    ).toThrow(ArtanisApprovalGateUnsafe)
+  })
+
   test('rejects Forum, Model Lab, retained-failure, and Pylon stats as authority sources by themselves', () => {
     const sourceKinds = [
       'forum_post',
@@ -192,6 +214,7 @@ describe('Artanis approval gates', () => {
     const pendingFleetMutation = new ArtanisApprovalGateRecord({
       ...approvedGate,
       actionRef: 'action.public.artanis.fleet_mutation.quarantine_replica',
+      authorityScope: ARTANIS_SHARED_FLEET_AUTHORITY_SCOPE,
       authorityReceiptRefs: [],
       authoritySourceKinds: ['operator_policy'],
       caveatRefs: [
@@ -254,6 +277,7 @@ describe('Artanis approval gates', () => {
       false,
     )
     expect(operator.gates[0]).toMatchObject({
+      authorityScope: ARTANIS_SHARED_FLEET_AUTHORITY_SCOPE,
       effective: false,
       kind: 'fleet_mutation',
       rollbackPosture: 'rollback_plan_recorded',
@@ -263,6 +287,7 @@ describe('Artanis approval gates', () => {
       state: 'pending',
     })
     expect(publicArtanis.gates[0]).toMatchObject({
+      authorityScope: ARTANIS_SHARED_FLEET_AUTHORITY_SCOPE,
       effective: false,
       kind: 'fleet_mutation',
       rollbackRefs: [],

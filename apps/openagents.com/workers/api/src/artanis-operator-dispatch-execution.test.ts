@@ -102,6 +102,7 @@ const workspaceVerificationCommand = (
 }
 
 const plan: ArtanisDispatchPlanInput = {
+  authorityScope: 'owner_self',
   branch: 'main',
   filePaths: [],
   issue: 6320,
@@ -129,8 +130,7 @@ const makeDeps = (overrides: {
       nowIso: () => nowIso,
       ownerOpenAuthUserId: 'user_owner',
       pylonStore: store,
-      readEffectivePylonDispatchApproval: async () =>
-        overrides.approved ?? false,
+      readEffectivePylonDispatchApproval: async () => overrides.approved ?? false,
       resolveCommitSha: async () =>
         '0123456789abcdef0123456789abcdef01234567',
     },
@@ -145,8 +145,12 @@ describe('makeArtanisDispatchExecution (#6366 live seam)', () => {
     const denied = makeArtanisDispatchExecution(
       makeDeps({ approved: false }).deps,
     )
-    expect(await Effect.runPromise(approved.isOwnerApproved())).toBe(true)
-    expect(await Effect.runPromise(denied.isOwnerApproved())).toBe(false)
+    expect(await Effect.runPromise(approved.isOwnerApproved('owner_self'))).toBe(
+      true,
+    )
+    expect(await Effect.runPromise(denied.isOwnerApproved('owner_self'))).toBe(
+      false,
+    )
   })
 
   test('createCodexAssignment creates an own-capacity, no-spend assignment on the owner Pylon', async () => {
@@ -221,6 +225,30 @@ describe('makeArtanisDispatchExecution (#6366 live seam)', () => {
     const execution = makeArtanisDispatchExecution(deps)
     const result = await Effect.runPromise(execution.createCodexAssignment(plan))
     expect(result).toEqual({ kind: 'rejected', reason: 'no_linked_agents' })
+  })
+
+  test('rejects shared_fleet dispatch before owner-linked capacity lookup', async () => {
+    let listedLinkedAgents = false
+    const { created, deps } = makeDeps({ approved: true })
+    const execution = makeArtanisDispatchExecution({
+      ...deps,
+      listLinkedAgentUserIds: async () => {
+        listedLinkedAgents = true
+        return ['agent_owner']
+      },
+    })
+    const result = await Effect.runPromise(
+      execution.createCodexAssignment({
+        ...plan,
+        authorityScope: 'shared_fleet',
+      }),
+    )
+    expect(result).toEqual({
+      kind: 'rejected',
+      reason: 'authority_scope_capacity_unavailable',
+    })
+    expect(listedLinkedAgents).toBe(false)
+    expect(created).toHaveLength(0)
   })
 
   test('rejects with no_eligible_linked_pylon when no owner Pylon is eligible', async () => {
@@ -307,6 +335,7 @@ describe('readEffectiveArtanisPylonDispatchApprovalForOwner (owner promotion)', 
       }),
       nowIso,
       '   ',
+      'owner_self',
     )
     expect(approved).toBe(false)
     expect(queried).toBe(true)
@@ -333,7 +362,9 @@ describe('owner-promoted Artanis dispatch EXECUTES end-to-end (gated tool)', () 
         ),
     })
 
-    expect(await Effect.runPromise(execution.isOwnerApproved())).toBe(true)
+    expect(await Effect.runPromise(execution.isOwnerApproved('owner_self'))).toBe(
+      true,
+    )
 
     const result = await Effect.runPromise(execution.createCodexAssignment(plan))
     expect(result.kind).toBe('created')

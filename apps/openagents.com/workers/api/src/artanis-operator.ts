@@ -48,6 +48,7 @@ import { Effect, Schema as S } from 'effect'
 
 import { ARTANIS_RISKY_ACTION_KINDS } from './artanis-approval-gates'
 import type { ArtanisRiskyActionKind } from './artanis-approval-gates'
+import type { ArtanisAuthorityScope } from './artanis-authority-scope'
 import type { ArtanisMemoryEntry } from './artanis-owner-memory'
 import type { ArtanisSituationalAwareness } from './artanis-situational-awareness'
 import type {
@@ -498,6 +499,7 @@ export type ArtanisOperatorToolDefinition = Readonly<{
 // A read tool: executes freely, returns the text fed back as the `tool` message.
 export type ArtanisOperatorReadTool = Readonly<{
   kind: 'read'
+  authorityScope: ArtanisAuthorityScope
   definition: ArtanisOperatorToolDefinition
   // Execute with the parsed arguments and return the tool result text. Read
   // tools must be side-effect-free beyond reading public state; an empty/absent
@@ -516,6 +518,7 @@ export type ArtanisOperatorReadTool = Readonly<{
 // honest "(…)"-style string, never invention.
 export type ArtanisOperatorWriteTool = Readonly<{
   kind: 'write'
+  authorityScope: ArtanisAuthorityScope
   definition: ArtanisOperatorToolDefinition
   execute: (args: unknown) => Effect.Effect<string>
 }>
@@ -524,6 +527,7 @@ export type ArtanisOperatorWriteTool = Readonly<{
 // and returns a public-safe description of the exact action it WOULD take.
 export type ArtanisOperatorRiskyTool = Readonly<{
   kind: 'risky'
+  authorityScope: ArtanisAuthorityScope
   // The approval-gate risky-action kind this tool would require.
   riskyActionKind: ArtanisRiskyActionKind
   definition: ArtanisOperatorToolDefinition
@@ -567,6 +571,7 @@ export type ArtanisOperatorGatedResult =
 // target capacity is missing) and must never fake an execution or move money.
 export type ArtanisOperatorGatedTool = Readonly<{
   kind: 'gated'
+  authorityScope: ArtanisAuthorityScope
   // The approval-gate risky-action kind this tool's execution is gated behind.
   riskyActionKind: ArtanisRiskyActionKind
   definition: ArtanisOperatorToolDefinition
@@ -584,6 +589,8 @@ export type ArtanisOperatorTool =
 // result so the route/UI can show what Artanis did without re-deriving it.
 export type ArtanisOperatorToolInvocation = Readonly<{
   name: string
+  // The authority/capacity scope carried by this concrete tool call.
+  authorityScope: ArtanisAuthorityScope
   // True when the tool actually executed (a read tool that ran, OR a gated tool
   // that fired behind an effective owner approval).
   executed: boolean
@@ -607,6 +614,7 @@ export type ArtanisOperatorPendingApprovalGate = Readonly<{
   gateSystem: 'artanis-approval-gates'
   state: 'pending'
   toolName: string
+  authorityScope: ArtanisAuthorityScope
   riskyActionKind: ArtanisRiskyActionKind
 }>
 
@@ -1067,6 +1075,7 @@ const runToolCall = (
       return {
         content,
         invocation: {
+          authorityScope: tool.authorityScope,
           deferredToApprovalGate: false,
           executed: result._tag === 'Success',
           executedRef: null,
@@ -1090,6 +1099,7 @@ const runToolCall = (
             `This action (${tool.definition.name}) is a ${tool.riskyActionKind} action gated by ${ARTANIS_OPERATOR_APPROVAL_GATE_REF}. I could not build or run it just now, so I did not execute it.`,
           ].join('\n'),
           invocation: {
+            authorityScope: tool.authorityScope,
             deferredToApprovalGate: true,
             executed: false,
             executedRef: null,
@@ -1110,6 +1120,7 @@ const runToolCall = (
         return {
           content,
           invocation: {
+            authorityScope: tool.authorityScope,
             deferredToApprovalGate: false,
             executed: true,
             executedRef: outcome.assignmentRef,
@@ -1128,6 +1139,7 @@ const runToolCall = (
       return {
         content,
         invocation: {
+          authorityScope: tool.authorityScope,
           deferredToApprovalGate: true,
           executed: false,
           executedRef: null,
@@ -1153,6 +1165,7 @@ const runToolCall = (
     return {
       content,
       invocation: {
+        authorityScope: tool.authorityScope,
         deferredToApprovalGate: true,
         executed: false,
         executedRef: null,
@@ -1489,6 +1502,7 @@ export const artanisOperatorTurn = (input: {
           toolsDeferred = true
           if (invocation.riskyActionKind !== null) {
             pendingApprovalGates.push({
+              authorityScope: invocation.authorityScope,
               gateRef: ARTANIS_OPERATOR_APPROVAL_GATE_REF,
               gateSystem: 'artanis-approval-gates',
               riskyActionKind: invocation.riskyActionKind,

@@ -1819,19 +1819,27 @@ normalizedPatchDigest | behaviorReceiptDigest)`. Exactly one accepted
 - The Artanis operator agent may CREATE a Khala -> Pylon -> Codex
   `codex_agent_task` assignment through its gated `dispatch_codex_task` tool
   (#6366 follow-up), but only through this same own-capacity coding-delegation
-  seam and only behind an effective owner approval. The gated tool executes ONLY
-  when (a) the caller is the authenticated owner (the `/api/operator/artanis/chat`
-  route admits authenticated browser sessions, owner-linked agent bearers, or the
-  admin API token, always resolving to one owner scope), (b) a wired execution
-  seam is present, AND (c) a standing tenant approval for `pylon_job_dispatch`
-  exists. That standing approval is scoped to the tenant's own linked Pylons,
-  own-capacity, and no-spend dispatch only, and is resolved by
+  seam and only behind an effective owner approval. Every Artanis tool
+  invocation, pending approval gate, persisted approval gate, dispatch plan, and
+  assignment evidence carries a typed `authorityScope`:
+  `owner_self | shared_fleet | owner_operator`. `owner_self` means the caller's
+  own linked Pylons only; `shared_fleet` means org-operated pooled capacity and
+  is not wired to this own-capacity seam; `owner_operator` means human/operator
+  outward authority and does not imply coding capacity. The gated dispatch tool
+  executes ONLY when (a) the caller is the authenticated owner (the
+  `/api/operator/artanis/chat` route admits authenticated browser sessions,
+  owner-linked agent bearers, or the admin API token, always resolving to one
+  owner scope), (b) a wired execution seam is present, (c) the action is scoped
+  `owner_self`, and (d) a standing tenant approval for `pylon_job_dispatch`
+  exists in the same scope. That standing approval is scoped to the tenant's own
+  linked Pylons, own-capacity, and no-spend dispatch only, and is resolved by
   `readEffectiveArtanisPylonDispatchApprovalForOwner`. Every money-movement /
-  payout-bearing kind stays gated for everyone. If any precondition
-  is missing — no seam, no effective approval, no eligible linked Pylon — it
-  returns the public-safe plan and defers (`deferredToApprovalGate`); it never
-  fires and never fabricates an `assignmentRef`. The dispatch carries no spend
-  authority: it rides the `unpaid_smoke` coding-delegation path
+  payout-bearing kind stays gated for everyone. If any precondition is missing
+  — no seam, no effective same-scope approval, no eligible linked Pylon, or a
+  non-`owner_self` scope on the own-capacity path — it returns the public-safe
+  plan and defers (`deferredToApprovalGate`); it never fires and never
+  fabricates an `assignmentRef`. The dispatch carries no spend authority: it
+  rides the `unpaid_smoke` coding-delegation path
   (`paymentMode='unpaid_smoke'`, settlement `not_applicable`,
   `payoutClaimAllowed=false`), targets only the owner's own linked Pylons, and
   must never use pooled/third-party/marketplace capacity, move money, or grant
@@ -1858,26 +1866,32 @@ normalizedPatchDigest | behaviorReceiptDigest)`. Exactly one accepted
   `isOpenAgentsOwnerAgentOpenAuthUserId`, `isOpenAgentsOwnerAgentActorRef`,
   `ownerAgentHasStandingApprovalForRiskyAction`).
 - THE GRANT. (1) Owner-level access to the private Artanis operator chat channel
-  `/api/operator/artanis/chat` via Artanis's OWN agent bearer: `resolveOwnerAgentBearer`
-  admits the owner-promoted agent set alongside the human admin email set and the
-  admin API token, so Artanis no longer needs the human admin email to reach his
-  own operator surface. (2) A STANDING owner approval for Artanis's own
-  `pylon_job_dispatch` actions, so the gated `dispatch_codex_task` tool EXECUTES
+  `/api/operator/artanis/chat` via Artanis's OWN agent bearer:
+  `resolveOwnerAgentBearer` admits the owner-promoted agent set alongside the
+  human admin email set and the admin API token, so Artanis no longer needs the
+  human admin email to reach his own operator surface. (2) A STANDING owner
+  approval for Artanis's own `pylon_job_dispatch` actions in
+  `authorityScope=owner_self`, so the gated `dispatch_codex_task` tool EXECUTES
   for owner-Artanis (own-capacity, no-spend) WITHOUT a separately-armed
   `artanis_approval_gates` row — equivalent to a permanent owner approval for his
-  own Codex dispatch.
+  own linked-capacity Codex dispatch. (3) A standing `forum_post` approval is
+  `authorityScope=owner_operator`, because it is an outward owner/operator
+  publication action rather than a coding-capacity action. There is no standing
+  `shared_fleet` approval.
 - NEVER-WAIVABLE BOUNDS (hold even for owner-Artanis). The standing approval is
-  scoped to `pylon_job_dispatch` ONLY; `wallet_spend`, `settlement`,
-  `l402_redemption`, and every other money-movement / payout-bearing risky-action
-  kind remain gated and still require an explicit effective approval gate. The
-  self-approved dispatch still rides the existing own-capacity, no-spend
-  coding-delegation seam (`unpaid_smoke`, settlement `not_applicable`,
-  `payoutClaimAllowed=false`, owner's own linked Pylons only — never
-  pooled/third-party/marketplace capacity). The promotion grants NO new payout
-  authority and invents NO new custody path; real money movement still uses the
-  existing custody path. No-resale on SUBSCRIPTION accounts, no
-  secret/credential/wallet leakage, public-safe claims only, and no untraced
-  destructive actions are never-waivable regardless of owner promotion.
+  scoped by both risky-action kind and `authorityScope`: `pylon_job_dispatch`
+  only in `owner_self`, `forum_post` only in `owner_operator`; `shared_fleet`,
+  `wallet_spend`, `settlement`, `l402_redemption`, and every other
+  money-movement / payout-bearing risky-action kind remain gated and still
+  require an explicit effective approval gate. The self-approved dispatch still
+  rides the existing own-capacity, no-spend coding-delegation seam
+  (`unpaid_smoke`, settlement `not_applicable`, `payoutClaimAllowed=false`,
+  owner's own linked Pylons only — never pooled/third-party/marketplace
+  capacity). The promotion grants NO new payout authority and invents NO new
+  custody path; real money movement still uses the existing custody path.
+  No-resale on SUBSCRIPTION accounts, no secret/credential/wallet leakage,
+  public-safe claims only, and no untraced destructive actions are
+  never-waivable regardless of owner promotion.
 - Regression coverage lives in
   `workers/api/src/artanis-owner-authority.test.ts` and the owner-promotion
   cases in `workers/api/src/artanis-operator-dispatch-execution.test.ts`.

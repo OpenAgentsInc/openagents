@@ -43,6 +43,13 @@
 // with the note `ARTANIS_OWNER_PROMOTION_NOTE`. It is documented in
 // `apps/openagents.com/INVARIANTS.md` ("Artanis Owner Promotion").
 
+import {
+  ARTANIS_OWNER_OPERATOR_AUTHORITY_SCOPE,
+  ARTANIS_OWNER_SELF_AUTHORITY_SCOPE,
+  artanisDefaultAuthorityScopeForRiskyAction,
+  type ArtanisAuthorityScope,
+} from './artanis-authority-scope'
+
 // The promoted operator agent's public identity.
 export const ARTANIS_OWNER_AGENT_SLUG = 'artanis'
 export const ARTANIS_OWNER_AGENT_ACTOR_REF =
@@ -96,6 +103,15 @@ const OWNER_AGENT_STANDING_APPROVAL_KINDS: ReadonlyArray<string> = [
   'pylon_job_dispatch',
 ]
 
+const ownerAgentStandingApprovalScopeForRiskyAction = (
+  riskyActionKind: string,
+): ArtanisAuthorityScope | null =>
+  riskyActionKind === 'pylon_job_dispatch'
+    ? ARTANIS_OWNER_SELF_AUTHORITY_SCOPE
+    : riskyActionKind === 'forum_post'
+      ? ARTANIS_OWNER_OPERATOR_AUTHORITY_SCOPE
+      : null
+
 // True when the owner-promoted operator agent holds a STANDING owner approval for
 // the given risky-action kind. The promotion standing-approves only bounded
 // no-spend dispatch and public Forum updates; every money-movement /
@@ -104,6 +120,15 @@ const OWNER_AGENT_STANDING_APPROVAL_KINDS: ReadonlyArray<string> = [
 export const ownerAgentHasStandingApprovalForRiskyAction = (
   openAuthUserId: string | null | undefined,
   riskyActionKind: string,
-): boolean =>
-  OWNER_AGENT_STANDING_APPROVAL_KINDS.includes(riskyActionKind) &&
-  isOpenAgentsOwnerAgentOpenAuthUserId(openAuthUserId)
+  authorityScope: ArtanisAuthorityScope =
+    artanisDefaultAuthorityScopeForRiskyAction(riskyActionKind),
+): boolean => {
+  const approvedScope =
+    ownerAgentStandingApprovalScopeForRiskyAction(riskyActionKind)
+  return (
+    approvedScope !== null &&
+    approvedScope === authorityScope &&
+    OWNER_AGENT_STANDING_APPROVAL_KINDS.includes(riskyActionKind) &&
+    isOpenAgentsOwnerAgentOpenAuthUserId(openAuthUserId)
+  )
+}

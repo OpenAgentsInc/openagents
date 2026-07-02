@@ -1,5 +1,13 @@
 import type { LinkedAgentOwnerRecord } from '../agent-registration'
 import {
+  ARTANIS_OWNER_SELF_AUTHORITY_SCOPE,
+  artanisAuthorityScopeAllowsOwnerLinkedCapacity,
+  artanisAuthorityScopeEvidenceRef,
+  artanisAuthorityScopePublicRef,
+  isArtanisAuthorityScope,
+  type ArtanisAuthorityScope,
+} from '../artanis-authority-scope'
+import {
   type PylonApiAssignmentRecord,
   type PylonApiCreateAssignmentRequest,
   type PylonApiRegistrationRecord,
@@ -99,6 +107,7 @@ const codingAgentProfileFor = (
     : CODEX_AGENT_PROFILE
 
 export type CodingDelegationInput = Readonly<{
+  authorityScope?: ArtanisAuthorityScope | undefined
   classification: CodingWorkflowClassification
   linkedAgents: ReadonlyArray<
     LinkedAgentOwnerRecord | Readonly<{ agentUserId: string }>
@@ -121,6 +130,8 @@ export type CodingDelegationAssignmentResult = Readonly<{
 export type CodingDelegationRejection = Readonly<{
   error:
     | 'coding_delegation_store_unavailable'
+    | 'authority_scope_capacity_unavailable'
+    | 'invalid_authority_scope'
     | 'invalid_coding_objective_summary'
     | 'invalid_spawn_ref'
     | 'invalid_target_account_ref'
@@ -164,6 +175,53 @@ const rawCodingFromBody = (body: unknown): Record<string, unknown> | null => {
   return coding !== null && typeof coding === 'object'
     ? (coding as Record<string, unknown>)
     : null
+}
+
+const authorityScopeFromInput = (
+  input: CodingDelegationInput,
+  requestedPylonRef: string | null,
+):
+  | Readonly<{ kind: 'scope'; authorityScope: ArtanisAuthorityScope }>
+  | Readonly<{ kind: 'rejected'; rejection: CodingDelegationRejection }> => {
+  if (input.authorityScope !== undefined) {
+    return { authorityScope: input.authorityScope, kind: 'scope' }
+  }
+
+  const coding = rawCodingFromBody(input.rawBody)
+  const openagents =
+    input.rawBody !== null && typeof input.rawBody === 'object'
+      ? (input.rawBody as Record<string, unknown>).openagents
+      : undefined
+  const topLevelScope =
+    openagents !== null && typeof openagents === 'object'
+      ? (openagents as Record<string, unknown>).authorityScope
+      : undefined
+  const raw =
+    coding?.authorityScope ?? topLevelScope
+
+  if (raw === undefined || raw === null || raw === '') {
+    return {
+      authorityScope: ARTANIS_OWNER_SELF_AUTHORITY_SCOPE,
+      kind: 'scope',
+    }
+  }
+
+  if (!isArtanisAuthorityScope(raw)) {
+    return {
+      kind: 'rejected',
+      rejection: {
+        error: 'invalid_authority_scope',
+        evidenceRefs: ['evidence.khala_coding.authority_scope.invalid'],
+        kind: 'rejected',
+        reason:
+          'The coding delegation authorityScope must be owner_self, shared_fleet, or owner_operator.',
+        requestedPylonRef,
+        statusCode: 400,
+      },
+    }
+  }
+
+  return { authorityScope: raw, kind: 'scope' }
 }
 
 const rawWorkspaceFromBody = (
@@ -484,14 +542,19 @@ const assignmentRequestFromInput = (
   spawnRefs: ReadonlyArray<string>,
   profile: CodingAgentProfile,
   accountRefHash: string | null,
+  authorityScope: ArtanisAuthorityScope,
 ): PylonApiCreateAssignmentRequest => ({
   acceptanceCriteriaRefs: [
     'acceptance.public.khala_coding.owner_requested',
+    artanisAuthorityScopePublicRef(authorityScope),
     ...input.classification.evidenceRefs,
   ],
   assignmentRef: `assignment.public.khala_coding.${input.makeId()}`,
   campaignPaused: false,
-  campaignPolicyRefs: ['policy.public.khala_coding.own_capacity_only'],
+  campaignPolicyRefs: [
+    'policy.public.khala_coding.own_capacity_only',
+    artanisAuthorityScopePublicRef(authorityScope),
+  ],
   campaignRef: 'campaign.public.khala_coding.own_capacity',
   closeoutPathRefs: [
     'closeout.public.khala_coding.durable_stream',
@@ -520,6 +583,7 @@ const assignmentRequestFromInput = (
   taskRefs: [
     workflowRef(input.classification),
     khalaCodingRequestIdRef(input.requestId),
+    artanisAuthorityScopePublicRef(authorityScope),
     ...spawnRefs,
   ],
 })
@@ -924,6 +988,29 @@ const delegateCodingWorkflowUnsafe = async (
   }
   const targetAccountRefHash =
     targetAccount.kind === 'account' ? targetAccount.accountRefHash : null
+  const authorityScope = authorityScopeFromInput(
+    input,
+    target.kind === 'target' ? target.pylonRef : null,
+  )
+  if (authorityScope.kind === 'rejected') {
+    return authorityScope.rejection
+  }
+  if (
+    !artanisAuthorityScopeAllowsOwnerLinkedCapacity(authorityScope.authorityScope)
+  ) {
+    return {
+      error: 'authority_scope_capacity_unavailable',
+      evidenceRefs: [
+        artanisAuthorityScopeEvidenceRef(authorityScope.authorityScope),
+        'evidence.khala_coding.authority_scope.owner_linked_capacity_not_allowed',
+      ],
+      kind: 'rejected',
+      reason:
+        `The ${authorityScope.authorityScope} Artanis authority scope is not wired to caller-owned linked Pylon capacity.`,
+      requestedPylonRef: target.kind === 'target' ? target.pylonRef : null,
+      statusCode: 403,
+    }
+  }
   const targetAccountKey = codexAccountCapacityKeyFromAccountRefHash(
     targetAccountRefHash,
   )
@@ -1058,6 +1145,7 @@ const delegateCodingWorkflowUnsafe = async (
         spawnRefs.refs,
         profile,
         accountRefHash,
+        authorityScope.authorityScope,
       )
       const gate = controlledPylonAssignmentDispatchGate({
         activeAssignments,
@@ -1124,6 +1212,7 @@ const delegateCodingWorkflowUnsafe = async (
       evidenceRefs: [
         ...input.classification.evidenceRefs,
         'evidence.khala_coding.own_capacity_linked_pylon',
+        artanisAuthorityScopeEvidenceRef(authorityScope.authorityScope),
       ],
       kind: 'assigned',
       pylon: registration,

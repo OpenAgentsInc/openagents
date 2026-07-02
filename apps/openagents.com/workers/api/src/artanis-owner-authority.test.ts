@@ -1,6 +1,11 @@
 import { describe, expect, test } from 'vitest'
 
 import {
+  ARTANIS_OWNER_OPERATOR_AUTHORITY_SCOPE,
+  ARTANIS_OWNER_SELF_AUTHORITY_SCOPE,
+  ARTANIS_SHARED_FLEET_AUTHORITY_SCOPE,
+} from './artanis-authority-scope'
+import {
   ARTANIS_OWNER_AGENT_ACTOR_REF,
   ARTANIS_OWNER_AGENT_SLUG,
   ARTANIS_OWNER_OPENAUTH_USER_ID,
@@ -71,6 +76,30 @@ describe('owner promotion is bounded to pylon_job_dispatch and forum_post only',
     ).toBe(true)
   })
 
+  test('standing approval covers pylon_job_dispatch only in owner_self scope', () => {
+    expect(
+      ownerAgentHasStandingApprovalForRiskyAction(
+        ARTANIS_OWNER_OPENAUTH_USER_ID,
+        'pylon_job_dispatch',
+        ARTANIS_OWNER_SELF_AUTHORITY_SCOPE,
+      ),
+    ).toBe(true)
+    expect(
+      ownerAgentHasStandingApprovalForRiskyAction(
+        ARTANIS_OWNER_OPENAUTH_USER_ID,
+        'pylon_job_dispatch',
+        ARTANIS_SHARED_FLEET_AUTHORITY_SCOPE,
+      ),
+    ).toBe(false)
+    expect(
+      ownerAgentHasStandingApprovalForRiskyAction(
+        ARTANIS_OWNER_OPENAUTH_USER_ID,
+        'pylon_job_dispatch',
+        ARTANIS_OWNER_OPERATOR_AUTHORITY_SCOPE,
+      ),
+    ).toBe(false)
+  })
+
   test('standing approval covers forum_post for owner-Artanis', () => {
     expect(
       ownerAgentHasStandingApprovalForRiskyAction(
@@ -78,6 +107,30 @@ describe('owner promotion is bounded to pylon_job_dispatch and forum_post only',
         'forum_post',
       ),
     ).toBe(true)
+  })
+
+  test('standing approval covers forum_post only in owner_operator scope', () => {
+    expect(
+      ownerAgentHasStandingApprovalForRiskyAction(
+        ARTANIS_OWNER_OPENAUTH_USER_ID,
+        'forum_post',
+        ARTANIS_OWNER_OPERATOR_AUTHORITY_SCOPE,
+      ),
+    ).toBe(true)
+    expect(
+      ownerAgentHasStandingApprovalForRiskyAction(
+        ARTANIS_OWNER_OPENAUTH_USER_ID,
+        'forum_post',
+        ARTANIS_OWNER_SELF_AUTHORITY_SCOPE,
+      ),
+    ).toBe(false)
+    expect(
+      ownerAgentHasStandingApprovalForRiskyAction(
+        ARTANIS_OWNER_OPENAUTH_USER_ID,
+        'forum_post',
+        ARTANIS_SHARED_FLEET_AUTHORITY_SCOPE,
+      ),
+    ).toBe(false)
   })
 
   test('NEVER standing-approves money-movement / payout kinds (never-waivable)', () => {

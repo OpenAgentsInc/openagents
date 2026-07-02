@@ -445,6 +445,7 @@ const makeFakeReadTool = (
         type: 'object',
       },
     },
+    authorityScope: 'owner_self',
     execute: (args: unknown) => {
       calls.push(args)
       return Effect.succeed(body)
@@ -470,6 +471,7 @@ const makeFakeRiskyTool = (): {
         type: 'object',
       },
     },
+    authorityScope: 'owner_self',
     kind: 'risky',
     plan: (args: unknown) => {
       planned.push(args)
@@ -499,6 +501,7 @@ const makeFakeGatedTool = (
         type: 'object',
       },
     },
+    authorityScope: 'owner_self',
     kind: 'gated',
     riskyActionKind: 'pylon_job_dispatch',
     run: (args: unknown) => {
@@ -723,6 +726,7 @@ describe('#6364 artanis operator bounded tool-calling loop', () => {
     expect(result.reply).toContain('#6316')
     expect(result.toolInvocations).toEqual([
       {
+        authorityScope: 'owner_self',
         deferredToApprovalGate: false,
         executed: true,
         executedRef: null,
@@ -802,6 +806,7 @@ describe('#6364 artanis operator bounded tool-calling loop', () => {
     expect(result.deferredToApprovalGate).toBe(false)
     expect(result.toolInvocations).toEqual([
       {
+        authorityScope: 'owner_operator',
         deferredToApprovalGate: false,
         executed: true,
         executedRef: null,
@@ -849,6 +854,7 @@ describe('#6364 artanis operator bounded tool-calling loop', () => {
     expect(result.deferredToApprovalGate).toBe(true)
     expect(result.pendingApprovalGates).toEqual([
       {
+        authorityScope: 'owner_self',
         gateRef: ARTANIS_OPERATOR_APPROVAL_GATE_REF,
         gateSystem: 'artanis-approval-gates',
         riskyActionKind: 'pylon_job_dispatch',
@@ -858,6 +864,7 @@ describe('#6364 artanis operator bounded tool-calling loop', () => {
     ])
     expect(result.toolInvocations).toEqual([
       {
+        authorityScope: 'owner_self',
         deferredToApprovalGate: true,
         executed: false,
         executedRef: null,
@@ -898,6 +905,7 @@ describe('#6364 artanis operator bounded tool-calling loop', () => {
     expect(result.deferredToApprovalGate).toBe(true)
     expect(result.toolInvocations).toEqual([
       {
+        authorityScope: 'owner_operator',
         deferredToApprovalGate: true,
         executed: false,
         executedRef: null,
@@ -949,6 +957,7 @@ describe('#6364 artanis operator bounded tool-calling loop', () => {
     expect(result.pendingApprovalGates).toEqual([])
     expect(result.toolInvocations).toEqual([
       {
+        authorityScope: 'owner_self',
         deferredToApprovalGate: false,
         executed: true,
         executedRef: 'assignment.public.khala_coding.abc123',
@@ -986,6 +995,7 @@ describe('#6364 artanis operator bounded tool-calling loop', () => {
     expect(result.deferredToApprovalGate).toBe(true)
     expect(result.pendingApprovalGates).toEqual([
       {
+        authorityScope: 'owner_self',
         gateRef: ARTANIS_OPERATOR_APPROVAL_GATE_REF,
         gateSystem: 'artanis-approval-gates',
         riskyActionKind: 'pylon_job_dispatch',
@@ -995,6 +1005,7 @@ describe('#6364 artanis operator bounded tool-calling loop', () => {
     ])
     expect(result.toolInvocations).toEqual([
       {
+        authorityScope: 'owner_self',
         deferredToApprovalGate: true,
         executed: false,
         executedRef: null,

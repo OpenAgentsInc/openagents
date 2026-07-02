@@ -102,6 +102,9 @@ import {
 } from './artanis-labor-receipt-routes'
 import { makeD1ArtanisLaborUnattendedReceiptStore } from './artanis-labor-receipt-store'
 import { ArtanisMindSmokeSystem, artanisMindComplete } from './artanis-mind'
+import {
+  ARTANIS_OWNER_OPERATOR_AUTHORITY_SCOPE,
+} from './artanis-authority-scope'
 import { makeOperatorArtanisChatRoutes } from './artanis-operator-chat-routes'
 import { loadArtanisNetworkStatsFromLedger } from './artanis-network-stats-d1'
 import { makeOperatorArtanisConsoleRoutes } from './artanis-operator-console-routes'
@@ -8880,6 +8883,7 @@ const operatorArtanisChatRoutes = makeOperatorArtanisChatRoutes({
               openAgentsDatabase(env),
               currentIsoTimestamp(),
               'github_issue_open',
+              ARTANIS_OWNER_OPERATOR_AUTHORITY_SCOPE,
             ),
           ),
         opener: makeArtanisGithubIssueOpener({
@@ -8897,6 +8901,7 @@ const operatorArtanisChatRoutes = makeOperatorArtanisChatRoutes({
             ownerAgentHasStandingApprovalForRiskyAction(
               session.user.userId,
               'forum_post',
+              ARTANIS_OWNER_OPERATOR_AUTHORITY_SCOPE,
             ),
           ),
         writer: makeArtanisForumUpdateWriter({
@@ -8909,7 +8914,7 @@ const operatorArtanisChatRoutes = makeOperatorArtanisChatRoutes({
         nowIso: currentIsoTimestamp,
         ownerOpenAuthUserId: session.user.userId,
         pylonStore: makeD1PylonApiStore(openAgentsDatabase(env)),
-        readEffectivePylonDispatchApproval: () =>
+        readEffectivePylonDispatchApproval: authorityScope =>
           // Owner-promotion-aware (owner-directed 2026-06-27): owner-Artanis
           // carries a STANDING owner approval for his own pylon_job_dispatch, so
           // his own-capacity no-spend Codex dispatch EXECUTES without a
@@ -8919,6 +8924,7 @@ const operatorArtanisChatRoutes = makeOperatorArtanisChatRoutes({
             openAgentsDatabase(env),
             currentIsoTimestamp(),
             session.user.userId,
+            authorityScope,
           ),
         // Resolve the current branch tip so a pinned-workspace dispatch uses a
         // real commit; on any failure the dispatch falls back to the bounded

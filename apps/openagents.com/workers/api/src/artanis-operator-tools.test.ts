@@ -457,6 +457,7 @@ describe('#6366 dispatch_codex_task (gated; plan-only without a seam)', () => {
   const tool = makeArtanisDispatchCodexTaskTool()
 
   test('is a gated pylon_job_dispatch tool with a run() entry point', () => {
+    expect(tool.authorityScope).toBe('owner_self')
     expect(tool.kind).toBe('gated')
     expect(tool.riskyActionKind).toBe('pylon_job_dispatch')
     expect(typeof tool.run).toBe('function')
@@ -479,6 +480,7 @@ describe('#6366 dispatch_codex_task (gated; plan-only without a seam)', () => {
     if (result.outcome !== 'deferred') return
     expect(result.reason).toBe('execution_not_wired')
     expect(result.plan).toContain('pylon khala request')
+    expect(result.plan).toContain('authorityScope: owner_self')
     expect(result.plan).toContain('--workflow codex_agent_task')
     expect(result.plan).toContain('--repo OpenAgentsInc/openagents')
     expect(result.plan).toContain('run-no-spend')
@@ -534,7 +536,10 @@ describe('#6366 dispatch_codex_task (gated; LIVE execution behind the gate)', ()
             pylonRef: 'pylon.owner.alpha',
           } as const)
         },
-        isOwnerApproved: () => Effect.succeed(true),
+        isOwnerApproved: authorityScope => {
+          expect(authorityScope).toBe('owner_self')
+          return Effect.succeed(true)
+        },
       },
     })
 
@@ -550,6 +555,7 @@ describe('#6366 dispatch_codex_task (gated; LIVE execution behind the gate)', ()
     expect(result.assignmentRef).toBe('assignment.public.khala_coding.live123')
     expect(result.durableRequestId).toBe('req-live123')
     expect(createCalls).toHaveLength(1)
+    expect(createCalls[0]).toMatchObject({ authorityScope: 'owner_self' })
     // No-spend invariant is asserted in the public-safe summary.
     expect(result.summary).toContain('unpaid_smoke')
     expect(result.summary).toContain('settlement: not_applicable')
@@ -570,7 +576,10 @@ describe('#6366 dispatch_codex_task (gated; LIVE execution behind the gate)', ()
             pylonRef: 'pylon.owner.alpha',
           } as const)
         },
-        isOwnerApproved: () => Effect.succeed(false),
+        isOwnerApproved: authorityScope => {
+          expect(authorityScope).toBe('owner_self')
+          return Effect.succeed(false)
+        },
       },
     })
 
@@ -920,6 +929,7 @@ describe('#6435 post_forum_update (gated Artanis Forum writer)', () => {
       isOwnerApproved: () => Effect.succeed(false),
     })
 
+    expect(tool.authorityScope).toBe('owner_operator')
     expect(tool.kind).toBe('gated')
     expect(tool.riskyActionKind).toBe('forum_post')
 
@@ -1731,6 +1741,7 @@ describe('get_unsupported_requests (owner-scoped unsupported-request ledger read
     expect(askedStatus).toBe('needs_issue')
     expect(result.toolInvocations).toEqual([
       {
+        authorityScope: 'owner_operator',
         deferredToApprovalGate: false,
         executed: true,
         executedRef: null,
@@ -1956,6 +1967,7 @@ describe('open_unsupported_request_issue (owner-gated GitHub issue + ledger link
 
   test('is an owner-gated outward GitHub issue tool', () => {
     const tool = makeArtanisOpenUnsupportedRequestIssueTool()
+    expect(tool.authorityScope).toBe('owner_operator')
     expect(tool.kind).toBe('gated')
     expect(tool.definition.name).toBe('open_unsupported_request_issue')
     expect(tool.riskyActionKind).toBe(
@@ -2372,6 +2384,7 @@ describe('trigger_synthetic_load (RISKY plan-only) — iteration 4', () => {
 
   test('is a risky tool whose riskyActionKind is an enumerated kind', () => {
     expect(tool.kind).toBe('risky')
+    expect(tool.authorityScope).toBe('owner_operator')
     expect(tool.definition.name).toBe('trigger_synthetic_load')
     // It carries a riskyActionKind, and that kind is part of the approval-gate
     // vocabulary (synthetic load maps to eval_launch).
@@ -2997,6 +3010,7 @@ describe('makeArtanisOperatorTools default table', () => {
     )
     expect(tool).toBeDefined()
     expect(tool?.kind).toBe('write')
+    expect(tool?.authorityScope).toBe('owner_operator')
   })
 
   test('the default table includes a read-kind get_unsupported_requests tool', () => {
@@ -3006,6 +3020,7 @@ describe('makeArtanisOperatorTools default table', () => {
     )
     expect(tool).toBeDefined()
     expect(tool?.kind).toBe('read')
+    expect(tool?.authorityScope).toBe('owner_operator')
   })
 
   test('the default table includes a read-kind list_pylon_assignments tool', () => {
@@ -3015,6 +3030,7 @@ describe('makeArtanisOperatorTools default table', () => {
     )
     expect(tool).toBeDefined()
     expect(tool?.kind).toBe('read')
+    expect(tool?.authorityScope).toBe('owner_self')
   })
 
   test('the default table includes a read-kind get_glm_fleet_status tool', () => {
@@ -3022,6 +3038,7 @@ describe('makeArtanisOperatorTools default table', () => {
     const tool = tools.find(t => t.definition.name === 'get_glm_fleet_status')
     expect(tool).toBeDefined()
     expect(tool?.kind).toBe('read')
+    expect(tool?.authorityScope).toBe('owner_operator')
   })
 
   test('the default table includes a read-kind get_fleet_status tool', () => {
@@ -3029,6 +3046,7 @@ describe('makeArtanisOperatorTools default table', () => {
     const tool = tools.find(t => t.definition.name === 'get_fleet_status')
     expect(tool).toBeDefined()
     expect(tool?.kind).toBe('read')
+    expect(tool?.authorityScope).toBe('owner_operator')
   })
 
   test('the default table includes a read-kind get_synthetic_load_status tool', () => {
@@ -3038,6 +3056,7 @@ describe('makeArtanisOperatorTools default table', () => {
     )
     expect(tool).toBeDefined()
     expect(tool?.kind).toBe('read')
+    expect(tool?.authorityScope).toBe('owner_operator')
   })
 
   test('the default table includes a read-kind get_khala_feedback tool', () => {
@@ -3045,6 +3064,7 @@ describe('makeArtanisOperatorTools default table', () => {
     const tool = tools.find(t => t.definition.name === 'get_khala_feedback')
     expect(tool).toBeDefined()
     expect(tool?.kind).toBe('read')
+    expect(tool?.authorityScope).toBe('owner_operator')
   })
 
   test('the default table includes a read-kind get_trace_review tool', () => {
@@ -3052,6 +3072,7 @@ describe('makeArtanisOperatorTools default table', () => {
     const tool = tools.find(t => t.definition.name === 'get_trace_review')
     expect(tool).toBeDefined()
     expect(tool?.kind).toBe('read')
+    expect(tool?.authorityScope).toBe('owner_operator')
   })
 
   test('the default table includes a trigger_synthetic_load tool', () => {
@@ -3061,6 +3082,7 @@ describe('makeArtanisOperatorTools default table', () => {
     )
     expect(tool).toBeDefined()
     expect(tool?.kind).toBe('risky')
+    expect(tool?.authorityScope).toBe('owner_operator')
   })
 
   test('the default table includes a gated post_forum_update tool', () => {
@@ -3068,6 +3090,7 @@ describe('makeArtanisOperatorTools default table', () => {
     const tool = tools.find(t => t.definition.name === 'post_forum_update')
     expect(tool).toBeDefined()
     expect(tool?.kind).toBe('gated')
+    expect(tool?.authorityScope).toBe('owner_operator')
     if (tool?.kind !== 'gated') return
     expect(tool.riskyActionKind).toBe('forum_post')
   })

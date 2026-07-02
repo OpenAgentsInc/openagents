@@ -218,6 +218,38 @@ describe('coding workflow delegation', () => {
       agentKind: 'codex_sdk',
       schema: 'openagents.pylon.codex_agent_task.v0.3',
     })
+    expect(assigned.evidenceRefs).toContain(
+      'evidence.khala_coding.authority_scope.owner_self',
+    )
+    expect(assigned.assignment.taskRefs).toContain(
+      'authority.public.artanis.scope.owner_self',
+    )
+  })
+
+  test('refuses shared_fleet scope on caller-owned linked capacity', async () => {
+    const result = await delegateCodingWorkflow({
+      authorityScope: 'shared_fleet',
+      classification,
+      linkedAgents: [linkedOwner],
+      makeId: () => 'id-shared',
+      nowIso,
+      pylonStore: makeStore({ registrations: [registration()] }),
+      rawBody: {},
+      requestId: 'chatcmpl_coding_shared_fleet_scope',
+    })
+
+    expect(result).toEqual({
+      error: 'authority_scope_capacity_unavailable',
+      evidenceRefs: [
+        'evidence.khala_coding.authority_scope.shared_fleet',
+        'evidence.khala_coding.authority_scope.owner_linked_capacity_not_allowed',
+      ],
+      kind: 'rejected',
+      reason:
+        'The shared_fleet Artanis authority scope is not wired to caller-owned linked Pylon capacity.',
+      requestedPylonRef: null,
+      statusCode: 403,
+    })
   })
 
   test('creates a controlled assignment on caller-owned Claude capacity (#6388)', async () => {
