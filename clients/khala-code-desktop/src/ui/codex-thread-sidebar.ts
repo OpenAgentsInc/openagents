@@ -375,78 +375,43 @@ export const mountCodexThreadSidebar = (
     }
   }
 
-  const threadMenuHeader = (
-    thread: KhalaCodeDesktopCodexThreadSummary,
-  ): HTMLElement => {
-    const header = el("div", "khala-thread-sidebar-menu-summary")
-    const title = el("div", "khala-thread-sidebar-menu-title", thread.title)
-    const preview = el("div", "khala-thread-sidebar-menu-preview", thread.preview || thread.id)
-    const meta = el("div", "khala-thread-sidebar-menu-meta")
-    const time = formatCompactThreadTimestamp(thread.recencyAt ?? thread.updatedAt)
-    meta.append(el("span", undefined, thread.statusLabel || thread.status))
-    if (time.length > 0) meta.append(el("span", undefined, time))
-    header.append(title, preview, meta)
-
-    if (thread.badges.length > 0) {
-      const badges = el("div", "khala-thread-sidebar-menu-badges")
-      for (const badge of thread.badges) badges.append(el("span", "khala-thread-sidebar-menu-badge", badge))
-      header.append(badges)
-    }
-
-    return header
-  }
-
   const threadMenuContent = (
     thread: KhalaCodeDesktopCodexThreadSummary,
   ): BasecoatMenuDomContent => ({
     label: `Thread actions for ${thread.title}`,
-    header: threadMenuHeader(thread),
     sections: [
       {
-        label: "Thread",
         items: [
           {
             id: "rename-thread",
             label: "Rename thread",
-            description: "Set display name",
             icon: "Pencil",
             onSelect: () => beginRename(thread),
           },
           {
             id: "fork-thread",
             label: "Fork thread",
-            description: "Create branch thread",
             icon: "BranchAlt",
             onSelect: () => void runMutation(() => options.forkThread(thread.id)),
           },
           {
             id: "copy-session-id",
             label: "Copy session ID",
-            description: thread.sessionId === null
-              ? "Copy thread ID fallback"
-              : "Copy Codex session ref",
             icon: "Copy",
             onSelect: () => {
               const sessionId = thread.sessionId ?? thread.id
               void navigator.clipboard?.writeText(sessionId).catch(() => undefined)
             },
           },
-        ],
-      },
-      {
-        label: "Lifecycle",
-        items: [
           {
             id: "archive-thread",
             label: "Archive thread",
-            description: "Move out of active threads",
             icon: "Archive",
             onSelect: () => void runMutation(() => options.archiveThread(thread.id)),
           },
           {
             id: "delete-thread",
             label: "Delete thread",
-            description: "Remove this thread",
             icon: "Trash",
             destructive: true,
             onSelect: () => {

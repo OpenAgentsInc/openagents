@@ -1634,47 +1634,6 @@ button {
   border-radius: 999px;
   animation: khala-thread-sidebar-item-spinner 680ms linear infinite;
 }
-.khala-thread-sidebar-menu-summary {
-  display: grid;
-  min-width: 0;
-  max-width: min(20rem, calc(100vw - 2rem));
-  gap: 0.35rem;
-}
-.khala-thread-sidebar-menu-title,
-.khala-thread-sidebar-menu-preview {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.khala-thread-sidebar-menu-title {
-  color: var(--oa-color-component-text);
-  font-size: 0.78rem;
-  font-weight: 700;
-}
-.khala-thread-sidebar-menu-preview,
-.khala-thread-sidebar-menu-meta {
-  color: color-mix(in srgb, var(--oa-color-component-text) 58%, transparent);
-  font-size: 0.66rem;
-}
-.khala-thread-sidebar-menu-meta,
-.khala-thread-sidebar-menu-badges {
-  display: flex;
-  min-width: 0;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.35rem;
-}
-.khala-thread-sidebar-menu-badge {
-  border: 1px solid color-mix(in srgb, var(--oa-color-khala-energy-cyan) 35%, transparent);
-  border-radius: 999px;
-  color: var(--oa-color-khala-energy-line);
-  font-size: 0.56rem;
-  line-height: 1;
-  padding: 0.14rem 0.32rem;
-  text-transform: uppercase;
-}
-
 @keyframes khala-thread-sidebar-item-spinner {
   to {
     transform: rotate(360deg);
