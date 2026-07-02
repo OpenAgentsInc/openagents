@@ -97,6 +97,13 @@ import {
   recentThreadsForHotkeys,
 } from "./thread-hotkeys"
 import {
+  KHALA_CODE_DIFF_REVIEW_SUBMIT_EVENT,
+  KhalaCodeDiffReviewSubmitDetailSchema,
+  khalaCodeDiffReviewComment,
+  khalaCodeDiffReviewLineLabel,
+  khalaCodeDiffReviewSteeringNote,
+} from "../shared/diff-review"
+import {
   initialKhalaCodeMainShellModel,
   updateKhalaCodeMainShellModel,
   type KhalaCodeMainShellMessage,
@@ -2012,6 +2019,76 @@ const respondToCodexApproval = async (button: HTMLButtonElement): Promise<void> 
   }])
 }
 
+const nextDiffReviewCommentRef = (): string =>
+  `diff_review.${Date.now().toString(36)}.${Math.random().toString(36).slice(2, 8)}`
+
+const stageDiffReviewNoteInComposer = (note: string): void => {
+  const existing = composerInput.value.trimEnd()
+  composerInput.value = existing.length === 0 ? note : `${existing}\n\n${note}`
+  shellModel().lastTurnFailed = false
+  renderComposer()
+  requestAnimationFrame(focusComposerInput)
+}
+
+const handleDiffReviewSubmit = async (event: Event): Promise<void> => {
+  const rawDetail = "detail" in event
+    ? (event as CustomEvent<unknown>).detail
+    : undefined
+  let detail: typeof KhalaCodeDiffReviewSubmitDetailSchema.Type
+  try {
+    detail = S.decodeUnknownSync(KhalaCodeDiffReviewSubmitDetailSchema)(rawDetail)
+  } catch (error) {
+    appendMessages([{
+      body: `Diff review comment failed schema validation: ${error instanceof Error ? error.message : String(error)}`,
+      id: nextMessageId("system"),
+      role: "system",
+    }])
+    return
+  }
+
+  const comment = khalaCodeDiffReviewComment({
+    ...detail,
+    commentRef: nextDiffReviewCommentRef(),
+  })
+  const note = khalaCodeDiffReviewSteeringNote(comment)
+
+  if (!shellModel().pendingTurn) {
+    stageDiffReviewNoteInComposer(note)
+    appendMessages([{
+      body: `Staged diff review comment for ${khalaCodeDiffReviewLineLabel(comment)} in the composer.`,
+      id: nextMessageId("system"),
+      role: "system",
+    }])
+    return
+  }
+
+  const turnIds = [...activeTurnIds]
+  const targets = turnIds.length === 0 ? [undefined] : turnIds
+  try {
+    const results = await Promise.all(targets.map(turnId =>
+      rpc.request.codexTurnSteer({
+        clientUserMessageId: comment.commentRef,
+        sessionId,
+        text: note,
+        ...(turnId === undefined ? {} : { turnId }),
+      })))
+    const failed = results.find(result => !result.ok)
+    appendMessages([{
+      body: failed === undefined
+        ? `Sent diff review comment to the active Codex turn: ${khalaCodeDiffReviewLineLabel(comment)}.`
+        : `Diff review steering failed: ${failed.error ?? "unknown error"}`,
+      id: nextMessageId("system"),
+      role: "system",
+    }])
+  } catch (error) {
+    appendMessages([{
+      body: `Diff review steering failed: ${error instanceof Error ? error.message : String(error)}`,
+      id: nextMessageId("system"),
+      role: "system",
+    }])
+  }
+}
+
 const handledClaudeApprovals = new Set<string>()
 const respondToClaudeApprovalRequest = async (
   request: Awaited<ReturnType<DesktopRpcRequests["claudeApprovalPending"]>>["requests"][number],
@@ -2533,6 +2610,11 @@ messageList.addEventListener("click", event => {
   event.preventDefault()
   event.stopPropagation()
   void respondToCodexApproval(button)
+})
+messageList.addEventListener(KHALA_CODE_DIFF_REVIEW_SUBMIT_EVENT, event => {
+  event.preventDefault()
+  event.stopPropagation()
+  void handleDiffReviewSubmit(event)
 })
 messageList.addEventListener("scroll", () => {
   shellModel().transcriptPinnedToEnd = isNearTranscriptEnd()

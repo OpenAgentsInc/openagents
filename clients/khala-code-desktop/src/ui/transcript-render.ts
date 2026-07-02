@@ -17,6 +17,13 @@ import type {
   KhalaCodeDesktopMessageRole,
 } from "../shared/rpc"
 import type { KhalaCodeDesktopCodexApprovalAction } from "../shared/codex-approval-decisions"
+import {
+  KHALA_CODE_DIFF_REVIEW_SUBMIT_EVENT,
+  khalaCodeDiffReviewLineLabel,
+  type KhalaCodeDiffReviewLineKind,
+  type KhalaCodeDiffReviewLineSide,
+  type KhalaCodeDiffReviewSubmitDetail,
+} from "../shared/diff-review"
 import { displayLocalPathsForKhalaCode } from "../shared/display-paths"
 
 const EXT_LANGUAGE: Readonly<Record<string, string>> = {
@@ -267,6 +274,124 @@ const diffGutter = (
   return span
 }
 
+const diffReviewSide = (row: DiffRow): KhalaCodeDiffReviewLineSide =>
+  row.kind === "remove" ? "old" : "new"
+
+const diffReviewLineNo = (row: DiffRow): number | null => {
+  if (row.kind === "remove") return row.oldNo ?? null
+  return row.newNo ?? row.oldNo ?? null
+}
+
+const diffReviewKind = (row: DiffRow): KhalaCodeDiffReviewLineKind | null => {
+  if (row.kind === "add" || row.kind === "context" || row.kind === "remove") {
+    return row.kind
+  }
+  return null
+}
+
+const removeOpenDiffReviewEditors = (root: HTMLElement): void => {
+  for (const editor of root.querySelectorAll(".cb-diff-review-editor")) {
+    editor.remove()
+  }
+}
+
+const openDiffReviewEditor = (
+  root: HTMLElement,
+  line: HTMLElement,
+  detail: Omit<KhalaCodeDiffReviewSubmitDetail, "body">,
+): void => {
+  removeOpenDiffReviewEditors(root)
+
+  const editor = document.createElement("span")
+  editor.className = "cb-diff-review-editor"
+  editor.dataset.patchRef = detail.patchRef
+
+  const textarea = document.createElement("textarea")
+  textarea.className = "cb-diff-review-textarea"
+  textarea.name = "khala-diff-review-comment"
+  textarea.rows = 3
+  textarea.placeholder = "Comment for this line"
+  textarea.setAttribute("aria-label", `Comment for ${khalaCodeDiffReviewLineLabel(detail)}`)
+
+  const actions = document.createElement("span")
+  actions.className = "cb-diff-review-actions"
+
+  const submit = document.createElement("button")
+  submit.type = "button"
+  submit.className = "cb-diff-review-submit"
+  submit.textContent = "Send"
+
+  const cancel = document.createElement("button")
+  cancel.type = "button"
+  cancel.className = "cb-diff-review-cancel"
+  cancel.textContent = "Cancel"
+
+  submit.addEventListener("click", event => {
+    event.preventDefault()
+    event.stopPropagation()
+    const body = textarea.value.trim()
+    if (body.length === 0) {
+      textarea.focus({ preventScroll: true })
+      return
+    }
+    root.dispatchEvent(new CustomEvent<KhalaCodeDiffReviewSubmitDetail>(
+      KHALA_CODE_DIFF_REVIEW_SUBMIT_EVENT,
+      {
+        bubbles: true,
+        detail: {
+          ...detail,
+          body,
+        },
+      },
+    ))
+    editor.dataset.sent = "true"
+    textarea.disabled = true
+    submit.disabled = true
+  })
+
+  cancel.addEventListener("click", event => {
+    event.preventDefault()
+    event.stopPropagation()
+    editor.remove()
+  })
+
+  textarea.addEventListener("keydown", event => {
+    if (event.key === "Escape") {
+      event.preventDefault()
+      editor.remove()
+    }
+  })
+
+  actions.append(submit, cancel)
+  editor.append(textarea, actions)
+  line.after(editor)
+  textarea.focus({ preventScroll: true })
+}
+
+const diffReviewButton = (
+  root: HTMLElement,
+  line: HTMLElement,
+  detail: Omit<KhalaCodeDiffReviewSubmitDetail, "body">,
+): HTMLButtonElement => {
+  const button = document.createElement("button")
+  button.type = "button"
+  button.className = "cb-diff-comment-button"
+  button.title = "Annotate diff line"
+  button.setAttribute("aria-label", `Annotate ${khalaCodeDiffReviewLineLabel(detail)}`)
+  button.dataset.patchRef = detail.patchRef
+  button.dataset.filePath = detail.filePath
+  button.dataset.lineKind = detail.lineKind
+  button.dataset.lineNo = String(detail.lineNo)
+  button.dataset.lineSide = detail.lineSide
+  button.textContent = "Comment"
+  button.addEventListener("click", event => {
+    event.preventDefault()
+    event.stopPropagation()
+    openDiffReviewEditor(root, line, detail)
+  })
+  return button
+}
+
 export const diffElement = (input: {
   readonly patch: string
   readonly language?: string
@@ -325,6 +450,18 @@ export const diffElement = (input: {
     content.className = "cb-diff-code"
     tokenizeInto(content, row.text, language)
     line.append(content)
+    const lineNo = diffReviewLineNo(row)
+    const lineKind = diffReviewKind(row)
+    if (lineNo !== null && lineKind !== null) {
+      const filePath = parsed.filename ?? "diff"
+      line.append(diffReviewButton(root, line, {
+        filePath,
+        lineKind,
+        lineNo,
+        lineSide: diffReviewSide(row),
+        patchRef: `diff.${filePath}.${lineKind}.${lineNo}`,
+      }))
+    }
     code.append(line)
   }
 

@@ -1182,6 +1182,98 @@ button {
   white-space: pre;
 }
 
+.cb-diff-comment-button {
+  flex: none;
+  align-self: center;
+  min-height: 24px;
+  margin: 1px 6px 1px 0;
+  border: 1px solid color-mix(in srgb, var(--oa-color-khala-energy-cyan) 32%, transparent);
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--oa-color-khala-surface-raised) 72%, transparent);
+  color: var(--oa-color-khala-energy-text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.68rem;
+  line-height: 1;
+  opacity: 0.72;
+  padding: 3px 6px;
+}
+
+.cb-diff-comment-button:hover,
+.cb-diff-comment-button:focus-visible {
+  border-color: color-mix(in srgb, var(--oa-color-khala-energy-cyan) 76%, transparent);
+  background: color-mix(in srgb, var(--oa-color-khala-energy-blue) 18%, var(--oa-color-khala-surface-raised));
+  outline: 1px solid color-mix(in srgb, var(--oa-color-khala-energy-cyan) 34%, transparent);
+}
+
+.cb-diff-review-editor {
+  display: grid;
+  gap: 7px;
+  padding: 8px 10px 9px 84px;
+  border-left: 2px solid color-mix(in srgb, var(--oa-color-khala-energy-cyan) 58%, transparent);
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--oa-color-khala-energy-cyan) 7%, transparent), transparent 42%),
+    color-mix(in srgb, var(--oa-color-khala-surface-raised) 70%, transparent);
+  white-space: normal;
+}
+
+.cb-diff-review-textarea {
+  width: min(100%, 44rem);
+  min-height: 4.75rem;
+  border: 1px solid color-mix(in srgb, var(--oa-color-khala-energy-cyan) 32%, transparent);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--oa-color-khala-void) 78%, transparent);
+  color: var(--oa-color-khala-text-primary);
+  font: inherit;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  padding: 7px 8px;
+  resize: vertical;
+}
+
+.cb-diff-review-textarea:focus-visible {
+  border-color: color-mix(in srgb, var(--oa-color-khala-energy-cyan) 86%, transparent);
+  outline: 1px solid color-mix(in srgb, var(--oa-color-khala-energy-cyan) 58%, transparent);
+}
+
+.cb-diff-review-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.cb-diff-review-submit,
+.cb-diff-review-cancel {
+  min-height: 28px;
+  border: 1px solid color-mix(in srgb, var(--oa-color-khala-energy-blue) 42%, transparent);
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--oa-color-khala-surface-raised) 82%, transparent);
+  color: var(--oa-color-khala-text-primary);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.72rem;
+  line-height: 1;
+  padding: 5px 9px;
+}
+
+.cb-diff-review-submit {
+  border-color: color-mix(in srgb, var(--oa-color-khala-success-border) 78%, transparent);
+  background: color-mix(in srgb, var(--oa-color-khala-surface-success) 86%, transparent);
+  color: var(--oa-color-khala-success-strong);
+}
+
+.cb-diff-review-submit:hover,
+.cb-diff-review-submit:focus-visible,
+.cb-diff-review-cancel:hover,
+.cb-diff-review-cancel:focus-visible {
+  outline: 1px solid color-mix(in srgb, var(--oa-color-khala-energy-cyan) 38%, transparent);
+}
+
+.cb-diff-review-submit:disabled {
+  cursor: not-allowed;
+  opacity: 0.54;
+}
+
 @media (max-width: 640px) {
   .message-bubble--user {
     max-width: 92%;
