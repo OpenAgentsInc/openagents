@@ -268,7 +268,8 @@ sup_claim_store() {
     printf 'SUP_ORCHESTRATION_STATE_BIN is required for live supervisor claims\n' >&2
     return 2
   fi
-  "$SUP_ORCHESTRATION_STATE_BIN" "$@"
+  # shellcheck disable=SC2086
+  $SUP_ORCHESTRATION_STATE_BIN "$@"
 }
 
 # sup_gc_stale_claims
@@ -288,9 +289,10 @@ sup_gc_orphaned_claims() {
 #   rc 0 if a FRESH claim is held for the issue (reserved by some slot), rc 1
 #   otherwise. Does not mutate; GC of stale entries is sup_gc_stale_claims's job.
 sup_claim_is_active() {
-  # Store acquire is the atomic authority now; keep this legacy read hook
-  # non-mutating and let sup_try_claim_issue decide contention.
-  return 1
+  local issue="$1"; [ -n "$issue" ] || return 1
+  local out
+  out="$(sup_claim_store live-claim --issue "$issue" 2>/dev/null)" || return 1
+  printf '%s' "$out" | grep -q '"active":true'
 }
 
 # sup_try_claim_issue <issue> [owner]

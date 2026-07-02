@@ -231,6 +231,7 @@ global_pause() {
     echo "Re-authenticate the local Codex (~/.codex) yourself (\`codex login\`);"
     echo "the supervisor will NEVER do this. It is paused in the orchestration"
     echo "FleetRun state until an operator resumes it."
+    echo "Resume after repair with: $SUP_ORCHESTRATION_STATE_BIN resume"
   } >> "$REPO_ROOT/NEEDS_OWNER.md" 2>/dev/null || true
 }
 
@@ -281,13 +282,17 @@ standing_task_keeper_loop() {
 # --- Heartbeater: recompute desired slots + advertise capacity on a timer. ---
 heartbeater_loop() {
   while true; do
-    local ready desired account_slots=()
+    local ready desired advertised_desired account_slots=()
     ready=$(ready_codex_account_refs | grep -c . || echo 0)
     while IFS= read -r slot_acc; do account_slots+=("$slot_acc"); done < <(sup_expand_account_slots $(ready_codex_account_refs))
     desired="${#account_slots[@]}"
     supervisor_state sync --desired-slots "$desired" >> "$SUP_LOG" 2>&1 || true
+    advertised_desired="$(desired_slots)"
+    case "$advertised_desired" in
+      ''|*[!0-9]*) advertised_desired="$desired" ;;
+    esac
     heartbeat_tmp="$SUP_STATE_DIR/heartbeat_payload.tmp"
-    if OPENAGENTS_PYLON_CODEX_CONCURRENCY="$desired" \
+    if OPENAGENTS_PYLON_CODEX_CONCURRENCY="$advertised_desired" \
       OPENAGENTS_PYLON_CODEX_BUSY=0 \
       OPENAGENTS_PYLON_CODEX_QUEUED=0 \
       sup_run_timeout "$SUP_PYLON_TIMEOUT_SECS" "${PYLON[@]}" presence heartbeat --json > "$heartbeat_tmp" 2>> "$SUP_LOG"; then
@@ -314,7 +319,7 @@ PY
     # last_dispatch_time telemetry (#6646): emitted on the heartbeat line so a
     # wedged loop (heartbeat firing, dispatch stalled) is visible in the log and
     # the watcher's liveness check has a fresh value to read.
-    log "heartbeat ready_codex=$ready desired_slots=$desired tuned_account_slots=${account_slots[*]:-none} last_dispatch_time=$(read_last_dispatch_time)"
+    log "heartbeat ready_codex=$ready desired_slots=$advertised_desired target_slots=$desired tuned_account_slots=${account_slots[*]:-none} last_dispatch_time=$(read_last_dispatch_time)"
     bound_log
     sleep "$SUP_HEARTBEAT_SECS"
   done
