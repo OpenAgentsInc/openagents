@@ -34,6 +34,11 @@ import {
   workspaceLeaseRecordFor,
 } from "../src/workspace-materializer"
 import {
+  CLAUDE_SECOND_PASS_REVIEW_SCHEMA,
+  parseClaudeSecondPassVerdict,
+  type ClaudeSecondPassReviewer,
+} from "../src/claude-second-pass-reviewer"
+import {
   PylonRuntimeRetrySchedules,
   scopedTimeout,
 } from "../src/effect-runtime-patterns"
@@ -164,14 +169,71 @@ describe("codex agent task recognition", () => {
     })
   })
 
+  test("parses Claude second-pass structured verdicts and rejects malformed shapes", () => {
+    expect(parseClaudeSecondPassVerdict(JSON.stringify({
+      schema: CLAUDE_SECOND_PASS_REVIEW_SCHEMA,
+      recommendation: "request_changes",
+      confidence: "high",
+      summary: "Diff likely misses an edge case.",
+      riskRefs: ["risk.public.pylon.review.edge_case"],
+    }))).toMatchObject({
+      recommendation: "request_changes",
+      riskRefs: ["risk.public.pylon.review.edge_case"],
+    })
+    expect(parseClaudeSecondPassVerdict({
+      schema: CLAUDE_SECOND_PASS_REVIEW_SCHEMA,
+      recommendation: "merge_now",
+      confidence: "high",
+      summary: "bad",
+      riskRefs: [],
+    })).toBeNull()
+  })
+
+  test("optional Claude second-pass reviewer runs after verify-green and records advisory verdict refs", async () => {
+    await withState(async (state) => {
+      let reviewedDiff = ""
+      const reviewer: ClaudeSecondPassReviewer = async (input) => {
+        reviewedDiff = input.diffText
+        expect(input.verifyCommand).toEqual(["bun", "test", "sum.test.ts"])
+        return {
+          schema: CLAUDE_SECOND_PASS_REVIEW_SCHEMA,
+          recommendation: "manual_review",
+          confidence: "medium",
+          summary: "Fixture passes but reviewer requests human inspection.",
+          riskRefs: ["risk.public.pylon.review.fixture_manual"],
+        }
+      }
+      const record = await executeCodexAgentAssignment(state, lease, now, {
+        codexAgentRunner: fixingRunner,
+        codexAgentProbe: readyProbe,
+        claudeSecondPassReview: { enabled: true, reviewer },
+      })
+      expect(reviewedDiff).toContain("left + right")
+      expect(record?.status).toBe("accepted")
+      expect(record?.resultRefs).toContain("result.public.pylon.codex_agent_task.claude_second_pass.manual_review")
+      expect(record?.resultRefs).toContain("risk.public.pylon.review.fixture_manual")
+      expect(record?.resultRefs.some((ref) => ref.startsWith("review.public.pylon.claude_second_pass."))).toBe(true)
+      assertPublicProjectionSafe(record)
+    })
+  })
+
   test("rejects with codex_agent_test_failed when the agent does not fix the fixture", async () => {
     await withState(async (state) => {
+      let reviewerCalled = false
       const record = await executeCodexAgentAssignment(state, lease, now, {
         codexAgentRunner: idleRunner,
         codexAgentProbe: readyProbe,
+        claudeSecondPassReview: {
+          enabled: true,
+          reviewer: async () => {
+            reviewerCalled = true
+            throw new Error("should not review verify-red closeout")
+          },
+        },
       })
       expect(record?.status).toBe("rejected")
       expect(record?.blockerRefs).toEqual(["blocker.assignment.codex_agent_test_failed"])
+      expect(reviewerCalled).toBe(false)
       assertPublicProjectionSafe(record)
     })
   })

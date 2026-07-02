@@ -56,6 +56,11 @@ import {
   type PylonCodexAccountFailure,
 } from "./codex-account-health.js"
 import { recordCodexAccountHealthFailure } from "./codex-account-health-ledger.js"
+import {
+  claudeSecondPassVerdictRef,
+  runClaudeSecondPassReview,
+  type ClaudeSecondPassReviewOptions,
+} from "./claude-second-pass-reviewer.js"
 
 /**
  * The local Codex executor gate (issue #4789, epic #4793, promise
@@ -180,6 +185,7 @@ export type CodexAgentExecutionOptions = {
    * diff, pushes a scoped branch, and opens one PR against the base branch.
    */
   pullRequestPublisher?: AssignmentPullRequestPublisher
+  claudeSecondPassReview?: ClaudeSecondPassReviewOptions
   onProgress?: (progress: CodexAgentRuntimeProgress) => void | Promise<void>
 }
 
@@ -1634,6 +1640,13 @@ export async function executeCodexAgentAssignment(
   )
   const passed = verification.exitCode === 0
   const sessionRefs = run.sessionRef === null ? [] : [run.sessionRef]
+  const claudeReview = await maybeRunClaudeSecondPassReview({
+    assignmentRef: lease.assignmentRef,
+    commandRef,
+    materialized,
+    options: options.claudeSecondPassReview,
+    passed,
+  })
 
   // PR-per-assignment (#6439). When a git_checkout assignment produces a
   // verified, non-empty diff, open exactly one scoped pull request and record
@@ -1669,6 +1682,7 @@ export async function executeCodexAgentAssignment(
         ? `result.public.pylon.codex_agent_task.${materialized.acceptanceResultRef}_passed`
         : `result.public.pylon.codex_agent_task.${materialized.acceptanceResultRef}_failed`,
       `result.public.pylon.codex_agent_task.edited_files.${run.editedFileCount}`,
+      ...claudeReview.resultRefs,
       ...pullRequest.resultRefs,
       ...workspaceCleanup.resultRefs,
     ],
@@ -1678,8 +1692,69 @@ export async function executeCodexAgentAssignment(
       passed
         ? `summary.public.pylon.codex_agent_task.${materialized.acceptanceResultRef}_passed`
         : `summary.public.pylon.codex_agent_task.${materialized.acceptanceResultRef}_failed`,
+      ...claudeReview.summaryRefs,
     ],
     testRefs: [commandRef],
+  }
+}
+
+type ClaudeSecondPassCloseoutContribution = {
+  resultRefs: string[]
+  summaryRefs: string[]
+}
+
+const EMPTY_CLAUDE_SECOND_PASS_CONTRIBUTION: ClaudeSecondPassCloseoutContribution = {
+  resultRefs: [],
+  summaryRefs: [],
+}
+
+async function gitDiffForClaudeSecondPass(workspace: string): Promise<string> {
+  const proc = Bun.spawn(["git", "diff", "--", "."], { cwd: workspace, stdout: "pipe", stderr: "pipe" })
+  const [stdout, exitCode] = await Promise.all([new Response(proc.stdout).text(), proc.exited])
+  if (exitCode !== 0) return ""
+  return stdout
+}
+
+async function maybeRunClaudeSecondPassReview(input: {
+  assignmentRef: string
+  commandRef: string
+  materialized: Awaited<ReturnType<typeof materializeCodexAgentWorkspace>>
+  options?: ClaudeSecondPassReviewOptions
+  passed: boolean
+}): Promise<ClaudeSecondPassCloseoutContribution> {
+  if (!input.passed || input.options?.enabled !== true) return EMPTY_CLAUDE_SECOND_PASS_CONTRIBUTION
+  try {
+    const diffText = await gitDiffForClaudeSecondPass(input.materialized.workspace)
+    const reviewer = input.options.reviewer ?? runClaudeSecondPassReview
+    if (input.options.reviewer === undefined && input.options.account?.provider !== "claude_agent") {
+      return {
+        resultRefs: ["result.public.pylon.codex_agent_task.claude_second_pass_unavailable"],
+        summaryRefs: ["summary.public.pylon.codex_agent_task.claude_second_pass_unavailable"],
+      }
+    }
+    const verdict = await reviewer({
+      assignmentRef: input.assignmentRef,
+      workspace: input.materialized.workspace,
+      diffText,
+      verifyCommandRef: input.commandRef,
+      verifyCommand: input.materialized.verificationArgs,
+      account: input.options.account ?? null,
+      ...(input.options.timeoutMs === undefined ? {} : { timeoutMs: input.options.timeoutMs }),
+    })
+    const verdictRef = claudeSecondPassVerdictRef(verdict)
+    return {
+      resultRefs: [
+        verdictRef,
+        `result.public.pylon.codex_agent_task.claude_second_pass.${verdict.recommendation}`,
+        ...verdict.riskRefs,
+      ],
+      summaryRefs: [`summary.public.pylon.codex_agent_task.claude_second_pass.${verdict.recommendation}`],
+    }
+  } catch {
+    return {
+      resultRefs: ["result.public.pylon.codex_agent_task.claude_second_pass_unavailable"],
+      summaryRefs: ["summary.public.pylon.codex_agent_task.claude_second_pass_unavailable"],
+    }
   }
 }
 
