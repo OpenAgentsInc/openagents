@@ -9,6 +9,7 @@
     "./deterministic-env": "./src/deterministic-env.ts",
     "./desktop-smoke-helpers": "./src/desktop-smoke-helpers.ts",
     "./driver": "./src/driver.ts",
+    "./explorer-brain": "./src/explorer-brain.ts",
     "./monkey-explorer": "./src/monkey-explorer.ts",
     "./rpc-driver": "./src/rpc-driver.ts",
     "./rpc-client": "./src/rpc-client.ts",
@@ -26,7 +27,6 @@
     "effect": "catalog:"
   },
   "devDependencies": {
-    "@effect/vitest": "4.0.0-beta.70",
     "bun-types": "^1.0.0",
     "fast-check": "^4.8.0",
     "typescript": "catalog:",

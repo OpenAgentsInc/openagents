@@ -1,4 +1,4 @@
-import { expect, it } from "@effect/vitest"
+import { expect, test } from "bun:test"
 import { Effect, Random } from "effect"
 
 import {
@@ -9,8 +9,8 @@ import {
   withSeed,
 } from "../deterministic-env.js"
 
-it.effect("TestEnvironmentLayer provides TestClock and scripted transport", () =>
-  Effect.gen(function* () {
+test("TestEnvironmentLayer provides TestClock and scripted transport", async () => {
+  await Effect.runPromise(Effect.gen(function* () {
     const before = yield* currentMillis
     yield* TestClock.adjust("2 seconds")
     const after = yield* currentMillis
@@ -27,10 +27,10 @@ it.effect("TestEnvironmentLayer provides TestClock and scripted transport", () =
     expect(calls).toEqual([
       { method: "desktop.snapshot", payload: { surface: "fleet" } },
     ])
-  }).pipe(Effect.provide(TestEnvironmentLayer({ "desktop.snapshot": { ok: true } }))),
-)
+  }).pipe(Effect.provide(TestEnvironmentLayer({ "desktop.snapshot": { ok: true } }))))
+})
 
-it.effect("withSeed makes Effect random values reproducible", () => {
+test("withSeed makes Effect random values reproducible", async () => {
   const sample = withSeed(
     "khala-qa-seed",
     Effect.gen(function* () {
@@ -40,11 +40,11 @@ it.effect("withSeed makes Effect random values reproducible", () => {
     }),
   )
 
-  return Effect.gen(function* () {
+  await Effect.runPromise(Effect.gen(function* () {
     const firstRun = yield* sample
     const secondRun = yield* sample
 
     expect(firstRun).toEqual(secondRun)
     expect(firstRun[0]).not.toBe(firstRun[1])
-  })
+  }))
 })
