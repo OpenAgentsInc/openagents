@@ -1,3 +1,5 @@
+import { KHALA_CODE_HOTBAR_SLOTS } from "../../../clients/khala-code-desktop/src/ui/sidebar.js"
+import { KHALA_CODE_CODEX_APPROVAL_ACTIONS } from "../../../clients/khala-code-desktop/src/shared/codex-approval-decisions.js"
 import { KHALA_CODE_CODEX_PARITY_REQUIRED_THREAD_ITEM_TYPES } from "../../../clients/khala-code-desktop/src/bun/codex-parity-contract.js"
 import {
   khalaCodeDesktopSlashCommandsWithAvailability,
@@ -368,9 +370,9 @@ const groupedHotbarScenarios: readonly GroupedScenario[] = [
 ]
 
 export const KHALA_CODE_QA_THREAD_ITEM_VARIANTS = KHALA_CODE_CODEX_PARITY_REQUIRED_THREAD_ITEM_TYPES
-export const KHALA_CODE_QA_SEED_HOTBAR_PANELS = ["chat", "fleet", "settings"] as const
+export const KHALA_CODE_QA_SEED_HOTBAR_PANELS = KHALA_CODE_HOTBAR_SLOTS.map((slot) => slot.value)
 export const KHALA_CODE_QA_SEED_SETTINGS_KEYS = ["model"] as const
-export const KHALA_CODE_QA_SEED_APPROVAL_DECISION_KINDS = ["accept"] as const
+export const KHALA_CODE_QA_SEED_APPROVAL_DECISION_KINDS = KHALA_CODE_CODEX_APPROVAL_ACTIONS
 export const KHALA_CODE_QA_SEED_SELECTORS = [] as const
 export const KHALA_CODE_QA_SEED_SLASH_COMMANDS = khalaCodeDesktopSlashCommandsWithAvailability({
   debug: true,

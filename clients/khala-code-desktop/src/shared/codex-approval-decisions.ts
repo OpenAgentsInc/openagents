@@ -16,6 +16,20 @@ export type KhalaCodeDesktopCodexApprovalAction =
   | "grantPermissionsForSession"
   | "grantPermissionsWithStrictReview"
 
+// Runtime universe of approval actions (kept beside the type so coverage
+// frontiers can enumerate the full class instead of a hand-picked subset).
+export const KHALA_CODE_CODEX_APPROVAL_ACTIONS: ReadonlyArray<KhalaCodeDesktopCodexApprovalAction> = [
+  "accept",
+  "acceptForSession",
+  "acceptWithExecpolicyAmendment",
+  "applyNetworkPolicyAmendment",
+  "cancel",
+  "decline",
+  "grantPermissions",
+  "grantPermissionsForSession",
+  "grantPermissionsWithStrictReview",
+]
+
 export type KhalaCodeDesktopCodexNetworkPolicyAmendment = {
   readonly action: "allow" | "deny" | string
   readonly host: string
