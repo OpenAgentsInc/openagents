@@ -52,6 +52,15 @@ const forkThreadId = "thread-fork-fixture"
 const turnId = "turn-fixture"
 const runRef = "fleet-run-fixture"
 
+type FixtureFleetRunState = "draft" | "running" | "paused" | "draining" | "completed" | "stopped"
+type FixtureAppServerState = "errored" | "running" | "starting" | "stopped"
+type FixtureThreadState = {
+  readonly archived: boolean
+  readonly deleted: boolean
+  readonly forked: boolean
+  readonly title: string
+}
+
 const groupedFixtureScenario = (
   group: SeedCorpusGroup,
   id: string,
@@ -488,15 +497,30 @@ const parseArgs = async (init?: RequestInit): Promise<readonly unknown[]> => {
 }
 
 export const makeKhalaCodeQaSeedCorpusFixtureFetch = (): KhalaCodeRpcFetch => {
-  let fleetRunState: "draft" | "running" | "paused" | "draining" | "completed" | "stopped" = "draft"
+  let fleetRunState: FixtureFleetRunState = "draft"
+  let appServerState: FixtureAppServerState = "stopped"
+  let threadState: FixtureThreadState = {
+    archived: false,
+    deleted: false,
+    forked: false,
+    title: "Fixture thread",
+  }
   return async (input, init) => {
     const method = parseMethod(input)
     const args = await parseArgs(init)
     return response(fixtureRpcPayload(method, args, {
+      appServerState,
       fleetRunState,
+      setAppServerState: (state) => {
+        appServerState = state
+      },
       setFleetRunState: (state) => {
         fleetRunState = state
       },
+      setThreadState: (patch) => {
+        threadState = { ...threadState, ...patch }
+      },
+      threadState,
     }))
   }
 }
@@ -505,30 +529,59 @@ const fixtureRpcPayload = (
   method: string,
   args: readonly unknown[],
   state: {
-    readonly fleetRunState: "draft" | "running" | "paused" | "draining" | "completed" | "stopped"
-    readonly setFleetRunState: (state: "draft" | "running" | "paused" | "draining" | "completed" | "stopped") => void
+    readonly appServerState: FixtureAppServerState
+    readonly fleetRunState: FixtureFleetRunState
+    readonly setAppServerState: (state: FixtureAppServerState) => void
+    readonly setFleetRunState: (state: FixtureFleetRunState) => void
+    readonly setThreadState: (patch: Partial<FixtureThreadState>) => void
+    readonly threadState: FixtureThreadState
   },
 ): unknown => {
   switch (method) {
     case "appInfo":
       return { app: "Khala Code Desktop", ok: true, observedAt }
+    case "codexAppServerStatus":
+      return appServerStatus(state.appServerState)
+    case "codexAppServerStart":
+      state.setAppServerState("running")
+      return appServerControl("start", state.appServerState, "running")
+    case "codexAppServerRestart":
+      state.setAppServerState("running")
+      return appServerControl("restart", state.appServerState, "running")
+    case "codexAppServerStop":
+      state.setAppServerState("stopped")
+      return appServerControl("stop", state.appServerState, "stopped")
     case "codingStatus":
       return runtimeStatus("coding", "ready")
     case "codexThreadStart":
-      return threadResult(threadId)
+      state.setThreadState({
+        archived: false,
+        deleted: false,
+        title: "Fixture thread",
+      })
+      return threadResult(threadId, state.threadState)
     case "codexThreadList":
-      return threadListResult()
+      return threadListResult(args[0], state.threadState)
     case "codexThreadRead": {
       const request = args[0] as { readonly threadId?: string } | undefined
-      return threadResult(request?.threadId ?? threadId)
+      return threadResult(request?.threadId ?? threadId, state.threadState)
     }
-    case "codexThreadRename":
+    case "codexThreadRename": {
+      const request = args[0] as { readonly name?: string } | undefined
+      state.setThreadState({ title: request?.name ?? "Renamed fixture" })
       return threadMutation("rename", threadId)
+    }
     case "codexThreadArchive":
+      state.setThreadState({ archived: true })
       return threadMutation("archive", threadId)
     case "codexThreadUnarchive":
+      state.setThreadState({ archived: false })
       return threadMutation("unarchive", threadId)
+    case "codexThreadDelete":
+      state.setThreadState({ deleted: true })
+      return threadMutation("delete", threadId)
     case "codexThreadFork":
+      state.setThreadState({ forked: true })
       return { ...threadMutation("fork", threadId), newThreadId: forkThreadId }
     case "codexTurnStart":
       return chatTurnResponse()
@@ -596,7 +649,7 @@ const fixtureRpcPayload = (
 
 const fleetRunStateForVerb = (
   verb: "pause" | "resume" | "drain" | "stop" | undefined,
-): "running" | "paused" | "draining" | "stopped" => {
+): FixtureFleetRunState => {
   switch (verb) {
     case "pause":
       return "paused"
@@ -609,6 +662,33 @@ const fleetRunStateForVerb = (
       return "stopped"
   }
 }
+
+const appServerStatus = (state: FixtureAppServerState) => ({
+  adapterVersion: "fixture",
+  app: "Khala Code Desktop",
+  codexCommand: "codex",
+  codexHome: "/fixture/codex-home",
+  diagnostics: [],
+  initialized: state === "running",
+  initializeResult: state === "running" ? { ok: true, fixture: true } : null,
+  lastError: state === "errored" ? "fixture app-server error" : null,
+  ok: true,
+  pendingRequestCount: 0,
+  pid: state === "running" ? 12345 : null,
+  state,
+  transport: "stdio",
+})
+
+const appServerControl = (
+  action: "restart" | "start" | "stop",
+  previousState: FixtureAppServerState,
+  nextState: FixtureAppServerState,
+) => ({
+  action,
+  changed: previousState !== nextState || action === "restart",
+  ok: true,
+  status: appServerStatus(nextState),
+})
 
 const runtimeStatus = (
   capability: "codex_accounts" | "codex_harness" | "coding" | "pylon" | "token_accounting",
@@ -649,7 +729,12 @@ const threadMessage = (id: string, body: string, itemType?: string) => ({
     }),
 })
 
-const threadResult = (id: string) => {
+const threadResult = (id: string, state: FixtureThreadState = {
+  archived: false,
+  deleted: false,
+  forked: false,
+  title: "Fixture thread",
+}) => {
   const itemType = id.startsWith("thread-item-") ? id.slice("thread-item-".length) : undefined
   return {
     cwd: "/workspace",
@@ -658,12 +743,17 @@ const threadResult = (id: string) => {
     model: "gpt-5.1-codex",
     modelProvider: "openai",
     ok: true,
-    thread: { id, title: "Fixture thread" },
+    thread: { archived: state.archived, deleted: state.deleted, id, title: state.title },
     threadId: id,
   }
 }
 
-const threadSummary = (id: string) => ({
+const threadSummary = (id: string, state: FixtureThreadState = {
+  archived: false,
+  deleted: false,
+  forked: false,
+  title: "Fixture thread",
+}) => ({
   badges: [],
   createdAt: 1,
   cwd: "/workspace",
@@ -678,18 +768,22 @@ const threadSummary = (id: string) => ({
   source: "fixture",
   status: "ready",
   statusLabel: "Ready",
-  title: "Fixture thread",
+  title: state.title,
   updatedAt: 1,
 })
 
-const threadListResult = () => ({
+const threadListResult = (request: unknown, state: FixtureThreadState) => {
+  const archived = (request as { readonly archived?: boolean } | undefined)?.archived ?? false
+  const visibleThreads = state.deleted || state.archived !== archived ? [] : [threadSummary(threadId, state)]
+  return {
   backwardsCursor: null,
-  data: [threadSummary(threadId)],
-  groups: [{ key: "recent", label: "Recent", threadIds: [threadId] }],
+  data: visibleThreads,
+  groups: [{ key: archived ? "archived" : "recent", label: archived ? "Archived" : "Recent", threadIds: visibleThreads.map((thread) => thread.id) }],
   nextCursor: null,
   ok: true,
-  threads: [threadSummary(threadId)],
-})
+  threads: visibleThreads,
+  }
+}
 
 const threadMutation = (action: "archive" | "delete" | "fork" | "rename" | "unarchive", id: string) => ({
   action,
@@ -804,11 +898,51 @@ const fleetDelegateRunResult = () => ({
   trace: [{
     blockerCode: null,
     fallbackModule: null,
-    module: "fixture",
-    precondition: "fixture backend",
+    module: "intake",
+    precondition: "fixture request decoded",
     refs: [],
     status: "ok",
-    summary: "fixture delegate path",
+    summary: "fixture intake accepted",
+  }, {
+    blockerCode: null,
+    fallbackModule: null,
+    module: "preflight",
+    precondition: "fixture pins checked",
+    refs: [],
+    status: "ok",
+    summary: "fixture preflight passed",
+  }, {
+    blockerCode: null,
+    fallbackModule: null,
+    module: "capacity",
+    precondition: "fixture slot available",
+    refs: [],
+    status: "ok",
+    summary: "fixture capacity reserved",
+  }, {
+    blockerCode: null,
+    fallbackModule: null,
+    module: "dispatch",
+    precondition: "fixture assignment accepted",
+    refs: ["assignment-fixture"],
+    status: "ok",
+    summary: "fixture dispatch completed",
+  }, {
+    blockerCode: null,
+    fallbackModule: null,
+    module: "closeout",
+    precondition: "fixture no-spend closeout",
+    refs: [],
+    status: "ok",
+    summary: "fixture closeout not applicable",
+  }, {
+    blockerCode: null,
+    fallbackModule: null,
+    module: "report",
+    precondition: "fixture report public-safe",
+    refs: [],
+    status: "ok",
+    summary: "fixture report emitted",
   }],
   validation: {
     fixture: true,
