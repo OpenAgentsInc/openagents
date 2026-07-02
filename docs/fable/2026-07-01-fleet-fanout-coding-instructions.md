@@ -225,12 +225,18 @@ Acceptance:
   never yield two live claims on one unit, across interleavings and
   expiries.
 - Fixture run: a 10-unit backlog with 6 workers completes with exactly 10
-  claims, 0 duplicates, and every skip typed.
+  claims, 0 duplicates, and every skip typed. Covered by the fixture-only
+  `apps/pylon/src/orchestration/work-planner.test.ts` T4.5 acceptance case.
 - Live tier: two workers pointed at a 2-issue public backlog produce two
   distinct PRs referencing distinct issues, each with verify-green evidence
-  in the closeout.
+  in the closeout. Defined as skip-safe `bun run --cwd apps/pylon
+  smoke:fleet-run-live`, armed only by `PYLON_FLEET_RUN_LIVE_ARM=1` plus the
+  public repo, pinned commit, two distinct issue numbers, target Pylon ref, and
+  verify command.
 - Regression: a synthetic "duplicate temptation" fixture (two workers, one
-  juicy issue) shows the second worker skipping with `already_claimed`.
+  juicy issue) shows the second worker skipping with `already_claimed`. Covered
+  by the fixture-only `apps/pylon/src/orchestration/work-planner.test.ts` T4.5
+  regression case.
 
 ## 5. Lane C — The Fleet Screen Becomes A Cockpit
 

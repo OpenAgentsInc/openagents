@@ -105,7 +105,7 @@ Source: fleet fan-out §4. The June 29 duplicate-PR fix.
 | T4.2 | Prompt/pin discipline: every real-work dispatch carries pinned repo/commit/branch/verify + claimRef; worker prompt cites issue + claim + PR convention | T2.2 | HIGH |
 | T4.3 | Verification gate + merge policy: closeout `ready_for_review` requires verify-green + live claim; typed merge policy (`manual_review` default, `auto_merge_clean` owner-toggled); merge-wave resolver as a supervised job with its own claim | T4.1 | MED |
 | T4.4 | workerKind generalization (= episode-245 Axis B): `workerKind` through `codex_spawn`/`khala.fleet.delegate`/fleet tools; de-Codex-name `khala-codex-fleet-tools.ts` and `khala-burndown.ts`; capacity/blocker vocabulary keyed by kind; dispatch selects `codex_agent_task` vs `claude_agent_task` | T2.1 | MED |
-| T4.5 | Acceptance fixtures: 10-unit/6-worker fixture with 0 duplicates + all skips typed; "duplicate temptation" regression; live 2-worker/2-issue distinct-PR smoke (skip-safe) | T4.1–T4.4 | HIGH |
+| T4.5 | Acceptance fixtures: 10-unit/6-worker fixture with 0 duplicates + all skips typed; "duplicate temptation" regression; live 2-worker/2-issue distinct-PR smoke (skip-safe via `smoke:fleet-run-live`, env-armed and not part of CI) | T4.1–T4.4 | HIGH |
 
 ### WS-5 — The Fleet cockpit (Lane C)
 
