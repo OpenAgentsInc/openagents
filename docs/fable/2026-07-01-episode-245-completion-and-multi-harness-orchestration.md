@@ -259,6 +259,15 @@ refs, and dispatch gate all exist:
   GEPA-optimizable *parameter* of the delegation program — never its
   control flow. That is the same DSPy split the episode teaches.
 
+  **T9.3 update (2026-07-02):** `auto` now consumes a structured
+  workflow-classification hint (`codex_agent_task`, `claude_agent_task`,
+  `cloud_coding_session`, or `none`) when one is already present from the
+  typed classifier seam. The deterministic delegation program scores only
+  available Codex/Claude slots, with Gym-admitted parameter knobs for the
+  classifier confidence threshold, classifier bonus slots, and tie-breaker.
+  No prose is parsed, and no optimizer candidate can change the control-flow
+  modules or self-promote at runtime.
+
 This gives the owner's dropdown its full meaning without inverting the
 pivot: **the chat harness stays a wrapper decision (Axis A); "or whomever
 else" is a delegation decision (Axis B).** A Codex-mode chat can spawn
@@ -284,12 +293,13 @@ the parity contract changes.
   bounded fixture/checkout work. This is the same work item as Lane B4 of
   `2026-07-01-fleet-fanout-coding-instructions.md` — implement it once,
   there, with the FleetRun `workerKind` enum.
-- **P3 (next): `auto` and Khala-as-router.** Local free-slot rule → server
-  classifier → GEPA-optimized routing parameters, admission-gated through
-  the same Gym path the episode demos. Separately, close the deferrable
-  Claude gaps (full-access posture decision, PR publisher, ATIF/per-turn
-  rows) only when Claude workers graduate from analysis/bounded work to PR
-  delivery.
+- **P3 (partly landed in T9.3): `auto` and Khala-as-router.** Local
+  free-slot rule → server classifier → GEPA-optimized routing parameters,
+  admission-gated through the same Gym path the episode demos. The
+  classifier-biased parameter layer is in; broader Khala-as-router and
+  deferrable Claude gaps (full-access posture decision, PR publisher,
+  ATIF/per-turn rows) remain for when Claude workers graduate from
+  analysis/bounded work to PR delivery.
 
 ### 3.4 Invariants to keep while doing this
 

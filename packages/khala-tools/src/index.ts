@@ -36,9 +36,13 @@ export {
   DefaultKhalaFleetDelegationParameterSet,
   KhalaFleetDelegationAccountRankingHeuristic,
   KhalaFleetDelegationAdmittedParametersEnv,
+  khalaFleetDelegationClassifierMinimumConfidence,
+  khalaFleetDelegationClassifierPreferenceBonusSlots,
   KhalaFleetDelegationParameterSet,
   KhalaFleetDelegationParameterSetSchemaVersion,
   KhalaFleetDelegationParameterSource,
+  KhalaFleetDelegationWorkflowClass,
+  KhalaFleetDelegationWorkflowClassification,
   KhalaFleetDelegateBlockerCode,
   KhalaFleetDelegateConcreteWorkerKind,
   KhalaFleetDelegateModuleError,
@@ -60,6 +64,7 @@ export {
   runKhalaFleetDelegateProgram,
   selectKhalaFleetDelegateAccount,
   type KhalaFleetDelegateAdvertiseReason,
+  khalaFleetDelegateWorkerKindForWorkflowClass,
   type KhalaFleetDelegateProgramOptions,
   type KhalaFleetDelegateAccount,
   type KhalaFleetDelegateAdvertiseResult,
@@ -74,6 +79,8 @@ export {
   type KhalaFleetDelegateStep,
   type KhalaFleetDelegateVerifyResult,
   type KhalaFleetDelegateWork,
+  type KhalaFleetDelegationWorkflowClass as KhalaFleetDelegationWorkflowClassType,
+  type KhalaFleetDelegationWorkflowClassification as KhalaFleetDelegationWorkflowClassificationType,
 } from "./fleet-delegate-program.js"
 
 export {

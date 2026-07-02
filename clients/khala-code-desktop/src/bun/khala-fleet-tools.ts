@@ -31,6 +31,7 @@ import {
   type KhalaFleetDelegateWorkerKind,
   type KhalaFleetDelegateWork,
   type KhalaFleetDelegationParameterSet,
+  type KhalaFleetDelegationWorkflowClassification,
   type KhalaToolDefinition,
   type KhalaToolResult,
   type RegisteredKhalaTool,
@@ -276,6 +277,7 @@ type SpawnCodexInstancesInput = {
   readonly timeoutMs?: number | undefined
   readonly verify?: string | undefined
   readonly workerKind?: FleetRunWorkerKind | undefined
+  readonly workflowClassification?: KhalaFleetDelegationWorkflowClassification | undefined
 }
 
 type NormalizedSpawnInput = {
@@ -294,6 +296,7 @@ type NormalizedSpawnInput = {
   readonly timeoutMs: number
   readonly verify?: string | undefined
   readonly workerKind: FleetRunWorkerKind
+  readonly workflowClassification?: KhalaFleetDelegationWorkflowClassification | undefined
 }
 
 type SpawnCodexInstancesResult = {
@@ -571,6 +574,23 @@ const codexSpawnToolDefinition: KhalaToolDefinition = {
         enum: ["codex", "claude", "auto"],
         type: "string",
       },
+      workflow_class: {
+        description:
+          "Optional structured server classifier result. Use only when an upstream typed marker already selected this exact workflow; never infer from prose.",
+        enum: ["claude_agent_task", "cloud_coding_session", "codex_agent_task", "none"],
+        type: "string",
+      },
+      workflow_confidence: {
+        description: "Classifier confidence paired with workflow_class.",
+        maximum: 1,
+        minimum: 0,
+        type: "number",
+      },
+      workflow_evidence_refs: {
+        description: "Public-safe evidence refs from the structured classifier.",
+        items: { type: "string" },
+        type: "array",
+      },
     },
     required: ["prompt"],
     type: "object",
@@ -601,6 +621,7 @@ const codexSpawnToolDefinition: KhalaToolDefinition = {
     "Require complete repo, branch, verify, and claim_ref pins only for real repository work; Desktop resolves or validates the live commit pin before dispatch.",
     "Do not run Codex or Claude login. If no ready Pylon account exists for the requested worker kind, tell the user to connect one first.",
     "Omit account_ref unless the user names a specific non-default account; Desktop prefers named ready accounts over the display-only default account.",
+    "For worker_kind=auto, pass workflow_class only from an exact structured classifier marker; never infer it from user prose or ordinary task wording.",
     "This MVP exposes only pylon_ensure, codex_fleet_status, and codex_spawn for fleet control. Do not invent codex_terminate or other fleet tools.",
     "After codex_spawn, summarize the returned assignment, auto-run, and closeout status; do not read guessed local output files.",
     "Keep count small; this MVP caps fan-out at five assignments.",
@@ -1065,6 +1086,7 @@ export async function spawnCodexInstances(
     objective: preparedInput.prompt,
     repo: preparedInput.repo,
     verify: preparedInput.verify,
+    workflowClassification: preparedInput.workflowClassification,
   }, {
     ensurePylon: () =>
       Effect.promise(async () => {
@@ -1270,6 +1292,7 @@ function executeCodexSpawnTool(
         timeoutMs: optionalInteger(input.timeout_ms),
         verify: optionalString(input.verify),
         workerKind: optionalWorkerKind(input.worker_kind),
+        workflowClassification: optionalWorkflowClassification(input),
       }, options)
       const tokensVerified = spawnVerifiedTokenTotal(result)
       const toolResult = khalaToolOk({
@@ -3843,6 +3866,45 @@ function optionalWorkSource(value: unknown): FleetRunWorkSource | undefined {
 
 function optionalWorkerKind(value: unknown): FleetRunWorkerKind | undefined {
   return value === "codex" || value === "claude" || value === "auto" ? value : undefined
+}
+
+function optionalWorkflowClassification(
+  input: Readonly<Record<string, unknown>>,
+): KhalaFleetDelegationWorkflowClassification | undefined {
+  const workflowClass = input.workflow_class
+  if (workflowClass === undefined || workflowClass === null || workflowClass === "") {
+    return undefined
+  }
+  if (
+    workflowClass !== "claude_agent_task" &&
+    workflowClass !== "cloud_coding_session" &&
+    workflowClass !== "codex_agent_task" &&
+    workflowClass !== "none"
+  ) {
+    throw new Error("workflow_class must be claude_agent_task, cloud_coding_session, codex_agent_task, or none")
+  }
+  const rawConfidence = input.workflow_confidence
+  const confidence = rawConfidence === undefined ? 1 : rawConfidence
+  if (typeof confidence !== "number" || !Number.isFinite(confidence) || confidence < 0 || confidence > 1) {
+    throw new Error("workflow_confidence must be a number between 0 and 1")
+  }
+  const rawRefs = input.workflow_evidence_refs
+  if (rawRefs !== undefined && !Array.isArray(rawRefs)) {
+    throw new Error("workflow_evidence_refs must be an array")
+  }
+  const evidenceRefs = rawRefs === undefined
+    ? [`evidence.coding_workflow.desktop_mcp.${workflowClass}`]
+    : rawRefs.map(ref => {
+        if (typeof ref !== "string" || !/^[A-Za-z0-9_.:-]+$/u.test(ref)) {
+          throw new Error("workflow_evidence_refs must contain public-safe refs only")
+        }
+        return ref
+      })
+  return {
+    confidence,
+    evidenceRefs,
+    workflowClass,
+  }
 }
 
 function requiredFleetRunControlVerb(value: unknown): FleetRunControlVerb {

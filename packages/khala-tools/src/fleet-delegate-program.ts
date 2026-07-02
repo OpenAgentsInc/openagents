@@ -64,12 +64,36 @@ export type KhalaFleetDelegateConcreteWorkerKind =
 export const KhalaFleetDelegateWorkerKind = S.Literals(["auto", "claude", "codex"])
 export type KhalaFleetDelegateWorkerKind = typeof KhalaFleetDelegateWorkerKind.Type
 
+export const KhalaFleetDelegationWorkflowClass = S.Literals([
+  "claude_agent_task",
+  "cloud_coding_session",
+  "codex_agent_task",
+  "none",
+])
+export type KhalaFleetDelegationWorkflowClass =
+  typeof KhalaFleetDelegationWorkflowClass.Type
+
+export const KhalaFleetDelegationWorkflowClassification = S.Struct({
+  confidence: S.Number,
+  evidenceRefs: S.Array(S.String),
+  workflowClass: KhalaFleetDelegationWorkflowClass,
+})
+export type KhalaFleetDelegationWorkflowClassification =
+  typeof KhalaFleetDelegationWorkflowClassification.Type
+
 const KhalaFleetDelegationAdvertiseCapacityPolicy = S.Struct({
   maxRequestedSlots: S.optionalKey(S.Number),
   perAccountConcurrency: S.optionalKey(S.Number),
 })
 
+const KhalaFleetDelegationAutoRoutingPolicy = S.Struct({
+  classifierMinimumConfidence: S.optionalKey(S.Number),
+  classifierPreferenceBonusSlots: S.optionalKey(S.Number),
+  tieBreakWorkerKind: S.optionalKey(KhalaFleetDelegateConcreteWorkerKind),
+})
+
 const KhalaFleetDelegationTargetPolicy = S.Struct({
+  autoRouting: S.optionalKey(KhalaFleetDelegationAutoRoutingPolicy),
   workerKind: S.optionalKey(KhalaFleetDelegateWorkerKind),
 })
 
@@ -154,6 +178,7 @@ export type KhalaFleetDelegateInput = Readonly<{
   objective: string
   repo?: string | undefined
   verify?: string | undefined
+  workflowClassification?: KhalaFleetDelegationWorkflowClassification | undefined
 }>
 
 export type KhalaFleetDelegateProgramOptions = Readonly<{
@@ -253,7 +278,10 @@ export type KhalaFleetDelegateAdvertiseReason =
 
 const DEFAULT_DISPATCH_ATTEMPTS = 4
 const DEFAULT_DUPLICATE_ACTIVE_ASSIGNMENT_BACKOFF_MS = 1_000
+const DEFAULT_CLASSIFIER_MINIMUM_CONFIDENCE = 0.75
+const DEFAULT_CLASSIFIER_PREFERENCE_BONUS_SLOTS = 2
 const DEFAULT_PARAMETER_SET_REF = "parameter_set.khala_fleet_delegation.default.v1"
+const publicSafeWorkflowEvidenceRefPattern = /^[A-Za-z0-9_.:-]+$/
 const unsafePolicyTextPattern =
   /(@|\/Users\/|\/home\/|access[_-]?token|auth\.json|bearer|cookie|credential|gho_[A-Za-z0-9_]+|ghp_[A-Za-z0-9_]+|lnbc|lntb|lnbcrt|lno1|mdk[_-]?(access[_-]?token|mnemonic|webhook[_-]?secret)|mnemonic|oauth|payment[_-]?(hash|id|preimage|proof)|preimage|private[_-]?(channel|key|repo)|provider[_-]?(grant|payload|secret|token)|raw[_-]?(auth|email|fixture|invoice|payment|payload|prompt|provider|runner|run[_-]?log|source[_-]?archive|trace|traces)|runner[_-]?log|secret|sk-[a-z0-9]|source[_-]?archive|token|wallet)/i
 
@@ -343,6 +371,38 @@ export function khalaFleetDelegationDuplicateBackoffMs(
     120_000,
     "retryBackoff.duplicateActiveAssignmentBackoffMs",
   )
+}
+
+export function khalaFleetDelegationClassifierMinimumConfidence(
+  parameters: KhalaFleetDelegationParameterSet,
+): number {
+  return boundedPolicyNumber(
+    parameters.delegationTarget?.autoRouting?.classifierMinimumConfidence,
+    DEFAULT_CLASSIFIER_MINIMUM_CONFIDENCE,
+    0,
+    1,
+    "delegationTarget.autoRouting.classifierMinimumConfidence",
+  )
+}
+
+export function khalaFleetDelegationClassifierPreferenceBonusSlots(
+  parameters: KhalaFleetDelegationParameterSet,
+): number {
+  return boundedPolicyInteger(
+    parameters.delegationTarget?.autoRouting?.classifierPreferenceBonusSlots,
+    DEFAULT_CLASSIFIER_PREFERENCE_BONUS_SLOTS,
+    0,
+    64,
+    "delegationTarget.autoRouting.classifierPreferenceBonusSlots",
+  )
+}
+
+export function khalaFleetDelegateWorkerKindForWorkflowClass(
+  workflowClass: KhalaFleetDelegationWorkflowClass,
+): KhalaFleetDelegateConcreteWorkerKind | undefined {
+  if (workflowClass === "claude_agent_task") return "claude"
+  if (workflowClass === "codex_agent_task" || workflowClass === "cloud_coding_session") return "codex"
+  return undefined
 }
 
 export function renderKhalaFleetDelegationObjective(
@@ -490,7 +550,9 @@ export const runKhalaFleetDelegateProgram = (
     const workerKind = resolveKhalaFleetDelegateWorkerKind(
       advertised instanceof KhalaFleetDelegateModuleError ? [] : advertised.capacity.accounts,
       parameters,
+      input.workflowClassification,
     )
+    const autoRoutingRefs = khalaFleetDelegateAutoRoutingRefs(input.workflowClassification, parameters)
     if (advertised instanceof KhalaFleetDelegateModuleError) {
       return block(
         ensure.pylonRef,
@@ -505,7 +567,10 @@ export const runKhalaFleetDelegateProgram = (
       message: `Advertised ${workerKind} capacity ${khalaFleetDelegateAvailableSlotsForKind(advertised.capacity.accounts, workerKind)}/${advertised.capacity.max}.`,
       module: "advertise_capacity",
       precondition: khalaFleetDelegateAdvertisedCapacityPrecondition(workerKind),
-      refs: advertised.heartbeatRef === undefined ? [] : [advertised.heartbeatRef],
+      refs: [
+        ...(advertised.heartbeatRef === undefined ? [] : [advertised.heartbeatRef]),
+        ...autoRoutingRefs,
+      ],
       status: khalaFleetDelegateAvailableSlotsForKind(advertised.capacity.accounts, workerKind) > 0 ? "satisfied" : "blocked",
     })
 
@@ -524,7 +589,7 @@ export const runKhalaFleetDelegateProgram = (
       message: `Selected ${selected.workerKind} account ${selected.account.accountRef}.`,
       module: "select_account",
       precondition: "ready_account_free_slot",
-      refs: [`worker_kind:${selected.workerKind}`, `account:${selected.account.accountRef}`],
+      refs: [`worker_kind:${selected.workerKind}`, `account:${selected.account.accountRef}`, ...autoRoutingRefs],
       status: "satisfied",
     })
 
@@ -635,7 +700,7 @@ export function prepareKhalaFleetDelegateWork(
 }
 
 export function selectKhalaFleetDelegateAccount(
-  input: Pick<KhalaFleetDelegateInput, "accountRef">,
+  input: Pick<KhalaFleetDelegateInput, "accountRef" | "workflowClassification">,
   accounts: ReadonlyArray<KhalaFleetDelegateAccount>,
   parameters: KhalaFleetDelegationParameterSet = DefaultKhalaFleetDelegationParameterSet,
 ):
@@ -650,7 +715,7 @@ export function selectKhalaFleetDelegateAccount(
     message: string
     status: "blocked"
   }> {
-  const workerKind = resolveKhalaFleetDelegateWorkerKind(accounts, parameters)
+  const workerKind = resolveKhalaFleetDelegateWorkerKind(accounts, parameters, input.workflowClassification)
   const requested = input.accountRef?.trim()
   const candidates = requested === undefined || requested.length === 0
     ? accounts.filter(account => khalaFleetDelegateAccountWorkerKind(account) === workerKind)
@@ -752,18 +817,20 @@ function normalizeKhalaFleetDelegationParameterSet(
   khalaFleetDelegationMaxRequestedSlots(parameters, 1)
   khalaFleetDelegationDispatchAttempts(parameters)
   khalaFleetDelegationDuplicateBackoffMs(parameters)
+  khalaFleetDelegationClassifierMinimumConfidence(parameters)
+  khalaFleetDelegationClassifierPreferenceBonusSlots(parameters)
   return parameters
 }
 
 export function resolveKhalaFleetDelegateWorkerKind(
   accounts: ReadonlyArray<KhalaFleetDelegateAccount>,
   parameters: KhalaFleetDelegationParameterSet = DefaultKhalaFleetDelegationParameterSet,
+  workflowClassification?: KhalaFleetDelegationWorkflowClassification | undefined,
 ): KhalaFleetDelegateConcreteWorkerKind {
-  const requested = resolveKhalaFleetDelegationParameters(parameters).delegationTarget?.workerKind ?? "codex"
+  const resolved = resolveKhalaFleetDelegationParameters(parameters)
+  const requested = resolved.delegationTarget?.workerKind ?? "codex"
   if (requested !== "auto") return requested
-  const codexSlots = khalaFleetDelegateAvailableSlotsForKind(accounts, "codex")
-  const claudeSlots = khalaFleetDelegateAvailableSlotsForKind(accounts, "claude")
-  return claudeSlots > codexSlots ? "claude" : "codex"
+  return scoreKhalaFleetDelegateAutoWorkerKind(accounts, resolved, workflowClassification)
 }
 
 function khalaFleetDelegateAccountWorkerKind(
@@ -782,6 +849,68 @@ function khalaFleetDelegateAvailableSlotsForKind(
       (account.readiness === "ready" || account.readiness === "available")
     )
     .reduce((total, account) => total + Math.max(0, account.availableSlots ?? 1), 0)
+}
+
+function scoreKhalaFleetDelegateAutoWorkerKind(
+  accounts: ReadonlyArray<KhalaFleetDelegateAccount>,
+  parameters: KhalaFleetDelegationParameterSet,
+  workflowClassification?: KhalaFleetDelegationWorkflowClassification | undefined,
+): KhalaFleetDelegateConcreteWorkerKind {
+  const codexSlots = khalaFleetDelegateAvailableSlotsForKind(accounts, "codex")
+  const claudeSlots = khalaFleetDelegateAvailableSlotsForKind(accounts, "claude")
+  const classifiedKind = khalaFleetDelegateClassifiedWorkerKind(parameters, workflowClassification)
+  const classifierBonus = khalaFleetDelegationClassifierPreferenceBonusSlots(parameters)
+  const codexScore = codexSlots + (classifiedKind === "codex" && codexSlots > 0 ? classifierBonus : 0)
+  const claudeScore = claudeSlots + (classifiedKind === "claude" && claudeSlots > 0 ? classifierBonus : 0)
+  if (claudeScore !== codexScore) return claudeScore > codexScore ? "claude" : "codex"
+
+  const tieBreak = parameters.delegationTarget?.autoRouting?.tieBreakWorkerKind ?? "codex"
+  const tieBreakSlots = tieBreak === "claude" ? claudeSlots : codexSlots
+  const other = tieBreak === "claude" ? "codex" : "claude"
+  const otherSlots = other === "claude" ? claudeSlots : codexSlots
+  if (tieBreakSlots > 0 || otherSlots === 0) return tieBreak
+  return other
+}
+
+function khalaFleetDelegateClassifiedWorkerKind(
+  parameters: KhalaFleetDelegationParameterSet,
+  workflowClassification?: KhalaFleetDelegationWorkflowClassification | undefined,
+): KhalaFleetDelegateConcreteWorkerKind | undefined {
+  if (workflowClassification === undefined) return undefined
+  if (!khalaFleetDelegationWorkflowClassificationIsPublicSafe(workflowClassification)) {
+    return undefined
+  }
+  if (workflowClassification.confidence < khalaFleetDelegationClassifierMinimumConfidence(parameters)) {
+    return undefined
+  }
+  return khalaFleetDelegateWorkerKindForWorkflowClass(workflowClassification.workflowClass)
+}
+
+function khalaFleetDelegateAutoRoutingRefs(
+  workflowClassification: KhalaFleetDelegationWorkflowClassification | undefined,
+  parameters: KhalaFleetDelegationParameterSet,
+): ReadonlyArray<string> {
+  if ((parameters.delegationTarget?.workerKind ?? "codex") !== "auto") {
+    return []
+  }
+  const workerKind = khalaFleetDelegateClassifiedWorkerKind(parameters, workflowClassification)
+  if (workerKind === undefined || workflowClassification === undefined) {
+    return []
+  }
+  return [
+    `auto_route.worker_kind.${workerKind}`,
+    `workflow.public.khala_coding.${workflowClassification.workflowClass}`,
+    ...workflowClassification.evidenceRefs,
+  ]
+}
+
+function khalaFleetDelegationWorkflowClassificationIsPublicSafe(
+  workflowClassification: KhalaFleetDelegationWorkflowClassification,
+): boolean {
+  return Number.isFinite(workflowClassification.confidence) &&
+    workflowClassification.confidence >= 0 &&
+    workflowClassification.confidence <= 1 &&
+    workflowClassification.evidenceRefs.every(ref => publicSafeWorkflowEvidenceRefPattern.test(ref))
 }
 
 function khalaFleetDelegateAdvertisedCapacityPrecondition(
@@ -813,6 +942,20 @@ function boundedPolicyInteger(
   if (value === undefined) return fallback
   if (!Number.isSafeInteger(value) || value < min || value > max) {
     throw new Error(`${label} must be an integer between ${min} and ${max}`)
+  }
+  return value
+}
+
+function boundedPolicyNumber(
+  value: number | undefined,
+  fallback: number,
+  min: number,
+  max: number,
+  label: string,
+): number {
+  if (value === undefined) return fallback
+  if (!Number.isFinite(value) || value < min || value > max) {
+    throw new Error(`${label} must be a number between ${min} and ${max}`)
   }
   return value
 }

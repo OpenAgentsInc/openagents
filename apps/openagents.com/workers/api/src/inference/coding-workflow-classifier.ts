@@ -4,11 +4,28 @@ export type CodingWorkflowClass =
   | 'codex_agent_task'
   | 'none'
 
+export type CodingWorkflowFleetWorkerKind = 'claude' | 'codex' | 'none'
+
 export type CodingWorkflowClassification = Readonly<{
   confidence: number
   evidenceRefs: ReadonlyArray<string>
   workflowClass: CodingWorkflowClass
 }>
+
+export const fleetWorkerKindForCodingWorkflowClass = (
+  workflowClass: CodingWorkflowClass,
+): CodingWorkflowFleetWorkerKind => {
+  if (workflowClass === 'claude_agent_task') {
+    return 'claude'
+  }
+  if (
+    workflowClass === 'cloud_coding_session' ||
+    workflowClass === 'codex_agent_task'
+  ) {
+    return 'codex'
+  }
+  return 'none'
+}
 
 type ChatMessageLike = Readonly<{
   content?: unknown

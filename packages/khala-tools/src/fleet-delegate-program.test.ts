@@ -6,8 +6,11 @@ import {
   KhalaFleetDelegationParameterSet,
   KhalaFleetDelegationParameterSetSchemaVersion,
   KhalaFleetDelegateModuleError,
+  khalaFleetDelegationClassifierMinimumConfidence,
+  khalaFleetDelegationClassifierPreferenceBonusSlots,
   khalaFleetDelegationDispatchAttempts,
   khalaFleetDelegationParametersFromEnv,
+  khalaFleetDelegateWorkerKindForWorkflowClass,
   prepareKhalaFleetDelegateWork,
   renderKhalaFleetDelegationObjective,
   renderDefaultKhalaFleetDelegationObjective,
@@ -300,6 +303,177 @@ describe("khala.fleet.delegate deterministic program", () => {
       })
     })
 
+    test("auto v2 uses structured classifier output as a bounded routing preference", () => {
+      const parameters = admittedParameters({
+        delegationTarget: { workerKind: "auto" },
+      })
+      const accounts = [
+        readyAccount({ accountRef: "claude", availableSlots: 1, workerKind: "claude" }),
+        readyAccount({ accountRef: "codex", availableSlots: 1, workerKind: "codex" }),
+      ]
+
+      expect(resolveKhalaFleetDelegateWorkerKind(accounts, parameters, {
+        confidence: 1,
+        evidenceRefs: ["evidence.coding_workflow.structured_body"],
+        workflowClass: "claude_agent_task",
+      })).toBe("claude")
+      expect(selectKhalaFleetDelegateAccount({
+        workflowClassification: {
+          confidence: 1,
+          evidenceRefs: ["evidence.coding_workflow.structured_body"],
+          workflowClass: "claude_agent_task",
+        },
+      }, accounts, parameters)).toMatchObject({
+        account: { accountRef: "claude" },
+        status: "selected",
+        workerKind: "claude",
+      })
+    })
+
+    test("auto v2 ignores low-confidence classification and preserves free-slot selection", () => {
+      const parameters = admittedParameters({
+        delegationTarget: {
+          autoRouting: { classifierMinimumConfidence: 0.9 },
+          workerKind: "auto",
+        },
+      })
+      const accounts = [
+        readyAccount({ accountRef: "claude", availableSlots: 1, workerKind: "claude" }),
+        readyAccount({ accountRef: "codex", availableSlots: 2, workerKind: "codex" }),
+      ]
+
+      expect(resolveKhalaFleetDelegateWorkerKind(accounts, parameters, {
+        confidence: 0.5,
+        evidenceRefs: ["evidence.coding_workflow.structured_body"],
+        workflowClass: "claude_agent_task",
+      })).toBe("codex")
+    })
+
+    test("auto v2 cannot route to the classified worker kind without available slots", () => {
+      const parameters = admittedParameters({
+        delegationTarget: { workerKind: "auto" },
+      })
+      const accounts = [
+        readyAccount({ accountRef: "codex", availableSlots: 0, workerKind: "codex" }),
+        readyAccount({ accountRef: "claude", availableSlots: 1, workerKind: "claude" }),
+      ]
+
+      expect(resolveKhalaFleetDelegateWorkerKind(accounts, parameters, {
+        confidence: 1,
+        evidenceRefs: ["evidence.coding_workflow.structured_body"],
+        workflowClass: "codex_agent_task",
+      })).toBe("claude")
+    })
+
+    test("auto v2 tie-breaker is an admitted parameter and never invents capacity", () => {
+      const claudeTieBreak = admittedParameters({
+        delegationTarget: {
+          autoRouting: { tieBreakWorkerKind: "claude" },
+          workerKind: "auto",
+        },
+      })
+      const tiedAccounts = [
+        readyAccount({ accountRef: "claude", availableSlots: 1, workerKind: "claude" }),
+        readyAccount({ accountRef: "codex", availableSlots: 1, workerKind: "codex" }),
+      ]
+      const zeroClaudeAccounts = [
+        readyAccount({ accountRef: "claude", availableSlots: 0, workerKind: "claude" }),
+        readyAccount({ accountRef: "codex", availableSlots: 1, workerKind: "codex" }),
+      ]
+
+      expect(resolveKhalaFleetDelegateWorkerKind(tiedAccounts, claudeTieBreak)).toBe("claude")
+      expect(resolveKhalaFleetDelegateWorkerKind(zeroClaudeAccounts, claudeTieBreak)).toBe("codex")
+    })
+
+    test("auto v2 ignores malformed classifier hints before they reach trace refs", async () => {
+      const parameters = admittedParameters({
+        delegationTarget: { workerKind: "auto" },
+      })
+      const result = await Effect.runPromise(runKhalaFleetDelegateProgram({
+        objective: "Run the fixture",
+        workflowClassification: {
+          confidence: Number.NaN,
+          evidenceRefs: ["evidence.coding_workflow.structured_body", "unsafe/ref"],
+          workflowClass: "claude_agent_task",
+        },
+      }, {
+        ensurePylon: () => Effect.succeed({ pylonRef: "pylon.local.test" }),
+        advertiseCapacity: () =>
+          Effect.succeed({
+            capacity: {
+              accounts: [
+                readyAccount({ accountRef: "claude", availableSlots: 1, workerKind: "claude" }),
+                readyAccount({ accountRef: "codex", availableSlots: 1, workerKind: "codex" }),
+              ],
+              available: 2,
+              max: 2,
+            },
+          }),
+        dispatch: ({ account, workerKind }) =>
+          Effect.succeed({
+            assignmentRef: `assignment.public.khala_fleet_delegate.${workerKind}.${account.accountRef}`,
+            ok: true,
+          }),
+        verifyCloseout: () => Effect.succeed({ ok: true }),
+      }, {
+        parameters,
+      }))
+
+      expect(result.status).toBe("completed")
+      if (result.status !== "completed") return
+      expect(result.workerKind).toBe("codex")
+      expect(result.trace.flatMap(step => step.refs)).not.toContain("unsafe/ref")
+      expect(result.trace.flatMap(step => step.refs)).not.toContain("workflow.public.khala_coding.claude_agent_task")
+    })
+
+    test("explicit worker kind does not emit auto-routing classifier trace refs", async () => {
+      const parameters = admittedParameters({
+        delegationTarget: { workerKind: "codex" },
+      })
+      const result = await Effect.runPromise(runKhalaFleetDelegateProgram({
+        objective: "Run the fixture",
+        workflowClassification: {
+          confidence: 1,
+          evidenceRefs: ["evidence.coding_workflow.structured_body"],
+          workflowClass: "claude_agent_task",
+        },
+      }, {
+        ensurePylon: () => Effect.succeed({ pylonRef: "pylon.local.test" }),
+        advertiseCapacity: () =>
+          Effect.succeed({
+            capacity: {
+              accounts: [
+                readyAccount({ accountRef: "claude", availableSlots: 1, workerKind: "claude" }),
+                readyAccount({ accountRef: "codex", availableSlots: 1, workerKind: "codex" }),
+              ],
+              available: 2,
+              max: 2,
+            },
+          }),
+        dispatch: ({ account, workerKind }) =>
+          Effect.succeed({
+            assignmentRef: `assignment.public.khala_fleet_delegate.${workerKind}.${account.accountRef}`,
+            ok: true,
+          }),
+        verifyCloseout: () => Effect.succeed({ ok: true }),
+      }, {
+        parameters,
+      }))
+
+      expect(result.status).toBe("completed")
+      if (result.status !== "completed") return
+      expect(result.workerKind).toBe("codex")
+      expect(result.trace.flatMap(step => step.refs)).not.toContain("auto_route.worker_kind.claude")
+      expect(result.trace.flatMap(step => step.refs)).not.toContain("workflow.public.khala_coding.claude_agent_task")
+    })
+
+    test("workflow classes map to concrete worker kinds without prose parsing", () => {
+      expect(khalaFleetDelegateWorkerKindForWorkflowClass("claude_agent_task")).toBe("claude")
+      expect(khalaFleetDelegateWorkerKindForWorkflowClass("codex_agent_task")).toBe("codex")
+      expect(khalaFleetDelegateWorkerKindForWorkflowClass("cloud_coding_session")).toBe("codex")
+      expect(khalaFleetDelegateWorkerKindForWorkflowClass("none")).toBeUndefined()
+    })
+
     test("capacity blocker vocabulary is keyed by explicit worker kind", () => {
       const selected = selectKhalaFleetDelegateAccount({}, [
         readyAccount({ accountRef: "claude", availableSlots: 0, workerKind: "claude" }),
@@ -439,6 +613,13 @@ describe("khala.fleet.delegate deterministic program", () => {
     test("env admission decodes a bounded parameter set and rejects unsafe text", () => {
       const parameters = admittedParameters({
         advertiseCapacity: { perAccountConcurrency: 4 },
+        delegationTarget: {
+          autoRouting: {
+            classifierMinimumConfidence: 0.8,
+            classifierPreferenceBonusSlots: 3,
+          },
+          workerKind: "auto",
+        },
         objectiveTemplate: "Admitted: {objective}",
       })
       const decoded = khalaFleetDelegationParametersFromEnv({
@@ -447,6 +628,8 @@ describe("khala.fleet.delegate deterministic program", () => {
 
       expect(decoded.parameterSetRef).toBe(parameters.parameterSetRef)
       expect(decoded.advertiseCapacity?.perAccountConcurrency).toBe(4)
+      expect(khalaFleetDelegationClassifierMinimumConfidence(decoded)).toBe(0.8)
+      expect(khalaFleetDelegationClassifierPreferenceBonusSlots(decoded)).toBe(3)
       expect(() =>
         khalaFleetDelegationParametersFromEnv({
           [KhalaFleetDelegationAdmittedParametersEnv]: JSON.stringify(admittedParameters({
@@ -454,6 +637,16 @@ describe("khala.fleet.delegate deterministic program", () => {
           })),
         }),
       ).toThrow(/public-safe/)
+      expect(() =>
+        khalaFleetDelegationParametersFromEnv({
+          [KhalaFleetDelegationAdmittedParametersEnv]: JSON.stringify(admittedParameters({
+            delegationTarget: {
+              autoRouting: { classifierPreferenceBonusSlots: 65 },
+              workerKind: "auto",
+            },
+          })),
+        }),
+      ).toThrow(/classifierPreferenceBonusSlots/)
     })
   })
 
