@@ -261,7 +261,9 @@ describe("Khala Code fleet run supervisor RPC adapter", () => {
               lifecycle: [{
                 assignmentRef: "assignment.lifecycle",
                 event: "assignment_run.runtime_progress",
+                observedAt: "2026-07-01T12:00:00.000Z",
                 phase: "runtime_active",
+                schema: "openagents.pylon.assignment_run_lifecycle_event.v0.1",
                 status: "running",
               }],
               status: "accepted",

@@ -309,6 +309,14 @@ migration they de-risk.
    subprocess service and the shared schema from phase 1, replacing
    argv+stdout string coupling. Stub layer for fixtures; this is also what
    the fleet-fan-out instructions' supervisor should consume.
+
+   **T7.3 update (2026-07-02):** the desktop now has
+   `clients/khala-code-desktop/src/bun/pylon-service.ts`, a `Context.Service`
+   that runs Pylon commands through the T7.1 process spine, publishes decoded
+   shared-schema assignment lifecycle events as isolated streams, maps
+   `khala request` assignment runs into supervisor dispatch results, and
+   exposes a fixture stub layer. The fleet-run supervisor and RPC adapter now
+   consume this service instead of calling the one-shot spawn helper directly.
 8. **khala-tools substrate fixes** (T7.4 landed 2026-07-01): dispatcher
    durations and event IDs now use injected runtime Clock/random; one-shot
    sandbox/exec process groups use `acquireRelease`; `exec-command.ts` keeps

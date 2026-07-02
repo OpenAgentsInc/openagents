@@ -4,6 +4,7 @@ import { join } from "node:path"
 import { describe, expect, test } from "bun:test"
 import { Database } from "bun:sqlite"
 import { Effect, Exit, Scope } from "effect"
+import type { PylonAssignmentRunLifecycleEvent } from "@openagentsinc/agent-runtime-schema"
 
 import {
   createPylonOrchestrationStore,
@@ -23,6 +24,20 @@ import {
 } from "../src/bun/fleet-run-supervisor.js"
 
 const fixedNow = new Date("2026-07-01T12:00:00.000Z")
+
+const lifecycleEvent = (
+  event: PylonAssignmentRunLifecycleEvent["event"],
+  input: {
+    readonly assignmentRef?: string | undefined
+    readonly status?: PylonAssignmentRunLifecycleEvent["status"] | undefined
+  } = {},
+): PylonAssignmentRunLifecycleEvent => ({
+  schema: "openagents.pylon.assignment_run_lifecycle_event.v0.1",
+  event,
+  observedAt: fixedNow.toISOString(),
+  ...(input.assignmentRef === undefined ? {} : { assignmentRef: input.assignmentRef }),
+  ...(input.status === undefined ? {} : { status: input.status }),
+})
 
 function createStoreWithRun(input: {
   readonly runRef?: string
@@ -69,7 +84,7 @@ const acceptingRunner = (dispatched: string[] = []): FleetRunSupervisorRunner =>
     dispatched.push(input.workUnit.workUnitRef)
     return {
       assignmentRef: `assignment.${input.claim.claimRef}`,
-      lifecycle: [{ event: "assignment.accepted", status: "accepted" }],
+      lifecycle: [lifecycleEvent("assignment_run.accepted", { status: "accepted" })],
       status: "accepted",
     }
   },
@@ -87,7 +102,7 @@ function drainingRunner(input: {
       input.dispatched?.push(assignment.workUnit.workUnitRef)
       return {
         assignmentRef: `assignment.${assignment.claim.claimRef}`,
-        lifecycle: [{ event: "assignment.accepted", status: "accepted" }],
+        lifecycle: [lifecycleEvent("assignment_run.accepted", { status: "accepted" })],
         status: "accepted",
       }
     },
@@ -97,7 +112,7 @@ function drainingRunner(input: {
       if (peakActive < (input.completeAfterPeak ?? 1)) return []
       return activeAssignments.slice(0, input.completePerTick).map(assignment => ({
         assignmentRef: `assignment.${assignment.claim.claimRef}`,
-        lifecycle: [{ event: "assignment.closeout", status: "completed" }],
+        lifecycle: [lifecycleEvent("assignment_run.completed", { status: "closed" })],
         status: "completed" as const,
         summary: "fixture assignment completed",
         taskId: assignment.taskId,
@@ -377,7 +392,7 @@ describe("FleetRunSupervisor", () => {
           dispatched.push(input.workUnit.workUnitRef)
           return {
             assignmentRef: `assignment.${input.claim.claimRef}`,
-            lifecycle: [{ event: "assignment.completed", status: "completed" }],
+            lifecycle: [lifecycleEvent("assignment_run.completed", { status: "closed" })],
             status: "completed" as const,
           }
         },
@@ -416,8 +431,8 @@ describe("FleetRunSupervisor", () => {
         dispatch: async (input: FleetRunSupervisorDispatchInput) => ({
           assignmentRef: `assignment.${input.claim.claimRef}`,
           lifecycle: [
-            { event: "assignment.accepted", status: "accepted" },
-            { event: "assignment.closeout", status: "completed" },
+            lifecycleEvent("assignment_run.accepted", { status: "accepted" }),
+            lifecycleEvent("assignment_run.completed", { status: "closed" }),
           ],
           status: "completed",
           summary: "fixture completed",
@@ -466,7 +481,7 @@ describe("FleetRunSupervisor", () => {
           dispatched.push(input.workUnit.workUnitRef)
           return {
             assignmentRef: `assignment.${input.claim.claimRef}`,
-            lifecycle: [{ event: "assignment.closeout", status: "completed" }],
+            lifecycle: [lifecycleEvent("assignment_run.completed", { status: "closed" })],
             status: "completed" as const,
           }
         },
@@ -501,7 +516,7 @@ describe("FleetRunSupervisor", () => {
           dispatched.push(input.workUnit.workUnitRef)
           return {
             assignmentRef: `assignment.${input.claim.claimRef}`,
-            lifecycle: [{ event: "assignment.closeout", status: "completed" }],
+            lifecycle: [lifecycleEvent("assignment_run.completed", { status: "closed" })],
             status: "completed" as const,
           }
         },
@@ -534,7 +549,7 @@ describe("FleetRunSupervisor", () => {
           if (calls === 1) throw new Error("dispatch exploded")
           return {
             assignmentRef: `assignment.${input.claim.claimRef}`,
-            lifecycle: [{ event: "assignment.closeout", status: "completed" }],
+            lifecycle: [lifecycleEvent("assignment_run.completed", { status: "closed" })],
             status: "completed" as const,
           }
         },

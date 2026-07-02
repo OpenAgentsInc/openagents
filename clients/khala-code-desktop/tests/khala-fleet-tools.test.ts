@@ -151,38 +151,36 @@ function matrixBatchSpawnBlocker(
   }
 }
 
-function matrixBatchSpawnInFlight(
-  assignmentRef: string,
-  accountRef = "codex-2",
-): Record<string, unknown> {
+function matrixKhalaRequestCompleted(assignmentRef: string): Record<string, unknown> {
   return {
-    aggregate: {
-      acceptedCount: 1,
-      assignmentRefs: [assignmentRef],
-      durableRequestIds: [`durable.${assignmentRef.split(".").at(-1) ?? "matrix"}`],
-      ownerOnlyRawEventCount: 0,
-      ownerOnlyTraceCount: 0,
-      totalTokenRows: 0,
-      totalVerifiedTokens: 0,
-    },
-    blockerRefs: [],
-    ok: true,
-    plan: {
-      requestedCount: 1,
-      slots: [{ account: { accountRef }, slotIndex: 0 }],
-      targetPylonRef: "pylon.local.test",
-    },
-    results: [{
+    assignmentRef,
+    assignmentLifecycleEvents: [{
       assignmentRef,
-      blockerRefs: [],
-      closeoutStatus: null,
-      ok: true,
-      proof: null,
-      runAccepted: null,
-      slotIndex: 0,
-      state: "accepted",
+      event: "assignment_run.completed",
+      observedAt: "2026-07-01T12:00:00.000Z",
+      schema: "openagents.pylon.assignment_run_lifecycle_event.v0.1",
+      status: "closed",
     }],
-    schema: "openagents.pylon.khala_spawn_run.v0.1",
+    assignmentRun: {
+      closeout: { status: "accepted" },
+      ok: true,
+    },
+    autoRun: { ok: true },
+  }
+}
+
+function matrixKhalaRequestInFlight(assignmentRef: string): Record<string, unknown> {
+  return {
+    assignmentRef,
+    assignmentLifecycleEvents: [{
+      assignmentRef,
+      event: "assignment_run.accepted",
+      observedAt: "2026-07-01T12:00:00.000Z",
+      schema: "openagents.pylon.assignment_run_lifecycle_event.v0.1",
+      status: "accepted",
+    }],
+    assignmentRun: null,
+    autoRun: { attempted: true },
   }
 }
 
@@ -422,8 +420,8 @@ describe("Khala Code fleet tools", () => {
       if (joined === "presence heartbeat --base-url https://openagents.com --json") {
         return ok({ heartbeatRef: "heartbeat.pylon.local.test.completed", pylonRef: "pylon.local.test" })
       }
-      if (args[0] === "khala" && args[1] === "spawn") {
-        return ok(matrixBatchSpawnSuccess(spawnRefs.shift() ?? "assignment.public.codex_agent_task.completed_extra"))
+      if (args[0] === "khala" && args[1] === "request") {
+        return ok(matrixKhalaRequestCompleted(spawnRefs.shift() ?? "assignment.public.codex_agent_task.completed_extra"))
       }
       return failed(`unexpected command: ${joined}`)
     }
@@ -508,8 +506,8 @@ describe("Khala Code fleet tools", () => {
       if (joined === "presence heartbeat --base-url https://openagents.com --json") {
         return ok({ heartbeatRef: "heartbeat.pylon.local.test.inflight", pylonRef: "pylon.local.test" })
       }
-      if (args[0] === "khala" && args[1] === "spawn") {
-        return ok(matrixBatchSpawnInFlight("assignment.public.codex_agent_task.inflight"))
+      if (args[0] === "khala" && args[1] === "request") {
+        return ok(matrixKhalaRequestInFlight("assignment.public.codex_agent_task.inflight"))
       }
       return failed(`unexpected command: ${joined}`)
     }

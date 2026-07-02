@@ -29,10 +29,10 @@ import type { KhalaCodeDesktopFleetRunSupervisorRpc } from "./rpc-handlers.js"
 import {
   inspectCodexFleet,
   resolvePylonHome,
-  spawnCodexInstances,
   type KhalaCodexFleetToolOptions,
 } from "./khala-fleet-tools.js"
 import { collectKhalaProcessText, spawnKhalaProcess } from "./khala-process.js"
+import { makePylonService, type PylonServiceShape } from "./pylon-service.js"
 import {
   startFleetRunSupervisor,
   type FleetRunSupervisorCapacity,
@@ -70,6 +70,7 @@ export type KhalaCodeDesktopFleetRunSupervisorRpcAdapterOptions = {
   readonly capacity?: FleetRunSupervisorCapacity
   readonly env?: ChatEnv
   readonly onLifecycleNdjson?: (line: string) => void | Promise<void>
+  readonly pylonService?: PylonServiceShape | undefined
   readonly pylonRef?: string | null
   readonly runner?: FleetRunSupervisorRunner
   readonly store?: PylonOrchestrationStore
@@ -241,30 +242,26 @@ const capacityFor = (options: KhalaCodexFleetToolOptions | undefined): FleetRunS
 })
 
 const runnerFor = (input: {
+  readonly env?: ChatEnv | undefined
   readonly pylonRef: string | null
+  readonly pylonService?: PylonServiceShape | undefined
   readonly toolOptions?: KhalaCodexFleetToolOptions
 }): FleetRunSupervisorRunner => ({
   dispatch: async dispatch => {
     const fixture = dispatch.workUnit.kind === "fixture"
-    const result = await spawnCodexInstances({
+    const service = input.pylonService ?? input.toolOptions?.pylonService ?? makePylonService({
+      env: input.env ?? input.toolOptions?.env,
+      runner: input.toolOptions?.runner,
+    })
+    return await Effect.runPromise(service.runAssignment({
       accountRef: dispatch.accountRef,
-      claimRef: fixture ? undefined : dispatch.claim.claimRef,
-      count: 1,
       fixture,
-      issue: dispatch.workUnit.number,
-      prompt: dispatch.run.objective,
+      objective: dispatch.run.objective,
       pylonRef: input.pylonRef ?? undefined,
       repo: dispatch.workUnit.repo,
       verify: fixture ? undefined : DEFAULT_VERIFY,
       workerKind: dispatch.run.workerKind,
-    }, input.toolOptions)
-    const slot = result.results[0]
-    return {
-      assignmentRef: slot?.assignmentRef ?? null,
-      lifecycle: [],
-      status: result.acceptedCount > 0 ? "accepted" : "failed",
-      summary: slot?.summary ?? null,
-    }
+    }))
   },
 })
 
@@ -281,14 +278,7 @@ const inboxRefFor = (request: KhalaCodeDesktopFleetWorkerControlRequest, observe
   `inbox.assignment.${request.workerRefHash}.${request.verb}.${observedAt.replace(/[^0-9TZ]/g, "")}`
 
 const lifecycleEventLine = (event: FleetRunSupervisorLifecycleEvent): string =>
-  `${JSON.stringify({
-    schema: "openagents.pylon.assignment_run_lifecycle_event.v0.1",
-    event: event.event,
-    observedAt: new Date().toISOString(),
-    ...(event.assignmentRef === undefined || event.assignmentRef === null ? {} : { assignmentRef: event.assignmentRef }),
-    ...(event.phase === undefined || event.phase === null ? {} : { phase: event.phase }),
-    ...(event.status === undefined || event.status === null ? {} : { status: event.status }),
-  })}\n`
+  `${JSON.stringify(event)}\n`
 
 export function createKhalaCodeDesktopFleetRunSupervisorRpcAdapter(
   options: KhalaCodeDesktopFleetRunSupervisorRpcAdapterOptions = {},
@@ -334,7 +324,7 @@ export function createKhalaCodeDesktopFleetRunSupervisorRpcAdapter(
           planner: plannerFor(store, sources),
           pylonRef: pylonRef ?? "local-pylon",
           runRef,
-          runner: options.runner ?? runnerFor({ pylonRef, toolOptions }),
+          runner: options.runner ?? runnerFor({ env, pylonRef, pylonService: options.pylonService, toolOptions }),
           store,
           onLifecycle: publishLifecycle,
           ...(options.tickIntervalMs === undefined ? {} : { tickIntervalMs: options.tickIntervalMs }),

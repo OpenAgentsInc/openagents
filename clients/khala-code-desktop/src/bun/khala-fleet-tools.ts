@@ -63,6 +63,7 @@ import {
 import { khalaCodeConfigFromRuntimeEnv } from "./khala-code-config.js"
 import { fetchKhalaCodexRateLimitStatus } from "./codex-rate-limits.js"
 import { spawnKhalaProcessNodeChild, type KhalaProcessNodeChild } from "./khala-process.js"
+import { makePylonService, type PylonServiceShape } from "./pylon-service.js"
 import type { KhalaCodexRateLimitProviderStatus } from "../shared/codex-rate-limits.js"
 
 type ChatEnv = Readonly<Record<string, string | undefined>>
@@ -94,6 +95,7 @@ export type KhalaCodexFleetToolOptions = {
   readonly env?: ChatEnv | undefined
   readonly fleetRunSupervisor?: KhalaFleetRunSupervisorManager | undefined
   readonly onProgress?: KhalaCodexFleetProgressSink | undefined
+  readonly pylonService?: PylonServiceShape | undefined
   readonly runner?: KhalaCodexFleetCommandRunner | undefined
   readonly sleep?: ((ms: number) => Promise<void>) | undefined
 }
@@ -1411,11 +1413,16 @@ export class DefaultKhalaFleetRunSupervisorManager implements KhalaFleetRunSuper
   private readonly store: PylonOrchestrationStore
   private readonly active = new Map<string, ActiveFleetRun>()
   private readonly planConfigs = new Map<string, FleetRunPlanConfig>()
+  private readonly pylonService: PylonServiceShape
   private readonly retainedLifecycle = new Map<string, readonly FleetRunSupervisorObservedEvent[]>()
   private readonly retainedPylonRefs = new Map<string, string>()
 
   constructor(private readonly options: KhalaCodexFleetToolOptions) {
     this.store = createPylonOrchestrationStore(new Database(":memory:"))
+    this.pylonService = options.pylonService ?? makePylonService({
+      env: options.env,
+      runner: options.runner,
+    })
   }
 
   async start(input: KhalaFleetRunStartInput): Promise<KhalaFleetRunSnapshot> {
@@ -1589,35 +1596,19 @@ export class DefaultKhalaFleetRunSupervisorManager implements KhalaFleetRunSuper
         const config = this.planConfigs.get(runRef)
         if (config === undefined) throw new Error(`missing fleet run plan config: ${runRef}`)
         const fixture = run.workSource === "fixture"
-        const result = await spawnCodexInstances({
+        return await Effect.runPromise(this.pylonService.runAssignment({
           accountRef,
           baseUrl: config.baseUrl,
           branch: config.branch,
           commit: fixture ? undefined : config.commit,
-          count: 1,
           fixture,
-          prompt: renderFleetRunDispatchPrompt(run, workUnit),
+          objective: renderFleetRunDispatchPrompt(run, workUnit),
           pylonRef,
           repo: fixture ? undefined : config.repo,
           timeoutMs: config.timeoutMs,
           verify: fixture ? undefined : config.verify,
           workerKind: run.workerKind,
-        }, this.options)
-        const first = result.results[0]
-        const accepted = result.acceptedCount >= 1 && first?.status === "accepted"
-        const completed = accepted && (first?.autoRunOk === true || first.closeoutStatus === "accepted")
-        const status = completed ? "completed" : accepted ? "accepted" : "failed"
-        return {
-          assignmentRef: first?.assignmentRef ?? null,
-          lifecycle: [{
-            assignmentRef: first?.assignmentRef ?? null,
-            event: completed ? "assignment.completed" : accepted ? "assignment.accepted" : "assignment.failed",
-            phase: run.workerKind === "claude" ? "claude_spawn" : "codex_spawn",
-            status,
-          }],
-          status,
-          summary: first?.summary ?? renderSpawnResult(result),
-        }
+        }))
       },
     }
   }
