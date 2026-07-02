@@ -46,8 +46,10 @@ body{min-height:100%;background:var(--bg);color:var(--ink);font-family:var(--san
     repeating-linear-gradient(0deg,rgba(58,123,255,0.02) 0 1px,transparent 1px 34px),
     repeating-linear-gradient(90deg,rgba(58,123,255,0.02) 0 1px,transparent 1px 34px)}
 .shell{position:relative;z-index:1;max-width:1060px;margin-block:0;margin-inline:auto;padding-inline:clamp(20px,4vw,32px)}
+.masthead{position:sticky;top:0;z-index:2;background:rgba(10,14,20,0.82);
+  -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
 header.site{display:flex;justify-content:space-between;align-items:center;gap:18px;
-  padding-block:18px 16px}
+  padding-block:14px 12px}
 .brand{font-family:var(--mono);font-weight:700;font-size:16px;letter-spacing:-0.01em;
   color:#fff;text-decoration:none}
 .brand em{font-style:normal;color:var(--blue)}
@@ -122,7 +124,7 @@ form.intake button[disabled]{filter:saturate(0.4) brightness(0.8);cursor:default
 .intake-result{font-family:var(--mono);font-size:13px;padding-block:12px;padding-inline:14px;border-radius:2px;display:none}
 .intake-result.ok{display:block;color:#7ef0b2;border:1px solid rgba(126,240,178,0.35);background:rgba(126,240,178,0.06)}
 .intake-result.err{display:block;color:#ffb3ad;border:1px solid rgba(255,140,130,0.4);background:rgba(255,140,130,0.07)}
-footer.site{padding-block:26px 44px;padding-inline:0;font-size:0.85rem;color:var(--ink-faint)}
+footer.site{padding-block:26px 44px;font-size:0.85rem;color:var(--ink-faint)}
 footer.site a{color:var(--ink-blue);text-decoration:none}
 footer.site a:hover{color:var(--cyan)}
 .rise{opacity:0;transform:translateY(10px);
@@ -148,14 +150,16 @@ export const renderLanderHeader = (
     const current = item.key === active ? ' aria-current="page"' : ''
     return `<a href="${item.href}"${current}>${item.label}</a>`
   }).join('\n')
-  return `<header class="site shell">
+  return `<div class="masthead">
+<header class="site shell">
 <a class="brand" href="/lander4">OpenAgents<em>.</em></a>
 <nav class="site" aria-label="Primary">
 ${links}
 </nav>
 <a class="pill" href="/stats"><span class="dot" aria-hidden="true"></span>Tokens Served:&nbsp;<b id="tokens-served">${tokensDisplay}</b></a>
 </header>
-<hr class="rule">`
+<hr class="rule">
+</div>`
 }
 
 export const renderLanderFooter = (): string =>

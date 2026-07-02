@@ -67,9 +67,13 @@ describe('lander CSS policy (specificity-collision guard)', () => {
     expect(shellRule).toBeDefined()
     expect(shellRule).toContain('padding-inline:')
     expect(shellRule).not.toContain('padding-block')
-    // Block rhythm lives on the page-section rules instead.
-    expect(LANDER_SHELL_CSS).toMatch(/header\.site\{[^}]*padding-block:/)
-    expect(LANDER_SHELL_CSS).toMatch(/main\.shell\{[^}]*padding-block:/)
-    expect(LANDER_SHELL_CSS).toMatch(/footer\.site\{[^}]*padding-block:/)
+    // Block rhythm lives on the page-section rules instead — and the
+    // inverse holds: sections never touch the inline axis (a
+    // footer.site{padding-inline:0} beat .shell's inline padding on
+    // 2026-07-02 and knocked the footer out of alignment).
+    for (const section of ['header\\.site', 'main\\.shell', 'footer\\.site']) {
+      expect(LANDER_SHELL_CSS).toMatch(new RegExp(`${section}\\{[^}]*padding-block:`))
+      expect(LANDER_SHELL_CSS).not.toMatch(new RegExp(`${section}\\{[^}]*padding-inline`))
+    }
   })
 })
