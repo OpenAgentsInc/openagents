@@ -6,6 +6,7 @@ import type {
   PylonOrchestrationStore,
   WorkClaim,
 } from "../../../../apps/pylon/src/orchestration/store.js"
+import { isAutoRevivableFleetRun } from "../../../../apps/pylon/src/orchestration/store.js"
 import type {
   WorkPlannerClaimableUnit,
   WorkPlannerOutput,
@@ -310,7 +311,16 @@ export async function tickFleetRunSupervisor(
   store.reconcileWorkClaims({ now })
   const expectedWorkUnitsTotal = store.getFleetRun(options.runRef)?.counters.workUnitsTotal ?? 0
   let run = store.reconcileFleetRun(options.runRef, now)
-  if (run.state !== "running" && run.counters.workUnitsTotal < expectedWorkUnitsTotal) {
+  // Reconciliation may auto-close a running run whose created tasks are all
+  // terminal even though the planner backlog still has uncreated work units.
+  // Only that auto-close may be undone: operator lifecycle states (paused,
+  // draining, operator-stopped) are authority and must never be auto-revived
+  // (#7975).
+  if (
+    run.state !== "running" &&
+    isAutoRevivableFleetRun(run) &&
+    run.counters.workUnitsTotal < expectedWorkUnitsTotal
+  ) {
     run = store.upsertFleetRun({
       ...run,
       state: "running",
@@ -341,7 +351,11 @@ export async function tickFleetRunSupervisor(
       await recordTerminalAssignment(options, assignment, result, now)
     }
     run = store.reconcileFleetRun(options.runRef, now)
-    if (run.state !== "running" && run.counters.workUnitsTotal < expectedWorkUnitsTotal) {
+    if (
+      run.state !== "running" &&
+      isAutoRevivableFleetRun(run) &&
+      run.counters.workUnitsTotal < expectedWorkUnitsTotal
+    ) {
       run = store.upsertFleetRun({
         ...run,
         state: "running",
@@ -525,18 +539,20 @@ export async function tickFleetRunSupervisor(
 
   let reconciled = store.reconcileFleetRun(run.runRef, clock.now())
   const hasClaimableBacklog = plan.claimable.length > claimed
+  const reviveForBacklog = hasClaimableBacklog &&
+    (reconciled.state === "running" || isAutoRevivableFleetRun(reconciled))
   if (reconciled.counters.workUnitsTotal < plannedWorkUnitsTotal) {
     reconciled = store.upsertFleetRun({
       ...reconciled,
-      state: hasClaimableBacklog ? "running" : reconciled.state,
+      state: reviveForBacklog ? "running" : reconciled.state,
       counters: {
         ...reconciled.counters,
         workUnitsTotal: plannedWorkUnitsTotal,
       },
       updatedAt: clock.now().toISOString(),
     })
-  } else if (reconciled.state !== "running" && hasClaimableBacklog) {
-    reconciled = store.updateFleetRunState(run.runRef, "running", clock.now())
+  } else if (reconciled.state !== "running" && reviveForBacklog) {
+    reconciled = store.updateFleetRunState(run.runRef, "running", clock.now(), "reconcile")
   }
   if (reconciled.state === "completed") {
     await emit(options.onLifecycle, { kind: "completed", runRef: run.runRef, reason: "drained" })
@@ -547,7 +563,7 @@ export async function tickFleetRunSupervisor(
     activeAssignmentsForRun(store, run.runRef) === 0 &&
     reconciled.refillPolicy.stopCondition === "backlog_empty"
   ) {
-    const completed = store.updateFleetRunState(run.runRef, "completed", clock.now())
+    const completed = store.updateFleetRunState(run.runRef, "completed", clock.now(), "reconcile")
     await emit(options.onLifecycle, { kind: "completed", runRef: run.runRef, reason: "backlog_empty" })
     return {
       activeAssignments: activeAssignmentsForRun(store, run.runRef),

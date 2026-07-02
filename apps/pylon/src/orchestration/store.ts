@@ -120,6 +120,7 @@ export const FleetRunSchema = S.Struct({
   workerKind: FleetRunWorkerKindSchema,
   refillPolicy: FleetRunRefillPolicySchema,
   state: FleetRunStateSchema,
+  stateSource: S.optional(S.Literals(["operator", "reconcile"])),
   dispatchKind: FleetRunDispatchKindSchema,
   dagTracked: S.Boolean,
   startedAt: S.NullOr(S.String),
@@ -401,6 +402,19 @@ export const assertFleetRunControlTransition = (
     throw new Error(`fleetRunControl cannot ${verb} a ${state} fleet run`)
   }
 }
+
+/**
+ * A closed fleet run may be automatically reopened by the supervisor only
+ * when reconciliation closed it (all created tasks terminal while the
+ * planner backlog still holds uncreated units). Operator lifecycle
+ * decisions — pause, drain, stop — are authority and are never auto-revived.
+ * Legacy rows without a stateSource keep the historical auto-revive
+ * behavior for completed/stopped states.
+ */
+export const isAutoRevivableFleetRun = (
+  run: Pick<FleetRun, "state" | "stateSource">,
+): boolean =>
+  (run.state === "completed" || run.state === "stopped") && run.stateSource !== "operator"
 
 const fleetRunControlState = (verb: FleetRunControlVerb): FleetRunState => {
   switch (verb) {
@@ -994,12 +1008,18 @@ export class PylonOrchestrationStore {
     return (rows as FleetRunRow[]).map((row) => fleetRunFromJson(row.record_json))
   }
 
-  updateFleetRunState(runRef: string, state: FleetRunState, now: Date = new Date()): FleetRun {
+  updateFleetRunState(
+    runRef: string,
+    state: FleetRunState,
+    now: Date = new Date(),
+    stateSource: "operator" | "reconcile" = "operator",
+  ): FleetRun {
     const current = this.getFleetRun(runRef)
     if (current === null) throw new Error(`unknown fleet run: ${runRef}`)
     return this.upsertFleetRun({
       ...current,
       state,
+      stateSource,
       startedAt: state === "running" && current.startedAt === null ? iso(now) : current.startedAt,
       updatedAt: iso(now),
     })
@@ -1039,7 +1059,20 @@ export class PylonOrchestrationStore {
     const state: FleetRunState = shouldClose && counters.failedAssignments === 0 && counters.blockedAssignments === 0
       ? "completed"
       : shouldClose ? "stopped" : run.state
-    return this.upsertFleetRun({ ...run, state, counters, updatedAt: iso(now) })
+    // Closing a running run is a machine decision and may be undone by the
+    // supervisor when planner backlog remains. Closing a draining run is the
+    // completion of an operator drain: keep operator provenance so the closed
+    // run is never auto-revived (#7975).
+    const stateSource = shouldClose
+      ? (run.state === "draining" ? ("operator" as const) : ("reconcile" as const))
+      : run.stateSource
+    return this.upsertFleetRun({
+      ...run,
+      state,
+      ...(stateSource === undefined ? {} : { stateSource }),
+      counters,
+      updatedAt: iso(now),
+    })
   }
 
   reconcileFleetRuns(now: Date = new Date()): FleetRun[] {

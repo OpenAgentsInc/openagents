@@ -19,6 +19,7 @@ import {
   WORK_CLAIM_SCHEMA,
   createPylonOrchestrationStore,
   fleetRunOwnerLocalStatePath,
+  isAutoRevivableFleetRun,
   isStoredOrchestrationRunnerKind,
   loadFleetRunOwnerLocalState,
   normalizeOrchestrationRunnerKind,
@@ -595,6 +596,52 @@ describe("Pylon supervisor orchestration store", () => {
 
     expect(reconciled.state).toBe("completed")
     expect(reconciled.counters.completedAssignments).toBe(1)
+  })
+
+  test("tracks state provenance: operator verbs stamp operator, reconcile auto-close stamps reconcile (#7975)", () => {
+    const now = new Date("2026-07-01T12:00:00.000Z")
+    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    store.createFleetRun({
+      runRef: "fleet_run.provenance",
+      objective: "Provenance fixture.",
+      workSource: "fixture",
+      targetConcurrency: 1,
+      workerKind: "codex",
+      state: "running",
+      now,
+    })
+
+    const paused = store.controlFleetRun("fleet_run.provenance", "pause", now).run
+    expect(paused.stateSource).toBe("operator")
+    expect(isAutoRevivableFleetRun(paused)).toBe(false)
+
+    const stopped = store.controlFleetRun("fleet_run.provenance", "stop", now).run
+    expect(stopped.stateSource).toBe("operator")
+    expect(isAutoRevivableFleetRun(stopped)).toBe(false)
+
+    store.createFleetRun({
+      runRef: "fleet_run.provenance.close",
+      objective: "Provenance auto-close fixture.",
+      workSource: "fixture",
+      targetConcurrency: 1,
+      workerKind: "codex",
+      state: "running",
+      now,
+    })
+    store.createTask({
+      id: "task.provenance.done",
+      spec: { ...baseTaskSpec, title: "done", fleetRunRef: "fleet_run.provenance.close" },
+      now,
+    })
+    store.completeTask("task.provenance.done", JSON.stringify({ ok: true }), now)
+    const autoClosed = store.reconcileFleetRun("fleet_run.provenance.close", now)
+    expect(autoClosed.state).toBe("completed")
+    expect(autoClosed.stateSource).toBe("reconcile")
+    expect(isAutoRevivableFleetRun(autoClosed)).toBe(true)
+
+    // Legacy rows without provenance keep the historical auto-revive behavior.
+    expect(isAutoRevivableFleetRun({ state: "completed", stateSource: undefined })).toBe(true)
+    expect(isAutoRevivableFleetRun({ state: "paused", stateSource: undefined })).toBe(false)
   })
 
   test("mirrors FleetRun records to owner-local state and rehydrates a fresh store", async () => {
