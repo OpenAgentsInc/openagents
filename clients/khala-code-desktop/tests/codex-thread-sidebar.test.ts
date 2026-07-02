@@ -32,6 +32,93 @@ const thread = (
 })
 
 describe("Khala Code thread sidebar", () => {
+  test("marks the currently active chat row as active", async () => {
+    const window = new Window()
+    const previousDocument = globalThis.document
+    const previousNavigator = globalThis.navigator
+    Object.defineProperty(globalThis, "document", {
+      configurable: true,
+      value: window.document,
+    })
+    Object.defineProperty(globalThis, "navigator", {
+      configurable: true,
+      value: window.navigator,
+    })
+    try {
+      const container = document.createElement("aside")
+      document.body.append(container)
+      const data: KhalaCodeDesktopCodexThreadListResult = {
+        ok: true,
+        data: [],
+        groups: [{ key: "all", label: "All sessions", threadIds: ["thread-a", "thread-b"] }],
+        threads: [
+          thread("thread-a", "Active work"),
+          thread("thread-b", "Other work"),
+        ],
+      }
+
+      let activeThreadId: string | null = "thread-a"
+      const sidebar = mountCodexThreadSidebar(container, {
+        activeThreadId: () => activeThreadId,
+        archiveThread: async threadId => ({ action: "archive", ok: true, threadId }),
+        deleteThread: async threadId => ({ action: "delete", ok: true, threadId }),
+        forkThread: async threadId => ({ action: "fork", ok: true, threadId }),
+        listThreads: async () => data,
+        renameThread: async threadId => ({ action: "rename", ok: true, threadId }),
+        resumeThread: async threadId => ({
+          ok: true,
+          thread: {},
+          threadId,
+          messages: [],
+        }),
+        sessionId: "desktop-session",
+        unarchiveThread: async threadId => ({ action: "unarchive", ok: true, threadId }),
+        onNewThreadRequested: () => undefined,
+        onThreadSelected: () => undefined,
+      })
+
+      sidebar.setVisible(true)
+      await sidebar.refresh()
+
+      const activeItem = container.querySelector<HTMLElement>('[data-thread-id="thread-a"]')
+      const activeRow = activeItem?.querySelector<HTMLButtonElement>(".khala-thread-sidebar-item-row")
+      const inactiveItem = container.querySelector<HTMLElement>('[data-thread-id="thread-b"]')
+      const inactiveRow = inactiveItem?.querySelector<HTMLButtonElement>(".khala-thread-sidebar-item-row")
+
+      expect(activeItem?.dataset.active).toBe("true")
+      expect(activeRow?.dataset.active).toBe("true")
+      expect(activeRow?.getAttribute("aria-current")).toBe("true")
+      expect(inactiveItem?.dataset.active).toBe("false")
+      expect(inactiveRow?.dataset.active).toBe("false")
+      expect(inactiveRow?.hasAttribute("aria-current")).toBe(false)
+
+      activeThreadId = "thread-b"
+      sidebar.setActiveThreadId(activeThreadId)
+
+      const nextInactiveItem = container.querySelector<HTMLElement>('[data-thread-id="thread-a"]')
+      const nextInactiveRow = nextInactiveItem?.querySelector<HTMLButtonElement>(".khala-thread-sidebar-item-row")
+      const nextActiveItem = container.querySelector<HTMLElement>('[data-thread-id="thread-b"]')
+      const nextActiveRow = nextActiveItem?.querySelector<HTMLButtonElement>(".khala-thread-sidebar-item-row")
+
+      expect(nextInactiveItem?.dataset.active).toBe("false")
+      expect(nextInactiveRow?.dataset.active).toBe("false")
+      expect(nextInactiveRow?.hasAttribute("aria-current")).toBe(false)
+      expect(nextActiveItem?.dataset.active).toBe("true")
+      expect(nextActiveRow?.dataset.active).toBe("true")
+      expect(nextActiveRow?.getAttribute("aria-current")).toBe("true")
+    } finally {
+      Object.defineProperty(globalThis, "document", {
+        configurable: true,
+        value: previousDocument,
+      })
+      Object.defineProperty(globalThis, "navigator", {
+        configurable: true,
+        value: previousNavigator,
+      })
+      window.close()
+    }
+  })
+
   test("renames the visible thread title in list data immediately", () => {
     const data: KhalaCodeDesktopCodexThreadListResult = {
       ok: true,

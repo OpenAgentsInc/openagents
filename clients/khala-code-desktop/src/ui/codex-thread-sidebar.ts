@@ -572,10 +572,11 @@ export const mountCodexThreadSidebar = (
   const threadButton = (
     thread: KhalaCodeDesktopCodexThreadSummary,
   ): HTMLElement => {
+    const active = activeThreadId === thread.id
     const item = el("div", "khala-thread-sidebar-item")
     item.dataset.threadId = thread.id
     item.dataset.status = thread.status
-    item.dataset.active = activeThreadId === thread.id ? "true" : "false"
+    item.dataset.active = active ? "true" : "false"
     item.addEventListener("contextmenu", event => {
       event.preventDefault()
       event.stopPropagation()
@@ -586,6 +587,8 @@ export const mountCodexThreadSidebar = (
     row.type = "button"
     row.title = `${thread.title} — ${thread.preview || thread.id}`
     row.setAttribute("aria-haspopup", "menu")
+    row.dataset.active = active ? "true" : "false"
+    if (active) row.setAttribute("aria-current", "true")
     row.addEventListener("click", () => void selectThread(thread.id, "sidebar"))
     row.addEventListener("keydown", event => {
       if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return
