@@ -47,6 +47,7 @@ describe("Khala Code QA coverage ledger", () => {
     }
     for (const variant of KHALA_CODE_QA_SEED_CORPUS_MANIFEST.coverage.threadItemVariants) {
       expect(ledger.threadItemVariantsRendered).toContain(variant)
+      expect(ledger.threadItemVariantRenderCounts[variant]).toBeGreaterThan(0)
     }
   })
 
@@ -94,6 +95,50 @@ describe("Khala Code QA coverage ledger", () => {
       distinctArgumentShapeCount: 2,
     })
     expect(merged.selectorsClicked).toEqual(["[data-testid=thread-list]"])
+  })
+
+  test("counts repeated ThreadItem variant renders across ledgers", () => {
+    const first = collectKhalaCodeQaCoverageLedger({
+      generatedAt: "2026-07-01T00:00:00.000Z",
+      observations: [{
+        action: { args: [{ threadId: "thread-a", includeTurns: true }], kind: "rpc_call", method: "codexThreadRead" },
+        data: {
+          messages: [
+            { codexItem: { itemType: "agentMessage" } },
+            { harnessItem: { itemType: "commandExecution" } },
+          ],
+        },
+        label: "rpc:codexThreadRead#1",
+        ok: true,
+      }],
+      runId: "run-a",
+    })
+    const second = collectKhalaCodeQaCoverageLedger({
+      generatedAt: "2026-07-02T00:00:00.000Z",
+      observations: [{
+        action: { args: [{ threadId: "thread-b", includeTurns: true }], kind: "rpc_call", method: "codexThreadRead" },
+        data: {
+          messages: [
+            { codexItem: { itemType: "agentMessage" } },
+          ],
+        },
+        label: "rpc:codexThreadRead#1",
+        ok: true,
+      }],
+      runId: "run-b",
+    })
+
+    const merged = mergeKhalaCodeQaCoverageLedgers([first, second])
+
+    expect(first.threadItemVariantRenderCounts).toEqual({
+      agentMessage: 1,
+      commandExecution: 1,
+    })
+    expect(merged.threadItemVariantRenderCounts).toEqual({
+      agentMessage: 2,
+      commandExecution: 1,
+    })
+    expect(merged.threadItemVariantsRendered).toEqual(["agentMessage", "commandExecution"])
   })
 
   test("lists never-exercised coverage classes from the seed corpus manifest", () => {

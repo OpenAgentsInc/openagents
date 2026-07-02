@@ -57,12 +57,11 @@ describe("Khala Code QA seed scenario corpus", () => {
       "scenario.khala_code.seed.hotbar_settings_panel.v1",
     ])
 
-    for (const variant of KHALA_CODE_QA_THREAD_ITEM_VARIANTS) {
+    const expectedThreadItemScenarioIds = KHALA_CODE_QA_THREAD_ITEM_VARIANTS.map((variant) => {
       const normalized = variant.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`)
-      expect(idsForGroup("thread_items")).toContain(
-        `scenario.khala_code.seed.thread_item_${normalized}.v1`,
-      )
-    }
+      return `scenario.khala_code.seed.thread_item_${normalized}.v1`
+    })
+    expect(idsForGroup("thread_items")).toEqual(expectedThreadItemScenarioIds)
     expect(KHALA_CODE_QA_THREAD_ITEM_VARIANTS).toEqual(KHALA_CODE_CODEX_PARITY_REQUIRED_THREAD_ITEM_TYPES)
 
     const slashCommandIds = idsForGroup("rpc.slash_commands")
