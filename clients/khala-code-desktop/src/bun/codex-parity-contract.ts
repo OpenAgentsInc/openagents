@@ -4,6 +4,7 @@ import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 
 import { khalaCodeConfigFromRuntimeEnv } from "./khala-code-config.js"
+import { collectKhalaProcessText, spawnKhalaProcess } from "./khala-process.js"
 
 export const KHALA_CODE_CODEX_PARITY_REFERENCE_COMMIT =
   "db887d03e1f907467e33271572dffb73bceecd6b"
@@ -376,19 +377,13 @@ export function findCodexReferenceRoot(startDir = dirname(fileURLToPath(import.m
 }
 
 export async function readCodexReferenceCommit(root = findCodexReferenceRoot()): Promise<string> {
-  const proc = Bun.spawn(["git", "-C", root, "rev-parse", "HEAD"], {
-    stderr: "pipe",
-    stdout: "pipe",
-  })
-  const [stdout, stderr, exitCode] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ])
-  if (exitCode !== 0) {
-    throw new Error(`git rev-parse failed for Codex reference: ${stderr.trim() || `exit ${exitCode}`}`)
+  const result = await collectKhalaProcessText(
+    spawnKhalaProcess("git", ["-C", root, "rev-parse", "HEAD"]),
+  )
+  if (result.exitCode !== 0) {
+    throw new Error(`git rev-parse failed for Codex reference: ${result.stderr.trim() || `exit ${result.exitCode}`}`)
   }
-  return stdout.trim()
+  return result.stdout.trim()
 }
 
 export function codexSchemaPath(root: string, relative: string): string {
