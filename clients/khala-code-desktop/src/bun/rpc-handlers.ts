@@ -108,6 +108,7 @@ import {
   type KhalaCodexFleetToolOptions,
   openExternalUrl,
   removeCodexAccount,
+  setCodexAccountPaused,
 } from "./khala-codex-fleet-tools.js"
 
 type ChatEnv = Readonly<Record<string, string | undefined>>
@@ -1812,6 +1813,8 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
           quotaState: account.quotaState,
           accountKey: account.accountKey,
           capacity: account.capacity,
+          paused: account.paused,
+          ...(account.rateLimits === undefined ? {} : { rateLimits: account.rateLimits }),
           homeRole: accountHomeRole(account.accountRef),
           queuePolicy: fleetQueuePolicy(account.capacity, account.readiness),
           sessionRole: accountSessionRole(account.accountRef),
@@ -2155,6 +2158,9 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
     },
     async removeCodexAccount(accountRef: string) {
       return removeCodexAccount(accountRef, { env: input.env })
+    },
+    async setCodexAccountPaused(request) {
+      return setCodexAccountPaused(request.accountRef, request.paused, { env: input.env })
     },
     async pylonStatus() {
       const status = await ensureLocalPylon({

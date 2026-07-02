@@ -2380,9 +2380,9 @@ button {
   }
 }
 
-/* Account rows get an icon delete button: identity | badge | delete. */
+/* Account rows reserve stable columns for identity, status, destructive action, and planning controls. */
 .khala-fleet-account {
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
 }
 .khala-fleet-delete {
   font: inherit;

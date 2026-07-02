@@ -58,6 +58,8 @@ import {
   type FleetRunSupervisorTickResult,
 } from "./fleet-run-supervisor.js"
 import { khalaCodeConfigFromRuntimeEnv } from "./khala-code-config.js"
+import { fetchKhalaCodexRateLimitStatus } from "./codex-rate-limits.js"
+import type { KhalaCodexRateLimitProviderStatus } from "../shared/codex-rate-limits.js"
 
 type ChatEnv = Readonly<Record<string, string | undefined>>
 
@@ -174,8 +176,11 @@ type AccountRow = {
   readonly accountRef: string
   readonly accountRefHash: string | null
   readonly capacity: AccountCapacityRow | null
+  readonly home: string | null
+  readonly paused: boolean
   readonly provider: "codex"
   readonly quotaState: string | null
+  readonly rateLimits?: KhalaCodexRateLimitProviderStatus | undefined
   readonly readiness: string
 }
 
@@ -896,9 +901,16 @@ export async function inspectCodexFleet(
   const listProjection = parseJsonObject(listResult.stdout)
   const statusProjection = parseJsonObject(statusResult.stdout)
   const apm = fleetTokenRateProjectionFromApm(apmResult, rawActiveAssignments.length)
-  const accounts = withAccountCapacity(
-    mergeAccountRows(listProjection, statusProjection),
-    [ensure.providerProjection, statusProjection, listProjection],
+  const accountConfig = await readCodexAccountConfig(paths.pylonHome)
+  const accounts = await withAccountRateLimits(
+    withAccountConfig(
+      withAccountCapacity(
+        mergeAccountRows(listProjection, statusProjection),
+        [ensure.providerProjection, statusProjection, listProjection],
+      ),
+      accountConfig,
+    ),
+    env,
   )
   const activeAssignments = mergeActiveAssignmentTokenRates(
     rawActiveAssignments,
@@ -1903,6 +1915,41 @@ function parseJsonObject(raw: string): Record<string, unknown> | null {
   }
 }
 
+type CodexAccountConfigEntry = Readonly<{
+  home: string
+  paused: boolean
+}>
+
+function pylonConfigPath(pylonHome: string): string {
+  return join(pylonHome, "config.json")
+}
+
+async function readCodexAccountConfig(
+  pylonHome: string,
+): Promise<ReadonlyMap<string, CodexAccountConfigEntry>> {
+  try {
+    const parsed = JSON.parse(await readFile(pylonConfigPath(pylonHome), "utf8")) as {
+      dev?: { accounts?: readonly Record<string, unknown>[] }
+    }
+    const out = new Map<string, CodexAccountConfigEntry>()
+    for (const account of parsed.dev?.accounts ?? []) {
+      if (
+        account.provider === "codex" &&
+        typeof account.ref === "string" &&
+        typeof account.home === "string"
+      ) {
+        out.set(account.ref, {
+          home: account.home,
+          paused: account.paused === true,
+        })
+      }
+    }
+    return out
+  } catch {
+    return new Map()
+  }
+}
+
 function mergeAccountRows(
   listProjection: Record<string, unknown> | null,
   statusProjection: Record<string, unknown> | null,
@@ -1921,6 +1968,9 @@ function mergeAccountRows(
         accountKey: row.accountKey ?? previous?.accountKey ?? null,
         accountRefHash: row.accountRefHash ?? previous?.accountRefHash ?? null,
         capacity: row.capacity ?? previous?.capacity ?? null,
+        home: row.home ?? previous?.home ?? null,
+        paused: row.paused || previous?.paused === true,
+        rateLimits: row.rateLimits ?? previous?.rateLimits,
         readiness: row.readiness === "unknown" ? previous?.readiness ?? "unknown" : row.readiness,
       })
     }
@@ -1950,10 +2000,37 @@ function accountRowFrom(value: unknown): AccountRow | null {
     accountRef,
     accountRefHash,
     capacity: null,
+    home: null,
+    paused: false,
     provider: "codex",
     quotaState: stringField(quota, "state"),
     readiness,
   }
+}
+
+function withAccountConfig(
+  accounts: readonly AccountRow[],
+  config: ReadonlyMap<string, CodexAccountConfigEntry>,
+): readonly AccountRow[] {
+  return accounts.map(account => {
+    const entry = config.get(account.accountRef)
+    if (entry === undefined) return account
+    return { ...account, home: entry.home, paused: entry.paused }
+  })
+}
+
+async function withAccountRateLimits(
+  accounts: readonly AccountRow[],
+  env: ChatEnv,
+): Promise<readonly AccountRow[]> {
+  return Promise.all(accounts.map(async account => {
+    if (account.home === null) return account
+    const rateLimits = await fetchKhalaCodexRateLimitStatus({
+      codexHomePath: account.home,
+      env: cleanEnv(env),
+    })
+    return { ...account, rateLimits }
+  }))
 }
 
 function accountKeyFromHash(accountRefHash: string | null): string | null {
@@ -2680,6 +2757,7 @@ function khalaDelegateCapacityFromFleetStatus(
 ): KhalaFleetDelegateCapacity {
   const capacity = capacityFromProviderProjection(projection)
   const accounts = preferredSpawnAccounts(status.accounts, availability, parameters)
+    .filter(account => !account.paused)
     .map(account => khalaDelegateAccountFromRow(account, availability))
   const readyCount = accounts.filter(account => account.readiness === "ready" || account.readiness === "available").length
   const accountAvailable = availability.size === 0
@@ -2735,7 +2813,7 @@ function planDelegatedSpawnAccounts(
     }
   }
   const readyAccounts = preferredSpawnAccounts(
-    status.accounts.filter(account => isReadyAccount(account)),
+    status.accounts.filter(account => isReadyAccount(account) && !account.paused),
     availability,
     parameters,
   )
@@ -3269,6 +3347,9 @@ function resolveSpawnAccounts(
   if (!isReadyAccount(selected)) {
     throw new Error(`Pylon Codex account ${requestedAccountRef} is not ready (${selected.readiness}).`)
   }
+  if (selected.paused) {
+    throw new Error(`Pylon Codex account ${requestedAccountRef} is paused for planning.`)
+  }
   const slots = availability.get(selected.accountRef)
   if (slots !== undefined && slots <= 0) {
     throw new Error(`Pylon Codex account ${requestedAccountRef} has no advertised available slots right now.`)
@@ -3280,6 +3361,7 @@ function dispatchableSpawnAccounts(
   accounts: readonly AccountRow[],
   availability: ReadonlyMap<string, number>,
 ): readonly AccountRow[] {
+  accounts = accounts.filter(account => !account.paused)
   if (availability.size === 0) return accounts
   const positive = accounts.filter(account => (availability.get(account.accountRef) ?? 0) > 0)
   if (positive.length > 0) return positive
@@ -3821,6 +3903,48 @@ export async function collectCodexAccountEmails(
     out[accountRef] = home === null ? null : await codexEmailFromHome(home)
   }
   return out
+}
+
+export async function setCodexAccountPaused(
+  accountRef: string,
+  paused: boolean,
+  options: KhalaCodexFleetToolOptions = {},
+): Promise<{ readonly ok: boolean; readonly removed: boolean; readonly accountRef: string; readonly error?: string }> {
+  if (!/^[A-Za-z0-9._-]+$/.test(accountRef) || accountRef === "(default)") {
+    return { ok: false, removed: false, accountRef, error: "invalid account ref" }
+  }
+  const env = options.env ?? khalaCodeConfigFromRuntimeEnv().env
+  const configPath = pylonConfigPath(resolvePylonHome(env))
+  try {
+    const config = JSON.parse(await readFile(configPath, "utf8")) as {
+      dev?: { accounts?: Record<string, unknown>[] }
+    }
+    const accounts = Array.isArray(config.dev?.accounts) ? config.dev.accounts : []
+    let found = false
+    const nextAccounts = accounts.map(account => {
+      if (account.provider === "codex" && account.ref === accountRef) {
+        found = true
+        return { ...account, paused }
+      }
+      return account
+    })
+    if (!found) return { ok: false, removed: false, accountRef, error: "account ref not found" }
+    const next = {
+      ...config,
+      dev: { ...(config.dev ?? {}), accounts: nextAccounts },
+    }
+    const tempPath = `${configPath}.tmp.${Date.now()}`
+    await writeFile(tempPath, `${JSON.stringify(next, null, 2)}\n`, { mode: 0o600 })
+    await rename(tempPath, configPath)
+    return { ok: true, removed: false, accountRef }
+  } catch (error) {
+    return {
+      ok: false,
+      removed: false,
+      accountRef,
+      error: error instanceof Error ? error.message : String(error),
+    }
+  }
 }
 
 export type CodexConnectStart = {
