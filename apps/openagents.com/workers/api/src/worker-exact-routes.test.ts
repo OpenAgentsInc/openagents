@@ -162,6 +162,7 @@ const approvedExactRoutePaths = [
   '/skill.json',
   '/lander2',
   '/lander3',
+  '/lander4',
   '/install.md',
   '/surfaces.md',
   '/pylon.md',

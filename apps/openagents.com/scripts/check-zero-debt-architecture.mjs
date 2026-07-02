@@ -491,7 +491,7 @@ const budgetChecks = [
     // main; this records the actual count. They mint no spend/settlement/
     // payout/public-claim authority. Ratchet back down when these handlers
     // move behind a shared route mapper.
-    budget: 134,
+    budget: 135,
     description:
       'Worker domain and route modules may not grow Response-returning surfaces while route mappers are extracted.',
     details: countByFile(

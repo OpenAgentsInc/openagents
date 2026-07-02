@@ -847,6 +847,7 @@ import { handlePublicKhalaTokensServedHistoryApi } from './public-khala-tokens-s
 import { handlePublicKhalaTokensServedModelMixApi } from './public-khala-tokens-served-model-mix-routes'
 import { handleLander2Page } from './lander2-routes'
 import { handleLander3Page } from './lander3-routes'
+import { handleLander4Page } from './lander4-routes'
 import { handlePublicKhalaTokensServedApi } from './public-khala-tokens-served-routes'
 import { recordPublicKhalaChatServedTokens } from './public-khala-chat-served-tokens'
 import { handlePublicLaunchDashboardApi } from './public-launch-dashboard-routes'
@@ -12249,6 +12250,11 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
   {
     path: '/lander3',
     handler: (request, env) => handleLander3Page(request, env),
+  },
+  // Business-facing "Agents that work." landing experiment (site-speed lane).
+  {
+    path: '/lander4',
+    handler: (request, env) => handleLander4Page(request, env),
   },
   // Lowercase aliases for the served agent-doc set. Cloudflare static assets
   // are case-sensitive, so a typed /install.md previously fell through to the
