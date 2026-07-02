@@ -1,8 +1,9 @@
 import { randomUUID } from "node:crypto"
 import { Buffer } from "node:buffer"
-import { mkdir, writeFile } from "node:fs/promises"
+import { mkdir, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { basename, join } from "node:path"
+import { Effect } from "effect"
 
 import type { KhalaFleetDelegateStep } from "@openagentsinc/khala-tools"
 import type {
@@ -19,6 +20,7 @@ import {
   createKhalaCodeDesktopCodexMessageTokenAuditRecorder,
   createKhalaCodeDesktopCodexTokenUsageReporter,
   khalaCodeDesktopTokenUsageTelemetryStatus,
+  readKhalaCodeDesktopTokenUsageInboxFlags,
   readKhalaCodeDesktopThreadTokenSummary,
 } from "./codex-token-usage-telemetry.js"
 import {
@@ -181,11 +183,16 @@ const materializeChatAttachment = async (
     readonly sessionId: string
     readonly turnId: string
   },
-): Promise<KhalaCodeDesktopChatTurnAttachment> => {
+): Promise<{
+  readonly attachment: KhalaCodeDesktopChatTurnAttachment
+  readonly cleanupPath: string | null
+}> => {
   if (attachment.path !== undefined || attachment.dataBase64 === undefined) {
-    return attachment
+    return { attachment, cleanupPath: null }
   }
-  if (!attachment.mime.toLowerCase().startsWith("image/")) return attachment
+  if (!attachment.mime.toLowerCase().startsWith("image/")) {
+    return { attachment, cleanupPath: null }
+  }
   const directory = join(
     CHAT_ATTACHMENT_TMP_ROOT,
     safePathSegment(input.sessionId, "session"),
@@ -196,33 +203,60 @@ const materializeChatAttachment = async (
   const path = join(directory, filename)
   await writeFile(path, Buffer.from(attachment.dataBase64, "base64"))
   return {
-    id: attachment.id,
-    kind: "image",
-    mime: attachment.mime,
-    name: attachment.name,
-    path,
-    sizeBytes: attachment.sizeBytes,
+    attachment: {
+      id: attachment.id,
+      kind: "image",
+      mime: attachment.mime,
+      name: attachment.name,
+      path,
+      sizeBytes: attachment.sizeBytes,
+    },
+    cleanupPath: directory,
   }
 }
 
 const materializeChatAttachments = async (
   request: KhalaCodeDesktopChatTurnRequest,
-): Promise<KhalaCodeDesktopChatTurnRequest> => {
-  if (request.attachments === undefined || request.attachments.length === 0) return request
+): Promise<{
+  readonly cleanupPaths: readonly string[]
+  readonly request: KhalaCodeDesktopChatTurnRequest
+}> => {
+  if (request.attachments === undefined || request.attachments.length === 0) {
+    return { cleanupPaths: [], request }
+  }
   const turnId = request.turnId ?? randomUUID()
-  const attachments = await Promise.all(request.attachments.map((attachment, index) =>
+  const materialized = await Promise.all(request.attachments.map((attachment, index) =>
     materializeChatAttachment(attachment, {
       index,
       sessionId: request.sessionId,
       turnId,
     })
   ))
+  const cleanupPaths = [...new Set(materialized.flatMap(item =>
+    item.cleanupPath === null ? [] : [item.cleanupPath]
+  ))]
   return {
-    ...request,
-    attachments,
-    turnId,
+    cleanupPaths,
+    request: {
+      ...request,
+      attachments: materialized.map(item => item.attachment),
+      turnId,
+    },
   }
 }
+
+const withMaterializedChatAttachments = <A>(
+  request: KhalaCodeDesktopChatTurnRequest,
+  use: (request: KhalaCodeDesktopChatTurnRequest) => Promise<A>,
+): Promise<A> =>
+  Effect.runPromise(Effect.scoped(Effect.flatMap(Effect.acquireRelease(
+    Effect.promise(() => materializeChatAttachments(request)),
+    materialized => Effect.promise(async () => {
+      await Promise.all(materialized.cleanupPaths.map(path =>
+        rm(path, { force: true, recursive: true })
+      ))
+    }),
+  ), materialized => Effect.promise(() => use(materialized.request)))))
 
 const normalizeMentionCandidate = (value: unknown): KhalaCodeDesktopCodexMentionCandidate | null => {
   if (!isRecord(value)) return null
@@ -1962,20 +1996,24 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
       }
     },
     async submitChatMessage(request) {
-      const materializedRequest = await materializeChatAttachments(request)
-      if (!useLegacyKhalaNativeRuntime()) {
-        const bridge = await maybeEnsureFleetMcpBridge()
-        return withFleetMcpBridgeNote(await labelCodexHarnessResponse(await requireCodexChatRuntime().startTurn({
-          ...materializedRequest,
-          cwd: input.workingDirectory,
-        })), bridge)
-      }
-      return labelLegacyRuntimeResponse(await legacyChatTurn({
-        env: input.env,
-        ...(input.emitChatTurnEvent === undefined ? {} : { onEvent: input.emitChatTurnEvent }),
-        request: materializedRequest,
-        workingDirectory: input.workingDirectory,
-      }))
+      return withMaterializedChatAttachments(
+        request,
+        async materializedRequest => {
+          if (!useLegacyKhalaNativeRuntime()) {
+            const bridge = await maybeEnsureFleetMcpBridge()
+            return withFleetMcpBridgeNote(await labelCodexHarnessResponse(await requireCodexChatRuntime().startTurn({
+              ...materializedRequest,
+              cwd: input.workingDirectory,
+            })), bridge)
+          }
+          return labelLegacyRuntimeResponse(await legacyChatTurn({
+            env: input.env,
+            ...(input.emitChatTurnEvent === undefined ? {} : { onEvent: input.emitChatTurnEvent }),
+            request: materializedRequest,
+            workingDirectory: input.workingDirectory,
+          }))
+        },
+      )
     },
     async consumeCodexRateLimitResetCredit(): Promise<KhalaCodeDesktopCodexRateLimitResetResult> {
       const observedAt = new Date().toISOString()
@@ -2006,6 +2044,15 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
     },
     async tokenAccountingStatus() {
       const status = khalaCodeDesktopTokenUsageTelemetryStatus(input.env)
+      const flags = await readKhalaCodeDesktopTokenUsageInboxFlags({ env: input.env })
+      if (flags.length > 0) {
+        return runtimeStatus({
+          available: false,
+          capability: "token_accounting",
+          reason: `${flags.length} token usage reporting failure flag(s) need review; latest: ${flags[flags.length - 1]?.reason ?? "unknown failure"}`,
+          status: "error",
+        })
+      }
       return runtimeStatus({
         available: true,
         capability: "token_accounting",

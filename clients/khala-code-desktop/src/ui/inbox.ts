@@ -256,6 +256,19 @@ export const projectUnifiedInbox = (
     })
   }
 
+  if (source.tokenAccounting.status === "error" || source.tokenAccounting.status === "unavailable") {
+    items.push({
+      ref: "inbox.runtime.token_accounting.blocked",
+      kind: "run_blocked",
+      title: "Token accounting needs review",
+      summary: source.tokenAccounting.reason,
+      source: "runtime",
+      severity: "critical",
+      observedAt: source.tokenAccounting.observedAt,
+      actions: ["refresh"],
+    })
+  }
+
   const coverage = [
     {
       source: "Codex harness",
@@ -287,6 +300,11 @@ export const projectUnifiedInbox = (
       source: "fleet readiness",
       status: "connected" as const,
       summary: "Worker Codex account readiness, Pylon state, and assignment markers are projected locally.",
+    },
+    {
+      source: "token accounting",
+      status: source.tokenAccounting.available ? "connected" as const : "not_connected" as const,
+      summary: source.tokenAccounting.reason,
     },
   ]
 

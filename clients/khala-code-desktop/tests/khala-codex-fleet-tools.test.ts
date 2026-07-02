@@ -19,6 +19,7 @@ import {
   type KhalaCodexFleetCommandInput,
   type KhalaCodexFleetCommandResult,
   type KhalaCodexFleetProgressPayload,
+  type KhalaFleetRunSnapshot,
 } from "../src/bun/khala-codex-fleet-tools"
 
 const tempDirs: string[] = []
@@ -189,17 +190,22 @@ function matrixBatchSpawnInFlight(
 async function waitForFleetRunSnapshot(
   manager: DefaultKhalaFleetRunSupervisorManager,
   runRef: string,
-  predicate: (snapshot: Awaited<ReturnType<DefaultKhalaFleetRunSupervisorManager["start"]>>) => boolean,
-): Promise<Awaited<ReturnType<DefaultKhalaFleetRunSupervisorManager["start"]>>> {
+  predicate: (snapshot: KhalaFleetRunSnapshot) => boolean,
+): Promise<KhalaFleetRunSnapshot> {
   for (let attempt = 0; attempt < 50; attempt += 1) {
-    const snapshot = await manager.status({ runRef })
-    if (Array.isArray(snapshot)) throw new Error("expected a single fleet run snapshot")
+    const snapshot = singleFleetRunSnapshot(await manager.status({ runRef }))
     if (predicate(snapshot)) return snapshot
     await Bun.sleep(10)
   }
-  const snapshot = await manager.status({ runRef })
-  if (Array.isArray(snapshot)) throw new Error("expected a single fleet run snapshot")
+  const snapshot = singleFleetRunSnapshot(await manager.status({ runRef }))
   throw new Error(`fleet run ${runRef} did not reach expected state; last state=${snapshot.run.state} active=${snapshot.active}`)
+}
+
+function singleFleetRunSnapshot(
+  snapshot: KhalaFleetRunSnapshot | readonly KhalaFleetRunSnapshot[],
+): KhalaFleetRunSnapshot {
+  if ("run" in snapshot) return snapshot
+  throw new Error("expected a single fleet run snapshot")
 }
 
 describe("Khala Code Codex fleet tools", () => {
@@ -513,11 +519,10 @@ describe("Khala Code Codex fleet tools", () => {
       targetConcurrency: 1,
       workSource: "fixture",
     })).rejects.toThrow("fleet run supervisor already active for pylon pylon.local.test")
-    const failedStart = await manager.status({ runRef: "fleet_run.test.failed_start" })
+    const failedStart = singleFleetRunSnapshot(await manager.status({ runRef: "fleet_run.test.failed_start" }))
 
     expect(active.active).toBe(true)
-    expect(Array.isArray(failedStart)).toBe(false)
-    expect(Array.isArray(failedStart) ? null : failedStart.run.state).toBe("stopped")
+    expect(failedStart.run.state).toBe("stopped")
 
     await manager.control({ runRef: "fleet_run.test.inflight", verb: "stop" })
     const afterStop = await manager.start({

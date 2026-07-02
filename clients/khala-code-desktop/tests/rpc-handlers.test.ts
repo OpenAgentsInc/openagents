@@ -634,6 +634,7 @@ describe("Khala Code desktop RPC handlers", () => {
       ok: true,
     })
     expect(capturedAttachmentPath).toContain("attachment-image-1-composer.png")
+    await expect(readFile(capturedAttachmentPath ?? "", "utf8")).rejects.toThrow()
   })
 
   test("adds typed Codex auth blocker refs to failed Codex app-server chat turns", async () => {
