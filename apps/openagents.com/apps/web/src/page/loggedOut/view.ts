@@ -25,6 +25,7 @@ import * as KhalaChatPage from '../khala-chat/page'
 import * as Code from '../code'
 import * as Login from '../login'
 import * as Privacy from '../privacy'
+import * as QaSwarm from '../qa-swarm'
 import type { PublicHeaderViewer } from '../publicHeader'
 import { viewerAvatarMenu } from '../publicHeader'
 import * as Run from '../run'
@@ -336,6 +337,7 @@ export const view = Submodel.defineView<Model, Message>((model): Html => {
                 Trace.view(route, { _tag: 'LoggedOut' }, model.trace),
               TraceCompare: route =>
                 TraceCompare.view(route, { _tag: 'LoggedOut' }),
+              QaSwarm: route => QaSwarm.view(route, { _tag: 'LoggedOut' }),
               PylonCodexAssignmentStatus: route =>
                 notFoundView(
                   `/pylon/codex/assignments/${route.assignmentRef}`,

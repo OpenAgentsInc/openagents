@@ -211,6 +211,7 @@ export const browserRouteProductIntents = {
   Share: 'share.projection',
   Trace: 'trace.public.render',
   TraceCompare: 'trace.public.compare',
+  QaSwarm: 'qa.swarm.run',
   SiteCheckoutDemo: 'public.sites.demo-checkout',
   SiteCheckoutDemoReturn: 'public.sites.demo-checkout-return',
   Settings: 'account.settings',
