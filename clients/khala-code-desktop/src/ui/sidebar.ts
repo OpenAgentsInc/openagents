@@ -1,8 +1,12 @@
 import { iconElement } from "@openagentsinc/ui/icon-dom"
 import type { IconName } from "@openagentsinc/ui/icon"
 import type { KhalaCodeDesktopFleetStatus } from "../shared/rpc"
+import {
+  khalaCodeInboxAssignmentNeedsHuman,
+  khalaCodeInboxReadinessNeedsHuman,
+} from "./inbox"
 
-export type KhalaCodeHotbarValue = "chat" | "fleet" | "settings"
+export type KhalaCodeHotbarValue = "chat" | "fleet" | "inbox" | "settings"
 
 export type KhalaCodeHotbarSlot = Readonly<{
   actionId: `action_bar.slot_${number}`
@@ -33,9 +37,17 @@ export const KHALA_CODE_HOTBAR_SLOTS: ReadonlyArray<KhalaCodeHotbarSlot> = [
   {
     actionId: "action_bar.slot_3",
     hotkey: "3",
+    icon: "NotificationBell",
+    label: "Inbox",
+    slot: 3,
+    value: "inbox",
+  },
+  {
+    actionId: "action_bar.slot_4",
+    hotkey: "4",
     icon: "Settings",
     label: "Settings",
-    slot: 3,
+    slot: 4,
     value: "settings",
   },
 ]
@@ -54,6 +66,7 @@ export type KhalaCodeSidebarFleetCounts = Readonly<{
 }>
 
 export type KhalaCodeSidebarHandle = Readonly<{
+  destroy: () => void
   setFleetCounts: (counts: KhalaCodeSidebarFleetCounts | null) => void
 }>
 
@@ -94,27 +107,26 @@ const hotbarShortcut = (): HotbarShortcut =>
         modifierKey: "altKey",
       }
 
-const readinessNeedsHuman = (readiness: string): boolean => {
-  const value = readiness.toLowerCase()
-  return value.includes("auth") || value.includes("missing") || value.includes("error")
-}
-
-const blockerNeedsHuman = (refs: readonly string[]): boolean =>
-  refs.some(ref => /approval|blocked|claim[_-]?expired|cooldown|merge[_-]?conflict|permission/iu.test(ref))
-
 export const projectKhalaCodeSidebarFleetCounts = (
   status: KhalaCodeDesktopFleetStatus,
 ): KhalaCodeSidebarFleetCounts => ({
   accountsReady: status.accounts.filter(account => account.readiness.toLowerCase() === "ready").length,
   workersActive: status.activeAssignments.length,
   slotsFree: status.availableCodexAssignments ?? 0,
-  flags: status.accounts.filter(account => readinessNeedsHuman(account.readiness)).length +
-    status.activeAssignments.filter(assignment =>
-      blockerNeedsHuman(assignment.blockerRefs ?? assignment.workerSession?.blockerRefs ?? [])
-    ).length +
+  flags: status.accounts.filter(account => khalaCodeInboxReadinessNeedsHuman(account.readiness)).length +
+    status.activeAssignments.filter(assignment => {
+      const refs = assignment.blockerRefs ?? assignment.workerSession?.blockerRefs ?? []
+      const approvalRequired = assignment.workerSession?.approvalState === "approval_required"
+      const blocked = refs.length > 0 || assignment.workerSession?.approvalState === "blocked"
+      return khalaCodeInboxAssignmentNeedsHuman(refs, approvalRequired, blocked)
+    }).length +
     (
       status.availableCodexAssignments === 0 &&
-      status.accounts.some(account => account.queuePolicy?.cooldown === "cooling_down")
+      status.accounts.length > 0 &&
+      status.accounts.every(account =>
+        account.queuePolicy?.cooldown === "cooling_down" ||
+        account.quotaState?.toLowerCase() === "cooling_down"
+      )
         ? 1
         : 0
     ),
@@ -209,7 +221,7 @@ export const mountKhalaCodeSidebar = (
     container.replaceChildren(nav)
   }
 
-  window.addEventListener("keydown", event => {
+  const onKeydown = (event: KeyboardEvent): void => {
     const slot = KHALA_CODE_HOTBAR_SLOTS.find(item => item.hotkey === event.key)
     if (slot === undefined) return
 
@@ -222,10 +234,16 @@ export const mountKhalaCodeSidebar = (
 
     event.preventDefault()
     activate(slot)
-  })
+  }
+
+  window.addEventListener("keydown", onKeydown)
 
   render()
   return {
+    destroy(): void {
+      window.removeEventListener("keydown", onKeydown)
+      container.replaceChildren()
+    },
     setFleetCounts(next: KhalaCodeSidebarFleetCounts | null): void {
       fleetCounts = next
       render()

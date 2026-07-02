@@ -130,7 +130,7 @@ describe("Unified Inbox fleet flags", () => {
       {
         kind: "approval_required",
         status: fleet({ activeAssignments: [assignment(["blocker.public.worker.approval_required"])] }),
-        actions: ["approve", "reject", "open_fleet", "refresh"],
+        actions: ["open_fleet", "refresh"],
       },
       {
         kind: "run_blocked",
@@ -181,8 +181,8 @@ describe("Unified Inbox fleet flags", () => {
       },
       {
         kind: "claim_expired",
-        status: fleet({ activeAssignments: [assignment(["blocker.public.worker.claim_expired"])] }),
-        actions: ["rerun", "resume", "open_fleet", "refresh"],
+        status: fleet({ activeAssignments: [assignment(["blocker.assignment.lease_expired"])] }),
+        actions: ["resume", "open_fleet", "refresh"],
       },
     ] as const
 
@@ -207,9 +207,10 @@ describe("Unified Inbox fleet flags", () => {
     Object.defineProperty(globalThis, "document", { configurable: true, value: window.document })
 
     const resumed: string[] = []
+    let panel: ReturnType<typeof mountUnifiedInboxPanel> | null = null
     try {
       const container = document.createElement("div")
-      const panel = mountUnifiedInboxPanel(container, {
+      panel = mountUnifiedInboxPanel(container, {
         fetch: async () => source(fleet({
           activeAssignments: [assignment(["blocker.public.worker.run_blocked"])],
         })),
@@ -228,6 +229,7 @@ describe("Unified Inbox fleet flags", () => {
 
       expect(resumed).toEqual(["fleet.run.public.t5_5"])
     } finally {
+      panel?.destroy()
       Object.defineProperty(globalThis, "window", { configurable: true, value: previousWindow })
       Object.defineProperty(globalThis, "document", { configurable: true, value: previousDocument })
     }

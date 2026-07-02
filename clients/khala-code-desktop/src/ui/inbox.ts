@@ -18,15 +18,11 @@ export type UnifiedInboxItemKind =
   | "ready_for_review"
   | "mcp_failed"
   | "codex_ecosystem"
-  | "missing_credential"
   | "memory_update_pending"
 
 export type UnifiedInboxItemAction =
-  | "approve"
-  | "reject"
   | "edit"
   | "reply"
-  | "rerun"
   | "open_file"
   | "resume"
   | "reconnect"
@@ -71,6 +67,7 @@ export type UnifiedInboxSource = Readonly<{
 }>
 
 export type UnifiedInboxPanelHandle = Readonly<{
+  destroy: () => void
   refresh: () => Promise<void>
   setVisible: (visible: boolean) => void
 }>
@@ -103,11 +100,10 @@ const itemPriority: Record<UnifiedInboxItemKind, number> = {
   merge_conflict_wave: 3,
   claim_expired: 4,
   run_blocked: 5,
-  missing_credential: 6,
-  mcp_failed: 7,
-  codex_ecosystem: 8,
-  ready_for_review: 9,
-  memory_update_pending: 10,
+  mcp_failed: 6,
+  codex_ecosystem: 7,
+  ready_for_review: 8,
+  memory_update_pending: 9,
 }
 
 const el = <K extends keyof HTMLElementTagNameMap>(
@@ -127,7 +123,7 @@ const readable = (value: string): string =>
 const stableRefText = (value: string | null): string =>
   value === null || value.trim() === "" ? "unavailable" : value
 
-const readinessNeedsHuman = (readiness: string): boolean => {
+export const khalaCodeInboxReadinessNeedsHuman = (readiness: string): boolean => {
   const value = readiness.toLowerCase()
   return value.includes("credential") || value.includes("missing") || value.includes("error")
 }
@@ -138,26 +134,32 @@ const assignmentResumeCommand = (assignmentRef: string): string =>
 const refIncludes = (refs: readonly string[], pattern: RegExp): boolean =>
   refs.some(ref => pattern.test(ref))
 
-const flagKindForAssignment = (
+export const khalaCodeInboxFlagKindForAssignment = (
   refs: readonly string[],
   approvalRequired: boolean,
   blocked: boolean,
 ): UnifiedInboxItemKind | null => {
   if (approvalRequired || refIncludes(refs, /approval[_-]?required|permission/iu)) return "approval_required"
-  if (refIncludes(refs, /merge[_-]?conflict/iu)) return "merge_conflict_wave"
-  if (refIncludes(refs, /claim[_-]?expired|expired[_-]?claim/iu)) return "claim_expired"
+  if (refIncludes(refs, /merge[_-]?(conflict|wave)|merge-wave/iu)) return "merge_conflict_wave"
+  if (refIncludes(refs, /claim[_-]?expired|expired[_-]?claim|lease[_-]?expired|claim_not_live/iu)) return "claim_expired"
   if (blocked) return "run_blocked"
   return null
 }
+
+export const khalaCodeInboxAssignmentNeedsHuman = (
+  refs: readonly string[],
+  approvalRequired: boolean,
+  blocked: boolean,
+): boolean => khalaCodeInboxFlagKindForAssignment(refs, approvalRequired, blocked) !== null
 
 const flagActions = (
   kind: UnifiedInboxItemKind,
   canResumeRun: boolean,
   canReconnect = false,
 ): readonly UnifiedInboxItemAction[] => {
-  if (kind === "approval_required") return ["approve", "reject", "open_fleet", "refresh"]
+  if (kind === "approval_required") return ["open_fleet", "refresh"]
   if (kind === "credentials_missing") return canReconnect ? ["reconnect", "open_fleet"] : ["open_fleet", "refresh"]
-  if (kind === "claim_expired") return canResumeRun ? ["rerun", "resume", "open_fleet", "refresh"] : ["rerun", "open_fleet", "refresh"]
+  if (kind === "claim_expired") return canResumeRun ? ["resume", "open_fleet", "refresh"] : ["open_fleet", "refresh"]
   if (kind === "run_blocked" || kind === "cooldown_all_accounts" || kind === "merge_conflict_wave") {
     return canResumeRun ? ["resume", "open_fleet", "refresh"] : ["open_fleet", "refresh"]
   }
@@ -167,10 +169,13 @@ const flagActions = (
 const allReadyAccountsCoolingDown = (
   fleet: KhalaCodeDesktopFleetStatus,
 ): boolean => {
-  const readyAccounts = fleet.accounts.filter(account => account.readiness.toLowerCase() === "ready")
-  return readyAccounts.length > 0 &&
+  const cooldownAccounts = fleet.accounts.filter(account =>
+    account.queuePolicy?.cooldown === "cooling_down" ||
+    account.quotaState?.toLowerCase() === "cooling_down"
+  )
+  return cooldownAccounts.length > 0 &&
     fleet.availableCodexAssignments === 0 &&
-    readyAccounts.every(account => account.queuePolicy?.cooldown === "cooling_down")
+    cooldownAccounts.length === fleet.accounts.length
 }
 
 const inboxSeverity = (
@@ -213,7 +218,7 @@ export const projectUnifiedInbox = (
   }
 
   for (const account of source.fleet.accounts) {
-    if (!readinessNeedsHuman(account.readiness)) continue
+    if (!khalaCodeInboxReadinessNeedsHuman(account.readiness)) continue
     items.push({
       ref: `inbox.credential.${account.accountRef}`,
       kind: "credentials_missing",
@@ -249,7 +254,7 @@ export const projectUnifiedInbox = (
     const blocked = blockerRefs.length > 0 ||
       worker?.approvalState === "blocked"
     const approvalRequired = worker?.approvalState === "approval_required"
-    const flagKind = flagKindForAssignment(blockerRefs, approvalRequired, blocked)
+    const flagKind = khalaCodeInboxFlagKindForAssignment(blockerRefs, approvalRequired, blocked)
     const kind: UnifiedInboxItemKind = flagKind ?? "ready_for_review"
     const runRef = assignment.runRef ?? undefined
     const canResumeRun = runRef !== undefined
@@ -405,6 +410,7 @@ const renderAction = (
   item: UnifiedInboxItem,
   action: UnifiedInboxItemAction,
   handlers: Handlers,
+  resetTimers: Set<number>,
 ): HTMLButtonElement => {
   const button = el("button", "khala-inbox-action", readable(action))
   button.type = "button"
@@ -419,15 +425,19 @@ const renderAction = (
     if (action === "resume" && item.resumeRunRef !== undefined) {
       void Promise.resolve(handlers.onResumeRun(item.resumeRunRef))
       button.textContent = "Resuming"
-      window.setTimeout(() => {
+      const timer = window.setTimeout(() => {
+        resetTimers.delete(timer)
         button.textContent = readable(action)
       }, 1400)
+      resetTimers.add(timer)
     } else if (action === "resume" && item.resumeCommand !== undefined) {
       void navigator.clipboard?.writeText(item.resumeCommand)
       button.textContent = "Copied"
-      window.setTimeout(() => {
+      const timer = window.setTimeout(() => {
+        resetTimers.delete(timer)
         button.textContent = readable(action)
       }, 1400)
+      resetTimers.add(timer)
     }
   })
   if (
@@ -439,7 +449,7 @@ const renderAction = (
   return button
 }
 
-const renderItem = (item: UnifiedInboxItem, handlers: Handlers): HTMLElement => {
+const renderItem = (item: UnifiedInboxItem, handlers: Handlers, resetTimers: Set<number>): HTMLElement => {
   const row = el("article", "khala-inbox-item")
   row.dataset.kind = item.kind
   row.dataset.severity = item.severity
@@ -462,7 +472,7 @@ const renderItem = (item: UnifiedInboxItem, handlers: Handlers): HTMLElement => 
 
   const actions = el("div", "khala-inbox-actions")
   for (const action of item.actions) {
-    actions.append(renderAction(item, action, handlers))
+    actions.append(renderAction(item, action, handlers, resetTimers))
   }
 
   row.append(marker, body, actions)
@@ -473,6 +483,7 @@ const renderReady = (
   container: HTMLElement,
   data: UnifiedInboxProjection,
   handlers: Handlers,
+  resetTimers: Set<number>,
 ): void => {
   const summary = el("section", "khala-inbox-summary")
   summary.append(
@@ -501,7 +512,7 @@ const renderReady = (
     )
   } else {
     const list = el("div", "khala-inbox-list")
-    for (const item of data.items) list.append(renderItem(item, handlers))
+    for (const item of data.items) list.append(renderItem(item, handlers, resetTimers))
     container.append(list)
   }
 
@@ -523,6 +534,7 @@ const render = (
   container: HTMLElement,
   view: InboxView,
   handlers: Handlers,
+  resetTimers: Set<number>,
 ): void => {
   container.replaceChildren()
 
@@ -546,7 +558,7 @@ const render = (
   } else if (view.phase === "error") {
     body.append(el("p", "khala-inbox-error", `Could not load Inbox: ${view.message}`))
   } else {
-    renderReady(body, view.data, handlers)
+    renderReady(body, view.data, handlers, resetTimers)
   }
   container.append(body)
 }
@@ -559,6 +571,7 @@ export const mountUnifiedInboxPanel = (
   let visible = false
   let pollTimer = 0
   let lastData: UnifiedInboxProjection | null = null
+  const resetTimers = new Set<number>()
 
   const currentView = (): InboxView =>
     lastData === null ? { phase: "loading" } : { phase: "ready", data: lastData }
@@ -571,7 +584,12 @@ export const mountUnifiedInboxPanel = (
     onResumeRun: options.onResumeRun,
   }
 
-  const paint = (): void => render(container, currentView(), handlers)
+  const clearResetTimers = (): void => {
+    for (const timer of resetTimers) window.clearTimeout(timer)
+    resetTimers.clear()
+  }
+
+  const paint = (): void => render(container, currentView(), handlers, resetTimers)
 
   const refresh = async (): Promise<void> => {
     if (inFlight) return
@@ -582,7 +600,7 @@ export const mountUnifiedInboxPanel = (
       paint()
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
-      render(container, { phase: "error", message }, handlers)
+      render(container, { phase: "error", message }, handlers, resetTimers)
     } finally {
       inFlight = false
     }
@@ -591,6 +609,7 @@ export const mountUnifiedInboxPanel = (
   const setVisible = (next: boolean): void => {
     visible = next
     window.clearInterval(pollTimer)
+    pollTimer = 0
     if (!next) return
     void refresh()
     pollTimer = window.setInterval(() => {
@@ -599,5 +618,15 @@ export const mountUnifiedInboxPanel = (
   }
 
   paint()
-  return { refresh, setVisible }
+  return {
+    destroy(): void {
+      visible = false
+      window.clearInterval(pollTimer)
+      pollTimer = 0
+      clearResetTimers()
+      container.replaceChildren()
+    },
+    refresh,
+    setVisible,
+  }
 }

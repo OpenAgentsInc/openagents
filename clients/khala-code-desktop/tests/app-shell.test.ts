@@ -114,9 +114,9 @@ describe("khala code desktop app shell", () => {
     expect(html).toContain("autofocus")
     expect(html).toContain('id="send-button"')
     expect(html).toContain('id="fleet-panel"')
+    expect(html).toContain('id="inbox-panel"')
     expect(html).toContain('id="gym-panel"')
     expect(html).toContain('id="settings-panel"')
-    expect(html).not.toContain('id="inbox-panel"')
     expect(html).not.toContain("Pylons")
   })
 
@@ -176,20 +176,20 @@ describe("khala code desktop app shell", () => {
     expect(main).toContain('event.type === "thread_ready"')
   })
 
-  test("hides the Unified Inbox shell and keeps local-safe projection logic", async () => {
+  test("mounts the Unified Inbox shell and keeps local-safe projection logic", async () => {
     const html = await Bun.file(new URL("../src/ui/index.html", import.meta.url)).text()
     const sidebar = await Bun.file(new URL("../src/ui/sidebar.ts", import.meta.url)).text()
     const main = await Bun.file(new URL("../src/ui/main.ts", import.meta.url)).text()
     const css = await Bun.file(new URL("../src/ui/styles.css", import.meta.url)).text()
 
-    expect(sidebar).not.toContain('value: "inbox"')
-    expect(sidebar).not.toContain('icon: "NotificationBell"')
-    expect(html).not.toContain('aria-label="Unified Inbox"')
-    expect(main).not.toContain("mountUnifiedInboxPanel")
-    expect(main).not.toContain('const showInbox = value === "inbox"')
-    expect(main).not.toContain("inboxPanel?.setVisible(showInbox)")
-    expect(main).not.toContain("ecosystem: await controls.codexEcosystemRead")
-    expect(main).not.toContain("fetchEcosystem: () => controls.codexEcosystemRead")
+    expect(sidebar).toContain('value: "inbox"')
+    expect(sidebar).toContain('icon: "NotificationBell"')
+    expect(html).toContain('aria-label="Unified Inbox"')
+    expect(main).toContain("mountUnifiedInboxPanel")
+    expect(main).toContain('const showInbox = activeValue === "inbox"')
+    expect(main).toContain("inboxPanel?.setVisible(showInbox)")
+    expect(main).toContain("ecosystem: await controls.codexEcosystemRead")
+    expect(main).toContain("await controls.fleetRunControl({ runRef, verb: \"resume\" })")
     expect(main).toContain("codexAppServerStatus")
     expect(main).toContain("codexAppServerStart")
     expect(main).toContain("codexMcpToolCall")
@@ -463,7 +463,7 @@ describe("khala code desktop app shell", () => {
 
     expect(projection.items).toHaveLength(1)
     expect(projection.items[0]).toMatchObject({
-      actions: ["approve", "reject", "open_fleet", "refresh"],
+      actions: ["open_fleet", "refresh"],
       assignmentRef: "assignment.public.approval",
       kind: "approval_required",
       severity: "critical",
@@ -822,10 +822,14 @@ describe("khala code desktop app shell", () => {
     expect(sidebar).toContain('actionId: "action_bar.slot_2"')
     expect(sidebar).toContain('hotkey: "2"')
     expect(sidebar).toContain('label: "Settings"')
+    expect(sidebar).toContain('label: "Inbox"')
     expect(sidebar).toContain('actionId: "action_bar.slot_3"')
     expect(sidebar).toContain('hotkey: "3"')
+    expect(sidebar).toContain('actionId: "action_bar.slot_4"')
+    expect(sidebar).toContain('hotkey: "4"')
     expect(sidebar).toContain("options.onActivate?.(slot.value)")
-    expect(main).toContain("mountKhalaCodeSidebar(sidebarNavRoot, {\n    selectedValue: initialView")
+    expect(main).toContain("mountKhalaCodeSidebar(sidebarNavRoot, {")
+    expect(main).toContain("sidebar.setFleetCounts(projectKhalaCodeSidebarFleetCounts(await controls.codexFleetStatus()))")
     expect(sidebar).toContain("projectKhalaCodeSidebarFleetCounts")
     expect(sidebar).toContain("data-khala-code-fleet-counts")
     expect(sidebar).not.toContain("window.setInterval(() => void refreshFleetSummary(), 7000)")
@@ -1332,7 +1336,7 @@ describe("khala code desktop app shell", () => {
     expect(sidebar).toContain("export const KHALA_CODE_HOTBAR_SLOTS")
     expect(sidebar).toContain('actionId: "action_bar.slot_1"')
     expect(sidebar).toContain('actionId: "action_bar.slot_3"')
-    expect(sidebar).not.toContain('actionId: "action_bar.slot_4"')
+    expect(sidebar).toContain('actionId: "action_bar.slot_4"')
     expect(sidebar).not.toContain('actionId: "action_bar.slot_5"')
     expect(sidebar).toContain('button.dataset.hotbarAction = slot.actionId')
     expect(sidebar).toContain('button.dataset.hotkey = slot.hotkey')

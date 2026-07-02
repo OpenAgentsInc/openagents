@@ -159,7 +159,7 @@ describe("Khala Code Gym proof loader", () => {
     expect(fixtureView).toBe("chat")
     expect(chatView).toBe("chat")
     expect(legacyGymView).toBe("chat")
-    expect(legacyInboxView).toBe("chat")
+    expect(legacyInboxView).toBe("inbox")
   })
 
   test("Worker optimization projection maps into the same Gym pane state", () => {

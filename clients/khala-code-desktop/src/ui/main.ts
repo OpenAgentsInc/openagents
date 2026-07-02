@@ -74,7 +74,11 @@ import {
 } from "./gym-proof-loader"
 import type { KhalaGymBridgeProofLike } from "./gym-graph-projection"
 import { mountGymPane, type GymPaneState } from "./gym-pane"
-import { mountKhalaCodeSidebar } from "./sidebar"
+import {
+  mountKhalaCodeSidebar,
+  projectKhalaCodeSidebarFleetCounts,
+} from "./sidebar"
+import { mountUnifiedInboxPanel } from "./inbox"
 import type { KhalaCodeDesktopCodexThreadSummary } from "../shared/codex-threads"
 import {
   type RecentThreadCycleDirection,
@@ -2585,6 +2589,7 @@ mountComposerHud()
 const sidebarNavRoot = document.getElementById("sidebar-nav-root")
 const threadSidebarEl = document.getElementById("thread-sidebar")
 const fleetPanelEl = document.getElementById("fleet-panel")
+const inboxPanelEl = document.getElementById("inbox-panel")
 const gymPanelEl = document.getElementById("gym-panel")
 const settingsPanelEl = document.getElementById("settings-panel")
 const threadShell = document.querySelector<HTMLElement>(".khala-code-thread-shell")
@@ -2693,7 +2698,11 @@ const fleetPanel =
         lifecycleNdjson: fleetLifecycleLines.iterable,
         loadGymDemoProof: () => loadGymDemoOptimization(),
         startDelegationOptimization: async () => loadGymDemoOptimization(),
-        fetch: () => controls.codexFleetStatus(),
+        fetch: async () => {
+          const status = await controls.codexFleetStatus()
+          sidebar?.setFleetCounts(projectKhalaCodeSidebarFleetCounts(status))
+          return status
+        },
         removeAccount: async accountRef => {
           const result = await controls.removeCodexAccount(accountRef)
           return {
@@ -2717,6 +2726,33 @@ const fleetPanel =
         },
         connectAccount: accountRef => controls.connectCodexAccount(accountRef),
         openExternal: url => controls.openExternalUrl(url),
+      })
+
+const inboxPanel =
+  inboxPanelEl === null
+    ? null
+    : mountUnifiedInboxPanel(inboxPanelEl, {
+        fetch: async () => ({
+          codexHarness: await controls.codexHarnessStatus(),
+          ecosystem: await controls.codexEcosystemRead({ includeFilesystemScan: false }),
+          fleet: await controls.codexFleetStatus(),
+          pylon: await controls.pylonStatus(),
+          coding: await controls.codingStatus(),
+          tokenAccounting: await controls.tokenAccountingStatus(),
+        }),
+        onOpenFleet: () => setActiveView("fleet"),
+        onOpenSettings: () => setActiveView("settings"),
+        onReconnectAccount: accountRef => {
+          void controls.connectCodexAccount(accountRef).then(() => {
+            void refreshFleetSidebarCounts()
+            void inboxPanel?.refresh()
+          })
+        },
+        onResumeRun: async runRef => {
+          await controls.fleetRunControl({ runRef, verb: "resume" })
+          await refreshFleetSidebarCounts()
+          await inboxPanel?.refresh()
+        },
       })
 
 const gymPanel =
@@ -2801,17 +2837,20 @@ window.addEventListener("keydown", event => {
 })
 
 const setActiveView = (value: string): void => {
-  const activeValue = value === "fleet" || value === "settings" ? value : "chat"
+  const activeValue = value === "fleet" || value === "inbox" || value === "settings" ? value : "chat"
   const showChat = activeValue === "chat"
   const showFleet = activeValue === "fleet"
+  const showInbox = activeValue === "inbox"
   const showSettings = activeValue === "settings"
   if (threadSidebarEl !== null) threadSidebarEl.hidden = !showChat
   if (fleetPanelEl !== null) fleetPanelEl.hidden = !showFleet
+  if (inboxPanelEl !== null) inboxPanelEl.hidden = !showInbox
   if (settingsPanelEl !== null) settingsPanelEl.hidden = !showSettings
   gymPanel?.setVisible(false)
-  if (threadShell !== null) threadShell.hidden = showFleet || showSettings
-  if (composerDock !== null) composerDock.hidden = showFleet || showSettings
+  if (threadShell !== null) threadShell.hidden = showFleet || showInbox || showSettings
+  if (composerDock !== null) composerDock.hidden = showFleet || showInbox || showSettings
   fleetPanel?.setVisible(showFleet)
+  inboxPanel?.setVisible(showInbox)
   settingsPanel?.setVisible(showSettings)
   threadSidebar?.setVisible(showChat)
   if (showChat) {
@@ -2822,20 +2861,36 @@ const setActiveView = (value: string): void => {
 function showGymProofPane(): void {
   if (threadSidebarEl !== null) threadSidebarEl.hidden = true
   if (fleetPanelEl !== null) fleetPanelEl.hidden = true
+  if (inboxPanelEl !== null) inboxPanelEl.hidden = true
   if (settingsPanelEl !== null) settingsPanelEl.hidden = true
   if (threadShell !== null) threadShell.hidden = true
   if (composerDock !== null) composerDock.hidden = true
   gymPanel?.setVisible(true)
   fleetPanel?.setVisible(false)
+  inboxPanel?.setVisible(false)
   settingsPanel?.setVisible(false)
   threadSidebar?.setVisible(false)
 }
 
+const sidebar =
+  sidebarNavRoot === null
+    ? null
+    : mountKhalaCodeSidebar(sidebarNavRoot, {
+        selectedValue: initialView,
+        onActivate: value => setActiveView(value),
+      })
+
+const refreshFleetSidebarCounts = async (): Promise<void> => {
+  if (sidebar === null) return
+  try {
+    sidebar.setFleetCounts(projectKhalaCodeSidebarFleetCounts(await controls.codexFleetStatus()))
+  } catch {
+    sidebar.setFleetCounts(null)
+  }
+}
+
 if (sidebarNavRoot !== null) {
-  mountKhalaCodeSidebar(sidebarNavRoot, {
-    selectedValue: initialView,
-    onActivate: value => setActiveView(value),
-  })
+  void refreshFleetSidebarCounts()
 }
 setActiveView(initialView)
 renderThreadTokenCounter()
