@@ -846,7 +846,6 @@ function localLeaseRecordIsInterrupted(
   options: Pick<AssignmentClientOptions, "localAssignmentHeartbeatStaleAfterMs" | "localProcessIsAlive"> = {},
 ): boolean {
   if (locallyTerminalAssignmentStatuses.has(record.status)) return false
-  if (localLeaseRecordIsExpired(record, now)) return true
   const localProcessIsAlive = options.localProcessIsAlive ?? defaultLocalProcessIsAlive
   const heartbeatStaleAfterMs =
     typeof options.localAssignmentHeartbeatStaleAfterMs === "number" &&
@@ -856,12 +855,18 @@ function localLeaseRecordIsInterrupted(
       : DEFAULT_LOCAL_ASSIGNMENT_HEARTBEAT_STALE_AFTER_MS
   if (record.ownerProcessId !== undefined) {
     if (!localProcessIsAlive(record.ownerProcessId)) return true
+    if ((record.ownerHeartbeatSequence ?? 0) <= 0 && localLeaseRecordIsExpired(record, now)) {
+      return true
+    }
     const heartbeatAt = Date.parse(
       record.ownerHeartbeatAt ?? record.acceptedAt ?? record.ownerStartedAt ?? "",
     )
-    return Number.isFinite(heartbeatAt) &&
-      now.getTime() - heartbeatAt > heartbeatStaleAfterMs
+    if (!Number.isFinite(heartbeatAt)) {
+      return localLeaseRecordIsExpired(record, now)
+    }
+    return now.getTime() - heartbeatAt > heartbeatStaleAfterMs
   }
+  if (localLeaseRecordIsExpired(record, now)) return true
   if (record.acceptedAt !== undefined) {
     const acceptedAt = Date.parse(record.acceptedAt)
     return Number.isFinite(acceptedAt) &&

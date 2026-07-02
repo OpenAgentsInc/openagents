@@ -83,7 +83,7 @@ function fakeAssignmentServer(input: {
       requests.push({ path: url.pathname, body, headers: request.headers })
 
       if (request.headers.get("authorization")?.startsWith("Bearer ")) {
-        if (request.method === "POST") {
+        if (request.method === "POST" && url.pathname !== "/api/operator/pro/status") {
           expect(request.headers.get("Idempotency-Key")).toContain(
             url.pathname.includes("/heartbeat")
               ? "pylon-presence:"
@@ -1283,6 +1283,70 @@ describe("Pylon assignment lease flow", () => {
         assignmentRef: expiredLease.assignmentRef,
         status: "stale",
         leaseExpiresAt: expiredLease.expiresAt,
+      })
+      expect(assignmentState.leases[freshLease.leaseRef]).toMatchObject({
+        assignmentRef: freshLease.assignmentRef,
+        status: "closed",
+        leaseExpiresAt: freshLease.expiresAt,
+      })
+    })
+  })
+
+  test("keeps an expired local lease active when its owner heartbeat is fresh", async () => {
+    await withTempHome(async (home) => {
+      const renewedLease = lease({
+        assignmentRef: "assignment.public.local_server_renewed",
+        leaseRef: "lease.public.local_server_renewed",
+        expiresAt: "2026-06-09T00:01:00.000Z",
+      })
+      const freshLease = lease({
+        assignmentRef: "assignment.public.local_after_server_renewed",
+        leaseRef: "lease.public.local_after_server_renewed",
+        expiresAt: "2026-06-09T01:00:00.000Z",
+      })
+      const fake = fakeAssignmentServer({ leases: [renewedLease, freshLease] })
+      const summary = await readySummary(home)
+      const state = await ensurePylonLocalState(summary)
+      await sendHeartbeat(summary, { baseUrl: fake.baseUrl, now: () => new Date("2026-06-09T00:00:00.000Z") })
+      await writeFile(
+        state.paths.assignmentState,
+        `${JSON.stringify({
+          schema: "openagents.pylon.assignment_state.v0.3",
+          leases: {
+            [renewedLease.leaseRef]: {
+              assignmentRef: renewedLease.assignmentRef,
+              status: "running",
+              acceptedAt: "2026-06-09T00:00:00.000Z",
+              leaseExpiresAt: renewedLease.expiresAt,
+              ownerHeartbeatAt: "2026-06-09T00:02:00.000Z",
+              ownerHeartbeatSequence: 24,
+              ownerProcessId: 424242,
+              ownerStartedAt: "2026-06-09T00:00:00.000Z",
+              paymentMode: "no-spend",
+            },
+          },
+        }, null, 2)}\n`,
+      )
+
+      const result = await runNoSpendAssignment(summary, {
+        baseUrl: fake.baseUrl,
+        localProcessIsAlive: () => true,
+        now: () => new Date("2026-06-09T00:02:30.000Z"),
+      })
+      const closeouts = fake.requests.filter((request) => request.path.endsWith("/closeout"))
+      const assignmentState = JSON.parse(await readFile(state.paths.assignmentState, "utf8"))
+
+      expect(result.ok).toBe(true)
+      if (!result.ok) throw new Error("expected fresh assignment to run")
+      expect(result.lease.leaseRef).toBe(freshLease.leaseRef)
+      expect(closeouts.map((request) => request.body.leaseRef)).toEqual([
+        freshLease.leaseRef,
+      ])
+      expect(assignmentState.leases[renewedLease.leaseRef]).toMatchObject({
+        assignmentRef: renewedLease.assignmentRef,
+        status: "running",
+        leaseExpiresAt: renewedLease.expiresAt,
+        ownerHeartbeatAt: "2026-06-09T00:02:00.000Z",
       })
       expect(assignmentState.leases[freshLease.leaseRef]).toMatchObject({
         assignmentRef: freshLease.assignmentRef,
