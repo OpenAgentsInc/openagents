@@ -446,6 +446,10 @@ const previewRpc = (): DesktopRpc => ({
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["pylonStatus"]>>
       >("pylonStatus"),
+    qaMetricSample: sample =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["qaMetricSample"]>>
+      >("qaMetricSample", sample),
     qaMetrics: () =>
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["qaMetrics"]>>
@@ -726,14 +730,16 @@ const pushQaMetricSample = (
   context?: KhalaCodeQaMetricSample["context"],
 ): void => {
   if (!Number.isFinite(value)) return
-  qaMetricSamples.push({
+  const sample: KhalaCodeQaMetricSample = {
     ...(context === undefined ? {} : { context }),
     metric,
     observedAt: new Date().toISOString(),
     unit: metric === "cache.hit" ? "count" : "ms",
     value,
-  })
+  }
+  qaMetricSamples.push(sample)
   while (qaMetricSamples.length > QA_METRIC_SAMPLE_LIMIT) qaMetricSamples.shift()
+  void rpc.request.qaMetricSample(sample).catch(() => undefined)
 }
 
 const markQaTimer = (

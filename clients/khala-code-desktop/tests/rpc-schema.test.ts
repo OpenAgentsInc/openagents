@@ -117,6 +117,22 @@ describe("Khala Code desktop schema-first RPC contract", () => {
     })
   })
 
+  test("decodes renderer QA metric sample bridge requests", () => {
+    const sample = {
+      context: { source: "thread_switch", threadId: "thread-qa-bridge" },
+      metric: "thread_switch.rpc_ms",
+      observedAt: "2026-07-02T12:00:00.000Z",
+      unit: "ms",
+      value: 33,
+    }
+
+    expect(decodeKhalaCodeDesktopRpcParameters("qaMetricSample", [sample])).toEqual([sample])
+    expect(decodeKhalaCodeDesktopRpcResult("qaMetricSample", {
+      ok: true,
+      observedAt: "2026-07-02T12:00:01.000Z",
+    })).toMatchObject({ ok: true })
+  })
+
   test("decodes the schema-first cross-harness session catalog RPC", () => {
     expect(decodeKhalaCodeDesktopRpcParameters("sessionCatalog", [{
       limit: 20,

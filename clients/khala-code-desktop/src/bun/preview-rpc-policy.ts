@@ -79,6 +79,7 @@ export const readOnlySafePreviewRpcMethods = new Set<KhalaCodeDesktopRpcMethodNa
   "khalaCodePlanStatus",
   "onDeviceDeciderStatus",
   "pylonStatus",
+  "qaMetricSample",
   "qaMetrics",
   "sessionCatalog",
   "slashCommandList",

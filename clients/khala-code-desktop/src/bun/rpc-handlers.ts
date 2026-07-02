@@ -85,6 +85,8 @@ import {
   KhalaCodeDesktopPlanCatalogSchema,
   KhalaCodeDesktopPlanPurchaseSuccessSchema,
   KhalaCodeDesktopPlanStatusPlanSchema,
+  type KhalaCodeDesktopQaMetricSample,
+  type KhalaCodeDesktopQaMetricSampleResult,
   type KhalaCodeDesktopQaMetricsSnapshot,
   type KhalaCodeDesktopRPCSchema,
   type KhalaCodeDesktopRuntimeStatus,
@@ -217,6 +219,7 @@ export type KhalaCodeDesktopRpcHandlersInput = {
   readonly emitChatTurnEvent?: (event: KhalaCodeDesktopChatTurnEvent) => void
   readonly legacyChatTurn?: typeof runKhalaCodeDesktopChatTurn
   readonly onDeviceDeciderStatus: () => MaybePromise<OnDeviceDeciderSelection>
+  readonly recordQaMetricSample?: (sample: KhalaCodeDesktopQaMetricSample) => MaybePromise<void>
   readonly qaMetrics?: () => MaybePromise<KhalaCodeDesktopQaMetricsSnapshot>
   readonly workingDirectory: string
 }
@@ -2480,6 +2483,13 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
           : `${status.message}${status.unavailableReason ? ` ${status.unavailableReason}` : ""}`,
         status: status.ok ? "ready" : "unavailable",
       })
+    },
+    async qaMetricSample(sample): Promise<KhalaCodeDesktopQaMetricSampleResult> {
+      await input.recordQaMetricSample?.(sample)
+      return {
+        ok: true,
+        observedAt: new Date().toISOString(),
+      }
     },
     async qaMetrics() {
       return input.qaMetrics?.() ?? emptyKhalaCodeQaMetricsSnapshot()

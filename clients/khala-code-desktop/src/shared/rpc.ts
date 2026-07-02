@@ -6,6 +6,7 @@ import type {
 } from "./codex-slash-commands.js"
 import type { OnDeviceDeciderSelection } from "./on-device-decider.js"
 import type {
+  KhalaCodeQaMetricSample,
   KhalaCodeQaMetricsSnapshot,
 } from "./qa-metrics.js"
 
@@ -103,7 +104,10 @@ export type KhalaCodeDesktopChatTurnResponse = typeof RpcChatTurnResponse.Type
 export type KhalaCodeDesktopToolCatalogResponse = typeof RpcToolCatalogResponse.Type
 export type KhalaCodeDesktopAppInfo = typeof RpcAppInfo.Type
 export type KhalaCodeDesktopRuntimeStatus = typeof RpcRuntimeStatus.Type
+export type KhalaCodeDesktopQaMetricSample = KhalaCodeQaMetricSample
 export type KhalaCodeDesktopQaMetricsSnapshot = KhalaCodeQaMetricsSnapshot
+export type KhalaCodeDesktopQaMetricSampleResult =
+  typeof RpcQaMetricSampleResult.Type
 export type KhalaCodeDesktopThreadTokenSummaryRequest = typeof RpcThreadTokenSummaryRequest.Type
 export type KhalaCodeDesktopThreadTokenSummary = typeof RpcThreadTokenSummary.Type
 export type KhalaCodeDesktopCodexHarnessStatus = typeof RpcCodexHarnessStatus.Type
@@ -454,6 +458,10 @@ const RpcQaMetricSample = S.Struct({
   observedAt: S.String,
   unit: RpcQaMetricUnit,
   value: S.Number,
+})
+const RpcQaMetricSampleResult = S.Struct({
+  ok: S.Literal(true),
+  observedAt: S.String,
 })
 const RpcQaMetricDefinition = S.Struct({
   description: S.String,
@@ -1842,6 +1850,7 @@ export const KhalaCodeDesktopRpcMethodSchemas = {
   consumeCodexRateLimitResetCredit: { parameters: [param(RpcRateLimitResetConsumeRequest)], result: RpcRateLimitResetResult },
   onDeviceDeciderStatus: { parameters: noParams(), result: RpcOnDeviceDeciderSelection },
   pylonStatus: { parameters: noParams(), result: RpcRuntimeStatus },
+  qaMetricSample: { parameters: [param(RpcQaMetricSample)], result: RpcQaMetricSampleResult },
   qaMetrics: { parameters: noParams(), result: RpcQaMetricsSnapshot },
   slashCommandDispatch: { parameters: [param(RpcSlashCommandDispatchRequest)], result: RpcSlashCommandDispatchResult },
   slashCommandList: { parameters: [optionalParam(RpcSlashCommandListRequest)], result: RpcSlashCommandListResponse },
@@ -1996,6 +2005,7 @@ export type KhalaCodeDesktopRPCSchema = {
     consumeCodexRateLimitResetCredit(request: { accountRef: string }): Promise<KhalaCodeDesktopCodexRateLimitResetResult>
     onDeviceDeciderStatus(): Promise<OnDeviceDeciderSelection>
     pylonStatus(): Promise<KhalaCodeDesktopRuntimeStatus>
+    qaMetricSample(sample: KhalaCodeDesktopQaMetricSample): Promise<KhalaCodeDesktopQaMetricSampleResult>
     qaMetrics(): Promise<KhalaCodeDesktopQaMetricsSnapshot>
     slashCommandDispatch(request: KhalaCodeDesktopSlashCommandDispatchRequest): Promise<KhalaCodeDesktopSlashCommandDispatchResult>
     slashCommandList(request?: KhalaCodeDesktopSlashCommandListRequest): Promise<KhalaCodeDesktopSlashCommandListResponse>

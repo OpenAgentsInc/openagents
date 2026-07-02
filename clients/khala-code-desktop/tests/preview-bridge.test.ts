@@ -88,6 +88,14 @@ const rpc = async (
     body: JSON.stringify({ args }),
   })
 
+const threadSwitchMetricSample = (threadId: string, value = 42): Record<string, unknown> => ({
+  context: { source: "preview_fixture", threadId },
+  metric: "thread_switch.rpc_ms",
+  observedAt: "2026-07-02T12:00:00.000Z",
+  unit: "ms",
+  value,
+})
+
 const readUntilSseEvent = async (
   reader: ReadableStreamDefaultReader<Uint8Array>,
   expectedEvent: string,
@@ -134,6 +142,12 @@ describe("Khala Code preview bridge auth and SSE", () => {
     const { baseUrl, token } = await startPreviewBridge({
       KHALA_CODE_DESKTOP_PREVIEW_READONLY: "1",
     })
+
+    const telemetry = await rpc(baseUrl, "qaMetricSample", token, [
+      threadSwitchMetricSample("thread-readonly-telemetry", 17),
+    ])
+    expect(telemetry.status).toBe(200)
+    await expect(telemetry.json()).resolves.toMatchObject({ ok: true })
 
     const response = await rpc(baseUrl, "submitChatMessage", token, [{
       messages: [{ body: "blocked", id: "user-1", role: "user" }],
@@ -188,6 +202,25 @@ describe("Khala Code preview bridge auth and SSE", () => {
       await reader.cancel().catch(() => undefined)
     }
   }, 15_000)
+
+  test("bridges preview webview QA samples into the qaMetrics RPC snapshot", async () => {
+    const { baseUrl, token } = await startPreviewBridge()
+    const sample = threadSwitchMetricSample("thread-preview-bridge", 38)
+
+    const recorded = await rpc(baseUrl, "qaMetricSample", token, [sample])
+    expect(recorded.status).toBe(200)
+    await expect(recorded.json()).resolves.toMatchObject({ ok: true })
+
+    const metrics = await rpc(baseUrl, "qaMetrics", token)
+    expect(metrics.status).toBe(200)
+    const snapshot = await metrics.json() as {
+      readonly definitions?: readonly Record<string, unknown>[]
+      readonly samples?: readonly Record<string, unknown>[]
+    }
+
+    expect(snapshot.samples).toContainEqual(sample)
+    expect(snapshot.definitions?.map(definition => definition.name)).toContain("thread_switch.rpc_ms")
+  })
 })
 
 describe("preview rpc read-only classification", () => {

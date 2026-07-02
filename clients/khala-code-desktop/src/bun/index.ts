@@ -12,9 +12,16 @@ import {
   khalaCodeDesktopRpcMethodSchema,
   type KhalaCodeDesktopChatTurnEvent,
   type KhalaCodeDesktopFleetLifecycleEvent,
+  type KhalaCodeDesktopQaMetricSample,
+  type KhalaCodeDesktopQaMetricsSnapshot,
   type KhalaCodeDesktopRpcMethodName,
   type KhalaCodeDesktopRPCSchema,
 } from "../shared/rpc.js"
+import {
+  evaluateKhalaCodeQaMetricBudgets,
+  khalaCodeQaMetricBudgets,
+  khalaCodeQaMetricDefinitions,
+} from "../shared/qa-metrics.js"
 import { buildKhalaAppleFmDisabledReadiness } from "../shared/apple-fm-readiness.js"
 import { khalaCodeDesktopApplicationMenu } from "./application-menu.js"
 import {
@@ -248,6 +255,37 @@ const previewEventsResponse = (request: Request): Response => {
 let emitChatTurnEvent = (_event: KhalaCodeDesktopChatTurnEvent): void => {}
 let emitFleetLifecycleEvent = (_event: KhalaCodeDesktopFleetLifecycleEvent): void => {}
 let rpcRequestHandlers: KhalaCodeDesktopRPCSchema["requests"]
+const QA_METRIC_SAMPLE_LIMIT = 240
+const qaMetricSamples: KhalaCodeDesktopQaMetricSample[] = []
+
+const cloneQaMetricSample = (
+  sample: KhalaCodeDesktopQaMetricSample,
+): KhalaCodeDesktopQaMetricSample => ({
+  ...(sample.context === undefined ? {} : { context: { ...sample.context } }),
+  metric: sample.metric,
+  observedAt: sample.observedAt,
+  unit: sample.unit,
+  value: sample.value,
+})
+
+const recordQaMetricSample = (sample: KhalaCodeDesktopQaMetricSample): void => {
+  if (!Number.isFinite(sample.value)) return
+  qaMetricSamples.push(cloneQaMetricSample(sample))
+  while (qaMetricSamples.length > QA_METRIC_SAMPLE_LIMIT) qaMetricSamples.shift()
+}
+
+const qaMetricsSnapshot = (): KhalaCodeDesktopQaMetricsSnapshot => {
+  const samples = qaMetricSamples.map(cloneQaMetricSample)
+  return {
+    budgets: khalaCodeQaMetricBudgets,
+    definitions: khalaCodeQaMetricDefinitions,
+    evaluations: evaluateKhalaCodeQaMetricBudgets(samples),
+    ok: true,
+    observedAt: new Date().toISOString(),
+    samples,
+    schema: "openagents.khala_code.qa_metrics.v1",
+  }
+}
 
 const previewRpcResponse = async (
   request: Request,
@@ -531,6 +569,8 @@ rpcRequestHandlers = createKhalaCodeDesktopRpcRequestHandlers({
   }),
   fleetMcpBridgeRepoRoot: resolveSourceRepositoryRoot(),
   onDeviceDeciderStatus: () => onDeviceDecider.select(),
+  qaMetrics: qaMetricsSnapshot,
+  recordQaMetricSample,
   workingDirectory: resolveToolWorkingDirectory(khalaCodeEnv),
 })
 
