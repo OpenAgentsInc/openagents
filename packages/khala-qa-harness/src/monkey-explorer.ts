@@ -1,8 +1,18 @@
 import { Effect } from "effect"
 
 import { KHALA_CODE_QA_SEED_CORPUS_MANIFEST } from "./seed-corpus.js"
-import { mergeKhalaCodeQaCoverageLedgers, type KhalaCodeQaCoverageLedger } from "./coverage-ledger.js"
+import {
+  collectKhalaCodeQaCoverageLedger,
+  createEmptyKhalaCodeQaCoverageLedger,
+  mergeKhalaCodeQaCoverageLedgers,
+  type KhalaCodeQaCoverageLedger,
+} from "./coverage-ledger.js"
 import type { KhalaCodeQaDriver } from "./driver.js"
+import {
+  chooseKhalaCodeQaFrontierAction,
+  khalaCodeQaFrontierFromLedger,
+  type KhalaCodeQaExplorerTrace,
+} from "./explorer-brain.js"
 import {
   KhalaCodeRpcMethodNames,
   type KhalaCodeRpcMethodName,
@@ -23,12 +33,15 @@ export type KhalaCodeQaMonkeyActionLogEntry = {
   readonly index: number
   readonly prngState: number
   readonly action: KhalaCodeQaAction
+  readonly frontierRef?: string
+  readonly rationale?: string
 }
 
 export type KhalaCodeQaMonkeyRunPlan = {
   readonly schema: "khala_code_qa_seeded_monkey_plan.v1"
   readonly actionLog: readonly KhalaCodeQaMonkeyActionLogEntry[]
   readonly actionSpaceSize: number
+  readonly explorerTrace: KhalaCodeQaExplorerTrace
   readonly mode: KhalaCodeQaMonkeyMode
   readonly scenario: KhalaCodeQaScenario
   readonly seed: string
@@ -45,6 +58,7 @@ export type KhalaCodeQaMonkeyRunReport = {
 }
 
 export type KhalaCodeQaMonkeyOptions = {
+  readonly coverageLedger?: KhalaCodeQaCoverageLedger
   readonly mode?: KhalaCodeQaMonkeyMode
   readonly seed: string
   readonly steps: number
@@ -66,9 +80,6 @@ const fnv1a32 = (value: string): number => {
 
 const nextPrngState = (state: number): number =>
   (Math.imul(state, 1664525) + 1013904223) >>> 0
-
-const pick = <A>(values: readonly A[], state: number): A =>
-  values[state % values.length] as A
 
 const composerFuzzCorpus = [
   "fixture hello",
@@ -147,6 +158,22 @@ const rpcAction = (method: KhalaCodeRpcMethodName): KhalaCodeQaAction => {
     ? { kind: "rpc_call", method }
     : { args, kind: "rpc_call", method }
 }
+
+const ledgerForActionLog = (
+  actionLog: readonly KhalaCodeQaMonkeyActionLogEntry[],
+  fallback: KhalaCodeQaCoverageLedger | undefined,
+): KhalaCodeQaCoverageLedger =>
+  mergeKhalaCodeQaCoverageLedgers([
+    fallback ?? createEmptyKhalaCodeQaCoverageLedger(),
+    collectKhalaCodeQaCoverageLedger({
+      observations: actionLog.map((entry) => ({
+        action: entry.action,
+        label: `explore:${entry.index}`,
+        ok: true,
+      })),
+      runId: "khala-code-qa-explorer-in-progress",
+    }),
+  ])
 
 export const khalaCodeQaMonkeyEnabledActionSpace = (
   mode: KhalaCodeQaMonkeyMode = "fixture_smoke",
@@ -233,10 +260,17 @@ export const buildKhalaCodeQaSeededMonkeyPlan = (
   }))
   for (let index = actionLog.length; index < steps; index += 1) {
     state = nextPrngState(state)
+    const frontierDecision = chooseKhalaCodeQaFrontierAction({
+      actionSpace,
+      fallbackIndex: state,
+      frontier: khalaCodeQaFrontierFromLedger(ledgerForActionLog(actionLog, options.coverageLedger)),
+    })
     actionLog.push({
-      action: pick(actionSpace, state),
+      action: frontierDecision.action,
+      ...(frontierDecision.frontierRef === undefined ? {} : { frontierRef: frontierDecision.frontierRef }),
       index,
       prngState: state,
+      rationale: frontierDecision.rationale,
     })
   }
   const actions = actionLog.map((entry) => entry.action)
@@ -268,6 +302,18 @@ export const buildKhalaCodeQaSeededMonkeyPlan = (
   return {
     actionLog,
     actionSpaceSize: actionSpace.length,
+    explorerTrace: {
+      actionLog: actionLog.map((entry) => ({
+        action: entry.action,
+        ...(entry.frontierRef === undefined ? {} : { frontierRef: entry.frontierRef }),
+        index: entry.index,
+        rationale: entry.rationale ?? "mandatory seeded action",
+      })),
+      explorer: "seeded_monkey",
+      runId: `khala_code.monkey.${mode}.${options.seed}`,
+      schema: "khala_code_qa_explorer_trace.v1",
+      status: "interesting",
+    },
     mode,
     scenario,
     schema: "khala_code_qa_seeded_monkey_plan.v1",
