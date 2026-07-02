@@ -1,14 +1,15 @@
 import { describe, expect, test } from "bun:test"
-import { Effect } from "effect"
+import { Effect, Layer } from "effect"
+import { TestClock } from "effect/testing"
 
 import { applyWorldCommand, makeEmptyHotState } from "./commands"
 import {
   encodeAlarmTimestamp,
   expireWorldHotState,
   expireWorldHotStateAt,
-  makeStaticWorldClockLayer,
   nextExpiryAlarmAt,
   pruneExpiredStorageCheckpoints,
+  WorldClock,
 } from "./expiry"
 
 const regionRef = "region.run.1"
@@ -29,19 +30,38 @@ const command = (name: string, payload: unknown, seq: number, issuedAt: string) 
 const apply = (state: ReturnType<typeof makeEmptyHotState>, name: string, payload: unknown, seq: number, observedAt: string) =>
   Effect.runPromise(applyWorldCommand(state, command(name, payload, seq, observedAt), observedAt))
 
+const TestWorldClockLayer = Layer.effect(
+  WorldClock,
+  Effect.succeed({
+    now: Effect.clockWith(clock =>
+      Effect.map(clock.currentTimeMillis, millis => new Date(millis).toISOString()),
+    ),
+  }),
+)
+
+const runWithTestWorldClock = <A, E, R>(
+  effect: Effect.Effect<A, E, R>,
+) =>
+  Effect.provide(effect, Layer.mergeAll(TestClock.layer(), TestWorldClockLayer))
+
 describe("world hot-state expiry", () => {
   test("fake clock advances TTLs and emits exactly one delete delta per cursor window", async () => {
     const joined = await apply(makeEmptyHotState(regionRef), "join_region", { characterId: "pilot" }, 1, "2026-06-22T00:00:00.000Z")
     const before = await Effect.runPromise(
-      Effect.provide(
-        expireWorldHotState(joined.state),
-        makeStaticWorldClockLayer("2026-06-22T00:00:29.999Z"),
+      runWithTestWorldClock(
+        Effect.gen(function* () {
+          yield* TestClock.setTime(Date.parse("2026-06-22T00:00:29.999Z"))
+          return yield* expireWorldHotState(joined.state)
+        }),
       ),
     )
     const expired = await Effect.runPromise(
-      Effect.provide(
-        expireWorldHotState(joined.state),
-        makeStaticWorldClockLayer("2026-06-22T00:00:30.000Z"),
+      runWithTestWorldClock(
+        Effect.gen(function* () {
+          yield* TestClock.setTime(Date.parse("2026-06-22T00:00:29.999Z"))
+          yield* TestClock.adjust("1 millis")
+          return yield* expireWorldHotState(joined.state)
+        }),
       ),
     )
     const again = expireWorldHotStateAt(expired.state, "2026-06-22T00:00:31.000Z")
@@ -59,15 +79,27 @@ describe("world hot-state expiry", () => {
     state = (await apply(state, "focus_pylon", { pylonRef: "pylon.station.alpha" }, 4, "2026-06-22T00:00:03.000Z")).state
     state = (await apply(state, "send_local_message", { text: "hello" }, 5, "2026-06-22T00:00:04.000Z")).state
 
-    const emoteExpired = expireWorldHotStateAt(state, "2026-06-22T00:00:11.000Z")
-    const intentExpired = expireWorldHotStateAt(emoteExpired.state, "2026-06-22T00:00:17.000Z")
-    const focusExpired = expireWorldHotStateAt(intentExpired.state, "2026-06-22T00:00:33.000Z")
-    const chatExpired = expireWorldHotStateAt(focusExpired.state, "2026-06-22T00:01:04.000Z")
+    const expired = await Effect.runPromise(
+      runWithTestWorldClock(
+        Effect.gen(function* () {
+          yield* TestClock.setTime(Date.parse("2026-06-22T00:00:04.000Z"))
+          yield* TestClock.adjust("7 seconds")
+          const emoteExpired = yield* expireWorldHotState(state)
+          yield* TestClock.adjust("6 seconds")
+          const intentExpired = yield* expireWorldHotState(emoteExpired.state)
+          yield* TestClock.adjust("16 seconds")
+          const focusExpired = yield* expireWorldHotState(intentExpired.state)
+          yield* TestClock.adjust("31 seconds")
+          const chatExpired = yield* expireWorldHotState(focusExpired.state)
+          return { chatExpired, emoteExpired, focusExpired, intentExpired }
+        }),
+      ),
+    )
 
-    expect(emoteExpired.expiredRefs.some(ref => ref.startsWith("emote.world.local."))).toBe(true)
-    expect(intentExpired.expiredRefs.some(ref => ref.startsWith("intent.world.agent."))).toBe(true)
-    expect(focusExpired.expiredRefs.some(ref => ref.startsWith("intent.world.focus."))).toBe(true)
-    expect(chatExpired.expiredRefs.some(ref => ref.startsWith("message.world.local."))).toBe(true)
+    expect(expired.emoteExpired.expiredRefs.some(ref => ref.startsWith("emote.world.local."))).toBe(true)
+    expect(expired.intentExpired.expiredRefs.some(ref => ref.startsWith("intent.world.agent."))).toBe(true)
+    expect(expired.focusExpired.expiredRefs.some(ref => ref.startsWith("intent.world.focus."))).toBe(true)
+    expect(expired.chatExpired.expiredRefs.some(ref => ref.startsWith("message.world.local."))).toBe(true)
   })
 
   test("hibernation or restart can resume expiry from persisted metadata", async () => {

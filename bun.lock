@@ -555,9 +555,11 @@
         "effect": "catalog:",
       },
       "devDependencies": {
+        "@effect/vitest": "4.0.0-beta.70",
         "bun-types": "^1.0.0",
         "fast-check": "^4.8.0",
         "typescript": "catalog:",
+        "vitest": "^4.1.8",
       },
     },
     "packages/khala-tools": {
@@ -795,6 +797,8 @@
     "@effect/sql-d1": ["@effect/sql-d1@4.0.0-beta.70", "", { "dependencies": { "@cloudflare/workers-types": "^4.20260511.1" }, "peerDependencies": { "effect": "^4.0.0-beta.70" } }, "sha512-86zuNS+j9BCB6BnUDkqbzdS0iRhuGw7+bDw+HqV7PgwYAw53/UspyH0Z+v2dLUP9e9LcFat9KJLVbsCGqmdDZQ=="],
 
     "@effect/sql-sqlite-do": ["@effect/sql-sqlite-do@4.0.0-beta.70", "", { "peerDependencies": { "effect": "^4.0.0-beta.70" } }, "sha512-BM9EjDDbTPoJ+almrR8s8mIMq8ZSgn0VAXfkovHUZ0ti3/XJM/HRXE0vK3iZ5J9MLfGq26kd+9ooBkMcqWkkPw=="],
+
+    "@effect/vitest": ["@effect/vitest@4.0.0-beta.70", "", { "peerDependencies": { "effect": "^4.0.0-beta.70", "vitest": "^3.0.0 || ^4.0.0" } }, "sha512-XDteNN0xfOgoMauAVoN5iylxVgEjp7kFsGFq18tZ5XYjek0eOZa0nOoes5s7Bs71VvwjnCeCbFMD7IhxswEt8A=="],
 
     "@emnapi/core": ["@emnapi/core@1.10.0", "", { "dependencies": { "@emnapi/wasi-threads": "1.2.1", "tslib": "^2.4.0" } }, "sha512-yq6OkJ4p82CAfPl0u9mQebQHKPJkY7WrIuk205cTYnYe+k2Z8YBh11FrbRG/H6ihirqcacOgl2BIO8oyMQLeXw=="],
 
