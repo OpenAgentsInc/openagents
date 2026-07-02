@@ -95,9 +95,18 @@ describe("qa nightly matrix report", () => {
         sampleCount: 1,
         trend: "first_sample",
       })
+      expect(statusSurface.latencyBudgets).toMatchObject({
+        basis: "qaMetrics_budget_catalog",
+        budgetCount: 12,
+        status: "catalog_active_regression_trends_follow_q2_5",
+      })
+      expect(statusSurface.latencyBudgets.budgets.map((budget: { budgetId: string }) => budget.budgetId))
+        .toContain("budget.khala_code.composer.keystroke_echo.p95.v1")
       expect(statusMarkdown).toContain("Khala Code QA Status")
       expect(statusMarkdown).toContain("| rpcMethods |")
-      expect(statusMarkdown).toContain("trend_only_until_q2_budget_family_lands")
+      expect(statusMarkdown).toContain("Latency Budgets")
+      expect(statusMarkdown).toContain("budget.khala_code.transcript.scroll_dropped_frames.v1")
+      expect(statusMarkdown).toContain("step_duration_trends_budget_catalog_active")
     } finally {
       await rm(root, { force: true, recursive: true })
     }

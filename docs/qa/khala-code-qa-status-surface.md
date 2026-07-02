@@ -23,6 +23,9 @@ contains:
 - flake, nightly-failure, and zero-coverage issue filing status
 - step-duration trends computed from prior public `qa-nightly-report.json`
   artifacts under the owned-runner artifact root
+- the Q2 latency budget catalog from `qaMetrics`, including budget IDs,
+  metric names, units, thresholds, percentiles, sample counts, and current
+  evaluation status
 - live-tier status
 
 The live-tier field is intentionally honest. Q1 nightlies are fixture/no-spend
@@ -30,9 +33,10 @@ owned-runner jobs, so the status surface currently reports `not_in_matrix` with
 roadmap refs to the Q5 live-tier cadence. Q5.5 is the task that rolls armed
 live-tier evidence into this surface.
 
-Perf trends currently use `nightly_step_duration_ms`. The full real-app budget
-family remains pending Q2.1/Q2.2/Q2.5, so the surface marks those trends as
-`trend_only_until_q2_budget_family_lands` instead of fabricating budget samples.
+Perf trends currently use `nightly_step_duration_ms`. The full Q2.2 latency
+budget catalog is present under `latencyBudgets`; rows with no real-run samples
+remain `inconclusive` instead of fabricating measurements. Q2.5 owns per-budget
+trend reporting and regression auto-issues once Q2.3 produces real samples.
 
 ## Public-Safety Contract
 

@@ -60,6 +60,7 @@ import {
   evaluateKhalaCodeQaMetricBudgets,
   khalaCodeQaMetricBudgets,
   khalaCodeQaMetricDefinitions,
+  khalaCodeQaMetricUnitFor,
   type KhalaCodeQaMetricName,
   type KhalaCodeQaMetricSample,
   type KhalaCodeQaMetricsSnapshot,
@@ -734,7 +735,7 @@ const pushQaMetricSample = (
     ...(context === undefined ? {} : { context }),
     metric,
     observedAt: new Date().toISOString(),
-    unit: metric === "cache.hit" ? "count" : "ms",
+    unit: khalaCodeQaMetricUnitFor(metric),
     value,
   }
   qaMetricSamples.push(sample)

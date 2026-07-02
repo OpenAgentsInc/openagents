@@ -443,7 +443,7 @@ const evaluateOracle = (
       phaseName,
       summary: evaluation.actual === null
         ? `no samples for ${budget.metric}`
-        : `${budget.metric}=${evaluation.actual}ms budget=${evaluation.threshold}ms`,
+        : `${budget.metric}=${evaluation.actual}${evaluation.unit} budget=${evaluation.threshold}${evaluation.unit}`,
       verdict: evaluation.status === "pass"
         ? "CONFIRMED"
         : evaluation.status === "fail"

@@ -13,6 +13,11 @@ import {
   waitForKhalaQaHttp,
   type KhalaCodeRpcFetch,
 } from "./index.js"
+import {
+  khalaCodeQaMetricBudgets,
+  khalaCodeQaMetricDefinitions,
+  khalaCodeQaMetricUnitFor,
+} from "../../../clients/khala-code-desktop/src/shared/qa-metrics.js"
 
 const fixtureScenario = {
   backend: "fixture",
@@ -368,6 +373,68 @@ describe("Khala Code QA RPC driver and runner", () => {
       oracle: "perf",
       verdict: "REFUTED",
     })
+  })
+
+  test("consumes the full Q2 latency budget catalog through qaMetrics perf oracles", async () => {
+    const q2BudgetIds = [
+      "budget.khala_code.startup_interactive.v1",
+      "budget.khala_code.thread_switch.optimistic.v1",
+      "budget.khala_code.thread_switch.full.v1",
+      "budget.khala_code.turn_start.first_event.v1",
+      "budget.khala_code.composer.keystroke_echo.p95.v1",
+      "budget.khala_code.panel.open.v1",
+      "budget.khala_code.sse.event_to_ui.p95.v1",
+      "budget.khala_code.transcript.scroll_dropped_frames.v1",
+      "budget.khala_code.app_server.spawn_ready.v1",
+    ]
+    const scenario = loadKhalaCodeQaScenario({
+      ...fixtureScenario,
+      commitments: [
+        {
+          claim: "Q2 latency budgets evaluate from qaMetrics",
+          evidence: "phase-oracle",
+          id: "perf.q2_catalog",
+          match: "metrics:perf",
+        },
+      ],
+      phases: [
+        {
+          act: [],
+          expect: q2BudgetIds.map(budgetId => ({
+            match: budgetId,
+            oracle: "perf",
+          })),
+          name: "metrics",
+        },
+      ],
+    })
+    const samples = khalaCodeQaMetricBudgets.map(budget => ({
+      ...(budget.requiredContext === undefined ? {} : { context: budget.requiredContext }),
+      metric: budget.metric,
+      observedAt: "2026-07-02T12:00:00.000Z",
+      unit: khalaCodeQaMetricUnitFor(budget.metric),
+      value: budget.threshold,
+    }))
+    const driver = makeKhalaCodeRpcQaDriver({
+      fetch: (() =>
+        Promise.resolve(jsonResponse({
+          budgets: khalaCodeQaMetricBudgets,
+          definitions: khalaCodeQaMetricDefinitions,
+          evaluations: [],
+          ok: true,
+          observedAt: "2026-07-02T12:00:00.000Z",
+          samples,
+          schema: "openagents.khala_code.qa_metrics.v1",
+        }))) as KhalaCodeRpcFetch,
+    })
+
+    const report = await Effect.runPromise(runKhalaCodeQaScenario({ driver, scenario }))
+
+    expect(report.status).toBe("pass")
+    expect(report.phaseOutcomes[0]?.oracles).toHaveLength(q2BudgetIds.length)
+    expect(report.phaseOutcomes[0]?.oracles.every(oracle => oracle.verdict === "CONFIRMED"))
+      .toBe(true)
+    expect(report.commitments.verdict).toBe("CONFIRMED")
   })
 
   test("refutes a commitment when any matching schema oracle fails", async () => {

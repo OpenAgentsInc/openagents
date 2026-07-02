@@ -12,6 +12,13 @@ import {
   type KhalaCodeQaCoverageFrontierReport,
   type KhalaCodeQaCoverageLedger,
 } from "../packages/khala-qa-harness/src/index.js"
+import {
+  evaluateKhalaCodeQaMetricBudgets,
+  khalaCodeQaMetricBudgets,
+  type KhalaCodeQaMetricBudgetEvaluation,
+  type KhalaCodeQaMetricBudgetUnit,
+  type KhalaCodeQaMetricName,
+} from "../clients/khala-code-desktop/src/shared/qa-metrics.js"
 
 export const QA_NIGHTLY_MATRIX_SCHEMA =
   "openagents.khala_code.qa_nightly_matrix.v1"
@@ -134,6 +141,16 @@ export type QaNightlyPerfTrend = Readonly<{
   trend: "first_sample" | "flat" | "improved" | "regressed"
 }>
 
+export type QaNightlyLatencyBudgetCatalogEntry = Readonly<{
+  budgetId: string
+  evaluationStatus: KhalaCodeQaMetricBudgetEvaluation["status"]
+  metric: KhalaCodeQaMetricName
+  percentile?: number | undefined
+  sampleCount: number
+  threshold: number
+  unit: KhalaCodeQaMetricBudgetUnit
+}>
+
 export type QaNightlyStatusSurface = Readonly<{
   schema: typeof QA_STATUS_SURFACE_SCHEMA
   generatedAt: string
@@ -164,9 +181,16 @@ export type QaNightlyStatusSurface = Readonly<{
     reason: string
     status: "not_in_matrix"
   }>
+  latencyBudgets: Readonly<{
+    basis: "qaMetrics_budget_catalog"
+    budgetCount: number
+    budgets: readonly QaNightlyLatencyBudgetCatalogEntry[]
+    evaluatedBy: "packages/khala-qa-harness perf oracle"
+    status: "catalog_active_regression_trends_follow_q2_5"
+  }>
   perfTrends: Readonly<{
     basis: "nightly_step_duration_ms"
-    status: "trend_only_until_q2_budget_family_lands"
+    status: "step_duration_trends_budget_catalog_active"
     steps: readonly QaNightlyPerfTrend[]
   }>
   surfaceMarkdownPath: string
@@ -527,6 +551,24 @@ const computeQaNightlyPerfTrends = (
     }
   })
 
+const buildQaNightlyLatencyBudgetCatalog = (): readonly QaNightlyLatencyBudgetCatalogEntry[] => {
+  const evaluations = new Map(
+    evaluateKhalaCodeQaMetricBudgets([]).map(evaluation => [evaluation.budgetId, evaluation]),
+  )
+  return khalaCodeQaMetricBudgets.map(budget => {
+    const evaluation = evaluations.get(budget.budgetId)
+    return {
+      budgetId: budget.budgetId,
+      evaluationStatus: evaluation?.status ?? "inconclusive",
+      metric: budget.metric,
+      ...(budget.percentile === undefined ? {} : { percentile: budget.percentile }),
+      sampleCount: evaluation?.sampleCount ?? 0,
+      threshold: budget.threshold,
+      unit: budget.unit,
+    }
+  })
+}
+
 export const buildQaNightlyStatusSurface = (input: Readonly<{
   frontierReport: KhalaCodeQaCoverageFrontierReport
   history: readonly QaNightlyReportHistoryEntry[]
@@ -561,9 +603,16 @@ export const buildQaNightlyStatusSurface = (input: Readonly<{
     reason: "Live-tier Q5 smokes are not part of the Q1 nightly matrix yet; fixture tiers remain no-spend and account-isolated.",
     status: "not_in_matrix",
   },
+  latencyBudgets: {
+    basis: "qaMetrics_budget_catalog",
+    budgetCount: khalaCodeQaMetricBudgets.length,
+    budgets: buildQaNightlyLatencyBudgetCatalog(),
+    evaluatedBy: "packages/khala-qa-harness perf oracle",
+    status: "catalog_active_regression_trends_follow_q2_5",
+  },
   perfTrends: {
     basis: "nightly_step_duration_ms",
-    status: "trend_only_until_q2_budget_family_lands",
+    status: "step_duration_trends_budget_catalog_active",
     steps: computeQaNightlyPerfTrends(input.report, input.history),
   },
   reportJsonPath: input.report.reportJsonPath,
@@ -890,6 +939,12 @@ export const renderQaStatusSurfaceMarkdown = (surface: QaNightlyStatusSurface): 
       return `| ${step.stepId} | ${step.latestDurationMs} | ${previous} | ${delta} | ${step.trend} | ${step.sampleCount} |`
     })
     .join("\n")
+  const latencyBudgetRows = surface.latencyBudgets.budgets
+    .map(budget => {
+      const percentile = budget.percentile === undefined ? "n/a" : `p${budget.percentile}`
+      return `| ${budget.budgetId} | ${budget.metric} | ${budget.threshold} | ${budget.unit} | ${percentile} | ${budget.evaluationStatus} | ${budget.sampleCount} |`
+    })
+    .join("\n")
   const issueStatus = (status: QaNightlyIssueStatus | undefined): string => {
     if (status === undefined) return "not evaluated"
     if (status.status === "filed") return `filed ${status.issueUrl ?? ""}`.trim()
@@ -937,6 +992,20 @@ Status: \`${surface.perfTrends.status}\`
 | Step | Latest ms | Previous ms | Delta ms | Trend | Samples |
 | --- | ---: | ---: | ---: | --- | ---: |
 ${trendRows}
+
+## Latency Budgets
+
+Basis: \`${surface.latencyBudgets.basis}\`
+
+Status: \`${surface.latencyBudgets.status}\`
+
+Evaluated by: \`${surface.latencyBudgets.evaluatedBy}\`
+
+Budget count: \`${surface.latencyBudgets.budgetCount}\`
+
+| Budget | Metric | Threshold | Unit | Percentile | Evaluation | Samples |
+| --- | --- | ---: | --- | --- | --- | ---: |
+${latencyBudgetRows}
 
 ## Issues
 

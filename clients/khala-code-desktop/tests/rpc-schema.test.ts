@@ -131,6 +131,15 @@ describe("Khala Code desktop schema-first RPC contract", () => {
       ok: true,
       observedAt: "2026-07-02T12:00:01.000Z",
     })).toMatchObject({ ok: true })
+
+    const percentSample = {
+      metric: "transcript.scroll_dropped_frames_pct",
+      observedAt: "2026-07-02T12:00:00.000Z",
+      unit: "percent",
+      value: 4.5,
+    }
+    expect(decodeKhalaCodeDesktopRpcParameters("qaMetricSample", [percentSample]))
+      .toEqual([percentSample])
   })
 
   test("decodes the schema-first cross-harness session catalog RPC", () => {

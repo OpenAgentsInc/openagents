@@ -24,6 +24,11 @@ The default monkey settings produce 1024 deterministic fixture actions, meeting
 the Q1.1 >=1000 action floor. Override with `OA_QA_NIGHTLY_MONKEY_RUNS` and
 `OA_QA_NIGHTLY_MONKEY_STEPS` only on the owned runner.
 
+The status surface emitted by the run includes the Q2 latency budget catalog
+from `qaMetrics`. The harness scenario `perf` oracle evaluates budgeted samples;
+sampleless catalog rows remain inconclusive until Q2.3/Q2.5 add real-run
+samples, trends, and regression auto-issues.
+
 Each run writes:
 
 - `qa-nightly-report.json`

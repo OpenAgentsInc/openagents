@@ -435,19 +435,26 @@ const RpcAppInfo = S.Struct({
 })
 
 const RpcQaMetricName = S.Literals([
+  "app_server.spawn_ready_ms",
   "cache.hit",
   "cockpit.render_ms",
+  "composer.keystroke_echo_ms",
   "first_render.ms",
   "lifecycle_event_to_card.ms",
   "panel.open_ms",
+  "sse.event_to_ui_ms",
+  "startup.interactive_ms",
   "supervisor.tick_ms",
   "thread_switch.full_render_ms",
   "thread_switch.hydrated_render_ms",
   "thread_switch.optimistic_render_ms",
   "thread_switch.rpc_ms",
+  "transcript.scroll_dropped_frames_pct",
+  "turn_start.first_event_ms",
   "turn_start.latency_ms",
 ])
-const RpcQaMetricUnit = S.Literals(["count", "ms"])
+const RpcQaMetricUnit = S.Literals(["count", "ms", "percent"])
+const RpcQaMetricBudgetUnit = S.Literals(["ms", "percent"])
 const RpcQaMetricContext = S.Record(
   S.String,
   S.Union([S.String, S.Number, S.Boolean]),
@@ -465,7 +472,7 @@ const RpcQaMetricSampleResult = S.Struct({
 })
 const RpcQaMetricDefinition = S.Struct({
   description: S.String,
-  kind: S.Literals(["counter", "timer"]),
+  kind: S.Literals(["counter", "gauge", "timer"]),
   name: RpcQaMetricName,
   unit: RpcQaMetricUnit,
 })
@@ -477,7 +484,7 @@ const RpcQaMetricBudget = S.Struct({
   percentile: S.optional(S.Number),
   requiredContext: S.optional(RpcQaMetricContext),
   threshold: S.Number,
-  unit: S.Literal("ms"),
+  unit: RpcQaMetricBudgetUnit,
 })
 const RpcQaMetricBudgetEvaluation = S.Struct({
   actual: RpcNumberNull,
@@ -487,6 +494,7 @@ const RpcQaMetricBudgetEvaluation = S.Struct({
   sampleCount: S.Number,
   status: S.Literals(["pass", "fail", "inconclusive"]),
   threshold: S.Number,
+  unit: RpcQaMetricBudgetUnit,
 })
 const RpcQaMetricsSnapshot = S.Struct({
   budgets: S.Array(RpcQaMetricBudget),
