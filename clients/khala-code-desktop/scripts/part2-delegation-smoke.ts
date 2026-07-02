@@ -7,7 +7,7 @@ import {
   spawnCodexInstances,
   type KhalaCodexFleetCommandInput,
   type KhalaCodexFleetCommandResult,
-} from "../src/bun/khala-codex-fleet-tools"
+} from "../src/bun/khala-fleet-tools"
 
 const MATRIX_ACCOUNT_KEY = "4db4cc18ebc55f39fb4da894"
 const MATRIX_ACCOUNT_REF_HASH = `account.pylon.codex.${MATRIX_ACCOUNT_KEY}`

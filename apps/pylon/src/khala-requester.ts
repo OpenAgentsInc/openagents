@@ -10,6 +10,30 @@ export type PylonKhalaWorkflow =
   | "cloud_coding_session"
   | "codex_agent_task"
 
+export type PylonKhalaOwnCapacityTokenModel =
+  | "openagents/pylon-claude"
+  | "openagents/pylon-codex"
+
+export type PylonKhalaOwnCapacityTokenProvider =
+  | "pylon-claude-own-capacity"
+  | "pylon-codex-own-capacity"
+
+export function isPylonKhalaExactOwnCapacityTokenUsage(input: {
+  demandKind: "own_capacity"
+  demandSource: "khala_coding_delegation"
+  model: PylonKhalaOwnCapacityTokenModel
+  provider: PylonKhalaOwnCapacityTokenProvider
+  usageTruth: "exact"
+}): boolean {
+  const providerMatchesModel =
+    (input.provider === "pylon-codex-own-capacity" && input.model === "openagents/pylon-codex") ||
+    (input.provider === "pylon-claude-own-capacity" && input.model === "openagents/pylon-claude")
+  return providerMatchesModel &&
+    input.usageTruth === "exact" &&
+    input.demandKind === "own_capacity" &&
+    input.demandSource === "khala_coding_delegation"
+}
+
 export type PylonKhalaRequestInput = {
   prompt: string
   objectiveSummary?: string
@@ -173,9 +197,9 @@ export type PylonKhalaAssignmentTraceStatusResult = {
     demandKind: "own_capacity"
     demandSource: "khala_coding_delegation"
     inputTokens: number
-    model: "openagents/pylon-codex"
+    model: PylonKhalaOwnCapacityTokenModel
     outputTokens: number
-    provider: "pylon-codex-own-capacity"
+    provider: PylonKhalaOwnCapacityTokenProvider
     reasoningTokens: number
     refs: string[]
     rowCount: number
@@ -217,9 +241,9 @@ export type PylonKhalaProofResult = {
     demandKind: "own_capacity"
     demandSource: "khala_coding_delegation"
     inputTokens: number
-    model: "openagents/pylon-codex"
+    model: PylonKhalaOwnCapacityTokenModel
     outputTokens: number
-    provider: "pylon-codex-own-capacity"
+    provider: PylonKhalaOwnCapacityTokenProvider
     reasoningTokens: number
     refs: string[]
     rowCount: number
@@ -485,11 +509,7 @@ export function evaluatePylonKhalaProofChecklist(
     ),
     checklistItem(
       "check.khala_proof.token_usage.exact_own_capacity",
-      proof.tokenUsage.provider === "pylon-codex-own-capacity" &&
-        proof.tokenUsage.model === "openagents/pylon-codex" &&
-        proof.tokenUsage.usageTruth === "exact" &&
-        proof.tokenUsage.demandKind === "own_capacity" &&
-        proof.tokenUsage.demandSource === "khala_coding_delegation",
+      isPylonKhalaExactOwnCapacityTokenUsage(proof.tokenUsage),
     ),
     checklistItem(
       "check.khala_proof.token_usage.rows_and_tokens_present",

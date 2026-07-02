@@ -533,7 +533,7 @@ export const runKhalaFleetDelegateProgram = (
       message: prepared.kind === "fixture" ? "Prepared fixture work." : `Prepared ${prepared.repo}@${prepared.commit}.`,
       module: "prepare_work",
       precondition: "work_prepared",
-      refs: prepared.kind === "fixture" ? ["fixture:codex_agent_task"] : [`repo:${prepared.repo}`, `commit:${prepared.commit}`],
+      refs: prepared.kind === "fixture" ? [`fixture:${selected.workerKind}_agent_task`] : [`repo:${prepared.repo}`, `commit:${prepared.commit}`],
       status: prepared.kind === "fixture" ? "recovered" : "satisfied",
     })
 

@@ -12,7 +12,7 @@ import {
   type KhalaCodexFleetCommandInput,
   type KhalaCodexFleetCommandResult,
   type KhalaCodexFleetProgressPayload,
-} from "../src/bun/khala-codex-fleet-tools"
+} from "../src/bun/khala-fleet-tools"
 
 const tempDirs: string[] = []
 

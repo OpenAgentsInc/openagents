@@ -314,6 +314,27 @@ describe("khala.fleet.delegate deterministic program", () => {
       })
     })
 
+    test("fixture trace refs are keyed by selected worker kind", async () => {
+      const result = await Effect.runPromise(runKhalaFleetDelegateProgram({
+        objective: "Run Claude fixture.",
+      }, completedModules({
+        advertiseCapacity: () => Effect.succeed(advertised(1, [
+          readyAccount({ accountRef: "claude", availableSlots: 1, workerKind: "claude" }),
+        ])),
+      }), {
+        parameters: admittedParameters({
+          delegationTarget: { workerKind: "claude" },
+        }),
+      }))
+
+      expect(result.status).toBe("completed")
+      expect(result.trace.find(step => step.module === "prepare_work")?.refs)
+        .toEqual(["fixture:claude_agent_task"])
+      if (result.status === "completed") {
+        expect(result.workerKind).toBe("claude")
+      }
+    })
+
     test("switching retry budget changes duplicate-assignment recovery behavior", async () => {
       let oneAttemptDispatchCalls = 0
       const oneAttempt = await Effect.runPromise(runKhalaFleetDelegateProgram({

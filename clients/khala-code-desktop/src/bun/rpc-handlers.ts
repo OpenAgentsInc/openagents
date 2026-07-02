@@ -142,7 +142,7 @@ import {
   openExternalUrl,
   removeCodexAccount,
   setCodexAccountPaused,
-} from "./khala-codex-fleet-tools.js"
+} from "./khala-fleet-tools.js"
 
 type ChatEnv = Readonly<Record<string, string | undefined>>
 type MaybePromise<T> = T | Promise<T>

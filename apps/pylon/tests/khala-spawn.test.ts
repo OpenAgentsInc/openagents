@@ -33,6 +33,27 @@ const readyCodexAccount = (
   selector: "registry_ref",
 })
 
+const readyClaudeAccount = (
+  accountRef: string,
+  accountRefHash: string,
+): PylonAccountsListProjection["accounts"][number] => ({
+  accountRef,
+  accountRefHash,
+  blockerRefs: [],
+  homeRef: `home.public.${accountRefHash}`,
+  homeState: "present",
+  provider: "claude_agent",
+  readiness: {
+    blockerRefs: [],
+    capabilityRefs: ["capability.pylon.local_claude"],
+    credentialSourceRef: "credential.public.claude_setup_token",
+    enabled: true,
+    schema: "openagents.pylon.claude_agent_readiness.v0.3",
+    state: "ready",
+  },
+  selector: "registry_ref",
+})
+
 const accountsProjection = (): PylonAccountsListProjection => ({
   accounts: [
     readyCodexAccount("account.public.codex.one", "accthash_one"),
@@ -158,6 +179,37 @@ describe("pylon khala spawn planner", () => {
       "accthash_one",
       "accthash_two",
     ])
+  })
+
+  test("routes claude_agent_task slots to Claude accounts", () => {
+    const plan = buildPylonKhalaSpawnPlan({
+      accounts: {
+        ...accountsProjection(),
+        accounts: [
+          readyCodexAccount("account.public.codex.one", "accthash_codex"),
+          readyClaudeAccount("account.public.claude.one", "accthash_claude"),
+        ],
+      },
+      advertisedCodexAvailability: 2,
+      baseUrl: "https://openagents.test",
+      maxParallel: 2,
+      objectives: repeatedKhalaSpawnObjectives({
+        count: 2,
+        objective: "run a Claude-backed fixture assignment",
+      }),
+      targetPylonRef: "pylon.public.local",
+      workflow: "claude_agent_task",
+    })
+
+    expect(plan.workerKind).toBe("claude")
+    expect(plan.workflow).toBe("claude_agent_task")
+    expect(plan.readyWorkerAccountCount).toBe(1)
+    expect(plan.slots.map((slot) => slot.account.accountRefHash)).toEqual([
+      "accthash_claude",
+      "accthash_claude",
+    ])
+    expect(plan.slots[0]?.commands.request).toContain("--workflow claude_agent_task")
+    expect(plan.slots[0]?.requestInput.workflow).toBe("claude_agent_task")
   })
 })
 

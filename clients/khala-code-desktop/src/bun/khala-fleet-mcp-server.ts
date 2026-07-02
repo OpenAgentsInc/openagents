@@ -7,7 +7,7 @@ import {
 import {
   createKhalaCodexFleetTools,
   type KhalaCodexFleetToolOptions,
-} from "./khala-codex-fleet-tools.js"
+} from "./khala-fleet-tools.js"
 
 export const KHALA_CODE_DESKTOP_FLEET_MCP_SERVER_NAME = "khala_fleet" as const
 export const KHALA_CODE_DESKTOP_FLEET_MCP_SERVER_VERSION = "0.1.0" as const

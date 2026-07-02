@@ -11,6 +11,7 @@ import {
   type PylonLifecycleWireEvent,
 } from "@openagentsinc/agent-runtime-schema"
 import {
+  decodeKhalaFleetDelegationParameterSet,
   KhalaFleetDelegateModuleError,
   khalaFleetDelegationParametersFromEnv,
   khalaFleetDelegationPerAccountConcurrency,
@@ -24,8 +25,10 @@ import {
   type KhalaFleetDelegateAccount,
   type KhalaFleetDelegateBlockerCode,
   type KhalaFleetDelegateCapacity,
+  type KhalaFleetDelegateConcreteWorkerKind,
   type KhalaFleetDelegateProgramResult,
   type KhalaFleetDelegateStep,
+  type KhalaFleetDelegateWorkerKind,
   type KhalaFleetDelegateWork,
   type KhalaFleetDelegationParameterSet,
   type KhalaToolDefinition,
@@ -179,7 +182,7 @@ type AccountRow = {
   readonly capacity: AccountCapacityRow | null
   readonly home: string | null
   readonly paused: boolean
-  readonly provider: "codex"
+  readonly provider: "claude_agent" | "codex"
   readonly quotaState: string | null
   readonly rateLimits?: KhalaCodexRateLimitProviderStatus | undefined
   readonly readiness: string
@@ -270,6 +273,7 @@ type SpawnCodexInstancesInput = {
   readonly repo?: string | undefined
   readonly timeoutMs?: number | undefined
   readonly verify?: string | undefined
+  readonly workerKind?: FleetRunWorkerKind | undefined
 }
 
 type NormalizedSpawnInput = {
@@ -287,6 +291,7 @@ type NormalizedSpawnInput = {
   readonly repo?: string | undefined
   readonly timeoutMs: number
   readonly verify?: string | undefined
+  readonly workerKind: FleetRunWorkerKind
 }
 
 type SpawnCodexInstancesResult = {
@@ -345,6 +350,41 @@ const DEFAULT_OPENAGENTS_BASE_URL = "https://openagents.com"
 const MAX_MODEL_OUTPUT_BYTES = 4_000
 const MAX_STREAMED_LIFECYCLE_EVENTS = 200
 
+type AccountProvider = AccountRow["provider"]
+
+function concreteWorkflowForWorkerKind(
+  workerKind: KhalaFleetDelegateConcreteWorkerKind,
+): "claude_agent_task" | "codex_agent_task" {
+  return workerKind === "claude" ? "claude_agent_task" : "codex_agent_task"
+}
+
+function accountProviderForWorkerKind(
+  workerKind: KhalaFleetDelegateConcreteWorkerKind,
+): AccountProvider {
+  return workerKind === "claude" ? "claude_agent" : "codex"
+}
+
+function accountProvidersForRequestedWorkerKind(
+  workerKind: KhalaFleetDelegateWorkerKind,
+): readonly AccountProvider[] {
+  if (workerKind === "auto") return ["codex", "claude_agent"]
+  return [accountProviderForWorkerKind(workerKind)]
+}
+
+function workerKindForAccountProvider(provider: AccountProvider): KhalaFleetDelegateConcreteWorkerKind {
+  return provider === "claude_agent" ? "claude" : "codex"
+}
+
+function workerLabel(workerKind: KhalaFleetDelegateConcreteWorkerKind): string {
+  return workerKind === "claude" ? "Claude" : "Codex"
+}
+
+function noAvailableCapacityBlockerForWorkerKind(
+  workerKind: KhalaFleetDelegateConcreteWorkerKind,
+): "no_available_claude_capacity" | "no_available_codex_capacity" {
+  return workerKind === "claude" ? "no_available_claude_capacity" : "no_available_codex_capacity"
+}
+
 const pylonEnsureToolDefinition: KhalaToolDefinition = {
   authority: "owner_full_access",
   availability: ["owner_local_full", "coding"],
@@ -401,7 +441,7 @@ const codexFleetStatusToolDefinition: KhalaToolDefinition = {
   authority: "owner_full_access",
   availability: ["owner_local_full", "coding"],
   description:
-    "Inspect local Pylon-backed Codex fleet accounts, assignment markers, and local Pylon/Codex processes.",
+    "Inspect local Pylon-backed fleet accounts, assignment markers, and local worker processes.",
   executionMode: "local",
   inputSchema: {
     additionalProperties: false,
@@ -425,7 +465,7 @@ const codexFleetStatusToolDefinition: KhalaToolDefinition = {
     type: "object",
   },
   internalId: "khala.desktop.codex_fleet.status",
-  label: "Codex Fleet Status",
+  label: "Fleet Status",
   name: "codex_fleet_status",
   outputSchema: {
     additionalProperties: false,
@@ -442,7 +482,7 @@ const codexFleetStatusToolDefinition: KhalaToolDefinition = {
   },
   permissionMode: "allow",
   prompt:
-    "Use when the user asks to monitor Codex instances, fleet capacity, linked accounts, or local Pylon health.",
+    "Use when the user asks to monitor worker instances, fleet capacity, linked accounts, or local Pylon health.",
   promptGuidelines: [
     "Report no ready accounts plainly; do not run device login from this tool.",
     "Summarize account readiness and assignment counts without exposing local credential paths.",
@@ -455,13 +495,13 @@ const codexSpawnToolDefinition: KhalaToolDefinition = {
   authority: "owner_full_access",
   availability: ["owner_local_full", "coding"],
   description:
-    "Delegate one or more Codex-backed assignments from the main Khala Code session to isolated Pylon worker homes.",
+    "Delegate one or more assignments from the main Khala Code session to isolated Pylon worker homes.",
   executionMode: "local",
   inputSchema: {
     additionalProperties: false,
     properties: {
       account_ref: {
-        description: "Optional linked Pylon Codex account ref to use. If omitted, a ready account is selected.",
+        description: "Optional linked Pylon worker account ref to use. If omitted, a ready account is selected.",
         type: "string",
       },
       base_url: {
@@ -482,7 +522,7 @@ const codexSpawnToolDefinition: KhalaToolDefinition = {
       },
       count: {
         default: 1,
-        description: `Number of Codex assignments to dispatch, capped at ${MAX_SPAWN_COUNT}.`,
+        description: `Number of worker assignments to dispatch, capped at ${MAX_SPAWN_COUNT}.`,
         minimum: 1,
         type: "integer",
       },
@@ -503,7 +543,7 @@ const codexSpawnToolDefinition: KhalaToolDefinition = {
         type: "integer",
       },
       prompt: {
-        description: "Public-safe assignment objective for Codex.",
+        description: "Public-safe assignment objective for the delegated worker.",
         type: "string",
       },
       pylon_ref: {
@@ -523,12 +563,18 @@ const codexSpawnToolDefinition: KhalaToolDefinition = {
         description: "Verification command for real repository work, paired with repo and commit.",
         type: "string",
       },
+      worker_kind: {
+        default: "codex",
+        description: "Worker target for delegated assignments.",
+        enum: ["codex", "claude", "auto"],
+        type: "string",
+      },
     },
     required: ["prompt"],
     type: "object",
   },
   internalId: "khala.desktop.codex_fleet.spawn",
-  label: "Spawn Codex",
+  label: "Spawn Worker",
   name: "codex_spawn",
   outputSchema: {
     additionalProperties: false,
@@ -546,14 +592,14 @@ const codexSpawnToolDefinition: KhalaToolDefinition = {
   },
   permissionMode: "allow",
   prompt:
-    "Use when the user asks Khala to fan out or delegate the current Codex-backed task to swarm worker sessions through Desktop.",
+    "Use when the user asks Khala to fan out or delegate the current task to swarm worker sessions through Desktop.",
   promptGuidelines: [
     "The primary local chat loop remains the Codex harness; this tool only delegates bounded worker assignments around it.",
     "When the user asks for a smoke test or omits repo pins, call this without repo pins; the tool will use the public fixture.",
     "Require complete repo, branch, verify, and claim_ref pins only for real repository work; Desktop resolves or validates the live commit pin before dispatch.",
-    "Do not run Codex login. If no ready Pylon Codex account exists, tell the user to connect one first.",
+    "Do not run Codex or Claude login. If no ready Pylon account exists for the requested worker kind, tell the user to connect one first.",
     "Omit account_ref unless the user names a specific non-default account; Desktop prefers named ready accounts over the display-only default account.",
-    "This MVP exposes only pylon_ensure, codex_fleet_status, and codex_spawn for Codex fleet control. Do not invent codex_terminate or other Codex fleet tools.",
+    "This MVP exposes only pylon_ensure, codex_fleet_status, and codex_spawn for fleet control. Do not invent codex_terminate or other fleet tools.",
     "After codex_spawn, summarize the returned assignment, auto-run, and closeout status; do not read guessed local output files.",
     "Keep count small; this MVP caps fan-out at five assignments.",
   ],
@@ -874,6 +920,7 @@ export async function inspectCodexFleet(
     readonly includeProcesses?: boolean | undefined
     readonly includeRateLimits?: boolean | undefined
     readonly startPylon?: boolean | undefined
+    readonly workerKind?: KhalaFleetDelegateWorkerKind | undefined
   } = {},
   options: KhalaCodexFleetToolOptions = {},
 ): Promise<FleetStatusResult> {
@@ -881,19 +928,26 @@ export async function inspectCodexFleet(
   const paths = resolvePylonPaths(env)
   const ensure = await ensureLocalPylon({ start: input.startPylon ?? false }, { ...options, env })
   const baseUrl = resolveOpenAgentsBaseUrl(env)
-  const [listResult, statusResult, apmResult, processes, rawActiveAssignments] = await Promise.all([
-    runPylonCommand(["codex", "accounts", "list", "--json"], {
+  const workerKind = input.workerKind ?? "codex"
+  const accountProviders = accountProvidersForRequestedWorkerKind(workerKind)
+  const listCommand = accountProviders.length === 1 && accountProviders[0] === "codex"
+    ? ["codex", "accounts", "list", "--json"]
+    : ["accounts", "list", "--json"]
+  const [listResult, statusResults, apmResult, processes, rawActiveAssignments] = await Promise.all([
+    runPylonCommand(listCommand, {
       env,
       paths,
       runner: options.runner,
       timeoutMs: DEFAULT_COMMAND_TIMEOUT_MS,
     }).catch(errorResult),
-    runPylonCommand(["accounts", "status", "--provider", "codex", "--json"], {
-      env,
-      paths,
-      runner: options.runner,
-      timeoutMs: DEFAULT_COMMAND_TIMEOUT_MS,
-    }).catch(errorResult),
+    Promise.all(accountProviders.map(provider =>
+      runPylonCommand(["accounts", "status", "--provider", provider, "--json"], {
+        env,
+        paths,
+        runner: options.runner,
+        timeoutMs: DEFAULT_COMMAND_TIMEOUT_MS,
+      }).catch(errorResult)
+    )),
     runPylonCommand(["khala", "apm", "--base-url", baseUrl, "--json"], {
       env,
       paths,
@@ -907,13 +961,14 @@ export async function inspectCodexFleet(
   ])
 
   const listProjection = parseJsonObject(listResult.stdout)
-  const statusProjection = parseJsonObject(statusResult.stdout)
+  const statusProjection = mergeAccountStatusProjections(statusResults.map(result => parseJsonObject(result.stdout)))
   const apm = fleetTokenRateProjectionFromApm(apmResult, rawActiveAssignments.length)
-  const accountConfig = await readCodexAccountConfig(paths.pylonHome)
+  const accountConfig = await readAccountConfig(paths.pylonHome, accountProviders)
   const accountsWithConfig = withAccountConfig(
     withAccountCapacity(
-      mergeAccountRows(listProjection, statusProjection),
+      mergeAccountRows(listProjection, statusProjection, accountProviders),
       [ensure.providerProjection, statusProjection, listProjection],
+      workerKind,
     ),
     accountConfig,
   )
@@ -924,7 +979,7 @@ export async function inspectCodexFleet(
     rawActiveAssignments,
     apm.serverAssignments,
   )
-  const provider = providerCapacity(listProjection, statusProjection, ensure)
+  const provider = providerCapacity(listProjection, statusProjection, ensure, workerKind)
   return {
     accounts,
     activeAssignments,
@@ -943,10 +998,11 @@ export async function spawnCodexInstances(
   options: KhalaCodexFleetToolOptions = {},
 ): Promise<SpawnCodexInstancesResult> {
   const baseEnv = options.env ?? khalaCodeConfigFromRuntimeEnv().env
-  const delegationParameters = options.delegationParameters ??
+  const baseDelegationParameters = options.delegationParameters ??
     khalaFleetDelegationParametersFromEnv(baseEnv)
-  const input = decodeSpawnInput(raw, delegationParameters)
-  const env = withCodexCapacityAdvertisementEnv(baseEnv, input.count, delegationParameters)
+  const input = decodeSpawnInput(raw, baseDelegationParameters)
+  const delegationParameters = delegationParametersWithWorkerKind(baseDelegationParameters, input.workerKind)
+  const env = withWorkerCapacityAdvertisementEnv(baseEnv, input.count, delegationParameters, input.workerKind)
   const paths = resolvePylonPaths(env)
   const baseUrl = resolveOpenAgentsBaseUrl(env, input.baseUrl)
   const preparedInput = await resolveRealWorkCommitPin(input, {
@@ -973,7 +1029,7 @@ export async function spawnCodexInstances(
     if (heartbeat.exitCode !== 0) {
       throw new KhalaFleetDelegateModuleError({
         blockerCode: reason === "stale_heartbeat" ? "stale_heartbeat" : "capacity_probe_failed",
-        message: `Pylon heartbeat failed before Codex spawn: ${safeFailureReason(heartbeat)}`,
+        message: `Pylon heartbeat failed before fleet spawn: ${safeFailureReason(heartbeat)}`,
         module: "advertise_capacity",
         refs: [`blocker.public.khala_fleet_delegate.${reason === "stale_heartbeat" ? "stale_heartbeat" : "capacity_probe_failed"}`],
       })
@@ -982,9 +1038,9 @@ export async function spawnCodexInstances(
     const freshHeartbeatPylonRef = stringField(heartbeatJson, "pylonRef")
     if (freshHeartbeatPylonRef !== null) heartbeatPylonRef = freshHeartbeatPylonRef
     else if (pylonRef !== undefined) heartbeatPylonRef = pylonRef
-    fleetStatus = await inspectCodexFleet({ includeProcesses: false, startPylon: false }, { ...options, env })
+    fleetStatus = await inspectCodexFleet({ includeProcesses: false, startPylon: false, workerKind: input.workerKind }, { ...options, env })
     providerProjection = await readProviderProjection(env, paths, options.runner)
-    accountAvailability = codexAccountAvailabilityByRef(fleetStatus.accounts, providerProjection)
+    accountAvailability = accountAvailabilityByRef(fleetStatus.accounts, providerProjection, input.workerKind)
     const heartbeatRef = stringField(heartbeatJson, "heartbeatRef")
     return {
       capacity: khalaDelegateCapacityFromFleetStatus(
@@ -1029,7 +1085,7 @@ export async function spawnCodexInstances(
       }),
     advertiseCapacity: ({ pylonRef, reason }) =>
       Effect.promise(() => refreshFleetProjection(pylonRef, reason)),
-    dispatch: ({ capacity, work }) =>
+    dispatch: ({ capacity, work, workerKind }) =>
       Effect.promise(async () => {
         const planned = planDelegatedSpawnAccounts(
           input,
@@ -1037,6 +1093,7 @@ export async function spawnCodexInstances(
           fleetStatus,
           accountAvailability,
           delegationParameters,
+          workerKind,
         )
         if (planned.status === "blocked") return planned.dispatch
         const targetPylonRef = input.pylonRef ?? heartbeatPylonRef ?? ""
@@ -1050,6 +1107,7 @@ export async function spawnCodexInstances(
               parameters: delegationParameters,
               runner: options.runner,
               targetPylonRef,
+              workerKind,
             })
           : await runDelegatedBatchSpawn({
               baseUrl,
@@ -1061,6 +1119,7 @@ export async function spawnCodexInstances(
               parameters: delegationParameters,
               runner: options.runner,
               targetPylonRef,
+              workerKind,
               work,
             })
         const firstAssignmentRef = firstSpawnAssignmentRef(dispatchedResult)
@@ -1068,10 +1127,10 @@ export async function spawnCodexInstances(
           return { assignmentRef: firstAssignmentRef, ok: true }
         }
         return {
-          blockerCode: classifySpawnDispatchBlocker(dispatchedResult),
+          blockerCode: classifySpawnDispatchBlocker(dispatchedResult, workerKind),
           message: renderSpawnResult(dispatchedResult),
           ok: false,
-          refs: spawnDispatchBlockerRefs(dispatchedResult),
+          refs: spawnDispatchBlockerRefs(dispatchedResult, workerKind),
         }
       }),
     verifyCloseout: () =>
@@ -1162,7 +1221,7 @@ function executeCodexFleetStatusTool(
       return khalaToolOk({
         modelText: renderFleetStatus(result),
         publicSafety: "private",
-        publicSummary: `Codex fleet status: ${result.accounts.length} account(s), ${readyAccountCount(result.accounts)} ready.`,
+        publicSummary: `Fleet status: ${result.accounts.length} account(s), ${readyAccountCount(result.accounts)} ready.`,
         ui: {
           accounts: result.accounts,
           activeAssignments: result.activeAssignments,
@@ -1208,12 +1267,13 @@ function executeCodexSpawnTool(
         repo: optionalString(input.repo),
         timeoutMs: optionalInteger(input.timeout_ms),
         verify: optionalString(input.verify),
+        workerKind: optionalWorkerKind(input.worker_kind),
       }, options)
       const tokensVerified = spawnVerifiedTokenTotal(result)
       const toolResult = khalaToolOk({
         modelText: renderSpawnResult(result),
         publicSafety: "private",
-        publicSummary: `Codex spawn accepted ${result.acceptedCount}/${result.requestedCount} request(s); ${tokensVerified} Khala tokens generated.`,
+        publicSummary: `Fleet spawn accepted ${result.acceptedCount}/${result.requestedCount} request(s); ${tokensVerified} Khala tokens generated.`,
         ui: {
           acceptedCount: result.acceptedCount,
           delegateSignature: result.delegateSignature ?? null,
@@ -1363,9 +1423,6 @@ export class DefaultKhalaFleetRunSupervisorManager implements KhalaFleetRunSuper
     if (this.store.getFleetRun(runRef) !== null) throw new Error(`fleet run already exists: ${runRef}`)
     const workSource = input.workSource ?? "fixture"
     const workerKind = input.workerKind ?? "codex"
-    if (workerKind !== "codex") {
-      throw new Error(`fleet_run_start currently wires codex workers only; received ${workerKind}`)
-    }
     const targetConcurrency = boundedPositiveInteger(input.targetConcurrency, 1, 1, MAX_SPAWN_COUNT)
     const fixtureCount = boundedPositiveInteger(
       input.fixtureCount,
@@ -1420,7 +1477,7 @@ export class DefaultKhalaFleetRunSupervisorManager implements KhalaFleetRunSuper
           runRef,
           planner: this.plannerFor(runRef),
           runner: this.runnerFor(runRef, pylonRef),
-          capacity: this.capacityFor(),
+          capacity: this.capacityFor(runRef),
           tickIntervalMs: DEFAULT_FLEET_RUN_TICK_INTERVAL_MS,
           ...(this.options.sleep === undefined ? {} : { clock: { sleep: this.options.sleep } }),
           onLifecycle: event => {
@@ -1540,6 +1597,7 @@ export class DefaultKhalaFleetRunSupervisorManager implements KhalaFleetRunSuper
           repo: fixture ? undefined : config.repo,
           timeoutMs: config.timeoutMs,
           verify: fixture ? undefined : config.verify,
+          workerKind: run.workerKind,
         }, this.options)
         const first = result.results[0]
         const accepted = result.acceptedCount >= 1 && first?.status === "accepted"
@@ -1550,7 +1608,7 @@ export class DefaultKhalaFleetRunSupervisorManager implements KhalaFleetRunSuper
           lifecycle: [{
             assignmentRef: first?.assignmentRef ?? null,
             event: completed ? "assignment.completed" : accepted ? "assignment.accepted" : "assignment.failed",
-            phase: "codex_spawn",
+            phase: run.workerKind === "claude" ? "claude_spawn" : "codex_spawn",
             status,
           }],
           status,
@@ -1560,13 +1618,15 @@ export class DefaultKhalaFleetRunSupervisorManager implements KhalaFleetRunSuper
     }
   }
 
-  private capacityFor(): FleetRunSupervisorCapacity {
+  private capacityFor(runRef: string): FleetRunSupervisorCapacity {
     return {
       accounts: async () => {
+        const run = this.store.getFleetRun(runRef)
         const status = await inspectCodexFleet({
           includeProcesses: false,
           includeRateLimits: false,
           startPylon: true,
+          workerKind: run?.workerKind ?? "codex",
         }, this.options)
         return status.accounts
           .filter(account => account.readiness === "ready" && !account.paused)
@@ -1931,7 +1991,7 @@ function parseJsonObject(raw: string): Record<string, unknown> | null {
   }
 }
 
-type CodexAccountConfigEntry = Readonly<{
+type AccountConfigEntry = Readonly<{
   home: string
   paused: boolean
 }>
@@ -1940,21 +2000,24 @@ function pylonConfigPath(pylonHome: string): string {
   return join(pylonHome, "config.json")
 }
 
-async function readCodexAccountConfig(
+async function readAccountConfig(
   pylonHome: string,
-): Promise<ReadonlyMap<string, CodexAccountConfigEntry>> {
+  providers: readonly AccountProvider[],
+): Promise<ReadonlyMap<string, AccountConfigEntry>> {
   try {
     const parsed = JSON.parse(await readFile(pylonConfigPath(pylonHome), "utf8")) as {
       dev?: { accounts?: readonly Record<string, unknown>[] }
     }
-    const out = new Map<string, CodexAccountConfigEntry>()
+    const allowed = new Set(providers)
+    const out = new Map<string, AccountConfigEntry>()
     for (const account of parsed.dev?.accounts ?? []) {
       if (
-        account.provider === "codex" &&
+        (account.provider === "codex" || account.provider === "claude_agent") &&
+        allowed.has(account.provider) &&
         typeof account.ref === "string" &&
         typeof account.home === "string"
       ) {
-        out.set(account.ref, {
+        out.set(accountConfigKey(account.provider, account.ref), {
           home: account.home,
           paused: account.paused === true,
         })
@@ -1969,17 +2032,19 @@ async function readCodexAccountConfig(
 function mergeAccountRows(
   listProjection: Record<string, unknown> | null,
   statusProjection: Record<string, unknown> | null,
+  providers: readonly AccountProvider[] = ["codex"],
 ): readonly AccountRow[] {
   const rows = new Map<string, AccountRow>()
   for (const account of arrayField(listProjection, "accounts")) {
-    const row = accountRowFrom(account)
-    if (row !== null) rows.set(row.accountRef, row)
+    const row = accountRowFrom(account, providers)
+    if (row !== null) rows.set(accountConfigKey(row.provider, row.accountRef), row)
   }
   for (const account of arrayField(statusProjection, "accounts")) {
-    const row = accountRowFrom(account)
+    const row = accountRowFrom(account, providers)
     if (row !== null) {
-      const previous = rows.get(row.accountRef)
-      rows.set(row.accountRef, {
+      const key = accountConfigKey(row.provider, row.accountRef)
+      const previous = rows.get(key)
+      rows.set(key, {
         ...row,
         accountKey: row.accountKey ?? previous?.accountKey ?? null,
         accountRefHash: row.accountRefHash ?? previous?.accountRefHash ?? null,
@@ -1994,11 +2059,19 @@ function mergeAccountRows(
   return [...rows.values()].sort((left, right) => left.accountRef.localeCompare(right.accountRef))
 }
 
-function accountRowFrom(value: unknown): AccountRow | null {
+function mergeAccountStatusProjections(
+  projections: readonly (Record<string, unknown> | null)[],
+): Record<string, unknown> | null {
+  const accounts = projections.flatMap(projection => arrayField(projection, "accounts"))
+  return accounts.length === 0 ? null : { accounts }
+}
+
+function accountRowFrom(value: unknown, providers: readonly AccountProvider[] = ["codex"]): AccountRow | null {
   const account = record(value)
   if (account === null) return null
   const provider = stringField(account, "provider")
-  if (provider !== "codex") return null
+  if (provider !== "codex" && provider !== "claude_agent") return null
+  if (!providers.includes(provider)) return null
   const accountRef =
     stringField(account, "accountRef") ??
     stringField(account, "ref") ??
@@ -2018,7 +2091,7 @@ function accountRowFrom(value: unknown): AccountRow | null {
     capacity: null,
     home: null,
     paused: false,
-    provider: "codex",
+    provider,
     quotaState: stringField(quota, "state"),
     readiness,
   }
@@ -2026,13 +2099,21 @@ function accountRowFrom(value: unknown): AccountRow | null {
 
 function withAccountConfig(
   accounts: readonly AccountRow[],
-  config: ReadonlyMap<string, CodexAccountConfigEntry>,
+  config: ReadonlyMap<string, AccountConfigEntry>,
 ): readonly AccountRow[] {
   return accounts.map(account => {
-    const entry = config.get(account.accountRef)
+    const entry = config.get(accountConfigKey(account.provider, account.accountRef))
     if (entry === undefined) return account
     return { ...account, home: entry.home, paused: entry.paused }
   })
+}
+
+function accountConfigKey(provider: AccountProvider, accountRef: string): string {
+  return `${provider}:${accountRef}`
+}
+
+function accountAvailabilityKey(account: AccountRow): string {
+  return accountConfigKey(account.provider, account.accountRef)
 }
 
 async function withAccountRateLimits(
@@ -2040,7 +2121,7 @@ async function withAccountRateLimits(
   env: ChatEnv,
 ): Promise<readonly AccountRow[]> {
   return Promise.all(accounts.map(async account => {
-    if (account.home === null) return account
+    if (account.home === null || account.provider !== "codex") return account
     const rateLimits = await fetchKhalaCodexRateLimitStatus({
       codexHomePath: account.home,
       env: cleanEnv(env),
@@ -2058,7 +2139,9 @@ function providerCapacity(
   listProjection: Record<string, unknown> | null,
   statusProjection: Record<string, unknown> | null,
   ensure: KhalaPylonEnsureResult,
+  workerKind: KhalaFleetDelegateWorkerKind,
 ): { available: number | null; max: number | null } {
+  if (workerKind !== "codex") return { available: null, max: null }
   for (const projection of [statusProjection, listProjection]) {
     const dispatch = recordField(projection, "ownCapacityDispatch")
     const available = numberField(dispatch, "availableCodexAssignments") ??
@@ -2078,7 +2161,9 @@ function providerCapacity(
 
 function capacityFromProviderProjection(
   projection: Record<string, unknown> | null,
+  workerKind: KhalaFleetDelegateWorkerKind = "codex",
 ): { available: number | null; max: number | null } {
+  if (workerKind !== "codex") return { available: null, max: null }
   const dispatch = recordField(projection, "ownCapacityDispatch")
   return {
     available: numberField(dispatch, "availableCodexAssignments") ??
@@ -2088,23 +2173,31 @@ function capacityFromProviderProjection(
   }
 }
 
-function codexAccountAvailabilityByRef(
+function accountAvailabilityByRef(
   accounts: readonly AccountRow[],
   projection: Record<string, unknown> | null,
+  workerKind: KhalaFleetDelegateWorkerKind,
 ): ReadonlyMap<string, number> {
   const ownCapacity = recordField(projection, "ownCapacityDispatch")
+  const capacityFields = workerKind === "auto"
+    ? ["codexAccounts", "claudeAccounts"]
+    : workerKind === "claude"
+      ? ["claudeAccounts"]
+      : ["codexAccounts"]
   const accountRefByKey = new Map<string, string>()
   for (const account of accounts) {
-    if (account.accountKey !== null) accountRefByKey.set(account.accountKey, account.accountRef)
+    if (account.accountKey !== null) accountRefByKey.set(account.accountKey, accountAvailabilityKey(account))
   }
   const out = new Map<string, number>()
-  for (const capacity of arrayField(ownCapacity, "codexAccounts")) {
-    const row = record(capacity)
-    if (row === null) continue
-    const accountKey = stringField(row, "accountKey")
-    const accountRef = accountKey === null ? null : accountRefByKey.get(accountKey) ?? null
-    const available = numberField(row, "available")
-    if (accountRef !== null && available !== null) out.set(accountRef, available)
+  for (const field of capacityFields) {
+    for (const capacity of arrayField(ownCapacity, field)) {
+      const row = record(capacity)
+      if (row === null) continue
+      const accountKey = stringField(row, "accountKey")
+      const accountRef = accountKey === null ? null : accountRefByKey.get(accountKey) ?? null
+      const available = numberField(row, "available")
+      if (accountRef !== null && available !== null) out.set(accountRef, available)
+    }
   }
   return out
 }
@@ -2112,19 +2205,27 @@ function codexAccountAvailabilityByRef(
 function withAccountCapacity(
   accounts: readonly AccountRow[],
   projections: readonly (Record<string, unknown> | null)[],
+  workerKind: KhalaFleetDelegateWorkerKind = "codex",
 ): readonly AccountRow[] {
   const capacityByKey = new Map<string, AccountCapacityRow>()
   const capacityByRef = new Map<string, AccountCapacityRow>()
+  const capacityFields = workerKind === "auto"
+    ? ["codexAccounts", "claudeAccounts"]
+    : workerKind === "claude"
+      ? ["claudeAccounts"]
+      : ["codexAccounts"]
   for (const projection of projections) {
     const ownCapacity = recordField(projection, "ownCapacityDispatch")
-    for (const item of arrayField(ownCapacity, "codexAccounts")) {
-      const row = record(item)
-      if (row === null) continue
-      const capacity = accountCapacityRowFrom(row)
-      const accountKey = stringField(row, "accountKey")
-      const accountRef = stringField(row, "accountRef")
-      if (accountKey !== null) capacityByKey.set(accountKey, capacity)
-      if (accountRef !== null) capacityByRef.set(accountRef, capacity)
+    for (const field of capacityFields) {
+      for (const item of arrayField(ownCapacity, field)) {
+        const row = record(item)
+        if (row === null) continue
+        const capacity = accountCapacityRowFrom(row)
+        const accountKey = stringField(row, "accountKey")
+        const accountRef = stringField(row, "accountRef")
+        if (accountKey !== null) capacityByKey.set(accountKey, capacity)
+        if (accountRef !== null) capacityByRef.set(accountRef, capacity)
+      }
     }
   }
   if (capacityByKey.size === 0 && capacityByRef.size === 0) return accounts
@@ -2428,7 +2529,7 @@ function isCodexExecAgentProcess(command: string): boolean {
   if (/\bdurable-runner-pool\.sh\b/iu.test(command)) return false
   if (/\b(?:grep|rg|ripgrep)\b.*\bcodex\s+exec\b/iu.test(command)) return false
   if (/\bps\s+-axo\b/iu.test(command)) return false
-  if (/\bkhala-codex-fleet-tools\b/iu.test(command)) return false
+  if (/\bkhala-(?:codex-)?fleet-tools\b/iu.test(command)) return false
   return true
 }
 
@@ -2450,6 +2551,7 @@ function decodeSpawnInput(
   const verify = raw.verify ?? (!fixture && (raw.repo !== undefined || raw.commit !== undefined)
     ? delegationParameters.verifyCriteria?.defaultVerify
     : undefined)
+  const workerKind = raw.workerKind ?? delegationParameters.delegationTarget?.workerKind ?? "codex"
   const missingPins = [
     raw.repo === undefined ? "repo" : null,
     verify === undefined ? "verify" : null,
@@ -2473,7 +2575,31 @@ function decodeSpawnInput(
     prompt,
     timeoutMs,
     verify,
+    workerKind,
   }
+}
+
+function delegationParametersWithWorkerKind(
+  parameters: KhalaFleetDelegationParameterSet,
+  workerKind: KhalaFleetDelegateWorkerKind,
+): KhalaFleetDelegationParameterSet {
+  const raw: Record<string, unknown> = {
+    delegationTarget: {
+      ...(parameters.delegationTarget ?? {}),
+      workerKind,
+    },
+    parameterSetRef: parameters.parameterSetRef,
+    schemaVersion: parameters.schemaVersion,
+    source: parameters.source,
+  }
+  if (parameters.accountRanking !== undefined) raw.accountRanking = parameters.accountRanking
+  if (parameters.actionSubmissionRef !== undefined) raw.actionSubmissionRef = parameters.actionSubmissionRef
+  if (parameters.advertiseCapacity !== undefined) raw.advertiseCapacity = parameters.advertiseCapacity
+  if (parameters.candidateRef !== undefined) raw.candidateRef = parameters.candidateRef
+  if (parameters.objectiveTemplate !== undefined) raw.objectiveTemplate = parameters.objectiveTemplate
+  if (parameters.retryBackoff !== undefined) raw.retryBackoff = parameters.retryBackoff
+  if (parameters.verifyCriteria !== undefined) raw.verifyCriteria = parameters.verifyCriteria
+  return decodeKhalaFleetDelegationParameterSet(raw)
 }
 
 async function resolveRealWorkCommitPin(
@@ -2594,14 +2720,14 @@ function renderEnsureResult(result: KhalaPylonEnsureResult): string {
 function renderFleetStatus(result: FleetStatusResult): string {
   const lines = [
     `Pylon: ${result.ensure.ok ? result.ensure.status : "unavailable"}${result.ensure.pylonRef ? ` (${result.ensure.pylonRef})` : ""}`,
-    `Codex capacity: ${capacityLabel(result.availableCodexAssignments, result.maxCodexAssignments)}`,
-    `Codex accounts: ${result.accounts.length} total, ${readyAccountCount(result.accounts)} ready`,
+    `Worker capacity: ${capacityLabel(result.availableCodexAssignments, result.maxCodexAssignments)}`,
+    `Worker accounts: ${result.accounts.length} total, ${readyAccountCount(result.accounts)} ready`,
     renderFleetTokenRate(result.tokenRate),
   ]
   if (result.accounts.length > 0) {
     lines.push(...result.accounts.map(renderAccountStatusLine))
   } else {
-    lines.push("- no Pylon Codex accounts found")
+    lines.push("- no Pylon worker accounts found")
   }
   lines.push(`Active assignment markers: ${result.activeAssignments.length}`)
   if (result.activeAssignments.length > 0) {
@@ -2611,10 +2737,10 @@ function renderFleetStatus(result: FleetStatusResult): string {
     lines.push(`Server assignment token rows: ${result.serverAssignments.length}`)
     lines.push(...result.serverAssignments.slice(0, 8).map(renderServerAssignmentTokenLine))
   }
-  lines.push(`Active Codex exec processes: ${result.processes.length}`)
+  lines.push(`Active local worker processes: ${result.processes.length}`)
   if (result.activeAssignments.length !== result.processes.length) {
     lines.push(
-      `Assignment/process reconciliation: ${result.activeAssignments.length} marker(s), ${result.processes.length} codex exec process(es)`,
+      `Assignment/process reconciliation: ${result.activeAssignments.length} marker(s), ${result.processes.length} local worker process(es)`,
     )
   }
   if (result.processes.length > 0) {
@@ -2649,7 +2775,7 @@ function renderAccountStatusLine(account: AccountRow): string {
   const capacityText = capacity === null
     ? ""
     : `, slots ${capacityLabel(capacity.available, capacity.ready)}${capacity.busy === null ? "" : `, busy ${capacity.busy}`}${capacity.queued === null ? "" : `, queued ${capacity.queued}`}`
-  return `- ${account.accountRef}: ${account.readiness}${capacityText}${account.quotaState ? `, quota ${account.quotaState}` : ""}`
+  return `- ${workerKindForAccountProvider(account.provider)}:${account.accountRef}: ${account.readiness}${capacityText}${account.quotaState ? `, quota ${account.quotaState}` : ""}`
 }
 
 function renderActiveAssignmentLine(marker: ActiveAssignmentMarker): string {
@@ -2768,13 +2894,60 @@ function withCodexCapacityAdvertisementEnv(
   }
 }
 
+function withClaudeCapacityAdvertisementEnv(
+  env: ChatEnv,
+  requestedCount: number,
+  parameters: KhalaFleetDelegationParameterSet,
+): ChatEnv {
+  const fallbackTarget = Math.max(
+    1,
+    requestedCount,
+    positiveIntegerEnv(env.OPENAGENTS_PYLON_CLAUDE_ACCOUNT_CONCURRENCY) ?? 0,
+    positiveIntegerEnv(env.OPENAGENTS_PYLON_CLAUDE_CONCURRENCY) ?? 0,
+  )
+  const admittedTarget = khalaFleetDelegationPerAccountConcurrency(parameters, fallbackTarget)
+  const target = Math.max(
+    admittedTarget,
+    requestedCount,
+    positiveIntegerEnv(env.OPENAGENTS_PYLON_CLAUDE_ACCOUNT_CONCURRENCY) ?? 0,
+    positiveIntegerEnv(env.OPENAGENTS_PYLON_CLAUDE_CONCURRENCY) ?? 0,
+  )
+  return {
+    ...env,
+    OPENAGENTS_PYLON_CLAUDE_ACCOUNT_CONCURRENCY: String(target),
+    OPENAGENTS_PYLON_CLAUDE_BUSY: "0",
+    OPENAGENTS_PYLON_CLAUDE_CONCURRENCY: String(target),
+    OPENAGENTS_PYLON_CLAUDE_QUEUED: "0",
+  }
+}
+
+function withWorkerCapacityAdvertisementEnv(
+  env: ChatEnv,
+  requestedCount: number,
+  parameters: KhalaFleetDelegationParameterSet,
+  workerKind: KhalaFleetDelegateWorkerKind,
+): ChatEnv {
+  if (workerKind === "claude") {
+    return withClaudeCapacityAdvertisementEnv(env, requestedCount, parameters)
+  }
+  if (workerKind === "auto") {
+    return withClaudeCapacityAdvertisementEnv(
+      withCodexCapacityAdvertisementEnv(env, requestedCount, parameters),
+      requestedCount,
+      parameters,
+    )
+  }
+  return withCodexCapacityAdvertisementEnv(env, requestedCount, parameters)
+}
+
 function khalaDelegateCapacityFromFleetStatus(
   status: FleetStatusResult,
   projection: Record<string, unknown> | null,
   availability: ReadonlyMap<string, number>,
   parameters: KhalaFleetDelegationParameterSet = resolveKhalaFleetDelegationParameters(undefined),
 ): KhalaFleetDelegateCapacity {
-  const capacity = capacityFromProviderProjection(projection)
+  const workerKind = resolveKhalaFleetDelegationParameters(parameters).delegationTarget?.workerKind ?? "codex"
+  const capacity = capacityFromProviderProjection(projection, workerKind)
   const accounts = preferredSpawnAccounts(status.accounts, availability, parameters)
     .filter(account => !account.paused)
     .map(account => khalaDelegateAccountFromRow(account, availability))
@@ -2782,8 +2955,10 @@ function khalaDelegateCapacityFromFleetStatus(
   const accountAvailable = availability.size === 0
     ? readyCount
     : accounts.reduce((sum, account) => sum + Math.max(0, account.availableSlots ?? 0), 0)
-  const available = capacity.available ?? status.availableCodexAssignments ?? accountAvailable
-  const max = capacity.max ?? status.maxCodexAssignments ?? Math.max(available, readyCount)
+  const legacyCodexAvailable = workerKind === "codex" ? status.availableCodexAssignments : null
+  const legacyCodexMax = workerKind === "codex" ? status.maxCodexAssignments : null
+  const available = capacity.available ?? legacyCodexAvailable ?? accountAvailable
+  const max = capacity.max ?? legacyCodexMax ?? Math.max(available, readyCount)
   return {
     accounts,
     available: Math.max(0, Math.floor(available)),
@@ -2795,12 +2970,13 @@ function khalaDelegateAccountFromRow(
   account: AccountRow,
   availability: ReadonlyMap<string, number>,
 ): KhalaFleetDelegateAccount {
-  const availableSlots = availability.get(account.accountRef)
+  const availableSlots = availability.get(accountAvailabilityKey(account))
   return {
     accountRef: account.accountRef,
     ...(availableSlots === undefined ? {} : { availableSlots }),
     isDefault: isDefaultAccountRef(account.accountRef),
     readiness: khalaDelegateReadiness(account),
+    workerKind: workerKindForAccountProvider(account.provider),
   }
 }
 
@@ -2817,6 +2993,7 @@ function planDelegatedSpawnAccounts(
   status: FleetStatusResult | null,
   availability: ReadonlyMap<string, number>,
   parameters: KhalaFleetDelegationParameterSet,
+  workerKind: KhalaFleetDelegateConcreteWorkerKind,
 ):
   | Readonly<{ accounts: readonly AccountRow[]; status: "planned" }>
   | Readonly<{ dispatch: { blockerCode: KhalaFleetDelegateBlockerCode; message: string; ok: false; refs: readonly string[] }; status: "blocked" }> {
@@ -2824,7 +3001,7 @@ function planDelegatedSpawnAccounts(
     return {
       dispatch: {
         blockerCode: "capacity_probe_failed",
-        message: "Codex fleet projection was not available after capacity advertisement.",
+        message: `${workerLabel(workerKind)} fleet projection was not available after capacity advertisement.`,
         ok: false,
         refs: ["blocker.public.khala_fleet_delegate.capacity_probe_failed"],
       },
@@ -2832,7 +3009,11 @@ function planDelegatedSpawnAccounts(
     }
   }
   const readyAccounts = preferredSpawnAccounts(
-    status.accounts.filter(account => isReadyAccount(account) && !account.paused),
+    status.accounts.filter(account =>
+      isReadyAccount(account) &&
+      !account.paused &&
+      workerKindForAccountProvider(account.provider) === workerKind
+    ),
     availability,
     parameters,
   )
@@ -2841,7 +3022,7 @@ function planDelegatedSpawnAccounts(
       dispatch: {
         blockerCode: "connect_account_required",
         message:
-          "No ready Pylon Codex account is connected. Connect one first with `khala fleet connect` or `pylon auth codex --account codex`; this Desktop tool will not run Codex device login.",
+          `No ready Pylon ${workerLabel(workerKind)} account is connected. Connect one first; this Desktop tool will not run device login.`,
         ok: false,
         refs: ["blocker.public.khala_fleet_delegate.connect_account_required"],
       },
@@ -2850,7 +3031,14 @@ function planDelegatedSpawnAccounts(
   }
   let selectedAccounts: readonly AccountRow[]
   try {
-    selectedAccounts = resolveSpawnAccounts(input.accountRef, readyAccounts, status.accounts, availability, parameters)
+    selectedAccounts = resolveSpawnAccounts(
+      input.accountRef,
+      readyAccounts,
+      status.accounts.filter(account => workerKindForAccountProvider(account.provider) === workerKind),
+      availability,
+      parameters,
+      workerKind,
+    )
   } catch (error) {
     const message = errorMessage(error)
     const blockerCode: KhalaFleetDelegateBlockerCode = /not found|not connected/iu.test(message)
@@ -2869,24 +3057,26 @@ function planDelegatedSpawnAccounts(
     }
   }
   if (selectedAccounts.length === 0 || capacity.available <= 0) {
+    const blockerCode = noAvailableCapacityBlockerForWorkerKind(workerKind)
     return {
       dispatch: {
-        blockerCode: "no_available_codex_capacity",
-        message: `No Pylon Codex assignment capacity is available right now (${capacityLabel(capacity.available, capacity.max)}).`,
+        blockerCode,
+        message: `No Pylon ${workerLabel(workerKind)} assignment capacity is available right now (${capacityLabel(capacity.available, capacity.max)}).`,
         ok: false,
-        refs: ["blocker.public.pylon_dispatch.no_available_codex_capacity"],
+        refs: [`blocker.public.pylon_dispatch.${blockerCode}`],
       },
       status: "blocked",
     }
   }
   const plannedAccounts = planSpawnAccounts(input.count, selectedAccounts, availability)
   if (plannedAccounts.length < input.count) {
+    const blockerCode = noAvailableCapacityBlockerForWorkerKind(workerKind)
     return {
       dispatch: {
-        blockerCode: "no_available_codex_capacity",
-        message: `Only ${plannedAccounts.length}/${input.count} advertised Pylon Codex account slot(s) are free right now.`,
+        blockerCode,
+        message: `Only ${plannedAccounts.length}/${input.count} advertised Pylon ${workerLabel(workerKind)} account slot(s) are free right now.`,
         ok: false,
-        refs: ["blocker.public.pylon_dispatch.no_available_codex_capacity"],
+        refs: [`blocker.public.pylon_dispatch.${blockerCode}`],
       },
       status: "blocked",
     }
@@ -2904,6 +3094,7 @@ async function runDelegatedBatchSpawn(input: {
   readonly plannedAccounts: readonly AccountRow[]
   readonly runner?: KhalaCodexFleetCommandRunner | undefined
   readonly targetPylonRef: string
+  readonly workerKind: KhalaFleetDelegateConcreteWorkerKind
   readonly work: KhalaFleetDelegateWork
 }): Promise<SpawnCodexInstancesResult> {
   const selectedCommandAccount =
@@ -2939,6 +3130,8 @@ async function runDelegatedBatchSpawn(input: {
     String(input.input.count),
     "--max-parallel",
     String(input.input.count),
+    "--workflow",
+    concreteWorkflowForWorkerKind(input.workerKind),
     "--objective",
     objective,
     "--pylon-ref",
@@ -2980,6 +3173,7 @@ async function runDelegatedNoRunRequests(input: {
   readonly plannedAccounts: readonly AccountRow[]
   readonly runner?: KhalaCodexFleetCommandRunner | undefined
   readonly targetPylonRef: string
+  readonly workerKind: KhalaFleetDelegateConcreteWorkerKind
 }): Promise<SpawnCodexInstancesResult> {
   const objective = renderKhalaFleetDelegationObjective({
     branch: input.input.fixture ? undefined : input.input.branch,
@@ -2996,7 +3190,7 @@ async function runDelegatedNoRunRequests(input: {
       "khala",
       "request",
       "--workflow",
-      "codex_agent_task",
+      concreteWorkflowForWorkerKind(input.workerKind),
       "--prompt",
       objective,
       "--pylon-ref",
@@ -3049,26 +3243,34 @@ function firstSpawnAssignmentRef(result: SpawnCodexInstancesResult): string | nu
   return result.results.find(slot => slot.assignmentRef !== null)?.assignmentRef ?? null
 }
 
-function classifySpawnDispatchBlocker(result: SpawnCodexInstancesResult): KhalaFleetDelegateBlockerCode {
+function classifySpawnDispatchBlocker(
+  result: SpawnCodexInstancesResult,
+  workerKind: KhalaFleetDelegateConcreteWorkerKind = "codex",
+): KhalaFleetDelegateBlockerCode {
   const text = renderSpawnResult(result)
   if (/duplicate_active_assignment|duplicate active assignment/iu.test(text)) return "duplicate_active_assignment"
   if (/stale_heartbeat|stale heartbeat|presence\.stale_heartbeat/iu.test(text)) return "stale_heartbeat"
-  if (/no_available_codex_capacity|no .*capacity|0\/\d+ available|rate.?limit|429|409/iu.test(text)) {
-    return "no_available_codex_capacity"
+  if (/no_available_(?:claude|codex)_capacity|no .*capacity|0\/\d+ available|rate.?limit|429|409/iu.test(text)) {
+    return noAvailableCapacityBlockerForWorkerKind(workerKind)
   }
   return "dispatch_failed"
 }
 
-function spawnDispatchBlockerRefs(result: SpawnCodexInstancesResult): readonly string[] {
+function spawnDispatchBlockerRefs(
+  result: SpawnCodexInstancesResult,
+  workerKind: KhalaFleetDelegateConcreteWorkerKind = "codex",
+): readonly string[] {
   const refs = result.results
     .flatMap(slot => slot.summary.match(/blocker(?: refs)?: ([^\n]+)/iu)?.[1]?.split(",") ?? [])
     .map(ref => ref.trim())
     .filter(ref => ref.length > 0 && ref !== "none")
   if (refs.length > 0) return [...new Set(refs)]
-  const blocker = classifySpawnDispatchBlocker(result)
+  const blocker = classifySpawnDispatchBlocker(result, workerKind)
   if (blocker === "duplicate_active_assignment") return ["blocker.public.pylon_dispatch.duplicate_active_assignment"]
   if (blocker === "stale_heartbeat") return ["blocker.public.pylon_dispatch.stale_heartbeat"]
-  if (blocker === "no_available_codex_capacity") return ["blocker.public.pylon_dispatch.no_available_codex_capacity"]
+  if (blocker === "no_available_codex_capacity" || blocker === "no_available_claude_capacity") {
+    return [`blocker.public.pylon_dispatch.${blocker}`]
+  }
   return ["blocker.public.khala_fleet_delegate.dispatch_failed"]
 }
 
@@ -3111,7 +3313,7 @@ function renderSpawnResult(result: SpawnCodexInstancesResult): string {
   const tokensVerified = spawnVerifiedTokenTotal(result)
   return [
     ...renderDelegateTraceLines(result),
-    `Codex spawn: accepted ${result.acceptedCount}/${result.requestedCount}${result.pylonRef ? ` via ${result.pylonRef}` : ""}`,
+    `Fleet spawn: accepted ${result.acceptedCount}/${result.requestedCount}${result.pylonRef ? ` via ${result.pylonRef}` : ""}`,
     ...(tokensVerified > 0
       ? [`Khala tokens generated: ${tokensVerified} verified (exact)`]
       : []),
@@ -3326,8 +3528,8 @@ function preferredSpawnAccounts(
     const rightReady = isReadyAccount(right)
     if (leftReady !== rightReady) return leftReady ? -1 : 1
     if (heuristic === "lexicographic_ready") return left.accountRef.localeCompare(right.accountRef)
-    const leftSlots = availability.get(left.accountRef) ?? 1
-    const rightSlots = availability.get(right.accountRef) ?? 1
+    const leftSlots = availability.get(accountAvailabilityKey(left)) ?? 1
+    const rightSlots = availability.get(accountAvailabilityKey(right)) ?? 1
     if (leftSlots !== rightSlots) return rightSlots - leftSlots
     const leftDefault = isDefaultAccountRef(left.accountRef)
     const rightDefault = isDefaultAccountRef(right.accountRef)
@@ -3346,6 +3548,7 @@ function resolveSpawnAccounts(
   allAccounts: readonly AccountRow[],
   availability: ReadonlyMap<string, number>,
   parameters: KhalaFleetDelegationParameterSet,
+  workerKind: KhalaFleetDelegateConcreteWorkerKind = "codex",
 ): readonly AccountRow[] {
   if (requestedAccountRef === undefined) return dispatchableSpawnAccounts(readyAccounts, availability)
   if (isDefaultAccountRef(requestedAccountRef)) {
@@ -3361,17 +3564,17 @@ function resolveSpawnAccounts(
   }
   const selected = allAccounts.find(account => account.accountRef === requestedAccountRef)
   if (selected === undefined) {
-    throw new Error(`Pylon Codex account ${requestedAccountRef} was not found.`)
+    throw new Error(`Pylon ${workerLabel(workerKind)} account ${requestedAccountRef} was not found.`)
   }
   if (!isReadyAccount(selected)) {
-    throw new Error(`Pylon Codex account ${requestedAccountRef} is not ready (${selected.readiness}).`)
+    throw new Error(`Pylon ${workerLabel(workerKind)} account ${requestedAccountRef} is not ready (${selected.readiness}).`)
   }
   if (selected.paused) {
-    throw new Error(`Pylon Codex account ${requestedAccountRef} is paused for planning.`)
+    throw new Error(`Pylon ${workerLabel(workerKind)} account ${requestedAccountRef} is paused for planning.`)
   }
-  const slots = availability.get(selected.accountRef)
+  const slots = availability.get(accountAvailabilityKey(selected))
   if (slots !== undefined && slots <= 0) {
-    throw new Error(`Pylon Codex account ${requestedAccountRef} has no advertised available slots right now.`)
+    throw new Error(`Pylon ${workerLabel(workerKind)} account ${requestedAccountRef} has no advertised available slots right now.`)
   }
   return [selected]
 }
@@ -3382,9 +3585,9 @@ function dispatchableSpawnAccounts(
 ): readonly AccountRow[] {
   accounts = accounts.filter(account => !account.paused)
   if (availability.size === 0) return accounts
-  const positive = accounts.filter(account => (availability.get(account.accountRef) ?? 0) > 0)
+  const positive = accounts.filter(account => (availability.get(accountAvailabilityKey(account)) ?? 0) > 0)
   if (positive.length > 0) return positive
-  return accounts.filter(account => availability.get(account.accountRef) === undefined)
+  return accounts.filter(account => availability.get(accountAvailabilityKey(account)) === undefined)
 }
 
 function planSpawnAccounts(
@@ -3398,7 +3601,7 @@ function planSpawnAccounts(
   }
   const planned: AccountRow[] = []
   for (const account of accounts) {
-    const available = availability.get(account.accountRef)
+    const available = availability.get(accountAvailabilityKey(account))
     if (available === undefined) {
       planned.push(account)
       continue

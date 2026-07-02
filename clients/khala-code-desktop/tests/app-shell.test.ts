@@ -1729,8 +1729,8 @@ describe("khala code desktop app shell", () => {
       status: "running",
       toolName: "codex_spawn",
     })
-    expect(parseToolTranscript("codex_spawn: ok\n\nCodex spawn: accepted 0/1\n- slot 1: failed\n  command timed out")).toEqual({
-      output: "Codex spawn: accepted 0/1\n- slot 1: failed\n  command timed out",
+    expect(parseToolTranscript("codex_spawn: ok\n\nFleet spawn: accepted 0/1\n- slot 1: failed\n  command timed out")).toEqual({
+      output: "Fleet spawn: accepted 0/1\n- slot 1: failed\n  command timed out",
       status: "failed",
       toolName: "codex_spawn",
     })

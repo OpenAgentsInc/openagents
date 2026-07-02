@@ -9,7 +9,7 @@ import { buildKhalaAppleFmReadiness } from "../../../clients/khala-code-desktop/
 import type {
   KhalaCodexFleetCommandInput,
   KhalaCodexFleetCommandResult,
-} from "../../../clients/khala-code-desktop/src/bun/khala-codex-fleet-tools.js"
+} from "../../../clients/khala-code-desktop/src/bun/khala-fleet-tools.js"
 import type {
   KhalaCodeDesktopCodexHarnessStatus,
   KhalaCodeDesktopFleetRunProjection,

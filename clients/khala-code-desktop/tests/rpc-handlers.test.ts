@@ -13,13 +13,14 @@ import type {
 import type {
   KhalaCodexFleetCommandInput,
   KhalaCodexFleetCommandResult,
-} from "../src/bun/khala-codex-fleet-tools"
+} from "../src/bun/khala-fleet-tools"
 import type {
   KhalaCodeDesktopChatTurnResponse,
   KhalaCodeDesktopCodexAppServerControlResult,
   KhalaCodeDesktopCodexAppServerStatus,
   KhalaCodeDesktopCodexHarnessStatus,
   KhalaCodeDesktopFleetRunProjection,
+  KhalaCodeDesktopFleetRunStartRequest,
 } from "../src/shared/rpc"
 
 const tempDirs: string[] = []
@@ -264,7 +265,7 @@ function throwingClaudeChatRuntime(
 
 describe("Khala Code desktop RPC handlers", () => {
   test("starts fleet runs through the supervisor RPC port", async () => {
-    const calls: unknown[] = []
+    const calls: KhalaCodeDesktopFleetRunStartRequest[] = []
     const run = fleetRunProjection()
     const handlers = createKhalaCodeDesktopRpcRequestHandlers({
       appleFmReadiness: () => {
@@ -295,6 +296,7 @@ describe("Khala Code desktop RPC handlers", () => {
     await expect(handlers.fleetRunStart({
       objective: "Burn down public issue backlog.",
       targetConcurrency: 25,
+      workerKind: "claude",
       workSource: {
         kind: "issue_list",
         repo: "OpenAgentsInc/openagents",
@@ -306,6 +308,7 @@ describe("Khala Code desktop RPC handlers", () => {
       supervisorStarted: true,
     })
     expect(calls).toHaveLength(1)
+    expect(calls[0]?.workerKind).toBe("claude")
   })
 
   test("reads fleet run status through a public-safe projection", async () => {

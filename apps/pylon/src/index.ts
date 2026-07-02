@@ -212,9 +212,11 @@ import {
   completePylonLink,
   codexAccountCapacityRefs,
   codexBusyByAccount,
+  claudeBusyByAccount,
   codingServiceCapacityFromRuntime,
   codingServiceCapacityRefs,
   DEFAULT_CODEX_PER_ACCOUNT_CONCURRENCY,
+  localClaudeAccountCapacities,
   localCodexAccountCapacities,
   localCodingServiceReadyCounts,
   presenceClientOptionsFromEnv,
@@ -329,6 +331,7 @@ import {
   buildPylonKhalaSpawnPlan,
   repeatedKhalaSpawnObjectives,
   runPylonKhalaSpawnPlan,
+  type PylonKhalaSpawnWorkflow,
 } from "./khala-spawn.js"
 import {
   pylonKhalaMcpConfig,
@@ -2333,6 +2336,20 @@ async function availableCodexAssignments(
   return codingCapacity.find((item) => item.service === "codex")?.available ?? 0
 }
 
+async function availableClaudeAssignments(
+  summary: BootstrapSummary,
+  state: PylonLocalState,
+  options?: AssignmentLeaseNetworkOptions,
+  env: NodeJS.ProcessEnv = Bun.env,
+): Promise<number> {
+  const claudeAccounts = await localClaudeDispatchAccounts(summary, state, env, options)
+  if (claudeAccounts.length > 0) {
+    return claudeAccounts.reduce((sum, account) => sum + account.available, 0)
+  }
+  const codingCapacity = await codingCapacityForDispatch(summary, state, options, env)
+  return codingCapacity.find((item) => item.service === "claude")?.available ?? 0
+}
+
 async function localCodexDispatchAccounts(
   summary: BootstrapSummary,
   state: PylonLocalState,
@@ -2344,6 +2361,22 @@ async function localCodexDispatchAccounts(
     summary,
     env,
     codexBusyByAccount(
+      await codingAccountBusyCountsForDispatch(summary, state, options),
+    ),
+  )
+}
+
+async function localClaudeDispatchAccounts(
+  summary: BootstrapSummary,
+  state: PylonLocalState,
+  env: NodeJS.ProcessEnv = Bun.env,
+  options?: AssignmentLeaseNetworkOptions,
+) {
+  return localClaudeAccountCapacities(
+    state,
+    summary,
+    env,
+    claudeBusyByAccount(
       await codingAccountBusyCountsForDispatch(summary, state, options),
     ),
   )
@@ -2374,6 +2407,34 @@ function khalaCodexCapacityAdvertisementEnv(
     OPENAGENTS_PYLON_CODEX_BUSY: "0",
     OPENAGENTS_PYLON_CODEX_CONCURRENCY: String(pooledTarget),
     OPENAGENTS_PYLON_CODEX_QUEUED: "0",
+  }
+}
+
+function khalaClaudeCapacityAdvertisementEnv(
+  env: NodeJS.ProcessEnv,
+  requestedSlots: number,
+): NodeJS.ProcessEnv {
+  const requestedFloor = Math.max(
+    1,
+    Number.isSafeInteger(requestedSlots) && requestedSlots > 0
+      ? Math.floor(requestedSlots)
+      : 1,
+  )
+  const inheritedPooledConcurrency =
+    positiveIntegerEnv(env.OPENAGENTS_PYLON_CLAUDE_CONCURRENCY) ??
+    1
+  const explicitPerAccountConcurrency =
+    positiveIntegerEnv(env.OPENAGENTS_PYLON_CLAUDE_ACCOUNT_CONCURRENCY)
+  const perAccountTarget =
+    explicitPerAccountConcurrency ??
+    Math.max(inheritedPooledConcurrency, requestedFloor)
+  const pooledTarget = Math.max(inheritedPooledConcurrency, requestedFloor)
+  return {
+    ...env,
+    OPENAGENTS_PYLON_CLAUDE_ACCOUNT_CONCURRENCY: String(perAccountTarget),
+    OPENAGENTS_PYLON_CLAUDE_BUSY: "0",
+    OPENAGENTS_PYLON_CLAUDE_CONCURRENCY: String(pooledTarget),
+    OPENAGENTS_PYLON_CLAUDE_QUEUED: "0",
   }
 }
 
@@ -4223,8 +4284,15 @@ async function main() {
           optionString(options, "prompt") ??
           (args[2] !== undefined && !args[2].startsWith("--") ? args[2] : undefined)
         if (!objective) {
-          throw new Error("usage: pylon khala spawn --count <n> --objective <text> [--fixture | --commit <sha> --repo owner/repo --verify <argv>] [--pylon-ref <pylonRef>] [--account <ref>] [--max-parallel n] [--execute] [--lifecycle-ndjson] [--json]")
+          throw new Error("usage: pylon khala spawn --count <n> --objective <text> [--workflow claude_agent_task|codex_agent_task] [--fixture | --commit <sha> --repo owner/repo --verify <argv>] [--pylon-ref <pylonRef>] [--account <ref>] [--max-parallel n] [--execute] [--lifecycle-ndjson] [--json]")
         }
+        const workflow = optionString(options, "workflow") ?? "codex_agent_task"
+        if (workflow !== "claude_agent_task" && workflow !== "codex_agent_task") {
+          throw new Error("khala spawn --workflow must be claude_agent_task or codex_agent_task")
+        }
+        const spawnWorkflow = workflow as PylonKhalaSpawnWorkflow
+        const accountProvider = spawnWorkflow === "claude_agent_task" ? "claude_agent" : "codex"
+        const workerKind = spawnWorkflow === "claude_agent_task" ? "Claude" : "Codex"
         const count = positiveIntegerOption(options, "count", "khala spawn --count") ?? 1
         const maxParallel = positiveIntegerOption(options, "max-parallel", "khala spawn --max-parallel")
         const commit = optionString(options, "commit")
@@ -4254,7 +4322,9 @@ async function main() {
           optionString(options, "pylon-ref") ??
           optionString(options, "target-pylon-ref") ??
           localPylonTargetRef(state)
-        const capacityEnv = khalaCodexCapacityAdvertisementEnv(Bun.env, Math.max(count, maxParallel ?? 0))
+        const capacityEnv = spawnWorkflow === "claude_agent_task"
+          ? khalaClaudeCapacityAdvertisementEnv(Bun.env, Math.max(count, maxParallel ?? 0))
+          : khalaCodexCapacityAdvertisementEnv(Bun.env, Math.max(count, maxParallel ?? 0))
         if (optionFlag(options, "execute")) {
           try {
             await sendHeartbeat(summary, {
@@ -4278,7 +4348,7 @@ async function main() {
             : {
                 ...allAccounts,
                 accounts: allAccounts.accounts.filter((account) =>
-                  account.provider === "codex" &&
+                  account.provider === accountProvider &&
                   (
                     account.accountRef === accountSelector ||
                     account.accountRefHash === accountSelector ||
@@ -4287,12 +4357,16 @@ async function main() {
                 ),
               }
         if (accountSelector !== undefined && accounts.accounts.length === 0) {
-          throw new Error(`khala spawn account ${accountSelector} is not a connected Codex account`)
+          throw new Error(`khala spawn account ${accountSelector} is not a connected ${workerKind} account`)
         }
-        const advertisedCodexAccounts = await localCodexDispatchAccounts(summary, state, capacityEnv, networkOptions)
+        const advertisedCodexAccounts = spawnWorkflow === "claude_agent_task"
+          ? await localClaudeDispatchAccounts(summary, state, capacityEnv, networkOptions)
+          : await localCodexDispatchAccounts(summary, state, capacityEnv, networkOptions)
         const advertisedCodexAvailability = advertisedCodexAccounts.length > 0
           ? advertisedCodexAccounts.reduce((sum, account) => sum + account.available, 0)
-          : await availableCodexAssignments(summary, state, networkOptions, capacityEnv)
+          : spawnWorkflow === "claude_agent_task"
+            ? await availableClaudeAssignments(summary, state, networkOptions, capacityEnv)
+            : await availableCodexAssignments(summary, state, networkOptions, capacityEnv)
         const workspace = explicitFixture
           ? undefined
           : buildPylonKhalaGitCheckoutWorkspace({
@@ -4314,6 +4388,7 @@ async function main() {
           repository,
           targetPylonRef,
           ...(verificationCommand === undefined ? {} : { verificationCommand }),
+          workflow: spawnWorkflow,
           ...(workspace === undefined ? {} : { workspace }),
         })
         if (!optionFlag(options, "execute")) {
