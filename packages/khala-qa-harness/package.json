@@ -5,7 +5,12 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./rpc-client": "./src/rpc-client.ts"
+    "./desktop-smoke-helpers": "./src/desktop-smoke-helpers.ts",
+    "./driver": "./src/driver.ts",
+    "./rpc-driver": "./src/rpc-driver.ts",
+    "./rpc-client": "./src/rpc-client.ts",
+    "./runner": "./src/runner.ts",
+    "./scenario": "./src/scenario.ts"
   },
   "scripts": {
     "test": "bun test src/*.test.ts",
