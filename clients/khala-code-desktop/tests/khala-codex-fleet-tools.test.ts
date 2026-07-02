@@ -191,14 +191,20 @@ async function waitForFleetRunSnapshot(
   runRef: string,
   predicate: (snapshot: Awaited<ReturnType<DefaultKhalaFleetRunSupervisorManager["start"]>>) => boolean,
 ): Promise<Awaited<ReturnType<DefaultKhalaFleetRunSupervisorManager["start"]>>> {
+  // Array.isArray does not narrow readonly arrays out of a union, so use an
+  // explicit guard for the single-snapshot shape.
+  const singleSnapshot = (
+    value: Awaited<ReturnType<DefaultKhalaFleetRunSupervisorManager["status"]>>,
+  ): Awaited<ReturnType<DefaultKhalaFleetRunSupervisorManager["start"]>> => {
+    if (Array.isArray(value)) throw new Error("expected a single fleet run snapshot")
+    return value as Awaited<ReturnType<DefaultKhalaFleetRunSupervisorManager["start"]>>
+  }
   for (let attempt = 0; attempt < 50; attempt += 1) {
-    const snapshot = await manager.status({ runRef })
-    if (Array.isArray(snapshot)) throw new Error("expected a single fleet run snapshot")
+    const snapshot = singleSnapshot(await manager.status({ runRef }))
     if (predicate(snapshot)) return snapshot
     await Bun.sleep(10)
   }
-  const snapshot = await manager.status({ runRef })
-  if (Array.isArray(snapshot)) throw new Error("expected a single fleet run snapshot")
+  const snapshot = singleSnapshot(await manager.status({ runRef }))
   throw new Error(`fleet run ${runRef} did not reach expected state; last state=${snapshot.run.state} active=${snapshot.active}`)
 }
 
@@ -517,7 +523,8 @@ describe("Khala Code Codex fleet tools", () => {
 
     expect(active.active).toBe(true)
     expect(Array.isArray(failedStart)).toBe(false)
-    expect(Array.isArray(failedStart) ? null : failedStart.run.state).toBe("stopped")
+    const failedStartSnapshot = failedStart as Awaited<ReturnType<DefaultKhalaFleetRunSupervisorManager["start"]>>
+    expect(failedStartSnapshot.run.state).toBe("stopped")
 
     await manager.control({ runRef: "fleet_run.test.inflight", verb: "stop" })
     const afterStop = await manager.start({
