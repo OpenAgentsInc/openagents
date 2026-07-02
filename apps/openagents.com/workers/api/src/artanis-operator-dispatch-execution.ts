@@ -101,7 +101,17 @@ const buildDelegationBody = (
 ): Record<string, unknown> => {
   const coding: Record<string, unknown> = {
     authorityScope: plan.authorityScope,
+    fleetRunIntent: {
+      controlRefs: plan.fleetRunPlan.controlRefs,
+      evidenceRefs: plan.fleetRunPlan.evidenceRefs,
+      runRef: plan.fleetRunPlan.runRef,
+      targetConcurrency: plan.fleetRunPlan.targetConcurrency,
+      workerKind: plan.fleetRunPlan.workerKind,
+      workSourceRef: plan.fleetRunPlan.workSourceRef,
+    },
     objectiveSummary: plan.objective,
+    spawnRunRef: plan.fleetRunPlan.runRef,
+    spawnWorkerRef: plan.fleetRunPlan.workerRef,
   }
   coding.workspace = {
     kind: 'git_checkout',
@@ -189,6 +199,7 @@ const createAssignmentPromise = async (
         evidenceRefs: [
           ARTANIS_DISPATCH_EVIDENCE_REF,
           artanisAuthorityScopeEvidenceRef(verifiedPlan.authorityScope),
+          ...verifiedPlan.fleetRunPlan.evidenceRefs,
         ],
         workflowClass: 'codex_agent_task',
       },

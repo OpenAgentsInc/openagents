@@ -17,6 +17,7 @@ import {
 } from './artanis-health'
 import { artanisMindComplete } from './artanis-mind'
 import { parseJsonWithSchema } from './json-boundary'
+import { PYLON_AGENT_RUNNER_STATUS_EVENT_SCHEMA_VERSION } from './operator-pro-status-routes'
 import { epochMillisToIsoTimestamp, randomUuid } from './runtime-primitives'
 
 type FleetHeartbeatRow = Readonly<{
@@ -26,6 +27,16 @@ type FleetHeartbeatRow = Readonly<{
   warm_state: string | null
   watchdog_status: string | null
 }>
+
+type FleetStatusSpineRow = Readonly<{
+  assignment_ref: string | null
+  event_ref: string
+  retention_state: 'live' | 'retained'
+  runner_ref: string
+  state: string
+}>
+
+type FleetOverseerRunnerStatusState = 'waiting' | 'blocked'
 
 const FleetOverseerAction = S.Union([
   S.Struct({
@@ -72,6 +83,10 @@ export type ArtanisFleetOverseerContext = Readonly<{
   heartbeatRunRefs: ReadonlyArray<string>
   readyReplicaCount: number
   reclaimedReplicaRefs: ReadonlyArray<string>
+  statusSpineActiveAssignmentCount: number
+  statusSpineLiveRunnerCount: number
+  statusSpineRetainedRunnerCount: number
+  statusSpineSourceRefs: ReadonlyArray<string>
   totalReplicaCount: number
   warmOrReadyMaxInflight: number
 }>
@@ -277,6 +292,207 @@ const actionSummary = (
   ],
 })
 
+const statusSpineActiveRunnerState = (state: string): boolean =>
+  state === 'queued' ||
+  state === 'working' ||
+  state === 'waiting' ||
+  state === 'blocked'
+
+const publicStatusSpineRefPattern =
+  /^(agent|assignment|assignment-event|assignment-status|blocker|capability|capacity|command|dispatch|dispatch-context|dispatch-context-status|event|issue|load|merge-action|merge-wave|pylon|runner|runner-kind|task|task-status|worktree|ref|status)\.[A-Za-z0-9_.:=\-]+$/
+
+const safePublicStatusSpineRefs = (
+  refs: ReadonlyArray<string>,
+): ReadonlyArray<string> =>
+  refs
+    .filter(ref => publicStatusSpineRefPattern.test(ref))
+    .slice(0, 32)
+
+const runnerStatusStateForDecision = (
+  state: ArtanisFleetOverseerDecisionState,
+): FleetOverseerRunnerStatusState =>
+  state === 'blocked' || state === 'skipped' ? 'blocked' : 'waiting'
+
+const readFleetOverseerStatusSpineContext = async (
+  db: D1Database,
+): Promise<
+  Pick<
+    ArtanisFleetOverseerContext,
+    | 'statusSpineActiveAssignmentCount'
+    | 'statusSpineLiveRunnerCount'
+    | 'statusSpineRetainedRunnerCount'
+    | 'statusSpineSourceRefs'
+  >
+> => {
+  try {
+    const response = await db
+      .prepare(
+        `SELECT event_ref, runner_ref, assignment_ref, state, retention_state
+           FROM pylon_agent_runner_status_events
+          WHERE archived_at IS NULL
+          ORDER BY updated_at DESC
+          LIMIT 200`,
+      )
+      .all<FleetStatusSpineRow>()
+    const rows = response.results ?? []
+    const liveRows = rows.filter(row => row.retention_state === 'live')
+    const activeAssignmentRefs = new Set(
+      liveRows
+        .filter(row => statusSpineActiveRunnerState(row.state))
+        .map(row => row.assignment_ref ?? row.runner_ref),
+    )
+    return {
+      statusSpineActiveAssignmentCount: activeAssignmentRefs.size,
+      statusSpineLiveRunnerCount: liveRows.length,
+      statusSpineRetainedRunnerCount: rows.filter(
+        row => row.retention_state === 'retained',
+      ).length,
+      statusSpineSourceRefs: safePublicStatusSpineRefs([
+        'status.public.operator_fleet_status.spine',
+        `status.public.operator_fleet_status.live_runners=${liveRows.length}`,
+        `status.public.operator_fleet_status.retained_runners=${
+          rows.filter(row => row.retention_state === 'retained').length
+        }`,
+        `status.public.operator_fleet_status.active_assignments=${
+          activeAssignmentRefs.size
+        }`,
+        ...rows.map(row => row.event_ref),
+      ]),
+    }
+  } catch {
+    return {
+      statusSpineActiveAssignmentCount: 0,
+      statusSpineLiveRunnerCount: 0,
+      statusSpineRetainedRunnerCount: 0,
+      statusSpineSourceRefs: [
+        'status.public.operator_fleet_status.spine_unavailable',
+      ],
+    }
+  }
+}
+
+const recordFleetOverseerRunnerStatus = async (
+  db: D1Database,
+  input: Readonly<{
+    context: ArtanisFleetOverseerContext
+    decisionId: string
+    healthSnapshotRef: string | null
+    nowIso: string
+    reason: string | null
+    state: ArtanisFleetOverseerDecisionState
+  }>,
+): Promise<void> => {
+  const runnerState = runnerStatusStateForDecision(input.state)
+  const eventRef = `event.public.artanis.fleet_overseer.${isoSlug(input.nowIso)}`
+  const runnerRef = 'runner.public.artanis.fleet_overseer'
+  const refs = safePublicStatusSpineRefs([
+    'status.public.artanis.fleet_overseer.on_status_spine',
+    `status.public.artanis.fleet_overseer.decision_state.${input.state}`,
+    `capacity.coding.codex.ready=${input.context.readyReplicaCount}`,
+    `capacity.coding.codex.available=${input.context.warmOrReadyMaxInflight}`,
+    `load.coding.codex.busy=${input.context.statusSpineActiveAssignmentCount}`,
+    'load.coding.codex.queued=0',
+    `task.public.artanis.fleet_overseer.${input.decisionId}`,
+    ...(input.healthSnapshotRef === null ? [] : [input.healthSnapshotRef]),
+    ...input.context.statusSpineSourceRefs,
+  ])
+  const blockerRefs =
+    runnerState === 'blocked'
+      ? safePublicStatusSpineRefs([
+          input.state === 'skipped'
+            ? 'blocker.public.artanis.fleet_overseer.skipped'
+            : 'blocker.public.artanis.fleet_overseer.blocked',
+        ])
+      : []
+  const event = {
+    schemaVersion: PYLON_AGENT_RUNNER_STATUS_EVENT_SCHEMA_VERSION,
+    eventRef,
+    runnerRef,
+    runnerKind: 'artanis_fleet_overseer',
+    state: runnerState,
+    stateStartedAt: input.nowIso,
+    updatedAt: input.nowIso,
+    capabilityRefs: [
+      'capability.public.artanis.fleet_status_spine',
+      'capability.public.artanis.fleet_overseer.read_only',
+    ],
+    refs,
+    blockerRefs,
+    supportedControlVerbs: ['status.list', 'task.list'],
+    stateHistory: [
+      {
+        state: runnerState,
+        stateStartedAt: input.nowIso,
+      },
+    ],
+    taskId: `task.public.artanis.fleet_overseer.${input.decisionId}`,
+    worktreeRef: 'worktree.public.artanis.none',
+    ...(input.reason === null
+      ? {}
+      : {
+          assigneeHandle: `artanis_fleet_overseer:${publicDispatchReason(input.reason)}`,
+        }),
+  }
+
+  await db
+    .prepare(
+      `UPDATE pylon_agent_runner_status_events
+          SET retention_state = 'retained',
+              retained_at = COALESCE(retained_at, ?)
+        WHERE owner_agent_user_id = ?
+          AND runner_ref = ?
+          AND event_ref <> ?
+          AND retention_state = 'live'
+          AND archived_at IS NULL`,
+    )
+    .bind(input.nowIso, 'agent_artanis', runnerRef, eventRef)
+    .run()
+
+  await db
+    .prepare(
+      `INSERT INTO pylon_agent_runner_status_events (
+         event_ref, owner_agent_user_id, runner_ref, runner_kind, pylon_ref,
+         assignment_ref, state, state_started_at, updated_at, retention_state,
+         event_json, created_at, retained_at, archived_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+       ON CONFLICT(event_ref) DO UPDATE SET
+         runner_kind = excluded.runner_kind,
+         pylon_ref = excluded.pylon_ref,
+         assignment_ref = excluded.assignment_ref,
+         state = excluded.state,
+         state_started_at = excluded.state_started_at,
+         updated_at = excluded.updated_at,
+         retention_state = excluded.retention_state,
+         event_json = excluded.event_json,
+         retained_at = excluded.retained_at
+       WHERE owner_agent_user_id = ?`,
+    )
+    .bind(
+      eventRef,
+      'agent_artanis',
+      runnerRef,
+      event.runnerKind,
+      null,
+      null,
+      runnerState,
+      input.nowIso,
+      input.nowIso,
+      'live',
+      JSON.stringify(event),
+      input.nowIso,
+      null,
+      'agent_artanis',
+    )
+    .run()
+}
+
+const publicDispatchReason = (reason: string): string =>
+  reason
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 48) || 'reason'
+
 const insertDecision = async (
   db: D1Database,
   input: Readonly<{
@@ -367,7 +583,10 @@ const assembleContext = async (
   db: D1Database,
   nowIso: string,
 ): Promise<ArtanisFleetOverseerContext> => {
-  const records = await readLatestFleetHeartbeatRows(db)
+  const [records, statusSpine] = await Promise.all([
+    readLatestFleetHeartbeatRows(db),
+    readFleetOverseerStatusSpineContext(db),
+  ])
   const ready = records.filter(
     record =>
       record.watchdog_status === 'healthy' &&
@@ -388,6 +607,7 @@ const assembleContext = async (
     reclaimedReplicaRefs: reclaimed.map(
       record => `replica.hydralisk.glm_52_reap_504b.${record.replica_id}`,
     ),
+    ...statusSpine,
     totalReplicaCount: records.length,
     warmOrReadyMaxInflight: ready.length,
   }
@@ -425,6 +645,7 @@ const fleetSignal = (
     sourceRefs: [
       'tick.public.artanis.fleet_overseer',
       ...input.context.heartbeatRunRefs,
+      ...input.context.statusSpineSourceRefs,
     ],
     state: 'blocked',
     subjectUpdatedAtIso: input.nowIso,
@@ -459,6 +680,7 @@ const healthSnapshot = (
     sourceRefs: [
       'tick.public.artanis.fleet_overseer',
       ...context.heartbeatRunRefs,
+      ...context.statusSpineSourceRefs,
     ],
     updatedAtIso: nowIso,
   })
@@ -554,6 +776,14 @@ export const runArtanisFleetOverseerTick = async (
       nowIso: deps.nowIso,
       state: 'skipped',
     })
+    await recordFleetOverseerRunnerStatus(db, {
+      context,
+      decisionId,
+      healthSnapshotRef: null,
+      nowIso: deps.nowIso,
+      reason,
+      state: 'skipped',
+    }).catch(() => undefined)
     return {
       approvalGateRef: null,
       decisionId,
@@ -618,6 +848,14 @@ export const runArtanisFleetOverseerTick = async (
       nowIso: deps.nowIso,
       state: 'blocked',
     })
+    await recordFleetOverseerRunnerStatus(db, {
+      context,
+      decisionId,
+      healthSnapshotRef: snapshot.snapshotRef,
+      nowIso: deps.nowIso,
+      reason: 'schema_invalid_mind_output',
+      state: 'blocked',
+    }).catch(() => undefined)
     return {
       approvalGateRef: null,
       decisionId,
@@ -649,6 +887,14 @@ export const runArtanisFleetOverseerTick = async (
     nowIso: deps.nowIso,
     state,
   })
+  await recordFleetOverseerRunnerStatus(db, {
+    context,
+    decisionId,
+    healthSnapshotRef: snapshot.snapshotRef,
+    nowIso: deps.nowIso,
+    reason: action.rationale.slice(0, 200),
+    state,
+  }).catch(() => undefined)
 
   return {
     approvalGateRef: gate?.gateRef ?? null,

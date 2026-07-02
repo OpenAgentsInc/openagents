@@ -786,7 +786,10 @@ import {
 import { makeOperatorBillingHandlers } from './operator-billing-routes'
 import { makeOperatorBuyModeRoutes } from './operator-buy-mode-routes'
 import { makeOperatorEmailInspectionRoutes } from './operator-email-inspection-routes'
-import { makeOperatorFleetStatusRoutes } from './operator-fleet-status-routes'
+import {
+  makeOperatorFleetStatusRoutes,
+  readOperatorFleetStatusSnapshotFromSpine,
+} from './operator-fleet-status-routes'
 import { makeOperatorProStatusRoutes } from './operator-pro-status-routes'
 import { makeOperatorOrderTriageRoutes } from './operator-order-triage-routes'
 import { makeOperatorProviderAccountRoutes } from './operator-provider-account-routes'
@@ -8853,6 +8856,17 @@ const operatorArtanisChatRoutes = makeOperatorArtanisChatRoutes({
           nowIso: currentIsoTimestamp,
           store: makeD1KhalaTraceReviewStore(openAgentsDatabase(env)),
         }),
+      },
+      fleetStatus: {
+        statusSpine: {
+          loadSnapshot: () =>
+            readOperatorFleetStatusSnapshotFromSpine(
+              openAgentsDatabase(env),
+              currentIsoTimestamp(),
+              { kind: 'admin' },
+              false,
+            ),
+        },
       },
       // iteration-8: the owner-scoped unsupported-request ledger READ tool. Reads
       // the live `khala_unsupported_requests` ledger of user-facing capability

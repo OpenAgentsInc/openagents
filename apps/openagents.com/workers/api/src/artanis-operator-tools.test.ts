@@ -484,6 +484,9 @@ describe('#6366 dispatch_codex_task (gated; plan-only without a seam)', () => {
     expect(result.plan).toContain('--workflow codex_agent_task')
     expect(result.plan).toContain('--repo OpenAgentsInc/openagents')
     expect(result.plan).toContain('run-no-spend')
+    expect(result.plan).toContain('FleetRun spine intent')
+    expect(result.plan).toContain('fleet_run_start --run-ref')
+    expect(result.plan).toContain('spawn.public.khala_coding.artanis_fleet_run.issue_6320')
     expect(result.plan).toContain('#6320')
     expect(result.plan).toContain('src/foo.test.ts')
   })
@@ -555,8 +558,18 @@ describe('#6366 dispatch_codex_task (gated; LIVE execution behind the gate)', ()
     expect(result.assignmentRef).toBe('assignment.public.khala_coding.live123')
     expect(result.durableRequestId).toBe('req-live123')
     expect(createCalls).toHaveLength(1)
-    expect(createCalls[0]).toMatchObject({ authorityScope: 'owner_self' })
+    expect(createCalls[0]).toMatchObject({
+      authorityScope: 'owner_self',
+      fleetRunPlan: {
+        runRef:
+          'spawn.public.khala_coding.artanis_fleet_run.objective_burn_down_public_issue_work_per_the_roadmap',
+        targetConcurrency: 1,
+        workerKind: 'codex',
+      },
+    })
     // No-spend invariant is asserted in the public-safe summary.
+    expect(result.summary).toContain('fleetRunRef: spawn.public.khala_coding')
+    expect(result.summary).toContain('fleetRunControls:')
     expect(result.summary).toContain('unpaid_smoke')
     expect(result.summary).toContain('settlement: not_applicable')
     expect(result.summary).toContain('payoutClaimAllowed: false')
@@ -2319,6 +2332,24 @@ describe('get_fleet_status (unified operator fleet read)', () => {
           },
         ],
       },
+      statusSpine: {
+        loadSnapshot: async () => ({
+          fleet: {
+            activeAssignmentCount: 2,
+            activeSlots: 3,
+            busySlots: 1,
+            queuedSlots: 2,
+            readySlots: 4,
+            sourceRefs: ['d1:pylon_agent_runner_status_events'],
+          },
+          spine: {
+            liveRunnerCount: 5,
+            retainedRunnerCount: 7,
+            schemaVersion: 'openagents.pylon.agent_runner_status_event.v1',
+            sourceRefs: ['d1:pylon_agent_runner_status_events'],
+          },
+        }),
+      },
       traceReview: {
         loadReport: async () => ({
           aggregates: {
@@ -2347,6 +2378,10 @@ describe('get_fleet_status (unified operator fleet read)', () => {
       'Fleet: 2 recent Pylon/Codex assignments; active=1, pass=1, fail=0, in-progress=1.',
     )
     expect(result).toContain('assignment.public.pylon_api.running')
+    expect(result).toContain(
+      'Status spine: schema=openagents.pylon.agent_runner_status_event.v1; live=5; retained=7; activeAssignments=2; slots ready=4 active=3 busy=1 queued=2.',
+    )
+    expect(result).toContain('Status spine refs: d1:pylon_agent_runner_status_events.')
     expect(result).toContain('Watchdog: 1 active synthetic-load run')
     expect(result).toContain('2500/10000 tokens')
     expect(result).toContain('GLM: status=ready, ready=4/5, warm=1.')
@@ -2371,6 +2406,7 @@ describe('get_fleet_status (unified operator fleet read)', () => {
 
     const result = await Effect.runPromise(tool.execute({}))
     expect(result).toContain('Pace: unavailable')
+    expect(result).toContain('Status spine: unavailable')
     expect(result).toContain('Fleet: unavailable')
     expect(result).toContain('Watchdog: unavailable')
     expect(result).toContain('GLM: unavailable')

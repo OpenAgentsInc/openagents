@@ -3279,9 +3279,58 @@ export type ArtanisDispatchPlanInput = Readonly<{
   verify: string | undefined
   issue: number | undefined
   filePaths: ReadonlyArray<string>
+  fleetRunPlan: ArtanisDispatchFleetRunPlan
   // The composed public-safe prompt the Pylon/Codex runner receives.
   prompt: string
 }>
+
+export type ArtanisDispatchFleetRunPlan = Readonly<{
+  controlRefs: ReadonlyArray<string>
+  evidenceRefs: ReadonlyArray<string>
+  runRef: string
+  targetConcurrency: number
+  workerKind: 'codex'
+  workerRef: string
+  workSourceRef: string
+}>
+
+const publicDispatchRefSegment = (value: string): string => {
+  const segment = value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 60)
+  return segment === '' ? 'task' : segment
+}
+
+const buildArtanisDispatchFleetRunPlan = (
+  input: Readonly<{ issue: number | undefined; objective: string }>,
+): ArtanisDispatchFleetRunPlan => {
+  const target =
+    input.issue === undefined
+      ? `objective_${publicDispatchRefSegment(input.objective)}`
+      : `issue_${input.issue}`
+  return {
+    controlRefs: [
+      'command.public.khala_fleet.fleet_run_start',
+      'command.public.khala_fleet.fleet_run_status',
+      'command.public.khala_fleet.fleet_run_control',
+    ],
+    evidenceRefs: [
+      `dispatch-context.public.artanis.fleet_run.${target}`,
+      'capacity.public.artanis.own_capacity_only',
+      'status.public.artanis.fleet_run.pending_executor',
+    ],
+    runRef: `spawn.public.khala_coding.artanis_fleet_run.${target}`,
+    targetConcurrency: 1,
+    workerKind: 'codex',
+    workerRef: 'worker.public.khala_coding.codex',
+    workSourceRef:
+      input.issue === undefined
+        ? `task.public.artanis.${target}`
+        : `issue.public.github.openagents.${input.issue}`,
+  }
+}
 
 // What the execution seam returns: a real created assignment, or a typed
 // rejection (mapped to a deferral so Artanis never fakes an execution).
@@ -3371,6 +3420,7 @@ const buildArtanisDispatchPlan = (
   }
   promptParts.push(`Run the named verification.`)
   const prompt = promptParts.join(' ')
+  const fleetRunPlan = buildArtanisDispatchFleetRunPlan({ issue, objective })
 
   const lines: Array<string> = [
     `Planned Khala -> Pylon -> Codex dispatch (${authorityScope}, own-capacity only, no spend):`,
@@ -3392,6 +3442,13 @@ const buildArtanisDispatchPlan = (
     '  Then execute locally with no spend: pylon assignment run-no-spend --json',
   )
   lines.push('')
+  lines.push('  FleetRun spine intent:')
+  lines.push(
+    `    fleet_run_start --run-ref ${fleetRunPlan.runRef} --worker-kind ${fleetRunPlan.workerKind} --target-concurrency ${fleetRunPlan.targetConcurrency} --work-source-ref ${fleetRunPlan.workSourceRef}`,
+  )
+  lines.push(`    fleet_run_status --run-ref ${fleetRunPlan.runRef}`)
+  lines.push(`    fleet_run_control --run-ref ${fleetRunPlan.runRef} --verb drain`)
+  lines.push('')
   lines.push(
     'For parallel burndown, set OPENAGENTS_PYLON_CODEX_CONCURRENCY=N and publish capacity (pylon presence heartbeat), then run-no-spend per assignment ref. Verify each closeout against the exact token_usage_events + agent_traces rows before merging non-spend code.',
   )
@@ -3400,7 +3457,16 @@ const buildArtanisDispatchPlan = (
   }
 
   return {
-    input: { authorityScope, branch, filePaths, issue, objective, prompt, verify },
+    input: {
+      authorityScope,
+      branch,
+      filePaths,
+      fleetRunPlan,
+      issue,
+      objective,
+      prompt,
+      verify,
+    },
     ok: true,
     planText: lines.join('\n'),
   }
@@ -3535,6 +3601,8 @@ export const makeArtanisDispatchCodexTaskTool = (
         const summary = [
           `assignmentRef: ${created.assignmentRef}`,
           `authorityScope: ${built.input.authorityScope}`,
+          `fleetRunRef: ${built.input.fleetRunPlan.runRef}`,
+          `fleetRunControls: ${built.input.fleetRunPlan.controlRefs.join(', ')}`,
           `pylonRef: ${created.pylonRef}`,
           `durableRequestId: ${created.durableRequestId ?? '(none)'}`,
           'paymentMode: unpaid_smoke (no spend, own_capacity)',
@@ -3626,6 +3694,23 @@ export type ArtanisFleetStatusConfig = Readonly<{
   glmFleetStatus?: ArtanisGlmFleetStatusConfig | undefined
   syntheticLoadStatus?: ArtanisSyntheticLoadStatusConfig | undefined
   traceReview?: ArtanisTraceReviewConfig | undefined
+  statusSpine?: ArtanisFleetStatusSpineConfig | undefined
+}>
+
+export type ArtanisFleetStatusSpineConfig = Readonly<{
+  loadSnapshot?: (() => Promise<unknown>) | undefined
+}>
+
+type ArtanisFleetStatusSpineSummary = Readonly<{
+  activeAssignmentCount: number
+  activeSlots: number
+  busySlots: number
+  liveRunnerCount: number
+  queuedSlots: number
+  readySlots: number
+  retainedRunnerCount: number
+  schemaVersion: string
+  sourceRefs: ReadonlyArray<string>
 }>
 
 const fleetStatusUnavailableLine = (label: string): string =>
@@ -3685,6 +3770,61 @@ const loadFleetStatusTraceReview = (
   )
 }
 
+const fleetStatusRecord = (value: unknown): Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {}
+
+const fleetStatusCount = (value: unknown): number =>
+  typeof value === 'number' && Number.isFinite(value) && value >= 0
+    ? Math.trunc(value)
+    : 0
+
+const fleetStatusString = (
+  value: unknown,
+  fallback: string,
+): string => (typeof value === 'string' && value !== '' ? value : fallback)
+
+const fleetStatusSourceRefs = (value: unknown): ReadonlyArray<string> =>
+  Array.isArray(value)
+    ? value
+        .filter((item): item is string => typeof item === 'string')
+        .slice(0, 12)
+    : []
+
+const normalizeFleetStatusSpineSummary = (
+  snapshot: unknown,
+): ArtanisFleetStatusSpineSummary => {
+  const record = fleetStatusRecord(snapshot)
+  const fleet = fleetStatusRecord(record.fleet)
+  const spine = fleetStatusRecord(record.spine)
+  return {
+    activeAssignmentCount: fleetStatusCount(fleet.activeAssignmentCount),
+    activeSlots: fleetStatusCount(fleet.activeSlots),
+    busySlots: fleetStatusCount(fleet.busySlots),
+    liveRunnerCount: fleetStatusCount(spine.liveRunnerCount),
+    queuedSlots: fleetStatusCount(fleet.queuedSlots),
+    readySlots: fleetStatusCount(fleet.readySlots),
+    retainedRunnerCount: fleetStatusCount(spine.retainedRunnerCount),
+    schemaVersion: fleetStatusString(spine.schemaVersion, 'unknown'),
+    sourceRefs: fleetStatusSourceRefs(
+      Array.isArray(spine.sourceRefs) ? spine.sourceRefs : fleet.sourceRefs,
+    ),
+  }
+}
+
+const loadFleetStatusSpine = (
+  config: ArtanisFleetStatusSpineConfig | undefined,
+): Effect.Effect<ArtanisFleetStatusSpineSummary | null> => {
+  if (config?.loadSnapshot === undefined) {
+    return Effect.succeed(null)
+  }
+  return Effect.tryPromise(() => config.loadSnapshot!()).pipe(
+    Effect.map(normalizeFleetStatusSpineSummary),
+    Effect.orElseSucceed(() => null),
+  )
+}
+
 const formatFleetAssignmentSpread = (
   assignments: ReadonlyArray<ArtanisPylonAssignmentSummary> | null,
 ): string => {
@@ -3709,6 +3849,18 @@ const formatFleetAssignmentSpread = (
     ...assignments.slice(0, 8).map(formatAssignmentSummaryLine),
   ].join('\n')
 }
+
+const formatFleetStatusSpineLine = (
+  spine: ArtanisFleetStatusSpineSummary | null,
+): string =>
+  spine === null
+    ? fleetStatusUnavailableLine('Status spine')
+    : [
+        `Status spine: schema=${spine.schemaVersion}; live=${spine.liveRunnerCount}; retained=${spine.retainedRunnerCount}; activeAssignments=${spine.activeAssignmentCount}; slots ready=${spine.readySlots} active=${spine.activeSlots} busy=${spine.busySlots} queued=${spine.queuedSlots}.`,
+        spine.sourceRefs.length === 0
+          ? 'Status spine refs: (none reported).'
+          : `Status spine refs: ${spine.sourceRefs.join(', ')}.`,
+      ].join('\n')
 
 const formatFleetGlmLine = (status: ArtanisGlmFleetStatus | null): string =>
   status === null
@@ -3756,13 +3908,21 @@ export const makeArtanisGetFleetStatusTool = (
   },
   execute: (_args: unknown) =>
     Effect.gen(function* () {
-      const [networkStats, assignments, glm, syntheticRuns, traceReview] =
+      const [
+        networkStats,
+        assignments,
+        glm,
+        syntheticRuns,
+        traceReview,
+        statusSpine,
+      ] =
         yield* Effect.all([
           loadFleetStatusNetworkStats(config.networkStats),
           loadFleetStatusAssignments(config.pylonAssignments),
           loadFleetStatusGlm(config.glmFleetStatus),
           loadFleetStatusSyntheticRuns(config.syntheticLoadStatus),
           loadFleetStatusTraceReview(config.traceReview),
+          loadFleetStatusSpine(config.statusSpine),
         ])
 
       const pace =
@@ -3774,6 +3934,8 @@ export const makeArtanisGetFleetStatusTool = (
         'Unified fleet status:',
         '',
         `Pace: ${pace}`,
+        '',
+        formatFleetStatusSpineLine(statusSpine),
         '',
         formatFleetAssignmentSpread(assignments),
         '',
@@ -4824,6 +4986,7 @@ export const makeArtanisOperatorTools = (
       networkStats: config.fleetStatus?.networkStats ?? config.networkStats,
       pylonAssignments:
         config.fleetStatus?.pylonAssignments ?? config.pylonAssignments,
+      statusSpine: config.fleetStatus?.statusSpine,
       syntheticLoadStatus:
         config.fleetStatus?.syntheticLoadStatus ??
         config.syntheticLoadStatus,
