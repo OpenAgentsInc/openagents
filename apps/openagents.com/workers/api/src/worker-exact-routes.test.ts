@@ -161,6 +161,7 @@ const approvedExactRoutePaths = [
   '/RULES.md',
   '/skill.json',
   '/lander2',
+  '/lander3',
   '/install.md',
   '/surfaces.md',
   '/pylon.md',
