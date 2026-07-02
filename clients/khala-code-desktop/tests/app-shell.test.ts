@@ -118,6 +118,8 @@ describe("khala code desktop app shell", () => {
     expect(html).toContain('id="inbox-panel"')
     expect(html).toContain('id="gym-panel"')
     expect(html).toContain('id="settings-panel"')
+    expect(html).toContain('id="foldkit-demo-panel"')
+    expect(html).toContain("Foldkit embedding skeleton")
     expect(html).not.toContain("Pylons")
   })
 

@@ -89,6 +89,7 @@ import {
   mountKhalaCodeSidebar,
   projectKhalaCodeSidebarFleetCounts,
 } from "./sidebar"
+import { mountKhalaCodeFoldkitDemo } from "./foldkit/runtime"
 import { mountUnifiedInboxPanel } from "./inbox"
 import type { KhalaCodeDesktopCodexThreadSummary } from "../shared/codex-threads"
 import { sessionCatalogEntryToThreadSummary } from "../shared/session-catalog"
@@ -2780,6 +2781,7 @@ const forumPanelEl = document.getElementById("forum-panel")
 const inboxPanelEl = document.getElementById("inbox-panel")
 const gymPanelEl = document.getElementById("gym-panel")
 const settingsPanelEl = document.getElementById("settings-panel")
+const foldkitDemoPanelEl = document.getElementById("foldkit-demo-panel")
 const threadShell = document.querySelector<HTMLElement>(".khala-code-thread-shell")
 const composerDock = document.querySelector<HTMLElement>(".composer-dock")
 const initialGymState = gymPaneStateFromLocation(globalThis.location)
@@ -2959,6 +2961,8 @@ const forumPanel =
 
 const gymPanel =
   gymPanelEl === null ? null : mountGymPane(gymPanelEl, initialGymState)
+const foldkitDemo =
+  foldkitDemoPanelEl === null ? null : mountKhalaCodeFoldkitDemo(foldkitDemoPanelEl)
 
 let claudeSettingsSection: ReturnType<typeof mountClaudeSettingsSection> | null = null
 let plansSection: ReturnType<typeof mountKhalaCodePlansPanel> | null = null
@@ -3083,6 +3087,7 @@ const setActiveView = (value: string): void => {
   if (forumPanelEl !== null) forumPanelEl.hidden = !showForum
   if (inboxPanelEl !== null) inboxPanelEl.hidden = !showInbox
   if (settingsPanelEl !== null) settingsPanelEl.hidden = !showSettings
+  if (foldkitDemoPanelEl !== null) foldkitDemoPanelEl.hidden = true
   gymPanel?.setVisible(false)
   if (threadShell !== null) threadShell.hidden = showFleet || showForum || showInbox || showSettings
   if (composerDock !== null) composerDock.hidden = showFleet || showForum || showInbox || showSettings
@@ -3107,6 +3112,7 @@ function showGymProofPane(): void {
   if (forumPanelEl !== null) forumPanelEl.hidden = true
   if (inboxPanelEl !== null) inboxPanelEl.hidden = true
   if (settingsPanelEl !== null) settingsPanelEl.hidden = true
+  if (foldkitDemoPanelEl !== null) foldkitDemoPanelEl.hidden = true
   if (threadShell !== null) threadShell.hidden = true
   if (composerDock !== null) composerDock.hidden = true
   gymPanel?.setVisible(true)
@@ -3137,6 +3143,7 @@ const refreshFleetSidebarCounts = async (): Promise<void> => {
 if (sidebarNavRoot !== null) {
   void refreshFleetSidebarCounts()
 }
+void foldkitDemo?.send({ _tag: "HostSetLabel", label: "Foldkit skeleton mounted" })
 setActiveView(initialView)
 renderThreadTokenCounter()
 void refreshThreadTokenSummary()

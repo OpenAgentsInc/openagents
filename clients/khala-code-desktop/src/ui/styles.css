@@ -3513,3 +3513,37 @@ button {
   background: var(--oa-color-component-surface-active);
   color: var(--oa-color-component-text);
 }
+
+.khala-code-foldkit-host {
+  position: fixed;
+  inset: auto 1rem 1rem auto;
+  z-index: 8;
+  max-width: 18rem;
+}
+
+.khala-code-foldkit-demo {
+  display: grid;
+  gap: 0.55rem;
+  padding: 0.75rem;
+  color: var(--oa-color-component-text);
+  background: var(--oa-color-component-surface);
+  border: 1px solid var(--oa-color-component-border);
+  border-radius: 0.5rem;
+}
+
+.khala-code-foldkit-demo-label {
+  margin: 0;
+  font-size: 0.78rem;
+}
+
+.khala-code-foldkit-demo-ping {
+  justify-self: start;
+  font: inherit;
+  font-size: 0.78rem;
+  color: var(--oa-color-component-text);
+  background: var(--oa-color-component-surface-active);
+  border: 1px solid var(--oa-color-component-border);
+  border-radius: 0.4rem;
+  padding: 0.3rem 0.65rem;
+  cursor: pointer;
+}
