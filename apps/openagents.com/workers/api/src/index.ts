@@ -776,6 +776,7 @@ import { makeOperatorBillingHandlers } from './operator-billing-routes'
 import { makeOperatorBuyModeRoutes } from './operator-buy-mode-routes'
 import { makeOperatorEmailInspectionRoutes } from './operator-email-inspection-routes'
 import { makeOperatorFleetStatusRoutes } from './operator-fleet-status-routes'
+import { makeOperatorProStatusRoutes } from './operator-pro-status-routes'
 import { makeOperatorOrderTriageRoutes } from './operator-order-triage-routes'
 import { makeOperatorProviderAccountRoutes } from './operator-provider-account-routes'
 import { makeOperatorPylonMarketplaceRoutes } from './operator-pylon-marketplace-routes'
@@ -9049,6 +9050,21 @@ const operatorFleetStatusRoutes = makeOperatorFleetStatusRoutes({
   requireAdminApiToken,
 })
 
+const operatorProStatusRoutes = makeOperatorProStatusRoutes({
+  appendRefreshedSessionCookies,
+  authenticateAgentToken: async (request, env) => {
+    const token = readBearerToken(request)
+    if (token === undefined) return undefined
+    const session = await authenticateProgrammaticAgent(
+      makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+      token,
+    )
+    return session === undefined ? undefined : { userId: session.user.id }
+  },
+  requireAdminApiToken,
+  requireBrowserSession,
+})
+
 const nexusPylonVisibilityRoutes = makeNexusPylonVisibilityRoutes({
   appendRefreshedSessionCookies,
   currentIsoTimestamp,
@@ -11464,6 +11480,13 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     handler: (request, env) =>
       Effect.promise(() =>
         operatorFleetStatusRoutes.handleOperatorFleetStatusApi(request, env),
+      ),
+  },
+  {
+    path: '/api/operator/pro/status',
+    handler: (request, env, ctx) =>
+      Effect.promise(() =>
+        operatorProStatusRoutes.handleOperatorProStatusApi(request, env, ctx),
       ),
   },
   {

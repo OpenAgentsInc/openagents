@@ -1823,38 +1823,11 @@ describe('logged-in workroom sidebar', () => {
       ).toExist(),
       Scene.expect(Scene.selector('[data-component="pro-register"]')).toExist(),
       Scene.expect(
-        Scene.selector('[data-component="pro-agent-dashboard-summary"]'),
+        Scene.selector('[data-component="pro-overview-loading"]'),
       ).toExist(),
-      Scene.expect(
-        Scene.role('heading', {
-          name: 'Agent operations',
-        }),
-      ).toExist(),
-      Scene.expect(Scene.text('Live agents')).toExist(),
-      Scene.expect(Scene.text('Retained agents')).toExist(),
-      Scene.expect(Scene.text('Codex lane 1')).toExist(),
-      Scene.expect(Scene.text('Claude lane 1')).toExist(),
-      Scene.expect(Scene.text('OpenCode lane')).toExist(),
-      Scene.expect(Scene.text('Codex lane 0')).toExist(),
-      Scene.expect(Scene.text('working')).toExist(),
-      Scene.expect(Scene.text('blocked')).toExist(),
-      Scene.expect(Scene.text('waiting')).toExist(),
-      Scene.expect(Scene.text('done')).toExist(),
-      Scene.expect(Scene.text('unread')).toExist(),
-      Scene.expect(Scene.text('stateStartedAt')).toExist(),
-      Scene.expect(Scene.text('stateHistory')).toExist(),
-      Scene.expect(
-        Scene.text(
-          'Keep stateStartedAt distinct from updatedAt so tool pings do not clear unread state.',
-        ),
-      ).toExist(),
-      Scene.expect(Scene.text('Annotate diff -> ship back')).toExist(),
-      Scene.expect(
-        Scene.selector('[data-component="pro-diff-comment-queue"]'),
-      ).toExist(),
-      Scene.expect(
-        Scene.role('button', { name: 'Send comments' }),
-      ).toBeDisabled(),
+      Scene.expect(Scene.text('Codex lane 1')).not.toExist(),
+      Scene.expect(Scene.text('Claude lane 1')).not.toExist(),
+      Scene.expect(Scene.text('OpenCode lane')).not.toExist(),
       // #6215: sharing lives at /trace, so the console links out to the public
       // shareable trace surfaces from the section register.
       Scene.expect(

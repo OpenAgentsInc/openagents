@@ -685,7 +685,7 @@ const routeView = (model: Model): Html => {
           // (its own top-strip + register + pane), so this workroom-shell case
           // is a defensive fallback only and never normally reached.
           Pro: () =>
-            Ui.workroomScrollableRoute<Message>([Pro.view(model.session)]),
+            Ui.workroomScrollableRoute<Message>([Pro.view(model)]),
           OperatorDashboard: () =>
             Ui.workroomScrollableRoute<Message>([
               ArtanisDashboard.view(model),
@@ -737,7 +737,7 @@ export const view = Submodel.defineView<Model, Message>((model): Html => {
 
   if (model.route._tag === 'Pro') {
     return Ui.pageShell<Message>(
-      [Pro.view(model.session)],
+      [Pro.view(model)],
       [
         h.Key('logged-in-pro-shell'),
         h.DataAttribute('component', 'logged-in-pro-shell'),

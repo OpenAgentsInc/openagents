@@ -14,6 +14,7 @@ import { updateMullet } from './mullet/transitions'
 import { updateNotifications } from './notifications/transitions'
 import { updateOnboarding } from './onboarding/transitions'
 import { updateProviders } from './providers/transitions'
+import { updatePro } from './pro/transitions'
 import { updateRunState } from './runs/transitions'
 import { updateSessionChrome } from './session/transitions'
 import { updateStats } from './stats/transitions'
@@ -54,6 +55,7 @@ export {
 } from './thread-files/commands'
 export { LoadTeamChatMessages, PostTeamChatMessage } from './team-chat/commands'
 export { LoadMulletBootstrap } from './mullet/transitions'
+export { LoadProAgentDashboard } from './pro/transitions'
 export { LoadTokenUsageStats } from './stats/transitions'
 export { LoadPrefilledWorkspace } from './workspace/transitions'
 export {
@@ -239,6 +241,9 @@ export const update = (model: Model, message: Message): UpdateReturn => {
       SucceededLoadTokenUsageStats: () => updateStats(model, message),
       FailedLoadTokenUsageStats: () => updateStats(model, message),
       UpdatedTokenUsageStatsFilter: () => updateStats(model, message),
+      RequestedLoadProAgentDashboard: () => updatePro(model, message),
+      SucceededLoadProAgentDashboard: () => updatePro(model, message),
+      FailedLoadProAgentDashboard: () => updatePro(model, message),
       RequestedLoadPrefilledWorkspace: () =>
         updatePrefilledWorkspace(model, message),
       SucceededLoadPrefilledWorkspace: () =>

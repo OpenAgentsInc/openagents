@@ -61,6 +61,7 @@ import {
   ImageGenerationModelId,
   ImageGenerationProvider,
   PrefilledWorkspaceResponse,
+  ProAgentDashboardResponse,
   ProviderAccountPoolManualResetResponse,
   ProviderAccountPoolResponse,
   SubmitCustomerSiteFeedbackResponse,
@@ -713,6 +714,18 @@ export const FailedLoadTokenUsageStats = m('FailedLoadTokenUsageStats', {
 export const UpdatedTokenUsageStatsFilter = m('UpdatedTokenUsageStatsFilter', {
   field: TokenUsageStatsFilterKey,
   value: S.String,
+})
+export const RequestedLoadProAgentDashboard = m(
+  'RequestedLoadProAgentDashboard',
+)
+export const SucceededLoadProAgentDashboard = m(
+  'SucceededLoadProAgentDashboard',
+  {
+    response: ProAgentDashboardResponse,
+  },
+)
+export const FailedLoadProAgentDashboard = m('FailedLoadProAgentDashboard', {
+  error: S.String,
 })
 export const RequestedLoadPrefilledWorkspace = m(
   'RequestedLoadPrefilledWorkspace',
@@ -1416,6 +1429,9 @@ export const Message = S.Union([
   SucceededLoadTokenUsageStats,
   FailedLoadTokenUsageStats,
   UpdatedTokenUsageStatsFilter,
+  RequestedLoadProAgentDashboard,
+  SucceededLoadProAgentDashboard,
+  FailedLoadProAgentDashboard,
   RequestedLoadPrefilledWorkspace,
   SucceededLoadPrefilledWorkspace,
   FailedLoadPrefilledWorkspace,
