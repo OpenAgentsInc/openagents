@@ -160,6 +160,7 @@ const approvedExactRoutePaths = [
   '/HEARTBEAT.md',
   '/RULES.md',
   '/skill.json',
+  '/lander2',
   '/install.md',
   '/surfaces.md',
   '/pylon.md',
