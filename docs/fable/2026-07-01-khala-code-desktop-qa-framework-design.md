@@ -355,6 +355,13 @@ version of "full coverage": measured, visible, and owned, not asserted.
   scenarios; trends live in the nightly report. This is the "measure
   everything, optimize everything" substrate — you cannot optimize what the
   harness cannot read.
+  The first registry schema is `openagents.khala_code.qa_metrics.v1`, with
+  samples for thread switch render/RPC timings, `turn_start.latency_ms`,
+  `first_render.ms`, `panel.open_ms`, and `cache.hit`. The initial data-backed
+  budgets are `budget.khala_code.cockpit_render.50_cards.v1`,
+  `budget.khala_code.lifecycle_event_to_card.p95.v1`, and
+  `budget.khala_code.supervisor_tick.25_target.v1`; scenario `perf` oracles
+  consume the same budget records and fail when fixture samples exceed them.
 - **Shared harness package.** The three smoke scripts each carry duplicated
   Vite/waitForHttp/probe helpers; extract once into the harness package so
   every new scenario is ~20 lines, not 400.

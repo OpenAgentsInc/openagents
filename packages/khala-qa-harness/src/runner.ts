@@ -1,4 +1,8 @@
 import { Effect } from "effect"
+import {
+  evaluateKhalaCodeQaMetricBudget,
+  type KhalaCodeQaMetricsSnapshot,
+} from "../../../clients/khala-code-desktop/src/shared/qa-metrics.js"
 
 import { collectKhalaCodeQaCoverageLedger, type KhalaCodeQaCoverageLedger } from "./coverage-ledger.js"
 import type { KhalaCodeQaDriver, KhalaCodeQaObservation } from "./driver.js"
@@ -104,6 +108,25 @@ const findObservationValue = (
     observationMatchesQuery(item, query)
   )
   return observation === undefined ? undefined : observationValue(observation)
+}
+
+const isQaMetricsSnapshot = (value: unknown): value is KhalaCodeQaMetricsSnapshot => {
+  if (value === null || typeof value !== "object") return false
+  const record = value as Record<string, unknown>
+  return record.ok === true &&
+    record.schema === "openagents.khala_code.qa_metrics.v1" &&
+    Array.isArray(record.budgets) &&
+    Array.isArray(record.samples)
+}
+
+const findQaMetricsSnapshot = (
+  observations: ReadonlyArray<KhalaCodeQaObservation>,
+): KhalaCodeQaMetricsSnapshot | null => {
+  for (const observation of [...observations].reverse()) {
+    const value = observationValue(observation)
+    if (isQaMetricsSnapshot(value)) return value
+  }
+  return null
 }
 
 const verifyCommitments = (input: {
@@ -257,6 +280,54 @@ const evaluateOracle = (
     }
   }
 
+  if (expectation.oracle === "perf") {
+    const snapshot = expectation.query === undefined
+      ? findQaMetricsSnapshot(observations)
+      : findObservationValue(observations, expectation.query)
+    if (!isQaMetricsSnapshot(snapshot)) {
+      return {
+        data: { expectation },
+        ok: false,
+        oracle: "perf",
+        phaseName,
+        summary: "perf oracle requires a qaMetrics snapshot observation",
+        verdict: "INCONCLUSIVE",
+      }
+    }
+    const budget = snapshot.budgets.find((candidate) =>
+      candidate.budgetId === expectation.match ||
+      candidate.metric === expectation.metric
+    )
+    if (budget === undefined) {
+      return {
+        data: { expectation, availableBudgets: snapshot.budgets.map((candidate) => candidate.budgetId) },
+        ok: false,
+        oracle: "perf",
+        phaseName,
+        summary: "perf oracle could not find a matching metric budget",
+        verdict: "INCONCLUSIVE",
+      }
+    }
+    const evaluation = evaluateKhalaCodeQaMetricBudget(
+      expectation.budget === undefined ? budget : { ...budget, threshold: expectation.budget },
+      snapshot.samples,
+    )
+    return {
+      data: evaluation,
+      ok: evaluation.status === "pass",
+      oracle: "perf",
+      phaseName,
+      summary: evaluation.actual === null
+        ? `no samples for ${budget.metric}`
+        : `${budget.metric}=${evaluation.actual}ms budget=${evaluation.threshold}ms`,
+      verdict: evaluation.status === "pass"
+        ? "CONFIRMED"
+        : evaluation.status === "fail"
+          ? "REFUTED"
+          : "INCONCLUSIVE",
+    }
+  }
+
   return {
     data: { expectation },
     ok: false,
@@ -313,6 +384,25 @@ export const runKhalaCodeQaScenario = (input: {
           ),
         )
         observations.push(observation)
+      }
+      if (phase.expect.some((expectation) => expectation.oracle === "perf")) {
+        const metricsObservation = yield* input.driver.metrics().pipe(
+          Effect.match({
+            onFailure: (failure) => ({
+              action: { kind: "read", query: "qaMetrics" } as const,
+              error: failure.message,
+              label: "read:qaMetrics",
+              ok: false,
+            } satisfies KhalaCodeQaObservation),
+            onSuccess: (snapshot) => ({
+              action: { kind: "read", query: "qaMetrics" } as const,
+              data: { value: snapshot },
+              label: "read:qaMetrics",
+              ok: true,
+            } satisfies KhalaCodeQaObservation),
+          }),
+        )
+        observations.push(metricsObservation)
       }
       const oracles = phase.expect.map((expectation) =>
         evaluateOracle(phase.name, expectation, observations),

@@ -140,7 +140,7 @@ Source: QA framework design §11 (G1–G6, P0–P4); fleet fan-out Lane D.
 | T6.11 | Property-based tier (`fast-check`): composer editing, thread-item projector interleavings, markdown/diff renderers | T6.3 soft | HIGH |
 | T6.12 | Model-based tier: Effect Schema state machines (thread, approval, delegate program, supervisor) + fast-check model-based commands against Mode P | T6.2 | MED |
 | T6.13 | Formal tier (TLA+, bounded): `khala.fleet.delegate` + supervisor spec (no dead-end, termination, no oversubscription, claim uniqueness under racing supervisors, paused-claims-nothing, drain terminates); approval protocol; session/thread mapping; counterexamples → fixtures | T3.1, T2.2 | MED |
-| T6.14 | Perf metrics registry + budgets: generalize `threadSwitchPerformance` into `qaMetrics()`; budgets (cockpit <100ms @50 cards, lifecycle→card p95 <500ms, tick <1s @25); nightly trends | T6.3 | HIGH |
+| T6.14 | Perf metrics registry + budgets: `qaMetrics()` window API + RPC expose thread-switch, turn-start, first-render, panel-open, and cache-hit samples; budgets encoded as data (cockpit <100ms @50 cards, lifecycle→card p95 <500ms, tick <1s @25) and consumed by scenario perf oracles; nightly trends | T6.3 | HIGH |
 | T6.15 | GEPA explore-policy loop (offline, Gym-admitted, never auto-promote) + scenario portfolio pruning by yield | T6.8, T6.9 | LOW |
 
 ### WS-7 — Effect process/protocol spine (Effect audit Phase 2)
