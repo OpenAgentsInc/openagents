@@ -11,6 +11,7 @@ import {
   prepareKhalaFleetDelegateWork,
   renderKhalaFleetDelegationObjective,
   renderDefaultKhalaFleetDelegationObjective,
+  resolveKhalaFleetDelegateWorkerKind,
   runKhalaFleetDelegateProgram,
   selectKhalaFleetDelegateAccount,
   type KhalaFleetDelegateAccount,
@@ -262,6 +263,54 @@ describe("khala.fleet.delegate deterministic program", () => {
       expect(selectKhalaFleetDelegateAccount({}, accounts, DefaultKhalaFleetDelegationParameterSet)).toMatchObject({
         account: { accountRef: "codex-2" },
         status: "selected",
+      })
+    })
+
+    test("auto workerKind picks claude when codex has no free slot and claude does", () => {
+      const parameters = admittedParameters({
+        delegationTarget: { workerKind: "auto" },
+      })
+      const accounts = [
+        readyAccount({ accountRef: "codex", availableSlots: 0, workerKind: "codex" }),
+        readyAccount({ accountRef: "claude", availableSlots: 1, workerKind: "claude" }),
+      ]
+
+      expect(resolveKhalaFleetDelegateWorkerKind(accounts, parameters)).toBe("claude")
+      expect(selectKhalaFleetDelegateAccount({}, accounts, parameters)).toMatchObject({
+        account: { accountRef: "claude" },
+        status: "selected",
+        workerKind: "claude",
+      })
+    })
+
+    test("auto workerKind picks codex when advertised free slots tie", () => {
+      const parameters = admittedParameters({
+        delegationTarget: { workerKind: "auto" },
+      })
+      const accounts = [
+        readyAccount({ accountRef: "claude", availableSlots: 1, workerKind: "claude" }),
+        readyAccount({ accountRef: "codex", availableSlots: 1, workerKind: "codex" }),
+      ]
+
+      expect(resolveKhalaFleetDelegateWorkerKind(accounts, parameters)).toBe("codex")
+      expect(selectKhalaFleetDelegateAccount({}, accounts, parameters)).toMatchObject({
+        account: { accountRef: "codex" },
+        status: "selected",
+        workerKind: "codex",
+      })
+    })
+
+    test("capacity blocker vocabulary is keyed by explicit worker kind", () => {
+      const selected = selectKhalaFleetDelegateAccount({}, [
+        readyAccount({ accountRef: "claude", availableSlots: 0, workerKind: "claude" }),
+      ], admittedParameters({
+        delegationTarget: { workerKind: "claude" },
+      }))
+
+      expect(selected).toMatchObject({
+        blockerCode: "no_available_claude_capacity",
+        blockerRefs: ["blocker.public.pylon_dispatch.no_available_claude_capacity"],
+        status: "blocked",
       })
     })
 

@@ -19,6 +19,7 @@ export type KhalaFleetDelegateModuleName = typeof KhalaFleetDelegateModuleName.T
 export const KhalaFleetDelegatePrecondition = S.Literals([
   "pylon_online",
   "advertised_codex_capacity",
+  "advertised_claude_capacity",
   "ready_account_free_slot",
   "work_prepared",
   "dispatch_accepted",
@@ -34,6 +35,7 @@ export const KhalaFleetDelegateBlockerCode = S.Literals([
   "duplicate_active_assignment",
   "load_gated",
   "no_available_codex_capacity",
+  "no_available_claude_capacity",
   "pylon_unavailable",
   "revoked",
   "stale_heartbeat",
@@ -55,9 +57,20 @@ export const KhalaFleetDelegationAccountRankingHeuristic = S.Literals([
 export type KhalaFleetDelegationAccountRankingHeuristic =
   typeof KhalaFleetDelegationAccountRankingHeuristic.Type
 
+export const KhalaFleetDelegateConcreteWorkerKind = S.Literals(["claude", "codex"])
+export type KhalaFleetDelegateConcreteWorkerKind =
+  typeof KhalaFleetDelegateConcreteWorkerKind.Type
+
+export const KhalaFleetDelegateWorkerKind = S.Literals(["auto", "claude", "codex"])
+export type KhalaFleetDelegateWorkerKind = typeof KhalaFleetDelegateWorkerKind.Type
+
 const KhalaFleetDelegationAdvertiseCapacityPolicy = S.Struct({
   maxRequestedSlots: S.optionalKey(S.Number),
   perAccountConcurrency: S.optionalKey(S.Number),
+})
+
+const KhalaFleetDelegationTargetPolicy = S.Struct({
+  workerKind: S.optionalKey(KhalaFleetDelegateWorkerKind),
 })
 
 const KhalaFleetDelegationAccountRankingPolicy = S.Struct({
@@ -81,6 +94,7 @@ export class KhalaFleetDelegationParameterSet extends S.Class<KhalaFleetDelegati
   actionSubmissionRef: S.optionalKey(S.String),
   advertiseCapacity: S.optionalKey(KhalaFleetDelegationAdvertiseCapacityPolicy),
   candidateRef: S.optionalKey(S.String),
+  delegationTarget: S.optionalKey(KhalaFleetDelegationTargetPolicy),
   objectiveTemplate: S.optionalKey(S.String),
   parameterSetRef: S.String,
   retryBackoff: S.optionalKey(KhalaFleetDelegationRetryBackoffPolicy),
@@ -105,6 +119,7 @@ export type KhalaFleetDelegateAccount = Readonly<{
   blockerRefs?: ReadonlyArray<string> | undefined
   isDefault?: boolean | undefined
   readiness: "available" | "credentials_missing" | "ready" | "revoked" | "unknown"
+  workerKind?: KhalaFleetDelegateConcreteWorkerKind | undefined
 }>
 
 export type KhalaFleetDelegateCapacity = Readonly<{
@@ -172,7 +187,7 @@ export type KhalaFleetDelegateVerifyResult = Readonly<{
 export type KhalaFleetDelegateModules = Readonly<{
   advertiseCapacity: (input: Readonly<{
     pylonRef: string | undefined
-    reason: "initial" | "no_available_codex_capacity" | "stale_heartbeat"
+    reason: KhalaFleetDelegateAdvertiseReason
   }>) => Effect.Effect<KhalaFleetDelegateAdvertiseResult, KhalaFleetDelegateModuleError>
   backoff?: (input: Readonly<{
     attempt: number
@@ -184,12 +199,14 @@ export type KhalaFleetDelegateModules = Readonly<{
     capacity: KhalaFleetDelegateCapacity
     pylonRef: string | undefined
     work: KhalaFleetDelegateWork
+    workerKind: KhalaFleetDelegateConcreteWorkerKind
   }>) => Effect.Effect<KhalaFleetDelegateDispatchResult, KhalaFleetDelegateModuleError>
   ensurePylon: (input: KhalaFleetDelegateInput) => Effect.Effect<KhalaFleetDelegateEnsureResult, KhalaFleetDelegateModuleError>
   verifyCloseout: (input: Readonly<{
     account: KhalaFleetDelegateAccount
     assignmentRef: string
     pylonRef: string | undefined
+    workerKind: KhalaFleetDelegateConcreteWorkerKind
   }>) => Effect.Effect<KhalaFleetDelegateVerifyResult, KhalaFleetDelegateModuleError>
 }>
 
@@ -210,6 +227,7 @@ export type KhalaFleetDelegateCompletedResult = Readonly<{
     signature: typeof KhalaFleetDelegateSignature
     status: "completed"
     trace: ReadonlyArray<KhalaFleetDelegateStep>
+    workerKind: KhalaFleetDelegateConcreteWorkerKind
     work: KhalaFleetDelegateWork
   }>
 
@@ -227,6 +245,12 @@ export type KhalaFleetDelegateProgramResult =
   | KhalaFleetDelegateBlockedResult
   | KhalaFleetDelegateCompletedResult
 
+export type KhalaFleetDelegateAdvertiseReason =
+  | "initial"
+  | "no_available_claude_capacity"
+  | "no_available_codex_capacity"
+  | "stale_heartbeat"
+
 const DEFAULT_DISPATCH_ATTEMPTS = 4
 const DEFAULT_DUPLICATE_ACTIVE_ASSIGNMENT_BACKOFF_MS = 1_000
 const DEFAULT_PARAMETER_SET_REF = "parameter_set.khala_fleet_delegation.default.v1"
@@ -234,6 +258,7 @@ const unsafePolicyTextPattern =
   /(@|\/Users\/|\/home\/|access[_-]?token|auth\.json|bearer|cookie|credential|gho_[A-Za-z0-9_]+|ghp_[A-Za-z0-9_]+|lnbc|lntb|lnbcrt|lno1|mdk[_-]?(access[_-]?token|mnemonic|webhook[_-]?secret)|mnemonic|oauth|payment[_-]?(hash|id|preimage|proof)|preimage|private[_-]?(channel|key|repo)|provider[_-]?(grant|payload|secret|token)|raw[_-]?(auth|email|fixture|invoice|payment|payload|prompt|provider|runner|run[_-]?log|source[_-]?archive|trace|traces)|runner[_-]?log|secret|sk-[a-z0-9]|source[_-]?archive|token|wallet)/i
 
 export const DefaultKhalaFleetDelegationParameterSet = new KhalaFleetDelegationParameterSet({
+  delegationTarget: { workerKind: "codex" },
   parameterSetRef: DEFAULT_PARAMETER_SET_REF,
   schemaVersion: KhalaFleetDelegationParameterSetSchemaVersion,
   source: "default",
@@ -462,22 +487,26 @@ export const runKhalaFleetDelegateProgram = (
     })
 
     const advertised = yield* advertiseCapacity(modules, ensure.pylonRef, "initial")
+    const workerKind = resolveKhalaFleetDelegateWorkerKind(
+      advertised instanceof KhalaFleetDelegateModuleError ? [] : advertised.capacity.accounts,
+      parameters,
+    )
     if (advertised instanceof KhalaFleetDelegateModuleError) {
       return block(
         ensure.pylonRef,
         "advertise_capacity",
-        "advertised_codex_capacity",
+        khalaFleetDelegateAdvertisedCapacityPrecondition(workerKind),
         advertised.blockerCode,
         advertised.message,
         advertised.refs,
       )
     }
     push({
-      message: `Advertised Codex capacity ${advertised.capacity.available}/${advertised.capacity.max}.`,
+      message: `Advertised ${workerKind} capacity ${khalaFleetDelegateAvailableSlotsForKind(advertised.capacity.accounts, workerKind)}/${advertised.capacity.max}.`,
       module: "advertise_capacity",
-      precondition: "advertised_codex_capacity",
+      precondition: khalaFleetDelegateAdvertisedCapacityPrecondition(workerKind),
       refs: advertised.heartbeatRef === undefined ? [] : [advertised.heartbeatRef],
-      status: advertised.capacity.available > 0 ? "satisfied" : "blocked",
+      status: khalaFleetDelegateAvailableSlotsForKind(advertised.capacity.accounts, workerKind) > 0 ? "satisfied" : "blocked",
     })
 
     const selected = selectKhalaFleetDelegateAccount(input, advertised.capacity.accounts, parameters)
@@ -492,10 +521,10 @@ export const runKhalaFleetDelegateProgram = (
       )
     }
     push({
-      message: `Selected ${selected.account.accountRef}.`,
+      message: `Selected ${selected.workerKind} account ${selected.account.accountRef}.`,
       module: "select_account",
       precondition: "ready_account_free_slot",
-      refs: [`account:${selected.account.accountRef}`],
+      refs: [`worker_kind:${selected.workerKind}`, `account:${selected.account.accountRef}`],
       status: "satisfied",
     })
 
@@ -516,6 +545,7 @@ export const runKhalaFleetDelegateProgram = (
       parameters,
       push,
       pylonRef: ensure.pylonRef,
+      workerKind: selected.workerKind,
       work: prepared,
     })
     if (dispatch.status === "blocked") {
@@ -526,6 +556,7 @@ export const runKhalaFleetDelegateProgram = (
       account: selected.account,
       assignmentRef: dispatch.assignmentRef,
       pylonRef: ensure.pylonRef,
+      workerKind: selected.workerKind,
     }).pipe(
       Effect.catch(error =>
         Effect.succeed<KhalaFleetDelegateVerifyResult | KhalaFleetDelegateModuleError>(error),
@@ -566,6 +597,7 @@ export const runKhalaFleetDelegateProgram = (
       signature: KhalaFleetDelegateSignature,
       status: "completed",
       trace: [...trace],
+      workerKind: selected.workerKind,
       work: prepared,
     }
   })
@@ -607,21 +639,29 @@ export function selectKhalaFleetDelegateAccount(
   accounts: ReadonlyArray<KhalaFleetDelegateAccount>,
   parameters: KhalaFleetDelegationParameterSet = DefaultKhalaFleetDelegationParameterSet,
 ):
-  | Readonly<{ account: KhalaFleetDelegateAccount; status: "selected" }>
+  | Readonly<{
+    account: KhalaFleetDelegateAccount
+    status: "selected"
+    workerKind: KhalaFleetDelegateConcreteWorkerKind
+  }>
   | Readonly<{
     blockerCode: KhalaFleetDelegateBlockerCode
     blockerRefs: ReadonlyArray<string>
     message: string
     status: "blocked"
   }> {
+  const workerKind = resolveKhalaFleetDelegateWorkerKind(accounts, parameters)
   const requested = input.accountRef?.trim()
   const candidates = requested === undefined || requested.length === 0
-    ? accounts
-    : accounts.filter(account => account.accountRef === requested)
+    ? accounts.filter(account => khalaFleetDelegateAccountWorkerKind(account) === workerKind)
+    : accounts.filter(account =>
+      account.accountRef === requested &&
+      khalaFleetDelegateAccountWorkerKind(account) === workerKind
+    )
   if (requested !== undefined && requested.length > 0 && candidates.length === 0) {
     return accountSelectionBlocker(
       "connect_account_required",
-      `Requested Codex account ${requested} is not connected.`,
+      `Requested ${workerKind} account ${requested} is not connected.`,
     )
   }
   const sorted = [...candidates].sort((left, right) =>
@@ -632,19 +672,22 @@ export function selectKhalaFleetDelegateAccount(
     (account.availableSlots === undefined || account.availableSlots > 0),
   )
   if (selected !== undefined) {
-    return { account: selected, status: "selected" }
+    return { account: selected, status: "selected", workerKind }
   }
   const first = sorted[0]
   if (first?.readiness === "credentials_missing") {
-    return accountSelectionBlocker("credentials_missing", `Codex account ${first.accountRef} is missing credentials.`)
+    return accountSelectionBlocker("credentials_missing", `${workerKind} account ${first.accountRef} is missing credentials.`)
   }
   if (first?.readiness === "revoked") {
-    return accountSelectionBlocker("revoked", `Codex account ${first.accountRef} is revoked.`)
+    return accountSelectionBlocker("revoked", `${workerKind} account ${first.accountRef} is revoked.`)
   }
   if (sorted.some(account => account.readiness === "ready" || account.readiness === "available")) {
-    return accountSelectionBlocker("no_available_codex_capacity", "Ready Codex accounts have no advertised free slot.")
+    return accountSelectionBlocker(
+      khalaFleetDelegateNoAvailableCapacityBlocker(workerKind),
+      `Ready ${workerKind} accounts have no advertised free slot.`,
+    )
   }
-  return accountSelectionBlocker("connect_account_required", "No ready Codex account is connected.")
+  return accountSelectionBlocker("connect_account_required", `No ready ${workerKind} account is connected.`)
 }
 
 export function khalaFleetDelegateBlockerRef(code: KhalaFleetDelegateBlockerCode): string {
@@ -654,8 +697,8 @@ export function khalaFleetDelegateBlockerRef(code: KhalaFleetDelegateBlockerCode
   if (code === "stale_heartbeat") {
     return "blocker.public.pylon_dispatch.stale_heartbeat"
   }
-  if (code === "no_available_codex_capacity") {
-    return "blocker.public.pylon_dispatch.no_available_codex_capacity"
+  if (code === "no_available_claude_capacity" || code === "no_available_codex_capacity") {
+    return `blocker.public.pylon_dispatch.${code}`
   }
   return `blocker.public.khala_fleet_delegate.${code}`
 }
@@ -663,7 +706,7 @@ export function khalaFleetDelegateBlockerRef(code: KhalaFleetDelegateBlockerCode
 function advertiseCapacity(
   modules: KhalaFleetDelegateModules,
   pylonRef: string | undefined,
-  reason: "initial" | "no_available_codex_capacity" | "stale_heartbeat",
+  reason: KhalaFleetDelegateAdvertiseReason,
 ): Effect.Effect<KhalaFleetDelegateAdvertiseResult | KhalaFleetDelegateModuleError, never> {
   return modules.advertiseCapacity({ pylonRef, reason }).pipe(
     Effect.catch(error =>
@@ -710,6 +753,47 @@ function normalizeKhalaFleetDelegationParameterSet(
   khalaFleetDelegationDispatchAttempts(parameters)
   khalaFleetDelegationDuplicateBackoffMs(parameters)
   return parameters
+}
+
+export function resolveKhalaFleetDelegateWorkerKind(
+  accounts: ReadonlyArray<KhalaFleetDelegateAccount>,
+  parameters: KhalaFleetDelegationParameterSet = DefaultKhalaFleetDelegationParameterSet,
+): KhalaFleetDelegateConcreteWorkerKind {
+  const requested = resolveKhalaFleetDelegationParameters(parameters).delegationTarget?.workerKind ?? "codex"
+  if (requested !== "auto") return requested
+  const codexSlots = khalaFleetDelegateAvailableSlotsForKind(accounts, "codex")
+  const claudeSlots = khalaFleetDelegateAvailableSlotsForKind(accounts, "claude")
+  return claudeSlots > codexSlots ? "claude" : "codex"
+}
+
+function khalaFleetDelegateAccountWorkerKind(
+  account: KhalaFleetDelegateAccount,
+): KhalaFleetDelegateConcreteWorkerKind {
+  return account.workerKind ?? "codex"
+}
+
+function khalaFleetDelegateAvailableSlotsForKind(
+  accounts: ReadonlyArray<KhalaFleetDelegateAccount>,
+  workerKind: KhalaFleetDelegateConcreteWorkerKind,
+): number {
+  return accounts
+    .filter(account =>
+      khalaFleetDelegateAccountWorkerKind(account) === workerKind &&
+      (account.readiness === "ready" || account.readiness === "available")
+    )
+    .reduce((total, account) => total + Math.max(0, account.availableSlots ?? 1), 0)
+}
+
+function khalaFleetDelegateAdvertisedCapacityPrecondition(
+  workerKind: KhalaFleetDelegateConcreteWorkerKind,
+): KhalaFleetDelegatePrecondition {
+  return workerKind === "claude" ? "advertised_claude_capacity" : "advertised_codex_capacity"
+}
+
+function khalaFleetDelegateNoAvailableCapacityBlocker(
+  workerKind: KhalaFleetDelegateConcreteWorkerKind,
+): "no_available_claude_capacity" | "no_available_codex_capacity" {
+  return workerKind === "claude" ? "no_available_claude_capacity" : "no_available_codex_capacity"
 }
 
 function assertPublicSafePolicyText(label: string, value: string): void {
@@ -779,6 +863,7 @@ function dispatchWithFallbacks(input: Readonly<{
   parameters: KhalaFleetDelegationParameterSet
   push: (step: KhalaFleetDelegateStep) => void
   pylonRef: string | undefined
+  workerKind: KhalaFleetDelegateConcreteWorkerKind
   work: KhalaFleetDelegateWork
 }>): Effect.Effect<
   | Readonly<{ assignmentRef: string; status: "accepted" }>
@@ -795,7 +880,7 @@ function dispatchWithFallbacks(input: Readonly<{
           "dispatch",
           "dispatch_accepted",
           "load_gated",
-          "Machine load is too high for another Codex dispatch.",
+          `Machine load is too high for another ${input.workerKind} dispatch.`,
           [khalaFleetDelegateBlockerRef("load_gated")],
         )
       }
@@ -804,6 +889,7 @@ function dispatchWithFallbacks(input: Readonly<{
         attempt,
         capacity,
         pylonRef: input.pylonRef,
+        workerKind: input.workerKind,
         work: input.work,
       }).pipe(
         Effect.catch(error =>
@@ -845,7 +931,7 @@ function dispatchWithFallbacks(input: Readonly<{
           return input.block(
             input.pylonRef,
             "advertise_capacity",
-            "advertised_codex_capacity",
+            khalaFleetDelegateAdvertisedCapacityPrecondition(input.workerKind),
             refreshed.blockerCode,
             refreshed.message,
             refreshed.refs,
@@ -853,30 +939,34 @@ function dispatchWithFallbacks(input: Readonly<{
         }
         capacity = refreshed.capacity
         input.push({
-          message: `Refreshed Codex capacity ${capacity.available}/${capacity.max}.`,
+          message: `Refreshed ${input.workerKind} capacity ${khalaFleetDelegateAvailableSlotsForKind(capacity.accounts, input.workerKind)}/${capacity.max}.`,
           module: "advertise_capacity",
-          precondition: "advertised_codex_capacity",
+          precondition: khalaFleetDelegateAdvertisedCapacityPrecondition(input.workerKind),
           refs: refreshed.heartbeatRef === undefined ? [] : [refreshed.heartbeatRef],
           status: "recovered",
         })
         continue
       }
-      if (blockerCode === "no_available_codex_capacity" && attempt < dispatchAttempts) {
+      if (blockerCode === khalaFleetDelegateNoAvailableCapacityBlocker(input.workerKind) && attempt < dispatchAttempts) {
         input.push({
           blockerCode,
           fallbackModule: "advertise_capacity",
-          message: result.message ?? "Dispatch found no Codex capacity; advertising capacity again.",
+          message: result.message ?? `Dispatch found no ${input.workerKind} capacity; advertising capacity again.`,
           module: "dispatch",
           precondition: "dispatch_accepted",
           refs,
           status: "blocked",
         })
-        const refreshed = yield* advertiseCapacity(input.modules, input.pylonRef, "no_available_codex_capacity")
+        const refreshed = yield* advertiseCapacity(
+          input.modules,
+          input.pylonRef,
+          khalaFleetDelegateNoAvailableCapacityBlocker(input.workerKind),
+        )
         if (refreshed instanceof KhalaFleetDelegateModuleError) {
           return input.block(
             input.pylonRef,
             "advertise_capacity",
-            "advertised_codex_capacity",
+            khalaFleetDelegateAdvertisedCapacityPrecondition(input.workerKind),
             refreshed.blockerCode,
             refreshed.message,
             refreshed.refs,
@@ -884,9 +974,9 @@ function dispatchWithFallbacks(input: Readonly<{
         }
         capacity = refreshed.capacity
         input.push({
-          message: `Advertised Codex capacity ${capacity.available}/${capacity.max}.`,
+          message: `Advertised ${input.workerKind} capacity ${khalaFleetDelegateAvailableSlotsForKind(capacity.accounts, input.workerKind)}/${capacity.max}.`,
           module: "advertise_capacity",
-          precondition: "advertised_codex_capacity",
+          precondition: khalaFleetDelegateAdvertisedCapacityPrecondition(input.workerKind),
           refs: refreshed.heartbeatRef === undefined ? [] : [refreshed.heartbeatRef],
           status: "recovered",
         })
