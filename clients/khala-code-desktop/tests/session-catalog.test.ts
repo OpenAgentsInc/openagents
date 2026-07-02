@@ -6,6 +6,7 @@ import { join } from "node:path"
 import type { ClaudeAppSdkChatRuntime } from "../src/bun/claude-app-sdk-chat-runtime"
 import type { CodexAppServerChatRuntime } from "../src/bun/codex-app-server-chat-runtime"
 import { readKhalaCodeDesktopSessionCatalog } from "../src/bun/session-catalog"
+import { sessionCatalogEntryToThreadSummary } from "../src/shared/session-catalog"
 
 const tempDirs: string[] = []
 
@@ -150,5 +151,62 @@ describe("Khala Code cross-harness session catalog", () => {
       "Codex session",
       "Claude session",
     ])
+  })
+
+  test("uses Codex session UUIDs for sidebar resume when app-server row ids are opaque", async () => {
+    const codexRuntime = {
+      listThreads: async () => ({
+        ok: true as const,
+        data: [{
+          id: "id-recent-chat-row",
+          sessionId: "018f1d59-1a9f-7c40-b4d1-7b0706c531ad",
+          title: "Most recent chat",
+          preview: "Resume me",
+          updatedAt: 1782910000000,
+        }],
+        threads: [],
+      }),
+    } as Partial<CodexAppServerChatRuntime> as CodexAppServerChatRuntime
+
+    const catalog = await readKhalaCodeDesktopSessionCatalog({}, {
+      codexRuntime,
+      env: {
+        KHALA_CODE_DESKTOP_CLAUDE_STATE_PATH: join(await tempRoot(), "missing-claude.json"),
+        KHALA_CODE_DESKTOP_CODEX_STATE_PATH: join(await tempRoot(), "missing-codex.json"),
+      },
+    })
+
+    expect(catalog.entries).toHaveLength(1)
+    expect(catalog.entries[0]).toMatchObject({
+      harnessKind: "codex",
+      sessionRef: "018f1d59-1a9f-7c40-b4d1-7b0706c531ad",
+      threadRef: "id-recent-chat-row",
+    })
+    expect(sessionCatalogEntryToThreadSummary(catalog.entries[0]!).id)
+      .toBe("018f1d59-1a9f-7c40-b4d1-7b0706c531ad")
+  })
+
+  test("keeps legacy non-UUID Codex thread ids when no UUID session ref exists", async () => {
+    const root = await tempRoot()
+    const codexStatePath = join(root, "codex-sessions.json")
+    await writeFile(codexStatePath, JSON.stringify({
+      schema: "khala-code-desktop.codex-sessions.v1",
+      sessions: {
+        "desktop-codex": {
+          threadId: "thread-history",
+          updatedAt: "2026-07-01T10:00:00.000Z",
+        },
+      },
+    }))
+
+    const nextCatalog = await readKhalaCodeDesktopSessionCatalog({}, {
+      codexRuntime: null,
+      env: {
+        KHALA_CODE_DESKTOP_CLAUDE_STATE_PATH: join(root, "missing-claude.json"),
+        KHALA_CODE_DESKTOP_CODEX_STATE_PATH: codexStatePath,
+      },
+    })
+
+    expect(sessionCatalogEntryToThreadSummary(nextCatalog.entries[0]!).id).toBe("thread-history")
   })
 })
