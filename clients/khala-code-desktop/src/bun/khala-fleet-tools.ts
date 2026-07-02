@@ -1411,6 +1411,8 @@ export class DefaultKhalaFleetRunSupervisorManager implements KhalaFleetRunSuper
   private readonly store: PylonOrchestrationStore
   private readonly active = new Map<string, ActiveFleetRun>()
   private readonly planConfigs = new Map<string, FleetRunPlanConfig>()
+  private readonly retainedLifecycle = new Map<string, readonly FleetRunSupervisorObservedEvent[]>()
+  private readonly retainedPylonRefs = new Map<string, string>()
 
   constructor(private readonly options: KhalaCodexFleetToolOptions) {
     this.store = createPylonOrchestrationStore(new Database(":memory:"))
@@ -1545,6 +1547,8 @@ export class DefaultKhalaFleetRunSupervisorManager implements KhalaFleetRunSuper
   private async releaseActive(runRef: string, knownActive?: ActiveFleetRun): Promise<void> {
     const active = knownActive ?? this.active.get(runRef)
     if (active === undefined) return
+    this.retainedLifecycle.set(runRef, [...active.lifecycle])
+    this.retainedPylonRefs.set(runRef, active.pylonRef)
     this.active.delete(runRef)
     await Effect.runPromise(Effect.exit(active.handle.stop()))
     await Effect.runPromise(Scope.close(active.scope, Exit.void))
@@ -1650,8 +1654,8 @@ export class DefaultKhalaFleetRunSupervisorManager implements KhalaFleetRunSuper
     return {
       active: active !== undefined,
       lastTick: active?.lastTick ?? null,
-      lifecycle: [...(active?.lifecycle ?? [])],
-      pylonRef: active?.pylonRef ?? null,
+      lifecycle: [...(active?.lifecycle ?? this.retainedLifecycle.get(runRef) ?? [])],
+      pylonRef: active?.pylonRef ?? this.retainedPylonRefs.get(runRef) ?? null,
       run,
     }
   }

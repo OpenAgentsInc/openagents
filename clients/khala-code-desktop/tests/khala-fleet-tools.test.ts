@@ -378,8 +378,9 @@ describe("Khala Code fleet tools", () => {
 
   test("DefaultKhalaFleetRunSupervisorManager releases a Pylon slot after natural completion", async () => {
     const fixture = await tempPylonFixture()
+    const firstAssignmentRef = "assignment.public.codex_agent_task.completed_one"
     const spawnRefs = [
-      "assignment.public.codex_agent_task.completed_one",
+      firstAssignmentRef,
       "assignment.public.codex_agent_task.completed_two",
     ]
     const runner = async (input: KhalaCodexFleetCommandInput): Promise<KhalaCodexFleetCommandResult> => {
@@ -461,6 +462,7 @@ describe("Khala Code fleet tools", () => {
 
     expect(first.run.state).toBe("completed")
     expect(first.active).toBe(false)
+    expect(first.lifecycle.some(event => event.kind === "dispatch" && event.assignmentRef === firstAssignmentRef)).toBe(true)
     expect(second.run.state).toBe("completed")
     expect(second.active).toBe(false)
   })
