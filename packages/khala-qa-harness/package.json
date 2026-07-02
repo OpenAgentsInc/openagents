@@ -9,6 +9,7 @@
     "./deterministic-env": "./src/deterministic-env.ts",
     "./desktop-smoke-helpers": "./src/desktop-smoke-helpers.ts",
     "./driver": "./src/driver.ts",
+    "./explore-policy-gepa": "./src/explore-policy-gepa.ts",
     "./explorer-brain": "./src/explorer-brain.ts",
     "./monkey-explorer": "./src/monkey-explorer.ts",
     "./rpc-driver": "./src/rpc-driver.ts",
