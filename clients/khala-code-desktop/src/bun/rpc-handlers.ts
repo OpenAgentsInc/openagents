@@ -112,6 +112,24 @@ import {
 
 type ChatEnv = Readonly<Record<string, string | undefined>>
 type MaybePromise<T> = T | Promise<T>
+type ChatRuntime = CodexAppServerChatRuntime
+
+type ChatRuntimeSelection =
+  | {
+    readonly kind: "claude"
+    readonly runtime: ChatRuntime
+  }
+  | {
+    readonly kind: "codex"
+    readonly runtime: ChatRuntime
+  }
+  | {
+    readonly kind: "legacy"
+  }
+
+const claudeRuntimeUnsupportedMessage = "Claude app SDK chat runtime is not supported until T8.2."
+const legacyThreadLifecycleUnsupportedMessage =
+  "Legacy Khala native runtime does not support thread lifecycle RPCs."
 
 export type KhalaCodeDesktopFleetRunSupervisorRpc = {
   readonly control: (
@@ -747,15 +765,45 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
     }
     return codexChatRuntime
   }
+  const unsupportedClaudeRuntime = (): ChatRuntime => {
+    const unsupported = async (): Promise<never> => {
+      throw new Error(claudeRuntimeUnsupportedMessage)
+    }
+    return {
+      archiveThread: unsupported,
+      compactThread: unsupported,
+      deleteThread: unsupported,
+      forkThread: unsupported,
+      interruptTurn: unsupported,
+      listThreads: unsupported,
+      readThread: unsupported,
+      renameThread: unsupported,
+      resumeThread: unsupported,
+      startThread: unsupported,
+      startTurn: unsupported,
+      steerTurn: unsupported,
+      threadIdForSession: async () => null,
+      unarchiveThread: unsupported,
+    }
+  }
   const requireFleetRunSupervisor = (): KhalaCodeDesktopFleetRunSupervisorRpc => {
     if (input.fleetRunSupervisor === undefined) {
       throw new Error("Fleet run supervisor is not configured.")
     }
     return input.fleetRunSupervisor
   }
-  const useLegacyKhalaNativeRuntime = (): boolean =>
-    input.env.KHALA_CODE_DESKTOP_RUNTIME === "khala_native_runtime" ||
-    input.env.KHALA_CODE_DESKTOP_LEGACY_KHALA_NATIVE_RUNTIME === "1"
+  const selectChatRuntime = (): ChatRuntimeSelection => {
+    if (input.env.KHALA_CODE_DESKTOP_RUNTIME === "claude_runtime") {
+      return { kind: "claude", runtime: unsupportedClaudeRuntime() }
+    }
+    if (
+      input.env.KHALA_CODE_DESKTOP_RUNTIME === "khala_native_runtime" ||
+      input.env.KHALA_CODE_DESKTOP_LEGACY_KHALA_NATIVE_RUNTIME === "1"
+    ) {
+      return { kind: "legacy" }
+    }
+    return { kind: "codex", runtime: requireCodexChatRuntime() }
+  }
   let fleetMcpBridgeReady = false
 
   const maybeEnsureFleetMcpBridge = async (): Promise<CodexFleetMcpBridgeEnsureResult | null> => {
@@ -841,6 +889,29 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
     }
   }
 
+  const unsupportedClaudeChatResponse = (): KhalaCodeDesktopChatTurnResponse => ({
+    backend: {
+      blockerRefs: ["blocker.claude_app_sdk.unsupported_until_t8_2"],
+      kind: "claude_app_sdk",
+      model: "claude-app-sdk",
+      runtimeMode: "claude_runtime",
+      toolCatalogKind: "codex_harness_supplemental",
+      turnStatus: "unsupported",
+    },
+    messages: [{
+      id: `claude-runtime-unsupported-${Date.now().toString(36)}`,
+      role: "system",
+      body: claudeRuntimeUnsupportedMessage,
+    }],
+    ok: false,
+    toolNames: [],
+    usedTools: [],
+  })
+
+  const unsupportedLegacyThreadLifecycle = async (): Promise<never> => {
+    throw new Error(legacyThreadLifecycleUnsupportedMessage)
+  }
+
   const ecosystemNotifications: CodexAppServerNotification[] = []
   const ecosystemNotificationMethods = new Set([
     "app/list/updated",
@@ -877,7 +948,9 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
   ): Promise<string | null> => {
     const explicit = request.threadId?.trim()
     if (explicit !== undefined && explicit.length > 0) return explicit
-    return await codexChatRuntime?.threadIdForSession(request.sessionId) ?? null
+    const selection = selectChatRuntime()
+    if (selection.kind === "legacy") return null
+    return await selection.runtime.threadIdForSession(request.sessionId) ?? null
   }
 
   const blockedSlashCommand = (
@@ -1974,49 +2047,83 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
       })
     },
     async codexThreadArchive(request) {
-      return requireCodexChatRuntime().archiveThread(request)
+      const selection = selectChatRuntime()
+      if (selection.kind === "legacy") return unsupportedLegacyThreadLifecycle()
+      return selection.runtime.archiveThread(request)
     },
     async codexThreadCompact(request) {
-      return requireCodexChatRuntime().compactThread(request)
+      const selection = selectChatRuntime()
+      if (selection.kind === "legacy") return unsupportedLegacyThreadLifecycle()
+      return selection.runtime.compactThread(request)
     },
     async codexThreadDelete(request) {
-      return requireCodexChatRuntime().deleteThread(request)
+      const selection = selectChatRuntime()
+      if (selection.kind === "legacy") return unsupportedLegacyThreadLifecycle()
+      return selection.runtime.deleteThread(request)
     },
     async codexThreadFork(request) {
-      return requireCodexChatRuntime().forkThread(request)
+      const selection = selectChatRuntime()
+      if (selection.kind === "legacy") return unsupportedLegacyThreadLifecycle()
+      return selection.runtime.forkThread(request)
     },
     async codexThreadList(request) {
-      return requireCodexChatRuntime().listThreads(request)
+      const selection = selectChatRuntime()
+      if (selection.kind === "legacy") return unsupportedLegacyThreadLifecycle()
+      return selection.runtime.listThreads(request)
     },
     async codexThreadRead(request) {
-      return requireCodexChatRuntime().readThread(request)
+      const selection = selectChatRuntime()
+      if (selection.kind === "legacy") return unsupportedLegacyThreadLifecycle()
+      return selection.runtime.readThread(request)
     },
     async codexThreadRename(request) {
-      return requireCodexChatRuntime().renameThread(request)
+      const selection = selectChatRuntime()
+      if (selection.kind === "legacy") return unsupportedLegacyThreadLifecycle()
+      return selection.runtime.renameThread(request)
     },
     async codexThreadResume(request) {
-      return requireCodexChatRuntime().resumeThread(request)
+      const selection = selectChatRuntime()
+      if (selection.kind === "legacy") return unsupportedLegacyThreadLifecycle()
+      return selection.runtime.resumeThread(request)
     },
     async codexThreadStart(request = {}) {
-      return requireCodexChatRuntime().startThread({
+      const selection = selectChatRuntime()
+      if (selection.kind === "legacy") return unsupportedLegacyThreadLifecycle()
+      return selection.runtime.startThread({
         cwd: input.workingDirectory,
         ...request,
       })
     },
     async codexThreadUnarchive(request) {
-      return requireCodexChatRuntime().unarchiveThread(request)
+      const selection = selectChatRuntime()
+      if (selection.kind === "legacy") return unsupportedLegacyThreadLifecycle()
+      return selection.runtime.unarchiveThread(request)
     },
     async codexTurnInterrupt(request) {
-      return requireCodexChatRuntime().interruptTurn(request)
+      const selection = selectChatRuntime()
+      if (selection.kind === "legacy") return unsupportedLegacyThreadLifecycle()
+      return selection.runtime.interruptTurn(request)
     },
     async codexTurnStart(request) {
-      return requireCodexChatRuntime().startTurn({
+      const selection = selectChatRuntime()
+      if (selection.kind === "legacy") {
+        return labelLegacyRuntimeResponse(await legacyChatTurn({
+          env: input.env,
+          ...(input.emitChatTurnEvent === undefined ? {} : { onEvent: input.emitChatTurnEvent }),
+          request,
+          workingDirectory: request.cwd ?? input.workingDirectory,
+        }))
+      }
+      if (selection.kind === "claude") return unsupportedClaudeChatResponse()
+      return selection.runtime.startTurn({
         ...request,
         cwd: request.cwd ?? input.workingDirectory,
       })
     },
     async codexTurnSteer(request) {
-      return requireCodexChatRuntime().steerTurn(request)
+      const selection = selectChatRuntime()
+      if (selection.kind === "legacy") return unsupportedLegacyThreadLifecycle()
+      return selection.runtime.steerTurn(request)
     },
     async codingStatus() {
       const harness = await codexHarnessStatus()
@@ -2084,13 +2191,15 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
       return withMaterializedChatAttachments(
         request,
         async materializedRequest => {
-          if (!useLegacyKhalaNativeRuntime()) {
+          const selection = selectChatRuntime()
+          if (selection.kind === "codex") {
             const bridge = await maybeEnsureFleetMcpBridge()
-            return withFleetMcpBridgeNote(await labelCodexHarnessResponse(await requireCodexChatRuntime().startTurn({
+            return withFleetMcpBridgeNote(await labelCodexHarnessResponse(await selection.runtime.startTurn({
               ...materializedRequest,
               cwd: input.workingDirectory,
             })), bridge)
           }
+          if (selection.kind === "claude") return unsupportedClaudeChatResponse()
           return labelLegacyRuntimeResponse(await legacyChatTurn({
             env: input.env,
             ...(input.emitChatTurnEvent === undefined ? {} : { onEvent: input.emitChatTurnEvent }),
@@ -2154,10 +2263,13 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
       })
     },
     async toolCatalog() {
+      const selection = selectChatRuntime()
       return khalaCodeDesktopToolCatalog({
-        runtimeMode: useLegacyKhalaNativeRuntime()
+        runtimeMode: selection.kind === "legacy"
           ? "khala_native_runtime"
-          : "codex_harness",
+          : selection.kind === "claude"
+            ? "claude_runtime"
+            : "codex_harness",
       })
     },
   }
