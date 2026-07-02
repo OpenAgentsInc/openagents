@@ -733,20 +733,20 @@ button {
   z-index: 2;
   grid-column: 2;
   grid-row: 2;
-  padding: 0 22px 18px;
+  padding: 0 12px 14px;
 }
 
 .khala-code-composer {
   position: relative;
   width: 100%;
-  max-width: min(92rem, calc(100vw - var(--sidebar-width) - 28px));
+  max-width: min(48rem, calc(100vw - var(--sidebar-width) - 24px));
   margin: 0 auto;
-  --oa-command-composer-height: 12.25rem;
-  --oa-command-composer-border: oklch(1 0 0 / 0.09);
-  --oa-command-composer-focus: oklch(1 0 0 / 0.44);
-  --oa-command-composer-bg: oklch(0.29 0 0 / 0.94);
-  --oa-command-composer-text: oklch(0.93 0 0 / 0.94);
-  --oa-command-composer-muted: oklch(0.75 0 0 / 0.82);
+  --oa-command-composer-height: 7rem;
+  --oa-command-composer-border: color-mix(in srgb, var(--oa-color-khala-energy-blue) 42%, transparent);
+  --oa-command-composer-focus: color-mix(in srgb, var(--oa-color-khala-energy-cyan) 96%, transparent);
+  --oa-command-composer-bg: color-mix(in srgb, var(--oa-color-khala-void) 68%, transparent);
+  --oa-command-composer-text: var(--oa-color-khala-text-primary);
+  --oa-command-composer-muted: color-mix(in srgb, var(--oa-color-khala-energy-soft) 76%, transparent);
 }
 
 .khala-code-composer .oa-ai-command-composer-frame {
@@ -754,34 +754,35 @@ button {
   display: grid;
   grid-template-rows: minmax(0, 1fr) auto;
   min-height: var(--oa-command-composer-height);
-  gap: 0.75rem;
+  gap: 0.45rem;
   border-color: var(--oa-command-composer-border);
-  border-radius: 28px;
-  background: var(--oa-command-composer-bg);
+  border-radius: 3px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--oa-color-khala-energy-cyan) 5%, transparent), transparent 42%),
+    var(--oa-command-composer-bg);
   box-shadow:
-    inset 0 1px 0 oklch(1 0 0 / 0.04),
-    inset 0 -1px 0 oklch(0 0 0 / 0.28),
-    0 18px 56px oklch(0 0 0 / 0.36);
-  padding: 30px 26px 16px;
-  backdrop-filter: blur(22px);
+    inset 0 0 0 1px color-mix(in srgb, var(--oa-color-khala-energy-cyan) 10%, transparent),
+    0 0 14px -5px color-mix(in srgb, var(--oa-color-khala-energy-blue) 56%, transparent),
+    0 8px 12px color-mix(in srgb, var(--oa-color-khala-void) 38%, transparent);
+  padding: 10px 10px 8px;
+  backdrop-filter: blur(14px);
 }
 
 .khala-code-composer:focus-within .oa-ai-command-composer-frame {
-  border-color: var(--oa-command-composer-focus);
+  border-color: color-mix(in srgb, var(--oa-color-khala-energy-cyan) 96%, transparent);
   box-shadow:
-    inset 0 1px 0 oklch(1 0 0 / 0.07),
-    inset 0 -1px 0 oklch(0 0 0 / 0.28),
-    0 0 0 1px oklch(1 0 0 / 0.07),
-    0 18px 56px oklch(0 0 0 / 0.4);
+    inset 0 0 0 1px color-mix(in srgb, var(--oa-color-khala-energy-cyan) 86%, transparent),
+    0 0 14px -4px color-mix(in srgb, var(--oa-color-khala-energy-cyan) 82%, transparent),
+    0 8px 12px color-mix(in srgb, var(--oa-color-khala-void) 38%, transparent);
 }
 
 .khala-code-composer-hud {
   position: absolute;
-  inset: 0;
+  inset: -2px;
   z-index: 0;
   overflow: hidden;
-  border-radius: 28px;
-  opacity: 0.08;
+  border-radius: 4px;
+  opacity: 0.12;
   pointer-events: none;
 }
 
@@ -794,28 +795,32 @@ button {
   position: relative;
   z-index: 0;
   display: grid;
-  width: calc(100% - 80px);
-  margin: 0 auto -26px;
-  padding: 16px 24px 38px;
-  border: 1px solid oklch(1 0 0 / 0.08);
+  gap: 2px;
+  width: calc(100% - 28px);
+  margin: 0 auto -1px;
+  padding: 7px 9px 9px;
+  border: 1px solid color-mix(in srgb, var(--oa-color-khala-energy-blue) 36%, transparent);
   border-bottom: 0;
-  border-radius: 30px 30px 0 0;
-  background: oklch(0.25 0 0 / 0.92);
+  border-radius: 4px 4px 0 0;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--oa-color-khala-energy-cyan) 6%, transparent), transparent 56%),
+    color-mix(in srgb, var(--oa-color-khala-void) 76%, transparent);
   box-shadow:
-    inset 0 1px 0 oklch(1 0 0 / 0.035),
-    0 18px 42px oklch(0 0 0 / 0.24);
-  color: oklch(0.82 0 0 / 0.88);
-  backdrop-filter: blur(18px);
+    inset 0 0 0 1px color-mix(in srgb, var(--oa-color-khala-energy-cyan) 8%, transparent),
+    0 0 12px -7px color-mix(in srgb, var(--oa-color-khala-energy-blue) 60%, transparent);
+  color: var(--oa-color-khala-text-body);
+  backdrop-filter: blur(12px);
 }
 
 .khala-code-composer-follow-up {
   display: grid;
-  grid-template-columns: 24px minmax(0, 1fr) auto 32px 32px;
+  grid-template-columns: 18px minmax(0, 1fr) auto 26px 26px;
   align-items: center;
-  gap: 12px;
-  min-height: 36px;
-  color: oklch(0.83 0 0 / 0.88);
-  font-size: 1rem;
+  gap: 7px;
+  min-height: 26px;
+  color: var(--oa-color-khala-text-body);
+  font-family: var(--oa-font-code);
+  font-size: 0.75rem;
   line-height: 1.25;
 }
 
@@ -829,7 +834,7 @@ button {
 .khala-code-composer-follow-up-icon,
 .khala-code-composer-follow-up-action,
 .khala-code-composer-follow-up-icon-button {
-  color: oklch(0.77 0 0 / 0.78);
+  color: color-mix(in srgb, var(--oa-color-khala-energy-soft) 78%, transparent);
 }
 
 .khala-code-composer-follow-up-icon {
@@ -843,21 +848,21 @@ button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 7px;
+  gap: 5px;
   min-width: 0;
-  height: 32px;
-  border: 0;
-  border-radius: 10px;
-  background: transparent;
+  height: 24px;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--oa-color-khala-void) 22%, transparent);
   cursor: pointer;
   font: inherit;
-  font-size: 0.95rem;
+  font-size: 0.72rem;
   line-height: 1;
-  padding: 0 8px;
+  padding: 0 6px;
 }
 
 .khala-code-composer-follow-up-icon-button {
-  width: 32px;
+  width: 24px;
   padding: 0;
 }
 
@@ -865,32 +870,34 @@ button {
 .khala-code-composer-follow-up-action:focus-visible,
 .khala-code-composer-follow-up-icon-button:hover,
 .khala-code-composer-follow-up-icon-button:focus-visible {
-  background: oklch(1 0 0 / 0.06);
-  color: oklch(0.97 0 0 / 0.96);
+  border-color: color-mix(in srgb, var(--oa-color-khala-energy-cyan) 46%, transparent);
+  background: color-mix(in srgb, var(--oa-color-khala-surface-active) 72%, transparent);
+  color: var(--oa-color-khala-text-bright);
   outline: none;
 }
 
 .khala-code-composer-follow-up-action:focus-visible,
 .khala-code-composer-follow-up-icon-button:focus-visible {
-  box-shadow: 0 0 0 2px oklch(1 0 0 / 0.22);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--oa-color-khala-energy-cyan) 68%, transparent);
 }
 
 #composer-input {
-  min-height: 5.9rem;
+  min-height: 3.45rem;
   width: 100%;
   resize: none;
   border: 0;
   background: transparent;
   padding: 0;
   color: var(--oa-command-composer-text);
-  caret-color: oklch(0.97 0 0 / 0.92);
-  font-size: 1.05rem;
-  line-height: 1.45;
+  caret-color: var(--oa-color-khala-energy-cyan);
+  font-family: var(--oa-font-code);
+  font-size: 0.8125rem;
+  line-height: 1.55;
   outline: none;
 }
 
 #composer-input::placeholder {
-  color: oklch(0.67 0 0 / 0.86);
+  color: color-mix(in srgb, var(--oa-color-khala-energy-soft) 76%, transparent);
 }
 
 .khala-code-slash-command-palette {
@@ -947,14 +954,14 @@ button {
 }
 
 #send-button {
-  width: 52px;
-  height: 52px;
-  border: 0;
-  border-radius: 999px;
-  background: oklch(0.99 0 0 / 0.98);
-  color: oklch(0.24 0 0 / 0.98);
+  width: 32px;
+  height: 32px;
+  border: 1px solid color-mix(in srgb, var(--oa-color-khala-energy-cyan) 62%, transparent);
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--oa-color-khala-surface-raised) 94%, transparent);
+  color: var(--oa-color-khala-energy-button-text);
   cursor: pointer;
-  font-size: 1.15rem;
+  font-size: 1rem;
   line-height: 1;
   transition:
     background 160ms ease,
@@ -964,20 +971,22 @@ button {
 
 #send-button:hover,
 #send-button:focus-visible {
-  background: white;
-  color: oklch(0.17 0 0 / 0.98);
-  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--oa-color-khala-energy-soft) 92%, transparent);
+  background: var(--oa-color-khala-surface-active);
+  color: var(--oa-color-khala-text-bright);
+  transform: none;
 }
 
 #send-button:focus-visible {
-  outline: 2px solid oklch(1 0 0 / 0.42);
-  outline-offset: 2px;
+  outline: 2px solid color-mix(in srgb, var(--oa-color-khala-energy-cyan) 82%, transparent);
+  outline-offset: 0;
 }
 
 #send-button:disabled {
   cursor: not-allowed;
-  background: oklch(0.53 0 0 / 0.42);
-  color: oklch(0.86 0 0 / 0.42);
+  border-color: color-mix(in srgb, var(--oa-color-khala-energy-blue) 20%, transparent);
+  background: color-mix(in srgb, var(--oa-color-khala-void) 42%, transparent);
+  color: var(--oa-color-khala-text-disabled);
   transform: none;
 }
 
@@ -990,18 +999,13 @@ button {
 }
 
 .khala-code-composer .oa-ai-command-composer-footer {
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr) 32px;
   align-items: center;
-  gap: 12px;
+  gap: 6px;
 }
 
 .khala-code-composer .oa-ai-command-composer-status {
-  max-width: min(32rem, 52vw);
-  overflow: hidden;
-  flex-wrap: nowrap;
-  text-overflow: ellipsis;
-  text-transform: none;
-  white-space: nowrap;
+  display: none;
 }
 
 .khala-code-composer .oa-ai-command-composer-status > [data-slot] {
@@ -1010,36 +1014,38 @@ button {
 
 .khala-code-composer .oa-ai-command-composer-controls {
   align-items: center;
-  gap: 12px;
+  gap: 6px;
 }
 
 .khala-code-composer .oa-ai-command-composer-button {
   width: 32px;
   min-width: 32px;
   min-height: 32px;
-  border: 0;
-  border-radius: 10px;
-  background: transparent;
-  color: oklch(0.83 0 0 / 0.84);
+  border: 1px solid color-mix(in srgb, var(--oa-color-khala-energy-blue) 34%, transparent);
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--oa-color-khala-void) 32%, transparent);
+  color: color-mix(in srgb, var(--oa-color-khala-energy-soft) 82%, transparent);
   padding: 0;
 }
 
 .khala-code-composer .oa-ai-command-composer-button:hover,
 .khala-code-composer .oa-ai-command-composer-button:focus-visible {
-  background: oklch(1 0 0 / 0.06);
-  color: oklch(0.97 0 0 / 0.96);
+  border-color: color-mix(in srgb, var(--oa-color-khala-energy-cyan) 62%, transparent);
+  background: color-mix(in srgb, var(--oa-color-khala-surface-active) 72%, transparent);
+  color: var(--oa-color-khala-text-bright);
   outline: none;
 }
 
+.khala-code-composer .oa-ai-command-composer-button-label {
+  display: none;
+}
+
+/*
 .khala-harness-pill {
   display: inline-flex;
   align-items: center;
   min-width: 0;
   height: 32px;
-}
-
-.khala-code-composer .oa-ai-command-composer-button-label {
-  display: none;
 }
 
 .khala-harness-pill-button {
@@ -1128,6 +1134,7 @@ button {
   width: 1.1rem;
   height: 1.1rem;
 }
+*/
 
 .khala-code-composer .oa-ai-command-composer-submit-label {
   display: none;
@@ -1139,42 +1146,34 @@ button {
   }
 
   .khala-code-composer {
-    --oa-command-composer-height: 10.75rem;
+    --oa-command-composer-height: 6.75rem;
     max-width: 100%;
   }
 
   .khala-code-composer .oa-ai-command-composer-frame {
-    border-radius: 24px;
-    padding: 22px 18px 14px;
+    border-radius: 3px;
+    padding: 9px 9px 8px;
   }
 
   .khala-code-composer-follow-up-queue {
-    width: calc(100% - 32px);
-    padding: 12px 14px 32px;
-    border-radius: 24px 24px 0 0;
+    width: calc(100% - 18px);
+    padding: 7px 8px 9px;
+    border-radius: 4px 4px 0 0;
   }
 
   .khala-code-composer-follow-up {
-    grid-template-columns: 20px minmax(0, 1fr) auto 28px 28px;
-    gap: 8px;
-    font-size: 0.875rem;
+    grid-template-columns: 18px minmax(0, 1fr) auto 24px 24px;
+    gap: 6px;
+    font-size: 0.72rem;
   }
 
   #composer-input {
-    min-height: 4.8rem;
-    font-size: 0.95rem;
+    min-height: 3.25rem;
+    font-size: 0.8125rem;
   }
 
   .khala-code-composer .oa-ai-command-composer-footer {
-    grid-template-columns: minmax(0, 1fr) 52px;
-  }
-
-  .khala-code-composer .oa-ai-command-composer-status {
-    display: none;
-    grid-column: 1 / -1;
-    justify-content: flex-end;
-    order: -1;
-    max-width: 100%;
+    grid-template-columns: minmax(0, 1fr) 32px;
   }
 }
 

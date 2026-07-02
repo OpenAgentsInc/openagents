@@ -54,7 +54,6 @@ import {
   type KhalaCodeDesktopMessage,
   type KhalaCodeDesktopMessageRole,
   type KhalaCodeDesktopRPCSchema,
-  type KhalaCodeDesktopRuntimeMode,
   type KhalaCodeDesktopThreadTokenSummary,
 } from "../shared/rpc"
 import {
@@ -713,18 +712,6 @@ const sessionId =
 localStorage.setItem(sessionIdStorageKey, sessionId)
 localStorage.removeItem(activeThreadIdStorageKey)
 
-const harnessOptions: readonly {
-  readonly label: string
-  readonly mode: KhalaCodeDesktopRuntimeMode
-}[] = [
-  { label: "Codex", mode: "codex_harness" },
-  { label: "Claude", mode: "claude_runtime" },
-  { label: "Khala", mode: "khala_native_runtime" },
-]
-
-const harnessLabel = (mode: KhalaCodeDesktopRuntimeMode): string =>
-  harnessOptions.find(option => option.mode === mode)?.label ?? "Codex"
-
 type ThreadSwitchPerformanceSample = {
   cacheHit: boolean
   fullMessageCount?: number
@@ -1067,19 +1054,6 @@ const renderMessage = (message: KhalaCodeDesktopMessage): HTMLElement => {
   return article
 }
 
-const setHarnessMode = async (mode: KhalaCodeDesktopRuntimeMode): Promise<void> => {
-  shellModel().selectedHarnessMode = mode
-  renderComposer()
-  try {
-    const setting = await rpc.request.harnessSettingWrite({ mode })
-    shellModel().selectedHarnessMode = setting.mode
-    shellModel().harnessEnvOverride = setting.envOverride
-  } catch {
-    shellModel().selectedHarnessMode = mode
-  }
-  renderComposer()
-}
-
 const refreshHarnessSetting = async (): Promise<void> => {
   try {
     const setting = await rpc.request.harnessSettingRead()
@@ -1095,6 +1069,32 @@ const refreshHarnessSetting = async (): Promise<void> => {
 }
 
 void refreshHarnessSetting()
+
+/*
+const setHarnessMode = async (mode: KhalaCodeDesktopRuntimeMode): Promise<void> => {
+  shellModel().selectedHarnessMode = mode
+  renderComposer()
+  try {
+    const setting = await rpc.request.harnessSettingWrite({ mode })
+    shellModel().selectedHarnessMode = setting.mode
+    shellModel().harnessEnvOverride = setting.envOverride
+  } catch {
+    shellModel().selectedHarnessMode = mode
+  }
+  renderComposer()
+}
+
+const harnessOptions: readonly {
+  readonly label: string
+  readonly mode: KhalaCodeDesktopRuntimeMode
+}[] = [
+  { label: "Codex", mode: "codex_harness" },
+  { label: "Claude", mode: "claude_runtime" },
+  { label: "Khala", mode: "khala_native_runtime" },
+]
+
+const harnessLabel = (mode: KhalaCodeDesktopRuntimeMode): string =>
+  harnessOptions.find(option => option.mode === mode)?.label ?? "Codex"
 
 const renderHarnessPill = (): HTMLElement => {
   const pill = document.createElement("div")
@@ -1145,6 +1145,7 @@ const renderMicrophoneIndicator = (): HTMLElement => {
   indicator.replaceChildren(composerIconElement("microphone"))
   return indicator
 }
+*/
 
 const renderThinkingIndicator = (): HTMLElement | null => {
   if (shellModel().thinkingTurnId === null) return null
@@ -2068,25 +2069,16 @@ function renderComposer(): void {
   setButtonIcon(attachButton, "plus")
   sendButton.querySelector(".oa-ai-command-composer-submit-label")!.textContent =
     sendLabel
-  composerControls.replaceChildren(attachButton, renderHarnessPill())
+  composerControls.replaceChildren(
+    attachButton,
+    // renderHarnessPill(),
+  )
 
-  const details = [
-    statusLabelFor(status),
-    ...(attachmentCount === 0 ? [] : [`${attachmentCount} attached`]),
-    `${composerInput.value.length.toLocaleString()} chars`,
-  ]
   composerStatus.className = composerClasses.status
   composerStatus.dataset.oaCommandComposerStatusLabel = status
   composerStatus.replaceChildren(
-    renderRuntimeBadge(),
-    renderMicrophoneIndicator(),
-    ...details.map((detail, index) => {
-      const span = document.createElement("span")
-      span.dataset.slot = index === 0 ? "status" : "detail"
-      if (index === 0) span.dataset.status = status
-      span.textContent = detail
-      return span
-    }),
+    // renderRuntimeBadge(),
+    // renderMicrophoneIndicator(),
   )
   composerA11y.textContent =
     `${statusLabelFor(status)}. ${attachmentCount} attachments. ` +
