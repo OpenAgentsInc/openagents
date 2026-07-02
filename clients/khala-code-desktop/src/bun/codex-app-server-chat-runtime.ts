@@ -1,6 +1,7 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises"
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import { dirname, join } from "node:path"
+import { Cause, Effect, Exit } from "effect"
 
 import type {
   KhalaCodeDesktopChatTurnAttachment,
@@ -35,6 +36,7 @@ import type {
   KhalaCodeDesktopCodexTokenUsageReporter,
 } from "./codex-token-usage-telemetry.js"
 import {
+  KhalaCodeDesktopTokenUsagePersistentFailure,
   khalaCodeDesktopCodexMessageTokenAuditMessage,
   khalaCodeDesktopCodexTokenUsageEventRefs,
   readKhalaCodeDesktopCodexStateThreadTokenSnapshot,
@@ -387,12 +389,18 @@ const parseState = (value: unknown): StoredCodexSessionState => {
   }
 }
 
+const quarantineStatePath = (statePath: string): string =>
+  `${statePath}.corrupt.${Date.now().toString(36)}`
+
 const readState = async (statePath: string): Promise<StoredCodexSessionState> => {
   try {
     return parseState(JSON.parse(await readFile(statePath, "utf8")))
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return emptyState()
-    throw error
+    await mkdir(dirname(statePath), { recursive: true })
+    await rename(statePath, quarantineStatePath(statePath)).catch(() => undefined)
+    await writeState(statePath, emptyState())
+    return emptyState()
   }
 }
 
@@ -932,6 +940,7 @@ export function createCodexAppServerChatRuntime(
     }).tokens
     const submittedAt = isoNow()
     const tokenUsageAuditEvents: KhalaCodeDesktopCodexMessageTokenAuditUsageEvent[] = []
+    const tokenUsageReportFailures: KhalaCodeDesktopTokenUsagePersistentFailure[] = []
     const pendingTokenUsageReports: Promise<void>[] = []
     let done = false
     let finish!: () => void
@@ -991,7 +1000,14 @@ export function createCodexAppServerChatRuntime(
         usage: delta,
       })
       if (tokenUsageReporter === null) return
-      const report = tokenUsageReporter(tokenUsageReport).catch(() => undefined)
+      const report = Effect.runPromiseExit(tokenUsageReporter(tokenUsageReport)).then(exit => {
+        if (Exit.isFailure(exit)) {
+          const failure = exit.cause.reasons.find(Cause.isFailReason)?.error
+          if (failure instanceof KhalaCodeDesktopTokenUsagePersistentFailure) {
+            tokenUsageReportFailures.push(failure)
+          }
+        }
+      })
       pendingTokenUsageReports.push(report)
     }
 
@@ -1116,9 +1132,11 @@ export function createCodexAppServerChatRuntime(
           reconciliation: {
             globalCountedTokens: countedCodexUsageTokens(capturedUsage),
             globalCounterRoute: "/api/stats/token-usage/events",
-            status: tokenUsageAuditEvents.length > 0
-              ? "global_count_event_recorded"
-              : "missing_token_usage_update",
+            status: tokenUsageReportFailures.length > 0
+              ? "global_count_event_failed"
+              : tokenUsageAuditEvents.length > 0
+                ? "global_count_event_recorded"
+                : "missing_token_usage_update",
             tokenAccountingRequired: true,
             tokenScope: "codex_turn_provider_reported",
             usageTruth: "exact",
@@ -1127,6 +1145,14 @@ export function createCodexAppServerChatRuntime(
           turnStatus,
           usage: capturedUsage,
           usageEvents: tokenUsageAuditEvents,
+          ...(tokenUsageReportFailures.length === 0 ? {} : {
+            tokenUsageFailureFlags: tokenUsageReportFailures.map(failure => ({
+              eventId: failure.eventId,
+              idempotencyKey: failure.idempotencyKey,
+              inboxFlagRef: failure.inboxFlagRef,
+              reason: failure.reason,
+            })),
+          }),
         })
       }
     }

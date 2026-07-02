@@ -3,6 +3,7 @@ import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { Database } from "bun:sqlite"
 import { afterEach, describe, expect, test } from "bun:test"
+import { Effect, Exit } from "effect"
 
 import {
   createKhalaCodeDesktopCodexMessageTokenAuditRecorder,
@@ -11,6 +12,7 @@ import {
   khalaCodeDesktopCodexTokenUsageEvent,
   khalaCodeDesktopCodexTokenUsageEventRefs,
   khalaCodeDesktopTokenUsageTelemetryStatus,
+  readKhalaCodeDesktopTokenUsageInboxFlags,
   readKhalaCodeDesktopThreadTokenSummary,
   startKhalaCodeDesktopTokenUsageBackgroundSync,
   syncKhalaCodeDesktopPendingTokenUsageReports,
@@ -110,7 +112,7 @@ describe("Codex token usage telemetry", () => {
       localLedgerPath: ledgerPath,
     })
 
-    await reporter(sampleReport())
+    await Effect.runPromise(reporter(sampleReport()))
 
     const lines = (await readFile(ledgerPath, "utf8")).trim().split("\n")
     expect(lines).toHaveLength(1)
@@ -136,6 +138,106 @@ describe("Codex token usage telemetry", () => {
       "utf8",
     )).trim().split("\n")
     expect(successLines).toHaveLength(1)
+  })
+
+  test("retries token usage reporting with an exponential Effect schedule before succeeding", async () => {
+    const ledgerPath = await tempLedgerPath()
+    let attempts = 0
+    const reporter = createKhalaCodeDesktopCodexTokenUsageReporter({
+      env: {
+        KHALA_CODE_TOKEN_USAGE_BASE_URL: "https://openagents.example",
+        KHALA_CODE_TOKEN_USAGE_BEARER_TOKEN: "test-token",
+      },
+      fetch: async () => {
+        attempts += 1
+        return attempts === 1
+          ? new Response(JSON.stringify({ error: "try again" }), { status: 503 })
+          : new Response(JSON.stringify({ inserted: true }), { status: 201 })
+      },
+      localLedgerPath: ledgerPath,
+      retryBaseMs: 0,
+      retryRecurs: 2,
+    })
+
+    await Effect.runPromise(reporter(sampleReport()))
+
+    expect(attempts).toBe(2)
+    const flags = await readKhalaCodeDesktopTokenUsageInboxFlags({ localLedgerPath: ledgerPath })
+    expect(flags).toHaveLength(0)
+    const successLines = (await readFile(
+      join(dirname(ledgerPath), "token-usage-report-successes.jsonl"),
+      "utf8",
+    )).trim().split("\n")
+    expect(successLines).toHaveLength(1)
+  })
+
+  test("writes a typed Inbox flag when token usage reporting persistently fails", async () => {
+    const ledgerPath = await tempLedgerPath()
+    let attempts = 0
+    const reporter = createKhalaCodeDesktopCodexTokenUsageReporter({
+      env: {
+        KHALA_CODE_TOKEN_USAGE_BASE_URL: "https://openagents.example",
+        KHALA_CODE_TOKEN_USAGE_BEARER_TOKEN: "test-token",
+      },
+      fetch: async () => {
+        attempts += 1
+        return new Response(JSON.stringify({ error: "still down" }), { status: 503 })
+      },
+      localLedgerPath: ledgerPath,
+      retryBaseMs: 0,
+      retryRecurs: 1,
+    })
+
+    const exit = await Effect.runPromiseExit(reporter(sampleReport()))
+
+    expect(Exit.isFailure(exit)).toBe(true)
+    expect(attempts).toBe(2)
+    const flags = await readKhalaCodeDesktopTokenUsageInboxFlags({ localLedgerPath: ledgerPath })
+    expect(flags).toHaveLength(1)
+    expect(flags[0]).toMatchObject({
+      ref: expect.stringContaining("inbox.token_usage_reporting."),
+      severity: "critical",
+      status: "open",
+      title: "Token usage reporting failed",
+    })
+  })
+
+  test("clears token usage Inbox flags after a later successful sync of the same event", async () => {
+    const ledgerPath = await tempLedgerPath()
+    const event = khalaCodeDesktopCodexTokenUsageEvent(sampleReport())
+    const failingReporter = createKhalaCodeDesktopCodexTokenUsageReporter({
+      env: {
+        KHALA_CODE_TOKEN_USAGE_BASE_URL: "https://openagents.example",
+        KHALA_CODE_TOKEN_USAGE_BEARER_TOKEN: "test-token",
+      },
+      fetch: async () =>
+        new Response(JSON.stringify({ error: "still down" }), { status: 503 }),
+      localLedgerPath: ledgerPath,
+      retryBaseMs: 0,
+      retryRecurs: 0,
+    })
+
+    const failedExit = await Effect.runPromiseExit(failingReporter(sampleReport()))
+
+    expect(Exit.isFailure(failedExit)).toBe(true)
+    expect(await readKhalaCodeDesktopTokenUsageInboxFlags({ localLedgerPath: ledgerPath })).toMatchObject([{
+      eventId: event.eventId,
+      idempotencyKey: event.idempotencyKey,
+      status: "open",
+    }])
+
+    const result = await syncKhalaCodeDesktopPendingTokenUsageReports({
+      env: {
+        KHALA_CODE_TOKEN_USAGE_BASE_URL: "https://openagents.example",
+        KHALA_CODE_TOKEN_USAGE_BEARER_TOKEN: "test-token",
+      },
+      fetch: async () => new Response(JSON.stringify({ inserted: true }), { status: 201 }),
+      localLedgerPath: ledgerPath,
+    })
+
+    expect(result).toMatchObject({ attempted: 1, failed: 0, ok: true, synced: 1 })
+    expect(await readKhalaCodeDesktopTokenUsageInboxFlags({ localLedgerPath: ledgerPath })).toEqual([])
+    expect(await readFile(join(dirname(ledgerPath), "token-usage-inbox-flags.jsonl"), "utf8")).toBe("")
   })
 
   test("loads the owner Stats token from the local secret file when env is not exported", async () => {
@@ -209,7 +311,7 @@ describe("Codex token usage telemetry", () => {
       localLedgerPath,
     })
 
-    await reporter(sampleReport())
+    await Effect.runPromise(reporter(sampleReport()))
 
     expect(posts.map(post => (post.body as { eventId?: string }).eventId)).toEqual([
       String(oldEvent.eventId),

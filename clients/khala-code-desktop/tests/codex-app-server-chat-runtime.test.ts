@@ -1,8 +1,9 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
+import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Database } from "bun:sqlite"
 import { afterEach, describe, expect, test } from "bun:test"
+import { Effect } from "effect"
 
 import {
   createCodexAppServerChatRuntime,
@@ -208,6 +209,69 @@ describe("Codex app-server chat runtime", () => {
     expect(await readFile(fixture.statePath, "utf8")).toContain("thread-codex-1")
   })
 
+  test("quarantines corrupt session state and continues thread operations with fresh state", async () => {
+    const fixture = await stateFixture()
+    await writeFile(fixture.statePath, "{not-json", "utf8")
+    const records: RequestRecord[] = []
+    const host = createFakeHost({
+      records,
+      onRequest: (method, _params, subscribers) => {
+        if (method === "thread/start") {
+          return {
+            thread: { id: "thread-after-corrupt-state", status: "running" },
+            model: "gpt-5.1-codex",
+            modelProvider: "openai",
+            cwd: fixture.root,
+          }
+        }
+        if (method === "turn/start") {
+          queueMicrotask(() => {
+            emit(subscribers, {
+              method: "turn/completed",
+              params: {
+                threadId: "thread-after-corrupt-state",
+                turn: { id: "turn-after-corrupt-state", status: "completed" },
+              },
+            })
+          })
+          return { turn: { id: "turn-after-corrupt-state", status: "inProgress" } }
+        }
+        throw new Error(`unexpected request ${method}`)
+      },
+    })
+    const runtime = createCodexAppServerChatRuntime({
+      host,
+      statePath: fixture.statePath,
+      turnTimeoutMs: 1_000,
+      workingDirectory: fixture.root,
+    })
+
+    await expect(runtime.startTurn({
+      messages: [{ id: "user-corrupt-state", role: "user", body: "Recover state" }],
+      sessionId: "desktop-session-corrupt-state",
+      turnId: "desktop-turn-corrupt-state",
+    })).resolves.toMatchObject({
+      backend: {
+        threadId: "thread-after-corrupt-state",
+        turnId: "turn-after-corrupt-state",
+      },
+      ok: true,
+    })
+
+    const entries = await readdir(fixture.root)
+    expect(entries.some(entry => entry.startsWith("codex-sessions.json.corrupt."))).toBe(true)
+    const nextState = JSON.parse(await readFile(fixture.statePath, "utf8"))
+    expect(nextState).toMatchObject({
+      schema: "khala-code-desktop.codex-sessions.v1",
+      sessions: {
+        "desktop-session-corrupt-state": {
+          threadId: "thread-after-corrupt-state",
+        },
+      },
+    })
+    expect(records.map(record => record.method)).toEqual(["thread/start", "turn/start"])
+  })
+
   test("passes materialized image attachments as Codex local image input", async () => {
     const fixture = await stateFixture()
     const records: RequestRecord[] = []
@@ -364,9 +428,9 @@ describe("Codex app-server chat runtime", () => {
         messageAudits.push(record)
       },
       statePath: fixture.statePath,
-      tokenUsageReporter: async report => {
+      tokenUsageReporter: report => Effect.sync(() => {
         reports.push(report)
-      },
+      }),
       turnTimeoutMs: 1_000,
       workingDirectory: fixture.root,
     })
@@ -518,9 +582,9 @@ describe("Codex app-server chat runtime", () => {
         messageAudits.push(record)
       },
       statePath: fixture.statePath,
-      tokenUsageReporter: async report => {
+      tokenUsageReporter: report => Effect.sync(() => {
         reports.push(report)
-      },
+      }),
       turnTimeoutMs: 1_000,
       workingDirectory: fixture.root,
     })

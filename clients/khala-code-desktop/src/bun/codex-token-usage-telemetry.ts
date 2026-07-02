@@ -4,6 +4,7 @@ import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import { dirname, join } from "node:path"
 import { Database } from "bun:sqlite"
+import { Effect, Schedule } from "effect"
 
 import type {
   KhalaCodeDesktopMessage,
@@ -41,7 +42,49 @@ export type KhalaCodeDesktopCodexTokenUsageEventRefs = {
 
 export type KhalaCodeDesktopCodexTokenUsageReporter = (
   report: KhalaCodeDesktopCodexTokenUsageReport,
-) => Promise<void>
+) => Effect.Effect<void, KhalaCodeDesktopTokenUsagePersistentFailure>
+
+export type KhalaCodeDesktopTokenUsageInboxFlag = {
+  readonly eventId: string | null
+  readonly idempotencyKey: string | null
+  readonly observedAt: string | null
+  readonly reason: string
+  readonly ref: string
+  readonly severity: "critical"
+  readonly status: "open"
+  readonly title: "Token usage reporting failed"
+}
+
+export class KhalaCodeDesktopTokenUsageReportFailure extends Error {
+  readonly _tag = "KhalaCodeDesktopTokenUsageReportFailure"
+  constructor(readonly input: {
+    readonly eventId: string | null
+    readonly idempotencyKey: string | null
+    readonly reason: string
+  }) {
+    super(input.reason)
+  }
+}
+
+export class KhalaCodeDesktopTokenUsagePersistentFailure extends Error {
+  readonly _tag = "KhalaCodeDesktopTokenUsagePersistentFailure"
+  readonly eventId: string | null
+  readonly idempotencyKey: string | null
+  readonly inboxFlagRef: string
+  readonly reason: string
+  constructor(input: {
+    readonly eventId: string | null
+    readonly idempotencyKey: string | null
+    readonly inboxFlagRef: string
+    readonly reason: string
+  }) {
+    super(input.reason)
+    this.eventId = input.eventId
+    this.idempotencyKey = input.idempotencyKey
+    this.inboxFlagRef = input.inboxFlagRef
+    this.reason = input.reason
+  }
+}
 
 export type KhalaCodeDesktopCodexMessageTokenAuditMessage = {
   readonly body: string
@@ -79,6 +122,7 @@ export type KhalaCodeDesktopCodexMessageTokenAuditRecord = {
     readonly globalCounterRoute: "/api/stats/token-usage/events"
     readonly status:
       | "global_count_backfilled_aggregate"
+      | "global_count_event_failed"
       | "global_count_event_recorded"
       | "missing_token_usage_update"
     readonly tokenAccountingRequired: true
@@ -89,6 +133,12 @@ export type KhalaCodeDesktopCodexMessageTokenAuditRecord = {
   readonly turnStatus: string
   readonly usage: KhalaCodeDesktopCodexTokenUsageCounts
   readonly usageEvents: readonly KhalaCodeDesktopCodexMessageTokenAuditUsageEvent[]
+  readonly tokenUsageFailureFlags?: readonly {
+    readonly eventId: string | null
+    readonly idempotencyKey: string | null
+    readonly inboxFlagRef: string
+    readonly reason: string
+  }[]
 }
 
 export type KhalaCodeDesktopCodexMessageTokenAuditRecorder = (
@@ -111,6 +161,8 @@ type TokenUsageTelemetryConfig = {
   readonly localMessageAuditLedgerPath: string
   readonly localLedgerPath: string
   readonly remoteDisabled: boolean
+  readonly retryBaseMs: number
+  readonly retryRecurs: number
 }
 
 export type KhalaCodeDesktopTokenUsageSyncResult = {
@@ -126,6 +178,8 @@ export type CreateKhalaCodeDesktopCodexTokenUsageReporterOptions = {
   readonly env?: Readonly<Record<string, string | undefined>>
   readonly fetch?: FetchLike
   readonly localLedgerPath?: string
+  readonly retryBaseMs?: number
+  readonly retryRecurs?: number
 }
 
 export type SyncKhalaCodeDesktopPendingTokenUsageReportsOptions = {
@@ -233,6 +287,14 @@ const defaultTokenUsageSyncIntervalMs = (
   return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : 2_000
 }
 
+const numberEnv = (
+  value: string | undefined,
+  fallback: number,
+): number => {
+  const parsed = Number.parseInt(value?.trim() ?? "", 10)
+  return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : fallback
+}
+
 const unquoteEnvValue = (value: string): string => {
   const trimmed = value.trim()
   if (trimmed.length >= 2) {
@@ -308,6 +370,8 @@ const resolveConfig = (
     localMessageAuditLedgerPath:
       localMessageAuditLedgerPath ?? defaultLocalMessageAuditLedgerPath(env),
     remoteDisabled,
+    retryBaseMs: numberEnv(env.KHALA_CODE_TOKEN_USAGE_RETRY_BASE_MS, 250),
+    retryRecurs: numberEnv(env.KHALA_CODE_TOKEN_USAGE_RETRY_RECURS, 2),
   }
 }
 
@@ -700,6 +764,9 @@ const appendJsonLine = async (path: string, value: unknown): Promise<void> => {
 const failureLedgerPath = (localLedgerPath: string): string =>
   join(dirname(localLedgerPath), "token-usage-report-failures.jsonl")
 
+const inboxFlagLedgerPath = (localLedgerPath: string): string =>
+  join(dirname(localLedgerPath), "token-usage-inbox-flags.jsonl")
+
 const successLedgerPath = (localLedgerPath: string): string =>
   join(dirname(localLedgerPath), "token-usage-report-successes.jsonl")
 
@@ -748,6 +815,42 @@ const tokenUsageEventForRemotePost = (event: JsonRecord): JsonRecord => {
   }
 }
 
+const tokenUsageInboxFlagRef = (
+  eventId: string | null,
+  idempotencyKey: string | null,
+): string => {
+  const source = eventId ?? idempotencyKey ?? "unknown"
+  return `inbox.token_usage_reporting.${digest(source).slice(0, 16)}`
+}
+
+const appendTokenUsageInboxFlag = async (
+  localLedgerPath: string,
+  input: {
+    readonly eventId: string | null
+    readonly idempotencyKey: string | null
+    readonly observedAt: string | null
+    readonly reason: string
+  },
+): Promise<KhalaCodeDesktopTokenUsageInboxFlag> => {
+  const ref = tokenUsageInboxFlagRef(input.eventId, input.idempotencyKey)
+  const flag: KhalaCodeDesktopTokenUsageInboxFlag = {
+    eventId: input.eventId,
+    idempotencyKey: input.idempotencyKey,
+    observedAt: input.observedAt,
+    reason: input.reason,
+    ref,
+    severity: "critical",
+    status: "open",
+    title: "Token usage reporting failed",
+  }
+  await appendJsonLine(inboxFlagLedgerPath(localLedgerPath), {
+    schemaVersion: "khala-code-desktop.codex-token-usage.inbox-flag.v1",
+    flaggedAt: new Date().toISOString(),
+    flag,
+  })
+  return flag
+}
+
 const rewriteJsonLines = async (
   path: string,
   rows: readonly JsonRecord[],
@@ -758,6 +861,54 @@ const rewriteJsonLines = async (
     rows.length === 0 ? "" : `${rows.map(row => JSON.stringify(row)).join("\n")}\n`,
     "utf8",
   )
+}
+
+const refsFromInboxFlagRow = (row: JsonRecord): readonly string[] => {
+  const flag = objectField(row, "flag")
+  return flag === null ? [] : refsFromEventLike(flag)
+}
+
+const compactInboxFlagRows = (
+  rows: readonly JsonRecord[],
+  successRefs: ReadonlySet<string>,
+): readonly JsonRecord[] =>
+  rows.filter(row => {
+    const refs = refsFromInboxFlagRow(row)
+    return refs.length === 0 || refs.every(ref => !successRefs.has(ref))
+  })
+
+export async function readKhalaCodeDesktopTokenUsageInboxFlags(options: {
+  readonly env?: Readonly<Record<string, string | undefined>>
+  readonly localLedgerPath?: string
+} = {}): Promise<readonly KhalaCodeDesktopTokenUsageInboxFlag[]> {
+  const env = options.env ?? khalaCodeConfigFromRuntimeEnv().env
+  const config = resolveConfig(env, options.localLedgerPath)
+  const flagPath = inboxFlagLedgerPath(config.localLedgerPath)
+  const rows = await readJsonLines(flagPath)
+  const successRefs = refSetFromRows(await readJsonLines(successLedgerPath(config.localLedgerPath)))
+  const unresolvedRows = compactInboxFlagRows(rows, successRefs)
+  if (unresolvedRows.length !== rows.length) {
+    await rewriteJsonLines(flagPath, unresolvedRows)
+  }
+  const byRef = new Map<string, KhalaCodeDesktopTokenUsageInboxFlag>()
+  for (const row of unresolvedRows) {
+    const flag = objectField(row, "flag")
+    if (flag === null) continue
+    const ref = stringField(flag, "ref")
+    const reason = stringField(flag, "reason")
+    if (ref === null || reason === null) continue
+    byRef.set(ref, {
+      eventId: stringField(flag, "eventId"),
+      idempotencyKey: stringField(flag, "idempotencyKey"),
+      observedAt: stringField(flag, "observedAt"),
+      reason,
+      ref,
+      severity: "critical",
+      status: "open",
+      title: "Token usage reporting failed",
+    })
+  }
+  return [...byRef.values()]
 }
 
 const compactFailureRows = (
@@ -923,23 +1074,69 @@ export function createKhalaCodeDesktopCodexTokenUsageReporter(
   options: CreateKhalaCodeDesktopCodexTokenUsageReporterOptions = {},
 ): KhalaCodeDesktopCodexTokenUsageReporter {
   const env = options.env ?? khalaCodeConfigFromRuntimeEnv().env
-  const config = resolveConfig(env, options.localLedgerPath)
+  const resolvedConfig = resolveConfig(env, options.localLedgerPath)
+  const config = {
+    ...resolvedConfig,
+    retryBaseMs: options.retryBaseMs ?? resolvedConfig.retryBaseMs,
+    retryRecurs: options.retryRecurs ?? resolvedConfig.retryRecurs,
+  }
   const fetchImpl: FetchLike = options.fetch ?? ((url, init) => globalThis.fetch(url, init))
 
-  return async report => {
+  return report => Effect.gen(function* () {
     const usage = normalizeUsage(report.usage)
     if (!hasUsage(usage)) return
     const normalizedReport = { ...report, usage }
     const event = khalaCodeDesktopCodexTokenUsageEvent(normalizedReport)
-    await appendJsonLine(config.localLedgerPath, {
+    yield* Effect.promise(() => appendJsonLine(config.localLedgerPath, {
       schemaVersion: "khala-code-desktop.codex-token-usage.local.v1",
       recordedAt: new Date().toISOString(),
       event,
-    })
+    }))
 
     const endpoint = new URL("/api/stats/token-usage/events", config.baseUrl)
-    await syncPendingTokenUsageReports(config, fetchImpl, endpoint)
-  }
+    const eventId = stringField(event, "eventId")
+    const idempotencyKey = stringField(event, "idempotencyKey")
+    const observedAt = stringField(event, "observedAt")
+    const syncEffect = Effect.tryPromise({
+      try: async () => {
+        const result = await syncPendingTokenUsageReports(config, fetchImpl, endpoint)
+        if (result.remoteConfigured && !result.ok) {
+          throw new KhalaCodeDesktopTokenUsageReportFailure({
+            eventId,
+            idempotencyKey,
+            reason: `token usage sync failed after ${result.failed}/${result.attempted} attempted remote post(s)`,
+          })
+        }
+      },
+      catch: error => error instanceof KhalaCodeDesktopTokenUsageReportFailure
+        ? error
+        : new KhalaCodeDesktopTokenUsageReportFailure({
+          eventId,
+          idempotencyKey,
+          reason: error instanceof Error ? error.message : String(error),
+        }),
+    }).pipe(
+      Effect.retry({
+        schedule: Schedule.exponential(config.retryBaseMs),
+        times: config.retryRecurs,
+      }),
+      Effect.catch(error => Effect.gen(function* () {
+        const flag = yield* Effect.promise(() => appendTokenUsageInboxFlag(config.localLedgerPath, {
+          eventId: error.input.eventId,
+          idempotencyKey: error.input.idempotencyKey,
+          observedAt,
+          reason: error.input.reason,
+        }))
+        return yield* Effect.fail(new KhalaCodeDesktopTokenUsagePersistentFailure({
+          eventId: error.input.eventId,
+          idempotencyKey: error.input.idempotencyKey,
+          inboxFlagRef: flag.ref,
+          reason: error.input.reason,
+        }))
+      })),
+    )
+    yield* syncEffect
+  })
 }
 
 export function createKhalaCodeDesktopCodexMessageTokenAuditRecorder(

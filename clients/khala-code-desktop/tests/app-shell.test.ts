@@ -546,6 +546,71 @@ describe("khala code desktop app shell", () => {
     })
   })
 
+  test("projects persistent token usage reporting failures into the Unified Inbox", () => {
+    const observedAt = "2026-07-01T00:00:00.000Z"
+    const projection = projectUnifiedInbox({
+      fleet: {
+        ok: true,
+        observedAt,
+        pylon: {
+          status: "started",
+          pylonRef: "pylon.local",
+          message: "Pylon ready",
+        },
+        availableCodexAssignments: 0,
+        maxCodexAssignments: 0,
+        tokenRate: {
+          activeAdjustedTokensPerMinute: null,
+          completedStatus: "not_measured",
+          completedTokenRows: null,
+          completedTokensPerMinute: null,
+          inFlightTokens: null,
+          inFlightTokensPerMinute: null,
+          source: "unavailable",
+          unavailableReason: null,
+        },
+        accounts: [],
+        activeAssignments: [],
+        processes: [],
+      },
+      pylon: {
+        ok: true,
+        app: "Khala Code Desktop",
+        available: true,
+        capability: "pylon",
+        observedAt,
+        reason: "ready",
+        status: "ready",
+      },
+      coding: {
+        ok: true,
+        app: "Khala Code Desktop",
+        available: true,
+        capability: "coding",
+        observedAt,
+        reason: "ready",
+        status: "ready",
+      },
+      tokenAccounting: {
+        ok: true,
+        app: "Khala Code Desktop",
+        available: false,
+        capability: "token_accounting",
+        observedAt,
+        reason: "1 token usage reporting failure flag(s) need review; latest: token usage sync failed",
+        status: "error",
+      },
+    })
+
+    expect(projection.items).toContainEqual(expect.objectContaining({
+      ref: "inbox.runtime.token_accounting.blocked",
+      kind: "run_blocked",
+      title: "Token accounting needs review",
+      source: "runtime",
+      severity: "critical",
+    }))
+  })
+
   test("projects Codex ecosystem diagnostics into the Unified Inbox", () => {
     const observedAt = "2026-07-01T00:00:00.000Z"
     const ecosystem = projectKhalaCodeDesktopCodexEcosystem({
