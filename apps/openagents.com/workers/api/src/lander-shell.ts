@@ -112,6 +112,7 @@ form.intake input:focus-visible,form.intake textarea:focus-visible{
   outline:2px solid var(--cyan);outline-offset:1px;border-color:var(--cyan)}
 form.intake input::placeholder,form.intake textarea::placeholder{color:var(--ink-faint)}
 form.intake .check{display:flex;gap:9px;align-items:center;font-size:0.9rem;color:var(--ink-dim)}
+form.intake .check.optin{justify-content:flex-end}
 form.intake .check input{accent-color:var(--blue);width:15px;height:15px}
 form.intake button{font-family:var(--mono);font-size:13.5px;font-weight:700;color:#fff;
   background:var(--blue);border:0;border-radius:2px;padding-block:13px;padding-inline:26px;cursor:pointer;

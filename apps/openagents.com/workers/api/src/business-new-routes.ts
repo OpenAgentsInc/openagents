@@ -115,6 +115,7 @@ ${renderLanderHeader('business', display)}
 <section class="register" id="intake">
 <h2>Talk to Sales</h2>
 <form class="intake" id="intake-form" method="post" action="/api/public/business-signup">
+<label class="check wide optin"><input type="checkbox" name="requestSlackChannel" value="true">Set up a shared Slack channel</label>
 <label><span class="lab">Business name *</span>
 <input type="text" name="businessName" required maxlength="200" autocomplete="organization"></label>
 <label><span class="lab">Contact email *</span>
@@ -125,7 +126,6 @@ ${renderLanderHeader('business', display)}
 <input type="url" name="website" maxlength="320" placeholder="https://" autocomplete="url"></label>
 <label class="wide"><span class="lab">What do you need?</span>
 <textarea name="helpWith" maxlength="2000" placeholder="A stuck task, a repetitive grind, software you wish existed."></textarea></label>
-<label class="check wide"><input type="checkbox" name="requestSlackChannel" value="true">Set up a shared Slack channel</label>
 <div class="intake-result wide" id="intake-result" role="status"></div>
 <button type="submit">Send it</button>
 </form>
