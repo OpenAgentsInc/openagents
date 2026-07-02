@@ -1,4 +1,5 @@
 import { existsSync } from "node:fs"
+import { createHash, randomBytes, timingSafeEqual } from "node:crypto"
 import { resolve } from "node:path"
 
 import {
@@ -30,6 +31,7 @@ import { createOnDeviceDeciderHost } from "./on-device-decider-host.js"
 import { khalaCodeConfigFromRuntimeEnv } from "./khala-code-config.js"
 import { createKhalaCodeDesktopFleetRunSupervisorRpcAdapter } from "./fleet-run-supervisor-rpc-adapter.js"
 import { createKhalaCodeDesktopRpcRequestHandlers } from "./rpc-handlers.js"
+import { mutatingPreviewRpcMethods } from "./preview-rpc-policy.js"
 
 const khalaCodeConfig = khalaCodeConfigFromRuntimeEnv()
 const khalaCodeEnv = khalaCodeConfig.env
@@ -128,6 +130,117 @@ const jsonResponse = (payload: unknown, init?: ResponseInit): Response =>
     },
   })
 
+export const KHALA_CODE_DESKTOP_PREVIEW_RPC_TOKEN_HEADER =
+  "x-khala-code-preview-token"
+
+const previewRpcToken = (): string => {
+  const configured = khalaCodeEnv.KHALA_CODE_DESKTOP_PREVIEW_RPC_TOKEN?.trim()
+  return configured === undefined || configured.length === 0
+    ? randomBytes(32).toString("base64url")
+    : configured
+}
+
+const previewBridgeAccessToken = previewRpcToken()
+const previewBridgeReadOnly = khalaCodeEnv.KHALA_CODE_DESKTOP_PREVIEW_READONLY === "1"
+
+const isAuthorizedPreviewRpcRequest = (request: Request): boolean => {
+  const presented = request.headers.get(KHALA_CODE_DESKTOP_PREVIEW_RPC_TOKEN_HEADER)
+  if (presented === null) return false
+  const a = createHash("sha256").update(presented).digest()
+  const b = createHash("sha256").update(previewBridgeAccessToken).digest()
+  return timingSafeEqual(a, b)
+}
+
+
+const isPreviewRpcMutation = (method: KhalaCodeDesktopRpcMethodName): boolean =>
+  mutatingPreviewRpcMethods.has(method)
+
+type PreviewBridgeEvent =
+  | Readonly<{
+      event: KhalaCodeDesktopChatTurnEvent
+      observedAt: string
+      type: "chatTurnEvent"
+    }>
+  | Readonly<{
+      detail: unknown
+      observedAt: string
+      type: "fleetLifecycleEvent" | "runCounterEvent"
+    }>
+  | Readonly<{
+      args: readonly unknown[]
+      level: "debug" | "info" | "warn" | "error"
+      observedAt: string
+      type: "consoleDiagnostic"
+    }>
+  | Readonly<{
+      message: string
+      observedAt: string
+      type: "crashDiagnostic"
+    }>
+
+const previewEventClients = new Set<ReadableStreamDefaultController<Uint8Array>>()
+const textEncoder = new TextEncoder()
+
+const writePreviewSseEvent = (
+  controller: ReadableStreamDefaultController<Uint8Array>,
+  event: PreviewBridgeEvent,
+): void => {
+  controller.enqueue(textEncoder.encode(
+    `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`,
+  ))
+}
+
+const publishPreviewBridgeEvent = (event: PreviewBridgeEvent): void => {
+  for (const controller of previewEventClients) {
+    try {
+      writePreviewSseEvent(controller, event)
+    } catch {
+      previewEventClients.delete(controller)
+    }
+  }
+}
+
+const previewEventsResponse = (request: Request): Response => {
+  if (request.method !== "GET") {
+    return jsonResponse({
+      ok: false,
+      error: "method_not_allowed",
+      method: "events",
+      tag: "rpc_method_not_allowed",
+    }, { status: 405 })
+  }
+  if (!isAuthorizedPreviewRpcRequest(request)) {
+    return jsonResponse({
+      ok: false,
+      error: "unauthorized",
+      method: "events",
+      tag: "rpc_unauthorized",
+    }, { status: 401 })
+  }
+
+  // ReadableStream cancel() receives the cancellation reason, not the
+  // controller — hold the controller in a closure so disconnects clean up.
+  let eventsController: ReadableStreamDefaultController<Uint8Array> | null = null
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      eventsController = controller
+      previewEventClients.add(controller)
+      controller.enqueue(textEncoder.encode(": khala-code-preview-events\n\n"))
+    },
+    cancel() {
+      if (eventsController !== null) previewEventClients.delete(eventsController)
+    },
+  })
+  return new Response(stream, {
+    headers: {
+      "cache-control": "no-cache, no-transform",
+      "connection": "keep-alive",
+      "content-type": "text/event-stream; charset=utf-8",
+      "x-accel-buffering": "no",
+    },
+  })
+}
+
 let emitChatTurnEvent = (_event: KhalaCodeDesktopChatTurnEvent): void => {}
 let rpcRequestHandlers: KhalaCodeDesktopRPCSchema["requests"]
 
@@ -135,6 +248,14 @@ const previewRpcResponse = async (
   request: Request,
   method: string,
 ): Promise<Response> => {
+  if (!isAuthorizedPreviewRpcRequest(request)) {
+    return jsonResponse({
+      ok: false,
+      error: "unauthorized",
+      method,
+      tag: "rpc_unauthorized",
+    }, { status: 401 })
+  }
   if (request.method !== "POST") {
     return jsonResponse({
       ok: false,
@@ -153,6 +274,14 @@ const previewRpcResponse = async (
     }, { status: 404 })
   }
   const rpcMethod = method as KhalaCodeDesktopRpcMethodName
+  if (previewBridgeReadOnly && isPreviewRpcMutation(rpcMethod)) {
+    return jsonResponse({
+      ok: false,
+      error: "read_only",
+      method,
+      tag: "rpc_read_only",
+    }, { status: 403 })
+  }
   const handler = rpcRequestHandlers[rpcMethod as keyof typeof rpcRequestHandlers]
   if (handler === undefined) {
     return jsonResponse({
@@ -180,7 +309,21 @@ const previewRpcResponse = async (
 
   const invoke = handler as (...args: readonly unknown[]) => Promise<unknown>
   try {
+    if (rpcMethod.startsWith("fleet") || rpcMethod.startsWith("codexFleet")) {
+      publishPreviewBridgeEvent({
+        detail: { method: rpcMethod, phase: "started" },
+        observedAt: new Date().toISOString(),
+        type: "fleetLifecycleEvent",
+      })
+    }
     const result = await invoke(...args)
+    if (rpcMethod.startsWith("fleetRun")) {
+      publishPreviewBridgeEvent({
+        detail: { method: rpcMethod, phase: "completed" },
+        observedAt: new Date().toISOString(),
+        type: "runCounterEvent",
+      })
+    }
     try {
       return jsonResponse(decodeKhalaCodeDesktopRpcResult(rpcMethod, result))
     } catch (error) {
@@ -210,6 +353,9 @@ const previewFetch = async (request: Request): Promise<Response> => {
       observedAt: new Date().toISOString(),
     })
   }
+  if (url.pathname === "/rpc/events") {
+    return previewEventsResponse(request)
+  }
   if (url.pathname.startsWith("/rpc/")) {
     return previewRpcResponse(request, decodeURIComponent(url.pathname.slice(5)))
   }
@@ -223,10 +369,20 @@ const startPreviewServer = (): void => {
     const port = requestedPort + offset
     try {
       const server = Bun.serve({
+        hostname: "127.0.0.1",
         port,
         fetch: previewFetch,
       })
-      console.info(`Khala Code desktop web preview: http://localhost:${server.port}`)
+      console.info(
+        `Khala Code desktop web preview: http://localhost:${server.port} ` +
+        `(RPC header ${KHALA_CODE_DESKTOP_PREVIEW_RPC_TOKEN_HEADER})`,
+      )
+      // Print the per-boot secret exactly once, strictly to local stdout —
+      // the instrumented console broadcasts to SSE subscribers, so use the
+      // raw stream here.
+      process.stdout.write(
+        `Khala Code preview access token (this boot): ${previewBridgeAccessToken}\n`,
+      )
       return
     } catch (error) {
       if (!String(error).includes("EADDRINUSE") || offset === 9) {
@@ -381,7 +537,48 @@ const rpc = BrowserView.defineRPC<KhalaCodeDesktopRPCSchema>({
   },
 })
 
-emitChatTurnEvent = event => rpc.send.chatTurnEvent(event)
+emitChatTurnEvent = event => {
+  try {
+    rpc.send.chatTurnEvent(event)
+  } catch {
+    // Headless preview runs have no native window transport; SSE remains active.
+  }
+  publishPreviewBridgeEvent({
+    event,
+    observedAt: new Date().toISOString(),
+    type: "chatTurnEvent",
+  })
+}
+
+const originalConsole = {
+  debug: console.debug.bind(console),
+  error: console.error.bind(console),
+  info: console.info.bind(console),
+  warn: console.warn.bind(console),
+}
+
+for (const level of ["debug", "info", "warn", "error"] as const) {
+  console[level] = (...args: unknown[]) => {
+    originalConsole[level](...args)
+    publishPreviewBridgeEvent({
+      args,
+      level,
+      observedAt: new Date().toISOString(),
+      type: "consoleDiagnostic",
+    })
+  }
+}
+
+const publishCrashDiagnostic = (error: unknown): void => {
+  publishPreviewBridgeEvent({
+    message: error instanceof Error ? error.message : String(error),
+    observedAt: new Date().toISOString(),
+    type: "crashDiagnostic",
+  })
+}
+
+process.on("uncaughtExceptionMonitor", publishCrashDiagnostic)
+process.on("unhandledRejection", publishCrashDiagnostic)
 
 startPreviewServer()
 

@@ -28,11 +28,22 @@ describe("KhalaCodeRpcClient", () => {
   })
 
   test("posts to /rpc/<method> and decodes the response with the imported schema", async () => {
-    const calls: string[] = []
+    const calls: Array<{
+      readonly body: string
+      readonly headers: Record<string, string>
+      readonly method: string
+      readonly url: string
+    }> = []
     const client = new KhalaCodeRpcClient({
+      accessToken: "preview-token",
       baseUrl: "http://fixture.local",
       fetch: ((input, init) => {
-        calls.push(`${init?.method ?? "GET"} ${String(input)} ${String(init?.body)}`)
+        calls.push({
+          body: String(init?.body),
+          headers: Object.fromEntries(new Headers(init?.headers)),
+          method: init?.method ?? "GET",
+          url: String(input),
+        })
         return Promise.resolve(jsonResponse({
           app: "Khala Code Desktop",
           ok: true,
@@ -45,7 +56,15 @@ describe("KhalaCodeRpcClient", () => {
 
     expect(result.app).toBe("Khala Code Desktop")
     expect(calls).toEqual([
-      'POST http://fixture.local/rpc/appInfo {"args":[]}',
+      {
+        body: '{"args":[]}',
+        headers: {
+          "content-type": "application/json",
+          "x-khala-code-preview-token": "preview-token",
+        },
+        method: "POST",
+        url: "http://fixture.local/rpc/appInfo",
+      },
     ])
   })
 
