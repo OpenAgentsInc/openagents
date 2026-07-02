@@ -25,7 +25,17 @@ const isRpcMethodName = (method: string): method is KhalaCodeRpcMethodName =>
   (KhalaCodeRpcMethodNames as ReadonlyArray<string>).includes(method)
 
 const errorMessage = (cause: unknown): string =>
-  cause instanceof Error ? cause.message : String(cause)
+  cause instanceof Error
+    ? cause.message
+    : typeof cause === "string"
+      ? cause
+      : (() => {
+        try {
+          return JSON.stringify(cause)
+        } catch {
+          return String(cause)
+        }
+      })()
 
 export type KhalaCodeRpcQaDriverOptions = KhalaCodeRpcClientOptions & {
   readonly now?: () => string
@@ -75,6 +85,17 @@ export class KhalaCodeRpcQaDriver implements KhalaCodeQaDriver {
       )
     }
 
+    if (action.kind === "read" && action.query.startsWith("screenshot:")) {
+      return Effect.succeed(
+        this.record({
+          action,
+          data: { value: { backend: this.handle?.backend ?? "fixture", screenshot: action.query.slice("screenshot:".length) } },
+          label: `read:${action.query}`,
+          ok: true,
+        }),
+      )
+    }
+
     if (action.kind === "read") {
       return Effect.map(this.read(action.query), (snapshot) =>
         this.record({
@@ -87,11 +108,13 @@ export class KhalaCodeRpcQaDriver implements KhalaCodeQaDriver {
     }
 
     if (action.kind !== "rpc_call") {
-      if (["click", "hotbar", "slash_command", "approve"].includes(action.kind)) {
+      // RPC-tier monkey runs record UI intents for coverage only; DOM/browser
+      // tiers own selector existence, layout, and interaction side effects.
+      if (["click", "hotbar", "slash_command", "approve", "type", "submit_composer", "wait_for", "thread_select"].includes(action.kind)) {
         return Effect.succeed(
           this.record({
             action,
-            data: { target: action.target, value: action.value },
+            data: { target: action.target, text: action.text, value: action.value },
             label: `${action.kind}:${action.target ?? action.value ?? ""}`,
             ok: true,
           }),

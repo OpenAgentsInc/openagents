@@ -876,8 +876,8 @@ describe("khala code desktop app shell", () => {
     expect(css).not.toContain(".khala-code-fleet-empty")
     expect(css).toContain("--khala-code-hotbar-titlebar-clearance: 2.75rem")
     expect(css).toContain("env(safe-area-inset-top, 0px)")
-    expect(css).toContain("width: 1.3rem")
-    expect(css).toContain("height: 1.3rem")
+    expect(css).toContain("width: 1.52rem")
+    expect(css).toContain("height: 1.52rem")
 
     const counts = projectKhalaCodeSidebarFleetCounts({
       ok: true,
@@ -951,7 +951,8 @@ describe("khala code desktop app shell", () => {
     try {
       const container = document.createElement("div")
       mountKhalaCodeSidebar(container, { fleetCounts: counts, selectedValue: "fleet" })
-      expect(container.textContent).toContain("1 acct / 1 work / 2 free / 2 flag")
+      expect(container.textContent).toContain("1 work / 2 free / 2 flag")
+      expect(container.textContent).not.toContain("acct")
       expect(
         container.querySelector<HTMLElement>("[data-khala-code-fleet-counts]")?.getAttribute("aria-label"),
       ).toBe("1 accounts ready, 1 workers active, 2 slots free, 2 flags")
@@ -1406,9 +1407,12 @@ describe("khala code desktop app shell", () => {
     expect(sidebar).toContain('ariaModifier: "Alt"')
     expect(sidebar).toContain('label: "Option"')
     expect(sidebar).toContain('label: "Alt"')
+    expect(sidebar).toContain('visiblePrefix: "⌥"')
+    expect(sidebar).toContain('visiblePrefix: "Alt+"')
     expect(sidebar).toContain('modifierKey: "altKey"')
     expect(sidebar).toContain('"aria-keyshortcuts"')
     expect(sidebar).toContain("`${shortcut.ariaModifier}+${slot.hotkey}`")
+    expect(sidebar).toContain("`${shortcut.visiblePrefix}${slot.hotkey}`")
     expect(sidebar).toContain('window.addEventListener("keydown"')
     expect(sidebar).toContain("const explicitHotkey =")
     expect(sidebar).toContain("event[shortcut.modifierKey]")
@@ -1422,6 +1426,34 @@ describe("khala code desktop app shell", () => {
     expect(css).toContain(".khala-code-hotbar-key")
     expect(css).toContain(".khala-code-hotbar-slot[data-active=\"true\"]")
     expect(css).not.toContain(".khala-code-hotbar-header")
+  })
+
+  test("renders full hotbar shortcut labels and activates slots with the explicit shortcut", async () => {
+    const { Window } = await import("happy-dom")
+    const { mountKhalaCodeSidebar } = await import("../src/ui/sidebar")
+    const window = new Window()
+    const previousWindow = globalThis.window
+    const previousDocument = globalThis.document
+    const activated: string[] = []
+    Object.defineProperty(globalThis, "window", { configurable: true, value: window })
+    Object.defineProperty(globalThis, "document", { configurable: true, value: window.document })
+    try {
+      const container = document.createElement("div")
+      mountKhalaCodeSidebar(container, {
+        selectedValue: "chat",
+        onActivate: value => activated.push(value),
+      })
+      expect(container.textContent).toMatch(/(?:Alt\+|⌥)1/)
+      window.dispatchEvent(new window.KeyboardEvent("keydown", {
+        altKey: true,
+        key: "2",
+      }))
+      expect(activated).toEqual(["fleet"])
+      expect(container.querySelector('[data-khala-code-hotbar-value="fleet"]')?.getAttribute("data-active")).toBe("true")
+    } finally {
+      Object.defineProperty(globalThis, "window", { configurable: true, value: previousWindow })
+      Object.defineProperty(globalThis, "document", { configurable: true, value: previousDocument })
+    }
   })
 
   test("starts the composer compact with the placeholder near the top edge", async () => {

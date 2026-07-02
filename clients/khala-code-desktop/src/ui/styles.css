@@ -1354,8 +1354,8 @@ button {
   }
 }
 .khala-code-hotbar-icon {
-  width: 1.3rem;
-  height: 1.3rem;
+  width: 1.52rem;
+  height: 1.52rem;
   color: currentColor;
 }
 .khala-thread-sidebar-icon {
@@ -1365,13 +1365,18 @@ button {
 }
 .khala-code-hotbar-key {
   position: absolute;
-  right: 0.28rem;
+  right: 0.2rem;
   bottom: 0.2rem;
   color: color-mix(in srgb, var(--oa-color-khala-energy-soft) 88%, var(--oa-color-khala-text-primary));
   font-family: var(--oa-font-code);
-  font-size: 0.62rem;
+  font-size: 0.48rem;
   font-weight: 800;
   line-height: 1;
+  max-width: calc(100% - 0.4rem);
+  overflow: hidden;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .khala-code-hotbar-label {
   position: absolute;
