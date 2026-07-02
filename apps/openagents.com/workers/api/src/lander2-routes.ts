@@ -1,6 +1,7 @@
 import { Effect } from 'effect'
 
 import { methodNotAllowed } from './http/responses'
+import { currentEpochMillis } from './runtime-primitives'
 import {
   type TokenUsageLedgerShape,
   makeD1TokenUsageLedger,
@@ -24,6 +25,7 @@ import {
 type Lander2RouteInput = Readonly<{
   OPENAGENTS_DB?: D1Database
   ledger?: TokenUsageLedgerShape
+  nowMs?: () => number
 }>
 
 const formatTokens = (total: number): string => total.toLocaleString('en-US')
@@ -129,9 +131,10 @@ export const handleLander2Page = (
   }
   const ledger =
     input.ledger ?? makeD1TokenUsageLedger(input.OPENAGENTS_DB as D1Database)
-  const startedAt = Date.now()
+  const nowMs = input.nowMs ?? currentEpochMillis
+  const startedAt = nowMs()
   const respond = (tokensServed: number | null): Response => {
-    const d1Ms = Date.now() - startedAt
+    const d1Ms = nowMs() - startedAt
     return new Response(renderLander2Html(tokensServed), {
       headers: {
         'content-type': 'text/html; charset=utf-8',

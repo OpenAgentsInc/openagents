@@ -1,7 +1,7 @@
 import { Effect } from 'effect'
 import { describe, expect, test } from 'vitest'
 
-import { handleLander2Page, renderLander2Html } from './lander2-route'
+import { handleLander2Page, renderLander2Html } from './lander2-routes'
 import { makeD1TokenUsageLedger } from './token-usage-ledger'
 
 // Same fake-D1 pattern as public-khala-tokens-served-routes.test.ts: answers
