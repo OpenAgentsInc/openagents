@@ -71,6 +71,7 @@ function fakeAssignmentServer(input: {
   rejectAcceptRefs?: ReadonlyArray<string>
   cancelOnProgress?: boolean
   rejectLongProgressMessage?: boolean
+  rejectLocalProgressShape?: boolean
   rejectProgressStatus?: number
   authNow?: Date
   maxSkewSeconds?: number
@@ -165,13 +166,33 @@ function fakeAssignmentServer(input: {
         ) {
           return Response.json({ errorRef: "error.assignment_progress.message_too_long" }, { status: 400 })
         }
+        if (
+          input.rejectLocalProgressShape &&
+          (
+            "assignmentRef" in body ||
+            "leaseRef" in body ||
+            "observedAt" in body ||
+            "proofRefs" in body ||
+            "schema" in body ||
+            "sequence" in body
+          )
+        ) {
+          return Response.json({ errorRef: "error.assignment_progress.local_shape" }, { status: 400 })
+        }
         if (input.rejectProgressStatus !== undefined) {
           return Response.json(
             { errorRef: `error.assignment_progress.http_${input.rejectProgressStatus}` },
             { status: input.rejectProgressStatus },
           )
         }
-        return Response.json({ progressRef: `assignment.progress.${body.leaseRef}.${body.sequence}` })
+        const assignmentRef = decodeURIComponent(url.pathname.split("/").at(-2) ?? "")
+        const progressRefSuffix =
+          typeof body.sequence === "number"
+            ? String(body.sequence)
+            : typeof body.status === "string"
+              ? body.status
+              : "event"
+        return Response.json({ progressRef: `assignment.progress.${body.leaseRef ?? assignmentRef}.${progressRefSuffix}` })
       }
       if (url.pathname.endsWith("/artifacts")) {
         expect(body.artifactRefs.length).toBeGreaterThan(0)
@@ -276,16 +297,21 @@ describe("Pylon assignment lease flow", () => {
       )
 
       const progressRequest = fake.requests.find((request) => request.path.endsWith("/progress"))
-      expect(result.progressRef).toBe("assignment.progress.lease.public.no_spend.long_progress.1")
+      expect(result.progressRef).toBe("assignment.progress.lease.public.no_spend.long_progress.proof-ready")
       expect(progressRequest?.body.message).toBe(boundedAssignmentProgressMessage(longMessage))
       expect(progressRequest?.body.message.length).toBeLessThanOrEqual(240)
       expect(progressRequest?.body.message.endsWith("...")).toBe(true)
+      expect(progressRequest?.body.progressRefs).toEqual([])
+      expect(progressRequest?.body.blockerRefs).toEqual([])
+      expect(progressRequest?.body).not.toHaveProperty("assignmentRef")
+      expect(progressRequest?.body).not.toHaveProperty("leaseRef")
+      expect(progressRequest?.body).not.toHaveProperty("proofRefs")
     })
   })
 
   test("polls, accepts, submits progress/proof refs, and closes a no-spend assignment", async () => {
     await withTempHome(async (home) => {
-      const fake = fakeAssignmentServer()
+      const fake = fakeAssignmentServer({ rejectLocalProgressShape: true })
       const summary = await readySummary(home)
       await sendHeartbeat(summary, { baseUrl: fake.baseUrl, now: () => new Date("2026-06-09T00:00:00.000Z") })
       const lifecycleEvents: AssignmentRunLifecycleEvent[] = []
@@ -316,12 +342,23 @@ describe("Pylon assignment lease flow", () => {
       expect(fake.requests.some((request) =>
         request.path === expectedProgressPath &&
         request.body.status === "running" &&
-        request.body.phase === "runtime_active"
+        request.body.phase === "running"
       )).toBe(true)
-      expect(fake.requests.some((request) =>
-        request.path === expectedProgressPath &&
-        request.body.status === "proof-ready"
-      )).toBe(true)
+      const finalProgress = fake.requests
+        .filter((request) => request.path === expectedProgressPath)
+        .map((request) => request.body)
+        .find((body) => body.status === "proof-ready")
+      expect(finalProgress).toMatchObject({
+        artifactRefs: result.progress.artifactRefs,
+        blockerRefs: [],
+        progressRefs: result.progress.proofRefs,
+        status: "proof-ready",
+      })
+      expect(finalProgress).not.toHaveProperty("assignmentRef")
+      expect(finalProgress).not.toHaveProperty("leaseRef")
+      expect(finalProgress).not.toHaveProperty("proofRefs")
+      expect(finalProgress).not.toHaveProperty("schema")
+      expect(finalProgress).not.toHaveProperty("sequence")
       expect(fake.requests.map((request) => request.path).filter((path) => path.endsWith("/assignments"))).toEqual([
         `/api/pylons/${encodeURIComponent(pylonRef)}/assignments`,
       ])
@@ -781,12 +818,16 @@ describe("Pylon assignment lease flow", () => {
         .map((request) => request.body)
         .find((body) => body.status === "running" && body.phase === "proof")
       expect(postedRuntimeProgress).toMatchObject({
-        assignmentRef: codexLease.assignmentRef,
-        leaseRef: codexLease.leaseRef,
+        artifactRefs: [],
+        blockerRefs: [],
         message: "Runtime phase: proof.",
         phase: "proof",
+        progressRefs: [],
         status: "running",
       })
+      expect(postedRuntimeProgress).not.toHaveProperty("assignmentRef")
+      expect(postedRuntimeProgress).not.toHaveProperty("leaseRef")
+      expect(postedRuntimeProgress).not.toHaveProperty("proofRefs")
       expect(typeof postedRuntimeProgress.elapsedMs).toBe("number")
 
       const lifecycleJson = JSON.stringify(lifecycleEvents)

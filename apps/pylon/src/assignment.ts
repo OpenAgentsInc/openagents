@@ -148,6 +148,19 @@ export type AssignmentProgress = {
   lastProgressEvent?: AssignmentRunLifecycleEvent["event"] | string
 }
 
+type HostedAssignmentProgressBody = {
+  artifactRefs: string[]
+  blockerRefs: string[]
+  elapsedMs?: number
+  lastProgressEvent?: AssignmentRunLifecycleEvent["event"] | string
+  message: string
+  phase?: Exclude<CodexAgentRuntimePhase, "runtime_active">
+  progressRefs: string[]
+  status: AssignmentProgress["status"]
+  tokensSoFar?: number
+  tokenCountKind?: "exact" | "estimated"
+}
+
 export type AssignmentCloseout = {
   schema: "openagents.pylon.assignment_closeout.v0.3"
   assignmentRef: string
@@ -320,6 +333,29 @@ const assignmentSubmissionFailureBlockerRefs = (error: unknown): string[] => {
     "blocker.assignment.progress_or_artifact_rejected",
     status === undefined ? undefined : `blocker.assignment.progress_or_artifact_http_${status}`,
   ])
+}
+
+const hostedAssignmentProgressBody = (
+  progress: AssignmentProgress,
+): HostedAssignmentProgressBody => {
+  const phase =
+    progress.phase === undefined
+      ? undefined
+      : progress.phase === "runtime_active"
+        ? "running"
+        : progress.phase
+  return {
+    artifactRefs: [...progress.artifactRefs],
+    blockerRefs: [],
+    message: boundedAssignmentProgressMessage(progress.message),
+    progressRefs: [...progress.proofRefs],
+    status: progress.status,
+    ...(progress.elapsedMs === undefined ? {} : { elapsedMs: progress.elapsedMs }),
+    ...(progress.lastProgressEvent === undefined ? {} : { lastProgressEvent: progress.lastProgressEvent }),
+    ...(phase === undefined ? {} : { phase }),
+    ...(progress.tokensSoFar === undefined ? {} : { tokensSoFar: progress.tokensSoFar }),
+    ...(progress.tokenCountKind === undefined ? {} : { tokenCountKind: progress.tokenCountKind }),
+  }
 }
 
 const publicTrainingRef = (value: unknown): string | null => {
@@ -1401,10 +1437,7 @@ export async function submitAssignmentProgress(
   options: AssignmentClientOptions,
 ) {
   const state = await ensurePylonLocalState(summary)
-  const progressForApi: AssignmentProgress = {
-    ...progress,
-    message: boundedAssignmentProgressMessage(progress.message),
-  }
+  const progressForApi = hostedAssignmentProgressBody(progress)
   const body =
     process.env.OPENAGENTS_PYLON_CODEX_PROGRESS_TOKEN_KIND === "1"
       ? progressForApi
