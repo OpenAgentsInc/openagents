@@ -234,8 +234,14 @@ describe("@openagentsinc/khala-tools foundation", () => {
     expect(result.publicSafety).toBe("redacted")
   })
 
-  test("resolves hosted, request-specific BYOK metadata, and mock backends without exposing raw keys", () => {
+  test("resolves hosted, explicit BYOK metadata, and mock backends without exposing raw keys", () => {
     expect(resolveKhalaBackend({ env: {} })).toEqual({
+      baseUrl: "https://openagents.com",
+      kind: "hosted_openagents",
+      model: "openagents/khala",
+    })
+
+    expect(resolveKhalaBackend({ env: { OPENROUTER_API_KEY: "sk-or-ambientignored" } })).toEqual({
       baseUrl: "https://openagents.com",
       kind: "hosted_openagents",
       model: "openagents/khala",
@@ -243,12 +249,13 @@ describe("@openagentsinc/khala-tools foundation", () => {
 
     expect(resolveKhalaBackend({
       env: {
-        OPENROUTER_API_KEY: "sk-or-secret",
+        KHALA_CODE_HOSTED_BYOK_OPENROUTER: "1",
+        KHALA_CODE_HOSTED_BYOK_OPENROUTER_API_KEY: "sk-or-secret",
         OPENROUTER_MODEL: "anthropic/claude-haiku",
       },
     })).toEqual({
       baseUrl: "https://openagents.com",
-      credentialSource: "env:OPENROUTER_API_KEY",
+      credentialSource: "env:KHALA_CODE_HOSTED_BYOK_OPENROUTER_API_KEY",
       kind: "hosted_openagents",
       model: "openagents/khala",
       provider: "openrouter",

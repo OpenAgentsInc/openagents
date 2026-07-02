@@ -1608,7 +1608,13 @@ export type KhalaBackendKind = typeof KhalaBackendKind.Type
 
 export const KhalaBackendSelection = S.Struct({
   baseUrl: S.optional(S.String),
-  credentialSource: S.optional(S.Literals(["env:OPENROUTER_API_KEY", "khala-provider-key"])),
+  credentialSource: S.optional(
+    S.Literals([
+      "env:OPENROUTER_API_KEY",
+      "env:KHALA_CODE_HOSTED_BYOK_OPENROUTER_API_KEY",
+      "khala-provider-key",
+    ]),
+  ),
   kind: KhalaBackendKind,
   model: S.String,
   provider: S.optional(S.Literal("openrouter")),
@@ -1623,12 +1629,13 @@ export function resolveKhalaBackend(input: {
   if (input.preferred === "mock") {
     return { kind: "mock", model: "mock/khala-tools" }
   }
-  const envKey = input.env?.OPENROUTER_API_KEY?.trim()
+  const explicitHostedByokEnabled = input.env?.KHALA_CODE_HOSTED_BYOK_OPENROUTER?.trim() === "1"
+  const explicitHostedByokKey = input.env?.KHALA_CODE_HOSTED_BYOK_OPENROUTER_API_KEY?.trim()
   const storedOpenRouter =
     input.storedProviderKey?.provider === "openrouter" && input.storedProviderKey.keyConfigured
   const credentialSource =
-    envKey !== undefined && envKey.length > 0
-      ? "env:OPENROUTER_API_KEY"
+    explicitHostedByokEnabled && explicitHostedByokKey !== undefined && explicitHostedByokKey.length > 0
+      ? "env:KHALA_CODE_HOSTED_BYOK_OPENROUTER_API_KEY"
       : storedOpenRouter
         ? "khala-provider-key"
         : undefined

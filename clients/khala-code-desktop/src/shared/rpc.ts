@@ -388,7 +388,13 @@ const RpcChatTurnRequest = S.Struct({
 const RpcBackendProjection = S.Struct({
   baseUrl: S.optional(S.String),
   blockerRefs: S.optional(RpcStringArray),
-  credentialSource: S.optional(S.Literals(["env:OPENROUTER_API_KEY", "khala-provider-key"])),
+  credentialSource: S.optional(
+    S.Literals([
+      "env:OPENROUTER_API_KEY",
+      "env:KHALA_CODE_HOSTED_BYOK_OPENROUTER_API_KEY",
+      "khala-provider-key",
+    ]),
+  ),
   kind: S.Literals(["claude_app_sdk", "codex_app_server", "hosted_openagents", "mock"]),
   model: S.String,
   provider: S.optional(S.Literal("openrouter")),

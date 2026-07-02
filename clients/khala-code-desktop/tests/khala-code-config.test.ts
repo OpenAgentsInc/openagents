@@ -15,6 +15,8 @@ describe("KhalaCodeConfig", () => {
       CODEX_HOME: "/tmp/codex-home",
       KHALA_CODE_CODEX_BINARY: "/opt/bin/codex",
       KHALA_CODE_DESKTOP_PREVIEW_PORT: "6123",
+      KHALA_CODE_HOSTED_BYOK_OPENROUTER: "1",
+      KHALA_CODE_HOSTED_BYOK_OPENROUTER_API_KEY: "hosted-byok-secret",
       KHALA_CODE_TOKEN_USAGE_BEARER_TOKEN: "token-secret",
       OPENAGENTS_AGENT_TOKEN: "agent-secret",
       PYLON_CONTROL_TOKEN: "control-secret",
@@ -23,6 +25,8 @@ describe("KhalaCodeConfig", () => {
     expect(config.plain.CODEX_HOME).toBe("/tmp/codex-home")
     expect(config.plain.KHALA_CODE_CODEX_BINARY).toBe("/opt/bin/codex")
     expect(config.plain.KHALA_CODE_DESKTOP_PREVIEW_PORT).toBe("6123")
+    expect(config.plain.KHALA_CODE_HOSTED_BYOK_OPENROUTER).toBe("1")
+    expect(Redacted.value(config.secrets.KHALA_CODE_HOSTED_BYOK_OPENROUTER_API_KEY)).toBe("hosted-byok-secret")
     expect(Redacted.value(config.secrets.KHALA_CODE_TOKEN_USAGE_BEARER_TOKEN)).toBe("token-secret")
     expect(Redacted.value(config.secrets.OPENAGENTS_AGENT_TOKEN)).toBe("agent-secret")
     expect(Redacted.value(config.secrets.PYLON_CONTROL_TOKEN)).toBe("control-secret")
@@ -42,6 +46,7 @@ describe("KhalaCodeConfig", () => {
 
   test("keeps token-bearing values redacted in printable config output", () => {
     const config = khalaCodeConfigFromEnv({
+      KHALA_CODE_HOSTED_BYOK_OPENROUTER_API_KEY: "hosted-byok-do-not-print",
       KHALA_CODE_TOKEN_USAGE_BEARER_TOKEN: "bearer-do-not-print",
       KHALA_GPT_OSS_API_KEY: "gpt-key-do-not-print",
       OPENROUTER_API_KEY: "router-key-do-not-print",
@@ -55,6 +60,7 @@ describe("KhalaCodeConfig", () => {
     ].join("\n")
 
     expect(printed).toContain("<redacted>")
+    expect(printed).not.toContain("hosted-byok-do-not-print")
     expect(printed).not.toContain("bearer-do-not-print")
     expect(printed).not.toContain("gpt-key-do-not-print")
     expect(printed).not.toContain("router-key-do-not-print")

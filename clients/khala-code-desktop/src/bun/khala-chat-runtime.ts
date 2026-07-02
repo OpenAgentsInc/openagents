@@ -114,8 +114,11 @@ type ChatTransportCallbacks = {
   readonly onAssistantDelta?: (delta: string) => void
 }
 
+type HostedByokProvider = "openrouter"
+
 type ChatTransport = {
   readonly backend: KhalaBackendSelection
+  readonly hostedByokProvider?: HostedByokProvider
   readonly request: (
     messages: readonly ChatTransportMessage[],
     tools: readonly ReturnType<typeof toOpenAiCompatibleTools>[number][],
@@ -367,7 +370,7 @@ export async function runKhalaCodeDesktopChatTurn(
           )
           usage = addUsage(usage, usageFromPayload(completion.usage))
         } catch (retryError) {
-          return providerFailureResult(backend, toolNames, usedTools, retryError)
+          return providerFailureResult(backend, toolNames, usedTools, retryError, transport.hostedByokProvider)
         }
       } else {
         if (usedTools.length > 0 && transcript.some(message => message.role === "tool")) {
@@ -381,7 +384,7 @@ export async function runKhalaCodeDesktopChatTurn(
             usedTools,
           }
         }
-        return providerFailureResult(backend, toolNames, usedTools, error)
+        return providerFailureResult(backend, toolNames, usedTools, error, transport.hostedByokProvider)
       }
     }
     const assistant = firstAssistantMessage(completion)
@@ -824,8 +827,10 @@ function createChatTransport(input: {
 
   const hostedToken = input.env.OPENAGENTS_AGENT_TOKEN?.trim() || input.env.OPENAGENTS_API_KEY?.trim()
   if (hostedToken === undefined || hostedToken.length === 0) return null
+  const hostedByok = resolveHostedByok(input.env)
   return {
     backend: input.backend,
+    ...(hostedByok.provider === undefined ? {} : { hostedByokProvider: hostedByok.provider }),
     request: (messages, tools, callbacks) => postOpenAiCompatible({
       body: {
         max_tokens: 4096,
@@ -838,7 +843,7 @@ function createChatTransport(input: {
       fetchFn: input.fetchFn,
       headers: {
         authorization: `Bearer ${hostedToken}`,
-        ...hostedByokHeaders(input.env),
+        ...hostedByok.headers,
       },
       ...(callbacks?.onAssistantDelta === undefined ? {} : { onAssistantDelta: callbacks.onAssistantDelta }),
       url: `${(input.backend.baseUrl ?? "https://openagents.com").replace(/\/+$/, "")}/api/v1/chat/completions`,
@@ -846,14 +851,20 @@ function createChatTransport(input: {
   }
 }
 
-function hostedByokHeaders(env: ChatEnv): Record<string, string> {
-  const openRouterKey = env.OPENROUTER_API_KEY?.trim()
-  return openRouterKey === undefined || openRouterKey.length === 0
-    ? {}
-    : {
+function resolveHostedByok(env: ChatEnv): {
+  readonly headers: Readonly<Record<string, string>>
+  readonly provider?: HostedByokProvider
+} {
+  if (env.KHALA_CODE_HOSTED_BYOK_OPENROUTER?.trim() !== "1") return { headers: {} }
+  const openRouterKey = env.KHALA_CODE_HOSTED_BYOK_OPENROUTER_API_KEY?.trim()
+  if (openRouterKey === undefined || openRouterKey.length === 0) return { headers: {} }
+  return {
+    headers: {
       "x-openagents-provider": "openrouter",
       "x-openagents-provider-key": openRouterKey,
-    }
+    },
+    provider: "openrouter",
+  }
 }
 
 function toolRequestFields(
@@ -1175,7 +1186,7 @@ function errorText(body: unknown, status: number): string {
 }
 
 function shouldRetryWithoutTools(error: unknown): boolean {
-  const status = error instanceof ChatProviderRequestError ? error.status : undefined
+  const status = providerErrorStatus(error)
   if (status === 401 || status === 402 || status === 403) return false
   const message = providerErrorText(error).toLowerCase()
   return (
@@ -1193,24 +1204,36 @@ function providerErrorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
+function providerErrorStatus(error: unknown): number | undefined {
+  return error instanceof ChatProviderRequestError ? error.status : undefined
+}
+
 function providerFailureResult(
   backend: KhalaBackendSelection,
   toolNames: readonly string[],
   usedTools: readonly string[],
   error: unknown,
+  hostedByokProvider?: HostedByokProvider,
 ): KhalaCodeDesktopChatTurnResponse {
   return {
     backend: projectBackend(backend),
-    messages: [hostMessage("system", providerFailureMessage(backend, error))],
+    messages: [hostMessage("system", providerFailureMessage(backend, error, hostedByokProvider))],
     ok: false,
     toolNames,
     usedTools,
   }
 }
 
-function providerFailureMessage(backend: KhalaBackendSelection, error: unknown): string {
+function providerFailureMessage(
+  backend: KhalaBackendSelection,
+  error: unknown,
+  hostedByokProvider?: HostedByokProvider,
+): string {
   const detail = redactKhalaPublicText(providerErrorText(error)).trim()
   const suffix = detail.length === 0 ? "." : `: ${detail}.`
+  if (backend.kind === "hosted_openagents" && hostedByokProvider === "openrouter" && providerErrorStatus(error) === 402) {
+    return `OpenRouter BYOK request failed for ${backend.model}${suffix} Check KHALA_CODE_HOSTED_BYOK_OPENROUTER_API_KEY credits, or disable KHALA_CODE_HOSTED_BYOK_OPENROUTER to use hosted Khala without request-specific BYOK.`
+  }
   if (backend.kind === "hosted_openagents") {
     return `Hosted OpenAgents cloud request failed for ${backend.model}${suffix} Check OPENAGENTS_AGENT_TOKEN and hosted Khala availability.`
   }
