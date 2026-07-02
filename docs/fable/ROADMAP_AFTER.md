@@ -5,7 +5,7 @@ Status: **speculative successor roadmap.** This doc assumes
 [`ROADMAP.md`](./ROADMAP.md) is fully implemented — M1 through M6 landed,
 the clean 2B day (T17.2) achieved, cockpit + multi-harness + mobile +
 Artanis-on-the-spine live. It asks the only question that matters after
-that: what does it take for Khala Code to **survive contact with the
+that: what does it take for the company to **survive contact with the
 market and generate revenue**. It flips no promise state and broadens no
 public copy; every claim-bearing item routes through `docs/promises/` and
 the registry gates exactly as before. Delivery mechanics remain
@@ -14,16 +14,37 @@ the registry gates exactly as before. Delivery mechanics remain
 business analysis
 (`2026-07-02-khala-code-business-opportunity-and-openagents-analysis.md`),
 the tool/network strategy analysis
-(`2026-07-02-come-for-the-tool-stay-for-the-network.md`), and the
+(`2026-07-02-come-for-the-tool-stay-for-the-network.md`), the business
+services analysis
+(`2026-07-02-agents-that-work-business-services-analysis.md`), Episode
+239 (`docs/transcripts/239.md`), the blitz factory lane
+(`docs/blitz/forge/`), the Forge synthesis (`docs/forge/`), and the
 registry state as of `2026-07-01.3`.
 
-The strategic frame for the whole doc, named once: **come for the tool,
-stay for the network.** The tool phase (AW-1/2/5/7) must be complete,
-excellent, and network-silent; the network phase (AW-3/4/6/9) is entered
-by *graduation*, never by force; and the metrics section treats the
-tool→network graduation funnel as the strategy's only honest test. The
-tool/network doc carries the full argument, including where the analogy
-breaks and the conscious fallback if the network never forms.
+Two strategic frames govern the doc, one per motion:
+
+- **The buyer motion — "Agents that work." (primary revenue).** Businesses
+  hire agents from the OpenAgents network to get work done — above all,
+  software built very fast — through `openagents.com/business`, delivered
+  by the fleet through Forge. Engagements at four-figure price points have
+  already been sold (owner-reported; on-platform receipts pending). This
+  is the near-term cash engine, and AW-0 below is its workstream. The
+  services doc carries the full model, packages, and scaling levers.
+- **The user motion — come for the tool, stay for the network.** The tool
+  phase (AW-1/2/5/7) must be complete, excellent, and network-silent; the
+  network phase (AW-3/4/6/9) is entered by *graduation*, never by force;
+  the tool→network graduation funnel is that strategy's only honest test.
+  The tool/network doc carries the full argument, including the conscious
+  fallback if the network never forms.
+
+The two motions share one substrate (fleet, Forge, receipts, rails) and
+feed each other: services engagements are delivered on the machinery the
+tool orchestrates, and every engagement produces the external demand
+evidence, casework, and solved-problem inventory the user motion needs.
+**Prior revisions of this doc over-indexed on squeezing paid usage out of
+Khala Code; this revision corrects that** — tool revenue (paid privacy,
+credits) is real but secondary; the primary near-term revenue model is
+the services engine.
 
 ## 0. The Premise Shift
 
@@ -54,21 +75,27 @@ revenue-loop records from planned/yellow/red toward green *the only
 honest way — by making the gated things actually happen*.
 
 What M6 leaves us with: a tested, orchestrated, multi-harness fleet
-console with exact accounting, live Bitcoin rails, a promise registry,
-and (still, unless T16/AW-1 changed it) **no installer in a stranger's
-hands, no dollar of production revenue, no consented trace, no plugin,
-no external demand.** That is the gap this roadmap closes.
+console with exact accounting, live Bitcoin rails, a promise registry, a
+live `/business` intake door — and (unless AW-0/AW-1 changed it) **no
+installer in a stranger's hands, no on-platform revenue receipt, no
+consented trace, no plugin, and external demand that exists as
+owner-reported closed deals rather than instrumented evidence.** That is
+the gap this roadmap closes.
 
 ## 1. Dependency Spine
 
 ```text
-AW-1 Ship & distribute (artifact, updates, funnel)   ← gates everything
+AW-0 Services engine ("Agents that work.")  ← primary revenue; needs NO installer
+        |                                      (intake live, fleet proven, Forge landing)
+        +── feeds AW-6 (demand evidence), AW-8 (pricing data), AW-4 (solved problems)
+
+AW-1 Ship & distribute (artifact, updates, funnel)   ← gates the USER motion
         |
         +-----------------------+---------------------------+
         |                       |                           |
    AW-2 First-dollar        AW-3 Consent & capture      AW-5 Trust posture
-   spine (arm the rails)        (redaction, opt-in)         (other people's
-        |                       |                            machines)
+   spine (arm the rails;        (redaction, opt-in)         (other people's
+   shared with AW-0)            |                            machines)
         |                  AW-4 Plugin economy v0            |
         |                       (distill→meter→pay)          |
         +-----------+-----------+                            |
@@ -83,13 +110,48 @@ AW-1 Ship & distribute (artifact, updates, funnel)   ← gates everything
               AW-10 Governance/enterprise readiness (parked behind gates)
 ```
 
-AW-1 is the WS-1 of this roadmap: deliberately small, unblocks everything,
-and nothing else counts until it lands. AW-2/3/5 run in parallel behind
-it. AW-4 depends on AW-3 producing raw material. AW-6 is continuous from
-the day AW-1 ships. AW-10 stays parked behind written gates exactly like
-OTEC and the gigawatt lanes always have.
+**AW-0 starts now and gates on nothing in this roadmap** — the intake is
+live, the delivery fleet is the company's most-proven asset, and deals
+are already closing; it must not wait for the installer. AW-1 remains the
+WS-1 of the *user* motion: deliberately small, unblocks everything on
+that side. AW-2/3/5 run in parallel behind it; AW-2's owner sitting also
+arms AW-0's on-platform payment path. AW-4 depends on AW-3 producing raw
+material. AW-6 is continuous. AW-10 stays parked behind written gates
+exactly like OTEC and the gigawatt lanes always have.
 
 ## 2. Workstreams
+
+### AW-0 — The services engine: "Agents that work." (primary revenue)
+
+Source: the services analysis
+(`2026-07-02-agents-that-work-business-services-analysis.md`), Ep 239,
+the blitz factory lane, the `/business` intake spec. Businesses hire
+agents from the network to get software (and vertical work) built very
+fast; better/faster/cheaper delivery with receipts. Four-figure
+engagements are already selling (owner-reported); this workstream turns
+a founder-sold motion into a scalable engine. Registry anchors:
+`business.intake_quick_win_offering.v1`, `business.coding_quick_win.v1`,
+the three vertical-pack records (all yellow), the customer-one cohort
+epics.
+
+| Task | Description | Gate/receipt |
+| --- | --- | --- |
+| A0.1 | **Formalize the existing revenue on-platform**: record already-sold engagements as quick-win payment receipts (`business-quick-win-payment.ts` — Stripe ref or sat-denominated `buyerPaidRef`) and privacy-reviewed cohort rows; opaque refs only, per the cohort source contract | First on-platform paid `business.*` receipt — the cheapest, truest registry advance in the portfolio |
+| A0.2 | **Publish the rate card** through the copy gates: three buyable packages (modeled in the services doc: Quick Win fixed-price $1–5k band; Sprint week-of-fleet $5–15k; Retainer/"On Autopilot" monthly) — fixed scopes, receipt plans up front, no self-serve implication while delivery is operator-assisted | A price on `openagents.com/business` |
+| A0.3 | **Pipeline ops**: intake → scope call → receipt plan → close, instrumented (leads, close rate, time-to-quick-win); Slack Connect handoff worked as a queue, not ad hoc; "Agents that work." as the positioning line through the copy gates | Weekly pipeline review exists |
+| A0.4 | **Delivery on the factory, every engagement**: run all client work through Forge lanes + fleet delegation with the dogfood-strip/spend-routing projections live per engagement — the engagement's own receipts become the case study (public-safe, opaque refs) | Per-engagement factory evidence bundle |
+| A0.5 | **Complete the customer-one cohort**: 3–5 independent teams to `loop_completed` with privacy-reviewed completion bundles (target already defined; currently 0 recorded) | Cohort gate `ready`; epics #5098/#5104 closable |
+| A0.6 | **Activate the vertical packs as sold products**: e-commerce, marketing (needs the deliverability smoke), legal (workflow-assistance boundary intact) — each needs exactly one first paid delivery receipt | One paid receipt per activated vertical |
+| A0.7 | **Drive the ratio down — the scaling levers in order**: productized scopes (A0.2) → vertical templates (A0.6) → verification ladder (Forge SU-5: machine test → replay → model judge → human review) → **Artanis as delivery manager** (WS-12 AaaS supervising engagements; human keeps client relationship + final acceptance) | Operator-minutes per accepted engagement measured monthly and falling |
+| A0.8 | **The referral loop, honestly**: satisfied clients + the Ep 239 refer-once mechanics as the growth channel — copy never re-implies the red `referral.refer_once_earn_forever.v1`; referral payouts only when the ledger machinery settles them | First referred engagement with attribution |
+| A0.9 | **Case-study engine**: every completed engagement yields a public-safe writeup (opaque client refs, real receipts, real cycle times) — the content that converts the next buyer | Case studies published; intake attributes arrivals to them |
+
+Delegability: A0.4/5/6/9 MED-HIGH (fleet-deliverable with review);
+A0.1/2/3/8 owner-adjacent (money, copy, client relationships). The
+scaling thesis in one line: **services COGS is operator minutes; every
+lever above converts operator minutes into fleet compute; if the ratio
+does not fall while engagement count rises, we are building an agency —
+see §5.**
 
 ### AW-1 — Ship it: the release and distribution engine
 
@@ -113,7 +175,11 @@ copy gates).
 ### AW-2 — The first-dollar spine
 
 Everything here is staged; the work is arming, sequencing, and the first
-real receipts. One owner sitting arms multiple lanes — batch it.
+real receipts. One owner sitting arms multiple lanes — batch it. Note the
+reframe: the literal first dollar is arriving through AW-0 (services) —
+this workstream's job is making that dollar **collectable and receipted
+on-platform** (engagement funding, credits, plans) rather than invoiced
+around the product.
 
 | Task | Description | Gate/receipt |
 | --- | --- | --- |
@@ -182,7 +248,7 @@ growth.
 | A6.1 | Drop-in channel motion, systematized: Khala as a one-line provider inside OpenCode/Aider/Cline/etc. (the Ep 243 playbook), with per-channel onboarding docs and counted arrivals | Channel-attributed signups |
 | A6.2 | The content flywheel the episodes already are: launch video → installable product in the same week rhythm; every public claim registry-pinned (the Ep 222/245 header pattern) | Episodes convert to installs measurably |
 | A6.3 | Design partners: 3–10 named outside users/teams with a weekly feedback loop; their fleets, their repos, their acceptance judgments — the first external work-quality dataset. **Graduate multiplayer by scope, not by rewrite**: the claim/settlement machinery runs identically for one household, for partners' fleets, and for the open market — own fleet → design partners → open market is the onboarding ladder (the GPUtopia lesson inverted) | Signed (even informal) partners; repeat weekly usage |
-| A6.4 | The business packs as Khala Code output lanes: coding quick-win, Sites, legal — each yellow record needs exactly one first paid delivery receipt; route those engagements *through* Khala Code so product and services evidence compound | First paid `business.*` receipt |
+| A6.4 | Services↔product compounding (the AW-0 bridge): route AW-0 engagements *through* Khala Code + Forge surfaces so product and services evidence compound; engagement case studies (A0.9) double as product demand-gen; satisfied services clients are the natural first paid-plan and self-serve-Autopilot buyers | Each engagement produces product-motion evidence |
 | A6.5 | Public traction surface: external-vs-internal token split published next to tokens-served (the counter's honesty upgrade — % external becomes the number that matters) | External share > 0 and rising |
 | A6.6 | Community/agent loop: forum-first support, the hotbar Forum surface (shipped lane) as the in-product community door, agents onboarding via AGENTS.md | Measurable forum-sourced retention |
 
@@ -228,11 +294,21 @@ were. Opens only when AW-6 produces enterprise pull.
 
 ## 3. Milestones (each one is a receipt, not a feature)
 
+- **MA0 — The services engine is legible.** Already-sold engagements
+  recorded on-platform (first paid `business.*` receipt), the rate card
+  published, the pipeline instrumented. Revenue that already exists
+  becomes revenue the registry can see. *(This milestone gates on
+  nothing — it can land before MA1.)*
+- **MA0b — The services engine repeats.** Customer-one cohort at ≥3
+  privacy-reviewed completed loops; ≥1 repeat/retainer client; ≥1
+  engagement delivered with Artanis-supervised runs and the
+  operator-minutes ratio measured.
 - **MA1 — A stranger runs it.** Signed artifact public; ≥1 outside user
   completes install → chat → fleet connect → delegation unassisted.
   (`khala_code.desktop_codex_wrapper.v1` green-candidate.)
-- **MA2 — A dollar collected.** Any lane: paid plan, credits, orange
-  check. The "no production revenue" sentence dies.
+- **MA2 — A dollar collected on-platform.** Any lane: services
+  engagement funded through the product, paid plan, credits, orange
+  check. The "no on-platform revenue" sentence dies.
 - **MA3 — A trace consented.** Redaction landed, opt-in live at bounded
   scope, corpus > 0, zero leaks.
 - **MA4 — A contributor paid by the loop.** One plugin, one routed call,
@@ -240,19 +316,34 @@ were. Opens only when AW-6 produces enterprise pull.
 - **MA5 — External demand is a number.** Public external-vs-internal
   split; external tokens ≥ 10% of a week's volume or ≥ N distinct
   external accounts (pick the threshold before measuring, not after).
-- **MA6 — Repeatable revenue.** A cohort of externally-provenanced
-  paying users with month-over-month retention; unit economics per plan
-  measured (support minutes, serving cost, payout obligations) and
-  positive.
+- **MA6 — Repeatable revenue.** Two engines measurable at once: the
+  services book (engagements/mo, repeat rate, operator-minutes ratio
+  falling) and a cohort of externally-provenanced paying users with
+  month-over-month retention; unit economics per package and per plan
+  measured (operator/support minutes, serving cost, payout obligations)
+  and positive.
 - **MA7 — The market version of MA4.** A plugin payout caused by an
   *external* paid routing event — the pays-you loop closed by strangers
   on both sides. This is the company's bull case becoming evidence.
 
 ## 4. Metrics That Matter (and the ones that don't)
 
-Track weekly, publish what's public-safe. The tool/network split gives
-the set a two-axis structure — tool health (kindling), graduation (the
-bridge), network health (the moat forming):
+Track weekly, publish what's public-safe. Three blocks now: the services
+engine (primary revenue), then the tool/network axes — tool health
+(kindling), graduation (the bridge), network health (the moat forming).
+
+**Services engine (AW-0 — reviewed weekly, first):**
+
+0. Pipeline: qualified intakes, scope calls, close rate,
+   time-to-quick-win. Revenue: engagements sold and collected (fiat and
+   sats, provenance-labeled), repeat/retainer rate. Economics:
+   **operator-minutes per accepted engagement** (the ratio the whole
+   motion lives on), gross margin after operator time, per-engagement
+   fleet spend routing (owned vs metered). Repeatability: cohort
+   `loop_completed` count. Trust: delivery acceptance rate, revision
+   rate, zero overclaim incidents in case studies.
+
+**User motion:**
 
 1. Installs → activation (first delegation) → D7/D30 return.
 2. Fleets connected; distinct external accounts delegating.
@@ -292,11 +383,20 @@ a target), and any counter an internal fleet can move.
 Falsifiers, so this roadmap can fail honestly instead of decaying into
 narrative:
 
+- **The agency trap (services):** if operator-minutes per accepted
+  engagement do not fall over two consecutive quarters while engagement
+  count rises — despite the levers (productized scopes, templates,
+  verification ladder, Artanis supervision) — we are building an agency,
+  not a platform. Response: cap the services book at what current
+  leverage sustains, stop hiring toward delivery, and redirect
+  engineering to the specific lever that failed. Services revenue is the
+  means; the compounding delivery system is the end.
 - **Distribution failure:** if after a real release + channel motion
   (AW-1, AW-6) sustained for a quarter, activation or D30 retention
   stays negligible — the coding-console wedge is wrong; fall back to the
-  API/channel business (Khala inside other harnesses) and the services
-  lanes, and stop investing in the shell.
+  API/channel business (Khala inside other harnesses) and **double down
+  on the services engine (AW-0), which does not depend on the shell**,
+  and stop investing in the installer.
 - **Data-leg failure:** if consented capture yields a corpus whose
   distilled value is ~zero after honest triage (A3.4), or consent rates
   are negligible — retire the pays-you copy publicly (the registry makes
@@ -350,14 +450,19 @@ for market contact:
 ## 7. The One-Paragraph Version
 
 ROADMAP.md builds a machine that can do the work; ROADMAP_AFTER makes
-someone other than us want it, pay for it, and come back. Ship the
-artifact, arm the rails, earn the first dollar, capture the first
-consented trace, pay the first contributor, and measure external demand
-with the same exactness we already apply to tokens — in that order,
-because each receipt funds the credibility of the next. The engineering
-fleet stays useful (every workstream above decomposes into the same
-issue/PR/verify discipline as ever), but the critical path now runs
-through owner sittings and outside humans. The machine is nearly done
-proving it can build; what remains is proving anyone needs what it
-builds — and the company's own registry will be the first to say, in
-public, whether that proof arrived.
+someone other than us pay for it and come back — and the fastest honest
+dollar runs through `openagents.com/business`, where "Agents that work."
+is already selling four-figure software-built-fast engagements delivered
+by the same fleet the tool orchestrates. So: record the deals already
+done, publish three prices, complete the cohort, and drive
+operator-minutes per engagement relentlessly down (templates →
+verification ladder → Artanis) — while in parallel the user motion ships
+the artifact, arms the rails, captures the first consented trace, pays
+the first contributor, and measures external demand with the same
+exactness we already apply to tokens. Services pays now and discovers
+demand; the tool distributes and supplies; the network compounds later.
+The engineering fleet stays useful (every workstream decomposes into the
+same issue/PR/verify discipline as ever), but the critical path now runs
+through owner sittings, client relationships, and outside humans — and
+the company's own registry will be the first to say, in public, whether
+the proof arrived.
