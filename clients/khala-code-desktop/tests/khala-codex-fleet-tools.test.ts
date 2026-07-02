@@ -2012,7 +2012,7 @@ describe("Khala Code Codex fleet tools", () => {
     ]) {
       expect(result.modelOutput.text).toContain(`- ${module}:`)
     }
-    expect(result.modelOutput.text).toContain("Advertised Codex capacity 4/5")
+    expect(result.modelOutput.text).toContain("Advertised codex capacity 4/5")
     expect(result.modelOutput.text).toContain("assignment.public.codex_agent_task.part2_demo")
     expect(result.modelOutput.text)
       .not.toContain("codex_spawn_failed: No Pylon Codex assignment capacity is available right now")

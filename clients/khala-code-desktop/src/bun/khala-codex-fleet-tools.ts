@@ -32,6 +32,7 @@ import {
   type KhalaToolDefinition,
   type KhalaToolResult,
   type RegisteredKhalaTool,
+  type KhalaFleetDelegateAdvertiseReason,
 } from "@openagentsinc/khala-tools"
 import {
   createPylonOrchestrationStore,
@@ -961,7 +962,7 @@ export async function spawnCodexInstances(
 
   const refreshFleetProjection = async (
     pylonRef: string | undefined,
-    reason: "initial" | "no_available_codex_capacity" | "stale_heartbeat",
+    reason: KhalaFleetDelegateAdvertiseReason,
   ) => {
     const heartbeat = await runPylonCommand(["presence", "heartbeat", "--base-url", baseUrl, "--json"], {
       env,
