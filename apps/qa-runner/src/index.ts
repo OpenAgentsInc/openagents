@@ -58,6 +58,16 @@ export {
   type KhalaPackagedNativeSmokeOutcome,
   type KhalaPackagedNativeSmokeSelectors,
 } from "./khala-desktop-backend";
+export {
+  KHALA_FLAGSHIP_DEMO_REPORT_SCHEMA,
+  decodeKhalaFlagshipDemoReport,
+  renderKhalaFlagshipRegressionSource,
+  runKhalaCodeFlagshipDemo,
+  type KhalaFlagshipDemoOptions,
+  type KhalaFlagshipDemoOutcome,
+  type KhalaFlagshipDemoReport,
+  type KhalaFlagshipSeededBugSpec,
+} from "./khala-flagship-demo";
 
 // The fixed-step runner (runQaSession) and the autonomous model-driven runner.
 export { runQaSession, type RunInput, type RunOutcome } from "./runner";

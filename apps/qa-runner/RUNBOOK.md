@@ -76,6 +76,12 @@ published <https://openagents.com/trace/db838bdc-3bc6-48a5-8715-a6669f6b10c5> (1
   `bun run --cwd apps/qa-runner khala:packaged-native-smoke -- --out ../../var/qa-8023/packaged-native`.
   Full build, selector, artifact, and failure-mode notes live in
   [`docs/qa/khala-code-packaged-native-ax-runbook.md`](../../docs/qa/khala-code-packaged-native-ax-runbook.md).
+- **Flagship Khala Code seeded-bug demo:** after the packaged build, arm
+  `QA_NATIVE_DESKTOP=1`, then run
+  `bun run --cwd apps/qa-runner khala:flagship-demo -- --out ../../var/qa-8026/flagship-demo --seeded-bug-text "<public AX marker>"`.
+  It writes the headed native evidence report, distiller trace, and committed
+  regression `generated/khala-code-packaged-seeded-bug.e2e.test.ts`; see
+  [`docs/qa/khala-code-flagship-demo.md`](../../docs/qa/khala-code-flagship-demo.md).
 
 ## Honest defaults
 

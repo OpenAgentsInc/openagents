@@ -119,6 +119,13 @@ bun run --cwd apps/qa-runner demo:khala -- --goal "..." --url https://openagents
 # Run the generated scenario (a real, runnable test) against any target:
 TARGET_URL=https://openagents.com bun test apps/qa-runner/generated/login-verify.e2e.test.ts
 
+# Khala Code flagship native demo (Q3.4): headed packaged app, AX/screenshot
+# seeded-bug hunt, public-safe report, and committed distilled regression.
+QA_NATIVE_DESKTOP=1 bun run --cwd apps/qa-runner khala:flagship-demo -- \
+  --out ../../var/qa-8026/flagship-demo \
+  --seeded-bug-text "Seeded bug: packaged Khala Code fixture response is rendered"
+bun test apps/qa-runner/generated/khala-code-packaged-seeded-bug.e2e.test.ts
+
 # Deterministic /login regression demo (scriptedBrain; no model, for CI):
 bun run --cwd apps/qa-runner demo:login
 bun run --cwd apps/qa-runner demo:login -- --out ./runs/login --headed

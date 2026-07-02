@@ -100,7 +100,7 @@ pointed at it.
 | Q3.1 | **First headed AX run**: qa-runner native macOS backend (`QA_NATIVE_DESKTOP=1`) drives the packaged app (`electrobun build` output): boot, hotbar navigation, composer type/submit against fixture backend, screenshot; committed runbook with the exact invocation. | — | MED |
 | Q3.2 | **Headed scenario subset weekly**: the seed-corpus smoke subset through the vision driver on the packaged app; AX-tree a11y oracle (every interactive element present in the AX tree; keyboard-only completion of one defined scenario). | Q3.1, Q4.1 | MED |
 | Q3.3 | **Screenshot baseline store + diff oracle**: blessed baselines per viewport (desktop/mobile, dark, reduced-motion), redaction-checked like any projection; diffs fail the visual oracle. Implementation note: [`docs/qa/khala-code-visual-baselines.md`](../qa/khala-code-visual-baselines.md). | Q3.1 | MED |
-| Q3.4 | **The flagship demo** (productization, #6181 lane): seeded-bug hunt on the packaged app headed — agent finds the bug from screenshots/AX, distiller emits the committed regression test. Recorded as the qa-runner product demo. | Q3.1, Q6.2 | MED |
+| Q3.4 | **The flagship demo** (productization, #6181 lane): seeded-bug hunt on the packaged app headed — agent finds the bug from screenshots/AX, distiller emits the committed regression test. Recorded as the qa-runner product demo. Implementation note: [`docs/qa/khala-code-flagship-demo.md`](../qa/khala-code-flagship-demo.md). | Q3.1, Q6.2 | MED |
 
 ## 5. QA-4 — The use-case corpus: every surface, every state
 

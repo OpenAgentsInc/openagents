@@ -97,6 +97,25 @@ paths.
 
 Treat `status: "pass"` in `result.json` as the pass/fail source of truth.
 
+## Flagship Seeded-Bug Demo
+
+Q3.4 builds on this headed packaged smoke with a seeded-bug report and a
+committed distilled regression:
+
+```sh
+QA_NATIVE_DESKTOP=1 \
+bun run --cwd apps/qa-runner khala:flagship-demo -- \
+  --out ../../var/qa-8026/flagship-demo \
+  --seeded-bug-text "Seeded bug: packaged Khala Code fixture response is rendered"
+```
+
+The demo writes `khala-flagship-demo-report.json`,
+`khala-flagship-session-trace.json`, and
+`apps/qa-runner/generated/khala-code-packaged-seeded-bug.e2e.test.ts`. The
+normal qa-runner test script includes that generated regression, so the emitted
+artifact stays inside the local PR/main gate. See
+[`khala-code-flagship-demo.md`](./khala-code-flagship-demo.md).
+
 ## Failure Modes
 
 - `NativeDesktopNotArmedError`: `QA_NATIVE_DESKTOP=1` was not set.
