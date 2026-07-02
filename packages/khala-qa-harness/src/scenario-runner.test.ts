@@ -3,6 +3,7 @@ import { Effect } from "effect"
 
 import {
   assertKhalaQaVisibleRect,
+  buildKhalaCodeQaShutdownOracle,
   decodeKhalaCodeQaScenario,
   khalaQaRectsOverlap,
   loadKhalaCodeQaScenario,
@@ -149,6 +150,48 @@ describe("Khala Code QA RPC driver and runner", () => {
     expect(report.phaseOutcomes[0]?.oracles.map((oracle) => oracle.ok)).toEqual([true, true])
     expect(report.commitments.verdict).toBe("CONFIRMED")
     expect(report.commitments.observed).toBe(true)
+    expect(report.shutdownOracle.status).toBe("pass")
+  })
+
+  test("refutes run-pass commitments when driver shutdown leaves an orphan process", async () => {
+    const baseDriver = makeKhalaCodeRpcQaDriver({
+      fetch: (() =>
+        Promise.resolve(jsonResponse({
+          app: "Khala Code Desktop",
+          ok: true,
+          observedAt: "2026-07-01T00:00:00.000Z",
+        }))) as KhalaCodeRpcFetch,
+    })
+    const driver = {
+      act: baseDriver.act.bind(baseDriver),
+      boot: baseDriver.boot.bind(baseDriver),
+      events: baseDriver.events.bind(baseDriver),
+      metrics: baseDriver.metrics.bind(baseDriver),
+      mode: baseDriver.mode,
+      read: baseDriver.read.bind(baseDriver),
+      shutdown: () =>
+        Effect.succeed({
+          refs: [],
+          shutdownOracle: buildKhalaCodeQaShutdownOracle({
+            observedAt: "2026-07-01T00:00:01.000Z",
+            orphanProcesses: [{ command: "fixture-child", pid: 44, reason: "still running" }],
+          }),
+        }),
+    }
+
+    const report = await Effect.runPromise(
+      runKhalaCodeQaScenario({
+        driver,
+        scenario: loadKhalaCodeQaScenario(fixtureScenario),
+      }),
+    )
+
+    expect(report.status).toBe("fail")
+    expect(report.shutdownOracle).toMatchObject({
+      actualOrphans: 1,
+      status: "fail",
+    })
+    expect(report.commitments.verdict).toBe("REFUTED")
   })
 
   test("refutes a run-pass commitment when the schema oracle fails", async () => {

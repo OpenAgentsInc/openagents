@@ -282,6 +282,23 @@ const readJsonFile = async (path: string): Promise<unknown | undefined> => {
   }
 }
 
+const monkeyNightOracleFailureReason = async (
+  step: QaNightlyStep,
+): Promise<string | undefined> => {
+  if (step.id !== "monkey-night") return undefined
+  const artifactDirIndex = step.command.indexOf("--artifact-dir")
+  const artifactDir = artifactDirIndex === -1 ? undefined : step.command[artifactDirIndex + 1]
+  if (artifactDir === undefined) return undefined
+  const report = await readJsonFile(join(artifactDir, "monkey-night-report.json"))
+  if (!isRecord(report)) return undefined
+  const memoryOracle = isRecord(report.memoryOracle) ? report.memoryOracle : undefined
+  const shutdownOracle = isRecord(report.shutdownOracle) ? report.shutdownOracle : undefined
+  if (report.status === "fail") return "monkey night report status is fail"
+  if (memoryOracle?.status === "fail") return "monkey night memory oracle failed"
+  if (shutdownOracle?.status === "fail") return "monkey night shutdown oracle failed"
+  return undefined
+}
+
 const walkFiles = async (root: string): Promise<readonly string[]> => {
   let entries: Awaited<ReturnType<typeof readdir>>
   try {
@@ -758,6 +775,7 @@ export const buildQaNightlySteps = (input: Readonly<{
       expectedArtifactRefs: [
         join("monkey-night", "monkey-night-report.json"),
         join("monkey-night", "monkey-night-coverage-ledger.json"),
+        join("monkey-night", "monkey-night-memory-oracle.json"),
       ],
       id: "monkey-night",
       label: `Seeded monkey night (${monkeyRuns * monkeySteps} actions)`,
@@ -1274,10 +1292,11 @@ export const runQaNightlyMatrix = async (input: Readonly<{
       attempts.push(await runStepAttempt(step, absoluteStep, 2))
     }
     const lastAttempt = attempts.at(-1) ?? firstAttempt
+    const artifactFailureReason = await monkeyNightOracleFailureReason(absoluteStep)
     const status: QaNightlyStepResult["status"] = firstAttempt.status === "passed"
-      ? "passed"
+      ? artifactFailureReason === undefined ? "passed" : "failed"
       : lastAttempt.status === "passed"
-        ? "flaky"
+        ? artifactFailureReason === undefined ? "flaky" : "failed"
         : lastAttempt.status
     const evidenceRefs = [
       firstAttempt.logRef,
@@ -1304,7 +1323,9 @@ export const runQaNightlyMatrix = async (input: Readonly<{
       command: step.command,
       cwd: step.cwd,
       durationMs: attempts.reduce((sum, attempt) => sum + attempt.durationMs, 0),
-      exitCode: status === "flaky" ? firstAttempt.exitCode : lastAttempt.exitCode,
+      exitCode: artifactFailureReason === undefined
+        ? status === "flaky" ? firstAttempt.exitCode : lastAttempt.exitCode
+        : 1,
       id: step.id,
       label: step.label,
       logRef: status === "flaky" ? firstAttempt.logRef : lastAttempt.logRef,

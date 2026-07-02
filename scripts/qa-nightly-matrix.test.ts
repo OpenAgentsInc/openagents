@@ -29,6 +29,9 @@ describe("qa nightly matrix plan", () => {
     expect(steps.find(step => step.id === "monkey-night")?.label).toContain(
       String(QA_NIGHTLY_DEFAULT_RUNS * QA_NIGHTLY_DEFAULT_STEPS),
     )
+    expect(steps.find(step => step.id === "monkey-night")?.expectedArtifactRefs).toContain(
+      join("monkey-night", "monkey-night-memory-oracle.json"),
+    )
   })
 })
 
@@ -194,6 +197,66 @@ describe("qa nightly matrix report", () => {
       expect(filed).toEqual([
         "[Bug]: Khala Code QA nightly failed khala-code-qa-nightly-2026-07-02t123000.000z",
       ])
+    } finally {
+      await rm(root, { force: true, recursive: true })
+    }
+  })
+
+  test("fails the nightly when the monkey-night memory oracle artifact fails", async () => {
+    const root = await mkdtemp(join(tmpdir(), "qa-nightly-memory-fail-"))
+    const partialLedger = {
+      approvalDecisionKinds: [],
+      generatedAt: "2026-07-02T01:00:00.000Z",
+      hotbarPanelsOpened: [],
+      rpcMethods: {},
+      runIds: ["synthetic-memory-fail"],
+      schema: "khala_code_qa_coverage_ledger.v1",
+      screensScreenshotted: [],
+      selectorsClicked: [],
+      settingsKeysWritten: [],
+      slashCommands: {},
+      threadItemVariantsRendered: [],
+    }
+    const commandRunner: QaNightlyCommandRunner = async step => {
+      if (step.id === "monkey-night") {
+        const artifactDir = step.command[step.command.indexOf("--artifact-dir") + 1]
+        await mkdir(artifactDir, { recursive: true })
+        await writeFile(
+          join(artifactDir, "monkey-night-coverage-ledger.json"),
+          `${JSON.stringify(partialLedger, null, 2)}\n`,
+        )
+        await writeFile(
+          join(artifactDir, "monkey-night-report.json"),
+          `${JSON.stringify({
+            memoryOracle: { status: "fail" },
+            shutdownOracle: { status: "pass" },
+            status: "pass",
+          }, null, 2)}\n`,
+        )
+      }
+      return {
+        durationMs: 2,
+        exitCode: 0,
+        stderr: "",
+        stdout: "",
+      }
+    }
+
+    try {
+      const report = await runQaNightlyMatrix({
+        artifactRoot: join(root, "artifacts"),
+        commandRunner,
+        env: {},
+        now: () => "2026-07-02T01:00:00.000Z",
+        root,
+      })
+      const monkeyStep = report.steps.find(step => step.id === "monkey-night")
+
+      expect(report.status).toBe("failed")
+      expect(monkeyStep).toMatchObject({
+        exitCode: 1,
+        status: "failed",
+      })
     } finally {
       await rm(root, { force: true, recursive: true })
     }

@@ -7,13 +7,21 @@ import {
   makeKhalaCodeQaSeedCorpusFixtureFetch,
   makeKhalaCodeRpcQaDriver,
   mergeKhalaCodeQaMonkeyCoverage,
+  evaluateKhalaCodeQaMemoryOracle,
   runKhalaCodeQaSeededMonkey,
+  sampleKhalaCodeQaMemory,
+  summarizeKhalaCodeQaShutdownOracles,
+  type KhalaCodeQaMemoryOracleReport,
+  type KhalaCodeQaMemoryPhase,
+  type KhalaCodeQaMemorySample,
   type KhalaCodeQaMonkeyRunReport,
+  type KhalaCodeQaShutdownOracleSummary,
 } from "./index.js"
 
 type MonkeyNightSummary = {
   readonly schema: "khala_code_qa_seeded_monkey_night.v1"
   readonly generatedAt: string
+  readonly status: "pass" | "fail"
   readonly mode: "fleet_cockpit_night"
   readonly runs: number
   readonly passed: number
@@ -22,6 +30,9 @@ type MonkeyNightSummary = {
   readonly seeds: readonly string[]
   readonly failedSeeds: readonly string[]
   readonly coverageLedgerPath: string
+  readonly memoryOracle: KhalaCodeQaMemoryOracleReport
+  readonly memoryOraclePath: string
+  readonly shutdownOracle: KhalaCodeQaShutdownOracleSummary
 }
 
 const optionValue = (name: string): string | undefined => {
@@ -44,6 +55,11 @@ const seedFor = (prefix: string, index: number): string =>
 
 export const runKhalaCodeQaMonkeyNight = async (options: {
   readonly artifactDir?: string
+  readonly memorySampler?: (input: {
+    readonly phase: KhalaCodeQaMemoryPhase
+    readonly runIndex?: number | undefined
+    readonly seed?: string | undefined
+  }) => KhalaCodeQaMemorySample
   readonly runs?: number
   readonly seedPrefix?: string
   readonly steps?: number
@@ -52,11 +68,14 @@ export const runKhalaCodeQaMonkeyNight = async (options: {
   const runs = options.runs ?? 100
   const seedPrefix = options.seedPrefix ?? "t6.8-night"
   const steps = options.steps ?? 64
+  const memorySampler = options.memorySampler ?? ((input) => sampleKhalaCodeQaMemory(input))
+  const memorySamples: KhalaCodeQaMemorySample[] = []
   const reports: KhalaCodeQaMonkeyRunReport[] = []
   let threadedCoverageLedger = createEmptyKhalaCodeQaCoverageLedger()
 
   for (let index = 0; index < runs; index += 1) {
     const seed = seedFor(seedPrefix, index)
+    memorySamples.push(memorySampler({ phase: "before_monkey_run", runIndex: index, seed }))
     const report = await Effect.runPromise(
       runKhalaCodeQaSeededMonkey({
         driver: makeKhalaCodeRpcQaDriver({
@@ -72,32 +91,54 @@ export const runKhalaCodeQaMonkeyNight = async (options: {
         },
       }),
     )
+    memorySamples.push(memorySampler({ phase: "after_monkey_run", runIndex: index, seed }))
     reports.push(report)
     threadedCoverageLedger = mergeKhalaCodeQaMonkeyCoverage(reports)
   }
 
   const coverageLedger = threadedCoverageLedger
   const generatedAt = new Date().toISOString()
+  memorySamples.push(memorySampler({ phase: "after_monkey_night" }))
   const coverageLedgerPath = join(artifactDir, "monkey-night-coverage-ledger.json")
+  const memoryOraclePath = join(artifactDir, "monkey-night-memory-oracle.json")
   const summaryPath = join(artifactDir, "monkey-night-report.json")
   const failedSeeds = reports
     .filter((report) => report.status === "fail")
     .map((report) => report.seed)
+  const memoryOracle = evaluateKhalaCodeQaMemoryOracle({
+    generatedAt,
+    samples: memorySamples,
+  })
+  const shutdownOracle = summarizeKhalaCodeQaShutdownOracles(
+    reports.flatMap((report) =>
+      report.scenarioReports.map((scenarioReport) => scenarioReport.shutdownOracle)
+    ),
+  )
+  const status = failedSeeds.length === 0 &&
+    memoryOracle.status === "pass" &&
+    shutdownOracle.status === "pass"
+    ? "pass"
+    : "fail"
   const summary: MonkeyNightSummary = {
     coverageLedgerPath,
     failed: failedSeeds.length,
     failedSeeds,
     falseFailureRate: runs === 0 ? 0 : failedSeeds.length / runs,
     generatedAt,
+    memoryOracle,
+    memoryOraclePath,
     mode: "fleet_cockpit_night",
     passed: reports.length - failedSeeds.length,
     runs,
     schema: "khala_code_qa_seeded_monkey_night.v1",
     seeds: reports.map((report) => report.seed),
+    shutdownOracle,
+    status,
   }
 
   await mkdir(dirname(coverageLedgerPath), { recursive: true })
   await writeFile(coverageLedgerPath, `${JSON.stringify(coverageLedger, null, 2)}\n`)
+  await writeFile(memoryOraclePath, `${JSON.stringify(memoryOracle, null, 2)}\n`)
   await writeFile(summaryPath, `${JSON.stringify({ ...summary, reports }, null, 2)}\n`)
   return summary
 }
@@ -109,4 +150,5 @@ if (import.meta.main) {
   const steps = intOption("--steps", 64)
   const summary = await runKhalaCodeQaMonkeyNight({ artifactDir, runs, seedPrefix, steps })
   process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`)
+  process.exit(summary.status === "pass" ? 0 : 1)
 }

@@ -40,6 +40,8 @@ Each run writes:
   `quarantine/flake-quarantine-ledger.json`
 - the per-run monkey coverage ledger under
   `monkey-night/monkey-night-coverage-ledger.json`
+- the monkey memory/zombie oracle artifact under
+  `monkey-night/monkey-night-memory-oracle.json`
 - the merged coverage union under `coverage/coverage-union-ledger.json`
 - the frontier report under `coverage/coverage-frontier-report.json`
 - the explorer steering input under `coverage/coverage-frontier-steering.json`
@@ -70,6 +72,13 @@ files, skips previously merged `coverage-union-ledger.json` files, and writes a
 fresh union ledger for the current nightly. If the current monkey run failed
 before producing a ledger, the union falls back to historical ledgers or an
 empty baseline so the frontier remains explicit instead of silently missing.
+
+The monkey-night step also writes memory and shutdown-oracle evidence. The
+nightly fails the `monkey-night` step if RSS or JS heap exceeds the Q2.4
+budgets, if RSS after-run samples increase monotonically by at least 64 MiB
+across the night, or if any driver shutdown reports an orphan process.
+Implementation details live in
+[`khala-code-memory-zombie-oracle.md`](./khala-code-memory-zombie-oracle.md).
 
 The frontier report compares the union ledger with the seed-corpus manifest and
 lists unvisited RPC methods, unexercised slash commands, unopened hotbar

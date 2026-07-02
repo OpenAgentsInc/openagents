@@ -8,6 +8,7 @@ import type {
 import type {
   KhalaCodeQaMetricsSnapshot,
 } from "../../../clients/khala-code-desktop/src/shared/qa-metrics.js"
+import type { KhalaCodeQaShutdownOracle } from "./memory-oracle.js"
 export type {
   KhalaCodeQaMetricsSnapshot,
 } from "../../../clients/khala-code-desktop/src/shared/qa-metrics.js"
@@ -44,6 +45,7 @@ export type KhalaCodeQaAppEvent = {
 
 export type KhalaCodeQaArtifacts = {
   readonly refs: ReadonlyArray<string>
+  readonly shutdownOracle?: KhalaCodeQaShutdownOracle
   readonly summary?: unknown
 }
 

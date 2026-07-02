@@ -6,6 +6,11 @@ import {
 
 import { collectKhalaCodeQaCoverageLedger, type KhalaCodeQaCoverageLedger } from "./coverage-ledger.js"
 import type { KhalaCodeQaDriver, KhalaCodeQaObservation } from "./driver.js"
+import {
+  buildKhalaCodeQaShutdownOracle,
+  evaluateKhalaCodeQaShutdownOracle,
+  type KhalaCodeQaShutdownOracle,
+} from "./memory-oracle.js"
 import { compareKhalaCodeRpcConsistency } from "./rpc-client.js"
 import type {
   KhalaCodeQaCommitment,
@@ -50,6 +55,7 @@ export type KhalaCodeQaScenarioRunReport = {
   readonly mode: KhalaCodeQaDriver["mode"]
   readonly phaseOutcomes: ReadonlyArray<KhalaCodeQaPhaseOutcome>
   readonly scenarioId: string
+  readonly shutdownOracle: KhalaCodeQaShutdownOracle
   readonly status: "pass" | "fail"
 }
 
@@ -542,13 +548,30 @@ export const runKhalaCodeQaScenario = (input: {
       })
     }
 
-    const status = runStatus(phaseOutcomes)
+    const phaseStatus = runStatus(phaseOutcomes)
+    const shutdownOracle = yield* input.driver.shutdown().pipe(
+      Effect.match({
+        onFailure: (failure) =>
+          buildKhalaCodeQaShutdownOracle({
+            observedAt: new Date().toISOString(),
+            orphanProcesses: [{
+              pid: -1,
+              reason: `driver shutdown failed: ${safeFailureDetail(failure)}`,
+            }],
+          }),
+        onSuccess: (artifacts) =>
+          evaluateKhalaCodeQaShutdownOracle({
+            artifacts,
+            observedAt: new Date().toISOString(),
+          }),
+      }),
+    )
+    const status = phaseStatus === "pass" && shutdownOracle.status === "pass" ? "pass" : "fail"
     const commitments = verifyCommitments({
       commitments: input.scenario.commitments,
       phaseOutcomes,
       runStatus: status,
     })
-    yield* input.driver.shutdown().pipe(Effect.catch(() => Effect.succeed({ refs: [] })))
     return {
       backend: input.scenario.backend,
       commitments,
@@ -559,6 +582,7 @@ export const runKhalaCodeQaScenario = (input: {
       mode: input.driver.mode,
       phaseOutcomes,
       scenarioId: input.scenario.id,
+      shutdownOracle,
       status,
     }
   })
