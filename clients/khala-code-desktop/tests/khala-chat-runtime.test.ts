@@ -342,15 +342,17 @@ describe("Khala Code desktop chat runtime", () => {
       .toBe("My name is [GIVEN_NAME_1] [SURNAME_1].")
   })
 
-  test("routes request-specific OpenRouter BYOK through hosted Khala", async () => {
+  test("routes explicit OpenRouter BYOK through hosted Khala", async () => {
     const { calls, fetchFn } = captureFetch([
       { choices: [{ message: { content: "BYOK answer" } }] },
     ])
 
     const result = await runKhalaCodeDesktopChatTurn({
       env: {
+        KHALA_CODE_HOSTED_BYOK_OPENROUTER: "1",
+        KHALA_CODE_HOSTED_BYOK_OPENROUTER_API_KEY: "sk-or-secretkey",
         OPENAGENTS_AGENT_TOKEN: "agent-token",
-        OPENROUTER_API_KEY: "sk-or-secretkey",
+        OPENROUTER_API_KEY: "sk-or-ambientignored",
         OPENROUTER_MODEL: "anthropic/claude-haiku",
       },
       fetchFn,
@@ -362,7 +364,7 @@ describe("Khala Code desktop chat runtime", () => {
 
     expect(result.ok).toBe(true)
     expect(result.backend).toMatchObject({
-      credentialSource: "env:OPENROUTER_API_KEY",
+      credentialSource: "env:KHALA_CODE_HOSTED_BYOK_OPENROUTER_API_KEY",
       kind: "hosted_openagents",
       model: "openagents/khala",
       provider: "openrouter",
@@ -375,6 +377,38 @@ describe("Khala Code desktop chat runtime", () => {
     expect(calls[0]?.body.model).toBe("openagents/khala")
     expect(calls[0]?.body.stream).toBe(true)
     expect(JSON.stringify(result)).not.toContain("sk-or-secretkey")
+    expect(JSON.stringify(result)).not.toContain("sk-or-ambientignored")
+    expect(JSON.stringify(result)).not.toContain("agent-token")
+  })
+
+  test("does not route ambient OPENROUTER_API_KEY through hosted Khala", async () => {
+    const { calls, fetchFn } = captureFetch([
+      { choices: [{ message: { content: "hosted answer" } }] },
+    ])
+
+    const result = await runKhalaCodeDesktopChatTurn({
+      env: {
+        OPENAGENTS_AGENT_TOKEN: "agent-token",
+        OPENROUTER_API_KEY: "sk-or-ambientignored",
+      },
+      fetchFn,
+      request: {
+        messages: [{ body: "hello", id: "u1", role: "user" }],
+        sessionId: "session-ambient-openrouter",
+      },
+    })
+
+    expect(result.ok).toBe(true)
+    expect(result.backend).toMatchObject({
+      kind: "hosted_openagents",
+      model: "openagents/khala",
+    })
+    expect(result.backend.credentialSource).toBeUndefined()
+    expect(result.backend.provider).toBeUndefined()
+    expect(calls[0]?.headers.get("authorization")).toBe("Bearer agent-token")
+    expect(calls[0]?.headers.get("x-openagents-provider")).toBeNull()
+    expect(calls[0]?.headers.get("x-openagents-provider-key")).toBeNull()
+    expect(JSON.stringify(result)).not.toContain("sk-or-ambientignored")
     expect(JSON.stringify(result)).not.toContain("agent-token")
   })
 
@@ -397,11 +431,11 @@ describe("Khala Code desktop chat runtime", () => {
     expect(called).toBe(false)
     expect(result.ok).toBe(false)
     expect(result.backend).toMatchObject({
-      credentialSource: "env:OPENROUTER_API_KEY",
       kind: "hosted_openagents",
       model: "openagents/khala",
-      provider: "openrouter",
     })
+    expect(result.backend.credentialSource).toBeUndefined()
+    expect(result.backend.provider).toBeUndefined()
     expect(result.messages[0]?.body).toContain("OPENAGENTS_AGENT_TOKEN")
     expect(result.messages[0]?.body).toContain("cannot run the Khala system locally")
   })
@@ -518,8 +552,9 @@ describe("Khala Code desktop chat runtime", () => {
 
     const result = await runKhalaCodeDesktopChatTurn({
       env: {
+        KHALA_CODE_HOSTED_BYOK_OPENROUTER: "1",
+        KHALA_CODE_HOSTED_BYOK_OPENROUTER_API_KEY: "sk-or-secretsecret",
         OPENAGENTS_AGENT_TOKEN: "agent-token",
-        OPENROUTER_API_KEY: "sk-or-secretsecret",
         OPENROUTER_MODEL: "anthropic/claude-haiku",
       },
       fetchFn,
@@ -535,6 +570,38 @@ describe("Khala Code desktop chat runtime", () => {
     expect(result.messages[0]?.body).toContain("Hosted OpenAgents cloud request failed")
     expect(result.messages[0]?.body).toContain("provider_error")
     expect(result.messages[0]?.body).not.toContain("abcdefghijklmnopqrstuvwxyz")
+    expect(result.messages[0]?.body).not.toContain("sk-or-secretsecret")
+    expect(result.messages[0]?.body).not.toContain("agent-token")
+  })
+
+  test("returns a specific OpenRouter BYOK credit message for hosted 402s", async () => {
+    const fetchFn = (async () =>
+      jsonResponse(
+        {
+          error: "payment_required",
+          reason: "OpenRouter credits exhausted for sk-or-secretsecret",
+        },
+        { status: 402 },
+      )) as unknown as typeof fetch
+
+    const result = await runKhalaCodeDesktopChatTurn({
+      env: {
+        KHALA_CODE_HOSTED_BYOK_OPENROUTER: "1",
+        KHALA_CODE_HOSTED_BYOK_OPENROUTER_API_KEY: "sk-or-secretsecret",
+        OPENAGENTS_AGENT_TOKEN: "agent-token",
+      },
+      fetchFn,
+      request: {
+        messages: [{ body: "hello", id: "u1", role: "user" }],
+        sessionId: "session-1",
+      },
+    })
+
+    expect(result.ok).toBe(false)
+    expect(result.messages[0]?.role).toBe("system")
+    expect(result.messages[0]?.body).toContain("OpenRouter BYOK request failed")
+    expect(result.messages[0]?.body).toContain("KHALA_CODE_HOSTED_BYOK_OPENROUTER_API_KEY")
+    expect(result.messages[0]?.body).toContain("KHALA_CODE_HOSTED_BYOK_OPENROUTER")
     expect(result.messages[0]?.body).not.toContain("sk-or-secretsecret")
     expect(result.messages[0]?.body).not.toContain("agent-token")
   })
