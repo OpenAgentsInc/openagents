@@ -3,6 +3,12 @@ import { mkdir, rm, writeFile } from "node:fs/promises"
 import { dirname, join, resolve } from "node:path"
 
 import { chromium, type Browser, type Page } from "playwright"
+import {
+  assertKhalaQaVisibleRect as assertVisibleRect,
+  khalaQaRectsOverlap as rectsOverlap,
+  startKhalaQaViteServer as startViteServer,
+  waitForKhalaQaHttp as waitForHttp,
+} from "@openagentsinc/khala-qa-harness/desktop-smoke-helpers"
 
 export type Part2VisualViewport = Readonly<{
   name: "desktop" | "mobile"
@@ -188,100 +194,10 @@ async function capturePart2FleetGym(
   }
 }
 
-const assertVisibleRect = (
-  label: string,
-  rect: Rect,
-  viewport: Rect,
-): void => {
-  if (rect.width < 1 || rect.height < 1) {
-    throw new Error(`${label} is not visible`)
-  }
-  if (rect.x < -1 || rect.y < -1) {
-    throw new Error(`${label} is clipped outside the viewport`)
-  }
-  if (rect.x + rect.width > viewport.width + 1) {
-    throw new Error(`${label} overflows the viewport width: ${JSON.stringify({ rect, viewport })}`)
-  }
-}
-
-const rectsOverlap = (left: Rect, right: Rect): boolean =>
-  left.x < right.x + right.width - 1 &&
-  right.x < left.x + left.width - 1 &&
-  left.y < right.y + right.height - 1 &&
-  right.y < left.y + left.height - 1
-
 const assertTextIncludes = (text: string, expected: string): void => {
   if (!text.includes(expected)) {
     throw new Error(`Part 2 visual smoke missing text: ${expected}`)
   }
-}
-
-type ViteServer = Readonly<{
-  kill: () => void
-}>
-
-function startViteServer(
-  input: Readonly<{ cwd: string; label: string; port: number }>,
-): ViteServer {
-  const proc = Bun.spawn(
-    [
-      "bunx",
-      "vite",
-      "--host",
-      "127.0.0.1",
-      "--port",
-      String(input.port),
-      "--strictPort",
-    ],
-    {
-      cwd: input.cwd,
-      stderr: "pipe",
-      stdout: "pipe",
-    },
-  )
-  void streamServerOutput(input.label, proc.stdout)
-  void streamServerOutput(input.label, proc.stderr)
-  return {
-    kill: () => {
-      proc.kill()
-    },
-  }
-}
-
-async function streamServerOutput(
-  label: string,
-  stream: ReadableStream<Uint8Array>,
-): Promise<void> {
-  const reader = stream.getReader()
-  const decoder = new TextDecoder()
-  try {
-    for (;;) {
-      const chunk = await reader.read()
-      if (chunk.done) return
-      const text = decoder.decode(chunk.value, { stream: true })
-      for (const line of text.split("\n")) {
-        if (line.trim().length > 0) console.error(`[${label}] ${line}`)
-      }
-    }
-  } catch {
-    // Server output is diagnostic only.
-  }
-}
-
-async function waitForHttp(url: string): Promise<void> {
-  const deadline = Date.now() + 30_000
-  let lastError: unknown = null
-  while (Date.now() < deadline) {
-    try {
-      const response = await fetch(url)
-      if (response.ok) return
-      lastError = new Error(`${url} returned ${response.status}`)
-    } catch (error) {
-      lastError = error
-    }
-    await Bun.sleep(250)
-  }
-  throw new Error(`Timed out waiting for ${url}: ${String(lastError)}`)
 }
 
 if (import.meta.main) {
