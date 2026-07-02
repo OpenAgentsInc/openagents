@@ -67,7 +67,7 @@ export const FLEET_RUN_SCHEMA = "openagents.khala_code.fleet_run.v1" as const
 export const FLEET_RUN_OWNER_LOCAL_STATE_SCHEMA = "openagents.khala_code.fleet_runs.owner_local.v1" as const
 export const WORK_CLAIM_SCHEMA = "openagents.khala_code.work_claim.v1" as const
 
-export const FleetRunWorkSourceSchema = S.Literals(["github_backlog", "issue_list", "fixture"])
+export const FleetRunWorkSourceSchema = S.Literals(["github_backlog", "issue_list", "fixture", "plan_dag"])
 export type FleetRunWorkSource = typeof FleetRunWorkSourceSchema.Type
 
 export const FleetRunWorkerKindSchema = S.Literals(["codex", "claude", "auto"])

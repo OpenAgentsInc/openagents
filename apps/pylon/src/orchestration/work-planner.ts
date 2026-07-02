@@ -4,14 +4,16 @@ import type { PylonOrchestrationStore } from "./store.js"
 
 export const WORK_PLANNER_SCHEMA = "openagents.khala_code.work_planner.v1" as const
 
-export const WorkPlannerSourceKindSchema = S.Literals(["github_backlog", "issue_list", "fixture"])
+export const WorkPlannerSourceKindSchema = S.Literals(["github_backlog", "issue_list", "fixture", "plan_dag"])
 export type WorkPlannerSourceKind = typeof WorkPlannerSourceKindSchema.Type
 
-export const WorkPlannerUnitKindSchema = S.Literals(["github_issue", "github_pr", "fixture"])
+export const WorkPlannerUnitKindSchema = S.Literals(["github_issue", "github_pr", "fixture", "plan_task"])
 export type WorkPlannerUnitKind = typeof WorkPlannerUnitKindSchema.Type
 
 export const WorkPlannerSkipReasonSchema = S.Literals([
   "already_claimed",
+  "dependency_failed",
+  "dependency_pending",
   "pr_exists",
   "merged",
   "closed",
@@ -27,12 +29,16 @@ export type WorkPlannerCandidate = {
   readonly kind: WorkPlannerUnitKind
   readonly title: string
   readonly source: WorkPlannerSourceKind
+  readonly branch?: string
+  readonly baseCommit?: string
+  readonly dependsOn?: readonly string[]
   readonly repo?: string
   readonly number?: number
   readonly url?: string
   readonly labels?: readonly string[]
   readonly state?: WorkPlannerCandidateState
   readonly body?: string
+  readonly verify?: string
 }
 
 export type WorkPlannerClaimableUnit = WorkPlannerCandidate & {
@@ -71,7 +77,9 @@ export type WorkPlannerClaimRegistry = Pick<PylonOrchestrationStore, "getLiveWor
 export type WorkPlannerOptions = {
   readonly now?: Date
   readonly claimRegistry?: WorkPlannerClaimRegistry
+  readonly completedWorkUnitRefs?: readonly string[]
   readonly excludedLabels?: readonly string[]
+  readonly failedWorkUnitRefs?: readonly string[]
   readonly needsOwnerLabels?: readonly string[]
   readonly pullRequests?: readonly WorkPlannerCandidate[]
 }
@@ -122,6 +130,81 @@ export type GithubBacklogWorkSource = {
   readonly limit?: number
 }
 
+export type PlanDagWorkSource = {
+  readonly kind: "plan_dag"
+  readonly planRef: string
+  readonly repo?: string
+  readonly branch?: string
+  readonly baseCommit?: string
+  readonly verify?: string
+  readonly nodes: readonly PlanDagWorkUnit[]
+}
+
+export type PlanDagWorkUnit = {
+  readonly ref: string
+  readonly title: string
+  readonly objective: string
+  readonly dependsOn?: readonly string[]
+  readonly repo?: string
+  readonly branch?: string
+  readonly baseCommit?: string
+  readonly verify?: string
+  readonly issue?: number
+  readonly labels?: readonly string[]
+  readonly url?: string
+}
+
+const PLAN_DAG_REF_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:/#-]{0,180}$/u
+
+const assertPlanDagRef = (field: string, ref: string): void => {
+  if (ref.trim().length === 0) throw new Error(`plan_dag ${field} is required`)
+  if (!PLAN_DAG_REF_PATTERN.test(ref)) {
+    throw new Error(`plan_dag ${field} must be a public-safe ref`)
+  }
+}
+
+export const validatePlanDagWorkSource = (source: PlanDagWorkSource): PlanDagWorkSource => {
+  assertPlanDagRef("planRef", source.planRef)
+  if (source.nodes.length === 0) throw new Error("plan_dag requires at least one node")
+
+  const nodesByRef = new Map<string, PlanDagWorkUnit>()
+  for (const node of source.nodes) {
+    assertPlanDagRef("node ref", node.ref)
+    if (node.title.trim().length === 0) throw new Error(`plan_dag node ${node.ref} requires title`)
+    if (node.objective.trim().length === 0) throw new Error(`plan_dag node ${node.ref} requires objective`)
+    if (nodesByRef.has(node.ref)) throw new Error(`plan_dag duplicate node ref: ${node.ref}`)
+    nodesByRef.set(node.ref, node)
+  }
+
+  for (const node of source.nodes) {
+    for (const depRef of node.dependsOn ?? []) {
+      assertPlanDagRef(`node ${node.ref} dependency ref`, depRef)
+      if (!nodesByRef.has(depRef)) {
+        throw new Error(`plan_dag node ${node.ref} depends on unknown node: ${depRef}`)
+      }
+    }
+  }
+
+  const visiting = new Set<string>()
+  const visited = new Set<string>()
+  const visit = (nodeRef: string, path: readonly string[]): void => {
+    if (visited.has(nodeRef)) return
+    if (visiting.has(nodeRef)) {
+      throw new Error(`plan_dag contains a cycle: ${[...path, nodeRef].join(" -> ")}`)
+    }
+    visiting.add(nodeRef)
+    const node = nodesByRef.get(nodeRef)
+    if (node !== undefined) {
+      for (const depRef of node.dependsOn ?? []) visit(depRef, [...path, nodeRef])
+    }
+    visiting.delete(nodeRef)
+    visited.add(nodeRef)
+  }
+  for (const node of source.nodes) visit(node.ref, [])
+
+  return source
+}
+
 export type GithubBacklogGhRunner = (args: readonly string[]) => Promise<string>
 
 type GithubLabel = { readonly name?: unknown }
@@ -164,6 +247,7 @@ const normalizeLabels = (labels: unknown): string[] => {
 
 const issueWorkUnitRef = (repo: string, issueNumber: number): string => `github:${repo}:issue:${issueNumber}`
 const prWorkUnitRef = (repo: string, prNumber: number): string => `github:${repo}:pr:${prNumber}`
+const planDagWorkUnitRef = (planRef: string, nodeRef: string): string => `plan_dag:${planRef}:node:${nodeRef}`
 
 const issueRefPatterns = (issueNumber: number): RegExp[] => [
   new RegExp(`(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\\s+#${issueNumber}(?!\\d)`, "i"),
@@ -238,6 +322,37 @@ export const issueListCandidates = (source: IssueListWorkSource): WorkPlannerCan
   ...source.issues.map((issue) => normalizeIssueListCandidate(source.repo, issue)),
   ...(source.pullRequests ?? []).map((pr) => normalizeIssueListCandidate(source.repo, { ...pr, kind: "pr" })),
 ]
+
+export const planDagCandidates = (source: PlanDagWorkSource): WorkPlannerCandidate[] => {
+  const validated = validatePlanDagWorkSource(source)
+  const workUnitRefsByNodeRef = new Map(
+    validated.nodes.map((node) => [node.ref, planDagWorkUnitRef(validated.planRef, node.ref)]),
+  )
+  return validated.nodes.map((node) => {
+    const repo = node.repo ?? validated.repo
+    const branch = node.branch ?? validated.branch
+    const baseCommit = node.baseCommit ?? validated.baseCommit
+    const verify = node.verify ?? validated.verify
+    return {
+      workUnitRef: workUnitRefsByNodeRef.get(node.ref) ?? planDagWorkUnitRef(validated.planRef, node.ref),
+      kind: "plan_task",
+      source: "plan_dag",
+      title: node.title,
+      body: node.objective,
+      state: "open",
+      dependsOn: [...(node.dependsOn ?? [])]
+        .map((depRef) => workUnitRefsByNodeRef.get(depRef))
+        .filter((depRef): depRef is string => depRef !== undefined),
+      ...(repo === undefined ? {} : { repo }),
+      ...(branch === undefined ? {} : { branch }),
+      ...(baseCommit === undefined ? {} : { baseCommit }),
+      ...(verify === undefined ? {} : { verify }),
+      ...(node.issue === undefined ? {} : { number: node.issue }),
+      ...(node.labels === undefined ? {} : { labels: [...node.labels] }),
+      ...(node.url === undefined ? {} : { url: node.url }),
+    }
+  })
+}
 
 const ghIssueRecordToCandidate = (repo: string, record: GhIssueRecord): WorkPlannerCandidate | null => {
   if (typeof record.number !== "number") return null
@@ -323,6 +438,8 @@ export const planWorkCandidates = (
   options: WorkPlannerOptions = {},
 ): WorkPlannerOutput => {
   const now = options.now ?? new Date()
+  const completedWorkUnitRefs = new Set(options.completedWorkUnitRefs ?? [])
+  const failedWorkUnitRefs = new Set(options.failedWorkUnitRefs ?? [])
   const excludedLabels = new Set((options.excludedLabels ?? []).map(normalizeLabel))
   const needsOwnerLabels = new Set((options.needsOwnerLabels ?? DEFAULT_NEEDS_OWNER_LABELS).map(normalizeLabel))
   const pullRequests = options.pullRequests ?? candidates.filter((candidate) => candidate.kind === "github_pr")
@@ -337,6 +454,10 @@ export const planWorkCandidates = (
     if (candidate.state === "closed") return skipped(candidate, "closed")
     const prSkip = skipForPrSibling(candidate, pullRequests)
     if (prSkip !== null) return prSkip
+    const missingDeps = (candidate.dependsOn ?? []).filter((depRef) => !completedWorkUnitRefs.has(depRef))
+    const failedDep = missingDeps.find((depRef) => failedWorkUnitRefs.has(depRef))
+    if (failedDep !== undefined) return skipped(candidate, "dependency_failed", failedDep)
+    if (missingDeps.length > 0) return skipped(candidate, "dependency_pending", missingDeps.join(","))
     const claim = options.claimRegistry?.getLiveWorkClaim(candidate.workUnitRef, now)
     if (claim !== undefined && claim !== null) return skipped(candidate, "already_claimed", claim.claimRef)
     return { ...candidate, status: "claimable" }
@@ -376,6 +497,14 @@ export const planGithubBacklogWork = async (
   options: WorkPlannerOptions = {},
 ): Promise<WorkPlannerOutput> => {
   const candidates = await githubBacklogCandidates(source, gh)
+  return planWorkCandidates(source.kind, candidates, options)
+}
+
+export const planDagWork = (
+  source: PlanDagWorkSource,
+  options: WorkPlannerOptions = {},
+): WorkPlannerOutput => {
+  const candidates = planDagCandidates(source)
   return planWorkCandidates(source.kind, candidates, options)
 }
 

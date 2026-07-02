@@ -9,6 +9,7 @@ import {
 import {
   buildWorkPlannerRealWorkDispatch,
   githubBacklogCandidates,
+  planDagWork,
   planFixtureWork,
   planGithubBacklogWork,
   planIssueListWork,
@@ -220,6 +221,120 @@ describe("typed work planner", () => {
     await expect(
       githubBacklogCandidates({ kind: "github_backlog", repo }, async () => JSON.stringify({ items: [] })),
     ).rejects.toThrow(/non-array JSON/)
+  })
+
+  test("plan_dag emits only dependency-ready nodes as claimable", () => {
+    const source = {
+      kind: "plan_dag" as const,
+      planRef: "plan.t9_4",
+      repo,
+      baseCommit: "0123456789abcdef0123456789abcdef01234567",
+      verify: "bun test clients/khala-code-desktop/tests/claude-plan-fanout.test.ts",
+      nodes: [
+        {
+          ref: "root",
+          title: "Define typed contract",
+          objective: "Add the typed plan fan-out contract.",
+          issue: 7873,
+        },
+        {
+          ref: "adapter",
+          title: "Wire FleetRun source",
+          objective: "Convert the plan contract into FleetRun work units.",
+          dependsOn: ["root"],
+        },
+      ],
+    }
+
+    const first = planDagWork(source, { now })
+    expect(first.claimable.map(unit => unit.workUnitRef)).toEqual(["plan_dag:plan.t9_4:node:root"])
+    expect(first.claimable[0]).toMatchObject({
+      kind: "plan_task",
+      repo,
+      number: 7873,
+      body: "Add the typed plan fan-out contract.",
+      baseCommit: "0123456789abcdef0123456789abcdef01234567",
+    })
+    expect(skipReasonsByRef(first.skipped)).toEqual({
+      "plan_dag:plan.t9_4:node:adapter": "dependency_pending",
+    })
+
+    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const rootClaim = store.tryClaimWorkUnit({
+      claimRef: "claim.plan.root",
+      workUnitRef: "plan_dag:plan.t9_4:node:root",
+      runRef: "fleet_run.plan",
+      workerAccountRef: "codex",
+      ttl: 60_000,
+      now,
+    })
+    expect(rootClaim).not.toBeNull()
+    store.updateWorkClaimState("claim.plan.root", "closeout", now)
+
+    const second = planDagWork(source, {
+      claimRegistry: store,
+      completedWorkUnitRefs: ["plan_dag:plan.t9_4:node:root"],
+      now,
+    })
+    expect(second.claimable.map(unit => unit.workUnitRef)).toEqual([
+      "plan_dag:plan.t9_4:node:adapter",
+    ])
+  })
+
+  test("plan_dag marks dependents blocked when a prerequisite failed", () => {
+    const source = {
+      kind: "plan_dag" as const,
+      planRef: "plan.t9_4.failed",
+      nodes: [
+        { ref: "root", title: "Root", objective: "Root task." },
+        { ref: "dependent", title: "Dependent", objective: "Dependent task.", dependsOn: ["root"] },
+      ],
+    }
+
+    const result = planDagWork(source, {
+      failedWorkUnitRefs: ["plan_dag:plan.t9_4.failed:node:root"],
+      now,
+    })
+
+    expect(skipReasonsByRef(result.skipped)).toEqual({
+      "plan_dag:plan.t9_4.failed:node:dependent": "dependency_failed",
+    })
+  })
+
+  test("plan_dag rejects duplicate refs, unknown dependencies, and cycles", () => {
+    expect(() => planDagWork({
+      kind: "plan_dag",
+      planRef: "plan.t9_4.invalid",
+      nodes: [
+        { ref: "root", title: "Root", objective: "Root task." },
+        { ref: "root", title: "Duplicate", objective: "Duplicate task." },
+      ],
+    })).toThrow(/duplicate node ref/)
+
+    expect(() => planDagWork({
+      kind: "plan_dag",
+      planRef: "plan.t9_4.invalid",
+      nodes: [
+        { ref: "dependent", title: "Dependent", objective: "Dependent task.", dependsOn: ["missing"] },
+      ],
+    })).toThrow(/unknown node/)
+
+    expect(() => planDagWork({
+      kind: "plan_dag",
+      planRef: "plan.t9_4.invalid",
+      nodes: [
+        { ref: "a", title: "A", objective: "A task.", dependsOn: ["b"] },
+        { ref: "b", title: "B", objective: "B task.", dependsOn: ["a"] },
+      ],
+    })).toThrow(/cycle/)
+
+    expect(() => planDagWork({
+      kind: "plan_dag",
+      planRef: "plan t9_4 invalid",
+      nodes: [
+        { ref: "root", title: "Root", objective: "Root task." },
+      ],
+    })).toThrow(/public-safe ref/)
   })
 
   test("skip priority is deterministic and includes merged PR siblings", () => {

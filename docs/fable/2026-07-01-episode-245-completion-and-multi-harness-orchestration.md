@@ -301,6 +301,16 @@ the parity contract changes.
   ATIF/per-turn rows) remain for when Claude workers graduate from
   analysis/bounded work to PR delivery.
 
+**T9.4 landing note (2026-07-02):** the first concrete Axis-A/Axis-B
+crossover now exists as a typed handoff rather than an implicit prompt
+pattern. A Claude plan-mode session can emit a bounded task DAG, Desktop
+validates it as public-safe structured data, and FleetRun accepts it as
+`work_source = plan_dag`. The supervisor keeps the deterministic control-flow
+role: it claims dependency-free nodes, dispatches them to Codex workers, and
+only unlocks dependent nodes after closeout. Claude's returned
+`accept | request_changes | replan` review verdict is represented as an
+advisory contract, not as merge or dispatch authority.
+
 ### 3.4 Invariants to keep while doing this
 
 - Isolated worker homes for every harness; never touch `~/.codex` or the

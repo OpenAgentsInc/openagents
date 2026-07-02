@@ -1524,11 +1524,29 @@ const RpcFleetRunCounters = S.Struct({
   failedAssignments: S.Number,
   workUnitsTotal: S.Number,
 })
-const RpcFleetRunWorkSource = S.Struct({
-  kind: S.Literals(["github_backlog", "issue_list", "fixture"]),
+const RpcFleetRunPlanDagNode = S.Struct({
+  ref: S.String,
+  title: S.String,
+  objective: S.String,
+  dependsOn: S.optional(RpcStringArray),
   repo: S.optional(S.String),
+  branch: S.optional(S.String),
+  baseCommit: S.optional(S.String),
+  verify: S.optional(S.String),
+  issue: S.optional(S.Number),
+  labels: S.optional(RpcStringArray),
+  url: S.optional(S.String),
+})
+const RpcFleetRunWorkSource = S.Struct({
+  kind: S.Literals(["github_backlog", "issue_list", "fixture", "plan_dag"]),
+  repo: S.optional(S.String),
+  branch: S.optional(S.String),
+  baseCommit: S.optional(S.String),
+  verify: S.optional(S.String),
   limit: S.optional(S.Number),
   count: S.optional(S.Number),
+  planRef: S.optional(S.String),
+  nodes: S.optional(S.Array(RpcFleetRunPlanDagNode)),
   issues: S.optional(S.Array(S.Union([
     S.Number,
     S.Struct({
