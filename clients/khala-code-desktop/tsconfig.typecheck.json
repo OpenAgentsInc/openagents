@@ -2,6 +2,15 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "paths": {
+      "@openagentsinc/agent-runtime-schema": ["../../packages/agent-runtime-schema/src/index.ts"],
+      "@openagentsinc/arbiter-effect": ["../../packages/arbiter-effect/src/index.ts"],
+      "@openagentsinc/arbiter-effect/*": ["../../packages/arbiter-effect/src/*"],
+      "@openagentsinc/composer-state": ["../../packages/composer-state/src/index.ts"],
+      "@openagentsinc/khala-qa-harness": ["../../packages/khala-qa-harness/src/index.ts"],
+      "@openagentsinc/khala-qa-harness/*": ["../../packages/khala-qa-harness/src/*"],
+      "@openagentsinc/khala-tools": ["../../packages/khala-tools/src/index.ts"],
+      "@openagentsinc/ui": ["../../packages/ui/src/index.ts"],
+      "@openagentsinc/ui/*": ["../../packages/ui/src/*"],
       "electrobun/bun": ["./src/types/electrobun-bun.d.ts"]
     }
   }
