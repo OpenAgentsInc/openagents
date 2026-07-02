@@ -131,6 +131,32 @@ drop-in replacement. The right production conclusion is the combination:
 bundle + hydrate the scene after paint**, which this experiment now
 justifies with numbers.
 
+## 4b. `/lander3` and `/lander4` (same-day follow-ups)
+
+**`/lander3`** = lander2's architecture + the real Three.js landing-squares
+hero loaded lazily: a second isolated Vite lib build emits self-contained
+`/assets/lander3-scene.js` (631 KB raw / 139 KB gzip, Three inlined; the
+main SPA bundle is untouched); the page dynamic-imports it after
+`load`+idle and fades the canvas in over the CSS grid only after its first
+frames rendered (`oa:hero:import-done` / `oa:hero:first-frame` marks).
+Reduced-motion / Save-Data users keep the grid. Live medians: **FCP 288 ms
+mobile-mid** (paint identical to lander2), scene import done ~620 ms, first
+scene frame ~670 ms, fade complete ~1.5 s, zero console errors. Honest
+note: on the 4×-throttled profile the scene eval spends ~1.5 s of
+main-thread *after* paint (page already rendered and interactive links
+usable); low-end devices may warrant not loading the scene at all.
+
+**`/lander4`** = the business-facing "Agents that work." experiment for the
+AW-0 services motion: same SSR architecture, subtler/friendlier StarCraft
+styling (soft slate, restrained blue, faint grid, no WebGL), live
+`/business` copy verbatim, "Talk to Sales" → the `/business` intake.
+Medians: **FCP 268 ms desktop / 320 ms mobile-mid**, CLS 0, TBT 0, ~5.5 KB
+document, 3 requests.
+
+All four variants share the one remaining architectural debt: the
+per-request live-at-read D1 SUM (TTFB ~230–260 ms median with 0.2–2.3 s
+outliers). Caching that scalar is the single next fix for the whole family.
+
 ## 5. Follow-ups this report generates
 
 - Harness v2: interception-control cell (per §3.4) + scene-blocking variant
