@@ -395,26 +395,45 @@ const finiteToken = (value: unknown): number =>
     ? Math.trunc(value)
     : 0
 
+const firstFiniteToken = (...values: unknown[]): number => {
+  for (const value of values) {
+    const token = finiteToken(value)
+    if (token > 0) return token
+  }
+  return 0
+}
+
 /**
  * Reads cumulative exact token usage from the Claude Agent SDK `result`
- * message. The SDK reports usage with Anthropic-native field names
- * (`input_tokens`, `output_tokens`, `cache_read_input_tokens`). Returns null
- * when no positive usage is present so a missing/zero usage does not post a
- * fabricated token row.
+ * message. SDK builds have surfaced both Anthropic-native snake_case fields and
+ * JS-friendly camelCase fields; accept both but still return null when no
+ * positive usage is present so a missing/zero usage does not post a fabricated
+ * token row.
  */
 export function claudeUsageFrom(value: unknown): ClaudeAgentTurnUsage | null {
   if (value === null || typeof value !== "object") return null
   const usage = value as {
+    cachedInputTokens?: unknown
+    cacheCreationInputTokens?: unknown
+    cacheReadInputTokens?: unknown
     input_tokens?: unknown
+    inputTokens?: unknown
     output_tokens?: unknown
+    outputTokens?: unknown
     cache_read_input_tokens?: unknown
     cache_creation_input_tokens?: unknown
   }
-  const inputTokens = finiteToken(usage.input_tokens)
-  const outputTokens = finiteToken(usage.output_tokens)
+  const inputTokens = firstFiniteToken(usage.input_tokens, usage.inputTokens)
+  const outputTokens = firstFiniteToken(usage.output_tokens, usage.outputTokens)
+  const cacheReadTokens = firstFiniteToken(usage.cache_read_input_tokens, usage.cacheReadInputTokens)
+  const cacheCreationTokens = firstFiniteToken(
+    usage.cache_creation_input_tokens,
+    usage.cacheCreationInputTokens,
+  )
   const cachedInputTokens =
-    finiteToken(usage.cache_read_input_tokens) +
-    finiteToken(usage.cache_creation_input_tokens)
+    cacheReadTokens + cacheCreationTokens > 0
+      ? cacheReadTokens + cacheCreationTokens
+      : firstFiniteToken(usage.cachedInputTokens)
   if (inputTokens === 0 && outputTokens === 0 && cachedInputTokens === 0) {
     return null
   }
@@ -557,12 +576,98 @@ type ClaudeAgentLease = {
   codingAssignment?: unknown
 }
 
+type ClaudeTokenUsageReportDiagnostic = {
+  blockerRefs: string[]
+  proofRefs: string[]
+  resultRefs: string[]
+  summaryRefs: string[]
+}
+
+type ClaudeTokenUsageReportState =
+  | "reported"
+  | "missing"
+  | "report_failed"
+  | "reporter_unconfigured"
+
+function claudeTokenUsageReportDiagnostic(
+  state: ClaudeTokenUsageReportState,
+  seed: string,
+): ClaudeTokenUsageReportDiagnostic {
+  const resultRef = `result.public.pylon.claude_agent_task.token_usage_${state}`
+  const summaryRef = `summary.public.pylon.claude_agent_task.token_usage_${state}`
+  return {
+    blockerRefs:
+      state === "reported"
+        ? []
+        : [`blocker.assignment.claude_agent_token_usage_${state}`],
+    proofRefs: [stableRef(`proof.pylon.claude_agent_task.token_usage_${state}`, seed)],
+    resultRefs: [resultRef],
+    summaryRefs: [summaryRef],
+  }
+}
+
+async function reportClaudeAgentTurnUsage(input: {
+  lease: ClaudeAgentLease
+  materialized: Awaited<ReturnType<typeof materializeClaudeAgentWorkspace>>
+  now: Date
+  options: ClaudeAgentExecutionOptions
+  run: ClaudeAgentRunResult
+  runRef: string
+  state: PylonLocalState
+}): Promise<ClaudeTokenUsageReportDiagnostic> {
+  const seed = [
+    input.lease.assignmentRef,
+    input.lease.leaseRef,
+    input.runRef,
+    input.run.sessionRef ?? "session.pending",
+    input.materialized.workspaceRef,
+  ].join(":")
+  if (input.run.usage === null) {
+    return claudeTokenUsageReportDiagnostic("missing", seed)
+  }
+
+  const reporter =
+    input.options.claudeTurnReporter ??
+    createPylonClaudeTurnReporter({
+      ...(input.options.agentToken === undefined ? {} : { agentToken: input.options.agentToken }),
+      ...(input.options.baseUrl === undefined ? {} : { baseUrl: input.options.baseUrl }),
+      ...(input.options.fetch === undefined ? {} : { fetch: input.options.fetch }),
+    })
+  if (reporter === undefined) {
+    return claudeTokenUsageReportDiagnostic("reporter_unconfigured", seed)
+  }
+
+  try {
+    await reporter({
+      assignmentRef: input.lease.assignmentRef,
+      leaseRef: input.lease.leaseRef,
+      pylonRef: input.state.identity.pylonRef,
+      runRef: input.runRef,
+      ...(input.run.sessionRef === null ? {} : { sessionRef: input.run.sessionRef }),
+      workspaceRef: input.materialized.workspaceRef,
+      turnIndex: 1,
+      observedAt: input.now.toISOString(),
+      usage: {
+        inputTokens: input.run.usage.inputTokens,
+        cachedInputTokens: input.run.usage.cachedInputTokens,
+        outputTokens: input.run.usage.outputTokens,
+      },
+    })
+    return claudeTokenUsageReportDiagnostic("reported", seed)
+  } catch {
+    return claudeTokenUsageReportDiagnostic("report_failed", seed)
+  }
+}
+
 function refusalRecord(input: {
   lease: ClaudeAgentLease
   runRef: string
   blockerRefs: string[]
+  proofRefs?: string[]
   resultRef: string
+  resultRefs?: string[]
   summaryRef: string
+  summaryRefs?: string[]
   message: string
 }) {
   const failureRef = stableRef(
@@ -579,11 +684,11 @@ function refusalRecord(input: {
     buildRefs: [input.runRef],
     message: input.message,
     previewRefs: [],
-    proofRefs: [failureRef],
-    resultRefs: [input.resultRef],
+    proofRefs: [failureRef, ...(input.proofRefs ?? [])],
+    resultRefs: [input.resultRef, ...(input.resultRefs ?? [])],
     runRefs: [input.runRef],
     status: "rejected" as const,
-    summaryRefs: [input.summaryRef],
+    summaryRefs: [input.summaryRef, ...(input.summaryRefs ?? [])],
     testRefs: [failureRef],
   }
 }
@@ -675,13 +780,29 @@ export async function executeClaudeAgentAssignment(
     })
   }
 
+  const tokenUsageReport = await reportClaudeAgentTurnUsage({
+    lease,
+    materialized,
+    now,
+    options,
+    run,
+    runRef,
+    state,
+  })
+
   if (run.outcome === "workspace_escape_blocked") {
     return refusalRecord({
       lease,
       runRef,
-      blockerRefs: ["blocker.assignment.claude_agent_workspace_escape_blocked"],
+      blockerRefs: [
+        "blocker.assignment.claude_agent_workspace_escape_blocked",
+        ...tokenUsageReport.blockerRefs,
+      ],
+      proofRefs: tokenUsageReport.proofRefs,
       resultRef: "result.public.pylon.claude_agent_task.workspace_escape_blocked",
+      resultRefs: tokenUsageReport.resultRefs,
       summaryRef: "summary.public.pylon.claude_agent_task.workspace_escape_blocked",
+      summaryRefs: tokenUsageReport.summaryRefs,
       message: "Local Claude Agent session was stopped: a tool call targeted paths outside the bounded workspace.",
     })
   }
@@ -689,9 +810,15 @@ export async function executeClaudeAgentAssignment(
     return refusalRecord({
       lease,
       runRef,
-      blockerRefs: ["blocker.assignment.claude_agent_budget_exceeded"],
+      blockerRefs: [
+        "blocker.assignment.claude_agent_budget_exceeded",
+        ...tokenUsageReport.blockerRefs,
+      ],
+      proofRefs: tokenUsageReport.proofRefs,
       resultRef: "result.public.pylon.claude_agent_task.budget_exceeded",
+      resultRefs: tokenUsageReport.resultRefs,
       summaryRef: "summary.public.pylon.claude_agent_task.budget_exceeded",
+      summaryRefs: tokenUsageReport.summaryRefs,
       message: "Local Claude Agent session exceeded its turn or wall-clock budget before completing the task.",
     })
   }
@@ -699,48 +826,17 @@ export async function executeClaudeAgentAssignment(
     return refusalRecord({
       lease,
       runRef,
-      blockerRefs: ["blocker.assignment.claude_agent_execution_refused"],
+      blockerRefs: [
+        "blocker.assignment.claude_agent_execution_refused",
+        ...tokenUsageReport.blockerRefs,
+      ],
+      proofRefs: tokenUsageReport.proofRefs,
       resultRef: "result.public.pylon.claude_agent_task.execution_refused",
+      resultRefs: tokenUsageReport.resultRefs,
       summaryRef: "summary.public.pylon.claude_agent_task.execution_refused",
+      summaryRefs: tokenUsageReport.summaryRefs,
       message: "Local Claude Agent session ended with an execution error before completing the task.",
     })
-  }
-
-  // #6391: post the exact own-capacity Claude Agent SDK token usage for this
-  // completed turn so a `token_usage_events` row exists (provider
-  // `pylon-claude-own-capacity`, model `openagents/pylon-claude`). Fail-soft: a
-  // reporter outage must never fail the local coding task. Skipped when the SDK
-  // surfaced no usage (never fabricate a row).
-  if (run.usage != null) {
-    const reporter =
-      options.claudeTurnReporter ??
-      createPylonClaudeTurnReporter({
-        ...(options.agentToken === undefined ? {} : { agentToken: options.agentToken }),
-        ...(options.baseUrl === undefined ? {} : { baseUrl: options.baseUrl }),
-        ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
-      })
-    if (reporter !== undefined) {
-      try {
-        await reporter({
-          assignmentRef: lease.assignmentRef,
-          leaseRef: lease.leaseRef,
-          pylonRef: state.identity.pylonRef,
-          runRef,
-          ...(run.sessionRef === null ? {} : { sessionRef: run.sessionRef }),
-          workspaceRef: materialized.workspaceRef,
-          turnIndex: 1,
-          observedAt: now.toISOString(),
-          usage: {
-            inputTokens: run.usage.inputTokens,
-            cachedInputTokens: run.usage.cachedInputTokens,
-            outputTokens: run.usage.outputTokens,
-          },
-        })
-      } catch {
-        // Fail-soft: token-ingest outage does not abort the local coding task.
-        // The exact token row can be reconciled/retried; the local work stands.
-      }
-    }
   }
 
   const verification = await runCommand({ args: materialized.verificationArgs, cwd: materialized.workspace })
@@ -761,18 +857,22 @@ export async function executeClaudeAgentAssignment(
 
   return {
     artifactRefs: [artifactRef],
-    blockerRefs: passed ? [] : ["blocker.assignment.claude_agent_test_failed"],
+    blockerRefs: [
+      ...(passed ? [] : ["blocker.assignment.claude_agent_test_failed"]),
+      ...tokenUsageReport.blockerRefs,
+    ],
     buildRefs: [commandRef],
     message: passed
       ? `Local Claude Agent completed the bounded coding task: ${run.editedFileCount} file edit(s), ${run.commandCount} command(s), ${run.turnCount} turn(s), verification test passed on this device.`
       : "Local Claude Agent session completed but the verification test command failed; the change is not accepted.",
     previewRefs: [materialized.workspaceRef],
-    proofRefs: [proofRef],
+    proofRefs: [proofRef, ...tokenUsageReport.proofRefs],
     resultRefs: [
       passed
         ? `result.public.pylon.claude_agent_task.${materialized.acceptanceResultRef}_passed`
         : `result.public.pylon.claude_agent_task.${materialized.acceptanceResultRef}_failed`,
       `result.public.pylon.claude_agent_task.edited_files.${run.editedFileCount}`,
+      ...tokenUsageReport.resultRefs,
     ],
     runRefs: [runRef, ...sessionRefs],
     status: passed ? ("accepted" as const) : ("rejected" as const),
@@ -780,6 +880,7 @@ export async function executeClaudeAgentAssignment(
       passed
         ? `summary.public.pylon.claude_agent_task.${materialized.acceptanceResultRef}_passed`
         : `summary.public.pylon.claude_agent_task.${materialized.acceptanceResultRef}_failed`,
+      ...tokenUsageReport.summaryRefs,
     ],
     testRefs: [commandRef],
   }

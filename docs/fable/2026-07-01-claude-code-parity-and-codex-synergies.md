@@ -210,7 +210,9 @@ tracked its gaps.
   Decide the ingest route deliberately: the desktop Codex path posts to
   `/api/stats/token-usage/events`; the Pylon Claude lane posts to
   `/api/pylon/claude/turns`. Keeping the desktop-Claude path on the stats route
-  matches the desktop-Codex path; keep exact-only accounting either way.
+  matches the desktop-Codex path; keep exact-only accounting either way. The
+  bounded Pylon-Claude executor now treats a missing/unconfigured/failed turn
+  reporter as a public-safe closeout diagnostic, not as a silent success.
 - **MCP / fleet bridge** (`src/bun/claude-fleet-mcp-bridge.ts`): the Claude
   equivalent of the Codex MCP bridge is *simpler* — no config file to mutate.
   Inject the `khala_fleet` server descriptor directly into `options.mcpServers`

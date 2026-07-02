@@ -188,7 +188,7 @@ Source: episode-245 §3.2–3.3; Claude-parity §4.
 | T9.4 | Plan-then-fan-out: Claude plan-mode session (Fable, `permissionMode:'plan'`) emits a typed task DAG → FleetRun work units → Codex dispatch; Claude reviews returned diffs (accept / request-changes / re-plan); deterministic program stays control-flow authority | T8.2, T3.1, T4.1 | MED |
 | T9.5 | Claude second-pass reviewer: structured verdict (`outputFormat: json_schema`) after verify-green, feeding merge policy as advisory signal (verify command remains authority) | T4.3, T8.2 | MED |
 | T9.6 | Cross-harness session catalog: shared local `SessionStore`-style catalog for Khala Code Desktop, merging `codex-sessions.json` + Codex thread list with `claude-sessions.json` + Claude SDK `listSessions`; entries carry harness kind, refs, timestamps, and exact reported totals only, with schema-first RPC/sidebar rendering | T8.2 | MED |
-| T9.7 | Claude-lane closeout depth (deferred until Claude workers do PR delivery): PR publisher analogue, per-turn token rows, raw-event/ATIF observability, full-access posture decision, Claude burn runbook | T9.1 | MED |
+| T9.7 | **SHIPPED for current desktop-fleet push:** Claude closeout exact-token diagnostics: SDK usage decoding accepts snake_case/camelCase, every completed assignment session attempts `/api/pylon/claude/turns`, closeouts carry `token_usage_reported` or typed accounting blockers, and the CI smoke now requires the reporter path. PR publishing, raw-event/ATIF ingest, and public/fleet `bypassPermissions` remain deliberately deferred until Claude PR delivery; bounded Claude stays local-verification only. | T9.1 | MED |
 
 ### WS-10 — One status spine (Orca P2)
 

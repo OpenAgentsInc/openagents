@@ -15,6 +15,7 @@ describe("claude agent task smoke (CI-safe leg)", () => {
     expect(result.closeoutStatus).toBe("accepted")
     expect(result.closeoutRef).toContain("assignment.closeout.")
     expect(result.resultRefs).toContain("result.public.pylon.claude_agent_task.fixture_repair_passed")
+    expect(result.resultRefs).toContain("result.public.pylon.claude_agent_task.token_usage_reported")
     expect(result.blockerRefs).toEqual([])
     expect(result.boundaryChecks).toEqual({
       paymentMode: "no-spend",

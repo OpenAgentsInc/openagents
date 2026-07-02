@@ -7,12 +7,14 @@ import {
   CLAUDE_AGENT_SUM_REPAIR_FIXTURE_REF,
   CLAUDE_AGENT_TASK_SCHEMA,
   claudeAgentTaskFrom,
+  claudeUsageFrom,
   executeClaudeAgentAssignment,
   toolInputEscapesWorkspace,
   type ClaudeAgentCheckoutRunner,
   type ClaudeAgentRunner,
 } from "../src/claude-agent-executor"
 import { CLAUDE_AGENT_SDK_PACKAGE } from "../src/claude-agent"
+import type { ClaudeTurnReport } from "../src/claude-turn-reporter"
 import { createBootstrapSummary, parseBootstrapArgs } from "../src/bootstrap"
 import { ensurePylonLocalState, assertPublicProjectionSafe } from "../src/state"
 
@@ -78,12 +80,36 @@ const lease = {
   codingAssignment: claudeAgentCodingAssignment,
 }
 
+const successfulClaudeTurnReporter = async (_report: ClaudeTurnReport) => {}
+
 const fixingRunner: ClaudeAgentRunner = async (input) => {
   await writeFile(
     join(input.cwd, "sum.ts"),
     "export const sum = (left: number, right: number) => left + right\n",
   )
-  return { outcome: "completed", turnCount: 3, editedFileCount: 1, commandCount: 1, sessionRef: null , usage: { inputTokens: 1200, cachedInputTokens: 0, outputTokens: 340 } }
+  return {
+    outcome: "completed",
+    turnCount: 3,
+    editedFileCount: 1,
+    commandCount: 1,
+    sessionRef: null,
+    usage: { inputTokens: 1200, cachedInputTokens: 0, outputTokens: 340 },
+  }
+}
+
+const fixingRunnerWithoutUsage: ClaudeAgentRunner = async (input) => {
+  await writeFile(
+    join(input.cwd, "sum.ts"),
+    "export const sum = (left: number, right: number) => left + right\n",
+  )
+  return {
+    outcome: "completed",
+    turnCount: 3,
+    editedFileCount: 1,
+    commandCount: 1,
+    sessionRef: null,
+    usage: null,
+  }
 }
 
 const checkoutRunner: ClaudeAgentCheckoutRunner = async (workspace) => {
@@ -130,6 +156,36 @@ async function withState<T>(fn: (state: Awaited<ReturnType<typeof ensurePylonLoc
 }
 
 describe("claude agent task recognition", () => {
+  test("decodes Claude SDK usage with snake_case or camelCase token fields", () => {
+    expect(
+      claudeUsageFrom({
+        input_tokens: 1200,
+        cache_read_input_tokens: 70,
+        cache_creation_input_tokens: 30,
+        output_tokens: 340,
+      }),
+    ).toEqual({ cachedInputTokens: 100, inputTokens: 1200, outputTokens: 340 })
+    expect(
+      claudeUsageFrom({
+        inputTokens: 800,
+        cacheReadInputTokens: 20,
+        cacheCreationInputTokens: 10,
+        outputTokens: 200,
+      }),
+    ).toEqual({ cachedInputTokens: 30, inputTokens: 800, outputTokens: 200 })
+    expect(
+      claudeUsageFrom({
+        input_tokens: 900,
+        inputTokens: 800,
+        cachedInputTokens: 15,
+        output_tokens: 250,
+        outputTokens: 200,
+      }),
+    ).toEqual({ cachedInputTokens: 15, inputTokens: 900, outputTokens: 250 })
+    expect(claudeUsageFrom({ input_tokens: 0, output_tokens: 0 })).toBeNull()
+    expect(claudeUsageFrom(undefined)).toBeNull()
+  })
+
   test("recognizes the typed work class and passes everything else through", async () => {
     expect(claudeAgentTaskFrom(claudeAgentCodingAssignment)).not.toBeNull()
     expect(claudeAgentTaskFrom({ kind: "job.public.tassadar_executor_trace", tassadar: {} })).toBeNull()
@@ -151,20 +207,78 @@ describe("claude agent task recognition", () => {
 
   test("executes the fixture task, verifies with the real test command, accepts", async () => {
     await withState(async (state) => {
+      const reports: ClaudeTurnReport[] = []
       const record = await executeClaudeAgentAssignment(state, lease, now, {
         claudeAgentRunner: fixingRunner,
         claudeAgentProbe: readyProbe,
+        claudeTurnReporter: async (report) => {
+          reports.push(report)
+        },
       })
       expect(record).not.toBeNull()
       expect(record?.status).toBe("accepted")
       expect(record?.blockerRefs).toEqual([])
       expect(record?.resultRefs).toContain("result.public.pylon.claude_agent_task.fixture_repair_passed")
+      expect(record?.resultRefs).toContain("result.public.pylon.claude_agent_task.token_usage_reported")
+      expect(record?.summaryRefs).toContain("summary.public.pylon.claude_agent_task.token_usage_reported")
       expect(record?.artifactRefs[0]).toStartWith("artifact.pylon.claude_agent_task.patch.")
       expect(record?.testRefs[0]).toStartWith("command.pylon.claude_agent_task.verification.")
+      expect(reports).toHaveLength(1)
+      expect(reports[0]).toMatchObject({
+        assignmentRef: lease.assignmentRef,
+        leaseRef: lease.leaseRef,
+        observedAt: now.toISOString(),
+        pylonRef: state.identity.pylonRef,
+        turnIndex: 1,
+        usage: { cachedInputTokens: 0, inputTokens: 1200, outputTokens: 340 },
+      })
+      expect(reports[0]?.runRef).toStartWith("run.pylon.claude_agent_task.")
+      expect(reports[0]?.workspaceRef).toStartWith("workspace.pylon.claude_agent_task.")
       assertPublicProjectionSafe(record)
       const projected = JSON.stringify(record)
       expect(projected).not.toContain(state.paths.cache)
       expect(projected).not.toContain("bounded fixture workspace")
+    })
+  })
+
+  test("keeps accepted work visible when token reporting fails, with a typed blocker", async () => {
+    await withState(async (state) => {
+      const record = await executeClaudeAgentAssignment(state, lease, now, {
+        claudeAgentRunner: fixingRunner,
+        claudeAgentProbe: readyProbe,
+        claudeTurnReporter: async () => {
+          throw new Error("turn ingest down")
+        },
+      })
+      expect(record?.status).toBe("accepted")
+      expect(record?.blockerRefs).toContain("blocker.assignment.claude_agent_token_usage_report_failed")
+      expect(record?.resultRefs).toContain("result.public.pylon.claude_agent_task.token_usage_report_failed")
+      expect(record?.summaryRefs).toContain("summary.public.pylon.claude_agent_task.token_usage_report_failed")
+      assertPublicProjectionSafe(record)
+    })
+  })
+
+  test("surfaces missing or unconfigured Claude token reporting as public-safe closeout diagnostics", async () => {
+    await withState(async (state) => {
+      const missingUsageRecord = await executeClaudeAgentAssignment(state, lease, now, {
+        claudeAgentRunner: fixingRunnerWithoutUsage,
+        claudeAgentProbe: readyProbe,
+      })
+      expect(missingUsageRecord?.status).toBe("accepted")
+      expect(missingUsageRecord?.blockerRefs).toContain("blocker.assignment.claude_agent_token_usage_missing")
+      expect(missingUsageRecord?.resultRefs).toContain("result.public.pylon.claude_agent_task.token_usage_missing")
+      assertPublicProjectionSafe(missingUsageRecord)
+
+      const unconfiguredRecord = await executeClaudeAgentAssignment(state, lease, now, {
+        claudeAgentRunner: fixingRunner,
+        claudeAgentProbe: readyProbe,
+      })
+      expect(unconfiguredRecord?.status).toBe("accepted")
+      expect(unconfiguredRecord?.blockerRefs).toContain("blocker.assignment.claude_agent_token_usage_reporter_unconfigured")
+      expect(unconfiguredRecord?.resultRefs).toContain(
+        "result.public.pylon.claude_agent_task.token_usage_reporter_unconfigured",
+      )
+      assertPublicProjectionSafe(unconfiguredRecord)
     })
   })
 
@@ -190,6 +304,7 @@ describe("claude agent task recognition", () => {
           checkoutRunner,
           claudeAgentRunner: observingRunner,
           claudeAgentProbe: readyProbe,
+          claudeTurnReporter: successfulClaudeTurnReporter,
         },
       )
 
@@ -217,7 +332,11 @@ describe("claude agent task recognition", () => {
         claudeAgentProbe: readyProbe,
       })
       expect(record?.status).toBe("rejected")
-      expect(record?.blockerRefs).toEqual(["blocker.assignment.claude_agent_test_failed"])
+      expect(record?.blockerRefs).toEqual([
+        "blocker.assignment.claude_agent_test_failed",
+        "blocker.assignment.claude_agent_token_usage_missing",
+      ])
+      expect(record?.resultRefs).toContain("result.public.pylon.claude_agent_task.token_usage_missing")
       assertPublicProjectionSafe(record)
     })
   })
@@ -249,11 +368,12 @@ describe("claude agent task recognition", () => {
           editedFileCount: 0,
           commandCount: 0,
           sessionRef: null,
-          usage: null,
+          usage: { inputTokens: 10, cachedInputTokens: 0, outputTokens: 5 },
         })
         const record = await executeClaudeAgentAssignment(state, lease, now, {
           claudeAgentRunner: runner,
           claudeAgentProbe: readyProbe,
+          claudeTurnReporter: successfulClaudeTurnReporter,
         })
         expect(record?.status).toBe("rejected")
         expect(record?.blockerRefs).toEqual([blocker])
@@ -277,6 +397,7 @@ describe("claude agent task recognition", () => {
       const record = await executeClaudeAgentAssignment(state, lease, now, {
         claudeAgentRunner: fixingRunner,
         claudeAgentProbe: readyProbe,
+        claudeTurnReporter: successfulClaudeTurnReporter,
       })
       const tampered = { ...record, message: `${record?.message} raw prompt follows` }
       expect(() => assertPublicProjectionSafe(tampered)).toThrow()
@@ -297,6 +418,7 @@ describe("claude agent task recognition", () => {
       const record = await executeClaudeAgentAssignment(state, lease, now, {
         claudeAgentRunner: observingRunner,
         claudeAgentProbe: readyProbe,
+        claudeTurnReporter: successfulClaudeTurnReporter,
       })
       expect(record?.status).toBe("accepted")
       expect(workspaceDir).not.toBeNull()
@@ -324,6 +446,7 @@ describe("claude agent task recognition", () => {
         account,
         claudeAgentRunner: observingRunner,
         claudeAgentProbe: readyProbe,
+        claudeTurnReporter: successfulClaudeTurnReporter,
       })
       expect(record?.status).toBe("accepted")
       expect(seenClaudeConfigDir).toBe("/tmp/pylon-claude-account")
