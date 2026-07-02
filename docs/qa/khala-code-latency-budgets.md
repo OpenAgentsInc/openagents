@@ -39,6 +39,12 @@ show the budget ID, metric, threshold, unit, percentile, sample count, and the
 current catalog evaluation status. Runs with no samples are intentionally
 `inconclusive`.
 
+The Q2.6 sample-coverage burn-down slice wires real UI samples for the Q2.2
+paths that previously could not become green in a nightly report:
+startup-to-interactive, composer keystroke echo, preview/native chat
+event-to-UI, first visible turn event, transcript scroll dropped-frame percent,
+and app-server spawn-ready time.
+
 Each nightly also persists a `latencyBudgetRun` object inside
 `qa-nightly-report.json`. It records each budget's actual value, evaluation
 status, sample count, and up to five offending public-safe sample refs collected

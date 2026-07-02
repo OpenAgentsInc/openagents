@@ -21,6 +21,10 @@ Electrobun:
 
 - browser preview: renderer calls `/rpc/qaMetricSample`; `/rpc/qaMetrics`
   reads the host snapshot.
+- browser preview: `/rpc/events` chat-turn SSE is decoded through the shared
+  chat event schema and applied to the renderer, so `sse.event_to_ui_ms` and
+  `turn_start.first_event_ms` can be sampled in Mode D, not only in packaged
+  native RPC.
 - packaged app: renderer calls the native Electrobun `qaMetricSample` request;
   `qaMetrics` reads the same host snapshot.
 
@@ -36,9 +40,15 @@ including:
 - `thread_switch.optimistic_render_ms`
 - `thread_switch.full_render_ms`
 - `thread_switch.hydrated_render_ms`
+- `startup.interactive_ms`
 - `turn_start.latency_ms`
+- `turn_start.first_event_ms`
 - `first_render.ms`
 - `panel.open_ms`
+- `composer.keystroke_echo_ms`
+- `sse.event_to_ui_ms`
+- `transcript.scroll_dropped_frames_pct`
+- `app_server.spawn_ready_ms`
 - `cache.hit`
 
 The thread-switch path is the first live lag assertion target: selecting a

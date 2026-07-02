@@ -21,6 +21,7 @@ import type {
   KhalaCodeDesktopCodexHarnessStatus,
   KhalaCodeDesktopFleetRunProjection,
   KhalaCodeDesktopFleetRunStartRequest,
+  KhalaCodeDesktopQaMetricSample,
 } from "../src/shared/rpc"
 
 const tempDirs: string[] = []
@@ -513,6 +514,7 @@ describe("Khala Code desktop RPC handlers", () => {
   })
 
   test("answers native desktop status probes instead of falling through", async () => {
+    const qaSamples: KhalaCodeDesktopQaMetricSample[] = []
     const handlers = createKhalaCodeDesktopRpcRequestHandlers({
       appleFmReadiness: () => {
         throw new Error("not used")
@@ -571,6 +573,9 @@ describe("Khala Code desktop RPC handlers", () => {
       onDeviceDeciderStatus: () => {
         throw new Error("not used")
       },
+      recordQaMetricSample: sample => {
+        qaSamples.push(sample)
+      },
       workingDirectory: process.cwd(),
     })
 
@@ -593,6 +598,11 @@ describe("Khala Code desktop RPC handlers", () => {
         initialized: true,
       },
     })
+    expect(qaSamples).toContainEqual(expect.objectContaining({
+      context: { action: "start", transport: "stdio" },
+      metric: "app_server.spawn_ready_ms",
+      unit: "ms",
+    }))
     await expect(handlers.codexHarnessStatus()).resolves.toMatchObject({
       available: true,
       capability: "codex_harness",

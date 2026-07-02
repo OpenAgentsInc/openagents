@@ -42,6 +42,7 @@ import * as Three from "three"
 import {
   KHALA_CODE_DESKTOP_DEFAULT_PREVIEW_PORT,
   KHALA_CODE_DESKTOP_RPC_MAX_REQUEST_TIME_MS,
+  KhalaCodeDesktopChatTurnEventSchema,
   KhalaCodeDesktopRpcBridgeFailure,
   decodeKhalaCodeDesktopRpcParameters,
   decodeKhalaCodeDesktopRpcResult,
@@ -531,9 +532,22 @@ const applyFleetLifecycleEvent = (event: KhalaCodeDesktopFleetLifecycleEvent): v
   fleetLifecycleLines.push(event.line)
 }
 
-const startPreviewFleetLifecycleEvents = (): void => {
+const decodeChatTurnEvent = (input: unknown): KhalaCodeDesktopChatTurnEvent =>
+  S.decodeUnknownSync(KhalaCodeDesktopChatTurnEventSchema as never)(input) as KhalaCodeDesktopChatTurnEvent
+
+const startPreviewBridgeEvents = (): void => {
   if (!isKhalaPreviewWindow) return
   const eventSource = new EventSource("/rpc/events")
+  eventSource.addEventListener("chatTurnEvent", event => {
+    try {
+      const payload = JSON.parse((event as MessageEvent<string>).data) as {
+        readonly event?: unknown
+      }
+      applyChatTurnEvent(decodeChatTurnEvent(payload.event))
+    } catch {
+      // Ignore malformed preview diagnostics; native RPC still carries typed events.
+    }
+  })
   eventSource.addEventListener("fleetLifecycleEvent", event => {
     try {
       const payload = JSON.parse((event as MessageEvent<string>).data) as {
@@ -574,7 +588,7 @@ const isKhalaPreviewWindow =
 // Electrobun internal ports also run on localhost, but they only accept socket
 // RPC and will log noisy fallthroughs for /rpc/* requests.
 const rpc = isKhalaPreviewWindow ? previewRpc() : nativeRpc
-startPreviewFleetLifecycleEvents()
+startPreviewBridgeEvents()
 if (!isKhalaPreviewWindow) {
   new Electroview({ rpc: nativeRpc })
 }
@@ -669,6 +683,8 @@ const attachButton = requireElement<HTMLButtonElement>("#attach-button")
 const fileInput = requireElement<HTMLInputElement>("#file-input")
 
 const activeTurnIds = new Set<string>()
+const activeTurnStartTimes = new Map<string, number>()
+const turnFirstVisibleEventRecorded = new Set<string>()
 const objectUrls = new Set<string>()
 const localTextAttachments = new Map<string, string>()
 const localAttachmentFiles = new Map<string, File>()
@@ -715,6 +731,7 @@ const THREAD_SWITCH_INITIAL_MESSAGE_LIMIT = 80
 const THREAD_SWITCH_FULL_HYDRATION_TIMEOUT_MS = 80
 const THREAD_SWITCH_PERFORMANCE_SAMPLE_LIMIT = 60
 const QA_METRIC_SAMPLE_LIMIT = 240
+const TRANSCRIPT_SCROLL_SAMPLE_FRAME_COUNT = 12
 const threadMessageCache = new Map<string, readonly KhalaCodeDesktopMessage[]>()
 const threadPrefetches = new Map<string, Promise<void>>()
 const threadListCache = new Map<string, {
@@ -750,6 +767,35 @@ const markQaTimer = (
   context?: KhalaCodeQaMetricSample["context"],
 ): void => {
   requestAnimationFrame(() => pushQaMetricSample(metric, performance.now() - startedAt, context))
+}
+
+let transcriptScrollSampleInFlight = false
+
+const sampleTranscriptScrollDroppedFrames = (
+  source: "keyboard" | "wheel",
+): void => {
+  if (transcriptScrollSampleInFlight) return
+  transcriptScrollSampleInFlight = true
+  let previousFrameAt = performance.now()
+  let frameCount = 0
+  let droppedFrameCount = 0
+  const step = (frameAt: number): void => {
+    if (frameCount > 0 && frameAt - previousFrameAt > 24) droppedFrameCount += 1
+    previousFrameAt = frameAt
+    frameCount += 1
+    if (frameCount >= TRANSCRIPT_SCROLL_SAMPLE_FRAME_COUNT) {
+      const measuredFrames = Math.max(1, frameCount - 1)
+      pushQaMetricSample(
+        "transcript.scroll_dropped_frames_pct",
+        (droppedFrameCount / measuredFrames) * 100,
+        { droppedFrames: droppedFrameCount, frames: measuredFrames, source },
+      )
+      transcriptScrollSampleInFlight = false
+      return
+    }
+    requestAnimationFrame(step)
+  }
+  requestAnimationFrame(step)
 }
 
 const emptyThreadTokenSummary = (
@@ -1118,7 +1164,10 @@ const proxyTranscriptWheel = (event: WheelEvent): void => {
   if (event.defaultPrevented || isComposerScrollTarget(event.target) || !canScrollTranscript()) return
   const before = messageList.scrollTop
   setTranscriptScrollTop(before + wheelDeltaPixels(event))
-  if (messageList.scrollTop !== before) event.preventDefault()
+  if (messageList.scrollTop !== before) {
+    sampleTranscriptScrollDroppedFrames("wheel")
+    event.preventDefault()
+  }
 }
 
 const proxyTranscriptKeyScroll = (event: KeyboardEvent): void => {
@@ -1137,7 +1186,10 @@ const proxyTranscriptKeyScroll = (event: KeyboardEvent): void => {
   if (delta === null) return
   const before = messageList.scrollTop
   setTranscriptScrollTop(before + delta)
-  if (messageList.scrollTop !== before) event.preventDefault()
+  if (messageList.scrollTop !== before) {
+    sampleTranscriptScrollDroppedFrames("keyboard")
+    event.preventDefault()
+  }
 }
 
 const recentThreadHotkeyIndexForEvent = (event: KeyboardEvent): number | null => {
@@ -1954,8 +2006,28 @@ const appendMessages = (nextMessages: readonly KhalaCodeDesktopMessage[]): void 
 const latestUserMessagePreview = (): string =>
   [...shellModel().messages].reverse().find(message => message.role === "user")?.body.trim() ?? ""
 
+const markVisibleChatTurnEventPaint = (
+  event: KhalaCodeDesktopChatTurnEvent,
+  receivedAt: number,
+): void => {
+  requestAnimationFrame(() => {
+    const context = {
+      eventType: event.type,
+      threadId: shellModel().activeCodexThreadId ?? "unknown",
+      turnId: event.turnId,
+    }
+    pushQaMetricSample("sse.event_to_ui_ms", performance.now() - receivedAt, context)
+    const turnStartedAt = activeTurnStartTimes.get(event.turnId)
+    if (turnStartedAt === undefined || turnFirstVisibleEventRecorded.has(event.turnId)) return
+    turnFirstVisibleEventRecorded.add(event.turnId)
+    pushQaMetricSample("turn_start.first_event_ms", performance.now() - turnStartedAt, context)
+  })
+}
+
 function applyChatTurnEvent(event: KhalaCodeDesktopChatTurnEvent): void {
   if (!activeTurnIds.has(event.turnId)) return
+  const receivedAt = performance.now()
+  let visibleEventRendered = false
   if (event.type === "thread_ready") {
     setActiveCodexThreadId(event.threadId)
     threadSidebar?.upsertPendingThread({
@@ -1977,6 +2049,7 @@ function applyChatTurnEvent(event: KhalaCodeDesktopChatTurnEvent): void {
     case "message_start":
       shellModel().pendingTurn = true
       appendMessages([event.message])
+      visibleEventRendered = true
       break
     case "message_delta":
       setShellMessages(shellModel().messages.map(message =>
@@ -1985,15 +2058,18 @@ function applyChatTurnEvent(event: KhalaCodeDesktopChatTurnEvent): void {
           : message
       ))
       render()
+      visibleEventRendered = true
       break
     case "message_replace":
       appendMessages([event.message])
+      visibleEventRendered = true
       break
     case "message_done":
       break
     case "tool_event":
       break
   }
+  if (visibleEventRendered) markVisibleChatTurnEventPaint(event, receivedAt)
 }
 
 const parseDatasetJson = <T>(value: string | undefined): T | undefined => {
@@ -2297,6 +2373,8 @@ const stopActiveTurn = (): void => {
   const stoppedTurnIds = [...activeTurnIds]
   for (const turnId of stoppedTurnIds) {
     void rpc.request.codexTurnInterrupt({ sessionId, turnId }).catch(() => undefined)
+    activeTurnStartTimes.delete(turnId)
+    turnFirstVisibleEventRecorded.delete(turnId)
   }
   activeTurnIds.clear()
   shellModel().pendingTurn = false
@@ -2415,6 +2493,7 @@ const submitComposer = async (): Promise<KhalaCodeDesktopMessage | null> => {
   render()
   requestAnimationFrame(focusComposerInput)
   const turnStartedAt = performance.now()
+  activeTurnStartTimes.set(turnId, turnStartedAt)
   try {
     const activeThreadId = shellModel().activeCodexThreadId
     const request: KhalaCodeDesktopChatTurnRequest = {
@@ -2456,6 +2535,8 @@ const submitComposer = async (): Promise<KhalaCodeDesktopMessage | null> => {
     }
   } finally {
     activeTurnIds.delete(turnId)
+    activeTurnStartTimes.delete(turnId)
+    turnFirstVisibleEventRecorded.delete(turnId)
     if (shellModel().thinkingTurnId === turnId) shellModel().thinkingTurnId = null
     shellModel().pendingTurn = activeTurnIds.size > 0
     threadSidebar?.setActiveThreadId(shellModel().activeCodexThreadId)
@@ -2631,8 +2712,13 @@ fileInput.addEventListener("change", () => {
 })
 
 composerInput.addEventListener("input", () => {
+  const echoStartedAt = performance.now()
   shellModel().lastTurnFailed = false
   renderComposer()
+  markQaTimer("composer.keystroke_echo_ms", echoStartedAt, {
+    characters: composerInput.value.length,
+    surface: "composer",
+  })
 })
 
 composerInput.addEventListener("focus", updateComposerHudProjection)
@@ -3402,5 +3488,6 @@ renderThreadTokenCounter()
 void refreshThreadTokenSummary()
 const firstRenderStartedAt = performance.now()
 render()
+markQaTimer("startup.interactive_ms", 0, { view: initialView })
 markQaTimer("first_render.ms", firstRenderStartedAt, { view: initialView })
 requestAnimationFrame(focusComposerInput)

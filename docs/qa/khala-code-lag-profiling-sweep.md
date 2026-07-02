@@ -83,6 +83,11 @@ run can distinguish "budget passed" from "workload did not collect evidence".
 Rows with `status: "offender"` are copied into `offenders` in descending
 p95/threshold ratio order.
 
+For Q2.6 closeout, `no_samples` rows are not green. Treat them as sample
+coverage blockers until the relevant Mode P, Mode D, or packaged workload emits
+real `qaMetrics` samples for that budget. The Q2.6 burn-down ledger records the
+sample-coverage slice that wired the remaining Q2.2 UI metrics.
+
 The Q2.6 burn-down record for fixed offenders and benchmark evidence lives in
 [`khala-code-lag-offender-burndown.md`](./khala-code-lag-offender-burndown.md).
 

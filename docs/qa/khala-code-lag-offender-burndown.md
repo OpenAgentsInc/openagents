@@ -76,6 +76,54 @@ its cold `clickToFullRenderMs` remains above the render budget by construction.
 Use the low-RPC run to isolate render work; use the default run to track
 end-to-end route latency separately.
 
+## Fixed Slice: Missing Q2.2 Sample Coverage
+
+The second burn-down slice targets a blocker to "all budgets green": several
+Q2.2 budget rows existed as data but could not collect real UI samples from the
+preview/native app paths. Without samples, the nightly status surface can only
+mark those rows `inconclusive`.
+
+Before this slice, the renderer/host call-site audit found no production sample
+writer for these budget metrics:
+
+- `startup.interactive_ms`
+- `turn_start.first_event_ms`
+- `composer.keystroke_echo_ms`
+- `sse.event_to_ui_ms`
+- `transcript.scroll_dropped_frames_pct`
+- `app_server.spawn_ready_ms`
+
+Changes:
+
+- The renderer records `startup.interactive_ms` at first interactive paint.
+- Composer input events record keystroke-to-next-paint echo samples.
+- Preview `/rpc/events` now decodes chat-turn SSE through the shared schema and
+  applies it to the same renderer event path used by native Electrobun.
+- Visible streamed chat events record both event-to-UI paint time and the first
+  visible turn-event time.
+- Transcript wheel/key scroll interactions sample dropped-frame percent over a
+  bounded 12-frame window.
+- `codexAppServerStart` records spawn-to-ready time when it actually transitions
+  the app-server to initialized running state.
+
+After this slice, a local Mode-D preview smoke with mocked public-safe RPC data
+recorded these sample values in `var/qa-8022/q2-sample-coverage-after.json`:
+
+```json
+[
+  { "metric": "startup.interactive_ms", "value": 438.4, "unit": "ms" },
+  { "metric": "composer.keystroke_echo_ms", "value": 9.6, "unit": "ms" },
+  { "metric": "sse.event_to_ui_ms", "value": 8.2, "unit": "ms" },
+  { "metric": "turn_start.first_event_ms", "value": 152.9, "unit": "ms" },
+  { "metric": "turn_start.latency_ms", "value": 293.5, "unit": "ms" },
+  { "metric": "transcript.scroll_dropped_frames_pct", "value": 0, "unit": "percent" }
+]
+```
+
+The app-server spawn-ready writer is covered by the RPC handler regression test;
+its value is hardware/process dependent, so the test asserts the sample shape
+and unit rather than a fixed duration.
+
 ## Remaining Q2.6 Gate
 
 This slice does not by itself satisfy Q2.6's final seven-night real-app green

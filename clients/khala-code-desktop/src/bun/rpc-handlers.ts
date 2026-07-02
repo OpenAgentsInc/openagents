@@ -92,7 +92,10 @@ import {
   type KhalaCodeDesktopRuntimeStatus,
   type KhalaCodeDesktopThreadTokenSummaryRequest,
 } from "../shared/rpc.js"
-import { emptyKhalaCodeQaMetricsSnapshot } from "../shared/qa-metrics.js"
+import {
+  emptyKhalaCodeQaMetricsSnapshot,
+  khalaCodeQaMetricUnitFor,
+} from "../shared/qa-metrics.js"
 import {
   khalaCodeDesktopCodexApprovalResponsePayload,
   type KhalaCodeDesktopCodexApprovalResponseInput,
@@ -229,6 +232,28 @@ const appInfo = (): KhalaCodeDesktopAppInfo => ({
   app: "Khala Code Desktop",
   observedAt: new Date().toISOString(),
 })
+
+const recordQaTimerSample = async (
+  input: KhalaCodeDesktopRpcHandlersInput,
+  metric: KhalaCodeDesktopQaMetricSample["metric"],
+  startedAt: number,
+  context?: KhalaCodeDesktopQaMetricSample["context"],
+): Promise<void> => {
+  if (input.recordQaMetricSample === undefined) return
+  const value = performance.now() - startedAt
+  if (!Number.isFinite(value)) return
+  try {
+    await input.recordQaMetricSample({
+      ...(context === undefined ? {} : { context }),
+      metric,
+      observedAt: new Date().toISOString(),
+      unit: khalaCodeQaMetricUnitFor(metric),
+      value,
+    })
+  } catch {
+    // QA telemetry must not make the user-facing RPC fail.
+  }
+}
 
 const MAX_MENTION_CANDIDATES = 20
 const MAX_DIRECTORY_CANDIDATES = 20
@@ -1818,27 +1843,42 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
       }
     },
     async codexAppServerStart() {
-      return input.codexAppServerHost?.start() ?? {
-        ok: false,
-        action: "start",
-        changed: false,
-        status: {
-          ok: true,
-          app: "Khala Code Desktop",
-          adapterVersion: "unconfigured",
-          codexCommand: "codex",
-          codexHome: "",
-          diagnostics: [],
-          initialized: false,
-          initializeResult: null,
-          lastError: "Codex app-server host is not configured.",
-          pendingRequestCount: 0,
-          pid: null,
-          state: "errored",
-          transport: "stdio",
-        },
-        error: "Codex app-server host is not configured.",
+      const startedAt = performance.now()
+      const result = input.codexAppServerHost === undefined
+        ? {
+          ok: false as const,
+          action: "start" as const,
+          changed: false,
+          status: {
+            ok: true as const,
+            app: "Khala Code Desktop" as const,
+            adapterVersion: "unconfigured",
+            codexCommand: "codex",
+            codexHome: "",
+            diagnostics: [],
+            initialized: false,
+            initializeResult: null,
+            lastError: "Codex app-server host is not configured.",
+            pendingRequestCount: 0,
+            pid: null,
+            state: "errored" as const,
+            transport: "stdio" as const,
+          },
+          error: "Codex app-server host is not configured.",
+        }
+        : await input.codexAppServerHost.start()
+      if (
+        result.ok &&
+        result.changed &&
+        result.status.state === "running" &&
+        result.status.initialized
+      ) {
+        await recordQaTimerSample(input, "app_server.spawn_ready_ms", startedAt, {
+          action: "start",
+          transport: result.status.transport,
+        })
       }
+      return result
     },
     async codexAppServerStatus() {
       return input.codexAppServerHost?.status() ?? {
