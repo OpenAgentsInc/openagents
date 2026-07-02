@@ -325,12 +325,8 @@ export function createClaudeAppSdkChatRuntime(
   ): Promise<KhalaCodeDesktopCodexThreadResult> => {
     const desktopSessionId = request.sessionId ?? request.threadId
     await sessionStore.put(desktopSessionId, { sessionId: request.threadId })
-    return {
-      ok: true,
-      desktopSessionId,
-      thread: { id: request.threadId, title: "Claude session" },
-      threadId: request.threadId,
-    }
+    const result = await readThread({ includeTurns: true, threadId: request.threadId })
+    return { ...result, desktopSessionId }
   }
 
   const threadIdForSession = async (desktopSessionId: string): Promise<string | null> =>

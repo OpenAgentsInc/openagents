@@ -2811,7 +2811,9 @@ const beginCodexThreadSwitch = (input: {
   cacheVisibleThreadMessages()
   const cached = cachedThreadMessages(input.threadId)
   setActiveCodexThreadId(input.threadId)
-  messages = cached ?? []
+  if (cached !== null) {
+    messages = cached
+  }
   activeTurnIds.clear()
   pendingTurn = false
   thinkingTurnId = null

@@ -631,6 +631,15 @@ describe("Claude Agent SDK chat runtime", () => {
       modelProvider: "claude",
       threadId: "claude-sidebar-session",
     })
+    await expect(runtime.resumeThread({
+      sessionId: "desktop-sidebar",
+      threadId: "claude-sidebar-session",
+    })).resolves.toMatchObject({
+      desktopSessionId: "desktop-sidebar",
+      messages: [{ body: "Recovered transcript", role: "assistant" }],
+      modelProvider: "claude",
+      threadId: "claude-sidebar-session",
+    })
   })
 
   test("builds Claude slash registry from supportedCommands init slash_commands and dispatches as prompt", async () => {

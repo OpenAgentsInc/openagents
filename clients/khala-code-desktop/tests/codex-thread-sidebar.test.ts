@@ -247,4 +247,89 @@ describe("Khala Code thread sidebar", () => {
       window.close()
     }
   })
+
+  test("keeps the thread list mounted while a selected thread hydrates or fails", async () => {
+    const window = new Window()
+    const previousDocument = globalThis.document
+    const previousNavigator = globalThis.navigator
+    Object.defineProperty(globalThis, "document", {
+      configurable: true,
+      value: window.document,
+    })
+    Object.defineProperty(globalThis, "navigator", {
+      configurable: true,
+      value: window.navigator,
+    })
+    try {
+      const container = document.createElement("aside")
+      document.body.append(container)
+      const data: KhalaCodeDesktopCodexThreadListResult = {
+        ok: true,
+        data: [],
+        groups: [{ key: "all", label: "All sessions", threadIds: ["thread-a", "thread-b"] }],
+        threads: [
+          thread("thread-a", "Visible work"),
+          { ...thread("thread-b", "Slow Claude session"), badges: ["Claude"] },
+        ],
+      }
+
+      let rejectResume: (error: Error) => void = () => {
+        throw new Error("resume rejection was not captured")
+      }
+      const sidebar = mountCodexThreadSidebar(container, {
+        activeThreadId: () => "thread-a",
+        archiveThread: async threadId => ({ action: "archive", ok: true, threadId }),
+        deleteThread: async threadId => ({ action: "delete", ok: true, threadId }),
+        forkThread: async threadId => ({ action: "fork", ok: true, threadId }),
+        listThreads: async () => data,
+        renameThread: async threadId => ({ action: "rename", ok: true, threadId }),
+        resumeThread: threadId =>
+          new Promise((_resolve, reject) => {
+            expect(threadId).toBe("thread-b")
+            rejectResume = reject
+          }),
+        sessionId: "desktop-session",
+        unarchiveThread: async threadId => ({ action: "unarchive", ok: true, threadId }),
+        onNewThreadRequested: () => undefined,
+        onThreadSelectionStarted: () => undefined,
+        onThreadSelected: () => undefined,
+      })
+
+      sidebar.setVisible(true)
+      await sidebar.refresh()
+
+      container
+        .querySelector<HTMLButtonElement>('[data-thread-id="thread-b"] .khala-thread-sidebar-item-row')
+        ?.click()
+      await Promise.resolve()
+
+      expect(container.textContent).toContain("Visible work")
+      expect(container.textContent).toContain("Slow Claude session")
+      expect(container.textContent).not.toBe("Loading threads")
+      expect(
+        container
+          .querySelector<HTMLButtonElement>('[data-thread-id="thread-b"] .khala-thread-sidebar-item-row')
+          ?.getAttribute("aria-busy"),
+      ).toBe("true")
+
+      rejectResume(new Error("Claude transcript unavailable"))
+      await Promise.resolve()
+      await Promise.resolve()
+
+      expect(container.textContent).toContain("Visible work")
+      expect(container.textContent).toContain("Slow Claude session")
+      expect(container.textContent).toContain("Claude transcript unavailable")
+      expect(container.textContent).not.toBe("Loading threads")
+    } finally {
+      Object.defineProperty(globalThis, "document", {
+        configurable: true,
+        value: previousDocument,
+      })
+      Object.defineProperty(globalThis, "navigator", {
+        configurable: true,
+        value: previousNavigator,
+      })
+      window.close()
+    }
+  })
 })

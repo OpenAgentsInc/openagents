@@ -220,6 +220,11 @@ export const mountCodexThreadSidebar = (
   let state: ViewState = { phase: "idle" }
   let visible = false
   let activeThreadId = options.activeThreadId()
+  let selectingThreadId: string | null = null
+  let selectionError: {
+    readonly message: string
+    readonly threadId: string
+  } | null = null
   let renamingThreadId: string | null = null
   let renamingThreadDraft = ""
   let refreshSequence = 0
@@ -294,12 +299,15 @@ export const mountCodexThreadSidebar = (
     if (activeThreadId === threadId) return true
     const selectionId = ++selectionSequence
     activeThreadId = threadId
+    selectingThreadId = threadId
+    selectionError = null
     options.onThreadSelectionStarted?.({ selectionId, source, threadId })
     render()
     try {
       const result = await options.resumeThread(threadId)
       if (selectionId !== selectionSequence) return false
       activeThreadId = result.threadId
+      selectingThreadId = null
       options.onThreadSelected({
         threadId: result.threadId,
         requestedThreadId: threadId,
@@ -311,7 +319,12 @@ export const mountCodexThreadSidebar = (
       return true
     } catch (error) {
       if (selectionId !== selectionSequence) return false
-      setStatusError(error)
+      selectingThreadId = null
+      selectionError = {
+        threadId,
+        message: error instanceof Error ? error.message : String(error),
+      }
+      render()
       return false
     }
   }
@@ -573,10 +586,12 @@ export const mountCodexThreadSidebar = (
     thread: KhalaCodeDesktopCodexThreadSummary,
   ): HTMLElement => {
     const active = activeThreadId === thread.id
+    const selecting = selectingThreadId === thread.id
     const item = el("div", "khala-thread-sidebar-item")
     item.dataset.threadId = thread.id
     item.dataset.status = thread.status
     item.dataset.active = active ? "true" : "false"
+    if (selecting) item.dataset.selecting = "true"
     item.addEventListener("contextmenu", event => {
       event.preventDefault()
       event.stopPropagation()
@@ -588,6 +603,10 @@ export const mountCodexThreadSidebar = (
     row.title = `${thread.title} — ${thread.preview || thread.id}`
     row.setAttribute("aria-haspopup", "menu")
     row.dataset.active = active ? "true" : "false"
+    if (selecting) {
+      row.dataset.selecting = "true"
+      row.setAttribute("aria-busy", "true")
+    }
     if (active) row.setAttribute("aria-current", "true")
     row.addEventListener("click", () => void selectThread(thread.id, "sidebar"))
     row.addEventListener("keydown", event => {
@@ -601,10 +620,13 @@ export const mountCodexThreadSidebar = (
     row.append(
       el("span", "khala-thread-sidebar-item-title", thread.title),
       ...(harnessBadge === null ? [] : [harnessBadge]),
-      threadTimeContent(thread, options),
+      selecting ? threadStreamingIndicator() : threadTimeContent(thread, options),
     )
 
     item.append(renamingThreadId === thread.id ? threadRenameForm(thread) : row)
+    if (selectionError?.threadId === thread.id) {
+      item.append(el("p", "khala-thread-sidebar-row-error", selectionError.message))
+    }
     return item
   }
 
@@ -747,6 +769,7 @@ export const mountCodexThreadSidebar = (
     selectRecentThread,
     setActiveThreadId(threadId) {
       activeThreadId = threadId
+      if (threadId !== selectingThreadId) selectingThreadId = null
       render()
     },
     setVisible(nextVisible) {

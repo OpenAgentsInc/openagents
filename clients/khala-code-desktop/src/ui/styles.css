@@ -1536,6 +1536,9 @@ button {
 .khala-thread-sidebar-item[data-active="true"] {
   background: color-mix(in srgb, var(--oa-color-khala-surface) 92%, transparent);
 }
+.khala-thread-sidebar-item[data-selecting="true"] {
+  background: color-mix(in srgb, var(--oa-color-khala-surface) 82%, transparent);
+}
 .khala-thread-sidebar-item-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto auto;
@@ -1594,6 +1597,15 @@ button {
   background: var(--oa-color-khala-surface);
   color: var(--oa-color-khala-energy-cyan);
   outline: none;
+}
+.khala-thread-sidebar-row-error {
+  margin: -0.1rem 0 0.18rem;
+  overflow: hidden;
+  color: var(--oa-color-khala-danger-text);
+  font-size: 0.62rem;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .khala-thread-sidebar-item-title,
 .khala-thread-sidebar-harness-badge,
