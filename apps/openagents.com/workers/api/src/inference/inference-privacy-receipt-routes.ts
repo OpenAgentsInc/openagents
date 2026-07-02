@@ -289,15 +289,18 @@ export const grantPaidPrivacyEntitlement = async (
     )
     .run()
 
+  // Read back by key AND account: the idempotency_key column is globally
+  // unique across purchase surfaces, so without the account guard a key
+  // collision would return (and publicly attribute) another account's receipt.
   return await db
     .prepare(
       `SELECT receipt_ref, entitlement_ref, account_ref, purchase_ref,
               privacy_tier, capture_excluded, reason_ref, created_at, updated_at
          FROM inference_privacy_entitlement_receipts
-        WHERE idempotency_key = ?
+        WHERE idempotency_key = ? AND account_ref = ?
         LIMIT 1`,
     )
-    .bind(input.idempotencyKey)
+    .bind(input.idempotencyKey, input.accountRef)
     .first<PrivacyEntitlementReceiptRow>()
 }
 
@@ -333,15 +336,17 @@ export const recordConfidentialComputeExecutionReceipt = async (
     )
     .run()
 
+  // Same key-collision guard as the entitlement read-back: never return
+  // another account's receipt row on an idempotency-key collision.
   return await db
     .prepare(
       `SELECT receipt_ref, execution_ref, account_ref, request_ref,
               capture_excluded, reason_ref, created_at, updated_at
          FROM inference_confidential_compute_execution_receipts
-        WHERE idempotency_key = ?
+        WHERE idempotency_key = ? AND account_ref = ?
         LIMIT 1`,
     )
-    .bind(input.idempotencyKey)
+    .bind(input.idempotencyKey, input.accountRef)
     .first<ConfidentialComputeReceiptRow>()
 }
 

@@ -176,6 +176,12 @@ export const mountKhalaCodePlansPanel = (
     container.append(section)
   }
 
+  // One idempotency key per purchase INTENT, reused across retries: if the
+  // worker committed but the response was lost, the retry replays the same key
+  // and gets the same receipt instead of minting a duplicate purchase. The key
+  // is cleared only after a confirmed success.
+  let pendingPurchaseKey: string | null = null
+
   const purchase = async (): Promise<void> => {
     if (purchasing) return
     // Fail closed: never invoke the purchase transport while the server seam
@@ -188,16 +194,21 @@ export const mountKhalaCodePlansPanel = (
     purchasing = true
     purchaseNote = "Requesting paid plan purchase..."
     render()
+    pendingPurchaseKey ??= purchaseIdempotencyKey()
     try {
-      const result = await options.purchase({ idempotencyKey: purchaseIdempotencyKey() })
+      const result = await options.purchase({ idempotencyKey: pendingPurchaseKey })
       purchaseNote = result.ok
         ? `Paid plan purchase recorded: ${result.receiptRef}`
         : purchaseFailureCopy(result.error)
       if (result.ok) {
-        statusResult = await options.status().catch((): KhalaCodeDesktopPlanStatusResult => ({
-          state: "unavailable",
-        }))
+        pendingPurchaseKey = null
       }
+      // Refresh the server-side plan status after EVERY attempt: a response
+      // that failed to decode may still have granted the entitlement, and the
+      // status read is the honest source of truth.
+      statusResult = await options.status().catch((): KhalaCodeDesktopPlanStatusResult => ({
+        state: "unavailable",
+      }))
     } catch (error) {
       purchaseNote = `Purchase not completed: ${errorMessage(error)}`
     }
@@ -218,11 +229,17 @@ export const mountKhalaCodePlansPanel = (
 
   return {
     async refresh() {
+      // The catalog is static per deployment: fetch it until it loads once,
+      // then keep the loaded copy so settings-panel re-renders only refetch
+      // the (account-scoped) plan status.
+      const loaded = catalogResult
       const [catalog, status] = await Promise.all([
-        options.catalog().catch((): KhalaCodeDesktopPlanCatalogResult => ({
-          ok: false,
-          error: "catalog_unavailable",
-        })),
+        loaded !== null && loaded.ok
+          ? Promise.resolve(loaded)
+          : options.catalog().catch((): KhalaCodeDesktopPlanCatalogResult => ({
+              ok: false,
+              error: "catalog_unavailable",
+            })),
         options.status().catch((): KhalaCodeDesktopPlanStatusResult => ({
           state: "unavailable",
         })),
