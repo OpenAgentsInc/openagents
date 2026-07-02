@@ -3,17 +3,13 @@ import { jsonResponse } from '@openagentsinc/sync-worker'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
 import { parseJsonRecord, parseJsonStringArray } from './json-boundary'
 import { openAgentsDatabase } from './runtime'
-import {
-  currentIsoTimestamp,
-  todayAndYesterdayBoundsInTimezone,
-} from './runtime-primitives'
+import { currentIsoTimestamp, todayAndYesterdayBoundsInTimezone } from './runtime-primitives'
 import { PUBLIC_KHALA_TOKENS_SERVED_TIMEZONE } from './token-usage-ledger'
 
 export const OPERATOR_FLEET_STATUS_PATH = '/api/operator/fleet/status'
 export const OPERATOR_FLEET_STATE_PATH = '/api/operator/fleet/state'
 const CACHE_TTL_MILLIS = 10_000
-const SERVED_TOKENS_SUM_SQL =
-  'COALESCE(SUM(input_tokens), 0) + COALESCE(SUM(output_tokens), 0)'
+const SPINE_SCHEMA_VERSION = 'openagents.pylon.agent_runner_status_event.v1'
 
 type OperatorFleetStatusEnv = Readonly<{
   OPENAGENTS_DB: D1Database
@@ -31,77 +27,18 @@ type OperatorFleetStatusDependencies<Bindings extends OperatorFleetStatusEnv> =
 
 type D1Rows<T> = Readonly<{ results?: ReadonlyArray<T> }>
 
-type PylonRegistrationRow = Readonly<{
-  pylon_ref: string
+type StatusRow = Readonly<{
+  event_ref: string
   owner_agent_user_id: string
-  latest_heartbeat_at: string | null
-  latest_capacity_refs_json: string | null
-  latest_load_refs_json: string | null
-  capability_refs_json: string | null
-  status: string | null
-}>
-
-type AssignmentRow = Readonly<{
-  assignment_ref: string
-  pylon_ref: string
-  job_kind: string
+  runner_ref: string
+  runner_kind: string
+  pylon_ref: string | null
+  assignment_ref: string | null
   state: string
-  created_at: string
+  state_started_at: string
   updated_at: string
-  lease_expires_at: string | null
-}>
-
-type AssignmentProgressRow = Readonly<{
-  assignment_ref: string
-  created_at: string
-  event_body_json: string
-}>
-
-type RawEventChunkTokenEstimateRow = Readonly<{
-  assignment_ref: string
-  latest_observed_at: string | null
-  raw_chunk_bytes: number | null
-  raw_chunk_count: number | null
-}>
-
-type AlertRow = Readonly<{
-  alert_ref: string
-  classification: string
-  detected_at: string
-  reason_ref: string
-  active_assignments: number
-  queued_assignments: number
-}>
-
-type ProviderAccountRow = Readonly<{
-  provider_account_ref: string
-  provider: string
-  status: string | null
-  health: string | null
-  cooldown_until: string | null
-  recent_failure_class: string | null
-  reauth_required_reason: string | null
-  low_credit_flag: number | null
-  lease_limit: number | null
-}>
-
-type TokenTodayRow = Readonly<{ tokens_today: number | null }>
-type TokenYesterdayRow = Readonly<{ tokens_yesterday: number | null }>
-type TokenWindowRow = Readonly<{ tokens_window: number | null }>
-type OwnCapacityCodexWindowRow = Readonly<{
-  assignments_window: number | null
-  tokens_window: number | null
-  turns_window: number | null
-}>
-type BrainRow = Readonly<{
-  memory_ref: string
-  created_at: string
-  note_category: string | null
-}>
-
-type GlmHeartbeatRow = Readonly<{
-  replica_id: string
-  health_status: string | null
+  retention_state: 'live' | 'retained'
+  event_json: string
 }>
 
 type CacheEntry = Readonly<{
@@ -109,6 +46,10 @@ type CacheEntry = Readonly<{
   generatedAt: string
   response: unknown
 }>
+
+type OperatorFleetReadScope =
+  | Readonly<{ kind: 'admin' }>
+  | Readonly<{ kind: 'agent'; userId: string }>
 
 const snapshotCache = new Map<string, CacheEntry>()
 
@@ -139,16 +80,6 @@ const boundedString = (value: unknown, maxLength: number): string | null =>
     ? value.slice(0, maxLength)
     : null
 
-const boundedInteger = (value: unknown): number | null => {
-  const numberValue = typeof value === 'number' ? value : Number.NaN
-  return Number.isFinite(numberValue) ? Math.max(0, Math.trunc(numberValue)) : null
-}
-
-const boundedTokenCountKind = (value: unknown): 'exact' | 'estimated' | null =>
-  value === 'exact' || value === 'estimated' ? value : null
-
-const RAW_EVENT_BYTES_PER_TOKEN_ESTIMATE = 4
-
 const safeAll = async <T>(
   db: D1Database,
   sql: string,
@@ -165,217 +96,91 @@ const safeAll = async <T>(
   }
 }
 
-const safeFirst = async <T>(
-  db: D1Database,
-  sql: string,
-  ...bindings: ReadonlyArray<unknown>
-): Promise<T | null> => {
-  try {
-    const statement = db.prepare(sql)
-    const query =
-      bindings.length === 0 ? statement : statement.bind(...bindings)
-    return await query.first<T>()
-  } catch {
-    return null
-  }
-}
+const normalizeState = (state: string): string =>
+  state === 'working'
+    ? 'running'
+    : state === 'waiting'
+      ? 'accepted'
+      : state === 'done'
+        ? 'proof_submitted'
+        : state
 
-const buildFleetStatusSnapshot = async (
+const activeRunnerState = (state: string): boolean =>
+  state === 'queued' ||
+  state === 'working' ||
+  state === 'waiting' ||
+  state === 'blocked'
+
+const parseEvent = (row: StatusRow): Record<string, unknown> =>
+  parseJsonRecord(row.event_json) ?? {}
+
+const eventRefs = (event: Record<string, unknown>): ReadonlyArray<string> => [
+  ...parseJsonStringArray(JSON.stringify(event.refs ?? [])),
+  ...parseJsonStringArray(JSON.stringify(event.capabilityRefs ?? [])),
+]
+
+const buildFleetStatusSnapshotFromSpine = async (
   db: D1Database,
   nowIso: string,
   scope: OperatorFleetReadScope,
+  legacyStatusPath: boolean,
 ): Promise<unknown> => {
-  const registrationOwnerClause =
-    scope.kind === 'agent' ? 'AND owner_agent_user_id = ?' : ''
-  const tokenOwnerClause = scope.kind === 'agent' ? 'AND actor_user_id = ?' : ''
-  const assignmentOwnerClause =
-    scope.kind === 'agent'
-      ? `AND pylon_ref IN (
-           SELECT pylon_ref
-             FROM pylon_api_registrations
-            WHERE archived_at IS NULL
-              AND owner_agent_user_id = ?
-         )`
-      : ''
-  const accountOwnerClause = scope.kind === 'agent' ? 'AND user_id = ?' : ''
-  const ownerBindings = scope.kind === 'agent' ? [scope.userId] : []
-  const dayBounds = todayAndYesterdayBoundsInTimezone(
-    nowIso,
-    PUBLIC_KHALA_TOKENS_SERVED_TIMEZONE,
+  const ownerClause = scope.kind === 'admin' ? '' : 'AND owner_agent_user_id = ?'
+  const ownerBindings = scope.kind === 'admin' ? [] : [scope.userId]
+  const rows = await safeAll<StatusRow>(
+    db,
+    `SELECT event_ref, owner_agent_user_id, runner_ref, runner_kind, pylon_ref,
+            assignment_ref, state, state_started_at, updated_at,
+            retention_state, event_json
+       FROM pylon_agent_runner_status_events
+      WHERE archived_at IS NULL
+        ${ownerClause}
+      ORDER BY updated_at DESC
+      LIMIT 200`,
+    ...ownerBindings,
   )
-  const [
-    registrations,
-    assignments,
-    assignmentProgressRows,
-    rawEventChunkTokenEstimateRows,
-    providerAccounts,
-    latestAlert,
-    latestServingRateAlert,
-    today,
-    yesterday,
-    window,
-    ownCapacityCodexWindow,
-    brainRows,
-    glmRows,
-  ] = await Promise.all([
-    safeAll<PylonRegistrationRow>(
-      db,
-      `SELECT pylon_ref, owner_agent_user_id, latest_heartbeat_at,
-              latest_capacity_refs_json, latest_load_refs_json,
-              capability_refs_json, status
-         FROM pylon_api_registrations
-        WHERE archived_at IS NULL
-          ${registrationOwnerClause}
-        ORDER BY updated_at DESC
-        LIMIT 100`,
-      ...ownerBindings,
-    ),
-    safeAll<AssignmentRow>(
-      db,
-      `SELECT assignment_ref, pylon_ref, job_kind, state, created_at, updated_at,
-              lease_expires_at
-         FROM pylon_api_assignments
-        WHERE archived_at IS NULL
-          ${assignmentOwnerClause}
-          AND state IN ('offered','accepted','running','proof_submitted')
-        ORDER BY updated_at DESC
-        LIMIT 50`,
-      ...ownerBindings,
-    ),
-    safeAll<AssignmentProgressRow>(
-      db,
-      `SELECT assignment_ref, created_at, event_body_json
-         FROM pylon_api_events
-        WHERE archived_at IS NULL
-          AND event_kind = 'assignment_progress'
-          AND assignment_ref IS NOT NULL
-          ${assignmentOwnerClause}
-        ORDER BY created_at DESC
-        LIMIT 100`,
-      ...ownerBindings,
-    ),
-    safeAll<RawEventChunkTokenEstimateRow>(
-      db,
-      `SELECT assignment_ref,
-              COALESCE(SUM(byte_length), 0) AS raw_chunk_bytes,
-              COUNT(*) AS raw_chunk_count,
-              MAX(observed_at) AS latest_observed_at
-         FROM pylon_codex_raw_event_chunks
-        WHERE observed_at >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-30 minutes')
-          ${assignmentOwnerClause}
-        GROUP BY assignment_ref
-        ORDER BY latest_observed_at DESC
-        LIMIT 200`,
-      ...ownerBindings,
-    ),
-    safeAll<ProviderAccountRow>(
-      db,
-      `SELECT provider_account_ref, provider, status, health, cooldown_until,
-              recent_failure_class, reauth_required_reason, low_credit_flag,
-              lease_limit
-         FROM provider_accounts
-        WHERE deleted_at IS NULL
-          AND provider IN ('chatgpt_codex', 'claude')
-          ${accountOwnerClause}
-        ORDER BY
-          CASE provider WHEN 'chatgpt_codex' THEN 0 ELSE 1 END,
-          provider_account_ref ASC
-        LIMIT 100`,
-      ...ownerBindings,
-    ),
-    safeFirst<AlertRow>(
-      db,
-      `SELECT alert_ref, classification, detected_at, reason_ref,
-              active_assignments, queued_assignments
-         FROM fleet_alerts
-        WHERE classification = 'stalled'
-        ORDER BY detected_at DESC
-        LIMIT 1`,
-    ),
-    safeFirst<AlertRow>(
-      db,
-      `SELECT alert_ref, classification, detected_at, reason_ref,
-              active_assignments, queued_assignments
-         FROM fleet_alerts
-        WHERE classification IN ('serving_rate_low', 'glm_down')
-        ORDER BY detected_at DESC
-        LIMIT 1`,
-    ),
-    safeFirst<TokenTodayRow>(
-      db,
-      `SELECT ${SERVED_TOKENS_SUM_SQL} AS tokens_today
-         FROM token_usage_events
-        WHERE observed_at >= ?`,
-      dayBounds.todayStartIso,
-    ),
-    safeFirst<TokenYesterdayRow>(
-      db,
-      `SELECT ${SERVED_TOKENS_SUM_SQL} AS tokens_yesterday
-         FROM token_usage_events
-        WHERE observed_at >= ?
-          AND observed_at < ?`,
-      dayBounds.yesterdayStartIso,
-      dayBounds.todayStartIso,
-    ),
-    safeFirst<TokenWindowRow>(
-      db,
-      `SELECT ${SERVED_TOKENS_SUM_SQL} AS tokens_window
-         FROM token_usage_events
-        WHERE observed_at >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-10 minutes')`,
-    ),
-    safeFirst<OwnCapacityCodexWindowRow>(
-      db,
-      `SELECT COALESCE(SUM(total_tokens), 0) AS tokens_window,
-              COUNT(*) AS turns_window,
-              COUNT(DISTINCT task_ref) AS assignments_window
-         FROM token_usage_events
-        WHERE observed_at >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-10 minutes')
-          AND provider = 'pylon-codex-own-capacity'
-          AND model = 'openagents/pylon-codex'
-          AND usage_truth = 'exact'
-          AND demand_kind = 'own_capacity'
-          AND demand_source = 'khala_coding_delegation'
-          ${tokenOwnerClause}`,
-      ...ownerBindings,
-    ),
-    safeAll<BrainRow>(
-      db,
-      `SELECT memory_ref, created_at, note_category
-         FROM artanis_owner_memory
-        WHERE kind = 'note'
-          AND note_category = 'decision'
-        ORDER BY created_at DESC
-        LIMIT 3`,
-    ),
-    safeAll<GlmHeartbeatRow>(
-      db,
-      `SELECT replica_id, health_status
-         FROM glm_fleet_readiness_heartbeats
-        ORDER BY observed_at DESC
-        LIMIT 50`,
-    ),
-  ])
 
-  const nowMs = Date.parse(nowIso)
-  const activeFreshCutoffMs = nowMs - 90_000
-  const fleetAccounts = registrations.map(row => {
-    const capacityRefs = parseJsonStringArray(row.latest_capacity_refs_json)
-    const loadRefs = parseJsonStringArray(row.latest_load_refs_json)
-    const capabilityRefs = parseJsonStringArray(row.capability_refs_json)
-    const latestHeartbeatMs =
-      row.latest_heartbeat_at === null ? Number.NaN : Date.parse(row.latest_heartbeat_at)
-    const heartbeatFresh =
-      Number.isFinite(latestHeartbeatMs) && latestHeartbeatMs >= activeFreshCutoffMs
+  const liveRows = rows.filter(row => row.retention_state === 'live')
+  const activeRows = liveRows.filter(row => activeRunnerState(row.state))
+  const byPylon = new Map<string, ReadonlyArray<StatusRow>>()
+  for (const row of liveRows) {
+    const pylonRef = row.pylon_ref ?? `pylon.unknown.${row.owner_agent_user_id}`
+    byPylon.set(pylonRef, [...(byPylon.get(pylonRef) ?? []), row])
+  }
+
+  const fleetAccounts = [...byPylon.entries()].map(([pylonRef, pylonRows]) => {
+    const refs = pylonRows.flatMap(row => eventRefs(parseEvent(row)))
+    const latestUpdatedAt = pylonRows
+      .map(row => row.updated_at)
+      .sort()
+      .at(-1) ?? null
+    const availableFromRefs = metricFromRefs(refs, 'capacity.coding.codex.available=')
+    const readyFromRefs = metricFromRefs(refs, 'capacity.coding.codex.ready=')
+    const busyFromRefs = metricFromRefs(refs, 'load.coding.codex.busy=')
+    const queuedFromRefs = metricFromRefs(refs, 'load.coding.codex.queued=')
+    const activeForPylon = pylonRows.filter(row => activeRunnerState(row.state))
+    const busySlots = Math.max(
+      busyFromRefs,
+      activeForPylon.filter(row => row.state === 'working').length,
+    )
+    const queuedSlots = Math.max(
+      queuedFromRefs,
+      activeForPylon.filter(row => row.state === 'queued' || row.state === 'waiting').length,
+    )
+    const readySlots = Math.max(readyFromRefs, availableFromRefs, activeForPylon.length)
     return {
-      pylonRef: row.pylon_ref,
-      status: row.status ?? 'unknown',
-      heartbeatFresh,
-      latestHeartbeatAt: row.latest_heartbeat_at,
-      activeSlots: metricFromRefs(capacityRefs, 'capacity.coding.codex.available='),
-      readySlots: metricFromRefs(capacityRefs, 'capacity.coding.codex.ready='),
-      busySlots: metricFromRefs(loadRefs, 'load.coding.codex.busy='),
-      queuedSlots: metricFromRefs(loadRefs, 'load.coding.codex.queued='),
-      codexCapable: capabilityRefs.some(ref => ref.includes('codex')),
+      pylonRef,
+      status: activeForPylon.length > 0 ? 'active' : 'idle',
+      heartbeatFresh: latestUpdatedAt === null
+        ? false
+        : millisBetween(latestUpdatedAt, nowIso) <= 90_000,
+      latestHeartbeatAt: latestUpdatedAt,
+      activeSlots: Math.max(availableFromRefs, Math.max(readySlots - busySlots, 0)),
+      readySlots,
+      busySlots,
+      queuedSlots,
+      codexCapable: refs.some(ref => ref.includes('codex')) ||
+        pylonRows.some(row => row.runner_kind.includes('codex')),
     }
   })
 
@@ -383,175 +188,56 @@ const buildFleetStatusSnapshot = async (
   const readySlots = fleetAccounts.reduce((sum, account) => sum + account.readySlots, 0)
   const busySlots = fleetAccounts.reduce((sum, account) => sum + account.busySlots, 0)
   const queuedSlots = fleetAccounts.reduce((sum, account) => sum + account.queuedSlots, 0)
-  const isActiveAssignmentState = (state: string): boolean =>
-    state === 'accepted' || state === 'running' || state === 'proof_submitted'
-  const leaseIsLive = (leaseExpiresAt: string | null): boolean =>
-    leaseExpiresAt !== null && millisBetween(nowIso, leaseExpiresAt) > 0
-  const activeAssignments = assignments.filter(row =>
-    isActiveAssignmentState(row.state) && leaseIsLive(row.lease_expires_at),
-  )
-  const latestProgressByAssignment = new Map<string, {
-    createdAt: string
-    elapsedMs: number | null
-    lastLog: string | null
-    lastProgressEvent: string | null
-    phase: string | null
-    tokenCountKind: 'exact' | 'estimated' | null
-    tokensSoFar: number | null
-  }>()
-  for (const row of assignmentProgressRows) {
-    if (latestProgressByAssignment.has(row.assignment_ref)) continue
-    const body = parseJsonRecord(row.event_body_json) ?? {}
-    latestProgressByAssignment.set(row.assignment_ref, {
-      createdAt: row.created_at,
-      elapsedMs: boundedInteger(body.elapsedMs),
-      lastLog: boundedString(body.message, 240),
-      lastProgressEvent: boundedString(body.lastProgressEvent, 120),
-      phase: boundedString(body.phase, 80),
-      tokenCountKind: boundedTokenCountKind(body.tokenCountKind),
-      tokensSoFar: boundedInteger(body.tokensSoFar),
-    })
-  }
-  const rawChunkEstimateByAssignment = new Map<string, {
-    latestObservedAt: string | null
-    rawChunkBytes: number
-    rawChunkCount: number
-    tokenEstimate: number
-  }>()
-  for (const row of rawEventChunkTokenEstimateRows) {
-    const rawChunkBytes = Math.max(0, Math.trunc(row.raw_chunk_bytes ?? 0))
-    rawChunkEstimateByAssignment.set(row.assignment_ref, {
-      latestObservedAt: row.latest_observed_at,
-      rawChunkBytes,
-      rawChunkCount: Math.max(0, Math.trunc(row.raw_chunk_count ?? 0)),
-      tokenEstimate: Math.max(0, Math.round(rawChunkBytes / RAW_EVENT_BYTES_PER_TOKEN_ESTIMATE)),
-    })
-  }
-  const accountLedger = providerAccounts.map(row => {
-    const cooldownExpiresAt =
-      row.cooldown_until !== null && row.cooldown_until > nowIso
-        ? row.cooldown_until
-        : null
-    const reason =
-      row.reauth_required_reason ??
-      row.recent_failure_class ??
-      (row.low_credit_flag === 1 ? 'low_credit' : null)
-    const status =
-      row.reauth_required_reason !== null
-        ? 'revoked'
-        : cooldownExpiresAt !== null || row.recent_failure_class === 'rate_limited'
-          ? 'rate_limited'
-          : row.recent_failure_class === 'usage_limited'
-            ? 'usage_limited'
-            : row.status === 'connected' && (row.health === null || row.health === 'healthy')
-              ? 'healthy'
-              : row.health ?? row.status ?? 'unknown'
-
+  const activeAssignments = activeRows.map(row => {
+    const event = parseEvent(row)
+    const blockerRefs = parseJsonStringArray(JSON.stringify(event.blockerRefs ?? []))
+    const refs = parseJsonStringArray(JSON.stringify(event.refs ?? []))
+    const phase = row.state === 'blocked'
+      ? 'blocked'
+      : row.state === 'waiting'
+        ? 'waiting'
+        : row.state === 'queued'
+          ? 'queued'
+          : 'running'
     return {
-      accountRefHash: row.provider_account_ref,
-      provider: row.provider === 'chatgpt_codex' ? 'codex' : row.provider,
-      status,
-      resetAt: cooldownExpiresAt,
-      concurrency: Math.max(1, Math.trunc(row.lease_limit ?? 1)),
-      reason,
+      assignmentRef: row.assignment_ref ?? row.runner_ref,
+      pylonRef: row.pylon_ref ?? null,
+      jobKind: row.runner_kind,
+      state: normalizeState(row.state),
+      elapsedMs: millisBetween(row.state_started_at, nowIso),
+      lastUpdateAgeMs: millisBetween(row.updated_at, nowIso),
+      phase,
+      tokensSoFar: null,
+      lastProgressEvent: boundedString(refs[0] ?? blockerRefs[0], 120),
+      lastLog: boundedString(blockerRefs[0] ?? refs[0], 240),
+      progressObservedAt: row.updated_at,
+      progressAgeMs: millisBetween(row.updated_at, nowIso),
+      tokenCountKind: null,
+      updatedAt: row.updated_at,
+      leaseExpiresAt: null,
     }
   })
 
-  const todayTokens = Math.max(0, Math.trunc(today?.tokens_today ?? 0))
-  const yesterdayTokens = Math.max(0, Math.trunc(yesterday?.tokens_yesterday ?? 0))
-  const windowTokens = Math.max(0, Math.trunc(window?.tokens_window ?? 0))
-  const burnRateTokensPerMinute = Math.round(windowTokens / 10)
-  const ownCapacityCodexWindowTokens = Math.max(
-    0,
-    Math.trunc(ownCapacityCodexWindow?.tokens_window ?? 0),
+  const dayBounds = todayAndYesterdayBoundsInTimezone(
+    nowIso,
+    PUBLIC_KHALA_TOKENS_SERVED_TIMEZONE,
   )
-  const ownCapacityCodexWindowTurns = Math.max(
-    0,
-    Math.trunc(ownCapacityCodexWindow?.turns_window ?? 0),
-  )
-  const ownCapacityCodexWindowAssignments = Math.max(
-    0,
-    Math.trunc(ownCapacityCodexWindow?.assignments_window ?? 0),
-  )
-  const activeSessionTokenEstimates = activeAssignments.map(row => {
-    const progress = latestProgressByAssignment.get(row.assignment_ref)
-    const rawChunkEstimate = rawChunkEstimateByAssignment.get(row.assignment_ref)
-    const progressTokens = progress?.tokensSoFar ?? null
-    const progressTokenCountKind =
-      progressTokens === null ? null : progress?.tokenCountKind ?? 'estimated'
-    const rawChunkTokens = rawChunkEstimate?.tokenEstimate ?? null
-    const tokens =
-      progressTokenCountKind === 'exact'
-        ? progressTokens ?? 0
-        : Math.max(progressTokens ?? 0, rawChunkTokens ?? 0)
-    const elapsedMs = progress?.elapsedMs ?? millisBetween(row.created_at, nowIso)
-    const elapsedMinutes = Math.max(elapsedMs / 60_000, 1 / 6)
-    const tokensPerMinute = Math.round(tokens / elapsedMinutes)
-    const tokenCountKind =
-      progressTokenCountKind === 'exact'
-        ? 'exact'
-        : tokens > 0
-          ? 'estimated'
-          : null
-    const source =
-      progressTokenCountKind === 'exact'
-        ? 'assignment_progress.tokensSoFar'
-        : rawChunkTokens !== null && rawChunkTokens >= (progressTokens ?? 0)
-          ? 'pylon_codex_raw_event_chunks.byte_length'
-          : progressTokens !== null
-            ? 'assignment_progress.tokensSoFar'
-            : rawChunkEstimate === undefined
-              ? 'unavailable'
-              : 'pylon_codex_raw_event_chunks.byte_length'
-    return {
-      assignmentRef: row.assignment_ref,
-      elapsedMs,
-      rawChunkBytes: rawChunkEstimate?.rawChunkBytes ?? 0,
-      rawChunkCount: rawChunkEstimate?.rawChunkCount ?? 0,
-      rawChunkObservedAt: rawChunkEstimate?.latestObservedAt ?? null,
-      source,
-      tokenCountKind,
-      tokens,
-      tokensPerMinute,
-    }
-  })
-  const inFlightTokenEstimate = activeSessionTokenEstimates
-    .reduce((sum, assignment) => sum + assignment.tokens, 0)
-  const inFlightTokensPerMinuteEstimate = activeSessionTokenEstimates
-    .reduce((sum, assignment) => sum + assignment.tokensPerMinute, 0)
-  const activeAdjustedTokensPerMinute =
-    burnRateTokensPerMinute + inFlightTokensPerMinuteEstimate
-  const targetFloor = yesterdayTokens * 4
-  const paceToFloor =
-    targetFloor === 0 ? 'no_floor' : todayTokens >= targetFloor ? 'ahead' : 'behind'
-
-  const latestAlertAgeMs =
-    latestAlert === null ? Number.POSITIVE_INFINITY : millisBetween(latestAlert.detected_at, nowIso)
-  const latestServingRateAlertAgeMs =
-    latestServingRateAlert === null
-      ? Number.POSITIVE_INFINITY
-      : millisBetween(latestServingRateAlert.detected_at, nowIso)
-  const watchdogState =
-    latestAlert === null || latestAlertAgeMs > 5 * 60_000
-      ? 'HEALTHY'
-      : latestAlert.classification === 'stalled'
-        ? 'STALLED'
-        : 'RECOVERING'
-
-  const uniqueGlmReplicas = new Map<string, string | null>()
-  for (const row of glmRows) {
-    if (!uniqueGlmReplicas.has(row.replica_id)) {
-      uniqueGlmReplicas.set(row.replica_id, row.health_status)
-    }
-  }
-  const glmReady = [...uniqueGlmReplicas.values()].filter(status =>
-    status === 'ok' || status === 'ready' || status === 'healthy',
-  ).length
-  const glmTotal = uniqueGlmReplicas.size
+  const sourceRefs = ['d1:pylon_agent_runner_status_events']
+  const targetFloor = 0
 
   return {
     schemaVersion: 'operator.fleet_status.v1',
     generatedAt: nowIso,
+    ...(legacyStatusPath
+      ? {
+          deprecation: {
+            deprecated: true,
+            replacementPath: '/api/operator/pro/status',
+            removalCondition: 'Remove after T11.1 mobile pairing/transport replaces the iOS fleet-status poll.',
+            sourceOfTruth: 'operator_pro_status_spine',
+          },
+        }
+      : {}),
     cache: {
       maxAgeSeconds: 10,
       source: 'worker_memory_ttl',
@@ -564,39 +250,33 @@ const buildFleetStatusSnapshot = async (
     },
     pace: {
       timezone: PUBLIC_KHALA_TOKENS_SERVED_TIMEZONE,
-      activeAdjustedTokensPerMinute,
+      activeAdjustedTokensPerMinute: 0,
       activeSessionTokenEstimate: {
-        activeAssignmentCount: activeSessionTokenEstimates.length,
-        assignments: activeSessionTokenEstimates,
-        inFlightTokens: inFlightTokenEstimate,
-        inFlightTokensPerMinute: inFlightTokensPerMinuteEstimate,
-        method:
-          'completed token_usage_events window plus active assignment progress tokensSoFar, falling back to raw event chunk byte_length / 4',
-        caveatRefs: activeSessionTokenEstimates.some(assignment => assignment.source !== 'assignment_progress.tokensSoFar')
-          ? ['caveat.public.operator_fleet_status.active_session_tokens_estimated']
-          : [],
-        sourceRefs: [
-          'd1:token_usage_events',
-          'd1:pylon_api_events.assignment_progress',
-          'd1:pylon_codex_raw_event_chunks.byte_length',
-        ],
+        activeAssignmentCount: activeAssignments.length,
+        assignments: [],
+        inFlightTokens: 0,
+        inFlightTokensPerMinute: 0,
+        method: 'runner status spine only; token pace comes from exact token_usage_events projections outside this compat route',
+        caveatRefs: ['caveat.public.operator_fleet_status.spine_status_only'],
+        sourceRefs,
       },
-      liveBurnRateTokensPerMinute: burnRateTokensPerMinute,
-      paceToFloor,
-      todayTokens,
-      yesterdayTokens,
+      liveBurnRateTokensPerMinute: 0,
+      paceToFloor: 'no_floor',
+      todayTokens: 0,
+      yesterdayTokens: 0,
       targetFloorTokens: targetFloor,
       ownCapacityCodex: {
-        assignmentsWindow: ownCapacityCodexWindowAssignments,
-        sourceRefs: ['d1:token_usage_events.pylon_codex_own_capacity_exact'],
-        tokensPerMinute: Math.round(ownCapacityCodexWindowTokens / 10),
-        tokensWindow: ownCapacityCodexWindowTokens,
-        turnsWindow: ownCapacityCodexWindowTurns,
+        assignmentsWindow: 0,
+        sourceRefs,
+        tokensPerMinute: 0,
+        tokensWindow: 0,
+        turnsWindow: 0,
         windowSeconds: 600,
       },
       sourceRefs: [
-        'd1:token_usage_events',
+        ...sourceRefs,
         `timezone.public.${PUBLIC_KHALA_TOKENS_SERVED_TIMEZONE}`,
+        `window.public.today.${dayBounds.todayStartIso}`,
       ],
     },
     fleet: {
@@ -605,146 +285,84 @@ const buildFleetStatusSnapshot = async (
       busySlots,
       queuedSlots,
       spread: fleetAccounts,
-      activeAssignments: activeAssignments.map(row => {
-        const progress = latestProgressByAssignment.get(row.assignment_ref)
-        const fallbackPhase =
-          row.state === 'proof_submitted'
-            ? 'proof'
-            : row.state === 'running' || row.state === 'accepted'
-              ? 'running'
-              : 'queued'
-        return {
-          assignmentRef: row.assignment_ref,
-          pylonRef: row.pylon_ref,
-          jobKind: row.job_kind,
-          state: row.state,
-          elapsedMs: progress?.elapsedMs ?? millisBetween(row.created_at, nowIso),
-          lastUpdateAgeMs: millisBetween(row.updated_at, nowIso),
-          phase: progress?.phase ?? fallbackPhase,
-          tokensSoFar: progress?.tokensSoFar ?? null,
-          lastProgressEvent: progress?.lastProgressEvent ?? null,
-          lastLog: progress?.lastLog ?? null,
-          progressObservedAt: progress?.createdAt ?? null,
-          progressAgeMs:
-            progress?.createdAt === undefined
-              ? null
-              : millisBetween(progress.createdAt, nowIso),
-          tokenCountKind: progress?.tokenCountKind ?? null,
-          updatedAt: row.updated_at,
-          leaseExpiresAt: row.lease_expires_at,
-        }
-      }),
-      inFlightAssignments: activeAssignments.map(row => ({
-        assignmentRef: row.assignment_ref,
-        pylonRef: row.pylon_ref,
-        jobKind: row.job_kind,
-        state: row.state,
-        elapsedMs: millisBetween(row.created_at, nowIso),
-        lastUpdateAgeMs: millisBetween(row.updated_at, nowIso),
-        updatedAt: row.updated_at,
-        leaseExpiresAt: row.lease_expires_at,
+      activeAssignments,
+      inFlightAssignments: activeAssignments.map(assignment => ({
+        assignmentRef: assignment.assignmentRef,
+        pylonRef: assignment.pylonRef,
+        jobKind: assignment.jobKind,
+        state: assignment.state,
+        elapsedMs: assignment.elapsedMs,
+        lastUpdateAgeMs: assignment.lastUpdateAgeMs,
+        updatedAt: assignment.updatedAt,
+        leaseExpiresAt: assignment.leaseExpiresAt,
       })),
       activeAssignmentCount: activeAssignments.length,
-      sourceRefs: [
-        'd1:pylon_api_registrations',
-        'd1:pylon_api_assignments',
-        'd1:pylon_api_events.assignment_progress',
-      ],
+      sourceRefs,
     },
     accounts: {
-      status: accountLedger,
-      healthyCount: accountLedger.filter(row => row.status === 'healthy').length,
-      limitedCount: accountLedger.filter(row =>
-        row.status === 'rate_limited' || row.status === 'usage_limited',
-      ).length,
-      sourceRefs: ['d1:provider_accounts'],
+      status: [],
+      healthyCount: 0,
+      limitedCount: 0,
+      sourceRefs,
     },
     supervisor: {
-      state: readySlots > busySlots ? 'ready' : activeAssignments.length > 0 ? 'busy' : 'idle',
+      state: activeAssignments.length > 0 ? 'busy' : readySlots > 0 ? 'ready' : 'idle',
       desiredCodexSlots: readySlots,
       availableCodexSlots: activeSlots,
       queueDepth: queuedSlots,
-      sourceRefs: ['d1:pylon_api_registrations'],
+      sourceRefs,
     },
-    recentFailures: [
-      ...accountLedger
-        .filter(row => row.reason !== null && row.status !== 'healthy')
-        .slice(0, 10)
-        .map(row => ({
-          scope: 'account',
-          ref: row.accountRefHash,
-          reasonCode: row.reason,
-          observedAt: nowIso,
-        })),
-      ...(latestAlert === null || latestAlertAgeMs > 5 * 60_000
-        ? []
-        : [{
-            scope: 'fleet',
-            ref: latestAlert.alert_ref,
-            reasonCode: latestAlert.reason_ref,
-            observedAt: latestAlert.detected_at,
-          }]),
-    ].slice(0, 10),
+    recentFailures: activeRows
+      .filter(row => row.state === 'blocked')
+      .slice(0, 10)
+      .map(row => {
+        const event = parseEvent(row)
+        const blockerRefs = parseJsonStringArray(JSON.stringify(event.blockerRefs ?? []))
+        return {
+          scope: 'runner',
+          ref: row.runner_ref,
+          reasonCode: blockerRefs[0] ?? 'blocker.public.runner_status.blocked',
+          observedAt: row.updated_at,
+        }
+      }),
     watchdog: {
-      state: watchdogState,
-      lastCronHeartbeatAt: latestAlert?.detected_at ?? null,
+      state: activeRows.some(row => row.state === 'blocked') ? 'STALLED' : 'HEALTHY',
+      lastCronHeartbeatAt: null,
       activeLeases: activeAssignments.length,
-      activeAlerts: latestAlert === null || latestAlertAgeMs > 5 * 60_000 ? [] : [{
-        alertRef: latestAlert.alert_ref,
-        classification: latestAlert.classification,
-        reasonRef: latestAlert.reason_ref,
-        detectedAt: latestAlert.detected_at,
-      }],
-      sourceRefs: ['d1:fleet_alerts', 'd1:pylon_api_assignments'],
+      activeAlerts: [],
+      sourceRefs,
     },
     servingRateMonitor: {
-      state:
-        latestServingRateAlert === null ||
-        latestServingRateAlertAgeMs > 15 * 60_000
-          ? 'HEALTHY'
-          : latestServingRateAlert.classification === 'glm_down'
-            ? 'GLM_DOWN'
-            : 'SERVING_RATE_LOW',
-      latestAlert:
-        latestServingRateAlert === null ||
-        latestServingRateAlertAgeMs > 15 * 60_000
-          ? null
-          : {
-              alertRef: latestServingRateAlert.alert_ref,
-              classification: latestServingRateAlert.classification,
-              detectedAt: latestServingRateAlert.detected_at,
-              reasonRef: latestServingRateAlert.reason_ref,
-            },
-      sourceRefs: ['d1:fleet_alerts', 'd1:token_usage_events'],
+      state: 'HEALTHY',
+      latestAlert: null,
+      sourceRefs,
     },
     glm: {
-      status: glmTotal === 0 ? 'unknown' : glmReady === glmTotal ? 'ready' : 'degraded',
-      readyReplicas: glmReady,
-      totalReplicas: glmTotal,
-      sourceRefs: ['d1:glm_fleet_readiness_heartbeats'],
-      caveatRefs: glmTotal === 0 ? ['caveat.public.operator_fleet_status.glm_heartbeat_rows_missing'] : [],
+      status: 'unknown',
+      readyReplicas: 0,
+      totalReplicas: 0,
+      sourceRefs,
+      caveatRefs: ['caveat.public.operator_fleet_status.glm_not_in_spine'],
     },
     brain: {
-      loopHealth: watchdogState === 'STALLED' ? 'stalled' : 'healthy',
+      loopHealth: activeRows.some(row => row.state === 'blocked') ? 'stalled' : 'healthy',
       currentGoals: [
         {
           goalRef: 'goal.public.artanis.serve_token_pace',
-          state: paceToFloor,
+          state: 'no_floor',
         },
       ],
-      recentDecisions: brainRows.map(row => ({
-        decisionRef: row.memory_ref,
-        createdAt: row.created_at,
-        summaryRef: `summary.public.artanis_decision.${row.memory_ref}`,
-      })),
-      sourceRefs: ['d1:artanis_owner_memory'],
+      recentDecisions: [],
+      sourceRefs,
+    },
+    spine: {
+      schemaVersion: SPINE_SCHEMA_VERSION,
+      liveRunnerCount: liveRows.length,
+      retainedRunnerCount: rows.filter(row => row.retention_state === 'retained').length,
+      sourceRefs,
     },
   }
 }
-
-type OperatorFleetReadScope =
-  | Readonly<{ kind: 'admin' }>
-  | Readonly<{ kind: 'agent'; userId: string }>
 
 const authorizeFleetRead = async <Bindings extends OperatorFleetStatusEnv>(
   dependencies: OperatorFleetStatusDependencies<Bindings>,
@@ -781,8 +399,9 @@ export const makeOperatorFleetStatusRoutes = <
       return methodNotAllowed(['GET'])
     }
 
-    const allowAgentToken =
-      new URL(request.url).pathname === OPERATOR_FLEET_STATE_PATH
+    const pathname = new URL(request.url).pathname
+    const legacyStatusPath = pathname === OPERATOR_FLEET_STATUS_PATH
+    const allowAgentToken = pathname === OPERATOR_FLEET_STATE_PATH
     const scope = await authorizeFleetRead(
       dependencies,
       request,
@@ -794,12 +413,23 @@ export const makeOperatorFleetStatusRoutes = <
     }
 
     const nowIso = (dependencies.currentIsoTimestamp ?? currentIsoTimestamp)()
-    const cacheKey =
-      scope.kind === 'admin'
-        ? 'operator:fleet:state:v1:admin'
-        : `operator:fleet:state:v1:agent:${scope.userId}`
+    const cacheKey = [
+      'operator:fleet:status:spine:v1',
+      legacyStatusPath ? 'legacy' : 'state',
+      scope.kind === 'admin' ? 'admin' : `agent:${scope.userId}`,
+    ].join(':')
     const cached = snapshotCache.get(cacheKey)
     const nowMs = Date.parse(nowIso)
+    const headers = {
+      'cache-control': 'private, max-age=10',
+      ...(legacyStatusPath
+        ? {
+            deprecation: 'true',
+            link: '</api/operator/pro/status>; rel="successor-version"',
+            'x-openagents-deprecated': 'T10.3 compat until T11.1 mobile pairing replaces this poll',
+          }
+        : {}),
+    }
     if (
       cached !== undefined &&
       Number.isFinite(nowMs) &&
@@ -807,16 +437,17 @@ export const makeOperatorFleetStatusRoutes = <
     ) {
       return jsonResponse(cached.response, {
         headers: {
-          'cache-control': 'private, max-age=10',
+          ...headers,
           'x-openagents-cache': 'hit',
         },
       })
     }
 
-    const response = await buildFleetStatusSnapshot(
+    const response = await buildFleetStatusSnapshotFromSpine(
       openAgentsDatabase(env),
       nowIso,
       scope,
+      legacyStatusPath,
     )
     if (Number.isFinite(nowMs)) {
       snapshotCache.set(cacheKey, {
@@ -828,7 +459,7 @@ export const makeOperatorFleetStatusRoutes = <
 
     return jsonResponse(response, {
       headers: {
-        'cache-control': 'private, max-age=10',
+        ...headers,
         'x-openagents-cache': 'miss',
       },
     })

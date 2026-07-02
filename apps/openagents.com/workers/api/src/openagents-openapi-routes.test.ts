@@ -17,12 +17,14 @@ import { handleOpenAgentsOpenApi } from './openagents-openapi-routes'
 import { PublicProductPromisesVersion } from './product-promises'
 
 type OpenApiOperation = Readonly<{
+  deprecated?: boolean
   description?: string
   operationId: string
   parameters?: ReadonlyArray<Record<string, unknown>>
   responses?: Record<string, unknown>
   security: ReadonlyArray<Record<string, ReadonlyArray<string>>>
   tags: ReadonlyArray<string>
+  'x-openagents-removal-condition'?: string
 }>
 
 type OpenApiDocument = Readonly<{
@@ -113,6 +115,27 @@ describe('OpenAgents OpenAPI route', () => {
     expect(operationAt(body, '/skill.json', 'get').operationId).toBe(
       'getOpenAgentsCompanionMetadata',
     )
+    const deprecatedFleetStatus = operationAt(
+      body,
+      '/api/operator/fleet/status',
+      'get',
+    )
+    expect(deprecatedFleetStatus.operationId).toBe(
+      'getDeprecatedOperatorFleetStatus',
+    )
+    expect(deprecatedFleetStatus.deprecated).toBe(true)
+    expect(deprecatedFleetStatus.description).toContain(
+      '/api/operator/pro/status',
+    )
+    expect(
+      deprecatedFleetStatus['x-openagents-removal-condition'],
+    ).toContain('T11.1')
+    expect(
+      operationAt(body, '/api/operator/fleet/state', 'get').description,
+    ).toContain('pylon_agent_runner_status_events')
+    expect(
+      operationAt(body, '/api/operator/pro/status', 'get').description,
+    ).toContain('single source of truth')
     expect(operationAt(body, '/api/public/proof/otec', 'get').operationId).toBe(
       'getPublicOtecProof',
     )
@@ -1275,6 +1298,19 @@ const intentionallyUndocumentedApiRoutes: ReadonlyArray<string> = [
   '/api/operator/khala/feedback',
   '/api/operator/khala/trace-review',
   '/api/operator/khala/unsupported-requests',
+  // Gym/operator experimental surfaces are internal harness controls or
+  // public-safe report projections, not stable OpenAPI contract surfaces yet.
+  '/api/gym/mirrorcode/backstop-burn',
+  '/api/operator/gym/mutalisk-khala-delegation/progress',
+  '/api/operator/gym/mutalisk-khala-delegation/runs',
+  '/api/operator/gym/mutalisk-khala-delegation/summary',
+  '/api/public/gym/mutalisk-khala-delegation/runs',
+  // Forum work-request relay diagnostics are internal to the work-request
+  // offer bridge until the relay contract is promoted.
+  '/api/forum/work-requests/{param}/offers/relay-events',
+  // Provider-account connection setup is browser/operator internal; the public
+  // agent-facing provider account contract is not this connect route.
+  '/api/provider-accounts/openrouter/connect',
   // Agency / services-business vertical pack (internal omni + operator surfaces;
   // session/operator-gated, not part of the public OpenAPI surface yet):
   '/api/workspaces',
@@ -1315,11 +1351,6 @@ const intentionallyUndocumentedApiRoutes: ReadonlyArray<string> = [
   '/api/admin/inference-analytics',
   '/api/operator/accounts/status',
   '/api/operator/artanis/dashboard',
-  // Operator fleet status aggregator (#6427): admin/operator snapshot for
-  // internal Artanis and fleet surfaces; public pages consume a later
-  // public-safe projection, not this operator route directly.
-  '/api/operator/fleet/status',
-  '/api/operator/fleet/state',
   '/api/admin/provider-accounts/usage',
   '/api/admin/sync/notify',
   // Self-hosted trace media blob serving (#6223): serves the public-safe R2 blob

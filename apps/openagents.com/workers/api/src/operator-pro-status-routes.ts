@@ -136,7 +136,7 @@ const unsafeProjectionValue =
   /(\/Users\/|[A-Za-z]:\\|raw[_-]?(prompt|trace|payload|event|log)|secret|token|wallet|credential|auth\.json)/i
 
 const publicRefPattern =
-  /^(agent|assignment|blocker|capability|command|dispatch|event|issue|pylon|runner|task|worktree|ref|status)\.[A-Za-z0-9_.:-]+$/
+  /^(agent|assignment|assignment-event|assignment-status|blocker|capability|capacity|command|dispatch|dispatch-context|dispatch-context-status|event|issue|load|merge-action|merge-wave|pylon|runner|runner-kind|task|task-status|worktree|ref|status)\.[A-Za-z0-9_.:=\-]+$/
 
 const bounded = (value: string | undefined, fallback: string, max: number): string => {
   const trimmed = value?.trim()
