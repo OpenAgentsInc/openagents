@@ -74,6 +74,7 @@ export type FleetPanelOptions = Readonly<{
   openExternal: (url: string) => Promise<boolean>
   lifecycleNdjson?: () => AsyncIterable<string | Uint8Array>
   lifecycleUpdateThrottleMs?: number
+  now?: () => Date
 }>
 
 type Handlers = Readonly<{
@@ -1120,8 +1121,8 @@ const renderOptimizationRunner = (
 const accountCard = (
   account: KhalaCodeDesktopFleetAccount,
   handlers: Handlers,
+  now: Date,
 ): HTMLElement => {
-  const now = new Date()
   const state = accountReadinessState(account.readiness)
   const card = el("article", "khala-fleet-account")
   card.dataset.state = state
@@ -1245,6 +1246,7 @@ const renderReady = (
   handlers: Handlers,
   activeRun: ActiveFleetRunView,
   lifecycleFrames: readonly KhalaFleetWorkerLifecycleFrame[],
+  now: Date,
 ): void => {
   const readyAccounts = data.accounts.filter(
     account => accountReadinessState(account.readiness) === "ready",
@@ -1319,7 +1321,7 @@ const renderReady = (
     )
   } else {
     const list = el("div", "khala-fleet-account-list")
-    for (const account of data.accounts) list.append(accountCard(account, handlers))
+    for (const account of data.accounts) list.append(accountCard(account, handlers, now))
     accountsSection.append(list)
   }
   container.append(accountsSection)
@@ -1437,6 +1439,7 @@ const render = (
   fleetRunForm: FleetRunFormState,
   fleetRun: FleetRunView,
   optimizationRun: OptimizationRunView,
+  now: Date,
 ): void => {
   container.replaceChildren()
 
@@ -1473,7 +1476,7 @@ const render = (
       el("p", "khala-fleet-error", `Could not load fleet status: ${view.message}`),
     )
   } else {
-    renderReady(body, view.data, handlers, activeRun, lifecycleFrames)
+    renderReady(body, view.data, handlers, activeRun, lifecycleFrames, now)
   }
   container.append(body)
 }
@@ -1520,6 +1523,7 @@ export const mountFleetPanel = (
   let activeConnect: ConnectView | null = null
   let visible = false
   let pollTimer = 0
+  const now = options.now ?? (() => new Date())
 
   const setRefreshBusy = (busy: boolean): void => {
     const buttons = container.querySelectorAll<HTMLButtonElement>('[data-fleet-action="refresh"]')
@@ -1547,6 +1551,7 @@ export const mountFleetPanel = (
       fleetRunForm,
       fleetRun,
       optimizationRun,
+      now(),
     )
 
   const fleetRunPreview = (): readonly FleetRunPreviewSlot[] | string => {
@@ -1877,6 +1882,7 @@ export const mountFleetPanel = (
           fleetRunForm,
           fleetRun,
           optimizationRun,
+          now(),
         )
         return
       }
@@ -1909,6 +1915,7 @@ export const mountFleetPanel = (
           fleetRunForm,
           fleetRun,
           optimizationRun,
+          now(),
         )
         return
       }
@@ -1932,6 +1939,7 @@ export const mountFleetPanel = (
           fleetRunForm,
           fleetRun,
           optimizationRun,
+          now(),
         )
         return
       }
@@ -2012,6 +2020,7 @@ export const mountFleetPanel = (
           fleetRunForm,
           fleetRun,
           optimizationRun,
+          now(),
         )
       } else {
         activeRun = {

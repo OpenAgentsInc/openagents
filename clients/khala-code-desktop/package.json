@@ -14,6 +14,7 @@
     "smoke:codex-spawn-live": "bun scripts/live-two-codex-readonly-smoke.ts",
     "smoke:composer-visual": "bun scripts/composer-visual-smoke.ts",
     "smoke:composer-visual-preview": "bun scripts/composer-visual-smoke.ts",
+    "smoke:cockpit-visual": "bun scripts/cockpit-visual-smoke.ts",
     "smoke:part2-fleet-gym-visual": "bun scripts/part2-fleet-gym-visual-smoke.ts",
     "smoke:part2-ui": "bun scripts/part2-ui-recording-smoke.ts",
     "bench:thread-switch": "bun scripts/thread-switch-benchmark.ts",

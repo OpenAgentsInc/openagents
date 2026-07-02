@@ -112,4 +112,7 @@ export const assertKhalaQaVisibleRect = (
   if (rect.x + rect.width > viewport.width + 1) {
     throw new Error(`${label} overflows the viewport width: ${JSON.stringify({ rect, viewport })}`)
   }
+  if (rect.y + rect.height > viewport.height + 1) {
+    throw new Error(`${label} overflows the viewport height: ${JSON.stringify({ rect, viewport })}`)
+  }
 }
