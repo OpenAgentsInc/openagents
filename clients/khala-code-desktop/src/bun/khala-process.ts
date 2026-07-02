@@ -1,7 +1,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process"
 import { Readable } from "node:stream"
 
-import { Context, Data, Effect, Layer, Sink, Stream } from "effect"
+import { Context, Data, Duration, Effect, Layer, Sink, Stream } from "effect"
 import * as PlatformError from "effect/PlatformError"
 import type * as Scope from "effect/Scope"
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process"
@@ -149,13 +149,67 @@ const waitForExit = (
     proc.once("error", onError)
   })
 
+const nodeProcessIsRunning = (proc: ChildProcessWithoutNullStreams): boolean =>
+  proc.exitCode === null && proc.signalCode === null
+
 const killNodeProcess = (
   proc: ChildProcessWithoutNullStreams,
-  signal: ChildProcess.Signal = "SIGTERM",
-): void => {
-  if (proc.killed || proc.exitCode !== null || proc.signalCode !== null) return
-  proc.kill(signal)
-}
+  options: ChildProcess.KillOptions = {},
+): Effect.Effect<void, PlatformError.PlatformError> =>
+  Effect.callback<void, PlatformError.PlatformError>((resume) => {
+    if (!nodeProcessIsRunning(proc)) {
+      resume(Effect.void)
+      return
+    }
+
+    const signal = options.killSignal ?? "SIGTERM"
+    const forceKillAfterMs =
+      options.forceKillAfter === undefined
+        ? null
+        : Math.max(0, Duration.toMillis(options.forceKillAfter))
+    let forceKillTimer: ReturnType<typeof setTimeout> | null = null
+    let settled = false
+
+    const cleanup = () => {
+      if (forceKillTimer !== null) {
+        clearTimeout(forceKillTimer)
+        forceKillTimer = null
+      }
+      proc.off("exit", onExit)
+      proc.off("error", onError)
+    }
+    const settle = (effect: Effect.Effect<void, PlatformError.PlatformError>) => {
+      if (settled) return
+      settled = true
+      cleanup()
+      resume(effect)
+    }
+    const onExit = () => settle(Effect.void)
+    const onError = (cause: Error) => settle(Effect.fail(platformError("kill", cause)))
+
+    try {
+      if (forceKillAfterMs !== null) {
+        proc.once("exit", onExit)
+        proc.once("error", onError)
+      }
+      proc.kill(signal)
+      if (forceKillAfterMs === null) {
+        settle(Effect.void)
+        return
+      }
+      forceKillTimer = setTimeout(() => {
+        try {
+          if (nodeProcessIsRunning(proc)) proc.kill("SIGKILL")
+          settle(Effect.void)
+        } catch (cause) {
+          settle(Effect.fail(platformError("kill", cause)))
+        }
+      }, forceKillAfterMs)
+      forceKillTimer.unref?.()
+    } catch (cause) {
+      settle(Effect.fail(platformError("kill", cause)))
+    }
+  })
 
 const makeNodeSpawnerService = (): ChildProcessSpawner.ChildProcessSpawner["Service"] =>
   ChildProcessSpawner.make(command => {
@@ -184,7 +238,8 @@ const makeNodeSpawnerService = (): ChildProcessSpawner.ChildProcessSpawner["Serv
         },
         catch: cause => platformError("spawn", cause),
       }),
-      ({ proc }) => Effect.sync(() => killNodeProcess(proc, command.options.killSignal ?? "SIGTERM")),
+      ({ proc }) =>
+        killNodeProcess(proc, { killSignal: command.options.killSignal }).pipe(Effect.ignore),
     ).pipe(
       Effect.map(({ command: commandName, proc }) => ChildProcessSpawner.makeHandle({
         all: Stream.merge(
@@ -198,10 +253,7 @@ const makeNodeSpawnerService = (): ChildProcessSpawner.ChildProcessSpawner["Serv
         getInputFd: () => Sink.drain,
         getOutputFd: () => Stream.empty,
         isRunning: Effect.sync(() => proc.exitCode === null && proc.signalCode === null),
-        kill: options => Effect.try({
-          try: () => killNodeProcess(proc, options?.killSignal ?? "SIGTERM"),
-          catch: cause => platformError("kill", cause),
-        }),
+        kill: options => killNodeProcess(proc, options),
         pid: ChildProcessSpawner.ProcessId(proc.pid ?? -1),
         stderr: streamFromNodeReadable(commandName, "stderr", proc.stderr).pipe(
           Stream.mapError(cause => platformError("stderr", cause)),

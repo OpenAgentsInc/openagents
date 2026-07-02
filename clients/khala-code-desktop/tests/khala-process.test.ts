@@ -41,6 +41,34 @@ describe("KhalaProcess", () => {
     expect(await waitUntilGone(pid)).toBe(true)
   })
 
+  test("force kills a scoped child that ignores the graceful kill signal", async () => {
+    const pid = await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function*() {
+          const handle = yield* spawnKhalaProcess(
+            process.execPath,
+            nodeEval("process.on('SIGTERM', () => {}); setInterval(() => {}, 1000)"),
+            { forceKillAfter: 25 },
+          )
+          yield* Effect.sleep(100)
+          return handle.pid
+        }),
+      ),
+    )
+
+    const gone = await waitUntilGone(pid)
+    if (!gone) {
+      try {
+        process.kill(pid, "SIGKILL")
+      } catch {
+        // The assertion below reports the failed cleanup condition.
+      }
+    }
+
+    expect(pid).toBeGreaterThan(0)
+    expect(gone).toBe(true)
+  })
+
   test("decodes stdout and stderr streams as text", async () => {
     const result = await collectKhalaProcessText(
       spawnKhalaProcess(process.execPath, nodeEval(
