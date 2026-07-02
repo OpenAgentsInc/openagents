@@ -50,6 +50,55 @@ describe("Khala Code desktop schema-first RPC contract", () => {
     expect(result).toMatchObject({ ok: true })
   })
 
+  test("accepts neutral harnessItem while keeping codexItem back-compat", () => {
+    const harnessItem = {
+      itemId: "item-1",
+      itemType: "commandExecution",
+      status: "completed",
+      title: "Command",
+    }
+
+    const neutral = decodeKhalaCodeDesktopRpcResult("submitChatMessage", {
+      backend: {
+        kind: "claude_app_sdk",
+        model: "claude-app-sdk",
+        runtimeMode: "claude_runtime",
+      },
+      messages: [
+        {
+          body: "ran",
+          harnessItem,
+          id: "message-neutral",
+          role: "tool",
+        },
+      ],
+      ok: true,
+      toolNames: [],
+      usedTools: [],
+    }) as { readonly messages: readonly [{ readonly harnessItem?: typeof harnessItem }] }
+    expect(neutral.messages[0]).toMatchObject({ harnessItem })
+
+    const backCompat = decodeKhalaCodeDesktopRpcResult("submitChatMessage", {
+      backend: {
+        kind: "codex_app_server",
+        model: "gpt-5.1-codex",
+        runtimeMode: "codex_harness",
+      },
+      messages: [
+        {
+          body: "ran",
+          codexItem: harnessItem,
+          id: "message-codex",
+          role: "tool",
+        },
+      ],
+      ok: true,
+      toolNames: [],
+      usedTools: [],
+    }) as { readonly messages: readonly [{ readonly codexItem?: typeof harnessItem }] }
+    expect(backCompat.messages[0]).toMatchObject({ codexItem: harnessItem })
+  })
+
   test("rejects malformed request parameters before a handler runs", () => {
     expect(() =>
       decodeKhalaCodeDesktopRpcParameters("codexThreadRead", [{ includeTurns: true }]),

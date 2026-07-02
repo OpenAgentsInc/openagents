@@ -124,13 +124,22 @@ SUP_SELFHEAL_CHECK_SECS="${SUP_SELFHEAL_CHECK_SECS:-30}"
 SUP_TASK_POOL_FALLBACK_ISSUES="${SUP_TASK_POOL_FALLBACK_ISSUES:-${SUP_ISSUES:-6310 6311 6320 6354 6355 6358}}"
 
 PYLON=(bun "$REPO_ROOT/apps/pylon/src/index.ts")
+SUP_ORCHESTRATION_STATE_BIN="${SUP_ORCHESTRATION_STATE_BIN:-bun $REPO_ROOT/apps/pylon/src/orchestration/supervisor-state.ts --supervisor claude-supervisor --kind claude --pylon-home $PYLON_HOME}"
+export SUP_ORCHESTRATION_STATE_BIN
 mkdir -p "$SUP_STATE_DIR"
-DESIRED_FILE="$SUP_STATE_DIR/desired-slots"
-PAUSE_FILE="$SUP_STATE_DIR/paused"
-echo 0 > "$DESIRED_FILE"
-rm -f "$PAUSE_FILE"
 
 log() { printf '%s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" >> "$SUP_LOG"; }
+
+supervisor_state() {
+  # shellcheck disable=SC2086
+  $SUP_ORCHESTRATION_STATE_BIN "$@"
+}
+
+desired_slots() {
+  supervisor_state desired-slots 2>>"$SUP_LOG" | python3 -c "import json,sys
+try: print(json.load(sys.stdin).get('desiredSlots', 0))
+except Exception: print(0)" 2>/dev/null
+}
 
 bound_log() {
   if [ -f "$SUP_LOG" ] && [ "$(wc -c < "$SUP_LOG" 2>/dev/null || echo 0)" -gt 4194304 ]; then
@@ -159,15 +168,15 @@ owner_session_broken() {
 }
 
 global_pause() {
-  touch "$PAUSE_FILE"
+  supervisor_state pause >> "$SUP_LOG" 2>&1 || true
   log "!!! GLOBAL PAUSE: owner Claude session appears broken; not hammering."
   {
     echo ""
     echo "## NEEDS-OWNER ($(date -u +%Y-%m-%dT%H:%M:%SZ)): Claude login broken"
     echo "claude-supervisor saw 'access token could not be refreshed / sign in again'."
     echo "Re-authenticate the local Claude account yourself (\`pylon auth claude\`);"
-    echo "the supervisor will NEVER do this. It is paused until you clear"
-    echo "$PAUSE_FILE."
+    echo "the supervisor will NEVER do this. It is paused in the orchestration"
+    echo "FleetRun state until an operator resumes it."
   } >> "$REPO_ROOT/NEEDS_OWNER.md" 2>/dev/null || true
 }
 
@@ -184,7 +193,6 @@ consecutive_refusals() {
 selfheal_watchdog_loop() {
   while true; do
     sleep "$SUP_SELFHEAL_CHECK_SECS"
-    [ -f "$PAUSE_FILE" ] && continue
     local n; n=$(consecutive_refusals)
     if [ "${n:-0}" -ge "$SUP_STALL_REFUSALS" ]; then
       log "!!!!!! FLEET-STALL: $n consecutive NO-DISPATCH with 0 OK -> self-healing (re-advertise + stale-closeout sweep)"
@@ -203,12 +211,11 @@ selfheal_watchdog_loop() {
 # --- Heartbeater: recompute desired slots + advertise capacity on a timer. ---
 heartbeater_loop() {
   while true; do
-    [ -f "$PAUSE_FILE" ] && { sleep "$SUP_HEARTBEAT_SECS"; continue; }
     local ready desired
     ready=$(ready_claude_account_refs | grep -c . || echo 0)
     desired=$(( ready * SUP_PER_ACCOUNT ))
     [ "$desired" -gt "$SUP_MAX_SLOTS" ] && desired="$SUP_MAX_SLOTS"
-    echo "$desired" > "$DESIRED_FILE"
+    supervisor_state sync --desired-slots "$desired" >> "$SUP_LOG" 2>&1 || true
     OPENAGENTS_PYLON_CLAUDE_CONCURRENCY="$desired" \
     OPENAGENTS_PYLON_CLAUDE_BUSY=0 \
     OPENAGENTS_PYLON_CLAUDE_QUEUED=0 \
@@ -225,14 +232,14 @@ worker_loop() {
   local backoff="$SUP_BACKOFF_MIN"
   local iter=0
   while true; do
-    if [ -f "$PAUSE_FILE" ]; then sleep 30; continue; fi
-    local desired; desired=$(cat "$DESIRED_FILE" 2>/dev/null || echo 0)
+    local desired; desired="$(desired_slots)"
     if [ "$slot" -ge "$desired" ]; then sleep 10; continue; fi
 
     # Round-robin account across the live ready set; default omits --account-ref.
     local refs=(); while IFS= read -r r; do refs+=("$r"); done < <(ready_claude_account_refs)
     [ "${#refs[@]}" -eq 0 ] && { sleep 20; continue; }
     local acc="${refs[$(( slot % ${#refs[@]} ))]}"
+    export SUP_CLAIM_ACCOUNT_REF="$acc"
     local acc_args=(); [ "$acc" != "default" ] && acc_args=(--account-ref "$acc")
 
     # Refresh the active pool from the unsupported-request ledger, with a short
@@ -252,7 +259,7 @@ worker_loop() {
     local start_idx=$(( (slot + iter) % ${#issues[@]} ))
     iter=$(( iter + 1 ))
     local issue
-    issue=$(pick_unlocked_issue "$start_idx" "${issues[@]}")
+    issue=$(pick_and_claim_unlocked_issue "$start_idx" "${issues[@]}")
     if [ -z "$issue" ]; then
       log "slot=$slot LOCKOUT all backlog issues already have open PRs; backing off ${backoff}s"
       sleep "$backoff"
@@ -270,6 +277,7 @@ worker_loop() {
     local commit local_head
     commit=$(supervisor_resolve_fresh_origin_main_sha "$SUP_REPO")
     if [ -z "$commit" ]; then
+      sup_release_claim "$issue"
       log "slot=$slot SKIP could not resolve fresh origin/main sha for $SUP_REPO; not dispatching a stale base (anti-#6719)"
       sleep 15; continue
     fi
@@ -279,6 +287,7 @@ worker_loop() {
     fi
 
     local out="$SUP_STATE_DIR/slot.$slot.json"
+    supervisor_state dispatch-attempt --slot "$slot" --account-ref "$acc" --issue "$issue" >> "$SUP_LOG" 2>&1 || true
     "${PYLON[@]}" khala request \
       --prompt "Implement public issue #$issue and run the named verification." \
       --workflow claude_agent_task \
@@ -293,6 +302,8 @@ worker_loop() {
 
     if grep -qiE '"ok": ?true|"closeout"|accepted' "$out" 2>/dev/null && [ "$rc" -eq 0 ]; then
       backoff="$SUP_BACKOFF_MIN"
+      sup_refresh_claim "$issue"
+      supervisor_state worker-done --slot "$slot" --account-ref "$acc" --issue "$issue" --status completed >> "$SUP_LOG" 2>&1 || true
       log "slot=$slot acc=$acc issue=#$issue OK (rc=$rc)"
       continue
     fi
@@ -302,6 +313,12 @@ worker_loop() {
     local sig="other"
     grep -qiE '409|dispatch gate refused|target_pylon_unavailable' "$out" 2>/dev/null && sig="refused"
     grep -qiE '429|rate.?limit|too many requests|quota' "$out" 2>/dev/null && sig="rate_limited"
+    if [ "$sig" = "refused" ]; then
+      sup_refresh_claim "$issue"
+    else
+      sup_release_claim "$issue"
+    fi
+    supervisor_state worker-done --slot "$slot" --account-ref "$acc" --issue "$issue" --status failed >> "$SUP_LOG" 2>&1 || true
     log "slot=$slot acc=$acc issue=#$issue NO-DISPATCH ($sig rc=$rc); backoff ${backoff}s"
     sleep "$backoff"
     backoff=$(( backoff * 2 )); [ "$backoff" -gt "$SUP_BACKOFF_MAX" ] && backoff="$SUP_BACKOFF_MAX"
@@ -312,6 +329,7 @@ cleanup() {
   log "supervisor stopping (pid $$); terminating children"
   pkill -P $$ 2>/dev/null
   rm -f "$SUP_STATE_DIR/supervisor.pid"
+  supervisor_state reconcile >> "$SUP_LOG" 2>&1 || true
   exit 0
 }
 trap cleanup INT TERM
@@ -324,6 +342,7 @@ fi
 
 echo $$ > "$SUP_STATE_DIR/supervisor.pid"
 log "=== claude-supervisor START pid=$$ repo=$REPO_ROOT pylon=$SUP_PYLON_REF per_account=$SUP_PER_ACCOUNT max_slots=$SUP_MAX_SLOTS ==="
+supervisor_state sync --desired-slots 1 >> "$SUP_LOG" 2>&1 || true
 
 "${PYLON[@]}" provider go-online >> "$SUP_LOG" 2>&1 || log "provider go-online nonzero (continuing)"
 
@@ -344,6 +363,6 @@ done
 # Periodic public-counter progress line for observability.
 while true; do
   bound_log
-  log "counter tokensServed=$(counter_now) desired_slots=$(cat "$DESIRED_FILE" 2>/dev/null)"
+  log "counter tokensServed=$(counter_now) desired_slots=$(desired_slots)"
   sleep 120
 done
