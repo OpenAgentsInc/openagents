@@ -3,6 +3,7 @@ import type { KhalaCodeDesktopRpcMethodName } from "../shared/rpc.js"
 // Read-only preview mode classification. EVERY RPC method must appear in
 // exactly one of these sets; the coverage test fails closed on drift.
 export const mutatingPreviewRpcMethods = new Set<KhalaCodeDesktopRpcMethodName>([
+  "claudeApprovalRespond",
   "codexAppServerRestart",
   "codexAppServerStart",
   "codexAppServerStop",
@@ -51,6 +52,8 @@ export const mutatingPreviewRpcMethods = new Set<KhalaCodeDesktopRpcMethodName>(
 export const readOnlySafePreviewRpcMethods = new Set<KhalaCodeDesktopRpcMethodName>([
   "appInfo",
   "appleFmReadiness",
+  "claudeApprovalPending",
+  "claudeSettingsRead",
   "codexAccountsStatus",
   "codexAppServerStatus",
   "codexBackgroundTerminalsList",

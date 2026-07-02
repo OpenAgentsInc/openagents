@@ -67,7 +67,9 @@ import {
 } from "../shared/qa-metrics"
 import { renderMessageBody } from "./transcript-render"
 import { mountFleetPanel } from "./fleet-status"
+import { mountKhalaCodeForumPanel } from "./forum-panel"
 import { mountCodexSettingsPanel } from "./codex-settings-panel"
+import { mountClaudeSettingsSection } from "./claude-settings-panel"
 import {
   mountCodexThreadSidebar,
   type CodexThreadSelectionSource,
@@ -206,6 +208,18 @@ const previewRpc = (): DesktopRpc => ({
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["fleetWorkerControl"]>>
       >("fleetWorkerControl", request),
+    claudeApprovalPending: () =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["claudeApprovalPending"]>>
+      >("claudeApprovalPending"),
+    claudeApprovalRespond: request =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["claudeApprovalRespond"]>>
+      >("claudeApprovalRespond", request),
+    claudeSettingsRead: () =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["claudeSettingsRead"]>>
+      >("claudeSettingsRead"),
     codexHarnessStatus: () =>
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["codexHarnessStatus"]>>
@@ -1966,6 +1980,62 @@ const respondToCodexApproval = async (button: HTMLButtonElement): Promise<void> 
   }])
 }
 
+const handledClaudeApprovals = new Set<string>()
+let claudeApprovalDialogOpen = false
+
+const respondToClaudeApprovalRequest = async (
+  request: Awaited<ReturnType<DesktopRpcRequests["claudeApprovalPending"]>>["requests"][number],
+): Promise<void> => {
+  const title = request.options.title ?? request.options.displayName ?? `Claude wants to use ${request.toolName}`
+  const detail = [
+    title,
+    request.options.description,
+    request.options.decisionReason,
+    request.options.blockedPath === undefined ? null : `Path: ${request.options.blockedPath}`,
+    "",
+    "Type always to allow and remember suggested permissions, allow to allow once, or deny.",
+  ].filter((line): line is string => line !== null && line !== undefined).join("\n")
+  const answer = window.prompt(detail, "allow")?.trim().toLowerCase() ?? "deny"
+  const allow = answer === "allow" || answer === "always"
+  const result = await controls.claudeApprovalRespond({
+    requestId: request.id,
+    decision: allow
+      ? {
+          behavior: "allow",
+          decisionClassification: answer === "always" ? "always_allow" : "allow_once",
+          ...(answer === "always" && request.options.suggestions !== undefined
+            ? { updatedPermissions: request.options.suggestions }
+            : {}),
+        }
+      : {
+          behavior: "deny",
+          decisionClassification: "deny",
+          message: "Denied by the Khala Code Desktop operator.",
+        },
+  })
+  appendMessages([{
+    body: result.ok
+      ? `Sent Claude approval decision: ${allow ? "allow" : "deny"}.`
+      : `Claude approval decision failed: ${result.error ?? "unknown error"}`,
+    id: nextMessageId("system"),
+    role: "system",
+  }])
+}
+
+const pollClaudeApprovals = async (): Promise<void> => {
+  if (claudeApprovalDialogOpen) return
+  const pending = await controls.claudeApprovalPending().catch(() => null)
+  const request = pending?.requests.find(item => !handledClaudeApprovals.has(item.id))
+  if (request === undefined) return
+  handledClaudeApprovals.add(request.id)
+  claudeApprovalDialogOpen = true
+  try {
+    await respondToClaudeApprovalRequest(request)
+  } finally {
+    claudeApprovalDialogOpen = false
+  }
+}
+
 const attachmentSummaryForSubmit = (
   attachments: readonly ComposerAttachment[],
 ): string => {
@@ -2421,6 +2491,9 @@ for (const target of [composerForm, composerRail]) {
 }
 
 window.addEventListener("resize", resizeComposerHud)
+window.setInterval(() => {
+  void pollClaudeApprovals()
+}, 1000)
 messageList.addEventListener("click", event => {
   const target = event.target
   if (!(target instanceof Element)) return
@@ -2492,6 +2565,10 @@ const controls = {
     rpc.request.fleetRunStart(request),
   fleetWorkerControl: (request: Parameters<DesktopRpcRequests["fleetWorkerControl"]>[0]) =>
     rpc.request.fleetWorkerControl(request),
+  claudeApprovalPending: () => rpc.request.claudeApprovalPending(),
+  claudeApprovalRespond: (request: Parameters<DesktopRpcRequests["claudeApprovalRespond"]>[0]) =>
+    rpc.request.claudeApprovalRespond(request),
+  claudeSettingsRead: () => rpc.request.claudeSettingsRead(),
   codexHarnessStatus: () => rpc.request.codexHarnessStatus(),
   codexApprovalRespond: (request: Parameters<DesktopRpcRequests["codexApprovalRespond"]>[0]) =>
     rpc.request.codexApprovalRespond(request),
@@ -2669,6 +2746,7 @@ mountComposerHud()
 const sidebarNavRoot = document.getElementById("sidebar-nav-root")
 const threadSidebarEl = document.getElementById("thread-sidebar")
 const fleetPanelEl = document.getElementById("fleet-panel")
+const forumPanelEl = document.getElementById("forum-panel")
 const inboxPanelEl = document.getElementById("inbox-panel")
 const gymPanelEl = document.getElementById("gym-panel")
 const settingsPanelEl = document.getElementById("settings-panel")
@@ -2835,14 +2913,26 @@ const inboxPanel =
         },
       })
 
+const forumPanel =
+  forumPanelEl === null
+    ? null
+    : mountKhalaCodeForumPanel(forumPanelEl, {
+        openExternal: url => controls.openExternalUrl(url),
+      })
+
 const gymPanel =
   gymPanelEl === null ? null : mountGymPane(gymPanelEl, initialGymState)
+
+let claudeSettingsSection: ReturnType<typeof mountClaudeSettingsSection> | null = null
 
 const settingsPanel =
   settingsPanelEl === null
     ? null
     : mountCodexSettingsPanel(settingsPanelEl, {
         fetch: () => controls.codexSettingsRead({ includeHiddenModels: true }),
+        onRender: () => {
+          void claudeSettingsSection?.refresh()
+        },
         write: async request => {
           const result = await controls.codexConfigValueWrite(request)
           return {
@@ -2852,6 +2942,11 @@ const settingsPanel =
           }
         },
       })
+claudeSettingsSection = settingsPanelEl === null
+  ? null
+  : mountClaudeSettingsSection(settingsPanelEl, {
+      fetch: () => controls.claudeSettingsRead(),
+    })
 
 const prefetchRecentThreadMessages = (
   threads: readonly KhalaCodeDesktopCodexThreadSummary[],
@@ -2918,21 +3013,28 @@ window.addEventListener("keydown", event => {
 
 const setActiveView = (value: string): void => {
   const panelOpenStartedAt = performance.now()
-  const activeValue = value === "fleet" || value === "inbox" || value === "settings" ? value : "chat"
+  const activeValue =
+    value === "fleet" || value === "forum" || value === "inbox" || value === "settings"
+      ? value
+      : "chat"
   const showChat = activeValue === "chat"
   const showFleet = activeValue === "fleet"
+  const showForum = activeValue === "forum"
   const showInbox = activeValue === "inbox"
   const showSettings = activeValue === "settings"
   if (threadSidebarEl !== null) threadSidebarEl.hidden = !showChat
   if (fleetPanelEl !== null) fleetPanelEl.hidden = !showFleet
+  if (forumPanelEl !== null) forumPanelEl.hidden = !showForum
   if (inboxPanelEl !== null) inboxPanelEl.hidden = !showInbox
   if (settingsPanelEl !== null) settingsPanelEl.hidden = !showSettings
   gymPanel?.setVisible(false)
-  if (threadShell !== null) threadShell.hidden = showFleet || showInbox || showSettings
-  if (composerDock !== null) composerDock.hidden = showFleet || showInbox || showSettings
+  if (threadShell !== null) threadShell.hidden = showFleet || showForum || showInbox || showSettings
+  if (composerDock !== null) composerDock.hidden = showFleet || showForum || showInbox || showSettings
   fleetPanel?.setVisible(showFleet)
+  forumPanel?.setVisible(showForum)
   inboxPanel?.setVisible(showInbox)
   settingsPanel?.setVisible(showSettings)
+  if (showSettings) void claudeSettingsSection?.refresh()
   threadSidebar?.setVisible(showChat)
   if (!showChat) markQaTimer("panel.open_ms", panelOpenStartedAt, { panel: activeValue })
   if (showChat) {
@@ -2943,12 +3045,14 @@ const setActiveView = (value: string): void => {
 function showGymProofPane(): void {
   if (threadSidebarEl !== null) threadSidebarEl.hidden = true
   if (fleetPanelEl !== null) fleetPanelEl.hidden = true
+  if (forumPanelEl !== null) forumPanelEl.hidden = true
   if (inboxPanelEl !== null) inboxPanelEl.hidden = true
   if (settingsPanelEl !== null) settingsPanelEl.hidden = true
   if (threadShell !== null) threadShell.hidden = true
   if (composerDock !== null) composerDock.hidden = true
   gymPanel?.setVisible(true)
   fleetPanel?.setVisible(false)
+  forumPanel?.setVisible(false)
   inboxPanel?.setVisible(false)
   settingsPanel?.setVisible(false)
   threadSidebar?.setVisible(false)

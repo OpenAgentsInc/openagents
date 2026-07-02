@@ -100,6 +100,11 @@ const numberField = (value: Record<string, unknown> | null | undefined, field: s
   return typeof candidate === "number" && Number.isFinite(candidate) ? candidate : 0
 }
 
+const numberFields = (
+  value: Record<string, unknown> | null | undefined,
+  fields: readonly string[],
+): number => fields.reduce((sum, field) => sum + numberField(value, field), 0)
+
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value)
 
@@ -120,10 +125,11 @@ const messageId = (
 
 const usageFromUsageObject = (usage: Record<string, unknown> | null): KhalaCodeDesktopUsage | undefined => {
   if (usage === null) return undefined
-  const input = numberField(usage, "input_tokens") + numberField(usage, "cache_creation_input_tokens")
-  const cachedInput = numberField(usage, "cache_read_input_tokens")
-  const output = numberField(usage, "output_tokens")
-  const reasoningOutput = numberField(usage, "reasoning_output_tokens")
+  const input = numberFields(usage, ["input_tokens", "inputTokens"]) +
+    numberFields(usage, ["cache_creation_input_tokens", "cacheCreationInputTokens"])
+  const cachedInput = numberFields(usage, ["cache_read_input_tokens", "cacheReadInputTokens"])
+  const output = numberFields(usage, ["output_tokens", "outputTokens"])
+  const reasoningOutput = numberFields(usage, ["reasoning_output_tokens", "reasoningOutputTokens"])
   if (input + cachedInput + output + reasoningOutput === 0) return undefined
   return { input, cachedInput, output, reasoningOutput }
 }
@@ -134,11 +140,11 @@ const usageFromClaude = (message: Record<string, unknown>): KhalaCodeDesktopUsag
 const usageObjectsFrom = (value: Record<string, unknown> | null): readonly Record<string, unknown>[] => {
   if (value === null) return []
   if (
-    numberField(value, "input_tokens") +
-    numberField(value, "cache_creation_input_tokens") +
-    numberField(value, "cache_read_input_tokens") +
-    numberField(value, "output_tokens") +
-    numberField(value, "reasoning_output_tokens") > 0
+    numberFields(value, ["input_tokens", "inputTokens"]) +
+    numberFields(value, ["cache_creation_input_tokens", "cacheCreationInputTokens"]) +
+    numberFields(value, ["cache_read_input_tokens", "cacheReadInputTokens"]) +
+    numberFields(value, ["output_tokens", "outputTokens"]) +
+    numberFields(value, ["reasoning_output_tokens", "reasoningOutputTokens"]) > 0
   ) return [value]
   return Object.values(value).filter(isObject)
 }

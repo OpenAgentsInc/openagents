@@ -8,6 +8,7 @@ import type { OnDeviceDeciderSelection } from "./on-device-decider.js"
 import type {
   KhalaCodeQaMetricsSnapshot,
 } from "./qa-metrics.js"
+import type { KhalaCodeDesktopClaudeSettingsProjection } from "./claude-settings.js"
 
 // Electrobun treats Infinity as no local request timeout; chat turns stream progress
 // over events while hosted model calls and local tools can legitimately exceed 30s.
@@ -126,6 +127,10 @@ export type KhalaCodeDesktopCodexTurnActionResult = typeof RpcTurnActionResult.T
 export type KhalaCodeDesktopCodexThreadCompactRequest = typeof RpcThreadCompactRequest.Type
 export type KhalaCodeDesktopCodexApprovalRespondRequest = typeof RpcApprovalRespondRequest.Type
 export type KhalaCodeDesktopCodexApprovalRespondResult = typeof RpcApprovalRespondResult.Type
+export type KhalaCodeDesktopClaudeApprovalPendingResult = typeof RpcClaudeApprovalPendingResult.Type
+export type KhalaCodeDesktopClaudeApprovalRespondRequest = typeof RpcClaudeApprovalRespondRequest.Type
+export type KhalaCodeDesktopClaudeApprovalRespondResult = typeof RpcClaudeApprovalRespondResult.Type
+export type KhalaCodeDesktopClaudeSettingsReadResult = typeof RpcClaudeSettingsProjection.Type
 export type KhalaCodeDesktopCodexSettingsReadRequest = typeof RpcCodexSettingsReadRequest.Type
 export type KhalaCodeDesktopCodexSettingsReadResult = typeof RpcCodexSettingsProjection.Type
 export type KhalaCodeDesktopCodexConfigValueWriteRequest = typeof RpcCodexConfigValueWriteRequest.Type
@@ -715,6 +720,48 @@ const RpcApprovalRespondResult = S.Struct({
   requestId: S.Union([S.String, S.Number]),
   error: S.optional(S.String),
 })
+const RpcClaudeApprovalDecision = S.Union([
+  S.Struct({
+    behavior: S.Literal("allow"),
+    decisionClassification: S.optional(S.String),
+    updatedInput: S.optional(S.Record(S.String, S.Unknown)),
+    updatedPermissions: S.optional(S.Array(S.Record(S.String, S.Unknown))),
+  }),
+  S.Struct({
+    behavior: S.Literal("deny"),
+    decisionClassification: S.optional(S.String),
+    interrupt: S.optional(S.Boolean),
+    message: S.String,
+  }),
+])
+const RpcClaudeApprovalRequestProjection = S.Struct({
+  id: S.String,
+  input: S.Record(S.String, S.Unknown),
+  options: S.Struct({
+    blockedPath: S.optional(S.String),
+    decisionReason: S.optional(S.String),
+    description: S.optional(S.String),
+    displayName: S.optional(S.String),
+    suggestions: S.optional(S.Array(S.Record(S.String, S.Unknown))),
+    title: S.optional(S.String),
+  }),
+  toolName: S.String,
+})
+const RpcClaudeApprovalPendingResult = S.Struct({
+  ok: S.Boolean,
+  requests: S.Array(RpcClaudeApprovalRequestProjection),
+})
+const RpcClaudeApprovalRespondRequest = S.Struct({
+  decision: RpcClaudeApprovalDecision,
+  requestId: S.String,
+})
+const RpcClaudeApprovalRespondResult = S.Struct({
+  ok: S.Boolean,
+  requestId: S.String,
+  decision: RpcClaudeApprovalDecision,
+  error: S.optional(S.String),
+})
+const RpcClaudeSettingsProjection = S.Unknown as S.Schema<KhalaCodeDesktopClaudeSettingsProjection>
 
 const RpcCodexSettingsReadRequest = S.Struct({
   cwd: S.optional(S.String),
@@ -1544,6 +1591,9 @@ export const KhalaCodeDesktopRpcMethodSchemas = {
   fleetRunStart: { parameters: [param(RpcFleetRunStartRequest)], result: RpcFleetRunStartResult },
   fleetRunStatus: { parameters: [param(RpcFleetRunStatusRequest)], result: RpcFleetRunStatusResult },
   fleetWorkerControl: { parameters: [param(RpcFleetWorkerControlRequest)], result: RpcFleetWorkerControlResult },
+  claudeApprovalPending: { parameters: noParams(), result: RpcClaudeApprovalPendingResult },
+  claudeApprovalRespond: { parameters: [param(RpcClaudeApprovalRespondRequest)], result: RpcClaudeApprovalRespondResult },
+  claudeSettingsRead: { parameters: noParams(), result: RpcClaudeSettingsProjection },
   codexHarnessStatus: { parameters: noParams(), result: RpcCodexHarnessStatus },
   codexApprovalRespond: { parameters: [param(RpcApprovalRespondRequest)], result: RpcApprovalRespondResult },
   codexBackgroundTerminalsClean: { parameters: [param(RpcBackgroundTerminalsCleanRequest)], result: RpcCodexAppServerActionResult },
@@ -1690,6 +1740,9 @@ export type KhalaCodeDesktopRPCSchema = {
     fleetRunStart(request: KhalaCodeDesktopFleetRunStartRequest): Promise<KhalaCodeDesktopFleetRunStartResult>
     fleetRunStatus(request: KhalaCodeDesktopFleetRunStatusRequest): Promise<KhalaCodeDesktopFleetRunStatusResult>
     fleetWorkerControl(request: KhalaCodeDesktopFleetWorkerControlRequest): Promise<KhalaCodeDesktopFleetWorkerControlResult>
+    claudeApprovalPending(): Promise<KhalaCodeDesktopClaudeApprovalPendingResult>
+    claudeApprovalRespond(request: KhalaCodeDesktopClaudeApprovalRespondRequest): Promise<KhalaCodeDesktopClaudeApprovalRespondResult>
+    claudeSettingsRead(): Promise<KhalaCodeDesktopClaudeSettingsReadResult>
     codexHarnessStatus(): Promise<KhalaCodeDesktopCodexHarnessStatus>
     codexApprovalRespond(request: KhalaCodeDesktopCodexApprovalRespondRequest): Promise<KhalaCodeDesktopCodexApprovalRespondResult>
     codexBackgroundTerminalsClean(request: KhalaCodeDesktopCodexBackgroundTerminalsCleanRequest): Promise<KhalaCodeDesktopCodexAppServerActionResult>
