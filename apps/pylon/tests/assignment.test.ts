@@ -6,10 +6,12 @@ import { decodePylonLifecycleWireEventJson } from "@openagentsinc/agent-runtime-
 import { createBootstrapSummary, parseBootstrapArgs } from "../src/bootstrap"
 import {
   acceptAssignment,
+  boundedAssignmentProgressMessage,
   computeAssignmentAdmission,
   pollAssignments,
   runNoSpendAssignment,
   submitAssignmentCloseout,
+  submitAssignmentProgress,
   trainingWorkerReceiptsPathForHome,
   type AssignmentRunLifecycleEvent,
   type PylonAssignmentLease,
@@ -68,6 +70,8 @@ function fakeAssignmentServer(input: {
   rejectAccept?: boolean
   rejectAcceptRefs?: ReadonlyArray<string>
   cancelOnProgress?: boolean
+  rejectLongProgressMessage?: boolean
+  rejectProgressStatus?: number
   authNow?: Date
   maxSkewSeconds?: number
 } = {}) {
@@ -154,6 +158,19 @@ function fakeAssignmentServer(input: {
         if (input.cancelOnProgress) {
           return Response.json({ progressRef: "assignment.cancelled.fake" }, { status: 410 })
         }
+        if (
+          input.rejectLongProgressMessage &&
+          typeof body.message === "string" &&
+          body.message.length > 240
+        ) {
+          return Response.json({ errorRef: "error.assignment_progress.message_too_long" }, { status: 400 })
+        }
+        if (input.rejectProgressStatus !== undefined) {
+          return Response.json(
+            { errorRef: `error.assignment_progress.http_${input.rejectProgressStatus}` },
+            { status: input.rejectProgressStatus },
+          )
+        }
         return Response.json({ progressRef: `assignment.progress.${body.leaseRef}.${body.sequence}` })
       }
       if (url.pathname.endsWith("/artifacts")) {
@@ -230,6 +247,39 @@ describe("Pylon assignment lease flow", () => {
 
       expect(admission.admissible).toBe(false)
       expect(admission.blockerRefs).toContain("blocker.assignment.agent_runner_ambiguous")
+    })
+  })
+
+  test("bounds assignment progress messages before posting", async () => {
+    await withTempHome(async (home) => {
+      const fake = fakeAssignmentServer({ rejectLongProgressMessage: true })
+      const summary = await readySummary(home)
+      const longMessage = `Proof-ready closeout ${"with extra public context ".repeat(16)}`
+
+      const result = await submitAssignmentProgress(
+        summary,
+        {
+          schema: "openagents.pylon.assignment_progress.v0.3",
+          assignmentRef: "assignment.public.no_spend.long_progress",
+          leaseRef: "lease.public.no_spend.long_progress",
+          sequence: 1,
+          status: "proof-ready",
+          message: longMessage,
+          artifactRefs: [],
+          proofRefs: [],
+          observedAt: "2026-06-09T00:00:30.000Z",
+        },
+        {
+          baseUrl: fake.baseUrl,
+          now: () => new Date("2026-06-09T00:00:30.000Z"),
+        },
+      )
+
+      const progressRequest = fake.requests.find((request) => request.path.endsWith("/progress"))
+      expect(result.progressRef).toBe("assignment.progress.lease.public.no_spend.long_progress.1")
+      expect(progressRequest?.body.message).toBe(boundedAssignmentProgressMessage(longMessage))
+      expect(progressRequest?.body.message.length).toBeLessThanOrEqual(240)
+      expect(progressRequest?.body.message.endsWith("...")).toBe(true)
     })
   })
 
@@ -1792,6 +1842,28 @@ describe("Pylon assignment lease flow", () => {
       expect(result.closeout.settlementState).toBe("not_applicable")
       expect(result.closeout.payoutClaimAllowed).toBe(false)
       expect(result.closeout.proofRefs[0].startsWith("assignment.proof.failure.")).toBe(true)
+      assertPublicProjectionSafe(result.closeout)
+    })
+  })
+
+  test("labels progress submission HTTP rejections in the failure closeout", async () => {
+    await withTempHome(async (home) => {
+      const fake = fakeAssignmentServer({ rejectProgressStatus: 400 })
+      const summary = await readySummary(home)
+      await sendHeartbeat(summary, { baseUrl: fake.baseUrl, now: () => new Date("2026-06-09T00:00:00.000Z") })
+
+      const result = await runNoSpendAssignment(summary, {
+        baseUrl: fake.baseUrl,
+        now: () => new Date("2026-06-09T00:00:30.000Z"),
+      })
+
+      expect(result.ok).toBe(false)
+      if (result.ok) throw new Error("expected rejected closeout")
+      expect(result.closeout.status).toBe("rejected")
+      expect(result.closeout.blockerRefs).toEqual([
+        "blocker.assignment.progress_or_artifact_rejected",
+        "blocker.assignment.progress_or_artifact_http_400",
+      ])
       assertPublicProjectionSafe(result.closeout)
     })
   })

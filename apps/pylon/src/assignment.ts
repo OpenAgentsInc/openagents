@@ -277,10 +277,21 @@ type PublicPylonAssignmentProjection = Readonly<{
 }>
 
 const DEFAULT_ASSIGNMENT_REQUEST_TIMEOUT_MS = 30_000
+const ASSIGNMENT_PROGRESS_MESSAGE_MAX_LENGTH = 240
 const OPERATOR_PRO_STATUS_PATH = "/api/operator/pro/status"
 
 function stableRef(prefix: string, value: string) {
   return `${prefix}.${createHash("sha256").update(value).digest("hex").slice(0, 24)}`
+}
+
+export function boundedAssignmentProgressMessage(
+  value: string,
+  fallback = "Assignment progress updated.",
+): string {
+  const normalized = value.replace(/\s+/g, " ").trim()
+  const message = normalized === "" ? fallback : normalized
+  if (message.length <= ASSIGNMENT_PROGRESS_MESSAGE_MAX_LENGTH) return message
+  return `${message.slice(0, ASSIGNMENT_PROGRESS_MESSAGE_MAX_LENGTH - 3).trimEnd()}...`
 }
 
 function safeStringArray(value: unknown): string[] {
@@ -300,6 +311,15 @@ const uniqueRefs = (refs: ReadonlyArray<string | null | undefined>): string[] =>
     result.push(trimmed)
   }
   return result
+}
+
+const assignmentSubmissionFailureBlockerRefs = (error: unknown): string[] => {
+  const message = error instanceof Error ? error.message : String(error)
+  const status = message.match(/\((\d{3})\)/)?.[1]
+  return uniqueRefs([
+    "blocker.assignment.progress_or_artifact_rejected",
+    status === undefined ? undefined : `blocker.assignment.progress_or_artifact_http_${status}`,
+  ])
 }
 
 const publicTrainingRef = (value: unknown): string | null => {
@@ -1381,11 +1401,15 @@ export async function submitAssignmentProgress(
   options: AssignmentClientOptions,
 ) {
   const state = await ensurePylonLocalState(summary)
+  const progressForApi: AssignmentProgress = {
+    ...progress,
+    message: boundedAssignmentProgressMessage(progress.message),
+  }
   const body =
     process.env.OPENAGENTS_PYLON_CODEX_PROGRESS_TOKEN_KIND === "1"
-      ? progress
+      ? progressForApi
       : (() => {
-          const { tokenCountKind: _tokenCountKind, ...compatibleProgress } = progress
+          const { tokenCountKind: _tokenCountKind, ...compatibleProgress } = progressForApi
           return compatibleProgress
         })()
   const response = await postJson(
@@ -2039,7 +2063,9 @@ export async function runNoSpendAssignment(summary: BootstrapSummary, options: A
     leaseRef: lease.leaseRef,
     sequence: 1,
     status: "proof-ready",
-    message: runtimeGate?.message ?? "No-spend assignment executed in bounded local Pylon runtime.",
+    message: boundedAssignmentProgressMessage(
+      runtimeGate?.message ?? "No-spend assignment executed in bounded local Pylon runtime.",
+    ),
     artifactRefs,
     proofRefs,
     observedAt,
@@ -2075,6 +2101,7 @@ export async function runNoSpendAssignment(summary: BootstrapSummary, options: A
     const message = String(error)
     const status = message.includes("(410)") ? "cancelled" : message.includes("(408)") ? "timed-out" : "rejected"
     const failureProofRef = stableRef("assignment.proof.failure", `${lease.leaseRef}:${status}:${message}`)
+    const blockerRefs = assignmentSubmissionFailureBlockerRefs(error)
     const closeout: AssignmentCloseout = {
       schema: "openagents.pylon.assignment_closeout.v0.3",
       assignmentRef: lease.assignmentRef,
@@ -2084,7 +2111,7 @@ export async function runNoSpendAssignment(summary: BootstrapSummary, options: A
       settlementState: "not_applicable",
       payoutClaimAllowed: false,
       artifactRefs: [],
-      blockerRefs: ["blocker.assignment.progress_or_artifact_rejected"],
+      blockerRefs,
       buildRefs: [],
       closeoutRefs: [stableRef("assignment.closeout.failure", `${lease.leaseRef}:${status}`)],
       previewRefs: [],

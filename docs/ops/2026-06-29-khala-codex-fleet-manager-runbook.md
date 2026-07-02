@@ -488,6 +488,11 @@ evidence in both places operators need it:
   assignment progress endpoint while the runtime is active. This path is
   fail-soft and operator-visible only; if the progress endpoint is slow or down,
   local execution and closeout must continue.
+- Final progress messages are bounded to the hosted API contract. If the
+  progress or artifact submit is rejected, the failure closeout keeps the
+  generic `blocker.assignment.progress_or_artifact_rejected` ref and adds
+  `blocker.assignment.progress_or_artifact_http_<status>` when the server
+  returned an HTTP status.
 - Khala Code Desktop parses both the final array and the stderr JSONL fallback.
   Timeout summaries should show `command timed out` plus the last lifecycle
   state, for example `assignment_run.runtime_started (phase=runtime_active)`.

@@ -500,6 +500,10 @@ starts a supervised issue-list FleetRun at target concurrency 2. The
 supervisor publishes a fresh presence heartbeat with the run capacity before
 each real dispatch pass; if server admission still rejects a request, the smoke
 result carries a `dispatchFailures` summary instead of only aggregate counters.
+Final no-spend progress messages are bounded to the hosted assignment API
+contract, and progress/artifact submission rejections add a
+`blocker.assignment.progress_or_artifact_http_<status>` closeout ref so the
+next operator can distinguish a schema/API refusal from a runtime refusal.
 The smoke fails closed unless both assignment refs close out with green `pylon
 khala closeout` checklists, positive exact `token_usage_events` rows, zero
 duplicate work-unit claims, and a public `/api/public/khala-tokens-served`
