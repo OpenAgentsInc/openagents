@@ -2006,6 +2006,33 @@ button {
     linear-gradient(180deg, color-mix(in srgb, var(--oa-color-khala-energy-cyan) 4%, transparent), transparent 58%),
     var(--oa-color-component-surface);
 }
+.khala-fleet-run-header {
+  gap: 0.65rem;
+  padding: 0.85rem 0.95rem;
+  border: 1px solid color-mix(in srgb, var(--oa-color-khala-success) 24%, transparent);
+  border-radius: 0.55rem;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--oa-color-khala-success) 4%, transparent), transparent 58%),
+    var(--oa-color-component-surface);
+}
+.khala-fleet-run-header[data-state="paused"],
+.khala-fleet-run-header[data-state="draining"] {
+  border-color: color-mix(in srgb, var(--oa-color-khala-warning) 28%, transparent);
+}
+.khala-fleet-run-header[data-state="stopped"] {
+  border-color: color-mix(in srgb, var(--oa-color-khala-danger) 28%, transparent);
+}
+.khala-fleet-run-objective {
+  margin: 0;
+  color: color-mix(in srgb, var(--oa-color-component-text) 78%, transparent);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+.khala-fleet-run-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
 .khala-fleet-delegate-form {
   display: grid;
   gap: 0.6rem;
@@ -2099,6 +2126,14 @@ button {
 .khala-fleet-run:disabled {
   cursor: default;
   opacity: 0.58;
+}
+.khala-fleet-run-danger {
+  border-color: color-mix(in srgb, var(--oa-color-khala-danger) 52%, transparent);
+  background: color-mix(in srgb, var(--oa-color-khala-danger) 12%, transparent);
+  color: var(--oa-color-component-text);
+}
+.khala-fleet-run-danger:hover {
+  background: color-mix(in srgb, var(--oa-color-khala-danger) 17%, transparent);
 }
 .khala-fleet-delegate-output {
   display: grid;

@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { Window } from "happy-dom"
 
 import type {
+  KhalaCodeDesktopFleetRunControlRequest,
+  KhalaCodeDesktopFleetRunProjection,
   KhalaCodeDesktopFleetRunStartRequest,
   KhalaCodeDesktopFleetRunStartResult,
   KhalaCodeDesktopFleetStatus,
@@ -66,17 +68,16 @@ const status = (): KhalaCodeDesktopFleetStatus => ({
   processes: [],
 })
 
-const runStartResult = (
-  request: KhalaCodeDesktopFleetRunStartRequest,
-): KhalaCodeDesktopFleetRunStartResult => ({
-  ok: true,
-  run: {
+const fleetRunProjection = (
+  input: Partial<KhalaCodeDesktopFleetRunProjection> = {},
+): KhalaCodeDesktopFleetRunProjection => ({
     counters: {
-      activeAssignments: 0,
+      activeAssignments: 2,
       blockedAssignments: 0,
-      completedAssignments: 0,
+      completedAssignments: 4,
       failedAssignments: 0,
-      workUnitsTotal: 0,
+      workUnitsTotal: 10,
+      ...input.counters,
     },
     createdAt: "2026-07-01T18:00:00.000Z",
     dispatchKind: "supervised_dispatch",
@@ -90,11 +91,21 @@ const runStartResult = (
     runRef: "fleet.run.public.test",
     startedAt: "2026-07-01T18:00:01.000Z",
     state: "running",
-    targetConcurrency: request.targetConcurrency,
-    updatedAt: "2026-07-01T18:00:01.000Z",
+    targetConcurrency: 3,
+    updatedAt: "2026-07-01T18:00:31.000Z",
     workerKind: "codex",
+    workSource: { kind: "fixture" },
+    ...input,
+})
+
+const runStartResult = (
+  request: KhalaCodeDesktopFleetRunStartRequest,
+): KhalaCodeDesktopFleetRunStartResult => ({
+  ok: true,
+  run: fleetRunProjection({
+    targetConcurrency: request.targetConcurrency,
     workSource: request.workSource,
-  },
+  }),
   supervisorStarted: true,
 })
 
@@ -122,6 +133,20 @@ const changeInput = (input: HTMLInputElement | HTMLTextAreaElement | HTMLSelectE
   input.dispatchEvent(new window.Event(input.tagName === "SELECT" ? "change" : "input", { bubbles: true }))
 }
 
+const clickButton = (root: HTMLElement, label: string): void => {
+  const button = [...root.querySelectorAll<HTMLButtonElement>("button")]
+    .find(item => item.textContent?.includes(label))
+  expect(button).not.toBeUndefined()
+  button!.click()
+}
+
+const flushPanelWork = async (): Promise<void> => {
+  await Promise.resolve()
+  await Promise.resolve()
+  await Promise.resolve()
+  await Promise.resolve()
+}
+
 describe("Fleet status panel", () => {
   beforeEach(installDom)
   afterEach(restoreDom)
@@ -129,6 +154,7 @@ describe("Fleet status panel", () => {
   test("previews the first FleetRun wave and starts through the mocked RPC", async () => {
     const root = document.createElement("div")
     const requests: KhalaCodeDesktopFleetRunStartRequest[] = []
+    let activeRun: KhalaCodeDesktopFleetRunProjection | null = null
     const panel = mountFleetPanel(root, {
       connectAccount: async () => ({
         ok: false,
@@ -142,9 +168,15 @@ describe("Fleet status panel", () => {
         throw new Error("delegate runner should not be called")
       },
       fetch: async () => status(),
+      fleetRunControl: async () => {
+        throw new Error("fleet run control should not be called")
+      },
+      fleetRunList: async () => ({ ok: true, runs: activeRun === null ? [] : [activeRun] }),
       fleetRunStart: async request => {
         requests.push(request)
-        return runStartResult(request)
+        const result = runStartResult(request)
+        activeRun = result.run
+        return result
       },
       loadGymDemoProof: () => {
         throw new Error("gym proof should not be called")
@@ -178,8 +210,7 @@ describe("Fleet status panel", () => {
     expect(root.textContent).toContain("codex-b")
 
     form!.dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }))
-    await Promise.resolve()
-    await Promise.resolve()
+    await flushPanelWork()
 
     expect(requests).toEqual([
       {
@@ -190,6 +221,157 @@ describe("Fleet status panel", () => {
       },
     ])
     expect(root.textContent).toContain("fleet.run.public.test")
+    expect(root.textContent).toContain("Running")
+    expect(root.textContent).toContain("Burn down public fixture tasks.")
+    expect(root.textContent).toContain("target3")
+    expect(root.textContent).toContain("actual2")
+    expect(root.textContent).toContain("remaining4")
+    expect(root.textContent).toContain("claimed2")
+    expect(root.textContent).toContain("done4")
+    expect(root.textContent).toContain("elapsed30s")
+  })
+
+  test("renders the active FleetRun header from fleetRunList without fabricated objective text", async () => {
+    const root = document.createElement("div")
+    const activeRun = fleetRunProjection({
+      counters: {
+        activeAssignments: 1,
+        blockedAssignments: 1,
+        completedAssignments: 6,
+        failedAssignments: 1,
+        workUnitsTotal: 12,
+      },
+      state: "draining",
+      targetConcurrency: 5,
+      updatedAt: "2026-07-01T18:01:01.000Z",
+    })
+    const panel = mountFleetPanel(root, {
+      connectAccount: async () => ({
+        ok: false,
+        accountRef: "codex-test",
+        error: "disabled",
+        output: "",
+        userCode: null,
+        verificationUrl: null,
+      }),
+      delegateRun: async () => {
+        throw new Error("delegate runner should not be called")
+      },
+      fetch: async () => status(),
+      fleetRunControl: async () => {
+        throw new Error("fleet run control should not be called")
+      },
+      fleetRunList: async () => ({ ok: true, runs: [activeRun] }),
+      fleetRunStart: async request => runStartResult(request),
+      loadGymDemoProof: () => {
+        throw new Error("gym proof should not be called")
+      },
+      openExternal: async () => false,
+      removeAccount: async () => ({ ok: true }),
+      startDelegationOptimization: async () => {
+        throw new Error("optimization should not be called")
+      },
+    })
+
+    await panel.refresh()
+
+    expect(root.textContent).toContain("Active FleetRun")
+    expect(root.textContent).toContain("Draining")
+    expect(root.textContent).toContain("fleet.run.public.test")
+    expect(root.textContent).toContain("Objective is not projected by the public-safe run status.")
+    expect(root.textContent).toContain("target5")
+    expect(root.textContent).toContain("actual1")
+    expect(root.textContent).toContain("remaining3")
+    expect(root.textContent).toContain("claimed1")
+    expect(root.textContent).toContain("done6")
+    expect(root.textContent).toContain("blocked1")
+    expect(root.textContent).toContain("failed1")
+  })
+
+  test("wires every FleetRun control transition through mocked RPC and renders returned state", async () => {
+    const root = document.createElement("div")
+    let currentRun = fleetRunProjection({ state: "running" })
+    const controls: KhalaCodeDesktopFleetRunControlRequest[] = []
+    const panel = mountFleetPanel(root, {
+      connectAccount: async () => ({
+        ok: false,
+        accountRef: "codex-test",
+        error: "disabled",
+        output: "",
+        userCode: null,
+        verificationUrl: null,
+      }),
+      delegateRun: async () => {
+        throw new Error("delegate runner should not be called")
+      },
+      fetch: async () => status(),
+      fleetRunControl: async request => {
+        controls.push(request)
+        const nextState = request.verb === "pause"
+          ? "paused"
+          : request.verb === "resume"
+            ? "running"
+            : request.verb === "drain"
+              ? "draining"
+              : "stopped"
+        currentRun = fleetRunProjection({
+          counters: {
+            activeAssignments: request.verb === "stop" ? 0 : 1,
+            blockedAssignments: 0,
+            completedAssignments: 7,
+            failedAssignments: 0,
+            workUnitsTotal: 10,
+          },
+          state: nextState,
+          updatedAt: `2026-07-01T18:02:0${controls.length}.000Z`,
+        })
+        return {
+          ok: true,
+          previousState: request.verb === "resume" ? "paused" : "running",
+          run: currentRun,
+          supervisorActive: request.verb !== "stop",
+          verb: request.verb,
+        }
+      },
+      fleetRunList: async () => ({
+        ok: true,
+        runs: currentRun.state === "stopped" ? [] : [currentRun],
+      }),
+      fleetRunStart: async request => runStartResult(request),
+      loadGymDemoProof: () => {
+        throw new Error("gym proof should not be called")
+      },
+      openExternal: async () => false,
+      removeAccount: async () => ({ ok: true }),
+      startDelegationOptimization: async () => {
+        throw new Error("optimization should not be called")
+      },
+    })
+
+    await panel.refresh()
     expect(root.textContent).toContain("running")
+
+    clickButton(root, "Pause")
+    await flushPanelWork()
+    expect(root.textContent).toContain("Paused")
+
+    clickButton(root, "Resume")
+    await flushPanelWork()
+    expect(root.textContent).toContain("Running")
+
+    clickButton(root, "Drain")
+    await flushPanelWork()
+    expect(root.textContent).toContain("Draining")
+
+    clickButton(root, "Stop")
+    await flushPanelWork()
+    expect(root.textContent).not.toContain("Active FleetRun")
+
+    expect(controls).toEqual([
+      { runRef: "fleet.run.public.test", verb: "pause" },
+      { runRef: "fleet.run.public.test", verb: "resume" },
+      { runRef: "fleet.run.public.test", verb: "drain" },
+      { runRef: "fleet.run.public.test", verb: "stop" },
+    ])
   })
 })

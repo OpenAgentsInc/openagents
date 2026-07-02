@@ -2250,6 +2250,10 @@ const controls = {
   codexFleetStatus: () => rpc.request.codexFleetStatus(),
   codexFleetPromoteThread: (request: Parameters<DesktopRpcRequests["codexFleetPromoteThread"]>[0]) =>
     rpc.request.codexFleetPromoteThread(request),
+  fleetRunControl: (request: Parameters<DesktopRpcRequests["fleetRunControl"]>[0]) =>
+    rpc.request.fleetRunControl(request),
+  fleetRunList: (request?: Parameters<DesktopRpcRequests["fleetRunList"]>[0]) =>
+    rpc.request.fleetRunList(request),
   fleetRunStart: (request: Parameters<DesktopRpcRequests["fleetRunStart"]>[0]) =>
     rpc.request.fleetRunStart(request),
   codexHarnessStatus: () => rpc.request.codexHarnessStatus(),
@@ -2526,6 +2530,8 @@ const fleetPanel =
     ? null
     : mountFleetPanel(fleetPanelEl, {
         delegateRun: request => controls.codexFleetDelegateRun(request),
+        fleetRunControl: request => controls.fleetRunControl(request),
+        fleetRunList: request => controls.fleetRunList(request),
         fleetRunStart: request => controls.fleetRunStart(request),
         loadGymDemoProof: () => loadGymDemoOptimization(),
         startDelegationOptimization: async () => loadGymDemoOptimization(),
