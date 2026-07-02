@@ -179,7 +179,7 @@ These already exist separately in the code:
 
 | Axis | Today | Mechanism |
 | --- | --- | --- |
-| A: chat harness | `codex_harness` (default) vs `khala_native_runtime` (legacy) | env-gated `runtimeMode`, already carried on every RPC backend projection and tool catalog |
+| A: chat harness | `codex_harness` (default) vs `claude_runtime` vs `khala_native_runtime` (legacy) | persisted setting, env-gated overrides, `runtimeMode` already carried on every RPC backend projection and tool catalog |
 | B: delegation target | Codex only (`codex_agent_task`) | `codex_spawn` → `khala.fleet.delegate` → Pylon dispatch |
 
 ### 3.1 What the audit says about the Claude Code lane
@@ -225,24 +225,14 @@ Deferrable (bounded lane is fine without them):
 
 ### 3.2 Recommended shape: one selector per axis
 
-**Axis A UI: a harness pill on the composer/settings — "Codex | Khala".**
+**Axis A UI: a harness pill on the composer/settings — "Codex | Claude | Khala".**
 Minimal change: promote the existing env gate to a persisted desktop setting
-that `rpc-handlers.ts` reads instead of (or as a default from) the env vars,
-and render the current `runtimeMode` that responses already carry. "Khala
-mode" is the honest new name for `khala_native_runtime` — hosted Khala
-routing with the native tool loop. This directly delivers the "toggle for
-now between Codex mode and Khala mode" with no new runtime code, and it
-converts the legacy path from a deprecation artifact into a deliberate
-product position: *Khala mode is where smart routing lives; Codex mode is
-where local parity lives.* Claude Code as a third Axis-A chat harness is a
-later, larger lift (there is no Claude app-server equivalent; the nearest
-harness is the Agent SDK loop) — do not block anything on it. That larger
-lift is now fully specified in
-`2026-07-01-claude-code-parity-and-codex-synergies.md` (a `ChatRuntime`
-abstraction, a `ClaudeChatRuntime` on the Agent SDK, and a
-"Codex | Claude | Khala" composer pill), so the Axis-A toggle built here
-should introduce the runtime-selector seam that plan extends rather than a
-Codex/Khala-only branch.
+that `rpc-handlers.ts` reads as the default, keep env vars as overrides, and
+render the current `runtimeMode` that responses already carry. "Khala mode" is
+the honest name for `khala_native_runtime` — hosted Khala routing with the
+native tool loop. This directly delivers the toggle without silent fallback:
+Codex mode is where local parity lives, Claude mode is the Agent SDK harness,
+and Khala mode keeps the legacy banner visible.
 
 **Axis B UI: a delegation-target field on `codex_spawn` and the Fleet
 delegate form — "codex | claude | auto".** This is where Claude Code
@@ -281,8 +271,8 @@ the parity contract changes.
   `khala_fleet` MCP bridge + the Fleet panel is the story. Run the §2.1
   rehearsal to pick shots.
 - **P1 (days): the Axis A toggle.** Persisted harness setting + composer
-  pill for `codex_harness`/`khala_native_runtime`, "Khala mode" naming,
-  runtime badge on responses (already emitted — just render it). Also
+  pill for `codex_harness`/`claude_runtime`/`khala_native_runtime`, "Khala
+  mode" naming, runtime badge on responses (already emitted — just render it). Also
   surface the condensed sidebar fleet counts if the rehearsal shows they
   are missing (§1.3.3).
 - **P2 (this week): the Axis B target.** `workerKind` through

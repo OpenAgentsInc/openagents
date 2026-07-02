@@ -115,6 +115,28 @@ describe("khala code desktop app shell", () => {
     expect(html).not.toContain("Pylons")
   })
 
+  test("renders the composer harness pill and backend runtime badge hooks", async () => {
+    const main = await Bun.file(new URL("../src/ui/main.ts", import.meta.url)).text()
+    const css = await Bun.file(new URL("../src/ui/styles.css", import.meta.url)).text()
+    const rpc = await Bun.file(new URL("../src/shared/rpc.ts", import.meta.url)).text()
+    const handlers = await Bun.file(new URL("../src/bun/rpc-handlers.ts", import.meta.url)).text()
+
+    expect(main).toContain('{ label: "Codex", mode: "codex_harness" }')
+    expect(main).toContain('{ label: "Claude", mode: "claude_runtime" }')
+    expect(main).toContain('{ label: "Khala", mode: "khala_native_runtime" }')
+    expect(main).toContain("rpc.request.harnessSettingRead()")
+    expect(main).toContain("rpc.request.harnessSettingWrite({ mode })")
+    expect(main).toContain("response.backend.runtimeMode")
+    expect(main).toContain("khala-runtime-badge")
+    expect(css).toContain(".khala-harness-pill")
+    expect(css).toContain(".khala-runtime-badge")
+    expect(rpc).toContain("harnessSettingRead")
+    expect(rpc).toContain("harnessSettingWrite")
+    expect(handlers).toContain("readKhalaCodeDesktopPersistedHarnessMode")
+    expect(handlers).toContain("khalaCodeDesktopRuntimeEnvOverride")
+    expect(handlers).toContain("Legacy Khala native runtime handled this turn.")
+  })
+
   test("uses the shared blue sci-fi UI tokens and licensed-safe chat fonts", async () => {
     const css = await Bun.file(new URL("../src/ui/styles.css", import.meta.url)).text()
 
