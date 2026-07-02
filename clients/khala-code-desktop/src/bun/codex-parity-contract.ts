@@ -58,6 +58,17 @@ export const KHALA_CODE_CODEX_PARITY_COVERAGE: readonly KhalaCodeCodexParityCove
     ],
   },
   {
+    id: "app-server-effect-service",
+    harness: "codex_wrapper_fixture",
+    testFile: "clients/khala-code-desktop/tests/codex-app-server-service.test.ts",
+    covers: [
+      "CodexAppServer Context.Service wrapper",
+      "Schema-decoded response and notification boundaries",
+      "notification Stream subscriber isolation",
+      "timeout interrupt policy and scoped disposal",
+    ],
+  },
+  {
     id: "slash-commands",
     harness: "codex_wrapper_fixture",
     testFile: "clients/khala-code-desktop/tests/codex-slash-commands.test.ts",
