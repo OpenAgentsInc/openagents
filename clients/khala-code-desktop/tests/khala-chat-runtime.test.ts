@@ -221,7 +221,7 @@ describe("Khala Code desktop chat runtime", () => {
     expect(requestMessages[0]?.content).toContain("We are Khala. How can we help?")
     expect(requestMessages[0]?.content).toContain("usually one or two sentences, then use tools")
     expect(requestMessages[0]?.content).toContain("avoid long front-loaded plans")
-    expect(requestMessages[0]?.content).toContain("Pylon/Codex fleet tools")
+    expect(requestMessages[0]?.content).toContain("Pylon fleet tools")
     expect(requestMessages[0]?.content).toContain("Do not call or invent codex_terminate")
     expect(requestMessages[0]?.content).toContain("summarize only the returned assignment")
     expect(requestMessages[0]?.content).toContain("Never end a turn with only tool output")
@@ -694,8 +694,8 @@ describe("Khala Code desktop chat runtime", () => {
               toolName: "codex_spawn",
             })
             return khalaToolOk({
-              modelText: "Codex spawn: accepted 1/1\n- slot 0: accepted",
-              publicSummary: "Codex spawn accepted 1/1 request(s).",
+              modelText: "Fleet spawn: accepted 1/1\n- slot 0: accepted",
+              publicSummary: "Fleet spawn accepted 1/1 request(s).",
             })
           }),
       },
@@ -763,7 +763,7 @@ describe("Khala Code desktop chat runtime", () => {
     const finalIndex = toolReplacements.findIndex(event =>
       event.type === "message_replace" &&
       event.message.body.includes("codex_spawn: ok") &&
-      event.message.body.includes("Codex spawn: accepted 1/1")
+      event.message.body.includes("Fleet spawn: accepted 1/1")
     )
 
     expect(result.ok).toBe(true)

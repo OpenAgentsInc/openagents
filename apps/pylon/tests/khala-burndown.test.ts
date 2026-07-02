@@ -37,6 +37,27 @@ const readyCodexAccount = (
   selector: "registry_ref",
 })
 
+const readyClaudeAccount = (
+  accountRef: string,
+  accountRefHash: string,
+): PylonAccountsListProjection["accounts"][number] => ({
+  accountRef,
+  accountRefHash,
+  blockerRefs: [],
+  homeRef: `home.public.${accountRefHash}`,
+  homeState: "present",
+  provider: "claude_agent",
+  readiness: {
+    blockerRefs: [],
+    capabilityRefs: ["capability.pylon.local_claude"],
+    credentialSourceRef: "credential.public.claude_setup_token",
+    enabled: true,
+    schema: "openagents.pylon.claude_agent_readiness.v0.3",
+    state: "ready",
+  },
+  selector: "registry_ref",
+})
+
 const accountsProjection = (): PylonAccountsListProjection => ({
   accounts: [
     readyCodexAccount("account.public.codex.one", "accthash_one"),
@@ -160,6 +181,38 @@ describe("pylon khala burndown planner", () => {
     expect(plan.slots[0]?.commands.request).toContain("pylon khala request")
     expect(plan.slots[0]?.commands.runNoSpend).toContain("assignment run-no-spend")
     expect(plan.slots[0]?.commands.proof).toContain("pylon khala proof")
+  })
+
+  test("maps ready Claude accounts to claude_agent_task issue slots", () => {
+    const plan = buildPylonKhalaBurndownPlan({
+      accounts: {
+        ...accountsProjection(),
+        accounts: [
+          readyCodexAccount("account.public.codex.one", "accthash_codex"),
+          readyClaudeAccount("account.public.claude.one", "accthash_claude"),
+        ],
+      },
+      advertisedCodexAvailability: 2,
+      baseUrl: "https://openagents.test",
+      commit,
+      issueNumbers: [6355, 6356],
+      maxParallel: 2,
+      repository: "OpenAgentsInc/openagents",
+      targetPylonRef: "pylon.public.local",
+      verificationCommand,
+      workerKind: "claude",
+    })
+
+    expect(plan.workerKind).toBe("claude")
+    expect(plan.workflow).toBe("claude_agent_task")
+    expect(plan.readyWorkerAccountCount).toBe(1)
+    expect(plan.slots).toHaveLength(2)
+    expect(plan.slots.map((slot) => slot.account.accountRefHash)).toEqual([
+      "accthash_claude",
+      "accthash_claude",
+    ])
+    expect(plan.slots[0]?.requestInput.workflow).toBe("claude_agent_task")
+    expect(plan.slots[0]?.commands.request).toContain("--workflow claude_agent_task")
   })
 })
 

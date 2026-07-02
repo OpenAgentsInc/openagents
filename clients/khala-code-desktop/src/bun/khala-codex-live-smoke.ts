@@ -3,7 +3,7 @@ import {
   spawnVerifiedTokenTotal,
   type KhalaCodexFleetProgressPayload,
   type KhalaCodexFleetToolOptions,
-} from "./khala-codex-fleet-tools.js"
+} from "./khala-fleet-tools.js"
 import { khalaCodeConfigFromRuntimeEnv } from "./khala-code-config.js"
 
 export const TWO_CODEX_READONLY_SMOKE_COUNT = 2

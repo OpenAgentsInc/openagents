@@ -28,6 +28,29 @@ const accounts: PylonAccountsListProjection = {
   schema: "openagents.pylon.accounts_list.v0.3",
 }
 
+const claudeAccounts: PylonAccountsListProjection = {
+  ...accounts,
+  accounts: [
+    {
+      accountRef: "claude-a",
+      accountRefHash: "account.pylon.claude.a",
+      blockerRefs: [],
+      homeRef: "home.pylon.claude.a",
+      homeState: "present",
+      provider: "claude_agent",
+      readiness: {
+        blockerRefs: [],
+        capabilityRefs: ["capability.pylon.local_claude"],
+        credentialSourceRef: "credential.source.claude_agent.setup_token",
+        enabled: true,
+        schema: "openagents.pylon.claude_agent_readiness.v0.3",
+        state: "ready",
+      },
+      selector: "registry_ref",
+    },
+  ],
+}
+
 describe("Khala burndown plan", () => {
   test("keeps requested issue count visible when capacity is unavailable", () => {
     const plan = buildPylonKhalaBurndownPlan({
@@ -109,5 +132,37 @@ describe("Khala burndown plan", () => {
       "account.pylon.codex.b",
       "account.pylon.codex.a",
     ])
+  })
+
+  test("uses claude_agent_task when worker kind is Claude", () => {
+    const plan = buildPylonKhalaBurndownPlan({
+      accounts: claudeAccounts,
+      advertisedCodexAccounts: [
+        {
+          accountKey: "claude-a",
+          accountRefHash: "account.pylon.claude.a",
+          available: 2,
+          busy: 0,
+          queued: 0,
+          ready: 2,
+        },
+      ],
+      baseUrl: "https://openagents.example",
+      commit: "2e5937497ec2d7a6b5256e7265042b0e78cd294f",
+      issueNumbers: [6323, 6311],
+      maxParallel: 2,
+      repository: "OpenAgentsInc/openagents",
+      targetPylonRef: "pylon.33afd48282a649047e3a",
+      verificationCommand: "bun test apps/pylon/src/khala-burndown.test.ts",
+      workerKind: "claude",
+    })
+
+    expect(plan.workerKind).toBe("claude")
+    expect(plan.workflow).toBe("claude_agent_task")
+    expect(plan.readyWorkerAccountCount).toBe(1)
+    expect(plan.slots).toHaveLength(2)
+    expect(plan.slots[0]?.requestInput.workflow).toBe("claude_agent_task")
+    expect(plan.slots[0]?.commands.request).toContain("--workflow claude_agent_task")
+    expect(plan.slots.map((slot) => slot.account.accountRef)).toEqual(["claude-a", "claude-a"])
   })
 })

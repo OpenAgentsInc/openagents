@@ -148,6 +148,13 @@ type FleetRunPreviewSlot = Readonly<{
   workerKind: FleetRunFormState["workerKind"]
 }>
 
+const fleetRunAccountMatchesWorkerKind = (
+  account: KhalaCodeDesktopFleetAccount,
+  workerKind: FleetRunFormState["workerKind"],
+): boolean =>
+  workerKind === "auto" ||
+  account.provider === (workerKind === "claude" ? "claude_agent" : "codex")
+
 type FleetRunView =
   | { readonly phase: "idle" }
   | { readonly phase: "preview"; readonly slots: readonly FleetRunPreviewSlot[] }
@@ -1565,7 +1572,10 @@ export const mountFleetPanel = (
     }
     if (lastData === null) return "Fleet status must load before previewing a run."
     const accounts = lastData.accounts.filter(
-      account => accountReadinessState(account.readiness) === "ready" && account.paused !== true,
+      account =>
+        accountReadinessState(account.readiness) === "ready" &&
+        account.paused !== true &&
+        fleetRunAccountMatchesWorkerKind(account, fleetRunForm.workerKind),
     )
     if (accounts.length === 0) return "No ready worker accounts are available for the first wave."
     const slots: FleetRunPreviewSlot[] = []
@@ -1594,13 +1604,10 @@ export const mountFleetPanel = (
     if (!Number.isInteger(targetConcurrency) || targetConcurrency < 1) {
       return "Fleet run target concurrency must be a positive integer."
     }
-    if (fleetRunForm.workerKind !== "codex") {
-      return `${titleize(fleetRunForm.workerKind)} FleetRun starts are accepted by the form but only Codex is wired in this build.`
-    }
     return {
       objective,
       targetConcurrency,
-      workerKind: "codex",
+      workerKind: fleetRunForm.workerKind,
       workSource: {
         kind: fleetRunForm.workSource,
       },

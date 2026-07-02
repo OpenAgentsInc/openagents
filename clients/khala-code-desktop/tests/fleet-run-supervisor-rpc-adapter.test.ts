@@ -20,6 +20,7 @@ const acceptingRunner: FleetRunSupervisorRunner = {
 let fixtureOrdinal = 0
 
 const adapterFixture = (input: {
+  readonly accountRef?: string
   readonly advertisedCapacity?: number
   readonly env?: Record<string, string>
   readonly runner?: FleetRunSupervisorRunner
@@ -29,7 +30,7 @@ const adapterFixture = (input: {
   const pylonRef = `pylon.test.${fixtureOrdinal}`
   const adapter = createKhalaCodeDesktopFleetRunSupervisorRpcAdapter({
     capacity: {
-      accounts: async () => [{ accountRef: "codex", advertisedCapacity: input.advertisedCapacity ?? 0 }],
+      accounts: async () => [{ accountRef: input.accountRef ?? "codex", advertisedCapacity: input.advertisedCapacity ?? 0 }],
     },
     env: input.env ?? { PYLON_HOME: "/tmp/khala-code-fleet-run-rpc-adapter-test" },
     pylonRef,
@@ -76,6 +77,41 @@ describe("Khala Code fleet run supervisor RPC adapter", () => {
       },
     })
     expect(result.run).not.toHaveProperty("objective")
+  })
+
+  test("starts Claude worker-kind runs without storing or dispatching them as Codex", async () => {
+    const dispatched: Array<{ readonly accountRef: string; readonly workerKind: string }> = []
+    const { adapter, store } = adapterFixture({
+      accountRef: "claude-a",
+      advertisedCapacity: 1,
+      runner: {
+        dispatch: async input => {
+          dispatched.push({
+            accountRef: input.accountRef,
+            workerKind: input.run.workerKind,
+          })
+          return {
+            assignmentRef: "assignment.claude",
+            lifecycle: [],
+            status: "accepted",
+            summary: null,
+          }
+        },
+      },
+    })
+
+    const result = await adapter.start({
+      objective: "Run Claude fixture target.",
+      runRef: "fleet_run.adapter.claude",
+      targetConcurrency: 1,
+      tickImmediately: true,
+      workerKind: "claude",
+      workSource: { kind: "fixture", count: 1 },
+    })
+
+    expect(result.run.workerKind).toBe("claude")
+    expect(store.getFleetRun("fleet_run.adapter.claude")?.workerKind).toBe("claude")
+    expect(dispatched).toEqual([{ accountRef: "claude-a", workerKind: "claude" }])
   })
 
   test("accepts target_reached stop conditions in projections", async () => {

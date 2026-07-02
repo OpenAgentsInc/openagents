@@ -1302,6 +1302,8 @@ const RpcFleetCapacity = S.Struct({
   queued: RpcNumberNull,
   ready: RpcNumberNull,
 })
+const RpcFleetAccountProvider = S.Literals(["claude_agent", "codex"])
+const RpcFleetRunWorkerKind = S.Literals(["codex", "claude", "auto"])
 const RpcFleetTokenMeasurementStatus = S.Literals(["exact", "estimated", "not_measured", "pending"])
 const RpcFleetSessionRole = S.Literals(["main_local_codex_session", "swarm_worker_codex_session"])
 const RpcFleetHomeRole = S.Literals(["main_user_codex_home_display_only", "pylon_isolated_worker_codex_home"])
@@ -1321,7 +1323,7 @@ const RpcFleetSessionLayer = S.Struct({
 })
 const RpcFleetAccount = S.Struct({
   accountRef: S.String,
-  provider: S.Literal("codex"),
+  provider: RpcFleetAccountProvider,
   readiness: S.String,
   quotaState: RpcStringNull,
   accountKey: RpcStringNull,
@@ -1544,7 +1546,7 @@ const RpcFleetRunStartRequest = S.Struct({
   runRef: S.optional(S.String),
   targetConcurrency: S.Number,
   workSource: RpcFleetRunWorkSource,
-  workerKind: S.optional(S.Literal("codex")),
+  workerKind: S.optional(RpcFleetRunWorkerKind),
   refillPolicy: S.optional(RpcFleetRunRefillPolicyPatch),
   tickImmediately: S.optional(S.Boolean),
 })
@@ -1560,7 +1562,7 @@ const RpcFleetRunProjection = S.Struct({
   state: RpcFleetRunState,
   targetConcurrency: S.Number,
   updatedAt: S.String,
-  workerKind: S.Literal("codex"),
+  workerKind: RpcFleetRunWorkerKind,
   workSource: RpcFleetRunWorkSource,
 })
 const RpcFleetRunStartResult = S.Struct({

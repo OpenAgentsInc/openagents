@@ -19,7 +19,7 @@ import type {
   KhalaFleetRunStartInput,
   KhalaFleetRunStatusInput,
   KhalaFleetRunSupervisorManager,
-} from "../src/bun/khala-codex-fleet-tools"
+} from "../src/bun/khala-fleet-tools"
 import { createCodexAppServerHost } from "../src/bun/codex-app-server-client"
 import { handleKhalaMcpRequest } from "@openagentsinc/khala-tools"
 

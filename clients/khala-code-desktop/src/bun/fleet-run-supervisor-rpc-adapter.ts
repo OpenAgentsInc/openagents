@@ -31,7 +31,7 @@ import {
   resolvePylonHome,
   spawnCodexInstances,
   type KhalaCodexFleetToolOptions,
-} from "./khala-codex-fleet-tools.js"
+} from "./khala-fleet-tools.js"
 import { collectKhalaProcessText, spawnKhalaProcess } from "./khala-process.js"
 import {
   startFleetRunSupervisor,
@@ -191,7 +191,7 @@ const projectRun = (
   state: run.state,
   targetConcurrency: run.targetConcurrency,
   updatedAt: run.updatedAt,
-  workerKind: "codex",
+  workerKind: run.workerKind,
   workSource: projectWorkSource(input.workSource, run.workSource),
 })
 
@@ -217,14 +217,18 @@ const plannerFor = (
 })
 
 const capacityFor = (options: KhalaCodexFleetToolOptions | undefined): FleetRunSupervisorCapacity => ({
-  accounts: async () => {
+  accounts: async ({ run }) => {
     const status = await inspectCodexFleet({
       includeProcesses: false,
       includeRateLimits: false,
       startPylon: true,
+      workerKind: run.workerKind,
     }, options)
     return status.accounts
-      .filter(account => account.provider === "codex" && !account.paused)
+      .filter(account => !account.paused && (
+        run.workerKind === "auto" ||
+        account.provider === (run.workerKind === "claude" ? "claude_agent" : "codex")
+      ))
       .map(account => ({
         accountRef: account.accountRef,
         advertisedCapacity: Math.max(0, Math.trunc(
@@ -252,6 +256,7 @@ const runnerFor = (input: {
       pylonRef: input.pylonRef ?? undefined,
       repo: dispatch.workUnit.repo,
       verify: fixture ? undefined : DEFAULT_VERIFY,
+      workerKind: dispatch.run.workerKind,
     }, input.toolOptions)
     const slot = result.results[0]
     return {
@@ -490,7 +495,7 @@ export function createKhalaCodeDesktopFleetRunSupervisorRpcAdapter(
         ...(refillPolicy === undefined ? {} : { refillPolicy }),
         state: "running",
         targetConcurrency: request.targetConcurrency,
-        workerKind: "codex",
+        workerKind: request.workerKind ?? "codex",
         workSource: workSourceKind(workSource),
       })
       sources.set(run.runRef, workSource)

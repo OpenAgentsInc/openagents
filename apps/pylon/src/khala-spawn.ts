@@ -11,11 +11,13 @@ import type { PylonAccountsListProjection } from "./account-usage.js"
 import type { TipsNetworkOptions } from "./tips.js"
 import {
   issuePylonKhalaRequest,
+  isPylonKhalaExactOwnCapacityTokenUsage,
   readPylonKhalaProof,
   type PylonKhalaGitCheckoutWorkspace,
   type PylonKhalaProofResult,
   type PylonKhalaRequestInput,
   type PylonKhalaRequestResult,
+  type PylonKhalaWorkflow,
 } from "./khala-requester.js"
 import { assertPublicProjectionSafe } from "./state.js"
 
@@ -36,6 +38,9 @@ export type PylonKhalaSpawnAdvertisedCodexAccount = {
   queued: number
   ready: number
 }
+
+export type PylonKhalaSpawnWorkflow = Extract<PylonKhalaWorkflow, "claude_agent_task" | "codex_agent_task">
+export type PylonKhalaSpawnWorkerKind = "claude" | "codex"
 
 export type PylonKhalaSpawnObjective = {
   objective: string
@@ -66,14 +71,18 @@ export type PylonKhalaSpawnPlan = {
   schema: typeof PYLON_KHALA_SPAWN_PLAN_SCHEMA
   advertisedCodexAccounts: readonly PylonKhalaSpawnAdvertisedCodexAccount[]
   advertisedCodexAvailability: number
+  advertisedWorkerAvailability: number
   baseUrl: string
   blockerRefs: string[]
   maxParallel: number
   objectiveCount: number
   readyCodexAccountCount: number
+  readyWorkerAccountCount: number
   requestedCount: number
   slots: readonly PylonKhalaSpawnSlot[]
   targetPylonRef: string
+  workerKind: PylonKhalaSpawnWorkerKind
+  workflow: PylonKhalaSpawnWorkflow
 }
 
 export type PylonKhalaSpawnPlanLike<Slot extends PylonKhalaSpawnSlotLike = PylonKhalaSpawnSlot> =
@@ -209,9 +218,17 @@ function nonNegativeInteger(value: number | undefined, fallback: number): number
 export function readyCodexAccounts(
   accounts: PylonAccountsListProjection,
 ): PylonKhalaSpawnAccount[] {
+  return readyKhalaSpawnAccounts(accounts, "codex_agent_task")
+}
+
+export function readyKhalaSpawnAccounts(
+  accounts: PylonAccountsListProjection,
+  workflow: PylonKhalaSpawnWorkflow = "codex_agent_task",
+): PylonKhalaSpawnAccount[] {
+  const provider = pylonKhalaSpawnAccountProviderForWorkflow(workflow)
   return accounts.accounts
     .filter((account) =>
-      account.provider === "codex" &&
+      account.provider === provider &&
       account.homeState === "present" &&
       account.readiness.state === "ready" &&
       account.blockerRefs.length === 0
@@ -220,6 +237,37 @@ export function readyCodexAccounts(
       accountRef: account.accountRef,
       accountRefHash: account.accountRefHash,
     }))
+}
+
+export function pylonKhalaSpawnWorkflowForWorkerKind(
+  workerKind: PylonKhalaSpawnWorkerKind,
+): PylonKhalaSpawnWorkflow {
+  return workerKind === "claude" ? "claude_agent_task" : "codex_agent_task"
+}
+
+export function pylonKhalaSpawnWorkerKindForWorkflow(
+  workflow: PylonKhalaSpawnWorkflow,
+): PylonKhalaSpawnWorkerKind {
+  return workflow === "claude_agent_task" ? "claude" : "codex"
+}
+
+function pylonKhalaSpawnAccountProviderForWorkflow(
+  workflow: PylonKhalaSpawnWorkflow,
+): "claude_agent" | "codex" {
+  return workflow === "claude_agent_task" ? "claude_agent" : "codex"
+}
+
+function pylonKhalaSpawnWorkerBlocker(
+  workerKind: PylonKhalaSpawnWorkerKind,
+  suffix: "no_advertised_availability" | "no_ready_account_slots" | "no_ready_accounts" | "requested_count_exceeds_advertised_availability",
+): string {
+  const kind = workerKind === "claude" ? "claude" : "codex"
+  return blocker(
+    "khala_spawn",
+    suffix
+      .replace("_account", `_${kind}_account`)
+      .replace("_advertised_", `_advertised_${kind}_`),
+  )
 }
 
 export function repeatedKhalaSpawnObjectives(input: {
@@ -258,9 +306,12 @@ export function buildPylonKhalaSpawnPlan(input: {
   repository?: string
   targetPylonRef: string
   verificationCommand?: string
+  workflow?: PylonKhalaSpawnWorkflow
   workspace?: PylonKhalaGitCheckoutWorkspace
 }): PylonKhalaSpawnPlan {
-  const readyAccounts = readyCodexAccounts(input.accounts)
+  const workflow = input.workflow ?? "codex_agent_task"
+  const workerKind = pylonKhalaSpawnWorkerKindForWorkflow(workflow)
+  const readyAccounts = readyKhalaSpawnAccounts(input.accounts, workflow)
   const advertisedCodexAccounts = (input.advertisedCodexAccounts ?? [])
     .map((account) => ({
       accountKey: account.accountKey,
@@ -308,13 +359,15 @@ export function buildPylonKhalaSpawnPlan(input: {
     Math.min(accounts.length, Math.max(1, selectedParallel)),
   )
   const blockerRefs = [
-    ...(readyAccounts.length === 0 ? [blocker("khala_spawn", "no_ready_codex_accounts")] : []),
+    ...(readyAccounts.length === 0 ? [pylonKhalaSpawnWorkerBlocker(workerKind, "no_ready_accounts")] : []),
     ...(readyAccounts.length > 0 && accounts.length === 0
-      ? [blocker("khala_spawn", "no_ready_codex_account_slots")]
+      ? [pylonKhalaSpawnWorkerBlocker(workerKind, "no_ready_account_slots")]
       : []),
-    ...(advertisedCodexAvailability === 0 ? [blocker("khala_spawn", "no_advertised_codex_availability")] : []),
+    ...(advertisedCodexAvailability === 0
+      ? [pylonKhalaSpawnWorkerBlocker(workerKind, "no_advertised_availability")]
+      : []),
     ...(requestedExceedsAdvertisedAvailability
-      ? [blocker("khala_spawn", "requested_count_exceeds_advertised_availability")]
+      ? [pylonKhalaSpawnWorkerBlocker(workerKind, "requested_count_exceeds_advertised_availability")]
       : []),
     ...(requestedCount === 0 ? [blocker("khala_spawn", "no_objectives")] : []),
   ]
@@ -328,7 +381,7 @@ export function buildPylonKhalaSpawnPlan(input: {
           prompt: objective.objective,
           targetAccountRefHash: account.accountRefHash,
           targetPylonRef: input.targetPylonRef,
-          workflow: "codex_agent_task",
+          workflow,
           ...(input.workspace === undefined ? {} : { workspace: input.workspace }),
         }
         const workspaceArgs = input.workspace === undefined || input.fixture === true
@@ -345,7 +398,7 @@ export function buildPylonKhalaSpawnPlan(input: {
             proof: "pylon khala proof --assignment-ref <assignmentRef> --json",
             request: [
               "pylon khala request",
-              "--workflow codex_agent_task",
+              `--workflow ${workflow}`,
               `--pylon-ref ${quoteArg(input.targetPylonRef)}`,
               ...requestAccountArgs(account),
               `--prompt ${quoteArg(objective.objective)}`,
@@ -364,14 +417,18 @@ export function buildPylonKhalaSpawnPlan(input: {
     schema: PYLON_KHALA_SPAWN_PLAN_SCHEMA,
     advertisedCodexAccounts,
     advertisedCodexAvailability,
+    advertisedWorkerAvailability: advertisedCodexAvailability,
     baseUrl: input.baseUrl,
     blockerRefs,
     maxParallel: selectedParallel,
     objectiveCount: requestedCount,
     readyCodexAccountCount: readyAccounts.length,
+    readyWorkerAccountCount: readyAccounts.length,
     requestedCount,
     slots,
     targetPylonRef: input.targetPylonRef,
+    workerKind,
+    workflow,
   }
   assertPublicProjectionSafe(plan)
   return plan
@@ -434,12 +491,7 @@ function proofBlockerRefs(
   proof: PylonKhalaSpawnProofProjection,
   namespace: string,
 ): string[] {
-  const exactOwnCapacity =
-    proof.provider === "pylon-codex-own-capacity" &&
-    proof.model === "openagents/pylon-codex" &&
-    proof.usageTruth === "exact" &&
-    proof.demandKind === "own_capacity" &&
-    proof.demandSource === "khala_coding_delegation"
+  const exactOwnCapacity = isPylonKhalaExactOwnCapacityTokenUsage(proof)
   return [
     ...(!exactOwnCapacity ? [blocker(namespace, "proof_not_exact_own_capacity")] : []),
     ...(proof.tokenRows <= 0 || proof.totalTokens <= 0 ? [blocker(namespace, "proof_token_rows_missing")] : []),

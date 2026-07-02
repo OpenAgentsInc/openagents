@@ -20,17 +20,20 @@ import type { PylonAccountsListProjection } from "./account-usage.js"
 import {
   PYLON_KHALA_SPAWN_PLAN_SCHEMA,
   readPublicKhalaTokensServed,
-  readyCodexAccounts,
+  pylonKhalaSpawnWorkflowForWorkerKind,
+  readyKhalaSpawnAccounts,
   runPylonKhalaSpawnPlan,
   weightedKhalaAccountPool,
   type PylonKhalaSpawnAdvertisedCodexAccount,
   type PylonKhalaSpawnProofProjection,
+  type PylonKhalaSpawnWorkerKind,
 } from "./khala-spawn.js"
 
 export { readPublicKhalaTokensServed } from "./khala-spawn.js"
 
 export const PYLON_KHALA_BURNDOWN_PLAN_SCHEMA = "openagents.pylon.khala_burndown_plan.v0.1"
 export const PYLON_KHALA_BURNDOWN_RUN_SCHEMA = "openagents.pylon.khala_burndown_run.v0.1"
+export type PylonKhalaBurndownWorkerKind = PylonKhalaSpawnWorkerKind
 
 export type PylonKhalaBurndownIssue = {
   issueNumber: number
@@ -67,11 +70,15 @@ export type PylonKhalaBurndownPlan = {
   targetPylonRef: string
   advertisedCodexAccounts: readonly PylonKhalaSpawnAdvertisedCodexAccount[]
   advertisedCodexAvailability: number
+  advertisedWorkerAvailability: number
   readyCodexAccountCount: number
+  readyWorkerAccountCount: number
   issueCount: number
   slots: PylonKhalaBurndownSlot[]
   mergePolicy: "operator_review_required"
   blockerRefs: string[]
+  workerKind: PylonKhalaBurndownWorkerKind
+  workflow: "claude_agent_task" | "codex_agent_task"
 }
 
 export type PylonKhalaBurndownSlotResult = {
@@ -181,6 +188,14 @@ const accountCommandArgs = (account: PylonKhalaBurndownAccount): string =>
 const requestAccountArgs = (account: PylonKhalaBurndownAccount): string[] =>
   account.accountRef === null ? [] : [`--account-ref ${quoteArg(account.accountRef)}`]
 
+const burndownBlocker = (
+  workerKind: PylonKhalaBurndownWorkerKind,
+  suffix: "no_advertised_availability" | "no_ready_account_slots" | "no_ready_accounts",
+): string => {
+  const kind = workerKind === "claude" ? "claude" : "codex"
+  return `blocker.khala_burndown.${suffix.replace("_account", `_${kind}_account`).replace("_advertised_", `_advertised_${kind}_`)}`
+}
+
 export function buildKhalaBurndownObjective(issueNumber: number): string {
   return [
     `Implement OpenAgents issue #${issueNumber} from the Khala roadmap.`,
@@ -202,8 +217,11 @@ export function buildPylonKhalaBurndownPlan(input: {
   repository: string
   targetPylonRef: string
   verificationCommand: string
+  workerKind?: PylonKhalaBurndownWorkerKind
 }): PylonKhalaBurndownPlan {
-  const readyAccounts = readyCodexAccounts(input.accounts)
+  const workerKind = input.workerKind ?? "codex"
+  const workflow = pylonKhalaSpawnWorkflowForWorkerKind(workerKind)
+  const readyAccounts = readyKhalaSpawnAccounts(input.accounts, workflow)
   const advertisedCodexAccounts = (input.advertisedCodexAccounts ?? [])
     .map(account => ({
       accountKey: account.accountKey,
@@ -239,11 +257,11 @@ export function buildPylonKhalaBurndownPlan(input: {
   const requestedIssueNumbers = uniqueIssueNumbers(input.issueNumbers)
   const issueNumbers = requestedIssueNumbers.slice(0, selectedParallel * iterations)
   const blockerRefs = [
-    ...(readyAccounts.length === 0 ? ["blocker.khala_burndown.no_ready_codex_accounts"] : []),
+    ...(readyAccounts.length === 0 ? [burndownBlocker(workerKind, "no_ready_accounts")] : []),
     ...(readyAccounts.length > 0 && accounts.length === 0
-      ? ["blocker.khala_burndown.no_ready_codex_account_slots"]
+      ? [burndownBlocker(workerKind, "no_ready_account_slots")]
       : []),
-    ...(advertisedCodexAvailability === 0 ? ["blocker.khala_burndown.no_advertised_codex_availability"] : []),
+    ...(advertisedCodexAvailability === 0 ? [burndownBlocker(workerKind, "no_advertised_availability")] : []),
     ...(requestedIssueNumbers.length === 0 ? ["blocker.khala_burndown.no_issue_numbers"] : []),
   ]
   const slots: PylonKhalaBurndownSlot[] = selectedParallel === 0
@@ -264,12 +282,12 @@ export function buildPylonKhalaBurndownPlan(input: {
           prompt: objective,
           targetAccountRefHash: account.accountRefHash,
           targetPylonRef: input.targetPylonRef,
-          workflow: "codex_agent_task",
+          workflow,
           workspace,
         }
         const requestCommand = [
           "pylon khala request",
-          "--workflow codex_agent_task",
+          `--workflow ${workflow}`,
           `--pylon-ref ${quoteArg(input.targetPylonRef)}`,
           ...requestAccountArgs(account),
           `--repo ${quoteArg(input.repository)}`,
@@ -306,11 +324,15 @@ export function buildPylonKhalaBurndownPlan(input: {
     targetPylonRef: input.targetPylonRef,
     advertisedCodexAccounts,
     advertisedCodexAvailability,
+    advertisedWorkerAvailability: advertisedCodexAvailability,
     readyCodexAccountCount: readyAccounts.length,
+    readyWorkerAccountCount: readyAccounts.length,
     issueCount: requestedIssueNumbers.length,
     slots,
     mergePolicy: "operator_review_required",
     blockerRefs,
+    workerKind,
+    workflow,
   }
   assertPublicProjectionSafe(plan)
   return plan
@@ -335,14 +357,18 @@ export async function runPylonKhalaBurndownPlan(input: {
       schema: PYLON_KHALA_SPAWN_PLAN_SCHEMA,
       advertisedCodexAccounts: input.plan.advertisedCodexAccounts,
       advertisedCodexAvailability: input.plan.advertisedCodexAvailability,
+      advertisedWorkerAvailability: input.plan.advertisedWorkerAvailability,
       baseUrl: input.plan.baseUrl,
       blockerRefs: input.plan.blockerRefs,
       maxParallel: input.plan.maxParallel,
       objectiveCount: input.plan.issueCount,
       readyCodexAccountCount: input.plan.readyCodexAccountCount,
+      readyWorkerAccountCount: input.plan.readyWorkerAccountCount,
       requestedCount: input.plan.issueCount,
       slots: input.plan.slots,
       targetPylonRef: input.plan.targetPylonRef,
+      workerKind: input.plan.workerKind,
+      workflow: input.plan.workflow,
     },
     summary: input.summary,
   })

@@ -19,7 +19,7 @@ import {
   type KhalaCodexFleetCommandInput,
   type KhalaCodexFleetCommandResult,
   type KhalaCodexFleetProgressPayload,
-} from "../src/bun/khala-codex-fleet-tools"
+} from "../src/bun/khala-fleet-tools"
 
 const tempDirs: string[] = []
 
@@ -209,7 +209,7 @@ async function waitForFleetRunSnapshot(
   throw new Error(`fleet run ${runRef} did not reach expected state; last state=${snapshot.run.state} active=${snapshot.active}`)
 }
 
-describe("Khala Code Codex fleet tools", () => {
+describe("Khala Code fleet tools", () => {
   test("parsePylonLifecycleNdjsonLine accepts public lifecycle schemas and drops malformed lines", () => {
     expect(parsePylonLifecycleNdjsonLine("not json")).toBeNull()
     expect(parsePylonLifecycleNdjsonLine(JSON.stringify({
@@ -633,9 +633,9 @@ describe("Khala Code Codex fleet tools", () => {
     const toolResult = await Effect.runPromise(tool!.execute!({}, {} as never))
 
     expect(toolResult.modelOutput.text).toContain("Active assignment markers: 2")
-    expect(toolResult.modelOutput.text).toContain("Active Codex exec processes: 1")
+    expect(toolResult.modelOutput.text).toContain("Active local worker processes: 1")
     expect(toolResult.modelOutput.text)
-      .toContain("Assignment/process reconciliation: 2 marker(s), 1 codex exec process(es)")
+      .toContain("Assignment/process reconciliation: 2 marker(s), 1 local worker process(es)")
     expect(toolResult.modelOutput.text).toContain("- 200 parent=199 elapsed=00:02:03 codex_exec")
     expect(toolResult.modelOutput.text).not.toContain("Local Pylon/Codex processes")
     expect(toolResult.modelOutput.text).not.toContain("Codex.app")
@@ -765,7 +765,7 @@ describe("Khala Code Codex fleet tools", () => {
       .find(item => item.definition.name === "codex_fleet_status")
     const toolResult = await Effect.runPromise(tool!.execute!({ include_processes: false }, {} as never))
 
-    expect(toolResult.modelOutput.text).toContain("- codex-2: ready, slots 4/5 available, busy 1, queued 0")
+    expect(toolResult.modelOutput.text).toContain("- codex:codex-2: ready, slots 4/5 available, busy 1, queued 0")
     expect(toolResult.modelOutput.text).toContain("Token rate: exact 42 tokens/min completed window across 3 exact row(s)")
     expect(toolResult.modelOutput.text).toContain("assignment.public.one")
     expect(toolResult.modelOutput.text).toContain("tokens=exact 600, 300 tokens/min, kind=exact")
@@ -963,6 +963,89 @@ describe("Khala Code Codex fleet tools", () => {
     expect(result.results[0]?.summary).toContain("assignment run: no result returned")
     expect(result.results[0]?.summary).toContain("no local output path was returned")
     expect(calls.some(call => pylonArgs(call)[0] === "khala" && pylonArgs(call)[1] === "request")).toBe(true)
+  })
+
+  test("spawnCodexInstances routes Claude worker kind through claude_agent_task", async () => {
+    const fixture = await tempPylonFixture()
+    const calls: KhalaCodexFleetCommandInput[] = []
+    const runner = async (input: KhalaCodexFleetCommandInput): Promise<KhalaCodexFleetCommandResult> => {
+      calls.push(input)
+      const args = pylonArgs(input)
+      const joined = args.join(" ")
+      if (joined === "provider go-online --json") {
+        return ok({ ok: true, pylonRef: "pylon.local.test" })
+      }
+      if (joined === "accounts list --json") {
+        return ok({
+          accounts: [
+            {
+              accountRef: "claude",
+              homeState: "present",
+              provider: "claude_agent",
+            },
+          ],
+          schema: "openagents.pylon.accounts_list.v0.3",
+        })
+      }
+      if (joined === "accounts status --provider claude_agent --json") {
+        return ok({
+          accounts: [
+            {
+              accountRef: "claude",
+              provider: "claude_agent",
+              quota: { state: "available" },
+              readiness: { state: "ready" },
+            },
+          ],
+          schema: "openagents.pylon.accounts_status.v0.1",
+        })
+      }
+      if (joined === "presence heartbeat --base-url https://openagents.com --json") {
+        return ok({
+          heartbeatRef: "heartbeat.pylon.local.test.1",
+          pylonRef: "pylon.local.test",
+        })
+      }
+      if (args[0] === "khala" && args[1] === "request") {
+        expect(args).toContain("--workflow")
+        expect(args).toContain("claude_agent_task")
+        expect(args).toContain("--fixture")
+        expect(args).toContain("--account-ref")
+        expect(args).toContain("claude")
+        expect(input.env?.OPENAGENTS_PYLON_CLAUDE_ACCOUNT_CONCURRENCY).toBeDefined()
+        return ok({
+          assignmentRef: "assignment.public.claude_agent_task.test",
+          autoRun: {
+            attempted: false,
+            reason: "disabled_by_no_run",
+          },
+        })
+      }
+      return failed(`unexpected command: ${joined}`)
+    }
+
+    const result = await spawnCodexInstances({
+      count: 1,
+      noRun: true,
+      prompt: "Run the public fixture.",
+      workerKind: "claude",
+    }, {
+      env: fixture.env,
+      runner,
+    })
+
+    expect(result).toMatchObject({
+      acceptedCount: 1,
+      pylonRef: "pylon.local.test",
+      requestedCount: 1,
+    })
+    expect(result.results[0]).toMatchObject({
+      accountRef: "claude",
+      assignmentRef: "assignment.public.claude_agent_task.test",
+      status: "accepted",
+    })
+    expect(calls.some(call => pylonArgs(call).join(" ") === "accounts status --provider claude_agent --json")).toBe(true)
+    expect(calls.every(call => pylonArgs(call).join(" ") !== "codex accounts list --json")).toBe(true)
   })
 
   test("spawnCodexInstances resolves live commit pins and renders claim-aware real-work prompts", async () => {
@@ -2319,7 +2402,7 @@ describe("Khala Code Codex fleet tools", () => {
     }, {} as never))
 
     expect(result.status).toBe("failed")
-    expect(result.modelOutput.text).toContain("Codex spawn: accepted 0/1")
+    expect(result.modelOutput.text).toContain("Fleet spawn: accepted 0/1")
     expect(result.modelOutput.text).toContain("assignment run: failed")
     expect(result.modelOutput.text).toContain("blocker refs: blocker.assignment.timeout")
     expect(result.modelOutput.text).toContain("assignment_run.completed")
@@ -2393,7 +2476,7 @@ describe("Khala Code Codex fleet tools", () => {
     }, {} as never))
 
     expect(result.status).toBe("failed")
-    expect(result.modelOutput.text).toContain("Codex spawn: accepted 0/1")
+    expect(result.modelOutput.text).toContain("Fleet spawn: accepted 0/1")
     expect(result.modelOutput.text).toContain("command timed out")
     expect(result.modelOutput.text).toContain("assignment_run.runtime_started")
     expect(result.modelOutput.text).not.toContain("phase=runtime_active")

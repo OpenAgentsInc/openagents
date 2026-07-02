@@ -11,6 +11,7 @@ import type { PylonKhalaProofResult, PylonKhalaRequestResult } from "./khala-req
 
 const accountHashA = "account.pylon.codex.aaaaaaaaaaaa"
 const accountHashB = "account.pylon.codex.bbbbbbbbbbbb"
+const claudeAccountHash = "account.pylon.claude.aaaaaaaaaaaa"
 
 const plan: PylonKhalaSpawnPlan = {
   schema: PYLON_KHALA_SPAWN_PLAN_SCHEMA,
@@ -25,11 +26,13 @@ const plan: PylonKhalaSpawnPlan = {
     },
   ],
   advertisedCodexAvailability: 1,
+  advertisedWorkerAvailability: 1,
   baseUrl: "https://openagents.example",
   blockerRefs: [],
   maxParallel: 1,
   objectiveCount: 1,
   readyCodexAccountCount: 1,
+  readyWorkerAccountCount: 1,
   requestedCount: 1,
   slots: [
     {
@@ -57,6 +60,8 @@ const plan: PylonKhalaSpawnPlan = {
     },
   ],
   targetPylonRef: "pylon.owner.codex",
+  workerKind: "codex",
+  workflow: "codex_agent_task",
 }
 
 describe("Khala spawn per-account planning", () => {
@@ -231,6 +236,57 @@ describe("Khala spawn per-account planning", () => {
     expect(requestInput?.objectiveSummary?.endsWith("...")).toBe(true)
   })
 
+  test("plans claude_agent_task slots against ready Claude accounts", () => {
+    const result = buildPylonKhalaSpawnPlan({
+      accounts: {
+        accounts: [
+          {
+            accountRef: "codex-a",
+            accountRefHash: accountHashA,
+            blockerRefs: [],
+            homeState: "present",
+            provider: "codex",
+            readiness: { state: "ready" },
+          },
+          {
+            accountRef: "claude-a",
+            accountRefHash: claudeAccountHash,
+            blockerRefs: [],
+            homeState: "present",
+            provider: "claude_agent",
+            readiness: { state: "ready" },
+          },
+        ],
+      } as never,
+      advertisedCodexAccounts: [
+        {
+          accountKey: "claudeaaaaaaaaaaaa",
+          accountRefHash: claudeAccountHash,
+          available: 2,
+          busy: 0,
+          queued: 0,
+          ready: 2,
+        },
+      ],
+      baseUrl: "https://openagents.example",
+      fixture: true,
+      objectives: repeatedKhalaSpawnObjectives({
+        count: 2,
+        objective: "Run the bounded fixture.",
+      }),
+      targetPylonRef: "pylon.owner.codex",
+      workflow: "claude_agent_task",
+    })
+
+    expect(result.workerKind).toBe("claude")
+    expect(result.workflow).toBe("claude_agent_task")
+    expect(result.readyWorkerAccountCount).toBe(1)
+    expect(result.slots.map(slot => slot.account.accountRef)).toEqual(["claude-a", "claude-a"])
+    expect(result.slots[0]?.requestInput.workflow).toBe("claude_agent_task")
+    expect(result.slots[0]?.commands.request).toContain("--workflow claude_agent_task")
+    expect(result.slots[0]?.commands.request).toContain('--account-ref "claude-a"')
+  })
+
   test("blocks batches that request more slots than advertised free capacity", () => {
     const result = buildPylonKhalaSpawnPlan({
       accounts: {
@@ -285,7 +341,7 @@ describe("Khala spawn per-account planning", () => {
     expect(result.maxParallel).toBe(0)
     expect(result.slots).toEqual([])
     expect(result.blockerRefs).toContain(
-      "blocker.khala_spawn.requested_count_exceeds_advertised_availability",
+      "blocker.khala_spawn.requested_count_exceeds_advertised_codex_availability",
     )
   })
 })
@@ -305,6 +361,13 @@ const requestResult: PylonKhalaRequestResult = {
   streamUpToDate: true,
   text: "",
   workflow: "codex_agent_task",
+}
+
+const claudeRequestResult: PylonKhalaRequestResult = {
+  ...requestResult,
+  assignmentRef: "assignment.public.khala_claude.test",
+  durableRequestId: "durable.claude.test",
+  workflow: "claude_agent_task",
 }
 
 const exactProof: PylonKhalaProofResult = {
@@ -352,6 +415,19 @@ const exactProof: PylonKhalaProofResult = {
   },
 }
 
+const claudeExactProof: PylonKhalaProofResult = {
+  ...exactProof,
+  assignmentRef: "assignment.public.khala_claude.test",
+  pylonRef: "pylon.owner.claude",
+  tokenUsage: {
+    ...exactProof.tokenUsage,
+    model: "openagents/pylon-claude",
+    provider: "pylon-claude-own-capacity",
+    refs: ["event.inference.served-tokens.pylon-claude.owner"],
+    totalTokens: 18,
+  },
+}
+
 describe("Khala spawn proof gate", () => {
   test("accepts exact own-capacity Pylon/Codex proof rows", async () => {
     const tokenCounts = [1000, 1016]
@@ -376,6 +452,54 @@ describe("Khala spawn proof gate", () => {
     expect(result.ok).toBe(true)
     expect(result.aggregate.acceptedCount).toBe(1)
     expect(result.aggregate.totalVerifiedTokens).toBe(16)
+    expect(result.blockerRefs).toEqual([])
+  })
+
+  test("accepts exact own-capacity Pylon/Claude proof rows", async () => {
+    const tokenCounts = [1000, 1018]
+    const claudePlan = buildPylonKhalaSpawnPlan({
+      accounts: {
+        accounts: [
+          {
+            accountRef: "claude-a",
+            accountRefHash: claudeAccountHash,
+            blockerRefs: [],
+            homeState: "present",
+            provider: "claude_agent",
+            readiness: { state: "ready" },
+          },
+        ],
+      } as never,
+      advertisedCodexAvailability: 1,
+      baseUrl: "https://openagents.example",
+      fixture: true,
+      objectives: repeatedKhalaSpawnObjectives({ count: 1, objective: "Run Claude fixture." }),
+      targetPylonRef: "pylon.owner.claude",
+      workflow: "claude_agent_task",
+    })
+
+    const result = await runPylonKhalaSpawnPlan({
+      deps: {
+        readProof: async () => claudeExactProof,
+        readTokensServed: async () => tokenCounts.shift() ?? 1018,
+        requestAssignment: async () => claudeRequestResult,
+        runAssignment: async () => ({
+          closeout: { status: "accepted" },
+          ok: true,
+        }),
+      },
+      network: {
+        agentToken: "agent.public.test",
+        baseUrl: "https://openagents.example",
+      },
+      plan: claudePlan,
+      summary: {} as never,
+    })
+
+    expect(result.ok).toBe(true)
+    expect(result.plan.workflow).toBe("claude_agent_task")
+    expect(result.aggregate.acceptedCount).toBe(1)
+    expect(result.aggregate.totalVerifiedTokens).toBe(18)
     expect(result.blockerRefs).toEqual([])
   })
 

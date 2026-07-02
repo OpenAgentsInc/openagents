@@ -94,6 +94,21 @@ const status = (): KhalaCodeDesktopFleetStatus => ({
       quotaState: "available",
       readiness: "ready",
     },
+    {
+      accountKey: null,
+      accountRef: "claude-a",
+      capacity: {
+        available: 1,
+        busy: 0,
+        queued: 0,
+        ready: 1,
+      },
+      email: "operator-claude@example.com",
+      paused: false,
+      provider: "claude_agent",
+      quotaState: "available",
+      readiness: "ready",
+    },
   ],
   activeAssignments: [],
   processes: [],
@@ -135,6 +150,7 @@ const runStartResult = (
   ok: true,
   run: fleetRunProjection({
     targetConcurrency: request.targetConcurrency,
+    workerKind: request.workerKind ?? "codex",
     workSource: request.workSource,
   }),
   supervisorStarted: true,
@@ -439,7 +455,7 @@ describe("Fleet status panel", () => {
       {
         objective: "Burn down public fixture tasks.",
         targetConcurrency: 3,
-                workerKind: "codex",
+        workerKind: "codex",
         workSource: { kind: "fixture" },
       },
     ])
@@ -452,6 +468,78 @@ describe("Fleet status panel", () => {
     expect(root.textContent).toContain("claimed2")
     expect(root.textContent).toContain("done4")
     expect(root.textContent).toContain("elapsed30s")
+  })
+
+  test("starts Claude FleetRuns from the form without falling back to Codex", async () => {
+    const root = document.createElement("div")
+    const requests: KhalaCodeDesktopFleetRunStartRequest[] = []
+    const panel = mountFleetPanel(root, {
+      connectAccount: async () => ({
+        ok: false,
+        accountRef: "codex-test",
+        error: "disabled",
+        output: "",
+        userCode: null,
+        verificationUrl: null,
+      }),
+      delegateRun: async () => {
+        throw new Error("delegate runner should not be called")
+      },
+      fetch: async () => status(),
+      fleetRunControl: async () => {
+        throw new Error("fleet run control should not be called")
+      },
+      fleetRunList: async () => ({ ok: true, runs: [] }),
+      fleetRunStart: async request => {
+        requests.push(request)
+        return runStartResult(request)
+      },
+      fleetWorkerControl: async () => {
+        throw new Error("fleet worker control should not be called")
+      },
+      loadGymDemoProof: () => {
+        throw new Error("gym proof should not be called")
+      },
+      openExternal: async () => false,
+      removeAccount: async () => ({ ok: true }),
+      setAccountPaused: async () => ({ ok: true }),
+      consumeResetCredit: async () => ({ ok: true }),
+      startDelegationOptimization: async () => {
+        throw new Error("optimization should not be called")
+      },
+    })
+
+    await panel.refresh()
+
+    const form = root.querySelector<HTMLFormElement>('form[aria-label="Start fleet run"]')
+    expect(form).not.toBeNull()
+    changeInput(form!.elements.namedItem("objective") as HTMLTextAreaElement, "Burn down Claude fixture tasks.")
+    changeInput(form!.elements.namedItem("targetConcurrency") as HTMLInputElement, "1")
+    changeInput(form!.elements.namedItem("workSource") as HTMLSelectElement, "fixture")
+    changeInput(form!.elements.namedItem("workerKind") as HTMLSelectElement, "claude")
+
+    const previewButton = [...root.querySelectorAll<HTMLButtonElement>("button")]
+      .find(button => button.textContent?.includes("Preview first wave"))
+    expect(previewButton).not.toBeUndefined()
+    previewButton!.click()
+
+    const previewRows = [...root.querySelectorAll<HTMLElement>(".khala-fleet-run-preview-slot")]
+      .map(row => row.textContent ?? "")
+    expect(previewRows).toHaveLength(1)
+    expect(previewRows[0]).toContain("claude-a")
+    expect(previewRows[0]).toContain("workerclaude")
+
+    form!.dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }))
+    await flushPanelWork()
+
+    expect(requests).toEqual([
+      {
+        objective: "Burn down Claude fixture tasks.",
+        targetConcurrency: 1,
+        workerKind: "claude",
+        workSource: { kind: "fixture" },
+      },
+    ])
   })
 
   test("renders the active FleetRun header from fleetRunList without fabricated objective text", async () => {
