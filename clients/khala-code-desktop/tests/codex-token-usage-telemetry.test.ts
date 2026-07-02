@@ -202,6 +202,44 @@ describe("Codex token usage telemetry", () => {
     })
   })
 
+  test("clears token usage Inbox flags after a later successful sync of the same event", async () => {
+    const ledgerPath = await tempLedgerPath()
+    const event = khalaCodeDesktopCodexTokenUsageEvent(sampleReport())
+    const failingReporter = createKhalaCodeDesktopCodexTokenUsageReporter({
+      env: {
+        KHALA_CODE_TOKEN_USAGE_BASE_URL: "https://openagents.example",
+        KHALA_CODE_TOKEN_USAGE_BEARER_TOKEN: "test-token",
+      },
+      fetch: async () =>
+        new Response(JSON.stringify({ error: "still down" }), { status: 503 }),
+      localLedgerPath: ledgerPath,
+      retryBaseMs: 0,
+      retryRecurs: 0,
+    })
+
+    const failedExit = await Effect.runPromiseExit(failingReporter(sampleReport()))
+
+    expect(Exit.isFailure(failedExit)).toBe(true)
+    expect(await readKhalaCodeDesktopTokenUsageInboxFlags({ localLedgerPath: ledgerPath })).toMatchObject([{
+      eventId: event.eventId,
+      idempotencyKey: event.idempotencyKey,
+      status: "open",
+    }])
+
+    const result = await syncKhalaCodeDesktopPendingTokenUsageReports({
+      env: {
+        KHALA_CODE_TOKEN_USAGE_BASE_URL: "https://openagents.example",
+        KHALA_CODE_TOKEN_USAGE_BEARER_TOKEN: "test-token",
+      },
+      fetch: async () => new Response(JSON.stringify({ inserted: true }), { status: 201 }),
+      localLedgerPath: ledgerPath,
+    })
+
+    expect(result).toMatchObject({ attempted: 1, failed: 0, ok: true, synced: 1 })
+    expect(await readKhalaCodeDesktopTokenUsageInboxFlags({ localLedgerPath: ledgerPath })).toEqual([])
+    expect(await readFile(join(dirname(ledgerPath), "token-usage-inbox-flags.jsonl"), "utf8")).toBe("")
+  })
+
   test("loads the owner Stats token from the local secret file when env is not exported", async () => {
     const root = await tempLedgerRoot()
     const secretPath = join(root, "vortex-admin.env")

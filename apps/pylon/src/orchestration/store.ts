@@ -86,6 +86,9 @@ export const FleetRunStateSchema = S.Literals([
 ])
 export type FleetRunState = typeof FleetRunStateSchema.Type
 
+export const FleetRunControlVerbSchema = S.Literals(["pause", "resume", "drain", "stop"])
+export type FleetRunControlVerb = typeof FleetRunControlVerbSchema.Type
+
 export const FleetRunStopConditionSchema = S.Literals(["backlog_empty", "target_reached", "manual_stop"])
 export type FleetRunStopCondition = typeof FleetRunStopConditionSchema.Type
 
@@ -382,6 +385,34 @@ const assertWholeNonNegative = (field: string, value: number): void => {
 
 const assertNonEmpty = (kind: string, field: string, value: string): void => {
   if (!value.trim()) throw new Error(`${kind} ${field} is required`)
+}
+
+export const assertFleetRunControlTransition = (
+  state: FleetRunState,
+  verb: FleetRunControlVerb,
+): void => {
+  const allowed: Record<FleetRunControlVerb, readonly FleetRunState[]> = {
+    drain: ["running", "paused"],
+    pause: ["running"],
+    resume: ["paused"],
+    stop: ["draft", "running", "paused", "draining"],
+  }
+  if (!allowed[verb].includes(state)) {
+    throw new Error(`fleetRunControl cannot ${verb} a ${state} fleet run`)
+  }
+}
+
+const fleetRunControlState = (verb: FleetRunControlVerb): FleetRunState => {
+  switch (verb) {
+    case "pause":
+      return "paused"
+    case "resume":
+      return "running"
+    case "drain":
+      return "draining"
+    case "stop":
+      return "stopped"
+  }
 }
 
 const LIVE_WORK_CLAIM_STATES: readonly LiveWorkClaimState[] = ["claimed", "in_progress", "closeout"]
@@ -972,6 +1003,20 @@ export class PylonOrchestrationStore {
       startedAt: state === "running" && current.startedAt === null ? iso(now) : current.startedAt,
       updatedAt: iso(now),
     })
+  }
+
+  controlFleetRun(
+    runRef: string,
+    verb: FleetRunControlVerb,
+    now: Date = new Date(),
+  ): { previousState: FleetRunState; run: FleetRun } {
+    const current = this.getFleetRun(runRef)
+    if (current === null) throw new Error(`unknown fleet run: ${runRef}`)
+    assertFleetRunControlTransition(current.state, verb)
+    return {
+      previousState: current.state,
+      run: this.updateFleetRunState(runRef, fleetRunControlState(verb), now),
+    }
   }
 
   reconcileFleetRun(runRef: string, now: Date = new Date()): FleetRun {

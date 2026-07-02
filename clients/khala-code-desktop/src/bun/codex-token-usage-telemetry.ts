@@ -851,15 +851,47 @@ const appendTokenUsageInboxFlag = async (
   return flag
 }
 
+const rewriteJsonLines = async (
+  path: string,
+  rows: readonly JsonRecord[],
+): Promise<void> => {
+  await mkdir(dirname(path), { recursive: true })
+  await writeFile(
+    path,
+    rows.length === 0 ? "" : `${rows.map(row => JSON.stringify(row)).join("\n")}\n`,
+    "utf8",
+  )
+}
+
+const refsFromInboxFlagRow = (row: JsonRecord): readonly string[] => {
+  const flag = objectField(row, "flag")
+  return flag === null ? [] : refsFromEventLike(flag)
+}
+
+const compactInboxFlagRows = (
+  rows: readonly JsonRecord[],
+  successRefs: ReadonlySet<string>,
+): readonly JsonRecord[] =>
+  rows.filter(row => {
+    const refs = refsFromInboxFlagRow(row)
+    return refs.length === 0 || refs.every(ref => !successRefs.has(ref))
+  })
+
 export async function readKhalaCodeDesktopTokenUsageInboxFlags(options: {
   readonly env?: Readonly<Record<string, string | undefined>>
   readonly localLedgerPath?: string
 } = {}): Promise<readonly KhalaCodeDesktopTokenUsageInboxFlag[]> {
   const env = options.env ?? khalaCodeConfigFromRuntimeEnv().env
   const config = resolveConfig(env, options.localLedgerPath)
-  const rows = await readJsonLines(inboxFlagLedgerPath(config.localLedgerPath))
+  const flagPath = inboxFlagLedgerPath(config.localLedgerPath)
+  const rows = await readJsonLines(flagPath)
+  const successRefs = refSetFromRows(await readJsonLines(successLedgerPath(config.localLedgerPath)))
+  const unresolvedRows = compactInboxFlagRows(rows, successRefs)
+  if (unresolvedRows.length !== rows.length) {
+    await rewriteJsonLines(flagPath, unresolvedRows)
+  }
   const byRef = new Map<string, KhalaCodeDesktopTokenUsageInboxFlag>()
-  for (const row of rows) {
+  for (const row of unresolvedRows) {
     const flag = objectField(row, "flag")
     if (flag === null) continue
     const ref = stringField(flag, "ref")
@@ -877,18 +909,6 @@ export async function readKhalaCodeDesktopTokenUsageInboxFlags(options: {
     })
   }
   return [...byRef.values()]
-}
-
-const rewriteJsonLines = async (
-  path: string,
-  rows: readonly JsonRecord[],
-): Promise<void> => {
-  await mkdir(dirname(path), { recursive: true })
-  await writeFile(
-    path,
-    rows.length === 0 ? "" : `${rows.map(row => JSON.stringify(row)).join("\n")}\n`,
-    "utf8",
-  )
 }
 
 const compactFailureRows = (

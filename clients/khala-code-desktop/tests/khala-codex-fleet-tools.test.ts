@@ -19,7 +19,6 @@ import {
   type KhalaCodexFleetCommandInput,
   type KhalaCodexFleetCommandResult,
   type KhalaCodexFleetProgressPayload,
-  type KhalaFleetRunSnapshot,
 } from "../src/bun/khala-codex-fleet-tools"
 
 const tempDirs: string[] = []
@@ -190,22 +189,23 @@ function matrixBatchSpawnInFlight(
 async function waitForFleetRunSnapshot(
   manager: DefaultKhalaFleetRunSupervisorManager,
   runRef: string,
-  predicate: (snapshot: KhalaFleetRunSnapshot) => boolean,
-): Promise<KhalaFleetRunSnapshot> {
+  predicate: (snapshot: Awaited<ReturnType<DefaultKhalaFleetRunSupervisorManager["start"]>>) => boolean,
+): Promise<Awaited<ReturnType<DefaultKhalaFleetRunSupervisorManager["start"]>>> {
+  // Array.isArray does not narrow readonly arrays out of a union, so use an
+  // explicit guard for the single-snapshot shape.
+  const singleSnapshot = (
+    value: Awaited<ReturnType<DefaultKhalaFleetRunSupervisorManager["status"]>>,
+  ): Awaited<ReturnType<DefaultKhalaFleetRunSupervisorManager["start"]>> => {
+    if (Array.isArray(value)) throw new Error("expected a single fleet run snapshot")
+    return value as Awaited<ReturnType<DefaultKhalaFleetRunSupervisorManager["start"]>>
+  }
   for (let attempt = 0; attempt < 50; attempt += 1) {
-    const snapshot = singleFleetRunSnapshot(await manager.status({ runRef }))
+    const snapshot = singleSnapshot(await manager.status({ runRef }))
     if (predicate(snapshot)) return snapshot
     await Bun.sleep(10)
   }
-  const snapshot = singleFleetRunSnapshot(await manager.status({ runRef }))
+  const snapshot = singleSnapshot(await manager.status({ runRef }))
   throw new Error(`fleet run ${runRef} did not reach expected state; last state=${snapshot.run.state} active=${snapshot.active}`)
-}
-
-function singleFleetRunSnapshot(
-  snapshot: KhalaFleetRunSnapshot | readonly KhalaFleetRunSnapshot[],
-): KhalaFleetRunSnapshot {
-  if ("run" in snapshot) return snapshot
-  throw new Error("expected a single fleet run snapshot")
 }
 
 describe("Khala Code Codex fleet tools", () => {
@@ -519,10 +519,12 @@ describe("Khala Code Codex fleet tools", () => {
       targetConcurrency: 1,
       workSource: "fixture",
     })).rejects.toThrow("fleet run supervisor already active for pylon pylon.local.test")
-    const failedStart = singleFleetRunSnapshot(await manager.status({ runRef: "fleet_run.test.failed_start" }))
+    const failedStart = await manager.status({ runRef: "fleet_run.test.failed_start" })
 
     expect(active.active).toBe(true)
-    expect(failedStart.run.state).toBe("stopped")
+    expect(Array.isArray(failedStart)).toBe(false)
+    const failedStartSnapshot = failedStart as Awaited<ReturnType<DefaultKhalaFleetRunSupervisorManager["start"]>>
+    expect(failedStartSnapshot.run.state).toBe("stopped")
 
     await manager.control({ runRef: "fleet_run.test.inflight", verb: "stop" })
     const afterStop = await manager.start({
