@@ -1,3 +1,7 @@
+import { mkdtemp, rm } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
+import { fileURLToPath } from "node:url"
 import { describe, expect, test } from "bun:test"
 
 import {
@@ -16,7 +20,12 @@ import type {
   KhalaFleetRunStatusInput,
   KhalaFleetRunSupervisorManager,
 } from "../src/bun/khala-codex-fleet-tools"
+import { createCodexAppServerHost } from "../src/bun/codex-app-server-client"
 import { handleKhalaMcpRequest } from "@openagentsinc/khala-tools"
+
+const fixtureAppServerPath = fileURLToPath(
+  new URL("../src/bun/fixture-codex-app-server.ts", import.meta.url),
+)
 
 const fleetRunSnapshot = (input: {
   readonly active?: boolean
@@ -317,5 +326,66 @@ describe("Codex Fleet MCP bridge", () => {
       type: "text",
     })])
     expect(mock.calls.controls).toEqual([{ runRef: "fleet_run.mock", verb: "pause" }])
+  })
+
+  test("Fleet MCP run verbs round-trip through the scripted Codex app-server fixture", async () => {
+    const root = await mkdtemp(join(tmpdir(), "khala-fleet-mcp-app-server-"))
+    const host = createCodexAppServerHost({
+      env: {
+        CODEX_HOME: join(root, "codex-home"),
+        KHALA_CODE_BUN_BINARY: process.execPath,
+        KHALA_CODE_CODEX_APP_SERVER_FIXTURE: "1",
+        KHALA_CODE_CODEX_APP_SERVER_FIXTURE_PATH: fixtureAppServerPath,
+      } as NodeJS.ProcessEnv,
+      initializeTimeoutMs: 1_000,
+      requestTimeoutMs: 1_000,
+    })
+
+    try {
+      await expect(host.start()).resolves.toMatchObject({ ok: true })
+      await expect(ensureCodexFleetMcpBridge({
+        env: { KHALA_CODE_DESKTOP_BUN_COMMAND: process.execPath },
+        host,
+        repoRoot: process.cwd(),
+      })).resolves.toMatchObject({ ok: true })
+
+      const start = await host.request<{ content: Array<{ text: string; type: string }> }>(
+        "mcpServer/tool/call",
+        {
+          arguments: {
+            fixture_count: 5,
+            objective: "Burn down the fixture backlog.",
+            run_ref: "fleet_run.fixture_mcp",
+            target_concurrency: 2,
+            work_source: "fixture",
+          },
+          server: "khala_fleet",
+          threadId: "thread.fixture",
+          tool: "fleet_run_start",
+        },
+      )
+      expect(start.content).toEqual([expect.objectContaining({
+        text: expect.stringContaining("FleetRun fleet_run.fixture_mcp: running"),
+        type: "text",
+      })])
+
+      const status = await host.request<{ content: Array<{ text: string; type: string }> }>(
+        "mcpServer/tool/call",
+        {
+          arguments: { run_ref: "fleet_run.fixture_mcp" },
+          server: "khala_fleet",
+          threadId: "thread.fixture",
+          tool: "fleet_run_status",
+        },
+      )
+
+      expect(status.content).toEqual([expect.objectContaining({
+        text: expect.stringContaining("FleetRun fleet_run.fixture_mcp: running"),
+        type: "text",
+      })])
+    } finally {
+      host.dispose()
+      await rm(root, { force: true, recursive: true })
+    }
   })
 })

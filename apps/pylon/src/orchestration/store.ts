@@ -1571,7 +1571,10 @@ export class PylonOrchestrationStore {
       this.db
         .query(`
           UPDATE pylon_orchestration_dispatch_contexts
-             SET status = 'dispatched', current_task_id = $taskId, updated_at = $at
+             SET status = 'dispatched',
+                 current_task_id = $taskId,
+                 last_heartbeat_at = $at,
+                 updated_at = $at
            WHERE id = $contextId
         `)
         .run({ $contextId: contextId, $taskId: taskId, $at: at })
