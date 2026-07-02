@@ -1,6 +1,7 @@
 # Khala Code QA Nightly Matrix
 
-Status: implementation note for ROADMAP_QA Q1.1 / issue #8012.
+Status: implementation note for ROADMAP_QA Q1.1 / issue #8012 and Q1.3 /
+issue #8014.
 
 `bun run qa:nightly` is the owned-runner Tier-2 loop for the fully automated
 Khala Code QA cycle. It does not use GitHub-hosted CI. The committed systemd
@@ -28,13 +29,49 @@ Each run writes:
 - `qa-nightly-report.json`
 - `qa-nightly-report.md`
 - one log per step under `logs/`
-- the monkey coverage ledger under
+- the per-run monkey coverage ledger under
   `monkey-night/monkey-night-coverage-ledger.json`
+- the merged coverage union under `coverage/coverage-union-ledger.json`
+- the frontier report under `coverage/coverage-frontier-report.json`
+- the explorer steering input under `coverage/coverage-frontier-steering.json`
 
 If the matrix fails and `OA_QA_NIGHTLY_FILE_ISSUE=1` is set, the runner files a
 strict bug issue through `gh issue create` with public-safe report refs and the
 failed step IDs. Raw command logs stay in the owned-runner artifact directory and
 must be redaction-reviewed before external publication.
+
+## Coverage Union And Frontier
+
+Each run scans the artifact root for prior per-run `*coverage-ledger.json`
+files, skips previously merged `coverage-union-ledger.json` files, and writes a
+fresh union ledger for the current nightly. If the current monkey run failed
+before producing a ledger, the union falls back to historical ledgers or an
+empty baseline so the frontier remains explicit instead of silently missing.
+
+The frontier report compares the union ledger with the seed-corpus manifest and
+lists unvisited RPC methods, unexercised slash commands, unopened hotbar
+panels, unwritten settings, unrendered ThreadItem variants, unclicked
+selectors, and missing approval decision kinds. The steering input flattens
+that frontier into refs such as `hotbarPanels:fleet` and
+`rpcMethods:fleetRunStatus` for the seeded monkey, live explorer, and GEPA
+policy lanes.
+
+When the same frontier ref is still missing for seven consecutive dated
+frontier reports, the nightly marks it in `zeroForAWeekIssueCandidates`. With
+`OA_QA_NIGHTLY_FILE_COVERAGE_ISSUE=1`, the runner files a strict-form issue
+with public-safe refs to the report, union ledger, frontier report, and steering
+input.
+
+Key environment switches:
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `OA_QA_NIGHTLY_ARTIFACT_DIR` | `var/qa-nightly` | Artifact root scanned for prior ledgers and frontiers. |
+| `OA_QA_NIGHTLY_MONKEY_RUNS` | `16` | Number of monkey runs. |
+| `OA_QA_NIGHTLY_MONKEY_STEPS` | `64` | Steps per monkey run. |
+| `OA_QA_NIGHTLY_STEP_TIMEOUT_MS` | `1800000` | Per-step timeout. |
+| `OA_QA_NIGHTLY_FILE_ISSUE` | unset | File a strict-form issue on matrix failure. |
+| `OA_QA_NIGHTLY_FILE_COVERAGE_ISSUE` | unset | File a strict-form issue when a frontier class stays zero for seven consecutive coverage days. |
 
 The timer is scheduled for 07:17 UTC with a small randomized delay. Install on
 the owned runner by copying both unit files into the systemd unit directory and

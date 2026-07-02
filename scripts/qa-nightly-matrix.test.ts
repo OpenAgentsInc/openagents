@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises"
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
 import { describe, expect, test } from "bun:test"
@@ -72,6 +72,15 @@ describe("qa nightly matrix report", () => {
       const markdown = await readFile(join(root, report.reportMarkdownPath), "utf8")
       expect(markdown).toContain("Khala Code QA Nightly Matrix")
       expect(markdown).toContain("| harness-suite | passed |")
+      expect(await readFile(join(root, report.coverageLedgerPath), "utf8")).toContain(
+        "khala_code_qa_coverage_ledger.v1",
+      )
+      expect(await readFile(join(root, report.coverageFrontierReportPath), "utf8")).toContain(
+        "khala_code_qa_coverage_frontier.v1",
+      )
+      expect(await readFile(join(root, report.coverageSteeringInputPath), "utf8")).toContain(
+        "coverage_frontier_steering_input",
+      )
     } finally {
       await rm(root, { force: true, recursive: true })
     }
@@ -120,10 +129,107 @@ describe("qa nightly matrix report", () => {
     }
   })
 
+  test("files a zero-coverage issue after a synthetic class stays missing for seven days", async () => {
+    const root = await mkdtemp(join(tmpdir(), "qa-nightly-zero-coverage-"))
+    const artifactRoot = join(root, "artifacts")
+    const missingFleetFrontier = (generatedAt: string) => ({
+      generatedAt,
+      missing: {
+        approvalDecisionKinds: [],
+        hotbarPanels: ["fleet"],
+        rpcMethods: [],
+        selectors: [],
+        settingsKeys: [],
+        slashCommands: [],
+        threadItemVariants: [],
+      },
+      schema: "khala_code_qa_coverage_frontier.v1",
+      zeroForAWeekIssueCandidates: [],
+    })
+    const partialLedger = {
+      approvalDecisionKinds: [],
+      generatedAt: "2026-07-07T01:00:00.000Z",
+      hotbarPanelsOpened: ["chat"],
+      rpcMethods: {},
+      runIds: ["synthetic-current"],
+      schema: "khala_code_qa_coverage_ledger.v1",
+      screensScreenshotted: [],
+      selectorsClicked: [],
+      settingsKeysWritten: [],
+      slashCommands: {},
+      threadItemVariantsRendered: [],
+    }
+    const commandRunner: QaNightlyCommandRunner = async step => {
+      if (step.id === "monkey-night") {
+        const artifactDir = step.command[step.command.indexOf("--artifact-dir") + 1]
+        await mkdir(artifactDir, { recursive: true })
+        await writeFile(
+          join(artifactDir, "monkey-night-coverage-ledger.json"),
+          `${JSON.stringify(partialLedger, null, 2)}\n`,
+        )
+      }
+      return {
+        durationMs: 2,
+        exitCode: 0,
+        stderr: "",
+        stdout: "",
+      }
+    }
+    const filed: string[] = []
+    const issueFiler: QaNightlyIssueFiler = async input => {
+      filed.push(input.title)
+      const body = await readFile(input.bodyPath, "utf8")
+      expect(body).toContain("hotbarPanels:fleet")
+      expect(body).toContain("### Public-safe evidence")
+      return {
+        issueUrl: "https://github.com/OpenAgentsInc/openagents/issues/10001",
+        status: "filed",
+      }
+    }
+
+    try {
+      for (let day = 1; day <= 6; day += 1) {
+        const generatedAt = `2026-07-0${day}T01:00:00.000Z`
+        const dir = join(artifactRoot, `history-${day}`, "coverage")
+        await mkdir(dir, { recursive: true })
+        await writeFile(
+          join(dir, "coverage-frontier-report.json"),
+          `${JSON.stringify(missingFleetFrontier(generatedAt), null, 2)}\n`,
+        )
+      }
+
+      const report = await runQaNightlyMatrix({
+        artifactRoot,
+        commandRunner,
+        env: { OA_QA_NIGHTLY_FILE_COVERAGE_ISSUE: "1" },
+        issueFiler,
+        now: () => "2026-07-07T01:00:00.000Z",
+        root,
+      })
+      const frontier = JSON.parse(await readFile(join(root, report.coverageFrontierReportPath), "utf8"))
+      const steering = JSON.parse(await readFile(join(root, report.coverageSteeringInputPath), "utf8"))
+
+      expect(report.zeroCoverageIssueStatus).toEqual({
+        issueUrl: "https://github.com/OpenAgentsInc/openagents/issues/10001",
+        status: "filed",
+      })
+      expect(frontier.zeroForAWeekIssueCandidates).toEqual(["hotbarPanels:fleet"])
+      expect(steering.frontierRefs).toContain("hotbarPanels:fleet")
+      expect(filed).toEqual([
+        "[Bug]: Khala Code QA coverage stayed zero hotbarPanels:fleet",
+      ])
+    } finally {
+      await rm(root, { force: true, recursive: true })
+    }
+  })
+
   test("failure issue body contains strict-form sections and public-safe refs", () => {
     const body = buildQaNightlyFailureIssueBody({
       artifactDir: "var/qa-nightly/run",
-      coverageLedgerPath: "var/qa-nightly/run/monkey-night/monkey-night-coverage-ledger.json",
+      coverageFrontierReportPath: "var/qa-nightly/run/coverage/coverage-frontier-report.json",
+      coverageLedgerPath: "var/qa-nightly/run/coverage/coverage-union-ledger.json",
+      coverageLedgerSourcePaths: ["var/qa-nightly/run/monkey-night/monkey-night-coverage-ledger.json"],
+      coverageSteeringInputPath: "var/qa-nightly/run/coverage/coverage-frontier-steering.json",
       generatedAt: "2026-07-02T12:00:00.000Z",
       reportJsonPath: "var/qa-nightly/run/qa-nightly-report.json",
       reportMarkdownPath: "var/qa-nightly/run/qa-nightly-report.md",
