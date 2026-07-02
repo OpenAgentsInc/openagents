@@ -290,6 +290,7 @@ export const browserCommandProductIntents = {
   LoadExternal: 'navigation.external.load',
   LoadOnboardingRepositories: 'onboarding.repositories.load',
   LoadProviderAccountPool: 'providers.account-pool.load',
+  LoadProAgentDashboard: 'pro.agent-dashboard.load',
   ResetProviderAccountPoolAccount: 'providers.account-pool.reset-account',
   LoadPrefilledWorkspace: 'workspace.prefilled.load',
   LoadPublicActivityTimeline: 'public.activity-timeline.load',

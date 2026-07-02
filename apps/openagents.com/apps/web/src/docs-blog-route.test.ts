@@ -108,15 +108,56 @@ describe('docs and blog routes', () => {
         Scene.role('heading', { name: 'OpenAgents docs' }),
       ).toExist(),
       Scene.expect(
-        Scene.role('link', { name: 'What is OpenAgents?' }),
+        Scene.role('link', { name: 'Khala Code + OpenAgents Overview' }),
       ).toExist(),
-      Scene.expect(Scene.role('link', { name: 'Autopilot Basics' })).toExist(),
-      Scene.expect(Scene.role('link', { name: 'Autopilot Sites' })).toExist(),
-      Scene.expect(Scene.role('link', { name: 'Software Handoff' })).toExist(),
-      Scene.expect(Scene.role('link', { name: 'Autonomous QA' })).toExist(),
-      Scene.expect(Scene.role('link', { name: 'Get Paid to Code' })).toExist(),
-      Scene.expect(Scene.role('link', { name: 'The Forum' })).toExist(),
-      Scene.expect(Scene.role('link', { name: 'Developer API' })).toExist(),
+      Scene.expect(
+        Scene.text(
+          'Khala Code is the desktop coding front door for OpenAgents: your own local Codex harness, coordinated into a proof-oriented network.',
+        ),
+      ).toExist(),
+      Scene.expect(
+        Scene.role('link', { name: 'Autopilot Basics' }),
+      ).toBeAbsent(),
+      Scene.expect(
+        Scene.role('link', { name: 'Autopilot Sites' }),
+      ).toBeAbsent(),
+      Scene.expect(
+        Scene.role('link', { name: 'Software Handoff' }),
+      ).toBeAbsent(),
+      Scene.expect(Scene.role('link', { name: 'Autonomous QA' })).toBeAbsent(),
+      Scene.expect(
+        Scene.role('link', { name: 'Get Paid to Code' }),
+      ).toBeAbsent(),
+      Scene.expect(Scene.role('link', { name: 'The Forum' })).toBeAbsent(),
+      Scene.expect(Scene.role('link', { name: 'Developer API' })).toBeAbsent(),
+    )
+  })
+
+  test('renders the Khala Code overview docs page', () => {
+    Scene.scene(
+      { update, view },
+      Scene.with(LoggedOut.init(DocsPageRoute({ slug: 'openagents' }))),
+      Scene.expect(
+        Scene.role('heading', { name: 'Khala Code + OpenAgents Overview' }),
+      ).toExist(),
+      Scene.expect(
+        Scene.role('heading', { name: 'Khala Code today' }),
+      ).toExist(),
+      Scene.expect(
+        Scene.role('heading', { name: 'OpenAgents network' }),
+      ).toExist(),
+      Scene.expect(Scene.role('heading', { name: 'Promise state' })).toExist(),
+      Scene.expect(
+        Scene.text(
+          'The current posture is intentionally hedged: Khala Code is buildable from this repo and Episode 245 launched the product direction, but there is no public installer yet. Free-plan desktop trace capture is not live, and the Paid private-data plan is not yet purchasable.',
+        ),
+      ).toExist(),
+      Scene.expect(
+        Scene.role('link', { name: 'Khala Code plan catalog' }),
+      ).toHaveAttr('href', '/api/public/khala-code/plans'),
+      Scene.expect(
+        Scene.role('link', { name: 'Product promises JSON' }),
+      ).toHaveAttr('href', '/api/public/product-promises'),
     )
   })
 
@@ -124,9 +165,7 @@ describe('docs and blog routes', () => {
     Scene.scene(
       { update, view },
       Scene.with(LoggedOut.init(DocsPageRoute({ slug: 'autonomous-qa' }))),
-      Scene.expect(
-        Scene.role('heading', { name: 'Autonomous QA' }),
-      ).toExist(),
+      Scene.expect(Scene.role('heading', { name: 'Autonomous QA' })).toExist(),
       Scene.expect(
         Scene.text(
           'The core path is free, local-first, and runtime-agnostic. You run it on your own machine, against your own server, driven by any OpenAI-compatible model you bring — OpenAI, OpenRouter, a local llama.cpp / vLLM / Ollama server, or openagents/khala if you want it. No OpenAgents account, login, or key is required.',
@@ -285,9 +324,7 @@ describe('docs and blog routes', () => {
       ).toExist(),
       Scene.expect(Scene.role('link', { name: 'Docs' })).toExist(),
       Scene.expect(Scene.role('link', { name: 'Blog' })).toExist(),
-      Scene.expect(
-        Scene.selector('[data-account-menu-trigger]'),
-      ).toExist(),
+      Scene.expect(Scene.selector('[data-account-menu-trigger]')).toExist(),
       Scene.expect(Scene.role('menuitem', { name: 'Log out' })).toExist(),
       Scene.expect(
         Scene.role('navigation', { name: 'OpenAgents navigation' }),
@@ -302,11 +339,13 @@ describe('docs and blog routes', () => {
       ).toExist(),
       Scene.expect(
         Scene.text(
-          'OpenAgents already buys useful compute for Bitcoin. The next resource we need is useful code.',
+          'Khala Code wraps your own local Codex install, adds fleet coordination, and connects coding work to the OpenAgents network while the public installer and economics loop are still being brought online.',
         ),
       ).toExist(),
-      Scene.expect(Scene.text('Introducing Autopilot Sites')).toExist(),
-      Scene.expect(Scene.text('Episode 228: Free Autopilot')).toExist(),
+      Scene.expect(Scene.text('Introducing Khala Code')).toExist(),
+      Scene.expect(Scene.text('Introducing Autopilot Sites')).toBeAbsent(),
+      Scene.expect(Scene.text('Episode 228: Free Autopilot')).toBeAbsent(),
+      Scene.expect(Scene.text('Get Paid to Code')).toBeAbsent(),
       Scene.expect(
         Scene.role('navigation', { name: 'OpenAgents navigation' }),
       ).toBeAbsent(),
@@ -314,6 +353,30 @@ describe('docs and blog routes', () => {
   })
 
   test('renders a blog article', () => {
+    Scene.scene(
+      { update, view },
+      Scene.with(
+        LoggedOut.init(BlogPostRoute({ slug: 'introducing-khala-code' })),
+      ),
+      Scene.expect(
+        Scene.role('heading', {
+          name: 'Introducing Khala Code',
+        }),
+      ).toExist(),
+      Scene.expect(Scene.text('The coding front door')).toExist(),
+      Scene.expect(Scene.text('Fleet and swarm coordination')).toExist(),
+      Scene.expect(
+        Scene.text('Free, paid, and the honest promise state'),
+      ).toExist(),
+      Scene.expect(Scene.role('link', { name: 'Plan catalog' })).toHaveAttr(
+        'href',
+        '/api/public/khala-code/plans',
+      ),
+      Scene.expect(
+        Scene.role('link', { name: 'Product-promise registry' }),
+      ).toHaveAttr('href', '/api/public/product-promises'),
+    )
+
     Scene.scene(
       { update, view },
       Scene.with(LoggedOut.init(BlogPostRoute({ slug: 'free-autopilot' }))),
@@ -564,9 +627,11 @@ describe('docs and blog routes', () => {
       Scene.expect(Scene.text('Active 5/7 slots')).toExist(),
       Scene.expect(Scene.text('Daily token pace')).toExist(),
       Scene.expect(
-        Scene.text('Make Artanis progress visible safely.'),
+        Scene.text(
+          'Release the next version of Pylon, connect it deeply to Omega, and route more inference and fine-tuning work to the live Pylon wave using the new Bitcoin infrastructure.',
+        ),
       ).toExist(),
-      Scene.expect(Scene.text('Run accepted.')).toExist(),
+      Scene.expect(Scene.text('Run accepted.')).toBeAbsent(),
       // Live fleet-shipping feed replaces the stale status report + admin ticks.
       Scene.expect(Scene.text('Fleet shipping')).toExist(),
       Scene.expect(Scene.text('What the fleet is doing now')).toExist(),
@@ -586,7 +651,9 @@ describe('docs and blog routes', () => {
       Scene.expect(Scene.text('Omega release gate')).toBeAbsent(),
       // Recruitment payoff: the Join CTA stays prominent.
       Scene.expect(
-        Scene.role('heading', { name: 'Have Codex or Claude? Join the fleet.' }),
+        Scene.role('heading', {
+          name: 'Have Codex or Claude? Join the fleet.',
+        }),
       ).toExist(),
       Scene.expect(Scene.text('khala fleet connect')).toExist(),
       Scene.expect(Scene.text('khala fleet status')).toExist(),
@@ -614,14 +681,18 @@ describe('docs and blog routes', () => {
   test('renders the Codex fleet connection docs page', () => {
     Scene.scene(
       { update, view },
-      Scene.with(LoggedOut.init(DocsPageRoute({ slug: 'connect-codex-fleet' }))),
+      Scene.with(
+        LoggedOut.init(DocsPageRoute({ slug: 'connect-codex-fleet' })),
+      ),
       Scene.expect(
         Scene.role('heading', { name: 'Connect Your Codex Fleet' }),
       ).toExist(),
       Scene.expect(Scene.text('khala fleet connect')).toExist(),
       Scene.expect(Scene.text('khala fleet status')).toExist(),
       Scene.expect(
-        Scene.text('The own-capacity coding path routes only through capacity linked to the same owner scope. It is not third-party pooled labor and it is not a settlement-bearing marketplace path.'),
+        Scene.text(
+          'The own-capacity coding path routes only through capacity linked to the same owner scope. It is not third-party pooled labor and it is not a settlement-bearing marketplace path.',
+        ),
       ).toExist(),
       Scene.expect(
         Scene.role('link', { name: 'Khala CLI fleet docs' }),

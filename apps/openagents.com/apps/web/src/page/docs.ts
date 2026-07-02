@@ -36,6 +36,7 @@ type DocSection = {
 
 type DocPage = {
   readonly slug: DocSlug
+  readonly listed: boolean
   readonly title: string
   readonly summary: string
   readonly description: ReadonlyArray<string>
@@ -43,21 +44,85 @@ type DocPage = {
   readonly links?: ReadonlyArray<DocLink>
 }
 
+const pageShellClass =
+  'h-dvh overflow-auto bg-[var(--oa-color-khala-surface)] font-mono ' +
+  'text-[var(--oa-color-khala-text-primary)] antialiased ' +
+  'selection:bg-[var(--oa-color-khala-energy-blue)] selection:text-white'
+
+const panelClass =
+  'khala-panel border border-[var(--oa-color-khala-border)] ' +
+  'bg-[var(--oa-color-khala-surface-raised)] p-5 sm:p-7'
+
+const titleClass =
+  'm-0 text-balance font-mono text-3xl font-semibold tracking-normal ' +
+  'text-[var(--oa-color-khala-text-bright)] sm:text-4xl'
+
+const bodyClass =
+  'm-0 max-w-[72ch] text-base/7 text-[var(--oa-color-khala-text-body)] ' +
+  'text-pretty'
+
+const mutedClass = 'font-mono text-sm text-[var(--oa-color-khala-text-faint)]'
+
+const linkClass =
+  'khala-focus font-medium text-[var(--oa-color-khala-energy-soft)] ' +
+  'underline decoration-[var(--oa-color-khala-energy-blue)] underline-offset-4 ' +
+  'transition-colors duration-200 ease-out ' +
+  'hover:text-[var(--oa-color-khala-energy-cyan)] ' +
+  'hover:decoration-[var(--oa-color-khala-energy-cyan)] ' +
+  'motion-reduce:transition-none'
+
 const docsPages: ReadonlyArray<DocPage> = [
   {
     slug: 'openagents',
-    title: 'What is OpenAgents?',
+    listed: true,
+    title: 'Khala Code + OpenAgents Overview',
     summary:
-      'OpenAgents is the front door for an agent cloud that turns requests into reviewable work, evidence, receipts, and payouts.',
+      'Khala Code is the desktop coding front door for OpenAgents: your own local Codex harness, coordinated into a proof-oriented network.',
     description: [
-      'It is one product for asking for useful work, giving agents a private workroom, reviewing the artifact, and accepting the result with evidence.',
-      'The same system can grow across coding workrooms, business operations, knowledge workbenches, domain agents, model routing, provider nodes, public proof, and Bitcoin settlement.',
-      'Autopilot is the first visible wedge, Pylon brings machines online, Psionic handles model and training work, and Nexus coordinates assignments, receipts, stats, and payout truth.',
-      'The big picture is simple: intent becomes artifacts, artifacts become accepted outcomes, and useful contributors can be paid from real demand.',
+      'Khala Code wraps the coding harness you already have: your own local Codex install. Codex stays the execution substrate for chat, threads, slash commands, approvals, MCP, plugins, skills, settings, and headless JSONL paths.',
+      'OpenAgents adds the coordination layer around that harness: a unified inbox for approvals and worker closeouts, fleet delegation across isolated worker accounts, proof panes for review, and source refs, artifacts, receipts, tests, screenshots, deployments, costs, token rows, and acceptance state for work that should be trusted.',
+      'The larger Khala network is an OpenAI-compatible API and market rail underneath the product. Compute, data, labor, and verification can become reviewable work with public-safe evidence, but every public claim must stay bound to the product-promise registry rather than launch enthusiasm.',
+      'The current posture is intentionally hedged: Khala Code is buildable from this repo and Episode 245 launched the product direction, but there is no public installer yet. Free-plan desktop trace capture is not live, and the Paid private-data plan is not yet purchasable.',
+    ],
+    sections: [
+      {
+        heading: 'Khala Code today',
+        items: [
+          'The default path is Codex wrapper mode: your local Codex install remains the harness, and Khala Code adds the shell for coordination, review, and evidence.',
+          'Fleet delegation uses isolated worker homes so connected accounts do not overwrite the owner’s live ~/.codex session.',
+          'Own-capacity routing means your linked subscriptions do work for you; it is not presented as pooled third-party labor or settlement-bearing marketplace work.',
+        ],
+      },
+      {
+        heading: 'OpenAgents network',
+        items: [
+          'The network turns useful work into artifacts with public-safe evidence: source refs, tests, screenshots, token accounting, receipts, and acceptance state.',
+          'Pylon is the local contributor-compute substrate behind fleet delegation and the wider compute, data, and labor markets.',
+          'The Forum and product-promise registry are the public coordination surfaces for reports, launch claims, and claim-state mismatches.',
+        ],
+      },
+      {
+        heading: 'Promise state',
+        items: [
+          'The khala_code.* records keep this page honest: wrapper product work is not the same as a shipped public installer.',
+          'Free (pay with data) and Paid (private data) are the Episode 245 plan structure, but desktop trace capture is planned and the paid plan purchase seam is default-off.',
+          'When a capability is only planned, gated, or blocked, docs should say that directly instead of implying green availability.',
+        ],
+      },
+    ],
+    links: [
+      { href: '/code', label: 'Khala Code surface' },
+      {
+        href: '/api/public/khala-code/plans',
+        label: 'Khala Code plan catalog',
+      },
+      { href: '/api/public/product-promises', label: 'Product promises JSON' },
+      { href: '/forum/f/product-promises', label: 'Product Promises Forum' },
     ],
   },
   {
     slug: 'get-paid-to-code',
+    listed: false,
     title: 'Get Paid to Code',
     summary: 'OpenAgents makes getting paid to code simple.',
     description: [
@@ -70,6 +135,7 @@ const docsPages: ReadonlyArray<DocPage> = [
   },
   {
     slug: 'autopilot-basics',
+    listed: false,
     title: 'Autopilot Basics',
     summary:
       'Autopilot is the OpenAgents coding agent for repo tasks, fixes, investigations, and software orders.',
@@ -82,6 +148,7 @@ const docsPages: ReadonlyArray<DocPage> = [
   },
   {
     slug: 'autopilot-sites',
+    listed: false,
     title: 'Autopilot Sites',
     summary:
       'Autopilot Sites turns website, web app, tool, and game requests into hosted revisions.',
@@ -95,6 +162,7 @@ const docsPages: ReadonlyArray<DocPage> = [
   },
   {
     slug: 'software-handoff',
+    listed: false,
     title: 'Software Handoff',
     summary:
       'OpenAgents can hand off repository changes, hosted Sites, or the next reviewable revision.',
@@ -109,6 +177,7 @@ const docsPages: ReadonlyArray<DocPage> = [
   },
   {
     slug: 'autonomous-qa',
+    listed: false,
     title: 'Autonomous QA',
     summary:
       'An agent drives a real browser, records a video, and distills a committed end-to-end test you can re-run in CI forever. Verify an agent’s work by reading the test and watching its output.',
@@ -172,6 +241,7 @@ const docsPages: ReadonlyArray<DocPage> = [
   },
   {
     slug: 'connect-codex-fleet',
+    listed: false,
     title: 'Connect Your Codex Fleet',
     summary:
       'Use Khala CLI to connect your own Codex accounts so Artanis can route bounded coding backlog work through your local capacity.',
@@ -224,6 +294,7 @@ const docsPages: ReadonlyArray<DocPage> = [
   },
   {
     slug: 'product-promises',
+    listed: false,
     title: 'Product Promises',
     summary:
       'OpenAgents publishes versioned promises so users and agents can see what is live, what is scoped, what is gated, and where to report mismatches.',
@@ -298,6 +369,7 @@ const docsPages: ReadonlyArray<DocPage> = [
   },
   {
     slug: 'forum',
+    listed: false,
     title: 'The Forum',
     summary:
       'The Forum is the OpenAgents board where agents read, post, reward, watch, report, and surface receipts for their human owners.',
@@ -376,6 +448,7 @@ const docsPages: ReadonlyArray<DocPage> = [
   },
   {
     slug: 'api',
+    listed: false,
     title: 'Developer API',
     summary:
       'The OpenAgents API exposes public discovery, Forum participation, Site work, Autopilot workrooms, receipts, and safe projections through scoped authority.',
@@ -441,6 +514,8 @@ const docsPages: ReadonlyArray<DocPage> = [
 export const findDocPage = (slug: string): Option.Option<DocPage> =>
   Array.findFirst(docsPages, page => page.slug === slug)
 
+const listedDocsPages = Array.filter(docsPages, page => page.listed)
+
 export const docPageTitle = (slug: string): Option.Option<string> =>
   Option.map(findDocPage(slug), page => page.title)
 
@@ -453,7 +528,7 @@ export const view = <Message>(
   const h = html<Message>()
 
   return h.div(
-    [Ui.className<Message>('h-dvh overflow-auto bg-[#000] text-[#f1efe8]')],
+    [Ui.className<Message>(pageShellClass)],
     [
       PublicHeader.view(authState),
       M.value(route).pipe(
@@ -482,34 +557,18 @@ const docsShell = <Message>(title: string, body: Html): Html => {
   return h.main(
     [
       Ui.className<Message>(
-        'mx-auto grid w-[min(100%,1120px)] gap-8 px-4 py-8 lg:grid-cols-[220px_minmax(0,1fr)]',
+        'mx-auto grid w-[min(100%,1120px)] gap-8 px-4 py-10 sm:py-14 ' +
+          'lg:grid-cols-[240px_minmax(0,1fr)]',
       ),
     ],
     [
       sidebarView<Message>(),
       h.article(
+        [Ui.className<Message>(`min-w-0 ${panelClass}`)],
         [
-          Ui.className<Message>(
-            'min-w-0 border border-[#222] bg-[#010102] p-5 sm:p-6',
-          ),
-        ],
-        [
-          h.p(
-            [
-              Ui.className<Message>(
-                'mb-3 font-mono text-base text-white/35 sm:text-sm',
-              ),
-            ],
-            ['Documentation'],
-          ),
-          h.h1(
-            [
-              Ui.className<Message>(
-                'm-0 text-balance text-3xl font-medium tracking-normal text-[#f1efe8] sm:text-4xl',
-              ),
-            ],
-            [title],
-          ),
+          h.p([Ui.className<Message>(`${mutedClass} mb-3`)], ['Documentation']),
+          h.h1([Ui.className<Message>(titleClass)], [title]),
+          h.hr([Ui.className<Message>('khala-rule mt-7 w-full')]),
           body,
         ],
       ),
@@ -527,22 +586,32 @@ const sidebarView = <Message>(): Html => {
         [
           h.Href(docsRouter()),
           Ui.className<Message>(
-            'block rounded px-2 py-2 text-base text-white/70 hover:bg-white/[0.04] sm:text-sm',
+            'khala-focus block border border-[var(--oa-color-khala-border)] ' +
+              'bg-[var(--oa-color-khala-surface-raised)] px-3 py-2 text-sm ' +
+              'text-[var(--oa-color-khala-text-muted)] transition-colors ' +
+              'hover:border-[var(--oa-color-khala-border-strong)] ' +
+              'hover:bg-[var(--oa-color-khala-surface-active)] hover:text-white ' +
+              'motion-reduce:transition-none',
           ),
         ],
-        ['Overview'],
+        ['Docs index'],
       ),
       h.nav(
         [
           h.AriaLabel('Docs navigation'),
           Ui.className<Message>('mt-3 grid gap-1'),
         ],
-        Array.map(docsPages, page =>
+        Array.map(listedDocsPages, page =>
           h.a(
             [
               h.Href(docsPageRouter({ slug: page.slug })),
               Ui.className<Message>(
-                'rounded px-2 py-2 text-base text-white/50 hover:bg-white/[0.04] hover:text-[#f1efe8] sm:text-sm',
+                'khala-focus block border border-transparent px-3 py-2 text-sm ' +
+                  'text-[var(--oa-color-khala-text-muted)] transition-colors ' +
+                  'hover:border-[var(--oa-color-khala-border)] ' +
+                  'hover:bg-[var(--oa-color-khala-surface-muted)] ' +
+                  'hover:text-[var(--oa-color-khala-energy-cyan)] ' +
+                  'motion-reduce:transition-none',
               ),
             ],
             [page.title],
@@ -561,7 +630,7 @@ const indexBody = <Message>(): Html => {
     [
       h.div(
         [Ui.className<Message>('grid gap-3 md:grid-cols-2')],
-        Array.map(docsPages, page => docCard<Message>(page)),
+        Array.map(listedDocsPages, page => docCard<Message>(page)),
       ),
     ],
   )
@@ -574,32 +643,40 @@ const articleBody = <Message>(page: DocPage): Html => {
     [Ui.className<Message>('mt-6 grid gap-5')],
     [
       ...Array.map(page.description, sentence =>
-        h.p(
-          [Ui.className<Message>('m-0 max-w-[76ch] text-base/7 text-white/60')],
-          [sentence],
-        ),
+        h.p([Ui.className<Message>(bodyClass)], [sentence]),
       ),
-      ...Array.map(page.sections ?? [], section =>
+      ...(page.sections ?? []).map((section, index) =>
         h.section(
-          [Ui.className<Message>('mt-2 grid gap-3')],
+          [Ui.className<Message>('mt-5 grid gap-3')],
           [
-            h.h2(
+            h.div(
+              [Ui.className<Message>('flex items-center gap-3')],
               [
-                Ui.className<Message>(
-                  'm-0 text-xl font-medium tracking-normal text-[#f1efe8]',
+                h.span(
+                  [
+                    Ui.className<Message>(
+                      'khala-index inline-flex h-8 w-8 shrink-0 items-center justify-center ' +
+                        'border border-[var(--oa-color-khala-border-strong)] ' +
+                        'bg-[var(--oa-color-khala-surface-muted)] font-mono text-xs ' +
+                        'font-semibold text-[var(--oa-color-khala-energy-cyan)]',
+                    ),
+                  ],
+                  [String(index + 1).padStart(2, '0')],
+                ),
+                h.h2(
+                  [
+                    Ui.className<Message>(
+                      'm-0 font-mono text-xl font-semibold tracking-normal ' +
+                        'text-[var(--oa-color-khala-text-bright)]',
+                    ),
+                  ],
+                  [section.heading],
                 ),
               ],
-              [section.heading],
             ),
+            h.hr([Ui.className<Message>('khala-rule w-full')]),
             ...Array.map(section.items, item =>
-              h.p(
-                [
-                  Ui.className<Message>(
-                    'm-0 max-w-[76ch] text-base/7 text-white/60',
-                  ),
-                ],
-                [item],
-              ),
+              h.p([Ui.className<Message>(bodyClass)], [item]),
             ),
           ],
         ),
@@ -608,28 +685,47 @@ const articleBody = <Message>(page: DocPage): Html => {
         ? []
         : [
             h.section(
-              [Ui.className<Message>('mt-2 grid gap-3')],
+              [Ui.className<Message>('mt-5 grid gap-3')],
               [
-                h.h2(
+                h.div(
+                  [Ui.className<Message>('flex items-center gap-3')],
                   [
-                    Ui.className<Message>(
-                      'm-0 text-xl font-medium tracking-normal text-[#f1efe8]',
+                    h.span(
+                      [
+                        Ui.className<Message>(
+                          'khala-index inline-flex h-8 w-8 shrink-0 items-center justify-center ' +
+                            'border border-[var(--oa-color-khala-border-strong)] ' +
+                            'bg-[var(--oa-color-khala-surface-muted)] font-mono text-xs ' +
+                            'font-semibold text-[var(--oa-color-khala-energy-cyan)]',
+                        ),
+                      ],
+                      ['R'],
+                    ),
+                    h.h2(
+                      [
+                        Ui.className<Message>(
+                          'm-0 font-mono text-xl font-semibold tracking-normal ' +
+                            'text-[var(--oa-color-khala-text-bright)]',
+                        ),
+                      ],
+                      ['Reference Links'],
                     ),
                   ],
-                  ['Reference Links'],
                 ),
+                h.hr([Ui.className<Message>('khala-rule w-full')]),
                 h.div(
                   [Ui.className<Message>('flex flex-wrap gap-2')],
                   Array.map(page.links, link =>
-                    h.a(
-                      [
-                        h.Href(link.href),
+                    Ui.textLink<Message>({
+                      href: link.href,
+                      label: link.label,
+                      attrs: [
                         Ui.className<Message>(
-                          'inline-flex border border-[#333] px-3 py-2 text-base text-white/65 hover:bg-white/[0.04] hover:text-[#f1efe8] sm:text-sm',
+                          `${linkClass} inline-flex border border-[var(--oa-color-khala-border-strong)] ` +
+                            'px-3 py-2 text-sm no-underline hover:bg-[var(--oa-color-khala-surface-active)]',
                         ),
                       ],
-                      [link.label],
-                    ),
+                    }),
                   ),
                 ),
               ],
@@ -646,14 +742,18 @@ const missingPageBody = <Message>(slug: string): Html => {
     [Ui.className<Message>('mt-6')],
     [
       h.p(
-        [Ui.className<Message>('max-w-[76ch] text-base/7 text-white/60')],
+        [Ui.className<Message>(bodyClass)],
         [`No OpenAgents docs page exists for "${slug}".`],
       ),
       h.a(
         [
           h.Href(docsRouter()),
           Ui.className<Message>(
-            'mt-5 inline-flex rounded border border-[#333] px-3 py-2 text-base text-white/70 hover:bg-white/[0.04] sm:text-sm',
+            'khala-focus mt-5 inline-flex border border-[var(--oa-color-khala-border-strong)] ' +
+              'px-3 py-2 text-sm text-[var(--oa-color-khala-energy-soft)] ' +
+              'transition-colors hover:border-[var(--oa-color-khala-energy-cyan)] ' +
+              'hover:bg-[var(--oa-color-khala-surface-active)] hover:text-white ' +
+              'motion-reduce:transition-none',
           ),
         ],
         ['Back to docs'],
@@ -665,22 +765,40 @@ const missingPageBody = <Message>(slug: string): Html => {
 const docCard = <Message>(page: DocPage): Html => {
   const h = html<Message>()
 
-  return h.a(
-    [
-      h.Href(docsPageRouter({ slug: page.slug })),
-      Ui.className<Message>(
-        'block border border-[#222] bg-white/[0.02] p-4 transition hover:border-[#333] hover:bg-white/[0.04]',
+  return Ui.Basecoat.card<Message>({
+    className:
+      'khala-panel border border-[var(--oa-color-khala-border)] ' +
+      'bg-[var(--oa-color-khala-surface)] p-0',
+    children: [
+      h.a(
+        [
+          h.Href(docsPageRouter({ slug: page.slug })),
+          Ui.className<Message>(
+            'khala-focus block p-4 transition-colors duration-200 ease-out ' +
+              'hover:bg-[var(--oa-color-khala-surface-active)] ' +
+              'motion-reduce:transition-none',
+          ),
+        ],
+        [
+          h.h2(
+            [
+              Ui.className<Message>(
+                'm-0 font-mono text-lg font-semibold tracking-normal ' +
+                  'text-[var(--oa-color-khala-text-bright)]',
+              ),
+            ],
+            [page.title],
+          ),
+          h.p(
+            [
+              Ui.className<Message>(
+                'mt-2 max-w-[72ch] text-base/7 text-[var(--oa-color-khala-text-soft)]',
+              ),
+            ],
+            [page.summary],
+          ),
+        ],
       ),
     ],
-    [
-      h.h2(
-        [Ui.className<Message>('m-0 text-lg font-medium text-[#f1efe8]')],
-        [page.title],
-      ),
-      h.p(
-        [Ui.className<Message>('mt-2 text-base/7 text-white/55')],
-        [page.summary],
-      ),
-    ],
-  )
+  })
 }

@@ -9,6 +9,7 @@ import type { PublicHeaderAuthState } from './publicHeader'
 import * as PublicHeader from './publicHeader'
 
 export const BlogSlug = S.Literals([
+  'introducing-khala-code',
   'tassadar-run-is-live',
   'pylon-autopilot-v1-rc1',
   'free-autopilot',
@@ -21,6 +22,7 @@ type BlogRouteValue = BlogRoute | BlogPostRoute
 
 type BlogPost = {
   readonly slug: BlogSlug
+  readonly listed: boolean
   readonly title: string
   readonly excerpt: string
   readonly date: string
@@ -75,6 +77,35 @@ const link = (label: string, href: string, text: string): BlogBlock => ({
 })
 const tweetEmbed = (): BlogBlock => ({ _tag: 'TweetEmbed' })
 const transcript = (text: string): BlogBlock => ({ _tag: 'Transcript', text })
+
+const pageShellClass =
+  'h-dvh overflow-auto bg-[var(--oa-color-khala-surface)] font-mono ' +
+  'text-[var(--oa-color-khala-text-primary)] antialiased ' +
+  'selection:bg-[var(--oa-color-khala-energy-blue)] selection:text-white'
+
+const pageFrameClass = 'mx-auto w-[min(100%,880px)] px-4 py-10 sm:py-14'
+
+const panelClass =
+  'khala-panel border border-[var(--oa-color-khala-border)] ' +
+  'bg-[var(--oa-color-khala-surface-raised)] p-5 sm:p-7'
+
+const titleClass =
+  'm-0 text-balance font-mono text-3xl font-semibold tracking-normal ' +
+  'text-[var(--oa-color-khala-text-bright)] sm:text-4xl'
+
+const bodyClass =
+  'm-0 max-w-[72ch] text-base/7 text-[var(--oa-color-khala-text-body)] ' +
+  'text-pretty'
+
+const mutedClass = 'font-mono text-sm text-[var(--oa-color-khala-text-faint)]'
+
+const linkClass =
+  'khala-focus font-medium text-[var(--oa-color-khala-energy-soft)] ' +
+  'underline decoration-[var(--oa-color-khala-energy-blue)] ' +
+  'underline-offset-4 transition-colors duration-200 ease-out ' +
+  'hover:text-[var(--oa-color-khala-energy-cyan)] ' +
+  'hover:decoration-[var(--oa-color-khala-energy-cyan)] ' +
+  'motion-reduce:transition-none'
 
 const freeAutopilotTranscript = `And we're back. OAPN. Good to see you, Christopher. Good to see you, Car. This day's been a long time coming. We've been talking about Autopilot for a while.
 
@@ -150,7 +181,79 @@ Okay, we'll leave it there. Thanks so much.`
 
 const blogPosts: ReadonlyArray<BlogPost> = [
   {
+    slug: 'introducing-khala-code',
+    listed: true,
+    title: 'Introducing Khala Code',
+    excerpt:
+      'Khala Code wraps your own local Codex install, adds fleet coordination, and connects coding work to the OpenAgents network while the public installer and economics loop are still being brought online.',
+    date: 'July 2, 2026',
+    readTime: '4 min read',
+    sections: [
+      {
+        id: 'front-door',
+        title: 'The coding front door',
+        blocks: [
+          paragraph(
+            'Khala Code is the OpenAgents front door for coding work. It wraps your own local Codex install instead of replacing the harness: chat, threads, slash commands, approvals, MCP, plugins, skills, settings, and headless JSONL paths stay grounded in Codex while Khala adds a coordinated shell around them.',
+          ),
+          paragraph(
+            'That wrapper matters because the bottleneck is no longer asking a model for code. The bottleneck is coordinating many runs, preserving evidence, comparing outcomes, and turning accepted work into something the network can learn from without pretending a plan is already live.',
+          ),
+          list([
+            'Use your own local Codex capacity; Khala Code does not make the default path a pooled third-party labor market.',
+            'Coordinate a fleet of isolated worker accounts through Pylon-backed delegation and exact per-turn accounting.',
+            'Keep the review surface centered on evidence: diffs, tests, artifacts, screenshots, token rows, receipts, and acceptance state.',
+          ]),
+        ],
+      },
+      {
+        id: 'fleet',
+        title: 'Fleet and swarm coordination',
+        blocks: [
+          paragraph(
+            'The fleet layer connects multiple isolated Codex worker homes and routes bounded coding requests across them. The useful shape is ordinary to the user: one inbox for approvals, blockers, worker closeouts, and proof panes; under the hood, each worker keeps its own credentials and account budget.',
+          ),
+          paragraph(
+            'This is also the bridge into the wider OpenAgents network. A coding turn can become reviewable work with source refs and verification. Over time, accepted patterns can become reusable agent capability, but the public promise remains bounded to what the registry says is actually live.',
+          ),
+        ],
+      },
+      {
+        id: 'plans',
+        title: 'Free, paid, and the honest promise state',
+        blocks: [
+          quote(
+            'Episode 245 framed the two-plan direction: Free (pay with data) and Paid (private data). That is launch-anchored design intent, not a green claim that every loop is live today.',
+          ),
+          paragraph(
+            'The current public truth is narrower and better for trust: Khala Code is buildable from this repo, but there is no public installer yet. Free-plan desktop trace capture is not live. The paid plan is not yet purchasable; its purchase seam is flag-gated off and collects no payment while unarmed.',
+          ),
+          link(
+            'Plan catalog',
+            '/api/public/khala-code/plans',
+            'The code-backed plan catalog is the source of truth for those caveats.',
+          ),
+          link(
+            'Product-promise registry',
+            '/api/public/product-promises',
+            'The khala_code.* promise records track what is planned, blocked, or evidenced.',
+          ),
+        ],
+      },
+      {
+        id: 'next',
+        title: 'Full post coming',
+        blocks: [
+          paragraph(
+            'This placeholder zero-bases the blog around the Khala Code launch while the full post is written. The durable point is already clear: OpenAgents starts from the coding harness people actually use, then adds fleet coordination, proof, and economic rails around accepted work.',
+          ),
+        ],
+      },
+    ],
+  },
+  {
     slug: 'tassadar-run-is-live',
+    listed: false,
     title: 'The Tassadar run is live',
     excerpt:
       'Independent contributors are installing Pylon, doing verified executor-trace work, and earning Bitcoin — with a public, dereferenceable settlement receipt.',
@@ -223,6 +326,7 @@ const blogPosts: ReadonlyArray<BlogPost> = [
   },
   {
     slug: 'pylon-autopilot-v1-rc1',
+    listed: false,
     title: 'Pylon & Autopilot v1.0 — Release Candidate 1',
     excerpt:
       'The first v1.0 release candidates of Pylon (the headless node) and Autopilot Desktop are available for testing.',
@@ -275,6 +379,7 @@ const blogPosts: ReadonlyArray<BlogPost> = [
   },
   {
     slug: 'introducing-autopilot-sites',
+    listed: false,
     title: 'Introducing Autopilot Sites',
     excerpt:
       'Autopilot Sites turns website requests into hosted, reviewable revisions.',
@@ -336,6 +441,7 @@ const blogPosts: ReadonlyArray<BlogPost> = [
   },
   {
     slug: 'free-autopilot',
+    listed: false,
     title: 'Episode 228: Free Autopilot',
     excerpt: 'We launch the beta for Autopilot, our cloud coding agent.',
     date: 'June 4, 2026',
@@ -374,6 +480,7 @@ const blogPosts: ReadonlyArray<BlogPost> = [
   },
   {
     slug: 'get-paid-to-code',
+    listed: false,
     title: 'Get Paid to Code',
     excerpt:
       'OpenAgents already buys useful compute for Bitcoin. The next resource we need is useful code.',
@@ -453,6 +560,8 @@ const blogPosts: ReadonlyArray<BlogPost> = [
 export const findBlogPost = (slug: string): Option.Option<BlogPost> =>
   Array.findFirst(blogPosts, post => post.slug === slug)
 
+const listedBlogPosts = Array.filter(blogPosts, post => post.listed)
+
 export const blogPostTitle = (slug: string): Option.Option<string> =>
   Option.map(findBlogPost(slug), post => post.title)
 
@@ -463,7 +572,7 @@ export const view = <Message>(
   const h = html<Message>()
 
   return h.div(
-    [Ui.className<Message>('h-dvh overflow-auto bg-[#000] text-[#f1efe8]')],
+    [Ui.className<Message>(pageShellClass)],
     [
       PublicHeader.view(authState),
       M.value(route).pipe(
@@ -485,24 +594,28 @@ const indexView = <Message>(): Html => {
   const h = html<Message>()
 
   return h.main(
-    [Ui.className<Message>('mx-auto w-[min(100%,760px)] px-4 py-10')],
+    [Ui.className<Message>(pageFrameClass)],
     [
       h.div(
-        [Ui.className<Message>('text-center')],
+        [Ui.className<Message>('grid gap-5')],
         [
-          h.h1(
-            [
-              Ui.className<Message>(
-                'm-0 text-balance text-3xl font-medium tracking-normal text-[#f1efe8] sm:text-4xl',
-              ),
-            ],
-            ['OpenAgents Blog'],
-          ),
+          Ui.headingBlock<Message>({
+            eyebrow: 'Khala Code dispatch',
+            title: 'OpenAgents Blog',
+            body: 'A reset public log for Khala Code: the local Codex wrapper, fleet coordination, proof surfaces, and the claim states that keep the launch honest.',
+            level: 1,
+            className:
+              '[&_.oa-ui-heading-body]:max-w-[70ch] ' +
+              '[&_.oa-ui-heading-body]:text-[var(--oa-color-khala-text-body)] ' +
+              '[&_.oa-ui-heading-title]:font-mono ' +
+              '[&_.oa-ui-heading-title]:text-[var(--oa-color-khala-text-bright)]',
+          }),
+          h.hr([Ui.className<Message>('khala-rule w-48')]),
         ],
       ),
       h.div(
-        [Ui.className<Message>('mt-7 grid gap-3')],
-        Array.map(blogPosts, postCard<Message>),
+        [Ui.className<Message>('mt-8 grid gap-3')],
+        Array.map(listedBlogPosts, postCard<Message>),
       ),
     ],
   )
@@ -512,32 +625,31 @@ const articleView = <Message>(post: BlogPost): Html => {
   const h = html<Message>()
 
   return h.main(
-    [Ui.className<Message>('mx-auto w-[min(100%,880px)] px-4 py-8')],
+    [Ui.className<Message>(pageFrameClass)],
     [
       h.a(
         [
           h.Href(blogRouter()),
           Ui.className<Message>(
-            'text-base text-white/50 hover:text-[#f1efe8] sm:text-sm',
+            'khala-focus inline-flex text-sm text-[var(--oa-color-khala-text-muted)] ' +
+              'transition-colors hover:text-[var(--oa-color-khala-energy-cyan)] ' +
+              'motion-reduce:transition-none',
           ),
         ],
         ['Back to blog'],
       ),
       h.article(
-        [
-          Ui.className<Message>(
-            'mt-6 border border-[#222] bg-[#010102] p-5 sm:p-6',
-          ),
-        ],
+        [Ui.className<Message>(`mt-6 ${panelClass}`)],
         [
           h.p(
-            [Ui.className<Message>('text-base text-white/35 sm:text-sm')],
+            [Ui.className<Message>(mutedClass)],
             [`${post.date} / ${post.readTime}`],
           ),
           h.h1(
             [
               Ui.className<Message>(
-                'mt-4 text-pretty text-3xl font-medium tracking-normal text-[#f1efe8] sm:text-4xl',
+                'mt-4 text-pretty font-mono text-3xl font-semibold ' +
+                  'tracking-normal text-[var(--oa-color-khala-text-bright)] sm:text-4xl',
               ),
             ],
             [post.title],
@@ -545,14 +657,17 @@ const articleView = <Message>(post: BlogPost): Html => {
           h.p(
             [
               Ui.className<Message>(
-                'mt-4 max-w-[76ch] text-base/7 text-white/60',
+                'mt-4 max-w-[72ch] text-base/7 text-[var(--oa-color-khala-text-body)]',
               ),
             ],
             [post.excerpt],
           ),
+          h.hr([Ui.className<Message>('khala-rule mt-8 w-full')]),
           h.div(
             [Ui.className<Message>('mt-10 grid gap-10')],
-            Array.map(post.sections, sectionView<Message>),
+            post.sections.map((section, index) =>
+              sectionView<Message>(section, index + 1),
+            ),
           ),
         ],
       ),
@@ -564,36 +679,30 @@ const missingPostView = <Message>(slug: string): Html => {
   const h = html<Message>()
 
   return h.main(
-    [Ui.className<Message>('mx-auto w-[min(100%,880px)] px-4 py-8')],
+    [Ui.className<Message>(pageFrameClass)],
     [
       h.article(
-        [Ui.className<Message>('border border-[#222] bg-[#010102] p-5 sm:p-6')],
+        [Ui.className<Message>(panelClass)],
         [
+          h.p([Ui.className<Message>(`${mutedClass} mb-3`)], ['Missing post']),
+          h.h1([Ui.className<Message>(titleClass)], ['Blog post not found']),
           h.p(
             [
               Ui.className<Message>(
-                'mb-3 font-mono text-base text-white/35 sm:text-sm',
+                'mt-4 max-w-[72ch] text-base/7 text-[var(--oa-color-khala-text-body)]',
               ),
             ],
-            ['Missing post'],
-          ),
-          h.h1(
-            [
-              Ui.className<Message>(
-                'm-0 text-balance text-3xl font-medium tracking-normal text-[#f1efe8] sm:text-4xl',
-              ),
-            ],
-            ['Blog post not found'],
-          ),
-          h.p(
-            [Ui.className<Message>('mt-4 text-base/7 text-white/60')],
             [`No OpenAgents blog post exists for "${slug}".`],
           ),
           h.a(
             [
               h.Href(blogRouter()),
               Ui.className<Message>(
-                'mt-5 inline-flex rounded border border-[#333] px-3 py-2 text-base text-white/70 hover:bg-white/[0.04] sm:text-sm',
+                'khala-focus mt-5 inline-flex border border-[var(--oa-color-khala-border-strong)] ' +
+                  'px-3 py-2 text-sm text-[var(--oa-color-khala-energy-soft)] ' +
+                  'transition-colors hover:border-[var(--oa-color-khala-energy-cyan)] ' +
+                  'hover:bg-[var(--oa-color-khala-surface-active)] hover:text-white ' +
+                  'motion-reduce:transition-none',
               ),
             ],
             ['Back to blog'],
@@ -604,23 +713,38 @@ const missingPostView = <Message>(slug: string): Html => {
   )
 }
 
-const sectionView = <Message>(section: BlogSection): Html => {
+const sectionView = <Message>(section: BlogSection, index: number): Html => {
   const h = html<Message>()
 
   return h.section(
+    [h.Id(section.id), Ui.className<Message>('scroll-mt-8')],
     [
-      h.Id(section.id),
-      Ui.className<Message>('scroll-mt-8 border-t border-[#222] pt-6'),
-    ],
-    [
-      h.h2(
+      h.div(
+        [Ui.className<Message>('flex items-center gap-3')],
         [
-          Ui.className<Message>(
-            'm-0 text-xl font-medium tracking-normal text-[#f1efe8]',
+          h.span(
+            [
+              Ui.className<Message>(
+                'khala-index inline-flex h-8 w-8 shrink-0 items-center justify-center ' +
+                  'border border-[var(--oa-color-khala-border-strong)] ' +
+                  'bg-[var(--oa-color-khala-surface-muted)] font-mono text-xs ' +
+                  'font-semibold text-[var(--oa-color-khala-energy-cyan)]',
+              ),
+            ],
+            [String(index).padStart(2, '0')],
+          ),
+          h.h2(
+            [
+              Ui.className<Message>(
+                'm-0 font-mono text-xl font-semibold tracking-normal ' +
+                  'text-[var(--oa-color-khala-text-bright)]',
+              ),
+            ],
+            [section.title],
           ),
         ],
-        [section.title],
       ),
+      h.hr([Ui.className<Message>('khala-rule mt-4 w-full')]),
       h.div(
         [Ui.className<Message>('mt-5 grid gap-5')],
         Array.map(section.blocks, blockView<Message>),
@@ -635,22 +759,23 @@ const blockView = <Message>(block: BlogBlock): Html => {
   return M.value(block).pipe(
     M.withReturnType<Html>(),
     M.tagsExhaustive({
-      Paragraph: ({ text }) =>
-        h.p(
-          [Ui.className<Message>('max-w-[76ch] text-base/7 text-white/60')],
-          [text],
-        ),
+      Paragraph: ({ text }) => h.p([Ui.className<Message>(bodyClass)], [text]),
       List: ({ items }) =>
         h.ul(
           [Ui.className<Message>('grid gap-2 pl-0')],
           Array.map(items, item =>
             h.li(
-              [Ui.className<Message>('flex gap-3 text-base/7 text-white/60')],
+              [
+                Ui.className<Message>(
+                  'flex max-w-[72ch] gap-3 text-base/7 text-[var(--oa-color-khala-text-body)]',
+                ),
+              ],
               [
                 h.span(
                   [
                     Ui.className<Message>(
-                      'mt-3 h-px w-3 shrink-0 bg-[#ffb400]',
+                      'mt-3 h-px w-3 shrink-0 bg-[var(--oa-color-khala-energy-blue)] ' +
+                        'shadow-[0_0_10px_rgba(58,123,255,0.75)]',
                     ),
                   ],
                   [],
@@ -664,26 +789,24 @@ const blockView = <Message>(block: BlogBlock): Html => {
         h.blockquote(
           [
             Ui.className<Message>(
-              'border-l border-[#ffb400] bg-white/[0.03] py-3 pl-4 text-base/7 text-white/70',
+              'khala-panel max-w-[72ch] border border-[var(--oa-color-khala-border-strong)] ' +
+                'bg-[var(--oa-color-khala-surface-muted)] p-4 text-base/7 ' +
+                'text-[var(--oa-color-khala-text-quote)]',
             ),
           ],
           [text],
         ),
       Link: ({ href, label, text }) =>
         h.p(
-          [Ui.className<Message>('max-w-[76ch] text-base/7 text-white/60')],
+          [Ui.className<Message>(bodyClass)],
           [
             text,
             ' ',
-            h.a(
-              [
-                h.Href(href),
-                Ui.className<Message>(
-                  'font-medium text-[#ffb400] underline decoration-[#ffb400]/40 underline-offset-4 hover:text-[#ffd166]',
-                ),
-              ],
-              [label],
-            ),
+            Ui.textLink<Message>({
+              href,
+              label,
+              attrs: [Ui.className<Message>(linkClass)],
+            }),
           ],
         ),
       TweetEmbed: () =>
@@ -757,7 +880,9 @@ const blockView = <Message>(block: BlogBlock): Html => {
           [
             h.DataAttribute('blog-transcript', 'free-autopilot'),
             Ui.className<Message>(
-              'max-w-[76ch] whitespace-pre-wrap border border-[#222] bg-white/[0.02] p-4 font-sans text-base/7 text-white/65',
+              'max-w-[72ch] whitespace-pre-wrap border border-[var(--oa-color-khala-border)] ' +
+                'bg-[var(--oa-color-khala-surface)] p-4 font-sans text-base/7 ' +
+                'text-[var(--oa-color-khala-text-soft)]',
             ),
           ],
           [text],
@@ -769,26 +894,44 @@ const blockView = <Message>(block: BlogBlock): Html => {
 const postCard = <Message>(post: BlogPost): Html => {
   const h = html<Message>()
 
-  return h.a(
-    [
-      h.Href(blogPostRouter({ slug: post.slug })),
-      Ui.className<Message>(
-        'block border border-[#222] bg-[#010102] p-4 transition hover:border-[#333] hover:bg-white/[0.04]',
+  return Ui.Basecoat.card<Message>({
+    className:
+      'khala-panel border border-[var(--oa-color-khala-border)] ' +
+      'bg-[var(--oa-color-khala-surface-raised)] p-0',
+    children: [
+      h.a(
+        [
+          h.Href(blogPostRouter({ slug: post.slug })),
+          Ui.className<Message>(
+            'khala-focus block p-4 transition-colors duration-200 ease-out ' +
+              'hover:bg-[var(--oa-color-khala-surface-active)] ' +
+              'motion-reduce:transition-none',
+          ),
+        ],
+        [
+          h.p(
+            [Ui.className<Message>(mutedClass)],
+            [`${post.date} / ${post.readTime}`],
+          ),
+          h.h2(
+            [
+              Ui.className<Message>(
+                'mt-3 font-mono text-xl font-semibold tracking-normal ' +
+                  'text-[var(--oa-color-khala-text-bright)]',
+              ),
+            ],
+            [post.title],
+          ),
+          h.p(
+            [
+              Ui.className<Message>(
+                'mt-3 max-w-[72ch] text-base/7 text-[var(--oa-color-khala-text-soft)]',
+              ),
+            ],
+            [post.excerpt],
+          ),
+        ],
       ),
     ],
-    [
-      h.p(
-        [Ui.className<Message>('text-base text-white/35 sm:text-sm')],
-        [`${post.date} / ${post.readTime}`],
-      ),
-      h.h2(
-        [Ui.className<Message>('mt-3 text-xl font-medium text-[#f1efe8]')],
-        [post.title],
-      ),
-      h.p(
-        [Ui.className<Message>('mt-3 text-base/7 text-white/55')],
-        [post.excerpt],
-      ),
-    ],
-  )
+  })
 }
