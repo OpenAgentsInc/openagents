@@ -1688,6 +1688,25 @@ describe("khala code desktop app shell", () => {
     expect(css).toContain(".cb-diff-review-textarea")
   })
 
+  test("wires source-control AI actions into the desktop diff review surface", async () => {
+    const main = await Bun.file(new URL("../src/ui/main.ts", import.meta.url)).text()
+    const renderer = await Bun.file(new URL("../src/ui/transcript-render.ts", import.meta.url)).text()
+    const shared = await Bun.file(new URL("../src/shared/source-control-action.ts", import.meta.url)).text()
+    const css = await Bun.file(new URL("../src/ui/styles.css", import.meta.url)).text()
+
+    expect(shared).toContain("openagents.khala_code.source_control_action_prompt.v1")
+    expect(shared).toContain("commit_message")
+    expect(shared).toContain("pr_body")
+    expect(shared).toContain("fix_checks")
+    expect(renderer).toContain("cb-diff-source-actions")
+    expect(renderer).toContain("KHALA_CODE_SOURCE_CONTROL_ACTION_SUBMIT_EVENT")
+    expect(main).toContain("KhalaCodeSourceControlActionSubmitDetailSchema")
+    expect(main).toContain("khalaCodeSourceControlActionPromptText")
+    expect(main).toContain("stageSourceControlActionPromptInComposer")
+    expect(main).toContain("handleSourceControlActionSubmit")
+    expect(css).toContain(".cb-diff-source-action-button")
+  })
+
   test("parses assistant prose as markdown instead of literal asterisks", () => {
     const blocks = parseMarkdownBlocks(
       "We can:\n\n- **Explore** files\n- Run `tests`\n\n[Docs](/docs) [bad](javascript:alert(1))",

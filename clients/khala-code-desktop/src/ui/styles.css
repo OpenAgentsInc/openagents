@@ -1108,6 +1108,56 @@ button {
   font-variant-numeric: tabular-nums;
 }
 
+.cb-diff-header-meta {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+}
+
+.cb-diff-source-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px;
+  min-width: 0;
+}
+
+.cb-diff-source-action-button {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  border: 1px solid color-mix(in srgb, var(--oa-color-khala-energy-blue) 34%, transparent);
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--oa-color-khala-surface-raised) 76%, transparent);
+  color: var(--oa-color-khala-energy-text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.68rem;
+  gap: 4px;
+  line-height: 1;
+  padding: 3px 6px;
+  white-space: nowrap;
+}
+
+.cb-diff-source-action-button:hover,
+.cb-diff-source-action-button:focus-visible {
+  border-color: color-mix(in srgb, var(--oa-color-khala-energy-cyan) 70%, transparent);
+  background: color-mix(in srgb, var(--oa-color-khala-energy-blue) 18%, var(--oa-color-khala-surface-raised));
+  outline: 1px solid color-mix(in srgb, var(--oa-color-khala-energy-cyan) 34%, transparent);
+}
+
+.cb-diff-source-action-icon {
+  width: 13px;
+  height: 13px;
+}
+
+.cb-diff-source-action-label {
+  min-width: 0;
+}
+
 .cb-stat-add {
   color: var(--oa-color-khala-success-strong);
 }

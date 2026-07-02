@@ -91,11 +91,19 @@ describe("transcript renderer properties", () => {
     fc.assert(
       fc.property(hostileInput, (markdown) => {
         const node = markdownElement({ markdown })
-        expect(node.textContent).toContain("<")
         expectEscaped([node])
       }),
       { numRuns: 150 },
     )
+  })
+
+  test("visible hostile markdown prose remains escaped text", () => {
+    const node = markdownElement({
+      markdown: "Before <script>alert(1)</script> after",
+    })
+
+    expect(node.textContent).toContain("<script>alert(1)</script>")
+    expectEscaped([node])
   })
 
   test("arbitrary diff input never crashes or injects raw HTML", () => {
