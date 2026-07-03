@@ -333,7 +333,10 @@ export function createClaudeAppSdkChatRuntime(
     (await sessionStore.get(desktopSessionId))?.sessionId ?? null
 
   const startTurn = async (
-    request: KhalaCodeDesktopChatTurnRequest & { readonly cwd?: string },
+    request: KhalaCodeDesktopChatTurnRequest & {
+      readonly claudePermissionMode?: string
+      readonly cwd?: string
+    },
   ): Promise<KhalaCodeDesktopChatTurnResponse> => {
     const desktopTurnId = request.turnId ?? `claude-turn-${Date.now().toString(36)}`
     const prompt = textFromRequest(request)
@@ -358,7 +361,10 @@ export function createClaudeAppSdkChatRuntime(
       canUseTool: approvalService.canUseTool,
       cwd: request.cwd ?? options.workingDirectory,
       includePartialMessages: true,
-      permissionMode: options.env?.KHALA_CODE_DESKTOP_CLAUDE_PERMISSION_MODE ?? "acceptEdits",
+      permissionMode:
+        request.claudePermissionMode ??
+        options.env?.KHALA_CODE_DESKTOP_CLAUDE_PERMISSION_MODE ??
+        "acceptEdits",
       ...(shouldResume ? { resume: threadId } : { sessionId: freshSessionId }),
       env: {
         ...options.env,

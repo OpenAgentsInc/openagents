@@ -8,6 +8,7 @@ import type {
   KhalaCodeDesktopMessage,
   KhalaCodeDesktopRPCSchema,
   KhalaCodeDesktopRuntimeMode,
+  KhalaCodeDesktopArchitectPlanArtifact,
   KhalaCodeDesktopThreadTokenSummary,
 } from "../shared/rpc"
 
@@ -53,6 +54,9 @@ export type KhalaCodeMainShellModel = {
   loadedSlashCommandKey: string
   messages: KhalaCodeDesktopMessage[]
   pendingTurn: boolean
+  architectPlanArtifact: KhalaCodeDesktopArchitectPlanArtifact | null
+  architectPlanMode: boolean
+  architectPlanPending: boolean
   selectedHarnessMode: KhalaCodeDesktopRuntimeMode
   slashCommandLoadInFlight: Promise<void> | null
   slashCommands: KhalaCodeMainShellSlashCommand[]
@@ -103,6 +107,12 @@ export type KhalaCodeMainShellMessage =
     }
   | { readonly _tag: "PendingTurnChanged"; readonly pending: boolean }
   | {
+      readonly _tag: "ArchitectPlanArtifactChanged"
+      readonly artifact: KhalaCodeDesktopArchitectPlanArtifact | null
+    }
+  | { readonly _tag: "ArchitectPlanModeChanged"; readonly enabled: boolean }
+  | { readonly _tag: "ArchitectPlanPendingChanged"; readonly pending: boolean }
+  | {
       readonly _tag: "SlashCommandLoadFinished"
       readonly commands: readonly KhalaCodeMainShellSlashCommand[]
       readonly key: string
@@ -142,6 +152,9 @@ export const initialKhalaCodeMainShellModel = (
   loadedSlashCommandKey: "",
   messages: [],
   pendingTurn: false,
+  architectPlanArtifact: null,
+  architectPlanMode: false,
+  architectPlanPending: false,
   selectedHarnessMode: "codex_harness",
   slashCommandLoadInFlight: null,
   slashCommands: [],
@@ -206,6 +219,12 @@ export const updateKhalaCodeMainShellModel = (
       return { ...model, messages: [...message.messages] }
     case "PendingTurnChanged":
       return { ...model, pendingTurn: message.pending }
+    case "ArchitectPlanArtifactChanged":
+      return { ...model, architectPlanArtifact: message.artifact }
+    case "ArchitectPlanModeChanged":
+      return { ...model, architectPlanMode: message.enabled }
+    case "ArchitectPlanPendingChanged":
+      return { ...model, architectPlanPending: message.pending }
     case "SlashCommandLoadFinished":
       return {
         ...model,

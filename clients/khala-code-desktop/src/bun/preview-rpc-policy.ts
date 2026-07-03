@@ -8,6 +8,8 @@ export const mutatingPreviewRpcMethods = new Set<KhalaCodeDesktopRpcMethodName>(
   "codexAppServerStart",
   "codexAppServerStop",
   "codexApprovalRespond",
+  "architectPlanDecision",
+  "architectPlanRun",
   "codexBackgroundTerminalsClean",
   "codexBackgroundTerminalsTerminate",
   "codexConfigValueWrite",

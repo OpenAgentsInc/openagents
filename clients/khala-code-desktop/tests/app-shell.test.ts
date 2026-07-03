@@ -124,6 +124,31 @@ describe("khala code desktop app shell", () => {
     expect(html).not.toContain("Pylons")
   })
 
+  test("wires the architect plan-first composer surface", async () => {
+    const main = await Bun.file(new URL("../src/ui/main.ts", import.meta.url)).text()
+    const model = await Bun.file(new URL("../src/ui/main-shell-model.ts", import.meta.url)).text()
+    const rpc = await Bun.file(new URL("../src/shared/rpc.ts", import.meta.url)).text()
+    const css = await Bun.file(new URL("../src/ui/styles.css", import.meta.url)).text()
+
+    expect(rpc).toContain("architectPlanRun")
+    expect(rpc).toContain("architectPlanDecision")
+    expect(rpc).toContain("openagents.khala_code.architect_plan_artifact.v1")
+    expect(model).toContain("architectPlanArtifact")
+    expect(model).toContain("architectPlanMode")
+    expect(model).toContain("architectPlanPending")
+    expect(main).toContain("architectSlashCommand")
+    expect(main).toContain('command: "architect"')
+    expect(main).toContain('action: "architect_plan"')
+    expect(main).toContain("renderArchitectPlanModeButton")
+    expect(main).toContain("submitArchitectPlan")
+    expect(main).toContain('draftText.startsWith("/architect ")')
+    expect(main).toContain("renderArchitectPlanCard")
+    expect(main).toContain("architectPlanDecision")
+    expect(css).toContain(".khala-architect-plan-toggle")
+    expect(css).toContain(".khala-architect-plan-card")
+    expect(css).toContain(".khala-architect-plan-actions")
+  })
+
   test("keeps backend runtime hooks while visible composer selectors stay commented out", async () => {
     const main = await Bun.file(new URL("../src/ui/main.ts", import.meta.url)).text()
     const css = await Bun.file(new URL("../src/ui/styles.css", import.meta.url)).text()

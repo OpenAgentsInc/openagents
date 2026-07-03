@@ -513,6 +513,217 @@ describe("Khala Code desktop RPC handlers", () => {
     })
   })
 
+  test("runs Claude architect plan mode and persists an approvable plan artifact", async () => {
+    const root = await mkdtemp(join(tmpdir(), "khala-code-architect-plan-"))
+    tempDirs.push(root)
+    let observedPermissionMode: string | undefined
+    const handlers = createKhalaCodeDesktopRpcRequestHandlers({
+      appleFmReadiness: () => {
+        throw new Error("not used")
+      },
+      claudeChatRuntime: throwingClaudeChatRuntime({
+        startTurn: async request => {
+          observedPermissionMode = request.claudePermissionMode
+          return {
+            backend: {
+              kind: "claude_app_sdk",
+              model: "claude-app-sdk",
+              runtimeMode: "claude_runtime",
+              threadId: "claude-plan-thread",
+              turnId: request.turnId ?? "claude-plan-turn",
+            },
+            messages: [{
+              id: "claude-plan-message",
+              role: "assistant",
+              body: JSON.stringify({
+                schema: "openagents.khala_code.claude_plan_fanout_dag.v1",
+                planRef: "plan.q9_2.small",
+                source: "claude_plan_mode",
+                generatedAt: "2026-07-02T18:00:00.000Z",
+                objective: "Plan a bounded implementation for issue #8053.",
+                repo: "OpenAgentsInc/openagents",
+                branch: "main",
+                baseCommit: "80986c141c64f0d2ecb9dea373f9d148c74054b6",
+                verify: "bun run check:deploy",
+                nodes: [{
+                  nodeRef: "node.ui",
+                  title: "Wire plan card",
+                  objective: "Add the plan-mode card and approval controls.",
+                  issue: 8053,
+                }],
+              }),
+            }],
+            ok: true,
+            toolNames: [],
+            usedTools: [],
+          }
+        },
+      }),
+      env: { HOME: root },
+      onDeviceDeciderStatus: () => {
+        throw new Error("not used")
+      },
+      workingDirectory: process.cwd(),
+    })
+
+    const result = await handlers.architectPlanRun({
+      objective: "Plan issue #8053",
+      sessionId: "desktop-session-plan",
+    })
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) throw new Error(result.error)
+    expect(observedPermissionMode).toBe("plan")
+    expect(result.artifact).toMatchObject({
+      planRef: "plan.q9_2.small",
+      sessionId: "desktop-session-plan",
+      status: "pending_approval",
+      dispatchMode: "in_thread",
+      architectRole: {
+        role: "architect",
+        harness: "claude",
+        mode: "plan",
+        readOnly: true,
+      },
+    })
+    expect(await readFile(join(root, ".khala-code", "architect-plans.json"), "utf8"))
+      .toContain("plan.q9_2.small")
+  })
+
+  test("rejects and approves persisted architect plans through typed dispatch paths", async () => {
+    const root = await mkdtemp(join(tmpdir(), "khala-code-architect-decision-"))
+    tempDirs.push(root)
+    const codexTurns: string[] = []
+    const fleetStarts: KhalaCodeDesktopFleetRunStartRequest[] = []
+    const run = fleetRunProjection({ runRef: "architect-plan.q9_2.large" })
+    const planBody = (planRef: string, nodeCount: number) => JSON.stringify({
+      schema: "openagents.khala_code.claude_plan_fanout_dag.v1",
+      planRef,
+      source: "claude_plan_mode",
+      generatedAt: "2026-07-02T18:00:00.000Z",
+      objective: `Plan ${planRef}.`,
+      nodes: Array.from({ length: nodeCount }, (_, index) => ({
+        nodeRef: `node.${index + 1}`,
+        title: `Node ${index + 1}`,
+        objective: `Do bounded work ${index + 1}.`,
+        ...(index === 0 ? {} : { dependsOn: [`node.${index}`] }),
+      })),
+    })
+    const handlers = createKhalaCodeDesktopRpcRequestHandlers({
+      appleFmReadiness: () => {
+        throw new Error("not used")
+      },
+      claudeChatRuntime: throwingClaudeChatRuntime({
+        startTurn: async request => ({
+          backend: {
+            kind: "claude_app_sdk",
+            model: "claude-app-sdk",
+            runtimeMode: "claude_runtime",
+            threadId: "claude-plan-thread",
+            turnId: request.turnId ?? "claude-plan-turn",
+          },
+          messages: [{
+            id: "claude-plan-message",
+            role: "assistant",
+            body: request.messages[0]?.body.includes("large") === true
+              ? planBody("plan.q9_2.large", 3)
+              : planBody("plan.q9_2.small", 1),
+          }],
+          ok: true,
+          toolNames: [],
+          usedTools: [],
+        }),
+      }),
+      codexChatRuntime: throwingCodexChatRuntime({
+        startTurn: async request => {
+          codexTurns.push(request.messages[0]?.body ?? "")
+          return {
+            backend: {
+              kind: "codex_app_server",
+              model: "gpt-5.1-codex",
+              runtimeMode: "codex_harness",
+              threadId: request.threadId ?? "thread-codex-plan",
+              turnId: request.turnId ?? "turn-codex-plan",
+            },
+            messages: [{ id: "codex-plan-result", role: "assistant", body: "accepted" }],
+            ok: true,
+            toolNames: [],
+            usedTools: [],
+          }
+        },
+      }),
+      env: { HOME: root },
+      fleetRunSupervisor: {
+        control: async () => {
+          throw new Error("not used")
+        },
+        list: async () => [],
+        start: async request => {
+          fleetStarts.push(request)
+          return { run, supervisorStarted: true }
+        },
+        status: async () => ({ run, supervisorActive: true }),
+      },
+      onDeviceDeciderStatus: () => {
+        throw new Error("not used")
+      },
+      workingDirectory: process.cwd(),
+    })
+
+    const small = await handlers.architectPlanRun({
+      objective: "small plan",
+      sessionId: "desktop-session-plan",
+    })
+    if (!small.ok) throw new Error(small.error)
+    await expect(handlers.architectPlanDecision({
+      decision: "reject",
+      planRef: small.artifact.planRef,
+      sessionId: "desktop-session-plan",
+    })).resolves.toMatchObject({
+      ok: true,
+      artifact: { status: "rejected" },
+    })
+
+    const smallApproved = await handlers.architectPlanRun({
+      objective: "small plan",
+      sessionId: "desktop-session-plan-2",
+    })
+    if (!smallApproved.ok) throw new Error(smallApproved.error)
+    await expect(handlers.architectPlanDecision({
+      decision: "approve",
+      planRef: smallApproved.artifact.planRef,
+      sessionId: "desktop-session-plan-2",
+      threadId: "thread-existing",
+    })).resolves.toMatchObject({
+      ok: true,
+      artifact: { coderTurnId: expect.stringContaining("architect-coder-"), status: "dispatched" },
+    })
+    expect(codexTurns[0]).toContain("Execute this approved architect plan")
+
+    const large = await handlers.architectPlanRun({
+      objective: "large plan",
+      sessionId: "desktop-session-plan-3",
+    })
+    if (!large.ok) throw new Error(large.error)
+    await expect(handlers.architectPlanDecision({
+      decision: "approve",
+      planRef: large.artifact.planRef,
+      sessionId: "desktop-session-plan-3",
+    })).resolves.toMatchObject({
+      ok: true,
+      artifact: { dispatchMode: "fleet_run", fleetRunRef: "architect-plan.q9_2.large" },
+    })
+    expect(fleetStarts[0]).toMatchObject({
+      objective: "Plan plan.q9_2.large.",
+      targetConcurrency: 3,
+      workerKind: "codex",
+      workSource: {
+        kind: "plan_dag",
+        planRef: "plan.q9_2.large",
+      },
+    })
+  })
+
   test("answers native desktop status probes instead of falling through", async () => {
     const qaSamples: KhalaCodeDesktopQaMetricSample[] = []
     const handlers = createKhalaCodeDesktopRpcRequestHandlers({

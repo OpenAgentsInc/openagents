@@ -203,6 +203,11 @@ export type KhalaCodeDesktopFleetRunControlRequest = typeof RpcFleetRunControlRe
 export type KhalaCodeDesktopFleetRunControlResult = typeof RpcFleetRunControlResult.Type
 export type KhalaCodeDesktopFleetRunListRequest = typeof RpcFleetRunListRequest.Type
 export type KhalaCodeDesktopFleetRunListResult = typeof RpcFleetRunListResult.Type
+export type KhalaCodeDesktopArchitectPlanArtifact = typeof RpcArchitectPlanArtifact.Type
+export type KhalaCodeDesktopArchitectPlanRunRequest = typeof RpcArchitectPlanRunRequest.Type
+export type KhalaCodeDesktopArchitectPlanRunResult = typeof RpcArchitectPlanRunResult.Type
+export type KhalaCodeDesktopArchitectPlanDecisionRequest = typeof RpcArchitectPlanDecisionRequest.Type
+export type KhalaCodeDesktopArchitectPlanDecisionResult = typeof RpcArchitectPlanDecisionResult.Type
 export type KhalaCodeDesktopFleetWorkerControlRequest = typeof RpcFleetWorkerControlRequest.Type
 export type KhalaCodeDesktopFleetWorkerControlResult = typeof RpcFleetWorkerControlResult.Type
 export type KhalaCodeDesktopForumRequest = typeof RpcForumRequest.Type
@@ -1634,6 +1639,78 @@ const RpcFleetRunListResult = S.Struct({
   ok: S.Boolean,
   runs: S.Array(RpcFleetRunProjection),
 })
+const RpcArchitectPlanDispatchMode = S.Literals(["in_thread", "fleet_run"])
+const RpcArchitectPlanDagNode = S.Struct({
+  nodeRef: S.String,
+  title: S.String,
+  objective: S.String,
+  dependsOn: S.optional(RpcStringArray),
+  repo: S.optional(S.String),
+  branch: S.optional(S.String),
+  baseCommit: S.optional(S.String),
+  verify: S.optional(S.String),
+  issue: S.optional(S.Number),
+  labels: S.optional(RpcStringArray),
+  evidenceRefs: S.optional(RpcStringArray),
+})
+const RpcArchitectPlanDag = S.Struct({
+  schema: S.Literal("openagents.khala_code.claude_plan_fanout_dag.v1"),
+  planRef: S.String,
+  source: S.Literal("claude_plan_mode"),
+  generatedAt: S.String,
+  objective: S.String,
+  repo: S.optional(S.String),
+  branch: S.optional(S.String),
+  baseCommit: S.optional(S.String),
+  verify: S.optional(S.String),
+  evidenceRefs: S.optional(RpcStringArray),
+  nodes: S.Array(RpcArchitectPlanDagNode),
+})
+const RpcArchitectPlanArtifact = S.Struct({
+  schema: S.Literal("openagents.khala_code.architect_plan_artifact.v1"),
+  planRef: S.String,
+  sessionId: S.String,
+  createdAt: S.String,
+  updatedAt: S.String,
+  status: S.Literals(["pending_approval", "approved", "rejected", "dispatched"]),
+  architectRole: S.Struct({
+    role: S.Literal("architect"),
+    harness: S.Literal("claude"),
+    mode: S.Literal("plan"),
+    readOnly: S.Literal(true),
+  }),
+  dispatchMode: RpcArchitectPlanDispatchMode,
+  dag: RpcArchitectPlanDag,
+  fleetRunRef: RpcStringNull,
+  coderTurnId: RpcStringNull,
+})
+const RpcArchitectPlanRunRequest = S.Struct({
+  sessionId: S.String,
+  objective: S.String,
+  threadId: S.optional(S.String),
+  repo: S.optional(S.String),
+  branch: S.optional(S.String),
+  baseCommit: S.optional(S.String),
+  verify: S.optional(S.String),
+})
+const RpcArchitectPlanRunResult = S.Union([
+  S.Struct({ ok: S.Literal(true), artifact: RpcArchitectPlanArtifact }),
+  S.Struct({ ok: S.Literal(false), error: S.String }),
+])
+const RpcArchitectPlanDecisionRequest = S.Struct({
+  sessionId: S.String,
+  planRef: S.String,
+  decision: S.Literals(["approve", "reject"]),
+  threadId: S.optional(S.String),
+})
+const RpcArchitectPlanDecisionResult = S.Union([
+  S.Struct({
+    ok: S.Literal(true),
+    artifact: RpcArchitectPlanArtifact,
+    message: S.String,
+  }),
+  S.Struct({ ok: S.Literal(false), error: S.String }),
+])
 const RpcFleetWorkerControlVerb = S.Literals(["interrupt", "retry", "flag"])
 const RpcFleetWorkerControlRequest = S.Struct({
   assignmentRef: RpcStringNull,
@@ -1800,6 +1877,8 @@ export const KhalaCodeDesktopRpcMethodSchemas = {
   fleetRunList: { parameters: [optionalParam(RpcFleetRunListRequest)], result: RpcFleetRunListResult },
   fleetRunStart: { parameters: [param(RpcFleetRunStartRequest)], result: RpcFleetRunStartResult },
   fleetRunStatus: { parameters: [param(RpcFleetRunStatusRequest)], result: RpcFleetRunStatusResult },
+  architectPlanRun: { parameters: [param(RpcArchitectPlanRunRequest)], result: RpcArchitectPlanRunResult },
+  architectPlanDecision: { parameters: [param(RpcArchitectPlanDecisionRequest)], result: RpcArchitectPlanDecisionResult },
   fleetWorkerControl: { parameters: [param(RpcFleetWorkerControlRequest)], result: RpcFleetWorkerControlResult },
   forumRequest: { parameters: [param(RpcForumRequest)], result: RpcForumResponse },
   khalaCodePlanCatalog: { parameters: noParams(), result: RpcKhalaCodePlanCatalogResult },
@@ -1955,6 +2034,8 @@ export type KhalaCodeDesktopRPCSchema = {
     fleetRunList(request?: KhalaCodeDesktopFleetRunListRequest): Promise<KhalaCodeDesktopFleetRunListResult>
     fleetRunStart(request: KhalaCodeDesktopFleetRunStartRequest): Promise<KhalaCodeDesktopFleetRunStartResult>
     fleetRunStatus(request: KhalaCodeDesktopFleetRunStatusRequest): Promise<KhalaCodeDesktopFleetRunStatusResult>
+    architectPlanRun(request: KhalaCodeDesktopArchitectPlanRunRequest): Promise<KhalaCodeDesktopArchitectPlanRunResult>
+    architectPlanDecision(request: KhalaCodeDesktopArchitectPlanDecisionRequest): Promise<KhalaCodeDesktopArchitectPlanDecisionResult>
     fleetWorkerControl(request: KhalaCodeDesktopFleetWorkerControlRequest): Promise<KhalaCodeDesktopFleetWorkerControlResult>
     forumRequest(request: KhalaCodeDesktopForumRequest): Promise<KhalaCodeDesktopForumResponse>
     khalaCodePlanCatalog(): Promise<KhalaCodeDesktopPlanCatalogResult>

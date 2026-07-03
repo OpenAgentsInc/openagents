@@ -881,6 +881,39 @@ button {
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--oa-color-khala-energy-cyan) 68%, transparent);
 }
 
+.khala-architect-plan-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 32px;
+  border: 1px solid color-mix(in srgb, var(--oa-color-khala-energy-blue) 42%, transparent);
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--oa-color-khala-surface-active) 58%, transparent);
+  color: color-mix(in srgb, var(--oa-color-khala-text-body) 88%, transparent);
+  cursor: pointer;
+  font-family: var(--oa-font-code);
+  font-size: 0.75rem;
+  line-height: 1;
+  padding: 0 9px;
+}
+
+.khala-architect-plan-toggle[data-active="true"],
+.khala-architect-plan-toggle:hover,
+.khala-architect-plan-toggle:focus-visible {
+  border-color: color-mix(in srgb, var(--oa-color-khala-energy-cyan) 74%, transparent);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--oa-color-khala-energy-cyan) 12%, transparent), transparent 70%),
+    color-mix(in srgb, var(--oa-color-khala-surface-active) 76%, transparent);
+  color: var(--oa-color-khala-text-bright);
+  outline: none;
+}
+
+.khala-architect-plan-toggle:disabled {
+  cursor: not-allowed;
+  opacity: 0.52;
+}
+
 #composer-input {
   min-height: 3.45rem;
   width: 100%;
@@ -1179,6 +1212,106 @@ button {
 
 .khala-code-composer-preview {
   max-height: 12rem;
+}
+
+.khala-architect-plan-card {
+  display: grid;
+  gap: 9px;
+  max-height: 12rem;
+  overflow: auto;
+  border: 1px solid color-mix(in srgb, var(--oa-color-khala-energy-blue) 42%, transparent);
+  border-radius: 4px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--oa-color-khala-energy-cyan) 7%, transparent), transparent 54%),
+    color-mix(in srgb, var(--oa-color-khala-void) 72%, transparent);
+  color: var(--oa-color-khala-text-body);
+  padding: 10px;
+}
+
+.khala-architect-plan-header,
+.khala-architect-plan-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.khala-architect-plan-title {
+  color: var(--oa-color-khala-text-bright);
+  font-family: var(--oa-font-code);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.khala-architect-plan-status,
+.khala-architect-plan-node-meta {
+  color: color-mix(in srgb, var(--oa-color-khala-energy-soft) 84%, transparent);
+  font-family: var(--oa-font-code);
+  font-size: 0.7rem;
+}
+
+.khala-architect-plan-objective {
+  margin: 0;
+  color: color-mix(in srgb, var(--oa-color-khala-text-body) 92%, transparent);
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.khala-architect-plan-nodes {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.khala-architect-plan-node {
+  display: grid;
+  gap: 3px;
+  padding: 7px;
+  border: 1px solid color-mix(in srgb, var(--oa-color-khala-border) 84%, transparent);
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--oa-color-khala-surface-raised) 58%, transparent);
+}
+
+.khala-architect-plan-node-title {
+  color: var(--oa-color-khala-text-primary);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.khala-architect-plan-node-objective {
+  color: var(--oa-color-khala-text-body);
+  font-size: 0.75rem;
+  line-height: 1.35;
+}
+
+.khala-architect-plan-action {
+  height: 26px;
+  border: 1px solid color-mix(in srgb, var(--oa-color-khala-energy-blue) 38%, transparent);
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--oa-color-khala-surface-active) 62%, transparent);
+  color: var(--oa-color-khala-text-body);
+  cursor: pointer;
+  font-family: var(--oa-font-code);
+  font-size: 0.72rem;
+  padding: 0 8px;
+}
+
+.khala-architect-plan-action--primary {
+  border-color: color-mix(in srgb, var(--oa-color-khala-energy-cyan) 68%, transparent);
+  color: var(--oa-color-khala-text-bright);
+}
+
+.khala-architect-plan-action:hover,
+.khala-architect-plan-action:focus-visible {
+  border-color: color-mix(in srgb, var(--oa-color-khala-energy-cyan) 88%, transparent);
+  outline: none;
+}
+
+.khala-architect-plan-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.54;
 }
 
 .cb {
