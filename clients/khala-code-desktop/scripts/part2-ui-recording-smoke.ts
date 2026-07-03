@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 import { mkdir, rm, writeFile } from "node:fs/promises"
-import { dirname, join, resolve } from "node:path"
+import { basename, dirname, join, relative, resolve } from "node:path"
 
 import { chromium, type Browser, type Page } from "playwright"
 import {
@@ -23,6 +23,12 @@ import {
   khalaCodeVisualBaselineOptionsFromArgs,
   type KhalaCodeVisualBaselineOptions,
 } from "./visual-baseline-options"
+import {
+  assertKhalaCodePagePublicSafe,
+  assertKhalaCodePublicSafeText,
+  assertKhalaCodePublicSafeValue,
+  khalaCodeUnsafeTextPattern,
+} from "./public-safety-oracle"
 import { installKhalaCodeVisualSmokeRpcMocks } from "./visual-smoke-rpc-mocks"
 
 export type Part2UiSmokeViewport = Readonly<{
@@ -56,22 +62,14 @@ export const part2UiSmokeViewports = (): ReadonlyArray<Part2UiSmokeViewport> => 
 ]
 
 export const part2UiUnsafeTextPattern =
-  /\/Users\/|\/home\/|auth\.json|bearer|credential|provider[_-]?payload|raw[_-]?(prompt|trace|log|provider)|secret|sk-[a-z0-9]/i
-
-const legacyDeadEndPattern =
-  /codex_spawn_failed: No Pylon Codex assignment capacity is available right now|0\/1 available/i
+  khalaCodeUnsafeTextPattern
 
 const khalaPreviewFallbackPorts = (preferredPort: number): ReadonlyArray<number> =>
   Array.from({ length: 10 }, (_, index) => 50021 + index)
     .filter(port => port !== preferredPort)
 
 export const assertPart2UiPublicSafeText = (text: string): void => {
-  if (part2UiUnsafeTextPattern.test(text)) {
-    throw new Error("Part 2 UI smoke rendered private or raw material")
-  }
-  if (legacyDeadEndPattern.test(text)) {
-    throw new Error("Part 2 UI smoke regressed to the legacy 0/1 capacity dead-end")
-  }
+  assertKhalaCodePublicSafeText(text, "Part 2 UI smoke")
 }
 
 async function runPart2UiRecordingSmoke(
@@ -123,13 +121,12 @@ async function runPart2UiRecordingSmoke(
         await page.close()
       }
     }
-    await writeFile(
-      join(options.outDir, "summary.json"),
-      `${JSON.stringify({
-        harness: PART2_UI_RECORDING_SMOKE_HARNESS,
-        captures,
-      }, null, 2)}\n`,
-    )
+    const summary = {
+      harness: PART2_UI_RECORDING_SMOKE_HARNESS,
+      captures,
+    }
+    assertKhalaCodePublicSafeValue(summary, "Part 2 UI smoke summary")
+    await writeFile(join(options.outDir, "summary.json"), `${JSON.stringify(summary, null, 2)}\n`)
     return captures
   } finally {
     if (browser !== null) await browser.close()
@@ -270,8 +267,8 @@ async function capturePart2Ui(
   })
 
   return {
-    fleetScreenshot,
-    gymScreenshot,
+    fleetScreenshot: basename(fleetScreenshot),
+    gymScreenshot: basename(gymScreenshot),
     steps,
     visualBaselines: {
       fleet: fleetVisualBaseline,
@@ -294,8 +291,7 @@ const expectText = async (
 }
 
 const assertPagePublicSafe = async (page: Page): Promise<void> => {
-  const text = await page.locator("body").textContent()
-  assertPart2UiPublicSafeText(text ?? "")
+  await assertKhalaCodePagePublicSafe(page, "Part 2 UI smoke")
 }
 
 const assertDelegateRequestSafe = (args: readonly unknown[]): void => {
@@ -506,12 +502,14 @@ if (import.meta.main) {
     for (const capture of captures) {
       console.log(`- ${capture.viewport}: ${capture.steps.map(step => step.name).join(" -> ")}`)
     }
-    console.log(JSON.stringify({
+    const cliSummary = {
       harness: PART2_UI_RECORDING_SMOKE_HARNESS,
       ok: true,
-      outDir,
+      outDir: relative(process.cwd(), outDir) || ".",
       captures,
-    }, null, 2))
+    }
+    assertKhalaCodePublicSafeValue(cliSummary, "Part 2 UI smoke CLI summary")
+    console.log(JSON.stringify(cliSummary, null, 2))
   } catch (error) {
     console.error(error instanceof Error ? error.stack ?? error.message : error)
     process.exit(1)

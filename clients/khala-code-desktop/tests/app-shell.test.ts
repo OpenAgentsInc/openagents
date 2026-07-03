@@ -1068,8 +1068,9 @@ describe("khala code desktop app shell", () => {
     expect(smoke).toContain("Run delegate")
     expect(smoke).toContain("candidate manifest")
     expect(smoke).toContain("Gym ingest")
-    expect(smoke).toContain("legacyDeadEndPattern")
     expect(smoke).toContain("part2UiUnsafeTextPattern")
+    expect(smoke).toContain("assertKhalaCodePublicSafeValue")
+    expect(smoke).toContain("assertKhalaCodePagePublicSafe")
   })
 
   test("does not seed dummy code or diff messages on first load", async () => {

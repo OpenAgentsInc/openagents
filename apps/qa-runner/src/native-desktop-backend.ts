@@ -35,6 +35,7 @@ import { join } from "node:path";
 
 import {
   assertPublicSafeResult,
+  assertPublicSafeTextValues,
   type QaRunResult,
   type QaRunStep,
 } from "./result";
@@ -314,6 +315,7 @@ export async function runNativeDesktopScenario(
     tree: lastTree ?? { app: input.scenario.app, nodes: [] },
   };
   assertPublicSafeResult(axTreeArtifact);
+  assertPublicSafeTextValues(axTreeArtifact);
   writeFileSync(axTreePath, `${JSON.stringify(axTreeArtifact, null, 2)}\n`);
 
   // ── Artifact 2: timeline (per-step labels + screenshot files) ─────────────
@@ -324,6 +326,7 @@ export async function runNativeDesktopScenario(
     frames,
   };
   assertPublicSafeResult(timelineArtifact);
+  assertPublicSafeTextValues(timelineArtifact);
   writeFileSync(timelinePath, `${JSON.stringify(timelineArtifact, null, 2)}\n`);
 
   // ── Artifact 3: result.json (same public-safe schema as browser/terminal) ──
@@ -347,6 +350,7 @@ export async function runNativeDesktopScenario(
     ...(failure ? { failure } : {}),
   };
   assertPublicSafeResult(result);
+  assertPublicSafeTextValues(result);
   const resultPath = join(input.artifactDir, "result.json");
   writeFileSync(resultPath, `${JSON.stringify(result, null, 2)}\n`);
 
