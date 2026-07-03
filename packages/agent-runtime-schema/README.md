@@ -13,3 +13,16 @@ RK5 also adds a small shared surface presenter:
 `projectAgentRuntimeSurfaceStatus`. Workroom and TUI views use it to render the
 same public-safe run truth from kernel projections without reading raw adapter
 transcripts.
+
+`openagents.agent_definition.v1` is the harness-agnostic background-agent
+definition contract. It stores the durable workflow object separately from the
+runtime harness: name, goal, harness hint, lane, triggers, budget, escalation,
+and an enforced toolset with `allow`, `deny`, and `ask` lists. Runtime runs can
+link back to `agentDefinitionId`, so fulfillment loops can prove they were
+definition-backed without baking Codex, Claude Code, or any other harness into
+the durable record.
+
+The pure helper `decideAgentDefinitionToolAuthority` is the shared
+tool-authority boundary. It is deny-by-default, gives `deny` precedence over
+`ask` and `allow`, and converts `ask` matches into an operator escalation record
+instead of authorizing the tool invocation.

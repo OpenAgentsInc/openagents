@@ -1,4 +1,5 @@
 import type {
+  AgentDefinition,
   AgentRuntimeAdapterKind,
   AgentRuntimeEvent,
   AgentRuntimeEventLog,
@@ -15,6 +16,7 @@ function run(input: {
 }): AgentRuntimeRun {
   return {
     runId: input.runId,
+    agentDefinitionId: `agent_definition.public.${input.runId}`,
     assignmentId: `assignment.public.${input.runId}`,
     workspaceRef: `workspace.public.${input.runId}`,
     adapterKind: input.adapterKind,
@@ -58,6 +60,60 @@ function event(
     blockerRefs: [],
     ...input,
   }
+}
+
+export const fulfillmentLoopAgentDefinitionFixture: AgentDefinition = {
+  schema: "openagents.agent_definition.v1",
+  id: "agent_definition.public.fulfillment_loop.daily_motion",
+  ownerRef: "owner.public.fixture",
+  name: "Daily Fulfillment Motion",
+  slug: "daily-fulfillment-motion",
+  goal: "Review the service promise state and produce one public-safe daily motion receipt.",
+  harness: {
+    kind: "codex",
+    modelHint: "openagents/pylon-codex",
+    versionPin: "fixture",
+  },
+  toolset: {
+    allow: [
+      "tool.openagents.promise.read",
+      "tool.openagents.crm.read",
+      "tool.openagents.receipt.write",
+    ],
+    deny: [
+      "tool.openagents.payment.*",
+      "tool.openagents.email.send",
+    ],
+    ask: [
+      "tool.openagents.email.draft",
+      "tool.openagents.stakeholder.page",
+    ],
+    networkPolicy: "owner_scoped",
+    secretPolicy: "owner_scoped_refs_only",
+  },
+  triggers: [
+    {
+      kind: "cron",
+      triggerRef: "trigger.public.fulfillment_loop.daily",
+      cron: "0 14 * * *",
+    },
+  ],
+  lane: "own_pylon",
+  budget: {
+    maxRunSeconds: 900,
+    maxRunsPerDay: 1,
+    maxCreditsPerDay: 0,
+  },
+  escalation: {
+    channel: "operator",
+    askPolicy: {
+      policyRef: "policy.public.agent_definition.operator_required.v1",
+      mode: "operator_required",
+    },
+  },
+  sourceRefs: ["issue.public.github.OpenAgentsInc.openagents.8097"],
+  createdAt: at,
+  updatedAt: at,
 }
 
 export const fixtureLoopEventLog: AgentRuntimeEventLog = {

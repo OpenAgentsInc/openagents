@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import {
+  AgentDefinition,
   AgentRuntimeEvent,
   AgentRuntimeRun,
   PylonLifecycleWireEventFromJsonString,
@@ -15,12 +16,17 @@ import {
   assertAgentRuntimePublicEventSafe,
   assertAgentRuntimeRunStateTransition,
   agentRuntimeSurfaceStatusHasUnsafeMaterial,
+  decodeAgentDefinition,
   decodeAgentRuntimeEvent,
   decodeAgentRuntimeEventLog,
   decodeAgentRuntimeRun,
+  decideAgentDefinitionToolAuthority,
   projectAgentRuntimeSurfaceStatus,
 } from "./index.js"
-import { agentRuntimeFixtureEventLogs } from "./fixtures.js"
+import {
+  agentRuntimeFixtureEventLogs,
+  fulfillmentLoopAgentDefinitionFixture,
+} from "./fixtures.js"
 
 const baseRun = {
   runId: "run.public.schema_test",
@@ -77,6 +83,108 @@ describe("@openagentsinc/agent-runtime-schema", () => {
     }
   })
 
+  test("decodes agent_definition.v1 records and definition-backed runtime runs", () => {
+    const definition = decodeAgentDefinition(fulfillmentLoopAgentDefinitionFixture)
+    expect(definition).toMatchObject({
+      schema: "openagents.agent_definition.v1",
+      id: "agent_definition.public.fulfillment_loop.daily_motion",
+      harness: { kind: "codex" },
+      lane: "own_pylon",
+      escalation: {
+        channel: "operator",
+        askPolicy: { mode: "operator_required" },
+      },
+    })
+
+    expect(decodeAgentRuntimeRun({
+      ...baseRun,
+      agentDefinitionId: definition.id,
+      state: "running",
+    })).toMatchObject({
+      agentDefinitionId: definition.id,
+      state: "running",
+    })
+  })
+
+  test("enforces definition toolsets with deny, ask escalation, allow, and deny-by-default", () => {
+    const definition = decodeAgentDefinition(fulfillmentLoopAgentDefinitionFixture)
+
+    expect(decideAgentDefinitionToolAuthority({
+      definition,
+      toolRef: "tool.openagents.crm.read",
+    })).toMatchObject({
+      allowed: true,
+      status: "allowed",
+      reasonRef: "reason.agent_definition.tool_allowed",
+      blockerRefs: [],
+    })
+
+    expect(decideAgentDefinitionToolAuthority({
+      definition,
+      toolRef: "tool.openagents.payment.refund",
+    })).toMatchObject({
+      allowed: false,
+      status: "denied",
+      matchedPolicyRef: "tool.openagents.payment.*",
+      blockerRefs: ["blocker.agent_definition.tool_denied"],
+    })
+
+    const askDecision = decideAgentDefinitionToolAuthority({
+      definition,
+      toolRef: "tool.openagents.email.draft",
+      invocationRef: "invocation.public.fixture.email_draft",
+    })
+    expect(askDecision).toMatchObject({
+      allowed: false,
+      status: "operator_escalation_required",
+      blockerRefs: ["blocker.agent_definition.operator_escalation_required"],
+      escalation: {
+        definitionId: definition.id,
+        ownerRef: definition.ownerRef,
+        toolRef: "tool.openagents.email.draft",
+        channel: "operator",
+        askPolicyRef: "policy.public.agent_definition.operator_required.v1",
+        reasonRef: "reason.agent_definition.ask_policy_hit",
+      },
+    })
+    expect(askDecision.escalation?.escalationRef).toMatch(
+      /^escalation\.operator\.agent_definition\.[a-f0-9]{8}$/,
+    )
+
+    expect(decideAgentDefinitionToolAuthority({
+      definition,
+      toolRef: "tool.openagents.github.write",
+    })).toMatchObject({
+      allowed: false,
+      status: "denied",
+      reasonRef: "reason.agent_definition.tool_not_in_allowlist",
+      blockerRefs: ["blocker.agent_definition.tool_not_in_allowlist"],
+    })
+  })
+
+  test("gives deny policy precedence over overlapping ask and allow entries", () => {
+    const definition = decodeAgentDefinition({
+      ...fulfillmentLoopAgentDefinitionFixture,
+      toolset: {
+        ...fulfillmentLoopAgentDefinitionFixture.toolset,
+        allow: ["tool.openagents.email.draft"],
+        ask: ["tool.openagents.email.draft"],
+        deny: ["tool.openagents.email.*"],
+      },
+    })
+
+    expect(decideAgentDefinitionToolAuthority({
+      definition,
+      toolRef: "tool.openagents.email.draft",
+    })).toMatchObject({
+      allowed: false,
+      status: "denied",
+      matchedPolicyRef: "tool.openagents.email.*",
+      reasonRef: "reason.agent_definition.tool_denied",
+      blockerRefs: ["blocker.agent_definition.tool_denied"],
+    })
+  })
+
   test("decodes every RK1 event tag", () => {
     expect(agentRuntimeEventTags).toHaveLength(32)
     for (const tag of agentRuntimeEventTags) {
@@ -129,7 +237,7 @@ describe("@openagentsinc/agent-runtime-schema", () => {
   })
 
   test("has no provider SDK or Vercel AI SDK fields in the durable schema shape", () => {
-    const schemas = JSON.stringify([AgentRuntimeRun.ast, AgentRuntimeEvent.ast])
+    const schemas = JSON.stringify([AgentRuntimeRun.ast, AgentRuntimeEvent.ast, AgentDefinition.ast])
     expect(schemas).not.toContain("@anthropic-ai")
     expect(schemas).not.toContain("@openai/codex-sdk")
     expect(schemas).not.toContain("ai-sdk")
