@@ -210,8 +210,8 @@ export const mountCodexSettingsPanel = (
       renderSelect({
         label: "Model",
         selected: selectedModel?.id ?? current.config.model,
-        options: current.models.options.map(model => ({
-          label: model.hidden ? `${model.displayName} (hidden)` : model.displayName,
+        options: current.models.options.filter(model => !model.hidden).map(model => ({
+          label: model.displayName,
           value: model.id,
         })),
         onChange: value => void write("model", value),
