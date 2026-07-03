@@ -5,6 +5,9 @@ import { DatabaseSync } from 'node:sqlite'
 import { Effect } from 'effect'
 import { beforeEach, describe, expect, test } from 'vitest'
 
+import type { EmailCampaignRuntime } from './email-campaigns'
+import { createEmailSequence } from './email-sequence-authoring'
+import { enrollListSubscriberInSequence } from './list-sequence-enrollment'
 import {
   makeNativeListsService,
   type NativeListsRuntime,
@@ -65,13 +68,19 @@ const migrationSql = readFileSync(
   join(__dirname, '..', 'migrations', '0181_native_lists_subscribers.sql'),
   'utf8',
 )
+const campaignsMigrationSql = readFileSync(
+  join(__dirname, '..', 'migrations', '0063_email_campaign_records.sql'),
+  'utf8',
+)
 
 const makeDb = (): D1Database => {
   const db = new DatabaseSync(':memory:')
   db.exec('CREATE TABLE users (id TEXT PRIMARY KEY)')
   db.exec('CREATE TABLE teams (id TEXT PRIMARY KEY)')
+  db.exec('CREATE TABLE email_messages (id TEXT PRIMARY KEY)')
   db.exec('PRAGMA foreign_keys = ON')
   db.exec(migrationSql)
+  db.exec(campaignsMigrationSql)
   return new SqliteD1(db) as unknown as D1Database
 }
 
@@ -80,8 +89,13 @@ const runtime: NativeListsRuntime = {
   makeId: (prefix: string) => `${prefix}_${(counter += 1)}`,
   nowIso: () => '2026-06-14T12:00:00.000Z',
 }
+const campaignRuntime: EmailCampaignRuntime = {
+  makeId: (prefix: string) => `${prefix}_${(counter += 1)}`,
+  nowIso: () => '2026-06-14T12:00:00.000Z',
+}
 
 const FORM_ID = 'opt_in_hero'
+const SEQUENCE_SLUG = 'welcome-nurture'
 
 type TestBindings = Readonly<Record<string, unknown>>
 
@@ -99,12 +113,44 @@ const post = (formId: string, body: unknown): Request =>
 // the FormCaptureSpec from a published-site metadata_json blob via the registry
 // (the join that was previously missing). The list is created first so the
 // spec's listId points at a real subscriber_lists row.
-const makeHarness = async (enabled: boolean) => {
-  const service = makeNativeListsService(makeDb(), runtime)
+const makeHarness = async (
+  enabled: boolean,
+  options: { withSequence?: boolean } = {},
+) => {
+  const db = makeDb()
+  const service = makeNativeListsService(db, runtime)
   const list = await service.createList({
     name: 'Opt-in Waitlist',
     sourceAuthorityRef: 'site.form.v1',
   })
+
+  if (options.withSequence === true) {
+    await createEmailSequence(
+      db,
+      'system:site-form-capture',
+      {
+        audience: 'sales_qualified_leads',
+        name: 'Welcome nurture',
+        slug: SEQUENCE_SLUG,
+        status: 'active',
+        steps: [
+          {
+            delaySeconds: 0,
+            name: 'Day 0 intro',
+            stepKey: 'day_0',
+            templateSlug: 'sequence.welcome.day_0.v1',
+          },
+          {
+            delaySeconds: 86_400,
+            name: 'Day 1 value',
+            stepKey: 'day_1',
+            templateSlug: 'sequence.welcome.day_1.v1',
+          },
+        ],
+      },
+      campaignRuntime,
+    )
+  }
 
   // A realistic published-site metadata_json carrying a formSpecs map — exactly
   // what site_versions.metadata_json holds in production.
@@ -114,6 +160,9 @@ const makeHarness = async (enabled: boolean) => {
       [FORM_ID]: {
         id: FORM_ID,
         listId: list.id,
+        ...(options.withSequence === true
+          ? { sequenceSlug: SEQUENCE_SLUG }
+          : {}),
         fields: [
           { name: 'email', kind: 'email', required: true },
           { name: 'name', kind: 'text', required: true },
@@ -124,7 +173,44 @@ const makeHarness = async (enabled: boolean) => {
 
   const routes = makeSitePageFormCaptureRoutes<TestBindings>({
     isEnabled: () => enabled,
-    makeSink: () => ({ addSubscriber: service.addSubscriber }),
+    makeSink: () => ({
+      addSubscriber: async input => {
+        const result = await service.addSubscriber(input)
+
+        if (
+          input.sequenceSlug === undefined ||
+          input.sequenceSlug.trim() === ''
+        ) {
+          return result
+        }
+
+        const sequenceEnrollment = await enrollListSubscriberInSequence(
+          db,
+          {
+            email: result.subscriber.email,
+            listId: input.listId,
+            sequenceSlug: input.sequenceSlug,
+          },
+          'system:site-form-capture',
+          runtime,
+          campaignRuntime,
+        )
+
+        return {
+          ...result,
+          sequenceEnrollment:
+            sequenceEnrollment.status === 'enrolled'
+              ? {
+                  scheduledSendCount: sequenceEnrollment.scheduledSendCount,
+                  status: sequenceEnrollment.status,
+                }
+              : {
+                  reason: sequenceEnrollment.reason,
+                  status: sequenceEnrollment.status,
+                },
+        }
+      },
+    }),
     // Stand-in for the index.ts D1 read of the active site version's
     // metadata_json that owns this formId. Only the known form resolves.
     readSiteFormMetadata: async (_env, formId) =>
@@ -132,8 +218,17 @@ const makeHarness = async (enabled: boolean) => {
     nowIso: () => '2026-06-14T12:00:00.000Z',
   })
 
-  return { routes, service, listId: list.id }
+  return { db, routes, service, listId: list.id }
 }
+
+const countSends = (db: D1Database, email: string): Promise<number> =>
+  db
+    .prepare(
+      `SELECT COUNT(*) AS n FROM email_campaign_sends WHERE email = ?`,
+    )
+    .bind(email)
+    .first<{ n: number }>()
+    .then(row => row?.n ?? 0)
 
 const run = async (
   routes: Awaited<ReturnType<typeof makeHarness>>['routes'],
@@ -212,6 +307,36 @@ describe('site page form-capture wiring (flag ON → registry-resolved)', () => 
     const subscribers = await service.listSubscribers({ listId })
     expect(subscribers).toHaveLength(1)
     expect(subscribers[0]?.sourceRef).toBe(`site_form.${FORM_ID}`)
+  })
+
+  test('form spec with sequenceSlug captures and schedules sequence sends', async () => {
+    const { db, routes, service, listId } = await makeHarness(true, {
+      withSequence: true,
+    })
+
+    const response = await run(
+      routes,
+      post(FORM_ID, {
+        email: 'LEAD@example.com',
+        name: 'Ada Lovelace',
+      }),
+    )
+
+    expect(response.status).toBe(201)
+    const json = (await response.json()) as Record<string, unknown>
+    expect(json).toMatchObject({
+      email: 'lead@example.com',
+      idempotent: false,
+      listId,
+      sequenceEnrollment: {
+        scheduledSendCount: 2,
+        status: 'enrolled',
+      },
+    })
+
+    const subscribers = await service.listSubscribers({ listId })
+    expect(subscribers).toHaveLength(1)
+    expect(await countSends(db, 'lead@example.com')).toBe(2)
   })
 
   test('replayed submission is idempotent → 200', async () => {
