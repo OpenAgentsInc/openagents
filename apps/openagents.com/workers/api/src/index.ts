@@ -285,6 +285,11 @@ import {
   handleCodingQuickWinPipelineApi,
 } from './coding-quick-win-pipeline-routes'
 import {
+  firstAlreadySoldBusinessQuickWinReceipt,
+  makeInMemoryBusinessAlreadySoldEngagementReceiptStore,
+} from './business-already-sold-engagement-receipt'
+import { makeBusinessAlreadySoldEngagementReceiptRoutes } from './business-already-sold-engagement-receipt-routes'
+import {
   type OpenAgentsWorkerConfigEnv,
   getOpenAgentsWorkerConfig,
   redactedValue,
@@ -8518,6 +8523,13 @@ const codingQuickWinReceiptPublicRoutes =
     makeClaimStore: _env =>
       makeInMemoryCodingQuickWinPaidDeliveryClaimStore([]),
   })
+const businessAlreadySoldEngagementReceiptRoutes =
+  makeBusinessAlreadySoldEngagementReceiptRoutes<Env>({
+    makeReceiptStore: _env =>
+      makeInMemoryBusinessAlreadySoldEngagementReceiptStore([
+        firstAlreadySoldBusinessQuickWinReceipt,
+      ]),
+  })
 const marketingAgencySelfServePublicRoutes =
   makeMarketingAgencySelfServePublicRoutes<Env>({
     makeClaimStore: _env => makeInMemoryMarketingAgencySelfServeClaimStore([]),
@@ -13957,6 +13969,8 @@ const routeRequest = makeWorkerRouteRequest({
     ecommerceCampaignSelfServeRoutes.routeEcommerceCampaignSelfServeRequest,
   routeCodingQuickWinReceiptRequest:
     codingQuickWinReceiptPublicRoutes.routeCodingQuickWinReceiptRequest,
+  routeBusinessAlreadySoldEngagementReceiptRequest:
+    businessAlreadySoldEngagementReceiptRoutes.routeBusinessAlreadySoldEngagementReceiptRequest,
   routeMarketingAgencyReceiptRequest:
     marketingAgencyReceiptPublicRoutes.routeMarketingAgencyReceiptRequest,
   routeMarketingAgencySelfServeRequest:

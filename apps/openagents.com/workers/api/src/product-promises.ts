@@ -4258,6 +4258,10 @@ export const publicProductPromisesDocument = () => {
           'apps/openagents.com/workers/api/src/business-signup-routes.test.ts',
           'apps/openagents.com/workers/api/src/business-quick-win-receipt.ts',
           'apps/openagents.com/workers/api/src/business-quick-win-receipt.test.ts',
+          'apps/openagents.com/workers/api/src/business-already-sold-engagement-receipt.ts',
+          'apps/openagents.com/workers/api/src/business-already-sold-engagement-receipt.test.ts',
+          'apps/openagents.com/workers/api/src/business-already-sold-engagement-receipt-routes.ts',
+          'apps/openagents.com/workers/api/src/business-already-sold-engagement-receipt-routes.test.ts',
           'apps/openagents.com/workers/api/src/business-intake-chat-routes.ts',
           'apps/openagents.com/workers/api/src/business-intake-chat-routes.test.ts',
           'apps/openagents.com/apps/web/src/page/business-intake-chat-controller.ts',
@@ -4265,6 +4269,7 @@ export const publicProductPromisesDocument = () => {
           'docs/launch/vertex-fleet/business.intake_quick_win_offering.v1.md',
           'apps/openagents.com/apps/web/src/page/business.ts',
           'apps/openagents.com/apps/web/src/business-route.test.ts',
+          'route:/api/public/business/already-sold-engagement-receipts?view=paid-business-receipts',
           'https://openagents.com/business',
           'https://openagents.com/api/public/product-promises',
           'promise:repo.open_source_code_map.v1',
@@ -4275,7 +4280,7 @@ export const publicProductPromisesDocument = () => {
           'blocker.product_promises.business_first_paid_quick_win_receipt_missing',
         ],
         verification:
-          'Yellow is limited to what is shipped: the offering menu document is grounded in the live registry (each offering maps to a backing promiseId in docs/business/2026-06-20-business-offering-promise-coverage.md), the /business intake route accepts and records a real signup (business-signup-routes.ts, business-signup-routes.test.ts), and the /business page publishes package price bands with fixed-scope receipt plans. True today: a customer/agent can read the menu and rate card, run the interview, and submit an intake. Green requires a self-serve quick-win delivery loop and at least one dereferenceable first paid business quick-win receipt (intake -> delivery -> accepted outcome -> receipt), with a receipt-first upgrade per proof.claim_upgrade_receipts.v1.',
+          'Yellow is limited to what is shipped: the offering menu document is grounded in the live registry (each offering maps to a backing promiseId in docs/business/2026-06-20-business-offering-promise-coverage.md), the /business intake route accepts and records a real signup (business-signup-routes.ts, business-signup-routes.test.ts), and the /business page publishes package price bands with fixed-scope receipt plans. True today: a customer/agent can read the menu and rate card, run the interview, submit an intake, and read the public-safe already-sold engagement receipt projection for opaque paid business receipts. That BF-2.5/AW-0 A0.1 projection records buyer payment only; it does not prove delivery completion, accepted outcome, self-serve operation, payout, settlement, or customer identity. Green still requires a self-serve quick-win delivery loop and at least one dereferenceable first paid business quick-win receipt (intake -> delivery -> accepted outcome -> receipt), with a receipt-first upgrade per proof.claim_upgrade_receipts.v1.',
         authorityBoundary:
           'The business intake is an offering menu plus a signup capture. It grants no automatic delivery, spend, payout, or settlement authority, makes no separate offering green, and never promises beyond the state of each backing promise record it points at.',
       },

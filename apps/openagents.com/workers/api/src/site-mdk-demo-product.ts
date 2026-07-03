@@ -74,6 +74,7 @@ export const omegaMdkDemoSitePaymentCatalogFromMapping = (
         price: mapping.price,
         productId: OMEGA_MDK_DEMO_PRODUCT_ID,
         publicProjectionState: 'listed',
+        recurringBilling: null,
         sandbox: mapping.sandbox,
         settlementMode: 'checkout_only',
         siteId: OMEGA_MDK_DEMO_SITE_ID,
