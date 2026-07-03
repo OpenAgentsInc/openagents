@@ -11,12 +11,15 @@ import { OpenAgentsPaymentPolicyAudience } from './payment-limit-policy'
 import { openAgentsRunnerGatewayPayloadHasPrivateMaterial } from './runner-gateway'
 import {
   OpenAgentsSitePaymentCustomerDataRequirement,
-  OpenAgentsSitePaymentRecurringBilling,
+  OpenAgentsSitePaymentCustomerOwnedProcessorBinding,
+  OpenAgentsSitePaymentCustomerOwnedProcessorKind,
   OpenAgentsSitePaymentEntitlementScope,
   OpenAgentsSitePaymentManifest,
   OpenAgentsSitePaymentPaidAction,
   OpenAgentsSitePaymentProduct,
+  OpenAgentsSitePaymentProvider,
   OpenAgentsSitePaymentPublicProjectionState,
+  OpenAgentsSitePaymentRecurringBilling,
   OpenAgentsSitePaymentSettlementMode,
   decodeOpenAgentsSitePaymentManifest,
 } from './site-payment-manifest'
@@ -58,6 +61,9 @@ const OpenAgentsSitePaymentCatalogCommonRecord = S.Struct({
   customerDataRequirements: S.Array(
     OpenAgentsSitePaymentCustomerDataRequirement,
   ),
+  customerOwnedProcessor: S.NullOr(
+    OpenAgentsSitePaymentCustomerOwnedProcessorBinding,
+  ),
   deploymentId: S.NullOr(S.String),
   displayRef: S.String,
   entitlementScope: OpenAgentsSitePaymentEntitlementScope,
@@ -67,6 +73,7 @@ const OpenAgentsSitePaymentCatalogCommonRecord = S.Struct({
   orderRef: S.NullOr(S.String),
   price: OpenAgentsPaidEndpointProductRecord.fields.price,
   publicProjectionState: OpenAgentsSitePaymentPublicProjectionState,
+  provider: OpenAgentsSitePaymentProvider,
   recurringBilling: S.NullOr(OpenAgentsSitePaymentRecurringBilling),
   sandbox: S.Boolean,
   settlementMode: OpenAgentsSitePaymentSettlementMode,
@@ -134,6 +141,15 @@ export const OpenAgentsSitePaymentCatalogItemProjection = S.Struct({
   customerDataRequirements: S.Array(
     OpenAgentsSitePaymentCustomerDataRequirement,
   ),
+  customerOwnedProcessor: S.NullOr(
+    S.Struct({
+      chargeDestination: S.Literal('customer_account'),
+      meteringSeparated: S.Boolean,
+      openAgentsMeteringRefs: S.Array(S.String),
+      processor: OpenAgentsSitePaymentCustomerOwnedProcessorKind,
+      revenueOwner: S.Literal('customer'),
+    }),
+  ),
   displayRef: S.String,
   entitlementScope: OpenAgentsSitePaymentEntitlementScope,
   itemKind: OpenAgentsSitePaymentCatalogItemKind,
@@ -141,6 +157,7 @@ export const OpenAgentsSitePaymentCatalogItemProjection = S.Struct({
   operatorRefs: S.Array(S.String),
   price: OpenAgentsPaidEndpointProductRecord.fields.price,
   publicProjectionState: OpenAgentsSitePaymentPublicProjectionState,
+  provider: OpenAgentsSitePaymentProvider,
   recurringBilling: S.NullOr(OpenAgentsSitePaymentRecurringBilling),
   sandbox: S.Boolean,
   settlementMode: OpenAgentsSitePaymentSettlementMode,
@@ -201,13 +218,15 @@ const stableCatalogRefPattern = /^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,180}$/
 const unsafeCatalogKeyPattern =
   /(access[_-]?token|bearer|callback[_-]?token|cookie|customer[_-]?(email|name|value)|email[_-]?body|grant|invoice|mdk[_-]?(access[_-]?token|mnemonic|webhook[_-]?secret)|mnemonic|oauth|payment[_-]?(hash|preimage)|preimage|private[_-]?key|provider[_-]?(account|grant|payload|token)|raw[_-]?(invoice|payment|prompt|runner|run[_-]?log)|secret|source[_-]?archive|wallet|webhook)/i
 const unsafeCatalogValuePattern =
-  /(bearer\s+|checkout_id=|gho_[a-z0-9_]+|ghp_[a-z0-9_]+|github[_-]?pat_[a-z0-9_]+|lnbc|lntb|lnbcrt|lno1|mdk[_-]?(access[_-]?token|mnemonic|webhook[_-]?secret)|mnemonic|payment_hash=|payment_preimage=|preimage=[A-Za-z0-9_-]+|provider[_-]?token|raw[_-]?(invoice|payment|payload|prompt|runner|run[_-]?log)|secret|sk-[a-z0-9]|\S+@\S+|wallet[_-]?state)/i
+  /(acct_[a-z0-9]+|bearer\s+|checkout_id=|gho_[a-z0-9_]+|ghp_[a-z0-9_]+|github[_-]?pat_[a-z0-9_]+|lnbc|lntb|lnbcrt|lno1|mdk[_-]?(access[_-]?token|mnemonic|webhook[_-]?secret)|mnemonic|payment_hash=|payment_preimage=|preimage=[A-Za-z0-9_-]+|provider[_-]?token|raw[_-]?(invoice|payment|payload|prompt|runner|run[_-]?log)|secret|sk-[a-z0-9]|stripe[_-]?(account|secret|webhook)|\S+@\S+|wallet[_-]?state)/i
 
 const valueHasPrivateMaterial = (value: unknown): boolean => {
   if (typeof value === 'string') {
-    return containsProviderSecretMaterial(value) ||
+    return (
+      containsProviderSecretMaterial(value) ||
       unsafeCatalogValuePattern.test(value) ||
       openAgentsRunnerGatewayPayloadHasPrivateMaterial(value)
+    )
   }
 
   if (Array.isArray(value)) {
@@ -215,10 +234,13 @@ const valueHasPrivateMaterial = (value: unknown): boolean => {
   }
 
   if (value !== null && typeof value === 'object') {
-    return openAgentsRunnerGatewayPayloadHasPrivateMaterial(value) ||
-      Object.entries(value).some(([key, item]) =>
-        unsafeCatalogKeyPattern.test(key) || valueHasPrivateMaterial(item),
+    return (
+      openAgentsRunnerGatewayPayloadHasPrivateMaterial(value) ||
+      Object.entries(value).some(
+        ([key, item]) =>
+          unsafeCatalogKeyPattern.test(key) || valueHasPrivateMaterial(item),
       )
+    )
   }
 
   return false
@@ -254,22 +276,18 @@ const priceIsSupported = (
 ): boolean =>
   Number.isInteger(price.amountMinorUnits) &&
   price.amountMinorUnits > 0 &&
-  (
-    (price.asset === 'usd' && price.denomination === 'usd_cent') ||
+  ((price.asset === 'usd' && price.denomination === 'usd_cent') ||
     (price.asset === 'bitcoin' &&
       price.denomination === 'bitcoin_millisatoshi') ||
-    (price.asset === 'credits' && price.denomination === 'credit')
-  )
+    (price.asset === 'credits' && price.denomination === 'credit'))
 
 const recurringBillingIsSafe = (
   recurringBilling: OpenAgentsSitePaymentRecurringBilling | null,
 ): boolean =>
   recurringBilling === null ||
-  (
-    recurringBilling.entitlementRenewalMode === 'renew_on_payment_receipt' &&
+  (recurringBilling.entitlementRenewalMode === 'renew_on_payment_receipt' &&
     recurringBilling.renewalReceiptScopeRefs.length > 0 &&
-    recurringBilling.renewalReceiptScopeRefs.every(stableRefIsSafe)
-  )
+    recurringBilling.renewalReceiptScopeRefs.every(stableRefIsSafe))
 
 const catalogIdSegment = (value: string, fallback: string): string => {
   const normalized = value
@@ -315,7 +333,7 @@ const commonRecord = (
   const linkage = linkageFromInput(input)
   const recurringBilling =
     itemKind === 'product' && 'recurringBilling' in item
-      ? item.recurringBilling ?? null
+      ? (item.recurringBilling ?? null)
       : null
 
   return {
@@ -325,6 +343,8 @@ const commonRecord = (
     checkoutPath: item.checkoutPath,
     createdAt: input.createdAt,
     customerDataRequirements: item.customerDataRequirements,
+    customerOwnedProcessor:
+      input.manifest.payments.customerOwnedProcessor ?? null,
     deploymentId: input.deploymentId,
     displayRef: item.displayRef,
     entitlementScope: item.entitlementScope,
@@ -337,6 +357,7 @@ const commonRecord = (
     orderRef: input.orderRef,
     price: item.price,
     publicProjectionState: item.publicProjectionState,
+    provider: input.manifest.payments.provider,
     recurringBilling,
     sandbox: item.sandbox || input.manifest.payments.sandboxDefault,
     settlementMode: item.settlementMode,
@@ -383,8 +404,7 @@ const itemVisibleToAudience = (
   }
 
   if (audience === 'public') {
-    return item.status === 'active' &&
-      item.publicProjectionState !== 'hidden'
+    return item.status === 'active' && item.publicProjectionState !== 'hidden'
   }
 
   if (audience === 'agent') {
@@ -400,12 +420,12 @@ const operatorRefsForItem = (
 ): ReadonlyArray<string> =>
   audience === 'operator'
     ? safeRefs([
-      item.deploymentId ?? '',
-      item.manifestRef ?? '',
-      item.orderRef ?? '',
-      item.sourceManifestDigest ?? '',
-      item.workroomRef ?? '',
-    ])
+        item.deploymentId ?? '',
+        item.manifestRef ?? '',
+        item.orderRef ?? '',
+        item.sourceManifestDigest ?? '',
+        item.workroomRef ?? '',
+      ])
     : []
 
 const metadataRefsForItem = (
@@ -428,9 +448,20 @@ const commonProjection = (
     : '/checkout/redacted',
   customerDataRequirements: item.customerDataRequirements.filter(
     requirement =>
-      stableIdIsSafe(requirement.key) &&
-      stableRefIsSafe(requirement.labelRef),
+      stableIdIsSafe(requirement.key) && stableRefIsSafe(requirement.labelRef),
   ),
+  customerOwnedProcessor:
+    item.customerOwnedProcessor === null
+      ? null
+      : {
+          chargeDestination: item.customerOwnedProcessor.chargeDestination,
+          meteringSeparated: true,
+          openAgentsMeteringRefs: safeRefs(
+            item.customerOwnedProcessor.openAgentsMeteringRefs,
+          ),
+          processor: item.customerOwnedProcessor.processor,
+          revenueOwner: item.customerOwnedProcessor.revenueOwner,
+        },
   displayRef: safeRefOrFallback(item.displayRef, 'display.redacted'),
   entitlementScope: item.entitlementScope,
   itemKind: item.itemKind,
@@ -438,6 +469,7 @@ const commonProjection = (
   operatorRefs: operatorRefsForItem(item, audience),
   price: item.price,
   publicProjectionState: item.publicProjectionState,
+  provider: item.provider,
   recurringBilling: item.recurringBilling,
   sandbox: item.sandbox,
   settlementMode: item.settlementMode,
@@ -452,18 +484,18 @@ const projectCatalogItem = (
 ): OpenAgentsSitePaymentCatalogProjection['items'][number] =>
   item.itemKind === 'product'
     ? {
-      ...commonProjection(item, audience),
-      itemKind: 'product',
-      productId: safeRefOrFallback(item.productId, 'product.redacted'),
-    }
+        ...commonProjection(item, audience),
+        itemKind: 'product',
+        productId: safeRefOrFallback(item.productId, 'product.redacted'),
+      }
     : {
-      ...commonProjection(item, audience),
-      actionId: safeRefOrFallback(item.actionId, 'action.redacted'),
-      actionRef: safeRefOrFallback(item.actionRef, 'action.redacted'),
-      itemKind: 'paid_action',
-      method: item.method,
-      path: checkoutPathIsSafe(item.path) ? item.path : '/api/redacted',
-    }
+        ...commonProjection(item, audience),
+        actionId: safeRefOrFallback(item.actionId, 'action.redacted'),
+        actionRef: safeRefOrFallback(item.actionRef, 'action.redacted'),
+        itemKind: 'paid_action',
+        method: item.method,
+        path: checkoutPathIsSafe(item.path) ? item.path : '/api/redacted',
+      }
 
 const projectionPolicyForItem = (
   item: OpenAgentsSitePaymentCatalogRecord,
@@ -487,11 +519,12 @@ const paidEndpointStatusForItem = (
 const entitlementForItem = (
   item: OpenAgentsSitePaymentCatalogRecord,
 ): OpenAgentsPaidEndpointEntitlement => ({
-  durationSeconds: item.recurringBilling?.interval === 'month'
-    ? 2_678_400
-    : item.recurringBilling?.interval === 'year'
-      ? 31_536_000
-      : null,
+  durationSeconds:
+    item.recurringBilling?.interval === 'month'
+      ? 2_678_400
+      : item.recurringBilling?.interval === 'year'
+        ? 31_536_000
+        : null,
   kind: 'resource',
   quotaUnits: null,
   scopeRefs: [
@@ -520,19 +553,19 @@ const paidEndpointBindingForItem = (
 ): OpenAgentsPaidEndpointProductRecord['binding'] =>
   item.itemKind === 'product'
     ? {
-      actionRef: item.productId,
-      kind: 'site_checkout',
-      method: null,
-      pathTemplate: item.checkoutPath,
-      resourceRef: item.catalogRef,
-    }
+        actionRef: item.productId,
+        kind: 'site_checkout',
+        method: null,
+        pathTemplate: item.checkoutPath,
+        resourceRef: item.catalogRef,
+      }
     : {
-      actionRef: item.actionRef,
-      kind: 'site_paid_action',
-      method: item.method,
-      pathTemplate: item.path,
-      resourceRef: item.catalogRef,
-    }
+        actionRef: item.actionRef,
+        kind: 'site_paid_action',
+        method: item.method,
+        pathTemplate: item.path,
+        resourceRef: item.catalogRef,
+      }
 
 export const openAgentsSitePaymentCatalogHasPrivateMaterial =
   valueHasPrivateMaterial
@@ -556,33 +589,45 @@ export const decodeOpenAgentsSitePaymentCatalog = (
     })
   }
 
-  const unsafeItem = catalog.items.find(item =>
-    !stableRefIsSafe(item.siteId) ||
-    !stableRefIsSafe(item.siteVersionId) ||
-    !stableIdIsSafe(item.itemKind === 'product' ? item.productId : item.actionId) ||
-    !stableRefIsSafe(item.catalogRef) ||
-    !stableRefIsSafe(item.displayRef) ||
-    !checkoutPathIsSafe(item.checkoutPath) ||
-    !optionalRefIsSafe(item.deploymentId) ||
-    !optionalRefIsSafe(item.manifestRef) ||
-    !optionalRefIsSafe(item.orderRef) ||
-    !optionalRefIsSafe(item.sourceManifestDigest) ||
-    !optionalRefIsSafe(item.workroomRef) ||
-    !priceIsSupported(item.price) ||
-    !recurringBillingIsSafe(item.recurringBilling) ||
-    item.metadataRefs.some(ref => !stableRefIsSafe(ref)) ||
-    item.customerDataRequirements.some(
-      requirement =>
-        !stableIdIsSafe(requirement.key) ||
-        !stableRefIsSafe(requirement.labelRef),
-    ) ||
-    (
-      item.itemKind === 'paid_action' &&
-      (
-        !stableRefIsSafe(item.actionRef) ||
-        !checkoutPathIsSafe(item.path)
-      )
-    ),
+  const unsafeItem = catalog.items.find(
+    item =>
+      !stableRefIsSafe(item.siteId) ||
+      !stableRefIsSafe(item.siteVersionId) ||
+      !stableIdIsSafe(
+        item.itemKind === 'product' ? item.productId : item.actionId,
+      ) ||
+      !stableRefIsSafe(item.catalogRef) ||
+      !stableRefIsSafe(item.displayRef) ||
+      !checkoutPathIsSafe(item.checkoutPath) ||
+      !optionalRefIsSafe(item.deploymentId) ||
+      !optionalRefIsSafe(item.manifestRef) ||
+      !optionalRefIsSafe(item.orderRef) ||
+      !optionalRefIsSafe(item.sourceManifestDigest) ||
+      !optionalRefIsSafe(item.workroomRef) ||
+      !priceIsSupported(item.price) ||
+      (item.provider === 'customer_owned_processor' &&
+        (item.customerOwnedProcessor === null ||
+          !stableRefIsSafe(
+            item.customerOwnedProcessor.customerProcessorAccountRef,
+          ) ||
+          !stableRefIsSafe(
+            item.customerOwnedProcessor.processorConnectionRef,
+          ) ||
+          item.customerOwnedProcessor.openAgentsMeteringRefs.length === 0 ||
+          item.customerOwnedProcessor.openAgentsMeteringRefs.some(
+            ref => !stableRefIsSafe(ref),
+          ))) ||
+      (item.provider !== 'customer_owned_processor' &&
+        item.customerOwnedProcessor !== null) ||
+      !recurringBillingIsSafe(item.recurringBilling) ||
+      item.metadataRefs.some(ref => !stableRefIsSafe(ref)) ||
+      item.customerDataRequirements.some(
+        requirement =>
+          !stableIdIsSafe(requirement.key) ||
+          !stableRefIsSafe(requirement.labelRef),
+      ) ||
+      (item.itemKind === 'paid_action' &&
+        (!stableRefIsSafe(item.actionRef) || !checkoutPathIsSafe(item.path))),
   )
 
   if (unsafeItem !== undefined) {
@@ -600,10 +645,16 @@ export const sitePaymentCatalogFromManifest = (
 ): OpenAgentsSitePaymentCatalog =>
   decodeOpenAgentsSitePaymentCatalog({
     items: [
-      ...decodeOpenAgentsSitePaymentManifest(input.manifest).payments.products
-        .map(product => productRecordFromManifest(input, product)),
-      ...decodeOpenAgentsSitePaymentManifest(input.manifest).payments.paidActions
-        .map(action => paidActionRecordFromManifest(input, action)),
+      ...decodeOpenAgentsSitePaymentManifest(
+        input.manifest,
+      ).payments.products.map(product =>
+        productRecordFromManifest(input, product),
+      ),
+      ...decodeOpenAgentsSitePaymentManifest(
+        input.manifest,
+      ).payments.paidActions.map(action =>
+        paidActionRecordFromManifest(input, action),
+      ),
     ],
   })
 
@@ -628,18 +679,28 @@ export const openAgentsPaidEndpointProductFromSitePaymentCatalogItem = (
   ],
   operatorNoteRefs: [
     `operator_note.site_payment.${item.settlementMode}`,
+    ...(item.provider === 'customer_owned_processor'
+      ? ['operator_note.site_payment.customer_revenue_owner']
+      : []),
   ],
   price: item.price,
   productId: item.catalogRef,
   projectionPolicy: projectionPolicyForItem(item),
-  providerBindingRefs: ['provider_binding.openagents.hosted_mdk'],
+  providerBindingRefs:
+    item.provider === 'customer_owned_processor'
+      ? [
+          'provider_binding.customer_owned_processor',
+          `processor.${item.customerOwnedProcessor?.processor ?? 'unknown'}`,
+          ...safeRefs(
+            item.customerOwnedProcessor?.openAgentsMeteringRefs ?? [],
+          ),
+        ]
+      : ['provider_binding.openagents.hosted_mdk'],
   publicAgentDocRefs: item.agentReadable
     ? ['docs.openagents.site_payments']
     : [],
   publicSummaryRef: `summary.${item.catalogRef}`,
-  spendCapHintRefs: [
-    `spend_cap.${item.price.asset}.${item.entitlementScope}`,
-  ],
+  spendCapHintRefs: [`spend_cap.${item.price.asset}.${item.entitlementScope}`],
   status: paidEndpointStatusForItem(item),
   surface: 'site_checkout',
 })
@@ -647,5 +708,7 @@ export const openAgentsPaidEndpointProductFromSitePaymentCatalogItem = (
 export const paidEndpointCatalogFromSitePaymentCatalog = (
   catalog: OpenAgentsSitePaymentCatalog,
 ): typeof OpenAgentsPaidEndpointProductCatalog.Type => ({
-  products: catalog.items.map(openAgentsPaidEndpointProductFromSitePaymentCatalogItem),
+  products: catalog.items.map(
+    openAgentsPaidEndpointProductFromSitePaymentCatalogItem,
+  ),
 })

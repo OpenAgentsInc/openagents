@@ -187,30 +187,70 @@ describe('OpenAgents Site payment manifest', () => {
       'public',
     )
 
-    expect(publicProjection.products.map(product => product.recurringBilling))
-      .toEqual([
-        {
-          billingKind: 'retainer',
-          entitlementRenewalMode: 'renew_on_payment_receipt',
-          interval: 'month',
-          renewalReceiptScopeRefs: [
-            'receipt_scope.business.retainer.renewal',
-          ],
-        },
-        {
-          billingKind: 'subscription',
-          entitlementRenewalMode: 'renew_on_payment_receipt',
-          interval: 'year',
-          renewalReceiptScopeRefs: [
-            'receipt_scope.business.membership.renewal',
-          ],
-        },
-      ])
+    expect(
+      publicProjection.products.map(product => product.recurringBilling),
+    ).toEqual([
+      {
+        billingKind: 'retainer',
+        entitlementRenewalMode: 'renew_on_payment_receipt',
+        interval: 'month',
+        renewalReceiptScopeRefs: ['receipt_scope.business.retainer.renewal'],
+      },
+      {
+        billingKind: 'subscription',
+        entitlementRenewalMode: 'renew_on_payment_receipt',
+        interval: 'year',
+        renewalReceiptScopeRefs: ['receipt_scope.business.membership.renewal'],
+      },
+    ])
     expect(
       S.decodeUnknownSync(OpenAgentsSitePaymentManifestProjection)(
         publicProjection,
       ),
     ).toEqual(publicProjection)
+  })
+
+  test('projects customer-owned processor funnels with separate OpenAgents metering refs', () => {
+    const manifest = decodeOpenAgentsSitePaymentManifest({
+      payments: {
+        ...validManifest.payments,
+        customerOwnedProcessor: {
+          chargeDestination: 'customer_account',
+          customerProcessorAccountRef: 'processor_account.vertical_checkout',
+          openAgentsMeteringRefs: [
+            'metering.openagents.business_fulfillment.site_payment',
+          ],
+          processor: 'stripe_connect',
+          processorConnectionRef: 'processor_connection.vertical_checkout',
+          revenueOwner: 'customer',
+        },
+        provider: 'customer_owned_processor',
+      },
+    })
+    const publicProjection = projectOpenAgentsSitePaymentManifest(
+      manifest,
+      'public',
+    )
+
+    expect(publicProjection.provider).toBe('customer_owned_processor')
+    expect(publicProjection.customerOwnedProcessor).toEqual({
+      chargeDestination: 'customer_account',
+      meteringSeparated: true,
+      openAgentsMeteringRefs: [
+        'metering.openagents.business_fulfillment.site_payment',
+      ],
+      processor: 'stripe_connect',
+      revenueOwner: 'customer',
+    })
+    expect(JSON.stringify(publicProjection)).not.toContain(
+      'processor_connection.vertical_checkout',
+    )
+    expect(JSON.stringify(publicProjection)).not.toContain(
+      'processor_account.vertical_checkout',
+    )
+    expect(
+      openAgentsSitePaymentManifestHasPrivateMaterial(publicProjection),
+    ).toBe(false)
   })
 
   test('rejects raw payment material and unsafe checkout paths', () => {
@@ -263,6 +303,65 @@ describe('OpenAgents Site payment manifest', () => {
               },
             },
           ],
+        },
+      }),
+    ).toThrow(OpenAgentsSitePaymentManifestUnsafe)
+    expect(() =>
+      decodeOpenAgentsSitePaymentManifest({
+        payments: {
+          ...validManifest.payments,
+          customerOwnedProcessor: {
+            chargeDestination: 'customer_account',
+            customerProcessorAccountRef: 'acct_123raw',
+            openAgentsMeteringRefs: [
+              'metering.openagents.business_fulfillment.site_payment',
+            ],
+            processor: 'stripe_connect',
+            processorConnectionRef: 'processor_connection.vertical_checkout',
+            revenueOwner: 'customer',
+          },
+          provider: 'customer_owned_processor',
+        },
+      }),
+    ).toThrow(OpenAgentsSitePaymentManifestUnsafe)
+    expect(() =>
+      decodeOpenAgentsSitePaymentManifest({
+        payments: {
+          ...validManifest.payments,
+          customerOwnedProcessor: {
+            chargeDestination: 'customer_account',
+            customerProcessorAccountRef: 'processor_account.vertical_checkout',
+            openAgentsMeteringRefs: [],
+            processor: 'stripe_connect',
+            processorConnectionRef: 'processor_connection.vertical_checkout',
+            revenueOwner: 'customer',
+          },
+          provider: 'customer_owned_processor',
+        },
+      }),
+    ).toThrow(OpenAgentsSitePaymentManifestUnsafe)
+    expect(() =>
+      decodeOpenAgentsSitePaymentManifest({
+        payments: {
+          ...validManifest.payments,
+          provider: 'customer_owned_processor',
+        },
+      }),
+    ).toThrow(OpenAgentsSitePaymentManifestUnsafe)
+    expect(() =>
+      decodeOpenAgentsSitePaymentManifest({
+        payments: {
+          ...validManifest.payments,
+          customerOwnedProcessor: {
+            chargeDestination: 'customer_account',
+            customerProcessorAccountRef: 'processor_account.vertical_checkout',
+            openAgentsMeteringRefs: [
+              'metering.openagents.business_fulfillment.site_payment',
+            ],
+            processor: 'stripe_connect',
+            processorConnectionRef: 'processor_connection.vertical_checkout',
+            revenueOwner: 'customer',
+          },
         },
       }),
     ).toThrow(OpenAgentsSitePaymentManifestUnsafe)

@@ -151,12 +151,15 @@ describe('OpenAgents Site payment catalog', () => {
       'sha256:abcdef123456',
       'workroom.otec',
     ])
-    expect(S.decodeUnknownSync(OpenAgentsSitePaymentCatalogProjection)(
-      publicProjection,
-    )).toEqual(publicProjection)
+    expect(
+      S.decodeUnknownSync(OpenAgentsSitePaymentCatalogProjection)(
+        publicProjection,
+      ),
+    ).toEqual(publicProjection)
     expect(JSON.stringify(publicProjection)).not.toContain('order.otec')
-    expect(openAgentsSitePaymentCatalogHasPrivateMaterial(publicProjection))
-      .toBe(false)
+    expect(
+      openAgentsSitePaymentCatalogHasPrivateMaterial(publicProjection),
+    ).toBe(false)
   })
 
   test('hides public-hidden catalog records from public projection only', () => {
@@ -223,9 +226,8 @@ describe('OpenAgents Site payment catalog', () => {
       catalog,
       'public',
     )
-    const endpointProduct = openAgentsPaidEndpointProductFromSitePaymentCatalogItem(
-      catalog.items[0]!,
-    )
+    const endpointProduct =
+      openAgentsPaidEndpointProductFromSitePaymentCatalogItem(catalog.items[0]!)
 
     expect(catalog.items[0]).toMatchObject({
       itemKind: 'product',
@@ -234,9 +236,7 @@ describe('OpenAgents Site payment catalog', () => {
         billingKind: 'retainer',
         entitlementRenewalMode: 'renew_on_payment_receipt',
         interval: 'month',
-        renewalReceiptScopeRefs: [
-          'receipt_scope.business.retainer.renewal',
-        ],
+        renewalReceiptScopeRefs: ['receipt_scope.business.retainer.renewal'],
       },
     })
     expect(publicProjection.items[0]).toMatchObject({
@@ -257,14 +257,90 @@ describe('OpenAgents Site payment catalog', () => {
     ])
   })
 
+  test('carries BF-6.4 customer-owned processor binding while keeping OpenAgents metering separate', () => {
+    const catalog = sitePaymentCatalogFromManifest({
+      ...catalogInput,
+      manifest: {
+        payments: {
+          ...sitePaymentManifest.payments,
+          customerOwnedProcessor: {
+            chargeDestination: 'customer_account',
+            customerProcessorAccountRef: 'processor_account.vertical_checkout',
+            openAgentsMeteringRefs: [
+              'metering.openagents.business_fulfillment.site_payment',
+            ],
+            processor: 'stripe_connect',
+            processorConnectionRef: 'processor_connection.vertical_checkout',
+            revenueOwner: 'customer',
+          },
+          provider: 'customer_owned_processor',
+        },
+      },
+    })
+    const publicProjection = projectOpenAgentsSitePaymentCatalog(
+      catalog,
+      'public',
+    )
+    const endpointProduct =
+      openAgentsPaidEndpointProductFromSitePaymentCatalogItem(catalog.items[0]!)
+
+    expect(catalog.items[0]).toMatchObject({
+      customerOwnedProcessor: {
+        chargeDestination: 'customer_account',
+        customerProcessorAccountRef: 'processor_account.vertical_checkout',
+        openAgentsMeteringRefs: [
+          'metering.openagents.business_fulfillment.site_payment',
+        ],
+        processor: 'stripe_connect',
+        processorConnectionRef: 'processor_connection.vertical_checkout',
+        revenueOwner: 'customer',
+      },
+      provider: 'customer_owned_processor',
+    })
+    expect(publicProjection.items[0]).toMatchObject({
+      customerOwnedProcessor: {
+        chargeDestination: 'customer_account',
+        meteringSeparated: true,
+        openAgentsMeteringRefs: [
+          'metering.openagents.business_fulfillment.site_payment',
+        ],
+        processor: 'stripe_connect',
+        revenueOwner: 'customer',
+      },
+      provider: 'customer_owned_processor',
+    })
+    expect(JSON.stringify(publicProjection)).not.toContain(
+      'processor_account.vertical_checkout',
+    )
+    expect(JSON.stringify(publicProjection)).not.toContain(
+      'processor_connection.vertical_checkout',
+    )
+    expect(endpointProduct.providerBindingRefs).toEqual([
+      'provider_binding.customer_owned_processor',
+      'processor.stripe_connect',
+      'metering.openagents.business_fulfillment.site_payment',
+    ])
+    expect(endpointProduct.operatorNoteRefs).toEqual(
+      expect.arrayContaining([
+        'operator_note.site_payment.customer_revenue_owner',
+      ]),
+    )
+    expect(
+      decodeOpenAgentsPaidEndpointProductCatalog({
+        products: [endpointProduct],
+      }).products[0],
+    ).toEqual(endpointProduct)
+    expect(
+      openAgentsSitePaymentCatalogHasPrivateMaterial(publicProjection),
+    ).toBe(false)
+  })
+
   test('integrates with paid endpoint product records and hosted checkout plans', () => {
     const catalog = sitePaymentCatalogFromManifest(catalogInput)
-    const productRecord = openAgentsPaidEndpointProductFromSitePaymentCatalogItem(
-      catalog.items[0]!,
-    )
-    const actionRecord = openAgentsPaidEndpointProductFromSitePaymentCatalogItem(
-      catalog.items[1]!,
-    )
+    const productRecord =
+      openAgentsPaidEndpointProductFromSitePaymentCatalogItem(catalog.items[0]!)
+    const actionRecord =
+      openAgentsPaidEndpointProductFromSitePaymentCatalogItem(catalog.items[1]!)
     const endpointCatalog = paidEndpointCatalogFromSitePaymentCatalog(catalog)
     const hostedPlan = {
       catalogRecord: catalog.items[0]!,
@@ -305,11 +381,14 @@ describe('OpenAgents Site payment catalog', () => {
       surface: 'site_checkout',
     })
     expect(endpointCatalog.products).toHaveLength(2)
-    expect(decodeOpenAgentsPaidEndpointProductCatalog(endpointCatalog))
-      .toEqual(endpointCatalog)
-    expect(S.decodeUnknownSync(OpenAgentsSitePaymentCatalogHostedCheckoutPlan)(
-      hostedPlan,
-    )).toEqual(hostedPlan)
+    expect(decodeOpenAgentsPaidEndpointProductCatalog(endpointCatalog)).toEqual(
+      endpointCatalog,
+    )
+    expect(
+      S.decodeUnknownSync(OpenAgentsSitePaymentCatalogHostedCheckoutPlan)(
+        hostedPlan,
+      ),
+    ).toEqual(hostedPlan)
   })
 
   test('rejects duplicate refs, unsafe metadata, raw payment material, and unsafe paths', () => {
@@ -367,6 +446,46 @@ describe('OpenAgents Site payment catalog', () => {
               interval: 'month',
               renewalReceiptScopeRefs: ['raw_invoice.lnbc2500n1unsafe'],
             },
+          },
+        ],
+      }),
+    ).toThrow(OpenAgentsSitePaymentCatalogUnsafe)
+    expect(() =>
+      decodeOpenAgentsSitePaymentCatalog({
+        items: [
+          {
+            ...catalog.items[0]!,
+            customerOwnedProcessor: {
+              chargeDestination: 'customer_account',
+              customerProcessorAccountRef:
+                'processor_account.vertical_checkout',
+              openAgentsMeteringRefs: [
+                'metering.openagents.business_fulfillment.site_payment',
+              ],
+              processor: 'stripe_connect',
+              processorConnectionRef: 'processor_connection.vertical_checkout',
+              revenueOwner: 'customer',
+            },
+          },
+        ],
+      }),
+    ).toThrow(OpenAgentsSitePaymentCatalogUnsafe)
+    expect(() =>
+      decodeOpenAgentsSitePaymentCatalog({
+        items: [
+          {
+            ...catalog.items[0]!,
+            customerOwnedProcessor: {
+              chargeDestination: 'customer_account',
+              customerProcessorAccountRef: 'acct_123raw',
+              openAgentsMeteringRefs: [
+                'metering.openagents.business_fulfillment.site_payment',
+              ],
+              processor: 'stripe_connect',
+              processorConnectionRef: 'processor_connection.vertical_checkout',
+              revenueOwner: 'customer',
+            },
+            provider: 'customer_owned_processor',
           },
         ],
       }),
