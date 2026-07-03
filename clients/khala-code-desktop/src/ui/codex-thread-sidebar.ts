@@ -4,8 +4,9 @@ import type {
   KhalaCodeDesktopCodexThreadResult,
   KhalaCodeDesktopMessage,
 } from "../shared/rpc"
-import type {
-  KhalaCodeDesktopCodexThreadSummary,
+import {
+  friendlyKhalaCodeCodexThreadOpenErrorMessage,
+  type KhalaCodeDesktopCodexThreadSummary,
 } from "../shared/codex-threads"
 import { iconElement } from "@openagentsinc/ui/icon-dom"
 import type { IconName } from "@openagentsinc/ui/icon"
@@ -339,7 +340,9 @@ export const mountCodexThreadSidebar = (
       selectingThreadId = null
       selectionError = {
         threadId,
-        message: error instanceof Error ? error.message : String(error),
+        message: friendlyKhalaCodeCodexThreadOpenErrorMessage(
+          error instanceof Error ? error.message : String(error),
+        ),
       }
       options.onThreadSelectionFailed?.({
         message: selectionError.message,

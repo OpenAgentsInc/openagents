@@ -1290,10 +1290,12 @@ describe("khala code desktop app shell", () => {
     expect(main).toContain("threadSidebar.selectAdjacentRecentThread(recentThreadCycleDirection)")
     expect(main).toContain("codexThreadRead({")
     expect(main).toContain("onThreadSelectionStarted: beginCodexThreadSwitch")
-    expect(main).toContain("isThreadStreaming: threadId => shellModel().activeCodexThreadId === threadId && shellModel().pendingTurn")
+    expect(main).toContain("isThreadStreaming,")
+    expect(main).toContain("const streamingThreadIds = new Map<string, string | null>()")
+    expect(main).toContain("const recomputePendingTurnForActiveThread = ()")
     expect(main).toContain("threadSidebar?.setActiveThreadId(shellModel().activeCodexThreadId)")
     expect(main).toContain(
-      "const request: KhalaCodeDesktopChatTurnRequest = {\n      ...(imageAttachments.length === 0 ? {} : { attachments: imageAttachments }),\n      messages: shellModel().messages,\n      sessionId,\n      ...(activeThreadId === null ? { startNewThread: true } : { threadId: activeThreadId }),\n      turnId,\n    }",
+      "const request: KhalaCodeDesktopChatTurnRequest = {\n      ...(imageAttachments.length === 0 ? {} : { attachments: imageAttachments }),\n      messages: shellModel().messages,\n      sessionId,\n      ...(submittedThreadId === null ? { startNewThread: true } : { threadId: submittedThreadId }),\n      turnId,\n    }",
     )
     expect(main).toContain("const imageAttachments = await imageAttachmentsForSubmit(attachments)")
     expect(panel).toContain("Search Codex threads")

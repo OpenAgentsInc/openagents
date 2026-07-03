@@ -54,6 +54,28 @@ export const displayableKhalaCodeCodexThreadListText = (value: unknown): string 
     : candidate
 }
 
+const KHALA_CODE_CODEX_THREAD_OPEN_INTERNAL_ERROR_PATTERNS: readonly RegExp[] = [
+  /no rollout found/iu,
+  /invalid session id/iu,
+  /thread not found/iu,
+]
+
+export const KHALA_CODE_CODEX_THREAD_OPEN_FRIENDLY_ERROR_MESSAGE =
+  "This chat couldn't be opened. Its session may be missing or unavailable — try again or start a new chat."
+
+/**
+ * Raw Codex app-server JSON-RPC error text (e.g. "no rollout found for
+ * thread id ...", "invalid session id: invalid character ...") that must
+ * never reach the user verbatim (khala_code.chat.thread_open_never_raw_error.v1).
+ */
+export const isKhalaCodeCodexThreadOpenInternalError = (message: string): boolean =>
+  KHALA_CODE_CODEX_THREAD_OPEN_INTERNAL_ERROR_PATTERNS.some(pattern => pattern.test(message))
+
+export const friendlyKhalaCodeCodexThreadOpenErrorMessage = (message: string): string =>
+  isKhalaCodeCodexThreadOpenInternalError(message)
+    ? KHALA_CODE_CODEX_THREAD_OPEN_FRIENDLY_ERROR_MESSAGE
+    : message
+
 export const normalizeThreadTimestampSeconds = (value: unknown): number | null => {
   const numeric = typeof value === "number"
     ? value

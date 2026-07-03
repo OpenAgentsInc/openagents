@@ -4770,6 +4770,71 @@ button {
   max-height: 32rem;
 }
 
+.tool-call-group {
+  width: 100%;
+  max-width: 100%;
+}
+.tool-call-group-summary {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  gap: 8px;
+  min-height: 28px;
+  padding: 4px 8px;
+  border: 1px solid color-mix(in srgb, var(--oa-color-khala-energy-line) 34%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--oa-color-khala-surface) 90%, transparent);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.tool-call-group-summary:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--oa-color-khala-energy-cyan) 76%, transparent);
+  outline-offset: -2px;
+}
+.tool-call-group-summary-icon {
+  flex: none;
+  width: 0.875rem;
+  height: 0.875rem;
+  color: color-mix(in srgb, var(--oa-color-khala-energy-cyan) 72%, var(--oa-color-khala-text-muted));
+}
+.tool-call-group-summary-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--oa-color-khala-success-text);
+  font-size: 0.73rem;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tool-call-group-summary-count {
+  flex: none;
+  min-width: 1.1rem;
+  padding: 0 0.3rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--oa-color-khala-energy-line) 24%, transparent);
+  color: color-mix(in srgb, var(--oa-color-khala-text-muted) 92%, transparent);
+  font-family: var(--oa-font-code);
+  font-size: 0.62rem;
+  text-align: center;
+}
+.tool-call-group-summary-chevron::before {
+  content: "\25B8";
+  display: inline-block;
+  transition: transform 120ms ease;
+  color: color-mix(in srgb, var(--oa-color-component-text) 50%, transparent);
+}
+.tool-call-group[data-expanded="true"] .tool-call-group-summary-chevron::before {
+  transform: rotate(90deg);
+}
+.tool-call-group-items {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 4px;
+}
+
 .khala-fleet-connect-cancel {
   font: inherit;
   font-size: 0.78rem;
