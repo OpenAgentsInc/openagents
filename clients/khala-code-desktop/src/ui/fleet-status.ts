@@ -89,6 +89,7 @@ type Handlers = Readonly<{
   onDelegateRun: () => void
   onFleetRunField: (field: keyof FleetRunFormState, value: string) => void
   onFleetRunControl: (verb: KhalaCodeDesktopFleetRunControlRequest["verb"]) => void
+  onFleetRunRetry: () => void
   onFleetWorkerControl: (
     card: KhalaFleetWorkerCard,
     verb: KhalaCodeDesktopFleetWorkerControlRequest["verb"],
@@ -168,9 +169,14 @@ type FleetRunView =
       readonly slots: readonly FleetRunPreviewSlot[]
     }
 
+type ActiveFleetRunError = Readonly<{
+  kind: "fleet_run_control" | "fleet_run_list"
+  message: string
+}>
+
 type ActiveFleetRunView = Readonly<{
   controlInFlight: KhalaCodeDesktopFleetRunControlRequest["verb"] | null
-  error: string | null
+  error: ActiveFleetRunError | null
   objective: string | null
   run: KhalaCodeDesktopFleetRunProjection | null
 }>
@@ -902,6 +908,28 @@ const renderFleetRunResult = (
   container.append(output)
 }
 
+const activeFleetRunErrorLabel = (
+  kind: ActiveFleetRunError["kind"],
+): string =>
+  kind === "fleet_run_list" ? "FleetRun list degraded" : "FleetRun control degraded"
+
+const renderActiveFleetRunError = (
+  container: HTMLElement,
+  error: ActiveFleetRunError,
+  handlers: Handlers,
+): void => {
+  const row = el("div", "khala-fleet-section-error")
+  row.dataset.errorKind = error.kind
+  row.append(
+    badge("degraded", activeFleetRunErrorLabel(error.kind)),
+    el("p", "khala-fleet-section-error-message", error.message),
+  )
+  const retry = iconButton("Retry", "Reload", "khala-fleet-refresh khala-fleet-section-retry")
+  retry.addEventListener("click", handlers.onFleetRunRetry)
+  row.append(retry)
+  container.append(row)
+}
+
 const renderFleetRunHeader = (
   container: HTMLElement,
   activeRun: ActiveFleetRunView,
@@ -909,11 +937,18 @@ const renderFleetRunHeader = (
   handlers: Handlers,
 ): void => {
   const run = activeRun.run
-  if (run === null) return
+  if (run === null && activeRun.error === null) return
 
   const section = el("section", "khala-fleet-section khala-fleet-run-header")
-  section.dataset.state = run.state
+  section.dataset.state = run?.state ?? "degraded"
   section.append(sectionHeader("Active FleetRun", "orchestration store"))
+
+  if (run === null) {
+    const error = activeRun.error
+    if (error !== null) renderActiveFleetRunError(section, error, handlers)
+    container.append(section)
+    return
+  }
 
   const objective = activeRun.objective ?? (
     run.objectiveProjected
@@ -965,7 +1000,7 @@ const renderFleetRunHeader = (
 
   section.append(objectiveNode, chips)
   if (activeRun.error !== null) {
-    section.append(el("p", "khala-fleet-error", activeRun.error))
+    renderActiveFleetRunError(section, activeRun.error, handlers)
   }
   section.append(controls)
   container.append(section)
@@ -1726,6 +1761,7 @@ export const mountFleetPanel = (
       paint()
     },
     onFleetRunControl: verb => onFleetRunControl(verb),
+    onFleetRunRetry: () => void refresh(),
     onFleetWorkerControl: (card, verb) => onFleetWorkerControl(card, verb),
     onFleetRunPreview: () => {
       const preview = fleetRunPreview()
@@ -1840,7 +1876,10 @@ export const mountFleetPanel = (
         activeRun = {
           ...activeRun,
           controlInFlight: null,
-          error: error instanceof Error ? error.message : String(error),
+          error: {
+            kind: "fleet_run_control",
+            message: error instanceof Error ? error.message : String(error),
+          },
         }
         paint()
       }
@@ -2031,29 +2070,59 @@ export const mountFleetPanel = (
     } else {
       syncCockpit()
     }
+
+    const [dataResult, listResult] = await Promise.allSettled([
+      options.fetch(),
+      options.fleetRunList(),
+    ] as const)
+
     try {
-      const [data, list] = await Promise.all([
-        options.fetch(),
-        options.fleetRunList(),
-      ])
-      lastData = data
-      fleetLoadError = null
-      const selected = selectActiveFleetRun(list.runs)
-      activeRun = {
-        controlInFlight: activeRun.controlInFlight,
-        error: null,
-        objective: selected === null
+      if (dataResult.status === "fulfilled") {
+        lastData = dataResult.value
+        fleetLoadError = null
+      } else if (lastData === null) {
+        fleetLoadError = dataResult.reason instanceof Error
+          ? dataResult.reason.message
+          : String(dataResult.reason)
+      }
+
+      if (listResult.status === "fulfilled") {
+        const selected = selectActiveFleetRun(listResult.value.runs)
+        const listError: ActiveFleetRunError | null = listResult.value.ok
           ? null
-          : objectiveByRunRef.get(selected.runRef) ?? (
-              activeRun.run?.runRef === selected.runRef ? activeRun.objective : null
-            ),
-        run: selected,
+          : {
+              kind: "fleet_run_list",
+              message: "fleetRunList returned ok=false.",
+            }
+        activeRun = {
+          controlInFlight: activeRun.controlInFlight,
+          error: listError,
+          objective: selected === null
+            ? null
+            : objectiveByRunRef.get(selected.runRef) ?? (
+                activeRun.run?.runRef === selected.runRef ? activeRun.objective : null
+              ),
+          run: selected,
+        }
+        paint()
+        return
+      }
+
+      const message = listResult.reason instanceof Error
+        ? listResult.reason.message
+        : String(listResult.reason)
+      activeRun = {
+        ...activeRun,
+        controlInFlight: null,
+        error: {
+          kind: "fleet_run_list",
+          message,
+        },
       }
       paint()
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-      if (lastData === null) {
-        fleetLoadError = message
+    } finally {
+      if (dataResult.status === "rejected" && lastData === null) {
+        const message = fleetLoadError ?? "unknown error"
         const errorView: FleetView = { phase: "error", message }
         syncCockpit(errorView)
         render(
@@ -2070,15 +2139,7 @@ export const mountFleetPanel = (
           optimizationRun,
           now(),
         )
-      } else {
-        activeRun = {
-          ...activeRun,
-          controlInFlight: null,
-          error: message,
-        }
-        paint()
       }
-    } finally {
       inFlight = false
       syncCockpit()
     }

@@ -1178,6 +1178,21 @@ const errorStateAction = (
 const errorStateScenarioPhases = (
   entry: typeof KHALA_CODE_QA_ERROR_STATE_CASES[number],
 ): KhalaCodeQaScenario["phases"] => {
+  if (entry.caseId === "single_rpc_failure_partial_degradation") {
+    return [{
+      name: "fleet-panel-partial-degradation",
+      act: [
+        errorStateArmAction(entry.caseId),
+        { kind: "hotbar", target: "fleet" },
+        { kind: "rpc_call", method: "codexFleetStatus" },
+        { kind: "rpc_call", method: "fleetRunList", args: [{}] },
+      ],
+      expect: [
+        schema("codexFleetStatus"),
+        ...errorStateExpectations(entry.caseId, "fleetRunList"),
+      ],
+    }]
+  }
   if (entry.caseId === "app_server_crash_restart") {
     return [
       {

@@ -604,6 +604,63 @@ describe("Fleet status panel", () => {
     expect(root.textContent).toContain("failed1")
   })
 
+  test("keeps account data visible when fleetRunList fails and retries that section", async () => {
+    const root = document.createElement("div")
+    let listCalls = 0
+    const panel = mountFleetPanel(root, {
+      connectAccount: async () => ({
+        ok: false,
+        accountRef: "codex-test",
+        error: "disabled",
+        output: "",
+        userCode: null,
+        verificationUrl: null,
+      }),
+      delegateRun: async () => {
+        throw new Error("delegate runner should not be called")
+      },
+      fetch: async () => status(),
+      fleetRunControl: async () => {
+        throw new Error("fleet run control should not be called")
+      },
+      fleetRunList: async () => {
+        listCalls += 1
+        if (listCalls === 1) throw new Error("fleetRunList failed with 500")
+        return { ok: true, runs: [fleetRunProjection()] }
+      },
+      fleetRunStart: async request => runStartResult(request),
+      fleetWorkerControl: async () => {
+        throw new Error("fleet worker control should not be called")
+      },
+      loadGymDemoProof: () => {
+        throw new Error("gym proof should not be called")
+      },
+      openExternal: async () => false,
+      removeAccount: async () => ({ ok: true }),
+      setAccountPaused: async () => ({ ok: true }),
+      consumeResetCredit: async () => ({ ok: true }),
+      startDelegationOptimization: async () => {
+        throw new Error("optimization should not be called")
+      },
+    })
+
+    await panel.refresh()
+
+    expect(root.textContent).toContain("Worker Codex accounts")
+    expect(root.textContent).toContain("codex-a")
+    expect(root.textContent).toContain("FleetRun list degraded")
+    expect(root.textContent).toContain("fleetRunList failed with 500")
+    expect(root.textContent).toContain("Retry")
+    expect(root.textContent).not.toContain("Could not load fleet status")
+
+    clickButton(root, "Retry")
+    await flushPanelWork()
+
+    expect(listCalls).toBe(2)
+    expect(root.textContent).toContain("fleet.run.public.test")
+    expect(root.textContent).not.toContain("FleetRun list degraded")
+  })
+
   test("wires every FleetRun control transition through mocked RPC and renders returned state", async () => {
     const root = document.createElement("div")
     let currentRun = fleetRunProjection({ state: "running" })
