@@ -9,6 +9,7 @@ import {
   type BusinessServicePromiseRecord,
   BUSINESS_FULFILLMENT_LOOP_AGENT_DEFINITION_REF,
   BusinessFulfillmentLoopValidationError,
+  buildBusinessFulfillmentEscalationPageReceipt,
   buildBusinessFulfillmentMotionReceipt,
   makeD1BusinessFulfillmentLoopStore,
   runBusinessFulfillmentLoop,
@@ -20,10 +21,13 @@ const activePromise = (
   overrides?: Partial<BusinessServicePromiseRecord>,
 ): BusinessServicePromiseRecord => ({
   acceptedOutcomeContractId: 'omni_accepted_outcome_contract.business_001',
+  blockedAt: null,
+  blockingReasonRef: null,
   cadence: 'daily',
   createdAt: '2026-07-02T00:00:00.000Z',
   crmStateRef: 'crm_state.business.promise_001.public_safe',
   id: 'business_service_promise_001',
+  lastEscalationPageRef: null,
   lastMotionReceiptRef: null,
   nextMotionDueAt: '2026-07-03T00:00:00.000Z',
   promiseRef: 'promise.business.fulfillment.001',
@@ -88,10 +92,16 @@ const makeDb = (): D1Database => {
   const db = new DatabaseSync(':memory:')
   db.exec(migration('0091_omni_accepted_outcome_contracts.sql'))
   db.exec(migration('0274_business_fulfillment_loop.sql'))
+  db.exec(migration('0275_business_fulfillment_escalation_pages.sql'))
   return new SqliteD1(db) as unknown as D1Database
 }
 
 class MemoryFulfillmentLoopStore implements BusinessFulfillmentLoopStore {
+  public readonly escalationPages = new Map<string, string>()
+  public readonly escalationUpdates: Array<{
+    pageRef: string
+    promiseId: string
+  }> = []
   public readonly receipts = new Map<string, string>()
   public readonly updates: Array<{
     nextMotionDueAt: string
@@ -102,6 +112,19 @@ class MemoryFulfillmentLoopStore implements BusinessFulfillmentLoopStore {
   constructor(
     private readonly promises: ReadonlyArray<BusinessServicePromiseRecord>,
   ) {}
+
+  async claimBlockedPromisePage(receipt: {
+    escalationDate: string
+    pageRef: string
+    promiseId: string
+  }): Promise<Readonly<{ claimed: boolean }>> {
+    const key = `${receipt.promiseId}:${receipt.escalationDate}`
+    if (this.escalationPages.has(key)) {
+      return { claimed: false }
+    }
+    this.escalationPages.set(key, receipt.pageRef)
+    return { claimed: true }
+  }
 
   async claimDailyMotionReceipt(receipt: {
     motionDate: string
@@ -116,6 +139,19 @@ class MemoryFulfillmentLoopStore implements BusinessFulfillmentLoopStore {
     return { claimed: true }
   }
 
+  async listBlockedPromises(
+    nowIso: string,
+    limit: number,
+  ): Promise<ReadonlyArray<BusinessServicePromiseRecord>> {
+    void nowIso
+    return this.promises
+      .filter(
+        promise =>
+          promise.state === 'blocked' && promise.blockingReasonRef !== null,
+      )
+      .slice(0, limit)
+  }
+
   async listDuePromises(
     nowIso: string,
     limit: number,
@@ -127,6 +163,13 @@ class MemoryFulfillmentLoopStore implements BusinessFulfillmentLoopStore {
           (promise.nextMotionDueAt === null || promise.nextMotionDueAt <= nowIso),
       )
       .slice(0, limit)
+  }
+
+  async markPromiseEscalationRecorded(
+    promiseId: string,
+    pageRef: string,
+  ): Promise<void> {
+    this.escalationUpdates.push({ pageRef, promiseId })
   }
 
   async markPromiseMotionRecorded(
@@ -172,7 +215,10 @@ describe('business fulfillment loop', () => {
     )
 
     expect(result).toEqual({
+      blockedPromiseCount: 0,
       duePromiseCount: 1,
+      escalationPageRefs: [],
+      escalationSkippedDuplicateCount: 0,
       motionReceiptRefs: [
         'receipt.business_fulfillment.daily_motion.promise_business_fulfillment_001_2026_07_03',
       ],
@@ -192,7 +238,10 @@ describe('business fulfillment loop', () => {
       runBusinessFulfillmentLoop({ runtime, store }),
     )
     expect(duplicate).toMatchObject({
+      blockedPromiseCount: 0,
       duePromiseCount: 1,
+      escalationPageRefs: [],
+      escalationSkippedDuplicateCount: 0,
       motionReceiptRefs: [],
       skippedDuplicateCount: 1,
       state: 'completed',
@@ -206,7 +255,10 @@ describe('business fulfillment loop', () => {
     await expect(
       Effect.runPromise(runBusinessFulfillmentLoop({ runtime, store: pausedStore })),
     ).resolves.toMatchObject({
+      blockedPromiseCount: 0,
       duePromiseCount: 0,
+      escalationPageRefs: [],
+      escalationSkippedDuplicateCount: 0,
       motionReceiptRefs: [],
       state: 'skipped',
     })
@@ -224,6 +276,62 @@ describe('business fulfillment loop', () => {
     expect((caught as BusinessFulfillmentLoopValidationError).reason).toContain(
       'opaque public-safe ref',
     )
+  })
+
+  test('blocked promises page the operator with the blocking reason ref', async () => {
+    const promise = activePromise({
+      blockedAt: '2026-07-03T09:00:00.000Z',
+      blockingReasonRef: 'blocker.business_fulfillment.customer_asset_missing',
+      state: 'blocked',
+    })
+    const receipt = buildBusinessFulfillmentEscalationPageReceipt(promise, runtime)
+
+    expect(receipt).toMatchObject({
+      agentDefinitionRef: BUSINESS_FULFILLMENT_LOOP_AGENT_DEFINITION_REF,
+      blockedAt: '2026-07-03T09:00:00.000Z',
+      blockingReasonRef:
+        'blocker.business_fulfillment.customer_asset_missing',
+      ownerNotificationRef:
+        'notification.owner.business_fulfillment.blocked_promise.promise_business_fulfillment_001_2026_07_03',
+      pageRef:
+        'page.owner.business_fulfillment.blocked_promise.promise_business_fulfillment_001_2026_07_03',
+      receiptRef:
+        'receipt.business_fulfillment.blocked_promise_page.promise_business_fulfillment_001_2026_07_03',
+    })
+    expect(JSON.stringify(receipt)).not.toMatch(/@|customer_email|raw_crm/i)
+
+    const store = new MemoryFulfillmentLoopStore([promise])
+    const first = await Effect.runPromise(
+      runBusinessFulfillmentLoop({ runtime, store }),
+    )
+    const second = await Effect.runPromise(
+      runBusinessFulfillmentLoop({ runtime, store }),
+    )
+
+    expect(first).toEqual({
+      blockedPromiseCount: 1,
+      duePromiseCount: 0,
+      escalationPageRefs: [
+        'page.owner.business_fulfillment.blocked_promise.promise_business_fulfillment_001_2026_07_03',
+      ],
+      escalationSkippedDuplicateCount: 0,
+      motionReceiptRefs: [],
+      skippedDuplicateCount: 0,
+      state: 'completed',
+    })
+    expect(store.escalationUpdates).toEqual([
+      {
+        pageRef:
+          'page.owner.business_fulfillment.blocked_promise.promise_business_fulfillment_001_2026_07_03',
+        promiseId: 'business_service_promise_001',
+      },
+    ])
+    expect(second).toMatchObject({
+      blockedPromiseCount: 1,
+      escalationPageRefs: [],
+      escalationSkippedDuplicateCount: 1,
+      state: 'completed',
+    })
   })
 
   test('D1 store claims one daily receipt per active service promise', async () => {
@@ -301,7 +409,10 @@ describe('business fulfillment loop', () => {
       }>()
 
     expect(first).toEqual({
+      blockedPromiseCount: 0,
       duePromiseCount: 1,
+      escalationPageRefs: [],
+      escalationSkippedDuplicateCount: 0,
       motionReceiptRefs: [
         'receipt.business_fulfillment.daily_motion.promise_business_fulfillment_d1_2026_07_03',
       ],
@@ -309,7 +420,10 @@ describe('business fulfillment loop', () => {
       state: 'completed',
     })
     expect(second).toMatchObject({
+      blockedPromiseCount: 0,
       duePromiseCount: 0,
+      escalationPageRefs: [],
+      escalationSkippedDuplicateCount: 0,
       motionReceiptRefs: [],
       skippedDuplicateCount: 0,
       state: 'skipped',
@@ -327,6 +441,113 @@ describe('business fulfillment loop', () => {
       last_motion_receipt_ref:
         'receipt.business_fulfillment.daily_motion.promise_business_fulfillment_d1_2026_07_03',
       next_motion_due_at: '2026-07-04T12:00:00.000Z',
+    })
+  })
+
+  test('D1 store claims one blocked-promise page per day', async () => {
+    const db = makeDb()
+    await db
+      .prepare(
+        `INSERT INTO business_service_promises (
+          id,
+          promise_ref,
+          accepted_outcome_contract_id,
+          workspace_ref,
+          crm_state_ref,
+          stakeholder_refs_json,
+          state,
+          cadence,
+          next_motion_due_at,
+          last_motion_receipt_ref,
+          blocking_reason_ref,
+          blocked_at,
+          last_escalation_page_ref,
+          source_refs_json,
+          metadata_json,
+          created_at,
+          updated_at
+        ) VALUES (?, ?, NULL, ?, ?, ?, 'blocked', 'daily', NULL, NULL, ?, ?, NULL, ?, '{}', ?, ?)`,
+      )
+      .bind(
+        'business_service_promise_blocked_d1',
+        'promise.business.fulfillment.blocked_d1',
+        'workspace.business.fulfillment.blocked_d1',
+        'crm_state.business.promise_blocked_d1.public_safe',
+        JSON.stringify(['stakeholder.business.operator']),
+        'blocker.business_fulfillment.operator_decision_needed',
+        '2026-07-03T09:00:00.000Z',
+        JSON.stringify(['docs/fable/ROADMAP_BIZ.md#BF-5.4']),
+        '2026-07-02T00:00:00.000Z',
+        '2026-07-03T09:00:00.000Z',
+      )
+      .run()
+
+    const first = await Effect.runPromise(
+      runBusinessFulfillmentLoop({
+        runtime,
+        store: makeD1BusinessFulfillmentLoopStore(db),
+      }),
+    )
+    const second = await Effect.runPromise(
+      runBusinessFulfillmentLoop({
+        runtime,
+        store: makeD1BusinessFulfillmentLoopStore(db),
+      }),
+    )
+    const pageRow = await db
+      .prepare(
+        `SELECT page_ref,
+                owner_notification_ref,
+                blocking_reason_ref,
+                blocked_at
+           FROM business_fulfillment_escalation_pages
+          WHERE promise_id = ?`,
+      )
+      .bind('business_service_promise_blocked_d1')
+      .first<{
+        blocked_at: string
+        blocking_reason_ref: string
+        owner_notification_ref: string
+        page_ref: string
+      }>()
+    const promiseRow = await db
+      .prepare(
+        `SELECT last_escalation_page_ref
+           FROM business_service_promises
+          WHERE id = ?`,
+      )
+      .bind('business_service_promise_blocked_d1')
+      .first<{ last_escalation_page_ref: string }>()
+
+    expect(first).toEqual({
+      blockedPromiseCount: 1,
+      duePromiseCount: 0,
+      escalationPageRefs: [
+        'page.owner.business_fulfillment.blocked_promise.promise_business_fulfillment_blocked_d1_2026_07_03',
+      ],
+      escalationSkippedDuplicateCount: 0,
+      motionReceiptRefs: [],
+      skippedDuplicateCount: 0,
+      state: 'completed',
+    })
+    expect(second).toMatchObject({
+      blockedPromiseCount: 1,
+      escalationPageRefs: [],
+      escalationSkippedDuplicateCount: 1,
+      state: 'completed',
+    })
+    expect(pageRow).toMatchObject({
+      blocked_at: '2026-07-03T09:00:00.000Z',
+      blocking_reason_ref:
+        'blocker.business_fulfillment.operator_decision_needed',
+      owner_notification_ref:
+        'notification.owner.business_fulfillment.blocked_promise.promise_business_fulfillment_blocked_d1_2026_07_03',
+      page_ref:
+        'page.owner.business_fulfillment.blocked_promise.promise_business_fulfillment_blocked_d1_2026_07_03',
+    })
+    expect(promiseRow).toMatchObject({
+      last_escalation_page_ref:
+        'page.owner.business_fulfillment.blocked_promise.promise_business_fulfillment_blocked_d1_2026_07_03',
     })
   })
 })
