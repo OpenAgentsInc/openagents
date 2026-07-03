@@ -317,6 +317,9 @@ import { makeCrmMcpRoutes } from './crm-mcp-routes'
 import { isCrmResendSendEnabled, makeCrmResendSender } from './crm-resend'
 import { makeCrmResendRoutes } from './crm-resend-routes'
 import { makeCrmRoutes } from './crm-routes'
+import { routePublicAgentMcpRequest } from './public-agent-mcp-routes'
+import { routeSiteCrawlSurfaceRequest } from './site-crawl-surfaces-routes'
+import { routeWellKnownAgentSurfaceRequest } from './well-known-agent-surfaces-routes'
 import { makeCrmSendRoutes } from './crm-send-routes'
 import { makeInMemoryCodingQuickWinPaidDeliveryClaimStore } from './coding-quick-win-claim-upgrade'
 import { makeCodingQuickWinReceiptPublicRoutes } from './coding-quick-win-receipt-public-routes'
@@ -13995,7 +13998,10 @@ const routeRequest = makeWorkerRouteRequest({
     crmMcpDiscoveryRoutes.routeCrmMcpDiscoveryRequest(request, env, ctx) ??
     crmMcpGrantRoutes.routeCrmMcpGrantRequest(request, env, ctx) ??
     crmMcpRoutes.routeCrmMcpRequest(request, env, ctx) ??
-    crmRoutes.routeCrmRequest(request, env, ctx),
+    crmRoutes.routeCrmRequest(request, env, ctx) ??
+    routePublicAgentMcpRequest(request, env, ctx) ??
+    routeWellKnownAgentSurfaceRequest(request, env, ctx) ??
+    routeSiteCrawlSurfaceRequest(request, env, ctx),
   routeOnboardingRequest: onboardingRoutes.routeOnboardingRequest,
   routeNexusPylonVisibilityRequest:
     nexusPylonVisibilityRoutes.routeNexusPylonVisibilityRequest,

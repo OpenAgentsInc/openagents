@@ -43,6 +43,14 @@
       title="OpenAgents capability manifest"
       href="/.well-known/openagents.json"
     />
+    <link
+      rel="service-desc"
+      type="application/json"
+      title="OpenAgents MCP server manifest"
+      href="/.well-known/mcp.json"
+    />
+    <link rel="ai-catalog" href="/.well-known/ai-catalog.json" />
+    <link rel="sitemap" type="application/xml" title="Sitemap" href="/sitemap.xml" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -63,6 +71,21 @@
         "alternateName": "OpenAgents.com",
         "url": "https://openagents.com/",
         "description": "OpenAgents builds public, verifiable AI agents for coding, research, payments, and operational work."
+      }
+    </script>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "Organization",
+        "name": "OpenAgents",
+        "alternateName": ["OpenAgents.com", "OpenAgentsInc"],
+        "url": "https://openagents.com/",
+        "logo": "https://openagents.com/icon.svg",
+        "description": "OpenAgents builds public, verifiable AI agents for coding, research, payments, and operational work.",
+        "sameAs": [
+          "https://github.com/OpenAgentsInc/openagents",
+          "https://x.com/OpenAgents"
+        ]
       }
     </script>
   </head>
