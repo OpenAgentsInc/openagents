@@ -262,6 +262,16 @@ revokes recorded token refs from Pylon closeout. The D1 migration is
 definition-run, Forge auth-store, smart-Git intake, and coordination-store
 tests.
 
+BA-D2 status (2026-07-03): definition dispatch now attaches ref-only
+`scmAuthBroker` metadata to delegated `git_checkout` workspaces after the
+Forge token ref is minted. The Pylon workspace materializer validates that
+broker metadata, writes a per-workspace Git credential helper/config under
+Git's private admin directory, scopes helper use by protocol + host + path, uses
+a bounded cache, and fails closed unless an assignment explicitly asks for
+anonymous read-only fallback. Regression coverage lives in
+`apps/pylon/tests/workspace-materializer.test.ts` and
+`apps/openagents.com/workers/api/src/agent-definition-run-routes.test.ts`.
+
 | Task | Description | Deps | Delegable | Issue |
 | --- | --- | --- | --- | --- |
 | BA-D1 | Per-task short-TTL scoped git tokens: dispatch mints a Forge tenant git token scoped to the task's repository ref with a bounded TTL and (where the scope model allows) ref-level restriction; token refs recorded on the work record; revocation on closeout | — | MED | [#8200](https://github.com/OpenAgentsInc/openagents/issues/8200) |

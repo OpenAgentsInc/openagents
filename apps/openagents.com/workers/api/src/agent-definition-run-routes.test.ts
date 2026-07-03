@@ -815,7 +815,29 @@ describe('agent definition run routes', () => {
       codex: {
         timeoutSeconds: 900,
       },
+      workspace: {
+        scmAuthBroker: {
+          schema: 'openagents.pylon.scm_auth_broker.v1',
+          kind: 'forge_git_access',
+          brokerUrl: 'https://openagents.com/api/pylon/forge/git-credentials',
+          authRefs: [
+            'forge_git_token.background_agent.agent_definition_run.run_001.receive_pack',
+          ],
+          repositoryRef: 'repo.openagents.openagents',
+          allowed: {
+            protocol: 'https',
+            host: 'openagents.com',
+            pathPrefix:
+              '/git/tenant.openagents.background_agents/repo.openagents.openagents.git',
+          },
+          cacheTtlSeconds: 60,
+          fallback: 'fail_closed',
+        },
+      },
     })
+    expect(JSON.stringify(pylon.assignments[0]?.codingAssignment)).not.toContain(
+      'oa_forge_git_',
+    )
     expect(runStore.rows[0]?.budgetCreditsReserved).toBe(0)
 
     const replay = await routeDurableInferenceReadRequestDO(

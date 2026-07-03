@@ -124,6 +124,14 @@ More specific invariant ledgers apply inside imported apps and packages.
   lives in `workers/api/src/agent-definition-run-routes.test.ts`,
   `workers/api/src/forge-tenant-git-auth-store.test.ts`, and
   `workers/api/src/forge-git-intake-routes.test.ts`.
+- Definition-backed Pylon `git_checkout` workspaces that need Forge SCM access
+  must receive only ref-only broker metadata (`scmAuthBroker`), never an
+  embedded SCM token, PAT, credentialed URL, or long-lived secret. The Pylon
+  workspace materializer owns the worker-side Git credential helper install:
+  helper config lives under Git's private admin directory, is scoped by
+  protocol + host + path, uses a bounded short cache, reads control-plane auth
+  only from the Pylon process environment, and fails closed unless the
+  assignment explicitly allows anonymous read-only fallback.
 - Runtime runs may link back to `agentDefinitionId` as evidence that a run was
   definition-backed, but that link alone grants no tool, spend, dispatch,
   payout, settlement, public-claim, provider-account, or external-send
@@ -196,7 +204,10 @@ More specific invariant ledgers apply inside imported apps and packages.
   owner-scoped dispatch, and
   `apps/openagents.com/workers/api/src/agent-definition-run-routes.test.ts` for
   dispatch budget refusals, capped assignment timeouts, owner-scoped run
-  history, receipt refs, and manual run-now, plus
+  history, receipt refs, manual run-now, and ref-only SCM auth broker
+  projection, plus
+  `apps/pylon/tests/workspace-materializer.test.ts` for broker metadata
+  validation and worker-side Git credential helper installation, plus
   `packages/agent-runtime-schema/src/index.test.ts` for reusable fixtures that
   cover every supported trigger type.
 

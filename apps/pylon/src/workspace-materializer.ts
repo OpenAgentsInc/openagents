@@ -1,5 +1,5 @@
 import { existsSync, realpathSync } from "node:fs"
-import { mkdir, readdir, readFile, rm, stat, utimes, writeFile } from "node:fs/promises"
+import { chmod, mkdir, readdir, readFile, rm, stat, utimes, writeFile } from "node:fs/promises"
 import { dirname, join, resolve } from "node:path"
 import { createHash } from "node:crypto"
 import { Context, Effect, Layer, type Scope } from "effect"
@@ -40,6 +40,30 @@ export type GitCheckoutWorkspace = {
     args: string[]
     commandRef: string
   }
+  scmAuthBroker?: ScmAuthBrokerConfig
+}
+
+export const SCM_AUTH_BROKER_SCHEMA = "openagents.pylon.scm_auth_broker.v1"
+export const SCM_AUTH_BROKER_HELPER_REF = "helper.pylon.scm_auth_broker.git_credential.v1"
+export const SCM_AUTH_BROKER_DEFAULT_CACHE_TTL_SECONDS = 60
+export const SCM_AUTH_BROKER_MAX_CACHE_TTL_SECONDS = 60 * 60
+
+export type ScmAuthBrokerFallback = "anonymous_read_only" | "fail_closed"
+
+export type ScmAuthBrokerConfig = {
+  schema: typeof SCM_AUTH_BROKER_SCHEMA
+  kind: "forge_git_access"
+  brokerUrl: string
+  authRefs: string[]
+  repositoryRef: string
+  allowed: {
+    protocol: "https"
+    host: string
+    pathPrefix: string
+  }
+  cacheTtlSeconds?: number
+  fallback?: ScmAuthBrokerFallback
+  username?: string
 }
 
 export type WorkspaceCheckoutRunner = (
@@ -146,6 +170,66 @@ const gitBranchNamePattern =
 const gitCommitShaPattern = /^[a-f0-9]{40}$/i
 const publicRefPattern = /^[A-Za-z0-9_.:/=@+-]{1,160}$/
 const verificationCommandArgPattern = /^[A-Za-z0-9_./:=@+-]{1,120}$/
+const scmBrokerHostPattern = /^[A-Za-z0-9.-]{1,120}$/
+const scmBrokerPathPrefixPattern = /^\/?[A-Za-z0-9_.:/=@+-]{1,240}$/
+const scmBrokerUsernamePattern = /^[A-Za-z0-9_.:@+-]{1,80}$/
+const rawCredentialMaterialPattern =
+  /(bearer\s+|gho_[A-Za-z0-9_]+|ghp_[A-Za-z0-9_]+|github_pat_[A-Za-z0-9_]+|oa_forge_git_[A-Za-z0-9_]+|password=|secret|token_value|credential_value|sk-[A-Za-z0-9_-]{16,})/i
+
+function boundedScmAuthBrokerCacheTtlSeconds(value: unknown): number | undefined {
+  if (value === undefined) return undefined
+  if (typeof value !== "number") return undefined
+  if (!Number.isInteger(value) || value < 0 || value > SCM_AUTH_BROKER_MAX_CACHE_TTL_SECONDS) {
+    return undefined
+  }
+  return value
+}
+
+function scmAuthBrokerFrom(value: unknown): ScmAuthBrokerConfig | null | undefined {
+  if (value === undefined) return undefined
+  if (value === null || typeof value !== "object") return null
+  const payload = value as ScmAuthBrokerConfig
+  if (payload.schema !== SCM_AUTH_BROKER_SCHEMA || payload.kind !== "forge_git_access") return null
+  if (typeof payload.brokerUrl !== "string" || rawCredentialMaterialPattern.test(payload.brokerUrl)) return null
+  let brokerUrl: URL
+  try {
+    brokerUrl = new URL(payload.brokerUrl)
+  } catch {
+    return null
+  }
+  if (brokerUrl.protocol !== "https:" || brokerUrl.username !== "" || brokerUrl.password !== "") return null
+  if (!Array.isArray(payload.authRefs) || payload.authRefs.length === 0 || payload.authRefs.length > 8) return null
+  if (!payload.authRefs.every((ref) => publicRefPattern.test(ref) && !rawCredentialMaterialPattern.test(ref))) return null
+  if (typeof payload.repositoryRef !== "string" || !publicRefPattern.test(payload.repositoryRef)) return null
+  if (rawCredentialMaterialPattern.test(payload.repositoryRef)) return null
+  if (payload.allowed?.protocol !== "https") return null
+  if (typeof payload.allowed.host !== "string" || !scmBrokerHostPattern.test(payload.allowed.host)) return null
+  if (typeof payload.allowed.pathPrefix !== "string" || !scmBrokerPathPrefixPattern.test(payload.allowed.pathPrefix)) {
+    return null
+  }
+  const normalizedPathPrefix = `/${payload.allowed.pathPrefix.replace(/^\/+/, "")}`
+  if (normalizedPathPrefix.includes("..")) return null
+  const cacheTtlSeconds = boundedScmAuthBrokerCacheTtlSeconds(payload.cacheTtlSeconds)
+  if (payload.cacheTtlSeconds !== undefined && cacheTtlSeconds === undefined) return null
+  const fallback = payload.fallback ?? "fail_closed"
+  if (fallback !== "fail_closed" && fallback !== "anonymous_read_only") return null
+  if (payload.username !== undefined && !scmBrokerUsernamePattern.test(payload.username)) return null
+  return {
+    schema: SCM_AUTH_BROKER_SCHEMA,
+    kind: "forge_git_access",
+    brokerUrl: brokerUrl.toString(),
+    authRefs: [...payload.authRefs],
+    repositoryRef: payload.repositoryRef,
+    allowed: {
+      protocol: "https",
+      host: payload.allowed.host.toLowerCase(),
+      pathPrefix: normalizedPathPrefix,
+    },
+    ...(cacheTtlSeconds === undefined ? {} : { cacheTtlSeconds }),
+    fallback,
+    ...(payload.username === undefined ? {} : { username: payload.username }),
+  }
+}
 
 /**
  * Decodes and validates the shared git_checkout workspace payload from a
@@ -172,7 +256,14 @@ export function gitCheckoutWorkspaceFrom(codingAssignment: unknown): GitCheckout
     !arg.includes("..") &&
     !arg.startsWith("/")
   )
-  return safeArgs ? payload : null
+  const scmAuthBroker = scmAuthBrokerFrom(payload.scmAuthBroker)
+  if (scmAuthBroker === null) return null
+  return safeArgs
+    ? {
+        ...payload,
+        ...(scmAuthBroker === undefined ? {} : { scmAuthBroker }),
+      }
+    : null
 }
 
 function virtualBranchIsValid(virtualBranch: GitCheckoutWorkspace["virtualBranch"] | undefined): boolean {
@@ -282,6 +373,279 @@ async function runCheckedCommand(args: string[], cwd: string, reasonRef?: string
     if (reasonRef !== undefined) throw new WorkspaceCheckoutError(reasonRef)
     throw new Error(`command failed: ${args[0] ?? "unknown"}`)
   }
+}
+
+function shellSingleQuote(value: string): string {
+  return `'${value.replaceAll("'", "'\\''")}'`
+}
+
+export type GitCredentialHelperRuntimePaths = {
+  gitDirectory: string
+  configPath: string
+  gitConfigPath: string
+  helperPath: string
+  cachePath: string
+}
+
+async function gitAdminDirectoryFor(cwd: string): Promise<string> {
+  const gitDir = await runTextCommand(["git", "rev-parse", "--git-dir"], cwd)
+  if (gitDir.exitCode !== 0) {
+    throw new WorkspaceCheckoutError("reason.workspace_checkout.git_dir_unavailable")
+  }
+  const value = gitDir.stdout.trim()
+  if (value.length === 0) {
+    throw new WorkspaceCheckoutError("reason.workspace_checkout.git_dir_unavailable")
+  }
+  return resolve(cwd, value)
+}
+
+export async function gitCredentialHelperRuntimePathsFor(
+  gitWorktreeOrDirectory: string,
+): Promise<GitCredentialHelperRuntimePaths> {
+  const gitDirectory = await gitAdminDirectoryFor(gitWorktreeOrDirectory)
+  return {
+    cachePath: join(gitDirectory, "pylon-scm-auth-cache.json"),
+    configPath: join(gitDirectory, "pylon-scm-auth-broker.json"),
+    gitConfigPath: join(gitDirectory, "pylon-scm-auth-broker.gitconfig"),
+    gitDirectory,
+    helperPath: join(gitDirectory, "pylon-git-credential-helper.mjs"),
+  }
+}
+
+const GIT_CREDENTIAL_HELPER_SCRIPT = `#!/usr/bin/env bun
+import { chmod, readFile, writeFile } from "node:fs/promises"
+
+const CONFIG_PATH = process.argv[2]
+const OPERATION = process.argv[3] || "get"
+const MAX_CACHE_TTL_SECONDS = 60 * 60
+const SKEW_MS = 30 * 1000
+
+const readStdin = async () => {
+  let input = ""
+  for await (const chunk of process.stdin) input += chunk
+  return input
+}
+
+const parseCredentialInput = (input) => {
+  const record = {}
+  for (const line of input.split(/\\r?\\n/)) {
+    if (line.length === 0) continue
+    const index = line.indexOf("=")
+    if (index <= 0) continue
+    record[line.slice(0, index)] = line.slice(index + 1)
+  }
+  return record
+}
+
+const fail = (config, reason) => {
+  if (config.fallback === "anonymous_read_only") process.exit(0)
+  process.stderr.write("pylon git credential helper refused: " + reason + "\\n")
+  process.exit(1)
+}
+
+const normalizedPath = (value) => "/" + String(value || "").replace(/^\\/+/, "")
+
+const inScope = (config, request) => {
+  if (request.protocol !== config.allowed.protocol) return false
+  if (String(request.host || "").toLowerCase() !== config.allowed.host) return false
+  return normalizedPath(request.path).startsWith(config.allowed.pathPrefix)
+}
+
+const cacheKeyFor = (request) =>
+  [request.protocol || "", String(request.host || "").toLowerCase(), normalizedPath(request.path)].join("\\u0000")
+
+const readCache = async (config) => {
+  try {
+    return JSON.parse(await readFile(config.cachePath, "utf8"))
+  } catch {
+    return { entries: {} }
+  }
+}
+
+const writeCache = async (config, cache) => {
+  await writeFile(config.cachePath, JSON.stringify(cache, null, 2) + "\\n", { mode: 0o600 })
+  await chmod(config.cachePath, 0o600).catch(() => undefined)
+}
+
+const cachedCredential = async (config, request) => {
+  const cache = await readCache(config)
+  const entry = cache.entries?.[cacheKeyFor(request)]
+  if (!entry || typeof entry !== "object") return null
+  const now = Date.now()
+  if (typeof entry.cachedUntilMs !== "number" || entry.cachedUntilMs <= now) return null
+  if (typeof entry.expiresAtMs !== "number" || entry.expiresAtMs - SKEW_MS <= now) return null
+  if (typeof entry.username !== "string" || typeof entry.password !== "string") return null
+  return { username: entry.username, password: entry.password }
+}
+
+const rememberCredential = async (config, request, credential) => {
+  const cache = await readCache(config)
+  const ttlSeconds = Math.max(0, Math.min(config.cacheTtlSeconds || 60, MAX_CACHE_TTL_SECONDS))
+  const now = Date.now()
+  const expiresAtMs = Date.parse(credential.expiresAt)
+  cache.entries = cache.entries || {}
+  cache.entries[cacheKeyFor(request)] = {
+    username: credential.username,
+    password: credential.password,
+    cachedUntilMs: now + ttlSeconds * 1000,
+    expiresAtMs: Number.isFinite(expiresAtMs) ? expiresAtMs : now,
+  }
+  await writeCache(config, cache)
+}
+
+const bearerToken = (config) => {
+  for (const envName of config.controlPlaneAuthEnv || []) {
+    const value = process.env[envName]
+    if (typeof value === "string" && value.trim() !== "") return value.trim()
+  }
+  return null
+}
+
+const fetchCredential = async (config, request) => {
+  const headers = { "content-type": "application/json" }
+  const bearer = bearerToken(config)
+  if (bearer !== null) headers.authorization = "Bearer " + bearer
+  const response = await fetch(config.brokerUrl, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      schema: "openagents.pylon.git_credential_broker_request.v1",
+      helperRef: config.helperRef,
+      repositoryRef: config.repositoryRef,
+      authRefs: config.authRefs,
+      protocol: request.protocol,
+      host: request.host,
+      path: normalizedPath(request.path),
+    }),
+  })
+  if (!response.ok) throw new Error("broker_http_" + response.status)
+  const body = await response.json()
+  const username = typeof body.username === "string" && body.username !== "" ? body.username : config.username
+  const password = typeof body.password === "string" ? body.password : undefined
+  const expiresAt = typeof body.expiresAt === "string" ? body.expiresAt : undefined
+  if (typeof username !== "string" || username === "" || typeof password !== "string" || password === "" || expiresAt === undefined) {
+    throw new Error("broker_invalid_response")
+  }
+  return { username, password, expiresAt }
+}
+
+if (!CONFIG_PATH) fail({ fallback: "fail_closed" }, "missing_config")
+if (OPERATION !== "get") process.exit(0)
+
+const config = JSON.parse(await readFile(CONFIG_PATH, "utf8"))
+const request = parseCredentialInput(await readStdin())
+
+if (!inScope(config, request)) fail(config, "out_of_scope")
+
+const cached = await cachedCredential(config, request)
+const credential = cached || await fetchCredential(config, request)
+if (!cached) await rememberCredential(config, request, credential)
+
+process.stdout.write("username=" + credential.username + "\\n")
+process.stdout.write("password=" + credential.password + "\\n\\n")
+`
+
+type InstallGitCredentialHelperInput = {
+  checkout: GitCheckoutWorkspace
+  cwd: string
+  configScope?: "gitdir_include" | "local"
+}
+
+function gitCredentialHelperCommand(paths: GitCredentialHelperRuntimePaths): string {
+  return `!${shellSingleQuote(paths.helperPath)} ${shellSingleQuote(paths.configPath)}`
+}
+
+function gitCredentialHelperConfigFragment(paths: GitCredentialHelperRuntimePaths): string {
+  return [
+    "[credential]",
+    "\thelper =",
+    `\thelper = ${gitCredentialHelperCommand(paths)}`,
+    "\tuseHttpPath = true",
+    "\tinteractive = never",
+    "",
+  ].join("\n")
+}
+
+export async function installScmAuthBrokerGitCredentialHelper(
+  input: InstallGitCredentialHelperInput,
+): Promise<GitCredentialHelperRuntimePaths | null> {
+  const broker = input.checkout.scmAuthBroker
+  if (broker === undefined) return null
+
+  const paths = await gitCredentialHelperRuntimePathsFor(input.cwd)
+  const cacheTtlSeconds = Math.min(
+    broker.cacheTtlSeconds ?? SCM_AUTH_BROKER_DEFAULT_CACHE_TTL_SECONDS,
+    SCM_AUTH_BROKER_MAX_CACHE_TTL_SECONDS,
+  )
+  await writeFile(
+    paths.configPath,
+    `${JSON.stringify(
+      {
+        schema: SCM_AUTH_BROKER_SCHEMA,
+        helperRef: SCM_AUTH_BROKER_HELPER_REF,
+        brokerUrl: broker.brokerUrl,
+        authRefs: broker.authRefs,
+        repositoryRef: broker.repositoryRef,
+        allowed: broker.allowed,
+        cachePath: paths.cachePath,
+        cacheTtlSeconds,
+        fallback: broker.fallback ?? "fail_closed",
+        username: broker.username ?? "x-access-token",
+        controlPlaneAuthEnv: [
+          "PYLON_GIT_CREDENTIAL_BROKER_TOKEN",
+          "OPENAGENTS_AGENT_TOKEN",
+          "PYLON_AGENT_TOKEN",
+        ],
+      },
+      null,
+      2,
+    )}\n`,
+    { mode: 0o600 },
+  )
+  await chmod(paths.configPath, 0o600).catch(() => undefined)
+  await writeFile(paths.helperPath, GIT_CREDENTIAL_HELPER_SCRIPT, { mode: 0o700 })
+  await chmod(paths.helperPath, 0o700).catch(() => undefined)
+
+  if (input.configScope === "gitdir_include") {
+    await writeFile(paths.gitConfigPath, gitCredentialHelperConfigFragment(paths), { mode: 0o600 })
+    await chmod(paths.gitConfigPath, 0o600).catch(() => undefined)
+    await runCheckedCommand(
+      [
+        "git",
+        "config",
+        "--local",
+        `includeIf.gitdir:${paths.gitDirectory}/.path`,
+        paths.gitConfigPath,
+      ],
+      input.cwd,
+      "reason.workspace_checkout.credential_helper_config_failed",
+    )
+    return paths
+  }
+
+  const scopeArg = "--local"
+  await runQuietCommand(["git", "config", scopeArg, "--unset-all", "credential.helper"], input.cwd)
+  await runCheckedCommand(
+    ["git", "config", scopeArg, "credential.helper", ""],
+    input.cwd,
+    "reason.workspace_checkout.credential_helper_config_failed",
+  )
+  await runCheckedCommand(
+    ["git", "config", scopeArg, "--add", "credential.helper", gitCredentialHelperCommand(paths)],
+    input.cwd,
+    "reason.workspace_checkout.credential_helper_config_failed",
+  )
+  await runCheckedCommand(
+    ["git", "config", scopeArg, "credential.useHttpPath", "true"],
+    input.cwd,
+    "reason.workspace_checkout.credential_helper_config_failed",
+  )
+  await runCheckedCommand(
+    ["git", "config", scopeArg, "credential.interactive", "never"],
+    input.cwd,
+    "reason.workspace_checkout.credential_helper_config_failed",
+  )
+  return paths
 }
 
 function assertPylonOwnedWorkspaceTarget(input: {
@@ -593,6 +957,7 @@ export const defaultGitCheckoutRunner: WorkspaceCheckoutRunner = async (
   // Each detached checkout is isolated, but disabling auto maintenance keeps a
   // background `git gc` from ever racing a concurrent sibling materialization.
   await disableGitAutoMaintenance(workingDirectory)
+  await installScmAuthBrokerGitCredentialHelper({ checkout, cwd: workingDirectory })
   await runCheckedCommand(
     [
       "git",
@@ -645,6 +1010,7 @@ export async function materializeGitCheckoutWorkspace(input: {
   const workingDirectory = join(input.cacheRoot, workspaceRef)
   await mkdir(input.cacheRoot, { recursive: true })
   await (input.checkoutRunner ?? defaultGitCheckoutRunner)(workingDirectory, input.checkout)
+  await installScmAuthBrokerGitCredentialHelper({ checkout: input.checkout, cwd: workingDirectory })
   return {
     cleanupRef: stableRef("cleanup.pylon.workspace", workspaceRef),
     sourceRef: checkoutSourceRef(input.checkout),
@@ -1010,6 +1376,7 @@ export function createGitWorktreeCheckoutRunner(
       // runs. Disable it on every materialization so pre-existing caches that
       // were created before this fix are also covered.
       await disableGitAutoMaintenance(bareDirectory)
+      await installScmAuthBrokerGitCredentialHelper({ checkout, cwd: bareDirectory })
       const commitArg = `${baseCommitSha}^{commit}`
       const cached = (await runQuietCommand(["git", "cat-file", "-e", commitArg], bareDirectory)) === 0
       if (!cached) {
@@ -1062,6 +1429,13 @@ export function createGitWorktreeCheckoutRunner(
         bareDirectory,
         "reason.workspace_checkout.worktree_add_failed",
       )
+      if (checkout.scmAuthBroker !== undefined) {
+        await installScmAuthBrokerGitCredentialHelper({
+          checkout,
+          configScope: "gitdir_include",
+          cwd: workingDirectory,
+        })
+      }
     })
   }
 }

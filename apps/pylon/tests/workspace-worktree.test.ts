@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { existsSync } from "node:fs"
-import { mkdir, mkdtemp, rm, utimes, writeFile } from "node:fs/promises"
+import { mkdir, mkdtemp, readFile, rm, utimes, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
 import { Deferred, Effect, Exit } from "effect"
@@ -11,6 +11,7 @@ import {
   createGitWorktreeCheckoutRunner,
   detectInFlightVirtualBranchConflicts,
   detectWorkspaceChangeConflicts,
+  gitCredentialHelperRuntimePathsFor,
   materializeGitCheckoutWorkspaceWithLease,
   pruneWorkspaceCacheDirectories,
   publicWorkspaceChangeCaptureProjection,
@@ -87,6 +88,21 @@ function checkoutFor(commitSha: string, fullName = "OpenAgentsInc/worktree-fixtu
   }
 }
 
+const validBroker = {
+  schema: "openagents.pylon.scm_auth_broker.v1",
+  kind: "forge_git_access",
+  brokerUrl: "https://openagents.com/api/pylon/forge/git-credentials",
+  authRefs: ["forge_git_token.background_agent.run_001.receive_pack"],
+  repositoryRef: "repo.openagents.openagents",
+  allowed: {
+    protocol: "https",
+    host: "openagents.com",
+    pathPrefix: "/git/tenant.openagents.background_agents/repo.openagents.openagents.git",
+  },
+  cacheTtlSeconds: 60,
+  fallback: "fail_closed",
+} satisfies NonNullable<GitCheckoutWorkspace["scmAuthBroker"]>
+
 const stubRunner: WorkspaceCheckoutRunner = async (workingDirectory) => {
   await mkdir(workingDirectory, { recursive: true })
   await writeFile(join(workingDirectory, "checked-out"), "ok\n")
@@ -137,6 +153,56 @@ describe("createGitWorktreeCheckoutRunner", () => {
       expect((await Bun.file(join(workingDirectory, ".git")).text()).startsWith("gitdir:")).toBe(true)
       const head = (await run(["git", "rev-parse", "HEAD"], workingDirectory)).trim()
       expect(head).toBe(origin.commitSha)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  test("installs brokered helpers in linked worktrees without enabling worktree config", async () => {
+    const root = await mkdtemp(join(tmpdir(), "pylon-worktree-"))
+    try {
+      const origin = await createOriginRepo(join(root, "origin"))
+      const checkout = {
+        ...checkoutFor(origin.commitSha),
+        scmAuthBroker: validBroker,
+      } satisfies GitCheckoutWorkspace
+      const runner = createGitWorktreeCheckoutRunner({
+        repositoryCacheRoot: join(root, "git-cache"),
+        remoteUrlFor: () => origin.url,
+      })
+      const materialized = await materializeGitCheckoutWorkspaceWithLease(
+        leaseInput(root, {
+          checkout,
+          checkoutRunner: runner,
+          leaseRef: "lease.public.worktree.brokered_git",
+        }) as never,
+      )
+
+      expect(await run(["git", "status", "--porcelain"], materialized.workingDirectory)).toBe("")
+      const helper = await run(["git", "config", "--get", "credential.helper"], materialized.workingDirectory)
+      const useHttpPath = await run(["git", "config", "--get", "credential.useHttpPath"], materialized.workingDirectory)
+      const interactive = await run(["git", "config", "--get", "credential.interactive"], materialized.workingDirectory)
+      const paths = await gitCredentialHelperRuntimePathsFor(materialized.workingDirectory)
+      const helperConfig = await readFile(paths.gitConfigPath, "utf8")
+      const brokerConfig = await readFile(paths.configPath, "utf8")
+      const extension = Bun.spawn(["git", "config", "--get", "extensions.worktreeConfig"], {
+        cwd: materialized.workingDirectory,
+        stderr: "pipe",
+        stdout: "pipe",
+      })
+      const [extensionStdout, extensionExitCode] = await Promise.all([
+        new Response(extension.stdout).text(),
+        extension.exited,
+      ])
+
+      expect(helper.trim()).toContain("pylon-git-credential-helper.mjs")
+      expect(useHttpPath.trim()).toBe("true")
+      expect(interactive.trim()).toBe("never")
+      expect(helperConfig).toContain("\thelper =\n")
+      expect(helperConfig).toContain("pylon-git-credential-helper.mjs")
+      expect(brokerConfig).toContain("forge_git_token.background_agent.run_001.receive_pack")
+      expect(extensionExitCode).not.toBe(0)
+      expect(extensionStdout.trim()).toBe("")
     } finally {
       await rm(root, { recursive: true, force: true })
     }

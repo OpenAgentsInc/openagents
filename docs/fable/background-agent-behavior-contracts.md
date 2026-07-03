@@ -35,6 +35,17 @@ Registry version: `2026-07-03.4` (schema `openagents.behavior_contracts.v1`)
 - **Verification:** BA-A5 is enforced by the agent-runtime-schema compiler test, the packages/khala-tools dispatcher test, and the openagents.com Worker Forge git-token scope test in their normal bun test sweeps.
 - **Authority boundary:** This contract binds compiled background-agent tool policy at the local-lane and Forge git-token boundaries. It does not widen any runtime tool authority beyond the compiled policy.
 
+### `background_agents.credentials.brokered_scm_helper.v1` - ENFORCED
+
+- **Surface:** pylon-worker + openagents.com-worker (background agent SCM credentials)
+- **Stated by:** owner via issue_list on 2026-07-03
+- **Statement:** Worker-side background-agent Git credentials are brokered: dispatch sends only ref metadata, and the Pylon materializer installs a per-task Git credential helper that scopes requests by protocol, host, and path, uses a bounded cache, and never reads embedded SCM credentials from the workspace.
+- **Enforcement tier:** test-sweep
+- **Oracle** `background_agents.credentials.dispatch_broker_refs` (vitest, unit): Definition dispatch attaches `scmAuthBroker` metadata with Forge token refs to Pylon `git_checkout` assignments and never includes raw `oa_forge_git_` token material. - `apps/openagents.com/workers/api/src/agent-definition-run-routes.test.ts`
+- **Oracle** `background_agents.credentials.pylon_helper_install` (bun-test, unit): The Pylon workspace materializer validates broker metadata, rejects raw/malformed broker shapes, writes helper config under Git admin state, configures `credential.useHttpPath`, fails closed, and stores no raw SCM token in the generated config/script. - `apps/pylon/tests/workspace-materializer.test.ts`
+- **Verification:** BA-D2 is enforced by the agent-definition run route test plus the Pylon workspace materializer test in their normal sweeps.
+- **Authority boundary:** This contract proves the brokered helper shape and ref-only dispatch boundary. It does not yet prove every materialize/run/closeout path is free of long-lived SCM tokens; that broader sweep remains BA-D3.
+
 ### `background_agents.credentials.no_long_lived_tokens_in_workspaces.v1` - PENDING
 
 - **Surface:** pylon-worker (background agent credentials)

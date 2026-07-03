@@ -73,6 +73,11 @@ const AGENT_DEFINITION_RUN_FORGE_GIT_TOKEN_BUFFER_MS = 10 * 60 * 1000
 const AGENT_DEFINITION_RUN_FORGE_GIT_SCOPES: ReadonlyArray<ForgeGitAccessScope> = [
   'git:receive-pack',
 ]
+const AGENT_DEFINITION_RUN_SCM_AUTH_BROKER_SCHEMA =
+  'openagents.pylon.scm_auth_broker.v1' as const
+const AGENT_DEFINITION_RUN_SCM_AUTH_BROKER_URL =
+  'https://openagents.com/api/pylon/forge/git-credentials'
+const AGENT_DEFINITION_RUN_SCM_AUTH_BROKER_CACHE_TTL_SECONDS = 60
 
 const TrimmedString = S.Trim
 const NonEmptyTrimmedString = TrimmedString.check(S.isNonEmpty())
@@ -1291,32 +1296,75 @@ const linkedAgentsForSession = async (
 const rawDelegationBody = (
   input: Readonly<{
     definition: AgentDefinition
+    forgeGitAccess: AgentDefinitionRunForgeGitAccess
     request: AgentDefinitionRunRequest
     runId: string
   }>,
-) => ({
-  workflowClass: workflowClassForDefinition(input.definition),
-  openagents: {
+) => {
+  const workspace = workspaceWithForgeScmAuthBroker({
+    forgeGitAccess: input.forgeGitAccess,
+    workspace: input.request.workspace,
+  })
+
+  return {
     workflowClass: workflowClassForDefinition(input.definition),
-    coding: {
-      authorityScope: 'owner_self',
-      objectiveSummary:
-        input.request.objectiveSummary ??
-        `Run background agent definition ${input.definition.id}.`,
-      spawnRunRef: `spawn.public.khala_coding.${refFragment(input.runId)}`,
-      ...(input.request.targetPylonRef === undefined
-        ? {}
-        : { targetPylonRef: input.request.targetPylonRef }),
-      ...(input.request.targetAccountRefHash === undefined
-        ? {}
-        : { targetAccountRefHash: input.request.targetAccountRefHash }),
-      ...(input.request.workspace === undefined
-        ? {}
-        : { workspace: input.request.workspace }),
-      timeoutSeconds: input.definition.budget.maxRunSeconds,
+    openagents: {
+      workflowClass: workflowClassForDefinition(input.definition),
+      coding: {
+        authorityScope: 'owner_self',
+        objectiveSummary:
+          input.request.objectiveSummary ??
+          `Run background agent definition ${input.definition.id}.`,
+        spawnRunRef: `spawn.public.khala_coding.${refFragment(input.runId)}`,
+        ...(input.request.targetPylonRef === undefined
+          ? {}
+          : { targetPylonRef: input.request.targetPylonRef }),
+        ...(input.request.targetAccountRefHash === undefined
+          ? {}
+          : { targetAccountRefHash: input.request.targetAccountRefHash }),
+        ...(workspace === undefined ? {} : { workspace }),
+        timeoutSeconds: input.definition.budget.maxRunSeconds,
+      },
     },
-  },
-})
+  }
+}
+
+const forgeGitCredentialPathPrefix = (
+  input: Readonly<{ repositoryRef: string }>,
+): string =>
+  `/git/${encodeURIComponent(
+    AGENT_DEFINITION_RUN_TENANT_REF,
+  )}/${encodeURIComponent(input.repositoryRef)}.git`
+
+const workspaceWithForgeScmAuthBroker = (
+  input: Readonly<{
+    forgeGitAccess: AgentDefinitionRunForgeGitAccess
+    workspace: AgentDefinitionRunRequest['workspace']
+  }>,
+): AgentDefinitionRunRequest['workspace'] => {
+  if (input.workspace === undefined) return undefined
+  if (input.workspace.kind !== 'git_checkout') return input.workspace
+
+  return {
+    ...input.workspace,
+    scmAuthBroker: {
+      schema: AGENT_DEFINITION_RUN_SCM_AUTH_BROKER_SCHEMA,
+      kind: 'forge_git_access',
+      brokerUrl: AGENT_DEFINITION_RUN_SCM_AUTH_BROKER_URL,
+      authRefs: input.forgeGitAccess.tokenRefs,
+      repositoryRef: input.forgeGitAccess.repositoryRef,
+      allowed: {
+        protocol: 'https',
+        host: 'openagents.com',
+        pathPrefix: forgeGitCredentialPathPrefix({
+          repositoryRef: input.forgeGitAccess.repositoryRef,
+        }),
+      },
+      cacheTtlSeconds: AGENT_DEFINITION_RUN_SCM_AUTH_BROKER_CACHE_TTL_SECONDS,
+      fallback: 'fail_closed',
+    },
+  }
+}
 
 const classificationForDefinition = (
   definition: AgentDefinition,
@@ -1557,6 +1605,7 @@ export const dispatchAgentDefinitionRun = async (
       pylonStore: dependencies.pylonStore,
       rawBody: rawDelegationBody({
         definition: input.definition,
+        forgeGitAccess,
         request: input.request,
         runId,
       }),

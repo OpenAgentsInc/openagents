@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { existsSync } from "node:fs"
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
 import { Effect } from "effect"
@@ -8,6 +8,7 @@ import {
   checkoutBaseCommitSha,
   checkoutSourceRef,
   cleanupOldestMaterializedWorkspaces,
+  gitCredentialHelperRuntimePathsFor,
   gitCheckoutWorkspaceFrom,
   materializeGitCheckoutWorkspace,
   materializeGitCheckoutWorkspaceWithLease,
@@ -18,6 +19,7 @@ import {
   type WorkspaceCheckoutRunner,
   workspaceLeaseRecordFor,
 } from "../src/workspace-materializer"
+import type { ScmAuthBrokerConfig } from "../src/workspace-materializer"
 
 const validCheckout: GitCheckoutWorkspace = {
   kind: "git_checkout",
@@ -34,12 +36,28 @@ const validCheckout: GitCheckoutWorkspace = {
   },
 }
 
+const validBroker: ScmAuthBrokerConfig = {
+  schema: "openagents.pylon.scm_auth_broker.v1",
+  kind: "forge_git_access",
+  brokerUrl: "https://openagents.com/api/pylon/forge/git-credentials",
+  authRefs: ["forge_git_token.background_agent.run_001.receive_pack"],
+  repositoryRef: "repo.openagents.openagents",
+  allowed: {
+    protocol: "https",
+    host: "openagents.com",
+    pathPrefix: "/git/tenant.openagents.background_agents/repo.openagents.openagents.git",
+  },
+  cacheTtlSeconds: 60,
+  fallback: "fail_closed",
+}
+
 function assignmentWith(workspace: unknown) {
   return { workspace }
 }
 
 function checkoutWith(overrides: {
   repository?: Partial<GitCheckoutWorkspace["repository"]>
+  scmAuthBroker?: unknown
   verificationCommand?: Partial<GitCheckoutWorkspace["verificationCommand"]>
   kind?: string
 }) {
@@ -47,8 +65,19 @@ function checkoutWith(overrides: {
     ...validCheckout,
     ...(overrides.kind === undefined ? {} : { kind: overrides.kind }),
     repository: { ...validCheckout.repository, ...overrides.repository },
+    ...(overrides.scmAuthBroker === undefined ? {} : { scmAuthBroker: overrides.scmAuthBroker }),
     verificationCommand: { ...validCheckout.verificationCommand, ...overrides.verificationCommand },
   }
+}
+
+async function runCommand(args: string[], cwd: string): Promise<{ exitCode: number; stdout: string }> {
+  const proc = Bun.spawn(args, { cwd, stderr: "pipe", stdout: "pipe" })
+  const [stdout, exitCode] = await Promise.all([
+    new Response(proc.stdout).text(),
+    proc.exited,
+  ])
+  await new Response(proc.stderr).text()
+  return { exitCode, stdout }
 }
 
 describe("gitCheckoutWorkspaceFrom", () => {
@@ -77,6 +106,25 @@ describe("gitCheckoutWorkspaceFrom", () => {
     expect(decoded === null ? null : checkoutSourceRef(decoded)).toBe(
       `OpenAgentsInc/public-sum-fixture:${"2".repeat(40)}`,
     )
+  })
+
+  test("accepts ref-only brokered SCM auth metadata", () => {
+    const decoded = gitCheckoutWorkspaceFrom(
+      assignmentWith(checkoutWith({ scmAuthBroker: validBroker })),
+    )
+
+    expect(decoded?.scmAuthBroker).toMatchObject({
+      schema: "openagents.pylon.scm_auth_broker.v1",
+      kind: "forge_git_access",
+      authRefs: ["forge_git_token.background_agent.run_001.receive_pack"],
+      repositoryRef: "repo.openagents.openagents",
+      allowed: {
+        protocol: "https",
+        host: "openagents.com",
+        pathPrefix: "/git/tenant.openagents.background_agents/repo.openagents.openagents.git",
+      },
+      fallback: "fail_closed",
+    })
   })
 
   test("rejects assignments without a workspace payload", () => {
@@ -176,6 +224,23 @@ describe("gitCheckoutWorkspaceFrom", () => {
     }
   })
 
+  test("rejects malformed or raw brokered SCM auth metadata", () => {
+    for (const scmAuthBroker of [
+      { ...validBroker, brokerUrl: "http://openagents.com/api/pylon/forge/git-credentials" },
+      { ...validBroker, brokerUrl: "https://user:secret@openagents.com/api/pylon/forge/git-credentials" },
+      { ...validBroker, authRefs: ["oa_forge_git_secret_material"] },
+      { ...validBroker, allowed: { ...validBroker.allowed, protocol: "ssh" } },
+      { ...validBroker, allowed: { ...validBroker.allowed, pathPrefix: "../escape" } },
+      { ...validBroker, cacheTtlSeconds: 60 * 60 + 1 },
+      { ...validBroker, fallback: "read_embedded_token" },
+    ]) {
+      expect(
+        gitCheckoutWorkspaceFrom(assignmentWith(checkoutWith({ scmAuthBroker }))),
+        JSON.stringify(scmAuthBroker),
+      ).toBeNull()
+    }
+  })
+
   test("rejects empty or ref-less verification commands", () => {
     expect(
       gitCheckoutWorkspaceFrom(assignmentWith(checkoutWith({ verificationCommand: { args: [] } }))),
@@ -263,6 +328,54 @@ describe("materializeGitCheckoutWorkspace", () => {
       expect(first.workingDirectory).not.toBe(second.workingDirectory)
       expect(existsSync(first.workingDirectory)).toBe(true)
       expect(existsSync(second.workingDirectory)).toBe(true)
+    } finally {
+      await rm(cacheRoot, { recursive: true, force: true })
+    }
+  })
+
+  test("installs a brokered git credential helper without embedding SCM tokens", async () => {
+    const cacheRoot = await mkdtemp(join(tmpdir(), "pylon-workspace-cache-"))
+    const checkout = checkoutWith({ scmAuthBroker: validBroker }) as GitCheckoutWorkspace
+    const checkoutRunner: WorkspaceCheckoutRunner = async (workingDirectory) => {
+      await mkdir(workingDirectory, { recursive: true })
+      const init = await runCommand(["git", "init"], workingDirectory)
+      expect(init.exitCode).toBe(0)
+      await writeFile(join(workingDirectory, "checked-out"), "ok\n")
+    }
+
+    try {
+      const materialized = await materializeGitCheckoutWorkspace({
+        cacheRoot,
+        checkout,
+        checkoutRunner,
+        leaseRef: "lease.public.workspace.brokered_git",
+        refPrefix: "workspace.pylon.codex_agent_task",
+      })
+      const helper = await runCommand(["git", "config", "--get", "credential.helper"], materialized.workingDirectory)
+      const useHttpPath = await runCommand(["git", "config", "--get", "credential.useHttpPath"], materialized.workingDirectory)
+      const interactive = await runCommand(["git", "config", "--get", "credential.interactive"], materialized.workingDirectory)
+      const paths = await gitCredentialHelperRuntimePathsFor(materialized.workingDirectory)
+      const config = JSON.parse(await readFile(paths.configPath, "utf8")) as Record<string, unknown>
+      const helperScript = await readFile(paths.helperPath, "utf8")
+      const serialized = JSON.stringify({ config, helperScript })
+
+      expect(helper.stdout.trim()).toContain("pylon-git-credential-helper.mjs")
+      expect(useHttpPath.stdout.trim()).toBe("true")
+      expect(interactive.stdout.trim()).toBe("never")
+      expect(config).toMatchObject({
+        schema: "openagents.pylon.scm_auth_broker.v1",
+        helperRef: "helper.pylon.scm_auth_broker.git_credential.v1",
+        brokerUrl: "https://openagents.com/api/pylon/forge/git-credentials",
+        authRefs: ["forge_git_token.background_agent.run_001.receive_pack"],
+        repositoryRef: "repo.openagents.openagents",
+        cacheTtlSeconds: 60,
+        fallback: "fail_closed",
+      })
+      expect(helperScript).toContain("openagents.pylon.git_credential_broker_request.v1")
+      expect(helperScript).toContain("fetch(config.brokerUrl")
+      expect(helperScript).toContain("cachedUntilMs")
+      expect(serialized).not.toContain("oa_forge_git_secret")
+      expect(serialized).not.toContain("\"password\":\"")
     } finally {
       await rm(cacheRoot, { recursive: true, force: true })
     }

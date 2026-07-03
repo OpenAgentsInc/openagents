@@ -24,6 +24,36 @@ required), branch values carrying traversal, absolute verification paths,
 `..` in arguments, and shell-shaped verification commands. Verification is
 argv-only and runs without a shell.
 
+Optional `scmAuthBroker` metadata is ref-only. The materializer accepts only
+the `openagents.pylon.scm_auth_broker.v1` shape, HTTPS broker URLs without
+embedded credentials, public-safe auth refs, a repository ref, and an allowed
+`https` protocol + host + path prefix. Raw Forge tokens, GitHub PATs,
+credentialed URLs, secret-looking values, unsafe fallbacks, and cache TTLs
+outside the bounded limit are rejected before checkout.
+
+## Brokered Git Credentials
+
+When a `git_checkout` workspace carries `scmAuthBroker`, Pylon installs a
+Git credential helper for that task workspace. The helper script, broker
+config, and short cache live under Git's private admin directory for the
+materialized worktree; they are not files in the checked-out repository and
+are not projected publicly. Shared bare-cache fetches also install a transient
+helper while the cache lock is held, and linked worktrees receive a
+`gitdir`-scoped include that points only that task's Git admin directory at its
+helper config. The materializer does not enable Git's worktree-config
+extension, so the bare-cache checkout semantics stay unchanged.
+
+The helper implements Git's credential-helper protocol. For each `get`
+operation it first checks the requested protocol, host, and path prefix; an
+out-of-scope request fails closed unless the assignment explicitly configured
+`anonymous_read_only`. In-scope requests call the broker URL with the
+workspace's public refs and the Pylon process's control-plane auth from the
+environment, then return the short-lived username/password pair only to Git
+stdout. The helper keeps a protocol+host+path-scoped cache bounded by the
+assignment TTL setting (default 60s, max 1h) and the broker response expiry.
+It never reads an embedded SCM token from the workspace payload, helper
+config, repository config, or remote URL.
+
 ## Materialization strategies
 
 - **`git_worktree` (default).** A shared bare-repo cache lives under the
