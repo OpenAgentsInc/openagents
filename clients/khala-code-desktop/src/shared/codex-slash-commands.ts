@@ -386,6 +386,16 @@ export const KHALA_CODE_DESKTOP_SLASH_COMMANDS = [
     dispatch: appServer("thread/compact/start", { requiresThread: true }),
   }),
   command({
+    enumName: "Architect",
+    command: "architect",
+    description: "Create a read-only architect plan card",
+    supportsInlineArgs: true,
+    availableInSideConversation: false,
+    availableDuringTask: false,
+    group: "turn_task",
+    dispatch: client("create_architect_plan"),
+  }),
+  command({
     enumName: "Plan",
     command: "plan",
     description: "Create or update a plan",

@@ -40,6 +40,7 @@ export type KhalaCodeBootDegradedState = {
 
 export type KhalaCodeMainShellModel = {
   activeCodexThreadId: string | null
+  architectPlanMode: boolean
   bootDegradedStates: KhalaCodeBootDegradedState[]
   claudeApprovalDialogOpen: boolean
   composerAttachmentReceipts: ComposerAttachmentUploadReceipt[]
@@ -66,6 +67,7 @@ export type KhalaCodeMainShellModel = {
 
 export type KhalaCodeMainShellMessage =
   | { readonly _tag: "ActiveCodexThreadChanged"; readonly threadId: string | null }
+  | { readonly _tag: "ArchitectPlanModeChanged"; readonly enabled: boolean }
   | {
       readonly _tag: "BootRpcDegraded"
       readonly state: KhalaCodeBootDegradedState
@@ -129,6 +131,7 @@ export const initialKhalaCodeMainShellModel = (
   }>,
 ): KhalaCodeMainShellModel => ({
   activeCodexThreadId: null,
+  architectPlanMode: false,
   bootDegradedStates: [],
   claudeApprovalDialogOpen: false,
   composerAttachmentReceipts: [],
@@ -160,6 +163,8 @@ export const updateKhalaCodeMainShellModel = (
   switch (message._tag) {
     case "ActiveCodexThreadChanged":
       return { ...model, activeCodexThreadId: message.threadId }
+    case "ArchitectPlanModeChanged":
+      return { ...model, architectPlanMode: message.enabled }
     case "BootRpcDegraded": {
       const next = [
         ...model.bootDegradedStates.filter(item => item.method !== message.state.method),

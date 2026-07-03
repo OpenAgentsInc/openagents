@@ -192,6 +192,33 @@ export function decodeClaudePlanFanoutDag(input: unknown): ClaudePlanFanoutDag {
   return validateClaudePlanFanoutDag(S.decodeUnknownSync(ClaudePlanFanoutDagSchema)(input))
 }
 
+const fencedJsonPattern = /```(?:json)?\s*([\s\S]*?)```/iu
+
+export function parseClaudePlanFanoutDagFromText(text: string): ClaudePlanFanoutDag {
+  const trimmed = text.trim()
+  const fenced = fencedJsonPattern.exec(trimmed)?.[1]?.trim()
+  const candidates = [
+    fenced,
+    trimmed,
+    trimmed.slice(trimmed.indexOf("{"), trimmed.lastIndexOf("}") + 1),
+  ].filter((value): value is string => value !== undefined && value.trim().length > 0)
+
+  let lastError: unknown
+  for (const candidate of candidates) {
+    try {
+      const parsed: unknown = JSON.parse(candidate)
+      return decodeClaudePlanFanoutDag(parsed)
+    } catch (error) {
+      lastError = error
+    }
+  }
+  throw new ClaudePlanFanoutContractError(
+    `Claude plan output did not contain a valid ${CLAUDE_PLAN_FANOUT_DAG_SCHEMA} object: ${
+      lastError instanceof Error ? lastError.message : String(lastError)
+    }`,
+  )
+}
+
 const nodeToWorkUnit = (node: ClaudePlanFanoutDagNode): PlanDagWorkUnit => ({
   ref: node.nodeRef,
   title: node.title,

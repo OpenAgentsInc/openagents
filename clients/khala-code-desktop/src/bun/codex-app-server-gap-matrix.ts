@@ -112,6 +112,40 @@ export const KHALA_CODE_CODEX_APP_SERVER_GAP_MATRIX: readonly KhalaCodeCodexAppS
       "Update when Mode H JSONL wire shape changes or Codex app-server notification names change.",
   },
   {
+    id: "architect-plan-card",
+    area: "read-only architect planning card and approval handoff",
+    decision: "khala_adapter_with_test",
+    codexSourceRefs: [
+      "codex-rs/tui/src/slash_command.rs",
+      "codex-rs/app-server-protocol/schema/typescript/ClientRequest.ts",
+      "codex-rs/app-server-protocol/schema/typescript/v2/ThreadItem.ts",
+    ],
+    slashCommands: [
+      "architect",
+    ],
+    appServerMethods: [
+      "thread/start",
+      "turn/start",
+      "turn/steer",
+    ],
+    khalaAdapter:
+      "Khala owns /architect as a read-only planning adapter that asks Claude for a typed fanout DAG, renders the result as a plan card, and only dispatches coder work after explicit approval.",
+    rationale:
+      "The architect step is a Khala workflow affordance over existing chat runtime primitives, not a Codex Core mutation. Tests cover the read-only prompt, typed artifact schema, parser, and shell state.",
+    linkedIssues: [
+      "https://github.com/OpenAgentsInc/openagents/issues/7795",
+      "https://github.com/OpenAgentsInc/openagents/issues/8053",
+    ],
+    testRefs: [
+      "clients/khala-code-desktop/tests/claude-plan-fanout.test.ts",
+      "clients/khala-code-desktop/tests/main-shell-model.test.ts",
+      "clients/khala-code-desktop/tests/rpc-handlers.test.ts",
+      "clients/khala-code-desktop/tests/rpc-schema.test.ts",
+    ],
+    updateTrigger:
+      "Update when the architect artifact schema, Claude fanout DAG schema, or plan approval dispatch path changes.",
+  },
+  {
     id: "settings-ecosystem-account-surfaces",
     area: "models, permissions, experimental flags, usage, MCP, apps, plugins, and logout",
     decision: "covered_by_app_server",

@@ -265,6 +265,69 @@ function throwingClaudeChatRuntime(
 }
 
 describe("Khala Code desktop RPC handlers", () => {
+  test("creates a read-only architect plan artifact through the Claude runtime", async () => {
+    const prompts: string[] = []
+    const handlers = createKhalaCodeDesktopRpcRequestHandlers({
+      appleFmReadiness: () => {
+        throw new Error("not used")
+      },
+      claudeChatRuntime: throwingClaudeChatRuntime({
+        startTurn: async request => {
+          prompts.push(request.messages.map(message => message.body).join("\n\n"))
+          return {
+            backend: {
+              kind: "claude_app_sdk",
+              model: "claude-plan-mode",
+              runtimeMode: "claude_runtime",
+            },
+            messages: [{
+              body: JSON.stringify({
+                schema: "openagents.khala_code.claude_plan_fanout_dag.v1",
+                planRef: "plan.q9_2.fixture",
+                source: "claude_plan_mode",
+                generatedAt: "2026-07-02T12:00:00.000Z",
+                objective: "Plan a fixture implementation.",
+                nodes: [{
+                  nodeRef: "one",
+                  title: "Implement fixture",
+                  objective: "Make the bounded fixture change.",
+                }],
+              }),
+              id: "assistant-plan",
+              role: "assistant",
+            }],
+            ok: true,
+            toolNames: [],
+            usedTools: [],
+          }
+        },
+      }),
+      env: {},
+      onDeviceDeciderStatus: () => {
+        throw new Error("not used")
+      },
+      workingDirectory: process.cwd(),
+    })
+
+    const result = await handlers.architectPlanCreate({
+      objective: "Plan a fixture implementation.",
+      sessionId: "session-1",
+      threadId: "thread-1",
+    })
+
+    expect(result.ok).toBe(true)
+    expect(result.artifact).toMatchObject({
+      dispatchKind: null,
+      mode: "read_only",
+      role: "architect",
+      status: "pending",
+      threadId: "thread-1",
+    })
+    expect(result.message.architectPlan?.plan.planRef).toBe("plan.q9_2.fixture")
+    expect(prompts[0]).toContain("Do not edit files")
+    expect(prompts[0]).toContain("Mode: read-only")
+  })
+
   test("starts fleet runs through the supervisor RPC port", async () => {
     const calls: KhalaCodeDesktopFleetRunStartRequest[] = []
     const run = fleetRunProjection()
@@ -1900,6 +1963,10 @@ describe("Khala Code desktop RPC handlers", () => {
     expect(byCommand.get("plan")?.availability).toMatchObject({
       available: false,
       reason: "/plan is not available while Codex is working.",
+    })
+    expect(byCommand.get("architect")?.availability).toMatchObject({
+      available: false,
+      reason: "/architect is not available while Codex is working.",
     })
     expect(byCommand.get("raw")?.availability).toEqual({ available: true })
   })

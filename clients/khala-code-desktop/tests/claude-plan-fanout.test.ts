@@ -8,6 +8,7 @@ import {
   claudePlanFanoutReviewAdvisorySignal,
   decodeClaudePlanFanoutDag,
   decodeClaudePlanFanoutReview,
+  parseClaudePlanFanoutDagFromText,
 } from "../src/bun/claude-plan-fanout.js"
 
 const validDag = () => ({
@@ -127,5 +128,16 @@ describe("Claude plan-then-fan-out contract", () => {
     expect(instructions).toContain(CLAUDE_PLAN_FANOUT_DAG_SCHEMA)
     expect(instructions).toContain("Do not edit files")
     expect(instructions).toContain("deterministic FleetRun supervision owns control flow")
+  })
+
+  test("extracts a typed DAG from fenced Claude plan-mode output", () => {
+    const dag = parseClaudePlanFanoutDagFromText([
+      "```json",
+      JSON.stringify(validDag()),
+      "```",
+    ].join("\n"))
+
+    expect(dag.planRef).toBe("plan.t9_4.fixture")
+    expect(dag.nodes).toHaveLength(2)
   })
 })

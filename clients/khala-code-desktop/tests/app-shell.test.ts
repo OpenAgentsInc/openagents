@@ -241,7 +241,7 @@ describe("khala code desktop app shell", () => {
     expect(main).toContain("khala-code-desktop.session-id.v1")
     expect(main).toContain("Requested Codex interrupt for the active turn")
     expect(main).toContain("codexItemStatus")
-    expect(main).toContain("renderMessageBody(message.body, message.role, message.codexItem)")
+    expect(main).toContain("renderMessageBody(message.body, message.role, message.codexItem, message.architectPlan)")
     expect(css).toContain(".khala-code-inbox")
     expect(css).toContain(".codex-item-card")
     expect(css).toContain(".codex-item-card-copy")

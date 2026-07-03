@@ -586,6 +586,171 @@ button {
   box-shadow: 0 0 10px -3px color-mix(in srgb, var(--oa-color-khala-energy-line) 86%, transparent);
 }
 
+.architect-plan-card {
+  display: grid;
+  gap: 12px;
+  width: min(100%, 44rem);
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--oa-color-khala-energy-blue) 42%, transparent);
+  border-radius: 6px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--oa-color-khala-energy-blue) 8%, transparent), transparent 54%),
+    color-mix(in srgb, var(--oa-color-khala-surface) 92%, transparent);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--oa-color-khala-energy-cyan) 8%, transparent) inset,
+    0 18px 54px color-mix(in srgb, var(--oa-color-khala-void) 34%, transparent);
+  padding: 12px;
+}
+
+.architect-plan-card-header,
+.architect-plan-card-footer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.architect-plan-card-header {
+  justify-content: space-between;
+}
+
+.architect-plan-card-icon {
+  flex: none;
+  width: 1rem;
+  height: 1rem;
+  color: var(--oa-color-khala-energy-cyan);
+}
+
+.architect-plan-card-title-wrap {
+  display: grid;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.architect-plan-card-title,
+.architect-plan-card-meta,
+.architect-plan-card-objective {
+  margin: 0;
+}
+
+.architect-plan-card-title {
+  color: var(--oa-color-khala-text-bright);
+  font-size: 0.9rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.architect-plan-card-meta,
+.architect-plan-card-dispatch,
+.architect-plan-card-node-deps {
+  color: color-mix(in srgb, var(--oa-color-khala-text-muted) 86%, transparent);
+  font-family: var(--oa-font-code);
+  font-size: 0.7rem;
+  line-height: 1.35;
+}
+
+.architect-plan-card-status {
+  flex: none;
+  border: 1px solid color-mix(in srgb, var(--oa-color-khala-energy-blue) 42%, transparent);
+  border-radius: 999px;
+  color: var(--oa-color-khala-energy-soft);
+  font-family: var(--oa-font-code);
+  font-size: 0.66rem;
+  line-height: 1;
+  padding: 4px 7px;
+}
+
+.architect-plan-card[data-status="dispatched"] .architect-plan-card-status,
+.architect-plan-card[data-status="approved"] .architect-plan-card-status {
+  border-color: color-mix(in srgb, var(--oa-color-khala-success-accent) 48%, transparent);
+  color: var(--oa-color-khala-success-text);
+}
+
+.architect-plan-card[data-status="rejected"] .architect-plan-card-status {
+  border-color: color-mix(in srgb, var(--oa-color-khala-warning) 44%, transparent);
+  color: var(--oa-color-khala-warning-strong);
+}
+
+.architect-plan-card-objective {
+  color: var(--oa-color-khala-text-primary);
+  font-size: 0.8125rem;
+  line-height: 1.55;
+}
+
+.architect-plan-card-nodes {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.architect-plan-card-node {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  border: 1px solid color-mix(in srgb, var(--oa-color-khala-border) 82%, transparent);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--oa-color-khala-surface-raised) 68%, transparent);
+  padding: 8px;
+}
+
+.architect-plan-card-node-title {
+  color: var(--oa-color-khala-text-bright);
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.architect-plan-card-node-objective {
+  color: var(--oa-color-khala-text-body);
+  font-size: 0.76rem;
+  line-height: 1.45;
+}
+
+.architect-plan-card-footer {
+  justify-content: space-between;
+}
+
+.architect-plan-card-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.architect-plan-card-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 28px;
+  border: 1px solid color-mix(in srgb, var(--oa-color-khala-energy-blue) 42%, transparent);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--oa-color-khala-void) 34%, transparent);
+  color: var(--oa-color-khala-text-primary);
+  cursor: pointer;
+  font-size: 0.73rem;
+  font-weight: 700;
+  line-height: 1;
+  padding: 0 9px;
+}
+
+.architect-plan-card-action:hover,
+.architect-plan-card-action:focus-visible {
+  border-color: color-mix(in srgb, var(--oa-color-khala-energy-cyan) 78%, transparent);
+  background: color-mix(in srgb, var(--oa-color-khala-surface-active) 76%, transparent);
+  outline: none;
+}
+
+.architect-plan-card-action:disabled {
+  cursor: default;
+  opacity: 0.52;
+}
+
+.architect-plan-card-action-icon {
+  width: 0.85rem;
+  height: 0.85rem;
+}
+
 .codex-item-card {
   border-color: color-mix(in srgb, var(--oa-color-khala-energy-line) 34%, transparent);
   box-shadow: 0 0 22px -12px color-mix(in srgb, var(--oa-color-khala-energy-line) 58%, transparent);
@@ -1034,6 +1199,14 @@ button {
   background: color-mix(in srgb, var(--oa-color-khala-surface-active) 72%, transparent);
   color: var(--oa-color-khala-text-bright);
   outline: none;
+}
+
+.khala-code-composer .khala-code-architect-toggle[data-active="true"] {
+  border-color: color-mix(in srgb, var(--oa-color-khala-energy-cyan) 76%, transparent);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--oa-color-khala-energy-cyan) 14%, transparent), transparent 70%),
+    color-mix(in srgb, var(--oa-color-khala-surface-active) 82%, transparent);
+  color: var(--oa-color-khala-text-bright);
 }
 
 .khala-code-composer .oa-ai-command-composer-button-label {

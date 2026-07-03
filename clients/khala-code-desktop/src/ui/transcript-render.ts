@@ -13,6 +13,7 @@ import {
 import { iconElement } from "@openagentsinc/ui/icon-dom"
 import type { IconName } from "@openagentsinc/ui/icon"
 import type {
+  KhalaCodeDesktopArchitectPlanArtifact,
   KhalaCodeDesktopCodexItemCard,
   KhalaCodeDesktopMessageRole,
 } from "../shared/rpc"
@@ -49,6 +50,13 @@ const EXT_LANGUAGE: Readonly<Record<string, string>> = {
   ts: "typescript",
   tsx: "typescript",
   zsh: "bash",
+}
+
+export const KHALA_CODE_ARCHITECT_PLAN_ACTION_EVENT = "khala-code:architect-plan-action"
+
+export type KhalaCodeArchitectPlanActionDetail = {
+  readonly action: "approve" | "reject"
+  readonly artifactRef: string
 }
 
 export type MessageSegment =
@@ -224,6 +232,118 @@ const inlineNodes = (parts: readonly MarkdownInlinePart[]): readonly Node[] => {
 
 const appendInlineMarkdown = (element: HTMLElement, text: string): void => {
   element.append(...inlineNodes(parseMarkdownInline(text)))
+}
+
+const architectPlanActionButton = (
+  artifact: KhalaCodeDesktopArchitectPlanArtifact,
+  action: KhalaCodeArchitectPlanActionDetail["action"],
+): HTMLButtonElement => {
+  const button = document.createElement("button")
+  button.type = "button"
+  button.className = `architect-plan-card-action architect-plan-card-action--${action}`
+  button.dataset.architectPlanAction = action
+  button.dataset.architectPlanArtifactRef = artifact.artifactRef
+  button.disabled = artifact.status !== "pending"
+  button.replaceChildren(
+    iconElement(action === "approve" ? "CheckCircle" : "CloseBold", {
+      ariaHidden: true,
+      className: "architect-plan-card-action-icon",
+    }),
+    document.createTextNode(action === "approve" ? "Approve" : "Reject"),
+  )
+  button.addEventListener("click", event => {
+    event.preventDefault()
+    event.stopPropagation()
+    button.dispatchEvent(new CustomEvent<KhalaCodeArchitectPlanActionDetail>(
+      KHALA_CODE_ARCHITECT_PLAN_ACTION_EVENT,
+      {
+        bubbles: true,
+        detail: {
+          action,
+          artifactRef: artifact.artifactRef,
+        },
+      },
+    ))
+  })
+  return button
+}
+
+const architectPlanCardElement = (
+  artifact: KhalaCodeDesktopArchitectPlanArtifact,
+): HTMLElement => {
+  const root = document.createElement("section")
+  root.className = "architect-plan-card"
+  root.dataset.architectPlanArtifactRef = artifact.artifactRef
+  root.dataset.status = artifact.status
+  root.dataset.nodeCount = String(artifact.plan.nodes.length)
+
+  const header = document.createElement("header")
+  header.className = "architect-plan-card-header"
+
+  const icon = iconElement("Compass", {
+    ariaHidden: true,
+    className: "architect-plan-card-icon",
+  })
+
+  const titleWrap = document.createElement("div")
+  titleWrap.className = "architect-plan-card-title-wrap"
+  const title = document.createElement("h3")
+  title.className = "architect-plan-card-title"
+  title.textContent = "Architect plan"
+  const meta = document.createElement("p")
+  meta.className = "architect-plan-card-meta"
+  meta.textContent = `${artifact.role} · ${artifact.mode.replace("_", "-")} · ${artifact.plan.nodes.length} step${artifact.plan.nodes.length === 1 ? "" : "s"}`
+  titleWrap.append(title, meta)
+
+  const status = document.createElement("span")
+  status.className = "architect-plan-card-status"
+  status.textContent = artifact.status
+
+  header.append(icon, titleWrap, status)
+
+  const objective = document.createElement("p")
+  objective.className = "architect-plan-card-objective"
+  objective.textContent = artifact.plan.objective
+
+  const list = document.createElement("ol")
+  list.className = "architect-plan-card-nodes"
+  for (const node of artifact.plan.nodes) {
+    const item = document.createElement("li")
+    item.className = "architect-plan-card-node"
+    item.dataset.nodeRef = node.nodeRef
+    const nodeTitle = document.createElement("span")
+    nodeTitle.className = "architect-plan-card-node-title"
+    nodeTitle.textContent = node.title
+    const nodeObjective = document.createElement("span")
+    nodeObjective.className = "architect-plan-card-node-objective"
+    nodeObjective.textContent = node.objective
+    item.append(nodeTitle, nodeObjective)
+    if ((node.dependsOn ?? []).length > 0) {
+      const deps = document.createElement("span")
+      deps.className = "architect-plan-card-node-deps"
+      deps.textContent = `After ${node.dependsOn!.join(", ")}`
+      item.append(deps)
+    }
+    list.append(item)
+  }
+
+  const footer = document.createElement("footer")
+  footer.className = "architect-plan-card-footer"
+  const dispatch = document.createElement("span")
+  dispatch.className = "architect-plan-card-dispatch"
+  dispatch.textContent = artifact.dispatchKind === null
+    ? (artifact.plan.nodes.length <= 2 ? "Approves into this thread" : "Approves as FleetRun")
+    : `Dispatched: ${artifact.dispatchKind.replace("_", " ")}`
+  const actions = document.createElement("span")
+  actions.className = "architect-plan-card-actions"
+  actions.append(
+    architectPlanActionButton(artifact, "reject"),
+    architectPlanActionButton(artifact, "approve"),
+  )
+  footer.append(dispatch, actions)
+
+  root.append(header, objective, list, footer)
+  return root
 }
 
 export const codeBlockElement = (input: {
@@ -981,7 +1101,9 @@ export const renderMessageBody = (
   text: string,
   role: KhalaCodeDesktopMessageRole = "assistant",
   codexItem?: KhalaCodeDesktopCodexItemCard,
+  architectPlan?: KhalaCodeDesktopArchitectPlanArtifact,
 ): readonly HTMLElement[] => {
+  if (architectPlan !== undefined) return [architectPlanCardElement(architectPlan)]
   if (codexItem !== undefined && codexItem.itemType !== "agentMessage" && codexItem.itemType !== "userMessage") {
     return [codexItemElement({ codexItem, role, text })]
   }

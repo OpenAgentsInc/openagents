@@ -36,6 +36,8 @@ import {
   type KhalaCodeDesktopChatTurnEvent,
   type KhalaCodeDesktopChatTurnRequest,
   type KhalaCodeDesktopChatTurnResponse,
+  type KhalaCodeDesktopArchitectPlanArtifact,
+  type KhalaCodeDesktopArchitectPlanCreateResult,
   type KhalaCodeDesktopCodexConfigValueWriteRequest,
   type KhalaCodeDesktopCodexBackgroundTerminalsCleanRequest,
   type KhalaCodeDesktopCodexBackgroundTerminalsListRequest,
@@ -148,6 +150,10 @@ import {
   removeCodexAccount,
   setCodexAccountPaused,
 } from "./khala-fleet-tools.js"
+import {
+  claudePlanFanoutPlanModeInstructions,
+  parseClaudePlanFanoutDagFromText,
+} from "./claude-plan-fanout.js"
 
 type ChatEnv = Readonly<Record<string, string | undefined>>
 type MaybePromise<T> = T | Promise<T>
@@ -471,6 +477,21 @@ const withMaterializedChatAttachments = <A>(
 
 const requireNonEmpty = (kind: string, field: string, value: string): void => {
   if (value.trim().length === 0) throw new Error(`${kind} requires ${field}`)
+}
+
+const architectPrompt = (objective: string): string => [
+  claudePlanFanoutPlanModeInstructions(),
+  "",
+  "Role: architect.",
+  "Mode: read-only. Inspect and plan only; do not create, edit, delete, dispatch workers, or run state-changing commands.",
+  "Return only the JSON object. Do not wrap the plan in prose.",
+  "",
+  `Objective: ${objective.trim()}`,
+].join("\n")
+
+const latestAssistantBody = (response: KhalaCodeDesktopChatTurnResponse): string => {
+  const message = [...response.messages].reverse().find(item => item.role === "assistant")
+  return message?.body.trim() ?? ""
 }
 
 const normalizeMentionCandidate = (value: unknown): KhalaCodeDesktopCodexMentionCandidate | null => {
@@ -2034,6 +2055,47 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
         env: input.env,
       })
       return promoteThreadResult(request, spawn)
+    },
+    async architectPlanCreate(request): Promise<KhalaCodeDesktopArchitectPlanCreateResult> {
+      requireNonEmpty("architectPlanCreate", "objective", request.objective)
+      requireNonEmpty("architectPlanCreate", "sessionId", request.sessionId)
+      const runtime = requireClaudeChatRuntime()
+      const turnId = `architect-plan-${randomUUID()}`
+      const response = await runtime.startTurn({
+        cwd: input.workingDirectory,
+        messages: [{
+          body: architectPrompt(request.objective),
+          id: `architect-objective-${turnId}`,
+          role: "user",
+        }],
+        sessionId: request.sessionId,
+        startNewThread: true,
+        turnId,
+      })
+      const plan = parseClaudePlanFanoutDagFromText(latestAssistantBody(response))
+      const createdAt = new Date().toISOString()
+      const artifact: KhalaCodeDesktopArchitectPlanArtifact = {
+        artifactRef: `architect_plan.${plan.planRef}`,
+        createdAt,
+        dispatchKind: null,
+        mode: "read_only",
+        plan,
+        role: "architect",
+        schema: "openagents.khala_code.architect_plan_artifact.v1",
+        sessionId: request.sessionId,
+        status: "pending",
+        threadId: request.threadId ?? null,
+      }
+      return {
+        artifact,
+        message: {
+          architectPlan: artifact,
+          body: `Architect plan ready: ${plan.objective}`,
+          id: `architect-plan-card-${plan.planRef}`,
+          role: "assistant",
+        },
+        ok: true,
+      }
     },
     async fleetRunStart(request): Promise<KhalaCodeDesktopFleetRunStartResult> {
       requireNonEmpty("fleetRunStart", "objective", request.objective)

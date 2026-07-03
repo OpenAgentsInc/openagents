@@ -40,6 +40,7 @@ describe("Khala Code main shell model", () => {
     expect(model.pendingTurn).toBe(false)
     expect(model.thinkingTurnId).toBeNull()
     expect(model.transcriptPinnedToEnd).toBe(true)
+    expect(model.architectPlanMode).toBe(false)
     expect(model.selectedHarnessMode).toBe("codex_harness")
   })
 
@@ -91,5 +92,23 @@ describe("Khala Code main shell model", () => {
     expect(model.threadTokenSummary.totalTokens).toBe(42)
     expect(model.threadTokenPopoverOpen).toBe(true)
     expect(model.claudeApprovalDialogOpen).toBe(true)
+  })
+
+  test("tracks architect plan mode as composer state", () => {
+    const initial = initialKhalaCodeMainShellModel({
+      threadTokenSummary: emptyThreadTokenSummary(null),
+    })
+
+    const enabled = updateKhalaCodeMainShellModel(initial, {
+      _tag: "ArchitectPlanModeChanged",
+      enabled: true,
+    })
+    const disabled = updateKhalaCodeMainShellModel(enabled, {
+      _tag: "ArchitectPlanModeChanged",
+      enabled: false,
+    })
+
+    expect(enabled.architectPlanMode).toBe(true)
+    expect(disabled.architectPlanMode).toBe(false)
   })
 })

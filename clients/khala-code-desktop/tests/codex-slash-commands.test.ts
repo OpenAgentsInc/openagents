@@ -158,6 +158,7 @@ describe("Khala Code Codex slash command registry", () => {
       "review",
       "rename",
       "resume",
+      "architect",
       "plan",
       "goal",
       "side",

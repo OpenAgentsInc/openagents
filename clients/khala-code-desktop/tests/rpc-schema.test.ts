@@ -216,6 +216,58 @@ describe("Khala Code desktop schema-first RPC contract", () => {
     })
   })
 
+  test("decodes architect plan creation and plan-card messages", () => {
+    const plan = {
+      schema: "openagents.khala_code.claude_plan_fanout_dag.v1",
+      planRef: "plan.q9_2.fixture",
+      source: "claude_plan_mode",
+      generatedAt: "2026-07-02T12:00:00.000Z",
+      objective: "Plan the fixture task.",
+      nodes: [{
+        nodeRef: "one",
+        title: "Implement",
+        objective: "Make the bounded change.",
+      }],
+    }
+    const artifact = {
+      artifactRef: "architect_plan.plan.q9_2.fixture",
+      createdAt: "2026-07-02T12:00:01.000Z",
+      dispatchKind: null,
+      mode: "read_only",
+      plan,
+      role: "architect",
+      schema: "openagents.khala_code.architect_plan_artifact.v1",
+      sessionId: "session-1",
+      status: "pending",
+      threadId: null,
+    }
+
+    expect(decodeKhalaCodeDesktopRpcParameters("architectPlanCreate", [{
+      objective: "Plan the fixture task.",
+      sessionId: "session-1",
+    }])[0]).toMatchObject({
+      objective: "Plan the fixture task.",
+      sessionId: "session-1",
+    })
+
+    expect(decodeKhalaCodeDesktopRpcResult("architectPlanCreate", {
+      artifact,
+      message: {
+        architectPlan: artifact,
+        body: "Architect plan ready: Plan the fixture task.",
+        id: "architect-plan-card-plan.q9_2.fixture",
+        role: "assistant",
+      },
+      ok: true,
+    })).toMatchObject({
+      artifact: {
+        mode: "read_only",
+        role: "architect",
+        status: "pending",
+      },
+    })
+  })
+
   test("decodes Forum RPC requests and rejects non-Forum proxy paths", async () => {
     expect(decodeKhalaCodeDesktopRpcParameters("forumRequest", [{
       body: { amountSat: 21 },

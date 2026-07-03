@@ -47,6 +47,7 @@ import {
   decodeKhalaCodeDesktopRpcParameters,
   decodeKhalaCodeDesktopRpcResult,
   type KhalaCodeDesktopRpcMethodName,
+  type KhalaCodeDesktopArchitectPlanArtifact,
   type KhalaCodeDesktopChatTurnAttachment,
   type KhalaCodeDesktopChatTurnEvent,
   type KhalaCodeDesktopFleetLifecycleEvent,
@@ -68,7 +69,11 @@ import {
   type KhalaCodeQaMetricSample,
   type KhalaCodeQaMetricsSnapshot,
 } from "../shared/qa-metrics"
-import { renderMessageBody } from "./transcript-render"
+import {
+  KHALA_CODE_ARCHITECT_PLAN_ACTION_EVENT,
+  renderMessageBody,
+  type KhalaCodeArchitectPlanActionDetail,
+} from "./transcript-render"
 import { mountFleetPanel } from "./fleet-status"
 import { mountKhalaCodeForumPanel } from "./forum-panel"
 import { mountKhalaCodePlansPanel } from "./plans-panel"
@@ -213,6 +218,10 @@ const previewRpc = (): DesktopRpc => ({
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["codexFleetPromoteThread"]>>
       >("codexFleetPromoteThread", request),
+    architectPlanCreate: request =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["architectPlanCreate"]>>
+      >("architectPlanCreate", request),
     fleetRunControl: request =>
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["fleetRunControl"]>>
@@ -617,6 +626,7 @@ const composerClasses = {
 
 type ComposerIconName =
   | "attach"
+  | "architect"
   | "code"
   | "file"
   | "image"
@@ -635,6 +645,7 @@ type ComposerIconName =
 
 const composerIconCatalog = {
   attach: "Paperclip",
+  architect: "Compass",
   code: "Code",
   file: "File",
   image: "FileImage",
@@ -1130,7 +1141,7 @@ const renderMessage = (message: KhalaCodeDesktopMessage): HTMLElement => {
 
   const body = document.createElement("div")
   body.className = "message-body"
-  body.append(...renderMessageBody(message.body, message.role, message.codexItem))
+  body.append(...renderMessageBody(message.body, message.role, message.codexItem, message.architectPlan))
 
   article.append(body)
   return article
@@ -2043,6 +2054,31 @@ const renderComposerPreview = (): void => {
   composerPreview.replaceChildren()
 }
 
+const setArchitectPlanMode = (enabled: boolean): void => {
+  dispatchMainShell({ _tag: "ArchitectPlanModeChanged", enabled })
+  renderComposer()
+  requestAnimationFrame(focusComposerInput)
+}
+
+const renderArchitectPlanToggle = (): HTMLButtonElement => {
+  const button = document.createElement("button")
+  button.type = "button"
+  button.className = "oa-ai-command-composer-button khala-code-architect-toggle"
+  button.dataset.active = shellModel().architectPlanMode ? "true" : "false"
+  button.dataset.oaCommandComposerControl = "Architect"
+  button.title = shellModel().architectPlanMode
+    ? "Architect plan mode is on"
+    : "Create an architect plan before coding"
+  button.setAttribute("aria-label", "Toggle architect plan mode")
+  button.setAttribute("aria-pressed", shellModel().architectPlanMode ? "true" : "false")
+  const label = document.createElement("span")
+  label.className = "oa-ai-command-composer-button-label"
+  label.textContent = "Architect"
+  button.replaceChildren(composerIconElement("architect"), label)
+  button.addEventListener("click", () => setArchitectPlanMode(!shellModel().architectPlanMode))
+  return button
+}
+
 const slashCommandPlatform = (): string => {
   const userAgent = navigator.userAgent.toLowerCase()
   const platform = navigator.platform.toLowerCase()
@@ -2155,6 +2191,7 @@ function renderComposer(): void {
     sendLabel
   composerControls.replaceChildren(
     attachButton,
+    renderArchitectPlanToggle(),
     // renderHarnessPill(),
   )
 
@@ -2167,6 +2204,7 @@ function renderComposer(): void {
   composerA11y.textContent =
     `${statusLabelFor(status)}. ${attachmentCount} attachments. ` +
     `${followUpCount} queued follow-ups. ` +
+    `${shellModel().architectPlanMode ? "Architect plan mode on. " : ""}` +
     `${composerInput.value.length} characters.`
 
   renderFollowUpQueue()
@@ -2586,6 +2624,177 @@ const submittedBody = (
   return `${text}\n\n${summary}`
 }
 
+const architectCommandObjective = (draftText: string): string | null => {
+  const trimmed = draftText.trim()
+  if (!trimmed.startsWith("/architect")) return null
+  const rest = trimmed.slice("/architect".length).trim()
+  return rest.length > 0 ? rest : null
+}
+
+const updateArchitectPlanArtifact = (
+  artifactRef: string,
+  update: (artifact: KhalaCodeDesktopArchitectPlanArtifact) => KhalaCodeDesktopArchitectPlanArtifact,
+): KhalaCodeDesktopArchitectPlanArtifact | null => {
+  let nextArtifact: KhalaCodeDesktopArchitectPlanArtifact | null = null
+  setShellMessages(shellModel().messages.map(message => {
+    if (message.architectPlan?.artifactRef !== artifactRef) return message
+    nextArtifact = update(message.architectPlan)
+    return {
+      ...message,
+      architectPlan: nextArtifact,
+      body: `Architect plan ${nextArtifact.status}: ${nextArtifact.plan.objective}`,
+    }
+  }))
+  render()
+  return nextArtifact
+}
+
+const createArchitectPlan = async (
+  objective: string,
+): Promise<KhalaCodeDesktopMessage | null> => {
+  const trimmed = objective.trim()
+  if (trimmed.length === 0) return null
+  shellModel().lastSubmittedDraft = trimmed
+  shellModel().lastTurnFailed = false
+  resetComposerDraft()
+  if (shellModel().architectPlanMode) setArchitectPlanMode(false)
+  const userMessage = addMessage("user", `/architect ${trimmed}`)
+  shellModel().pendingTurn = true
+  shellModel().thinkingTurnId = "architect-plan"
+  render()
+  try {
+    const activeThreadId = shellModel().activeCodexThreadId
+    const result = await rpc.request.architectPlanCreate({
+      messages: shellModel().messages,
+      objective: trimmed,
+      sessionId,
+      ...(activeThreadId === null ? {} : { threadId: activeThreadId }),
+    })
+    appendMessages([result.message])
+    return userMessage
+  } catch (error) {
+    shellModel().lastTurnFailed = true
+    appendMessages([{
+      body: `Architect plan failed: ${error instanceof Error ? error.message : String(error)}`,
+      id: nextMessageId("system"),
+      role: "system",
+    }])
+    return userMessage
+  } finally {
+    shellModel().pendingTurn = false
+    shellModel().thinkingTurnId = null
+    renderComposer()
+    requestAnimationFrame(focusComposerInput)
+  }
+}
+
+const coderPromptForArchitectPlan = (
+  artifact: KhalaCodeDesktopArchitectPlanArtifact,
+): string => [
+  "Implement the approved architect plan in this thread.",
+  `Plan ref: ${artifact.plan.planRef}`,
+  `Objective: ${artifact.plan.objective}`,
+  "",
+  "Plan steps:",
+  ...artifact.plan.nodes.map((node, index) => {
+    const deps = (node.dependsOn ?? []).length === 0 ? "" : ` Depends on: ${node.dependsOn!.join(", ")}.`
+    return `${index + 1}. ${node.title}: ${node.objective}${deps}`
+  }),
+  "",
+  artifact.plan.verify === undefined ? "Run the relevant verification before finishing." : `Verification: ${artifact.plan.verify}`,
+].join("\n")
+
+const approveArchitectPlan = async (
+  artifact: KhalaCodeDesktopArchitectPlanArtifact,
+): Promise<void> => {
+  const dispatchKind = artifact.plan.nodes.length <= 2 ? "in_thread" : "fleet_run"
+  updateArchitectPlanArtifact(artifact.artifactRef, current => ({
+    ...current,
+    dispatchKind,
+    status: "approved",
+  }))
+  if (dispatchKind === "fleet_run") {
+    try {
+      const result = await controls.fleetRunStart({
+        objective: artifact.plan.objective,
+        targetConcurrency: Math.min(Math.max(1, artifact.plan.nodes.length), 8),
+        tickImmediately: true,
+        workerKind: "codex",
+        workSource: {
+          kind: "plan_dag",
+          planRef: artifact.plan.planRef,
+          nodes: artifact.plan.nodes.map(node => ({
+            ref: node.nodeRef,
+            title: node.title,
+            objective: node.objective,
+            ...(node.dependsOn === undefined ? {} : { dependsOn: node.dependsOn }),
+            ...(node.repo === undefined ? {} : { repo: node.repo }),
+            ...(node.branch === undefined ? {} : { branch: node.branch }),
+            ...(node.baseCommit === undefined ? {} : { baseCommit: node.baseCommit }),
+            ...(node.verify === undefined ? {} : { verify: node.verify }),
+            ...(node.issue === undefined ? {} : { issue: node.issue }),
+            ...(node.labels === undefined ? {} : { labels: node.labels }),
+          })),
+          ...(artifact.plan.repo === undefined ? {} : { repo: artifact.plan.repo }),
+          ...(artifact.plan.branch === undefined ? {} : { branch: artifact.plan.branch }),
+          ...(artifact.plan.baseCommit === undefined ? {} : { baseCommit: artifact.plan.baseCommit }),
+          ...(artifact.plan.verify === undefined ? {} : { verify: artifact.plan.verify }),
+        },
+      })
+      updateArchitectPlanArtifact(artifact.artifactRef, current => ({
+        ...current,
+        approvedRunRef: result.run.runRef,
+        dispatchKind: "fleet_run",
+        status: "dispatched",
+      }))
+      appendMessages([{
+        body: `Architect plan dispatched as FleetRun ${result.run.runRef}.`,
+        id: nextMessageId("system"),
+        role: "system",
+      }])
+    } catch (error) {
+      updateArchitectPlanArtifact(artifact.artifactRef, current => ({
+        ...current,
+        dispatchKind: null,
+        status: "pending",
+      }))
+      appendMessages([{
+        body: `Architect FleetRun dispatch failed: ${error instanceof Error ? error.message : String(error)}`,
+        id: nextMessageId("system"),
+        role: "system",
+      }])
+    }
+    return
+  }
+
+  composerInput.value = coderPromptForArchitectPlan(artifact)
+  updateArchitectPlanArtifact(artifact.artifactRef, current => ({
+    ...current,
+    dispatchKind: "in_thread",
+    status: "dispatched",
+  }))
+  await submitComposer()
+}
+
+const handleArchitectPlanAction = async (event: Event): Promise<void> => {
+  const rawDetail = "detail" in event ? (event as CustomEvent<unknown>).detail : undefined
+  const detail = rawDetail as Partial<KhalaCodeArchitectPlanActionDetail> | undefined
+  if (detail?.artifactRef === undefined || (detail.action !== "approve" && detail.action !== "reject")) return
+  const artifact = shellModel().messages.find(message =>
+    message.architectPlan?.artifactRef === detail.artifactRef
+  )?.architectPlan
+  if (artifact === undefined || artifact.status !== "pending") return
+  if (detail.action === "reject") {
+    updateArchitectPlanArtifact(detail.artifactRef, current => ({
+      ...current,
+      rejectedAt: new Date().toISOString(),
+      status: "rejected",
+    }))
+    return
+  }
+  await approveArchitectPlan(artifact)
+}
+
 const imageAttachmentsForSubmit = async (
   attachments: readonly ComposerAttachment[],
 ): Promise<readonly KhalaCodeDesktopChatTurnAttachment[]> => {
@@ -2740,6 +2949,8 @@ const submitComposer = async (): Promise<KhalaCodeDesktopMessage | null> => {
       return null
     }
     if (draftText.startsWith("/")) {
+      const objective = architectCommandObjective(draftText)
+      if (objective !== null) return createArchitectPlan(objective)
       return submitSlashCommand(draftText, draftText)
     }
     queueFollowUpDraft(draftText)
@@ -2753,6 +2964,18 @@ const submitComposer = async (): Promise<KhalaCodeDesktopMessage | null> => {
 
   const attachments = [...shellModel().composerState.doc.attachments]
   const body = submittedBody(draftText, attachments)
+  const architectObjective = architectCommandObjective(draftText)
+  if (architectObjective !== null || (shellModel().architectPlanMode && draftText.length > 0)) {
+    if (attachments.length > 0) {
+      appendMessages([{
+        body: "Architect plan mode does not accept attachments. Remove them or send a normal coder turn.",
+        id: nextMessageId("system"),
+        role: "system",
+      }])
+      return null
+    }
+    return createArchitectPlan(architectObjective ?? draftText)
+  }
   if (draftText.startsWith("/")) {
     return submitSlashCommand(draftText, body)
   }
@@ -3074,6 +3297,11 @@ messageList.addEventListener(KHALA_CODE_SOURCE_CONTROL_ACTION_SUBMIT_EVENT, even
   event.stopPropagation()
   void handleSourceControlActionSubmit(event)
 })
+messageList.addEventListener(KHALA_CODE_ARCHITECT_PLAN_ACTION_EVENT, event => {
+  event.preventDefault()
+  event.stopPropagation()
+  void handleArchitectPlanAction(event)
+})
 messageList.addEventListener("scroll", () => {
   shellModel().transcriptPinnedToEnd = isNearTranscriptEnd()
 }, { passive: true })
@@ -3129,6 +3357,8 @@ const controls = {
   codexFleetStatus: () => rpc.request.codexFleetStatus(),
   codexFleetPromoteThread: (request: Parameters<DesktopRpcRequests["codexFleetPromoteThread"]>[0]) =>
     rpc.request.codexFleetPromoteThread(request),
+  architectPlanCreate: (request: Parameters<DesktopRpcRequests["architectPlanCreate"]>[0]) =>
+    rpc.request.architectPlanCreate(request),
   fleetRunControl: (request: Parameters<DesktopRpcRequests["fleetRunControl"]>[0]) =>
     rpc.request.fleetRunControl(request),
   fleetRunList: (request?: Parameters<DesktopRpcRequests["fleetRunList"]>[0]) =>
