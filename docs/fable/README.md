@@ -75,6 +75,10 @@ each source doc.
   intake -> scope -> receipt-plan -> close queue contract, metric definitions
   for qualified intakes, scope calls, close rate, time-to-quick-win, commitment
   coverage, and the weekly closeout checklist.
+- [`2026-07-03-bf-9-4-operator-minutes-monthly-series.md`](./2026-07-03-bf-9-4-operator-minutes-monthly-series.md)
+  — BF-9.4 operator-minutes monthly series: the agency-trap falsifier wired
+  into the BF-7.2 business factory query pack as a caveated review-ledger floor
+  with `not_measured` empty-month behavior.
 - [`EXECUTION.md`](./EXECUTION.md) — how the roadmap is executed: Artanis
   (fleet-manager role) supervises; **Khala Code fleet delegation is the
   primary mechanism**; one GitHub issue per roadmap task, closed only via a

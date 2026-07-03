@@ -20,7 +20,7 @@ export type BusinessFactoryMetricRow = Readonly<{
 }>
 
 export const BUSINESS_FACTORY_METRICS_SQL = `
-WITH
+WITH RECURSIVE
   params(window_start, window_end) AS (
     SELECT ?1, ?2
   ),
@@ -77,12 +77,32 @@ WITH
     SELECT
       COALESCE(NULLIF(c.customer_ref, ''), c.subject_ref) AS engagement_ref,
       e.review_minutes,
+      e.updated_at,
       e.id AS economics_id
     FROM economics_rows e
     INNER JOIN omni_accepted_outcome_contracts c
       ON c.id = e.accepted_outcome_contract_id
     WHERE c.archived_at IS NULL
+      AND c.acceptance_state = 'accepted'
       AND COALESCE(NULLIF(c.customer_ref, ''), c.subject_ref) IS NOT NULL
+  ),
+  month_windows(month_start, month_end) AS (
+    SELECT
+      strftime('%Y-%m-01T00:00:00.000Z', p.window_start) AS month_start,
+      strftime(
+        '%Y-%m-01T00:00:00.000Z',
+        datetime(p.window_start, 'start of month', '+1 month')
+      ) AS month_end
+    FROM params p
+    UNION ALL
+    SELECT
+      mw.month_end AS month_start,
+      strftime(
+        '%Y-%m-01T00:00:00.000Z',
+        datetime(mw.month_end, '+1 month')
+      ) AS month_end
+    FROM month_windows mw, params p
+    WHERE mw.month_end < p.window_end
   )
 SELECT
   'business_factory.throughput.accepted_outcomes.v1' AS metric_ref,
@@ -211,7 +231,44 @@ SELECT
   '["caveat.business_metrics.operator_minutes_review_only_until_labor_ledger"]' AS caveat_refs_json
 FROM engagement_review_rows, params p
 GROUP BY engagement_ref
-ORDER BY metric_ref, grain, work_kind, engagement_ref
+
+UNION ALL
+
+SELECT
+  'business_engagement.operator_minutes_per_engagement.monthly_review_ledger_floor.v1' AS metric_ref,
+  'monthly operator minutes per accepted engagement review-ledger floor' AS metric_name,
+  'window' AS grain,
+  NULL AS work_kind,
+  NULL AS engagement_ref,
+  mw.month_start AS window_start,
+  mw.month_end AS window_end,
+  COALESCE(SUM(err.review_minutes), 0) AS numerator,
+  COUNT(DISTINCT err.engagement_ref) AS denominator,
+  CASE
+    WHEN COUNT(DISTINCT err.engagement_ref) = 0 THEN NULL
+    ELSE ROUND(
+      COALESCE(SUM(err.review_minutes), 0) * 1.0
+      / COUNT(DISTINCT err.engagement_ref),
+      2
+    )
+  END AS value,
+  'minutes' AS unit,
+  CASE
+    WHEN COUNT(DISTINCT err.engagement_ref) = 0 THEN 'not_measured'
+    ELSE 'measured'
+  END AS measurement_state,
+  '["table.omni_accepted_outcome_economics","table.omni_accepted_outcome_contracts"]' AS evidence_refs_json,
+  CASE
+    WHEN COUNT(DISTINCT err.engagement_ref) = 0
+      THEN '["caveat.business_metrics.no_accepted_engagements_in_month","caveat.business_metrics.operator_minutes_review_only_until_labor_ledger"]'
+    ELSE '["caveat.business_metrics.operator_minutes_review_only_until_labor_ledger"]'
+  END AS caveat_refs_json
+FROM month_windows mw
+LEFT JOIN engagement_review_rows err
+  ON err.updated_at >= mw.month_start
+  AND err.updated_at < mw.month_end
+GROUP BY mw.month_start, mw.month_end
+ORDER BY metric_ref, grain, work_kind, engagement_ref, window_start
 `
 
 export const selectBusinessFactoryMetrics = async (

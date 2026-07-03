@@ -66,6 +66,9 @@ describe('business factory metrics', () => {
     expect(BUSINESS_FACTORY_METRICS_SQL).toContain(
       'business_engagement.operator_minutes.review_ledger_floor.v1',
     )
+    expect(BUSINESS_FACTORY_METRICS_SQL).toContain(
+      'business_engagement.operator_minutes_per_engagement.monthly_review_ledger_floor.v1',
+    )
   })
 
   test('returns measured rows from auditable outcome and economics ledgers', async () => {
@@ -167,6 +170,12 @@ describe('business factory metrics', () => {
           'business_engagement.operator_minutes.review_ledger_floor.v1'
         && row.engagement_ref === 'business_engagement.opaque.1',
     )
+    const monthlyOperatorMinutes = rows.find(
+      row =>
+        row.metric_ref ===
+          'business_engagement.operator_minutes_per_engagement.monthly_review_ledger_floor.v1'
+        && row.window_start === '2026-07-01T00:00:00.000Z',
+    )
 
     expect(businessThroughput).toMatchObject({
       value: 1,
@@ -195,6 +204,15 @@ describe('business factory metrics', () => {
       caveat_refs_json:
         '["caveat.business_metrics.operator_minutes_review_only_until_labor_ledger"]',
     })
+    expect(monthlyOperatorMinutes).toMatchObject({
+      numerator: 17,
+      denominator: 1,
+      value: 17,
+      unit: 'minutes',
+      measurement_state: 'measured',
+      caveat_refs_json:
+        '["caveat.business_metrics.operator_minutes_review_only_until_labor_ledger"]',
+    })
     expect(JSON.stringify(rows)).not.toContain('lead@example.com')
   })
 
@@ -219,6 +237,11 @@ describe('business factory metrics', () => {
         row.metric_ref === 'business_factory.throughput.accepted_outcomes.v1'
         && row.work_kind === 'site',
     )
+    const monthlyOperatorMinutes = rows.find(
+      row =>
+        row.metric_ref ===
+          'business_engagement.operator_minutes_per_engagement.monthly_review_ledger_floor.v1',
+    )
 
     expect(siteThroughput).toMatchObject({
       value: 0,
@@ -235,6 +258,13 @@ describe('business factory metrics', () => {
       measurement_state: 'not_measured',
       caveat_refs_json:
         '["caveat.business_metrics.no_terminal_outcomes_in_window"]',
+    })
+    expect(monthlyOperatorMinutes).toMatchObject({
+      denominator: 0,
+      value: null,
+      measurement_state: 'not_measured',
+      caveat_refs_json:
+        '["caveat.business_metrics.no_accepted_engagements_in_month","caveat.business_metrics.operator_minutes_review_only_until_labor_ledger"]',
     })
   })
 })

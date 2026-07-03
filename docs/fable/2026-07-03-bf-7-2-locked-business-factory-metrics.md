@@ -137,6 +137,30 @@ Unit: `minutes`. This is dashboard-eligible only with the caveat shown next to
 it. Any future broader operator-minute metric must add a first-class labor
 ledger and update this document and the query pack in the same PR.
 
+### Monthly Operator Minutes Ratio
+
+`business_engagement.operator_minutes_per_engagement.monthly_review_ledger_floor.v1`
+
+Monthly review-ledger floor for operator minutes per accepted engagement. It
+is the BF-9.4 agency-trap falsifier series: if this value does not fall while
+accepted engagement count rises, the services engine is becoming an agency
+instead of a platform.
+
+Formula:
+
+```text
+sum(omni_accepted_outcome_economics.review_minutes)
+/ count(distinct accepted engagement ref)
+grouped by calendar month
+```
+
+Unit: `minutes`. Months with no accepted engagement denominator return
+`measurement_state = 'not_measured'` and
+`caveat.business_metrics.no_accepted_engagements_in_month`, never a fake zero.
+Measured months still carry
+`caveat.business_metrics.operator_minutes_review_only_until_labor_ledger`
+until a broader operator-labor event ledger exists.
+
 ## Instrumented Query Pack
 
 The SQL source of truth is
