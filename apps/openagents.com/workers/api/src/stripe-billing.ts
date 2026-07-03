@@ -47,7 +47,10 @@ export type BillingCreditPackageId = typeof BillingCreditPackageId.Type
 
 export type StripeCreditPackage = Readonly<{
   amountCents: number
+  bonusCents: number
+  totalCreditCents: number
   currency: 'USD'
+  creditsExpire: false
   id: BillingCreditPackageId
   label: string
   priceId: StripePriceId
@@ -347,6 +350,7 @@ export class BillingCreditService extends Context.Service<
   Readonly<{
     applyStripeCheckoutCredit: (input: {
       amountCents: number
+      bonusCents?: number | undefined
       db: D1Database
       packageId: string
       sessionId: string
@@ -445,6 +449,7 @@ const readPackages = (
           S.Array(
             S.Struct({
               amountCents: S.Number,
+              bonusCents: S.optionalKey(S.Number),
               id: S.String,
               label: S.String,
               priceId: S.String,
@@ -457,19 +462,27 @@ const readPackages = (
       const id = item.id.trim()
       const priceId = item.priceId.trim()
       const amountCents = Math.trunc(item.amountCents)
+      const bonusCents = Math.trunc(item.bonusCents ?? 0)
       const label = item.label.trim()
 
-      return id === '' || priceId === '' || label === '' || amountCents <= 0
+      return id === '' ||
+        priceId === '' ||
+        label === '' ||
+        amountCents <= 0 ||
+        bonusCents < 0
         ? Effect.fail(
             new StripeConfigError({
               field: 'STRIPE_CREDIT_PACKAGES_JSON',
               reason:
-                'Expected package id, label, positive amountCents, and priceId.',
+                'Expected package id, label, positive amountCents, non-negative bonusCents, and priceId.',
             }),
           )
         : Effect.succeed({
             amountCents,
+            bonusCents,
+            totalCreditCents: amountCents + bonusCents,
             currency: 'USD' as const,
+            creditsExpire: false as const,
             id: BillingCreditPackageId.make(id),
             label,
             priceId: StripePriceId.make(priceId),
@@ -504,8 +517,13 @@ export const readBillingCreditPackages = (
           (pack): BillingCreditPackageDisplay => ({
             id: pack.id,
             label: pack.label,
-            amountCents: pack.amountCents,
-            amountFormatted: formatUsdCents(pack.amountCents),
+            paidAmountCents: pack.amountCents,
+            paidAmountFormatted: formatUsdCents(pack.amountCents),
+            bonusCents: pack.bonusCents,
+            bonusFormatted: formatUsdCents(pack.bonusCents),
+            amountCents: pack.totalCreditCents,
+            amountFormatted: formatUsdCents(pack.totalCreditCents),
+            creditsExpire: false,
             currency: pack.currency,
           }),
         ),
@@ -635,9 +653,12 @@ const createCreditCheckout = async (
       line_items: [{ price: pack.priceId, quantity: 1 }],
       metadata: {
         amount_cents: String(pack.amountCents),
+        bonus_cents: String(pack.bonusCents),
         currency: pack.currency,
+        credits_expire: 'false',
         omega_user_id: input.userId,
         package_id: pack.id,
+        total_credit_cents: String(pack.totalCreditCents),
       },
       mode: 'payment',
       success_url: config.successUrl,
@@ -762,6 +783,7 @@ const fulfillCheckoutSession = async (
 
   const summary = await applyStripeCheckoutCredit(input.db, {
     amountCents: pack.amountCents,
+    bonusCents: pack.bonusCents,
     packageId: pack.id,
     sessionId: input.sessionId,
     userId,
