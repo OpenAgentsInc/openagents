@@ -27,7 +27,7 @@
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { Effect } from "effect";
+import { Effect, Schema as S } from "effect";
 import {
   mean,
   percentile,
@@ -67,6 +67,8 @@ export interface EvalVariant {
   readonly label: string;
   /** Public-safe note describing what this variant changes. */
   readonly note?: string;
+  /** First-class variant axis: MCP set, tool policy, config, model, or before/after. */
+  readonly axis: EvalVariantAxis;
   /** Fresh Brain per run (the decision-maker / model / tool-policy under test). */
   readonly brain: () => Brain;
   /** Fresh Backend per run (isolation; usually shared-fixture in CI). */
@@ -78,6 +80,42 @@ export interface EvalScenario {
   readonly id: string;
   readonly label: string;
 }
+
+export const EvalVariantAxisKind = S.Literals([
+  "mcp_set",
+  "tool_policy",
+  "config",
+  "model",
+  "before_after",
+]);
+export type EvalVariantAxisKind = typeof EvalVariantAxisKind.Type;
+
+export const EvalVariantAxis = S.Struct({
+  kind: EvalVariantAxisKind,
+  /** Public-safe value naming what changed, e.g. "filesystem-mcp:on". */
+  value: S.String,
+  /** True when this variant is the baseline for deltas. */
+  baseline: S.optional(S.Boolean),
+});
+export type EvalVariantAxis = typeof EvalVariantAxis.Type;
+
+export const EvalVariantRunConfig = S.Struct({
+  id: S.String,
+  label: S.String,
+  note: S.optional(S.String),
+  axis: EvalVariantAxis,
+});
+export type EvalVariantRunConfig = typeof EvalVariantRunConfig.Type;
+
+export const EvalRunConfig = S.Struct({
+  mode: S.Literal("variant_comparison"),
+  scenario: S.Struct({ id: S.String, label: S.String }),
+  variants: S.Array(EvalVariantRunConfig),
+  repetitions: S.Number,
+});
+export type EvalRunConfig = typeof EvalRunConfig.Type;
+
+export const decodeEvalRunConfig = S.decodeUnknownSync(EvalRunConfig);
 
 export interface EvalInput {
   /** Stable, URL-safe eval id — becomes /pro/evals/<id>. */
@@ -124,6 +162,7 @@ export interface EvalVariantMetrics {
   readonly variantId: string;
   readonly label: string;
   readonly note?: string;
+  readonly axis: EvalVariantAxis;
   readonly runs: ReadonlyArray<EvalRunRef>;
   /** passes / total, in [0,1]. */
   readonly passRate: number;
@@ -152,6 +191,8 @@ export interface EvalResult {
   readonly title: string;
   readonly target: { readonly name: string; readonly baseUrl: string };
   readonly scenario: EvalScenario;
+  /** Typed first-class run config: one scenario, N variant-axis entries. */
+  readonly runConfig: EvalRunConfig;
   readonly startedAt: string;
   readonly endedAt: string;
   readonly repetitions: number;
@@ -179,6 +220,7 @@ export const variantMetrics = (
     variantId: variant.id,
     label: variant.label,
     ...(variant.note !== undefined ? { note: variant.note } : {}),
+    axis: variant.axis,
     runs,
     passRate: runCount === 0 ? 0 : passCount / runCount,
     passCount,
@@ -273,12 +315,27 @@ export function runEval(input: EvalInput): Effect.Effect<EvalOutcome, Error> {
 
     const endedAt = now();
     const baselineVariantId = input.variants[0]!.id;
+    const runConfig: EvalRunConfig = decodeEvalRunConfig({
+      mode: "variant_comparison",
+      scenario: input.scenario,
+      repetitions,
+      variants: input.variants.map((variant, index) => ({
+        id: variant.id,
+        label: variant.label,
+        ...(variant.note !== undefined ? { note: variant.note } : {}),
+        axis: {
+          ...variant.axis,
+          baseline: index === 0 ? true : (variant.axis.baseline ?? false),
+        },
+      })),
+    });
     const result: EvalResult = {
       schemaVersion: EVAL_SCHEMA_VERSION,
       id: input.id,
       title: input.title,
       target: { name: input.target.name, baseUrl: input.target.baseUrl },
       scenario: input.scenario,
+      runConfig,
       startedAt: startedAt.toISOString(),
       endedAt: endedAt.toISOString(),
       repetitions,

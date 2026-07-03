@@ -53,12 +53,14 @@ const variants = (): ReadonlyArray<EvalVariant> => [
   {
     id: "mcp-on",
     label: "MCP on",
+    axis: { kind: "mcp_set", value: "filesystem:on", baseline: true },
     brain: () => scriptedBrain(loginRegressionSteps()),
     backend: () => localBackend({ chromium: passingChromium() }),
   },
   {
     id: "mcp-off",
     label: "MCP off",
+    axis: { kind: "mcp_set", value: "filesystem:off" },
     brain: () => scriptedBrain(loginRegressionStepsWrong()),
     backend: () => localBackend({ chromium: passingChromium() }),
   },

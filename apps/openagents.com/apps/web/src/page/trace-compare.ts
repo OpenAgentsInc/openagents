@@ -319,6 +319,57 @@ const metricRow = <Message>(
   )
 }
 
+const videoRow = <Message>(
+  traces: ReadonlyArray<CompareTrace>,
+): Html => {
+  const h = html<Message>()
+  const cells = traces.map(t => {
+    if (!t.found || t.videoSrc === undefined) {
+      return h.td(
+        [
+          Ui.className<Message>(
+            `border-b border-[#161616] px-4 py-3 align-top text-sm text-white/30 ${mono}`,
+          ),
+        ],
+        ['—'],
+      )
+    }
+    return h.td(
+      [
+        Ui.className<Message>('border-b border-[#161616] px-4 py-3 align-top'),
+      ],
+      [
+        h.a(
+          [
+            h.Href(t.videoSrc),
+            Ui.className<Message>(
+              `inline-flex w-fit text-sm leading-none text-[#f1efe8] underline decoration-white/20 underline-offset-4 transition hover:decoration-[#ffb400] focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#ffb400] ${mono}`,
+            ),
+            h.DataAttribute('component', 'trace-compare-video'),
+          ],
+          ['Watch video'],
+        ),
+      ],
+    )
+  })
+
+  return h.tr(
+    [],
+    [
+      h.th(
+        [
+          h.Scope('row'),
+          Ui.className<Message>(
+            'border-b border-[#161616] px-4 py-3 text-left align-top text-[0.625rem] font-semibold uppercase leading-none tracking-wide text-white/40',
+          ),
+        ],
+        ['Video'],
+      ),
+      ...cells,
+    ],
+  )
+}
+
 const comparisonTable = <Message>(comparison: Comparison): Html => {
   const h = html<Message>()
   const deltaByUuid = new Map(comparison.deltas.map(d => [d.uuid, d]))
@@ -353,6 +404,7 @@ const comparisonTable = <Message>(comparison: Comparison): Html => {
       value: t => measuredCell(t.costUsd, formatCost),
       delta: d => lowerIsBetterDelta(d.costDeltaUsd, formatCost),
     }),
+    videoRow<Message>(comparison.traces),
     metricRow<Message>({
       label: 'Model',
       traces: comparison.traces,

@@ -20,6 +20,7 @@ import {
   agentSteps,
   traceDurationMs,
   traceTarget,
+  traceVideoSrc,
   traceVerdict,
   verdictLabel,
   verdictTone,
@@ -60,6 +61,7 @@ export type CompareTrace =
       readonly durationMs: MeasuredNumber
       readonly stepCount: number
       readonly costUsd: MeasuredNumber
+      readonly videoSrc: string | undefined
     }
   | {
       readonly found: false
@@ -116,6 +118,7 @@ const deriveTrace = (
     // includes the user goal). Honest + consistent with `/trace/{uuid}`.
     stepCount: agentSteps(trajectory).length,
     costUsd: measuredOr(trajectory.final_metrics?.total_cost_usd),
+    videoSrc: traceVideoSrc(trajectory),
   }
 }
 
