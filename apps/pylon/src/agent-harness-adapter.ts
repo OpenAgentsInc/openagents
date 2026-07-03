@@ -11,6 +11,14 @@ import {
   type AssignmentRunLifecycleEvent,
   type PylonAssignmentLease,
 } from "./assignment.js"
+import { CLAUDE_AGENT_CAPABILITY_REF } from "./claude-agent.js"
+import {
+  CLAUDE_AGENT_SUM_REPAIR_FIXTURE_REF,
+  CLAUDE_AGENT_TASK_AGENT_KIND,
+  CLAUDE_AGENT_TASK_SCHEMA,
+  claudeAgentTaskFrom,
+  type ClaudeAgentTaskPayload,
+} from "./claude-agent-executor.js"
 import { CODEX_AGENT_CAPABILITY_REF } from "./codex-agent.js"
 import {
   CODEX_AGENT_SUM_REPAIR_FIXTURE_REF,
@@ -110,10 +118,10 @@ function publicTriggerRef(input: AgentHarnessAdapterStartInput): string {
   return manual?.triggerRef ?? input.definition.triggers[0]?.triggerRef ?? `trigger.manual.${refFragment(input.definition.id)}`
 }
 
-function fixtureRefFromTriggerPayload(payload: Record<string, unknown>): string {
+function fixtureRefFromTriggerPayload(payload: Record<string, unknown>, fallback: string): string {
   return typeof payload.fixtureRef === "string" && payload.fixtureRef.trim() !== ""
     ? payload.fixtureRef.trim()
-    : CODEX_AGENT_SUM_REPAIR_FIXTURE_REF
+    : fallback
 }
 
 function workspaceFromTriggerPayload(payload: Record<string, unknown>): unknown | undefined {
@@ -162,7 +170,9 @@ function codexAssignmentFromDefinition(input: {
   const codexPayload: CodexAgentTaskPayload = {
     schema: CODEX_AGENT_TASK_SCHEMA,
     agentKind: CODEX_AGENT_TASK_AGENT_KIND,
-    ...(workspace === undefined ? { fixtureRef: fixtureRefFromTriggerPayload(input.triggerPayload) } : {}),
+    ...(workspace === undefined
+      ? { fixtureRef: fixtureRefFromTriggerPayload(input.triggerPayload, CODEX_AGENT_SUM_REPAIR_FIXTURE_REF) }
+      : {}),
     timeoutSeconds: Math.min(Math.max(Math.floor(input.definition.budget.maxRunSeconds), 1), 2400),
   }
 
@@ -209,10 +219,77 @@ function codexLeaseFromDefinition(input: AgentHarnessAdapterStartInput & {
   }
 }
 
+function claudeAssignmentFromDefinition(input: {
+  definition: AgentDefinition
+  sessionRef: string
+  triggerPayload: Record<string, unknown>
+  triggerRef: string
+}): NonNullable<PylonAssignmentLease["codingAssignment"]> {
+  const workspace = workspaceFromTriggerPayload(input.triggerPayload)
+  const claudePayload: ClaudeAgentTaskPayload = {
+    schema: CLAUDE_AGENT_TASK_SCHEMA,
+    agentKind: CLAUDE_AGENT_TASK_AGENT_KIND,
+    ...(workspace === undefined
+      ? { fixtureRef: fixtureRefFromTriggerPayload(input.triggerPayload, CLAUDE_AGENT_SUM_REPAIR_FIXTURE_REF) }
+      : {}),
+    timeoutSeconds: Math.min(Math.max(Math.floor(input.definition.budget.maxRunSeconds), 1), 1200),
+  }
+
+  return {
+    kind: "claude_agent_task",
+    claudeAgent: claudePayload,
+    objective: {
+      objectiveRef: `workflow.public.agent_definition.${refFragment(input.definition.id)}`,
+      publicSummary: `Run background agent definition ${input.definition.id}.`,
+    },
+    requiredCapabilityRefs: [CLAUDE_AGENT_CAPABILITY_REF],
+    routing: {
+      durableStreamRef: input.sessionRef,
+      schema: AGENT_HARNESS_ADAPTER_SCHEMA,
+      triggerRef: input.triggerRef,
+    },
+    ...(workspace === undefined ? {} : { workspace }),
+  }
+}
+
+function claudeLeaseFromDefinition(input: AgentHarnessAdapterStartInput & {
+  now: Date
+  sessionRef: string
+  triggerRef: string
+}): PylonAssignmentLease {
+  const assignmentRef = input.assignmentRef ??
+    stableRef(
+      "assignment.public.agent_harness.claude_code",
+      `${input.definition.id}:${input.triggerRef}:${input.sessionRef}`,
+    )
+  const leaseRef = input.leaseRef ?? stableRef("lease.public.agent_harness.claude_code", assignmentRef)
+  const expiresAt = input.expiresAt ??
+    new Date(input.now.getTime() + Math.max(1, input.definition.budget.maxRunSeconds) * 1000).toISOString()
+
+  return {
+    schema: "openagents.pylon.assignment_lease.v0.3",
+    assignmentRef,
+    leaseRef,
+    goal: `workflow.public.agent_definition.${refFragment(input.definition.id)}`,
+    paymentMode: "no-spend",
+    capabilityRefs: [CLAUDE_AGENT_CAPABILITY_REF],
+    codingAssignment: claudeAssignmentFromDefinition(input),
+    expiresAt,
+    createdAt: input.now.toISOString(),
+  }
+}
+
 function codexCanStart(definition: AgentDefinition): boolean {
   return (
     definition.lane === "own_pylon" &&
     (definition.harness.kind === "codex" || definition.harness.kind === "khala")
+  )
+}
+
+function claudeCanStart(definition: AgentDefinition): boolean {
+  return (
+    definition.lane === "own_pylon" &&
+    (definition.harness.kind === "claude_code" || definition.harness.kind === "khala")
   )
 }
 
@@ -322,6 +399,116 @@ export function createCodexAgentHarnessAdapter(): AgentHarnessAdapter {
 
 export const codexAgentHarnessAdapter = createCodexAgentHarnessAdapter()
 
+export function createClaudeCodeAgentHarnessAdapter(): AgentHarnessAdapter {
+  return {
+    schema: AGENT_HARNESS_ADAPTER_SCHEMA,
+    adapterKind: "claude_code",
+    harnessKind: "claude_code",
+    canStart: claudeCanStart,
+    normalizeEvent: ({ event, sequence, sessionRef }) =>
+      runtimeEvent({
+        blockerRefs: event.blockerRefs,
+        generatedAt: event.observedAt,
+        refs: [
+          event.assignmentRef,
+          event.leaseRef,
+          ...(event.closeoutRef === undefined ? [] : [event.closeoutRef]),
+          ...(event.progressRef === undefined ? [] : [event.progressRef]),
+          ...(event.artifactRef === undefined ? [] : [event.artifactRef]),
+          ...(event.statusRef === undefined ? [] : [event.statusRef]),
+        ].filter((ref): ref is string => typeof ref === "string" && ref.trim() !== ""),
+        runId: sessionRef,
+        sequence,
+        summary: `Pylon Claude adapter observed ${event.event}.`,
+        tag: eventTagForLifecycleEvent(event.event),
+      }),
+    reportTerminalState: ({ closeout, generatedAt, sequence, sessionRef }) => {
+      const completed = closeout.status === "accepted"
+      const event = runtimeEvent({
+        blockerRefs: closeout.blockerRefs,
+        generatedAt,
+        refs: [
+          ...closeout.artifactRefs,
+          ...closeout.proofRefs,
+          ...closeout.resultRefs,
+          ...closeout.runRefs,
+          ...closeout.testRefs,
+        ],
+        runId: sessionRef,
+        sequence,
+        summary: completed
+          ? "Pylon Claude adapter completed the background agent run."
+          : "Pylon Claude adapter failed the background agent run.",
+        tag: completed ? "external_agent.completed" : "external_agent.failed",
+      })
+      return {
+        schema: AGENT_HARNESS_ADAPTER_SCHEMA,
+        adapterKind: "claude_code",
+        blockerRefs: [...closeout.blockerRefs],
+        event,
+        resultRefs: [...closeout.resultRefs],
+        sessionRef,
+        state: completed ? "completed" : "failed",
+      }
+    },
+    start: async (input) => {
+      if (!claudeCanStart(input.definition)) {
+        return {
+          schema: AGENT_HARNESS_ADAPTER_SCHEMA,
+          status: "refused",
+          adapterKind: "claude_code",
+          blockerRefs: [
+            input.definition.lane === "own_pylon"
+              ? "blocker.agent_harness_adapter.claude_code_harness_unsupported"
+              : "blocker.agent_harness_adapter.own_pylon_required",
+          ],
+          reasonRef: "reason.agent_harness_adapter.claude_code_start_refused",
+        }
+      }
+
+      const now = input.now ?? new Date()
+      const triggerRef = publicTriggerRef(input)
+      const sessionRef = stableRef(
+        "session.agent_harness.claude_code",
+        `${input.definition.id}:${triggerRef}:${stablePayloadFingerprint(input.triggerPayload)}:${now.toISOString()}`,
+      )
+      const assignment = claudeLeaseFromDefinition({ ...input, now, sessionRef, triggerRef })
+
+      return {
+        schema: AGENT_HARNESS_ADAPTER_SCHEMA,
+        status: "started",
+        adapterKind: "claude_code",
+        assignment,
+        initialEvents: [
+          runtimeEvent({
+            generatedAt: now.toISOString(),
+            refs: [input.definition.id, triggerRef, assignment.assignmentRef, assignment.leaseRef],
+            runId: sessionRef,
+            sequence: 0,
+            summary: "Background agent definition accepted by the Pylon Claude harness adapter.",
+            tag: "run.input_accepted",
+          }),
+          runtimeEvent({
+            generatedAt: now.toISOString(),
+            refs: [assignment.assignmentRef, assignment.leaseRef],
+            runId: sessionRef,
+            sequence: 1,
+            summary: "Pylon Claude harness adapter created a claude_agent_task lease.",
+            tag: "external_agent.started",
+          }),
+        ],
+        sessionRef,
+      }
+    },
+  }
+}
+
+export const claudeCodeAgentHarnessAdapter = createClaudeCodeAgentHarnessAdapter()
+
 export function assignmentCarriesCodexHarnessTask(assignment: PylonAssignmentLease): boolean {
   return codexAgentTaskFrom(assignment.codingAssignment) !== null
+}
+
+export function assignmentCarriesClaudeHarnessTask(assignment: PylonAssignmentLease): boolean {
+  return claudeAgentTaskFrom(assignment.codingAssignment) !== null
 }

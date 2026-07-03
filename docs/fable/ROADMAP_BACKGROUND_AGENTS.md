@@ -113,6 +113,13 @@ reports terminal state from the runner closeout. The conformance test at
 through the existing fixture-backed Codex executor, preserving the
 definition-is-durable/harness-is-a-field invariant for downstream BA-A4.
 
+BA-A4 status (2026-07-03): the same Pylon harness adapter contract now has a
+Claude Code adapter that starts owner-scoped definitions on the existing
+`claude_agent_task` lease path. The conformance test uses one unchanged
+`harness.kind=khala` definition and proves it can complete on both Codex and
+Claude fixture executors, with accepted closeouts and terminal
+`AgentRuntimeEvent` reports from both harnesses.
+
 | Task | Description | Deps | Delegable | Issue |
 | --- | --- | --- | --- | --- |
 | BA-A1 | `openagents.agent_definition.v1`: Effect Schema (name/goal/harness/toolset allow-deny-ask/triggers/lane/budget/escalation), D1 table + migration, owner-scoped CRUD `POST/GET/PATCH /v1/agent-definitions` on the Worker (same auth as agent registration). Harness is a field, never load-bearing | — (shared seam; lands first and alone) | MED | [#8188](https://github.com/OpenAgentsInc/openagents/issues/8188) |
