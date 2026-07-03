@@ -89,6 +89,19 @@ describe("Khala Code QA scenario DSL", () => {
     }
   })
 
+  test("allows fixture RPC phases to rely on the automatic schema gate", () => {
+    const decoded = decodeKhalaCodeQaScenario({
+      ...fixtureScenario,
+      phases: [{
+        act: [{ kind: "rpc_call", method: "appInfo" }],
+        expect: [{ oracle: "crash" }],
+        name: "schema-less-rpc",
+      }],
+    })
+
+    expect("_tag" in decoded).toBe(false)
+  })
+
   test("rejects a scenario without phases", () => {
     const decoded = decodeKhalaCodeQaScenario({
       ...fixtureScenario,
@@ -217,6 +230,74 @@ describe("Khala Code QA RPC driver and runner", () => {
     expect(report.status).toBe("fail")
     expect(report.commitments.verdict).toBe("REFUTED")
     expect(report.phaseOutcomes[0]?.oracles[0]?.ok).toBe(false)
+  })
+
+  test("blocks synthetic response drift with unknown fields", async () => {
+    const driver = makeKhalaCodeRpcQaDriver({
+      fetch: (() =>
+        Promise.resolve(jsonResponse({
+          app: "Khala Code Desktop",
+          ok: true,
+          observedAt: "2026-07-01T00:00:00.000Z",
+          syntheticDrift: true,
+        }))) as KhalaCodeRpcFetch,
+    })
+
+    const report = await Effect.runPromise(
+      runKhalaCodeQaScenario({
+        driver,
+        scenario: loadKhalaCodeQaScenario(fixtureScenario),
+      }),
+    )
+
+    expect(report.status).toBe("fail")
+    expect(report.commitments.verdict).toBe("REFUTED")
+    expect(report.phaseOutcomes[0]?.oracles[0]).toMatchObject({
+      ok: false,
+      oracle: "schema",
+      verdict: "REFUTED",
+    })
+    expect(JSON.stringify(report.phaseOutcomes[0]?.oracles[0]?.data)).toContain("syntheticDrift")
+  })
+
+  test("automatically gates fixture RPC phases without explicit schema expectations", async () => {
+    const scenario = loadKhalaCodeQaScenario({
+      ...fixtureScenario,
+      commitments: [
+        {
+          claim: "schema-less fixture phase still blocks drift",
+          evidence: "run-pass",
+          id: "run.pass",
+        },
+      ],
+      phases: [{
+        act: [{ kind: "rpc_call", method: "appInfo" }],
+        expect: [{ oracle: "crash" }],
+        name: "implicit-schema-gate",
+      }],
+    })
+    const driver = makeKhalaCodeRpcQaDriver({
+      fetch: (() =>
+        Promise.resolve(jsonResponse({
+          app: "Khala Code Desktop",
+          ok: true,
+          observedAt: "2026-07-01T00:00:00.000Z",
+          syntheticDrift: true,
+        }))) as KhalaCodeRpcFetch,
+    })
+
+    const report = await Effect.runPromise(runKhalaCodeQaScenario({ driver, scenario }))
+
+    expect(report.status).toBe("fail")
+    expect(report.phaseOutcomes[0]?.oracles.map((oracle) => oracle.oracle)).toEqual([
+      "crash",
+      "schema",
+    ])
+    expect(report.phaseOutcomes[0]?.oracles[1]).toMatchObject({
+      ok: false,
+      oracle: "schema",
+      verdict: "REFUTED",
+    })
   })
 
   test("keeps unobserved commitments inconclusive", async () => {
