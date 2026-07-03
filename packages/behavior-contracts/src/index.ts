@@ -1,3 +1,4 @@
+export * from "./background-agents"
 export * from "./contract"
 export * from "./coverage"
 export * from "./registry"

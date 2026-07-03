@@ -7,6 +7,10 @@ import {
   type BehaviorContractRegistryDocument,
 } from "./contract"
 import {
+  BACKGROUND_AGENTS_CONTRACT_DOC_PATH,
+  backgroundAgentsContractRegistry,
+} from "./background-agents"
+import {
   checkBehaviorContractCoverage,
   inMemoryOracleSourceLayer,
 } from "./coverage"
@@ -201,5 +205,60 @@ describe("behavior contract report", () => {
     expect(markdown).toContain("Example stated behavior.")
     expect(markdown).toContain("test-sweep")
     expect(markdown).toContain("clients/khala-code-desktop/tests/ux-contracts.test.ts")
+  })
+})
+
+const repoPath = (ref: string): string =>
+  new URL(`../../../${ref}`, import.meta.url).pathname
+
+describe("background agent contract registry", () => {
+  test("registers the headline background-agent invariants as pending contracts", () => {
+    const validation = validateBehaviorContractRegistry(backgroundAgentsContractRegistry)
+    expect(validation.issues).toEqual([])
+    expect(validation.ok).toBe(true)
+    expect(backgroundAgentsContractRegistry.contracts.map(contract => contract.contractId)).toEqual([
+      "background_agents.dispatch.budget_caps_enforced.v1",
+      "background_agents.toolset.compiled_policy_enforced.v1",
+      "background_agents.credentials.no_long_lived_tokens_in_workspaces.v1",
+      "background_agents.definitions.harness_swap.v1",
+      "background_agents.agents_panel.run_status_indicators_truthful.v1",
+      "background_agents.warm_dispatch.honest_no_op_without_warm_path.v1",
+    ])
+    expect(
+      backgroundAgentsContractRegistry.contracts.every(
+        contract =>
+          contract.state === "pending" &&
+          contract.enforcementTier === "unenforced" &&
+          contract.blockerRefs.length > 0,
+      ),
+    ).toBe(true)
+  })
+
+  test("pending background-agent contracts are skipped by oracle coverage until their sibling task oracles land", async () => {
+    const report = await Effect.runPromise(
+      checkBehaviorContractCoverage(backgroundAgentsContractRegistry).pipe(
+        Effect.provide(inMemoryOracleSourceLayer({})),
+      ),
+    )
+    expect(report.ok).toBe(true)
+    expect(report.results).toEqual([])
+  })
+
+  test("the background-agent human contract doc stays in sync with the registry", async () => {
+    const doc = await Bun.file(repoPath(BACKGROUND_AGENTS_CONTRACT_DOC_PATH)).text()
+    expect(doc).toContain(
+      `Registry version: \`${backgroundAgentsContractRegistry.version}\``,
+    )
+    expect(doc).toContain(
+      renderBehaviorContractMarkdown(backgroundAgentsContractRegistry).split("\n")[0] ??
+        "",
+    )
+    for (const contract of backgroundAgentsContractRegistry.contracts) {
+      expect(doc).toContain(contract.contractId)
+      expect(doc).toContain(contract.statement)
+      for (const blockerRef of contract.blockerRefs) {
+        expect(doc).toContain(blockerRef)
+      }
+    }
   })
 })
