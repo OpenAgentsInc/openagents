@@ -75,6 +75,7 @@ export const OmniWorkroomStatus = S.Literals([
 export type OmniWorkroomStatus = typeof OmniWorkroomStatus.Type
 
 const OmniWorkroomProjection = S.Struct({
+  acceptedOutcomeContractId: S.optionalKey(S.NullOr(S.String)),
   artifactRefs: S.optionalKey(S.Array(S.String)),
   blockerRefs: S.optionalKey(S.Array(S.String)),
   classificationCaveatRef: S.optionalKey(S.String),
@@ -88,18 +89,35 @@ const OmniWorkroomProjection = S.Struct({
   sourceRefs: S.optionalKey(S.Array(S.String)),
   status: S.optionalKey(S.String),
   trustTier: S.optionalKey(S.String),
+  visibility: S.optionalKey(S.String),
   workKind: S.optionalKey(S.String),
 })
 export type OmniWorkroomProjection = typeof OmniWorkroomProjection.Type
 
+const OmniEvidenceEntryProjection = S.Struct({
+  caveatRef: S.optionalKey(S.NullOr(S.String)),
+  entryKind: S.optionalKey(S.String),
+  redactionState: S.optionalKey(S.String),
+  ref: S.optionalKey(S.String),
+  sourceAuthority: S.optionalKey(S.String),
+  summaryRef: S.optionalKey(S.String),
+  visibility: S.optionalKey(S.String),
+})
+export type OmniEvidenceEntryProjection =
+  typeof OmniEvidenceEntryProjection.Type
+
 const OmniEvidenceBundleProjection = S.Struct({
   artifactRefs: S.optionalKey(S.Array(S.String)),
+  entries: S.optionalKey(S.Array(OmniEvidenceEntryProjection)),
   id: S.optionalKey(S.String),
   publicReceiptRef: S.optionalKey(S.String),
   receiptRefs: S.optionalKey(S.Array(S.String)),
   sourceRefs: S.optionalKey(S.Array(S.String)),
+  sourceAuthorityCaveatRef: S.optionalKey(S.NullOr(S.String)),
   status: S.optionalKey(S.String),
+  summaryRef: S.optionalKey(S.String),
   workKind: S.optionalKey(S.String),
+  workroomId: S.optionalKey(S.String),
 })
 export type OmniEvidenceBundleProjection =
   typeof OmniEvidenceBundleProjection.Type
@@ -119,14 +137,40 @@ const OmniLifecycleDecisionProjection = S.Struct({
 export type OmniLifecycleDecisionProjection =
   typeof OmniLifecycleDecisionProjection.Type
 
+const OmniRouteScorecardProjection = S.Struct({
+  decisionReasonRefs: S.optionalKey(S.Array(S.String)),
+  observedResultKind: S.optionalKey(S.String),
+  observedResultRef: S.optionalKey(S.String),
+  postCloseoutScore: S.optionalKey(S.NullOr(S.Number)),
+  privacyTier: S.optionalKey(S.String),
+  publicCaveatRef: S.optionalKey(S.String),
+  selectedModelRef: S.optionalKey(S.String),
+  selectedRouteRef: S.optionalKey(S.String),
+  selectedRuntimeRef: S.optionalKey(S.String),
+  trustTier: S.optionalKey(S.String),
+  workKind: S.optionalKey(S.String),
+  workroomId: S.optionalKey(S.String),
+})
+export type OmniRouteScorecardProjection =
+  typeof OmniRouteScorecardProjection.Type
+
+const OmniEconomicsProjection = S.Struct({
+  fundingMode: S.optionalKey(S.String),
+  noSettlementImplication: S.optionalKey(S.Boolean),
+  publicCaveatRef: S.optionalKey(S.String),
+  workKind: S.optionalKey(S.String),
+  workroomId: S.optionalKey(S.String),
+})
+export type OmniEconomicsProjection = typeof OmniEconomicsProjection.Type
+
 export const OmniWorkroomSurfaceResponse = S.Struct({
   generatedAt: S.optionalKey(S.String),
   surface: S.String,
   workroom: OmniWorkroomProjection,
-  economics: S.optionalKey(S.Array(S.Unknown)),
+  economics: S.optionalKey(S.Array(OmniEconomicsProjection)),
   evidenceBundles: S.optionalKey(S.Array(OmniEvidenceBundleProjection)),
   lifecycleDecisions: S.optionalKey(S.Array(OmniLifecycleDecisionProjection)),
-  routeScorecards: S.optionalKey(S.Array(S.Unknown)),
+  routeScorecards: S.optionalKey(S.Array(OmniRouteScorecardProjection)),
 })
 export type OmniWorkroomSurfaceResponse =
   typeof OmniWorkroomSurfaceResponse.Type
@@ -523,6 +567,36 @@ const refChips = (refs: ReadonlyArray<string>): ReadonlyArray<Html> => {
   )
 }
 
+const valueOrPending = (value: string | null | undefined): string =>
+  value === null || value === undefined || value === '' ? 'Not recorded' : value
+
+const metricStrip = (
+  metrics: ReadonlyArray<Readonly<{ label: string; value: string }>>,
+): Html => {
+  const h = html<Msg>()
+
+  return h.div(
+    [
+      Ui.className<Msg>(
+        'grid gap-px overflow-hidden border border-[#222] bg-[#222] sm:grid-cols-2 xl:grid-cols-4',
+      ),
+    ],
+    metrics.map(metric =>
+      h.div([Ui.className<Msg>('grid gap-1 bg-[#080808] p-3')], [
+        h.div([Ui.className<Msg>(Ui.eyebrowClass)], [metric.label]),
+        h.div(
+          [
+            Ui.className<Msg>(
+              'min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-sm text-white/75',
+            ),
+          ],
+          [metric.value],
+        ),
+      ]),
+    ),
+  )
+}
+
 const sectionHeading = (title: string, detail?: string): Html => {
   const h = html<Msg>()
 
@@ -642,8 +716,19 @@ const overviewTabView = (workroom: OmniWorkroomProjection): Html => {
               ],
               [humanize(workroom.workKind)],
             ),
+        workroom.visibility === undefined
+          ? hiddenSpan()
+          : h.span(
+              [
+                Ui.className<Msg>(
+                  'inline-flex min-h-7 items-center border border-[#333] px-2 text-[0.6875rem] uppercase text-white/65',
+                ),
+              ],
+              [`${humanize(workroom.visibility)} visibility`],
+            ),
       ],
     ),
+    visibilityTierView(workroom.visibility),
     h.div(
       [Ui.className<Msg>('border-y border-[#222]')],
       [
@@ -654,7 +739,12 @@ const overviewTabView = (workroom: OmniWorkroomProjection): Html => {
         ),
         detailRow('Data class', workroom.dataClassification ?? 'Not recorded'),
         detailRow('Trust tier', workroom.trustTier ?? 'Not recorded'),
+        detailRow('Visibility', valueOrPending(workroom.visibility)),
         detailRow('Site', workroom.siteId ?? 'No site linked'),
+        detailRow(
+          'Accepted contract',
+          valueOrPending(workroom.acceptedOutcomeContractId),
+        ),
         detailRow(
           'Public receipt',
           workroom.publicReceiptRef ?? 'Not recorded',
@@ -665,8 +755,105 @@ const overviewTabView = (workroom: OmniWorkroomProjection): Html => {
   ])
 }
 
+const visibilityTierView = (activeVisibility: string | undefined): Html => {
+  const h = html<Msg>()
+  const tiers = ['private', 'customer', 'team', 'public']
+
+  return h.div(
+    [
+      Ui.className<Msg>(
+        'grid gap-2 border border-[#222] bg-[#080808] p-4',
+      ),
+    ],
+    [
+      h.div([Ui.className<Msg>(Ui.eyebrowClass)], ['Visibility tiers']),
+      h.div(
+        [Ui.className<Msg>('grid gap-2 sm:grid-cols-4')],
+        tiers.map(tier =>
+          h.div(
+            [
+              Ui.className<Msg>(
+                tier === activeVisibility
+                  ? 'border border-[#ffb400]/70 bg-black p-3 text-[#f1efe8]'
+                  : 'border border-[#222] bg-black p-3 text-white/50',
+              ),
+            ],
+            [
+              h.div(
+                [Ui.className<Msg>('text-[0.6875rem] uppercase')],
+                [humanize(tier)],
+              ),
+              h.div(
+                [Ui.className<Msg>('mt-1 text-xs/5 text-white/45')],
+                [
+                  tier === activeVisibility
+                    ? 'Current projection'
+                    : 'Available policy tier',
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    ],
+  )
+}
+
+const evidenceEntryRow = (entry: OmniEvidenceEntryProjection): Html => {
+  const h = html<Msg>()
+
+  return h.div(
+    [
+      Ui.className<Msg>(
+        'grid gap-2 border-b border-[#222] py-3 last:border-b-0',
+      ),
+    ],
+    [
+      h.div(
+        [Ui.className<Msg>('flex flex-wrap items-center gap-2')],
+        [
+          h.span(
+            [
+              Ui.className<Msg>(
+                'inline-flex border border-[#333] px-2 py-1 text-[0.6875rem] uppercase text-white/55',
+              ),
+            ],
+            [humanize(entry.entryKind ?? 'evidence')],
+          ),
+          entry.visibility === undefined
+            ? hiddenSpan()
+            : h.span(
+                [Ui.className<Msg>('text-xs text-white/40')],
+                [humanize(entry.visibility)],
+              ),
+          entry.redactionState === undefined
+            ? hiddenSpan()
+            : h.span(
+                [Ui.className<Msg>('text-xs text-white/40')],
+                [humanize(entry.redactionState)],
+              ),
+        ],
+      ),
+      h.div(
+        [
+          Ui.className<Msg>(
+            'min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-sm text-white/70',
+          ),
+        ],
+        [entry.ref ?? entry.summaryRef ?? 'evidence ref pending'],
+      ),
+      entry.caveatRef === undefined || entry.caveatRef === null
+        ? hiddenSpan()
+        : h.div([Ui.className<Msg>('text-xs text-white/45')], [
+            entry.caveatRef,
+          ]),
+    ],
+  )
+}
+
 const evidenceBundleRow = (bundle: OmniEvidenceBundleProjection): Html => {
   const h = html<Msg>()
+  const entries = bundle.entries ?? []
 
   return h.div(
     [
@@ -696,11 +883,23 @@ const evidenceBundleRow = (bundle: OmniEvidenceBundleProjection): Html => {
           ),
         ],
       ),
+      bundle.summaryRef === undefined
+        ? hiddenSpan()
+        : h.p(
+            [Ui.className<Msg>('m-0 text-sm/6 text-white/55')],
+            [bundle.summaryRef],
+          ),
       bundle.artifactRefs === undefined || bundle.artifactRefs.length === 0
         ? hiddenSpan()
         : h.div(
             [Ui.className<Msg>('flex flex-wrap gap-2')],
             refChips(bundle.artifactRefs),
+          ),
+      entries.length === 0
+        ? hiddenSpan()
+        : h.div(
+            [Ui.className<Msg>('border-y border-[#222]')],
+            entries.map(evidenceEntryRow),
           ),
     ],
   )
@@ -763,6 +962,142 @@ const handoffTabView = (response: OmniWorkroomSurfaceResponse): Html => {
           [response.workroom.publicReceiptRef],
           'No public receipt.',
         ),
+  ])
+}
+
+const routeScorecardsView = (
+  scorecards: ReadonlyArray<OmniRouteScorecardProjection>,
+): Html => {
+  const h = html<Msg>()
+
+  return h.div([Ui.className<Msg>('grid gap-3')], [
+    sectionHeading(
+      'Route scorecards',
+      'Selected route, runtime, trust, and observed closeout signals.',
+    ),
+    scorecards.length === 0
+      ? h.p([Ui.className<Msg>('m-0 text-sm/6 text-white/45')], [
+          'No route scorecards recorded yet.',
+        ])
+      : h.div(
+          [Ui.className<Msg>('grid gap-3')],
+          scorecards.map(scorecard =>
+            h.div(
+              [
+                Ui.className<Msg>(
+                  'grid gap-3 border border-[#222] bg-[#080808] p-4',
+                ),
+              ],
+              [
+                metricStrip([
+                  {
+                    label: 'Result',
+                    value: valueOrPending(scorecard.observedResultKind),
+                  },
+                  {
+                    label: 'Trust',
+                    value: valueOrPending(scorecard.trustTier),
+                  },
+                  {
+                    label: 'Privacy',
+                    value: valueOrPending(scorecard.privacyTier),
+                  },
+                  {
+                    label: 'Runtime',
+                    value: valueOrPending(scorecard.selectedRuntimeRef),
+                  },
+                ]),
+                refListSection(
+                  'Decision refs',
+                  scorecard.decisionReasonRefs,
+                  'No decision refs recorded.',
+                ),
+                refListSection(
+                  'Observed result',
+                  scorecard.observedResultRef === undefined
+                    ? []
+                    : [scorecard.observedResultRef],
+                  'No observed result ref.',
+                ),
+                refListSection(
+                  'Public caveat',
+                  scorecard.publicCaveatRef === undefined
+                    ? []
+                    : [scorecard.publicCaveatRef],
+                  'No public caveat.',
+                ),
+              ],
+            ),
+          ),
+        ),
+  ])
+}
+
+const economicsView = (
+  economics: ReadonlyArray<OmniEconomicsProjection>,
+): Html => {
+  const h = html<Msg>()
+
+  return h.div([Ui.className<Msg>('grid gap-3')], [
+    sectionHeading(
+      'Economics',
+      'Funding and caveat refs are informational here; this page does not settle or pay out.',
+    ),
+    economics.length === 0
+      ? h.p([Ui.className<Msg>('m-0 text-sm/6 text-white/45')], [
+          'No economics records projected yet.',
+        ])
+      : h.div(
+          [Ui.className<Msg>('grid gap-3')],
+          economics.map(record =>
+            h.div(
+              [
+                Ui.className<Msg>(
+                  'grid gap-3 border border-[#222] bg-[#080808] p-4',
+                ),
+              ],
+              [
+                metricStrip([
+                  {
+                    label: 'Funding',
+                    value: valueOrPending(record.fundingMode),
+                  },
+                  {
+                    label: 'Work kind',
+                    value: valueOrPending(record.workKind),
+                  },
+                  {
+                    label: 'Settlement',
+                    value:
+                      record.noSettlementImplication === true
+                        ? 'No settlement implication'
+                        : 'Not recorded',
+                  },
+                  {
+                    label: 'Workroom',
+                    value: valueOrPending(record.workroomId),
+                  },
+                ]),
+                refListSection(
+                  'Public caveat',
+                  record.publicCaveatRef === undefined
+                    ? []
+                    : [record.publicCaveatRef],
+                  'No public caveat.',
+                ),
+              ],
+            ),
+          ),
+        ),
+  ])
+}
+
+const operationsTabView = (response: OmniWorkroomSurfaceResponse): Html => {
+  const h = html<Msg>()
+
+  return h.div([Ui.className<Msg>('grid gap-5')], [
+    routeScorecardsView(response.routeScorecards ?? []),
+    economicsView(response.economics ?? []),
   ])
 }
 
@@ -936,6 +1271,7 @@ const loadedTabView = (
     M.when('assets', () => assetsTabView(response)),
     M.when('handoff', () => handoffTabView(response)),
     M.when('approvals', () => approvalsTabView(model)),
+    M.when('site', () => operationsTabView(response)),
     M.orElse(() =>
       placeholderTab(
         tabLabel(model.activeTab),

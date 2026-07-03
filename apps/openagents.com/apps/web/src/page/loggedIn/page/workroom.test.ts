@@ -1,3 +1,4 @@
+import type { Html } from 'foldkit/html'
 import { describe, expect, test } from 'vitest'
 
 import {
@@ -13,6 +14,7 @@ import {
   lifecycleDecisionRequestInfo,
   surfaceRequestInfo,
   update,
+  view,
 } from './workroom'
 import type { OmniWorkroomSurfaceResponse } from './workroom'
 
@@ -21,17 +23,55 @@ const WORKROOM_ID = 'omni-workroom-001'
 const loadedSurfaceResponse: OmniWorkroomSurfaceResponse = {
   evidenceBundles: [
     {
-      artifactRefs: ['artifact:site-build'],
+      entries: [
+        {
+          caveatRef: 'caveat.redacted.customer',
+          entryKind: 'test_report',
+          redactionState: 'redacted',
+          ref: 'evidence:test-report',
+          sourceAuthority: 'operator_reviewed',
+          summaryRef: 'summary:test-report',
+          visibility: 'customer',
+        },
+      ],
       id: 'bundle-1',
       publicReceiptRef: 'receipt:public:1',
+      sourceAuthorityCaveatRef: 'caveat.source-authority',
       status: 'ready',
+      summaryRef: 'summary:bundle-ready',
       workKind: 'software_delivery',
+      workroomId: WORKROOM_ID,
+    },
+  ],
+  economics: [
+    {
+      fundingMode: 'credit_funded',
+      noSettlementImplication: true,
+      publicCaveatRef: 'caveat.no-settlement',
+      workKind: 'software_delivery',
+      workroomId: WORKROOM_ID,
     },
   ],
   generatedAt: '2026-06-14T00:00:00.000Z',
   lifecycleDecisions: [],
+  routeScorecards: [
+    {
+      decisionReasonRefs: ['route.reason.privacy'],
+      observedResultKind: 'success',
+      observedResultRef: 'route.result.success',
+      privacyTier: 'customer',
+      publicCaveatRef: 'route.caveat.public',
+      selectedModelRef: 'model.openagents.delivery',
+      selectedRouteRef: 'route.customer-safe',
+      selectedRuntimeRef: 'runtime.workroom',
+      trustTier: 'reviewed',
+      workKind: 'software_delivery',
+      workroomId: WORKROOM_ID,
+    },
+  ],
   surface: 'customer',
   workroom: {
+    acceptedOutcomeContractId: 'accepted-outcome:1',
     artifactRefs: ['artifact:site-build'],
     blockerRefs: [],
     customerIntentRef: 'intent:landing-page',
@@ -43,8 +83,66 @@ const loadedSurfaceResponse: OmniWorkroomSurfaceResponse = {
     sourceRefs: ['source:brief'],
     status: 'delivered',
     trustTier: 'standard',
+    visibility: 'customer',
     workKind: 'software_delivery',
   },
+}
+
+type VNodeLike = Readonly<{
+  sel?: string
+  text?: string
+  children?: ReadonlyArray<VNodeLike | string | null>
+  data?: {
+    attrs?: Record<string, unknown>
+    props?: Record<string, unknown>
+    class?: Record<string, boolean>
+  }
+}>
+
+const isVNodeLike = (value: unknown): value is VNodeLike =>
+  typeof value === 'object' && value !== null
+
+const attrsToString = (node: VNodeLike): string => {
+  const attrs = node.data?.attrs ?? {}
+  const props = node.data?.props ?? {}
+  const classes = Object.entries(node.data?.class ?? {})
+    .filter(([, enabled]) => enabled)
+    .map(([className]) => className)
+    .join(' ')
+  const pairs = [
+    ...Object.entries(attrs),
+    ...Object.entries(props),
+    ...(classes.length === 0 ? [] : [['class', classes] as const]),
+  ]
+
+  return pairs
+    .filter(
+      ([, value]) => value !== false && value !== undefined && value !== null,
+    )
+    .map(([name, value]) =>
+      value === true ? ` ${name}` : ` ${name}="${String(value)}"`,
+    )
+    .join('')
+}
+
+const renderHtml = (html: Html): string => {
+  if (html === null || !isVNodeLike(html)) {
+    return ''
+  }
+
+  const tag = html.sel ?? 'node'
+  const children = (html.children ?? [])
+    .map(child =>
+      typeof child === 'string'
+        ? child
+        : child === null
+          ? ''
+          : renderHtml(child),
+    )
+    .join('')
+  const text = html.text ?? ''
+
+  return `<${tag}${attrsToString(html)}>${text}${children}</${tag}>`
 }
 
 describe('workroom page submodel', () => {
@@ -90,6 +188,51 @@ describe('workroom page submodel', () => {
       expect(next.surface.response.workroom.softwareOrderId).toBe('order-42')
     }
     expect(cmd._tag).toBe('None')
+  })
+
+  test('overview renders lifecycle, visibility, and accepted outcome refs', () => {
+    const [model] = update(
+      init(WORKROOM_ID, 'overview'),
+      SucceededLoadWorkroomSurface({ response: loadedSurfaceResponse }),
+    )
+
+    const rendered = renderHtml(view(model))
+
+    expect(rendered).toContain('Visibility tiers')
+    expect(rendered).toContain('customer visibility')
+    expect(rendered).toContain('accepted-outcome:1')
+    expect(rendered).toContain('receipt:public:1')
+  })
+
+  test('assets tab renders evidence bundle entries and redaction state', () => {
+    const [model] = update(
+      init(WORKROOM_ID, 'assets'),
+      SucceededLoadWorkroomSurface({ response: loadedSurfaceResponse }),
+    )
+
+    const rendered = renderHtml(view(model))
+
+    expect(rendered).toContain('Evidence bundles')
+    expect(rendered).toContain('summary:bundle-ready')
+    expect(rendered).toContain('evidence:test-report')
+    expect(rendered).toContain('redacted')
+    expect(rendered).toContain('customer')
+  })
+
+  test('site tab surfaces route scorecards and economics caveats', () => {
+    const [model] = update(
+      init(WORKROOM_ID, 'site'),
+      SucceededLoadWorkroomSurface({ response: loadedSurfaceResponse }),
+    )
+
+    const rendered = renderHtml(view(model))
+
+    expect(rendered).toContain('Route scorecards')
+    expect(rendered).toContain('route.result.success')
+    expect(rendered).toContain('route.reason.privacy')
+    expect(rendered).toContain('Economics')
+    expect(rendered).toContain('credit_funded')
+    expect(rendered).toContain('No settlement implication')
   })
 
   test('SucceededLoadWorkroomLifecycle with empty history loads cleanly', () => {
