@@ -84,6 +84,17 @@ describe('scopeQuickWinFromIntake', () => {
     expect(scope.deliveryMode).toBe('operator_assisted')
   })
 
+  test('does not add GEO or outbound-assist keyword routing without a typed selector', () => {
+    const scope = scopeQuickWinFromIntake({
+      signupId: 's3b',
+      helpWith: 'GEO content and outbound assist',
+    })
+
+    expect(scope.category).toBe('unmatched_operator_triage')
+    expect(scope.unmatched).toBe(true)
+    expect(scope.offeringPromiseId).toBe('business.intake_quick_win_offering.v1')
+  })
+
   test('blank help text routes to operator triage', () => {
     const scope = scopeQuickWinFromIntake({ signupId: 's6', helpWith: null })
     expect(scope.unmatched).toBe(true)
@@ -99,6 +110,7 @@ describe('scopeQuickWinFromIntake', () => {
       'inventory campaigns',
       'legal forms',
       'marketing pages',
+      'GEO and outbound assist',
       'a landing site',
       'fine-tune a model',
       null,

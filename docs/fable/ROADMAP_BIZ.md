@@ -129,6 +129,12 @@ each service promise gets standing agents with name/goal/enforced-toolset.
 | BF-8.5 | **Overflow/peer marketplace (deferred design)**: qualified intake-complete matters sub-contracted to vetted peers with a cut — design doc + gates only until BF-4 is proven | Design doc, no state change |
 | BF-8.6 | **Settlement primitive (deferred)**: trustless escrow (release-on-verified-delivery) as the settle step under accepted outcomes — integration design + the owed partner make-good demo; no custody changes | Working demo receipt; no live custody |
 
+BF-8.1 status note (2026-07-03): the package receipt/gate now has a typed
+contract in `business-marketing-program-package.ts` for content, GEO,
+outbound-assist, and full-funnel packages. Intake routing for new GEO/outbound
+phrases still needs the typed/semantic selector path; do not expand the legacy
+quick-win keyword list to claim those intents.
+
 ### BF-9 — Ops discipline (cross-cutting)
 
 | Task | Description | Receipt/gate |

@@ -98,6 +98,17 @@ accepted -> paid lifecycle finishes.
 What remains for the receipt blocker:
 - An operator must actually run this new tool on a real paid run and commit the generated dereferenceable receipt fixture.
 
+## Update 2026-07-03 — marketing-program package routing boundary
+
+BF-8.1 adds a typed marketing-program package receipt/gate for content, GEO,
+outbound-assist, and full-funnel packages. That package contract is separate
+from this legacy quick-win scope router.
+
+Do not add new prose keyword stems such as `geo` or `outbound` to
+`business-quick-win-scope.ts` for user-facing intake routing. New package
+intents must enter through a typed/semantic selector or structured planner
+before deterministic parsing fills bounded fields.
+
 ## Update 2026-06-20 — public copy/evidence honesty pass
 
 Advances the same yellow promise without a green flip by tightening the public
