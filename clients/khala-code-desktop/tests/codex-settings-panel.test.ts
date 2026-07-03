@@ -41,6 +41,32 @@ const installDom = (): {
   }
 }
 
+const selectForLabel = (
+  container: HTMLElement,
+  label: string,
+): HTMLSelectElement => {
+  const controls = Array.from(container.querySelectorAll(".khala-settings-control"))
+  const control = controls.find(node =>
+    node.querySelector(".khala-settings-control-label")?.textContent === label
+  )
+  const select = control?.querySelector("select")
+  if (select === null || select === undefined) {
+    throw new Error(`missing select for ${label}`)
+  }
+  return select as HTMLSelectElement
+}
+
+const changeSelect = async (
+  select: HTMLSelectElement,
+  value: string,
+  window: Window,
+): Promise<void> => {
+  select.value = value
+  select.dispatchEvent(new window.Event("change") as unknown as Event)
+  await Promise.resolve()
+  await Promise.resolve()
+}
+
 describe("Codex settings panel", () => {
   // Oracle for khala_code.settings.hidden_models_excluded_from_picker.v1
   test("does not expose hidden Codex models as selectable chat models", async () => {
@@ -140,6 +166,60 @@ describe("Codex settings panel", () => {
         .map(node => node.textContent)
       expect(metricValues).not.toContain("Unset")
       expect(metricValues).toContain("Default")
+    } finally {
+      cleanup()
+    }
+  })
+
+  // Oracle for the first #8254 slice: enum-backed Codex config metrics are
+  // editable through the existing config/value/write RPC surface.
+  test("writes enum-backed config selects through the Codex config-value RPC", async () => {
+    const { cleanup, container, window } = installDom()
+    const writes: unknown[] = []
+    const settings = projectKhalaCodeDesktopCodexSettings({
+      configRead: {
+        config: {
+          model: "gpt-5.5-codex",
+          model_reasoning_summary: null,
+          model_verbosity: null,
+          approval_policy: null,
+          sandbox_mode: null,
+        },
+      },
+      modelList: {
+        data: [{
+          id: "gpt-5.5-codex",
+          model: "gpt-5.5-codex",
+          displayName: "GPT-5.5",
+          hidden: false,
+        }],
+      },
+    })
+
+    try {
+      const panel = mountCodexSettingsPanel(container, {
+        fetch: async () => settings,
+        write: async request => {
+          writes.push(request)
+          return { ok: true, settings }
+        },
+      })
+
+      await panel.refresh()
+
+      await changeSelect(selectForLabel(container, "Summary"), "detailed", window)
+      await changeSelect(selectForLabel(container, "Verbosity"), "high", window)
+      await changeSelect(selectForLabel(container, "Approval"), "on-request", window)
+      await changeSelect(selectForLabel(container, "Sandbox"), "workspace-write", window)
+      await changeSelect(selectForLabel(container, "Summary"), "", window)
+
+      expect(writes).toEqual([
+        { keyPath: "model_reasoning_summary", value: "detailed" },
+        { keyPath: "model_verbosity", value: "high" },
+        { keyPath: "approval_policy", value: "on-request" },
+        { keyPath: "sandbox_mode", value: "workspace-write" },
+        { keyPath: "model_reasoning_summary", value: null },
+      ])
     } finally {
       cleanup()
     }
