@@ -19,6 +19,7 @@ import { WorkerSecret, redactedValue } from './config'
 import { parseJsonWithSchema } from './json-boundary'
 import { type PartnerQualifyingPaidEvent } from './partner-attribution-eligibility'
 import { recordPartnerPayoutForPaidEvent } from './partner-payout-feed'
+import { provisionBusinessCheckoutKickoff } from './business-checkout-kickoff'
 import { recordReferralPayoutForPaidEvent } from './site-referral-payout-feed'
 
 export const STRIPE_API_VERSION = '2026-05-27.dahlia'
@@ -65,6 +66,10 @@ export type StripeCheckoutSnapshot = Readonly<{
   paymentStatus: string
   sessionId: StripeCheckoutSessionId
   userId: string
+}>
+
+export type StripeBusinessCheckoutKickoffInput = Readonly<{
+  signupId: string
 }>
 
 export type StripeWebhookResult = Readonly<{
@@ -232,6 +237,7 @@ export const StripeCustomerServiceLive = Layer.effect(
 
 export type StripeCheckoutServiceShape = Readonly<{
   createCreditCheckout: (input: {
+    businessKickoff?: StripeBusinessCheckoutKickoffInput | undefined
     db: D1Database
     email?: string | undefined
     packageId: string
@@ -632,6 +638,7 @@ const createCreditCheckout = async (
   config: StripeConfigShape,
   stripeClient: StripeClientShape,
   input: Readonly<{
+    businessKickoff?: StripeBusinessCheckoutKickoffInput | undefined
     db: D1Database
     email?: string | undefined
     packageId: string
@@ -654,6 +661,13 @@ const createCreditCheckout = async (
       metadata: {
         amount_cents: String(pack.amountCents),
         bonus_cents: String(pack.bonusCents),
+        business_credit_grant_cents: String(pack.amountCents),
+        ...(input.businessKickoff === undefined
+          ? {}
+          : {
+              business_setup_fee_cents: '0',
+              business_signup_id: input.businessKickoff.signupId,
+            }),
         currency: pack.currency,
         credits_expire: 'false',
         omega_user_id: input.userId,
@@ -743,6 +757,50 @@ export const buildStripeCheckoutPartnerPayoutEvent = (
   qualifyingEventRef: `evidence.stripe_checkout_paid.${input.sessionId}`,
 })
 
+const metadataInt = (
+  metadata: Stripe.Metadata | null,
+  key: string,
+): number | undefined => {
+  const raw = metadata?.[key]
+
+  if (raw === undefined) {
+    return undefined
+  }
+
+  const parsed = Number.parseInt(raw, 10)
+
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined
+}
+
+const checkoutCreditGrantCents = (
+  session: Stripe.Checkout.Session,
+  fallbackAmountCents: number,
+): number => {
+  const grant = metadataInt(session.metadata, 'business_credit_grant_cents')
+
+  return grant === undefined ? fallbackAmountCents : Math.trunc(grant)
+}
+
+const checkoutSetupFeeCents = (
+  session: Stripe.Checkout.Session,
+  totalAmountCents: number,
+  creditGrantCents: number,
+): number => {
+  const fee = metadataInt(session.metadata, 'business_setup_fee_cents')
+
+  return fee === undefined
+    ? Math.max(0, totalAmountCents - creditGrantCents)
+    : Math.trunc(fee)
+}
+
+const businessSignupIdFromSession = (
+  session: Stripe.Checkout.Session,
+): string | undefined => {
+  const raw = session.metadata?.business_signup_id?.trim()
+
+  return raw === undefined || raw === '' ? undefined : raw
+}
+
 const fulfillCheckoutSession = async (
   config: StripeConfigShape,
   stripeClient: StripeClientShape,
@@ -781,13 +839,40 @@ const fulfillCheckoutSession = async (
     return readBillingSummary(input.db, userId)
   }
 
+  const creditGrantCents = checkoutCreditGrantCents(session, pack.amountCents)
+  const setupFeeCents = checkoutSetupFeeCents(
+    session,
+    pack.amountCents,
+    creditGrantCents,
+  )
+
+  if (setupFeeCents + creditGrantCents !== pack.amountCents) {
+    throw new StripeCheckoutError({
+      reason:
+        'Checkout setup-fee and credit-grant metadata do not match the package total.',
+    })
+  }
+
   const summary = await applyStripeCheckoutCredit(input.db, {
-    amountCents: pack.amountCents,
+    amountCents: creditGrantCents,
     bonusCents: pack.bonusCents,
     packageId: pack.id,
     sessionId: input.sessionId,
     userId,
   })
+
+  const businessSignupId = businessSignupIdFromSession(session)
+
+  if (businessSignupId !== undefined) {
+    await provisionBusinessCheckoutKickoff(input.db, {
+      checkoutSessionId: input.sessionId,
+      creditGrantCents,
+      setupFeeCents,
+      signupId: businessSignupId,
+      totalAmountCents: pack.amountCents,
+      userId,
+    })
+  }
 
   // RL-1 (openagents #5458): FEED the referral payout ledger from this real
   // paid event. A Stripe credit purchase is USD/credit revenue, so per the
@@ -1285,6 +1370,7 @@ export const makeStripeCheckoutServiceForRoutes = (env: StripeBillingEnv) => {
   }
   return {
     createCreditCheckout: (input: {
+      businessKickoff?: StripeBusinessCheckoutKickoffInput | undefined
       db: D1Database
       email?: string | undefined
       packageId: string
