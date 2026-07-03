@@ -9,6 +9,7 @@
     "./deterministic-env": "./src/deterministic-env.ts",
     "./desktop-smoke-helpers": "./src/desktop-smoke-helpers.ts",
     "./driver": "./src/driver.ts",
+    "./explore-distiller": "./src/explore-distiller.ts",
     "./explore-policy-gepa": "./src/explore-policy-gepa.ts",
     "./explorer-brain": "./src/explorer-brain.ts",
     "./lag-profiling-sweep": "./src/lag-profiling-sweep.ts",

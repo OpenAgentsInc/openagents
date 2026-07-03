@@ -26,6 +26,10 @@ import {
   KHALA_CODE_QA_CROSS_MODE_SURFACES,
   khalaCodeQaProjectionQuery,
 } from "./mode-projection.js"
+import {
+  distillKhalaCodeQaExploreSessionToRegression,
+  type KhalaCodeQaExploreSession,
+} from "./explore-distiller.js"
 import type { KhalaCodeRpcFetch, KhalaCodeRpcMethodName } from "./rpc-client.js"
 import type { KhalaCodeQaScenario } from "./scenario.js"
 
@@ -52,6 +56,7 @@ export type SeedCorpusGroup =
   | "hotbar"
   | "cross_mode"
   | "error_states"
+  | "distilled_regressions"
   | "thread_items"
 
 type ScenarioGroupEntry = Readonly<{
@@ -1340,6 +1345,55 @@ const groupedCrossModeScenarios: readonly GroupedScenario[] = [
   ),
 ]
 
+const firstDistilledExploreSession: KhalaCodeQaExploreSession = {
+  actionLog: [
+    {
+      action: { kind: "hotbar", target: "fleet" },
+      index: 0,
+      rationale: "explorer opened the fleet panel from the coverage frontier",
+    },
+    {
+      action: { kind: "rpc_call", method: "codexFleetStatus" },
+      index: 1,
+      rationale: "explorer confirmed fleet status can be fetched",
+    },
+    {
+      action: { kind: "read", query: "projection:fleet_counts" },
+      index: 2,
+      rationale: "explorer captured the rendered fleet-count projection",
+    },
+  ],
+  backend: "fixture",
+  explorer: "llm",
+  mode: "rpc",
+  oracleExpectations: [
+    schema("codexFleetStatus"),
+    crash(),
+  ],
+  runId: "q6_2_first_fleet_panel_distilled_regression",
+  schema: "khala_code_qa_explore_session.v1",
+  status: "pass",
+}
+
+export const KHALA_CODE_QA_FIRST_DISTILLED_REGRESSION =
+  distillKhalaCodeQaExploreSessionToRegression(firstDistilledExploreSession)
+
+const requireDistilledScenario = (
+  result: typeof KHALA_CODE_QA_FIRST_DISTILLED_REGRESSION,
+): KhalaCodeQaScenario => {
+  if (result.verdict !== "CONFIRMED") {
+    throw new Error(`First Q6.2 distilled regression is not committable: ${result.reason}`)
+  }
+  return result.distilled.scenario
+}
+
+const groupedDistilledRegressionScenarios: readonly GroupedScenario[] = [
+  {
+    group: "distilled_regressions",
+    scenario: requireDistilledScenario(KHALA_CODE_QA_FIRST_DISTILLED_REGRESSION),
+  },
+]
+
 const groupedSeedScenarios: readonly GroupedScenario[] = [
   ...groupedRpcScenarios,
   ...groupedQ41RpcScenarios,
@@ -1348,6 +1402,7 @@ const groupedSeedScenarios: readonly GroupedScenario[] = [
   ...groupedThreadItemScenarios,
   ...groupedErrorStateScenarios,
   ...groupedSlashCommandScenarios,
+  ...groupedDistilledRegressionScenarios,
 ]
 
 export const KHALA_CODE_QA_SEED_SCENARIOS: readonly KhalaCodeQaScenario[] =

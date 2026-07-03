@@ -13,6 +13,7 @@ import {
   decodeKhalaCodeQaScenario,
   KHALA_CODE_QA_ERROR_STATE_CASES,
   KHALA_CODE_QA_ERROR_STATE_CASE_IDS,
+  KHALA_CODE_QA_FIRST_DISTILLED_REGRESSION,
   KHALA_CODE_QA_SEED_CORPUS_MANIFEST,
   KHALA_CODE_QA_SEED_CROSS_MODE_SURFACES,
   KHALA_CODE_QA_SEED_SCENARIOS,
@@ -59,7 +60,7 @@ describe("Khala Code QA seed scenario corpus", () => {
   test("covers the mechanical seed groups requested by Q4.1", () => {
     const expectedRpcGroups = Object.keys(KHALA_CODE_QA_ROADMAP_RPC_METHOD_GROUPS)
     expect(KHALA_CODE_QA_SEED_CORPUS_MANIFEST.coverage.rpcGroups).toEqual(expectedRpcGroups)
-    for (const group of [...expectedRpcGroups, "hotbar", "thread_items", "cross_mode", "error_states"]) {
+    for (const group of [...expectedRpcGroups, "hotbar", "thread_items", "cross_mode", "error_states", "distilled_regressions"]) {
       expect(idsForGroup(group).length).toBeGreaterThan(0)
     }
     for (const [group, methods] of Object.entries(KHALA_CODE_QA_ROADMAP_RPC_METHOD_GROUPS)) {
@@ -172,6 +173,14 @@ describe("Khala Code QA seed scenario corpus", () => {
         { kind: "rpc_call", method: "codexAppServerRestart" },
         { kind: "rpc_call", method: "codexThreadResume", args: [{ cwd: "/workspace", sessionId: "desktop-session-fixture", threadId: "thread-fixture" }] },
       ]),
+    )
+
+    expect(KHALA_CODE_QA_FIRST_DISTILLED_REGRESSION.verdict).toBe("CONFIRMED")
+    expect(idsForGroup("distilled_regressions")).toEqual([
+      "scenario.khala_code.distilled.q6_2_first_fleet_panel_distilled_regression.v1",
+    ])
+    expect(KHALA_CODE_QA_SEED_SCENARIOS).toContainEqual(
+      KHALA_CODE_QA_FIRST_DISTILLED_REGRESSION.distilled?.scenario,
     )
   })
 
