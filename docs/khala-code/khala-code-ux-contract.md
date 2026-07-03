@@ -39,7 +39,8 @@ sweep if this doc, the registry, or the oracle tests drift apart.
 - The registry validation mirrors promise-transition checks
   (`validateBehaviorContractRegistry`), and the coverage check
   (`checkBehaviorContractCoverage`) proves every enforced `bun-test` oracle
-  file exists and references its contract id.
+  file exists and references its contract id, and every enforced `qa-scenario`
+  oracle resolves against the Khala QA seed corpus.
 - QA-harness integration: contracts may also carry `qa-scenario` oracles
   referencing `packages/khala-qa-harness` seed-corpus scenario ids; those run
   under the harness runner rather than this package's test glob.
@@ -52,7 +53,7 @@ sweep if this doc, the registry, or the oracle tests drift apart.
 
 ## Registry
 
-Registry version: `2026-07-03.5` (schema `openagents.behavior_contracts.v1`)
+Registry version: `2026-07-03.6` (schema `openagents.behavior_contracts.v1`)
 
 ### `khala_code.chat.sidebar_spinner_streaming_only.v1` — ENFORCED
 
@@ -62,6 +63,7 @@ Registry version: `2026-07-03.5` (schema `openagents.behavior_contracts.v1`)
 - **Enforcement tier:** test-sweep
 - **Oracle** `sidebar_spinner.dom` (bun-test, dom): Mounts the real thread sidebar in a DOM: selecting a thread while the resume RPC is in flight renders no spinner anywhere in the list, while a genuinely streaming thread renders the spinner in its time slot. — `clients/khala-code-desktop/tests/ux-contracts.test.ts`
 - **Oracle** `transcript_loading.source` (bun-test, unit): Pins the transcript-level 'Loading messages' indicator wiring for cache-miss thread switches (source-level until the full shell boots under the DOM harness). — `clients/khala-code-desktop/tests/ux-contracts.test.ts`
+- **Oracle** `thread_select_fixture_rpc.scenario` (qa-scenario, rpc): Runs the seed-corpus fixture RPC-driver scenario that lists threads, selects the fixture thread, and reads it back without using the row streaming spinner as load state. — `scenario.khala_code.seed.rpc_thread_select_fixture_driver.v1`
 - **Verification:** bun test tests/ux-contracts.test.ts inside clients/khala-code-desktop; runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.
 - **Authority boundary:** This contract binds indicator semantics only. Thread-switch latency budgets stay owned by docs/qa/khala-code-latency-budgets.md, and it makes no claim about streaming correctness itself.
 

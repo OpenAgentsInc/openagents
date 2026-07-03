@@ -162,7 +162,7 @@ describe("behavior contract coverage", () => {
     expect(report.results[0]?.status).toBe("missing_contract_reference")
   })
 
-  test("skips non-bun-test oracles and non-enforced contracts", async () => {
+  test("covers qa-scenario oracles when the scenario source exists", async () => {
     const registry = document([
       contract({
         oracles: [
@@ -172,6 +172,58 @@ describe("behavior contract coverage", () => {
             kind: "qa-scenario",
             mode: "rpc",
             ref: "scenario.khala_code.seed.example.v1",
+          },
+        ],
+      }),
+    ])
+    const report = await Effect.runPromise(
+      checkBehaviorContractCoverage(registry).pipe(
+        Effect.provide(
+          inMemoryOracleSourceLayer({
+            "scenario.khala_code.seed.example.v1": JSON.stringify({
+              id: "scenario.khala_code.seed.example.v1",
+            }),
+          }),
+        ),
+      ),
+    )
+    expect(report.ok).toBe(true)
+    expect(report.results[0]?.status).toBe("covered")
+  })
+
+  test("fails qa-scenario oracles when the scenario source is missing", async () => {
+    const registry = document([
+      contract({
+        oracles: [
+          {
+            description: "qa harness scenario",
+            id: "example.scenario",
+            kind: "qa-scenario",
+            mode: "rpc",
+            ref: "scenario.khala_code.seed.example.v1",
+          },
+        ],
+      }),
+    ])
+    const report = await Effect.runPromise(
+      checkBehaviorContractCoverage(registry).pipe(
+        Effect.provide(inMemoryOracleSourceLayer({})),
+      ),
+    )
+    expect(report.ok).toBe(false)
+    expect(report.results[0]?.status).toBe("missing_source")
+  })
+
+  test("skips non-source-backed oracles and non-enforced contracts", async () => {
+    const registry = document([
+      contract({
+        oracles: [
+          {
+            description: "manual acceptance check",
+            id: "example.manual",
+            kind: "manual-check",
+            mode: "unit",
+            ref: "manual.example",
           },
         ],
       }),

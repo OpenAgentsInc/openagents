@@ -74,11 +74,12 @@ export type BehaviorContractCoverageReport = {
 
 /**
  * Prove the registry and the test sweep agree: every enforced contract's
- * `bun-test` oracle file must exist and must reference the owning contractId,
- * so a contract cannot silently drift away from the tests that claim to
- * enforce it. Oracle kinds other than `bun-test` are reported as skipped
- * here; they are covered by their own runners (qa-harness scenarios, visual
- * smokes).
+ * source-backed oracle must resolve. `bun-test` oracle files must also
+ * reference the owning contractId, so a contract cannot silently drift away
+ * from the tests that claim to enforce it. `qa-scenario` oracle refs are
+ * resolved by a harness-specific oracle source layer and are covered when the
+ * named scenario still exists in that corpus. Visual and manual oracles are
+ * reported as skipped here; they are covered by their own runners.
  */
 export const checkBehaviorContractCoverage = (
   document: BehaviorContractRegistryDocument,
@@ -98,7 +99,7 @@ export const checkBehaviorContractCoverage = (
           })
           continue
         }
-        if (oracle.kind !== "bun-test") {
+        if (oracle.kind !== "bun-test" && oracle.kind !== "qa-scenario") {
           results.push({
             contractId: contract.contractId,
             oracleId: oracle.id,
@@ -117,9 +118,9 @@ export const checkBehaviorContractCoverage = (
           status:
             source === null
               ? "missing_source"
-              : source.includes(contract.contractId)
-                ? "covered"
-                : "missing_contract_reference",
+              : oracle.kind === "bun-test" && !source.includes(contract.contractId)
+                ? "missing_contract_reference"
+                : "covered",
         })
       }
     }

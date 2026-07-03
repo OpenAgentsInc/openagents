@@ -599,7 +599,8 @@ const evaluateOracle = (
 
   if (
     expectation.oracle === "invariant" &&
-    (expectation.id === "advisor-advisory-severity" ||
+    (expectation.id?.startsWith("fixture-evidence.") === true ||
+      expectation.id === "advisor-advisory-severity" ||
       expectation.id === "advisor-dedupe-guard" ||
       expectation.id === "advisor-interrupt-budget" ||
       expectation.id === "judge-verdict-card" ||

@@ -4,10 +4,10 @@ import { Window } from "happy-dom"
 
 import {
   checkBehaviorContractCoverage,
-  fileOracleSourceLayer,
   renderBehaviorContractMarkdown,
   validateBehaviorContractRegistry,
 } from "@openagentsinc/behavior-contracts"
+import { khalaCodeQaSeedScenarioOracleSourceLayer } from "@openagentsinc/khala-qa-harness/behavior-contract-oracles"
 import {
   KHALA_CODE_UX_CONTRACT_DOC_PATH,
   khalaCodeUxContractRegistry,
@@ -99,7 +99,10 @@ describe("khala code ux contract registry", () => {
     const report = await Effect.runPromise(
       checkBehaviorContractCoverage(khalaCodeUxContractRegistry).pipe(
         Effect.provide(
-          fileOracleSourceLayer(path => Bun.file(path).text(), repoPath),
+          khalaCodeQaSeedScenarioOracleSourceLayer({
+            readFile: path => Bun.file(path).text(),
+            resolvePath: repoPath,
+          }),
         ),
       ),
     )

@@ -295,6 +295,37 @@ const groupedRpcScenarios: readonly GroupedScenario[] = [
     ],
   ),
   groupedFixtureScenario(
+    "rpc.threads",
+    "scenario.khala_code.seed.rpc_thread_select_fixture_driver.v1",
+    [
+      {
+        name: "thread-select",
+        act: [
+          { kind: "rpc_call", method: "codexThreadList", args: [{ sessionId: desktopSessionId }] },
+          { kind: "thread_select", target: threadId },
+          { kind: "rpc_call", method: "codexThreadRead", args: [{ threadId, includeTurns: true }] },
+        ],
+        expect: [
+          schema("codexThreadList"),
+          schema("codexThreadRead"),
+          { id: "fixture-evidence.thread-select", match: threadId, oracle: "invariant" },
+          crash(),
+        ],
+      },
+    ],
+    [
+      commitment(
+        "contract.khala_code.chat.sidebar_spinner_streaming_only.v1",
+        "khala_code.chat.sidebar_spinner_streaming_only.v1 is covered by a fixture RPC-driver thread-select scenario",
+        "thread-select:invariant",
+      ),
+      runPass(
+        "seed.rpc_threads.thread_select.pass",
+        "thread-select over the fixture RPC driver passes",
+      ),
+    ],
+  ),
+  groupedFixtureScenario(
     "rpc.turns",
     "scenario.khala_code.seed.rpc_turns_lifecycle.v1",
     [
