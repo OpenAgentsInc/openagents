@@ -144,18 +144,34 @@ More specific invariant ledgers apply inside imported apps and packages.
   row again. Refusals and failures increment/preserve the failure streak rather
   than retrying in a tight duplicate loop; BA-B4 owns the future auto-pause
   threshold.
+- Inbound definition webhooks must verify the source signature before parsing
+  or normalizing provider payloads. GitHub ingress is owned by
+  `/v1/agent-definitions/webhooks/github`, verifies the `x-hub-signature-256`
+  HMAC with the configured webhook secret, drops invalid requests before
+  reading trigger rows, normalizes through
+  `@openagentsinc/agent-runtime-schema/webhooks`, and evaluates only typed
+  conditions on the bounded normalized event. Raw webhook bodies, signatures,
+  and provider payloads must not become model-visible trigger payloads.
+  Dispatch remains owner-scoped: matching trigger rows read the definition
+  with the row's `ownerAgentUserId` before using the shared definition-run
+  dispatch helper.
 - Any Worker, Pylon, desktop, or cloud-workroom executor that claims
   definition-backed tool enforcement must use this contract or a formally
   equivalent compiled policy at the execution boundary, with regression tests
   for deny precedence, ask escalation, allow, and default-deny behavior.
 - Regression coverage starts in
   `packages/agent-runtime-schema/src/index.test.ts`,
+  `packages/agent-runtime-schema/src/webhooks.test.ts`,
   `packages/khala-tools/src/dispatcher.test.ts`,
   `apps/openagents.com/workers/api/src/forge-tenant-git-auth-store.test.ts`, and
   `apps/openagents.com/workers/api/src/agent-definition-trigger-store.test.ts`,
   plus
   `apps/openagents.com/workers/api/src/agent-definition-scheduler.test.ts` for
-  singleton tick semantics, cap handling, owner scope, and next-run advancement.
+  singleton tick semantics, cap handling, owner scope, and next-run advancement,
+  and
+  `apps/openagents.com/workers/api/src/agent-definition-webhook-routes.test.ts`
+  for signature-gated GitHub ingress, typed condition matching, and
+  owner-scoped dispatch.
 
 ## Connector Authority And Redaction
 

@@ -55,6 +55,10 @@ export type AgentDefinitionTriggerStore = Readonly<{
     nowIso: string,
     limit: number,
   ) => Promise<ReadonlyArray<DueAgentDefinitionTriggerRecord>>
+  listInboundWebhookTriggers: (
+    source: string,
+    limit: number,
+  ) => Promise<ReadonlyArray<DueAgentDefinitionTriggerRecord>>
   pauseTrigger: (
     ownerAgentUserId: string,
     triggerRef: string,
@@ -177,6 +181,32 @@ export const makeD1AgentDefinitionTriggerStore = (
     return (rows.results ?? []).map(rowToDueTriggerRecord)
   }
 
+  const listInboundWebhookTriggers = async (
+    source: string,
+    limit: number,
+  ): Promise<ReadonlyArray<DueAgentDefinitionTriggerRecord>> => {
+    const rows = await db
+      .prepare(
+        `SELECT trigger_id, owner_agent_user_id, owner_ref, definition_id,
+                trigger_ref, trigger_json, state, consecutive_failures,
+                next_run_at, paused_at, pause_reason, created_at, updated_at
+           FROM agent_definition_triggers
+          WHERE trigger_kind = 'inbound_webhook'
+            AND state = 'enabled'
+          ORDER BY updated_at ASC, trigger_id ASC
+          LIMIT ?`,
+      )
+      .bind(Math.max(1, Math.min(limit, 500)))
+      .all<DueAgentDefinitionTriggerRow>()
+
+    return (rows.results ?? [])
+      .map(rowToDueTriggerRecord)
+      .filter(record =>
+        record.trigger.kind === 'inbound_webhook' &&
+        record.trigger.source === source
+      )
+  }
+
   return {
     replaceDefinitionTriggers: async (
       ownerAgentUserId,
@@ -248,6 +278,7 @@ export const makeD1AgentDefinitionTriggerStore = (
     },
     listDefinitionTriggers,
     listDueCronTriggers,
+    listInboundWebhookTriggers,
     pauseTrigger: async (ownerAgentUserId, triggerRef, pausedAt, reason) => {
       const result = await db
         .prepare(

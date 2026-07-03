@@ -150,6 +150,10 @@ class MemoryAgentDefinitionTriggerStore implements AgentDefinitionTriggerStore {
     return Promise.resolve([])
   }
 
+  listInboundWebhookTriggers(): Promise<[]> {
+    return Promise.resolve([])
+  }
+
   pauseTrigger(): Promise<boolean> {
     return Promise.resolve(false)
   }

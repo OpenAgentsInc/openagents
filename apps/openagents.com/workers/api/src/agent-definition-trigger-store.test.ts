@@ -181,6 +181,21 @@ describe('agent definition trigger D1 store', () => {
       },
     })
     expect(inboundWebhook?.nextRunAt).toBeUndefined()
+
+    const inboundWebhookTriggers = await store.listInboundWebhookTriggers(
+      'github',
+      10,
+    )
+    expect(inboundWebhookTriggers).toHaveLength(1)
+    expect(inboundWebhookTriggers[0]).toMatchObject({
+      ownerAgentUserId,
+      triggerRef: 'trigger.public.trigger_store.github_issue',
+      trigger: {
+        kind: 'inbound_webhook',
+        source: 'github',
+      },
+    })
+    expect(await store.listInboundWebhookTriggers('slack', 10)).toEqual([])
   })
 
   test('preserves state across definition edits and removes stale triggers', async () => {

@@ -172,6 +172,17 @@ duplicate tight-loop dispatch. Wrangler migration `v7` registers the DO class,
 and deterministic scheduler/store tests cover cap, owner scope, next-run
 advancement, missing definitions, and D1 due-row reads.
 
+BA-B3 status (2026-07-03): the Worker now exposes authenticated GitHub webhook
+ingress at `POST /v1/agent-definitions/webhooks/github`. The route verifies
+`x-hub-signature-256` before reading trigger rows, rejects invalid signatures,
+normalizes GitHub deliveries through the shared
+`@openagentsinc/agent-runtime-schema/webhooks` subpath, evaluates typed
+`event_type` and bounded JSON-path trigger conditions, then dispatches matching
+rows through the shared BA-A2 definition-run helper with the trigger row's
+owner scope. The response reports matched/dispatched/refused/failed/skipped
+counts, success/failure updates go through the trigger store, and the route is
+inert until `AGENT_DEFINITION_GITHUB_WEBHOOK_SECRET` is configured.
+
 | Task | Description | Deps | Delegable | Issue |
 | --- | --- | --- | --- | --- |
 | BA-B1 | Trigger schema + D1 store: `cron(expr, tz)` and `inbound_webhook(source, typed conditions)` trigger types on definitions; `next_run_at` precomputed via a cron utility; `consecutive_failures`; enable/pause state | BA-A1 | HIGH | [#8193](https://github.com/OpenAgentsInc/openagents/issues/8193) |

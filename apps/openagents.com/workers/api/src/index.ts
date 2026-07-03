@@ -68,6 +68,7 @@ import {
   handleAgentDefinitionsApi,
   makeD1AgentDefinitionStore,
 } from './agent-definition-routes'
+import { handleAgentDefinitionWebhookRequest } from './agent-definition-webhook-routes'
 import {
   handleAgentDefinitionRunRequest,
   makeD1AgentDefinitionRunStore,
@@ -12534,6 +12535,32 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         handleAgentDefinitionsApi(request, {
           agentStore: makeD1AgentRegistrationStore(openAgentsDatabase(env)),
           definitionStore: makeD1AgentDefinitionStore(openAgentsDatabase(env)),
+          triggerStore: makeD1AgentDefinitionTriggerStore(openAgentsDatabase(env)),
+        }),
+      ),
+  },
+  {
+    path: '/v1/agent-definitions/webhooks/github',
+    handler: (request, env) =>
+      Effect.promise(() =>
+        handleAgentDefinitionWebhookRequest(request, {
+          definitionStore: makeD1AgentDefinitionStore(openAgentsDatabase(env)),
+          dispatchDependencies: {
+            durableStreamNamespace:
+              isInferenceDurableStreamEnabled(
+                env.INFERENCE_DURABLE_STREAM_ENABLED,
+              ) && env.INFERENCE_DURABLE_STREAM !== undefined
+                ? (env.INFERENCE_DURABLE_STREAM as unknown as DurableStreamNamespace)
+                : undefined,
+            forgeStore: makeD1ForgeCoordinationStore(openAgentsDatabase(env)),
+            pylonStore: makeD1PylonApiStore(openAgentsDatabase(env)),
+            runStore: makeD1AgentDefinitionRunStore(openAgentsDatabase(env)),
+          },
+          githubSecret: (
+            env as Env & {
+              AGENT_DEFINITION_GITHUB_WEBHOOK_SECRET?: string
+            }
+          ).AGENT_DEFINITION_GITHUB_WEBHOOK_SECRET,
           triggerStore: makeD1AgentDefinitionTriggerStore(openAgentsDatabase(env)),
         }),
       ),

@@ -26,3 +26,9 @@ The pure helper `decideAgentDefinitionToolAuthority` is the shared
 tool-authority boundary. It is deny-by-default, gives `deny` precedence over
 `ask` and `allow`, and converts `ask` matches into an operator escalation record
 instead of authorizing the tool invocation.
+
+The `./webhooks` subpath owns provider-specific webhook normalization for
+background-agent triggers. GitHub deliveries are converted into bounded
+`openagents.agent_definition_webhook_event.v1` records before trigger
+conditions run, so Worker ingress never passes raw provider payloads into model
+or run context.
