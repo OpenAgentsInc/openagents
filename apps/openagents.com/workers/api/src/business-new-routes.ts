@@ -16,13 +16,13 @@ import {
   makeD1TokenUsageLedger,
 } from './token-usage-ledger'
 
-// `/business-new` — the /business page restructured in the lander-family
+// `/business` — the page restructured in the lander-family
 // system (site-speed lane): same server-rendered shell, shared navigation
 // with /lander4, the offerings as a promise-registry-style register, and a
 // REAL intake form posting to the existing `POST /api/public/business-signup`
 // route (which natively accepts form-encoded bodies, so the form works
 // without JavaScript; the inline script upgrades it to an in-page
-// confirmation). "Talk to Khala" links to the live /business interview.
+// confirmation). "Talk to Khala" links to the general Khala surface.
 //
 // Copy discipline: hero, trust, offering titles/bodies/caveats, and promise
 // refs reuse the LIVE /business page copy verbatim; field labels match the
@@ -86,7 +86,7 @@ ${renderLanderHeader('business', display)}
 <p class="trust rise d2">Start with a fast quick win we can deliver in days, then put recurring work on Autopilot as trust builds. Every accepted outcome ties to evidence; every paid run is scoped with a receipt plan up front; a human-review gate sits before anything ships, sends, or spends.</p>
 <div class="cta rise d3">
 <a class="primary" href="#intake">Talk to Sales</a>
-<a class="secondary" href="/business">Talk to Khala instead</a>
+<a class="secondary" href="/khala">Talk to Khala instead</a>
 </div>
 <section class="register">
 <h2>What we can do</h2>
@@ -129,7 +129,7 @@ ${renderLanderHeader('business', display)}
 <div class="intake-result wide" id="intake-result" role="status"></div>
 <button type="submit">Send it</button>
 </form>
-<p class="intake-note">Bounded interview, no credentials, receipt-first. Prefer a conversation? <a href="/business" style="color:var(--ink-blue)">Tell Khala what your business needs</a> — it runs a short interview and drafts your intake spec.</p>
+<p class="intake-note">Bounded interview, no credentials, receipt-first. Prefer a conversation? <a href="/khala" style="color:var(--ink-blue)">Tell Khala what your business needs</a> — it can draft the intake spec before you submit.</p>
 </section>
 </main>
 ${renderLanderFooter()}

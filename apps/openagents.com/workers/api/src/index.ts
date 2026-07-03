@@ -12271,6 +12271,11 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
   },
   // /business restructured in the lander-family system (site-speed lane).
   {
+    path: '/business',
+    handler: (request, env, ctx) => handleBusinessNewPage(request, env, ctx),
+  },
+  // Legacy preview alias kept for direct references while /business is canonical.
+  {
     path: '/business-new',
     handler: (request, env, ctx) => handleBusinessNewPage(request, env, ctx),
   },
