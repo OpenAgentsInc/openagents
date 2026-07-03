@@ -216,6 +216,12 @@ QA_TARGET_URL=https://staging.openagents.com bun run --cwd apps/qa-runner run-on
 
 Default target is `https://openagents.com`.
 
+For third-party/customer apps, use the minimal Target adapter contract:
+[`docs/target-adapter-onboarding.md`](docs/target-adapter-onboarding.md). It
+documents the schema, auth/fresh-identity/restart checklist, a worked public
+fixture example, and the external-production rule: prod is read-only and
+mutating steps are refused by the runner before browser interaction.
+
 ## Cost / time envelope
 
 The demo is one headless chromium session of a handful of steps: a few seconds
