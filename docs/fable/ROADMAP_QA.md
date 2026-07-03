@@ -265,24 +265,48 @@ The fix is the behavior-contract layer, landed with this entry:
   contracts for its own headline invariants (#8218: budget caps, toolset
   enforcement, brokered credentials, harness swap, Agents-panel indicator
   truthfulness).
-- **Conversation-history mining pass (2026-07-03)**: the registry's coverage
-  extends past reactive per-session asks to a systematic sweep. Every owner
-  message across the last 36h of Codex and Claude conversation history that
-  stated a Khala Code UX/behavior expectation was mined (43 in-app
-  `khala_code_desktop`-origin Codex sessions plus adjacent Codex-Desktop and
-  Claude sessions) and landed as a `pending` contract in
-  `clients/khala-code-desktop/src/contracts/ux-contracts.ts` — 23 entries
+- **Conversation-history mining pass (2026-07-03, landed enforced same day)**:
+  the registry's coverage extends past reactive per-session asks to a
+  systematic sweep. Every owner message across the last 36h of Codex and
+  Claude conversation history that stated a Khala Code UX/behavior
+  expectation was mined (43 in-app `khala_code_desktop`-origin Codex sessions
+  plus adjacent Codex-Desktop and Claude sessions) and landed as a contract
+  in `clients/khala-code-desktop/src/contracts/ux-contracts.ts` — 23 entries
   spanning the composer, sidebar, transcript, nav hotbar, menus, app
-  lifecycle, and token accounting. Each records the statement close to
-  verbatim, its source date, and a shared blocker ref
-  (`blocker.khala_code_ux_mining.oracle_not_implemented_20260703`) marking
-  that the oracle-writing code pass has not happened yet — this pass is
-  docs-only by owner directive. The follow-up code pass should work this
-  list down: write the oracle, verify or fix the underlying behavior, flip
-  `pending` → `enforced`. Mining reused the "Colocode"/"Cola Code"/"Call of
-  Code"/"Calla Code" voice-dictation pattern as an additional keyword
-  signal, alongside `originator: "khala_code_desktop"` in Codex session
-  metadata as the strongest filter for genuine in-product usage reports.
+  lifecycle, and token accounting, each recording the statement close to
+  verbatim and its source date. Mining reused the "Colocode"/"Cola Code"/
+  "Call of Code"/"Calla Code" voice-dictation pattern as an additional
+  keyword signal, alongside `originator: "khala_code_desktop"` in Codex
+  session metadata as the strongest filter for genuine in-product usage
+  reports.
+
+  The follow-up code pass (same day) worked the full list down to
+  `enforced`: 6 read-only investigation agents characterized every
+  contract's current implementation state first; 18 were already correct
+  in code and needed oracle wiring only, 5 needed real fixes. Landed
+  fixes: (1) per-thread streaming state (`streamingThreadIds`, keyed by
+  turnId→threadId, independent of the active-thread switch) replaced the
+  single global `pendingTurn` boolean that thread-switch functions used to
+  hard-reset, so a background thread's sidebar spinner survives navigation
+  and the composer status can never disagree with the sidebar for the
+  active thread — one fix satisfying both
+  `chat.streaming_indicator_survives_navigation.v1` and
+  `transcript.streaming_state_cross_surface_consistency.v1`; (2) raw Codex
+  app-server RPC error text ("no rollout found...", "invalid session
+  id...") is now mapped to one friendly message before it reaches the
+  sidebar (`chat.thread_open_never_raw_error.v1`); (3) consecutive tool
+  calls collapse into one summary line with click-to-expand
+  (`transcript.consecutive_tool_calls_collapsed.v1`); (4) the last active
+  thread is captured at boot and restored after the initial render instead
+  of always starting blank (`app.resumes_after_restart.v1` — honestly
+  scoped: a literal in-flight generation cannot survive process death since
+  the Codex app-server subprocess quits with the app, so this restores the
+  thread and its history, not a mid-turn resume). All 23 contracts are now
+  `state: "enforced"` with real oracles (DOM-mounted where the behavior is
+  DOM-visible, source-pinning where the implementing `main.ts` internals
+  aren't exported for unit import, or referencing an existing regression
+  test) running in the desktop `verify` chain and the qa:nightly matrix.
+  Registry version `2026-07-03.6`.
 
 ## 10. Milestones
 
