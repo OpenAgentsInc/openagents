@@ -18,6 +18,7 @@ describe("qa nightly matrix plan", () => {
     const steps = buildQaNightlySteps({ artifactDir: "var/qa-nightly/run" })
     expect(steps.map(step => step.id)).toEqual([
       "harness-suite",
+      "real-bridge-smoke",
       "desktop-verify",
       "visual-part2-ui",
       "visual-cockpit",
@@ -61,6 +62,7 @@ describe("qa nightly matrix report", () => {
       expect(report.status).toBe("passed")
       expect(calls).toEqual([
         "harness-suite",
+        "real-bridge-smoke",
         "desktop-verify",
         "visual-part2-ui",
         "visual-cockpit",
