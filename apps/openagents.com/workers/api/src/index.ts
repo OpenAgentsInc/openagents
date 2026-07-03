@@ -856,7 +856,10 @@ import { handleLander2Page } from './lander2-routes'
 import { handleLander3Page } from './lander3-routes'
 import { handleLander4Page } from './lander4-routes'
 import { handleLander5Page } from './lander5-routes'
-import { handleBusinessNewPage } from './business-new-routes'
+import {
+  handleBusinessAgentGuide,
+  handleBusinessNewPage,
+} from './business-new-routes'
 import { handleVerticalFunnelRequest } from './vertical-funnel-routes'
 import { handlePublicKhalaTokensServedApi } from './public-khala-tokens-served-routes'
 import { recordPublicKhalaChatServedTokens } from './public-khala-chat-served-tokens'
@@ -12331,6 +12334,10 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
   {
     path: '/business',
     handler: (request, env, ctx) => handleBusinessNewPage(request, env, ctx),
+  },
+  {
+    path: '/business/agents.md',
+    handler: (request: Request) => handleBusinessAgentGuide(request),
   },
   // Legacy preview alias kept for direct references while /business is canonical.
   {
