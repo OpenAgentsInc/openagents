@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-07-02.4'
+export const PublicProductPromisesVersion = '2026-07-03.1'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -4495,7 +4495,7 @@ export const publicProductPromisesDocument = () => {
         claim:
           'Khala Code is the OpenAgents desktop coding app: a wrapper around the user’s own local Codex install, with Khala swarm/fleet coordination, a Unified Inbox, and exact token accounting layered around it.',
         safeCopy:
-          'The Khala Code desktop app exists on main (clients/khala-code-desktop, Electrobun + web preview) and is Codex-required by positioning: the default chat, thread, slash-command, approval, MCP, settings, and headless paths run through the user’s own codex app-server install (docs/khala-code/2026-07-01-codex-required-product-positioning.md). Parity with Codex is enforced mechanically against a pinned reference commit (parity contract + gap matrix + fixture suites + skip-safe live smokes), and the Khala layer adds fleet delegation through the deterministic khala.fleet.delegate program with isolated worker homes and exact token_usage_events accounting. Yellow because there is no public release artifact/installer and no outside-user run evidence yet; this is the Episode 245 product-identity record.',
+          'The Khala Code desktop app exists on main (clients/khala-code-desktop, Electrobun + web preview) and is Codex-required by positioning: the default chat, thread, slash-command, approval, MCP, settings, and headless paths run through the user’s own codex app-server install (docs/khala-code/2026-07-01-codex-required-product-positioning.md). Parity with Codex is enforced mechanically against a pinned reference commit (parity contract + gap matrix + fixture suites + skip-safe live smokes), and the Khala layer adds fleet delegation through the deterministic khala.fleet.delegate program with isolated worker homes and exact token_usage_events accounting. Episode 246 adds owner full-time dogfood evidence: the owner runs Khala Code full-screen as his only coding harness and fixes Khala Code with Khala Code, with stated UX expectations landing in the enforced behavior-contract registry (khala_code.ux_behavior_contracts.v1). Yellow because there is no public release artifact/installer and no outside-user run evidence yet; this is the Episode 245 product-identity record.',
         unsafeCopy:
           'Do not claim Khala Code is downloadable, installed by outside users, or usable without a working Codex install and login. Do not describe the free/paid plan economics as live — those are the separate planned khala_code.* records.',
         evidenceRefs: [
@@ -4505,6 +4505,7 @@ export const publicProductPromisesDocument = () => {
           'docs/khala-code/2026-07-01-codex-parity-contract.md',
           'docs/khala-code/2026-06-30-khala-code-fleet-management-spec.md',
           'docs/transcripts/245.md',
+          'docs/transcripts/246.md',
           'docs/fable/2026-07-01-product-promises-khala-code-launch-alignment.md',
           'promise:khala.own_capacity_codex_delegation.v1',
         ],
@@ -4688,6 +4689,7 @@ export const publicProductPromisesDocument = () => {
           'clients/khala-code-desktop/tests/rpc-handlers.test.ts',
           'clients/khala-code-desktop/tests/headless.test.ts',
           'https://github.com/OpenAgentsInc/openagents/issues/8058',
+          'docs/transcripts/246.md',
           'promise:khala_code.desktop_codex_wrapper.v1',
         ],
         blockerRefs: [
@@ -4699,6 +4701,65 @@ export const publicProductPromisesDocument = () => {
           'Planned state is source-level only: the preset must write the schema-tagged role registry in one action, preserve no-proxy/no-resale rails, and stay copy-gated. Yellow/green movement requires the QA Q9.7 plan -> code -> judge scenario and armed live smoke, exact per-role token/economics rows, and owner-approved public copy per proof.claim_upgrade_receipts.v1.',
         authorityBoundary:
           'The preset grants no provider proxy, resale, brokered capacity, spend, payout, settlement, or merge authority. Architect, judge, and advisor outputs are advisory data under the deterministic verify-command authority; coder execution remains the user’s own Codex login and existing local authority boundary.',
+      },
+      {
+        ...basePromiseFields,
+        promiseId: 'khala_code.ux_behavior_contracts.v1',
+        productArea: 'Khala Code',
+        audience: ['user', 'customer', 'agent', 'operator'],
+        state: 'yellow',
+        claim:
+          'Khala Code UX expectations stated by the owner (and later by customers) are recorded verbatim in a typed behavior-contract registry and enforced by oracle tests in the normal test sweep, so stated behavior cannot silently drift.',
+        safeCopy:
+          'The UX Behavior Contract system is live in source as the micro-scale counterpart of this product-promise registry (Episode 246): owner-stated expectations land verbatim — statement, source, and oracle — in the typed registry at clients/khala-code-desktop/src/contracts/ux-contracts.ts, built on the shared @openagentsinc/behavior-contracts schema and coverage checker; the paired coverage test (tests/ux-contracts.test.ts) fails the sweep if an enforced contract loses its oracle, and the human rendering at docs/khala-code/khala-code-ux-contract.md is kept in sync by the same test. The repo agent contract mandates that any stated UX expectation lands in the registry in the same change. Episode 246 exercised the full flow on camera, including an agent mining ~36 hours of Codex/Claude conversation history (43 in-app sessions plus adjacent sessions) into pending entries. Yellow because most mined entries are pending (recorded without oracles yet), customer-stated contract intake has not run, and in-the-wild deviations do not yet auto-file strict bugs.',
+        unsafeCopy:
+          'Do not claim every stated UX expectation is oracle-enforced, that pending entries are enforced, that customer contract intake is live, or that contract deviations automatically open issues today.',
+        evidenceRefs: [
+          'clients/khala-code-desktop/src/contracts/ux-contracts.ts',
+          'clients/khala-code-desktop/tests/ux-contracts.test.ts',
+          'docs/khala-code/khala-code-ux-contract.md',
+          'packages/behavior-contracts/src/contract.ts',
+          'packages/behavior-contracts/src/coverage.ts',
+          'packages/behavior-contracts/src/behavior-contracts.test.ts',
+          'docs/transcripts/246.md',
+          'promise:khala_code.desktop_codex_wrapper.v1',
+        ],
+        blockerRefs: [
+          'blocker.product_promises.khala_code_ux_contracts_pending_oracles',
+          'blocker.product_promises.khala_code_ux_contract_deviation_intake_missing',
+        ],
+        verification:
+          'The coverage test must fail the sweep when an enforced contract loses its oracle, and enforced oracles must assert real behavior (mounted DOM, RPC results, harness scenarios) rather than source strings except as labeled stopgaps. Green requires the pending mined backlog converted to enforced oracles or explicitly retired, a deviation-to-strict-bug intake path, and an owner-signed receipt-first upgrade per proof.claim_upgrade_receipts.v1.',
+        authorityBoundary:
+          'The contract registry grants no runtime, dispatch, spend, or merge authority. Oracles must never be weakened to make a change pass — that is a contract change requiring owner sign-off; deviations found in the wild are strict bugs filed with the contract id.',
+      },
+      {
+        ...basePromiseFields,
+        promiseId: 'khala_code.bundled_fleet_skill.v1',
+        productArea: 'Khala Code',
+        audience: ['user', 'agent', 'operator'],
+        state: 'yellow',
+        claim:
+          'Khala Code ships a bundled khala-fleet skill — fleet-management operating procedure and guardrails in standard SKILL.md form — installed by default into the shared ~/.agents/skills root so the Codex harness and any skills-aware agent discover it without setup.',
+        safeCopy:
+          'The bundled skill is live in source: the canonical SKILL.md at .agents/skills/khala-fleet/SKILL.md (repo-scope discovery inside this repository) encodes the connect/dispatch/claims/closeout-verification ladder and hard guardrails as a launcher over the canonical runbooks, and Khala Code Desktop installs it at startup into ~/.agents/skills/khala-fleet/ with a managed-marker overwrite policy that upgrades only files it owns and never touches user-owned files. Default-on and toggleable via KHALA_CODE_DESKTOP_BUNDLED_SKILLS=0; a sync script plus a byte-for-byte pin test keep the embedded copy identical to the canonical file. Yellow because it ships on main with tests but has no outside-user discovery evidence (no public release artifact) and the toggle is env-only (no Settings surface yet).',
+        unsafeCopy:
+          'Do not claim outside users receive the skill today, that a Settings toggle exists, or that the skill overrides runbook or dispatch-gate authority.',
+        evidenceRefs: [
+          '.agents/skills/khala-fleet/SKILL.md',
+          'clients/khala-code-desktop/src/bun/khala-bundled-skills.ts',
+          'clients/khala-code-desktop/tests/khala-bundled-skills.test.ts',
+          'docs/khala-code/2026-07-02-khala-fleet-bundled-skill.md',
+          'promise:khala_code.desktop_codex_wrapper.v1',
+        ],
+        blockerRefs: [
+          'blocker.product_promises.khala_code_public_release_artifact_missing',
+          'blocker.product_promises.khala_code_bundled_skill_settings_toggle_missing',
+        ],
+        verification:
+          'The khala-bundled-skills suite pins the embedded content byte-for-byte against the canonical SKILL.md, checks the frontmatter contract and managed marker, and covers install/upgrade/user-owned/disabled/no-home behavior. Green requires outside-user skill discovery evidence through a public release plus an owner-signed receipt-first upgrade per proof.claim_upgrade_receipts.v1.',
+        authorityBoundary:
+          'The skill is guidance text only: it grants no dispatch, spend, settlement, or credential authority, installs only into the skills directory it owns by marker, and the delegation runbooks and server dispatch gate remain the operating authority.',
       },
       {
         ...basePromiseFields,
@@ -4799,6 +4860,7 @@ export const publicProductPromisesDocument = () => {
           'docs/fable/2026-07-01-khala-code-desktop-qa-framework-design.md',
           'docs/fable/2026-07-01-product-promises-khala-code-launch-alignment.md',
           'docs/fable/2026-07-02-qa-swarm-product-plan.md',
+          'docs/transcripts/246.md',
         ],
         blockerRefs: [
           'blocker.product_promises.qa_runner_paid_customer_missing',
@@ -4819,12 +4881,13 @@ export const publicProductPromisesDocument = () => {
         claim:
           'QA Swarm is the named product surface packaging the ROADMAP_QA machine into an operator-assisted QA engagement, with Khala Code Desktop as customer number one.',
         safeCopy:
-          'QA Swarm is a yellow product definition: it packages the existing qa-runner, trace, coverage, perf, Arbiter, and FleetRun ingredients into an operator-assisted QA engagement. The first customer is OpenAgents itself through the Khala Code Desktop dogfood lane. The /business rate card now publishes operator-assisted QA Swarm audit, sprint, and retainer bands; hosted runs and the share surface remain planned, and it is not self-serve or broadly hosted.',
+          'QA Swarm is a yellow product definition: it packages the existing qa-runner, trace, coverage, perf, Arbiter, and FleetRun ingredients into an operator-assisted QA engagement. The first customer is OpenAgents itself through the Khala Code Desktop dogfood lane. Episode 246 states the sequencing on camera: QA Swarm is built first for Khala Code, then added to the Autopilot product suite for businesses — that Autopilot-suite step is design intent, not a shipped surface. The /business rate card now publishes operator-assisted QA Swarm audit, sprint, and retainer bands; hosted runs and the share surface remain planned, and it is not self-serve or broadly hosted.',
         unsafeCopy:
           'Do not describe QA Swarm as self-serve, generally hosted, automated for arbitrary third-party apps, or proven by paid customer receipts.',
         evidenceRefs: [
           'docs/fable/2026-07-02-qa-swarm-product-plan.md',
           'docs/feature-requests/2026-06-24-autonomous-qa-e2e-from-computer-use.md',
+          'docs/transcripts/246.md',
           'apps/openagents.com/apps/web/src/page/business.ts',
           'apps/openagents.com/apps/web/src/business-route.test.ts',
           'promise:qa.agentic_qa_runner.v1',
@@ -4961,6 +5024,7 @@ export const publicProductPromisesDocument = () => {
     ],
     notes: [
       `Include version ${PublicProductPromisesVersion} and the relevant promiseId when reporting a mismatch.`,
+      'Registry 2026-07-03.1 is the Episode 246 (Dogfooding Khala Code) incorporation pass and flips NO promise state — green stays exactly 34. Two records land, both yellow and evidence-bounded: khala_code.ux_behavior_contracts.v1 — the UX Behavior Contract system (the micro-scale counterpart of this registry) is live in source with a typed registry (clients/khala-code-desktop/src/contracts/ux-contracts.ts on the shared @openagentsinc/behavior-contracts schema), a coverage test that fails the sweep if an enforced contract loses its oracle, and a synced human doc; yellow because most entries mined from ~36 hours of Codex/Claude session history are pending (no oracles yet), customer intake has not run, and deviation-to-strict-bug intake is not wired. khala_code.bundled_fleet_skill.v1 — the desktop installs a bundled khala-fleet SKILL.md into ~/.agents/skills by default (managed-marker overwrite policy, env toggle, byte-pin test); yellow pending outside-user discovery evidence and a Settings toggle. Episode 246 evidence (docs/transcripts/246.md) is added to khala_code.desktop_codex_wrapper.v1 (owner full-time dogfood: fixing Khala Code with Khala Code), khala_code.architect_coder_judge.v1 (the owner names the architect/coder/judge pattern for Khala Code on camera), qa.agentic_qa_runner.v1, and qa_swarm.product_surface.v1, whose copy now records the on-camera sequencing that QA Swarm is built first for Khala Code and then added to the Autopilot product suite for businesses — design intent, not a shipped surface. No pricing, availability, capture, payout, or settlement claim changes; any future green flip remains receipt-first and owner-signed per proof.claim_upgrade_receipts.v1.',
       'Registry 2026-07-02.4 is the BF-2.1 /business rate-card pass (#8079) and flips NO promise green — green stays exactly 34. business.intake_quick_win_offering.v1 remains yellow and now includes the published operator-assisted rate card: Quick Win ($1,000-$5,000 fixed), Fleet Sprint ($5,000-$15,000/week), On Autopilot Retainer ($2,000-$10,000/month), and QA Swarm bands. qa_swarm.service_packages.v1 advances from planned to yellow only for public package pricing and copy; checkout, first paid delivery receipts, self-serve hosted runs, broad hosted availability, payout, and settlement remain blocked.',
       'Registry 2026-07-02.3 adds khala_code.architect_coder_judge.v1 as a planned, copy-gated Khala Code promise candidate for the architect/coder/judge preset. It flips NO promise state. Source-level evidence covers the architect-coder-judge role-registry preset in Khala Code settings and headless launch wiring: coder on the user’s existing Codex login, architect/judge on the user’s own Anthropic auth, advisor optional-off, and no proxy/no-resale rails restated. The record remains planned until the plan -> code -> judge workflow is verifiable end-to-end with exact per-role accounting and owner-approved public copy.',
       'Registry 2026-07-02.2 is the QA Swarm QS1 pass (#8061) and flips NO promise green — green stays exactly 34. qa.agentic_qa_runner.v1 remains yellow but now explicitly scopes the broader QA Swarm product as not self-serve. New qa_swarm.* records land conservatively: qa_swarm.product_surface.v1 is yellow for the named operator-assisted product definition and customer-one dogfood scope; qa_swarm.hosted_runs.v1, qa_swarm.share_surface.v1, and qa_swarm.service_packages.v1 are planned. The modeled rate card is staged in NEEDS_OWNER.md for owner review; public copy must not publish prices, imply self-serve delivery, or claim paid customer/hosted-run receipts until the named blockers clear.',
