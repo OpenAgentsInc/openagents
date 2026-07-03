@@ -118,6 +118,40 @@ describe('public accepted-outcome settlement routes', () => {
     ).toBe(true)
   })
 
+  test('serves the BF-8.6 make-good demo as an inert no-custody projection', async () => {
+    const response = await route(
+      fakeDb('bf_8_6_make_good_demo_001'),
+      'bf_8_6_make_good_demo_001',
+    )
+    const body = (await response.json()) as Record<string, any>
+
+    expect(response.status).toBe(200)
+    expect(body.settlement.settlementComplete).toBe(true)
+    expect(body.settlement.settlementMachine.dispatchArmed).toBe(false)
+    expect(
+      body.settlement.settlementMachine.transitions.map(
+        (transition: any) => transition.stateId,
+      ),
+    ).toEqual([
+      'authorized',
+      'paid',
+      'accepted',
+      'pending_payout',
+      'dispatched',
+      'confirmed',
+      'reconciled',
+      'margin',
+    ])
+    expect(
+      body.settlement.settlementMachine.transitions.every(
+        (transition: any) => transition.movedMoney === false,
+      ),
+    ).toBe(true)
+    expect(JSON.stringify(body)).not.toMatch(
+      /wallet|preimage|private|client|adapterArmed\":true|realBitcoinMoved\":true/i,
+    )
+  })
+
   test('returns 404 for an unknown outcome', async () => {
     const response = await route(fakeDb(null), 'missing_outcome')
     expect(response.status).toBe(404)
