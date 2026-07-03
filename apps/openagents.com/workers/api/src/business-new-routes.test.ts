@@ -1,7 +1,11 @@
 import { Effect } from 'effect'
 import { describe, expect, test } from 'vitest'
 
-import { handleBusinessNewPage, renderBusinessNewHtml } from './business-new-routes'
+import {
+  handleBusinessAgentGuide,
+  handleBusinessNewPage,
+  renderBusinessNewHtml,
+} from './business-new-routes'
 import { makeD1TokenUsageLedger } from './token-usage-ledger'
 
 const fakeTokensServedDb = (tokensServed: number): D1Database => {
@@ -29,24 +33,65 @@ describe('business-new restructured page', () => {
     // Shared nav marks Business as the current page; Khala conversation stays a path.
     expect(html).toContain('href="/business" aria-current="page"')
     expect(html).toContain('href="/khala"')
-    expect(html).toContain('name="robots" content="noindex"')
+    expect(html).toContain('rel="canonical" href="https://openagents.com/business"')
+    expect(html).toContain('href="/business/agents.md"')
+    expect(html).toContain('application/ld+json')
+    expect(html).toContain('Questions buyers and agents ask')
+    expect(html).toContain('source=ai-search')
+    expect(html).toContain('name="sourceAttribution"')
+    expect(html).not.toContain('name="robots" content="noindex"')
     expect(html).not.toContain('/assets/index-')
   })
 
-  test('GET renders the ledger total; non-GET rejected', async () => {
+  test('GET renders the ledger total and preserves AI-search source attribution; non-GET rejected', async () => {
     const response = await Effect.runPromise(
-      handleBusinessNewPage(new Request('https://openagents.com/business-new'), {
-        ledger: makeD1TokenUsageLedger(fakeTokensServedDb(5_500_000)),
-      }),
+      handleBusinessNewPage(
+        new Request('https://openagents.com/business?source=ai-search'),
+        {
+          ledger: makeD1TokenUsageLedger(fakeTokensServedDb(5_500_000)),
+        },
+      ),
     )
     expect(response.status).toBe(200)
     expect(response.headers.get('x-lander-edge-cache')).toBe('bypass')
-    expect(await response.text()).toContain('5,500,000')
+    const body = await response.text()
+    expect(body).toContain('5,500,000')
+    expect(body).toContain(
+      'id="source-attribution" name="sourceAttribution" value="ai-search"',
+    )
 
     const rejected = await Effect.runPromise(
       handleBusinessNewPage(
         new Request('https://openagents.com/business-new', { method: 'POST' }),
         { ledger: makeD1TokenUsageLedger(fakeTokensServedDb(1)) },
+      ),
+    )
+    expect(rejected.status).toBe(405)
+  })
+
+  test('serves a crawlable agent-readable business guide', async () => {
+    const response = await Effect.runPromise(
+      handleBusinessAgentGuide(
+        new Request('https://openagents.com/business/agents.md'),
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get('content-type')).toContain('text/markdown')
+    expect(response.headers.get('cache-control')).toContain('public')
+
+    const body = await response.text()
+    expect(body).toContain('# OpenAgents Business')
+    expect(body).toContain('https://openagents.com/business?source=ai-search')
+    expect(body).toContain('operator-assisted')
+    expect(body).toContain('source=ai-search')
+    expect(body).toContain('/api/public/business/funnel-dashboard')
+
+    const rejected = await Effect.runPromise(
+      handleBusinessAgentGuide(
+        new Request('https://openagents.com/business/agents.md', {
+          method: 'POST',
+        }),
       ),
     )
     expect(rejected.status).toBe(405)

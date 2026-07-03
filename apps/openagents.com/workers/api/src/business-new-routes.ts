@@ -64,18 +64,103 @@ const INTAKE_SCRIPT = `
 })();
 `.trim()
 
-export const renderBusinessNewHtml = (tokensServed: number | null): string => {
+const SOURCE_CAPTURE_SCRIPT = `
+(function(){
+  try{
+    var params=new URLSearchParams(window.location.search);
+    var source=(params.get("source")||params.get("utm_source")||"").trim();
+    if(!source)return;
+    if(!/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,79}$/.test(source))return;
+    var el=document.getElementById("source-attribution");
+    if(el)el.value=source;
+  }catch(e){}
+})();
+`.trim()
+
+const normalizeSourceAttribution = (request: Request): string => {
+  const url = new URL(request.url)
+  const source = (
+    url.searchParams.get('source') ??
+    url.searchParams.get('utm_source') ??
+    ''
+  ).trim()
+
+  return /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,79}$/.test(source) ? source : ''
+}
+
+export const renderBusinessAgentGuide = (): string => `# OpenAgents Business
+
+OpenAgents Business is the operator-assisted path for hiring agents to do
+bounded, reviewable work.
+
+Canonical human page: https://openagents.com/business?source=ai-search
+
+## What can OpenAgents Business do today?
+
+OpenAgents can scope small coding, QA, automation, campaign, inference, forum
+agent, and workspace setup work into operator-assisted engagements. Each
+engagement starts with a written scope and receipt plan. The public page keeps
+availability labels explicit: available now, operator-assisted, or roadmap.
+
+## Is it self-serve?
+
+No. The current business surface is an intake and scoping path. Checkout,
+self-serve hosting, and background fulfillment are not implied unless a reviewed
+surface says so.
+
+## What should an interested buyer do?
+
+Send a short intake at https://openagents.com/business?source=ai-search#intake
+or start with Khala at https://openagents.com/khala. Do not paste credentials,
+private customer data, privileged matter facts, wallet material, or secrets into
+the public intake.
+
+## How is AI-search attribution measured?
+
+The linked business URL carries source=ai-search. A converted signup records a
+coarse business-funnel source bucket under the existing BF-1.4 funnel dashboard.
+The public dashboard exposes aggregate counts only.
+
+## Public proof and boundaries
+
+- Product promises: https://openagents.com/docs/product-promises
+- Business funnel dashboard: https://openagents.com/api/public/business/funnel-dashboard
+- Full agent instructions: https://openagents.com/AGENTS.md
+`
+
+export const handleBusinessAgentGuide = (request: Request) => {
+  if (request.method !== 'GET' && request.method !== 'HEAD') {
+    return Effect.succeed(methodNotAllowed(['GET', 'HEAD']))
+  }
+
+  return Effect.succeed(
+    new Response(request.method === 'HEAD' ? null : renderBusinessAgentGuide(), {
+      headers: {
+        'cache-control': 'public, max-age=300',
+        'content-type': 'text/markdown; charset=utf-8',
+      },
+    }),
+  )
+}
+
+export const renderBusinessNewHtml = (
+  tokensServed: number | null,
+  sourceAttribution = '',
+): string => {
   const display = formatLanderTokens(tokensServed)
   return `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="robots" content="noindex">
+<meta name="description" content="Hire OpenAgents for operator-assisted agent work: coding, QA, automation, campaigns, and review-gated business workflows with receipt plans.">
+<link rel="canonical" href="https://openagents.com/business">
+<link rel="alternate" type="text/markdown" href="/business/agents.md" title="OpenAgents Business agent guide">
 <title>OpenAgents Business — Agents that work.</title>
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 ${LANDER_HEAD_FONT_PRELOAD}
 <style>${LANDER_SHELL_CSS}</style>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"What can OpenAgents Business do today?","acceptedAnswer":{"@type":"Answer","text":"OpenAgents scopes operator-assisted coding, QA, automation, campaign, inference, forum agent, and workspace setup work into bounded engagements with written receipt plans."}},{"@type":"Question","name":"Is OpenAgents Business self-serve?","acceptedAnswer":{"@type":"Answer","text":"No. The current business surface is an intake and scoping path. Checkout, self-serve hosting, and background fulfillment are not implied unless a reviewed surface says so."}},{"@type":"Question","name":"How should an interested buyer start?","acceptedAnswer":{"@type":"Answer","text":"Send a short intake at openagents.com/business or start with Khala. Do not paste credentials, private customer data, wallet material, or secrets into the public intake."}}]}</script>
 </head>
 <body>
 <div class="backdrop" aria-hidden="true"></div>
@@ -112,9 +197,33 @@ ${renderLanderHeader('business', display)}
 </div>
 <p class="intake-note">An honest menu of what OpenAgents can deliver. Availability is grounded in our public product-promise registry — shipped now, operator-assisted with a caveat, or planned roadmap. We say so in writing and scope the smallest honest version.</p>
 </section>
+<section class="register" id="questions">
+<h2>Questions buyers and agents ask</h2>
+<div class="reg">
+<div class="row">
+<span class="ref">BF-8.2</span>
+<div class="what"><strong>What can OpenAgents Business do today?</strong>
+<p>We scope operator-assisted coding, QA, automation, campaign, inference, forum-agent, and workspace setup work into bounded engagements with written receipt plans.</p></div>
+<span class="chip assisted">CITABLE</span>
+</div>
+<div class="row">
+<span class="ref">copy-gated</span>
+<div class="what"><strong>Is this self-serve?</strong>
+<p>No. The current business surface is intake and scoping. Checkout, self-serve hosting, and background fulfillment are not implied unless a reviewed surface says so.</p></div>
+<span class="chip assisted">BOUNDARY</span>
+</div>
+<div class="row">
+<span class="ref">source=ai-search</span>
+<div class="what"><strong>How does an AI answer cite this?</strong>
+<p>Use the canonical page and agent guide: <a href="/business/agents.md" style="color:var(--ink-blue)">/business/agents.md</a>. Links from AI-search answers should preserve <code>source=ai-search</code> so aggregate BF-1.4 source attribution can count converted signups.</p></div>
+<span class="chip live">MEASURED</span>
+</div>
+</div>
+</section>
 <section class="register" id="intake">
 <h2>Talk to Sales</h2>
 <form class="intake" id="intake-form" method="post" action="/api/public/business-signup">
+<input type="hidden" id="source-attribution" name="sourceAttribution" value="${sourceAttribution}">
 <label class="check wide optin"><input type="checkbox" name="requestSlackChannel" value="true">Set up a shared Slack channel</label>
 <label><span class="lab">Business name *</span>
 <input type="text" name="businessName" required maxlength="200" autocomplete="organization"></label>
@@ -134,6 +243,7 @@ ${renderLanderHeader('business', display)}
 </main>
 ${renderLanderFooter()}
 <script>${LANDER_COUNTER_SCRIPT}</script>
+<script>${SOURCE_CAPTURE_SCRIPT}</script>
 <script>${INTAKE_SCRIPT}</script>
 </body>
 </html>
@@ -150,9 +260,14 @@ export const handleBusinessNewPage = (
   }
   const ledger =
     input.ledger ?? makeD1TokenUsageLedger(input.OPENAGENTS_DB as D1Database)
+  const sourceAttribution = normalizeSourceAttribution(request)
   const render = ledger.readPublicTokensServed().pipe(
-    Effect.map(aggregate => renderBusinessNewHtml(aggregate.tokensServed)),
-    Effect.catch(() => Effect.succeed(renderBusinessNewHtml(null))),
+    Effect.map(aggregate =>
+      renderBusinessNewHtml(aggregate.tokensServed, sourceAttribution),
+    ),
+    Effect.catch(() =>
+      Effect.succeed(renderBusinessNewHtml(null, sourceAttribution)),
+    ),
   )
   return edgeCachedLanderHtml(request, ctx, render)
 }
