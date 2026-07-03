@@ -94,6 +94,9 @@ const metric = (label: string, value: unknown): HTMLElement => {
   return item
 }
 
+const stringOrNull = (value: unknown): string | null =>
+  typeof value === "string" ? value : null
+
 const section = (title: string, children: readonly Node[]): HTMLElement => {
   const node = el("section", "khala-settings-section")
   node.append(el("h3", "khala-settings-section-title", title), ...children)
@@ -237,8 +240,28 @@ export const mountCodexSettingsPanel = (
         onChange: value => void write("service_tier", value === "" ? null : value),
       }),
       metric("Provider", current.config.modelProvider),
-      metric("Summary", current.config.reasoningSummary),
-      metric("Verbosity", current.config.verbosity),
+      renderSelect({
+        label: "Summary",
+        selected: current.config.reasoningSummary ?? "",
+        options: [
+          { label: "Default", value: "" },
+          { label: "Auto", value: "auto" },
+          { label: "Concise", value: "concise" },
+          { label: "Detailed", value: "detailed" },
+        ],
+        onChange: value => void write("model_reasoning_summary", value === "" ? null : value),
+      }),
+      renderSelect({
+        label: "Verbosity",
+        selected: current.config.verbosity ?? "",
+        options: [
+          { label: "Default", value: "" },
+          { label: "Low", value: "low" },
+          { label: "Medium", value: "medium" },
+          { label: "High", value: "high" },
+        ],
+        onChange: value => void write("model_verbosity", value === "" ? null : value),
+      }),
     ])
   }
 
@@ -330,9 +353,30 @@ export const mountCodexSettingsPanel = (
       })),
       onChange: value => void write("default_permissions", value),
     }),
-    metric("Approval", current.config.approvalPolicy),
+    renderSelect({
+      label: "Approval",
+      selected: stringOrNull(current.config.approvalPolicy) ?? "",
+      options: [
+        { label: "Default", value: "" },
+        { label: "Untrusted", value: "untrusted" },
+        { label: "On failure", value: "on-failure" },
+        { label: "On request", value: "on-request" },
+        { label: "Never", value: "never" },
+      ],
+      onChange: value => void write("approval_policy", value === "" ? null : value),
+    }),
     metric("Reviewer", current.config.approvalsReviewer),
-    metric("Sandbox", current.config.sandboxMode),
+    renderSelect({
+      label: "Sandbox",
+      selected: current.config.sandboxMode ?? "",
+      options: [
+        { label: "Default", value: "" },
+        { label: "Read only", value: "read-only" },
+        { label: "Workspace write", value: "workspace-write" },
+        { label: "Danger full access", value: "danger-full-access" },
+      ],
+      onChange: value => void write("sandbox_mode", value === "" ? null : value),
+    }),
   ])
 
   const renderProviderSection = (
