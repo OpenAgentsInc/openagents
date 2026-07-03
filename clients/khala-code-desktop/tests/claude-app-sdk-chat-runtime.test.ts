@@ -258,6 +258,7 @@ describe("Claude Agent SDK chat runtime", () => {
     expect(await store.get("desktop-session-1")).toEqual({
       sessionId: "claude-session-1",
       lastTurnId: "turn-1",
+      origin: "khala-code-desktop",
       updatedAt: "2026-07-01T12:00:00.000Z",
     })
     expect(JSON.parse(await readFile(statePath, "utf8"))).toMatchObject({
@@ -367,9 +368,11 @@ describe("Claude Agent SDK chat runtime", () => {
 
     const queryEnv = (queryCalls[0] as { options: { readonly env: Record<string, string | undefined> } })
       .options.env
-    expect(queryEnv.CLAUDE_CONFIG_DIR).toBe(resolveClaudeConfigDir({ HOME: appHome }))
-    expect(queryEnv.CLAUDE_CONFIG_DIR).not.toBe("/ambient-user-claude")
-    await expect(stat(queryEnv.CLAUDE_CONFIG_DIR).then(entry => entry.isDirectory())).resolves.toBe(true)
+    const configDir = queryEnv.CLAUDE_CONFIG_DIR
+    expect(configDir).toBe(resolveClaudeConfigDir({ HOME: appHome }))
+    expect(configDir).not.toBe("/ambient-user-claude")
+    if (configDir === undefined) throw new Error("expected Claude config dir")
+    await expect(stat(configDir).then(entry => entry.isDirectory())).resolves.toBe(true)
   })
 
   test("allows an explicit Khala Code Claude config directory override", async () => {

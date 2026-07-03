@@ -11,6 +11,7 @@ import {
 } from "../packages/behavior-contracts/src/index.js"
 import {
   KHALA_CODE_QA_SEED_CORPUS_MANIFEST,
+  KHALA_CODE_QA_SEED_SCENARIOS,
   KhalaCodeRpcMethodNames,
   createEmptyKhalaCodeQaCoverageLedger,
   khalaCodeQaCoverageFrontierReport,
@@ -39,6 +40,9 @@ export const QA_STATUS_SURFACE_SCHEMA =
 export const QA_NIGHTLY_DEFAULT_RUNS = 16
 export const QA_NIGHTLY_DEFAULT_STEPS = 64
 export const QA_NIGHTLY_DEFAULT_STEP_TIMEOUT_MS = 30 * 60 * 1000
+const khalaCodeQaSeedScenariosById = new Map(
+  KHALA_CODE_QA_SEED_SCENARIOS.map(scenario => [scenario.id, scenario] as const),
+)
 
 export type QaNightlyStepId =
   | "harness-suite"
@@ -833,8 +837,11 @@ export const emitQaNightlyBehaviorContractArtifacts = async (input: Readonly<{
   const registryValidation = validateBehaviorContractRegistry(khalaCodeUxContractRegistry)
   const coverage = await checkBehaviorContractCoverageFromFiles(
     khalaCodeUxContractRegistry,
-    path => readFile(path, "utf8"),
-    ref => resolve(process.cwd(), ref),
+    ref => {
+      const scenario = khalaCodeQaSeedScenariosById.get(ref)
+      if (scenario !== undefined) return Promise.resolve(JSON.stringify(scenario))
+      return readFile(resolve(process.cwd(), ref), "utf8")
+    },
   )
   const behaviorStep = input.steps.find(step => step.id === "behavior-contracts")
   const desktopVerifyStep = input.steps.find(step => step.id === "desktop-verify")
