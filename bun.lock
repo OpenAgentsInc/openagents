@@ -496,6 +496,17 @@
         "typescript": "catalog:",
       },
     },
+    "packages/connector-sidecar": {
+      "name": "@openagentsinc/connector-sidecar",
+      "version": "0.1.0",
+      "dependencies": {
+        "effect": "catalog:",
+      },
+      "devDependencies": {
+        "bun-types": "^1.0.0",
+        "typescript": "catalog:",
+      },
+    },
     "packages/design-tokens": {
       "name": "@openagentsinc/design-tokens",
       "version": "0.1.0",
@@ -1049,6 +1060,8 @@
     "@openagentsinc/blueprint-contracts": ["@openagentsinc/blueprint-contracts@workspace:packages/blueprint-contracts"],
 
     "@openagentsinc/composer-state": ["@openagentsinc/composer-state@workspace:packages/composer-state"],
+
+    "@openagentsinc/connector-sidecar": ["@openagentsinc/connector-sidecar@workspace:packages/connector-sidecar"],
 
     "@openagentsinc/design-tokens": ["@openagentsinc/design-tokens@workspace:packages/design-tokens"],
 
