@@ -4,6 +4,7 @@ import { describe, expect, test } from 'vitest'
 
 import { Flags, init } from './main'
 import * as Business from './page/business'
+import * as BusinessKpi from './page/businessKpi'
 import { BusinessRoute, urlToAppRoute } from './route'
 
 const appUrl = (pathname: string) => ({
@@ -77,6 +78,17 @@ describe('business route', () => {
     expect(urlToAppRoute(appUrl('/business'))).toEqual(BusinessRoute())
   })
 
+  test('parses the customer KPI dashboard path', () => {
+    const route = urlToAppRoute(
+      appUrl('/business/kpi/engagement.public.vertical_pipeline_1'),
+    )
+
+    expect(route).toMatchObject({
+      _tag: 'BusinessKpi',
+      engagementRef: 'engagement.public.vertical_pipeline_1',
+    })
+  })
+
   test('keeps unauthenticated users on the business landing page', () => {
     const [model, commands] = init(
       Flags.make({ maybeAuth: Option.none() }),
@@ -88,6 +100,22 @@ describe('business route', () => {
       route: { _tag: 'Business' },
     })
     // Public route: no auth bootstrap command is dispatched.
+    expect(commands).toHaveLength(0)
+  })
+
+  test('keeps unauthenticated users on the customer KPI dashboard page', () => {
+    const [model, commands] = init(
+      Flags.make({ maybeAuth: Option.none() }),
+      appUrl('/business/kpi/engagement.public.vertical_pipeline_1'),
+    )
+
+    expect(model).toMatchObject({
+      _tag: 'LoggedOut',
+      route: {
+        _tag: 'BusinessKpi',
+        engagementRef: 'engagement.public.vertical_pipeline_1',
+      },
+    })
     expect(commands).toHaveLength(0)
   })
 
@@ -231,5 +259,42 @@ describe('business route', () => {
     expect(rendered).toContain('id="business-referral-code"')
     // The capture script reads ?ref= into the hidden field.
     expect(rendered).toContain("p.get('ref')")
+  })
+
+  test('renders the KPI scorekeeper with baseline, live metrics, evidence, and privacy boundaries', () => {
+    const route = urlToAppRoute(
+      appUrl('/business/kpi/engagement.public.vertical_pipeline_1'),
+    )
+    if (route._tag !== 'BusinessKpi') {
+      throw new Error('expected BusinessKpi route')
+    }
+
+    const rendered = renderHtml(
+      BusinessKpi.view(route, { _tag: 'LoggedOut' }),
+    )
+
+    expect(rendered).toContain(
+      'data-business-kpi-dashboard="engagement.public.vertical_pipeline_1"',
+    )
+    expect(rendered).toContain('Scorekeeper')
+    expect(rendered).toContain('Baseline snapshot and live engagement metrics')
+    expect(rendered).toContain('data-business-kpi-metric="lead_volume"')
+    expect(rendered).toContain('data-business-kpi-metric="conversion"')
+    expect(rendered).toContain('data-business-kpi-metric="aov"')
+    expect(rendered).toContain('data-business-kpi-metric="revenue"')
+    expect(rendered).toContain('data-business-kpi-metric="consult_attach"')
+    expect(rendered).toContain('Baseline')
+    expect(rendered).toContain('Current')
+    expect(rendered).toContain('Delta')
+    expect(rendered).toContain('/api/public/business/funnel-dashboard')
+    expect(rendered).toContain('table:business_funnel_events')
+    expect(rendered).toContain('issue:8105')
+    expect(rendered).toContain('roadmap:BF-7.1')
+    expect(rendered).toContain('Excluded: client name, contact email, phone')
+    expect(rendered).toContain(
+      'settlement and payout claims remain out of scope',
+    )
+    expect(rendered).not.toContain('customer@example.com')
+    expect(rendered).not.toContain('555-')
   })
 })

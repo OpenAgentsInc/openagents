@@ -138,6 +138,7 @@ export const browserRouteProductIntents = {
   AutopilotWorkDetail: 'autopilot.work.detail',
   Billing: 'billing.credits',
   Business: 'public.business.landing',
+  BusinessKpi: 'public.business.kpi',
   LandingPreview: 'public.landing.preview',
   Autopilot: 'public.autopilot.onboarding',
   AutopilotVertical: 'public.autopilot.onboarding.vertical',

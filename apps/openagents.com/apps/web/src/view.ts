@@ -17,6 +17,7 @@ import * as ArtanisTraceTree from './page/artanisTraceTree'
 import * as ArtanisAccounts from './page/artanisAccounts'
 import * as Blog from './page/blog'
 import * as Business from './page/business'
+import * as BusinessKpi from './page/businessKpi'
 import * as LandingPreview from './page/landingPreview'
 import * as Components from './page/components'
 import * as DemoLegal from './page/demoLegal'
@@ -394,6 +395,8 @@ const title = (model: Model): string => {
       return 'Components - OpenAgents'
     case 'Business':
       return 'Agents that work - OpenAgents'
+    case 'BusinessKpi':
+      return BusinessKpi.title(model.route)
     case 'LandingPreview':
       return 'OpenAgents'
     case 'Autopilot':
@@ -633,6 +636,7 @@ const publicRouteBody = (model: Model): Document['body'] | undefined => {
       model.route._tag !== 'Components' &&
       model.route._tag !== 'ComponentsFamily' &&
       model.route._tag !== 'Business' &&
+      model.route._tag !== 'BusinessKpi' &&
       model.route._tag !== 'LandingPreview' &&
       model.route._tag !== 'Autopilot' &&
       model.route._tag !== 'AutopilotVertical' &&
@@ -685,6 +689,10 @@ const publicRouteBody = (model: Model): Document['body'] | undefined => {
 
   if (model.route._tag === 'Business') {
     return Business.view<Message>(authState)
+  }
+
+  if (model.route._tag === 'BusinessKpi') {
+    return BusinessKpi.view<Message>(model.route, authState)
   }
 
   if (model.route._tag === 'LandingPreview') {
