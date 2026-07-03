@@ -202,6 +202,55 @@ describe("Khala Code cross-harness session catalog", () => {
       .toBe("id-recent-chat-row")
   })
 
+  test("does not surface Codex missing-rollout diagnostics as session previews", async () => {
+    const codexRuntime = {
+      listThreads: async () => ({
+        ok: true as const,
+        data: [
+          {
+            id: "thread-stale-rollout",
+            title: "Khala Claude live smoke",
+            preview: "no rollout found for thread id thread-stale-rollout",
+            updatedAt: "2026-07-01T10:00:00.000Z",
+          },
+          {
+            id: "thread-stale-title",
+            title: "thread not found",
+            preview: "thread not found",
+            updatedAt: "2026-07-01T09:00:00.000Z",
+          },
+        ],
+        threads: [],
+      }),
+    } as Partial<CodexAppServerChatRuntime> as CodexAppServerChatRuntime
+
+    const catalog = await readKhalaCodeDesktopSessionCatalog({}, {
+      codexRuntime,
+      env: {
+        KHALA_CODE_DESKTOP_CLAUDE_STATE_PATH: join(await tempRoot(), "missing-claude.json"),
+        KHALA_CODE_DESKTOP_CODEX_STATE_PATH: join(await tempRoot(), "missing-codex.json"),
+      },
+    })
+
+    expect(catalog.entries.map(entry => ({
+      title: entry.title,
+      preview: entry.preview,
+    }))).toEqual([
+      {
+        title: "Khala Claude live smoke",
+        preview: "",
+      },
+      {
+        title: "Codex session",
+        preview: "",
+      },
+    ])
+    expect(catalog.entries.map(sessionCatalogEntryToThreadSummary).map(thread => thread.preview))
+      .toEqual(["", ""])
+    expect(JSON.stringify(catalog)).not.toContain("no rollout found")
+    expect(JSON.stringify(catalog)).not.toContain("thread not found")
+  })
+
   test("keeps legacy non-UUID Codex thread ids when no UUID session ref exists", async () => {
     const root = await tempRoot()
     const codexStatePath = join(root, "codex-sessions.json")

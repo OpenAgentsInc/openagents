@@ -39,6 +39,21 @@ const asRecord = (value: unknown): Record<string, unknown> =>
 const optionalString = (value: unknown): string | null =>
   typeof value === "string" && value.length > 0 ? value : null
 
+export const isKhalaCodeCodexInternalThreadListText = (value: unknown): boolean => {
+  const candidate = optionalString(value)
+  if (candidate === null) return false
+  const normalized = candidate.toLowerCase()
+  return normalized.includes("no rollout found for thread id") ||
+    normalized.includes("thread not found")
+}
+
+export const displayableKhalaCodeCodexThreadListText = (value: unknown): string | null => {
+  const candidate = optionalString(value)
+  return candidate === null || isKhalaCodeCodexInternalThreadListText(candidate)
+    ? null
+    : candidate
+}
+
 export const normalizeThreadTimestampSeconds = (value: unknown): number | null => {
   const numeric = typeof value === "number"
     ? value
@@ -76,9 +91,13 @@ const projectLabel = (cwd: string | null): string => {
   return parts.at(-1) ?? cwd
 }
 
-const titleFor = (thread: Record<string, unknown>, id: string): string =>
-  optionalString(thread.name) ??
-  optionalString(thread.preview)?.split(/\r?\n/u)[0]?.slice(0, 80) ??
+const titleFor = (
+  thread: Record<string, unknown>,
+  id: string,
+  preview: string,
+): string =>
+  displayableKhalaCodeCodexThreadListText(thread.name) ??
+  (preview.length === 0 ? null : preview.split(/\r?\n/u)[0]?.slice(0, 80)) ??
   id
 
 const badgesFor = (
@@ -106,11 +125,11 @@ export const projectKhalaCodeDesktopCodexThread = (
   if (id === null) return null
   const status = statusKind(thread.status)
   const cwd = optionalString(thread.cwd)
-  const preview = optionalString(thread.preview) ?? ""
+  const preview = displayableKhalaCodeCodexThreadListText(thread.preview) ?? ""
   return {
     id,
     sessionId: optionalString(thread.sessionId),
-    title: titleFor(thread, id),
+    title: titleFor(thread, id, preview),
     preview,
     cwd,
     projectLabel: projectLabel(cwd),

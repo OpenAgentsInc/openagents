@@ -4,7 +4,10 @@ import { join } from "node:path"
 
 import type { CodexAppServerChatRuntime } from "./codex-app-server-chat-runtime.js"
 import type { ClaudeAppSdkChatRuntime } from "./claude-app-sdk-chat-runtime.js"
-import { normalizeThreadTimestampSeconds } from "../shared/codex-threads.js"
+import {
+  displayableKhalaCodeCodexThreadListText,
+  normalizeThreadTimestampSeconds,
+} from "../shared/codex-threads.js"
 import type {
   KhalaCodeDesktopSessionCatalogEntry,
   KhalaCodeDesktopSessionCatalogResult,
@@ -121,16 +124,34 @@ const threadIdFrom = (value: unknown): string | null =>
   stringField(value, "thread_id") ??
   stringField(value, "id")
 
-const titleFrom = (value: unknown, fallback: string): string =>
-  stringField(value, "title") ??
-  stringField(value, "name") ??
-  stringField(value, "summary") ??
+const displayableTextField = (
+  harnessKind: KhalaCodeDesktopSessionHarnessKind,
+  value: unknown,
+  field: string,
+): string | null => {
+  const candidate = stringField(value, field)
+  return harnessKind === "codex"
+    ? displayableKhalaCodeCodexThreadListText(candidate)
+    : candidate
+}
+
+const titleFrom = (
+  harnessKind: KhalaCodeDesktopSessionHarnessKind,
+  value: unknown,
+  fallback: string,
+): string =>
+  displayableTextField(harnessKind, value, "title") ??
+  displayableTextField(harnessKind, value, "name") ??
+  displayableTextField(harnessKind, value, "summary") ??
   fallback
 
-const previewFrom = (value: unknown): string =>
-  stringField(value, "preview") ??
-  stringField(value, "last_message") ??
-  stringField(value, "lastMessage") ??
+const previewFrom = (
+  harnessKind: KhalaCodeDesktopSessionHarnessKind,
+  value: unknown,
+): string =>
+  displayableTextField(harnessKind, value, "preview") ??
+  displayableTextField(harnessKind, value, "last_message") ??
+  displayableTextField(harnessKind, value, "lastMessage") ??
   ""
 
 const catalogEntryId = (
@@ -157,8 +178,8 @@ const entryFromThread = (
     threadRef,
     desktopSessionRef: null,
     lastTurnRef: stringField(thread, "lastTurnId") ?? stringField(thread, "last_turn_id"),
-    title: titleFrom(thread, `${harnessKind === "codex" ? "Codex" : "Claude"} session`),
-    preview: previewFrom(thread),
+    title: titleFrom(harnessKind, thread, `${harnessKind === "codex" ? "Codex" : "Claude"} session`),
+    preview: previewFrom(harnessKind, thread),
     cwd: stringField(thread, "cwd"),
     projectLabel: stringField(thread, "projectLabel") ?? stringField(thread, "project") ?? (harnessKind === "codex" ? "Codex" : "Claude"),
     status: stringField(thread, "status") ?? "ready",
