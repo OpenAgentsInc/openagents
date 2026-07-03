@@ -12,6 +12,10 @@ import type {
   PylonKhalaProofResult,
   PylonKhalaRequestResult,
 } from "../src/khala-requester"
+import {
+  PYLON_DISPATCH_BREAKER_SCHEMA,
+  type PylonDispatchBreakerSnapshot,
+} from "../src/dispatch-failure-taxonomy"
 
 const commit = "7ab7cb401803f6e04a6c93b7aa9102405de66419"
 const verificationCommand = "bun test apps/pylon/tests/khala-burndown.test.ts"
@@ -78,6 +82,27 @@ const accountsProjection = (): PylonAccountsListProjection => ({
   blockerRefs: [],
   observedAt: "2026-06-26T12:00:00.000Z",
   schema: "openagents.pylon.accounts_list.v0.3",
+})
+
+const accountDispatchBreaker = (
+  accountRefHash: string,
+): PylonDispatchBreakerSnapshot => ({
+  accountRefHash,
+  blockerRefs: [
+    "blocker.pylon.dispatch.account_rate_limited",
+    "blocker.pylon.dispatch.cooldown_active",
+  ],
+  contextId: "context.public.burndown-breaker",
+  cooldownUntil: "2099-01-01T00:30:00.000Z",
+  failureCount: 1,
+  failureKind: "transient",
+  firstObservedAt: "2099-01-01T00:00:00.000Z",
+  lane: "codex",
+  lastObservedAt: "2099-01-01T00:00:00.000Z",
+  reason: "account_rate_limited",
+  schema: PYLON_DISPATCH_BREAKER_SCHEMA,
+  scopeKey: `dispatch-breaker.account-lane.codex.${accountRefHash}`,
+  sourceDigestRef: "digest.pylon.dispatch_failure.test",
 })
 
 const requestResult = (assignmentRef: string): PylonKhalaRequestResult => ({
@@ -213,6 +238,27 @@ describe("pylon khala burndown planner", () => {
     ])
     expect(plan.slots[0]?.requestInput.workflow).toBe("claude_agent_task")
     expect(plan.slots[0]?.commands.request).toContain("--workflow claude_agent_task")
+  })
+
+  test("skips cooled account-lane breakers while planning issue slots", () => {
+    // background_agents.dispatch.lane_account_breaker.v1
+    const plan = buildPylonKhalaBurndownPlan({
+      accounts: accountsProjection(),
+      baseUrl: "https://openagents.test",
+      commit,
+      dispatchBreakers: [accountDispatchBreaker("accthash_one")],
+      issueNumbers: [6355, 6356],
+      maxParallel: 2,
+      repository: "OpenAgentsInc/openagents",
+      targetPylonRef: "pylon.public.local",
+      verificationCommand,
+    })
+
+    expect(plan.dispatchBreakers).toHaveLength(1)
+    expect(plan.readyCodexAccountCount).toBe(1)
+    expect(plan.advertisedCodexAvailability).toBe(1)
+    expect(plan.slots).toHaveLength(1)
+    expect(plan.slots[0]?.account.accountRefHash).toBe("accthash_two")
   })
 })
 

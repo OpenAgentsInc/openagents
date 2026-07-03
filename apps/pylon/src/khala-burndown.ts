@@ -19,8 +19,8 @@ import {
 import type { PylonAccountsListProjection } from "./account-usage.js"
 import {
   PYLON_KHALA_SPAWN_PLAN_SCHEMA,
-  readPublicKhalaTokensServed,
   pylonKhalaSpawnWorkflowForWorkerKind,
+  readPublicKhalaTokensServed,
   readyKhalaSpawnAccounts,
   runPylonKhalaSpawnPlan,
   weightedKhalaAccountPool,
@@ -28,6 +28,12 @@ import {
   type PylonKhalaSpawnProofProjection,
   type PylonKhalaSpawnWorkerKind,
 } from "./khala-spawn.js"
+import {
+  activePylonDispatchBreakers,
+  pylonDispatchBreakerForAccount,
+  type PylonDispatchBreakerSnapshot,
+  type PylonDispatchFailureLane,
+} from "./dispatch-failure-taxonomy.js"
 
 export { readPublicKhalaTokensServed } from "./khala-spawn.js"
 
@@ -73,6 +79,7 @@ export type PylonKhalaBurndownPlan = {
   advertisedWorkerAvailability: number
   readyCodexAccountCount: number
   readyWorkerAccountCount: number
+  dispatchBreakers: readonly PylonDispatchBreakerSnapshot[]
   issueCount: number
   slots: PylonKhalaBurndownSlot[]
   mergePolicy: "operator_review_required"
@@ -196,6 +203,10 @@ const burndownBlocker = (
   return `blocker.khala_burndown.${suffix.replace("_account", `_${kind}_account`).replace("_advertised_", `_advertised_${kind}_`)}`
 }
 
+function burndownDispatchLane(workerKind: PylonKhalaBurndownWorkerKind): PylonDispatchFailureLane {
+  return workerKind === "claude" ? "claude_agent" : "codex"
+}
+
 export function buildKhalaBurndownObjective(issueNumber: number): string {
   return [
     `Implement OpenAgents issue #${issueNumber} from the Khala roadmap.`,
@@ -214,6 +225,7 @@ export function buildPylonKhalaBurndownPlan(input: {
   iterations?: number
   maxParallel?: number
   advertisedCodexAvailability?: number
+  dispatchBreakers?: readonly PylonDispatchBreakerSnapshot[]
   repository: string
   targetPylonRef: string
   verificationCommand: string
@@ -221,16 +233,32 @@ export function buildPylonKhalaBurndownPlan(input: {
 }): PylonKhalaBurndownPlan {
   const workerKind = input.workerKind ?? "codex"
   const workflow = pylonKhalaSpawnWorkflowForWorkerKind(workerKind)
+  const dispatchLane = burndownDispatchLane(workerKind)
+  const dispatchBreakers = activePylonDispatchBreakers(input.dispatchBreakers ?? [])
   const readyAccounts = readyKhalaSpawnAccounts(input.accounts, workflow)
+    .filter(account =>
+      pylonDispatchBreakerForAccount({
+        accountRefHash: account.accountRefHash,
+        breakers: dispatchBreakers,
+        lane: dispatchLane,
+      }) === null
+    )
   const advertisedCodexAccounts = (input.advertisedCodexAccounts ?? [])
-    .map(account => ({
-      accountKey: account.accountKey,
-      accountRefHash: account.accountRefHash,
-      available: Math.max(0, Math.floor(account.available)),
-      busy: Math.max(0, Math.floor(account.busy)),
-      queued: Math.max(0, Math.floor(account.queued)),
-      ready: Math.max(0, Math.floor(account.ready)),
-    }))
+    .map(account => {
+      const breaker = pylonDispatchBreakerForAccount({
+        accountRefHash: account.accountRefHash,
+        breakers: dispatchBreakers,
+        lane: dispatchLane,
+      })
+      return {
+        accountKey: account.accountKey,
+        accountRefHash: account.accountRefHash,
+        available: breaker === null ? Math.max(0, Math.floor(account.available)) : 0,
+        busy: Math.max(0, Math.floor(account.busy)),
+        queued: Math.max(0, Math.floor(account.queued)),
+        ready: breaker === null ? Math.max(0, Math.floor(account.ready)) : 0,
+      }
+    })
   const advertisedAccountCapacity = new Map(
     advertisedCodexAccounts.map(account => [account.accountRefHash, account]),
   )
@@ -238,17 +266,9 @@ export function buildPylonKhalaBurndownPlan(input: {
     ? readyAccounts
     : readyAccounts.filter(account => (advertisedAccountCapacity.get(account.accountRefHash)?.available ?? 0) > 0)
   const maxParallel = Math.max(1, Math.floor(input.maxParallel ?? accounts.length))
-  const advertisedCodexAvailability = Math.max(
-    0,
-    Math.floor(
-      input.advertisedCodexAvailability ??
-        (
-          advertisedCodexAccounts.length === 0
-            ? accounts.length
-            : advertisedCodexAccounts.reduce((sum, account) => sum + account.available, 0)
-        ),
-    ),
-  )
+  const advertisedCodexAvailability = advertisedCodexAccounts.length === 0
+    ? Math.max(0, Math.floor(input.advertisedCodexAvailability ?? accounts.length))
+    : advertisedCodexAccounts.reduce((sum, account) => sum + account.available, 0)
   const iterations = Math.max(1, Math.floor(input.iterations ?? 1))
   const selectedParallel = accounts.length === 0 || advertisedCodexAvailability === 0
     ? 0
@@ -325,6 +345,7 @@ export function buildPylonKhalaBurndownPlan(input: {
     advertisedCodexAccounts,
     advertisedCodexAvailability,
     advertisedWorkerAvailability: advertisedCodexAvailability,
+    dispatchBreakers,
     readyCodexAccountCount: readyAccounts.length,
     readyWorkerAccountCount: readyAccounts.length,
     issueCount: requestedIssueNumbers.length,
@@ -360,6 +381,7 @@ export async function runPylonKhalaBurndownPlan(input: {
       advertisedWorkerAvailability: input.plan.advertisedWorkerAvailability,
       baseUrl: input.plan.baseUrl,
       blockerRefs: input.plan.blockerRefs,
+      dispatchBreakers: input.plan.dispatchBreakers,
       maxParallel: input.plan.maxParallel,
       objectiveCount: input.plan.issueCount,
       readyCodexAccountCount: input.plan.readyCodexAccountCount,

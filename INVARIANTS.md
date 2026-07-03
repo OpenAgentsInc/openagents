@@ -87,6 +87,12 @@ More specific invariant ledgers apply inside imported apps and packages.
   failures; they must update the local health/quota ledger, surface as
   account-specific failure classes, and retry another healthy connected Codex
   account when one exists.
+  Delegate dispatch failures are classified as typed transient or permanent
+  reasons before retry decisions. Pylon persists account/lane breaker state
+  from those failures, treats permanent credential/safety failures as
+  quarantines, treats transient failures as bounded cooldowns, and feeds active
+  breakers into delegate readiness/capacity so background fanout does not keep
+  dispatching into a known bad account lane.
   Fleet-run supervisor ticks are serialized per Pylon/run handle so startup
   status reads and the background loop cannot over-dispatch past the target
   concurrency. Regression coverage lives in

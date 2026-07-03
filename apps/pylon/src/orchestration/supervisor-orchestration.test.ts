@@ -116,6 +116,89 @@ describe("Pylon supervisor orchestration store", () => {
     })
   })
 
+  test("records typed transient account-lane breakers and cools dispatch eligibility", () => {
+    // background_agents.dispatch.lane_account_breaker.v1
+    const now = new Date("2026-06-27T12:00:00.000Z")
+    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    store.createTask({ id: "task.rate-limited", spec: baseTaskSpec, now })
+    store.createTask({ id: "task.next", spec: { ...baseTaskSpec, title: "next" }, now })
+    store.createDispatchContext({
+      id: "ctx.codex.cooldown",
+      accountRefHash: "account.pylon.codex.abcdef123456",
+      assigneeHandle: "codex-cooldown",
+      lane: "codex",
+      runnerKind: "codex",
+      lastHeartbeatAt: now,
+      now,
+    })
+    store.markDispatched("task.rate-limited", "ctx.codex.cooldown", now)
+
+    const context = store.recordDispatchFailure(
+      "ctx.codex.cooldown",
+      3,
+      now,
+      { error: "HTTP 429 rate limit; try again later" },
+    )
+    const breaker = store.getActiveDispatchBreakerForContext(context, new Date("2026-06-27T12:01:00.000Z"))
+
+    expect(context.status).toBe("idle")
+    expect(context.failureCount).toBe(1)
+    expect(breaker).toMatchObject({
+      accountRefHash: "account.pylon.codex.abcdef123456",
+      failureKind: "transient",
+      lane: "codex",
+      reason: "account_rate_limited",
+    })
+    const planned = dispatchReadySupervisorTasks(store, {
+      now: new Date("2026-06-27T12:01:00.000Z"),
+    })
+    expect(planned.planned).toEqual([])
+    expect(planned.refused[0]?.eligibility).toMatchObject({
+      ok: false,
+      reason: "dispatch_breaker_cooling_down",
+    })
+    expect(
+      dispatchReadySupervisorTasks(store, {
+        heartbeatFreshMs: 60 * 60 * 1000,
+        hungAfterMs: 2 * 60 * 60 * 1000,
+        now: new Date("2026-06-27T12:31:01.000Z"),
+      }).planned.map(entry => entry.task.id),
+    ).toEqual(["task.next"])
+  })
+
+  test("records permanent account-lane breakers from worker failures", () => {
+    const now = new Date("2026-06-27T12:00:00.000Z")
+    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    store.createTask({ id: "task.revoked", spec: baseTaskSpec, now })
+    store.createDispatchContext({
+      id: "ctx.codex.revoked",
+      accountRefHash: "account.pylon.codex.revoked123456",
+      assigneeHandle: "codex-revoked",
+      lane: "codex",
+      runnerKind: "codex",
+      lastHeartbeatAt: now,
+      now,
+    })
+    store.markDispatched("task.revoked", "ctx.codex.revoked", now)
+
+    const context = store.recordWorkerDone({
+      contextId: "ctx.codex.revoked",
+      failure: { error: "refresh token was revoked" },
+      now,
+      status: "failed",
+      taskId: "task.revoked",
+    })
+    const breaker = store.getActiveDispatchBreakerForContext(context, new Date("2026-06-27T12:01:00.000Z"))
+
+    expect(context.status).toBe("circuit_broken")
+    expect(breaker).toMatchObject({
+      accountRefHash: "account.pylon.codex.revoked123456",
+      cooldownUntil: null,
+      failureKind: "permanent",
+      reason: "account_credentials_revoked",
+    })
+  })
+
   test("plans dispatch only for fresh, non-drifted idle contexts and persists assignment", () => {
     const now = new Date("2026-06-27T12:00:00.000Z")
     const store = createPylonOrchestrationStore(new Database(":memory:"))

@@ -4,6 +4,7 @@
 // side effect before any sibling module (or eagerly-evaluated bundled Breez SDK
 // module in the compiled binary) can print its storage banner to stdout. rc.33.
 import { installBreezStdoutGuard } from "./breez-stdout-guard.js"
+import { Database } from "bun:sqlite"
 // #5404: cross-platform Bun compiled-binary detection (POSIX `/$bunfs/` and
 // Windows `B:\~BUN\root\…`), shared with the embedded Spark WASM extraction.
 import { isBunCompiledBinaryUrl } from "./spark-wasm-runtime.js"
@@ -334,6 +335,10 @@ import {
   runPylonKhalaSpawnPlan,
   type PylonKhalaSpawnWorkflow,
 } from "./khala-spawn.js"
+import {
+  createPylonOrchestrationStore,
+} from "./orchestration/store.js"
+import type { PylonDispatchBreakerSnapshot } from "./dispatch-failure-taxonomy.js"
 import {
   pylonKhalaMcpConfig,
   runPylonKhalaMcpStdio,
@@ -2297,6 +2302,24 @@ async function serverActiveCodingRunAccountCounts(
     )
   } catch {
     return {}
+  }
+}
+
+async function activeDispatchBreakersForPlanning(
+  summary: BootstrapSummary,
+): Promise<PylonDispatchBreakerSnapshot[]> {
+  const dbPath = `${summary.paths.home}/orchestration.sqlite`
+  if (!existsSync(dbPath)) return []
+  let db: Database | null = null
+  try {
+    db = new Database(dbPath)
+    db.exec("PRAGMA busy_timeout = 250")
+    const store = createPylonOrchestrationStore(db)
+    return store.listActiveDispatchBreakers(new Date())
+  } catch {
+    return []
+  } finally {
+    db?.close()
   }
 }
 
@@ -4375,6 +4398,7 @@ async function main() {
           : spawnWorkflow === "claude_agent_task"
             ? await availableClaudeAssignments(summary, state, networkOptions, capacityEnv)
             : await availableCodexAssignments(summary, state, networkOptions, capacityEnv)
+        const dispatchBreakers = await activeDispatchBreakersForPlanning(summary)
         const workspace = explicitFixture
           ? undefined
           : buildPylonKhalaGitCheckoutWorkspace({
@@ -4390,6 +4414,7 @@ async function main() {
           baseUrl,
           ...(optionString(options, "branch") === undefined ? {} : { branch: optionString(options, "branch") }),
           ...(commit === undefined ? {} : { commit }),
+          dispatchBreakers,
           fixture: explicitFixture,
           ...(maxParallel === undefined ? {} : { maxParallel }),
           objectives: repeatedKhalaSpawnObjectives({ count, objective }),
@@ -4463,6 +4488,7 @@ async function main() {
             : parseKhalaBurndownIssueNumbers(issuesOption)
         const accounts = await collectPylonAccountsList(summary, { env: Bun.env })
         const advertisedCodexAccounts = await localCodexDispatchAccounts(summary, state, Bun.env, networkOptions)
+        const dispatchBreakers = await activeDispatchBreakersForPlanning(summary)
         const maxParallel = positiveIntegerOption(options, "max-parallel", "khala burndown --max-parallel")
         const iterations = positiveIntegerOption(options, "iterations", "khala burndown --iterations")
         const branch = optionString(options, "branch")
@@ -4473,6 +4499,7 @@ async function main() {
           commit,
           advertisedCodexAccounts,
           advertisedCodexAvailability,
+          dispatchBreakers,
           issueNumbers,
           ...(iterations === undefined ? {} : { iterations }),
           ...(maxParallel === undefined ? {} : { maxParallel }),
@@ -4550,6 +4577,7 @@ async function main() {
           concurrency:
             positiveIntegerOption(options, "concurrency", "khala dispatch --concurrency") ??
             1,
+          dispatchBreakers: await activeDispatchBreakersForPlanning(summary),
           priorityLane: optionString(options, "priority-lane") ?? "default",
           targetPylonRef,
           verifier: {

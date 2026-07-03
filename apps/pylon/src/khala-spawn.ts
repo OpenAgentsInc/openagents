@@ -19,6 +19,14 @@ import {
   type PylonKhalaRequestResult,
   type PylonKhalaWorkflow,
 } from "./khala-requester.js"
+import {
+  activePylonDispatchBreakers,
+  classifyPylonDispatchFailure,
+  pylonDispatchBreakerForAccount,
+  type PylonDispatchBreakerSnapshot,
+  type PylonDispatchFailureClassification,
+  type PylonDispatchFailureLane,
+} from "./dispatch-failure-taxonomy.js"
 import { assertPublicProjectionSafe } from "./state.js"
 
 export const PYLON_KHALA_SPAWN_PLAN_SCHEMA = "openagents.pylon.khala_spawn_plan.v0.1"
@@ -74,6 +82,7 @@ export type PylonKhalaSpawnPlan = {
   advertisedWorkerAvailability: number
   baseUrl: string
   blockerRefs: string[]
+  dispatchBreakers: readonly PylonDispatchBreakerSnapshot[]
   maxParallel: number
   objectiveCount: number
   readyCodexAccountCount: number
@@ -115,6 +124,7 @@ export type PylonKhalaSpawnSlotResult = {
   blockerRefs: string[]
   closeoutStatus: string | null
   durableRequestId: string | null
+  dispatchFailure: PylonDispatchFailureClassification | null
   failure: {
     message: string
     phase: PylonKhalaSpawnWorkerState
@@ -257,6 +267,12 @@ function pylonKhalaSpawnAccountProviderForWorkflow(
   return workflow === "claude_agent_task" ? "claude_agent" : "codex"
 }
 
+function pylonKhalaSpawnDispatchLaneForWorkflow(
+  workflow: PylonKhalaSpawnWorkflow,
+): PylonDispatchFailureLane {
+  return workflow === "claude_agent_task" ? "claude_agent" : "codex"
+}
+
 function pylonKhalaSpawnWorkerBlocker(
   workerKind: PylonKhalaSpawnWorkerKind,
   suffix: "no_advertised_availability" | "no_ready_account_slots" | "no_ready_accounts" | "requested_count_exceeds_advertised_availability",
@@ -303,6 +319,7 @@ export function buildPylonKhalaSpawnPlan(input: {
   fixture?: boolean
   maxParallel?: number
   objectives: readonly PylonKhalaSpawnObjective[]
+  dispatchBreakers?: readonly PylonDispatchBreakerSnapshot[]
   repository?: string
   targetPylonRef: string
   verificationCommand?: string
@@ -311,28 +328,41 @@ export function buildPylonKhalaSpawnPlan(input: {
 }): PylonKhalaSpawnPlan {
   const workflow = input.workflow ?? "codex_agent_task"
   const workerKind = pylonKhalaSpawnWorkerKindForWorkflow(workflow)
+  const dispatchLane = pylonKhalaSpawnDispatchLaneForWorkflow(workflow)
+  const dispatchBreakers = activePylonDispatchBreakers(input.dispatchBreakers ?? [])
   const readyAccounts = readyKhalaSpawnAccounts(input.accounts, workflow)
+    .filter(account =>
+      pylonDispatchBreakerForAccount({
+        accountRefHash: account.accountRefHash,
+        breakers: dispatchBreakers,
+        lane: dispatchLane,
+      }) === null
+    )
   const advertisedCodexAccounts = (input.advertisedCodexAccounts ?? [])
-    .map((account) => ({
-      accountKey: account.accountKey,
-      accountRefHash: account.accountRefHash,
-      available: nonNegativeInteger(account.available, 0),
-      busy: nonNegativeInteger(account.busy, 0),
-      queued: nonNegativeInteger(account.queued, 0),
-      ready: nonNegativeInteger(account.ready, 0),
-    }))
+    .map((account) => {
+      const breaker = pylonDispatchBreakerForAccount({
+        accountRefHash: account.accountRefHash,
+        breakers: dispatchBreakers,
+        lane: dispatchLane,
+      })
+      return {
+        accountKey: account.accountKey,
+        accountRefHash: account.accountRefHash,
+        available: breaker === null ? nonNegativeInteger(account.available, 0) : 0,
+        busy: nonNegativeInteger(account.busy, 0),
+        queued: nonNegativeInteger(account.queued, 0),
+        ready: breaker === null ? nonNegativeInteger(account.ready, 0) : 0,
+      }
+    })
   const advertisedAccountCapacity = new Map(
     advertisedCodexAccounts.map((account) => [account.accountRefHash, account]),
   )
   const accounts = advertisedCodexAccounts.length === 0
     ? readyAccounts
     : readyAccounts.filter((account) => (advertisedAccountCapacity.get(account.accountRefHash)?.available ?? 0) > 0)
-  const advertisedCodexAvailability = nonNegativeInteger(
-    input.advertisedCodexAvailability,
-    advertisedCodexAccounts.length === 0
-      ? accounts.length
-      : advertisedCodexAccounts.reduce((sum, account) => sum + account.available, 0),
-  )
+  const advertisedCodexAvailability = advertisedCodexAccounts.length === 0
+    ? nonNegativeInteger(input.advertisedCodexAvailability, accounts.length)
+    : advertisedCodexAccounts.reduce((sum, account) => sum + account.available, 0)
   const requestedCount = input.objectives.length
   const requestedExceedsAdvertisedAvailability =
     requestedCount > 0 &&
@@ -420,6 +450,7 @@ export function buildPylonKhalaSpawnPlan(input: {
     advertisedWorkerAvailability: advertisedCodexAvailability,
     baseUrl: input.baseUrl,
     blockerRefs,
+    dispatchBreakers,
     maxParallel: selectedParallel,
     objectiveCount: requestedCount,
     readyCodexAccountCount: readyAccounts.length,
@@ -820,6 +851,7 @@ async function runPylonKhalaSpawnSlot<Slot extends PylonKhalaSpawnSlotLike>(inpu
   let proof: PylonKhalaSpawnProofProjection | null = null
   let runAccepted: boolean | null = null
   let closeoutStatus: string | null = null
+  let dispatchFailure: PylonDispatchFailureClassification | null = null
   let failure: PylonKhalaSpawnSlotResult["failure"] = null
   let state: PylonKhalaSpawnWorkerState = "queued"
   const pause = input.deps?.sleep ?? sleep
@@ -888,6 +920,10 @@ async function runPylonKhalaSpawnSlot<Slot extends PylonKhalaSpawnSlotLike>(inpu
         blockerRefs.push(
           ...(run.closeout?.blockerRefs ?? run.acceptance?.blockerRefs ?? [blocker(input.namespace, "assignment_not_accepted")]),
         )
+        dispatchFailure = classifyPylonDispatchFailure({
+          blockerRefs,
+          status: closeoutStatus,
+        })
         state = closeoutStatus === "cancelled" ? "cancelled" : "rejected"
         await emit(state, "assignment did not close as accepted", {
           assignmentRef,
@@ -918,6 +954,11 @@ async function runPylonKhalaSpawnSlot<Slot extends PylonKhalaSpawnSlotLike>(inpu
     })
     failure = projected.failure
     blockerRefs.push(projected.blockerRef)
+    dispatchFailure = classifyPylonDispatchFailure({
+      blockerRefs: [projected.blockerRef],
+      error,
+      status: failure.ref,
+    })
     state = "failed"
     await emit("failed", failure.message, { status: failure.ref })
   }
@@ -928,6 +969,7 @@ async function runPylonKhalaSpawnSlot<Slot extends PylonKhalaSpawnSlotLike>(inpu
     blockerRefs,
     closeoutStatus,
     durableRequestId,
+    dispatchFailure,
     failure,
     lifecycleEvents: events,
     ok: blockerRefs.length === 0,

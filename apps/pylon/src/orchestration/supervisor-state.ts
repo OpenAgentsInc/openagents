@@ -105,9 +105,14 @@ const ensureContext = (accountRef: string, slot?: string) => {
   const contextId = stableRef("dispatch-context.pylon.supervisor", `${supervisor}:${kind}:${accountRef}:${slot ?? "slot"}`)
   const existing = store.getDispatchContext(contextId)
   if (existing !== null) return existing
+  const accountRefHash = accountRef.startsWith("account.pylon.")
+    ? accountRef
+    : stableRef(`account.pylon.${runnerKind}`, accountRef)
   return store.createDispatchContext({
     id: contextId,
     assigneeHandle: accountRef,
+    accountRefHash,
+    lane: runnerKind,
     runnerKind,
     maxConcurrentSlots: 1,
     lastHeartbeatAt: now,
@@ -231,6 +236,17 @@ try {
         const slot = option("--slot")
         const issue = option("--issue")
         const context = ensureContext(accountRef, slot)
+        const breaker = store.getActiveDispatchBreakerForContext(context, now)
+        if (breaker !== null) {
+          print({
+            ok: false,
+            reason: breaker.failureKind === "permanent"
+              ? "dispatch_breaker_permanent"
+              : "dispatch_breaker_cooling_down",
+            breaker,
+          })
+          break
+        }
         const taskId = issue === undefined ? null : stableRef("task.pylon.supervisor", `${runRef}:${kind}:${issue}`)
         if (taskId !== null && store.getTask(taskId) === null) {
           store.createTask({
@@ -255,6 +271,7 @@ try {
         const slot = option("--slot")
         const issue = option("--issue")
         const status = option("--status", "completed")
+        const failureText = option("--failure") ?? option("--error") ?? option("--result") ?? status
         const context = ensureContext(accountRef, slot)
         const taskId = issue === undefined ? context.currentTaskId : stableRef("task.pylon.supervisor", `${runRef}:${kind}:${issue}`)
         if (taskId !== null && store.getTask(taskId) !== null && context.currentTaskId === taskId) {
@@ -262,6 +279,9 @@ try {
             contextId: context.id,
             taskId,
             status: status === "completed" ? "completed" : status === "blocked" ? "blocked" : "failed",
+            ...(status === "completed" || status === "blocked"
+              ? {}
+              : { failure: { error: failureText, status } }),
             result: option("--result") ?? null,
             now,
           })

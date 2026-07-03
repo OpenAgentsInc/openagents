@@ -349,6 +349,7 @@ describe("background agent contract registry", () => {
     expect(validation.ok).toBe(true)
     expect(backgroundAgentsContractRegistry.contracts.map(contract => contract.contractId)).toEqual([
       "background_agents.dispatch.budget_caps_enforced.v1",
+      "background_agents.dispatch.lane_account_breaker.v1",
       "background_agents.toolset.compiled_policy_enforced.v1",
       "background_agents.credentials.brokered_scm_helper.v1",
       "background_agents.credentials.no_long_lived_tokens_in_workspaces.v1",
@@ -363,6 +364,7 @@ describe("background agent contract registry", () => {
       .map(contract => contract.contractId)
     expect(enforcedContractIds).toEqual([
       "background_agents.dispatch.budget_caps_enforced.v1",
+      "background_agents.dispatch.lane_account_breaker.v1",
       "background_agents.toolset.compiled_policy_enforced.v1",
       "background_agents.credentials.brokered_scm_helper.v1",
       "background_agents.credentials.no_long_lived_tokens_in_workspaces.v1",

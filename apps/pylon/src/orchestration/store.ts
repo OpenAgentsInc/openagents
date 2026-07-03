@@ -12,6 +12,17 @@ import {
   type AgentRunnerStatusEvent,
   type AgentRunnerStatusHistoryEntry,
 } from "../agent-status-reporter.js"
+import {
+  PYLON_DISPATCH_BREAKER_SCHEMA,
+  classifyPylonDispatchFailure,
+  normalizePylonDispatchFailureLane,
+  pylonDispatchBreakerIsActive,
+  pylonDispatchBreakerScopeKey,
+  type PylonDispatchBreakerSnapshot,
+  type PylonDispatchFailureClassification,
+  type PylonDispatchFailureInput,
+  type PylonDispatchFailureLane,
+} from "../dispatch-failure-taxonomy.js"
 
 export const ORCHESTRATION_SCHEMA_VERSION = 2
 
@@ -224,6 +235,8 @@ export type DispatchContext = {
   id: string
   assigneeHandle: string
   runnerKind: OrchestrationRunnerKind
+  lane: PylonDispatchFailureLane
+  accountRefHash: string | null
   worktreeId: string | null
   worktreePath: string | null
   status: DispatchContextStatus
@@ -290,6 +303,8 @@ export type CreateDispatchContextInput = {
   id: string
   assigneeHandle: string
   runnerKind?: OrchestrationRunnerKind | LegacyAgentRunnerKind
+  lane?: PylonDispatchFailureLane
+  accountRefHash?: string | null
   worktreeId?: string | null
   worktreePath?: string | null
   maxConcurrentSlots?: number
@@ -313,6 +328,7 @@ export type RecordWorkerDoneInput = {
   status: Extract<OrchestrationTaskStatus, "completed" | "failed" | "blocked">
   result?: string | null
   body?: string
+  failure?: PylonDispatchFailureInput
   maxFailures?: number
   now?: Date
 }
@@ -553,6 +569,8 @@ type DispatchContextRow = {
   id: string
   assignee_handle: string
   runner_kind: StoredRunnerKind
+  lane?: string | null
+  account_ref_hash?: string | null
   worktree_id: string | null
   worktree_path: string | null
   status: DispatchContextStatus
@@ -563,6 +581,21 @@ type DispatchContextRow = {
   max_concurrent_slots: number
   created_at: string
   updated_at: string
+}
+
+type DispatchBreakerRow = {
+  scope_key: string
+  lane: string
+  account_ref_hash: string | null
+  context_id: string | null
+  failure_kind: PylonDispatchBreakerSnapshot["failureKind"]
+  reason: PylonDispatchBreakerSnapshot["reason"]
+  blocker_refs_json: string
+  failure_count: number
+  first_observed_at: string
+  last_observed_at: string
+  cooldown_until: string | null
+  source_digest_ref: string
 }
 
 type AgentRunnerStatusRow = {
@@ -662,6 +695,8 @@ const contextFromRow = (row: DispatchContextRow): DispatchContext => ({
   id: row.id,
   assigneeHandle: row.assignee_handle,
   runnerKind: normalizeOrchestrationRunnerKind(row.runner_kind),
+  lane: normalizePylonDispatchFailureLane(row.lane ?? row.runner_kind),
+  accountRefHash: row.account_ref_hash ?? null,
   worktreeId: row.worktree_id,
   worktreePath: row.worktree_path,
   status: row.status,
@@ -672,6 +707,22 @@ const contextFromRow = (row: DispatchContextRow): DispatchContext => ({
   maxConcurrentSlots: row.max_concurrent_slots,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
+})
+
+const dispatchBreakerFromRow = (row: DispatchBreakerRow): PylonDispatchBreakerSnapshot => ({
+  schema: PYLON_DISPATCH_BREAKER_SCHEMA,
+  scopeKey: row.scope_key,
+  lane: normalizePylonDispatchFailureLane(row.lane),
+  accountRefHash: row.account_ref_hash,
+  contextId: row.context_id,
+  failureKind: row.failure_kind,
+  reason: row.reason,
+  blockerRefs: parseJsonArray(row.blocker_refs_json),
+  failureCount: row.failure_count,
+  firstObservedAt: row.first_observed_at,
+  lastObservedAt: row.last_observed_at,
+  cooldownUntil: row.cooldown_until,
+  sourceDigestRef: row.source_digest_ref,
 })
 
 export const publicDispatchContextFrom = (context: DispatchContext): PublicDispatchContext => ({
@@ -853,6 +904,8 @@ export class PylonOrchestrationStore {
         id TEXT PRIMARY KEY,
         assignee_handle TEXT NOT NULL,
         runner_kind TEXT NOT NULL CHECK (runner_kind IN ('codex', 'claude_agent', 'claude', 'generic')),
+        lane TEXT,
+        account_ref_hash TEXT,
         worktree_id TEXT,
         worktree_path TEXT,
         status TEXT NOT NULL CHECK (status IN ('idle', 'dispatched', 'completed', 'failed', 'blocked', 'circuit_broken')),
@@ -868,6 +921,26 @@ export class PylonOrchestrationStore {
         ON pylon_orchestration_dispatch_contexts(status, updated_at);
       CREATE INDEX IF NOT EXISTS idx_pylon_orchestration_contexts_worktree
         ON pylon_orchestration_dispatch_contexts(worktree_id);
+      CREATE INDEX IF NOT EXISTS idx_pylon_orchestration_contexts_account_lane
+        ON pylon_orchestration_dispatch_contexts(account_ref_hash, lane);
+      CREATE TABLE IF NOT EXISTS pylon_orchestration_dispatch_breakers (
+        scope_key TEXT PRIMARY KEY,
+        lane TEXT NOT NULL,
+        account_ref_hash TEXT,
+        context_id TEXT,
+        failure_kind TEXT NOT NULL CHECK (failure_kind IN ('permanent', 'transient')),
+        reason TEXT NOT NULL,
+        blocker_refs_json TEXT NOT NULL,
+        failure_count INTEGER NOT NULL DEFAULT 1,
+        first_observed_at TEXT NOT NULL,
+        last_observed_at TEXT NOT NULL,
+        cooldown_until TEXT,
+        source_digest_ref TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_pylon_orchestration_dispatch_breakers_lane_account
+        ON pylon_orchestration_dispatch_breakers(lane, account_ref_hash);
+      CREATE INDEX IF NOT EXISTS idx_pylon_orchestration_dispatch_breakers_cooldown
+        ON pylon_orchestration_dispatch_breakers(failure_kind, cooldown_until);
       CREATE TABLE IF NOT EXISTS pylon_orchestration_runner_statuses (
         event_ref TEXT PRIMARY KEY,
         runner_ref TEXT NOT NULL,
@@ -949,9 +1022,29 @@ export class PylonOrchestrationStore {
       CREATE INDEX IF NOT EXISTS idx_pylon_orchestration_work_claims_worker
         ON pylon_orchestration_work_claims(worker_account_ref, state);
     `)
+    this.ensureDispatchContextBreakerColumns()
     this.db
       .query("INSERT OR REPLACE INTO pylon_orchestration_meta (key, value) VALUES ('schema_version', $version)")
       .run({ $version: String(ORCHESTRATION_SCHEMA_VERSION) })
+  }
+
+  private tableColumnNames(table: string): Set<string> {
+    const rows = this.db.query(`PRAGMA table_info(${table})`).all() as Array<{ name?: unknown }>
+    return new Set(rows.flatMap(row => typeof row.name === "string" ? [row.name] : []))
+  }
+
+  private ensureDispatchContextBreakerColumns(): void {
+    const columns = this.tableColumnNames("pylon_orchestration_dispatch_contexts")
+    if (!columns.has("lane")) {
+      this.db.exec("ALTER TABLE pylon_orchestration_dispatch_contexts ADD COLUMN lane TEXT")
+    }
+    if (!columns.has("account_ref_hash")) {
+      this.db.exec("ALTER TABLE pylon_orchestration_dispatch_contexts ADD COLUMN account_ref_hash TEXT")
+    }
+    this.db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_pylon_orchestration_contexts_account_lane
+        ON pylon_orchestration_dispatch_contexts(account_ref_hash, lane);
+    `)
   }
 
   createFleetRun(input: CreateFleetRunInput): FleetRun {
@@ -1375,19 +1468,23 @@ export class PylonOrchestrationStore {
 
   createDispatchContext(input: CreateDispatchContextInput): DispatchContext {
     const now = iso(input.now)
+    const runnerKind = normalizeOrchestrationRunnerKind(input.runnerKind ?? "generic")
+    const lane = input.lane ?? normalizePylonDispatchFailureLane(runnerKind)
     this.db
       .query(`
         INSERT INTO pylon_orchestration_dispatch_contexts
-          (id, assignee_handle, runner_kind, worktree_id, worktree_path, status, current_task_id,
+          (id, assignee_handle, runner_kind, lane, account_ref_hash, worktree_id, worktree_path, status, current_task_id,
            failure_count, last_heartbeat_at, base_behind_by, max_concurrent_slots, created_at, updated_at)
         VALUES
-          ($id, $assigneeHandle, $runnerKind, $worktreeId, $worktreePath, 'idle', NULL,
+          ($id, $assigneeHandle, $runnerKind, $lane, $accountRefHash, $worktreeId, $worktreePath, 'idle', NULL,
            0, $lastHeartbeatAt, $baseBehindBy, $maxConcurrentSlots, $createdAt, $updatedAt)
       `)
       .run({
         $id: input.id,
         $assigneeHandle: input.assigneeHandle,
-        $runnerKind: normalizeOrchestrationRunnerKind(input.runnerKind ?? "generic"),
+        $runnerKind: runnerKind,
+        $lane: lane,
+        $accountRefHash: input.accountRefHash ?? null,
         $worktreeId: input.worktreeId ?? null,
         $worktreePath: input.worktreePath ?? null,
         $lastHeartbeatAt: input.lastHeartbeatAt === undefined ? null : input.lastHeartbeatAt === null ? null : iso(input.lastHeartbeatAt),
@@ -1415,6 +1512,100 @@ export class PylonOrchestrationStore {
         .query("SELECT * FROM pylon_orchestration_dispatch_contexts WHERE status = $status ORDER BY created_at ASC")
         .all({ $status: status })
     return (rows as DispatchContextRow[]).map(contextFromRow)
+  }
+
+  getDispatchBreaker(scopeKey: string): PylonDispatchBreakerSnapshot | null {
+    const row = this.db
+      .query("SELECT * FROM pylon_orchestration_dispatch_breakers WHERE scope_key = $scopeKey")
+      .get({ $scopeKey: scopeKey }) as DispatchBreakerRow | null
+    return row === null ? null : dispatchBreakerFromRow(row)
+  }
+
+  listDispatchBreakers(): PylonDispatchBreakerSnapshot[] {
+    const rows = this.db
+      .query("SELECT * FROM pylon_orchestration_dispatch_breakers ORDER BY last_observed_at DESC, scope_key ASC")
+      .all() as DispatchBreakerRow[]
+    return rows.map(dispatchBreakerFromRow)
+  }
+
+  listActiveDispatchBreakers(now: Date = new Date()): PylonDispatchBreakerSnapshot[] {
+    return this.listDispatchBreakers().filter(breaker => pylonDispatchBreakerIsActive(breaker, now))
+  }
+
+  getActiveDispatchBreakerForContext(
+    context: DispatchContext,
+    now: Date = new Date(),
+  ): PylonDispatchBreakerSnapshot | null {
+    const breaker = this.getDispatchBreaker(pylonDispatchBreakerScopeKey({
+      accountRefHash: context.accountRefHash,
+      contextId: context.id,
+      lane: context.lane,
+    }))
+    return breaker !== null && pylonDispatchBreakerIsActive(breaker, now) ? breaker : null
+  }
+
+  recordDispatchBreakerFailure(input: {
+    accountRefHash?: string | null
+    classification: PylonDispatchFailureClassification
+    contextId?: string | null
+    lane: PylonDispatchFailureLane
+    now?: Date
+  }): PylonDispatchBreakerSnapshot {
+    const now = input.now ?? new Date()
+    const at = iso(now)
+    const scopeKey = pylonDispatchBreakerScopeKey({
+      accountRefHash: input.accountRefHash ?? null,
+      contextId: input.contextId ?? null,
+      lane: input.lane,
+    })
+    const current = this.getDispatchBreaker(scopeKey)
+    const failureCount = (current?.failureCount ?? 0) + 1
+    const cooldownUntil =
+      input.classification.failureKind === "transient" && input.classification.cooldownMs !== null
+        ? iso(new Date(now.getTime() + input.classification.cooldownMs * Math.min(failureCount, 6)))
+        : null
+    const blockerRefs = [
+      input.classification.blockerRef,
+      ...(input.classification.failureKind === "permanent"
+        ? ["blocker.pylon.dispatch.permanent_breaker"]
+        : ["blocker.pylon.dispatch.cooldown_active"]),
+    ]
+    this.db
+      .query(`
+        INSERT INTO pylon_orchestration_dispatch_breakers
+          (scope_key, lane, account_ref_hash, context_id, failure_kind, reason,
+           blocker_refs_json, failure_count, first_observed_at, last_observed_at,
+           cooldown_until, source_digest_ref)
+        VALUES
+          ($scopeKey, $lane, $accountRefHash, $contextId, $failureKind, $reason,
+           $blockerRefs, $failureCount, $firstObservedAt, $lastObservedAt,
+           $cooldownUntil, $sourceDigestRef)
+        ON CONFLICT(scope_key) DO UPDATE SET
+          failure_kind = excluded.failure_kind,
+          reason = excluded.reason,
+          blocker_refs_json = excluded.blocker_refs_json,
+          failure_count = excluded.failure_count,
+          last_observed_at = excluded.last_observed_at,
+          cooldown_until = excluded.cooldown_until,
+          source_digest_ref = excluded.source_digest_ref
+      `)
+      .run({
+        $scopeKey: scopeKey,
+        $lane: input.lane,
+        $accountRefHash: input.accountRefHash ?? null,
+        $contextId: input.contextId ?? null,
+        $failureKind: input.classification.failureKind,
+        $reason: input.classification.reason,
+        $blockerRefs: JSON.stringify(blockerRefs),
+        $failureCount: failureCount,
+        $firstObservedAt: current?.firstObservedAt ?? at,
+        $lastObservedAt: at,
+        $cooldownUntil: cooldownUntil,
+        $sourceDigestRef: input.classification.sourceDigestRef,
+      })
+    const stored = this.getDispatchBreaker(scopeKey)
+    if (stored === null) throw new Error(`failed to record dispatch breaker ${scopeKey}`)
+    return stored
   }
 
   getAgentRunnerStatusEvent(eventRef: string): OrchestrationAgentRunnerStatusEntry | null {
@@ -1769,14 +1960,32 @@ export class PylonOrchestrationStore {
       .run({ $id: id, $status: status, $now: iso(now) })
   }
 
-  recordDispatchFailure(id: string, maxFailures = 3, now: Date = new Date()): DispatchContext {
+  recordDispatchFailure(
+    id: string,
+    maxFailures = 3,
+    now: Date = new Date(),
+    failure?: PylonDispatchFailureInput,
+  ): DispatchContext {
     const current = this.getDispatchContext(id)
     if (current === null) throw new Error(`unknown dispatch context: ${id}`)
     const failureCount = current.failureCount + 1
-    const status: DispatchContextStatus = failureCount >= maxFailures ? "circuit_broken" : "idle"
+    const classification = failure === undefined ? null : classifyPylonDispatchFailure(failure)
+    const status: DispatchContextStatus =
+      classification?.failureKind === "permanent" || failureCount >= maxFailures
+        ? "circuit_broken"
+        : "idle"
     const at = iso(now)
     this.db.run("BEGIN IMMEDIATE")
     try {
+      if (classification !== null) {
+        this.recordDispatchBreakerFailure({
+          accountRefHash: current.accountRefHash,
+          classification,
+          contextId: current.id,
+          lane: current.lane,
+          now,
+        })
+      }
       if (current.currentTaskId !== null) {
         this.db
           .query("UPDATE pylon_orchestration_tasks SET status = 'failed', updated_at = $now WHERE id = $taskId")
@@ -1816,12 +2025,27 @@ export class PylonOrchestrationStore {
 
     const maxFailures = input.maxFailures ?? 3
     const failureCount = input.status === "failed" ? context.failureCount + 1 : 0
+    const classification = input.status === "failed" && input.failure !== undefined
+      ? classifyPylonDispatchFailure(input.failure)
+      : null
     const contextStatus: DispatchContextStatus =
-      input.status === "failed" && failureCount >= maxFailures ? "circuit_broken" : "idle"
+      input.status === "failed" &&
+        (classification?.failureKind === "permanent" || failureCount >= maxFailures)
+        ? "circuit_broken"
+        : "idle"
     const body = input.body ?? `worker_done ${input.taskId} ${input.status}`
 
     this.db.run("BEGIN IMMEDIATE")
     try {
+      if (classification !== null) {
+        this.recordDispatchBreakerFailure({
+          accountRefHash: context.accountRefHash,
+          classification,
+          contextId: context.id,
+          lane: context.lane,
+          now,
+        })
+      }
       this.db
         .query(`
           UPDATE pylon_orchestration_tasks

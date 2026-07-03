@@ -1,4 +1,5 @@
 import type { DispatchContext, OrchestrationTask, PylonOrchestrationStore } from "./store.js"
+import type { PylonDispatchBreakerSnapshot } from "../dispatch-failure-taxonomy.js"
 
 export type DispatchLiveness = "fresh" | "stale" | "missing" | "hung"
 
@@ -13,7 +14,10 @@ export type DispatchEligibility =
         | "heartbeat_stale"
         | "dispatch_hung"
         | "base_drift"
+        | "dispatch_breaker_cooling_down"
+        | "dispatch_breaker_permanent"
         | "runner_mismatch"
+      breaker?: PylonDispatchBreakerSnapshot
     }
 
 export type SupervisorCoordinatorOptions = {
@@ -22,6 +26,7 @@ export type SupervisorCoordinatorOptions = {
   hungAfterMs?: number
   maxBaseBehindBy?: number
   maxConcurrentSlots?: number
+  dispatchBreakerForContext?: (context: DispatchContext, now: Date) => PylonDispatchBreakerSnapshot | null
 }
 
 export type PlannedDispatch = {
@@ -67,6 +72,17 @@ export function dispatchEligibility(
   if (context.status !== "idle") return { ok: false, reason: "not_idle" }
   if (task?.spec.runnerKind !== undefined && context.runnerKind !== "generic" && context.runnerKind !== task.spec.runnerKind) {
     return { ok: false, reason: "runner_mismatch" }
+  }
+  const now = options.now ?? new Date()
+  const breaker = options.dispatchBreakerForContext?.(context, now) ?? null
+  if (breaker !== null) {
+    return {
+      ok: false,
+      reason: breaker.failureKind === "permanent"
+        ? "dispatch_breaker_permanent"
+        : "dispatch_breaker_cooling_down",
+      breaker,
+    }
   }
   const liveness = dispatchLiveness(context, options)
   if (liveness === "missing") return { ok: false, reason: "heartbeat_missing" }
@@ -116,7 +132,11 @@ export function dispatchReadySupervisorTasks(
   options: SupervisorCoordinatorOptions = {},
 ): DispatchCoordinatorResult {
   store.promoteReadyTasks(options.now)
-  const result = planSupervisorDispatch(store.listTasks(), store.listDispatchContexts(), options)
+  const result = planSupervisorDispatch(store.listTasks(), store.listDispatchContexts(), {
+    ...options,
+    dispatchBreakerForContext: options.dispatchBreakerForContext ??
+      ((context, now) => store.getActiveDispatchBreakerForContext(context, now)),
+  })
   for (const dispatch of result.planned) {
     const virtualHead = store.reserveVirtualHeadForTask(dispatch.task.id, options.now)
     store.markDispatched(dispatch.task.id, dispatch.context.id, options.now)

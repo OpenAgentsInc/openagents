@@ -334,6 +334,14 @@ Source: harvest audit §4 H5/H7, slimmed to our seams: a typed error
 taxonomy + circuit breaker on dispatch lanes, and ack/replay for the small
 load-bearing event class while bulk streams stay fail-soft.
 
+BA-F1 status (2026-07-03): Pylon now classifies delegate dispatch failures as
+typed transient or permanent reasons and persists per-account/lane breaker
+rows in the local orchestration store. Transient failures keep the context
+idle but cool the account lane, permanent credential/safety failures quarantine
+the context, and Khala spawn, burndown, and dispatch planners consume active
+breakers before advertising capacity or assigning candidate slots. The BA-F1
+behavior contract is enforced by orchestration-store and Khala planner tests.
+
 | Task | Description | Deps | Delegable | Issue |
 | --- | --- | --- | --- | --- |
 | BA-F1 | Lane/account error taxonomy + circuit breaker: typed transient/permanent classification for dispatch failures in the delegate program + orchestration store; per-account/lane breaker with cooldown feeding capacity/readiness instead of repeated failed dispatches | — | MED | [#8206](https://github.com/OpenAgentsInc/openagents/issues/8206) |
@@ -367,6 +375,7 @@ rule, ROADMAP_QA §9d). The implementing PRs register the contract alongside
 the oracle rather than leaving the rule as INVARIANTS prose:
 
 - BA-B4 → `background_agents.dispatch.budget_caps_enforced.v1`
+- BA-F1 → `background_agents.dispatch.lane_account_breaker.v1`
 - BA-A5 → `background_agents.toolset.compiled_policy_enforced.v1`
 - BA-D3 → `background_agents.credentials.no_long_lived_tokens_in_workspaces.v1`
   (BA-D3's test *is* the oracle)

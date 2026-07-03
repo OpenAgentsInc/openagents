@@ -11,6 +11,10 @@ import type {
   PylonKhalaProofResult,
   PylonKhalaRequestResult,
 } from "../src/khala-requester"
+import {
+  PYLON_DISPATCH_BREAKER_SCHEMA,
+  type PylonDispatchBreakerSnapshot,
+} from "../src/dispatch-failure-taxonomy"
 
 const readyCodexAccount = (
   accountRef: string,
@@ -63,6 +67,27 @@ const accountsProjection = (): PylonAccountsListProjection => ({
   blockerRefs: [],
   observedAt: "2026-06-27T12:00:00.000Z",
   schema: "openagents.pylon.accounts_list.v0.3",
+})
+
+const accountDispatchBreaker = (
+  accountRefHash: string,
+): PylonDispatchBreakerSnapshot => ({
+  accountRefHash,
+  blockerRefs: [
+    "blocker.pylon.dispatch.account_rate_limited",
+    "blocker.pylon.dispatch.cooldown_active",
+  ],
+  contextId: "context.public.breaker",
+  cooldownUntil: "2099-01-01T00:30:00.000Z",
+  failureCount: 1,
+  failureKind: "transient",
+  firstObservedAt: "2099-01-01T00:00:00.000Z",
+  lane: "codex",
+  lastObservedAt: "2099-01-01T00:00:00.000Z",
+  reason: "account_rate_limited",
+  schema: PYLON_DISPATCH_BREAKER_SCHEMA,
+  scopeKey: `dispatch-breaker.account-lane.codex.${accountRefHash}`,
+  sourceDigestRef: "digest.pylon.dispatch_failure.test",
 })
 
 const requestResult = (assignmentRef: string): PylonKhalaRequestResult => ({
@@ -210,6 +235,39 @@ describe("pylon khala spawn planner", () => {
     ])
     expect(plan.slots[0]?.commands.request).toContain("--workflow claude_agent_task")
     expect(plan.slots[0]?.requestInput.workflow).toBe("claude_agent_task")
+  })
+
+  test("honors active account-lane dispatch breakers in advertised capacity", () => {
+    // background_agents.dispatch.lane_account_breaker.v1
+    const plan = buildPylonKhalaSpawnPlan({
+      accounts: accountsProjection(),
+      advertisedCodexAccounts: [
+        { accountKey: "codex.one", accountRefHash: "accthash_one", available: 2, busy: 0, queued: 0, ready: 2 },
+        { accountKey: "codex.two", accountRefHash: "accthash_two", available: 1, busy: 0, queued: 0, ready: 1 },
+        { accountKey: "codex.three", accountRefHash: "accthash_three", available: 1, busy: 0, queued: 0, ready: 1 },
+      ],
+      baseUrl: "https://openagents.test",
+      dispatchBreakers: [accountDispatchBreaker("accthash_one")],
+      maxParallel: 2,
+      objectives: repeatedKhalaSpawnObjectives({
+        count: 2,
+        objective: "run a breaker-aware fixture assignment",
+      }),
+      targetPylonRef: "pylon.public.local",
+    })
+
+    expect(plan.dispatchBreakers).toHaveLength(1)
+    expect(plan.readyCodexAccountCount).toBe(2)
+    expect(plan.advertisedCodexAvailability).toBe(2)
+    expect(plan.advertisedCodexAccounts[0]).toMatchObject({
+      accountRefHash: "accthash_one",
+      available: 0,
+      ready: 0,
+    })
+    expect(plan.slots.map((slot) => slot.account.accountRefHash)).toEqual([
+      "accthash_two",
+      "accthash_three",
+    ])
   })
 })
 
@@ -393,6 +451,10 @@ describe("pylon khala spawn runner", () => {
       message: "worker failed because a bounded operation timed out",
       phase: "assignment_created",
       ref: "failure.khala_spawn.timeout",
+    })
+    expect(result.results[0]?.dispatchFailure).toMatchObject({
+      failureKind: "transient",
+      reason: "lane_timeout",
     })
   })
 })

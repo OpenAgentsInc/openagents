@@ -2,6 +2,11 @@ import {
   buildPylonKhalaGitCheckoutWorkspace,
   type PylonKhalaRequestInput,
 } from "./khala-requester.js"
+import {
+  activePylonDispatchBreakers,
+  pylonDispatchBreakerForAccount,
+  type PylonDispatchBreakerSnapshot,
+} from "./dispatch-failure-taxonomy.js"
 
 export const PYLON_KHALA_DISPATCH_PLAN_SCHEMA = "openagents.pylon.khala_dispatch_plan.v0.1"
 
@@ -39,6 +44,7 @@ export type KhalaDispatchPlan = {
   schema: typeof PYLON_KHALA_DISPATCH_PLAN_SCHEMA
   blockerRefs: string[]
   concurrency: number
+  dispatchBreakers: readonly PylonDispatchBreakerSnapshot[]
   priorityLane: string
   slots: KhalaDispatchSlot[]
   verifier: KhalaDispatchVerifier
@@ -144,13 +150,21 @@ export function buildPylonKhalaDispatchPlan(input: {
   accountTargets: readonly KhalaDispatchAccountTarget[]
   candidateRefs: readonly KhalaDispatchCandidateRef[]
   concurrency: number
+  dispatchBreakers?: readonly PylonDispatchBreakerSnapshot[]
   priorityLane: string
   targetPylonRef: string
   verifier: KhalaDispatchVerifier
 }): KhalaDispatchPlan {
   const candidateRefs = normalizeKhalaDispatchCandidateRefs(input.candidateRefs)
+  const dispatchBreakers = activePylonDispatchBreakers(input.dispatchBreakers ?? [])
   const accountTargets = input.accountTargets.filter((account) =>
-    account.provider === "codex" && accountHashPattern.test(account.accountRefHash)
+    account.provider === "codex" &&
+    accountHashPattern.test(account.accountRefHash) &&
+    pylonDispatchBreakerForAccount({
+      accountRefHash: account.accountRefHash,
+      breakers: dispatchBreakers,
+      lane: "codex",
+    }) === null
   )
   const concurrency = Math.max(1, Math.floor(input.concurrency))
   const selectedCount = Math.min(concurrency, candidateRefs.length, accountTargets.length)
@@ -188,6 +202,7 @@ export function buildPylonKhalaDispatchPlan(input: {
     schema: PYLON_KHALA_DISPATCH_PLAN_SCHEMA,
     blockerRefs,
     concurrency,
+    dispatchBreakers,
     priorityLane,
     slots,
     verifier: input.verifier,

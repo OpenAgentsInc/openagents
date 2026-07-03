@@ -29,6 +29,7 @@ const plan: PylonKhalaSpawnPlan = {
   advertisedWorkerAvailability: 1,
   baseUrl: "https://openagents.example",
   blockerRefs: [],
+  dispatchBreakers: [],
   maxParallel: 1,
   objectiveCount: 1,
   readyCodexAccountCount: 1,

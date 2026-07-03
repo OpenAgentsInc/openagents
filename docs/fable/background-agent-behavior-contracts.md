@@ -9,7 +9,7 @@ Issue #8218 registers the headline invariants from
 oracles land. Entries remain `pending` until the owning task adds its oracle
 test and flips that exact contract to `enforced`.
 
-Registry version: `2026-07-03.6` (schema `openagents.behavior_contracts.v1`)
+Registry version: `2026-07-03.7` (schema `openagents.behavior_contracts.v1`)
 
 ### `background_agents.dispatch.budget_caps_enforced.v1` - ENFORCED
 
@@ -21,6 +21,19 @@ Registry version: `2026-07-03.6` (schema `openagents.behavior_contracts.v1`)
 - **Oracle** `background_agents.dispatch.trigger_auto_pause` (bun-test, unit): Trigger rows auto-pause after three consecutive failures, preserve the pause reason, leave due-trigger scans empty while paused, and reset the failure streak on explicit enable. - `apps/openagents.com/workers/api/src/agent-definition-trigger-store.test.ts`
 - **Verification:** BA-B4 is enforced by the openagents.com Worker definition-run route tests and trigger-store tests in the normal bun test sweep.
 - **Authority boundary:** This contract binds dispatch budget enforcement for background-agent definitions at the openagents.com Worker dispatch boundary. It does not authorize public budget or reliability claims beyond the tested definition-run and trigger-store oracles.
+
+### `background_agents.dispatch.lane_account_breaker.v1` - ENFORCED
+
+- **Surface:** pylon-worker (background agent dispatch)
+- **Stated by:** owner via issue_list on 2026-07-03
+- **Statement:** Dispatch failures are classified as transient or permanent; per-account/lane breakers cool or quarantine failed lanes and feed delegate readiness/capacity instead of repeatedly dispatching into known failures.
+- **Enforcement tier:** test-sweep
+- **Oracle** `background_agents.dispatch.orchestration_store_breaker` (bun-test, unit): The local orchestration store classifies transient and permanent dispatch failures, persists per-account/lane breaker rows, cools transient failures, and quarantines permanent credential failures. - `apps/pylon/src/orchestration/supervisor-orchestration.test.ts`
+- **Oracle** `background_agents.dispatch.khala_spawn_breaker` (bun-test, unit): Khala spawn planning zeroes advertised capacity for cooled account/lane breakers, skips broken accounts, and projects timeout failures into typed transient dispatch classifications. - `apps/pylon/tests/khala-spawn.test.ts`
+- **Oracle** `background_agents.dispatch.khala_dispatch_breaker` (bun-test, unit): Khala dispatch planning filters cooled Codex account/lane breakers before selecting candidate slots. - `apps/pylon/tests/khala-dispatch.test.ts`
+- **Oracle** `background_agents.dispatch.khala_burndown_breaker` (bun-test, unit): Khala burndown planning skips cooled account/lane breakers while assigning issue slots. - `apps/pylon/tests/khala-burndown.test.ts`
+- **Verification:** BA-F1 is enforced by the Pylon orchestration store test plus Khala spawn, dispatch, and burndown planner tests in the normal Pylon bun test sweep.
+- **Authority boundary:** This contract binds Pylon delegate dispatch admission and local orchestration-store breaker state only. It does not claim provider-account custody, payment settlement, or public availability guarantees beyond the tested planner/store behavior.
 
 ### `background_agents.toolset.compiled_policy_enforced.v1` - ENFORCED
 

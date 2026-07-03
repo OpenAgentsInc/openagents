@@ -68,6 +68,69 @@ export const backgroundAgentsContractRegistry: BehaviorContractRegistryDocument 
     },
     {
       authorityBoundary:
+        "This contract binds Pylon delegate dispatch admission and local orchestration-store breaker state only. It does not claim provider-account custody, payment settlement, or public availability guarantees beyond the tested planner/store behavior.",
+      blockerRefs: [],
+      contractId: "background_agents.dispatch.lane_account_breaker.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "https://github.com/OpenAgentsInc/openagents/issues/8206",
+        "https://github.com/OpenAgentsInc/openagents/issues/8218",
+        "INVARIANTS.md",
+        "docs/fable/ROADMAP_BACKGROUND_AGENTS.md",
+        "apps/pylon/src/orchestration/supervisor-orchestration.test.ts",
+        "apps/pylon/tests/khala-spawn.test.ts",
+        "apps/pylon/tests/khala-dispatch.test.ts",
+        "apps/pylon/tests/khala-burndown.test.ts",
+      ],
+      oracles: [
+        {
+          description:
+            "The local orchestration store classifies transient and permanent dispatch failures, persists per-account/lane breaker rows, cools transient failures, and quarantines permanent credential failures.",
+          id: "background_agents.dispatch.orchestration_store_breaker",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/pylon/src/orchestration/supervisor-orchestration.test.ts",
+        },
+        {
+          description:
+            "Khala spawn planning zeroes advertised capacity for cooled account/lane breakers, skips broken accounts, and projects timeout failures into typed transient dispatch classifications.",
+          id: "background_agents.dispatch.khala_spawn_breaker",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/pylon/tests/khala-spawn.test.ts",
+        },
+        {
+          description:
+            "Khala dispatch planning filters cooled Codex account/lane breakers before selecting candidate slots.",
+          id: "background_agents.dispatch.khala_dispatch_breaker",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/pylon/tests/khala-dispatch.test.ts",
+        },
+        {
+          description:
+            "Khala burndown planning skips cooled account/lane breakers while assigning issue slots.",
+          id: "background_agents.dispatch.khala_burndown_breaker",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/pylon/tests/khala-burndown.test.ts",
+        },
+      ],
+      productArea: "background agent dispatch",
+      source: {
+        channel: "issue_list",
+        statedBy: "owner",
+        statedOn: "2026-07-03",
+      },
+      state: "enforced",
+      statement:
+        "Dispatch failures are classified as transient or permanent; per-account/lane breakers cool or quarantine failed lanes and feed delegate readiness/capacity instead of repeatedly dispatching into known failures.",
+      surface: "pylon-worker",
+      verification:
+        "BA-F1 is enforced by the Pylon orchestration store test plus Khala spawn, dispatch, and burndown planner tests in the normal Pylon bun test sweep.",
+    },
+    {
+      authorityBoundary:
         "This contract binds compiled background-agent tool policy at the local-lane and Forge git-token boundaries. It does not widen any runtime tool authority beyond the compiled policy.",
       blockerRefs: [],
       contractId: "background_agents.toolset.compiled_policy_enforced.v1",
@@ -412,5 +475,5 @@ export const backgroundAgentsContractRegistry: BehaviorContractRegistryDocument 
     },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-03.6",
+  version: "2026-07-03.7",
 }

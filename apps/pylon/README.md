@@ -164,8 +164,13 @@ pylon apple-fm tool-stream-demo
 registered agent runners. The store persists a typed task DAG, dispatch
 contexts keyed by runner vocabulary (`codex`, `claude_agent`, or `generic`),
 heartbeat timestamps, base-drift counters, and a three-failure circuit breaker
-for flapping runner contexts. The legacy `claude` runner alias is accepted at
-read/write boundaries and normalized to `claude_agent`.
+for flapping runner contexts. It also records typed dispatch-breaker rows per
+account/lane: transient failures such as rate limits or timeouts create bounded
+cooldowns, while permanent credential or safety failures quarantine the
+account/lane until reset. Khala spawn, burndown, and dispatch planning read
+active breakers before advertising capacity or assigning slots. The legacy
+`claude` runner alias is accepted at read/write boundaries and normalized to
+`claude_agent`.
 
 When a dispatched context records a failure, the assigned task is moved to
 `failed`, the context is released, and the context is quarantined as
