@@ -12,6 +12,7 @@
     "./explore-policy-gepa": "./src/explore-policy-gepa.ts",
     "./explorer-brain": "./src/explorer-brain.ts",
     "./lag-profiling-sweep": "./src/lag-profiling-sweep.ts",
+    "./live-explorer": "./src/live-explorer.ts",
     "./memory-oracle": "./src/memory-oracle.ts",
     "./monkey-explorer": "./src/monkey-explorer.ts",
     "./rpc-driver": "./src/rpc-driver.ts",
