@@ -501,6 +501,51 @@ describe('Omni bundle routes', () => {
     expect(publicJson.bundle).not.toHaveProperty('metadata')
   })
 
+  test('renders a shareable public handoff page from the public proof projection', async () => {
+    const store = new BundleStore()
+    const routes = makeRoutes(store, true)
+
+    await run(
+      routes.routeOmniBundleRequest(
+        jsonPost('/api/omni/public-proof-bundles', {
+          ...proofBody,
+          artifactRefs: ['artifact_deploy_url_1', 'artifact_redacted_diff_1'],
+          legalCaveatRef: 'legal_caveat_not_advice_1',
+          metadata: {
+            operatorOnly: 'do_not_render',
+          },
+          receiptRefs: ['receipt_public_1', 'receipt_review_gate_1'],
+          sourceRefs: ['source_card_1', 'source_commit_1'],
+        }),
+        { store },
+        ctx,
+      ),
+    )
+
+    const response = await run(
+      routes.routeOmniBundleRequest(
+        get('/handoff/omni_public_proof_bundle_1'),
+        { store },
+        ctx,
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get('content-type')).toContain('text/html')
+
+    const html = await response.text()
+    expect(html).toContain('OpenAgents public handoff')
+    expect(html).toContain('Redacted deliverables')
+    expect(html).toContain('artifact_deploy_url_1')
+    expect(html).toContain('artifact_redacted_diff_1')
+    expect(html).toContain('receipt_review_gate_1')
+    expect(html).toContain('source_commit_1')
+    expect(html).toContain('legal_caveat_not_advice_1')
+    expect(html).toContain('/api/omni/public-proof-bundles/omni_public_proof_bundle_1')
+    expect(html).not.toContain('do_not_render')
+    expect(html).not.toContain('idempotencyKey')
+  })
+
   test('rejects work-kind-mismatched proof bundles and unknown bundle ids', async () => {
     const store = new BundleStore()
     const routes = makeRoutes(store, true)
