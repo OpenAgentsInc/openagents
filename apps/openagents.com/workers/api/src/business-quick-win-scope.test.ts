@@ -63,6 +63,15 @@ describe('scopeQuickWinFromIntake', () => {
         helpWith: 'white-label marketing campaign pages',
       }).category,
     ).toBe('marketing_workspace')
+
+    const marketingProgramScope = scopeQuickWinFromIntake({
+      signupId: 's3b',
+      helpWith: 'GEO content and outbound assist as a monthly marketing program',
+    })
+    expect(marketingProgramScope.category).toBe('marketing_workspace')
+    expect(marketingProgramScope.definitionOfDone).toContain(
+      'Marketing program package scoped across content, GEO, and outbound assist as applicable.',
+    )
   })
 
   test('routes a site request to the site build offering', () => {
@@ -99,6 +108,7 @@ describe('scopeQuickWinFromIntake', () => {
       'inventory campaigns',
       'legal forms',
       'marketing pages',
+      'GEO and outbound assist',
       'a landing site',
       'fine-tune a model',
       null,
