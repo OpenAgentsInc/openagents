@@ -51,7 +51,12 @@ import {
 } from '../../route'
 import { update } from '../../update'
 import { view } from '../../view'
-import { SubmitCustomerOrder } from './customer-order/transitions'
+import {
+  LoadCustomerSiteBuilderEvents,
+  LoadCustomerSiteBuilderFiles,
+  OpenCustomerSiteBuilderSession,
+  SubmitCustomerOrder,
+} from './customer-order/transitions'
 import {
   CompletedFocusChatComposer,
   CompletedScrollChatTimelineToEnd,
@@ -67,8 +72,11 @@ import {
   SucceededLoadMulletBootstrap,
   SucceededLoadOnboardingRepositories,
   SucceededLoadPrefilledWorkspace,
+  SucceededLoadCustomerSiteBuilderEvents,
+  SucceededLoadCustomerSiteBuilderFiles,
   SucceededLoadSyncSnapshot,
   SucceededLoadTokenUsageStats,
+  SucceededOpenCustomerSiteBuilderSession,
   SucceededSubmitCustomerOrder,
   SucceededUploadThreadFile,
 } from './message'
@@ -1440,6 +1448,22 @@ describe('logged-in workroom sidebar', () => {
     Scene.scene(
       { update, view },
       Scene.with(baseModel),
+      Scene.expect(Scene.text('Site authoring')).toExist(),
+      Scene.expect(
+        Scene.selector('[data-component="customer-site-authoring-panel"]'),
+      ).toExist(),
+      Scene.expect(Scene.text('Landing')).toExist(),
+      Scene.expect(Scene.text('Funnel')).toExist(),
+      Scene.expect(Scene.text('Thank-you')).toExist(),
+      Scene.expect(Scene.role('textbox', { name: 'Site brief' })).toExist(),
+      Scene.expect(Scene.text('Review required')).toExist(),
+      Scene.expect(Scene.text('Deployment recorded')).toExist(),
+      Scene.expect(Scene.text('Approval gate')).toExist(),
+      Scene.expect(Scene.text('Required')).toExist(),
+      Scene.expect(Scene.text('Saved version')).toExist(),
+      Scene.expect(Scene.text('site_version_builder')).toExist(),
+      Scene.expect(Scene.text('Deployment')).toExist(),
+      Scene.expect(Scene.text('site_deployment_builder')).toExist(),
       Scene.expect(Scene.text('Site builder')).toExist(),
       Scene.expect(
         Scene.role('button', { name: 'Start or reconnect builder' }),
@@ -1447,6 +1471,73 @@ describe('logged-in workroom sidebar', () => {
       Scene.expect(
         Scene.text('No builder session is open in this browser yet.'),
       ).toExist(),
+      Scene.type(
+        Scene.role('textbox', { name: 'Site brief' }),
+        'Make the landing page lead with the OTEC membership funnel.',
+      ),
+      Scene.click(Scene.role('button', { name: 'Generate Site pass' })),
+      Scene.expect(Scene.text('Generating')).toExist(),
+      Scene.Command.resolve(
+        OpenCustomerSiteBuilderSession,
+        SucceededOpenCustomerSiteBuilderSession({
+          response: {
+            siteBuilderSession: {
+              activePreview: null,
+              activePreviewId: null,
+              createdAt: '2026-06-05T15:00:00.000Z',
+              currentPhase: null,
+              id: 'site_builder_session_created_from_brief',
+              messages: [
+                {
+                  actorKind: 'customer',
+                  body: 'Make the landing page lead with the OTEC membership funnel.',
+                  createdAt: '2026-06-05T15:00:00.000Z',
+                  id: 'site_builder_message_customer_brief',
+                  sequence: 1,
+                },
+              ],
+              orderId: 'software_order_builder',
+              phases: [],
+              promptSummary:
+                'Make the landing page lead with the OTEC membership funnel.',
+              siteId: 'site_project_builder',
+              status: 'draft',
+              updatedAt: '2026-06-05T15:00:00.000Z',
+            },
+          },
+        }),
+        message => GotLoggedInMessage({ message }),
+      ),
+      Scene.expect(Scene.text('Draft')).toExist(),
+      Scene.expect(
+        Scene.text('Make the landing page lead with the OTEC membership funnel.'),
+      ).toExist(),
+      Scene.Command.resolveAll(
+        [
+          LoadCustomerSiteBuilderFiles,
+          SucceededLoadCustomerSiteBuilderFiles({
+            filesResponse: {
+              files: [],
+              siteBuilderSessionId: 'site_builder_session_created_from_brief',
+            },
+            treeResponse: {
+              fileTree: [],
+              siteBuilderSessionId: 'site_builder_session_created_from_brief',
+            },
+          }),
+          message => GotLoggedInMessage({ message }),
+        ],
+        [
+          LoadCustomerSiteBuilderEvents,
+          SucceededLoadCustomerSiteBuilderEvents({
+            response: {
+              events: [],
+              siteBuilderSessionId: 'site_builder_session_created_from_brief',
+            },
+          }),
+          message => GotLoggedInMessage({ message }),
+        ],
+      ),
     )
 
     Scene.scene(

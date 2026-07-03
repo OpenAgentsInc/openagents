@@ -572,6 +572,12 @@ export const UpdatedCustomerSiteFeedbackDraft = m(
     value: S.String,
   },
 )
+export const UpdatedCustomerSiteBuilderPromptDraft = m(
+  'UpdatedCustomerSiteBuilderPromptDraft',
+  {
+    value: S.String,
+  },
+)
 export const SelectedCustomerSiteElementContext = m(
   'SelectedCustomerSiteElementContext',
   {
@@ -1403,6 +1409,7 @@ export const Message = S.Union([
   SucceededLoadCustomerSiteFeedback,
   FailedLoadCustomerSiteFeedback,
   UpdatedCustomerSiteFeedbackDraft,
+  UpdatedCustomerSiteBuilderPromptDraft,
   SelectedCustomerSiteElementContext,
   SubmittedCustomerSiteFeedback,
   SucceededSubmitCustomerSiteFeedback,

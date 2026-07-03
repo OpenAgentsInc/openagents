@@ -637,6 +637,7 @@ export const updateCustomerOrder = (
           customerSiteBuilderEvents: () => CustomerSiteBuilderEventsIdle(),
           customerSiteBuilderFileRead: () => CustomerSiteBuilderFileReadIdle(),
           customerSiteBuilderFiles: () => CustomerSiteBuilderFilesIdle(),
+          customerSiteBuilderPromptDraft: () => '',
           customerSiteBuilderSelectedFilePath: () => null,
           customerSiteBuilderSession: () => CustomerSiteBuilderSessionIdle(),
           customerSiteFeedback: () => CustomerSiteFeedbackIdle(),
@@ -656,6 +657,7 @@ export const updateCustomerOrder = (
           customerSiteBuilderEvents: () => CustomerSiteBuilderEventsIdle(),
           customerSiteBuilderFileRead: () => CustomerSiteBuilderFileReadIdle(),
           customerSiteBuilderFiles: () => CustomerSiteBuilderFilesIdle(),
+          customerSiteBuilderPromptDraft: () => '',
           customerSiteBuilderSelectedFilePath: () => null,
           customerSiteBuilderSession: () => CustomerSiteBuilderSessionIdle(),
           customerSiteFeedback: () =>
@@ -810,6 +812,11 @@ export const updateCustomerOrder = (
       ],
       UpdatedCustomerSiteFeedbackDraft: ({ value }) => [
         evo(model, { customerSiteFeedbackDraft: () => value }),
+        [],
+        Option.none(),
+      ],
+      UpdatedCustomerSiteBuilderPromptDraft: ({ value }) => [
+        evo(model, { customerSiteBuilderPromptDraft: () => value }),
         [],
         Option.none(),
       ],

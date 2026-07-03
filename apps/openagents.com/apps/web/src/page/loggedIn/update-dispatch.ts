@@ -215,6 +215,7 @@ export const update = (model: Model, message: Message): UpdateReturn => {
       SucceededLoadCustomerSiteFeedback: customerOrder,
       FailedLoadCustomerSiteFeedback: customerOrder,
       UpdatedCustomerSiteFeedbackDraft: customerOrder,
+      UpdatedCustomerSiteBuilderPromptDraft: customerOrder,
       SelectedCustomerSiteElementContext: customerOrder,
       SubmittedCustomerSiteFeedback: customerOrder,
       SucceededSubmitCustomerSiteFeedback: customerOrder,
