@@ -46,6 +46,7 @@ export type BusinessIntakeFieldNames = Readonly<{
   website: string;
   phone: string;
   helpWith: string;
+  intakeSpecObject: string;
   requestSlackChannel: string;
   referralCode: string;
 }>;
@@ -56,6 +57,7 @@ export const defaultBusinessIntakeFieldNames: BusinessIntakeFieldNames = {
   website: "website",
   phone: "phone",
   helpWith: "helpWith",
+  intakeSpecObject: "intakeSpecObject",
   requestSlackChannel: "requestSlackChannel",
   referralCode: "referralCode",
 };
@@ -661,6 +663,12 @@ export const businessIntakeForm = <Message>(input: {
       h.input([
         h.Id("business-referral-code"),
         h.Name(names.referralCode),
+        h.Type("hidden"),
+        h.Value(""),
+      ]),
+      h.input([
+        h.Id("business-intake-spec-object"),
+        h.Name(names.intakeSpecObject),
         h.Type("hidden"),
         h.Value(""),
       ]),

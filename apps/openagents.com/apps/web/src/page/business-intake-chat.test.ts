@@ -34,9 +34,11 @@ describe('business intake chat state core', () => {
     let state = initialIntakeChatState
     while (state.messages.length + 2 <= INTAKE_CHAT_MAX_MESSAGES) {
       state = applyIntakeChatReply(appendUserMessage(state, 'q'), {
+        component: null,
         reply: 'a',
         done: false,
         spec: null,
+        specObject: null,
       })
     }
     expect(state.messages.length).toBe(INTAKE_CHAT_MAX_MESSAGES)
@@ -48,24 +50,75 @@ describe('business intake chat state core', () => {
     expect(decodeIntakeChatReply({ ok: false, reply: 'x' })).toBeNull()
     expect(
       decodeIntakeChatReply({ ok: true, reply: 'hi', done: false, spec: null }),
-    ).toEqual({ reply: 'hi', done: false, spec: null })
+    ).toEqual({
+      component: null,
+      reply: 'hi',
+      done: false,
+      spec: null,
+      specObject: null,
+    })
     expect(
       decodeIntakeChatReply({ ok: true, reply: 'hi', done: true, spec: null }),
-    ).toEqual({ reply: 'hi', done: false, spec: null })
+    ).toEqual({
+      component: null,
+      reply: 'hi',
+      done: false,
+      spec: null,
+      specObject: null,
+    })
     expect(
-      decodeIntakeChatReply({ ok: true, reply: 'hi', done: true, spec: '# Spec' }),
-    ).toEqual({ reply: 'hi', done: true, spec: '# Spec' })
+      decodeIntakeChatReply({
+        ok: true,
+        reply: 'hi',
+        done: true,
+        spec: '# Spec',
+        specObject: {
+          schemaVersion: 'business_intake_spec.v1',
+          vertical: 'legal',
+          goals: ['launch intake'],
+          pains: ['manual calls'],
+          systemsOfRecord: ['CRM'],
+        },
+      }),
+    ).toEqual({
+      component: null,
+      reply: 'hi',
+      done: true,
+      spec: '# Spec',
+      specObject: {
+        schemaVersion: 'business_intake_spec.v1',
+        vertical: 'legal',
+        goals: ['launch intake'],
+        pains: ['manual calls'],
+        systemsOfRecord: ['CRM'],
+      },
+    })
   })
 
   test('completes into the done phase carrying the drafted spec', () => {
     const waiting = appendUserMessage(initialIntakeChatState, 'build my site')
     const done = applyIntakeChatReply(waiting, {
+      component: {
+        component: 'quick_win_card',
+        id: 'cmp_1',
+        props: { etaDays: 3, scope: 'billing page', title: 'Billing page' },
+        v: 1,
+      },
       reply: 'Here is your spec.',
       done: true,
       spec: '# OpenAgents Business — Customer Intake Spec',
+      specObject: {
+        schemaVersion: 'business_intake_spec.v1',
+        vertical: 'software',
+        goals: ['rebuild billing'],
+        pains: ['old page'],
+        systemsOfRecord: ['repo'],
+      },
     })
     expect(done.phase).toBe('done')
     expect(done.spec).toContain('Customer Intake Spec')
+    expect(done.specObject?.systemsOfRecord).toEqual(['repo'])
+    expect(done.components).toHaveLength(1)
     expect(intakeChatStatusLine(done)).toContain('review and submit')
     // done is terminal — typing does not recover it
     expect(recoverIntakeChat(done)).toBe(done)
@@ -140,7 +193,9 @@ describe('business intake chat controller (DOM)', () => {
     form.id = 'business-signup'
     const helpWith = document.createElement('textarea')
     helpWith.name = 'helpWith'
-    form.appendChild(helpWith)
+    const intakeSpecObject = document.createElement('input')
+    intakeSpecObject.name = 'intakeSpecObject'
+    form.append(helpWith, intakeSpecObject)
     document.body.appendChild(form)
 
     const fetchLike = vi.fn().mockResolvedValue({
@@ -151,6 +206,23 @@ describe('business intake chat controller (DOM)', () => {
         reply: 'Done — your spec is drafted.',
         done: true,
         spec: '# OpenAgents Business — Customer Intake Spec\n- Quick win: rebuild billing page',
+        specObject: {
+          schemaVersion: 'business_intake_spec.v1',
+          vertical: 'software',
+          goals: ['rebuild billing page'],
+          pains: ['checkout is slow'],
+          systemsOfRecord: ['repo', 'Stripe'],
+        },
+        component: {
+          v: 1,
+          id: 'business_intake_cmp_1',
+          component: 'quick_win_card',
+          props: {
+            title: 'Billing page',
+            scope: 'Rebuild the page with review',
+            etaDays: 3,
+          },
+        },
       }),
     })
     installBusinessIntakeChatController(document, fetchLike)
@@ -163,6 +235,9 @@ describe('business intake chat controller (DOM)', () => {
     await flush()
 
     expect(helpWith.value).toContain('Customer Intake Spec')
+    expect(intakeSpecObject.value).toContain('business_intake_spec.v1')
+    expect(root.textContent).toContain('Quick win: Billing page')
+    expect(root.querySelector('[data-intake-chat-component="quick_win_card"]')).not.toBeNull()
     expect(input!.disabled).toBe(true)
     const status = root.querySelector('[data-intake-chat-status]')
     expect(status?.textContent).toContain('review and submit')

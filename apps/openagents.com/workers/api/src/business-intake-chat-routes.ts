@@ -44,6 +44,11 @@ import {
   type ServedTokensRecorder,
   meterServedTokensFailSoft,
 } from './inference/served-tokens-recorder'
+import {
+  KHALA_COMPONENT_CATALOG_PROMPT,
+  type KhalaComponentFrame,
+  runComponentChannel,
+} from './inference/khala-component-channel'
 import { isRecord, parseJsonUnknown } from './json-boundary'
 import { liveAtReadStaleness } from './public-projection-staleness'
 import {
@@ -76,6 +81,37 @@ export const BUSINESS_INTAKE_CHAT_DEMAND_CLIENT = 'business-intake-web'
 export const BUSINESS_INTAKE_SPEC_OPEN_TAG = '<intake-spec>'
 export const BUSINESS_INTAKE_SPEC_CLOSE_TAG = '</intake-spec>'
 
+const REQUIRED_SPEC_FIELDS = [
+  'vertical',
+  'goals',
+  'pains',
+  'systemsOfRecord',
+] as const
+
+export type BusinessIntakeRequiredField = (typeof REQUIRED_SPEC_FIELDS)[number]
+
+export type BusinessIntakeSpecObject = Readonly<{
+  schemaVersion: 'business_intake_spec.v1'
+  vertical: string
+  goals: ReadonlyArray<string>
+  pains: ReadonlyArray<string>
+  systemsOfRecord: ReadonlyArray<string>
+  chosenOfferings: ReadonlyArray<
+    Readonly<{ name: string; availability: string }>
+  >
+  quickWin: Readonly<{
+    task: string
+    doneLooksLike: string
+    targetDeliveryDate: string
+  }>
+  successMetric: string
+  budget: string
+  paymentPreference: string
+  humanReviewRequired: boolean
+  timeline: string
+  openQuestions: ReadonlyArray<string>
+}>
+
 // Deterministic opening turn for an empty transcript: no model call, no usage.
 export const BUSINESS_INTAKE_CHAT_OPENING_REPLY =
   "Hi — I'm Khala, the intake assistant for OpenAgents Business. OpenAgents sells machine work with receipts: AI agents and compute that do real work for your business, starting with one fast quick win and growing into recurring work on Autopilot. I'll ask a few short questions, one area at a time, and at the end hand you a filled intake spec that gets attached to your submission. To start: in one or two sentences, what does your business do, and who are your customers?"
@@ -102,6 +138,10 @@ HONESTY RULES (hard)
 - NEVER promise anything beyond this menu. If the human asks for something not on it, say so plainly and capture it as an open question in the spec.
 - NEVER ask for or accept passwords, API keys, tokens, wallet seeds, or any credentials. If access to a system is needed, only record WHICH systems in the spec; access setup happens later with the OpenAgents team.
 - Do not give legal, tax, or financial advice.
+- Required output fields may not be skipped. Before finishing, you must have concrete answers for vertical, goals, painful/repetitive work, and systems of record. If any of those are unknown, ask the next missing question instead of emitting the final spec.
+- Surface one typed onboarding component when useful using the closed catalog below. Prefer intake_progress while interviewing, quick_win_card when recommending the first task, consent_gate when data/access constraints matter, and human_handoff when the request is outside the menu.
+
+${KHALA_COMPONENT_CATALOG_PROMPT}
 
 INTERVIEW (run these areas in order, ONE area per turn; skip questions that clearly don't apply)
 A. Business & goals — what the business does, customers/main product, and the single most important outcome for the next month. Branch: if they can't name an outcome, ask what took too much of their team's time last week and use that.
@@ -166,6 +206,123 @@ Output Spec Template (fill and wrap in the tags):
 ## 10. Open questions / requests beyond the menu
 - Anything the human asked for that isn't in the offerings menu:
 - Things OpenAgents needs to confirm before starting:`
+
+const normalizeSpecValue = (value: string): string =>
+  value.replace(/\s+/g, ' ').trim()
+
+const fieldValue = (spec: string, label: string): string => {
+  const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const match = spec.match(new RegExp(`- ${escaped}:\\s*([^\\n]+)`, 'i'))
+  return normalizeSpecValue(match?.[1] ?? '')
+}
+
+const listValue = (value: string): ReadonlyArray<string> => {
+  if (value === '') {
+    return []
+  }
+  return value
+    .split(/\s*(?:,|;|\band\b)\s*/i)
+    .map(normalizeSpecValue)
+    .filter(item => item !== '' && !isUnknownSpecValue(item))
+}
+
+const isUnknownSpecValue = (value: string): boolean => {
+  const normalized = value.trim().toLowerCase()
+  return (
+    normalized === '' ||
+    normalized === 'unknown' ||
+    normalized === 'none' ||
+    normalized === 'n/a' ||
+    normalized === 'na' ||
+    normalized === 'tbd' ||
+    normalized === 'not provided'
+  )
+}
+
+const inferVertical = (spec: string): string => {
+  const haystack = spec.toLowerCase()
+  if (haystack.includes('law') || haystack.includes('legal')) {
+    return 'legal'
+  }
+  if (haystack.includes('health') || haystack.includes('clinic')) {
+    return 'health'
+  }
+  if (haystack.includes('e-commerce') || haystack.includes('ecommerce')) {
+    return 'e-commerce'
+  }
+  if (haystack.includes('marketing') || haystack.includes('agency')) {
+    return 'marketing'
+  }
+  const business = fieldValue(spec, 'Company / what we do')
+  return isUnknownSpecValue(business) ? '' : business
+}
+
+const parseOfferings = (
+  spec: string,
+): BusinessIntakeSpecObject['chosenOfferings'] =>
+  ['Offering A', 'Offering B (optional)']
+    .map(label => fieldValue(spec, label))
+    .filter(value => !isUnknownSpecValue(value))
+    .map(value => {
+      const [name = value, availability = 'operator-assisted'] =
+        value.split(/\s+—\s+availability:\s+/i)
+      return {
+        availability: normalizeSpecValue(availability),
+        name: normalizeSpecValue(name),
+      }
+    })
+
+export const businessIntakeSpecObjectFromMarkdown = (
+  spec: string,
+): BusinessIntakeSpecObject => {
+  const systems = listValue(fieldValue(spec, 'Systems/accounts the agent will need access to'))
+  const goal = fieldValue(spec, 'The outcome we want in the next month')
+  const pain = fieldValue(spec, 'The first small task to deliver')
+  const timeline = fieldValue(spec, 'Quick win by')
+  const humanReview = fieldValue(
+    spec,
+    'Human-review gate required before publish/send/deploy/spend? (yes/no — default yes)',
+  )
+  return {
+    budget: fieldValue(spec, 'Quick-win budget (rough)'),
+    chosenOfferings: parseOfferings(spec),
+    goals: listValue(goal),
+    humanReviewRequired: humanReview.toLowerCase() !== 'no',
+    openQuestions: listValue(
+      [
+        fieldValue(
+          spec,
+          "Anything the human asked for that isn't in the offerings menu",
+        ),
+        fieldValue(spec, 'Things OpenAgents needs to confirm before starting'),
+      ]
+        .filter(value => !isUnknownSpecValue(value))
+        .join('; '),
+    ),
+    pains: listValue(pain),
+    paymentPreference: fieldValue(spec, 'Payment preference'),
+    quickWin: {
+      doneLooksLike: fieldValue(spec, 'What "done" looks like'),
+      targetDeliveryDate: fieldValue(spec, 'Target delivery date'),
+      task: pain,
+    },
+    schemaVersion: 'business_intake_spec.v1',
+    successMetric: fieldValue(spec, "We'll know the quick win worked when"),
+    systemsOfRecord: systems,
+    timeline,
+    vertical: inferVertical(spec),
+  }
+}
+
+export const missingBusinessIntakeRequiredFields = (
+  specObject: BusinessIntakeSpecObject,
+): ReadonlyArray<BusinessIntakeRequiredField> =>
+  REQUIRED_SPEC_FIELDS.filter(field => {
+    const value = specObject[field]
+    return typeof value === 'string'
+      ? isUnknownSpecValue(value)
+      : value.length === 0
+  })
 
 export type BusinessIntakeChatMessage = Readonly<{
   role: 'assistant' | 'user'
@@ -331,6 +488,8 @@ export type BusinessIntakeSpecExtraction = Readonly<{
   reply: string
   done: boolean
   spec: string | null
+  specObject: BusinessIntakeSpecObject | null
+  missingRequiredFields: ReadonlyArray<BusinessIntakeRequiredField>
 }>
 
 // Extract the completed Output Spec from a model completion. Only a completion
@@ -342,14 +501,26 @@ export const extractBusinessIntakeSpec = (
 ): BusinessIntakeSpecExtraction => {
   const openIndex = content.indexOf(BUSINESS_INTAKE_SPEC_OPEN_TAG)
   if (openIndex === -1) {
-    return { done: false, reply: content.trim(), spec: null }
+    return {
+      done: false,
+      missingRequiredFields: REQUIRED_SPEC_FIELDS,
+      reply: content.trim(),
+      spec: null,
+      specObject: null,
+    }
   }
   const closeIndex = content.indexOf(
     BUSINESS_INTAKE_SPEC_CLOSE_TAG,
     openIndex + BUSINESS_INTAKE_SPEC_OPEN_TAG.length,
   )
   if (closeIndex === -1) {
-    return { done: false, reply: content.slice(0, openIndex).trim(), spec: null }
+    return {
+      done: false,
+      missingRequiredFields: REQUIRED_SPEC_FIELDS,
+      reply: content.slice(0, openIndex).trim(),
+      spec: null,
+      specObject: null,
+    }
   }
   const spec = content
     .slice(openIndex + BUSINESS_INTAKE_SPEC_OPEN_TAG.length, closeIndex)
@@ -360,12 +531,35 @@ export const extractBusinessIntakeSpec = (
     content.slice(closeIndex + BUSINESS_INTAKE_SPEC_CLOSE_TAG.length)
   ).trim()
   if (spec === '') {
-    return { done: false, reply, spec: null }
+    return {
+      done: false,
+      missingRequiredFields: REQUIRED_SPEC_FIELDS,
+      reply,
+      spec: null,
+      specObject: null,
+    }
+  }
+  const specObject = businessIntakeSpecObjectFromMarkdown(spec)
+  const missingRequiredFields =
+    missingBusinessIntakeRequiredFields(specObject)
+  if (missingRequiredFields.length > 0) {
+    return {
+      done: false,
+      missingRequiredFields,
+      reply:
+        'I still need a little more before I can complete the intake spec: ' +
+        missingRequiredFields.join(', ') +
+        '. Please answer those, then I can attach the typed spec.',
+      spec: null,
+      specObject: null,
+    }
   }
   return {
     done: true,
+    missingRequiredFields,
     reply: reply === '' ? REPLY_WHEN_SPEC_ONLY : reply,
     spec,
+    specObject,
   }
 }
 
@@ -440,6 +634,18 @@ export const handleBusinessIntakeChatApi = (
         ok: true,
         reply: BUSINESS_INTAKE_CHAT_OPENING_REPLY,
         spec: null,
+        specObject: null,
+        component: {
+          component: 'intake_progress',
+          id: 'business_intake_opening_progress',
+          props: {
+            current: 0,
+            steps: ['Business', 'Pain', 'Systems', 'Quick win'],
+          },
+          v: 1,
+        } satisfies KhalaComponentFrame,
+        components: [],
+        missingRequiredFields: REQUIRED_SPEC_FIELDS,
         staleness: intakeChatStaleness,
       })
     }
@@ -491,13 +697,22 @@ export const handleBusinessIntakeChatApi = (
       usage: outcome.result.usage,
     })
 
-    const extraction = extractBusinessIntakeSpec(outcome.result.content)
+    const componentChannel = yield* Effect.promise(() =>
+      runComponentChannel(outcome.result.content, {
+        idForIndex: index => `business_intake_cmp_${index + 1}`,
+      }),
+    )
+    const extraction = extractBusinessIntakeSpec(componentChannel.prose)
     return noStoreJsonResponse({
+      component: componentChannel.frames[0] ?? null,
+      components: componentChannel.frames,
       done: extraction.done,
       generatedAt: nowIso(),
+      missingRequiredFields: extraction.missingRequiredFields,
       ok: true,
       reply: extraction.reply,
       spec: extraction.spec,
+      specObject: extraction.specObject,
       staleness: intakeChatStaleness,
     })
   })
