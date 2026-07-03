@@ -26,6 +26,7 @@ const PUBLIC_ROUTE_PARSE_COVERAGE: ReadonlyArray<readonly [string, string]> = [
   ['/privacy', 'Privacy'],
   ['/code', 'Code'],
   ['/business', 'Business'],
+  ['/business/kpi/engagement.public.vertical_pipeline_1', 'BusinessKpi'],
   ['/preview/landing', 'LandingPreview'],
   ['/pylons', 'Pylon'],
   ['/run', 'Run'],
@@ -107,7 +108,8 @@ describe('public route parser coverage', () => {
     // `/artanis/accounts` account-observability grid brings it to 41, and the
     // `/artanis/gym` operator Gym tab surface brings it to 42.
     // `/preview/landing` review-only landing candidate brings it to 44.
-    expect(PUBLIC_ROUTE_PARSE_COVERAGE.length).toBe(44)
+    // `/business/kpi/{engagementRef}` customer scorekeeper brings it to 45.
+    expect(PUBLIC_ROUTE_PARSE_COVERAGE.length).toBe(45)
   })
 
   // The public shareable trace render (#6209) must capture the uuid param so the

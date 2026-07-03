@@ -68,6 +68,7 @@ export const ComponentsFamilyRoute = r('ComponentsFamily', {
   family: S.String,
 })
 export const BusinessRoute = r('Business')
+export const BusinessKpiRoute = r('BusinessKpi', { engagementRef: S.String })
 export const LandingPreviewRoute = r('LandingPreview')
 export const AnimationsRoute = r('Animations')
 export const ActivityRoute = r('Activity')
@@ -191,6 +192,7 @@ export type ClientsPreviewRoute = typeof ClientsPreviewRoute.Type
 export type ComponentsRoute = typeof ComponentsRoute.Type
 export type ComponentsFamilyRoute = typeof ComponentsFamilyRoute.Type
 export type BusinessRoute = typeof BusinessRoute.Type
+export type BusinessKpiRoute = typeof BusinessKpiRoute.Type
 export type LandingPreviewRoute = typeof LandingPreviewRoute.Type
 export type AnimationsRoute = typeof AnimationsRoute.Type
 export type ActivityRoute = typeof ActivityRoute.Type
@@ -271,6 +273,7 @@ export const LoggedOutRoute = S.Union([
   ComponentsRoute,
   ComponentsFamilyRoute,
   BusinessRoute,
+  BusinessKpiRoute,
   LandingPreviewRoute,
   AutopilotRoute,
   AutopilotVerticalRoute,
@@ -339,6 +342,7 @@ export const LoggedInRoute = S.Union([
   ComponentsRoute,
   ComponentsFamilyRoute,
   BusinessRoute,
+  BusinessKpiRoute,
   LandingPreviewRoute,
   AnimationsRoute,
   ActivityRoute,
@@ -408,6 +412,7 @@ export const AppRoute = S.Union([
   ComponentsRoute,
   ComponentsFamilyRoute,
   BusinessRoute,
+  BusinessKpiRoute,
   LandingPreviewRoute,
   AnimationsRoute,
   ActivityRoute,
@@ -646,6 +651,12 @@ export const componentsFamilyRouter = pipe(
 export const businessRouter = pipe(
   literal('business'),
   Route.mapTo(BusinessRoute),
+)
+export const businessKpiRouter = pipe(
+  literal('business'),
+  slash(literal('kpi')),
+  slash(string('engagementRef')),
+  Route.mapTo(BusinessKpiRoute),
 )
 export const landingPreviewRouter = pipe(
   literal('preview'),
@@ -994,6 +1005,7 @@ const orderedParserRouters = [
   clientsPreviewRouter,
   componentsFamilyRouter,
   componentsRouter,
+  businessKpiRouter,
   businessRouter,
   landingPreviewRouter,
   animationsRouter,
