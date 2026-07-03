@@ -1540,9 +1540,12 @@ const intentionallyUndocumentedApiRoutes: ReadonlyArray<string> = [
   '/api/pylon/auth/openagents/device/start',
   '/api/pylon/auth/openagents/device/verify',
   '/api/pylon/auth/openagents/device/{param}',
-  '/api/pylon/provider-accounts/chatgpt-codex/device-login/start',
-  '/api/pylon/provider-accounts/chatgpt-codex/device-login/{param}',
-  '/api/pylon/provider-accounts/chatgpt-codex/local-auth/import',
+	  '/api/pylon/provider-accounts/chatgpt-codex/device-login/start',
+	  '/api/pylon/provider-accounts/chatgpt-codex/device-login/{param}',
+	  // Pylon-local auth material returns sensitive provider credential material
+	  // to a registered node; it is not a public agent-facing OpenAPI contract.
+	  '/api/pylon/provider-accounts/chatgpt-codex/auth-material',
+	  '/api/pylon/provider-accounts/chatgpt-codex/local-auth/import',
   '/api/provider-accounts',
   '/api/provider-accounts/anthropic/connect',
   '/api/provider-accounts/chatgpt-codex/device-login/start',

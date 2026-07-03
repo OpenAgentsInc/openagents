@@ -32,6 +32,7 @@ export type ForgeCoordinationIssueInput = Readonly<{
   state: ForgeCoordinationIssueState
   priorityRef?: string | null
   sourceRefs: ReadonlyArray<string>
+  gitTokenRefs?: ReadonlyArray<string>
   nowIso: string
 }>
 
@@ -414,15 +415,17 @@ export const makeD1ForgeCoordinationStore = (
             state,
             priority_ref,
             source_refs_json,
+            git_token_refs_json,
             created_at,
             updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT (tenant_ref, issue_ref) DO UPDATE SET
             github_issue_number = excluded.github_issue_number,
             title = excluded.title,
             state = excluded.state,
             priority_ref = excluded.priority_ref,
             source_refs_json = excluded.source_refs_json,
+            git_token_refs_json = excluded.git_token_refs_json,
             updated_at = excluded.updated_at
         `,
       )
@@ -434,6 +437,7 @@ export const makeD1ForgeCoordinationStore = (
         input.state,
         input.priorityRef ?? null,
         jsonArray(input.sourceRefs),
+        jsonArray(input.gitTokenRefs ?? []),
         input.nowIso,
         input.nowIso,
       )

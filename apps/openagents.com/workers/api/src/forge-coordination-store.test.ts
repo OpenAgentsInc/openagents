@@ -70,6 +70,10 @@ const controlPlaneReceiptsMigration = readFileSync(
   new URL('../migrations/0254_forge_control_plane_receipts.sql', import.meta.url),
   'utf8',
 )
+const gitAccessTokensMigration = readFileSync(
+  new URL('../migrations/0253_forge_tenant_git_access_tokens.sql', import.meta.url),
+  'utf8',
+)
 const promotionDecisionGateResultsMigration = readFileSync(
   new URL(
     '../migrations/0259_forge_promotion_decision_gate_results.sql',
@@ -77,13 +81,35 @@ const promotionDecisionGateResultsMigration = readFileSync(
   ),
   'utf8',
 )
+const agentDefinitionRunsMigration = readFileSync(
+  new URL('../migrations/0280_agent_definition_runs.sql', import.meta.url),
+  'utf8',
+)
+const agentDefinitionRunBudgetCreditsMigration = readFileSync(
+  new URL(
+    '../migrations/0282_agent_definition_run_budget_credits.sql',
+    import.meta.url,
+  ),
+  'utf8',
+)
+const agentDefinitionForgeGitTokensMigration = readFileSync(
+  new URL(
+    '../migrations/0284_agent_definition_forge_git_tokens.sql',
+    import.meta.url,
+  ),
+  'utf8',
+)
 
 const makeStore = (): ForgeCoordinationStore => {
   const db = new DatabaseSync(':memory:')
-  db.exec('PRAGMA foreign_keys = ON')
-  db.exec(coordinationMigration)
-  db.exec(controlPlaneReceiptsMigration)
-  db.exec(promotionDecisionGateResultsMigration)
+	  db.exec('PRAGMA foreign_keys = ON')
+	  db.exec(coordinationMigration)
+	  db.exec(gitAccessTokensMigration)
+	  db.exec(controlPlaneReceiptsMigration)
+	  db.exec(promotionDecisionGateResultsMigration)
+	  db.exec(agentDefinitionRunsMigration)
+	  db.exec(agentDefinitionRunBudgetCreditsMigration)
+	  db.exec(agentDefinitionForgeGitTokensMigration)
   return makeD1ForgeCoordinationStore(new SqliteD1(db) as unknown as D1Database)
 }
 
@@ -97,12 +123,16 @@ describe('forge coordination D1 store', () => {
       issueRef: 'issue.forge.6746',
       githubIssueNumber: 6746,
       title: 'D1 coordination schema',
-      state: 'open',
-      priorityRef: 'prio:0-pr-burndown',
-      sourceRefs: ['github:OpenAgentsInc/openagents#6746'],
-      nowIso: now,
-    })
-    expect(issue.github_issue_number).toBe(6746)
+	      state: 'open',
+	      priorityRef: 'prio:0-pr-burndown',
+	      sourceRefs: ['github:OpenAgentsInc/openagents#6746'],
+	      gitTokenRefs: ['forge_git_token.background_agent.run_001.receive_pack'],
+	      nowIso: now,
+	    })
+	    expect(issue.github_issue_number).toBe(6746)
+	    expect(JSON.parse(issue.git_token_refs_json ?? '[]')).toEqual([
+	      'forge_git_token.background_agent.run_001.receive_pack',
+	    ])
 
     const change = await store.upsertChange({
       tenantRef: 'tenant.openagents',

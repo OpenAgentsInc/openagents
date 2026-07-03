@@ -166,10 +166,11 @@ const schedulerDependencies = (
     readDefinition: (_owner, _definitionId) =>
       Promise.resolve(input.definition),
   },
-  dispatchDependencies: {
-    forgeStore: {} as never,
-    pylonStore: {} as never,
-    runStore: {} as never,
+	  dispatchDependencies: {
+	    forgeGitAuthStore: {} as never,
+	    forgeStore: {} as never,
+	    pylonStore: {} as never,
+	    runStore: {} as never,
   },
   dispatchRun: input.dispatchRun,
   triggerStore: input.triggerStore,

@@ -193,10 +193,11 @@ const dependenciesFor = (
           : undefined,
       ),
   },
-  dispatchDependencies: {
-    forgeStore: {} as never,
-    pylonStore: {} as never,
-    runStore: {} as never,
+	  dispatchDependencies: {
+	    forgeGitAuthStore: {} as never,
+	    forgeStore: {} as never,
+	    pylonStore: {} as never,
+	    runStore: {} as never,
   },
   dispatchRun: input.dispatchRun,
   githubSecret: secret,

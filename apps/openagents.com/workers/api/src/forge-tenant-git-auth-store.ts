@@ -37,6 +37,7 @@ export type ForgeGitAccessTokenMintInput = Readonly<{
   subjectRef: string
   repositoryRef: string
   scopes: ReadonlyArray<ForgeGitAccessScope>
+  refRestrictions?: ReadonlyArray<string>
   agentDefinitionToolPolicy?: AgentDefinitionCompiledToolRuntimePolicy
   expiresAt: string
   sourceRefs: ReadonlyArray<string>
@@ -56,6 +57,7 @@ export type ForgeGitAccessTokenSession = Readonly<{
   repositoryRef: string
   tokenPrefix: string
   scopes: ReadonlyArray<ForgeGitAccessScope>
+  refRestrictions: ReadonlyArray<string>
   authenticatedAt: string
 }>
 
@@ -131,6 +133,18 @@ const bytesToHex = (bytes: Uint8Array): string =>
 const jsonArray = (values: ReadonlyArray<string>): string =>
   JSON.stringify([...values])
 
+const parseJsonStringArray = (value: string | undefined): ReadonlyArray<string> => {
+  if (value === undefined) {
+    return []
+  }
+
+  const parsed = JSON.parse(value) as unknown
+
+  return Array.isArray(parsed)
+    ? parsed.filter((item): item is string => typeof item === 'string')
+    : []
+}
+
 const rowOrFail = <T>(row: T | null, label: string): T => {
   if (row === null) {
     throw new ForgeTenantGitAuthStoreError(`${label} was not persisted`)
@@ -166,6 +180,25 @@ const normalizeScopes = (
     )
   }
   return unique
+}
+
+const normalizeRefRestrictions = (
+  refs: ReadonlyArray<string> | undefined,
+): ReadonlyArray<string> => {
+  const normalized = uniqueRefs(
+    (refs ?? []).map(ref => ref.trim()).filter(ref => ref !== ''),
+  )
+
+  const invalid = normalized.find(ref =>
+    ref.length > 260 || !/^refs\/[A-Za-z0-9._/-]+$/.test(ref)
+  )
+  if (invalid !== undefined) {
+    throw new ForgeTenantGitAuthStoreError(
+      `forge git access token ref restriction is invalid: ${invalid}`,
+    )
+  }
+
+  return normalized
 }
 
 export const FORGE_GIT_SCOPE_TOOL_REFS: Record<ForgeGitAccessScope, string> = {
@@ -401,6 +434,7 @@ export const makeD1ForgeTenantGitAuthStore = (
     const tokenHash = assertTokenHash(await forgeGitAccessTokenHash(token))
     const tokenPrefix = forgeGitAccessTokenPrefix(token)
     const requestedScopes = normalizeScopes(input.scopes)
+    const refRestrictions = normalizeRefRestrictions(input.refRestrictions)
     const compiledScopes = input.agentDefinitionToolPolicy === undefined
       ? {
           status: 'allowed' as const,
@@ -436,8 +470,9 @@ export const makeD1ForgeTenantGitAuthStore = (
             expires_at,
             last_used_at,
             revoked_at,
-            source_refs_json
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            source_refs_json,
+            ref_restrictions_json
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
       )
       .bind(
@@ -453,6 +488,7 @@ export const makeD1ForgeTenantGitAuthStore = (
         null,
         null,
         jsonArray(input.sourceRefs),
+        jsonArray(refRestrictions),
       )
       .run()
 
@@ -564,6 +600,7 @@ export const makeD1ForgeTenantGitAuthStore = (
       repositoryRef: tokenRecord.repository_ref,
       tokenPrefix: tokenRecord.token_prefix,
       scopes: scopeRows.map(scope => scope.scope),
+      refRestrictions: parseJsonStringArray(tokenRecord.ref_restrictions_json),
       authenticatedAt: input.nowIso,
     }
   },

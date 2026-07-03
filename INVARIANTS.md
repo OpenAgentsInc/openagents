@@ -118,7 +118,12 @@ More specific invariant ledgers apply inside imported apps and packages.
   scopes through the same policy boundary. `git:receive-pack`,
   `git:upload-pack`, and `git:admin` map to Forge git tool refs; denied scopes
   are rejected before token mint, and ask scopes create operator escalation
-  instead of minting a token.
+  instead of minting a token. Definition dispatch records only token refs on the
+  Forge work/run rows, scopes receive-pack tokens to the task repository/ref
+  when minted, and revokes those refs on Pylon closeout. Regression coverage
+  lives in `workers/api/src/agent-definition-run-routes.test.ts`,
+  `workers/api/src/forge-tenant-git-auth-store.test.ts`, and
+  `workers/api/src/forge-git-intake-routes.test.ts`.
 - Runtime runs may link back to `agentDefinitionId` as evidence that a run was
   definition-backed, but that link alone grants no tool, spend, dispatch,
   payout, settlement, public-claim, provider-account, or external-send

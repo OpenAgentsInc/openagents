@@ -252,6 +252,16 @@ git tokens (`ForgeGitAccessScope`, FORGE-4) already exist, and the Forge M2
 plan already names short-lived scoped write tokens per task. This
 workstream makes "no long-lived credentials in worker workspaces" real.
 
+BA-D1 status (2026-07-03): definition dispatch now compiles the requested
+`git:receive-pack` tenant-token scope through the definition toolset policy,
+mints one short-TTL Forge git token per admitted run, scopes it to the task
+repository and `refs/heads/background-agents/<run>`, stores only token refs on
+the Forge work record and run row, rejects denied/ask scopes before minting, and
+revokes recorded token refs from Pylon closeout. The D1 migration is
+`0284_agent_definition_forge_git_tokens.sql`; regression coverage lives in the
+definition-run, Forge auth-store, smart-Git intake, and coordination-store
+tests.
+
 | Task | Description | Deps | Delegable | Issue |
 | --- | --- | --- | --- | --- |
 | BA-D1 | Per-task short-TTL scoped git tokens: dispatch mints a Forge tenant git token scoped to the task's repository ref with a bounded TTL and (where the scope model allows) ref-level restriction; token refs recorded on the work record; revocation on closeout | — | MED | [#8200](https://github.com/OpenAgentsInc/openagents/issues/8200) |

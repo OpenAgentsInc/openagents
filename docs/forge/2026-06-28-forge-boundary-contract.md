@@ -102,6 +102,13 @@ This route fails closed before coordination mutation for malformed pkt-lines,
 invalid object IDs, unsafe stale ref updates, wrong repository/scope tokens, and
 delete-only pushes.
 
+For background-agent definition dispatch (#8200), Forge tenant git tokens may
+also carry `ref_restrictions_json`. Smart-Git receive-pack rejects any command
+whose ref is outside that token allowlist before packfile archive or
+coordination mutation. Definition dispatch stores only public-safe token refs on
+the work record (`git_token_refs_json`) and run row; raw token values are never
+stored there, and Pylon closeout revokes the recorded token refs.
+
 ## Verification Receipt Format
 
 `ForgeVerificationReceipt` records the public-safe result of a verifier run.

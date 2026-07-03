@@ -73,6 +73,7 @@ import {
   handleAgentDefinitionRunRequest,
   makeD1AgentDefinitionRunStore,
   matchAgentDefinitionRunRequest,
+  revokeAgentDefinitionRunForgeGitTokensForAssignment,
 } from './agent-definition-run-routes'
 import {
   AGENT_DEFINITION_SCHEDULER_SINGLETON_NAME,
@@ -9284,6 +9285,14 @@ const pylonApiRoutes = makePylonApiRoutes<WorkerBindings>({
 
     return delivered
   },
+  revokeAssignmentForgeGitAccess: async (env, input) =>
+    revokeAgentDefinitionRunForgeGitTokensForAssignment({
+      forgeGitAuthStore: makeD1ForgeTenantGitAuthStore(openAgentsDatabase(env)),
+      runStore: makeD1AgentDefinitionRunStore(openAgentsDatabase(env)),
+    }, {
+      assignmentRef: input.assignment.assignmentRef,
+      nowIso: input.nowIso,
+    }),
   requireAdminApiToken,
   requireBrowserSession,
 })
@@ -12572,6 +12581,9 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
               ) && env.INFERENCE_DURABLE_STREAM !== undefined
                 ? (env.INFERENCE_DURABLE_STREAM as unknown as DurableStreamNamespace)
                 : undefined,
+            forgeGitAuthStore: makeD1ForgeTenantGitAuthStore(
+              openAgentsDatabase(env),
+            ),
             forgeStore: makeD1ForgeCoordinationStore(openAgentsDatabase(env)),
             pylonStore: makeD1PylonApiStore(openAgentsDatabase(env)),
             runStore: makeD1AgentDefinitionRunStore(openAgentsDatabase(env)),
@@ -13763,6 +13775,9 @@ const routeRequest = makeWorkerRouteRequest({
             ) && env.INFERENCE_DURABLE_STREAM !== undefined
               ? (env.INFERENCE_DURABLE_STREAM as unknown as DurableStreamNamespace)
               : undefined,
+          forgeGitAuthStore: makeD1ForgeTenantGitAuthStore(
+            openAgentsDatabase(env),
+          ),
           forgeStore: makeD1ForgeCoordinationStore(openAgentsDatabase(env)),
           pylonStore: makeD1PylonApiStore(openAgentsDatabase(env)),
           runStore: makeD1AgentDefinitionRunStore(openAgentsDatabase(env)),

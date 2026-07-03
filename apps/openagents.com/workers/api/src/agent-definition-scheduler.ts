@@ -17,6 +17,7 @@ import {
   makeD1AgentDefinitionTriggerStore,
 } from './agent-definition-trigger-store'
 import { makeD1ForgeCoordinationStore } from './forge-coordination-store'
+import { makeD1ForgeTenantGitAuthStore } from './forge-tenant-git-auth-store'
 import {
   type DurableStreamNamespace,
 } from './inference/durable-inference-do-transport'
@@ -246,6 +247,7 @@ export const makeAgentDefinitionSchedulerDependencies = (
     definitionStore: makeD1AgentDefinitionStore(input.db),
     dispatchDependencies: {
       durableStreamNamespace: input.durableStreamNamespace,
+      forgeGitAuthStore: makeD1ForgeTenantGitAuthStore(input.db),
       forgeStore: makeD1ForgeCoordinationStore(input.db),
       pylonStore: makeD1PylonApiStore(input.db),
       runStore: makeD1AgentDefinitionRunStore(input.db),

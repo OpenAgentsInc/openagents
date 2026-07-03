@@ -13,17 +13,19 @@ import {
 import {
   decodeForgeCoordinationIssueRow,
   type ForgeCoordinationIssueRow,
+  type ForgeGitAccessTokenRow,
+  type ForgeGitAccessTokenScopeRow,
+  type ForgeTenantRow,
 } from '@openagentsinc/forge-protocol'
 import { describe, expect, test } from 'vitest'
 
-import {
-  type AgentDefinitionStore,
-} from './agent-definition-routes'
+import { type AgentDefinitionStore } from './agent-definition-routes'
 import {
   type AgentDefinitionRunDailyBudgetUsage,
   type AgentDefinitionRunRecord,
   type AgentDefinitionRunStore,
   handleAgentDefinitionRunRequest,
+  revokeAgentDefinitionRunForgeGitTokensForAssignment,
 } from './agent-definition-run-routes'
 import {
   type AgentCredentialLookup,
@@ -34,15 +36,10 @@ import {
   type AgentReissueTarget,
   sha256Hex,
 } from './agent-registration'
-import {
-  type ForgeCoordinationStore,
-} from './forge-coordination-store'
-import {
-  type DurableStreamNamespace,
-} from './inference/durable-inference-do-transport'
-import {
-  routeDurableInferenceReadRequestDO,
-} from './inference/durable-inference-read-routes'
+import { type ForgeCoordinationStore } from './forge-coordination-store'
+import { type ForgeTenantGitAuthStore } from './forge-tenant-git-auth-store'
+import { type DurableStreamNamespace } from './inference/durable-inference-do-transport'
+import { routeDurableInferenceReadRequestDO } from './inference/durable-inference-read-routes'
 import {
   type PylonApiAssignmentRecord,
   type PylonApiQuarantineRecord,
@@ -56,7 +53,10 @@ class MemoryAgentRegistrationStore implements AgentRegistrationStore {
   readonly touchedCredentialIds: Array<string> = []
 
   constructor(
-    private readonly lookupsByTokenHash: ReadonlyMap<string, AgentCredentialLookup>,
+    private readonly lookupsByTokenHash: ReadonlyMap<
+      string,
+      AgentCredentialLookup
+    >,
   ) {}
 
   createAgentRegistration(_record: AgentRegistrationRecord): Promise<void> {
@@ -70,7 +70,10 @@ class MemoryAgentRegistrationStore implements AgentRegistrationStore {
     return Promise.resolve(this.lookupsByTokenHash.get(tokenHash))
   }
 
-  touchAgentCredential(credentialId: string, _lastUsedAt: string): Promise<void> {
+  touchAgentCredential(
+    credentialId: string,
+    _lastUsedAt: string,
+  ): Promise<void> {
     this.touchedCredentialIds.push(credentialId)
 
     return Promise.resolve()
@@ -91,9 +94,10 @@ class MemoryAgentRegistrationStore implements AgentRegistrationStore {
   }
 }
 
-class MemoryAgentDefinitionStore
-  implements Pick<AgentDefinitionStore, 'readDefinition'>
-{
+class MemoryAgentDefinitionStore implements Pick<
+  AgentDefinitionStore,
+  'readDefinition'
+> {
   readonly rows: Array<{
     readonly ownerAgentUserId: string
     readonly definition: AgentDefinition
@@ -108,9 +112,10 @@ class MemoryAgentDefinitionStore
     definitionId: string,
   ): Promise<AgentDefinition | undefined> {
     return Promise.resolve(
-      this.rows.find(row =>
-        row.ownerAgentUserId === ownerAgentUserId &&
-        row.definition.id === definitionId,
+      this.rows.find(
+        row =>
+          row.ownerAgentUserId === ownerAgentUserId &&
+          row.definition.id === definitionId,
       )?.definition,
     )
   }
@@ -129,9 +134,10 @@ class MemoryAgentDefinitionRunStore implements AgentDefinitionRunStore {
   ): Promise<ReadonlyArray<AgentDefinitionRunRecord>> {
     return Promise.resolve(
       this.rows
-        .filter(row =>
-          row.ownerAgentUserId === ownerAgentUserId &&
-          row.definitionId === definitionId,
+        .filter(
+          row =>
+            row.ownerAgentUserId === ownerAgentUserId &&
+            row.definitionId === definitionId,
         )
         .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
         .slice(0, limit),
@@ -157,9 +163,17 @@ class MemoryAgentDefinitionRunStore implements AgentDefinitionRunStore {
     runId: string,
   ): Promise<AgentDefinitionRunRecord | undefined> {
     return Promise.resolve(
-      this.rows.find(row =>
-        row.ownerAgentUserId === ownerAgentUserId && row.runId === runId,
+      this.rows.find(
+        row => row.ownerAgentUserId === ownerAgentUserId && row.runId === runId,
       ),
+    )
+  }
+
+  readRunByAssignmentRef(
+    assignmentRef: string,
+  ): Promise<AgentDefinitionRunRecord | undefined> {
+    return Promise.resolve(
+      this.rows.find(row => row.assignmentRef === assignmentRef),
     )
   }
 
@@ -173,11 +187,12 @@ class MemoryAgentDefinitionRunStore implements AgentDefinitionRunStore {
       return Promise.resolve(this.dailyBudgetUsageOverride)
     }
 
-    const rows = this.rows.filter(row =>
-      row.ownerAgentUserId === ownerAgentUserId &&
-      row.definitionId === definitionId &&
-      row.createdAt >= dayStartIso &&
-      row.createdAt < dayEndIso
+    const rows = this.rows.filter(
+      row =>
+        row.ownerAgentUserId === ownerAgentUserId &&
+        row.definitionId === definitionId &&
+        row.createdAt >= dayStartIso &&
+        row.createdAt < dayEndIso,
     )
 
     return Promise.resolve({
@@ -189,9 +204,7 @@ class MemoryAgentDefinitionRunStore implements AgentDefinitionRunStore {
     })
   }
 
-  setDailyBudgetUsage(
-    usage: AgentDefinitionRunDailyBudgetUsage,
-  ): void {
+  setDailyBudgetUsage(usage: AgentDefinitionRunDailyBudgetUsage): void {
     this.dailyBudgetUsageOverride = usage
   }
 }
@@ -259,7 +272,10 @@ const definition = (
       modelHint: 'openagents/pylon-codex',
     },
     toolset: {
-      allow: ['tool.openagents.issue.read'],
+      allow: [
+        'tool.openagents.issue.read',
+        'tool.openagents.forge.git.receive_pack',
+      ],
       deny: ['tool.openagents.payment.*'],
       ask: ['tool.openagents.github.comment'],
       networkPolicy: 'owner_scoped',
@@ -414,11 +430,14 @@ const makeForgeStore = () => {
         state: input.state,
         priority_ref: input.priorityRef ?? null,
         source_refs_json: JSON.stringify(input.sourceRefs),
+        git_token_refs_json: JSON.stringify(input.gitTokenRefs ?? []),
         created_at: input.nowIso,
         updated_at: input.nowIso,
       })
-      const index = issues.findIndex(item =>
-        item.tenant_ref === row.tenant_ref && item.issue_ref === row.issue_ref,
+      const index = issues.findIndex(
+        item =>
+          item.tenant_ref === row.tenant_ref &&
+          item.issue_ref === row.issue_ref,
       )
 
       if (index === -1) {
@@ -448,6 +467,116 @@ const makeForgeStore = () => {
   }
 
   return { issues, store }
+}
+
+class MemoryForgeTenantGitAuthStore implements ForgeTenantGitAuthStore {
+  readonly scopes: Array<ForgeGitAccessTokenScopeRow> = []
+  readonly tenants: Array<ForgeTenantRow> = []
+  readonly tokens: Array<ForgeGitAccessTokenRow> = []
+
+  upsertTenant(
+    input: Parameters<ForgeTenantGitAuthStore['upsertTenant']>[0],
+  ): Promise<ForgeTenantRow> {
+    const existing = this.tenants.findIndex(
+      row => row.tenant_ref === input.tenantRef,
+    )
+    const row: ForgeTenantRow = {
+      tenant_ref: input.tenantRef,
+      display_name: input.displayName,
+      state: input.state ?? 'active',
+      confidential_workspace_mode: input.confidentialWorkspaceMode ?? null,
+      attestation_ref: input.attestationRef ?? null,
+      encrypted_knowledge_pack_ref: input.encryptedKnowledgePackRef ?? null,
+      refusal_reason: input.refusalReason ?? null,
+      retention_policy_ref: input.retentionPolicyRef ?? null,
+      created_at: this.tenants[existing]?.created_at ?? input.nowIso,
+      updated_at: input.nowIso,
+    }
+
+    if (existing === -1) {
+      this.tenants.push(row)
+    } else {
+      this.tenants[existing] = row
+    }
+
+    return Promise.resolve(row)
+  }
+
+  mintGitAccessToken(
+    input: Parameters<ForgeTenantGitAuthStore['mintGitAccessToken']>[0],
+    options?: Parameters<ForgeTenantGitAuthStore['mintGitAccessToken']>[1],
+  ): Promise<
+    Awaited<ReturnType<ForgeTenantGitAuthStore['mintGitAccessToken']>>
+  > {
+    const token =
+      options?.makeToken?.() ??
+      `oa_forge_git_${input.tokenRef.replace(/[^A-Za-z0-9]/g, '').padEnd(32, '0')}`
+    const record: ForgeGitAccessTokenRow = {
+      tenant_ref: input.tenantRef,
+      token_ref: input.tokenRef,
+      subject_ref: input.subjectRef,
+      repository_ref: input.repositoryRef,
+      token_hash: `sha256.${input.tokenRef}`,
+      token_prefix: token.slice(0, 'oa_forge_git_'.length + 16),
+      state: 'active',
+      created_at: input.nowIso,
+      expires_at: input.expiresAt,
+      last_used_at: null,
+      revoked_at: null,
+      source_refs_json: JSON.stringify(input.sourceRefs),
+      ref_restrictions_json: JSON.stringify(input.refRestrictions ?? []),
+    }
+    const scopeRows = input.scopes.map(
+      (scope): ForgeGitAccessTokenScopeRow => ({
+        tenant_ref: input.tenantRef,
+        token_ref: input.tokenRef,
+        scope,
+        created_at: input.nowIso,
+      }),
+    )
+
+    this.tokens.push(record)
+    this.scopes.push(...scopeRows)
+
+    return Promise.resolve({ record, scopes: scopeRows, token })
+  }
+
+  authenticateGitAccessToken(): Promise<undefined> {
+    return Promise.resolve(undefined)
+  }
+
+  revokeGitAccessToken(
+    tenantRef: string,
+    tokenRef: string,
+    revokedAt: string,
+  ): Promise<ForgeGitAccessTokenRow | undefined> {
+    const index = this.tokens.findIndex(
+      row => row.tenant_ref === tenantRef && row.token_ref === tokenRef,
+    )
+    if (index === -1) {
+      return Promise.resolve(undefined)
+    }
+
+    const row = {
+      ...this.tokens[index]!,
+      state: 'revoked' as const,
+      revoked_at: revokedAt,
+    }
+    this.tokens[index] = row
+
+    return Promise.resolve(row)
+  }
+
+  readGitAccessToken(
+    tenantRef: string,
+    tokenRef: string,
+  ): Promise<ForgeGitAccessTokenRow | undefined> {
+    return Promise.resolve(
+      this.tokens.find(
+        row => row.tenant_ref === tenantRef && row.token_ref === tokenRef,
+      ),
+    )
+  }
 }
 
 class StreamRegistry {
@@ -499,6 +628,7 @@ const makeDependencies = async (
 
   const runStore = new MemoryAgentDefinitionRunStore()
   const forge = makeForgeStore()
+  const forgeGitAuthStore = new MemoryForgeTenantGitAuthStore()
   const pylon = makePylonStore({
     registrations: input.pylonRegistrations ?? [registration()],
   })
@@ -511,6 +641,7 @@ const makeDependencies = async (
       agentStore: agent.store,
       definitionStore,
       durableStreamNamespace: namespace,
+      forgeGitAuthStore,
       forgeStore: forge.store,
       makeId: () => ids.shift() ?? 'extra_id',
       nowIso: () => nowIso,
@@ -518,6 +649,7 @@ const makeDependencies = async (
       runStore,
     },
     forge,
+    forgeGitAuthStore,
     namespace,
     pylon,
     runStore,
@@ -536,6 +668,8 @@ type RunProjection = Readonly<{
     usageTruth: string
   }>
   forge: Readonly<{
+    gitTokenRefs: ReadonlyArray<string>
+    repositoryRef: string | null
     tenantRef: string
     workRef: string
   }>
@@ -554,7 +688,9 @@ type RunProjection = Readonly<{
   updatedAt: string
 }>
 
-const readRunResponse = async (response: Response): Promise<{ run: RunProjection }> =>
+const readRunResponse = async (
+  response: Response,
+): Promise<{ run: RunProjection }> =>
   (await response.json()) as { run: RunProjection }
 
 describe('agent definition run routes', () => {
@@ -570,9 +706,16 @@ describe('agent definition run routes', () => {
     expect(response?.status).toBe(401)
   })
 
-  test('dispatches an own_pylon definition through the existing assignment path', async () => {
-    const { agent, dependencies, forge, namespace, pylon, runStore } =
-      await makeDependencies()
+  test('dispatches an own_pylon definition with a scoped Forge git token', async () => {
+    const {
+      agent,
+      dependencies,
+      forge,
+      forgeGitAuthStore,
+      namespace,
+      pylon,
+      runStore,
+    } = await makeDependencies()
     const response = await handleAgentDefinitionRunRequest(
       jsonRequest({
         body: {
@@ -621,19 +764,43 @@ describe('agent definition run routes', () => {
       eventCount: 2,
       seeded: true,
     })
-    expect(body.run.receiptRefs).toEqual(expect.arrayContaining([
-      'assignment.public.khala_coding.assignment_001',
-      'evidence.agent_definition_run.exact_accounting_assignment_ref',
-      'evidence.agent_definition_run.forge_work_record_registered',
-    ]))
+    expect(body.run.forge).toMatchObject({
+      gitTokenRefs: [
+        'forge_git_token.background_agent.agent_definition_run.run_001.receive_pack',
+      ],
+      repositoryRef: 'repo.openagents.openagents',
+    })
+    expect(body.run.receiptRefs).toEqual(
+      expect.arrayContaining([
+        'assignment.public.khala_coding.assignment_001',
+        'evidence.agent_definition_run.exact_accounting_assignment_ref',
+        'evidence.agent_definition_run.forge_git_token_minted',
+        'evidence.agent_definition_run.forge_work_record_registered',
+        'forge_git_token.background_agent.agent_definition_run.run_001.receive_pack',
+      ]),
+    )
     expect(runStore.rows[0]?.run.assignmentId).toBe(
       'assignment.public.khala_coding.assignment_001',
     )
     expect(forge.issues[0]).toMatchObject({
       issue_ref: body.run.forge.workRef,
+      git_token_refs_json:
+        '["forge_git_token.background_agent.agent_definition_run.run_001.receive_pack"]',
       state: 'open',
       tenant_ref: body.run.forge.tenantRef,
     })
+    expect(runStore.rows[0]?.forgeGitTokenRefs).toEqual([
+      'forge_git_token.background_agent.agent_definition_run.run_001.receive_pack',
+    ])
+    expect(forgeGitAuthStore.tokens[0]).toMatchObject({
+      repository_ref: 'repo.openagents.openagents',
+      token_ref:
+        'forge_git_token.background_agent.agent_definition_run.run_001.receive_pack',
+      state: 'active',
+    })
+    expect(
+      JSON.parse(forgeGitAuthStore.tokens[0]?.ref_restrictions_json ?? '[]'),
+    ).toEqual(['refs/heads/background-agents/agent_definition_run.run_001'])
     expect(pylon.assignments[0]).toMatchObject({
       assignmentRef: 'assignment.public.khala_coding.assignment_001',
       idempotencyKeyHash: 'khala-coding:agent_definition_run.run_001',
@@ -662,6 +829,32 @@ describe('agent definition run routes', () => {
     expect(replay?.status).toBe(200)
     expect(durableBody).toContain('"tag":"run.input_accepted"')
     expect(durableBody).toContain('"tag":"external_agent.started"')
+
+    await expect(
+      revokeAgentDefinitionRunForgeGitTokensForAssignment(
+        {
+          forgeGitAuthStore,
+          runStore,
+        },
+        {
+          assignmentRef: 'assignment.public.khala_coding.assignment_001',
+          nowIso: '2026-07-03T00:20:00.000Z',
+        },
+      ),
+    ).resolves.toEqual({
+      assignmentRef: 'assignment.public.khala_coding.assignment_001',
+      foundRun: true,
+      revokedTokenRefs: [
+        'forge_git_token.background_agent.agent_definition_run.run_001.receive_pack',
+      ],
+    })
+    expect(forgeGitAuthStore.tokens[0]).toMatchObject({
+      revoked_at: '2026-07-03T00:20:00.000Z',
+      state: 'revoked',
+    })
+    expect(runStore.rows[0]?.evidenceRefs).toContain(
+      'evidence.agent_definition_run.forge_git_tokens_revoked',
+    )
   })
 
   test('lists owner-scoped definition run history with status, trigger, and receipt refs', async () => {
@@ -706,11 +899,56 @@ describe('agent definition run routes', () => {
       status: 'dispatched',
       triggerRef: 'trigger.public.route_test.manual',
     })
-    expect(body.runs[0]?.receiptRefs).toEqual(expect.arrayContaining([
-      'assignment.public.khala_coding.assignment_001',
-      'evidence.agent_definition_run.exact_accounting_assignment_ref',
-      'evidence.agent_definition_run.forge_work_record_registered',
-    ]))
+    expect(body.runs[0]?.receiptRefs).toEqual(
+      expect.arrayContaining([
+        'assignment.public.khala_coding.assignment_001',
+        'evidence.agent_definition_run.exact_accounting_assignment_ref',
+        'evidence.agent_definition_run.forge_work_record_registered',
+      ]),
+    )
+  })
+
+  test('refuses dispatch before minting when the definition denies Forge git receive-pack', async () => {
+    const { agent, dependencies, forge, forgeGitAuthStore, pylon, runStore } =
+      await makeDependencies({
+        definition: definition({
+          toolset: {
+            allow: ['tool.openagents.issue.read'],
+            deny: ['tool.openagents.forge.git.receive_pack'],
+            ask: [],
+            networkPolicy: 'owner_scoped',
+            secretPolicy: 'owner_scoped_refs_only',
+          },
+        }),
+      })
+    const response = await handleAgentDefinitionRunRequest(
+      jsonRequest({
+        body: {
+          triggerRef: 'trigger.public.route_test.manual',
+        },
+        path: '/v1/agent-definitions/agent_definition.route_test.owner/runs',
+        token: agent.ownerToken,
+      }),
+      dependencies,
+    )
+    const body = (await response!.json()) as {
+      readonly error: string
+      readonly evidenceRefs: ReadonlyArray<string>
+      readonly run: RunProjection
+    }
+
+    expect(response?.status).toBe(403)
+    expect(body.error).toBe('agent_definition_forge_git_scope_denied')
+    expect(body.evidenceRefs).toContain(
+      'evidence.agent_definition_run.forge_git_scope_policy',
+    )
+    expect(body.run.status).toBe('refused')
+    expect(body.run.forge.gitTokenRefs).toEqual([])
+    expect(runStore.rows[0]?.forgeGitTokenRefs).toEqual([])
+    expect(forge.issues).toHaveLength(1)
+    expect(JSON.parse(forge.issues[0]?.git_token_refs_json ?? '[]')).toEqual([])
+    expect(forgeGitAuthStore.tokens).toHaveLength(0)
+    expect(pylon.assignments).toHaveLength(0)
   })
 
   test('does not list definition run history outside the authenticated owner scope', async () => {
@@ -778,7 +1016,9 @@ describe('agent definition run routes', () => {
 
     expect(response?.status).toBe(400)
     expect(body.error).toBe('invalid_agent_definition_run')
-    expect(body.reason).toBe('definition must include a manual trigger for run-now.')
+    expect(body.reason).toBe(
+      'definition must include a manual trigger for run-now.',
+    )
     expect(pylon.assignments).toHaveLength(0)
     expect(runStore.rows).toHaveLength(0)
   })

@@ -1,11 +1,13 @@
 import {
   AgentRuntimeEvent as AgentRuntimeEventSchema,
   AgentRuntimeRun as AgentRuntimeRunSchema,
+  compileAgentDefinitionToolRuntimePolicy,
   type AgentDefinition,
   type AgentRuntimeAdapterKind,
   type AgentRuntimeEvent,
   type AgentRuntimeRun,
 } from '@openagentsinc/agent-runtime-schema'
+import type { ForgeGitAccessScope } from '@openagentsinc/forge-protocol'
 import { Schema as S } from 'effect'
 
 import {
@@ -22,6 +24,10 @@ import {
 import {
   type ForgeCoordinationStore,
 } from './forge-coordination-store'
+import {
+  compileAgentDefinitionForgeGitAccessScopes,
+  type ForgeTenantGitAuthStore,
+} from './forge-tenant-git-auth-store'
 import {
   methodNotAllowed,
   noStoreJsonResponse,
@@ -55,11 +61,18 @@ import {
 type HttpResponse = globalThis.Response
 
 const AGENT_DEFINITION_RUN_TENANT_REF = 'tenant.openagents.background_agents'
+const AGENT_DEFINITION_RUN_TENANT_DISPLAY_NAME = 'OpenAgents Background Agents'
+const AGENT_DEFINITION_RUN_REPOSITORY_REF = 'repo.openagents.openagents'
 const AGENT_DEFINITION_RUN_SCHEMA =
   'openagents.agent_definition_run.v0.1' as const
 const AGENT_DEFINITION_RUN_SESSION_EVENT_SCHEMA =
   'openagents.agent_definition_run.session_event.v0.1' as const
 const AGENT_DEFINITION_RUN_DISPATCH_CREDITS_RESERVED = 0
+const AGENT_DEFINITION_RUN_FORGE_GIT_TOKEN_MAX_TTL_MS = 60 * 60 * 1000
+const AGENT_DEFINITION_RUN_FORGE_GIT_TOKEN_BUFFER_MS = 10 * 60 * 1000
+const AGENT_DEFINITION_RUN_FORGE_GIT_SCOPES: ReadonlyArray<ForgeGitAccessScope> = [
+  'git:receive-pack',
+]
 
 const TrimmedString = S.Trim
 const NonEmptyTrimmedString = TrimmedString.check(S.isNonEmpty())
@@ -93,6 +106,8 @@ export type AgentDefinitionRunRecord = Readonly<{
   durableRequestId: string
   durableStreamUrl: string | null
   evidenceRefs: ReadonlyArray<string>
+  forgeGitTokenRefs: ReadonlyArray<string>
+  forgeRepositoryRef: string | null
   forgeTenantRef: string
   forgeWorkRef: string
   initialEvents: ReadonlyArray<AgentRuntimeEvent>
@@ -125,6 +140,9 @@ export type AgentDefinitionRunStore = Readonly<{
     ownerAgentUserId: string,
     runId: string,
   ) => Promise<AgentDefinitionRunRecord | undefined>
+  readRunByAssignmentRef: (
+    assignmentRef: string,
+  ) => Promise<AgentDefinitionRunRecord | undefined>
   readDailyBudgetUsage: (
     ownerAgentUserId: string,
     definitionId: string,
@@ -142,6 +160,8 @@ type AgentDefinitionRunRow = Readonly<{
   durable_request_id: string
   durable_stream_url: string | null
   evidence_refs_json: string
+  forge_git_token_refs_json?: string | undefined
+  forge_repository_ref?: string | null | undefined
   forge_tenant_ref: string
   forge_work_ref: string
   initial_events_json: string
@@ -170,6 +190,11 @@ const rowToRunRecord = (row: AgentDefinitionRunRow): AgentDefinitionRunRecord =>
   durableRequestId: row.durable_request_id,
   durableStreamUrl: row.durable_stream_url,
   evidenceRefs: parseJsonWithSchema(StringArray, row.evidence_refs_json),
+  forgeGitTokenRefs: parseJsonWithSchema(
+    StringArray,
+    row.forge_git_token_refs_json ?? '[]',
+  ),
+  forgeRepositoryRef: row.forge_repository_ref ?? null,
   forgeTenantRef: row.forge_tenant_ref,
   forgeWorkRef: row.forge_work_ref,
   initialEvents: parseJsonWithSchema(AgentRuntimeEvents, row.initial_events_json),
@@ -211,15 +236,18 @@ export const makeD1AgentDefinitionRunStore = (
            run_id, owner_agent_user_id, definition_id, definition_ref,
            trigger_ref, lane, status, pylon_ref, assignment_ref,
            durable_request_id, durable_stream_url, forge_tenant_ref,
-           forge_work_ref, refusal_error, refusal_reason, evidence_refs_json,
+           forge_work_ref, forge_repository_ref, forge_git_token_refs_json,
+           refusal_error, refusal_reason, evidence_refs_json,
            trigger_payload_json, runtime_run_json, initial_events_json,
            budget_credits_reserved, created_at, updated_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(run_id) DO UPDATE SET
            status = excluded.status,
            pylon_ref = excluded.pylon_ref,
            assignment_ref = excluded.assignment_ref,
            durable_stream_url = excluded.durable_stream_url,
+           forge_repository_ref = excluded.forge_repository_ref,
+           forge_git_token_refs_json = excluded.forge_git_token_refs_json,
            refusal_error = excluded.refusal_error,
            refusal_reason = excluded.refusal_reason,
            evidence_refs_json = excluded.evidence_refs_json,
@@ -242,6 +270,8 @@ export const makeD1AgentDefinitionRunStore = (
         record.durableStreamUrl,
         record.forgeTenantRef,
         record.forgeWorkRef,
+        record.forgeRepositoryRef,
+        JSON.stringify(record.forgeGitTokenRefs),
         record.refusalError,
         record.refusalReason,
         JSON.stringify(record.evidenceRefs),
@@ -255,6 +285,20 @@ export const makeD1AgentDefinitionRunStore = (
       .run()
 
     return record
+  },
+  readRunByAssignmentRef: async assignmentRef => {
+    const row = await db
+      .prepare(
+        `SELECT *
+           FROM agent_definition_runs
+          WHERE assignment_ref = ?
+          ORDER BY updated_at DESC
+          LIMIT 1`,
+      )
+      .bind(assignmentRef)
+      .first<AgentDefinitionRunRow>()
+
+    return row === null ? undefined : rowToRunRecord(row)
   },
   readRun: async (ownerAgentUserId, runId) => {
     const row = await db
@@ -303,6 +347,7 @@ export type AgentDefinitionRunRouteDependencies = Readonly<{
   agentStore: AgentRegistrationStore
   definitionStore: Pick<AgentDefinitionStore, 'readDefinition'>
   durableStreamNamespace?: DurableStreamNamespace | undefined
+  forgeGitAuthStore: ForgeTenantGitAuthStore
   forgeStore: ForgeCoordinationStore
   makeId?: () => string
   nowIso?: () => string
@@ -312,6 +357,7 @@ export type AgentDefinitionRunRouteDependencies = Readonly<{
 
 export type AgentDefinitionRunDispatchDependencies = Readonly<{
   durableStreamNamespace?: DurableStreamNamespace | undefined
+  forgeGitAuthStore: ForgeTenantGitAuthStore
   forgeStore: ForgeCoordinationStore
   linkedAgents: ReadonlyArray<
     LinkedAgentOwnerRecord | Readonly<{ agentUserId: string }>
@@ -584,6 +630,7 @@ const receiptRefsForRun = (record: AgentDefinitionRunRecord): ReadonlyArray<stri
   uniqueRefs([
     ...record.evidenceRefs,
     record.forgeWorkRef,
+    ...record.forgeGitTokenRefs,
     ...(record.assignmentRef === null
       ? []
       : [
@@ -618,6 +665,8 @@ const projectionForRun = (
           usageTruth: 'exact',
         },
   forge: {
+    gitTokenRefs: record.forgeGitTokenRefs,
+    repositoryRef: record.forgeRepositoryRef,
     tenantRef: record.forgeTenantRef,
     workRef: record.forgeWorkRef,
   },
@@ -897,12 +946,242 @@ const dispatchBudgetRefusal = async (
   return undefined
 }
 
+type AgentDefinitionRunForgeGitAccess = Readonly<{
+  branchRef: string
+  expiresAt: string
+  repositoryRef: string
+  scopes: ReadonlyArray<ForgeGitAccessScope>
+  tokenRefs: ReadonlyArray<string>
+}>
+
+const workspaceRepositoryRefFromRequest = (
+  request: AgentDefinitionRunRequest,
+): string => {
+  const workspace = request.workspace
+  const repository =
+    typeof workspace?.repository === 'object' && workspace.repository !== null
+      ? workspace.repository as Record<string, unknown>
+      : undefined
+  const explicitRepositoryRef = repository?.repositoryRef ?? repository?.ref
+
+  if (
+    typeof explicitRepositoryRef === 'string' &&
+    explicitRepositoryRef.trim() !== ''
+  ) {
+    return explicitRepositoryRef.trim()
+  }
+
+  const fullName = repository?.fullName
+
+  return typeof fullName === 'string' &&
+    fullName.trim().toLowerCase() === 'openagentsinc/openagents'
+    ? AGENT_DEFINITION_RUN_REPOSITORY_REF
+    : AGENT_DEFINITION_RUN_REPOSITORY_REF
+}
+
+const gitRefFragment = (value: string): string => {
+  const fragment = value.replaceAll(/[^A-Za-z0-9._-]/g, '_').slice(0, 120)
+
+  return fragment === '' ? 'run' : fragment
+}
+
+const forgeBranchRefForRun = (runId: string): string =>
+  `refs/heads/background-agents/${gitRefFragment(runId)}`
+
+const forgeGitTokenRefForRun = (runId: string): string =>
+  `forge_git_token.background_agent.${refFragment(runId)}.receive_pack`
+
+const forgeGitTokenExpiresAt = (
+  definition: AgentDefinition,
+  nowIso: string,
+): string =>
+  isoTimestampAfterIso(
+    nowIso,
+    Math.min(
+      definition.budget.maxRunSeconds * 1000 +
+        AGENT_DEFINITION_RUN_FORGE_GIT_TOKEN_BUFFER_MS,
+      AGENT_DEFINITION_RUN_FORGE_GIT_TOKEN_MAX_TTL_MS,
+    ),
+  )
+
+const forgeGitScopeRefusal = (
+  result: Exclude<
+    ReturnType<typeof compileAgentDefinitionForgeGitAccessScopes>,
+    { status: 'allowed' }
+  >,
+): AgentDefinitionRunRefusal => ({
+  error:
+    result.status === 'denied'
+      ? 'agent_definition_forge_git_scope_denied'
+      : 'agent_definition_forge_git_scope_requires_operator',
+  evidenceRefs: uniqueRefs([
+    'evidence.agent_definition_run.forge_git_scope_policy',
+    ...result.blockerRefs,
+    ...result.escalationRefs,
+  ]),
+  kind: 'rejected',
+  reason:
+    result.status === 'denied'
+      ? `The definition toolset denied the Forge git token scope (${result.reasonRef}).`
+      : `The definition toolset requires operator approval before minting a Forge git token (${result.reasonRef}).`,
+  requestedPylonRef: null,
+  statusCode: result.status === 'denied' ? 403 : 409,
+})
+
+const registerForgeWorkRecord = async (
+  dependencies: Pick<AgentDefinitionRunDispatchDependencies, 'forgeStore'>,
+  input: Readonly<{
+    definition: AgentDefinition
+    forgeWorkRef: string
+    gitTokenRefs?: ReadonlyArray<string>
+    nowIso: string
+    runId: string
+    triggerRef: string
+  }>,
+) =>
+  dependencies.forgeStore.upsertIssue({
+    tenantRef: AGENT_DEFINITION_RUN_TENANT_REF,
+    issueRef: input.forgeWorkRef,
+    title: `Background agent run: ${input.definition.slug}`,
+    state: 'open',
+    priorityRef: 'priority.background_agents.dispatch',
+    sourceRefs: runSourceRefs({
+      definition: input.definition,
+      runId: input.runId,
+      triggerRef: input.triggerRef,
+    }),
+    gitTokenRefs: input.gitTokenRefs ?? [],
+    nowIso: input.nowIso,
+  })
+
+const mintForgeGitAccessForRun = async (
+  dependencies: Pick<
+    AgentDefinitionRunDispatchDependencies,
+    'forgeGitAuthStore' | 'forgeStore'
+  >,
+  input: Readonly<{
+    definition: AgentDefinition
+    forgeWorkRef: string
+    nowIso: string
+    request: AgentDefinitionRunRequest
+    runId: string
+    triggerRef: string
+  }>,
+): Promise<
+  | Readonly<{ kind: 'minted'; gitAccess: AgentDefinitionRunForgeGitAccess }>
+  | Readonly<{ kind: 'refused'; refusal: AgentDefinitionRunRefusal }>
+> => {
+  const policy = compileAgentDefinitionToolRuntimePolicy(input.definition)
+  const tokenRef = forgeGitTokenRefForRun(input.runId)
+  const compiled = compileAgentDefinitionForgeGitAccessScopes({
+    policy,
+    requestedScopes: AGENT_DEFINITION_RUN_FORGE_GIT_SCOPES,
+    invocationRef: tokenRef,
+  })
+
+  if (compiled.status !== 'allowed') {
+    return {
+      kind: 'refused',
+      refusal: forgeGitScopeRefusal(compiled),
+    }
+  }
+
+  const repositoryRef = workspaceRepositoryRefFromRequest(input.request)
+  const branchRef = forgeBranchRefForRun(input.runId)
+  const expiresAt = forgeGitTokenExpiresAt(input.definition, input.nowIso)
+  const sourceRefs = uniqueRefs([
+    ...runSourceRefs({
+      definition: input.definition,
+      runId: input.runId,
+      triggerRef: input.triggerRef,
+    }),
+    input.forgeWorkRef,
+    repositoryRef,
+    branchRef,
+    'github.issue.8200',
+  ])
+
+  await dependencies.forgeGitAuthStore.upsertTenant({
+    tenantRef: AGENT_DEFINITION_RUN_TENANT_REF,
+    displayName: AGENT_DEFINITION_RUN_TENANT_DISPLAY_NAME,
+    nowIso: input.nowIso,
+  })
+
+  const minted = await dependencies.forgeGitAuthStore.mintGitAccessToken({
+    tenantRef: AGENT_DEFINITION_RUN_TENANT_REF,
+    tokenRef,
+    subjectRef: definitionRef(input.definition),
+    repositoryRef,
+    scopes: compiled.scopes,
+    refRestrictions: [branchRef],
+    agentDefinitionToolPolicy: policy,
+    expiresAt,
+    sourceRefs,
+    nowIso: input.nowIso,
+  })
+
+  try {
+    await registerForgeWorkRecord(dependencies, {
+      definition: input.definition,
+      forgeWorkRef: input.forgeWorkRef,
+      gitTokenRefs: [minted.record.token_ref],
+      nowIso: input.nowIso,
+      runId: input.runId,
+      triggerRef: input.triggerRef,
+    })
+  } catch (error) {
+    await dependencies.forgeGitAuthStore
+      .revokeGitAccessToken(
+        AGENT_DEFINITION_RUN_TENANT_REF,
+        minted.record.token_ref,
+        input.nowIso,
+      )
+      .catch(() => undefined)
+    throw error
+  }
+
+  return {
+    kind: 'minted',
+    gitAccess: {
+      branchRef,
+      expiresAt,
+      repositoryRef,
+      scopes: minted.scopes.map(scope => scope.scope),
+      tokenRefs: [minted.record.token_ref],
+    },
+  }
+}
+
+const revokeForgeGitAccess = async (
+  dependencies: Pick<AgentDefinitionRunDispatchDependencies, 'forgeGitAuthStore'>,
+  input: Readonly<{
+    gitAccess: AgentDefinitionRunForgeGitAccess | null
+    nowIso: string
+  }>,
+): Promise<void> => {
+  if (input.gitAccess === null) {
+    return
+  }
+
+  await Promise.all(
+    input.gitAccess.tokenRefs.map(tokenRef =>
+      dependencies.forgeGitAuthStore.revokeGitAccessToken(
+        AGENT_DEFINITION_RUN_TENANT_REF,
+        tokenRef,
+        input.nowIso,
+      )
+    ),
+  )
+}
+
 const buildRunRecord = (input: Readonly<{
   assignment: PylonApiAssignmentRecord | null
   budgetCreditsReserved: number
   definition: AgentDefinition
   durableStreamUrl: string | null
   evidenceRefs: ReadonlyArray<string>
+  forgeGitTokenRefs?: ReadonlyArray<string>
+  forgeRepositoryRef?: string | null
   forgeWorkRef: string
   nowIso: string
   pylonRef: string | null
@@ -969,6 +1248,8 @@ const buildRunRecord = (input: Readonly<{
     durableRequestId: input.runId,
     durableStreamUrl: input.durableStreamUrl,
     evidenceRefs: uniqueRefs(input.evidenceRefs),
+    forgeGitTokenRefs: uniqueRefs(input.forgeGitTokenRefs ?? []),
+    forgeRepositoryRef: input.forgeRepositoryRef ?? null,
     forgeTenantRef: AGENT_DEFINITION_RUN_TENANT_REF,
     forgeWorkRef: input.forgeWorkRef,
     initialEvents,
@@ -985,30 +1266,6 @@ const buildRunRecord = (input: Readonly<{
     updatedAt: input.nowIso,
   }
 }
-
-const registerForgeWorkRecord = async (
-  dependencies: Pick<AgentDefinitionRunDispatchDependencies, 'forgeStore'>,
-  input: Readonly<{
-    definition: AgentDefinition
-    forgeWorkRef: string
-    nowIso: string
-    runId: string
-    triggerRef: string
-  }>,
-) =>
-  dependencies.forgeStore.upsertIssue({
-    tenantRef: AGENT_DEFINITION_RUN_TENANT_REF,
-    issueRef: input.forgeWorkRef,
-    title: `Background agent run: ${input.definition.slug}`,
-    state: 'open',
-    priorityRef: 'priority.background_agents.dispatch',
-    sourceRefs: runSourceRefs({
-      definition: input.definition,
-      runId: input.runId,
-      triggerRef: input.triggerRef,
-    }),
-    nowIso: input.nowIso,
-  })
 
 const linkedAgentsForSession = async (
   dependencies: AgentDefinitionRunRouteDependencies,
@@ -1246,6 +1503,49 @@ export const dispatchAgentDefinitionRun = async (
     }
   }
 
+  const mintedGitAccess = await mintForgeGitAccessForRun(dependencies, {
+    definition: input.definition,
+    forgeWorkRef,
+    nowIso,
+    request: input.request,
+    runId,
+    triggerRef: trigger.triggerRef,
+  }).catch(() => 'storage_error' as const)
+
+  if (mintedGitAccess === 'storage_error') {
+    return { kind: 'storage_error' }
+  }
+
+  if (mintedGitAccess.kind === 'refused') {
+    const refusal = mintedGitAccess.refusal
+
+    try {
+      const refused = await persistRefusedRun(dependencies, {
+        definition: input.definition,
+        forgeWorkRef,
+        nowIso,
+        refusal,
+        runId,
+        triggerPayload,
+        triggerRef: trigger.triggerRef,
+      })
+
+      return {
+        evidenceRefs: refusal.evidenceRefs,
+        error: refusal.error,
+        kind: 'refused',
+        reason: refusal.reason,
+        record: refused.record,
+        requestedPylonRef: refusal.requestedPylonRef,
+        seeded: refused.seeded,
+        statusCode: refusal.statusCode,
+      }
+    } catch {
+      return { kind: 'storage_error' }
+    }
+  }
+
+  const forgeGitAccess = mintedGitAccess.gitAccess
   let delegation: CodingDelegationResult | null
 
   try {
@@ -1280,6 +1580,10 @@ export const dispatchAgentDefinitionRun = async (
 
   if (delegation.kind === 'rejected') {
     try {
+      await revokeForgeGitAccess(dependencies, {
+        gitAccess: forgeGitAccess,
+        nowIso,
+      })
       const refused = await persistRefusedRun(dependencies, {
         definition: input.definition,
         forgeWorkRef,
@@ -1313,8 +1617,11 @@ export const dispatchAgentDefinitionRun = async (
     evidenceRefs: [
       ...delegation.evidenceRefs,
       'evidence.agent_definition_run.forge_work_record_registered',
+      'evidence.agent_definition_run.forge_git_token_minted',
       'evidence.agent_definition_run.exact_accounting_assignment_ref',
     ],
+    forgeGitTokenRefs: forgeGitAccess.tokenRefs,
+    forgeRepositoryRef: forgeGitAccess.repositoryRef,
     forgeWorkRef,
     nowIso,
     pylonRef: delegation.pylon.pylonRef,
@@ -1343,7 +1650,62 @@ export const dispatchAgentDefinitionRun = async (
       seeded,
     }
   } catch {
+    await revokeForgeGitAccess(dependencies, {
+      gitAccess: forgeGitAccess,
+      nowIso,
+    }).catch(() => undefined)
     return { kind: 'storage_error' }
+  }
+}
+
+export type AgentDefinitionRunForgeGitTokenRevocationResult = Readonly<{
+  assignmentRef: string
+  foundRun: boolean
+  revokedTokenRefs: ReadonlyArray<string>
+}>
+
+export const revokeAgentDefinitionRunForgeGitTokensForAssignment = async (
+  dependencies: Pick<AgentDefinitionRunDispatchDependencies, 'forgeGitAuthStore' | 'runStore'>,
+  input: Readonly<{
+    assignmentRef: string
+    nowIso: string
+  }>,
+): Promise<AgentDefinitionRunForgeGitTokenRevocationResult> => {
+  const run = await dependencies.runStore.readRunByAssignmentRef(input.assignmentRef)
+
+  if (run === undefined) {
+    return {
+      assignmentRef: input.assignmentRef,
+      foundRun: false,
+      revokedTokenRefs: [],
+    }
+  }
+
+  await Promise.all(
+    run.forgeGitTokenRefs.map(tokenRef =>
+      dependencies.forgeGitAuthStore.revokeGitAccessToken(
+        run.forgeTenantRef,
+        tokenRef,
+        input.nowIso,
+      )
+    ),
+  )
+
+  if (run.forgeGitTokenRefs.length > 0) {
+    await dependencies.runStore.upsertRun({
+      ...run,
+      evidenceRefs: uniqueRefs([
+        ...run.evidenceRefs,
+        'evidence.agent_definition_run.forge_git_tokens_revoked',
+      ]),
+      updatedAt: input.nowIso,
+    })
+  }
+
+  return {
+    assignmentRef: input.assignmentRef,
+    foundRun: true,
+    revokedTokenRefs: run.forgeGitTokenRefs,
   }
 }
 
@@ -1421,6 +1783,7 @@ export const handleAgentDefinitionRunRequest = async (
 
   const dispatch = await dispatchAgentDefinitionRun({
     durableStreamNamespace: dependencies.durableStreamNamespace,
+    forgeGitAuthStore: dependencies.forgeGitAuthStore,
     forgeStore: dependencies.forgeStore,
     linkedAgents: await linkedAgentsForSession(dependencies, session),
     makeId: dependencies.makeId,

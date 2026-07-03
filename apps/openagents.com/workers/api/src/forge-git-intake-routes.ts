@@ -287,6 +287,26 @@ const sourceRefsForIntake = (
   receivePackRef,
 ]
 
+const assertSessionAllowsReceivePackRefs = (
+  session: ForgeGitAccessTokenSession,
+  parsed: GitReceivePackRequest,
+): void => {
+  if (session.refRestrictions.length === 0) {
+    return
+  }
+
+  const allowed = new Set(session.refRestrictions)
+  const forbidden = parsed.commands.find(command => !allowed.has(command.refName))
+
+  if (forbidden !== undefined) {
+    throw new ForgeGitHttpError(
+      403,
+      'forge_git_ref_forbidden',
+      `Token ${session.tokenRef} is not scoped to ${forbidden.refName}.`,
+    )
+  }
+}
+
 const readReceivePackBody = async (
   request: Request,
   maxReceivePackBytes: number,
@@ -416,6 +436,7 @@ export const makeForgeGitIntakeRoutes = <Bindings>(
         dependencies.maxReceivePackBytes ?? maxReceivePackBytesDefault,
       )
       const parsed = parseGitReceivePackRequest(requestBody)
+      assertSessionAllowsReceivePackRefs(session, parsed)
       const objectFormat = forgeGitPackfileObjectFormatForCapabilities(
         parsed.capabilities,
       )

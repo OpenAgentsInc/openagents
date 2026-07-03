@@ -88,6 +88,13 @@ type PylonApiRouteDependencies<Bindings> = Readonly<{
     env: Bindings,
     input: AutopilotWorkerCloseoutIngestionInput,
   ) => Promise<unknown>
+  revokeAssignmentForgeGitAccess?: (
+    env: Bindings,
+    input: Readonly<{
+      assignment: PylonApiAssignmentRecord
+      nowIso: string
+    }>,
+  ) => Promise<unknown>
   requireAdminApiToken?: (request: Request, env: Bindings) => Promise<boolean>
   requireBrowserSession?: (
     request: Request,
@@ -1579,6 +1586,10 @@ const routeCloseoutAssignment = <Bindings extends PylonApiRouteEnv>(
       catch: pylonApiStoreErrorFromUnknown,
       try: () => store.updateAssignment(nextAssignment),
     })
+    yield* maybeRevokeAssignmentForgeGitAccess(dependencies, env, {
+      assignment: storedAssignment,
+      nowIso,
+    })
 
     return noStoreJsonResponse({
       assignment: publicPylonApiAssignmentProjection(storedAssignment, nowIso),
@@ -1624,6 +1635,31 @@ const maybeRecordAutopilotWorkerCloseout = <Bindings extends PylonApiRouteEnv>(
           recordAutopilotWorkerCloseout(env, {
             assignment: input.assignment,
             body: input.body,
+            nowIso: input.nowIso,
+          }),
+      }).pipe(Effect.asVoid)
+}
+
+const maybeRevokeAssignmentForgeGitAccess = <Bindings extends PylonApiRouteEnv>(
+  dependencies: PylonApiRouteDependencies<Bindings>,
+  env: Bindings,
+  input: Readonly<{
+    assignment: PylonApiAssignmentRecord
+    eventKind?: PylonApiEventKind | undefined
+    nowIso: string
+  }>,
+): Effect.Effect<void, PylonApiStoreError> => {
+  const revokeAssignmentForgeGitAccess =
+    dependencies.revokeAssignmentForgeGitAccess
+
+  return (input.eventKind !== undefined && input.eventKind !== 'worker_closeout') ||
+    revokeAssignmentForgeGitAccess === undefined
+    ? Effect.void
+    : Effect.tryPromise({
+        catch: pylonApiStoreErrorFromUnknown,
+        try: () =>
+          revokeAssignmentForgeGitAccess(env, {
+            assignment: input.assignment,
             nowIso: input.nowIso,
           }),
       }).pipe(Effect.asVoid)
@@ -1868,6 +1904,11 @@ const routeEvent = <Bindings extends PylonApiRouteEnv>(
       yield* maybeRecordAutopilotWorkerCloseout(dependencies, env, {
         assignment: storedAssignment,
         body,
+        eventKind: input.eventKind,
+        nowIso,
+      })
+      yield* maybeRevokeAssignmentForgeGitAccess(dependencies, env, {
+        assignment: storedAssignment,
         eventKind: input.eventKind,
         nowIso,
       })

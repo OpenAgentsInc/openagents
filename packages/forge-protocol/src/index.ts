@@ -223,6 +223,7 @@ export const ForgeCoordinationIssueRow = S.Struct({
   state: ForgeCoordinationIssueState,
   priority_ref: S.NullOr(S.String),
   source_refs_json: S.String,
+  git_token_refs_json: S.optionalKey(S.String),
   created_at: S.String,
   updated_at: S.String,
 });
@@ -337,6 +338,7 @@ export const ForgeGitAccessTokenRow = S.Struct({
   last_used_at: S.NullOr(S.String),
   revoked_at: S.NullOr(S.String),
   source_refs_json: S.String,
+  ref_restrictions_json: S.optionalKey(S.String),
 });
 export type ForgeGitAccessTokenRow = typeof ForgeGitAccessTokenRow.Type;
 
@@ -354,6 +356,7 @@ export const ForgeDispatchGitAccess = S.Struct({
   token_prefix: S.String,
   scopes: S.Array(ForgeGitAccessScope),
   expires_at: S.String,
+  ref_restrictions: S.optionalKey(S.Array(S.String)),
   delivery: ForgeDispatchGitAccessDelivery,
 });
 export type ForgeDispatchGitAccess = typeof ForgeDispatchGitAccess.Type;

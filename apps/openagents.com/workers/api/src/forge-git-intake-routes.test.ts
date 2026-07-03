@@ -135,6 +135,9 @@ const migrations = [
   '0254_forge_control_plane_receipts.sql',
   '0255_forge_git_canonical_store.sql',
   '0256_forge_tenant_isolation_posture.sql',
+  '0280_agent_definition_runs.sql',
+  '0282_agent_definition_run_budget_credits.sql',
+  '0284_agent_definition_forge_git_tokens.sql',
 ].map(migration)
 
 const textEncoder = new TextEncoder()
@@ -198,7 +201,10 @@ const packfileBytes = (label: string): Uint8Array =>
 
 type Harness = Awaited<ReturnType<typeof makeHarness>>
 
-const makeHarness = async (scope: 'git:receive-pack' | 'git:upload-pack' = 'git:receive-pack') => {
+const makeHarness = async (
+  scope: 'git:receive-pack' | 'git:upload-pack' = 'git:receive-pack',
+  refRestrictions: ReadonlyArray<string> = [],
+) => {
   const sqlite = new DatabaseSync(':memory:')
   sqlite.exec('PRAGMA foreign_keys = ON')
   for (const sql of migrations) {
@@ -223,9 +229,10 @@ const makeHarness = async (scope: 'git:receive-pack' | 'git:upload-pack' = 'git:
   await authStore.mintGitAccessToken(
     {
       expiresAt: '2026-06-29T18:00:00.000Z',
-      repositoryRef,
-      scopes: [scope],
-      sourceRefs: ['issue.public.github.OpenAgentsInc.openagents.6771'],
+	      repositoryRef,
+	      scopes: [scope],
+	      refRestrictions,
+	      sourceRefs: ['issue.public.github.OpenAgentsInc.openagents.6771'],
       subjectRef,
       tenantRef,
       tokenRef: `token.${scope.replace(':', '.')}`,
@@ -381,7 +388,7 @@ describe('Forge smart-Git receive-pack intake routes', () => {
     )
   })
 
-  test('rejects tokens without receive-pack scope before archiving', async () => {
+	  test('rejects tokens without receive-pack scope before archiving', async () => {
     const { bucket, run }: Harness = await makeHarness('git:upload-pack')
     const response = await run(
       postReceivePack(
@@ -397,9 +404,31 @@ describe('Forge smart-Git receive-pack intake routes', () => {
     expect(response.status).toBe(401)
     expect(body.error).toBe('forge_git_unauthorized')
     expect(bucket.objects.size).toBe(0)
-  })
+	  })
 
-  test('malformed pkt-lines fail closed before R2 archive or coordination writes', async () => {
+	  test('rejects pushes outside a token ref restriction before archiving', async () => {
+	    const { bucket, coordinationStore, run }: Harness = await makeHarness(
+	      'git:receive-pack',
+	      ['refs/heads/background-agents/run_001'],
+	    )
+	    const response = await run(
+	      postReceivePack(
+	        receivePackBody({
+	          newObjectId: 'f'.repeat(40),
+	          oldObjectId: zeroSha1,
+	          packfile: packfileBytes('wrong-ref'),
+	        }),
+	      ),
+	    )
+	    const body = await jsonError(response)
+
+	    expect(response.status).toBe(403)
+	    expect(body.error).toBe('forge_git_ref_forbidden')
+	    expect(bucket.objects.size).toBe(0)
+	    await expect(coordinationStore.listChanges(tenantRef, 10)).resolves.toEqual([])
+	  })
+
+	  test('malformed pkt-lines fail closed before R2 archive or coordination writes', async () => {
     const { bucket, coordinationStore, run }: Harness = await makeHarness()
     const response = await run(postReceivePack(textEncoder.encode('zzzz')))
     const body = await jsonError(response)

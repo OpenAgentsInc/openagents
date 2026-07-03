@@ -56,23 +56,27 @@ class SqliteD1 {
   }
 }
 
-const migration = readFileSync(
-  new URL('../migrations/0253_forge_tenant_git_access_tokens.sql', import.meta.url),
-  'utf8',
-)
-const tenantIsolationPostureMigration = readFileSync(
-  new URL('../migrations/0256_forge_tenant_isolation_posture.sql', import.meta.url),
-  'utf8',
-)
+const migration = (name: string): string =>
+  readFileSync(new URL(`../migrations/${name}`, import.meta.url), 'utf8')
+
+const migrations = [
+  '0251_forge_coordination_source_of_truth.sql',
+  '0253_forge_tenant_git_access_tokens.sql',
+  '0256_forge_tenant_isolation_posture.sql',
+  '0280_agent_definition_runs.sql',
+  '0282_agent_definition_run_budget_credits.sql',
+  '0284_agent_definition_forge_git_tokens.sql',
+].map(migration)
 
 const makeStore = (): {
   db: DatabaseSync
   store: ForgeTenantGitAuthStore
 } => {
-  const db = new DatabaseSync(':memory:')
-  db.exec('PRAGMA foreign_keys = ON')
-  db.exec(migration)
-  db.exec(tenantIsolationPostureMigration)
+	  const db = new DatabaseSync(':memory:')
+	  db.exec('PRAGMA foreign_keys = ON')
+	  for (const sql of migrations) {
+	    db.exec(sql)
+	  }
   return {
     db,
     store: makeD1ForgeTenantGitAuthStore(
@@ -126,12 +130,13 @@ describe('forge tenant git auth store', () => {
       {
         tenantRef: 'tenant.openagents',
         tokenRef: 'forge_git_token.receive_pack',
-        subjectRef: 'agent.public.forge',
-        repositoryRef: 'repo.openagents.openagents',
-        scopes: ['git:receive-pack'],
-        expiresAt,
-        sourceRefs: ['github:OpenAgentsInc/openagents#6750'],
-        nowIso,
+	        subjectRef: 'agent.public.forge',
+	        repositoryRef: 'repo.openagents.openagents',
+	        scopes: ['git:receive-pack'],
+	        refRestrictions: ['refs/heads/background-agents/run_001'],
+	        expiresAt,
+	        sourceRefs: ['github:OpenAgentsInc/openagents#6750'],
+	        nowIso,
       },
       { makeToken: () => token },
     )
@@ -140,9 +145,12 @@ describe('forge tenant git auth store', () => {
     expect(minted.record.token_hash).toBe(await forgeGitAccessTokenHash(token))
     expect(minted.record.token_hash).not.toContain('test_secret')
     expect(minted.record.token_prefix).toBe(token.slice(0, 29))
-    expect(minted.scopes.map(scope => scope.scope)).toEqual([
-      'git:receive-pack',
-    ])
+	    expect(minted.scopes.map(scope => scope.scope)).toEqual([
+	      'git:receive-pack',
+	    ])
+	    expect(JSON.parse(minted.record.ref_restrictions_json ?? '[]')).toEqual([
+	      'refs/heads/background-agents/run_001',
+	    ])
     expect(
       JSON.stringify(
         db.prepare('SELECT * FROM forge_git_access_tokens').all(),
@@ -155,13 +163,16 @@ describe('forge tenant git auth store', () => {
       requiredScope: 'git:receive-pack',
       nowIso: laterIso,
     })
-    expect(session).toMatchObject({
-      tenantRef: 'tenant.openagents',
-      tokenRef: 'forge_git_token.receive_pack',
-      subjectRef: 'agent.public.forge',
-      repositoryRef: 'repo.openagents.openagents',
-    })
-    expect(session?.scopes).toEqual(['git:receive-pack'])
+	    expect(session).toMatchObject({
+	      tenantRef: 'tenant.openagents',
+	      tokenRef: 'forge_git_token.receive_pack',
+	      subjectRef: 'agent.public.forge',
+	      repositoryRef: 'repo.openagents.openagents',
+	    })
+	    expect(session?.scopes).toEqual(['git:receive-pack'])
+	    expect(session?.refRestrictions).toEqual([
+	      'refs/heads/background-agents/run_001',
+	    ])
     expect(
       await store.authenticateGitAccessToken({
         token,

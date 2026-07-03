@@ -63,6 +63,10 @@ const coordinationMigration = readFileSync(
   new URL('../migrations/0251_forge_coordination_source_of_truth.sql', import.meta.url),
   'utf8',
 )
+const gitAccessTokensMigration = readFileSync(
+  new URL('../migrations/0253_forge_tenant_git_access_tokens.sql', import.meta.url),
+  'utf8',
+)
 const controlPlaneReceiptsMigration = readFileSync(
   new URL('../migrations/0254_forge_control_plane_receipts.sql', import.meta.url),
   'utf8',
@@ -85,19 +89,41 @@ const canonicalGitMigration = readFileSync(
   new URL('../migrations/0255_forge_git_canonical_store.sql', import.meta.url),
   'utf8',
 )
+const agentDefinitionRunsMigration = readFileSync(
+  new URL('../migrations/0280_agent_definition_runs.sql', import.meta.url),
+  'utf8',
+)
+const agentDefinitionRunBudgetCreditsMigration = readFileSync(
+  new URL(
+    '../migrations/0282_agent_definition_run_budget_credits.sql',
+    import.meta.url,
+  ),
+  'utf8',
+)
+const agentDefinitionForgeGitTokensMigration = readFileSync(
+  new URL(
+    '../migrations/0284_agent_definition_forge_git_tokens.sql',
+    import.meta.url,
+  ),
+  'utf8',
+)
 
 const makeStores = (): Readonly<{
   canonicalStore: ForgeGitCanonicalStore
   coordinationStore: ForgeCoordinationStore
   mirrorStore: ForgeGitHubMirrorStore
 }> => {
-  const db = new DatabaseSync(':memory:')
-  db.exec('PRAGMA foreign_keys = ON')
-  db.exec(coordinationMigration)
-  db.exec(controlPlaneReceiptsMigration)
-  db.exec(promotionDecisionGateResultsMigration)
-  db.exec(githubMirrorReceiptsMigration)
-  db.exec(canonicalGitMigration)
+	  const db = new DatabaseSync(':memory:')
+	  db.exec('PRAGMA foreign_keys = ON')
+	  db.exec(coordinationMigration)
+	  db.exec(gitAccessTokensMigration)
+	  db.exec(controlPlaneReceiptsMigration)
+	  db.exec(promotionDecisionGateResultsMigration)
+	  db.exec(githubMirrorReceiptsMigration)
+	  db.exec(canonicalGitMigration)
+	  db.exec(agentDefinitionRunsMigration)
+	  db.exec(agentDefinitionRunBudgetCreditsMigration)
+	  db.exec(agentDefinitionForgeGitTokensMigration)
   const d1 = new SqliteD1(db) as unknown as D1Database
   return {
     canonicalStore: makeD1ForgeGitCanonicalStore(d1),
