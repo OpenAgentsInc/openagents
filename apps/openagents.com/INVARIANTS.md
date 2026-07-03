@@ -2402,6 +2402,14 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     include `generatedAt` and the shared `projection_staleness.v1` contract;
     the route grants no deploy, spend, payout, settlement, auto-merge, or
     green-claim authority. `staleness_declared`.
+  - `GET /api/public/business/already-sold-engagement-receipts?view=paid-business-receipts`
+    and `GET /api/public/business/already-sold-engagement-receipts/{receiptRef}`
+    — live at read over the opaque already-sold business payment receipt store.
+    Payloads include `generatedAt` and the shared `projection_staleness.v1`
+    contract; public rows expose only opaque buyer refs, vertical descriptors,
+    payment totals, source refs, and privacy decision refs. The route grants no
+    delivery completion, payout, settlement, self-serve, customer identity, or
+    green-claim authority. `staleness_declared`.
   - `GET /api/public/gym/mutalisk-khala-delegation/runs` — live at read over
     the Mutalisk Khala-delegation Gym workflow store — compliant
     (`generatedAt`, `staleness` contract `projection_staleness.v1`

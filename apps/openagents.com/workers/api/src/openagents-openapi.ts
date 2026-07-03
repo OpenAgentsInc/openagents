@@ -3,6 +3,7 @@ import { Effect, Schema as S } from 'effect'
 
 import { AcceptedOutcomesPerKwhEndpoint } from './accepted-outcomes-per-kwh'
 import { PublicAgentProposalRecoveryRoute } from './agent-rate-limit-recovery'
+import { BusinessAlreadySoldEngagementReceiptsEndpoint } from './business-already-sold-engagement-receipt-routes'
 import {
   AGENT_SEARCH_BASIC_RECOVERY_PRODUCT_ID,
   AGENT_SEARCH_BASIC_RECOVERY_SCOPE_REF,
@@ -2050,6 +2051,9 @@ const schemaComponents = (): JsonSchema => ({
   ),
   PublicBusinessFunnelDashboardResponse: objectSummary(
     'Public-safe business funnel dashboard projection: schemaVersion, generatedAt, live_at_read staleness contract, stage order, total event count, per-stage counts, and coarse source-kind breakdowns for content/outbound/AI-search/referral/direct/unknown. Aggregate counts only; excludes contact details, user ids, payment payloads, raw provider payloads, and client-identifying material. Read-only dashboard; grants no payment, workspace, fulfillment, retention, payout, settlement, or public-claim authority.',
+  ),
+  BusinessAlreadySoldEngagementReceiptResponse: objectSummary(
+    'Public-safe already-sold business engagement payment receipt projection. Lists opaque buyer refs, vertical descriptors, paid receipt totals, privacy-review decision refs, generatedAt, and live_at_read staleness. It exposes no customer identity, raw payment processor material, invoices, or private payment refs, and grants no delivery completion, payout, settlement, self-serve, or green-claim authority.',
   ),
   MarketingAgencyReceiptResponse: objectSummary(
     'Public-safe marketing-agency white-label receipt or paid-delivery-claims projection. Carries assessedAt/generatedAt timestamps plus a live_at_read staleness contract for claim projections where available. Fixture and stored receipts expose bounded delivery refs only and grant no new delivery, attribution, payout, settlement, or green-claim authority.',
@@ -6335,6 +6339,29 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Aggregate business funnel dashboard.',
           '#/components/schemas/PublicBusinessFunnelDashboardResponse',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  [BusinessAlreadySoldEngagementReceiptsEndpoint]: {
+    get: operation({
+      operationId: 'listPublicBusinessAlreadySoldEngagementReceipts',
+      summary: 'List already-sold business payment receipts',
+      description:
+        'Returns public-safe already-sold business engagement payment receipt projections when called with view=paid-business-receipts. Receipt point reads are available under the same route prefix. Opaque buyer refs and vertical descriptors are allowed; customer identity and raw payment material are not exposed. The surface grants no delivery completion, payout, settlement, self-serve, or green-claim authority.',
+      tags: ['Business', 'Public Proof'],
+      security: publicRead,
+      parameters: [
+        queryParam(
+          'view',
+          'Use paid-business-receipts to list recorded opaque paid business receipts.',
+        ),
+      ],
+      responses: {
+        '200': okJson(
+          'Already-sold business engagement receipt projection.',
+          '#/components/schemas/BusinessAlreadySoldEngagementReceiptResponse',
         ),
         ...errorResponses(),
       },

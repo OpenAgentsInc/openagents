@@ -399,6 +399,7 @@ describe('Worker route dual-serve resolution (#6148)', () => {
       routeEcommerceCampaignReceiptOperatorRequest: noRoute,
       routeEcommerceCampaignSelfServeRequest: noRoute,
       routeCodingQuickWinReceiptRequest: noRoute,
+      routeBusinessAlreadySoldEngagementReceiptRequest: noRoute,
       routeMarketingAgencyReceiptRequest: noRoute,
       routeMarketingAgencySelfServeRequest: noRoute,
       routeVerticalFunnelRequest: noRoute,

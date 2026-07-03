@@ -900,6 +900,12 @@ const publicProjectionSurfaces = [
     status: 'staleness_declared',
   },
   {
+    module:
+      'workers/api/src/business-already-sold-engagement-receipt-routes.ts',
+    route: '/api/public/business/already-sold-engagement-receipts',
+    status: 'staleness_declared',
+  },
+  {
     module: 'workers/api/src/artanis-public-report.ts',
     route: '/api/public/artanis/report',
     status: 'staleness_declared',

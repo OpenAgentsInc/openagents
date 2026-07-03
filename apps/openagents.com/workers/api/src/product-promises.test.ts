@@ -377,6 +377,15 @@ describe('public product promises document', () => {
     const codingQuickWin = decoded.promises.find(
       promise => promise.promiseId === 'business.coding_quick_win.v1',
     )
+    const businessQuickWinOffering = decoded.promises.find(
+      promise => promise.promiseId === 'business.intake_quick_win_offering.v1',
+    )
+    expect(businessQuickWinOffering?.evidenceRefs).toContain(
+      'route:/api/public/business/already-sold-engagement-receipts?view=paid-business-receipts',
+    )
+    expect(businessQuickWinOffering?.verification).toContain(
+      'records buyer payment only',
+    )
     expect(codingQuickWin?.blockerRefs).toEqual([
       'blocker.product_promises.business_coding_quick_win_paid_receipt_missing',
     ])
