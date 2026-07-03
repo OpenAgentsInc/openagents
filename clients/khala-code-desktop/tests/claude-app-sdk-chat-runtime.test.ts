@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test"
-import { mkdtemp, readFile, rm } from "node:fs/promises"
+import { mkdtemp, readFile, rm, stat } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Effect } from "effect"
@@ -18,7 +18,10 @@ import {
   khalaCodeDesktopClaudeTokenUsageEvent,
   readKhalaCodeDesktopClaudeTokenUsageInboxFlags,
 } from "../src/bun/claude-token-usage-telemetry"
-import { createClaudeSessionStore } from "../src/bun/claude-session-store"
+import {
+  createClaudeSessionStore,
+  resolveClaudeConfigDir,
+} from "../src/bun/claude-session-store"
 import { createClaudeThreadItemProjector } from "../src/bun/claude-thread-item-projector"
 import {
   decodeKhalaCodeDesktopRpcResult,
@@ -336,6 +339,92 @@ describe("Claude Agent SDK chat runtime", () => {
       sessionId: "desktop-session-started",
     })
     expect((queryCalls[0] as { options: Record<string, unknown> }).options).not.toHaveProperty("resume")
+  })
+
+  // Oracle for khala_code.claude_lane.isolated_home_and_user_prompt_only.v1
+  test("scopes Claude SDK config to the app-managed home instead of ambient ~/.claude", async () => {
+    const statePath = await tempPath("claude-isolated-config-state.json")
+    const appHome = await tempPath("home")
+    const queryCalls: unknown[] = []
+    const runtime = createClaudeAppSdkChatRuntime({
+      env: {
+        CLAUDE_CONFIG_DIR: "/ambient-user-claude",
+        HOME: appHome,
+      },
+      query: input => {
+        queryCalls.push(input)
+        return messages([{ type: "result", subtype: "success", session_id: "claude-isolated-session" }])
+      },
+      sessionStore: createClaudeSessionStore({ path: statePath }),
+      workingDirectory: "/repo",
+    })
+
+    await runtime.startTurn({
+      messages: [{ body: "hello", id: "user-isolated", role: "user" }],
+      sessionId: "desktop-isolated",
+      turnId: "turn-isolated",
+    })
+
+    const queryEnv = (queryCalls[0] as { options: { readonly env: Record<string, string | undefined> } })
+      .options.env
+    expect(queryEnv.CLAUDE_CONFIG_DIR).toBe(resolveClaudeConfigDir({ HOME: appHome }))
+    expect(queryEnv.CLAUDE_CONFIG_DIR).not.toBe("/ambient-user-claude")
+    await expect(stat(queryEnv.CLAUDE_CONFIG_DIR).then(entry => entry.isDirectory())).resolves.toBe(true)
+  })
+
+  test("allows an explicit Khala Code Claude config directory override", async () => {
+    const statePath = await tempPath("claude-config-override-state.json")
+    const overrideDir = await tempPath("claude-config-override")
+    const queryCalls: unknown[] = []
+    const runtime = createClaudeAppSdkChatRuntime({
+      env: {
+        CLAUDE_CONFIG_DIR: "/ambient-user-claude",
+        KHALA_CODE_DESKTOP_CLAUDE_CONFIG_DIR: overrideDir,
+      },
+      query: input => {
+        queryCalls.push(input)
+        return messages([{ type: "result", subtype: "success", session_id: "claude-override-session" }])
+      },
+      sessionStore: createClaudeSessionStore({ path: statePath }),
+      workingDirectory: "/repo",
+    })
+
+    await runtime.startTurn({
+      messages: [{ body: "hello", id: "user-override", role: "user" }],
+      sessionId: "desktop-override",
+      turnId: "turn-override",
+    })
+
+    expect((queryCalls[0] as { options: { readonly env: Record<string, string | undefined> } }).options.env)
+      .toMatchObject({ CLAUDE_CONFIG_DIR: overrideDir })
+  })
+
+  // Oracle for khala_code.claude_lane.isolated_home_and_user_prompt_only.v1
+  test("sends only the latest user-authored message to Claude", async () => {
+    const statePath = await tempPath("claude-user-only-state.json")
+    const queryCalls: unknown[] = []
+    const runtime = createClaudeAppSdkChatRuntime({
+      query: input => {
+        queryCalls.push(input)
+        return messages([{ type: "result", subtype: "success", session_id: "claude-user-only-session" }])
+      },
+      sessionStore: createClaudeSessionStore({ path: statePath }),
+      workingDirectory: "/repo",
+    })
+
+    await runtime.startTurn({
+      messages: [
+        { body: "OPENAGENTS_AGENT_TOKEN is missing", id: "system-banner", role: "system" },
+        { body: "Earlier user text", id: "user-earlier", role: "user" },
+        { body: "Tool transcript", id: "tool-1", role: "tool" },
+        { body: "Assistant transcript", id: "assistant-1", role: "assistant" },
+        { body: "test - who are you?", id: "user-latest", role: "user" },
+      ],
+      sessionId: "desktop-user-only",
+      turnId: "turn-user-only",
+    })
+
+    expect((queryCalls[0] as { prompt: string }).prompt).toBe("test - who are you?")
   })
 
   test("interrupts the active SDK query handle", async () => {
