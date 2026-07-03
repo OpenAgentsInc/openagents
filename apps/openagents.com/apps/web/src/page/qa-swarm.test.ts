@@ -109,6 +109,10 @@ describe('QA Swarm route', () => {
     expect(rendered).toContain('Khala Code nightly QA swarm')
     expect(rendered).toContain('QA Swarm run')
     expect(rendered).toContain('Verdict wall')
+    expect(rendered).toContain('Arbiter swarm board')
+    expect(rendered).toContain('data-link-id="scenario-to-target"')
+    expect(rendered).toContain('data-status="evidence_backed"')
+    expect(rendered).toContain('QA Swarm board text mirror')
     expect(rendered).toContain('Coverage + frontier')
     expect(rendered).toContain('Perf budgets')
     expect(rendered).toContain('Findings ledger')
@@ -181,6 +185,9 @@ describe('QA Swarm projection schema and redaction', () => {
     expect(lookupQaSwarmRunProjection(QA_SWARM_SAMPLE_RUN_REF)).toEqual(
       sampleQaSwarmRunProjection,
     )
+    expect(sampleQaSwarmRunProjection.boardGraph.schemaVersion).toBe(
+      'openagents.arbiter.graph_spec.v0',
+    )
   })
 
   test('keeps non-owner targets opaque and public-safe', () => {
@@ -199,5 +206,23 @@ describe('QA Swarm projection schema and redaction', () => {
         traceRefs: ['/Users/operator/private/raw-trace.json'],
       }),
     ).toThrow(/private material|Unsafe QA Swarm projection ref/)
+  })
+
+  test('board projection refuses evidence-backed links without receipts', () => {
+    const broken = {
+      ...sampleQaSwarmRunProjection,
+      boardGraph: {
+        ...sampleQaSwarmRunProjection.boardGraph,
+        links: sampleQaSwarmRunProjection.boardGraph.links.map(link =>
+          link.id === 'scenario-to-target'
+            ? { ...link, status: 'evidence_backed' as const, evidenceRefs: [] }
+            : link,
+        ),
+      },
+    }
+
+    expect(() =>
+      assertQaSwarmPublicProjection(broken),
+    ).toThrow(/lit without receipt/)
   })
 })

@@ -17,6 +17,7 @@ import {
 export type ArbiterGraphRenderOptions = Readonly<{
   reducedMotion?: boolean
   layout?: Partial<GraphLayout>
+  mirrorLabel?: string
 }>
 
 export type ArbiterGraphRenderOutput = Readonly<{
@@ -112,6 +113,7 @@ const renderNode = (node: GraphNode, layout: GraphLayout): string => {
 const renderMirror = (
   spec: GraphSpec,
   nodes: ReadonlyMap<string, GraphNode>,
+  label = "Gym graph text mirror",
 ): string => {
   const rows = spec.links
     .map(link => {
@@ -130,7 +132,7 @@ const renderMirror = (
     .join("")
 
   return [
-    `<div class="khala-gym-graph-mirror" aria-label="Gym graph text mirror">`,
+    `<div class="khala-gym-graph-mirror" aria-label="${escapeHtml(label)}">`,
     `<ol class="khala-gym-graph-mirror-list">${rows}</ol>`,
     "</div>",
   ].join("")
@@ -157,7 +159,7 @@ export const renderArbiterGraphHtml = (
     `<g class="khala-gym-node-layer">${renderedNodes}</g>`,
     "</svg>",
   ].join("")
-  const mirrorHtml = renderMirror(graph, nodes)
+  const mirrorHtml = renderMirror(graph, nodes, options.mirrorLabel)
   const renderedHtml = [
     `<figure class="khala-gym-graph" data-status="${escapeHtml(graph.status)}">`,
     svg,
@@ -256,10 +258,11 @@ const foldkitMirror = <Message>(
   h: ReturnType<typeof html<Message>>,
   spec: GraphSpec,
   nodes: ReadonlyMap<string, GraphNode>,
+  label = "Gym graph text mirror",
 ): Html =>
   h.div([
     h.Class("khala-gym-graph-mirror"),
-    h.AriaLabel("Gym graph text mirror"),
+    h.AriaLabel(label),
   ], [
     h.ol([
       h.Class("khala-gym-graph-mirror-list"),
@@ -318,6 +321,6 @@ export const arbiterGraphFigure = <Message>(
         h.Class("khala-gym-node-layer"),
       ], graph.nodes.map(node => foldkitNode(h, node, layout))),
     ]),
-    foldkitMirror(h, graph, nodes),
+    foldkitMirror(h, graph, nodes, input.options?.mirrorLabel),
   ])
 }

@@ -1,3 +1,4 @@
+import { arbiterGraphFigure } from '@openagentsinc/arbiter-effect/foldkit'
 import type { Html } from 'foldkit/html'
 import { html } from 'foldkit/html'
 
@@ -493,6 +494,28 @@ const runArticle = <Message>(projection: QaSwarmRunProjection): Html => {
           ),
         ],
       ),
+
+      h.section([Ui.className<Message>(panel)], [
+        h.div([Ui.className<Message>('grid gap-4')], [
+          label<Message>('Arbiter swarm board'),
+          h.div(
+            [
+              Ui.className<Message>(
+                'min-w-0 overflow-hidden border border-[var(--oa-color-khala-border)] bg-[var(--oa-color-khala-surface)] p-3',
+              ),
+            ],
+            [
+              arbiterGraphFigure<Message>({
+                spec: projection.boardGraph,
+                options: {
+                  layout: { height: 395 },
+                  mirrorLabel: 'QA Swarm board text mirror',
+                },
+              }),
+            ],
+          ),
+        ]),
+      ]),
 
       h.section([Ui.className<Message>(panel)], [
         h.div([Ui.className<Message>('grid gap-4')], [
