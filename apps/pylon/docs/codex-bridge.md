@@ -98,7 +98,7 @@ Optional `codex` section in the Pylon config file
     "enabled": true,
     "model": "gpt-5.4-codex",
     "maxTurns": 12,
-    "timeoutSeconds": 600,
+    "timeoutSeconds": 2400,
     "sandboxMode": "workspace-write"
   }
 }
@@ -195,6 +195,9 @@ that does not carry the `codex_sdk` work class. When it does run:
 - typed refusal arms: `codex_agent_unavailable` (+ probe blockers),
   `codex_agent_execution_refused`, `codex_agent_budget_exceeded`,
   `codex_agent_workspace_escape_blocked`, `codex_agent_test_failed`.
+- Caller-owned Codex coding delegation uses a 2400-second maximum assignment
+  budget so the 30-minute sustained smoke has headroom beyond its live Codex
+  session proof, dependency prep, and closeout submission.
 
 ## Work class, dispatch, and smokes (CX3, #4790)
 

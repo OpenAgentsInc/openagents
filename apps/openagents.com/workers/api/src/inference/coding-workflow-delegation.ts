@@ -34,6 +34,8 @@ const CLAUDE_AGENT_CAPABILITY_REF = 'capability.pylon.local_claude_agent'
 const CLAUDE_AGENT_TASK_SCHEMA = 'openagents.pylon.claude_agent_task.v0.3'
 const CLAUDE_AGENT_SUM_REPAIR_FIXTURE_REF =
   'fixture.public.pylon.claude_agent.sum_repair.v1'
+const CODEX_AGENT_ASSIGNMENT_TIMEOUT_SECONDS = 2400
+const CLAUDE_AGENT_ASSIGNMENT_TIMEOUT_SECONDS = 1200
 
 // #6388: a coding workflow class resolves to one local-agent execution profile.
 // The Codex lane (`cloud_coding_session`, `codex_agent_task`) and the Claude
@@ -67,6 +69,8 @@ type CodingAgentProfile = Readonly<{
   selectionPolicyRef: string
   // Public assignment-task schema ref for the agent sub-object.
   taskSchema: string
+  // Assignment wall-clock budget accepted by the local executor for this lane.
+  timeoutSeconds: number
 }>
 
 const CODEX_AGENT_PROFILE: CodingAgentProfile = {
@@ -82,6 +86,7 @@ const CODEX_AGENT_PROFILE: CodingAgentProfile = {
     'Run the caller-owned Khala coding workflow on a linked local Codex Pylon.',
   selectionPolicyRef: 'selection.public.khala_coding.codex_first',
   taskSchema: CODEX_AGENT_TASK_SCHEMA,
+  timeoutSeconds: CODEX_AGENT_ASSIGNMENT_TIMEOUT_SECONDS,
 }
 
 const CLAUDE_AGENT_PROFILE: CodingAgentProfile = {
@@ -97,6 +102,7 @@ const CLAUDE_AGENT_PROFILE: CodingAgentProfile = {
     'Run the caller-owned Khala coding workflow on a linked local Claude Agent Pylon.',
   selectionPolicyRef: 'selection.public.khala_coding.claude_first',
   taskSchema: CLAUDE_AGENT_TASK_SCHEMA,
+  timeoutSeconds: CLAUDE_AGENT_ASSIGNMENT_TIMEOUT_SECONDS,
 }
 
 const codingAgentProfileFor = (
@@ -520,7 +526,7 @@ const codingAssignmentFromInput = (
       // the Codex and Claude lanes now carry per-account capacity; null when no
       // account was pinned.
       ...(accountRefHash === null ? {} : { accountRefHash }),
-      timeoutSeconds: 1200,
+      timeoutSeconds: profile.timeoutSeconds,
     },
     objective: {
       objectiveRef: workflowRef(input.classification),

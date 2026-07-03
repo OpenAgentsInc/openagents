@@ -99,6 +99,68 @@ describe("PylonService", () => {
     expect(result.lifecycle).toEqual([event])
   })
 
+  test("summarizes failed auto-run assignments without embedding lifecycle JSON", async () => {
+    const event = {
+      ...lifecycleEvent("assignment_run.completed"),
+      blockerRefs: ["blocker.assignment.codex_agent_budget_exceeded"],
+      status: "rejected",
+    } satisfies PylonAssignmentRunLifecycleEvent
+    const service = makePylonService({
+      env: { OPENAGENTS_PYLON_APP_PATH: "/tmp/pylon-app", PYLON_HOME: "/tmp/pylon-home" },
+      runner: async (input) => {
+        await input.onStderrLine?.(JSON.stringify(event))
+        return {
+          exitCode: 0,
+          stderr: "",
+          stdout: JSON.stringify({
+            assignmentRef: "assignment.failed",
+            assignmentLifecycleEvents: [event],
+            assignmentRun: {
+              closeout: {
+                closeoutChecklist: {
+                  blockerRefs: ["blocker.assignment.codex_agent_budget_exceeded"],
+                  ok: false,
+                },
+                proof: {
+                  proofChecklist: {
+                    blockerRefs: ["blocker.khala_proof.token_usage.rows_and_tokens_present"],
+                    ok: false,
+                  },
+                },
+                status: "rejected",
+              },
+              ok: false,
+            },
+            autoRun: {
+              ok: false,
+            },
+          }, null, 2),
+          timedOut: false,
+        }
+      },
+    })
+
+    const result = await Effect.runPromise(service.runAssignment({
+      accountRef: "codex-2",
+      baseUrl: "https://openagents.test",
+      branch: "main",
+      commit: "0123456789abcdef0123456789abcdef01234567",
+      objective: "Run a real assignment.",
+      pylonRef: "pylon.owner",
+      repo: "OpenAgentsInc/openagents",
+      verify: "bun test tests/fleet-run-live-smoke.test.ts",
+      workerKind: "codex",
+    }))
+
+    expect(result.status).toBe("failed")
+    expect(result.assignmentRef).toBe("assignment.failed")
+    expect(result.summary).toContain("auto-run: failed")
+    expect(result.summary).toContain("closeout: rejected")
+    expect(result.summary).toContain("blocker.assignment.codex_agent_budget_exceeded")
+    expect(result.summary).not.toContain('"schema"')
+    expect(result.summary).not.toContain("openagents.pylon.assignment_run_lifecycle_event.v0.1")
+  })
+
   test("refreshes hosted heartbeat and retries stale assignment admission", async () => {
     const event = lifecycleEvent("assignment_run.completed")
     const captured: string[] = []

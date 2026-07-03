@@ -363,6 +363,15 @@ const recordField = (source: Record<string, unknown> | null, field: string): Rec
     : null
 }
 
+const stringArrayField = (source: Record<string, unknown> | null, field: string): readonly string[] => {
+  const value = source?.[field]
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+    : []
+}
+
+const dedupeStrings = (values: readonly string[]): readonly string[] => [...new Set(values)]
+
 const lifecycleSummaryLines = (
   events: readonly PylonAssignmentRunLifecycleEvent[],
 ): readonly string[] => {
@@ -463,16 +472,28 @@ const assignmentResultFromCommand = (
   const closeoutStatus = stringField(closeout, "status") ?? stringField(payload, "closeoutStatus")
   const payloadLifecycle = assignmentLifecycleEventsFromUnknown(payload?.assignmentLifecycleEvents)
   const lifecycle = command.lifecycle.length > 0 ? command.lifecycle : payloadLifecycle
-  const accepted = command.exitCode === 0 && assignmentRef !== null && autoRunOk !== false
-  const completed = accepted && (autoRunOk === true || runOk === true || closeoutStatus === "accepted")
+  const assignmentAccepted = command.exitCode === 0 && assignmentRef !== null
+  const completed = assignmentAccepted && (autoRunOk === true || runOk === true || closeoutStatus === "accepted")
+  const assignmentFailed = assignmentAccepted &&
+    (autoRunOk === false || runOk === false || closeoutStatus === "rejected")
   const status: PylonServiceAssignmentResult["status"] =
-    completed ? "completed" : accepted ? "accepted" : "failed"
-  const summary = accepted
+    completed ? "completed" : assignmentFailed ? "failed" : assignmentAccepted ? "accepted" : "failed"
+  const closeoutChecklist = recordField(closeout, "closeoutChecklist")
+  const proof = recordField(closeout, "proof")
+  const proofChecklist = recordField(proof, "proofChecklist")
+  const blockerRefs = dedupeStrings([
+    ...stringArrayField(closeout, "blockerRefs"),
+    ...stringArrayField(closeoutChecklist, "blockerRefs"),
+    ...stringArrayField(proofChecklist, "blockerRefs"),
+    ...lifecycle.flatMap(event => event.blockerRefs ?? []),
+  ])
+  const summary = assignmentAccepted
     ? [
         `assignment: ${assignmentRef}`,
         autoRunOk === null ? "auto-run: unknown" : `auto-run: ${autoRunOk ? "completed" : "failed"}`,
         runOk === null ? null : `assignment run: ${runOk ? "completed" : "failed"}`,
         closeoutStatus === null ? null : `closeout: ${closeoutStatus}`,
+        blockerRefs.length === 0 ? null : `blocker refs: ${blockerRefs.join(", ")}`,
         ...lifecycleSummaryLines(lifecycle),
         "next: summarize this status; no local output path was returned",
       ].filter((line): line is string => line !== null).join("\n")

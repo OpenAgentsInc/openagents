@@ -416,6 +416,40 @@ describe("codex agent task recognition", () => {
     })
   })
 
+  test("accepts the sustained Codex assignment budget headroom", async () => {
+    await withState(async (state) => {
+      const sustainedLease = {
+        ...lease,
+        codingAssignment: {
+          codex: {
+            schema: CODEX_AGENT_TASK_SCHEMA,
+            agentKind: "codex_sdk",
+            fixtureRef: CODEX_AGENT_SUM_REPAIR_FIXTURE_REF,
+            timeoutSeconds: 2400,
+          },
+        },
+      }
+      let observedTimeoutMs = 0
+      const runner: CodexAgentRunner = async (input) => {
+        observedTimeoutMs = input.timeoutMs
+        await writeFile(
+          join(input.cwd, "sum.ts"),
+          "export const sum = (left: number, right: number) => left + right\n",
+        )
+        return { outcome: "completed", turnCount: 1, editedFileCount: 1, commandCount: 1, sessionRef: null }
+      }
+
+      const record = await executeCodexAgentAssignment(state, sustainedLease, now, {
+        codexAgentRunner: runner,
+        codexAgentProbe: readyProbe,
+      })
+
+      expect(observedTimeoutMs).toBe(2_400_000)
+      expect(record?.status).toBe("accepted")
+      assertPublicProjectionSafe(record)
+    })
+  })
+
   test("scoped deadline timers are released when the owning fiber is interrupted", async () => {
     const events: string[] = []
 

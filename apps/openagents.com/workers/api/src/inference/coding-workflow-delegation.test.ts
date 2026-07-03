@@ -217,6 +217,7 @@ describe('coding workflow delegation', () => {
     expect(assigned.assignment.codingAssignment?.codex).toMatchObject({
       agentKind: 'codex_sdk',
       schema: 'openagents.pylon.codex_agent_task.v0.3',
+      timeoutSeconds: 2400,
     })
     expect(assigned.evidenceRefs).toContain(
       'evidence.khala_coding.authority_scope.owner_self',
@@ -289,6 +290,7 @@ describe('coding workflow delegation', () => {
     expect(assigned.assignment.codingAssignment?.claudeAgent).toMatchObject({
       agentKind: 'claude_agent_sdk',
       schema: 'openagents.pylon.claude_agent_task.v0.3',
+      timeoutSeconds: 1200,
     })
     expect(assigned.assignment.codingAssignment?.codex).toBeUndefined()
   })

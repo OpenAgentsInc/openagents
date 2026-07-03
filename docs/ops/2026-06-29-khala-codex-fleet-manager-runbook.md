@@ -763,6 +763,17 @@ Check the same process/marker commands above.
 The UI should render timed-out/failed `codex_spawn` cards as failed, not green.
 The tool result is failed whenever accepted count is less than requested count.
 
+### Sustained Smoke Hits `codex_agent_budget_exceeded`
+
+The sustained Codex proof intentionally keeps real `codex exec` sessions alive
+long enough to prove live-session inspection and refills. Caller-owned Codex
+coding delegation therefore uses a 2400-second assignment budget; a 1200-second
+budget is too tight for the 30-minute sustained proof once dependency prep,
+model overhead, and closeout submission are included. Treat
+`blocker.assignment.codex_agent_budget_exceeded` as a real red closeout, not a
+pass; relaunch only after confirming the server payload and local Pylon executor
+both accept the 2400-second Codex budget.
+
 ### `codex_spawn` Returns Duplicate Active Assignment
 
 If the tool fails with
