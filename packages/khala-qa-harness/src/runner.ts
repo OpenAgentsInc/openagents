@@ -496,27 +496,48 @@ const evaluateOracle = (
   observations: ReadonlyArray<KhalaCodeQaObservation>,
 ): KhalaCodeQaOracleOutcome => {
   if (expectation.oracle === "schema") {
-    const schemaObservation = [...observations].reverse().find((observation) => {
+    const schemaObservations = observations.filter((observation) => {
       if (observation.action.kind !== "rpc_call") return false
       if (expectation.query === undefined) return true
       return observation.action.method === expectation.query || `rpc:${observation.action.method}` === expectation.query
     })
-    const data = schemaObservation?.data as
-      | { readonly oracle?: { readonly decoded?: boolean; readonly unknownFields?: ReadonlyArray<unknown> } }
-      | undefined
-    const decoded = data?.oracle?.decoded === true
-    const unknownFields = data?.oracle?.unknownFields ?? []
-    const ok = schemaObservation?.ok === true && decoded && unknownFields.length === 0
+    const oracleReports = schemaObservations.map((observation) => {
+      const data = observation.data as
+        | { readonly oracle?: { readonly decoded?: boolean; readonly unknownFields?: ReadonlyArray<unknown> } }
+        | undefined
+      return {
+        decoded: data?.oracle?.decoded === true,
+        label: observation.label,
+        method: observation.action.kind === "rpc_call" ? observation.action.method : "unknown",
+        observationOk: observation.ok,
+        unknownFields: data?.oracle?.unknownFields ?? [],
+      }
+    })
+    const ok = schemaObservations.length > 0 &&
+      oracleReports.every((report) =>
+        report.observationOk === true &&
+        report.decoded &&
+        report.unknownFields.length === 0
+      )
+    const failedReports = oracleReports.filter((report) =>
+      report.observationOk !== true ||
+      !report.decoded ||
+      report.unknownFields.length > 0
+    )
     return {
-      data: data?.oracle,
+      data: {
+        query: expectation.query,
+        checkedResponses: oracleReports.length,
+        failures: failedReports,
+      },
       ok,
       oracle: "schema",
       phaseName,
-      summary: schemaObservation === undefined
+      summary: schemaObservations.length === 0
         ? "no RPC observation available for schema oracle"
-        : decoded && unknownFields.length === 0
-          ? "RPC response decoded with no unknown fields"
-          : "RPC response failed schema oracle",
+        : failedReports.length === 0
+          ? `${oracleReports.length} RPC response(s) decoded with no unknown fields`
+          : `RPC response schema oracle failed for ${failedReports.map((report) => report.label).join(", ")}`,
       verdict: ok ? "CONFIRMED" : "REFUTED",
     }
   }
@@ -647,6 +668,37 @@ const evaluateOracle = (
   }
 }
 
+const schemaGateExpectationsForFixturePhase = (
+  explicitExpectations: ReadonlyArray<KhalaCodeQaOracleExpectation>,
+  observations: ReadonlyArray<KhalaCodeQaObservation>,
+): ReadonlyArray<KhalaCodeQaOracleExpectation> => {
+  const rpcMethods = [...new Set(observations.flatMap((observation) =>
+    observation.action.kind === "rpc_call" ? [observation.action.method] : []
+  ))]
+  if (rpcMethods.length === 0) return []
+
+  const explicitSchemaExpectations = explicitExpectations.filter((expectation) =>
+    expectation.oracle === "schema"
+  )
+  if (explicitSchemaExpectations.some((expectation) => expectation.query === undefined)) {
+    return []
+  }
+
+  const coveredQueries = new Set(explicitSchemaExpectations.flatMap((expectation) =>
+    expectation.query === undefined ? [] : [expectation.query]
+  ))
+  return rpcMethods
+    .filter((method) =>
+      !coveredQueries.has(method) &&
+      !coveredQueries.has(`rpc:${method}`)
+    )
+    .map((method) => ({
+      id: "fixture-schema-gate",
+      oracle: "schema" as const,
+      query: method,
+    }))
+}
+
 export const runKhalaCodeQaScenario = (input: {
   readonly driver: KhalaCodeQaDriver
   readonly scenario: KhalaCodeQaScenario
@@ -713,7 +765,13 @@ export const runKhalaCodeQaScenario = (input: {
         )
         observations.push(metricsObservation)
       }
-      const oracles = phase.expect.map((expectation) =>
+      const expectations = input.scenario.backend === "fixture"
+        ? [
+            ...phase.expect,
+            ...schemaGateExpectationsForFixturePhase(phase.expect, observations),
+          ]
+        : phase.expect
+      const oracles = expectations.map((expectation) =>
         evaluateOracle(phase.name, expectation, observations),
       )
       phaseOutcomes.push({
