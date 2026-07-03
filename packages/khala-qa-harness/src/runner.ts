@@ -138,6 +138,144 @@ const findQaMetricsSnapshot = (
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value)
 
+const isRpcCallObservation = (
+  observation: KhalaCodeQaObservation,
+): observation is KhalaCodeQaObservation & {
+  readonly action: Extract<KhalaCodeQaObservation["action"], { readonly kind: "rpc_call" }>
+} => observation.action.kind === "rpc_call"
+
+const schemaQueryMatchesObservation = (
+  query: string | undefined,
+  observation: KhalaCodeQaObservation,
+): boolean => {
+  if (!isRpcCallObservation(observation)) return false
+  if (query === undefined) return true
+  return observation.action.method === query ||
+    `rpc:${observation.action.method}` === query ||
+    observation.label === query
+}
+
+const schemaOracleData = (
+  observation: KhalaCodeQaObservation,
+): {
+  readonly decoded?: boolean
+  readonly method?: string
+  readonly unknownFields?: ReadonlyArray<unknown>
+} | undefined => {
+  const data = observation.data as
+    | { readonly oracle?: { readonly decoded?: boolean; readonly method?: string; readonly unknownFields?: ReadonlyArray<unknown> } }
+    | undefined
+  return data?.oracle
+}
+
+const unknownFieldPaths = (unknownFields: ReadonlyArray<unknown>): readonly string[] =>
+  unknownFields
+    .map((field) =>
+      isRecord(field) && typeof field.path === "string" ? field.path : "$"
+    )
+    .sort()
+
+const schemaOutcomeForObservation = (
+  phaseName: string,
+  observation: KhalaCodeQaObservation,
+): KhalaCodeQaOracleOutcome => {
+  const data = schemaOracleData(observation)
+  const decoded = data?.decoded === true
+  const unknownFields = data?.unknownFields ?? []
+  const paths = unknownFieldPaths(unknownFields)
+  const ok = observation.ok === true && decoded && unknownFields.length === 0
+  const method = isRpcCallObservation(observation)
+    ? observation.action.method
+    : data?.method ?? observation.label
+  return {
+    data,
+    ok,
+    oracle: "schema",
+    phaseName,
+    summary: observation.ok !== true
+      ? `RPC ${method} failed before schema oracle: ${observation.error ?? "unknown error"}`
+      : decoded && unknownFields.length === 0
+        ? `RPC ${method} response decoded with no unknown fields`
+        : decoded
+          ? `RPC ${method} response decoded with unknown fields: ${paths.join(", ")}`
+          : `RPC ${method} response failed schema decode`,
+    verdict: ok ? "CONFIRMED" : "REFUTED",
+  }
+}
+
+const evaluateSchemaOracle = (
+  phaseName: string,
+  expectation: KhalaCodeQaOracleExpectation,
+  observations: ReadonlyArray<KhalaCodeQaObservation>,
+): KhalaCodeQaOracleOutcome => {
+  const matchingObservations = observations.filter((observation) =>
+    schemaQueryMatchesObservation(expectation.query, observation)
+  )
+  if (matchingObservations.length === 0) {
+    return {
+      data: { query: expectation.query },
+      ok: false,
+      oracle: "schema",
+      phaseName,
+      summary: "no RPC observation available for schema oracle",
+      verdict: "REFUTED",
+    }
+  }
+
+  const outcomes = matchingObservations.map((observation) =>
+    schemaOutcomeForObservation(phaseName, observation)
+  )
+  if (outcomes.length === 1) return outcomes[0]!
+
+  const failures = outcomes.filter((outcome) => !outcome.ok)
+  return {
+    data: {
+      query: expectation.query,
+      results: outcomes.map((outcome) => ({
+        data: outcome.data,
+        ok: outcome.ok,
+        summary: outcome.summary,
+        verdict: outcome.verdict,
+      })),
+    },
+    ok: failures.length === 0,
+    oracle: "schema",
+    phaseName,
+    summary: failures.length === 0
+      ? `${outcomes.length} RPC responses decoded with no unknown fields`
+      : `RPC schema oracle failed for ${failures.map((failure) => failure.summary).join("; ")}`,
+    verdict: failures.length === 0 ? "CONFIRMED" : "REFUTED",
+  }
+}
+
+const implicitSchemaOracleOutcomes = (
+  phaseName: string,
+  expectations: ReadonlyArray<KhalaCodeQaOracleExpectation>,
+  observations: ReadonlyArray<KhalaCodeQaObservation>,
+): ReadonlyArray<KhalaCodeQaOracleOutcome> => {
+  const explicitSchemaExpectations = expectations.filter((expectation) =>
+    expectation.oracle === "schema"
+  )
+  if (explicitSchemaExpectations.some((expectation) => expectation.query === undefined)) return []
+
+  const missingMethods = [...new Set(observations
+    .filter(isRpcCallObservation)
+    .filter((observation) =>
+      !explicitSchemaExpectations.some((expectation) =>
+        schemaQueryMatchesObservation(expectation.query, observation)
+      )
+    )
+    .map((observation) => observation.action.method))]
+
+  return missingMethods.map((method) =>
+    evaluateSchemaOracle(
+      phaseName,
+      { oracle: "schema", query: method },
+      observations,
+    )
+  )
+}
+
 const collectStrings = (value: unknown): readonly string[] => {
   if (typeof value === "string") return [value]
   if (Array.isArray(value)) return value.flatMap(collectStrings)
@@ -496,29 +634,7 @@ const evaluateOracle = (
   observations: ReadonlyArray<KhalaCodeQaObservation>,
 ): KhalaCodeQaOracleOutcome => {
   if (expectation.oracle === "schema") {
-    const schemaObservation = [...observations].reverse().find((observation) => {
-      if (observation.action.kind !== "rpc_call") return false
-      if (expectation.query === undefined) return true
-      return observation.action.method === expectation.query || `rpc:${observation.action.method}` === expectation.query
-    })
-    const data = schemaObservation?.data as
-      | { readonly oracle?: { readonly decoded?: boolean; readonly unknownFields?: ReadonlyArray<unknown> } }
-      | undefined
-    const decoded = data?.oracle?.decoded === true
-    const unknownFields = data?.oracle?.unknownFields ?? []
-    const ok = schemaObservation?.ok === true && decoded && unknownFields.length === 0
-    return {
-      data: data?.oracle,
-      ok,
-      oracle: "schema",
-      phaseName,
-      summary: schemaObservation === undefined
-        ? "no RPC observation available for schema oracle"
-        : decoded && unknownFields.length === 0
-          ? "RPC response decoded with no unknown fields"
-          : "RPC response failed schema oracle",
-      verdict: ok ? "CONFIRMED" : "REFUTED",
-    }
+    return evaluateSchemaOracle(phaseName, expectation, observations)
   }
 
   if (expectation.oracle === "crash") {
@@ -716,12 +832,16 @@ export const runKhalaCodeQaScenario = (input: {
       const oracles = phase.expect.map((expectation) =>
         evaluateOracle(phase.name, expectation, observations),
       )
+      const schemaGateOracles = input.scenario.backend === "fixture"
+        ? implicitSchemaOracleOutcomes(phase.name, phase.expect, observations)
+        : []
+      const phaseOracles = [...oracles, ...schemaGateOracles]
       phaseOutcomes.push({
         name: phase.name,
         observations,
-        oracles,
+        oracles: phaseOracles,
         status: observations.every((observation) => observation.ok) &&
-          oracles.every((oracle) => oracle.ok)
+          phaseOracles.every((oracle) => oracle.ok)
           ? "pass"
           : "fail",
       })

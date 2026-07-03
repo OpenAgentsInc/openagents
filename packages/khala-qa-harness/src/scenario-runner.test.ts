@@ -219,6 +219,54 @@ describe("Khala Code QA RPC driver and runner", () => {
     expect(report.phaseOutcomes[0]?.oracles[0]?.ok).toBe(false)
   })
 
+  test("blocks fixture-tier runs when an unlisted RPC response drifts with unknown fields", async () => {
+    const baseFetch = makeKhalaCodeQaSeedCorpusFixtureFetch()
+    const fetch = (async (input, init) => {
+      const response = await baseFetch(input, init)
+      if (methodName(input) !== "codexFleetStatus") return response
+      const payload = await response.json() as Record<string, unknown>
+      return jsonResponse({ ...payload, unexpectedMergeGateDrift: true })
+    }) as KhalaCodeRpcFetch
+    const scenario = loadKhalaCodeQaScenario({
+      ...fixtureScenario,
+      commitments: [
+        {
+          claim: "fixture schema gate blocks unknown-field drift",
+          evidence: "run-pass",
+          id: "schema.unknown_field_gate",
+        },
+      ],
+      phases: [
+        {
+          act: [
+            { kind: "rpc_call", method: "appInfo" },
+            { kind: "rpc_call", method: "codexFleetStatus" },
+          ],
+          expect: [
+            { oracle: "schema", query: "appInfo" },
+            { oracle: "crash" },
+          ],
+          name: "fixture-schema-gate",
+        },
+      ],
+    })
+
+    const report = await Effect.runPromise(
+      runKhalaCodeQaScenario({
+        driver: makeKhalaCodeRpcQaDriver({ fetch }),
+        scenario,
+      }),
+    )
+
+    const schemaOracles = report.phaseOutcomes[0]?.oracles.filter((oracle) =>
+      oracle.oracle === "schema"
+    ) ?? []
+    expect(report.status).toBe("fail")
+    expect(schemaOracles.map((oracle) => oracle.ok)).toEqual([true, false])
+    expect(schemaOracles[1]?.summary).toContain("unexpectedMergeGateDrift")
+    expect(report.commitments.verdict).toBe("REFUTED")
+  })
+
   test("keeps unobserved commitments inconclusive", async () => {
     const scenario = loadKhalaCodeQaScenario({
       ...fixtureScenario,
