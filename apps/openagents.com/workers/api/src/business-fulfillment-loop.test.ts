@@ -88,6 +88,7 @@ const makeDb = (): D1Database => {
   const db = new DatabaseSync(':memory:')
   db.exec(migration('0091_omni_accepted_outcome_contracts.sql'))
   db.exec(migration('0274_business_fulfillment_loop.sql'))
+  db.exec(migration('0275_business_fulfillment_cadence_drip_updates.sql'))
   return new SqliteD1(db) as unknown as D1Database
 }
 
@@ -103,12 +104,13 @@ class MemoryFulfillmentLoopStore implements BusinessFulfillmentLoopStore {
     private readonly promises: ReadonlyArray<BusinessServicePromiseRecord>,
   ) {}
 
-  async claimDailyMotionReceipt(receipt: {
+  async claimMotionReceipt(receipt: {
+    cadence: string
     motionDate: string
     promiseId: string
     receiptRef: string
   }): Promise<Readonly<{ claimed: boolean }>> {
-    const key = `${receipt.promiseId}:${receipt.motionDate}`
+    const key = `${receipt.promiseId}:${receipt.cadence}:${receipt.motionDate}`
     if (this.receipts.has(key)) {
       return { claimed: false }
     }
@@ -147,9 +149,14 @@ describe('business fulfillment loop', () => {
       agentDefinitionRef: BUSINESS_FULFILLMENT_LOOP_AGENT_DEFINITION_REF,
       approvalGateRef:
         'approval_gate.business_fulfillment.client_comms.promise_business_fulfillment_001_2026_07_03',
+      cadence: 'daily',
       clientCommsDraftRef:
         'draft.business_fulfillment.client_comms.promise_business_fulfillment_001_2026_07_03',
+      clientCommsLedgerRef:
+        'email_ledger.business_fulfillment.daily.client_comms.promise_business_fulfillment_001_2026_07_03',
       crmStateRef: promise.crmStateRef,
+      customerWorkroomUpdateRef:
+        'workroom_update.business_fulfillment.customer_visible.daily.promise_business_fulfillment_001_2026_07_03',
       forwardMotionRef:
         'motion.business_fulfillment.daily.promise_business_fulfillment_001_2026_07_03',
       motionDate: '2026-07-03',
@@ -165,16 +172,45 @@ describe('business fulfillment loop', () => {
     expect(JSON.stringify(receipt)).not.toMatch(/@|customer_email|raw_crm/i)
   })
 
-  test('cron tick claims each due active promise once per day', async () => {
-    const store = new MemoryFulfillmentLoopStore([activePromise()])
+  test('records weekly motion with weekly drip and customer workroom update refs', async () => {
+    const promise = activePromise({
+      cadence: 'weekly',
+      id: 'business_service_promise_weekly',
+      promiseRef: 'promise.business.fulfillment.weekly',
+    })
+    const receipt = buildBusinessFulfillmentMotionReceipt(promise, runtime)
+
+    expect(receipt).toMatchObject({
+      cadence: 'weekly',
+      clientCommsLedgerRef:
+        'email_ledger.business_fulfillment.weekly.client_comms.promise_business_fulfillment_weekly_2026_07_03',
+      customerWorkroomUpdateRef:
+        'workroom_update.business_fulfillment.customer_visible.weekly.promise_business_fulfillment_weekly_2026_07_03',
+      forwardMotionRef:
+        'motion.business_fulfillment.weekly.promise_business_fulfillment_weekly_2026_07_03',
+      receiptRef:
+        'receipt.business_fulfillment.weekly_motion.promise_business_fulfillment_weekly_2026_07_03',
+    })
+  })
+
+  test('cron tick claims each due active promise once per configured cadence', async () => {
+    const store = new MemoryFulfillmentLoopStore([
+      activePromise(),
+      activePromise({
+        cadence: 'weekly',
+        id: 'business_service_promise_weekly',
+        promiseRef: 'promise.business.fulfillment.weekly',
+      }),
+    ])
     const result = await Effect.runPromise(
       runBusinessFulfillmentLoop({ runtime, store }),
     )
 
     expect(result).toEqual({
-      duePromiseCount: 1,
+      duePromiseCount: 2,
       motionReceiptRefs: [
         'receipt.business_fulfillment.daily_motion.promise_business_fulfillment_001_2026_07_03',
+        'receipt.business_fulfillment.weekly_motion.promise_business_fulfillment_weekly_2026_07_03',
       ],
       skippedDuplicateCount: 0,
       state: 'completed',
@@ -186,15 +222,21 @@ describe('business fulfillment loop', () => {
         receiptRef:
           'receipt.business_fulfillment.daily_motion.promise_business_fulfillment_001_2026_07_03',
       },
+      {
+        nextMotionDueAt: '2026-07-10T12:00:00.000Z',
+        promiseId: 'business_service_promise_weekly',
+        receiptRef:
+          'receipt.business_fulfillment.weekly_motion.promise_business_fulfillment_weekly_2026_07_03',
+      },
     ])
 
     const duplicate = await Effect.runPromise(
       runBusinessFulfillmentLoop({ runtime, store }),
     )
     expect(duplicate).toMatchObject({
-      duePromiseCount: 1,
+      duePromiseCount: 2,
       motionReceiptRefs: [],
-      skippedDuplicateCount: 1,
+      skippedDuplicateCount: 2,
       state: 'completed',
     })
   })
@@ -226,7 +268,7 @@ describe('business fulfillment loop', () => {
     )
   })
 
-  test('D1 store claims one daily receipt per active service promise', async () => {
+  test('D1 store claims one cadence-scoped receipt per active service promise', async () => {
     const db = makeDb()
     await db
       .prepare(
@@ -245,7 +287,7 @@ describe('business fulfillment loop', () => {
           metadata_json,
           created_at,
           updated_at
-        ) VALUES (?, ?, NULL, ?, ?, ?, 'active', 'daily', ?, NULL, ?, '{}', ?, ?)`,
+        ) VALUES (?, ?, NULL, ?, ?, ?, 'active', ?, ?, NULL, ?, '{}', ?, ?)`,
       )
       .bind(
         'business_service_promise_d1',
@@ -253,6 +295,7 @@ describe('business fulfillment loop', () => {
         'workspace.business.fulfillment.d1',
         'crm_state.business.promise_d1.public_safe',
         JSON.stringify(['stakeholder.business.operator']),
+        'weekly',
         '2026-07-03T00:00:00.000Z',
         JSON.stringify(['docs/fable/ROADMAP_BIZ.md#BF-5.1']),
         '2026-07-02T00:00:00.000Z',
@@ -277,6 +320,9 @@ describe('business fulfillment loop', () => {
         `SELECT receipt_ref,
                 outbound_allowed,
                 approval_gate_ref,
+                cadence,
+                client_comms_ledger_ref,
+                customer_workroom_update_ref,
                 client_comms_draft_ref
            FROM business_fulfillment_motion_receipts
           WHERE promise_id = ?`,
@@ -284,7 +330,10 @@ describe('business fulfillment loop', () => {
       .bind('business_service_promise_d1')
       .first<{
         approval_gate_ref: string
+        cadence: string
         client_comms_draft_ref: string
+        client_comms_ledger_ref: string
+        customer_workroom_update_ref: string
         outbound_allowed: number
         receipt_ref: string
       }>()
@@ -303,7 +352,7 @@ describe('business fulfillment loop', () => {
     expect(first).toEqual({
       duePromiseCount: 1,
       motionReceiptRefs: [
-        'receipt.business_fulfillment.daily_motion.promise_business_fulfillment_d1_2026_07_03',
+        'receipt.business_fulfillment.weekly_motion.promise_business_fulfillment_d1_2026_07_03',
       ],
       skippedDuplicateCount: 0,
       state: 'completed',
@@ -317,16 +366,21 @@ describe('business fulfillment loop', () => {
     expect(receiptRow).toMatchObject({
       approval_gate_ref:
         'approval_gate.business_fulfillment.client_comms.promise_business_fulfillment_d1_2026_07_03',
+      cadence: 'weekly',
       client_comms_draft_ref:
         'draft.business_fulfillment.client_comms.promise_business_fulfillment_d1_2026_07_03',
+      client_comms_ledger_ref:
+        'email_ledger.business_fulfillment.weekly.client_comms.promise_business_fulfillment_d1_2026_07_03',
+      customer_workroom_update_ref:
+        'workroom_update.business_fulfillment.customer_visible.weekly.promise_business_fulfillment_d1_2026_07_03',
       outbound_allowed: 0,
       receipt_ref:
-        'receipt.business_fulfillment.daily_motion.promise_business_fulfillment_d1_2026_07_03',
+        'receipt.business_fulfillment.weekly_motion.promise_business_fulfillment_d1_2026_07_03',
     })
     expect(promiseRow).toMatchObject({
       last_motion_receipt_ref:
-        'receipt.business_fulfillment.daily_motion.promise_business_fulfillment_d1_2026_07_03',
-      next_motion_due_at: '2026-07-04T12:00:00.000Z',
+        'receipt.business_fulfillment.weekly_motion.promise_business_fulfillment_d1_2026_07_03',
+      next_motion_due_at: '2026-07-10T12:00:00.000Z',
     })
   })
 })

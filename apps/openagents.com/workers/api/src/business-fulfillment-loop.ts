@@ -21,9 +21,13 @@ export const BusinessServicePromiseState = S.Literals([
 export type BusinessServicePromiseState =
   typeof BusinessServicePromiseState.Type
 
+export const BusinessServicePromiseCadence = S.Literals(['daily', 'weekly'])
+export type BusinessServicePromiseCadence =
+  typeof BusinessServicePromiseCadence.Type
+
 export const BusinessServicePromiseRecord = S.Struct({
   acceptedOutcomeContractId: S.NullOr(S.String),
-  cadence: S.Literal('daily'),
+  cadence: BusinessServicePromiseCadence,
   createdAt: S.String,
   crmStateRef: S.String,
   id: S.String,
@@ -43,9 +47,12 @@ export const BusinessFulfillmentMotionReceipt = S.Struct({
   agentDefinitionRef: S.String,
   approvalGateRef: S.String,
   blockerRefs: S.Array(S.String),
+  cadence: BusinessServicePromiseCadence,
   clientCommsDraftRef: S.String,
+  clientCommsLedgerRef: S.String,
   createdAt: S.String,
   crmStateRef: S.String,
+  customerWorkroomUpdateRef: S.String,
   forwardMotionRef: S.String,
   id: S.String,
   motionDate: S.String,
@@ -61,7 +68,7 @@ export type BusinessFulfillmentMotionReceipt =
   typeof BusinessFulfillmentMotionReceipt.Type
 
 export type BusinessFulfillmentLoopStore = Readonly<{
-  claimDailyMotionReceipt: (
+  claimMotionReceipt: (
     receipt: BusinessFulfillmentMotionReceipt,
   ) => Promise<Readonly<{ claimed: boolean }>>
   listDuePromises: (
@@ -145,7 +152,7 @@ const promiseFromRow = (
     typeof row.accepted_outcome_contract_id === 'string'
       ? row.accepted_outcome_contract_id
       : null,
-  cadence: 'daily',
+  cadence: S.decodeUnknownSync(BusinessServicePromiseCadence)(row.cadence),
   createdAt: String(row.created_at),
   crmStateRef: String(row.crm_state_ref),
   id: String(row.id),
@@ -168,7 +175,7 @@ const promiseFromRow = (
 export const makeD1BusinessFulfillmentLoopStore = (
   db: D1Database,
 ): BusinessFulfillmentLoopStore => ({
-  claimDailyMotionReceipt: async receipt => {
+  claimMotionReceipt: async receipt => {
     const result = await db
       .prepare(
         `INSERT OR IGNORE INTO business_fulfillment_motion_receipts (
@@ -181,14 +188,17 @@ export const makeD1BusinessFulfillmentLoopStore = (
           crm_state_ref,
           stakeholder_refs_json,
           stakeholder_flag_refs_json,
+          cadence,
           forward_motion_ref,
+          customer_workroom_update_ref,
+          client_comms_ledger_ref,
           client_comms_draft_ref,
           approval_gate_ref,
           outbound_allowed,
           blocker_refs_json,
           source_refs_json,
           created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(
         receipt.id,
@@ -200,7 +210,10 @@ export const makeD1BusinessFulfillmentLoopStore = (
         receipt.crmStateRef,
         JSON.stringify(receipt.stakeholderRefs),
         JSON.stringify(receipt.stakeholderFlagRefs),
+        receipt.cadence,
         receipt.forwardMotionRef,
+        receipt.customerWorkroomUpdateRef,
+        receipt.clientCommsLedgerRef,
         receipt.clientCommsDraftRef,
         receipt.approvalGateRef,
         receipt.outboundAllowed ? 1 : 0,
@@ -218,7 +231,7 @@ export const makeD1BusinessFulfillmentLoopStore = (
         `SELECT *
            FROM business_service_promises
           WHERE state = 'active'
-            AND cadence = 'daily'
+            AND cadence IN ('daily', 'weekly')
             AND (next_motion_due_at IS NULL OR next_motion_due_at <= ?)
           ORDER BY COALESCE(next_motion_due_at, created_at) ASC, updated_at ASC
           LIMIT ?`,
@@ -250,8 +263,15 @@ export const makeD1BusinessFulfillmentLoopStore = (
 const refSuffix = (value: string): string =>
   value.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '')
 
-const nextDailyDueAt = (nowIso: string): string =>
-  isoTimestampAfterIso(nowIso, 24 * 60 * 60 * 1000)
+const BUSINESS_FULFILLMENT_CADENCE_MS = {
+  daily: 24 * 60 * 60 * 1000,
+  weekly: 7 * 24 * 60 * 60 * 1000,
+} as const satisfies Record<BusinessServicePromiseCadence, number>
+
+const nextMotionDueAt = (
+  cadence: BusinessServicePromiseCadence,
+  nowIso: string,
+): string => isoTimestampAfterIso(nowIso, BUSINESS_FULFILLMENT_CADENCE_MS[cadence])
 
 const validatePromise = (promise: BusinessServicePromiseRecord): void => {
   assertSafeRef('promiseRef', promise.promiseRef)
@@ -276,6 +296,7 @@ export const buildBusinessFulfillmentMotionReceipt = (
   const sourceRefs = [
     ...promise.sourceRefs,
     'docs/fable/ROADMAP_BIZ.md#BF-5.1',
+    'docs/fable/ROADMAP_BIZ.md#BF-5.3',
     'docs/fable/2026-07-02-business-fulfillment-engine-meditations.md#fulfillment-agents',
   ]
 
@@ -283,16 +304,19 @@ export const buildBusinessFulfillmentMotionReceipt = (
     agentDefinitionRef: BUSINESS_FULFILLMENT_LOOP_AGENT_DEFINITION_REF,
     approvalGateRef: `approval_gate.business_fulfillment.client_comms.${suffix}`,
     blockerRefs: [],
+    cadence: promise.cadence,
     clientCommsDraftRef: `draft.business_fulfillment.client_comms.${suffix}`,
+    clientCommsLedgerRef: `email_ledger.business_fulfillment.${promise.cadence}.client_comms.${suffix}`,
     createdAt: nowIso,
     crmStateRef: promise.crmStateRef,
-    forwardMotionRef: `motion.business_fulfillment.daily.${suffix}`,
+    customerWorkroomUpdateRef: `workroom_update.business_fulfillment.customer_visible.${promise.cadence}.${suffix}`,
+    forwardMotionRef: `motion.business_fulfillment.${promise.cadence}.${suffix}`,
     id: runtime.makeId('business_fulfillment_motion'),
     motionDate,
     outboundAllowed: false,
     promiseId: promise.id,
     promiseRef: promise.promiseRef,
-    receiptRef: `receipt.business_fulfillment.daily_motion.${suffix}`,
+    receiptRef: `receipt.business_fulfillment.${promise.cadence}_motion.${suffix}`,
     sourceRefs,
     stakeholderFlagRefs: promise.stakeholderRefs.map(
       stakeholderRef =>
@@ -327,7 +351,7 @@ export const runBusinessFulfillmentLoop = (
               buildBusinessFulfillmentMotionReceipt(promise, input.runtime),
           })
           const claim = yield* tryLoopPromise(() =>
-            input.store.claimDailyMotionReceipt(receipt),
+            input.store.claimMotionReceipt(receipt),
           )
 
           if (!claim.claimed) {
@@ -341,7 +365,7 @@ export const runBusinessFulfillmentLoop = (
             input.store.markPromiseMotionRecorded(
               promise.id,
               receipt.receiptRef,
-              nextDailyDueAt(nowIso),
+              nextMotionDueAt(promise.cadence, nowIso),
               nowIso,
             ),
           )
