@@ -150,12 +150,14 @@ describe("Khala Code desktop schema-first RPC contract", () => {
   test("decodes the schema-first cross-harness session catalog RPC", () => {
     expect(decodeKhalaCodeDesktopRpcParameters("sessionCatalog", [{
       limit: 20,
+      scope: "app",
       searchTerm: "plan",
-    }])).toEqual([{ limit: 20, searchTerm: "plan" }])
+    }])).toEqual([{ limit: 20, scope: "app", searchTerm: "plan" }])
 
     expect(decodeKhalaCodeDesktopRpcResult("sessionCatalog", {
       ok: true,
       schemaVersion: "khala-code-desktop.session-catalog.v1",
+      scope: "app",
       diagnostics: [],
       entries: [{
         catalogEntryId: "claude:session-1",

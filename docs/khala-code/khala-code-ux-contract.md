@@ -52,7 +52,7 @@ sweep if this doc, the registry, or the oracle tests drift apart.
 
 ## Registry
 
-Registry version: `2026-07-03.5` (schema `openagents.behavior_contracts.v1`)
+Registry version: `2026-07-03.6` (schema `openagents.behavior_contracts.v1`)
 
 ### `khala_code.chat.sidebar_spinner_streaming_only.v1` — ENFORCED
 
@@ -104,6 +104,17 @@ Registry version: `2026-07-03.5` (schema `openagents.behavior_contracts.v1`)
 - **Oracle** `sidebar_hotkey_hints.dom` (bun-test, dom): Mounts the real thread sidebar in a DOM: enabling hotkey hints replaces the time slot of the nine most recent chats with their command-digit hints in place (no separate pane appears anywhere in the document), and disabling hints restores the timestamps. — `clients/khala-code-desktop/tests/ux-contracts.test.ts`
 - **Verification:** bun test tests/ux-contracts.test.ts inside clients/khala-code-desktop; runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.
 - **Authority boundary:** Cmd+0 additionally maps to the tenth most recent chat and Cmd+ArrowUp/ArrowDown cycle through recency; those are compatible extensions, not part of this contract. The generalized overlay-menu component remains available for future dialog menus but is not mounted for this feature.
+
+### `khala_code.history.app_sessions_default.v1` — ENFORCED
+
+- **Surface:** khala-code-desktop (History sidebar)
+- **Stated by:** customer via github-issue on 2026-07-03
+- **Statement:** History defaults to chats created in Khala Code Desktop, not every Codex or Claude session from the user's home stores. Showing all home sessions is an explicit opt-in, and stale missing-rollout rows must not permanently bury desktop chats as undismissable red errors.
+- **Enforcement tier:** test-sweep
+- **Oracle** `session_catalog_app_scope.unit` (bun-test, unit): Builds a mixed app-owned plus headless-runtime catalog and proves the default sessionCatalog scope includes only the app-owned desktop thread while omitting unrelated home/headless prompts. — `clients/khala-code-desktop/tests/session-catalog.test.ts`
+- **Oracle** `history_scope_toggle.dom` (bun-test, dom): Mounts the real History sidebar in a DOM and proves the header toggle is off by default, requests app-only history first, and sends includeHomeSessions only after explicit user activation. — `clients/khala-code-desktop/tests/codex-thread-sidebar.test.ts`
+- **Verification:** bun test tests/session-catalog.test.ts tests/codex-thread-sidebar.test.ts inside clients/khala-code-desktop; both run in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.
+- **Authority boundary:** This contract binds the History/session-catalog default and its explicit opt-in only. It does not prevent app-owned sessions from being enriched with runtime metadata, and it does not promise that externally created home sessions can always be opened successfully.
 
 ### `khala_code.composer.no_dead_controls.v1` — PENDING
 

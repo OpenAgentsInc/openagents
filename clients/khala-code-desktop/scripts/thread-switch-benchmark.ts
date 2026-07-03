@@ -137,6 +137,7 @@ export const buildThreadSwitchBenchmarkSessionCatalog = (): Record<string, unkno
   entries: threadFixtures().map(sessionCatalogEntry),
   ok: true,
   schemaVersion: "khala-code-desktop.session-catalog.v1",
+  scope: "app",
 })
 
 const messagesForThread = (

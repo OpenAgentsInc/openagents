@@ -374,6 +374,7 @@ const RpcSessionCatalogEntry = S.Struct({
 })
 
 const RpcSessionCatalogRequest = S.Struct({
+  scope: S.optional(S.Literals(["app", "all_home"])),
   limit: S.optional(S.Number),
   searchTerm: S.optional(S.String),
 })
@@ -381,6 +382,7 @@ const RpcSessionCatalogRequest = S.Struct({
 const RpcSessionCatalogResult = S.Struct({
   ok: S.Literal(true),
   schemaVersion: S.Literal("khala-code-desktop.session-catalog.v1"),
+  scope: S.Literals(["app", "all_home"]),
   entries: S.Array(RpcSessionCatalogEntry),
   diagnostics: S.Array(S.String),
 })

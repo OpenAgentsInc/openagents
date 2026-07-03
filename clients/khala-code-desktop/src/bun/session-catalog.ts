@@ -11,6 +11,7 @@ import {
 import type {
   KhalaCodeDesktopSessionCatalogEntry,
   KhalaCodeDesktopSessionCatalogResult,
+  KhalaCodeDesktopSessionCatalogScope,
   KhalaCodeDesktopSessionExactTotals,
   KhalaCodeDesktopSessionHarnessKind,
 } from "../shared/session-catalog.js"
@@ -18,6 +19,7 @@ import type {
 type JsonRecord = Readonly<Record<string, unknown>>
 
 export type KhalaCodeDesktopSessionCatalogRequest = {
+  readonly scope?: KhalaCodeDesktopSessionCatalogScope | undefined
   readonly limit?: number | undefined
   readonly searchTerm?: string | undefined
 }
@@ -222,6 +224,32 @@ const entryFromStoredSession = (
   }
 }
 
+const appOwnedThreadRefs = (
+  storedSessions: Readonly<Record<string, JsonRecord>>,
+): ReadonlySet<string> => {
+  const refs = new Set<string>()
+  for (const [desktopSessionRef, stored] of Object.entries(storedSessions)) {
+    refs.add(desktopSessionRef)
+    const sessionRef = sessionIdFrom(stored)
+    const threadRef = threadIdFrom(stored)
+    if (sessionRef !== null) refs.add(sessionRef)
+    if (threadRef !== null) refs.add(threadRef)
+  }
+  return refs
+}
+
+const threadBelongsToApp = (
+  thread: JsonRecord,
+  appRefs: ReadonlySet<string>,
+): boolean => {
+  const sessionRef = sessionIdFrom(thread)
+  const threadRef = threadIdFrom(thread)
+  return (
+    (sessionRef !== null && appRefs.has(sessionRef)) ||
+    (threadRef !== null && appRefs.has(threadRef))
+  )
+}
+
 const storedSessionHarnessKind = (
   fallback: KhalaCodeDesktopSessionHarnessKind,
   stored: JsonRecord,
@@ -283,6 +311,7 @@ export const readKhalaCodeDesktopSessionCatalog = async (
   const diagnostics: string[] = []
   const entries = new Map<string, KhalaCodeDesktopSessionCatalogEntry>()
   const env = options.env ?? Bun.env
+  const scope = request.scope ?? "app"
 
   const [
     codexStoredSessions,
@@ -309,6 +338,9 @@ export const readKhalaCodeDesktopSessionCatalog = async (
         .catch(error => ({ ok: false as const, error })),
   ])
 
+  const codexAppRefs = appOwnedThreadRefs(codexStoredSessions)
+  const claudeAppRefs = appOwnedThreadRefs(claudeStoredSessions)
+
   for (const [desktopSessionRef, stored] of Object.entries(codexStoredSessions)) {
     const entry = entryFromStoredSession(
       storedSessionHarnessKind("codex", stored),
@@ -331,10 +363,12 @@ export const readKhalaCodeDesktopSessionCatalog = async (
       const result = codexThreadList.result
       for (const value of result.data) {
         if (!isRecord(value)) continue
+        if (scope === "app" && !threadBelongsToApp(value, codexAppRefs)) continue
         const entry = entryFromThread("codex", value, "codex_app_server_thread_list")
         if (entry !== null) mergeEntry(entries, entry)
       }
       for (const thread of result.threads ?? []) {
+        if (scope === "app" && !threadBelongsToApp(thread, codexAppRefs)) continue
         const entry = entryFromThread("codex", thread, "codex_app_server_thread_projection")
         if (entry !== null) mergeEntry(entries, entry)
       }
@@ -349,10 +383,12 @@ export const readKhalaCodeDesktopSessionCatalog = async (
       const result = claudeThreadList.result
       for (const value of result.data) {
         if (!isRecord(value)) continue
+        if (scope === "app" && !threadBelongsToApp(value, claudeAppRefs)) continue
         const entry = entryFromThread("claude", value, "claude_sdk_list_sessions")
         if (entry !== null) mergeEntry(entries, entry)
       }
       for (const thread of result.threads ?? []) {
+        if (scope === "app" && !threadBelongsToApp(thread, claudeAppRefs)) continue
         const entry = entryFromThread("claude", thread, "claude_thread_projection")
         if (entry !== null) mergeEntry(entries, entry)
       }
@@ -370,6 +406,7 @@ export const readKhalaCodeDesktopSessionCatalog = async (
   return {
     ok: true,
     schemaVersion: "khala-code-desktop.session-catalog.v1",
+    scope,
     diagnostics,
     entries: limit === undefined ? sorted : sorted.slice(0, limit),
   }

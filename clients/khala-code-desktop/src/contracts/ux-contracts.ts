@@ -198,6 +198,50 @@ export const khalaCodeUxContractRegistry: BehaviorContractRegistryDocument = {
     },
     {
       authorityBoundary:
+        "This contract binds the History/session-catalog default and its explicit opt-in only. It does not prevent app-owned sessions from being enriched with runtime metadata, and it does not promise that externally created home sessions can always be opened successfully.",
+      blockerRefs: [],
+      contractId: "khala_code.history.app_sessions_default.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "clients/khala-code-desktop/src/bun/session-catalog.ts",
+        "clients/khala-code-desktop/src/ui/codex-thread-sidebar.ts",
+        "clients/khala-code-desktop/tests/session-catalog.test.ts",
+        "clients/khala-code-desktop/tests/codex-thread-sidebar.test.ts",
+        "docs/khala-code/khala-code-ux-contract.md",
+      ],
+      oracles: [
+        {
+          description:
+            "Builds a mixed app-owned plus headless-runtime catalog and proves the default sessionCatalog scope includes only the app-owned desktop thread while omitting unrelated home/headless prompts.",
+          id: "session_catalog_app_scope.unit",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "clients/khala-code-desktop/tests/session-catalog.test.ts",
+        },
+        {
+          description:
+            "Mounts the real History sidebar in a DOM and proves the header toggle is off by default, requests app-only history first, and sends includeHomeSessions only after explicit user activation.",
+          id: "history_scope_toggle.dom",
+          kind: "bun-test",
+          mode: "dom",
+          ref: "clients/khala-code-desktop/tests/codex-thread-sidebar.test.ts",
+        },
+      ],
+      productArea: "History sidebar",
+      source: {
+        channel: "github-issue",
+        statedBy: "customer",
+        statedOn: "2026-07-03",
+      },
+      state: "enforced",
+      statement:
+        "History defaults to chats created in Khala Code Desktop, not every Codex or Claude session from the user's home stores. Showing all home sessions is an explicit opt-in, and stale missing-rollout rows must not permanently bury desktop chats as undismissable red errors.",
+      surface: "khala-code-desktop",
+      verification:
+        "bun test tests/session-catalog.test.ts tests/codex-thread-sidebar.test.ts inside clients/khala-code-desktop; both run in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.",
+    },
+    {
+      authorityBoundary:
         "This binds control liveness only, not the exact reasoning-mode UI; that design is free to iterate as long as no control ships inert.",
       blockerRefs: ["blocker.khala_code_ux_mining.oracle_not_implemented_20260703"],
       contractId: "khala_code.composer.no_dead_controls.v1",
@@ -762,5 +806,5 @@ export const khalaCodeUxContractRegistry: BehaviorContractRegistryDocument = {
     },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-03.5",
+  version: "2026-07-03.6",
 }

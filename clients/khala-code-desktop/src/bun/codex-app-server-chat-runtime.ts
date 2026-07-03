@@ -47,6 +47,7 @@ import { projectKhalaCodeDesktopCodexThreadList } from "../shared/codex-threads.
 import type { KhalaCodeModelRoleEntry } from "../shared/model-roles.js"
 
 const CODEX_SESSION_STATE_SCHEMA = "khala-code-desktop.codex-sessions.v1"
+const CODEX_SESSION_ORIGIN = "khala-code-desktop"
 const DEFAULT_TURN_TIMEOUT_MS = 30 * 60 * 1_000
 const LOADED_THREAD_CACHE_TTL_MS = 45_000
 
@@ -54,6 +55,7 @@ type JsonObject = Readonly<Record<string, unknown>>
 
 type StoredCodexSession = {
   readonly lastCodexTurnId?: string
+  readonly origin?: typeof CODEX_SESSION_ORIGIN
   readonly threadId: string
   readonly updatedAt: string
 }
@@ -383,6 +385,7 @@ const parseState = (value: unknown): StoredCodexSessionState => {
     sessions[sessionId] = {
       threadId,
       updatedAt,
+      origin: CODEX_SESSION_ORIGIN,
       ...(lastCodexTurnId === null ? {} : { lastCodexTurnId }),
     }
   }
@@ -423,6 +426,7 @@ const persistSession = async (
   const state = await readState(statePath)
   state.sessions[desktopSessionId] = {
     ...session,
+    origin: CODEX_SESSION_ORIGIN,
     updatedAt: isoNow(),
   }
   await writeState(statePath, state)
