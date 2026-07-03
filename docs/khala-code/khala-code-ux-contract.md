@@ -128,6 +128,17 @@ Registry version: `2026-07-03.6` (schema `openagents.behavior_contracts.v1`)
 - **Verification:** bun test tests/claude-app-sdk-chat-runtime.test.ts tests/ux-contracts.test.ts inside clients/khala-code-desktop; runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.
 - **Authority boundary:** This binds the desktop Claude chat lane only. Fleet worker Claude accounts remain owned by Pylon's isolated-account registry, and an explicit KHALA_CODE_DESKTOP_CLAUDE_CONFIG_DIR override may intentionally point the desktop lane at a caller-selected app config directory.
 
+### `khala_code.history.app_sessions_default.v1` — ENFORCED
+
+- **Surface:** khala-code-desktop (History sidebar)
+- **Stated by:** customer via github-issue on 2026-07-03
+- **Statement:** History defaults to chats created in Khala Code Desktop, not every Codex or Claude session from the user's home stores. Showing all home sessions is an explicit opt-in, and stale missing-rollout rows must not permanently bury desktop chats as undismissable red errors.
+- **Enforcement tier:** test-sweep
+- **Oracle** `session_catalog_app_scope.unit` (bun-test, unit): Builds a mixed app-owned plus headless-runtime catalog and proves the default sessionCatalog scope includes only the app-owned desktop thread while omitting unrelated home/headless prompts. — `clients/khala-code-desktop/tests/session-catalog.test.ts`
+- **Oracle** `history_scope_toggle.dom` (bun-test, dom): Mounts the real History sidebar in a DOM and proves the header toggle is off by default, requests app-only history first, and sends includeHomeSessions only after explicit user activation. — `clients/khala-code-desktop/tests/codex-thread-sidebar.test.ts`
+- **Verification:** bun test tests/session-catalog.test.ts tests/codex-thread-sidebar.test.ts inside clients/khala-code-desktop; both run in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.
+- **Authority boundary:** This contract binds the History/session-catalog default and its explicit opt-in only. It does not prevent app-owned sessions from being enriched with runtime metadata, and it does not promise that externally created home sessions can always be opened successfully.
+
 ### `khala_code.composer.no_dead_controls.v1` — PENDING
 
 - **Surface:** khala-code-desktop (chat composer)

@@ -403,4 +403,81 @@ describe("Khala Code thread sidebar", () => {
       window.close()
     }
   })
+
+  test("defaults history to app sessions and opts into all home sessions from the header toggle", async () => {
+    // Oracle for khala_code.history.app_sessions_default.v1
+    const window = new Window()
+    const previousDocument = globalThis.document
+    const previousNavigator = globalThis.navigator
+    Object.defineProperty(globalThis, "document", {
+      configurable: true,
+      value: window.document,
+    })
+    Object.defineProperty(globalThis, "navigator", {
+      configurable: true,
+      value: window.navigator,
+    })
+    try {
+      const container = document.createElement("aside")
+      document.body.append(container)
+      const requests: boolean[] = []
+      const sidebar = mountCodexThreadSidebar(container, {
+        activeThreadId: () => null,
+        archiveThread: async threadId => ({ action: "archive", ok: true, threadId }),
+        deleteThread: async threadId => ({ action: "delete", ok: true, threadId }),
+        forkThread: async threadId => ({ action: "fork", ok: true, threadId }),
+        listThreads: async request => {
+          requests.push(request.includeHomeSessions)
+          return {
+            ok: true,
+            data: [],
+            groups: [{ key: "all", label: "All sessions", threadIds: ["thread-a"] }],
+            threads: [thread("thread-a", "Desktop chat")],
+          }
+        },
+        renameThread: async threadId => ({ action: "rename", ok: true, threadId }),
+        resumeThread: async threadId => ({
+          ok: true,
+          thread: {},
+          threadId,
+          messages: [],
+        }),
+        sessionId: "desktop-session",
+        unarchiveThread: async threadId => ({ action: "unarchive", ok: true, threadId }),
+        onNewThreadRequested: () => undefined,
+        onThreadSelected: () => undefined,
+      })
+
+      sidebar.setVisible(true)
+      await sidebar.refresh()
+
+      expect(requests).toEqual([false, false])
+      const toggle = container.querySelector<HTMLButtonElement>(
+        ".khala-thread-sidebar-home-toggle",
+      )
+      expect(toggle).not.toBeNull()
+      expect(toggle?.getAttribute("aria-pressed")).toBe("false")
+
+      toggle?.click()
+      await Promise.resolve()
+      await Promise.resolve()
+
+      expect(requests.at(-1)).toBe(true)
+      expect(
+        container
+          .querySelector<HTMLButtonElement>(".khala-thread-sidebar-home-toggle")
+          ?.getAttribute("aria-pressed"),
+      ).toBe("true")
+    } finally {
+      Object.defineProperty(globalThis, "document", {
+        configurable: true,
+        value: previousDocument,
+      })
+      Object.defineProperty(globalThis, "navigator", {
+        configurable: true,
+        value: previousNavigator,
+      })
+      window.close()
+    }
+  })
 })

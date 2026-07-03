@@ -2098,6 +2098,7 @@ button {
 }
 .khala-thread-sidebar-new,
 .khala-thread-sidebar-refresh,
+.khala-thread-sidebar-home-toggle,
 .khala-thread-sidebar-search-toggle {
   font: inherit;
   color: var(--oa-color-component-text);
@@ -2105,6 +2106,7 @@ button {
 }
 .khala-thread-sidebar-new,
 .khala-thread-sidebar-refresh,
+.khala-thread-sidebar-home-toggle,
 .khala-thread-sidebar-search-toggle {
   display: inline-flex;
   align-items: center;
@@ -2125,8 +2127,15 @@ button {
   background: transparent;
   color: color-mix(in srgb, var(--oa-color-component-text) 68%, transparent);
 }
+.khala-thread-sidebar-home-toggle {
+  border: 0;
+  background: transparent;
+  color: color-mix(in srgb, var(--oa-color-component-text) 68%, transparent);
+}
 .khala-thread-sidebar-new:hover,
 .khala-thread-sidebar-refresh:hover,
+.khala-thread-sidebar-home-toggle:hover,
+.khala-thread-sidebar-home-toggle[data-active="true"],
 .khala-thread-sidebar-search-toggle:hover,
 .khala-thread-sidebar-search-toggle[aria-expanded="true"],
 .khala-thread-sidebar-search-toggle[data-active="true"] {

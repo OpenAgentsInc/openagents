@@ -46,6 +46,7 @@ export type CodexThreadSidebarOptions = {
   readonly isThreadStreaming?: (threadId: string) => boolean
   readonly listThreads: (input: {
     readonly archived: boolean
+    readonly includeHomeSessions: boolean
     readonly searchTerm: string
   }) => Promise<KhalaCodeDesktopCodexThreadListResult>
   readonly renameThread: (threadId: string, name: string) => Promise<KhalaCodeDesktopCodexThreadMutationResult>
@@ -230,6 +231,7 @@ export const mountCodexThreadSidebar = (
   let searchOpen = false
   let searchShouldFocus = false
   let searchTerm = ""
+  let includeHomeSessions = false
   let state: ViewState = { phase: "idle" }
   let visible = false
   let hotkeyHintsVisible = false
@@ -423,7 +425,7 @@ export const mountCodexThreadSidebar = (
   const loadRecentThreadData = async (): Promise<KhalaCodeDesktopCodexThreadListResult> => {
     const requestSequence = ++refreshSequence
     const data = applyOptimisticThreads(
-      await options.listThreads({ archived: false, searchTerm: "" }),
+      await options.listThreads({ archived: false, includeHomeSessions, searchTerm: "" }),
     )
     if (requestSequence !== refreshSequence) return data
     state = { phase: "ready", data }
@@ -606,6 +608,11 @@ export const mountCodexThreadSidebar = (
     render()
   }
 
+  const toggleHomeSessions = (): void => {
+    includeHomeSessions = !includeHomeSessions
+    void refresh()
+  }
+
   const threadButton = (
     thread: KhalaCodeDesktopCodexThreadSummary,
   ): HTMLElement => {
@@ -675,13 +682,27 @@ export const mountCodexThreadSidebar = (
     searchToggle.replaceChildren(sidebarIcon("Search", "Search threads"), srOnly("Search threads"))
     searchToggle.addEventListener("click", toggleSearch)
 
+    const homeSessionsToggle = el("button", "khala-thread-sidebar-home-toggle")
+    homeSessionsToggle.type = "button"
+    homeSessionsToggle.title = includeHomeSessions
+      ? "Showing all home sessions"
+      : "Show all home sessions"
+    homeSessionsToggle.setAttribute(
+      "aria-label",
+      includeHomeSessions ? "Showing all home sessions" : "Show all home sessions",
+    )
+    homeSessionsToggle.setAttribute("aria-pressed", includeHomeSessions ? "true" : "false")
+    if (includeHomeSessions) homeSessionsToggle.dataset.active = "true"
+    homeSessionsToggle.replaceChildren(sidebarIcon("History", "Home sessions"), srOnly("Home sessions"))
+    homeSessionsToggle.addEventListener("click", toggleHomeSessions)
+
     const newThread = el("button", "khala-thread-sidebar-new")
     newThread.type = "button"
     newThread.title = "New thread"
     newThread.setAttribute("aria-label", "New thread")
     newThread.replaceChildren(sidebarIcon("Plus", "New thread"), srOnly("New thread"))
     newThread.addEventListener("click", startNewChat)
-    headerActions.append(searchToggle, newThread)
+    headerActions.append(searchToggle, homeSessionsToggle, newThread)
     header.append(headerActions)
     container.append(header)
 
@@ -769,7 +790,7 @@ export const mountCodexThreadSidebar = (
     render()
     try {
       const data = applyOptimisticThreads(
-        await options.listThreads({ archived: false, searchTerm }),
+        await options.listThreads({ archived: false, includeHomeSessions, searchTerm }),
       )
       if (requestSequence !== refreshSequence) return
       state = { phase: "ready", data }

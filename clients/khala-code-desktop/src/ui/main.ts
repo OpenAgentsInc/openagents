@@ -879,6 +879,7 @@ const degradedSessionCatalog = (
   entries: [],
   ok: true,
   schemaVersion: "khala-code-desktop.session-catalog.v1",
+  scope: "app",
 })
 
 const degradedFleetStatus = (
@@ -4058,6 +4059,7 @@ const threadSidebar =
           try {
             catalog = await cachedSessionCatalog({
               limit: 50,
+              scope: request.includeHomeSessions ? "all_home" : "app",
               searchTerm: request.searchTerm,
             })
             clearBootRpcDegradedState("sessionCatalog")

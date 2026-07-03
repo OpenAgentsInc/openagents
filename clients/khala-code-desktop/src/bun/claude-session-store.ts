@@ -5,10 +5,12 @@ import { dirname, join } from "node:path"
 import { Schema as S } from "effect"
 
 const CLAUDE_SESSION_STORE_SCHEMA = "khala-code-desktop.claude-sessions.v1"
+const CLAUDE_SESSION_ORIGIN = "khala-code-desktop"
 
 const SessionEntry = S.Struct({
   sessionId: S.String,
   lastTurnId: S.optional(S.String),
+  origin: S.optional(S.Literal(CLAUDE_SESSION_ORIGIN)),
   updatedAt: S.String,
 })
 
@@ -96,6 +98,7 @@ export function createClaudeSessionStore(
       const updated: ClaudeDesktopSessionEntry = {
         sessionId: entry.sessionId,
         ...(entry.lastTurnId === undefined ? {} : { lastTurnId: entry.lastTurnId }),
+        origin: CLAUDE_SESSION_ORIGIN,
         updatedAt: now().toISOString(),
       }
       await writeStore(path, {

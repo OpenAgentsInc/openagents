@@ -91,6 +91,7 @@ describe("Khala Code cross-harness session catalog", () => {
     })
 
     expect(catalog.schemaVersion).toBe("khala-code-desktop.session-catalog.v1")
+    expect(catalog.scope).toBe("app")
     expect(catalog.diagnostics).toEqual([])
     expect(catalog.entries.map(entry => [entry.harnessKind, entry.threadRef, entry.desktopSessionRef])).toEqual([
       ["claude", "claude-session-1", "desktop-claude"],
@@ -166,6 +167,17 @@ describe("Khala Code cross-harness session catalog", () => {
   })
 
   test("uses Codex thread ids for sidebar resume even when session ids are UUIDs", async () => {
+    const root = await tempRoot()
+    const codexStatePath = join(root, "codex-sessions.json")
+    await writeFile(codexStatePath, JSON.stringify({
+      schema: "khala-code-desktop.codex-sessions.v1",
+      sessions: {
+        "desktop-codex": {
+          threadId: "id-recent-chat-row",
+          updatedAt: "2026-07-01T10:00:00.000Z",
+        },
+      },
+    }))
     const codexRuntime = {
       listThreads: async () => ({
         ok: true as const,
@@ -185,7 +197,7 @@ describe("Khala Code cross-harness session catalog", () => {
       codexRuntime,
       env: {
         KHALA_CODE_DESKTOP_CLAUDE_STATE_PATH: join(await tempRoot(), "missing-claude.json"),
-        KHALA_CODE_DESKTOP_CODEX_STATE_PATH: join(await tempRoot(), "missing-codex.json"),
+        KHALA_CODE_DESKTOP_CODEX_STATE_PATH: codexStatePath,
       },
     })
 
@@ -224,7 +236,7 @@ describe("Khala Code cross-harness session catalog", () => {
       }),
     } as Partial<CodexAppServerChatRuntime> as CodexAppServerChatRuntime
 
-    const catalog = await readKhalaCodeDesktopSessionCatalog({}, {
+    const catalog = await readKhalaCodeDesktopSessionCatalog({ scope: "all_home" }, {
       codexRuntime,
       env: {
         KHALA_CODE_DESKTOP_CLAUDE_STATE_PATH: join(await tempRoot(), "missing-claude.json"),
@@ -249,6 +261,94 @@ describe("Khala Code cross-harness session catalog", () => {
       .toEqual(["", ""])
     expect(JSON.stringify(catalog)).not.toContain("no rollout found")
     expect(JSON.stringify(catalog)).not.toContain("thread not found")
+  })
+
+  test("defaults to app-owned history and hides unrelated home runtime sessions", async () => {
+    // Oracle for khala_code.history.app_sessions_default.v1
+    const root = await tempRoot()
+    const codexStatePath = join(root, "codex-sessions.json")
+    await writeFile(codexStatePath, JSON.stringify({
+      schema: "khala-code-desktop.codex-sessions.v1",
+      sessions: {
+        "desktop-codex": {
+          threadId: "app-thread",
+          updatedAt: "2026-07-01T10:00:00.000Z",
+        },
+      },
+    }))
+    const codexRuntime = {
+      listThreads: async () => ({
+        ok: true as const,
+        data: [
+          {
+            id: "app-thread",
+            sessionId: "app-session",
+            title: "Desktop chat",
+            preview: "created here",
+            updatedAt: "2026-07-01T11:00:00.000Z",
+          },
+          {
+            id: "headless-thread",
+            sessionId: "headless-session",
+            title: "You are the Orrery memory-distiller",
+            preview: "headless automation",
+            updatedAt: "2026-07-01T12:00:00.000Z",
+          },
+        ],
+        threads: [],
+      }),
+    } as Partial<CodexAppServerChatRuntime> as CodexAppServerChatRuntime
+
+    const catalog = await readKhalaCodeDesktopSessionCatalog({}, {
+      codexRuntime,
+      env: {
+        KHALA_CODE_DESKTOP_CLAUDE_STATE_PATH: join(root, "missing-claude.json"),
+        KHALA_CODE_DESKTOP_CODEX_STATE_PATH: codexStatePath,
+      },
+    })
+
+    expect(catalog.scope).toBe("app")
+    expect(catalog.entries.map(entry => entry.threadRef)).toEqual(["app-thread"])
+    expect(JSON.stringify(catalog)).not.toContain("Orrery")
+    expect(JSON.stringify(catalog)).not.toContain("headless-thread")
+  })
+
+  test("can explicitly include all home runtime sessions", async () => {
+    const root = await tempRoot()
+    const codexStatePath = join(root, "codex-sessions.json")
+    await writeFile(codexStatePath, JSON.stringify({
+      schema: "khala-code-desktop.codex-sessions.v1",
+      sessions: {
+        "desktop-codex": {
+          threadId: "app-thread",
+          updatedAt: "2026-07-01T10:00:00.000Z",
+        },
+      },
+    }))
+    const codexRuntime = {
+      listThreads: async () => ({
+        ok: true as const,
+        data: [
+          { id: "app-thread", title: "Desktop chat", updatedAt: "2026-07-01T11:00:00.000Z" },
+          { id: "headless-thread", title: "Headless task", updatedAt: "2026-07-01T12:00:00.000Z" },
+        ],
+        threads: [],
+      }),
+    } as Partial<CodexAppServerChatRuntime> as CodexAppServerChatRuntime
+
+    const catalog = await readKhalaCodeDesktopSessionCatalog({ scope: "all_home" }, {
+      codexRuntime,
+      env: {
+        KHALA_CODE_DESKTOP_CLAUDE_STATE_PATH: join(root, "missing-claude.json"),
+        KHALA_CODE_DESKTOP_CODEX_STATE_PATH: codexStatePath,
+      },
+    })
+
+    expect(catalog.scope).toBe("all_home")
+    expect(catalog.entries.map(entry => entry.threadRef)).toEqual([
+      "headless-thread",
+      "app-thread",
+    ])
   })
 
   test("keeps legacy non-UUID Codex thread ids when no UUID session ref exists", async () => {

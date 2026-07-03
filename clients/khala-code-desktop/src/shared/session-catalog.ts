@@ -1,6 +1,7 @@
 import type { KhalaCodeDesktopCodexThreadSummary } from "./codex-threads"
 
 export type KhalaCodeDesktopSessionHarnessKind = "claude" | "codex"
+export type KhalaCodeDesktopSessionCatalogScope = "app" | "all_home"
 
 export type KhalaCodeDesktopSessionExactTotals = {
   readonly cachedInputTokens?: number | undefined
@@ -34,6 +35,7 @@ export type KhalaCodeDesktopSessionCatalogEntry = {
 export type KhalaCodeDesktopSessionCatalogResult = {
   readonly ok: true
   readonly schemaVersion: "khala-code-desktop.session-catalog.v1"
+  readonly scope: KhalaCodeDesktopSessionCatalogScope
   readonly entries: readonly KhalaCodeDesktopSessionCatalogEntry[]
   readonly diagnostics: readonly string[]
 }
