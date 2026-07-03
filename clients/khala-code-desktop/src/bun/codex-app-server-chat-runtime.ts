@@ -126,6 +126,7 @@ export type CodexAppServerChatRuntime = Readonly<{
     request?: KhalaCodeDesktopCodexThreadStartRequest,
   ) => Promise<KhalaCodeDesktopCodexThreadResult>
   startTurn: (request: KhalaCodeDesktopChatTurnRequest & {
+    readonly claudePermissionMode?: string
     readonly cwd?: string
     readonly modelRole?: KhalaCodeModelRoleEntry
   }) => Promise<KhalaCodeDesktopChatTurnResponse>

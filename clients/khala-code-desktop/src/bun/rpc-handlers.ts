@@ -32,6 +32,9 @@ import type { OnDeviceDeciderSelection } from "../shared/on-device-decider.js"
 import {
   type KhalaCodeDesktopAppInfo,
   type KhalaCodeDesktopChatTurnAttachment,
+  type KhalaCodeDesktopArchitectPlanArtifact,
+  type KhalaCodeDesktopArchitectPlanDecisionResult,
+  type KhalaCodeDesktopArchitectPlanRunResult,
   type KhalaCodeDesktopCodexAppServerActionResult,
   type KhalaCodeDesktopChatTurnEvent,
   type KhalaCodeDesktopChatTurnRequest,
@@ -116,6 +119,13 @@ import {
   createClaudeAppSdkChatRuntime,
   type ClaudeAppSdkChatRuntime,
 } from "./claude-app-sdk-chat-runtime.js"
+import { createArchitectPlanStore } from "./architect-plan-store.js"
+import {
+  claudePlanFanoutDagToWorkSource,
+  claudePlanFanoutPlanModeInstructions,
+  decodeClaudePlanFanoutDag,
+  type ClaudePlanFanoutDag,
+} from "./claude-plan-fanout.js"
 import { readKhalaCodeDesktopSessionCatalog } from "./session-catalog.js"
 import { inspectClaudeHarnessStatus } from "./claude-harness-status.js"
 import {
@@ -932,6 +942,7 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
       }))
   const legacyChatTurn = input.legacyChatTurn ?? runKhalaCodeDesktopChatTurn
   const claudeApprovalService = input.claudeApprovalService ?? createClaudeApprovalService()
+  const architectPlanStore = createArchitectPlanStore({ env: input.env })
   const requireCodexChatRuntime = (): CodexAppServerChatRuntime => {
     if (codexChatRuntime === null) {
       throw new Error("Codex app-server chat runtime is not configured.")
@@ -997,6 +1008,159 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
   const selectChatRuntime = async (): Promise<ChatRuntimeSelection> =>
     selectRoleRuntime("coder")
   let fleetMcpBridgeReady = false
+
+  const architectPlanDispatchMode = (
+    dag: ClaudePlanFanoutDag,
+  ): KhalaCodeDesktopArchitectPlanArtifact["dispatchMode"] =>
+    dag.nodes.length <= 2 ? "in_thread" : "fleet_run"
+
+  const extractArchitectPlanDag = (response: KhalaCodeDesktopChatTurnResponse): ClaudePlanFanoutDag => {
+    const text = response.messages.map(message => message.body).join("\n\n")
+    const fenced = /```(?:json)?\s*([\s\S]*?)```/iu.exec(text)?.[1]?.trim()
+    const candidate = fenced ?? text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1)
+    if (candidate.length === 0) {
+      throw new Error("Claude architect did not return a JSON plan artifact.")
+    }
+    const parsed: unknown = JSON.parse(candidate)
+    return decodeClaudePlanFanoutDag(parsed)
+  }
+
+  const runArchitectPlan = async (
+    request: Parameters<KhalaCodeDesktopRPCSchema["requests"]["architectPlanRun"]>[0],
+  ): Promise<KhalaCodeDesktopArchitectPlanRunResult> => {
+    try {
+      requireNonEmpty("architectPlanRun", "objective", request.objective)
+      const turnId = `architect-plan-${randomUUID()}`
+      const prompt = [
+        claudePlanFanoutPlanModeInstructions(),
+        "",
+        "Return only the JSON object. Keep every field public-safe.",
+        `Session: ${request.sessionId}`,
+        `Objective: ${request.objective}`,
+        request.repo === undefined ? null : `Repo: ${request.repo}`,
+        request.branch === undefined ? null : `Branch: ${request.branch}`,
+        request.baseCommit === undefined ? null : `Base commit: ${request.baseCommit}`,
+        request.verify === undefined ? null : `Verify: ${request.verify}`,
+      ].filter((line): line is string => line !== null).join("\n")
+      const response = await requireClaudeChatRuntime().startTurn({
+        messages: [{ body: prompt, id: `${turnId}-request`, role: "user" }],
+        sessionId: request.sessionId,
+        startNewThread: request.threadId === undefined,
+        ...(request.threadId === undefined ? {} : { threadId: request.threadId }),
+        turnId,
+        cwd: input.workingDirectory,
+        claudePermissionMode: "plan",
+      })
+      const dag = extractArchitectPlanDag(response)
+      const now = new Date().toISOString()
+      const artifact: KhalaCodeDesktopArchitectPlanArtifact = {
+        schema: "openagents.khala_code.architect_plan_artifact.v1",
+        planRef: dag.planRef,
+        sessionId: request.sessionId,
+        createdAt: now,
+        updatedAt: now,
+        status: "pending_approval",
+        architectRole: {
+          role: "architect",
+          harness: "claude",
+          mode: "plan",
+          readOnly: true,
+        },
+        dispatchMode: architectPlanDispatchMode(dag),
+        dag,
+        fleetRunRef: null,
+        coderTurnId: null,
+      }
+      return { ok: true, artifact: await architectPlanStore.put(artifact) }
+    } catch (error) {
+      return {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      }
+    }
+  }
+
+  const renderCoderPlanPrompt = (artifact: KhalaCodeDesktopArchitectPlanArtifact): string =>
+    [
+      "Execute this approved architect plan in the current Codex thread.",
+      "The Claude architect plan is advisory structure only; obey the deterministic verify command and local safety gates.",
+      "",
+      `Plan ${artifact.planRef}: ${artifact.dag.objective}`,
+      ...artifact.dag.nodes.map((node, index) => [
+        "",
+        `${index + 1}. ${node.title}`,
+        node.objective,
+        node.dependsOn === undefined || node.dependsOn.length === 0
+          ? null
+          : `Depends on: ${node.dependsOn.join(", ")}`,
+        node.verify ?? artifact.dag.verify ?? null,
+      ].filter((line): line is string => line !== null).join("\n")),
+    ].join("\n")
+
+  const decideArchitectPlan = async (
+    request: Parameters<KhalaCodeDesktopRPCSchema["requests"]["architectPlanDecision"]>[0],
+  ): Promise<KhalaCodeDesktopArchitectPlanDecisionResult> => {
+    try {
+      const existing = await architectPlanStore.get(request.sessionId, request.planRef)
+      if (existing === null) return { ok: false, error: "Plan artifact not found." }
+      const now = new Date().toISOString()
+      if (request.decision === "reject") {
+        const rejected = await architectPlanStore.put({
+          ...existing,
+          status: "rejected",
+          updatedAt: now,
+        })
+        return { ok: true, artifact: rejected, message: `Rejected plan ${request.planRef}.` }
+      }
+
+      if (existing.dispatchMode === "fleet_run") {
+        const result = await requireFleetRunSupervisor().start({
+          objective: existing.dag.objective,
+          runRef: `architect-${existing.planRef}`,
+          targetConcurrency: Math.min(5, Math.max(1, existing.dag.nodes.length)),
+          tickImmediately: true,
+          workerKind: "codex",
+          workSource: claudePlanFanoutDagToWorkSource(existing.dag),
+        })
+        const dispatched = await architectPlanStore.put({
+          ...existing,
+          status: "dispatched",
+          updatedAt: now,
+          fleetRunRef: result.run.runRef,
+        })
+        return {
+          ok: true,
+          artifact: dispatched,
+          message: `Approved plan ${request.planRef}; started FleetRun ${result.run.runRef}.`,
+        }
+      }
+
+      const turnId = `architect-coder-${randomUUID()}`
+      await requireCodexChatRuntime().startTurn({
+        messages: [{ body: renderCoderPlanPrompt(existing), id: `${turnId}-request`, role: "user" }],
+        sessionId: request.sessionId,
+        ...(request.threadId === undefined ? { startNewThread: true } : { threadId: request.threadId }),
+        turnId,
+        cwd: input.workingDirectory,
+      })
+      const dispatched = await architectPlanStore.put({
+        ...existing,
+        status: "dispatched",
+        updatedAt: now,
+        coderTurnId: turnId,
+      })
+      return {
+        ok: true,
+        artifact: dispatched,
+        message: `Approved plan ${request.planRef}; dispatched an in-thread Codex turn.`,
+      }
+    } catch (error) {
+      return {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      }
+    }
+  }
 
   const maybeEnsureFleetMcpBridge = async (): Promise<CodexFleetMcpBridgeEnsureResult | null> => {
     if (input.enableFleetMcpBridge !== true || fleetMcpBridgeReady) return null
@@ -2091,6 +2255,12 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
         run: result.run,
         supervisorActive: result.supervisorActive,
       }
+    },
+    async architectPlanRun(request): Promise<KhalaCodeDesktopArchitectPlanRunResult> {
+      return runArchitectPlan(request)
+    },
+    async architectPlanDecision(request): Promise<KhalaCodeDesktopArchitectPlanDecisionResult> {
+      return decideArchitectPlan(request)
     },
     async fleetRunControl(request): Promise<KhalaCodeDesktopFleetRunControlResult> {
       requireNonEmpty("fleetRunControl", "runRef", request.runRef)
