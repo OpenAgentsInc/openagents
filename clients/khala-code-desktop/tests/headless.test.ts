@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 
 import {
+  parseKhalaCodeHeadlessArgs,
   runKhalaCodeDesktopHeadlessJsonl,
   type KhalaCodeDesktopHeadlessCodexRuntime,
 } from "../src/bun/headless"
@@ -23,6 +24,29 @@ const jsonl = (text: string): readonly Record<string, unknown>[] =>
   text.trim().split(/\n/u).filter(Boolean).map(line => JSON.parse(line) as Record<string, unknown>)
 
 describe("Khala Code desktop headless JSONL mode", () => {
+  test("parses preset flags without adding them to the prompt", () => {
+    expect(parseKhalaCodeHeadlessArgs([
+      "--json",
+      "--preset",
+      "architect-coder-judge",
+      "fix",
+      "the",
+      "bug",
+    ])).toEqual({
+      preset: "architect-coder-judge",
+      promptArgv: ["fix", "the", "bug"],
+    })
+    expect(parseKhalaCodeHeadlessArgs([
+      "--preset=architect-coder-judge",
+      "ship",
+    ])).toEqual({
+      preset: "architect-coder-judge",
+      promptArgv: ["ship"],
+    })
+    expect(() => parseKhalaCodeHeadlessArgs(["--preset", "--json"]))
+      .toThrow("khala code --preset requires a preset name.")
+  })
+
   test("streams a Codex app-server thread and writes one final stdout object", async () => {
     let onEvent: ((event: KhalaCodeDesktopChatTurnEvent) => void) | null = null
     const stdout = writable()

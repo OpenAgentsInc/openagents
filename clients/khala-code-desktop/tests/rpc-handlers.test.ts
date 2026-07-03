@@ -3155,6 +3155,108 @@ describe("Khala Code desktop RPC handlers", () => {
     ])
   })
 
+  test("applies the architect-coder-judge preset through one role registry write", async () => {
+    const requests: { method: string, params: unknown }[] = []
+    const handlers = createKhalaCodeDesktopRpcRequestHandlers({
+      appleFmReadiness: () => {
+        throw new Error("not used")
+      },
+      codexAppServerHost: {
+        dispose: () => undefined,
+        request: async <Result>(method: string, params?: unknown) => {
+          requests.push({ method, params })
+          if (method === "config/value/write") {
+            return { status: "changed" } as Result
+          }
+          if (method === "config/read") {
+            return {
+              config: {
+                openagents: {
+                  model_roles: (requests[0]?.params as { readonly value?: unknown } | undefined)?.value,
+                },
+              },
+              origins: {},
+              layers: [],
+            } as Result
+          }
+          return {} as Result
+        },
+        respondToServerRequest: () => undefined,
+        restart: async () => ({
+          ok: true,
+          action: "restart",
+          changed: false,
+          status: stoppedAppServerStatus(),
+        }),
+        start: async () => ({
+          ok: true,
+          action: "start",
+          changed: false,
+          status: stoppedAppServerStatus(),
+        }),
+        status: stoppedAppServerStatus,
+        stop: async () => ({
+          ok: true,
+          action: "stop",
+          changed: false,
+          status: stoppedAppServerStatus(),
+        }),
+        subscribe: () => () => undefined,
+      },
+      codexChatRuntime: throwingCodexChatRuntime(),
+      env: {},
+      onDeviceDeciderStatus: () => {
+        throw new Error("not used")
+      },
+      workingDirectory: "/repo",
+    })
+
+    const result = await handlers.codexModelRolePresetApply({
+      cwd: "/repo",
+      preset: "architect-coder-judge",
+    })
+
+    expect(result).toMatchObject({
+      ok: true,
+      keyPath: "openagents.model_roles",
+      preset: "architect-coder-judge",
+      settings: {
+        modelRolePresets: {
+          activePreset: "architect-coder-judge",
+        },
+      },
+    })
+    expect(requests[0]).toMatchObject({
+      method: "config/value/write",
+      params: {
+        keyPath: "openagents.model_roles",
+        mergeStrategy: "replace",
+        value: {
+          schema: "openagents.khala_code.model_roles.v1",
+          activePreset: "architect-coder-judge",
+          noProxyRails: true,
+          noResale: true,
+          promiseRef: "khala_code.architect_coder_judge.v1",
+          roles: [
+            { role: "architect", harness: "claude", authRail: "user_anthropic_auth" },
+            { role: "coder", harness: "codex", authRail: "user_codex_login" },
+            { role: "judge", harness: "claude", authRail: "user_anthropic_auth" },
+            { role: "advisor", harness: "claude", enabled: false, optional: true },
+          ],
+        },
+      },
+    })
+    expect(requests.slice(1).map(request => request.method)).toEqual([
+      "config/read",
+      "model/list",
+      "modelProvider/capabilities/read",
+      "permissionProfile/list",
+      "configRequirements/read",
+      "account/usage/read",
+      "collaborationMode/list",
+    ])
+  })
+
   test("returns config write denials without mutating Khala-local state", async () => {
     const handlers = createKhalaCodeDesktopRpcRequestHandlers({
       appleFmReadiness: () => {

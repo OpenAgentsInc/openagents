@@ -10,6 +10,10 @@ import type {
   KhalaCodeDesktopChatTurnEvent,
   KhalaCodeDesktopChatTurnResponse,
 } from "../shared/rpc.js"
+import {
+  parseKhalaCodeModelRolePresetId,
+  type KhalaCodeDesktopModelRolePresetId,
+} from "../shared/model-role-preset.js"
 import type { CodexAppServerChatRuntime } from "./codex-app-server-chat-runtime.js"
 
 export type KhalaCodeDesktopHeadlessChatRuntime = Pick<
@@ -41,6 +45,35 @@ export type KhalaCodeDesktopHeadlessRunResult = {
   readonly response: KhalaCodeDesktopChatTurnResponse
   readonly sessionId: string
   readonly turnId: string
+}
+
+export type KhalaCodeDesktopHeadlessArgs = {
+  readonly preset: KhalaCodeDesktopModelRolePresetId | null
+  readonly promptArgv: readonly string[]
+}
+
+export function parseKhalaCodeHeadlessArgs(argv: readonly string[]): KhalaCodeDesktopHeadlessArgs {
+  const promptArgv: string[] = []
+  let preset: KhalaCodeDesktopModelRolePresetId | null = null
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index]
+    if (arg === "--json") continue
+    if (arg === "--preset") {
+      const value = argv[index + 1]
+      if (value === undefined || value.startsWith("-")) {
+        throw new Error("khala code --preset requires a preset name.")
+      }
+      preset = parseKhalaCodeModelRolePresetId(value)
+      index += 1
+      continue
+    }
+    if (arg.startsWith("--preset=")) {
+      preset = parseKhalaCodeModelRolePresetId(arg.slice("--preset=".length))
+      continue
+    }
+    promptArgv.push(arg)
+  }
+  return { preset, promptArgv }
 }
 
 export async function runKhalaCodeDesktopHeadlessJsonl(
@@ -150,7 +183,7 @@ function lastAssistantMessage(
 }
 
 export async function readKhalaCodeHeadlessPrompt(argv: readonly string[]): Promise<string> {
-  const prompt = argv.filter(arg => arg !== "--json").join(" ").trim()
+  const prompt = parseKhalaCodeHeadlessArgs(argv).promptArgv.join(" ").trim()
   if (prompt.length > 0) return prompt
   if (process.stdin.isTTY) return ""
   const chunks: Buffer[] = []

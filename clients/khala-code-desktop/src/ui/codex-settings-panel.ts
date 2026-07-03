@@ -22,6 +22,13 @@ export type CodexSettingsPanelHandle = {
 }
 
 export type CodexSettingsPanelOptions = {
+  readonly applyModelRolePreset?: (
+    request: { readonly preset: "architect-coder-judge" },
+  ) => Promise<{
+    readonly ok: boolean
+    readonly settings?: KhalaCodeDesktopCodexSettingsProjection
+    readonly error?: string
+  }>
   readonly fetch: () => Promise<KhalaCodeDesktopCodexSettingsProjection>
   readonly fetchEcosystem?: () => Promise<KhalaCodeDesktopCodexEcosystemProjection>
   readonly fetchModelRoles?: () => Promise<KhalaCodeDesktopModelRoleRegistryReadResult>
@@ -167,6 +174,21 @@ export const mountCodexSettingsPanel = (
       return
     }
     setStatus(result.error ?? `Failed to save ${keyPath}`)
+  }
+
+  const applyModelRolePreset = async (preset: "architect-coder-judge"): Promise<void> => {
+    if (options.applyModelRolePreset === undefined) {
+      setStatus("Model role preset writes are not configured.")
+      return
+    }
+    setStatus(`Applying ${preset}`)
+    const result = await options.applyModelRolePreset({ preset })
+    if (result.ok) {
+      if (result.settings !== undefined) settings = result.settings
+      setStatus(`Applied ${preset}`)
+      return
+    }
+    setStatus(result.error ?? `Failed to apply ${preset}`)
   }
 
   const renderModelSection = (
@@ -323,6 +345,41 @@ export const mountCodexSettingsPanel = (
     metric("Personality", current.collaboration.personality),
     metric("Presets", current.collaboration.modes.map(mode => mode.name).join(", ") || null),
   ])
+
+  const renderModelRolePresetSection = (
+    current: KhalaCodeDesktopCodexSettingsProjection,
+  ): HTMLElement => {
+    const preset = current.modelRolePresets.presets[0]
+    if (preset === undefined) {
+      return section("Model Role Presets", [
+        el("p", "khala-settings-empty", "No model role presets are available."),
+      ])
+    }
+    const card = el("div", "khala-settings-preset-card")
+    const title = el("div", "khala-settings-preset-title-row")
+    title.append(
+      el("strong", "khala-settings-preset-title", preset.title),
+      el("span", "khala-settings-preset-state", preset.selected ? "Active" : "Ready"),
+    )
+    const body = el("p", "khala-settings-preset-description", preset.description)
+    const roles = el("ul", "khala-settings-preset-role-list")
+    for (const summary of preset.roleSummary) {
+      roles.append(el("li", "khala-settings-preset-role", summary))
+    }
+    const apply = el("button", "khala-settings-refresh", preset.selected ? "Reapply" : "Apply")
+    apply.type = "button"
+    apply.disabled = loading || options.applyModelRolePreset === undefined
+    apply.addEventListener("click", () => void applyModelRolePreset(preset.id))
+    card.append(title, body, roles, apply)
+    return section("Model Role Presets", [
+      card,
+      metric("Config key", preset.configKeyPath),
+      metric("Promise", preset.promiseRef),
+      metric("Proxy rails", preset.noProxyRails ? "none" : "blocked"),
+      metric("Subscription resale", preset.noResale ? "blocked" : "unknown"),
+      metric("Copy gate", preset.copyGate),
+    ])
+  }
 
   const renderAppearanceSection = (
     current: KhalaCodeDesktopCodexSettingsProjection,
@@ -526,6 +583,7 @@ export const mountCodexSettingsPanel = (
       renderAppearanceSection(settings),
       renderProviderSection(settings),
       renderCollaborationSection(settings),
+      renderModelRolePresetSection(settings),
       renderUsageSection(settings),
       renderRequirementsSection(settings),
       ...(options.fetchEcosystem === undefined ? [] : [renderEcosystemSection(ecosystem)]),

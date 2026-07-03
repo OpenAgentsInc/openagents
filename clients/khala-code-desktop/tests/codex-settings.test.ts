@@ -146,6 +146,17 @@ describe("Codex settings projection", () => {
     expect(projection.models.selected?.supportedReasoningEfforts.map(option => option.value))
       .toEqual(["medium", "high"])
     expect(projection.collaboration.modes.map(mode => mode.name)).toEqual(["Default", "Plan"])
+    expect(projection.modelRolePresets).toMatchObject({
+      keyPath: "openagents.model_roles",
+      activePreset: null,
+      presets: [{
+        id: "architect-coder-judge",
+        promiseRef: "khala_code.architect_coder_judge.v1",
+        noProxyRails: true,
+        noResale: true,
+        selected: false,
+      }],
+    })
     expect(projection.config.originKeys).toEqual(["model", "sandbox_mode"])
     expect(projection.appearance.keyPaths).toMatchObject({
       keymap: "tui.keymap",
@@ -190,5 +201,39 @@ describe("Codex settings projection", () => {
       "codex.settings.sandbox_mode.managed",
     ])
     expect(JSON.stringify(projection)).not.toContain("sk-local-secret")
+  })
+
+  test("detects the architect-coder-judge role registry preset without proxy rails", () => {
+    const projection = projectKhalaCodeDesktopCodexSettings({
+      configRead: {
+        config: {
+          openagents: {
+            model_roles: {
+              schema: "openagents.khala_code.model_roles.v1",
+              activePreset: "architect-coder-judge",
+              noProxyRails: true,
+              noResale: true,
+              promiseRef: "khala_code.architect_coder_judge.v1",
+            },
+          },
+        },
+      },
+    })
+
+    expect(projection.modelRolePresets.activePreset).toBe("architect-coder-judge")
+    expect(projection.modelRolePresets.presets[0]).toMatchObject({
+      id: "architect-coder-judge",
+      selected: true,
+      registry: {
+        noProxyRails: true,
+        noResale: true,
+        roles: [
+          { role: "architect", harness: "claude", authRail: "user_anthropic_auth" },
+          { role: "coder", harness: "codex", authRail: "user_codex_login" },
+          { role: "judge", harness: "claude", authRail: "user_anthropic_auth" },
+          { role: "advisor", enabled: false, optional: true },
+        ],
+      },
+    })
   })
 })
