@@ -15,14 +15,16 @@ import { Buffer } from "node:buffer"
 import { createCodexAppServerChatRuntime } from "../src/bun/codex-app-server-chat-runtime.js"
 import { createCodexAppServerHost } from "../src/bun/codex-app-server-client.js"
 import { inspectCodexHarnessStatus } from "../src/bun/codex-harness-status.js"
+import { khalaCodeConfigFromRuntimeEnv } from "../src/bun/khala-code-config.js"
 import { projectKhalaCodeDesktopEventToThreadEvents } from "../src/shared/headless-events.js"
 import type { KhalaCodeDesktopChatTurnEvent } from "../src/shared/rpc.js"
 
 const interactive = process.stdin.isTTY === true && process.stdout.isTTY === true
 const workingDirectory = process.cwd()
-const env = Bun.env
+const env = khalaCodeConfigFromRuntimeEnv().env
+const epochMs = (): number => new Date().getTime()
 
-let sessionId = `khala-code-tui-${Date.now().toString(36)}`
+let sessionId = `khala-code-tui-${epochMs().toString(36)}`
 let threadId: string | undefined
 let activeTurnId: string | undefined
 let messageCounter = 0
@@ -76,7 +78,7 @@ const ensureThread = async (): Promise<void> => {
 
 const runTurn = async (prompt: string): Promise<void> => {
   await ensureThread()
-  const turnId = `turn-${Date.now().toString(36)}`
+  const turnId = `turn-${epochMs().toString(36)}`
   activeTurnId = turnId
   messageCounter += 1
   try {
@@ -135,7 +137,7 @@ const handleLine = async (line: string): Promise<"continue" | "exit"> => {
   if (trimmed.length === 0) return "continue"
   if (trimmed === "/exit" || trimmed === "/quit") return "exit"
   if (trimmed === "/new") {
-    sessionId = `khala-code-tui-${Date.now().toString(36)}`
+    sessionId = `khala-code-tui-${epochMs().toString(36)}`
     threadId = undefined
     if (interactive) process.stdout.write("[new thread]\n")
     return "continue"

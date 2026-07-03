@@ -15,11 +15,16 @@ import {
 import type { KhalaCodeDesktopCodexThreadSummary } from "../src/shared/codex-threads"
 import type { KhalaCodeDesktopCodexThreadListResult } from "../src/shared/rpc"
 import { mountCodexThreadSidebar } from "../src/ui/codex-thread-sidebar"
+import { bindRecentThreadHotkeyHints } from "../src/ui/recent-thread-hotkey-hints"
 import {
   recentThreadCycleDirectionForEvent,
   recentThreadHotkeyIndexForEvent,
   type RecentThreadHotkeyEvent,
 } from "../src/ui/thread-hotkeys"
+import {
+  renderThinkingIndicator,
+  renderThreadLoadingIndicator,
+} from "../src/ui/transcript-status-indicators"
 
 const repoPath = (ref: string): string =>
   new URL(`../../../${ref}`, import.meta.url).pathname
@@ -225,14 +230,40 @@ describe("contract khala_code.chat.sidebar_spinner_streaming_only.v1", () => {
     })
   })
 
-  test("message-loading indication lives in the transcript for cache-miss switches", async () => {
-    const main = await Bun.file(new URL("../src/ui/main.ts", import.meta.url)).text()
-    expect(main).toContain("const renderThreadLoadingIndicator = ()")
-    expect(main).toContain('shimmer.textContent = "Loading messages"')
-    expect(main).toContain("threadSwitchLoadingSelectionId = input.selectionId")
-    expect(main).toContain("const threadLoading = renderThreadLoadingIndicator()")
-    expect(main).toContain("...(threadLoading === null ? [] : [threadLoading])")
-    expect(main).toContain("onThreadSelectionFailed: input => {")
+  test("message-loading indication renders as a transcript status bubble", async () => {
+    await withDom(async () => {
+      const container = document.createElement("main")
+      document.body.append(container)
+
+      expect(renderThreadLoadingIndicator(null)).toBeNull()
+      const indicator = renderThreadLoadingIndicator(42)
+      expect(indicator).not.toBeNull()
+      container.append(indicator as HTMLElement)
+
+      const article = container.querySelector<HTMLElement>(
+        '[data-khala-thread-loading="true"][data-message-id="thread-loading-42"]',
+      )
+      expect(article).not.toBeNull()
+      expect(article?.classList.contains("message-bubble--assistant")).toBe(true)
+      expect(article?.classList.contains("message-bubble--thinking")).toBe(true)
+
+      const status = article?.querySelector<HTMLElement>('[role="status"]')
+      expect(status?.getAttribute("aria-live")).toBe("polite")
+      expect(status?.getAttribute("aria-label")).toBe("Loading messages")
+      expect(status?.dataset.oaAiShimmer).toBe("")
+      expect(status?.textContent).toBe("Loading messages")
+    })
+  })
+
+  test("thinking indication uses the same mountable transcript status renderer", async () => {
+    await withDom(async () => {
+      const indicator = renderThinkingIndicator("turn-7")
+      expect(indicator?.dataset.messageId).toBe("thinking-turn-7")
+      expect(indicator?.dataset.khalaThinking).toBe("true")
+      const status = indicator?.querySelector<HTMLElement>('[role="status"]')
+      expect(status?.getAttribute("aria-label")).toBe("Thinking")
+      expect(status?.textContent).toBe("Thinking")
+    })
   })
 })
 
@@ -421,16 +452,28 @@ describe("contract khala_code.chat.recent_thread_cmd_hotkeys.v2", () => {
     })
   })
 
-  test("the app shell wires Meta hold, release, and window blur to the sidebar hints", async () => {
-    const main = await Bun.file(new URL("../src/ui/main.ts", import.meta.url)).text()
-    expect(main).toContain("createKeyHoldTracker")
-    expect(main).toContain('if (event.key === "Meta"')
-    expect(main).toContain("recentThreadHotkeyHold?.keyDown()")
-    expect(main).toContain('window.addEventListener("keyup", event => {')
-    expect(main).toContain("recentThreadHotkeyHold?.keyUp()")
-    expect(main).toContain('window.addEventListener("blur", () => {')
-    expect(main).toContain("setHotkeyHintsVisible(true)")
-    expect(main).toContain("setHotkeyHintsVisible(false)")
-    expect(main).not.toContain("mountOverlayMenu")
+  test("Meta hold, release, and window blur drive sidebar hints through DOM events", async () => {
+    await withDom(async window => {
+      const visibility: boolean[] = []
+      const binding = bindRecentThreadHotkeyHints(window, {
+        setHotkeyHintsVisible: visible => visibility.push(visible),
+      }, { holdDelayMs: 0 })
+
+      window.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Meta" }))
+      window.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Meta", repeat: true }))
+      expect(visibility).toEqual([true])
+
+      window.dispatchEvent(new window.KeyboardEvent("keyup", { key: "Meta" }))
+      expect(visibility).toEqual([true, false])
+
+      window.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Meta" }))
+      window.dispatchEvent(new window.Event("blur"))
+      expect(visibility).toEqual([true, false, true, false])
+
+      binding.dispose()
+      window.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Meta" }))
+      expect(visibility).toEqual([true, false, true, false])
+      expect(document.querySelector(".khala-overlay-menu")).toBeNull()
+    })
   })
 })
