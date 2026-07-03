@@ -277,6 +277,7 @@ export function scanClaudeSessions(opts: {
 export function toSessionListEntry(s: ExternalSession, nowIso: string): Record<string, unknown> {
   return {
     sessionRef: s.sessionRef,
+    ...(s.title.trim().length === 0 ? {} : { title: s.title }),
     adapter: s.agentKind === "claude" ? "claude_agent" : "codex",
     state: s.state === "running" ? "running" : "completed",
     accountRefHash: null,

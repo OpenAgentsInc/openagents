@@ -81,6 +81,12 @@ More specific invariant ledgers apply inside imported apps and packages.
   from the caller-owned Pylon account registry. Automatic real-work fanout must
   not route through the display/default Codex account or omit `--account-ref`;
   that would write rollouts under the operator's default `~/.codex` home.
+  Local Pylon control sessions must also prefer healthy connected Codex account
+  registry entries before falling back to the default Codex home. Provider
+  usage exhaustion, rate limiting, and auth revocation are typed account-health
+  failures; they must update the local health/quota ledger, surface as
+  account-specific failure classes, and retry another healthy connected Codex
+  account when one exists.
   Fleet-run supervisor ticks are serialized per Pylon/run handle so startup
   status reads and the background loop cannot over-dispatch past the target
   concurrency. Regression coverage lives in

@@ -114,6 +114,13 @@ a friendly install hint.
   *distinct* account is real added concurrency.
 - **`khala fleet status`** (alias `khala fleet list`) prints a table of
   connected accounts with readiness (`ready` / `credentials-missing`) and email.
+- **Automatic dispatch uses the connected-account pool.** When Pylon has ready
+  isolated Codex accounts in its registry, local Codex control sessions and
+  fleet work start from those accounts instead of the display/default
+  `~/.codex` home. If a selected account reports quota exhaustion, rate limit,
+  or revoked credentials, Pylon records typed account health/quota state,
+  surfaces `account_exhausted` / `account_rate_limited` instead of a generic
+  session failure, and retries the next ready connected Codex account.
 - **Safety (always true):** each account uses an ISOLATED home under
   `<pylon home>/accounts/codex/<ref>`; the flow NEVER touches the default
   `~/.codex` home (that would wipe a live session); credentials stay on the
@@ -193,6 +200,14 @@ That refresh consumes a minimal provider call and should return a
 `truth.localSession.usage` record for the selected account. It proves the local
 Codex login works, but it is not the Khala counter proof; still perform the
 delegation and `token_usage_events` checks below.
+
+If a run fails because the selected ChatGPT/Codex account is exhausted, the
+operator-facing failure class must say so (`account_exhausted`,
+`account_rate_limited`, or a specific auth-health class). Do not mask provider
+capacity failures as bad session IDs or generic execution errors. A Pylon with
+other ready connected accounts should automatically retry on the next account;
+if no retry happens, inspect the account health/quota ledger before dispatching
+more work.
 
 1. Bring the owner Pylon online and publish fresh capacity:
 

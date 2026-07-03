@@ -4291,9 +4291,14 @@ const sessionListRow = (
   const accountLabel = sessionAccountShortLabel(session, accounts)
   const workspaceLabel = sessionWorkspaceShortLabel(sessionWorkspaceFilterValue(session))
   const titleParts = [
+    session.title ?? null,
     session.sessionRef,
     session.workspaceRef ?? null,
   ].filter((part): part is string => part !== null && part !== "")
+  const displayTitle =
+    typeof session.title === "string" && session.title.trim().length > 0
+      ? session.title
+      : compactSessionRef(session.sessionRef)
   return h.div(
     [
       cls(`session-click session-card${selectedRef === session.sessionRef ? " selected" : ""}`),
@@ -4306,7 +4311,7 @@ const sessionListRow = (
     ],
     [
       h.div([cls("session-card-head")], [
-        h.strong([cls("session-card-title mono")], [compactSessionRef(session.sessionRef)]),
+        h.strong([cls("session-card-title mono")], [displayTitle]),
         h.span([cls(`session-card-state session-card-state-${session.state}`)], [
           session.state,
         ]),

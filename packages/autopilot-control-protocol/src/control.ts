@@ -50,6 +50,7 @@ export type ProjectionLevel = typeof ProjectionLevel.Type
 // A public-safe session row. Identity is refs only — no raw paths/prompts.
 export const SessionSummary = S.Struct({
   sessionRef: S.String,
+  title: S.optional(S.String),
   adapter: Adapter,
   state: SessionState,
   objectiveRef: S.optional(S.String),
