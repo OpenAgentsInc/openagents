@@ -44,3 +44,17 @@ NEEDS-OWNER: Review
 `docs/fable/2026-07-02-qs7-rhys-sales-motion-owner-review.md`, approve or edit
 the public-safe artifact packet, and explicitly authorize the outward-facing
 `RhysSullivan/executor` PR only after the real audit receipts exist.
+
+## QA Swarm Hosted-Run Engagement Arming
+
+Source issue: OpenAgentsInc/openagents#8070
+
+The QS10 contract now models hosted-run receipts, exact-only metering rows, and
+engagement receipts through the existing business quick-win lifecycle. The
+settlement/payment seam is intentionally inert unless the owner explicitly arms
+it.
+
+NEEDS-OWNER: Decide when QA Swarm hosted-run engagement receipts may evidence
+`buyer_paid` / `provider_settled` refs, which checkout/payment source is
+approved for those refs, and what operator review is required before any paid
+QA Swarm engagement is represented as paid or settled.
