@@ -126,7 +126,7 @@ each service promise gets standing agents with name/goal/enforced-toolset.
 | BF-8.2 | **GEO/content acquisition for ourselves**: question-shaped, citable content + agent-readable surfaces driving `/business`; measured under source attribution (BF-1.4) | AI-search-attributed signups > 0 |
 | BF-8.3 | **White-label operator mode**: an agency operator resells the engine to their clients (branded tenant dashboards, per-client workrooms, revenue share on the existing payout ledger) | First white-label client provisioned |
 | BF-8.4 | **Referral attribution loop** (honest): satisfied-client referrals attributed end-to-end; payout copy only when ledger machinery settles it | First referred engagement with attribution |
-| BF-8.5 | **Overflow/peer marketplace (deferred design)**: qualified intake-complete matters sub-contracted to vetted peers with a cut — design doc + gates only until BF-4 is proven | Design doc, no state change |
+| BF-8.5 | **Overflow/peer marketplace (deferred design)**: qualified intake-complete matters sub-contracted to vetted peers with a cut — design doc + gates only until BF-4 is proven. Spec: [`2026-07-02-bf-8-5-overflow-peer-marketplace-design.md`](./2026-07-02-bf-8-5-overflow-peer-marketplace-design.md) | Design doc, no state change |
 | BF-8.6 | **Settlement primitive (deferred)**: trustless escrow (release-on-verified-delivery) as the settle step under accepted outcomes — integration design + the owed partner make-good demo; no custody changes | Working demo receipt; no live custody |
 
 BF-8.1 status note (2026-07-03): the package receipt/gate now has a typed
