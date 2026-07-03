@@ -92,8 +92,13 @@ export type BillingAutoTopUpState = Readonly<{
 export type BillingCreditPackageDisplay = Readonly<{
   id: string
   label: string
+  paidAmountCents: number
+  paidAmountFormatted: string
+  bonusCents: number
+  bonusFormatted: string
   amountCents: number
   amountFormatted: string
+  creditsExpire: false
   currency: 'USD'
 }>
 
@@ -762,6 +767,7 @@ export const applyStripeCheckoutCredit = async (
   db: D1Database,
   input: Readonly<{
     amountCents: number
+    bonusCents?: number | undefined
     packageId: string
     sessionId: string
     userId: string
@@ -771,6 +777,8 @@ export const applyStripeCheckoutCredit = async (
   await ensureBillingAccount(db, input.userId, runtime)
 
   const amountCents = Math.max(1, Math.trunc(input.amountCents))
+  const bonusCents = Math.max(0, Math.trunc(input.bonusCents ?? 0))
+  const creditCents = amountCents + bonusCents
   const now = runtime.nowIso()
 
   await db.batch([
@@ -785,14 +793,18 @@ export const applyStripeCheckoutCredit = async (
       .bind(
         runtime.randomId('bill'),
         input.userId,
-        'Stripe credit purchase',
-        amountCents,
+        bonusCents > 0 ? 'Stripe volume prepay credit purchase' : 'Stripe credit purchase',
+        creditCents,
         BILLING_CURRENCY,
-        amountCents,
+        creditCents,
         'credit_cents',
         metadataJson({
+          bonusCents,
+          creditsExpire: false,
           packageId: input.packageId,
+          paidAmountCents: amountCents,
           sessionId: input.sessionId,
+          totalCreditCents: creditCents,
         }),
         `billing:stripe-checkout:${input.sessionId}`,
         now,

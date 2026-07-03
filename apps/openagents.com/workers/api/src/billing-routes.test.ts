@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest'
 
+import { applyStripeCheckoutCredit } from './billing'
 import { makeBillingApiHandlers } from './billing-routes'
 
 type TestSession = Readonly<{ user: Readonly<{ userId: string }> }>
@@ -211,6 +212,7 @@ describe('billing API handlers', () => {
           },
           {
             amountCents: 5000,
+            bonusCents: 500,
             id: 'credits_50',
             label: '$50 credits',
             priceId: 'price_50',
@@ -226,9 +228,14 @@ describe('billing API handlers', () => {
         packages: ReadonlyArray<{
           amountCents: number
           amountFormatted: string
+          bonusCents: number
+          bonusFormatted: string
+          creditsExpire: false
           currency: string
           id: string
           label: string
+          paidAmountCents: number
+          paidAmountFormatted: string
         }>
       }
     }
@@ -238,16 +245,26 @@ describe('billing API handlers', () => {
       {
         amountCents: 1000,
         amountFormatted: '$10.00',
+        bonusCents: 0,
+        bonusFormatted: '$0.00',
+        creditsExpire: false,
         currency: 'USD',
         id: 'credits_10',
         label: '$10 credits',
+        paidAmountCents: 1000,
+        paidAmountFormatted: '$10.00',
       },
       {
-        amountCents: 5000,
-        amountFormatted: '$50.00',
+        amountCents: 5500,
+        amountFormatted: '$55.00',
+        bonusCents: 500,
+        bonusFormatted: '$5.00',
+        creditsExpire: false,
         currency: 'USD',
         id: 'credits_50',
         label: '$50 credits',
+        paidAmountCents: 5000,
+        paidAmountFormatted: '$50.00',
       },
     ])
   })
@@ -265,6 +282,45 @@ describe('billing API handlers', () => {
       billing: { packages: ReadonlyArray<unknown> }
     }
     expect(body.billing.packages).toEqual([])
+  })
+
+  test('Stripe volume prepay grants paid and bonus credits atomically', async () => {
+    const { bindings, db } = makeBillingD1()
+
+    await applyStripeCheckoutCredit(
+      db,
+      {
+        amountCents: 50_000,
+        bonusCents: 5_000,
+        packageId: 'prepay_500',
+        sessionId: 'cs_test_volume',
+        userId: 'github:1',
+      },
+      {
+        nowIso: () => '2026-07-02T00:00:00.000Z',
+        randomId: prefix => `${prefix}_fixed`,
+      },
+    )
+
+    const stripeCreditInsert = bindings.find(
+      binding =>
+        binding.query.includes("'stripe_checkout'") &&
+        binding.query.includes('billing_ledger_entries'),
+    )
+
+    expect(stripeCreditInsert?.values[2]).toBe(
+      'Stripe volume prepay credit purchase',
+    )
+    expect(stripeCreditInsert?.values[3]).toBe(55_000)
+    expect(stripeCreditInsert?.values[5]).toBe(55_000)
+    expect(JSON.parse(String(stripeCreditInsert?.values[7]))).toEqual({
+      bonusCents: 5_000,
+      creditsExpire: false,
+      packageId: 'prepay_500',
+      paidAmountCents: 50_000,
+      sessionId: 'cs_test_volume',
+      totalCreditCents: 55_000,
+    })
   })
 
   test('checkout rejects a missing packageId instead of defaulting', async () => {

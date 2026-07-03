@@ -86,7 +86,10 @@ export const view = (model: Model): Html => {
       id: pack.id,
       label: pack.label,
       amount: pack.amountFormatted,
-      detail: `Adds ${pack.amountFormatted} of credit to your balance.`,
+      detail:
+        pack.bonusCents > 0
+          ? `Pay ${pack.paidAmountFormatted}; adds ${pack.amountFormatted} credit including ${pack.bonusFormatted} bonus.`
+          : `Adds ${pack.amountFormatted} of credit to your balance.`,
       attrs: [
         h.Type('button'),
         ...(busy ? [h.Disabled(true)] : []),

@@ -227,8 +227,13 @@ export type BillingAutoTopUpState = typeof BillingAutoTopUpState.Type
 export const BillingCreditPackage = S.Struct({
   id: S.String,
   label: S.String,
+  paidAmountCents: S.Number,
+  paidAmountFormatted: S.String,
+  bonusCents: S.Number,
+  bonusFormatted: S.String,
   amountCents: S.Number,
   amountFormatted: S.String,
+  creditsExpire: S.Literal(false),
   currency: S.Literal('USD'),
 })
 export type BillingCreditPackage = typeof BillingCreditPackage.Type
