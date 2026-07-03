@@ -173,6 +173,19 @@ describe("Khala Code QA seed scenario corpus", () => {
         { kind: "rpc_call", method: "codexThreadResume", args: [{ cwd: "/workspace", sessionId: "desktop-session-fixture", threadId: "thread-fixture" }] },
       ]),
     )
+    const bootFailureScenario = KHALA_CODE_QA_SEED_SCENARIOS.find((candidate) =>
+      candidate.id === "scenario.khala_code.seed.error_state_all_boot_rpcs_failing.v1"
+    )
+    expect(bootFailureScenario?.phases[0]?.name).toBe("exercise-all-boot-rpc-failures")
+    expect(bootFailureScenario?.phases[0]?.act).toEqual(
+      expect.arrayContaining([
+        { kind: "rpc_call", method: "harnessSettingRead" },
+        { kind: "rpc_call", method: "sessionCatalog", args: [{ limit: 10, searchTerm: "fixture" }] },
+        { kind: "rpc_call", method: "claudeApprovalPending" },
+        { kind: "rpc_call", method: "fleetRunList", args: [{}] },
+        { kind: "rpc_call", method: "codexFleetStatus" },
+      ]),
+    )
   })
 
   test("loads every seed scenario and rejects phases without expectations by construction", () => {
