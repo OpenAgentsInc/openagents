@@ -290,5 +290,36 @@ describe('agent definition trigger D1 store', () => {
     expect(ownerCronRecord?.pausedAt).toBeUndefined()
     expect(ownerCronRecord?.pauseReason).toBeUndefined()
     expect(otherRecords).toEqual([])
+
+    expect(await store.listDueCronTriggers(
+      '2026-07-03T15:29:59.000Z',
+      10,
+    )).toEqual([])
+
+    const dueRecords = await store.listDueCronTriggers(
+      '2026-07-03T15:30:00.000Z',
+      10,
+    )
+    expect(dueRecords).toHaveLength(1)
+    expect(dueRecords[0]).toMatchObject({
+      ownerAgentUserId,
+      triggerRef,
+      nextRunAt: '2026-07-03T15:30:00.000Z',
+    })
+
+    expect(await store.recordTriggerDispatchFailure(
+      ownerAgentUserId,
+      triggerRef,
+      '2026-07-03T15:45:00.000Z',
+      '2026-07-03T15:30:01.000Z',
+    )).toBe(true)
+    const failedCronRecord = (
+      await store.listDefinitionTriggers(ownerAgentUserId, definition.id)
+    ).find(record => record.triggerRef === triggerRef)
+
+    expect(failedCronRecord).toMatchObject({
+      consecutiveFailures: 1,
+      nextRunAt: '2026-07-03T15:45:00.000Z',
+    })
   })
 })

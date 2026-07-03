@@ -146,6 +146,10 @@ class MemoryAgentDefinitionTriggerStore implements AgentDefinitionTriggerStore {
     return Promise.resolve([])
   }
 
+  listDueCronTriggers(): Promise<[]> {
+    return Promise.resolve([])
+  }
+
   pauseTrigger(): Promise<boolean> {
     return Promise.resolve(false)
   }
@@ -159,6 +163,10 @@ class MemoryAgentDefinitionTriggerStore implements AgentDefinitionTriggerStore {
   }
 
   recordTriggerSuccess(): Promise<boolean> {
+    return Promise.resolve(false)
+  }
+
+  recordTriggerDispatchFailure(): Promise<boolean> {
     return Promise.resolve(false)
   }
 }

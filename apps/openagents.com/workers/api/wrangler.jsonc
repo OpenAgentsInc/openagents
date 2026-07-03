@@ -383,6 +383,12 @@
         "name": "GLM_STRESS_SCHEDULER",
         "class_name": "GlmStressSchedulerDurableObject",
       },
+      // Background-agent cron scheduler (BA-B2). The Worker scheduled() hook wakes
+      // exactly this named DO, which serializes due-trigger ticks across isolates.
+      {
+        "name": "AGENT_DEFINITION_SCHEDULER",
+        "class_name": "AgentDefinitionSchedulerDurableObject",
+      },
     ],
   },
   "migrations": [
@@ -409,6 +415,10 @@
     {
       "tag": "v6",
       "new_sqlite_classes": ["GlmStressSchedulerDurableObject"],
+    },
+    {
+      "tag": "v7",
+      "new_sqlite_classes": ["AgentDefinitionSchedulerDurableObject"],
     },
   ],
   "env": {
@@ -550,6 +560,10 @@
             "name": "GLM_STRESS_SCHEDULER",
             "class_name": "GlmStressSchedulerDurableObject",
           },
+          {
+            "name": "AGENT_DEFINITION_SCHEDULER",
+            "class_name": "AgentDefinitionSchedulerDurableObject",
+          },
         ],
       },
       "migrations": [
@@ -564,6 +578,10 @@
         {
           "tag": "v3",
           "new_sqlite_classes": ["GlmStressSchedulerDurableObject"],
+        },
+        {
+          "tag": "v4",
+          "new_sqlite_classes": ["AgentDefinitionSchedulerDurableObject"],
         },
       ],
     },

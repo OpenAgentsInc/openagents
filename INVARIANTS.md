@@ -135,6 +135,15 @@ More specific invariant ledgers apply inside imported apps and packages.
   before any work starts. Inbound webhook trigger rows likewise store typed
   source/condition configuration only; verified ingress, normalization, and
   condition evaluation are separate authority steps.
+- Cron trigger dispatch must be serialized through the named
+  `AGENT_DEFINITION_SCHEDULER` Durable Object woken by Worker `scheduled()`.
+  Request isolates, routes, webhook ingress, or ad hoc workers must not scan
+  and dispatch due cron rows directly. Each scheduler tick processes due rows
+  oldest-first under a bounded cap, and every attempted cron dispatch must move
+  `next_run_at` to the next cron instant before another tick can consider the
+  row again. Refusals and failures increment/preserve the failure streak rather
+  than retrying in a tight duplicate loop; BA-B4 owns the future auto-pause
+  threshold.
 - Any Worker, Pylon, desktop, or cloud-workroom executor that claims
   definition-backed tool enforcement must use this contract or a formally
   equivalent compiled policy at the execution boundary, with regression tests
@@ -143,7 +152,10 @@ More specific invariant ledgers apply inside imported apps and packages.
   `packages/agent-runtime-schema/src/index.test.ts`,
   `packages/khala-tools/src/dispatcher.test.ts`,
   `apps/openagents.com/workers/api/src/forge-tenant-git-auth-store.test.ts`, and
-  `apps/openagents.com/workers/api/src/agent-definition-trigger-store.test.ts`.
+  `apps/openagents.com/workers/api/src/agent-definition-trigger-store.test.ts`,
+  plus
+  `apps/openagents.com/workers/api/src/agent-definition-scheduler.test.ts` for
+  singleton tick semantics, cap handling, owner scope, and next-run advancement.
 
 ## Connector Authority And Redaction
 

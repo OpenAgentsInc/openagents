@@ -74,7 +74,7 @@ const AgentDefinitionRunRequest = S.Struct({
   targetAccountRefHash: S.optionalKey(PublicSafeRef),
   workspace: S.optionalKey(WorkspaceHint),
 })
-type AgentDefinitionRunRequest = typeof AgentDefinitionRunRequest.Type
+export type AgentDefinitionRunRequest = typeof AgentDefinitionRunRequest.Type
 
 export type AgentDefinitionRunStatus = 'dispatched' | 'pending' | 'refused'
 
@@ -241,6 +241,44 @@ export type AgentDefinitionRunRouteDependencies = Readonly<{
   runStore: AgentDefinitionRunStore
 }>
 
+export type AgentDefinitionRunDispatchDependencies = Readonly<{
+  durableStreamNamespace?: DurableStreamNamespace | undefined
+  forgeStore: ForgeCoordinationStore
+  linkedAgents: ReadonlyArray<
+    LinkedAgentOwnerRecord | Readonly<{ agentUserId: string }>
+  >
+  makeId?: (() => string) | undefined
+  nowIso?: (() => string) | undefined
+  pylonStore: PylonApiStore
+  runStore: AgentDefinitionRunStore
+}>
+
+export type AgentDefinitionRunDispatchOutcome =
+  | Readonly<{
+      kind: 'dispatched'
+      assignmentRef: string
+      durableStreamUrl: string
+      record: AgentDefinitionRunRecord
+      seeded: boolean
+    }>
+  | Readonly<{
+      evidenceRefs: ReadonlyArray<string>
+      error: string
+      kind: 'refused'
+      reason: string
+      record: AgentDefinitionRunRecord
+      requestedPylonRef: string | null
+      seeded: boolean
+      statusCode: number
+    }>
+  | Readonly<{
+      kind: 'invalid'
+      reason: string
+    }>
+  | Readonly<{
+      kind: 'storage_error'
+    }>
+
 export const matchAgentDefinitionRunRequest = (
   request: Request,
 ): Readonly<{ definitionId: string }> | undefined => {
@@ -302,7 +340,7 @@ const refFragment = (value: string): string => {
 }
 
 const makeRunId = (
-  dependencies: AgentDefinitionRunRouteDependencies,
+  dependencies: Readonly<{ makeId?: (() => string) | undefined }>,
 ): string => `agent_definition_run.${dependencies.makeId?.() ?? randomUuid()}`
 
 const definitionRef = (definition: AgentDefinition): string =>
@@ -435,7 +473,7 @@ const sessionEventFrame = (event: AgentRuntimeEvent): string =>
   })}\n\n`
 
 const seedSessionEvents = async (
-  dependencies: AgentDefinitionRunRouteDependencies,
+  dependencies: Pick<AgentDefinitionRunDispatchDependencies, 'durableStreamNamespace'>,
   input: Readonly<{
     close: boolean
     durableRequestId: string
@@ -648,7 +686,7 @@ const buildRunRecord = (input: Readonly<{
 }
 
 const registerForgeWorkRecord = async (
-  dependencies: AgentDefinitionRunRouteDependencies,
+  dependencies: Pick<AgentDefinitionRunDispatchDependencies, 'forgeStore'>,
   input: Readonly<{
     definition: AgentDefinition
     forgeWorkRef: string
@@ -739,7 +777,7 @@ const classificationForDefinition = (
 }
 
 const persistRefusedRun = async (
-  dependencies: AgentDefinitionRunRouteDependencies,
+  dependencies: AgentDefinitionRunDispatchDependencies,
   input: Readonly<{
     definition: AgentDefinition
     forgeWorkRef: string
@@ -774,6 +812,199 @@ const persistRefusedRun = async (
   })
 
   return { record: stored, seeded }
+}
+
+export const dispatchAgentDefinitionRun = async (
+  dependencies: AgentDefinitionRunDispatchDependencies,
+  input: Readonly<{
+    definition: AgentDefinition
+    request: AgentDefinitionRunRequest
+  }>,
+): Promise<AgentDefinitionRunDispatchOutcome> => {
+  const trigger = triggerRefFromRequest(input.definition, input.request)
+
+  if (trigger.kind === 'invalid') {
+    return {
+      kind: 'invalid',
+      reason: 'triggerRef must name one of the definition triggers.',
+    }
+  }
+
+  const nowIso = dependencies.nowIso?.() ?? currentIsoTimestamp()
+  const runId = makeRunId(dependencies)
+  const forgeWorkRef = `work.background_agent.${refFragment(runId)}`
+  const triggerPayload = input.request.triggerPayload ?? {}
+
+  try {
+    await registerForgeWorkRecord(dependencies, {
+      definition: input.definition,
+      forgeWorkRef,
+      nowIso,
+      runId,
+      triggerRef: trigger.triggerRef,
+    })
+  } catch {
+    return { kind: 'storage_error' }
+  }
+
+  if (input.definition.lane !== 'own_pylon') {
+    const refusal = unsupportedLaneRefusal(input.definition.lane)
+
+    try {
+      const refused = await persistRefusedRun(dependencies, {
+        definition: input.definition,
+        forgeWorkRef,
+        nowIso,
+        refusal,
+        runId,
+        triggerPayload,
+        triggerRef: trigger.triggerRef,
+      })
+
+      return {
+        evidenceRefs: refusal.evidenceRefs,
+        error: refusal.error,
+        kind: 'refused',
+        reason: refusal.reason,
+        record: refused.record,
+        requestedPylonRef: refusal.requestedPylonRef,
+        seeded: refused.seeded,
+        statusCode: refusal.statusCode,
+      }
+    } catch {
+      return { kind: 'storage_error' }
+    }
+  }
+
+  const classification = classificationForDefinition(input.definition)
+
+  if (classification === null) {
+    const refusal = unsupportedHarnessRefusal(input.definition)
+
+    try {
+      const refused = await persistRefusedRun(dependencies, {
+        definition: input.definition,
+        forgeWorkRef,
+        nowIso,
+        refusal,
+        runId,
+        triggerPayload,
+        triggerRef: trigger.triggerRef,
+      })
+
+      return {
+        evidenceRefs: refusal.evidenceRefs,
+        error: refusal.error,
+        kind: 'refused',
+        reason: refusal.reason,
+        record: refused.record,
+        requestedPylonRef: refusal.requestedPylonRef,
+        seeded: refused.seeded,
+        statusCode: refusal.statusCode,
+      }
+    } catch {
+      return { kind: 'storage_error' }
+    }
+  }
+
+  let delegation: CodingDelegationResult | null
+
+  try {
+    delegation = await delegateCodingWorkflow({
+      classification,
+      linkedAgents: dependencies.linkedAgents,
+      makeId: () => dependencies.makeId?.() ?? randomUuid(),
+      nowIso,
+      pylonStore: dependencies.pylonStore,
+      rawBody: rawDelegationBody({
+        definition: input.definition,
+        request: input.request,
+        runId,
+      }),
+      requestId: runId,
+    })
+  } catch {
+    delegation = {
+      error: 'coding_delegation_store_unavailable',
+      evidenceRefs: ['evidence.agent_definition_run.dispatch.unavailable'],
+      kind: 'rejected',
+      reason:
+        'The background-agent dispatch gate could not read linked Pylon capacity right now.',
+      requestedPylonRef: null,
+      statusCode: 503,
+    }
+  }
+
+  if (delegation === null) {
+    delegation = unavailableRefusal()
+  }
+
+  if (delegation.kind === 'rejected') {
+    try {
+      const refused = await persistRefusedRun(dependencies, {
+        definition: input.definition,
+        forgeWorkRef,
+        nowIso,
+        refusal: delegation,
+        runId,
+        triggerPayload,
+        triggerRef: trigger.triggerRef,
+      })
+
+      return {
+        evidenceRefs: delegation.evidenceRefs,
+        error: delegation.error,
+        kind: 'refused',
+        reason: delegation.reason,
+        record: refused.record,
+        requestedPylonRef: delegation.requestedPylonRef,
+        seeded: refused.seeded,
+        statusCode: delegation.statusCode,
+      }
+    } catch {
+      return { kind: 'storage_error' }
+    }
+  }
+
+  const record = buildRunRecord({
+    assignment: delegation.assignment,
+    definition: input.definition,
+    durableStreamUrl: delegation.durableStreamUrl,
+    evidenceRefs: [
+      ...delegation.evidenceRefs,
+      'evidence.agent_definition_run.forge_work_record_registered',
+      'evidence.agent_definition_run.exact_accounting_assignment_ref',
+    ],
+    forgeWorkRef,
+    nowIso,
+    pylonRef: delegation.pylon.pylonRef,
+    refusalError: null,
+    refusalReason: null,
+    runId,
+    state: 'running',
+    status: 'dispatched',
+    triggerPayload,
+    triggerRef: trigger.triggerRef,
+  })
+
+  try {
+    const stored = await dependencies.runStore.upsertRun(record)
+    const seeded = await seedSessionEvents(dependencies, {
+      close: false,
+      durableRequestId: stored.durableRequestId,
+      events: stored.initialEvents,
+    })
+
+    return {
+      assignmentRef: delegation.assignment.assignmentRef,
+      durableStreamUrl: delegation.durableStreamUrl,
+      kind: 'dispatched',
+      record: stored,
+      seeded,
+    }
+  } catch {
+    return { kind: 'storage_error' }
+  }
 }
 
 export const handleAgentDefinitionRunRequest = async (
@@ -818,193 +1049,52 @@ export const handleAgentDefinitionRunRequest = async (
     return notFoundResponse()
   }
 
-  const trigger = triggerRefFromRequest(definition, body)
-
-  if (trigger.kind === 'invalid') {
-    return invalidRunResponse(
-      'triggerRef must name one of the definition triggers.',
-    )
-  }
-
-  const nowIso = dependencies.nowIso?.() ?? currentIsoTimestamp()
-  const runId = makeRunId(dependencies)
-  const forgeWorkRef = `work.background_agent.${refFragment(runId)}`
-  const triggerPayload = body.triggerPayload ?? {}
-
-  try {
-    await registerForgeWorkRecord(dependencies, {
-      definition,
-      forgeWorkRef,
-      nowIso,
-      runId,
-      triggerRef: trigger.triggerRef,
-    })
-  } catch {
-    return storageErrorResponse()
-  }
-
-  if (definition.lane !== 'own_pylon') {
-    const refusal = unsupportedLaneRefusal(definition.lane)
-
-    try {
-      const refused = await persistRefusedRun(dependencies, {
-        definition,
-        forgeWorkRef,
-        nowIso,
-        refusal,
-        runId,
-        triggerPayload,
-        triggerRef: trigger.triggerRef,
-      })
-
-      return withAgentRateLimitHeaders(
-        noStoreJsonResponse(
-          {
-            error: refusal.error,
-            evidenceRefs: refusal.evidenceRefs,
-            reason: refusal.reason,
-            run: projectionForRun(refused.record, refused.seeded),
-          },
-          { status: refusal.statusCode },
-        ),
-      )
-    } catch {
-      return storageErrorResponse()
-    }
-  }
-
-  const classification = classificationForDefinition(definition)
-
-  if (classification === null) {
-    const refusal = unsupportedHarnessRefusal(definition)
-
-    try {
-      const refused = await persistRefusedRun(dependencies, {
-        definition,
-        forgeWorkRef,
-        nowIso,
-        refusal,
-        runId,
-        triggerPayload,
-        triggerRef: trigger.triggerRef,
-      })
-
-      return withAgentRateLimitHeaders(
-        noStoreJsonResponse(
-          {
-            error: refusal.error,
-            evidenceRefs: refusal.evidenceRefs,
-            reason: refusal.reason,
-            run: projectionForRun(refused.record, refused.seeded),
-          },
-          { status: refusal.statusCode },
-        ),
-      )
-    } catch {
-      return storageErrorResponse()
-    }
-  }
-
-  let delegation: CodingDelegationResult | null
-
-  try {
-    delegation = await delegateCodingWorkflow({
-      classification,
-      linkedAgents: await linkedAgentsForSession(dependencies, session),
-      makeId: () => dependencies.makeId?.() ?? randomUuid(),
-      nowIso,
-      pylonStore: dependencies.pylonStore,
-      rawBody: rawDelegationBody({ definition, request: body, runId }),
-      requestId: runId,
-    })
-  } catch {
-    delegation = {
-      error: 'coding_delegation_store_unavailable',
-      evidenceRefs: ['evidence.agent_definition_run.dispatch.unavailable'],
-      kind: 'rejected',
-      reason:
-        'The background-agent dispatch gate could not read linked Pylon capacity right now.',
-      requestedPylonRef: null,
-      statusCode: 503,
-    }
-  }
-
-  if (delegation === null) {
-    delegation = unavailableRefusal()
-  }
-
-  if (delegation.kind === 'rejected') {
-    try {
-      const refused = await persistRefusedRun(dependencies, {
-        definition,
-        forgeWorkRef,
-        nowIso,
-        refusal: delegation,
-        runId,
-        triggerPayload,
-        triggerRef: trigger.triggerRef,
-      })
-
-      return withAgentRateLimitHeaders(
-        noStoreJsonResponse(
-          {
-            error: delegation.error,
-            evidenceRefs: delegation.evidenceRefs,
-            reason: delegation.reason,
-            requestedPylonRef: delegation.requestedPylonRef,
-            run: projectionForRun(refused.record, refused.seeded),
-          },
-          { status: delegation.statusCode },
-        ),
-      )
-    } catch {
-      return storageErrorResponse()
-    }
-  }
-
-  const record = buildRunRecord({
-    assignment: delegation.assignment,
+  const dispatch = await dispatchAgentDefinitionRun({
+    durableStreamNamespace: dependencies.durableStreamNamespace,
+    forgeStore: dependencies.forgeStore,
+    linkedAgents: await linkedAgentsForSession(dependencies, session),
+    makeId: dependencies.makeId,
+    nowIso: dependencies.nowIso,
+    pylonStore: dependencies.pylonStore,
+    runStore: dependencies.runStore,
+  }, {
     definition,
-    durableStreamUrl: delegation.durableStreamUrl,
-    evidenceRefs: [
-      ...delegation.evidenceRefs,
-      'evidence.agent_definition_run.forge_work_record_registered',
-      'evidence.agent_definition_run.exact_accounting_assignment_ref',
-    ],
-    forgeWorkRef,
-    nowIso,
-    pylonRef: delegation.pylon.pylonRef,
-    refusalError: null,
-    refusalReason: null,
-    runId,
-    state: 'running',
-    status: 'dispatched',
-    triggerPayload,
-    triggerRef: trigger.triggerRef,
+    request: body,
   })
 
-  try {
-    const stored = await dependencies.runStore.upsertRun(record)
-    const seeded = await seedSessionEvents(dependencies, {
-      close: false,
-      durableRequestId: stored.durableRequestId,
-      events: stored.initialEvents,
-    })
+  if (dispatch.kind === 'invalid') {
+    return invalidRunResponse(dispatch.reason)
+  }
 
-    return withAgentRateLimitHeaders(
-      noStoreJsonResponse(
-        { run: projectionForRun(stored, seeded) },
-        {
-          headers: {
-            'openagents-coding-assignment-ref':
-              delegation.assignment.assignmentRef,
-            'openagents-durable-stream-url': delegation.durableStreamUrl,
-          },
-          status: 201,
-        },
-      ),
-    )
-  } catch {
+  if (dispatch.kind === 'storage_error') {
     return storageErrorResponse()
   }
+
+  if (dispatch.kind === 'refused') {
+    return withAgentRateLimitHeaders(
+      noStoreJsonResponse(
+        {
+          error: dispatch.error,
+          evidenceRefs: dispatch.evidenceRefs,
+          reason: dispatch.reason,
+          requestedPylonRef: dispatch.requestedPylonRef,
+          run: projectionForRun(dispatch.record, dispatch.seeded),
+        },
+        { status: dispatch.statusCode },
+      ),
+    )
+  }
+
+  return withAgentRateLimitHeaders(
+    noStoreJsonResponse(
+      { run: projectionForRun(dispatch.record, dispatch.seeded) },
+      {
+        headers: {
+          'openagents-coding-assignment-ref': dispatch.assignmentRef,
+          'openagents-durable-stream-url': dispatch.durableStreamUrl,
+        },
+        status: 201,
+      },
+    ),
+  )
 }

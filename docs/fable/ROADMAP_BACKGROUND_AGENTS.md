@@ -157,8 +157,20 @@ persists owner-scoped trigger rows in `agent_definition_triggers` via
 `0281_agent_definition_triggers.sql`; rows carry enable/pause state,
 `consecutive_failures`, optional pause reason, and precomputed cron
 `next_run_at` from `agent-definition-cron.ts`. Definition create/patch syncs
-that store, while scheduling, webhook verification/normalization, dispatch,
-and auto-pause remain BA-B2/BA-B3/BA-B4 authority.
+that store, while webhook verification/normalization and auto-pause remain
+BA-B3/BA-B4 authority.
+
+BA-B2 status (2026-07-03): Worker `scheduled()` now wakes exactly one named
+`AgentDefinitionSchedulerDurableObject` through the `AGENT_DEFINITION_SCHEDULER`
+binding. The DO reads due cron trigger rows oldest-first through
+`listDueCronTriggers`, applies a per-tick cap, treats overdue rows as the
+recovery sweep, and dispatches through the shared BA-A2
+`dispatchAgentDefinitionRun` helper instead of fabricating HTTP auth. Successful
+dispatches reset `consecutive_failures`; refused/failed dispatches advance the
+cron `next_run_at` while preserving/incrementing the failure streak, preventing
+duplicate tight-loop dispatch. Wrangler migration `v7` registers the DO class,
+and deterministic scheduler/store tests cover cap, owner scope, next-run
+advancement, missing definitions, and D1 due-row reads.
 
 | Task | Description | Deps | Delegable | Issue |
 | --- | --- | --- | --- | --- |

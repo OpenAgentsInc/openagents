@@ -25,11 +25,21 @@ type AgentDefinitionTriggerRow = Readonly<{
   updated_at: string
 }>
 
+type DueAgentDefinitionTriggerRow = AgentDefinitionTriggerRow &
+  Readonly<{
+    owner_agent_user_id: string
+  }>
+
 type D1ChangeResult = Readonly<{
   meta?: Readonly<{
     changes?: number
   }>
 }>
+
+export type DueAgentDefinitionTriggerRecord = AgentDefinitionTriggerRecord &
+  Readonly<{
+    ownerAgentUserId: string
+  }>
 
 export type AgentDefinitionTriggerStore = Readonly<{
   replaceDefinitionTriggers: (
@@ -41,6 +51,10 @@ export type AgentDefinitionTriggerStore = Readonly<{
     ownerAgentUserId: string,
     definitionId: string,
   ) => Promise<ReadonlyArray<AgentDefinitionTriggerRecord>>
+  listDueCronTriggers: (
+    nowIso: string,
+    limit: number,
+  ) => Promise<ReadonlyArray<DueAgentDefinitionTriggerRecord>>
   pauseTrigger: (
     ownerAgentUserId: string,
     triggerRef: string,
@@ -61,6 +75,12 @@ export type AgentDefinitionTriggerStore = Readonly<{
     ownerAgentUserId: string,
     triggerRef: string,
     nextRunAt: string | undefined,
+    updatedAt: string,
+  ) => Promise<boolean>
+  recordTriggerDispatchFailure: (
+    ownerAgentUserId: string,
+    triggerRef: string,
+    nextRunAt: string,
     updatedAt: string,
   ) => Promise<boolean>
 }>
@@ -101,6 +121,13 @@ const rowToTriggerRecord = (
     updatedAt: row.updated_at,
   })
 
+const rowToDueTriggerRecord = (
+  row: DueAgentDefinitionTriggerRow,
+): DueAgentDefinitionTriggerRecord => ({
+  ...rowToTriggerRecord(row),
+  ownerAgentUserId: row.owner_agent_user_id,
+})
+
 const changed = (result: D1ChangeResult): boolean =>
   (result.meta?.changes ?? 0) > 0
 
@@ -125,6 +152,29 @@ export const makeD1AgentDefinitionTriggerStore = (
       .all<AgentDefinitionTriggerRow>()
 
     return (rows.results ?? []).map(rowToTriggerRecord)
+  }
+
+  const listDueCronTriggers = async (
+    nowIso: string,
+    limit: number,
+  ): Promise<ReadonlyArray<DueAgentDefinitionTriggerRecord>> => {
+    const rows = await db
+      .prepare(
+        `SELECT trigger_id, owner_agent_user_id, owner_ref, definition_id,
+                trigger_ref, trigger_json, state, consecutive_failures,
+                next_run_at, paused_at, pause_reason, created_at, updated_at
+           FROM agent_definition_triggers
+          WHERE trigger_kind = 'cron'
+            AND state = 'enabled'
+            AND next_run_at IS NOT NULL
+            AND next_run_at <= ?
+          ORDER BY next_run_at ASC, trigger_id ASC
+          LIMIT ?`,
+      )
+      .bind(nowIso, Math.max(1, Math.min(limit, 100)))
+      .all<DueAgentDefinitionTriggerRow>()
+
+    return (rows.results ?? []).map(rowToDueTriggerRecord)
   }
 
   return {
@@ -197,6 +247,7 @@ export const makeD1AgentDefinitionTriggerStore = (
       return listDefinitionTriggers(ownerAgentUserId, definition.id)
     },
     listDefinitionTriggers,
+    listDueCronTriggers,
     pauseTrigger: async (ownerAgentUserId, triggerRef, pausedAt, reason) => {
       const result = await db
         .prepare(
@@ -259,6 +310,26 @@ export const makeD1AgentDefinitionTriggerStore = (
               AND trigger_ref = ?`,
         )
         .bind(nextRunAt ?? null, updatedAt, ownerAgentUserId, triggerRef)
+        .run()
+
+      return changed(result)
+    },
+    recordTriggerDispatchFailure: async (
+      ownerAgentUserId,
+      triggerRef,
+      nextRunAt,
+      updatedAt,
+    ) => {
+      const result = await db
+        .prepare(
+          `UPDATE agent_definition_triggers
+              SET consecutive_failures = consecutive_failures + 1,
+                  next_run_at = ?,
+                  updated_at = ?
+            WHERE owner_agent_user_id = ?
+              AND trigger_ref = ?`,
+        )
+        .bind(nextRunAt, updatedAt, ownerAgentUserId, triggerRef)
         .run()
 
       return changed(result)

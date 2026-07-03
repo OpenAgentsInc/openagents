@@ -73,6 +73,11 @@ import {
   makeD1AgentDefinitionRunStore,
   matchAgentDefinitionRunRequest,
 } from './agent-definition-run-routes'
+import {
+  AGENT_DEFINITION_SCHEDULER_SINGLETON_NAME,
+  makeAgentDefinitionSchedulerDependencies,
+  runAgentDefinitionSchedulerTick,
+} from './agent-definition-scheduler'
 import { makeD1AgentDefinitionTriggerStore } from './agent-definition-trigger-store'
 import {
   makeAgentScopedGrantRoutes,
@@ -14423,6 +14428,103 @@ export class SyncRoomDurableObject {
   }
 }
 
+const agentDefinitionSchedulerJsonResponse = (
+  body: unknown,
+  init: ResponseInit = {},
+) =>
+  new Response(JSON.stringify(body), {
+    ...init,
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  })
+
+const readAgentDefinitionSchedulerScheduledAt = async (
+  request: Request,
+): Promise<string> => {
+  try {
+    const body = await request.json()
+    if (
+      typeof body === 'object' &&
+      body !== null &&
+      'scheduledAt' in body &&
+      typeof body.scheduledAt === 'string'
+    ) {
+      return body.scheduledAt
+    }
+  } catch {
+    return currentIsoTimestamp()
+  }
+
+  return currentIsoTimestamp()
+}
+
+export class AgentDefinitionSchedulerDurableObject {
+  constructor(
+    private readonly state: DurableObjectState,
+    private readonly env: Env,
+  ) {}
+
+  async fetch(request: Request) {
+    const url = new URL(request.url)
+
+    if (request.method !== 'POST' || url.pathname !== '/tick') {
+      return agentDefinitionSchedulerJsonResponse(
+        { error: 'agent_definition_scheduler_not_found' },
+        { status: 404 },
+      )
+    }
+
+    const scheduledAt = await readAgentDefinitionSchedulerScheduledAt(request)
+    const durableStreamNamespace =
+      isInferenceDurableStreamEnabled(this.env.INFERENCE_DURABLE_STREAM_ENABLED) &&
+      this.env.INFERENCE_DURABLE_STREAM !== undefined
+        ? (this.env.INFERENCE_DURABLE_STREAM as unknown as DurableStreamNamespace)
+        : undefined
+    const result = await runAgentDefinitionSchedulerTick(
+      makeAgentDefinitionSchedulerDependencies({
+        db: openAgentsDatabase(this.env),
+        durableStreamNamespace,
+      }),
+      { nowIso: scheduledAt },
+    )
+
+    await this.state.storage.put('last_tick', result)
+
+    return agentDefinitionSchedulerJsonResponse(result)
+  }
+}
+
+const pokeAgentDefinitionScheduler = async (
+  env: Env,
+  scheduledTimeMs: number,
+) => {
+  const namespace = (
+    env as Env & {
+      AGENT_DEFINITION_SCHEDULER?: DurableObjectNamespace
+    }
+  ).AGENT_DEFINITION_SCHEDULER
+
+  if (namespace === undefined) {
+    return { ok: false, reason: 'agent_definition_scheduler_binding_missing' }
+  }
+
+  const id = namespace.idFromName(AGENT_DEFINITION_SCHEDULER_SINGLETON_NAME)
+  const stub = namespace.get(id)
+  const response = await stub.fetch(
+    new Request('https://agent-definition-scheduler.openagents.internal/tick', {
+      body: JSON.stringify({
+        scheduledAt: epochMillisToIsoTimestamp(scheduledTimeMs),
+      }),
+      method: 'POST',
+    }),
+  )
+
+  return response.ok
+    ? { ok: true }
+    : { ok: false, reason: `agent_definition_scheduler_${response.status}` }
+}
+
 const workerFetchProgram = Effect.gen(function* () {
   const { ctx, env, request, url } = yield* OpenAgentsWorkerRequest
 
@@ -14645,6 +14747,18 @@ export default {
         'AutopilotScheduledLaunches.dispatchDue',
         dispatchDueScheduledAutopilotWork(autopilotWorkRouteDependencies, env, {
           nowIso: epochMillisToIsoTimestamp(event.scheduledTime),
+        }),
+      ),
+      observedEffect(
+        'AgentDefinitionScheduler.tick',
+        Effect.promise(async () => {
+          const result = await pokeAgentDefinitionScheduler(env, event.scheduledTime)
+
+          if (!result.ok) {
+            logWorkerRouteWarning('agent_definition_scheduler_tick_skipped', {
+              reason: result.reason,
+            })
+          }
         }),
       ),
       observedEffect(
