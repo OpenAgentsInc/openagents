@@ -265,6 +265,24 @@ The fix is the behavior-contract layer, landed with this entry:
   contracts for its own headline invariants (#8218: budget caps, toolset
   enforcement, brokered credentials, harness swap, Agents-panel indicator
   truthfulness).
+- **Conversation-history mining pass (2026-07-03)**: the registry's coverage
+  extends past reactive per-session asks to a systematic sweep. Every owner
+  message across the last 36h of Codex and Claude conversation history that
+  stated a Khala Code UX/behavior expectation was mined (43 in-app
+  `khala_code_desktop`-origin Codex sessions plus adjacent Codex-Desktop and
+  Claude sessions) and landed as a `pending` contract in
+  `clients/khala-code-desktop/src/contracts/ux-contracts.ts` — 23 entries
+  spanning the composer, sidebar, transcript, nav hotbar, menus, app
+  lifecycle, and token accounting. Each records the statement close to
+  verbatim, its source date, and a shared blocker ref
+  (`blocker.khala_code_ux_mining.oracle_not_implemented_20260703`) marking
+  that the oracle-writing code pass has not happened yet — this pass is
+  docs-only by owner directive. The follow-up code pass should work this
+  list down: write the oracle, verify or fix the underlying behavior, flip
+  `pending` → `enforced`. Mining reused the "Colocode"/"Cola Code"/"Call of
+  Code"/"Calla Code" voice-dictation pattern as an additional keyword
+  signal, alongside `originator: "khala_code_desktop"` in Codex session
+  metadata as the strongest filter for genuine in-product usage reports.
 
 ## 10. Milestones
 
