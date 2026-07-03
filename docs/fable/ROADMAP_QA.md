@@ -250,6 +250,16 @@ The fix is the behavior-contract layer, landed with this entry:
   for the invariant catalog we offer to enforce and the deviation-alert loop.
   QS lanes (§9c) consume this; contract enforcement rides QA-1's nightly
   once it exists.
+- **Background-agents tie-in (2026-07-03)**: the WS-B trigger engine in
+  [`ROADMAP_BACKGROUND_AGENTS.md`](./ROADMAP_BACKGROUND_AGENTS.md)
+  (BA-B1/B2/B5 — cron triggers, scheduler DO, auto-pause, run history) is
+  the natural cadence layer for contract enforcement (#8184) *and* a
+  candidate carrier for the QA-1.1 nightly itself: both are ideal first
+  cron-triggered agent definitions for that program's M2 milestone, rather
+  than parallel bespoke schedulers. The BA program also registers behavior
+  contracts for its own headline invariants (#8218: budget caps, toolset
+  enforcement, brokered credentials, harness swap, Agents-panel indicator
+  truthfulness).
 
 ## 10. Milestones
 

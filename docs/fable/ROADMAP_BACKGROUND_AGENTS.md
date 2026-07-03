@@ -100,6 +100,16 @@ Source: harvest audit §4 H4 — trigger rows with `next_run_at` +
 per-tick backpressure and a recovery sweep, and auto-pause. The layer
 nothing owns today.
 
+Consolidation note (2026-07-03): this engine is also the cadence layer two
+sibling plans currently assume they must build separately — behavior-contract
+nightly enforcement (#8184: per-contract receipts + deviation alerts; see
+[`ROADMAP_QA.md`](./ROADMAP_QA.md) §9d) and the QA-1.1 nightly matrix. Both
+should ride BA-B2/BA-B5 as cron-triggered definitions once this lands: a
+contract-enforcement sweep and the QA nightly are ideal first *real*
+workloads for the M2 milestone, and the QA Swarm customer deviation loop
+(#8186) is operationally one definition per customer (cron or BA-B3
+on-deploy webhook trigger, BA-B4 budget caps, BA-G1 result callback).
+
 | Task | Description | Deps | Delegable | Issue |
 | --- | --- | --- | --- | --- |
 | BA-B1 | Trigger schema + D1 store: `cron(expr, tz)` and `inbound_webhook(source, typed conditions)` trigger types on definitions; `next_run_at` precomputed via a cron utility; `consecutive_failures`; enable/pause state | BA-A1 | HIGH | [#8193](https://github.com/OpenAgentsInc/openagents/issues/8193) |
@@ -178,6 +188,30 @@ query. Last because triggers deliver value without it.
 | BA-H2 | Handled-state as first-class (`open\|handled\|responded\|ignored`, which run touched it) + a gateway read tool for definitions with redaction per `secretPolicy` | BA-H1 | MED | [#8213](https://github.com/OpenAgentsInc/openagents/issues/8213) |
 | BA-H3 | Slack source ingest → normalized ledger rows; same owner-scope + privacy invariants | BA-H1 | HIGH | [#8214](https://github.com/OpenAgentsInc/openagents/issues/8214) |
 
+### Behavior-contract tie-ins (cross-cutting, [#8218](https://github.com/OpenAgentsInc/openagents/issues/8218))
+
+Several tasks above state headline invariants whose enforcement artifacts
+are behavior contracts (`packages/behavior-contracts`, AGENTS.md standing
+rule, ROADMAP_QA §9d). The implementing PRs register the contract alongside
+the oracle rather than leaving the rule as INVARIANTS prose:
+
+- BA-B4 → `background_agents.dispatch.budget_caps_enforced.v1`
+- BA-A5 → `background_agents.toolset.compiled_policy_enforced.v1`
+- BA-D3 → `background_agents.credentials.no_long_lived_tokens_in_workspaces.v1`
+  (BA-D3's test *is* the oracle)
+- BA-A4 → `background_agents.definitions.harness_swap.v1` (the parity
+  fixture is the oracle)
+- BA-G4 → an indicator-truthfulness UX contract for the Agents panel's
+  run-status indicators, written **before** the panel ships (the
+  `khala_code.chat.sidebar_spinner_streaming_only.v1` bug class)
+- BA-E3 → pin the stated "honest no-op when the target lane has no warm
+  path" behavior
+
+Future product promises from this program cite these contract ids in
+`evidenceRefs` (`contract:<id>` cross-refs), and contract deviations should
+eventually land as WS-H ledger rows with handled-state rather than
+fire-and-forget alerts.
+
 ## 3. Waves (Parallelization Plan)
 
 - **Wave 0 (now):** BA-A1 · BA-C1 · BA-D1 · BA-E1 · BA-F1 · BA-F2 — six
@@ -245,6 +279,10 @@ Forge boundary contract:
 - **Copy gates.** No public copy or promise flips from this program without
   `docs/promises/` records; the smallest honest demo (M2/M3) precedes any
   claim.
+- **Headline invariants become behavior contracts.** Where a workstream's
+  claim-bearing invariant gains a test (BA-A4/A5/B4/D3/E3/G4), the same PR
+  registers the behavior contract with that test as its oracle (#8218), so
+  the rule is sweep-enforced and coverage-checked, not prose.
 
 ## 6. Parked (No Issues Filed) — GCE/Workroom Lane Items
 

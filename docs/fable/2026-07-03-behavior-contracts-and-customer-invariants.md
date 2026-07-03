@@ -87,6 +87,15 @@ this menu and writing the client's own statements into their registry.
   nightly, weekly live. Internally contracts ride the same loop as QA-1
   (nightly matrix) once it exists; until then they run in the pre-push
   test sweep.
+- **Delivery vehicle:** operationally, one customer's deviation loop is one
+  background agent definition per
+  [`ROADMAP_BACKGROUND_AGENTS.md`](./ROADMAP_BACKGROUND_AGENTS.md) — cron or
+  on-deploy webhook trigger (BA-B1/B3), scheduler + run history (BA-B2/B5),
+  budget caps + auto-pause so a flapping customer staging is never a money
+  pump (BA-B4), and the result posted back to the client's channel via the
+  integration template (BA-G1). The pilot (#8186) should ride those lanes
+  rather than growing a bespoke scheduler; contract deviations can later
+  land as WS-H ledger rows with handled-state for triage.
 - **Receipts:** every sweep produces a per-contract pass/fail receipt
   (promise-transition-receipt shape: checks, evidence refs, checkedAt) so
   "it was green on date X" is a lookup, not a memory. Receipts never flip
