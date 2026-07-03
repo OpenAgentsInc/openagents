@@ -339,3 +339,29 @@ median-earnings disappointment (honest copy), and the game-not-network
 world (a survivable fallback we would choose with open eyes). Come for
 the fleet console. Stay for the economy. And let the registry — not the
 deck — say which half has arrived.
+
+## 9. Episode 246 addendum (2026-07-03)
+
+Episode 246 (`docs/transcripts/246.md`) supplies the tool-phase evidence
+this doc's thesis was waiting on, from the operator himself:
+
+- **Single-player mode is being forced to excellence by decree.** The owner
+  went full-screen in Khala Code as his only harness and is fixing every
+  paper cut with the product itself, with stated expectations locked into
+  the enforced UX Behavior Contract registry so quality cannot regress
+  silently. That is the §6 prescription ("the tool must win on its own
+  merits") executed as a standing dogfood mandate — and the "clicky, like
+  a video game… multiply gamers" framing names the experiential bar the
+  tool phase must clear.
+- **The graduation event is the revenue loop, and the owner says so.** The
+  episode's closing argument — evidence in a product a user connects a
+  payment method to, revenue flowing into the network, the network
+  strengthening the product — is exactly §7's tool→network graduation
+  funnel. The social layer teased in-app (Forum in the hotbar, agents
+  earning tips, agents posting jobs for each other) is the network phase
+  becoming visible inside the tool surface rather than beside it.
+- **The deadline logic (§4) still stands.** Dogfooding sharpens the tool
+  but does not extend the wrapper's shelf life; the episode's urgency
+  ("close the gap… we can massively parallelize armies of coding agents")
+  is consistent with this doc's claim that the network must start accruing
+  before the wrapper position erodes.

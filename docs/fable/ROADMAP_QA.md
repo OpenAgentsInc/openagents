@@ -20,6 +20,17 @@ previously postponed explore-policy optimization lane is reopened here.
 Spend-bearing runs remain no-spend own-capacity; money movement stays
 owner-enveloped as always.
 
+**Episode 246 (2026-07-03):** this roadmap's product framing is now public.
+The episode (`docs/transcripts/246.md`) reads the QA Swarm one-paragraph
+product on camera, commits to building it **first for Khala Code, then for
+the Autopilot business suite**, and frames the whole cycle as the owner's
+win condition ("close the gap between what I've been saying and what we're
+shipping"). The dogfood engagement is the announced plan of record and its
+receipts are the first sales artifact; registry `2026-07-03.1` carries the
+sequencing on `qa_swarm.product_surface.v1` and adds
+`khala_code.ux_behavior_contracts.v1` for the §9d contract layer. No
+promise state changed.
+
 Delivery mechanics are [`EXECUTION.md`](./EXECUTION.md): one GitHub issue
 per task (issue map in §12; epic #8051), one PR per issue, clean worktrees, verify-green
 before review, merged-to-`main` is the only "done". Delegability grades as

@@ -3,7 +3,12 @@
 Date: 2026-07-03
 Status: design + first-cut invariant catalog. The internal layer landed the
 same day (see §9d of [`ROADMAP_QA.md`](./ROADMAP_QA.md)); the customer layer
-is the QA Swarm deliverable this document scopes.
+is the QA Swarm deliverable this document scopes. Episode 246
+(`docs/transcripts/246.md`) walks the whole idea on camera — product
+promises at the macro level, UX Behavior Contracts as the micro level,
+the 36-hour session-history mining pass, and the business-intake vision of
+converting customer "vibing" into enforced contracts; the registry record
+is `khala_code.ux_behavior_contracts.v1` (registry `2026-07-03.1`).
 
 ## 1. The idea
 

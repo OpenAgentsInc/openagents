@@ -18,6 +18,17 @@ and the copy gates.
 and then to a retained subscription — with every seam automated, instrumented,
 and honest, and with operator minutes per engagement falling monotonically.
 
+**Episode 246 (2026-07-03):** the owner names closing the revenue loop as
+the immediate company objective ("as soon as we have these ideas in a
+product a user will connect a payment method to… we have an amazing
+flywheel") and fixes the two-product frame — Khala Code plus Autopilot as
+the business system carrying promise/contract rigor "all up and down the
+business." Two funnel consequences (see the meditation's §7 addendum):
+business intake converts vibes into **behavior contracts** as the
+qualifying artifact, and QA Swarm joins the AW-0 offering set — built
+first for Khala Code, then sold through this engine as part of the
+Autopilot suite (`docs/transcripts/246.md`; registry `2026-07-03.1`).
+
 ## 0. The funnel contract (what "very solid" means)
 
 ```

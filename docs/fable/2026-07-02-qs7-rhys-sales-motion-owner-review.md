@@ -11,6 +11,12 @@ checkout. It does not claim that a Swarm Audit ran against
 `RhysSullivan/executor`; it records the exact owner gate and the evidence shape
 that must exist before the outward-facing demo PR is opened.
 
+Context note (2026-07-03): Episode 246 (`docs/transcripts/246.md`)
+acknowledges this thread on camera — the owner cites Rhys's public QA-agent
+ask as the trigger for productizing QA Swarm ("maybe for you, but
+definitely a bunch of other people are going to want that also"), which
+raises the value of landing this motion well once the owner gate clears.
+
 ## Source Contract
 
 QS7 comes from `docs/fable/2026-07-02-qa-swarm-product-plan.md` section 6:

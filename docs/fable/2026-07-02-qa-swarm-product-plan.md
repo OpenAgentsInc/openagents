@@ -249,3 +249,34 @@ Epic: [#8071](https://github.com/OpenAgentsInc/openagents/issues/8071)
 | QS8 | [#8068](https://github.com/OpenAgentsInc/openagents/issues/8068) | Chill-evals productized (variant comparison mode) |
 | QS9 | [#8069](https://github.com/OpenAgentsInc/openagents/issues/8069) | Third-party target onboarding (the minimal adapter) |
 | QS10 | [#8070](https://github.com/OpenAgentsInc/openagents/issues/8070) | Metering + receipts for hosted swarm runs |
+
+## 10. Episode 246 addendum (2026-07-03)
+
+QA Swarm is now publicly named. Episode 246 (`docs/transcripts/246.md`,
+"Dogfooding Khala Code") reads this document's §0 one-paragraph product on
+camera — the transcript header carries it verbatim as the episode summary —
+and commits to the sequencing in the owner's words:
+
+- **"We'll build QA Swarm first for Khala Code, then add it to our
+  Autopilot product suite for businesses."** §2's customer-number-one
+  engagement is therefore the announced plan of record, not just internal
+  doctrine; the Autopilot-suite step is design intent, and the registry
+  records it that way (`qa_swarm.product_surface.v1`, registry
+  `2026-07-03.1`, still yellow/operator-assisted — the episode changes no
+  promise state).
+- **The origin story is the product thesis.** "If you build some new
+  system to help you do it, that system is probably what your product
+  should be" — QA Swarm exists because the owner needed a QA fleet to
+  close his own say/ship gap, which is also the §2 argument for why the
+  dogfood engagement is the first sales artifact. "All of this is open
+  source, by the way" is said on camera and matches the OSS posture
+  already in this plan.
+- **The Rhys thread is acknowledged on camera** (the QS7 packet's origin):
+  long public descriptions of exactly what a buyer wants are treated as
+  free requirements contracts — "maybe for you, but definitely a bunch of
+  other people are going to want that also."
+- The episode also names the adjacent rigor layer this plan feeds on: UX
+  Behavior Contracts (`khala_code.ux_behavior_contracts.v1`) as the
+  micro-promise registry whose oracles the swarm exercises — §9d of
+  ROADMAP_QA and `2026-07-03-behavior-contracts-and-customer-invariants.md`
+  carry that design.

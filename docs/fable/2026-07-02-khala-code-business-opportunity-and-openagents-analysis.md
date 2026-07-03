@@ -508,3 +508,43 @@ hands, a dollar collected, a trace consented, a plugin paid, and an
 external buyer who came back. Everything in the repo says the machinery
 will be ready before the demand is. The business now depends on the only
 thing the fleet cannot build by itself: other people.
+
+## 11. Episode 246 addendum (2026-07-03)
+
+Episode 246 (`docs/transcripts/246.md`, "Dogfooding Khala Code") converts
+several of this document's conclusions into on-camera owner commitments,
+and they should be read as the operating posture for the proof ladder:
+
+1. **The win condition is named, in the owner's words.** "The thing that I
+   need as a company is to close the gap between what I've been saying and
+   what we're shipping. That's it. If I close that gap, I have a successful
+   company." That is §8's proof ladder restated as identity: the say/ship
+   gap is the business, and the registry + the new UX Behavior Contract
+   layer (`khala_code.ux_behavior_contracts.v1`) are its instruments — the
+   same promise-grade rigor now applied down to micro-interactions.
+2. **Customer-number-one pressure on rung 1 is now real.** The owner
+   switched to Khala Code full-screen as his only harness ("stop using
+   Codex, just force yourself to fix the bullshit") and fixes Khala Code
+   with Khala Code. This does not substitute for the outside-user receipt
+   rung 1 requires, but it is the forcing function that makes the artifact
+   worth shipping — and it generates the contract backlog (36 hours of
+   session history mined into pending contracts) that defines "smooth
+   enough that I love using it."
+3. **Rung 3 (first collectable dollar) is re-affirmed as the loop that
+   matters.** The episode's revenue framing — ideas and evidence living in
+   "a product that a user will connect a payment method to," with revenue
+   flowing into the network and the network strengthening the product —
+   is §3's flywheel said plainly, with Episode 239 cited as the design and
+   this product as the vehicle.
+4. **The portfolio is now officially two products.** "OpenAgents has two
+   products: Khala Code, our equivalent of Claude Code, and Autopilot, our
+   business system for running stuff on Autopilot" — with the promise/
+   contract rigor "applied all up and down the business" as Autopilot's
+   substance. QA Swarm (the §5 wedge logic applied to QA) is the first
+   service productized out of the dogfood loop: built first for Khala
+   Code, then added to the Autopilot suite for businesses
+   (`qa_swarm.product_surface.v1` records the sequencing).
+5. **A product-discovery heuristic worth keeping:** "if you build some new
+   system to help you do the thing you're trying to do, that system is
+   probably what your product should be." QA Swarm is the first instance;
+   the fleet substrate itself was arguably the zeroth.

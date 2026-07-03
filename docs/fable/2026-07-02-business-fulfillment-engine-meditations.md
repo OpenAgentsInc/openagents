@@ -235,3 +235,28 @@ Ordered by where it bites in the funnel:
    no scarcity/projection theater outside clearly-labeled vertical funnels.
 7. **Commitments are objects.** A promised deliverable that isn't tracked is
    a future apology.
+
+## 7. Episode 246 addendum (2026-07-03)
+
+Episode 246 (`docs/transcripts/246.md`) restates this doc's engine thesis
+from the owner's chair and adds two concrete inputs:
+
+- **Intake-to-contract is the funnel's front edge.** The episode sketches
+  business onboarding as: the customer "vibes about their problems," an
+  agent converts the unstructured complaints into **behavior contracts**
+  (statement verbatim → oracle → enforcement), the software gets built
+  against them, and the customer connects a payment method. That is the
+  ACQUIRE→INTAKE→CONVERT→FULFILL→PROVE spine of ROADMAP_BIZ with the
+  contract object named as the qualifying artifact — an evolution of "a
+  plan" into an enforceable spec. The 246-demonstrated mining flow
+  (36 hours of raw session history → pending contracts) is the same
+  conversion run against ourselves first.
+- **QA Swarm is the second product surface this engine fulfills.** "Built
+  first for Khala Code, then added to our Autopilot product suite for
+  businesses" — i.e., QA-as-a-service becomes an AW-0 offering delivered
+  through this same engine (intake → scoped engagement → receipted run →
+  shareable proof), with the dogfood engagement's receipts as the sales
+  collateral. The owner's win condition — "close the gap between what
+  I've been saying and what we're shipping" — is principle 4 (receipts
+  everywhere) elevated to the company's definition of success, applied
+  "all up and down the business" through Autopilot.
