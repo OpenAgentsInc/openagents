@@ -69,6 +69,11 @@ import {
   makeD1AgentDefinitionStore,
 } from './agent-definition-routes'
 import {
+  handleAgentDefinitionRunRequest,
+  makeD1AgentDefinitionRunStore,
+  matchAgentDefinitionRunRequest,
+} from './agent-definition-run-routes'
+import {
   makeAgentScopedGrantRoutes,
   makeD1AgentScopedGrantStore,
 } from './agent-scoped-grant-routes'
@@ -13688,6 +13693,31 @@ const routeRequest = makeWorkerRouteRequest({
       enabled: isCloudCodingSessionsEnabled(env.CLOUD_CODING_SESSIONS_ENABLED),
     }),
   routeAgentGoalRequest: agentGoalRoutes.routeAgentGoalRequest,
+  routeAgentDefinitionRunRequest: (request, env) => {
+    if (matchAgentDefinitionRunRequest(request) === undefined) {
+      return undefined
+    }
+
+    return routeEffectOrResponse(
+      routeEffect('handle_agent_definition_run_request', async () => {
+        const response = await handleAgentDefinitionRunRequest(request, {
+          agentStore: makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+          definitionStore: makeD1AgentDefinitionStore(openAgentsDatabase(env)),
+          durableStreamNamespace:
+            isInferenceDurableStreamEnabled(
+              env.INFERENCE_DURABLE_STREAM_ENABLED,
+            ) && env.INFERENCE_DURABLE_STREAM !== undefined
+              ? (env.INFERENCE_DURABLE_STREAM as unknown as DurableStreamNamespace)
+              : undefined,
+          forgeStore: makeD1ForgeCoordinationStore(openAgentsDatabase(env)),
+          pylonStore: makeD1PylonApiStore(openAgentsDatabase(env)),
+          runStore: makeD1AgentDefinitionRunStore(openAgentsDatabase(env)),
+        })
+
+        return response ?? notFound()
+      }),
+    )
+  },
   routeAutopilotOnboardingTurnRequest: (request, env) =>
     autopilotOnboardingRoutes.routeOnboardingTurnRequest(request, env),
   routeKhalaChatRequest: (request, env) =>

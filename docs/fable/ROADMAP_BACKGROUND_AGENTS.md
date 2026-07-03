@@ -92,6 +92,17 @@ the `agent_definitions` D1 table and migration `0279_agent_definitions.sql`.
 Downstream BA-A2 work should consume this endpoint/schema instead of adding
 another definition store.
 
+BA-A2 status (2026-07-03): the Worker now exposes
+`POST /v1/agent-definitions/:id/runs` for registered-agent callers. The route
+reads definitions owner-scoped, stores `agent_definition_runs` rows with
+`definitionRef` + `triggerRef`, registers a Forge work record, dispatches
+`lane=own_pylon` definitions through the existing Khala/Pylon assignment
+gate, and seeds initial private `AgentRuntimeEvent`s into the durable session
+stream. Capacity, lane, and harness preconditions fail as typed refusals, and
+exact usage settlement remains anchored to the Pylon assignment closeout.
+Downstream BA-A3 should layer the harness-adapter contract on this
+run/assignment/stream surface instead of adding another dispatch lane.
+
 | Task | Description | Deps | Delegable | Issue |
 | --- | --- | --- | --- | --- |
 | BA-A1 | `openagents.agent_definition.v1`: Effect Schema (name/goal/harness/toolset allow-deny-ask/triggers/lane/budget/escalation), D1 table + migration, owner-scoped CRUD `POST/GET/PATCH /v1/agent-definitions` on the Worker (same auth as agent registration). Harness is a field, never load-bearing | — (shared seam; lands first and alone) | MED | [#8188](https://github.com/OpenAgentsInc/openagents/issues/8188) |

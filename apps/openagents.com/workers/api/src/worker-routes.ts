@@ -51,6 +51,7 @@ type WorkerRouteDependencies = Readonly<{
   routeAutopilotWorkRequest: OptionalEffectRoute
   routeCloudCodingSessionRequest: OptionalEffectRoute
   routeAgentGoalRequest: OptionalEffectRoute
+  routeAgentDefinitionRunRequest: OptionalEffectRoute
   routeAutopilotOnboardingTurnRequest: OptionalEffectRoute
   routeKhalaChatRequest: OptionalEffectRoute
   routeAgentOwnerClaimRequest: OptionalEffectRoute
@@ -243,6 +244,13 @@ export const makeWorkerRouteRequest =
 
       if (exactResponse !== undefined) {
         return yield* exactResponse
+      }
+
+      const agentDefinitionRunResponse =
+        dependencies.routeAgentDefinitionRunRequest(request, env, ctx)
+
+      if (agentDefinitionRunResponse !== undefined) {
+        return yield* agentDefinitionRunResponse
       }
 
       // Cloud coding-session surface (autopilot.cloud_coding_sessions.v1, red).
