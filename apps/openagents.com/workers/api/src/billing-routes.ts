@@ -161,6 +161,7 @@ type BillingApiDependencies<
   ) => Promise<Session | undefined>
   stripe?: Readonly<{
     createCreditCheckout: (input: {
+      businessKickoff?: Readonly<{ signupId: string }> | undefined
       db: D1Database
       email?: string | undefined
       packageId: string
@@ -346,7 +347,11 @@ export const makeBillingApiHandlers = <
     try {
       const stripe =
         dependencies.stripe ?? makeStripeCheckoutServiceForRoutes(environment)
+      const businessSignupId = firstText(body.businessSignupId)
       const checkout = await stripe.createCreditCheckout({
+        ...(businessSignupId === undefined
+          ? {}
+          : { businessKickoff: { signupId: businessSignupId } }),
         db: openAgentsDatabase(environment),
         email: session.user.email,
         packageId,

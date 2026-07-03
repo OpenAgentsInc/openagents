@@ -378,6 +378,38 @@ describe('billing API handlers', () => {
     })
   })
 
+  test('passes business signup id into checkout creation when provided', async () => {
+    const { db } = makeBillingD1()
+    const calls: Array<Parameters<TestStripe['createCreditCheckout']>[0]> = []
+    const response = await makeHandlers({
+      user: { userId: 'github:1' },
+    }, {
+      ...defaultStripe,
+      createCreditCheckout: input => {
+        calls.push(input)
+
+        return Promise.resolve({
+          checkoutUrl: 'https://checkout.stripe.test/session',
+        })
+      },
+    }).handleBillingCheckoutApi(
+      new Request('https://openagents.com/api/billing/checkout', {
+        body: JSON.stringify({
+          businessSignupId: 'business_signup_001',
+          packageId: 'pro',
+        }),
+        method: 'POST',
+      }),
+      { OPENAGENTS_DB: db },
+      executionContext(),
+    )
+
+    expect(response.status).toBe(200)
+    expect(calls[0]?.businessKickoff).toEqual({
+      signupId: 'business_signup_001',
+    })
+  })
+
   test('creates Stripe SetupIntent payload for card-on-file setup', async () => {
     const { db } = makeBillingD1()
     const response = await makeHandlers().handleBillingStripeSetupIntentApi(
