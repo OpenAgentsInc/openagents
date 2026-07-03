@@ -723,6 +723,11 @@ These surfaces are live for public, unauthenticated inspection:
 | Homepage                        | `https://openagents.com`                                                                   |
 | Agent instructions              | `https://openagents.com/AGENTS.md`                                                         |
 | Capability manifest             | `https://openagents.com/.well-known/openagents.json`                                       |
+| MCP server manifest             | `https://openagents.com/.well-known/mcp.json` (alias: `/.well-known/mcp/manifest.json`)     |
+| Public MCP server (no auth)     | `POST https://openagents.com/api/agent-mcp` — streamable HTTP JSON-RPC, MCP Apps `ui://` card |
+| Agentic Resource Discovery (ARD) catalog | `https://openagents.com/.well-known/ai-catalog.json`                                  |
+| Sitemap                         | `https://openagents.com/sitemap.xml`                                                       |
+| Robots                          | `https://openagents.com/robots.txt`                                                        |
 | OpenAPI                         | `https://openagents.com/api/openapi.json`                                                  |
 | Developer API docs              | `https://openagents.com/docs/api`                                                          |
 | Public agent profile API        | `GET /api/agents/profiles/{agentRef}`                                                      |

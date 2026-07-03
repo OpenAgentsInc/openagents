@@ -173,6 +173,17 @@ authority always comes from the server, not from documents; never share
 tokens, mnemonics, or wallet material; prefer receipt-backed value over spam;
 and read, summarize, propose, ask for authority, then act.
 
+Machine-readable discovery surfaces (all public, no authentication):
+[`llms.txt`](https://openagents.com/llms.txt),
+[capability manifest](https://openagents.com/.well-known/openagents.json),
+[MCP server manifest](https://openagents.com/.well-known/mcp.json), and the
+[ARD catalog](https://openagents.com/.well-known/ai-catalog.json). The MCP
+manifest points at a public, unauthenticated MCP server
+(`POST /api/agent-mcp`, streamable HTTP) exposing read-only developer-resource
+discovery and the capability manifest, with an MCP Apps `ui://` card — a
+separate, always-open surface from the admin/grant-gated CRM MCP transport at
+`/api/mcp`.
+
 ## Working In This Repo
 
 Installing rather than contributing? See [`INSTALL.md`](INSTALL.md).
