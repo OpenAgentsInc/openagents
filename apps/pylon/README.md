@@ -523,12 +523,26 @@ visibility are still present.
 chain behind `PYLON_FLEET_RUN_SUSTAINED_ARM=1`. Defaults are target 5,
 duration 30 minutes, minimum 2 refills, and at least 7 distinct issue numbers
 (`target + minRefills`). Optional knobs are
+`PYLON_FLEET_RUN_SUSTAINED_WORK_SOURCE`,
 `PYLON_FLEET_RUN_SUSTAINED_TARGET`,
 `PYLON_FLEET_RUN_SUSTAINED_DURATION_MINUTES`,
 `PYLON_FLEET_RUN_SUSTAINED_MIN_REFILLS`,
 `PYLON_FLEET_RUN_SUSTAINED_POLL_MS`, and
 `PYLON_FLEET_RUN_SUSTAINED_TIMEOUT_MS`; the script rejects values below the
 documented minimums before dispatching real work.
+The default source is `issue_list`, which requires
+`PYLON_FLEET_RUN_SUSTAINED_ISSUES` to name at least `target + minRefills`
+distinct open issue numbers. When the QA issue queue is shorter than the
+sustained minimum, set `PYLON_FLEET_RUN_SUSTAINED_WORK_SOURCE=plan_dag` with
+`PYLON_FLEET_RUN_SUSTAINED_PLAN_REF` and
+`PYLON_FLEET_RUN_SUSTAINED_PLAN_NODES_JSON`. The node JSON must be a structured
+array of bounded public-safe plan nodes (`ref`, `title`, `objective`, optional
+`dependsOn`, `repo`, `branch`, `baseCommit`, `verify`, `issue`, `labels`,
+`url`) and must contain at least `target + minRefills` distinct nodes. The
+plan-DAG path still uses real supervised Pylon assignments, named isolated
+worker accounts, exact closeout/token-row proof, duplicate work-unit detection,
+and public counter reconciliation; it only changes the work source from GitHub
+issue numbers to explicit bounded evidence nodes.
 
 ### Local multi-session proof runs
 

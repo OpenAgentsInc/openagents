@@ -1,8 +1,10 @@
 import { dirname, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
+import { validatePlanDagWorkSource, type PlanDagWorkUnit } from "./orchestration/work-planner.js"
 
 export type FleetRunSmokeKind = "live" | "sustained"
 export type FleetRunSmokeName = "smoke:fleet-run-live" | "smoke:fleet-run-sustained"
+export type FleetRunSmokeWorkSource = "issue_list" | "plan_dag"
 
 export type FleetRunSmokeEnv = Readonly<Record<string, string | undefined>>
 
@@ -35,6 +37,8 @@ export type FleetRunSmokePlan = {
   readonly minDurationMs: number | null
   readonly minDurationMinutes: number | null
   readonly minRefills: number
+  readonly planNodes: readonly PlanDagWorkUnit[]
+  readonly planRef: string | null
   readonly pollIntervalMs: number
   readonly repo: string | null
   readonly requiredCloseouts: number
@@ -44,6 +48,7 @@ export type FleetRunSmokePlan = {
   readonly timeoutMs: number
   readonly verify: string | null
   readonly workerKind: "codex"
+  readonly workSource: FleetRunSmokeWorkSource
 }
 
 export type FleetRunSmokeRun = {
@@ -82,6 +87,8 @@ export type FleetRunSmokeManagerStartInput = {
   readonly commit: string
   readonly issues: readonly number[]
   readonly objective: string
+  readonly planNodes?: readonly PlanDagWorkUnit[] | undefined
+  readonly planRef?: string | undefined
   readonly pylonRef: string
   readonly repo: string
   readonly runRef: string
@@ -89,7 +96,7 @@ export type FleetRunSmokeManagerStartInput = {
   readonly timeoutMs: number
   readonly verify: string
   readonly workerKind: "codex"
-  readonly workSource: "issue_list"
+  readonly workSource: FleetRunSmokeWorkSource
 }
 
 export type FleetRunSmokeCloseoutEvidence = {
@@ -155,8 +162,10 @@ export type FleetRunSmokeResult = {
   readonly commit?: string | undefined
   readonly pylonRef?: string | undefined
   readonly issues?: readonly number[] | undefined
+  readonly planRef?: string | undefined
   readonly verify?: string | undefined
   readonly runRef?: string | undefined
+  readonly workSource?: FleetRunSmokeWorkSource | undefined
   readonly expectedCloseout: readonly string[]
   readonly evidence?: FleetRunSmokeEvidence | undefined
   readonly failures: readonly string[]
@@ -261,12 +270,20 @@ export function buildFleetRunSmokePlan(
     `fleet_run.${kind}_smoke.${compactTimestamp(now)}`,
   ])
   const workerKindRaw = firstTrimmed([env[`${config.envPrefix}_WORKER_KIND`], "codex"])
+  const workSource = parseWorkSource(
+    firstTrimmed([env[`${config.envPrefix}_WORK_SOURCE`], "issue_list"]),
+    `${config.envPrefix}_WORK_SOURCE`,
+    config,
+    failures,
+  )
 
   let pylonRef: string | null = null
   let repo: string | null = null
   let commit: string | null = null
   let verify: string | null = null
   let issues: readonly number[] = []
+  let planRef: string | null = null
+  let planNodes: readonly PlanDagWorkUnit[] = []
 
   if (armed) {
     pylonRef = requireTrimmed(env, `${config.envPrefix}_PYLON_REF`, config.armEnv, failures)
@@ -274,11 +291,20 @@ export function buildFleetRunSmokePlan(
     commit = requireTrimmed(env, `${config.envPrefix}_COMMIT`, config.armEnv, failures)
     verify = requireTrimmed(env, `${config.envPrefix}_VERIFY`, config.armEnv, failures)
     requireTrimmed(env, "OPENAGENTS_AGENT_TOKEN", config.armEnv, failures)
-    issues = parseIssues(
-      requireTrimmed(env, `${config.envPrefix}_ISSUES`, config.armEnv, failures),
-      `${config.envPrefix}_ISSUES`,
-      failures,
-    )
+    if (workSource === "issue_list") {
+      issues = parseIssues(
+        requireTrimmed(env, `${config.envPrefix}_ISSUES`, config.armEnv, failures),
+        `${config.envPrefix}_ISSUES`,
+        failures,
+      )
+    } else {
+      planRef = requireTrimmed(env, `${config.envPrefix}_PLAN_REF`, config.armEnv, failures)
+      planNodes = parsePlanNodesJson(
+        requireTrimmed(env, `${config.envPrefix}_PLAN_NODES_JSON`, config.armEnv, failures),
+        `${config.envPrefix}_PLAN_NODES_JSON`,
+        failures,
+      )
+    }
   }
 
   if (armed && commit !== null && !/^[0-9a-f]{40}$/iu.test(commit)) {
@@ -308,11 +334,29 @@ export function buildFleetRunSmokePlan(
   if (armed && workerKindRaw !== "codex") {
     failures.push(`${config.envPrefix}_WORKER_KIND must be codex; this smoke proves exact rows through pylon khala closeout`)
   }
-  if (armed && config.exactIssueCount !== undefined && issues.length !== config.exactIssueCount) {
+  if (armed && workSource === "issue_list" && config.exactIssueCount !== undefined && issues.length !== config.exactIssueCount) {
     failures.push(`${config.envPrefix}_ISSUES must contain exactly ${config.exactIssueCount} positive issue numbers`)
   }
-  if (armed && config.exactIssueCount === undefined && issues.length < requiredCloseouts) {
+  if (armed && workSource === "issue_list" && config.exactIssueCount === undefined && issues.length < requiredCloseouts) {
     failures.push(`${config.envPrefix}_ISSUES must contain at least ${requiredCloseouts} distinct issue numbers`)
+  }
+  if (armed && workSource === "plan_dag" && planNodes.length < requiredCloseouts) {
+    failures.push(`${config.envPrefix}_PLAN_NODES_JSON must contain at least ${requiredCloseouts} distinct plan node(s)`)
+  }
+  if (armed && workSource === "plan_dag" && planRef !== null && repo !== null && commit !== null && verify !== null && planNodes.length > 0) {
+    try {
+      validatePlanDagWorkSource({
+        kind: "plan_dag",
+        planRef,
+        repo,
+        branch,
+        baseCommit: commit,
+        verify,
+        nodes: planNodes,
+      })
+    } catch (error) {
+      failures.push(`${config.envPrefix}_PLAN_NODES_JSON is invalid: ${errorMessage(error)}`)
+    }
   }
 
   return {
@@ -337,6 +381,8 @@ export function buildFleetRunSmokePlan(
     minDurationMs,
     minDurationMinutes,
     minRefills,
+    planNodes,
+    planRef,
     pollIntervalMs,
     repo,
     requiredCloseouts,
@@ -346,6 +392,7 @@ export function buildFleetRunSmokePlan(
     timeoutMs,
     verify,
     workerKind: "codex",
+    workSource,
   }
 }
 
@@ -392,6 +439,9 @@ export async function executeFleetRunSmoke(
       commit: plan.commit,
       issues: plan.issues,
       objective: objectiveFor(plan),
+      ...(plan.workSource === "plan_dag" && plan.planRef !== null
+        ? { planNodes: plan.planNodes, planRef: plan.planRef }
+        : {}),
       pylonRef,
       repo: plan.repo,
       runRef: plan.runRef,
@@ -399,7 +449,7 @@ export async function executeFleetRunSmoke(
       timeoutMs: plan.timeoutMs,
       verify: plan.verify,
       workerKind: "codex",
-      workSource: "issue_list",
+      workSource: plan.workSource,
     })
 
     while (true) {
@@ -491,8 +541,10 @@ export async function executeFleetRunSmoke(
     commit: plan.commit ?? undefined,
     pylonRef,
     issues: plan.issues,
+    ...(plan.planRef === null ? {} : { planRef: plan.planRef }),
     verify: plan.verify ?? undefined,
     runRef: plan.runRef,
+    workSource: plan.workSource,
     expectedCloseout: plan.expectedCloseout,
     evidence,
     failures,
@@ -603,8 +655,10 @@ function failedResult(plan: FleetRunSmokePlan, failures: readonly string[]): Fle
     commit: plan.commit ?? undefined,
     pylonRef: plan.managerEnv[`${smokeConfigs[plan.kind].envPrefix}_PYLON_REF`],
     issues: plan.issues.length === 0 ? undefined : plan.issues,
+    ...(plan.planRef === null ? {} : { planRef: plan.planRef }),
     verify: plan.verify ?? undefined,
     runRef: plan.runRef,
+    workSource: plan.workSource,
     expectedCloseout: plan.expectedCloseout,
     failures,
     message: failures.join("; "),
@@ -749,11 +803,13 @@ function singleSnapshot(value: FleetRunSmokeSnapshot | readonly FleetRunSmokeSna
 function objectiveFor(plan: FleetRunSmokePlan): string {
   return [
     `${plan.smoke}: supervised live FleetRun evidence run.`,
-    `Work source: ${plan.repo ?? "unknown repo"} issue_list.`,
+    `Work source: ${plan.repo ?? "unknown repo"} ${plan.workSource}.`,
     `Pinned base: ${plan.branch}@${plan.commit ?? "unknown commit"}.`,
     `Verify command: ${plan.verify ?? "unknown verify"}.`,
-    "Each worker must open exactly one PR for its assigned issue and include verify-green evidence.",
-    "Do not claim work outside the assigned issue; respect the FleetRun claim ref and close out with exact token accounting.",
+    plan.workSource === "issue_list"
+      ? "Each worker must open exactly one PR for its assigned issue and include verify-green evidence."
+      : "Each plan node is a bounded live-fleet evidence unit; open a PR only when that node explicitly asks for one.",
+    "Do not claim work outside the assigned work unit; respect the FleetRun claim ref and close out with exact token accounting.",
   ].join("\n")
 }
 
@@ -784,13 +840,30 @@ function expectedCloseoutFor(
 
 function requiredEnvList(config: FleetRunSmokeConfig): readonly string[] {
   return [
+    `${config.envPrefix}_WORK_SOURCE`,
     `${config.envPrefix}_PYLON_REF`,
-    `${config.envPrefix}_ISSUES`,
+    `${config.envPrefix}_ISSUES or ${config.envPrefix}_PLAN_REF + ${config.envPrefix}_PLAN_NODES_JSON`,
     `${config.envPrefix}_REPO`,
     `${config.envPrefix}_COMMIT`,
     `${config.envPrefix}_VERIFY`,
     "OPENAGENTS_AGENT_TOKEN",
   ]
+}
+
+function parseWorkSource(
+  value: string,
+  key: string,
+  config: FleetRunSmokeConfig,
+  failures: string[],
+): FleetRunSmokeWorkSource {
+  if (value === "issue_list") return "issue_list"
+  if (value === "plan_dag" && config.kind === "sustained") return "plan_dag"
+  if (value === "plan_dag") {
+    failures.push(`${key}=plan_dag is only supported for smoke:fleet-run-sustained`)
+    return "issue_list"
+  }
+  failures.push(`${key} must be issue_list or plan_dag`)
+  return "issue_list"
 }
 
 function parseIssues(value: string | null, key: string, failures: string[]): readonly number[] {
@@ -813,6 +886,95 @@ function requireTrimmed(env: FleetRunSmokeEnv, key: string, armEnv: string, fail
     return null
   }
   return value
+}
+
+function parsePlanNodesJson(value: string | null, key: string, failures: string[]): readonly PlanDagWorkUnit[] {
+  if (value === null) return []
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(value)
+  } catch (error) {
+    failures.push(`${key} must be a JSON array of plan nodes: ${errorMessage(error)}`)
+    return []
+  }
+  if (!Array.isArray(parsed)) {
+    failures.push(`${key} must be a JSON array of plan nodes`)
+    return []
+  }
+  const nodes: PlanDagWorkUnit[] = []
+  const seenRefs = new Set<string>()
+  for (const [index, item] of parsed.entries()) {
+    const node = record(item)
+    if (node === null) {
+      failures.push(`${key}[${index}] must be an object`)
+      continue
+    }
+    const ref = stringField(node, "ref")?.trim()
+    const title = stringField(node, "title")?.trim()
+    const objective = stringField(node, "objective")?.trim()
+    if (ref === undefined || ref.length === 0) failures.push(`${key}[${index}].ref is required`)
+    if (title === undefined || title.length === 0) failures.push(`${key}[${index}].title is required`)
+    if (objective === undefined || objective.length === 0) failures.push(`${key}[${index}].objective is required`)
+    if (ref === undefined || title === undefined || objective === undefined || ref.length === 0 || title.length === 0 || objective.length === 0) {
+      continue
+    }
+    if (seenRefs.has(ref)) failures.push(`${key} must name distinct plan node refs`)
+    seenRefs.add(ref)
+    nodes.push({
+      ref,
+      title,
+      objective,
+      ...optionalStringPlanField(node, "repo"),
+      ...optionalStringPlanField(node, "branch"),
+      ...optionalStringPlanField(node, "baseCommit"),
+      ...optionalStringPlanField(node, "verify"),
+      ...optionalIntegerPlanField(node, "issue", key, index, failures),
+      ...optionalStringArrayPlanField(node, "dependsOn", key, index, failures),
+      ...optionalStringArrayPlanField(node, "labels", key, index, failures),
+      ...optionalStringPlanField(node, "url"),
+    })
+  }
+  return nodes
+}
+
+function optionalStringPlanField(
+  node: Record<string, unknown>,
+  field: "baseCommit" | "branch" | "repo" | "url" | "verify",
+): Partial<PlanDagWorkUnit> {
+  const value = stringField(node, field)?.trim()
+  return value === undefined || value.length === 0 ? {} : { [field]: value }
+}
+
+function optionalIntegerPlanField(
+  node: Record<string, unknown>,
+  field: "issue",
+  key: string,
+  index: number,
+  failures: string[],
+): Partial<PlanDagWorkUnit> {
+  const value = node[field]
+  if (value === undefined) return {}
+  if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) {
+    failures.push(`${key}[${index}].${field} must be a positive integer`)
+    return {}
+  }
+  return { issue: value }
+}
+
+function optionalStringArrayPlanField(
+  node: Record<string, unknown>,
+  field: "dependsOn" | "labels",
+  key: string,
+  index: number,
+  failures: string[],
+): Partial<PlanDagWorkUnit> {
+  const value = node[field]
+  if (value === undefined) return {}
+  if (!Array.isArray(value) || value.some(item => typeof item !== "string" || item.trim().length === 0)) {
+    failures.push(`${key}[${index}].${field} must be an array of non-empty strings`)
+    return {}
+  }
+  return { [field]: value.map(item => item.trim()) }
 }
 
 function parseOptionalInteger(value: string | undefined, fallback: number, key: string, failures: string[]): number {

@@ -5,6 +5,7 @@ import {
   runFleetRunSmokeFromEnv,
   type FleetRunSmokeCloseoutEvidence,
   type FleetRunSmokeManager,
+  type FleetRunSmokeManagerStartInput,
   type FleetRunSmokeSnapshot,
 } from "../src/fleet-run-live-smoke"
 
@@ -30,6 +31,20 @@ const sustainedEnv = {
   PYLON_FLEET_RUN_SUSTAINED_PYLON_REF: "pylon.local.test",
   PYLON_FLEET_RUN_SUSTAINED_REPO: "OpenAgentsInc/openagents",
   PYLON_FLEET_RUN_SUSTAINED_VERIFY: "bun test apps/pylon/tests/fleet-run-live-smoke.test.ts",
+}
+
+const sustainedPlanNodes = Array.from({ length: 7 }, (_, index) => ({
+  ref: `node-${index + 1}`,
+  title: `Sustained evidence node ${index + 1}`,
+  objective: `Run bounded public-safe sustained smoke evidence node ${index + 1}. Do not open a PR.`,
+}))
+
+const sustainedPlanDagEnv = {
+  ...sustainedEnv,
+  PYLON_FLEET_RUN_SUSTAINED_WORK_SOURCE: "plan_dag",
+  PYLON_FLEET_RUN_SUSTAINED_PLAN_REF: "plan.qa8034.test",
+  PYLON_FLEET_RUN_SUSTAINED_PLAN_NODES_JSON: JSON.stringify(sustainedPlanNodes),
+  PYLON_FLEET_RUN_SUSTAINED_ISSUES: undefined,
 }
 
 const snapshot = (input: {
@@ -250,6 +265,66 @@ describe("fleet run live smoke", () => {
     expect(result.failures).toContain("PYLON_FLEET_RUN_SUSTAINED_MIN_REFILLS must be at least 2")
     expect(result.failures).toContain("PYLON_FLEET_RUN_SUSTAINED_DURATION_MINUTES must be at least 30")
     expect(result.failures).toContain("PYLON_FLEET_RUN_SUSTAINED_ISSUES must contain at least 7 distinct issue numbers")
+  })
+
+  test("arms sustained plan-DAG source without requiring issue-list cardinality", async () => {
+    let started: FleetRunSmokeManagerStartInput | null = null
+    let current = new Date("2026-07-02T00:00:00.000Z")
+    const refs = Array.from({ length: 7 }, (_, index) => `assignment.public.plan.${index + 1}`)
+    const result = await runFleetRunSmokeFromEnv("sustained", {
+      closeoutReader: async assignmentRef => closeout(assignmentRef),
+      env: sustainedPlanDagEnv,
+      fetch: counterFetch([10_000, 10_900]),
+      manager: {
+        start: async input => {
+          started = input
+          return snapshot({
+            assignmentRefs: refs.slice(0, 5),
+            completedAssignments: 5,
+            state: "running",
+            targetConcurrency: 5,
+            workUnitRefs: refs.slice(0, 5).map((_, index) => `plan_dag:plan.qa8034.test:node:node-${index + 1}`),
+          })
+        },
+        status: async () => snapshot({
+          assignmentRefs: refs,
+          completedAssignments: 7,
+          state: "completed",
+          targetConcurrency: 5,
+          workUnitRefs: refs.map((_, index) => `plan_dag:plan.qa8034.test:node:node-${index + 1}`),
+        }),
+      },
+      now: () => current,
+      sleep: async () => {
+        current = new Date(current.getTime() + 30 * 60 * 1000)
+      },
+    })
+
+    expect(result.ok).toBe(true)
+    expect(result.workSource).toBe("plan_dag")
+    expect(result.planRef).toBe("plan.qa8034.test")
+    expect(started?.workSource).toBe("plan_dag")
+    expect(started?.planRef).toBe("plan.qa8034.test")
+    expect(started?.planNodes).toHaveLength(7)
+    expect(started?.issues).toEqual([])
+  })
+
+  test("validates sustained plan-DAG node count and structure before dispatch", async () => {
+    const result = await runFleetRunSmokeFromEnv("sustained", {
+      env: {
+        ...sustainedPlanDagEnv,
+        PYLON_FLEET_RUN_SUSTAINED_PLAN_NODES_JSON: JSON.stringify([
+          { ref: "node-1", title: "one", objective: "one" },
+          { ref: "node-1", title: "duplicate", objective: "duplicate" },
+          { ref: "node-3", title: "missing objective" },
+        ]),
+      },
+    })
+
+    expect(result.ok).toBe(false)
+    expect(result.failures).toContain("PYLON_FLEET_RUN_SUSTAINED_PLAN_NODES_JSON must contain at least 7 distinct plan node(s)")
+    expect(result.failures).toContain("PYLON_FLEET_RUN_SUSTAINED_PLAN_NODES_JSON must name distinct plan node refs")
+    expect(result.failures).toContain("PYLON_FLEET_RUN_SUSTAINED_PLAN_NODES_JSON[2].objective is required")
   })
 
   test("passes sustained smoke after duration, refill, closeout, and counter evidence", async () => {

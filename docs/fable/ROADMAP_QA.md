@@ -130,6 +130,18 @@ worker homes only, no-spend own-capacity closeouts, exact-row evidence.
 | Q5.4 | **Claude harness live smoke**: one live Claude chat turn through the desktop runtime (pill → `claude_runtime`), approval callback exercised, exact token row lands via the Claude turn reporter path; scenario asserts the runtime badge and closeout diagnostics. | — (armed) | MED |
 | Q5.5 | **Weekly armed cadence**: the owned runner runs Q5.1/Q5.3/Q5.4 weekly (Q5.2 monthly) with request-count caps, honest skip reporting when accounts are cold, and evidence rolled into Q1.5. | Q5.1–Q5.4, Q1.1 | MED |
 
+Q5.2 source note (2026-07-03): the default sustained smoke source remains
+`issue_list`, and it still requires at least `target + minRefills` distinct open
+issue numbers. When the QA/QASwarm issue queue itself is shorter than that
+acceptance minimum, operators may arm the same verifier with
+`PYLON_FLEET_RUN_SUSTAINED_WORK_SOURCE=plan_dag`,
+`PYLON_FLEET_RUN_SUSTAINED_PLAN_REF`, and structured
+`PYLON_FLEET_RUN_SUSTAINED_PLAN_NODES_JSON`. Plan-DAG nodes must be bounded,
+public-safe evidence units and the verifier still requires real supervised
+Pylon assignments, named isolated worker accounts, exact closeout/token-row
+proof, public counter reconciliation, duration/refill evidence, and zero
+duplicate work-unit refs.
+
 ## 7. QA-6 — Explorers and the learning loop
 
 | Task | Description | Deps | Delegable |
