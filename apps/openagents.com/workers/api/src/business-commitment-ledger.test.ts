@@ -53,7 +53,7 @@ const migration = (name: string): string =>
 
 const makeDb = (): D1Database => {
   const db = new DatabaseSync(':memory:')
-  db.exec(migration('0275_business_commitment_ledger.sql'))
+  db.exec(migration('0278_business_commitment_ledger.sql'))
   return new SqliteD1(db) as unknown as D1Database
 }
 
