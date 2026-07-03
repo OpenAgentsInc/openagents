@@ -4236,6 +4236,62 @@ button {
   overflow-wrap: anywhere;
 }
 
+.khala-qa-swarm-panel {
+  display: grid;
+  gap: 0.95rem;
+  min-width: 0;
+  color: var(--oa-color-component-text);
+}
+.khala-qa-swarm-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.khala-qa-swarm-title-group {
+  display: grid;
+  gap: 0.25rem;
+}
+.khala-qa-swarm-title {
+  margin: 0;
+  color: var(--oa-color-khala-text-primary);
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.15;
+}
+.khala-qa-swarm-subtitle,
+.khala-qa-swarm-boundary {
+  margin: 0;
+  color: color-mix(in srgb, var(--oa-color-component-text) 66%, transparent);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+.khala-qa-swarm-meta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.45rem;
+}
+.khala-qa-swarm-status,
+.khala-qa-swarm-run-ref {
+  border: 1px solid var(--oa-color-component-border);
+  background: color-mix(in srgb, var(--oa-color-khala-void) 22%, transparent);
+  padding: 0.28rem 0.45rem;
+  color: var(--oa-color-khala-energy-soft);
+  font-size: 0.68rem;
+  line-height: 1;
+}
+.khala-qa-swarm-run-ref {
+  color: color-mix(in srgb, var(--oa-color-component-text) 62%, transparent);
+}
+.khala-qa-swarm-board {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--oa-color-component-border);
+  background: color-mix(in srgb, var(--oa-color-khala-void) 18%, transparent);
+  padding: 0.75rem;
+}
+
 @keyframes khala-gym-edge-flow {
   to {
     stroke-dashoffset: -88;

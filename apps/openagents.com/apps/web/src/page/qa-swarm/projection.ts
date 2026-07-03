@@ -1,3 +1,5 @@
+import { GraphSpec } from '@openagentsinc/arbiter-effect/core'
+import { buildQaSwarmBoardGraphSpec } from '@openagentsinc/arbiter-effect/qa-swarm'
 import { Schema as S } from 'effect'
 
 export const QaSwarmVerdict = S.Literals([
@@ -105,6 +107,7 @@ export class QaSwarmCaseStudyProjection extends S.Class<QaSwarmCaseStudyProjecti
 export class QaSwarmRunProjection extends S.Class<QaSwarmRunProjection>(
   'QaSwarmRunProjection',
 )({
+  boardGraph: GraphSpec,
   caseStudy: QaSwarmCaseStudyProjection,
   coverageFrontier: S.Array(QaSwarmCoverageFrontierItem),
   distilledTests: S.Array(QaSwarmDistilledTestRef),
@@ -138,7 +141,7 @@ const PRIVATE_MATERIAL_PATTERN =
   /(@|\/Users\/|\/home\/|access[_-]?token|api[_-]?key|auth\.json|bearer|cookie|customer[_-]?(email|name|phone|prompt|record|value)|email[_-]?(address|body|html|raw|text)|gho_[A-Za-z0-9_]+|ghp_[A-Za-z0-9_]+|github\.com\/[^:/]+\/private|invoice[_-]?(id|raw)|lnbc|lntb|lnbcrt|macaroon|mnemonic|oauth|payment[_-]?(hash|id|invoice|preimage|proof|raw|secret)|payout[_-]?(address|destination|private|raw|target)|preimage|private[_-]?(archive|customer|dataset|key|prompt|source|trace|wallet)|provider[_-]?(account|credential|grant|payload|secret|token)|raw[_-]?(artifact|auth|customer|dataset|email|invoice|log|model|payment|payload|payout|prompt|provider|record|repo|runner|run[_-]?log|source|state|target|telemetry|text|trace)|recovery[_-]?phrase|runner[_-]?(payload|secret|token)|secret|seed[_-]?phrase|sk-[a-z0-9]|source[_-]?(archive|raw)|wallet[._-]?(key|material|mnemonic|payment|preimage|secret|seed))/i
 
 const PUBLIC_REF_PATTERN =
-  /^(artifact|coverage|frontier|perf|poster|projection|qa-run|redaction|test|trace|video)\.[a-z0-9][a-z0-9._-]*$/i
+  /^(artifact|check|coverage|frontier|openagents|perf|poster|projection|qa-run|redaction|test|trace|video)\.[a-z0-9][a-z0-9._-]*$/i
 
 const isPublicRef = (value: string): boolean =>
   PUBLIC_REF_PATTERN.test(value) && !PRIVATE_MATERIAL_PATTERN.test(value)
@@ -202,6 +205,17 @@ export const assertQaSwarmPublicProjection = (
     decoded.distilledTests.map(item => item.receiptRef),
     'distilledTests.receiptRef',
   )
+  assertPublicRefs(decoded.boardGraph.evidenceRefs, 'boardGraph.evidenceRefs')
+  assertPublicRefs(decoded.boardGraph.sourceRefs, 'boardGraph.sourceRefs')
+  assertPublicRefs(
+    decoded.boardGraph.links.flatMap(item => item.evidenceRefs),
+    'boardGraph.links.evidenceRefs',
+  )
+  for (const link of decoded.boardGraph.links) {
+    if (link.status === 'evidence_backed' && link.evidenceRefs.length === 0) {
+      throw new Error(`QA Swarm board link lit without receipt: ${link.id}`)
+    }
+  }
 
   if (decoded.target.visibility === 'opaque') {
     assertPublicRefs([decoded.target.ref], 'target.ref')
@@ -210,166 +224,171 @@ export const assertQaSwarmPublicProjection = (
   return decoded
 }
 
+const sampleQaSwarmRunProjectionFields = {
+  caseStudy: {
+    href: '/docs/qa/qa-swarm-khala-code-standing-engagement',
+    receiptRef: 'artifact.qa_swarm.case_study.khala_code.20260702',
+    summary:
+      'The first audit session caught two main-branch regressions in stale visual smokes and one cockpit robustness bug before the standing loop was automated.',
+    title: 'Case-study seed: the first Khala Code QA Swarm audit',
+  },
+  coverageFrontier: [
+    {
+      current: 42,
+      frontier: 58,
+      label: 'Seed corpus coverage',
+      receiptRef: 'coverage.qa_swarm.khala_code.seed_corpus.20260702',
+    },
+    {
+      current: 17,
+      frontier: 24,
+      label: 'Desktop state frontier',
+      receiptRef: 'frontier.qa_swarm.khala_code.desktop_state.20260702',
+    },
+    {
+      current: 9,
+      frontier: 13,
+      label: 'Regression tests distilled',
+      receiptRef: 'test.qa_swarm.khala_code.distilled.20260702',
+    },
+  ],
+  distilledTests: [
+    {
+      href: '/docs/qa/khala-code-mechanical-corpus',
+      label: 'Mechanical corpus',
+      receiptRef: 'test.qa_swarm.khala_code.mechanical_corpus.20260702',
+    },
+    {
+      href: '/docs/qa/khala-code-error-state-corpus',
+      label: 'Error-state corpus',
+      receiptRef: 'test.qa_swarm.khala_code.error_states.20260702',
+    },
+  ],
+  engagement: {
+    cadence: 'weekly',
+    reportHref: '/qa/qa-run.khala-code-nightly.latest',
+    reportRef: 'artifact.qa_swarm.weekly_report.khala_code.latest',
+    sourceArtifactRef: 'artifact.khala_code.qa_status_surface.latest',
+    status: 'standing_customer_one',
+  },
+  findingsLedger: {
+    caughtCount: 3,
+    distilledRegressionCount: 1,
+    filedIssueCount: 3,
+    fixedCount: 2,
+    ledgerRef: 'artifact.qa_swarm.findings_ledger.khala_code.20260702',
+    rows: [
+      {
+        findingRef: 'artifact.qa_swarm.finding.visual_fleet_run_rpc.20260702',
+        issueRef: 'artifact.qa_swarm.issue.visual_fleet_run_rpc.20260702',
+        label: 'Fleet-run RPC visual smoke stale fixture',
+        status: 'fixed',
+        testRef: 'test.qa_swarm.khala_code.visual_fleet_run_rpc.20260702',
+      },
+      {
+        findingRef: 'artifact.qa_swarm.finding.foldkit_cockpit_visual.20260702',
+        issueRef: 'artifact.qa_swarm.issue.foldkit_cockpit_visual.20260702',
+        label: 'Foldkit cockpit landing visual smoke stale fixture',
+        status: 'fixed',
+        testRef: 'test.qa_swarm.khala_code.foldkit_cockpit_visual.20260702',
+      },
+      {
+        findingRef: 'artifact.qa_swarm.finding.cockpit_failed_rpc_blank.20260702',
+        issueRef: 'artifact.qa_swarm.issue.cockpit_failed_rpc_blank.20260702',
+        label: 'Cockpit blanks when one startup RPC fails',
+        status: 'filed',
+        testRef: 'test.qa_swarm.khala_code.error_state_pending.20260702',
+      },
+    ],
+  },
+  generatedAt: '2026-07-02T17:00:00.000Z',
+  nightlyArtifactRef: 'artifact.qa_swarm.khala_code.nightly.20260702',
+  opaqueTargetRefs: ['artifact.qa_swarm.target.opaque.customer_one'],
+  perfBudgets: [
+    {
+      actualMs: 82,
+      budgetMs: 100,
+      label: 'Thread switch p95',
+      receiptRef: 'perf.qa_swarm.khala_code.thread_switch_p95.20260702',
+      verdict: 'passed',
+    },
+    {
+      actualMs: 441,
+      budgetMs: 500,
+      label: 'Lifecycle to card p95',
+      receiptRef: 'perf.qa_swarm.khala_code.lifecycle_card_p95.20260702',
+      verdict: 'passed',
+    },
+    {
+      actualMs: 1030,
+      budgetMs: 1000,
+      label: '25-agent tick p95',
+      receiptRef: 'perf.qa_swarm.khala_code.tick_p95.20260702',
+      verdict: 'warning',
+    },
+  ],
+  projectionRef: 'projection.qa_swarm.run.khala_code.20260702',
+  publicSafetyRefs: [
+    'redaction.qa_swarm.public_projection.reviewed.20260702',
+  ],
+  runRef: QA_SWARM_SAMPLE_RUN_REF,
+  schemaVersion: 'openagents.qa_swarm.run_projection.v1',
+  staleness: {
+    contractVersion: 'projection_staleness.v1',
+    maxAgeHours: 24,
+    mode: 'artifact_snapshot',
+  },
+  target: {
+    label: 'Khala Code Desktop',
+    ref: 'artifact.qa_swarm.target.opaque.customer_one',
+    visibility: 'opaque',
+  },
+  title: 'Khala Code nightly QA swarm',
+  traceRefs: [
+    'trace.public.qa_swarm.khala_code.seed_corpus.20260702',
+    'trace.public.qa_swarm.khala_code.desktop_frontier.20260702',
+  ],
+  verdict: 'warning',
+  verdictWall: [
+    {
+      label: 'Login and workspace routing',
+      receiptRef: 'artifact.qa_swarm.verdict.login_workspace.20260702',
+      summary: 'Core public entrypoints passed the mechanical flow.',
+      verdict: 'passed',
+    },
+    {
+      label: 'Desktop command palette',
+      receiptRef: 'artifact.qa_swarm.verdict.command_palette.20260702',
+      summary: 'Explorer found one latency budget warning, no correctness failure.',
+      verdict: 'warning',
+    },
+    {
+      label: 'Trace and video archive',
+      receiptRef: 'artifact.qa_swarm.verdict.trace_video.20260702',
+      summary: 'Trace, screenshot, and video refs are dereferenceable public receipts.',
+      verdict: 'passed',
+    },
+  ],
+  videoRefs: [
+    {
+      label: 'Seed corpus replay',
+      posterRef: 'poster.qa_swarm.khala_code.seed_corpus.20260702',
+      traceHref: '/trace/24c6fea6-b271-46c6-a9a9-bc614440e9ef',
+      videoRef: 'video.qa_swarm.khala_code.seed_corpus.20260702',
+    },
+    {
+      label: 'Desktop frontier replay',
+      posterRef: 'poster.qa_swarm.khala_code.desktop_frontier.20260702',
+      traceHref: '/trace/db838bdc-3bc6-48a5-8715-a6669f6b10c5',
+      videoRef: 'video.qa_swarm.khala_code.desktop_frontier.20260702',
+    },
+  ],
+} as const
+
 export const sampleQaSwarmRunProjection = assertQaSwarmPublicProjection(
   new QaSwarmRunProjection({
-    caseStudy: {
-      href: '/docs/qa/qa-swarm-khala-code-standing-engagement',
-      receiptRef: 'artifact.qa_swarm.case_study.khala_code.20260702',
-      summary:
-        'The first audit session caught two main-branch regressions in stale visual smokes and one cockpit robustness bug before the standing loop was automated.',
-      title: 'Case-study seed: the first Khala Code QA Swarm audit',
-    },
-    coverageFrontier: [
-      {
-        current: 42,
-        frontier: 58,
-        label: 'Seed corpus coverage',
-        receiptRef: 'coverage.qa_swarm.khala_code.seed_corpus.20260702',
-      },
-      {
-        current: 17,
-        frontier: 24,
-        label: 'Desktop state frontier',
-        receiptRef: 'frontier.qa_swarm.khala_code.desktop_state.20260702',
-      },
-      {
-        current: 9,
-        frontier: 13,
-        label: 'Regression tests distilled',
-        receiptRef: 'test.qa_swarm.khala_code.distilled.20260702',
-      },
-    ],
-    distilledTests: [
-      {
-        href: '/docs/qa/khala-code-mechanical-corpus',
-        label: 'Mechanical corpus',
-        receiptRef: 'test.qa_swarm.khala_code.mechanical_corpus.20260702',
-      },
-      {
-        href: '/docs/qa/khala-code-error-state-corpus',
-        label: 'Error-state corpus',
-        receiptRef: 'test.qa_swarm.khala_code.error_states.20260702',
-      },
-    ],
-    engagement: {
-      cadence: 'weekly',
-      reportHref: '/qa/qa-run.khala-code-nightly.latest',
-      reportRef: 'artifact.qa_swarm.weekly_report.khala_code.latest',
-      sourceArtifactRef: 'artifact.khala_code.qa_status_surface.latest',
-      status: 'standing_customer_one',
-    },
-    findingsLedger: {
-      caughtCount: 3,
-      distilledRegressionCount: 1,
-      filedIssueCount: 3,
-      fixedCount: 2,
-      ledgerRef: 'artifact.qa_swarm.findings_ledger.khala_code.20260702',
-      rows: [
-        {
-          findingRef: 'artifact.qa_swarm.finding.visual_fleet_run_rpc.20260702',
-          issueRef: 'artifact.qa_swarm.issue.visual_fleet_run_rpc.20260702',
-          label: 'Fleet-run RPC visual smoke stale fixture',
-          status: 'fixed',
-          testRef: 'test.qa_swarm.khala_code.visual_fleet_run_rpc.20260702',
-        },
-        {
-          findingRef: 'artifact.qa_swarm.finding.foldkit_cockpit_visual.20260702',
-          issueRef: 'artifact.qa_swarm.issue.foldkit_cockpit_visual.20260702',
-          label: 'Foldkit cockpit landing visual smoke stale fixture',
-          status: 'fixed',
-          testRef: 'test.qa_swarm.khala_code.foldkit_cockpit_visual.20260702',
-        },
-        {
-          findingRef: 'artifact.qa_swarm.finding.cockpit_failed_rpc_blank.20260702',
-          issueRef: 'artifact.qa_swarm.issue.cockpit_failed_rpc_blank.20260702',
-          label: 'Cockpit blanks when one startup RPC fails',
-          status: 'filed',
-          testRef: 'test.qa_swarm.khala_code.error_state_pending.20260702',
-        },
-      ],
-    },
-    generatedAt: '2026-07-02T17:00:00.000Z',
-    nightlyArtifactRef: 'artifact.qa_swarm.khala_code.nightly.20260702',
-    opaqueTargetRefs: ['artifact.qa_swarm.target.opaque.customer_one'],
-    perfBudgets: [
-      {
-        actualMs: 82,
-        budgetMs: 100,
-        label: 'Thread switch p95',
-        receiptRef: 'perf.qa_swarm.khala_code.thread_switch_p95.20260702',
-        verdict: 'passed',
-      },
-      {
-        actualMs: 441,
-        budgetMs: 500,
-        label: 'Lifecycle to card p95',
-        receiptRef: 'perf.qa_swarm.khala_code.lifecycle_card_p95.20260702',
-        verdict: 'passed',
-      },
-      {
-        actualMs: 1030,
-        budgetMs: 1000,
-        label: '25-agent tick p95',
-        receiptRef: 'perf.qa_swarm.khala_code.tick_p95.20260702',
-        verdict: 'warning',
-      },
-    ],
-    projectionRef: 'projection.qa_swarm.run.khala_code.20260702',
-    publicSafetyRefs: [
-      'redaction.qa_swarm.public_projection.reviewed.20260702',
-    ],
-    runRef: QA_SWARM_SAMPLE_RUN_REF,
-    schemaVersion: 'openagents.qa_swarm.run_projection.v1',
-    staleness: {
-      contractVersion: 'projection_staleness.v1',
-      maxAgeHours: 24,
-      mode: 'artifact_snapshot',
-    },
-    target: {
-      label: 'Khala Code Desktop',
-      ref: 'artifact.qa_swarm.target.opaque.customer_one',
-      visibility: 'opaque',
-    },
-    title: 'Khala Code nightly QA swarm',
-    traceRefs: [
-      'trace.public.qa_swarm.khala_code.seed_corpus.20260702',
-      'trace.public.qa_swarm.khala_code.desktop_frontier.20260702',
-    ],
-    verdict: 'warning',
-    verdictWall: [
-      {
-        label: 'Login and workspace routing',
-        receiptRef: 'artifact.qa_swarm.verdict.login_workspace.20260702',
-        summary: 'Core public entrypoints passed the mechanical flow.',
-        verdict: 'passed',
-      },
-      {
-        label: 'Desktop command palette',
-        receiptRef: 'artifact.qa_swarm.verdict.command_palette.20260702',
-        summary: 'Explorer found one latency budget warning, no correctness failure.',
-        verdict: 'warning',
-      },
-      {
-        label: 'Trace and video archive',
-        receiptRef: 'artifact.qa_swarm.verdict.trace_video.20260702',
-        summary: 'Trace, screenshot, and video refs are dereferenceable public receipts.',
-        verdict: 'passed',
-      },
-    ],
-    videoRefs: [
-      {
-        label: 'Seed corpus replay',
-        posterRef: 'poster.qa_swarm.khala_code.seed_corpus.20260702',
-        traceHref: '/trace/24c6fea6-b271-46c6-a9a9-bc614440e9ef',
-        videoRef: 'video.qa_swarm.khala_code.seed_corpus.20260702',
-      },
-      {
-        label: 'Desktop frontier replay',
-        posterRef: 'poster.qa_swarm.khala_code.desktop_frontier.20260702',
-        traceHref: '/trace/db838bdc-3bc6-48a5-8715-a6669f6b10c5',
-        videoRef: 'video.qa_swarm.khala_code.desktop_frontier.20260702',
-      },
-    ],
+    ...sampleQaSwarmRunProjectionFields,
+    boardGraph: buildQaSwarmBoardGraphSpec(sampleQaSwarmRunProjectionFields),
   }),
 )
 

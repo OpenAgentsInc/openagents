@@ -131,6 +131,7 @@
       "version": "0.1.0",
       "dependencies": {
         "@effect/platform-browser": "4.0.0-beta.70",
+        "@openagentsinc/arbiter-effect": "workspace:*",
         "@openagentsinc/autopilot-control-protocol": "workspace:*",
         "@openagentsinc/autopilot-ui": "workspace:*",
         "@openagentsinc/design-tokens": "workspace:*",
