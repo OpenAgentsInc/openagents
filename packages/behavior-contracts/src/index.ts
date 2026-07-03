@@ -1,5 +1,6 @@
 export * from "./background-agents"
 export * from "./contract"
 export * from "./coverage"
+export * from "./customer-engagement"
 export * from "./registry"
 export * from "./report"

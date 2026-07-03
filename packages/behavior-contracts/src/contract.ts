@@ -41,12 +41,14 @@ export const BehaviorContractOracleKind = S.Literals([
   "qa-scenario",
   "visual-smoke",
   "manual-check",
+  "planned",
 ])
 export type BehaviorContractOracleKind =
   | "bun-test"
   | "qa-scenario"
   | "visual-smoke"
   | "manual-check"
+  | "planned"
 
 /** Driver mode vocabulary shared with the khala-qa-harness scenario DSL. */
 export const BehaviorContractOracleMode = S.Literals([

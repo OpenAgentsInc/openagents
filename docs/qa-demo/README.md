@@ -19,6 +19,7 @@ distill → test → video chain is reviewer-verifiable, not asserted:
 | `distilled-login-verify.e2e.test.ts` | the committed **e2e test distilled from that session** |
 | `khala-autonomous-qa.mp4` | the composed **video** of that same run (title card → recording → verdict card) |
 | `title-card.png` / `verdict-card.png` | the compose-layer cards |
+| `customer-behavior-contract-pilot.json` | the first customer-facing behavior-contract engagement seed for issue #8186, using this public demo target while signed-client registries stay private by default |
 
 `result.json` also names the run's raw local Playwright artifacts
 (`session.mp4`, `trace.zip`, `00-login-page.png`); the **public-safe**
@@ -48,3 +49,12 @@ shareable video + trace as the deviation-loop evidence. A customer
 engagement's contract oracles produce exactly this artifact chain per sweep;
 the registry entry supplies the statement and the enforcement gate, and this
 demo supplies the receipt format.
+
+## Public-demo behavior-contract pilot
+
+`customer-behavior-contract-pilot.json` is the first QA Swarm customer-style
+contract registry. It deliberately uses `visibility: "public-demo"` rather than
+claiming a signed customer. Each stated expectation starts `pending` with an
+explicit blocker until its oracle runs in the customer cadence and emits a
+per-contract receipt. Real client registries use the same schema but default to
+`client-private`; public evidence requires an explicit opt-in ref.
