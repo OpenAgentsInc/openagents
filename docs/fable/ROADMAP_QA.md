@@ -248,8 +248,13 @@ The fix is the behavior-contract layer, landed with this entry:
   deliverable for client companies — see
   [`2026-07-03-behavior-contracts-and-customer-invariants.md`](./2026-07-03-behavior-contracts-and-customer-invariants.md)
   for the invariant catalog we offer to enforce and the deviation-alert loop.
-  QS lanes (§9c) consume this; contract enforcement rides QA-1's nightly
-  once it exists.
+  QS lanes (§9c) consume this; contract enforcement rides the Q1.1 nightly
+  matrix (landed — `bun run qa:nightly` runs the desktop `verify` step plus
+  a dedicated `behavior-contracts` step; see
+  [`../qa/khala-code-nightly-matrix.md`](../qa/khala-code-nightly-matrix.md)),
+  and the customer-one weekly report
+  ([`../qa/qa-swarm-khala-code-standing-engagement.md`](../qa/qa-swarm-khala-code-standing-engagement.md))
+  carries contract registry status.
 - **Background-agents tie-in (2026-07-03)**: the WS-B trigger engine in
   [`ROADMAP_BACKGROUND_AGENTS.md`](./ROADMAP_BACKGROUND_AGENTS.md)
   (BA-B1/B2/B5 — cron triggers, scheduler DO, auto-pause, run history) is

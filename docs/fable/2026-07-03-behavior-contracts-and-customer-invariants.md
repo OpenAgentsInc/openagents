@@ -84,9 +84,11 @@ this menu and writing the client's own statements into their registry.
 ## 3. The deviation loop
 
 - **Cadence:** oracles run in the client's chosen tiers — on-deploy,
-  nightly, weekly live. Internally contracts ride the same loop as QA-1
-  (nightly matrix) once it exists; until then they run in the pre-push
-  test sweep.
+  nightly, weekly live. Internally the nightly carrier already exists:
+  `bun run qa:nightly` (Q1.1, `docs/qa/khala-code-nightly-matrix.md`) runs
+  the contract oracles inside the desktop `verify` step and the registry
+  machinery as its dedicated `behavior-contracts` step, on top of the
+  pre-push test sweep.
 - **Delivery vehicle:** operationally, one customer's deviation loop is one
   background agent definition per
   [`ROADMAP_BACKGROUND_AGENTS.md`](./ROADMAP_BACKGROUND_AGENTS.md) — cron or
@@ -103,9 +105,15 @@ this menu and writing the client's own statements into their registry.
 - **Alerts:** a deviation notifies the client (webhook/email/forum thread)
   with the contract id, the statement in their own words, and the failing
   evidence — a screenshot, trace, or diff, not a stack trace.
-- **Evidence surface:** the QA Swarm shareable evidence URL (QS lanes,
-  epic #8071) renders the registry + latest receipts as the client-facing
-  scoreboard, the same way `/api/public/product-promises` renders ours.
+- **Evidence surface:** the QA Swarm shareable evidence URL renders the
+  registry + latest receipts as the client-facing scoreboard, the same way
+  `/api/public/product-promises` renders ours. The customer-one seed already
+  exists: the standing-engagement run projection at
+  `/qa/qa-run.khala-code-nightly.latest`
+  (`docs/qa/qa-swarm-khala-code-standing-engagement.md`, issue #8066), whose
+  report contract now carries behavior-contract registry status. The receipt
+  format per oracle run is the `docs/qa-demo/` chain: session trace →
+  verdict → distilled committed test → composed video.
 
 ## 4. Engagement shape (customer onboarding)
 

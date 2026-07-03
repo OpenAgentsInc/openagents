@@ -12,14 +12,24 @@ unit and timer live in `ops/owned-runner/khala-code-qa-nightly.service` and
 The nightly matrix runs, in order:
 
 1. `bun run --cwd packages/khala-qa-harness test`
-2. `bun run --cwd clients/khala-code-desktop verify`
-3. `bun run --cwd clients/khala-code-desktop smoke:part2-ui`
-4. `bun run --cwd clients/khala-code-desktop smoke:cockpit-visual`
-5. `bun run --cwd clients/khala-code-desktop smoke:composer-visual`
-6. `bun src/monkey-night.ts --runs 16 --steps 64` from the harness package
-7. `bun test src/model-based.test.ts` from the harness package
-8. the desktop property tier: composer draft, ThreadItem projector, and
+2. `bun run --cwd packages/behavior-contracts test`
+3. `bun run --cwd packages/khala-qa-harness smoke:real-bridge`
+4. `bun run --cwd clients/khala-code-desktop verify`
+5. `bun run --cwd clients/khala-code-desktop smoke:part2-ui`
+6. `bun run --cwd clients/khala-code-desktop smoke:cockpit-visual`
+7. `bun run --cwd clients/khala-code-desktop smoke:composer-visual`
+8. `bun src/monkey-night.ts --runs 16 --steps 64` from the harness package
+9. `bun test src/model-based.test.ts` from the harness package
+10. the desktop property tier: composer draft, ThreadItem projector, and
    transcript render properties
+
+The behavior-contract layer (ROADMAP_QA §9d, `packages/behavior-contracts`)
+rides this matrix twice: the Khala Code UX contract oracles, registry
+validation, coverage, and doc-sync run inside the desktop `verify` step, and
+the registry/coverage machinery's own suite runs as the dedicated
+`behavior-contracts` step. Per-contract receipts and deviation alerts
+(#8184) derive from these nightly runs; the eventual trigger-engine carrier
+is ROADMAP_BACKGROUND_AGENTS WS-B.
 
 The default monkey settings produce 1024 deterministic fixture actions, meeting
 the Q1.1 >=1000 action floor. Override with `OA_QA_NIGHTLY_MONKEY_RUNS` and

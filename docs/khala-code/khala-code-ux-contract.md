@@ -43,6 +43,12 @@ sweep if this doc, the registry, or the oracle tests drift apart.
 - QA-harness integration: contracts may also carry `qa-scenario` oracles
   referencing `packages/khala-qa-harness` seed-corpus scenario ids; those run
   under the harness runner rather than this package's test glob.
+- Nightly: the owned-runner matrix (`bun run qa:nightly`,
+  `docs/qa/khala-code-nightly-matrix.md`) runs these oracles via its desktop
+  `verify` step and the registry machinery via its `behavior-contracts`
+  step, and the QA Swarm customer-one weekly report
+  (`docs/qa/qa-swarm-khala-code-standing-engagement.md`) carries per-contract
+  status.
 
 ## Registry
 

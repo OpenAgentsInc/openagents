@@ -35,6 +35,7 @@ export const QA_NIGHTLY_DEFAULT_STEP_TIMEOUT_MS = 30 * 60 * 1000
 
 export type QaNightlyStepId =
   | "harness-suite"
+  | "behavior-contracts"
   | "real-bridge-smoke"
   | "desktop-verify"
   | "visual-part2-ui"
@@ -411,6 +412,7 @@ export type QaNightlyReportHistoryEntry = Readonly<{
 
 const QA_NIGHTLY_STEP_IDS = new Set<QaNightlyStepId>([
   "harness-suite",
+  "behavior-contracts",
   "real-bridge-smoke",
   "desktop-verify",
   "visual-part2-ui",
@@ -937,6 +939,12 @@ export const buildQaNightlySteps = (input: Readonly<{
       cwd: ".",
       id: "harness-suite",
       label: "Khala QA harness suite",
+    },
+    {
+      command: ["bun", "run", "--cwd", "packages/behavior-contracts", "test"],
+      cwd: ".",
+      id: "behavior-contracts",
+      label: "Behavior-contract registry suite",
     },
     {
       command: ["bun", "run", "--cwd", "packages/khala-qa-harness", "smoke:real-bridge"],

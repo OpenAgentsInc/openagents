@@ -36,3 +36,15 @@ bun test generated/login-verify-2026-06-24.e2e.test.ts
 The distilled test is **green against prod** — that's the receipt. This is the
 "verify an agent's work by reading the test + its output" thesis (#6192),
 applied to our own artifact.
+
+## Relation to behavior contracts
+
+This chain is the receipt shape for the **stated-flow availability** category
+of the behavior-contract catalog
+(`docs/fable/2026-07-03-behavior-contracts-and-customer-invariants.md` §2.2):
+a stated journey ("the login page loads and titles correctly on prod"),
+driven end to end, distilled into a committed oracle test, with a
+shareable video + trace as the deviation-loop evidence. A customer
+engagement's contract oracles produce exactly this artifact chain per sweep;
+the registry entry supplies the statement and the enforcement gate, and this
+demo supplies the receipt format.

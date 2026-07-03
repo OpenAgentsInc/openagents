@@ -34,6 +34,15 @@ Khala Code QA loop as a weekly report:
   distilled`.
 - Link only dereferenceable public-safe receipts: artifact refs, trace refs,
   coverage/frontier refs, perf refs, test refs, and strict issue refs.
+- Carry behavior-contract registry status: the enforced contracts for the
+  surface (ids + statements from
+  `clients/khala-code-desktop/src/contracts/ux-contracts.ts`, human doc
+  `docs/khala-code/khala-code-ux-contract.md`) with the latest sweep verdict
+  per contract. The oracles run in the nightly matrix (desktop `verify` step
+  plus the dedicated `behavior-contracts` step), so contract status follows
+  the same evidence rules as every other count. This is the customer-one
+  instance of the invariant catalog the QA Swarm sells — see
+  `docs/fable/2026-07-03-behavior-contracts-and-customer-invariants.md`.
 - Keep raw logs, local paths, account identifiers, provider payloads, customer
   records, and private traces out of the projection.
 
