@@ -1,7 +1,7 @@
 # ROADMAP_BIZ — The Business Fulfillment Engine
 
 Date: 2026-07-02
-Status: consolidated build roadmap for the end-to-end business funnel and
+Status: completed issue-map closeout for the end-to-end business funnel and
 fulfillment engine. Source meditation:
 [`2026-07-02-business-fulfillment-engine-meditations.md`](./2026-07-02-business-fulfillment-engine-meditations.md).
 Governing frame: [`ROADMAP_AFTER.md`](./ROADMAP_AFTER.md) — this roadmap is
@@ -28,6 +28,11 @@ business intake converts vibes into **behavior contracts** as the
 qualifying artifact, and QA Swarm joins the AW-0 offering set — built
 first for Khala Code, then sold through this engine as part of the
 Autopilot suite (`docs/transcripts/246.md`; registry `2026-07-03.1`).
+
+**Epic closeout (2026-07-03):** ROADMAP_BIZ issue tracking is complete:
+all 45 mapped task issues (#8074-#8118) are closed, covering BF-1.1 through
+BF-9.4. Follow-on work should open new, narrower issues against the delivered
+surface or the governing AW lanes rather than reusing this epic.
 
 ## 0. The funnel contract (what "very solid" means)
 
@@ -217,8 +222,10 @@ registry as scoreboard). Added:
 
 ## 5. Issue map
 
-Epic: [#8073](https://github.com/OpenAgentsInc/openagents/issues/8073).
-Task issues are sequential — BF-1.1 = #8074 through BF-9.4 = #8118:
+Epic: [#8073](https://github.com/OpenAgentsInc/openagents/issues/8073)
+(closed 2026-07-03).
+Task issues are sequential and all closed — BF-1.1 = #8074 through BF-9.4 =
+#8118:
 
 | Workstream | Issues |
 | --- | --- |
