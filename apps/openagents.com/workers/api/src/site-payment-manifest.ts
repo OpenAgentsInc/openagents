@@ -52,6 +52,29 @@ export const OpenAgentsSitePaymentCustomerDataRequirement = S.Struct({
 export type OpenAgentsSitePaymentCustomerDataRequirement =
   typeof OpenAgentsSitePaymentCustomerDataRequirement.Type
 
+export const OpenAgentsSitePaymentRecurringBillingKind = S.Literals([
+  'retainer',
+  'subscription',
+])
+export type OpenAgentsSitePaymentRecurringBillingKind =
+  typeof OpenAgentsSitePaymentRecurringBillingKind.Type
+
+export const OpenAgentsSitePaymentRecurringBillingInterval = S.Literals([
+  'month',
+  'year',
+])
+export type OpenAgentsSitePaymentRecurringBillingInterval =
+  typeof OpenAgentsSitePaymentRecurringBillingInterval.Type
+
+export const OpenAgentsSitePaymentRecurringBilling = S.Struct({
+  billingKind: OpenAgentsSitePaymentRecurringBillingKind,
+  entitlementRenewalMode: S.Literal('renew_on_payment_receipt'),
+  interval: OpenAgentsSitePaymentRecurringBillingInterval,
+  renewalReceiptScopeRefs: S.Array(S.String),
+})
+export type OpenAgentsSitePaymentRecurringBilling =
+  typeof OpenAgentsSitePaymentRecurringBilling.Type
+
 export const OpenAgentsSitePaymentProduct = S.Struct({
   agentReadable: S.Boolean,
   checkoutPath: S.String,
@@ -64,6 +87,7 @@ export const OpenAgentsSitePaymentProduct = S.Struct({
   metadataRefs: S.Array(S.String),
   price: OpenAgentsPaidEndpointPrice,
   publicProjectionState: OpenAgentsSitePaymentPublicProjectionState,
+  recurringBilling: S.optionalKey(S.NullOr(OpenAgentsSitePaymentRecurringBilling)),
   sandbox: S.Boolean,
   settlementMode: OpenAgentsSitePaymentSettlementMode,
 })
@@ -116,6 +140,7 @@ export const OpenAgentsSitePaymentProductProjection = S.Struct({
   id: S.String,
   price: OpenAgentsPaidEndpointPrice,
   publicProjectionState: OpenAgentsSitePaymentPublicProjectionState,
+  recurringBilling: S.NullOr(OpenAgentsSitePaymentRecurringBilling),
   sandbox: S.Boolean,
   settlementMode: OpenAgentsSitePaymentSettlementMode,
 })
@@ -205,13 +230,25 @@ const dataRequirementIsSafe = (
 ): boolean =>
   stableIdIsSafe(requirement.key) && stableRefIsSafe(requirement.labelRef)
 
+const recurringBillingIsSafe = (
+  recurringBilling: OpenAgentsSitePaymentRecurringBilling | null | undefined,
+): boolean =>
+  recurringBilling === null ||
+  recurringBilling === undefined ||
+  (
+    recurringBilling.entitlementRenewalMode === 'renew_on_payment_receipt' &&
+    recurringBilling.renewalReceiptScopeRefs.length > 0 &&
+    recurringBilling.renewalReceiptScopeRefs.every(stableRefIsSafe)
+  )
+
 const productIsSafe = (product: OpenAgentsSitePaymentProduct): boolean =>
   stableIdIsSafe(product.id) &&
   stableRefIsSafe(product.displayRef) &&
   checkoutPathIsSafe(product.checkoutPath) &&
   priceIsSupported(product.price) &&
   product.metadataRefs.every(stableRefIsSafe) &&
-  product.customerDataRequirements.every(dataRequirementIsSafe)
+  product.customerDataRequirements.every(dataRequirementIsSafe) &&
+  recurringBillingIsSafe(product.recurringBilling)
 
 const paidActionIsSafe = (action: OpenAgentsSitePaymentPaidAction): boolean =>
   stableIdIsSafe(action.id) &&
@@ -299,6 +336,7 @@ export const projectOpenAgentsSitePaymentManifest = (
       id: product.id,
       price: product.price,
       publicProjectionState: product.publicProjectionState,
+      recurringBilling: product.recurringBilling ?? null,
       sandbox: product.sandbox,
       settlementMode: product.settlementMode,
     })),

@@ -192,6 +192,71 @@ describe('OpenAgents Site payment catalog', () => {
     ])
   })
 
+  test('carries BF-2.3 recurring billing into catalog projections and entitlement refs', () => {
+    const catalog = sitePaymentCatalogFromManifest({
+      ...catalogInput,
+      manifest: {
+        payments: {
+          ...sitePaymentManifest.payments,
+          paidActions: [],
+          products: [
+            {
+              ...sitePaymentManifest.payments.products[0]!,
+              checkoutPath: '/checkout/monthly-retainer',
+              displayRef: 'display.monthly_retainer',
+              id: 'monthly_retainer',
+              metadataRefs: ['metadata.product.monthly_retainer'],
+              recurringBilling: {
+                billingKind: 'retainer',
+                entitlementRenewalMode: 'renew_on_payment_receipt',
+                interval: 'month',
+                renewalReceiptScopeRefs: [
+                  'receipt_scope.business.retainer.renewal',
+                ],
+              },
+            },
+          ],
+        },
+      },
+    })
+    const publicProjection = projectOpenAgentsSitePaymentCatalog(
+      catalog,
+      'public',
+    )
+    const endpointProduct = openAgentsPaidEndpointProductFromSitePaymentCatalogItem(
+      catalog.items[0]!,
+    )
+
+    expect(catalog.items[0]).toMatchObject({
+      itemKind: 'product',
+      productId: 'monthly_retainer',
+      recurringBilling: {
+        billingKind: 'retainer',
+        entitlementRenewalMode: 'renew_on_payment_receipt',
+        interval: 'month',
+        renewalReceiptScopeRefs: [
+          'receipt_scope.business.retainer.renewal',
+        ],
+      },
+    })
+    expect(publicProjection.items[0]).toMatchObject({
+      itemKind: 'product',
+      recurringBilling: {
+        billingKind: 'retainer',
+        interval: 'month',
+      },
+    })
+    expect(endpointProduct.entitlement).toMatchObject({
+      durationSeconds: 2_678_400,
+      kind: 'resource',
+    })
+    expect(endpointProduct.entitlement.scopeRefs).toEqual([
+      'entitlement.site_payment.site_otec.version_otec_v2.product.monthly_retainer',
+      'entitlement_renewal.site_payment.site_otec.version_otec_v2.retainer.monthly_retainer',
+      'receipt_scope.business.retainer.renewal',
+    ])
+  })
+
   test('integrates with paid endpoint product records and hosted checkout plans', () => {
     const catalog = sitePaymentCatalogFromManifest(catalogInput)
     const productRecord = openAgentsPaidEndpointProductFromSitePaymentCatalogItem(
@@ -287,6 +352,21 @@ describe('OpenAgents Site payment catalog', () => {
           {
             ...catalog.items[1]!,
             path: 'https://example.com/api/actions/download-report',
+          },
+        ],
+      }),
+    ).toThrow(OpenAgentsSitePaymentCatalogUnsafe)
+    expect(() =>
+      decodeOpenAgentsSitePaymentCatalog({
+        items: [
+          {
+            ...catalog.items[0]!,
+            recurringBilling: {
+              billingKind: 'subscription',
+              entitlementRenewalMode: 'renew_on_payment_receipt',
+              interval: 'month',
+              renewalReceiptScopeRefs: ['raw_invoice.lnbc2500n1unsafe'],
+            },
           },
         ],
       }),

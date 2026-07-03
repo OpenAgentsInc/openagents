@@ -146,6 +146,73 @@ describe('OpenAgents Site payment manifest', () => {
     ).toThrow()
   })
 
+  test('projects subscription and retainer products with receipt-renewed recurrence', () => {
+    const manifest = decodeOpenAgentsSitePaymentManifest({
+      payments: {
+        ...validManifest.payments,
+        products: [
+          {
+            ...validManifest.payments.products[0],
+            displayRef: 'display.monthly_retainer',
+            id: 'monthly_retainer',
+            metadataRefs: ['metadata.product.monthly_retainer'],
+            recurringBilling: {
+              billingKind: 'retainer',
+              entitlementRenewalMode: 'renew_on_payment_receipt',
+              interval: 'month',
+              renewalReceiptScopeRefs: [
+                'receipt_scope.business.retainer.renewal',
+              ],
+            },
+          },
+          {
+            ...validManifest.payments.products[0],
+            displayRef: 'display.membership_subscription',
+            id: 'membership_subscription',
+            metadataRefs: ['metadata.product.membership_subscription'],
+            recurringBilling: {
+              billingKind: 'subscription',
+              entitlementRenewalMode: 'renew_on_payment_receipt',
+              interval: 'year',
+              renewalReceiptScopeRefs: [
+                'receipt_scope.business.membership.renewal',
+              ],
+            },
+          },
+        ],
+      },
+    })
+    const publicProjection = projectOpenAgentsSitePaymentManifest(
+      manifest,
+      'public',
+    )
+
+    expect(publicProjection.products.map(product => product.recurringBilling))
+      .toEqual([
+        {
+          billingKind: 'retainer',
+          entitlementRenewalMode: 'renew_on_payment_receipt',
+          interval: 'month',
+          renewalReceiptScopeRefs: [
+            'receipt_scope.business.retainer.renewal',
+          ],
+        },
+        {
+          billingKind: 'subscription',
+          entitlementRenewalMode: 'renew_on_payment_receipt',
+          interval: 'year',
+          renewalReceiptScopeRefs: [
+            'receipt_scope.business.membership.renewal',
+          ],
+        },
+      ])
+    expect(
+      S.decodeUnknownSync(OpenAgentsSitePaymentManifestProjection)(
+        publicProjection,
+      ),
+    ).toEqual(publicProjection)
+  })
+
   test('rejects raw payment material and unsafe checkout paths', () => {
     expect(() =>
       decodeOpenAgentsSitePaymentManifest({
@@ -176,6 +243,24 @@ describe('OpenAgents Site payment manifest', () => {
             {
               ...validManifest.payments.paidActions[0],
               path: 'https://evil.test/api/actions/download-report',
+            },
+          ],
+        },
+      }),
+    ).toThrow(OpenAgentsSitePaymentManifestUnsafe)
+    expect(() =>
+      decodeOpenAgentsSitePaymentManifest({
+        payments: {
+          ...validManifest.payments,
+          products: [
+            {
+              ...validManifest.payments.products[0],
+              recurringBilling: {
+                billingKind: 'subscription',
+                entitlementRenewalMode: 'renew_on_payment_receipt',
+                interval: 'month',
+                renewalReceiptScopeRefs: ['customer_email.ben@example.com'],
+              },
             },
           ],
         },
