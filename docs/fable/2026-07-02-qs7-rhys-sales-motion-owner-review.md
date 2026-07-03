@@ -17,6 +17,14 @@ ask as the trigger for productizing QA Swarm ("maybe for you, but
 definitely a bunch of other people are going to want that also"), which
 raises the value of landing this motion well once the owner gate clears.
 
+Refresh note (2026-07-03): the product prerequisites that were missing when
+this packet first landed are now in `main`: QS2 share URLs (#8062), QS8
+chill-evals variant comparison (#8068), and QS9 third-party target adapters
+(#8069). This narrows the remaining blocker to the target-specific
+`RhysSullivan/executor` run package and the explicit owner sign-off on the
+external PR body/media. No live executor audit receipts are present in this
+checkout.
+
 ## Source Contract
 
 QS7 comes from `docs/fable/2026-07-02-qa-swarm-product-plan.md` section 6:
@@ -36,9 +44,9 @@ without running anything locally.
 
 | Acceptance item | State in this checkout | Evidence / blocker |
 | --- | --- | --- |
-| Audit run against executor produces full artifact set | Blocked, not run | QS2 share URL and QS8 chill-evals product mode are prerequisites; no target adapter or owner approval for the outward-facing run is present in this checkout. |
+| Audit run against executor produces full artifact set | Blocked, not run | QS2, QS8, and QS9 have landed, but no target-specific executor run receipt, media artifact, distilled test, verdict, or owner-approved external target scope exists in this checkout. |
 | PR drafted with auto-attached media, distilled test, verdict, share URL | Draft only | Template below; every media/test/share placeholder must be replaced by dereferenceable receipts from a real run before it leaves this repo. |
-| Chill-evals variant comparison included | Schema only | Comparison matrix below; real variant rows require QS8 run output. |
+| Chill-evals variant comparison included | Product support landed, target rows missing | Comparison matrix below; real variant rows require the executor audit to run across the chosen MCP/config variants. |
 | Owner sign-off recorded before PR goes public | Recorded as required, not granted | `NEEDS_OWNER.md` now carries the QS7 owner gate. |
 
 No external repository content was modified. No public comment or PR was opened

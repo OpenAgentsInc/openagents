@@ -32,9 +32,9 @@ packet.
 
 Current state:
 
-- The QS7 acceptance bar depends on QS2 (run-level share URL) and QS8
-  (chill-evals variant comparison). Those are prerequisite product surfaces, not
-  optional polish.
+- The former product-surface prerequisites have landed: QS2 provides the
+  run-level share URL, QS8 provides chill-evals variant comparison, and QS9
+  provides the third-party target-adapter contract.
 - No live audit against `RhysSullivan/executor` has been run in this bounded
   checkout.
 - No webm, terminal recording, distilled `*.e2e.test.ts`, CONFIRMED/REFUTED
