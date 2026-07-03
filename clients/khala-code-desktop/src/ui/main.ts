@@ -69,7 +69,7 @@ import {
   type KhalaCodeQaMetricSample,
   type KhalaCodeQaMetricsSnapshot,
 } from "../shared/qa-metrics"
-import { renderMessageBody } from "./transcript-render"
+import { iconForCodexItem, renderMessageBody } from "./transcript-render"
 import { mountFleetPanel } from "./fleet-status"
 import { mountKhalaCodeForumPanel } from "./forum-panel"
 import { mountKhalaCodePlansPanel } from "./plans-panel"
@@ -747,6 +747,15 @@ const attachButton = requireElement<HTMLButtonElement>("#attach-button")
 const fileInput = requireElement<HTMLInputElement>("#file-input")
 
 const activeTurnIds = new Set<string>()
+/**
+ * turnId -> threadId (or null for a not-yet-created thread), captured at
+ * submit time. Unlike activeTurnIds, this is never cleared by navigation —
+ * only when the owning turn genuinely finishes — so a background thread's
+ * streaming state survives switching away and back
+ * (khala_code.chat.streaming_indicator_survives_navigation.v1,
+ * khala_code.transcript.streaming_state_cross_surface_consistency.v1).
+ */
+const streamingThreadIds = new Map<string, string | null>()
 const activeTurnStartTimes = new Map<string, number>()
 const turnFirstVisibleEventRecorded = new Set<string>()
 const objectUrls = new Set<string>()
@@ -760,7 +769,15 @@ const sessionId =
     ? storedSessionId
     : `khala-code-desktop-${Date.now().toString(36)}`
 localStorage.setItem(sessionIdStorageKey, sessionId)
-localStorage.removeItem(activeThreadIdStorageKey)
+/**
+ * The thread that was active when the app last quit, restored on boot
+ * (khala_code.app.resumes_after_restart.v1). NOT cleared here — normal
+ * `setActiveCodexThreadId` calls during the session keep the stored value in
+ * sync, and a failed restore clears it explicitly (see
+ * `restoreActiveThreadAfterRestart`) so a stale/deleted thread id does not
+ * retry forever.
+ */
+const bootRestoreThreadId = localStorage.getItem(activeThreadIdStorageKey)
 
 type ThreadSwitchPerformanceSample = {
   cacheHit: boolean
@@ -1304,6 +1321,88 @@ const renderMessage = (message: KhalaCodeDesktopMessage): HTMLElement => {
   return article
 }
 
+const isToolCallMessage = (message: KhalaCodeDesktopMessage): boolean =>
+  message.codexItem !== undefined
+
+/**
+ * Consecutive tool-call messages collapse into one line showing the latest
+ * call; expanding reveals the full run, each still individually expandable
+ * via its own card (khala_code.transcript.consecutive_tool_calls_collapsed.v1).
+ */
+const groupConsecutiveToolCallMessages = (
+  messages: readonly KhalaCodeDesktopMessage[],
+): ReadonlyArray<readonly KhalaCodeDesktopMessage[]> => {
+  const groups: Array<readonly KhalaCodeDesktopMessage[]> = []
+  for (const message of messages) {
+    const last = groups.at(-1)
+    if (isToolCallMessage(message) && last !== undefined && last.every(isToolCallMessage)) {
+      groups[groups.length - 1] = [...last, message]
+      continue
+    }
+    groups.push([message])
+  }
+  return groups
+}
+
+const renderToolCallGroupSummary = (
+  messages: readonly KhalaCodeDesktopMessage[],
+): HTMLElement => {
+  const container = document.createElement("div")
+  container.className = "tool-call-group"
+  container.dataset.count = String(messages.length)
+  container.dataset.expanded = "false"
+
+  const latest = messages[messages.length - 1]
+  const latestTitle = latest?.codexItem?.title ?? latest?.body ?? ""
+
+  const summary = document.createElement("button")
+  summary.type = "button"
+  summary.className = "tool-call-group-summary"
+  summary.setAttribute("aria-expanded", "false")
+  summary.setAttribute("aria-label", `${messages.length} tool calls, latest: ${latestTitle}`)
+
+  const icon = iconElement(iconForCodexItem(latest?.codexItem?.itemType ?? ""), {
+    ariaHidden: true,
+    className: "tool-call-group-summary-icon",
+  })
+
+  const label = document.createElement("span")
+  label.className = "tool-call-group-summary-label"
+  label.textContent = latestTitle
+
+  const chevron = document.createElement("span")
+  chevron.className = "tool-call-group-summary-chevron"
+  chevron.setAttribute("aria-hidden", "true")
+
+  const count = document.createElement("span")
+  count.className = "tool-call-group-summary-count"
+  count.textContent = String(messages.length)
+
+  summary.append(icon, label, count, chevron)
+
+  const items = document.createElement("div")
+  items.className = "tool-call-group-items"
+  items.hidden = true
+  items.append(...messages.map(renderMessage))
+
+  summary.addEventListener("click", () => {
+    const expanded = container.dataset.expanded === "true"
+    container.dataset.expanded = expanded ? "false" : "true"
+    summary.setAttribute("aria-expanded", expanded ? "false" : "true")
+    items.hidden = expanded
+  })
+
+  container.append(summary, items)
+  return container
+}
+
+const renderTranscriptMessages = (
+  messages: readonly KhalaCodeDesktopMessage[],
+): readonly HTMLElement[] =>
+  groupConsecutiveToolCallMessages(messages).flatMap(group =>
+    group.length > 1 ? [renderToolCallGroupSummary(group)] : group.map(renderMessage)
+  )
+
 const refreshHarnessSetting = async (): Promise<void> => {
   try {
     const setting = await rpc.request.harnessSettingRead()
@@ -1513,6 +1612,18 @@ const proxyTranscriptKeyScroll = (event: KeyboardEvent): void => {
     sampleTranscriptScrollDroppedFrames("keyboard")
     event.preventDefault()
   }
+}
+
+const isThreadStreaming = (threadId: string | null): boolean => {
+  if (threadId === null) return false
+  for (const streamingThreadId of streamingThreadIds.values()) {
+    if (streamingThreadId === threadId) return true
+  }
+  return false
+}
+
+const recomputePendingTurnForActiveThread = (): void => {
+  shellModel().pendingTurn = isThreadStreaming(shellModel().activeCodexThreadId)
 }
 
 const statusForComposer = (): CommandComposerStatus => {
@@ -1741,7 +1852,7 @@ const renderMessages = (): void => {
   const thinking = renderThinkingIndicator()
   const threadLoading = renderThreadLoadingIndicator()
   messageList.replaceChildren(
-    ...shellModel().messages.map(renderMessage),
+    ...renderTranscriptMessages(shellModel().messages),
     ...(threadLoading === null ? [] : [threadLoading]),
     ...(thinking === null ? [] : [thinking]),
   )
@@ -2988,10 +3099,11 @@ const stopActiveTurn = (): void => {
     void rpc.request.codexTurnInterrupt({ sessionId, turnId }).catch(() => undefined)
     activeTurnStartTimes.delete(turnId)
     turnFirstVisibleEventRecorded.delete(turnId)
+    streamingThreadIds.delete(turnId)
   }
   activeTurnIds.clear()
   setShellFollowUpDrafts([])
-  shellModel().pendingTurn = false
+  recomputePendingTurnForActiveThread()
   shellModel().thinkingTurnId = null
   threadSidebar?.setActiveThreadId(shellModel().activeCodexThreadId)
   appendMessages([
@@ -3184,8 +3296,10 @@ const submitComposer = async (): Promise<KhalaCodeDesktopMessage | null> => {
   resetComposerDraft()
   const message = addMessage("user", body)
   const turnId = nextTurnId()
+  const submittedThreadId = shellModel().activeCodexThreadId
   activeTurnIds.add(turnId)
-  shellModel().pendingTurn = true
+  streamingThreadIds.set(turnId, submittedThreadId)
+  recomputePendingTurnForActiveThread()
   shellModel().thinkingTurnId = turnId
   threadSidebar?.setActiveThreadId(shellModel().activeCodexThreadId)
   render()
@@ -3193,12 +3307,11 @@ const submitComposer = async (): Promise<KhalaCodeDesktopMessage | null> => {
   const turnStartedAt = performance.now()
   activeTurnStartTimes.set(turnId, turnStartedAt)
   try {
-    const activeThreadId = shellModel().activeCodexThreadId
     const request: KhalaCodeDesktopChatTurnRequest = {
       ...(imageAttachments.length === 0 ? {} : { attachments: imageAttachments }),
       messages: shellModel().messages,
       sessionId,
-      ...(activeThreadId === null ? { startNewThread: true } : { threadId: activeThreadId }),
+      ...(submittedThreadId === null ? { startNewThread: true } : { threadId: submittedThreadId }),
       turnId,
     }
     const response = await rpc.request.submitChatMessage(request)
@@ -3233,10 +3346,11 @@ const submitComposer = async (): Promise<KhalaCodeDesktopMessage | null> => {
     }
   } finally {
     activeTurnIds.delete(turnId)
+    streamingThreadIds.delete(turnId)
     activeTurnStartTimes.delete(turnId)
     turnFirstVisibleEventRecorded.delete(turnId)
     if (shellModel().thinkingTurnId === turnId) shellModel().thinkingTurnId = null
-    shellModel().pendingTurn = activeTurnIds.size > 0
+    recomputePendingTurnForActiveThread()
     threadSidebar?.setActiveThreadId(shellModel().activeCodexThreadId)
     void threadSidebar?.refresh()
     renderComposer()
@@ -3698,6 +3812,7 @@ const controls = {
   reset: () => {
     setShellMessages([])
     activeTurnIds.clear()
+    streamingThreadIds.clear()
     setShellFollowUpDrafts([])
     resetComposerDraft()
     shellModel().pendingTurn = false
@@ -3804,7 +3919,7 @@ const beginCodexThreadSwitch = (input: {
   }
   activeTurnIds.clear()
   setShellFollowUpDrafts([])
-  shellModel().pendingTurn = false
+  recomputePendingTurnForActiveThread()
   shellModel().thinkingTurnId = null
   shellModel().lastTurnFailed = false
   render()
@@ -3831,7 +3946,7 @@ const activateCodexThread = (input: {
   const hydratedVisibleMessages = shellModel().messages
   activeTurnIds.clear()
   setShellFollowUpDrafts([])
-  shellModel().pendingTurn = false
+  recomputePendingTurnForActiveThread()
   shellModel().thinkingTurnId = null
   shellModel().lastTurnFailed = false
   render()
@@ -3854,7 +3969,7 @@ const beginNewCodexThread = (): void => {
   setShellMessages([])
   activeTurnIds.clear()
   setShellFollowUpDrafts([])
-  shellModel().pendingTurn = false
+  recomputePendingTurnForActiveThread()
   shellModel().thinkingTurnId = null
   shellModel().lastTurnFailed = false
   render()
@@ -4102,7 +4217,7 @@ const threadSidebar =
           clearThreadListCache()
           return controls.codexThreadFork({ sessionId, threadId })
         },
-        isThreadStreaming: threadId => shellModel().activeCodexThreadId === threadId && shellModel().pendingTurn,
+        isThreadStreaming,
         listThreads: async request => {
           let catalog: Awaited<ReturnType<DesktopRpcRequests["sessionCatalog"]>>
           try {
@@ -4267,3 +4382,23 @@ render()
 markQaTimer("startup.interactive_ms", 0, { view: initialView })
 markQaTimer("first_render.ms", firstRenderStartedAt, { view: initialView })
 requestAnimationFrame(focusComposerInput)
+
+/**
+ * Restores the thread the user was viewing when the app last quit
+ * (khala_code.app.resumes_after_restart.v1). Runs after the normal blank
+ * boot render so startup stays fast; a genuinely in-flight turn cannot
+ * survive process death (the Codex app-server subprocess quits with the
+ * app), but the thread and its message history are not lost. Fails soft:
+ * a missing/corrupt thread clears the stored id instead of retrying on
+ * every future launch.
+ */
+const restoreActiveThreadAfterRestart = async (): Promise<void> => {
+  if (bootRestoreThreadId === null || bootRestoreThreadId === shellModel().activeCodexThreadId) return
+  try {
+    const result = await controls.codexThreadResume({ sessionId, threadId: bootRestoreThreadId })
+    activateCodexThread({ messages: result.messages ?? [], threadId: result.threadId })
+  } catch {
+    localStorage.removeItem(activeThreadIdStorageKey)
+  }
+}
+void restoreActiveThreadAfterRestart()

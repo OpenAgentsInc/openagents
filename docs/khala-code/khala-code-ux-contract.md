@@ -52,7 +52,7 @@ sweep if this doc, the registry, or the oracle tests drift apart.
 
 ## Registry
 
-Registry version: `2026-07-03.5` (schema `openagents.behavior_contracts.v1`)
+Registry version: `2026-07-03.6` (schema `openagents.behavior_contracts.v1`)
 
 ### `khala_code.chat.sidebar_spinner_streaming_only.v1` — ENFORCED
 
@@ -105,232 +105,233 @@ Registry version: `2026-07-03.5` (schema `openagents.behavior_contracts.v1`)
 - **Verification:** bun test tests/ux-contracts.test.ts inside clients/khala-code-desktop; runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.
 - **Authority boundary:** Cmd+0 additionally maps to the tenth most recent chat and Cmd+ArrowUp/ArrowDown cycle through recency; those are compatible extensions, not part of this contract. The generalized overlay-menu component remains available for future dialog menus but is not mounted for this feature.
 
-### `khala_code.composer.no_dead_controls.v1` — PENDING
+### `khala_code.composer.no_dead_controls.v1` — ENFORCED
 
 - **Surface:** khala-code-desktop (chat composer)
 - **Stated by:** owner via codex-session on 2026-07-03
 - **Statement:** Every composer control must visibly do something when interacted with. The 'Plan' toggle did nothing and confused the user about its purpose; it must be removed and replaced with a working reasoning-mode control that actually changes behavior.
-- **Enforcement tier:** unenforced
-- **Verification:** Not yet enforced: mined from Codex/Claude conversation history on 2026-07-03 (docs-only pass per owner directive) and recorded pending an oracle in the follow-up code pass. No test currently guards this statement.
-- **Blockers:** `blocker.khala_code_ux_mining.oracle_not_implemented_20260703`
+- **Enforcement tier:** test-sweep
+- **Oracle** `no_dead_controls.source` (bun-test, unit): Pins that the composer has a working reasoning-mode select wired to a real RPC and no lingering dead 'Plan' toggle in mounted code or active CSS. — `clients/khala-code-desktop/tests/ux-contracts.test.ts`
+- **Verification:** bun test tests/ux-contracts.test.ts inside clients/khala-code-desktop; runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.
 - **Authority boundary:** This binds control liveness only, not the exact reasoning-mode UI; that design is free to iterate as long as no control ships inert.
 
-### `khala_code.composer.attach_control_icon_only.v1` — PENDING
+### `khala_code.composer.attach_control_icon_only.v1` — ENFORCED
 
 - **Surface:** khala-code-desktop (chat composer)
 - **Stated by:** owner via codex-session on 2026-07-01
 - **Statement:** The composer's attach control renders as an icon only, never the text label 'Attach'. Queued/follow-up messages (sent while a turn is still streaming) render in a compact, visually distinct style from a normal message, not as another full-size bubble.
-- **Enforcement tier:** unenforced
-- **Verification:** Not yet enforced: mined from Codex/Claude conversation history on 2026-07-03 (docs-only pass per owner directive) and recorded pending an oracle in the follow-up code pass. No test currently guards this statement.
-- **Blockers:** `blocker.khala_code_ux_mining.oracle_not_implemented_20260703`
+- **Enforcement tier:** test-sweep
+- **Oracle** `attach_icon_only.source` (bun-test, unit): Pins the desktop-scoped CSS override that keeps the attach control's text label hidden regardless of viewport width, and that queued follow-up messages render in a compact style distinct from a full message bubble. — `clients/khala-code-desktop/tests/ux-contracts.test.ts`
+- **Verification:** bun test tests/ux-contracts.test.ts inside clients/khala-code-desktop; runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.
 - **Authority boundary:** Binds the attach control and queued-message rendering only; other composer chrome is out of scope for this contract.
 
-### `khala_code.composer.structure_not_bloat.v1` — PENDING
+### `khala_code.composer.structure_not_bloat.v1` — ENFORCED
 
 - **Surface:** khala-code-desktop (chat composer)
 - **Stated by:** owner via codex-session on 2026-07-02
 - **Statement:** The composer stays compact, not oversized, and follows the StarCraft design system. Every visible composer icon must be functional; secondary controls that don't yet do anything real (e.g. mic, extra progress indicators, unused model dropdowns) stay hidden or removed rather than shipped as inert chrome the user has to look at.
-- **Enforcement tier:** unenforced
-- **Verification:** Not yet enforced: mined from Codex/Claude conversation history on 2026-07-03 (docs-only pass per owner directive) and recorded pending an oracle in the follow-up code pass. No test currently guards this statement.
-- **Blockers:** `blocker.khala_code_ux_mining.oracle_not_implemented_20260703`
+- **Enforcement tier:** test-sweep
+- **Oracle** `structure_not_bloat.source` (bun-test, unit): Pins that the composer has a working reasoning-mode select and no mic/runtime-badge/harness-pill chrome mounted or styled active. — `clients/khala-code-desktop/tests/ux-contracts.test.ts`
+- **Verification:** bun test tests/ux-contracts.test.ts inside clients/khala-code-desktop; runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.
 - **Authority boundary:** Structure/liveness only — exact visual treatment is free to iterate with impeccable-skill review as long as inert chrome does not ship.
 
-### `khala_code.chat.no_current_chat_text_flash.v1` — PENDING
+### `khala_code.chat.no_current_chat_text_flash.v1` — ENFORCED
 
 - **Surface:** khala-code-desktop (chat thread sidebar)
 - **Stated by:** owner via codex-session on 2026-07-03
 - **Statement:** The active chat row must never flash a 'Current chat' text label anywhere in the sidebar, even momentarily during mount or a state transition. The active-row background alone (khala_code.chat.sidebar_active_thread_background_only.v2) is the only active indicator; no text heading or copy may appear, not even transiently.
-- **Enforcement tier:** unenforced
-- **Verification:** Not yet enforced: mined from Codex/Claude conversation history on 2026-07-03 (docs-only pass per owner directive) and recorded pending an oracle in the follow-up code pass. No test currently guards this statement.
-- **Blockers:** `blocker.khala_code_ux_mining.oracle_not_implemented_20260703`
+- **Enforcement tier:** test-sweep
+- **Oracle** `no_current_chat_text_flash.source` (bun-test, unit): Asserts the sidebar source never contains the string 'current chat' anywhere, so no code path (including transient/mount-time ones) can render it. — `clients/khala-code-desktop/tests/ux-contracts.test.ts`
+- **Verification:** bun test tests/ux-contracts.test.ts inside clients/khala-code-desktop; runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.
 - **Authority boundary:** Complements khala_code.chat.sidebar_active_thread_background_only.v2 (steady-state rendering) by additionally covering transient/mount-time flashes; the two contracts should be verified together.
 
-### `khala_code.chat.harness_badge_removed.v1` — PENDING
+### `khala_code.chat.harness_badge_removed.v1` — ENFORCED
 
 - **Surface:** khala-code-desktop (chat thread sidebar)
 - **Stated by:** owner via codex-session on 2026-07-02
 - **Statement:** Sidebar chat rows do not render a Codex/Claude harness-provider text badge next to the title. An earlier version showed this badge with stale/inaccurate values (older threads all labeled 'Claude' regardless of actual harness); the badge is removed entirely rather than kept and fixed.
-- **Enforcement tier:** unenforced
-- **Verification:** Not yet enforced: mined from Codex/Claude conversation history on 2026-07-03 (docs-only pass per owner directive) and recorded pending an oracle in the follow-up code pass. No test currently guards this statement.
-- **Blockers:** `blocker.khala_code_ux_mining.oracle_not_implemented_20260703`
+- **Enforcement tier:** test-sweep
+- **Oracle** `harness_badge_removed.dom` (bun-test, dom): Mounts the real thread sidebar with threads carrying Codex/Claude badges and asserts no harness badge element or text renders. — `clients/khala-code-desktop/tests/ux-contracts.test.ts`
+- **Verification:** bun test tests/ux-contracts.test.ts inside clients/khala-code-desktop; runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.
 - **Authority boundary:** Harness identity may still be surfaced elsewhere (e.g. a settings/detail view); this contract binds only the sidebar row itself.
 
-### `khala_code.chat.sidebar_row_density.v1` — PENDING
+### `khala_code.chat.sidebar_row_density.v1` — ENFORCED
 
 - **Surface:** khala-code-desktop (chat thread sidebar)
 - **Stated by:** owner via codex-session on 2026-07-02
 - **Statement:** Sidebar chat rows render borderless, differentiated by background color only (no per-row border chrome), with tightened vertical padding between rows, matching the density of the reference Codex-desktop-style sidebar.
-- **Enforcement tier:** unenforced
-- **Verification:** Not yet enforced: mined from Codex/Claude conversation history on 2026-07-03 (docs-only pass per owner directive) and recorded pending an oracle in the follow-up code pass. No test currently guards this statement.
-- **Blockers:** `blocker.khala_code_ux_mining.oracle_not_implemented_20260703`
+- **Enforcement tier:** test-sweep
+- **Oracle** `sidebar_row_density.source` (bun-test, unit): Pins the sidebar row CSS to borderless with the tightened 0.1rem/0.5rem padding and confirms active/hover states never add a non-zero border. — `clients/khala-code-desktop/tests/ux-contracts.test.ts`
+- **Verification:** bun test tests/ux-contracts.test.ts inside clients/khala-code-desktop; runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.
 - **Authority boundary:** Visual density only; does not change row content or interaction behavior contracted elsewhere.
 
-### `khala_code.chat.thread_open_never_raw_error.v1` — PENDING
+### `khala_code.chat.thread_open_never_raw_error.v1` — ENFORCED
 
 - **Surface:** khala-code-desktop (chat thread sidebar)
 - **Stated by:** owner via codex-session on 2026-07-03
 - **Statement:** Opening any thread from the sidebar must never surface a raw internal error string (e.g. 'no rollout found', 'invalid session id: invalid character ...') to the user. On a genuinely missing or corrupt session, show one typed, friendly, actionable message instead. Thread timestamps must never all collapse to showing 'now' when this happens.
-- **Enforcement tier:** unenforced
-- **Verification:** Not yet enforced: mined from Codex/Claude conversation history on 2026-07-03 (docs-only pass per owner directive) and recorded pending an oracle in the follow-up code pass. No test currently guards this statement.
-- **Blockers:** `blocker.khala_code_ux_mining.oracle_not_implemented_20260703`
+- **Enforcement tier:** test-sweep
+- **Oracle** `thread_open_error_mapping.unit` (bun-test, unit): Unit-tests the internal-error detector and friendly-message mapper against real raw Codex RPC error strings, and confirms unrelated error text passes through unchanged. — `clients/khala-code-desktop/tests/ux-contracts.test.ts`
+- **Oracle** `thread_open_error_rendering.dom` (bun-test, dom): Mounts the real thread sidebar with a resumeThread that throws a raw internal error and asserts the rendered row shows the friendly message, never the raw text. — `clients/khala-code-desktop/tests/ux-contracts.test.ts`
+- **Verification:** bun test tests/ux-contracts.test.ts inside clients/khala-code-desktop; runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.
 - **Authority boundary:** This is a recurring defect reported repeatedly across 2026-07-02 and 2026-07-03; any fix must be verified against every reported recurrence, not just the most recent report.
 
-### `khala_code.chat.streaming_indicator_survives_navigation.v1` — PENDING
+### `khala_code.chat.streaming_indicator_survives_navigation.v1` — ENFORCED
 
 - **Surface:** khala-code-desktop (chat thread sidebar)
 - **Stated by:** owner via codex-session on 2026-07-02
 - **Statement:** A background thread's streaming indicator must keep reflecting its real state even after the user switches to a different chat or starts a new one. Navigating away must never clear another thread's in-progress indicator, and reopening that thread later must still show it as streaming if it genuinely is.
-- **Enforcement tier:** unenforced
-- **Verification:** Not yet enforced: mined from Codex/Claude conversation history on 2026-07-03 (docs-only pass per owner directive) and recorded pending an oracle in the follow-up code pass. No test currently guards this statement.
-- **Blockers:** `blocker.khala_code_ux_mining.oracle_not_implemented_20260703`
+- **Enforcement tier:** test-sweep
+- **Oracle** `streaming_survives_navigation.source` (bun-test, unit): Pins the per-thread streamingThreadIds tracking: populated at submit time by thread, only cleared when its own turn finishes, and never blanket-cleared by any thread-switch function. — `clients/khala-code-desktop/tests/ux-contracts.test.ts`
+- **Verification:** bun test tests/ux-contracts.test.ts inside clients/khala-code-desktop; runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.
 - **Authority boundary:** Binds indicator truthfulness during navigation; does not change how many concurrent streams the app supports.
 
-### `khala_code.chat.new_thread_appears_promptly.v1` — PENDING
+### `khala_code.chat.new_thread_appears_promptly.v1` — ENFORCED
 
 - **Surface:** khala-code-desktop (chat thread sidebar)
 - **Stated by:** owner via codex-session on 2026-07-01
 - **Statement:** A freshly created chat appears in the sidebar without delay, and its own first messages render immediately rather than starting blank while data that should already be present loads again.
-- **Enforcement tier:** unenforced
-- **Verification:** Not yet enforced: mined from Codex/Claude conversation history on 2026-07-03 (docs-only pass per owner directive) and recorded pending an oracle in the follow-up code pass. No test currently guards this statement.
-- **Blockers:** `blocker.khala_code_ux_mining.oracle_not_implemented_20260703`
+- **Enforcement tier:** test-sweep
+- **Oracle** `new_thread_appears_promptly.dom` (bun-test, dom): Mounts the real thread sidebar and asserts an optimistically-inserted pending thread appears in the list immediately with its preview visible, with no RPC round trip required. — `clients/khala-code-desktop/tests/ux-contracts.test.ts`
+- **Verification:** bun test tests/ux-contracts.test.ts inside clients/khala-code-desktop; runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.
 - **Authority boundary:** Binds sidebar/list promptness and initial message rendering only.
 
-### `khala_code.chat.rename_applies_immediately.v1` — PENDING
+### `khala_code.chat.rename_applies_immediately.v1` — ENFORCED
 
 - **Surface:** khala-code-desktop (chat thread sidebar)
 - **Stated by:** owner via codex-session on 2026-07-01
 - **Statement:** Confirming a thread rename (the check-mark action on the inline rename control) updates the visible sidebar title immediately, without requiring a refresh or a subsequent click.
-- **Enforcement tier:** unenforced
-- **Verification:** Not yet enforced: mined from Codex/Claude conversation history on 2026-07-03 (docs-only pass per owner directive) and recorded pending an oracle in the follow-up code pass. No test currently guards this statement.
-- **Blockers:** `blocker.khala_code_ux_mining.oracle_not_implemented_20260703`
+- **Enforcement tier:** test-sweep
+- **Oracle** `rename_applies_immediately.dom` (bun-test, dom): Mounts the real thread sidebar, drives the context-menu rename flow end to end, and asserts the visible title updates before the mocked rename RPC resolves. — `clients/khala-code-desktop/tests/ux-contracts.test.ts`
+- **Verification:** bun test tests/ux-contracts.test.ts inside clients/khala-code-desktop; runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.
 - **Authority boundary:** Binds the rename affordance's visible result only, not its persistence/sync mechanics.
 
-### `khala_code.chat.rehydrate_shows_tool_calls.v1` — PENDING
+### `khala_code.chat.rehydrate_shows_tool_calls.v1` — ENFORCED
 
 - **Surface:** khala-code-desktop (chat transcript)
 - **Stated by:** owner via codex-session on 2026-07-01
 - **Statement:** Reopening or resuming an older thread renders its historical tool calls in the transcript, not just its text messages. The full turn history, including tool activity, must be reconstructible from a rehydrated session.
-- **Enforcement tier:** unenforced
-- **Verification:** Not yet enforced: mined from Codex/Claude conversation history on 2026-07-03 (docs-only pass per owner directive) and recorded pending an oracle in the follow-up code pass. No test currently guards this statement.
-- **Blockers:** `blocker.khala_code_ux_mining.oracle_not_implemented_20260703`
+- **Enforcement tier:** test-sweep
+- **Oracle** `rehydrate_shows_tool_calls.source` (bun-test, unit): References the thread-history projector's full-variant coverage test and confirms messagesFromThread replays every item through the same projector used for live streaming. — `clients/khala-code-desktop/tests/ux-contracts.test.ts`
+- **Verification:** bun test tests/ux-contracts.test.ts inside clients/khala-code-desktop; runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.
 - **Authority boundary:** Binds transcript completeness on rehydrate; does not require re-executing any tool.
 
-### `khala_code.chat.starcraft_scrollbar_parity.v1` — PENDING
+### `khala_code.chat.starcraft_scrollbar_parity.v1` — ENFORCED
 
 - **Surface:** khala-code-desktop (visual theme)
 - **Stated by:** owner via codex-session on 2026-07-01
 - **Statement:** The custom StarCraft-themed scrollbar used on openagents.com applies inside Khala Code desktop's scrollable surfaces too (sidebar, transcript, any other scrollable panel), not only the website.
-- **Enforcement tier:** unenforced
-- **Verification:** Not yet enforced: mined from Codex/Claude conversation history on 2026-07-03 (docs-only pass per owner directive) and recorded pending an oracle in the follow-up code pass. No test currently guards this statement.
-- **Blockers:** `blocker.khala_code_ux_mining.oracle_not_implemented_20260703`
+- **Enforcement tier:** test-sweep
+- **Oracle** `starcraft_scrollbar_parity.source` (bun-test, unit): Asserts the StarCraft scrollbar theme is declared with the universal selector (automatic parity for every scrollable surface) and that no container opts out. — `clients/khala-code-desktop/tests/ux-contracts.test.ts`
+- **Verification:** bun test tests/ux-contracts.test.ts inside clients/khala-code-desktop; runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.
 - **Authority boundary:** Theme parity only; does not change scroll behavior or keyboard/wheel handling contracted elsewhere.
 
-### `khala_code.transcript.consecutive_tool_calls_collapsed.v1` — PENDING
+### `khala_code.transcript.consecutive_tool_calls_collapsed.v1` — ENFORCED
 
 - **Surface:** khala-code-desktop (chat transcript)
 - **Stated by:** owner via codex-session on 2026-07-02
 - **Statement:** Consecutive tool calls in the transcript collapse into a single line showing the latest call. Clicking that line expands it to reveal the full list of collapsed calls, and each item in that list can be further clicked to see its own detail.
-- **Enforcement tier:** unenforced
-- **Verification:** Not yet enforced: mined from Codex/Claude conversation history on 2026-07-03 (docs-only pass per owner directive) and recorded pending an oracle in the follow-up code pass. No test currently guards this statement.
-- **Blockers:** `blocker.khala_code_ux_mining.oracle_not_implemented_20260703`
+- **Enforcement tier:** test-sweep
+- **Oracle** `consecutive_tool_calls_collapsed.source` (bun-test, unit): Pins the grouping pass and collapsible summary renderer wired into the transcript render path, including the click-to-expand toggle and matching CSS. — `clients/khala-code-desktop/tests/ux-contracts.test.ts`
+- **Verification:** bun test tests/ux-contracts.test.ts inside clients/khala-code-desktop; runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.
 - **Authority boundary:** Applies to runs of consecutive tool calls only; a tool call interleaved with an assistant message is not collapsed into an adjacent group.
 
-### `khala_code.transcript.tool_call_path_display.v1` — PENDING
+### `khala_code.transcript.tool_call_path_display.v1` — ENFORCED
 
 - **Surface:** khala-code-desktop (chat transcript)
 - **Stated by:** owner via codex-session on 2026-07-01
 - **Statement:** Tool-call summaries in the transcript show a workspace-relative path, never the absolute filesystem path or worktree prefix. Each summary is a short verb-prefixed label (e.g. 'Read ___', 'Edited ___') immediately beside the tool icon; status is conveyed by icon/color rather than a fully spelled-out word like 'Completed'.
-- **Enforcement tier:** unenforced
-- **Verification:** Not yet enforced: mined from Codex/Claude conversation history on 2026-07-03 (docs-only pass per owner directive) and recorded pending an oracle in the follow-up code pass. No test currently guards this statement.
-- **Blockers:** `blocker.khala_code_ux_mining.oracle_not_implemented_20260703`
+- **Enforcement tier:** test-sweep
+- **Oracle** `tool_call_path_display.source` (bun-test, unit): References the projector's relative-path labeling test and confirms tool-call titles are built from the workspace-relative displayPath helper, never an absolute path. — `clients/khala-code-desktop/tests/ux-contracts.test.ts`
+- **Verification:** bun test tests/ux-contracts.test.ts inside clients/khala-code-desktop; runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.
 - **Authority boundary:** Binds display formatting only; the underlying tool-call data may still carry the absolute path internally.
 
-### `khala_code.transcript.streaming_state_cross_surface_consistency.v1` — PENDING
+### `khala_code.transcript.streaming_state_cross_surface_consistency.v1` — ENFORCED
 
 - **Surface:** khala-code-desktop (chat transcript)
 - **Stated by:** owner via codex-session on 2026-07-01
 - **Statement:** The sidebar's streaming indicator and the composer's own status readout for the active thread must always agree. It must never be possible for the sidebar to show a thread as streaming while the composer for that same thread simultaneously shows 'ready' (or vice versa).
-- **Enforcement tier:** unenforced
-- **Verification:** Not yet enforced: mined from Codex/Claude conversation history on 2026-07-03 (docs-only pass per owner directive) and recorded pending an oracle in the follow-up code pass. No test currently guards this statement.
-- **Blockers:** `blocker.khala_code_ux_mining.oracle_not_implemented_20260703`
+- **Enforcement tier:** test-sweep
+- **Oracle** `streaming_cross_surface_consistency.source` (bun-test, unit): Pins that the composer status and the sidebar streaming badge both derive from the same per-thread isThreadStreaming/streamingThreadIds source of truth, not independent flags that can disagree. — `clients/khala-code-desktop/tests/ux-contracts.test.ts`
+- **Verification:** bun test tests/ux-contracts.test.ts inside clients/khala-code-desktop; runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.
 - **Authority boundary:** This is the cross-surface consistency category from the customer behavior-contract catalog applied to our own product first.
 
-### `khala_code.nav.hotbar_no_route_text.v1` — PENDING
+### `khala_code.nav.hotbar_no_route_text.v1` — ENFORCED
 
 - **Surface:** khala-code-desktop (app navigation)
 - **Stated by:** owner via codex-session on 2026-07-02
 - **Statement:** The app-section nav hotbar (fleet/chat/forum/inbox/settings) shows icon plus hotkey only. It must never render a raw route or path fragment as visible text on a hotbar button.
-- **Enforcement tier:** unenforced
-- **Verification:** Not yet enforced: mined from Codex/Claude conversation history on 2026-07-03 (docs-only pass per owner directive) and recorded pending an oracle in the follow-up code pass. No test currently guards this statement.
-- **Blockers:** `blocker.khala_code_ux_mining.oracle_not_implemented_20260703`
+- **Enforcement tier:** test-sweep
+- **Oracle** `hotbar_no_route_text.dom` (bun-test, dom): Mounts the real nav hotbar and asserts every slot's visible label matches its static configured label with no route/path-shaped text. — `clients/khala-code-desktop/tests/ux-contracts.test.ts`
+- **Verification:** bun test tests/ux-contracts.test.ts inside clients/khala-code-desktop; runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.
 - **Authority boundary:** Binds the hotbar button surface only, not the underlying route model.
 
-### `khala_code.nav.hotbar_hotkey_always_visible.v1` — PENDING
+### `khala_code.nav.hotbar_hotkey_always_visible.v1` — ENFORCED
 
 - **Surface:** khala-code-desktop (app navigation)
 - **Stated by:** owner via codex-session on 2026-07-01
 - **Statement:** Every nav hotbar button always displays its own trigger hotkey as a small visible badge (e.g. '⌥1'), not just discoverable by trial. Pressing the displayed modifier-plus-digit combination for a button always routes to that section.
-- **Enforcement tier:** unenforced
-- **Verification:** Not yet enforced: mined from Codex/Claude conversation history on 2026-07-03 (docs-only pass per owner directive) and recorded pending an oracle in the follow-up code pass. No test currently guards this statement.
-- **Blockers:** `blocker.khala_code_ux_mining.oracle_not_implemented_20260703`
+- **Enforcement tier:** test-sweep
+- **Oracle** `hotbar_hotkey_always_visible.dom` (bun-test, dom): Mounts the real nav hotbar and asserts every slot renders a non-empty hotkey badge containing its configured digit. — `clients/khala-code-desktop/tests/ux-contracts.test.ts`
+- **Verification:** bun test tests/ux-contracts.test.ts inside clients/khala-code-desktop; runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.
 - **Authority boundary:** This is the app-section hotbar (Option+digit); it is distinct from khala_code.chat.recent_thread_cmd_hotkeys.v2's Cmd-hold recent-chat hints, which live in the sidebar rows instead of on hotbar buttons.
 
-### `khala_code.nav.hotbar_no_stray_special_characters.v1` — PENDING
+### `khala_code.nav.hotbar_no_stray_special_characters.v1` — ENFORCED
 
 - **Surface:** khala-code-desktop (app navigation)
 - **Stated by:** owner via codex-session on 2026-07-02
 - **Statement:** The Option+digit hotbar shortcut must always be intercepted as a navigation command and must never leak macOS's special/garbled Option-key characters (e.g. ¡™£¢) into any input field or onto the page.
-- **Enforcement tier:** unenforced
-- **Verification:** Not yet enforced: mined from Codex/Claude conversation history on 2026-07-03 (docs-only pass per owner directive) and recorded pending an oracle in the follow-up code pass. No test currently guards this statement.
-- **Blockers:** `blocker.khala_code_ux_mining.oracle_not_implemented_20260703`
+- **Enforcement tier:** test-sweep
+- **Oracle** `hotbar_no_stray_special_characters.regression_ref` (bun-test, unit): References the existing regression test that dispatches a real Option+Digit2 keydown (producing the macOS special character '™' in event.key) at a focused input and asserts it is intercepted (defaultPrevented) and routes correctly instead of leaking into the input. — `clients/khala-code-desktop/tests/ux-contracts.test.ts`
+- **Verification:** bun test tests/ux-contracts.test.ts inside clients/khala-code-desktop; runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.
 - **Authority boundary:** Binds keyboard interception correctness only.
 
-### `khala_code.menus.flyout_single_line_no_preamble.v1` — PENDING
+### `khala_code.menus.flyout_single_line_no_preamble.v1` — ENFORCED
 
 - **Surface:** khala-code-desktop (app-wide menus)
 - **Stated by:** owner via codex-session on 2026-07-01
 - **Statement:** Right-click and flyout menus render one line per item, with no explanatory subheadline text under each item and no header/preamble content above the options.
-- **Enforcement tier:** unenforced
-- **Verification:** Not yet enforced: mined from Codex/Claude conversation history on 2026-07-03 (docs-only pass per owner directive) and recorded pending an oracle in the follow-up code pass. No test currently guards this statement.
-- **Blockers:** `blocker.khala_code_ux_mining.oracle_not_implemented_20260703`
+- **Enforcement tier:** test-sweep
+- **Oracle** `flyout_single_line_no_preamble.dom` (bun-test, dom): Mounts the real thread sidebar, opens its context menu, and asserts no header element and no per-item description/subheadline render. — `clients/khala-code-desktop/tests/ux-contracts.test.ts`
+- **Verification:** bun test tests/ux-contracts.test.ts inside clients/khala-code-desktop; runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.
 - **Authority boundary:** Applies to all flyout/context menus app-wide, including the thread-action menu and the fleet menu.
 
-### `khala_code.fleet.menu_no_stray_labels.v1` — PENDING
+### `khala_code.fleet.menu_no_stray_labels.v1` — ENFORCED
 
 - **Surface:** khala-code-desktop (fleet panel)
 - **Stated by:** owner via codex-session on 2026-07-01
 - **Statement:** The fleet menu must not render stray internal label text (e.g. a literal 'ACCT' tag) that is not part of a designed, human-readable element.
-- **Enforcement tier:** unenforced
-- **Verification:** Not yet enforced: mined from Codex/Claude conversation history on 2026-07-03 (docs-only pass per owner directive) and recorded pending an oracle in the follow-up code pass. No test currently guards this statement.
-- **Blockers:** `blocker.khala_code_ux_mining.oracle_not_implemented_20260703`
+- **Enforcement tier:** test-sweep
+- **Oracle** `fleet_menu_no_stray_labels.source` (bun-test, unit): Asserts the fleet panel source never contains the literal string 'ACCT'. — `clients/khala-code-desktop/tests/ux-contracts.test.ts`
+- **Verification:** bun test tests/ux-contracts.test.ts inside clients/khala-code-desktop; runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.
 - **Authority boundary:** Narrow scope: this contract targets literal leaked internal labels, not the fleet menu's overall information architecture.
 
-### `khala_code.app.resumes_after_restart.v1` — PENDING
+### `khala_code.app.resumes_after_restart.v1` — ENFORCED
 
 - **Surface:** khala-code-desktop (app lifecycle)
 - **Stated by:** owner via codex-session on 2026-07-01
 - **Statement:** When the app restarts, whether voluntary or due to a crash/relaunch, any work that was in flight resumes rather than silently stopping. The user should not have to notice and manually recover in-progress state after a restart.
-- **Enforcement tier:** unenforced
-- **Verification:** Not yet enforced: mined from Codex/Claude conversation history on 2026-07-03 (docs-only pass per owner directive) and recorded pending an oracle in the follow-up code pass. No test currently guards this statement.
-- **Blockers:** `blocker.khala_code_ux_mining.oracle_not_implemented_20260703`
+- **Enforcement tier:** test-sweep
+- **Oracle** `resumes_after_restart.source` (bun-test, unit): Pins that the last active thread id is read (not cleared) at boot, restored via a dedicated best-effort function after the initial render, and that a failed restore clears the stale id instead of retrying forever. — `clients/khala-code-desktop/tests/ux-contracts.test.ts`
+- **Verification:** bun test tests/ux-contracts.test.ts inside clients/khala-code-desktop; runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.
 - **Authority boundary:** Binds resumability of in-flight work; does not require preserving unsent composer drafts unless separately contracted.
 
-### `khala_code.app.no_unrequested_first_launch_scripts.v1` — PENDING
+### `khala_code.app.no_unrequested_first_launch_scripts.v1` — ENFORCED
 
 - **Surface:** khala-code-desktop (app lifecycle)
 - **Stated by:** owner via codex-session on 2026-07-01
 - **Statement:** Features that have not been enabled (e.g. Apple Bridge) must not run any preparation or background script on first launch. A disabled feature stays fully inert until explicitly turned on.
-- **Enforcement tier:** unenforced
-- **Verification:** Not yet enforced: mined from Codex/Claude conversation history on 2026-07-03 (docs-only pass per owner directive) and recorded pending an oracle in the follow-up code pass. No test currently guards this statement.
-- **Blockers:** `blocker.khala_code_ux_mining.oracle_not_implemented_20260703`
+- **Enforcement tier:** test-sweep
+- **Oracle** `no_unrequested_first_launch_scripts.regression_ref` (bun-test, unit): References the existing Apple FM bridge disabled-on-launch regression tests and confirms package.json carries no prepare:apple-fm-bridge script. — `clients/khala-code-desktop/tests/ux-contracts.test.ts`
+- **Verification:** bun test tests/ux-contracts.test.ts inside clients/khala-code-desktop; runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.
 - **Authority boundary:** Binds first-launch behavior for currently-disabled features; does not block future opt-in enablement flows.
 
-### `khala_code.tokens.per_thread_live_counter.v1` — PENDING
+### `khala_code.tokens.per_thread_live_counter.v1` — ENFORCED
 
 - **Surface:** khala-code-desktop (token accounting)
 - **Stated by:** owner via codex-session on 2026-07-01
 - **Statement:** A live per-thread token counter is visible in the top-right of the Khala Code screen while a thread is active, updating as tokens accrue. Clicking it shows how many of those tokens have synced to the public leaderboard.
-- **Enforcement tier:** unenforced
-- **Verification:** Not yet enforced: mined from Codex/Claude conversation history on 2026-07-03 (docs-only pass per owner directive) and recorded pending an oracle in the follow-up code pass. No test currently guards this statement.
-- **Blockers:** `blocker.khala_code_ux_mining.oracle_not_implemented_20260703`
+- **Enforcement tier:** test-sweep
+- **Oracle** `per_thread_live_counter.source` (bun-test, unit): Pins the token counter's top-right CSS placement, its click handler opening the sync-detail popover, and that the popover surfaces both leaderboard-synced and pending-sync token fields. — `clients/khala-code-desktop/tests/ux-contracts.test.ts`
+- **Verification:** bun test tests/ux-contracts.test.ts inside clients/khala-code-desktop; runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.
 - **Authority boundary:** Display-only claim; does not change the exact-only token accounting invariants (usage_truth='exact', reconciliation against token_usage_events) owned elsewhere.

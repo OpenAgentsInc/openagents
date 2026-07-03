@@ -138,7 +138,7 @@ const bindExpandableToolCard = (
   })
 }
 
-const iconForCodexItem = (itemType: string): IconName => {
+export const iconForCodexItem = (itemType: string): IconName => {
   switch (itemType) {
     case "commandExecution":
       return "Terminal"
