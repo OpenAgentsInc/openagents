@@ -1,0 +1,1196 @@
+{
+  "schema": "khala-code-architecture-scan-allowlist.v1",
+  "description": "Grandfathered Khala Code architecture scan findings. Run `bun run --cwd clients/khala-code-desktop scan:architecture -- --update-allowlist` after removing a finding, review the count decrease, and keep verify green.",
+  "counts": {
+    "date-now-in-logic": 41,
+    "direct-env-read": 28,
+    "effect-run-promise": 66,
+    "json-parse-cast": 31,
+    "set-timeout-kill": 3
+  },
+  "entries": [
+    {
+      "id": "74eb28e23201a571",
+      "category": "date-now-in-logic",
+      "path": "clients/khala-code-desktop/scripts/live-two-codex-readonly-smoke.ts",
+      "line": 23,
+      "snippet": "Date.now()"
+    },
+    {
+      "id": "df7a25797367c88e",
+      "category": "date-now-in-logic",
+      "path": "clients/khala-code-desktop/scripts/live-two-codex-readonly-smoke.ts",
+      "line": 141,
+      "snippet": "Date.now()"
+    },
+    {
+      "id": "b28dea9ad1ea1a4b",
+      "category": "date-now-in-logic",
+      "path": "clients/khala-code-desktop/scripts/thread-switch-benchmark.ts",
+      "line": 64,
+      "snippet": "Date.now()"
+    },
+    {
+      "id": "55b8c555da1922df",
+      "category": "date-now-in-logic",
+      "path": "clients/khala-code-desktop/src/bun/claude-app-sdk-chat-runtime.ts",
+      "line": 311,
+      "snippet": "Date.now()"
+    },
+    {
+      "id": "069270f0ea0ef40b",
+      "category": "date-now-in-logic",
+      "path": "clients/khala-code-desktop/src/bun/claude-app-sdk-chat-runtime.ts",
+      "line": 338,
+      "snippet": "Date.now()"
+    },
+    {
+      "id": "24b2a8cd51867e87",
+      "category": "date-now-in-logic",
+      "path": "clients/khala-code-desktop/src/bun/claude-approvals.ts",
+      "line": 102,
+      "snippet": "Date.now()"
+    },
+    {
+      "id": "702834db47a3a5d1",
+      "category": "date-now-in-logic",
+      "path": "clients/khala-code-desktop/src/bun/codex-app-server-chat-runtime.ts",
+      "line": 393,
+      "snippet": "Date.now()"
+    },
+    {
+      "id": "9fdd3c58a51c92ca",
+      "category": "date-now-in-logic",
+      "path": "clients/khala-code-desktop/src/bun/codex-app-server-chat-runtime.ts",
+      "line": 506,
+      "snippet": "Date.now()"
+    },
+    {
+      "id": "26cc711d6121d6a8",
+      "category": "date-now-in-logic",
+      "path": "clients/khala-code-desktop/src/bun/codex-app-server-chat-runtime.ts",
+      "line": 517,
+      "snippet": "Date.now()"
+    },
+    {
+      "id": "ab7c0cf7aa87ef51",
+      "category": "date-now-in-logic",
+      "path": "clients/khala-code-desktop/src/bun/codex-app-server-chat-runtime.ts",
+      "line": 910,
+      "snippet": "Date.now()"
+    },
+    {
+      "id": "868c1c5087b57506",
+      "category": "date-now-in-logic",
+      "path": "clients/khala-code-desktop/src/bun/headless.ts",
+      "line": 49,
+      "snippet": "Date.now()"
+    },
+    {
+      "id": "da9419ea418c7fae",
+      "category": "date-now-in-logic",
+      "path": "clients/khala-code-desktop/src/bun/headless.ts",
+      "line": 50,
+      "snippet": "Date.now()"
+    },
+    {
+      "id": "7ec1358524aea7dc",
+      "category": "date-now-in-logic",
+      "path": "clients/khala-code-desktop/src/bun/khala-browser-service.ts",
+      "line": 131,
+      "snippet": "Date.now()"
+    },
+    {
+      "id": "7bf3b228f545ec1b",
+      "category": "date-now-in-logic",
+      "path": "clients/khala-code-desktop/src/bun/khala-chat-runtime.ts",
+      "line": 1657,
+      "snippet": "Date.now()"
+    },
+    {
+      "id": "3c09fbb504032b75",
+      "category": "date-now-in-logic",
+      "path": "clients/khala-code-desktop/src/bun/khala-fleet-tools.ts",
+      "line": 927,
+      "snippet": "Date.now()"
+    },
+    {
+      "id": "dc4c4e7968301cdc",
+      "category": "date-now-in-logic",
+      "path": "clients/khala-code-desktop/src/bun/khala-fleet-tools.ts",
+      "line": 929,
+      "snippet": "Date.now()"
+    },
+    {
+      "id": "0ab3f26a6b35122f",
+      "category": "date-now-in-logic",
+      "path": "clients/khala-code-desktop/src/bun/khala-fleet-tools.ts",
+      "line": 930,
+      "snippet": "Date.now()"
+    },
+    {
+      "id": "9b13bc3a0dde30a6",
+      "category": "date-now-in-logic",
+      "path": "clients/khala-code-desktop/src/bun/khala-fleet-tools.ts",
+      "line": 2382,
+      "snippet": "Date.now()"
+    },
+    {
+      "id": "98791514ad9a80e2",
+      "category": "date-now-in-logic",
+      "path": "clients/khala-code-desktop/src/bun/khala-fleet-tools.ts",
+      "line": 4366,
+      "snippet": "Date.now()"
+    },
+    {
+      "id": "4dc574632a59b4fe",
+      "category": "date-now-in-logic",
+      "path": "clients/khala-code-desktop/src/bun/khala-fleet-tools.ts",
+      "line": 4487,
+      "snippet": "Date.now()"
+    },
+    {
+      "id": "3723d2bb93542338",
+      "category": "date-now-in-logic",
+      "path": "clients/khala-code-desktop/src/bun/khala-fleet-tools.ts",
+      "line": 4488,
+      "snippet": "Date.now()"
+    },
+    {
+      "id": "e0a90f71afa3240c",
+      "category": "date-now-in-logic",
+      "path": "clients/khala-code-desktop/src/bun/khala-web-search-service.ts",
+      "line": 57,
+      "snippet": "Date.now()"
+    },
+    {
+      "id": "66abd222f65fb6f4",
+      "category": "date-now-in-logic",
+      "path": "clients/khala-code-desktop/src/bun/khala-web-search-service.ts",
+      "line": 70,
+      "snippet": "Date.now()"
+    },
+    {
+      "id": "7ce449e0dcc56ef1",
+      "category": "date-now-in-logic",
+      "path": "clients/khala-code-desktop/src/bun/rpc-handlers.ts",
+      "line": 992,
+      "snippet": "Date.now()"
+    },
+    {
+      "id": "2818a410b2b14d61",
+      "category": "date-now-in-logic",
+      "path": "clients/khala-code-desktop/src/bun/rpc-handlers.ts",
+      "line": 1012,
+      "snippet": "Date.now()"
+    },
+    {
+      "id": "403a42556293a70d",
+      "category": "date-now-in-logic",
+      "path": "clients/khala-code-desktop/src/bun/rpc-handlers.ts",
+      "line": 1627,
+      "snippet": "Date.now()"
+    },
+    {
+      "id": "7d85fff65c1a4c17",
+      "category": "date-now-in-logic",
+      "path": "clients/khala-code-desktop/src/ui/codex-thread-sidebar.ts",
+      "line": 782,
+      "snippet": "Date.now()"
+    },
+    {
+      "id": "c8b468a38657c380",
+      "category": "date-now-in-logic",
+      "path": "clients/khala-code-desktop/src/ui/forum-panel.ts",
+      "line": 195,
+      "snippet": "Date.now()"
+    },
+    {
+      "id": "95a7c1b15b0de9ae",
+      "category": "date-now-in-logic",
+      "path": "clients/khala-code-desktop/src/ui/main.ts",
+      "line": 711,
+      "snippet": "Date.now()"
+    },
+    {
+      "id": "2e13514c65392f7a",
+      "category": "date-now-in-logic",
+      "path": "clients/khala-code-desktop/src/ui/main.ts",
+      "line": 1798,
+      "snippet": "Date.now()"
+    },
+    {
+      "id": "8a585f57a635c459",
+      "category": "date-now-in-logic",
+      "path": "clients/khala-code-desktop/src/ui/main.ts",
+      "line": 2106,
+      "snippet": "Date.now()"
+    },
+    {
+      "id": "c49f42e86fb7e5d9",
+      "category": "date-now-in-logic",
+      "path": "clients/khala-code-desktop/src/ui/main.ts",
+      "line": 2109,
+      "snippet": "Date.now()"
+    },
+    {
+      "id": "79be1e2c237dd679",
+      "category": "date-now-in-logic",
+      "path": "clients/khala-code-desktop/src/ui/main.ts",
+      "line": 2112,
+      "snippet": "Date.now()"
+    },
+    {
+      "id": "8a734bcc2f9a156c",
+      "category": "date-now-in-logic",
+      "path": "clients/khala-code-desktop/src/ui/main.ts",
+      "line": 2259,
+      "snippet": "Date.now()"
+    },
+    {
+      "id": "2856ae56a01cd452",
+      "category": "date-now-in-logic",
+      "path": "clients/khala-code-desktop/src/ui/main.ts",
+      "line": 2270,
+      "snippet": "Date.now()"
+    },
+    {
+      "id": "ae01064673e2b952",
+      "category": "date-now-in-logic",
+      "path": "clients/khala-code-desktop/src/ui/plans-panel.ts",
+      "line": 48,
+      "snippet": "Date.now()"
+    },
+    {
+      "id": "ad05efcdafe91df4",
+      "category": "date-now-in-logic",
+      "path": "clients/khala-code-desktop/src/ui/thread-time.ts",
+      "line": 3,
+      "snippet": "Date.now()"
+    },
+    {
+      "id": "0938cff8da936a18",
+      "category": "date-now-in-logic",
+      "path": "packages/khala-tools/src/index.ts",
+      "line": 1009,
+      "snippet": "Date.now()"
+    },
+    {
+      "id": "e75259595dfa55bc",
+      "category": "date-now-in-logic",
+      "path": "packages/khala-tools/src/index.ts",
+      "line": 1065,
+      "snippet": "Date.now()"
+    },
+    {
+      "id": "dc575936bdf611fe",
+      "category": "date-now-in-logic",
+      "path": "packages/khala-tools/src/mcp.ts",
+      "line": 240,
+      "snippet": "Date.now()"
+    },
+    {
+      "id": "caec27d8fd9071ba",
+      "category": "date-now-in-logic",
+      "path": "packages/khala-tools/src/session-rollout.ts",
+      "line": 294,
+      "snippet": "Date.now()"
+    },
+    {
+      "id": "e901c4933e1e0a47",
+      "category": "direct-env-read",
+      "path": "clients/khala-code-desktop/scripts/backfill-codex-message-token-audit.ts",
+      "line": 162,
+      "snippet": "Bun.env"
+    },
+    {
+      "id": "2e30b2528bf1ba79",
+      "category": "direct-env-read",
+      "path": "clients/khala-code-desktop/scripts/backfill-codex-message-token-audit.ts",
+      "line": 186,
+      "snippet": "Bun.env"
+    },
+    {
+      "id": "e534396db79844ac",
+      "category": "direct-env-read",
+      "path": "clients/khala-code-desktop/scripts/backfill-codex-message-token-audit.ts",
+      "line": 189,
+      "snippet": "Bun.env"
+    },
+    {
+      "id": "e04edbc61b71ca93",
+      "category": "direct-env-read",
+      "path": "clients/khala-code-desktop/scripts/codex-parity-live-smoke.ts",
+      "line": 8,
+      "snippet": "Bun.env"
+    },
+    {
+      "id": "a0ac3e9dcd13aaa5",
+      "category": "direct-env-read",
+      "path": "clients/khala-code-desktop/scripts/codex-parity-live-smoke.ts",
+      "line": 10,
+      "snippet": "Bun.env"
+    },
+    {
+      "id": "3b0a916bce3e6d16",
+      "category": "direct-env-read",
+      "path": "clients/khala-code-desktop/scripts/live-two-codex-readonly-smoke.ts",
+      "line": 12,
+      "snippet": "Bun.env"
+    },
+    {
+      "id": "93c35fe6fd6a8d1c",
+      "category": "direct-env-read",
+      "path": "clients/khala-code-desktop/scripts/live-two-codex-readonly-smoke.ts",
+      "line": 25,
+      "snippet": "Bun.env"
+    },
+    {
+      "id": "2fb15abff1e6544c",
+      "category": "direct-env-read",
+      "path": "clients/khala-code-desktop/scripts/live-two-codex-readonly-smoke.ts",
+      "line": 29,
+      "snippet": "Bun.env"
+    },
+    {
+      "id": "86d3530d72a81132",
+      "category": "direct-env-read",
+      "path": "clients/khala-code-desktop/scripts/live-two-codex-readonly-smoke.ts",
+      "line": 47,
+      "snippet": "Bun.env"
+    },
+    {
+      "id": "b395516d7f37af8d",
+      "category": "direct-env-read",
+      "path": "clients/khala-code-desktop/scripts/live-two-codex-readonly-smoke.ts",
+      "line": 87,
+      "snippet": "Bun.env"
+    },
+    {
+      "id": "3fb16936e4c7caef",
+      "category": "direct-env-read",
+      "path": "clients/khala-code-desktop/scripts/live-two-codex-readonly-smoke.ts",
+      "line": 88,
+      "snippet": "Bun.env"
+    },
+    {
+      "id": "7904592b385a5919",
+      "category": "direct-env-read",
+      "path": "clients/khala-code-desktop/scripts/live-two-codex-readonly-smoke.ts",
+      "line": 89,
+      "snippet": "Bun.env"
+    },
+    {
+      "id": "b81e4f1ec642fc98",
+      "category": "direct-env-read",
+      "path": "clients/khala-code-desktop/scripts/live-two-codex-readonly-smoke.ts",
+      "line": 90,
+      "snippet": "Bun.env"
+    },
+    {
+      "id": "9c3042333ba96f89",
+      "category": "direct-env-read",
+      "path": "clients/khala-code-desktop/scripts/part2-gepa-manifest-bridge.ts",
+      "line": 15,
+      "snippet": "process.env"
+    },
+    {
+      "id": "feb3715dd4a024a4",
+      "category": "direct-env-read",
+      "path": "clients/khala-code-desktop/scripts/visual-baseline-options.ts",
+      "line": 19,
+      "snippet": "process.env"
+    },
+    {
+      "id": "5ff32d9cc19857e7",
+      "category": "direct-env-read",
+      "path": "clients/khala-code-desktop/src/bun/claude-session-store.ts",
+      "line": 44,
+      "snippet": "Bun.env"
+    },
+    {
+      "id": "97088a08f8f92bda",
+      "category": "direct-env-read",
+      "path": "clients/khala-code-desktop/src/bun/khala-code-config.ts",
+      "line": 197,
+      "snippet": "Bun.env"
+    },
+    {
+      "id": "086c05b6347bc77b",
+      "category": "direct-env-read",
+      "path": "clients/khala-code-desktop/src/bun/khala-code-config.ts",
+      "line": 197,
+      "snippet": "process.env"
+    },
+    {
+      "id": "f58e68a375466801",
+      "category": "direct-env-read",
+      "path": "clients/khala-code-desktop/src/bun/khala-code-config.ts",
+      "line": 226,
+      "snippet": "Bun.env"
+    },
+    {
+      "id": "1197a6061e577cb9",
+      "category": "direct-env-read",
+      "path": "clients/khala-code-desktop/src/bun/khala-code-config.ts",
+      "line": 226,
+      "snippet": "process.env"
+    },
+    {
+      "id": "48289810e60ce9f0",
+      "category": "direct-env-read",
+      "path": "clients/khala-code-desktop/src/bun/khala-process.ts",
+      "line": 249,
+      "snippet": "process.env"
+    },
+    {
+      "id": "adc388ffbd801953",
+      "category": "direct-env-read",
+      "path": "clients/khala-code-desktop/src/bun/session-catalog.ts",
+      "line": 73,
+      "snippet": "Bun.env"
+    },
+    {
+      "id": "bd288e8366716c1c",
+      "category": "direct-env-read",
+      "path": "clients/khala-code-desktop/src/bun/session-catalog.ts",
+      "line": 81,
+      "snippet": "Bun.env"
+    },
+    {
+      "id": "ad21a9d902b2764f",
+      "category": "direct-env-read",
+      "path": "clients/khala-code-desktop/src/bun/session-catalog.ts",
+      "line": 264,
+      "snippet": "Bun.env"
+    },
+    {
+      "id": "21bc6512963a5000",
+      "category": "direct-env-read",
+      "path": "packages/khala-tools/src/index.ts",
+      "line": 1456,
+      "snippet": "process.env"
+    },
+    {
+      "id": "e0bb610c363622a4",
+      "category": "direct-env-read",
+      "path": "packages/khala-tools/src/index.ts",
+      "line": 1466,
+      "snippet": "process.env"
+    },
+    {
+      "id": "b5d030bfd96d70ae",
+      "category": "direct-env-read",
+      "path": "packages/khala-tools/src/index.ts",
+      "line": 1466,
+      "snippet": "process.env"
+    },
+    {
+      "id": "b213026ed7c2dc8a",
+      "category": "direct-env-read",
+      "path": "packages/khala-tools/src/process-sandbox-macos.ts",
+      "line": 245,
+      "snippet": "process.env"
+    },
+    {
+      "id": "2d04ece261a468f6",
+      "category": "effect-run-promise",
+      "path": "clients/khala-code-desktop/src/bun/claude-app-sdk-chat-runtime.ts",
+      "line": 250,
+      "snippet": "Effect.runPromise("
+    },
+    {
+      "id": "6413d0ca43de9d19",
+      "category": "effect-run-promise",
+      "path": "clients/khala-code-desktop/src/bun/claude-approvals.ts",
+      "line": 88,
+      "snippet": "Effect.runPromise("
+    },
+    {
+      "id": "413f43c359b48a65",
+      "category": "effect-run-promise",
+      "path": "clients/khala-code-desktop/src/bun/claude-approvals.ts",
+      "line": 121,
+      "snippet": "Effect.runPromise("
+    },
+    {
+      "id": "762db440cdd080d9",
+      "category": "effect-run-promise",
+      "path": "clients/khala-code-desktop/src/bun/claude-approvals.ts",
+      "line": 123,
+      "snippet": "Effect.runPromise("
+    },
+    {
+      "id": "9052ce74728f1a88",
+      "category": "effect-run-promise",
+      "path": "clients/khala-code-desktop/src/bun/claude-approvals.ts",
+      "line": 131,
+      "snippet": "Effect.runPromise("
+    },
+    {
+      "id": "9304aa30a0499752",
+      "category": "effect-run-promise",
+      "path": "clients/khala-code-desktop/src/bun/fleet-run-supervisor-rpc-adapter.ts",
+      "line": 344,
+      "snippet": "Effect.runPromise("
+    },
+    {
+      "id": "4cec78e04a6f870e",
+      "category": "effect-run-promise",
+      "path": "clients/khala-code-desktop/src/bun/fleet-run-supervisor-rpc-adapter.ts",
+      "line": 403,
+      "snippet": "Effect.runPromise("
+    },
+    {
+      "id": "7e121eb0cb5c0d8e",
+      "category": "effect-run-promise",
+      "path": "clients/khala-code-desktop/src/bun/fleet-run-supervisor-rpc-adapter.ts",
+      "line": 411,
+      "snippet": "Effect.runPromise("
+    },
+    {
+      "id": "32596b467c780565",
+      "category": "effect-run-promise",
+      "path": "clients/khala-code-desktop/src/bun/fleet-run-supervisor-rpc-adapter.ts",
+      "line": 428,
+      "snippet": "Effect.runPromise("
+    },
+    {
+      "id": "a7b2e560bcc2b85c",
+      "category": "effect-run-promise",
+      "path": "clients/khala-code-desktop/src/bun/fleet-run-supervisor-rpc-adapter.ts",
+      "line": 527,
+      "snippet": "Effect.runPromise("
+    },
+    {
+      "id": "c80e36cd652d92c7",
+      "category": "effect-run-promise",
+      "path": "clients/khala-code-desktop/src/bun/fleet-run-supervisor-rpc-adapter.ts",
+      "line": 584,
+      "snippet": "Effect.runPromise("
+    },
+    {
+      "id": "835bc91e59be2a55",
+      "category": "effect-run-promise",
+      "path": "clients/khala-code-desktop/src/bun/khala-chat-runtime.ts",
+      "line": 1282,
+      "snippet": "Effect.runPromise("
+    },
+    {
+      "id": "56e191d46b46cd62",
+      "category": "effect-run-promise",
+      "path": "clients/khala-code-desktop/src/bun/khala-chat-runtime.ts",
+      "line": 1289,
+      "snippet": "Effect.runPromise("
+    },
+    {
+      "id": "7a3f44f6041d3c7a",
+      "category": "effect-run-promise",
+      "path": "clients/khala-code-desktop/src/bun/khala-chat-runtime.ts",
+      "line": 1296,
+      "snippet": "Effect.runPromise("
+    },
+    {
+      "id": "d948bdf695b8a783",
+      "category": "effect-run-promise",
+      "path": "clients/khala-code-desktop/src/bun/khala-chat-runtime.ts",
+      "line": 1346,
+      "snippet": "Effect.runPromise("
+    },
+    {
+      "id": "496138af220d3874",
+      "category": "effect-run-promise",
+      "path": "clients/khala-code-desktop/src/bun/khala-fleet-tools.ts",
+      "line": 832,
+      "snippet": "Effect.runPromise("
+    },
+    {
+      "id": "e9b013be7c0ad1e2",
+      "category": "effect-run-promise",
+      "path": "clients/khala-code-desktop/src/bun/khala-fleet-tools.ts",
+      "line": 1108,
+      "snippet": "Effect.runPromise("
+    },
+    {
+      "id": "9858dc7d5d338229",
+      "category": "effect-run-promise",
+      "path": "clients/khala-code-desktop/src/bun/khala-fleet-tools.ts",
+      "line": 1554,
+      "snippet": "Effect.runPromise("
+    },
+    {
+      "id": "21adcfc8398f9588",
+      "category": "effect-run-promise",
+      "path": "clients/khala-code-desktop/src/bun/khala-fleet-tools.ts",
+      "line": 1577,
+      "snippet": "Effect.runPromise("
+    },
+    {
+      "id": "3beef4eebdf4dc34",
+      "category": "effect-run-promise",
+      "path": "clients/khala-code-desktop/src/bun/khala-fleet-tools.ts",
+      "line": 1589,
+      "snippet": "Effect.runPromise("
+    },
+    {
+      "id": "553885dcd8680954",
+      "category": "effect-run-promise",
+      "path": "clients/khala-code-desktop/src/bun/khala-fleet-tools.ts",
+      "line": 1632,
+      "snippet": "Effect.runPromise("
+    },
+    {
+      "id": "a69f76299e9e9859",
+      "category": "effect-run-promise",
+      "path": "clients/khala-code-desktop/src/bun/khala-fleet-tools.ts",
+      "line": 1633,
+      "snippet": "Effect.runPromise("
+    },
+    {
+      "id": "02fa3821d88e5906",
+      "category": "effect-run-promise",
+      "path": "clients/khala-code-desktop/src/bun/khala-fleet-tools.ts",
+      "line": 1681,
+      "snippet": "Effect.runPromise("
+    },
+    {
+      "id": "409fb27f8a2996e0",
+      "category": "effect-run-promise",
+      "path": "clients/khala-code-desktop/src/bun/khala-fleet-tools.ts",
+      "line": 2064,
+      "snippet": "Effect.runPromise("
+    },
+    {
+      "id": "3595f81b9528999b",
+      "category": "effect-run-promise",
+      "path": "clients/khala-code-desktop/src/bun/khala-process.ts",
+      "line": 400,
+      "snippet": "Effect.runPromise("
+    },
+    {
+      "id": "8997275c92057b05",
+      "category": "effect-run-promise",
+      "path": "clients/khala-code-desktop/src/bun/khala-process.ts",
+      "line": 407,
+      "snippet": "Effect.runPromise("
+    },
+    {
+      "id": "4fd247e59072378f",
+      "category": "effect-run-promise",
+      "path": "clients/khala-code-desktop/src/bun/khala-process.ts",
+      "line": 419,
+      "snippet": "Effect.runPromise("
+    },
+    {
+      "id": "1546a18b63b24624",
+      "category": "effect-run-promise",
+      "path": "clients/khala-code-desktop/src/bun/khala-process.ts",
+      "line": 482,
+      "snippet": "Effect.runPromise("
+    },
+    {
+      "id": "f20d7181e7034e03",
+      "category": "effect-run-promise",
+      "path": "clients/khala-code-desktop/src/bun/rpc-handlers.ts",
+      "line": 463,
+      "snippet": "Effect.runPromise("
+    },
+    {
+      "id": "15c2ece8a2e6a33f",
+      "category": "effect-run-promise",
+      "path": "clients/khala-code-desktop/src/ui/fleet-worker-cards.ts",
+      "line": 135,
+      "snippet": "Effect.runPromise("
+    },
+    {
+      "id": "fa08d1b0ffec7579",
+      "category": "effect-run-promise",
+      "path": "clients/khala-code-desktop/src/ui/fleet-worker-cards.ts",
+      "line": 163,
+      "snippet": "Effect.runPromise("
+    },
+    {
+      "id": "2b4c87885b3a336e",
+      "category": "effect-run-promise",
+      "path": "packages/khala-tools/src/apply-patch.ts",
+      "line": 165,
+      "snippet": "Effect.runPromise("
+    },
+    {
+      "id": "9744d706fae163d3",
+      "category": "effect-run-promise",
+      "path": "packages/khala-tools/src/ask-user.ts",
+      "line": 116,
+      "snippet": "Effect.runPromise("
+    },
+    {
+      "id": "510a45faffe63323",
+      "category": "effect-run-promise",
+      "path": "packages/khala-tools/src/browser.ts",
+      "line": 392,
+      "snippet": "Effect.runPromise("
+    },
+    {
+      "id": "b5ceefc77cced8a8",
+      "category": "effect-run-promise",
+      "path": "packages/khala-tools/src/browser.ts",
+      "line": 407,
+      "snippet": "Effect.runPromise("
+    },
+    {
+      "id": "47756b12a431bb43",
+      "category": "effect-run-promise",
+      "path": "packages/khala-tools/src/browser.ts",
+      "line": 422,
+      "snippet": "Effect.runPromise("
+    },
+    {
+      "id": "0818c3fa8f82410a",
+      "category": "effect-run-promise",
+      "path": "packages/khala-tools/src/browser.ts",
+      "line": 441,
+      "snippet": "Effect.runPromise("
+    },
+    {
+      "id": "0c87c176592e57d9",
+      "category": "effect-run-promise",
+      "path": "packages/khala-tools/src/browser.ts",
+      "line": 456,
+      "snippet": "Effect.runPromise("
+    },
+    {
+      "id": "7778fa84efb7f76b",
+      "category": "effect-run-promise",
+      "path": "packages/khala-tools/src/browser.ts",
+      "line": 471,
+      "snippet": "Effect.runPromise("
+    },
+    {
+      "id": "46d2991a60be35ec",
+      "category": "effect-run-promise",
+      "path": "packages/khala-tools/src/browser.ts",
+      "line": 486,
+      "snippet": "Effect.runPromise("
+    },
+    {
+      "id": "18df88cb9228fde5",
+      "category": "effect-run-promise",
+      "path": "packages/khala-tools/src/browser.ts",
+      "line": 596,
+      "snippet": "Effect.runPromise("
+    },
+    {
+      "id": "4fe2e38e90027d0f",
+      "category": "effect-run-promise",
+      "path": "packages/khala-tools/src/browser.ts",
+      "line": 635,
+      "snippet": "Effect.runPromise("
+    },
+    {
+      "id": "65bf7b5b9eca4c78",
+      "category": "effect-run-promise",
+      "path": "packages/khala-tools/src/browser.ts",
+      "line": 695,
+      "snippet": "Effect.runPromise("
+    },
+    {
+      "id": "922da45d92e38892",
+      "category": "effect-run-promise",
+      "path": "packages/khala-tools/src/edit.ts",
+      "line": 173,
+      "snippet": "Effect.runPromise("
+    },
+    {
+      "id": "daa47d9bec347c4c",
+      "category": "effect-run-promise",
+      "path": "packages/khala-tools/src/edit.ts",
+      "line": 290,
+      "snippet": "Effect.runPromise("
+    },
+    {
+      "id": "e3a969dae5d8b389",
+      "category": "effect-run-promise",
+      "path": "packages/khala-tools/src/glob.ts",
+      "line": 223,
+      "snippet": "Effect.runPromise("
+    },
+    {
+      "id": "6fc1f12c58a9f212",
+      "category": "effect-run-promise",
+      "path": "packages/khala-tools/src/grep.ts",
+      "line": 493,
+      "snippet": "Effect.runPromise("
+    },
+    {
+      "id": "b362715a6bb39f6a",
+      "category": "effect-run-promise",
+      "path": "packages/khala-tools/src/index.ts",
+      "line": 1397,
+      "snippet": "Effect.runPromise("
+    },
+    {
+      "id": "fc500f94961b0449",
+      "category": "effect-run-promise",
+      "path": "packages/khala-tools/src/index.ts",
+      "line": 1590,
+      "snippet": "Effect.runPromise("
+    },
+    {
+      "id": "c94411eb0c97b23e",
+      "category": "effect-run-promise",
+      "path": "packages/khala-tools/src/index.ts",
+      "line": 1598,
+      "snippet": "Effect.runPromise("
+    },
+    {
+      "id": "49cb6f72f0ea22e4",
+      "category": "effect-run-promise",
+      "path": "packages/khala-tools/src/ls.ts",
+      "line": 154,
+      "snippet": "Effect.runPromise("
+    },
+    {
+      "id": "2d59dfd89b0acf65",
+      "category": "effect-run-promise",
+      "path": "packages/khala-tools/src/mcp.ts",
+      "line": 236,
+      "snippet": "Effect.runPromise("
+    },
+    {
+      "id": "271e811721fb59af",
+      "category": "effect-run-promise",
+      "path": "packages/khala-tools/src/process-sandbox-macos.ts",
+      "line": 318,
+      "snippet": "Effect.runPromise("
+    },
+    {
+      "id": "ef86d20f634f322e",
+      "category": "effect-run-promise",
+      "path": "packages/khala-tools/src/process-sandbox-macos.ts",
+      "line": 356,
+      "snippet": "Effect.runPromise("
+    },
+    {
+      "id": "0127e465e333c4b9",
+      "category": "effect-run-promise",
+      "path": "packages/khala-tools/src/process-sandbox-macos.ts",
+      "line": 364,
+      "snippet": "Effect.runPromise("
+    },
+    {
+      "id": "6011799ff3e7ee9b",
+      "category": "effect-run-promise",
+      "path": "packages/khala-tools/src/read.ts",
+      "line": 159,
+      "snippet": "Effect.runPromise("
+    },
+    {
+      "id": "42f64fbb80425c7f",
+      "category": "effect-run-promise",
+      "path": "packages/khala-tools/src/todo-write.ts",
+      "line": 91,
+      "snippet": "Effect.runPromise("
+    },
+    {
+      "id": "4765826b3a45ba64",
+      "category": "effect-run-promise",
+      "path": "packages/khala-tools/src/view-image.ts",
+      "line": 111,
+      "snippet": "Effect.runPromise("
+    },
+    {
+      "id": "5d55a0e5394c2a34",
+      "category": "effect-run-promise",
+      "path": "packages/khala-tools/src/view-image.ts",
+      "line": 179,
+      "snippet": "Effect.runPromise("
+    },
+    {
+      "id": "be6b475299046714",
+      "category": "effect-run-promise",
+      "path": "packages/khala-tools/src/web-fetch.ts",
+      "line": 102,
+      "snippet": "Effect.runPromise("
+    },
+    {
+      "id": "a20694bb00cf0bef",
+      "category": "effect-run-promise",
+      "path": "packages/khala-tools/src/web-fetch.ts",
+      "line": 152,
+      "snippet": "Effect.runPromise("
+    },
+    {
+      "id": "8f0dd7c64002cccd",
+      "category": "effect-run-promise",
+      "path": "packages/khala-tools/src/web-search.ts",
+      "line": 89,
+      "snippet": "Effect.runPromise("
+    },
+    {
+      "id": "c50544841465e0da",
+      "category": "effect-run-promise",
+      "path": "packages/khala-tools/src/write-stdin.ts",
+      "line": 95,
+      "snippet": "Effect.runPromise("
+    },
+    {
+      "id": "c0ae5ec63cc8d2ec",
+      "category": "effect-run-promise",
+      "path": "packages/khala-tools/src/write-stdin.ts",
+      "line": 134,
+      "snippet": "Effect.runPromise("
+    },
+    {
+      "id": "30634785ae706241",
+      "category": "effect-run-promise",
+      "path": "packages/khala-tools/src/write.ts",
+      "line": 152,
+      "snippet": "Effect.runPromise("
+    },
+    {
+      "id": "e58b3aefbc891eaf",
+      "category": "effect-run-promise",
+      "path": "packages/khala-tools/src/write.ts",
+      "line": 273,
+      "snippet": "Effect.runPromise("
+    },
+    {
+      "id": "5ebe8c7eef2bbff8",
+      "category": "json-parse-cast",
+      "path": "clients/khala-code-desktop/scripts/backfill-codex-message-token-audit.ts",
+      "line": 251,
+      "snippet": "JSON.parse(line) as"
+    },
+    {
+      "id": "01dd8372ca8e2642",
+      "category": "json-parse-cast",
+      "path": "clients/khala-code-desktop/scripts/backfill-codex-message-token-audit.ts",
+      "line": 373,
+      "snippet": "JSON.parse(line) as"
+    },
+    {
+      "id": "5f2694ac8778730d",
+      "category": "json-parse-cast",
+      "path": "clients/khala-code-desktop/scripts/thread-switch-benchmark.ts",
+      "line": 185,
+      "snippet": "JSON.parse(postData) as"
+    },
+    {
+      "id": "ec8deda4ffd7bf6a",
+      "category": "json-parse-cast",
+      "path": "clients/khala-code-desktop/scripts/visual-smoke-rpc-mocks.ts",
+      "line": 60,
+      "snippet": "JSON.parse(postData) as"
+    },
+    {
+      "id": "c9857bb095df327f",
+      "category": "json-parse-cast",
+      "path": "clients/khala-code-desktop/src/bun/claude-token-usage-telemetry.ts",
+      "line": 191,
+      "snippet": "JSON.parse(line) as"
+    },
+    {
+      "id": "04c68b485915f9d9",
+      "category": "json-parse-cast",
+      "path": "clients/khala-code-desktop/src/bun/codex-app-server-client.ts",
+      "line": 366,
+      "snippet": "JSON.parse(line) as"
+    },
+    {
+      "id": "aa72f1603db5a57d",
+      "category": "json-parse-cast",
+      "path": "clients/khala-code-desktop/src/bun/codex-harness-status.ts",
+      "line": 202,
+      "snippet": "JSON.parse(raw) as"
+    },
+    {
+      "id": "8143e4773338dcbf",
+      "category": "json-parse-cast",
+      "path": "clients/khala-code-desktop/src/bun/codex-rate-limits.ts",
+      "line": 359,
+      "snippet": "JSON.parse(line) as"
+    },
+    {
+      "id": "cba234319609385b",
+      "category": "json-parse-cast",
+      "path": "clients/khala-code-desktop/src/bun/codex-rate-limits.ts",
+      "line": 434,
+      "snippet": "JSON.parse(await read(authPath, \"utf8\")) as"
+    },
+    {
+      "id": "ef72f45ef9176123",
+      "category": "json-parse-cast",
+      "path": "clients/khala-code-desktop/src/bun/fixture-codex-app-server.ts",
+      "line": 110,
+      "snippet": "JSON.parse(JSON.stringify(value)) as"
+    },
+    {
+      "id": "9dd4bad0d5917dff",
+      "category": "json-parse-cast",
+      "path": "clients/khala-code-desktop/src/bun/fixture-codex-app-server.ts",
+      "line": 155,
+      "snippet": "JSON.parse(await readFile(scriptPath, \"utf8\")) as"
+    },
+    {
+      "id": "a36d9f2e845319da",
+      "category": "json-parse-cast",
+      "path": "clients/khala-code-desktop/src/bun/fixture-codex-app-server.ts",
+      "line": 726,
+      "snippet": "JSON.parse(trimmed) as"
+    },
+    {
+      "id": "f7c2839cf39bdac7",
+      "category": "json-parse-cast",
+      "path": "clients/khala-code-desktop/src/bun/harness-setting.ts",
+      "line": 55,
+      "snippet": "JSON.parse(raw) as"
+    },
+    {
+      "id": "cf003b52034097ef",
+      "category": "json-parse-cast",
+      "path": "clients/khala-code-desktop/src/bun/khala-chat-runtime.ts",
+      "line": 930,
+      "snippet": "JSON.parse(text) as"
+    },
+    {
+      "id": "aab2ad6766d1a1e2",
+      "category": "json-parse-cast",
+      "path": "clients/khala-code-desktop/src/bun/khala-chat-runtime.ts",
+      "line": 1052,
+      "snippet": "JSON.parse(data) as"
+    },
+    {
+      "id": "c656e125202b9f8f",
+      "category": "json-parse-cast",
+      "path": "clients/khala-code-desktop/src/bun/khala-chat-runtime.ts",
+      "line": 1366,
+      "snippet": "JSON.parse(value) as"
+    },
+    {
+      "id": "41bb3c0bed8844c6",
+      "category": "json-parse-cast",
+      "path": "clients/khala-code-desktop/src/bun/khala-fleet-tools.ts",
+      "line": 2117,
+      "snippet": "JSON.parse(raw) as"
+    },
+    {
+      "id": "4d687101597f4c7d",
+      "category": "json-parse-cast",
+      "path": "clients/khala-code-desktop/src/bun/khala-fleet-tools.ts",
+      "line": 2138,
+      "snippet": "JSON.parse(await readFile(pylonConfigPath(pylonHome), \"utf8\")) as"
+    },
+    {
+      "id": "b9431b1952c01f85",
+      "category": "json-parse-cast",
+      "path": "clients/khala-code-desktop/src/bun/khala-fleet-tools.ts",
+      "line": 4198,
+      "snippet": "JSON.parse(raw) as"
+    },
+    {
+      "id": "105ffb9e56e8a094",
+      "category": "json-parse-cast",
+      "path": "clients/khala-code-desktop/src/bun/khala-fleet-tools.ts",
+      "line": 4250,
+      "snippet": "JSON.parse( Buffer.from(payload, \"base64url\").toString(\"utf8\"), ) as"
+    },
+    {
+      "id": "60695cbcecedb423",
+      "category": "json-parse-cast",
+      "path": "clients/khala-code-desktop/src/bun/khala-fleet-tools.ts",
+      "line": 4275,
+      "snippet": "JSON.parse( await readFile(join(home, \"auth.json\"), \"utf8\"), ) as"
+    },
+    {
+      "id": "32a7daa60d3c14b9",
+      "category": "json-parse-cast",
+      "path": "clients/khala-code-desktop/src/bun/khala-fleet-tools.ts",
+      "line": 4304,
+      "snippet": "JSON.parse( await readFile(join(pylonHome, \"config.json\"), \"utf8\"), ) as"
+    },
+    {
+      "id": "cc6f536d885e02ec",
+      "category": "json-parse-cast",
+      "path": "clients/khala-code-desktop/src/bun/khala-fleet-tools.ts",
+      "line": 4349,
+      "snippet": "JSON.parse(await readFile(configPath, \"utf8\")) as"
+    },
+    {
+      "id": "400e1d33b59b5cca",
+      "category": "json-parse-cast",
+      "path": "clients/khala-code-desktop/src/bun/session-catalog.ts",
+      "line": 61,
+      "snippet": "JSON.parse(await readFile(path, \"utf8\")) as"
+    },
+    {
+      "id": "bec8d271802a5906",
+      "category": "json-parse-cast",
+      "path": "clients/khala-code-desktop/src/ui/forum-panel.ts",
+      "line": 261,
+      "snippet": "JSON.parse(body) as"
+    },
+    {
+      "id": "3ff115dd3cf11b74",
+      "category": "json-parse-cast",
+      "path": "clients/khala-code-desktop/src/ui/main.ts",
+      "line": 150,
+      "snippet": "JSON.parse(text) as"
+    },
+    {
+      "id": "f0b8124f2b26bfcb",
+      "category": "json-parse-cast",
+      "path": "clients/khala-code-desktop/src/ui/main.ts",
+      "line": 543,
+      "snippet": "JSON.parse((event as MessageEvent<string>).data) as"
+    },
+    {
+      "id": "372a920b70aa27fd",
+      "category": "json-parse-cast",
+      "path": "clients/khala-code-desktop/src/ui/main.ts",
+      "line": 553,
+      "snippet": "JSON.parse((event as MessageEvent<string>).data) as"
+    },
+    {
+      "id": "5325ad77b94c227b",
+      "category": "json-parse-cast",
+      "path": "clients/khala-code-desktop/src/ui/main.ts",
+      "line": 2217,
+      "snippet": "JSON.parse(value) as"
+    },
+    {
+      "id": "b1513a0f8211b04a",
+      "category": "json-parse-cast",
+      "path": "clients/khala-code-desktop/src/ui/main.ts",
+      "line": 3135,
+      "snippet": "JSON.parse(input) as"
+    },
+    {
+      "id": "0881735d96d09aa2",
+      "category": "json-parse-cast",
+      "path": "packages/khala-tools/src/mcp.ts",
+      "line": 263,
+      "snippet": "JSON.parse(line) as"
+    },
+    {
+      "id": "1008278e92500140",
+      "category": "set-timeout-kill",
+      "path": "clients/khala-code-desktop/src/bun/codex-rate-limits.ts",
+      "line": 332,
+      "snippet": "setTimeout(() => { settle(providerStatus({ error: \"Codex rate-limit RPC timeout\", now, status: \"error\", }), { kill"
+    },
+    {
+      "id": "db58eaddf089ea66",
+      "category": "set-timeout-kill",
+      "path": "clients/khala-code-desktop/src/bun/khala-fleet-tools.ts",
+      "line": 2026,
+      "snippet": "setTimeout(() => { timedOut = true child.kill(\"SIGTERM\") }, input.timeoutMs) timeout.unref?.() const forceKill = setTimeout(() => { if (timedOut) child.kill"
+    },
+    {
+      "id": "d0c7bbd39129cb4b",
+      "category": "set-timeout-kill",
+      "path": "clients/khala-code-desktop/src/bun/khala-process.ts",
+      "line": 220,
+      "snippet": "setTimeout(() => { try { if (nodeProcessIsRunning(proc)) proc.kill(\"SIGKILL\") settle(Effect.void) } catch (cause) { settle(Effect.fail(platformError(\"kill\", cause))) } }, forceK..."
+    }
+  ]
+}
