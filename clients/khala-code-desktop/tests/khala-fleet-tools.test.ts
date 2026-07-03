@@ -513,6 +513,9 @@ describe("Khala Code fleet tools", () => {
           schema: "openagents.pylon.accounts_status.v0.1",
         })
       }
+      if (joined === "gh pr list --repo OpenAgentsInc/openagents --state all --limit 1000 --json number,title,state,labels,body,url,mergedAt") {
+        return ok([])
+      }
       if (args[0] === "khala" && args[1] === "request") {
         expect(heartbeatSeen).toBe(true)
         expect(input.env?.OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY).toBe("10")
@@ -561,6 +564,103 @@ describe("Khala Code fleet tools", () => {
     expect(heartbeatIndex).toBeGreaterThanOrEqual(0)
     expect(requestIndex).toBeGreaterThanOrEqual(0)
     expect(heartbeatIndex).toBeLessThan(requestIndex)
+  })
+
+  test("DefaultKhalaFleetRunSupervisorManager skips issue-list work with an existing PR sibling", async () => {
+    const fixture = await tempPylonFixture()
+    const calls: string[] = []
+    const runner = async (input: KhalaCodexFleetCommandInput): Promise<KhalaCodexFleetCommandResult> => {
+      const args = pylonArgs(input)
+      const joined = args.join(" ")
+      calls.push(joined)
+      if (joined === "presence heartbeat --base-url https://openagents.com --json") {
+        return ok({ heartbeatRef: "heartbeat.pylon.local.test.pr_sibling", pylonRef: "pylon.local.test" })
+      }
+      if (joined === "provider go-online --json") {
+        return ok({
+          ok: true,
+          ownCapacityDispatch: {
+            availableCodexAssignments: 1,
+            codexAccounts: [{ accountKey: MATRIX_ACCOUNT_KEY, available: 1, busy: 0, queued: 0, ready: 1 }],
+            maxCodexAssignments: 1,
+          },
+          pylonRef: "pylon.local.test",
+        })
+      }
+      if (joined === "codex accounts list --json") {
+        return ok({
+          accounts: [{
+            accountRef: null,
+            accountRefHash: MATRIX_ACCOUNT_REF_HASH,
+            homeState: "present",
+            provider: "codex",
+          }],
+          schema: "openagents.pylon.accounts_list.v0.3",
+        })
+      }
+      if (joined === "accounts status --provider codex --json") {
+        return ok({
+          accounts: [{
+            accountRef: null,
+            accountRefHash: MATRIX_ACCOUNT_REF_HASH,
+            provider: "codex",
+            readiness: { state: "ready" },
+          }],
+          schema: "openagents.pylon.accounts_status.v0.1",
+        })
+      }
+      if (joined === "gh pr list --repo OpenAgentsInc/openagents --state all --limit 1000 --json number,title,state,labels,body,url,mergedAt") {
+        return ok([
+          {
+            body: "Closes #8036",
+            labels: [],
+            mergedAt: null,
+            number: 8122,
+            state: "OPEN",
+            title: "Add Claude desktop live smoke harness",
+          },
+        ])
+      }
+      if (args[0] === "khala" && args[1] === "request") {
+        return failed("duplicate issue dispatch should have been skipped")
+      }
+      return failed(`unexpected command: ${joined}`)
+    }
+    const manager = new DefaultKhalaFleetRunSupervisorManager({
+      env: fixture.env,
+      runner,
+      sleep: async () => {
+        await new Promise(resolve => setTimeout(resolve, 0))
+      },
+    })
+
+    const started = await manager.start({
+      branch: "main",
+      commit: "0123456789abcdef0123456789abcdef01234567",
+      issues: [8036],
+      objective: "Do not duplicate an issue that already has an open PR.",
+      pylonRef: "pylon.local.test",
+      repo: "OpenAgentsInc/openagents",
+      runRef: "fleet_run.test.issue_pr_sibling_skip",
+      targetConcurrency: 1,
+      verify: "bun run check:deploy",
+      workSource: "issue_list",
+    })
+    const final = await waitForFleetRunSnapshot(
+      manager,
+      "fleet_run.test.issue_pr_sibling_skip",
+      snapshot => snapshot.run.state === "completed" && !snapshot.active,
+      async () => {
+        await new Promise(resolve => setTimeout(resolve, 0))
+      },
+    )
+
+    expect(started.active).toBe(false)
+    expect(final.run.state).toBe("completed")
+    expect(final.run.counters.completedAssignments).toBe(0)
+    expect(final.run.counters.failedAssignments).toBe(0)
+    expect(calls.some(command => command.startsWith("khala request "))).toBe(false)
+    expect(calls).toContain("gh pr list --repo OpenAgentsInc/openagents --state all --limit 1000 --json number,title,state,labels,body,url,mergedAt")
   })
 
   test("DefaultKhalaFleetRunSupervisorManager rejects invalid plan DAGs before creating a run", async () => {

@@ -9,6 +9,7 @@ import {
 import {
   buildWorkPlannerRealWorkDispatch,
   githubBacklogCandidates,
+  githubPullRequestCandidates,
   planDagWork,
   planFixtureWork,
   planGithubBacklogWork,
@@ -221,6 +222,67 @@ describe("typed work planner", () => {
     await expect(
       githubBacklogCandidates({ kind: "github_backlog", repo }, async () => JSON.stringify({ items: [] })),
     ).rejects.toThrow(/non-array JSON/)
+  })
+
+  test("issue_list skips an issue when external PR inventory already closes it", () => {
+    const result = planIssueListWork(
+      {
+        kind: "issue_list",
+        repo,
+        issues: [
+          { number: 8036, title: "Claude harness live smoke through the desktop" },
+          { number: 8037, title: "Next unclaimed issue" },
+        ],
+      },
+      {
+        now,
+        pullRequests: [{
+          workUnitRef: "github:OpenAgentsInc/openagents:pr:8122",
+          kind: "github_pr",
+          source: "github_backlog",
+          repo,
+          number: 8122,
+          title: "Add Claude desktop live smoke harness",
+          body: "Closes #8036",
+          state: "open",
+        }],
+      },
+    )
+
+    expect(result.units.map((unit) => unit.workUnitRef)).toEqual([
+      "github:OpenAgentsInc/openagents:issue:8036",
+      "github:OpenAgentsInc/openagents:issue:8037",
+    ])
+    expect(result.claimable.map((unit) => unit.workUnitRef)).toEqual([
+      "github:OpenAgentsInc/openagents:issue:8037",
+    ])
+    expect(skipReasonsByNumber(result.skipped)).toEqual({
+      8036: "pr_exists",
+    })
+  })
+
+  test("githubPullRequestCandidates fetches PR sibling inventory without issue units", async () => {
+    const called: string[][] = []
+    const gh: GithubBacklogGhRunner = async (args) => {
+      called.push([...args])
+      return JSON.stringify([
+        { number: 8122, title: "Add Claude desktop live smoke harness", state: "OPEN", labels: [], body: "Closes #8036", mergedAt: null },
+      ])
+    }
+
+    const result = await githubPullRequestCandidates({ repo }, gh)
+
+    expect(called).toEqual([
+      ["pr", "list", "--repo", repo, "--state", "all", "--limit", "1000", "--json", "number,title,state,labels,body,url,mergedAt"],
+    ])
+    expect(result).toHaveLength(1)
+    expect(result[0]).toMatchObject({
+      workUnitRef: "github:OpenAgentsInc/openagents:pr:8122",
+      kind: "github_pr",
+      number: 8122,
+      body: "Closes #8036",
+      state: "open",
+    })
   })
 
   test("plan_dag emits only dependency-ready nodes as claimable", () => {

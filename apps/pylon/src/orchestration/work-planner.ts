@@ -410,6 +410,21 @@ export const githubBacklogCandidates = async (
     "--json",
     "number,title,state,labels,body,url",
   ]
+  const [issuesRaw, prs] = await Promise.all([
+    gh(issueArgs),
+    githubPullRequestCandidates(source, gh),
+  ])
+  const issues = parseGhJsonArray(issuesRaw, "issue list")
+    .map((record) => ghIssueRecordToCandidate(source.repo, record as GhIssueRecord))
+    .filter((candidate): candidate is WorkPlannerCandidate => candidate !== null)
+  return [...issues, ...prs]
+}
+
+export const githubPullRequestCandidates = async (
+  source: Pick<GithubBacklogWorkSource, "repo" | "limit">,
+  gh: GithubBacklogGhRunner,
+): Promise<WorkPlannerCandidate[]> => {
+  const limit = String(source.limit ?? 1000)
   const prArgs = [
     "pr",
     "list",
@@ -422,14 +437,11 @@ export const githubBacklogCandidates = async (
     "--json",
     "number,title,state,labels,body,url,mergedAt",
   ]
-  const [issuesRaw, prsRaw] = await Promise.all([gh(issueArgs), gh(prArgs)])
-  const issues = parseGhJsonArray(issuesRaw, "issue list")
-    .map((record) => ghIssueRecordToCandidate(source.repo, record as GhIssueRecord))
-    .filter((candidate): candidate is WorkPlannerCandidate => candidate !== null)
+  const prsRaw = await gh(prArgs)
   const prs = parseGhJsonArray(prsRaw, "pr list")
     .map((record) => ghPullRequestRecordToCandidate(source.repo, record as GhPullRequestRecord))
     .filter((candidate): candidate is WorkPlannerCandidate => candidate !== null)
-  return [...issues, ...prs]
+  return prs
 }
 
 export const planWorkCandidates = (

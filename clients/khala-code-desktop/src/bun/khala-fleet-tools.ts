@@ -47,6 +47,7 @@ import {
 } from "../../../../apps/pylon/src/orchestration/store.js"
 import {
   fixtureCandidates,
+  githubPullRequestCandidates,
   planDagWork,
   planGithubBacklogWork,
   planIssueListWork,
@@ -1646,11 +1647,15 @@ export class DefaultKhalaFleetRunSupervisorManager implements KhalaFleetRunSuper
         }
         if (run.workSource === "issue_list") {
           if (config.repo === undefined) throw new Error(`missing repo for fleet run: ${runRef}`)
+          const pullRequests = await githubPullRequestCandidates(
+            { repo: config.repo },
+            ghRunnerFromOptions(this.options),
+          )
           return planIssueListWork({
             kind: "issue_list",
             repo: config.repo,
             issues: config.issues,
-          }, { now, claimRegistry: this.store })
+          }, { now, claimRegistry: this.store, pullRequests })
         }
         if (run.workSource === "plan_dag") {
           if (config.planSource === undefined) throw new Error(`missing plan DAG for fleet run: ${runRef}`)
@@ -1806,8 +1811,10 @@ async function resolveLocalPylonRef(options: KhalaCodexFleetToolOptions): Promis
 
 function ghRunnerFromOptions(options: KhalaCodexFleetToolOptions): GithubBacklogGhRunner {
   return async args => {
-    const command = await defaultCommandRunner({
+    const runner = options.runner ?? defaultCommandRunner
+    const command = await runner({
       cmd: ["gh", ...args],
+      env: options.env,
       maxOutputBytes: 2_000_000,
       timeoutMs: DEFAULT_COMMAND_TIMEOUT_MS,
     })
