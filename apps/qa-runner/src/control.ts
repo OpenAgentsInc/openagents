@@ -29,10 +29,16 @@
 
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { Effect } from "effect";
+import { Effect, Schema as S } from "effect";
 import { localBackend } from "./backend";
 import { scriptedBrain } from "./brain";
-import { type EvalVariant, runEval, type EvalResult } from "./evals";
+import {
+  EvalVariantAxis,
+  type EvalVariant,
+  type EvalVariantAxis as EvalVariantAxisType,
+  runEval,
+  type EvalResult,
+} from "./evals";
 import { makeFakeChromium } from "./fake-chromium";
 import { readRunArtifacts, type RunArtifacts } from "./artifacts";
 import { writeReceiptForRun } from "./receipt";
@@ -165,26 +171,67 @@ export interface SubmitRunInput {
 }
 
 export interface SubmitEvalInput {
-  readonly id?: string;
-  readonly title?: string;
-  readonly target?: string;
-  readonly targetName?: string;
+  readonly id?: string | undefined;
+  readonly title?: string | undefined;
+  readonly target?: string | undefined;
+  readonly targetName?: string | undefined;
   /** The scenario held fixed across variants. */
-  readonly scenario?: ControlScenario;
+  readonly scenario?: ControlScenario | undefined;
   /** >= 2 variants to compare. Each names a scenario the variant's brain replays. */
-  readonly variants?: ReadonlyArray<SubmitEvalVariant>;
-  readonly repetitions?: number;
-  readonly real?: boolean;
-  readonly tokenBudget?: number;
+  readonly variants?: ReadonlyArray<SubmitEvalVariant> | undefined;
+  readonly repetitions?: number | undefined;
+  readonly real?: boolean | undefined;
+  readonly tokenBudget?: number | undefined;
 }
 
 export interface SubmitEvalVariant {
   readonly id: string;
-  readonly label?: string;
-  readonly note?: string;
+  readonly label?: string | undefined;
+  readonly note?: string | undefined;
+  readonly axis?: EvalVariantAxisType | undefined;
   /** Which scenario this variant's scripted brain replays. */
-  readonly scenario?: ControlScenario;
+  readonly scenario?: ControlScenario | undefined;
 }
+
+const SubmitEvalVariantSchema = S.Struct({
+  id: S.String,
+  label: S.optional(S.String),
+  note: S.optional(S.String),
+  axis: S.optional(EvalVariantAxis),
+  scenario: S.optional(S.Literals(["login-regression", "login-regression-wrong"])),
+});
+
+const SubmitEvalInputSchema = S.Struct({
+  id: S.optional(S.String),
+  title: S.optional(S.String),
+  target: S.optional(S.String),
+  targetName: S.optional(S.String),
+  scenario: S.optional(S.Literals(["login-regression", "login-regression-wrong"])),
+  variants: S.optional(S.Array(SubmitEvalVariantSchema)),
+  repetitions: S.optional(S.Number),
+  real: S.optional(S.Boolean),
+  tokenBudget: S.optional(S.Number),
+});
+
+export const decodeSubmitEvalInput = S.decodeUnknownSync(SubmitEvalInputSchema);
+
+const parseSubmitEvalInput = (input: SubmitEvalInput): SubmitEvalInput => {
+  try {
+    return decodeSubmitEvalInput(input);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new BadRequestError(`invalid eval request: ${message}`);
+  }
+};
+
+const defaultVariantAxis = (
+  variant: SubmitEvalVariant,
+  index: number,
+): EvalVariantAxisType => ({
+  kind: "mcp_set",
+  value: variant.id,
+  baseline: index === 0,
+});
 
 export type { SubmitSwarmRunInput } from "./swarm";
 
@@ -336,6 +383,7 @@ export class QaControl {
   // ── submit an eval (>= 2 variants) ────────────────────────────────────────
 
   submitEval(input: SubmitEvalInput): Job {
+    input = parseSubmitEvalInput(input);
     const variants = input.variants ?? [];
     if (variants.length < 2) {
       throw new BadRequestError(
@@ -382,7 +430,7 @@ export class QaControl {
       ? makeTarget({ name: targetName, baseUrl: input.target ?? "https://openagents.com" })
       : makeTarget({ name: "fixtures", baseUrl: "https://example.test" });
 
-    const evalVariants: ReadonlyArray<EvalVariant> = variants.map((v) => {
+    const evalVariants: ReadonlyArray<EvalVariant> = variants.map((v, index) => {
       const vScenario = v.scenario ?? "login-regression";
       const backend = () =>
         real
@@ -392,6 +440,7 @@ export class QaControl {
         id: v.id,
         label: v.label ?? v.id,
         ...(v.note !== undefined ? { note: v.note } : {}),
+        axis: v.axis ?? defaultVariantAxis(v, index),
         brain: () => scriptedBrain(SCENARIO_STEPS[vScenario]()),
         backend,
       };
@@ -638,6 +687,7 @@ export class QaControl {
     baselineId: string,
   ): Promise<void> {
     const variantTraceUrls: Record<string, string> = {};
+    const variantTraceUuids: string[] = [];
     let baselineResult: PublishTraceResult | undefined;
     let lastNote: string | undefined;
 
@@ -652,6 +702,7 @@ export class QaControl {
       );
       if (result.published) {
         variantTraceUrls[variantId] = result.url;
+        variantTraceUuids.push(result.uuid);
       } else {
         lastNote = result.reason;
       }
@@ -661,7 +712,12 @@ export class QaControl {
     if (Object.keys(variantTraceUrls).length > 0) {
       this.set(id, { variantTraceUrls });
     }
-    if (baselineResult !== undefined) {
+    if (variantTraceUuids.length >= 2) {
+      const shareBaseUrl = this.proBaseUrl.replace(/\/$/, "");
+      this.set(id, {
+        traceUrl: `${shareBaseUrl}/trace/compare/${variantTraceUuids.join(",")}`,
+      });
+    } else if (baselineResult !== undefined) {
       this.recordTraceResult(id, baselineResult);
     } else if (lastNote !== undefined) {
       this.set(id, { traceNote: lastNote });
@@ -747,9 +803,10 @@ export interface EvalComparisonResponse {
   readonly jobId: string;
   readonly status: JobStatus;
   /**
-   * The SHAREABLE link: the baseline variant's published `/trace/{uuid}` (#6210).
-   * `null` when publishing is not armed. The comparison is a view over
-   * `variantTraceUrls`. Supersedes `/pro/evals/:id` as the shareable artifact.
+   * The SHAREABLE link: the published `/trace/compare/{ids}` when at least two
+   * variant traces are available, otherwise the baseline `/trace/{uuid}`. `null`
+   * when publishing is not armed. Supersedes `/pro/evals/:id` as the shareable
+   * artifact.
    */
   readonly traceUrl: string | null;
   /** Per-variant published `/trace/{uuid}` links (the comparison's trace set). */

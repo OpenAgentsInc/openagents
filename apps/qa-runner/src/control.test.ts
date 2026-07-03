@@ -210,7 +210,7 @@ describe("#6210 trace publishing", () => {
     await control.wait(job.id);
 
     const res = control.evalComparison(job.id);
-    expect(res.traceUrl).toContain("https://openagents.com/trace/");
+    expect(res.traceUrl).toContain("https://openagents.com/trace/compare/");
     expect(res.traceUrl).not.toContain("/pro/evals");
     expect(Object.keys(res.variantTraceUrls ?? {}).sort()).toEqual(["baseline", "candidate"]);
     expect(res.variantTraceUrls!.baseline).toContain("/trace/");

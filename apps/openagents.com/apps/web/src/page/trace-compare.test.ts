@@ -136,10 +136,18 @@ describe('trace-compare render (sample trace-set)', () => {
     expect(rendered).toContain('Latency')
     expect(rendered).toContain('Steps')
     expect(rendered).toContain('Cost')
+    expect(rendered).toContain('Video')
     // Baseline latency (11.5s) + mcp-on latency (13.9s) are both shown.
     expect(rendered).toContain(formatDuration(11459))
     expect(rendered).toContain(formatDuration(13900))
     expect(rendered).toContain(formatCost(0))
+  })
+
+  test('renders per-variant video links when traces carry video evidence', () => {
+    const rendered = renderSample()
+    expect(rendered).toContain('data-component="trace-compare-video"')
+    expect(rendered).toContain('Watch video')
+    expect(rendered).toContain('/pro-assets/sample-session.webm')
   })
 
   test('renders honest deltas vs the baseline', () => {

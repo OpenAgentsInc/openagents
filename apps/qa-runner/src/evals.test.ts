@@ -57,6 +57,7 @@ const goodVariant = (): EvalVariant => ({
   id: "mcp-on",
   label: "MCP on",
   note: "scenario passes",
+  axis: { kind: "mcp_set", value: "filesystem:on", baseline: true },
   brain: () => scriptedBrain(loginRegressionSteps()),
   backend: () => localBackend({ chromium: passingChromium() }),
 });
@@ -65,6 +66,7 @@ const regressedVariant = (): EvalVariant => ({
   id: "mcp-off",
   label: "MCP off",
   note: "regressed: asserts a redirect that does not happen",
+  axis: { kind: "mcp_set", value: "filesystem:off" },
   brain: () => scriptedBrain(loginRegressionStepsWrong()),
   backend: () => localBackend({ chromium: passingChromium() }),
 });
@@ -89,6 +91,12 @@ describe("runEval (fake chromium, deterministic)", () => {
     expect(r.schemaVersion).toBe(EVAL_SCHEMA_VERSION);
     expect(r.variants.length).toBe(2);
     expect(r.baselineVariantId).toBe("mcp-on");
+    expect(r.runConfig.mode).toBe("variant_comparison");
+    expect(r.runConfig.variants[0]!.axis).toEqual({
+      kind: "mcp_set",
+      value: "filesystem:on",
+      baseline: true,
+    });
 
     const good = r.variants.find((v) => v.variantId === "mcp-on")!;
     const bad = r.variants.find((v) => v.variantId === "mcp-off")!;
@@ -129,6 +137,7 @@ describe("runEval (fake chromium, deterministic)", () => {
     expect(existsSync(outcome.resultPath)).toBe(true);
     const parsed = JSON.parse(readFileSync(outcome.resultPath, "utf8"));
     expect(parsed.schemaVersion).toBe(EVAL_SCHEMA_VERSION);
+    expect(parsed.runConfig.mode).toBe("variant_comparison");
     expect(parsed.variants.length).toBe(2);
     // tripwire passes on the persisted JSON.
     expect(() => assertPublicSafeResult(parsed)).not.toThrow();
@@ -229,7 +238,8 @@ describe("renderers", () => {
     const md = renderEvalMarkdown(await sampleResult(), {
       proBaseUrl: "https://openagents.com",
     });
-    expect(md).toContain("| variant | pass-rate | p50 | p90 | Δpass | Δp50 |");
+    expect(md).toContain("| variant | axis | pass-rate | p50 | p90 | Δpass | Δp50 |");
+    expect(md).toContain("mcp_set:filesystem:on");
     expect(md).toContain("https://openagents.com/pro/evals/login-mcp-compare");
     // one variant failed -> honest warning headline, never fake green.
     expect(md).toContain("some variants failed");

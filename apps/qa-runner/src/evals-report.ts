@@ -61,6 +61,7 @@ export const renderEvalConsole = (result: EvalResult): string => {
 
   const header = [
     padEnd("variant", 22),
+    padEnd("axis", 24),
     padEnd("pass", 8),
     padEnd("p50", 12),
     padEnd("p90", 12),
@@ -76,6 +77,7 @@ export const renderEvalConsole = (result: EvalResult): string => {
     lines.push(
       [
         padEnd(`${baseline ? "* " : "  "}${v.label}`, 22),
+        padEnd(`${v.axis.kind}:${v.axis.value}`, 24),
         padEnd(`${pct(v.passRate)} (${v.passCount}/${v.runCount})`, 8),
         padEnd(ms(v.latencyP50Ms), 12),
         padEnd(ms(v.latencyP90Ms), 12),
@@ -114,8 +116,10 @@ const variantRow = (
   d: EvalVariantDelta | undefined,
   baseline: boolean,
 ): string => {
+  const axis = `${v.axis.kind}:${v.axis.value}`;
   const cells = [
     `${baseline ? "**" : ""}${v.label}${baseline ? "** (baseline)" : ""}`,
+    axis,
     `${pct(v.passRate)} (${v.passCount}/${v.runCount})`,
     ms(v.latencyP50Ms),
     ms(v.latencyP90Ms),
@@ -154,8 +158,8 @@ export const renderEvalMarkdown = (
     );
     lines.push("");
   }
-  lines.push("| variant | pass-rate | p50 | p90 | Δpass | Δp50 |");
-  lines.push("| --- | --- | --- | --- | --- | --- |");
+  lines.push("| variant | axis | pass-rate | p50 | p90 | Δpass | Δp50 |");
+  lines.push("| --- | --- | --- | --- | --- | --- | --- |");
   for (const v of result.variants) {
     lines.push(
       variantRow(
