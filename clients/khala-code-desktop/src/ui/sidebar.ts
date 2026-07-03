@@ -118,6 +118,16 @@ const hotbarShortcut = (): HotbarShortcut =>
         modifierKey: "altKey",
       }
 
+const hotbarDigitForKeyboardEvent = (event: KeyboardEvent): string | null => {
+  if (/^[0-9]$/u.test(event.key)) return event.key
+
+  const physicalDigit = /^Digit([0-9])$/u.exec(event.code)?.[1]
+  if (physicalDigit !== undefined) return physicalDigit
+
+  const numpadDigit = /^Numpad([0-9])$/u.exec(event.code)?.[1]
+  return numpadDigit ?? null
+}
+
 export const projectKhalaCodeSidebarFleetCounts = (
   status: KhalaCodeDesktopFleetStatus,
 ): KhalaCodeSidebarFleetCounts => ({
@@ -216,15 +226,16 @@ export const mountKhalaCodeSidebar = (
   }
 
   const onKeydown = (event: KeyboardEvent): void => {
-    const slot = KHALA_CODE_HOTBAR_SLOTS.find(item => item.hotkey === event.key)
-    if (slot === undefined) return
-
     const explicitHotkey =
       event[shortcut.modifierKey] &&
       !event.shiftKey &&
       !event.ctrlKey &&
       !event.metaKey
     if (!explicitHotkey) return
+
+    const digit = hotbarDigitForKeyboardEvent(event)
+    const slot = KHALA_CODE_HOTBAR_SLOTS.find(item => item.hotkey === digit)
+    if (slot === undefined) return
 
     event.preventDefault()
     activate(slot)
