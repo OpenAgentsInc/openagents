@@ -146,4 +146,3 @@ The Worker helper
 runs the same queries against D1, and
 [`business-factory-metrics.test.ts`](../../apps/openagents.com/workers/api/src/business-factory-metrics.test.ts)
 asserts measured rows, `not_measured` rows, and public-safe refs.
-
