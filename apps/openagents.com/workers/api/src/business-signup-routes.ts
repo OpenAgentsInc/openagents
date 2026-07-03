@@ -61,6 +61,7 @@ export type BusinessSignupInput = Readonly<{
   phone: string
   helpWith: string | null
   requestSlackChannel: boolean
+  sourceRoute?: string | undefined
   // Inbound referral code (a site_referral_sources.public_source_ref). Captured
   // from the /business ?ref= query param or a `referralCode` form field; null
   // when no code was present.
@@ -71,7 +72,7 @@ export type BusinessSignupRecord = BusinessSignupInput &
   Readonly<{
     id: string
     slackConnectStatus: SlackConnectStatus
-    sourceRoute: '/business'
+    sourceRoute: string
     // The pending referral_attributions.id bound to this signup once a valid
     // active referral source was resolved (consume-once via the spine); null
     // when there was no captured/resolvable attribution.
@@ -302,7 +303,7 @@ export const makeBusinessSignupRecord = (
     slackConnectStatus: input.requestSlackChannel
       ? 'manual_invite_pending'
       : 'not_requested',
-    sourceRoute: '/business',
+    sourceRoute: input.sourceRoute ?? '/business',
     referralAttributionId: null,
     createdAt: now,
     updatedAt: now,
@@ -318,7 +319,7 @@ const rowToRecord = (row: BusinessSignupRow): BusinessSignupRecord => ({
   helpWith: row.help_with,
   requestSlackChannel: row.request_slack_channel === 1,
   slackConnectStatus: row.slack_connect_status,
-  sourceRoute: '/business',
+  sourceRoute: row.source_route,
   referralCode: row.referral_code,
   referralAttributionId: row.referral_attribution_id,
   createdAt: row.created_at,

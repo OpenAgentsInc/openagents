@@ -401,6 +401,7 @@ describe('Worker route dual-serve resolution (#6148)', () => {
       routeCodingQuickWinReceiptRequest: noRoute,
       routeMarketingAgencyReceiptRequest: noRoute,
       routeMarketingAgencySelfServeRequest: noRoute,
+      routeVerticalFunnelRequest: noRoute,
       routePylonApiRequest: noRoute,
       routeSiteCommerceRequest: noRoute,
       routeSiteReferralInspectionRequest: noRoute,

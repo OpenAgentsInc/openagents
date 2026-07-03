@@ -92,6 +92,7 @@ type WorkerRouteDependencies = Readonly<{
   routeCodingQuickWinReceiptRequest: OptionalEffectRoute
   routeMarketingAgencyReceiptRequest: OptionalEffectRoute
   routeMarketingAgencySelfServeRequest: OptionalEffectRoute
+  routeVerticalFunnelRequest: OptionalEffectRoute
   routePylonApiRequest: OptionalEffectRoute
   routeSiteCommerceRequest: OptionalEffectRoute
   routeSiteReferralInspectionRequest: OptionalEffectRoute
@@ -681,6 +682,16 @@ export const makeWorkerRouteRequest =
 
       if (marketingAgencySelfServeResponse !== undefined) {
         return yield* marketingAgencySelfServeResponse
+      }
+
+      const verticalFunnelResponse = dependencies.routeVerticalFunnelRequest(
+        request,
+        env,
+        ctx,
+      )
+
+      if (verticalFunnelResponse !== undefined) {
+        return yield* verticalFunnelResponse
       }
 
       const operatorAdjutantResponse =
