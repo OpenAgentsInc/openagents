@@ -74,6 +74,38 @@ export const OmniAcceptedOutcomeEconomicState = S.Literals([
 export type OmniAcceptedOutcomeEconomicState =
   typeof OmniAcceptedOutcomeEconomicState.Type
 
+export const OmniAcceptedOutcomeServicePromiseState = S.Literals([
+  'not_promised',
+  'proposed',
+  'active',
+  'fulfilled',
+  'paused',
+  'breached',
+  'cancelled',
+])
+export type OmniAcceptedOutcomeServicePromiseState =
+  typeof OmniAcceptedOutcomeServicePromiseState.Type
+
+export const OmniAcceptedOutcomeBackingCapabilityState = S.Literals([
+  'green',
+  'yellow',
+  'degraded',
+  'manual_gate',
+  'red',
+  'planned',
+])
+export type OmniAcceptedOutcomeBackingCapabilityState =
+  typeof OmniAcceptedOutcomeBackingCapabilityState.Type
+
+export const OmniAcceptedOutcomeFulfillmentReceiptState = S.Literals([
+  'fulfilled',
+  'partial',
+  'failed',
+  'blocked',
+])
+export type OmniAcceptedOutcomeFulfillmentReceiptState =
+  typeof OmniAcceptedOutcomeFulfillmentReceiptState.Type
+
 export const OmniAcceptedOutcomeCloseoutRequirementKind = S.Literals([
   'customer_review',
   'operator_review',
@@ -106,19 +138,61 @@ export const OmniAcceptedOutcomeCloseoutRequirement = S.Struct({
 export type OmniAcceptedOutcomeCloseoutRequirement =
   typeof OmniAcceptedOutcomeCloseoutRequirement.Type
 
+export const OmniAcceptedOutcomeCommittedDeliverable = S.Struct({
+  backingCapabilityRef: S.String,
+  backingCapabilityState: OmniAcceptedOutcomeBackingCapabilityState,
+  deliverableRef: S.String,
+  expectedArtifactKind: OmniAcceptedOutcomeArtifactKind,
+  required: S.Boolean,
+  sourceRef: S.String,
+})
+export type OmniAcceptedOutcomeCommittedDeliverable =
+  typeof OmniAcceptedOutcomeCommittedDeliverable.Type
+
+export const OmniAcceptedOutcomeSlaTerm = S.Struct({
+  dueAt: S.NullOr(S.String),
+  metricRef: S.String,
+  sourceRef: S.String,
+  target: S.Number,
+  termRef: S.String,
+  unit: S.Literals(['hours', 'days', 'business_days', 'receipts', 'percent']),
+})
+export type OmniAcceptedOutcomeSlaTerm = typeof OmniAcceptedOutcomeSlaTerm.Type
+
+export const OmniAcceptedOutcomeFulfillmentReceipt = S.Struct({
+  blockerRefs: S.Array(S.String),
+  deliverableRef: S.String,
+  evaluatedAt: S.String,
+  evidenceRef: S.String,
+  receiptRef: S.String,
+  state: OmniAcceptedOutcomeFulfillmentReceiptState,
+  verifierRef: S.String,
+})
+export type OmniAcceptedOutcomeFulfillmentReceipt =
+  typeof OmniAcceptedOutcomeFulfillmentReceipt.Type
+
 const ExpectedArtifactArray = S.Array(OmniAcceptedOutcomeExpectedArtifact)
 const CloseoutRequirementArray = S.Array(
   OmniAcceptedOutcomeCloseoutRequirement,
+)
+const CommittedDeliverableArray = S.Array(
+  OmniAcceptedOutcomeCommittedDeliverable,
+)
+const SlaTermArray = S.Array(OmniAcceptedOutcomeSlaTerm)
+const FulfillmentReceiptArray = S.Array(
+  OmniAcceptedOutcomeFulfillmentReceipt,
 )
 
 export const OmniAcceptedOutcomeContractRecord = S.Struct({
   acceptanceState: OmniAcceptedOutcomeAcceptanceState,
   archivedAt: S.NullOr(S.String),
   closeoutRequirements: S.Array(OmniAcceptedOutcomeCloseoutRequirement),
+  committedDeliverables: S.Array(OmniAcceptedOutcomeCommittedDeliverable),
   createdAt: S.String,
   customerRef: S.NullOr(S.String),
   economicState: OmniAcceptedOutcomeEconomicState,
   expectedArtifacts: S.Array(OmniAcceptedOutcomeExpectedArtifact),
+  fulfillmentReceipts: S.Array(OmniAcceptedOutcomeFulfillmentReceipt),
   id: S.String,
   idempotencyKey: S.String,
   legalSensitive: S.Boolean,
@@ -126,6 +200,8 @@ export const OmniAcceptedOutcomeContractRecord = S.Struct({
   proofPolicy: OmniAcceptedOutcomeProofPolicy,
   publicReceiptRef: S.String,
   reviewPolicy: OmniAcceptedOutcomeReviewPolicy,
+  servicePromiseState: OmniAcceptedOutcomeServicePromiseState,
+  slaTerms: S.Array(OmniAcceptedOutcomeSlaTerm),
   subjectRef: S.String,
   updatedAt: S.String,
   workKind: OmniAcceptedOutcomeWorkKind,
@@ -147,9 +223,15 @@ export const systemOmniAcceptedOutcomeContractsRuntime: OmniAcceptedOutcomeContr
 export type CreateOmniAcceptedOutcomeContractInput = Readonly<{
   acceptanceState?: OmniAcceptedOutcomeAcceptanceState | undefined
   closeoutRequirements: ReadonlyArray<OmniAcceptedOutcomeCloseoutRequirement>
+  committedDeliverables?:
+    | ReadonlyArray<OmniAcceptedOutcomeCommittedDeliverable>
+    | undefined
   customerRef?: string | undefined
   economicState: OmniAcceptedOutcomeEconomicState
   expectedArtifacts: ReadonlyArray<OmniAcceptedOutcomeExpectedArtifact>
+  fulfillmentReceipts?:
+    | ReadonlyArray<OmniAcceptedOutcomeFulfillmentReceipt>
+    | undefined
   id?: string | undefined
   idempotencyKey: string
   legalSensitive?: boolean | undefined
@@ -157,6 +239,8 @@ export type CreateOmniAcceptedOutcomeContractInput = Readonly<{
   proofPolicy: OmniAcceptedOutcomeProofPolicy
   publicReceiptRef?: string | undefined
   reviewPolicy: OmniAcceptedOutcomeReviewPolicy
+  servicePromiseState?: OmniAcceptedOutcomeServicePromiseState | undefined
+  slaTerms?: ReadonlyArray<OmniAcceptedOutcomeSlaTerm> | undefined
   subjectRef: string
   workKind: OmniAcceptedOutcomeWorkKind
 }>
@@ -165,10 +249,12 @@ type ContractRow = Readonly<{
   acceptance_state: OmniAcceptedOutcomeAcceptanceState
   archived_at: string | null
   closeout_requirements_json: string
+  committed_deliverables_json: string
   created_at: string
   customer_ref: string | null
   economic_state: OmniAcceptedOutcomeEconomicState
   expected_artifacts_json: string
+  fulfillment_receipts_json: string
   id: string
   idempotency_key: string
   legal_sensitive: number
@@ -176,6 +262,8 @@ type ContractRow = Readonly<{
   proof_policy: OmniAcceptedOutcomeProofPolicy
   public_receipt_ref: string
   review_policy: OmniAcceptedOutcomeReviewPolicy
+  service_promise_state: OmniAcceptedOutcomeServicePromiseState
+  sla_terms_json: string
   subject_ref: string
   updated_at: string
   work_kind: OmniAcceptedOutcomeWorkKind
@@ -265,6 +353,103 @@ const assertCloseoutRequirements = (
   })
 }
 
+const assertCommittedDeliverables = (
+  deliverables:
+    | ReadonlyArray<OmniAcceptedOutcomeCommittedDeliverable>
+    | undefined,
+): void => {
+  if (deliverables === undefined) {
+    return
+  }
+
+  deliverables.forEach(deliverable => {
+    assertSafeRef('committedDeliverables.deliverableRef', deliverable.deliverableRef)
+    assertSafeRef(
+      'committedDeliverables.backingCapabilityRef',
+      deliverable.backingCapabilityRef,
+    )
+    assertSafeRef('committedDeliverables.sourceRef', deliverable.sourceRef)
+
+    if (
+      deliverable.backingCapabilityState === 'red' ||
+      deliverable.backingCapabilityState === 'planned'
+    ) {
+      throw new OmniAcceptedOutcomeContractValidationError({
+        reason:
+          'committedDeliverables cannot include a deliverable backed by a red or planned capability record.',
+      })
+    }
+  })
+}
+
+const assertSlaTerms = (
+  terms: ReadonlyArray<OmniAcceptedOutcomeSlaTerm> | undefined,
+): void => {
+  if (terms === undefined) {
+    return
+  }
+
+  terms.forEach(term => {
+    assertSafeRef('slaTerms.termRef', term.termRef)
+    assertSafeRef('slaTerms.metricRef', term.metricRef)
+    assertSafeRef('slaTerms.sourceRef', term.sourceRef)
+
+    if (term.target < 0) {
+      throw new OmniAcceptedOutcomeContractValidationError({
+        reason: 'slaTerms.target must be non-negative.',
+      })
+    }
+  })
+}
+
+const assertFulfillmentReceipts = (
+  receipts:
+    | ReadonlyArray<OmniAcceptedOutcomeFulfillmentReceipt>
+    | undefined,
+  committedDeliverables:
+    | ReadonlyArray<OmniAcceptedOutcomeCommittedDeliverable>
+    | undefined,
+): void => {
+  if (receipts === undefined) {
+    return
+  }
+
+  const deliverableRefs = new Set(
+    (committedDeliverables ?? []).map(deliverable => deliverable.deliverableRef),
+  )
+
+  receipts.forEach(receipt => {
+    assertSafeRef('fulfillmentReceipts.receiptRef', receipt.receiptRef)
+    assertSafeRef('fulfillmentReceipts.deliverableRef', receipt.deliverableRef)
+    assertSafeRef('fulfillmentReceipts.verifierRef', receipt.verifierRef)
+    assertSafeRef('fulfillmentReceipts.evidenceRef', receipt.evidenceRef)
+    receipt.blockerRefs.forEach(ref =>
+      assertSafeRef('fulfillmentReceipts.blockerRefs', ref),
+    )
+
+    if (!deliverableRefs.has(receipt.deliverableRef)) {
+      throw new OmniAcceptedOutcomeContractValidationError({
+        reason:
+          'fulfillmentReceipts must reference a committed deliverable; receipts evidence fulfillment and do not create promises.',
+      })
+    }
+  })
+}
+
+const assertServicePromiseState = (
+  input: CreateOmniAcceptedOutcomeContractInput,
+): void => {
+  if (
+    input.servicePromiseState === 'not_promised' &&
+    (input.committedDeliverables?.length ?? 0) > 0
+  ) {
+    throw new OmniAcceptedOutcomeContractValidationError({
+      reason:
+        'not_promised contracts cannot carry committedDeliverables; choose an explicit service promise state.',
+    })
+  }
+}
+
 const assertPolicyCompatibility = (
   input: CreateOmniAcceptedOutcomeContractInput,
 ): void => {
@@ -298,6 +483,10 @@ const assertValidInput = (
   assertSafeMetadata(input.metadata)
   assertExpectedArtifacts(input.expectedArtifacts)
   assertCloseoutRequirements(input.closeoutRequirements)
+  assertCommittedDeliverables(input.committedDeliverables)
+  assertSlaTerms(input.slaTerms)
+  assertFulfillmentReceipts(input.fulfillmentReceipts, input.committedDeliverables)
+  assertServicePromiseState(input)
   assertPolicyCompatibility(input)
 }
 
@@ -328,12 +517,20 @@ const contractFromRow = (
     CloseoutRequirementArray,
     row.closeout_requirements_json,
   ),
+  committedDeliverables: parseJsonWithSchema(
+    CommittedDeliverableArray,
+    row.committed_deliverables_json,
+  ),
   createdAt: row.created_at,
   customerRef: row.customer_ref,
   economicState: row.economic_state,
   expectedArtifacts: parseJsonWithSchema(
     ExpectedArtifactArray,
     row.expected_artifacts_json,
+  ),
+  fulfillmentReceipts: parseJsonWithSchema(
+    FulfillmentReceiptArray,
+    row.fulfillment_receipts_json,
   ),
   id: row.id,
   idempotencyKey: row.idempotency_key,
@@ -342,6 +539,8 @@ const contractFromRow = (
   proofPolicy: row.proof_policy,
   publicReceiptRef: row.public_receipt_ref,
   reviewPolicy: row.review_policy,
+  servicePromiseState: row.service_promise_state,
+  slaTerms: parseJsonWithSchema(SlaTermArray, row.sla_terms_json),
   subjectRef: row.subject_ref,
   updatedAt: row.updated_at,
   workKind: row.work_kind,
@@ -394,14 +593,20 @@ export const createOmniAcceptedOutcomeContract = (
     }
 
     const now = runtime.nowIso()
+    const committedDeliverables = input.committedDeliverables ?? []
+    const servicePromiseState =
+      input.servicePromiseState ??
+      (committedDeliverables.length === 0 ? 'not_promised' : 'active')
     const record: OmniAcceptedOutcomeContractRecord = {
       acceptanceState: input.acceptanceState ?? 'draft',
       archivedAt: null,
       closeoutRequirements: [...input.closeoutRequirements],
+      committedDeliverables: [...committedDeliverables],
       createdAt: now,
       customerRef: input.customerRef ?? null,
       economicState: input.economicState,
       expectedArtifacts: [...input.expectedArtifacts],
+      fulfillmentReceipts: [...(input.fulfillmentReceipts ?? [])],
       id: input.id ?? runtime.makeContractId(),
       idempotencyKey: input.idempotencyKey,
       legalSensitive:
@@ -412,6 +617,8 @@ export const createOmniAcceptedOutcomeContract = (
         input.publicReceiptRef ??
         publicReceiptRef(input.workKind, input.idempotencyKey),
       reviewPolicy: input.reviewPolicy,
+      servicePromiseState,
+      slaTerms: [...(input.slaTerms ?? [])],
       subjectRef: input.subjectRef,
       updatedAt: now,
       workKind: input.workKind,
@@ -432,13 +639,17 @@ export const createOmniAcceptedOutcomeContract = (
               proof_policy,
               economic_state,
               closeout_requirements_json,
+              committed_deliverables_json,
+              service_promise_state,
+              sla_terms_json,
+              fulfillment_receipts_json,
               legal_sensitive,
               public_receipt_ref,
               metadata_json,
               created_at,
               updated_at,
               archived_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
         )
         .bind(
           record.id,
@@ -452,6 +663,10 @@ export const createOmniAcceptedOutcomeContract = (
           record.proofPolicy,
           record.economicState,
           JSON.stringify(record.closeoutRequirements),
+          JSON.stringify(record.committedDeliverables),
+          record.servicePromiseState,
+          JSON.stringify(record.slaTerms),
+          JSON.stringify(record.fulfillmentReceipts),
           record.legalSensitive ? 1 : 0,
           record.publicReceiptRef,
           JSON.stringify(record.metadata),
@@ -473,10 +688,35 @@ export const publicOmniAcceptedOutcomeContractProjection = (
 ) => ({
   acceptanceState: contract.acceptanceState,
   closeoutRequirementCount: contract.closeoutRequirements.length,
+  committedDeliverableCount: contract.committedDeliverables.length,
   economicState: contract.economicState,
   expectedArtifactCount: contract.expectedArtifacts.length,
+  fulfillmentReceiptSummary: {
+    blocked: contract.fulfillmentReceipts.filter(
+      receipt => receipt.state === 'blocked',
+    ).length,
+    failed: contract.fulfillmentReceipts.filter(
+      receipt => receipt.state === 'failed',
+    ).length,
+    fulfilled: contract.fulfillmentReceipts.filter(
+      receipt => receipt.state === 'fulfilled',
+    ).length,
+    partial: contract.fulfillmentReceipts.filter(
+      receipt => receipt.state === 'partial',
+    ).length,
+    total: contract.fulfillmentReceipts.length,
+  },
   legalSensitive: contract.legalSensitive,
   proofPolicy: contract.proofPolicy,
+  publicCommittedDeliverables: contract.committedDeliverables.map(
+    deliverable => ({
+      backingCapabilityRef: deliverable.backingCapabilityRef,
+      backingCapabilityState: deliverable.backingCapabilityState,
+      deliverableRef: deliverable.deliverableRef,
+      expectedArtifactKind: deliverable.expectedArtifactKind,
+      required: deliverable.required,
+    }),
+  ),
   publicExpectedArtifacts: contract.expectedArtifacts
     .filter(artifact => artifact.publicSafe)
     .map(artifact => ({
@@ -486,6 +726,8 @@ export const publicOmniAcceptedOutcomeContractProjection = (
     })),
   publicReceiptRef: contract.publicReceiptRef,
   reviewPolicy: contract.reviewPolicy,
+  servicePromiseState: contract.servicePromiseState,
+  slaTermCount: contract.slaTerms.length,
   subjectRef: contract.subjectRef,
   workKind: contract.workKind,
 })

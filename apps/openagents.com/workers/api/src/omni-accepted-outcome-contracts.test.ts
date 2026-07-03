@@ -19,6 +19,7 @@ type ContractRow = Readonly<{
     | 'unavailable'
   archived_at: string | null
   closeout_requirements_json: string
+  committed_deliverables_json: string
   created_at: string
   customer_ref: string | null
   economic_state:
@@ -28,6 +29,7 @@ type ContractRow = Readonly<{
     | 'sats_required'
     | 'internal_only'
   expected_artifacts_json: string
+  fulfillment_receipts_json: string
   id: string
   idempotency_key: string
   legal_sensitive: number
@@ -44,6 +46,15 @@ type ContractRow = Readonly<{
     | 'dual_review'
     | 'owner_review'
     | 'no_review'
+  service_promise_state:
+    | 'not_promised'
+    | 'proposed'
+    | 'active'
+    | 'fulfilled'
+    | 'paused'
+    | 'breached'
+    | 'cancelled'
+  sla_terms_json: string
   subject_ref: string
   updated_at: string
   work_kind:
@@ -111,19 +122,24 @@ class AcceptedOutcomeContractStatement implements D1PreparedStatement {
           acceptance_state: this.values[7] as ContractRow['acceptance_state'],
           archived_at: null,
           closeout_requirements_json: String(this.values[10]),
-          created_at: String(this.values[14]),
+          committed_deliverables_json: String(this.values[11]),
+          created_at: String(this.values[18]),
           customer_ref: this.values[4] as string | null,
           economic_state: this.values[9] as ContractRow['economic_state'],
           expected_artifacts_json: String(this.values[5]),
+          fulfillment_receipts_json: String(this.values[14]),
           id: String(this.values[0]),
           idempotency_key: idempotencyKey,
-          legal_sensitive: Number(this.values[11]),
-          metadata_json: String(this.values[13]),
+          legal_sensitive: Number(this.values[15]),
+          metadata_json: String(this.values[17]),
           proof_policy: this.values[8] as ContractRow['proof_policy'],
-          public_receipt_ref: String(this.values[12]),
+          public_receipt_ref: String(this.values[16]),
           review_policy: this.values[6] as ContractRow['review_policy'],
+          service_promise_state:
+            this.values[12] as ContractRow['service_promise_state'],
+          sla_terms_json: String(this.values[13]),
           subject_ref: String(this.values[3]),
-          updated_at: String(this.values[15]),
+          updated_at: String(this.values[19]),
           work_kind: this.values[2] as ContractRow['work_kind'],
         })
       }
@@ -235,10 +251,19 @@ describe('Omni accepted outcome contracts', () => {
     expect(projection).toEqual({
       acceptanceState: 'draft',
       closeoutRequirementCount: 2,
+      committedDeliverableCount: 0,
       economicState: 'free_beta',
       expectedArtifactCount: 2,
+      fulfillmentReceiptSummary: {
+        blocked: 0,
+        failed: 0,
+        fulfilled: 0,
+        partial: 0,
+        total: 0,
+      },
       legalSensitive: false,
       proofPolicy: 'customer_safe_summary',
+      publicCommittedDeliverables: [],
       publicExpectedArtifacts: [
         {
           artifactKind: 'site_url',
@@ -249,6 +274,8 @@ describe('Omni accepted outcome contracts', () => {
       publicReceiptRef:
         'omni_accepted_outcome:site:accepted-outcome-contract:site:1',
       reviewPolicy: 'dual_review',
+      servicePromiseState: 'not_promised',
+      slaTermCount: 0,
       subjectRef: 'software_order_otec',
       workKind: 'site',
     })
@@ -296,6 +323,139 @@ describe('Omni accepted outcome contracts', () => {
       subjectRef: 'github_repo_issue_ref',
       workKind: 'coding',
     })
+  })
+
+  test('records per-customer service promises with SLA terms and verifier receipts', async () => {
+    const store = new AcceptedOutcomeContractStore()
+    const contract = await createContract(store, {
+      committedDeliverables: [
+        {
+          backingCapabilityRef: 'promise.autopilot.agentic_labor_products.v1',
+          backingCapabilityState: 'yellow',
+          deliverableRef: 'deliverable.customer_safe_site_launch',
+          expectedArtifactKind: 'site_url',
+          required: true,
+          sourceRef: 'scope.customer_safe_site_launch',
+        },
+      ],
+      fulfillmentReceipts: [
+        {
+          blockerRefs: [],
+          deliverableRef: 'deliverable.customer_safe_site_launch',
+          evaluatedAt: '2026-07-02T12:00:00.000Z',
+          evidenceRef: 'evidence.site_launch_verifier_passed',
+          receiptRef: 'fulfillment_receipt.site_launch.1',
+          state: 'fulfilled',
+          verifierRef: 'verifier.promise_fulfillment.site_launch.v1',
+        },
+      ],
+      idempotencyKey: 'accepted-outcome-contract:service-promise:1',
+      servicePromiseState: 'active',
+      slaTerms: [
+        {
+          dueAt: '2026-07-09T00:00:00.000Z',
+          metricRef: 'metric.first_delivery',
+          sourceRef: 'sla.quick_win.first_delivery',
+          target: 5,
+          termRef: 'sla.first_delivery.business_days',
+          unit: 'business_days',
+        },
+      ],
+    })
+    const projection = publicOmniAcceptedOutcomeContractProjection(contract)
+
+    expect(contract.servicePromiseState).toBe('active')
+    expect(contract.committedDeliverables).toHaveLength(1)
+    expect(contract.slaTerms).toHaveLength(1)
+    expect(contract.fulfillmentReceipts).toHaveLength(1)
+    expect(projection).toMatchObject({
+      committedDeliverableCount: 1,
+      fulfillmentReceiptSummary: {
+        blocked: 0,
+        failed: 0,
+        fulfilled: 1,
+        partial: 0,
+        total: 1,
+      },
+      publicCommittedDeliverables: [
+        {
+          backingCapabilityRef: 'promise.autopilot.agentic_labor_products.v1',
+          backingCapabilityState: 'yellow',
+          deliverableRef: 'deliverable.customer_safe_site_launch',
+          expectedArtifactKind: 'site_url',
+          required: true,
+        },
+      ],
+      servicePromiseState: 'active',
+      slaTermCount: 1,
+    })
+  })
+
+  test('fulfillment receipts evidence promises without flipping service promise state', async () => {
+    const contract = await createContract(new AcceptedOutcomeContractStore(), {
+      committedDeliverables: [
+        {
+          backingCapabilityRef: 'promise.autopilot.agentic_labor_products.v1',
+          backingCapabilityState: 'green',
+          deliverableRef: 'deliverable.reviewed_campaign_receipt',
+          expectedArtifactKind: 'operator_receipt',
+          required: true,
+          sourceRef: 'scope.reviewed_campaign_receipt',
+        },
+      ],
+      fulfillmentReceipts: [
+        {
+          blockerRefs: [],
+          deliverableRef: 'deliverable.reviewed_campaign_receipt',
+          evaluatedAt: '2026-07-02T13:00:00.000Z',
+          evidenceRef: 'evidence.campaign_receipt_verified',
+          receiptRef: 'fulfillment_receipt.campaign.1',
+          state: 'fulfilled',
+          verifierRef: 'verifier.promise_fulfillment.campaign.v1',
+        },
+      ],
+      idempotencyKey: 'accepted-outcome-contract:service-promise:decoupled',
+      servicePromiseState: 'breached',
+    })
+
+    expect(contract.fulfillmentReceipts[0]?.state).toBe('fulfilled')
+    expect(contract.servicePromiseState).toBe('breached')
+  })
+
+  test('rejects committed deliverables backed by red or planned capabilities', async () => {
+    await expect(
+      createContract(new AcceptedOutcomeContractStore(), {
+        committedDeliverables: [
+          {
+            backingCapabilityRef: 'promise.autopilot.superapp_desktop_business.v1',
+            backingCapabilityState: 'red',
+            deliverableRef: 'deliverable.unsupported_business_suite',
+            expectedArtifactKind: 'operator_receipt',
+            required: true,
+            sourceRef: 'scope.unsupported_business_suite',
+          },
+        ],
+        idempotencyKey: 'accepted-outcome-contract:service-promise:red',
+        servicePromiseState: 'active',
+      }),
+    ).rejects.toBeInstanceOf(OmniAcceptedOutcomeContractValidationError)
+
+    await expect(
+      createContract(new AcceptedOutcomeContractStore(), {
+        committedDeliverables: [
+          {
+            backingCapabilityRef: 'promise.future.private_compute_tier.v1',
+            backingCapabilityState: 'planned',
+            deliverableRef: 'deliverable.future_private_compute',
+            expectedArtifactKind: 'operator_receipt',
+            required: true,
+            sourceRef: 'scope.future_private_compute',
+          },
+        ],
+        idempotencyKey: 'accepted-outcome-contract:service-promise:planned',
+        servicePromiseState: 'active',
+      }),
+    ).rejects.toBeInstanceOf(OmniAcceptedOutcomeContractValidationError)
   })
 
   test('enforces legal-sensitive private proof policy', async () => {
