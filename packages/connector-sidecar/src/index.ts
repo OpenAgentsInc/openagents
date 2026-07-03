@@ -71,13 +71,20 @@ export type ConnectorAuthorityDecision =
   | {
       allowed: true
       status: "allowed"
-      reasonRef: "reason.connector.writeback.subject_bound"
+      reasonRef:
+        | "reason.connector.dispatch.authority_bound"
+        | "reason.connector.writeback.subject_bound"
       blockerRefs: []
     }
   | {
       allowed: false
       status: "denied"
       reasonRef:
+        | "reason.connector.app_idempotency_required"
+        | "reason.connector.generic_provider_tool_forbidden"
+        | "reason.connector.model_context_contains_private_provider_material"
+        | "reason.connector.platform_authority_forbidden"
+        | "reason.connector.source_verification_required"
         | "reason.connector.tool_not_allowed"
         | "reason.connector.tool_forbidden_authority"
         | "reason.connector.writeback_subject_mismatch"
@@ -112,6 +119,16 @@ export type NormalizeGitHubWebhookResult =
         | "reason.connector.github.invalid_json"
       blockerRefs: [string]
     }
+
+export type ConnectorDispatchAuthorityInput = {
+  event: ConnectorSourceVerifiedEvent
+  appOwnedIdempotencyKey: string | null | undefined
+  toolRefs: ReadonlyArray<string>
+  modelContextItems?: ReadonlyArray<unknown> | undefined
+  sessionHistoryItems?: ReadonlyArray<unknown> | undefined
+  logItems?: ReadonlyArray<unknown> | undefined
+  requestedPlatformAuthorityRefs?: ReadonlyArray<string> | undefined
+}
 
 const textEncoder = new TextEncoder()
 
@@ -308,6 +325,105 @@ export const projectConnectorEventToWorkspaceLane = (
 }
 
 const forbiddenAuthorityPattern = /\.(membership|payment|email|settlement|identity)\./
+const platformAuthorityPattern =
+  /(?:^|[._:-])(workspace|payment|email|membership|settlement|identity)(?:[._:-]|$)/i
+const genericProviderToolPattern =
+  /^(?:github|tool\.github|tool\.provider\.github|tool\.connector\.github\.(?:api|graphql|rest|generic|raw))(?:\.|$)/i
+const privateProviderMaterialPattern =
+  /(?:access[_-]?token|authorization|bearer|client[_-]?secret|cookie|gho_[A-Za-z0-9_]+|github[_-]?secret|hookshot|oauth|payload|private[_-]?key|provider[_-]?(credential|payload|secret)|raw[_-]?(body|headers|payload|webhook)|secret|signature256|token|webhook[_-]?(body|headers|payload|secret)|x-hub-signature)/i
+
+const hasPrivateProviderMaterial = (value: unknown): boolean =>
+  privateProviderMaterialPattern.test(JSON.stringify(value))
+
+export const decideConnectorDispatchAuthority = (
+  input: ConnectorDispatchAuthorityInput,
+): ConnectorAuthorityDecision => {
+  const { event } = input
+
+  if (event.sourceVerified !== true) {
+    return {
+      allowed: false,
+      status: "denied",
+      reasonRef: "reason.connector.source_verification_required",
+      blockerRefs: ["blocker.connector.source_verification_required"],
+    }
+  }
+
+  if (input.appOwnedIdempotencyKey !== event.dedupeKey) {
+    return {
+      allowed: false,
+      status: "denied",
+      reasonRef: "reason.connector.app_idempotency_required",
+      blockerRefs: ["blocker.connector.app_idempotency_required"],
+    }
+  }
+
+  const contextEnvelope = {
+    logs: input.logItems ?? [],
+    modelContext: input.modelContextItems ?? [],
+    sessionHistory: input.sessionHistoryItems ?? [],
+  }
+  if (hasPrivateProviderMaterial(contextEnvelope)) {
+    return {
+      allowed: false,
+      status: "denied",
+      reasonRef: "reason.connector.model_context_contains_private_provider_material",
+      blockerRefs: [
+        "blocker.connector.model_context_contains_private_provider_material",
+      ],
+    }
+  }
+
+  if (
+    (input.requestedPlatformAuthorityRefs ?? []).some((authorityRef) =>
+      platformAuthorityPattern.test(authorityRef),
+    )
+  ) {
+    return {
+      allowed: false,
+      status: "denied",
+      reasonRef: "reason.connector.platform_authority_forbidden",
+      blockerRefs: ["blocker.connector.platform_authority_forbidden"],
+    }
+  }
+
+  const projection = projectConnectorEventToWorkspaceLane(event)
+  for (const toolRef of input.toolRefs) {
+    if (
+      genericProviderToolPattern.test(toolRef) ||
+      forbiddenAuthorityPattern.test(toolRef)
+    ) {
+      return {
+        allowed: false,
+        status: "denied",
+        reasonRef: genericProviderToolPattern.test(toolRef)
+          ? "reason.connector.generic_provider_tool_forbidden"
+          : "reason.connector.tool_forbidden_authority",
+        blockerRefs: [
+          genericProviderToolPattern.test(toolRef)
+            ? "blocker.connector.generic_provider_tool_forbidden"
+            : "blocker.connector.tool_forbidden_authority",
+        ],
+      }
+    }
+
+    if (!projection.allowedWritebackToolRefs.includes(toolRef)) {
+      return {
+        allowed: false,
+        status: "denied",
+        reasonRef: "reason.connector.tool_not_allowed",
+        blockerRefs: ["blocker.connector.tool_not_allowed"],
+      }
+    }
+  }
+
+  return {
+    allowed: true,
+    status: "allowed",
+    reasonRef: "reason.connector.dispatch.authority_bound",
+    blockerRefs: [],
+  }
+}
 
 export const decideConnectorWritebackToolAuthority = (input: {
   event: ConnectorSourceVerifiedEvent
@@ -359,6 +475,5 @@ export const decideConnectorWritebackToolAuthority = (input: {
 export const connectorEventHasRawProviderMaterial = (
   value: ConnectorSourceVerifiedEvent,
 ): boolean => {
-  const serialized = JSON.stringify(value)
-  return /raw|payload|webhookSecret|secret|token|email|payment|member/i.test(serialized)
+  return hasPrivateProviderMaterial(value)
 }
