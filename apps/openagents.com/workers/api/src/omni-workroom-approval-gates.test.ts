@@ -8,6 +8,11 @@ import {
   OmniWorkroomOutboundDeliverableReviewInput,
   decideOmniWorkroomOutboundDeliverableReview,
 } from './omni-workroom-approval-gates'
+import {
+  VerticalPackOutboundComplianceCheckInput,
+  agencyVerticalPack,
+  legalVerticalPack,
+} from './blueprint/vertical-pack'
 
 const policy = (
   overrides: Partial<OmniWorkroomApprovalGatePolicy> = {},
@@ -26,6 +31,22 @@ const input = (
 ): OmniWorkroomOutboundDeliverableReviewInput =>
   new OmniWorkroomOutboundDeliverableReviewInput({
     approvalDecisionReceiptRefs: ['receipt.review.operator_approved.001'],
+    complianceCheck: new VerticalPackOutboundComplianceCheckInput({
+      actionRef: 'outbound_action.business_site_revision.publish.001',
+      advertisingRuleConstraintRefs:
+        agencyVerticalPack.complianceProfile.advertisingRuleConstraintRefs,
+      consentChannelRefs: agencyVerticalPack.complianceProfile.consentChannelRefs,
+      outboundActionKind: 'publish',
+      proposedActionRefs: ['action.customer_channel_publish.approved'],
+      provenanceReceiptRefs:
+        agencyVerticalPack.complianceProfile.provenanceRequirementRefs,
+      regulatedDataHandlingRefs: [
+        agencyVerticalPack.complianceProfile.regulatedDataHandlingRef,
+      ],
+      sourceRefs: ['source.customer.brand_kit', 'source.public.marketing_site'],
+      verticalPackId: agencyVerticalPack.id,
+    }),
+    complianceProfile: agencyVerticalPack.complianceProfile,
     deliverableRef: 'deliverable.business_site_revision.001',
     evidenceRefs: ['evidence.workroom.preview.001'],
     outboundActionKind: 'publish',
@@ -52,6 +73,10 @@ describe('Omni workroom approval gates', () => {
       approvalLevel: 'execute_with_approval',
       blockedExternalAction: false,
       blockerRefs: [],
+      complianceDecision: expect.objectContaining({
+        outboundActionAllowed: true,
+        profileRef: 'compliance_profile.agency',
+      }),
       externalActionAllowed: true,
       outboundActionKind: 'publish',
       professionalReviewRecorded: true,
@@ -62,6 +87,54 @@ describe('Omni workroom approval gates', () => {
       'issue.8090',
       'policy.business_fulfillment.approval_ladder.v1',
     ])
+  })
+
+  test('blocks send and publish when the vertical compliance profile is not satisfied', () => {
+    const decision = decideOmniWorkroomOutboundDeliverableReview(
+      input({
+        complianceCheck: new VerticalPackOutboundComplianceCheckInput({
+          actionRef: 'outbound_action.legal.packet.send.001',
+          advertisingRuleConstraintRefs: [
+            'advertising_rule.legal.no_outcome_guarantees',
+          ],
+          consentChannelRefs: ['consent.customer_provided_sources'],
+          outboundActionKind: 'send',
+          proposedActionRefs: ['prohibited.unapproved_filing_or_client_send'],
+          provenanceReceiptRefs: [
+            'provenance.customer_or_public_source_receipt',
+          ],
+          regulatedDataHandlingRefs: [],
+          sourceRefs: ['source.scraped_outreach.lead_list'],
+          verticalPackId: legalVerticalPack.id,
+        }),
+        complianceProfile: legalVerticalPack.complianceProfile,
+        outboundActionKind: 'send',
+        policy: policy({
+          professionalReviewRequired: true,
+          professionalReviewerRole: 'licensed_practitioner',
+        }),
+        professionalReviewReceiptRefs: [
+          'receipt.professional_review.licensed_practitioner.legal_packet',
+        ],
+        reviewerRoleRefs: [
+          'role.licensed_practitioner.verified.legal_packet',
+        ],
+        workKind: 'legal_sensitive',
+      }),
+    )
+
+    expect(decision.externalActionAllowed).toBe(false)
+    expect(decision.complianceDecision?.outboundActionAllowed).toBe(false)
+    expect(decision.blockerRefs).toEqual(
+      expect.arrayContaining([
+        'blocker.vertical_compliance.missing.consent.outbound_action_approval',
+        'blocker.vertical_compliance.missing.provenance.deliverable_source_map_receipt',
+        'blocker.vertical_compliance.missing.regulated_data.legal_confidential',
+        'blocker.vertical_compliance.missing.advertising_rule.legal.no_attorney_client_relationship_claim_without_review',
+        'blocker.vertical_compliance.prohibited.unapproved_filing_or_client_send',
+        'blocker.vertical_compliance.no_scraped_outreach',
+      ]),
+    )
   })
 
   test('blocks draft and suggest ladder levels from external send, publish, file, or spend actions', () => {

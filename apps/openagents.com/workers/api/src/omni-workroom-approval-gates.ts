@@ -2,6 +2,12 @@ import { containsProviderSecretMaterial } from '@openagentsinc/provider-account-
 import { Schema as S } from 'effect'
 
 import { OmniAcceptedOutcomeWorkKind as OmniAcceptedOutcomeWorkKindSchema } from './omni-accepted-outcome-contracts'
+import {
+  VerticalPackComplianceProfile,
+  VerticalPackOutboundComplianceCheckInput,
+  VerticalPackOutboundComplianceDecision,
+  decideVerticalPackOutboundCompliance,
+} from './blueprint/vertical-pack'
 
 export const OmniWorkroomApprovalLadderLevel = S.Literals([
   'draft',
@@ -42,6 +48,8 @@ export class OmniWorkroomOutboundDeliverableReviewInput extends S.Class<OmniWork
   'OmniWorkroomOutboundDeliverableReviewInput',
 )({
   approvalDecisionReceiptRefs: S.Array(S.String),
+  complianceCheck: S.NullOr(VerticalPackOutboundComplianceCheckInput),
+  complianceProfile: S.NullOr(VerticalPackComplianceProfile),
   deliverableRef: S.String,
   evidenceRefs: S.Array(S.String),
   outboundActionKind: OmniWorkroomOutboundActionKind,
@@ -60,6 +68,7 @@ export class OmniWorkroomOutboundDeliverableReviewDecision extends S.Class<OmniW
   approvalLevel: OmniWorkroomApprovalLadderLevel,
   blockedExternalAction: S.Boolean,
   blockerRefs: S.Array(S.String),
+  complianceDecision: S.NullOr(VerticalPackOutboundComplianceDecision),
   deliverableRef: S.String,
   evidenceRefs: S.Array(S.String),
   externalActionAllowed: S.Boolean,
@@ -146,10 +155,52 @@ const validateInputRefs = (
   assertSafeRefs('reviewerRoleRefs', input.reviewerRoleRefs)
   assertSafeRefs('sourceRefs', input.sourceRefs)
   assertSafeRefs('policy.sourceRefs', input.policy.sourceRefs)
+  if (input.complianceCheck !== null) {
+    assertSafeRef('complianceCheck.actionRef', input.complianceCheck.actionRef)
+    assertSafeRef(
+      'complianceCheck.verticalPackId',
+      input.complianceCheck.verticalPackId,
+    )
+    assertSafeRefs(
+      'complianceCheck.advertisingRuleConstraintRefs',
+      input.complianceCheck.advertisingRuleConstraintRefs,
+    )
+    assertSafeRefs(
+      'complianceCheck.consentChannelRefs',
+      input.complianceCheck.consentChannelRefs,
+    )
+    assertSafeRefs(
+      'complianceCheck.proposedActionRefs',
+      input.complianceCheck.proposedActionRefs,
+    )
+    assertSafeRefs(
+      'complianceCheck.provenanceReceiptRefs',
+      input.complianceCheck.provenanceReceiptRefs,
+    )
+    assertSafeRefs(
+      'complianceCheck.regulatedDataHandlingRefs',
+      input.complianceCheck.regulatedDataHandlingRefs,
+    )
+    assertSafeRefs('complianceCheck.sourceRefs', input.complianceCheck.sourceRefs)
+  }
+}
+
+const complianceDecisionFor = (
+  input: OmniWorkroomOutboundDeliverableReviewInput,
+): VerticalPackOutboundComplianceDecision | null => {
+  if (input.complianceProfile === null || input.complianceCheck === null) {
+    return null
+  }
+
+  return decideVerticalPackOutboundCompliance(
+    input.complianceProfile,
+    input.complianceCheck,
+  )
 }
 
 const blockerRefsFor = (
   input: OmniWorkroomOutboundDeliverableReviewInput,
+  complianceDecision: VerticalPackOutboundComplianceDecision | null,
 ): ReadonlyArray<string> => {
   const approvalLevelAllowsExternalAction =
     levelAllowsExternalAction[input.policy.approvalLevel]
@@ -181,6 +232,7 @@ const blockerRefsFor = (
     ...(!requiredReviewerRoleRecorded
       ? ['blocker.workroom_approval_ladder.professional_reviewer_role_missing']
       : []),
+    ...(complianceDecision?.blockerRefs ?? []),
   ].sort()
 }
 
@@ -189,7 +241,8 @@ export const decideOmniWorkroomOutboundDeliverableReview = (
 ): OmniWorkroomOutboundDeliverableReviewDecision => {
   validateInputRefs(input)
 
-  const blockerRefs = blockerRefsFor(input)
+  const complianceDecision = complianceDecisionFor(input)
+  const blockerRefs = blockerRefsFor(input, complianceDecision)
   const professionalReviewRequired = professionalReviewRequiredFor(input)
   const professionalReviewerRole = requiredProfessionalReviewerRoleFor(input)
   const professionalReviewRecorded =
@@ -203,6 +256,7 @@ export const decideOmniWorkroomOutboundDeliverableReview = (
     approvalLevel: input.policy.approvalLevel,
     blockedExternalAction: !externalActionAllowed,
     blockerRefs,
+    complianceDecision,
     deliverableRef: input.deliverableRef,
     evidenceRefs: uniqueSorted(input.evidenceRefs),
     externalActionAllowed,

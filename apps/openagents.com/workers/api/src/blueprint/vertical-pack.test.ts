@@ -10,7 +10,9 @@ import {
   VerticalPackStageTemplate,
   VerticalPackStarterWorkflow,
   VerticalPackVerificationRubric,
+  VerticalPackOutboundComplianceCheckInput,
   agencyVerticalPack,
+  decideVerticalPackOutboundCompliance,
   ecommerceVerticalPack,
   getVerticalPack,
   healthVerticalPack,
@@ -149,10 +151,21 @@ describe('vertical config packs', () => {
           'consent.outbound_action_approval',
         ]),
       )
+      expect(pack.complianceProfile.provenanceRequirementRefs).toEqual(
+        expect.arrayContaining([
+          'provenance.customer_or_public_source_receipt',
+          'provenance.deliverable_source_map_receipt',
+        ]),
+      )
+      expect(pack.complianceProfile.noScrapedOutreach).toBe(true)
+      expect(
+        pack.complianceProfile.advertisingRuleConstraintRefs.length,
+      ).toBeGreaterThan(0)
       expect(pack.complianceProfile.outboundActionGateRefs).toEqual(
         expect.arrayContaining([
           'gate.human_approval_before_send_publish_file_or_spend',
           'gate.provenance_before_customer_delivery',
+          'gate.vertical_compliance_profile_before_outbound_action',
         ]),
       )
       expect(
@@ -172,6 +185,67 @@ describe('vertical config packs', () => {
     expect(
       ecommerceVerticalPack.complianceProfile.professionalReviewRequired,
     ).toBe(false)
+  })
+
+  test('compliance profile decisions allow outbound actions only with consent, provenance, regulated-data, and advertising evidence', () => {
+    const decision = decideVerticalPackOutboundCompliance(
+      agencyVerticalPack.complianceProfile,
+      new VerticalPackOutboundComplianceCheckInput({
+        actionRef: 'outbound_action.agency.email_sequence.send.001',
+        advertisingRuleConstraintRefs:
+          agencyVerticalPack.complianceProfile.advertisingRuleConstraintRefs,
+        consentChannelRefs:
+          agencyVerticalPack.complianceProfile.consentChannelRefs,
+        outboundActionKind: 'send',
+        proposedActionRefs: ['action.customer_channel_send.approved'],
+        provenanceReceiptRefs:
+          agencyVerticalPack.complianceProfile.provenanceRequirementRefs,
+        regulatedDataHandlingRefs: [
+          agencyVerticalPack.complianceProfile.regulatedDataHandlingRef,
+        ],
+        sourceRefs: ['source.customer.brand_kit', 'source.public.site'],
+        verticalPackId: agencyVerticalPack.id,
+      }),
+    )
+
+    expect(decision.outboundActionAllowed).toBe(true)
+    expect(decision.blockerRefs).toEqual([])
+    expect(decision.profileRef).toBe('compliance_profile.agency')
+  })
+
+  test('compliance profile decisions block prohibited actions, scraped outreach, and missing evidence', () => {
+    const decision = decideVerticalPackOutboundCompliance(
+      ecommerceVerticalPack.complianceProfile,
+      new VerticalPackOutboundComplianceCheckInput({
+        actionRef: 'outbound_action.ecommerce.campaign.publish.001',
+        advertisingRuleConstraintRefs: [
+          'advertising_rule.ecommerce.inventory_claims_match_sources',
+        ],
+        consentChannelRefs: ['consent.customer_provided_sources'],
+        outboundActionKind: 'publish',
+        proposedActionRefs: [
+          'prohibited.out_of_stock_or_unavailable_offer',
+        ],
+        provenanceReceiptRefs: [
+          'provenance.customer_or_public_source_receipt',
+        ],
+        regulatedDataHandlingRefs: [],
+        sourceRefs: ['source.raw_scrape.lead_list'],
+        verticalPackId: ecommerceVerticalPack.id,
+      }),
+    )
+
+    expect(decision.outboundActionAllowed).toBe(false)
+    expect(decision.blockerRefs).toEqual(
+      expect.arrayContaining([
+        'blocker.vertical_compliance.missing.consent.outbound_action_approval',
+        'blocker.vertical_compliance.missing.provenance.deliverable_source_map_receipt',
+        'blocker.vertical_compliance.missing.regulated_data.commerce_customer_sources',
+        'blocker.vertical_compliance.missing.advertising_rule.ecommerce.price_and_discount_claims_match_sources',
+        'blocker.vertical_compliance.prohibited.out_of_stock_or_unavailable_offer',
+        'blocker.vertical_compliance.no_scraped_outreach',
+      ]),
+    )
   })
 
   test('new verticals onboard through shared screens only', () => {
