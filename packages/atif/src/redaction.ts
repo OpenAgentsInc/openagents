@@ -20,6 +20,10 @@ export type RedactionCategory =
   | "home_path"
   | "file_url"
   | "email"
+  | "phone"
+  | "ssn"
+  | "date_of_birth"
+  | "medical_record_id"
   | "ip"
   | "long_blob"
   | "username"
@@ -27,6 +31,16 @@ export type RedactionCategory =
 export type RedactOptions = Readonly<{
   usernames?: ReadonlyArray<string>
 }>
+
+export type RedactionSurface = "corpus_ingestion" | "trace_capture"
+
+export type RegulatedVertical = "legal" | "health" | "other_regulated"
+
+export type ExternalInferenceRedactionOptions = RedactOptions &
+  Readonly<{
+    surface: RedactionSurface
+    regulatedVertical?: RegulatedVertical
+  }>
 
 export type RedactionReport = Readonly<{
   counts: Readonly<Record<string, number>>
@@ -37,6 +51,17 @@ export type RedactionResult<T> = Readonly<{
   value: T
   report: RedactionReport
 }>
+
+export type ExternalInferenceRedactionResult<T> = RedactionResult<T> &
+  Readonly<{
+    policy: Readonly<{
+      serviceRef: typeof REDACTION_SERVICE_REF
+      surface: RedactionSurface
+      regulatedVertical?: RegulatedVertical
+      appliedBeforeExternalInference: true
+    }>
+    safeForExternalInference: true
+  }>
 
 export type TraceRedactionCategory = RedactionCategory
 export type TraceRedactionReport = RedactionReport
@@ -55,11 +80,21 @@ export type TraceRedactorShape = Readonly<{
     text: string,
     options?: RedactOptions,
   ) => Effect.Effect<RedactionResult<string>>
+  redactForExternalInference: <T>(
+    value: T,
+    options: ExternalInferenceRedactionOptions,
+  ) => Effect.Effect<ExternalInferenceRedactionResult<T>>
+  redactTextForExternalInference: (
+    text: string,
+    options: ExternalInferenceRedactionOptions,
+  ) => Effect.Effect<ExternalInferenceRedactionResult<string>>
   redactTrajectory: <T>(
     trajectory: T,
     options?: RedactOptions,
   ) => Effect.Effect<RedactionResult<T>>
 }>
+
+export const REDACTION_SERVICE_REF = "@openagentsinc/atif/redaction"
 
 const ALLOWLIST_EXACT: ReadonlyArray<string> = ["openagents/khala"]
 
@@ -230,6 +265,29 @@ const RULES: ReadonlyArray<Rule> = [
     replace: () => tag("email"),
   },
   {
+    category: "ssn",
+    pattern: /\b(?:SSN|social security(?: number)?)\s*[:#=]?\s*\d{3}-\d{2}-\d{4}\b/gi,
+    replace: () => `SSN ${tag("ssn")}`,
+  },
+  {
+    category: "date_of_birth",
+    pattern:
+      /\b(?:DOB|date of birth|birth date)\s*[:#=]?\s*(?:\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|[A-Z][a-z]{2,8}\s+\d{1,2},\s+\d{4})\b/g,
+    replace: () => `DOB ${tag("date_of_birth")}`,
+  },
+  {
+    category: "medical_record_id",
+    pattern:
+      /\b(?:MRN|medical record(?: number)?|patient id)\s*[:#=]?\s*[A-Za-z0-9-]{6,}\b/gi,
+    replace: () => `MRN ${tag("medical_record_id")}`,
+  },
+  {
+    category: "phone",
+    pattern:
+      /(^|[^\dA-Za-z])(?:\+?1[-.\s]?)?(?:\([2-9]\d{2}\)|[2-9]\d{2})[-.\s]?[2-9]\d{2}[-.\s]?\d{4}\b/g,
+    replace: (_m, prefix: string) => `${prefix}${tag("phone")}`,
+  },
+  {
     category: "ip",
     pattern:
       /\b(?:10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}|100\.\d{1,3}\.\d{1,3}\.\d{1,3})\b/g,
@@ -376,10 +434,53 @@ export const redactValue = <T extends Json>(
 
 export const redactTraceValue = redactValue
 
+const externalInferencePolicy = (
+  options: ExternalInferenceRedactionOptions,
+): ExternalInferenceRedactionResult<unknown>["policy"] => ({
+  serviceRef: REDACTION_SERVICE_REF,
+  surface: options.surface,
+  ...(options.regulatedVertical === undefined
+    ? {}
+    : { regulatedVertical: options.regulatedVertical }),
+  appliedBeforeExternalInference: true,
+})
+
+export const redactForExternalInference = <T extends Json>(
+  value: T,
+  options: ExternalInferenceRedactionOptions,
+): ExternalInferenceRedactionResult<T> => {
+  const { surface: _surface, regulatedVertical: _regulatedVertical, ...redactOptions } =
+    options
+  const redacted = redactValue(value, redactOptions)
+  return {
+    ...redacted,
+    policy: externalInferencePolicy(options),
+    safeForExternalInference: true,
+  }
+}
+
+export const redactStringForExternalInference = (
+  text: string,
+  options: ExternalInferenceRedactionOptions,
+): ExternalInferenceRedactionResult<string> => {
+  const { surface: _surface, regulatedVertical: _regulatedVertical, ...redactOptions } =
+    options
+  const redacted = redactString(text, redactOptions)
+  return {
+    ...redacted,
+    policy: externalInferencePolicy(options),
+    safeForExternalInference: true,
+  }
+}
+
 export const makeTraceRedactor = (): TraceRedactorShape => ({
   redact: (value, options) => Effect.sync(() => redactValue(value, options)),
   redactString: (text, options) => Effect.sync(() => redactString(text, options)),
   redactText: (text, options) => Effect.sync(() => redactString(text, options)),
+  redactForExternalInference: (value, options) =>
+    Effect.sync(() => redactForExternalInference(value, options)),
+  redactTextForExternalInference: (text, options) =>
+    Effect.sync(() => redactStringForExternalInference(text, options)),
   redactTrajectory: (trajectory, options) =>
     Effect.sync(() => redactValue(trajectory, options)),
 })
