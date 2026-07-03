@@ -70,6 +70,7 @@ describe("Codex token usage telemetry", () => {
       model: "gpt-5.5",
       producerSystem: "pylon",
       provider: "pylon-codex-direct-local",
+      roleRef: "coder",
       privacy: {
         leaderboardEligible: true,
         privacyOptOut: false,
@@ -79,6 +80,7 @@ describe("Codex token usage telemetry", () => {
         codexThreadId: "thread-direct-local",
         codexTurnId: "turn-direct-local",
         desktopTurnId: "desktop-turn-direct-local",
+        roleRef: "coder",
       },
       sourceRoute: "pylon_codex_direct_local",
       tokenCounts: {
@@ -677,6 +679,26 @@ describe("Codex token usage telemetry", () => {
         },
       },
     })}\n`, "utf8")
+    await appendFile(localLedgerPath, `${JSON.stringify({
+      schemaVersion: "khala-code-desktop.codex-token-usage.local.v1",
+      recordedAt: "2026-07-01T16:31:04.000Z",
+      event: {
+        cost: {
+          amount: 0.12,
+          currency: "USD",
+        },
+        eventId: "token_usage_event.live.judge",
+        idempotencyKey: "khala-code-desktop:live:judge",
+        observedAt: "2026-07-01T16:31:04.000Z",
+        roleRef: "judge",
+        safeMetadata: { codexThreadId: report.codexThreadId, roleRef: "judge" },
+        tokenCounts: {
+          inputTokens: 10,
+          outputTokens: 0,
+          totalTokens: 10,
+        },
+      },
+    })}\n`, "utf8")
     await appendFile(join(root, "token-usage-report-failures.jsonl"), `${JSON.stringify({
       eventId: "token_usage_event.live.failed",
       idempotencyKey: "khala-code-desktop:live:failed",
@@ -684,6 +706,10 @@ describe("Codex token usage telemetry", () => {
     await appendFile(join(root, "token-usage-report-successes.jsonl"), `${JSON.stringify({
       eventId: "token_usage_event.live.ok",
       idempotencyKey: "khala-code-desktop:live:ok",
+    })}\n`, "utf8")
+    await appendFile(join(root, "token-usage-report-successes.jsonl"), `${JSON.stringify({
+      eventId: "token_usage_event.live.judge",
+      idempotencyKey: "khala-code-desktop:live:judge",
     })}\n`, "utf8")
 
     const summary = await readKhalaCodeDesktopThreadTokenSummary({
@@ -694,13 +720,31 @@ describe("Codex token usage telemetry", () => {
     expect(summary).toMatchObject({
       auditRows: 1,
       codexStateTokens: 0,
-      leaderboardSyncedTokens: 135,
+      leaderboardSyncedTokens: 145,
       missingUsageTurns: 0,
       pendingSyncTokens: 5,
       remoteConfigured: true,
       threadId: report.codexThreadId,
-      totalTokens: 140,
-      usageEventRows: 2,
+      totalTokens: 150,
+      usageEventRows: 3,
+      roleEconomics: [
+        {
+          costAmount: null,
+          costCurrency: null,
+          pricingState: "subscription_covered",
+          roleRef: "coder",
+          tokenRows: 3,
+          tokens: 140,
+        },
+        {
+          costAmount: 0.12,
+          costCurrency: "USD",
+          pricingState: "measured",
+          roleRef: "judge",
+          tokenRows: 1,
+          tokens: 10,
+        },
+      ],
     })
   })
 
@@ -736,6 +780,7 @@ describe("Codex token usage telemetry", () => {
       codexStateTokens: 2_439_775,
       leaderboardSyncedTokens: 0,
       pendingSyncTokens: 0,
+      roleEconomics: [],
       threadId: "thread-visible-before-audit",
       totalTokens: 0,
       usageEventRows: 0,

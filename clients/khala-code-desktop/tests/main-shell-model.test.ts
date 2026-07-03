@@ -24,6 +24,7 @@ const emptyThreadTokenSummary = (
   pendingSyncTokens: 0,
   remoteConfigured: false,
   remoteDisabled: false,
+  roleEconomics: [],
   threadId,
   totalTokens: 0,
   updatedAt: null,
