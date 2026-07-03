@@ -13,6 +13,7 @@ import {
   buildEcommerceCampaignDeliveryReceipt,
   toEcommerceCampaignDeliveryReceiptDocument,
 } from './ecommerce-campaign-delivery-receipt'
+import { EcommerceCampaignWorkflowReceipt } from './ecommerce-campaign-workflow'
 
 export type EcommerceCampaignReceiptOperatorRoutesDependencies<Bindings> = Readonly<{
   makeStore: (env: Bindings) => EcommerceCampaignReceiptStore
@@ -33,6 +34,7 @@ const RecordReceiptRequest = S.Struct({
   statsWindow: S.NullOr(S.String),
   attributionCaveat: S.String,
   stockoutFollowUp: S.String,
+  campaignWorkflow: S.optionalKey(EcommerceCampaignWorkflowReceipt),
   paidSettlement: EcommerceCampaignPaidSettlement,
   freshnessTimestamp: S.String,
   publicSourceRefs: S.Array(S.String),
@@ -85,6 +87,7 @@ export const makeEcommerceCampaignReceiptOperatorRoutes = <Bindings>(
           statsWindow: parsed.statsWindow,
           attributionCaveat: parsed.attributionCaveat,
           stockoutFollowUp: parsed.stockoutFollowUp,
+          campaignWorkflow: parsed.campaignWorkflow,
           paidSettlement: parsed.paidSettlement,
           freshnessTimestamp: parsed.freshnessTimestamp,
           publicSourceRefs: parsed.publicSourceRefs,

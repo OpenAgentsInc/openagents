@@ -13,6 +13,10 @@ import {
   verifyDereferencedEcommerceCampaignReceipt,
   verifyEcommerceCampaignPaidDelivery,
 } from './ecommerce-campaign-delivery-receipt'
+import {
+  buildEcommerceCampaignWorkflowReceipt,
+  type EcommerceCampaignWorkflowInput,
+} from './ecommerce-campaign-workflow'
 
 const allBlockedGates: Record<EcommerceCampaignAuthorityGateId, boolean> = {
   merchant_approval: false,
@@ -44,6 +48,7 @@ const baseInput = (
   attributionCaveat:
     'Attribution is modeled, not deterministic; treat as directional.',
   stockoutFollowUp: 'Re-check SKU stock before any re-run.',
+  campaignWorkflow: undefined,
   paidSettlement: {
     amountCents: 0,
     asset: 'usd',
@@ -56,6 +61,45 @@ const baseInput = (
   ],
   ...overrides,
 })
+
+const workflowInput = (
+  overrides: Partial<EcommerceCampaignWorkflowInput> = {},
+): EcommerceCampaignWorkflowInput => ({
+  workflowRef: 'workflow.ecommerce.inventory_campaign.fixture',
+  inventorySnapshotRef: 'inventory.snapshot.fixture',
+  inventoryItems: [
+    {
+      skuRef: 'sku.fixture.in_stock',
+      title: 'Fixture in-stock product',
+      stockState: 'in_stock',
+      availableQuantity: 7,
+      productImageRef: 'image.fixture.in_stock',
+      productImageVerified: true,
+      productPageRef: 'product.fixture.in_stock',
+    },
+    {
+      skuRef: 'sku.fixture.out_of_stock',
+      title: 'Fixture out-of-stock product',
+      stockState: 'out_of_stock',
+      availableQuantity: 0,
+      productImageRef: 'image.fixture.out_of_stock',
+      productImageVerified: true,
+      productPageRef: 'product.fixture.out_of_stock',
+    },
+  ],
+  selectedSkuRefs: ['sku.fixture.in_stock'],
+  spendCapCents: 50_000,
+  requestedSpendCents: 42_000,
+  statsWindow: '2026-06-20/2026-06-27',
+  conversationalEditRefs: ['conversation.ecommerce.edit.fixture'],
+  merchantApprovalMode: 'approved_for_publish',
+  publishState: 'published_with_receipt',
+  ...overrides,
+})
+
+const workflowReceipt = (
+  overrides: Partial<EcommerceCampaignWorkflowInput> = {},
+) => buildEcommerceCampaignWorkflowReceipt(workflowInput(overrides))
 
 describe('e-commerce campaign delivery receipt', () => {
   test('a fresh draft with all gates blocked is blocked, not delivered', () => {
@@ -96,6 +140,7 @@ describe('e-commerce campaign delivery receipt', () => {
         publishedArtifactRefs: ['campaign.meta.set.123'],
         spendObservedCents: 42_000,
         statsWindow: '2026-06-20/2026-06-27',
+        campaignWorkflow: workflowReceipt(),
         paidSettlement: {
           amountCents: 25_000,
           asset: 'usd',
@@ -146,6 +191,7 @@ describe('e-commerce campaign delivery receipt', () => {
         humanReviewAccepted: true,
         receiptedGates: allReceiptedGates,
         publishedArtifactRefs: ['campaign.meta.set.123'],
+        campaignWorkflow: workflowReceipt(),
         paidSettlement: {
           amountCents: 25_000,
           asset: 'usd',
@@ -159,6 +205,43 @@ describe('e-commerce campaign delivery receipt', () => {
       'paid settlement recorded without a dereferenceable payment ref',
     )
   })
+
+  test('does not verify a paid delivery without inventory workflow evidence', () => {
+    const receipt = buildEcommerceCampaignDeliveryReceipt(
+      baseInput({
+        humanReviewAccepted: true,
+        receiptedGates: allReceiptedGates,
+        publishedArtifactRefs: ['campaign.meta.set.123'],
+        spendObservedCents: 42_000,
+        statsWindow: '2026-06-20/2026-06-27',
+        paidSettlement: {
+          amountCents: 25_000,
+          asset: 'usd',
+          evidenced: true,
+          publicPaymentRef: 'payment.public.ref.abc',
+        },
+      }),
+    )
+
+    expect(verifyEcommerceCampaignPaidDelivery(receipt)).toContain(
+      'inventory-aware campaign workflow receipt missing',
+    )
+  })
+
+  test('rejects delivery receipts whose spend cap diverges from workflow evidence', () => {
+    expect(() =>
+      buildEcommerceCampaignDeliveryReceipt(
+        baseInput({
+          receiptedGates: allReceiptedGates,
+          spendCapCents: 50_000,
+          campaignWorkflow: workflowReceipt({
+            spendCapCents: 40_000,
+            requestedSpendCents: 40_000,
+          }),
+        }),
+      ),
+    ).toThrow(EcommerceCampaignDeliveryReceiptInvariantError)
+  })
 })
 
 const paidReceipt = () =>
@@ -169,6 +252,7 @@ const paidReceipt = () =>
       publishedArtifactRefs: ['campaign.meta.set.123'],
       spendObservedCents: 42_000,
       statsWindow: '2026-06-20/2026-06-27',
+      campaignWorkflow: workflowReceipt(),
       paidSettlement: {
         amountCents: 25_000,
         asset: 'usd',

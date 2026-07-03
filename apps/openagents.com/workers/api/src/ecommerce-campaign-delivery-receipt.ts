@@ -2,6 +2,10 @@ import { Schema as S } from 'effect'
 
 import { parseJsonWithSchema } from './json-boundary'
 import { ECOMMERCE_DESIGN_PARTNER_TEMPLATE_REF } from './prefilled-workspace-vertical-templates'
+import {
+  EcommerceCampaignWorkflowReceipt,
+  verifyEcommerceCampaignWorkflowReceipt,
+} from './ecommerce-campaign-workflow'
 
 /**
  * First-paid delivery receipt for an e-commerce inventory-aware ad-campaign
@@ -130,6 +134,7 @@ export const EcommerceCampaignDeliveryReceipt = S.Struct({
   statsWindow: S.NullOr(S.String),
   attributionCaveat: S.String,
   stockoutFollowUp: S.String,
+  campaignWorkflow: S.optionalKey(EcommerceCampaignWorkflowReceipt),
   paidSettlement: EcommerceCampaignPaidSettlement,
   freshnessTimestamp: S.String,
   publicSourceRefs: S.Array(S.String),
@@ -163,6 +168,7 @@ export type EcommerceCampaignDeliveryInput = Readonly<{
   statsWindow: string | null
   attributionCaveat: string
   stockoutFollowUp: string
+  campaignWorkflow?: EcommerceCampaignWorkflowReceipt | undefined
   paidSettlement: EcommerceCampaignPaidSettlement
   freshnessTimestamp: string
   publicSourceRefs: ReadonlyArray<string>
@@ -222,6 +228,25 @@ export const buildEcommerceCampaignDeliveryReceipt = (
     })
   }
 
+  if (
+    input.campaignWorkflow !== undefined &&
+    input.campaignWorkflow.spendCapCents !== input.spendCapCents
+  ) {
+    throw new EcommerceCampaignDeliveryReceiptInvariantError({
+      reason: 'campaign workflow spend cap must match delivery receipt spend cap',
+    })
+  }
+
+  if (
+    spendObserved != null &&
+    input.campaignWorkflow !== undefined &&
+    spendObserved !== input.campaignWorkflow.requestedSpendCents
+  ) {
+    throw new EcommerceCampaignDeliveryReceiptInvariantError({
+      reason: 'observed spend must match campaign workflow requested spend',
+    })
+  }
+
   if (input.paidSettlement.amountCents < 0) {
     throw new EcommerceCampaignDeliveryReceiptInvariantError({
       reason: 'paid settlement amount must not be negative',
@@ -264,6 +289,9 @@ export const buildEcommerceCampaignDeliveryReceipt = (
     statsWindow: input.statsWindow,
     attributionCaveat: input.attributionCaveat,
     stockoutFollowUp: input.stockoutFollowUp,
+    ...(input.campaignWorkflow === undefined
+      ? {}
+      : { campaignWorkflow: input.campaignWorkflow }),
     paidSettlement: input.paidSettlement,
     freshnessTimestamp: input.freshnessTimestamp,
     publicSourceRefs: [...input.publicSourceRefs],
@@ -309,6 +337,26 @@ export const verifyEcommerceCampaignPaidDelivery = (
   }
   if (receipt.publishedArtifactRefs.length === 0) {
     reasons.push('no published artifact refs')
+  }
+  if (receipt.campaignWorkflow === undefined) {
+    reasons.push('inventory-aware campaign workflow receipt missing')
+  } else {
+    reasons.push(...verifyEcommerceCampaignWorkflowReceipt(receipt.campaignWorkflow))
+    if (receipt.campaignWorkflow.spendCapCents !== receipt.spendCapCents) {
+      reasons.push('workflow spend cap does not match delivery receipt spend cap')
+    }
+    if (
+      receipt.spendObservedCents != null &&
+      receipt.campaignWorkflow.requestedSpendCents !== receipt.spendObservedCents
+    ) {
+      reasons.push('workflow requested spend does not match observed spend')
+    }
+    if (
+      receipt.statsWindow !== null &&
+      receipt.campaignWorkflow.statsWindow !== receipt.statsWindow
+    ) {
+      reasons.push('workflow stats window does not match delivery receipt stats window')
+    }
   }
 
   return reasons

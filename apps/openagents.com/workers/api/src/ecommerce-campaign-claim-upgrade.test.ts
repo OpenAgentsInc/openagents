@@ -12,6 +12,7 @@ import {
   ECOMMERCE_CAMPAIGN_DELIVERY_RECEIPT_DOC_VERSION,
   buildEcommerceCampaignDeliveryReceipt,
 } from './ecommerce-campaign-delivery-receipt'
+import { buildEcommerceCampaignWorkflowReceipt } from './ecommerce-campaign-workflow'
 
 const receiptFixture = (overrides = {}): EcommerceCampaignDeliveryReceiptDocument => ({
   docVersion: ECOMMERCE_CAMPAIGN_DELIVERY_RECEIPT_DOC_VERSION,
@@ -30,6 +31,28 @@ const receiptFixture = (overrides = {}): EcommerceCampaignDeliveryReceiptDocumen
     spendObservedCents: 1000,
     publishedArtifactRefs: ['artifact.fixture'],
     statsWindow: null,
+    campaignWorkflow: buildEcommerceCampaignWorkflowReceipt({
+      workflowRef: 'workflow.fixture',
+      inventorySnapshotRef: 'inventory.snapshot.fixture',
+      inventoryItems: [
+        {
+          skuRef: 'sku.fixture',
+          title: 'Fixture product',
+          stockState: 'in_stock',
+          availableQuantity: 3,
+          productImageRef: 'image.fixture',
+          productImageVerified: true,
+          productPageRef: 'product.fixture',
+        },
+      ],
+      selectedSkuRefs: ['sku.fixture'],
+      spendCapCents: 50000,
+      requestedSpendCents: 1000,
+      statsWindow: null,
+      conversationalEditRefs: ['conversation.fixture'],
+      merchantApprovalMode: 'approved_for_publish',
+      publishState: 'published_with_receipt',
+    }),
     attributionCaveat: 'fixture',
     stockoutFollowUp: 'fixture',
     paidSettlement: {
