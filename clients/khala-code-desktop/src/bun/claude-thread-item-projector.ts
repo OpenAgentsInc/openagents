@@ -184,12 +184,43 @@ export function createClaudeThreadItemProjector(input: {
   let assistantCount = 0
   const streamBlockIds = new Map<number, string>()
   const streamBlockKinds = new Map<number, string>()
+  const streamMessageIds = new Set<string>()
+  const streamCompletedIds = new Set<string>()
+  const adoptedStreamIds = new Set<string>()
+  const finalAssistantBlockIds = new Map<string, string>()
 
   const appendMessage = (message: KhalaCodeDesktopMessage): void => {
     const existing = messages.findIndex(candidate => candidate.id === message.id)
     if (existing === -1) messages.push(message)
     else messages[existing] = message
   }
+
+  const assistantBlockKey = (
+    raw: Record<string, unknown>,
+    blockType: string,
+    index: number,
+    body: string,
+  ): string =>
+    `${stringField(raw, "uuid") ?? stringField(raw, "session_id") ?? input.turnId}:${blockType}:${index}:${body}`
+
+  const matchesAssistantBlockKind = (
+    message: KhalaCodeDesktopMessage,
+    blockType: string,
+  ): boolean =>
+    blockType === "thinking"
+      ? message.harnessItem?.itemType === "reasoning"
+      : message.harnessItem === undefined
+
+  const matchingCompletedStreamMessage = (
+    blockType: string,
+    body: string,
+  ): KhalaCodeDesktopMessage | undefined =>
+    messages.find(message =>
+      streamMessageIds.has(message.id) &&
+      !adoptedStreamIds.has(message.id) &&
+      message.role === "assistant" &&
+      message.body === body &&
+      matchesAssistantBlockKind(message, blockType))
 
   const projectAssistant = (decoded: {
     readonly message: { readonly content: readonly Record<string, unknown>[] }
@@ -203,7 +234,12 @@ export function createClaudeThreadItemProjector(input: {
       if (blockType === "text" || blockType === "thinking") {
         const body = contentText(block)
         if (body.length === 0) continue
-        const id = messageId(input.turnId, blockType, raw, assistantCount++)
+        const key = assistantBlockKey(raw, blockType, index, body)
+        const existingId = finalAssistantBlockIds.get(key)
+        const streamed = existingId === undefined
+          ? matchingCompletedStreamMessage(blockType, body)
+          : undefined
+        const id = existingId ?? streamed?.id ?? messageId(input.turnId, blockType, raw, assistantCount++)
         const message: KhalaCodeDesktopMessage = {
           body,
           id,
@@ -216,6 +252,24 @@ export function createClaudeThreadItemProjector(input: {
               title: "Claude reasoning",
             },
           } : {}),
+        }
+        finalAssistantBlockIds.set(key, id)
+        if (streamed !== undefined) {
+          adoptedStreamIds.add(streamed.id)
+          appendMessage(message)
+          if (blockType === "thinking") {
+            events.push({ message, turnId: input.turnId, type: "message_replace" })
+          }
+          if (!streamCompletedIds.has(streamed.id)) {
+            streamCompletedIds.add(streamed.id)
+            events.push({ messageId: streamed.id, turnId: input.turnId, type: "message_done" })
+          }
+          continue
+        }
+        if (existingId !== undefined) {
+          appendMessage(message)
+          events.push({ message, turnId: input.turnId, type: "message_replace" })
+          continue
         }
         appendMessage(message)
         events.push({ message: { ...message, body: "" }, turnId: input.turnId, type: "message_start" })
@@ -284,6 +338,7 @@ export function createClaudeThreadItemProjector(input: {
       const id = `${input.turnId}-claude-stream-${index}`
       streamBlockIds.set(index, id)
       streamBlockKinds.set(index, blockType)
+      streamMessageIds.add(id)
       const message: KhalaCodeDesktopMessage = {
         body: "",
         id,
@@ -311,6 +366,7 @@ export function createClaudeThreadItemProjector(input: {
       if (!streamBlockIds.has(index)) {
         streamBlockIds.set(index, id)
         streamBlockKinds.set(index, blockType)
+        streamMessageIds.add(id)
         const message: KhalaCodeDesktopMessage = {
           body: "",
           id,
@@ -338,7 +394,10 @@ export function createClaudeThreadItemProjector(input: {
 
     if (eventType === "content_block_stop") {
       const id = streamBlockIds.get(index)
-      if (id !== undefined) events.push({ messageId: id, turnId: input.turnId, type: "message_done" })
+      if (id !== undefined) {
+        streamCompletedIds.add(id)
+        events.push({ messageId: id, turnId: input.turnId, type: "message_done" })
+      }
       return { events, messages, status, toolNames: [...toolNames], usage }
     }
 

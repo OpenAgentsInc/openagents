@@ -208,6 +208,41 @@ export const khalaCodeUxContractRegistry: BehaviorContractRegistryDocument = {
     },
     {
       authorityBoundary:
+        "Binds duplicate visible assistant text for one Claude turn only. It does not change Claude SDK event ordering, token accounting, or the Codex lane projector.",
+      blockerRefs: [],
+      contractId: "khala_code.transcript.claude_assistant_turn_once.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "https://github.com/OpenAgentsInc/openagents/issues/8231",
+        "clients/khala-code-desktop/src/bun/claude-thread-item-projector.ts",
+        "clients/khala-code-desktop/tests/claude-app-sdk-chat-runtime.test.ts",
+        "docs/khala-code/khala-code-ux-contract.md",
+      ],
+      oracles: [
+        {
+          description:
+            "Feeds the Claude projector a streamed assistant text block followed by the final assistant snapshot with the same body, and asserts the transcript keeps exactly one assistant message.",
+          id: "claude_stream_final_snapshot_dedupe.unit",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "clients/khala-code-desktop/tests/claude-app-sdk-chat-runtime.test.ts",
+        },
+      ],
+      productArea: "chat transcript",
+      source: {
+        channel: "github-issue",
+        statedBy: "operator-agent",
+        statedOn: "2026-07-03",
+      },
+      state: "enforced",
+      statement:
+        "An assistant turn can render twice in the transcript — the same reply body appears as two consecutive assistant blocks for a single user turn. Observed on the Claude lane.",
+      surface: "khala-code-desktop",
+      verification:
+        "bun test tests/claude-app-sdk-chat-runtime.test.ts tests/ux-contracts.test.ts inside clients/khala-code-desktop; runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.",
+    },
+    {
+      authorityBoundary:
         "This binds control liveness only, not the exact reasoning-mode UI; that design is free to iterate as long as no control ships inert.",
       blockerRefs: ["blocker.khala_code_ux_mining.oracle_not_implemented_20260703"],
       contractId: "khala_code.composer.no_dead_controls.v1",

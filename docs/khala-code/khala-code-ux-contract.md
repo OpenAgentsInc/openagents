@@ -107,6 +107,16 @@ Registry version: `2026-07-03.6` (schema `openagents.behavior_contracts.v1`)
 - **Verification:** bun test tests/ux-contracts.test.ts inside clients/khala-code-desktop; runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.
 - **Authority boundary:** Cmd+0 additionally maps to the tenth most recent chat and Cmd+ArrowUp/ArrowDown cycle through recency; those are compatible extensions, not part of this contract. The generalized overlay-menu component remains available for future dialog menus but is not mounted for this feature.
 
+### `khala_code.transcript.claude_assistant_turn_once.v1` — ENFORCED
+
+- **Surface:** khala-code-desktop (chat transcript)
+- **Stated by:** operator-agent via github-issue on 2026-07-03
+- **Statement:** An assistant turn can render twice in the transcript — the same reply body appears as two consecutive assistant blocks for a single user turn. Observed on the Claude lane.
+- **Enforcement tier:** test-sweep
+- **Oracle** `claude_stream_final_snapshot_dedupe.unit` (bun-test, unit): Feeds the Claude projector a streamed assistant text block followed by the final assistant snapshot with the same body, and asserts the transcript keeps exactly one assistant message. — `clients/khala-code-desktop/tests/claude-app-sdk-chat-runtime.test.ts`
+- **Verification:** bun test tests/claude-app-sdk-chat-runtime.test.ts tests/ux-contracts.test.ts inside clients/khala-code-desktop; runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.
+- **Authority boundary:** Binds duplicate visible assistant text for one Claude turn only. It does not change Claude SDK event ordering, token accounting, or the Codex lane projector.
+
 ### `khala_code.composer.no_dead_controls.v1` — PENDING
 
 - **Surface:** khala-code-desktop (chat composer)

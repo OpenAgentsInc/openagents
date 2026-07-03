@@ -158,6 +158,58 @@ describe("Claude Agent SDK chat runtime", () => {
     expect(projector.messages()).toMatchObject([{ body: "partial text" }])
   })
 
+  // Oracle for khala_code.transcript.claude_assistant_turn_once.v1
+  test("does not append a duplicate assistant message when a final snapshot repeats streamed text", () => {
+    const projector = createClaudeThreadItemProjector({
+      desktopSessionId: "desktop-session-no-duplicate",
+      turnId: "desktop-turn-no-duplicate",
+    })
+
+    projector.project({
+      event: {
+        content_block: { type: "text" },
+        index: 0,
+        type: "content_block_start",
+      },
+      session_id: "claude-session-no-duplicate",
+      type: "stream_event",
+      uuid: "stream-start-no-duplicate",
+    })
+    projector.project({
+      event: {
+        delta: { text: "Claude streamed reply", type: "text_delta" },
+        index: 0,
+        type: "content_block_delta",
+      },
+      session_id: "claude-session-no-duplicate",
+      type: "stream_event",
+      uuid: "stream-delta-no-duplicate",
+    })
+    projector.project({
+      event: {
+        index: 0,
+        type: "content_block_stop",
+      },
+      session_id: "claude-session-no-duplicate",
+      type: "stream_event",
+      uuid: "stream-stop-no-duplicate",
+    })
+    const finalSnapshot = projector.project({
+      message: {
+        content: [{ text: "Claude streamed reply", type: "text" }],
+      },
+      session_id: "claude-session-no-duplicate",
+      type: "assistant",
+      uuid: "assistant-final-no-duplicate",
+    })
+
+    expect(finalSnapshot.events).toEqual([])
+    expect(projector.messages()).toHaveLength(1)
+    expect(projector.messages().map(message => message.body)).toEqual([
+      "Claude streamed reply",
+    ])
+  })
+
   test("captures SDK modelUsage from interrupted results", () => {
     const projector = createClaudeThreadItemProjector({
       desktopSessionId: "desktop-session-usage",
