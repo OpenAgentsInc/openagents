@@ -26,10 +26,6 @@ import {
 import { iconElement } from "@openagentsinc/ui/icon-dom"
 import type { IconName } from "@openagentsinc/ui/icon"
 import {
-  shimmerBaseTag,
-  shimmerClass,
-} from "@openagentsinc/ui/ai-elements/shimmer"
-import {
   commandComposerHudLayoutFromCssRect,
   createCommandComposerHud,
   type CommandComposerAttachmentProjection,
@@ -98,11 +94,15 @@ import type { KhalaCodeDesktopCodexThreadSummary } from "../shared/codex-threads
 import type { KhalaCodeDesktopCodexSettingsProjection } from "../shared/codex-settings"
 import { sessionCatalogEntryToThreadSummary } from "../shared/session-catalog"
 import {
-  createKeyHoldTracker,
   recentThreadCycleDirectionForEvent,
   recentThreadHotkeyIndexForEvent,
   recentThreadsForHotkeys,
 } from "./thread-hotkeys"
+import { bindRecentThreadHotkeyHints } from "./recent-thread-hotkey-hints"
+import {
+  renderThinkingIndicator,
+  renderThreadLoadingIndicator,
+} from "./transcript-status-indicators"
 import {
   KHALA_CODE_DIFF_REVIEW_SUBMIT_EVENT,
   KhalaCodeDiffReviewSubmitDetailSchema,
@@ -1401,56 +1401,6 @@ const renderMicrophoneIndicator = (): HTMLElement => {
 
 let threadSwitchLoadingSelectionId: number | null = null
 
-const renderThreadLoadingIndicator = (): HTMLElement | null => {
-  if (threadSwitchLoadingSelectionId === null) return null
-
-  const article = document.createElement("article")
-  article.className = `${messageClass("assistant")} message-bubble--thinking`
-  article.dataset.messageId = `thread-loading-${threadSwitchLoadingSelectionId}`
-  article.dataset.khalaThreadLoading = "true"
-
-  const body = document.createElement("div")
-  body.className = "message-body"
-
-  const shimmer = document.createElement("span")
-  shimmer.className = shimmerClass
-  shimmer.dataset.uiBase = shimmerBaseTag
-  shimmer.dataset.oaAiShimmer = ""
-  shimmer.setAttribute("role", "status")
-  shimmer.setAttribute("aria-live", "polite")
-  shimmer.setAttribute("aria-label", "Loading messages")
-  shimmer.textContent = "Loading messages"
-
-  body.append(shimmer)
-  article.append(body)
-  return article
-}
-
-const renderThinkingIndicator = (): HTMLElement | null => {
-  if (shellModel().thinkingTurnId === null) return null
-
-  const article = document.createElement("article")
-  article.className = `${messageClass("assistant")} message-bubble--thinking`
-  article.dataset.messageId = `thinking-${shellModel().thinkingTurnId}`
-  article.dataset.khalaThinking = "true"
-
-  const body = document.createElement("div")
-  body.className = "message-body"
-
-  const shimmer = document.createElement("span")
-  shimmer.className = shimmerClass
-  shimmer.dataset.uiBase = shimmerBaseTag
-  shimmer.dataset.oaAiShimmer = ""
-  shimmer.setAttribute("role", "status")
-  shimmer.setAttribute("aria-live", "polite")
-  shimmer.setAttribute("aria-label", "Thinking")
-  shimmer.textContent = "Thinking"
-
-  body.append(shimmer)
-  article.append(body)
-  return article
-}
-
 const isNearTranscriptEnd = (): boolean =>
   messageList.scrollHeight - messageList.scrollTop - messageList.clientHeight <= 48
 
@@ -1738,8 +1688,8 @@ const renderMessages = (): void => {
   cacheVisibleThreadMessages()
   const stickToEnd = shellModel().transcriptPinnedToEnd && isNearTranscriptEnd()
   const previousScrollTop = messageList.scrollTop
-  const thinking = renderThinkingIndicator()
-  const threadLoading = renderThreadLoadingIndicator()
+  const thinking = renderThinkingIndicator(shellModel().thinkingTurnId)
+  const threadLoading = renderThreadLoadingIndicator(threadSwitchLoadingSelectionId)
   messageList.replaceChildren(
     ...shellModel().messages.map(renderMessage),
     ...(threadLoading === null ? [] : [threadLoading]),
@@ -4150,18 +4100,9 @@ const threadSidebar =
         },
       })
 
-const recentThreadHotkeyHold =
-  threadSidebar === null
-    ? null
-    : createKeyHoldTracker({
-        onHide: () => threadSidebar.setHotkeyHintsVisible(false),
-        onReveal: () => threadSidebar.setHotkeyHintsVisible(true),
-      })
+if (threadSidebar !== null) bindRecentThreadHotkeyHints(window, threadSidebar)
 
 window.addEventListener("keydown", event => {
-  if (event.key === "Meta" && !event.altKey && !event.ctrlKey && !event.shiftKey) {
-    recentThreadHotkeyHold?.keyDown()
-  }
   const recentThreadIndex = recentThreadHotkeyIndexForEvent(event)
   const recentThreadCycleDirection = recentThreadCycleDirectionForEvent(event)
   if (recentThreadIndex === null && recentThreadCycleDirection === null) return
@@ -4176,15 +4117,6 @@ window.addEventListener("keydown", event => {
   void selection.then(selected => {
     if (selected) setActiveView("chat")
   })
-})
-
-window.addEventListener("keyup", event => {
-  if (event.key !== "Meta") return
-  recentThreadHotkeyHold?.keyUp()
-})
-
-window.addEventListener("blur", () => {
-  recentThreadHotkeyHold?.keyUp()
 })
 
 const setActiveView = (value: string): void => {

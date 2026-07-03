@@ -44,10 +44,10 @@ export const khalaCodeUxContractRegistry: BehaviorContractRegistryDocument = {
         },
         {
           description:
-            "Pins the transcript-level 'Loading messages' indicator wiring for cache-miss thread switches (source-level until the full shell boots under the DOM harness).",
-          id: "transcript_loading.source",
+            "Mounts the transcript-level status renderer in a DOM: cache-miss thread switches render a polite 'Loading messages' transcript bubble instead of a sidebar spinner, and assistant thinking uses the same status-bubble structure.",
+          id: "transcript_loading.dom",
           kind: "bun-test",
-          mode: "unit",
+          mode: "dom",
           ref: "clients/khala-code-desktop/tests/ux-contracts.test.ts",
         },
         {
@@ -170,6 +170,7 @@ export const khalaCodeUxContractRegistry: BehaviorContractRegistryDocument = {
       enforcementTier: "test-sweep",
       evidenceRefs: [
         "clients/khala-code-desktop/src/ui/thread-hotkeys.ts",
+        "clients/khala-code-desktop/src/ui/recent-thread-hotkey-hints.ts",
         "clients/khala-code-desktop/src/ui/codex-thread-sidebar.ts",
         "clients/khala-code-desktop/src/ui/main.ts",
         "docs/khala-code/khala-code-ux-contract.md",
@@ -185,7 +186,7 @@ export const khalaCodeUxContractRegistry: BehaviorContractRegistryDocument = {
         },
         {
           description:
-            "Mounts the real thread sidebar in a DOM: enabling hotkey hints replaces the time slot of the nine most recent chats with their command-digit hints in place (no separate pane appears anywhere in the document), and disabling hints restores the timestamps.",
+            "Mounts the real thread sidebar and hotkey-hint listener in a DOM: enabling hotkey hints replaces the time slot of the nine most recent chats with their command-digit hints in place (no separate pane appears anywhere in the document), and Meta release or window blur restores the timestamps.",
           id: "sidebar_hotkey_hints.dom",
           kind: "bun-test",
           mode: "dom",
