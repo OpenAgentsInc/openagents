@@ -1,18 +1,34 @@
 {
   "schema": "openagents.khala_code.qa_static_flake_quarantine_ledger.v1",
-  "updatedAt": "2026-07-02T00:00:00.000Z",
+  "updatedAt": "2026-07-03T00:55:25.000Z",
   "policy": "retry_once_then_quarantine_no_silent_green",
   "entries": [
     {
       "id": "khala.desktop_suite.single_test_error.2026-07-02",
-      "status": "open",
+      "status": "resolved",
       "firstObservedAt": "2026-07-02",
       "affectedCommand": "bun test tests/*.test.ts",
       "affectedNightlyStep": "desktop-verify",
       "sourceRef": "docs/fable/2026-07-01-khala-code-desktop-qa-framework-design.md#15.2",
       "trackingIssue": "https://github.com/OpenAgentsInc/openagents/issues/8044",
       "quarantineIssue": "https://github.com/OpenAgentsInc/openagents/issues/8015",
-      "notes": "One non-reproducing single-test error in one of three desktop suite runs. Q1.4 adds retry-once quarantine wiring; Q7.3 owns reproduction and fix."
+      "resolvedAt": "2026-07-03T00:55:25.000Z",
+      "resolution": "not_reproduced_after_stress",
+      "reproductionEvidence": {
+        "attemptedCommand": "bun run --cwd clients/khala-code-desktop test",
+        "cleanRuns": 42,
+        "finalSuiteShape": {
+          "files": 67,
+          "tests": 526,
+          "failures": 0
+        },
+        "logRefs": [
+          "var/qa-flake-hunt/desktop-run-1.log",
+          "var/qa-flake-hunt/desktop-run-30.log"
+        ]
+      },
+      "determinismGuard": "clients/khala-code-desktop/tests/cockpit-visual-smoke.test.ts::rate-limit countdown repaints from an injected clock without sleeping",
+      "notes": "Historical anonymous single-test error from one of three 2026-07-02 desktop suite runs. Current pinned suite did not reproduce it across 42 consecutive full-suite runs after dependencies were materialized; the active countdown timing class is covered by an injected-clock regression. Keep any future pass-after-fail under the nightly retry-once quarantine policy instead of treating retry green as success."
     }
   ]
 }
