@@ -103,6 +103,7 @@ function createFakeHost(records: RequestRecord[]): CodexAppServerHost {
         } as Result
       }
       if (method === "turn/start") {
+        const isHeadlessModeH = String(JSON.stringify(params)).includes("Mode H")
         queueMicrotask(() => {
           emit(subscribers, {
             method: "turn/started",
@@ -111,6 +112,48 @@ function createFakeHost(records: RequestRecord[]): CodexAppServerHost {
               turn: { id: "turn-parity-live", status: "inProgress" },
             },
           })
+          if (isHeadlessModeH) {
+            emit(subscribers, {
+              method: "item/started",
+              params: {
+                item: {
+                  id: "message-mode-h",
+                  text: "",
+                  type: "agentMessage",
+                },
+                threadId: "thread-parity-live",
+                turnId: "turn-parity-live",
+              },
+            })
+            emit(subscribers, {
+              method: "item/agentMessage/delta",
+              params: {
+                delta: "Mode H JSONL live smoke passed.",
+                itemId: "message-mode-h",
+                threadId: "thread-parity-live",
+                turnId: "turn-parity-live",
+              },
+            })
+            emit(subscribers, {
+              method: "item/completed",
+              params: {
+                item: {
+                  id: "message-mode-h",
+                  text: "Mode H JSONL live smoke passed.",
+                  type: "agentMessage",
+                },
+                threadId: "thread-parity-live",
+                turnId: "turn-parity-live",
+              },
+            })
+            emit(subscribers, {
+              method: "turn/completed",
+              params: {
+                threadId: "thread-parity-live",
+                turn: { id: "turn-parity-live", status: "completed" },
+              },
+            })
+          }
         })
         return { turn: { id: "turn-parity-live", status: "inProgress" } } as Result
       }
@@ -264,6 +307,16 @@ describe("Khala Code Codex parity live smoke", () => {
     expect(result).toMatchObject({
       codexTurnId: "turn-parity-live",
       harness: KHALA_CODE_CODEX_PARITY_LIVE_SMOKE_HARNESS,
+      modeH: {
+        codexTurnId: "turn-parity-live",
+        eventCount: expect.any(Number),
+        finalOk: true,
+        jsonlSchemaOk: true,
+        ok: true,
+        threadId: "thread-parity-live",
+        turnId: "khala-code-mode-h-live-smoke-turn",
+        validationErrors: [],
+      },
       ok: true,
       required: true,
       resumedThreadId: "thread-parity-live",
@@ -276,6 +329,13 @@ describe("Khala Code Codex parity live smoke", () => {
       "thread/start",
       "turn/start",
       "turn/interrupt",
+      "thread/start",
+      "turn/start",
     ])
+    expect(result.modeH?.eventTypes).toEqual(expect.arrayContaining([
+      "thread.started",
+      "turn.started",
+      "turn.completed",
+    ]))
   })
 })

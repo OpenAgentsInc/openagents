@@ -81,6 +81,37 @@ export const KHALA_CODE_CODEX_APP_SERVER_GAP_MATRIX: readonly KhalaCodeCodexAppS
       "Update when the pinned Codex thread, turn, goal, review, or SlashCommand contract changes.",
   },
   {
+    id: "mode-h-headless-jsonl-live-smoke",
+    area: "headless Mode H JSONL event stream and live schema oracle",
+    decision: "khala_adapter_with_test",
+    codexSourceRefs: [
+      "codex-rs/app-server-protocol/schema/typescript/ClientRequest.ts",
+      "codex-rs/app-server-protocol/schema/typescript/v2/ThreadItem.ts",
+      "codex-rs/app-server/src/request_processors/thread_processor.rs",
+    ],
+    slashCommands: [],
+    appServerMethods: [
+      "thread/start",
+      "turn/start",
+      "turn/interrupt",
+    ],
+    khalaAdapter:
+      "Khala owns the Mode H JSONL projection, but every live event is decoded against the checked headless ThreadEvent schema while thread and turn authority stays in Codex app-server.",
+    rationale:
+      "Codex app-server emits thread and item notifications; Khala adapts those notifications into the CLI JSONL contract that agents consume in headless mode.",
+    linkedIssues: [
+      "https://github.com/OpenAgentsInc/openagents/issues/7795",
+      "https://github.com/OpenAgentsInc/openagents/issues/8035",
+    ],
+    testRefs: [
+      "clients/khala-code-desktop/tests/headless-events.test.ts",
+      "clients/khala-code-desktop/tests/headless.test.ts",
+      "clients/khala-code-desktop/tests/codex-parity-live-smoke.test.ts",
+    ],
+    updateTrigger:
+      "Update when Mode H JSONL wire shape changes or Codex app-server notification names change.",
+  },
+  {
     id: "settings-ecosystem-account-surfaces",
     area: "models, permissions, experimental flags, usage, MCP, apps, plugins, and logout",
     decision: "covered_by_app_server",
