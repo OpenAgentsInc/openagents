@@ -90,6 +90,14 @@ const acceptingRunner = (dispatched: string[] = []): FleetRunSupervisorRunner =>
   },
 })
 
+const waitFor = async (predicate: () => boolean): Promise<void> => {
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    if (predicate()) return
+    await Bun.sleep(5)
+  }
+  throw new Error("condition was not met")
+}
+
 function drainingRunner(input: {
   readonly completeAfterPeak?: number
   readonly completePerTick: number
@@ -166,6 +174,52 @@ describe("FleetRunSupervisor", () => {
     expect(result.dispatched).toBe(5)
     expect(new Set(started).size).toBe(5)
     expect(store.listTasks("dispatched")).toHaveLength(5)
+  })
+
+  test("live handle ticks detach dispatches and refill one freed slot", async () => {
+    const { store, run } = createStoreWithRun({ runRef: "fleet_run.acceptance.detached_refill", targetConcurrency: 2, workUnits: 3 })
+    const started: string[] = []
+    const resolvers = new Map<string, () => void>()
+    const runner: FleetRunSupervisorRunner = {
+      dispatch: async (input) => {
+        started.push(input.workUnit.workUnitRef)
+        await new Promise<void>(resolve => {
+          resolvers.set(input.workUnit.workUnitRef, resolve)
+        })
+        return {
+          assignmentRef: `assignment.${input.claim.claimRef}`,
+          lifecycle: [lifecycleEvent("assignment_run.completed", { status: "closed" })],
+          status: "completed",
+        }
+      },
+    }
+
+    const handle = await Effect.runPromise(makeFleetRunSupervisor({
+      store,
+      pylonRef: "pylon.owner.detached_refill",
+      runRef: run.runRef,
+      planner: fixturePlannerWithClaims(store, 3),
+      runner,
+      capacity: capacity([{ accountRef: "codex", advertisedCapacity: 2 }]),
+      clock: { now: () => fixedNow },
+    }))
+
+    const first = await Effect.runPromise(handle.tick())
+    expect(first.dispatched).toBe(2)
+    expect(started).toHaveLength(2)
+    expect(store.listTasks("dispatched")).toHaveLength(2)
+
+    resolvers.get(started[0])?.()
+    await waitFor(() => store.listTasks("completed").length === 1)
+
+    const second = await Effect.runPromise(handle.tick())
+    expect(second.dispatched).toBe(1)
+    expect(started).toHaveLength(3)
+    expect(store.listTasks("dispatched")).toHaveLength(2)
+
+    for (const resolve of resolvers.values()) resolve()
+    await waitFor(() => store.listTasks("completed").length === 3)
+    await Effect.runPromise(handle.stop())
   })
 
   test("target-25 fixture acceptance reaches 25 simulated concurrent assignments and drains", async () => {

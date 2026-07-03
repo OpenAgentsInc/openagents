@@ -83,6 +83,7 @@ export type FleetRunSupervisorOptions = {
   readonly tickIntervalMs?: number
   readonly claimTtlMs?: number
   readonly maxSpawnPerTick?: number
+  readonly awaitDispatches?: boolean
   readonly onLifecycle?: (event: FleetRunSupervisorObservedEvent) => void | Promise<void>
 }
 
@@ -566,7 +567,13 @@ export async function tickFleetRunSupervisor(
     })())
   }
 
-  await Promise.all(dispatches)
+  if (options.awaitDispatches === false) {
+    for (const dispatch of dispatches) {
+      void dispatch.catch(() => undefined)
+    }
+  } else {
+    await Promise.all(dispatches)
+  }
 
   let reconciled = store.reconcileFleetRun(run.runRef, clock.now())
   const hasClaimableBacklog = plan.claimable.length > claimed || dependencyPending
@@ -635,7 +642,7 @@ export function makeFleetRunSupervisor(
       tick: () => Effect.tryPromise({
         try: async () => {
           if (stopped) throw new FleetRunSupervisorError(`fleet run supervisor stopped: ${options.runRef}`)
-          return await tickFleetRunSupervisor(options)
+          return await tickFleetRunSupervisor({ ...options, awaitDispatches: false })
         },
         catch: (error: unknown) => error instanceof FleetRunSupervisorError
           ? error
