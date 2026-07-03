@@ -17,6 +17,7 @@ export const BusinessFunnelStage = S.Literals([
   'provisioned',
   'first_outcome',
   'retained',
+  'referred_engagement',
 ])
 export type BusinessFunnelStage = typeof BusinessFunnelStage.Type
 
@@ -39,6 +40,7 @@ export const BUSINESS_FUNNEL_STAGE_ORDER: ReadonlyArray<BusinessFunnelStage> = [
   'provisioned',
   'first_outcome',
   'retained',
+  'referred_engagement',
 ]
 
 export const BUSINESS_FUNNEL_SOURCE_KINDS: ReadonlyArray<BusinessFunnelSourceKind> =
@@ -244,6 +246,11 @@ const buildEmptyStageMap = (): Record<
     lastOccurredAt: null,
   },
   retained: {
+    count: 0,
+    sourceCounts: emptySourceCounts(),
+    lastOccurredAt: null,
+  },
+  referred_engagement: {
     count: 0,
     sourceCounts: emptySourceCounts(),
     lastOccurredAt: null,

@@ -20,6 +20,7 @@ import { parseJsonWithSchema } from './json-boundary'
 import { type PartnerQualifyingPaidEvent } from './partner-attribution-eligibility'
 import { recordPartnerPayoutForPaidEvent } from './partner-payout-feed'
 import { provisionBusinessCheckoutKickoff } from './business-checkout-kickoff'
+import { recordBusinessReferralEngagement } from './business-referral-engagement-feed'
 import { recordReferralPayoutForPaidEvent } from './site-referral-payout-feed'
 
 export const STRIPE_API_VERSION = '2026-05-27.dahlia'
@@ -872,6 +873,22 @@ const fulfillCheckoutSession = async (
       totalAmountCents: pack.amountCents,
       userId,
     })
+
+    try {
+      await recordBusinessReferralEngagement(input.db, {
+        businessSignupId,
+        idempotencyKey: `business_referral_engagement.stripe_checkout.${input.sessionId}`,
+        nowIso: now,
+        periodKey: now.slice(0, 7),
+        qualifyingAmountSats: 0,
+        qualifyingEventKind: 'business_stripe_checkout_paid',
+        qualifyingEventRef: `evidence.business_stripe_checkout_paid.${input.sessionId}`,
+        revenueAsset: 'usd',
+        referredUserId: userId,
+      })
+    } catch {
+      // Swallow: referral attribution must not block checkout fulfillment.
+    }
   }
 
   // RL-1 (openagents #5458): FEED the referral payout ledger from this real
