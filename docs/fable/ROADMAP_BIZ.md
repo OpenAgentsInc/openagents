@@ -140,7 +140,7 @@ quick-win keyword list to claim those intents.
 | Task | Description | Receipt/gate |
 | --- | --- | --- |
 | BF-9.1 | **Commitment ledger**: every promised deliverable/send is a tracked object (owner, due state, engagement ref) surfaced in weekly pipeline review — two silently-dropped partner commitments is the standing warning | Zero untracked commitments; the two owed make-goods shipped |
-| BF-9.2 | **Pipeline ops** (= AW-0 A0.3): intake→scope→receipt-plan→close instrumented; weekly review exists | Weekly pipeline review artifact |
+| BF-9.2 | **Pipeline ops** (= AW-0 A0.3): intake→scope→receipt-plan→close instrumented; weekly review exists | Weekly pipeline review artifact: [`2026-07-03-bf-9-2-weekly-pipeline-review.md`](./2026-07-03-bf-9-2-weekly-pipeline-review.md) |
 | BF-9.3 | **Compliance profiles per vertical**: encoded guardrails (consent channels, provenance, regulated-data handling, no-scraped-outreach, advertising-rule constraints) attached to vertical config packs and enforced at send/publish gates | Profile checks run on every outbound action |
 | BF-9.4 | **Operator-minutes metric**: measured per accepted engagement, reviewed monthly, falling — the agency-trap falsifier wired as instrumentation | Monthly ratio series exists |
 

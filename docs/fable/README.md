@@ -70,6 +70,11 @@ each source doc.
   — BF-3.4 receipt-first spec for the planned private/sovereign compute tier:
   opaque per-customer workroom refs, regulated-private placement, lifecycle
   hooks, metering receipt shape, and copy/promise gates for issue #8087.
+- [`2026-07-03-bf-9-2-weekly-pipeline-review.md`](./2026-07-03-bf-9-2-weekly-pipeline-review.md)
+  — BF-9.2 weekly pipeline review artifact for AW-0 A0.3: a public-safe
+  intake -> scope -> receipt-plan -> close queue contract, metric definitions
+  for qualified intakes, scope calls, close rate, time-to-quick-win, commitment
+  coverage, and the weekly closeout checklist.
 - [`EXECUTION.md`](./EXECUTION.md) — how the roadmap is executed: Artanis
   (fleet-manager role) supervises; **Khala Code fleet delegation is the
   primary mechanism**; one GitHub issue per roadmap task, closed only via a
