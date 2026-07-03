@@ -64,11 +64,52 @@ export class QaSwarmDistilledTestRef extends S.Class<QaSwarmDistilledTestRef>(
   receiptRef: S.String,
 }) {}
 
+export class QaSwarmEngagementProjection extends S.Class<QaSwarmEngagementProjection>(
+  'QaSwarmEngagementProjection',
+)({
+  cadence: S.Literal('weekly'),
+  reportHref: S.String,
+  reportRef: S.String,
+  sourceArtifactRef: S.String,
+  status: S.Literal('standing_customer_one'),
+}) {}
+
+export class QaSwarmFindingsLedgerProjection extends S.Class<QaSwarmFindingsLedgerProjection>(
+  'QaSwarmFindingsLedgerProjection',
+)({
+  caughtCount: S.Number,
+  distilledRegressionCount: S.Number,
+  filedIssueCount: S.Number,
+  fixedCount: S.Number,
+  ledgerRef: S.String,
+  rows: S.Array(
+    S.Struct({
+      findingRef: S.String,
+      issueRef: S.String,
+      label: S.String,
+      status: S.Literals(['caught', 'filed', 'fixed', 'distilled']),
+      testRef: S.String,
+    }),
+  ),
+}) {}
+
+export class QaSwarmCaseStudyProjection extends S.Class<QaSwarmCaseStudyProjection>(
+  'QaSwarmCaseStudyProjection',
+)({
+  href: S.String,
+  receiptRef: S.String,
+  summary: S.String,
+  title: S.String,
+}) {}
+
 export class QaSwarmRunProjection extends S.Class<QaSwarmRunProjection>(
   'QaSwarmRunProjection',
 )({
+  caseStudy: QaSwarmCaseStudyProjection,
   coverageFrontier: S.Array(QaSwarmCoverageFrontierItem),
   distilledTests: S.Array(QaSwarmDistilledTestRef),
+  engagement: QaSwarmEngagementProjection,
+  findingsLedger: QaSwarmFindingsLedgerProjection,
   generatedAt: S.String,
   nightlyArtifactRef: S.String,
   opaqueTargetRefs: S.Array(S.String),
@@ -90,7 +131,8 @@ export class QaSwarmRunProjection extends S.Class<QaSwarmRunProjection>(
   videoRefs: S.Array(QaSwarmVideoRef),
 }) {}
 
-export const QA_SWARM_SAMPLE_RUN_REF = 'qa-run.khala-code-nightly.2026-07-02'
+export const QA_SWARM_SAMPLE_RUN_REF = 'qa-run.khala-code-nightly.latest'
+export const QA_SWARM_SEED_RUN_REF = 'qa-run.khala-code-nightly.2026-07-02'
 
 const PRIVATE_MATERIAL_PATTERN =
   /(@|\/Users\/|\/home\/|access[_-]?token|api[_-]?key|auth\.json|bearer|cookie|customer[_-]?(email|name|phone|prompt|record|value)|email[_-]?(address|body|html|raw|text)|gho_[A-Za-z0-9_]+|ghp_[A-Za-z0-9_]+|github\.com\/[^:/]+\/private|invoice[_-]?(id|raw)|lnbc|lntb|lnbcrt|macaroon|mnemonic|oauth|payment[_-]?(hash|id|invoice|preimage|proof|raw|secret)|payout[_-]?(address|destination|private|raw|target)|preimage|private[_-]?(archive|customer|dataset|key|prompt|source|trace|wallet)|provider[_-]?(account|credential|grant|payload|secret|token)|raw[_-]?(artifact|auth|customer|dataset|email|invoice|log|model|payment|payload|payout|prompt|provider|record|repo|runner|run[_-]?log|source|state|target|telemetry|text|trace)|recovery[_-]?phrase|runner[_-]?(payload|secret|token)|secret|seed[_-]?phrase|sk-[a-z0-9]|source[_-]?(archive|raw)|wallet[._-]?(key|material|mnemonic|payment|preimage|secret|seed))/i
@@ -125,6 +167,18 @@ export const assertQaSwarmPublicProjection = (
 
   assertPublicRefs([decoded.projectionRef], 'projectionRef')
   assertPublicRefs([decoded.nightlyArtifactRef], 'nightlyArtifactRef')
+  assertPublicRefs([decoded.engagement.reportRef], 'engagement.reportRef')
+  assertPublicRefs([decoded.engagement.sourceArtifactRef], 'engagement.sourceArtifactRef')
+  assertPublicRefs([decoded.findingsLedger.ledgerRef], 'findingsLedger.ledgerRef')
+  assertPublicRefs(
+    decoded.findingsLedger.rows.flatMap(item => [
+      item.findingRef,
+      item.issueRef,
+      item.testRef,
+    ]),
+    'findingsLedger.rows',
+  )
+  assertPublicRefs([decoded.caseStudy.receiptRef], 'caseStudy.receiptRef')
   assertPublicRefs(decoded.opaqueTargetRefs, 'opaqueTargetRefs')
   assertPublicRefs(decoded.publicSafetyRefs, 'publicSafetyRefs')
   assertPublicRefs(decoded.traceRefs, 'traceRefs')
@@ -158,6 +212,13 @@ export const assertQaSwarmPublicProjection = (
 
 export const sampleQaSwarmRunProjection = assertQaSwarmPublicProjection(
   new QaSwarmRunProjection({
+    caseStudy: {
+      href: '/docs/qa/qa-swarm-khala-code-standing-engagement',
+      receiptRef: 'artifact.qa_swarm.case_study.khala_code.20260702',
+      summary:
+        'The first audit session caught two main-branch regressions in stale visual smokes and one cockpit robustness bug before the standing loop was automated.',
+      title: 'Case-study seed: the first Khala Code QA Swarm audit',
+    },
     coverageFrontier: [
       {
         current: 42,
@@ -190,6 +251,43 @@ export const sampleQaSwarmRunProjection = assertQaSwarmPublicProjection(
         receiptRef: 'test.qa_swarm.khala_code.error_states.20260702',
       },
     ],
+    engagement: {
+      cadence: 'weekly',
+      reportHref: '/qa/qa-run.khala-code-nightly.latest',
+      reportRef: 'artifact.qa_swarm.weekly_report.khala_code.latest',
+      sourceArtifactRef: 'artifact.khala_code.qa_status_surface.latest',
+      status: 'standing_customer_one',
+    },
+    findingsLedger: {
+      caughtCount: 3,
+      distilledRegressionCount: 1,
+      filedIssueCount: 3,
+      fixedCount: 2,
+      ledgerRef: 'artifact.qa_swarm.findings_ledger.khala_code.20260702',
+      rows: [
+        {
+          findingRef: 'artifact.qa_swarm.finding.visual_fleet_run_rpc.20260702',
+          issueRef: 'artifact.qa_swarm.issue.visual_fleet_run_rpc.20260702',
+          label: 'Fleet-run RPC visual smoke stale fixture',
+          status: 'fixed',
+          testRef: 'test.qa_swarm.khala_code.visual_fleet_run_rpc.20260702',
+        },
+        {
+          findingRef: 'artifact.qa_swarm.finding.foldkit_cockpit_visual.20260702',
+          issueRef: 'artifact.qa_swarm.issue.foldkit_cockpit_visual.20260702',
+          label: 'Foldkit cockpit landing visual smoke stale fixture',
+          status: 'fixed',
+          testRef: 'test.qa_swarm.khala_code.foldkit_cockpit_visual.20260702',
+        },
+        {
+          findingRef: 'artifact.qa_swarm.finding.cockpit_failed_rpc_blank.20260702',
+          issueRef: 'artifact.qa_swarm.issue.cockpit_failed_rpc_blank.20260702',
+          label: 'Cockpit blanks when one startup RPC fails',
+          status: 'filed',
+          testRef: 'test.qa_swarm.khala_code.error_state_pending.20260702',
+        },
+      ],
+    },
     generatedAt: '2026-07-02T17:00:00.000Z',
     nightlyArtifactRef: 'artifact.qa_swarm.khala_code.nightly.20260702',
     opaqueTargetRefs: ['artifact.qa_swarm.target.opaque.customer_one'],
@@ -278,4 +376,6 @@ export const sampleQaSwarmRunProjection = assertQaSwarmPublicProjection(
 export const lookupQaSwarmRunProjection = (
   runRef: string,
 ): QaSwarmRunProjection | null =>
-  runRef === QA_SWARM_SAMPLE_RUN_REF ? sampleQaSwarmRunProjection : null
+  runRef === QA_SWARM_SAMPLE_RUN_REF || runRef === QA_SWARM_SEED_RUN_REF
+    ? sampleQaSwarmRunProjection
+    : null
