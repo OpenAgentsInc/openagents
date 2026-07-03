@@ -103,6 +103,16 @@ exact usage settlement remains anchored to the Pylon assignment closeout.
 Downstream BA-A3 should layer the harness-adapter contract on this
 run/assignment/stream surface instead of adding another dispatch lane.
 
+BA-A3 status (2026-07-03): Pylon now defines the
+`openagents.agent_harness_adapter.v1` contract in
+`apps/pylon/src/agent-harness-adapter.ts`. The Codex adapter starts
+owner-scoped definitions on the existing `codex_agent_task` lease path,
+normalizes Pylon assignment lifecycle events into `AgentRuntimeEvent`s, and
+reports terminal state from the runner closeout. The conformance test at
+`apps/pylon/tests/agent-harness-adapter.test.ts` drives the generated lease
+through the existing fixture-backed Codex executor, preserving the
+definition-is-durable/harness-is-a-field invariant for downstream BA-A4.
+
 | Task | Description | Deps | Delegable | Issue |
 | --- | --- | --- | --- | --- |
 | BA-A1 | `openagents.agent_definition.v1`: Effect Schema (name/goal/harness/toolset allow-deny-ask/triggers/lane/budget/escalation), D1 table + migration, owner-scoped CRUD `POST/GET/PATCH /v1/agent-definitions` on the Worker (same auth as agent registration). Harness is a field, never load-bearing | — (shared seam; lands first and alone) | MED | [#8188](https://github.com/OpenAgentsInc/openagents/issues/8188) |
