@@ -5,6 +5,7 @@ import {
   tokenizeCode,
   tokenizeCodeLines,
 } from "@openagentsinc/ui/ai-elements/code-highlight"
+import { Schema as S } from "effect"
 import {
   parseMarkdownBlocks,
   parseMarkdownInline,
@@ -19,10 +20,15 @@ import type {
 import type { KhalaCodeDesktopCodexApprovalAction } from "../shared/codex-approval-decisions"
 import {
   KHALA_CODE_DIFF_REVIEW_SUBMIT_EVENT,
+  KHALA_CODE_JUDGE_DIFF_VERDICT_SCHEMA,
+  KhalaCodeJudgeDiffVerdictSchema,
+  khalaCodeJudgeDiffFindingToReviewDetail,
   khalaCodeDiffReviewLineLabel,
   type KhalaCodeDiffReviewLineKind,
   type KhalaCodeDiffReviewLineSide,
   type KhalaCodeDiffReviewSubmitDetail,
+  type KhalaCodeJudgeDiffVerdict,
+  type KhalaCodeJudgeDiffVerdictFinding,
 } from "../shared/diff-review"
 import {
   KHALA_CODE_SOURCE_CONTROL_ACTION_SUBMIT_EVENT,
@@ -55,6 +61,7 @@ export type MessageSegment =
   | { readonly kind: "prose"; readonly text: string }
   | { readonly kind: "code"; readonly text: string; readonly language?: string }
   | { readonly kind: "diff"; readonly text: string }
+  | { readonly kind: "judge-diff-verdict"; readonly verdict: KhalaCodeJudgeDiffVerdict }
 
 export type ToolTranscriptParts = {
   readonly output: string
@@ -224,6 +231,16 @@ const inlineNodes = (parts: readonly MarkdownInlinePart[]): readonly Node[] => {
 
 const appendInlineMarkdown = (element: HTMLElement, text: string): void => {
   element.append(...inlineNodes(parseMarkdownInline(text)))
+}
+
+const decodeJudgeDiffVerdict = (text: string): KhalaCodeJudgeDiffVerdict | null => {
+  const trimmed = text.trim()
+  if (!trimmed.includes(KHALA_CODE_JUDGE_DIFF_VERDICT_SCHEMA)) return null
+  try {
+    return S.decodeUnknownSync(KhalaCodeJudgeDiffVerdictSchema)(JSON.parse(trimmed))
+  } catch {
+    return null
+  }
 }
 
 export const codeBlockElement = (input: {
@@ -489,6 +506,132 @@ const sourceControlActions = (
   return actions
 }
 
+const judgeVerdictLabel = (verdict: KhalaCodeJudgeDiffVerdict["verdict"]): string => {
+  switch (verdict) {
+    case "accept":
+      return "Accept"
+    case "request_changes":
+      return "Request changes"
+    case "replan":
+      return "Replan"
+  }
+}
+
+const judgeFindingLineLabel = (finding: KhalaCodeJudgeDiffVerdictFinding): string => {
+  const range = finding.lineEnd === undefined || finding.lineEnd === finding.lineStart
+    ? String(finding.lineStart)
+    : `${finding.lineStart}-${finding.lineEnd}`
+  return `${finding.filePath}:${range}`
+}
+
+const judgeFindingElement = (
+  root: HTMLElement,
+  finding: KhalaCodeJudgeDiffVerdictFinding,
+  verdictKind: KhalaCodeJudgeDiffVerdict["verdict"],
+): HTMLElement => {
+  const item = document.createElement("li")
+  item.className = "judge-verdict-finding"
+  item.dataset.priority = finding.priority
+
+  const head = document.createElement("div")
+  head.className = "judge-verdict-finding-head"
+
+  const priority = document.createElement("span")
+  priority.className = "judge-verdict-priority"
+  priority.textContent = finding.priority
+
+  const title = document.createElement("span")
+  title.className = "judge-verdict-finding-title"
+  title.textContent = finding.title
+
+  const confidence = document.createElement("span")
+  confidence.className = "judge-verdict-confidence"
+  confidence.textContent = `${Math.round(finding.confidence * 100)}%`
+  confidence.title = "Judge confidence"
+
+  head.append(priority, title, confidence)
+
+  const anchor = document.createElement("div")
+  anchor.className = "judge-verdict-anchor"
+  anchor.textContent = judgeFindingLineLabel(finding)
+
+  const body = document.createElement("p")
+  body.className = "judge-verdict-finding-body"
+  body.textContent = finding.body
+
+  item.append(head, anchor, body)
+
+  if (verdictKind === "request_changes") {
+    const detail = khalaCodeJudgeDiffFindingToReviewDetail(finding)
+    const action = document.createElement("button")
+    action.type = "button"
+    action.className = "judge-verdict-steer-button"
+    action.textContent = "Send to coder"
+    action.title = "Feed this judge finding into the diff-annotation steering loop"
+    action.addEventListener("click", event => {
+      event.preventDefault()
+      event.stopPropagation()
+      root.dispatchEvent(new CustomEvent<KhalaCodeDiffReviewSubmitDetail>(
+        KHALA_CODE_DIFF_REVIEW_SUBMIT_EVENT,
+        {
+          bubbles: true,
+          detail,
+        },
+      ))
+    })
+    item.append(action)
+  }
+
+  return item
+}
+
+export const judgeDiffVerdictElement = (
+  verdict: KhalaCodeJudgeDiffVerdict,
+): HTMLElement => {
+  const root = document.createElement("section")
+  root.className = "judge-verdict-card"
+  root.dataset.verdict = verdict.verdict
+  root.dataset.schema = verdict.schema
+
+  const header = document.createElement("div")
+  header.className = "judge-verdict-header"
+
+  const role = document.createElement("span")
+  role.className = "judge-verdict-role"
+  role.textContent = "Judge"
+
+  const kind = document.createElement("span")
+  kind.className = "judge-verdict-kind"
+  kind.textContent = judgeVerdictLabel(verdict.verdict)
+
+  const confidence = document.createElement("span")
+  confidence.className = "judge-verdict-confidence judge-verdict-confidence--overall"
+  confidence.textContent = `${Math.round(verdict.confidence * 100)}%`
+  confidence.title = "Overall judge confidence"
+
+  header.append(role, kind, confidence)
+
+  const summary = document.createElement("p")
+  summary.className = "judge-verdict-summary"
+  summary.textContent = verdict.summary
+
+  const authority = document.createElement("p")
+  authority.className = "judge-verdict-authority"
+  authority.textContent = "Advisory verdict only. The verify command remains the merge authority."
+
+  root.append(header, summary, authority)
+
+  if (verdict.findings.length > 0) {
+    const findings = document.createElement("ul")
+    findings.className = "judge-verdict-findings"
+    findings.append(...verdict.findings.map(finding =>
+      judgeFindingElement(root, finding, verdict.verdict)))
+    root.append(findings)
+  }
+
+  return root
+}
+
 export const diffElement = (input: {
   readonly patch: string
   readonly language?: string
@@ -667,6 +810,9 @@ export const looksLikeUnifiedDiff = (text: string): boolean => {
 }
 
 export const parseMessageSegments = (text: string): readonly MessageSegment[] => {
+  const verdict = decodeJudgeDiffVerdict(text)
+  if (verdict !== null) return [{ kind: "judge-diff-verdict", verdict }]
+
   if (looksLikeUnifiedDiff(text)) {
     return [{ kind: "diff", text }]
   }
@@ -683,7 +829,10 @@ export const parseMessageSegments = (text: string): readonly MessageSegment[] =>
     }
     const info = (match[1] ?? "").trim().toLowerCase()
     const body = match[2] ?? ""
-    if (info === "diff" || info === "patch" || looksLikeUnifiedDiff(body)) {
+    const bodyVerdict = decodeJudgeDiffVerdict(body)
+    if (bodyVerdict !== null && (info === "" || info === "json")) {
+      segments.push({ kind: "judge-diff-verdict", verdict: bodyVerdict })
+    } else if (info === "diff" || info === "patch" || looksLikeUnifiedDiff(body)) {
       segments.push({ kind: "diff", text: body })
     } else {
       segments.push({
@@ -850,6 +999,7 @@ const codexItemElement = (input: {
     const body = document.createElement("div")
     body.className = "codex-item-card-body"
     body.append(...parseMessageSegments(input.text).map(segment => {
+      if (segment.kind === "judge-diff-verdict") return judgeDiffVerdictElement(segment.verdict)
       if (segment.kind === "diff") return diffElement({ patch: segment.text })
       if (segment.kind === "code") {
         return codeBlockElement({
@@ -988,6 +1138,7 @@ export const renderMessageBody = (
   if (role === "tool") return [toolTranscriptElement(text)]
   if (role === "system") return [plainTextElement(text)]
   return parseMessageSegments(text).map(segment => {
+    if (segment.kind === "judge-diff-verdict") return judgeDiffVerdictElement(segment.verdict)
     if (segment.kind === "diff") return diffElement({ patch: segment.text })
     if (segment.kind === "code") {
       return codeBlockElement({

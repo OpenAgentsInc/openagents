@@ -5,11 +5,15 @@ import { Schema as S } from "effect"
 import {
   KHALA_CODE_DIFF_REVIEW_COMMENT_SCHEMA,
   KHALA_CODE_DIFF_REVIEW_SUBMIT_EVENT,
+  KHALA_CODE_JUDGE_DIFF_VERDICT_SCHEMA,
   KhalaCodeDiffReviewCommentSchema,
+  KhalaCodeJudgeDiffVerdictSchema,
   khalaCodeDiffReviewComment,
   khalaCodeDiffReviewSteeringNote,
+  khalaCodeJudgeDiffFindingToReviewDetail,
+  type KhalaCodeJudgeDiffVerdict,
 } from "../src/shared/diff-review"
-import { diffElement } from "../src/ui/transcript-render"
+import { diffElement, judgeDiffVerdictElement, parseMessageSegments } from "../src/ui/transcript-render"
 
 let previousDocument: typeof globalThis.document | undefined
 let previousWindow: typeof globalThis.window | undefined
@@ -34,6 +38,30 @@ const restoreDom = (): void => {
 describe("Khala Code diff review annotations", () => {
   beforeEach(installDom)
   afterEach(restoreDom)
+
+  const verdictFixture = (
+    verdict: KhalaCodeJudgeDiffVerdict["verdict"],
+  ): KhalaCodeJudgeDiffVerdict => ({
+    confidence: verdict === "accept" ? 0.91 : verdict === "request_changes" ? 0.84 : 0.72,
+    diffRef: "diff.fixture",
+    findings: verdict === "accept"
+      ? []
+      : [{
+          body: verdict === "replan"
+            ? "The diff solves a different problem than the approved plan."
+            : "The new branch drops the retry guard used by the worker closeout path.",
+          confidence: 0.87,
+          filePath: "src/worker.ts",
+          findingRef: `judge.finding.${verdict}.1`,
+          lineStart: 42,
+          priority: verdict === "replan" ? "P1" : "P2",
+          title: verdict === "replan" ? "Plan no longer matches implementation" : "Retry guard was removed",
+        }],
+    schema: KHALA_CODE_JUDGE_DIFF_VERDICT_SCHEMA,
+    summary: `${verdict} fixture verdict`,
+    verdict,
+    verifyAuthority: "verify_command_required",
+  })
 
   test("formats line comments as structured steering notes", () => {
     const comment = khalaCodeDiffReviewComment({
@@ -90,5 +118,55 @@ describe("Khala Code diff review annotations", () => {
       lineSide: "new",
       patchRef: "diff.src/example.ts.add.1",
     })
+  })
+
+  test("decodes judge verdict fixtures with priority and confidence fields", () => {
+    for (const verdict of ["accept", "request_changes", "replan"] as const) {
+      const fixture = verdictFixture(verdict)
+      expect(S.decodeUnknownSync(KhalaCodeJudgeDiffVerdictSchema)(fixture)).toEqual(fixture)
+      for (const finding of fixture.findings) {
+        expect(finding.priority).toMatch(/^P[0-3]$/)
+        expect(finding.confidence).toBeGreaterThan(0)
+      }
+    }
+  })
+
+  test("renders judge verdict cards for every verdict kind", () => {
+    for (const verdict of ["accept", "request_changes", "replan"] as const) {
+      const root = judgeDiffVerdictElement(verdictFixture(verdict))
+      expect(root.className).toContain("judge-verdict-card")
+      expect(root.dataset.verdict).toBe(verdict)
+      expect(root.textContent).toContain("Judge")
+      expect(root.textContent).toContain("Advisory verdict only")
+      expect(root.textContent).toContain("verify command remains the merge authority")
+    }
+  })
+
+  test("parses judge verdict JSON blocks into transcript verdict segments", () => {
+    const fixture = verdictFixture("request_changes")
+    const segments = parseMessageSegments([
+      "Judge result:",
+      "",
+      "```json",
+      JSON.stringify(fixture),
+      "```",
+    ].join("\n"))
+
+    expect(segments.map(segment => segment.kind)).toEqual(["prose", "judge-diff-verdict"])
+  })
+
+  test("request-change verdict findings feed the diff annotation steering event", () => {
+    const fixture = verdictFixture("request_changes")
+    const root = judgeDiffVerdictElement(fixture)
+    document.body.append(root)
+
+    let submitted: unknown
+    root.addEventListener(KHALA_CODE_DIFF_REVIEW_SUBMIT_EVENT, event => {
+      submitted = (event as CustomEvent<unknown>).detail
+    })
+
+    root.querySelector<HTMLButtonElement>(".judge-verdict-steer-button")?.click()
+
+    expect(submitted).toMatchObject(khalaCodeJudgeDiffFindingToReviewDetail(fixture.findings[0]!))
   })
 })
