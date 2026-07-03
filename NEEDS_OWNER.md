@@ -21,6 +21,38 @@ Remaining owner-gated work: decide when QA Swarm hosted-run receipts,
 checkout/intake receipts, and outward-facing third-party report artifacts may be
 treated as live delivery evidence.
 
+## Khala Code Desktop Signed Release Gate
+
+Source issue: OpenAgentsInc/openagents#8245
+
+Khala Code Desktop has a buildable Electrobun app, but RL-1 is not complete
+until the release owner signs, notarizes, staples, uploads, and smoke-tests a
+real macOS DMG. The repo may document and preflight the path, but the signing
+identity, notary credentials, update-feed write, and clean-Mac first-run proof
+are owner-gated.
+
+Current state:
+
+- `clients/khala-code-desktop/electrobun.config.ts` names the app
+  `Khala Code` with bundle id `com.openagents.khala.code.desktop`.
+- `bun run --cwd clients/khala-code-desktop build` is the unsigned Electrobun
+  build path.
+- The reusable Apple Developer ID path is documented in `docs/DEPLOYMENT.md`
+  and `apps/autopilot-desktop/scripts/notarize-macos.sh`, but the release
+  owner must confirm the Khala-specific pre-notary gate before using it for this
+  app.
+- No signed/notarized/stapled Khala Code DMG, owner-approved updates-feed path,
+  GitHub release, or clean-Mac first-run smoke receipt is recorded here yet.
+
+NEEDS-OWNER: Provide or confirm the Developer ID/notary environment on an
+owner-controlled machine, approve the Khala Code version and release channel,
+approve the update-feed destination, run or authorize the signing/notarization
+flow, re-create/sign/notarize/staple the DMG from the stapled `.app`, upload the
+artifact, and record public-safe receipt refs for the clean-Mac smoke. The smoke
+must prove the app boots from the DMG and, when Codex is missing or unauthenticated,
+shows the honest `npm install -g @openai/codex` / `codex login` path without
+claiming Khala Code bundles or replaces Codex.
+
 ## QS7 Rhys Sales Motion Owner Gate
 
 Source issue: OpenAgentsInc/openagents#8067
