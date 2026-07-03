@@ -129,6 +129,18 @@ Expected:
   heartbeat, or an assignment request spawned from an unadvertised env is not
   sufficient evidence, and unresolved stale-heartbeat admission failures must
   appear in the smoke JSON under `dispatchFailures`.
+- A heartbeat command that exits 0 but prints no JSON payload is not a fresh
+  hosted-heartbeat proof for FleetRun dispatch. The supervisor and Pylon service
+  retry heartbeat refreshes until the response includes a public heartbeat or
+  Pylon ref and is not explicitly `stale`; only then may they retry the
+  assignment request.
+- If a real `khala request` returns an assignment ref but reports a failed
+  auto-run or rejected closeout, the Pylon service performs one public
+  `khala closeout <assignmentRef> --json` reconciliation before reporting the
+  assignment terminal state to the supervisor. It may upgrade the assignment to
+  completed only when that closeout payload has `ok: true`,
+  `closeoutChecklist.ok: true`, and `proof.proofChecklist.ok: true`; otherwise
+  the original failed state remains authoritative.
 - Long-running local Codex assignments must refresh their live work claim and
   dispatch-context heartbeat on every supervisor tick before stale-claim
   reconciliation. Otherwise the synthetic dispatch context can look dead after
@@ -617,11 +629,12 @@ budget, not OpenAgents settlement.
   `presence heartbeat --base-url https://openagents.com` immediately before the
   request. Error/evidence refs:
   `evidence.khala_coding.target_pylon_ref.unavailable.stale_or_missing_heartbeat`.
-- **`presence heartbeat --json` can print nothing to stdout yet still exit 0 and
-  succeed** — the server write is the side effect. Do not treat empty output as
-  failure; confirm by retrying the request (the 409 clears) or checking the
-  public projection. It exited cleanly here, so the "needs an outer timeout"
-  caveat did not bite on this build.
+- **`presence heartbeat --json` can print nothing to stdout yet still exit 0.**
+  For sustained FleetRun dispatch this is not freshness evidence. Retry the
+  heartbeat until the JSON response includes `pylonRef` or `heartbeatRef` and is
+  not explicitly stale before retrying `khala request`; otherwise the next
+  assignment can still 409 with
+  `evidence.khala_coding.target_pylon_ref.unavailable.stale_or_missing_heartbeat`.
 - **macOS has no `timeout`/`gtimeout`.** Wrapping a Pylon command in `timeout`
   fails with `command not found`, and inside a pipe that silently produces empty
   output (looks like the Pylon command "hung" or "returned nothing"). Run the

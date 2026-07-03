@@ -480,6 +480,7 @@ describe("Khala Code fleet tools", () => {
         heartbeatCount += 1
         expect(input.env?.OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY).toBe("10")
         expect(input.env?.OPENAGENTS_PYLON_CODEX_CONCURRENCY).toBe("10")
+        if (heartbeatCount === 1) return ok("")
         return ok({ heartbeatRef: `heartbeat.pylon.local.test.live_issue.${heartbeatCount}`, pylonRef: "pylon.local.test" })
       }
       if (joined === "provider go-online --json") {
@@ -567,7 +568,7 @@ describe("Khala Code fleet tools", () => {
     expect(heartbeatIndex).toBeGreaterThanOrEqual(0)
     expect(requestIndex).toBeGreaterThanOrEqual(0)
     expect(heartbeatIndex).toBeLessThan(requestIndex)
-    expect(heartbeatCount).toBeGreaterThanOrEqual(2)
+    expect(heartbeatCount).toBeGreaterThanOrEqual(3)
     expect(calls[requestIndex - 1]).toBe("presence heartbeat --base-url https://openagents.com --json")
   })
 

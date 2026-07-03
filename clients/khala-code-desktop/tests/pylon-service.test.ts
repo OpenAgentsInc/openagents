@@ -306,6 +306,177 @@ describe("PylonService", () => {
     expect(result.lifecycle).toEqual([event])
   })
 
+  test("keeps refreshing heartbeat when stale-admission retry gets empty heartbeat output", async () => {
+    const event = lifecycleEvent("assignment_run.completed")
+    const captured: string[] = []
+    let requestCount = 0
+    let heartbeatCount = 0
+    const service = makePylonService({
+      env: { OPENAGENTS_PYLON_APP_PATH: "/tmp/pylon-app", PYLON_HOME: "/tmp/pylon-home" },
+      runner: async (input) => {
+        const args = input.cmd.slice(input.cmd.indexOf("src/index.ts") + 1)
+        const joined = args.join(" ")
+        captured.push(joined)
+        if (joined.startsWith("khala request ")) {
+          requestCount += 1
+          if (requestCount === 1) {
+            return {
+              exitCode: 0,
+              stderr: "",
+              stdout: JSON.stringify({
+                error: "pylon khala request failed (409): online heartbeat is stale or missing; evidenceRefs=evidence.khala_coding.target_pylon_ref.unavailable.stale_or_missing_heartbeat",
+                ok: false,
+              }),
+              timedOut: false,
+            }
+          }
+          await input.onStderrLine?.(JSON.stringify(event))
+          return {
+            exitCode: 0,
+            stderr: "",
+            stdout: JSON.stringify({
+              assignmentRef: "assignment.retry.after-empty-heartbeat",
+              assignmentLifecycleEvents: [event],
+              assignmentRun: {
+                closeout: { status: "accepted" },
+                ok: true,
+              },
+              autoRun: {
+                ok: true,
+              },
+            }),
+            timedOut: false,
+          }
+        }
+        if (joined === "presence heartbeat --base-url https://openagents.test --json") {
+          heartbeatCount += 1
+          return heartbeatCount === 1
+            ? { exitCode: 0, stderr: "", stdout: "", timedOut: false }
+            : {
+                exitCode: 0,
+                stderr: "",
+                stdout: JSON.stringify({ heartbeatRef: "heartbeat.pylon.owner.2", linked: true, pylonRef: "pylon.owner", stale: false }),
+                timedOut: false,
+              }
+        }
+        throw new Error(`unexpected command: ${joined}`)
+      },
+    })
+
+    const result = await Effect.runPromise(service.runAssignment({
+      accountRef: "codex-2",
+      baseUrl: "https://openagents.test",
+      branch: "main",
+      commit: "0123456789abcdef0123456789abcdef01234567",
+      objective: "Run a real assignment.",
+      pylonRef: "pylon.owner",
+      repo: "OpenAgentsInc/openagents",
+      verify: "bun test tests/fleet-run-live-smoke.test.ts",
+      workerKind: "codex",
+    }))
+
+    expect(captured.filter(command => command.startsWith("khala request "))).toHaveLength(2)
+    expect(captured.filter(command => command === "presence heartbeat --base-url https://openagents.test --json")).toHaveLength(2)
+    expect(result).toMatchObject({
+      assignmentRef: "assignment.retry.after-empty-heartbeat",
+      status: "completed",
+    })
+  })
+
+  test("reconciles failed auto-run assignment through accepted closeout proof", async () => {
+    const requestEvent = {
+      ...lifecycleEvent("assignment_run.completed"),
+      blockerRefs: ["blocker.assignment.codex_agent_test_failed"],
+      status: "rejected",
+    } satisfies PylonAssignmentRunLifecycleEvent
+    const closeoutEvent = {
+      ...lifecycleEvent("assignment_run.completed"),
+      assignmentRef: "assignment.reconciled",
+    } satisfies PylonAssignmentRunLifecycleEvent
+    const captured: string[] = []
+    const service = makePylonService({
+      env: { OPENAGENTS_PYLON_APP_PATH: "/tmp/pylon-app", PYLON_HOME: "/tmp/pylon-home" },
+      runner: async (input) => {
+        const args = input.cmd.slice(input.cmd.indexOf("src/index.ts") + 1)
+        const joined = args.join(" ")
+        captured.push(joined)
+        if (joined.startsWith("khala request ")) {
+          await input.onStderrLine?.(JSON.stringify(requestEvent))
+          return {
+            exitCode: 0,
+            stderr: "",
+            stdout: JSON.stringify({
+              assignmentRef: "assignment.reconciled",
+              assignmentLifecycleEvents: [requestEvent],
+              assignmentRun: {
+                closeout: {
+                  closeoutChecklist: {
+                    blockerRefs: ["blocker.assignment.codex_agent_test_failed"],
+                    ok: false,
+                  },
+                  proof: {
+                    proofChecklist: {
+                      blockerRefs: ["blocker.assignment.codex_agent_test_failed"],
+                      ok: false,
+                    },
+                  },
+                  status: "rejected",
+                },
+                ok: false,
+              },
+              autoRun: {
+                ok: false,
+              },
+            }),
+            timedOut: false,
+          }
+        }
+        if (joined === "khala closeout assignment.reconciled --base-url https://openagents.test --json") {
+          await input.onStderrLine?.(JSON.stringify(closeoutEvent))
+          return {
+            exitCode: 0,
+            stderr: "",
+            stdout: JSON.stringify({
+              ok: true,
+              closeoutChecklist: { ok: true, blockerRefs: [] },
+              proof: {
+                proofChecklist: { ok: true, blockerRefs: [] },
+                tokenUsage: {
+                  demandSource: "khala_coding_delegation",
+                  rowCount: 1,
+                  totalTokens: 123,
+                  usageTruth: "exact",
+                },
+              },
+            }),
+            timedOut: false,
+          }
+        }
+        throw new Error(`unexpected command: ${joined}`)
+      },
+    })
+
+    const result = await Effect.runPromise(service.runAssignment({
+      accountRef: "codex-2",
+      baseUrl: "https://openagents.test",
+      branch: "main",
+      commit: "0123456789abcdef0123456789abcdef01234567",
+      objective: "Run a real assignment.",
+      pylonRef: "pylon.owner",
+      repo: "OpenAgentsInc/openagents",
+      verify: "bun test tests/fleet-run-live-smoke.test.ts",
+      workerKind: "codex",
+    }))
+
+    expect(result).toMatchObject({
+      assignmentRef: "assignment.reconciled",
+      status: "completed",
+    })
+    expect(result.summary).toContain("auto-run: failed")
+    expect(result.summary).toContain("closeout reconciliation: accepted by pylon khala closeout")
+    expect(captured).toContain("khala closeout assignment.reconciled --base-url https://openagents.test --json")
+  })
+
   test("provides a fixture stub layer for supervisor tests", async () => {
     const service = await Effect.runPromise(PylonService.pipe(Effect.provide(PylonServiceStub())))
     const eventPromise = Effect.runPromise(service.lifecycle.pipe(Stream.runHead))

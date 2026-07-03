@@ -415,8 +415,31 @@ const isStaleHeartbeatAdmissionFailure = (result: PylonServiceCommandResult): bo
 const heartbeatLooksFresh = (result: PylonServiceCommandResult): boolean => {
   if (result.exitCode !== 0) return false
   const payload = parseJsonObject(result.stdout)
+  if (payload === null) return false
+  if (stringField(payload, "pylonRef") === null && stringField(payload, "heartbeatRef") === null) return false
   return booleanField(payload, "linked") !== false && booleanField(payload, "stale") !== true
 }
+
+const acceptedCloseoutPayload = (payload: Record<string, unknown> | null): boolean => {
+  if (booleanField(payload, "ok") !== true) return false
+  const closeoutChecklist = recordField(payload, "closeoutChecklist")
+  const proof = recordField(payload, "proof")
+  const proofChecklist = recordField(proof, "proofChecklist")
+  return booleanField(closeoutChecklist, "ok") === true && booleanField(proofChecklist, "ok") === true
+}
+
+const withReconciledCloseoutSummary = (
+  assignment: PylonServiceAssignmentResult,
+  closeout: PylonServiceCommandResult,
+): PylonServiceAssignmentResult => ({
+  assignmentRef: assignment.assignmentRef,
+  lifecycle: [...assignment.lifecycle, ...closeout.lifecycle],
+  status: "completed",
+  summary: [
+    assignment.summary,
+    "closeout reconciliation: accepted by pylon khala closeout",
+  ].join("\n"),
+})
 
 const resolveOpenAgentsBaseUrl = (env: ChatEnv, explicit?: string | undefined): string =>
   (
@@ -637,6 +660,7 @@ export const makePylonService = (
     runAssignment: input => Effect.gen(function* () {
       const env = { ...(options.env ?? khalaCodeConfigFromRuntimeEnv().env), ...(input.env ?? {}) }
       const args = assignmentArgs(input, env)
+      const baseUrl = resolveOpenAgentsBaseUrl(env, input.baseUrl)
       const commandInput = {
         args,
         env,
@@ -645,16 +669,35 @@ export const makePylonService = (
       }
       let result = yield* request(commandInput)
       for (let attempt = 0; attempt < 2 && isStaleHeartbeatAdmissionFailure(result); attempt += 1) {
-        const heartbeat = yield* request({
-          args: ["presence", "heartbeat", "--base-url", resolveOpenAgentsBaseUrl(env, input.baseUrl), "--json"],
-          env,
-          maxOutputBytes: DEFAULT_MAX_OUTPUT_BYTES,
-          timeoutMs: DEFAULT_COMMAND_TIMEOUT_MS,
-        })
-        if (!heartbeatLooksFresh(heartbeat)) break
+        let refreshed = false
+        for (let heartbeatAttempt = 0; heartbeatAttempt < 3; heartbeatAttempt += 1) {
+          const heartbeat = yield* request({
+            args: ["presence", "heartbeat", "--base-url", baseUrl, "--json"],
+            env,
+            maxOutputBytes: DEFAULT_MAX_OUTPUT_BYTES,
+            timeoutMs: DEFAULT_COMMAND_TIMEOUT_MS,
+          })
+          if (heartbeatLooksFresh(heartbeat)) {
+            refreshed = true
+            break
+          }
+        }
+        if (!refreshed) break
         result = yield* request(commandInput)
       }
-      return assignmentResultFromCommand(result)
+      const assignment = assignmentResultFromCommand(result)
+      if (assignment.assignmentRef !== null && assignment.status === "failed") {
+        const closeout = yield* request({
+          args: ["khala", "closeout", assignment.assignmentRef, "--base-url", baseUrl, "--json"],
+          env,
+          maxOutputBytes: DEFAULT_ASSIGNMENT_MAX_OUTPUT_BYTES,
+          timeoutMs: DEFAULT_COMMAND_TIMEOUT_MS,
+        })
+        if (acceptedCloseoutPayload(parseJsonObject(closeout.stdout))) {
+          return withReconciledCloseoutSummary(assignment, closeout)
+        }
+      }
+      return assignment
     }),
   }
 }

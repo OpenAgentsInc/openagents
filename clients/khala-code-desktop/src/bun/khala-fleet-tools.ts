@@ -1446,6 +1446,7 @@ function executeFleetRunControlTool(
 
 const DEFAULT_FLEET_RUN_TICK_INTERVAL_MS = 1_000
 const DEFAULT_FLEET_RUN_FIXTURE_COUNT = 10
+const FLEET_RUN_HEARTBEAT_REFRESH_ATTEMPTS = 3
 
 type FleetRunPlanConfig = {
   readonly baseUrl?: string | undefined
@@ -1465,6 +1466,14 @@ type ActiveFleetRun = {
   readonly lifecycle: FleetRunSupervisorObservedEvent[]
   readonly pylonRef: string
   readonly scope: Scope.Scope
+}
+
+function fleetRunHeartbeatLooksFresh(result: KhalaCodexFleetCommandResult): boolean {
+  if (result.exitCode !== 0) return false
+  const payload = parseJsonObject(result.stdout)
+  if (payload === null) return false
+  if (stringField(payload, "pylonRef") === null && stringField(payload, "heartbeatRef") === null) return false
+  return booleanField(payload, "linked") !== false && booleanField(payload, "stale") !== true
 }
 
 export class DefaultKhalaFleetRunSupervisorManager implements KhalaFleetRunSupervisorManager {
@@ -1759,16 +1768,17 @@ export class DefaultKhalaFleetRunSupervisorManager implements KhalaFleetRunSuper
     }
     this.advertisedRunEnvs.set(runRef, env)
     const paths = resolvePylonPaths(env)
-    const heartbeat = await runPylonCommand(["presence", "heartbeat", "--base-url", baseUrl, "--json"], {
-      env,
-      paths,
-      runner: this.options.runner,
-      timeoutMs: DEFAULT_COMMAND_TIMEOUT_MS,
-    })
-    if (heartbeat.exitCode !== 0) {
-      throw new Error(`fleet run capacity heartbeat failed before dispatch: ${safeFailureReason(heartbeat)}`)
+    let lastHeartbeat: KhalaCodexFleetCommandResult | null = null
+    for (let attempt = 0; attempt < FLEET_RUN_HEARTBEAT_REFRESH_ATTEMPTS; attempt += 1) {
+      lastHeartbeat = await runPylonCommand(["presence", "heartbeat", "--base-url", baseUrl, "--json"], {
+        env,
+        paths,
+        runner: this.options.runner,
+        timeoutMs: DEFAULT_COMMAND_TIMEOUT_MS,
+      })
+      if (fleetRunHeartbeatLooksFresh(lastHeartbeat)) return env
     }
-    return env
+    throw new Error(`fleet run capacity heartbeat failed before dispatch: ${lastHeartbeat === null ? "no heartbeat attempted" : safeFailureReason(lastHeartbeat)}`)
   }
 
   private snapshot(runRef: string): KhalaFleetRunSnapshot {
