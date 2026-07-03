@@ -69,11 +69,55 @@ export const VerticalPackComplianceProfile = S.Struct({
   requiresHumanReview: S.Boolean,
   professionalReviewRequired: S.Boolean,
   consentChannelRefs: S.Array(S.String),
+  provenanceRequirementRefs: S.Array(S.String),
+  noScrapedOutreach: S.Boolean,
+  advertisingRuleConstraintRefs: S.Array(S.String),
   outboundActionGateRefs: S.Array(S.String),
   prohibitedActionRefs: S.Array(S.String),
 })
 export type VerticalPackComplianceProfile =
   typeof VerticalPackComplianceProfile.Type
+
+export const VerticalPackOutboundActionKind = S.Literals([
+  'send',
+  'publish',
+  'file',
+  'spend',
+])
+export type VerticalPackOutboundActionKind =
+  typeof VerticalPackOutboundActionKind.Type
+
+export class VerticalPackOutboundComplianceCheckInput extends S.Class<VerticalPackOutboundComplianceCheckInput>(
+  'VerticalPackOutboundComplianceCheckInput',
+)({
+  actionRef: S.String,
+  advertisingRuleConstraintRefs: S.Array(S.String),
+  consentChannelRefs: S.Array(S.String),
+  outboundActionKind: VerticalPackOutboundActionKind,
+  proposedActionRefs: S.Array(S.String),
+  provenanceReceiptRefs: S.Array(S.String),
+  regulatedDataHandlingRefs: S.Array(S.String),
+  sourceRefs: S.Array(S.String),
+  verticalPackId: S.String,
+}) {}
+
+export class VerticalPackOutboundComplianceDecision extends S.Class<VerticalPackOutboundComplianceDecision>(
+  'VerticalPackOutboundComplianceDecision',
+)({
+  actionRef: S.String,
+  advertisingRuleConstraintRefs: S.Array(S.String),
+  blockedOutboundAction: S.Boolean,
+  blockerRefs: S.Array(S.String),
+  consentChannelRefs: S.Array(S.String),
+  outboundActionAllowed: S.Boolean,
+  outboundActionKind: VerticalPackOutboundActionKind,
+  profileRef: S.String,
+  prohibitedActionRefs: S.Array(S.String),
+  provenanceReceiptRefs: S.Array(S.String),
+  regulatedDataHandlingRefs: S.Array(S.String),
+  sourceRefs: S.Array(S.String),
+  verticalPackId: S.String,
+}) {}
 
 export const VerticalPackScreenPolicy = S.Struct({
   policyRef: S.String,
@@ -218,21 +262,100 @@ const complianceProfile = (
   regulatedDataHandlingRef: string,
   professionalReviewRequired: boolean,
   prohibitedActionRefs: ReadonlyArray<string>,
+  advertisingRuleConstraintRefs: ReadonlyArray<string>,
 ): VerticalPackComplianceProfile => ({
+  advertisingRuleConstraintRefs: [...advertisingRuleConstraintRefs],
   consentChannelRefs: [
     'consent.customer_provided_sources',
     'consent.outbound_action_approval',
   ],
+  noScrapedOutreach: true,
   outboundActionGateRefs: [
     'gate.human_approval_before_send_publish_file_or_spend',
     'gate.provenance_before_customer_delivery',
+    'gate.vertical_compliance_profile_before_outbound_action',
   ],
   professionalReviewRequired,
   prohibitedActionRefs: [...prohibitedActionRefs],
   profileRef: `compliance_profile.${vertical}`,
+  provenanceRequirementRefs: [
+    'provenance.customer_or_public_source_receipt',
+    'provenance.deliverable_source_map_receipt',
+  ],
   regulatedDataHandlingRef,
   requiresHumanReview: true,
 })
+
+const uniqueSorted = (refs: ReadonlyArray<string>): ReadonlyArray<string> =>
+  [...new Set(refs)].sort()
+
+const outboundActionUsesAdvertisingRules = (
+  actionKind: VerticalPackOutboundActionKind,
+): boolean => actionKind === 'send' || actionKind === 'publish'
+
+const hasScrapedOutreachSource = (refs: ReadonlyArray<string>): boolean =>
+  refs.some(ref => /(^|[_.:/-])scraped([_.:/-]|$)|scraped_outreach|raw_scrape/i.test(ref))
+
+export const decideVerticalPackOutboundCompliance = (
+  profile: VerticalPackComplianceProfile,
+  input: VerticalPackOutboundComplianceCheckInput,
+): VerticalPackOutboundComplianceDecision => {
+  const missingConsentRefs = profile.consentChannelRefs.filter(
+    ref => !input.consentChannelRefs.includes(ref),
+  )
+  const missingProvenanceRefs = profile.provenanceRequirementRefs.filter(
+    ref => !input.provenanceReceiptRefs.includes(ref),
+  )
+  const missingAdvertisingRuleRefs = outboundActionUsesAdvertisingRules(
+    input.outboundActionKind,
+  )
+    ? profile.advertisingRuleConstraintRefs.filter(
+        ref => !input.advertisingRuleConstraintRefs.includes(ref),
+      )
+    : []
+  const prohibitedActionRefs = input.proposedActionRefs.filter(ref =>
+    profile.prohibitedActionRefs.includes(ref),
+  )
+  const regulatedDataHandlingRecorded =
+    input.regulatedDataHandlingRefs.includes(profile.regulatedDataHandlingRef)
+  const scrapedOutreachBlocked =
+    profile.noScrapedOutreach && hasScrapedOutreachSource(input.sourceRefs)
+
+  const blockerRefs = uniqueSorted([
+    ...missingConsentRefs.map(ref => `blocker.vertical_compliance.missing.${ref}`),
+    ...missingProvenanceRefs.map(ref => `blocker.vertical_compliance.missing.${ref}`),
+    ...(!regulatedDataHandlingRecorded
+      ? [
+          `blocker.vertical_compliance.missing.${profile.regulatedDataHandlingRef}`,
+        ]
+      : []),
+    ...missingAdvertisingRuleRefs.map(
+      ref => `blocker.vertical_compliance.missing.${ref}`,
+    ),
+    ...prohibitedActionRefs.map(ref => `blocker.vertical_compliance.${ref}`),
+    ...(scrapedOutreachBlocked
+      ? ['blocker.vertical_compliance.no_scraped_outreach']
+      : []),
+  ])
+
+  return new VerticalPackOutboundComplianceDecision({
+    actionRef: input.actionRef,
+    advertisingRuleConstraintRefs: uniqueSorted(
+      input.advertisingRuleConstraintRefs,
+    ),
+    blockedOutboundAction: blockerRefs.length > 0,
+    blockerRefs,
+    consentChannelRefs: uniqueSorted(input.consentChannelRefs),
+    outboundActionAllowed: blockerRefs.length === 0,
+    outboundActionKind: input.outboundActionKind,
+    profileRef: profile.profileRef,
+    prohibitedActionRefs: uniqueSorted(prohibitedActionRefs),
+    provenanceReceiptRefs: uniqueSorted(input.provenanceReceiptRefs),
+    regulatedDataHandlingRefs: uniqueSorted(input.regulatedDataHandlingRefs),
+    sourceRefs: uniqueSorted(input.sourceRefs),
+    verticalPackId: input.verticalPackId,
+  })
+}
 
 const verificationRubric = (
   vertical: string,
@@ -356,6 +479,10 @@ export const legalVerticalPack: VerticalPack = {
       'prohibited.legal_advice_without_reviewer',
       'prohibited.unapproved_filing_or_client_send',
     ],
+    [
+      'advertising_rule.legal.no_outcome_guarantees',
+      'advertising_rule.legal.no_attorney_client_relationship_claim_without_review',
+    ],
   ),
   ethicalMarketingPolicy: ethicalMarketingPolicy('legal'),
   screenPolicy: screenPolicy('legal'),
@@ -441,6 +568,10 @@ export const healthVerticalPack: VerticalPack = {
     [
       'prohibited.external_inference_before_redaction',
       'prohibited.medical_advice_without_reviewer',
+    ],
+    [
+      'advertising_rule.health.no_diagnosis_or_treatment_claim',
+      'advertising_rule.health.no_sensitive_condition_targeting',
     ],
   ),
   ethicalMarketingPolicy: ethicalMarketingPolicy('health'),
@@ -536,6 +667,10 @@ export const agencyVerticalPack: VerticalPack = {
       'prohibited.fabricated_case_study_or_testimonial',
       'prohibited.unapproved_customer_channel_send',
     ],
+    [
+      'advertising_rule.agency.no_fabricated_results',
+      'advertising_rule.agency.channel_terms_checked',
+    ],
   ),
   ethicalMarketingPolicy: ethicalMarketingPolicy('agency'),
   screenPolicy: screenPolicy('agency'),
@@ -629,6 +764,10 @@ export const ecommerceVerticalPack: VerticalPack = {
     [
       'prohibited.out_of_stock_or_unavailable_offer',
       'prohibited.unapproved_ad_spend_or_channel_publish',
+    ],
+    [
+      'advertising_rule.ecommerce.inventory_claims_match_sources',
+      'advertising_rule.ecommerce.price_and_discount_claims_match_sources',
     ],
   ),
   ethicalMarketingPolicy: ethicalMarketingPolicy('ecommerce'),
