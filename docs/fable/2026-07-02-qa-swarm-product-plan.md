@@ -174,9 +174,9 @@ and the promise record `qa.agentic_qa_runner.v1` (yellow).
 Not yet existing (the gap list that becomes §9's issues): the QA Swarm
 product definition/copy/rate-card, the run-level share page, the swarm-board
 projection + renderer consumers, the 3D scene, the one-command hosted swarm
-run, the standing dogfood engagement report, the Rhys demo PR, the chill-evals
-product surface, the third-party target-adapter onboarding, and
-metering/receipts for hosted runs.
+run, the standing dogfood engagement report, the external send of the executor
+demo PR, the chill-evals product surface, the third-party target-adapter
+onboarding, and metering/receipts for hosted runs.
 
 ## 6. Execution Roadmap (workstream QS; issues in §9)
 
@@ -188,7 +188,7 @@ metering/receipts for hosted runs.
 | QS4 | **The 3D swarm scene** (`three-effect`, demo-grade): share-page hero + demo/episode asset at the spark-burst quality bar; strictly a projection of the same run data; reduced-motion + static fallback | QS2 | MED |
 | QS5 | **One-command hosted swarm run**: `qa swarm run --target <url>` / one API call composes qa-runner control API + FleetRun parallelism + the nightly-matrix recipe into a single product run on owned runners (GCE Tier-2 + CF Browser Rendering), emitting the QS2 projection; skip-safe live tiers; per-run resource caps | QS2, Q1.1 | MED |
 | QS6 | **Customer-one standing engagement**: brand the Khala Code nightly loop as the QA Swarm engagement — weekly public-safe report at the share URL, findings→issues→distilled-regression counts tracked, the 2026-07-02 session written up as case-study seed (A0.9 pattern) | Q1.1, QS2 | HIGH |
-| QS7 | **The Rhys sales motion**: run the Swarm Audit package against `RhysSullivan/executor` and open the demo PR he asked for — auto-attached webm + terminal video (gh-attach), distilled `*.e2e.test.ts`, verdict, share URL; chill-evals comparison of his MCP variants included; owner reviews before the PR goes out (outward-facing) | QS2, QS8 | MED (owner gate on send) |
+| QS7 | **The Rhys sales motion**: run the Swarm Audit package against `RhysSullivan/executor` and open the demo PR he asked for — auto-attached webm + terminal video (gh-attach), distilled `*.e2e.test.ts`, verdict, share URL; chill-evals comparison of his MCP variants included; owner reviews before the PR goes out (outward-facing). The in-repo evidence packet is `docs/fable/2026-07-02-qs7-rhys-sales-motion-owner-review.md`; the external send remains owner-gated. | QS2, QS8 | MED (owner gate on send) |
 | QS8 | **Chill-evals productized**: the variant axis (MCP set / config / model / before-after) as a first-class run mode with a side-by-side comparison view on the share surface (pass-rate/latency/behavior deltas + videos), reusing `/trace/compare` + the benchmark aggregates | QS2 | HIGH |
 | QS9 | **Third-party target onboarding**: the minimal Target adapter contract for arbitrary apps (auth, fresh identity, optional restart, prod-read-only policy) documented + one worked example beyond our own surfaces; "bring your app, get a scenario corpus, an explore night, and a coverage ledger" | QS5 | MED |
 | QS10 | **Metering + receipts for hosted runs**: run = dereferenceable receipt (traceRef already lands on receipts); hosted-run metering rows (exact-only discipline), engagement receipts through the quick-win payment machinery; settlement seams stay INERT until owner-armed | QS5 | MED |

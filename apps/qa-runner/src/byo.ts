@@ -91,6 +91,7 @@ OPTIONS
   --fake-model         Deterministic, no-network, no-key, no-OpenAgents proof of
                        the loop. Drives a canned /login scenario against a fake
                        page; still emits a real video + a committed e2e test.
+  --run-ref <ref>      Stable public QA Swarm run ref for /qa/{runRef}.
 
 SWARM
   qa swarm run --target <url> composes the control API runner fanout into an
@@ -233,6 +234,7 @@ async function runSwarmCommand(argv: ReadonlyArray<string>): Promise<number> {
   const real = args.real === true;
   const includeLiveTiers = args["include-live-tiers"] === true;
   const targetName = typeof args["target-name"] === "string" ? args["target-name"] : target;
+  const runRef = typeof args["run-ref"] === "string" ? args["run-ref"] : undefined;
   const proBaseUrl = typeof args["share-base-url"] === "string"
     ? args["share-base-url"]
     : "https://openagents.com";
@@ -251,6 +253,7 @@ async function runSwarmCommand(argv: ReadonlyArray<string>): Promise<number> {
       maxRuns,
       maxWorkers,
       real,
+      ...(runRef !== undefined ? { runRef } : {}),
       target,
       targetName,
     });

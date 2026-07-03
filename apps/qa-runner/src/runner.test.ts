@@ -13,6 +13,10 @@ import { scriptedBrain } from "./brain";
 import { makeFakeChromium } from "./fake-chromium";
 import { decodeQaRunResult } from "./result";
 import {
+  executorImpossibleCopyClaimCommitments,
+  executorPublicHomeCommitments,
+  executorPublicHomeSteps,
+  executorPublicHomeStepsWrong,
   loginRedirectClaimCommitments,
   loginRegressionCommitments,
   loginRegressionSteps,
@@ -34,6 +38,16 @@ const target = () => makeTarget({ name: "fake-target", baseUrl: "https://example
 const passingChromium = () =>
   makeFakeChromium({
     pages: { "/login": { text: "Log in to OpenAgents", html: "<form>Log in to OpenAgents</form>" } },
+  });
+
+const executorChromium = () =>
+  makeFakeChromium({
+    pages: {
+      "/": {
+        text: "Connect any agent to everything. Executor is an MCP gateway. Codex.",
+        html: "<main>Connect any agent to everything. Executor is an MCP gateway. Codex.</main>",
+      },
+    },
   });
 
 describe("runQaSession (fake chromium)", () => {
@@ -114,6 +128,41 @@ describe("runQaSession (fake chromium)", () => {
       }),
     );
     expect(outcome.result.status).toBe("fail");
+  });
+
+  test("runs the executor public-home scenario without mutating an external prod target", async () => {
+    const outcome = await Effect.runPromise(
+      runQaSession({
+        target: makeTarget({
+          name: "executor-public-prod",
+          baseUrl: "https://executor.sh",
+          restrictions: ["read-only"],
+        }),
+        brain: scriptedBrain(executorPublicHomeSteps()),
+        backend: localBackend({ chromium: executorChromium() }),
+        artifactDir: dir,
+        commitments: executorPublicHomeCommitments(),
+      }),
+    );
+
+    expect(outcome.result.status).toBe("pass");
+    expect(outcome.result.verify?.verdict).toBe("CONFIRMED");
+    expect(outcome.result.steps.every((step) => step.kind !== "click" && step.kind !== "type")).toBe(true);
+  });
+
+  test("the executor comparison variant fails honestly", async () => {
+    const outcome = await Effect.runPromise(
+      runQaSession({
+        target: makeTarget({ name: "executor-public-prod", baseUrl: "https://executor.sh" }),
+        brain: scriptedBrain(executorPublicHomeStepsWrong()),
+        backend: localBackend({ chromium: executorChromium() }),
+        artifactDir: dir,
+        commitments: executorImpossibleCopyClaimCommitments(),
+      }),
+    );
+
+    expect(outcome.result.status).toBe("fail");
+    expect(outcome.result.verify?.verdict).toBe("REFUTED");
   });
 });
 

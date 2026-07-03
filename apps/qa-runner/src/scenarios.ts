@@ -40,6 +40,69 @@ export function loginRegressionStepsWrong(): ReadonlyArray<BrainStep> {
   ];
 }
 
+/**
+ * QS7 executor demo scenario: external production, read-only.
+ *
+ * The scenario verifies the public executor landing page Rhys can review without
+ * mutating his service. It intentionally uses only navigate / wait / screenshot
+ * / assert steps so the target adapter can force `read-only` for prod.
+ */
+export function executorPublicHomeSteps(): ReadonlyArray<BrainStep> {
+  return [
+    { kind: "navigate", url: "/", label: "open executor landing page" },
+    {
+      kind: "wait-for",
+      condition: { kind: "text-visible", value: "Connect any agent to" },
+      timeoutMs: 20_000,
+      label: "hero headline renders",
+    },
+    {
+      kind: "wait-for",
+      condition: { kind: "text-visible", value: "Executor is an MCP gateway" },
+      timeoutMs: 20_000,
+      label: "MCP gateway copy renders",
+    },
+    { kind: "screenshot", label: "executor-public-home" },
+    {
+      kind: "assert",
+      label: 'body contains "Connect any agent to"',
+      check: { kind: "text-contains", value: "Connect any agent to" },
+    },
+    {
+      kind: "assert",
+      label: 'body contains "Executor is an MCP gateway"',
+      check: { kind: "text-contains", value: "Executor is an MCP gateway" },
+    },
+    {
+      kind: "assert",
+      label: "body mentions Codex integration",
+      check: { kind: "text-contains", value: "Codex" },
+    },
+  ];
+}
+
+/**
+ * Deliberately-wrong executor variant for chill-evals: the target page should
+ * NOT contain this copy. A failing candidate proves the comparison is honest.
+ */
+export function executorPublicHomeStepsWrong(): ReadonlyArray<BrainStep> {
+  return [
+    { kind: "navigate", url: "/", label: "open executor landing page" },
+    {
+      kind: "wait-for",
+      condition: { kind: "text-visible", value: "Executor is an MCP gateway" },
+      timeoutMs: 20_000,
+      label: "MCP gateway copy renders",
+    },
+    { kind: "screenshot", label: "executor-public-home" },
+    {
+      kind: "assert",
+      label: "body contains impossible executor copy (intentionally wrong)",
+      check: { kind: "text-contains", value: "Executor hides MCP tools from agents" },
+    },
+  ];
+}
+
 // ---------------------------------------------------------------------------
 // Commitments (#6192): what the /login scenario must PROVE, declared up front.
 // ---------------------------------------------------------------------------
@@ -88,6 +151,46 @@ export function loginRedirectClaimCommitments(): ReadonlyArray<Commitment> {
       claim: "/login redirects away from /login (FALSE claim under test)",
       evidence: "step-pass",
       match: "redirects away from /login",
+      kind: "assert",
+    },
+  ];
+}
+
+/** Commitments the honest executor public-home scenario proves. */
+export function executorPublicHomeCommitments(): ReadonlyArray<Commitment> {
+  return [
+    {
+      id: "executor-hero",
+      claim: 'executor.sh renders the "Connect any agent to" hero copy',
+      evidence: "step-pass",
+      match: 'body contains "Connect any agent to"',
+      kind: "assert",
+    },
+    {
+      id: "executor-mcp-gateway-copy",
+      claim: "executor.sh describes Executor as an MCP gateway",
+      evidence: "step-pass",
+      match: 'body contains "Executor is an MCP gateway"',
+      kind: "assert",
+    },
+    {
+      id: "executor-codex-copy",
+      claim: "executor.sh names Codex among the agent integrations",
+      evidence: "step-pass",
+      match: "body mentions Codex integration",
+      kind: "assert",
+    },
+  ];
+}
+
+/** Commitments for the deliberately false executor copy claim. */
+export function executorImpossibleCopyClaimCommitments(): ReadonlyArray<Commitment> {
+  return [
+    {
+      id: "executor-impossible-copy",
+      claim: "executor.sh says Executor hides MCP tools from agents (FALSE claim under test)",
+      evidence: "step-pass",
+      match: "body contains impossible executor copy",
       kind: "assert",
     },
   ];

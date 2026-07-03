@@ -55,7 +55,7 @@ export const renderEvalConsole = (result: EvalResult): string => {
   lines.push(`scenario: ${result.scenario.label} [${result.scenario.id}]`);
   lines.push(`target: ${result.target.name}  reps: ${result.repetitions}`);
   lines.push(
-    `grade: ${result.decisionGrade ? "decision-grade" : "ILLUSTRATIVE (fixtures — proves the harness, not lanes)"}`,
+    `grade: ${result.decisionGrade ? "decision-grade" : "ILLUSTRATIVE (local/fixture no-spend — proves the harness, not lanes)"}`,
   );
   lines.push("");
 
@@ -154,7 +154,7 @@ export const renderEvalMarkdown = (
   lines.push("");
   if (!result.decisionGrade) {
     lines.push(
-      "> _Illustrative run (fixtures / no spend). Numbers prove the harness, not the lanes._",
+      "> _Illustrative run (local/fixture no-spend). Numbers prove the harness, not the lanes._",
     );
     lines.push("");
   }

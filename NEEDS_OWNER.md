@@ -67,16 +67,22 @@ Current state:
 - The former product-surface prerequisites have landed: QS2 provides the
   run-level share URL, QS8 provides chill-evals variant comparison, and QS9
   provides the third-party target-adapter contract.
-- No live audit against `RhysSullivan/executor` has been run in this bounded
-  checkout.
-- No webm, terminal recording, distilled `*.e2e.test.ts`, CONFIRMED/REFUTED
-  verdict, share URL, or chill-evals comparison exists for this target yet.
+- A live read-only browser audit against the executor public landing page was
+  captured under run token `qs7-executor-20260703T151831Z`.
+- The packet now has fingerprinted browser media, terminal asciicast, terminal
+  snapshots, result verdict, committed e2e test, share projection, and
+  chill-evals comparison refs in
+  `docs/fable/2026-07-02-qs7-rhys-sales-motion-owner-review.md`.
+- The observed browser verdict is `CONFIRMED`; the chill-evals comparison has a
+  passing baseline and an intentionally false candidate that fails honestly.
+- The share URL staged for review is
+  `https://openagents.com/qa/qa-run.executor.qs7-public-home.20260703`.
 - No external repository PR has been opened.
 
 NEEDS-OWNER: Review
 `docs/fable/2026-07-02-qs7-rhys-sales-motion-owner-review.md`, approve or edit
-the public-safe artifact packet, and explicitly authorize the outward-facing
-`RhysSullivan/executor` PR only after the real audit receipts exist.
+the public-safe artifact packet, choose the public attachment/media location,
+and explicitly authorize the outward-facing `RhysSullivan/executor` PR.
 
 ## QA Swarm Hosted-Run Engagement Arming
 

@@ -135,6 +135,22 @@ describe("submitSwarmRun (fixture path)", () => {
     expect(existsSync(artifacts.swarm!.projectionPath)).toBe(true);
   });
 
+  test("accepts a stable public runRef for externally reviewed packets", async () => {
+    const control = mkControl();
+    const job = control.submitSwarmRun({
+      runRef: "qa-run.executor.qs7-public-home",
+      target: "https://executor.sh",
+      targetName: "Executor",
+    });
+
+    expect(job.qaShareUrl).toBe("https://openagents.com/qa/qa-run.executor.qs7-public-home");
+
+    await control.wait(job.id);
+    const artifacts = control.swarmRunArtifacts(job.id);
+    expect(artifacts.qaShareUrl).toBe("https://openagents.com/qa/qa-run.executor.qs7-public-home");
+    expect(artifacts.swarm?.projection.runRef).toBe("qa-run.executor.qs7-public-home");
+  });
+
   test("rejects missing target and invalid caps", () => {
     const control = mkControl();
     // @ts-expect-error intentionally missing target

@@ -22,7 +22,12 @@ import { scriptedBrain } from "./brain";
 import { type EvalVariant, runEval } from "./evals";
 import { renderEvalConsole, renderEvalMarkdown } from "./evals-report";
 import { makeFakeChromium } from "./fake-chromium";
-import { loginRegressionSteps, loginRegressionStepsWrong } from "./scenarios";
+import {
+  executorPublicHomeSteps,
+  executorPublicHomeStepsWrong,
+  loginRegressionSteps,
+  loginRegressionStepsWrong,
+} from "./scenarios";
 import { makeTarget, resolveTarget } from "./target";
 
 function parseArgs(argv: ReadonlyArray<string>) {
@@ -42,9 +47,74 @@ function parseArgs(argv: ReadonlyArray<string>) {
   return args;
 }
 
+type EvalScenarioChoice = "login-regression" | "executor-public-home";
+
+interface ScenarioChoice {
+  readonly id: EvalScenarioChoice;
+  readonly title: string;
+  readonly label: string;
+  readonly baselineNote: string;
+  readonly candidateNote: string;
+  readonly baselineAxis: string;
+  readonly candidateAxis: string;
+  readonly baselineSteps: typeof loginRegressionSteps;
+  readonly candidateSteps: typeof loginRegressionStepsWrong;
+  readonly fixturePages: Record<string, { text: string; html?: string }>;
+}
+
+const resolveScenarioChoice = (value: unknown): ScenarioChoice => {
+  const id = typeof value === "string" ? value : "login-regression";
+  if (id === "login-regression") {
+    return {
+      id,
+      title: "Login scenario: baseline vs candidate",
+      label: "/login renders sign-in",
+      baselineNote: "current /login scenario",
+      candidateNote: "asserts a redirect that should not happen (regressed)",
+      baselineAxis: "filesystem:on",
+      candidateAxis: "filesystem:off",
+      baselineSteps: loginRegressionSteps,
+      candidateSteps: loginRegressionStepsWrong,
+      fixturePages: {
+        "/login": {
+          text: "Log in to OpenAgents",
+          html: "<form>Log in to OpenAgents</form>",
+        },
+      },
+    };
+  }
+  if (id === "executor-public-home") {
+    return {
+      id,
+      title: "Executor public-home scenario: baseline vs candidate",
+      label: "executor.sh public landing page renders",
+      baselineNote: "read-only executor public-home verification",
+      candidateNote: "asserts impossible executor copy (regressed)",
+      baselineAxis: "executor-public:baseline",
+      candidateAxis: "executor-public:impossible-copy",
+      baselineSteps: executorPublicHomeSteps,
+      candidateSteps: executorPublicHomeStepsWrong,
+      fixturePages: {
+        "/": {
+          text: "Connect any agent to everything. Executor is an MCP gateway. Codex.",
+          html: "<main>Connect any agent to everything. Executor is an MCP gateway. Codex.</main>",
+        },
+      },
+    };
+  }
+  throw new Error(`unknown eval scenario "${id}"`);
+};
+
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
   const fixtures = args.fixtures === true;
+  let scenarioChoice: ScenarioChoice;
+  try {
+    scenarioChoice = resolveScenarioChoice(args.scenario);
+  } catch (error) {
+    console.error(error instanceof Error ? `error: ${error.message}` : String(error));
+    process.exit(2);
+  }
   const target =
     typeof args.url === "string"
       ? makeTarget({
@@ -67,12 +137,7 @@ async function main(): Promise<void> {
   // real path uses real chromium against the Target.
   const chromium = fixtures
     ? makeFakeChromium({
-        pages: {
-          "/login": {
-            text: "Log in to OpenAgents",
-            html: "<form>Log in to OpenAgents</form>",
-          },
-        },
+        pages: scenarioChoice.fixturePages,
       })
     : undefined;
 
@@ -83,17 +148,17 @@ async function main(): Promise<void> {
     {
       id: "baseline",
       label: "baseline",
-      note: "current /login scenario",
-      axis: { kind: "mcp_set", value: "filesystem:on", baseline: true },
-      brain: () => scriptedBrain(loginRegressionSteps()),
+      note: scenarioChoice.baselineNote,
+      axis: { kind: "mcp_set", value: scenarioChoice.baselineAxis, baseline: true },
+      brain: () => scriptedBrain(scenarioChoice.baselineSteps()),
       backend,
     },
     {
       id: "candidate",
       label: "candidate",
-      note: "asserts a redirect that should not happen (regressed)",
-      axis: { kind: "mcp_set", value: "filesystem:off" },
-      brain: () => scriptedBrain(loginRegressionStepsWrong()),
+      note: scenarioChoice.candidateNote,
+      axis: { kind: "mcp_set", value: scenarioChoice.candidateAxis },
+      brain: () => scriptedBrain(scenarioChoice.candidateSteps()),
       backend,
     },
   ];
@@ -101,9 +166,9 @@ async function main(): Promise<void> {
   const outcome = await Effect.runPromise(
     runEval({
       id,
-      title: "Login scenario: baseline vs candidate",
+      title: scenarioChoice.title,
       target,
-      scenario: { id: "login-regression", label: "/login renders sign-in" },
+      scenario: { id: scenarioChoice.id, label: scenarioChoice.label },
       variants,
       repetitions: Number.isFinite(reps) ? reps : 1,
       artifactDir,
