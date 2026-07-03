@@ -65,6 +65,40 @@ export const khalaCodeUxContractRegistry: BehaviorContractRegistryDocument = {
     },
     {
       authorityBoundary:
+        "This contract binds the thread-sidebar active-row affordance and optimistic pending-thread rendering only. Persisted project, Codex, Claude, and session-catalog group labels remain owned by their source catalogs.",
+      blockerRefs: [],
+      contractId: "khala_code.chat.sidebar_active_thread_background_only.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "clients/khala-code-desktop/src/ui/codex-thread-sidebar.ts",
+        "clients/khala-code-desktop/src/ui/styles.css",
+        "docs/khala-code/khala-code-ux-contract.md",
+      ],
+      oracles: [
+        {
+          description:
+            "Mounts the real thread sidebar in a DOM: an optimistic current chat renders as the active row with the active background hooks and no visible 'Current chat' heading or copy.",
+          id: "active_thread_background_only.dom",
+          kind: "bun-test",
+          mode: "dom",
+          ref: "clients/khala-code-desktop/tests/ux-contracts.test.ts",
+        },
+      ],
+      productArea: "chat thread sidebar",
+      source: {
+        channel: "khala-code-session",
+        statedBy: "owner",
+        statedOn: "2026-07-03",
+      },
+      state: "enforced",
+      statement:
+        "Current chat is just supposed to be highlighted as a background bar.",
+      surface: "khala-code-desktop",
+      verification:
+        "bun test tests/ux-contracts.test.ts inside clients/khala-code-desktop; runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.",
+    },
+    {
+      authorityBoundary:
         "Retired 2026-07-03 (owner correction): the overlay reading of the original ask was wrong — no separate pane should appear. Superseded by khala_code.chat.recent_thread_cmd_hotkeys.v2; kept for history.",
       blockerRefs: [],
       contractId: "khala_code.chat.recent_thread_cmd_hotkeys.v1",
@@ -132,5 +166,5 @@ export const khalaCodeUxContractRegistry: BehaviorContractRegistryDocument = {
     },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-03.2",
+  version: "2026-07-03.3",
 }

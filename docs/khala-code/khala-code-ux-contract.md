@@ -52,7 +52,7 @@ sweep if this doc, the registry, or the oracle tests drift apart.
 
 ## Registry
 
-Registry version: `2026-07-03.2` (schema `openagents.behavior_contracts.v1`)
+Registry version: `2026-07-03.3` (schema `openagents.behavior_contracts.v1`)
 
 ### `khala_code.chat.sidebar_spinner_streaming_only.v1` — ENFORCED
 
@@ -64,6 +64,16 @@ Registry version: `2026-07-03.2` (schema `openagents.behavior_contracts.v1`)
 - **Oracle** `transcript_loading.source` (bun-test, unit): Pins the transcript-level 'Loading messages' indicator wiring for cache-miss thread switches (source-level until the full shell boots under the DOM harness). — `clients/khala-code-desktop/tests/ux-contracts.test.ts`
 - **Verification:** bun test tests/ux-contracts.test.ts inside clients/khala-code-desktop; runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.
 - **Authority boundary:** This contract binds indicator semantics only. Thread-switch latency budgets stay owned by docs/qa/khala-code-latency-budgets.md, and it makes no claim about streaming correctness itself.
+
+### `khala_code.chat.sidebar_active_thread_background_only.v1` — ENFORCED
+
+- **Surface:** khala-code-desktop (chat thread sidebar)
+- **Stated by:** owner via khala-code-session on 2026-07-03
+- **Statement:** Current chat is just supposed to be highlighted as a background bar.
+- **Enforcement tier:** test-sweep
+- **Oracle** `active_thread_background_only.dom` (bun-test, dom): Mounts the real thread sidebar in a DOM: an optimistic current chat renders as the active row with the active background hooks and no visible 'Current chat' heading or copy. — `clients/khala-code-desktop/tests/ux-contracts.test.ts`
+- **Verification:** bun test tests/ux-contracts.test.ts inside clients/khala-code-desktop; runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.
+- **Authority boundary:** This contract binds the thread-sidebar active-row affordance and optimistic pending-thread rendering only. Persisted project, Codex, Claude, and session-catalog group labels remain owned by their source catalogs.
 
 ### `khala_code.chat.recent_thread_cmd_hotkeys.v1` — RETIRED
 

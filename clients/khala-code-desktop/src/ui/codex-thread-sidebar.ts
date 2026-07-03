@@ -126,6 +126,9 @@ const threadHotkeyHintContent = (digit: number): HTMLSpanElement => {
   return time
 }
 
+// Empty by design: the optimistic active row is indicated by its background only.
+const pendingActiveThreadGroupLabel = ""
+
 const threadTimeContent = (
   thread: KhalaCodeDesktopCodexThreadSummary,
   options: Pick<CodexThreadSidebarOptions, "isThreadStreaming">,
@@ -746,7 +749,9 @@ export const mountCodexThreadSidebar = (
     for (const group of groupThreads(data)) {
       if (group.threads.length === 0) continue
       const section = el("section", "khala-thread-sidebar-group")
-      section.append(el("h3", "khala-thread-sidebar-group-title", group.label))
+      if (group.label.trim().length > 0) {
+        section.append(el("h3", "khala-thread-sidebar-group-title", group.label))
+      }
       const list = el("div", "khala-thread-sidebar-list")
       list.append(...group.threads.map(threadButton))
       section.append(list)
@@ -823,7 +828,7 @@ export const mountCodexThreadSidebar = (
         title: preview.split(/\r?\n/u)[0]?.slice(0, 80) ?? input.threadId,
         preview,
         cwd: null,
-        projectLabel: "Current chat",
+        projectLabel: pendingActiveThreadGroupLabel,
         status: "active",
         statusLabel: "active",
         modelProvider: null,

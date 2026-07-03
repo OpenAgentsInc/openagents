@@ -236,7 +236,64 @@ describe("contract khala_code.chat.sidebar_spinner_streaming_only.v1", () => {
   })
 })
 
-// Oracle for khala_code.chat.recent_thread_cmd_hotkeys.v1
+// Oracle for khala_code.chat.sidebar_active_thread_background_only.v1
+describe("contract khala_code.chat.sidebar_active_thread_background_only.v1", () => {
+  test("an optimistic current chat uses the active row background hook without visible current-chat copy", async () => {
+    await withDom(async () => {
+      const container = document.createElement("aside")
+      document.body.append(container)
+      const data: KhalaCodeDesktopCodexThreadListResult = {
+        ok: true,
+        data: [],
+        groups: [{ key: "all", label: "All sessions", threadIds: ["thread-a"] }],
+        threads: [thread("thread-a", "Existing chat", 20)],
+      }
+      const sidebar = mountCodexThreadSidebar(container, {
+        activeThreadId: () => null,
+        archiveThread: async threadId => ({ action: "archive", ok: true, threadId }),
+        deleteThread: async threadId => ({ action: "delete", ok: true, threadId }),
+        forkThread: async threadId => ({ action: "fork", ok: true, threadId }),
+        listThreads: async () => data,
+        renameThread: async threadId => ({ action: "rename", ok: true, threadId }),
+        resumeThread: async threadId => ({
+          ok: true,
+          thread: {},
+          threadId,
+          messages: [],
+        }),
+        sessionId: "desktop-session",
+        unarchiveThread: async threadId => ({ action: "unarchive", ok: true, threadId }),
+        onNewThreadRequested: () => undefined,
+        onThreadSelected: () => undefined,
+      })
+      sidebar.setVisible(true)
+      await sidebar.refresh()
+
+      sidebar.upsertPendingThread({
+        preview: "New request\nwith details",
+        threadId: "thread-current",
+      })
+
+      const activeItem = container.querySelector<HTMLElement>(
+        '[data-thread-id="thread-current"]',
+      )
+      const activeRow = activeItem?.querySelector<HTMLButtonElement>(
+        ".khala-thread-sidebar-item-row",
+      )
+      expect(activeItem?.dataset.active).toBe("true")
+      expect(activeRow?.dataset.active).toBe("true")
+      expect(activeRow?.getAttribute("aria-current")).toBe("true")
+      expect(activeRow?.textContent).toContain("New request")
+      expect(container.textContent).not.toContain("Current chat")
+      expect(
+        [...container.querySelectorAll(".khala-thread-sidebar-group-title")]
+          .map(heading => heading.textContent),
+      ).not.toContain("Current chat")
+    })
+  })
+})
+
+// Oracle for khala_code.chat.recent_thread_cmd_hotkeys.v2
 describe("contract khala_code.chat.recent_thread_cmd_hotkeys.v2", () => {
   test("Cmd+1 through Cmd+9 map to the nine most recent chats", () => {
     for (let digit = 1; digit <= 9; digit += 1) {

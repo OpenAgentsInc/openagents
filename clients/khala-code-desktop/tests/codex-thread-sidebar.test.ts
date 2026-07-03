@@ -163,7 +163,7 @@ describe("Khala Code thread sidebar", () => {
     const pending = {
       ...thread("thread-new", "hi"),
       cwd: null,
-      projectLabel: "Current chat",
+      projectLabel: "",
       recencyAt: 10,
     }
 
@@ -173,7 +173,7 @@ describe("Khala Code thread sidebar", () => {
     expect(next.threads?.map(item => item.id)).toEqual(["thread-new", "thread-a"])
     expect(next.groups?.[0]).toEqual({
       key: "cwd:none",
-      label: "Current chat",
+      label: "",
       threadIds: ["thread-new"],
     })
     expect(upsertPendingThreadInListData(next, pending)).toBe(next)
