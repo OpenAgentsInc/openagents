@@ -106,7 +106,11 @@ const developerResourcesHtml = (): string => {
     .join('')
   return `<!doctype html>
 <html>
-<head><meta charset="utf-8"><style>
+<head>
+<meta charset="utf-8">
+<meta name="color-scheme" content="dark light">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+<style>
 body{font:14px system-ui,sans-serif;margin:0;padding:12px;color:#e6e6e6;background:#0b0b12}
 table{width:100%;border-collapse:collapse}
 td{padding:6px 8px;border-bottom:1px solid #262633;vertical-align:top}

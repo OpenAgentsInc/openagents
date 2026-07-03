@@ -106,6 +106,8 @@ describe('public agent MCP server (no auth)', () => {
     expect(body.result.contents[0]?.mimeType).toBe('text/html;profile=mcp-app')
     expect(body.result.contents[0]?.text).toContain('<html>')
     expect(body.result.contents[0]?.text).toContain('https://openagents.com/AGENTS.md')
+    expect(body.result.contents[0]?.text).toContain('name="color-scheme" content="dark light"')
+    expect(body.result.contents[0]?.text).toContain('http-equiv="Content-Security-Policy"')
   })
 
   test('resources/read on an unknown uri is a JSON-RPC error', async () => {
