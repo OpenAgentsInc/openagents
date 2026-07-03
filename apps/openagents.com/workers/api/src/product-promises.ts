@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-07-02.3'
+export const PublicProductPromisesVersion = '2026-07-02.4'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -2979,9 +2979,7 @@ export const publicProductPromisesDocument = () => {
           'packages/autopilot-control-protocol/src/remote-decision-queue.ts',
           'promise:mobile.fleet_companion.v1',
         ],
-        blockerRefs: [
-          'blocker.product_promises.expo_mobile_app_retired',
-        ],
+        blockerRefs: ['blocker.product_promises.expo_mobile_app_retired'],
         verification:
           'Compatibility check: public consumers should treat this id as withdrawn and route new mobile companion references to mobile.fleet_companion.v1.',
         authorityBoundary:
@@ -4250,7 +4248,7 @@ export const publicProductPromisesDocument = () => {
         claim:
           "OpenAgents Business is a buyable offering: a customer (or the customer's agent) reads the published offering menu, runs an intake, and lands on a fast quick win plus a picture of the ongoing Autopilot relationship.",
         safeCopy:
-          'The OpenAgents Business intake is live: the public offering menu (docs/business/2026-06-20-openagents-business-intake-spec.md) is grounded one-for-one in this product-promise registry, and the /business signup route accepts a real intake and records it. The /business page also carries a bounded conversational intake (POST /api/public/business-intake-chat) that runs the published interview and drafts the intake spec into the same signup form; the form remains the single submit authority. Quick-win delivery and the move onto Autopilot are operator-assisted today, not a one-click self-serve product.',
+          'The OpenAgents Business intake is live: the public offering menu (docs/business/2026-06-20-openagents-business-intake-spec.md) is grounded one-for-one in this product-promise registry, and the /business signup route accepts a real intake and records it. The /business page also carries a bounded conversational intake (POST /api/public/business-intake-chat) that runs the published interview and drafts the intake spec into the same signup form; the form remains the single submit authority. A public rate card now shows operator-assisted Quick Win, Fleet Sprint, On Autopilot Retainer, and QA Swarm package bands with fixed-scope receipt plans. Quick-win delivery and the move onto Autopilot remain operator-assisted today, not a one-click self-serve product.',
         unsafeCopy:
           'Do not say OpenAgents Business is a finished self-serve product, that any offering on the menu is delivered automatically without an operator, or that the intake commits OpenAgents to anything beyond what each backing promise record actually supports.',
         evidenceRefs: [
@@ -4277,7 +4275,7 @@ export const publicProductPromisesDocument = () => {
           'blocker.product_promises.business_first_paid_quick_win_receipt_missing',
         ],
         verification:
-          'Yellow is limited to what is shipped: the offering menu document is grounded in the live registry (each offering maps to a backing promiseId in docs/business/2026-06-20-business-offering-promise-coverage.md), and the /business intake route accepts and records a real signup (business-signup-routes.ts, business-signup-routes.test.ts). True today: a customer/agent can read the menu, run the interview, and submit an intake. Green requires a self-serve quick-win delivery loop and at least one dereferenceable first paid business quick-win receipt (intake -> delivery -> accepted outcome -> receipt), with a receipt-first upgrade per proof.claim_upgrade_receipts.v1.',
+          'Yellow is limited to what is shipped: the offering menu document is grounded in the live registry (each offering maps to a backing promiseId in docs/business/2026-06-20-business-offering-promise-coverage.md), the /business intake route accepts and records a real signup (business-signup-routes.ts, business-signup-routes.test.ts), and the /business page publishes package price bands with fixed-scope receipt plans. True today: a customer/agent can read the menu and rate card, run the interview, and submit an intake. Green requires a self-serve quick-win delivery loop and at least one dereferenceable first paid business quick-win receipt (intake -> delivery -> accepted outcome -> receipt), with a receipt-first upgrade per proof.claim_upgrade_receipts.v1.',
         authorityBoundary:
           'The business intake is an offering menu plus a signup capture. It grants no automatic delivery, spend, payout, or settlement authority, makes no separate offering green, and never promises beyond the state of each backing promise record it points at.',
       },
@@ -4812,22 +4810,23 @@ export const publicProductPromisesDocument = () => {
         claim:
           'QA Swarm is the named product surface packaging the ROADMAP_QA machine into an operator-assisted QA engagement, with Khala Code Desktop as customer number one.',
         safeCopy:
-          'QA Swarm is a yellow product definition: it packages the existing qa-runner, trace, coverage, perf, Arbiter, and FleetRun ingredients into an operator-assisted QA engagement. The first customer is OpenAgents itself through the Khala Code Desktop dogfood lane. It is not self-serve, not broadly hosted, and not a priced public offer yet; records for hosted runs, the share surface, and package pricing remain planned/owner-gated.',
+          'QA Swarm is a yellow product definition: it packages the existing qa-runner, trace, coverage, perf, Arbiter, and FleetRun ingredients into an operator-assisted QA engagement. The first customer is OpenAgents itself through the Khala Code Desktop dogfood lane. The /business rate card now publishes operator-assisted QA Swarm audit, sprint, and retainer bands; hosted runs and the share surface remain planned, and it is not self-serve or broadly hosted.',
         unsafeCopy:
-          'Do not describe QA Swarm as self-serve, generally available, priced, automated for arbitrary third-party apps, or proven by paid customer receipts.',
+          'Do not describe QA Swarm as self-serve, generally hosted, automated for arbitrary third-party apps, or proven by paid customer receipts.',
         evidenceRefs: [
           'docs/fable/2026-07-02-qa-swarm-product-plan.md',
           'docs/feature-requests/2026-06-24-autonomous-qa-e2e-from-computer-use.md',
+          'apps/openagents.com/apps/web/src/page/business.ts',
+          'apps/openagents.com/apps/web/src/business-route.test.ts',
           'promise:qa.agentic_qa_runner.v1',
         ],
         blockerRefs: [
           'blocker.product_promises.qa_swarm_paid_customer_receipt_missing',
           'blocker.product_promises.qa_swarm_operator_assisted_only',
           'blocker.product_promises.qa_swarm_share_surface_missing',
-          'blocker.product_promises.qa_swarm_rate_card_owner_signoff_pending',
         ],
         verification:
-          'Yellow is limited to the named product definition plus existing runner/trace evidence. Green requires a public-safe customer-one run report, a dereferenceable run-level share URL, first paid or owner-accepted engagement receipts, exact accounting for hosted execution, and owner-signed copy/price approval.',
+          'Yellow is limited to the named product definition, existing runner/trace evidence, and the operator-assisted package bands on /business. Green requires a public-safe customer-one run report, a dereferenceable run-level share URL, first paid or owner-accepted engagement receipts, and exact accounting for hosted execution.',
         authorityBoundary:
           'This product-surface record grants no dispatch, spend, settlement, payout, publication, or third-party testing authority. Any external report or sales artifact requires the relevant run, redaction, and owner-review gates.',
       },
@@ -4894,29 +4893,30 @@ export const publicProductPromisesDocument = () => {
         promiseId: 'qa_swarm.service_packages.v1',
         productArea: 'QA Swarm',
         audience: ['customer', 'operator', 'public'],
-        state: 'planned',
+        state: 'yellow',
         claim:
           'QA Swarm has operator-assisted service packages for audits, QA-on-every-push retainers, and swarm sprints.',
         safeCopy:
-          'The package names and deliverable shapes are planned: Swarm Audit, QA-on-every-push, and Swarm Sprint. The modeled rate card is staged in NEEDS_OWNER.md for owner review, and public copy must say operator-assisted until self-serve delivery and hosted-run receipts exist. No prices are published or purchasable today.',
+          'QA Swarm package bands are published on /business as operator-assisted services: Swarm Audit at $1,000-$5,000, Swarm Sprint at $5,000-$15,000, and QA-on-every-push retainers at $2,000-$10,000/month. Public copy must continue to say operator-assisted until self-serve delivery and hosted-run receipts exist. The packages are not self-serve checkout products.',
         unsafeCopy:
-          'Do not publish dollar prices, quote a rate card, present packages as self-serve, or imply purchase/checkout is live before owner sign-off and payment/delivery receipts exist.',
+          'Do not present QA Swarm packages as self-serve, generally hosted, available for arbitrary third-party apps without target-adapter review, or proven by paid delivery receipts. Do not imply purchase/checkout is live.',
         evidenceRefs: [
           'docs/fable/2026-07-02-qa-swarm-product-plan.md',
           'NEEDS_OWNER.md',
+          'apps/openagents.com/apps/web/src/page/business.ts',
+          'apps/openagents.com/apps/web/src/business-route.test.ts',
           'promise:qa_swarm.product_surface.v1',
           'promise:qa_swarm.hosted_runs.v1',
         ],
         blockerRefs: [
-          'blocker.product_promises.qa_swarm_rate_card_owner_signoff_pending',
           'blocker.product_promises.qa_swarm_checkout_or_intake_receipts_missing',
           'blocker.product_promises.qa_swarm_first_paid_delivery_receipt_missing',
           'blocker.product_promises.qa_swarm_self_serve_delivery_missing',
         ],
         verification:
-          'Requires owner-approved public package copy and pricing, an intake/checkout or explicit operator-sales path with receipts, at least one paid or owner-accepted delivery receipt, and clear copy that distinguishes operator-assisted delivery from self-serve hosting.',
+          'Yellow is limited to owner-approved public package copy and pricing on /business. Green requires an intake/checkout or explicit operator-sales path with receipts, at least one paid or owner-accepted delivery receipt, and clear copy that distinguishes operator-assisted delivery from self-serve hosting.',
         authorityBoundary:
-          'Package records do not authorize quoting, charging, checkout, settlement, payout, or external outreach. The owner must approve public prices and outward-facing artifacts before they are sent or published.',
+          'Package records do not authorize charging, checkout, settlement, payout, third-party target access, or external outreach. Public prices are quote starters only; each engagement still needs scoped intake, redaction/target review where applicable, and operator acceptance before work runs.',
       },
       {
         ...basePromiseFields,
@@ -4952,6 +4952,7 @@ export const publicProductPromisesDocument = () => {
     ],
     notes: [
       `Include version ${PublicProductPromisesVersion} and the relevant promiseId when reporting a mismatch.`,
+      'Registry 2026-07-02.4 is the BF-2.1 /business rate-card pass (#8079) and flips NO promise green — green stays exactly 34. business.intake_quick_win_offering.v1 remains yellow and now includes the published operator-assisted rate card: Quick Win ($1,000-$5,000 fixed), Fleet Sprint ($5,000-$15,000/week), On Autopilot Retainer ($2,000-$10,000/month), and QA Swarm bands. qa_swarm.service_packages.v1 advances from planned to yellow only for public package pricing and copy; checkout, first paid delivery receipts, self-serve hosted runs, broad hosted availability, payout, and settlement remain blocked.',
       'Registry 2026-07-02.3 adds khala_code.architect_coder_judge.v1 as a planned, copy-gated Khala Code promise candidate for the architect/coder/judge preset. It flips NO promise state. Source-level evidence covers the architect-coder-judge role-registry preset in Khala Code settings and headless launch wiring: coder on the user’s existing Codex login, architect/judge on the user’s own Anthropic auth, advisor optional-off, and no proxy/no-resale rails restated. The record remains planned until the plan -> code -> judge workflow is verifiable end-to-end with exact per-role accounting and owner-approved public copy.',
       'Registry 2026-07-02.2 is the QA Swarm QS1 pass (#8061) and flips NO promise green — green stays exactly 34. qa.agentic_qa_runner.v1 remains yellow but now explicitly scopes the broader QA Swarm product as not self-serve. New qa_swarm.* records land conservatively: qa_swarm.product_surface.v1 is yellow for the named operator-assisted product definition and customer-one dogfood scope; qa_swarm.hosted_runs.v1, qa_swarm.share_surface.v1, and qa_swarm.service_packages.v1 are planned. The modeled rate card is staged in NEEDS_OWNER.md for owner review; public copy must not publish prices, imply self-serve delivery, or claim paid customer/hosted-run receipts until the named blockers clear.',
       'Registry 2026-07-02.1 is the owner-directed /business redesign pass and flips NO promise state — green stays exactly 34. business.intake_quick_win_offering.v1 (yellow, unchanged) gains evidence for the rebranded dark-only page (hero: Agents that work.) and the new bounded conversational intake at POST /api/public/business-intake-chat: a stateless server-side interview running the published intake spec (offerings menu with honest availability labels, interview areas A-G, Output Spec Template) over the same gateway serving lane as the free tier, fail-closed 503 when unarmed, per-IP rate limited, exact-only internal token accounting (demand_source business_intake_chat), and the drafted spec hands off into the existing signup form, which remains the single submit authority and the only stored intake artifact. A review-only landing candidate ships at /preview/landing (builders -> /khala, businesses -> /business) with an explicit not-the-homepage banner; the live homepage is untouched. No availability label changed, no offering was added, no pricing was published, and both blockers stand.',

@@ -116,12 +116,12 @@ describe('business route', () => {
       'Your invite opens a named project with seeded notes, starter workflows, and an intro receipt.',
     )
 
-    // Pricing framing stays honest until the paid credit loop is collectable.
+    // Pricing framing stays scoped and operator-assisted.
     expect(rendered).toContain(
-      'Usage is framed as clear token-based credits where the paid loop is available.',
+      'Packages start with a fixed scope and receipt plan before funding.',
     )
     expect(rendered).toContain(
-      'We scope any paid run with an explicit receipt plan before you fund it.',
+      'Delivery is operator-assisted today; checkout and self-serve hosting are not implied by the rate card.',
     )
   })
 
@@ -138,8 +138,12 @@ describe('business route', () => {
     // Server calls are user-initiated only; the empty state is static copy.
     expect(rendered).toContain('drafts your intake spec')
     // No-JS visitors are pointed at the form, which stays the submit authority.
-    expect(rendered).toContain('JavaScript is off — use the form below instead.')
-    expect(rendered).toContain('bounded interview · no credentials · receipt-first')
+    expect(rendered).toContain(
+      'JavaScript is off — use the form below instead.',
+    )
+    expect(rendered).toContain(
+      'bounded interview · no credentials · receipt-first',
+    )
   })
 
   test('renders the offering menu with honest availability badges', () => {
@@ -147,9 +151,7 @@ describe('business route', () => {
 
     expect(rendered).toContain('data-ui-family="business/offering-menus"')
     expect(rendered).toContain('data-ui-family="business/offering-cards"')
-    expect(rendered).toContain(
-      'data-ui-family="business/availability-badges"',
-    )
+    expect(rendered).toContain('data-ui-family="business/availability-badges"')
     expect(rendered).toContain('What we can do')
     // Offering buckets from the intake spec.
     expect(rendered).toContain('Coding & agent work')
@@ -173,14 +175,35 @@ describe('business route', () => {
   test('renders the quick-win to Autopilot ladder', () => {
     const rendered = renderHtml(Business.view({ _tag: 'LoggedOut' }))
 
-    expect(rendered).toContain(
-      'Quick win -> put your business on Autopilot',
-    )
+    expect(rendered).toContain('Quick win -> put your business on Autopilot')
     expect(rendered).toContain('data-ui-family="business/quick-win-ladders"')
     expect(rendered).toContain('data-business-ladder-step="Day 1"')
     expect(rendered).toContain('Day 1 - Quick win')
     expect(rendered).toContain('Week 1 - Repeatable lane')
     expect(rendered).toContain('Ongoing - On Autopilot')
+  })
+
+  test('renders the public rate card with fixed scopes and receipt plans', () => {
+    const rendered = renderHtml(Business.view({ _tag: 'LoggedOut' }))
+
+    expect(rendered).toContain('data-ui-family="business/rate-cards"')
+    expect(rendered).toContain('data-ui-family="business/rate-card-packages"')
+    expect(rendered).toContain('Rate card')
+    expect(rendered).toContain('Quick Win')
+    expect(rendered).toContain('$1,000-$5,000 fixed')
+    expect(rendered).toContain('Fleet Sprint')
+    expect(rendered).toContain('$5,000-$15,000 / week')
+    expect(rendered).toContain('On Autopilot Retainer')
+    expect(rendered).toContain('$2,000-$10,000 / month')
+    expect(rendered).toContain('QA Swarm')
+    expect(rendered).toContain(
+      '$1,000-$5,000 audit; $5,000-$15,000 sprint; $2,000-$10,000 / month',
+    )
+    expect(rendered).toContain('Receipt plan')
+    expect(rendered).toContain(
+      'The rate card is a quote starter, not a self-serve checkout',
+    )
+    expect(rendered).toContain('qa_swarm.service_packages.v1')
   })
 
   test('renders the dark-only operational landing shell', () => {
