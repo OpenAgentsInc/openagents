@@ -270,6 +270,17 @@ const tailByBytes = (text: string, maxBytes: number): string => {
   return bytes.subarray(Math.max(0, bytes.byteLength - maxBytes)).toString("utf8")
 }
 
+const appendLineByByteLimit = (text: string, line: string, maxBytes: number): string => {
+  const next = `${text}${line}\n`
+  if (Buffer.byteLength(next, "utf8") <= maxBytes) return next
+  const lines = next.split("\n")
+  if (lines.at(-1) === "") lines.pop()
+  while (lines.length > 0 && Buffer.byteLength(`${lines.join("\n")}\n`, "utf8") > maxBytes) {
+    lines.shift()
+  }
+  return lines.length === 0 ? "" : `${lines.join("\n")}\n`
+}
+
 const assignmentLifecycleEventFromLine = (
   line: string,
 ): PylonAssignmentRunLifecycleEvent | null => {
@@ -315,7 +326,7 @@ const collectText = (
       Stream.splitLines,
       Stream.runForEach(line =>
         Effect.gen(function* () {
-          text = tailByBytes(`${text}${line}\n`, input.maxOutputBytes)
+          text = appendLineByByteLimit(text, line, input.maxOutputBytes)
           if (input.onLine !== undefined) yield* input.onLine(line)
         })
       ),
@@ -389,7 +400,8 @@ const staleHeartbeatAdmissionPattern =
   /stale_or_missing_heartbeat|online heartbeat is stale or missing|stale heartbeat|presence\.stale_heartbeat/iu
 
 const isStaleHeartbeatAdmissionFailure = (result: PylonServiceCommandResult): boolean =>
-  result.exitCode !== 0 && staleHeartbeatAdmissionPattern.test(`${result.stdout}\n${result.stderr}`)
+  stringField(parseJsonObject(result.stdout), "assignmentRef") === null &&
+  staleHeartbeatAdmissionPattern.test(`${result.stdout}\n${result.stderr}`)
 
 const heartbeatLooksFresh = (result: PylonServiceCommandResult): boolean => {
   if (result.exitCode !== 0) return false

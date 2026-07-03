@@ -555,7 +555,9 @@ before each `khala request`, including refills after long-running workers, so a
 manual preflight heartbeat is not treated as enough proof by itself. If hosted
 admission still reports `stale_or_missing_heartbeat`, the Pylon service refreshes
 the heartbeat and retries that assignment request before the work unit is
-counted failed.
+counted failed. This retry also covers structured `ok:false` stale-heartbeat
+admission responses that exit zero; hosted admission failures are not always
+process-level failures.
 
 ### Local multi-session proof runs
 

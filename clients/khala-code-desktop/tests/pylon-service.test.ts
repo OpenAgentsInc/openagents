@@ -170,6 +170,80 @@ describe("PylonService", () => {
     expect(result.lifecycle).toEqual([event])
   })
 
+  test("retries structured stale admission even when the CLI exits zero", async () => {
+    const event = lifecycleEvent("assignment_run.completed")
+    const captured: string[] = []
+    let requestCount = 0
+    const service = makePylonService({
+      env: { OPENAGENTS_PYLON_APP_PATH: "/tmp/pylon-app", PYLON_HOME: "/tmp/pylon-home" },
+      runner: async (input) => {
+        const args = input.cmd.slice(input.cmd.indexOf("src/index.ts") + 1)
+        const joined = args.join(" ")
+        captured.push(joined)
+        if (joined.startsWith("khala request ")) {
+          requestCount += 1
+          if (requestCount === 1) {
+            return {
+              exitCode: 0,
+              stderr: "",
+              stdout: JSON.stringify({
+                error: "pylon khala request failed (409): The requested linked Pylon cannot take a Codex coding assignment because its online heartbeat is stale or missing.; evidenceRefs=evidence.khala_coding.target_pylon_ref.unavailable.stale_or_missing_heartbeat",
+                ok: false,
+              }),
+              timedOut: false,
+            }
+          }
+          await input.onStderrLine?.(JSON.stringify(event))
+          return {
+            exitCode: 0,
+            stderr: "",
+            stdout: JSON.stringify({
+              assignmentRef: "assignment.retry.structured",
+              assignmentLifecycleEvents: [event],
+              assignmentRun: {
+                closeout: { status: "accepted" },
+                ok: true,
+              },
+              autoRun: {
+                ok: true,
+              },
+            }),
+            timedOut: false,
+          }
+        }
+        if (joined === "presence heartbeat --base-url https://openagents.test --json") {
+          return {
+            exitCode: 0,
+            stderr: "",
+            stdout: JSON.stringify({ linked: true, pylonRef: "pylon.owner", stale: false }),
+            timedOut: false,
+          }
+        }
+        throw new Error(`unexpected command: ${joined}`)
+      },
+    })
+
+    const result = await Effect.runPromise(service.runAssignment({
+      accountRef: "codex-2",
+      baseUrl: "https://openagents.test",
+      branch: "main",
+      commit: "0123456789abcdef0123456789abcdef01234567",
+      objective: "Run a real assignment.",
+      pylonRef: "pylon.owner",
+      repo: "OpenAgentsInc/openagents",
+      verify: "bun test tests/fleet-run-live-smoke.test.ts",
+      workerKind: "codex",
+    }))
+
+    expect(captured.filter(command => command.startsWith("khala request "))).toHaveLength(2)
+    expect(captured[1]).toBe("presence heartbeat --base-url https://openagents.test --json")
+    expect(result).toMatchObject({
+      assignmentRef: "assignment.retry.structured",
+      status: "completed",
+    })
+    expect(result.lifecycle).toEqual([event])
+  })
+
   test("provides a fixture stub layer for supervisor tests", async () => {
     const service = await Effect.runPromise(PylonService.pipe(Effect.provide(PylonServiceStub())))
     const eventPromise = Effect.runPromise(service.lifecycle.pipe(Stream.runHead))
