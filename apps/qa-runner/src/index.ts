@@ -30,6 +30,23 @@ export {
   type TargetCapability,
   type TargetRestriction,
 } from "./target";
+export {
+  TARGET_ADAPTER_SCHEMA_VERSION,
+  TargetAdapterContract,
+  decodeTargetAdapterContract,
+  targetFromAdapter,
+  type TargetAdapterAuth,
+  type TargetAdapterAuthKind,
+  type TargetAdapterContract as TargetAdapterContractType,
+  type TargetAdapterEnvironment,
+  type TargetAdapterOwner,
+  type TargetAdapterProdPolicy,
+  type TargetAdapterProdReadOnly,
+  type TargetAdapterRestart,
+  type TargetAdapterRestartKind,
+  type TargetAdapterScenarioSeed,
+  type TargetAdapterTarget,
+} from "./target-adapter";
 
 // Brains — the pluggable decision-makers (scripted is deterministic-now).
 export {
