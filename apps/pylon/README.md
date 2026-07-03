@@ -518,6 +518,9 @@ never accepted. Owner-only trace proof may report more rows than the
 public-safe ref projection returns; the closeout checklist accepts the capped
 ref projection only when trace count, final-trace readiness, and owner-only
 visibility are still present.
+Assignment workers execute from the Pylon app path, so app-local verification
+paths such as `bun test tests/fleet-run-live-smoke.test.ts` are preferred over
+repo-root-prefixed paths.
 
 `bun run --cwd apps/pylon smoke:fleet-run-sustained` uses the same evidence
 chain behind `PYLON_FLEET_RUN_SUSTAINED_ARM=1`. Defaults are target 5,
@@ -549,7 +552,10 @@ cannot dispatch the same node again.
 For real FleetRuns, the desktop supervisor publishes the run capacity heartbeat
 during capacity planning and refreshes that hosted heartbeat again immediately
 before each `khala request`, including refills after long-running workers, so a
-manual preflight heartbeat is not treated as enough proof by itself.
+manual preflight heartbeat is not treated as enough proof by itself. If hosted
+admission still reports `stale_or_missing_heartbeat`, the Pylon service refreshes
+the heartbeat and retries that assignment request before the work unit is
+counted failed.
 
 ### Local multi-session proof runs
 

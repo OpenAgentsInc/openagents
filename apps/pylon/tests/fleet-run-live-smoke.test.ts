@@ -19,7 +19,7 @@ const liveEnv = {
   PYLON_FLEET_RUN_LIVE_POLL_MS: "100",
   PYLON_FLEET_RUN_LIVE_PYLON_REF: "pylon.local.test",
   PYLON_FLEET_RUN_LIVE_REPO: "OpenAgentsInc/openagents",
-  PYLON_FLEET_RUN_LIVE_VERIFY: "bun test apps/pylon/tests/fleet-run-live-smoke.test.ts",
+  PYLON_FLEET_RUN_LIVE_VERIFY: "bun test tests/fleet-run-live-smoke.test.ts",
 }
 
 const sustainedEnv = {
@@ -30,7 +30,7 @@ const sustainedEnv = {
   PYLON_FLEET_RUN_SUSTAINED_POLL_MS: "100",
   PYLON_FLEET_RUN_SUSTAINED_PYLON_REF: "pylon.local.test",
   PYLON_FLEET_RUN_SUSTAINED_REPO: "OpenAgentsInc/openagents",
-  PYLON_FLEET_RUN_SUSTAINED_VERIFY: "bun test apps/pylon/tests/fleet-run-live-smoke.test.ts",
+  PYLON_FLEET_RUN_SUSTAINED_VERIFY: "bun test tests/fleet-run-live-smoke.test.ts",
 }
 
 const sustainedPlanNodes = Array.from({ length: 7 }, (_, index) => ({

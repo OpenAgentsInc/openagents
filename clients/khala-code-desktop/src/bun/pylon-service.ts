@@ -385,6 +385,18 @@ const safeFailureSummary = (result: PylonServiceCommandResult): string => {
   return tailByBytes([headline, ...lifecycleSummaryLines(result.lifecycle)].join("\n"), 4_000)
 }
 
+const staleHeartbeatAdmissionPattern =
+  /stale_or_missing_heartbeat|online heartbeat is stale or missing|stale heartbeat|presence\.stale_heartbeat/iu
+
+const isStaleHeartbeatAdmissionFailure = (result: PylonServiceCommandResult): boolean =>
+  result.exitCode !== 0 && staleHeartbeatAdmissionPattern.test(`${result.stdout}\n${result.stderr}`)
+
+const heartbeatLooksFresh = (result: PylonServiceCommandResult): boolean => {
+  if (result.exitCode !== 0) return false
+  const payload = parseJsonObject(result.stdout)
+  return booleanField(payload, "linked") !== false && booleanField(payload, "stale") !== true
+}
+
 const resolveOpenAgentsBaseUrl = (env: ChatEnv, explicit?: string | undefined): string =>
   (
     [explicit, env.PYLON_OPENAGENTS_BASE_URL, env.OPENAGENTS_BASE_URL, DEFAULT_OPENAGENTS_BASE_URL]
@@ -589,17 +601,28 @@ export const makePylonService = (
           )
         ),
       ),
-    runAssignment: input => {
+    runAssignment: input => Effect.gen(function* () {
       const env = { ...(options.env ?? khalaCodeConfigFromRuntimeEnv().env), ...(input.env ?? {}) }
-      return request({
-        args: assignmentArgs(input, env),
+      const args = assignmentArgs(input, env)
+      const commandInput = {
+        args,
         env,
         maxOutputBytes: DEFAULT_ASSIGNMENT_MAX_OUTPUT_BYTES,
         timeoutMs: input.timeoutMs ?? DEFAULT_ASSIGNMENT_TIMEOUT_MS,
-      }).pipe(
-        Effect.map(assignmentResultFromCommand),
-      )
-    },
+      }
+      let result = yield* request(commandInput)
+      for (let attempt = 0; attempt < 2 && isStaleHeartbeatAdmissionFailure(result); attempt += 1) {
+        const heartbeat = yield* request({
+          args: ["presence", "heartbeat", "--base-url", resolveOpenAgentsBaseUrl(env, input.baseUrl), "--json"],
+          env,
+          maxOutputBytes: DEFAULT_MAX_OUTPUT_BYTES,
+          timeoutMs: DEFAULT_COMMAND_TIMEOUT_MS,
+        })
+        if (!heartbeatLooksFresh(heartbeat)) break
+        result = yield* request(commandInput)
+      }
+      return assignmentResultFromCommand(result)
+    }),
   }
 }
 
