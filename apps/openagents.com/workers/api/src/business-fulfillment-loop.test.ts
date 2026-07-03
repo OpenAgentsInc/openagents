@@ -88,6 +88,7 @@ const makeDb = (): D1Database => {
   const db = new DatabaseSync(':memory:')
   db.exec(migration('0091_omni_accepted_outcome_contracts.sql'))
   db.exec(migration('0274_business_fulfillment_loop.sql'))
+  db.exec(migration('0275_business_fulfillment_comms_cadence.sql'))
   return new SqliteD1(db) as unknown as D1Database
 }
 
@@ -103,7 +104,7 @@ class MemoryFulfillmentLoopStore implements BusinessFulfillmentLoopStore {
     private readonly promises: ReadonlyArray<BusinessServicePromiseRecord>,
   ) {}
 
-  async claimDailyMotionReceipt(receipt: {
+  async claimMotionReceipt(receipt: {
     motionDate: string
     promiseId: string
     receiptRef: string
@@ -147,9 +148,14 @@ describe('business fulfillment loop', () => {
       agentDefinitionRef: BUSINESS_FULFILLMENT_LOOP_AGENT_DEFINITION_REF,
       approvalGateRef:
         'approval_gate.business_fulfillment.client_comms.promise_business_fulfillment_001_2026_07_03',
+      cadence: 'daily',
       clientCommsDraftRef:
         'draft.business_fulfillment.client_comms.promise_business_fulfillment_001_2026_07_03',
+      clientCommsEmailLedgerRef:
+        'email_campaign_send.business_fulfillment.client_comms.promise_business_fulfillment_001_2026_07_03',
       crmStateRef: promise.crmStateRef,
+      customerVisibleWorkroomUpdateRef:
+        'workroom_update.business_fulfillment.customer_visible.promise_business_fulfillment_001_2026_07_03',
       forwardMotionRef:
         'motion.business_fulfillment.daily.promise_business_fulfillment_001_2026_07_03',
       motionDate: '2026-07-03',
@@ -178,6 +184,9 @@ describe('business fulfillment loop', () => {
       ],
       skippedDuplicateCount: 0,
       state: 'completed',
+      workroomUpdateRefs: [
+        'workroom_update.business_fulfillment.customer_visible.promise_business_fulfillment_001_2026_07_03',
+      ],
     })
     expect(store.updates).toEqual([
       {
@@ -196,7 +205,42 @@ describe('business fulfillment loop', () => {
       motionReceiptRefs: [],
       skippedDuplicateCount: 1,
       state: 'completed',
+      workroomUpdateRefs: [],
     })
+  })
+
+  test('weekly promises claim once and schedule the next weekly motion', async () => {
+    const store = new MemoryFulfillmentLoopStore([
+      activePromise({
+        cadence: 'weekly',
+        id: 'business_service_promise_weekly',
+        promiseRef: 'promise.business.fulfillment.weekly',
+      }),
+    ])
+
+    const result = await Effect.runPromise(
+      runBusinessFulfillmentLoop({ runtime, store }),
+    )
+
+    expect(result).toEqual({
+      duePromiseCount: 1,
+      motionReceiptRefs: [
+        'receipt.business_fulfillment.weekly_motion.promise_business_fulfillment_weekly_2026_07_03',
+      ],
+      skippedDuplicateCount: 0,
+      state: 'completed',
+      workroomUpdateRefs: [
+        'workroom_update.business_fulfillment.customer_visible.promise_business_fulfillment_weekly_2026_07_03',
+      ],
+    })
+    expect(store.updates).toEqual([
+      {
+        nextMotionDueAt: '2026-07-10T12:00:00.000Z',
+        promiseId: 'business_service_promise_weekly',
+        receiptRef:
+          'receipt.business_fulfillment.weekly_motion.promise_business_fulfillment_weekly_2026_07_03',
+      },
+    ])
   })
 
   test('ignores paused promises and unsafe CRM refs', async () => {
@@ -209,6 +253,7 @@ describe('business fulfillment loop', () => {
       duePromiseCount: 0,
       motionReceiptRefs: [],
       state: 'skipped',
+      workroomUpdateRefs: [],
     })
 
     let caught: unknown
@@ -277,14 +322,20 @@ describe('business fulfillment loop', () => {
         `SELECT receipt_ref,
                 outbound_allowed,
                 approval_gate_ref,
-                client_comms_draft_ref
+                cadence,
+                client_comms_draft_ref,
+                client_comms_email_ledger_ref,
+                customer_visible_workroom_update_ref
            FROM business_fulfillment_motion_receipts
           WHERE promise_id = ?`,
       )
       .bind('business_service_promise_d1')
       .first<{
         approval_gate_ref: string
+        cadence: string
         client_comms_draft_ref: string
+        client_comms_email_ledger_ref: string
+        customer_visible_workroom_update_ref: string
         outbound_allowed: number
         receipt_ref: string
       }>()
@@ -307,18 +358,27 @@ describe('business fulfillment loop', () => {
       ],
       skippedDuplicateCount: 0,
       state: 'completed',
+      workroomUpdateRefs: [
+        'workroom_update.business_fulfillment.customer_visible.promise_business_fulfillment_d1_2026_07_03',
+      ],
     })
     expect(second).toMatchObject({
       duePromiseCount: 0,
       motionReceiptRefs: [],
       skippedDuplicateCount: 0,
       state: 'skipped',
+      workroomUpdateRefs: [],
     })
     expect(receiptRow).toMatchObject({
       approval_gate_ref:
         'approval_gate.business_fulfillment.client_comms.promise_business_fulfillment_d1_2026_07_03',
+      cadence: 'daily',
       client_comms_draft_ref:
         'draft.business_fulfillment.client_comms.promise_business_fulfillment_d1_2026_07_03',
+      client_comms_email_ledger_ref:
+        'email_campaign_send.business_fulfillment.client_comms.promise_business_fulfillment_d1_2026_07_03',
+      customer_visible_workroom_update_ref:
+        'workroom_update.business_fulfillment.customer_visible.promise_business_fulfillment_d1_2026_07_03',
       outbound_allowed: 0,
       receipt_ref:
         'receipt.business_fulfillment.daily_motion.promise_business_fulfillment_d1_2026_07_03',
