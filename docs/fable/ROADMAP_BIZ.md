@@ -72,7 +72,7 @@ Shares the AW-2 owner sitting; nothing here invents new money truth.
 | BF-3.1 | **Scoped read-only ingestion connectors**: cloud-drive/docs first (refresh-token scoped, never root creds), then mail/calendar read paths; per-workspace corpus store with provenance | A customer corpus ingested with a sources receipt |
 | BF-3.2 | **Redaction service** (shared task with AW-3 A3.1): PII/PHI redaction before external inference, adversarial fixture suite, applied at ingestion AND at capture | Redaction suite green; regulated-vertical ingestion unblocked |
 | BF-3.3 | **Context library per workspace**: the grounded-memory layer (corpus + structured business facts from intake) that every fulfillment workflow retrieves against; nothing published unground | Deliverables cite grounding sources |
-| BF-3.4 | **Private/sovereign compute tier**: per-customer isolated workroom/VM lane (cloud repo substrate; orbs-style lifecycle hooks) as the paid upgrade for legal/health-grade privacy — also serves customer #1's isolated-VM problem | One customer workspace running on the isolated lane with metering receipts |
+| BF-3.4 | **Private/sovereign compute tier**: per-customer isolated workroom/VM lane (cloud repo substrate; orbs-style lifecycle hooks) as the paid upgrade for legal/health-grade privacy — also serves the isolated-VM customer problem. Spec: [`2026-07-02-bf-3-4-private-sovereign-compute-tier.md`](./2026-07-02-bf-3-4-private-sovereign-compute-tier.md) | One customer workspace running on the isolated lane with metering receipts |
 
 ### BF-4 — Fulfill: the deliverable engine
 

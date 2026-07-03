@@ -57,6 +57,10 @@ each source doc.
   experiments incl. block-the-counter, edge probes, Analytics-Engine RUM),
   ranked hypotheses, named budgets, and phases P0–P5. Separate lane from
   ROADMAP_QA/QA Swarm.
+- [`2026-07-02-bf-3-4-private-sovereign-compute-tier.md`](./2026-07-02-bf-3-4-private-sovereign-compute-tier.md)
+  — BF-3.4 receipt-first spec for the planned private/sovereign compute tier:
+  opaque per-customer workroom refs, regulated-private placement, lifecycle
+  hooks, metering receipt shape, and copy/promise gates for issue #8087.
 - [`EXECUTION.md`](./EXECUTION.md) — how the roadmap is executed: Artanis
   (fleet-manager role) supervises; **Khala Code fleet delegation is the
   primary mechanism**; one GitHub issue per roadmap task, closed only via a
