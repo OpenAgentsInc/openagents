@@ -29,7 +29,13 @@ validation, coverage, and doc-sync run inside the desktop `verify` step, and
 the registry/coverage machinery's own suite runs as the dedicated
 `behavior-contracts` step. Per-contract receipts and deviation alerts
 (#8184) derive from these nightly runs; the eventual trigger-engine carrier
-is ROADMAP_BACKGROUND_AGENTS WS-B.
+is ROADMAP_BACKGROUND_AGENTS WS-B. The matrix now emits
+`behavior-contracts/behavior-contract-receipts.json`: one receipt per contract
+with `checks`, `evidenceRefs`, and `checkedAt`. Receipts record evidence only;
+they never flip registry state. The latest sweep summary is also copied into
+`qa-nightly-report.json` as `behaviorContractRun` and into
+`qa-status-surface.json` as `behaviorContracts`, which is the QA Swarm evidence
+board lookup for "contract X was green on date Y".
 
 The default monkey settings produce 1024 deterministic fixture actions, meeting
 the Q1.1 >=1000 action floor. Override with `OA_QA_NIGHTLY_MONKEY_RUNS` and
@@ -46,6 +52,8 @@ Each run writes:
 - `qa-nightly-report.md`
 - `qa-status-surface.json`
 - `qa-status-surface.md`
+- the per-contract receipt set under
+  `behavior-contracts/behavior-contract-receipts.json`
 - `latencyBudgetRun` inside `qa-nightly-report.json`, derived from current
   `qaMetrics` snapshots found under the run artifact directory
 - one log per step under `logs/`
@@ -63,6 +71,13 @@ If the matrix fails and `OA_QA_NIGHTLY_FILE_ISSUE=1` is set, the runner files a
 strict bug issue through `gh issue create` with public-safe report refs and the
 failed step IDs. Raw command logs stay in the owned-runner artifact directory and
 must be redaction-reviewed before external publication.
+
+If any enforced behavior-contract receipt fails and
+`OA_QA_NIGHTLY_FILE_CONTRACT_DEVIATION_ISSUE=1` is set, the runner files a
+strict bug with the contract id, the statement, failed checks, and the receipt
+artifact ref. The generated issue body is
+`qa-nightly-behavior-contract-deviation-issue.md` under the current run
+artifact directory.
 
 ## Perf Trends And Regressions
 

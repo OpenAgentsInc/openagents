@@ -4,6 +4,12 @@ import { readdir, readFile, mkdir, writeFile } from "node:fs/promises"
 import { basename, dirname, join, relative, resolve } from "node:path"
 
 import {
+  buildBehaviorContractReceipts,
+  checkBehaviorContractCoverageFromFiles,
+  validateBehaviorContractRegistry,
+  type BehaviorContractReceipt,
+} from "../packages/behavior-contracts/src/index.js"
+import {
   KHALA_CODE_QA_SEED_CORPUS_MANIFEST,
   KhalaCodeRpcMethodNames,
   createEmptyKhalaCodeQaCoverageLedger,
@@ -23,6 +29,7 @@ import {
   type KhalaCodeQaMetricSample,
   type KhalaCodeQaMetricsSnapshot,
 } from "../clients/khala-code-desktop/src/shared/qa-metrics.js"
+import { khalaCodeUxContractRegistry } from "../clients/khala-code-desktop/src/contracts/ux-contracts.js"
 
 export const QA_NIGHTLY_MATRIX_SCHEMA =
   "openagents.khala_code.qa_nightly_matrix.v1"
@@ -86,14 +93,29 @@ export type QaNightlyReport = Readonly<{
   coverageLedgerSourcePaths: readonly string[]
   coverageFrontierReportPath: string
   coverageSteeringInputPath: string
+  behaviorContractReceiptPath: string
+  behaviorContractRun: QaNightlyBehaviorContractRun
   quarantineLedgerPath: string
   statusSurfaceJsonPath: string
   statusSurfaceMarkdownPath: string
   latencyBudgetRun: QaNightlyLatencyBudgetRun
   issueStatus?: QaNightlyIssueStatus | undefined
+  behaviorContractDeviationIssueStatus?: QaNightlyIssueStatus | undefined
   quarantineIssueStatus?: QaNightlyIssueStatus | undefined
   latencyBudgetRegressionIssueStatus?: QaNightlyIssueStatus | undefined
   zeroCoverageIssueStatus?: QaNightlyIssueStatus | undefined
+}>
+
+export type QaNightlyBehaviorContractRun = Readonly<{
+  schema: "openagents.khala_code.behavior_contract_nightly_run.v1"
+  checkedAt: string
+  failedContractIds: readonly string[]
+  passCount: number
+  receiptCount: number
+  receiptRefs: readonly string[]
+  registryVersion: string
+  skippedCount: number
+  status: "pass" | "fail"
 }>
 
 export type QaNightlyIssueStatus = Readonly<
@@ -220,6 +242,7 @@ export type QaNightlyStatusSurface = Readonly<{
     zeroForAWeekCount: number
   }>
   issueStatuses: Readonly<{
+    behaviorContractDeviation: QaNightlyIssueStatus | undefined
     latencyBudgetRegression: QaNightlyIssueStatus | undefined
     nightly: QaNightlyIssueStatus | undefined
     quarantine: QaNightlyIssueStatus | undefined
@@ -229,6 +252,18 @@ export type QaNightlyStatusSurface = Readonly<{
     evidenceRefs: readonly string[]
     reason: string
     status: "not_in_matrix"
+  }>
+  behaviorContracts: Readonly<{
+    basis: "behavior_contract_receipts"
+    checkedAt: string
+    evidenceBoard: "qa-swarm"
+    failedContractIds: readonly string[]
+    latestReceiptPath: string
+    passCount: number
+    receiptCount: number
+    registryVersion: string
+    skippedCount: number
+    status: QaNightlyBehaviorContractRun["status"]
   }>
   latencyBudgets: Readonly<{
     basis: "qaMetrics_budget_catalog"
@@ -781,6 +816,73 @@ const buildQaNightlyLatencyBudgetCatalog = (
   })
 }
 
+export const emitQaNightlyBehaviorContractArtifacts = async (input: Readonly<{
+  artifactDir: string
+  generatedAt: string
+  root: string
+  runId: string
+  steps: readonly QaNightlyStepResult[]
+}>): Promise<Readonly<{
+  receiptPath: string
+  receipts: readonly BehaviorContractReceipt[]
+  run: QaNightlyBehaviorContractRun
+}>> => {
+  const receiptPath = join(input.artifactDir, "behavior-contracts", "behavior-contract-receipts.json")
+  await mkdir(dirname(receiptPath), { recursive: true })
+
+  const registryValidation = validateBehaviorContractRegistry(khalaCodeUxContractRegistry)
+  const coverage = await checkBehaviorContractCoverageFromFiles(
+    khalaCodeUxContractRegistry,
+    path => readFile(path, "utf8"),
+    ref => resolve(process.cwd(), ref),
+  )
+  const behaviorStep = input.steps.find(step => step.id === "behavior-contracts")
+  const desktopVerifyStep = input.steps.find(step => step.id === "desktop-verify")
+  const stepCheck = (id: string, step: QaNightlyStepResult | undefined) => ({
+    evidenceRefs: step === undefined ? [] : [step.logRef],
+    id,
+    status: step?.status === "passed" ? "pass" as const : "fail" as const,
+    summary: step === undefined
+      ? "Nightly step did not run."
+      : `Nightly step ${step.id} finished with status ${step.status}.`,
+  })
+  const receipts = buildBehaviorContractReceipts(khalaCodeUxContractRegistry, {
+    checkedAt: input.generatedAt,
+    coverage,
+    registryValidation,
+    runId: input.runId,
+    sweepChecks: [
+      stepCheck("nightly_step.behavior_contracts", behaviorStep),
+      stepCheck("nightly_step.desktop_verify", desktopVerifyStep),
+    ],
+  })
+  await writeFile(receiptPath, `${JSON.stringify({
+    checkedAt: input.generatedAt,
+    receipts,
+    schema: "openagents.khala_code.behavior_contract_receipts.v1",
+  }, null, 2)}\n`)
+  const failedContractIds = receipts
+    .filter(receipt => receipt.status === "fail")
+    .map(receipt => receipt.contractId)
+  const run: QaNightlyBehaviorContractRun = {
+    checkedAt: input.generatedAt,
+    failedContractIds,
+    passCount: receipts.filter(receipt => receipt.status === "pass").length,
+    receiptCount: receipts.length,
+    receiptRefs: [repoRelative(input.root, receiptPath)],
+    registryVersion: khalaCodeUxContractRegistry.version,
+    schema: "openagents.khala_code.behavior_contract_nightly_run.v1",
+    skippedCount: receipts.filter(receipt => receipt.status === "skipped").length,
+    status: failedContractIds.length === 0 ? "pass" : "fail",
+  }
+
+  return {
+    receiptPath,
+    receipts,
+    run,
+  }
+}
+
 export const buildQaNightlyStatusSurface = (input: Readonly<{
   frontierReport: KhalaCodeQaCoverageFrontierReport
   history: readonly QaNightlyReportHistoryEntry[]
@@ -808,6 +910,7 @@ export const buildQaNightlyStatusSurface = (input: Readonly<{
     },
     generatedAt: input.report.generatedAt,
     issueStatuses: {
+      behaviorContractDeviation: input.report.behaviorContractDeviationIssueStatus,
       latencyBudgetRegression: input.report.latencyBudgetRegressionIssueStatus,
       nightly: input.report.issueStatus,
       quarantine: input.report.quarantineIssueStatus,
@@ -820,6 +923,18 @@ export const buildQaNightlyStatusSurface = (input: Readonly<{
       ],
       reason: "Live-tier Q5 smokes are not part of the Q1 nightly matrix yet; fixture tiers remain no-spend and account-isolated.",
       status: "not_in_matrix",
+    },
+    behaviorContracts: {
+      basis: "behavior_contract_receipts",
+      checkedAt: input.report.behaviorContractRun.checkedAt,
+      evidenceBoard: "qa-swarm",
+      failedContractIds: input.report.behaviorContractRun.failedContractIds,
+      latestReceiptPath: input.report.behaviorContractReceiptPath,
+      passCount: input.report.behaviorContractRun.passCount,
+      receiptCount: input.report.behaviorContractRun.receiptCount,
+      registryVersion: input.report.behaviorContractRun.registryVersion,
+      skippedCount: input.report.behaviorContractRun.skippedCount,
+      status: input.report.behaviorContractRun.status,
     },
     latencyBudgets: {
       basis: "qaMetrics_budget_catalog",
@@ -1121,6 +1236,11 @@ export const renderQaNightlyMarkdown = (report: QaNightlyReport): string => {
     : report.quarantineIssueStatus.status === "filed"
       ? `Filed: ${report.quarantineIssueStatus.issueUrl ?? "issue URL unavailable"}`
       : `${report.quarantineIssueStatus.status}: ${report.quarantineIssueStatus.reason}`
+  const behaviorContracts = report.behaviorContractDeviationIssueStatus === undefined
+    ? "Not evaluated."
+    : report.behaviorContractDeviationIssueStatus.status === "filed"
+      ? `Filed: ${report.behaviorContractDeviationIssueStatus.issueUrl ?? "issue URL unavailable"}`
+      : `${report.behaviorContractDeviationIssueStatus.status}: ${report.behaviorContractDeviationIssueStatus.reason}`
 
   return `# Khala Code QA Nightly Matrix
 
@@ -1129,6 +1249,7 @@ export const renderQaNightlyMarkdown = (report: QaNightlyReport): string => {
 - Status: \`${report.status}\`
 - Status surface JSON: \`${report.statusSurfaceJsonPath}\`
 - Status surface markdown: \`${report.statusSurfaceMarkdownPath}\`
+- Behavior-contract receipts: \`${report.behaviorContractReceiptPath}\`
 - Flake quarantine ledger: \`${report.quarantineLedgerPath}\`
 - Coverage union ledger: \`${report.coverageLedgerPath}\`
 - Coverage frontier report: \`${report.coverageFrontierReportPath}\`
@@ -1149,6 +1270,16 @@ ${failedLines}
 Policy: retry once, quarantine pass-after-fail, never silently retry green.
 
 Quarantine issue status: ${quarantine}
+
+## Behavior Contracts
+
+- Receipt status: \`${report.behaviorContractRun.status}\`
+- Registry version: \`${report.behaviorContractRun.registryVersion}\`
+- Receipts: \`${report.behaviorContractRun.receiptCount}\`
+- Passed: \`${report.behaviorContractRun.passCount}\`
+- Skipped: \`${report.behaviorContractRun.skippedCount}\`
+- Failed contracts: ${report.behaviorContractRun.failedContractIds.length === 0 ? "None." : report.behaviorContractRun.failedContractIds.map(id => `\`${id}\``).join(", ")}
+- Deviation issue status: ${behaviorContracts}
 
 ## Coverage Frontier
 
@@ -1211,6 +1342,20 @@ ${surface.liveTier.reason}
 Evidence refs:
 ${surface.liveTier.evidenceRefs.map(ref => `- \`${ref}\``).join("\n")}
 
+## Behavior Contracts
+
+Basis: \`${surface.behaviorContracts.basis}\`
+
+Status: \`${surface.behaviorContracts.status}\`
+
+- Registry version: \`${surface.behaviorContracts.registryVersion}\`
+- Checked at: \`${surface.behaviorContracts.checkedAt}\`
+- Latest receipts: \`${surface.behaviorContracts.latestReceiptPath}\`
+- Receipt count: \`${surface.behaviorContracts.receiptCount}\`
+- Passed: \`${surface.behaviorContracts.passCount}\`
+- Skipped: \`${surface.behaviorContracts.skippedCount}\`
+- Failed contracts: ${surface.behaviorContracts.failedContractIds.length === 0 ? "None." : surface.behaviorContracts.failedContractIds.map(id => `\`${id}\``).join(", ")}
+
 ## Coverage
 
 - Union runs: \`${surface.coverage.unionRunCount}\`
@@ -1260,6 +1405,7 @@ ${latencyTrendRows}
 ## Issues
 
 - Nightly: ${issueStatus(surface.issueStatuses.nightly)}
+- Behavior contract deviation: ${issueStatus(surface.issueStatuses.behaviorContractDeviation)}
 - Flake quarantine: ${issueStatus(surface.issueStatuses.quarantine)}
 - Latency budget regression: ${issueStatus(surface.issueStatuses.latencyBudgetRegression)}
 - Zero coverage: ${issueStatus(surface.issueStatuses.zeroCoverage)}
@@ -1418,6 +1564,70 @@ S2 - measured latency regression in the automated QA loop
 ### Safety and redaction
 
 The issue body includes budget IDs, metric names, numeric samples, timestamps, and repo-relative artifact refs only. It does not include raw command logs, local absolute paths, account identifiers, or provider payloads.
+`
+}
+
+export const buildQaNightlyBehaviorContractDeviationIssueBody = (
+  report: QaNightlyReport,
+  failedReceipts: readonly BehaviorContractReceipt[],
+): string => {
+  const rows = failedReceipts
+    .map(receipt =>
+      `| \`${receipt.contractId}\` | ${receipt.statement} | \`${receipt.status}\` | \`${receipt.receiptId}\` |`
+    )
+    .join("\n")
+  const checkRows = failedReceipts
+    .flatMap(receipt =>
+      receipt.checks
+        .filter(check => check.status === "fail")
+        .map(check =>
+          `| \`${receipt.contractId}\` | \`${check.id}\` | ${check.summary} | ${check.evidenceRefs.map(ref => `\`${ref}\``).join(", ") || "none"} |`
+        )
+    )
+    .join("\n")
+
+  return `### Affected surface
+
+Khala Code Desktop behavior-contract nightly enforcement.
+
+### Actual behavior
+
+Nightly run \`${report.runId}\` emitted failed behavior-contract receipts.
+
+| Contract | Statement | Receipt status | Receipt |
+| --- | --- | --- | --- |
+${rows}
+
+### Expected behavior
+
+Every enforced behavior contract should pass its registry, oracle-coverage, and nightly sweep checks. Receipts record evidence only and do not flip registry state.
+
+### Reproduction steps
+
+1. Check out the repository commit used by the owned runner.
+2. Run \`bun run qa:nightly\`.
+3. Inspect \`${report.behaviorContractReceiptPath}\` and the failed checks listed below.
+
+### Failing checks
+
+| Contract | Check | Summary | Evidence refs |
+| --- | --- | --- | --- |
+${checkRows || "| n/a | n/a | n/a | n/a |"}
+
+### Public-safe evidence
+
+- Report JSON: \`${report.reportJsonPath}\`
+- Status surface JSON: \`${report.statusSurfaceJsonPath}\`
+- Status surface markdown: \`${report.statusSurfaceMarkdownPath}\`
+- Behavior-contract receipts: \`${report.behaviorContractReceiptPath}\`
+
+### Severity
+
+S2 - stated product behavior contract deviation in the automated QA loop
+
+### Safety and redaction
+
+The issue body includes contract IDs, owner/customer statements already committed in the public registry, public-safe receipt IDs, and repo-relative evidence refs only. Raw command logs remain in the owned-runner artifact directory and must be redaction-reviewed before external publication.
 `
 }
 
@@ -1659,10 +1869,19 @@ export const runQaNightlyMatrix = async (input: Readonly<{
     generatedAt,
     root,
   })
+  const behaviorContractArtifacts = await emitQaNightlyBehaviorContractArtifacts({
+    artifactDir,
+    generatedAt,
+    root,
+    runId,
+    steps: results,
+  })
   const history = (await readQaNightlyReportHistory(artifactRoot))
     .filter(entry => entry.runId !== runId)
   const reportBase: QaNightlyReport = {
     artifactDir: repoRelative(root, artifactDir),
+    behaviorContractReceiptPath: repoRelative(root, behaviorContractArtifacts.receiptPath),
+    behaviorContractRun: behaviorContractArtifacts.run,
     coverageFrontierReportPath: repoRelative(root, coverageArtifacts.frontierReportPath),
     coverageLedgerPath: repoRelative(root, coverageArtifacts.unionLedgerPath),
     coverageLedgerSourcePaths: coverageArtifacts.sourceLedgerPaths.map(path => repoRelative(root, path)),
@@ -1743,10 +1962,28 @@ export const runQaNightlyMatrix = async (input: Readonly<{
       title: `[Bug]: Khala Code latency budget regressed ${latencyRegressions[0]?.budgetId ?? reportBase.runId}`,
     })
   })()
+  const behaviorContractDeviationIssueStatus = await (async (): Promise<QaNightlyIssueStatus | undefined> => {
+    const failedReceipts = behaviorContractArtifacts.receipts.filter(receipt => receipt.status === "fail")
+    if (failedReceipts.length === 0) {
+      return { reason: "no behavior contract deviation was observed", status: "disabled" }
+    }
+    if (env.OA_QA_NIGHTLY_FILE_CONTRACT_DEVIATION_ISSUE !== "1") {
+      return { reason: "OA_QA_NIGHTLY_FILE_CONTRACT_DEVIATION_ISSUE is not set", status: "disabled" }
+    }
+    const body = buildQaNightlyBehaviorContractDeviationIssueBody(reportBase, failedReceipts)
+    const issueBodyPath = join(artifactDir, "qa-nightly-behavior-contract-deviation-issue.md")
+    await writeFile(issueBodyPath, body)
+    return (input.issueFiler ?? fileQaNightlyFailureIssueWithGh)({
+      bodyPath: issueBodyPath,
+      report: reportBase,
+      title: `[Bug]: Khala Code behavior contract deviated ${failedReceipts[0]?.contractId ?? reportBase.runId}`,
+    })
+  })()
 
   const report: QaNightlyReport = {
     ...reportBase,
     ...(issueStatus === undefined ? {} : { issueStatus }),
+    ...(behaviorContractDeviationIssueStatus === undefined ? {} : { behaviorContractDeviationIssueStatus }),
     ...(quarantineIssueStatus === undefined ? {} : { quarantineIssueStatus }),
     ...(latencyBudgetRegressionIssueStatus === undefined ? {} : { latencyBudgetRegressionIssueStatus }),
     ...(zeroCoverageIssueStatus === undefined ? {} : { zeroCoverageIssueStatus }),

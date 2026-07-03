@@ -8,6 +8,7 @@
     "./contract": "./src/contract.ts",
     "./registry": "./src/registry.ts",
     "./coverage": "./src/coverage.ts",
+    "./receipt": "./src/receipt.ts",
     "./report": "./src/report.ts"
   },
   "scripts": {
