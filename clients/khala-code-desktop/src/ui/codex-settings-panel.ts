@@ -195,6 +195,7 @@ export const mountCodexSettingsPanel = (
     current: KhalaCodeDesktopCodexSettingsProjection,
   ): HTMLElement => {
     const selectedModel = current.models.selected
+    const selectableModels = current.models.options.filter(model => !model.hidden)
     const reasoningOptions = selectedModel?.supportedReasoningEfforts.map(option => ({
       label: option.description === null ? option.value : `${option.value} - ${option.description}`,
       value: option.value,
@@ -210,8 +211,8 @@ export const mountCodexSettingsPanel = (
       renderSelect({
         label: "Model",
         selected: selectedModel?.id ?? current.config.model,
-        options: current.models.options.map(model => ({
-          label: model.hidden ? `${model.displayName} (hidden)` : model.displayName,
+        options: selectableModels.map(model => ({
+          label: model.displayName,
           value: model.id,
         })),
         onChange: value => void write("model", value),
