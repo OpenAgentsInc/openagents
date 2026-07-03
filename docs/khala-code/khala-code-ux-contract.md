@@ -53,7 +53,7 @@ sweep if this doc, the registry, or the oracle tests drift apart.
 
 ## Registry
 
-Registry version: `2026-07-03.8` (schema `openagents.behavior_contracts.v1`)
+Registry version: `2026-07-03.9` (schema `openagents.behavior_contracts.v1`)
 
 ### `khala_code.chat.sidebar_spinner_streaming_only.v1` — ENFORCED
 
@@ -106,6 +106,17 @@ Registry version: `2026-07-03.8` (schema `openagents.behavior_contracts.v1`)
 - **Oracle** `sidebar_hotkey_hints.dom` (bun-test, dom): Mounts the real thread sidebar and hotkey-hint listener in a DOM: enabling hotkey hints replaces the time slot of the nine most recent chats with their command-digit hints in place (no separate pane appears anywhere in the document), and Meta release or window blur restores the timestamps. — `clients/khala-code-desktop/tests/ux-contracts.test.ts`
 - **Verification:** bun test tests/ux-contracts.test.ts inside clients/khala-code-desktop; runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.
 - **Authority boundary:** Cmd+0 additionally maps to the tenth most recent chat and Cmd+ArrowUp/ArrowDown cycle through recency; those are compatible extensions, not part of this contract. The generalized overlay-menu component remains available for future dialog menus but is not mounted for this feature.
+
+### `khala_code.chat.codex_stored_session_records_not_resumed.v1` — ENFORCED
+
+- **Surface:** khala-code-desktop (chat thread sidebar)
+- **Stated by:** owner via khala-code-session on 2026-07-03
+- **Statement:** Codex session rows must not show raw 'invalid session id' parser errors when the row only has stored local or legacy metadata, and they must not appear as normal resumable chats without a loaded title.
+- **Enforcement tier:** test-sweep
+- **Oracle** `stored_codex_catalog_projection.unit` (bun-test, unit): Projects a stored-only Codex catalog record with a legacy non-UUID ref into a disabled local-record sidebar summary instead of a resumable chat thread. — `clients/khala-code-desktop/tests/ux-contracts.test.ts`
+- **Oracle** `stored_codex_sidebar.dom` (bun-test, dom): Mounts the real thread sidebar in a DOM: a stored-only Codex record remains visible, is disabled, never displays a raw parser error, and recent-chat selection skips it. — `clients/khala-code-desktop/tests/ux-contracts.test.ts`
+- **Verification:** bun test tests/ux-contracts.test.ts inside clients/khala-code-desktop; runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.
+- **Authority boundary:** This contract only governs sidebar behavior for stored/local Codex metadata that lacks a current app-server UUID thread id. It does not define the upstream Codex thread-store retention policy, subagent semantics, or whether historical rollouts can be recovered through a separate import flow.
 
 ### `khala_code.transcript.claude_assistant_turn_once.v1` — ENFORCED
 

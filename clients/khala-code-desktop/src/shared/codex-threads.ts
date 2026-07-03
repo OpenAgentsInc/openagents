@@ -15,6 +15,8 @@ export type KhalaCodeDesktopCodexThreadSummary = {
   readonly updatedAt: number | null
   readonly recencyAt: number | null
   readonly badges: readonly string[]
+  readonly resumable?: boolean | undefined
+  readonly unavailableReason?: string | null | undefined
 }
 
 export type KhalaCodeDesktopCodexThreadGroup = {
@@ -165,6 +167,8 @@ export const projectKhalaCodeDesktopCodexThread = (
     updatedAt: normalizeThreadTimestampSeconds(thread.updatedAt),
     recencyAt: normalizeThreadTimestampSeconds(thread.recencyAt),
     badges: badgesFor(thread, status),
+    resumable: true,
+    unavailableReason: null,
   }
 }
 

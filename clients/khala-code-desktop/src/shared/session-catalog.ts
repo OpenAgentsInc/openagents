@@ -43,24 +43,50 @@ export type KhalaCodeDesktopSessionCatalogResult = {
 const harnessLabel = (kind: KhalaCodeDesktopSessionHarnessKind): string =>
   kind === "codex" ? "Codex" : "Claude"
 
-const resumableThreadIdFor = (
+const codexUuidIdPattern = /^(?:urn:uuid:)?(?:[0-9a-f]{32}|[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12})$/iu
+
+export const isCodexAppServerThreadId = (value: string): boolean =>
+  codexUuidIdPattern.test(value)
+
+const hasLiveThreadSource = (
+  entry: KhalaCodeDesktopSessionCatalogEntry,
+): boolean =>
+  entry.source === "codex_app_server_thread_list" ||
+  entry.source === "codex_app_server_thread_projection" ||
+  entry.source === "appServer" ||
+  entry.source === "claude_sdk_list_sessions" ||
+  entry.source === "claude_thread_projection"
+
+const isResumableCatalogEntry = (
+  entry: KhalaCodeDesktopSessionCatalogEntry,
+): boolean => {
+  if (hasLiveThreadSource(entry)) return true
+  if (entry.harnessKind !== "codex") return true
+  const threadRef = entry.threadRef ?? entry.sessionRef
+  return isCodexAppServerThreadId(threadRef)
+}
+
+const threadIdForDisplay = (
   entry: KhalaCodeDesktopSessionCatalogEntry,
 ): string =>
-  entry.threadRef ?? entry.sessionRef
+  isResumableCatalogEntry(entry)
+    ? entry.threadRef ?? entry.sessionRef
+    : entry.catalogEntryId
 
 export const sessionCatalogEntryToThreadSummary = (
   entry: KhalaCodeDesktopSessionCatalogEntry,
 ): KhalaCodeDesktopCodexThreadSummary => {
-  const threadId = resumableThreadIdFor(entry)
+  const threadId = threadIdForDisplay(entry)
+  const resumable = isResumableCatalogEntry(entry)
   return {
     id: threadId,
     sessionId: entry.sessionRef,
-    title: entry.title,
+    title: resumable || entry.title !== "Codex session" ? entry.title : "Stored Codex session",
     preview: entry.preview,
     cwd: entry.cwd,
     projectLabel: entry.projectLabel,
     status: entry.status,
-    statusLabel: entry.statusLabel,
+    statusLabel: resumable ? entry.statusLabel : "stored local record",
     modelProvider: entry.harnessKind,
     source: entry.source,
     forkedFromId: null,
@@ -69,5 +95,9 @@ export const sessionCatalogEntryToThreadSummary = (
     updatedAt: entry.updatedAt,
     recencyAt: entry.recencyAt,
     badges: [harnessLabel(entry.harnessKind)],
+    resumable,
+    unavailableReason: resumable
+      ? null
+      : "Stored local Codex session metadata does not include a current app-server UUID thread id.",
   }
 }

@@ -59,6 +59,7 @@ export const recentThreadsForHotkeys = (
   threads: readonly KhalaCodeDesktopCodexThreadSummary[],
 ): readonly KhalaCodeDesktopCodexThreadSummary[] =>
   [...threads]
+    .filter(thread => thread.resumable !== false)
     .sort((left, right) => {
       const recencyDelta = threadRecencyValue(right) - threadRecencyValue(left)
       if (recencyDelta !== 0) return recencyDelta

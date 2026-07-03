@@ -4146,6 +4146,7 @@ const prefetchRecentThreadMessages = (
   threads: readonly KhalaCodeDesktopCodexThreadSummary[],
 ): void => {
   for (const thread of recentThreadsForHotkeys(threads).slice(0, THREAD_PREFETCH_LIMIT)) {
+    if (thread.resumable === false) continue
     if (threadMessageCache.has(thread.id) || threadPrefetches.has(thread.id)) continue
     const prefetch = controls.codexThreadRead({
       includeTurns: true,

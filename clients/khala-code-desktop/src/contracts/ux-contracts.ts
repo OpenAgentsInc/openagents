@@ -208,6 +208,49 @@ export const khalaCodeUxContractRegistry: BehaviorContractRegistryDocument = {
     },
     {
       authorityBoundary:
+        "This contract only governs sidebar behavior for stored/local Codex metadata that lacks a current app-server UUID thread id. It does not define the upstream Codex thread-store retention policy, subagent semantics, or whether historical rollouts can be recovered through a separate import flow.",
+      blockerRefs: [],
+      contractId: "khala_code.chat.codex_stored_session_records_not_resumed.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "clients/khala-code-desktop/src/shared/session-catalog.ts",
+        "clients/khala-code-desktop/src/ui/codex-thread-sidebar.ts",
+        "clients/khala-code-desktop/src/ui/thread-hotkeys.ts",
+        "docs/khala-code/khala-code-ux-contract.md",
+      ],
+      oracles: [
+        {
+          description:
+            "Projects a stored-only Codex catalog record with a legacy non-UUID ref into a disabled local-record sidebar summary instead of a resumable chat thread.",
+          id: "stored_codex_catalog_projection.unit",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "clients/khala-code-desktop/tests/ux-contracts.test.ts",
+        },
+        {
+          description:
+            "Mounts the real thread sidebar in a DOM: a stored-only Codex record remains visible, is disabled, never displays a raw parser error, and recent-chat selection skips it.",
+          id: "stored_codex_sidebar.dom",
+          kind: "bun-test",
+          mode: "dom",
+          ref: "clients/khala-code-desktop/tests/ux-contracts.test.ts",
+        },
+      ],
+      productArea: "chat thread sidebar",
+      source: {
+        channel: "khala-code-session",
+        statedBy: "owner",
+        statedOn: "2026-07-03",
+      },
+      state: "enforced",
+      statement:
+        "Codex session rows must not show raw 'invalid session id' parser errors when the row only has stored local or legacy metadata, and they must not appear as normal resumable chats without a loaded title.",
+      surface: "khala-code-desktop",
+      verification:
+        "bun test tests/ux-contracts.test.ts inside clients/khala-code-desktop; runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.",
+    },
+    {
+      authorityBoundary:
         "Binds duplicate visible assistant text for one Claude turn only. It does not change Claude SDK event ordering, token accounting, or the Codex lane projector.",
       blockerRefs: [],
       contractId: "khala_code.transcript.claude_assistant_turn_once.v1",
@@ -1272,5 +1315,5 @@ export const khalaCodeUxContractRegistry: BehaviorContractRegistryDocument = {
     },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-03.8",
+  version: "2026-07-03.9",
 }

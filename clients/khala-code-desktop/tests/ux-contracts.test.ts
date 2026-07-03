@@ -21,6 +21,7 @@ import type {
   KhalaCodeDesktopCodexThreadListResult,
   KhalaCodeDesktopCodexThreadMutationResult,
 } from "../src/shared/rpc"
+import { sessionCatalogEntryToThreadSummary } from "../src/shared/session-catalog"
 import { mountCodexThreadSidebar } from "../src/ui/codex-thread-sidebar"
 import { bindRecentThreadHotkeyHints } from "../src/ui/recent-thread-hotkey-hints"
 import { KHALA_CODE_HOTBAR_SLOTS, mountKhalaCodeSidebar } from "../src/ui/sidebar"
@@ -340,6 +341,96 @@ describe("contract khala_code.chat.sidebar_active_thread_background_only.v2", ()
         [...container.querySelectorAll(".khala-thread-sidebar-group-title")]
           .map(heading => heading.textContent),
       ).not.toContain("Current chat")
+    })
+  })
+})
+
+// Oracle for khala_code.chat.codex_stored_session_records_not_resumed.v1
+describe("contract khala_code.chat.codex_stored_session_records_not_resumed.v1", () => {
+  test("store-only Codex catalog rows become non-resumable local records", () => {
+    const summary = sessionCatalogEntryToThreadSummary({
+      catalogEntryId: "codex:thread-history",
+      harnessKind: "codex",
+      sessionRef: "thread-history",
+      threadRef: "thread-history",
+      desktopSessionRef: "desktop-session",
+      lastTurnRef: null,
+      title: "Codex session",
+      preview: "",
+      cwd: null,
+      projectLabel: "Codex",
+      status: "ready",
+      statusLabel: "Codex session",
+      source: "codex_session_store",
+      createdAt: null,
+      updatedAt: Date.parse("2026-07-03T12:00:00.000Z") / 1000,
+      recencyAt: Date.parse("2026-07-03T12:00:00.000Z") / 1000,
+    })
+
+    expect(summary).toMatchObject({
+      id: "codex:thread-history",
+      resumable: false,
+      statusLabel: "stored local record",
+      title: "Stored Codex session",
+      unavailableReason:
+        "Stored local Codex session metadata does not include a current app-server UUID thread id.",
+    })
+  })
+
+  test("stored-only Codex rows stay visible but cannot be selected as chats", async () => {
+    await withDom(async () => {
+      const container = document.createElement("aside")
+      document.body.append(container)
+      const data: KhalaCodeDesktopCodexThreadListResult = {
+        ok: true,
+        data: [],
+        groups: [{ key: "all", label: "All sessions", threadIds: ["codex:legacy", "live-thread"] }],
+        threads: [
+          {
+            ...thread("codex:legacy", "Stored Codex session", 30),
+            resumable: false,
+            statusLabel: "stored local record",
+            unavailableReason:
+              "Stored local Codex session metadata does not include a current app-server UUID thread id.",
+          },
+          thread("live-thread", "Live Codex thread", 20),
+        ],
+      }
+      const resumedThreadIds: string[] = []
+      const sidebar = mountCodexThreadSidebar(container, {
+        activeThreadId: () => null,
+        archiveThread: async threadId => ({ action: "archive", ok: true, threadId }),
+        deleteThread: async threadId => ({ action: "delete", ok: true, threadId }),
+        forkThread: async threadId => ({ action: "fork", ok: true, threadId }),
+        listThreads: async () => data,
+        renameThread: async threadId => ({ action: "rename", ok: true, threadId }),
+        resumeThread: async threadId => {
+          resumedThreadIds.push(threadId)
+          return {
+            ok: true as const,
+            thread: {},
+            threadId,
+            messages: [] as const,
+          }
+        },
+        sessionId: "desktop-session",
+        unarchiveThread: async threadId => ({ action: "unarchive", ok: true, threadId }),
+        onNewThreadRequested: () => undefined,
+        onThreadSelected: () => undefined,
+      })
+      sidebar.setVisible(true)
+      await sidebar.refresh()
+
+      const storedRow = container.querySelector<HTMLButtonElement>(
+        '[data-thread-id="codex:legacy"] .khala-thread-sidebar-item-row',
+      )
+      expect(storedRow?.disabled).toBe(true)
+      expect(storedRow?.title).toContain("Stored local Codex session metadata")
+      expect(container.textContent).toContain("Stored Codex session")
+      expect(container.textContent).not.toContain("invalid session id")
+
+      await expect(sidebar.selectRecentThread(0)).resolves.toBe(true)
+      expect(resumedThreadIds).toEqual(["live-thread"])
     })
   })
 })

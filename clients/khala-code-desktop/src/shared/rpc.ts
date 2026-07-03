@@ -713,6 +713,8 @@ const RpcThreadSummary = S.Struct({
   updatedAt: RpcNumberNull,
   recencyAt: RpcNumberNull,
   badges: RpcStringArray,
+  resumable: S.optional(S.Boolean),
+  unavailableReason: S.optional(RpcStringNull),
 })
 const RpcThreadGroup = S.Struct({
   key: S.String,

@@ -6,7 +6,10 @@ import { join } from "node:path"
 import type { ClaudeAppSdkChatRuntime } from "../src/bun/claude-app-sdk-chat-runtime"
 import type { CodexAppServerChatRuntime } from "../src/bun/codex-app-server-chat-runtime"
 import { readKhalaCodeDesktopSessionCatalog } from "../src/bun/session-catalog"
-import { sessionCatalogEntryToThreadSummary } from "../src/shared/session-catalog"
+import {
+  isCodexAppServerThreadId,
+  sessionCatalogEntryToThreadSummary,
+} from "../src/shared/session-catalog"
 
 const tempDirs: string[] = []
 
@@ -169,11 +172,13 @@ describe("Khala Code cross-harness session catalog", () => {
   test("uses Codex thread ids for sidebar resume even when session ids are UUIDs", async () => {
     const root = await tempRoot()
     const codexStatePath = join(root, "codex-sessions.json")
+    const threadId = "018f1d59-1a9f-7c40-b4d1-7b0706c531aa"
+    const sessionId = "018f1d59-1a9f-7c40-b4d1-7b0706c531ad"
     await writeFile(codexStatePath, JSON.stringify({
       schema: "khala-code-desktop.codex-sessions.v1",
       sessions: {
         "desktop-codex": {
-          threadId: "id-recent-chat-row",
+          threadId,
           updatedAt: "2026-07-01T10:00:00.000Z",
         },
       },
@@ -182,8 +187,8 @@ describe("Khala Code cross-harness session catalog", () => {
       listThreads: async () => ({
         ok: true as const,
         data: [{
-          id: "id-recent-chat-row",
-          sessionId: "018f1d59-1a9f-7c40-b4d1-7b0706c531ad",
+          id: threadId,
+          sessionId,
           title: "Most recent chat",
           preview: "Resume me",
           createdAt: "2026-07-01T10:00:00.000Z",
@@ -204,14 +209,47 @@ describe("Khala Code cross-harness session catalog", () => {
     expect(catalog.entries).toHaveLength(1)
     expect(catalog.entries[0]).toMatchObject({
       harnessKind: "codex",
-      sessionRef: "018f1d59-1a9f-7c40-b4d1-7b0706c531ad",
-      threadRef: "id-recent-chat-row",
+      sessionRef: sessionId,
+      threadRef: threadId,
       createdAt: Date.parse("2026-07-01T10:00:00.000Z") / 1000,
       updatedAt: 1782910000,
       recencyAt: 1782910000,
     })
-    expect(sessionCatalogEntryToThreadSummary(catalog.entries[0]!).id)
-      .toBe("id-recent-chat-row")
+    expect(sessionCatalogEntryToThreadSummary(catalog.entries[0]!)).toMatchObject({
+      id: threadId,
+      resumable: true,
+      title: "Most recent chat",
+    })
+  })
+
+  test("keeps stored Codex UUID refs resumable when they match the app-server parser shape", () => {
+    const compactThreadId = "018f1d591a9f7c40b4d17b0706c531aa"
+    expect(isCodexAppServerThreadId(compactThreadId)).toBe(true)
+    expect(isCodexAppServerThreadId(`urn:uuid:${compactThreadId}`)).toBe(true)
+    expect(isCodexAppServerThreadId("id-recent-chat-row")).toBe(false)
+
+    expect(sessionCatalogEntryToThreadSummary({
+      catalogEntryId: `codex:${compactThreadId}`,
+      harnessKind: "codex",
+      sessionRef: compactThreadId,
+      threadRef: compactThreadId,
+      desktopSessionRef: "desktop-session",
+      lastTurnRef: null,
+      title: "Codex session",
+      preview: "",
+      cwd: null,
+      projectLabel: "Codex",
+      status: "ready",
+      statusLabel: "Codex session",
+      source: "codex_session_store",
+      createdAt: null,
+      updatedAt: null,
+      recencyAt: null,
+    })).toMatchObject({
+      id: compactThreadId,
+      resumable: true,
+      unavailableReason: null,
+    })
   })
 
   test("does not surface Codex missing-rollout diagnostics as session previews", async () => {
@@ -351,7 +389,7 @@ describe("Khala Code cross-harness session catalog", () => {
     ])
   })
 
-  test("keeps legacy non-UUID Codex thread ids when no UUID session ref exists", async () => {
+  test("marks legacy non-UUID Codex store records as local metadata, not resumable threads", async () => {
     const root = await tempRoot()
     const codexStatePath = join(root, "codex-sessions.json")
     await writeFile(codexStatePath, JSON.stringify({
@@ -372,7 +410,14 @@ describe("Khala Code cross-harness session catalog", () => {
       },
     })
 
-    expect(sessionCatalogEntryToThreadSummary(nextCatalog.entries[0]!).id).toBe("thread-history")
+    expect(sessionCatalogEntryToThreadSummary(nextCatalog.entries[0]!)).toMatchObject({
+      id: "codex:thread-history",
+      resumable: false,
+      statusLabel: "stored local record",
+      title: "Stored Codex session",
+      unavailableReason:
+        "Stored local Codex session metadata does not include a current app-server UUID thread id.",
+    })
   })
 
   test("queries Codex and Claude thread sources concurrently", async () => {

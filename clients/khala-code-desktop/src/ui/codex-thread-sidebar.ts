@@ -136,6 +136,11 @@ const threadTimeContent = (
   options: Pick<CodexThreadSidebarOptions, "isThreadStreaming">,
 ): HTMLSpanElement => {
   const time = el("span", "khala-thread-sidebar-item-time")
+  if (!isThreadResumable(thread)) {
+    time.textContent = thread.statusLabel
+    time.title = thread.unavailableReason ?? thread.statusLabel
+    return time
+  }
   if (isThreadStreaming(thread.id, options)) {
     time.dataset.streaming = "true"
     time.title = "Streaming response"
@@ -148,6 +153,11 @@ const threadTimeContent = (
     formatCompactThreadTimestamp(thread.recencyAt ?? thread.updatedAt) || thread.statusLabel
   return time
 }
+
+const isThreadResumable = (
+  thread: KhalaCodeDesktopCodexThreadSummary,
+): boolean =>
+  thread.resumable !== false
 
 const groupThreads = (
   data: KhalaCodeDesktopCodexThreadListResult,
@@ -319,6 +329,15 @@ export const mountCodexThreadSidebar = (
     source: CodexThreadSelectionSource,
   ): Promise<boolean> => {
     threadMenu.close()
+    const thread = dataForState(state)?.threads?.find(candidate => candidate.id === threadId)
+    if (thread !== undefined && !isThreadResumable(thread)) {
+      selectionError = {
+        threadId,
+        message: thread.unavailableReason ?? "This stored session record is not resumable.",
+      }
+      render()
+      return false
+    }
     if (activeThreadId === threadId) return true
     const selectionId = ++selectionSequence
     activeThreadId = threadId
@@ -481,52 +500,57 @@ export const mountCodexThreadSidebar = (
 
   const threadMenuContent = (
     thread: KhalaCodeDesktopCodexThreadSummary,
-  ): BasecoatMenuDomContent => ({
-    label: `Thread actions for ${thread.title}`,
-    sections: [
-      {
-        items: [
-          {
-            id: "rename-thread",
-            label: "Rename thread",
-            icon: "Pencil",
-            onSelect: () => beginRename(thread),
-          },
-          {
-            id: "fork-thread",
-            label: "Fork thread",
-            icon: "BranchAlt",
-            onSelect: () => void runMutation(() => options.forkThread(thread.id)),
-          },
-          {
-            id: "copy-session-id",
-            label: "Copy session ID",
-            icon: "Copy",
-            onSelect: () => {
-              const sessionId = thread.sessionId ?? thread.id
-              void navigator.clipboard?.writeText(sessionId).catch(() => undefined)
-            },
-          },
-          {
-            id: "archive-thread",
-            label: "Archive thread",
-            icon: "Archive",
-            onSelect: () => void runMutation(() => options.archiveThread(thread.id)),
-          },
-          {
-            id: "delete-thread",
-            label: "Delete thread",
-            icon: "Trash",
-            destructive: true,
-            onSelect: () => {
-              if (!confirm(`Delete ${thread.title}?`)) return
-              void runMutation(() => options.deleteThread(thread.id))
-            },
-          },
-        ],
+  ): BasecoatMenuDomContent => {
+    const copySessionIdItem = {
+      id: "copy-session-id",
+      label: "Copy session ID",
+      icon: "Copy" as const,
+      onSelect: () => {
+        const sessionId = thread.sessionId ?? thread.id
+        void navigator.clipboard?.writeText(sessionId).catch(() => undefined)
       },
-    ],
-  })
+    }
+    return {
+      label: `Thread actions for ${thread.title}`,
+      sections: [
+        {
+          items: isThreadResumable(thread)
+            ? [
+                {
+                  id: "rename-thread",
+                  label: "Rename thread",
+                  icon: "Pencil" as const,
+                  onSelect: () => beginRename(thread),
+                },
+                {
+                  id: "fork-thread",
+                  label: "Fork thread",
+                  icon: "BranchAlt" as const,
+                  onSelect: () => void runMutation(() => options.forkThread(thread.id)),
+                },
+                copySessionIdItem,
+                {
+                  id: "archive-thread",
+                  label: "Archive thread",
+                  icon: "Archive" as const,
+                  onSelect: () => void runMutation(() => options.archiveThread(thread.id)),
+                },
+                {
+                  id: "delete-thread",
+                  label: "Delete thread",
+                  icon: "Trash" as const,
+                  destructive: true,
+                  onSelect: () => {
+                    if (!confirm(`Delete ${thread.title}?`)) return
+                    void runMutation(() => options.deleteThread(thread.id))
+                  },
+                },
+              ]
+            : [copySessionIdItem],
+        },
+      ],
+    }
+  }
 
   const openThreadMenu = (
     thread: KhalaCodeDesktopCodexThreadSummary,
@@ -626,10 +650,12 @@ export const mountCodexThreadSidebar = (
   ): HTMLElement => {
     const active = activeThreadId === thread.id
     const selecting = selectingThreadId === thread.id
+    const resumable = isThreadResumable(thread)
     const item = el("div", "khala-thread-sidebar-item")
     item.dataset.threadId = thread.id
     item.dataset.status = thread.status
     item.dataset.active = active ? "true" : "false"
+    if (!resumable) item.dataset.resumable = "false"
     if (selecting) item.dataset.selecting = "true"
     item.addEventListener("contextmenu", event => {
       event.preventDefault()
@@ -639,15 +665,24 @@ export const mountCodexThreadSidebar = (
 
     const row = el("button", "khala-thread-sidebar-item-row")
     row.type = "button"
-    row.title = `${thread.title} — ${thread.preview || thread.id}`
+    const hoverDetail = resumable
+      ? thread.preview || thread.id
+      : thread.unavailableReason || thread.preview || thread.id
+    row.title = `${thread.title} — ${hoverDetail}`
     row.setAttribute("aria-haspopup", "menu")
     row.dataset.active = active ? "true" : "false"
+    if (!resumable) {
+      row.disabled = true
+      row.setAttribute("aria-disabled", "true")
+    }
     if (selecting) {
       row.dataset.selecting = "true"
       row.setAttribute("aria-busy", "true")
     }
     if (active) row.setAttribute("aria-current", "true")
-    row.addEventListener("click", () => void selectThread(thread.id, "sidebar"))
+    if (resumable) {
+      row.addEventListener("click", () => void selectThread(thread.id, "sidebar"))
+    }
     row.addEventListener("keydown", event => {
       if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return
       event.preventDefault()

@@ -334,6 +334,88 @@ describe("Khala Code thread sidebar", () => {
     }
   })
 
+  test("renders stored-only Codex records as disabled rows and skips them for recent selection", async () => {
+    const window = new Window()
+    const previousDocument = globalThis.document
+    const previousNavigator = globalThis.navigator
+    Object.defineProperty(globalThis, "document", {
+      configurable: true,
+      value: window.document,
+    })
+    Object.defineProperty(globalThis, "navigator", {
+      configurable: true,
+      value: window.navigator,
+    })
+    try {
+      const container = document.createElement("aside")
+      document.body.append(container)
+      const data: KhalaCodeDesktopCodexThreadListResult = {
+        ok: true,
+        data: [],
+        groups: [{ key: "all", label: "All sessions", threadIds: ["codex:legacy", "thread-live"] }],
+        threads: [
+          {
+            ...thread("codex:legacy", "Stored Codex session"),
+            recencyAt: 30,
+            resumable: false,
+            statusLabel: "stored local record",
+            unavailableReason:
+              "Stored local Codex session metadata does not include a current app-server UUID thread id.",
+          },
+          { ...thread("thread-live", "Live Codex thread"), recencyAt: 20 },
+        ],
+      }
+
+      const resumedThreadIds: string[] = []
+      const sidebar = mountCodexThreadSidebar(container, {
+        activeThreadId: () => null,
+        archiveThread: async threadId => ({ action: "archive", ok: true, threadId }),
+        deleteThread: async threadId => ({ action: "delete", ok: true, threadId }),
+        forkThread: async threadId => ({ action: "fork", ok: true, threadId }),
+        listThreads: async () => data,
+        renameThread: async threadId => ({ action: "rename", ok: true, threadId }),
+        resumeThread: async threadId => {
+          resumedThreadIds.push(threadId)
+          return {
+            ok: true,
+            thread: {},
+            threadId,
+            messages: [],
+          }
+        },
+        sessionId: "desktop-session",
+        unarchiveThread: async threadId => ({ action: "unarchive", ok: true, threadId }),
+        onNewThreadRequested: () => undefined,
+        onThreadSelected: () => undefined,
+      })
+
+      sidebar.setVisible(true)
+      await sidebar.refresh()
+
+      const storedRow = container.querySelector<HTMLButtonElement>(
+        '[data-thread-id="codex:legacy"] .khala-thread-sidebar-item-row',
+      )
+      expect(storedRow?.disabled).toBe(true)
+      expect(storedRow?.getAttribute("aria-disabled")).toBe("true")
+      expect(storedRow?.title).toContain("Stored local Codex session metadata")
+      expect(container.textContent).toContain("Stored Codex session")
+      expect(container.textContent).toContain("stored local record")
+
+      await expect(sidebar.selectRecentThread(0)).resolves.toBe(true)
+      expect(resumedThreadIds).toEqual(["thread-live"])
+    } finally {
+      Object.defineProperty(globalThis, "document", {
+        configurable: true,
+        value: previousDocument,
+      })
+      Object.defineProperty(globalThis, "navigator", {
+        configurable: true,
+        value: previousNavigator,
+      })
+      window.close()
+    }
+  })
+
   test("selects recent visible threads without refetching the catalog", async () => {
     const window = new Window()
     const previousDocument = globalThis.document
