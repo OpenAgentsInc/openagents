@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 import { mkdir, rm, writeFile } from "node:fs/promises"
-import { dirname, join, resolve } from "node:path"
+import { basename, dirname, join, relative, resolve } from "node:path"
 
 import { chromium, type Browser, type Page } from "playwright"
 import {
@@ -18,6 +18,10 @@ import {
   khalaCodeVisualBaselineOptionsFromArgs,
   type KhalaCodeVisualBaselineOptions,
 } from "./visual-baseline-options"
+import {
+  assertKhalaCodePagePublicSafe,
+  assertKhalaCodePublicSafeValue,
+} from "./public-safety-oracle"
 import { installKhalaCodeVisualSmokeRpcMocks } from "./visual-smoke-rpc-mocks"
 
 export type ComposerVisualViewport = Readonly<{
@@ -328,10 +332,12 @@ export async function runComposerVisualSmoke(
       }
     }
     const summaryPath = join(options.outDir, "summary.json")
-    await writeFile(summaryPath, `${JSON.stringify({
+    const summary = {
       harness: COMPOSER_VISUAL_SMOKE_HARNESS,
       results,
-    }, null, 2)}\n`)
+    }
+    assertKhalaCodePublicSafeValue(summary, "Composer visual smoke summary")
+    await writeFile(summaryPath, `${JSON.stringify(summary, null, 2)}\n`)
     return results
   } finally {
     if (browser !== null) await browser.close()
@@ -476,6 +482,7 @@ async function captureTarget(
     reducedMotionProbe,
     input.reducedMotion,
   )
+  await assertKhalaCodePagePublicSafe(page, "Composer visual smoke")
 
   let canvas =
     input.target.canvasSelector === null
@@ -601,10 +608,10 @@ async function captureTarget(
     requireBaseline: input.visualBaseline.requireBaseline,
   })
 
-  return {
+  const result = {
     target: input.target.name,
     viewport: input.viewport.name,
-    screenshot,
+    screenshot: basename(screenshot),
     visualBaseline,
     geometry,
     focus,
@@ -612,6 +619,8 @@ async function captureTarget(
     reducedMotionProbe,
     reducedMotion: input.reducedMotion,
   }
+  assertKhalaCodePublicSafeValue(result, "Composer visual smoke metadata")
+  return result
 }
 
 async function screenshotPixelProbe(
@@ -675,12 +684,14 @@ if (import.meta.main) {
       outDir,
       visualBaseline: khalaCodeVisualBaselineOptionsFromArgs(args),
     })
-    console.log(JSON.stringify({
+    const cliSummary = {
       harness: COMPOSER_VISUAL_SMOKE_HARNESS,
       ok: true,
-      outDir,
+      outDir: relative(process.cwd(), outDir) || ".",
       results,
-    }, null, 2))
+    }
+    assertKhalaCodePublicSafeValue(cliSummary, "Composer visual smoke CLI summary")
+    console.log(JSON.stringify(cliSummary, null, 2))
   } catch (error) {
     console.error(error instanceof Error ? error.stack ?? error.message : error)
     process.exit(1)

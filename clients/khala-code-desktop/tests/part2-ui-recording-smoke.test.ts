@@ -5,6 +5,10 @@ import {
   PART2_UI_RECORDING_SMOKE_HARNESS,
   part2UiSmokeViewports,
 } from "../scripts/part2-ui-recording-smoke"
+import {
+  assertKhalaCodePublicSafeValue,
+  khalaCodeUnsafeTextPattern,
+} from "../scripts/public-safety-oracle"
 
 describe("Part 2 UI recording smoke", () => {
   test("declares a single UI-first transcript 245 smoke over desktop and mobile", () => {
@@ -36,6 +40,23 @@ describe("Part 2 UI recording smoke", () => {
     ).toThrow("legacy")
   })
 
+  test("rejects unsafe screenshot-adjacent metadata in smoke summaries", () => {
+    expect(() =>
+      assertKhalaCodePublicSafeValue({
+        harness: PART2_UI_RECORDING_SMOKE_HARNESS,
+        screenshots: ["part2-ui-fleet-desktop.png"],
+        visualBaseline: { status: "matched", baseline: "screenshots/part2.png" },
+      }),
+    ).not.toThrow()
+    expect(() =>
+      assertKhalaCodePublicSafeValue({
+        harness: PART2_UI_RECORDING_SMOKE_HARNESS,
+        screenshots: ["/Users/operator/.codex/auth.json"],
+      }),
+    ).toThrow("private or raw")
+    expect(khalaCodeUnsafeTextPattern.test("raw_prompt.body")).toBe(true)
+  })
+
   test("wires every Mode D visual smoke through console oracles and seed RPC mocks", async () => {
     const scriptUrls = [
       "../scripts/part2-ui-recording-smoke.ts",
@@ -48,6 +69,7 @@ describe("Part 2 UI recording smoke", () => {
       const source = await Bun.file(scriptUrl).text()
       expect(source).toContain("installKhalaQaConsoleErrorOracle")
       expect(source).toContain("installKhalaCodeVisualSmokeRpcMocks")
+      expect(source).toContain("assertKhalaCodePublicSafe")
     }
 
     const rpcMocks = await Bun.file(

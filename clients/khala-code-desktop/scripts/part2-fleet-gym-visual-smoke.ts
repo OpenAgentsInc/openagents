@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 import { mkdir, rm, writeFile } from "node:fs/promises"
-import { dirname, join, resolve } from "node:path"
+import { basename, dirname, join, relative, resolve } from "node:path"
 
 import { chromium, type Browser, type Page } from "playwright"
 import {
@@ -20,6 +20,10 @@ import {
   khalaCodeVisualBaselineOptionsFromArgs,
   type KhalaCodeVisualBaselineOptions,
 } from "./visual-baseline-options"
+import {
+  assertKhalaCodePagePublicSafe,
+  assertKhalaCodePublicSafeValue,
+} from "./public-safety-oracle"
 import { installKhalaCodeVisualSmokeRpcMocks } from "./visual-smoke-rpc-mocks"
 
 export type Part2VisualViewport = Readonly<{
@@ -140,13 +144,12 @@ async function runPart2FleetGymVisualSmoke(
         await page.close()
       }
     }
-    await writeFile(
-      join(options.outDir, "summary.json"),
-      `${JSON.stringify({
-        harness: PART2_FLEET_GYM_VISUAL_SMOKE_HARNESS,
-        results,
-      }, null, 2)}\n`,
-    )
+    const summary = {
+      harness: PART2_FLEET_GYM_VISUAL_SMOKE_HARNESS,
+      results,
+    }
+    assertKhalaCodePublicSafeValue(summary, "Part 2 visual smoke summary")
+    await writeFile(join(options.outDir, "summary.json"), `${JSON.stringify(summary, null, 2)}\n`)
     return results
   } finally {
     if (browser !== null) await browser.close()
@@ -220,6 +223,8 @@ async function capturePart2FleetGym(
   assertTextIncludes(capture.parametersText, "parameters.khala_fleet_delegation.default.v1")
   assertTextIncludes(capture.parametersText, "source")
   assertTextIncludes(capture.parametersText, "default")
+  await assertKhalaCodePagePublicSafe(page, "Part 2 visual smoke")
+  assertKhalaCodePublicSafeValue(capture, "Part 2 visual smoke metadata")
 
   const screenshot = join(
     input.outDir,
@@ -250,7 +255,7 @@ async function capturePart2FleetGym(
     geometry: capture.geometry,
     loadedText: capture.loadedText,
     parametersText: capture.parametersText,
-    screenshot,
+    screenshot: basename(screenshot),
     visualBaseline,
     viewport: input.viewport.name,
   }
@@ -272,12 +277,14 @@ if (import.meta.main) {
       outDir,
       visualBaseline: khalaCodeVisualBaselineOptionsFromArgs(args),
     })
-    console.log(JSON.stringify({
+    const cliSummary = {
       harness: PART2_FLEET_GYM_VISUAL_SMOKE_HARNESS,
       ok: true,
-      outDir,
+      outDir: relative(process.cwd(), outDir) || ".",
       results,
-    }, null, 2))
+    }
+    assertKhalaCodePublicSafeValue(cliSummary, "Part 2 visual smoke CLI summary")
+    console.log(JSON.stringify(cliSummary, null, 2))
   } catch (error) {
     console.error(error instanceof Error ? error.stack ?? error.message : error)
     process.exit(1)

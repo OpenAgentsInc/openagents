@@ -111,6 +111,44 @@ export class PublicSafetyViolation extends Error {
   }
 }
 
+const FORBIDDEN_TEXT_PATTERNS = [
+  /\/Users\//i,
+  /\/home\//i,
+  /~\//,
+  /auth\.json/i,
+  /bearer\s+[a-z0-9._=-]+/i,
+  /sk-[a-z0-9]/i,
+  /raw[_-]?(prompt|trace|log|provider)/i,
+  /provider[_-]?payload/i,
+  /api[_-]?key/i,
+  /credential/i,
+  /secret/i,
+];
+
+export function assertPublicSafeText(text: string, path = "$"): void {
+  for (const pattern of FORBIDDEN_TEXT_PATTERNS) {
+    if (pattern.test(text)) {
+      throw new PublicSafetyViolation(`forbidden text at ${path}`);
+    }
+  }
+}
+
+export function assertPublicSafeTextValues(value: unknown, path = "$"): void {
+  if (typeof value === "string") {
+    assertPublicSafeText(value, path);
+    return;
+  }
+  if (value === null || typeof value !== "object") return;
+  if (Array.isArray(value)) {
+    value.forEach((v, i) => assertPublicSafeTextValues(v, `${path}[${i}]`));
+    return;
+  }
+  for (const [key, v] of Object.entries(value as Record<string, unknown>)) {
+    assertPublicSafeText(key, `${path}.${key}:key`);
+    assertPublicSafeTextValues(v, `${path}.${key}`);
+  }
+}
+
 /**
  * Assert a result (any JSON-like value) carries no forbidden fields. Walks the
  * object graph checking KEYS against the forbidden patterns. Throws

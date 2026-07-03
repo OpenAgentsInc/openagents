@@ -175,6 +175,27 @@ describe("runNativeDesktopScenario (fake runtime)", () => {
     expect(existsSync(join(dir, tl.frames[0].screenshot))).toBe(true);
   });
 
+  test("headed artifact metadata trips the public-safety text oracle", async () => {
+    const runtime = makeFakeRuntime({
+      available: true,
+      tree: {
+        app: "FakeApp",
+        nodes: [
+          {
+            role: "AXWindow",
+            title: "Unsafe /Users/operator/.codex/auth.json",
+          },
+        ],
+      },
+    });
+    await expect(
+      runNativeDesktopScenario(
+        { target, scenario: nativeDesktopExample("FakeApp"), artifactDir: dir },
+        { armed: true, runtime },
+      ),
+    ).rejects.toThrow("public_safety_violation");
+  });
+
   test("a wrong assertion FAILS honestly (real red); teardown still runs", async () => {
     const log: FakeLog = { events: [], tornDown: false };
     const runtime = makeFakeRuntime({ available: true, log });
@@ -207,7 +228,7 @@ describe("runNativeDesktopScenario (fake runtime)", () => {
   test("never records the raw typed text (credential) in the result", async () => {
     const runtime = makeFakeRuntime({ available: true });
     const scenario: NativeDesktopScenario = {
-      name: "secret-type",
+      name: "typed-redaction",
       app: "FakeApp",
       steps: [
         { kind: "focus" },

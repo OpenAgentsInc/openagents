@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 import { mkdir, rm, writeFile } from "node:fs/promises"
-import { dirname, join, resolve } from "node:path"
+import { basename, dirname, join, relative, resolve } from "node:path"
 
 import { chromium, type Browser, type Page } from "playwright"
 import {
@@ -26,6 +26,10 @@ import {
   khalaCodeVisualBaselineOptionsFromArgs,
   type KhalaCodeVisualBaselineOptions,
 } from "./visual-baseline-options"
+import {
+  assertKhalaCodePagePublicSafe,
+  assertKhalaCodePublicSafeValue,
+} from "./public-safety-oracle"
 import { installKhalaCodeVisualSmokeRpcMocks } from "./visual-smoke-rpc-mocks"
 
 export type CockpitVisualViewport = Readonly<{
@@ -135,18 +139,17 @@ export async function runCockpitVisualSmoke(
         await page.close()
       }
     }
-    await writeFile(
-      join(options.outDir, "summary.json"),
-      `${JSON.stringify({
-        captures,
-        fixture: {
-          accounts: 3,
-          clock: cockpitClockIso,
-          workers: 18,
-        },
-        harness: COCKPIT_VISUAL_SMOKE_HARNESS,
-      }, null, 2)}\n`,
-    )
+    const summary = {
+      captures,
+      fixture: {
+        accounts: 3,
+        clock: cockpitClockIso,
+        workers: 18,
+      },
+      harness: COCKPIT_VISUAL_SMOKE_HARNESS,
+    }
+    assertKhalaCodePublicSafeValue(summary, "Cockpit visual smoke summary")
+    await writeFile(join(options.outDir, "summary.json"), `${JSON.stringify(summary, null, 2)}\n`)
     return captures
   } finally {
     if (browser !== null) await browser.close()
@@ -221,6 +224,7 @@ async function captureCockpit(
 
   const geometry = await collectCockpitGeometry(page)
   assertCockpitVisualGeometry(geometry)
+  await assertKhalaCodePagePublicSafe(page, "Cockpit visual smoke")
 
   const screenshot = join(
     input.outDir,
@@ -250,7 +254,7 @@ async function captureCockpit(
   return {
     accountCardCount: geometry.accountCards.length,
     geometry,
-    screenshot,
+    screenshot: basename(screenshot),
     visualBaseline,
     viewport: input.viewport.name,
     workerCardCount: geometry.workerCards.length,
@@ -344,14 +348,8 @@ const expectText = async (
   )
 }
 
-const unsafeTextPattern =
-  /\/Users\/|\/home\/|auth\.json|bearer|credential|provider[_-]?payload|raw[_-]?(prompt|trace|log|provider)|secret|sk-[a-z0-9]/i
-
 const assertPagePublicSafe = async (page: Page): Promise<void> => {
-  const text = await page.locator("body").textContent()
-  if (unsafeTextPattern.test(text ?? "")) {
-    throw new Error("Cockpit visual smoke rendered private or raw material")
-  }
+  await assertKhalaCodePagePublicSafe(page, "Cockpit visual smoke")
 }
 
 const cockpitFleetRunListFixture = (): KhalaCodeDesktopFleetRunListResult => ({
@@ -536,12 +534,14 @@ if (import.meta.main) {
       outDir,
       visualBaseline: khalaCodeVisualBaselineOptionsFromArgs(args),
     })
-    console.log(JSON.stringify({
+    const cliSummary = {
       captures,
       harness: COCKPIT_VISUAL_SMOKE_HARNESS,
       ok: true,
-      outDir,
-    }, null, 2))
+      outDir: relative(process.cwd(), outDir) || ".",
+    }
+    assertKhalaCodePublicSafeValue(cliSummary, "Cockpit visual smoke CLI summary")
+    console.log(JSON.stringify(cliSummary, null, 2))
   } catch (error) {
     console.error(error instanceof Error ? error.stack ?? error.message : error)
     process.exit(1)

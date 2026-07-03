@@ -42,7 +42,7 @@ import {
   type NativeDesktopOutcome,
   type NativeDesktopScenario,
 } from "./native-desktop-backend";
-import { assertPublicSafeResult } from "./result";
+import { assertPublicSafeResult, assertPublicSafeTextValues } from "./result";
 import type { Target } from "./target";
 
 const DEFAULT_DESKTOP_CWD = resolve(import.meta.dir, "../../../clients/khala-code-desktop");
@@ -621,6 +621,7 @@ export async function runKhalaDesktopHeadedNativeSmoke(
       visualBaselines,
     };
     assertPublicSafeResult(smokeReport);
+    assertPublicSafeTextValues(smokeReport);
     writeFileSync(smokeReportPath, `${JSON.stringify(smokeReport, null, 2)}\n`);
     return { ...outcome, appPath, executablePath, smokeReportPath, visualBaselines };
   } finally {
