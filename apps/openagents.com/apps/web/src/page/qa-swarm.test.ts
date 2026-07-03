@@ -126,6 +126,10 @@ describe('QA Swarm route', () => {
     expect(rendered).toContain('artifact.khala_code.qa_status_surface.latest')
     expect(rendered).toContain('Cockpit blanks when one startup RPC fails')
     expect(rendered).toContain('Videos and traces')
+    expect(rendered).toContain('oa-qa-swarm-scene')
+    expect(rendered).toContain('Static scene fallback')
+    expect(rendered).toContain('scene.qa_swarm.three_effect.additive_hdr_bloom.20260702')
+    expect(rendered).toContain('scene.qa_swarm.reduced_motion.static_fallback.20260702')
     expect(rendered).toContain('/trace/24c6fea6-b271-46c6-a9a9-bc614440e9ef')
     expect(rendered).toContain('/docs/qa/khala-code-mechanical-corpus')
     expect(rendered).toContain('/docs/qa/qa-swarm-khala-code-standing-engagement')
@@ -224,5 +228,17 @@ describe('QA Swarm projection schema and redaction', () => {
     expect(() =>
       assertQaSwarmPublicProjection(broken),
     ).toThrow(/lit without receipt/)
+  })
+
+  test('redaction tripwire rejects unsafe scene refs', () => {
+    expect(() =>
+      assertQaSwarmPublicProjection({
+        ...sampleQaSwarmRunProjection,
+        scene: {
+          ...sampleQaSwarmRunProjection.scene,
+          qualityRefs: ['raw.qa_swarm.scene.private_payload'],
+        },
+      }),
+    ).toThrow(/private material|Unsafe QA Swarm projection ref/)
   })
 })

@@ -3,6 +3,10 @@ import type { Html } from 'foldkit/html'
 import { html } from 'foldkit/html'
 
 import * as Ui from '../ui'
+import {
+  qaSwarmSceneView,
+  rememberQaSwarmSceneProjection,
+} from '../scene/qaSwarmSceneElement'
 import type { PublicHeaderAuthState } from './publicHeader'
 import * as PublicHeader from './publicHeader'
 import {
@@ -10,6 +14,7 @@ import {
   type QaSwarmFindingsLedgerProjection,
   type QaSwarmPerfBudgetItem,
   type QaSwarmRunProjection,
+  type QaSwarmSceneProjection,
   type QaSwarmVerdict,
   type QaSwarmVerdictItem,
   lookupQaSwarmRunProjection,
@@ -147,6 +152,98 @@ const metric = <Message>(
         ],
         [detail],
       ),
+    ],
+  )
+}
+
+const sceneFallback = <Message>(scene: QaSwarmSceneProjection): Html => {
+  const h = html<Message>()
+  return h.div(
+    [
+      Ui.className<Message>(
+        'grid gap-3 border border-[var(--oa-color-khala-border)] bg-[var(--oa-color-khala-surface-muted)] p-3',
+      ),
+      h.DataAttribute('qa-swarm-scene-fallback', scene.fallbackRef),
+    ],
+    [
+      h.div(
+        [
+          Ui.className<Message>(
+            'flex flex-wrap items-center justify-between gap-3',
+          ),
+        ],
+        [
+          label<Message>('Static scene fallback'),
+          code<Message>(scene.fallbackRef),
+        ],
+      ),
+      h.div(
+        [Ui.className<Message>('grid gap-2 sm:grid-cols-2')],
+        scene.agents.map(agent =>
+          h.div(
+            [
+              Ui.className<Message>(
+                'grid gap-1 border border-[var(--oa-color-khala-border-muted)] bg-[var(--oa-color-khala-surface)] p-2',
+              ),
+            ],
+            [
+              h.div([Ui.className<Message>('flex items-center gap-2')], [
+                h.span(
+                  [
+                    Ui.className<Message>(
+                      `size-2 shrink-0 rounded-full ${verdictDotClass(agent.status)}`,
+                    ),
+                    h.AriaHidden(true),
+                  ],
+                  [],
+                ),
+                h.span(
+                  [
+                    Ui.className<Message>(
+                      'text-sm font-semibold text-[var(--oa-color-khala-text-bright)]',
+                    ),
+                  ],
+                  [agent.label],
+                ),
+              ]),
+              h.span(
+                [
+                  Ui.className<Message>(
+                    `text-xs text-[var(--oa-color-khala-text-dim)] ${mono}`,
+                  ),
+                ],
+                [agent.receiptRef],
+              ),
+            ],
+          ),
+        ),
+      ),
+      h.div([Ui.className<Message>('grid gap-2')], [
+        h.span([Ui.className<Message>(sectionLabel)], ['Receipt-lit arcs']),
+        h.ul(
+          [Ui.className<Message>('grid gap-1 p-0')],
+          scene.receiptArcs.map(arc =>
+            h.li(
+              [
+                Ui.className<Message>(
+                  `flex flex-wrap items-center gap-2 text-xs text-[var(--oa-color-khala-text-muted)] ${mono}`,
+                ),
+              ],
+              [
+                verdictBadge<Message>(arc.verdict),
+                h.span([], [arc.receiptRef]),
+              ],
+            ),
+          ),
+        ),
+      ]),
+      h.div([Ui.className<Message>('grid gap-2')], [
+        h.span([Ui.className<Message>(sectionLabel)], ['Quality refs']),
+        h.div(
+          [Ui.className<Message>('flex flex-wrap gap-2')],
+          scene.qualityRefs.map(ref => code<Message>(ref)),
+        ),
+      ]),
     ],
   )
 }
@@ -380,6 +477,7 @@ const findingsLedger = <Message>(
 
 const runArticle = <Message>(projection: QaSwarmRunProjection): Html => {
   const h = html<Message>()
+  rememberQaSwarmSceneProjection(projection.scene)
 
   return h.main(
     [
@@ -468,6 +566,37 @@ const runArticle = <Message>(projection: QaSwarmRunProjection): Html => {
           ),
         ],
       ),
+
+      h.section([Ui.className<Message>('grid gap-4 lg:grid-cols-[minmax(0,1.35fr)_minmax(20rem,0.65fr)]')], [
+        h.div(
+          [
+            Ui.className<Message>(
+              'relative min-h-[24rem] overflow-hidden border border-[var(--oa-color-khala-border)] bg-[var(--oa-color-khala-void)]',
+            ),
+          ],
+          [
+            qaSwarmSceneView<Message>([
+              Ui.className<Message>('absolute inset-0 block'),
+              h.Attribute('aria-label', 'QA Swarm 3D receipt scene'),
+              h.Attribute('data-scene-ref', projection.scene.sceneRef),
+            ]),
+            h.div(
+              [
+                Ui.className<Message>(
+                  'pointer-events-none absolute inset-x-0 bottom-0 border-t border-[var(--oa-color-khala-border-muted)] bg-[var(--oa-color-khala-surface)]/80 p-3',
+                ),
+              ],
+              [
+                h.div([Ui.className<Message>('flex flex-wrap gap-2')], [
+                  label<Message>('three-effect scene'),
+                  code<Message>(projection.scene.sceneRef),
+                ]),
+              ],
+            ),
+          ],
+        ),
+        sceneFallback<Message>(projection.scene),
+      ]),
 
       h.section(
         [Ui.className<Message>('grid grid-cols-2 gap-3 lg:grid-cols-4')],

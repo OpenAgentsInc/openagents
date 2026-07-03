@@ -104,6 +104,54 @@ export class QaSwarmCaseStudyProjection extends S.Class<QaSwarmCaseStudyProjecti
   title: S.String,
 }) {}
 
+export class QaSwarmSceneAgent extends S.Class<QaSwarmSceneAgent>(
+  'QaSwarmSceneAgent',
+)({
+  agentRef: S.String,
+  label: S.String,
+  orbitIndex: S.Number,
+  receiptRef: S.String,
+  role: S.Union([
+    S.Literal('scenario'),
+    S.Literal('explorer'),
+    S.Literal('oracle'),
+    S.Literal('perf_probe'),
+    S.Literal('distiller'),
+  ]),
+  status: QaSwarmVerdict,
+}) {}
+
+export class QaSwarmSceneReceiptArc extends S.Class<QaSwarmSceneReceiptArc>(
+  'QaSwarmSceneReceiptArc',
+)({
+  fromAgentRef: S.String,
+  receiptRef: S.String,
+  strength: S.Number,
+  toTargetRef: S.String,
+  verdict: QaSwarmVerdict,
+}) {}
+
+export class QaSwarmSceneVerdictLanding extends S.Class<QaSwarmSceneVerdictLanding>(
+  'QaSwarmSceneVerdictLanding',
+)({
+  burst: S.Number,
+  label: S.String,
+  receiptRef: S.String,
+  verdict: QaSwarmVerdict,
+}) {}
+
+export class QaSwarmSceneProjection extends S.Class<QaSwarmSceneProjection>(
+  'QaSwarmSceneProjection',
+)({
+  agents: S.Array(QaSwarmSceneAgent),
+  fallbackRef: S.String,
+  qualityRefs: S.Array(S.String),
+  receiptArcs: S.Array(QaSwarmSceneReceiptArc),
+  sceneRef: S.String,
+  targetRef: S.String,
+  verdictLandings: S.Array(QaSwarmSceneVerdictLanding),
+}) {}
+
 export class QaSwarmRunProjection extends S.Class<QaSwarmRunProjection>(
   'QaSwarmRunProjection',
 )({
@@ -121,6 +169,7 @@ export class QaSwarmRunProjection extends S.Class<QaSwarmRunProjection>(
   publicSafetyRefs: S.Array(S.String),
   runRef: S.String,
   schemaVersion: S.Literal('openagents.qa_swarm.run_projection.v1'),
+  scene: QaSwarmSceneProjection,
   staleness: S.Struct({
     contractVersion: S.Literal('projection_staleness.v1'),
     maxAgeHours: S.Number,
@@ -141,7 +190,7 @@ const PRIVATE_MATERIAL_PATTERN =
   /(@|\/Users\/|\/home\/|access[_-]?token|api[_-]?key|auth\.json|bearer|cookie|customer[_-]?(email|name|phone|prompt|record|value)|email[_-]?(address|body|html|raw|text)|gho_[A-Za-z0-9_]+|ghp_[A-Za-z0-9_]+|github\.com\/[^:/]+\/private|invoice[_-]?(id|raw)|lnbc|lntb|lnbcrt|macaroon|mnemonic|oauth|payment[_-]?(hash|id|invoice|preimage|proof|raw|secret)|payout[_-]?(address|destination|private|raw|target)|preimage|private[_-]?(archive|customer|dataset|key|prompt|source|trace|wallet)|provider[_-]?(account|credential|grant|payload|secret|token)|raw[_-]?(artifact|auth|customer|dataset|email|invoice|log|model|payment|payload|payout|prompt|provider|record|repo|runner|run[_-]?log|source|state|target|telemetry|text|trace)|recovery[_-]?phrase|runner[_-]?(payload|secret|token)|secret|seed[_-]?phrase|sk-[a-z0-9]|source[_-]?(archive|raw)|wallet[._-]?(key|material|mnemonic|payment|preimage|secret|seed))/i
 
 const PUBLIC_REF_PATTERN =
-  /^(artifact|check|coverage|frontier|openagents|perf|poster|projection|qa-run|redaction|test|trace|video)\.[a-z0-9][a-z0-9._-]*$/i
+  /^(artifact|check|coverage|frontier|openagents|perf|poster|projection|qa-run|redaction|scene|test|trace|video)\.[a-z0-9][a-z0-9._-]*$/i
 
 const isPublicRef = (value: string): boolean =>
   PUBLIC_REF_PATTERN.test(value) && !PRIVATE_MATERIAL_PATTERN.test(value)
@@ -216,6 +265,22 @@ export const assertQaSwarmPublicProjection = (
       throw new Error(`QA Swarm board link lit without receipt: ${link.id}`)
     }
   }
+  assertPublicRefs(
+    [
+      decoded.scene.sceneRef,
+      decoded.scene.targetRef,
+      decoded.scene.fallbackRef,
+      ...decoded.scene.qualityRefs,
+      ...decoded.scene.agents.flatMap(item => [item.agentRef, item.receiptRef]),
+      ...decoded.scene.receiptArcs.flatMap(item => [
+        item.fromAgentRef,
+        item.receiptRef,
+        item.toTargetRef,
+      ]),
+      ...decoded.scene.verdictLandings.map(item => item.receiptRef),
+    ],
+    'scene',
+  )
 
   if (decoded.target.visibility === 'opaque') {
     assertPublicRefs([decoded.target.ref], 'target.ref')
@@ -333,6 +398,94 @@ const sampleQaSwarmRunProjectionFields = {
   ],
   runRef: QA_SWARM_SAMPLE_RUN_REF,
   schemaVersion: 'openagents.qa_swarm.run_projection.v1',
+  scene: {
+    agents: [
+      {
+        agentRef: 'artifact.qa_swarm.agent.seed_corpus.20260702',
+        label: 'seed corpus',
+        orbitIndex: 0,
+        receiptRef: 'coverage.qa_swarm.khala_code.seed_corpus.20260702',
+        role: 'scenario',
+        status: 'passed',
+      },
+      {
+        agentRef: 'artifact.qa_swarm.agent.desktop_explorer.20260702',
+        label: 'desktop explorer',
+        orbitIndex: 1,
+        receiptRef: 'frontier.qa_swarm.khala_code.desktop_state.20260702',
+        role: 'explorer',
+        status: 'warning',
+      },
+      {
+        agentRef: 'artifact.qa_swarm.agent.trace_oracle.20260702',
+        label: 'trace oracle',
+        orbitIndex: 2,
+        receiptRef: 'artifact.qa_swarm.verdict.trace_video.20260702',
+        role: 'oracle',
+        status: 'passed',
+      },
+      {
+        agentRef: 'artifact.qa_swarm.agent.perf_probe.20260702',
+        label: 'perf probe',
+        orbitIndex: 3,
+        receiptRef: 'perf.qa_swarm.khala_code.tick_p95.20260702',
+        role: 'perf_probe',
+        status: 'warning',
+      },
+      {
+        agentRef: 'artifact.qa_swarm.agent.distiller.20260702',
+        label: 'distiller',
+        orbitIndex: 4,
+        receiptRef: 'test.qa_swarm.khala_code.distilled.20260702',
+        role: 'distiller',
+        status: 'passed',
+      },
+    ],
+    fallbackRef: 'artifact.qa_swarm.scene.static_fallback.20260702',
+    qualityRefs: [
+      'scene.qa_swarm.three_effect.additive_hdr_bloom.20260702',
+      'scene.qa_swarm.reduced_motion.static_fallback.20260702',
+    ],
+    receiptArcs: [
+      {
+        fromAgentRef: 'artifact.qa_swarm.agent.seed_corpus.20260702',
+        receiptRef: 'trace.public.qa_swarm.khala_code.seed_corpus.20260702',
+        strength: 0.92,
+        toTargetRef: 'artifact.qa_swarm.target.opaque.customer_one',
+        verdict: 'passed',
+      },
+      {
+        fromAgentRef: 'artifact.qa_swarm.agent.desktop_explorer.20260702',
+        receiptRef: 'trace.public.qa_swarm.khala_code.desktop_frontier.20260702',
+        strength: 0.78,
+        toTargetRef: 'artifact.qa_swarm.target.opaque.customer_one',
+        verdict: 'warning',
+      },
+      {
+        fromAgentRef: 'artifact.qa_swarm.agent.perf_probe.20260702',
+        receiptRef: 'perf.qa_swarm.khala_code.tick_p95.20260702',
+        strength: 0.58,
+        toTargetRef: 'artifact.qa_swarm.target.opaque.customer_one',
+        verdict: 'warning',
+      },
+    ],
+    sceneRef: 'scene.qa_swarm.khala_code.three_effect.20260702',
+    targetRef: 'artifact.qa_swarm.target.opaque.customer_one',
+    verdictLandings: [
+      {
+        burst: 0.95,
+        label: 'trace and video archive',
+        receiptRef: 'artifact.qa_swarm.verdict.trace_video.20260702',
+        verdict: 'passed',
+      },
+      {
+        burst: 0.64,
+        label: 'command palette latency',
+        receiptRef: 'artifact.qa_swarm.verdict.command_palette.20260702',
+        verdict: 'warning',
+      },
+    ],
+  },
   staleness: {
     contractVersion: 'projection_staleness.v1',
     maxAgeHours: 24,
