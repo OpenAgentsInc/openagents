@@ -1778,14 +1778,22 @@ describe("khala code desktop app shell", () => {
     const css = await Bun.file(new URL("../src/ui/styles.css", import.meta.url)).text()
 
     expect(shared).toContain("openagents.khala_code.diff_review_comment.v1")
+    expect(shared).toContain("openagents.khala_code.judge_diff_verdict.v1")
+    expect(shared).toContain("priority")
+    expect(shared).toContain("confidence")
     expect(renderer).toContain("cb-diff-comment-button")
+    expect(renderer).toContain("judge-verdict-card")
+    expect(renderer).toContain("judgeDiffVerdictElement")
     expect(renderer).toContain("KHALA_CODE_DIFF_REVIEW_SUBMIT_EVENT")
+    expect(renderer).toContain("verify command remains the merge authority")
     expect(main).toContain("KhalaCodeDiffReviewSubmitDetailSchema")
     expect(main).toContain("khalaCodeDiffReviewSteeringNote")
     expect(main).toContain("rpc.request.codexTurnSteer")
     expect(main).toContain("stageDiffReviewNoteInComposer")
     expect(css).toContain(".cb-diff-review-editor")
     expect(css).toContain(".cb-diff-review-textarea")
+    expect(css).toContain(".judge-verdict-card")
+    expect(css).toContain(".judge-verdict-steer-button")
   })
 
   test("wires source-control AI actions into the desktop diff review surface", async () => {
