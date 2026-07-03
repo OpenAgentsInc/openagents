@@ -139,5 +139,8 @@ describe('business funnel dashboard', () => {
     expect(
       signup?.sourceBreakdown.find(source => source.sourceKind === 'ai_search'),
     ).toEqual({ sourceKind: 'ai_search', count: 1 })
+    expect(body.stages.map(stage => stage.stage)).toContain(
+      'referred_engagement',
+    )
   })
 })
