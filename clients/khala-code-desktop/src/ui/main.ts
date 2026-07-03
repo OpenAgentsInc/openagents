@@ -437,6 +437,14 @@ const previewRpc = (): DesktopRpc => ({
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["harnessSettingWrite"]>>
       >("harnessSettingWrite", request),
+    modelRoleRegistryRead: () =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["modelRoleRegistryRead"]>>
+      >("modelRoleRegistryRead"),
+    modelRoleRegistryWrite: request =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["modelRoleRegistryWrite"]>>
+      >("modelRoleRegistryWrite", request),
     openExternalUrl: url =>
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["openExternalUrl"]>>
@@ -3187,6 +3195,9 @@ const controls = {
     rpc.request.codexPluginUninstall(request),
   codexSettingsRead: (request?: Parameters<DesktopRpcRequests["codexSettingsRead"]>[0]) =>
     rpc.request.codexSettingsRead(request),
+  modelRoleRegistryRead: () => rpc.request.modelRoleRegistryRead(),
+  modelRoleRegistryWrite: (request: Parameters<DesktopRpcRequests["modelRoleRegistryWrite"]>[0]) =>
+    rpc.request.modelRoleRegistryWrite(request),
   codexSkillsConfigWrite: (request: Parameters<DesktopRpcRequests["codexSkillsConfigWrite"]>[0]) =>
     rpc.request.codexSkillsConfigWrite(request),
   codexSkillsExtraRootsSet: (request: Parameters<DesktopRpcRequests["codexSkillsExtraRootsSet"]>[0]) =>
@@ -3548,6 +3559,8 @@ const settingsPanel =
           void claudeSettingsSection?.refresh()
           void plansSection?.refresh()
         },
+        fetchModelRoles: () => controls.modelRoleRegistryRead(),
+        writeModelRole: request => controls.modelRoleRegistryWrite(request),
         write: async request => {
           const result = await controls.codexConfigValueWrite(request)
           return {

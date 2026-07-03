@@ -44,6 +44,7 @@ import {
 import { createCodexThreadItemEventProjector } from "./codex-thread-item-projector.js"
 import { khalaCodeConfigFromRuntimeEnv } from "./khala-code-config.js"
 import { projectKhalaCodeDesktopCodexThreadList } from "../shared/codex-threads.js"
+import type { KhalaCodeModelRoleEntry } from "../shared/model-roles.js"
 
 const CODEX_SESSION_STATE_SCHEMA = "khala-code-desktop.codex-sessions.v1"
 const DEFAULT_TURN_TIMEOUT_MS = 30 * 60 * 1_000
@@ -126,6 +127,7 @@ export type CodexAppServerChatRuntime = Readonly<{
   ) => Promise<KhalaCodeDesktopCodexThreadResult>
   startTurn: (request: KhalaCodeDesktopChatTurnRequest & {
     readonly cwd?: string
+    readonly modelRole?: KhalaCodeModelRoleEntry
   }) => Promise<KhalaCodeDesktopChatTurnResponse>
   interruptTurn: (
     request: KhalaCodeDesktopCodexTurnInterruptRequest,
@@ -905,7 +907,10 @@ export function createCodexAppServerChatRuntime(
   }
 
   const startTurn = async (
-    request: KhalaCodeDesktopChatTurnRequest & { readonly cwd?: string },
+    request: KhalaCodeDesktopChatTurnRequest & {
+      readonly cwd?: string
+      readonly modelRole?: KhalaCodeModelRoleEntry
+    },
   ): Promise<KhalaCodeDesktopChatTurnResponse> => {
     const desktopTurnId = request.turnId ?? `codex-turn-${Date.now().toString(36)}`
     const userMessage = [...request.messages].reverse().find(message => message.role === "user")

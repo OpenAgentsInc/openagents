@@ -50,6 +50,7 @@ describe("Khala Code diff review annotations", () => {
     expect(khalaCodeDiffReviewSteeringNote(comment)).toContain(
       `Diff review comment (${KHALA_CODE_DIFF_REVIEW_COMMENT_SCHEMA})`,
     )
+    expect(khalaCodeDiffReviewSteeringNote(comment)).toContain("Role: judge")
     expect(khalaCodeDiffReviewSteeringNote(comment)).toContain("Line: src/example.ts:+12")
     expect(khalaCodeDiffReviewSteeringNote(comment)).toContain(comment.body)
   })

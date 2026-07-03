@@ -9,6 +9,10 @@ import type {
   KhalaCodeQaMetricSample,
   KhalaCodeQaMetricsSnapshot,
 } from "./qa-metrics.js"
+import {
+  KhalaCodeModelRoleEntrySchema,
+  KhalaCodeModelRoleRegistrySchema,
+} from "./model-roles.js"
 
 // Electrobun treats Infinity as no local request timeout; chat turns stream progress
 // over events while hosted model calls and local tools can legitimately exceed 30s.
@@ -138,6 +142,12 @@ export type KhalaCodeDesktopClaudeApprovalRespondResult = typeof RpcClaudeApprov
 export type KhalaCodeDesktopClaudeSettingsReadResult = typeof RpcClaudeSettingsProjection.Type
 export type KhalaCodeDesktopCodexSettingsReadRequest = typeof RpcCodexSettingsReadRequest.Type
 export type KhalaCodeDesktopCodexSettingsReadResult = typeof RpcCodexSettingsProjection.Type
+export type KhalaCodeDesktopModelRoleRegistryReadResult =
+  typeof RpcModelRoleRegistryReadResult.Type
+export type KhalaCodeDesktopModelRoleRegistryWriteRequest =
+  typeof RpcModelRoleRegistryWriteRequest.Type
+export type KhalaCodeDesktopModelRoleRegistryWriteResult =
+  typeof RpcModelRoleRegistryWriteResult.Type
 export type KhalaCodeDesktopCodexConfigValueWriteRequest = typeof RpcCodexConfigValueWriteRequest.Type
 export type KhalaCodeDesktopCodexConfigValueWriteResult = typeof RpcCodexConfigValueWriteResult.Type
 export type KhalaCodeDesktopCodexEcosystemReadRequest = typeof RpcCodexEcosystemReadRequest.Type
@@ -978,6 +988,25 @@ const RpcCodexSettingsProjection = S.Struct({
     currentMode: RpcStringNull,
     personality: RpcStringNull,
   }),
+})
+const RpcModelRoleRegistryReadResult = S.Struct({
+  ok: S.Literal(true),
+  path: S.String,
+  registry: KhalaCodeModelRoleRegistrySchema,
+})
+const RpcModelRoleRegistryWriteRequest = S.Union([
+  S.Struct({
+    entry: KhalaCodeModelRoleEntrySchema,
+  }),
+  S.Struct({
+    registry: KhalaCodeModelRoleRegistrySchema,
+  }),
+])
+const RpcModelRoleRegistryWriteResult = S.Struct({
+  ok: S.Literal(true),
+  path: S.String,
+  registry: KhalaCodeModelRoleRegistrySchema,
+  saved: S.Boolean,
 })
 const RpcCodexConfigValueWriteRequest = S.Struct({
   cwd: S.optional(S.String),
@@ -1851,6 +1880,8 @@ export const KhalaCodeDesktopRpcMethodSchemas = {
   connectCodexAccount: { parameters: [param(S.String)], result: RpcConnectStart },
   harnessSettingRead: { parameters: noParams(), result: RpcHarnessSetting },
   harnessSettingWrite: { parameters: [param(RpcHarnessSettingWriteRequest)], result: RpcHarnessSettingWriteResult },
+  modelRoleRegistryRead: { parameters: noParams(), result: RpcModelRoleRegistryReadResult },
+  modelRoleRegistryWrite: { parameters: [param(RpcModelRoleRegistryWriteRequest)], result: RpcModelRoleRegistryWriteResult },
   openExternalUrl: { parameters: [param(S.String)], result: S.Boolean },
   removeCodexAccount: { parameters: [param(S.String)], result: RpcRemoveAccountResult },
   setCodexAccountPaused: { parameters: [param(S.Struct({ accountRef: S.String, paused: S.Boolean }))], result: RpcRemoveAccountResult },
@@ -2006,6 +2037,8 @@ export type KhalaCodeDesktopRPCSchema = {
     connectCodexAccount(accountRef: string): Promise<KhalaCodeDesktopConnectStart>
     harnessSettingRead(): Promise<typeof RpcHarnessSetting.Type>
     harnessSettingWrite(request: typeof RpcHarnessSettingWriteRequest.Type): Promise<typeof RpcHarnessSettingWriteResult.Type>
+    modelRoleRegistryRead(): Promise<KhalaCodeDesktopModelRoleRegistryReadResult>
+    modelRoleRegistryWrite(request: KhalaCodeDesktopModelRoleRegistryWriteRequest): Promise<KhalaCodeDesktopModelRoleRegistryWriteResult>
     openExternalUrl(url: string): Promise<boolean>
     removeCodexAccount(accountRef: string): Promise<KhalaCodeDesktopRemoveAccountResult>
     setCodexAccountPaused(request: { accountRef: string; paused: boolean }): Promise<KhalaCodeDesktopRemoveAccountResult>

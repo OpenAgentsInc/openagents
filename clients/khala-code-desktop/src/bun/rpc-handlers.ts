@@ -78,6 +78,9 @@ import {
   type KhalaCodeDesktopFleetStatus,
   type KhalaCodeDesktopForumRequest,
   type KhalaCodeDesktopForumResponse,
+  type KhalaCodeDesktopModelRoleRegistryReadResult,
+  type KhalaCodeDesktopModelRoleRegistryWriteRequest,
+  type KhalaCodeDesktopModelRoleRegistryWriteResult,
   type KhalaCodeDesktopPlanCatalogResult,
   type KhalaCodeDesktopPlanPurchaseRequest,
   type KhalaCodeDesktopPlanPurchaseResult,
@@ -125,10 +128,19 @@ import {
 } from "./claude-token-usage-telemetry.js"
 import {
   khalaCodeDesktopRuntimeEnvOverride,
+  hasKhalaCodeDesktopPersistedModelRoleRegistry,
   readKhalaCodeDesktopHarnessSetting,
+  readKhalaCodeDesktopModelRoleRegistry,
   readKhalaCodeDesktopPersistedHarnessMode,
+  resolveKhalaCodeDesktopModelRole,
   writeKhalaCodeDesktopHarnessSetting,
+  writeKhalaCodeDesktopModelRoleEntry,
+  writeKhalaCodeDesktopModelRoleRegistry,
 } from "./harness-setting.js"
+import type {
+  KhalaCodeModelRole,
+  KhalaCodeModelRoleEntry,
+} from "../shared/model-roles.js"
 import {
   consumeKhalaCodexRateLimitResetCredit,
   fetchKhalaCodexRateLimitStatus,
@@ -156,10 +168,12 @@ type ChatRuntime = CodexAppServerChatRuntime
 type ChatRuntimeSelection =
   | {
     readonly kind: "claude"
+    readonly modelRole?: KhalaCodeModelRoleEntry
     readonly runtime: ClaudeAppSdkChatRuntime
   }
   | {
     readonly kind: "codex"
+    readonly modelRole?: KhalaCodeModelRoleEntry
     readonly runtime: ChatRuntime
   }
   | {
@@ -950,16 +964,38 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
     khalaCodeDesktopRuntimeEnvOverride(input.env) ??
       await readKhalaCodeDesktopPersistedHarnessMode(input.env)
 
-  const selectChatRuntime = async (): Promise<ChatRuntimeSelection> => {
-    const runtimeMode = await selectedRuntimeMode()
-    if (runtimeMode === "claude_runtime") {
-      return { kind: "claude", runtime: requireClaudeChatRuntime() }
+  const roleRuntimeMode = async (
+    role: KhalaCodeModelRole,
+  ): Promise<{
+    readonly mode: "claude_runtime" | "codex_harness" | "khala_native_runtime"
+    readonly role: KhalaCodeModelRoleEntry
+  }> => {
+    const envOverride = khalaCodeDesktopRuntimeEnvOverride(input.env)
+    const modelRole = await resolveKhalaCodeDesktopModelRole(role, input.env)
+    if (envOverride !== null) return { mode: envOverride, role: modelRole }
+    if (!await hasKhalaCodeDesktopPersistedModelRoleRegistry(input.env)) {
+      return { mode: await readKhalaCodeDesktopPersistedHarnessMode(input.env), role: modelRole }
     }
-    if (runtimeMode === "khala_native_runtime") {
+    if (modelRole.harness === "claude") return { mode: "claude_runtime", role: modelRole }
+    if (modelRole.harness === "khala") return { mode: "khala_native_runtime", role: modelRole }
+    return { mode: "codex_harness", role: modelRole }
+  }
+
+  const selectRoleRuntime = async (
+    role: KhalaCodeModelRole,
+  ): Promise<ChatRuntimeSelection> => {
+    const { mode, role: modelRole } = await roleRuntimeMode(role)
+    if (mode === "claude_runtime") {
+      return { kind: "claude", modelRole, runtime: requireClaudeChatRuntime() }
+    }
+    if (mode === "khala_native_runtime") {
       return { kind: "legacy" }
     }
-    return { kind: "codex", runtime: requireCodexChatRuntime() }
+    return { kind: "codex", modelRole, runtime: requireCodexChatRuntime() }
   }
+
+  const selectChatRuntime = async (): Promise<ChatRuntimeSelection> =>
+    selectRoleRuntime("coder")
   let fleetMcpBridgeReady = false
 
   const maybeEnsureFleetMcpBridge = async (): Promise<CodexFleetMcpBridgeEnsureResult | null> => {
@@ -1941,7 +1977,7 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
         count: request.count,
         fixture: request.mode === "fixture",
         noRun: request.noRun,
-        prompt: request.objective,
+        prompt: `Khala Code role: coder\n\n${request.objective}`,
         repo: request.mode === "fixture" ? undefined : request.repo,
         timeoutMs: request.timeoutMs,
         verify: request.mode === "fixture" ? undefined : request.verify,
@@ -2025,7 +2061,7 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
         count: request.count,
         fixture: request.fixture,
         noRun: request.noRun,
-        prompt: renderFleetPromotionObjective(request),
+        prompt: `Khala Code role: coder\n\n${renderFleetPromotionObjective(request)}`,
         repo: request.repo,
         timeoutMs: request.timeoutMs,
         verify: request.verify,
@@ -2450,6 +2486,7 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
       return selection.runtime.startTurn({
         ...request,
         cwd: request.cwd ?? input.workingDirectory,
+        ...(selection.modelRole === undefined ? {} : { modelRole: selection.modelRole }),
       })
     },
     async codexTurnSteer(request) {
@@ -2458,7 +2495,7 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
       return selection.runtime.steerTurn(request)
     },
     async codingStatus() {
-      const runtimeMode = await selectedRuntimeMode()
+      const { mode: runtimeMode } = await roleRuntimeMode("coder")
       if (runtimeMode === "claude_runtime") {
         const harness = await claudeHarnessStatus()
         return runtimeStatus({
@@ -2497,6 +2534,15 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
     },
     async harnessSettingWrite(request) {
       return writeKhalaCodeDesktopHarnessSetting(request.mode, input.env)
+    },
+    async modelRoleRegistryRead(): Promise<KhalaCodeDesktopModelRoleRegistryReadResult> {
+      return readKhalaCodeDesktopModelRoleRegistry(input.env)
+    },
+    async modelRoleRegistryWrite(
+      request: KhalaCodeDesktopModelRoleRegistryWriteRequest,
+    ): Promise<KhalaCodeDesktopModelRoleRegistryWriteResult> {
+      if ("registry" in request) return writeKhalaCodeDesktopModelRoleRegistry(request.registry, input.env)
+      return writeKhalaCodeDesktopModelRoleEntry(request.entry, input.env)
     },
     async openExternalUrl(url: string) {
       return openExternalUrl(url)
@@ -2562,12 +2608,14 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
             return withFleetMcpBridgeNote(await labelCodexHarnessResponse(await selection.runtime.startTurn({
               ...materializedRequest,
               cwd: input.workingDirectory,
+              ...(selection.modelRole === undefined ? {} : { modelRole: selection.modelRole }),
             })), bridge)
           }
           if (selection.kind === "claude") {
             return selection.runtime.startTurn({
               ...materializedRequest,
               cwd: input.workingDirectory,
+              ...(selection.modelRole === undefined ? {} : { modelRole: selection.modelRole }),
             })
           }
           return labelLegacyRuntimeResponse(await legacyChatTurn({

@@ -62,6 +62,7 @@ export const khalaCodeDiffReviewSteeringNote = (
   comment: KhalaCodeDiffReviewComment,
 ): string => [
   `Diff review comment (${comment.schema})`,
+  "Role: judge",
   `Ref: ${comment.commentRef}`,
   `Line: ${khalaCodeDiffReviewLineLabel(comment)}`,
   `Kind: ${comment.lineKind}`,
