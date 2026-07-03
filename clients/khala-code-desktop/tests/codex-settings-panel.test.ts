@@ -42,6 +42,7 @@ const installDom = (): {
 }
 
 describe("Codex settings panel", () => {
+  // Oracle for khala_code.settings.hidden_models_excluded_from_picker.v1
   test("does not expose hidden Codex models as selectable chat models", async () => {
     const { cleanup, container, window } = installDom()
     const writes: unknown[] = []
@@ -103,6 +104,42 @@ describe("Codex settings panel", () => {
       await Promise.resolve()
 
       expect(writes).toEqual([{ keyPath: "model", value: "gpt-5.4-mini" }])
+    } finally {
+      cleanup()
+    }
+  })
+
+  // Oracle for khala_code.settings.no_bare_unset_labels.v1
+  test("renders unset read-only config fields as 'Default', never the bare word 'Unset'", async () => {
+    const { cleanup, container } = installDom()
+    const settings = projectKhalaCodeDesktopCodexSettings({
+      configRead: {
+        config: {
+          model: "gpt-5.5-codex",
+        },
+      },
+      modelList: {
+        data: [{
+          id: "gpt-5.5-codex",
+          model: "gpt-5.5-codex",
+          displayName: "GPT-5.5",
+          hidden: false,
+        }],
+      },
+    })
+
+    try {
+      const panel = mountCodexSettingsPanel(container, {
+        fetch: async () => settings,
+        write: async () => ({ ok: true, settings }),
+      })
+
+      await panel.refresh()
+
+      const metricValues = Array.from(container.querySelectorAll(".khala-settings-metric-value"))
+        .map(node => node.textContent)
+      expect(metricValues).not.toContain("Unset")
+      expect(metricValues).toContain("Default")
     } finally {
       cleanup()
     }

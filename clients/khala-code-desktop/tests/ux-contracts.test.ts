@@ -650,7 +650,7 @@ describe("contract khala_code.chat.thread_open_never_raw_error.v1", () => {
       await new Promise(resolve => setTimeout(resolve, 0))
 
       expect(container.textContent).not.toContain("no rollout found")
-      const errorNode = container.querySelector(".khala-thread-sidebar-row-error")
+      const errorNode = container.querySelector(".khala-thread-sidebar-row-error-text")
       expect(errorNode?.textContent).toBe(
         "This chat couldn't be opened. Its session may be missing or unavailable — try again or start a new chat.",
       )
@@ -970,5 +970,18 @@ describe("contract khala_code.tokens.per_thread_live_counter.v1", () => {
     const meterRule = css.split(".khala-thread-token-meter {")[1]?.split("}")[0] ?? ""
     expect(meterRule).toContain("top: 12px")
     expect(meterRule).toContain("right: 18px")
+  })
+})
+
+// Oracle for khala_code.terminal.tui_mode_available.v1
+describe("contract khala_code.terminal.tui_mode_available.v1", () => {
+  test("the TUI reuses the exact desktop harness and gates honestly on availability", async () => {
+    const tui = await Bun.file(new URL("../scripts/khala-code-tui.ts", import.meta.url)).text()
+    expect(tui).toContain("createCodexAppServerChatRuntime")
+    expect(tui).toContain("createCodexAppServerHost")
+    expect(tui).toContain("inspectCodexHarnessStatus")
+    expect(tui).toContain("/new")
+    expect(tui).toContain("/status")
+    expect(tui).toContain("/exit")
   })
 })

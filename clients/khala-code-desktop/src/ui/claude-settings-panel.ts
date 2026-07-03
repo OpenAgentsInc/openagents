@@ -15,9 +15,15 @@ const el = <Tag extends keyof HTMLElementTagNameMap>(
   return node
 }
 
+/**
+ * Read-only settings metrics never say the bare, unexplained word "Unset" —
+ * a null/undefined/empty value here means the field reflects a default, so
+ * it says "Default" in plain language instead
+ * (khala_code.settings.no_bare_unset_labels.v1).
+ */
 const compact = (value: unknown): string => {
-  if (value === null || value === undefined || value === "") return "Unset"
-  if (Array.isArray(value)) return value.join(", ") || "Unset"
+  if (value === null || value === undefined || value === "") return "Default"
+  if (Array.isArray(value)) return value.join(", ") || "Default"
   if (typeof value === "object") return "Available"
   return String(value)
 }

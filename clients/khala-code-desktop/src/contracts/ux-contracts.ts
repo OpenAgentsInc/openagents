@@ -313,6 +313,14 @@ export const khalaCodeUxContractRegistry: BehaviorContractRegistryDocument = {
           mode: "dom",
           ref: "clients/khala-code-desktop/tests/codex-thread-sidebar.test.ts",
         },
+        {
+          description:
+            "Mounts the real History sidebar in a DOM, forces a 'no rollout found' resume failure on a dead thread, and proves both the per-thread error row and the global error banner render a dismiss control that clears the error on click without triggering another listThreads fetch.",
+          id: "history_error_dismiss.dom",
+          kind: "bun-test",
+          mode: "dom",
+          ref: "clients/khala-code-desktop/tests/codex-thread-sidebar.test.ts",
+        },
       ],
       productArea: "History sidebar",
       source: {
@@ -1106,7 +1114,163 @@ export const khalaCodeUxContractRegistry: BehaviorContractRegistryDocument = {
       verification:
         "bun test tests/ux-contracts.test.ts inside clients/khala-code-desktop; runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.",
     },
+    {
+      authorityBoundary:
+        "Binds the existence and reuse of the desktop harness for a terminal REPL; does not change the underlying Codex app-server chat runtime or its approval/sandbox behavior.",
+      blockerRefs: [],
+      contractId: "khala_code.terminal.tui_mode_available.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "clients/khala-code-desktop/scripts/khala-code-tui.ts",
+        "docs/khala-code/khala-code-ux-contract.md",
+      ],
+      oracles: [
+        {
+          description:
+            "Pins that the TUI script reuses the exact desktop chat/harness/status functions (createCodexAppServerChatRuntime, createCodexAppServerHost, inspectCodexHarnessStatus) rather than a parallel implementation, and exposes the /new, /status, and /exit slash commands.",
+          id: "tui_mode_available.source",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "clients/khala-code-desktop/tests/ux-contracts.test.ts",
+        },
+      ],
+      productArea: "terminal",
+      source: {
+        channel: "community-feedback-discord",
+        statedBy: "TheBenMeadows (community; relayed via Lathe operator agent PR)",
+        statedOn: "2026-07-03",
+      },
+      state: "enforced",
+      statement:
+        "A terminal (TUI) mode is available: an interactive REPL over the same Codex app-server harness the desktop app uses, for users who want the engine without the window.",
+      surface: "khala-code-desktop",
+      verification:
+        "Enforced 2026-07-03: shipped via PR #8221 (merged). bun test tests/ux-contracts.test.ts inside clients/khala-code-desktop; runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.",
+    },
+    {
+      authorityBoundary:
+        "Binds the Settings model picker only; other consumers of the model catalog (e.g. diagnostics) may still see hidden entries.",
+      blockerRefs: [],
+      contractId: "khala_code.settings.hidden_models_excluded_from_picker.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "clients/khala-code-desktop/src/ui/codex-settings-panel.ts",
+        "docs/khala-code/khala-code-ux-contract.md",
+      ],
+      oracles: [
+        {
+          description:
+            "Mounts the real Codex settings panel with a model catalog that includes a hidden entry (e.g. 'Codex Auto Review') and asserts it never appears as a selectable option and its label/'(hidden)' marker never leaks into the panel text.",
+          id: "hidden_models_excluded_from_picker.dom",
+          kind: "bun-test",
+          mode: "dom",
+          ref: "clients/khala-code-desktop/tests/codex-settings-panel.test.ts",
+        },
+      ],
+      productArea: "settings",
+      source: {
+        channel: "community-feedback-discord",
+        statedBy: "TheBenMeadows (community; relayed via Lathe operator agent issue #8230)",
+        statedOn: "2026-07-03",
+      },
+      state: "enforced",
+      statement:
+        "Internal/hidden Codex models (e.g. 'Codex Auto Review') never appear as selectable entries in the Settings model picker.",
+      surface: "khala-code-desktop",
+      verification:
+        "Enforced 2026-07-03: fixed for GitHub issue #8230 via PR #8236 (merged). bun test tests/codex-settings-panel.test.ts inside clients/khala-code-desktop; runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.",
+    },
+    {
+      authorityBoundary:
+        "Binds display labeling only — whether a read-only settings value reads as an unexplained 'Unset' or an honest 'Default'. Does not itself make any field editable; that is tracked separately by khala_code.settings.editable_not_env_var_only.v1.",
+      blockerRefs: [],
+      contractId: "khala_code.settings.no_bare_unset_labels.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "clients/khala-code-desktop/src/ui/codex-settings-panel.ts",
+        "clients/khala-code-desktop/src/ui/claude-settings-panel.ts",
+        "docs/khala-code/khala-code-ux-contract.md",
+      ],
+      oracles: [
+        {
+          description:
+            "Mounts the real Codex settings panel with a projection whose read-only config fields (provider, reasoning summary, verbosity, approval, sandbox, etc.) are null, and asserts every rendered metric value is 'Default' and none is the bare word 'Unset'.",
+          id: "no_bare_unset_labels.codex_panel.unit",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "clients/khala-code-desktop/tests/codex-settings-panel.test.ts",
+        },
+        {
+          description:
+            "Mounts the real Claude settings section with a projection whose account fields are null, and asserts every rendered metric value is 'Default' and none is the bare word 'Unset'.",
+          id: "no_bare_unset_labels.claude_panel.unit",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "clients/khala-code-desktop/tests/claude-settings-panel.test.ts",
+        },
+      ],
+      productArea: "settings",
+      source: {
+        channel: "community-feedback-discord",
+        statedBy: "TheBenMeadows (community; relayed via Lathe operator agent issues/PR)",
+        statedOn: "2026-07-03",
+      },
+      state: "enforced",
+      statement:
+        "A read-only settings value never displays the bare, unexplained word 'Unset'. When it reflects a default, it says so in plain language (e.g. 'Default').",
+      surface: "khala-code-desktop",
+      verification:
+        "Enforced 2026-07-03: fixed as part of the response to community feedback that also produced #8230-#8233 and PR #8221. Both the Codex and Claude settings panels now render 'Default' instead of 'Unset' for null/undefined read-only metric values. Runs on every test-sweep invocation.",
+    },
+    {
+      authorityBoundary:
+        "Binds settings-panel editability for values that are structurally configurable (Codex/Claude config keys); does not apply to values that are genuinely environment-only by design (e.g. secrets that must never be typed into the UI), which should instead say so honestly per khala_code.settings.no_bare_unset_labels.v1.",
+      blockerRefs: ["blocker.github_issue.8254"],
+      contractId: "khala_code.settings.editable_not_env_var_only.v1",
+      enforcementTier: "unenforced",
+      evidenceRefs: [
+        "clients/khala-code-desktop/src/ui/codex-settings-panel.ts",
+        "docs/khala-code/khala-code-ux-contract.md",
+      ],
+      oracles: [],
+      productArea: "settings",
+      source: {
+        channel: "community-feedback-discord",
+        statedBy: "TheBenMeadows (community; relayed via Lathe operator agent issues/PR)",
+        statedOn: "2026-07-03",
+      },
+      state: "pending",
+      statement:
+        "Read-only Codex config metrics that reflect a genuinely configurable value (model provider, approval policy, sandbox mode, reasoning summary, verbosity) are editable from the settings UI itself, reusing the existing config-value write RPC, rather than requiring the user to edit an external environment variable or config file.",
+      surface: "khala-code-desktop",
+      verification:
+        "Not yet enforced: recorded from community feedback (relayed by TheBenMeadows, formalized by the Lathe operator agent) on 2026-07-03. Tracked in GitHub issue #8254, filed the same day: needs per-field enum/option sourcing for approval policy, sandbox mode, verbosity, and reasoning summary before it can flip to enforced.",
+    },
+    {
+      authorityBoundary:
+        "Binds the Khala lane's missing-token UI affordance only; does not itself define the token-minting backend flow, which is separate implementation work tracked by the same issue.",
+      blockerRefs: ["blocker.github_issue.8255"],
+      contractId: "khala_code.chat.khala_lane_connect_button.v1",
+      enforcementTier: "unenforced",
+      evidenceRefs: [
+        "clients/khala-code-desktop/src/ui/main.ts",
+        "docs/khala-code/khala-code-ux-contract.md",
+      ],
+      oracles: [],
+      productArea: "Khala lane",
+      source: {
+        channel: "community-feedback-discord",
+        statedBy: "TheBenMeadows (community; relayed via Lathe operator agent issues/PR)",
+        statedOn: "2026-07-03",
+      },
+      state: "pending",
+      statement:
+        "When the Khala lane is unavailable because the desktop process has no OPENAGENTS_AGENT_TOKEN, the lane offers a 'Connect' button that drives an in-app flow to obtain and persist a token, instead of only explaining the missing environment variable in text.",
+      surface: "khala-code-desktop",
+      verification:
+        "Not yet enforced: recorded from community feedback (relayed by TheBenMeadows, formalized by the Lathe operator agent) on 2026-07-03. Tracked in GitHub issue #8255, filed the same day: needs a backend token-minting/device-auth flow and a new local persistence RPC before it can flip to enforced.",
+    },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-03.6",
+  version: "2026-07-03.8",
 }

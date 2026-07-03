@@ -305,7 +305,12 @@ export const mountCodexThreadSidebar = (
   }
 
   const setStatusError = (error: unknown): void => {
-    state = { phase: "error", message: error instanceof Error ? error.message : String(error) }
+    state = {
+      phase: "error",
+      message: friendlyKhalaCodeCodexThreadOpenErrorMessage(
+        error instanceof Error ? error.message : String(error),
+      ),
+    }
     render()
   }
 
@@ -660,9 +665,32 @@ export const mountCodexThreadSidebar = (
 
     item.append(renamingThreadId === thread.id ? threadRenameForm(thread) : row)
     if (selectionError?.threadId === thread.id) {
-      item.append(el("p", "khala-thread-sidebar-row-error", selectionError.message))
+      item.append(dismissibleErrorRow(selectionError.message, () => {
+        selectionError = null
+        render()
+      }))
     }
     return item
+  }
+
+  const dismissibleErrorRow = (
+    message: string,
+    onDismiss: () => void,
+    className = "khala-thread-sidebar-row-error",
+  ): HTMLDivElement => {
+    const wrapper = el("div", className)
+    wrapper.append(el("span", `${className}-text`, message))
+    const dismiss = el("button", "khala-thread-sidebar-row-error-dismiss")
+    dismiss.type = "button"
+    dismiss.title = "Dismiss"
+    dismiss.setAttribute("aria-label", "Dismiss error")
+    dismiss.replaceChildren(sidebarIcon("X", "Dismiss"), srOnly("Dismiss"))
+    dismiss.addEventListener("click", event => {
+      event.stopPropagation()
+      onDismiss()
+    })
+    wrapper.append(dismiss)
+    return wrapper
   }
 
   function render(): void {
@@ -763,7 +791,15 @@ export const mountCodexThreadSidebar = (
       return
     }
     if (currentState.phase === "error") {
-      container.append(el("p", "khala-thread-sidebar-error", currentState.message))
+      const dismissedMessage = currentState.message
+      container.append(dismissibleErrorRow(
+        dismissedMessage,
+        () => {
+          state = data === undefined ? { phase: "idle" } : { phase: "ready", data }
+          render()
+        },
+        "khala-thread-sidebar-error",
+      ))
     }
     if ((data.threads ?? []).length === 0) {
       container.append(el("p", "khala-thread-sidebar-empty", "No threads"))
@@ -807,7 +843,9 @@ export const mountCodexThreadSidebar = (
       }
     } catch (error) {
       if (requestSequence !== refreshSequence) return
-      const message = error instanceof Error ? error.message : String(error)
+      const message = friendlyKhalaCodeCodexThreadOpenErrorMessage(
+        error instanceof Error ? error.message : String(error),
+      )
       state = previousData === undefined
         ? { phase: "error", message }
         : { phase: "error", message, data: previousData }

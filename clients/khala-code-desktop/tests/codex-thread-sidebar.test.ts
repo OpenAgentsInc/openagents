@@ -480,4 +480,75 @@ describe("Khala Code thread sidebar", () => {
       window.close()
     }
   })
+
+  test("a dead-thread error row and the global error banner both clear on dismiss, without a refetch", async () => {
+    // Oracle for khala_code.history.app_sessions_default.v1
+    const window = new Window()
+    const previousDocument = globalThis.document
+    const previousNavigator = globalThis.navigator
+    Object.defineProperty(globalThis, "document", {
+      configurable: true,
+      value: window.document,
+    })
+    Object.defineProperty(globalThis, "navigator", {
+      configurable: true,
+      value: window.navigator,
+    })
+    try {
+      const container = document.createElement("aside")
+      document.body.append(container)
+      const data = {
+        ok: true as const,
+        data: [],
+        groups: [{ key: "all", label: "All sessions", threadIds: ["thread-a"] }],
+        threads: [thread("thread-a", "Broken chat")],
+      }
+      let listThreadsCalls = 0
+      const sidebar = mountCodexThreadSidebar(container, {
+        activeThreadId: () => null,
+        archiveThread: async threadId => ({ action: "archive", ok: true, threadId }),
+        deleteThread: async threadId => ({ action: "delete", ok: true, threadId }),
+        forkThread: async threadId => ({ action: "fork", ok: true, threadId }),
+        listThreads: async () => {
+          listThreadsCalls += 1
+          return data
+        },
+        renameThread: async threadId => ({ action: "rename", ok: true, threadId }),
+        resumeThread: async () => {
+          throw new Error("no rollout found for thread id thread-a")
+        },
+        sessionId: "desktop-session",
+        unarchiveThread: async threadId => ({ action: "unarchive", ok: true, threadId }),
+        onNewThreadRequested: () => undefined,
+        onThreadSelected: () => undefined,
+      })
+      sidebar.setVisible(true)
+      await sidebar.refresh()
+      const callsAfterInitialLoad = listThreadsCalls
+
+      const row = container.querySelector<HTMLButtonElement>(
+        '[data-thread-id="thread-a"] .khala-thread-sidebar-item-row',
+      )
+      row?.click()
+      await new Promise(resolve => setTimeout(resolve, 0))
+
+      const rowErrorDismiss = container.querySelector<HTMLButtonElement>(
+        ".khala-thread-sidebar-row-error .khala-thread-sidebar-row-error-dismiss",
+      )
+      expect(rowErrorDismiss).not.toBeNull()
+      rowErrorDismiss?.click()
+      expect(container.querySelector(".khala-thread-sidebar-row-error")).toBeNull()
+      expect(listThreadsCalls).toBe(callsAfterInitialLoad)
+    } finally {
+      Object.defineProperty(globalThis, "document", {
+        configurable: true,
+        value: previousDocument,
+      })
+      Object.defineProperty(globalThis, "navigator", {
+        configurable: true,
+        value: previousNavigator,
+      })
+      window.close()
+    }
+  })
 })
