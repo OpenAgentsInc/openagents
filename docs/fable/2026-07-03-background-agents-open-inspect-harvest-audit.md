@@ -1,5 +1,20 @@
 # Open-Inspect (background-agents) — Harvest Audit For The OpenAgents Cloud/Forge Stack
 
+> **Addendum (2026-07-03, owner-corrected):** this audit compared against the
+> *standalone* `forge/` repo (dormant) and assumed the private `cloud/`
+> GCE/Firecracker repo is the active data plane. Both framings are stale: the
+> June-28 Forge program (`docs/forge/`, SU-0..SU-8 all closed) re-founded
+> Forge **inside this monorepo** as a live Cloudflare-owned coordination
+> layer (`/api/forge/*` control-plane routes, smart-Git intake → R2 + D1
+> canonical refs, tenant-scoped git tokens, verification receipts, gated
+> promotion, GitHub as downstream mirror, multi-tenant isolation), and much
+> of the "cloud thinking" now lives here. §6 below therefore understates
+> Forge, and the repo routing in §4/§7 is superseded. The corrected, owning
+> plan is [`ROADMAP_BACKGROUND_AGENTS.md`](./ROADMAP_BACKGROUND_AGENTS.md):
+> everything lands in this monorepo (Worker + Forge layer + Pylon fleet);
+> GCE-workroom-specific items are parked there in §6 pending an owner
+> decision on that lane. The Open-Inspect analysis itself (§1–§5) stands.
+
 Date: 2026-07-03
 Status: reference audit + harvest plan. Examines the local read-only clone
 `projects/repos/background-agents` (Open-Inspect, the open-source background
