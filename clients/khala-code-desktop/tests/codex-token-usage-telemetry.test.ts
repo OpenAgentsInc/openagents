@@ -74,11 +74,14 @@ describe("Codex token usage telemetry", () => {
         leaderboardEligible: true,
         privacyOptOut: false,
       },
+      roleRef: "coder",
       safeMetadata: {
         clientUserMessageId: "user-direct-local",
         codexThreadId: "thread-direct-local",
         codexTurnId: "turn-direct-local",
         desktopTurnId: "desktop-turn-direct-local",
+        role_ref: "coder",
+        roleRef: "coder",
       },
       sourceRoute: "pylon_codex_direct_local",
       tokenCounts: {
@@ -92,6 +95,21 @@ describe("Codex token usage telemetry", () => {
     })
     expect(JSON.stringify(event)).not.toContain("/Users/")
     expect(JSON.stringify(event)).not.toContain("Count this")
+  })
+
+  test("honors explicit model roles on exact direct-local rows", () => {
+    const event = khalaCodeDesktopCodexTokenUsageEvent({
+      ...sampleReport(),
+      roleRef: "judge",
+    })
+
+    expect(event).toMatchObject({
+      roleRef: "judge",
+      safeMetadata: {
+        role_ref: "judge",
+        roleRef: "judge",
+      },
+    })
   })
 
   test("stores a local JSONL row and posts to OpenAgents when configured", async () => {
@@ -654,7 +672,9 @@ describe("Codex token usage telemetry", () => {
         eventId: "token_usage_event.live.ok",
         idempotencyKey: "khala-code-desktop:live:ok",
         observedAt: "2026-07-01T16:31:00.000Z",
-        safeMetadata: { codexThreadId: report.codexThreadId },
+        provider: "pylon-codex-direct-local",
+        roleRef: "coder",
+        safeMetadata: { codexThreadId: report.codexThreadId, role_ref: "coder" },
         tokenCounts: {
           inputTokens: 7,
           outputTokens: 3,
@@ -669,7 +689,9 @@ describe("Codex token usage telemetry", () => {
         eventId: "token_usage_event.live.failed",
         idempotencyKey: "khala-code-desktop:live:failed",
         observedAt: "2026-07-01T16:31:02.000Z",
-        safeMetadata: { codexThreadId: report.codexThreadId },
+        provider: "pylon-codex-direct-local",
+        roleRef: "judge",
+        safeMetadata: { codexThreadId: report.codexThreadId, role_ref: "judge" },
         tokenCounts: {
           inputTokens: 4,
           outputTokens: 1,
@@ -702,6 +724,22 @@ describe("Codex token usage telemetry", () => {
       totalTokens: 140,
       usageEventRows: 2,
     })
+    expect(summary.roleEconomics).toEqual([
+      {
+        label: "Coder",
+        roleRef: "coder",
+        state: "subscription_covered",
+        totalTokens: 10,
+        usageEvents: 1,
+      },
+      {
+        label: "Judge",
+        roleRef: "judge",
+        state: "subscription_covered",
+        totalTokens: 5,
+        usageEvents: 1,
+      },
+    ])
   })
 
   test("does not count Codex-only state tokens as Khala local or pending usage", async () => {

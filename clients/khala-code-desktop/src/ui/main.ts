@@ -830,6 +830,7 @@ const emptyThreadTokenSummary = (
   pendingSyncTokens: 0,
   remoteConfigured: false,
   remoteDisabled: false,
+  roleEconomics: [],
   threadId,
   totalTokens: 0,
   updatedAt: null,
@@ -1385,6 +1386,19 @@ const formatCompactTokens = (tokens: number): string =>
 const formatExactTokens = (tokens: number): string =>
   exactTokenFormatter.format(Math.max(0, Math.trunc(tokens)))
 
+const formatRoleEconomicsValue = (
+  item: NonNullable<KhalaCodeDesktopThreadTokenSummary["roleEconomics"]>[number],
+): string => {
+  const tokens = formatExactTokens(item.totalTokens)
+  if (item.state === "metered") {
+    return `${tokens} / $${(item.costUsd ?? 0).toFixed(4)}`
+  }
+  if (item.state === "subscription_covered") {
+    return `${tokens} / subscription-covered`
+  }
+  return `${tokens} / not_measured`
+}
+
 const formatThreadTokenUpdatedAt = (value: string | null): string => {
   if (value === null) return "Not recorded"
   const date = new Date(value)
@@ -1436,6 +1450,9 @@ const renderThreadTokenCounter = (): void => {
   appendThreadTokenRow(rows, "Pending sync", formatExactTokens(summary.pendingSyncTokens))
   appendThreadTokenRow(rows, "Audit turns", exactTokenFormatter.format(summary.auditRows))
   appendThreadTokenRow(rows, "Usage events", exactTokenFormatter.format(summary.usageEventRows))
+  for (const item of summary.roleEconomics ?? []) {
+    appendThreadTokenRow(rows, item.label, formatRoleEconomicsValue(item))
+  }
   if (summary.codexStateTokens > 0) {
     appendThreadTokenRow(
       rows,

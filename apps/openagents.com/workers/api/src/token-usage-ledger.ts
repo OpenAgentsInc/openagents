@@ -205,6 +205,7 @@ type TokenUsageEventRow = Readonly<{
   repository_ref: string | null
   provider: string | null
   model: string | null
+  role_ref: string | null
   backend_profile: string | null
   input_tokens: number | null
   output_tokens: number | null
@@ -958,6 +959,13 @@ const rowToRecord = (
     },
     producerSystem: row.producer_system,
     provider: row.provider,
+    roleRef:
+      row.role_ref === 'architect' ||
+      row.role_ref === 'coder' ||
+      row.role_ref === 'judge' ||
+      row.role_ref === 'advisor'
+        ? row.role_ref
+        : null,
     safeMetadata,
     sourceRefs: {
       ...(row.anonymized_source_ref === null
@@ -1012,6 +1020,7 @@ const storedRowFromInput = (
     privacy_opt_out: body.privacy?.privacyOptOut === true ? 1 : 0,
     producer_system: body.producerSystem,
     provider: body.provider ?? null,
+    role_ref: body.roleRef ?? null,
     reasoning_tokens: input.tokenCounts.reasoningTokens,
     repository_ref: body.sourceRefs?.repositoryRef ?? null,
     run_ref: body.sourceRefs?.runRef ?? null,
@@ -1043,6 +1052,7 @@ const insertBindings = (
   row.repository_ref,
   row.provider,
   row.model,
+  row.role_ref,
   row.backend_profile,
   row.input_tokens,
   row.output_tokens,
@@ -1753,6 +1763,7 @@ const insertEventRow = (
           repository_ref,
           provider,
           model,
+          role_ref,
           backend_profile,
           input_tokens,
           output_tokens,
@@ -1771,7 +1782,7 @@ const insertEventRow = (
           leaderboard_eligible,
           privacy_opt_out,
           safe_metadata_json
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(...insertBindings(row))
     const rollupStatements = publicTokensServedRollupStatements(db, row)

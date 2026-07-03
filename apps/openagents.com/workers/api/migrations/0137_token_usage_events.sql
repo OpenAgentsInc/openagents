@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS token_usage_events (
   repository_ref TEXT,
   provider TEXT,
   model TEXT,
+  role_ref TEXT,
   backend_profile TEXT,
   input_tokens INTEGER NOT NULL DEFAULT 0,
   output_tokens INTEGER NOT NULL DEFAULT 0,

@@ -1267,6 +1267,23 @@ const RpcSlashCommandDispatchResult = S.Struct({
 const RpcThreadTokenSummaryRequest = S.Struct({
   threadId: S.optional(RpcStringNull),
 })
+
+const RpcThreadRoleEconomicsState = S.Literals([
+  "metered",
+  "not_measured",
+  "subscription_covered",
+])
+
+const RpcThreadRoleEconomics = S.Struct({
+  costUsd: S.optional(S.Number),
+  currency: S.optional(S.String),
+  label: S.String,
+  roleRef: S.Literals(["architect", "coder", "judge", "advisor"]),
+  state: RpcThreadRoleEconomicsState,
+  totalTokens: S.Number,
+  usageEvents: S.Number,
+})
+
 const RpcThreadTokenSummary = S.Struct({
   auditRows: S.Number,
   codexStateDbPath: S.String,
@@ -1280,6 +1297,7 @@ const RpcThreadTokenSummary = S.Struct({
   pendingSyncTokens: S.Number,
   remoteConfigured: S.Boolean,
   remoteDisabled: S.Boolean,
+  roleEconomics: S.optional(S.Array(RpcThreadRoleEconomics)),
   threadId: RpcStringNull,
   totalTokens: S.Number,
   updatedAt: RpcStringNull,

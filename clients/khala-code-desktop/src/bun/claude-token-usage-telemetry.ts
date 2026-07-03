@@ -8,6 +8,7 @@ import { Effect } from "effect"
 import type { KhalaCodeDesktopUsage } from "../shared/rpc.js"
 import { khalaCodeConfigFromRuntimeEnv } from "./khala-code-config.js"
 import { KhalaCodeDesktopTokenUsagePersistentFailure } from "./codex-token-usage-telemetry.js"
+import type { KhalaCodeDesktopModelRoleRef } from "./codex-token-usage-telemetry.js"
 
 type FetchLike = (url: URL, init: RequestInit) => Promise<Response>
 
@@ -17,6 +18,7 @@ export type KhalaCodeDesktopClaudeTokenUsageReport = {
   readonly desktopTurnId: string
   readonly model: string
   readonly observedAt: string
+  readonly roleRef?: KhalaCodeDesktopModelRoleRef
   readonly sequence: number
   readonly totalCostUsd?: number
   readonly turnStatus?: string
@@ -114,6 +116,7 @@ export const khalaCodeDesktopClaudeTokenUsageEvent = (
   const model = report.model.trim().length === 0
     ? "openagents/claude-direct-local"
     : report.model.trim()
+  const roleRef = report.roleRef ?? "coder"
   return {
     schemaVersion: "openagents.token_usage_event.v1",
     backendProfile: "claude-agent-sdk",
@@ -131,12 +134,15 @@ export const khalaCodeDesktopClaudeTokenUsageEvent = (
     privacy: { leaderboardEligible: true, privacyOptOut: false },
     producerSystem: "pylon",
     provider: "pylon-claude-direct-local",
+    roleRef,
     safeMetadata: {
       agentSurface: "khala_code_desktop",
       captureMethod: "claude_result_usage",
       claudeSessionId: report.claudeSessionId,
       desktopSessionId: report.desktopSessionId,
       desktopTurnId: report.desktopTurnId,
+      role_ref: roleRef,
+      roleRef,
       runtimeMode: "claude_agent_sdk",
       totalCostUsd: report.totalCostUsd ?? null,
       turnStatus: report.turnStatus ?? "completed",

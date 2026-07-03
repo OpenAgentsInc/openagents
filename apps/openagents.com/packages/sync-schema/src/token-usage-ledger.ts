@@ -125,6 +125,14 @@ export class TokenUsageDemandAttribution extends S.Class<TokenUsageDemandAttribu
   demandClient: S.optionalKey(S.String),
 }) {}
 
+export const TokenUsageRoleRef = S.Literals([
+  'architect',
+  'coder',
+  'judge',
+  'advisor',
+])
+export type TokenUsageRoleRef = typeof TokenUsageRoleRef.Type
+
 export class TokenUsageEventIngestBody extends S.Class<TokenUsageEventIngestBody>(
   'TokenUsageEventIngestBody',
 )({
@@ -140,6 +148,7 @@ export class TokenUsageEventIngestBody extends S.Class<TokenUsageEventIngestBody
   privacy: S.optionalKey(TokenUsagePrivacyFlags),
   producerSystem: TokenUsageProducerSystem,
   provider: S.optionalKey(S.String),
+  roleRef: S.optionalKey(TokenUsageRoleRef),
   safeMetadata: S.optionalKey(S.Record(S.String, S.Unknown)),
   sourceRefs: S.optionalKey(TokenUsageSourceRefs),
   sourceRoute: TokenUsageSourceRoute,
@@ -163,6 +172,7 @@ export class TokenUsageEventRecord extends S.Class<TokenUsageEventRecord>(
   privacy: TokenUsagePrivacyFlags,
   producerSystem: TokenUsageProducerSystem,
   provider: S.NullOr(S.String),
+  roleRef: S.optionalKey(S.NullOr(TokenUsageRoleRef)),
   safeMetadata: S.Record(S.String, S.Unknown),
   sourceRefs: TokenUsageSourceRefs,
   sourceRoute: TokenUsageSourceRoute,

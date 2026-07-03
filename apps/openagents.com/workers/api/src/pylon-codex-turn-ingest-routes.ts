@@ -93,6 +93,7 @@ const BoundedText = S.String.check(S.isMaxLength(64 * 1024))
 const NonNegativeInt = S.Int.check(S.isGreaterThanOrEqualTo(0))
 const PositiveInt = S.Int.check(S.isGreaterThanOrEqualTo(1))
 const RawCodexEventPayload = S.Record(S.String, S.Unknown)
+const PylonModelRoleRef = S.Literals(['architect', 'coder', 'judge', 'advisor'])
 
 class PylonCodexUsage extends S.Class<PylonCodexUsage>('PylonCodexUsage')({
   inputTokens: NonNegativeInt,
@@ -146,6 +147,7 @@ class PylonCodexTurnIngestBody extends S.Class<PylonCodexTurnIngestBody>(
   workspaceRef: S.optionalKey(NonEmptyString),
   turnIndex: PositiveInt,
   observedAt: S.optionalKey(S.String.check(S.isMaxLength(80))),
+  roleRef: S.optionalKey(PylonModelRoleRef),
   usage: PylonCodexUsage,
   items: S.Array(PylonCodexTurnItem),
   rawEvents: S.optionalKey(S.Array(RawCodexEventPayload)),
@@ -160,6 +162,7 @@ class PylonCodexDirectLocalUsageIngestBody extends S.Class<PylonCodexDirectLocal
   observedAt: S.optionalKey(S.String.check(S.isMaxLength(80))),
   pylonRef: S.optionalKey(NonEmptyString),
   sessionRef: S.optionalKey(NonEmptyString),
+  roleRef: S.optionalKey(PylonModelRoleRef),
   usage: PylonCodexDirectLocalUsage,
 }) {}
 
@@ -175,6 +178,7 @@ class PylonClaudeTurnIngestBody extends S.Class<PylonClaudeTurnIngestBody>(
   workspaceRef: S.optionalKey(NonEmptyString),
   turnIndex: PositiveInt,
   observedAt: S.optionalKey(S.String.check(S.isMaxLength(80))),
+  roleRef: S.optionalKey(PylonModelRoleRef),
   usage: PylonCodexUsage,
   items: S.optionalKey(S.Array(PylonCodexTurnItem)),
 }) {}
@@ -1823,9 +1827,12 @@ const directLocalTokenUsageEventBody = (
     privacy: { leaderboardEligible: false, privacyOptOut: false },
     producerSystem: PYLON_CODEX_DIRECT_LOCAL_PRODUCER_SYSTEM,
     provider: PYLON_CODEX_DIRECT_LOCAL_PROVIDER,
+    roleRef: input.body.roleRef ?? 'coder',
     safeMetadata: {
       accountRefHash: input.body.accountRefHash,
       demandChannel: PYLON_CODEX_DIRECT_LOCAL_DEMAND_CHANNEL,
+      role_ref: input.body.roleRef ?? 'coder',
+      roleRef: input.body.roleRef ?? 'coder',
       ...(input.body.pylonRef === undefined
         ? {}
         : { pylonRef: input.body.pylonRef }),
@@ -1899,10 +1906,13 @@ const tokenUsageEventBody = (
     privacy: { leaderboardEligible: false, privacyOptOut: false },
     producerSystem: PYLON_CODEX_PRODUCER_SYSTEM,
     provider: PYLON_CODEX_PROVIDER,
+    roleRef: input.body.roleRef ?? 'coder',
     safeMetadata: {
       assignmentRef: input.body.assignmentRef,
       leaseRef: input.body.leaseRef,
       pylonRef: input.body.pylonRef,
+      role_ref: input.body.roleRef ?? 'coder',
+      roleRef: input.body.roleRef ?? 'coder',
       codexUsageSplit: {
         cachedInputTokens: input.body.usage.cachedInputTokens ?? 0,
         inputTokens: input.body.usage.inputTokens,
@@ -2948,10 +2958,13 @@ const claudeTokenUsageEventBody = (
     privacy: { leaderboardEligible: false, privacyOptOut: false },
     producerSystem: PYLON_CODEX_PRODUCER_SYSTEM,
     provider: PYLON_CLAUDE_PROVIDER,
+    roleRef: input.body.roleRef ?? 'coder',
     safeMetadata: {
       assignmentRef: input.body.assignmentRef,
       leaseRef: input.body.leaseRef,
       pylonRef: input.body.pylonRef,
+      role_ref: input.body.roleRef ?? 'coder',
+      roleRef: input.body.roleRef ?? 'coder',
       claudeUsageSplit: {
         cachedInputTokens: input.body.usage.cachedInputTokens ?? 0,
         inputTokens: input.body.usage.inputTokens,

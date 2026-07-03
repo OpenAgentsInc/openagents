@@ -1985,6 +1985,11 @@ describe('POST /api/pylon/codex/turns', () => {
       model: 'openagents/codex-direct-local',
       producerSystem: 'pylon',
       provider: 'pylon-codex-direct-local',
+      roleRef: 'coder',
+      safeMetadata: {
+        role_ref: 'coder',
+        roleRef: 'coder',
+      },
       sourceRefs: {
         anonymizedSourceRef: 'account.pylon.codex.abcdef123456',
         sessionRef: 'session.pylon.codex_composer.abc123',
@@ -2220,6 +2225,7 @@ describe('POST /api/pylon/codex/turns', () => {
       },
       model: 'openagents/pylon-codex',
       provider: 'pylon-codex-own-capacity',
+      roleRef: 'coder',
       usageTruth: 'exact',
     })
     expect(event?.actor).toMatchObject({
@@ -2250,6 +2256,8 @@ describe('POST /api/pylon/codex/turns', () => {
       costCaveat: 'owner_capacity_provider_cost_unknown',
       leaseRef: 'lease-pylon-codex-1',
       pylonRef: 'pylon-local-codex-1',
+      role_ref: 'coder',
+      roleRef: 'coder',
       usageBasis: 'codex_sdk_turn_completed',
     })
     expect(JSON.stringify(event)).not.toMatch(/raw|prompt|secret/i)
@@ -2605,6 +2613,7 @@ describe('POST /api/pylon/claude/turns', () => {
       },
       model: 'openagents/pylon-claude',
       provider: 'pylon-claude-own-capacity',
+      roleRef: 'coder',
       usageTruth: 'exact',
     })
     expect(event?.tokenCounts).toMatchObject({
@@ -2625,6 +2634,8 @@ describe('POST /api/pylon/claude/turns', () => {
         inputTokens: 200,
         outputTokens: 80,
       },
+      role_ref: 'coder',
+      roleRef: 'coder',
       usageBasis: 'claude_agent_sdk_turn_completed',
     })
     expect(deltas).toHaveLength(1)
