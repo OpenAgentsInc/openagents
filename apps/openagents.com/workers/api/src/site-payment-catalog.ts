@@ -11,6 +11,7 @@ import { OpenAgentsPaymentPolicyAudience } from './payment-limit-policy'
 import { openAgentsRunnerGatewayPayloadHasPrivateMaterial } from './runner-gateway'
 import {
   OpenAgentsSitePaymentCustomerDataRequirement,
+  OpenAgentsSitePaymentRecurringBilling,
   OpenAgentsSitePaymentEntitlementScope,
   OpenAgentsSitePaymentManifest,
   OpenAgentsSitePaymentPaidAction,
@@ -66,6 +67,7 @@ const OpenAgentsSitePaymentCatalogCommonRecord = S.Struct({
   orderRef: S.NullOr(S.String),
   price: OpenAgentsPaidEndpointProductRecord.fields.price,
   publicProjectionState: OpenAgentsSitePaymentPublicProjectionState,
+  recurringBilling: S.NullOr(OpenAgentsSitePaymentRecurringBilling),
   sandbox: S.Boolean,
   settlementMode: OpenAgentsSitePaymentSettlementMode,
   siteId: S.String,
@@ -139,6 +141,7 @@ export const OpenAgentsSitePaymentCatalogItemProjection = S.Struct({
   operatorRefs: S.Array(S.String),
   price: OpenAgentsPaidEndpointProductRecord.fields.price,
   publicProjectionState: OpenAgentsSitePaymentPublicProjectionState,
+  recurringBilling: S.NullOr(OpenAgentsSitePaymentRecurringBilling),
   sandbox: S.Boolean,
   settlementMode: OpenAgentsSitePaymentSettlementMode,
   siteId: S.String,
@@ -258,6 +261,16 @@ const priceIsSupported = (
     (price.asset === 'credits' && price.denomination === 'credit')
   )
 
+const recurringBillingIsSafe = (
+  recurringBilling: OpenAgentsSitePaymentRecurringBilling | null,
+): boolean =>
+  recurringBilling === null ||
+  (
+    recurringBilling.entitlementRenewalMode === 'renew_on_payment_receipt' &&
+    recurringBilling.renewalReceiptScopeRefs.length > 0 &&
+    recurringBilling.renewalReceiptScopeRefs.every(stableRefIsSafe)
+  )
+
 const catalogIdSegment = (value: string, fallback: string): string => {
   const normalized = value
     .toLowerCase()
@@ -300,6 +313,10 @@ const commonRecord = (
   itemKind: OpenAgentsSitePaymentCatalogItemKind,
 ): typeof OpenAgentsSitePaymentCatalogCommonRecord.Type => {
   const linkage = linkageFromInput(input)
+  const recurringBilling =
+    itemKind === 'product' && 'recurringBilling' in item
+      ? item.recurringBilling ?? null
+      : null
 
   return {
     agentReadable: item.agentReadable,
@@ -320,6 +337,7 @@ const commonRecord = (
     orderRef: input.orderRef,
     price: item.price,
     publicProjectionState: item.publicProjectionState,
+    recurringBilling,
     sandbox: item.sandbox || input.manifest.payments.sandboxDefault,
     settlementMode: item.settlementMode,
     siteId: input.siteId,
@@ -420,6 +438,7 @@ const commonProjection = (
   operatorRefs: operatorRefsForItem(item, audience),
   price: item.price,
   publicProjectionState: item.publicProjectionState,
+  recurringBilling: item.recurringBilling,
   sandbox: item.sandbox,
   settlementMode: item.settlementMode,
   siteId: safeRefOrFallback(item.siteId, 'site.redacted'),
@@ -468,7 +487,11 @@ const paidEndpointStatusForItem = (
 const entitlementForItem = (
   item: OpenAgentsSitePaymentCatalogRecord,
 ): OpenAgentsPaidEndpointEntitlement => ({
-  durationSeconds: null,
+  durationSeconds: item.recurringBilling?.interval === 'month'
+    ? 2_678_400
+    : item.recurringBilling?.interval === 'year'
+      ? 31_536_000
+      : null,
   kind: 'resource',
   quotaUnits: null,
   scopeRefs: [
@@ -483,6 +506,12 @@ const entitlementForItem = (
         item.itemKind,
       ),
     ].join('.'),
+    ...(item.recurringBilling === null
+      ? []
+      : [
+          `entitlement_renewal.site_payment.${catalogIdSegment(item.siteId, 'site')}.${catalogIdSegment(item.siteVersionId, 'version')}.${item.recurringBilling.billingKind}.${catalogIdSegment(item.itemKind === 'product' ? item.productId : item.actionId, item.itemKind)}`,
+          ...item.recurringBilling.renewalReceiptScopeRefs,
+        ]),
   ],
 })
 
@@ -540,6 +569,7 @@ export const decodeOpenAgentsSitePaymentCatalog = (
     !optionalRefIsSafe(item.sourceManifestDigest) ||
     !optionalRefIsSafe(item.workroomRef) ||
     !priceIsSupported(item.price) ||
+    !recurringBillingIsSafe(item.recurringBilling) ||
     item.metadataRefs.some(ref => !stableRefIsSafe(ref)) ||
     item.customerDataRequirements.some(
       requirement =>
