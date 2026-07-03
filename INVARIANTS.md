@@ -162,6 +162,16 @@ More specific invariant ledgers apply inside imported apps and packages.
   Dispatch remains owner-scoped: matching trigger rows read the definition
   with the row's `ownerAgentUserId` before using the shared definition-run
   dispatch helper.
+- Per-definition run history and manual run-now endpoints remain
+  registered-agent, owner-scoped views over stored definition-run rows.
+  `GET /v1/agent-definitions/:id/runs` must first read the definition for the
+  authenticated owner, then list only that owner+definition's rows with status,
+  trigger, and opaque receipt/evidence refs. `POST
+  /v1/agent-definitions/:id/run-now` may dispatch only through a definition's
+  explicit `manual` trigger and must reuse the same dispatch, budget, lane,
+  toolset, Pylon, Forge, and exact-accounting gates as any other trigger.
+  Manual run-now must not become an owner-scope bypass or a second dispatch
+  path.
 - Any Worker, Pylon, desktop, or cloud-workroom executor that claims
   definition-backed tool enforcement must use this contract or a formally
   equivalent compiled policy at the execution boundary, with regression tests
@@ -180,7 +190,10 @@ More specific invariant ledgers apply inside imported apps and packages.
   for signature-gated GitHub ingress, typed condition matching, and
   owner-scoped dispatch, and
   `apps/openagents.com/workers/api/src/agent-definition-run-routes.test.ts` for
-  dispatch budget refusals and capped assignment timeouts.
+  dispatch budget refusals, capped assignment timeouts, owner-scoped run
+  history, receipt refs, and manual run-now, plus
+  `packages/agent-runtime-schema/src/index.test.ts` for reusable fixtures that
+  cover every supported trigger type.
 
 ## Connector Authority And Redaction
 

@@ -194,6 +194,16 @@ Trigger failures auto-pause owner-scoped trigger rows after 3 consecutive
 failed/refused attempts, and the BA-B4 behavior contract is now enforced by the
 definition-run route and trigger-store tests.
 
+BA-B5 status (2026-07-03): definition runs are now queryable per owner-scoped
+definition at `GET /v1/agent-definitions/:id/runs`, returning stored status,
+trigger, evidence refs, receipt refs, Forge work refs, assignment refs, and
+durable stream refs without exposing other owners' rows. Manual dispatch has an
+explicit `POST /v1/agent-definitions/:id/run-now` endpoint that requires a
+definition `manual` trigger and then reuses the same BA-A2 dispatch helper,
+budget gates, Pylon assignment path, Forge work record, and exact-accounting
+settlement as every other trigger. `packages/agent-runtime-schema` now exports
+fixtures for cron, inbound-webhook, inbox-match, and manual triggers.
+
 | Task | Description | Deps | Delegable | Issue |
 | --- | --- | --- | --- | --- |
 | BA-B1 | Trigger schema + D1 store: `cron(expr, tz)` and `inbound_webhook(source, typed conditions)` trigger types on definitions; `next_run_at` precomputed via a cron utility; `consecutive_failures`; enable/pause state | BA-A1 | HIGH | [#8193](https://github.com/OpenAgentsInc/openagents/issues/8193) |
@@ -314,10 +324,10 @@ everything downstream codes against their merged interfaces.
 - **M1 — Definition spine**: BA-A1..A3 merged; a definition dispatches a
   real Codex run on the owner's Pylon with receipts and a linked Forge work
   record.
-- **M2 — Background for real**: BA-B1/B2/B4 merged; a cron-triggered
-  definition runs unattended with budget caps and auto-pause. Smallest
-  end-to-end proof: the "what do I need to follow up on" definition against
-  GitHub notifications.
+- **M2 — Background for real**: BA-B1/B2/B4/B5 merged; a cron-triggered
+  definition runs unattended with budget caps, auto-pause, inspectable run
+  history, and explicit manual run-now. Smallest end-to-end proof: the "what
+  do I need to follow up on" definition against GitHub notifications.
 - **M3 — Harness-swap proof**: BA-A4 — one unchanged definition runs on
   Codex and Claude; demo-grade.
 - **M4 — Hardened + warm dispatch**: WS-C + WS-D + BA-E1 — no long-lived

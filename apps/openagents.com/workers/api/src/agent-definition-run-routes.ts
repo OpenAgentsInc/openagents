@@ -115,6 +115,11 @@ export type AgentDefinitionRunDailyBudgetUsage = Readonly<{
 }>
 
 export type AgentDefinitionRunStore = Readonly<{
+  listRunsForDefinition: (
+    ownerAgentUserId: string,
+    definitionId: string,
+    limit: number,
+  ) => Promise<ReadonlyArray<AgentDefinitionRunRecord>>
   upsertRun: (record: AgentDefinitionRunRecord) => Promise<AgentDefinitionRunRecord>
   readRun: (
     ownerAgentUserId: string,
@@ -184,6 +189,21 @@ const rowToRunRecord = (row: AgentDefinitionRunRow): AgentDefinitionRunRecord =>
 export const makeD1AgentDefinitionRunStore = (
   db: D1Database,
 ): AgentDefinitionRunStore => ({
+  listRunsForDefinition: async (ownerAgentUserId, definitionId, limit) => {
+    const rows = await db
+      .prepare(
+        `SELECT *
+           FROM agent_definition_runs
+          WHERE owner_agent_user_id = ?
+            AND definition_id = ?
+          ORDER BY updated_at DESC
+          LIMIT ?`,
+      )
+      .bind(ownerAgentUserId, definitionId, limit)
+      .all<AgentDefinitionRunRow>()
+
+    return rows.results.map(rowToRunRecord)
+  },
   upsertRun: async record => {
     await db
       .prepare(
@@ -328,12 +348,15 @@ export type AgentDefinitionRunDispatchOutcome =
       kind: 'storage_error'
     }>
 
+type AgentDefinitionRunRouteKind = 'history' | 'run_now'
+
 export const matchAgentDefinitionRunRequest = (
   request: Request,
-): Readonly<{ definitionId: string }> | undefined => {
-  const match = /^\/v1\/agent-definitions\/([^/]+)\/runs$/.exec(
-    new URL(request.url).pathname,
-  )
+): Readonly<{ definitionId: string; route: AgentDefinitionRunRouteKind }> | undefined => {
+  const pathname = new URL(request.url).pathname
+  const runsMatch = /^\/v1\/agent-definitions\/([^/]+)\/runs$/.exec(pathname)
+  const runNowMatch = /^\/v1\/agent-definitions\/([^/]+)\/run-now$/.exec(pathname)
+  const match = runsMatch ?? runNowMatch
 
   if (match === null) {
     return undefined
@@ -342,10 +365,24 @@ export const matchAgentDefinitionRunRequest = (
   try {
     const definitionId = decodeURIComponent(match[1] ?? '').trim()
 
-    return definitionId === '' ? undefined : { definitionId }
+    return definitionId === ''
+      ? undefined
+      : {
+          definitionId,
+          route: runsMatch === null ? 'run_now' : 'history',
+        }
   } catch {
     return undefined
   }
+}
+
+const boundedRunHistoryLimitFromRequest = (request: Request): number => {
+  const rawLimit = new URL(request.url).searchParams.get('limit')
+  const parsed = rawLimit === null ? 50 : Number(rawLimit)
+
+  return Number.isFinite(parsed)
+    ? Math.max(1, Math.min(100, Math.trunc(parsed)))
+    : 50
 }
 
 const bearerTokenFromRequest = (request: Request): string | undefined => {
@@ -402,6 +439,11 @@ const triggerRefsForDefinition = (
   definition: AgentDefinition,
 ): ReadonlyArray<string> =>
   definition.triggers.map(trigger => trigger.triggerRef)
+
+const manualTriggerRefForDefinition = (
+  definition: AgentDefinition,
+): string | undefined =>
+  definition.triggers.find(trigger => trigger.kind === 'manual')?.triggerRef
 
 const triggerRefFromRequest = (
   definition: AgentDefinition,
@@ -536,7 +578,25 @@ const seedSessionEvents = async (
         frames: input.events.map(sessionEventFrame),
         namespace: dependencies.durableStreamNamespace,
         requestId: input.durableRequestId,
-      })
+    })
+
+const receiptRefsForRun = (record: AgentDefinitionRunRecord): ReadonlyArray<string> =>
+  uniqueRefs([
+    ...record.evidenceRefs,
+    record.forgeWorkRef,
+    ...(record.assignmentRef === null
+      ? []
+      : [
+          record.assignmentRef,
+          `pylon.assignment.${refFragment(record.assignmentRef)}`,
+        ]),
+    ...(record.durableStreamUrl === null
+      ? []
+      : [`durable_stream.${refFragment(record.durableRequestId)}`]),
+    ...(record.refusalError === null
+      ? []
+      : [`refusal.agent_definition_run.${refFragment(record.refusalError)}`]),
+  ])
 
 const projectionForRun = (
   record: AgentDefinitionRunRecord,
@@ -547,6 +607,7 @@ const projectionForRun = (
   definitionRef: record.definitionRef,
   durableRequestId: record.durableRequestId,
   durableStreamUrl: record.durableStreamUrl,
+  evidenceRefs: record.evidenceRefs,
   exactAccounting:
     record.assignmentRef === null
       ? null
@@ -569,6 +630,7 @@ const projectionForRun = (
           error: record.refusalError,
           reason: record.refusalReason,
         },
+  receiptRefs: receiptRefsForRun(record),
   runId: record.runId,
   sessionEventStream: {
     seeded: sessionEventStreamSeeded,
@@ -578,6 +640,8 @@ const projectionForRun = (
   },
   status: record.status,
   triggerRef: record.triggerRef,
+  updatedAt: record.updatedAt,
+  createdAt: record.createdAt,
 })
 
 const invalidRunResponse = (reason: string): HttpResponse =>
@@ -603,6 +667,60 @@ const storageErrorResponse = (): HttpResponse =>
       { status: 503 },
     ),
   )
+
+const listRunsResponse = (
+  input: Readonly<{
+    definition: AgentDefinition
+    limit: number
+    runs: ReadonlyArray<AgentDefinitionRunRecord>
+  }>,
+): HttpResponse =>
+  withAgentRateLimitHeaders(
+    noStoreJsonResponse({
+      schema: 'openagents.agent_definition_run_list.v0.1',
+      count: input.runs.length,
+      definitionId: input.definition.id,
+      definitionRef: definitionRef(input.definition),
+      limit: input.limit,
+      runs: input.runs.map(record =>
+        projectionForRun(record, record.durableStreamUrl !== null),
+      ),
+    }),
+  )
+
+const manualRunRequestForDefinition = (
+  definition: AgentDefinition,
+  input: AgentDefinitionRunRequest,
+): Readonly<{ kind: 'ok'; request: AgentDefinitionRunRequest }>
+  | Readonly<{ kind: 'invalid'; reason: string }> => {
+  const manualTriggerRef = manualTriggerRefForDefinition(definition)
+
+  if (manualTriggerRef === undefined) {
+    return {
+      kind: 'invalid',
+      reason: 'definition must include a manual trigger for run-now.',
+    }
+  }
+
+  if (input.triggerRef !== undefined && input.triggerRef !== manualTriggerRef) {
+    return {
+      kind: 'invalid',
+      reason: 'run-now triggerRef must name the definition manual trigger.',
+    }
+  }
+
+  return {
+    kind: 'ok',
+    request: {
+      ...input,
+      triggerRef: manualTriggerRef,
+      triggerPayload: {
+        ...(input.triggerPayload ?? {}),
+        manualRunNow: true,
+      },
+    },
+  }
+}
 
 type AgentDefinitionRunRefusal = Readonly<{
   error: string
@@ -1239,14 +1357,43 @@ export const handleAgentDefinitionRunRequest = async (
     return undefined
   }
 
-  if (request.method !== 'POST') {
-    return withAgentRateLimitHeaders(methodNotAllowed(['POST']))
+  const allowedMethods = matched.route === 'history' ? ['GET', 'POST'] : ['POST']
+
+  if (!allowedMethods.includes(request.method)) {
+    return withAgentRateLimitHeaders(methodNotAllowed(allowedMethods))
   }
 
   const session = await requireAgentSession(request, dependencies)
 
   if (session === undefined) {
     return withAgentRateLimitHeaders(unauthorized())
+  }
+
+  const definition = await dependencies.definitionStore.readDefinition(
+    session.user.id,
+    matched.definitionId,
+  )
+
+  if (definition === undefined) {
+    return notFoundResponse()
+  }
+
+  if (matched.route === 'history' && request.method === 'GET') {
+    const limit = boundedRunHistoryLimitFromRequest(request)
+
+    try {
+      return listRunsResponse({
+        definition,
+        limit,
+        runs: await dependencies.runStore.listRunsForDefinition(
+          session.user.id,
+          matched.definitionId,
+          limit,
+        ),
+      })
+    } catch {
+      return storageErrorResponse()
+    }
   }
 
   let body: AgentDefinitionRunRequest
@@ -1262,13 +1409,14 @@ export const handleAgentDefinitionRunRequest = async (
     )
   }
 
-  const definition = await dependencies.definitionStore.readDefinition(
-    session.user.id,
-    matched.definitionId,
-  )
+  if (matched.route === 'run_now') {
+    const manual = manualRunRequestForDefinition(definition, body)
 
-  if (definition === undefined) {
-    return notFoundResponse()
+    if (manual.kind === 'invalid') {
+      return invalidRunResponse(manual.reason)
+    }
+
+    body = manual.request
   }
 
   const dispatch = await dispatchAgentDefinitionRun({

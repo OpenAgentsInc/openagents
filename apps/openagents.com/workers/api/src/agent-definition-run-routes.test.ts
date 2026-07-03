@@ -122,6 +122,22 @@ class MemoryAgentDefinitionRunStore implements AgentDefinitionRunStore {
     | AgentDefinitionRunDailyBudgetUsage
     | undefined
 
+  listRunsForDefinition(
+    ownerAgentUserId: string,
+    definitionId: string,
+    limit: number,
+  ): Promise<ReadonlyArray<AgentDefinitionRunRecord>> {
+    return Promise.resolve(
+      this.rows
+        .filter(row =>
+          row.ownerAgentUserId === ownerAgentUserId &&
+          row.definitionId === definitionId,
+        )
+        .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
+        .slice(0, limit),
+    )
+  }
+
   upsertRun(
     record: AgentDefinitionRunRecord,
   ): Promise<AgentDefinitionRunRecord> {
@@ -510,7 +526,9 @@ const makeDependencies = async (
 
 type RunProjection = Readonly<{
   assignmentRef: string | null
+  createdAt: string
   durableStreamUrl: string | null
+  evidenceRefs: ReadonlyArray<string>
   exactAccounting: null | Readonly<{
     demandSource: string
     settlesOn: string
@@ -523,6 +541,7 @@ type RunProjection = Readonly<{
   }>
   lane: string
   pylonRef: string | null
+  receiptRefs: ReadonlyArray<string>
   runId: string
   sessionEventStream: Readonly<{
     durableRequestId: string
@@ -532,6 +551,7 @@ type RunProjection = Readonly<{
   }>
   status: string
   triggerRef: string
+  updatedAt: string
 }>
 
 const readRunResponse = async (response: Response): Promise<{ run: RunProjection }> =>
@@ -601,6 +621,11 @@ describe('agent definition run routes', () => {
       eventCount: 2,
       seeded: true,
     })
+    expect(body.run.receiptRefs).toEqual(expect.arrayContaining([
+      'assignment.public.khala_coding.assignment_001',
+      'evidence.agent_definition_run.exact_accounting_assignment_ref',
+      'evidence.agent_definition_run.forge_work_record_registered',
+    ]))
     expect(runStore.rows[0]?.run.assignmentId).toBe(
       'assignment.public.khala_coding.assignment_001',
     )
@@ -637,6 +662,125 @@ describe('agent definition run routes', () => {
     expect(replay?.status).toBe(200)
     expect(durableBody).toContain('"tag":"run.input_accepted"')
     expect(durableBody).toContain('"tag":"external_agent.started"')
+  })
+
+  test('lists owner-scoped definition run history with status, trigger, and receipt refs', async () => {
+    const { agent, dependencies } = await makeDependencies()
+    const dispatchResponse = await handleAgentDefinitionRunRequest(
+      jsonRequest({
+        body: {
+          triggerRef: 'trigger.public.route_test.manual',
+          targetPylonRef: 'pylon.owner.codex',
+        },
+        path: '/v1/agent-definitions/agent_definition.route_test.owner/runs',
+        token: agent.ownerToken,
+      }),
+      dependencies,
+    )
+    expect(dispatchResponse?.status).toBe(201)
+
+    const response = await handleAgentDefinitionRunRequest(
+      jsonRequest({
+        method: 'GET',
+        path: '/v1/agent-definitions/agent_definition.route_test.owner/runs?limit=10',
+        token: agent.ownerToken,
+      }),
+      dependencies,
+    )
+    const body = (await response!.json()) as {
+      readonly count: number
+      readonly definitionId: string
+      readonly limit: number
+      readonly runs: ReadonlyArray<RunProjection>
+      readonly schema: string
+    }
+
+    expect(response?.status).toBe(200)
+    expect(body).toMatchObject({
+      count: 1,
+      definitionId: 'agent_definition.route_test.owner',
+      limit: 10,
+      schema: 'openagents.agent_definition_run_list.v0.1',
+    })
+    expect(body.runs[0]).toMatchObject({
+      status: 'dispatched',
+      triggerRef: 'trigger.public.route_test.manual',
+    })
+    expect(body.runs[0]?.receiptRefs).toEqual(expect.arrayContaining([
+      'assignment.public.khala_coding.assignment_001',
+      'evidence.agent_definition_run.exact_accounting_assignment_ref',
+      'evidence.agent_definition_run.forge_work_record_registered',
+    ]))
+  })
+
+  test('does not list definition run history outside the authenticated owner scope', async () => {
+    const { agent, dependencies } = await makeDependencies()
+    const response = await handleAgentDefinitionRunRequest(
+      jsonRequest({
+        method: 'GET',
+        path: '/v1/agent-definitions/agent_definition.route_test.owner/runs',
+        token: agent.otherToken,
+      }),
+      dependencies,
+    )
+    const body = (await response!.json()) as { readonly error: string }
+
+    expect(response?.status).toBe(404)
+    expect(body.error).toBe('agent_definition_not_found')
+  })
+
+  test('run-now dispatches through the definition manual trigger path', async () => {
+    const { agent, dependencies, runStore } = await makeDependencies()
+    const response = await handleAgentDefinitionRunRequest(
+      jsonRequest({
+        path: '/v1/agent-definitions/agent_definition.route_test.owner/run-now',
+        token: agent.ownerToken,
+      }),
+      dependencies,
+    )
+    const body = await readRunResponse(response!)
+
+    expect(response?.status).toBe(201)
+    expect(body.run).toMatchObject({
+      status: 'dispatched',
+      triggerRef: 'trigger.public.route_test.manual',
+    })
+    expect(runStore.rows[0]?.triggerPayload).toMatchObject({
+      manualRunNow: true,
+    })
+  })
+
+  test('run-now refuses definitions without a manual trigger before dispatch', async () => {
+    const { agent, dependencies, pylon, runStore } = await makeDependencies({
+      definition: definition({
+        triggers: [
+          {
+            kind: 'cron',
+            triggerRef: 'trigger.public.route_test.daily',
+            expr: '0 14 * * *',
+            tz: 'UTC',
+          },
+        ],
+      }),
+    })
+
+    const response = await handleAgentDefinitionRunRequest(
+      jsonRequest({
+        path: '/v1/agent-definitions/agent_definition.route_test.owner/run-now',
+        token: agent.ownerToken,
+      }),
+      dependencies,
+    )
+    const body = (await response!.json()) as {
+      readonly error: string
+      readonly reason: string
+    }
+
+    expect(response?.status).toBe(400)
+    expect(body.error).toBe('invalid_agent_definition_run')
+    expect(body.reason).toBe('definition must include a manual trigger for run-now.')
+    expect(pylon.assignments).toHaveLength(0)
+    expect(runStore.rows).toHaveLength(0)
   })
 
   test('refuses dispatch after maxRunsPerDay is exhausted', async () => {

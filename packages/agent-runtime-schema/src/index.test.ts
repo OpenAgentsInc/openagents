@@ -27,6 +27,8 @@ import {
   projectAgentRuntimeSurfaceStatus,
 } from "./index.js"
 import {
+  agentDefinitionTriggerFixtures,
+  allTriggerTypesAgentDefinitionFixture,
   agentRuntimeFixtureEventLogs,
   fulfillmentLoopAgentDefinitionFixture,
 } from "./fixtures.js"
@@ -196,6 +198,27 @@ describe("@openagentsinc/agent-runtime-schema", () => {
       consecutiveFailures: 0,
       nextRunAt: "2026-07-03T16:15:00.000Z",
     })
+  })
+
+  test("decodes reusable fixtures for every definition trigger type", () => {
+    const definition = decodeAgentDefinition(allTriggerTypesAgentDefinitionFixture)
+
+    expect(definition.triggers.map((trigger) => trigger.kind).sort()).toEqual([
+      "cron",
+      "inbound_webhook",
+      "inbox_match",
+      "manual",
+    ])
+    expect(definition.triggers).toEqual(agentDefinitionTriggerFixtures)
+    expect(definition.triggers.find((trigger) => trigger.kind === "inbox_match"))
+      .toMatchObject({
+        classifierRef: "classifier.public.fixture.priority_inbox",
+        triggerRef: "trigger.public.fixture.inbox.priority",
+      })
+    expect(definition.triggers.find((trigger) => trigger.kind === "manual"))
+      .toMatchObject({
+        triggerRef: "trigger.public.fixture.manual.run_now",
+      })
   })
 
   test("enforces definition toolsets with deny, ask escalation, allow, and deny-by-default", () => {

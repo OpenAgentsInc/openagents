@@ -1,5 +1,6 @@
 import type {
   AgentDefinition,
+  AgentDefinitionTrigger,
   AgentRuntimeAdapterKind,
   AgentRuntimeEvent,
   AgentRuntimeEventLog,
@@ -8,6 +9,50 @@ import type {
 } from "./index.js"
 
 const at = "2026-06-11T00:00:00.000Z"
+
+export const agentDefinitionTriggerFixtures: ReadonlyArray<AgentDefinitionTrigger> = [
+  {
+    kind: "cron",
+    triggerRef: "trigger.public.fixture.cron.daily",
+    expr: "0 14 * * *",
+    tz: "UTC",
+  },
+  {
+    kind: "inbound_webhook",
+    triggerRef: "trigger.public.fixture.github.issue_opened",
+    source: "github",
+    conditions: [
+      {
+        kind: "event_type",
+        equals: "issues.opened",
+      },
+      {
+        kind: "json_path_equals",
+        path: "$.repository.full_name",
+        equals: "OpenAgentsInc/openagents",
+      },
+      {
+        kind: "json_path_matches",
+        path: "$.issue.title",
+        pattern: "^BA-",
+      },
+      {
+        kind: "json_path_in",
+        path: "$.issue.labels[*].name",
+        values: ["background-agents", "fable"],
+      },
+    ],
+  },
+  {
+    kind: "inbox_match",
+    triggerRef: "trigger.public.fixture.inbox.priority",
+    classifierRef: "classifier.public.fixture.priority_inbox",
+  },
+  {
+    kind: "manual",
+    triggerRef: "trigger.public.fixture.manual.run_now",
+  },
+]
 
 function run(input: {
   runId: string
@@ -115,6 +160,14 @@ export const fulfillmentLoopAgentDefinitionFixture: AgentDefinition = {
   sourceRefs: ["issue.public.github.OpenAgentsInc.openagents.8097"],
   createdAt: at,
   updatedAt: at,
+}
+
+export const allTriggerTypesAgentDefinitionFixture: AgentDefinition = {
+  ...fulfillmentLoopAgentDefinitionFixture,
+  id: "agent_definition.public.all_trigger_types",
+  name: "All Trigger Types Fixture",
+  slug: "all-trigger-types-fixture",
+  triggers: agentDefinitionTriggerFixtures,
 }
 
 export const fixtureLoopEventLog: AgentRuntimeEventLog = {
