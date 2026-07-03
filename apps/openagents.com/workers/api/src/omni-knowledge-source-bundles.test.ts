@@ -3,12 +3,15 @@ import { describe, expect, test } from 'vitest'
 
 import {
   OMNI_KNOWLEDGE_SOURCE_BUNDLE_READ_ONLY_AUTHORITY,
+  OmniCustomerCorpusIngestionReceiptProjection,
+  OmniCustomerCorpusIngestionReceiptRecord,
   OmniKnowledgeExtractedSpanRecord,
   OmniKnowledgeSourceBundleProjection,
   OmniKnowledgeSourceBundleRecord,
   OmniKnowledgeSourceBundleUnsafe,
   OmniKnowledgeSourceRecord,
   exampleOmniKnowledgeSourceBundle,
+  projectOmniCustomerCorpusIngestionReceipt,
   projectOmniKnowledgeSourceBundle,
 } from './omni-knowledge-source-bundles'
 
@@ -70,6 +73,67 @@ const bundleRecord = (
 ): OmniKnowledgeSourceBundleRecord =>
   S.decodeUnknownSync(OmniKnowledgeSourceBundleRecord)({
     ...exampleOmniKnowledgeSourceBundle(),
+    ...overrides,
+  })
+
+const cloudDriveSourceBundle = (): OmniKnowledgeSourceBundleRecord =>
+  bundleRecord({
+    bundleRef: 'bundle.private.customer_docs_sources',
+    id: 'knowledge_bundle.private.customer_docs_sources',
+    provenanceRefs: ['provenance.operator.customer_docs_connector_run'],
+    rightsRefs: ['rights.customer.docs_read_grant'],
+    sources: [
+      sourceRecord({
+        caveatRefs: ['caveat.customer.docs_ingested_readonly'],
+        dataClassification: 'customer',
+        digestRef: 'digest.private.customer_docs_policy_packet',
+        locatorRef: 'locator.private.customer_docs_policy_packet',
+        provenanceRefs: ['provenance.operator.customer_docs_connector_run'],
+        rightsRefs: ['rights.customer.docs_read_grant'],
+        rightsState: 'customer_supplied',
+        sourceKind: 'connector_read',
+        sourceRef: 'source.private.customer_docs_policy_packet',
+        titleRef: 'title.private.customer_docs_policy_packet',
+        trustTier: 'reviewed',
+      }),
+    ],
+    spans: [],
+    titleRef: 'title.private.customer_docs_sources',
+    workroomRefs: ['workroom.private.customer_fulfillment'],
+  })
+
+const corpusReceiptRecord = (
+  overrides: Partial<OmniCustomerCorpusIngestionReceiptRecord> = {},
+): OmniCustomerCorpusIngestionReceiptRecord =>
+  S.decodeUnknownSync(OmniCustomerCorpusIngestionReceiptRecord)({
+    authority: OMNI_KNOWLEDGE_SOURCE_BUNDLE_READ_ONLY_AUTHORITY,
+    caveatRefs: ['caveat.customer.scoped_connector_only'],
+    connectorSources: [
+      {
+        caveatRefs: ['caveat.customer.archive_copy_denied'],
+        connectorKind: 'cloud_drive_docs',
+        credentialGrantRef: 'grant.customer.cloud_docs_scoped_readonly',
+        credentialStorageRef: 'credential_store.operator.encrypted_connector_ref',
+        grantKind: 'scoped_read_only_refresh_token',
+        grantedScopeRefs: ['scope.cloud_drive.docs.readonly'],
+        ingestedSourceRefs: ['source.private.customer_docs_policy_packet'],
+        provenanceRefs: ['provenance.operator.customer_docs_connector_run'],
+        readOnly: true,
+        rejectedSourceRefs: [],
+        requestedScopeRefs: ['scope.cloud_drive.docs.readonly'],
+        sourceReceiptRef: 'receipt.customer.cloud_docs_sources_ingested',
+      },
+    ],
+    corpusRef: 'corpus.private.customer_docs_v1',
+    createdAtIso: '2026-07-02T16:00:00.000Z',
+    id: 'customer_corpus_ingestion.private.docs_v1',
+    provenanceRefs: ['provenance.operator.customer_docs_connector_run'],
+    redactionPolicyRefs: ['policy.customer.redact_before_external_inference'],
+    receiptRef: 'receipt.customer.corpus_ingested_with_sources',
+    rightsRefs: ['rights.customer.docs_read_grant'],
+    sourceBundle: cloudDriveSourceBundle(),
+    updatedAtIso: '2026-07-02T16:20:00.000Z',
+    workspaceRef: 'workspace.private.customer_fulfillment',
     ...overrides,
   })
 
@@ -378,5 +442,126 @@ describe('Omni knowledge source bundles', () => {
         projectOmniKnowledgeSourceBundle(record, 'operator', nowIso),
       ).toThrow(OmniKnowledgeSourceBundleUnsafe)
     }
+  })
+
+  test('projects a scoped cloud-drive customer corpus ingestion receipt with source provenance', () => {
+    const projection = projectOmniCustomerCorpusIngestionReceipt(
+      corpusReceiptRecord(),
+      'operator',
+      '2026-07-02T16:25:00.000Z',
+    )
+
+    expect(S.decodeUnknownSync(OmniCustomerCorpusIngestionReceiptProjection)(
+      projection,
+    )).toEqual(projection)
+    expect(projection).toMatchObject({
+      connectorMutationAllowed: false,
+      corpusRef: 'corpus.private.customer_docs_v1',
+      rawCredentialMaterialStored: false,
+      rawSourceArchiveCopyAllowed: false,
+      receiptRef: 'receipt.customer.corpus_ingested_with_sources',
+      sourceCount: 1,
+      sourcesReceiptRefs: ['receipt.customer.cloud_docs_sources_ingested'],
+      workspaceRef: 'workspace.private.customer_fulfillment',
+    })
+    expect(projection.connectorSources).toEqual([
+      {
+        caveatRefs: ['caveat.customer.archive_copy_denied'],
+        connectorKind: 'cloud_drive_docs',
+        credentialGrantRef: 'grant.customer.cloud_docs_scoped_readonly',
+        credentialStorageRef: 'credential_store.operator.encrypted_connector_ref',
+        grantKind: 'scoped_read_only_refresh_token',
+        grantedScopeRefs: ['scope.cloud_drive.docs.readonly'],
+        ingestedSourceRefs: ['source.private.customer_docs_policy_packet'],
+        provenanceRefs: ['provenance.operator.customer_docs_connector_run'],
+        readOnly: true,
+        rejectedSourceRefs: [],
+        requestedScopeRefs: ['scope.cloud_drive.docs.readonly'],
+        sourceReceiptRef: 'receipt.customer.cloud_docs_sources_ingested',
+      },
+    ])
+    expect(projection.sourceBundle.sources[0]).toMatchObject({
+      provenanceRefs: ['provenance.operator.customer_docs_connector_run'],
+      rightsRefs: ['rights.customer.docs_read_grant'],
+      rightsState: 'customer_supplied',
+      sourceKind: 'connector_read',
+    })
+  })
+
+  test('rejects customer corpus connector receipts without scoped read-only source authority', () => {
+    const base = corpusReceiptRecord()
+    const baseConnector = base.connectorSources[0]!
+
+    for (const receipt of [
+      corpusReceiptRecord({
+        connectorSources: [
+          {
+            ...baseConnector,
+            readOnly: false,
+          },
+        ],
+      }),
+      corpusReceiptRecord({
+        connectorSources: [
+          {
+            ...baseConnector,
+            grantedScopeRefs: ['scope.cloud_drive.root'],
+          },
+        ],
+      }),
+      corpusReceiptRecord({
+        connectorSources: [
+          {
+            ...baseConnector,
+            requestedScopeRefs: ['scope.mail.write'],
+          },
+        ],
+      }),
+      corpusReceiptRecord({
+        connectorSources: [
+          {
+            ...baseConnector,
+            ingestedSourceRefs: ['source.private.not_in_bundle'],
+          },
+        ],
+      }),
+      corpusReceiptRecord({
+        connectorSources: [
+          {
+            ...baseConnector,
+            credentialGrantRef: 'raw_provider_token.customer_docs',
+          },
+        ],
+      }),
+    ]) {
+      expect(() =>
+        projectOmniCustomerCorpusIngestionReceipt(
+          receipt,
+          'operator',
+          '2026-07-02T16:25:00.000Z',
+        ),
+      ).toThrow(OmniKnowledgeSourceBundleUnsafe)
+    }
+  })
+
+  test('redacts private customer corpus and connector source refs from public receipts', () => {
+    const projection = projectOmniCustomerCorpusIngestionReceipt(
+      corpusReceiptRecord(),
+      'public',
+      '2026-07-02T16:25:00.000Z',
+    )
+    const serialized = JSON.stringify(projection)
+
+    expect(projection.corpusRef).toBe('corpus.redacted')
+    expect(projection.id).toBe('customer_corpus_ingestion.redacted')
+    expect(projection.receiptRef).toBe(
+      'receipt.customer.corpus_ingested_with_sources',
+    )
+    expect(projection.sourceBundle.sourceCount).toBe(0)
+    expect(projection.workspaceRef).toBe('workspace.redacted')
+    expect(serialized).not.toMatch(
+      /(corpus|credential|digest|locator|source|title|workroom)\.private/,
+    )
+    expect(serialized).not.toMatch(/raw_provider_token|scope\.mail\.write/)
   })
 })
