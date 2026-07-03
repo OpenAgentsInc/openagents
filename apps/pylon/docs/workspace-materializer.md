@@ -113,6 +113,31 @@ lease projections and closeouts. A byte budget
 oldest prepared entries until the cache is back under budget; if a single entry
 is larger than the configured budget, it is evicted too.
 
+## Prebuilt-baseline cache
+
+BA-E2 adds an optional prebuilt-baseline cache for cold dispatches that do not
+already have an exact prepared-worktree hit. The cache is keyed by repository
+full name plus branch and stores a local registry row using
+`openagents.pylon.prebuilt_baseline_cache.v1`. A row records the newest upstream
+branch commit observed within the bounded refresh cadence, the setup result,
+the local prebuilt directory, and honest hit/miss counters.
+
+When `prebuiltBaselineCacheRoot` is configured, materialization first checks
+the exact prepared cache, then the prebuilt registry. If the registry has not
+reached `prebuiltBaselineRefreshCadenceSeconds` (default 15 minutes), Pylon
+does not re-query upstream. If the cadence is due, it checks the upstream branch
+ref and rebuilds the prebuilt baseline when the branch advanced. Matching cold
+dispatches restore by copying the prebuilt directory, preserving ignored setup
+artifacts such as installed dependencies, then `git reset --hard <baseline>`
+before handing the workspace to the executor.
+
+Prebuilt rows are metrics, not authority. A requested pinned commit that does
+not match the current prebuilt baseline records a miss with
+`reason.workspace_prebuilt_baseline.requested_commit_not_prebuilt` and falls
+back to the normal `git_worktree` materializer. Refresh, setup, or restore
+failures likewise record misses and fall back. Registry rows and local
+directories are never exposed through public lease projections.
+
 ## Leases, TTL, and cleanup receipts
 
 `materializeGitCheckoutWorkspaceWithLease` writes a workspace lease record

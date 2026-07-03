@@ -7,10 +7,9 @@ in `packages/behavior-contracts/src/background-agents.ts` (schema:
 Issue #8218 registers the headline invariants from
 `docs/fable/ROADMAP_BACKGROUND_AGENTS.md` before their sibling implementation
 oracles land. Entries remain `pending` until the owning task adds its oracle
-test and flips that exact contract to `enforced`; BA-B4 and BA-A5 are the
-first enforced background-agent contracts in this registry.
+test and flips that exact contract to `enforced`.
 
-Registry version: `2026-07-03.5` (schema `openagents.behavior_contracts.v1`)
+Registry version: `2026-07-03.6` (schema `openagents.behavior_contracts.v1`)
 
 ### `background_agents.dispatch.budget_caps_enforced.v1` - ENFORCED
 
@@ -69,7 +68,19 @@ Registry version: `2026-07-03.5` (schema `openagents.behavior_contracts.v1`)
 - **Oracle** `background_agents.warm_dispatch.prepared_cache_snapshot_restore` (bun-test, unit): A clean closeout records a `post_completion_snapshot` prepared entry, and the next matching repo+baseline materialization restores with `restore_quick_sync_reset` without contacting the remote. - `apps/pylon/tests/workspace-worktree.test.ts`
 - **Oracle** `background_agents.warm_dispatch.prepared_cache_integrity_budget` (bun-test, unit): Prepared cache integrity rejects dirty/stale entries and the byte budget evicts oldest prepared entries while retaining the newest fitting entry. - `apps/pylon/tests/workspace-worktree.test.ts`
 - **Verification:** BA-E1 is enforced by the Pylon workspace-worktree test suite in the normal Pylon bun test sweep.
-- **Authority boundary:** This contract binds the Pylon materializer prepared-worktree source cache only. It does not claim prebuilt dependency baselines, staleness refresh cadence, or Khala Code warm-on-intent dispatch, which remain BA-E2/BA-E3 scope.
+- **Authority boundary:** This contract binds the Pylon materializer prepared-worktree source cache only. It does not claim prebuilt dependency baselines or Khala Code warm-on-intent dispatch, which remain BA-E2/BA-E3 scope.
+
+### `background_agents.warm_dispatch.prebuilt_baseline_cache.v1` - ENFORCED
+
+- **Surface:** pylon-worker (warm dispatch)
+- **Stated by:** owner via issue_list on 2026-07-03
+- **Statement:** Prebuilt baselines in the Pylon workspace materializer use a staleness-checked upstream refresh cadence, start matching cold dispatches from a setup-prepared baseline, and keep registry rows with honest hit/miss metrics.
+- **Enforcement tier:** test-sweep
+- **Oracle** `background_agents.warm_dispatch.prebuilt_baseline_key` (bun-test, unit): `prebuiltBaselineCacheKeyFor` is stable for one repository+branch pair and changes across repository names or branches. - `apps/pylon/tests/workspace-worktree.test.ts`
+- **Oracle** `background_agents.warm_dispatch.prebuilt_baseline_hit` (bun-test, unit): A cold materialization builds the newest upstream prebuilt baseline, runs setup once, restores later workspaces with setup artifacts preserved, and records registry hit counts. - `apps/pylon/tests/workspace-worktree.test.ts`
+- **Oracle** `background_agents.warm_dispatch.prebuilt_baseline_refresh_metrics` (bun-test, unit): A requested commit that is newer than the cached prebuild before the refresh cadence records an honest miss and falls back to normal materialization, then a due cadence refresh advances to the newest upstream baseline. - `apps/pylon/tests/workspace-worktree.test.ts`
+- **Verification:** BA-E2 is enforced by the Pylon workspace-worktree test suite in the normal Pylon bun test sweep.
+- **Authority boundary:** This contract binds local Pylon prebuilt baseline cache selection, refresh, and metrics only. It does not claim post-completion exact prepared snapshots or Khala Code warm-on-intent dispatch.
 
 ### `background_agents.definitions.harness_swap.v1` - PENDING
 

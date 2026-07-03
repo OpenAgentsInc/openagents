@@ -309,6 +309,19 @@ entries. Regression coverage lives in `apps/pylon/tests/workspace-worktree.test.
 and the enforced contract
 `background_agents.warm_dispatch.prepared_worktree_cache.v1`.
 
+BA-E2 status (2026-07-03): the Pylon workspace materializer now has a
+prebuilt-baseline cache keyed by repository full name plus branch. The registry
+row records the latest upstream commit observed under a bounded refresh cadence
+(default 15 minutes), setup result, local prebuilt directory, and hit/miss
+metrics. Matching cold dispatches restore from the setup-prepared baseline and
+preserve ignored setup artifacts such as installed dependencies; requested
+commits that do not match the current prebuild record an honest miss and fall
+back to normal `git_worktree` materialization. Codex, Claude, and local control
+session `git_checkout` materialization now pass the prepared and prebuilt cache
+roots when using the real materializer. Regression coverage lives in
+`apps/pylon/tests/workspace-worktree.test.ts` and the enforced contract
+`background_agents.warm_dispatch.prebuilt_baseline_cache.v1`.
+
 | Task | Description | Deps | Delegable | Issue |
 | --- | --- | --- | --- | --- |
 | BA-E1 | Prepared-worktree cache in the Pylon workspace materializer: typed reuse reasons (post-completion snapshot, restore = quick sync + reset), cache keyed by repo+baseline, integrity checks, bounded disk budget with eviction | — | MED | [#8203](https://github.com/OpenAgentsInc/openagents/issues/8203) |

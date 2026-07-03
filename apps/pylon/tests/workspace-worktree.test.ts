@@ -15,6 +15,7 @@ import {
   gitCredentialHelperRuntimePathsFor,
   materializeGitCheckoutWorkspaceWithLease,
   preparedWorktreeCacheKeyFor,
+  prebuiltBaselineCacheKeyFor,
   pruneWorkspaceCacheDirectories,
   publicWorkspaceChangeCaptureProjection,
   publicWorkspaceLeaseProjection,
@@ -27,6 +28,7 @@ import {
   virtualBranchChangeFileRef,
   workspaceChangeFileRef,
   workspaceLeaseRecordFor,
+  WORKSPACE_PREBUILT_BASELINE_CACHE_SCHEMA,
   WORKSPACE_PREPARED_WORKTREE_CACHE_SCHEMA,
   WORKSPACE_CLEANUP_RECEIPTS_CAPABILITY_REF,
   WORKSPACE_LEASE_SCHEMA,
@@ -41,6 +43,7 @@ import { assertPublicProjectionSafe } from "../src/state"
 
 // Behavior contract oracle: background_agents.credentials.no_long_lived_tokens_in_workspaces.v1
 // Behavior contract oracle: background_agents.warm_dispatch.prepared_worktree_cache.v1
+// Behavior contract oracle: background_agents.warm_dispatch.prebuilt_baseline_cache.v1
 
 async function run(args: string[], cwd: string): Promise<string> {
   const proc = Bun.spawn(args, { cwd, stderr: "pipe", stdout: "pipe" })
@@ -62,6 +65,7 @@ async function createOriginRepo(root: string, branch = "main"): Promise<{ url: s
     join(root, "package.json"),
     `${JSON.stringify({ private: true, scripts: { test: "bun test sum.test.ts" }, type: "module" }, null, 2)}\n`,
   )
+  await writeFile(join(root, ".gitignore"), "node_modules/\n.pylon-prebuilt/\n")
   await writeFile(join(root, "sum.ts"), "export const sum = (left: number, right: number) => left - right\n")
   await run(["git", "add", "."], root)
   await run(["git", "commit", "-m", "fixture"], root)
@@ -155,6 +159,29 @@ describe("preparedWorktreeCacheKeyFor", () => {
       }),
     )
     expect(preparedWorktreeCacheKeyFor(base)).toMatch(/^[a-f0-9]{32}$/)
+  })
+})
+
+describe("prebuiltBaselineCacheKeyFor", () => {
+  test("is stable for one repo+branch and changes across repos or branches", () => {
+    const base = {
+      branch: "main",
+      repositoryFullName: "OpenAgentsInc/openagents",
+    }
+    expect(prebuiltBaselineCacheKeyFor(base)).toBe(prebuiltBaselineCacheKeyFor(base))
+    expect(prebuiltBaselineCacheKeyFor(base)).not.toBe(
+      prebuiltBaselineCacheKeyFor({
+        ...base,
+        branch: "release",
+      }),
+    )
+    expect(prebuiltBaselineCacheKeyFor(base)).not.toBe(
+      prebuiltBaselineCacheKeyFor({
+        ...base,
+        repositoryFullName: "OpenAgentsInc/other",
+      }),
+    )
+    expect(prebuiltBaselineCacheKeyFor(base)).toMatch(/^[a-f0-9]{32}$/)
   })
 })
 
@@ -924,6 +951,173 @@ describe("materializeGitCheckoutWorkspaceWithLease", () => {
       expect(evicted.removedCacheKeys).toEqual([firstCacheKey])
       expect(existsSync(firstPreparedDirectory)).toBe(false)
       expect(existsSync(secondPreparedDirectory)).toBe(true)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  test("prebuilds the latest upstream baseline with setup artifacts and reuses it within the refresh cadence", async () => {
+    const root = await mkdtemp(join(tmpdir(), "pylon-worktree-prebuilt-"))
+    try {
+      const origin = await createOriginRepo(join(root, "origin"))
+      const checkout = checkoutFor(origin.commitSha)
+      const prebuiltBaselineCacheRoot = join(root, "prebuilt-cache")
+      const setupRunner = async (input: { checkout: GitCheckoutWorkspace; workingDirectory: string }) => {
+        await mkdir(join(input.workingDirectory, "node_modules"), { recursive: true })
+        await writeFile(join(input.workingDirectory, "node_modules", ".prebuilt-ready"), `${input.checkout.repository.commitSha}\n`)
+        return {
+          state: "completed" as const,
+          setupRef: "setup.public.fixture.prebuilt_baseline",
+          commandRef: "command.public.fixture.prebuilt_baseline_setup",
+        }
+      }
+
+      const first = await materializeGitCheckoutWorkspaceWithLease(
+        leaseInput(root, {
+          checkout,
+          checkoutRunner: undefined,
+          leaseRef: "lease.public.worktree.prebuilt.first",
+          now: new Date("2026-07-03T14:00:00.000Z"),
+          prebuiltBaselineCacheRoot,
+          prebuiltBaselineSetupRunner: setupRunner,
+          remoteUrlFor: () => origin.url,
+        }) as never,
+      )
+
+      const cacheKey = prebuiltBaselineCacheKeyFor({
+        branch: checkout.repository.branch,
+        repositoryFullName: checkout.repository.fullName,
+      })
+      const prebuiltDirectory = join(prebuiltBaselineCacheRoot, `prebuilt.${cacheKey}`)
+      const registry = JSON.parse(await readFile(`${prebuiltDirectory}.json`, "utf8"))
+
+      expect(first.prebuiltBaselineCache).toMatchObject({
+        baselineCommitSha: origin.commitSha,
+        cacheKey,
+        hitCount: 1,
+        missCount: 0,
+        reasonRef: "reason.workspace_prebuilt_baseline.hit",
+        state: "hit",
+      })
+      expect(registry.schema).toBe(WORKSPACE_PREBUILT_BASELINE_CACHE_SCHEMA)
+      expect(registry.baselineCommitSha).toBe(origin.commitSha)
+      expect(registry.hitCount).toBe(1)
+      expect(registry.missCount).toBe(0)
+      expect(registry.setup.state).toBe("completed")
+      expect(await readFile(join(first.workingDirectory, "node_modules", ".prebuilt-ready"), "utf8")).toBe(`${origin.commitSha}\n`)
+
+      await rm(join(root, "origin"), { recursive: true, force: true })
+      const second = await materializeGitCheckoutWorkspaceWithLease(
+        leaseInput(root, {
+          checkout,
+          checkoutRunner: undefined,
+          leaseRef: "lease.public.worktree.prebuilt.second",
+          now: new Date("2026-07-03T14:05:00.000Z"),
+          prebuiltBaselineCacheRoot,
+          prebuiltBaselineSetupRunner: setupRunner,
+          remoteUrlFor: () => origin.url,
+        }) as never,
+      )
+
+      expect(second.prebuiltBaselineCache).toMatchObject({
+        baselineCommitSha: origin.commitSha,
+        hitCount: 2,
+        missCount: 0,
+        state: "hit",
+      })
+      expect(await readFile(join(second.workingDirectory, "node_modules", ".prebuilt-ready"), "utf8")).toBe(`${origin.commitSha}\n`)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  test("records a prebuilt miss before cadence refresh, then refreshes to the newest upstream baseline", async () => {
+    const root = await mkdtemp(join(tmpdir(), "pylon-worktree-prebuilt-refresh-"))
+    try {
+      const originRoot = join(root, "origin")
+      const origin = await createOriginRepo(originRoot)
+      const prebuiltBaselineCacheRoot = join(root, "prebuilt-cache")
+      const setupRunner = async (input: { checkout: GitCheckoutWorkspace; workingDirectory: string }) => {
+        await mkdir(join(input.workingDirectory, "node_modules"), { recursive: true })
+        await writeFile(join(input.workingDirectory, "node_modules", ".prebuilt-ready"), `${input.checkout.repository.commitSha}\n`)
+        return {
+          state: "completed" as const,
+          setupRef: "setup.public.fixture.prebuilt_baseline",
+          commandRef: "command.public.fixture.prebuilt_baseline_setup",
+        }
+      }
+
+      await materializeGitCheckoutWorkspaceWithLease(
+        leaseInput(root, {
+          checkout: checkoutFor(origin.commitSha),
+          checkoutRunner: undefined,
+          leaseRef: "lease.public.worktree.prebuilt.refresh.first",
+          now: new Date("2026-07-03T15:00:00.000Z"),
+          prebuiltBaselineCacheRoot,
+          prebuiltBaselineRefreshCadenceSeconds: 3600,
+          prebuiltBaselineSetupRunner: setupRunner,
+          remoteUrlFor: () => origin.url,
+        }) as never,
+      )
+
+      const secondCommitSha = await commitOriginChange(
+        originRoot,
+        "fresh-main.ts",
+        "export const freshMain = true\n",
+      )
+      const secondCheckout = checkoutFor(secondCommitSha)
+      const beforeCadence = await materializeGitCheckoutWorkspaceWithLease(
+        leaseInput(root, {
+          checkout: secondCheckout,
+          checkoutRunner: undefined,
+          leaseRef: "lease.public.worktree.prebuilt.refresh.before_cadence",
+          now: new Date("2026-07-03T15:05:00.000Z"),
+          prebuiltBaselineCacheRoot,
+          prebuiltBaselineRefreshCadenceSeconds: 3600,
+          prebuiltBaselineSetupRunner: setupRunner,
+          remoteUrlFor: () => origin.url,
+        }) as never,
+      )
+
+      const cacheKey = prebuiltBaselineCacheKeyFor({
+        branch: secondCheckout.repository.branch,
+        repositoryFullName: secondCheckout.repository.fullName,
+      })
+      const prebuiltDirectory = join(prebuiltBaselineCacheRoot, `prebuilt.${cacheKey}`)
+      const missRegistry = JSON.parse(await readFile(`${prebuiltDirectory}.json`, "utf8"))
+      expect(beforeCadence.prebuiltBaselineCache).toMatchObject({
+        baselineCommitSha: origin.commitSha,
+        missCount: 1,
+        reasonRef: "reason.workspace_prebuilt_baseline.requested_commit_not_prebuilt",
+        state: "miss",
+      })
+      expect((await run(["git", "rev-parse", "HEAD"], beforeCadence.workingDirectory)).trim()).toBe(secondCommitSha)
+      expect(missRegistry.baselineCommitSha).toBe(origin.commitSha)
+      expect(missRegistry.missCount).toBe(1)
+
+      const afterCadence = await materializeGitCheckoutWorkspaceWithLease(
+        leaseInput(root, {
+          checkout: secondCheckout,
+          checkoutRunner: undefined,
+          leaseRef: "lease.public.worktree.prebuilt.refresh.after_cadence",
+          now: new Date("2026-07-03T16:10:00.000Z"),
+          prebuiltBaselineCacheRoot,
+          prebuiltBaselineRefreshCadenceSeconds: 3600,
+          prebuiltBaselineSetupRunner: setupRunner,
+          remoteUrlFor: () => origin.url,
+        }) as never,
+      )
+      const refreshedRegistry = JSON.parse(await readFile(`${prebuiltDirectory}.json`, "utf8"))
+
+      expect(afterCadence.prebuiltBaselineCache).toMatchObject({
+        baselineCommitSha: secondCommitSha,
+        hitCount: 2,
+        missCount: 1,
+        state: "hit",
+      })
+      expect(refreshedRegistry.baselineCommitSha).toBe(secondCommitSha)
+      expect(refreshedRegistry.missCount).toBe(1)
+      expect(await readFile(join(afterCadence.workingDirectory, "node_modules", ".prebuilt-ready"), "utf8")).toBe(`${secondCommitSha}\n`)
     } finally {
       await rm(root, { recursive: true, force: true })
     }

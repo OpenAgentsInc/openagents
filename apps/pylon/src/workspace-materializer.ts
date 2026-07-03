@@ -1,5 +1,5 @@
 import { existsSync, realpathSync } from "node:fs"
-import { chmod, lstat, mkdir, readdir, readFile, rename, rm, stat, utimes, writeFile } from "node:fs/promises"
+import { chmod, cp, lstat, mkdir, readdir, readFile, rename, rm, stat, utimes, writeFile } from "node:fs/promises"
 import { dirname, join, relative, resolve } from "node:path"
 import { createHash } from "node:crypto"
 import { Context, Effect, Layer, type Scope } from "effect"
@@ -77,6 +77,7 @@ export type MaterializedWorkspace = {
   sourceRef: string
   cleanupRef: string
   preparedWorktreeCache?: WorkspacePreparedWorktreeCacheUse
+  prebuiltBaselineCache?: WorkspacePrebuiltBaselineCacheMetric
 }
 
 export const WORKSPACE_PREPARED_WORKTREE_CACHE_SCHEMA =
@@ -111,6 +112,64 @@ export type WorkspacePreparedWorktreeCacheRecord = {
   sizeBytes: number
   local: {
     preparedDirectory: string
+  }
+}
+
+export const WORKSPACE_PREBUILT_BASELINE_CACHE_SCHEMA =
+  "openagents.pylon.prebuilt_baseline_cache.v1"
+export const DEFAULT_PREBUILT_BASELINE_REFRESH_CADENCE_SECONDS = 15 * 60
+export const WORKSPACE_PREBUILT_BASELINE_BUN_INSTALL_SETUP_REF =
+  "setup.pylon.prebuilt_baseline.bun_install_frozen_lockfile.v1"
+
+export type WorkspacePrebuiltBaselineSetupResult = {
+  state: "completed" | "skipped"
+  setupRef: string
+  commandRef?: string
+}
+
+export type WorkspacePrebuiltBaselineSetupRunner = (input: {
+  checkout: GitCheckoutWorkspace
+  workingDirectory: string
+}) => Promise<WorkspacePrebuiltBaselineSetupResult>
+
+export type WorkspacePrebuiltBaselineCacheMetric = {
+  schema: typeof WORKSPACE_PREBUILT_BASELINE_CACHE_SCHEMA
+  cacheKey: string
+  registryRef: string
+  repositoryFullName: string
+  branch: string
+  requestedCommitSha: string
+  state: "hit" | "miss"
+  reasonRef: string
+  checkedAt: string
+  hitCount: number
+  missCount: number
+  baselineCommitSha?: string
+}
+
+export type WorkspacePrebuiltBaselineCacheRecord = {
+  schema: typeof WORKSPACE_PREBUILT_BASELINE_CACHE_SCHEMA
+  cacheKey: string
+  registryRef: string
+  repositoryFullName: string
+  branch: string
+  baselineCommitSha: string
+  sourceRef: string
+  state: "ready"
+  integrityRef: string
+  createdAt: string
+  updatedAt: string
+  upstreamCheckedAt: string
+  refreshedAt: string
+  refreshCadenceSeconds: number
+  lastUsedAt: string
+  hitCount: number
+  missCount: number
+  lastMissReasonRef?: string
+  sizeBytes: number
+  setup: WorkspacePrebuiltBaselineSetupResult
+  local: {
+    prebuiltDirectory: string
   }
 }
 
@@ -1353,6 +1412,12 @@ export type WorkspaceLeaseRecord = {
       diskBudgetBytes: number
       restore?: WorkspacePreparedWorktreeCacheUse
     }
+    prebuiltBaselineCache?: {
+      root: string
+      cacheKey: string
+      refreshCadenceSeconds: number
+      metric?: WorkspacePrebuiltBaselineCacheMetric
+    }
   }
 }
 
@@ -1476,6 +1541,77 @@ function preparedWorktreeIntegrityRef(input: {
     "integrity.pylon.prepared_worktree",
     `${input.cacheKey}:${input.repositoryFullName}:${input.baselineCommitSha}:${input.state}`,
   )
+}
+
+export function prebuiltBaselineCacheKeyFor(input: {
+  repositoryFullName: string
+  branch: string
+}): string {
+  return createHash("sha256")
+    .update(`${input.repositoryFullName}\0${input.branch}`)
+    .digest("hex")
+    .slice(0, 32)
+}
+
+function prebuiltBaselineCacheKeyForCheckout(checkout: GitCheckoutWorkspace): string {
+  return prebuiltBaselineCacheKeyFor({
+    branch: checkout.repository.branch,
+    repositoryFullName: checkout.repository.fullName,
+  })
+}
+
+function prebuiltBaselineCacheDirectory(root: string, cacheKey: string): string {
+  return join(root, `prebuilt.${cacheKey}`)
+}
+
+function prebuiltBaselineCacheRecordPath(prebuiltDirectory: string): string {
+  return `${prebuiltDirectory}.json`
+}
+
+function prebuiltBaselineRegistryRef(cacheKey: string): string {
+  return stableRef("registry.pylon.prebuilt_baseline", cacheKey)
+}
+
+function prebuiltBaselineIntegrityRef(input: {
+  cacheKey: string
+  repositoryFullName: string
+  branch: string
+  baselineCommitSha: string
+  state: "ready"
+}): string {
+  return stableRef(
+    "integrity.pylon.prebuilt_baseline",
+    `${input.cacheKey}:${input.repositoryFullName}:${input.branch}:${input.baselineCommitSha}:${input.state}`,
+  )
+}
+
+function boundedPrebuiltBaselineRefreshCadenceSeconds(value: number | undefined): number {
+  if (value === undefined) return DEFAULT_PREBUILT_BASELINE_REFRESH_CADENCE_SECONDS
+  if (!Number.isFinite(value) || value < 1) return DEFAULT_PREBUILT_BASELINE_REFRESH_CADENCE_SECONDS
+  return Math.floor(value)
+}
+
+export const defaultPrebuiltBaselineSetupRunner: WorkspacePrebuiltBaselineSetupRunner = async ({
+  workingDirectory,
+}) => {
+  const skipped: WorkspacePrebuiltBaselineSetupResult = {
+    state: "skipped",
+    setupRef: "setup.pylon.prebuilt_baseline.no_supported_lockfile.v1",
+  }
+  if (!existsSync(join(workingDirectory, "package.json"))) return skipped
+  if (!existsSync(join(workingDirectory, "bun.lock")) && !existsSync(join(workingDirectory, "bun.lockb"))) {
+    return skipped
+  }
+  await runCheckedCommand(
+    ["bun", "install", "--frozen-lockfile"],
+    workingDirectory,
+    "reason.workspace_prebuilt_baseline.setup_failed",
+  )
+  return {
+    state: "completed",
+    setupRef: WORKSPACE_PREBUILT_BASELINE_BUN_INSTALL_SETUP_REF,
+    commandRef: "command.pylon.prebuilt_baseline.bun_install_frozen_lockfile",
+  }
 }
 
 export type GitWorktreeCheckoutRunnerOptions = {
@@ -1802,6 +1938,545 @@ async function writePreparedWorktreeCacheRecord(
 async function removePreparedWorktreeCacheEntry(preparedDirectory: string): Promise<void> {
   await rm(preparedDirectory, { recursive: true, force: true })
   await rm(preparedWorktreeCacheRecordPath(preparedDirectory), { force: true })
+}
+
+function prebuiltBaselineSetupResultFrom(value: unknown): WorkspacePrebuiltBaselineSetupResult | null {
+  if (value === null || typeof value !== "object") return null
+  const setup = value as WorkspacePrebuiltBaselineSetupResult
+  if (setup.state !== "completed" && setup.state !== "skipped") return null
+  if (typeof setup.setupRef !== "string" || !publicRefPattern.test(setup.setupRef)) return null
+  if (setup.commandRef !== undefined && (typeof setup.commandRef !== "string" || !publicRefPattern.test(setup.commandRef))) {
+    return null
+  }
+  return {
+    state: setup.state,
+    setupRef: setup.setupRef,
+    ...(setup.commandRef === undefined ? {} : { commandRef: setup.commandRef }),
+  }
+}
+
+function prebuiltBaselineCacheRecordFrom(value: unknown): WorkspacePrebuiltBaselineCacheRecord | null {
+  if (value === null || typeof value !== "object") return null
+  const record = value as WorkspacePrebuiltBaselineCacheRecord
+  if (record.schema !== WORKSPACE_PREBUILT_BASELINE_CACHE_SCHEMA) return null
+  if (record.state !== "ready") return null
+  if (typeof record.cacheKey !== "string" || !/^[a-f0-9]{32}$/.test(record.cacheKey)) return null
+  if (record.registryRef !== prebuiltBaselineRegistryRef(record.cacheKey)) return null
+  if (typeof record.repositoryFullName !== "string" || !githubFullNamePattern.test(record.repositoryFullName)) return null
+  if (typeof record.branch !== "string" || !gitBranchNamePattern.test(record.branch)) return null
+  if (typeof record.baselineCommitSha !== "string" || !gitCommitShaPattern.test(record.baselineCommitSha)) return null
+  if (record.sourceRef !== `${record.repositoryFullName}:${record.baselineCommitSha}`) return null
+  if (typeof record.integrityRef !== "string" || !publicRefPattern.test(record.integrityRef)) return null
+  const expectedIntegrityRef = prebuiltBaselineIntegrityRef({
+    baselineCommitSha: record.baselineCommitSha,
+    branch: record.branch,
+    cacheKey: record.cacheKey,
+    repositoryFullName: record.repositoryFullName,
+    state: "ready",
+  })
+  if (record.integrityRef !== expectedIntegrityRef) return null
+  for (const value of [
+    record.createdAt,
+    record.updatedAt,
+    record.upstreamCheckedAt,
+    record.refreshedAt,
+    record.lastUsedAt,
+  ]) {
+    if (typeof value !== "string" || !Number.isFinite(Date.parse(value))) return null
+  }
+  if (
+    typeof record.refreshCadenceSeconds !== "number" ||
+    !Number.isInteger(record.refreshCadenceSeconds) ||
+    record.refreshCadenceSeconds < 1
+  ) {
+    return null
+  }
+  if (typeof record.hitCount !== "number" || !Number.isInteger(record.hitCount) || record.hitCount < 0) return null
+  if (typeof record.missCount !== "number" || !Number.isInteger(record.missCount) || record.missCount < 0) return null
+  if (record.lastMissReasonRef !== undefined && (typeof record.lastMissReasonRef !== "string" || !publicRefPattern.test(record.lastMissReasonRef))) {
+    return null
+  }
+  if (typeof record.sizeBytes !== "number" || !Number.isFinite(record.sizeBytes) || record.sizeBytes < 0) return null
+  const setup = prebuiltBaselineSetupResultFrom(record.setup)
+  if (setup === null) return null
+  if (record.local === null || typeof record.local !== "object") return null
+  if (typeof record.local.prebuiltDirectory !== "string" || record.local.prebuiltDirectory.length === 0) return null
+  return { ...record, setup }
+}
+
+async function readPrebuiltBaselineCacheRecord(
+  prebuiltDirectory: string,
+): Promise<WorkspacePrebuiltBaselineCacheRecord | null> {
+  try {
+    return prebuiltBaselineCacheRecordFrom(
+      JSON.parse(await readFile(prebuiltBaselineCacheRecordPath(prebuiltDirectory), "utf8")),
+    )
+  } catch {
+    return null
+  }
+}
+
+async function writePrebuiltBaselineCacheRecord(
+  prebuiltDirectory: string,
+  record: WorkspacePrebuiltBaselineCacheRecord,
+): Promise<void> {
+  await mkdir(dirname(prebuiltDirectory), { recursive: true })
+  await writeFile(
+    prebuiltBaselineCacheRecordPath(prebuiltDirectory),
+    `${JSON.stringify(record, null, 2)}\n`,
+    { mode: 0o600 },
+  )
+  await chmod(prebuiltBaselineCacheRecordPath(prebuiltDirectory), 0o600).catch(() => undefined)
+}
+
+async function removePrebuiltBaselineCacheEntry(prebuiltDirectory: string): Promise<void> {
+  await rm(prebuiltDirectory, { recursive: true, force: true })
+  await rm(prebuiltBaselineCacheRecordPath(prebuiltDirectory), { force: true })
+}
+
+async function validatePrebuiltBaselineCacheEntry(input: {
+  cacheKey: string
+  checkout: GitCheckoutWorkspace
+  prebuiltDirectory: string
+}): Promise<WorkspacePrebuiltBaselineCacheRecord | null> {
+  const record = await readPrebuiltBaselineCacheRecord(input.prebuiltDirectory)
+  if (record === null) return null
+  if (record.cacheKey !== input.cacheKey) return null
+  if (record.repositoryFullName !== input.checkout.repository.fullName) return null
+  if (record.branch !== input.checkout.repository.branch) return null
+  if (canonicalPath(record.local.prebuiltDirectory) !== canonicalPath(input.prebuiltDirectory)) return null
+  if (!existsSync(join(input.prebuiltDirectory, ".git"))) return null
+  const root = await runTextCommand(["git", "rev-parse", "--show-toplevel"], input.prebuiltDirectory)
+  if (root.exitCode !== 0 || canonicalPath(root.stdout.trim()) !== canonicalPath(input.prebuiltDirectory)) return null
+  const head = await runTextCommand(["git", "rev-parse", "HEAD"], input.prebuiltDirectory)
+  if (head.exitCode !== 0 || head.stdout.trim().toLowerCase() !== record.baselineCommitSha.toLowerCase()) return null
+  const commitExists = await runQuietCommand(["git", "cat-file", "-e", `${record.baselineCommitSha}^{commit}`], input.prebuiltDirectory)
+  if (commitExists !== 0) return null
+  const unstaged = await runQuietCommand(["git", "diff", "--quiet", "HEAD", "--"], input.prebuiltDirectory)
+  const staged = await runQuietCommand(["git", "diff", "--cached", "--quiet"], input.prebuiltDirectory)
+  if (unstaged !== 0 || staged !== 0) return null
+  return record
+}
+
+async function resolvePrebuiltBaselineUpstreamCommit(input: {
+  checkout: GitCheckoutWorkspace
+  prebuiltBaselineCacheRoot: string
+  remoteUrlFor?: (checkout: GitCheckoutWorkspace) => string
+}): Promise<string | null> {
+  await mkdir(input.prebuiltBaselineCacheRoot, { recursive: true })
+  const remoteUrl = input.remoteUrlFor?.(input.checkout) ?? `https://github.com/${input.checkout.repository.fullName}.git`
+  const result = await runTextCommand(
+    ["git", "ls-remote", remoteUrl, `refs/heads/${input.checkout.repository.branch}`],
+    input.prebuiltBaselineCacheRoot,
+  )
+  if (result.exitCode !== 0) return null
+  const commitSha = result.stdout.trim().split(/\s+/)[0] ?? ""
+  return gitCommitShaPattern.test(commitSha) ? commitSha : null
+}
+
+async function buildPrebuiltBaselineCacheEntry(input: {
+  baselineCommitSha: string
+  cacheKey: string
+  checkout: GitCheckoutWorkspace
+  now: Date
+  prebuiltBaselineCacheRoot: string
+  refreshCadenceSeconds: number
+  remoteUrlFor?: (checkout: GitCheckoutWorkspace) => string
+  setupRunner: WorkspacePrebuiltBaselineSetupRunner
+}): Promise<WorkspacePrebuiltBaselineCacheRecord> {
+  const prebuiltDirectory = prebuiltBaselineCacheDirectory(input.prebuiltBaselineCacheRoot, input.cacheKey)
+  const tempDirectory = `${prebuiltDirectory}.tmp-${process.pid}-${Date.now()}`
+  const timestamp = input.now.toISOString()
+  const checkout = {
+    ...input.checkout,
+    repository: {
+      ...input.checkout.repository,
+      commitSha: input.baselineCommitSha,
+    },
+    virtualBranch: undefined,
+  } satisfies GitCheckoutWorkspace
+
+  await withRepositoryCacheLock(prebuiltDirectory, async () => {
+    await mkdir(input.prebuiltBaselineCacheRoot, { recursive: true })
+    await rm(tempDirectory, { recursive: true, force: true })
+    await rm(prebuiltBaselineCacheRecordPath(tempDirectory), { force: true })
+    await mkdir(tempDirectory, { recursive: true })
+    await runCheckedCommand(["git", "init"], tempDirectory, "reason.workspace_prebuilt_baseline.init_failed")
+    await disableGitAutoMaintenance(tempDirectory)
+    await installScmAuthBrokerGitCredentialHelper({ checkout, cwd: tempDirectory })
+    await runCheckedCommand(
+      [
+        "git",
+        "remote",
+        "add",
+        "origin",
+        input.remoteUrlFor?.(checkout) ?? `https://github.com/${checkout.repository.fullName}.git`,
+      ],
+      tempDirectory,
+      "reason.workspace_prebuilt_baseline.remote_add_failed",
+    )
+    await runCheckedCommand(
+      ["git", "fetch", "--depth", "1", "origin", input.baselineCommitSha],
+      tempDirectory,
+      "reason.workspace_prebuilt_baseline.fetch_failed",
+    )
+    await runCheckedCommand(
+      ["git", "checkout", "--detach", input.baselineCommitSha],
+      tempDirectory,
+      "reason.workspace_prebuilt_baseline.checkout_failed",
+    )
+    const setup = await input.setupRunner({ checkout, workingDirectory: tempDirectory })
+    const cleanTracked = await runQuietCommand(["git", "diff", "--quiet", "HEAD", "--"], tempDirectory)
+    const cleanIndex = await runQuietCommand(["git", "diff", "--cached", "--quiet"], tempDirectory)
+    if (cleanTracked !== 0 || cleanIndex !== 0) {
+      throw new WorkspaceCheckoutError("reason.workspace_prebuilt_baseline.setup_left_tracked_changes")
+    }
+    const unignored = await runTextCommand(
+      ["git", "ls-files", "--others", "--exclude-standard", "-z"],
+      tempDirectory,
+    )
+    if (unignored.exitCode !== 0 || unignored.stdout.length > 0) {
+      throw new WorkspaceCheckoutError("reason.workspace_prebuilt_baseline.setup_left_unignored_artifacts")
+    }
+    const credentialScan = await scanLongLivedScmCredentials({
+      roots: [{ rootRef: prebuiltBaselineRegistryRef(input.cacheKey), path: tempDirectory }],
+    })
+    if (credentialScan.state === "leaked") throw new WorkspaceScmCredentialPolicyError(credentialScan)
+
+    const previous = await readPrebuiltBaselineCacheRecord(prebuiltDirectory)
+    const integrityRef = prebuiltBaselineIntegrityRef({
+      baselineCommitSha: input.baselineCommitSha,
+      branch: checkout.repository.branch,
+      cacheKey: input.cacheKey,
+      repositoryFullName: checkout.repository.fullName,
+      state: "ready",
+    })
+    const preliminary: WorkspacePrebuiltBaselineCacheRecord = {
+      schema: WORKSPACE_PREBUILT_BASELINE_CACHE_SCHEMA,
+      cacheKey: input.cacheKey,
+      registryRef: prebuiltBaselineRegistryRef(input.cacheKey),
+      repositoryFullName: checkout.repository.fullName,
+      branch: checkout.repository.branch,
+      baselineCommitSha: input.baselineCommitSha,
+      sourceRef: `${checkout.repository.fullName}:${input.baselineCommitSha}`,
+      state: "ready",
+      integrityRef,
+      createdAt: previous?.createdAt ?? timestamp,
+      updatedAt: timestamp,
+      upstreamCheckedAt: timestamp,
+      refreshedAt: timestamp,
+      refreshCadenceSeconds: input.refreshCadenceSeconds,
+      lastUsedAt: previous?.lastUsedAt ?? timestamp,
+      hitCount: previous?.hitCount ?? 0,
+      missCount: previous?.missCount ?? 0,
+      ...(previous?.lastMissReasonRef === undefined ? {} : { lastMissReasonRef: previous.lastMissReasonRef }),
+      sizeBytes: 0,
+      setup,
+      local: { prebuiltDirectory },
+    }
+    await writePrebuiltBaselineCacheRecord(tempDirectory, preliminary)
+    const sizeBytes =
+      await directorySizeBytes(tempDirectory) +
+      await directorySizeBytes(prebuiltBaselineCacheRecordPath(tempDirectory))
+    await writePrebuiltBaselineCacheRecord(tempDirectory, { ...preliminary, sizeBytes })
+    await removePrebuiltBaselineCacheEntry(prebuiltDirectory)
+    await rename(tempDirectory, prebuiltDirectory)
+    await rename(prebuiltBaselineCacheRecordPath(tempDirectory), prebuiltBaselineCacheRecordPath(prebuiltDirectory))
+  })
+
+  const record = await readPrebuiltBaselineCacheRecord(prebuiltDirectory)
+  if (record === null) throw new WorkspaceCheckoutError("reason.workspace_prebuilt_baseline.registry_write_failed")
+  return record
+}
+
+async function ensurePrebuiltBaselineCacheEntry(input: {
+  cacheKey: string
+  checkout: GitCheckoutWorkspace
+  now: Date
+  prebuiltBaselineCacheRoot: string
+  refreshCadenceSeconds: number
+  remoteUrlFor?: (checkout: GitCheckoutWorkspace) => string
+  setupRunner: WorkspacePrebuiltBaselineSetupRunner
+}): Promise<WorkspacePrebuiltBaselineCacheRecord | null> {
+  const prebuiltDirectory = prebuiltBaselineCacheDirectory(input.prebuiltBaselineCacheRoot, input.cacheKey)
+  let existing = await validatePrebuiltBaselineCacheEntry({
+    cacheKey: input.cacheKey,
+    checkout: input.checkout,
+    prebuiltDirectory,
+  })
+  if (existing === null) {
+    await removePrebuiltBaselineCacheEntry(prebuiltDirectory)
+  } else {
+    const checkedAtMs = Date.parse(existing.upstreamCheckedAt)
+    if (Number.isFinite(checkedAtMs) && input.now.getTime() - checkedAtMs < input.refreshCadenceSeconds * 1000) {
+      return existing
+    }
+  }
+
+  const upstreamCommitSha = await resolvePrebuiltBaselineUpstreamCommit({
+    checkout: input.checkout,
+    prebuiltBaselineCacheRoot: input.prebuiltBaselineCacheRoot,
+    ...(input.remoteUrlFor === undefined ? {} : { remoteUrlFor: input.remoteUrlFor }),
+  })
+  if (upstreamCommitSha === null) return existing
+
+  if (existing !== null && existing.baselineCommitSha.toLowerCase() === upstreamCommitSha.toLowerCase()) {
+    const timestamp = input.now.toISOString()
+    existing = {
+      ...existing,
+      updatedAt: timestamp,
+      upstreamCheckedAt: timestamp,
+      refreshCadenceSeconds: input.refreshCadenceSeconds,
+      sizeBytes: await directorySizeBytes(existing.local.prebuiltDirectory),
+    }
+    await writePrebuiltBaselineCacheRecord(existing.local.prebuiltDirectory, existing)
+    return existing
+  }
+
+  return buildPrebuiltBaselineCacheEntry({
+    baselineCommitSha: upstreamCommitSha,
+    cacheKey: input.cacheKey,
+    checkout: input.checkout,
+    now: input.now,
+    prebuiltBaselineCacheRoot: input.prebuiltBaselineCacheRoot,
+    refreshCadenceSeconds: input.refreshCadenceSeconds,
+    ...(input.remoteUrlFor === undefined ? {} : { remoteUrlFor: input.remoteUrlFor }),
+    setupRunner: input.setupRunner,
+  })
+}
+
+function prebuiltBaselineMetric(input: {
+  baselineCommitSha?: string
+  branch: string
+  cacheKey: string
+  checkedAt: string
+  hitCount: number
+  missCount: number
+  reasonRef: string
+  repositoryFullName: string
+  requestedCommitSha: string
+  state: "hit" | "miss"
+}): WorkspacePrebuiltBaselineCacheMetric {
+  return {
+    schema: WORKSPACE_PREBUILT_BASELINE_CACHE_SCHEMA,
+    cacheKey: input.cacheKey,
+    registryRef: prebuiltBaselineRegistryRef(input.cacheKey),
+    repositoryFullName: input.repositoryFullName,
+    branch: input.branch,
+    requestedCommitSha: input.requestedCommitSha,
+    state: input.state,
+    reasonRef: input.reasonRef,
+    checkedAt: input.checkedAt,
+    hitCount: input.hitCount,
+    missCount: input.missCount,
+    ...(input.baselineCommitSha === undefined ? {} : { baselineCommitSha: input.baselineCommitSha }),
+  }
+}
+
+async function recordPrebuiltBaselineMiss(input: {
+  checkout: GitCheckoutWorkspace
+  cacheKey: string
+  now: Date
+  reasonRef: string
+  record?: WorkspacePrebuiltBaselineCacheRecord | null
+}): Promise<WorkspacePrebuiltBaselineCacheMetric> {
+  const requestedCommitSha = checkoutBaseCommitSha(input.checkout)
+  if (input.record === undefined || input.record === null) {
+    return prebuiltBaselineMetric({
+      branch: input.checkout.repository.branch,
+      cacheKey: input.cacheKey,
+      checkedAt: input.now.toISOString(),
+      hitCount: 0,
+      missCount: 1,
+      reasonRef: input.reasonRef,
+      repositoryFullName: input.checkout.repository.fullName,
+      requestedCommitSha,
+      state: "miss",
+    })
+  }
+  const timestamp = input.now.toISOString()
+  const nextRecord: WorkspacePrebuiltBaselineCacheRecord = {
+    ...input.record,
+    updatedAt: timestamp,
+    lastMissReasonRef: input.reasonRef,
+    missCount: input.record.missCount + 1,
+  }
+  await writePrebuiltBaselineCacheRecord(input.record.local.prebuiltDirectory, nextRecord)
+  return prebuiltBaselineMetric({
+    baselineCommitSha: nextRecord.baselineCommitSha,
+    branch: nextRecord.branch,
+    cacheKey: nextRecord.cacheKey,
+    checkedAt: timestamp,
+    hitCount: nextRecord.hitCount,
+    missCount: nextRecord.missCount,
+    reasonRef: input.reasonRef,
+    repositoryFullName: nextRecord.repositoryFullName,
+    requestedCommitSha,
+    state: "miss",
+  })
+}
+
+async function recordPrebuiltBaselineHit(input: {
+  checkout: GitCheckoutWorkspace
+  now: Date
+  record: WorkspacePrebuiltBaselineCacheRecord
+}): Promise<WorkspacePrebuiltBaselineCacheMetric> {
+  const timestamp = input.now.toISOString()
+  const sizeBytes = await directorySizeBytes(input.record.local.prebuiltDirectory)
+  const nextRecord: WorkspacePrebuiltBaselineCacheRecord = {
+    ...input.record,
+    updatedAt: timestamp,
+    lastUsedAt: timestamp,
+    hitCount: input.record.hitCount + 1,
+    sizeBytes,
+  }
+  await writePrebuiltBaselineCacheRecord(input.record.local.prebuiltDirectory, nextRecord)
+  return prebuiltBaselineMetric({
+    baselineCommitSha: nextRecord.baselineCommitSha,
+    branch: nextRecord.branch,
+    cacheKey: nextRecord.cacheKey,
+    checkedAt: timestamp,
+    hitCount: nextRecord.hitCount,
+    missCount: nextRecord.missCount,
+    reasonRef: "reason.workspace_prebuilt_baseline.hit",
+    repositoryFullName: nextRecord.repositoryFullName,
+    requestedCommitSha: checkoutBaseCommitSha(input.checkout),
+    state: "hit",
+  })
+}
+
+type PrebuiltBaselineRestoreAttempt =
+  | { state: "hit"; metric: WorkspacePrebuiltBaselineCacheMetric }
+  | { state: "miss"; metric: WorkspacePrebuiltBaselineCacheMetric }
+
+async function restorePrebuiltBaselineCacheEntry(input: {
+  cacheRoot: string
+  checkout: GitCheckoutWorkspace
+  now: Date
+  prebuiltBaselineCacheRoot: string
+  refreshCadenceSeconds: number
+  remoteUrlFor?: (checkout: GitCheckoutWorkspace) => string
+  setupRunner: WorkspacePrebuiltBaselineSetupRunner
+  workingDirectory: string
+}): Promise<PrebuiltBaselineRestoreAttempt> {
+  const cacheKey = prebuiltBaselineCacheKeyForCheckout(input.checkout)
+  const requestedCommitSha = checkoutBaseCommitSha(input.checkout)
+  if (input.checkout.virtualBranch !== undefined) {
+    return {
+      state: "miss",
+      metric: await recordPrebuiltBaselineMiss({
+        cacheKey,
+        checkout: input.checkout,
+        now: input.now,
+        reasonRef: "reason.workspace_prebuilt_baseline.virtual_branch_unsupported",
+      }),
+    }
+  }
+
+  let record: WorkspacePrebuiltBaselineCacheRecord | null = null
+  try {
+    record = await ensurePrebuiltBaselineCacheEntry({
+      cacheKey,
+      checkout: input.checkout,
+      now: input.now,
+      prebuiltBaselineCacheRoot: input.prebuiltBaselineCacheRoot,
+      refreshCadenceSeconds: input.refreshCadenceSeconds,
+      ...(input.remoteUrlFor === undefined ? {} : { remoteUrlFor: input.remoteUrlFor }),
+      setupRunner: input.setupRunner,
+    })
+  } catch {
+    return {
+      state: "miss",
+      metric: await recordPrebuiltBaselineMiss({
+        cacheKey,
+        checkout: input.checkout,
+        now: input.now,
+        reasonRef: "reason.workspace_prebuilt_baseline.refresh_failed",
+        record,
+      }),
+    }
+  }
+
+  if (record === null) {
+    return {
+      state: "miss",
+      metric: await recordPrebuiltBaselineMiss({
+        cacheKey,
+        checkout: input.checkout,
+        now: input.now,
+        reasonRef: "reason.workspace_prebuilt_baseline.upstream_unavailable",
+      }),
+    }
+  }
+  if (record.baselineCommitSha.toLowerCase() !== requestedCommitSha.toLowerCase()) {
+    return {
+      state: "miss",
+      metric: await recordPrebuiltBaselineMiss({
+        cacheKey,
+        checkout: input.checkout,
+        now: input.now,
+        reasonRef: "reason.workspace_prebuilt_baseline.requested_commit_not_prebuilt",
+        record,
+      }),
+    }
+  }
+
+  assertPylonOwnedWorkspaceTarget({
+    cacheRoot: input.cacheRoot,
+    workingDirectory: input.workingDirectory,
+  })
+  try {
+    await mkdir(input.cacheRoot, { recursive: true })
+    await rm(input.workingDirectory, { recursive: true, force: true })
+    await cp(record.local.prebuiltDirectory, input.workingDirectory, {
+      recursive: true,
+      force: false,
+      errorOnExist: false,
+    })
+    await disableGitAutoMaintenance(input.workingDirectory)
+    await runCheckedCommand(
+      ["git", "reset", "--hard", requestedCommitSha],
+      input.workingDirectory,
+      "reason.workspace_prebuilt_baseline.restore_reset_failed",
+    )
+    const head = await runTextCommand(["git", "rev-parse", "HEAD"], input.workingDirectory)
+    if (head.exitCode !== 0 || head.stdout.trim().toLowerCase() !== requestedCommitSha.toLowerCase()) {
+      await rm(input.workingDirectory, { recursive: true, force: true })
+      return {
+        state: "miss",
+        metric: await recordPrebuiltBaselineMiss({
+          cacheKey,
+          checkout: input.checkout,
+          now: input.now,
+          reasonRef: "reason.workspace_prebuilt_baseline.restore_integrity_failed",
+          record,
+        }),
+      }
+    }
+    await setWorkspaceOriginRemote({
+      checkout: input.checkout,
+      ...(input.remoteUrlFor === undefined ? {} : { remoteUrlFor: input.remoteUrlFor }),
+      workingDirectory: input.workingDirectory,
+    })
+    await installScmAuthBrokerGitCredentialHelper({ checkout: input.checkout, cwd: input.workingDirectory })
+  } catch {
+    await rm(input.workingDirectory, { recursive: true, force: true })
+    return {
+      state: "miss",
+      metric: await recordPrebuiltBaselineMiss({
+        cacheKey,
+        checkout: input.checkout,
+        now: input.now,
+        reasonRef: "reason.workspace_prebuilt_baseline.restore_failed",
+        record,
+      }),
+    }
+  }
+
+  return {
+    state: "hit",
+    metric: await recordPrebuiltBaselineHit({ checkout: input.checkout, now: input.now, record }),
+  }
 }
 
 async function validatePreparedWorktreeCacheEntry(input: {
@@ -2144,6 +2819,9 @@ export type MaterializeWithLeaseInput = {
   checkout: GitCheckoutWorkspace
   checkoutRunner?: WorkspaceCheckoutRunner
   leaseRef: string
+  prebuiltBaselineCacheRoot?: string
+  prebuiltBaselineRefreshCadenceSeconds?: number
+  prebuiltBaselineSetupRunner?: WorkspacePrebuiltBaselineSetupRunner
   preparedWorktreeCacheRoot?: string
   preparedWorktreeDiskBudgetBytes?: number
   refPrefix: string
@@ -2186,6 +2864,13 @@ export async function materializeGitCheckoutWorkspaceWithLease(
     input.preparedWorktreeCacheRoot === undefined || strategy !== "git_worktree"
       ? undefined
       : preparedWorktreeCacheKeyForCheckout(input.checkout)
+  const prebuiltRefreshCadenceSeconds = boundedPrebuiltBaselineRefreshCadenceSeconds(
+    input.prebuiltBaselineRefreshCadenceSeconds,
+  )
+  const prebuiltCacheKey =
+    input.prebuiltBaselineCacheRoot === undefined || strategy !== "git_worktree"
+      ? undefined
+      : prebuiltBaselineCacheKeyForCheckout(input.checkout)
   const workspaceRef = stableRef(input.refPrefix, input.leaseRef)
   const workingDirectory = join(input.cacheRoot, workspaceRef)
   const preparedRestore =
@@ -2199,22 +2884,46 @@ export async function materializeGitCheckoutWorkspaceWithLease(
           ...(input.remoteUrlFor === undefined ? {} : { remoteUrlFor: input.remoteUrlFor }),
           workingDirectory,
         })
-  const materialized =
-    preparedRestore === null
-      ? await materializeGitCheckoutWorkspace({
+  const prebuiltRestore =
+    preparedRestore !== null || input.prebuiltBaselineCacheRoot === undefined || strategy !== "git_worktree"
+      ? null
+      : await restorePrebuiltBaselineCacheEntry({
           cacheRoot: input.cacheRoot,
           checkout: input.checkout,
-          checkoutRunner,
-          leaseRef: input.leaseRef,
-          refPrefix: input.refPrefix,
+          now,
+          prebuiltBaselineCacheRoot: input.prebuiltBaselineCacheRoot,
+          refreshCadenceSeconds: prebuiltRefreshCadenceSeconds,
+          ...(input.remoteUrlFor === undefined ? {} : { remoteUrlFor: input.remoteUrlFor }),
+          setupRunner: input.prebuiltBaselineSetupRunner ?? defaultPrebuiltBaselineSetupRunner,
+          workingDirectory,
         })
-      : {
+  const materialized: MaterializedWorkspace =
+    preparedRestore !== null
+      ? {
           cleanupRef: stableRef("cleanup.pylon.workspace", workspaceRef),
           preparedWorktreeCache: preparedRestore,
           sourceRef: checkoutSourceRef(input.checkout),
           workingDirectory,
           workspaceRef,
         }
+      : prebuiltRestore?.state === "hit"
+        ? {
+            cleanupRef: stableRef("cleanup.pylon.workspace", workspaceRef),
+            prebuiltBaselineCache: prebuiltRestore.metric,
+            sourceRef: checkoutSourceRef(input.checkout),
+            workingDirectory,
+            workspaceRef,
+          }
+        : {
+            ...(await materializeGitCheckoutWorkspace({
+              cacheRoot: input.cacheRoot,
+              checkout: input.checkout,
+              checkoutRunner,
+              leaseRef: input.leaseRef,
+              refPrefix: input.refPrefix,
+            })),
+            ...(prebuiltRestore === null ? {} : { prebuiltBaselineCache: prebuiltRestore.metric }),
+          }
 
   const record: WorkspaceLeaseRecord = {
     schema: WORKSPACE_LEASE_SCHEMA,
@@ -2230,7 +2939,7 @@ export async function materializeGitCheckoutWorkspaceWithLease(
     local: {
       cacheRoot: input.cacheRoot,
       workingDirectory: materialized.workingDirectory,
-      ...(strategy === "git_worktree" && preparedRestore === null
+      ...(strategy === "git_worktree" && preparedRestore === null && prebuiltRestore?.state !== "hit"
         ? {
             repositoryCacheDirectory: join(
               input.repositoryCacheRoot,
@@ -2246,6 +2955,16 @@ export async function materializeGitCheckoutWorkspaceWithLease(
               cacheKey: preparedCacheKey,
               diskBudgetBytes: preparedDiskBudgetBytes,
               ...(preparedRestore === null ? {} : { restore: preparedRestore }),
+            },
+          }),
+      ...(input.prebuiltBaselineCacheRoot === undefined || prebuiltCacheKey === undefined
+        ? {}
+        : {
+            prebuiltBaselineCache: {
+              root: input.prebuiltBaselineCacheRoot,
+              cacheKey: prebuiltCacheKey,
+              refreshCadenceSeconds: prebuiltRefreshCadenceSeconds,
+              ...(prebuiltRestore === null ? {} : { metric: prebuiltRestore.metric }),
             },
           }),
     },

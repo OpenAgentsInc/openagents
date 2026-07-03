@@ -149,6 +149,19 @@ More specific invariant ledgers apply inside imported apps and packages.
   `apps/pylon/tests/workspace-worktree.test.ts` and the enforced
   `background_agents.warm_dispatch.prepared_worktree_cache.v1` behavior
   contract.
+- Pylon prebuilt-baseline reuse is local-only and keyed by repository full name
+  plus branch. A prebuilt registry row may be refreshed only through the bounded
+  upstream staleness cadence, records the observed upstream commit and setup
+  result, and must keep honest hit/miss counters. A matching cold dispatch may
+  start from the prebuilt directory only when the requested pinned commit equals
+  the registry baseline; otherwise it records a miss and falls back to normal
+  `git_worktree` materialization. Prebuilt setup artifacts are allowed only as
+  ignored local cache material, registry rows and paths are never public
+  authority, and refresh/setup/restore failures must degrade to a miss rather
+  than blocking normal materialization. Regression coverage lives in
+  `apps/pylon/tests/workspace-worktree.test.ts` and the enforced
+  `background_agents.warm_dispatch.prebuilt_baseline_cache.v1` behavior
+  contract.
 - Runtime runs may link back to `agentDefinitionId` as evidence that a run was
   definition-backed, but that link alone grants no tool, spend, dispatch,
   payout, settlement, public-claim, provider-account, or external-send

@@ -745,6 +745,12 @@ async function workspaceForCommand(input: {
     checkout,
     ...(input.workspaceCheckoutRunner === undefined ? {} : { checkoutRunner: input.workspaceCheckoutRunner }),
     leaseRef: stableRef("lease.pylon.control_session.workspace", `${input.runRef}:${input.index}`),
+    ...(input.workspaceCheckoutRunner === undefined
+      ? {
+          preparedWorktreeCacheRoot: join(input.summary.paths.cache, "workspace-prepared-cache"),
+          prebuiltBaselineCacheRoot: join(input.summary.paths.cache, "workspace-prebuilt-baselines"),
+        }
+      : {}),
     refPrefix: "workspace.pylon.control_session",
     repositoryCacheRoot: join(input.summary.paths.cache, "workspace-git-cache"),
     retentionPolicy: "remove_on_closeout",

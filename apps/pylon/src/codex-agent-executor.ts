@@ -1205,6 +1205,12 @@ async function materializeCodexAgentWorkspace(input: {
       checkout: input.task.workspace,
       ...(input.checkoutRunner === undefined ? {} : { checkoutRunner: input.checkoutRunner }),
       leaseRef: input.leaseRef,
+      ...(input.checkoutRunner === undefined
+        ? {
+            preparedWorktreeCacheRoot: join(input.state.paths.cache, "workspace-prepared-cache"),
+            prebuiltBaselineCacheRoot: join(input.state.paths.cache, "workspace-prebuilt-baselines"),
+          }
+        : {}),
       refPrefix: "workspace.pylon.codex_agent_task",
       repositoryCacheRoot: join(input.state.paths.cache, "workspace-git-cache"),
       retentionPolicy: "remove_on_closeout",

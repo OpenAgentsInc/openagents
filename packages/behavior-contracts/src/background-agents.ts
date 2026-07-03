@@ -230,7 +230,7 @@ export const backgroundAgentsContractRegistry: BehaviorContractRegistryDocument 
     },
     {
       authorityBoundary:
-        "This contract binds the Pylon materializer prepared-worktree source cache only. It does not claim prebuilt dependency baselines, staleness refresh cadence, or Khala Code warm-on-intent dispatch, which remain BA-E2/BA-E3 scope.",
+        "This contract binds the Pylon materializer prepared-worktree source cache only. It does not claim prebuilt dependency baselines or Khala Code warm-on-intent dispatch, which remain BA-E2/BA-E3 scope.",
       blockerRefs: [],
       contractId: "background_agents.warm_dispatch.prepared_worktree_cache.v1",
       enforcementTier: "test-sweep",
@@ -280,6 +280,59 @@ export const backgroundAgentsContractRegistry: BehaviorContractRegistryDocument 
       surface: "pylon-worker",
       verification:
         "BA-E1 is enforced by the Pylon workspace-worktree test suite in the normal Pylon bun test sweep.",
+    },
+    {
+      authorityBoundary:
+        "This contract binds local Pylon prebuilt baseline cache selection, refresh, and metrics only. It does not claim post-completion exact prepared snapshots or Khala Code warm-on-intent dispatch.",
+      blockerRefs: [],
+      contractId: "background_agents.warm_dispatch.prebuilt_baseline_cache.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "https://github.com/OpenAgentsInc/openagents/issues/8204",
+        "https://github.com/OpenAgentsInc/openagents/issues/8218",
+        "INVARIANTS.md",
+        "docs/fable/ROADMAP_BACKGROUND_AGENTS.md",
+        "apps/pylon/docs/workspace-materializer.md",
+        "apps/pylon/tests/workspace-worktree.test.ts",
+      ],
+      oracles: [
+        {
+          description:
+            "prebuiltBaselineCacheKeyFor is stable for one repository+branch pair and changes across repository names or branches.",
+          id: "background_agents.warm_dispatch.prebuilt_baseline_key",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/pylon/tests/workspace-worktree.test.ts",
+        },
+        {
+          description:
+            "A cold materialization builds the newest upstream prebuilt baseline, runs setup once, restores later workspaces with setup artifacts preserved, and records registry hit counts.",
+          id: "background_agents.warm_dispatch.prebuilt_baseline_hit",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/pylon/tests/workspace-worktree.test.ts",
+        },
+        {
+          description:
+            "A requested commit that is newer than the cached prebuild before the refresh cadence records an honest miss and falls back to normal materialization, then a due cadence refresh advances to the newest upstream baseline.",
+          id: "background_agents.warm_dispatch.prebuilt_baseline_refresh_metrics",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/pylon/tests/workspace-worktree.test.ts",
+        },
+      ],
+      productArea: "warm dispatch",
+      source: {
+        channel: "issue_list",
+        statedBy: "owner",
+        statedOn: "2026-07-03",
+      },
+      state: "enforced",
+      statement:
+        "Prebuilt baselines in the Pylon workspace materializer use a staleness-checked upstream refresh cadence, start matching cold dispatches from a setup-prepared baseline, and keep registry rows with honest hit/miss metrics.",
+      surface: "pylon-worker",
+      verification:
+        "BA-E2 is enforced by the Pylon workspace-worktree test suite in the normal Pylon bun test sweep.",
     },
     {
       authorityBoundary:
@@ -359,5 +412,5 @@ export const backgroundAgentsContractRegistry: BehaviorContractRegistryDocument 
     },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-03.5",
+  version: "2026-07-03.6",
 }
