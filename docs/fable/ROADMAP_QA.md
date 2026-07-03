@@ -1,7 +1,8 @@
 # ROADMAP_QA — The Fully Automated Khala Code QA Cycle
 
 Date: 2026-07-02
-Status: **active execution roadmap.** Successor to WS-6/WS-14 of
+Status: **completed issue map; follow-on QA Swarm work continues under
+#8071.** Successor to WS-6/WS-14 of
 [`ROADMAP.md`](./ROADMAP.md) and direct implementation of §15.5 of the
 [QA framework design](./2026-07-01-khala-code-desktop-qa-framework-design.md)
 (post-roadmap addendum). The machine exists — drivers, oracles, seed corpus,
@@ -36,6 +37,16 @@ per task (issue map in §12; epic #8051), one PR per issue, clean worktrees, ver
 before review, merged-to-`main` is the only "done". Delegability grades as
 in ROADMAP.md (HIGH = fleet worker with bounded prompt; MED = tight issue +
 reviewer attention; LOW = supervisor).
+
+**Closeout (2026-07-03):** every child issue in the #8051 issue map
+(#8012-#8050, #8052-#8055, and #8057-#8059) is closed on `main`. The final
+live-tier blocker was Q5.2 (#8034), proven by
+`fleet_run.qa8034.plandag.heartbeatreconcile.20260703T131137Z` at
+`3c561499c574d6861a2b4ea6128d7c6a6ac67275`: seven assignments and closeouts,
+two refill assignments, zero duplicate work-unit refs, zero dispatch failures,
+seven exact token rows, and public counter reconciliation for 19,821,574
+tokens. The roadmap remains useful as source material for QA Swarm (#8071),
+but #8051 itself is closed.
 
 ## 0. Ground Truth (what already runs, verified 2026-07-02)
 
@@ -376,7 +387,8 @@ The fix is the behavior-contract layer, landed with this entry:
 ## 12. Issue Map
 
 One GitHub issue per task, filed 2026-07-02 (see the epic for the live
-checklist). This table is patched with the real numbers at filing time.
+checklist). This table is patched with the real numbers at filing time and
+closed out once all mapped issues reached `main`.
 
 Epic: [#8051](https://github.com/OpenAgentsInc/openagents/issues/8051)
 
@@ -421,3 +433,10 @@ Epic: [#8051](https://github.com/OpenAgentsInc/openagents/issues/8051)
 | Q8.3 | [#8048](https://github.com/OpenAgentsInc/openagents/issues/8048) | TLC model checks in the nightly + counterexample pipeline |
 | Q8.4 | [#8049](https://github.com/OpenAgentsInc/openagents/issues/8049) | Public-safety oracle in every mode |
 | Q8.5 | [#8050](https://github.com/OpenAgentsInc/openagents/issues/8050) | Coverage floor gate |
+| Q9.1 | [#8052](https://github.com/OpenAgentsInc/openagents/issues/8052) | Typed model-role registry (architect/coder/judge/advisor) |
+| Q9.2 | [#8053](https://github.com/OpenAgentsInc/openagents/issues/8053) | Plan-first chat flow (/architect plan card) |
+| Q9.3 | [#8054](https://github.com/OpenAgentsInc/openagents/issues/8054) | Judge-on-diff verdict card in chat |
+| Q9.4 | [#8055](https://github.com/OpenAgentsInc/openagents/issues/8055) | Advisor runtime (turn-level second model, bounded) |
+| Q9.5 | [#8057](https://github.com/OpenAgentsInc/openagents/issues/8057) | Per-role economics surface (exact rows, honest dollars) |
+| Q9.6 | [#8058](https://github.com/OpenAgentsInc/openagents/issues/8058) | architect-coder-judge preset + promise record |
+| Q9.7 | [#8059](https://github.com/OpenAgentsInc/openagents/issues/8059) | Planner/Coder/Judge under the QA regime (prove it exists) |
