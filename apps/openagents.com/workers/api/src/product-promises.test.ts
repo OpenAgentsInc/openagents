@@ -137,7 +137,7 @@ describe('public product promises document', () => {
     })
   })
 
-  test('lands QA Swarm QS1 records without self-serve or public price claims', () => {
+  test('lands QA Swarm package records with public prices but no self-serve claims', () => {
     const decoded = S.decodeUnknownSync(ProductPromisesDocument)(
       publicProductPromisesDocument(),
     )
@@ -157,11 +157,12 @@ describe('public product promises document', () => {
       blockerRefs: expect.arrayContaining([
         'blocker.product_promises.qa_swarm_paid_customer_receipt_missing',
         'blocker.product_promises.qa_swarm_operator_assisted_only',
-        'blocker.product_promises.qa_swarm_rate_card_owner_signoff_pending',
       ]),
       evidenceRefs: expect.arrayContaining([
         'docs/fable/2026-07-02-qa-swarm-product-plan.md',
         'docs/feature-requests/2026-06-24-autonomous-qa-e2e-from-computer-use.md',
+        'apps/openagents.com/apps/web/src/page/business.ts',
+        'apps/openagents.com/apps/web/src/business-route.test.ts',
         'promise:qa.agentic_qa_runner.v1',
       ]),
     })
@@ -180,10 +181,15 @@ describe('public product promises document', () => {
       ]),
     })
     expect(promiseById.get('qa_swarm.service_packages.v1')).toMatchObject({
-      state: 'planned',
-      evidenceRefs: expect.arrayContaining(['NEEDS_OWNER.md']),
+      state: 'yellow',
+      evidenceRefs: expect.arrayContaining([
+        'NEEDS_OWNER.md',
+        'apps/openagents.com/apps/web/src/page/business.ts',
+        'apps/openagents.com/apps/web/src/business-route.test.ts',
+      ]),
       blockerRefs: expect.arrayContaining([
-        'blocker.product_promises.qa_swarm_rate_card_owner_signoff_pending',
+        'blocker.product_promises.qa_swarm_checkout_or_intake_receipts_missing',
+        'blocker.product_promises.qa_swarm_first_paid_delivery_receipt_missing',
         'blocker.product_promises.qa_swarm_self_serve_delivery_missing',
       ]),
     })
@@ -197,12 +203,14 @@ describe('public product promises document', () => {
       ...decoded.notes,
     ].join('\n')
     expect(qaSwarmCopy).toContain('operator-assisted')
-    expect(qaSwarmCopy).toContain('No prices are published')
-    expect(qaSwarmCopy).toContain('must not publish prices')
+    expect(qaSwarmCopy).toContain('Swarm Audit at $1,000-$5,000')
+    expect(qaSwarmCopy).toContain(
+      'QA-on-every-push retainers at $2,000-$10,000/month',
+    )
+    expect(qaSwarmCopy).toContain('not self-serve checkout products')
+    expect(qaSwarmCopy).toContain('Do not imply purchase/checkout is live')
     expect(qaSwarmCopy).toContain('green stays exactly 34')
-    expect(qaSwarmCopy).not.toContain('$1,000')
-    expect(qaSwarmCopy).not.toContain('$2,000')
-    expect(qaSwarmCopy).not.toContain('$5,000')
+    expect(qaSwarmCopy).not.toContain('paid delivery receipts exist')
   })
 
   test('keeps issue 7023 desktop and builtin compute proof yellow-only', () => {
@@ -213,9 +221,7 @@ describe('public product promises document', () => {
       decoded.promises.map(promise => [promise.promiseId, promise]),
     )
     const desktop = promiseById.get('autopilot.desktop_gui_client.v1')
-    const builtinCompute = promiseById.get(
-      'autopilot.builtin_compute_agent.v1',
-    )
+    const builtinCompute = promiseById.get('autopilot.builtin_compute_agent.v1')
 
     expect(desktop).toMatchObject({
       state: 'yellow',
@@ -609,8 +615,7 @@ describe('public product promises document', () => {
       decoded.promises.every(promise => promise.sourceRefs.length > 0),
     ).toBe(true)
     const agentCharacterCreationPromise = decoded.promises.find(
-      promise =>
-        promise.promiseId === 'autopilot.agent_character_creation.v1',
+      promise => promise.promiseId === 'autopilot.agent_character_creation.v1',
     )
     expect(agentCharacterCreationPromise).toBeDefined()
     expect(agentCharacterCreationPromise?.state).toBe('yellow')
@@ -710,8 +715,7 @@ describe('public product promises document', () => {
       ]),
     )
     const freeTierTraceCapturePromise = decoded.promises.find(
-      promise =>
-        promise.promiseId === 'data.khala_free_tier_trace_capture.v1',
+      promise => promise.promiseId === 'data.khala_free_tier_trace_capture.v1',
     )
     expect(freeTierTraceCapturePromise?.blockerRefs).not.toContain(
       'blocker.product_promises.trace_capture_public_disclosure_alignment_required',
@@ -738,8 +742,7 @@ describe('public product promises document', () => {
       'bounded source-level registry + install/use runtime core exists',
     )
     const repeatedAgentCharacterCreationPromise = decoded.promises.find(
-      promise =>
-        promise.promiseId === 'autopilot.agent_character_creation.v1',
+      promise => promise.promiseId === 'autopilot.agent_character_creation.v1',
     )
     expect(repeatedAgentCharacterCreationPromise?.state).toBe('yellow')
     expect(repeatedAgentCharacterCreationPromise?.evidenceRefs).toEqual(
@@ -818,7 +821,8 @@ describe('public product promises document', () => {
       'This is not yet a shipped walkable multiplayer world',
     )
     const codexSuccessorPromise = decoded.promises.find(
-      promise => promise.promiseId === 'autopilot.codex_probe_pylon_successor.v1',
+      promise =>
+        promise.promiseId === 'autopilot.codex_probe_pylon_successor.v1',
     )
     expect(codexSuccessorPromise?.state).toBe('green')
     expect(codexSuccessorPromise?.safeCopy).toContain(
@@ -850,21 +854,15 @@ describe('public product promises document', () => {
     )
     expect(khalaCliPromise?.state).toBe('green')
     expect(khalaCliPromise?.safeCopy).toContain('khala fleet status')
-    expect(khalaCliPromise?.safeCopy).toContain(
-      'owner-scoped fleet state',
-    )
-    expect(khalaCliPromise?.unsafeCopy).toContain(
-      'cross-owner fleet browser',
-    )
+    expect(khalaCliPromise?.safeCopy).toContain('owner-scoped fleet state')
+    expect(khalaCliPromise?.unsafeCopy).toContain('cross-owner fleet browser')
     expect(khalaCliPromise?.evidenceRefs).toEqual(
       expect.arrayContaining([
         'clients/khala-cli/src/fleet.ts',
         'apps/openagents.com/workers/api/src/operator-fleet-status-routes.ts',
       ]),
     )
-    expect(khalaCliPromise?.authorityBoundary).toContain(
-      'fleet visibility',
-    )
+    expect(khalaCliPromise?.authorityBoundary).toContain('fleet visibility')
     expect(decoded.promises).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -932,9 +930,7 @@ describe('public product promises document', () => {
             'blocker.product_promises.contributor_ledger_missing',
             'blocker.product_promises.gross_margin_receipts_missing',
           ]),
-          safeCopy: expect.stringContaining(
-            'contributor accrual ledger',
-          ),
+          safeCopy: expect.stringContaining('contributor accrual ledger'),
           verification: expect.stringContaining(
             'pending_payout-to-ledger reconciliation',
           ),
@@ -1491,7 +1487,9 @@ describe('public product promises document', () => {
           promiseId: 'payments.money_dev_kit.v1',
           safeCopy: expect.stringContaining('Spark remains the primary'),
           state: 'green',
-          unsafeCopy: expect.stringContaining('Do not claim MDK mnemonic restore'),
+          unsafeCopy: expect.stringContaining(
+            'Do not claim MDK mnemonic restore',
+          ),
         }),
         expect.objectContaining({
           blockerRefs: [],
@@ -1536,7 +1534,11 @@ describe('public product promises document', () => {
           state: 'planned',
         }),
         expect.objectContaining({
-          audience: expect.arrayContaining(['contributor', 'operator', 'public']),
+          audience: expect.arrayContaining([
+            'contributor',
+            'operator',
+            'public',
+          ]),
           evidenceRefs: expect.arrayContaining([
             'route:/api/public/training/public-gradient-windows',
             'apps/openagents.com/workers/api/src/tassadar-gradient-window-intake.ts',
@@ -1559,7 +1561,11 @@ describe('public product promises document', () => {
           ),
         }),
         expect.objectContaining({
-          audience: expect.arrayContaining(['agent', 'contributor', 'operator']),
+          audience: expect.arrayContaining([
+            'agent',
+            'contributor',
+            'operator',
+          ]),
           blockerRefs: [],
           promiseId: 'pylon.agent_steerable_cli.v1',
           state: 'green',
@@ -1646,8 +1652,7 @@ describe('public product promises document', () => {
     )
     const mondayTrainingPromise = decoded.promises.find(
       promise =>
-        promise.promiseId ===
-        'training.decentralized_training_launch.v1',
+        promise.promiseId === 'training.decentralized_training_launch.v1',
     )
     expect(mondayTrainingPromise).toMatchObject({
       blockerRefs: [],
@@ -1661,7 +1666,8 @@ describe('public product promises document', () => {
       'simulation-backed settlement record',
     )
     const pylonInstallPromise = decoded.promises.find(
-      promise => promise.promiseId === 'pylon.install_without_wallet_knowledge.v1',
+      promise =>
+        promise.promiseId === 'pylon.install_without_wallet_knowledge.v1',
     )
     expect(pylonInstallPromise).toMatchObject({
       blockerRefs: [],
@@ -1689,11 +1695,10 @@ describe('public product promises document', () => {
     )
     expect(repoStudyPacketPromise?.unsafeCopy).toContain('marketplace package')
     expect(repoStudyPacketPromise?.unsafeCopy).toContain('payout eligibility')
-    expect(repoStudyPacketPromise?.authorityBoundary).toContain(
-      'not paid work',
-    )
+    expect(repoStudyPacketPromise?.authorityBoundary).toContain('not paid work')
     const externalRepoStudyPromise = decoded.promises.find(
-      promise => promise.promiseId === 'autopilot.external_repo_studying_pilot.v1',
+      promise =>
+        promise.promiseId === 'autopilot.external_repo_studying_pilot.v1',
     )
     expect(externalRepoStudyPromise).toMatchObject({
       state: 'yellow',
@@ -1827,9 +1832,7 @@ describe('public product promises document', () => {
     expect(scene?.verification).toContain(
       'chatWorldBuildFlags defaults CHAT_WORLD_SCENE and CHAT_WORLD_PAYMENTS on',
     )
-    expect(scene?.verification).toContain(
-      'owner-signed #7030 transition',
-    )
+    expect(scene?.verification).toContain('owner-signed #7030 transition')
     expect(scene?.verification).not.toContain('Green still requires')
     expect(scene?.authorityBoundary).toContain('grants no runtime mutation')
 
@@ -1855,7 +1858,9 @@ describe('public product promises document', () => {
       'This is NOT a green/default-on production claim',
     )
     expect(payments?.safeCopy).toContain('realBitcoinMoved:true')
-    expect(payments?.unsafeCopy).toContain('production-default-on for all users')
+    expect(payments?.unsafeCopy).toContain(
+      'production-default-on for all users',
+    )
     expect(payments?.verification).toContain(
       'PAYMENT_EVENT_KINDS remains exactly {real_bitcoin_moved, settlement_recorded}',
     )
@@ -1921,9 +1926,7 @@ describe('public product promises document', () => {
       )
     }
 
-    expect(
-      byId.get('pylon.first_real_model_training_run.v1'),
-    ).toMatchObject({
+    expect(byId.get('pylon.first_real_model_training_run.v1')).toMatchObject({
       blockerRefs: [
         'blocker.product_promises.model_ladder_network_rungs_not_run',
       ],
@@ -1931,9 +1934,7 @@ describe('public product promises document', () => {
         'route:/api/public/training/model-ladder-rungs',
         'apps/openagents.com/workers/api/src/training-model-ladder-rungs.ts',
       ]),
-      safeCopy: expect.stringContaining(
-        'r2NetworkRungReceiptAvailable=false',
-      ),
+      safeCopy: expect.stringContaining('r2NetworkRungReceiptAvailable=false'),
       verification: expect.stringContaining(
         'model_ladder_network_rungs_not_run',
       ),
@@ -1996,7 +1997,8 @@ describe('public product promises document', () => {
   test('partner payout ledger records projection evidence while keeping settlement blocked', () => {
     const document = publicProductPromisesDocument()
     const partnerPromise = document.promises.find(
-      promise => promise.promiseId === 'autopilot_sites.partner_payout_ledger.v1',
+      promise =>
+        promise.promiseId === 'autopilot_sites.partner_payout_ledger.v1',
     )
 
     expect(partnerPromise).toMatchObject({
@@ -2184,7 +2186,8 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
     const modelMixPromise = decoded.promises.find(
-      promise => promise.promiseId === 'metrics.khala_model_family_mix_public.v1',
+      promise =>
+        promise.promiseId === 'metrics.khala_model_family_mix_public.v1',
     )
 
     expect(modelMixPromise?.state).toBe('green')
@@ -2221,8 +2224,7 @@ describe('public product promises document', () => {
     )
     const kernelPromise = decoded.promises.find(
       promise =>
-        promise.promiseId ===
-        'compute.agentic_kernel_optimization_at_scale.v1',
+        promise.promiseId === 'compute.agentic_kernel_optimization_at_scale.v1',
     )
 
     expect(kernelPromise).toMatchObject({
@@ -2286,7 +2288,10 @@ describe('public product promises document', () => {
     const document = publicProductPromisesDocument()
 
     expect(
-      publicProductPromisesAnnouncementReadiness(PublicProductPromisesVersion, document),
+      publicProductPromisesAnnouncementReadiness(
+        PublicProductPromisesVersion,
+        document,
+      ),
     ).toMatchObject({
       blockerRefs: [],
       expectedVersion: PublicProductPromisesVersion,

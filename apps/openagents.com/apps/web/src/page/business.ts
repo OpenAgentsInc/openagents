@@ -25,7 +25,7 @@ const landingMode: Ui.PublicLandingThemeMode = 'dark'
 const pageShellClass = 'h-dvh overflow-auto bg-[#000] text-[#f1efe8]'
 
 const pricingNote =
-  'Usage is framed as clear token-based credits where the paid loop is available. We scope any paid run with an explicit receipt plan before you fund it. No monthly AI subscription.'
+  'Packages start with a fixed scope and receipt plan before funding. Delivery is operator-assisted today; checkout and self-serve hosting are not implied by the rate card.'
 
 const offerings: ReadonlyArray<Ui.BusinessOffering> = [
   {
@@ -127,6 +127,66 @@ const ladderSteps: ReadonlyArray<Ui.BusinessLadderStep> = [
   },
 ]
 
+const rateCardPackages: ReadonlyArray<Ui.BusinessRateCardPackage> = [
+  {
+    title: 'Quick Win',
+    price: '$1,000-$5,000 fixed',
+    scope:
+      'One bounded deliverable in days, such as a code fix, integration, landing page, workflow automation, or QA Swarm audit.',
+    receiptPlan: [
+      'Confirmed intake scope and acceptance check',
+      'Reviewable artifact or patch with verification evidence',
+      'Accepted-outcome receipt before the engagement is treated as complete',
+    ],
+    caveat:
+      'Operator-assisted: we scope the smallest honest deliverable before any run starts.',
+    promiseIds: [
+      'business.intake_quick_win_offering.v1',
+      'business.coding_quick_win.v1',
+    ],
+  },
+  {
+    title: 'Fleet Sprint',
+    price: '$5,000-$15,000 / week',
+    scope:
+      'A week of supervised fleet capacity against a prioritized backlog, with daily human checkpoints and item-by-item acceptance.',
+    receiptPlan: [
+      'Backlog and verification commands agreed up front',
+      'Per-work-item run evidence and review notes',
+      'Closeout summary with accepted, blocked, and deferred items separated',
+    ],
+    caveat:
+      'Best for software, QA, or automation backlogs that can be split into verifiable work items.',
+  },
+  {
+    title: 'On Autopilot Retainer',
+    price: '$2,000-$10,000 / month',
+    scope:
+      'A standing operator-assisted lane for recurring business work: maintenance, content, campaigns, intake ops, or fulfillment support.',
+    receiptPlan: [
+      'Monthly scope, cadence, and review ladder',
+      'Weekly activity receipts and accepted-output log',
+      'Renewal receipt with any metered overage called out separately',
+    ],
+    caveat:
+      'Human approval stays in front of sends, publishes, filings, spend, and external customer-facing output.',
+  },
+  {
+    title: 'QA Swarm',
+    price: '$1,000-$5,000 audit; $5,000-$15,000 sprint; $2,000-$10,000 / month',
+    scope:
+      'Operator-assisted agentic QA: a fixed Swarm Audit, a week-long Swarm Sprint, or QA-on-every-push retainer.',
+    receiptPlan: [
+      'Target adapter and redaction review before the run',
+      'Findings ledger with reproducible seeds or distilled regression tests',
+      'Public-safe report refs only after review gates clear',
+    ],
+    caveat:
+      'Not self-serve hosted testing yet. We review targets, data, and outward-facing reports before running or sharing.',
+    promiseIds: ['qa_swarm.product_surface.v1', 'qa_swarm.service_packages.v1'],
+  },
+]
+
 // Copy a bounded ?ref=<code> from the page URL into the hidden referralCode
 // field so a converted signup credits the referrer through the existing
 // referral spine. No-JS visitors still attribute via the /r/<ref> cookie path.
@@ -219,9 +279,7 @@ const intakeConsole = <Message>(): Html => {
             [
               h.DataAttribute('intake-chat-input', ''),
               h.AriaLabel('Message Khala'),
-              h.Placeholder(
-                'e.g. rebuild our outdated internal dashboard',
-              ),
+              h.Placeholder('e.g. rebuild our outdated internal dashboard'),
               h.Rows(1),
               Ui.className<Message>(
                 'min-h-[2.5rem] flex-1 resize-none border border-[#222] bg-black px-3 py-2 font-mono text-sm text-[#f1efe8] outline-none transition-colors duration-150 placeholder:text-white/35 focus:border-[#444]',
@@ -281,6 +339,11 @@ export const businessLandingShell = <Message>(): Html => {
               Ui.businessOfferingMenu<Message>({
                 body: 'An honest menu of what OpenAgents can deliver. Availability is grounded in our public product-promise registry - shipped now, operator-assisted with a caveat, or planned roadmap. We say so in writing and scope the smallest honest version.',
                 offerings,
+                mode: landingMode,
+              }),
+              Ui.businessRateCard<Message>({
+                body: 'Public package bands for operator-assisted work. The rate card is a quote starter, not a self-serve checkout: each engagement still gets a written scope, receipt plan, and review gate before work begins.',
+                packages: rateCardPackages,
                 mode: landingMode,
               }),
               Ui.quickWinLadder<Message>({

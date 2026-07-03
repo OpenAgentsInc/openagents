@@ -4,21 +4,22 @@
 
 Source issue: OpenAgentsInc/openagents#8061
 
-This is an owner-review staging note, not public copy. Do not quote these
-amounts on openagents.com, in sales outreach, in product-promise safe copy, or
-in package pages until the owner signs off.
+Resolved for public `/business` package bands by OpenAgentsInc/openagents#8079.
+The prices may be quoted only with the operator-assisted caveats and receipt
+plans from the page; checkout, self-serve hosted runs, first paid delivery
+receipts, and broad hosted availability remain gated.
 
 Modeled package bands from the QA Swarm product plan:
 
-| Package | Draft modeled band | Notes before publication |
-| --- | --- | --- |
-| Swarm Audit | $1,000-$5,000 fixed | Needs owner-approved scope limits, target-adapter caveats, redaction policy, and deliverable template. |
+| Package          | Draft modeled band            | Notes before publication                                                                                              |
+| ---------------- | ----------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Swarm Audit      | $1,000-$5,000 fixed           | Needs owner-approved scope limits, target-adapter caveats, redaction policy, and deliverable template.                |
 | QA-on-every-push | $2,000-$10,000/month retainer | Needs hosted-run receipts, exact accounting, runner-capacity policy, and clear operator-assisted vs. self-serve copy. |
-| Swarm Sprint | $5,000-$15,000 | Needs backlog-size bounds, delivery acceptance criteria, and paid-delivery receipt path. |
+| Swarm Sprint     | $5,000-$15,000                | Needs backlog-size bounds, delivery acceptance criteria, and paid-delivery receipt path.                              |
 
-NEEDS-OWNER: Decide whether these bands are directionally acceptable, whether
-any price should be public, and what copy is allowed for operator-assisted
-delivery before QA Swarm has self-serve hosted runs.
+Remaining owner-gated work: decide when QA Swarm hosted-run receipts,
+checkout/intake receipts, and outward-facing third-party report artifacts may be
+treated as live delivery evidence.
 
 ## QS7 Rhys Sales Motion Owner Gate
 
